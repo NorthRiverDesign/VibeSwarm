@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "VibeSwarm.Worker": {
+      "commandName": "Project",
+      "environmentVariables": {
+        "DOTNET_ENVIRONMENT": "Development"
+      }
+    }
+  }
+}
