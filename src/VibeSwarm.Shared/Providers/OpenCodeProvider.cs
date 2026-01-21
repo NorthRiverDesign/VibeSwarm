@@ -32,7 +32,9 @@ public class OpenCodeProvider : ProviderBase
         {
             _httpClient = new HttpClient
             {
-                BaseAddress = new Uri(_apiEndpoint)
+                BaseAddress = new Uri(_apiEndpoint),
+                // Set a long timeout for agent tasks that may take several minutes
+                Timeout = TimeSpan.FromMinutes(30)
             };
 
             if (!string.IsNullOrEmpty(_apiKey))
@@ -178,10 +180,22 @@ public class OpenCodeProvider : ProviderBase
         using var process = new Process { StartInfo = startInfo };
 
         var outputBuilder = new List<string>();
+        var errorBuilder = new System.Text.StringBuilder();
         var currentAssistantMessage = new System.Text.StringBuilder();
+
+        // Use TaskCompletionSource to ensure all output is processed before continuing
+        var outputComplete = new TaskCompletionSource<bool>();
+        var errorComplete = new TaskCompletionSource<bool>();
 
         process.OutputDataReceived += (sender, e) =>
         {
+            if (e.Data == null)
+            {
+                // End of stream
+                outputComplete.TrySetResult(true);
+                return;
+            }
+
             if (string.IsNullOrEmpty(e.Data)) return;
 
             outputBuilder.Add(e.Data);
@@ -201,11 +215,40 @@ public class OpenCodeProvider : ProviderBase
             }
         };
 
+        process.ErrorDataReceived += (sender, e) =>
+        {
+            if (e.Data == null)
+            {
+                // End of stream
+                errorComplete.TrySetResult(true);
+                return;
+            }
+
+            if (!string.IsNullOrEmpty(e.Data))
+            {
+                errorBuilder.AppendLine(e.Data);
+            }
+        };
+
         process.Start();
         process.BeginOutputReadLine();
+        process.BeginErrorReadLine();
 
-        var error = await process.StandardError.ReadToEndAsync(cancellationToken);
-        await process.WaitForExitAsync(cancellationToken);
+        // Wait for the process to exit - this can take several minutes for complex agent tasks
+        try
+        {
+            await process.WaitForExitAsync(cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            // If cancelled, try to kill the process
+            try { process.Kill(entireProcessTree: true); } catch { }
+            throw;
+        }
+
+        // Wait for all output to be processed (with timeout to prevent hanging)
+        var outputTimeout = Task.Delay(TimeSpan.FromSeconds(10), CancellationToken.None);
+        await Task.WhenAny(Task.WhenAll(outputComplete.Task, errorComplete.Task), outputTimeout);
 
         // Finalize any pending assistant message
         if (currentAssistantMessage.Length > 0)
@@ -221,6 +264,7 @@ public class OpenCodeProvider : ProviderBase
         result.Success = process.ExitCode == 0;
         result.Output = string.Join("\n", outputBuilder);
 
+        var error = errorBuilder.ToString();
         if (!result.Success && !string.IsNullOrEmpty(error))
         {
             result.ErrorMessage = error;

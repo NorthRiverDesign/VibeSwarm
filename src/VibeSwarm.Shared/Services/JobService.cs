@@ -135,6 +135,9 @@ public class JobService : IJobService
         if (status == JobStatus.Completed || status == JobStatus.Failed || status == JobStatus.Cancelled)
         {
             job.CompletedAt = DateTime.UtcNow;
+            // Clear progress tracking when job reaches terminal state
+            job.CurrentActivity = null;
+            job.LastActivityAt = DateTime.UtcNow;
         }
 
         if (sessionId != null)
@@ -234,6 +237,22 @@ public class JobService : IJobService
             .FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
 
         return job?.CancellationRequested ?? false;
+    }
+
+    public async Task UpdateProgressAsync(Guid id, string? currentActivity, CancellationToken cancellationToken = default)
+    {
+        var job = await _dbContext.Jobs
+            .FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
+
+        if (job == null)
+        {
+            return;
+        }
+
+        job.CurrentActivity = currentActivity;
+        job.LastActivityAt = DateTime.UtcNow;
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
     }
 
     public async Task DeleteAsync(Guid id, CancellationToken cancellationToken = default)

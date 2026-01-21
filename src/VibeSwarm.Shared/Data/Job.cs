@@ -54,6 +54,16 @@ public class Job
     /// </summary>
     public int? OutputTokens { get; set; }
 
+    /// <summary>
+    /// Current activity description (e.g., "Running tool: Read", "Thinking...")
+    /// </summary>
+    public string? CurrentActivity { get; set; }
+
+    /// <summary>
+    /// Last time the job was updated with progress
+    /// </summary>
+    public DateTime? LastActivityAt { get; set; }
+
     public ICollection<JobMessage> Messages { get; set; } = new List<JobMessage>();
 }
 

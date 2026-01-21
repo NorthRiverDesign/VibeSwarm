@@ -16,5 +16,6 @@ public interface IJobService
     Task AddMessagesAsync(Guid jobId, IEnumerable<JobMessage> messages, CancellationToken cancellationToken = default);
     Task<bool> RequestCancellationAsync(Guid id, CancellationToken cancellationToken = default);
     Task<bool> IsCancellationRequestedAsync(Guid id, CancellationToken cancellationToken = default);
+    Task UpdateProgressAsync(Guid id, string? currentActivity, CancellationToken cancellationToken = default);
     Task DeleteAsync(Guid id, CancellationToken cancellationToken = default);
 }

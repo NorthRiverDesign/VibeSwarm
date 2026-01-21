@@ -3,6 +3,7 @@
 @inject IJobService JobService
 @inject IProviderService ProviderService
 @inject NavigationManager NavigationManager
+@implements IDisposable
 
 @if (IsLoading)
 {
@@ -57,6 +58,10 @@ else
                                 <td>@(job.Provider?.Name ?? "Unknown")</td>
                                 <td>
                                     <span class="status-badge status-@job.Status.ToString().ToLower()">@job.Status</span>
+                                    @if ((job.Status == JobStatus.Started || job.Status == JobStatus.Processing) && !string.IsNullOrEmpty(job.CurrentActivity))
+                                    {
+                                        <div class="job-activity">@job.CurrentActivity</div>
+                                    }
                                 </td>
                                 <td>@job.CreatedAt.ToLocalTime().ToString("g")</td>
                                 <td class="actions">
@@ -138,10 +143,41 @@ else
     private bool IsSaving { get; set; }
     private string? ErrorMessage { get; set; }
     private string? SuccessMessage { get; set; }
+    private System.Threading.Timer? _refreshTimer;
+
+    private bool HasActiveJobs => Jobs.Any(j =>
+        j.Status == JobStatus.New ||
+        j.Status == JobStatus.Pending ||
+        j.Status == JobStatus.Started ||
+        j.Status == JobStatus.Processing);
 
     protected override async Task OnInitializedAsync()
     {
         await LoadData();
+        StartAutoRefresh();
+    }
+
+    private void StartAutoRefresh()
+    {
+        _refreshTimer = new System.Threading.Timer(async _ =>
+        {
+            if (HasActiveJobs)
+            {
+                await InvokeAsync(async () =>
+                {
+                    await RefreshJobs();
+                    StateHasChanged();
+                });
+            }
+        }, null, TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(3));
+    }
+
+    private async Task RefreshJobs()
+    {
+        if (Project != null)
+        {
+            Jobs = (await JobService.GetByProjectIdAsync(ProjectId)).ToList();
+        }
     }
 
     private async Task LoadData()
@@ -211,5 +247,10 @@ else
         if (string.IsNullOrEmpty(text) || text.Length <= maxLength)
             return text;
         return text[..maxLength] + "...";
+    }
+
+    public void Dispose()
+    {
+        _refreshTimer?.Dispose();
     }
 }

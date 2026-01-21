@@ -113,9 +113,32 @@ public class JobProcessingService : BackgroundService
 
             // Execute the job with session support
             var workingDirectory = job.Project?.WorkingPath;
-            var progress = new Progress<ExecutionProgress>(p =>
+
+            // Track last progress update time to avoid excessive database writes
+            var lastProgressUpdate = DateTime.MinValue;
+            var progressUpdateInterval = TimeSpan.FromSeconds(2);
+
+            var progress = new Progress<ExecutionProgress>(async p =>
             {
-                _logger.LogDebug("Job {JobId} progress: {Message}", job.Id, p.CurrentMessage ?? p.ToolName);
+                var activity = !string.IsNullOrEmpty(p.ToolName)
+                    ? $"Running tool: {p.ToolName}"
+                    : (p.IsStreaming ? "Processing..." : p.CurrentMessage ?? "Working...");
+
+                _logger.LogDebug("Job {JobId} progress: {Activity}", job.Id, activity);
+
+                // Throttle progress updates to the database
+                if (DateTime.UtcNow - lastProgressUpdate >= progressUpdateInterval)
+                {
+                    lastProgressUpdate = DateTime.UtcNow;
+                    try
+                    {
+                        await jobService.UpdateProgressAsync(job.Id, activity, CancellationToken.None);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to update progress for job {JobId}", job.Id);
+                    }
+                }
             });
 
             var result = await provider.ExecuteWithSessionAsync(

@@ -33,7 +33,9 @@ public class ClaudeProvider : ProviderBase
         {
             _httpClient = new HttpClient
             {
-                BaseAddress = new Uri(_apiEndpoint)
+                BaseAddress = new Uri(_apiEndpoint),
+                // Set a long timeout for agent tasks that may take several minutes
+                Timeout = TimeSpan.FromMinutes(30)
             };
 
             if (!string.IsNullOrEmpty(_apiKey))
@@ -157,7 +159,10 @@ public class ClaudeProvider : ProviderBase
         var effectiveWorkingDir = workingDirectory ?? _workingDirectory ?? Environment.CurrentDirectory;
 
         // Build arguments for JSON output with session support
-        var args = new List<string> { "-p", $"\"{EscapeArgument(prompt)}\"", "--output-format", "stream-json" };
+        // -p: non-interactive print mode
+        // --output-format stream-json: JSON streaming output
+        // --verbose: required for stream-json format
+        var args = new List<string> { "-p", $"\"{EscapeArgument(prompt)}\"", "--output-format", "stream-json", "--verbose" };
 
         if (!string.IsNullOrEmpty(sessionId))
         {
@@ -178,10 +183,22 @@ public class ClaudeProvider : ProviderBase
         using var process = new Process { StartInfo = startInfo };
 
         var outputBuilder = new List<string>();
+        var errorBuilder = new System.Text.StringBuilder();
         var currentAssistantMessage = new System.Text.StringBuilder();
+
+        // Use TaskCompletionSource to ensure all output is processed before continuing
+        var outputComplete = new TaskCompletionSource<bool>();
+        var errorComplete = new TaskCompletionSource<bool>();
 
         process.OutputDataReceived += (sender, e) =>
         {
+            if (e.Data == null)
+            {
+                // End of stream
+                outputComplete.TrySetResult(true);
+                return;
+            }
+
             if (string.IsNullOrEmpty(e.Data)) return;
 
             outputBuilder.Add(e.Data);
@@ -201,11 +218,40 @@ public class ClaudeProvider : ProviderBase
             }
         };
 
+        process.ErrorDataReceived += (sender, e) =>
+        {
+            if (e.Data == null)
+            {
+                // End of stream
+                errorComplete.TrySetResult(true);
+                return;
+            }
+
+            if (!string.IsNullOrEmpty(e.Data))
+            {
+                errorBuilder.AppendLine(e.Data);
+            }
+        };
+
         process.Start();
         process.BeginOutputReadLine();
+        process.BeginErrorReadLine();
 
-        var error = await process.StandardError.ReadToEndAsync(cancellationToken);
-        await process.WaitForExitAsync(cancellationToken);
+        // Wait for the process to exit - this can take several minutes for complex agent tasks
+        try
+        {
+            await process.WaitForExitAsync(cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            // If cancelled, try to kill the process
+            try { process.Kill(entireProcessTree: true); } catch { }
+            throw;
+        }
+
+        // Wait for all output to be processed (with timeout to prevent hanging)
+        var outputTimeout = Task.Delay(TimeSpan.FromSeconds(10), CancellationToken.None);
+        await Task.WhenAny(Task.WhenAll(outputComplete.Task, errorComplete.Task), outputTimeout);
 
         // Finalize any pending assistant message
         if (currentAssistantMessage.Length > 0)
@@ -221,6 +267,7 @@ public class ClaudeProvider : ProviderBase
         result.Success = process.ExitCode == 0;
         result.Output = string.Join("\n", outputBuilder);
 
+        var error = errorBuilder.ToString();
         if (!result.Success && !string.IsNullOrEmpty(error))
         {
             result.ErrorMessage = error;
@@ -238,78 +285,111 @@ public class ClaudeProvider : ProviderBase
         switch (evt.Type)
         {
             case "system":
+                // System init event contains session_id
                 if (!string.IsNullOrEmpty(evt.SessionId))
                 {
                     result.SessionId = evt.SessionId;
                 }
-                break;
-
-            case "assistant":
-                if (currentMessage.Length > 0)
-                {
-                    result.Messages.Add(new ExecutionMessage
-                    {
-                        Role = "assistant",
-                        Content = currentMessage.ToString(),
-                        Timestamp = DateTime.UtcNow
-                    });
-                    currentMessage.Clear();
-                }
-
-                if (!string.IsNullOrEmpty(evt.Message))
-                {
-                    currentMessage.Append(evt.Message);
-                    progress?.Report(new ExecutionProgress
-                    {
-                        CurrentMessage = evt.Message,
-                        IsStreaming = true
-                    });
-                }
-                break;
-
-            case "tool_use":
-                result.Messages.Add(new ExecutionMessage
-                {
-                    Role = "tool_use",
-                    Content = evt.ToolName ?? "unknown",
-                    ToolName = evt.ToolName,
-                    ToolInput = evt.ToolInput,
-                    Timestamp = DateTime.UtcNow
-                });
                 progress?.Report(new ExecutionProgress
                 {
-                    ToolName = evt.ToolName,
+                    CurrentMessage = "Initializing...",
                     IsStreaming = false
                 });
                 break;
 
-            case "tool_result":
-                result.Messages.Add(new ExecutionMessage
+            case "assistant":
+                // Assistant event contains a message object with content array
+                if (evt.Message?.Content != null)
                 {
-                    Role = "tool_result",
-                    Content = evt.ToolOutput ?? "",
-                    ToolName = evt.ToolName,
-                    ToolOutput = evt.ToolOutput,
-                    Timestamp = DateTime.UtcNow
-                });
-                break;
+                    foreach (var content in evt.Message.Content)
+                    {
+                        if (content.Type == "text" && !string.IsNullOrEmpty(content.Text))
+                        {
+                            currentMessage.Append(content.Text);
+                            progress?.Report(new ExecutionProgress
+                            {
+                                CurrentMessage = content.Text.Length > 100
+                                    ? content.Text[..100] + "..."
+                                    : content.Text,
+                                IsStreaming = true
+                            });
+                        }
+                        else if (content.Type == "tool_use")
+                        {
+                            // Finalize any pending text message
+                            if (currentMessage.Length > 0)
+                            {
+                                result.Messages.Add(new ExecutionMessage
+                                {
+                                    Role = "assistant",
+                                    Content = currentMessage.ToString(),
+                                    Timestamp = DateTime.UtcNow
+                                });
+                                currentMessage.Clear();
+                            }
 
-            case "result":
-                if (evt.CostUsd.HasValue)
-                {
-                    result.CostUsd = evt.CostUsd;
-                }
-                if (evt.InputTokens.HasValue)
-                {
-                    result.InputTokens = evt.InputTokens;
-                }
-                if (evt.OutputTokens.HasValue)
-                {
-                    result.OutputTokens = evt.OutputTokens;
+                            result.Messages.Add(new ExecutionMessage
+                            {
+                                Role = "tool_use",
+                                Content = content.Name ?? "unknown",
+                                ToolName = content.Name,
+                                ToolInput = content.Input?.ToString(),
+                                Timestamp = DateTime.UtcNow
+                            });
+                            progress?.Report(new ExecutionProgress
+                            {
+                                ToolName = content.Name,
+                                IsStreaming = false
+                            });
+                        }
+                    }
                 }
                 if (!string.IsNullOrEmpty(evt.SessionId))
                 {
                     result.SessionId = evt.SessionId;
+                }
+                break;
+
+            case "user":
+                // User message (tool results come back as user messages)
+                if (evt.Message?.Content != null)
+                {
+                    foreach (var content in evt.Message.Content)
+                    {
+                        if (content.Type == "tool_result")
+                        {
+                            result.Messages.Add(new ExecutionMessage
+                            {
+                                Role = "tool_result",
+                                Content = content.Content ?? "",
+                                ToolName = content.ToolUseId,
+                                ToolOutput = content.Content,
+                                Timestamp = DateTime.UtcNow
+                            });
+                        }
+                    }
+                }
+                break;
+
+            case "result":
+                // Final result with metrics
+                if (evt.TotalCostUsd.HasValue)
+                {
+                    result.CostUsd = evt.TotalCostUsd;
+                }
+                if (evt.Usage != null)
+                {
+                    result.InputTokens = evt.Usage.InputTokens;
+                    result.OutputTokens = evt.Usage.OutputTokens;
+                }
+                if (!string.IsNullOrEmpty(evt.SessionId))
+                {
+                    result.SessionId = evt.SessionId;
+                }
+                if (!string.IsNullOrEmpty(evt.Result))
+                {
+                    // Store final result as output
+                    result.Output = evt.Result;
                 }
                 break;
         }
@@ -532,20 +612,52 @@ public class ClaudeProvider : ProviderBase
         return argument.Replace("\\", "\\\\").Replace("\"", "\\\"");
     }
 
-    // JSON models for Claude API and CLI output
+    // JSON models for Claude CLI stream-json output
     private class ClaudeStreamEvent
     {
         public string? Type { get; set; }
+        public string? Subtype { get; set; }
         public string? SessionId { get; set; }
-        public string? Message { get; set; }
-        public string? ToolName { get; set; }
-        public string? ToolInput { get; set; }
-        public string? ToolOutput { get; set; }
-        public decimal? CostUsd { get; set; }
-        public int? InputTokens { get; set; }
-        public int? OutputTokens { get; set; }
+        public ClaudeMessage? Message { get; set; }
+        // Result event fields
+        public string? Result { get; set; }
+        public decimal? TotalCostUsd { get; set; }
+        public UsageInfo? Usage { get; set; }
     }
 
+    private class ClaudeMessage
+    {
+        public string? Id { get; set; }
+        public string? Type { get; set; }
+        public string? Role { get; set; }
+        public string? Model { get; set; }
+        public ContentBlock[]? Content { get; set; }
+        public UsageInfo? Usage { get; set; }
+    }
+
+    private class ContentBlock
+    {
+        public string? Type { get; set; }
+        // For text content
+        public string? Text { get; set; }
+        // For tool_use content
+        public string? Id { get; set; }
+        public string? Name { get; set; }
+        public JsonElement? Input { get; set; }
+        // For tool_result content
+        public string? ToolUseId { get; set; }
+        public string? Content { get; set; }
+    }
+
+    private class UsageInfo
+    {
+        public int? InputTokens { get; set; }
+        public int? OutputTokens { get; set; }
+        public int? CacheReadInputTokens { get; set; }
+        public int? CacheCreationInputTokens { get; set; }
+    }
+
+    // JSON models for Claude REST API
     private class ClaudeApiResponse
     {
         public string? Id { get; set; }
@@ -555,17 +667,5 @@ public class ClaudeProvider : ProviderBase
         public string? Model { get; set; }
         public string? StopReason { get; set; }
         public UsageInfo? Usage { get; set; }
-    }
-
-    private class ContentBlock
-    {
-        public string? Type { get; set; }
-        public string? Text { get; set; }
-    }
-
-    private class UsageInfo
-    {
-        public int? InputTokens { get; set; }
-        public int? OutputTokens { get; set; }
     }
 }
