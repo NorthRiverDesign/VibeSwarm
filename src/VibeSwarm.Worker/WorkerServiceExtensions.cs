@@ -6,7 +6,7 @@ public static class WorkerServiceExtensions
 {
     public static IServiceCollection AddWorkerServices(this IServiceCollection services)
     {
-        services.AddHostedService<WorkerService>();
+        services.AddHostedService<JobProcessingService>();
         return services;
     }
 }

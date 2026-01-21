@@ -1,6 +1,11 @@
 # AI Agent files
 .claude/settings.local.json
 
+# SQLite Db
+vibeswarm.Db
+vibeswarm.Db-shm
+vibeswarm.Db-wal
+
 # Ignore Visual Studio temporary files, build results, and
 # user-specific files.
 *.swp

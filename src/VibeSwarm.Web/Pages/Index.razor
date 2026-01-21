@@ -1,4 +1,106 @@
 @page "/"
+@inject IProviderService ProviderService
+@inject IProjectService ProjectService
 
 <h3>Welcome to VibeSwarm</h3>
 <p>Your distributed agent job management system.</p>
+
+<div class="dashboard-grid">
+    <section class="recent-projects">
+        <h4>Recent Projects</h4>
+
+        @if (IsLoading)
+        {
+            <p>Loading projects...</p>
+        }
+        else if (!Projects.Any())
+        {
+            <p class="empty-state">No projects yet. <a href="/projects">Create your first project</a> to get started.</p>
+        }
+        else
+        {
+            <div class="project-cards">
+                @foreach (var project in Projects)
+                {
+                    <a href="/projects/@project.Id" class="project-card">
+                        <h5>@project.Name</h5>
+                        @if (!string.IsNullOrEmpty(project.Description))
+                        {
+                            <p class="project-card-description">@TruncateText(project.Description, 80)</p>
+                        }
+                        <div class="project-card-info">
+                            <span class="project-card-path">@TruncateText(project.WorkingPath, 40)</span>
+                            <span class="project-card-date">@project.CreatedAt.ToLocalTime().ToString("MMM d, yyyy")</span>
+                        </div>
+                    </a>
+                }
+            </div>
+            <p style="margin-top: 1rem;"><a href="/projects">View all projects</a></p>
+        }
+    </section>
+
+    <section class="connected-providers">
+        <h4>Connected Providers</h4>
+
+        @if (IsLoading)
+        {
+            <p>Loading providers...</p>
+        }
+        else if (!Providers.Any())
+        {
+            <p class="empty-state">No providers configured. <a href="/providers">Add a provider</a> to get started.</p>
+        }
+        else
+        {
+            <div class="provider-cards">
+                @foreach (var provider in Providers)
+                {
+                    <div class="provider-card @(provider.IsEnabled ? "" : "disabled")">
+                        <h5>@provider.Name</h5>
+                        <div class="provider-card-info">
+                            <span>Type: @provider.Type</span>
+                            <span>Mode: @provider.ConnectionMode</span>
+                            <span>Status: @(provider.IsEnabled ? "Enabled" : "Disabled")</span>
+                            @if (provider.LastConnectedAt.HasValue)
+                            {
+                                <span>Last connected: @provider.LastConnectedAt.Value.ToLocalTime().ToString("g")</span>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+            <p style="margin-top: 1rem;"><a href="/providers">Manage providers</a></p>
+        }
+    </section>
+</div>
+
+@code {
+    private List<Provider> Providers { get; set; } = new();
+    private List<Project> Projects { get; set; } = new();
+    private bool IsLoading { get; set; } = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var providersTask = ProviderService.GetAllAsync();
+            var projectsTask = ProjectService.GetRecentAsync(10);
+
+            await Task.WhenAll(providersTask, projectsTask);
+
+            Providers = (await providersTask).ToList();
+            Projects = (await projectsTask).ToList();
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    private static string TruncateText(string text, int maxLength)
+    {
+        if (string.IsNullOrEmpty(text) || text.Length <= maxLength)
+            return text;
+        return text[..maxLength] + "...";
+    }
+}

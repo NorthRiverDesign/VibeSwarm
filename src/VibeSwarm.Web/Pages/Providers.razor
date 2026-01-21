@@ -1,0 +1,161 @@
+@page "/providers"
+@inject IProviderService ProviderService
+
+<h3>Providers</h3>
+<p>Manage your AI coding agent providers.</p>
+
+<div class="providers-container">
+    <div class="providers-list">
+        <h4>Connected Providers</h4>
+
+        @if (IsLoading)
+        {
+            <p>Loading providers...</p>
+        }
+        else if (!ProvidersList.Any())
+        {
+            <p class="empty-state">No providers configured. Add one below.</p>
+        }
+        else
+        {
+            <table class="providers-table">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Type</th>
+                        <th>Mode</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var provider in ProvidersList)
+                    {
+                        <tr>
+                            <td>@provider.Name</td>
+                            <td>@provider.Type</td>
+                            <td>@provider.ConnectionMode</td>
+                            <td>
+                                <span class="status-badge @(provider.IsEnabled ? "status-enabled" : "status-disabled")">
+                                    @(provider.IsEnabled ? "Enabled" : "Disabled")
+                                </span>
+                            </td>
+                            <td class="actions">
+                                <button class="btn btn-small" @onclick="() => TestConnection(provider)" disabled="@(TestingId == provider.Id)">
+                                    @(TestingId == provider.Id ? "Testing..." : "Test")
+                                </button>
+                                <button class="btn btn-small" @onclick="() => EditProvider(provider)">Edit</button>
+                                <button class="btn btn-small btn-danger" @onclick="() => DeleteProvider(provider)">Delete</button>
+                            </td>
+                        </tr>
+                        @if (TestResults.TryGetValue(provider.Id, out var result))
+                        {
+                            <tr class="test-result-row">
+                                <td colspan="5">
+                                    <span class="@(result ? "test-success" : "test-failure")">
+                                        @(result ? "Connection successful" : "Connection failed")
+                                    </span>
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+
+    <div class="provider-form-container">
+        <h4>@(EditingProvider != null ? "Edit Provider" : "Add New Provider")</h4>
+        <ProviderForm
+            Provider="@CurrentProvider"
+            IsEdit="@(EditingProvider != null)"
+            OnSaved="HandleProviderSaved"
+            OnCancel="CancelEdit" />
+    </div>
+</div>
+
+@code {
+    private List<Provider> ProvidersList { get; set; } = new();
+    private bool IsLoading { get; set; } = true;
+    private Provider? EditingProvider { get; set; }
+    private Provider CurrentProvider { get; set; } = new();
+    private Guid? TestingId { get; set; }
+    private Dictionary<Guid, bool> TestResults { get; set; } = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadProviders();
+    }
+
+    private async Task LoadProviders()
+    {
+        IsLoading = true;
+        try
+        {
+            ProvidersList = (await ProviderService.GetAllAsync()).ToList();
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    private void EditProvider(Provider provider)
+    {
+        EditingProvider = provider;
+        CurrentProvider = new Provider
+        {
+            Id = provider.Id,
+            Name = provider.Name,
+            Type = provider.Type,
+            ConnectionMode = provider.ConnectionMode,
+            ExecutablePath = provider.ExecutablePath,
+            WorkingDirectory = provider.WorkingDirectory,
+            ApiEndpoint = provider.ApiEndpoint,
+            ApiKey = provider.ApiKey,
+            IsEnabled = provider.IsEnabled,
+            CreatedAt = provider.CreatedAt,
+            LastConnectedAt = provider.LastConnectedAt
+        };
+    }
+
+    private void CancelEdit()
+    {
+        EditingProvider = null;
+        CurrentProvider = new Provider();
+    }
+
+    private async Task HandleProviderSaved()
+    {
+        EditingProvider = null;
+        CurrentProvider = new Provider();
+        await LoadProviders();
+    }
+
+    private async Task DeleteProvider(Provider provider)
+    {
+        await ProviderService.DeleteAsync(provider.Id);
+        await LoadProviders();
+    }
+
+    private async Task TestConnection(Provider provider)
+    {
+        TestingId = provider.Id;
+        TestResults.Remove(provider.Id);
+        StateHasChanged();
+
+        try
+        {
+            var result = await ProviderService.TestConnectionAsync(provider.Id);
+            TestResults[provider.Id] = result;
+        }
+        catch
+        {
+            TestResults[provider.Id] = false;
+        }
+        finally
+        {
+            TestingId = null;
+        }
+    }
+}

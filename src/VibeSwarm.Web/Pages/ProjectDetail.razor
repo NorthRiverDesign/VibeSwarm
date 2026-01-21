@@ -1,0 +1,215 @@
+@page "/projects/{ProjectId:guid}"
+@inject IProjectService ProjectService
+@inject IJobService JobService
+@inject IProviderService ProviderService
+@inject NavigationManager NavigationManager
+
+@if (IsLoading)
+{
+    <p>Loading project...</p>
+}
+else if (Project == null)
+{
+    <p>Project not found.</p>
+    <a href="/projects">Back to Projects</a>
+}
+else
+{
+    <div class="project-header">
+        <div>
+            <h3>@Project.Name</h3>
+            @if (!string.IsNullOrEmpty(Project.Description))
+            {
+                <p class="project-description-header">@Project.Description</p>
+            }
+            <p class="project-path"><strong>Working Path:</strong> @Project.WorkingPath</p>
+        </div>
+        <a href="/projects" class="btn btn-secondary">Back to Projects</a>
+    </div>
+
+    <div class="project-detail-container">
+        <div class="jobs-list">
+            <h4>Jobs</h4>
+
+            @if (!Jobs.Any())
+            {
+                <p class="empty-state">No jobs yet. Create a job to start working on this project.</p>
+            }
+            else
+            {
+                <table class="jobs-table">
+                    <thead>
+                        <tr>
+                            <th>Goal</th>
+                            <th>Provider</th>
+                            <th>Status</th>
+                            <th>Created</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var job in Jobs)
+                        {
+                            <tr>
+                                <td class="goal-cell">
+                                    <a href="/jobs/@job.Id">@TruncateText(job.GoalPrompt, 100)</a>
+                                </td>
+                                <td>@(job.Provider?.Name ?? "Unknown")</td>
+                                <td>
+                                    <span class="status-badge status-@job.Status.ToString().ToLower()">@job.Status</span>
+                                </td>
+                                <td>@job.CreatedAt.ToLocalTime().ToString("g")</td>
+                                <td class="actions">
+                                    <a href="/jobs/@job.Id" class="btn btn-small btn-secondary">View</a>
+                                    <button class="btn btn-small btn-danger" @onclick="() => DeleteJob(job.Id)">Delete</button>
+                                </td>
+                            </tr>
+                            @if (!string.IsNullOrEmpty(job.ErrorMessage))
+                            {
+                                <tr class="error-row">
+                                    <td colspan="5">
+                                        <div class="job-error">@job.ErrorMessage</div>
+                                    </td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+
+        <div class="job-form-container">
+            <h4>Create New Job</h4>
+
+            <EditForm Model="@NewJob" OnValidSubmit="HandleCreateJob">
+                <DataAnnotationsValidator />
+                <ValidationSummary />
+
+                <div class="form-group">
+                    <label for="goalPrompt">Goal Prompt</label>
+                    <InputTextArea id="goalPrompt" @bind-Value="NewJob.GoalPrompt" class="form-control" rows="5" placeholder="Describe what you want the AI agent to accomplish..." />
+                    <ValidationMessage For="@(() => NewJob.GoalPrompt)" />
+                </div>
+
+                <div class="form-group">
+                    <label for="provider">Provider</label>
+                    <InputSelect id="provider" @bind-Value="NewJob.ProviderId" class="form-control">
+                        <option value="@Guid.Empty">Select a provider...</option>
+                        @foreach (var provider in Providers.Where(p => p.IsEnabled))
+                        {
+                            <option value="@provider.Id">@provider.Name (@provider.Type - @provider.ConnectionMode)</option>
+                        }
+                    </InputSelect>
+                    @if (!Providers.Any(p => p.IsEnabled))
+                    {
+                        <small class="form-text text-warning">No enabled providers available. <a href="/providers">Configure a provider</a> first.</small>
+                    }
+                </div>
+
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary" disabled="@(IsSaving || NewJob.ProviderId == Guid.Empty)">
+                        @(IsSaving ? "Creating..." : "Create Job")
+                    </button>
+                </div>
+
+                @if (!string.IsNullOrEmpty(ErrorMessage))
+                {
+                    <div class="alert alert-error">@ErrorMessage</div>
+                }
+
+                @if (!string.IsNullOrEmpty(SuccessMessage))
+                {
+                    <div class="alert alert-success">@SuccessMessage</div>
+                }
+            </EditForm>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public Guid ProjectId { get; set; }
+
+    private Project? Project { get; set; }
+    private List<Job> Jobs { get; set; } = new();
+    private List<Provider> Providers { get; set; } = new();
+    private Job NewJob { get; set; } = new();
+    private bool IsLoading { get; set; } = true;
+    private bool IsSaving { get; set; }
+    private string? ErrorMessage { get; set; }
+    private string? SuccessMessage { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        IsLoading = true;
+        try
+        {
+            Project = await ProjectService.GetByIdAsync(ProjectId);
+            if (Project != null)
+            {
+                Jobs = (await JobService.GetByProjectIdAsync(ProjectId)).ToList();
+            }
+            Providers = (await ProviderService.GetAllAsync()).ToList();
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    private async Task HandleCreateJob()
+    {
+        if (NewJob.ProviderId == Guid.Empty)
+        {
+            ErrorMessage = "Please select a provider.";
+            return;
+        }
+
+        IsSaving = true;
+        ErrorMessage = null;
+        SuccessMessage = null;
+
+        try
+        {
+            NewJob.ProjectId = ProjectId;
+            await JobService.CreateAsync(NewJob);
+            SuccessMessage = "Job created successfully.";
+            NewJob = new Job();
+            Jobs = (await JobService.GetByProjectIdAsync(ProjectId)).ToList();
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Error creating job: {ex.Message}";
+        }
+        finally
+        {
+            IsSaving = false;
+        }
+    }
+
+    private async Task DeleteJob(Guid jobId)
+    {
+        try
+        {
+            await JobService.DeleteAsync(jobId);
+            Jobs = (await JobService.GetByProjectIdAsync(ProjectId)).ToList();
+            SuccessMessage = "Job deleted successfully.";
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Error deleting job: {ex.Message}";
+        }
+    }
+
+    private static string TruncateText(string text, int maxLength)
+    {
+        if (string.IsNullOrEmpty(text) || text.Length <= maxLength)
+            return text;
+        return text[..maxLength] + "...";
+    }
+}

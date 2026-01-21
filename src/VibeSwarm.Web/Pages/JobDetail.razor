@@ -1,0 +1,285 @@
+@page "/jobs/{JobId:guid}"
+@inject IJobService JobService
+@inject NavigationManager NavigationManager
+@implements IDisposable
+
+@if (IsLoading)
+{
+    <p>Loading job...</p>
+}
+else if (Job == null)
+{
+    <p>Job not found.</p>
+    <a href="/projects">Back to Projects</a>
+}
+else
+{
+    <div class="job-header">
+        <div>
+            <h3>Job Details</h3>
+            <p class="job-meta">
+                <span class="status-badge status-@Job.Status.ToString().ToLower()">@Job.Status</span>
+                <span>Project: <a href="/projects/@Job.ProjectId">@(Job.Project?.Name ?? "Unknown")</a></span>
+                <span>Provider: @(Job.Provider?.Name ?? "Unknown")</span>
+            </p>
+        </div>
+        <div class="job-header-actions">
+            @if (CanCancel)
+            {
+                <button class="btn btn-danger" @onclick="CancelJob" disabled="@IsCancelling">
+                    @(IsCancelling ? "Cancelling..." : "Cancel Job")
+                </button>
+            }
+            <a href="/projects/@Job.ProjectId" class="btn btn-secondary">Back to Project</a>
+        </div>
+    </div>
+
+    <div class="job-detail-container">
+        <div class="job-info-section">
+            <h4>Goal Prompt</h4>
+            <div class="goal-prompt-box">
+                @Job.GoalPrompt
+            </div>
+
+            <div class="job-stats">
+                @if (Job.SessionId != null)
+                {
+                    <div class="stat-item">
+                        <span class="stat-label">Session ID</span>
+                        <span class="stat-value mono">@Job.SessionId</span>
+                    </div>
+                }
+                @if (Job.InputTokens.HasValue)
+                {
+                    <div class="stat-item">
+                        <span class="stat-label">Input Tokens</span>
+                        <span class="stat-value">@Job.InputTokens.Value.ToString("N0")</span>
+                    </div>
+                }
+                @if (Job.OutputTokens.HasValue)
+                {
+                    <div class="stat-item">
+                        <span class="stat-label">Output Tokens</span>
+                        <span class="stat-value">@Job.OutputTokens.Value.ToString("N0")</span>
+                    </div>
+                }
+                @if (Job.TotalCostUsd.HasValue)
+                {
+                    <div class="stat-item">
+                        <span class="stat-label">Cost</span>
+                        <span class="stat-value">$@Job.TotalCostUsd.Value.ToString("F4")</span>
+                    </div>
+                }
+                <div class="stat-item">
+                    <span class="stat-label">Created</span>
+                    <span class="stat-value">@Job.CreatedAt.ToLocalTime().ToString("g")</span>
+                </div>
+                @if (Job.StartedAt.HasValue)
+                {
+                    <div class="stat-item">
+                        <span class="stat-label">Started</span>
+                        <span class="stat-value">@Job.StartedAt.Value.ToLocalTime().ToString("g")</span>
+                    </div>
+                }
+                @if (Job.CompletedAt.HasValue)
+                {
+                    <div class="stat-item">
+                        <span class="stat-label">Completed</span>
+                        <span class="stat-value">@Job.CompletedAt.Value.ToLocalTime().ToString("g")</span>
+                    </div>
+                }
+            </div>
+
+            @if (!string.IsNullOrEmpty(Job.ErrorMessage))
+            {
+                <div class="error-section">
+                    <h5>Error</h5>
+                    <pre class="error-output">@Job.ErrorMessage</pre>
+                </div>
+            }
+        </div>
+
+        <div class="job-messages-section">
+            <h4>Conversation (@Job.Messages.Count messages)</h4>
+
+            @if (!Job.Messages.Any())
+            {
+                <p class="empty-state">
+                    @if (Job.Status == JobStatus.New || Job.Status == JobStatus.Pending)
+                    {
+                        <text>Job is waiting to be processed...</text>
+                    }
+                    else if (Job.Status == JobStatus.Started || Job.Status == JobStatus.Processing)
+                    {
+                        <text>Job is currently running...</text>
+                    }
+                    else
+                    {
+                        <text>No conversation messages recorded.</text>
+                    }
+                </p>
+            }
+            else
+            {
+                <div class="messages-container">
+                    @foreach (var message in Job.Messages)
+                    {
+                        <div class="message message-@message.Role.ToString().ToLower()">
+                            <div class="message-header">
+                                <span class="message-role">@GetRoleDisplayName(message.Role)</span>
+                                <span class="message-time">@message.CreatedAt.ToLocalTime().ToString("HH:mm:ss")</span>
+                            </div>
+                            <div class="message-content">
+                                @if (message.Role == MessageRole.ToolUse)
+                                {
+                                    <div class="tool-info">
+                                        <strong>Tool:</strong> @message.ToolName
+                                        @if (!string.IsNullOrEmpty(message.ToolInput))
+                                        {
+                                            <pre class="tool-input">@message.ToolInput</pre>
+                                        }
+                                    </div>
+                                }
+                                else if (message.Role == MessageRole.ToolResult)
+                                {
+                                    <div class="tool-info">
+                                        <strong>Result from:</strong> @message.ToolName
+                                        <pre class="tool-output">@TruncateOutput(message.ToolOutput ?? message.Content, 500)</pre>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <pre class="message-text">@message.Content</pre>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(ErrorMessage))
+    {
+        <div class="alert alert-error">@ErrorMessage</div>
+    }
+
+    @if (!string.IsNullOrEmpty(SuccessMessage))
+    {
+        <div class="alert alert-success">@SuccessMessage</div>
+    }
+}
+
+@code {
+    [Parameter]
+    public Guid JobId { get; set; }
+
+    private Job? Job { get; set; }
+    private bool IsLoading { get; set; } = true;
+    private bool IsCancelling { get; set; }
+    private string? ErrorMessage { get; set; }
+    private string? SuccessMessage { get; set; }
+    private System.Threading.Timer? _refreshTimer;
+
+    private bool CanCancel => Job != null &&
+        (Job.Status == JobStatus.New ||
+         Job.Status == JobStatus.Pending ||
+         Job.Status == JobStatus.Started ||
+         Job.Status == JobStatus.Processing) &&
+        !Job.CancellationRequested;
+
+    private bool ShouldAutoRefresh => Job != null &&
+        (Job.Status == JobStatus.New ||
+         Job.Status == JobStatus.Pending ||
+         Job.Status == JobStatus.Started ||
+         Job.Status == JobStatus.Processing);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadJob();
+        StartAutoRefresh();
+    }
+
+    private void StartAutoRefresh()
+    {
+        _refreshTimer = new System.Threading.Timer(async _ =>
+        {
+            if (ShouldAutoRefresh)
+            {
+                await InvokeAsync(async () =>
+                {
+                    await LoadJob();
+                    StateHasChanged();
+                });
+            }
+        }, null, TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(3));
+    }
+
+    private async Task LoadJob()
+    {
+        try
+        {
+            Job = await JobService.GetByIdWithMessagesAsync(JobId);
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    private async Task CancelJob()
+    {
+        if (Job == null) return;
+
+        IsCancelling = true;
+        ErrorMessage = null;
+        SuccessMessage = null;
+
+        try
+        {
+            var result = await JobService.RequestCancellationAsync(Job.Id);
+            if (result)
+            {
+                SuccessMessage = "Cancellation requested. The job will be cancelled shortly.";
+                await LoadJob();
+            }
+            else
+            {
+                ErrorMessage = "Could not cancel the job. It may have already completed.";
+            }
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Error cancelling job: {ex.Message}";
+        }
+        finally
+        {
+            IsCancelling = false;
+        }
+    }
+
+    private static string GetRoleDisplayName(MessageRole role)
+    {
+        return role switch
+        {
+            MessageRole.User => "User",
+            MessageRole.Assistant => "Assistant",
+            MessageRole.System => "System",
+            MessageRole.ToolUse => "Tool Call",
+            MessageRole.ToolResult => "Tool Result",
+            _ => role.ToString()
+        };
+    }
+
+    private static string TruncateOutput(string text, int maxLength)
+    {
+        if (string.IsNullOrEmpty(text) || text.Length <= maxLength)
+            return text;
+        return text[..maxLength] + "\n... (truncated)";
+    }
+
+    public void Dispose()
+    {
+        _refreshTimer?.Dispose();
+    }
+}

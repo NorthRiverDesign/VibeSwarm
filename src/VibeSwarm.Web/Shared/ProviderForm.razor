@@ -1,0 +1,148 @@
+@inject IProviderService ProviderService
+
+<EditForm Model="@Provider" OnValidSubmit="HandleValidSubmit">
+    <DataAnnotationsValidator />
+    <ValidationSummary />
+
+    <div class="form-group">
+        <label for="name">Name</label>
+        <InputText id="name" @bind-Value="Provider.Name" class="form-control" placeholder="My OpenCode Provider" />
+        <ValidationMessage For="@(() => Provider.Name)" />
+    </div>
+
+    <div class="form-group">
+        <label for="type">Provider Type</label>
+        <InputSelect id="type" @bind-Value="Provider.Type" class="form-control">
+            @foreach (var type in Enum.GetValues<ProviderType>())
+            {
+                <option value="@type">@type</option>
+            }
+        </InputSelect>
+    </div>
+
+    <div class="form-group">
+        <label for="connectionMode">Connection Mode</label>
+        <InputSelect id="connectionMode" @bind-Value="Provider.ConnectionMode" class="form-control">
+            @foreach (var mode in Enum.GetValues<ProviderConnectionMode>())
+            {
+                <option value="@mode">@mode</option>
+            }
+        </InputSelect>
+    </div>
+
+    @if (Provider.ConnectionMode == ProviderConnectionMode.CLI)
+    {
+        <div class="form-group">
+            <label for="executablePath">Executable Path (optional)</label>
+            <InputText id="executablePath" @bind-Value="Provider.ExecutablePath" class="form-control" placeholder="@GetExecutablePlaceholder()" />
+            <small class="form-text">@GetExecutableHelpText()</small>
+        </div>
+
+        <div class="form-group">
+            <label for="workingDirectory">Working Directory (optional)</label>
+            <InputText id="workingDirectory" @bind-Value="Provider.WorkingDirectory" class="form-control" placeholder="/path/to/working/directory" />
+        </div>
+    }
+    else
+    {
+        <div class="form-group">
+            <label for="apiEndpoint">API Endpoint</label>
+            <InputText id="apiEndpoint" @bind-Value="Provider.ApiEndpoint" class="form-control" placeholder="http://localhost:8080" />
+            <ValidationMessage For="@(() => Provider.ApiEndpoint)" />
+        </div>
+
+        <div class="form-group">
+            <label for="apiKey">API Key (optional)</label>
+            <InputText id="apiKey" @bind-Value="Provider.ApiKey" class="form-control" type="password" />
+        </div>
+    }
+
+    <div class="form-group checkbox-group">
+        <InputCheckbox id="isEnabled" @bind-Value="Provider.IsEnabled" />
+        <label for="isEnabled">Enabled</label>
+    </div>
+
+    <div class="form-actions">
+        <button type="submit" class="btn btn-primary" disabled="@IsSaving">
+            @(IsSaving ? "Saving..." : (IsEdit ? "Update Provider" : "Add Provider"))
+        </button>
+        @if (IsEdit)
+        {
+            <button type="button" class="btn btn-secondary" @onclick="OnCancel">Cancel</button>
+        }
+    </div>
+
+    @if (!string.IsNullOrEmpty(ErrorMessage))
+    {
+        <div class="alert alert-error">@ErrorMessage</div>
+    }
+
+    @if (!string.IsNullOrEmpty(SuccessMessage))
+    {
+        <div class="alert alert-success">@SuccessMessage</div>
+    }
+</EditForm>
+
+@code {
+    [Parameter]
+    public Provider Provider { get; set; } = new();
+
+    [Parameter]
+    public bool IsEdit { get; set; }
+
+    [Parameter]
+    public EventCallback OnSaved { get; set; }
+
+    [Parameter]
+    public EventCallback OnCancel { get; set; }
+
+    private bool IsSaving { get; set; }
+    private string? ErrorMessage { get; set; }
+    private string? SuccessMessage { get; set; }
+
+    private string GetExecutablePlaceholder() => Provider.Type switch
+    {
+        ProviderType.OpenCode => "opencode or /path/to/opencode",
+        ProviderType.Claude => "claude or /path/to/claude",
+        _ => "executable name or path"
+    };
+
+    private string GetExecutableHelpText() => Provider.Type switch
+    {
+        ProviderType.OpenCode => "Leave empty to use 'opencode' from PATH",
+        ProviderType.Claude => "Leave empty to use 'claude' from PATH",
+        _ => "Leave empty to use default executable from PATH"
+    };
+
+    private async Task HandleValidSubmit()
+    {
+        IsSaving = true;
+        ErrorMessage = null;
+        SuccessMessage = null;
+
+        try
+        {
+            if (IsEdit)
+            {
+                await ProviderService.UpdateAsync(Provider);
+                SuccessMessage = "Provider updated successfully.";
+            }
+            else
+            {
+                await ProviderService.CreateAsync(Provider);
+                SuccessMessage = "Provider added successfully.";
+                Provider = new Provider();
+            }
+
+            await OnSaved.InvokeAsync();
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Error saving provider: {ex.Message}";
+        }
+        finally
+        {
+            IsSaving = false;
+        }
+    }
+}
