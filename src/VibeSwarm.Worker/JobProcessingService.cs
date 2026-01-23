@@ -13,7 +13,7 @@ public class JobProcessingService : BackgroundService
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<JobProcessingService> _logger;
     private readonly IJobUpdateService? _jobUpdateService;
-    private readonly TimeSpan _pollingInterval = TimeSpan.FromSeconds(1); // Fast polling for immediate job pickup
+    private readonly TimeSpan _pollingInterval = TimeSpan.FromSeconds(3); // Poll less frequently, SignalR handles real-time updates
     private readonly int _maxConcurrentJobs = 5; // Maximum number of concurrent jobs
     private readonly Dictionary<Guid, JobExecutionContext> _runningJobs = new();
     private readonly SemaphoreSlim _jobsLock = new(1, 1);
@@ -340,14 +340,16 @@ public class JobProcessingService : BackgroundService
             await NotifyJobActivityAsync(job.Id, initialActivity, DateTime.UtcNow);
 
             // Start a background task to monitor for cancellation requests and send heartbeats
-            var cancellationMonitorTask = MonitorCancellationAndHeartbeatAsync(job.Id, dbContext, executionContext, cancellationToken);
+            // Note: This task manages its own DbContext scopes to avoid disposal issues
+            var cancellationMonitorTask = MonitorCancellationAndHeartbeatAsync(job.Id, executionContext, cancellationToken);
 
             // Execute the job with session support
             var workingDirectory = job.Project?.WorkingPath;
 
             // Track last progress update time to avoid excessive database writes
             var lastProgressUpdate = DateTime.MinValue;
-            var progressUpdateInterval = TimeSpan.FromMilliseconds(500); // Update every 0.5 seconds for near real-time feedback
+            var progressUpdateInterval = TimeSpan.FromSeconds(2); // Update every 2 seconds to reduce database load
+            var progressLock = new object();
 
             // Progress<T> doesn't properly handle async callbacks, so we use a synchronous handler
             // that fires updates in the background with proper scoping to avoid DbContext disposal issues
@@ -357,14 +359,22 @@ public class JobProcessingService : BackgroundService
                     ? $"Running tool: {p.ToolName}"
                     : (p.IsStreaming ? "Processing..." : p.CurrentMessage ?? "Working...");
 
-                _logger.LogInformation("Job {JobId} progress: {Activity}", job.Id, activity);
+                _logger.LogDebug("Job {JobId} progress: {Activity}", job.Id, activity);
 
                 // Throttle progress updates to avoid database overload
                 var now = DateTime.UtcNow;
-                if (now - lastProgressUpdate >= progressUpdateInterval)
+                bool shouldUpdate;
+                lock (progressLock)
                 {
-                    lastProgressUpdate = now;
+                    shouldUpdate = now - lastProgressUpdate >= progressUpdateInterval;
+                    if (shouldUpdate)
+                    {
+                        lastProgressUpdate = now;
+                    }
+                }
 
+                if (shouldUpdate)
+                {
                     // Fire async updates in the background with a NEW scope to avoid DbContext disposal
                     _ = Task.Run(async () =>
                     {
@@ -380,6 +390,21 @@ public class JobProcessingService : BackgroundService
                         catch (Exception ex)
                         {
                             _logger.LogWarning(ex, "Failed to update progress for job {JobId}", job.Id);
+                        }
+                    });
+                }
+                else
+                {
+                    // Still send SignalR notification for real-time UI updates, just skip database
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            await NotifyJobActivityAsync(job.Id, activity, now);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "Failed to send activity notification for job {JobId}", job.Id);
                         }
                     });
                 }
@@ -589,48 +614,70 @@ public class JobProcessingService : BackgroundService
     }
 
     /// <summary>
-    /// Monitors for cancellation requests and sends regular heartbeats
+    /// Monitors for cancellation requests and sends regular heartbeats.
+    /// Does NOT use the passed dbContext - creates its own scopes to avoid disposal issues.
     /// </summary>
     private async Task MonitorCancellationAndHeartbeatAsync(
         Guid jobId,
-        VibeSwarmDbContext dbContext,
         JobExecutionContext executionContext,
         CancellationToken cancellationToken)
     {
-        var heartbeatInterval = TimeSpan.FromSeconds(10);
-        var cancellationCheckInterval = TimeSpan.FromSeconds(2);
+        var heartbeatInterval = TimeSpan.FromSeconds(30); // Reduced frequency to avoid database contention
+        var cancellationCheckInterval = TimeSpan.FromSeconds(5); // Check cancellation less frequently
         var lastHeartbeat = DateTime.UtcNow;
 
         try
         {
             while (!cancellationToken.IsCancellationRequested)
             {
-                // Check for cancellation request
-                using var checkScope = _scopeFactory.CreateScope();
-                var checkDbContext = checkScope.ServiceProvider.GetRequiredService<VibeSwarmDbContext>();
-                var job = await checkDbContext.Jobs.AsNoTracking().FirstOrDefaultAsync(j => j.Id == jobId, cancellationToken);
-
-                if (job?.CancellationRequested == true)
+                try
                 {
-                    _logger.LogInformation("Cancellation requested for job {JobId}", jobId);
-                    executionContext.CancellationTokenSource?.Cancel();
-                    break;
-                }
-
-                // Send heartbeat periodically
-                var now = DateTime.UtcNow;
-                if (now - lastHeartbeat >= heartbeatInterval)
-                {
-                    lastHeartbeat = now;
-                    using var heartbeatScope = _scopeFactory.CreateScope();
-                    var heartbeatDbContext = heartbeatScope.ServiceProvider.GetRequiredService<VibeSwarmDbContext>();
-                    var heartbeatJob = await heartbeatDbContext.Jobs.FindAsync(new object[] { jobId }, cancellationToken);
-                    if (heartbeatJob != null)
+                    // Check for cancellation request with a fresh scope
+                    using (var checkScope = _scopeFactory.CreateScope())
                     {
-                        heartbeatJob.LastHeartbeatAt = now;
-                        await heartbeatDbContext.SaveChangesAsync(cancellationToken);
+                        var checkDbContext = checkScope.ServiceProvider.GetRequiredService<VibeSwarmDbContext>();
+                        var job = await checkDbContext.Jobs.AsNoTracking().FirstOrDefaultAsync(j => j.Id == jobId, cancellationToken);
+
+                        if (job?.CancellationRequested == true)
+                        {
+                            _logger.LogInformation("Cancellation requested for job {JobId}", jobId);
+                            executionContext.CancellationTokenSource?.Cancel();
+                            break;
+                        }
                     }
-                    _logger.LogDebug("Sent heartbeat for job {JobId}", jobId);
+
+                    // Send heartbeat periodically with a fresh scope
+                    var now = DateTime.UtcNow;
+                    if (now - lastHeartbeat >= heartbeatInterval)
+                    {
+                        lastHeartbeat = now;
+                        using (var heartbeatScope = _scopeFactory.CreateScope())
+                        {
+                            var heartbeatDbContext = heartbeatScope.ServiceProvider.GetRequiredService<VibeSwarmDbContext>();
+                            var heartbeatJob = await heartbeatDbContext.Jobs.FindAsync(new object[] { jobId }, cancellationToken);
+                            if (heartbeatJob != null)
+                            {
+                                heartbeatJob.LastHeartbeatAt = now;
+                                await heartbeatDbContext.SaveChangesAsync(cancellationToken);
+                            }
+                        }
+                        _logger.LogDebug("Sent heartbeat for job {JobId}", jobId);
+
+                        // Send SignalR heartbeat notification
+                        if (_jobUpdateService != null)
+                        {
+                            try
+                            {
+                                await _jobUpdateService.NotifyJobHeartbeat(jobId, now);
+                            }
+                            catch { }
+                        }
+                    }
+                }
+                catch (ObjectDisposedException)
+                {
+                    // Scope was disposed, create a new one on next iteration
+                    _logger.LogWarning("DbContext was disposed in heartbeat monitor for job {JobId}, will retry", jobId);
                 }
 
                 await Task.Delay(cancellationCheckInterval, cancellationToken);

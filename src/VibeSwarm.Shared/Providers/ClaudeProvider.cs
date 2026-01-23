@@ -158,15 +158,29 @@ public class ClaudeProvider : ProviderBase
         var result = new ExecutionResult { Messages = new List<ExecutionMessage>() };
         var effectiveWorkingDir = workingDirectory ?? _workingDirectory ?? Environment.CurrentDirectory;
 
-        // Build arguments for JSON output with session support
-        // -p: non-interactive print mode
-        // --output-format stream-json: JSON streaming output
+        // Build arguments for non-interactive execution with JSON streaming output
+        // -p: non-interactive print mode (runs to completion without user input)
+        // --output-format stream-json: JSON streaming output for parsing progress
         // --verbose: required for stream-json format
-        var args = new List<string> { "-p", $"\"{EscapeArgument(prompt)}\"", "--output-format", "stream-json", "--verbose" };
+        // --dangerously-skip-permissions: skip permission prompts (auto-accept tool use)
+        var args = new List<string>();
+
+        // Add the prompt with -p flag for non-interactive mode
+        args.Add("-p");
+        args.Add($"\"{EscapeArgument(prompt)}\"");
+
+        // Add output format flags
+        args.Add("--output-format");
+        args.Add("stream-json");
+        args.Add("--verbose");
+
+        // Skip permission prompts for automated execution
+        args.Add("--dangerously-skip-permissions");
 
         if (!string.IsNullOrEmpty(sessionId))
         {
-            args.AddRange(new[] { "--resume", sessionId });
+            args.Add("--resume");
+            args.Add(sessionId);
         }
 
         var startInfo = new ProcessStartInfo
@@ -177,7 +191,9 @@ public class ClaudeProvider : ProviderBase
             RedirectStandardError = true,
             UseShellExecute = false,
             CreateNoWindow = true,
-            WorkingDirectory = effectiveWorkingDir
+            WorkingDirectory = effectiveWorkingDir,
+            // Ensure we don't inherit console and can run without user input
+            RedirectStandardInput = true
         };
 
         using var process = new Process { StartInfo = startInfo };
@@ -234,6 +250,10 @@ public class ClaudeProvider : ProviderBase
         };
 
         process.Start();
+
+        // Close stdin immediately to signal no user input is coming
+        process.StandardInput.Close();
+
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
 

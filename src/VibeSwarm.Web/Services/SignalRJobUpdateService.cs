@@ -34,6 +34,11 @@ public class SignalRJobUpdateService : IJobUpdateService
                 .Group("job-list")
                 .SendAsync("JobStatusChanged", jobId.ToString(), status);
 
+            // Also send a general list changed notification for any listeners
+            await _hubContext.Clients
+                .Group("job-list")
+                .SendAsync("JobListChanged");
+
             _logger.LogDebug("Sent JobStatusChanged notification for job {JobId}: {Status}", jobId, status);
         }
         catch (Exception ex)

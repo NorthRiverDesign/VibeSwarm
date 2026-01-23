@@ -304,11 +304,12 @@ else
 
     private void StartAutoRefresh()
     {
-        // Poll aggressively for the first 30 seconds, then only when job is active
+        // SignalR handles real-time updates, this is just a fallback for connection issues
+        // Poll every 3 seconds when job is active, every 10 seconds otherwise
         _refreshTimer = new Timer(async _ =>
         {
             var secondsSincePageLoad = (DateTime.UtcNow - _pageLoadTime).TotalSeconds;
-            var shouldPoll = secondsSincePageLoad < 30 || IsJobActive;
+            var shouldPoll = secondsSincePageLoad < 10 || IsJobActive;
 
             if (shouldPoll && !_isRefreshing)
             {
@@ -317,7 +318,7 @@ else
             await RefreshJobSafely();
         });
             }
-        }, null, TimeSpan.FromMilliseconds(500), TimeSpan.FromMilliseconds(500));
+        }, null, TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(3));
     }
 
     private async Task RefreshJobSafely()
@@ -355,10 +356,30 @@ else
     public async Task OnJobStatusChanged(string jobId, string status)
     {
         Console.WriteLine($"[Blazor] OnJobStatusChanged: {jobId} -> {status}");
-        // Reload job to get the new status and timestamps
+
+        // Update status in-place for immediate UI feedback
+        if (Job != null && Enum.TryParse<JobStatus>(status, out var newStatus))
+        {
+            Job.Status = newStatus;
+            if (newStatus == JobStatus.Started)
+            {
+                Job.StartedAt = DateTime.UtcNow;
+            }
+            else if (newStatus == JobStatus.Completed || newStatus == JobStatus.Failed || newStatus == JobStatus.Cancelled)
+            {
+                Job.CompletedAt = DateTime.UtcNow;
+            }
+            await InvokeAsync(StateHasChanged);
+        }
+
+        // Also do a background refresh to get full data
         if (!_isRefreshing)
         {
-            await InvokeAsync(async () => await RefreshJobSafely());
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(500);
+                await InvokeAsync(async () => await RefreshJobSafely());
+            });
         }
     }
 
