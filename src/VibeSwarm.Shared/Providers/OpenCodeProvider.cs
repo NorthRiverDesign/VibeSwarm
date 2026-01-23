@@ -79,7 +79,7 @@ public class OpenCodeProvider : ProviderBase
             var startInfo = new ProcessStartInfo
             {
                 FileName = execPath,
-                Arguments = "version",
+                Arguments = "--version",
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 RedirectStandardInput = true,  // Redirect stdin to prevent hanging on prompts
@@ -663,7 +663,7 @@ public class OpenCodeProvider : ProviderBase
                 var startInfo = new ProcessStartInfo
                 {
                     FileName = execPath,
-                    Arguments = "version",
+                    Arguments = "--version",
                     RedirectStandardOutput = true,
                     UseShellExecute = false,
                     CreateNoWindow = true
