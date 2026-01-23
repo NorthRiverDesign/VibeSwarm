@@ -7,6 +7,7 @@ public interface IJobService
     Task<IEnumerable<Job>> GetAllAsync(CancellationToken cancellationToken = default);
     Task<IEnumerable<Job>> GetByProjectIdAsync(Guid projectId, CancellationToken cancellationToken = default);
     Task<IEnumerable<Job>> GetPendingJobsAsync(CancellationToken cancellationToken = default);
+    Task<IEnumerable<Job>> GetActiveJobsAsync(CancellationToken cancellationToken = default);
     Task<Job?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
     Task<Job?> GetByIdWithMessagesAsync(Guid id, CancellationToken cancellationToken = default);
     Task<Job> CreateAsync(Job job, CancellationToken cancellationToken = default);
@@ -15,6 +16,7 @@ public interface IJobService
     Task AddMessageAsync(Guid jobId, JobMessage message, CancellationToken cancellationToken = default);
     Task AddMessagesAsync(Guid jobId, IEnumerable<JobMessage> messages, CancellationToken cancellationToken = default);
     Task<bool> RequestCancellationAsync(Guid id, CancellationToken cancellationToken = default);
+    Task<bool> ForceCancelAsync(Guid id, CancellationToken cancellationToken = default);
     Task<bool> IsCancellationRequestedAsync(Guid id, CancellationToken cancellationToken = default);
     Task UpdateProgressAsync(Guid id, string? currentActivity, CancellationToken cancellationToken = default);
     Task<bool> ResetJobAsync(Guid id, CancellationToken cancellationToken = default);

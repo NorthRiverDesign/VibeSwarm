@@ -42,6 +42,16 @@ public class JobService : IJobService
             .ToListAsync(cancellationToken);
     }
 
+    public async Task<IEnumerable<Job>> GetActiveJobsAsync(CancellationToken cancellationToken = default)
+    {
+        return await _dbContext.Jobs
+            .Include(j => j.Project)
+            .Include(j => j.Provider)
+            .Where(j => j.Status == JobStatus.Started || j.Status == JobStatus.Processing || j.Status == JobStatus.New)
+            .OrderByDescending(j => j.StartedAt ?? j.CreatedAt)
+            .ToListAsync(cancellationToken);
+    }
+
     public async Task<Job?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {
         return await _dbContext.Jobs
@@ -73,6 +83,7 @@ public class JobService : IJobService
         {
             try
             {
+                await _jobUpdateService.NotifyJobCreated(job.Id, job.ProjectId);
                 await _jobUpdateService.NotifyJobStatusChanged(job.Id, job.Status.ToString());
             }
             catch
@@ -233,6 +244,7 @@ public class JobService : IJobService
         }
 
         job.CancellationRequested = true;
+        job.LastActivityAt = DateTime.UtcNow; // Update activity time to track when cancellation was requested
 
         // If job hasn't started yet, mark it as cancelled immediately
         if (job.Status == JobStatus.New || job.Status == JobStatus.Pending)
@@ -240,10 +252,80 @@ public class JobService : IJobService
             job.Status = JobStatus.Cancelled;
             job.CompletedAt = DateTime.UtcNow;
             job.CurrentActivity = null;
-            job.LastActivityAt = DateTime.UtcNow;
+            job.WorkerInstanceId = null;
+            job.ProcessId = null;
         }
 
         await _dbContext.SaveChangesAsync(cancellationToken);
+
+        // Notify about status change
+        if (_jobUpdateService != null)
+        {
+            try
+            {
+                await _jobUpdateService.NotifyJobStatusChanged(job.Id, job.Status.ToString());
+            }
+            catch { }
+        }
+
+        return true;
+    }
+
+    public async Task<bool> ForceCancelAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        var job = await _dbContext.Jobs
+            .FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
+
+        if (job == null)
+        {
+            return false;
+        }
+
+        // Only force cancel jobs that are actively running
+        if (job.Status != JobStatus.Started && job.Status != JobStatus.Processing)
+        {
+            return false;
+        }
+
+        // Try to kill the process if we have a PID
+        if (job.ProcessId.HasValue)
+        {
+            try
+            {
+                var process = System.Diagnostics.Process.GetProcessById(job.ProcessId.Value);
+                process.Kill(entireProcessTree: true);
+            }
+            catch (ArgumentException)
+            {
+                // Process already exited
+            }
+            catch (Exception)
+            {
+                // Ignore errors killing process
+            }
+        }
+
+        // Force the job to cancelled state
+        job.Status = JobStatus.Cancelled;
+        job.CompletedAt = DateTime.UtcNow;
+        job.CancellationRequested = true;
+        job.CurrentActivity = null;
+        job.WorkerInstanceId = null;
+        job.ProcessId = null;
+        job.ErrorMessage = "Job was force-cancelled by user.";
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        // Notify about completion
+        if (_jobUpdateService != null)
+        {
+            try
+            {
+                await _jobUpdateService.NotifyJobCompleted(job.Id, false, job.ErrorMessage);
+            }
+            catch { }
+        }
+
         return true;
     }
 
@@ -297,11 +379,25 @@ public class JobService : IJobService
         job.ErrorMessage = null;
         job.CurrentActivity = null;
         job.LastActivityAt = null;
+        job.WorkerInstanceId = null;
+        job.LastHeartbeatAt = null;
+        job.ProcessId = null;
         // Keep SessionId for potential session continuation
         // Keep InputTokens, OutputTokens, TotalCostUsd for historical tracking
         // Keep Messages for audit trail and context
 
         await _dbContext.SaveChangesAsync(cancellationToken);
+
+        // Notify about status change
+        if (_jobUpdateService != null)
+        {
+            try
+            {
+                await _jobUpdateService.NotifyJobStatusChanged(job.Id, job.Status.ToString());
+            }
+            catch { }
+        }
+
         return true;
     }
 
@@ -312,8 +408,19 @@ public class JobService : IJobService
 
         if (job != null)
         {
+            var projectId = job.ProjectId;
             _dbContext.Jobs.Remove(job);
             await _dbContext.SaveChangesAsync(cancellationToken);
+
+            // Notify about job deletion
+            if (_jobUpdateService != null)
+            {
+                try
+                {
+                    await _jobUpdateService.NotifyJobDeleted(id, projectId);
+                }
+                catch { }
+            }
         }
     }
 }

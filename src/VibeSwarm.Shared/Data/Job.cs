@@ -64,6 +64,33 @@ public class Job
     /// </summary>
     public DateTime? LastActivityAt { get; set; }
 
+    /// <summary>
+    /// The worker instance ID that is currently processing this job.
+    /// Used for detecting orphaned jobs when a worker crashes.
+    /// </summary>
+    public string? WorkerInstanceId { get; set; }
+
+    /// <summary>
+    /// Last heartbeat from the worker processing this job.
+    /// Used to detect stalled jobs.
+    /// </summary>
+    public DateTime? LastHeartbeatAt { get; set; }
+
+    /// <summary>
+    /// Number of times this job has been retried
+    /// </summary>
+    public int RetryCount { get; set; }
+
+    /// <summary>
+    /// Maximum number of retry attempts allowed (0 = no limit)
+    /// </summary>
+    public int MaxRetries { get; set; } = 3;
+
+    /// <summary>
+    /// Process ID of the CLI process (for force cancellation)
+    /// </summary>
+    public int? ProcessId { get; set; }
+
     public ICollection<JobMessage> Messages { get; set; } = new List<JobMessage>();
 }
 

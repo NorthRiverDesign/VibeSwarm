@@ -28,7 +28,8 @@ else
                         }
                         @Job.Status
                     </span>
-                    @if (Job.CancellationRequested && (Job.Status == JobStatus.Started || Job.Status == JobStatus.Processing))
+                    @if (Job.CancellationRequested && (Job.Status == JobStatus.Started || Job.Status ==
+                                    JobStatus.Processing))
                     {
                         <span class="status-badge status-cancelling">
                             <span class="status-spinner"></span>
@@ -60,6 +61,20 @@ else
                     else
                     {
                         <text>Cancel Job</text>
+                    }
+                </button>
+            }
+            @if (CanForceCancel)
+            {
+                <button class="btn btn-danger-outline" @onclick="ForceCancelJob" disabled="@IsForceCancelling">
+                    @if (IsForceCancelling)
+                    {
+                        <span class="spinner-small"></span>
+                        <text>Force Cancelling...</text>
+                    }
+                    else
+                    {
+                        <text>Force Cancel</text>
                     }
                 </button>
             }
@@ -237,6 +252,7 @@ else
     private Job? Job { get; set; }
     private bool IsLoading { get; set; } = true;
     private bool IsCancelling { get; set; }
+    private bool IsForceCancelling { get; set; }
     private bool IsRetrying { get; set; }
     private string? ErrorMessage { get; set; }
     private string? SuccessMessage { get; set; }
@@ -247,22 +263,27 @@ else
     private DateTime _pageLoadTime = DateTime.UtcNow;
 
     private bool CanCancel => Job != null &&
-        (Job.Status == JobStatus.New ||
-         Job.Status == JobStatus.Pending ||
-         Job.Status == JobStatus.Started ||
-         Job.Status == JobStatus.Processing) &&
-        !Job.CancellationRequested;
+    (Job.Status == JobStatus.New ||
+    Job.Status == JobStatus.Pending ||
+    Job.Status == JobStatus.Started ||
+    Job.Status == JobStatus.Processing) &&
+    !Job.CancellationRequested;
+
+    // Force cancel is available when cancellation was requested but job is still running
+    private bool CanForceCancel => Job != null &&
+    (Job.Status == JobStatus.Started || Job.Status == JobStatus.Processing) &&
+    Job.CancellationRequested;
 
     private bool CanRetry => Job != null &&
-        (Job.Status == JobStatus.Cancelled ||
-         Job.Status == JobStatus.Failed ||
-         Job.Status == JobStatus.Completed);
+    (Job.Status == JobStatus.Cancelled ||
+    Job.Status == JobStatus.Failed ||
+    Job.Status == JobStatus.Completed);
 
     private bool IsJobActive => Job != null &&
-        (Job.Status == JobStatus.New ||
-         Job.Status == JobStatus.Pending ||
-         Job.Status == JobStatus.Started ||
-         Job.Status == JobStatus.Processing);
+    (Job.Status == JobStatus.New ||
+    Job.Status == JobStatus.Pending ||
+    Job.Status == JobStatus.Started ||
+    Job.Status == JobStatus.Processing);
 
     protected override async Task OnInitializedAsync()
     {
@@ -292,9 +313,9 @@ else
             if (shouldPoll && !_isRefreshing)
             {
                 await InvokeAsync(async () =>
-                {
-                    await RefreshJobSafely();
-                });
+        {
+            await RefreshJobSafely();
+        });
             }
         }, null, TimeSpan.FromMilliseconds(500), TimeSpan.FromMilliseconds(500));
     }
@@ -416,6 +437,37 @@ else
         finally
         {
             IsCancelling = false;
+        }
+    }
+
+    private async Task ForceCancelJob()
+    {
+        if (Job == null) return;
+
+        IsForceCancelling = true;
+        ErrorMessage = null;
+        SuccessMessage = null;
+
+        try
+        {
+            var result = await JobService.ForceCancelAsync(Job.Id);
+            if (result)
+            {
+                SuccessMessage = "Job has been force-cancelled.";
+                await LoadJob();
+            }
+            else
+            {
+                ErrorMessage = "Could not force-cancel the job. It may have already completed.";
+            }
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Error force-cancelling job: {ex.Message}";
+        }
+        finally
+        {
+            IsForceCancelling = false;
         }
     }
 

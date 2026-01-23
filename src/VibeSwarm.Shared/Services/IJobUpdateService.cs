@@ -24,4 +24,24 @@ public interface IJobUpdateService
     /// Notifies clients that a job has completed with results
     /// </summary>
     Task NotifyJobCompleted(Guid jobId, bool success, string? errorMessage = null);
+
+    /// <summary>
+    /// Notifies ALL clients that the job list has changed (for dashboard/job list pages)
+    /// </summary>
+    Task NotifyJobListChanged();
+
+    /// <summary>
+    /// Notifies clients about a new job being created
+    /// </summary>
+    Task NotifyJobCreated(Guid jobId, Guid projectId);
+
+    /// <summary>
+    /// Notifies clients about a job being deleted
+    /// </summary>
+    Task NotifyJobDeleted(Guid jobId, Guid projectId);
+
+    /// <summary>
+    /// Notifies clients about heartbeat/liveness of a running job
+    /// </summary>
+    Task NotifyJobHeartbeat(Guid jobId, DateTime timestamp);
 }

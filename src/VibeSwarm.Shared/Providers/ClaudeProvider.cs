@@ -565,6 +565,10 @@ public class ClaudeProvider : ProviderBase
                     ["claude-opus-4-20250514"] = 5.0m,
                     ["claude-3-5-haiku-20241022"] = 0.27m
                 }
+            },
+            AdditionalInfo = new Dictionary<string, object>
+            {
+                ["isAvailable"] = true // Assume available by default
             }
         };
 
@@ -573,7 +577,9 @@ public class ClaudeProvider : ProviderBase
             try
             {
                 var execPath = GetExecutablePath();
-                var startInfo = new ProcessStartInfo
+
+                // Get version
+                var versionInfo = new ProcessStartInfo
                 {
                     FileName = execPath,
                     Arguments = "--version",
@@ -582,17 +588,85 @@ public class ClaudeProvider : ProviderBase
                     CreateNoWindow = true
                 };
 
-                using var process = new Process { StartInfo = startInfo };
-                process.Start();
-                var version = await process.StandardOutput.ReadToEndAsync(cancellationToken);
-                await process.WaitForExitAsync(cancellationToken);
-
+                using var versionProcess = new Process { StartInfo = versionInfo };
+                versionProcess.Start();
+                var version = await versionProcess.StandardOutput.ReadToEndAsync(cancellationToken);
+                await versionProcess.WaitForExitAsync(cancellationToken);
                 info.Version = version.Trim();
+
+                // Check usage to determine availability
+                var usageInfo = new ProcessStartInfo
+                {
+                    FileName = execPath,
+                    Arguments = "/usage",
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+
+                using var usageProcess = new Process { StartInfo = usageInfo };
+                usageProcess.Start();
+                var usageOutput = await usageProcess.StandardOutput.ReadToEndAsync(cancellationToken);
+                var usageError = await usageProcess.StandardError.ReadToEndAsync(cancellationToken);
+                await usageProcess.WaitForExitAsync(cancellationToken);
+
+                if (usageProcess.ExitCode == 0 && !string.IsNullOrEmpty(usageOutput))
+                {
+                    info.AdditionalInfo["usageOutput"] = usageOutput;
+
+                    // Parse usage output to check for availability issues
+                    var usageLower = usageOutput.ToLowerInvariant();
+
+                    // Check for rate limiting or usage exceeded messages
+                    if (usageLower.Contains("limit exceeded") ||
+                        usageLower.Contains("rate limit") ||
+                        usageLower.Contains("quota exceeded") ||
+                        usageLower.Contains("no remaining") ||
+                        usageLower.Contains("usage limit"))
+                    {
+                        info.AdditionalInfo["isAvailable"] = false;
+                        info.AdditionalInfo["unavailableReason"] = "Provider usage limit reached. Please wait or upgrade your plan.";
+                    }
+
+                    // Check for authentication issues
+                    if (usageLower.Contains("not authenticated") ||
+                        usageLower.Contains("authentication failed") ||
+                        usageLower.Contains("invalid api key") ||
+                        usageLower.Contains("unauthorized"))
+                    {
+                        info.AdditionalInfo["isAvailable"] = false;
+                        info.AdditionalInfo["unavailableReason"] = "Provider authentication failed. Please check your API key.";
+                    }
+
+                    // Try to extract remaining tokens/usage if available
+                    // This depends on the actual output format of `claude /usage`
+                    if (usageLower.Contains("remaining"))
+                    {
+                        info.AdditionalInfo["hasRemainingUsage"] = true;
+                    }
+                }
+                else if (!string.IsNullOrEmpty(usageError))
+                {
+                    // Check if /usage is not a valid command (older versions)
+                    if (!usageError.Contains("unknown") && !usageError.Contains("invalid"))
+                    {
+                        info.AdditionalInfo["usageCheckError"] = usageError;
+                    }
+                    // If /usage command doesn't exist, assume available (older CLI versions)
+                }
             }
-            catch
+            catch (Exception ex)
             {
                 info.Version = "unknown";
+                info.AdditionalInfo["error"] = ex.Message;
+                // Don't mark as unavailable just because we can't get version/usage
             }
+        }
+        else if (ConnectionMode == ProviderConnectionMode.REST)
+        {
+            // For REST mode, we already checked connection in TestConnectionAsync
+            info.Version = "REST API";
         }
 
         return info;
