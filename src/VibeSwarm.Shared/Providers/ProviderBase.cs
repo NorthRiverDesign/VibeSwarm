@@ -7,6 +7,7 @@ public abstract class ProviderBase : IProvider
     public abstract ProviderType Type { get; }
     public ProviderConnectionMode ConnectionMode { get; protected set; }
     public bool IsConnected { get; protected set; }
+    public string? LastConnectionError { get; protected set; }
 
     protected ProviderBase(Guid id, string name, ProviderConnectionMode connectionMode)
     {

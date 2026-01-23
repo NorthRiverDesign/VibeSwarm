@@ -73,27 +73,114 @@ public class ClaudeProvider : ProviderBase
         if (string.IsNullOrEmpty(execPath))
         {
             IsConnected = false;
+            LastConnectionError = "Claude executable path is not configured.";
             return false;
         }
 
-        var startInfo = new ProcessStartInfo
+        try
         {
-            FileName = execPath,
-            Arguments = "--version",
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            WorkingDirectory = _workingDirectory ?? Environment.CurrentDirectory
-        };
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = execPath,
+                Arguments = "--version",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                RedirectStandardInput = true,  // Redirect stdin to prevent hanging on prompts
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                WorkingDirectory = _workingDirectory ?? Environment.CurrentDirectory
+            };
 
-        using var process = new Process { StartInfo = startInfo };
-        process.Start();
+            using var process = new Process { StartInfo = startInfo };
 
-        await process.WaitForExitAsync(cancellationToken);
+            // Use a timeout to prevent hanging on CLI calls
+            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
 
-        IsConnected = process.ExitCode == 0;
-        return IsConnected;
+            process.Start();
+
+            // Close stdin immediately to signal no user input is available
+            // This prevents the CLI from hanging if it tries to read input
+            try
+            {
+                process.StandardInput.Close();
+            }
+            catch
+            {
+                // Ignore if stdin is already closed
+            }
+
+            try
+            {
+                await process.WaitForExitAsync(linkedCts.Token);
+            }
+            catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested)
+            {
+                // Timeout occurred - kill the process
+                try { process.Kill(entireProcessTree: true); } catch { }
+                IsConnected = false;
+                LastConnectionError = $"CLI test timed out after 10 seconds. Command: {execPath} --version\n" +
+                    $"Working directory: {_workingDirectory ?? Environment.CurrentDirectory}\n" +
+                    "This usually indicates:\n" +
+                    "  - The CLI is waiting for authentication (check if 'claude' works in terminal)\n" +
+                    "  - The CLI is trying to access the network and timing out\n" +
+                    "  - The process doesn't have access to required environment variables\n" +
+                    "  - The service account doesn't have permission to run the CLI";
+                return false;
+            }
+
+            // Read output for additional validation
+            var output = await process.StandardOutput.ReadToEndAsync(CancellationToken.None);
+            var error = await process.StandardError.ReadToEndAsync(CancellationToken.None);
+
+            // Check if the CLI is accessible and functioning
+            IsConnected = process.ExitCode == 0 && !string.IsNullOrEmpty(output);
+
+            if (!IsConnected)
+            {
+                var errorDetails = new System.Text.StringBuilder();
+                errorDetails.AppendLine($"CLI test failed for command: {execPath} --version");
+                errorDetails.AppendLine($"Exit code: {process.ExitCode}");
+                errorDetails.AppendLine($"Working directory: {_workingDirectory ?? Environment.CurrentDirectory}");
+
+                if (!string.IsNullOrEmpty(error))
+                {
+                    errorDetails.AppendLine($"Error output: {error.Trim()}");
+                }
+
+                if (string.IsNullOrEmpty(output))
+                {
+                    errorDetails.AppendLine("No output received from --version command.");
+                }
+                else
+                {
+                    errorDetails.AppendLine($"Output: {output.Trim()}");
+                }
+
+                LastConnectionError = errorDetails.ToString();
+            }
+            else
+            {
+                LastConnectionError = null;
+            }
+
+            return IsConnected;
+        }
+        catch (System.ComponentModel.Win32Exception ex)
+        {
+            // Executable not found or can't be started
+            IsConnected = false;
+            LastConnectionError = $"Failed to start Claude CLI: {ex.Message}. " +
+                $"Executable path: '{execPath}'. " +
+                $"Ensure the Claude CLI is installed and the path is correct, or leave ExecutablePath empty to use 'claude' from PATH.";
+            return false;
+        }
+        catch (Exception ex)
+        {
+            IsConnected = false;
+            LastConnectionError = $"Unexpected error testing Claude CLI connection: {ex.GetType().Name}: {ex.Message}";
+            return false;
+        }
     }
 
     private async Task<bool> TestRestConnectionAsync(CancellationToken cancellationToken)
@@ -101,12 +188,40 @@ public class ClaudeProvider : ProviderBase
         if (_httpClient == null)
         {
             IsConnected = false;
+            LastConnectionError = "REST API client is not configured. Check API endpoint and key settings.";
             return false;
         }
 
-        var response = await _httpClient.GetAsync("/v1/models", cancellationToken);
-        IsConnected = response.IsSuccessStatusCode;
-        return IsConnected;
+        try
+        {
+            var response = await _httpClient.GetAsync("/v1/models", cancellationToken);
+            IsConnected = response.IsSuccessStatusCode;
+
+            if (!IsConnected)
+            {
+                var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+                LastConnectionError = $"REST API test failed. Status: {(int)response.StatusCode} {response.ReasonPhrase}. " +
+                    $"Endpoint: {_apiEndpoint}/v1/models. Response: {responseBody}";
+            }
+            else
+            {
+                LastConnectionError = null;
+            }
+
+            return IsConnected;
+        }
+        catch (HttpRequestException ex)
+        {
+            IsConnected = false;
+            LastConnectionError = $"Failed to connect to Claude API at {_apiEndpoint}: {ex.Message}";
+            return false;
+        }
+        catch (Exception ex)
+        {
+            IsConnected = false;
+            LastConnectionError = $"Unexpected error testing Claude REST API: {ex.GetType().Name}: {ex.Message}";
+            return false;
+        }
     }
 
     public override async Task<string> ExecuteAsync(string prompt, CancellationToken cancellationToken = default)
@@ -206,6 +321,39 @@ public class ClaudeProvider : ProviderBase
         var outputComplete = new TaskCompletionSource<bool>();
         var errorComplete = new TaskCompletionSource<bool>();
 
+        try
+        {
+            process.Start();
+        }
+        catch (System.ComponentModel.Win32Exception ex)
+        {
+            return new ExecutionResult
+            {
+                Success = false,
+                ErrorMessage = $"Failed to start Claude CLI process: {ex.Message}. " +
+                    $"Ensure the executable at '{execPath}' is accessible and has execute permissions."
+            };
+        }
+        catch (Exception ex)
+        {
+            return new ExecutionResult
+            {
+                Success = false,
+                ErrorMessage = $"Failed to start process: {ex.Message}"
+            };
+        }
+
+        // Capture process ID immediately after starting
+        result.ProcessId = process.Id;
+
+        // Report process ID through progress callback for immediate tracking
+        progress?.Report(new ExecutionProgress
+        {
+            CurrentMessage = "CLI process started successfully",
+            ProcessId = process.Id,
+            IsStreaming = false
+        });
+
         process.OutputDataReceived += (sender, e) =>
         {
             if (e.Data == null)
@@ -248,8 +396,6 @@ public class ClaudeProvider : ProviderBase
                 errorBuilder.AppendLine(e.Data);
             }
         };
-
-        process.Start();
 
         // Close stdin immediately to signal no user input is coming
         process.StandardInput.Close();

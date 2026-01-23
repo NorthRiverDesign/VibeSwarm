@@ -309,12 +309,24 @@ public class JobProcessingService : BackgroundService
             // Create provider instance
             var provider = CreateProviderInstance(job.Provider);
 
-            // Test connection and check availability
+            // Preflight health check: Test connection and validate CLI accessibility
+            _logger.LogInformation("Running preflight health checks for job {JobId}", job.Id);
             var isConnected = await provider.TestConnectionAsync(cancellationToken);
             if (!isConnected)
             {
-                await ReleaseJobAsync(job.Id, JobStatus.Failed, "Could not connect to provider", dbContext, cancellationToken);
-                await NotifyJobCompletedAsync(job.Id, false, "Could not connect to provider");
+                var errorMsg = "Preflight check failed: Could not connect to provider. ";
+                if (!string.IsNullOrEmpty(provider.LastConnectionError))
+                {
+                    errorMsg += provider.LastConnectionError;
+                    _logger.LogWarning("Provider connection test failed for job {JobId}: {Error}", job.Id, provider.LastConnectionError);
+                }
+                else
+                {
+                    errorMsg += "Ensure the CLI is installed and accessible from the host system.";
+                    _logger.LogWarning("Provider connection test failed for job {JobId} with no error details", job.Id);
+                }
+                await ReleaseJobAsync(job.Id, JobStatus.Failed, errorMsg, dbContext, cancellationToken);
+                await NotifyJobCompletedAsync(job.Id, false, errorMsg);
                 return;
             }
 
@@ -346,6 +358,9 @@ public class JobProcessingService : BackgroundService
             // Execute the job with session support
             var workingDirectory = job.Project?.WorkingPath;
 
+            _logger.LogInformation("Starting provider execution for job {JobId} in directory {WorkingDir}",
+                job.Id, workingDirectory ?? "(default)");
+
             // Track last progress update time to avoid excessive database writes
             var lastProgressUpdate = DateTime.MinValue;
             var progressUpdateInterval = TimeSpan.FromSeconds(2); // Update every 2 seconds to reduce database load
@@ -355,6 +370,36 @@ public class JobProcessingService : BackgroundService
             // that fires updates in the background with proper scoping to avoid DbContext disposal issues
             var progress = new Progress<ExecutionProgress>(p =>
             {
+                // Capture and store process ID as soon as it's reported
+                if (p.ProcessId.HasValue && !executionContext.ProcessId.HasValue)
+                {
+                    executionContext.ProcessId = p.ProcessId.Value;
+                    _logger.LogInformation("Captured process ID {ProcessId} for job {JobId}",
+                        p.ProcessId.Value, job.Id);
+
+                    // Store process ID in database immediately
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            using var pidScope = _scopeFactory.CreateScope();
+                            var pidDbContext = pidScope.ServiceProvider.GetRequiredService<VibeSwarmDbContext>();
+                            var jobForPid = await pidDbContext.Jobs.FindAsync(new object[] { job.Id });
+                            if (jobForPid != null)
+                            {
+                                jobForPid.ProcessId = p.ProcessId.Value;
+                                await pidDbContext.SaveChangesAsync(CancellationToken.None);
+                                _logger.LogDebug("Stored process ID {ProcessId} in database for job {JobId}",
+                                    p.ProcessId.Value, job.Id);
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "Failed to store process ID for job {JobId}", job.Id);
+                        }
+                    });
+                }
+
                 var activity = !string.IsNullOrEmpty(p.ToolName)
                     ? $"Running tool: {p.ToolName}"
                     : (p.IsStreaming ? "Processing..." : p.CurrentMessage ?? "Working...");

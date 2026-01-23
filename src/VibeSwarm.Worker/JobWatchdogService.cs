@@ -103,13 +103,17 @@ public class JobWatchdogService : BackgroundService
 		foreach (var job in stalledJobs)
 		{
 			_logger.LogWarning(
-				"Job {JobId} appears stalled (no heartbeat since {LastHeartbeat}). Retry count: {RetryCount}/{MaxRetries}",
-				job.Id, job.LastHeartbeatAt, job.RetryCount, job.MaxRetries);
+				"Job {JobId} appears stalled (no heartbeat since {LastHeartbeat}). Retry count: {RetryCount}/{MaxRetries}. ProcessId: {ProcessId}",
+				job.Id, job.LastHeartbeatAt, job.RetryCount, job.MaxRetries, job.ProcessId);
 
 			// Try to kill the process if we have a PID
 			if (job.ProcessId.HasValue)
 			{
 				await TryKillProcessAsync(job.ProcessId.Value);
+			}
+			else
+			{
+				_logger.LogWarning("Job {JobId} stalled but no process ID was captured. The CLI process may have failed to start.", job.Id);
 			}
 
 			// Check if we should retry or fail
@@ -123,7 +127,12 @@ public class JobWatchdogService : BackgroundService
 				job.LastHeartbeatAt = null;
 				job.ProcessId = null;
 				job.CurrentActivity = null;
-				job.ErrorMessage = $"Job stalled after {_stallThreshold.TotalMinutes:F0} minutes without activity. Retry {job.RetryCount}/{job.MaxRetries}";
+
+				// Provide detailed error message based on whether process started
+				var errorDetails = job.ProcessId.HasValue
+					? "CLI process started but became unresponsive"
+					: "CLI process failed to start - check that the executable is accessible";
+				job.ErrorMessage = $"Job stalled after {_stallThreshold.TotalMinutes:F0} minutes without activity. {errorDetails}. Retry {job.RetryCount}/{job.MaxRetries}";
 
 				_logger.LogInformation("Job {JobId} reset for retry (attempt {RetryCount})", job.Id, job.RetryCount);
 			}

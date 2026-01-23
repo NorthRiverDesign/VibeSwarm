@@ -70,27 +70,108 @@ public class OpenCodeProvider : ProviderBase
         if (string.IsNullOrEmpty(execPath))
         {
             IsConnected = false;
+            LastConnectionError = "OpenCode executable path is not configured.";
             return false;
         }
 
-        var startInfo = new ProcessStartInfo
+        try
         {
-            FileName = execPath,
-            Arguments = "version",
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            WorkingDirectory = _workingDirectory ?? Environment.CurrentDirectory
-        };
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = execPath,
+                Arguments = "version",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                RedirectStandardInput = true,  // Redirect stdin to prevent hanging on prompts
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                WorkingDirectory = _workingDirectory ?? Environment.CurrentDirectory
+            };
 
-        using var process = new Process { StartInfo = startInfo };
-        process.Start();
+            using var process = new Process { StartInfo = startInfo };
 
-        await process.WaitForExitAsync(cancellationToken);
+            // Use a timeout to prevent hanging on CLI calls
+            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
 
-        IsConnected = process.ExitCode == 0;
-        return IsConnected;
+            process.Start();
+
+            // Close stdin immediately to signal no user input is available
+            // This prevents the CLI from hanging if it tries to read input
+            try
+            {
+                process.StandardInput.Close();
+            }
+            catch
+            {
+                // Ignore if stdin is already closed
+            }
+
+            try
+            {
+                await process.WaitForExitAsync(linkedCts.Token);
+            }
+            catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested)
+            {
+                // Timeout occurred - kill the process
+                try { process.Kill(entireProcessTree: true); } catch { }
+                IsConnected = false;
+                LastConnectionError = $"CLI test timed out after 10 seconds. Command: {execPath} version";
+                return false;
+            }
+
+            // Read output for additional validation
+            var output = await process.StandardOutput.ReadToEndAsync(CancellationToken.None);
+            var error = await process.StandardError.ReadToEndAsync(CancellationToken.None);
+
+            // Check if the CLI is accessible and functioning
+            IsConnected = process.ExitCode == 0 && !string.IsNullOrEmpty(output);
+
+            if (!IsConnected)
+            {
+                var errorDetails = new System.Text.StringBuilder();
+                errorDetails.AppendLine($"CLI test failed for command: {execPath} version");
+                errorDetails.AppendLine($"Exit code: {process.ExitCode}");
+                errorDetails.AppendLine($"Working directory: {_workingDirectory ?? Environment.CurrentDirectory}");
+
+                if (!string.IsNullOrEmpty(error))
+                {
+                    errorDetails.AppendLine($"Error output: {error.Trim()}");
+                }
+
+                if (string.IsNullOrEmpty(output))
+                {
+                    errorDetails.AppendLine("No output received from version command.");
+                }
+                else
+                {
+                    errorDetails.AppendLine($"Output: {output.Trim()}");
+                }
+
+                LastConnectionError = errorDetails.ToString();
+            }
+            else
+            {
+                LastConnectionError = null;
+            }
+
+            return IsConnected;
+        }
+        catch (System.ComponentModel.Win32Exception ex)
+        {
+            // Executable not found or can't be started
+            IsConnected = false;
+            LastConnectionError = $"Failed to start OpenCode CLI: {ex.Message}. " +
+                $"Executable path: '{execPath}'. " +
+                $"Ensure the OpenCode CLI is installed and the path is correct, or leave ExecutablePath empty to use 'opencode' from PATH.";
+            return false;
+        }
+        catch (Exception ex)
+        {
+            IsConnected = false;
+            LastConnectionError = $"Unexpected error testing OpenCode CLI connection: {ex.GetType().Name}: {ex.Message}";
+            return false;
+        }
     }
 
     private async Task<bool> TestRestConnectionAsync(CancellationToken cancellationToken)
@@ -98,12 +179,40 @@ public class OpenCodeProvider : ProviderBase
         if (_httpClient == null)
         {
             IsConnected = false;
+            LastConnectionError = "REST API client is not configured. Check API endpoint and key settings.";
             return false;
         }
 
-        var response = await _httpClient.GetAsync("/health", cancellationToken);
-        IsConnected = response.IsSuccessStatusCode;
-        return IsConnected;
+        try
+        {
+            var response = await _httpClient.GetAsync("/health", cancellationToken);
+            IsConnected = response.IsSuccessStatusCode;
+
+            if (!IsConnected)
+            {
+                var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+                LastConnectionError = $"REST API test failed. Status: {(int)response.StatusCode} {response.ReasonPhrase}. " +
+                    $"Endpoint: {_apiEndpoint}/health. Response: {responseBody}";
+            }
+            else
+            {
+                LastConnectionError = null;
+            }
+
+            return IsConnected;
+        }
+        catch (HttpRequestException ex)
+        {
+            IsConnected = false;
+            LastConnectionError = $"Failed to connect to OpenCode API at {_apiEndpoint}: {ex.Message}";
+            return false;
+        }
+        catch (Exception ex)
+        {
+            IsConnected = false;
+            LastConnectionError = $"Unexpected error testing OpenCode REST API: {ex.GetType().Name}: {ex.Message}";
+            return false;
+        }
     }
 
     public override async Task<string> ExecuteAsync(string prompt, CancellationToken cancellationToken = default)
@@ -230,7 +339,39 @@ public class OpenCodeProvider : ProviderBase
             }
         };
 
-        process.Start();
+        try
+        {
+            process.Start();
+        }
+        catch (System.ComponentModel.Win32Exception ex)
+        {
+            return new ExecutionResult
+            {
+                Success = false,
+                ErrorMessage = $"Failed to start OpenCode CLI process: {ex.Message}. " +
+                    $"Ensure the executable at '{execPath}' is accessible and has execute permissions."
+            };
+        }
+        catch (Exception ex)
+        {
+            return new ExecutionResult
+            {
+                Success = false,
+                ErrorMessage = $"Failed to start process: {ex.Message}"
+            };
+        }
+
+        // Capture process ID immediately after starting
+        result.ProcessId = process.Id;
+
+        // Report process ID through progress callback for immediate tracking
+        progress?.Report(new ExecutionProgress
+        {
+            CurrentMessage = "CLI process started successfully",
+            ProcessId = process.Id,
+            IsStreaming = false
+        });
+
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
 

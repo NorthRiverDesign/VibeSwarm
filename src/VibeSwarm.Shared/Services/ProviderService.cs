@@ -75,10 +75,20 @@ public class ProviderService : IProviderService
 
     public async Task<bool> TestConnectionAsync(Guid id, CancellationToken cancellationToken = default)
     {
+        var result = await TestConnectionWithDetailsAsync(id, cancellationToken);
+        return result.IsConnected;
+    }
+
+    public async Task<ConnectionTestResult> TestConnectionWithDetailsAsync(Guid id, CancellationToken cancellationToken = default)
+    {
         var provider = await GetByIdAsync(id, cancellationToken);
         if (provider == null)
         {
-            return false;
+            return new ConnectionTestResult
+            {
+                IsConnected = false,
+                ErrorMessage = "Provider not found."
+            };
         }
 
         var instance = CreateProviderInstance(provider);
@@ -90,7 +100,11 @@ public class ProviderService : IProviderService
             await _dbContext.SaveChangesAsync(cancellationToken);
         }
 
-        return isConnected;
+        return new ConnectionTestResult
+        {
+            IsConnected = isConnected,
+            ErrorMessage = isConnected ? null : instance.LastConnectionError
+        };
     }
 
     private static IProvider CreateProviderInstance(Provider config)

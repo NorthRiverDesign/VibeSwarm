@@ -10,4 +10,11 @@ public interface IProviderService
     Task<Provider> UpdateAsync(Provider provider, CancellationToken cancellationToken = default);
     Task DeleteAsync(Guid id, CancellationToken cancellationToken = default);
     Task<bool> TestConnectionAsync(Guid id, CancellationToken cancellationToken = default);
+    Task<ConnectionTestResult> TestConnectionWithDetailsAsync(Guid id, CancellationToken cancellationToken = default);
+}
+
+public class ConnectionTestResult
+{
+    public bool IsConnected { get; set; }
+    public string? ErrorMessage { get; set; }
 }

@@ -1,4 +1,5 @@
 @page "/providers"
+@using VibeSwarm.Shared.Services
 @inject IProviderService ProviderService
 
 <h3>Providers</h3>
@@ -52,9 +53,15 @@
                         {
                             <tr class="test-result-row">
                                 <td colspan="5">
-                                    <span class="@(result ? "test-success" : "test-failure")">
-                                        @(result ? "Connection successful" : "Connection failed")
-                                    </span>
+                                    <div class="@(result.IsConnected ? "test-success" : "test-failure")">
+                                        <strong>@(result.IsConnected ? "✓ Connection successful" : "✗ Connection failed")</strong>
+                                        @if (!result.IsConnected && !string.IsNullOrEmpty(result.ErrorMessage))
+                                        {
+                                            <div class="error-details">
+                                                <pre>@result.ErrorMessage</pre>
+                                            </div>
+                                        }
+                                    </div>
                                 </td>
                             </tr>
                         }
@@ -80,7 +87,7 @@
     private Provider? EditingProvider { get; set; }
     private Provider CurrentProvider { get; set; } = new();
     private Guid? TestingId { get; set; }
-    private Dictionary<Guid, bool> TestResults { get; set; } = new();
+    private Dictionary<Guid, ConnectionTestResult> TestResults { get; set; } = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -146,12 +153,16 @@
 
         try
         {
-            var result = await ProviderService.TestConnectionAsync(provider.Id);
+            var result = await ProviderService.TestConnectionWithDetailsAsync(provider.Id);
             TestResults[provider.Id] = result;
         }
-        catch
+        catch (Exception ex)
         {
-            TestResults[provider.Id] = false;
+            TestResults[provider.Id] = new ConnectionTestResult
+            {
+                IsConnected = false,
+                ErrorMessage = $"Unexpected error: {ex.Message}"
+            };
         }
         finally
         {

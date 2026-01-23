@@ -7,6 +7,7 @@ public interface IProvider
     ProviderType Type { get; }
     ProviderConnectionMode ConnectionMode { get; }
     bool IsConnected { get; }
+    string? LastConnectionError { get; }
 
     Task<bool> TestConnectionAsync(CancellationToken cancellationToken = default);
     Task<string> ExecuteAsync(string prompt, CancellationToken cancellationToken = default);
@@ -40,6 +41,11 @@ public class ExecutionResult
     public int? InputTokens { get; set; }
     public int? OutputTokens { get; set; }
     public decimal? CostUsd { get; set; }
+
+    /// <summary>
+    /// Process ID of the CLI process (for tracking and cancellation)
+    /// </summary>
+    public int? ProcessId { get; set; }
 }
 
 /// <summary>
@@ -64,6 +70,11 @@ public class ExecutionProgress
     public string? ToolName { get; set; }
     public bool IsStreaming { get; set; }
     public int? TokensUsed { get; set; }
+
+    /// <summary>
+    /// Process ID (reported once when process starts)
+    /// </summary>
+    public int? ProcessId { get; set; }
 }
 
 /// <summary>
