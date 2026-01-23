@@ -213,17 +213,14 @@ else
         try
         {
             NewJob.ProjectId = ProjectId;
-            await JobService.CreateAsync(NewJob);
-            SuccessMessage = "Job created successfully.";
-            NewJob = new Job();
-            Jobs = (await JobService.GetByProjectIdAsync(ProjectId)).ToList();
+            var createdJob = await JobService.CreateAsync(NewJob);
+
+            // Redirect to the job details page to watch progress in real-time
+            NavigationManager.NavigateTo($"/jobs/{createdJob.Id}");
         }
         catch (Exception ex)
         {
             ErrorMessage = $"Error creating job: {ex.Message}";
-        }
-        finally
-        {
             IsSaving = false;
         }
     }

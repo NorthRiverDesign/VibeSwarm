@@ -6,10 +6,12 @@ namespace VibeSwarm.Shared.Services;
 public class JobService : IJobService
 {
     private readonly VibeSwarmDbContext _dbContext;
+    private readonly IJobUpdateService? _jobUpdateService;
 
-    public JobService(VibeSwarmDbContext dbContext)
+    public JobService(VibeSwarmDbContext dbContext, IJobUpdateService? jobUpdateService = null)
     {
         _dbContext = dbContext;
+        _jobUpdateService = jobUpdateService;
     }
 
     public async Task<IEnumerable<Job>> GetAllAsync(CancellationToken cancellationToken = default)
@@ -65,6 +67,19 @@ public class JobService : IJobService
 
         _dbContext.Jobs.Add(job);
         await _dbContext.SaveChangesAsync(cancellationToken);
+
+        // Notify that a new job was created (so processing can start immediately)
+        if (_jobUpdateService != null)
+        {
+            try
+            {
+                await _jobUpdateService.NotifyJobStatusChanged(job.Id, job.Status.ToString());
+            }
+            catch
+            {
+                // Don't fail job creation if notification fails
+            }
+        }
 
         return job;
     }

@@ -18,24 +18,28 @@ export async function initializeJobHub(jobId, dotNetRef) {
 
     // Register event handlers
     hubConnection.on("JobStatusChanged", (jobId, status) => {
+        console.log(`[SignalR] JobStatusChanged: ${jobId} -> ${status}`);
         if (dotNetReference) {
             dotNetReference.invokeMethodAsync("OnJobStatusChanged", jobId, status);
         }
     });
 
     hubConnection.on("JobActivityUpdated", (jobId, activity, timestamp) => {
+        console.log(`[SignalR] JobActivityUpdated: ${jobId} -> ${activity}`);
         if (dotNetReference) {
             dotNetReference.invokeMethodAsync("OnJobActivityUpdated", jobId, activity, timestamp);
         }
     });
 
     hubConnection.on("JobMessageAdded", (jobId) => {
+        console.log(`[SignalR] JobMessageAdded: ${jobId}`);
         if (dotNetReference) {
             dotNetReference.invokeMethodAsync("OnJobMessageAdded", jobId);
         }
     });
 
     hubConnection.on("JobCompleted", (jobId, success, errorMessage) => {
+        console.log(`[SignalR] JobCompleted: ${jobId}, success: ${success}`);
         if (dotNetReference) {
             dotNetReference.invokeMethodAsync("OnJobCompleted", jobId, success, errorMessage);
         }

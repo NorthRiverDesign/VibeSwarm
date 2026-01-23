@@ -3,6 +3,7 @@
 @inject NavigationManager NavigationManager
 @inject IJSRuntime JSRuntime
 @implements IAsyncDisposable
+@using System.Threading
 
 @if (IsLoading)
 {
@@ -241,6 +242,9 @@ else
     private string? SuccessMessage { get; set; }
     private DotNetObjectReference<JobDetail>? _dotNetReference;
     private IJSObjectReference? _signalRModule;
+    private Timer? _refreshTimer;
+    private bool _isRefreshing = false;
+    private DateTime _pageLoadTime = DateTime.UtcNow;
 
     private bool CanCancel => Job != null &&
         (Job.Status == JobStatus.New ||
@@ -254,9 +258,16 @@ else
          Job.Status == JobStatus.Failed ||
          Job.Status == JobStatus.Completed);
 
+    private bool IsJobActive => Job != null &&
+        (Job.Status == JobStatus.New ||
+         Job.Status == JobStatus.Pending ||
+         Job.Status == JobStatus.Started ||
+         Job.Status == JobStatus.Processing);
+
     protected override async Task OnInitializedAsync()
     {
         await LoadJob();
+        StartAutoRefresh();
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -264,6 +275,44 @@ else
         if (firstRender)
         {
             await InitializeSignalR();
+            // Refresh job after SignalR is connected in case status changed during page load
+            await Task.Delay(500);
+            await RefreshJobSafely();
+        }
+    }
+
+    private void StartAutoRefresh()
+    {
+        // Poll aggressively for the first 30 seconds, then only when job is active
+        _refreshTimer = new Timer(async _ =>
+        {
+            var secondsSincePageLoad = (DateTime.UtcNow - _pageLoadTime).TotalSeconds;
+            var shouldPoll = secondsSincePageLoad < 30 || IsJobActive;
+
+            if (shouldPoll && !_isRefreshing)
+            {
+                await InvokeAsync(async () =>
+                {
+                    await RefreshJobSafely();
+                });
+            }
+        }, null, TimeSpan.FromMilliseconds(500), TimeSpan.FromMilliseconds(500));
+    }
+
+    private async Task RefreshJobSafely()
+    {
+        // Prevent overlapping refreshes that could hammer the database
+        if (_isRefreshing) return;
+
+        try
+        {
+            _isRefreshing = true;
+            await LoadJob();
+            StateHasChanged();
+        }
+        finally
+        {
+            _isRefreshing = false;
         }
     }
 
@@ -284,33 +333,47 @@ else
     [JSInvokable]
     public async Task OnJobStatusChanged(string jobId, string status)
     {
-        await LoadJob();
-        StateHasChanged();
+        Console.WriteLine($"[Blazor] OnJobStatusChanged: {jobId} -> {status}");
+        // Reload job to get the new status and timestamps
+        if (!_isRefreshing)
+        {
+            await InvokeAsync(async () => await RefreshJobSafely());
+        }
     }
 
     [JSInvokable]
     public async Task OnJobActivityUpdated(string jobId, string activity, DateTime timestamp)
     {
+        Console.WriteLine($"[Blazor] OnJobActivityUpdated: {jobId} -> {activity}");
+        // Update activity in-place without reloading - this is much faster
         if (Job != null)
         {
             Job.CurrentActivity = activity;
             Job.LastActivityAt = timestamp;
-            StateHasChanged();
+            await InvokeAsync(StateHasChanged);
         }
     }
 
     [JSInvokable]
     public async Task OnJobMessageAdded(string jobId)
     {
-        await LoadJob();
-        StateHasChanged();
+        Console.WriteLine($"[Blazor] OnJobMessageAdded: {jobId}");
+        // Reload to get new messages
+        if (!_isRefreshing)
+        {
+            await InvokeAsync(async () => await RefreshJobSafely());
+        }
     }
 
     [JSInvokable]
     public async Task OnJobCompleted(string jobId, bool success, string? errorMessage)
     {
-        await LoadJob();
-        StateHasChanged();
+        Console.WriteLine($"[Blazor] OnJobCompleted: {jobId}, success: {success}");
+        // Reload to get final status and results
+        if (!_isRefreshing)
+        {
+            await InvokeAsync(async () => await RefreshJobSafely());
+        }
     }
 
     private async Task LoadJob()
@@ -409,6 +472,8 @@ else
 
     public async ValueTask DisposeAsync()
     {
+        _refreshTimer?.Dispose();
+
         if (_signalRModule != null)
         {
             try

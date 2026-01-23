@@ -12,7 +12,11 @@ public class JobProcessingService : BackgroundService
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<JobProcessingService> _logger;
     private readonly IJobUpdateService? _jobUpdateService;
-    private readonly TimeSpan _pollingInterval = TimeSpan.FromSeconds(5);
+    private readonly TimeSpan _pollingInterval = TimeSpan.FromSeconds(1); // Fast polling for immediate job pickup
+    private readonly int _maxConcurrentJobs = 5; // Maximum number of concurrent jobs
+    private readonly Dictionary<Guid, Task> _runningJobs = new();
+    private readonly SemaphoreSlim _jobsLock = new(1, 1);
+    private readonly SemaphoreSlim _processingTrigger = new(0); // Semaphore to trigger immediate processing
 
     public JobProcessingService(
         IServiceScopeFactory scopeFactory,
@@ -26,41 +30,127 @@ public class JobProcessingService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _logger.LogInformation("Job Processing Service started");
+        _logger.LogInformation("Job Processing Service started (Max concurrent jobs: {MaxJobs})", _maxConcurrentJobs);
 
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
                 await ProcessPendingJobsAsync(stoppingToken);
+                await CleanupCompletedJobsAsync();
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error processing jobs");
             }
 
-            await Task.Delay(_pollingInterval, stoppingToken);
+            // Wait for either the polling interval or a trigger signal
+            try
+            {
+                await _processingTrigger.WaitAsync(_pollingInterval, stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                break;
+            }
         }
+
+        // Wait for all running jobs to complete on shutdown
+        _logger.LogInformation("Waiting for {Count} running jobs to complete...", _runningJobs.Count);
+        await Task.WhenAll(_runningJobs.Values.ToArray());
 
         _logger.LogInformation("Job Processing Service stopped");
     }
 
+    /// <summary>
+    /// Triggers immediate job processing (called when a new job is created)
+    /// </summary>
+    public void TriggerProcessing()
+    {
+        try
+        {
+            _processingTrigger.Release();
+        }
+        catch
+        {
+            // Ignore if semaphore is already signaled
+        }
+    }
+
     private async Task ProcessPendingJobsAsync(CancellationToken stoppingToken)
     {
-        using var scope = _scopeFactory.CreateScope();
-        var jobService = scope.ServiceProvider.GetRequiredService<IJobService>();
-        var providerService = scope.ServiceProvider.GetRequiredService<IProviderService>();
-
-        var pendingJobs = await jobService.GetPendingJobsAsync(stoppingToken);
-
-        foreach (var job in pendingJobs)
+        await _jobsLock.WaitAsync(stoppingToken);
+        try
         {
-            if (stoppingToken.IsCancellationRequested)
-                break;
+            // Check how many slots are available
+            var availableSlots = _maxConcurrentJobs - _runningJobs.Count;
+            if (availableSlots <= 0)
+            {
+                return; // All slots are filled
+            }
 
-            // Process each job in a separate task but wait for it to complete
-            // This ensures we don't overload the system with too many concurrent jobs
-            await ProcessJobAsync(job, jobService, providerService, stoppingToken);
+            // Get pending jobs
+            using var scope = _scopeFactory.CreateScope();
+            var jobService = scope.ServiceProvider.GetRequiredService<IJobService>();
+            var pendingJobs = (await jobService.GetPendingJobsAsync(stoppingToken)).ToList();
+
+            if (!pendingJobs.Any())
+            {
+                return;
+            }
+
+            _logger.LogInformation("Found {PendingCount} pending jobs, {AvailableSlots} slots available, {RunningCount} jobs running",
+                pendingJobs.Count, availableSlots, _runningJobs.Count);
+
+            // Start new jobs up to the available slots
+            var jobsToStart = pendingJobs.Take(availableSlots);
+            foreach (var job in jobsToStart)
+            {
+                if (stoppingToken.IsCancellationRequested)
+                    break;
+
+                // Start job processing in background
+                var jobTask = Task.Run(async () =>
+                {
+                    using var jobScope = _scopeFactory.CreateScope();
+                    var scopedJobService = jobScope.ServiceProvider.GetRequiredService<IJobService>();
+                    var scopedProviderService = jobScope.ServiceProvider.GetRequiredService<IProviderService>();
+
+                    await ProcessJobAsync(job, scopedJobService, scopedProviderService, stoppingToken);
+                }, stoppingToken);
+
+                _runningJobs[job.Id] = jobTask;
+                _logger.LogInformation("Started processing job {JobId} ({RunningCount}/{MaxConcurrent} slots used)",
+                    job.Id, _runningJobs.Count, _maxConcurrentJobs);
+            }
+        }
+        finally
+        {
+            _jobsLock.Release();
+        }
+    }
+
+    private async Task CleanupCompletedJobsAsync()
+    {
+        await _jobsLock.WaitAsync();
+        try
+        {
+            var completedJobs = _runningJobs.Where(kvp => kvp.Value.IsCompleted).ToList();
+            foreach (var kvp in completedJobs)
+            {
+                _runningJobs.Remove(kvp.Key);
+                _logger.LogDebug("Removed completed job {JobId} from running jobs tracking", kvp.Key);
+
+                // Check for exceptions
+                if (kvp.Value.IsFaulted && kvp.Value.Exception != null)
+                {
+                    _logger.LogError(kvp.Value.Exception, "Job {JobId} faulted during execution", kvp.Key);
+                }
+            }
+        }
+        finally
+        {
+            _jobsLock.Release();
         }
     }
 
@@ -131,6 +221,11 @@ public class JobProcessingService : BackgroundService
             await jobService.UpdateStatusAsync(job.Id, JobStatus.Processing, cancellationToken: stoppingToken);
             await NotifyStatusChangedAsync(job.Id, JobStatus.Processing);
 
+            // Send initial activity notification
+            var initialActivity = "Initializing coding agent...";
+            await jobService.UpdateProgressAsync(job.Id, initialActivity, stoppingToken);
+            await NotifyJobActivityAsync(job.Id, initialActivity, DateTime.UtcNow);
+
             // Create a cancellation token that combines the stopping token with job-specific cancellation
             using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
 
@@ -142,30 +237,41 @@ public class JobProcessingService : BackgroundService
 
             // Track last progress update time to avoid excessive database writes
             var lastProgressUpdate = DateTime.MinValue;
-            var progressUpdateInterval = TimeSpan.FromSeconds(2);
+            var progressUpdateInterval = TimeSpan.FromMilliseconds(500); // Update every 0.5 seconds for near real-time feedback
 
-            var progress = new Progress<ExecutionProgress>(async p =>
+            // Progress<T> doesn't properly handle async callbacks, so we use a synchronous handler
+            // that fires updates in the background with proper scoping to avoid DbContext disposal issues
+            var progress = new Progress<ExecutionProgress>(p =>
             {
                 var activity = !string.IsNullOrEmpty(p.ToolName)
                     ? $"Running tool: {p.ToolName}"
                     : (p.IsStreaming ? "Processing..." : p.CurrentMessage ?? "Working...");
 
-                _logger.LogDebug("Job {JobId} progress: {Activity}", job.Id, activity);
+                _logger.LogInformation("Job {JobId} progress: {Activity}", job.Id, activity);
 
-                // Throttle progress updates to the database
-                if (DateTime.UtcNow - lastProgressUpdate >= progressUpdateInterval)
+                // Throttle progress updates to avoid database overload
+                var now = DateTime.UtcNow;
+                if (now - lastProgressUpdate >= progressUpdateInterval)
                 {
-                    lastProgressUpdate = DateTime.UtcNow;
-                    var timestamp = DateTime.UtcNow;
-                    try
+                    lastProgressUpdate = now;
+
+                    // Fire async updates in the background with a NEW scope to avoid DbContext disposal
+                    _ = Task.Run(async () =>
                     {
-                        await jobService.UpdateProgressAsync(job.Id, activity, CancellationToken.None);
-                        await NotifyJobActivityAsync(job.Id, activity, timestamp);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogWarning(ex, "Failed to update progress for job {JobId}", job.Id);
-                    }
+                        try
+                        {
+                            // Create a new scope for this background operation
+                            using var progressScope = _scopeFactory.CreateScope();
+                            var scopedJobService = progressScope.ServiceProvider.GetRequiredService<IJobService>();
+
+                            await scopedJobService.UpdateProgressAsync(job.Id, activity, CancellationToken.None);
+                            await NotifyJobActivityAsync(job.Id, activity, now);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "Failed to update progress for job {JobId}", job.Id);
+                        }
+                    });
                 }
             });
 
