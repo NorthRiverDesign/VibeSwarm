@@ -224,6 +224,8 @@ public class JobService : IJobService
         {
             job.Status = JobStatus.Cancelled;
             job.CompletedAt = DateTime.UtcNow;
+            job.CurrentActivity = null;
+            job.LastActivityAt = DateTime.UtcNow;
         }
 
         await _dbContext.SaveChangesAsync(cancellationToken);
@@ -253,6 +255,39 @@ public class JobService : IJobService
         job.LastActivityAt = DateTime.UtcNow;
 
         await _dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task<bool> ResetJobAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        var job = await _dbContext.Jobs
+            .FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
+
+        if (job == null)
+        {
+            return false;
+        }
+
+        // Only allow resetting jobs that are in terminal states
+        if (job.Status != JobStatus.Completed && job.Status != JobStatus.Failed && job.Status != JobStatus.Cancelled)
+        {
+            return false;
+        }
+
+        // Reset job to initial state while preserving the original configuration
+        job.Status = JobStatus.New;
+        job.CancellationRequested = false;
+        job.StartedAt = null;
+        job.CompletedAt = null;
+        job.Output = null;
+        job.ErrorMessage = null;
+        job.CurrentActivity = null;
+        job.LastActivityAt = null;
+        // Keep SessionId for potential session continuation
+        // Keep InputTokens, OutputTokens, TotalCostUsd for historical tracking
+        // Keep Messages for audit trail and context
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        return true;
     }
 
     public async Task DeleteAsync(Guid id, CancellationToken cancellationToken = default)

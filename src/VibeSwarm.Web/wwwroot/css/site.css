@@ -776,3 +776,74 @@ textarea.form-control {
     margin-top: 0.25rem;
     font-style: italic;
 }
+
+/* Enhanced Status Indicators */
+.job-status-section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.status-badge-container {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.status-spinner {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-top: 2px solid currentColor;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+.status-cancelling {
+    background-color: #fd7e14;
+    color: white;
+}
+
+.spinner-small {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-top: 2px solid white;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin-right: 0.25rem;
+}
+
+.btn-danger:disabled,
+.btn-primary:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+/* Info Section */
+.info-section {
+    background: #e7f3ff;
+    border: 1px solid #bee5eb;
+    border-radius: 4px;
+    padding: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.info-section h5 {
+    color: #004085;
+    margin: 0 0 0.5rem 0;
+}
+
+.info-section p {
+    margin: 0;
+    color: #004085;
+    font-size: 0.875rem;
+}

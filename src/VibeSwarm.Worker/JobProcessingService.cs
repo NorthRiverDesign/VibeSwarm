@@ -11,14 +11,17 @@ public class JobProcessingService : BackgroundService
 {
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<JobProcessingService> _logger;
+    private readonly IJobUpdateService? _jobUpdateService;
     private readonly TimeSpan _pollingInterval = TimeSpan.FromSeconds(5);
 
     public JobProcessingService(
         IServiceScopeFactory scopeFactory,
-        ILogger<JobProcessingService> logger)
+        ILogger<JobProcessingService> logger,
+        IJobUpdateService? jobUpdateService = null)
     {
         _scopeFactory = scopeFactory;
         _logger = logger;
+        _jobUpdateService = jobUpdateService;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -72,14 +75,34 @@ public class JobProcessingService : BackgroundService
 
         try
         {
+            // Check if job was cancelled before we even started
+            if (await jobService.IsCancellationRequestedAsync(job.Id, stoppingToken))
+            {
+                await jobService.UpdateStatusAsync(job.Id, JobStatus.Cancelled,
+                    errorMessage: "Job was cancelled before processing started", cancellationToken: stoppingToken);
+                await NotifyJobCompletedAsync(job.Id, false, "Job was cancelled before processing started");
+                return;
+            }
+
             // Mark job as started
             await jobService.UpdateStatusAsync(job.Id, JobStatus.Started, cancellationToken: stoppingToken);
+            await NotifyStatusChangedAsync(job.Id, JobStatus.Started);
+
+            // Check again after status update - double-check for race conditions
+            if (await jobService.IsCancellationRequestedAsync(job.Id, stoppingToken))
+            {
+                await jobService.UpdateStatusAsync(job.Id, JobStatus.Cancelled,
+                    errorMessage: "Job was cancelled", cancellationToken: stoppingToken);
+                await NotifyJobCompletedAsync(job.Id, false, "Job was cancelled");
+                return;
+            }
 
             // Check if provider is available
             if (job.Provider == null)
             {
                 await jobService.UpdateStatusAsync(job.Id, JobStatus.Failed,
                     errorMessage: "Provider not found", cancellationToken: stoppingToken);
+                await NotifyJobCompletedAsync(job.Id, false, "Provider not found");
                 return;
             }
 
@@ -87,6 +110,7 @@ public class JobProcessingService : BackgroundService
             {
                 await jobService.UpdateStatusAsync(job.Id, JobStatus.Failed,
                     errorMessage: "Provider is disabled", cancellationToken: stoppingToken);
+                await NotifyJobCompletedAsync(job.Id, false, "Provider is disabled");
                 return;
             }
 
@@ -99,11 +123,13 @@ public class JobProcessingService : BackgroundService
             {
                 await jobService.UpdateStatusAsync(job.Id, JobStatus.Failed,
                     errorMessage: "Could not connect to provider", cancellationToken: stoppingToken);
+                await NotifyJobCompletedAsync(job.Id, false, "Could not connect to provider");
                 return;
             }
 
             // Update status to processing
             await jobService.UpdateStatusAsync(job.Id, JobStatus.Processing, cancellationToken: stoppingToken);
+            await NotifyStatusChangedAsync(job.Id, JobStatus.Processing);
 
             // Create a cancellation token that combines the stopping token with job-specific cancellation
             using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
@@ -130,9 +156,11 @@ public class JobProcessingService : BackgroundService
                 if (DateTime.UtcNow - lastProgressUpdate >= progressUpdateInterval)
                 {
                     lastProgressUpdate = DateTime.UtcNow;
+                    var timestamp = DateTime.UtcNow;
                     try
                     {
                         await jobService.UpdateProgressAsync(job.Id, activity, CancellationToken.None);
+                        await NotifyJobActivityAsync(job.Id, activity, timestamp);
                     }
                     catch (Exception ex)
                     {
@@ -152,8 +180,10 @@ public class JobProcessingService : BackgroundService
             linkedCts.Cancel();
             try { await cancellationMonitorTask; } catch { }
 
-            // Check if job was cancelled
-            if (await jobService.IsCancellationRequestedAsync(job.Id, stoppingToken))
+            // Check if job was cancelled - do this check first to ensure we don't override cancellation status
+            var wasCancelled = await jobService.IsCancellationRequestedAsync(job.Id, stoppingToken);
+
+            if (wasCancelled)
             {
                 await jobService.UpdateJobResultAsync(
                     job.Id,
@@ -165,6 +195,9 @@ public class JobProcessingService : BackgroundService
                     result.OutputTokens,
                     result.CostUsd,
                     stoppingToken);
+                await NotifyJobCompletedAsync(job.Id, false, "Job was cancelled by user");
+
+                _logger.LogInformation("Job {JobId} was cancelled during execution", job.Id);
             }
             else if (result.Success)
             {
@@ -182,6 +215,7 @@ public class JobProcessingService : BackgroundService
                     });
 
                     await jobService.AddMessagesAsync(job.Id, messages, stoppingToken);
+                    await NotifyJobMessageAddedAsync(job.Id);
                 }
 
                 await jobService.UpdateJobResultAsync(
@@ -197,6 +231,7 @@ public class JobProcessingService : BackgroundService
 
                 _logger.LogInformation("Job {JobId} completed successfully. Session: {SessionId}",
                     job.Id, result.SessionId);
+                await NotifyJobCompletedAsync(job.Id, true);
             }
             else
             {
@@ -212,18 +247,34 @@ public class JobProcessingService : BackgroundService
                     stoppingToken);
 
                 _logger.LogWarning("Job {JobId} failed: {Error}", job.Id, result.ErrorMessage);
+                await NotifyJobCompletedAsync(job.Id, false, result.ErrorMessage);
             }
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
-            _logger.LogInformation("Job {JobId} was interrupted due to service shutdown", job.Id);
-            await jobService.UpdateStatusAsync(job.Id, JobStatus.New, cancellationToken: CancellationToken.None);
+            _logger.LogInformation("Job {JobId} was interrupted due to service shutdown, resetting to New status", job.Id);
+            // Reset job to New status so it can be retried when service restarts
+            // Use ResetJobAsync to properly clear all state
+            try
+            {
+                // First mark as Failed so we can reset it
+                await jobService.UpdateStatusAsync(job.Id, JobStatus.Failed,
+                    errorMessage: "Service shutdown during execution", cancellationToken: CancellationToken.None);
+                // Then reset it back to New
+                await jobService.ResetJobAsync(job.Id, CancellationToken.None);
+            }
+            catch
+            {
+                // If reset fails, at least try to set status back to New
+                await jobService.UpdateStatusAsync(job.Id, JobStatus.New, cancellationToken: CancellationToken.None);
+            }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error processing job {JobId}", job.Id);
             await jobService.UpdateStatusAsync(job.Id, JobStatus.Failed,
                 errorMessage: ex.Message, cancellationToken: stoppingToken);
+            await NotifyJobCompletedAsync(job.Id, false, ex.Message);
         }
     }
 
@@ -274,5 +325,65 @@ public class JobProcessingService : BackgroundService
             "tool_result" => MessageRole.ToolResult,
             _ => MessageRole.Assistant
         };
+    }
+
+    private async Task NotifyStatusChangedAsync(Guid jobId, JobStatus status)
+    {
+        if (_jobUpdateService != null)
+        {
+            try
+            {
+                await _jobUpdateService.NotifyJobStatusChanged(jobId, status.ToString());
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to send status change notification for job {JobId}", jobId);
+            }
+        }
+    }
+
+    private async Task NotifyJobActivityAsync(Guid jobId, string activity, DateTime timestamp)
+    {
+        if (_jobUpdateService != null)
+        {
+            try
+            {
+                await _jobUpdateService.NotifyJobActivity(jobId, activity, timestamp);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to send activity notification for job {JobId}", jobId);
+            }
+        }
+    }
+
+    private async Task NotifyJobMessageAddedAsync(Guid jobId)
+    {
+        if (_jobUpdateService != null)
+        {
+            try
+            {
+                await _jobUpdateService.NotifyJobMessageAdded(jobId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to send message added notification for job {JobId}", jobId);
+            }
+        }
+    }
+
+    private async Task NotifyJobCompletedAsync(Guid jobId, bool success, string? errorMessage = null)
+    {
+        if (_jobUpdateService != null)
+        {
+            try
+            {
+                await _jobUpdateService.NotifyJobCompleted(jobId, success, errorMessage);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to send completion notification for job {JobId}", jobId);
+            }
+        }
     }
 }

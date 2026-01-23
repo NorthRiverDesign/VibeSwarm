@@ -1,7 +1,8 @@
 @page "/jobs/{JobId:guid}"
 @inject IJobService JobService
 @inject NavigationManager NavigationManager
-@implements IDisposable
+@inject IJSRuntime JSRuntime
+@implements IAsyncDisposable
 
 @if (IsLoading)
 {
@@ -17,17 +18,48 @@ else
     <div class="job-header">
         <div>
             <h3>Job Details</h3>
-            <p class="job-meta">
-                <span class="status-badge status-@Job.Status.ToString().ToLower()">@Job.Status</span>
-                <span>Project: <a href="/projects/@Job.ProjectId">@(Job.Project?.Name ?? "Unknown")</a></span>
-                <span>Provider: @(Job.Provider?.Name ?? "Unknown")</span>
-            </p>
+            <div class="job-status-section">
+                <div class="status-badge-container">
+                    <span class="status-badge status-@Job.Status.ToString().ToLower()">
+                        @if (Job.Status == JobStatus.Started || Job.Status == JobStatus.Processing)
+                        {
+                            <span class="status-spinner"></span>
+                        }
+                        @Job.Status
+                    </span>
+                    @if (Job.CancellationRequested && (Job.Status == JobStatus.Started || Job.Status == JobStatus.Processing))
+                    {
+                        <span class="status-badge status-cancelling">
+                            <span class="status-spinner"></span>
+                            Cancelling
+                        </span>
+                    }
+                </div>
+                <p class="job-meta">
+                    <span>Project: <a href="/projects/@Job.ProjectId">@(Job.Project?.Name ?? "Unknown")</a></span>
+                    <span>Provider: @(Job.Provider?.Name ?? "Unknown")</span>
+                </p>
+            </div>
         </div>
         <div class="job-header-actions">
+            @if (CanRetry)
+            {
+                <button class="btn btn-primary" @onclick="RetryJob" disabled="@IsRetrying">
+                    @(IsRetrying ? "Resetting..." : "Retry Job")
+                </button>
+            }
             @if (CanCancel)
             {
                 <button class="btn btn-danger" @onclick="CancelJob" disabled="@IsCancelling">
-                    @(IsCancelling ? "Cancelling..." : "Cancel Job")
+                    @if (IsCancelling)
+                    {
+                        <span class="spinner-small"></span>
+                        <text>Cancelling...</text>
+                    }
+                    else
+                    {
+                        <text>Cancel Job</text>
+                    }
                 </button>
             }
             <a href="/projects/@Job.ProjectId" class="btn btn-secondary">Back to Project</a>
@@ -95,6 +127,21 @@ else
                 <div class="error-section">
                     <h5>Error</h5>
                     <pre class="error-output">@Job.ErrorMessage</pre>
+                </div>
+            }
+
+            @if (Job.Status == JobStatus.Cancelled)
+            {
+                <div class="info-section">
+                    <h5>Job Cancelled</h5>
+                    <p>This job was cancelled and can be retried. Click "Retry Job" to run it again.</p>
+                </div>
+            }
+            else if (Job.Status == JobStatus.Failed && CanRetry)
+            {
+                <div class="info-section">
+                    <h5>Job Failed</h5>
+                    <p>This job failed during execution. You can retry it by clicking "Retry Job" above.</p>
                 </div>
             }
         </div>
@@ -189,9 +236,11 @@ else
     private Job? Job { get; set; }
     private bool IsLoading { get; set; } = true;
     private bool IsCancelling { get; set; }
+    private bool IsRetrying { get; set; }
     private string? ErrorMessage { get; set; }
     private string? SuccessMessage { get; set; }
-    private System.Threading.Timer? _refreshTimer;
+    private DotNetObjectReference<JobDetail>? _dotNetReference;
+    private IJSObjectReference? _signalRModule;
 
     private bool CanCancel => Job != null &&
         (Job.Status == JobStatus.New ||
@@ -200,31 +249,68 @@ else
          Job.Status == JobStatus.Processing) &&
         !Job.CancellationRequested;
 
-    private bool ShouldAutoRefresh => Job != null &&
-        (Job.Status == JobStatus.New ||
-         Job.Status == JobStatus.Pending ||
-         Job.Status == JobStatus.Started ||
-         Job.Status == JobStatus.Processing);
+    private bool CanRetry => Job != null &&
+        (Job.Status == JobStatus.Cancelled ||
+         Job.Status == JobStatus.Failed ||
+         Job.Status == JobStatus.Completed);
 
     protected override async Task OnInitializedAsync()
     {
         await LoadJob();
-        StartAutoRefresh();
     }
 
-    private void StartAutoRefresh()
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        _refreshTimer = new System.Threading.Timer(async _ =>
+        if (firstRender)
         {
-            if (ShouldAutoRefresh)
-            {
-                await InvokeAsync(async () =>
-                {
-                    await LoadJob();
-                    StateHasChanged();
-                });
-            }
-        }, null, TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(3));
+            await InitializeSignalR();
+        }
+    }
+
+    private async Task InitializeSignalR()
+    {
+        try
+        {
+            _dotNetReference = DotNetObjectReference.Create(this);
+            _signalRModule = await JSRuntime.InvokeAsync<IJSObjectReference>("import", "/js/jobSignalR.js");
+            await _signalRModule.InvokeVoidAsync("initializeJobHub", JobId.ToString(), _dotNetReference);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error initializing SignalR: {ex.Message}");
+        }
+    }
+
+    [JSInvokable]
+    public async Task OnJobStatusChanged(string jobId, string status)
+    {
+        await LoadJob();
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public async Task OnJobActivityUpdated(string jobId, string activity, DateTime timestamp)
+    {
+        if (Job != null)
+        {
+            Job.CurrentActivity = activity;
+            Job.LastActivityAt = timestamp;
+            StateHasChanged();
+        }
+    }
+
+    [JSInvokable]
+    public async Task OnJobMessageAdded(string jobId)
+    {
+        await LoadJob();
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public async Task OnJobCompleted(string jobId, bool success, string? errorMessage)
+    {
+        await LoadJob();
+        StateHasChanged();
     }
 
     private async Task LoadJob()
@@ -270,6 +356,37 @@ else
         }
     }
 
+    private async Task RetryJob()
+    {
+        if (Job == null) return;
+
+        IsRetrying = true;
+        ErrorMessage = null;
+        SuccessMessage = null;
+
+        try
+        {
+            var result = await JobService.ResetJobAsync(Job.Id);
+            if (result)
+            {
+                SuccessMessage = "Job has been reset and will be retried shortly.";
+                await LoadJob();
+            }
+            else
+            {
+                ErrorMessage = "Could not retry the job. It may not be in a terminal state.";
+            }
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Error retrying job: {ex.Message}";
+        }
+        finally
+        {
+            IsRetrying = false;
+        }
+    }
+
     private static string GetRoleDisplayName(MessageRole role)
     {
         return role switch
@@ -290,8 +407,18 @@ else
         return text[..maxLength] + "\n... (truncated)";
     }
 
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
-        _refreshTimer?.Dispose();
+        if (_signalRModule != null)
+        {
+            try
+            {
+                await _signalRModule.InvokeVoidAsync("disposeJobHub");
+                await _signalRModule.DisposeAsync();
+            }
+            catch { }
+        }
+
+        _dotNetReference?.Dispose();
     }
 }

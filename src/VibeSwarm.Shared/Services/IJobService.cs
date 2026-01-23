@@ -17,5 +17,6 @@ public interface IJobService
     Task<bool> RequestCancellationAsync(Guid id, CancellationToken cancellationToken = default);
     Task<bool> IsCancellationRequestedAsync(Guid id, CancellationToken cancellationToken = default);
     Task UpdateProgressAsync(Guid id, string? currentActivity, CancellationToken cancellationToken = default);
+    Task<bool> ResetJobAsync(Guid id, CancellationToken cancellationToken = default);
     Task DeleteAsync(Guid id, CancellationToken cancellationToken = default);
 }
