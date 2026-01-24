@@ -26,6 +26,12 @@ public class ProviderService : IProviderService
             .FirstOrDefaultAsync(p => p.Id == id, cancellationToken);
     }
 
+    public async Task<Provider?> GetDefaultAsync(CancellationToken cancellationToken = default)
+    {
+        return await _dbContext.Providers
+            .FirstOrDefaultAsync(p => p.IsDefault && p.IsEnabled, cancellationToken);
+    }
+
     public async Task<Provider> CreateAsync(Provider provider, CancellationToken cancellationToken = default)
     {
         provider.Id = Guid.NewGuid();
@@ -105,6 +111,54 @@ public class ProviderService : IProviderService
             IsConnected = isConnected,
             ErrorMessage = isConnected ? null : instance.LastConnectionError
         };
+    }
+
+    public async Task SetEnabledAsync(Guid id, bool isEnabled, CancellationToken cancellationToken = default)
+    {
+        var provider = await _dbContext.Providers
+            .FirstOrDefaultAsync(p => p.Id == id, cancellationToken);
+
+        if (provider == null)
+        {
+            throw new InvalidOperationException($"Provider with ID {id} not found.");
+        }
+
+        provider.IsEnabled = isEnabled;
+
+        // If disabling and this was the default provider, clear default status
+        if (!isEnabled && provider.IsDefault)
+        {
+            provider.IsDefault = false;
+        }
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task SetDefaultAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        var provider = await _dbContext.Providers
+            .FirstOrDefaultAsync(p => p.Id == id, cancellationToken);
+
+        if (provider == null)
+        {
+            throw new InvalidOperationException($"Provider with ID {id} not found.");
+        }
+
+        // Clear all other defaults
+        var currentDefaults = await _dbContext.Providers
+            .Where(p => p.IsDefault)
+            .ToListAsync(cancellationToken);
+
+        foreach (var p in currentDefaults)
+        {
+            p.IsDefault = false;
+        }
+
+        // Set this provider as default and ensure it's enabled
+        provider.IsDefault = true;
+        provider.IsEnabled = true;
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
     }
 
     private static IProvider CreateProviderInstance(Provider config)

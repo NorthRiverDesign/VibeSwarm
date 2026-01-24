@@ -58,7 +58,8 @@ else
                                 <td>@(job.Provider?.Name ?? "Unknown")</td>
                                 <td>
                                     <span class="status-badge status-@job.Status.ToString().ToLower()">@job.Status</span>
-                                    @if ((job.Status == JobStatus.Started || job.Status == JobStatus.Processing) && !string.IsNullOrEmpty(job.CurrentActivity))
+                                    @if ((job.Status == JobStatus.Started || job.Status == JobStatus.Processing) &&
+                                                            !string.IsNullOrEmpty(job.CurrentActivity))
                                     {
                                         <div class="job-activity">@job.CurrentActivity</div>
                                     }
@@ -92,7 +93,8 @@ else
 
                 <div class="form-group">
                     <label for="goalPrompt">Goal Prompt</label>
-                    <InputTextArea id="goalPrompt" @bind-Value="NewJob.GoalPrompt" class="form-control" rows="5" placeholder="Describe what you want the AI agent to accomplish..." />
+                    <InputTextArea id="goalPrompt" @bind-Value="NewJob.GoalPrompt" class="form-control" rows="5"
+                        placeholder="Describe what you want the AI agent to accomplish..." />
                     <ValidationMessage For="@(() => NewJob.GoalPrompt)" />
                 </div>
 
@@ -107,7 +109,8 @@ else
                     </InputSelect>
                     @if (!Providers.Any(p => p.IsEnabled))
                     {
-                        <small class="form-text text-warning">No enabled providers available. <a href="/providers">Configure a provider</a> first.</small>
+                        <small class="form-text text-warning">No enabled providers available. <a href="/providers">Configure a
+                                provider</a> first.</small>
                     }
                 </div>
 
@@ -146,10 +149,10 @@ else
     private System.Threading.Timer? _refreshTimer;
 
     private bool HasActiveJobs => Jobs.Any(j =>
-        j.Status == JobStatus.New ||
-        j.Status == JobStatus.Pending ||
-        j.Status == JobStatus.Started ||
-        j.Status == JobStatus.Processing);
+    j.Status == JobStatus.New ||
+    j.Status == JobStatus.Pending ||
+    j.Status == JobStatus.Started ||
+    j.Status == JobStatus.Processing);
 
     protected override async Task OnInitializedAsync()
     {
@@ -164,10 +167,10 @@ else
             if (HasActiveJobs)
             {
                 await InvokeAsync(async () =>
-                {
-                    await RefreshJobs();
-                    StateHasChanged();
-                });
+        {
+            await RefreshJobs();
+            StateHasChanged();
+        });
             }
         }, null, TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(3));
     }
@@ -191,6 +194,13 @@ else
                 Jobs = (await JobService.GetByProjectIdAsync(ProjectId)).ToList();
             }
             Providers = (await ProviderService.GetAllAsync()).ToList();
+
+            // Pre-select the default provider for new jobs
+            var defaultProvider = await ProviderService.GetDefaultAsync();
+            if (defaultProvider != null)
+            {
+                NewJob.ProviderId = defaultProvider.Id;
+            }
         }
         finally
         {

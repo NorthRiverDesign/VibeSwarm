@@ -6,11 +6,14 @@ public interface IProviderService
 {
     Task<IEnumerable<Provider>> GetAllAsync(CancellationToken cancellationToken = default);
     Task<Provider?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
+    Task<Provider?> GetDefaultAsync(CancellationToken cancellationToken = default);
     Task<Provider> CreateAsync(Provider provider, CancellationToken cancellationToken = default);
     Task<Provider> UpdateAsync(Provider provider, CancellationToken cancellationToken = default);
     Task DeleteAsync(Guid id, CancellationToken cancellationToken = default);
     Task<bool> TestConnectionAsync(Guid id, CancellationToken cancellationToken = default);
     Task<ConnectionTestResult> TestConnectionWithDetailsAsync(Guid id, CancellationToken cancellationToken = default);
+    Task SetEnabledAsync(Guid id, bool isEnabled, CancellationToken cancellationToken = default);
+    Task SetDefaultAsync(Guid id, CancellationToken cancellationToken = default);
 }
 
 public class ConnectionTestResult

@@ -1239,3 +1239,83 @@ textarea.form-control {
         transform: rotate(360deg);
     }
 }
+
+/* Toggle Switch for Providers */
+.toggle-switch {
+    position: relative;
+    display: inline-block;
+    width: 50px;
+    height: 26px;
+    cursor: pointer;
+}
+
+.toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.toggle-slider {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #ccc;
+    transition: 0.3s;
+    border-radius: 26px;
+}
+
+.toggle-slider:before {
+    position: absolute;
+    content: "";
+    height: 20px;
+    width: 20px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: 0.3s;
+    border-radius: 50%;
+}
+
+.toggle-switch input:checked + .toggle-slider {
+    background-color: #198754;
+}
+
+.toggle-switch input:checked + .toggle-slider:before {
+    transform: translateX(24px);
+}
+
+.toggle-switch input:focus + .toggle-slider {
+    box-shadow: 0 0 1px #198754;
+}
+
+/* Default Provider Badge and Row */
+.default-badge {
+    display: inline-block;
+    margin-left: 0.5rem;
+    padding: 0.2rem 0.5rem;
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: #0d6efd;
+    background-color: #e7f1ff;
+    border: 1px solid #b6d4fe;
+    border-radius: 4px;
+    text-transform: uppercase;
+}
+
+.default-provider-row {
+    background-color: #f8f9ff;
+}
+
+.btn-outline-primary {
+    color: #0d6efd;
+    background-color: transparent;
+    border: 1px solid #0d6efd;
+}
+
+.btn-outline-primary:hover {
+    color: #fff;
+    background-color: #0d6efd;
+    border-color: #0d6efd;
+}

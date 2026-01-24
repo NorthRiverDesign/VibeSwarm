@@ -25,28 +25,45 @@
                         <th>Name</th>
                         <th>Type</th>
                         <th>Mode</th>
-                        <th>Status</th>
+                        <th>Enabled</th>
                         <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody>
                     @foreach (var provider in ProvidersList)
                     {
-                        <tr>
-                            <td>@provider.Name</td>
+                        <tr class="@(provider.IsDefault ? "default-provider-row" : "")">
+                            <td>
+                                @provider.Name
+                                @if (provider.IsDefault)
+                                {
+                                    <span class="default-badge">Default</span>
+                                }
+                            </td>
                             <td>@provider.Type</td>
                             <td>@provider.ConnectionMode</td>
                             <td>
-                                <span class="status-badge @(provider.IsEnabled ? "status-enabled" : "status-disabled")">
-                                    @(provider.IsEnabled ? "Enabled" : "Disabled")
-                                </span>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" checked="@provider.IsEnabled"
+                                        @onchange="() => ToggleEnabled(provider)" />
+                                    <span class="toggle-slider"></span>
+                                </label>
                             </td>
                             <td class="actions">
-                                <button class="btn btn-small" @onclick="() => TestConnection(provider)" disabled="@(TestingId == provider.Id)">
+                                <button class="btn btn-small" @onclick="() => TestConnection(provider)"
+                                    disabled="@(TestingId == provider.Id)">
                                     @(TestingId == provider.Id ? "Testing..." : "Test")
                                 </button>
+                                @if (!provider.IsDefault)
+                                {
+                                    <button class="btn btn-small btn-outline-primary" @onclick="() => MakeDefault(provider)"
+                                        title="Set as default provider for new jobs">
+                                        Make Default
+                                    </button>
+                                }
                                 <button class="btn btn-small" @onclick="() => EditProvider(provider)">Edit</button>
-                                <button class="btn btn-small btn-danger" @onclick="() => DeleteProvider(provider)">Delete</button>
+                                <button class="btn btn-small btn-danger"
+                                    @onclick="() => DeleteProvider(provider)">Delete</button>
                             </td>
                         </tr>
                         @if (TestResults.TryGetValue(provider.Id, out var result))
@@ -73,10 +90,7 @@
 
     <div class="provider-form-container">
         <h4>@(EditingProvider != null ? "Edit Provider" : "Add New Provider")</h4>
-        <ProviderForm
-            Provider="@CurrentProvider"
-            IsEdit="@(EditingProvider != null)"
-            OnSaved="HandleProviderSaved"
+        <ProviderForm Provider="@CurrentProvider" IsEdit="@(EditingProvider != null)" OnSaved="HandleProviderSaved"
             OnCancel="CancelEdit" />
     </div>
 </div>
@@ -143,6 +157,32 @@
     {
         await ProviderService.DeleteAsync(provider.Id);
         await LoadProviders();
+    }
+
+    private async Task ToggleEnabled(Provider provider)
+    {
+        try
+        {
+            await ProviderService.SetEnabledAsync(provider.Id, !provider.IsEnabled);
+            await LoadProviders();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error toggling provider: {ex.Message}");
+        }
+    }
+
+    private async Task MakeDefault(Provider provider)
+    {
+        try
+        {
+            await ProviderService.SetDefaultAsync(provider.Id);
+            await LoadProviders();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error setting default provider: {ex.Message}");
+        }
     }
 
     private async Task TestConnection(Provider provider)
