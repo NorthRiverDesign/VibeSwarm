@@ -869,7 +869,7 @@ public class ClaudeProvider : ProviderBase
         return PlatformHelper.EscapeArgument(argument).Trim('"', '\'');
     }
 
-    public override async Task<UsageLimits> GetUsageLimitsAsync(CancellationToken cancellationToken = default)
+    public override Task<UsageLimits> GetUsageLimitsAsync(CancellationToken cancellationToken = default)
     {
         var limits = new UsageLimits
         {
@@ -904,17 +904,17 @@ public class ClaudeProvider : ProviderBase
 
                 try
                 {
-                    await process.WaitForExitAsync(linkedCts.Token);
+                    process.WaitForExit(10000);
                 }
                 catch (OperationCanceledException)
                 {
                     try { process.Kill(entireProcessTree: true); } catch { }
                     limits.Message = "Unable to check session limits (timeout)";
-                    return limits;
+                    return Task.FromResult(limits);
                 }
 
-                var output = await process.StandardOutput.ReadToEndAsync(CancellationToken.None);
-                var error = await process.StandardError.ReadToEndAsync(CancellationToken.None);
+                var output = process.StandardOutput.ReadToEnd();
+                var error = process.StandardError.ReadToEnd();
 
                 if (process.ExitCode == 0 && !string.IsNullOrWhiteSpace(output))
                 {
@@ -1007,7 +1007,234 @@ public class ClaudeProvider : ProviderBase
             limits.Message = "REST API rate limits apply (check API response headers)";
         }
 
-        return limits;
+        return Task.FromResult(limits);
+    }
+
+    public override async Task<SessionSummary> GetSessionSummaryAsync(
+        string? sessionId,
+        string? workingDirectory = null,
+        string? fallbackOutput = null,
+        CancellationToken cancellationToken = default)
+    {
+        var summary = new SessionSummary();
+
+        // If we have a session ID, try to get summary from Claude CLI
+        if (!string.IsNullOrEmpty(sessionId) && ConnectionMode == ProviderConnectionMode.CLI)
+        {
+            try
+            {
+                var execPath = GetExecutablePath();
+                var effectiveWorkingDir = workingDirectory ?? _workingDirectory ?? Environment.CurrentDirectory;
+
+                // Use Claude CLI to ask for a summary of the session
+                // --resume <session_id>: Resume the specified session
+                // -p: Non-interactive print mode
+                // We ask the model to summarize what was done
+                var summarizePrompt = "Please provide a concise summary (1-2 sentences) of what was accomplished in this session, suitable for a git commit message. Focus on the key changes made.";
+                var args = $"--resume {sessionId} -p \"{EscapeArgument(summarizePrompt)}\" --max-turns 1";
+
+                var startInfo = new ProcessStartInfo
+                {
+                    FileName = execPath,
+                    Arguments = args,
+                    WorkingDirectory = effectiveWorkingDir
+                };
+
+                PlatformHelper.ConfigureForCrossPlatform(startInfo);
+
+                using var process = new Process { StartInfo = startInfo };
+
+                using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+                using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
+
+                try
+                {
+                    process.Start();
+                    process.StandardInput.Close();
+
+                    var output = await process.StandardOutput.ReadToEndAsync(linkedCts.Token);
+                    var error = await process.StandardError.ReadToEndAsync(linkedCts.Token);
+
+                    await process.WaitForExitAsync(linkedCts.Token);
+
+                    if (process.ExitCode == 0 && !string.IsNullOrWhiteSpace(output))
+                    {
+                        // Parse the output - it may be JSON or plain text depending on output format
+                        var cleanedOutput = CleanSummaryOutput(output);
+                        if (!string.IsNullOrWhiteSpace(cleanedOutput))
+                        {
+                            summary.Success = true;
+                            summary.Summary = cleanedOutput;
+                            summary.Source = "session";
+                            return summary;
+                        }
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    try { PlatformHelper.TryKillProcessTree(process.Id); } catch { }
+                    // Fall through to fallback
+                }
+                catch
+                {
+                    // Fall through to fallback
+                }
+            }
+            catch
+            {
+                // Fall through to fallback
+            }
+        }
+
+        // Fallback: Generate summary from output if available
+        if (!string.IsNullOrEmpty(fallbackOutput))
+        {
+            summary.Summary = GenerateSummaryFromOutput(fallbackOutput);
+            summary.Success = !string.IsNullOrEmpty(summary.Summary);
+            summary.Source = "output";
+            return summary;
+        }
+
+        summary.Success = false;
+        summary.ErrorMessage = "No session ID or output available to generate summary";
+        return summary;
+    }
+
+    /// <summary>
+    /// Cleans up raw CLI output to extract just the summary text
+    /// </summary>
+    private static string CleanSummaryOutput(string output)
+    {
+        if (string.IsNullOrWhiteSpace(output))
+            return string.Empty;
+
+        // Try to parse as JSON first (stream-json output)
+        try
+        {
+            var lines = output.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+            var textContent = new System.Text.StringBuilder();
+
+            foreach (var line in lines)
+            {
+                if (string.IsNullOrWhiteSpace(line)) continue;
+
+                try
+                {
+                    using var doc = JsonDocument.Parse(line);
+                    var root = doc.RootElement;
+
+                    // Look for assistant messages with text content
+                    if (root.TryGetProperty("type", out var typeProp) &&
+                        typeProp.GetString() == "assistant")
+                    {
+                        if (root.TryGetProperty("message", out var messageProp) &&
+                            messageProp.TryGetProperty("content", out var contentProp))
+                        {
+                            foreach (var content in contentProp.EnumerateArray())
+                            {
+                                if (content.TryGetProperty("type", out var contentType) &&
+                                    contentType.GetString() == "text" &&
+                                    content.TryGetProperty("text", out var textProp))
+                                {
+                                    textContent.Append(textProp.GetString());
+                                }
+                            }
+                        }
+                    }
+                    // Also check for result type which contains final output
+                    else if (root.TryGetProperty("type", out var resultType) &&
+                             resultType.GetString() == "result" &&
+                             root.TryGetProperty("result", out var resultProp))
+                    {
+                        var result = resultProp.GetString();
+                        if (!string.IsNullOrWhiteSpace(result))
+                        {
+                            textContent.Clear();
+                            textContent.Append(result);
+                        }
+                    }
+                }
+                catch
+                {
+                    // Not JSON, might be plain text
+                    textContent.AppendLine(line);
+                }
+            }
+
+            var text = textContent.ToString().Trim();
+            if (!string.IsNullOrWhiteSpace(text))
+            {
+                return text;
+            }
+        }
+        catch
+        {
+            // Not JSON format
+        }
+
+        // Return cleaned plain text
+        return output.Trim();
+    }
+
+    /// <summary>
+    /// Generates a summary from execution output when session data isn't available
+    /// </summary>
+    private static string GenerateSummaryFromOutput(string output)
+    {
+        if (string.IsNullOrWhiteSpace(output))
+            return string.Empty;
+
+        // Look for common patterns that indicate what was done
+        var lines = output.Split('\n');
+        var significantActions = new List<string>();
+
+        foreach (var line in lines)
+        {
+            var trimmed = line.Trim();
+
+            // Skip empty lines and common noise
+            if (string.IsNullOrWhiteSpace(trimmed)) continue;
+            if (trimmed.StartsWith("{") || trimmed.StartsWith("[")) continue; // JSON
+            if (trimmed.Length < 10) continue;
+
+            // Look for action-oriented statements
+            if (trimmed.Contains("created", StringComparison.OrdinalIgnoreCase) ||
+                trimmed.Contains("modified", StringComparison.OrdinalIgnoreCase) ||
+                trimmed.Contains("updated", StringComparison.OrdinalIgnoreCase) ||
+                trimmed.Contains("added", StringComparison.OrdinalIgnoreCase) ||
+                trimmed.Contains("removed", StringComparison.OrdinalIgnoreCase) ||
+                trimmed.Contains("fixed", StringComparison.OrdinalIgnoreCase) ||
+                trimmed.Contains("implemented", StringComparison.OrdinalIgnoreCase) ||
+                trimmed.Contains("refactored", StringComparison.OrdinalIgnoreCase))
+            {
+                if (trimmed.Length < 200) // Reasonable length for a summary line
+                {
+                    significantActions.Add(trimmed);
+                }
+            }
+        }
+
+        if (significantActions.Count > 0)
+        {
+            // Return the first few significant actions
+            return string.Join("; ", significantActions.Take(3));
+        }
+
+        // Fallback: return first non-empty meaningful line
+        foreach (var line in lines)
+        {
+            var trimmed = line.Trim();
+            if (!string.IsNullOrWhiteSpace(trimmed) &&
+                !trimmed.StartsWith("{") &&
+                !trimmed.StartsWith("[") &&
+                trimmed.Length >= 20 &&
+                trimmed.Length <= 200)
+            {
+                return trimmed;
+            }
+        }
+
+        return string.Empty;
     }
 
     // JSON models for Claude CLI stream-json output

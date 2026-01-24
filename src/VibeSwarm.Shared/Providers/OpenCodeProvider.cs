@@ -720,6 +720,309 @@ public class OpenCodeProvider : ProviderBase
         return Task.FromResult(limits);
     }
 
+    public override async Task<SessionSummary> GetSessionSummaryAsync(
+        string? sessionId,
+        string? workingDirectory = null,
+        string? fallbackOutput = null,
+        CancellationToken cancellationToken = default)
+    {
+        var summary = new SessionSummary();
+
+        // If we have a session ID, try to get summary from OpenCode CLI
+        if (!string.IsNullOrEmpty(sessionId) && ConnectionMode == ProviderConnectionMode.CLI)
+        {
+            try
+            {
+                var execPath = GetExecutablePath();
+                var effectiveWorkingDir = workingDirectory ?? _workingDirectory ?? Environment.CurrentDirectory;
+
+                // OpenCode may have session commands - try to get session info
+                // First try: opencode session show <id>
+                var args = $"session show {sessionId} --format json";
+
+                var startInfo = new ProcessStartInfo
+                {
+                    FileName = execPath,
+                    Arguments = args,
+                    WorkingDirectory = effectiveWorkingDir
+                };
+
+                PlatformHelper.ConfigureForCrossPlatform(startInfo);
+
+                using var process = new Process { StartInfo = startInfo };
+
+                using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+                using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
+
+                try
+                {
+                    process.Start();
+                    process.StandardInput.Close();
+
+                    var output = await process.StandardOutput.ReadToEndAsync(linkedCts.Token);
+                    var error = await process.StandardError.ReadToEndAsync(linkedCts.Token);
+
+                    await process.WaitForExitAsync(linkedCts.Token);
+
+                    if (process.ExitCode == 0 && !string.IsNullOrWhiteSpace(output))
+                    {
+                        // Try to parse session information
+                        var sessionSummary = ParseOpenCodeSessionOutput(output);
+                        if (!string.IsNullOrWhiteSpace(sessionSummary))
+                        {
+                            summary.Success = true;
+                            summary.Summary = sessionSummary;
+                            summary.Source = "session";
+                            return summary;
+                        }
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    try { PlatformHelper.TryKillProcessTree(process.Id); } catch { }
+                    // Fall through to alternative approach
+                }
+                catch
+                {
+                    // Fall through to alternative approach
+                }
+
+                // Alternative: Ask the model to summarize the session
+                try
+                {
+                    var summarizeArgs = $"run --session {sessionId} --format json \"Please provide a concise summary (1-2 sentences) of what was accomplished in this session, suitable for a git commit message.\"";
+
+                    var summarizeStartInfo = new ProcessStartInfo
+                    {
+                        FileName = execPath,
+                        Arguments = summarizeArgs,
+                        WorkingDirectory = effectiveWorkingDir
+                    };
+
+                    PlatformHelper.ConfigureForCrossPlatform(summarizeStartInfo);
+
+                    using var summarizeProcess = new Process { StartInfo = summarizeStartInfo };
+
+                    using var summarizeTimeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+                    using var summarizeLinkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, summarizeTimeoutCts.Token);
+
+                    summarizeProcess.Start();
+                    summarizeProcess.StandardInput.Close();
+
+                    var summarizeOutput = await summarizeProcess.StandardOutput.ReadToEndAsync(summarizeLinkedCts.Token);
+                    await summarizeProcess.WaitForExitAsync(summarizeLinkedCts.Token);
+
+                    if (summarizeProcess.ExitCode == 0 && !string.IsNullOrWhiteSpace(summarizeOutput))
+                    {
+                        var cleanedSummary = CleanOpenCodeOutput(summarizeOutput);
+                        if (!string.IsNullOrWhiteSpace(cleanedSummary))
+                        {
+                            summary.Success = true;
+                            summary.Summary = cleanedSummary;
+                            summary.Source = "session";
+                            return summary;
+                        }
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    // Fall through to fallback
+                }
+                catch
+                {
+                    // Fall through to fallback
+                }
+            }
+            catch
+            {
+                // Fall through to fallback
+            }
+        }
+
+        // Fallback: Generate summary from output if available
+        if (!string.IsNullOrEmpty(fallbackOutput))
+        {
+            summary.Summary = GenerateSummaryFromOutput(fallbackOutput);
+            summary.Success = !string.IsNullOrEmpty(summary.Summary);
+            summary.Source = "output";
+            return summary;
+        }
+
+        summary.Success = false;
+        summary.ErrorMessage = "No session ID or output available to generate summary";
+        return summary;
+    }
+
+    /// <summary>
+    /// Parses OpenCode session show output to extract summary information
+    /// </summary>
+    private static string? ParseOpenCodeSessionOutput(string output)
+    {
+        if (string.IsNullOrWhiteSpace(output))
+            return null;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(output);
+            var root = doc.RootElement;
+
+            // Look for summary or description fields
+            if (root.TryGetProperty("summary", out var summaryProp))
+            {
+                return summaryProp.GetString();
+            }
+
+            if (root.TryGetProperty("description", out var descProp))
+            {
+                return descProp.GetString();
+            }
+
+            // Try to extract from messages if available
+            if (root.TryGetProperty("messages", out var messagesProp))
+            {
+                var lastAssistantMessage = string.Empty;
+                foreach (var msg in messagesProp.EnumerateArray())
+                {
+                    if (msg.TryGetProperty("role", out var roleProp) &&
+                        roleProp.GetString() == "assistant" &&
+                        msg.TryGetProperty("content", out var contentProp))
+                    {
+                        lastAssistantMessage = contentProp.GetString() ?? string.Empty;
+                    }
+                }
+
+                if (!string.IsNullOrWhiteSpace(lastAssistantMessage) && lastAssistantMessage.Length <= 500)
+                {
+                    return lastAssistantMessage;
+                }
+            }
+        }
+        catch
+        {
+            // Not valid JSON
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Cleans OpenCode CLI output to extract the actual response
+    /// </summary>
+    private static string CleanOpenCodeOutput(string output)
+    {
+        if (string.IsNullOrWhiteSpace(output))
+            return string.Empty;
+
+        // Try to parse as JSON stream
+        var lines = output.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        var textContent = new System.Text.StringBuilder();
+
+        foreach (var line in lines)
+        {
+            if (string.IsNullOrWhiteSpace(line)) continue;
+
+            try
+            {
+                using var doc = JsonDocument.Parse(line);
+                var root = doc.RootElement;
+
+                // Look for message or content fields
+                if (root.TryGetProperty("type", out var typeProp))
+                {
+                    var type = typeProp.GetString();
+                    if (type == "message" || type == "assistant")
+                    {
+                        if (root.TryGetProperty("content", out var contentProp))
+                        {
+                            textContent.Append(contentProp.GetString());
+                        }
+                    }
+                    else if (type == "done" || type == "complete")
+                    {
+                        if (root.TryGetProperty("output", out var outputProp))
+                        {
+                            var resultText = outputProp.GetString();
+                            if (!string.IsNullOrWhiteSpace(resultText))
+                            {
+                                return resultText.Trim();
+                            }
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                // Not JSON, accumulate as plain text
+                if (!line.StartsWith("{"))
+                {
+                    textContent.AppendLine(line);
+                }
+            }
+        }
+
+        var result = textContent.ToString().Trim();
+        return result.Length <= 500 ? result : result[..500];
+    }
+
+    /// <summary>
+    /// Generates a summary from execution output when session data isn't available
+    /// </summary>
+    private static string GenerateSummaryFromOutput(string output)
+    {
+        if (string.IsNullOrWhiteSpace(output))
+            return string.Empty;
+
+        var lines = output.Split('\n');
+        var significantActions = new List<string>();
+
+        foreach (var line in lines)
+        {
+            var trimmed = line.Trim();
+
+            // Skip empty lines and JSON
+            if (string.IsNullOrWhiteSpace(trimmed)) continue;
+            if (trimmed.StartsWith("{") || trimmed.StartsWith("[")) continue;
+            if (trimmed.Length < 10) continue;
+
+            // Look for action-oriented statements
+            if (trimmed.Contains("created", StringComparison.OrdinalIgnoreCase) ||
+                trimmed.Contains("modified", StringComparison.OrdinalIgnoreCase) ||
+                trimmed.Contains("updated", StringComparison.OrdinalIgnoreCase) ||
+                trimmed.Contains("added", StringComparison.OrdinalIgnoreCase) ||
+                trimmed.Contains("removed", StringComparison.OrdinalIgnoreCase) ||
+                trimmed.Contains("fixed", StringComparison.OrdinalIgnoreCase) ||
+                trimmed.Contains("implemented", StringComparison.OrdinalIgnoreCase) ||
+                trimmed.Contains("refactored", StringComparison.OrdinalIgnoreCase))
+            {
+                if (trimmed.Length < 200)
+                {
+                    significantActions.Add(trimmed);
+                }
+            }
+        }
+
+        if (significantActions.Count > 0)
+        {
+            return string.Join("; ", significantActions.Take(3));
+        }
+
+        // Fallback: return first meaningful line
+        foreach (var line in lines)
+        {
+            var trimmed = line.Trim();
+            if (!string.IsNullOrWhiteSpace(trimmed) &&
+                !trimmed.StartsWith("{") &&
+                !trimmed.StartsWith("[") &&
+                trimmed.Length >= 20 &&
+                trimmed.Length <= 200)
+            {
+                return trimmed;
+            }
+        }
+
+        return string.Empty;
+    }
+
     // JSON models for OpenCode CLI and API output
     private class OpenCodeStreamEvent
     {

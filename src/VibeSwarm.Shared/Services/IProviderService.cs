@@ -14,6 +14,22 @@ public interface IProviderService
     Task<ConnectionTestResult> TestConnectionWithDetailsAsync(Guid id, CancellationToken cancellationToken = default);
     Task SetEnabledAsync(Guid id, bool isEnabled, CancellationToken cancellationToken = default);
     Task SetDefaultAsync(Guid id, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Creates a provider instance from a provider configuration.
+    /// Useful for calling provider-specific methods like GetSessionSummaryAsync.
+    /// </summary>
+    IProvider? CreateInstance(Provider config);
+
+    /// <summary>
+    /// Gets the session summary for a completed job.
+    /// </summary>
+    Task<SessionSummary> GetSessionSummaryAsync(
+        Guid providerId,
+        string? sessionId,
+        string? workingDirectory = null,
+        string? fallbackOutput = null,
+        CancellationToken cancellationToken = default);
 }
 
 public class ConnectionTestResult

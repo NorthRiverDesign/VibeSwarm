@@ -31,6 +31,21 @@ public interface IProvider
     /// Get current usage limits for the provider
     /// </summary>
     Task<UsageLimits> GetUsageLimitsAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Get a summary of what was accomplished during a session.
+    /// Used to pre-populate commit messages after job completion.
+    /// </summary>
+    /// <param name="sessionId">The session ID from a previous execution</param>
+    /// <param name="workingDirectory">The working directory where the session ran</param>
+    /// <param name="fallbackOutput">Fallback output to summarize if session data isn't available</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>A concise summary suitable for a commit message</returns>
+    Task<SessionSummary> GetSessionSummaryAsync(
+        string? sessionId,
+        string? workingDirectory = null,
+        string? fallbackOutput = null,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -197,4 +212,40 @@ public enum UsageLimitType
     /// Rate limit (requests per time period)
     /// </summary>
     RateLimit
+}
+
+/// <summary>
+/// Summary of work accomplished during a provider session
+/// </summary>
+public class SessionSummary
+{
+    /// <summary>
+    /// Whether the summary was successfully retrieved
+    /// </summary>
+    public bool Success { get; set; }
+
+    /// <summary>
+    /// A concise summary suitable for a commit message (typically 1-3 lines)
+    /// </summary>
+    public string? Summary { get; set; }
+
+    /// <summary>
+    /// A more detailed description of changes made
+    /// </summary>
+    public string? DetailedDescription { get; set; }
+
+    /// <summary>
+    /// List of files that were modified (if available)
+    /// </summary>
+    public List<string> ModifiedFiles { get; set; } = new();
+
+    /// <summary>
+    /// Error message if summary retrieval failed
+    /// </summary>
+    public string? ErrorMessage { get; set; }
+
+    /// <summary>
+    /// The source of the summary (e.g., "session", "output", "fallback")
+    /// </summary>
+    public string? Source { get; set; }
 }

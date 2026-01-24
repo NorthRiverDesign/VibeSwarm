@@ -236,7 +236,15 @@ else
                     {
                         <div class="commit-form">
                             <div class="form-group">
-                                <label for="commitMessage">Commit Message</label>
+                                <label for="commitMessage">
+                                    Commit Message
+                                    @if (!string.IsNullOrWhiteSpace(Job.SessionSummary))
+                                    {
+                                        <span class="badge badge-info ms-2" title="Pre-populated from AI session summary">
+                                            <span class="ai-icon">🤖</span> AI Generated
+                                        </span>
+                                    }
+                                </label>
                                 <textarea id="commitMessage" class="commit-message-input" @bind="_commitMessage"
                                     @bind:event="oninput" placeholder="Enter a descriptive commit message..." rows="3"
                                     disabled="@_isPushing"></textarea>
@@ -419,6 +427,7 @@ else
     private string? _branchName = null;
     private CancellationTokenSource? _pushCancellationTokenSource;
     private const int PushTimeoutSeconds = 120;
+    private bool _commitMessageInitialized = false;
 
     private class OutputLine
     {
@@ -670,6 +679,13 @@ else
         try
         {
             Job = await JobService.GetByIdWithMessagesAsync(JobId);
+
+            // Pre-populate commit message from session summary if available and not already set
+            if (!_commitMessageInitialized && Job != null && !string.IsNullOrWhiteSpace(Job.SessionSummary))
+            {
+                _commitMessage = Job.SessionSummary;
+                _commitMessageInitialized = true;
+            }
         }
         finally
         {

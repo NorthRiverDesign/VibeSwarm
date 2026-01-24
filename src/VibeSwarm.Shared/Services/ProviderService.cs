@@ -161,6 +161,50 @@ public class ProviderService : IProviderService
         await _dbContext.SaveChangesAsync(cancellationToken);
     }
 
+    public IProvider? CreateInstance(Provider config)
+    {
+        try
+        {
+            return CreateProviderInstance(config);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    public async Task<SessionSummary> GetSessionSummaryAsync(
+        Guid providerId,
+        string? sessionId,
+        string? workingDirectory = null,
+        string? fallbackOutput = null,
+        CancellationToken cancellationToken = default)
+    {
+        var provider = await GetByIdAsync(providerId, cancellationToken);
+        if (provider == null)
+        {
+            return new SessionSummary
+            {
+                Success = false,
+                ErrorMessage = "Provider not found"
+            };
+        }
+
+        try
+        {
+            var instance = CreateProviderInstance(provider);
+            return await instance.GetSessionSummaryAsync(sessionId, workingDirectory, fallbackOutput, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return new SessionSummary
+            {
+                Success = false,
+                ErrorMessage = $"Failed to get session summary: {ex.Message}"
+            };
+        }
+    }
+
     private static IProvider CreateProviderInstance(Provider config)
     {
         return config.Type switch

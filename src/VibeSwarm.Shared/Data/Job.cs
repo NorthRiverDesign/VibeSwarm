@@ -153,6 +153,12 @@ public class Job
     public string? GitCommitBefore { get; set; }
 
     /// <summary>
+    /// AI-generated summary of the work accomplished during this job.
+    /// Used to pre-populate commit messages for one-click push.
+    /// </summary>
+    public string? SessionSummary { get; set; }
+
+    /// <summary>
     /// Accumulated console output from the CLI process during execution.
     /// This is the full output log, separate from Output which contains the result summary.
     /// </summary>

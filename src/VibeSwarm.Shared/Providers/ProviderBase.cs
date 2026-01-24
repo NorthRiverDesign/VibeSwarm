@@ -29,4 +29,10 @@ public abstract class ProviderBase : IProvider
     public abstract Task<ProviderInfo> GetProviderInfoAsync(CancellationToken cancellationToken = default);
 
     public abstract Task<UsageLimits> GetUsageLimitsAsync(CancellationToken cancellationToken = default);
+
+    public abstract Task<SessionSummary> GetSessionSummaryAsync(
+        string? sessionId,
+        string? workingDirectory = null,
+        string? fallbackOutput = null,
+        CancellationToken cancellationToken = default);
 }

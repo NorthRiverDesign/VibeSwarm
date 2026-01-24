@@ -157,6 +157,12 @@ public class JobCompletionMonitorService : BackgroundService
 			job.ErrorMessage = errorMessage;
 		}
 
+		// If job completed successfully, try to get a session summary
+		if (newStatus == JobStatus.Completed)
+		{
+			await TryFetchSessionSummaryAsync(job, dbContext, cancellationToken);
+		}
+
 		// Stop any supervised process
 		await _processSupervisor.StopProcessAsync(job.Id, graceful: false);
 
@@ -183,6 +189,51 @@ public class JobCompletionMonitorService : BackgroundService
 		if (JobStateMachine.IsTerminalState(newStatus))
 		{
 			await NotifyJobCompletedAsync(job.Id, newStatus == JobStatus.Completed, errorMessage);
+		}
+	}
+
+	/// <summary>
+	/// Attempts to fetch a session summary from the provider for pre-populating commit messages
+	/// </summary>
+	private async Task TryFetchSessionSummaryAsync(Job job, VibeSwarmDbContext dbContext, CancellationToken cancellationToken)
+	{
+		if (job.ProviderId == Guid.Empty)
+		{
+			_logger.LogDebug("Job {JobId} has no provider ID, skipping session summary", job.Id);
+			return;
+		}
+
+		try
+		{
+			using var scope = _scopeFactory.CreateScope();
+			var providerService = scope.ServiceProvider.GetRequiredService<IProviderService>();
+
+			var workingDirectory = job.Project?.WorkingPath;
+			var sessionSummary = await providerService.GetSessionSummaryAsync(
+				job.ProviderId,
+				job.SessionId,
+				workingDirectory,
+				job.Output ?? job.ConsoleOutput, // Use Output or ConsoleOutput as fallback
+				cancellationToken);
+
+			if (sessionSummary.Success && !string.IsNullOrWhiteSpace(sessionSummary.Summary))
+			{
+				job.SessionSummary = sessionSummary.Summary;
+				_logger.LogInformation("Retrieved session summary for job {JobId} from {Source}: {Summary}",
+					job.Id, sessionSummary.Source, sessionSummary.Summary.Length > 100
+						? sessionSummary.Summary[..100] + "..."
+						: sessionSummary.Summary);
+			}
+			else
+			{
+				_logger.LogDebug("Could not retrieve session summary for job {JobId}: {Error}",
+					job.Id, sessionSummary.ErrorMessage ?? "No summary available");
+			}
+		}
+		catch (Exception ex)
+		{
+			_logger.LogWarning(ex, "Failed to fetch session summary for job {JobId}", job.Id);
+			// Don't fail the job completion just because we couldn't get a summary
 		}
 	}
 
@@ -362,7 +413,10 @@ public class JobCompletionMonitorService : BackgroundService
 			{
 				using var scope = _scopeFactory.CreateScope();
 				var dbContext = scope.ServiceProvider.GetRequiredService<VibeSwarmDbContext>();
-				var job = await dbContext.Jobs.FindAsync(jobId);
+				var job = await dbContext.Jobs
+					.Include(j => j.Project)
+					.Include(j => j.Provider)
+					.FirstOrDefaultAsync(j => j.Id == jobId);
 
 				if (job != null && JobStateMachine.IsActiveState(job.Status))
 				{
@@ -376,6 +430,9 @@ public class JobCompletionMonitorService : BackgroundService
 						job.ProcessId = null;
 
 						_logger.LogInformation("Job {JobId} completed successfully", jobId);
+
+						// Try to get a session summary for pre-populating commit messages
+						await TryFetchSessionSummaryAsync(job, dbContext, CancellationToken.None);
 
 						// Update provider health
 						if (job.ProviderId != Guid.Empty)

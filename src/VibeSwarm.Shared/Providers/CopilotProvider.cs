@@ -796,6 +796,89 @@ public class CopilotProvider : ProviderBase
 		return PlatformHelper.EscapeArgument(argument).Trim('"', '\'');
 	}
 
+	public override Task<SessionSummary> GetSessionSummaryAsync(
+		string? sessionId,
+		string? workingDirectory = null,
+		string? fallbackOutput = null,
+		CancellationToken cancellationToken = default)
+	{
+		var summary = new SessionSummary();
+
+		// GitHub Copilot CLI doesn't have persistent sessions like Claude
+		// We rely on the fallback output to generate a summary
+
+		if (!string.IsNullOrEmpty(fallbackOutput))
+		{
+			summary.Summary = GenerateSummaryFromOutput(fallbackOutput);
+			summary.Success = !string.IsNullOrEmpty(summary.Summary);
+			summary.Source = "output";
+			return Task.FromResult(summary);
+		}
+
+		summary.Success = false;
+		summary.ErrorMessage = "GitHub Copilot CLI does not support session persistence. No output available to generate summary.";
+		return Task.FromResult(summary);
+	}
+
+	/// <summary>
+	/// Generates a summary from execution output
+	/// </summary>
+	private static string GenerateSummaryFromOutput(string output)
+	{
+		if (string.IsNullOrWhiteSpace(output))
+			return string.Empty;
+
+		var lines = output.Split('\n');
+		var significantActions = new List<string>();
+
+		foreach (var line in lines)
+		{
+			var trimmed = line.Trim();
+
+			// Skip empty lines and JSON
+			if (string.IsNullOrWhiteSpace(trimmed)) continue;
+			if (trimmed.StartsWith("{") || trimmed.StartsWith("[")) continue;
+			if (trimmed.Length < 10) continue;
+
+			// Look for action-oriented statements
+			if (trimmed.Contains("created", StringComparison.OrdinalIgnoreCase) ||
+				trimmed.Contains("modified", StringComparison.OrdinalIgnoreCase) ||
+				trimmed.Contains("updated", StringComparison.OrdinalIgnoreCase) ||
+				trimmed.Contains("added", StringComparison.OrdinalIgnoreCase) ||
+				trimmed.Contains("removed", StringComparison.OrdinalIgnoreCase) ||
+				trimmed.Contains("fixed", StringComparison.OrdinalIgnoreCase) ||
+				trimmed.Contains("implemented", StringComparison.OrdinalIgnoreCase) ||
+				trimmed.Contains("refactored", StringComparison.OrdinalIgnoreCase))
+			{
+				if (trimmed.Length < 200)
+				{
+					significantActions.Add(trimmed);
+				}
+			}
+		}
+
+		if (significantActions.Count > 0)
+		{
+			return string.Join("; ", significantActions.Take(3));
+		}
+
+		// Fallback: return first meaningful line
+		foreach (var line in lines)
+		{
+			var trimmed = line.Trim();
+			if (!string.IsNullOrWhiteSpace(trimmed) &&
+				!trimmed.StartsWith("{") &&
+				!trimmed.StartsWith("[") &&
+				trimmed.Length >= 20 &&
+				trimmed.Length <= 200)
+			{
+				return trimmed;
+			}
+		}
+
+		return string.Empty;
+	}
+
 	// JSON models for Copilot CLI output
 	private class CopilotStreamEvent
 	{
