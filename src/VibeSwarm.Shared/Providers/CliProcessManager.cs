@@ -126,9 +126,15 @@ public class CliProcessManager : IDisposable
 		var startInfo = new ProcessStartInfo
 		{
 			FileName = executablePath,
-			Arguments = options.Arguments,
-			WorkingDirectory = options.WorkingDirectory ?? Environment.CurrentDirectory,
+			Arguments = options.Arguments
 		};
+
+		// Only set working directory if explicitly provided
+		// This allows systemd services to work without a specific working directory
+		if (!string.IsNullOrEmpty(options.WorkingDirectory))
+		{
+			startInfo.WorkingDirectory = options.WorkingDirectory;
+		}
 
 		PlatformHelper.ConfigureForCrossPlatform(startInfo);
 

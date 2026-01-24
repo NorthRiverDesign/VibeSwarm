@@ -55,14 +55,17 @@ public class CopilotProvider : ProviderBase
 			var startInfo = new ProcessStartInfo
 			{
 				FileName = execPath,
-				Arguments = "--version",
-				RedirectStandardOutput = true,
-				RedirectStandardError = true,
-				RedirectStandardInput = true,
-				UseShellExecute = false,
-				CreateNoWindow = true,
-				WorkingDirectory = _workingDirectory ?? Environment.CurrentDirectory
+				Arguments = "--version"
 			};
+
+			// Configure for cross-platform with enhanced PATH (essential for systemd services)
+			PlatformHelper.ConfigureForCrossPlatform(startInfo);
+
+			// Only set working directory if explicitly configured
+			if (!string.IsNullOrEmpty(_workingDirectory))
+			{
+				startInfo.WorkingDirectory = _workingDirectory;
+			}
 
 			using var process = new Process { StartInfo = startInfo };
 
@@ -135,9 +138,12 @@ public class CopilotProvider : ProviderBase
 		catch (System.ComponentModel.Win32Exception ex)
 		{
 			IsConnected = false;
+			var envPath = Environment.GetEnvironmentVariable("PATH") ?? "not set";
 			LastConnectionError = $"Failed to start GitHub Copilot CLI: {ex.Message}. " +
 				$"Executable path: '{execPath}'. " +
-				$"Ensure the GitHub Copilot CLI is installed and available in your PATH.";
+				$"Current PATH: {envPath}. " +
+				$"If running as a systemd service, ensure the executable is in a standard location " +
+				$"or configure the full path to the executable in the provider settings.";
 			return false;
 		}
 		catch (Exception ex)
@@ -451,13 +457,17 @@ public class CopilotProvider : ProviderBase
 		var startInfo = new ProcessStartInfo
 		{
 			FileName = execPath,
-			Arguments = args,
-			RedirectStandardOutput = true,
-			RedirectStandardError = true,
-			UseShellExecute = false,
-			CreateNoWindow = true,
-			WorkingDirectory = _workingDirectory ?? Environment.CurrentDirectory
+			Arguments = args
 		};
+
+		// Configure for cross-platform with enhanced PATH
+		PlatformHelper.ConfigureForCrossPlatform(startInfo);
+
+		// Only set working directory if explicitly configured
+		if (!string.IsNullOrEmpty(_workingDirectory))
+		{
+			startInfo.WorkingDirectory = _workingDirectory;
+		}
 
 		using var process = new Process { StartInfo = startInfo };
 		process.Start();
@@ -516,12 +526,11 @@ public class CopilotProvider : ProviderBase
 			var versionInfo = new ProcessStartInfo
 			{
 				FileName = execPath,
-				Arguments = "--version",
-				RedirectStandardOutput = true,
-				RedirectStandardError = true,
-				UseShellExecute = false,
-				CreateNoWindow = true
+				Arguments = "--version"
 			};
+
+			// Configure for cross-platform with enhanced PATH
+			PlatformHelper.ConfigureForCrossPlatform(versionInfo);
 
 			using var versionProcess = new Process { StartInfo = versionInfo };
 			versionProcess.Start();
@@ -577,12 +586,11 @@ public class CopilotProvider : ProviderBase
 			var startInfo = new ProcessStartInfo
 			{
 				FileName = "gh",
-				Arguments = "api user",
-				RedirectStandardOutput = true,
-				RedirectStandardError = true,
-				UseShellExecute = false,
-				CreateNoWindow = true
+				Arguments = "api user"
 			};
+
+			// Configure for cross-platform with enhanced PATH
+			PlatformHelper.ConfigureForCrossPlatform(startInfo);
 
 			using var process = new Process { StartInfo = startInfo };
 
@@ -670,12 +678,11 @@ public class CopilotProvider : ProviderBase
 			var startInfo = new ProcessStartInfo
 			{
 				FileName = "gh",
-				Arguments = "api /copilot/usage --jq '.premium_requests // empty'",
-				RedirectStandardOutput = true,
-				RedirectStandardError = true,
-				UseShellExecute = false,
-				CreateNoWindow = true
+				Arguments = "api /copilot/usage --jq '.premium_requests // empty'"
 			};
+
+			// Configure for cross-platform with enhanced PATH
+			PlatformHelper.ConfigureForCrossPlatform(startInfo);
 
 			using var process = new Process { StartInfo = startInfo };
 
@@ -739,12 +746,11 @@ public class CopilotProvider : ProviderBase
 			var headerInfo = new ProcessStartInfo
 			{
 				FileName = "gh",
-				Arguments = "api -i /user",
-				RedirectStandardOutput = true,
-				RedirectStandardError = true,
-				UseShellExecute = false,
-				CreateNoWindow = true
+				Arguments = "api -i /user"
 			};
+
+			// Configure for cross-platform with enhanced PATH
+			PlatformHelper.ConfigureForCrossPlatform(headerInfo);
 
 			using var headerProcess = new Process { StartInfo = headerInfo };
 			headerProcess.Start();

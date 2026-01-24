@@ -83,14 +83,17 @@ public class ClaudeProvider : ProviderBase
             var startInfo = new ProcessStartInfo
             {
                 FileName = execPath,
-                Arguments = "--version",
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                RedirectStandardInput = true,  // Redirect stdin to prevent hanging on prompts
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                WorkingDirectory = _workingDirectory ?? Environment.CurrentDirectory
+                Arguments = "--version"
             };
+
+            // Configure for cross-platform with enhanced PATH (essential for systemd services)
+            PlatformHelper.ConfigureForCrossPlatform(startInfo);
+
+            // Only set working directory if explicitly configured
+            if (!string.IsNullOrEmpty(_workingDirectory))
+            {
+                startInfo.WorkingDirectory = _workingDirectory;
+            }
 
             using var process = new Process { StartInfo = startInfo };
 
@@ -121,7 +124,6 @@ public class ClaudeProvider : ProviderBase
                 try { process.Kill(entireProcessTree: true); } catch { }
                 IsConnected = false;
                 LastConnectionError = $"CLI test timed out after 10 seconds. Command: {execPath} --version\n" +
-                    $"Working directory: {_workingDirectory ?? Environment.CurrentDirectory}\n" +
                     "This usually indicates:\n" +
                     "  - The CLI is waiting for authentication (check if 'claude' works in terminal)\n" +
                     "  - The CLI is trying to access the network and timing out\n" +
@@ -142,7 +144,6 @@ public class ClaudeProvider : ProviderBase
                 var errorDetails = new System.Text.StringBuilder();
                 errorDetails.AppendLine($"CLI test failed for command: {execPath} --version");
                 errorDetails.AppendLine($"Exit code: {process.ExitCode}");
-                errorDetails.AppendLine($"Working directory: {_workingDirectory ?? Environment.CurrentDirectory}");
 
                 if (!string.IsNullOrEmpty(error))
                 {
@@ -171,9 +172,12 @@ public class ClaudeProvider : ProviderBase
         {
             // Executable not found or can't be started
             IsConnected = false;
+            var envPath = Environment.GetEnvironmentVariable("PATH") ?? "not set";
             LastConnectionError = $"Failed to start Claude CLI: {ex.Message}. " +
                 $"Executable path: '{execPath}'. " +
-                $"Ensure the Claude CLI is installed and the path is correct, or leave ExecutablePath empty to use 'claude' from PATH.";
+                $"Current PATH: {envPath}. " +
+                $"If running as a systemd service, ensure the executable is in a standard location " +
+                $"or configure the full path to the executable in the provider settings.";
             return false;
         }
         catch (Exception ex)
@@ -662,13 +666,17 @@ public class ClaudeProvider : ProviderBase
         var startInfo = new ProcessStartInfo
         {
             FileName = execPath,
-            Arguments = args,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            WorkingDirectory = _workingDirectory ?? Environment.CurrentDirectory
+            Arguments = args
         };
+
+        // Configure for cross-platform with enhanced PATH
+        PlatformHelper.ConfigureForCrossPlatform(startInfo);
+
+        // Only set working directory if explicitly configured
+        if (!string.IsNullOrEmpty(_workingDirectory))
+        {
+            startInfo.WorkingDirectory = _workingDirectory;
+        }
 
         using var process = new Process { StartInfo = startInfo };
         process.Start();
@@ -760,11 +768,11 @@ public class ClaudeProvider : ProviderBase
                 var versionInfo = new ProcessStartInfo
                 {
                     FileName = execPath,
-                    Arguments = "--version",
-                    RedirectStandardOutput = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true
+                    Arguments = "--version"
                 };
+
+                // Configure for cross-platform with enhanced PATH
+                PlatformHelper.ConfigureForCrossPlatform(versionInfo);
 
                 using var versionProcess = new Process { StartInfo = versionInfo };
                 versionProcess.Start();
@@ -776,12 +784,11 @@ public class ClaudeProvider : ProviderBase
                 var usageInfo = new ProcessStartInfo
                 {
                     FileName = execPath,
-                    Arguments = "/usage",
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true
+                    Arguments = "/usage"
                 };
+
+                // Configure for cross-platform with enhanced PATH
+                PlatformHelper.ConfigureForCrossPlatform(usageInfo);
 
                 using var usageProcess = new Process { StartInfo = usageInfo };
                 usageProcess.Start();

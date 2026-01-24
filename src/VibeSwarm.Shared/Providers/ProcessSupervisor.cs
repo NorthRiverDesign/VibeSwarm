@@ -69,9 +69,14 @@ public class ProcessSupervisor : IDisposable
 		var startInfo = new ProcessStartInfo
 		{
 			FileName = executablePath,
-			Arguments = options.Arguments,
-			WorkingDirectory = options.WorkingDirectory ?? Environment.CurrentDirectory
+			Arguments = options.Arguments
 		};
+
+		// Only set working directory if explicitly provided
+		if (!string.IsNullOrEmpty(options.WorkingDirectory))
+		{
+			startInfo.WorkingDirectory = options.WorkingDirectory;
+		}
 
 		PlatformHelper.ConfigureForCrossPlatform(startInfo);
 
@@ -195,9 +200,14 @@ public class ProcessSupervisor : IDisposable
 		var startInfo = new ProcessStartInfo
 		{
 			FileName = PlatformHelper.ResolveExecutablePath(supervised.Options.Executable),
-			Arguments = supervised.Options.Arguments,
-			WorkingDirectory = supervised.Options.WorkingDirectory ?? Environment.CurrentDirectory
+			Arguments = supervised.Options.Arguments
 		};
+
+		// Only set working directory if explicitly provided
+		if (!string.IsNullOrEmpty(supervised.Options.WorkingDirectory))
+		{
+			startInfo.WorkingDirectory = supervised.Options.WorkingDirectory;
+		}
 
 		PlatformHelper.ConfigureForCrossPlatform(startInfo);
 

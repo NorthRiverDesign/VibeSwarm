@@ -100,10 +100,156 @@ public static class PlatformHelper
 	}
 
 	/// <summary>
-	/// Configures a ProcessStartInfo for cross-platform execution
+	/// Gets an enhanced PATH that includes common CLI tool installation directories.
+	/// This is essential for systemd services which run with minimal environments.
+	/// </summary>
+	/// <param name="homeDir">The user's home directory (if null, will try to detect)</param>
+	/// <returns>A PATH string with additional common tool directories</returns>
+	public static string GetEnhancedPath(string? homeDir = null)
+	{
+		var currentPath = Environment.GetEnvironmentVariable("PATH") ?? "";
+
+		if (IsWindows)
+		{
+			return currentPath;
+		}
+
+		// Try to determine home directory if not provided
+		if (string.IsNullOrEmpty(homeDir))
+		{
+			homeDir = Environment.GetEnvironmentVariable("HOME");
+		}
+
+		var additionalPaths = new List<string>();
+
+		// Always add system paths that might be missing in systemd services
+		additionalPaths.AddRange(new[]
+		{
+			"/usr/local/bin",
+			"/usr/local/sbin",
+			"/usr/bin",
+			"/usr/sbin",
+			"/bin",
+			"/sbin",
+			"/snap/bin",  // Ubuntu snap packages
+			"/opt/homebrew/bin",  // macOS ARM homebrew
+			"/opt/homebrew/sbin"
+		});
+
+		if (!string.IsNullOrEmpty(homeDir))
+		{
+			// User-specific paths where CLI tools are commonly installed
+			additionalPaths.AddRange(new[]
+			{
+				Path.Combine(homeDir, ".local", "bin"),  // pip, pipx, many tools
+				Path.Combine(homeDir, "bin"),
+				Path.Combine(homeDir, ".cargo", "bin"),  // Rust/Cargo tools
+				Path.Combine(homeDir, "go", "bin"),  // Go tools
+				Path.Combine(homeDir, ".npm-global", "bin"),  // npm global (custom prefix)
+				Path.Combine(homeDir, ".npm-packages", "bin"),  // npm global (another common location)
+			});
+
+			// nvm (Node Version Manager) - check for installed versions
+			var nvmDir = Path.Combine(homeDir, ".nvm", "versions", "node");
+			if (Directory.Exists(nvmDir))
+			{
+				try
+				{
+					// Add the most recent node version's bin directory
+					var nodeVersions = Directory.GetDirectories(nvmDir)
+						.OrderByDescending(d => d)
+						.Take(3);  // Add the 3 most recent versions
+
+					foreach (var versionDir in nodeVersions)
+					{
+						additionalPaths.Add(Path.Combine(versionDir, "bin"));
+					}
+				}
+				catch
+				{
+					// Ignore errors scanning nvm directory
+				}
+			}
+
+			// fnm (Fast Node Manager) - similar to nvm
+			var fnmDir = Path.Combine(homeDir, ".local", "share", "fnm", "node-versions");
+			if (Directory.Exists(fnmDir))
+			{
+				try
+				{
+					var nodeVersions = Directory.GetDirectories(fnmDir)
+						.OrderByDescending(d => d)
+						.Take(3);
+
+					foreach (var versionDir in nodeVersions)
+					{
+						additionalPaths.Add(Path.Combine(versionDir, "installation", "bin"));
+					}
+				}
+				catch
+				{
+					// Ignore errors scanning fnm directory
+				}
+			}
+
+			// volta (Node version manager)
+			var voltaBin = Path.Combine(homeDir, ".volta", "bin");
+			if (Directory.Exists(voltaBin))
+			{
+				additionalPaths.Add(voltaBin);
+			}
+
+			// pyenv
+			var pyenvShims = Path.Combine(homeDir, ".pyenv", "shims");
+			if (Directory.Exists(pyenvShims))
+			{
+				additionalPaths.Add(pyenvShims);
+			}
+
+			// rbenv (Ruby)
+			var rbenvShims = Path.Combine(homeDir, ".rbenv", "shims");
+			if (Directory.Exists(rbenvShims))
+			{
+				additionalPaths.Add(rbenvShims);
+			}
+
+			// Deno
+			var denoBin = Path.Combine(homeDir, ".deno", "bin");
+			if (Directory.Exists(denoBin))
+			{
+				additionalPaths.Add(denoBin);
+			}
+
+			// Bun
+			var bunBin = Path.Combine(homeDir, ".bun", "bin");
+			if (Directory.Exists(bunBin))
+			{
+				additionalPaths.Add(bunBin);
+			}
+		}
+
+		// Filter to only existing paths not already in PATH
+		var newPaths = additionalPaths
+			.Where(p => Directory.Exists(p) && !currentPath.Contains(p))
+			.Distinct();
+
+		if (newPaths.Any())
+		{
+			return string.Join(Path.PathSeparator.ToString(),
+				newPaths.Concat(new[] { currentPath }));
+		}
+
+		return currentPath;
+	}
+
+	/// <summary>
+	/// Configures a ProcessStartInfo for cross-platform execution.
+	/// This method ensures that CLI tools installed in common locations can be found,
+	/// which is especially important when running as a systemd service.
 	/// </summary>
 	/// <param name="startInfo">The ProcessStartInfo to configure</param>
-	public static void ConfigureForCrossPlatform(ProcessStartInfo startInfo)
+	/// <param name="homeDir">Optional user home directory to use for path resolution</param>
+	public static void ConfigureForCrossPlatform(ProcessStartInfo startInfo, string? homeDir = null)
 	{
 		startInfo.UseShellExecute = false;
 		startInfo.CreateNoWindow = true;
@@ -111,29 +257,15 @@ public static class PlatformHelper
 		startInfo.RedirectStandardError = true;
 		startInfo.RedirectStandardInput = true;
 
-		// On Linux/macOS, ensure we inherit the environment for tools installed in user paths
+		// On Linux/macOS, ensure we have comprehensive PATH for CLI tools
 		if (!IsWindows)
 		{
-			// Preserve important environment variables
-			var homeDir = Environment.GetEnvironmentVariable("HOME");
-			if (!string.IsNullOrEmpty(homeDir))
-			{
-				// Add common tool installation paths that might not be in PATH
-				var additionalPaths = new[]
-				{
-					Path.Combine(homeDir, ".local", "bin"),
-					Path.Combine(homeDir, "bin"),
-					"/usr/local/bin",
-					"/opt/homebrew/bin"  // macOS ARM homebrew
-                };
+			startInfo.Environment["PATH"] = GetEnhancedPath(homeDir);
 
-				var currentPath = Environment.GetEnvironmentVariable("PATH") ?? "";
-				var newPaths = additionalPaths.Where(p => Directory.Exists(p) && !currentPath.Contains(p));
-				if (newPaths.Any())
-				{
-					startInfo.Environment["PATH"] = string.Join(Path.PathSeparator.ToString(),
-						newPaths.Concat(new[] { currentPath }));
-				}
+			// Also ensure HOME is set (may be missing in systemd services)
+			if (!string.IsNullOrEmpty(homeDir) && string.IsNullOrEmpty(startInfo.Environment["HOME"]))
+			{
+				startInfo.Environment["HOME"] = homeDir;
 			}
 		}
 	}
