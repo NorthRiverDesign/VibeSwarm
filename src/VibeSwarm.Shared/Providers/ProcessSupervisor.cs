@@ -42,6 +42,11 @@ public class ProcessSupervisor : IDisposable
 	public event Action<Guid, int>? ProcessExitedUnexpectedly;
 
 	/// <summary>
+	/// Event fired when any process exits (success or failure)
+	/// </summary>
+	public event Action<Guid, int>? ProcessExited; // jobId, exitCode
+
+	/// <summary>
 	/// Event fired when a process is restarted
 	/// </summary>
 	public event Action<Guid, int, int>? ProcessRestarted; // jobId, oldPid, newPid
@@ -379,12 +384,19 @@ public class ProcessSupervisor : IDisposable
 				ProcessUnhealthy?.Invoke(jobId, health);
 			}
 
-			// Check for unexpected exit
+			// Check for process exit
 			if (supervised.Process != null && supervised.Process.HasExited && !supervised.IsCompleted)
 			{
 				supervised.IsCompleted = true;
 				supervised.ExitCode = supervised.Process.ExitCode;
 
+				_logger?.LogInformation("Process for job {JobId} exited with code {ExitCode}",
+					jobId, supervised.Process.ExitCode);
+
+				// Fire event for any process exit (success or failure)
+				ProcessExited?.Invoke(jobId, supervised.Process.ExitCode);
+
+				// Also fire specific event for non-zero exits
 				if (supervised.Process.ExitCode != 0)
 				{
 					_logger?.LogWarning("Process for job {JobId} exited unexpectedly with code {ExitCode}",

@@ -37,6 +37,7 @@ public class JobCompletionMonitorService : BackgroundService
 		// Subscribe to process events
 		_processSupervisor.ProcessUnhealthy += OnProcessUnhealthy;
 		_processSupervisor.ProcessExitedUnexpectedly += OnProcessExitedUnexpectedly;
+		_processSupervisor.ProcessExited += OnProcessExited;
 	}
 
 	protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -348,10 +349,63 @@ public class JobCompletionMonitorService : BackgroundService
 		}
 	}
 
+	/// <summary>
+	/// Handles any process exit (success or failure) to ensure UI is updated immediately
+	/// </summary>
+	private void OnProcessExited(Guid jobId, int exitCode)
+	{
+		_logger.LogInformation("Process for job {JobId} exited with code {ExitCode}", jobId, exitCode);
+
+		Task.Run(async () =>
+		{
+			try
+			{
+				using var scope = _scopeFactory.CreateScope();
+				var dbContext = scope.ServiceProvider.GetRequiredService<VibeSwarmDbContext>();
+				var job = await dbContext.Jobs.FindAsync(jobId);
+
+				if (job != null && JobStateMachine.IsActiveState(job.Status))
+				{
+					if (exitCode == 0)
+					{
+						// Process completed successfully
+						job.Status = JobStatus.Completed;
+						job.CompletedAt = DateTime.UtcNow;
+						job.CurrentActivity = null;
+						job.WorkerInstanceId = null;
+						job.ProcessId = null;
+
+						_logger.LogInformation("Job {JobId} completed successfully", jobId);
+
+						// Update provider health
+						if (job.ProviderId != Guid.Empty)
+						{
+							_healthTracker.RecordSuccess(job.ProviderId,
+								job.StartedAt.HasValue ? DateTime.UtcNow - job.StartedAt.Value : null);
+							_healthTracker.DecrementProviderLoad(job.ProviderId);
+						}
+
+						await dbContext.SaveChangesAsync();
+
+						// Notify UI immediately
+						await NotifyJobStatusChangedAsync(job.Id, job.Status.ToString());
+						await NotifyJobCompletedAsync(job.Id, true, null);
+					}
+					// Non-zero exit codes are handled by OnProcessExitedUnexpectedly
+				}
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError(ex, "Error handling process exit for job {JobId}", jobId);
+			}
+		});
+	}
+
 	public override void Dispose()
 	{
 		_processSupervisor.ProcessUnhealthy -= OnProcessUnhealthy;
 		_processSupervisor.ProcessExitedUnexpectedly -= OnProcessExitedUnexpectedly;
+		_processSupervisor.ProcessExited -= OnProcessExited;
 		base.Dispose();
 	}
 }
