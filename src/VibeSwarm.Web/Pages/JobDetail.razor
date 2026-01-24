@@ -5,6 +5,7 @@
 @implements IAsyncDisposable
 @using System.Threading
 @using System.Collections.Concurrent
+@using VibeSwarm.Shared.Utilities
 
 @if (IsLoading)
 {
@@ -223,6 +224,73 @@ else
                         </div>
                     }
                 </div>
+
+                @* Commit and Push Section - shown when there are git changes *@
+                <div class="git-push-section">
+                    <h5>
+                        <span class="push-icon">🚀</span>
+                        Commit & Push Changes
+                    </h5>
+
+                    @if (!_changesPushed)
+                    {
+                        <div class="commit-form">
+                            <div class="form-group">
+                                <label for="commitMessage">Commit Message</label>
+                                <textarea id="commitMessage" class="commit-message-input" @bind="_commitMessage"
+                                    @bind:event="oninput" placeholder="Enter a descriptive commit message..." rows="3"
+                                    disabled="@_isPushing"></textarea>
+                            </div>
+
+                            <div class="push-actions">
+                                <button class="btn btn-primary btn-push" @onclick="CommitAndPushChanges" disabled="@(!CanPush)">
+                                    @if (_isPushing)
+                                    {
+                                        <span class="spinner-small"></span>
+                                        <text>@_pushStatus</text>
+                                    }
+                                    else
+                                    {
+                                        <text>Commit & Push</text>
+                                    }
+                                </button>
+
+                                @if (!string.IsNullOrEmpty(_branchName))
+                                {
+                                    <span class="branch-info">
+                                        <span class="branch-icon">🌿</span>
+                                        @_branchName
+                                    </span>
+                                }
+                            </div>
+                        </div>
+
+                        @if (!string.IsNullOrEmpty(_pushError))
+                        {
+                            <div class="push-error">
+                                <span class="error-icon">❌</span>
+                                @_pushError
+                            </div>
+                        }
+                    }
+                    else
+                    {
+                        <div class="push-success">
+                            <span class="success-icon">✅</span>
+                            <div class="success-details">
+                                <strong>Changes pushed successfully!</strong>
+                                @if (!string.IsNullOrEmpty(_pushedCommitHash))
+                                {
+                                    <span class="commit-hash">Commit: @_pushedCommitHash[..Math.Min(7, _pushedCommitHash.Length)]</span>
+                                }
+                                @if (!string.IsNullOrEmpty(_branchName))
+                                {
+                                    <span class="branch-pushed">Branch: @_branchName</span>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
             }
             else if (!IsJobActive && Job.Status == JobStatus.Completed && string.IsNullOrEmpty(Job.GitDiff))
             {
@@ -332,7 +400,7 @@ else
     private bool _isRefreshing = false;
     private DateTime _pageLoadTime = DateTime.UtcNow;
     private ElementReference _outputContainer;
-    
+
     // Toggle states for collapsible sections
     private bool _showConsoleOutput = false;
     private bool _showGitDiff = true; // Show by default since it's usually the most interesting part
@@ -340,6 +408,17 @@ else
     // Live output buffer
     private const int MaxOutputLines = 500;
     private readonly List<OutputLine> _liveOutput = new();
+
+    // Commit and push state
+    private string _commitMessage = string.Empty;
+    private bool _isPushing = false;
+    private string _pushStatus = "Pushing...";
+    private string? _pushError = null;
+    private bool _changesPushed = false;
+    private string? _pushedCommitHash = null;
+    private string? _branchName = null;
+    private CancellationTokenSource? _pushCancellationTokenSource;
+    private const int PushTimeoutSeconds = 120;
 
     private class OutputLine
     {
@@ -371,10 +450,16 @@ else
     Job.Status == JobStatus.Started ||
     Job.Status == JobStatus.Processing);
 
+    private bool CanPush => !_isPushing &&
+    !string.IsNullOrWhiteSpace(_commitMessage) &&
+    !_changesPushed &&
+    Job?.Project?.WorkingPath != null;
+
     protected override async Task OnInitializedAsync()
     {
         await LoadJob();
         StartAutoRefresh();
+        await LoadBranchName();
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -704,17 +789,86 @@ else
             return text;
         return text[..maxLength] + "\n... (truncated)";
     }
-    
+
     private void ToggleConsoleOutput()
     {
         _showConsoleOutput = !_showConsoleOutput;
     }
-    
+
     private void ToggleGitDiff()
     {
         _showGitDiff = !_showGitDiff;
     }
-    
+
+    private async Task LoadBranchName()
+    {
+        try
+        {
+            if (Job?.Project?.WorkingPath != null)
+            {
+                _branchName = await GitHelper.GetCurrentBranchAsync(Job.Project.WorkingPath);
+            }
+        }
+        catch
+        {
+            // Ignore errors loading branch name
+        }
+    }
+
+    private async Task CommitAndPushChanges()
+    {
+        if (Job?.Project?.WorkingPath == null || string.IsNullOrWhiteSpace(_commitMessage))
+            return;
+
+        _isPushing = true;
+        _pushError = null;
+        _pushStatus = "Checking for changes...";
+        StateHasChanged();
+
+        _pushCancellationTokenSource?.Cancel();
+        _pushCancellationTokenSource = new CancellationTokenSource(TimeSpan.FromSeconds(PushTimeoutSeconds));
+
+        try
+        {
+            var result = await GitHelper.CommitAndPushAsync(
+            Job.Project.WorkingPath,
+            _commitMessage,
+            "origin",
+            status =>
+            {
+                _pushStatus = status;
+                InvokeAsync(StateHasChanged);
+            },
+            _pushCancellationTokenSource.Token);
+
+            if (result.Success)
+            {
+                _changesPushed = true;
+                _pushedCommitHash = result.CommitHash;
+                _branchName = result.BranchName ?? _branchName;
+                SuccessMessage = "Changes committed and pushed successfully!";
+            }
+            else
+            {
+                _pushError = result.Error ?? "An unknown error occurred";
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            _pushError = "Push operation timed out. Please check your network connection and try again.";
+        }
+        catch (Exception ex)
+        {
+            _pushError = $"Unexpected error: {ex.Message}";
+        }
+        finally
+        {
+            _isPushing = false;
+            _pushStatus = "Pushing...";
+            StateHasChanged();
+        }
+    }
+
     /// <summary>
     /// Formats git diff output with syntax highlighting for HTML display
     /// </summary>
@@ -722,14 +876,14 @@ else
     {
         if (string.IsNullOrEmpty(diff))
             return string.Empty;
-            
+
         var lines = diff.Split('\n');
         var result = new System.Text.StringBuilder();
-        
+
         foreach (var line in lines)
         {
             var escapedLine = System.Net.WebUtility.HtmlEncode(line);
-            
+
             if (line.StartsWith("+++") || line.StartsWith("---"))
             {
                 result.AppendLine($"<div class=\"diff-file-header\">{escapedLine}</div>");
@@ -759,13 +913,15 @@ else
                 result.AppendLine($"<div class=\"diff-context\">{escapedLine}</div>");
             }
         }
-        
+
         return result.ToString();
     }
 
     public async ValueTask DisposeAsync()
     {
         _refreshTimer?.Dispose();
+        _pushCancellationTokenSource?.Cancel();
+        _pushCancellationTokenSource?.Dispose();
 
         if (_signalRModule != null)
         {
