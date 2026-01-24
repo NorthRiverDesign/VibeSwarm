@@ -141,6 +141,23 @@ public class Job
     /// </summary>
     public Guid? DependsOnJobId { get; set; }
 
+    /// <summary>
+    /// Git diff showing changes made during job execution.
+    /// Captured after job completes by comparing working directory state.
+    /// </summary>
+    public string? GitDiff { get; set; }
+
+    /// <summary>
+    /// Git commit hash at the start of job execution (for baseline comparison)
+    /// </summary>
+    public string? GitCommitBefore { get; set; }
+
+    /// <summary>
+    /// Accumulated console output from the CLI process during execution.
+    /// This is the full output log, separate from Output which contains the result summary.
+    /// </summary>
+    public string? ConsoleOutput { get; set; }
+
     public ICollection<JobMessage> Messages { get; set; } = new List<JobMessage>();
 
     /// <summary>

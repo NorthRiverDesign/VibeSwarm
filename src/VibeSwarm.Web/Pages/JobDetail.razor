@@ -186,6 +186,50 @@ else
                     </div>
                 </div>
             }
+
+            @* Saved Console Output - shown after job completes *@
+            @if (!IsJobActive && !string.IsNullOrEmpty(Job.ConsoleOutput))
+            {
+                <div class="console-output-section">
+                    <h5>
+                        <span class="output-icon">📋</span>
+                        Console Output
+                        <button class="btn btn-sm btn-secondary" @onclick="ToggleConsoleOutput">
+                            @(_showConsoleOutput ? "Hide" : "Show")
+                        </button>
+                    </h5>
+                    @if (_showConsoleOutput)
+                    {
+                        <pre class="console-output-box">@Job.ConsoleOutput</pre>
+                    }
+                </div>
+            }
+
+            @* Git Diff Section - shown after job completes if changes were detected *@
+            @if (!IsJobActive && !string.IsNullOrEmpty(Job.GitDiff))
+            {
+                <div class="git-diff-section">
+                    <h5>
+                        <span class="diff-icon">📝</span>
+                        Git Changes
+                        <button class="btn btn-sm btn-secondary" @onclick="ToggleGitDiff">
+                            @(_showGitDiff ? "Hide" : "Show")
+                        </button>
+                    </h5>
+                    @if (_showGitDiff)
+                    {
+                        <div class="diff-container">
+                            @((MarkupString)FormatGitDiff(Job.GitDiff))
+                        </div>
+                    }
+                </div>
+            }
+            else if (!IsJobActive && Job.Status == JobStatus.Completed && string.IsNullOrEmpty(Job.GitDiff))
+            {
+                <div class="no-changes-section">
+                    <p class="no-changes-message">No file changes detected during this job.</p>
+                </div>
+            }
         </div>
 
         <div class="job-messages-section">
@@ -288,6 +332,10 @@ else
     private bool _isRefreshing = false;
     private DateTime _pageLoadTime = DateTime.UtcNow;
     private ElementReference _outputContainer;
+    
+    // Toggle states for collapsible sections
+    private bool _showConsoleOutput = false;
+    private bool _showGitDiff = true; // Show by default since it's usually the most interesting part
 
     // Live output buffer
     private const int MaxOutputLines = 500;
@@ -655,6 +703,64 @@ else
         if (string.IsNullOrEmpty(text) || text.Length <= maxLength)
             return text;
         return text[..maxLength] + "\n... (truncated)";
+    }
+    
+    private void ToggleConsoleOutput()
+    {
+        _showConsoleOutput = !_showConsoleOutput;
+    }
+    
+    private void ToggleGitDiff()
+    {
+        _showGitDiff = !_showGitDiff;
+    }
+    
+    /// <summary>
+    /// Formats git diff output with syntax highlighting for HTML display
+    /// </summary>
+    private static string FormatGitDiff(string diff)
+    {
+        if (string.IsNullOrEmpty(diff))
+            return string.Empty;
+            
+        var lines = diff.Split('\n');
+        var result = new System.Text.StringBuilder();
+        
+        foreach (var line in lines)
+        {
+            var escapedLine = System.Net.WebUtility.HtmlEncode(line);
+            
+            if (line.StartsWith("+++") || line.StartsWith("---"))
+            {
+                result.AppendLine($"<div class=\"diff-file-header\">{escapedLine}</div>");
+            }
+            else if (line.StartsWith("@@"))
+            {
+                result.AppendLine($"<div class=\"diff-hunk-header\">{escapedLine}</div>");
+            }
+            else if (line.StartsWith("+") && !line.StartsWith("+++"))
+            {
+                result.AppendLine($"<div class=\"diff-added\">{escapedLine}</div>");
+            }
+            else if (line.StartsWith("-") && !line.StartsWith("---"))
+            {
+                result.AppendLine($"<div class=\"diff-removed\">{escapedLine}</div>");
+            }
+            else if (line.StartsWith("diff "))
+            {
+                result.AppendLine($"<div class=\"diff-header\">{escapedLine}</div>");
+            }
+            else if (line.StartsWith("index ") || line.StartsWith("new file") || line.StartsWith("deleted file"))
+            {
+                result.AppendLine($"<div class=\"diff-meta\">{escapedLine}</div>");
+            }
+            else
+            {
+                result.AppendLine($"<div class=\"diff-context\">{escapedLine}</div>");
+            }
+        }
+        
+        return result.ToString();
     }
 
     public async ValueTask DisposeAsync()

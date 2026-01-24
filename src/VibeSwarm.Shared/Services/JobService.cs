@@ -382,6 +382,9 @@ public class JobService : IJobService
         job.WorkerInstanceId = null;
         job.LastHeartbeatAt = null;
         job.ProcessId = null;
+        job.ConsoleOutput = null;  // Clear accumulated console output
+        job.GitDiff = null;        // Clear git diff
+        job.GitCommitBefore = null; // Clear git commit reference
         // Keep SessionId for potential session continuation
         // Keep InputTokens, OutputTokens, TotalCostUsd for historical tracking
         // Keep Messages for audit trail and context

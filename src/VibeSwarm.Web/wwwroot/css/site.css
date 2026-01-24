@@ -954,3 +954,123 @@ textarea.form-control {
     border-radius: 3px;
 }
 
+/* Console Output Section */
+.console-output-section {
+    margin-top: 1.5rem;
+    border-top: 1px solid #e1e1e1;
+    padding-top: 1rem;
+}
+
+.console-output-section h5 {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+}
+
+.output-icon {
+    font-size: 1.1rem;
+}
+
+.console-output-box {
+    background: #1e1e1e;
+    color: #d4d4d4;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 0.8rem;
+    line-height: 1.4;
+    padding: 1rem;
+    border-radius: 4px;
+    max-height: 500px;
+    overflow-y: auto;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+    margin: 0;
+}
+
+/* Git Diff Section */
+.git-diff-section {
+    margin-top: 1.5rem;
+    border-top: 1px solid #e1e1e1;
+    padding-top: 1rem;
+}
+
+.git-diff-section h5 {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+}
+
+.diff-icon {
+    font-size: 1.1rem;
+}
+
+.diff-container {
+    background: #1e1e1e;
+    color: #d4d4d4;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 0.8rem;
+    line-height: 1.5;
+    padding: 0.75rem;
+    border-radius: 4px;
+    max-height: 600px;
+    overflow-y: auto;
+    overflow-x: auto;
+}
+
+.diff-container > div {
+    padding: 0.1rem 0.5rem;
+    white-space: pre;
+}
+
+.diff-header {
+    color: #61afef;
+    font-weight: bold;
+    margin-top: 0.5rem;
+}
+
+.diff-file-header {
+    color: #98c379;
+    font-weight: bold;
+}
+
+.diff-hunk-header {
+    color: #c678dd;
+    background: rgba(198, 120, 221, 0.1);
+}
+
+.diff-added {
+    background: rgba(80, 161, 79, 0.25);
+    color: #98c379;
+}
+
+.diff-removed {
+    background: rgba(224, 108, 117, 0.25);
+    color: #e06c75;
+}
+
+.diff-context {
+    color: #abb2bf;
+}
+
+.diff-meta {
+    color: #808080;
+    font-style: italic;
+}
+
+/* No changes message */
+.no-changes-section {
+    margin-top: 1.5rem;
+    border-top: 1px solid #e1e1e1;
+    padding-top: 1rem;
+}
+
+.no-changes-message {
+    color: #666;
+    font-style: italic;
+    padding: 1rem;
+    background: #f8f8f8;
+    border-radius: 4px;
+    text-align: center;
+}

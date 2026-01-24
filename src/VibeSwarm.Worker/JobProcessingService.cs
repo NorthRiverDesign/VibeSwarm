@@ -2,9 +2,11 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using System.Text;
 using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Providers;
 using VibeSwarm.Shared.Services;
+using VibeSwarm.Shared.Utilities;
 
 namespace VibeSwarm.Worker;
 
@@ -53,6 +55,50 @@ public class JobProcessingService : BackgroundService
         public CancellationTokenSource? CancellationTokenSource { get; set; }
         public int? ProcessId { get; set; }
         public Guid ProviderId { get; set; }
+
+        /// <summary>
+        /// Accumulates console output during execution for storage in the database
+        /// </summary>
+        public StringBuilder ConsoleOutputBuffer { get; } = new StringBuilder();
+
+        /// <summary>
+        /// Lock object for thread-safe access to ConsoleOutputBuffer
+        /// </summary>
+        public object OutputLock { get; } = new object();
+
+        /// <summary>
+        /// Git commit hash at the start of job execution
+        /// </summary>
+        public string? GitCommitBefore { get; set; }
+
+        /// <summary>
+        /// Maximum console output size (5 MB)
+        /// </summary>
+        private const int MaxOutputSize = 5 * 1024 * 1024;
+
+        public void AppendOutput(string line, bool isError)
+        {
+            lock (OutputLock)
+            {
+                if (ConsoleOutputBuffer.Length < MaxOutputSize)
+                {
+                    var prefix = isError ? "[ERR] " : "";
+                    ConsoleOutputBuffer.AppendLine($"{prefix}{line}");
+                }
+                else if (!ConsoleOutputBuffer.ToString().EndsWith("[output truncated]"))
+                {
+                    ConsoleOutputBuffer.AppendLine("\n... [output truncated] ...");
+                }
+            }
+        }
+
+        public string GetConsoleOutput()
+        {
+            lock (OutputLock)
+            {
+                return ConsoleOutputBuffer.ToString();
+            }
+        }
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -371,13 +417,38 @@ public class JobProcessingService : BackgroundService
             await UpdateHeartbeatAsync(job.Id, initialActivity, dbContext, cancellationToken);
             await NotifyJobActivityAsync(job.Id, initialActivity, DateTime.UtcNow);
 
+            // Capture git commit hash before execution for diff comparison later
+            var workingDirectory = job.Project?.WorkingPath;
+            if (!string.IsNullOrEmpty(workingDirectory) && Directory.Exists(workingDirectory))
+            {
+                try
+                {
+                    executionContext.GitCommitBefore = await GitHelper.GetCurrentCommitHashAsync(workingDirectory, cancellationToken);
+                    if (!string.IsNullOrEmpty(executionContext.GitCommitBefore))
+                    {
+                        _logger.LogInformation("Captured git commit {Commit} before job {JobId} execution",
+                            executionContext.GitCommitBefore[..Math.Min(8, executionContext.GitCommitBefore.Length)], job.Id);
+
+                        // Store commit hash in database
+                        var jobForGit = await dbContext.Jobs.FindAsync(new object[] { job.Id }, cancellationToken);
+                        if (jobForGit != null)
+                        {
+                            jobForGit.GitCommitBefore = executionContext.GitCommitBefore;
+                            await dbContext.SaveChangesAsync(cancellationToken);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to capture git commit hash for job {JobId}", job.Id);
+                }
+            }
+
             // Start a background task to monitor for cancellation requests and send heartbeats
             // Note: This task manages its own DbContext scopes to avoid disposal issues
             var cancellationMonitorTask = MonitorCancellationAndHeartbeatAsync(job.Id, executionContext, cancellationToken);
 
             // Execute the job with session support
-            var workingDirectory = job.Project?.WorkingPath;
-
             _logger.LogInformation("Starting provider execution for job {JobId} in directory {WorkingDir}",
                 job.Id, workingDirectory ?? "(default)");
 
@@ -434,9 +505,12 @@ public class JobProcessingService : BackgroundService
                     });
                 }
 
-                // Stream output lines to UI in real-time
+                // Stream output lines to UI in real-time AND accumulate in buffer for storage
                 if (!string.IsNullOrEmpty(p.OutputLine))
                 {
+                    // Accumulate output for database storage
+                    executionContext.AppendOutput(p.OutputLine, p.IsErrorOutput);
+
                     _ = Task.Run(async () =>
                     {
                         try
@@ -526,7 +600,7 @@ public class JobProcessingService : BackgroundService
             {
                 await CompleteJobAsync(job.Id, JobStatus.Cancelled, result.SessionId, result.Output,
                     "Job was cancelled by user", result.InputTokens, result.OutputTokens, result.CostUsd,
-                    dbContext, CancellationToken.None);
+                    executionContext, workingDirectory, dbContext, CancellationToken.None);
                 await NotifyJobCompletedAsync(job.Id, false, "Job was cancelled by user");
 
                 _logger.LogInformation("Job {JobId} was cancelled during execution", job.Id);
@@ -552,7 +626,7 @@ public class JobProcessingService : BackgroundService
 
                 await CompleteJobAsync(job.Id, JobStatus.Completed, result.SessionId, result.Output,
                     null, result.InputTokens, result.OutputTokens, result.CostUsd,
-                    dbContext, CancellationToken.None);
+                    executionContext, workingDirectory, dbContext, CancellationToken.None);
 
                 _logger.LogInformation("Job {JobId} completed successfully. Session: {SessionId}",
                     job.Id, result.SessionId);
@@ -562,7 +636,7 @@ public class JobProcessingService : BackgroundService
             {
                 await CompleteJobAsync(job.Id, JobStatus.Failed, result.SessionId, result.Output,
                     result.ErrorMessage, result.InputTokens, result.OutputTokens, result.CostUsd,
-                    dbContext, CancellationToken.None);
+                    executionContext, workingDirectory, dbContext, CancellationToken.None);
 
                 _logger.LogWarning("Job {JobId} failed: {Error}", job.Id, result.ErrorMessage);
                 await NotifyJobCompletedAsync(job.Id, false, result.ErrorMessage);
@@ -683,11 +757,12 @@ public class JobProcessingService : BackgroundService
     }
 
     /// <summary>
-    /// Completes a job with full result data
+    /// Completes a job with full result data, console output, and git diff
     /// </summary>
     private async Task CompleteJobAsync(
         Guid jobId, JobStatus status, string? sessionId, string? output, string? errorMessage,
         int? inputTokens, int? outputTokens, decimal? costUsd,
+        JobExecutionContext executionContext, string? workingDirectory,
         VibeSwarmDbContext dbContext, CancellationToken cancellationToken)
     {
         var job = await dbContext.Jobs.FindAsync(new object[] { jobId }, cancellationToken);
@@ -705,6 +780,39 @@ public class JobProcessingService : BackgroundService
             job.LastHeartbeatAt = null;
             job.ProcessId = null;
             job.CurrentActivity = null;
+
+            // Store accumulated console output
+            var consoleOutput = executionContext.GetConsoleOutput();
+            if (!string.IsNullOrEmpty(consoleOutput))
+            {
+                job.ConsoleOutput = consoleOutput;
+            }
+
+            // Generate and store git diff if applicable
+            if (!string.IsNullOrEmpty(workingDirectory) && Directory.Exists(workingDirectory))
+            {
+                try
+                {
+                    // Get diff since the commit we captured at start, or since HEAD if no commit was captured
+                    var baseCommit = executionContext.GitCommitBefore;
+                    var gitDiff = await GitHelper.GetWorkingDirectoryDiffAsync(workingDirectory, baseCommit, cancellationToken);
+
+                    if (!string.IsNullOrEmpty(gitDiff))
+                    {
+                        job.GitDiff = gitDiff;
+                        _logger.LogInformation("Captured git diff for job {JobId}: {Length} chars", jobId, gitDiff.Length);
+                    }
+                    else
+                    {
+                        _logger.LogDebug("No git changes detected for job {JobId}", jobId);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to capture git diff for job {JobId}", jobId);
+                }
+            }
+
             await dbContext.SaveChangesAsync(cancellationToken);
         }
     }
