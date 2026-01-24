@@ -136,8 +136,7 @@ public class CopilotProvider : ProviderBase
 			IsConnected = false;
 			LastConnectionError = $"Failed to start GitHub Copilot CLI: {ex.Message}. " +
 				$"Executable path: '{execPath}'. " +
-				$"Ensure the GitHub Copilot CLI (gh copilot) is installed. " +
-				$"Install via: gh extension install github/gh-copilot";
+				$"Ensure the GitHub Copilot CLI is installed and available in your PATH.";
 			return false;
 		}
 		catch (Exception ex)
@@ -183,18 +182,22 @@ public class CopilotProvider : ProviderBase
 		var result = new ExecutionResult { Messages = new List<ExecutionMessage>() };
 		var effectiveWorkingDir = workingDirectory ?? _workingDirectory ?? Environment.CurrentDirectory;
 
-		// GitHub Copilot CLI uses 'gh copilot' or the standalone 'github-copilot-cli'
-		// The main command for coding assistance is typically through agent mode
-		// gh copilot suggest -t shell "prompt" or gh copilot explain "code"
-		// For agent-style execution, we use the coding assistant mode
+		// GitHub Copilot CLI (standalone 'copilot' command)
+		// -p: non-interactive print mode (runs to completion without user input)
+		// --output-format stream-json: JSON streaming output for parsing progress
+		// --dangerously-skip-permissions: skip permission prompts (auto-accept tool use)
 		var args = new List<string>();
 
-		// Use suggest command with shell target for coding tasks
-		// Or use the agent mode if available
-		args.Add("suggest");
-		args.Add("-t");
-		args.Add("shell");
+		// Add the prompt with -p flag for non-interactive mode
+		args.Add("-p");
 		args.Add($"\"{EscapeArgument(prompt)}\"");
+
+		// Add output format flags for streaming JSON output
+		args.Add("--output-format");
+		args.Add("stream-json");
+
+		// Skip permission prompts for automated execution
+		args.Add("--dangerously-skip-permissions");
 
 		var startInfo = new ProcessStartInfo
 		{
@@ -427,7 +430,8 @@ public class CopilotProvider : ProviderBase
 			throw new InvalidOperationException("GitHub Copilot CLI executable path is not configured.");
 		}
 
-		var args = $"suggest -t shell \"{EscapeArgument(prompt)}\"";
+		// Use -p for non-interactive mode and --dangerously-skip-permissions for automated execution
+		var args = $"-p \"{EscapeArgument(prompt)}\" --dangerously-skip-permissions";
 
 		var startInfo = new ProcessStartInfo
 		{
@@ -769,8 +773,8 @@ public class CopilotProvider : ProviderBase
 		{
 			return _executablePath;
 		}
-		// Default to 'gh copilot' command (GitHub CLI with Copilot extension)
-		return "gh copilot";
+		// Default to standalone 'copilot' CLI command
+		return "copilot";
 	}
 
 	private static string EscapeArgument(string argument)
