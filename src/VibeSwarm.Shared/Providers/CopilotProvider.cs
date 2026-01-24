@@ -191,20 +191,16 @@ public class CopilotProvider : ProviderBase
 
 		// GitHub Copilot CLI (standalone 'copilot' command)
 		// -p: non-interactive print mode (runs to completion without user input)
-		// --output-format stream-json: JSON streaming output for parsing progress
-		// --dangerously-skip-permissions: skip permission prompts (auto-accept tool use)
+		// --allow-all-tools: allow all tools to run without confirmation (required for non-interactive)
+		// -s/--silent: output only the agent response (useful for scripting)
 		var args = new List<string>();
 
 		// Add the prompt with -p flag for non-interactive mode
 		args.Add("-p");
 		args.Add($"\"{EscapeArgument(prompt)}\"");
 
-		// Add output format flags for streaming JSON output
-		args.Add("--output-format");
-		args.Add("stream-json");
-
-		// Skip permission prompts for automated execution
-		args.Add("--dangerously-skip-permissions");
+		// Allow all tools to run without confirmation (required for non-interactive mode)
+		args.Add("--allow-all-tools");
 
 		var startInfo = new ProcessStartInfo
 		{
@@ -451,8 +447,8 @@ public class CopilotProvider : ProviderBase
 			throw new InvalidOperationException("GitHub Copilot CLI executable path is not configured.");
 		}
 
-		// Use -p for non-interactive mode and --dangerously-skip-permissions for automated execution
-		var args = $"-p \"{EscapeArgument(prompt)}\" --dangerously-skip-permissions";
+		// Use -p for non-interactive mode and --allow-all-tools for automated execution
+		var args = $"-p \"{EscapeArgument(prompt)}\" --allow-all-tools";
 
 		var startInfo = new ProcessStartInfo
 		{
