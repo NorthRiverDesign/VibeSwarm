@@ -2,197 +2,226 @@
 @inject IProjectService ProjectService
 @inject NavigationManager NavigationManager
 
-<h3>Projects</h3>
+<h3 class="mb-4">Projects</h3>
 
-<div class="projects-container">
-    <div class="projects-list">
-        <h4>All Projects</h4>
+<div class="row g-4">
+	<div class="col-lg-8">
+		<div class="card shadow-sm">
+			<div class="card-header">
+				<h5 class="mb-0">All Projects</h5>
+			</div>
+			<div class="card-body">
+				@if (IsLoading)
+				{
+					<div class="d-flex justify-content-center py-4">
+						<div class="spinner-border text-primary" role="status">
+							<span class="visually-hidden">Loading...</span>
+						</div>
+					</div>
+				}
+				else if (!ProjectList.Any())
+				{
+					<div class="empty-state">
+						<p class="mb-0">No projects yet. Create your first project to get started.</p>
+					</div>
+				}
+				else
+				{
+					<div class="table-responsive">
+						<table class="table table-hover align-middle mb-0">
+							<thead class="table-light">
+								<tr>
+									<th>Name</th>
+									<th>Working Path</th>
+									<th>Created</th>
+									<th>Actions</th>
+								</tr>
+							</thead>
+							<tbody>
+								@foreach (var project in ProjectList)
+								{
+									<tr>
+										<td>
+											<a href="/projects/@project.Id" class="fw-medium">@project.Name</a>
+											@if (!string.IsNullOrEmpty(project.Description))
+											{
+												<div class="text-muted small">@project.Description</div>
+											}
+										</td>
+										<td class="path-cell">@project.WorkingPath</td>
+										<td>@project.CreatedAt.ToLocalTime().ToString("g")</td>
+										<td>
+											<div class="btn-group btn-group-sm" role="group">
+												<button class="btn btn-outline-secondary"
+													@onclick="() => EditProject(project)">Edit</button>
+												<button class="btn btn-outline-danger"
+													@onclick="() => DeleteProject(project.Id)">Delete</button>
+											</div>
+										</td>
+									</tr>
+								}
+							</tbody>
+						</table>
+					</div>
+				}
+			</div>
+		</div>
+	</div>
 
-        @if (IsLoading)
-        {
-            <p>Loading projects...</p>
-        }
-        else if (!ProjectList.Any())
-        {
-            <p class="empty-state">No projects yet. Create your first project to get started.</p>
-        }
-        else
-        {
-            <table class="projects-table">
-                <thead>
-                    <tr>
-                        <th>Name</th>
-                        <th>Working Path</th>
-                        <th>Created</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var project in ProjectList)
-                    {
-                        <tr>
-                            <td>
-                                <a href="/projects/@project.Id">@project.Name</a>
-                                @if (!string.IsNullOrEmpty(project.Description))
-                                {
-                                    <div class="project-description">@project.Description</div>
-                                }
-                            </td>
-                            <td class="path-cell">@project.WorkingPath</td>
-                            <td>@project.CreatedAt.ToLocalTime().ToString("g")</td>
-                            <td class="actions">
-                                <button class="btn btn-small btn-secondary" @onclick="() => EditProject(project)">Edit</button>
-                                <button class="btn btn-small btn-danger" @onclick="() => DeleteProject(project.Id)">Delete</button>
-                            </td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
-        }
-    </div>
+	<div class="col-lg-4">
+		<div class="card shadow-sm">
+			<div class="card-header">
+				<h5 class="mb-0">@(IsEditing ? "Edit Project" : "New Project")</h5>
+			</div>
+			<div class="card-body">
+				<EditForm Model="@CurrentProject" OnValidSubmit="HandleValidSubmit">
+					<DataAnnotationsValidator />
+					<ValidationSummary class="text-danger mb-3" />
 
-    <div class="project-form-container">
-        <h4>@(IsEditing ? "Edit Project" : "New Project")</h4>
+					<div class="mb-3">
+						<label for="name" class="form-label">Name</label>
+						<InputText id="name" @bind-Value="CurrentProject.Name" class="form-control"
+							placeholder="My Project" />
+						<ValidationMessage For="@(() => CurrentProject.Name)" class="text-danger small" />
+					</div>
 
-        <EditForm Model="@CurrentProject" OnValidSubmit="HandleValidSubmit">
-            <DataAnnotationsValidator />
-            <ValidationSummary />
+					<div class="mb-3">
+						<label for="description" class="form-label">Description (optional)</label>
+						<InputTextArea id="description" @bind-Value="CurrentProject.Description" class="form-control"
+							rows="3" placeholder="Brief description of this project..." />
+						<ValidationMessage For="@(() => CurrentProject.Description)" class="text-danger small" />
+					</div>
 
-            <div class="form-group">
-                <label for="name">Name</label>
-                <InputText id="name" @bind-Value="CurrentProject.Name" class="form-control" placeholder="My Project" />
-                <ValidationMessage For="@(() => CurrentProject.Name)" />
-            </div>
+					<div class="mb-3">
+						<label for="workingPath" class="form-label">Working Path</label>
+						<InputText id="workingPath" @bind-Value="CurrentProject.WorkingPath" class="form-control"
+							placeholder="C:\Projects\MyApp or /home/user/projects/myapp" />
+						<ValidationMessage For="@(() => CurrentProject.WorkingPath)" class="text-danger small" />
+						<div class="form-text">The directory where the CLI providers will execute commands.</div>
+					</div>
 
-            <div class="form-group">
-                <label for="description">Description (optional)</label>
-                <InputTextArea id="description" @bind-Value="CurrentProject.Description" class="form-control" rows="3" placeholder="Brief description of this project..." />
-                <ValidationMessage For="@(() => CurrentProject.Description)" />
-            </div>
+					<div class="d-flex gap-2">
+						<button type="submit" class="btn btn-primary" disabled="@IsSaving">
+							@if (IsSaving)
+							{
+								<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+							}
+							@(IsSaving ? "Saving..." : (IsEditing ? "Update Project" : "Create Project"))
+						</button>
+						@if (IsEditing)
+						{
+							<button type="button" class="btn btn-secondary" @onclick="CancelEdit">Cancel</button>
+						}
+					</div>
 
-            <div class="form-group">
-                <label for="workingPath">Working Path</label>
-                <InputText id="workingPath" @bind-Value="CurrentProject.WorkingPath" class="form-control" placeholder="C:\Projects\MyApp or /home/user/projects/myapp" />
-                <ValidationMessage For="@(() => CurrentProject.WorkingPath)" />
-                <small class="form-text">The directory where the CLI providers will execute commands.</small>
-            </div>
+					@if (!string.IsNullOrEmpty(ErrorMessage))
+					{
+						<div class="alert alert-danger mt-3 mb-0">@ErrorMessage</div>
+					}
 
-            <div class="form-actions">
-                <button type="submit" class="btn btn-primary" disabled="@IsSaving">
-                    @(IsSaving ? "Saving..." : (IsEditing ? "Update Project" : "Create Project"))
-                </button>
-                @if (IsEditing)
-                {
-                    <button type="button" class="btn btn-secondary" @onclick="CancelEdit">Cancel</button>
-                }
-            </div>
-
-            @if (!string.IsNullOrEmpty(ErrorMessage))
-            {
-                <div class="alert alert-error">@ErrorMessage</div>
-            }
-
-            @if (!string.IsNullOrEmpty(SuccessMessage))
-            {
-                <div class="alert alert-success">@SuccessMessage</div>
-            }
-        </EditForm>
-    </div>
+					@if (!string.IsNullOrEmpty(SuccessMessage))
+					{
+						<div class="alert alert-success mt-3 mb-0">@SuccessMessage</div>
+					}
+				</EditForm>
+			</div>
+		</div>
+	</div>
 </div>
 
 @code {
-    private List<Project> ProjectList { get; set; } = new();
-    private Project CurrentProject { get; set; } = new();
-    private bool IsLoading { get; set; } = true;
-    private bool IsSaving { get; set; }
-    private bool IsEditing { get; set; }
-    private string? ErrorMessage { get; set; }
-    private string? SuccessMessage { get; set; }
+	private List<Project> ProjectList { get; set; } = new();
+	private Project CurrentProject { get; set; } = new();
+	private bool IsLoading { get; set; } = true;
+	private bool IsSaving { get; set; }
+	private bool IsEditing { get; set; }
+	private string? ErrorMessage { get; set; }
+	private string? SuccessMessage { get; set; }
 
-    protected override async Task OnInitializedAsync()
-    {
-        await LoadProjects();
-    }
+	protected override async Task OnInitializedAsync()
+	{
+		await LoadProjects();
+	}
 
-    private async Task LoadProjects()
-    {
-        IsLoading = true;
-        try
-        {
-            ProjectList = (await ProjectService.GetAllAsync()).ToList();
-        }
-        finally
-        {
-            IsLoading = false;
-        }
-    }
+	private async Task LoadProjects()
+	{
+		IsLoading = true;
+		try
+		{
+			ProjectList = (await ProjectService.GetAllAsync()).ToList();
+		}
+		finally
+		{
+			IsLoading = false;
+		}
+	}
 
-    private async Task HandleValidSubmit()
-    {
-        IsSaving = true;
-        ErrorMessage = null;
-        SuccessMessage = null;
+	private async Task HandleValidSubmit()
+	{
+		IsSaving = true;
+		ErrorMessage = null;
+		SuccessMessage = null;
 
-        try
-        {
-            if (IsEditing)
-            {
-                await ProjectService.UpdateAsync(CurrentProject);
-                SuccessMessage = "Project updated successfully.";
-            }
-            else
-            {
-                await ProjectService.CreateAsync(CurrentProject);
-                SuccessMessage = "Project created successfully.";
-            }
+		try
+		{
+			if (IsEditing)
+			{
+				await ProjectService.UpdateAsync(CurrentProject);
+				SuccessMessage = "Project updated successfully.";
+			}
+			else
+			{
+				await ProjectService.CreateAsync(CurrentProject);
+				SuccessMessage = "Project created successfully.";
+			}
 
-            CurrentProject = new Project();
-            IsEditing = false;
-            await LoadProjects();
-        }
-        catch (Exception ex)
-        {
-            ErrorMessage = $"Error saving project: {ex.Message}";
-        }
-        finally
-        {
-            IsSaving = false;
-        }
-    }
+			CurrentProject = new Project();
+			IsEditing = false;
+			await LoadProjects();
+		}
+		catch (Exception ex)
+		{
+			ErrorMessage = $"Error saving project: {ex.Message}";
+		}
+		finally
+		{
+			IsSaving = false;
+		}
+	}
 
-    private void EditProject(Project project)
-    {
-        CurrentProject = new Project
-        {
-            Id = project.Id,
-            Name = project.Name,
-            Description = project.Description,
-            WorkingPath = project.WorkingPath
-        };
-        IsEditing = true;
-        ErrorMessage = null;
-        SuccessMessage = null;
-    }
+	private void EditProject(Project project)
+	{
+		CurrentProject = new Project
+		{
+			Id = project.Id,
+			Name = project.Name,
+			Description = project.Description,
+			WorkingPath = project.WorkingPath
+		};
+		IsEditing = true;
+		ErrorMessage = null;
+		SuccessMessage = null;
+	}
 
-    private void CancelEdit()
-    {
-        CurrentProject = new Project();
-        IsEditing = false;
-        ErrorMessage = null;
-        SuccessMessage = null;
-    }
+	private void CancelEdit()
+	{
+		CurrentProject = new Project();
+		IsEditing = false;
+		ErrorMessage = null;
+		SuccessMessage = null;
+	}
 
-    private async Task DeleteProject(Guid id)
-    {
-        try
-        {
-            await ProjectService.DeleteAsync(id);
-            await LoadProjects();
-            SuccessMessage = "Project deleted successfully.";
-        }
-        catch (Exception ex)
-        {
-            ErrorMessage = $"Error deleting project: {ex.Message}";
-        }
-    }
+	private async Task DeleteProject(Guid id)
+	{
+		try
+		{
+			await ProjectService.DeleteAsync(id);
+			await LoadProjects();
+			SuccessMessage = "Project deleted successfully.";
+		}
+		catch (Exception ex)
+		{
+			ErrorMessage = $"Error deleting project: {ex.Message}";
+		}
+	}
 }

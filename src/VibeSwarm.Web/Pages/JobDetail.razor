@@ -9,50 +9,57 @@
 
 @if (IsLoading)
 {
-    <p>Loading job...</p>
+    <div class="d-flex justify-content-center py-5">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+    </div>
 }
 else if (Job == null)
 {
-    <p>Job not found.</p>
-    <a href="/projects">Back to Projects</a>
+    <div class="alert alert-warning">
+        <p class="mb-0">Job not found.</p>
+    </div>
+    <a href="/projects" class="btn btn-secondary">Back to Projects</a>
 }
 else
 {
-    <div class="job-header">
+    <div class="d-flex justify-content-between align-items-start mb-4">
         <div>
-            <h3>Job Details</h3>
-            <div class="job-status-section">
-                <div class="status-badge-container">
-                    <span class="status-badge status-@Job.Status.ToString().ToLower()">
-                        @if (Job.Status == JobStatus.Started || Job.Status == JobStatus.Processing)
-                        {
-                            <span class="status-spinner"></span>
-                        }
-                        @Job.Status
+            <h3 class="mb-2">Job Details</h3>
+            <div class="d-flex align-items-center gap-2 mb-2">
+                <span class="badge status-@Job.Status.ToString().ToLower()">
+                    @if (Job.Status == JobStatus.Started || Job.Status == JobStatus.Processing)
+                    {
+                        <span class="status-spinner"></span>
+                    }
+                    @Job.Status
+                </span>
+                @if (Job.CancellationRequested && (Job.Status == JobStatus.Started || Job.Status == JobStatus.Processing))
+                {
+                    <span class="badge status-cancelling">
+                        <span class="status-spinner"></span>
+                        Cancelling
                     </span>
-                    @if (Job.CancellationRequested && (Job.Status == JobStatus.Started || Job.Status ==
-                                    JobStatus.Processing))
-                    {
-                        <span class="status-badge status-cancelling">
-                            <span class="status-spinner"></span>
-                            Cancelling
-                        </span>
-                    }
-                </div>
-                <p class="job-meta">
-                    <span>Project: <a href="/projects/@Job.ProjectId">@(Job.Project?.Name ?? "Unknown")</a></span>
-                    <span>Provider: @(Job.Provider?.Name ?? "Unknown")</span>
-                    @if (Job.ProcessId.HasValue)
-                    {
-                        <span class="process-info">PID: @Job.ProcessId</span>
-                    }
-                </p>
+                }
             </div>
+            <p class="text-muted mb-0">
+                <span class="me-3">Project: <a href="/projects/@Job.ProjectId">@(Job.Project?.Name ?? "Unknown")</a></span>
+                <span class="me-3">Provider: @(Job.Provider?.Name ?? "Unknown")</span>
+                @if (Job.ProcessId.HasValue)
+                {
+                    <span class="process-info">PID: @Job.ProcessId</span>
+                }
+            </p>
         </div>
-        <div class="job-header-actions">
+        <div class="d-flex gap-2">
             @if (CanRetry)
             {
                 <button class="btn btn-primary" @onclick="RetryJob" disabled="@IsRetrying">
+                    @if (IsRetrying)
+                    {
+                        <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                    }
                     @(IsRetrying ? "Resetting..." : "Retry Job")
                 </button>
             }
@@ -62,128 +69,129 @@ else
                     @if (IsCancelling)
                     {
                         <span class="spinner-small"></span>
-                        <text>Cancelling...</text>
                     }
-                    else
-                    {
-                        <text>Cancel Job</text>
-                    }
+                    @(IsCancelling ? "Cancelling..." : "Cancel Job")
                 </button>
             }
             @if (CanForceCancel)
             {
-                <button class="btn btn-danger-outline" @onclick="ForceCancelJob" disabled="@IsForceCancelling">
+                <button class="btn btn-outline-danger" @onclick="ForceCancelJob" disabled="@IsForceCancelling">
                     @if (IsForceCancelling)
                     {
                         <span class="spinner-small"></span>
-                        <text>Force Cancelling...</text>
                     }
-                    else
-                    {
-                        <text>Force Cancel</text>
-                    }
+                    @(IsForceCancelling ? "Force Cancelling..." : "Force Cancel")
                 </button>
             }
             <a href="/projects/@Job.ProjectId" class="btn btn-secondary">Back to Project</a>
         </div>
     </div>
 
-    <div class="job-detail-container">
-        <div class="job-info-section">
-            <h4>Goal Prompt</h4>
-            <div class="goal-prompt-box">
-                @Job.GoalPrompt
+    <div class="row g-4">
+        <div class="col-lg-5">
+            <div class="card shadow-sm mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">Goal Prompt</h5>
+                </div>
+                <div class="card-body">
+                    <div class="goal-prompt-box mb-3">@Job.GoalPrompt</div>
+
+                    <div class="job-stats mb-3">
+                        @if (Job.SessionId != null)
+                        {
+                            <div class="stat-item">
+                                <span class="stat-label">Session ID</span>
+                                <span class="stat-value mono">@Job.SessionId</span>
+                            </div>
+                        }
+                        @if (Job.InputTokens.HasValue)
+                        {
+                            <div class="stat-item">
+                                <span class="stat-label">Input Tokens</span>
+                                <span class="stat-value">@Job.InputTokens.Value.ToString("N0")</span>
+                            </div>
+                        }
+                        @if (Job.OutputTokens.HasValue)
+                        {
+                            <div class="stat-item">
+                                <span class="stat-label">Output Tokens</span>
+                                <span class="stat-value">@Job.OutputTokens.Value.ToString("N0")</span>
+                            </div>
+                        }
+                        @if (Job.TotalCostUsd.HasValue)
+                        {
+                            <div class="stat-item">
+                                <span class="stat-label">Cost</span>
+                                <span class="stat-value">$@Job.TotalCostUsd.Value.ToString("F4")</span>
+                            </div>
+                        }
+                        <div class="stat-item">
+                            <span class="stat-label">Created</span>
+                            <span class="stat-value">@Job.CreatedAt.ToLocalTime().ToString("g")</span>
+                        </div>
+                        @if (Job.StartedAt.HasValue)
+                        {
+                            <div class="stat-item">
+                                <span class="stat-label">Started</span>
+                                <span class="stat-value">@Job.StartedAt.Value.ToLocalTime().ToString("g")</span>
+                            </div>
+                        }
+                        @if (Job.CompletedAt.HasValue)
+                        {
+                            <div class="stat-item">
+                                <span class="stat-label">Completed</span>
+                                <span class="stat-value">@Job.CompletedAt.Value.ToLocalTime().ToString("g")</span>
+                            </div>
+                        }
+                    </div>
+
+                    @if (!string.IsNullOrEmpty(Job.ErrorMessage))
+                    {
+                        <div class="error-section">
+                            <h6 class="text-danger">Error</h6>
+                            <pre class="error-output">@Job.ErrorMessage</pre>
+                        </div>
+                    }
+
+                    @if (Job.Status == JobStatus.Cancelled)
+                    {
+                        <div class="info-section">
+                            <h6>Job Cancelled</h6>
+                            <p class="mb-0">This job was cancelled and can be retried. Click "Retry Job" to run it again.</p>
+                        </div>
+                    }
+                    else if (Job.Status == JobStatus.Failed && CanRetry)
+                    {
+                        <div class="info-section">
+                            <h6>Job Failed</h6>
+                            <p class="mb-0">This job failed during execution. You can retry it by clicking "Retry Job" above.</p>
+                        </div>
+                    }
+                </div>
             </div>
-
-            <div class="job-stats">
-                @if (Job.SessionId != null)
-                {
-                    <div class="stat-item">
-                        <span class="stat-label">Session ID</span>
-                        <span class="stat-value mono">@Job.SessionId</span>
-                    </div>
-                }
-                @if (Job.InputTokens.HasValue)
-                {
-                    <div class="stat-item">
-                        <span class="stat-label">Input Tokens</span>
-                        <span class="stat-value">@Job.InputTokens.Value.ToString("N0")</span>
-                    </div>
-                }
-                @if (Job.OutputTokens.HasValue)
-                {
-                    <div class="stat-item">
-                        <span class="stat-label">Output Tokens</span>
-                        <span class="stat-value">@Job.OutputTokens.Value.ToString("N0")</span>
-                    </div>
-                }
-                @if (Job.TotalCostUsd.HasValue)
-                {
-                    <div class="stat-item">
-                        <span class="stat-label">Cost</span>
-                        <span class="stat-value">$@Job.TotalCostUsd.Value.ToString("F4")</span>
-                    </div>
-                }
-                <div class="stat-item">
-                    <span class="stat-label">Created</span>
-                    <span class="stat-value">@Job.CreatedAt.ToLocalTime().ToString("g")</span>
-                </div>
-                @if (Job.StartedAt.HasValue)
-                {
-                    <div class="stat-item">
-                        <span class="stat-label">Started</span>
-                        <span class="stat-value">@Job.StartedAt.Value.ToLocalTime().ToString("g")</span>
-                    </div>
-                }
-                @if (Job.CompletedAt.HasValue)
-                {
-                    <div class="stat-item">
-                        <span class="stat-label">Completed</span>
-                        <span class="stat-value">@Job.CompletedAt.Value.ToLocalTime().ToString("g")</span>
-                    </div>
-                }
-            </div>
-
-            @if (!string.IsNullOrEmpty(Job.ErrorMessage))
-            {
-                <div class="error-section">
-                    <h5>Error</h5>
-                    <pre class="error-output">@Job.ErrorMessage</pre>
-                </div>
-            }
-
-            @if (Job.Status == JobStatus.Cancelled)
-            {
-                <div class="info-section">
-                    <h5>Job Cancelled</h5>
-                    <p>This job was cancelled and can be retried. Click "Retry Job" to run it again.</p>
-                </div>
-            }
-            else if (Job.Status == JobStatus.Failed && CanRetry)
-            {
-                <div class="info-section">
-                    <h5>Job Failed</h5>
-                    <p>This job failed during execution. You can retry it by clicking "Retry Job" above.</p>
-                </div>
-            }
 
             @* Live Output Section - shown when job is running *@
             @if (IsJobActive && _liveOutput.Count > 0)
             {
-                <div class="live-output-section">
-                    <h5>
-                        <span class="live-indicator"></span>
-                        Live Output (@_liveOutput.Count lines)
-                        <button class="btn btn-sm btn-secondary" @onclick="ClearLiveOutput">Clear</button>
-                    </h5>
-                    <div class="live-output-container" @ref="_outputContainer">
-                        @foreach (var line in _liveOutput.TakeLast(MaxOutputLines))
-                        {
-                            <div class="output-line @(line.IsError ? "output-error" : "output-stdout")">
-                                <span class="output-time">[@line.Timestamp.ToLocalTime().ToString("HH:mm:ss")]</span>
-                                <span class="output-text">@line.Content</span>
-                            </div>
-                        }
+                <div class="card shadow-sm mb-4">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <div>
+                            <span class="live-indicator me-2"></span>
+                            <strong>Live Output</strong>
+                            <span class="text-muted ms-2">(@_liveOutput.Count lines)</span>
+                        </div>
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="ClearLiveOutput">Clear</button>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="live-output-container" @ref="_outputContainer">
+                            @foreach (var line in _liveOutput.TakeLast(MaxOutputLines))
+                            {
+                                <div class="output-line @(line.IsError ? "output-error" : "output-stdout")">
+                                    <span class="output-time">[@line.Timestamp.ToLocalTime().ToString("HH:mm:ss")]</span>
+                                    <span class="output-text">@line.Content</span>
+                                </div>
+                            }
+                        </div>
                     </div>
                 </div>
             }
@@ -191,17 +199,21 @@ else
             @* Saved Console Output - shown after job completes *@
             @if (!IsJobActive && !string.IsNullOrEmpty(Job.ConsoleOutput))
             {
-                <div class="console-output-section">
-                    <h5>
-                        <span class="output-icon">📋</span>
-                        Console Output
-                        <button class="btn btn-sm btn-secondary" @onclick="ToggleConsoleOutput">
+                <div class="card shadow-sm mb-4">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <div>
+                            <span class="me-2">📋</span>
+                            <strong>Console Output</strong>
+                        </div>
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="ToggleConsoleOutput">
                             @(_showConsoleOutput ? "Hide" : "Show")
                         </button>
-                    </h5>
+                    </div>
                     @if (_showConsoleOutput)
                     {
-                        <pre class="console-output-box">@Job.ConsoleOutput</pre>
+                        <div class="card-body p-0">
+                            <pre class="console-output-box">@Job.ConsoleOutput</pre>
+                        </div>
                     }
                 </div>
             }
@@ -209,185 +221,197 @@ else
             @* Git Diff Section - shown after job completes if changes were detected *@
             @if (!IsJobActive && !string.IsNullOrEmpty(Job.GitDiff))
             {
-                <div class="git-diff-section">
-                    <h5>
-                        <span class="diff-icon">📝</span>
-                        Git Changes
-                        <button class="btn btn-sm btn-secondary" @onclick="ToggleGitDiff">
+                <div class="card shadow-sm mb-4">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <div>
+                            <span class="me-2">📝</span>
+                            <strong>Git Changes</strong>
+                        </div>
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="ToggleGitDiff">
                             @(_showGitDiff ? "Hide" : "Show")
                         </button>
-                    </h5>
+                    </div>
                     @if (_showGitDiff)
                     {
-                        <div class="diff-container">
-                            @((MarkupString)FormatGitDiff(Job.GitDiff))
+                        <div class="card-body p-0">
+                            <div class="diff-container">
+                                @((MarkupString)FormatGitDiff(Job.GitDiff))
+                            </div>
                         </div>
                     }
                 </div>
 
                 @* Commit and Push Section - shown when there are git changes *@
-                <div class="git-push-section">
-                    <h5>
-                        <span class="push-icon">🚀</span>
-                        Commit & Push Changes
-                    </h5>
+                <div class="card shadow-sm mb-4">
+                    <div class="card-header">
+                        <span class="me-2">🚀</span>
+                        <strong>Commit & Push Changes</strong>
+                    </div>
+                    <div class="card-body">
+                        @if (!_changesPushed)
+                        {
+                            <div class="commit-form">
+                                <div class="mb-3">
+                                    <label for="commitMessage" class="form-label">
+                                        Commit Message
+                                        @if (!string.IsNullOrWhiteSpace(Job.SessionSummary))
+                                        {
+                                            <span class="badge bg-info ms-2" title="Pre-populated from AI session summary">
+                                                <span class="ai-icon">🤖</span> AI Generated
+                                            </span>
+                                        }
+                                    </label>
+                                    <textarea id="commitMessage" class="commit-message-input" @bind="_commitMessage"
+                                        @bind:event="oninput" placeholder="Enter a descriptive commit message..." rows="3"
+                                        disabled="@_isPushing"></textarea>
+                                </div>
 
-                    @if (!_changesPushed)
-                    {
-                        <div class="commit-form">
-                            <div class="form-group">
-                                <label for="commitMessage">
-                                    Commit Message
-                                    @if (!string.IsNullOrWhiteSpace(Job.SessionSummary))
+                                <div class="d-flex align-items-center gap-3 flex-wrap">
+                                    <button class="btn btn-primary" @onclick="CommitAndPushChanges" disabled="@(!CanPush)">
+                                        @if (_isPushing)
+                                        {
+                                            <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                                            @_pushStatus
+                                        }
+                                        else
+                                        {
+                                            <text>Commit & Push</text>
+                                        }
+                                    </button>
+
+                                    @if (!string.IsNullOrEmpty(_branchName))
                                     {
-                                        <span class="badge badge-info ms-2" title="Pre-populated from AI session summary">
-                                            <span class="ai-icon">🤖</span> AI Generated
+                                        <span class="branch-info">
+                                            <span class="branch-icon">🌿</span>
+                                            @_branchName
                                         </span>
                                     }
-                                </label>
-                                <textarea id="commitMessage" class="commit-message-input" @bind="_commitMessage"
-                                    @bind:event="oninput" placeholder="Enter a descriptive commit message..." rows="3"
-                                    disabled="@_isPushing"></textarea>
+                                </div>
                             </div>
 
-                            <div class="push-actions">
-                                <button class="btn btn-primary btn-push" @onclick="CommitAndPushChanges" disabled="@(!CanPush)">
-                                    @if (_isPushing)
-                                    {
-                                        <span class="spinner-small"></span>
-                                        <text>@_pushStatus</text>
-                                    }
-                                    else
-                                    {
-                                        <text>Commit & Push</text>
-                                    }
-                                </button>
-
-                                @if (!string.IsNullOrEmpty(_branchName))
-                                {
-                                    <span class="branch-info">
-                                        <span class="branch-icon">🌿</span>
-                                        @_branchName
-                                    </span>
-                                }
-                            </div>
-                        </div>
-
-                        @if (!string.IsNullOrEmpty(_pushError))
+                            @if (!string.IsNullOrEmpty(_pushError))
+                            {
+                                <div class="push-error mt-3">
+                                    <span class="error-icon">❌</span>
+                                    @_pushError
+                                </div>
+                            }
+                        }
+                        else
                         {
-                            <div class="push-error">
-                                <span class="error-icon">❌</span>
-                                @_pushError
+                            <div class="push-success">
+                                <span class="success-icon fs-4">✅</span>
+                                <div class="success-details">
+                                    <strong>Changes pushed successfully!</strong>
+                                    @if (!string.IsNullOrEmpty(_pushedCommitHash))
+                                    {
+                                        <span class="commit-hash">Commit: @_pushedCommitHash[..Math.Min(7, _pushedCommitHash.Length)]</span>
+                                    }
+                                    @if (!string.IsNullOrEmpty(_branchName))
+                                    {
+                                        <span class="branch-pushed">Branch: @_branchName</span>
+                                    }
+                                </div>
                             </div>
                         }
-                    }
-                    else
-                    {
-                        <div class="push-success">
-                            <span class="success-icon">✅</span>
-                            <div class="success-details">
-                                <strong>Changes pushed successfully!</strong>
-                                @if (!string.IsNullOrEmpty(_pushedCommitHash))
-                                {
-                                    <span class="commit-hash">Commit: @_pushedCommitHash[..Math.Min(7, _pushedCommitHash.Length)]</span>
-                                }
-                                @if (!string.IsNullOrEmpty(_branchName))
-                                {
-                                    <span class="branch-pushed">Branch: @_branchName</span>
-                                }
-                            </div>
-                        </div>
-                    }
+                    </div>
                 </div>
             }
             else if (!IsJobActive && Job.Status == JobStatus.Completed && string.IsNullOrEmpty(Job.GitDiff))
             {
-                <div class="no-changes-section">
-                    <p class="no-changes-message">No file changes detected during this job.</p>
+                <div class="card shadow-sm">
+                    <div class="card-body">
+                        <p class="text-muted mb-0 text-center">No file changes detected during this job.</p>
+                    </div>
                 </div>
             }
         </div>
 
-        <div class="job-messages-section">
-            <h4>Conversation (@Job.Messages.Count messages)</h4>
-
-            @if (Job.Status == JobStatus.Started || Job.Status == JobStatus.Processing)
-            {
-                <div class="activity-indicator">
-                    <span class="activity-spinner"></span>
-                    <span class="activity-text">@(Job.CurrentActivity ?? "Working...")</span>
-                    @if (Job.LastActivityAt.HasValue)
-                    {
-                        <span class="activity-time">@Job.LastActivityAt.Value.ToLocalTime().ToString("HH:mm:ss")</span>
-                    }
+        <div class="col-lg-7">
+            <div class="card shadow-sm">
+                <div class="card-header">
+                    <h5 class="mb-0">Conversation (@Job.Messages.Count messages)</h5>
                 </div>
-            }
-
-            @if (!Job.Messages.Any())
-            {
-                <p class="empty-state">
-                    @if (Job.Status == JobStatus.New || Job.Status == JobStatus.Pending)
+                <div class="card-body">
+                    @if (Job.Status == JobStatus.Started || Job.Status == JobStatus.Processing)
                     {
-                        <text>Job is waiting to be processed...</text>
+                        <div class="activity-indicator mb-3">
+                            <span class="activity-spinner"></span>
+                            <span class="activity-text">@(Job.CurrentActivity ?? "Working...")</span>
+                            @if (Job.LastActivityAt.HasValue)
+                            {
+                                <span class="activity-time">@Job.LastActivityAt.Value.ToLocalTime().ToString("HH:mm:ss")</span>
+                            }
+                        </div>
                     }
-                    else if (Job.Status == JobStatus.Started || Job.Status == JobStatus.Processing)
+
+                    @if (!Job.Messages.Any())
                     {
-                        <text>Agent is working on the task...</text>
+                        <div class="empty-state">
+                            @if (Job.Status == JobStatus.New || Job.Status == JobStatus.Pending)
+                            {
+                                <text>Job is waiting to be processed...</text>
+                            }
+                            else if (Job.Status == JobStatus.Started || Job.Status == JobStatus.Processing)
+                            {
+                                <text>Agent is working on the task...</text>
+                            }
+                            else
+                            {
+                                <text>No conversation messages recorded.</text>
+                            }
+                        </div>
                     }
                     else
                     {
-                        <text>No conversation messages recorded.</text>
-                    }
-                </p>
-            }
-            else
-            {
-                <div class="messages-container">
-                    @foreach (var message in Job.Messages)
-                    {
-                        <div class="message message-@message.Role.ToString().ToLower()">
-                            <div class="message-header">
-                                <span class="message-role">@GetRoleDisplayName(message.Role)</span>
-                                <span class="message-time">@message.CreatedAt.ToLocalTime().ToString("HH:mm:ss")</span>
-                            </div>
-                            <div class="message-content">
-                                @if (message.Role == MessageRole.ToolUse)
-                                {
-                                    <div class="tool-info">
-                                        <strong>Tool:</strong> @message.ToolName
-                                        @if (!string.IsNullOrEmpty(message.ToolInput))
+                        <div class="messages-container">
+                            @foreach (var message in Job.Messages)
+                            {
+                                <div class="message message-@message.Role.ToString().ToLower()">
+                                    <div class="message-header">
+                                        <span class="message-role">@GetRoleDisplayName(message.Role)</span>
+                                        <span class="message-time">@message.CreatedAt.ToLocalTime().ToString("HH:mm:ss")</span>
+                                    </div>
+                                    <div class="message-content">
+                                        @if (message.Role == MessageRole.ToolUse)
                                         {
-                                            <pre class="tool-input">@message.ToolInput</pre>
+                                            <div class="tool-info">
+                                                <strong>Tool:</strong> @message.ToolName
+                                                @if (!string.IsNullOrEmpty(message.ToolInput))
+                                                {
+                                                    <pre class="tool-input">@message.ToolInput</pre>
+                                                }
+                                            </div>
+                                        }
+                                        else if (message.Role == MessageRole.ToolResult)
+                                        {
+                                            <div class="tool-info">
+                                                <strong>Result from:</strong> @message.ToolName
+                                                <pre class="tool-output">@TruncateOutput(message.ToolOutput ?? message.Content, 500)</pre>
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            <pre class="message-text">@message.Content</pre>
                                         }
                                     </div>
-                                }
-                                else if (message.Role == MessageRole.ToolResult)
-                                {
-                                    <div class="tool-info">
-                                        <strong>Result from:</strong> @message.ToolName
-                                        <pre class="tool-output">@TruncateOutput(message.ToolOutput ?? message.Content, 500)</pre>
-                                    </div>
-                                }
-                                else
-                                {
-                                    <pre class="message-text">@message.Content</pre>
-                                }
-                            </div>
+                                </div>
+                            }
                         </div>
                     }
                 </div>
-            }
+            </div>
         </div>
     </div>
 
     @if (!string.IsNullOrEmpty(ErrorMessage))
     {
-        <div class="alert alert-error">@ErrorMessage</div>
+        <div class="alert alert-danger mt-3">@ErrorMessage</div>
     }
 
     @if (!string.IsNullOrEmpty(SuccessMessage))
     {
-        <div class="alert alert-success">@SuccessMessage</div>
+        <div class="alert alert-success mt-3">@SuccessMessage</div>
     }
 }
 
@@ -437,32 +461,32 @@ else
     }
 
     private bool CanCancel => Job != null &&
-    (Job.Status == JobStatus.New ||
-    Job.Status == JobStatus.Pending ||
-    Job.Status == JobStatus.Started ||
-    Job.Status == JobStatus.Processing) &&
-    !Job.CancellationRequested;
+        (Job.Status == JobStatus.New ||
+        Job.Status == JobStatus.Pending ||
+        Job.Status == JobStatus.Started ||
+        Job.Status == JobStatus.Processing) &&
+        !Job.CancellationRequested;
 
     // Force cancel is available when cancellation was requested but job is still running
     private bool CanForceCancel => Job != null &&
-    (Job.Status == JobStatus.Started || Job.Status == JobStatus.Processing) &&
-    Job.CancellationRequested;
+        (Job.Status == JobStatus.Started || Job.Status == JobStatus.Processing) &&
+        Job.CancellationRequested;
 
     private bool CanRetry => Job != null &&
-    (Job.Status == JobStatus.Cancelled ||
-    Job.Status == JobStatus.Failed ||
-    Job.Status == JobStatus.Completed);
+        (Job.Status == JobStatus.Cancelled ||
+        Job.Status == JobStatus.Failed ||
+        Job.Status == JobStatus.Completed);
 
     private bool IsJobActive => Job != null &&
-    (Job.Status == JobStatus.New ||
-    Job.Status == JobStatus.Pending ||
-    Job.Status == JobStatus.Started ||
-    Job.Status == JobStatus.Processing);
+        (Job.Status == JobStatus.New ||
+        Job.Status == JobStatus.Pending ||
+        Job.Status == JobStatus.Started ||
+        Job.Status == JobStatus.Processing);
 
     private bool CanPush => !_isPushing &&
-    !string.IsNullOrWhiteSpace(_commitMessage) &&
-    !_changesPushed &&
-    Job?.Project?.WorkingPath != null;
+        !string.IsNullOrWhiteSpace(_commitMessage) &&
+        !_changesPushed &&
+        Job?.Project?.WorkingPath != null;
 
     protected override async Task OnInitializedAsync()
     {
@@ -494,9 +518,9 @@ else
             if (shouldPoll && !_isRefreshing)
             {
                 await InvokeAsync(async () =>
-        {
-            await RefreshJobSafely();
-        });
+                {
+                    await RefreshJobSafely();
+                });
             }
         }, null, TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(3));
     }
@@ -847,15 +871,15 @@ else
         try
         {
             var result = await GitHelper.CommitAndPushAsync(
-            Job.Project.WorkingPath,
-            _commitMessage,
-            "origin",
-            status =>
-            {
-                _pushStatus = status;
-                InvokeAsync(StateHasChanged);
-            },
-            _pushCancellationTokenSource.Token);
+                Job.Project.WorkingPath,
+                _commitMessage,
+                "origin",
+                status =>
+                {
+                    _pushStatus = status;
+                    InvokeAsync(StateHasChanged);
+                },
+                _pushCancellationTokenSource.Token);
 
             if (result.Success)
             {

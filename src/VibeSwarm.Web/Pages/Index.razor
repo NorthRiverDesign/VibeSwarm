@@ -2,76 +2,105 @@
 @inject IProviderService ProviderService
 @inject IProjectService ProjectService
 
-<h3>Welcome to VibeSwarm</h3>
-<p>Your distributed agent job management system.</p>
+<h3 class="mb-3">Welcome to VibeSwarm</h3>
+<p class="text-muted">Your distributed agent job management system.</p>
 
-<div class="dashboard-grid">
-    <section class="recent-projects">
-        <h4>Recent Projects</h4>
+<div class="row g-4">
+    <div class="col-12">
+        <section>
+            <h4 class="mb-3">Recent Projects</h4>
 
-        @if (IsLoading)
-        {
-            <p>Loading projects...</p>
-        }
-        else if (!Projects.Any())
-        {
-            <p class="empty-state">No projects yet. <a href="/projects">Create your first project</a> to get started.</p>
-        }
-        else
-        {
-            <div class="project-cards">
-                @foreach (var project in Projects)
-                {
-                    <a href="/projects/@project.Id" class="project-card">
-                        <h5>@project.Name</h5>
-                        @if (!string.IsNullOrEmpty(project.Description))
-                        {
-                            <p class="project-card-description">@TruncateText(project.Description, 80)</p>
-                        }
-                        <div class="project-card-info">
-                            <span class="project-card-path">@TruncateText(project.WorkingPath, 40)</span>
-                            <span class="project-card-date">@project.CreatedAt.ToLocalTime().ToString("MMM d, yyyy")</span>
-                        </div>
-                    </a>
-                }
-            </div>
-            <p style="margin-top: 1rem;"><a href="/projects">View all projects</a></p>
-        }
-    </section>
-
-    <section class="connected-providers">
-        <h4>Connected Providers</h4>
-
-        @if (IsLoading)
-        {
-            <p>Loading providers...</p>
-        }
-        else if (!Providers.Any())
-        {
-            <p class="empty-state">No providers configured. <a href="/providers">Add a provider</a> to get started.</p>
-        }
-        else
-        {
-            <div class="provider-cards">
-                @foreach (var provider in Providers)
-                {
-                    <div class="provider-card @(provider.IsEnabled ? "" : "disabled")">
-                        <h5>@provider.Name</h5>
-                        <div class="provider-card-info">
-                            <span>Type: @provider.Type</span>
-                            <span>Mode: @provider.ConnectionMode</span>
-                            <span>Status: @(provider.IsEnabled ? "Enabled" : "Disabled")</span>
-                            @if (provider.LastConnectedAt.HasValue)
-                            {
-                                <span>Last connected: @provider.LastConnectedAt.Value.ToLocalTime().ToString("g")</span>
-                            }
-                        </div>
+            @if (IsLoading)
+            {
+                <div class="d-flex justify-content-center py-4">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
                     </div>
-                }
-            </div>
-            <p style="margin-top: 1rem;"><a href="/providers">Manage providers</a></p>
-        }
-    </section>
+                </div>
+            }
+            else if (!Projects.Any())
+            {
+                <div class="empty-state">
+                    <p class="mb-0">No projects yet. <a href="/projects">Create your first project</a> to get started.</p>
+                </div>
+            }
+            else
+            {
+                <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-3">
+                    @foreach (var project in Projects)
+                    {
+                        <div class="col">
+                            <a href="/projects/@project.Id" class="card h-100 text-decoration-none project-card shadow-sm">
+                                <div class="card-body">
+                                    <h5 class="card-title text-dark">@project.Name</h5>
+                                    @if (!string.IsNullOrEmpty(project.Description))
+                                    {
+                                        <p class="card-text text-muted small">@TruncateText(project.Description, 80)</p>
+                                    }
+                                    <div class="d-flex justify-content-between align-items-center mt-2">
+                                        <small class="text-muted font-monospace">@TruncateText(project.WorkingPath, 40)</small>
+                                        <small class="text-muted">@project.CreatedAt.ToLocalTime().ToString("MMM d, yyyy")</small>
+                                    </div>
+                                </div>
+                            </a>
+                        </div>
+                    }
+                </div>
+                <p class="mt-3"><a href="/projects">View all projects</a></p>
+            }
+        </section>
+    </div>
+
+    <div class="col-12">
+        <section>
+            <h4 class="mb-3">Connected Providers</h4>
+
+            @if (IsLoading)
+            {
+                <div class="d-flex justify-content-center py-4">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                </div>
+            }
+            else if (!Providers.Any())
+            {
+                <div class="empty-state">
+                    <p class="mb-0">No providers configured. <a href="/providers">Add a provider</a> to get started.</p>
+                </div>
+            }
+            else
+            {
+                <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-3">
+                    @foreach (var provider in Providers)
+                    {
+                        <div class="col">
+                            <div class="card h-100 provider-card shadow-sm @(provider.IsEnabled ? "" : "disabled")">
+                                <div class="card-body">
+                                    <h5 class="card-title">@provider.Name</h5>
+                                    <div class="small text-muted">
+                                        <div><strong>Type:</strong> @provider.Type</div>
+                                        <div><strong>Mode:</strong> @provider.ConnectionMode</div>
+                                        <div>
+                                            <strong>Status:</strong>
+                                            <span class="badge @(provider.IsEnabled ? "bg-success" : "bg-secondary")">
+                                                @(provider.IsEnabled ? "Enabled" : "Disabled")
+                                            </span>
+                                        </div>
+                                        @if (provider.LastConnectedAt.HasValue)
+                                        {
+                                            <div><strong>Last connected:</strong> @provider.LastConnectedAt.Value.ToLocalTime().ToString("g")</div>
+                                        }
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
+                <p class="mt-3"><a href="/providers">Manage providers</a></p>
+            }
+        </section>
+    </div>
 </div>
 
 @code {

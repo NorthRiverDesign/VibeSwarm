@@ -2,96 +2,117 @@
 @using VibeSwarm.Shared.Services
 @inject IProviderService ProviderService
 
-<h3>Providers</h3>
-<p>Manage your AI coding agent providers.</p>
+<h3 class="mb-2">Providers</h3>
+<p class="text-muted mb-4">Manage your AI coding agent providers.</p>
 
-<div class="providers-container">
-    <div class="providers-list">
-        <h4>Connected Providers</h4>
-
-        @if (IsLoading)
-        {
-            <p>Loading providers...</p>
-        }
-        else if (!ProvidersList.Any())
-        {
-            <p class="empty-state">No providers configured. Add one below.</p>
-        }
-        else
-        {
-            <table class="providers-table">
-                <thead>
-                    <tr>
-                        <th>Name</th>
-                        <th>Type</th>
-                        <th>Mode</th>
-                        <th>Enabled</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var provider in ProvidersList)
-                    {
-                        <tr class="@(provider.IsDefault ? "default-provider-row" : "")">
-                            <td>
-                                @provider.Name
-                                @if (provider.IsDefault)
+<div class="row g-4">
+    <div class="col-lg-8">
+        <div class="card shadow-sm">
+            <div class="card-header">
+                <h5 class="mb-0">Connected Providers</h5>
+            </div>
+            <div class="card-body">
+                @if (IsLoading)
+                {
+                    <div class="d-flex justify-content-center py-4">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                    </div>
+                }
+                else if (!ProvidersList.Any())
+                {
+                    <div class="empty-state">
+                        <p class="mb-0">No providers configured. Add one using the form.</p>
+                    </div>
+                }
+                else
+                {
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Type</th>
+                                    <th>Mode</th>
+                                    <th>Enabled</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var provider in ProvidersList)
                                 {
-                                    <span class="default-badge">Default</span>
-                                }
-                            </td>
-                            <td>@provider.Type</td>
-                            <td>@provider.ConnectionMode</td>
-                            <td>
-                                <label class="toggle-switch">
-                                    <input type="checkbox" checked="@provider.IsEnabled"
-                                        @onchange="() => ToggleEnabled(provider)" />
-                                    <span class="toggle-slider"></span>
-                                </label>
-                            </td>
-                            <td class="actions">
-                                <button class="btn btn-small" @onclick="() => TestConnection(provider)"
-                                    disabled="@(TestingId == provider.Id)">
-                                    @(TestingId == provider.Id ? "Testing..." : "Test")
-                                </button>
-                                @if (!provider.IsDefault)
-                                {
-                                    <button class="btn btn-small btn-outline-primary" @onclick="() => MakeDefault(provider)"
-                                        title="Set as default provider for new jobs">
-                                        Make Default
-                                    </button>
-                                }
-                                <button class="btn btn-small" @onclick="() => EditProvider(provider)">Edit</button>
-                                <button class="btn btn-small btn-danger"
-                                    @onclick="() => DeleteProvider(provider)">Delete</button>
-                            </td>
-                        </tr>
-                        @if (TestResults.TryGetValue(provider.Id, out var result))
-                        {
-                            <tr class="test-result-row">
-                                <td colspan="5">
-                                    <div class="@(result.IsConnected ? "test-success" : "test-failure")">
-                                        <strong>@(result.IsConnected ? "✓ Connection successful" : "✗ Connection failed")</strong>
-                                        @if (!result.IsConnected && !string.IsNullOrEmpty(result.ErrorMessage))
-                                        {
-                                            <div class="error-details">
-                                                <pre>@result.ErrorMessage</pre>
+                                    <tr class="@(provider.IsDefault ? "default-provider-row" : "")">
+                                        <td>
+                                            @provider.Name
+                                            @if (provider.IsDefault)
+                                            {
+                                                <span class="default-badge">Default</span>
+                                            }
+                                        </td>
+                                        <td>@provider.Type</td>
+                                        <td>@provider.ConnectionMode</td>
+                                        <td>
+                                            <label class="toggle-switch">
+                                                <input type="checkbox" checked="@provider.IsEnabled"
+                                                    @onchange="() => ToggleEnabled(provider)" />
+                                                <span class="toggle-slider"></span>
+                                            </label>
+                                        </td>
+                                        <td>
+                                            <div class="btn-group btn-group-sm" role="group">
+                                                <button class="btn btn-outline-secondary" @onclick="() => TestConnection(provider)"
+                                                    disabled="@(TestingId == provider.Id)">
+                                                    @(TestingId == provider.Id ? "Testing..." : "Test")
+                                                </button>
+                                                @if (!provider.IsDefault)
+                                                {
+                                                    <button class="btn btn-outline-primary" @onclick="() => MakeDefault(provider)"
+                                                        title="Set as default provider for new jobs">
+                                                        Default
+                                                    </button>
+                                                }
+                                                <button class="btn btn-outline-secondary" @onclick="() => EditProvider(provider)">Edit</button>
+                                                <button class="btn btn-outline-danger"
+                                                    @onclick="() => DeleteProvider(provider)">Delete</button>
                                             </div>
-                                        }
-                                    </div>
-                                </td>
-                            </tr>
-                        }
-                    }
-                </tbody>
-            </table>
-        }
+                                        </td>
+                                    </tr>
+                                    @if (TestResults.TryGetValue(provider.Id, out var result))
+                                    {
+                                        <tr class="table-light">
+                                            <td colspan="5">
+                                                <div class="@(result.IsConnected ? "test-success" : "test-failure")">
+                                                    <strong>@(result.IsConnected ? "✓ Connection successful" : "✗ Connection failed")</strong>
+                                                    @if (!result.IsConnected && !string.IsNullOrEmpty(result.ErrorMessage))
+                                                    {
+                                                        <div class="error-details">
+                                                            <pre>@result.ErrorMessage</pre>
+                                                        </div>
+                                                    }
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    }
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </div>
+        </div>
     </div>
 
-    <div class="provider-form-container">
-        <h4>@(EditingProvider != null ? "Edit Provider" : "Add New Provider")</h4>
-        <ProviderForm Provider="@CurrentProvider" IsEdit="@(EditingProvider != null)" OnSaved="HandleProviderSaved"
-            OnCancel="CancelEdit" />
+    <div class="col-lg-4">
+        <div class="card shadow-sm">
+            <div class="card-header">
+                <h5 class="mb-0">@(EditingProvider != null ? "Edit Provider" : "Add New Provider")</h5>
+            </div>
+            <div class="card-body">
+                <ProviderForm Provider="@CurrentProvider" IsEdit="@(EditingProvider != null)" OnSaved="HandleProviderSaved"
+                    OnCancel="CancelEdit" />
+            </div>
+        </div>
     </div>
 </div>
 

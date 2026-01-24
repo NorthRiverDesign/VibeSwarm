@@ -5,336 +5,337 @@
 @implements IAsyncDisposable
 @using System.Threading
 
-<div class="page-header">
-	<h3>Jobs</h3>
-	<div class="page-header-actions">
-		<span class="job-count">@(_jobs?.Count() ?? 0) total jobs</span>
-	</div>
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3 class="mb-0">Jobs</h3>
+    <span class="text-muted">@(_jobs?.Count() ?? 0) total jobs</span>
 </div>
 
 @if (_isLoading)
 {
-	<p>Loading jobs...</p>
+    <div class="d-flex justify-content-center py-5">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+    </div>
 }
 else if (_jobs == null || !_jobs.Any())
 {
-	<div class="empty-state">
-		<p>No jobs have been submitted yet.</p>
-		<p>Go to a <a href="/projects">project</a> to create a new job.</p>
-	</div>
+    <div class="empty-state">
+        <p class="mb-2">No jobs have been submitted yet.</p>
+        <p class="mb-0">Go to a <a href="/projects">project</a> to create a new job.</p>
+    </div>
 }
 else
 {
-	<div class="jobs-filter">
-		<button class="filter-btn @(_filter == "all" ? "active" : "")" @onclick='() => SetFilter("all")'>All</button>
-		<button class="filter-btn @(_filter == "active" ? "active" : "")"
-			@onclick='() => SetFilter("active")'>Active</button>
-		<button class="filter-btn @(_filter == "completed" ? "active" : "")"
-			@onclick='() => SetFilter("completed")'>Completed</button>
-		<button class="filter-btn @(_filter == "failed" ? "active" : "")"
-			@onclick='() => SetFilter("failed")'>Failed</button>
-	</div>
+    <div class="btn-group mb-3" role="group">
+        <button type="button" class="btn @(_filter == "all" ? "btn-primary" : "btn-outline-primary")" @onclick='() => SetFilter("all")'>All</button>
+        <button type="button" class="btn @(_filter == "active" ? "btn-primary" : "btn-outline-primary")" @onclick='() => SetFilter("active")'>Active</button>
+        <button type="button" class="btn @(_filter == "completed" ? "btn-primary" : "btn-outline-primary")" @onclick='() => SetFilter("completed")'>Completed</button>
+        <button type="button" class="btn @(_filter == "failed" ? "btn-primary" : "btn-outline-primary")" @onclick='() => SetFilter("failed")'>Failed</button>
+    </div>
 
-	<div class="jobs-list">
-		@foreach (var job in GetFilteredJobs())
-		{
-			<div class="job-card" @onclick="() => NavigateToJob(job.Id)">
-				<div class="job-card-header">
-					<span class="status-badge status-@job.Status.ToString().ToLower()">
-						@if (job.Status == JobStatus.Started || job.Status == JobStatus.Processing)
-						{
-							<span class="status-spinner"></span>
-						}
-						@job.Status
-					</span>
-					@if (job.CancellationRequested && (job.Status == JobStatus.Started || job.Status == JobStatus.Processing))
-					{
-						<span class="status-badge status-cancelling">
-							<span class="status-spinner"></span>
-							Cancelling
-						</span>
-					}
-					<span class="job-project">@(job.Project?.Name ?? "Unknown Project")</span>
-				</div>
-				<div class="job-card-content">
-					<p class="job-prompt">@TruncatePrompt(job.GoalPrompt, 150)</p>
-				</div>
-				<div class="job-card-footer">
-					<span class="job-provider">@(job.Provider?.Name ?? "Unknown")</span>
-					@if (job.Status == JobStatus.Started || job.Status == JobStatus.Processing)
-					{
-						<span class="job-activity">@(job.CurrentActivity ?? "Working...")</span>
-					}
-					else
-					{
-						<span class="job-time">@GetTimeDisplay(job)</span>
-					}
-					@if (job.TotalCostUsd.HasValue)
-					{
-						<span class="job-cost">$@job.TotalCostUsd.Value.ToString("F4")</span>
-					}
-				</div>
-			</div>
-		}
-	</div>
+    <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-3">
+        @foreach (var job in GetFilteredJobs())
+        {
+            <div class="col">
+                <div class="job-card" @onclick="() => NavigateToJob(job.Id)">
+                    <div class="job-card-header">
+                        <span class="badge status-@job.Status.ToString().ToLower()">
+                            @if (job.Status == JobStatus.Started || job.Status == JobStatus.Processing)
+                            {
+                                <span class="status-spinner"></span>
+                            }
+                            @job.Status
+                        </span>
+                        @if (job.CancellationRequested && (job.Status == JobStatus.Started || job.Status == JobStatus.Processing))
+                        {
+                            <span class="badge status-cancelling">
+                                <span class="status-spinner"></span>
+                                Cancelling
+                            </span>
+                        }
+                        <span class="job-project">@(job.Project?.Name ?? "Unknown Project")</span>
+                    </div>
+                    <div class="job-card-content">
+                        <p class="job-prompt">@TruncatePrompt(job.GoalPrompt, 150)</p>
+                    </div>
+                    <div class="job-card-footer">
+                        <span class="job-provider">@(job.Provider?.Name ?? "Unknown")</span>
+                        @if (job.Status == JobStatus.Started || job.Status == JobStatus.Processing)
+                        {
+                            <span class="job-activity">@(job.CurrentActivity ?? "Working...")</span>
+                        }
+                        else
+                        {
+                            <span class="job-time">@GetTimeDisplay(job)</span>
+                        }
+                        @if (job.TotalCostUsd.HasValue)
+                        {
+                            <span class="job-cost">$@job.TotalCostUsd.Value.ToString("F4")</span>
+                        }
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
 }
 
 @code {
-	private IEnumerable<Job>? _jobs;
-	private bool _isLoading = true;
-	private string _filter = "all";
-	private DotNetObjectReference<Jobs>? _dotNetReference;
-	private IJSObjectReference? _signalRModule;
-	private Timer? _refreshTimer;
-	private bool _isRefreshing = false;
+    private IEnumerable<Job>? _jobs;
+    private bool _isLoading = true;
+    private string _filter = "all";
+    private DotNetObjectReference<Jobs>? _dotNetReference;
+    private IJSObjectReference? _signalRModule;
+    private Timer? _refreshTimer;
+    private bool _isRefreshing = false;
 
-	protected override async Task OnInitializedAsync()
-	{
-		await LoadJobs();
-		StartAutoRefresh();
-	}
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadJobs();
+        StartAutoRefresh();
+    }
 
-	protected override async Task OnAfterRenderAsync(bool firstRender)
-	{
-		if (firstRender)
-		{
-			await InitializeSignalR();
-		}
-	}
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await InitializeSignalR();
+        }
+    }
 
-	private void StartAutoRefresh()
-	{
-		// Only auto-refresh when there are active jobs
-		// SignalR handles real-time updates, this is just a fallback
-		_refreshTimer = new Timer(async _ =>
-		{
-			if (HasActiveJobs() && !_isRefreshing)
-			{
-				await InvokeAsync(async () =>
-		{
-			await RefreshJobsSafely();
-		});
-			}
-		}, null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
-	}
+    private void StartAutoRefresh()
+    {
+        // Only auto-refresh when there are active jobs
+        // SignalR handles real-time updates, this is just a fallback
+        _refreshTimer = new Timer(async _ =>
+        {
+            if (HasActiveJobs() && !_isRefreshing)
+            {
+                await InvokeAsync(async () =>
+                {
+                    await RefreshJobsSafely();
+                });
+            }
+        }, null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
+    }
 
-	private bool HasActiveJobs()
-	{
-		return _jobs?.Any(j => j.Status == JobStatus.New ||
-		j.Status == JobStatus.Started ||
-		j.Status == JobStatus.Processing) ?? false;
-	}
+    private bool HasActiveJobs()
+    {
+        return _jobs?.Any(j => j.Status == JobStatus.New ||
+            j.Status == JobStatus.Started ||
+            j.Status == JobStatus.Processing) ?? false;
+    }
 
-	private async Task RefreshJobsSafely()
-	{
-		if (_isRefreshing) return;
+    private async Task RefreshJobsSafely()
+    {
+        if (_isRefreshing) return;
 
-		try
-		{
-			_isRefreshing = true;
-			await LoadJobs();
-			StateHasChanged();
-		}
-		finally
-		{
-			_isRefreshing = false;
-		}
-	}
+        try
+        {
+            _isRefreshing = true;
+            await LoadJobs();
+            StateHasChanged();
+        }
+        finally
+        {
+            _isRefreshing = false;
+        }
+    }
 
-	private async Task InitializeSignalR()
-	{
-		try
-		{
-			_dotNetReference = DotNetObjectReference.Create(this);
-			_signalRModule = await JSRuntime.InvokeAsync<IJSObjectReference>("import", "/js/jobListSignalR.js");
-			await _signalRModule.InvokeVoidAsync("initializeJobListHub", _dotNetReference);
-		}
-		catch (Exception ex)
-		{
-			Console.WriteLine($"Error initializing SignalR: {ex.Message}");
-		}
-	}
+    private async Task InitializeSignalR()
+    {
+        try
+        {
+            _dotNetReference = DotNetObjectReference.Create(this);
+            _signalRModule = await JSRuntime.InvokeAsync<IJSObjectReference>("import", "/js/jobListSignalR.js");
+            await _signalRModule.InvokeVoidAsync("initializeJobListHub", _dotNetReference);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error initializing SignalR: {ex.Message}");
+        }
+    }
 
-	[JSInvokable]
-	public async Task OnJobStatusChanged(string jobId, string status)
-	{
-		Console.WriteLine($"[Jobs] OnJobStatusChanged: {jobId} -> {status}");
+    [JSInvokable]
+    public async Task OnJobStatusChanged(string jobId, string status)
+    {
+        Console.WriteLine($"[Jobs] OnJobStatusChanged: {jobId} -> {status}");
 
-		// Try to update status in-place first for immediate UI response
-		if (_jobs != null && Guid.TryParse(jobId, out var id) && Enum.TryParse<JobStatus>(status, out var newStatus))
-		{
-			var job = _jobs.FirstOrDefault(j => j.Id == id);
-			if (job != null)
-			{
-				job.Status = newStatus;
-				if (newStatus == JobStatus.Started)
-				{
-					job.StartedAt = DateTime.UtcNow;
-				}
-				else if (newStatus == JobStatus.Completed || newStatus == JobStatus.Failed || newStatus == JobStatus.Cancelled)
-				{
-					job.CompletedAt = DateTime.UtcNow;
-				}
-				await InvokeAsync(StateHasChanged);
-			}
-		}
+        // Try to update status in-place first for immediate UI response
+        if (_jobs != null && Guid.TryParse(jobId, out var id) && Enum.TryParse<JobStatus>(status, out var newStatus))
+        {
+            var job = _jobs.FirstOrDefault(j => j.Id == id);
+            if (job != null)
+            {
+                job.Status = newStatus;
+                if (newStatus == JobStatus.Started)
+                {
+                    job.StartedAt = DateTime.UtcNow;
+                }
+                else if (newStatus == JobStatus.Completed || newStatus == JobStatus.Failed || newStatus == JobStatus.Cancelled)
+                {
+                    job.CompletedAt = DateTime.UtcNow;
+                }
+                await InvokeAsync(StateHasChanged);
+            }
+        }
 
-		// Also do a background refresh to get full data
-		if (!_isRefreshing)
-		{
-			_ = Task.Run(async () =>
-			{
-				await Task.Delay(500); // Small delay to avoid race conditions
-				await InvokeAsync(async () => await RefreshJobsSafely());
-			});
-		}
-	}
+        // Also do a background refresh to get full data
+        if (!_isRefreshing)
+        {
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(500); // Small delay to avoid race conditions
+                await InvokeAsync(async () => await RefreshJobsSafely());
+            });
+        }
+    }
 
-	[JSInvokable]
-	public async Task OnJobActivityUpdated(string jobId, string activity, DateTime timestamp)
-	{
-		// Update activity in-place without full reload
-		if (_jobs != null && Guid.TryParse(jobId, out var id))
-		{
-			var job = _jobs.FirstOrDefault(j => j.Id == id);
-			if (job != null)
-			{
-				job.CurrentActivity = activity;
-				job.LastActivityAt = timestamp;
-				await InvokeAsync(StateHasChanged);
-			}
-		}
-	}
+    [JSInvokable]
+    public async Task OnJobActivityUpdated(string jobId, string activity, DateTime timestamp)
+    {
+        // Update activity in-place without full reload
+        if (_jobs != null && Guid.TryParse(jobId, out var id))
+        {
+            var job = _jobs.FirstOrDefault(j => j.Id == id);
+            if (job != null)
+            {
+                job.CurrentActivity = activity;
+                job.LastActivityAt = timestamp;
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+    }
 
-	[JSInvokable]
-	public async Task OnJobCreated(string jobId, string projectId)
-	{
-		Console.WriteLine($"[Jobs] OnJobCreated: {jobId}");
-		if (!_isRefreshing)
-		{
-			await InvokeAsync(async () => await RefreshJobsSafely());
-		}
-	}
+    [JSInvokable]
+    public async Task OnJobCreated(string jobId, string projectId)
+    {
+        Console.WriteLine($"[Jobs] OnJobCreated: {jobId}");
+        if (!_isRefreshing)
+        {
+            await InvokeAsync(async () => await RefreshJobsSafely());
+        }
+    }
 
-	[JSInvokable]
-	public async Task OnJobDeleted(string jobId, string projectId)
-	{
-		Console.WriteLine($"[Jobs] OnJobDeleted: {jobId}");
-		if (!_isRefreshing)
-		{
-			await InvokeAsync(async () => await RefreshJobsSafely());
-		}
-	}
+    [JSInvokable]
+    public async Task OnJobDeleted(string jobId, string projectId)
+    {
+        Console.WriteLine($"[Jobs] OnJobDeleted: {jobId}");
+        if (!_isRefreshing)
+        {
+            await InvokeAsync(async () => await RefreshJobsSafely());
+        }
+    }
 
-	[JSInvokable]
-	public async Task OnJobCompleted(string jobId, bool success, string? errorMessage)
-	{
-		Console.WriteLine($"[Jobs] OnJobCompleted: {jobId}, success: {success}");
-		if (!_isRefreshing)
-		{
-			await InvokeAsync(async () => await RefreshJobsSafely());
-		}
-	}
+    [JSInvokable]
+    public async Task OnJobCompleted(string jobId, bool success, string? errorMessage)
+    {
+        Console.WriteLine($"[Jobs] OnJobCompleted: {jobId}, success: {success}");
+        if (!_isRefreshing)
+        {
+            await InvokeAsync(async () => await RefreshJobsSafely());
+        }
+    }
 
-	[JSInvokable]
-	public async Task OnJobListChanged()
-	{
-		Console.WriteLine($"[Jobs] OnJobListChanged");
-		if (!_isRefreshing)
-		{
-			await InvokeAsync(async () => await RefreshJobsSafely());
-		}
-	}
+    [JSInvokable]
+    public async Task OnJobListChanged()
+    {
+        Console.WriteLine($"[Jobs] OnJobListChanged");
+        if (!_isRefreshing)
+        {
+            await InvokeAsync(async () => await RefreshJobsSafely());
+        }
+    }
 
-	private async Task LoadJobs()
-	{
-		try
-		{
-			_jobs = await JobService.GetAllAsync();
-		}
-		finally
-		{
-			_isLoading = false;
-		}
-	}
+    private async Task LoadJobs()
+    {
+        try
+        {
+            _jobs = await JobService.GetAllAsync();
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
 
-	private void SetFilter(string filter)
-	{
-		_filter = filter;
-	}
+    private void SetFilter(string filter)
+    {
+        _filter = filter;
+    }
 
-	private IEnumerable<Job> GetFilteredJobs()
-	{
-		if (_jobs == null) return Enumerable.Empty<Job>();
+    private IEnumerable<Job> GetFilteredJobs()
+    {
+        if (_jobs == null) return Enumerable.Empty<Job>();
 
-		return _filter switch
-		{
-			"active" => _jobs.Where(j => j.Status == JobStatus.New ||
-			j.Status == JobStatus.Started ||
-			j.Status == JobStatus.Processing),
-			"completed" => _jobs.Where(j => j.Status == JobStatus.Completed),
-			"failed" => _jobs.Where(j => j.Status == JobStatus.Failed || j.Status == JobStatus.Cancelled),
-			_ => _jobs
-		};
-	}
+        return _filter switch
+        {
+            "active" => _jobs.Where(j => j.Status == JobStatus.New ||
+                j.Status == JobStatus.Started ||
+                j.Status == JobStatus.Processing),
+            "completed" => _jobs.Where(j => j.Status == JobStatus.Completed),
+            "failed" => _jobs.Where(j => j.Status == JobStatus.Failed || j.Status == JobStatus.Cancelled),
+            _ => _jobs
+        };
+    }
 
-	private void NavigateToJob(Guid jobId)
-	{
-		NavigationManager.NavigateTo($"/jobs/{jobId}");
-	}
+    private void NavigateToJob(Guid jobId)
+    {
+        NavigationManager.NavigateTo($"/jobs/{jobId}");
+    }
 
-	private static string TruncatePrompt(string prompt, int maxLength)
-	{
-		if (string.IsNullOrEmpty(prompt) || prompt.Length <= maxLength)
-			return prompt;
-		return prompt[..maxLength] + "...";
-	}
+    private static string TruncatePrompt(string prompt, int maxLength)
+    {
+        if (string.IsNullOrEmpty(prompt) || prompt.Length <= maxLength)
+            return prompt;
+        return prompt[..maxLength] + "...";
+    }
 
-	private static string GetTimeDisplay(Job job)
-	{
-		if (job.CompletedAt.HasValue)
-		{
-			var duration = job.CompletedAt.Value - (job.StartedAt ?? job.CreatedAt);
-			return $"Completed in {FormatDuration(duration)}";
-		}
-		if (job.StartedAt.HasValue)
-		{
-			var duration = DateTime.UtcNow - job.StartedAt.Value;
-			return $"Running for {FormatDuration(duration)}";
-		}
-		return $"Created {FormatTimeAgo(job.CreatedAt)}";
-	}
+    private static string GetTimeDisplay(Job job)
+    {
+        if (job.CompletedAt.HasValue)
+        {
+            var duration = job.CompletedAt.Value - (job.StartedAt ?? job.CreatedAt);
+            return $"Completed in {FormatDuration(duration)}";
+        }
+        if (job.StartedAt.HasValue)
+        {
+            var duration = DateTime.UtcNow - job.StartedAt.Value;
+            return $"Running for {FormatDuration(duration)}";
+        }
+        return $"Created {FormatTimeAgo(job.CreatedAt)}";
+    }
 
-	private static string FormatDuration(TimeSpan duration)
-	{
-		if (duration.TotalMinutes < 1) return $"{duration.Seconds}s";
-		if (duration.TotalHours < 1) return $"{duration.Minutes}m {duration.Seconds}s";
-		return $"{(int)duration.TotalHours}h {duration.Minutes}m";
-	}
+    private static string FormatDuration(TimeSpan duration)
+    {
+        if (duration.TotalMinutes < 1) return $"{duration.Seconds}s";
+        if (duration.TotalHours < 1) return $"{duration.Minutes}m {duration.Seconds}s";
+        return $"{(int)duration.TotalHours}h {duration.Minutes}m";
+    }
 
-	private static string FormatTimeAgo(DateTime time)
-	{
-		var elapsed = DateTime.UtcNow - time;
-		if (elapsed.TotalMinutes < 1) return "just now";
-		if (elapsed.TotalMinutes < 60) return $"{(int)elapsed.TotalMinutes}m ago";
-		if (elapsed.TotalHours < 24) return $"{(int)elapsed.TotalHours}h ago";
-		return $"{(int)elapsed.TotalDays}d ago";
-	}
+    private static string FormatTimeAgo(DateTime time)
+    {
+        var elapsed = DateTime.UtcNow - time;
+        if (elapsed.TotalMinutes < 1) return "just now";
+        if (elapsed.TotalMinutes < 60) return $"{(int)elapsed.TotalMinutes}m ago";
+        if (elapsed.TotalHours < 24) return $"{(int)elapsed.TotalHours}h ago";
+        return $"{(int)elapsed.TotalDays}d ago";
+    }
 
-	public async ValueTask DisposeAsync()
-	{
-		_refreshTimer?.Dispose();
+    public async ValueTask DisposeAsync()
+    {
+        _refreshTimer?.Dispose();
 
-		if (_signalRModule != null)
-		{
-			try
-			{
-				await _signalRModule.InvokeVoidAsync("disposeJobListHub");
-				await _signalRModule.DisposeAsync();
-			}
-			catch { }
-		}
+        if (_signalRModule != null)
+        {
+            try
+            {
+                await _signalRModule.InvokeVoidAsync("disposeJobListHub");
+                await _signalRModule.DisposeAsync();
+            }
+            catch { }
+        }
 
-		_dotNetReference?.Dispose();
-	}
+        _dotNetReference?.Dispose();
+    }
 }

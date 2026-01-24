@@ -7,6 +7,7 @@ A Blazor Server application for managing background jobs and tasks, designed to 
 ### Development (VSCode)
 
 Press **F5** to start debugging. The application will:
+
 - Build automatically
 - Start on `http://localhost:5000` and `https://localhost:5001`
 - Open in your default browser
@@ -14,6 +15,7 @@ Press **F5** to start debugging. The application will:
 **To access from other devices on your network during development:**
 
 Set the environment variable before running:
+
 ```bash
 # Windows (PowerShell)
 $env:ASPNETCORE_URLS="http://0.0.0.0:5000;https://0.0.0.0:5001"
@@ -32,6 +34,7 @@ Or temporarily edit [appsettings.Development.json](src/VibeSwarm.Web/appsettings
 #### Initial Setup
 
 1. **Clone the repository** on your Raspberry Pi:
+
    ```bash
    cd ~
    git clone <your-repo-url> VibeSwarm
@@ -39,6 +42,7 @@ Or temporarily edit [appsettings.Development.json](src/VibeSwarm.Web/appsettings
    ```
 
 2. **Make scripts executable**:
+
    ```bash
    chmod +x publish.sh start-vibeswarm.sh
    ```
@@ -53,6 +57,7 @@ Or temporarily edit [appsettings.Development.json](src/VibeSwarm.Web/appsettings
 **Option 1: Quick Start (Recommended)**
 
 1. **Publish the application**:
+
    ```bash
    ./publish.sh
    ```
@@ -63,6 +68,7 @@ Or temporarily edit [appsettings.Development.json](src/VibeSwarm.Web/appsettings
    ```
 
 The application will be accessible at:
+
 - `http://localhost:5000` (from the Pi)
 - `http://<pi-ip-address>:5000` (from other devices on your network)
 
@@ -82,11 +88,13 @@ ASPNETCORE_ENVIRONMENT=Production ASPNETCORE_URLS=http://0.0.0.0:5000 ./VibeSwar
 To run VibeSwarm as a background service that starts automatically:
 
 1. **Edit the service file** to match your installation path:
+
    ```bash
    nano vibeswarm.service
    ```
 
    Update these lines if your path is different:
+
    ```
    User=pi
    WorkingDirectory=/home/pi/VibeSwarm/build
@@ -94,6 +102,7 @@ To run VibeSwarm as a background service that starts automatically:
    ```
 
 2. **Install the service**:
+
    ```bash
    sudo cp vibeswarm.service /etc/systemd/system/
    sudo systemctl daemon-reload
@@ -102,11 +111,13 @@ To run VibeSwarm as a background service that starts automatically:
    ```
 
 3. **Check service status**:
+
    ```bash
    sudo systemctl status vibeswarm
    ```
 
 4. **View logs**:
+
    ```bash
    sudo journalctl -u vibeswarm -f
    ```
@@ -148,6 +159,7 @@ VibeSwarm/
 ### Database
 
 The application uses SQLite by default:
+
 - Database file: `vibeswarm.db` (created automatically in the application directory)
 - Migrations run automatically on startup
 
@@ -198,11 +210,13 @@ If CSS or JavaScript files aren't loading:
 ### Cannot access from other devices
 
 1. Check your firewall settings on the Raspberry Pi:
+
    ```bash
    sudo ufw allow 5000/tcp
    ```
 
 2. Verify the application is listening on `0.0.0.0`:
+
    ```bash
    sudo netstat -tuln | grep 5000
    ```
@@ -217,11 +231,13 @@ If CSS or JavaScript files aren't loading:
 ### Service won't start
 
 1. Check service logs:
+
    ```bash
    sudo journalctl -u vibeswarm -n 50 --no-pager
    ```
 
 2. Verify file permissions:
+
    ```bash
    ls -la ~/VibeSwarm/build/VibeSwarm.Web
    chmod +x ~/VibeSwarm/build/VibeSwarm.Web
@@ -256,10 +272,23 @@ dotnet test
 ### VSCode Tasks
 
 Available tasks (Ctrl+Shift+P → "Tasks: Run Task"):
+
 - **build** - Build the solution
 - **publish** - Publish in Release mode to `build/` folder
 - **watch** - Run with hot reload
 
 ## License
 
-[Your License Here]
+VibeSwarm is open sourced under the MIT license and developed by the company, North River Design LLC. The company retains all rights to claim intellectual property of VibeSwarm.
+
+Because this whole application is vibe coded, feel free to fork it. We just need to absolutely specify we are NOT responsible for ANY claims of damage.
+
+## Warranty
+
+VibeSwarm is provided with absolutely no warranty. Use at your own risk. The maintainers are not responsible for any damages or losses resulting from the use of VibeSwarm. Users are encouraged to thoroughly test the application in their own environments before deploying it in production settings.
+
+VibeSwarm is for expert developers who know the limitations and risks of using AI coding agents. It is the user's responsibility to ensure that the generated code meets their quality, security, and compliance standards.
+
+Any and all use of VibeSwarm must comply with the terms of service and usage policies of the AI providers whose agents are utilized. Users are responsible for understanding and adhering to these policies to avoid violations that could lead to account suspension or other penalties.
+
+By using VibeSwarm, users agree to indemnify and hold harmless the maintainers from any claims, damages, or liabilities arising from their use of the application. In short, we are NOT responsible if the AI agent decides to delete important information on your system - it's just a wrapper application.
