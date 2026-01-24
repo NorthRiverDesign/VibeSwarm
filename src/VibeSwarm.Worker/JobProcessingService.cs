@@ -377,6 +377,20 @@ public class JobProcessingService : BackgroundService
                     _logger.LogInformation("Captured process ID {ProcessId} for job {JobId}",
                         p.ProcessId.Value, job.Id);
 
+                    // Notify UI about process start
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            if (_jobUpdateService != null)
+                            {
+                                await _jobUpdateService.NotifyProcessStarted(job.Id, p.ProcessId.Value,
+                                    $"{job.Provider?.Type} CLI");
+                            }
+                        }
+                        catch { }
+                    });
+
                     // Store process ID in database immediately
                     _ = Task.Run(async () =>
                     {
@@ -398,6 +412,23 @@ public class JobProcessingService : BackgroundService
                             _logger.LogWarning(ex, "Failed to store process ID for job {JobId}", job.Id);
                         }
                     });
+                }
+
+                // Stream output lines to UI in real-time
+                if (!string.IsNullOrEmpty(p.OutputLine))
+                {
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            if (_jobUpdateService != null)
+                            {
+                                await _jobUpdateService.NotifyJobOutput(job.Id, p.OutputLine, p.IsErrorOutput, DateTime.UtcNow);
+                            }
+                        }
+                        catch { }
+                    });
+                    return; // Don't process output lines as activity updates
                 }
 
                 var activity = !string.IsNullOrEmpty(p.ToolName)
