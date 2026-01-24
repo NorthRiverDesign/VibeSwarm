@@ -91,7 +91,77 @@ public class Job
     /// </summary>
     public int? ProcessId { get; set; }
 
+    /// <summary>
+    /// Priority level for job scheduling (higher = more urgent)
+    /// </summary>
+    public int Priority { get; set; } = 0;
+
+    /// <summary>
+    /// Maximum execution time before the job is considered timed out (in minutes)
+    /// </summary>
+    public int? MaxExecutionMinutes { get; set; }
+
+    /// <summary>
+    /// Maximum cost in USD before stopping the job
+    /// </summary>
+    public decimal? MaxCostUsd { get; set; }
+
+    /// <summary>
+    /// Maximum tokens (input + output) before stopping the job
+    /// </summary>
+    public int? MaxTokens { get; set; }
+
+    /// <summary>
+    /// Time without activity before job is considered stalled (in seconds)
+    /// </summary>
+    public int? StallTimeoutSeconds { get; set; }
+
+    /// <summary>
+    /// Regex pattern that indicates success when found in output
+    /// </summary>
+    public string? SuccessPattern { get; set; }
+
+    /// <summary>
+    /// Regex pattern that indicates failure when found in output or error
+    /// </summary>
+    public string? FailurePattern { get; set; }
+
+    /// <summary>
+    /// Tags for categorizing and filtering jobs
+    /// </summary>
+    public string? Tags { get; set; }
+
+    /// <summary>
+    /// Parent job ID for job chaining/dependencies
+    /// </summary>
+    public Guid? ParentJobId { get; set; }
+
+    /// <summary>
+    /// Dependent jobs that should run after this job completes successfully
+    /// </summary>
+    public Guid? DependsOnJobId { get; set; }
+
     public ICollection<JobMessage> Messages { get; set; } = new List<JobMessage>();
+
+    /// <summary>
+    /// Creates completion criteria from this job's settings
+    /// </summary>
+    public Services.JobCompletionCriteria GetCompletionCriteria()
+    {
+        return new Services.JobCompletionCriteria
+        {
+            MaxExecutionTime = MaxExecutionMinutes.HasValue
+                ? TimeSpan.FromMinutes(MaxExecutionMinutes.Value)
+                : TimeSpan.FromHours(1),
+            MaxCostUsd = MaxCostUsd,
+            MaxTokens = MaxTokens,
+            StallTimeout = StallTimeoutSeconds.HasValue
+                ? TimeSpan.FromSeconds(StallTimeoutSeconds.Value)
+                : TimeSpan.FromMinutes(5),
+            SuccessPattern = SuccessPattern,
+            FailurePattern = FailurePattern
+        };
+    }
 }
 
 public enum JobStatus
@@ -102,5 +172,9 @@ public enum JobStatus
     Processing,
     Completed,
     Failed,
-    Cancelled
+    Cancelled,
+    /// <summary>
+    /// Job stopped responding but may be recoverable
+    /// </summary>
+    Stalled
 }

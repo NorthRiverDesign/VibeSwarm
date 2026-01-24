@@ -50,6 +50,10 @@ public class VibeSwarmDbContext : DbContext
             entity.Property(e => e.Status).HasConversion<string>();
             entity.Property(e => e.SessionId).HasMaxLength(100);
             entity.Property(e => e.TotalCostUsd).HasPrecision(18, 6);
+            entity.Property(e => e.MaxCostUsd).HasPrecision(18, 6);
+            entity.Property(e => e.Tags).HasMaxLength(500);
+            entity.Property(e => e.SuccessPattern).HasMaxLength(1000);
+            entity.Property(e => e.FailurePattern).HasMaxLength(1000);
             entity.HasOne(e => e.Provider)
                 .WithMany()
                 .HasForeignKey(e => e.ProviderId)
@@ -58,6 +62,12 @@ public class VibeSwarmDbContext : DbContext
                 .WithOne(m => m.Job)
                 .HasForeignKey(m => m.JobId)
                 .OnDelete(DeleteBehavior.Cascade);
+
+            // Index for efficient querying
+            entity.HasIndex(e => e.Status);
+            entity.HasIndex(e => new { e.Status, e.Priority, e.CreatedAt });
+            entity.HasIndex(e => e.ParentJobId);
+            entity.HasIndex(e => e.DependsOnJobId);
         });
 
         modelBuilder.Entity<JobMessage>(entity =>

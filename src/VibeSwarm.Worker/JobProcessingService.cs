@@ -13,6 +13,9 @@ public class JobProcessingService : BackgroundService
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<JobProcessingService> _logger;
     private readonly IJobUpdateService? _jobUpdateService;
+    private readonly IJobCoordinatorService? _jobCoordinator;
+    private readonly IProviderHealthTracker? _healthTracker;
+    private readonly ProcessSupervisor? _processSupervisor;
     private readonly TimeSpan _pollingInterval = TimeSpan.FromSeconds(3); // Poll less frequently, SignalR handles real-time updates
     private readonly int _maxConcurrentJobs = 5; // Maximum number of concurrent jobs
     private readonly Dictionary<Guid, JobExecutionContext> _runningJobs = new();
@@ -28,11 +31,17 @@ public class JobProcessingService : BackgroundService
     public JobProcessingService(
         IServiceScopeFactory scopeFactory,
         ILogger<JobProcessingService> logger,
-        IJobUpdateService? jobUpdateService = null)
+        IJobUpdateService? jobUpdateService = null,
+        IJobCoordinatorService? jobCoordinator = null,
+        IProviderHealthTracker? healthTracker = null,
+        ProcessSupervisor? processSupervisor = null)
     {
         _scopeFactory = scopeFactory;
         _logger = logger;
         _jobUpdateService = jobUpdateService;
+        _jobCoordinator = jobCoordinator;
+        _healthTracker = healthTracker;
+        _processSupervisor = processSupervisor;
     }
 
     /// <summary>
@@ -43,6 +52,7 @@ public class JobProcessingService : BackgroundService
         public Task Task { get; set; } = null!;
         public CancellationTokenSource? CancellationTokenSource { get; set; }
         public int? ProcessId { get; set; }
+        public Guid ProviderId { get; set; }
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -249,6 +259,13 @@ public class JobProcessingService : BackgroundService
                 {
                     _logger.LogError(kvp.Value.Task.Exception, "Job {JobId} faulted during execution", kvp.Key);
                 }
+
+                // Release job from provider tracking
+                if (_jobCoordinator != null)
+                {
+                    await _jobCoordinator.ReleaseJobFromProviderAsync(kvp.Key, kvp.Value.ProviderId,
+                        kvp.Value.Task.IsCompletedSuccessfully, CancellationToken.None);
+                }
             }
         }
         finally
@@ -268,13 +285,16 @@ public class JobProcessingService : BackgroundService
         _logger.LogInformation("Processing job {JobId} for project {ProjectName} (Worker: {WorkerId})",
             job.Id, job.Project?.Name, _workerInstanceId);
 
+        // Store provider ID for later cleanup
+        executionContext.ProviderId = job.ProviderId;
+
         try
         {
             // Check if job was cancelled before we even started
             if (await jobService.IsCancellationRequestedAsync(job.Id, cancellationToken))
             {
-                await jobService.UpdateStatusAsync(job.Id, JobStatus.Cancelled,
-                    errorMessage: "Job was cancelled before processing started", cancellationToken: cancellationToken);
+                var transition = JobStateMachine.TryTransition(job, JobStatus.Cancelled, "Cancelled before start");
+                await dbContext.SaveChangesAsync(cancellationToken);
                 await NotifyJobCompletedAsync(job.Id, false, "Job was cancelled before processing started");
                 return;
             }
