@@ -481,7 +481,7 @@ public class CliProcessManager : IDisposable
 			try
 			{
 				kvp.Value.CancellationTokenSource?.Cancel();
-				if (!kvp.Value.Process.HasExited)
+				if (kvp.Value.Process != null && !kvp.Value.Process.HasExited)
 				{
 					PlatformHelper.TryKillProcessTree(kvp.Key, _logger);
 				}
