@@ -27,4 +27,6 @@ public abstract class ProviderBase : IProvider
         CancellationToken cancellationToken = default);
 
     public abstract Task<ProviderInfo> GetProviderInfoAsync(CancellationToken cancellationToken = default);
+
+    public abstract Task<UsageLimits> GetUsageLimitsAsync(CancellationToken cancellationToken = default);
 }

@@ -852,6 +852,147 @@ public class ClaudeProvider : ProviderBase
         return argument.Replace("\\", "\\\\").Replace("\"", "\\\"");
     }
 
+    public override async Task<UsageLimits> GetUsageLimitsAsync(CancellationToken cancellationToken = default)
+    {
+        var limits = new UsageLimits
+        {
+            LimitType = UsageLimitType.SessionLimit,
+            IsLimitReached = false
+        };
+
+        if (ConnectionMode == ProviderConnectionMode.CLI)
+        {
+            try
+            {
+                var execPath = GetExecutablePath();
+
+                // Claude CLI has a /usage command to check session limits
+                var startInfo = new ProcessStartInfo
+                {
+                    FileName = execPath,
+                    Arguments = "/usage",
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    WorkingDirectory = _workingDirectory ?? Environment.CurrentDirectory
+                };
+
+                using var process = new Process { StartInfo = startInfo };
+
+                using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
+
+                process.Start();
+
+                try
+                {
+                    await process.WaitForExitAsync(linkedCts.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                    try { process.Kill(entireProcessTree: true); } catch { }
+                    limits.Message = "Unable to check session limits (timeout)";
+                    return limits;
+                }
+
+                var output = await process.StandardOutput.ReadToEndAsync(CancellationToken.None);
+                var error = await process.StandardError.ReadToEndAsync(CancellationToken.None);
+
+                if (process.ExitCode == 0 && !string.IsNullOrWhiteSpace(output))
+                {
+                    var outputLower = output.ToLowerInvariant();
+
+                    // Check for session limit indicators
+                    if (outputLower.Contains("limit exceeded") ||
+                        outputLower.Contains("session limit") ||
+                        outputLower.Contains("no remaining") ||
+                        outputLower.Contains("quota exceeded"))
+                    {
+                        limits.IsLimitReached = true;
+                        limits.Message = "Session limit reached. Please wait for the limit to reset.";
+                    }
+                    else if (outputLower.Contains("remaining"))
+                    {
+                        // Try to parse remaining sessions
+                        var match = System.Text.RegularExpressions.Regex.Match(
+                            output, @"(\d+)\s*(?:of\s*)?(\d+)?\s*(?:remaining|sessions?|left)",
+                            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+                        if (match.Success)
+                        {
+                            if (int.TryParse(match.Groups[1].Value, out var remaining))
+                            {
+                                if (match.Groups[2].Success && int.TryParse(match.Groups[2].Value, out var total))
+                                {
+                                    limits.CurrentUsage = total - remaining;
+                                    limits.MaxUsage = total;
+                                }
+                                else
+                                {
+                                    // Only remaining is known
+                                    limits.CurrentUsage = 0; // Unknown actual usage
+                                    limits.MaxUsage = remaining; // Treat remaining as available
+                                }
+                                limits.IsLimitReached = remaining <= 0;
+                            }
+                        }
+
+                        limits.Message = limits.IsLimitReached
+                            ? "Session limit reached"
+                            : $"Sessions available: {limits.MaxUsage - (limits.CurrentUsage ?? 0)} remaining";
+                    }
+
+                    // Check for reset time
+                    var resetMatch = System.Text.RegularExpressions.Regex.Match(
+                        output, @"reset[s]?\s*(?:at|in|on)?\s*:?\s*(.+?)(?:\n|$)",
+                        System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+                    if (resetMatch.Success)
+                    {
+                        if (DateTime.TryParse(resetMatch.Groups[1].Value.Trim(), out var resetTime))
+                        {
+                            limits.ResetTime = resetTime;
+                        }
+                    }
+
+                    if (string.IsNullOrEmpty(limits.Message))
+                    {
+                        limits.Message = "Session limits available";
+                    }
+                }
+                else if (!string.IsNullOrEmpty(error))
+                {
+                    // /usage command might not exist in older versions
+                    if (error.Contains("unknown") || error.Contains("invalid"))
+                    {
+                        limits.Message = "Usage command not supported in this Claude CLI version";
+                    }
+                    else
+                    {
+                        limits.Message = $"Unable to check session limits: {error.Trim()}";
+                    }
+                }
+            }
+            catch (System.ComponentModel.Win32Exception)
+            {
+                limits.Message = "Claude CLI not found";
+            }
+            catch (Exception ex)
+            {
+                limits.Message = $"Unable to check session limits: {ex.Message}";
+            }
+        }
+        else
+        {
+            // REST API mode - check via API if possible
+            limits.LimitType = UsageLimitType.RateLimit;
+            limits.Message = "REST API rate limits apply (check API response headers)";
+        }
+
+        return limits;
+    }
+
     // JSON models for Claude CLI stream-json output
     private class ClaudeStreamEvent
     {

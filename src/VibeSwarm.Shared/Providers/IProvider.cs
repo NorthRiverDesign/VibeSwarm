@@ -26,6 +26,11 @@ public interface IProvider
     /// Get information about the provider's capabilities
     /// </summary>
     Task<ProviderInfo> GetProviderInfoAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Get current usage limits for the provider
+    /// </summary>
+    Task<UsageLimits> GetUsageLimitsAsync(CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -108,4 +113,78 @@ public class PricingInfo
     public decimal? OutputTokenPricePerMillion { get; set; }
     public string? Currency { get; set; } = "USD";
     public Dictionary<string, decimal>? ModelMultipliers { get; set; }
+}
+
+/// <summary>
+/// Information about provider usage limits
+/// </summary>
+public class UsageLimits
+{
+    /// <summary>
+    /// The type of limit this provider has
+    /// </summary>
+    public UsageLimitType LimitType { get; set; } = UsageLimitType.None;
+
+    /// <summary>
+    /// Whether the limit has been reached
+    /// </summary>
+    public bool IsLimitReached { get; set; }
+
+    /// <summary>
+    /// Current usage count (requests, sessions, etc.)
+    /// </summary>
+    public int? CurrentUsage { get; set; }
+
+    /// <summary>
+    /// Maximum allowed usage (if known)
+    /// </summary>
+    public int? MaxUsage { get; set; }
+
+    /// <summary>
+    /// When the limit resets (if known)
+    /// </summary>
+    public DateTime? ResetTime { get; set; }
+
+    /// <summary>
+    /// Human-readable message about the limit status
+    /// </summary>
+    public string? Message { get; set; }
+
+    /// <summary>
+    /// Percentage of limit used (0-100, null if unknown)
+    /// </summary>
+    public int? PercentUsed => (CurrentUsage.HasValue && MaxUsage.HasValue && MaxUsage > 0)
+        ? (int)((CurrentUsage.Value / (double)MaxUsage.Value) * 100)
+        : null;
+}
+
+/// <summary>
+/// Types of usage limits that providers can have
+/// </summary>
+public enum UsageLimitType
+{
+    /// <summary>
+    /// No limits (e.g., OpenCode depends on underlying model/provider)
+    /// </summary>
+    None,
+
+    /// <summary>
+    /// Premium request limit (e.g., GitHub Copilot)
+    /// </summary>
+    PremiumRequests,
+
+    /// <summary>
+    /// Session-based limit (e.g., Claude CLI)
+    /// </summary>
+    SessionLimit,
+
+    /// <summary>
+    /// Token-based limit
+    /// </summary>
+    TokenLimit,
+
+    /// <summary>
+    /// Rate limit (requests per time period)
+    /// </summary>
+    RateLimit
 }

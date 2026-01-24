@@ -699,6 +699,20 @@ public class OpenCodeProvider : ProviderBase
         return argument.Replace("\\", "\\\\").Replace("\"", "\\\"");
     }
 
+    public override Task<UsageLimits> GetUsageLimitsAsync(CancellationToken cancellationToken = default)
+    {
+        // OpenCode does not have built-in limits - it depends on the underlying
+        // model and provider (e.g., Anthropic API, OpenAI API, etc.)
+        var limits = new UsageLimits
+        {
+            LimitType = UsageLimitType.None,
+            IsLimitReached = false,
+            Message = "No built-in limits. Usage depends on the underlying model provider's API limits and quotas."
+        };
+
+        return Task.FromResult(limits);
+    }
+
     // JSON models for OpenCode CLI and API output
     private class OpenCodeStreamEvent
     {

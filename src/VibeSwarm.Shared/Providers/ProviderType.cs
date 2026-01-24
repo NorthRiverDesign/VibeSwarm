@@ -3,7 +3,8 @@ namespace VibeSwarm.Shared.Providers;
 public enum ProviderType
 {
     OpenCode,
-    Claude
+    Claude,
+    Copilot
 }
 
 public enum ProviderConnectionMode

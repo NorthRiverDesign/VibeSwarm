@@ -113,6 +113,7 @@ public class ProviderService : IProviderService
         {
             ProviderType.OpenCode => new OpenCodeProvider(config),
             ProviderType.Claude => new ClaudeProvider(config),
+            ProviderType.Copilot => new CopilotProvider(config),
             _ => throw new NotSupportedException($"Provider type {config.Type} is not supported.")
         };
     }
