@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Net.Http.Json;
 using System.Text.Json;
+using VibeSwarm.Shared.Utilities;
 
 namespace VibeSwarm.Shared.Providers;
 
@@ -279,12 +280,11 @@ public class OpenCodeProvider : ProviderBase
         {
             FileName = execPath,
             Arguments = string.Join(" ", args),
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true,
             WorkingDirectory = effectiveWorkingDir
         };
+
+        // Use cross-platform configuration
+        PlatformHelper.ConfigureForCrossPlatform(startInfo);
 
         using var process = new Process { StartInfo = startInfo };
 
@@ -687,16 +687,14 @@ public class OpenCodeProvider : ProviderBase
 
     private string GetExecutablePath()
     {
-        if (!string.IsNullOrEmpty(_executablePath))
-        {
-            return _executablePath;
-        }
-        return "opencode";
+        // Use PlatformHelper for cross-platform executable resolution
+        var basePath = !string.IsNullOrEmpty(_executablePath) ? _executablePath : "opencode";
+        return PlatformHelper.ResolveExecutablePath(basePath, _executablePath);
     }
 
     private static string EscapeArgument(string argument)
     {
-        return argument.Replace("\\", "\\\\").Replace("\"", "\\\"");
+        return PlatformHelper.EscapeArgument(argument).Trim('"', '\'');
     }
 
     public override Task<UsageLimits> GetUsageLimitsAsync(CancellationToken cancellationToken = default)

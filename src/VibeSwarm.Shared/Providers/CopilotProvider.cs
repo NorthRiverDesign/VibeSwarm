@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using VibeSwarm.Shared.Utilities;
 
 namespace VibeSwarm.Shared.Providers;
 
@@ -203,13 +204,11 @@ public class CopilotProvider : ProviderBase
 		{
 			FileName = execPath,
 			Arguments = string.Join(" ", args),
-			RedirectStandardOutput = true,
-			RedirectStandardError = true,
-			UseShellExecute = false,
-			CreateNoWindow = true,
 			WorkingDirectory = effectiveWorkingDir,
-			RedirectStandardInput = true
 		};
+
+		// Use cross-platform configuration
+		PlatformHelper.ConfigureForCrossPlatform(startInfo);
 
 		using var process = new Process { StartInfo = startInfo };
 
@@ -263,6 +262,13 @@ public class CopilotProvider : ProviderBase
 
 			outputBuilder.Add(e.Data);
 
+			// Stream raw output line to UI
+			progress?.Report(new ExecutionProgress
+			{
+				OutputLine = e.Data,
+				IsErrorOutput = false
+			});
+
 			// Check for premium request limit messages
 			if (e.Data.Contains("premium request", StringComparison.OrdinalIgnoreCase) ||
 				e.Data.Contains("rate limit", StringComparison.OrdinalIgnoreCase) ||
@@ -308,6 +314,13 @@ public class CopilotProvider : ProviderBase
 			{
 				errorBuilder.AppendLine(e.Data);
 
+				// Stream error output line to UI
+				progress?.Report(new ExecutionProgress
+				{
+					OutputLine = e.Data,
+					IsErrorOutput = true
+				});
+
 				// Check for limit-related errors
 				if (e.Data.Contains("premium", StringComparison.OrdinalIgnoreCase) ||
 					e.Data.Contains("limit", StringComparison.OrdinalIgnoreCase))
@@ -322,13 +335,15 @@ public class CopilotProvider : ProviderBase
 		process.BeginOutputReadLine();
 		process.BeginErrorReadLine();
 
+		// Wait for the process to exit - this can take several minutes for complex agent tasks
 		try
 		{
 			await process.WaitForExitAsync(cancellationToken);
 		}
 		catch (OperationCanceledException)
 		{
-			try { process.Kill(entireProcessTree: true); } catch { }
+			// If cancelled, use cross-platform kill method
+			PlatformHelper.TryKillProcessTree(process.Id);
 			throw;
 		}
 
@@ -769,17 +784,14 @@ public class CopilotProvider : ProviderBase
 
 	private string GetExecutablePath()
 	{
-		if (!string.IsNullOrEmpty(_executablePath))
-		{
-			return _executablePath;
-		}
-		// Default to standalone 'copilot' CLI command
-		return "copilot";
+		// Use PlatformHelper for cross-platform executable resolution
+		var basePath = !string.IsNullOrEmpty(_executablePath) ? _executablePath : "copilot";
+		return PlatformHelper.ResolveExecutablePath(basePath, _executablePath);
 	}
 
 	private static string EscapeArgument(string argument)
 	{
-		return argument.Replace("\\", "\\\\").Replace("\"", "\\\"");
+		return PlatformHelper.EscapeArgument(argument).Trim('"', '\'');
 	}
 
 	// JSON models for Copilot CLI output

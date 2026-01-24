@@ -60,6 +60,51 @@ export async function initializeJobHub(jobId, dotNetRef) {
 		// Heartbeats can be used to detect if job is still alive
 	});
 
+	// Real-time output streaming
+	hubConnection.on("JobOutput", (jobId, line, isError, timestamp) => {
+		// Don't log every line to avoid console spam
+		if (dotNetReference) {
+			dotNetReference.invokeMethodAsync(
+				"OnJobOutput",
+				jobId,
+				line,
+				isError,
+				timestamp,
+			);
+		}
+	});
+
+	// Process lifecycle events
+	hubConnection.on("ProcessStarted", (jobId, processId, command) => {
+		console.log(`[SignalR] ProcessStarted: ${jobId}, PID: ${processId}`);
+		if (dotNetReference) {
+			dotNetReference.invokeMethodAsync(
+				"OnProcessStarted",
+				jobId,
+				processId,
+				command,
+			);
+		}
+	});
+
+	hubConnection.on(
+		"ProcessExited",
+		(jobId, processId, exitCode, durationSeconds) => {
+			console.log(
+				`[SignalR] ProcessExited: ${jobId}, PID: ${processId}, ExitCode: ${exitCode}`,
+			);
+			if (dotNetReference) {
+				dotNetReference.invokeMethodAsync(
+					"OnProcessExited",
+					jobId,
+					processId,
+					exitCode,
+					durationSeconds,
+				);
+			}
+		},
+	);
+
 	// Start connection
 	try {
 		await hubConnection.start();
@@ -112,3 +157,10 @@ async function loadSignalR() {
 		document.head.appendChild(script);
 	});
 }
+
+// Global helper function for scrolling
+window.scrollToBottom = function (element) {
+	if (element) {
+		element.scrollTop = element.scrollHeight;
+	}
+};

@@ -80,6 +80,16 @@ public class ExecutionProgress
     /// Process ID (reported once when process starts)
     /// </summary>
     public int? ProcessId { get; set; }
+
+    /// <summary>
+    /// Raw output line from the CLI process (for streaming to UI)
+    /// </summary>
+    public string? OutputLine { get; set; }
+
+    /// <summary>
+    /// True if OutputLine is from stderr
+    /// </summary>
+    public bool IsErrorOutput { get; set; }
 }
 
 /// <summary>

@@ -4,6 +4,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Services;
+using VibeSwarm.Shared.Utilities;
 
 namespace VibeSwarm.Worker;
 
@@ -256,22 +257,22 @@ public class JobWatchdogService : BackgroundService
 
 	private async Task TryKillProcessAsync(int processId)
 	{
-		try
+		_logger.LogInformation("Attempting to kill process {ProcessId} (Platform: {Platform})",
+			processId, PlatformHelper.OsDescription);
+
+		var success = PlatformHelper.TryKillProcessTree(processId, msg => _logger.LogDebug("{Message}", msg));
+
+		if (success)
 		{
-			var process = System.Diagnostics.Process.GetProcessById(processId);
-			_logger.LogInformation("Killing process {ProcessId}", processId);
-			process.Kill(entireProcessTree: true);
-			await process.WaitForExitAsync();
+			_logger.LogInformation("Successfully terminated process {ProcessId}", processId);
 		}
-		catch (ArgumentException)
+		else
 		{
-			// Process not found - already terminated
-			_logger.LogDebug("Process {ProcessId} already terminated", processId);
+			_logger.LogWarning("Failed to terminate process {ProcessId}", processId);
 		}
-		catch (Exception ex)
-		{
-			_logger.LogWarning(ex, "Failed to kill process {ProcessId}", processId);
-		}
+
+		// Small delay to ensure process cleanup
+		await Task.Delay(100);
 	}
 
 	private async Task NotifyJobStatusChangedAsync(Guid jobId, JobStatus status)

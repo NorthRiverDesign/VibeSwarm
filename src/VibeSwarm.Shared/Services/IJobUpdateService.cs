@@ -44,4 +44,30 @@ public interface IJobUpdateService
     /// Notifies clients about heartbeat/liveness of a running job
     /// </summary>
     Task NotifyJobHeartbeat(Guid jobId, DateTime timestamp);
+
+    /// <summary>
+    /// Streams a line of CLI output to clients watching a job
+    /// </summary>
+    /// <param name="jobId">The job ID</param>
+    /// <param name="line">The output line</param>
+    /// <param name="isError">True if this is stderr output</param>
+    /// <param name="timestamp">When the output was received</param>
+    Task NotifyJobOutput(Guid jobId, string line, bool isError, DateTime timestamp);
+
+    /// <summary>
+    /// Notifies clients that a CLI process has started for a job
+    /// </summary>
+    /// <param name="jobId">The job ID</param>
+    /// <param name="processId">The system process ID</param>
+    /// <param name="command">The command being executed</param>
+    Task NotifyProcessStarted(Guid jobId, int processId, string command);
+
+    /// <summary>
+    /// Notifies clients that a CLI process has exited
+    /// </summary>
+    /// <param name="jobId">The job ID</param>
+    /// <param name="processId">The system process ID</param>
+    /// <param name="exitCode">The process exit code</param>
+    /// <param name="duration">How long the process ran</param>
+    Task NotifyProcessExited(Guid jobId, int processId, int exitCode, TimeSpan duration);
 }

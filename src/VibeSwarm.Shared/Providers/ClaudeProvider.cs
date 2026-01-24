@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using VibeSwarm.Shared.Utilities;
 
 namespace VibeSwarm.Shared.Providers;
 
@@ -302,14 +303,11 @@ public class ClaudeProvider : ProviderBase
         {
             FileName = execPath,
             Arguments = string.Join(" ", args),
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true,
             WorkingDirectory = effectiveWorkingDir,
-            // Ensure we don't inherit console and can run without user input
-            RedirectStandardInput = true
         };
+
+        // Use cross-platform configuration
+        PlatformHelper.ConfigureForCrossPlatform(startInfo);
 
         using var process = new Process { StartInfo = startInfo };
 
@@ -367,6 +365,13 @@ public class ClaudeProvider : ProviderBase
 
             outputBuilder.Add(e.Data);
 
+            // Stream raw output line to UI
+            progress?.Report(new ExecutionProgress
+            {
+                OutputLine = e.Data,
+                IsErrorOutput = false
+            });
+
             try
             {
                 var jsonEvent = JsonSerializer.Deserialize<ClaudeStreamEvent>(e.Data, JsonOptions);
@@ -394,6 +399,13 @@ public class ClaudeProvider : ProviderBase
             if (!string.IsNullOrEmpty(e.Data))
             {
                 errorBuilder.AppendLine(e.Data);
+
+                // Stream error output line to UI
+                progress?.Report(new ExecutionProgress
+                {
+                    OutputLine = e.Data,
+                    IsErrorOutput = true
+                });
             }
         };
 
@@ -410,8 +422,8 @@ public class ClaudeProvider : ProviderBase
         }
         catch (OperationCanceledException)
         {
-            // If cancelled, try to kill the process
-            try { process.Kill(entireProcessTree: true); } catch { }
+            // If cancelled, use cross-platform kill method
+            PlatformHelper.TryKillProcessTree(process.Id);
             throw;
         }
 
@@ -840,16 +852,14 @@ public class ClaudeProvider : ProviderBase
 
     private string GetExecutablePath()
     {
-        if (!string.IsNullOrEmpty(_executablePath))
-        {
-            return _executablePath;
-        }
-        return "claude";
+        // Use PlatformHelper for cross-platform executable resolution
+        var basePath = !string.IsNullOrEmpty(_executablePath) ? _executablePath : "claude";
+        return PlatformHelper.ResolveExecutablePath(basePath, _executablePath);
     }
 
     private static string EscapeArgument(string argument)
     {
-        return argument.Replace("\\", "\\\\").Replace("\"", "\\\"");
+        return PlatformHelper.EscapeArgument(argument).Trim('"', '\'');
     }
 
     public override async Task<UsageLimits> GetUsageLimitsAsync(CancellationToken cancellationToken = default)

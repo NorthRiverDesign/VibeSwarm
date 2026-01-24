@@ -183,4 +183,54 @@ public class SignalRJobUpdateService : IJobUpdateService
             _logger.LogError(ex, "Error sending JobHeartbeat notification for job {JobId}", jobId);
         }
     }
+
+    public async Task NotifyJobOutput(Guid jobId, string line, bool isError, DateTime timestamp)
+    {
+        try
+        {
+            // Notify job-specific subscribers with real-time output
+            await _hubContext.Clients
+                .Group($"job-{jobId}")
+                .SendAsync("JobOutput", jobId.ToString(), line, isError, timestamp);
+
+            // Don't log every line to avoid log spam
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error sending JobOutput notification for job {JobId}", jobId);
+        }
+    }
+
+    public async Task NotifyProcessStarted(Guid jobId, int processId, string command)
+    {
+        try
+        {
+            await _hubContext.Clients
+                .Group($"job-{jobId}")
+                .SendAsync("ProcessStarted", jobId.ToString(), processId, command);
+
+            _logger.LogDebug("Sent ProcessStarted notification for job {JobId}: PID={ProcessId}", jobId, processId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error sending ProcessStarted notification for job {JobId}", jobId);
+        }
+    }
+
+    public async Task NotifyProcessExited(Guid jobId, int processId, int exitCode, TimeSpan duration)
+    {
+        try
+        {
+            await _hubContext.Clients
+                .Group($"job-{jobId}")
+                .SendAsync("ProcessExited", jobId.ToString(), processId, exitCode, duration.TotalSeconds);
+
+            _logger.LogDebug("Sent ProcessExited notification for job {JobId}: PID={ProcessId}, ExitCode={ExitCode}",
+                jobId, processId, exitCode);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error sending ProcessExited notification for job {JobId}", jobId);
+        }
+    }
 }
