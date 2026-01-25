@@ -10,7 +10,7 @@ APP_EXECUTABLE="$BUILD_DIR/VibeSwarm.Web"
 
 # Set environment variables
 export ASPNETCORE_ENVIRONMENT=Production
-export ASPNETCORE_URLS="http://0.0.0.0:5000"
+export ASPNETCORE_URLS="http://0.0.0.0:5000,https://0.0.0.0:5001"
 
 # Colors for output
 GREEN='\033[0;32m'
@@ -46,10 +46,13 @@ LOCAL_IP=$(hostname -I | awk '{print $1}')
 echo -e "${GREEN}Starting VibeSwarm...${NC}"
 echo -e "Environment: ${GREEN}Production${NC}"
 echo -e "Listening on: ${GREEN}http://0.0.0.0:5000${NC}"
+echo -e "Listening on: ${GREEN}https://0.0.0.0:5001${NC}"
 echo ""
 echo -e "Access the application at:"
 echo -e "  ${BLUE}http://localhost:5000${NC} (from this device)"
 echo -e "  ${BLUE}http://$LOCAL_IP:5000${NC} (from other devices on your network)"
+echo -e "  ${BLUE}https://localhost:5001${NC} (from this device)"
+echo -e "  ${BLUE}https://$LOCAL_IP:5001${NC} (from other devices on your network)"
 echo ""
 echo -e "${GREEN}Press Ctrl+C to stop the server${NC}"
 echo ""
