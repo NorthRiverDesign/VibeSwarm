@@ -1,3 +1,4 @@
+using System.Security.Cryptography.X509Certificates;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -8,10 +9,39 @@ using VibeSwarm.Web.Middleware;
 using VibeSwarm.Web.Services;
 using VibeSwarm.Worker;
 
-// Load environment variables from .env file
-DotNetEnv.Env.Load();
+// Load environment variables from .env file (if it exists)
+if (File.Exists(".env"))
+{
+    DotNetEnv.Env.Load();
+}
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Generate self-signed certificate if it doesn't exist
+var certPath = Path.Combine(AppContext.BaseDirectory, "vibeswarm.pfx");
+var certPassword = "vibeswarm-dev-cert";
+
+if (!File.Exists(certPath))
+{
+    Console.WriteLine("Generating self-signed certificate for HTTPS...");
+
+    var cert = VibeSwarm.Web.CertificateGenerator.GenerateSelfSignedCertificate("VibeSwarm");
+    var certBytes = cert.Export(X509ContentType.Pfx, certPassword);
+    File.WriteAllBytes(certPath, certBytes);
+
+    Console.WriteLine($"Self-signed certificate created at: {certPath}");
+    Console.WriteLine("Using self-signed certificate. Your browser will show a security warning - this is expected.");
+}
+
+// Configure Kestrel to use HTTPS
+builder.WebHost.ConfigureKestrel(serverOptions =>
+{
+    serverOptions.ListenAnyIP(5000); // HTTP
+    serverOptions.ListenAnyIP(5001, listenOptions =>
+    {
+        listenOptions.UseHttps(certPath, certPassword); // HTTPS with self-signed cert
+    });
+});
 
 var connectionString = builder.Configuration.GetConnectionString("Default")
     ?? "Data Source=vibeswarm.db";
@@ -54,8 +84,8 @@ builder.Services.AddIdentity<ApplicationUser, IdentityRole<Guid>>(options =>
 builder.Services.ConfigureApplicationCookie(options =>
 {
     options.Cookie.HttpOnly = true;
-    options.Cookie.SecurePolicy = CookieSecurePolicy.Always; // HTTPS only
-    options.Cookie.SameSite = SameSiteMode.Strict;
+    options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
+    options.Cookie.SameSite = SameSiteMode.Lax;
     options.ExpireTimeSpan = TimeSpan.FromHours(8);
     options.SlidingExpiration = true;
     options.LoginPath = "/login";
@@ -98,6 +128,7 @@ using (var scope = app.Services.CreateScope())
     }
 }
 
+app.UseHttpsRedirection();
 app.UseSecurityHeaders();
 app.UseStaticFiles();
 app.UseRouting();

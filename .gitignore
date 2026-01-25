@@ -4,6 +4,10 @@
 # Environment variables (contains sensitive credentials)
 .env
 
+# Self-signed certificate
+vibeswarm.pfx
+*.pfx
+
 # SQLite Db
 vibeswarm.Db
 vibeswarm.Db-shm

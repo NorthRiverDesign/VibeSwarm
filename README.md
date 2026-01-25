@@ -1,252 +1,287 @@
 # VibeSwarm
 
-A Blazor Server application for managing background jobs and tasks, designed to run on Raspberry Pi and accessible over your local network.
+Distributed AI agent job management system with secure authentication.
 
 ## Quick Start
 
-### Development (VSCode)
+### Prerequisites
 
-Press **F5** to start debugging. The application will:
+- .NET 10 SDK
+- Windows, Linux, or macOS
 
-- Build automatically
-- Start on `http://localhost:5000` and `https://localhost:5001`
-- Open in your default browser
-
-**To access from other devices on your network during development:**
-
-Set the environment variable before running:
+### 1. Clone and Navigate
 
 ```bash
-# Windows (PowerShell)
+git clone <repository-url>
+cd VibeSwarm
+```
+
+### 2. Configure Authentication
+
+Create a `.env` file in the root directory:
+
+```bash
+DEFAULT_ADMIN_USER=admin
+DEFAULT_ADMIN_PASS=YourSecurePassword123!
+```
+
+**Password Requirements:**
+- Minimum 8 characters
+- At least one uppercase letter
+- At least one lowercase letter
+- At least one digit
+
+**Note**: The `.env` file is gitignored to prevent accidentally committing credentials.
+
+### 3. Build and Run
+
+```bash
+cd src/VibeSwarm.Web
+dotnet run
+```
+
+The application will:
+- Generate a self-signed HTTPS certificate (first run only)
+- Run database migrations
+- Create the admin user
+- Start on:
+  - HTTP: `http://localhost:5000`
+  - HTTPS: `https://localhost:5001` (recommended)
+
+### 4. Access the Application
+
+Navigate to `https://localhost:5001`
+
+Your browser will show a certificate warning because we're using a self-signed certificate. This is expected and safe for local/private deployments.
+
+- **Chrome/Edge**: Click "Advanced" → "Proceed to localhost"
+- **Firefox**: Click "Advanced" → "Accept the Risk and Continue"
+
+Login with the credentials you set in the `.env` file.
+
+## Running in Production
+
+### Option 1: Direct Execution
+
+```bash
+cd src/VibeSwarm.Web
+dotnet run --environment Production
+```
+
+### Option 2: Published Application
+
+```bash
+# Build for production
+cd src/VibeSwarm.Web
+dotnet publish -c Release -o ../../publish
+
+# Run the published app
+cd ../../publish
+./VibeSwarm.Web
+```
+
+### Environment Variables
+
+Instead of using a `.env` file, you can set environment variables directly:
+
+**Windows (PowerShell):**
+```powershell
+$env:DEFAULT_ADMIN_USER="admin"
+$env:DEFAULT_ADMIN_PASS="YourSecurePassword123!"
+$env:ASPNETCORE_ENVIRONMENT="Production"
+dotnet run
+```
+
+**Linux/macOS:**
+```bash
+export DEFAULT_ADMIN_USER=admin
+export DEFAULT_ADMIN_PASS=YourSecurePassword123!
+export ASPNETCORE_ENVIRONMENT=Production
+dotnet run
+```
+
+## Security Features
+
+✅ **Password Hashing** - PBKDF2-HMAC-SHA256 with 10,000 iterations
+✅ **Brute Force Protection** - Account lockout after 5 failed attempts
+✅ **Secure Cookies** - HttpOnly, SameSite protection
+✅ **Global Authentication** - All pages require login by default
+✅ **HTTPS** - Self-signed certificate generated automatically
+✅ **Security Headers** - X-Frame-Options, CSP, etc.
+
+## Database
+
+VibeSwarm uses SQLite for data storage. The database file `vibeswarm.db` is created automatically in the application directory.
+
+**Backup your database:**
+```bash
+cp vibeswarm.db vibeswarm.db.backup
+```
+
+## Troubleshooting
+
+### No Admin User Created
+
+Check the logs on startup. You should see:
+```
+info: Admin user 'admin' created successfully
+info: Database initialized with 1 user(s)
+```
+
+If you see a warning about missing credentials:
+1. Create a `.env` file with `DEFAULT_ADMIN_USER` and `DEFAULT_ADMIN_PASS`
+2. Restart the application
+
+### Certificate Issues
+
+The self-signed certificate is stored as `vibeswarm.pfx` in the application directory.
+
+To regenerate it:
+1. Stop the application
+2. Delete `vibeswarm.pfx`
+3. Restart the application
+
+### Port Already in Use
+
+The application listens on ports 5000 (HTTP) and 5001 (HTTPS). If these are in use, the application will fail to start.
+
+Check what's using the ports:
+```bash
+# Windows
+netstat -ano | findstr :5000
+
+# Linux/macOS
+lsof -i :5000
+```
+
+### Redirect Loop
+
+If you get stuck in a redirect loop:
+1. Clear your browser cookies for `localhost`
+2. Restart the application
+3. Try accessing `https://localhost:5001` directly
+
+## Advanced Configuration
+
+### Custom Database Location
+
+Set the connection string in environment variables:
+
+```bash
+export ConnectionStrings__Default="Data Source=/path/to/your/database.db"
+```
+
+Or in `appsettings.json`:
+```json
+{
+  "ConnectionStrings": {
+    "Default": "Data Source=/custom/path/vibeswarm.db"
+  }
+}
+```
+
+### Accessing from Other Devices
+
+To access the application from other devices on your network, you need to bind to all interfaces:
+
+Set the `ASPNETCORE_URLS` environment variable:
+```bash
+# Windows
 $env:ASPNETCORE_URLS="http://0.0.0.0:5000;https://0.0.0.0:5001"
 
-# Windows (CMD)
-set ASPNETCORE_URLS=http://0.0.0.0:5000;https://0.0.0.0:5001
-
-# Linux/Mac
-export ASPNETCORE_URLS=http://0.0.0.0:5000;https://0.0.0.0:5001
+# Linux/macOS
+export ASPNETCORE_URLS="http://0.0.0.0:5000;https://0.0.0.0:5001"
 ```
 
-Or temporarily edit [appsettings.Development.json](src/VibeSwarm.Web/appsettings.Development.json) to use `0.0.0.0` instead of `localhost`.
+Then access via:
+- `https://<your-machine-ip>:5001`
 
-### Raspberry Pi Deployment
+**Note**: Your self-signed certificate won't be trusted on other devices. You'll need to accept the certificate warning.
 
-#### Initial Setup
+## Running as a Service
 
-1. **Clone the repository** on your Raspberry Pi:
+### Windows Service
 
-   ```bash
-   cd ~
-   git clone <your-repo-url> VibeSwarm
-   cd VibeSwarm
-   ```
+Use NSSM (Non-Sucking Service Manager):
 
-2. **Make scripts executable**:
+```powershell
+# Download NSSM from nssm.cc
+nssm install VibeSwarm "C:\path\to\publish\VibeSwarm.Web.exe"
+nssm set VibeSwarm AppDirectory "C:\path\to\publish"
+nssm set VibeSwarm AppEnvironmentExtra DEFAULT_ADMIN_USER=admin DEFAULT_ADMIN_PASS=YourPass123!
+nssm start VibeSwarm
+```
 
-   ```bash
-   chmod +x publish.sh start-vibeswarm.sh
-   ```
+### Linux systemd Service
 
-3. **Install .NET Runtime** (if not already installed):
-   ```bash
-   curl -sSL https://dot.net/v1/dotnet-install.sh | bash /dev/stdin --channel 10.0 --runtime aspnetcore
-   ```
+Create `/etc/systemd/system/vibeswarm.service`:
 
-#### Building and Running
+```ini
+[Unit]
+Description=VibeSwarm
+After=network.target
 
-**Option 1: Quick Start (Recommended)**
+[Service]
+Type=notify
+WorkingDirectory=/opt/vibeswarm
+ExecStart=/opt/vibeswarm/VibeSwarm.Web
+Restart=always
+RestartSec=10
+KillSignal=SIGINT
+Environment=ASPNETCORE_ENVIRONMENT=Production
+Environment=DEFAULT_ADMIN_USER=admin
+Environment=DEFAULT_ADMIN_PASS=YourSecurePassword123!
 
-1. **Publish the application**:
+[Install]
+WantedBy=multi-user.target
+```
 
-   ```bash
-   ./publish.sh
-   ```
+Then:
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable vibeswarm
+sudo systemctl start vibeswarm
+```
 
-2. **Start the application**:
-   ```bash
-   ./start-vibeswarm.sh
-   ```
+## Development
 
-The application will be accessible at:
-
-- `http://localhost:5000` (from the Pi)
-- `http://<pi-ip-address>:5000` (from other devices on your network)
-
-**Option 2: Manual Commands**
+### Running in Development Mode
 
 ```bash
-# Publish
-dotnet publish src/VibeSwarm.Web/VibeSwarm.Web.csproj -c Release -o build
-
-# Run
-cd build
-ASPNETCORE_ENVIRONMENT=Production ASPNETCORE_URLS=http://0.0.0.0:5000 ./VibeSwarm.Web
+cd src/VibeSwarm.Web
+dotnet run
 ```
 
-#### Running as a System Service
+Development mode includes:
+- Detailed error pages
+- Hot reload
+- Verbose logging
 
-To run VibeSwarm as a background service that starts automatically:
+### Building
 
-1. **Edit the service file** to match your installation path:
+```bash
+cd src/VibeSwarm.Web
+dotnet build
+```
 
-   ```bash
-   nano vibeswarm.service
-   ```
+### Running Tests
 
-   Update these lines if your path is different:
-
-   ```
-   User=pi
-   WorkingDirectory=/home/pi/VibeSwarm/build
-   ExecStart=/home/pi/VibeSwarm/build/VibeSwarm.Web
-   ```
-
-2. **Install the service**:
-
-   ```bash
-   sudo cp vibeswarm.service /etc/systemd/system/
-   sudo systemctl daemon-reload
-   sudo systemctl enable vibeswarm
-   sudo systemctl start vibeswarm
-   ```
-
-3. **Check service status**:
-
-   ```bash
-   sudo systemctl status vibeswarm
-   ```
-
-4. **View logs**:
-
-   ```bash
-   sudo journalctl -u vibeswarm -f
-   ```
-
-5. **Stop/restart service**:
-   ```bash
-   sudo systemctl stop vibeswarm
-   sudo systemctl restart vibeswarm
-   ```
+```bash
+dotnet test
+```
 
 ## Project Structure
 
 ```
 VibeSwarm/
 ├── src/
-│   ├── VibeSwarm.Web/          # Main web application (Blazor Server)
-│   ├── VibeSwarm.Shared/       # Shared data models and services
+│   ├── VibeSwarm.Shared/      # Data models and shared code
+│   ├── VibeSwarm.Web/          # Blazor Server web application
 │   └── VibeSwarm.Worker/       # Background worker services
-├── build/                      # Published output (created by publish script)
-├── publish.sh                  # Linux/Mac publish script
-├── publish.bat                 # Windows publish script
-├── start-vibeswarm.sh          # Raspberry Pi startup script
-└── vibeswarm.service           # systemd service configuration
+├── .env                        # Your local configuration (create this)
+├── .env.example               # Template for .env file
+└── README.md                  # This file
 ```
-
-## Configuration
-
-### Network Binding
-
-- **Development**: [appsettings.Development.json](src/VibeSwarm.Web/appsettings.Development.json)
-  - HTTP: `http://localhost:5000`
-  - HTTPS: `https://localhost:5001`
-  - Use `ASPNETCORE_URLS` environment variable to override with `0.0.0.0` for network access
-
-- **Production** (Raspberry Pi): [appsettings.Production.json](src/VibeSwarm.Web/appsettings.Production.json)
-  - HTTP: `http://0.0.0.0:5000`
-  - Accessible from any device on your local network
-
-### Database
-
-The application uses SQLite by default:
-
-- Database file: `vibeswarm.db` (created automatically in the application directory)
-- Migrations run automatically on startup
-
-### Environment Variables
-
-You can override settings using environment variables:
-
-```bash
-export ASPNETCORE_ENVIRONMENT=Production
-export ASPNETCORE_URLS=http://0.0.0.0:5000
-export ConnectionStrings__Default="Data Source=vibeswarm.db"
-```
-
-## Building from Windows
-
-Use the provided batch script:
-
-```cmd
-publish.bat
-```
-
-Then copy the `build` folder to your Raspberry Pi and run `./start-vibeswarm.sh`.
-
-## Updating on Raspberry Pi
-
-```bash
-cd ~/VibeSwarm
-git pull
-./publish.sh
-
-# If running as a service:
-sudo systemctl restart vibeswarm
-
-# If running manually:
-./start-vibeswarm.sh
-```
-
-## Troubleshooting
-
-### Assets not loading
-
-If CSS or JavaScript files aren't loading:
-
-1. Ensure you published in Release mode: `dotnet publish -c Release`
-2. Check that the `wwwroot` folder exists in the `build` directory
-3. Verify the application is running in Production mode: `echo $ASPNETCORE_ENVIRONMENT`
-
-### Cannot access from other devices
-
-1. Check your firewall settings on the Raspberry Pi:
-
-   ```bash
-   sudo ufw allow 5000/tcp
-   ```
-
-2. Verify the application is listening on `0.0.0.0`:
-
-   ```bash
-   sudo netstat -tuln | grep 5000
-   ```
-
-   You should see: `0.0.0.0:5000`
-
-3. Find your Pi's IP address:
-   ```bash
-   hostname -I
-   ```
-
-### Service won't start
-
-1. Check service logs:
-
-   ```bash
-   sudo journalctl -u vibeswarm -n 50 --no-pager
-   ```
-
-2. Verify file permissions:
-
-   ```bash
-   ls -la ~/VibeSwarm/build/VibeSwarm.Web
-   chmod +x ~/VibeSwarm/build/VibeSwarm.Web
-   ```
-
-3. Check that .NET runtime is installed:
-   ```bash
-   dotnet --info
-   ```
 
 ## Technologies
 
@@ -255,27 +290,7 @@ If CSS or JavaScript files aren't loading:
 - **SignalR** - Real-time communication
 - **Entity Framework Core** - ORM
 - **SQLite** - Database
-
-## Development
-
-### Prerequisites
-
-- .NET 10.0 SDK
-- Visual Studio Code with C# extension
-
-### Running Tests
-
-```bash
-dotnet test
-```
-
-### VSCode Tasks
-
-Available tasks (Ctrl+Shift+P → "Tasks: Run Task"):
-
-- **build** - Build the solution
-- **publish** - Publish in Release mode to `build/` folder
-- **watch** - Run with hot reload
+- **ASP.NET Core Identity** - Authentication
 
 ## License
 
