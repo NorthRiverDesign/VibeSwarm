@@ -1,7 +1,10 @@
 @page "/projects"
 @attribute [Authorize]
 @inject IProjectService ProjectService
+@inject IJobService JobService
 @inject NavigationManager NavigationManager
+@implements IDisposable
+@using VibeSwarm.Shared.Utilities
 
 <h3 class="mb-4">Projects</h3>
 
@@ -41,6 +44,7 @@
 							<tbody>
 								@foreach (var project in ProjectList)
 								{
+									var projectActiveJobs = ActiveJobs.Where(j => j.ProjectId == project.Id).ToList();
 									<tr>
 										<td>
 											<a href="/projects/@project.Id" class="fw-medium">@project.Name</a>
@@ -48,9 +52,34 @@
 											{
 												<div class="text-muted small">@project.Description</div>
 											}
+											@if (projectActiveJobs.Any())
+											{
+												<div class="active-jobs-list mt-2">
+													@foreach (var job in projectActiveJobs)
+													{
+														<div class="active-job-item">
+															<a href="/jobs/@job.Id"
+																class="d-flex align-items-center text-decoration-none">
+																<span class="badge status-@job.Status.ToString().ToLower() me-2">
+																	<span class="status-spinner"></span>
+																	@job.Status
+																</span>
+																<span
+																	class="job-goal-preview text-truncate">@TruncateText(job.GoalPrompt,
+																														60)</span>
+												@if (!string.IsNullOrEmpty(job.CurrentActivity))
+																{
+																	<span
+																		class="job-activity-preview ms-2 text-muted small">@job.CurrentActivity</span>
+																}
+															</a>
+														</div>
+													}
+												</div>
+											}
 										</td>
 										<td class="path-cell">@project.WorkingPath</td>
-										<td>@project.CreatedAt.ToLocalTime().ToString("g")</td>
+										<td>@project.CreatedAt.FormatDateTimeShort()</td>
 										<td>
 											<div class="btn-group btn-group-sm" role="group">
 												<button class="btn btn-outline-secondary"
@@ -132,16 +161,55 @@
 
 @code {
 	private List<Project> ProjectList { get; set; } = new();
+	private List<Job> ActiveJobs { get; set; } = new();
 	private Project CurrentProject { get; set; } = new();
 	private bool IsLoading { get; set; } = true;
 	private bool IsSaving { get; set; }
 	private bool IsEditing { get; set; }
 	private string? ErrorMessage { get; set; }
 	private string? SuccessMessage { get; set; }
+	private System.Threading.Timer? _refreshTimer;
 
 	protected override async Task OnInitializedAsync()
 	{
 		await LoadProjects();
+		await LoadActiveJobs();
+		StartAutoRefresh();
+	}
+
+	private void StartAutoRefresh()
+	{
+		// Refresh active jobs every 3 seconds when there are active jobs
+		_refreshTimer = new System.Threading.Timer(async _ =>
+		{
+			if (ActiveJobs.Any())
+			{
+				await InvokeAsync(async () =>
+		{
+			await LoadActiveJobs();
+			StateHasChanged();
+		});
+			}
+		}, null, TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(3));
+	}
+
+	private async Task LoadActiveJobs()
+	{
+		try
+		{
+			ActiveJobs = (await JobService.GetActiveJobsAsync()).ToList();
+		}
+		catch
+		{
+			// Ignore errors loading active jobs
+		}
+	}
+
+	private static string TruncateText(string text, int maxLength)
+	{
+		if (string.IsNullOrEmpty(text) || text.Length <= maxLength)
+			return text;
+		return text[..maxLength] + "...";
 	}
 
 	private async Task LoadProjects()
@@ -224,5 +292,10 @@
 		{
 			ErrorMessage = $"Error deleting project: {ex.Message}";
 		}
+	}
+
+	public void Dispose()
+	{
+		_refreshTimer?.Dispose();
 	}
 }

@@ -52,6 +52,20 @@ else
                     <span class="process-info">PID: @Job.ProcessId</span>
                 }
             </p>
+            <div class="job-timestamps mt-2">
+                <span class="me-3" title="Created"><i class="bi bi-calendar-plus me-1"></i>Created:
+                    @Job.CreatedAt.FormatDateTimeShort()</span>
+                @if (Job.StartedAt.HasValue)
+                {
+                    <span class="me-3" title="Started"><i class="bi bi-play-circle me-1"></i>Started:
+                        @Job.StartedAt.Value.FormatDateTimeShort()</span>
+                }
+                @if (Job.CompletedAt.HasValue)
+                {
+                    <span title="Completed"><i class="bi bi-check-circle me-1"></i>Completed:
+                        @Job.CompletedAt.Value.FormatDateTimeShort()</span>
+                }
+            </div>
         </div>
         <div class="d-flex gap-2">
             @if (CanRetry)
@@ -126,24 +140,6 @@ else
                                 <span class="stat-value">$@Job.TotalCostUsd.Value.ToString("F4")</span>
                             </div>
                         }
-                        <div class="stat-item">
-                            <span class="stat-label">Created</span>
-                            <span class="stat-value">@Job.CreatedAt.ToLocalTime().ToString("g")</span>
-                        </div>
-                        @if (Job.StartedAt.HasValue)
-                        {
-                            <div class="stat-item">
-                                <span class="stat-label">Started</span>
-                                <span class="stat-value">@Job.StartedAt.Value.ToLocalTime().ToString("g")</span>
-                            </div>
-                        }
-                        @if (Job.CompletedAt.HasValue)
-                        {
-                            <div class="stat-item">
-                                <span class="stat-label">Completed</span>
-                                <span class="stat-value">@Job.CompletedAt.Value.ToLocalTime().ToString("g")</span>
-                            </div>
-                        }
                     </div>
 
                     @if (!string.IsNullOrEmpty(Job.ErrorMessage))
@@ -165,7 +161,8 @@ else
                     {
                         <div class="info-section">
                             <h6>Job Failed</h6>
-                            <p class="mb-0">This job failed during execution. You can retry it by clicking "Retry Job" above.</p>
+                            <p class="mb-0">This job failed during execution. You can retry it by clicking "Retry Job" above.
+                            </p>
                         </div>
                     }
                 </div>
@@ -188,7 +185,7 @@ else
                             @foreach (var line in _liveOutput.TakeLast(MaxOutputLines))
                             {
                                 <div class="output-line @(line.IsError ? "output-error" : "output-stdout")">
-                                    <span class="output-time">[@line.Timestamp.ToLocalTime().ToString("HH:mm:ss")]</span>
+                                    <span class="output-time">[@line.Timestamp.FormatTime()]</span>
                                     <span class="output-text">@line.Content</span>
                                 </div>
                             }
@@ -227,16 +224,70 @@ else
                         <div>
                             <span class="me-2">📝</span>
                             <strong>Git Changes</strong>
+                            <span class="badge bg-secondary ms-2">@_parsedDiffFiles.Count files</span>
                         </div>
-                        <button class="btn btn-sm btn-outline-secondary" @onclick="ToggleGitDiff">
-                            @(_showGitDiff ? "Hide" : "Show")
-                        </button>
+                        <div class="d-flex gap-2">
+                            <button class="btn btn-sm btn-outline-secondary" @onclick="ExpandAllDiffs" title="Expand all files">
+                                <i class="bi bi-arrows-expand"></i> Expand All
+                            </button>
+                            <button class="btn btn-sm btn-outline-secondary" @onclick="CollapseAllDiffs"
+                                title="Collapse all files">
+                                <i class="bi bi-arrows-collapse"></i> Collapse All
+                            </button>
+                            <button class="btn btn-sm btn-outline-secondary" @onclick="ToggleGitDiff">
+                                @(_showGitDiff ? "Hide" : "Show")
+                            </button>
+                        </div>
                     </div>
                     @if (_showGitDiff)
                     {
                         <div class="card-body p-0">
-                            <div class="diff-container">
-                                @((MarkupString)FormatGitDiff(Job.GitDiff))
+                            <div class="accordion" id="diffAccordion">
+                                @foreach (var (file, index) in _parsedDiffFiles.Select((f, i) => (f, i)))
+                                {
+                                    var collapseId = $"diffCollapse{index}";
+                                    var headerId = $"diffHeader{index}";
+                                    var isExpanded = _expandedDiffFiles.Contains(index);
+                                    <div class="accordion-item">
+                                        <h2 class="accordion-header" id="@headerId">
+                                            <button class="accordion-button @(isExpanded ? "" : "collapsed")" type="button"
+                                                @onclick="() => ToggleDiffFile(index)">
+                                                <span class="diff-file-icon me-2">
+                                                    @if (file.IsNew)
+                                                    {
+                                                        <span class="text-success" title="New file">➕</span>
+                                                    }
+                                                    else if (file.IsDeleted)
+                                                    {
+                                                        <span class="text-danger" title="Deleted file">➖</span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="text-warning" title="Modified file">📝</span>
+                                                    }
+                                                </span>
+                                                <span class="diff-file-name">@file.FileName</span>
+                                                <span class="diff-stats ms-auto me-3">
+                                                    @if (file.Additions > 0)
+                                                    {
+                                                        <span class="text-success">+@file.Additions</span>
+                                                    }
+                                                    @if (file.Deletions > 0)
+                                                    {
+                                                        <span class="text-danger ms-1">-@file.Deletions</span>
+                                                    }
+                                                </span>
+                                            </button>
+                                        </h2>
+                                        <div id="@collapseId" class="accordion-collapse @(isExpanded ? "show" : "collapse")">
+                                            <div class="accordion-body p-0">
+                                                <div class="diff-container">
+                                                    @((MarkupString)FormatFileDiff(file.DiffContent))
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                }
                             </div>
                         </div>
                     }
@@ -306,8 +357,9 @@ else
                                     <strong>Changes pushed successfully!</strong>
                                     @if (!string.IsNullOrEmpty(_pushedCommitHash))
                                     {
-                                        <span class="commit-hash">Commit: @_pushedCommitHash[..Math.Min(7, _pushedCommitHash.Length)]</span>
-                                    }
+                                        <span class="commit-hash">Commit: @_pushedCommitHash[..Math.Min(7,
+                                                                        _pushedCommitHash.Length)]</span>
+                                                }
                                     @if (!string.IsNullOrEmpty(_branchName))
                                     {
                                         <span class="branch-pushed">Branch: @_branchName</span>
@@ -341,7 +393,7 @@ else
                             <span class="activity-text">@(Job.CurrentActivity ?? "Working...")</span>
                             @if (Job.LastActivityAt.HasValue)
                             {
-                                <span class="activity-time">@Job.LastActivityAt.Value.ToLocalTime().ToString("HH:mm:ss")</span>
+                                <span class="activity-time">@Job.LastActivityAt.Value.FormatTime()</span>
                             }
                         </div>
                     }
@@ -371,7 +423,7 @@ else
                                 <div class="message message-@message.Role.ToString().ToLower()">
                                     <div class="message-header">
                                         <span class="message-role">@GetRoleDisplayName(message.Role)</span>
-                                        <span class="message-time">@message.CreatedAt.ToLocalTime().ToString("HH:mm:ss")</span>
+                                        <span class="message-time">@message.CreatedAt.FormatTime()</span>
                                     </div>
                                     <div class="message-content">
                                         @if (message.Role == MessageRole.ToolUse)
@@ -388,7 +440,8 @@ else
                                         {
                                             <div class="tool-info">
                                                 <strong>Result from:</strong> @message.ToolName
-                                                <pre class="tool-output">@TruncateOutput(message.ToolOutput ?? message.Content, 500)</pre>
+                                                <pre
+                                                    class="tool-output">@TruncateOutput(message.ToolOutput ?? message.Content, 500)</pre>
                                             </div>
                                         }
                                         else
@@ -438,6 +491,10 @@ else
     private bool _showConsoleOutput = false;
     private bool _showGitDiff = true; // Show by default since it's usually the most interesting part
 
+    // Git diff accordion state
+    private List<DiffFile> _parsedDiffFiles = new();
+    private HashSet<int> _expandedDiffFiles = new();
+
     // Live output buffer
     private const int MaxOutputLines = 500;
     private readonly List<OutputLine> _liveOutput = new();
@@ -461,33 +518,43 @@ else
         public DateTime Timestamp { get; set; }
     }
 
+    private class DiffFile
+    {
+        public string FileName { get; set; } = string.Empty;
+        public string DiffContent { get; set; } = string.Empty;
+        public int Additions { get; set; }
+        public int Deletions { get; set; }
+        public bool IsNew { get; set; }
+        public bool IsDeleted { get; set; }
+    }
+
     private bool CanCancel => Job != null &&
-        (Job.Status == JobStatus.New ||
-        Job.Status == JobStatus.Pending ||
-        Job.Status == JobStatus.Started ||
-        Job.Status == JobStatus.Processing) &&
-        !Job.CancellationRequested;
+    (Job.Status == JobStatus.New ||
+    Job.Status == JobStatus.Pending ||
+    Job.Status == JobStatus.Started ||
+    Job.Status == JobStatus.Processing) &&
+    !Job.CancellationRequested;
 
     // Force cancel is available when cancellation was requested but job is still running
     private bool CanForceCancel => Job != null &&
-        (Job.Status == JobStatus.Started || Job.Status == JobStatus.Processing) &&
-        Job.CancellationRequested;
+    (Job.Status == JobStatus.Started || Job.Status == JobStatus.Processing) &&
+    Job.CancellationRequested;
 
     private bool CanRetry => Job != null &&
-        (Job.Status == JobStatus.Cancelled ||
-        Job.Status == JobStatus.Failed ||
-        Job.Status == JobStatus.Completed);
+    (Job.Status == JobStatus.Cancelled ||
+    Job.Status == JobStatus.Failed ||
+    Job.Status == JobStatus.Completed);
 
     private bool IsJobActive => Job != null &&
-        (Job.Status == JobStatus.New ||
-        Job.Status == JobStatus.Pending ||
-        Job.Status == JobStatus.Started ||
-        Job.Status == JobStatus.Processing);
+    (Job.Status == JobStatus.New ||
+    Job.Status == JobStatus.Pending ||
+    Job.Status == JobStatus.Started ||
+    Job.Status == JobStatus.Processing);
 
     private bool CanPush => !_isPushing &&
-        !string.IsNullOrWhiteSpace(_commitMessage) &&
-        !_changesPushed &&
-        Job?.Project?.WorkingPath != null;
+    !string.IsNullOrWhiteSpace(_commitMessage) &&
+    !_changesPushed &&
+    Job?.Project?.WorkingPath != null;
 
     protected override async Task OnInitializedAsync()
     {
@@ -519,9 +586,9 @@ else
             if (shouldPoll && !_isRefreshing)
             {
                 await InvokeAsync(async () =>
-                {
-                    await RefreshJobSafely();
-                });
+        {
+            await RefreshJobSafely();
+        });
             }
         }, null, TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(3));
     }
@@ -616,7 +683,20 @@ else
     public async Task OnJobCompleted(string jobId, bool success, string? errorMessage)
     {
         Console.WriteLine($"[Blazor] OnJobCompleted: {jobId}, success: {success}");
-        // Reload to get final status and results
+
+        // Immediately update status in-place for instant UI feedback
+        if (Job != null)
+        {
+            Job.Status = success ? JobStatus.Completed : JobStatus.Failed;
+            Job.CompletedAt = DateTime.UtcNow;
+            if (!string.IsNullOrEmpty(errorMessage))
+            {
+                Job.ErrorMessage = errorMessage;
+            }
+            await InvokeAsync(StateHasChanged);
+        }
+
+        // Also do a full refresh to get complete data (git diff, etc.)
         if (!_isRefreshing)
         {
             await InvokeAsync(async () => await RefreshJobSafely());
@@ -710,6 +790,17 @@ else
             {
                 _commitMessage = Job.SessionSummary;
                 _commitMessageInitialized = true;
+            }
+
+            // Parse git diff into file-based structure
+            if (Job != null && !string.IsNullOrEmpty(Job.GitDiff))
+            {
+                _parsedDiffFiles = ParseGitDiff(Job.GitDiff);
+                // Expand first file by default if there are any
+                if (_parsedDiffFiles.Any() && !_expandedDiffFiles.Any())
+                {
+                    _expandedDiffFiles.Add(0);
+                }
             }
         }
         finally
@@ -872,15 +963,15 @@ else
         try
         {
             var result = await GitHelper.CommitAndPushAsync(
-                Job.Project.WorkingPath,
-                _commitMessage,
-                "origin",
-                status =>
-                {
-                    _pushStatus = status;
-                    InvokeAsync(StateHasChanged);
-                },
-                _pushCancellationTokenSource.Token);
+            Job.Project.WorkingPath,
+            _commitMessage,
+            "origin",
+            status =>
+            {
+                _pushStatus = status;
+                InvokeAsync(StateHasChanged);
+            },
+            _pushCancellationTokenSource.Token);
 
             if (result.Success)
             {
@@ -956,6 +1047,101 @@ else
         }
 
         return result.ToString();
+    }
+
+    /// <summary>
+    /// Parses git diff into individual file diffs
+    /// </summary>
+    private static List<DiffFile> ParseGitDiff(string diff)
+    {
+        var files = new List<DiffFile>();
+        if (string.IsNullOrEmpty(diff))
+            return files;
+
+        var lines = diff.Split('\n');
+        DiffFile? currentFile = null;
+        var currentContent = new System.Text.StringBuilder();
+
+        foreach (var line in lines)
+        {
+            if (line.StartsWith("diff --git"))
+            {
+                // Save previous file
+                if (currentFile != null)
+                {
+                    currentFile.DiffContent = currentContent.ToString();
+                    files.Add(currentFile);
+                }
+
+                // Extract filename from "diff --git a/path/to/file b/path/to/file"
+                var parts = line.Split(' ');
+                var fileName = parts.Length >= 4 ? parts[3].TrimStart('b', '/') : "unknown";
+
+                currentFile = new DiffFile { FileName = fileName };
+                currentContent.Clear();
+                currentContent.AppendLine(line);
+            }
+            else if (currentFile != null)
+            {
+                currentContent.AppendLine(line);
+
+                if (line.StartsWith("new file"))
+                {
+                    currentFile.IsNew = true;
+                }
+                else if (line.StartsWith("deleted file"))
+                {
+                    currentFile.IsDeleted = true;
+                }
+                else if (line.StartsWith("+") && !line.StartsWith("+++"))
+                {
+                    currentFile.Additions++;
+                }
+                else if (line.StartsWith("-") && !line.StartsWith("---"))
+                {
+                    currentFile.Deletions++;
+                }
+            }
+        }
+
+        // Save the last file
+        if (currentFile != null)
+        {
+            currentFile.DiffContent = currentContent.ToString();
+            files.Add(currentFile);
+        }
+
+        return files;
+    }
+
+    /// <summary>
+    /// Formats a single file's diff content with syntax highlighting
+    /// </summary>
+    private static string FormatFileDiff(string diff)
+    {
+        return FormatGitDiff(diff);
+    }
+
+    private void ToggleDiffFile(int index)
+    {
+        if (_expandedDiffFiles.Contains(index))
+        {
+            _expandedDiffFiles.Remove(index);
+        }
+        else
+        {
+            _expandedDiffFiles.Add(index);
+        }
+    }
+
+    private void ExpandAllDiffs()
+    {
+        _expandedDiffFiles = Enumerable.Range(0, _parsedDiffFiles.Count).ToHashSet();
+    }
+
+    private void CollapseAllDiffs()
+    {
+        _expandedDiffFiles.Clear();
     }
 
     public async ValueTask DisposeAsync()

@@ -5,6 +5,7 @@
 @inject IProviderService ProviderService
 @inject NavigationManager NavigationManager
 @implements IDisposable
+@using VibeSwarm.Shared.Utilities
 
 @if (IsLoading)
 {
@@ -83,7 +84,7 @@ else
                                                     <div class="job-activity">@job.CurrentActivity</div>
                                                 }
                                             </td>
-                                            <td>@job.CreatedAt.ToLocalTime().ToString("g")</td>
+                                            <td>@job.CreatedAt.FormatDateTimeShort()</td>
                                             <td>
                                                 <div class="btn-group btn-group-sm" role="group">
                                                     <a href="/jobs/@job.Id" class="btn btn-outline-secondary">View</a>

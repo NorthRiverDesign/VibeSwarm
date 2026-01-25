@@ -29,10 +29,14 @@ else if (_jobs == null || !_jobs.Any())
 else
 {
     <div class="btn-group mb-3" role="group">
-        <button type="button" class="btn @(_filter == "all" ? "btn-primary" : "btn-outline-primary")" @onclick='() => SetFilter("all")'>All</button>
-        <button type="button" class="btn @(_filter == "active" ? "btn-primary" : "btn-outline-primary")" @onclick='() => SetFilter("active")'>Active</button>
-        <button type="button" class="btn @(_filter == "completed" ? "btn-primary" : "btn-outline-primary")" @onclick='() => SetFilter("completed")'>Completed</button>
-        <button type="button" class="btn @(_filter == "failed" ? "btn-primary" : "btn-outline-primary")" @onclick='() => SetFilter("failed")'>Failed</button>
+        <button type="button" class="btn @(_filter == "all" ? "btn-primary" : "btn-outline-primary")"
+            @onclick='() => SetFilter("all")'>All</button>
+        <button type="button" class="btn @(_filter == "active" ? "btn-primary" : "btn-outline-primary")"
+            @onclick='() => SetFilter("active")'>Active</button>
+        <button type="button" class="btn @(_filter == "completed" ? "btn-primary" : "btn-outline-primary")"
+            @onclick='() => SetFilter("completed")'>Completed</button>
+        <button type="button" class="btn @(_filter == "failed" ? "btn-primary" : "btn-outline-primary")"
+            @onclick='() => SetFilter("failed")'>Failed</button>
     </div>
 
     <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-3">
@@ -48,7 +52,8 @@ else
                             }
                             @job.Status
                         </span>
-                        @if (job.CancellationRequested && (job.Status == JobStatus.Started || job.Status == JobStatus.Processing))
+                        @if (job.CancellationRequested && (job.Status == JobStatus.Started || job.Status ==
+                                        JobStatus.Processing))
                         {
                             <span class="badge status-cancelling">
                                 <span class="status-spinner"></span>
@@ -113,9 +118,9 @@ else
             if (HasActiveJobs() && !_isRefreshing)
             {
                 await InvokeAsync(async () =>
-                {
-                    await RefreshJobsSafely();
-                });
+        {
+            await RefreshJobsSafely();
+        });
             }
         }, null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
     }
@@ -123,8 +128,8 @@ else
     private bool HasActiveJobs()
     {
         return _jobs?.Any(j => j.Status == JobStatus.New ||
-            j.Status == JobStatus.Started ||
-            j.Status == JobStatus.Processing) ?? false;
+        j.Status == JobStatus.Started ||
+        j.Status == JobStatus.Processing) ?? false;
     }
 
     private async Task RefreshJobsSafely()
@@ -232,6 +237,24 @@ else
     public async Task OnJobCompleted(string jobId, bool success, string? errorMessage)
     {
         Console.WriteLine($"[Jobs] OnJobCompleted: {jobId}, success: {success}");
+
+        // Update status in-place for immediate UI feedback
+        if (_jobs != null && Guid.TryParse(jobId, out var id))
+        {
+            var job = _jobs.FirstOrDefault(j => j.Id == id);
+            if (job != null)
+            {
+                job.Status = success ? JobStatus.Completed : JobStatus.Failed;
+                job.CompletedAt = DateTime.UtcNow;
+                if (!string.IsNullOrEmpty(errorMessage))
+                {
+                    job.ErrorMessage = errorMessage;
+                }
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+
+        // Also do a background refresh to get full data
         if (!_isRefreshing)
         {
             await InvokeAsync(async () => await RefreshJobsSafely());
@@ -272,8 +295,8 @@ else
         return _filter switch
         {
             "active" => _jobs.Where(j => j.Status == JobStatus.New ||
-                j.Status == JobStatus.Started ||
-                j.Status == JobStatus.Processing),
+            j.Status == JobStatus.Started ||
+            j.Status == JobStatus.Processing),
             "completed" => _jobs.Where(j => j.Status == JobStatus.Completed),
             "failed" => _jobs.Where(j => j.Status == JobStatus.Failed || j.Status == JobStatus.Cancelled),
             _ => _jobs
