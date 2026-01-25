@@ -1,9 +1,11 @@
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using VibeSwarm.Shared.Providers;
 
 namespace VibeSwarm.Shared.Data;
 
-public class VibeSwarmDbContext : DbContext
+public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRole<Guid>, Guid>
 {
     public VibeSwarmDbContext(DbContextOptions<VibeSwarmDbContext> options)
         : base(options)

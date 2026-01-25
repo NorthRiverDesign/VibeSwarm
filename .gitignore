@@ -1,6 +1,9 @@
 # AI Agent files
 .claude/settings.local.json
 
+# Environment variables (contains sensitive credentials)
+.env
+
 # SQLite Db
 vibeswarm.Db
 vibeswarm.Db-shm

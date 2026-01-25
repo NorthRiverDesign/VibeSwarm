@@ -1,0 +1,15 @@
+@using Microsoft.AspNetCore.Components.Authorization
+
+<AuthorizeView>
+    <Authorized>
+        <div class="d-flex align-items-center">
+            <span class="navbar-text me-3">
+                Welcome, <strong>@context.User.Identity?.Name</strong>
+            </span>
+            <a href="/logout" class="btn btn-sm btn-outline-secondary">Logout</a>
+        </div>
+    </Authorized>
+    <NotAuthorized>
+        <a href="/login" class="btn btn-sm btn-primary">Login</a>
+    </NotAuthorized>
+</AuthorizeView>

@@ -1,7 +1,9 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 
 namespace VibeSwarm.Web.Hubs;
 
+[Authorize]
 public class JobHub : Hub
 {
     /// <summary>
