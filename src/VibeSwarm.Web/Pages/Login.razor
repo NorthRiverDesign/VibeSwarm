@@ -1,18 +1,21 @@
 @page "/login"
 @attribute [AllowAnonymous]
+@layout VibeSwarm.Web.Shared.LoginLayout
 @using VibeSwarm.Web.Pages
 @namespace VibeSwarm.Web.Pages
 
 <PageTitle>Login - VibeSwarm</PageTitle>
 
-<div class="container mt-5">
+<div class="container">
     <div class="row justify-content-center">
         <div class="col-md-6 col-lg-4">
             @if (NoUsersExist)
             {
                 <div class="alert alert-warning mb-3" role="alert">
                     <h5 class="alert-heading"><i class="bi bi-exclamation-triangle me-2"></i>Configuration Warning</h5>
-                    <p class="mb-0">No users exist in the database. Please set <code>DEFAULT_ADMIN_USER</code> and <code>DEFAULT_ADMIN_PASS</code> environment variables in your <code>.env</code> file and restart the application.</p>
+                    <p class="mb-0">No users exist in the database. Please set <code>DEFAULT_ADMIN_USER</code> and
+                        <code>DEFAULT_ADMIN_PASS</code> environment variables in your <code>.env</code> file and restart the
+                        application.</p>
                 </div>
             }
             <div class="card shadow">
@@ -26,42 +29,33 @@
                         </div>
                     }
 
-                    <EditForm Model="@LoginModel" OnValidSubmit="@HandleLogin">
-                        <DataAnnotationsValidator />
-
+                    <form method="post" action="/Account/Login?returnUrl=@Uri.EscapeDataString(ReturnUrl ?? "/")">
                         <div class="mb-3">
                             <label for="username" class="form-label">Username</label>
-                            <InputText id="username" class="form-control" @bind-Value="LoginModel.Username" placeholder="Enter username" />
-                            <ValidationMessage For="@(() => LoginModel.Username)" />
+                            <input type="text" id="username" name="Input.Username" class="form-control"
+                                placeholder="Enter username" required />
                         </div>
 
                         <div class="mb-3">
                             <label for="password" class="form-label">Password</label>
-                            <InputText id="password" type="password" class="form-control" @bind-Value="LoginModel.Password" placeholder="Enter password" />
-                            <ValidationMessage For="@(() => LoginModel.Password)" />
+                            <input type="password" id="password" name="Input.Password" class="form-control"
+                                placeholder="Enter password" required />
                         </div>
 
                         <div class="mb-3 form-check">
-                            <InputCheckbox id="rememberMe" class="form-check-input" @bind-Value="LoginModel.RememberMe" />
+                            <input type="checkbox" id="rememberMe" name="Input.RememberMe" class="form-check-input"
+                                value="true" />
                             <label class="form-check-label" for="rememberMe">
                                 Remember me
                             </label>
                         </div>
 
                         <div class="d-grid">
-                            <button type="submit" class="btn btn-primary" disabled="@IsLoading">
-                                @if (IsLoading)
-                                {
-                                    <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
-                                    <span>Logging in...</span>
-                                }
-                                else
-                                {
-                                    <span>Login</span>
-                                }
+                            <button type="submit" class="btn btn-primary">
+                                Login
                             </button>
                         </div>
-                    </EditForm>
+                    </form>
                 </div>
             </div>
         </div>

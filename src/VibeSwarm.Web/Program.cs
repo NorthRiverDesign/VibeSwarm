@@ -169,6 +169,7 @@ app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();
 
+app.MapRazorPages();
 app.MapBlazorHub();
 app.MapHub<JobHub>("/jobhub");
 app.MapFallbackToPage("/_Host");
