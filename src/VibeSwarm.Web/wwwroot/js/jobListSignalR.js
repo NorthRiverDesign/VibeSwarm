@@ -1,87 +1,129 @@
 // SignalR connection for Jobs list page
-let connection = null;
+// Uses the global VibeSwarmHub for connection management
 let dotNetReference = null;
+let handlers = {};
 
 export async function initializeJobListHub(dotNetRef) {
 	dotNetReference = dotNetRef;
 
 	try {
-		connection = new signalR.HubConnectionBuilder()
-			.withUrl("/jobhub")
-			.withAutomaticReconnect([0, 1000, 2000, 5000, 10000])
-			.configureLogging(signalR.LogLevel.Warning)
-			.build();
+		// Wait for the global hub to be available
+		await waitForGlobalHub();
 
-		// Subscribe to global job list events
-		connection.on("JobStatusChanged", (jobId, status) => {
+		// Register local handlers for job list events
+		handlers.JobStatusChanged = (jobId, status) => {
 			console.log(`[JobListHub] JobStatusChanged: ${jobId} -> ${status}`);
-			dotNetReference.invokeMethodAsync("OnJobStatusChanged", jobId, status);
-		});
+			if (dotNetReference) {
+				dotNetReference.invokeMethodAsync("OnJobStatusChanged", jobId, status);
+			}
+		};
 
-		connection.on("JobActivityUpdated", (jobId, activity, timestamp) => {
+		handlers.JobActivityUpdated = (jobId, activity, timestamp) => {
 			console.log(`[JobListHub] JobActivityUpdated: ${jobId} -> ${activity}`);
-			dotNetReference.invokeMethodAsync(
-				"OnJobActivityUpdated",
-				jobId,
-				activity,
-				timestamp,
-			);
-		});
+			if (dotNetReference) {
+				dotNetReference.invokeMethodAsync(
+					"OnJobActivityUpdated",
+					jobId,
+					activity,
+					timestamp,
+				);
+			}
+		};
 
-		connection.on("JobCreated", (jobId, projectId) => {
+		handlers.JobCreated = (jobId, projectId) => {
 			console.log(`[JobListHub] JobCreated: ${jobId} in project ${projectId}`);
-			dotNetReference.invokeMethodAsync("OnJobCreated", jobId, projectId);
-		});
+			if (dotNetReference) {
+				dotNetReference.invokeMethodAsync("OnJobCreated", jobId, projectId);
+			}
+		};
 
-		connection.on("JobDeleted", (jobId, projectId) => {
+		handlers.JobDeleted = (jobId, projectId) => {
 			console.log(
 				`[JobListHub] JobDeleted: ${jobId} from project ${projectId}`,
 			);
-			dotNetReference.invokeMethodAsync("OnJobDeleted", jobId, projectId);
-		});
+			if (dotNetReference) {
+				dotNetReference.invokeMethodAsync("OnJobDeleted", jobId, projectId);
+			}
+		};
 
-		connection.on("JobCompleted", (jobId, success, errorMessage) => {
+		handlers.JobCompleted = (jobId, success, errorMessage) => {
 			console.log(`[JobListHub] JobCompleted: ${jobId}, success: ${success}`);
-			dotNetReference.invokeMethodAsync(
-				"OnJobCompleted",
-				jobId,
-				success,
-				errorMessage,
-			);
-		});
+			if (dotNetReference) {
+				dotNetReference.invokeMethodAsync(
+					"OnJobCompleted",
+					jobId,
+					success,
+					errorMessage,
+				);
+			}
+		};
 
-		connection.on("JobListChanged", () => {
+		handlers.JobListChanged = () => {
 			console.log(`[JobListHub] JobListChanged`);
-			dotNetReference.invokeMethodAsync("OnJobListChanged");
+			if (dotNetReference) {
+				dotNetReference.invokeMethodAsync("OnJobListChanged");
+			}
+		};
+
+		// Register handlers with the global hub
+		Object.entries(handlers).forEach(([event, handler]) => {
+			window.VibeSwarmHub.on(event, handler);
 		});
 
-		connection.onreconnected(() => {
-			console.log("[JobListHub] Reconnected, re-subscribing to job list");
-			connection.invoke("SubscribeToJobList");
-		});
-
-		await connection.start();
-		console.log("[JobListHub] Connected");
-
-		// Subscribe to global job list updates
-		await connection.invoke("SubscribeToJobList");
-		console.log("[JobListHub] Subscribed to job list");
+		// Subscribe to job list updates via the global hub
+		await window.VibeSwarmHub.subscribeToJobList();
+		console.log("[JobListHub] Connected via global hub");
 	} catch (err) {
 		console.error("[JobListHub] Error connecting:", err);
 	}
 }
 
 export async function disposeJobListHub() {
-	if (connection) {
-		try {
-			await connection.invoke("UnsubscribeFromJobList");
-		} catch {}
+	try {
+		// Unsubscribe from job list updates
+		await window.VibeSwarmHub?.unsubscribeFromJobList();
+	} catch {}
 
-		try {
-			await connection.stop();
-		} catch {}
-
-		connection = null;
+	// Remove local handlers
+	if (window.VibeSwarmHub) {
+		Object.entries(handlers).forEach(([event, handler]) => {
+			window.VibeSwarmHub.off(event, handler);
+		});
 	}
+
+	handlers = {};
 	dotNetReference = null;
+}
+
+async function waitForGlobalHub() {
+	return new Promise((resolve, reject) => {
+		if (window.VibeSwarmHub && window.VibeSwarmHub.isConnected) {
+			resolve();
+			return;
+		}
+
+		let attempts = 0;
+		const maxAttempts = 50; // 5 seconds total
+		const interval = setInterval(async () => {
+			attempts++;
+			if (window.VibeSwarmHub) {
+				if (window.VibeSwarmHub.isConnected) {
+					clearInterval(interval);
+					resolve();
+				} else if (!window.VibeSwarmHub.isConnecting) {
+					// Try to initialize if not already connecting
+					try {
+						await window.VibeSwarmHub.initialize(null);
+					} catch {}
+				}
+			}
+
+			if (attempts >= maxAttempts) {
+				clearInterval(interval);
+				// Even if not fully connected, we can still register handlers
+				// They'll work once the connection is established
+				resolve();
+			}
+		}, 100);
+	});
 }

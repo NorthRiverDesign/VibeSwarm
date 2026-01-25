@@ -127,6 +127,9 @@ builder.Services.ConfigureApplicationCookie(options =>
 // Register SignalR job update service
 builder.Services.AddSingleton<IJobUpdateService, SignalRJobUpdateService>();
 
+// Register notification service (scoped per circuit for Blazor Server)
+builder.Services.AddScoped<NotificationService>();
+
 var app = builder.Build();
 
 // Apply pending migrations on startup and initialize admin user

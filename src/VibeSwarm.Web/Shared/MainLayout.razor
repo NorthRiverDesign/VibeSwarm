@@ -1,9 +1,14 @@
 @inherits LayoutComponentBase
+@inject IJSRuntime JSRuntime
+@inject NotificationService NotificationService
+@inject IJobService JobService
+@implements IAsyncDisposable
 
 <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
     <div class="container-fluid">
         <a class="navbar-brand" href="/">VibeSwarm</a>
-        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav"
+            aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
             <span class="navbar-toggler-icon"></span>
         </button>
         <div class="collapse navbar-collapse" id="navbarNav">
@@ -27,3 +32,159 @@
 <main class="container py-4">
     @Body
 </main>
+
+<ToastContainer />
+
+@code {
+    private DotNetObjectReference<MainLayout>? _dotNetReference;
+    private bool _hubInitialized = false;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await InitializeGlobalHub();
+        }
+    }
+
+    private async Task InitializeGlobalHub()
+    {
+        if (_hubInitialized) return;
+
+        try
+        {
+            _dotNetReference = DotNetObjectReference.Create(this);
+            await JSRuntime.InvokeVoidAsync("VibeSwarmHub.initialize", _dotNetReference);
+            _hubInitialized = true;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[MainLayout] Error initializing global hub: {ex.Message}");
+        }
+    }
+
+    [JSInvokable]
+    public void OnConnectionStateChanged(string state)
+    {
+        Console.WriteLine($"[MainLayout] Connection state: {state}");
+    }
+
+    [JSInvokable]
+    public async Task OnGlobalJobStatusChanged(string jobId, string status)
+    {
+        Console.WriteLine($"[MainLayout] Job {jobId} status changed to {status}");
+        // Additional global handling can be added here
+        await Task.CompletedTask;
+    }
+
+    [JSInvokable]
+    public Task OnGlobalJobActivityUpdated(string jobId, string activity, DateTime timestamp)
+    {
+        // Activity updates are handled silently
+        return Task.CompletedTask;
+    }
+
+    [JSInvokable]
+    public Task OnGlobalJobCreated(string jobId, string projectId)
+    {
+        Console.WriteLine($"[MainLayout] New job created: {jobId}");
+        return Task.CompletedTask;
+    }
+
+    [JSInvokable]
+    public Task OnGlobalJobDeleted(string jobId, string projectId)
+    {
+        Console.WriteLine($"[MainLayout] Job deleted: {jobId}");
+        return Task.CompletedTask;
+    }
+
+    [JSInvokable]
+    public async Task OnGlobalJobCompleted(string jobId, bool success, string? errorMessage)
+    {
+        Console.WriteLine($"[MainLayout] Job {jobId} completed, success: {success}");
+
+        // Get job details to show in notification
+        if (Guid.TryParse(jobId, out var id))
+        {
+            try
+            {
+                var job = await JobService.GetByIdAsync(id);
+                var projectName = job?.Project?.Name;
+
+                await InvokeAsync(() =>
+                {
+                    NotificationService.ShowJobCompleted(id, success, projectName, errorMessage);
+                    StateHasChanged();
+                });
+            }
+            catch
+            {
+                // If we can't get the job details, show a generic notification
+                await InvokeAsync(() =>
+                {
+                    NotificationService.ShowJobCompleted(id, success, null, errorMessage);
+                    StateHasChanged();
+                });
+            }
+        }
+    }
+
+    [JSInvokable]
+    public Task OnGlobalJobListChanged()
+    {
+        // Job list changes don't need global notifications
+        return Task.CompletedTask;
+    }
+
+    [JSInvokable]
+    public Task OnGlobalJobMessageAdded(string jobId)
+    {
+        // Message additions don't need global notifications
+        return Task.CompletedTask;
+    }
+
+    [JSInvokable]
+    public Task OnGlobalProcessStarted(string jobId, int processId, string command)
+    {
+        return Task.CompletedTask;
+    }
+
+    [JSInvokable]
+    public Task OnGlobalProcessExited(string jobId, int processId, int exitCode, double durationSeconds)
+    {
+        return Task.CompletedTask;
+    }
+
+    [JSInvokable]
+    public async Task OnShowNotification(string title, string message, string type)
+    {
+        await InvokeAsync(() =>
+        {
+            var notificationType = type?.ToLower() switch
+            {
+                "success" => NotificationType.Success,
+                "error" => NotificationType.Error,
+                "warning" => NotificationType.Warning,
+                _ => NotificationType.Info
+            };
+
+            NotificationService.Show(message, title, notificationType);
+            StateHasChanged();
+        });
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _dotNetReference?.Dispose();
+
+        try
+        {
+            // Don't dispose the global hub - it persists across navigation
+            // Just clear the .NET reference
+        }
+        catch
+        {
+            // Ignore disposal errors
+        }
+    }
+}
