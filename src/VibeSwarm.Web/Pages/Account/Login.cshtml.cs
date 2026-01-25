@@ -6,6 +6,7 @@ using VibeSwarm.Shared.Data;
 
 namespace VibeSwarm.Web.Pages.Account;
 
+[IgnoreAntiforgeryToken]
 public class LoginModel : PageModel
 {
 	private readonly SignInManager<ApplicationUser> _signInManager;
@@ -38,9 +39,11 @@ public class LoginModel : PageModel
 		public bool RememberMe { get; set; }
 	}
 
-	public void OnGet(string? returnUrl = null)
+	public IActionResult OnGet(string? returnUrl = null)
 	{
-		ReturnUrl = returnUrl ?? "/";
+		// Redirect to the Blazor login page - this endpoint is POST-only
+		var redirectUrl = string.IsNullOrEmpty(returnUrl) ? "/login" : $"/login?returnUrl={Uri.EscapeDataString(returnUrl)}";
+		return Redirect(redirectUrl);
 	}
 
 	public async Task<IActionResult> OnPostAsync(string? returnUrl = null)
