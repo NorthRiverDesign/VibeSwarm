@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using VibeSwarm.Shared.Data;
@@ -14,6 +15,12 @@ var builder = WebApplication.CreateBuilder(args);
 
 var connectionString = builder.Configuration.GetConnectionString("Default")
     ?? "Data Source=vibeswarm.db";
+
+// Add global authorization policy - all pages require authentication by default
+builder.Services.AddAuthorizationBuilder()
+    .SetFallbackPolicy(new AuthorizationPolicyBuilder()
+        .RequireAuthenticatedUser()
+        .Build());
 
 builder.Services.AddRazorPages();
 builder.Services.AddServerSideBlazor();
@@ -71,6 +78,24 @@ using (var scope = app.Services.CreateScope())
     var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
     var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
     await DatabaseSeeder.InitializeAdminUserAsync(userManager, builder.Configuration, logger);
+
+    // Verify that at least one user exists
+    var userCount = userManager.Users.Count();
+    if (userCount == 0)
+    {
+        logger.LogError(
+            "====================================================\n" +
+            "CRITICAL ERROR: No users exist in the database!\n" +
+            "The application cannot function without at least one user.\n" +
+            "Admin user creation may have failed.\n" +
+            "Check the logs above for errors.\n" +
+            "====================================================");
+        throw new InvalidOperationException("No users exist in the database. Cannot start application.");
+    }
+    else
+    {
+        logger.LogInformation("Database initialized with {UserCount} user(s)", userCount);
+    }
 }
 
 app.UseSecurityHeaders();

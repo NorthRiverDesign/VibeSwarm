@@ -11,6 +11,9 @@ public static class DatabaseSeeder
         IConfiguration configuration,
         ILogger logger)
     {
+        // Validate configuration and warn about missing credentials
+        ValidateConfiguration(configuration, logger);
+
         // Read admin credentials from environment variables or configuration
         var adminUsername = Environment.GetEnvironmentVariable("DEFAULT_ADMIN_USER")
             ?? configuration["DEFAULT_ADMIN_USER"]
@@ -31,6 +34,13 @@ public static class DatabaseSeeder
         bool passwordWasGenerated = false;
         if (string.IsNullOrEmpty(adminPassword))
         {
+            logger.LogWarning(
+                "====================================================\n" +
+                "SECURITY WARNING: Application is MISCONFIGURED!\n" +
+                "DEFAULT_ADMIN_PASS environment variable is NOT SET.\n" +
+                "This is a security risk for production deployments.\n" +
+                "====================================================");
+
             adminPassword = GenerateSecurePassword();
             passwordWasGenerated = true;
         }
@@ -102,5 +112,57 @@ public static class DatabaseSeeder
 
         // Shuffle the password
         return new string(password.OrderBy(x => random.Next()).ToArray());
+    }
+
+    /// <summary>
+    /// Validates that authentication configuration is properly set up
+    /// </summary>
+    private static void ValidateConfiguration(IConfiguration configuration, ILogger logger)
+    {
+        var adminUserEnv = Environment.GetEnvironmentVariable("DEFAULT_ADMIN_USER");
+        var adminPassEnv = Environment.GetEnvironmentVariable("DEFAULT_ADMIN_PASS");
+        var adminUserConfig = configuration["DEFAULT_ADMIN_USER"];
+        var adminPassConfig = configuration["DEFAULT_ADMIN_PASS"];
+
+        var hasUserConfigured = !string.IsNullOrWhiteSpace(adminUserEnv) || !string.IsNullOrWhiteSpace(adminUserConfig);
+        var hasPasswordConfigured = !string.IsNullOrWhiteSpace(adminPassEnv) || !string.IsNullOrWhiteSpace(adminPassConfig);
+
+        if (!hasUserConfigured && !hasPasswordConfigured)
+        {
+            logger.LogWarning(
+                "====================================================\n" +
+                "CONFIGURATION WARNING:\n" +
+                "Neither DEFAULT_ADMIN_USER nor DEFAULT_ADMIN_PASS are configured.\n" +
+                "Using default username 'admin' and auto-generated password.\n" +
+                "\n" +
+                "For production deployments, you MUST configure these:\n" +
+                "1. Create a .env file in the application root\n" +
+                "2. Set DEFAULT_ADMIN_USER=your-username\n" +
+                "3. Set DEFAULT_ADMIN_PASS=your-secure-password\n" +
+                "\n" +
+                "OR set them as environment variables in your deployment.\n" +
+                "====================================================");
+        }
+        else if (!hasPasswordConfigured)
+        {
+            logger.LogWarning(
+                "====================================================\n" +
+                "SECURITY WARNING:\n" +
+                "DEFAULT_ADMIN_PASS is NOT configured!\n" +
+                "A random password will be generated and shown ONCE in logs.\n" +
+                "\n" +
+                "For production: Set DEFAULT_ADMIN_PASS in .env file or environment.\n" +
+                "====================================================");
+        }
+        else if (!hasUserConfigured)
+        {
+            logger.LogInformation(
+                "Using default admin username 'admin'. " +
+                "To customize, set DEFAULT_ADMIN_USER in .env or environment.");
+        }
+        else
+        {
+            logger.LogInformation("Admin credentials configured from environment/configuration");
+        }
     }
 }
