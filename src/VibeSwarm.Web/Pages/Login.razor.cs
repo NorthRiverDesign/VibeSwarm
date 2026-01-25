@@ -47,7 +47,15 @@ public partial class Login
                 }
 
                 // Redirect to return URL or home page
-                var redirectUrl = string.IsNullOrEmpty(ReturnUrl) ? "/" : ReturnUrl;
+                // Prevent redirect loops by not redirecting back to login pages
+                var redirectUrl = "/";
+                if (!string.IsNullOrEmpty(ReturnUrl) &&
+                    !ReturnUrl.Contains("/login", StringComparison.OrdinalIgnoreCase) &&
+                    !ReturnUrl.Contains("/logout", StringComparison.OrdinalIgnoreCase))
+                {
+                    redirectUrl = ReturnUrl;
+                }
+
                 NavigationManager.NavigateTo(redirectUrl, forceLoad: true);
             }
             else if (result.IsLockedOut)

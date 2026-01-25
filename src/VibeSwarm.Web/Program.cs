@@ -1,9 +1,11 @@
 using System.Security.Cryptography.X509Certificates;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Services;
+using VibeSwarm.Web;
 using VibeSwarm.Web.Hubs;
 using VibeSwarm.Web.Middleware;
 using VibeSwarm.Web.Services;
@@ -58,6 +60,9 @@ builder.Services.AddSignalR();
 builder.Services.AddWorkerServices();
 builder.Services.AddVibeSwarmData(connectionString);
 
+// Add authentication state provider for Blazor Server
+builder.Services.AddScoped<AuthenticationStateProvider, RevalidatingIdentityAuthenticationStateProvider<ApplicationUser>>();
+
 // Add Identity services
 builder.Services.AddIdentity<ApplicationUser, IdentityRole<Guid>>(options =>
 {
@@ -86,11 +91,27 @@ builder.Services.ConfigureApplicationCookie(options =>
     options.Cookie.HttpOnly = true;
     options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
     options.Cookie.SameSite = SameSiteMode.Lax;
+    options.Cookie.Name = "VibeSwarm.Auth";
     options.ExpireTimeSpan = TimeSpan.FromHours(8);
     options.SlidingExpiration = true;
     options.LoginPath = "/login";
     options.LogoutPath = "/logout";
     options.AccessDeniedPath = "/access-denied";
+
+    // Important for Blazor Server: Don't redirect on API calls
+    options.Events.OnRedirectToLogin = context =>
+    {
+        // If this is an API call or AJAX request, return 401 instead of redirecting
+        if (context.Request.Path.StartsWithSegments("/api") ||
+            context.Request.Headers["X-Requested-With"] == "XMLHttpRequest")
+        {
+            context.Response.StatusCode = 401;
+            return Task.CompletedTask;
+        }
+
+        context.Response.Redirect(context.RedirectUri);
+        return Task.CompletedTask;
+    };
 });
 
 // Register SignalR job update service
