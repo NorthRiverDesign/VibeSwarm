@@ -22,6 +22,13 @@ public partial class Login
     private LoginInputModel LoginModel { get; set; } = new();
     private string? ErrorMessage { get; set; }
     private bool IsLoading { get; set; }
+    private bool NoUsersExist { get; set; }
+
+    protected override void OnInitialized()
+    {
+        // Check if the no-users warning flag is set
+        NoUsersExist = Environment.GetEnvironmentVariable("VIBESWARM_NO_USERS") == "true";
+    }
 
     private async Task HandleLogin()
     {

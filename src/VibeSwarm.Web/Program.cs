@@ -12,9 +12,22 @@ using VibeSwarm.Web.Services;
 using VibeSwarm.Worker;
 
 // Load environment variables from .env file (if it exists)
-if (File.Exists(".env"))
+// Check multiple locations: current directory, base directory, and parent of base directory
+var envPaths = new[]
 {
-    DotNetEnv.Env.Load();
+    ".env",                                                    // Current working directory
+    Path.Combine(AppContext.BaseDirectory, ".env"),           // Application base directory (e.g., /build)
+    Path.Combine(AppContext.BaseDirectory, "..", ".env"),     // Parent of base directory (e.g., project root)
+};
+
+foreach (var envPath in envPaths)
+{
+    if (File.Exists(envPath))
+    {
+        Console.WriteLine($"Loading environment variables from: {Path.GetFullPath(envPath)}");
+        DotNetEnv.Env.Load(envPath);
+        break;
+    }
 }
 
 var builder = WebApplication.CreateBuilder(args);
@@ -48,11 +61,8 @@ builder.WebHost.ConfigureKestrel(serverOptions =>
 var connectionString = builder.Configuration.GetConnectionString("Default")
     ?? "Data Source=vibeswarm.db";
 
-// Add global authorization policy - all pages require authentication by default
-builder.Services.AddAuthorizationBuilder()
-    .SetFallbackPolicy(new AuthorizationPolicyBuilder()
-        .RequireAuthenticatedUser()
-        .Build());
+// Add authorization services
+builder.Services.AddAuthorization();
 
 builder.Services.AddRazorPages();
 builder.Services.AddServerSideBlazor();
@@ -130,22 +140,24 @@ using (var scope = app.Services.CreateScope())
     var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
     await DatabaseSeeder.InitializeAdminUserAsync(userManager, builder.Configuration, logger);
 
-    // Verify that at least one user exists
+    // Check if users exist and set warning flag
     var userCount = userManager.Users.Count();
     if (userCount == 0)
     {
-        logger.LogError(
+        logger.LogWarning(
             "====================================================\n" +
-            "CRITICAL ERROR: No users exist in the database!\n" +
-            "The application cannot function without at least one user.\n" +
+            "WARNING: No users exist in the database!\n" +
             "Admin user creation may have failed.\n" +
-            "Check the logs above for errors.\n" +
+            "Check that DEFAULT_ADMIN_USER and DEFAULT_ADMIN_PASS are set.\n" +
+            "The application will run but no one can log in until a user is created.\n" +
             "====================================================");
-        throw new InvalidOperationException("No users exist in the database. Cannot start application.");
+        // Set a flag that can be read by the login page
+        Environment.SetEnvironmentVariable("VIBESWARM_NO_USERS", "true");
     }
     else
     {
         logger.LogInformation("Database initialized with {UserCount} user(s)", userCount);
+        Environment.SetEnvironmentVariable("VIBESWARM_NO_USERS", "false");
     }
 }
 
