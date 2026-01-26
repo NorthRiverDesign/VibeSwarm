@@ -68,6 +68,36 @@
 .bi-check-circle-fill::before { content: "\f26a"; }
 .bi-inbox::before { content: "\f434"; }
 
+/* Settings page icons */
+.bi-sliders::before { content: "\f594"; }
+.bi-gear::before { content: "\f3e5"; }
+.bi-folder2-open::before { content: "\f3d7"; }
+.bi-check-lg::before { content: "\f633"; }
+.bi-arrow-counterclockwise::before { content: "\f12a"; }
+.bi-exclamation-circle::before { content: "\f332"; }
+.bi-info-circle::before { content: "\f431"; }
+.bi-pc-display::before { content: "\f4be"; }
+.bi-clock-history::before { content: "\f292"; }
+.bi-lightbulb::before { content: "\f468"; }
+
+/* Directory browser icons */
+.bi-arrow-up::before { content: "\f148"; }
+.bi-house::before { content: "\f420"; }
+.bi-arrow-right::before { content: "\f138"; }
+.bi-folder-fill::before { content: "\f3d5"; }
+.bi-folder-x::before { content: "\f3da"; }
+.bi-hdd::before { content: "\f40b"; }
+
+/* Toast/notification icons */
+.bi-x-circle-fill::before { content: "\f623"; }
+.bi-exclamation-triangle-fill::before { content: "\f33a"; }
+.bi-info-circle-fill::before { content: "\f430"; }
+.bi-bell-fill::before { content: "\f17f"; }
+
+/* Other icons */
+.bi-shield-lock::before { content: "\f560"; }
+.bi-chat-dots::before { content: "\f24a"; }
+
 /* ============================================
    CSS Variables - App-Specific
 ============================================ */
@@ -146,6 +176,12 @@ body {
     color: var(--bs-body-color);
     font-weight: 600;
     font-size: 1.125rem;
+}
+
+.brand-icon {
+    width: 24px;
+    height: 24px;
+    object-fit: contain;
 }
 
 .app-brand:hover {
