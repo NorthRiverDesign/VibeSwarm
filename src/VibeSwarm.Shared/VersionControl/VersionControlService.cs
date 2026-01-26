@@ -991,7 +991,7 @@ public sealed class VersionControlService : IVersionControlService
 	}
 
 	/// <inheritdoc />
-	public string GetGitHubCloneUrl(string ownerAndRepo)
+	public string GetGitHubCloneUrl(string ownerAndRepo, bool useSsh = true)
 	{
 		if (string.IsNullOrWhiteSpace(ownerAndRepo))
 		{
@@ -1008,7 +1008,13 @@ public sealed class VersionControlService : IVersionControlService
 			throw new ArgumentException("Invalid format. Expected 'owner/repo' format (e.g., 'microsoft/vscode').", nameof(ownerAndRepo));
 		}
 
-		// Return HTTPS URL
+		// Return SSH or HTTPS URL based on preference
+		// SSH is preferred for private repos as it uses SSH keys for authentication
+		if (useSsh)
+		{
+			return $"git@github.com:{parts[0]}/{parts[1]}.git";
+		}
+
 		return $"https://github.com/{parts[0]}/{parts[1]}.git";
 	}
 }
