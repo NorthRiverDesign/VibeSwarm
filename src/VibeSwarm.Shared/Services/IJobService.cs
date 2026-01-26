@@ -56,4 +56,13 @@ public interface IJobService
     /// </summary>
     /// <param name="cancellationToken">Cancellation token</param>
     Task<IEnumerable<Job>> GetPausedJobsAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets the last used model for a project and provider combination
+    /// </summary>
+    /// <param name="projectId">The project ID</param>
+    /// <param name="providerId">The provider ID</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>The model ID if found, otherwise null</returns>
+    Task<string?> GetLastUsedModelAsync(Guid projectId, Guid providerId, CancellationToken cancellationToken = default);
 }

@@ -162,7 +162,9 @@ else
 
                         <div class="mb-3">
                             <label for="provider" class="form-label">Provider</label>
-                            <InputSelect id="provider" @bind-Value="NewJob.ProviderId" class="form-select">
+                            <InputSelect id="provider" Value="NewJob.ProviderId"
+                                ValueExpression="@(() => NewJob.ProviderId)"
+                                ValueChanged="@((Guid value) => OnProviderChanged(value))" class="form-select">
                                 <option value="@Guid.Empty">Select a provider...</option>
                                 @foreach (var provider in Providers.Where(p => p.IsEnabled))
                                 {
@@ -175,6 +177,30 @@ else
                                     No enabled providers. <a href="/providers">Configure one</a> first.
                                 </div>
                             }
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="model" class="form-label">Model</label>
+                            <InputSelect id="model" @bind-Value="SelectedModelId" class="form-select"
+                                disabled="@(NewJob.ProviderId == Guid.Empty || IsLoadingModels)">
+                                @if (IsLoadingModels)
+                                {
+                                    <option value="">Loading models...</option>
+                                }
+                                else if (!AvailableModels.Any())
+                                {
+                                    <option value="">@(NewJob.ProviderId == Guid.Empty ? "Select a provider first..." : "No                        models available")</option>
+                                }
+                                else
+                                {
+                                    <option value="">Use provider default</option>
+                                    @foreach (var model in AvailableModels.Where(m => m.IsAvailable))
+                                    {
+                                        <option value="@model.ModelId">@(model.DisplayName ?? model.ModelId)@(model.IsDefault ? "             (default)" : "")</option>
+                                    }
+                                }
+                            </InputSelect>
+                            <div class="form-text">Leave empty to use the provider's default model.</div>
                         </div>
 
                         <button type="submit" class="btn btn-primary w-100"
@@ -348,6 +374,11 @@ else
     private string? SuccessMessage { get; set; }
     private System.Threading.Timer? _refreshTimer;
 
+    // Model selection
+    private List<ProviderModel> AvailableModels { get; set; } = new();
+    private string SelectedModelId { get; set; } = string.Empty;
+    private bool IsLoadingModels { get; set; }
+
     // Git-related properties
     private bool IsGitRepository { get; set; }
     private List<GitBranchInfo> Branches { get; set; } = new();
@@ -413,6 +444,8 @@ else
             if (defaultProvider != null)
             {
                 NewJob.ProviderId = defaultProvider.Id;
+                // Load models for the default provider
+                await LoadModelsForProvider(defaultProvider.Id);
             }
         }
         finally
@@ -602,6 +635,44 @@ else
         StateHasChanged();
     }
 
+    private async Task OnProviderChanged(Guid providerId)
+    {
+        NewJob.ProviderId = providerId;
+        SelectedModelId = string.Empty;
+        AvailableModels.Clear();
+
+        if (providerId != Guid.Empty)
+        {
+            await LoadModelsForProvider(providerId);
+        }
+    }
+
+    private async Task LoadModelsForProvider(Guid providerId)
+    {
+        IsLoadingModels = true;
+        try
+        {
+            AvailableModels = (await ProviderService.GetModelsAsync(providerId)).ToList();
+
+            // Try to default to the last used model for this project/provider combination
+            var lastUsedModel = await JobService.GetLastUsedModelAsync(ProjectId, providerId);
+            if (!string.IsNullOrEmpty(lastUsedModel) && AvailableModels.Any(m => m.ModelId == lastUsedModel))
+            {
+                SelectedModelId = lastUsedModel;
+            }
+            else
+            {
+                // Fall back to default model or empty (use provider default)
+                var defaultModel = AvailableModels.FirstOrDefault(m => m.IsDefault && m.IsAvailable);
+                SelectedModelId = defaultModel?.ModelId ?? string.Empty;
+            }
+        }
+        finally
+        {
+            IsLoadingModels = false;
+        }
+    }
+
     private async Task HandleCreateJob()
     {
         if (NewJob.ProviderId == Guid.Empty)
@@ -617,6 +688,8 @@ else
         try
         {
             NewJob.ProjectId = ProjectId;
+            // Set the selected model if one was chosen
+            NewJob.ModelUsed = string.IsNullOrEmpty(SelectedModelId) ? null : SelectedModelId;
             var createdJob = await JobService.CreateAsync(NewJob);
 
             // Redirect to the job details page to watch progress in real-time

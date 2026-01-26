@@ -590,4 +590,13 @@ public class JobService : IJobService
             .OrderByDescending(j => j.InteractionRequestedAt ?? j.LastActivityAt)
             .ToListAsync(cancellationToken);
     }
+
+    public async Task<string?> GetLastUsedModelAsync(Guid projectId, Guid providerId, CancellationToken cancellationToken = default)
+    {
+        return await _dbContext.Jobs
+            .Where(j => j.ProjectId == projectId && j.ProviderId == providerId && j.ModelUsed != null)
+            .OrderByDescending(j => j.CreatedAt)
+            .Select(j => j.ModelUsed)
+            .FirstOrDefaultAsync(cancellationToken);
+    }
 }
