@@ -2,6 +2,8 @@
 @attribute [Authorize]
 @inject IProjectService ProjectService
 @inject IJobService JobService
+@inject ISettingsService SettingsService
+@inject IFileSystemService FileSystemService
 @inject NavigationManager NavigationManager
 @implements IDisposable
 @using VibeSwarm.Shared.Utilities
@@ -35,8 +37,14 @@
 
                     <div class="mb-3">
                         <label for="workingPath" class="form-label">Working Path</label>
-                        <InputText id="workingPath" @bind-Value="CurrentProject.WorkingPath" class="form-control"
-                            placeholder="/home/user/projects/myapp" />
+                        <div class="input-group">
+                            <InputText id="workingPath" @bind-Value="CurrentProject.WorkingPath" class="form-control"
+                                placeholder="@_workingPathPlaceholder" />
+                            <button type="button" class="btn btn-outline-secondary" @onclick="OpenDirectoryBrowser"
+                                title="Browse directories">
+                                <i class="bi bi-folder2-open"></i>
+                            </button>
+                        </div>
                         <ValidationMessage For="@(() => CurrentProject.WorkingPath)" class="text-danger small" />
                         <div class="form-text">Directory where CLI providers execute commands.</div>
                     </div>
@@ -150,6 +158,12 @@
     </div>
 </div>
 
+@if (_showDirectoryBrowser)
+{
+    <DirectoryBrowser @ref="_directoryBrowser" InitialPath="@_defaultProjectsDirectory"
+        OnDirectorySelected="OnDirectorySelected" OnClosed="CloseDirectoryBrowser" />
+}
+
 @code {
     private List<Project> ProjectList { get; set; } = new();
     private List<Job> ActiveJobs { get; set; } = new();
@@ -160,12 +174,32 @@
     private string? ErrorMessage { get; set; }
     private string? SuccessMessage { get; set; }
     private System.Threading.Timer? _refreshTimer;
+    private bool _showDirectoryBrowser = false;
+    private DirectoryBrowser? _directoryBrowser;
+    private string? _defaultProjectsDirectory;
+
+    private string _workingPathPlaceholder => !string.IsNullOrEmpty(_defaultProjectsDirectory)
+    ? Path.Combine(_defaultProjectsDirectory, "project-name")
+    : (OperatingSystem.IsWindows() ? @"C:\projects\myapp" : "/home/user/projects/myapp");
 
     protected override async Task OnInitializedAsync()
     {
+        await LoadDefaultProjectsDirectory();
         await LoadProjects();
         await LoadActiveJobs();
         StartAutoRefresh();
+    }
+
+    private async Task LoadDefaultProjectsDirectory()
+    {
+        try
+        {
+            _defaultProjectsDirectory = await SettingsService.GetDefaultProjectsDirectoryAsync();
+        }
+        catch
+        {
+            // Ignore errors loading default directory
+        }
     }
 
     private void StartAutoRefresh()
@@ -282,6 +316,35 @@
         {
             ErrorMessage = $"Error deleting project: {ex.Message}";
         }
+    }
+
+    private async Task OpenDirectoryBrowser()
+    {
+        _showDirectoryBrowser = true;
+        StateHasChanged();
+
+        // Wait for the component to render
+        await Task.Delay(50);
+
+        if (_directoryBrowser != null)
+        {
+            var initialPath = !string.IsNullOrEmpty(CurrentProject.WorkingPath)
+            ? CurrentProject.WorkingPath
+            : _defaultProjectsDirectory;
+            await _directoryBrowser.ShowAsync(initialPath);
+        }
+    }
+
+    private void OnDirectorySelected(string path)
+    {
+        CurrentProject.WorkingPath = path;
+        _showDirectoryBrowser = false;
+        StateHasChanged();
+    }
+
+    private void CloseDirectoryBrowser()
+    {
+        _showDirectoryBrowser = false;
     }
 
     public void Dispose()

@@ -1,0 +1,270 @@
+@inject IFileSystemService FileSystemService
+
+<div class="modal fade @(_isVisible ? "show d-block" : "")" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+	<div class="modal-dialog modal-lg modal-dialog-scrollable">
+		<div class="modal-content">
+			<div class="modal-header">
+				<h5 class="modal-title">
+					<i class="bi bi-folder2-open me-2"></i>Select Directory
+				</h5>
+				<button type="button" class="btn-close" @onclick="Close" aria-label="Close"></button>
+			</div>
+			<div class="modal-body p-0">
+				@* Path input and navigation *@
+				<div class="border-bottom p-3 bg-body-secondary">
+					<div class="input-group">
+						<button class="btn btn-outline-secondary" @onclick="GoUp"
+							disabled="@(_directoryResult?.IsRoot ?? true)" title="Go up">
+							<i class="bi bi-arrow-up"></i>
+						</button>
+						<button class="btn btn-outline-secondary" @onclick="GoHome" title="Go to root/drives">
+							<i class="bi bi-house"></i>
+						</button>
+						<input type="text" class="form-control font-monospace" @bind="_currentPath"
+							@bind:event="oninput" placeholder="Enter path..." @onkeydown="HandlePathKeydown" />
+						<button class="btn btn-outline-primary" @onclick="NavigateToPath" title="Go to path">
+							<i class="bi bi-arrow-right"></i>
+						</button>
+					</div>
+				</div>
+
+				@* Error message *@
+				@if (!string.IsNullOrEmpty(_directoryResult?.Error))
+				{
+					<div class="alert alert-warning m-3 mb-0">
+						<i class="bi bi-exclamation-triangle me-2"></i>@_directoryResult.Error
+					</div>
+				}
+
+				@* Loading state *@
+				@if (_isLoading)
+				{
+					<div class="d-flex justify-content-center align-items-center py-5">
+						<div class="spinner-border text-primary" role="status">
+							<span class="visually-hidden">Loading...</span>
+						</div>
+					</div>
+				}
+				else
+				{
+					<div class="directory-list" style="max-height: 400px; overflow-y: auto;">
+						@* Drives (Windows) *@
+						@if (_directoryResult?.Drives.Any() == true && string.IsNullOrEmpty(_directoryResult.CurrentPath))
+						{
+							<div class="list-group list-group-flush">
+								@foreach (var drive in _directoryResult.Drives)
+								{
+									<button type="button"
+										class="list-group-item list-group-item-action d-flex align-items-center gap-3 py-2"
+										@onclick="@(() => NavigateTo(drive.RootPath))">
+										<i class="bi bi-hdd text-muted fs-5"></i>
+										<div class="flex-grow-1">
+											<div class="fw-medium">@drive.Name</div>
+											<small class="text-muted">
+												@drive.Label
+												@if (drive.FreeSpace.HasValue && drive.TotalSize.HasValue)
+												{
+													<span class="ms-2">(@FormatBytes(drive.FreeSpace.Value) free of
+														@FormatBytes(drive.TotalSize.Value))</span>
+												}
+											</small>
+										</div>
+									</button>
+								}
+							</div>
+						}
+
+						@* Directory entries *@
+						@if (_directoryResult?.Entries.Any() == true)
+						{
+							<div class="list-group list-group-flush">
+								@foreach (var entry in _directoryResult.Entries.Where(e => e.IsDirectory))
+								{
+									<button type="button"
+										class="list-group-item list-group-item-action d-flex align-items-center gap-3 py-2 @(entry.FullPath == _selectedPath ? "active" : "")"
+										@onclick="@(() => SelectDirectory(entry))"
+										@ondblclick="@(() => NavigateTo(entry.FullPath))">
+										<i class="bi bi-folder-fill text-warning fs-5"></i>
+										<div class="flex-grow-1 min-width-0">
+											<div class="text-truncate">@entry.Name</div>
+										</div>
+										<i class="bi bi-chevron-right text-muted small"></i>
+									</button>
+								}
+							</div>
+						}
+
+						@* Empty state *@
+						@if (_directoryResult?.Entries.All(e => !e.IsDirectory) == true &&
+											!string.IsNullOrEmpty(_directoryResult.CurrentPath))
+						{
+							<div class="text-center py-5 text-muted">
+								<i class="bi bi-folder-x fs-1"></i>
+								<p class="mt-2 mb-0">No subdirectories found</p>
+							</div>
+						}
+					</div>
+				}
+			</div>
+			<div class="modal-footer">
+				<div class="flex-grow-1 me-3">
+					@if (!string.IsNullOrEmpty(_selectedPath))
+					{
+						<small class="text-muted font-monospace text-break">Selected: @_selectedPath</small>
+					}
+					else if (!string.IsNullOrEmpty(_directoryResult?.CurrentPath))
+					{
+						<small class="text-muted font-monospace text-break">Current: @_directoryResult.CurrentPath</small>
+					}
+				</div>
+				<button type="button" class="btn btn-secondary" @onclick="Close">Cancel</button>
+				<button type="button" class="btn btn-primary" @onclick="SelectCurrentDirectory"
+					disabled="@(string.IsNullOrEmpty(_selectedPath) && string.IsNullOrEmpty(_directoryResult?.CurrentPath))">
+					<i class="bi bi-check-lg me-1"></i>Select
+				</button>
+			</div>
+		</div>
+	</div>
+</div>
+
+@code {
+	[Parameter]
+	public string? InitialPath { get; set; }
+
+	[Parameter]
+	public EventCallback<string> OnDirectorySelected { get; set; }
+
+	[Parameter]
+	public EventCallback OnClosed { get; set; }
+
+	private bool _isVisible = false;
+	private bool _isLoading = false;
+	private string _currentPath = "";
+	private string? _selectedPath;
+	private DirectoryListResult? _directoryResult;
+
+	public async Task ShowAsync(string? initialPath = null)
+	{
+		_isVisible = true;
+		_selectedPath = null;
+		_currentPath = initialPath ?? InitialPath ?? "";
+
+		if (!string.IsNullOrEmpty(_currentPath))
+		{
+			await NavigateTo(_currentPath);
+		}
+		else
+		{
+			await GoHome();
+		}
+
+		StateHasChanged();
+	}
+
+	public void Hide()
+	{
+		_isVisible = false;
+		StateHasChanged();
+	}
+
+	private async Task NavigateTo(string path)
+	{
+		_isLoading = true;
+		_selectedPath = null;
+		StateHasChanged();
+
+		try
+		{
+			_directoryResult = await FileSystemService.ListDirectoryAsync(path, directoriesOnly: true);
+			_currentPath = _directoryResult.CurrentPath;
+		}
+		finally
+		{
+			_isLoading = false;
+			StateHasChanged();
+		}
+	}
+
+	private async Task NavigateToPath()
+	{
+		if (!string.IsNullOrWhiteSpace(_currentPath))
+		{
+			await NavigateTo(_currentPath);
+		}
+	}
+
+	private async Task HandlePathKeydown(KeyboardEventArgs e)
+	{
+		if (e.Key == "Enter")
+		{
+			await NavigateToPath();
+		}
+	}
+
+	private async Task GoUp()
+	{
+		if (!string.IsNullOrEmpty(_directoryResult?.ParentPath))
+		{
+			await NavigateTo(_directoryResult.ParentPath);
+		}
+		else if (_directoryResult?.IsRoot == true && OperatingSystem.IsWindows())
+		{
+			// On Windows, go back to drive list
+			await GoHome();
+		}
+	}
+
+	private async Task GoHome()
+	{
+		_isLoading = true;
+		_selectedPath = null;
+		_currentPath = "";
+		StateHasChanged();
+
+		try
+		{
+			_directoryResult = await FileSystemService.ListDirectoryAsync(null, directoriesOnly: true);
+			_currentPath = _directoryResult.CurrentPath;
+		}
+		finally
+		{
+			_isLoading = false;
+			StateHasChanged();
+		}
+	}
+
+	private void SelectDirectory(DirectoryEntry entry)
+	{
+		_selectedPath = entry.FullPath;
+	}
+
+	private async Task SelectCurrentDirectory()
+	{
+		var selectedPath = _selectedPath ?? _directoryResult?.CurrentPath;
+
+		if (!string.IsNullOrEmpty(selectedPath))
+		{
+			await OnDirectorySelected.InvokeAsync(selectedPath);
+			Hide();
+		}
+	}
+
+	private async Task Close()
+	{
+		Hide();
+		await OnClosed.InvokeAsync();
+	}
+
+	private static string FormatBytes(long bytes)
+	{
+		string[] sizes = { "B", "KB", "MB", "GB", "TB" };
+		double len = bytes;
+		int order = 0;
+		while (len >= 1024 && order < sizes.Length - 1)
+		{
+			order++;
+			len = len / 1024;
+		}
+		return $"{len:0.#} {sizes[order]}";
+	}
+}
