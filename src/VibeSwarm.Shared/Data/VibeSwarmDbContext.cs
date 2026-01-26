@@ -57,6 +57,7 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
             entity.Property(e => e.SuccessPattern).HasMaxLength(1000);
             entity.Property(e => e.FailurePattern).HasMaxLength(1000);
             entity.Property(e => e.GitCommitBefore).HasMaxLength(100);
+            entity.Property(e => e.GitCommitHash).HasMaxLength(100);
             // GitDiff and ConsoleOutput can be large, no max length constraint
             entity.HasOne(e => e.Provider)
                 .WithMany()

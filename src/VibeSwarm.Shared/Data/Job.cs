@@ -159,6 +159,12 @@ public class Job
     public string? SessionSummary { get; set; }
 
     /// <summary>
+    /// Git commit hash after the user commits the job's results.
+    /// When set, indicates the results have been committed to git.
+    /// </summary>
+    public string? GitCommitHash { get; set; }
+
+    /// <summary>
     /// Accumulated console output from the CLI process during execution.
     /// This is the full output log, separate from Output which contains the result summary.
     /// </summary>

@@ -21,4 +21,5 @@ public interface IJobService
     Task UpdateProgressAsync(Guid id, string? currentActivity, CancellationToken cancellationToken = default);
     Task<bool> ResetJobAsync(Guid id, CancellationToken cancellationToken = default);
     Task DeleteAsync(Guid id, CancellationToken cancellationToken = default);
+    Task<bool> UpdateGitCommitHashAsync(Guid id, string commitHash, CancellationToken cancellationToken = default);
 }

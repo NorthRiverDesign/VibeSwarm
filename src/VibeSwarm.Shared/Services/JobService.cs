@@ -385,6 +385,7 @@ public class JobService : IJobService
         job.ConsoleOutput = null;  // Clear accumulated console output
         job.GitDiff = null;        // Clear git diff
         job.GitCommitBefore = null; // Clear git commit reference
+        job.GitCommitHash = null;  // Clear committed results hash
         // Keep SessionId for potential session continuation
         // Keep InputTokens, OutputTokens, TotalCostUsd for historical tracking
         // Keep Messages for audit trail and context
@@ -425,5 +426,21 @@ public class JobService : IJobService
                 catch { }
             }
         }
+    }
+
+    public async Task<bool> UpdateGitCommitHashAsync(Guid id, string commitHash, CancellationToken cancellationToken = default)
+    {
+        var job = await _dbContext.Jobs
+            .FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
+
+        if (job == null)
+        {
+            return false;
+        }
+
+        job.GitCommitHash = commitHash;
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return true;
     }
 }

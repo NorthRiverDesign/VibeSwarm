@@ -779,6 +779,13 @@ else
                 _commitMessageInitialized = true;
             }
 
+            // Check if job results have already been committed
+            if (Job != null && !string.IsNullOrEmpty(Job.GitCommitHash))
+            {
+                _changesPushed = true;
+                _pushedCommitHash = Job.GitCommitHash;
+            }
+
             // Parse git diff into file-based structure
             if (Job != null && !string.IsNullOrEmpty(Job.GitDiff))
             {
@@ -966,6 +973,13 @@ else
                 _pushedCommitHash = result.CommitHash;
                 _branchName = result.BranchName ?? _branchName;
                 SuccessMessage = "Changes committed and pushed successfully!";
+
+                // Save the commit hash to the database
+                if (!string.IsNullOrEmpty(result.CommitHash) && Job != null)
+                {
+                    await JobService.UpdateGitCommitHashAsync(Job.Id, result.CommitHash);
+                    Job.GitCommitHash = result.CommitHash;
+                }
             }
             else
             {
