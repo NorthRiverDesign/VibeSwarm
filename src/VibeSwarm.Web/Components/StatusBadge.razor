@@ -1,0 +1,46 @@
+@* Reusable status badge component with consistent styling *@
+
+<span class="badge @GetStatusClass()">
+	@if (ShowSpinner && IsActiveStatus())
+	{
+		<span class="spinner-border spinner-border-sm me-1" style="width: 0.6rem; height: 0.6rem;" role="status"></span>
+	}
+	@DisplayText
+</span>
+
+@code {
+	[Parameter]
+	public string Status { get; set; } = string.Empty;
+
+	[Parameter]
+	public string? CustomText { get; set; }
+
+	[Parameter]
+	public bool ShowSpinner { get; set; } = true;
+
+	private string DisplayText => CustomText ?? Status;
+
+	private bool IsActiveStatus()
+	{
+		var status = Status.ToLowerInvariant();
+		return status is "started" or "processing" or "cancelling";
+	}
+
+	private string GetStatusClass()
+	{
+		var status = Status.ToLowerInvariant();
+		return status switch
+		{
+			"new" => "bg-secondary",
+			"pending" => "bg-warning text-dark",
+			"started" or "processing" => "bg-info",
+			"completed" => "bg-success",
+			"failed" => "bg-danger",
+			"cancelled" => "bg-secondary",
+			"cancelling" => "bg-warning text-dark",
+			"active" => "bg-success",
+			"disabled" or "off" => "bg-secondary",
+			_ => "bg-secondary"
+		};
+	}
+}

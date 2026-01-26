@@ -3,36 +3,26 @@
 @inject IProviderService ProviderService
 @inject IProjectService ProjectService
 
-<div class="page-header">
-    <div>
-        <h3>Dashboard</h3>
-        <p class="text-muted mb-0 d-none d-sm-block">Your distributed agent job management system</p>
-    </div>
-</div>
+<PageHeader Title="Dashboard" Subtitle="Your distributed agent job management system" />
 
 <div class="row g-3 g-lg-4">
     <div class="col-12">
         <section>
             <div class="d-flex justify-content-between align-items-center mb-3">
-                <h5 class="mb-0">
-                    <i class="bi bi-folder me-2"></i>Recent Projects
+                <h5 class="mb-0 fw-semibold">
+                    <i class="bi bi-folder me-2 opacity-75"></i>Recent Projects
                 </h5>
-                <a href="/projects" class="btn btn-sm btn-outline-secondary">
-                    View All
-                </a>
+                <a href="/projects" class="btn btn-sm btn-outline-secondary">View All</a>
             </div>
 
             @if (IsLoading)
             {
-                <div class="d-flex justify-content-center py-4">
-                    <div class="spinner-border text-primary" role="status">
-                        <span class="visually-hidden">Loading...</span>
-                    </div>
-                </div>
+                <LoadingSpinner />
             }
             else if (!Projects.Any())
             {
-                <EmptyState Icon="folder" Title="No projects yet" Message="Create your first project to start running AI agent jobs.">
+                <EmptyState Icon="folder" Title="No projects yet"
+                    Message="Create your first project to start running AI agent jobs.">
                     <a href="/projects" class="btn btn-sm btn-primary">
                         <i class="bi bi-plus-lg me-1"></i>Create Project
                     </a>
@@ -44,20 +34,8 @@
                     @foreach (var project in Projects)
                     {
                         <div class="col">
-                            <a href="/projects/@project.Id" class="card h-100 text-decoration-none project-card">
-                                <div class="card-body">
-                                    <h6 class="card-title">@project.Name</h6>
-                                    @if (!string.IsNullOrEmpty(project.Description))
-                                    {
-                                        <p class="card-text small mb-2">@TruncateText(project.Description, 60)</p>
-                                    }
-                                    <div class="d-flex flex-column flex-sm-row justify-content-between gap-1">
-                                        <small class="text-muted font-monospace text-truncate"
-                                            style="max-width: 180px;">@TruncateText(project.WorkingPath, 30)</small>
-                                        <small class="text-muted">@project.CreatedAt.ToLocalTime().ToString("MMM d")</small>
-                                    </div>
-                                </div>
-                            </a>
+                            <ProjectCard ProjectId="@project.Id" Name="@project.Name" Description="@project.Description"
+                                WorkingPath="@project.WorkingPath" CreatedAt="@project.CreatedAt" />
                         </div>
                     }
                 </div>
@@ -68,25 +46,20 @@
     <div class="col-12">
         <section>
             <div class="d-flex justify-content-between align-items-center mb-3">
-                <h5 class="mb-0">
-                    <i class="bi bi-plug me-2"></i>Providers
+                <h5 class="mb-0 fw-semibold">
+                    <i class="bi bi-plug me-2 opacity-75"></i>Providers
                 </h5>
-                <a href="/providers" class="btn btn-sm btn-outline-secondary">
-                    Manage
-                </a>
+                <a href="/providers" class="btn btn-sm btn-outline-secondary">Manage</a>
             </div>
 
             @if (IsLoading)
             {
-                <div class="d-flex justify-content-center py-4">
-                    <div class="spinner-border text-primary" role="status">
-                        <span class="visually-hidden">Loading...</span>
-                    </div>
-                </div>
+                <LoadingSpinner />
             }
             else if (!Providers.Any())
             {
-                <EmptyState Icon="plug" Title="No providers configured" Message="Connect to AI coding agents like Claude Code CLI.">
+                <EmptyState Icon="plug" Title="No providers configured"
+                    Message="Connect to AI coding agents like Claude Code CLI.">
                     <a href="/providers" class="btn btn-sm btn-primary">
                         <i class="bi bi-plus-lg me-1"></i>Add Provider
                     </a>
@@ -98,20 +71,8 @@
                     @foreach (var provider in Providers)
                     {
                         <div class="col">
-                            <div class="card h-100 provider-card @(provider.IsEnabled ? "" : "disabled")">
-                                <div class="card-body">
-                                    <div class="d-flex justify-content-between align-items-start mb-2">
-                                        <h6 class="card-title mb-0">@provider.Name</h6>
-                                        <span class="badge @(provider.IsEnabled ? "status-completed" : "status-cancelled")">
-                                            @(provider.IsEnabled ? "Active" : "Off")
-                                        </span>
-                                    </div>
-                                    <div class="small text-muted">
-                                        <div class="mb-1"><strong>Type:</strong> @provider.Type</div>
-                                        <div><strong>Mode:</strong> @provider.ConnectionMode</div>
-                                    </div>
-                                </div>
-                            </div>
+                            <ProviderCard Name="@provider.Name" ProviderType="@provider.Type.ToString()"
+                                ConnectionMode="@provider.ConnectionMode.ToString()" IsEnabled="@provider.IsEnabled" />
                         </div>
                     }
                 </div>
@@ -141,12 +102,5 @@
         {
             IsLoading = false;
         }
-    }
-
-    private static string TruncateText(string text, int maxLength)
-    {
-        if (string.IsNullOrEmpty(text) || text.Length <= maxLength)
-            return text;
-        return text[..maxLength] + "...";
     }
 }

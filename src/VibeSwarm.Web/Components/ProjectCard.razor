@@ -1,0 +1,42 @@
+@* Reusable project card component for project listings *@
+
+<a href="/projects/@ProjectId"
+	class="card h-100 text-decoration-none border-start border-success border-3 project-card-hover">
+	<div class="card-body">
+		<h6 class="card-title fw-semibold mb-2">@Name</h6>
+		@if (!string.IsNullOrEmpty(Description))
+		{
+			<p class="card-text small text-body-secondary mb-2">@TruncateText(Description, 60)</p>
+		}
+		<div class="d-flex flex-column flex-sm-row justify-content-between gap-1">
+			<small class="text-body-secondary font-monospace text-truncate" style="max-width: 180px;">
+				@TruncateText(WorkingPath, 30)
+			</small>
+			<small class="text-body-tertiary">@CreatedAt.ToLocalTime().ToString("MMM d")</small>
+		</div>
+	</div>
+</a>
+
+@code {
+	[Parameter]
+	public Guid ProjectId { get; set; }
+
+	[Parameter]
+	public string Name { get; set; } = string.Empty;
+
+	[Parameter]
+	public string? Description { get; set; }
+
+	[Parameter]
+	public string WorkingPath { get; set; } = string.Empty;
+
+	[Parameter]
+	public DateTime CreatedAt { get; set; }
+
+	private static string TruncateText(string text, int maxLength)
+	{
+		if (string.IsNullOrEmpty(text) || text.Length <= maxLength)
+			return text;
+		return text[..maxLength] + "...";
+	}
+}

@@ -1,0 +1,28 @@
+@* Reusable list item row for consistent list layouts *@
+
+<div
+	class="d-flex flex-column flex-md-row align-items-md-center gap-2 gap-md-3 p-3 border-bottom hover-bg-tertiary @AdditionalClasses">
+	<div class="flex-grow-1 min-width-0">
+		@if (ChildContent != null)
+		{
+			@ChildContent
+		}
+	</div>
+	@if (Actions != null)
+	{
+		<div class="d-flex flex-wrap gap-2 flex-shrink-0">
+			@Actions
+		</div>
+	}
+</div>
+
+@code {
+	[Parameter]
+	public RenderFragment? ChildContent { get; set; }
+
+	[Parameter]
+	public RenderFragment? Actions { get; set; }
+
+	[Parameter]
+	public string AdditionalClasses { get; set; } = string.Empty;
+}

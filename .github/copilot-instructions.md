@@ -12,7 +12,7 @@ A user of VibeSwarm is expected to have accounts with various AI providers and h
 
 Projects are set up in VibeSwarm which define a code directory and a set of AI agents to operate on that code. Each agent has a specific role, such as code generation, code review, or optimization.
 
-Agents can communicate with each other to collaborate on tasks, share insights, and improve code quality.
+Agents can communicate with each other to collaborate on tasks, share insights, and improve code quality. Any collaboration between agents is managed by VibeSwarm, which coordinates their activities and ensures that they work together effectively using the project database as the source of truth.
 
 Progress is tracked through a dashboard that shows the status of each agent, recent changes, and overall project health. The application database stores project configurations, agent settings, and code history to allow for easy retrieval and management among multiple agents.
 
@@ -30,6 +30,8 @@ VibeSwarm will monitor agent performance and resource usage, allowing for dynami
 
 VibeSwarm will attempt to get the job done by intelligently switching models and providers if one is not performing adequately. This ensures that projects continue to progress even if certain agents encounter issues or limitations. VibeSwarm will also not attempt to utilize all tokens or usage at once, but will stagger agent activity to maintain a steady workflow and avoid overwhelming the system. VibeSwarm will wait between agent interactions to allow for processing time and to prevent rate limiting by AI providers.
 
+VibeSwarm assumes authentication and configuration for each agent provider is already set up on the host system. This includes any necessary API keys, tokens, or login credentials required for the agents to operate. VibeSwarm does not handle authentication directly but relies on the host system's configuration.
+
 ## Cross Platform
 
 VibeSwarm is designed to be cross-platform, running on Windows, macOS, and Linux. It uses platform-agnostic libraries and tools to ensure compatibility across different operating systems. The application detects the operating system at runtime and adjusts its behavior accordingly to provide a consistent user experience.
@@ -37,6 +39,12 @@ VibeSwarm is designed to be cross-platform, running on Windows, macOS, and Linux
 ## Deployment
 
 This app is intended to work on a variety of host systems, including local machines, VPS, Raspberry Pi, and cloud instances. The app attempts to remain as system agnostic as possible, relying on widely supported technologies and frameworks. Because VibeSwarm relies on system binaries, containerization is not currently supported.
+
+## VibeSwarm Architecture
+
+VibeSwarm is intended to stay simple but modular in 3 parts, the Web UI, the Worker service that manages agents, and a Shared library for common code both services use. Code relevant to UI should go in the Web project, code relevant to agent management should go in the Worker project, and any code shared between the two should go in the Shared project.
+
+Utility classes should exist in the Shared project to be used by both the Web and Worker projects. Data models should also exist in the Shared project to ensure consistency between the Web and Worker services.
 
 ## Usage Limits for AI Agents
 
@@ -70,6 +78,14 @@ Attempt to utilize existing Bootstrap components and utility classes to maintain
 
 The interface must be fully responsive and work on mobile devices as well as desktops. The layout should adapt to different screen sizes, ensuring usability across a range of devices. The application should follow accessibility best practices to ensure that all users, including those with disabilities, can effectively use the interface. This includes proper use of ARIA roles, keyboard navigation support, and sufficient color contrast.
 
+## Bootstrap Integration
+
+Always attempt to leverage Bootstrap's built-in classes and components before creating custom styles. This ensures consistency across the application and reduces the need for additional CSS. Use a stacked utility class approach when creating UI components to maximize flexibility and maintainability. A component may use multiple classes such as `d-flex`, `flex-column`, `align-items-center`, and `p-3` to achieve the desired layout and styling without custom CSS. Use the TailwindCSS mindset when applying Bootstrap utility classes to create complex layouts and designs.
+
+## Blazor Integration
+
+VibeSwarm is built using Blazor, a web framework for building interactive web applications with C# and .NET. The application leverages Blazor's component-based architecture to create reusable UI components and manage application state effectively. Blazor's capabilities allow for seamless integration with backend services, enabling real-time updates and dynamic content rendering. The SignalR library is used to facilitate real-time communication between the server and client, allowing for instant updates on agent activities and project status.
+
 ## UI Components
 
 Large pages should be broken into smaller, reusable components to improve maintainability and readability. Components such as agent cards, project lists, and status indicators can be created to encapsulate specific functionality and styling. This modular approach allows for easier updates and enhancements to individual components without affecting the overall application.
@@ -86,6 +102,14 @@ The database should support backup and recovery mechanisms to protect against da
 
 The VibeSwarm dashboard provides a comprehensive overview of all projects and agents. It displays the status of each agent, recent code changes, and overall project health. Users can monitor agent activities, view logs, and manage project settings from the dashboard.
 The dashboard should provide real-time updates on agent activities, allowing users to see the progress of code generation and review tasks as they happen. Notifications and alerts can be used to inform users of important events, such as agent errors or completed tasks.
+
+## Git Integration
+
+VibeSwarm integrates with Git to manage code versioning and collaboration. Each project is generally associated with a Git repository, allowing agents to pull the latest code, make changes, and push updates back to the repository. The application uses Git commands to handle branching, merging, and conflict resolution as needed. If a Git repository is not available, VibeSwarm can operate on a local code directory, but Git integration is preferred for version control and collaboration.
+
+VibeSwarm assumes git is installed on the host system and accessible via the command line. The application uses Git to track code changes made by agents, providing a history of modifications and enabling easy rollback if necessary. Even if a project is not initially set up as a Git repository, VibeSwarm can initialize a new repository in the project directory to enable version control.
+
+VibeSwarm assumes the login and credentials for any remote Git repositories are already set up on the host system. This may include SSH keys, access tokens, or other authentication methods required to interact with private repositories. VibeSwarm does not handle Git authentication directly but relies on the host system's configuration.
 
 ## Open Source
 

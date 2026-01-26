@@ -6,16 +6,14 @@
 @implements IDisposable
 @using VibeSwarm.Shared.Utilities
 
-<div class="page-header">
-    <h3>Projects</h3>
-</div>
+<PageHeader Title="Projects" />
 
 <div class="row g-3 g-lg-4">
     @* Form first on mobile, second on desktop *@
     <div class="col-12 col-lg-4 order-1 order-lg-2">
         <div class="card">
-            <div class="card-header">
-                <h5 class="mb-0">@(IsEditing ? "Edit Project" : "New Project")</h5>
+            <div class="card-header bg-body-secondary">
+                <h5 class="mb-0 fw-semibold">@(IsEditing ? "Edit Project" : "New Project")</h5>
             </div>
             <div class="card-body">
                 <EditForm Model="@CurrentProject" OnValidSubmit="HandleValidSubmit">
@@ -74,81 +72,74 @@
     @* List second on mobile, first on desktop *@
     <div class="col-12 col-lg-8 order-2 order-lg-1">
         <div class="card">
-            <div class="card-header">
-                <h5 class="mb-0">All Projects</h5>
+            <div class="card-header bg-body-secondary">
+                <h5 class="mb-0 fw-semibold">All Projects</h5>
             </div>
             <div class="card-body p-0">
                 @if (IsLoading)
                 {
-                    <div class="d-flex justify-content-center py-5">
-                        <div class="spinner-border text-primary" role="status">
-                            <span class="visually-hidden">Loading...</span>
-                        </div>
-                    </div>
+                    <LoadingSpinner />
                 }
                 else if (!ProjectList.Any())
                 {
                     <div class="p-3">
-                        <EmptyState Icon="folder" Title="No projects yet" Message="Create your first project to start running AI agent jobs." />
+                        <EmptyState Icon="folder" Title="No projects yet"
+                            Message="Create your first project to start running AI agent jobs." />
                     </div>
                 }
                 else
                 {
-                    <div class="project-list">
+                    <div class="list-group list-group-flush">
                         @foreach (var project in ProjectList)
                         {
                             var projectActiveJobs = ActiveJobs.Where(j => j.ProjectId == project.Id).ToList();
-                            <div class="list-item">
-                                <div class="list-item-content">
-                                    <div class="list-item-info">
-                                        <div class="list-item-title">
-                                            <a href="/projects/@project.Id">@project.Name</a>
-                                        </div>
-                                        @if (!string.IsNullOrEmpty(project.Description))
-                                        {
-                                            <div class="list-item-subtitle">@TruncateText(project.Description, 80)</div>
-                                        }
-                                        <div class="list-item-meta mt-2">
-                                            <span class="meta-item">
-                                                <span class="list-item-path">@project.WorkingPath</span>
-                                            </span>
-                                            <span class="meta-item">
-                                                <i class="bi bi-calendar-plus"></i>
-                                                @project.CreatedAt.FormatDateTimeShort()
-                                            </span>
-                                        </div>
-                                        @if (projectActiveJobs.Any())
-                                        {
-                                            <div class="active-jobs-list">
-                                                @foreach (var job in projectActiveJobs)
-                                                {
-                                                    <div class="active-job-item">
-                                                        <a href="/jobs/@job.Id" class="d-flex align-items-center gap-2 text-decoration-none">
-                                                            <span class="badge status-@job.Status.ToString().ToLower()">
-                                                                <span class="status-spinner"></span>
-                                                                @job.Status
-                                                            </span>
-                                                            <span class="text-truncate" style="max-width: 200px;">@TruncateText(job.GoalPrompt, 50)</span>
-                                                            @if (!string.IsNullOrEmpty(job.CurrentActivity))
-                                                            {
-                                                                <span class="job-activity-preview text-muted small d-none d-md-inline">@job.CurrentActivity</span>
-                                                            }
-                                                        </a>
-                                                    </div>
-                                                }
-                                            </div>
-                                        }
+                            <div
+                                class="list-group-item d-flex flex-column flex-md-row align-items-md-center gap-2 gap-md-3 p-3 hover-bg-tertiary">
+                                <div class="flex-grow-1 min-width-0">
+                                    <div class="fw-semibold">
+                                        <a href="/projects/@project.Id" class="text-decoration-none">@project.Name</a>
                                     </div>
+                                    @if (!string.IsNullOrEmpty(project.Description))
+                                    {
+                                        <div class="small text-body-secondary">@TruncateText(project.Description, 80)</div>
+                                    }
+                                    <div class="d-flex flex-wrap gap-2 gap-md-3 mt-2 small text-body-secondary">
+                                        <span class="font-monospace bg-body-tertiary px-2 py-1 rounded-1 text-truncate"
+                                            style="max-width: 250px;">
+                                            @project.WorkingPath
+                                        </span>
+                                        <span class="d-flex align-items-center gap-1">
+                                            <i class="bi bi-calendar-plus opacity-75"></i>
+                                            @project.CreatedAt.FormatDateTimeShort()
+                                        </span>
+                                    </div>
+                                    @if (projectActiveJobs.Any())
+                                    {
+                                        <div class="border-top pt-2 mt-2">
+                                            @foreach (var job in projectActiveJobs)
+                                            {
+                                                <div class="active-job-item">
+                                                    <a href="/jobs/@job.Id"
+                                                        class="d-flex align-items-center gap-2 text-decoration-none">
+                                                        <StatusBadge Status="@job.Status.ToString()" />
+                                                        <span class="text-truncate"
+                                                            style="max-width: 200px;">@TruncateText(job.GoalPrompt, 50)</span>
+                                                        @if (!string.IsNullOrEmpty(job.CurrentActivity))
+                                                        {
+                                                            <span class="job-activity d-none d-md-inline">@job.CurrentActivity</span>
+                                                        }
+                                                    </a>
+                                                </div>
+                                            }
+                                        </div>
+                                    }
                                 </div>
-                                <div class="list-item-actions">
-                                    <button class="btn btn-sm btn-outline-secondary btn-edit" @onclick="() => EditProject(project)" title="Edit">
-                                        <i class="bi bi-pencil"></i>
-                                        <span class="btn-text">Edit</span>
-                                    </button>
-                                    <button class="btn btn-sm btn-outline-danger btn-delete" @onclick="() => DeleteProject(project.Id)" title="Delete">
-                                        <i class="bi bi-trash"></i>
-                                        <span class="btn-text">Delete</span>
-                                    </button>
+                                <div class="d-flex flex-wrap gap-2 flex-shrink-0">
+                                    <ActionButton Icon="pencil" Text="Edit" Outline="true" Size="ActionButton.ButtonSize.Small"
+                                        HideTextOnMobile="true" OnClick="@(() => EditProject(project))" />
+                                    <ActionButton Icon="trash" Text="Delete" Outline="true" Size="ActionButton.ButtonSize.Small"
+                                        Style="ActionButton.ButtonStyle.Danger" HideTextOnMobile="true"
+                                        OnClick="@(() => DeleteProject(project.Id))" />
                                 </div>
                             </div>
                         }
@@ -184,10 +175,10 @@
             if (ActiveJobs.Any())
             {
                 await InvokeAsync(async () =>
-                {
-                    await LoadActiveJobs();
-                    StateHasChanged();
-                });
+        {
+            await LoadActiveJobs();
+            StateHasChanged();
+        });
             }
         }, null, TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(3));
     }

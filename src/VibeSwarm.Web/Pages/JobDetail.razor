@@ -10,11 +10,7 @@
 
 @if (IsLoading)
 {
-    <div class="d-flex justify-content-center py-5">
-        <div class="spinner-border text-primary" role="status">
-            <span class="visually-hidden">Loading...</span>
-        </div>
-    </div>
+    <LoadingSpinner />
 }
 else if (Job == null)
 {
@@ -26,94 +22,61 @@ else if (Job == null)
 else
 {
     @* Page Header - Full Width *@
-    <div class="job-detail-page-header">
-        <div class="job-detail-info">
+    <div
+        class="d-flex flex-column flex-md-row justify-content-between align-items-start gap-3 mb-3 mb-lg-4 pb-3 border-bottom">
+        <div class="flex-grow-1 min-width-0">
             <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
-                <h3 class="mb-0">Job Details</h3>
-                <span class="badge status-@Job.Status.ToString().ToLower()">
-                    @if (Job.Status == JobStatus.Started || Job.Status == JobStatus.Processing)
-                    {
-                        <span class="status-spinner"></span>
-                    }
-                    @Job.Status
-                </span>
+                <h3 class="mb-0 fs-4 fw-semibold">Job Details</h3>
+                <StatusBadge Status="@Job.Status.ToString()" />
                 @if (Job.CancellationRequested && (Job.Status == JobStatus.Started || Job.Status == JobStatus.Processing))
                 {
-                    <span class="badge status-cancelling">
-                        <span class="status-spinner"></span>
-                        Cancelling
-                    </span>
+                    <StatusBadge Status="Cancelling" />
                 }
             </div>
-            <div class="job-meta text-muted small">
+            <div class="small text-body-secondary">
                 <div class="d-flex flex-wrap gap-2 gap-sm-3 mb-2">
-                    <span>Project: <a href="/projects/@Job.ProjectId">@(Job.Project?.Name ?? "Unknown")</a></span>
+                    <span>Project: <a href="/projects/@Job.ProjectId" class="text-decoration-none">@(Job.Project?.Name ??
+                                                    "Unknown")</a></span>
                     <span>Provider: @(Job.Provider?.Name ?? "Unknown")</span>
                     @if (Job.ProcessId.HasValue)
                     {
                         <span class="process-info d-none d-sm-inline">PID: @Job.ProcessId</span>
                     }
                 </div>
-                <div class="job-timestamps d-flex flex-wrap gap-2 gap-sm-3">
+                <div class="d-flex flex-wrap gap-2 gap-sm-3">
                     <span title="Created"><i
-                            class="bi bi-calendar-plus me-1"></i>@Job.CreatedAt.FormatDateTimeShort()</span>
+                            class="bi bi-calendar-plus me-1 opacity-75"></i>@Job.CreatedAt.FormatDateTimeShort()</span>
                     @if (Job.StartedAt.HasValue)
                     {
                         <span title="Started"><i
-                                class="bi bi-play-circle me-1"></i>@Job.StartedAt.Value.FormatDateTimeShort()</span>
+                                class="bi bi-play-circle me-1 opacity-75"></i>@Job.StartedAt.Value.FormatDateTimeShort()</span>
                     }
                     @if (Job.CompletedAt.HasValue)
                     {
                         <span title="Completed"><i
-                                class="bi bi-check-circle me-1"></i>@Job.CompletedAt.Value.FormatDateTimeShort()</span>
+                                class="bi bi-check-circle me-1 opacity-75"></i>@Job.CompletedAt.Value.FormatDateTimeShort()</span>
                     }
                 </div>
             </div>
         </div>
-        <div class="job-detail-actions">
+        <div class="d-flex flex-wrap gap-2 flex-shrink-0">
             @if (CanRetry)
             {
-                <button class="btn btn-primary btn-action" @onclick="RetryJob" disabled="@IsRetrying">
-                    @if (IsRetrying)
-                    {
-                        <span class="spinner-border spinner-border-sm" role="status"></span>
-                    }
-                    else
-                    {
-                        <i class="bi bi-arrow-repeat"></i>
-                    }
-                    <span>@(IsRetrying ? "Retrying..." : "Retry")</span>
-                </button>
+                <ActionButton Icon="arrow-repeat" Text="@(IsRetrying ? "Retrying..." : "Retry")"
+                    Style="ActionButton.ButtonStyle.Primary" IsLoading="@IsRetrying" OnClick="RetryJob" />
             }
             @if (CanCancel)
             {
-                <button class="btn btn-danger btn-action" @onclick="CancelJob" disabled="@IsCancelling">
-                    @if (IsCancelling)
-                    {
-                        <span class="spinner-border spinner-border-sm" role="status"></span>
-                    }
-                    else
-                    {
-                        <i class="bi bi-x-circle"></i>
-                    }
-                    <span>@(IsCancelling ? "Cancelling..." : "Cancel")</span>
-                </button>
+                <ActionButton Icon="x-circle" Text="@(IsCancelling ? "Cancelling..." : "Cancel")"
+                    Style="ActionButton.ButtonStyle.Danger" IsLoading="@IsCancelling" OnClick="CancelJob" />
             }
             @if (CanForceCancel)
             {
-                <button class="btn btn-outline-danger btn-action" @onclick="ForceCancelJob" disabled="@IsForceCancelling">
-                    @if (IsForceCancelling)
-                    {
-                        <span class="spinner-border spinner-border-sm" role="status"></span>
-                    }
-                    else
-                    {
-                        <i class="bi bi-stop-circle"></i>
-                    }
-                    <span>@(IsForceCancelling ? "Stopping..." : "Force Stop")</span>
-                </button>
+                <ActionButton Icon="stop-circle" Text="@(IsForceCancelling ? "Stopping..." : "Force Stop")"
+                    Style="ActionButton.ButtonStyle.Danger" Outline="true" IsLoading="@IsForceCancelling"
+                    OnClick="ForceCancelJob" />
             }
-            <a href="/projects/@Job.ProjectId" class="btn btn-secondary btn-action">
+            <a href="/projects/@Job.ProjectId" class="btn btn-secondary d-inline-flex align-items-center gap-1">
                 <i class="bi bi-arrow-left"></i>
                 <span>Back</span>
             </a>
@@ -125,52 +88,39 @@ else
         @* Left Column - Goal & Output on mobile first *@
         <div class="col-12 col-lg-5 order-2 order-lg-1">
             <div class="card mb-3 mb-lg-4">
-                <div class="card-header">
-                    <h5 class="mb-0"><i class="bi bi-bullseye me-2"></i>Goal Prompt</h5>
+                <div class="card-header bg-body-secondary">
+                    <h5 class="mb-0 fw-semibold"><i class="bi bi-bullseye me-2 opacity-75"></i>Goal Prompt</h5>
                 </div>
-                <div class="card-body goal-prompt-card-body">
+                <div class="card-body d-flex flex-column gap-3">
                     <div class="goal-prompt-box">@Job.GoalPrompt</div>
 
-                    @if (Job.SessionId != null || Job.InputTokens.HasValue || Job.OutputTokens.HasValue || Job.TotalCostUsd.HasValue)
+                    @if (Job.SessionId != null || Job.InputTokens.HasValue || Job.OutputTokens.HasValue ||
+                                    Job.TotalCostUsd.HasValue)
                     {
-                        <div class="job-stats">
+                        <div class="d-flex flex-wrap gap-2">
                             @if (Job.SessionId != null)
                             {
-                                <div class="stat-item">
-                                    <span class="stat-label">Session ID</span>
-                                    <span class="stat-value mono text-truncate">@Job.SessionId</span>
-                                </div>
+                                <StatItem Label="Session ID" Value="@Job.SessionId" Monospace="true" />
                             }
-                            <div class="d-flex flex-wrap gap-3">
-                                @if (Job.InputTokens.HasValue)
-                                {
-                                    <div class="stat-item flex-grow-1">
-                                        <span class="stat-label">Input</span>
-                                        <span class="stat-value">@Job.InputTokens.Value.ToString("N0")</span>
-                                    </div>
-                                }
-                                @if (Job.OutputTokens.HasValue)
-                                {
-                                    <div class="stat-item flex-grow-1">
-                                        <span class="stat-label">Output</span>
-                                        <span class="stat-value">@Job.OutputTokens.Value.ToString("N0")</span>
-                                    </div>
-                                }
-                                @if (Job.TotalCostUsd.HasValue)
-                                {
-                                    <div class="stat-item flex-grow-1">
-                                        <span class="stat-label">Cost</span>
-                                        <span class="stat-value">$@Job.TotalCostUsd.Value.ToString("F4")</span>
-                                    </div>
-                                }
-                            </div>
+                            @if (Job.InputTokens.HasValue)
+                            {
+                                <StatItem Label="Input" Value="@Job.InputTokens.Value.ToString("N0")" FlexGrow="true" />
+                            }
+                            @if (Job.OutputTokens.HasValue)
+                            {
+                                <StatItem Label="Output" Value="@Job.OutputTokens.Value.ToString("N0")" FlexGrow="true" />
+                            }
+                            @if (Job.TotalCostUsd.HasValue)
+                            {
+                                <StatItem Label="Cost" Value="@($"${Job.TotalCostUsd.Value:F4}")" FlexGrow="true" />
+                            }
                         </div>
                     }
 
                     @if (!string.IsNullOrEmpty(Job.ErrorMessage))
                     {
-                        <div class="error-section">
-                            <h6 class="text-danger"><i class="bi bi-exclamation-triangle me-1"></i>Error</h6>
+                        <div>
+                            <h6 class="text-danger mb-2"><i class="bi bi-exclamation-triangle me-1"></i>Error</h6>
                             <pre class="error-output">@Job.ErrorMessage</pre>
                         </div>
                     }
@@ -179,15 +129,14 @@ else
                     {
                         <div class="info-section">
                             <h6>Job Cancelled</h6>
-                            <p class="mb-0">This job was cancelled and can be retried. Click "Retry Job" to run it again.</p>
+                            <p class="mb-0">This job was cancelled and can be retried. Click "Retry" to run it again.</p>
                         </div>
                     }
                     else if (Job.Status == JobStatus.Failed && CanRetry)
                     {
                         <div class="info-section">
                             <h6>Job Failed</h6>
-                            <p class="mb-0">This job failed during execution. You can retry it by clicking "Retry Job" above.
-                            </p>
+                            <p class="mb-0">This job failed during execution. You can retry it by clicking "Retry" above.</p>
                         </div>
                     }
                 </div>
@@ -197,16 +146,15 @@ else
             @if (IsJobActive && _liveOutput.Count > 0)
             {
                 <div class="card mb-3 mb-lg-4">
-                    <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <div
+                        class="card-header bg-body-secondary d-flex justify-content-between align-items-center flex-wrap gap-2">
                         <div class="d-flex align-items-center">
                             <span class="live-indicator me-2"></span>
                             <strong>Live Output</strong>
-                            <span class="text-muted ms-2 small">(@_liveOutput.Count)</span>
+                            <span class="text-body-secondary ms-2 small">(@_liveOutput.Count)</span>
                         </div>
-                        <button class="btn btn-sm btn-outline-secondary" @onclick="ClearLiveOutput">
-                            <i class="bi bi-trash d-sm-none"></i>
-                            <span class="d-none d-sm-inline">Clear</span>
-                        </button>
+                        <ActionButton Icon="trash" Text="Clear" Outline="true" Size="ActionButton.ButtonSize.Small"
+                            HideTextOnMobile="true" OnClick="ClearLiveOutput" />
                     </div>
                     <div class="card-body p-0">
                         <div class="live-output-container" @ref="_outputContainer">
@@ -226,15 +174,14 @@ else
             @if (!IsJobActive && !string.IsNullOrEmpty(Job.ConsoleOutput))
             {
                 <div class="card mb-3 mb-lg-4">
-                    <div class="card-header d-flex justify-content-between align-items-center">
+                    <div class="card-header bg-body-secondary d-flex justify-content-between align-items-center">
                         <div class="d-flex align-items-center">
-                            <i class="bi bi-terminal me-2"></i>
+                            <i class="bi bi-terminal me-2 opacity-75"></i>
                             <strong>Console Output</strong>
                         </div>
-                        <button class="btn btn-sm btn-outline-secondary" @onclick="ToggleConsoleOutput">
-                            <i class="bi @(_showConsoleOutput ? "bi-eye-slash" : "bi-eye")"></i>
-                            <span class="d-none d-sm-inline ms-1">@(_showConsoleOutput ? "Hide" : "Show")</span>
-                        </button>
+                        <ActionButton Icon="@(_showConsoleOutput ? "eye-slash" : "eye")"
+                            Text="@(_showConsoleOutput ? "Hide" : "Show")" Outline="true" Size="ActionButton.ButtonSize.Small"
+                            HideTextOnMobile="true" OnClick="ToggleConsoleOutput" />
                     </div>
                     @if (_showConsoleOutput)
                     {
@@ -249,10 +196,10 @@ else
             @if (!IsJobActive && !string.IsNullOrEmpty(Job.GitDiff))
             {
                 <div class="card mb-3 mb-lg-4">
-                    <div class="card-header">
+                    <div class="card-header bg-body-secondary">
                         <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
                             <div class="d-flex align-items-center">
-                                <i class="bi bi-git me-2"></i>
+                                <i class="bi bi-git me-2 opacity-75"></i>
                                 <strong>Git Changes</strong>
                                 <span class="badge bg-secondary ms-2">@_parsedDiffFiles.Count</span>
                             </div>
@@ -265,10 +212,9 @@ else
                                     @onclick="CollapseAllDiffs" title="Collapse all files">
                                     <i class="bi bi-arrows-collapse"></i>
                                 </button>
-                                <button class="btn btn-sm btn-outline-secondary" @onclick="ToggleGitDiff">
-                                    <i class="bi @(_showGitDiff ? "bi-eye-slash" : "bi-eye")"></i>
-                                    <span class="d-none d-sm-inline ms-1">@(_showGitDiff ? "Hide" : "Show")</span>
-                                </button>
+                                <ActionButton Icon="@(_showGitDiff ? "eye-slash" : "eye")"
+                                    Text="@(_showGitDiff ? "Hide" : "Show")" Outline="true" Size="ActionButton.ButtonSize.Small"
+                                    HideTextOnMobile="true" OnClick="ToggleGitDiff" />
                             </div>
                         </div>
                     </div>
@@ -328,9 +274,9 @@ else
 
                 @* Commit Section - shown when there are git changes *@
                 <div class="card mb-3 mb-lg-4">
-                    <div class="card-header">
+                    <div class="card-header bg-body-secondary d-flex justify-content-between align-items-center">
                         <div class="d-flex align-items-center">
-                            <i class="bi bi-cloud-upload me-2"></i>
+                            <i class="bi bi-cloud-upload me-2 opacity-75"></i>
                             <strong>Commit</strong>
                         </div>
                         @if (!string.IsNullOrEmpty(_branchName) && !_changesPushed)
@@ -353,9 +299,8 @@ else
                                     </span>
                                 }
                             </label>
-                            <textarea id="commitMessage" class="commit-message-input" @bind="_commitMessage"
-                                @bind:event="oninput" placeholder="Enter a descriptive commit message..." rows="3"
-                                disabled="@_isPushing"></textarea>
+                            <textarea id="commitMessage" class="commit-message-input" @bind="_commitMessage" @bind:event="oninput"
+                                placeholder="Enter a descriptive commit message..." rows="3" disabled="@_isPushing"></textarea>
 
                             @if (!string.IsNullOrEmpty(_pushError))
                             {
@@ -365,7 +310,7 @@ else
                                 </div>
                             }
                         </div>
-                        <div class="card-footer">
+                        <div class="card-footer bg-body-secondary">
                             <button class="btn btn-primary" @onclick="CommitAndPushChanges" disabled="@(!CanPush)">
                                 @if (_isPushing)
                                 {
@@ -386,19 +331,19 @@ else
                         <div class="card-body">
                             <div class="push-success">
                                 <i class="bi bi-check-circle-fill fs-4 text-success"></i>
-                                <div class="success-details">
+                                <div>
                                     <strong>Changes pushed successfully!</strong>
                                     <div class="d-flex flex-wrap gap-2 mt-1">
                                         @if (!string.IsNullOrEmpty(_pushedCommitHash))
                                         {
-                                            <span class="commit-hash">
+                                            <span class="font-monospace small">
                                                 <i class="bi bi-git me-1"></i>@_pushedCommitHash[..Math.Min(7,
                                                                                 _pushedCommitHash.Length)]
-                                            </span>
-                                        }
+                            </span>
+                                                        }
                                         @if (!string.IsNullOrEmpty(_branchName))
                                         {
-                                            <span class="branch-pushed">
+                                            <span class="font-monospace small">
                                                 <i class="bi bi-diagram-2 me-1"></i>@_branchName
                                             </span>
                                         }
@@ -413,8 +358,7 @@ else
             {
                 <div class="card">
                     <div class="card-body">
-                        <p class="text-muted mb-0 text-center"><i class="bi bi-info-circle me-2"></i>No file changes detected.
-                        </p>
+                        <p class="text-body-secondary mb-0 text-center"><i class="bi bi-info-circle me-2 opacity-75"></i>No file changes detected.</p>
                     </div>
                 </div>
             }
@@ -423,8 +367,8 @@ else
         @* Right Column - Conversation Messages (shows first on mobile) *@
         <div class="col-12 col-lg-7 order-1 order-lg-2">
             <div class="card">
-                <div class="card-header d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0"><i class="bi bi-chat-dots me-2"></i>Conversation</h5>
+                <div class="card-header bg-body-secondary d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0 fw-semibold"><i class="bi bi-chat-dots me-2 opacity-75"></i>Conversation</h5>
                     <span class="badge bg-secondary">@Job.Messages.Count</span>
                 </div>
                 <div class="card-body p-2 p-sm-3">
@@ -482,8 +426,7 @@ else
                                         {
                                             <div class="tool-info">
                                                 <strong>Result from:</strong> @message.ToolName
-                                                <pre
-                                                    class="tool-output">@TruncateOutput(message.ToolOutput ?? message.Content, 500)</pre>
+                                                <pre class="tool-output">@TruncateOutput(message.ToolOutput ?? message.Content, 500)</pre>
                                             </div>
                                         }
                                         else

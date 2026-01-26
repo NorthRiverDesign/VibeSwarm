@@ -6,24 +6,16 @@
 @implements IAsyncDisposable
 @using System.Threading
 
-<div class="page-header">
-    <div>
-        <h3>Jobs</h3>
-        <span class="text-muted small">@(_jobs?.Count() ?? 0) total</span>
-    </div>
-</div>
+<PageHeader Title="Jobs" Subtitle="@($"{(_jobs?.Count() ?? 0)} total")" />
 
 @if (_isLoading)
 {
-    <div class="d-flex justify-content-center py-5">
-        <div class="spinner-border text-primary" role="status">
-            <span class="visually-hidden">Loading...</span>
-        </div>
-    </div>
+    <LoadingSpinner />
 }
 else if (_jobs == null || !_jobs.Any())
 {
-    <EmptyState Icon="gear-wide-connected" Title="No jobs yet" Message="Jobs are created when you run AI agent tasks on your projects.">
+    <EmptyState Icon="gear-wide-connected" Title="No jobs yet"
+        Message="Jobs are created when you run AI agent tasks on your projects.">
         <a href="/projects" class="btn btn-sm btn-primary">
             <i class="bi bi-folder me-1"></i>Go to Projects
         </a>
@@ -64,45 +56,13 @@ else
             @foreach (var job in GetFilteredJobs())
             {
                 <div class="col">
-                    <div class="job-card" @onclick="() => NavigateToJob(job.Id)">
-                        <div class="job-card-header">
-                            <div class="d-flex align-items-center gap-2 flex-wrap">
-                                <span class="badge status-@job.Status.ToString().ToLower()">
-                                    @if (job.Status == JobStatus.Started || job.Status == JobStatus.Processing)
-                                    {
-                                        <span class="status-spinner"></span>
-                                    }
-                                    @job.Status
-                                </span>
-                                @if (job.CancellationRequested && (job.Status == JobStatus.Started || job.Status == JobStatus.Processing))
-                                {
-                                    <span class="badge status-cancelling">
-                                        <span class="status-spinner"></span>
-                                        Cancelling
-                                    </span>
-                                }
-                            </div>
-                            <span class="job-project">@(job.Project?.Name ?? "Unknown")</span>
-                        </div>
-                        <div class="job-card-content">
-                            <p class="job-prompt">@TruncatePrompt(job.GoalPrompt, 120)</p>
-                        </div>
-                        <div class="job-card-footer">
-                            <span class="job-provider">@(job.Provider?.Name ?? "Unknown")</span>
-                            @if (job.Status == JobStatus.Started || job.Status == JobStatus.Processing)
-                            {
-                                <span class="job-activity text-truncate" style="max-width: 150px;">@(job.CurrentActivity ?? "Working...")</span>
-                            }
-                            else
-                            {
-                                <span class="job-time">@GetTimeDisplay(job)</span>
-                            }
-                            @if (job.TotalCostUsd.HasValue)
-                            {
-                                <span class="job-cost">$@job.TotalCostUsd.Value.ToString("F4")</span>
-                            }
-                        </div>
-                    </div>
+                    <JobCard Status="@job.Status.ToString()"
+                        IsCancelling="@(job.CancellationRequested && (job.Status == JobStatus.Started || job.Status == JobStatus.Processing))"
+                        ProjectName="@(job.Project?.Name ?? "Unknown")" ProviderName="@(job.Provider?.Name ?? "Unknown")"
+                        Prompt="@job.GoalPrompt"
+                        Activity="@((job.Status == JobStatus.Started || job.Status == JobStatus.Processing) ? (job.CurrentActivity ?? "Working...") : null)"
+                        TimeDisplay="@((job.Status != JobStatus.Started && job.Status != JobStatus.Processing) ? GetTimeDisplay(job) : null)"
+                        Cost="@job.TotalCostUsd" OnClick="@(() => NavigateToJob(job.Id))" />
                 </div>
             }
         </div>
@@ -139,9 +99,9 @@ else
             if (HasActiveJobs() && !_isRefreshing)
             {
                 await InvokeAsync(async () =>
-                {
-                    await RefreshJobsSafely();
-                });
+        {
+            await RefreshJobsSafely();
+        });
             }
         }, null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
     }
@@ -149,8 +109,8 @@ else
     private bool HasActiveJobs()
     {
         return _jobs?.Any(j => j.Status == JobStatus.New ||
-            j.Status == JobStatus.Started ||
-            j.Status == JobStatus.Processing) ?? false;
+        j.Status == JobStatus.Started ||
+        j.Status == JobStatus.Processing) ?? false;
     }
 
     private async Task RefreshJobsSafely()
@@ -304,7 +264,8 @@ else
         _filter = filter;
     }
 
-    private int GetActiveCount() => _jobs?.Count(j => j.Status == JobStatus.New || j.Status == JobStatus.Started || j.Status == JobStatus.Processing) ?? 0;
+    private int GetActiveCount() => _jobs?.Count(j => j.Status == JobStatus.New || j.Status == JobStatus.Started || j.Status
+    == JobStatus.Processing) ?? 0;
     private int GetCompletedCount() => _jobs?.Count(j => j.Status == JobStatus.Completed) ?? 0;
     private int GetFailedCount() => _jobs?.Count(j => j.Status == JobStatus.Failed || j.Status == JobStatus.Cancelled) ?? 0;
 
@@ -314,7 +275,8 @@ else
 
         return _filter switch
         {
-            "active" => _jobs.Where(j => j.Status == JobStatus.New || j.Status == JobStatus.Started || j.Status == JobStatus.Processing),
+            "active" => _jobs.Where(j => j.Status == JobStatus.New || j.Status == JobStatus.Started || j.Status ==
+            JobStatus.Processing),
             "completed" => _jobs.Where(j => j.Status == JobStatus.Completed),
             "failed" => _jobs.Where(j => j.Status == JobStatus.Failed || j.Status == JobStatus.Cancelled),
             _ => _jobs

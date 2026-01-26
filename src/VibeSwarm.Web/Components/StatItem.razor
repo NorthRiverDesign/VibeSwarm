@@ -1,0 +1,35 @@
+@* Reusable stat display component for key-value pairs *@
+
+<div class="bg-body-tertiary rounded-2 p-2 @(FlexGrow ? "flex-grow-1" : "")">
+	<div class="text-body-secondary text-uppercase small fw-medium mb-1"
+		style="font-size: 0.7rem; letter-spacing: 0.05em;">
+		@Label
+	</div>
+	<div class="fw-semibold @(Monospace ? "font-monospace small" : "")">
+		@if (ChildContent != null)
+		{
+			@ChildContent
+		}
+		else
+		{
+			@Value
+		}
+	</div>
+</div>
+
+@code {
+	[Parameter]
+	public string Label { get; set; } = string.Empty;
+
+	[Parameter]
+	public string? Value { get; set; }
+
+	[Parameter]
+	public bool Monospace { get; set; }
+
+	[Parameter]
+	public bool FlexGrow { get; set; }
+
+	[Parameter]
+	public RenderFragment? ChildContent { get; set; }
+}

@@ -3,19 +3,14 @@
 @using VibeSwarm.Shared.Services
 @inject IProviderService ProviderService
 
-<div class="page-header">
-    <div>
-        <h3>Providers</h3>
-        <p class="text-muted mb-0 d-none d-sm-block">Manage your AI coding agent providers</p>
-    </div>
-</div>
+<PageHeader Title="Providers" Subtitle="Manage your AI coding agent providers" />
 
 <div class="row g-3 g-lg-4">
     @* Form first on mobile *@
     <div class="col-12 col-lg-4 order-1 order-lg-2">
         <div class="card">
-            <div class="card-header">
-                <h5 class="mb-0">@(EditingProvider != null ? "Edit Provider" : "Add Provider")</h5>
+            <div class="card-header bg-body-secondary">
+                <h5 class="mb-0 fw-semibold">@(EditingProvider != null ? "Edit Provider" : "Add Provider")</h5>
             </div>
             <div class="card-body">
                 <ProviderForm Provider="@CurrentProvider" IsEdit="@(EditingProvider != null)"
@@ -27,99 +22,74 @@
     @* List second on mobile *@
     <div class="col-12 col-lg-8 order-2 order-lg-1">
         <div class="card">
-            <div class="card-header">
-                <h5 class="mb-0">Connected Providers</h5>
+            <div class="card-header bg-body-secondary">
+                <h5 class="mb-0 fw-semibold">Connected Providers</h5>
             </div>
             <div class="card-body p-0">
                 @if (IsLoading)
                 {
-                    <div class="d-flex justify-content-center py-5">
-                        <div class="spinner-border text-primary" role="status">
-                            <span class="visually-hidden">Loading...</span>
-                        </div>
-                    </div>
+                    <LoadingSpinner />
                 }
                 else if (!ProvidersList.Any())
                 {
                     <div class="p-3">
-                        <EmptyState Icon="plug" Title="No providers configured" Message="Add a provider to connect to AI coding agents like Claude Code CLI." />
+                        <EmptyState Icon="plug" Title="No providers configured"
+                            Message="Add a provider to connect to AI coding agents like Claude Code CLI." />
                     </div>
                 }
                 else
                 {
-                    <div class="provider-list">
+                    <div class="list-group list-group-flush">
                         @foreach (var provider in ProvidersList)
                         {
-                            <div class="list-item @(provider.IsDefault ? "default-provider-row" : "")">
-                                <div class="list-item-content">
-                                    <div class="list-item-info">
-                                        <div class="d-flex align-items-center gap-2 flex-wrap">
-                                            <span class="list-item-title">@provider.Name</span>
-                                            @if (provider.IsDefault)
-                                            {
-                                                <span class="default-badge">Default</span>
-                                            }
-                                            <span class="badge @(provider.IsEnabled ? "status-completed" : "status-cancelled")">
-                                                @(provider.IsEnabled ? "Active" : "Disabled")
-                                            </span>
-                                        </div>
-                                        <div class="list-item-meta mt-2">
-                                            <span class="meta-item">
-                                                <span class="meta-label">Type:</span>
-                                                @provider.Type
-                                            </span>
-                                            <span class="meta-item">
-                                                <span class="meta-label">Mode:</span>
-                                                @provider.ConnectionMode
-                                            </span>
-                                        </div>
-                                        @if (TestResults.TryGetValue(provider.Id, out var result))
+                            <div
+                                class="list-group-item d-flex flex-column flex-md-row align-items-md-center gap-2 gap-md-3 p-3 hover-bg-tertiary @(provider.IsDefault ? "bg-success bg-opacity-10" : "")">
+                                <div class="flex-grow-1 min-width-0">
+                                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                                        <span class="fw-semibold">@provider.Name</span>
+                                        @if (provider.IsDefault)
                                         {
-                                            <div class="mt-2 @(result.IsConnected ? "test-success" : "test-failure")">
-                                                <strong>@(result.IsConnected ? "Connected" : "Connection Failed")</strong>
-                                                @if (!result.IsConnected && !string.IsNullOrEmpty(result.ErrorMessage))
-                                                {
-                                                    <div class="error-details">
-                                                        <pre>@result.ErrorMessage</pre>
-                                                    </div>
-                                                }
-                                            </div>
+                                            <span class="default-badge">Default</span>
                                         }
+                                        <StatusBadge Status="@(provider.IsEnabled ? "Active" : "Off")" ShowSpinner="false" />
                                     </div>
+                                    <div class="d-flex flex-wrap gap-2 gap-md-3 mt-2 small text-body-secondary">
+                                        <span><span class="fw-medium">Type:</span> @provider.Type</span>
+                                        <span><span class="fw-medium">Mode:</span> @provider.ConnectionMode</span>
+                                    </div>
+                                    @if (TestResults.TryGetValue(provider.Id, out var result))
+                                    {
+                                        <div class="mt-2 @(result.IsConnected ? "test-success" : "test-failure")">
+                                            <strong>@(result.IsConnected ? "Connected" : "Connection Failed")</strong>
+                                            @if (!result.IsConnected && !string.IsNullOrEmpty(result.ErrorMessage))
+                                            {
+                                                <div class="mt-1">
+                                                    <pre class="mb-0 small">@result.ErrorMessage</pre>
+                                                </div>
+                                            }
+                                        </div>
+                                    }
                                 </div>
-                                <div class="list-item-actions flex-wrap">
-                                    <label class="toggle-switch me-2" title="@(provider.IsEnabled ? "Disable" : "Enable")">
+                                <div class="d-flex flex-wrap gap-2 flex-shrink-0 align-items-center">
+                                    <label class="toggle-switch me-1" title="@(provider.IsEnabled ? "Disable" : "Enable")">
                                         <input type="checkbox" checked="@provider.IsEnabled"
                                             @onchange="() => ToggleEnabled(provider)" />
                                         <span class="toggle-slider"></span>
                                     </label>
-                                    <button class="btn btn-sm btn-outline-secondary btn-edit" @onclick="() => TestConnection(provider)"
-                                        disabled="@(TestingId == provider.Id)" title="Test Connection">
-                                        @if (TestingId == provider.Id)
-                                        {
-                                            <span class="spinner-border spinner-border-sm" role="status"></span>
-                                        }
-                                        else
-                                        {
-                                            <i class="bi bi-lightning"></i>
-                                        }
-                                        <span class="btn-text">Test</span>
-                                    </button>
+                                    <ActionButton Icon="lightning" Text="Test" Outline="true"
+                                        Size="ActionButton.ButtonSize.Small" HideTextOnMobile="true"
+                                        IsLoading="@(TestingId == provider.Id)" OnClick="@(() => TestConnection(provider))" />
                                     @if (!provider.IsDefault)
                                     {
-                                        <button class="btn btn-sm btn-outline-primary btn-edit" @onclick="() => MakeDefault(provider)" title="Set as Default">
-                                            <i class="bi bi-check2"></i>
-                                            <span class="btn-text">Default</span>
-                                        </button>
+                                        <ActionButton Icon="check2" Text="Default" Outline="true"
+                                            Size="ActionButton.ButtonSize.Small" Style="ActionButton.ButtonStyle.Primary"
+                                            HideTextOnMobile="true" OnClick="@(() => MakeDefault(provider))" />
                                     }
-                                    <button class="btn btn-sm btn-outline-secondary btn-edit" @onclick="() => EditProvider(provider)" title="Edit">
-                                        <i class="bi bi-pencil"></i>
-                                        <span class="btn-text">Edit</span>
-                                    </button>
-                                    <button class="btn btn-sm btn-outline-danger btn-delete" @onclick="() => DeleteProvider(provider)" title="Delete">
-                                        <i class="bi bi-trash"></i>
-                                        <span class="btn-text">Delete</span>
-                                    </button>
+                                    <ActionButton Icon="pencil" Text="Edit" Outline="true" Size="ActionButton.ButtonSize.Small"
+                                        HideTextOnMobile="true" OnClick="@(() => EditProvider(provider))" />
+                                    <ActionButton Icon="trash" Text="Delete" Outline="true" Size="ActionButton.ButtonSize.Small"
+                                        Style="ActionButton.ButtonStyle.Danger" HideTextOnMobile="true"
+                                        OnClick="@(() => DeleteProvider(provider))" />
                                 </div>
                             </div>
                         }

@@ -9,11 +9,7 @@
 
 @if (IsLoading)
 {
-    <div class="d-flex justify-content-center py-5">
-        <div class="spinner-border text-primary" role="status">
-            <span class="visually-hidden">Loading...</span>
-        </div>
-    </div>
+    <LoadingSpinner />
 }
 else if (Project == null)
 {
@@ -24,17 +20,17 @@ else if (Project == null)
 }
 else
 {
-    <div class="page-header mb-3">
+    <div class="d-flex flex-column flex-sm-row justify-content-between align-items-start gap-2 gap-sm-3 mb-3 mb-lg-4">
         <div class="flex-grow-1">
             <div class="d-flex align-items-center gap-2 mb-2">
                 <a href="/projects" class="btn btn-sm btn-outline-secondary d-none d-sm-inline-flex">
                     <i class="bi bi-arrow-left me-1"></i>Back
                 </a>
-                <h3 class="mb-0">@Project.Name</h3>
+                <h3 class="mb-0 fs-4 fw-semibold">@Project.Name</h3>
             </div>
             @if (!string.IsNullOrEmpty(Project.Description))
             {
-                <p class="text-muted mb-2">@Project.Description</p>
+                <p class="text-body-secondary mb-2">@Project.Description</p>
             }
             <div class="small">
                 <code class="d-inline-block text-truncate" style="max-width: 100%;">@Project.WorkingPath</code>
@@ -47,10 +43,10 @@ else
 
     <div class="row g-3 g-lg-4">
         @* Create Job form first on mobile *@
-        <div class="col-12 col-lg-4 order-1 order-lg-2">
+            <div class="col-12 col-lg-4 order-1 order-lg-2">
             <div class="card">
-                <div class="card-header">
-                    <h5 class="mb-0">Create Job</h5>
+                <div class="card-header bg-body-secondary">
+                    <h5 class="mb-0 fw-semibold">Create Job</h5>
                 </div>
                 <div class="card-body">
                     <EditForm Model="@NewJob" OnValidSubmit="HandleCreateJob">
@@ -100,36 +96,31 @@ else
         </div>
 
         @* Jobs list second on mobile *@
-        <div class="col-12 col-lg-8 order-2 order-lg-1">
+            <div class="col-12 col-lg-8 order-2 order-lg-1">
             <div class="card">
-                <div class="card-header">
-                    <h5 class="mb-0">Jobs</h5>
+                <div class="card-header bg-body-secondary d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0 fw-semibold">Jobs</h5>
                     <span class="badge bg-secondary">@Jobs.Count</span>
                 </div>
                 <div class="card-body p-0 p-sm-3">
                     @if (!Jobs.Any())
                     {
-                        <div class="empty-state m-3">
-                            <p class="mb-0">No jobs yet. Create a job to start working on this project.</p>
+                        <div class="p-3">
+                            <EmptyState Icon="gear-wide-connected" Title="No jobs yet"
+                                Message="Create a job to start working on this project." />
                         </div>
                     }
                     else
                     {
                         @* Mobile: Card layout *@
-                        <div class="d-lg-none">
+                                <div class="d-lg-none">
                             @foreach (var job in Jobs)
                             {
                                 <div class="p-3 border-bottom">
                                     <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
                                         <div class="d-flex align-items-center gap-2 flex-wrap">
-                                            <span class="badge status-@job.Status.ToString().ToLower()">
-                                                @if (job.Status == JobStatus.Started || job.Status == JobStatus.Processing)
-                                                {
-                                                    <span class="status-spinner"></span>
-                                                }
-                                                @job.Status
-                                            </span>
-                                            <span class="small text-muted">@(job.Provider?.Name ?? "Unknown")</span>
+                                            <StatusBadge Status="@job.Status.ToString()" />
+                                            <span class="small text-body-secondary">@(job.Provider?.Name ?? "Unknown")</span>
                                         </div>
                                         <div class="btn-group btn-group-sm">
                                             <a href="/jobs/@job.Id" class="btn btn-outline-secondary">
@@ -140,13 +131,14 @@ else
                                             </button>
                                         </div>
                                     </div>
-                                    <a href="/jobs/@job.Id" class="d-block mb-2">@TruncateText(job.GoalPrompt, 80)</a>
-                                    @if ((job.Status == JobStatus.Started || job.Status == JobStatus.Processing) &&
-                                                            !string.IsNullOrEmpty(job.CurrentActivity))
+                                    <a href="/jobs/@job.Id" class="d-block mb-2 text-decoration-none">@TruncateText(job.GoalPrompt,
+                                                                    80)</a>
+                        @if ((job.Status == JobStatus.Started || job.Status == JobStatus.Processing) &&
+                                                !string.IsNullOrEmpty(job.CurrentActivity))
                                     {
                                         <div class="job-activity">@job.CurrentActivity</div>
                                     }
-                                    <div class="small text-muted">@job.CreatedAt.FormatDateTimeShort()</div>
+                                    <div class="small text-body-secondary">@job.CreatedAt.FormatDateTimeShort()</div>
                                     @if (!string.IsNullOrEmpty(job.ErrorMessage))
                                     {
                                         <div class="job-error mt-2">@TruncateText(job.ErrorMessage, 100)</div>
@@ -156,7 +148,7 @@ else
                         </div>
 
                         @* Desktop: Table layout *@
-                        <div class="table-responsive d-none d-lg-block">
+                                <div class="table-responsive d-none d-lg-block">
                             <table class="table table-hover align-middle mb-0">
                                 <thead class="table-light">
                                     <tr>
@@ -171,20 +163,15 @@ else
                                     @foreach (var job in Jobs)
                                     {
                                         <tr>
-                                            <td class="goal-cell">
-                                                <a href="/jobs/@job.Id">@TruncateText(job.GoalPrompt, 80)</a>
-                                            </td>
-                                            <td>@(job.Provider?.Name ?? "Unknown")</td>
                                             <td>
-                                                <span class="badge status-@job.Status.ToString().ToLower()">
-                                                    @if (job.Status == JobStatus.Started || job.Status == JobStatus.Processing)
-                                                    {
-                                                        <span class="status-spinner"></span>
-                                                    }
-                                                    @job.Status
-                                                </span>
-                                                @if ((job.Status == JobStatus.Started || job.Status == JobStatus.Processing) &&
-                                                                                    !string.IsNullOrEmpty(job.CurrentActivity))
+                                                <a href="/jobs/@job.Id" class="text-decoration-none">@TruncateText(job.GoalPrompt,
+                                                                                            80)</a>
+                                </td>
+                                <td>@(job.Provider?.Name ?? "Unknown")</td>
+                                <td>
+                                    <StatusBadge Status="@job.Status.ToString()" />
+                                    @if ((job.Status == JobStatus.Started || job.Status == JobStatus.Processing) &&
+                                                                        !string.IsNullOrEmpty(job.CurrentActivity))
                                                 {
                                                     <div class="job-activity">@TruncateText(job.CurrentActivity, 30)</div>
                                                 }
@@ -200,7 +187,7 @@ else
                                         </tr>
                                         @if (!string.IsNullOrEmpty(job.ErrorMessage))
                                         {
-                                            <tr class="error-row">
+                                            <tr class="bg-danger bg-opacity-10">
                                                 <td colspan="5">
                                                     <div class="job-error">@job.ErrorMessage</div>
                                                 </td>
