@@ -202,4 +202,12 @@ public interface IVersionControlService
 	/// <param name="useSsh">If true, returns an SSH URL (git@github.com:owner/repo.git). If false, returns HTTPS URL.</param>
 	/// <returns>The clone URL.</returns>
 	string GetGitHubCloneUrl(string ownerAndRepo, bool useSsh = true);
+
+	/// <summary>
+	/// Extracts the "owner/repo" format from a Git remote URL.
+	/// Supports both SSH (git@github.com:owner/repo.git) and HTTPS (https://github.com/owner/repo.git) URLs.
+	/// </summary>
+	/// <param name="remoteUrl">The Git remote URL.</param>
+	/// <returns>The owner/repo string (e.g., "microsoft/vscode"), or null if the URL is not a valid GitHub URL.</returns>
+	string? ExtractGitHubRepository(string? remoteUrl);
 }

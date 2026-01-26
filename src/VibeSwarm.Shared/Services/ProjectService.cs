@@ -65,6 +65,7 @@ public class ProjectService : IProjectService
         existing.Name = project.Name;
         existing.Description = project.Description;
         existing.WorkingPath = project.WorkingPath;
+        existing.GitHubRepository = project.GitHubRepository;
         existing.UpdatedAt = DateTime.UtcNow;
 
         await _dbContext.SaveChangesAsync(cancellationToken);

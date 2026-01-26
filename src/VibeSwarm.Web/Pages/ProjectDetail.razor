@@ -189,14 +189,14 @@ else
                                 }
                                 else if (!AvailableModels.Any())
                                 {
-                                    <option value="">@(NewJob.ProviderId == Guid.Empty ? "Select a provider first..." : "No                        models available")</option>
+                                    <option value="">@(NewJob.ProviderId == Guid.Empty ? "Select a provider first..." : "No                               models available")</option>
                                 }
                                 else
                                 {
                                     <option value="">Use provider default</option>
                                     @foreach (var model in AvailableModels.Where(m => m.IsAvailable))
                                     {
-                                        <option value="@model.ModelId">@(model.DisplayName ?? model.ModelId)@(model.IsDefault ? "             (default)" : "")</option>
+                                        <option value="@model.ModelId">@(model.DisplayName ?? model.ModelId)@(model.IsDefault ? "                             (default)" : "")</option>
                                     }
                                 }
                             </InputSelect>
@@ -608,6 +608,9 @@ else
                 GitOperationMessage = $"Successfully synced with origin/{CurrentBranch}";
                 GitOperationSuccess = true;
                 CurrentCommitHash = result.CommitHash;
+
+                // Populate GitHubRepository if it's not already set
+                await PopulateGitHubRepositoryIfMissing();
             }
             else
             {
@@ -626,6 +629,37 @@ else
             GitProgressMessage = null;
             _currentGitOperation = null;
             StateHasChanged();
+        }
+    }
+
+    private async Task PopulateGitHubRepositoryIfMissing()
+    {
+        if (Project == null || string.IsNullOrEmpty(Project.WorkingPath))
+            return;
+
+        // Skip if GitHubRepository is already populated
+        if (!string.IsNullOrWhiteSpace(Project.GitHubRepository))
+            return;
+
+        try
+        {
+            // Get the remote URL from the repository
+            var remoteUrl = await VersionControlService.GetRemoteUrlAsync(Project.WorkingPath);
+            if (string.IsNullOrWhiteSpace(remoteUrl))
+                return;
+
+            // Extract the GitHub repository from the remote URL
+            var gitHubRepo = VersionControlService.ExtractGitHubRepository(remoteUrl);
+            if (string.IsNullOrWhiteSpace(gitHubRepo))
+                return;
+
+            // Update the project with the GitHubRepository
+            Project.GitHubRepository = gitHubRepo;
+            await ProjectService.UpdateAsync(Project);
+        }
+        catch
+        {
+            // Silently ignore errors - this is a best-effort enhancement
         }
     }
 

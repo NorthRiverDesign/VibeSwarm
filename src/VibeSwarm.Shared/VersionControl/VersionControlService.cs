@@ -1017,4 +1017,58 @@ public sealed class VersionControlService : IVersionControlService
 
 		return $"https://github.com/{parts[0]}/{parts[1]}.git";
 	}
+
+	/// <inheritdoc />
+	public string? ExtractGitHubRepository(string? remoteUrl)
+	{
+		if (string.IsNullOrWhiteSpace(remoteUrl))
+		{
+			return null;
+		}
+
+		var url = remoteUrl.Trim();
+
+		// Handle SSH format: git@github.com:owner/repo.git
+		if (url.StartsWith("git@github.com:", StringComparison.OrdinalIgnoreCase))
+		{
+			var path = url.Substring("git@github.com:".Length);
+			// Remove .git suffix if present
+			if (path.EndsWith(".git", StringComparison.OrdinalIgnoreCase))
+			{
+				path = path.Substring(0, path.Length - 4);
+			}
+			return path;
+		}
+
+		// Handle HTTPS format: https://github.com/owner/repo.git or https://github.com/owner/repo
+		if (url.StartsWith("https://github.com/", StringComparison.OrdinalIgnoreCase))
+		{
+			var path = url.Substring("https://github.com/".Length);
+			// Remove .git suffix if present
+			if (path.EndsWith(".git", StringComparison.OrdinalIgnoreCase))
+			{
+				path = path.Substring(0, path.Length - 4);
+			}
+			// Remove trailing slash if present
+			path = path.TrimEnd('/');
+			return path;
+		}
+
+		// Handle HTTP format (less common): http://github.com/owner/repo.git
+		if (url.StartsWith("http://github.com/", StringComparison.OrdinalIgnoreCase))
+		{
+			var path = url.Substring("http://github.com/".Length);
+			// Remove .git suffix if present
+			if (path.EndsWith(".git", StringComparison.OrdinalIgnoreCase))
+			{
+				path = path.Substring(0, path.Length - 4);
+			}
+			// Remove trailing slash if present
+			path = path.TrimEnd('/');
+			return path;
+		}
+
+		// Not a recognized GitHub URL format
+		return null;
+	}
 }
