@@ -28,8 +28,20 @@ public class ProviderService : IProviderService
 
     public async Task<Provider?> GetDefaultAsync(CancellationToken cancellationToken = default)
     {
-        return await _dbContext.Providers
+        // First try to find an explicitly marked default provider
+        var defaultProvider = await _dbContext.Providers
             .FirstOrDefaultAsync(p => p.IsDefault && p.IsEnabled, cancellationToken);
+
+        if (defaultProvider != null)
+        {
+            return defaultProvider;
+        }
+
+        // Fall back to the first enabled provider (ordered by name)
+        return await _dbContext.Providers
+            .Where(p => p.IsEnabled)
+            .OrderBy(p => p.Name)
+            .FirstOrDefaultAsync(cancellationToken);
     }
 
     public async Task<Provider> CreateAsync(Provider provider, CancellationToken cancellationToken = default)
