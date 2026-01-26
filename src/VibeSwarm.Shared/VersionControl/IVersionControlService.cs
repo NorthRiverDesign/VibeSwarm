@@ -127,4 +127,55 @@ public interface IVersionControlService
 		string remoteName = "origin",
 		Action<string>? progressCallback = null,
 		CancellationToken cancellationToken = default);
+
+	/// <summary>
+	/// Gets all branches (local and remote) for a repository.
+	/// </summary>
+	/// <param name="workingDirectory">The repository working directory.</param>
+	/// <param name="includeRemote">Whether to include remote tracking branches.</param>
+	/// <param name="cancellationToken">Cancellation token.</param>
+	/// <returns>List of branch information.</returns>
+	Task<IReadOnlyList<GitBranchInfo>> GetBranchesAsync(string workingDirectory, bool includeRemote = true, CancellationToken cancellationToken = default);
+
+	/// <summary>
+	/// Fetches updates from the remote repository.
+	/// </summary>
+	/// <param name="workingDirectory">The repository working directory.</param>
+	/// <param name="remoteName">The remote name (defaults to 'origin').</param>
+	/// <param name="prune">Whether to prune deleted remote branches.</param>
+	/// <param name="cancellationToken">Cancellation token.</param>
+	/// <returns>Result containing success status and any error message.</returns>
+	Task<GitOperationResult> FetchAsync(string workingDirectory, string remoteName = "origin", bool prune = true, CancellationToken cancellationToken = default);
+
+	/// <summary>
+	/// Performs a hard checkout to a branch, discarding all local changes.
+	/// This is equivalent to: git fetch, git checkout branch, git reset --hard origin/branch
+	/// </summary>
+	/// <param name="workingDirectory">The repository working directory.</param>
+	/// <param name="branchName">The branch name to checkout.</param>
+	/// <param name="remoteName">The remote name (defaults to 'origin').</param>
+	/// <param name="progressCallback">Optional callback for progress updates.</param>
+	/// <param name="cancellationToken">Cancellation token.</param>
+	/// <returns>Result containing success status and any error message.</returns>
+	Task<GitOperationResult> HardCheckoutBranchAsync(
+		string workingDirectory,
+		string branchName,
+		string remoteName = "origin",
+		Action<string>? progressCallback = null,
+		CancellationToken cancellationToken = default);
+
+	/// <summary>
+	/// Syncs the current branch with the remote, discarding all local changes.
+	/// This is equivalent to: git fetch origin, git reset --hard origin/current-branch
+	/// </summary>
+	/// <param name="workingDirectory">The repository working directory.</param>
+	/// <param name="remoteName">The remote name (defaults to 'origin').</param>
+	/// <param name="progressCallback">Optional callback for progress updates.</param>
+	/// <param name="cancellationToken">Cancellation token.</param>
+	/// <returns>Result containing success status and any error message.</returns>
+	Task<GitOperationResult> SyncWithOriginAsync(
+		string workingDirectory,
+		string remoteName = "origin",
+		Action<string>? progressCallback = null,
+		CancellationToken cancellationToken = default);
 }

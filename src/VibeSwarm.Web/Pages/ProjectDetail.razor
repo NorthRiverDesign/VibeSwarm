@@ -3,9 +3,12 @@
 @inject IProjectService ProjectService
 @inject IJobService JobService
 @inject IProviderService ProviderService
+@inject IVersionControlService VersionControlService
 @inject NavigationManager NavigationManager
 @implements IDisposable
 @using VibeSwarm.Shared.Utilities
+@using VibeSwarm.Shared.VersionControl
+@using VibeSwarm.Shared.VersionControl.Models
 
 @if (IsLoading)
 {
@@ -40,6 +43,103 @@ else
             <i class="bi bi-arrow-left me-1"></i>Back
         </a>
     </div>
+
+    @* Git Operations Card *@
+    @if (IsGitRepository)
+    {
+        <div class="card mb-3 mb-lg-4">
+            <div class="card-header bg-body-secondary d-flex align-items-center gap-2">
+                <i class="bi bi-git text-danger"></i>
+                <h5 class="mb-0 fw-semibold">Git Repository</h5>
+            </div>
+            <div class="card-body">
+                <div class="row g-3 align-items-end">
+                    <div class="col-12 col-md-6 col-lg-4">
+                        <label class="form-label small text-body-secondary mb-1">Current Branch</label>
+                        <div class="input-group">
+                            <select class="form-select" @bind="SelectedBranch"
+                                disabled="@(IsGitOperationInProgress || !Branches.Any())">
+                                @if (!Branches.Any())
+                                {
+                                    <option value="">No branches found</option>
+                                }
+                                else
+                                {
+                                    @foreach (var branch in Branches.Where(b => !b.IsRemote))
+                                    {
+                                        <option value="@branch.Name">@(branch.IsCurrent ? "* " : "")@branch.Name</option>
+                                    }
+                                    @if (Branches.Any(b => b.IsRemote))
+                                    {
+                                        <optgroup label="Remote Branches">
+                                            @foreach (var branch in Branches.Where(b => b.IsRemote))
+                                            {
+                                                <option value="@branch.ShortName">@branch.Name</option>
+                                            }
+                                        </optgroup>
+                                    }
+                                }
+                            </select>
+                            <button class="btn btn-outline-secondary" type="button" @onclick="RefreshBranches"
+                                disabled="@IsGitOperationInProgress" title="Refresh branches">
+                                <i class="bi bi-arrow-clockwise @(IsGitOperationInProgress ? "spin" : "")"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="col-12 col-md-6 col-lg-auto">
+                        <div class="d-flex flex-wrap gap-2">
+                            <button class="btn btn-outline-primary" @onclick="SwitchBranch"
+                                disabled="@(IsGitOperationInProgress || string.IsNullOrEmpty(SelectedBranch) || SelectedBranch == CurrentBranch)">
+                                @if (IsGitOperationInProgress && _currentGitOperation == "checkout")
+                                {
+                                    <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                                }
+                                <i class="bi bi-box-arrow-in-right me-1"></i>Switch Branch
+                            </button>
+                            <button class="btn btn-outline-success" @onclick="SyncWithOrigin"
+                                disabled="@IsGitOperationInProgress">
+                                @if (IsGitOperationInProgress && _currentGitOperation == "sync")
+                                {
+                                    <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                                }
+                                <i class="bi bi-cloud-download me-1"></i>Sync
+                            </button>
+                        </div>
+                    </div>
+                    @if (!string.IsNullOrEmpty(CurrentBranch))
+                    {
+                        <div class="col-12 col-lg-auto ms-lg-auto">
+                            <span class="badge bg-primary-subtle text-primary-emphasis">
+                                <i class="bi bi-git me-1"></i>@CurrentBranch
+                            </span>
+                            @if (!string.IsNullOrEmpty(CurrentCommitHash))
+                            {
+                                <span class="badge bg-secondary-subtle text-secondary-emphasis ms-1 font-monospace">
+                                    @CurrentCommitHash[..Math.Min(7, CurrentCommitHash.Length)]
+                                </span>
+                            }
+                        </div>
+                    }
+                </div>
+                @if (!string.IsNullOrEmpty(GitOperationMessage))
+                {
+                    <div
+                        class="alert @(GitOperationSuccess ? "alert-success" : "alert-danger") mt-3 mb-0 d-flex align-items-center gap-2">
+                        <i class="bi @(GitOperationSuccess ? "bi-check-circle" : "bi-exclamation-triangle")"></i>
+                        <span>@GitOperationMessage</span>
+                        <button type="button" class="btn-close ms-auto" @onclick="ClearGitMessage"></button>
+                    </div>
+                }
+                @if (!string.IsNullOrEmpty(GitProgressMessage))
+                {
+                    <div class="alert alert-info mt-3 mb-0 d-flex align-items-center gap-2">
+                        <span class="spinner-border spinner-border-sm" role="status"></span>
+                        <span>@GitProgressMessage</span>
+                    </div>
+                }
+            </div>
+        </div>
+    }
 
     <div class="row g-3 g-lg-4">
         @* Create Job form first on mobile *@
@@ -248,6 +348,18 @@ else
     private string? SuccessMessage { get; set; }
     private System.Threading.Timer? _refreshTimer;
 
+    // Git-related properties
+    private bool IsGitRepository { get; set; }
+    private List<GitBranchInfo> Branches { get; set; } = new();
+    private string? CurrentBranch { get; set; }
+    private string? CurrentCommitHash { get; set; }
+    private string? SelectedBranch { get; set; }
+    private bool IsGitOperationInProgress { get; set; }
+    private string? GitOperationMessage { get; set; }
+    private bool GitOperationSuccess { get; set; }
+    private string? GitProgressMessage { get; set; }
+    private string? _currentGitOperation;
+
     private bool HasActiveJobs => Jobs.Any(j =>
     j.Status == JobStatus.New ||
     j.Status == JobStatus.Pending ||
@@ -257,6 +369,7 @@ else
     protected override async Task OnInitializedAsync()
     {
         await LoadData();
+        await LoadGitInfo();
         StartAutoRefresh();
     }
 
@@ -306,6 +419,187 @@ else
         {
             IsLoading = false;
         }
+    }
+
+    private async Task LoadGitInfo()
+    {
+        if (Project == null || string.IsNullOrEmpty(Project.WorkingPath))
+            return;
+
+        try
+        {
+            IsGitRepository = await VersionControlService.IsGitRepositoryAsync(Project.WorkingPath);
+            if (IsGitRepository)
+            {
+                CurrentBranch = await VersionControlService.GetCurrentBranchAsync(Project.WorkingPath);
+                CurrentCommitHash = await VersionControlService.GetCurrentCommitHashAsync(Project.WorkingPath);
+                SelectedBranch = CurrentBranch;
+                await LoadBranches();
+            }
+        }
+        catch
+        {
+            IsGitRepository = false;
+        }
+    }
+
+    private async Task LoadBranches()
+    {
+        if (Project == null || string.IsNullOrEmpty(Project.WorkingPath))
+            return;
+
+        try
+        {
+            Branches = (await VersionControlService.GetBranchesAsync(Project.WorkingPath, includeRemote: true)).ToList();
+        }
+        catch
+        {
+            Branches = new List<GitBranchInfo>();
+        }
+    }
+
+    private async Task RefreshBranches()
+    {
+        if (IsGitOperationInProgress)
+            return;
+
+        IsGitOperationInProgress = true;
+        _currentGitOperation = "refresh";
+        GitProgressMessage = "Fetching latest branches...";
+        StateHasChanged();
+
+        try
+        {
+            if (Project != null && !string.IsNullOrEmpty(Project.WorkingPath))
+            {
+                // Fetch first to get latest remote branches
+                await VersionControlService.FetchAsync(Project.WorkingPath);
+                await LoadBranches();
+                CurrentBranch = await VersionControlService.GetCurrentBranchAsync(Project.WorkingPath);
+                CurrentCommitHash = await VersionControlService.GetCurrentCommitHashAsync(Project.WorkingPath);
+            }
+        }
+        catch (Exception ex)
+        {
+            GitOperationMessage = $"Failed to refresh branches: {ex.Message}";
+            GitOperationSuccess = false;
+        }
+        finally
+        {
+            IsGitOperationInProgress = false;
+            GitProgressMessage = null;
+            _currentGitOperation = null;
+            StateHasChanged();
+        }
+    }
+
+    private async Task SwitchBranch()
+    {
+        if (IsGitOperationInProgress || string.IsNullOrEmpty(SelectedBranch) || SelectedBranch == CurrentBranch)
+            return;
+
+        if (Project == null || string.IsNullOrEmpty(Project.WorkingPath))
+            return;
+
+        IsGitOperationInProgress = true;
+        _currentGitOperation = "checkout";
+        GitOperationMessage = null;
+        StateHasChanged();
+
+        try
+        {
+            var result = await VersionControlService.HardCheckoutBranchAsync(
+            Project.WorkingPath,
+            SelectedBranch,
+            progressCallback: progress =>
+            {
+                GitProgressMessage = progress;
+                InvokeAsync(StateHasChanged);
+            });
+
+            if (result.Success)
+            {
+                GitOperationMessage = $"Successfully switched to branch '{SelectedBranch}'";
+                GitOperationSuccess = true;
+                CurrentBranch = SelectedBranch;
+                CurrentCommitHash = result.CommitHash;
+                await LoadBranches();
+            }
+            else
+            {
+                GitOperationMessage = result.Error ?? "Failed to switch branch";
+                GitOperationSuccess = false;
+                SelectedBranch = CurrentBranch; // Reset selection
+            }
+        }
+        catch (Exception ex)
+        {
+            GitOperationMessage = $"Error switching branch: {ex.Message}";
+            GitOperationSuccess = false;
+            SelectedBranch = CurrentBranch; // Reset selection
+        }
+        finally
+        {
+            IsGitOperationInProgress = false;
+            GitProgressMessage = null;
+            _currentGitOperation = null;
+            StateHasChanged();
+        }
+    }
+
+    private async Task SyncWithOrigin()
+    {
+        if (IsGitOperationInProgress)
+            return;
+
+        if (Project == null || string.IsNullOrEmpty(Project.WorkingPath))
+            return;
+
+        IsGitOperationInProgress = true;
+        _currentGitOperation = "sync";
+        GitOperationMessage = null;
+        StateHasChanged();
+
+        try
+        {
+            var result = await VersionControlService.SyncWithOriginAsync(
+            Project.WorkingPath,
+            progressCallback: progress =>
+            {
+                GitProgressMessage = progress;
+                InvokeAsync(StateHasChanged);
+            });
+
+            if (result.Success)
+            {
+                GitOperationMessage = $"Successfully synced with origin/{CurrentBranch}";
+                GitOperationSuccess = true;
+                CurrentCommitHash = result.CommitHash;
+            }
+            else
+            {
+                GitOperationMessage = result.Error ?? "Failed to sync with origin";
+                GitOperationSuccess = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            GitOperationMessage = $"Error syncing with origin: {ex.Message}";
+            GitOperationSuccess = false;
+        }
+        finally
+        {
+            IsGitOperationInProgress = false;
+            GitProgressMessage = null;
+            _currentGitOperation = null;
+            StateHasChanged();
+        }
+    }
+
+    private void ClearGitMessage()
+    {
+        GitOperationMessage = null;
+        StateHasChanged();
     }
 
     private async Task HandleCreateJob()

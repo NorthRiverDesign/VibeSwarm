@@ -484,6 +484,11 @@ body {
     100% { transform: rotate(360deg); }
 }
 
+/* Utility class for spin animation on icons */
+.spin {
+    animation: spin 1s linear infinite;
+}
+
 /* ============================================
    Commit Section
 ============================================ */

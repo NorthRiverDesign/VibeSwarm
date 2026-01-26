@@ -420,8 +420,50 @@ public class JobProcessingService : BackgroundService
             await UpdateHeartbeatAsync(job.Id, initialActivity, dbContext, cancellationToken);
             await NotifyJobActivityAsync(job.Id, initialActivity, DateTime.UtcNow);
 
-            // Capture git commit hash before execution for diff comparison later
+            // Sync with origin before starting work (if this is a git repository)
             var workingDirectory = job.Project?.WorkingPath;
+            if (!string.IsNullOrEmpty(workingDirectory) && Directory.Exists(workingDirectory))
+            {
+                try
+                {
+                    var isGitRepo = await _versionControlService.IsGitRepositoryAsync(workingDirectory, cancellationToken);
+                    if (isGitRepo)
+                    {
+                        _logger.LogInformation("Syncing with origin before job {JobId} execution", job.Id);
+
+                        var syncActivity = "Syncing with remote repository...";
+                        await UpdateHeartbeatAsync(job.Id, syncActivity, dbContext, cancellationToken);
+                        await NotifyJobActivityAsync(job.Id, syncActivity, DateTime.UtcNow);
+
+                        var syncResult = await _versionControlService.SyncWithOriginAsync(
+                            workingDirectory,
+                            remoteName: "origin",
+                            progressCallback: progress =>
+                            {
+                                _logger.LogDebug("Git sync progress for job {JobId}: {Progress}", job.Id, progress);
+                            },
+                            cancellationToken: cancellationToken);
+
+                        if (syncResult.Success)
+                        {
+                            _logger.LogInformation("Successfully synced with origin for job {JobId}. Branch: {Branch}, Commit: {Commit}",
+                                job.Id, syncResult.BranchName, syncResult.CommitHash?[..Math.Min(8, syncResult.CommitHash?.Length ?? 0)]);
+                        }
+                        else
+                        {
+                            // Log warning but don't fail the job - the sync might fail if there's no remote
+                            _logger.LogWarning("Failed to sync with origin for job {JobId}: {Error}. Continuing with local state.",
+                                job.Id, syncResult.Error);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Error during git sync for job {JobId}. Continuing with local state.", job.Id);
+                }
+            }
+
+            // Capture git commit hash before execution for diff comparison later
             if (!string.IsNullOrEmpty(workingDirectory) && Directory.Exists(workingDirectory))
             {
                 try
