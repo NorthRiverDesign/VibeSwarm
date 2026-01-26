@@ -112,6 +112,31 @@ else
                     }
                     else
                     {
+                        @* Token and Cost Summary for this project *@
+                        @if (HasProjectTokenData())
+                        {
+                            <div class="d-flex flex-wrap gap-2 p-3 border-bottom">
+                                @if (GetProjectTotalInputTokens() > 0)
+                                {
+                                    <StatItem Label="Total Input" Value="@TokenHelper.FormatTokenCount(GetProjectTotalInputTokens())" />
+                                }
+                                @if (GetProjectTotalOutputTokens() > 0)
+                                {
+                                    <StatItem Label="Total Output"
+                                        Value="@TokenHelper.FormatTokenCount(GetProjectTotalOutputTokens())" />
+                                }
+                                @if (GetProjectTotalInputTokens() > 0 || GetProjectTotalOutputTokens() > 0)
+                                {
+                                    <StatItem Label="Total Tokens"
+                                        Value="@TokenHelper.FormatTokenCount(GetProjectTotalInputTokens() + GetProjectTotalOutputTokens())" />
+                                }
+                                @if (GetProjectTotalCost() > 0)
+                                {
+                                    <StatItem Label="Total Cost" Value="@TokenHelper.FormatCost(GetProjectTotalCost())" />
+                                }
+                            </div>
+                        }
+
                         @* Mobile: Card layout *@
                         <div class="d-lg-none">
                             @foreach (var job in Jobs)
@@ -330,6 +355,13 @@ else
             return text;
         return text[..maxLength] + "...";
     }
+
+    // Token and cost summary methods for project jobs
+    private int GetProjectTotalInputTokens() => Jobs.Sum(j => j.InputTokens ?? 0);
+    private int GetProjectTotalOutputTokens() => Jobs.Sum(j => j.OutputTokens ?? 0);
+    private decimal GetProjectTotalCost() => Jobs.Sum(j => j.TotalCostUsd ?? 0);
+    private bool HasProjectTokenData() => GetProjectTotalInputTokens() > 0 || GetProjectTotalOutputTokens() > 0 ||
+    GetProjectTotalCost() > 0;
 
     public void Dispose()
     {

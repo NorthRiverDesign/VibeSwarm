@@ -106,15 +106,17 @@ else
                             }
                             @if (Job.InputTokens.HasValue)
                             {
-                                <StatItem Label="Input" Value="@Job.InputTokens.Value.ToString("N0")" FlexGrow="true" />
+                                <StatItem Label="Input" Value="@TokenHelper.FormatTokenCount(Job.InputTokens.Value)"
+                                    FlexGrow="true" />
                             }
                             @if (Job.OutputTokens.HasValue)
                             {
-                                <StatItem Label="Output" Value="@Job.OutputTokens.Value.ToString("N0")" FlexGrow="true" />
+                                <StatItem Label="Output" Value="@TokenHelper.FormatTokenCount(Job.OutputTokens.Value)"
+                                    FlexGrow="true" />
                             }
                             @if (Job.TotalCostUsd.HasValue)
                             {
-                                <StatItem Label="Cost" Value="@($"${Job.TotalCostUsd.Value:F4}")" FlexGrow="true" />
+                                <StatItem Label="Cost" Value="@TokenHelper.FormatCost(Job.TotalCostUsd.Value)" FlexGrow="true" />
                             }
                         </div>
                     }

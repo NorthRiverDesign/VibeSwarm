@@ -46,6 +46,30 @@ else
         </button>
     </div>
 
+    @* Token and Cost Summary *@
+    @if (HasTokenData())
+    {
+        <div class="d-flex flex-wrap gap-2 mb-3">
+            @if (GetTotalInputTokens() > 0)
+            {
+                <StatItem Label="Total Input" Value="@TokenHelper.FormatTokenCount(GetTotalInputTokens())" />
+            }
+            @if (GetTotalOutputTokens() > 0)
+            {
+                <StatItem Label="Total Output" Value="@TokenHelper.FormatTokenCount(GetTotalOutputTokens())" />
+            }
+            @if (GetTotalInputTokens() > 0 || GetTotalOutputTokens() > 0)
+            {
+                <StatItem Label="Total Tokens"
+                    Value="@TokenHelper.FormatTokenCount(GetTotalInputTokens() + GetTotalOutputTokens())" />
+            }
+            @if (GetTotalCost() > 0)
+            {
+                <StatItem Label="Total Cost" Value="@TokenHelper.FormatCost(GetTotalCost())" />
+            }
+        </div>
+    }
+
     @if (!GetFilteredJobs().Any())
     {
         <EmptyState Icon="@GetFilterEmptyIcon()" Title="@GetFilterEmptyTitle()" Message="@GetFilterEmptyMessage()" />
@@ -268,6 +292,12 @@ else
     == JobStatus.Processing) ?? 0;
     private int GetCompletedCount() => _jobs?.Count(j => j.Status == JobStatus.Completed) ?? 0;
     private int GetFailedCount() => _jobs?.Count(j => j.Status == JobStatus.Failed || j.Status == JobStatus.Cancelled) ?? 0;
+
+    // Token and cost summary methods
+    private int GetTotalInputTokens() => GetFilteredJobs().Sum(j => j.InputTokens ?? 0);
+    private int GetTotalOutputTokens() => GetFilteredJobs().Sum(j => j.OutputTokens ?? 0);
+    private decimal GetTotalCost() => GetFilteredJobs().Sum(j => j.TotalCostUsd ?? 0);
+    private bool HasTokenData() => GetTotalInputTokens() > 0 || GetTotalOutputTokens() > 0 || GetTotalCost() > 0;
 
     private IEnumerable<Job> GetFilteredJobs()
     {

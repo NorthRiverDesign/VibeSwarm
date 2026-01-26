@@ -27,7 +27,7 @@
 			}
 			@if (Cost.HasValue)
 			{
-				<span class="ms-auto font-monospace fw-medium text-success">$@Cost.Value.ToString("F4")</span>
+				<span class="ms-auto font-monospace fw-medium text-success">@TokenHelper.FormatCost(Cost.Value)</span>
 			}
 		</div>
 	</div>
