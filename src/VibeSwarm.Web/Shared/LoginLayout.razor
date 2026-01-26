@@ -1,5 +1,8 @@
 @inherits LayoutComponentBase
 
-<div class="login-layout d-flex align-items-center justify-content-center min-vh-100 bg-dark">
-	@Body
+<div class="login-layout d-flex align-items-center justify-content-center min-vh-100" style="background-image: url('/img/login_bg.jpg'); background-size: cover; background-position: center; background-repeat: no-repeat; background-attachment: fixed;">
+	<div class="position-absolute top-0 start-0 w-100 h-100" style="background-color: rgba(0, 0, 0, 0.5);"></div>
+	<div class="position-relative" style="z-index: 1;">
+		@Body
+	</div>
 </div>
