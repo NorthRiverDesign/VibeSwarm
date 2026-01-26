@@ -1,12 +1,14 @@
 @page "/jobs/{JobId:guid}"
 @attribute [Authorize]
 @inject IJobService JobService
+@inject IVersionControlService VersionControlService
 @inject NavigationManager NavigationManager
 @inject IJSRuntime JSRuntime
 @implements IAsyncDisposable
 @using System.Threading
 @using System.Collections.Concurrent
 @using VibeSwarm.Shared.Utilities
+@using VibeSwarm.Shared.VersionControl
 
 @if (IsLoading)
 {
@@ -932,7 +934,7 @@ else
         {
             if (Job?.Project?.WorkingPath != null)
             {
-                _branchName = await GitHelper.GetCurrentBranchAsync(Job.Project.WorkingPath);
+                _branchName = await VersionControlService.GetCurrentBranchAsync(Job.Project.WorkingPath);
             }
         }
         catch
@@ -956,7 +958,7 @@ else
 
         try
         {
-            var result = await GitHelper.CommitAndPushAsync(
+            var result = await VersionControlService.CommitAndPushAsync(
             Job.Project.WorkingPath,
             _commitMessage,
             "origin",

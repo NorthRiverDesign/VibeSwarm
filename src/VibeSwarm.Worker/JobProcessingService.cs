@@ -6,7 +6,7 @@ using System.Text;
 using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Providers;
 using VibeSwarm.Shared.Services;
-using VibeSwarm.Shared.Utilities;
+using VibeSwarm.Shared.VersionControl;
 
 namespace VibeSwarm.Worker;
 
@@ -18,6 +18,7 @@ public class JobProcessingService : BackgroundService
     private readonly IJobCoordinatorService? _jobCoordinator;
     private readonly IProviderHealthTracker? _healthTracker;
     private readonly ProcessSupervisor? _processSupervisor;
+    private readonly IVersionControlService _versionControlService;
     private readonly TimeSpan _pollingInterval = TimeSpan.FromSeconds(3); // Poll less frequently, SignalR handles real-time updates
     private readonly int _maxConcurrentJobs = 5; // Maximum number of concurrent jobs
     private readonly Dictionary<Guid, JobExecutionContext> _runningJobs = new();
@@ -33,6 +34,7 @@ public class JobProcessingService : BackgroundService
     public JobProcessingService(
         IServiceScopeFactory scopeFactory,
         ILogger<JobProcessingService> logger,
+        IVersionControlService versionControlService,
         IJobUpdateService? jobUpdateService = null,
         IJobCoordinatorService? jobCoordinator = null,
         IProviderHealthTracker? healthTracker = null,
@@ -40,6 +42,7 @@ public class JobProcessingService : BackgroundService
     {
         _scopeFactory = scopeFactory;
         _logger = logger;
+        _versionControlService = versionControlService;
         _jobUpdateService = jobUpdateService;
         _jobCoordinator = jobCoordinator;
         _healthTracker = healthTracker;
@@ -423,7 +426,7 @@ public class JobProcessingService : BackgroundService
             {
                 try
                 {
-                    executionContext.GitCommitBefore = await GitHelper.GetCurrentCommitHashAsync(workingDirectory, cancellationToken);
+                    executionContext.GitCommitBefore = await _versionControlService.GetCurrentCommitHashAsync(workingDirectory, cancellationToken);
                     if (!string.IsNullOrEmpty(executionContext.GitCommitBefore))
                     {
                         _logger.LogInformation("Captured git commit {Commit} before job {JobId} execution",
@@ -795,7 +798,7 @@ public class JobProcessingService : BackgroundService
                 {
                     // Get diff since the commit we captured at start, or since HEAD if no commit was captured
                     var baseCommit = executionContext.GitCommitBefore;
-                    var gitDiff = await GitHelper.GetWorkingDirectoryDiffAsync(workingDirectory, baseCommit, cancellationToken);
+                    var gitDiff = await _versionControlService.GetWorkingDirectoryDiffAsync(workingDirectory, baseCommit, cancellationToken);
 
                     if (!string.IsNullOrEmpty(gitDiff))
                     {
