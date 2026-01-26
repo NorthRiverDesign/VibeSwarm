@@ -861,8 +861,8 @@ body {
    Touch-Friendly Mobile Adjustments
 ============================================ */
 @media (max-width: 767.98px) {
-    .btn { min-height: 44px; }
-    .btn-sm { min-height: 40px; }
+    .btn { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
+    .btn-sm { min-height: 40px; display: inline-flex; align-items: center; justify-content: center; }
     
     .form-control, .form-select {
         min-height: 44px;
