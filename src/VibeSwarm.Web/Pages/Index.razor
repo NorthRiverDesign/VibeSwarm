@@ -32,9 +32,11 @@
             }
             else if (!Projects.Any())
             {
-                <div class="empty-state">
-                    <p class="mb-0">No projects yet. <a href="/projects">Create your first project</a> to get started.</p>
-                </div>
+                <EmptyState Icon="folder" Title="No projects yet" Message="Create your first project to start running AI agent jobs.">
+                    <a href="/projects" class="btn btn-sm btn-primary">
+                        <i class="bi bi-plus-lg me-1"></i>Create Project
+                    </a>
+                </EmptyState>
             }
             else
             {
@@ -84,9 +86,11 @@
             }
             else if (!Providers.Any())
             {
-                <div class="empty-state">
-                    <p class="mb-0">No providers configured. <a href="/providers">Add a provider</a> to get started.</p>
-                </div>
+                <EmptyState Icon="plug" Title="No providers configured" Message="Connect to AI coding agents like Claude Code CLI.">
+                    <a href="/providers" class="btn btn-sm btn-primary">
+                        <i class="bi bi-plus-lg me-1"></i>Add Provider
+                    </a>
+                </EmptyState>
             }
             else
             {

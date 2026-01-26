@@ -1,38 +1,41 @@
 @page "/logout"
-@attribute [AllowAnonymous]
-@layout VibeSwarm.Web.Shared.LoginLayout
+@attribute [Authorize]
 @inject NavigationManager NavigationManager
 
 <PageTitle>Logout - VibeSwarm</PageTitle>
 
-<div class="container py-5">
-    <div class="row justify-content-center">
-        <div class="col-md-6 col-lg-4">
-            <div class="card shadow">
-                <div class="card-header text-center">
-                    <h4 class="mb-0"><i class="bi bi-box-arrow-right me-2"></i>Log Out</h4>
-                </div>
-                <div class="card-body text-center">
-                    @if (_isLoggingOut)
-                    {
+<div class="modal-overlay">
+    <div class="modal-dialog-centered">
+        <div class="card shadow-lg logout-dialog">
+            <div class="card-header text-center">
+                <h5 class="mb-0">
+                    <i class="bi bi-box-arrow-right me-2"></i>Log Out
+                </h5>
+            </div>
+            <div class="card-body text-center">
+                @if (_isLoggingOut)
+                {
+                    <div class="py-3">
                         <div class="spinner-border text-primary mb-3" role="status">
                             <span class="visually-hidden">Logging out...</span>
                         </div>
-                        <p class="mb-0">Logging out...</p>
-                    }
-                    else
-                    {
-                        <p class="mb-4">Are you sure you want to log out?</p>
-                        <div class="d-flex gap-2 justify-content-center">
-                            <button class="btn btn-secondary" @onclick="Cancel">
-                                <i class="bi bi-x-lg me-1"></i>Cancel
-                            </button>
-                            <button class="btn btn-danger" @onclick="ConfirmLogout">
-                                <i class="bi bi-box-arrow-right me-1"></i>Log Out
-                            </button>
-                        </div>
-                    }
-                </div>
+                        <p class="mb-0 text-muted">Logging out...</p>
+                    </div>
+                }
+                else
+                {
+                    <p class="mb-4 text-muted">Are you sure you want to log out?</p>
+                    <div class="d-flex gap-2 justify-content-center">
+                        <button class="btn btn-secondary btn-action" @onclick="Cancel">
+                            <i class="bi bi-x-lg"></i>
+                            <span>Cancel</span>
+                        </button>
+                        <button class="btn btn-danger btn-action" @onclick="ConfirmLogout">
+                            <i class="bi bi-box-arrow-right"></i>
+                            <span>Log Out</span>
+                        </button>
+                    </div>
+                }
             </div>
         </div>
     </div>
@@ -44,13 +47,11 @@
     private void ConfirmLogout()
     {
         _isLoggingOut = true;
-        // Redirect to the server-side logout endpoint
         NavigationManager.NavigateTo("/Account/Logout", forceLoad: true);
     }
 
     private void Cancel()
     {
-        // Go back to the previous page or dashboard
         NavigationManager.NavigateTo("/");
     }
 }

@@ -1,0 +1,37 @@
+@* Reusable empty state component for consistent empty UI across pages *@
+
+<div class="empty-state-container">
+    @if (!string.IsNullOrEmpty(Icon))
+    {
+        <div class="empty-state-icon">
+            <i class="bi bi-@Icon"></i>
+        </div>
+    }
+    <div class="empty-state-content">
+        <h5 class="empty-state-title">@Title</h5>
+        @if (!string.IsNullOrEmpty(Message))
+        {
+            <p class="empty-state-message">@Message</p>
+        }
+        @if (ChildContent != null)
+        {
+            <div class="empty-state-actions">
+                @ChildContent
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public string Icon { get; set; } = "inbox";
+
+    [Parameter]
+    public string Title { get; set; } = "Nothing here yet";
+
+    [Parameter]
+    public string? Message { get; set; }
+
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+}

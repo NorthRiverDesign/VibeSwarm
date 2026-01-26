@@ -30,10 +30,10 @@
             <div class="card-header">
                 <h5 class="mb-0">Connected Providers</h5>
             </div>
-            <div class="card-body p-0 p-sm-3">
+            <div class="card-body p-0">
                 @if (IsLoading)
                 {
-                    <div class="d-flex justify-content-center py-4">
+                    <div class="d-flex justify-content-center py-5">
                         <div class="spinner-border text-primary" role="status">
                             <span class="visually-hidden">Loading...</span>
                         </div>
@@ -41,139 +41,88 @@
                 }
                 else if (!ProvidersList.Any())
                 {
-                    <div class="empty-state m-3">
-                        <p class="mb-0">No providers configured. Add one using the form.</p>
+                    <div class="p-3">
+                        <EmptyState Icon="plug" Title="No providers configured" Message="Add a provider to connect to AI coding agents like Claude Code CLI." />
                     </div>
                 }
                 else
                 {
-                    @* Mobile: Card layout *@
-                    <div class="d-lg-none">
+                    <div class="provider-list">
                         @foreach (var provider in ProvidersList)
                         {
-                            <div class="p-3 border-bottom @(provider.IsDefault ? "default-provider-row" : "")">
-                                <div class="d-flex justify-content-between align-items-start mb-2">
-                                    <div>
-                                        <span class="fw-medium">@provider.Name</span>
-                                        @if (provider.IsDefault)
-                                        {
-                                            <span class="default-badge">Default</span>
-                                        }
-                                    </div>
-                                    <label class="toggle-switch">
-                                        <input type="checkbox" checked="@provider.IsEnabled"
-                                            @onchange="() => ToggleEnabled(provider)" />
-                                        <span class="toggle-slider"></span>
-                                    </label>
-                                </div>
-                                <div class="small text-muted mb-2">
-                                    <span class="me-3">@provider.Type</span>
-                                    <span>@provider.ConnectionMode</span>
-                                </div>
-                                <div class="d-flex flex-wrap gap-2">
-                                    <button class="btn btn-sm btn-outline-secondary" @onclick="() => TestConnection(provider)"
-                                        disabled="@(TestingId == provider.Id)">
-                                        @(TestingId == provider.Id ? "Testing..." : "Test")
-                                    </button>
-                                    @if (!provider.IsDefault)
-                                    {
-                                        <button class="btn btn-sm btn-outline-primary" @onclick="() => MakeDefault(provider)">
-                                            Set Default
-                                        </button>
-                                    }
-                                    <button class="btn btn-sm btn-outline-secondary"
-                                        @onclick="() => EditProvider(provider)">Edit</button>
-                                    <button class="btn btn-sm btn-outline-danger"
-                                        @onclick="() => DeleteProvider(provider)">Delete</button>
-                                </div>
-                                @if (TestResults.TryGetValue(provider.Id, out var result))
-                                {
-                                    <div class="mt-2 @(result.IsConnected ? "test-success" : "test-failure")">
-                                        <strong>@(result.IsConnected ? "✓ Connected" : "✗ Failed")</strong>
-                                        @if (!result.IsConnected && !string.IsNullOrEmpty(result.ErrorMessage))
-                                        {
-                                            <div class="error-details">
-                                                <pre>@result.ErrorMessage</pre>
-                                            </div>
-                                        }
-                                    </div>
-                                }
-                            </div>
-                        }
-                    </div>
-
-                    @* Desktop: Table layout *@
-                    <div class="table-responsive d-none d-lg-block">
-                        <table class="table table-hover align-middle mb-0">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>Name</th>
-                                    <th>Type</th>
-                                    <th>Mode</th>
-                                    <th>Enabled</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @foreach (var provider in ProvidersList)
-                                {
-                                    <tr class="@(provider.IsDefault ? "default-provider-row" : "")">
-                                        <td>
-                                            @provider.Name
+                            <div class="list-item @(provider.IsDefault ? "default-provider-row" : "")">
+                                <div class="list-item-content">
+                                    <div class="list-item-info">
+                                        <div class="d-flex align-items-center gap-2 flex-wrap">
+                                            <span class="list-item-title">@provider.Name</span>
                                             @if (provider.IsDefault)
                                             {
                                                 <span class="default-badge">Default</span>
                                             }
-                                        </td>
-                                        <td>@provider.Type</td>
-                                        <td>@provider.ConnectionMode</td>
-                                        <td>
-                                            <label class="toggle-switch">
-                                                <input type="checkbox" checked="@provider.IsEnabled"
-                                                    @onchange="() => ToggleEnabled(provider)" />
-                                                <span class="toggle-slider"></span>
-                                            </label>
-                                        </td>
-                                        <td>
-                                            <div class="btn-group btn-group-sm" role="group">
-                                                <button class="btn btn-outline-secondary"
-                                                    @onclick="() => TestConnection(provider)"
-                                                    disabled="@(TestingId == provider.Id)">
-                                                    @(TestingId == provider.Id ? "Testing..." : "Test")
-                                                </button>
-                                                @if (!provider.IsDefault)
+                                            <span class="badge @(provider.IsEnabled ? "status-completed" : "status-cancelled")">
+                                                @(provider.IsEnabled ? "Active" : "Disabled")
+                                            </span>
+                                        </div>
+                                        <div class="list-item-meta mt-2">
+                                            <span class="meta-item">
+                                                <span class="meta-label">Type:</span>
+                                                @provider.Type
+                                            </span>
+                                            <span class="meta-item">
+                                                <span class="meta-label">Mode:</span>
+                                                @provider.ConnectionMode
+                                            </span>
+                                        </div>
+                                        @if (TestResults.TryGetValue(provider.Id, out var result))
+                                        {
+                                            <div class="mt-2 @(result.IsConnected ? "test-success" : "test-failure")">
+                                                <strong>@(result.IsConnected ? "Connected" : "Connection Failed")</strong>
+                                                @if (!result.IsConnected && !string.IsNullOrEmpty(result.ErrorMessage))
                                                 {
-                                                    <button class="btn btn-outline-primary" @onclick="() => MakeDefault(provider)"
-                                                        title="Set as default provider">
-                                                        Default
-                                                    </button>
+                                                    <div class="error-details">
+                                                        <pre>@result.ErrorMessage</pre>
+                                                    </div>
                                                 }
-                                                <button class="btn btn-outline-secondary"
-                                                    @onclick="() => EditProvider(provider)">Edit</button>
-                                                <button class="btn btn-outline-danger"
-                                                    @onclick="() => DeleteProvider(provider)">Delete</button>
                                             </div>
-                                        </td>
-                                    </tr>
-                                    @if (TestResults.TryGetValue(provider.Id, out var result))
+                                        }
+                                    </div>
+                                </div>
+                                <div class="list-item-actions flex-wrap">
+                                    <label class="toggle-switch me-2" title="@(provider.IsEnabled ? "Disable" : "Enable")">
+                                        <input type="checkbox" checked="@provider.IsEnabled"
+                                            @onchange="() => ToggleEnabled(provider)" />
+                                        <span class="toggle-slider"></span>
+                                    </label>
+                                    <button class="btn btn-sm btn-outline-secondary btn-edit" @onclick="() => TestConnection(provider)"
+                                        disabled="@(TestingId == provider.Id)" title="Test Connection">
+                                        @if (TestingId == provider.Id)
+                                        {
+                                            <span class="spinner-border spinner-border-sm" role="status"></span>
+                                        }
+                                        else
+                                        {
+                                            <i class="bi bi-lightning"></i>
+                                        }
+                                        <span class="btn-text">Test</span>
+                                    </button>
+                                    @if (!provider.IsDefault)
                                     {
-                                        <tr class="table-light">
-                                            <td colspan="5">
-                                                <div class="@(result.IsConnected ? "test-success" : "test-failure")">
-                                                    <strong>@(result.IsConnected ? "✓ Connection successful" : "✗ Connection                                            failed")</strong>
-                                                    @if (!result.IsConnected && !string.IsNullOrEmpty(result.ErrorMessage))
-                                                    {
-                                                        <div class="error-details">
-                                                            <pre>@result.ErrorMessage</pre>
-                                                        </div>
-                                                    }
-                                                </div>
-                                            </td>
-                                        </tr>
+                                        <button class="btn btn-sm btn-outline-primary btn-edit" @onclick="() => MakeDefault(provider)" title="Set as Default">
+                                            <i class="bi bi-check2"></i>
+                                            <span class="btn-text">Default</span>
+                                        </button>
                                     }
-                                }
-                            </tbody>
-                        </table>
+                                    <button class="btn btn-sm btn-outline-secondary btn-edit" @onclick="() => EditProvider(provider)" title="Edit">
+                                        <i class="bi bi-pencil"></i>
+                                        <span class="btn-text">Edit</span>
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-danger btn-delete" @onclick="() => DeleteProvider(provider)" title="Delete">
+                                        <i class="bi bi-trash"></i>
+                                        <span class="btn-text">Delete</span>
+                                    </button>
+                                </div>
+                            </div>
+                        }
                     </div>
                 }
             </div>

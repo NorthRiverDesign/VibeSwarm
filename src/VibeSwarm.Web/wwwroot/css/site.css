@@ -1089,6 +1089,56 @@ body {
     color: var(--vs-accent-blue);
 }
 
+/* Enhanced Empty State Component */
+.empty-state-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: var(--vs-spacing-xl) var(--vs-spacing-lg);
+    text-align: center;
+    background: var(--bs-tertiary-bg);
+    border-radius: var(--bs-border-radius-lg);
+    min-height: 200px;
+}
+
+.empty-state-icon {
+    font-size: 3rem;
+    color: var(--bs-tertiary-color);
+    margin-bottom: var(--vs-spacing-md);
+    opacity: 0.6;
+}
+
+.empty-state-content {
+    max-width: 320px;
+}
+
+.empty-state-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--bs-body-color);
+    margin-bottom: var(--vs-spacing-sm);
+}
+
+.empty-state-message {
+    font-size: 0.9rem;
+    color: var(--bs-secondary-color);
+    margin-bottom: var(--vs-spacing-md);
+    line-height: 1.5;
+}
+
+.empty-state-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--vs-spacing-sm);
+    justify-content: center;
+}
+
+.empty-state-actions a,
+.empty-state-actions .btn {
+    text-decoration: none;
+}
+
 /* ============================================
    Alerts - Use Bootstrap variables
 ============================================ */
@@ -1130,6 +1180,144 @@ body {
     to {
         transform: translateX(0);
         opacity: 1;
+    }
+}
+
+/* ============================================
+   List Item Layout (replaces tables)
+============================================ */
+.list-item {
+    display: flex;
+    flex-direction: column;
+    gap: var(--vs-spacing-sm);
+    padding: var(--vs-spacing-md);
+    border-bottom: 1px solid var(--bs-border-color);
+    transition: background var(--vs-transition);
+}
+
+.list-item:last-child {
+    border-bottom: none;
+}
+
+.list-item:hover {
+    background: var(--bs-tertiary-bg);
+}
+
+.list-item-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: var(--vs-spacing-md);
+}
+
+.list-item-title {
+    font-weight: 600;
+    color: var(--bs-body-color);
+}
+
+.list-item-title a {
+    color: inherit;
+    text-decoration: none;
+}
+
+.list-item-title a:hover {
+    color: var(--vs-accent-blue);
+}
+
+.list-item-subtitle {
+    font-size: 0.875rem;
+    color: var(--bs-secondary-color);
+    margin-top: 0.25rem;
+}
+
+.list-item-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--vs-spacing-sm) var(--vs-spacing-md);
+    font-size: 0.85rem;
+    color: var(--bs-secondary-color);
+}
+
+.list-item-meta .meta-item {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.list-item-meta .meta-label {
+    font-weight: 500;
+    color: var(--bs-tertiary-color);
+}
+
+.list-item-path {
+    font-family: 'SF Mono', monospace;
+    font-size: 0.8rem;
+    color: var(--bs-secondary-color);
+    background: var(--bs-tertiary-bg);
+    padding: 0.25rem 0.5rem;
+    border-radius: var(--bs-border-radius-sm);
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.list-item-actions {
+    display: flex;
+    gap: var(--vs-spacing-sm);
+    flex-shrink: 0;
+}
+
+/* Responsive list items for desktop */
+@media (min-width: 768px) {
+    .list-item {
+        flex-direction: row;
+        align-items: center;
+        padding: var(--vs-spacing-md) var(--vs-spacing-lg);
+    }
+
+    .list-item-header {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .list-item-content {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        gap: var(--vs-spacing-lg);
+        min-width: 0;
+    }
+
+    .list-item-info {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .list-item-path {
+        flex: 0 1 auto;
+        max-width: 250px;
+    }
+}
+
+/* Edit/Delete Button Pattern */
+.btn-edit,
+.btn-delete {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.375rem;
+}
+
+.btn-edit .btn-text,
+.btn-delete .btn-text {
+    display: none;
+}
+
+@media (min-width: 768px) {
+    .btn-edit .btn-text,
+    .btn-delete .btn-text {
+        display: inline;
     }
 }
 
@@ -1602,6 +1790,56 @@ code {
         min-height: 40px;
         min-width: 40px;
     }
+}
+
+/* ============================================
+   Modal Overlay (Logout dialog)
+============================================ */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1050;
+    padding: var(--vs-spacing-md);
+}
+
+.modal-dialog-centered {
+    width: 100%;
+    max-width: 400px;
+    animation: modalFadeIn 0.2s ease-out;
+}
+
+@keyframes modalFadeIn {
+    from {
+        opacity: 0;
+        transform: scale(0.95) translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+.logout-dialog {
+    border: 1px solid var(--bs-border-color);
+    border-radius: var(--bs-border-radius-lg);
+}
+
+.logout-dialog .card-header {
+    justify-content: center;
+    background: var(--bs-secondary-bg);
+}
+
+.logout-dialog .card-body {
+    padding: var(--vs-spacing-lg);
 }
 
 /* ============================================

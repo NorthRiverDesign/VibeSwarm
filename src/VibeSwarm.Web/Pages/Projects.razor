@@ -7,346 +7,294 @@
 @using VibeSwarm.Shared.Utilities
 
 <div class="page-header">
-	<h3>Projects</h3>
+    <h3>Projects</h3>
 </div>
 
 <div class="row g-3 g-lg-4">
-	@* Form first on mobile, second on desktop *@
-	<div class="col-12 col-lg-4 order-1 order-lg-2">
-		<div class="card">
-			<div class="card-header">
-				<h5 class="mb-0">@(IsEditing ? "Edit Project" : "New Project")</h5>
-			</div>
-			<div class="card-body">
-				<EditForm Model="@CurrentProject" OnValidSubmit="HandleValidSubmit">
-					<DataAnnotationsValidator />
-					<ValidationSummary class="text-danger mb-3" />
+    @* Form first on mobile, second on desktop *@
+    <div class="col-12 col-lg-4 order-1 order-lg-2">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">@(IsEditing ? "Edit Project" : "New Project")</h5>
+            </div>
+            <div class="card-body">
+                <EditForm Model="@CurrentProject" OnValidSubmit="HandleValidSubmit">
+                    <DataAnnotationsValidator />
+                    <ValidationSummary class="text-danger mb-3" />
 
-					<div class="mb-3">
-						<label for="name" class="form-label">Name</label>
-						<InputText id="name" @bind-Value="CurrentProject.Name" class="form-control"
-							placeholder="My Project" />
-						<ValidationMessage For="@(() => CurrentProject.Name)" class="text-danger small" />
-					</div>
+                    <div class="mb-3">
+                        <label for="name" class="form-label">Name</label>
+                        <InputText id="name" @bind-Value="CurrentProject.Name" class="form-control"
+                            placeholder="My Project" />
+                        <ValidationMessage For="@(() => CurrentProject.Name)" class="text-danger small" />
+                    </div>
 
-					<div class="mb-3">
-						<label for="description" class="form-label">Description</label>
-						<InputTextArea id="description" @bind-Value="CurrentProject.Description" class="form-control"
-							rows="2" placeholder="Brief description..." />
-					</div>
+                    <div class="mb-3">
+                        <label for="description" class="form-label">Description</label>
+                        <InputTextArea id="description" @bind-Value="CurrentProject.Description" class="form-control"
+                            rows="2" placeholder="Brief description..." />
+                    </div>
 
-					<div class="mb-3">
-						<label for="workingPath" class="form-label">Working Path</label>
-						<InputText id="workingPath" @bind-Value="CurrentProject.WorkingPath" class="form-control"
-							placeholder="/home/user/projects/myapp" />
-						<ValidationMessage For="@(() => CurrentProject.WorkingPath)" class="text-danger small" />
-						<div class="form-text">Directory where CLI providers execute commands.</div>
-					</div>
+                    <div class="mb-3">
+                        <label for="workingPath" class="form-label">Working Path</label>
+                        <InputText id="workingPath" @bind-Value="CurrentProject.WorkingPath" class="form-control"
+                            placeholder="/home/user/projects/myapp" />
+                        <ValidationMessage For="@(() => CurrentProject.WorkingPath)" class="text-danger small" />
+                        <div class="form-text">Directory where CLI providers execute commands.</div>
+                    </div>
 
-					<div class="d-flex flex-column flex-sm-row gap-2">
-						<button type="submit" class="btn btn-primary flex-grow-1" disabled="@IsSaving">
-							@if (IsSaving)
-							{
-								<span class="spinner-border spinner-border-sm me-1" role="status"></span>
-							}
-							@(IsSaving ? "Saving..." : (IsEditing ? "Update" : "Create"))
-						</button>
-						@if (IsEditing)
-						{
-							<button type="button" class="btn btn-secondary" @onclick="CancelEdit">Cancel</button>
-						}
-					</div>
+                    <div class="d-flex flex-column flex-sm-row gap-2">
+                        <button type="submit" class="btn btn-primary flex-grow-1" disabled="@IsSaving">
+                            @if (IsSaving)
+                            {
+                                <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                            }
+                            @(IsSaving ? "Saving..." : (IsEditing ? "Update" : "Create"))
+                        </button>
+                        @if (IsEditing)
+                        {
+                            <button type="button" class="btn btn-secondary" @onclick="CancelEdit">Cancel</button>
+                        }
+                    </div>
 
-					@if (!string.IsNullOrEmpty(ErrorMessage))
-					{
-						<div class="alert alert-danger mt-3 mb-0">@ErrorMessage</div>
-					}
+                    @if (!string.IsNullOrEmpty(ErrorMessage))
+                    {
+                        <div class="alert alert-danger mt-3 mb-0">@ErrorMessage</div>
+                    }
 
-					@if (!string.IsNullOrEmpty(SuccessMessage))
-					{
-						<div class="alert alert-success mt-3 mb-0">@SuccessMessage</div>
-					}
-				</EditForm>
-			</div>
-		</div>
-	</div>
+                    @if (!string.IsNullOrEmpty(SuccessMessage))
+                    {
+                        <div class="alert alert-success mt-3 mb-0">@SuccessMessage</div>
+                    }
+                </EditForm>
+            </div>
+        </div>
+    </div>
 
-	@* List second on mobile, first on desktop *@
-	<div class="col-12 col-lg-8 order-2 order-lg-1">
-		<div class="card">
-			<div class="card-header">
-				<h5 class="mb-0">All Projects</h5>
-			</div>
-			<div class="card-body p-0 p-sm-3">
-				@if (IsLoading)
-				{
-					<div class="d-flex justify-content-center py-4">
-						<div class="spinner-border text-primary" role="status">
-							<span class="visually-hidden">Loading...</span>
-						</div>
-					</div>
-				}
-				else if (!ProjectList.Any())
-				{
-					<div class="empty-state m-3">
-						<p class="mb-0">No projects yet. Create your first project to get started.</p>
-					</div>
-				}
-				else
-				{
-					@* Mobile: Card layout *@
-					<div class="d-lg-none">
-						@foreach (var project in ProjectList)
-						{
-							var projectActiveJobs = ActiveJobs.Where(j => j.ProjectId == project.Id).ToList();
-							<div class="p-3 border-bottom">
-								<div class="d-flex justify-content-between align-items-start mb-2">
-									<div>
-										<a href="/projects/@project.Id" class="fw-medium">@project.Name</a>
-										@if (!string.IsNullOrEmpty(project.Description))
-										{
-											<div class="text-muted small">@TruncateText(project.Description, 50)</div>
-										}
-									</div>
-									<div class="btn-group btn-group-sm">
-										<button class="btn btn-outline-secondary" @onclick="() => EditProject(project)">
-											<i class="bi bi-pencil"></i>
-										</button>
-										<button class="btn btn-outline-danger" @onclick="() => DeleteProject(project.Id)">
-											<i class="bi bi-trash"></i>
-										</button>
-									</div>
-								</div>
-								<div class="small text-muted font-monospace mb-2 text-truncate">@project.WorkingPath</div>
-								<div class="small text-muted">@project.CreatedAt.FormatDateTimeShort()</div>
-								@if (projectActiveJobs.Any())
-								{
-									<div class="active-jobs-list">
-										@foreach (var job in projectActiveJobs)
-										{
-											<div class="active-job-item">
-												<a href="/jobs/@job.Id" class="d-flex align-items-center gap-2 text-decoration-none">
-													<span class="badge status-@job.Status.ToString().ToLower()">
-														<span class="status-spinner"></span>
-														@job.Status
-													</span>
-													<span class="text-truncate" style="max-width: 150px;">@TruncateText(job.GoalPrompt,
-																								40)</span>
-								</a>
-							</div>
-														}
-									</div>
-								}
-							</div>
-						}
-					</div>
-
-					@* Desktop: Table layout *@
-					<div class="table-responsive d-none d-lg-block">
-						<table class="table table-hover align-middle mb-0">
-							<thead class="table-light">
-								<tr>
-									<th>Name</th>
-									<th>Working Path</th>
-									<th>Created</th>
-									<th>Actions</th>
-								</tr>
-							</thead>
-							<tbody>
-								@foreach (var project in ProjectList)
-								{
-									var projectActiveJobs = ActiveJobs.Where(j => j.ProjectId == project.Id).ToList();
-									<tr>
-										<td>
-											<a href="/projects/@project.Id" class="fw-medium">@project.Name</a>
-											@if (!string.IsNullOrEmpty(project.Description))
-											{
-												<div class="text-muted small">@project.Description</div>
-											}
-											@if (projectActiveJobs.Any())
-											{
-												<div class="active-jobs-list">
-													@foreach (var job in projectActiveJobs)
-													{
-														<div class="active-job-item">
-															<a href="/jobs/@job.Id"
-																class="d-flex align-items-center text-decoration-none">
-																<span class="badge status-@job.Status.ToString().ToLower() me-2">
-																	<span class="status-spinner"></span>
-																	@job.Status
-																</span>
-																<span
-																	class="job-goal-preview text-truncate">@TruncateText(job.GoalPrompt,
-																														60)</span>
-												@if (!string.IsNullOrEmpty(job.CurrentActivity))
-																{
-																	<span
-																		class="job-activity-preview ms-2 text-muted small">@job.CurrentActivity</span>
-																}
-															</a>
-														</div>
-													}
-												</div>
-											}
-										</td>
-										<td class="path-cell">@project.WorkingPath</td>
-										<td>@project.CreatedAt.FormatDateTimeShort()</td>
-										<td>
-											<div class="btn-group btn-group-sm" role="group">
-												<button class="btn btn-outline-secondary"
-													@onclick="() => EditProject(project)">Edit</button>
-												<button class="btn btn-outline-danger"
-													@onclick="() => DeleteProject(project.Id)">Delete</button>
-											</div>
-										</td>
-									</tr>
-								}
-							</tbody>
-						</table>
-					</div>
-				}
-			</div>
-		</div>
-	</div>
+    @* List second on mobile, first on desktop *@
+    <div class="col-12 col-lg-8 order-2 order-lg-1">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">All Projects</h5>
+            </div>
+            <div class="card-body p-0">
+                @if (IsLoading)
+                {
+                    <div class="d-flex justify-content-center py-5">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                    </div>
+                }
+                else if (!ProjectList.Any())
+                {
+                    <div class="p-3">
+                        <EmptyState Icon="folder" Title="No projects yet" Message="Create your first project to start running AI agent jobs." />
+                    </div>
+                }
+                else
+                {
+                    <div class="project-list">
+                        @foreach (var project in ProjectList)
+                        {
+                            var projectActiveJobs = ActiveJobs.Where(j => j.ProjectId == project.Id).ToList();
+                            <div class="list-item">
+                                <div class="list-item-content">
+                                    <div class="list-item-info">
+                                        <div class="list-item-title">
+                                            <a href="/projects/@project.Id">@project.Name</a>
+                                        </div>
+                                        @if (!string.IsNullOrEmpty(project.Description))
+                                        {
+                                            <div class="list-item-subtitle">@TruncateText(project.Description, 80)</div>
+                                        }
+                                        <div class="list-item-meta mt-2">
+                                            <span class="meta-item">
+                                                <span class="list-item-path">@project.WorkingPath</span>
+                                            </span>
+                                            <span class="meta-item">
+                                                <i class="bi bi-calendar-plus"></i>
+                                                @project.CreatedAt.FormatDateTimeShort()
+                                            </span>
+                                        </div>
+                                        @if (projectActiveJobs.Any())
+                                        {
+                                            <div class="active-jobs-list">
+                                                @foreach (var job in projectActiveJobs)
+                                                {
+                                                    <div class="active-job-item">
+                                                        <a href="/jobs/@job.Id" class="d-flex align-items-center gap-2 text-decoration-none">
+                                                            <span class="badge status-@job.Status.ToString().ToLower()">
+                                                                <span class="status-spinner"></span>
+                                                                @job.Status
+                                                            </span>
+                                                            <span class="text-truncate" style="max-width: 200px;">@TruncateText(job.GoalPrompt, 50)</span>
+                                                            @if (!string.IsNullOrEmpty(job.CurrentActivity))
+                                                            {
+                                                                <span class="job-activity-preview text-muted small d-none d-md-inline">@job.CurrentActivity</span>
+                                                            }
+                                                        </a>
+                                                    </div>
+                                                }
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
+                                <div class="list-item-actions">
+                                    <button class="btn btn-sm btn-outline-secondary btn-edit" @onclick="() => EditProject(project)" title="Edit">
+                                        <i class="bi bi-pencil"></i>
+                                        <span class="btn-text">Edit</span>
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-danger btn-delete" @onclick="() => DeleteProject(project.Id)" title="Delete">
+                                        <i class="bi bi-trash"></i>
+                                        <span class="btn-text">Delete</span>
+                                    </button>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
 </div>
 
 @code {
-	private List<Project> ProjectList { get; set; } = new();
-	private List<Job> ActiveJobs { get; set; } = new();
-	private Project CurrentProject { get; set; } = new();
-	private bool IsLoading { get; set; } = true;
-	private bool IsSaving { get; set; }
-	private bool IsEditing { get; set; }
-	private string? ErrorMessage { get; set; }
-	private string? SuccessMessage { get; set; }
-	private System.Threading.Timer? _refreshTimer;
+    private List<Project> ProjectList { get; set; } = new();
+    private List<Job> ActiveJobs { get; set; } = new();
+    private Project CurrentProject { get; set; } = new();
+    private bool IsLoading { get; set; } = true;
+    private bool IsSaving { get; set; }
+    private bool IsEditing { get; set; }
+    private string? ErrorMessage { get; set; }
+    private string? SuccessMessage { get; set; }
+    private System.Threading.Timer? _refreshTimer;
 
-	protected override async Task OnInitializedAsync()
-	{
-		await LoadProjects();
-		await LoadActiveJobs();
-		StartAutoRefresh();
-	}
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadProjects();
+        await LoadActiveJobs();
+        StartAutoRefresh();
+    }
 
-	private void StartAutoRefresh()
-	{
-		// Refresh active jobs every 3 seconds when there are active jobs
-		_refreshTimer = new System.Threading.Timer(async _ =>
-		{
-			if (ActiveJobs.Any())
-			{
-				await InvokeAsync(async () =>
-		{
-			await LoadActiveJobs();
-			StateHasChanged();
-		});
-			}
-		}, null, TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(3));
-	}
+    private void StartAutoRefresh()
+    {
+        _refreshTimer = new System.Threading.Timer(async _ =>
+        {
+            if (ActiveJobs.Any())
+            {
+                await InvokeAsync(async () =>
+                {
+                    await LoadActiveJobs();
+                    StateHasChanged();
+                });
+            }
+        }, null, TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(3));
+    }
 
-	private async Task LoadActiveJobs()
-	{
-		try
-		{
-			ActiveJobs = (await JobService.GetActiveJobsAsync()).ToList();
-		}
-		catch
-		{
-			// Ignore errors loading active jobs
-		}
-	}
+    private async Task LoadActiveJobs()
+    {
+        try
+        {
+            ActiveJobs = (await JobService.GetActiveJobsAsync()).ToList();
+        }
+        catch
+        {
+            // Ignore errors loading active jobs
+        }
+    }
 
-	private static string TruncateText(string text, int maxLength)
-	{
-		if (string.IsNullOrEmpty(text) || text.Length <= maxLength)
-			return text;
-		return text[..maxLength] + "...";
-	}
+    private static string TruncateText(string text, int maxLength)
+    {
+        if (string.IsNullOrEmpty(text) || text.Length <= maxLength)
+            return text;
+        return text[..maxLength] + "...";
+    }
 
-	private async Task LoadProjects()
-	{
-		IsLoading = true;
-		try
-		{
-			ProjectList = (await ProjectService.GetAllAsync()).ToList();
-		}
-		finally
-		{
-			IsLoading = false;
-		}
-	}
+    private async Task LoadProjects()
+    {
+        IsLoading = true;
+        try
+        {
+            ProjectList = (await ProjectService.GetAllAsync()).ToList();
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
 
-	private async Task HandleValidSubmit()
-	{
-		IsSaving = true;
-		ErrorMessage = null;
-		SuccessMessage = null;
+    private async Task HandleValidSubmit()
+    {
+        IsSaving = true;
+        ErrorMessage = null;
+        SuccessMessage = null;
 
-		try
-		{
-			if (IsEditing)
-			{
-				await ProjectService.UpdateAsync(CurrentProject);
-				SuccessMessage = "Project updated successfully.";
-			}
-			else
-			{
-				await ProjectService.CreateAsync(CurrentProject);
-				SuccessMessage = "Project created successfully.";
-			}
+        try
+        {
+            if (IsEditing)
+            {
+                await ProjectService.UpdateAsync(CurrentProject);
+                SuccessMessage = "Project updated successfully.";
+            }
+            else
+            {
+                await ProjectService.CreateAsync(CurrentProject);
+                SuccessMessage = "Project created successfully.";
+            }
 
-			CurrentProject = new Project();
-			IsEditing = false;
-			await LoadProjects();
-		}
-		catch (Exception ex)
-		{
-			ErrorMessage = $"Error saving project: {ex.Message}";
-		}
-		finally
-		{
-			IsSaving = false;
-		}
-	}
+            CurrentProject = new Project();
+            IsEditing = false;
+            await LoadProjects();
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Error saving project: {ex.Message}";
+        }
+        finally
+        {
+            IsSaving = false;
+        }
+    }
 
-	private void EditProject(Project project)
-	{
-		CurrentProject = new Project
-		{
-			Id = project.Id,
-			Name = project.Name,
-			Description = project.Description,
-			WorkingPath = project.WorkingPath
-		};
-		IsEditing = true;
-		ErrorMessage = null;
-		SuccessMessage = null;
-	}
+    private void EditProject(Project project)
+    {
+        CurrentProject = new Project
+        {
+            Id = project.Id,
+            Name = project.Name,
+            Description = project.Description,
+            WorkingPath = project.WorkingPath
+        };
+        IsEditing = true;
+        ErrorMessage = null;
+        SuccessMessage = null;
+    }
 
-	private void CancelEdit()
-	{
-		CurrentProject = new Project();
-		IsEditing = false;
-		ErrorMessage = null;
-		SuccessMessage = null;
-	}
+    private void CancelEdit()
+    {
+        CurrentProject = new Project();
+        IsEditing = false;
+        ErrorMessage = null;
+        SuccessMessage = null;
+    }
 
-	private async Task DeleteProject(Guid id)
-	{
-		try
-		{
-			await ProjectService.DeleteAsync(id);
-			await LoadProjects();
-			SuccessMessage = "Project deleted successfully.";
-		}
-		catch (Exception ex)
-		{
-			ErrorMessage = $"Error deleting project: {ex.Message}";
-		}
-	}
+    private async Task DeleteProject(Guid id)
+    {
+        try
+        {
+            await ProjectService.DeleteAsync(id);
+            await LoadProjects();
+            SuccessMessage = "Project deleted successfully.";
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Error deleting project: {ex.Message}";
+        }
+    }
 
-	public void Dispose()
-	{
-		_refreshTimer?.Dispose();
-	}
+    public void Dispose()
+    {
+        _refreshTimer?.Dispose();
+    }
 }
