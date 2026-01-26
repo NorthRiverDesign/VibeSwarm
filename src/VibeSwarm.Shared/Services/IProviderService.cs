@@ -1,3 +1,4 @@
+using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Providers;
 
 namespace VibeSwarm.Shared.Services;
@@ -30,6 +31,16 @@ public interface IProviderService
         string? workingDirectory = null,
         string? fallbackOutput = null,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets the available models for a provider from the database.
+    /// </summary>
+    Task<IEnumerable<ProviderModel>> GetModelsAsync(Guid providerId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Refreshes the available models for a provider by querying the provider and updating the database.
+    /// </summary>
+    Task<IEnumerable<ProviderModel>> RefreshModelsAsync(Guid providerId, CancellationToken cancellationToken = default);
 }
 
 public class ConnectionTestResult

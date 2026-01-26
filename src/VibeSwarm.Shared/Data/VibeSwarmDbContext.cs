@@ -13,6 +13,7 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
     }
 
     public DbSet<Provider> Providers => Set<Provider>();
+    public DbSet<ProviderModel> ProviderModels => Set<ProviderModel>();
     public DbSet<Project> Projects => Set<Project>();
     public DbSet<Job> Jobs => Set<Job>();
     public DbSet<JobMessage> JobMessages => Set<JobMessage>();
@@ -31,6 +32,20 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
             entity.Property(e => e.ApiKey).HasMaxLength(200);
             entity.Property(e => e.Type).HasConversion<string>();
             entity.Property(e => e.ConnectionMode).HasConversion<string>();
+            entity.HasMany(e => e.AvailableModels)
+                .WithOne(m => m.Provider)
+                .HasForeignKey(m => m.ProviderId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<ProviderModel>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.ModelId).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.DisplayName).HasMaxLength(200);
+            entity.Property(e => e.Description).HasMaxLength(500);
+            entity.Property(e => e.PriceMultiplier).HasPrecision(18, 4);
+            entity.HasIndex(e => new { e.ProviderId, e.ModelId }).IsUnique();
         });
 
         modelBuilder.Entity<Project>(entity =>
@@ -51,6 +66,7 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
             entity.Property(e => e.GoalPrompt).IsRequired().HasMaxLength(2000);
             entity.Property(e => e.Status).HasConversion<string>();
             entity.Property(e => e.SessionId).HasMaxLength(100);
+            entity.Property(e => e.ModelUsed).HasMaxLength(200);
             entity.Property(e => e.TotalCostUsd).HasPrecision(18, 6);
             entity.Property(e => e.MaxCostUsd).HasPrecision(18, 6);
             entity.Property(e => e.Tags).HasMaxLength(500);

@@ -215,4 +215,122 @@ public class ProviderService : IProviderService
             _ => throw new NotSupportedException($"Provider type {config.Type} is not supported.")
         };
     }
+
+    public async Task<IEnumerable<ProviderModel>> GetModelsAsync(Guid providerId, CancellationToken cancellationToken = default)
+    {
+        return await _dbContext.ProviderModels
+            .Where(m => m.ProviderId == providerId)
+            .OrderByDescending(m => m.IsDefault)
+            .ThenBy(m => m.DisplayName ?? m.ModelId)
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<IEnumerable<ProviderModel>> RefreshModelsAsync(Guid providerId, CancellationToken cancellationToken = default)
+    {
+        var provider = await GetByIdAsync(providerId, cancellationToken);
+        if (provider == null)
+        {
+            throw new InvalidOperationException($"Provider with ID {providerId} not found.");
+        }
+
+        var instance = CreateProviderInstance(provider);
+        var providerInfo = await instance.GetProviderInfoAsync(cancellationToken);
+
+        // Get existing models for this provider
+        var existingModels = await _dbContext.ProviderModels
+            .Where(m => m.ProviderId == providerId)
+            .ToListAsync(cancellationToken);
+
+        // Create a dictionary for quick lookup
+        var existingModelDict = existingModels.ToDictionary(m => m.ModelId, m => m);
+
+        // Track which models are still available
+        var availableModelIds = new HashSet<string>(providerInfo.AvailableModels);
+
+        // Update existing models and add new ones
+        foreach (var modelId in providerInfo.AvailableModels)
+        {
+            if (existingModelDict.TryGetValue(modelId, out var existingModel))
+            {
+                // Update existing model
+                existingModel.IsAvailable = true;
+                existingModel.UpdatedAt = DateTime.UtcNow;
+
+                // Update price multiplier if we have pricing info
+                if (providerInfo.Pricing?.ModelMultipliers?.TryGetValue(modelId, out var multiplier) == true)
+                {
+                    existingModel.PriceMultiplier = multiplier;
+                }
+            }
+            else
+            {
+                // Add new model
+                var newModel = new ProviderModel
+                {
+                    ProviderId = providerId,
+                    ModelId = modelId,
+                    DisplayName = FormatModelDisplayName(modelId),
+                    IsAvailable = true,
+                    IsDefault = providerInfo.AvailableModels.Count == 1 || modelId.Contains("sonnet", StringComparison.OrdinalIgnoreCase),
+                    UpdatedAt = DateTime.UtcNow
+                };
+
+                if (providerInfo.Pricing?.ModelMultipliers?.TryGetValue(modelId, out var multiplier) == true)
+                {
+                    newModel.PriceMultiplier = multiplier;
+                }
+
+                _dbContext.ProviderModels.Add(newModel);
+            }
+        }
+
+        // Mark models not in the list as unavailable
+        foreach (var existingModel in existingModels)
+        {
+            if (!availableModelIds.Contains(existingModel.ModelId))
+            {
+                existingModel.IsAvailable = false;
+                existingModel.UpdatedAt = DateTime.UtcNow;
+            }
+        }
+
+        // Update provider's last refresh timestamp
+        provider.LastModelsRefreshAt = DateTime.UtcNow;
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return await GetModelsAsync(providerId, cancellationToken);
+    }
+
+    private static string FormatModelDisplayName(string modelId)
+    {
+        // Convert model IDs like "claude-sonnet-4-20250514" to "Claude Sonnet 4"
+        // or "gpt-4o" to "GPT-4O"
+        var name = modelId;
+
+        // Remove date suffixes like -20250514
+        var dateMatch = System.Text.RegularExpressions.Regex.Match(name, @"-\d{8}$");
+        if (dateMatch.Success)
+        {
+            name = name[..^dateMatch.Length];
+        }
+
+        // Split by common separators and capitalize
+        var parts = name.Split(['-', '_', '/'], StringSplitOptions.RemoveEmptyEntries);
+        var formattedParts = parts.Select(p =>
+        {
+            // Handle known abbreviations
+            if (p.Equals("gpt", StringComparison.OrdinalIgnoreCase))
+                return "GPT";
+            if (p.Equals("4o", StringComparison.OrdinalIgnoreCase))
+                return "4O";
+            if (p.Equals("o1", StringComparison.OrdinalIgnoreCase))
+                return "O1";
+
+            // Capitalize first letter
+            return char.ToUpper(p[0]) + (p.Length > 1 ? p[1..] : "");
+        });
+
+        return string.Join(" ", formattedParts);
+    }
 }

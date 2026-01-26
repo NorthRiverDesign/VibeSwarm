@@ -19,6 +19,12 @@ public class Job
     public Guid ProviderId { get; set; }
     public Provider? Provider { get; set; }
 
+    /// <summary>
+    /// The AI model that was used to execute this job (e.g., "claude-sonnet-4-20250514")
+    /// </summary>
+    [StringLength(200)]
+    public string? ModelUsed { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     public DateTime? StartedAt { get; set; }

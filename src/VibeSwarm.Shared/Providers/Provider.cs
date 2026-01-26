@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using VibeSwarm.Shared.Data;
 
 namespace VibeSwarm.Shared.Providers;
 
@@ -36,4 +37,14 @@ public class Provider
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     public DateTime? LastConnectedAt { get; set; }
+
+    /// <summary>
+    /// When the available models list was last refreshed from the provider
+    /// </summary>
+    public DateTime? LastModelsRefreshAt { get; set; }
+
+    /// <summary>
+    /// Available AI models for this provider
+    /// </summary>
+    public ICollection<ProviderModel> AvailableModels { get; set; } = new List<ProviderModel>();
 }

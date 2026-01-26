@@ -1,6 +1,7 @@
 @page "/providers"
 @attribute [Authorize]
 @using VibeSwarm.Shared.Services
+@using VibeSwarm.Shared.Data
 @inject IProviderService ProviderService
 
 <PageHeader Title="Providers" Subtitle="Manage your AI coding agent providers" />
@@ -69,6 +70,32 @@
                                             }
                                         </div>
                                     }
+                                    @if (ProviderModels.TryGetValue(provider.Id, out var models) && models.Any())
+                                    {
+                                        <div class="mt-2">
+                                            <span class="fw-medium small text-body-secondary">Models:</span>
+                                            <div class="d-flex flex-wrap gap-1 mt-1">
+                                                @foreach (var model in models.Where(m => m.IsAvailable).Take(5))
+                                                {
+                                                    <span class="badge @(model.IsDefault ? "bg-primary" : "bg-secondary") bg-opacity-75"
+                                                        title="@model.ModelId">
+                                                        @(model.DisplayName ?? model.ModelId)
+                                                    </span>
+                                                }
+                                                @if (models.Count(m => m.IsAvailable) > 5)
+                                                {
+                                                    <span class="badge bg-secondary bg-opacity-50">+@(models.Count(m => m.IsAvailable) -
+                                                                                                5) more</span>
+                                                }
+                                            </div>
+                                            @if (provider.LastModelsRefreshAt.HasValue)
+                                            {
+                                                <small class="text-body-tertiary d-block mt-1">
+                                                    Updated @provider.LastModelsRefreshAt.Value.ToLocalTime().ToString("g")
+                                                </small>
+                                            }
+                                        </div>
+                                    }
                                 </div>
                                 <div class="d-flex flex-wrap gap-2 flex-shrink-0 align-items-center">
                                     <label class="toggle-switch me-1" title="@(provider.IsEnabled ? "Disable" : "Enable")">
@@ -79,6 +106,10 @@
                                     <ActionButton Icon="lightning" Text="Test" Outline="true"
                                         Size="ActionButton.ButtonSize.Small" HideTextOnMobile="true"
                                         IsLoading="@(TestingId == provider.Id)" OnClick="@(() => TestConnection(provider))" />
+                                    <ActionButton Icon="arrow-repeat" Text="Models" Outline="true"
+                                        Size="ActionButton.ButtonSize.Small" HideTextOnMobile="true"
+                                        IsLoading="@(RefreshingModelsId == provider.Id)"
+                                        OnClick="@(() => RefreshModels(provider))" />
                                     @if (!provider.IsDefault)
                                     {
                                         <ActionButton Icon="check2" Text="Default" Outline="true"
@@ -106,7 +137,9 @@
     private Provider? EditingProvider { get; set; }
     private Provider CurrentProvider { get; set; } = new();
     private Guid? TestingId { get; set; }
+    private Guid? RefreshingModelsId { get; set; }
     private Dictionary<Guid, ConnectionTestResult> TestResults { get; set; } = new();
+    private Dictionary<Guid, List<ProviderModel>> ProviderModels { get; set; } = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -119,6 +152,14 @@
         try
         {
             ProvidersList = (await ProviderService.GetAllAsync()).ToList();
+
+            // Load models for each provider
+            ProviderModels.Clear();
+            foreach (var provider in ProvidersList)
+            {
+                var models = await ProviderService.GetModelsAsync(provider.Id);
+                ProviderModels[provider.Id] = models.ToList();
+            }
         }
         finally
         {
@@ -212,6 +253,29 @@
         finally
         {
             TestingId = null;
+        }
+    }
+
+    private async Task RefreshModels(Provider provider)
+    {
+        RefreshingModelsId = provider.Id;
+        StateHasChanged();
+
+        try
+        {
+            var models = await ProviderService.RefreshModelsAsync(provider.Id);
+            ProviderModels[provider.Id] = models.ToList();
+
+            // Reload the provider to get updated LastModelsRefreshAt
+            await LoadProviders();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error refreshing models: {ex.Message}");
+        }
+        finally
+        {
+            RefreshingModelsId = null;
         }
     }
 }
