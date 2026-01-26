@@ -193,13 +193,27 @@ public class JobCompletionMonitorService : BackgroundService
 	}
 
 	/// <summary>
-	/// Attempts to fetch a session summary from the provider for pre-populating commit messages
+	/// Attempts to fetch a session summary from the provider for pre-populating commit messages.
+	/// Falls back to generating a summary from git diff and goal prompt if provider summary unavailable.
 	/// </summary>
 	private async Task TryFetchSessionSummaryAsync(Job job, VibeSwarmDbContext dbContext, CancellationToken cancellationToken)
 	{
+		// First, try to generate a summary from git diff (no AI call required)
+		var diffBasedSummary = JobSummaryGenerator.GenerateSummary(job);
+
 		if (job.ProviderId == Guid.Empty)
 		{
-			_logger.LogDebug("Job {JobId} has no provider ID, skipping session summary", job.Id);
+			// No provider, use diff-based summary if available
+			if (!string.IsNullOrWhiteSpace(diffBasedSummary))
+			{
+				job.SessionSummary = diffBasedSummary;
+				_logger.LogInformation("Generated diff-based summary for job {JobId}: {Summary}",
+					job.Id, diffBasedSummary.Length > 100 ? diffBasedSummary[..100] + "..." : diffBasedSummary);
+			}
+			else
+			{
+				_logger.LogDebug("Job {JobId} has no provider ID and no diff data for summary", job.Id);
+			}
 			return;
 		}
 
@@ -224,6 +238,13 @@ public class JobCompletionMonitorService : BackgroundService
 						? sessionSummary.Summary[..100] + "..."
 						: sessionSummary.Summary);
 			}
+			else if (!string.IsNullOrWhiteSpace(diffBasedSummary))
+			{
+				// Fallback to diff-based summary when provider summary unavailable
+				job.SessionSummary = diffBasedSummary;
+				_logger.LogInformation("Using diff-based summary for job {JobId} (provider summary unavailable): {Summary}",
+					job.Id, diffBasedSummary.Length > 100 ? diffBasedSummary[..100] + "..." : diffBasedSummary);
+			}
 			else
 			{
 				_logger.LogDebug("Could not retrieve session summary for job {JobId}: {Error}",
@@ -233,7 +254,14 @@ public class JobCompletionMonitorService : BackgroundService
 		catch (Exception ex)
 		{
 			_logger.LogWarning(ex, "Failed to fetch session summary for job {JobId}", job.Id);
-			// Don't fail the job completion just because we couldn't get a summary
+
+			// Use diff-based summary as fallback on error
+			if (!string.IsNullOrWhiteSpace(diffBasedSummary))
+			{
+				job.SessionSummary = diffBasedSummary;
+				_logger.LogInformation("Using diff-based summary for job {JobId} after provider error: {Summary}",
+					job.Id, diffBasedSummary.Length > 100 ? diffBasedSummary[..100] + "..." : diffBasedSummary);
+			}
 		}
 	}
 
