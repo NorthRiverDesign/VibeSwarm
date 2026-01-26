@@ -807,6 +807,13 @@ body {
 }
 
 /* ============================================
+   Hover Underline Utility
+============================================ */
+.hover-underline:hover {
+    text-decoration: underline !important;
+}
+
+/* ============================================
    Text Truncation (multi-line)
 ============================================ */
 .text-truncate-lines-3 {

@@ -2,271 +2,248 @@
 @attribute [Authorize]
 @inject IProjectService ProjectService
 @inject IJobService JobService
-@inject ISettingsService SettingsService
-@inject IFileSystemService FileSystemService
 @inject IVersionControlService VersionControlService
-@inject NavigationManager NavigationManager
 @implements IDisposable
 @using VibeSwarm.Shared.Utilities
 @using VibeSwarm.Shared.VersionControl
 
-<PageHeader Title="Projects" />
+<PageHeader Title="Projects" Subtitle="Manage your AI agent project workspaces">
+    <Actions>
+        <ActionButton Icon="plus" Text="New Project" OnClick="ShowAddModal" />
+    </Actions>
+</PageHeader>
 
-<div class="row g-3 g-lg-4">
-    @* Form first on mobile, second on desktop *@
-    <div class="col-12 col-lg-4 order-1 order-lg-2">
-        <div class="card">
-            <div class="card-header bg-body-secondary">
-                <h5 class="mb-0 fw-semibold">@(IsEditing ? "Edit Project" : "New Project")</h5>
-            </div>
-            <div class="card-body">
-                <EditForm Model="@CurrentProject" OnValidSubmit="HandleValidSubmit">
-                    <DataAnnotationsValidator />
-                    <ValidationSummary class="text-danger mb-3" />
-
-                    <div class="mb-3">
-                        <label for="name" class="form-label">Name</label>
-                        <InputText id="name" @bind-Value="CurrentProject.Name" class="form-control"
-                            placeholder="My Project" />
-                        <ValidationMessage For="@(() => CurrentProject.Name)" class="text-danger small" />
-                    </div>
-
-                    <div class="mb-3">
-                        <label for="description" class="form-label">Description</label>
-                        <InputTextArea id="description" @bind-Value="CurrentProject.Description" class="form-control"
-                            rows="2" placeholder="Brief description..." />
-                    </div>
-
-                    @if (!IsEditing)
-                    {
-                        <div class="mb-3">
-                            <label for="githubRepo" class="form-label">
-                                <i class="bi bi-github me-1"></i>GitHub Repository
-                                <span class="text-body-secondary fw-normal">(optional)</span>
-                            </label>
-                            <div class="input-group">
-                                <span class="input-group-text">github.com/</span>
-                                <InputText id="githubRepo" @bind-Value="CurrentProject.GitHubRepository"
-                                    class="form-control" placeholder="owner/repo" @oninput="OnGitHubRepoChanged" />
-                            </div>
-                            <div class="form-text">
-                                Enter a GitHub repository to clone (e.g., <code>microsoft/vscode</code>).
-                                The repository will be cloned to the working path when creating the project.
-                            </div>
-                        </div>
-                    }
-
-                    <div class="mb-3">
-                        <label for="workingPath" class="form-label">Working Path</label>
-                        <div class="input-group">
-                            <InputText id="workingPath" @bind-Value="CurrentProject.WorkingPath" class="form-control"
-                                placeholder="@_workingPathPlaceholder" />
-                            <button type="button" class="btn btn-outline-secondary" @onclick="OpenDirectoryBrowser"
-                                title="Browse directories">
-                                <i class="bi bi-folder2-open"></i>
-                            </button>
-                        </div>
-                        <ValidationMessage For="@(() => CurrentProject.WorkingPath)" class="text-danger small" />
-                        <div class="form-text">Directory where CLI providers execute commands.</div>
-                    </div>
-
-                    <div class="d-flex flex-column flex-sm-row gap-2">
-                        <button type="submit" class="btn btn-primary flex-grow-1" disabled="@IsSaving">
-                            @if (IsSaving)
-                            {
-                                <span class="spinner-border spinner-border-sm me-1" role="status"></span>
-                            }
-                            @if (IsSaving && _isCloning)
-                            {
-                                @:Cloning...
-                            }
-                            else
-                            {
-                                @(IsSaving ? "Saving..." : (IsEditing ? "Update" :
-                                                            (!string.IsNullOrWhiteSpace(CurrentProject.GitHubRepository) ? "Clone & Create" :
-                                                            "Create")))
-                            }
-                        </button>
-                        @if (IsEditing)
-                        {
-                            <button type="button" class="btn btn-secondary" @onclick="CancelEdit">Cancel</button>
-                        }
-                    </div>
-
-                    @if (!string.IsNullOrEmpty(_cloneProgressMessage))
-                    {
-                        <div class="alert alert-info mt-3 mb-0">
-                            <i class="bi bi-info-circle me-1"></i>@_cloneProgressMessage
-                        </div>
-                    }
-
-                    @if (!string.IsNullOrEmpty(ErrorMessage))
-                    {
-                        <div class="alert alert-danger mt-3 mb-0">@ErrorMessage</div>
-                    }
-
-                    @if (!string.IsNullOrEmpty(SuccessMessage))
-                    {
-                        <div class="alert alert-success mt-3 mb-0">@SuccessMessage</div>
-                    }
-                </EditForm>
-            </div>
-        </div>
+<div class="card">
+    <div class="card-header bg-body-secondary">
+        <h5 class="mb-0 fw-semibold">All Projects</h5>
     </div>
-
-    @* List second on mobile, first on desktop *@
-    <div class="col-12 col-lg-8 order-2 order-lg-1">
-        <div class="card">
-            <div class="card-header bg-body-secondary">
-                <h5 class="mb-0 fw-semibold">All Projects</h5>
+    <div class="card-body p-0">
+        @if (IsLoading)
+        {
+            <LoadingSpinner />
+        }
+        else if (!ProjectsWithInfo.Any())
+        {
+            <div class="p-3">
+                <EmptyState Icon="folder" Title="No projects yet"
+                    Message="Create your first project to start running AI agent jobs." />
             </div>
-            <div class="card-body p-0">
-                @if (IsLoading)
+        }
+        else
+        {
+            <div class="list-group list-group-flush">
+                @foreach (var projectInfo in ProjectsWithInfo)
                 {
-                    <LoadingSpinner />
-                }
-                else if (!ProjectsWithStats.Any())
-                {
-                    <div class="p-3">
-                        <EmptyState Icon="folder" Title="No projects yet"
-                            Message="Create your first project to start running AI agent jobs." />
-                    </div>
-                }
-                else
-                {
-                    <div class="list-group list-group-flush">
-                        @foreach (var projectWithStats in ProjectsWithStats)
-                        {
-                            var project = projectWithStats.Project;
-                            var stats = projectWithStats.Stats;
-                            var projectActiveJobs = ActiveJobs.Where(j => j.ProjectId == project.Id).ToList();
-                            <div
-                                class="list-group-item d-flex flex-column flex-md-row align-items-md-center gap-2 gap-md-3 p-3 hover-bg-tertiary">
-                                <div class="flex-grow-1 min-width-0">
-                                    <div class="fw-semibold">
-                                        <a href="/projects/@project.Id" class="text-decoration-none">@project.Name</a>
-                                    </div>
-                                    @if (!string.IsNullOrEmpty(project.Description))
+                    var project = projectInfo.Project;
+                    var stats = projectInfo.Stats;
+                    var latestJob = projectInfo.LatestJob;
+                    var currentBranch = projectInfo.CurrentBranch;
+                    var projectActiveJobs = ActiveJobs.Where(j => j.ProjectId == project.Id).ToList();
+                    <div class="list-group-item p-3 hover-bg-tertiary">
+                        <div class="d-flex align-items-start gap-3">
+                            <div class="flex-grow-1 min-width-0">
+                                <div class="d-flex align-items-center gap-2 flex-wrap">
+                                    <a href="/projects/@project.Id" class="fw-semibold text-decoration-none">@project.Name</a>
+                                    @if (stats.ActiveJobs > 0)
                                     {
-                                        <div class="small text-body-secondary">@TruncateText(project.Description, 80)</div>
-                                    }
-                                    <div class="d-flex flex-wrap gap-2 gap-md-3 mt-2 small text-body-secondary">
-                                        <span class="font-monospace bg-body-tertiary px-2 py-1 rounded-1 text-truncate"
-                                            style="max-width: 250px;">
-                                            @project.WorkingPath
-                                        </span>
-                                        <span class="d-flex align-items-center gap-1">
-                                            <i class="bi bi-calendar-plus opacity-75"></i>
-                                            @project.CreatedAt.FormatDateTimeShort()
-                                        </span>
-                                    </div>
-                                    @* Job Statistics Row *@
-                                    @if (stats.TotalJobs > 0)
-                                    {
-                                        <div class="d-flex flex-wrap gap-2 gap-md-3 mt-2 small">
-                                            <span class="d-flex align-items-center gap-1 text-body-secondary" title="Total jobs">
-                                                <i class="bi bi-list-check opacity-75"></i>
-                                                @stats.TotalJobs jobs
-                                            </span>
-                                            @if (stats.TotalInputTokens > 0 || stats.TotalOutputTokens > 0)
-                                            {
-                                                <span class="d-flex align-items-center gap-1 text-body-secondary"
-                                                    title="Total tokens (input / output)">
-                                                    <i class="bi bi-braces opacity-75"></i>
-                                                    @TokenHelper.FormatTokenCount(stats.TotalInputTokens) /
-                                                    @TokenHelper.FormatTokenCount(stats.TotalOutputTokens)
-                                                </span>
-                                            }
-                                            @if (stats.TotalCostUsd > 0)
-                                            {
-                                                <span class="d-flex align-items-center gap-1 text-success fw-medium" title="Total cost">
-                                                    <i class="bi bi-currency-dollar opacity-75"></i>
-                                                    @TokenHelper.FormatCost(stats.TotalCostUsd)
-                                                </span>
-                                            }
-                                        </div>
-                                    }
-                                    @if (projectActiveJobs.Any())
-                                    {
-                                        <div class="border-top pt-2 mt-2">
-                                            @foreach (var job in projectActiveJobs)
-                                            {
-                                                <div class="active-job-item">
-                                                    <a href="/jobs/@job.Id"
-                                                        class="d-flex align-items-center gap-2 text-decoration-none">
-                                                        <StatusBadge Status="@job.Status.ToString()" />
-                                                        <span class="text-truncate"
-                                                            style="max-width: 200px;">@TruncateText(job.GoalPrompt, 50)</span>
-                                                        @if (!string.IsNullOrEmpty(job.CurrentActivity))
-                                                        {
-                                                            <span class="job-activity d-none d-md-inline">@job.CurrentActivity</span>
-                                                        }
-                                                    </a>
-                                                </div>
-                                            }
-                                        </div>
+                                        <span class="badge bg-primary bg-opacity-75">@stats.ActiveJobs active</span>
                                     }
                                 </div>
-                                <div class="d-flex flex-wrap gap-2 flex-shrink-0">
-                                    <ActionButton Icon="pencil" Text="Edit" Outline="true" Size="ActionButton.ButtonSize.Small"
-                                        HideTextOnMobile="true" OnClick="@(() => EditProject(project))" />
-                                    <ActionButton Icon="trash" Text="Delete" Outline="true" Size="ActionButton.ButtonSize.Small"
-                                        Style="ActionButton.ButtonStyle.Danger" HideTextOnMobile="true"
-                                        OnClick="@(() => DeleteProject(project.Id))" />
+                                @if (!string.IsNullOrEmpty(project.Description))
+                                {
+                                    <div class="small text-body-secondary mt-1">@TruncateText(project.Description, 100)</div>
+                                }
+                                <div class="d-flex flex-wrap gap-2 gap-md-3 mt-2 small text-body-secondary">
+                                    <span class="font-monospace bg-body-tertiary px-2 py-1 rounded-1 text-truncate"
+                                        style="max-width: 280px;" title="@project.WorkingPath">
+                                        @project.WorkingPath
+                                    </span>
+                                    @if (!string.IsNullOrEmpty(project.GitHubRepository))
+                                    {
+                                        <span class="d-flex align-items-center gap-1" title="GitHub Repository">
+                                            <i class="bi bi-github opacity-75"></i>
+                                            <a href="https://github.com/@project.GitHubRepository" target="_blank"
+                                                class="text-body-secondary text-decoration-none hover-underline">
+                                                @project.GitHubRepository
+                                            </a>
+                                        </span>
+                                    }
+                                    @if (!string.IsNullOrEmpty(currentBranch))
+                                    {
+                                        <span class="d-flex align-items-center gap-1" title="Current branch">
+                                            <i class="bi bi-git opacity-75"></i>
+                                            @currentBranch
+                                        </span>
+                                    }
+                                </div>
+                                @* Job Statistics Row *@
+                                @if (stats.TotalJobs > 0)
+                                {
+                                    <div class="d-flex flex-wrap gap-2 gap-md-3 mt-2 small">
+                                        <span class="d-flex align-items-center gap-1 text-body-secondary" title="Total jobs">
+                                            <i class="bi bi-list-check opacity-75"></i>
+                                            @stats.TotalJobs jobs
+                                        </span>
+                                        @if (stats.TotalInputTokens > 0 || stats.TotalOutputTokens > 0)
+                                        {
+                                            <span class="d-flex align-items-center gap-1 text-body-secondary"
+                                                title="Total tokens (input / output)">
+                                                <i class="bi bi-braces opacity-75"></i>
+                                                @TokenHelper.FormatTokenCount(stats.TotalInputTokens) /
+                                                @TokenHelper.FormatTokenCount(stats.TotalOutputTokens)
+                                            </span>
+                                        }
+                                        @if (stats.TotalCostUsd > 0)
+                                        {
+                                            <span class="d-flex align-items-center gap-1 text-success fw-medium" title="Total cost">
+                                                <i class="bi bi-currency-dollar opacity-75"></i>
+                                                @TokenHelper.FormatCost(stats.TotalCostUsd)
+                                            </span>
+                                        }
+                                    </div>
+                                }
+                                @* Latest Job Display *@
+                                @if (latestJob != null)
+                                {
+                                    <div class="border-top pt-2 mt-2">
+                                        <div class="d-flex align-items-center gap-2 small">
+                                            <span class="text-body-tertiary">Latest:</span>
+                                            <a href="/jobs/@latestJob.Id"
+                                                class="d-flex align-items-center gap-2 text-decoration-none">
+                                                <StatusBadge Status="@latestJob.Status.ToString()" />
+                                                <span class="text-truncate text-body-secondary"
+                                                    style="max-width: 300px;">@TruncateText(latestJob.GoalPrompt, 60)</span>
+                                            </a>
+                                        </div>
+                                    </div>
+                                }
+                                @* Active Jobs Display *@
+                                @if (projectActiveJobs.Any())
+                                {
+                                    <div class="@(latestJob == null ? "border-top pt-2 mt-2" : "mt-1")">
+                                        @foreach (var job in projectActiveJobs)
+                                        {
+                                            <div class="active-job-item">
+                                                <a href="/jobs/@job.Id"
+                                                    class="d-flex align-items-center gap-2 text-decoration-none small">
+                                                    <StatusBadge Status="@job.Status.ToString()" />
+                                                    <span class="text-truncate" style="max-width: 200px;">@TruncateText(job.GoalPrompt,
+                                                                                                50)</span>
+                                    @if (!string.IsNullOrEmpty(job.CurrentActivity))
+                                                    {
+                                                        <span class="job-activity d-none d-md-inline">@job.CurrentActivity</span>
+                                                    }
+                                                </a>
+                                            </div>
+                                        }
+                                    </div>
+                                }
+                            </div>
+                            <div class="d-flex align-items-center gap-2 flex-shrink-0">
+                                @* Gear dropdown menu *@
+                                <div class="dropdown">
+                                    <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button"
+                                        id="project-menu-@project.Id" data-bs-toggle="dropdown" aria-expanded="false"
+                                        title="Project actions">
+                                        <i class="bi bi-gear"></i>
+                                    </button>
+                                    <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="project-menu-@project.Id">
+                                        <li>
+                                            <a class="dropdown-item" href="/projects/@project.Id">
+                                                <i class="bi bi-eye me-2"></i>
+                                                View Details
+                                            </a>
+                                        </li>
+                                        <li>
+                                            <button class="dropdown-item" @onclick="@(() => EditProject(project))"
+                                                @onclick:stopPropagation="true">
+                                                <i class="bi bi-pencil me-2"></i>
+                                                Edit
+                                            </button>
+                                        </li>
+                                        <li>
+                                            <hr class="dropdown-divider">
+                                        </li>
+                                        <li>
+                                            <button class="dropdown-item text-danger"
+                                                @onclick="@(() => ShowDeleteConfirmation(project))"
+                                                @onclick:stopPropagation="true">
+                                                <i class="bi bi-trash me-2"></i>
+                                                Delete
+                                            </button>
+                                        </li>
+                                    </ul>
                                 </div>
                             </div>
-                        }
+                        </div>
                     </div>
                 }
             </div>
-        </div>
+        }
     </div>
 </div>
 
-@if (_showDirectoryBrowser)
-{
-    <DirectoryBrowser @ref="_directoryBrowser" InitialPath="@_defaultProjectsDirectory"
-        OnDirectorySelected="OnDirectorySelected" OnClosed="CloseDirectoryBrowser" />
-}
+@* Project Modal for Add/Edit *@
+<ProjectModal @bind-IsVisible="ShowProjectModal" EditProject="@EditingProject" OnSaved="HandleProjectSaved"
+    OnCancelled="HandleModalCancelled" OnClosed="HandleProjectModalClosed" />
+
+@* Delete Confirmation Modal *@
+<ModalDialog @bind-IsVisible="ShowDeleteModal" Title="Delete Project" Icon="exclamation-triangle"
+    Size="ModalDialog.ModalSize.Small" OnClose="HandleDeleteModalClosed">
+    <ChildContent>
+        <p>Are you sure you want to delete <strong>@ProjectToDelete?.Name</strong>?</p>
+        <p class="text-body-secondary small">This will remove the project from VibeSwarm and delete all associated jobs.
+        </p>
+
+        <div class="form-check mt-3">
+            <input class="form-check-input" type="checkbox" id="deleteDirectory" @bind="DeleteDirectoryConfirmed">
+            <label class="form-check-label text-danger" for="deleteDirectory">
+                <i class="bi bi-exclamation-triangle me-1"></i>
+                Also delete the project directory from disk
+            </label>
+        </div>
+        @if (DeleteDirectoryConfirmed)
+        {
+            <div class="alert alert-danger mt-2 py-2 px-3 small mb-0">
+                <strong>Warning:</strong> This will permanently delete
+                <code class="text-break">@ProjectToDelete?.WorkingPath</code>
+                and all its contents!
+            </div>
+        }
+    </ChildContent>
+    <FooterContent>
+        <button type="button" class="btn btn-secondary" @onclick="CancelDelete">Cancel</button>
+        <button type="button" class="btn btn-danger" @onclick="ConfirmDelete" disabled="@IsDeleting">
+            @if (IsDeleting)
+            {
+                <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+            }
+            Delete@(DeleteDirectoryConfirmed ? " & Remove Files" : "")
+        </button>
+    </FooterContent>
+</ModalDialog>
 
 @code {
-    private List<ProjectWithStats> ProjectsWithStats { get; set; } = new();
+    private List<ProjectInfoWithStats> ProjectsWithInfo { get; set; } = new();
     private List<Job> ActiveJobs { get; set; } = new();
-    private Project CurrentProject { get; set; } = new();
     private bool IsLoading { get; set; } = true;
-    private bool IsSaving { get; set; }
-    private bool IsEditing { get; set; }
-    private string? ErrorMessage { get; set; }
-    private string? SuccessMessage { get; set; }
     private System.Threading.Timer? _refreshTimer;
-    private bool _isCloning { get; set; }
-    private string? _cloneProgressMessage { get; set; }
-    private bool _showDirectoryBrowser = false;
-    private DirectoryBrowser? _directoryBrowser;
-    private string? _defaultProjectsDirectory;
 
-    private string _workingPathPlaceholder => !string.IsNullOrEmpty(_defaultProjectsDirectory)
-    ? Path.Combine(_defaultProjectsDirectory, "project-name")
-    : (OperatingSystem.IsWindows() ? @"C:\projects\myapp" : "/home/user/projects/myapp");
+    // Modal state
+    private bool ShowProjectModal { get; set; }
+    private Project? EditingProject { get; set; }
+
+    // Delete confirmation state
+    private bool ShowDeleteModal { get; set; }
+    private Project? ProjectToDelete { get; set; }
+    private bool IsDeleting { get; set; }
+    private bool DeleteDirectoryConfirmed { get; set; }
 
     protected override async Task OnInitializedAsync()
     {
-        await LoadDefaultProjectsDirectory();
         await LoadProjects();
         await LoadActiveJobs();
         StartAutoRefresh();
-    }
-
-    private async Task LoadDefaultProjectsDirectory()
-    {
-        try
-        {
-            _defaultProjectsDirectory = await SettingsService.GetDefaultProjectsDirectoryAsync();
-        }
-        catch
-        {
-            // Ignore errors loading default directory
-        }
     }
 
     private void StartAutoRefresh()
@@ -308,7 +285,48 @@
         IsLoading = true;
         try
         {
-            ProjectsWithStats = (await ProjectService.GetAllWithStatsAsync()).ToList();
+            var projectsWithStats = (await ProjectService.GetAllWithStatsAsync()).ToList();
+
+            // Build combined info with branch info
+            ProjectsWithInfo = new List<ProjectInfoWithStats>();
+            foreach (var pws in projectsWithStats)
+            {
+                var info = new ProjectInfoWithStats
+                {
+                    Project = pws.Project,
+                    Stats = pws.Stats,
+                    LatestJob = null,
+                    CurrentBranch = null
+                };
+
+                // Try to get current branch
+                try
+                {
+                    if (await VersionControlService.IsGitRepositoryAsync(pws.Project.WorkingPath))
+                    {
+                        info.CurrentBranch = await VersionControlService.GetCurrentBranchAsync(pws.Project.WorkingPath);
+                    }
+                }
+                catch
+                {
+                    // Ignore errors getting branch info
+                }
+
+                // Try to get latest job
+                try
+                {
+                    var projectWithJobs = await ProjectService.GetByIdWithJobsAsync(pws.Project.Id);
+                    info.LatestJob = projectWithJobs?.Jobs
+                    .OrderByDescending(j => j.CreatedAt)
+                    .FirstOrDefault();
+                }
+                catch
+                {
+                    // Ignore errors getting latest job
+                }
+
+                ProjectsWithInfo.Add(info);
+            }
         }
         finally
         {
@@ -316,187 +334,126 @@
         }
     }
 
-    private async Task HandleValidSubmit()
+    private void ShowAddModal()
     {
-        IsSaving = true;
-        ErrorMessage = null;
-        SuccessMessage = null;
-        _cloneProgressMessage = null;
+        // Close any other open modals first
+        ShowDeleteModal = false;
+        ProjectToDelete = null;
+        DeleteDirectoryConfirmed = false;
 
-        try
-        {
-            if (IsEditing)
-            {
-                await ProjectService.UpdateAsync(CurrentProject);
-                SuccessMessage = "Project updated successfully.";
-            }
-            else
-            {
-                // If a GitHub repository is specified, clone it first
-                if (!string.IsNullOrWhiteSpace(CurrentProject.GitHubRepository))
-                {
-                    _isCloning = true;
-                    StateHasChanged();
-
-                    try
-                    {
-                        // Get the clone URL
-                        var cloneUrl = VersionControlService.GetGitHubCloneUrl(CurrentProject.GitHubRepository);
-
-                        // Clone the repository with progress updates
-                        var cloneResult = await VersionControlService.CloneRepositoryAsync(
-                        cloneUrl,
-                        CurrentProject.WorkingPath,
-                        progressCallback: async (message) =>
-                        {
-                            _cloneProgressMessage = message;
-                            await InvokeAsync(StateHasChanged);
-                        });
-
-                        if (!cloneResult.Success)
-                        {
-                            ErrorMessage = cloneResult.Error ?? "Failed to clone repository.";
-                            return;
-                        }
-                    }
-                    catch (ArgumentException ex)
-                    {
-                        ErrorMessage = $"Invalid GitHub repository format: {ex.Message}";
-                        return;
-                    }
-                    finally
-                    {
-                        _isCloning = false;
-                        _cloneProgressMessage = null;
-                    }
-                }
-
-                await ProjectService.CreateAsync(CurrentProject);
-                SuccessMessage = !string.IsNullOrWhiteSpace(CurrentProject.GitHubRepository)
-                ? "Project created and repository cloned successfully."
-                : "Project created successfully.";
-            }
-
-            CurrentProject = new Project();
-            IsEditing = false;
-            await LoadProjects();
-        }
-        catch (Exception ex)
-        {
-            ErrorMessage = $"Error saving project: {ex.Message}";
-        }
-        finally
-        {
-            IsSaving = false;
-            _isCloning = false;
-            _cloneProgressMessage = null;
-        }
+        EditingProject = null;
+        ShowProjectModal = true;
+        StateHasChanged();
     }
 
     private void EditProject(Project project)
     {
-        CurrentProject = new Project
-        {
-            Id = project.Id,
-            Name = project.Name,
-            Description = project.Description,
-            WorkingPath = project.WorkingPath,
-            GitHubRepository = project.GitHubRepository
-        };
-        IsEditing = true;
-        ErrorMessage = null;
-        SuccessMessage = null;
+        // Close any other open modals first
+        ShowDeleteModal = false;
+        ProjectToDelete = null;
+        DeleteDirectoryConfirmed = false;
+
+        EditingProject = project;
+        ShowProjectModal = true;
+        StateHasChanged();
     }
 
-    private void CancelEdit()
+    private async Task HandleProjectSaved(Guid? newProjectId)
     {
-        CurrentProject = new Project();
-        IsEditing = false;
-        ErrorMessage = null;
-        SuccessMessage = null;
+        ShowProjectModal = false;
+        EditingProject = null;
+        await LoadProjects();
     }
 
-    private void OnGitHubRepoChanged(ChangeEventArgs e)
+    private void HandleModalCancelled()
     {
-        var repoValue = e.Value?.ToString() ?? string.Empty;
-        CurrentProject.GitHubRepository = repoValue;
-
-        // Auto-populate working path if it's empty or was auto-populated before
-        if (!string.IsNullOrWhiteSpace(repoValue))
-        {
-            // Extract repo name from "owner/repo" format
-            var parts = repoValue.Trim().Trim('/').Split('/');
-            if (parts.Length >= 2 && !string.IsNullOrWhiteSpace(parts[1]))
-            {
-                var repoName = parts[1];
-
-                // Auto-populate working path using default projects directory
-                if (!string.IsNullOrEmpty(_defaultProjectsDirectory))
-                {
-                    var suggestedPath = Path.Combine(_defaultProjectsDirectory, repoName);
-
-                    // Only auto-populate if working path is empty or matches a previously auto-populated value
-                    if (string.IsNullOrWhiteSpace(CurrentProject.WorkingPath) ||
-                    CurrentProject.WorkingPath.StartsWith(_defaultProjectsDirectory))
-                    {
-                        CurrentProject.WorkingPath = suggestedPath;
-                    }
-                }
-
-                // Also auto-populate the name if it's empty
-                if (string.IsNullOrWhiteSpace(CurrentProject.Name))
-                {
-                    CurrentProject.Name = repoName;
-                }
-            }
-        }
+        ShowProjectModal = false;
+        EditingProject = null;
     }
 
-    private async Task DeleteProject(Guid id)
+    private void HandleProjectModalClosed()
     {
+        ShowProjectModal = false;
+        EditingProject = null;
+        StateHasChanged();
+    }
+
+    private void ShowDeleteConfirmation(Project project)
+    {
+        // Close any other open modals first
+        ShowProjectModal = false;
+        EditingProject = null;
+
+        ProjectToDelete = project;
+        DeleteDirectoryConfirmed = false;
+        ShowDeleteModal = true;
+        StateHasChanged();
+    }
+
+    private void CancelDelete()
+    {
+        ShowDeleteModal = false;
+        ProjectToDelete = null;
+        DeleteDirectoryConfirmed = false;
+    }
+
+    private void HandleDeleteModalClosed()
+    {
+        ShowDeleteModal = false;
+        ProjectToDelete = null;
+        DeleteDirectoryConfirmed = false;
+        StateHasChanged();
+    }
+
+    private async Task ConfirmDelete()
+    {
+        if (ProjectToDelete == null) return;
+
+        IsDeleting = true;
         try
         {
-            await ProjectService.DeleteAsync(id);
+            // Delete the directory if confirmed
+            if (DeleteDirectoryConfirmed && !string.IsNullOrEmpty(ProjectToDelete.WorkingPath))
+            {
+                try
+                {
+                    if (Directory.Exists(ProjectToDelete.WorkingPath))
+                    {
+                        Directory.Delete(ProjectToDelete.WorkingPath, recursive: true);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error deleting directory: {ex.Message}");
+                    // Continue with project deletion even if directory deletion fails
+                }
+            }
+
+            await ProjectService.DeleteAsync(ProjectToDelete.Id);
+            ShowDeleteModal = false;
+            ProjectToDelete = null;
+            DeleteDirectoryConfirmed = false;
             await LoadProjects();
-            SuccessMessage = "Project deleted successfully.";
         }
-        catch (Exception ex)
+        finally
         {
-            ErrorMessage = $"Error deleting project: {ex.Message}";
+            IsDeleting = false;
         }
-    }
-
-    private async Task OpenDirectoryBrowser()
-    {
-        _showDirectoryBrowser = true;
-        StateHasChanged();
-
-        // Wait for the component to render
-        await Task.Delay(50);
-
-        if (_directoryBrowser != null)
-        {
-            var initialPath = !string.IsNullOrEmpty(CurrentProject.WorkingPath)
-            ? CurrentProject.WorkingPath
-            : _defaultProjectsDirectory;
-            await _directoryBrowser.ShowAsync(initialPath);
-        }
-    }
-
-    private void OnDirectorySelected(string path)
-    {
-        CurrentProject.WorkingPath = path;
-        _showDirectoryBrowser = false;
-        StateHasChanged();
-    }
-
-    private void CloseDirectoryBrowser()
-    {
-        _showDirectoryBrowser = false;
     }
 
     public void Dispose()
     {
         _refreshTimer?.Dispose();
+    }
+
+    /// <summary>
+    /// Combined project info with stats, branch, and latest job
+    /// </summary>
+    private class ProjectInfoWithStats
+    {
+        public required Project Project { get; set; }
+        public ProjectJobStats Stats { get; set; } = new();
+        public string? CurrentBranch { get; set; }
+        public Job? LatestJob { get; set; }
     }
 }
