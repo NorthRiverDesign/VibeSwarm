@@ -4,150 +4,201 @@
 @using VibeSwarm.Shared.Data
 @inject IProviderService ProviderService
 
-<PageHeader Title="Providers" Subtitle="Manage your AI coding agent providers" />
+<PageHeader Title="Providers" Subtitle="Manage your AI coding agent providers">
+    <Actions>
+        <ActionButton Icon="plus" Text="Add Provider" OnClick="ShowAddModal" />
+    </Actions>
+</PageHeader>
 
-<div class="row g-3 g-lg-4">
-    @* Form first on mobile *@
-    <div class="col-12 col-lg-4 order-1 order-lg-2">
-        <div class="card">
-            <div class="card-header bg-body-secondary">
-                <h5 class="mb-0 fw-semibold">@(EditingProvider != null ? "Edit Provider" : "Add Provider")</h5>
-            </div>
-            <div class="card-body">
-                <ProviderForm Provider="@CurrentProvider" IsEdit="@(EditingProvider != null)"
-                    OnSaved="HandleProviderSaved" OnCancel="CancelEdit" />
-            </div>
-        </div>
+<div class="card">
+    <div class="card-header bg-body-secondary">
+        <h5 class="mb-0 fw-semibold">Connected Providers</h5>
     </div>
-
-    @* List second on mobile *@
-    <div class="col-12 col-lg-8 order-2 order-lg-1">
-        <div class="card">
-            <div class="card-header bg-body-secondary">
-                <h5 class="mb-0 fw-semibold">Connected Providers</h5>
+    <div class="card-body p-0">
+        @if (IsLoading)
+        {
+            <LoadingSpinner />
+        }
+        else if (!ProvidersList.Any())
+        {
+            <div class="p-3">
+                <EmptyState Icon="cpu" Title="No providers configured"
+                    Message="Add a provider to connect to AI coding agents like Claude Code CLI." />
             </div>
-            <div class="card-body p-0">
-                @if (IsLoading)
+        }
+        else
+        {
+            <div class="list-group list-group-flush">
+                @foreach (var provider in ProvidersList)
                 {
-                    <LoadingSpinner />
-                }
-                else if (!ProvidersList.Any())
-                {
-                    <div class="p-3">
-                        <EmptyState Icon="cpu" Title="No providers configured"
-                            Message="Add a provider to connect to AI coding agents like Claude Code CLI." />
-                    </div>
-                }
-                else
-                {
-                    <div class="list-group list-group-flush">
-                        @foreach (var provider in ProvidersList)
-                        {
-                            <div
-                                class="list-group-item d-flex flex-column flex-md-row align-items-md-center gap-2 gap-md-3 p-3 hover-bg-tertiary @(provider.IsDefault ? "bg-success bg-opacity-10" : "")">
-                                <div class="flex-grow-1 min-width-0">
-                                    <div class="d-flex align-items-center gap-2 flex-wrap">
-                                        <span class="fw-semibold">@provider.Name</span>
-                                        @if (provider.IsDefault)
-                                        {
-                                            <span class="default-badge">Default</span>
-                                        }
-                                        <StatusBadge Status="@(provider.IsEnabled ? "Active" : "Off")" ShowSpinner="false" />
-                                    </div>
-                                    <div class="d-flex flex-wrap gap-2 gap-md-3 mt-2 small text-body-secondary">
-                                        <span><span class="fw-medium">Type:</span> @provider.Type</span>
-                                        <span><span class="fw-medium">Mode:</span> @provider.ConnectionMode</span>
-                                    </div>
-                                    @if (TestResults.TryGetValue(provider.Id, out var result))
+                    <div class="list-group-item p-3 hover-bg-tertiary @(provider.IsDefault ? "bg-success bg-opacity-10" : "")">
+                        <div class="d-flex align-items-start gap-3">
+                            <div class="flex-grow-1 min-width-0">
+                                <div class="d-flex align-items-center gap-2 flex-wrap">
+                                    <span class="fw-semibold">@provider.Name</span>
+                                    @if (provider.IsDefault)
                                     {
-                                        <div class="mt-2 @(result.IsConnected ? "test-success" : "test-failure")">
-                                            <strong>@(result.IsConnected ? "Connected" : "Connection Failed")</strong>
-                                            @if (!result.IsConnected && !string.IsNullOrEmpty(result.ErrorMessage))
-                                            {
-                                                <div class="mt-1">
-                                                    <pre class="mb-0 small">@result.ErrorMessage</pre>
-                                                </div>
-                                            }
-                                        </div>
+                                        <span class="default-badge">Default</span>
                                     }
-                                    @if (ProviderModels.TryGetValue(provider.Id, out var models) && models.Any())
-                                    {
-                                        <div class="mt-2">
-                                            <span class="fw-medium small text-body-secondary">Models:</span>
-                                            <div class="d-flex flex-wrap gap-1 mt-1">
-                                                @foreach (var model in models.Where(m => m.IsAvailable).Take(5))
-                                                {
-                                                    <span class="badge @(model.IsDefault ? "bg-primary" : "bg-secondary") bg-opacity-75"
-                                                        title="@model.ModelId">
-                                                        @(model.DisplayName ?? model.ModelId)
-                                                    </span>
-                                                }
-                                                @if (models.Count(m => m.IsAvailable) > 5)
-                                                {
-                                                    <span class="badge bg-secondary bg-opacity-50">+@(models.Count(m => m.IsAvailable) -
-                                                                                                5) more</span>
-                                                }
-                                            </div>
-                                            @if (provider.LastModelsRefreshAt.HasValue)
-                                            {
-                                                <small class="text-body-tertiary d-block mt-1">
-                                                    Updated @provider.LastModelsRefreshAt.Value.ToLocalTime().ToString("g")
-                                                </small>
-                                            }
-                                        </div>
-                                    }
-                                    @if (!string.IsNullOrEmpty(RefreshModelsError))
-                                    {
-                                        <div class="alert alert-warning mt-2 mb-0 py-2 px-3 small">
-                                            <i class="bi bi-exclamation-triangle me-1"></i>
-                                            @RefreshModelsError
-                                        </div>
-                                    }
+                                    <StatusBadge Status="@(provider.IsEnabled ? "Active" : "Off")" ShowSpinner="false" />
                                 </div>
-                                <div class="d-flex flex-wrap gap-2 flex-shrink-0 align-items-center">
-                                    <label class="toggle-switch me-1" title="@(provider.IsEnabled ? "Disable" : "Enable")">
-                                        <input type="checkbox" checked="@provider.IsEnabled"
-                                            @onchange="() => ToggleEnabled(provider)" />
-                                        <span class="toggle-slider"></span>
-                                    </label>
-                                    <ActionButton Icon="lightning" Text="Test" Outline="true"
-                                        Size="ActionButton.ButtonSize.Small" HideTextOnMobile="true"
-                                        IsLoading="@(TestingId == provider.Id)" OnClick="@(() => TestConnection(provider))" />
-                                    <ActionButton Icon="arrow-repeat" Text="Models" Outline="true"
-                                        Size="ActionButton.ButtonSize.Small" HideTextOnMobile="true"
-                                        IsLoading="@(RefreshingModelsId == provider.Id)"
-                                        OnClick="@(() => RefreshModels(provider))" />
-                                    @if (!provider.IsDefault)
-                                    {
-                                        <ActionButton Icon="check2" Text="Default" Outline="true"
-                                            Size="ActionButton.ButtonSize.Small" Style="ActionButton.ButtonStyle.Primary"
-                                            HideTextOnMobile="true" OnClick="@(() => MakeDefault(provider))" />
-                                    }
-                                    <ActionButton Icon="pencil" Text="Edit" Outline="true" Size="ActionButton.ButtonSize.Small"
-                                        HideTextOnMobile="true" OnClick="@(() => EditProvider(provider))" />
-                                    <ActionButton Icon="trash" Text="Delete" Outline="true" Size="ActionButton.ButtonSize.Small"
-                                        Style="ActionButton.ButtonStyle.Danger" HideTextOnMobile="true"
-                                        OnClick="@(() => DeleteProvider(provider))" />
+                                <div class="d-flex flex-wrap gap-2 gap-md-3 mt-2 small text-body-secondary">
+                                    <span><span class="fw-medium">Type:</span> @provider.Type</span>
+                                    <span><span class="fw-medium">Mode:</span> @provider.ConnectionMode</span>
+                                </div>
+                                @if (TestResults.TryGetValue(provider.Id, out var result))
+                                {
+                                    <div class="mt-2 @(result.IsConnected ? "test-success" : "test-failure")">
+                                        <strong>@(result.IsConnected ? "Connected" : "Connection Failed")</strong>
+                                        @if (!result.IsConnected && !string.IsNullOrEmpty(result.ErrorMessage))
+                                        {
+                                            <div class="mt-1">
+                                                <pre class="mb-0 small">@result.ErrorMessage</pre>
+                                            </div>
+                                        }
+                                    </div>
+                                }
+                                @if (ProviderModels.TryGetValue(provider.Id, out var models) && models.Any())
+                                {
+                                    <div class="mt-2">
+                                        <span class="fw-medium small text-body-secondary">Models:</span>
+                                        <div class="d-flex flex-wrap gap-1 mt-1">
+                                            @foreach (var model in models.Where(m => m.IsAvailable).Take(5))
+                                            {
+                                                <span class="badge @(model.IsDefault ? "bg-primary" : "bg-secondary") bg-opacity-75"
+                                                    title="@model.ModelId">
+                                                    @(model.DisplayName ?? model.ModelId)
+                                                </span>
+                                            }
+                                            @if (models.Count(m => m.IsAvailable) > 5)
+                                            {
+                                                <span class="badge bg-secondary bg-opacity-50">+@(models.Count(m => m.IsAvailable) - 5)
+                                                    more</span>
+                                            }
+                                        </div>
+                                        @if (provider.LastModelsRefreshAt.HasValue)
+                                        {
+                                            <small class="text-body-tertiary d-block mt-1">
+                                                Updated @provider.LastModelsRefreshAt.Value.ToLocalTime().ToString("g")
+                                            </small>
+                                        }
+                                    </div>
+                                }
+                                @if (RefreshModelsErrors.TryGetValue(provider.Id, out var refreshError) &&
+                                                        !string.IsNullOrEmpty(refreshError))
+                                {
+                                    <div class="alert alert-warning mt-2 mb-0 py-2 px-3 small">
+                                        <i class="bi bi-exclamation-triangle me-1"></i>
+                                        @refreshError
+                                    </div>
+                                }
+                            </div>
+                            <div class="d-flex align-items-center gap-2 flex-shrink-0">
+                                @* Test connection button *@
+                                        <ActionButton Icon="lightning" Text="Test" Outline="true" Size="ActionButton.ButtonSize.Small"
+                                    HideTextOnMobile="true" IsLoading="@(TestingId == provider.Id)"
+                                    OnClick="@(() => TestConnection(provider))" />
+
+                                @* Enabled toggle *@
+                                        <label class="toggle-switch" title="@(provider.IsEnabled ? "Disable" : "Enable")">
+                                    <input type="checkbox" checked="@provider.IsEnabled"
+                                        @onchange="() => ToggleEnabled(provider)" />
+                                    <span class="toggle-slider"></span>
+                                </label>
+
+                                @* Gear dropdown menu *@
+                                        <div class="dropdown">
+                                    <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button"
+                                        id="provider-menu-@provider.Id" data-bs-toggle="dropdown" aria-expanded="false"
+                                        title="Provider actions">
+                                        <i class="bi bi-gear"></i>
+                                    </button>
+                                    <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="provider-menu-@provider.Id">
+                                        <li>
+                                            <button class="dropdown-item" @onclick="@(() => RefreshModels(provider))"
+                                                @onclick:stopPropagation="true" disabled="@(RefreshingModelsId == provider.Id)">
+                                                <i
+                                                    class="bi bi-arrow-repeat me-2 @(RefreshingModelsId == provider.Id ? "spin" : "")"></i>
+                                                Refresh Models
+                                            </button>
+                                        </li>
+                                        @if (!provider.IsDefault)
+                                        {
+                                            <li>
+                                                <button class="dropdown-item" @onclick="@(() => MakeDefault(provider))"
+                                                    @onclick:stopPropagation="true">
+                                                    <i class="bi bi-check2-circle me-2"></i>
+                                                    Set as Default
+                                                </button>
+                                            </li>
+                                        }
+                                        <li>
+                                            <button class="dropdown-item" @onclick="@(() => EditProvider(provider))"
+                                                @onclick:stopPropagation="true">
+                                                <i class="bi bi-pencil me-2"></i>
+                                                Edit
+                                            </button>
+                                        </li>
+                                        <li>
+                                            <hr class="dropdown-divider">
+                                        </li>
+                                        <li>
+                                            <button class="dropdown-item text-danger"
+                                                @onclick="@(() => ShowDeleteConfirmation(provider))"
+                                                @onclick:stopPropagation="true">
+                                                <i class="bi bi-trash me-2"></i>
+                                                Delete
+                                            </button>
+                                        </li>
+                                    </ul>
                                 </div>
                             </div>
-                        }
+                        </div>
                     </div>
                 }
             </div>
-        </div>
+        }
     </div>
 </div>
+
+@* Provider Modal for Add/Edit *@
+<ProviderModal @bind-IsVisible="ShowProviderModal" EditProvider="@EditingProvider" OnSaved="HandleProviderSaved"
+    OnCancelled="HandleModalCancelled" OnClosed="HandleProviderModalClosed" />
+
+@* Delete Confirmation Modal *@
+<ModalDialog @bind-IsVisible="ShowDeleteModal" Title="Delete Provider" Icon="exclamation-triangle"
+    Size="ModalDialog.ModalSize.Small" OnClose="HandleDeleteModalClosed">
+    <ChildContent>
+        <p>Are you sure you want to delete <strong>@ProviderToDelete?.Name</strong>?</p>
+        <p class="text-body-secondary small mb-0">This action cannot be undone.</p>
+    </ChildContent>
+    <FooterContent>
+        <button type="button" class="btn btn-secondary" @onclick="CancelDelete">Cancel</button>
+        <button type="button" class="btn btn-danger" @onclick="ConfirmDelete" disabled="@IsDeleting">
+            @if (IsDeleting)
+            {
+                <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+            }
+            Delete
+        </button>
+    </FooterContent>
+</ModalDialog>
 
 @code {
     private List<Provider> ProvidersList { get; set; } = new();
     private bool IsLoading { get; set; } = true;
+    private bool ShowProviderModal { get; set; }
     private Provider? EditingProvider { get; set; }
-    private Provider CurrentProvider { get; set; } = new();
     private Guid? TestingId { get; set; }
     private Guid? RefreshingModelsId { get; set; }
-    private string? RefreshModelsError { get; set; }
+    private Dictionary<Guid, string> RefreshModelsErrors { get; set; } = new();
     private Dictionary<Guid, ConnectionTestResult> TestResults { get; set; } = new();
     private Dictionary<Guid, List<ProviderModel>> ProviderModels { get; set; } = new();
+
+    // Delete confirmation state
+    private bool ShowDeleteModal { get; set; }
+    private Provider? ProviderToDelete { get; set; }
+    private bool IsDeleting { get; set; }
 
     protected override async Task OnInitializedAsync()
     {
@@ -175,42 +226,107 @@
         }
     }
 
+    private void ShowAddModal()
+    {
+        // Close any other open modals first
+        ShowDeleteModal = false;
+        ProviderToDelete = null;
+
+        EditingProvider = null;
+        ShowProviderModal = true;
+        StateHasChanged();
+    }
+
     private void EditProvider(Provider provider)
     {
+        // Close any other open modals first
+        ShowDeleteModal = false;
+        ProviderToDelete = null;
+
         EditingProvider = provider;
-        CurrentProvider = new Provider
+        ShowProviderModal = true;
+        StateHasChanged();
+    }
+
+    private async Task HandleProviderSaved(Guid? newProviderId)
+    {
+        ShowProviderModal = false;
+        EditingProvider = null;
+        await LoadProviders();
+
+        // If a new provider was created, test connection and refresh models if successful
+        if (newProviderId.HasValue)
         {
-            Id = provider.Id,
-            Name = provider.Name,
-            Type = provider.Type,
-            ConnectionMode = provider.ConnectionMode,
-            ExecutablePath = provider.ExecutablePath,
-            WorkingDirectory = provider.WorkingDirectory,
-            ApiEndpoint = provider.ApiEndpoint,
-            ApiKey = provider.ApiKey,
-            IsEnabled = provider.IsEnabled,
-            CreatedAt = provider.CreatedAt,
-            LastConnectedAt = provider.LastConnectedAt
-        };
+            var provider = ProvidersList.FirstOrDefault(p => p.Id == newProviderId.Value);
+            if (provider != null)
+            {
+                // Test connection
+                await TestConnection(provider);
+
+                // If connection successful, refresh models
+                if (TestResults.TryGetValue(provider.Id, out var result) && result.IsConnected)
+                {
+                    await RefreshModels(provider);
+                }
+            }
+        }
     }
 
-    private void CancelEdit()
+    private void HandleModalCancelled()
     {
+        ShowProviderModal = false;
         EditingProvider = null;
-        CurrentProvider = new Provider();
     }
 
-    private async Task HandleProviderSaved()
+    private void HandleProviderModalClosed()
     {
+        // Called when modal is closed via backdrop click or X button
+        ShowProviderModal = false;
         EditingProvider = null;
-        CurrentProvider = new Provider();
-        await LoadProviders();
+        StateHasChanged();
     }
 
-    private async Task DeleteProvider(Provider provider)
+    private void ShowDeleteConfirmation(Provider provider)
     {
-        await ProviderService.DeleteAsync(provider.Id);
-        await LoadProviders();
+        // Close any other open modals first
+        ShowProviderModal = false;
+        EditingProvider = null;
+
+        ProviderToDelete = provider;
+        ShowDeleteModal = true;
+        StateHasChanged();
+    }
+
+    private void CancelDelete()
+    {
+        ShowDeleteModal = false;
+        ProviderToDelete = null;
+    }
+
+    private void HandleDeleteModalClosed()
+    {
+        // Called when modal is closed via backdrop click or X button
+        ShowDeleteModal = false;
+        ProviderToDelete = null;
+        StateHasChanged();
+    }
+
+    private async Task ConfirmDelete()
+    {
+        if (ProviderToDelete == null) return;
+
+        IsDeleting = true;
+        try
+        {
+            await ProviderService.DeleteAsync(ProviderToDelete.Id);
+            ShowDeleteModal = false;
+            ProviderToDelete = null;
+            await LoadProviders();
+        }
+        finally
+        {
+            IsDeleting = false;
+        }
     }
 
     private async Task ToggleEnabled(Provider provider)
@@ -267,7 +383,7 @@
     private async Task RefreshModels(Provider provider)
     {
         RefreshingModelsId = provider.Id;
-        RefreshModelsError = null;
+        RefreshModelsErrors.Remove(provider.Id);
         StateHasChanged();
 
         try
@@ -280,12 +396,12 @@
         }
         catch (TimeoutException ex)
         {
-            RefreshModelsError = ex.Message;
+            RefreshModelsErrors[provider.Id] = ex.Message;
             Console.WriteLine($"Timeout refreshing models: {ex.Message}");
         }
         catch (Exception ex)
         {
-            RefreshModelsError = $"Error refreshing models: {ex.Message}";
+            RefreshModelsErrors[provider.Id] = $"Error refreshing models: {ex.Message}";
             Console.WriteLine($"Error refreshing models: {ex.Message}");
         }
         finally

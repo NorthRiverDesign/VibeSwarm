@@ -1,0 +1,235 @@
+@* Modal component for adding and editing providers *@
+@using VibeSwarm.Shared.Data
+@using VibeSwarm.Shared.Services
+@inject IProviderService ProviderService
+
+<ModalDialog @bind-IsVisible="IsVisible" Title="@(IsEdit ? "Edit Provider" : "Add Provider")"
+	Icon="@(IsEdit ? "pencil" : "plus-circle")" Size="ModalDialog.ModalSize.Default" OnClose="HandleClose">
+	<ChildContent>
+		<EditForm Model="@Provider" OnValidSubmit="HandleValidSubmit">
+			<DataAnnotationsValidator />
+			<ValidationSummary class="text-danger mb-3" />
+
+			<div class="mb-3">
+				<label for="modal-name" class="form-label">Name</label>
+				<InputText id="modal-name" @bind-Value="Provider.Name" class="form-control"
+					placeholder="My OpenCode Provider" />
+				<ValidationMessage For="@(() => Provider.Name)" class="text-danger small" />
+			</div>
+
+			<div class="mb-3">
+				<label for="modal-type" class="form-label">Provider Type</label>
+				<InputSelect id="modal-type" @bind-Value="Provider.Type" class="form-select">
+					@foreach (var type in Enum.GetValues<ProviderType>())
+					{
+						<option value="@type">@type</option>
+					}
+				</InputSelect>
+			</div>
+
+			<div class="mb-3">
+				<label for="modal-connectionMode" class="form-label">Connection Mode</label>
+				<InputSelect id="modal-connectionMode" @bind-Value="Provider.ConnectionMode" class="form-select">
+					@foreach (var mode in Enum.GetValues<ProviderConnectionMode>())
+					{
+						<option value="@mode">@mode</option>
+					}
+				</InputSelect>
+			</div>
+
+			@if (Provider.ConnectionMode == ProviderConnectionMode.CLI)
+			{
+				<div class="mb-3">
+					<label for="modal-executablePath" class="form-label">Executable Path (optional)</label>
+					<InputText id="modal-executablePath" @bind-Value="Provider.ExecutablePath" class="form-control"
+						placeholder="@GetExecutablePlaceholder()" />
+					<div class="form-text">@GetExecutableHelpText()</div>
+				</div>
+
+				<div class="mb-3">
+					<label for="modal-workingDirectory" class="form-label">Working Directory (optional)</label>
+					<InputText id="modal-workingDirectory" @bind-Value="Provider.WorkingDirectory" class="form-control"
+						placeholder="/path/to/working/directory" />
+				</div>
+			}
+			else
+			{
+				<div class="mb-3">
+					<label for="modal-apiEndpoint" class="form-label">API Endpoint</label>
+					<InputText id="modal-apiEndpoint" @bind-Value="Provider.ApiEndpoint" class="form-control"
+						placeholder="http://localhost:8080" />
+					<ValidationMessage For="@(() => Provider.ApiEndpoint)" class="text-danger small" />
+				</div>
+
+				<div class="mb-3">
+					<label for="modal-apiKey" class="form-label">API Key (optional)</label>
+					<InputText id="modal-apiKey" @bind-Value="Provider.ApiKey" class="form-control" type="password" />
+				</div>
+			}
+
+			<div class="mb-3 form-check">
+				<InputCheckbox id="modal-isEnabled" @bind-Value="Provider.IsEnabled" class="form-check-input" />
+				<label for="modal-isEnabled" class="form-check-label">Enabled</label>
+			</div>
+
+			@if (!string.IsNullOrEmpty(ErrorMessage))
+			{
+				<div class="alert alert-danger mb-3">@ErrorMessage</div>
+			}
+
+			@if (!string.IsNullOrEmpty(SuccessMessage))
+			{
+				<div class="alert alert-success mb-3">@SuccessMessage</div>
+			}
+
+			<div class="d-flex gap-2 justify-content-end">
+				<button type="button" class="btn btn-secondary" @onclick="HandleCancel">Cancel</button>
+				<button type="submit" class="btn btn-primary" disabled="@IsSaving">
+					@if (IsSaving)
+					{
+						<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+					}
+					@(IsSaving ? "Saving..." : (IsEdit ? "Update Provider" : "Add Provider"))
+				</button>
+			</div>
+		</EditForm>
+	</ChildContent>
+</ModalDialog>
+
+@code {
+	[Parameter]
+	public bool IsVisible { get; set; }
+
+	[Parameter]
+	public EventCallback<bool> IsVisibleChanged { get; set; }
+
+	[Parameter]
+	public Provider? EditProvider { get; set; }
+
+	[Parameter]
+	public EventCallback<Guid?> OnSaved { get; set; }
+
+	[Parameter]
+	public EventCallback OnCancelled { get; set; }
+
+	[Parameter]
+	public EventCallback OnClosed { get; set; }
+
+	private Provider Provider { get; set; } = new();
+	private bool IsEdit => EditProvider != null;
+	private bool IsSaving { get; set; }
+	private string? ErrorMessage { get; set; }
+	private string? SuccessMessage { get; set; }
+	private bool _previousIsVisible;
+
+	protected override void OnParametersSet()
+	{
+		// Only reset state when modal is opening (transitioning from hidden to visible)
+		if (IsVisible && !_previousIsVisible)
+		{
+			ResetState();
+
+			if (EditProvider != null)
+			{
+				// Clone the provider for editing
+				Provider = new Provider
+				{
+					Id = EditProvider.Id,
+					Name = EditProvider.Name,
+					Type = EditProvider.Type,
+					ConnectionMode = EditProvider.ConnectionMode,
+					ExecutablePath = EditProvider.ExecutablePath,
+					WorkingDirectory = EditProvider.WorkingDirectory,
+					ApiEndpoint = EditProvider.ApiEndpoint,
+					ApiKey = EditProvider.ApiKey,
+					IsEnabled = EditProvider.IsEnabled,
+					CreatedAt = EditProvider.CreatedAt,
+					LastConnectedAt = EditProvider.LastConnectedAt
+				};
+			}
+			else
+			{
+				// Reset for new provider
+				Provider = new Provider();
+			}
+		}
+
+		_previousIsVisible = IsVisible;
+	}
+
+	private string GetExecutablePlaceholder() => Provider.Type switch
+	{
+		ProviderType.OpenCode => "opencode or /path/to/opencode",
+		ProviderType.Claude => "claude or /path/to/claude",
+		_ => "executable name or path"
+	};
+
+	private string GetExecutableHelpText() => Provider.Type switch
+	{
+		ProviderType.OpenCode => "Leave empty to use 'opencode' from PATH",
+		ProviderType.Claude => "Leave empty to use 'claude' from PATH",
+		_ => "Leave empty to use default executable from PATH"
+	};
+
+	private async Task HandleValidSubmit()
+	{
+		IsSaving = true;
+		ErrorMessage = null;
+		SuccessMessage = null;
+
+		try
+		{
+			Guid? newProviderId = null;
+
+			if (IsEdit)
+			{
+				await ProviderService.UpdateAsync(Provider);
+				SuccessMessage = "Provider updated successfully.";
+			}
+			else
+			{
+				var created = await ProviderService.CreateAsync(Provider);
+				newProviderId = created.Id;
+				SuccessMessage = "Provider added successfully.";
+			}
+
+			await OnSaved.InvokeAsync(newProviderId);
+			await CloseModal();
+		}
+		catch (Exception ex)
+		{
+			ErrorMessage = $"Error saving provider: {ex.Message}";
+		}
+		finally
+		{
+			IsSaving = false;
+		}
+	}
+
+	private async Task HandleCancel()
+	{
+		await OnCancelled.InvokeAsync();
+		await CloseModal();
+	}
+
+	private async Task HandleClose()
+	{
+		ResetState();
+		await OnClosed.InvokeAsync();
+	}
+
+	private async Task CloseModal()
+	{
+		IsVisible = false;
+		await IsVisibleChanged.InvokeAsync(false);
+		ResetState();
+	}
+
+	private void ResetState()
+	{
+		Provider = new Provider();
+		ErrorMessage = null;
+		SuccessMessage = null;
+		IsSaving = false;
+	}
+}
