@@ -96,6 +96,13 @@
                                             }
                                         </div>
                                     }
+                                    @if (!string.IsNullOrEmpty(RefreshModelsError))
+                                    {
+                                        <div class="alert alert-warning mt-2 mb-0 py-2 px-3 small">
+                                            <i class="bi bi-exclamation-triangle me-1"></i>
+                                            @RefreshModelsError
+                                        </div>
+                                    }
                                 </div>
                                 <div class="d-flex flex-wrap gap-2 flex-shrink-0 align-items-center">
                                     <label class="toggle-switch me-1" title="@(provider.IsEnabled ? "Disable" : "Enable")">
@@ -138,6 +145,7 @@
     private Provider CurrentProvider { get; set; } = new();
     private Guid? TestingId { get; set; }
     private Guid? RefreshingModelsId { get; set; }
+    private string? RefreshModelsError { get; set; }
     private Dictionary<Guid, ConnectionTestResult> TestResults { get; set; } = new();
     private Dictionary<Guid, List<ProviderModel>> ProviderModels { get; set; } = new();
 
@@ -259,6 +267,7 @@
     private async Task RefreshModels(Provider provider)
     {
         RefreshingModelsId = provider.Id;
+        RefreshModelsError = null;
         StateHasChanged();
 
         try
@@ -269,8 +278,14 @@
             // Reload the provider to get updated LastModelsRefreshAt
             await LoadProviders();
         }
+        catch (TimeoutException ex)
+        {
+            RefreshModelsError = ex.Message;
+            Console.WriteLine($"Timeout refreshing models: {ex.Message}");
+        }
         catch (Exception ex)
         {
+            RefreshModelsError = $"Error refreshing models: {ex.Message}";
             Console.WriteLine($"Error refreshing models: {ex.Message}");
         }
         finally

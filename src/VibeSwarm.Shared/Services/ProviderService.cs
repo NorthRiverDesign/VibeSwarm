@@ -234,7 +234,20 @@ public class ProviderService : IProviderService
         }
 
         var instance = CreateProviderInstance(provider);
-        var providerInfo = await instance.GetProviderInfoAsync(cancellationToken);
+
+        // Add a timeout wrapper for the provider info call to prevent indefinite hangs
+        using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
+
+        ProviderInfo providerInfo;
+        try
+        {
+            providerInfo = await instance.GetProviderInfoAsync(linkedCts.Token);
+        }
+        catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested)
+        {
+            throw new TimeoutException($"Timed out while refreshing models for provider {provider.Name}. The CLI may be unresponsive or require authentication.");
+        }
 
         // Get existing models for this provider
         var existingModels = await _dbContext.ProviderModels

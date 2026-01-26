@@ -485,11 +485,23 @@ public class CopilotProvider : ProviderBase
 	{
 		var info = new ProviderInfo
 		{
+			// Models from `copilot help config`
 			AvailableModels = new List<string>
 			{
-				"gpt-4o",
+				"claude-sonnet-4.5",
+				"claude-haiku-4.5",
+				"claude-opus-4.5",
 				"claude-sonnet-4",
-				"gemini-2.0-flash"
+				"gpt-5.2-codex",
+				"gpt-5.1-codex-max",
+				"gpt-5.1-codex",
+				"gpt-5.2",
+				"gpt-5.1",
+				"gpt-5",
+				"gpt-5.1-codex-mini",
+				"gpt-5-mini",
+				"gpt-4.1",
+				"gemini-3-pro-preview"
 			},
 			AvailableAgents = new List<AgentInfo>
 			{
@@ -502,9 +514,20 @@ public class CopilotProvider : ProviderBase
 				// Copilot pricing is subscription-based with premium request limits
 				ModelMultipliers = new Dictionary<string, decimal>
 				{
-					["gpt-4o"] = 1.0m,
+					["claude-sonnet-4.5"] = 1.0m,
+					["claude-haiku-4.5"] = 0.2m,
+					["claude-opus-4.5"] = 5.0m,
 					["claude-sonnet-4"] = 1.0m,
-					["gemini-2.0-flash"] = 0.5m
+					["gpt-5.2-codex"] = 1.5m,
+					["gpt-5.1-codex-max"] = 2.0m,
+					["gpt-5.1-codex"] = 1.0m,
+					["gpt-5.2"] = 1.5m,
+					["gpt-5.1"] = 1.0m,
+					["gpt-5"] = 1.0m,
+					["gpt-5.1-codex-mini"] = 0.3m,
+					["gpt-5-mini"] = 0.3m,
+					["gpt-4.1"] = 0.5m,
+					["gemini-3-pro-preview"] = 0.5m
 				}
 			},
 			AdditionalInfo = new Dictionary<string, object>
@@ -518,7 +541,10 @@ public class CopilotProvider : ProviderBase
 		{
 			var execPath = GetExecutablePath();
 
-			// Get version
+			// Get version with timeout to avoid hanging
+			using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+			using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
+
 			var versionInfo = new ProcessStartInfo
 			{
 				FileName = execPath,
@@ -530,11 +556,22 @@ public class CopilotProvider : ProviderBase
 
 			using var versionProcess = new Process { StartInfo = versionInfo };
 			versionProcess.Start();
-			var version = await versionProcess.StandardOutput.ReadToEndAsync(cancellationToken);
-			await versionProcess.WaitForExitAsync(cancellationToken);
-			info.Version = version.Trim();
 
-			// Check usage limits
+			try
+			{
+				var version = await versionProcess.StandardOutput.ReadToEndAsync(linkedCts.Token);
+				await versionProcess.WaitForExitAsync(linkedCts.Token);
+				info.Version = version.Trim();
+			}
+			catch (OperationCanceledException)
+			{
+				try { versionProcess.Kill(entireProcessTree: true); } catch { }
+				info.Version = "unknown (timeout)";
+				info.AdditionalInfo["error"] = "Timed out while getting version information";
+				return info;
+			}
+
+			// Check usage limits (with its own timeout handling)
 			var limits = await GetUsageLimitsAsync(cancellationToken);
 			if (limits.IsLimitReached)
 			{
@@ -554,6 +591,11 @@ public class CopilotProvider : ProviderBase
 			{
 				info.AdditionalInfo["resetTime"] = limits.ResetTime.Value;
 			}
+		}
+		catch (OperationCanceledException)
+		{
+			info.Version = "unknown (timeout)";
+			info.AdditionalInfo["error"] = "Operation was cancelled or timed out";
 		}
 		catch (Exception ex)
 		{

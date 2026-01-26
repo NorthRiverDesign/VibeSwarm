@@ -661,6 +661,10 @@ public class OpenCodeProvider : ProviderBase
                     ["openai/gpt-4o"] = 0.83m,
                     ["openai/o1"] = 5.0m
                 }
+            },
+            AdditionalInfo = new Dictionary<string, object>
+            {
+                ["isAvailable"] = true // Assume available by default
             }
         };
 
@@ -669,6 +673,11 @@ public class OpenCodeProvider : ProviderBase
             try
             {
                 var execPath = GetExecutablePath();
+
+                // Get version with timeout to avoid hanging
+                using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
+
                 var startInfo = new ProcessStartInfo
                 {
                     FileName = execPath,
@@ -680,14 +689,29 @@ public class OpenCodeProvider : ProviderBase
 
                 using var process = new Process { StartInfo = startInfo };
                 process.Start();
-                var version = await process.StandardOutput.ReadToEndAsync(cancellationToken);
-                await process.WaitForExitAsync(cancellationToken);
 
-                info.Version = version.Trim();
+                try
+                {
+                    var version = await process.StandardOutput.ReadToEndAsync(linkedCts.Token);
+                    await process.WaitForExitAsync(linkedCts.Token);
+                    info.Version = version.Trim();
+                }
+                catch (OperationCanceledException)
+                {
+                    try { process.Kill(entireProcessTree: true); } catch { }
+                    info.Version = "unknown (timeout)";
+                    info.AdditionalInfo["error"] = "Timed out while getting version information";
+                }
             }
-            catch
+            catch (OperationCanceledException)
+            {
+                info.Version = "unknown (timeout)";
+                info.AdditionalInfo["error"] = "Operation was cancelled or timed out";
+            }
+            catch (Exception ex)
             {
                 info.Version = "unknown";
+                info.AdditionalInfo["error"] = ex.Message;
             }
         }
 
