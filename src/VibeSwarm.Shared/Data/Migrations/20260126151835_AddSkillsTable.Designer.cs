@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using VibeSwarm.Shared.Data;
 
@@ -10,9 +11,11 @@ using VibeSwarm.Shared.Data;
 namespace VibeSwarm.Shared.Data.Migrations
 {
     [DbContext(typeof(VibeSwarmDbContext))]
-    partial class VibeSwarmDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260126151835_AddSkillsTable")]
+    partial class AddSkillsTable
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "9.0.0");

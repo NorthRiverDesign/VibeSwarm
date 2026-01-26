@@ -18,6 +18,7 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
     public DbSet<Job> Jobs => Set<Job>();
     public DbSet<JobMessage> JobMessages => Set<JobMessage>();
     public DbSet<AppSettings> AppSettings => Set<AppSettings>();
+    public DbSet<Skill> Skills => Set<Skill>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -103,6 +104,15 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
         {
             entity.HasKey(e => e.Id);
             entity.Property(e => e.DefaultProjectsDirectory).HasMaxLength(1000);
+        });
+
+        modelBuilder.Entity<Skill>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Name).IsRequired().HasMaxLength(100);
+            entity.Property(e => e.Description).HasMaxLength(500);
+            entity.Property(e => e.Content).IsRequired();
+            entity.HasIndex(e => e.Name).IsUnique();
         });
     }
 }

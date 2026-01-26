@@ -278,6 +278,20 @@ public class OpenCodeProvider : ProviderBase
             args.AddRange(new[] { "--session", sessionId });
         }
 
+        // Add MCP config if available (injected via ExecuteWithOptionsAsync)
+        // OpenCode uses --config flag to load MCP servers from JSON
+        if (!string.IsNullOrEmpty(CurrentMcpConfigPath))
+        {
+            args.Add("--config");
+            args.Add($"\"{CurrentMcpConfigPath}\"");
+        }
+
+        // Add any additional CLI arguments
+        if (CurrentAdditionalArgs != null)
+        {
+            args.AddRange(CurrentAdditionalArgs);
+        }
+
         // Add the prompt at the end
         args.Add($"\"{EscapeArgument(prompt)}\"");
 
@@ -290,6 +304,15 @@ public class OpenCodeProvider : ProviderBase
 
         // Use cross-platform configuration
         PlatformHelper.ConfigureForCrossPlatform(startInfo);
+
+        // Add any additional environment variables
+        if (CurrentEnvironmentVariables != null)
+        {
+            foreach (var kvp in CurrentEnvironmentVariables)
+            {
+                startInfo.Environment[kvp.Key] = kvp.Value;
+            }
+        }
 
         using var process = new Process { StartInfo = startInfo };
 

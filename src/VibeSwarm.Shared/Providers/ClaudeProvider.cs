@@ -303,6 +303,19 @@ public class ClaudeProvider : ProviderBase
             args.Add(sessionId);
         }
 
+        // Add MCP config if available (injected via ExecuteWithOptionsAsync)
+        if (!string.IsNullOrEmpty(CurrentMcpConfigPath))
+        {
+            args.Add("--mcp-config");
+            args.Add($"\"{CurrentMcpConfigPath}\"");
+        }
+
+        // Add any additional CLI arguments
+        if (CurrentAdditionalArgs != null)
+        {
+            args.AddRange(CurrentAdditionalArgs);
+        }
+
         var startInfo = new ProcessStartInfo
         {
             FileName = execPath,
@@ -312,6 +325,15 @@ public class ClaudeProvider : ProviderBase
 
         // Use cross-platform configuration
         PlatformHelper.ConfigureForCrossPlatform(startInfo);
+
+        // Add any additional environment variables
+        if (CurrentEnvironmentVariables != null)
+        {
+            foreach (var kvp in CurrentEnvironmentVariables)
+            {
+                startInfo.Environment[kvp.Key] = kvp.Value;
+            }
+        }
 
         using var process = new Process { StartInfo = startInfo };
 

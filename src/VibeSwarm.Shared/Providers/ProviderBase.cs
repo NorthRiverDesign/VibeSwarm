@@ -26,6 +26,54 @@ public abstract class ProviderBase : IProvider
         IProgress<ExecutionProgress>? progress = null,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Execute with options - provides MCP config support
+    /// Default implementation delegates to ExecuteWithSessionAsync after storing MCP config path
+    /// </summary>
+    public virtual Task<ExecutionResult> ExecuteWithOptionsAsync(
+        string prompt,
+        ExecutionOptions options,
+        IProgress<ExecutionProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        // Store the MCP config path for use by child implementations
+        CurrentMcpConfigPath = options.McpConfigPath;
+        CurrentAdditionalArgs = options.AdditionalArgs;
+        CurrentEnvironmentVariables = options.EnvironmentVariables;
+
+        return ExecuteWithSessionAsync(
+            prompt,
+            options.SessionId,
+            options.WorkingDirectory,
+            progress,
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Current MCP config path for the execution (set by ExecuteWithOptionsAsync)
+    /// </summary>
+    protected string? CurrentMcpConfigPath { get; private set; }
+
+    /// <summary>
+    /// Current additional CLI arguments (set by ExecuteWithOptionsAsync)
+    /// </summary>
+    protected List<string>? CurrentAdditionalArgs { get; private set; }
+
+    /// <summary>
+    /// Current environment variables (set by ExecuteWithOptionsAsync)
+    /// </summary>
+    protected Dictionary<string, string>? CurrentEnvironmentVariables { get; private set; }
+
+    /// <summary>
+    /// Clears the execution context after a run completes
+    /// </summary>
+    protected void ClearExecutionContext()
+    {
+        CurrentMcpConfigPath = null;
+        CurrentAdditionalArgs = null;
+        CurrentEnvironmentVariables = null;
+    }
+
     public abstract Task<ProviderInfo> GetProviderInfoAsync(CancellationToken cancellationToken = default);
 
     public abstract Task<UsageLimits> GetUsageLimitsAsync(CancellationToken cancellationToken = default);

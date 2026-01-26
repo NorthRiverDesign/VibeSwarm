@@ -23,6 +23,15 @@ public interface IProvider
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Execute a prompt with full session management, message streaming, and additional options
+    /// </summary>
+    Task<ExecutionResult> ExecuteWithOptionsAsync(
+        string prompt,
+        ExecutionOptions options,
+        IProgress<ExecutionProgress>? progress = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Get information about the provider's capabilities
     /// </summary>
     Task<ProviderInfo> GetProviderInfoAsync(CancellationToken cancellationToken = default);
@@ -248,4 +257,47 @@ public class SessionSummary
     /// The source of the summary (e.g., "session", "output", "fallback")
     /// </summary>
     public string? Source { get; set; }
+}
+
+/// <summary>
+/// Options for executing prompts with providers
+/// </summary>
+public class ExecutionOptions
+{
+    /// <summary>
+    /// Session ID for continuing a previous session
+    /// </summary>
+    public string? SessionId { get; set; }
+
+    /// <summary>
+    /// Working directory for the execution
+    /// </summary>
+    public string? WorkingDirectory { get; set; }
+
+    /// <summary>
+    /// Path to MCP configuration file to inject into the CLI command
+    /// </summary>
+    public string? McpConfigPath { get; set; }
+
+    /// <summary>
+    /// Additional CLI arguments to pass to the provider
+    /// </summary>
+    public List<string>? AdditionalArgs { get; set; }
+
+    /// <summary>
+    /// Environment variables to set for the execution
+    /// </summary>
+    public Dictionary<string, string>? EnvironmentVariables { get; set; }
+
+    /// <summary>
+    /// Creates ExecutionOptions from the legacy parameters
+    /// </summary>
+    public static ExecutionOptions FromLegacy(string? sessionId = null, string? workingDirectory = null)
+    {
+        return new ExecutionOptions
+        {
+            SessionId = sessionId,
+            WorkingDirectory = workingDirectory
+        };
+    }
 }

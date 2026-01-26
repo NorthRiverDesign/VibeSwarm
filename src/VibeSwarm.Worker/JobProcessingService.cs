@@ -583,10 +583,14 @@ public class JobProcessingService : BackgroundService
                 }
             });
 
-            var result = await provider.ExecuteWithSessionAsync(
+            var result = await provider.ExecuteWithOptionsAsync(
                 job.GoalPrompt,
-                job.SessionId,
-                workingDirectory,
+                new ExecutionOptions
+                {
+                    SessionId = job.SessionId,
+                    WorkingDirectory = workingDirectory,
+                    McpConfigPath = await GetMcpConfigPathAsync(job.ProviderId)
+                },
                 progress,
                 cancellationToken);
 
@@ -981,6 +985,42 @@ public class JobProcessingService : BackgroundService
             {
                 _logger.LogWarning(ex, "Failed to send completion notification for job {JobId}", jobId);
             }
+        }
+    }
+
+    /// <summary>
+    /// Gets the MCP config file path for the given provider.
+    /// Generates a temporary MCP config file containing all enabled skills.
+    /// </summary>
+    private async Task<string?> GetMcpConfigPathAsync(Guid providerId)
+    {
+        try
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var mcpConfigService = scope.ServiceProvider.GetRequiredService<IMcpConfigService>();
+            var providerService = scope.ServiceProvider.GetRequiredService<IProviderService>();
+
+            // Get the provider to determine its type
+            var provider = await providerService.GetByIdAsync(providerId);
+            if (provider == null)
+            {
+                _logger.LogWarning("Could not find provider {ProviderId} to generate MCP config", providerId);
+                return null;
+            }
+
+            // Generate the MCP config file
+            var configPath = await mcpConfigService.GenerateMcpConfigFileAsync();
+            if (!string.IsNullOrEmpty(configPath))
+            {
+                _logger.LogDebug("Generated MCP config at {ConfigPath} for provider {ProviderId}", configPath, providerId);
+            }
+
+            return configPath;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to generate MCP config for provider {ProviderId}", providerId);
+            return null;
         }
     }
 }
