@@ -1,5 +1,6 @@
 {
   "id": "/",
+  "version": "1.0.3",
   "name": "VibeSwarm",
   "short_name": "VibeSwarm",
   "description": "VibeSwarm - AI Agent Orchestration",

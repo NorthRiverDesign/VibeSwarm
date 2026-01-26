@@ -1,6 +1,6 @@
 // VibeSwarm Service Worker
 // Increment CACHE_VERSION when icons or critical assets change to force cache refresh
-const CACHE_VERSION = 2;
+const CACHE_VERSION = 3;
 const CACHE_NAME = `vibeswarm-v${CACHE_VERSION}`;
 const OFFLINE_URL = '/offline.html';
 
@@ -15,6 +15,10 @@ const STATIC_ASSETS = [
     `/favicon.svg?v=${CACHE_VERSION}`,
     `/favicon-96x96.png?v=${CACHE_VERSION}`,
     `/apple-touch-icon.png?v=${CACHE_VERSION}`,
+    `/apple-touch-icon-120x120.png?v=${CACHE_VERSION}`,
+    `/apple-touch-icon-152x152.png?v=${CACHE_VERSION}`,
+    `/apple-touch-icon-167x167.png?v=${CACHE_VERSION}`,
+    `/apple-touch-icon-180x180.png?v=${CACHE_VERSION}`,
     `/web-app-manifest-192x192.png?v=${CACHE_VERSION}`,
     `/web-app-manifest-512x512.png?v=${CACHE_VERSION}`,
     '/manifest.json'
