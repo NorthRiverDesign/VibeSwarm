@@ -195,7 +195,26 @@ else
             }
 
             @* Git Diff Section - shown after job completes if changes were detected *@
-            @if (!IsJobActive && !string.IsNullOrEmpty(Job.GitDiff))
+            @if (_isLoadingGitDiff)
+            {
+                <div class="card mb-3 mb-lg-4">
+                    <div class="card-header bg-body-secondary">
+                        <div class="d-flex align-items-center">
+                            <i class="bi bi-git me-2 opacity-75"></i>
+                            <strong>Git Changes</strong>
+                        </div>
+                    </div>
+                    <div class="card-body text-center py-4">
+                        <div class="spinner-border text-primary mb-3" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="text-body-secondary mb-0">
+                            <i class="bi bi-hourglass-split me-1"></i>Analyzing git changes...
+                        </p>
+                    </div>
+                </div>
+            }
+            else if (!IsJobActive && !string.IsNullOrEmpty(Job.GitDiff))
             {
                 <div class="card mb-3 mb-lg-4">
                     <div class="card-header bg-body-secondary">
@@ -369,7 +388,8 @@ else
                         <p class="text-body-secondary mb-3">
                             <i class="bi bi-info-circle me-2 opacity-75"></i>No file changes detected.
                         </p>
-                        <button class="btn btn-outline-secondary btn-sm" @onclick="CheckGitDiffAsync" disabled="@_isCheckingGitDiff">
+                        <button class="btn btn-outline-secondary btn-sm" @onclick="CheckGitDiffAsync"
+                            disabled="@_isCheckingGitDiff">
                             @if (_isCheckingGitDiff)
                             {
                                 <span class="spinner-border spinner-border-sm me-1" role="status"></span>
@@ -511,6 +531,7 @@ else
     private string _commitMessage = string.Empty;
     private bool _isPushing = false;
     private bool _isCheckingGitDiff = false;
+    private bool _isLoadingGitDiff = false; // Loading state after job completes
     private string _pushStatus = "Pushing...";
     private string? _pushError = null;
     private bool _changesPushed = false;
@@ -702,13 +723,45 @@ else
             {
                 Job.ErrorMessage = errorMessage;
             }
+
+            // Show loading indicator for git diff section while we wait for it to be captured
+            if (success)
+            {
+                _isLoadingGitDiff = true;
+            }
             await InvokeAsync(StateHasChanged);
         }
+
+        // Wait a moment for the git diff to be captured in the database
+        // The job completion saves the git diff, but there may be a small delay
+        await Task.Delay(1500);
 
         // Also do a full refresh to get complete data (git diff, etc.)
         if (!_isRefreshing)
         {
-            await InvokeAsync(async () => await RefreshJobSafely());
+            await InvokeAsync(async () =>
+            {
+                await RefreshJobSafely();
+
+                // If still no git diff after refresh, try fetching it directly
+                if (Job != null && string.IsNullOrEmpty(Job.GitDiff) && _isLoadingGitDiff)
+                {
+                    // Give it one more try after an additional delay
+                    await Task.Delay(1000);
+                    await RefreshJobSafely();
+                }
+
+                // Clear loading state after we've attempted to get the data
+                _isLoadingGitDiff = false;
+                StateHasChanged();
+            });
+        }
+        else
+        {
+            // If we couldn't refresh, still clear loading state after a timeout
+            await Task.Delay(3000);
+            _isLoadingGitDiff = false;
+            await InvokeAsync(StateHasChanged);
         }
     }
 
@@ -772,10 +825,24 @@ else
     public async Task OnJobGitDiffUpdated(string jobId, bool hasChanges)
     {
         Console.WriteLine($"[Blazor] OnJobGitDiffUpdated: {jobId}, hasChanges: {hasChanges}");
+
         // Reload job data to get the updated git diff
         if (!_isRefreshing)
         {
-            await InvokeAsync(async () => await RefreshJobSafely());
+            await InvokeAsync(async () =>
+            {
+                await RefreshJobSafely();
+
+                // Clear loading state now that we have the git diff data
+                _isLoadingGitDiff = false;
+                StateHasChanged();
+            });
+        }
+        else
+        {
+            // Clear loading state even if we couldn't refresh
+            _isLoadingGitDiff = false;
+            await InvokeAsync(StateHasChanged);
         }
     }
 
@@ -986,8 +1053,8 @@ else
         {
             // Get the git diff using the baseline commit if available
             var gitDiff = await VersionControlService.GetWorkingDirectoryDiffAsync(
-                Job.Project.WorkingPath,
-                Job.GitCommitBefore);
+            Job.Project.WorkingPath,
+            Job.GitCommitBefore);
 
             // Update the job with the new git diff (this will trigger SignalR notification)
             await JobService.UpdateGitDiffAsync(Job.Id, gitDiff);

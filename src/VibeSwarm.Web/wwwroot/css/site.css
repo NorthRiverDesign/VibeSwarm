@@ -223,6 +223,7 @@ body {
         padding: 1.5rem 2rem;
         padding-right: calc(2rem + var(--vs-safe-area-right));
         max-width: 1400px;
+        margin-inline: auto;
     }
 }
 
