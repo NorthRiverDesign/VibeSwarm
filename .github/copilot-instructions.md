@@ -82,6 +82,12 @@ The interface must be fully responsive and work on mobile devices as well as des
 
 Always attempt to leverage Bootstrap's built-in classes and components before creating custom styles. This ensures consistency across the application and reduces the need for additional CSS. Use a stacked utility class approach when creating UI components to maximize flexibility and maintainability. A component may use multiple classes such as `d-flex`, `flex-column`, `align-items-center`, and `p-3` to achieve the desired layout and styling without custom CSS. Use the TailwindCSS mindset when applying Bootstrap utility classes to create complex layouts and designs.
 
+## Bootstrap Icons
+
+VibeSwarm uses Bootstrap Icons for visual enhancements and to improve user experience. Icons are used throughout the interface to represent actions, statuses, and navigation elements. The application leverages the extensive library of Bootstrap Icons to maintain a consistent look and feel.
+
+When adding icons, prefer using Bootstrap Icons over custom SVGs or other icon libraries to ensure visual consistency. Icons should be appropriately sized and aligned within UI components to enhance usability without overwhelming the design.
+
 ## Blazor Integration
 
 VibeSwarm is built using Blazor, a web framework for building interactive web applications with C# and .NET. The application leverages Blazor's component-based architecture to create reusable UI components and manage application state effectively. Blazor's capabilities allow for seamless integration with backend services, enabling real-time updates and dynamic content rendering. The SignalR library is used to facilitate real-time communication between the server and client, allowing for instant updates on agent activities and project status.
@@ -89,6 +95,8 @@ VibeSwarm is built using Blazor, a web framework for building interactive web ap
 ## UI Components
 
 Large pages should be broken into smaller, reusable components to improve maintainability and readability. Components such as agent cards, project lists, and status indicators can be created to encapsulate specific functionality and styling. This modular approach allows for easier updates and enhancements to individual components without affecting the overall application.
+
+UI should appear consistent and highly polished. Care should be used to maintain alignment, spacing, and visual hierarchy throughout the application. Attention to detail in UI design enhances user experience and promotes a professional appearance. The application must also be responsive and mobile-friendly, ensuring usability across a range of devices.
 
 ## Database
 
