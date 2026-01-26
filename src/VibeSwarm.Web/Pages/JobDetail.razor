@@ -70,44 +70,52 @@ else
                 </div>
             </div>
         </div>
-        <div class="d-flex flex-wrap gap-2 mt-3 mt-md-0 w-100 w-md-auto">
+        <div class="d-flex flex-wrap gap-2 mt-3 mt-md-0 w-100 w-md-auto job-detail-actions">
             @if (CanRetry)
             {
-                <button class="btn btn-sm btn-primary flex-grow-1 flex-md-grow-0" @onclick="RetryJob" disabled="@IsRetrying">
+                <button class="btn btn-primary btn-action" @onclick="RetryJob" disabled="@IsRetrying">
                     @if (IsRetrying)
                     {
-                        <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                        <span class="spinner-border spinner-border-sm" role="status"></span>
                     }
-                    <i class="bi bi-arrow-clockwise d-md-none"></i>
-                    <span class="d-none d-md-inline">@(IsRetrying ? "Resetting..." : "Retry")</span>
+                    else
+                    {
+                        <i class="bi bi-arrow-repeat"></i>
+                    }
+                    <span>@(IsRetrying ? "Retrying..." : "Retry")</span>
                 </button>
             }
             @if (CanCancel)
             {
-                <button class="btn btn-sm btn-danger flex-grow-1 flex-md-grow-0" @onclick="CancelJob" disabled="@IsCancelling">
+                <button class="btn btn-danger btn-action" @onclick="CancelJob" disabled="@IsCancelling">
                     @if (IsCancelling)
                     {
-                        <span class="spinner-small"></span>
+                        <span class="spinner-border spinner-border-sm" role="status"></span>
                     }
-                    <i class="bi bi-x-circle d-md-none"></i>
-                    <span class="d-none d-md-inline">@(IsCancelling ? "Cancelling..." : "Cancel")</span>
+                    else
+                    {
+                        <i class="bi bi-x-circle"></i>
+                    }
+                    <span>@(IsCancelling ? "Cancelling..." : "Cancel")</span>
                 </button>
             }
             @if (CanForceCancel)
             {
-                <button class="btn btn-sm btn-outline-danger flex-grow-1 flex-md-grow-0" @onclick="ForceCancelJob"
-                    disabled="@IsForceCancelling">
+                <button class="btn btn-outline-danger btn-action" @onclick="ForceCancelJob" disabled="@IsForceCancelling">
                     @if (IsForceCancelling)
                     {
-                        <span class="spinner-small"></span>
+                        <span class="spinner-border spinner-border-sm" role="status"></span>
                     }
-                    <span class="d-none d-md-inline">@(IsForceCancelling ? "Force Cancelling..." : "Force Cancel")</span>
-                    <span class="d-md-none">Force</span>
+                    else
+                    {
+                        <i class="bi bi-stop-circle"></i>
+                    }
+                    <span>@(IsForceCancelling ? "Stopping..." : "Force Stop")</span>
                 </button>
             }
-            <a href="/projects/@Job.ProjectId" class="btn btn-sm btn-secondary flex-grow-1 flex-md-grow-0">
-                <i class="bi bi-arrow-left d-md-none"></i>
-                <span class="d-none d-md-inline">Back to Project</span>
+            <a href="/projects/@Job.ProjectId" class="btn btn-secondary btn-action">
+                <i class="bi bi-arrow-left"></i>
+                <span>Back</span>
             </a>
         </div>
     </div>

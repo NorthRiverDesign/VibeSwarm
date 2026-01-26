@@ -318,6 +318,8 @@ body {
 ============================================ */
 .card {
     border-radius: var(--bs-border-radius-lg);
+    border: 1px solid var(--bs-border-color);
+    background: var(--bs-body-bg);
 }
 
 .card-header {
@@ -327,11 +329,45 @@ body {
     justify-content: space-between;
     flex-wrap: wrap;
     gap: var(--vs-spacing-sm);
+    padding: var(--vs-spacing-md);
+    background: var(--bs-secondary-bg);
+    border-bottom: 1px solid var(--bs-border-color);
+    min-height: 52px;
 }
 
 .card-header h5 {
     margin: 0;
     font-size: 1rem;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.card-header h5 i {
+    opacity: 0.7;
+}
+
+.card-header .badge {
+    font-size: 0.75rem;
+}
+
+.card-header .btn {
+    flex-shrink: 0;
+}
+
+.card-body {
+    padding: var(--vs-spacing-md);
+}
+
+@media (min-width: 576px) {
+    .card-header {
+        padding: var(--vs-spacing-md) var(--vs-spacing-lg);
+    }
+
+    .card-body {
+        padding: var(--vs-spacing-lg);
+    }
 }
 
 /* ============================================
@@ -411,11 +447,74 @@ body {
 ============================================ */
 .provider-card {
     border-left: 3px solid var(--vs-accent-blue);
+    transition: all var(--vs-transition);
+}
+
+.provider-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--bs-box-shadow);
 }
 
 .provider-card.disabled {
     border-left-color: var(--bs-tertiary-color);
     opacity: 0.6;
+}
+
+.provider-card.disabled:hover {
+    transform: none;
+    box-shadow: none;
+}
+
+/* Default Provider Badge */
+.default-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.2em 0.5em;
+    margin-left: 0.5rem;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--vs-accent-green);
+    background: rgba(63, 185, 80, 0.15);
+    border-radius: var(--bs-border-radius-sm);
+}
+
+.default-provider-row {
+    background: rgba(63, 185, 80, 0.05) !important;
+}
+
+/* Connection Test Results */
+.test-success {
+    color: var(--vs-accent-green);
+    padding: var(--vs-spacing-sm);
+    background: rgba(63, 185, 80, 0.1);
+    border-radius: var(--bs-border-radius-sm);
+    font-size: 0.9rem;
+}
+
+.test-failure {
+    color: var(--vs-accent-red);
+    padding: var(--vs-spacing-sm);
+    background: rgba(248, 81, 73, 0.1);
+    border-radius: var(--bs-border-radius-sm);
+    font-size: 0.9rem;
+}
+
+.error-details {
+    margin-top: var(--vs-spacing-sm);
+}
+
+.error-details pre {
+    margin: 0;
+    padding: var(--vs-spacing-sm);
+    background: var(--bs-body-bg);
+    border-radius: var(--bs-border-radius-sm);
+    font-size: 0.8rem;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 150px;
+    overflow-y: auto;
 }
 
 /* Toggle Switch */
@@ -1080,22 +1179,37 @@ body {
 ============================================ */
 .path-cell {
     font-family: 'SF Mono', monospace;
-    font-size: 0.9rem;
-    max-width: 200px;
+    font-size: 0.85rem;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    max-width: 0; /* Allow table-layout: fixed to control width */
 }
 
 .goal-cell {
-    max-width: 250px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    max-width: 0; /* Allow table-layout: fixed to control width */
 }
 
 .goal-cell a {
     color: var(--vs-accent-blue);
+}
+
+/* Text truncation utilities */
+.text-truncate-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.text-truncate-3 {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
 }
 
 /* Error Row */
@@ -1130,11 +1244,30 @@ body {
     color: var(--bs-emphasis-color);
 }
 
+.login-display .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
 @media (min-width: 992px) {
     .login-display .user-info {
         display: flex;
         align-items: center;
         gap: var(--vs-spacing-sm);
+    }
+}
+
+/* Ensure consistent button sizing in header on mobile */
+@media (max-width: 991.98px) {
+    .header-actions .btn {
+        min-width: 44px;
+        min-height: 44px;
+        padding: 0.5rem;
+    }
+
+    .header-actions .btn i {
+        font-size: 1.125rem;
     }
 }
 
@@ -1157,10 +1290,49 @@ body {
 ============================================ */
 .table thead th {
     font-weight: 600;
-    font-size: 0.9rem;
+    font-size: 0.85rem;
     text-transform: uppercase;
     letter-spacing: 0.03em;
     white-space: nowrap;
+    color: var(--bs-secondary-color);
+}
+
+.table-responsive {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+/* Ensure table doesn't exceed container on desktop */
+@media (min-width: 992px) {
+    .table-responsive {
+        overflow-x: visible;
+    }
+
+    .table {
+        table-layout: fixed;
+        width: 100%;
+    }
+
+    /* Column widths for projects table */
+    .table th:first-child,
+    .table td:first-child {
+        width: 35%;
+    }
+
+    .table th:nth-child(2),
+    .table td:nth-child(2) {
+        width: 35%;
+    }
+
+    .table th:nth-child(3),
+    .table td:nth-child(3) {
+        width: 15%;
+    }
+
+    .table th:last-child,
+    .table td:last-child {
+        width: 15%;
+    }
 }
 
 /* ============================================
@@ -1189,6 +1361,91 @@ code {
     display: flex;
     flex-wrap: wrap;
     gap: var(--vs-spacing-sm);
+    overflow: visible;
+}
+
+/* ============================================
+   Job Cards (Jobs Index)
+============================================ */
+.job-card {
+    background: var(--bs-body-bg);
+    border: 1px solid var(--bs-border-color);
+    border-left: 3px solid var(--vs-accent-blue);
+    border-radius: var(--bs-border-radius-lg);
+    padding: var(--vs-spacing-md);
+    cursor: pointer;
+    transition: all var(--vs-transition);
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.job-card:hover {
+    border-color: var(--vs-accent-blue);
+    transform: translateY(-2px);
+    box-shadow: var(--bs-box-shadow);
+}
+
+.job-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: var(--vs-spacing-sm);
+    margin-bottom: var(--vs-spacing-sm);
+    flex-wrap: wrap;
+}
+
+.job-project {
+    font-size: 0.85rem;
+    color: var(--bs-secondary-color);
+    font-weight: 500;
+}
+
+.job-card-content {
+    flex: 1;
+    margin-bottom: var(--vs-spacing-sm);
+}
+
+.job-card-content .job-prompt {
+    margin: 0;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    color: var(--bs-body-color);
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.job-card-footer {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--vs-spacing-sm);
+    font-size: 0.8rem;
+    color: var(--bs-secondary-color);
+    padding-top: var(--vs-spacing-sm);
+    border-top: 1px solid var(--bs-border-color);
+}
+
+.job-provider {
+    font-weight: 500;
+}
+
+.job-activity {
+    color: var(--vs-accent-blue);
+    font-style: italic;
+}
+
+.job-time {
+    color: var(--bs-tertiary-color);
+}
+
+.job-cost {
+    margin-left: auto;
+    font-family: 'SF Mono', monospace;
+    font-weight: 500;
+    color: var(--vs-accent-green);
 }
 
 /* ============================================
@@ -1198,25 +1455,109 @@ code {
     .row.g-4 {
         --bs-gutter-y: 1rem;
     }
-    
+
     .col-lg-4, .col-lg-5, .col-lg-7, .col-lg-8 {
         width: 100% !important;
         flex: 0 0 100% !important;
         max-width: 100% !important;
     }
-    
+
     .card {
         margin-bottom: var(--vs-spacing-md);
+        border-radius: var(--bs-border-radius);
+    }
+
+    .page-header {
+        gap: var(--vs-spacing-sm);
+    }
+
+    .page-header h3 {
+        font-size: 1.25rem;
+    }
+
+    /* Ensure cards in mobile view have proper spacing */
+    .card-body {
+        padding: var(--vs-spacing-md);
+    }
+
+    .card-header {
+        padding: var(--vs-spacing-sm) var(--vs-spacing-md);
     }
 }
 
-@media (max-width: 575.98px) {
+@media (max-width: 767.98px) {
+    /* Job detail actions take full width on mobile */
     .job-detail-actions {
-        flex-direction: column;
-    }
-    
-    .job-detail-actions .btn {
         width: 100%;
+    }
+
+    .job-detail-actions .btn-action {
+        flex: 1 1 calc(50% - 0.25rem);
+        min-width: calc(50% - 0.25rem);
+    }
+
+    /* Stack project mobile cards better */
+    .p-3.border-bottom {
+        padding: var(--vs-spacing-md) !important;
+    }
+
+    /* Better touch targets for table buttons */
+    .table .btn-group .btn {
+        padding: 0.5rem 0.75rem;
+    }
+}
+
+/* ============================================
+   Button with Icon and Text
+============================================ */
+.btn-icon-text {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.375rem;
+    padding: 0.375rem 0.75rem;
+}
+
+.btn-icon-text i {
+    font-size: 1rem;
+    flex-shrink: 0;
+}
+
+.btn-icon-text .btn-label {
+    display: none;
+}
+
+@media (min-width: 992px) {
+    .btn-icon-text .btn-label {
+        display: inline;
+    }
+}
+
+/* Action Buttons (consistent styling for primary actions) */
+.btn-action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    font-weight: 500;
+    white-space: nowrap;
+    flex: 1 1 auto;
+}
+
+.btn-action i {
+    font-size: 1rem;
+    flex-shrink: 0;
+}
+
+.btn-action .spinner-border-sm {
+    width: 1rem;
+    height: 1rem;
+}
+
+@media (min-width: 768px) {
+    .btn-action {
+        flex: 0 0 auto;
     }
 }
 
@@ -1227,22 +1568,39 @@ code {
     .btn {
         min-height: 44px;
     }
-    
+
     .btn-sm {
-        min-height: 36px;
+        min-height: 40px;
+        padding: 0.5rem 0.75rem;
     }
-    
+
+    .btn-action {
+        min-height: 48px;
+        padding: 0.75rem 1rem;
+    }
+
     .form-control, .form-select {
         min-height: 44px;
         font-size: 16px; /* Prevent zoom on iOS */
     }
-    
+
     .nav-item {
         padding: var(--vs-spacing-md);
     }
-    
+
     .modal-dialog {
         margin: var(--vs-spacing-md);
+    }
+
+    /* Ensure btn-group buttons meet touch target */
+    .btn-group .btn {
+        min-height: 44px;
+        min-width: 44px;
+    }
+
+    .btn-group-sm .btn {
+        min-height: 40px;
+        min-width: 40px;
     }
 }
 
