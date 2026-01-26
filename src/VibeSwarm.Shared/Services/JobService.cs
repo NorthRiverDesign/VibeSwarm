@@ -443,4 +443,30 @@ public class JobService : IJobService
 
         return true;
     }
+
+    public async Task<bool> UpdateGitDiffAsync(Guid id, string? gitDiff, CancellationToken cancellationToken = default)
+    {
+        var job = await _dbContext.Jobs
+            .FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
+
+        if (job == null)
+        {
+            return false;
+        }
+
+        job.GitDiff = gitDiff;
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        // Notify about git diff update
+        if (_jobUpdateService != null)
+        {
+            try
+            {
+                await _jobUpdateService.NotifyJobGitDiffUpdated(job.Id, !string.IsNullOrEmpty(gitDiff));
+            }
+            catch { }
+        }
+
+        return true;
+    }
 }

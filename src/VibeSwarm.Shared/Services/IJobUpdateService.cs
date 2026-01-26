@@ -70,4 +70,11 @@ public interface IJobUpdateService
     /// <param name="exitCode">The process exit code</param>
     /// <param name="duration">How long the process ran</param>
     Task NotifyProcessExited(Guid jobId, int processId, int exitCode, TimeSpan duration);
+
+    /// <summary>
+    /// Notifies clients that a job's git diff has been updated
+    /// </summary>
+    /// <param name="jobId">The job ID</param>
+    /// <param name="hasChanges">Whether changes were detected</param>
+    Task NotifyJobGitDiffUpdated(Guid jobId, bool hasChanges);
 }

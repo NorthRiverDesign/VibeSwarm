@@ -123,6 +123,21 @@ export async function initializeJobHub(jobId, dotNetRef) {
 			}
 		};
 
+		handlers.JobGitDiffUpdated = (eventJobId, hasChanges) => {
+			if (eventJobId === jobId) {
+				console.log(
+					`[SignalR] JobGitDiffUpdated: ${eventJobId}, hasChanges: ${hasChanges}`,
+				);
+				if (dotNetReference) {
+					dotNetReference.invokeMethodAsync(
+						"OnJobGitDiffUpdated",
+						eventJobId,
+						hasChanges,
+					);
+				}
+			}
+		};
+
 		// Register handlers with the global hub
 		Object.entries(handlers).forEach(([event, handler]) => {
 			window.VibeSwarmHub.on(event, handler);

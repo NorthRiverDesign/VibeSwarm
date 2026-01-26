@@ -3,6 +3,7 @@
 		<TargetFramework>net10.0</TargetFramework>
 		<Nullable>enable</Nullable>
 		<ImplicitUsings>enable</ImplicitUsings>
+		<DefaultItemExcludes>$(DefaultItemExcludes);**/*.db;**/*.db-shm;**/*.db-wal</DefaultItemExcludes>
 	</PropertyGroup>
 
 	<ItemGroup>
@@ -20,5 +21,11 @@
 
 	<ItemGroup>
 	  <Folder Include="wwwroot\img\" />
+	</ItemGroup>
+
+	<ItemGroup>
+    	<Watch Remove="**\*.db" />
+		<Watch Remove="**\*.db-shm" />
+		<Watch Remove="**\*.db-wal" />
 	</ItemGroup>
 </Project>

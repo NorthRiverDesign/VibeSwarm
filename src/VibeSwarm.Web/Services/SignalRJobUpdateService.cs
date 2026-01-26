@@ -233,4 +233,21 @@ public class SignalRJobUpdateService : IJobUpdateService
             _logger.LogWarning(ex, "Error sending ProcessExited notification for job {JobId}", jobId);
         }
     }
+
+    public async Task NotifyJobGitDiffUpdated(Guid jobId, bool hasChanges)
+    {
+        try
+        {
+            await _hubContext.Clients
+                .Group($"job-{jobId}")
+                .SendAsync("JobGitDiffUpdated", jobId.ToString(), hasChanges);
+
+            _logger.LogDebug("Sent JobGitDiffUpdated notification for job {JobId}: HasChanges={HasChanges}",
+                jobId, hasChanges);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error sending JobGitDiffUpdated notification for job {JobId}", jobId);
+        }
+    }
 }
