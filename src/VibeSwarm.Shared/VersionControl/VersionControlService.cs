@@ -859,4 +859,156 @@ public sealed class VersionControlService : IVersionControlService
 			return GitOperationResult.Failed($"Unexpected error: {ex.Message}");
 		}
 	}
+
+	/// <inheritdoc />
+	public async Task<GitOperationResult> CloneRepositoryAsync(
+		string repositoryUrl,
+		string targetDirectory,
+		string? branch = null,
+		Action<string>? progressCallback = null,
+		CancellationToken cancellationToken = default)
+	{
+		try
+		{
+			// Validate inputs
+			if (string.IsNullOrWhiteSpace(repositoryUrl))
+			{
+				return GitOperationResult.Failed("Repository URL cannot be empty.");
+			}
+
+			if (string.IsNullOrWhiteSpace(targetDirectory))
+			{
+				return GitOperationResult.Failed("Target directory cannot be empty.");
+			}
+
+			// Check if git is available
+			var gitAvailable = await IsGitAvailableAsync(cancellationToken);
+			if (!gitAvailable)
+			{
+				return GitOperationResult.Failed("Git is not available on this system.");
+			}
+
+			// Check if target directory exists and is not empty
+			if (Directory.Exists(targetDirectory))
+			{
+				var entries = Directory.GetFileSystemEntries(targetDirectory);
+				if (entries.Length > 0)
+				{
+					return GitOperationResult.Failed($"Target directory '{targetDirectory}' exists and is not empty.");
+				}
+			}
+			else
+			{
+				// Create the parent directory if it doesn't exist
+				var parentDir = Path.GetDirectoryName(targetDirectory);
+				if (!string.IsNullOrEmpty(parentDir) && !Directory.Exists(parentDir))
+				{
+					Directory.CreateDirectory(parentDir);
+				}
+			}
+
+			progressCallback?.Invoke($"Cloning repository from {repositoryUrl}...");
+
+			// Build clone command
+			var cloneArgs = new StringBuilder("clone");
+
+			// Add branch if specified
+			if (!string.IsNullOrWhiteSpace(branch))
+			{
+				cloneArgs.Append($" --branch {branch}");
+			}
+
+			// Add progress flag for better feedback
+			cloneArgs.Append(" --progress");
+
+			// Add the repository URL and target directory
+			cloneArgs.Append($" \"{repositoryUrl}\" \"{targetDirectory}\"");
+
+			// Use the parent directory as working directory since target doesn't exist yet
+			var workingDir = Path.GetDirectoryName(targetDirectory) ?? Directory.GetCurrentDirectory();
+
+			// Clone can take longer, increase timeout to 5 minutes
+			var result = await _commandExecutor.ExecuteAsync(
+				cloneArgs.ToString(),
+				workingDir,
+				cancellationToken,
+				timeoutSeconds: 300);
+
+			if (!result.Success)
+			{
+				// Clean up partially cloned directory if it exists
+				if (Directory.Exists(targetDirectory))
+				{
+					try
+					{
+						Directory.Delete(targetDirectory, recursive: true);
+					}
+					catch
+					{
+						// Ignore cleanup errors
+					}
+				}
+
+				var errorMessage = !string.IsNullOrWhiteSpace(result.Error)
+					? result.Error.Trim()
+					: "Clone operation failed with no error message.";
+
+				return GitOperationResult.Failed($"Failed to clone repository: {errorMessage}");
+			}
+
+			progressCallback?.Invoke("Clone completed. Getting repository info...");
+
+			// Get the commit hash and branch info from the cloned repository
+			var commitHash = await GetCurrentCommitHashAsync(targetDirectory, cancellationToken);
+			var currentBranch = await GetCurrentBranchAsync(targetDirectory, cancellationToken);
+
+			return GitOperationResult.Succeeded(
+				output: $"Successfully cloned repository to {targetDirectory}",
+				branchName: currentBranch,
+				commitHash: commitHash);
+		}
+		catch (OperationCanceledException)
+		{
+			// Clean up partially cloned directory
+			if (Directory.Exists(targetDirectory))
+			{
+				try
+				{
+					Directory.Delete(targetDirectory, recursive: true);
+				}
+				catch
+				{
+					// Ignore cleanup errors
+				}
+			}
+
+			return GitOperationResult.Failed("Clone operation was cancelled or timed out.");
+		}
+		catch (Exception ex)
+		{
+			return GitOperationResult.Failed($"Unexpected error during clone: {ex.Message}");
+		}
+	}
+
+	/// <inheritdoc />
+	public string GetGitHubCloneUrl(string ownerAndRepo)
+	{
+		if (string.IsNullOrWhiteSpace(ownerAndRepo))
+		{
+			throw new ArgumentException("Owner and repo cannot be empty.", nameof(ownerAndRepo));
+		}
+
+		// Trim whitespace and remove any leading/trailing slashes
+		var normalized = ownerAndRepo.Trim().Trim('/');
+
+		// Validate format: should be "owner/repo"
+		var parts = normalized.Split('/');
+		if (parts.Length != 2 || string.IsNullOrWhiteSpace(parts[0]) || string.IsNullOrWhiteSpace(parts[1]))
+		{
+			throw new ArgumentException("Invalid format. Expected 'owner/repo' format (e.g., 'microsoft/vscode').", nameof(ownerAndRepo));
+		}
+
+		// Return HTTPS URL
+		return $"https://github.com/{parts[0]}/{parts[1]}.git";
+	}
 }

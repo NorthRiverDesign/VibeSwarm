@@ -17,6 +17,13 @@ public class Project
     [StringLength(500, MinimumLength = 1)]
     public string WorkingPath { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Optional GitHub repository in "owner/repo" format.
+    /// Used when creating a project from a GitHub repository.
+    /// </summary>
+    [StringLength(200)]
+    public string? GitHubRepository { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     public DateTime? UpdatedAt { get; set; }

@@ -4,9 +4,11 @@
 @inject IJobService JobService
 @inject ISettingsService SettingsService
 @inject IFileSystemService FileSystemService
+@inject IVersionControlService VersionControlService
 @inject NavigationManager NavigationManager
 @implements IDisposable
 @using VibeSwarm.Shared.Utilities
+@using VibeSwarm.Shared.VersionControl
 
 <PageHeader Title="Projects" />
 
@@ -35,6 +37,25 @@
                             rows="2" placeholder="Brief description..." />
                     </div>
 
+                    @if (!IsEditing)
+                    {
+                        <div class="mb-3">
+                            <label for="githubRepo" class="form-label">
+                                <i class="bi bi-github me-1"></i>GitHub Repository
+                                <span class="text-body-secondary fw-normal">(optional)</span>
+                            </label>
+                            <div class="input-group">
+                                <span class="input-group-text">github.com/</span>
+                                <InputText id="githubRepo" @bind-Value="CurrentProject.GitHubRepository"
+                                    class="form-control" placeholder="owner/repo" @oninput="OnGitHubRepoChanged" />
+                            </div>
+                            <div class="form-text">
+                                Enter a GitHub repository to clone (e.g., <code>microsoft/vscode</code>).
+                                The repository will be cloned to the working path when creating the project.
+                            </div>
+                        </div>
+                    }
+
                     <div class="mb-3">
                         <label for="workingPath" class="form-label">Working Path</label>
                         <div class="input-group">
@@ -55,13 +76,29 @@
                             {
                                 <span class="spinner-border spinner-border-sm me-1" role="status"></span>
                             }
-                            @(IsSaving ? "Saving..." : (IsEditing ? "Update" : "Create"))
+                            @if (IsSaving && _isCloning)
+                            {
+                                @:Cloning...
+                            }
+                            else
+                            {
+                                @(IsSaving ? "Saving..." : (IsEditing ? "Update" :
+                                                            (!string.IsNullOrWhiteSpace(CurrentProject.GitHubRepository) ? "Clone & Create" :
+                                                            "Create")))
+                            }
                         </button>
                         @if (IsEditing)
                         {
                             <button type="button" class="btn btn-secondary" @onclick="CancelEdit">Cancel</button>
                         }
                     </div>
+
+                    @if (!string.IsNullOrEmpty(_cloneProgressMessage))
+                    {
+                        <div class="alert alert-info mt-3 mb-0">
+                            <i class="bi bi-info-circle me-1"></i>@_cloneProgressMessage
+                        </div>
+                    }
 
                     @if (!string.IsNullOrEmpty(ErrorMessage))
                     {
@@ -202,6 +239,8 @@
     private string? ErrorMessage { get; set; }
     private string? SuccessMessage { get; set; }
     private System.Threading.Timer? _refreshTimer;
+    private bool _isCloning { get; set; }
+    private string? _cloneProgressMessage { get; set; }
     private bool _showDirectoryBrowser = false;
     private DirectoryBrowser? _directoryBrowser;
     private string? _defaultProjectsDirectory;
@@ -282,6 +321,7 @@
         IsSaving = true;
         ErrorMessage = null;
         SuccessMessage = null;
+        _cloneProgressMessage = null;
 
         try
         {
@@ -292,8 +332,49 @@
             }
             else
             {
+                // If a GitHub repository is specified, clone it first
+                if (!string.IsNullOrWhiteSpace(CurrentProject.GitHubRepository))
+                {
+                    _isCloning = true;
+                    StateHasChanged();
+
+                    try
+                    {
+                        // Get the clone URL
+                        var cloneUrl = VersionControlService.GetGitHubCloneUrl(CurrentProject.GitHubRepository);
+
+                        // Clone the repository with progress updates
+                        var cloneResult = await VersionControlService.CloneRepositoryAsync(
+                        cloneUrl,
+                        CurrentProject.WorkingPath,
+                        progressCallback: async (message) =>
+                        {
+                            _cloneProgressMessage = message;
+                            await InvokeAsync(StateHasChanged);
+                        });
+
+                        if (!cloneResult.Success)
+                        {
+                            ErrorMessage = cloneResult.Error ?? "Failed to clone repository.";
+                            return;
+                        }
+                    }
+                    catch (ArgumentException ex)
+                    {
+                        ErrorMessage = $"Invalid GitHub repository format: {ex.Message}";
+                        return;
+                    }
+                    finally
+                    {
+                        _isCloning = false;
+                        _cloneProgressMessage = null;
+                    }
+                }
+
                 await ProjectService.CreateAsync(CurrentProject);
-                SuccessMessage = "Project created successfully.";
+                SuccessMessage = !string.IsNullOrWhiteSpace(CurrentProject.GitHubRepository)
+                ? "Project created and repository cloned successfully."
+                : "Project created successfully.";
             }
 
             CurrentProject = new Project();
@@ -307,6 +388,8 @@
         finally
         {
             IsSaving = false;
+            _isCloning = false;
+            _cloneProgressMessage = null;
         }
     }
 
@@ -317,7 +400,8 @@
             Id = project.Id,
             Name = project.Name,
             Description = project.Description,
-            WorkingPath = project.WorkingPath
+            WorkingPath = project.WorkingPath,
+            GitHubRepository = project.GitHubRepository
         };
         IsEditing = true;
         ErrorMessage = null;
@@ -330,6 +414,42 @@
         IsEditing = false;
         ErrorMessage = null;
         SuccessMessage = null;
+    }
+
+    private void OnGitHubRepoChanged(ChangeEventArgs e)
+    {
+        var repoValue = e.Value?.ToString() ?? string.Empty;
+        CurrentProject.GitHubRepository = repoValue;
+
+        // Auto-populate working path if it's empty or was auto-populated before
+        if (!string.IsNullOrWhiteSpace(repoValue))
+        {
+            // Extract repo name from "owner/repo" format
+            var parts = repoValue.Trim().Trim('/').Split('/');
+            if (parts.Length >= 2 && !string.IsNullOrWhiteSpace(parts[1]))
+            {
+                var repoName = parts[1];
+
+                // Auto-populate working path using default projects directory
+                if (!string.IsNullOrEmpty(_defaultProjectsDirectory))
+                {
+                    var suggestedPath = Path.Combine(_defaultProjectsDirectory, repoName);
+
+                    // Only auto-populate if working path is empty or matches a previously auto-populated value
+                    if (string.IsNullOrWhiteSpace(CurrentProject.WorkingPath) ||
+                    CurrentProject.WorkingPath.StartsWith(_defaultProjectsDirectory))
+                    {
+                        CurrentProject.WorkingPath = suggestedPath;
+                    }
+                }
+
+                // Also auto-populate the name if it's empty
+                if (string.IsNullOrWhiteSpace(CurrentProject.Name))
+                {
+                    CurrentProject.Name = repoName;
+                }
+            }
+        }
     }
 
     private async Task DeleteProject(Guid id)

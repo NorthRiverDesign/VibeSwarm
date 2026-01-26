@@ -178,4 +178,27 @@ public interface IVersionControlService
 		string remoteName = "origin",
 		Action<string>? progressCallback = null,
 		CancellationToken cancellationToken = default);
+
+	/// <summary>
+	/// Clones a repository from a remote URL to a local directory.
+	/// </summary>
+	/// <param name="repositoryUrl">The URL of the repository to clone (e.g., https://github.com/owner/repo.git).</param>
+	/// <param name="targetDirectory">The local directory to clone into. The directory should not exist or be empty.</param>
+	/// <param name="branch">Optional branch name to checkout after cloning.</param>
+	/// <param name="progressCallback">Optional callback for progress updates.</param>
+	/// <param name="cancellationToken">Cancellation token.</param>
+	/// <returns>Result containing success status and any error message.</returns>
+	Task<GitOperationResult> CloneRepositoryAsync(
+		string repositoryUrl,
+		string targetDirectory,
+		string? branch = null,
+		Action<string>? progressCallback = null,
+		CancellationToken cancellationToken = default);
+
+	/// <summary>
+	/// Converts a GitHub "owner/repo" format string to a full HTTPS clone URL.
+	/// </summary>
+	/// <param name="ownerAndRepo">The owner/repo string (e.g., "microsoft/vscode").</param>
+	/// <returns>The full HTTPS URL for cloning.</returns>
+	string GetGitHubCloneUrl(string ownerAndRepo);
 }
