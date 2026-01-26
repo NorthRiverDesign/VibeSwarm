@@ -25,8 +25,8 @@ else
 {
     @* Page Header - Full Width *@
     <div
-        class="d-flex flex-column flex-md-row justify-content-between align-items-start gap-3 mb-3 mb-lg-4 pb-3 border-bottom">
-        <div class="flex-grow-1 min-width-0">
+        class="d-flex flex-column flex-lg-row justify-content-between align-items-start gap-3 mb-3 mb-lg-4 pb-3 border-bottom">
+        <div class="flex-grow-1 min-width-0 w-100 w-lg-auto">
             <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
                 <h3 class="mb-0 fs-4 fw-semibold">Job Details</h3>
                 <StatusBadge Status="@Job.Status.ToString()" />
@@ -60,6 +60,42 @@ else
                     }
                 </div>
             </div>
+            @* Stats Row - Token usage and cost *@
+            @if (Job.ModelUsed != null || Job.InputTokens.HasValue || Job.OutputTokens.HasValue || Job.TotalCostUsd.HasValue)
+            {
+                <div class="d-flex flex-wrap gap-2 gap-sm-3 mt-2 pt-2 border-top border-secondary border-opacity-25 job-stats-row">
+                    @if (Job.ModelUsed != null)
+                    {
+                        <span class="stat-pill" title="Model">
+                            <i class="bi bi-cpu me-1 opacity-75"></i>@Job.ModelUsed
+                        </span>
+                    }
+                    @if (Job.InputTokens.HasValue)
+                    {
+                        <span class="stat-pill" title="Input Tokens">
+                            <i class="bi bi-arrow-right-circle me-1 opacity-75"></i>@TokenHelper.FormatTokenCount(Job.InputTokens.Value)
+                        </span>
+                    }
+                    @if (Job.OutputTokens.HasValue)
+                    {
+                        <span class="stat-pill" title="Output Tokens">
+                            <i class="bi bi-arrow-left-circle me-1 opacity-75"></i>@TokenHelper.FormatTokenCount(Job.OutputTokens.Value)
+                        </span>
+                    }
+                    @if (Job.InputTokens.HasValue && Job.OutputTokens.HasValue)
+                    {
+                        <span class="stat-pill" title="Total Tokens">
+                            <i class="bi bi-arrow-left-right me-1 opacity-75"></i>@TokenHelper.FormatTokenCount(Job.InputTokens.Value + Job.OutputTokens.Value)
+                        </span>
+                    }
+                    @if (Job.TotalCostUsd.HasValue)
+                    {
+                        <span class="stat-pill stat-pill-cost" title="Total Cost">
+                            <i class="bi bi-currency-dollar me-1 opacity-75"></i>@TokenHelper.FormatCost(Job.TotalCostUsd.Value)
+                        </span>
+                    }
+                </div>
+            }
         </div>
         <div class="d-flex flex-wrap gap-2 flex-shrink-0">
             @if (CanRetry)
@@ -86,49 +122,24 @@ else
     </div>
 
     @* Main Content - Column Layout *@
-    <div class="row g-3 g-lg-4">
+    <div class="row g-3 g-lg-4 job-detail-content">
         @* Left Column - Goal & Output on mobile first *@
-        <div class="col-12 col-lg-5 order-2 order-lg-1">
+        <div class="col-12 col-xl-5 order-2 order-xl-1">
             <div class="card mb-3 mb-lg-4">
-                <div class="card-header bg-body-secondary">
+                <div class="card-header bg-body-secondary d-flex justify-content-between align-items-center">
                     <h5 class="mb-0 fw-semibold"><i class="bi bi-bullseye me-2 opacity-75"></i>Goal Prompt</h5>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="ShowFullPromptModal" title="View full prompt">
+                        <i class="bi bi-arrows-fullscreen me-1"></i>
+                        <span class="d-none d-sm-inline">View Full</span>
+                    </button>
                 </div>
                 <div class="card-body d-flex flex-column gap-3">
                     <div class="goal-prompt-box">@Job.GoalPrompt</div>
 
-                    @if (Job.ModelUsed != null || Job.SessionId != null || Job.InputTokens.HasValue ||
-                                    Job.OutputTokens.HasValue ||
-                                    Job.TotalCostUsd.HasValue)
+                    @if (Job.SessionId != null)
                     {
                         <div class="d-flex flex-wrap gap-2">
-                            @if (Job.ModelUsed != null)
-                            {
-                                <StatItem Label="Model" Value="@Job.ModelUsed" />
-                            }
-                            @if (Job.SessionId != null)
-                            {
-                                <StatItem Label="Session ID" Value="@Job.SessionId" Monospace="true" />
-                            }
-                            @if (Job.InputTokens.HasValue)
-                            {
-                                <StatItem Label="Input" Value="@TokenHelper.FormatTokenCount(Job.InputTokens.Value)"
-                                    FlexGrow="true" />
-                            }
-                            @if (Job.OutputTokens.HasValue)
-                            {
-                                <StatItem Label="Output" Value="@TokenHelper.FormatTokenCount(Job.OutputTokens.Value)"
-                                    FlexGrow="true" />
-                            }
-                            @if (Job.InputTokens.HasValue && Job.OutputTokens.HasValue)
-                            {
-                                <StatItem Label="Total"
-                                    Value="@TokenHelper.FormatTokenCount(Job.InputTokens.Value + Job.OutputTokens.Value)"
-                                    FlexGrow="true" />
-                            }
-                            @if (Job.TotalCostUsd.HasValue)
-                            {
-                                <StatItem Label="Cost" Value="@TokenHelper.FormatCost(Job.TotalCostUsd.Value)" FlexGrow="true" />
-                            }
+                            <StatItem Label="Session ID" Value="@Job.SessionId" Monospace="true" />
                         </div>
                     }
 
@@ -341,15 +352,15 @@ else
                                                 <span class="diff-file-icon">
                                                     @if (file.IsNew)
                                                     {
-                                                        <span class="text-success" title="New file">➕</span>
+                                                        <i class="bi bi-file-earmark-plus text-success" title="New file"></i>
                                                     }
                                                     else if (file.IsDeleted)
                                                     {
-                                                        <span class="text-danger" title="Deleted file">➖</span>
+                                                        <i class="bi bi-file-earmark-minus text-danger" title="Deleted file"></i>
                                                     }
                                                     else
                                                     {
-                                                        <span class="text-warning" title="Modified file">📝</span>
+                                                        <i class="bi bi-file-earmark-diff text-warning" title="Modified file"></i>
                                                     }
                                                 </span>
                                                 <span class="diff-file-name">@file.FileName</span>
@@ -493,7 +504,7 @@ else
         </div>
 
         @* Right Column - Conversation Messages (shows first on mobile) *@
-        <div class="col-12 col-lg-7 order-1 order-lg-2">
+        <div class="col-12 col-xl-7 order-1 order-xl-2">
             <div class="card">
                 <div class="card-header bg-body-secondary d-flex justify-content-between align-items-center">
                     <h5 class="mb-0 fw-semibold"><i class="bi bi-chat-dots me-2 opacity-75"></i>Conversation</h5>
@@ -531,37 +542,40 @@ else
                     }
                     else
                     {
-                        <div class="messages-container">
+                        <div class="chat-messages-container">
                             @foreach (var message in Job.Messages)
                             {
-                                <div class="message message-@message.Role.ToString().ToLower()">
-                                    <div class="message-header">
-                                        <span class="message-role">@GetRoleDisplayName(message.Role)</span>
-                                        <span class="message-time">@message.CreatedAt.FormatTime()</span>
-                                    </div>
-                                    <div class="message-content">
+                                <div class="chat-message chat-message-@message.Role.ToString().ToLower()">
+                                    <div class="chat-bubble">
                                         @if (message.Role == MessageRole.ToolUse)
                                         {
-                                            <div class="tool-info">
-                                                <strong>Tool:</strong> @message.ToolName
+                                            <div class="chat-tool-info">
+                                                <div class="chat-tool-header">
+                                                    <i class="bi bi-tools me-1"></i>@message.ToolName
+                                                </div>
                                                 @if (!string.IsNullOrEmpty(message.ToolInput))
                                                 {
-                                                    <pre class="tool-input">@message.ToolInput</pre>
+                                                    <pre class="chat-tool-code">@message.ToolInput</pre>
                                                 }
                                             </div>
                                         }
                                         else if (message.Role == MessageRole.ToolResult)
                                         {
-                                            <div class="tool-info">
-                                                <strong>Result from:</strong> @message.ToolName
-                                                <pre
-                                                    class="tool-output">@TruncateOutput(message.ToolOutput ?? message.Content, 500)</pre>
+                                            <div class="chat-tool-info">
+                                                <div class="chat-tool-header">
+                                                    <i class="bi bi-arrow-return-right me-1"></i>@message.ToolName
+                                                </div>
+                                                <pre class="chat-tool-code">@TruncateOutput(message.ToolOutput ?? message.Content, 500)</pre>
                                             </div>
                                         }
                                         else
                                         {
-                                            <pre class="message-text">@message.Content</pre>
+                                            <div class="chat-text">@message.Content</div>
                                         }
+                                    </div>
+                                    <div class="chat-meta">
+                                        <span class="chat-role">@GetRoleDisplayName(message.Role)</span>
+                                        <span class="chat-time">@message.CreatedAt.FormatTime()</span>
                                     </div>
                                 </div>
                             }
@@ -580,6 +594,31 @@ else
     @if (!string.IsNullOrEmpty(SuccessMessage))
     {
         <div class="alert alert-success mt-3">@SuccessMessage</div>
+    }
+
+    @* Full Prompt Modal *@
+    @if (_showFullPromptModal)
+    {
+        <div class="modal-backdrop fade show"></div>
+        <div class="modal fade show d-block" tabindex="-1" role="dialog" @onclick="CloseFullPromptModal">
+            <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable" @onclick:stopPropagation="true">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title"><i class="bi bi-file-text me-2"></i>Full Input Prompt</h5>
+                        <button type="button" class="btn-close" @onclick="CloseFullPromptModal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <pre class="full-prompt-content">@Job.GoalPrompt</pre>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-outline-secondary" @onclick="CopyPromptToClipboard">
+                            <i class="bi bi-clipboard me-1"></i>Copy to Clipboard
+                        </button>
+                        <button type="button" class="btn btn-secondary" @onclick="CloseFullPromptModal">Close</button>
+                    </div>
+                </div>
+            </div>
+        </div>
     }
 }
 
@@ -632,6 +671,9 @@ else
     private bool _isSubmittingResponse = false;
     private string? _interactionError = null;
     private List<string>? _interactionChoices = null;
+
+    // Full prompt modal state
+    private bool _showFullPromptModal = false;
 
     private class OutputLine
     {
@@ -1243,6 +1285,39 @@ else
     private void ToggleGitDiff()
     {
         _showGitDiff = !_showGitDiff;
+    }
+
+    private void ShowFullPromptModal()
+    {
+        _showFullPromptModal = true;
+    }
+
+    private void CloseFullPromptModal()
+    {
+        _showFullPromptModal = false;
+    }
+
+    private async Task CopyPromptToClipboard()
+    {
+        if (Job != null && !string.IsNullOrEmpty(Job.GoalPrompt))
+        {
+            try
+            {
+                await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", Job.GoalPrompt);
+                SuccessMessage = "Prompt copied to clipboard!";
+                StateHasChanged();
+                // Clear the message after 3 seconds
+                _ = Task.Delay(3000).ContinueWith(_ =>
+                {
+                    SuccessMessage = null;
+                    InvokeAsync(StateHasChanged);
+                });
+            }
+            catch
+            {
+                ErrorMessage = "Failed to copy to clipboard";
+            }
+        }
     }
 
     private async Task LoadBranchName()

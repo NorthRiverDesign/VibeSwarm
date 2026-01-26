@@ -425,7 +425,7 @@ body {
 }
 
 /* ============================================
-   Messages / Conversation
+   Messages / Conversation (Legacy - kept for compatibility)
 ============================================ */
 .message {
     border-radius: var(--bs-border-radius);
@@ -456,6 +456,190 @@ body {
     overflow-x: auto;
     max-height: 180px;
     overflow-y: auto;
+}
+
+/* ============================================
+   iMessage-Style Chat Bubbles
+============================================ */
+.chat-messages-container {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    max-height: 600px;
+    overflow-y: auto;
+    padding: 0.5rem;
+}
+
+.chat-message {
+    display: flex;
+    flex-direction: column;
+    max-width: 85%;
+}
+
+/* User messages align right */
+.chat-message-user {
+    align-self: flex-end;
+    align-items: flex-end;
+}
+
+/* Assistant messages align left */
+.chat-message-assistant {
+    align-self: flex-start;
+    align-items: flex-start;
+}
+
+/* System messages center */
+.chat-message-system {
+    align-self: center;
+    align-items: center;
+    max-width: 90%;
+}
+
+/* Tool messages align left but slightly indented */
+.chat-message-tooluse,
+.chat-message-toolresult {
+    align-self: flex-start;
+    align-items: flex-start;
+    margin-left: 1rem;
+}
+
+.chat-bubble {
+    padding: 0.75rem 1rem;
+    border-radius: 1.25rem;
+    word-break: break-word;
+    position: relative;
+}
+
+/* User bubble - blue like iMessage */
+.chat-message-user .chat-bubble {
+    background: var(--vs-accent-blue);
+    color: #fff;
+    border-bottom-right-radius: 0.25rem;
+}
+
+/* Assistant bubble - gray/green */
+.chat-message-assistant .chat-bubble {
+    background: var(--bs-tertiary-bg);
+    color: var(--bs-body-color);
+    border-bottom-left-radius: 0.25rem;
+    border: 1px solid var(--bs-border-color);
+}
+
+/* System bubble - yellow/warning tint */
+.chat-message-system .chat-bubble {
+    background: rgba(210, 153, 34, 0.15);
+    color: var(--bs-body-color);
+    border-radius: 0.75rem;
+    font-size: 0.85rem;
+    border: 1px solid rgba(210, 153, 34, 0.3);
+}
+
+/* Tool use bubble - purple tint */
+.chat-message-tooluse .chat-bubble {
+    background: rgba(163, 113, 247, 0.1);
+    color: var(--bs-body-color);
+    border-radius: 0.75rem;
+    border: 1px solid rgba(163, 113, 247, 0.3);
+    font-size: 0.85rem;
+}
+
+/* Tool result bubble - green tint */
+.chat-message-toolresult .chat-bubble {
+    background: rgba(63, 185, 80, 0.1);
+    color: var(--bs-body-color);
+    border-radius: 0.75rem;
+    border: 1px solid rgba(63, 185, 80, 0.3);
+    font-size: 0.85rem;
+}
+
+.chat-text {
+    white-space: pre-wrap;
+    margin: 0;
+    line-height: 1.5;
+}
+
+.chat-tool-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.chat-tool-header {
+    font-weight: 600;
+    font-size: 0.8rem;
+    opacity: 0.9;
+}
+
+.chat-tool-code {
+    margin: 0;
+    padding: 0.5rem;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 0.5rem;
+    font-family: 'SF Mono', monospace;
+    font-size: 0.75rem;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 150px;
+    overflow-y: auto;
+}
+
+.chat-meta {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.25rem;
+    font-size: 0.7rem;
+    color: var(--bs-secondary-color);
+    padding: 0 0.5rem;
+}
+
+.chat-role {
+    font-weight: 500;
+}
+
+.chat-time {
+    opacity: 0.8;
+}
+
+/* ============================================
+   Job Stats Pills (Header)
+============================================ */
+.job-stats-row {
+    font-size: 0.8rem;
+}
+
+.stat-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.25rem 0.6rem;
+    background: var(--bs-tertiary-bg);
+    border-radius: 1rem;
+    color: var(--bs-body-color);
+    font-size: 0.8rem;
+    white-space: nowrap;
+}
+
+.stat-pill-cost {
+    background: rgba(63, 185, 80, 0.15);
+    color: var(--vs-accent-green);
+    font-weight: 500;
+}
+
+/* ============================================
+   Full Prompt Modal
+============================================ */
+.full-prompt-content {
+    background: var(--bs-tertiary-bg);
+    border: 1px solid var(--bs-border-color);
+    border-radius: var(--bs-border-radius);
+    padding: 1rem;
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 60vh;
+    overflow-y: auto;
+    font-family: inherit;
+    font-size: 0.9rem;
+    line-height: 1.6;
 }
 
 /* Activity Indicator */
@@ -1128,5 +1312,80 @@ body {
         max-height: 200px;
         overflow-y: auto;
         -webkit-overflow-scrolling: touch;
+    }
+}
+
+/* ============================================
+   Job Detail Page - Responsive Layout
+============================================ */
+.job-detail-content {
+    width: 100%;
+    overflow-x: hidden;
+}
+
+/* Prevent horizontal overflow on medium screens */
+@media (min-width: 768px) and (max-width: 1199.98px) {
+    .job-detail-content {
+        /* Stack columns on medium screens to prevent overflow */
+    }
+    
+    .job-detail-content > .col-12 {
+        flex: 0 0 100%;
+        max-width: 100%;
+    }
+}
+
+/* Chat messages responsive */
+@media (max-width: 575.98px) {
+    .chat-message {
+        max-width: 95%;
+    }
+    
+    .chat-bubble {
+        padding: 0.5rem 0.75rem;
+    }
+    
+    .chat-messages-container {
+        max-height: 400px;
+        padding: 0.25rem;
+    }
+    
+    .chat-tool-code {
+        max-height: 100px;
+    }
+    
+    .stat-pill {
+        font-size: 0.7rem;
+        padding: 0.2rem 0.5rem;
+    }
+    
+    .job-stats-row {
+        font-size: 0.75rem;
+    }
+}
+
+/* Medium screen adjustments */
+@media (max-width: 991.98px) {
+    .chat-messages-container {
+        max-height: 500px;
+    }
+}
+
+/* Ensure proper main content width accounting for sidebar */
+@media (min-width: 992px) {
+    .job-detail-content {
+        max-width: 100%;
+    }
+}
+
+/* Fix modal on small screens */
+@media (max-width: 575.98px) {
+    .modal-dialog {
+        margin: 0.5rem;
+    }
+    
+    .full-prompt-content {
+        max-height: 50vh;
+        font-size: 0.85rem;
     }
 }
