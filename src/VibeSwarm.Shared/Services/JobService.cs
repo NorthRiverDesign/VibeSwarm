@@ -34,11 +34,23 @@ public class JobService : IJobService
 
     public async Task<IEnumerable<Job>> GetPendingJobsAsync(CancellationToken cancellationToken = default)
     {
+        // Get projects that already have a running job (Started, Processing, or Paused)
+        // Only one job should run per project at a time
+        var projectsWithRunningJobs = await _dbContext.Jobs
+            .Where(j => j.Status == JobStatus.Started || j.Status == JobStatus.Processing || j.Status == JobStatus.Paused)
+            .Select(j => j.ProjectId)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+
+        // Return pending jobs ordered by priority (desc) then creation time (oldest first)
+        // Exclude jobs from projects that already have a running job
         return await _dbContext.Jobs
             .Include(j => j.Project)
             .Include(j => j.Provider)
             .Where(j => j.Status == JobStatus.New && !j.CancellationRequested)
-            .OrderBy(j => j.CreatedAt)
+            .Where(j => !projectsWithRunningJobs.Contains(j.ProjectId))
+            .OrderByDescending(j => j.Priority)
+            .ThenBy(j => j.CreatedAt)
             .ToListAsync(cancellationToken);
     }
 

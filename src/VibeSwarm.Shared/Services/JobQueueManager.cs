@@ -23,9 +23,10 @@ public class JobQueueManager
 	public TimeSpan RequeueDelay { get; set; } = TimeSpan.FromSeconds(30);
 
 	/// <summary>
-	/// Maximum number of jobs from the same project to return in a single batch
+	/// Maximum number of jobs from the same project to return in a single batch.
+	/// Set to 1 to ensure only one job runs per project at a time.
 	/// </summary>
-	public int MaxJobsPerProject { get; set; } = 2;
+	public int MaxJobsPerProject { get; set; } = 1;
 
 	public JobQueueManager(IServiceScopeFactory scopeFactory, ILogger<JobQueueManager>? logger = null)
 	{
@@ -34,7 +35,8 @@ public class JobQueueManager
 	}
 
 	/// <summary>
-	/// Gets pending jobs ordered by priority and creation time, with fair distribution
+	/// Gets pending jobs ordered by priority and creation time, with fair distribution.
+	/// Only returns jobs for projects that don't already have a running job.
 	/// </summary>
 	public async Task<IReadOnlyList<Job>> GetPendingJobsAsync(int maxJobs, CancellationToken cancellationToken = default)
 	{
@@ -46,11 +48,19 @@ public class JobQueueManager
 			using var scope = _scopeFactory.CreateScope();
 			var dbContext = scope.ServiceProvider.GetRequiredService<VibeSwarmDbContext>();
 
-			// Get all pending jobs that aren't blocked
+			// Get projects that already have a running job (Started, Processing, or Paused)
+			var projectsWithRunningJobs = await dbContext.Jobs
+				.Where(j => j.Status == JobStatus.Started || j.Status == JobStatus.Processing || j.Status == JobStatus.Paused)
+				.Select(j => j.ProjectId)
+				.Distinct()
+				.ToListAsync(cancellationToken);
+
+			// Get all pending jobs that aren't blocked and whose project doesn't have a running job
 			var pendingJobs = await dbContext.Jobs
 				.Include(j => j.Project)
 				.Include(j => j.Provider)
 				.Where(j => j.Status == JobStatus.New && !j.CancellationRequested)
+				.Where(j => !projectsWithRunningJobs.Contains(j.ProjectId))
 				.OrderByDescending(j => j.Priority)
 				.ThenBy(j => j.CreatedAt)
 				.ToListAsync(cancellationToken);
@@ -63,7 +73,7 @@ public class JobQueueManager
 			// Filter out jobs with unsatisfied dependencies
 			eligibleJobs = FilterByDependencies(eligibleJobs, dbContext);
 
-			// Apply fair distribution across projects
+			// Apply fair distribution across projects (one job per project)
 			var result = ApplyFairDistribution(eligibleJobs, maxJobs);
 
 			// Track dequeued jobs
@@ -72,8 +82,8 @@ public class JobQueueManager
 				_recentlyDequeued[job.Id] = DateTime.UtcNow;
 			}
 
-			_logger?.LogDebug("Returning {Count} pending jobs from queue (total pending: {Total})",
-				result.Count, pendingJobs.Count);
+			_logger?.LogDebug("Returning {Count} pending jobs from queue (total pending: {Total}, projects with running jobs: {RunningProjects})",
+				result.Count, pendingJobs.Count, projectsWithRunningJobs.Count);
 
 			return result;
 		}
