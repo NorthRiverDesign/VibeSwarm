@@ -34,14 +34,14 @@
         <!-- PWA Manifest -->
         <link rel="manifest" href="manifest.json" />
 
-        <!-- Icons -->
-        <link rel="icon" type="image/png" sizes="96x96" href="/favicon-96x96.png" />
-        <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+        <!-- Icons - cache-busted for PWA updates -->
+        <link rel="icon" type="image/png" sizes="96x96" href="/favicon-96x96.png?v=2" />
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=2" />
 
-        <!-- iOS Icons - absolute paths required -->
-        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-        <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
-        <link rel="apple-touch-icon-precomposed" href="/apple-touch-icon.png" />
+        <!-- iOS Icons - absolute paths required, cache-busted -->
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=2" />
+        <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=2" />
+        <link rel="apple-touch-icon-precomposed" href="/apple-touch-icon.png?v=2" />
         <link href="lib/bootstrap/css/bootstrap.min.css" rel="stylesheet" />
         <link href="css/site.css" rel="stylesheet" />
     </head>
@@ -60,10 +60,31 @@
                     navigator.serviceWorker.register('/service-worker.js')
                         .then((registration) => {
                             console.log('ServiceWorker registered:', registration.scope);
+
+                            // Check for updates immediately and periodically
+                            registration.update();
+                            setInterval(() => registration.update(), 60 * 60 * 1000); // Check hourly
+
+                            // Handle updates
+                            registration.addEventListener('updatefound', () => {
+                                const newWorker = registration.installing;
+                                newWorker.addEventListener('statechange', () => {
+                                    if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                                        // New version available - refresh to get updated assets
+                                        console.log('New version available, refreshing...');
+                                        window.location.reload();
+                                    }
+                                });
+                            });
                         })
                         .catch((error) => {
                             console.log('ServiceWorker registration failed:', error);
                         });
+                });
+
+                // Handle controller change (when skipWaiting is called)
+                navigator.serviceWorker.addEventListener('controllerchange', () => {
+                    window.location.reload();
                 });
             }
         </script>

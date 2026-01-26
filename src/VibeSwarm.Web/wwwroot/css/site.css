@@ -110,6 +110,11 @@
     --vs-accent-red: #f85149;
     --vs-accent-purple: #a371f7;
     --vs-transition: 0.2s ease;
+    /* iOS Safe Area Insets */
+    --vs-safe-area-top: env(safe-area-inset-top, 0px);
+    --vs-safe-area-bottom: env(safe-area-inset-bottom, 0px);
+    --vs-safe-area-left: env(safe-area-inset-left, 0px);
+    --vs-safe-area-right: env(safe-area-inset-right, 0px);
 }
 
 /* ============================================
@@ -122,6 +127,9 @@ html {
 
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif;
+    /* PWA: Ensure content respects safe areas on notched devices */
+    padding-left: var(--vs-safe-area-left);
+    padding-right: var(--vs-safe-area-right);
 }
 
 /* ============================================
@@ -139,12 +147,14 @@ body {
     top: 0;
     left: 0;
     right: 0;
-    height: var(--vs-header-height);
+    height: calc(var(--vs-header-height) + var(--vs-safe-area-top));
     background: var(--bs-secondary-bg);
     border-bottom: 1px solid var(--bs-border-color);
     display: flex;
     align-items: center;
-    padding: 0 1rem;
+    padding: var(--vs-safe-area-top) 1rem 0 1rem;
+    padding-left: calc(1rem + var(--vs-safe-area-left));
+    padding-right: calc(1rem + var(--vs-safe-area-right));
     z-index: 1000;
     gap: 1rem;
 }
@@ -195,7 +205,7 @@ body {
 /* Sidebar Navigation */
 .app-sidebar {
     position: fixed;
-    top: var(--vs-header-height);
+    top: calc(var(--vs-header-height) + var(--vs-safe-area-top));
     left: 0;
     bottom: 0;
     width: var(--vs-sidebar-width);
@@ -207,6 +217,8 @@ body {
     transform: translateX(-100%);
     transition: transform var(--vs-transition);
     overflow-y: auto;
+    padding-bottom: var(--vs-safe-area-bottom);
+    padding-left: var(--vs-safe-area-left);
 }
 
 .app-sidebar.open {
@@ -215,7 +227,7 @@ body {
 
 .sidebar-overlay {
     position: fixed;
-    top: var(--vs-header-height);
+    top: calc(var(--vs-header-height) + var(--vs-safe-area-top));
     left: 0;
     right: 0;
     bottom: 0;
@@ -272,12 +284,15 @@ body {
 /* Main Content */
 .app-main {
     flex: 1;
-    margin-top: var(--vs-header-height);
-    min-height: calc(100vh - var(--vs-header-height));
+    margin-top: calc(var(--vs-header-height) + var(--vs-safe-area-top));
+    min-height: calc(100vh - var(--vs-header-height) - var(--vs-safe-area-top));
+    padding-bottom: var(--vs-safe-area-bottom);
 }
 
 .main-content {
     padding: 1rem;
+    padding-left: calc(1rem + var(--vs-safe-area-left));
+    padding-right: calc(1rem + var(--vs-safe-area-right));
     max-width: 100%;
     overflow-x: hidden;
 }
@@ -287,21 +302,23 @@ body {
     .app-layout {
         flex-direction: row;
     }
-    
+
     .app-sidebar {
         position: fixed;
         top: 0;
         transform: translateX(0);
+        padding-top: var(--vs-safe-area-top);
     }
-    
+
     .app-main {
-        margin-top: 0;
+        margin-top: var(--vs-safe-area-top);
         margin-left: var(--vs-sidebar-width);
-        min-height: 100vh;
+        min-height: calc(100vh - var(--vs-safe-area-top));
     }
-    
+
     .main-content {
         padding: 1.5rem 2rem;
+        padding-right: calc(2rem + var(--vs-safe-area-right));
         max-width: 1400px;
     }
 }
@@ -732,6 +749,10 @@ body {
     justify-content: center;
     z-index: 1050;
     padding: 1rem;
+    padding-top: calc(1rem + var(--vs-safe-area-top));
+    padding-bottom: calc(1rem + var(--vs-safe-area-bottom));
+    padding-left: calc(1rem + var(--vs-safe-area-left));
+    padding-right: calc(1rem + var(--vs-safe-area-right));
 }
 
 .modal-dialog-centered {
@@ -918,4 +939,51 @@ body {
     display: flex;
     flex-wrap: wrap;
     gap: 0.5rem;
+}
+
+/* ============================================
+   PWA Standalone Mode Styles
+============================================ */
+/* Applied when running as installed PWA */
+@media all and (display-mode: standalone) {
+    /* Ensure safe areas are respected in standalone mode */
+    html {
+        background: var(--bs-body-bg, #1a1d21);
+    }
+
+    /* Prevent text selection on UI elements for app-like feel */
+    .app-header,
+    .app-sidebar,
+    .nav-item,
+    .btn {
+        -webkit-user-select: none;
+        user-select: none;
+    }
+
+    /* Ensure the status bar area has the correct background color */
+    body::before {
+        content: '';
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: var(--vs-safe-area-top);
+        background: var(--bs-secondary-bg);
+        z-index: 1001;
+    }
+}
+
+/* iOS-specific PWA overrides */
+@supports (-webkit-touch-callout: none) {
+    /* iOS Safari and PWA */
+    .app-header {
+        /* Ensure header doesn't get clipped by notch */
+        -webkit-transform: translateZ(0);
+    }
+
+    /* Prevent rubber-banding on iOS */
+    html, body {
+        overscroll-behavior: none;
+        -webkit-overflow-scrolling: touch;
+    }
 }
