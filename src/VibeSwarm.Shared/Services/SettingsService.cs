@@ -14,7 +14,7 @@ public class SettingsService : ISettingsService
 
 	public async Task<AppSettings> GetSettingsAsync(CancellationToken cancellationToken = default)
 	{
-		var settings = await _dbContext.AppSettings.FirstOrDefaultAsync(cancellationToken);
+		var settings = await _dbContext.AppSettings.OrderBy(s => s.Id).FirstOrDefaultAsync(cancellationToken);
 
 		if (settings == null)
 		{
@@ -35,7 +35,7 @@ public class SettingsService : ISettingsService
 
 	public async Task<AppSettings> UpdateSettingsAsync(AppSettings settings, CancellationToken cancellationToken = default)
 	{
-		var existing = await _dbContext.AppSettings.FirstOrDefaultAsync(cancellationToken);
+		var existing = await _dbContext.AppSettings.OrderBy(s => s.Id).FirstOrDefaultAsync(cancellationToken);
 
 		if (existing == null)
 		{
@@ -58,7 +58,7 @@ public class SettingsService : ISettingsService
 
 	public async Task<string?> GetDefaultProjectsDirectoryAsync(CancellationToken cancellationToken = default)
 	{
-		var settings = await _dbContext.AppSettings.FirstOrDefaultAsync(cancellationToken);
+		var settings = await _dbContext.AppSettings.OrderBy(s => s.Id).FirstOrDefaultAsync(cancellationToken);
 		return settings?.DefaultProjectsDirectory;
 	}
 }
