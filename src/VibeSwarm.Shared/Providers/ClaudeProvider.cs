@@ -583,9 +583,14 @@ public class ClaudeProvider : ProviderBase
 
             case "result":
                 // Final result with metrics
+                // Try both cost field names (total_cost_usd and cost_usd)
                 if (evt.TotalCostUsd.HasValue)
                 {
                     result.CostUsd = evt.TotalCostUsd;
+                }
+                else if (evt.CostUsd.HasValue)
+                {
+                    result.CostUsd = evt.CostUsd;
                 }
                 if (evt.Usage != null)
                 {
@@ -1221,47 +1226,96 @@ public class ClaudeProvider : ProviderBase
     }
 
     // JSON models for Claude CLI stream-json output
+    // Note: JsonPropertyName attributes are used for snake_case fields from the CLI
     private class ClaudeStreamEvent
     {
+        [JsonPropertyName("type")]
         public string? Type { get; set; }
+
+        [JsonPropertyName("subtype")]
         public string? Subtype { get; set; }
+
+        [JsonPropertyName("session_id")]
         public string? SessionId { get; set; }
+
+        [JsonPropertyName("message")]
         public ClaudeMessage? Message { get; set; }
+
         // Result event fields
+        [JsonPropertyName("result")]
         public string? Result { get; set; }
+
+        [JsonPropertyName("total_cost_usd")]
         public decimal? TotalCostUsd { get; set; }
+
+        [JsonPropertyName("usage")]
         public UsageInfo? Usage { get; set; }
+
+        // Alternative field names that Claude CLI might use
+        [JsonPropertyName("cost_usd")]
+        public decimal? CostUsd { get; set; }
     }
 
     private class ClaudeMessage
     {
+        [JsonPropertyName("id")]
         public string? Id { get; set; }
+
+        [JsonPropertyName("type")]
         public string? Type { get; set; }
+
+        [JsonPropertyName("role")]
         public string? Role { get; set; }
+
+        [JsonPropertyName("model")]
         public string? Model { get; set; }
+
+        [JsonPropertyName("content")]
         public ContentBlock[]? Content { get; set; }
+
+        [JsonPropertyName("usage")]
         public UsageInfo? Usage { get; set; }
     }
 
     private class ContentBlock
     {
+        [JsonPropertyName("type")]
         public string? Type { get; set; }
+
         // For text content
+        [JsonPropertyName("text")]
         public string? Text { get; set; }
+
         // For tool_use content
+        [JsonPropertyName("id")]
         public string? Id { get; set; }
+
+        [JsonPropertyName("name")]
         public string? Name { get; set; }
+
+        [JsonPropertyName("input")]
         public JsonElement? Input { get; set; }
+
         // For tool_result content
+        [JsonPropertyName("tool_use_id")]
         public string? ToolUseId { get; set; }
+
+        [JsonPropertyName("content")]
         public string? Content { get; set; }
     }
 
     private class UsageInfo
     {
+        [JsonPropertyName("input_tokens")]
         public int? InputTokens { get; set; }
+
+        [JsonPropertyName("output_tokens")]
         public int? OutputTokens { get; set; }
+
+        [JsonPropertyName("cache_read_input_tokens")]
         public int? CacheReadInputTokens { get; set; }
+
+        [JsonPropertyName("cache_creation_input_tokens")]
         public int? CacheCreationInputTokens { get; set; }
     }
 

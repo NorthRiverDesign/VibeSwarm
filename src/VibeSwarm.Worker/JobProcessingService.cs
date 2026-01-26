@@ -785,8 +785,8 @@ public class JobProcessingService : BackgroundService
                     null, result.InputTokens, result.OutputTokens, result.CostUsd, result.ModelUsed,
                     executionContext, workingDirectory, dbContext, CancellationToken.None);
 
-                _logger.LogInformation("Job {JobId} completed successfully. Session: {SessionId}",
-                    job.Id, result.SessionId);
+                _logger.LogInformation("Job {JobId} completed successfully. Session: {SessionId}, InputTokens: {InputTokens}, OutputTokens: {OutputTokens}, Cost: {CostUsd}",
+                    job.Id, result.SessionId, result.InputTokens, result.OutputTokens, result.CostUsd);
                 await NotifyJobCompletedAsync(job.Id, true);
             }
             else
@@ -795,7 +795,8 @@ public class JobProcessingService : BackgroundService
                     result.ErrorMessage, result.InputTokens, result.OutputTokens, result.CostUsd, result.ModelUsed,
                     executionContext, workingDirectory, dbContext, CancellationToken.None);
 
-                _logger.LogWarning("Job {JobId} failed: {Error}", job.Id, result.ErrorMessage);
+                _logger.LogWarning("Job {JobId} failed: {Error}. InputTokens: {InputTokens}, OutputTokens: {OutputTokens}, Cost: {CostUsd}",
+                    job.Id, result.ErrorMessage, result.InputTokens, result.OutputTokens, result.CostUsd);
                 await NotifyJobCompletedAsync(job.Id, false, result.ErrorMessage);
             }
         }

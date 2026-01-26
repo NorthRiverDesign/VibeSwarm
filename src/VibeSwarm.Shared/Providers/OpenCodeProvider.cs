@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using VibeSwarm.Shared.Utilities;
 
 namespace VibeSwarm.Shared.Providers;
@@ -1071,27 +1072,58 @@ public class OpenCodeProvider : ProviderBase
     }
 
     // JSON models for OpenCode CLI and API output
+    // Note: JsonPropertyName attributes support snake_case from CLI
     private class OpenCodeStreamEvent
     {
+        [JsonPropertyName("type")]
         public string? Type { get; set; }
+
+        [JsonPropertyName("session_id")]
         public string? SessionId { get; set; }
+
+        [JsonPropertyName("content")]
         public string? Content { get; set; }
+
+        [JsonPropertyName("tool_name")]
         public string? ToolName { get; set; }
+
+        [JsonPropertyName("tool_input")]
         public string? ToolInput { get; set; }
+
+        [JsonPropertyName("tool_output")]
         public string? ToolOutput { get; set; }
+
+        [JsonPropertyName("cost_usd")]
         public decimal? CostUsd { get; set; }
+
+        [JsonPropertyName("input_tokens")]
         public int? InputTokens { get; set; }
+
+        [JsonPropertyName("output_tokens")]
         public int? OutputTokens { get; set; }
     }
 
     private class OpenCodeApiResponse
     {
+        [JsonPropertyName("output")]
         public string? Output { get; set; }
+
+        [JsonPropertyName("success")]
         public bool Success { get; set; }
+
+        [JsonPropertyName("error")]
         public string? Error { get; set; }
+
+        [JsonPropertyName("session_id")]
         public string? SessionId { get; set; }
+
+        [JsonPropertyName("input_tokens")]
         public int? InputTokens { get; set; }
+
+        [JsonPropertyName("output_tokens")]
         public int? OutputTokens { get; set; }
+
+        [JsonPropertyName("cost_usd")]
         public decimal? CostUsd { get; set; }
     }
 }

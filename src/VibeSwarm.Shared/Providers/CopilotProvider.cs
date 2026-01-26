@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using VibeSwarm.Shared.Utilities;
 
@@ -455,9 +456,45 @@ public class CopilotProvider : ProviderBase
 				});
 				break;
 
+			case "usage":
+			case "metrics":
+			case "stats":
+				// Process token usage if provided
+				if (evt.InputTokens.HasValue)
+				{
+					result.InputTokens = evt.InputTokens;
+				}
+				if (evt.OutputTokens.HasValue)
+				{
+					result.OutputTokens = evt.OutputTokens;
+				}
+				if (evt.CostUsd.HasValue)
+				{
+					result.CostUsd = evt.CostUsd;
+				}
+				break;
+
 			case "done":
 			case "complete":
-				// Finalize
+			case "result":
+				// Finalize - capture any token data in the completion event
+				if (evt.InputTokens.HasValue)
+				{
+					result.InputTokens = evt.InputTokens;
+				}
+				if (evt.OutputTokens.HasValue)
+				{
+					result.OutputTokens = evt.OutputTokens;
+				}
+				if (evt.CostUsd.HasValue)
+				{
+					result.CostUsd = evt.CostUsd;
+				}
+				if (evt.Usage != null)
+				{
+					result.InputTokens = evt.Usage.InputTokens ?? result.InputTokens;
+					result.OutputTokens = evt.Usage.OutputTokens ?? result.OutputTokens;
+				}
 				break;
 		}
 	}
@@ -945,12 +982,53 @@ public class CopilotProvider : ProviderBase
 	}
 
 	// JSON models for Copilot CLI output
+	// Note: JsonPropertyName attributes support both camelCase and snake_case from CLI
 	private class CopilotStreamEvent
 	{
+		[JsonPropertyName("type")]
 		public string? Type { get; set; }
+
+		[JsonPropertyName("content")]
 		public string? Content { get; set; }
+
+		[JsonPropertyName("suggestion")]
 		public string? Suggestion { get; set; }
+
+		[JsonPropertyName("error")]
 		public string? Error { get; set; }
+
+		[JsonPropertyName("message")]
 		public string? Message { get; set; }
+
+		// Token usage fields
+		[JsonPropertyName("input_tokens")]
+		public int? InputTokens { get; set; }
+
+		[JsonPropertyName("output_tokens")]
+		public int? OutputTokens { get; set; }
+
+		[JsonPropertyName("cost_usd")]
+		public decimal? CostUsd { get; set; }
+
+		[JsonPropertyName("total_cost_usd")]
+		public decimal? TotalCostUsd { get; set; }
+
+		[JsonPropertyName("usage")]
+		public CopilotUsageInfo? Usage { get; set; }
+
+		[JsonPropertyName("model")]
+		public string? Model { get; set; }
+	}
+
+	private class CopilotUsageInfo
+	{
+		[JsonPropertyName("input_tokens")]
+		public int? InputTokens { get; set; }
+
+		[JsonPropertyName("output_tokens")]
+		public int? OutputTokens { get; set; }
+
+		[JsonPropertyName("total_tokens")]
+		public int? TotalTokens { get; set; }
 	}
 }
