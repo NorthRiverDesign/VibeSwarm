@@ -981,9 +981,10 @@ body {
         -webkit-transform: translateZ(0);
     }
 
-    /* Prevent rubber-banding on iOS */
-    html, body {
-        overscroll-behavior: none;
+    /* Enable smooth native scrolling on iOS */
+    .app-main,
+    .app-sidebar,
+    .main-content {
         -webkit-overflow-scrolling: touch;
     }
 }
