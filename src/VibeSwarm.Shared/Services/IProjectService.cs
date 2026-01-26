@@ -26,6 +26,24 @@ public class ProjectWithStats
     public ProjectJobStats Stats { get; set; } = new();
 }
 
+/// <summary>
+/// Dashboard project information with latest job details
+/// </summary>
+public class DashboardProjectInfo
+{
+    public required Project Project { get; set; }
+
+    /// <summary>
+    /// Current Git branch (if working path is a git repository)
+    /// </summary>
+    public string? CurrentBranch { get; set; }
+
+    /// <summary>
+    /// Latest job for the project (if any)
+    /// </summary>
+    public Job? LatestJob { get; set; }
+}
+
 public interface IProjectService
 {
     Task<IEnumerable<Project>> GetAllAsync(CancellationToken cancellationToken = default);
@@ -40,4 +58,9 @@ public interface IProjectService
     /// Get all projects with their aggregated job statistics
     /// </summary>
     Task<IEnumerable<ProjectWithStats>> GetAllWithStatsAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Get recent projects with their latest job and current git branch info for dashboard display
+    /// </summary>
+    Task<IEnumerable<DashboardProjectInfo>> GetRecentWithLatestJobAsync(int count, CancellationToken cancellationToken = default);
 }

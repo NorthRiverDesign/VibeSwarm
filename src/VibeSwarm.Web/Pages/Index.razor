@@ -2,6 +2,7 @@
 @attribute [Authorize]
 @inject IProviderService ProviderService
 @inject IProjectService ProjectService
+@inject IVersionControlService VersionControlService
 
 <PageHeader Title="Dashboard" Subtitle="Your distributed agent job management system" />
 
@@ -19,7 +20,7 @@
             {
                 <LoadingSpinner />
             }
-            else if (!Projects.Any())
+            else if (!DashboardProjects.Any())
             {
                 <EmptyState Icon="folder" Title="No projects yet"
                     Message="Create your first project to start running AI agent jobs.">
@@ -31,11 +32,13 @@
             else
             {
                 <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-3">
-                    @foreach (var project in Projects)
+                    @foreach (var item in DashboardProjects)
                     {
                         <div class="col">
-                            <ProjectCard ProjectId="@project.Id" Name="@project.Name" Description="@project.Description"
-                                WorkingPath="@project.WorkingPath" CreatedAt="@project.CreatedAt" />
+                            <ProjectCard ProjectId="@item.Project.Id" Name="@item.Project.Name"
+                                Description="@item.Project.Description" WorkingPath="@item.Project.WorkingPath"
+                                GitHubRepository="@item.Project.GitHubRepository" CurrentBranch="@item.CurrentBranch"
+                                LatestJob="@item.LatestJob" CreatedAt="@item.Project.CreatedAt" />
                         </div>
                     }
                 </div>
@@ -83,7 +86,7 @@
 
 @code {
     private List<Provider> Providers { get; set; } = new();
-    private List<Project> Projects { get; set; } = new();
+    private List<DashboardProjectInfo> DashboardProjects { get; set; } = new();
     private bool IsLoading { get; set; } = true;
 
     protected override async Task OnInitializedAsync()
@@ -91,16 +94,40 @@
         try
         {
             var providersTask = ProviderService.GetAllAsync();
-            var projectsTask = ProjectService.GetRecentAsync(10);
+            var projectsTask = ProjectService.GetRecentWithLatestJobAsync(10);
 
             await Task.WhenAll(providersTask, projectsTask);
 
             Providers = (await providersTask).ToList();
-            Projects = (await projectsTask).ToList();
+            DashboardProjects = (await projectsTask).ToList();
+
+            // Fetch current branch for each project in parallel
+            await FetchBranchInfoAsync();
         }
         finally
         {
             IsLoading = false;
         }
+    }
+
+    private async Task FetchBranchInfoAsync()
+    {
+        var branchTasks = DashboardProjects.Select(async item =>
+        {
+            try
+            {
+                if (Directory.Exists(item.Project.WorkingPath) &&
+        await VersionControlService.IsGitRepositoryAsync(item.Project.WorkingPath))
+                {
+                    item.CurrentBranch = await VersionControlService.GetCurrentBranchAsync(item.Project.WorkingPath);
+                }
+            }
+            catch
+            {
+                // Silently ignore errors when fetching branch info
+            }
+        });
+
+        await Task.WhenAll(branchTasks);
     }
 }

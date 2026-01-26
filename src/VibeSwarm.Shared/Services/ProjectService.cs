@@ -117,4 +117,34 @@ public class ProjectService : IProjectService
             Stats = statsByProject.TryGetValue(p.Id, out var s) ? s : new ProjectJobStats { ProjectId = p.Id }
         });
     }
+
+    public async Task<IEnumerable<DashboardProjectInfo>> GetRecentWithLatestJobAsync(int count, CancellationToken cancellationToken = default)
+    {
+        var projects = await _dbContext.Projects
+            .OrderByDescending(p => p.CreatedAt)
+            .Take(count)
+            .ToListAsync(cancellationToken);
+
+        if (!projects.Any())
+        {
+            return Enumerable.Empty<DashboardProjectInfo>();
+        }
+
+        var projectIds = projects.Select(p => p.Id).ToList();
+
+        // Get the latest job for each project using a subquery approach
+        var latestJobs = await _dbContext.Jobs
+            .Where(j => projectIds.Contains(j.ProjectId))
+            .GroupBy(j => j.ProjectId)
+            .Select(g => g.OrderByDescending(j => j.CreatedAt).First())
+            .ToListAsync(cancellationToken);
+
+        var latestJobsByProject = latestJobs.ToDictionary(j => j.ProjectId);
+
+        return projects.Select(p => new DashboardProjectInfo
+        {
+            Project = p,
+            LatestJob = latestJobsByProject.TryGetValue(p.Id, out var job) ? job : null
+        });
+    }
 }
