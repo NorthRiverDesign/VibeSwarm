@@ -43,7 +43,7 @@ else
 
     <div class="row g-3 g-lg-4">
         @* Create Job form first on mobile *@
-            <div class="col-12 col-lg-4 order-1 order-lg-2">
+        <div class="col-12 col-lg-4 order-1 order-lg-2">
             <div class="card">
                 <div class="card-header bg-body-secondary">
                     <h5 class="mb-0 fw-semibold">Create Job</h5>
@@ -96,7 +96,7 @@ else
         </div>
 
         @* Jobs list second on mobile *@
-            <div class="col-12 col-lg-8 order-2 order-lg-1">
+        <div class="col-12 col-lg-8 order-2 order-lg-1">
             <div class="card">
                 <div class="card-header bg-body-secondary d-flex justify-content-between align-items-center">
                     <h5 class="mb-0 fw-semibold">Jobs</h5>
@@ -106,14 +106,14 @@ else
                     @if (!Jobs.Any())
                     {
                         <div class="p-3">
-                            <EmptyState Icon="gear-wide-connected" Title="No jobs yet"
+                            <EmptyState Icon="list-check" Title="No jobs yet"
                                 Message="Create a job to start working on this project." />
                         </div>
                     }
                     else
                     {
                         @* Mobile: Card layout *@
-                                <div class="d-lg-none">
+                        <div class="d-lg-none">
                             @foreach (var job in Jobs)
                             {
                                 <div class="p-3 border-bottom">
@@ -148,7 +148,7 @@ else
                         </div>
 
                         @* Desktop: Table layout *@
-                                <div class="table-responsive d-none d-lg-block">
+                        <div class="table-responsive d-none d-lg-block">
                             <table class="table table-hover align-middle mb-0">
                                 <thead class="table-light">
                                     <tr>
