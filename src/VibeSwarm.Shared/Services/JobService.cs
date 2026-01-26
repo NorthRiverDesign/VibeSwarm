@@ -469,4 +469,125 @@ public class JobService : IJobService
 
         return true;
     }
+
+    public async Task<bool> PauseForInteractionAsync(Guid id, string interactionPrompt, string interactionType,
+        string? choices = null, CancellationToken cancellationToken = default)
+    {
+        var job = await _dbContext.Jobs
+            .FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
+
+        if (job == null)
+        {
+            return false;
+        }
+
+        // Only allow pausing jobs that are currently processing
+        if (job.Status != JobStatus.Processing && job.Status != JobStatus.Started)
+        {
+            return false;
+        }
+
+        job.Status = JobStatus.Paused;
+        job.PendingInteractionPrompt = interactionPrompt;
+        job.InteractionType = interactionType;
+        job.InteractionChoices = choices;
+        job.InteractionRequestedAt = DateTime.UtcNow;
+        job.CurrentActivity = "Waiting for user input...";
+        job.LastActivityAt = DateTime.UtcNow;
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        // Notify about status change and interaction request
+        if (_jobUpdateService != null)
+        {
+            try
+            {
+                await _jobUpdateService.NotifyJobStatusChanged(job.Id, job.Status.ToString());
+
+                // Parse choices if provided
+                List<string>? choicesList = null;
+                if (!string.IsNullOrEmpty(choices))
+                {
+                    try
+                    {
+                        choicesList = System.Text.Json.JsonSerializer.Deserialize<List<string>>(choices);
+                    }
+                    catch { }
+                }
+
+                await _jobUpdateService.NotifyJobInteractionRequired(job.Id, interactionPrompt, interactionType,
+                    choicesList, null);
+                await _jobUpdateService.NotifyJobListChanged();
+            }
+            catch { }
+        }
+
+        return true;
+    }
+
+    public async Task<(string? Prompt, string? Type, string? Choices)?> GetPendingInteractionAsync(Guid id,
+        CancellationToken cancellationToken = default)
+    {
+        var job = await _dbContext.Jobs
+            .AsNoTracking()
+            .FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
+
+        if (job == null || job.Status != JobStatus.Paused)
+        {
+            return null;
+        }
+
+        return (job.PendingInteractionPrompt, job.InteractionType, job.InteractionChoices);
+    }
+
+    public async Task<bool> ResumeJobAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        var job = await _dbContext.Jobs
+            .FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
+
+        if (job == null)
+        {
+            return false;
+        }
+
+        // Only allow resuming paused jobs
+        if (job.Status != JobStatus.Paused)
+        {
+            return false;
+        }
+
+        job.Status = JobStatus.Processing;
+        job.PendingInteractionPrompt = null;
+        job.InteractionType = null;
+        job.InteractionChoices = null;
+        job.InteractionRequestedAt = null;
+        job.CurrentActivity = "Resuming...";
+        job.LastActivityAt = DateTime.UtcNow;
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        // Notify about status change and resume
+        if (_jobUpdateService != null)
+        {
+            try
+            {
+                await _jobUpdateService.NotifyJobStatusChanged(job.Id, job.Status.ToString());
+                await _jobUpdateService.NotifyJobResumed(job.Id);
+                await _jobUpdateService.NotifyJobListChanged();
+            }
+            catch { }
+        }
+
+        return true;
+    }
+
+    public async Task<IEnumerable<Job>> GetPausedJobsAsync(CancellationToken cancellationToken = default)
+    {
+        return await _dbContext.Jobs
+            .Include(j => j.Project)
+            .Include(j => j.Provider)
+            .Where(j => j.Status == JobStatus.Paused)
+            .OrderByDescending(j => j.InteractionRequestedAt ?? j.LastActivityAt)
+            .ToListAsync(cancellationToken);
+    }
 }

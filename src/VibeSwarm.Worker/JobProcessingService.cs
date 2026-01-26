@@ -3,9 +3,11 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using System.Text;
+using System.Text.Json;
 using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Providers;
 using VibeSwarm.Shared.Services;
+using VibeSwarm.Shared.Utilities;
 using VibeSwarm.Shared.VersionControl;
 
 namespace VibeSwarm.Worker;
@@ -19,6 +21,7 @@ public class JobProcessingService : BackgroundService
     private readonly IProviderHealthTracker? _healthTracker;
     private readonly ProcessSupervisor? _processSupervisor;
     private readonly IVersionControlService _versionControlService;
+    private readonly IInteractionResponseService? _interactionResponseService;
     private readonly TimeSpan _pollingInterval = TimeSpan.FromSeconds(3); // Poll less frequently, SignalR handles real-time updates
     private readonly int _maxConcurrentJobs = 5; // Maximum number of concurrent jobs
     private readonly Dictionary<Guid, JobExecutionContext> _runningJobs = new();
@@ -38,7 +41,8 @@ public class JobProcessingService : BackgroundService
         IJobUpdateService? jobUpdateService = null,
         IJobCoordinatorService? jobCoordinator = null,
         IProviderHealthTracker? healthTracker = null,
-        ProcessSupervisor? processSupervisor = null)
+        ProcessSupervisor? processSupervisor = null,
+        IInteractionResponseService? interactionResponseService = null)
     {
         _scopeFactory = scopeFactory;
         _logger = logger;
@@ -47,6 +51,7 @@ public class JobProcessingService : BackgroundService
         _jobCoordinator = jobCoordinator;
         _healthTracker = healthTracker;
         _processSupervisor = processSupervisor;
+        _interactionResponseService = interactionResponseService;
     }
 
     /// <summary>
@@ -75,9 +80,34 @@ public class JobProcessingService : BackgroundService
         public string? GitCommitBefore { get; set; }
 
         /// <summary>
+        /// Tracks recent output lines for interaction detection context
+        /// </summary>
+        public Queue<string> RecentOutputLines { get; } = new Queue<string>(20);
+
+        /// <summary>
+        /// Whether the job is currently paused waiting for user interaction
+        /// </summary>
+        public bool IsPausedForInteraction { get; set; }
+
+        /// <summary>
+        /// Task completion source for waiting on user interaction response
+        /// </summary>
+        public TaskCompletionSource<string>? InteractionResponseTcs { get; set; }
+
+        /// <summary>
+        /// The current interaction request being processed
+        /// </summary>
+        public InteractionDetector.InteractionRequest? CurrentInteractionRequest { get; set; }
+
+        /// <summary>
         /// Maximum console output size (5 MB)
         /// </summary>
         private const int MaxOutputSize = 5 * 1024 * 1024;
+
+        /// <summary>
+        /// Maximum recent lines to keep for context
+        /// </summary>
+        private const int MaxRecentLines = 20;
 
         public void AppendOutput(string line, bool isError)
         {
@@ -92,6 +122,13 @@ public class JobProcessingService : BackgroundService
                 {
                     ConsoleOutputBuffer.AppendLine("\n... [output truncated] ...");
                 }
+
+                // Track recent lines for interaction detection
+                if (RecentOutputLines.Count >= MaxRecentLines)
+                {
+                    RecentOutputLines.Dequeue();
+                }
+                RecentOutputLines.Enqueue(line);
             }
         }
 
@@ -100,6 +137,14 @@ public class JobProcessingService : BackgroundService
             lock (OutputLock)
             {
                 return ConsoleOutputBuffer.ToString();
+            }
+        }
+
+        public IEnumerable<string> GetRecentOutputLines()
+        {
+            lock (OutputLock)
+            {
+                return RecentOutputLines.ToArray();
             }
         }
     }
@@ -567,6 +612,69 @@ public class JobProcessingService : BackgroundService
                         }
                         catch { }
                     });
+
+                    // Detect if the CLI is requesting user interaction
+                    if (!executionContext.IsPausedForInteraction)
+                    {
+                        var interactionRequest = InteractionDetector.DetectInteraction(
+                            p.OutputLine,
+                            executionContext.GetRecentOutputLines());
+
+                        if (interactionRequest != null && interactionRequest.IsInteractionRequested && interactionRequest.Confidence >= 0.70)
+                        {
+                            _logger.LogInformation(
+                                "Interaction detected for job {JobId}: Type={Type}, Confidence={Confidence:P0}, Prompt={Prompt}",
+                                job.Id, interactionRequest.Type, interactionRequest.Confidence, interactionRequest.Prompt);
+
+                            // Mark context as paused
+                            executionContext.IsPausedForInteraction = true;
+                            executionContext.CurrentInteractionRequest = interactionRequest;
+
+                            // Update database and notify UI in background
+                            _ = Task.Run(async () =>
+                            {
+                                try
+                                {
+                                    using var interactionScope = _scopeFactory.CreateScope();
+                                    var interactionJobService = interactionScope.ServiceProvider.GetRequiredService<IJobService>();
+                                    var interactionDbContext = interactionScope.ServiceProvider.GetRequiredService<VibeSwarmDbContext>();
+
+                                    // Serialize choices if available
+                                    string? choicesJson = interactionRequest.Choices != null && interactionRequest.Choices.Count > 0
+                                        ? JsonSerializer.Serialize(interactionRequest.Choices)
+                                        : null;
+
+                                    // Update job status in database
+                                    await interactionJobService.PauseForInteractionAsync(
+                                        job.Id,
+                                        interactionRequest.Prompt ?? interactionRequest.RawOutput ?? "Interaction required",
+                                        interactionRequest.Type.ToString(),
+                                        choicesJson,
+                                        CancellationToken.None);
+
+                                    // Notify UI
+                                    if (_jobUpdateService != null)
+                                    {
+                                        await _jobUpdateService.NotifyJobInteractionRequired(
+                                            job.Id,
+                                            interactionRequest.Prompt ?? interactionRequest.RawOutput ?? "Interaction required",
+                                            interactionRequest.Type.ToString(),
+                                            interactionRequest.Choices,
+                                            interactionRequest.DefaultResponse);
+                                    }
+
+                                    await NotifyStatusChangedAsync(job.Id, JobStatus.Paused);
+                                }
+                                catch (Exception ex)
+                                {
+                                    _logger.LogError(ex, "Failed to pause job {JobId} for interaction", job.Id);
+                                    executionContext.IsPausedForInteraction = false;
+                                    executionContext.CurrentInteractionRequest = null;
+                                }
+                            });
+                        }
+                    }
+
                     return; // Don't process output lines as activity updates
                 }
 

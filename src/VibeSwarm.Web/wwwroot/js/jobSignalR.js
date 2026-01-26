@@ -138,6 +138,39 @@ export async function initializeJobHub(jobId, dotNetRef) {
 			}
 		};
 
+		handlers.JobInteractionRequired = (
+			eventJobId,
+			prompt,
+			interactionType,
+			choices,
+			defaultResponse,
+		) => {
+			if (eventJobId === jobId) {
+				console.log(
+					`[SignalR] JobInteractionRequired: ${eventJobId}, type: ${interactionType}, prompt: ${prompt}`,
+				);
+				if (dotNetReference) {
+					dotNetReference.invokeMethodAsync(
+						"OnJobInteractionRequired",
+						eventJobId,
+						prompt,
+						interactionType,
+						choices,
+						defaultResponse,
+					);
+				}
+			}
+		};
+
+		handlers.JobResumed = (eventJobId) => {
+			if (eventJobId === jobId) {
+				console.log(`[SignalR] JobResumed: ${eventJobId}`);
+				if (dotNetReference) {
+					dotNetReference.invokeMethodAsync("OnJobResumed", eventJobId);
+				}
+			}
+		};
+
 		// Register handlers with the global hub
 		Object.entries(handlers).forEach(([event, handler]) => {
 			window.VibeSwarmHub.on(event, handler);
@@ -173,6 +206,31 @@ export async function disposeJobHub() {
 	handlers = {};
 	dotNetReference = null;
 	currentJobId = null;
+}
+
+export async function submitInteractionResponse(jobId, response) {
+	try {
+		await waitForGlobalHub();
+
+		if (!window.VibeSwarmHub || !window.VibeSwarmHub.connection) {
+			console.error("[SignalR] Cannot submit response: Hub not connected");
+			return false;
+		}
+
+		console.log(
+			`[SignalR] Submitting interaction response for job ${jobId}: ${response}`,
+		);
+		const result = await window.VibeSwarmHub.connection.invoke(
+			"SubmitInteractionResponse",
+			jobId,
+			response,
+		);
+		console.log(`[SignalR] Interaction response submitted, result: ${result}`);
+		return result;
+	} catch (err) {
+		console.error("[SignalR] Error submitting interaction response:", err);
+		return false;
+	}
 }
 
 async function waitForGlobalHub() {

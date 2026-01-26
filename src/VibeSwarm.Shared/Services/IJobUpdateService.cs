@@ -77,4 +77,21 @@ public interface IJobUpdateService
     /// <param name="jobId">The job ID</param>
     /// <param name="hasChanges">Whether changes were detected</param>
     Task NotifyJobGitDiffUpdated(Guid jobId, bool hasChanges);
+
+    /// <summary>
+    /// Notifies clients that a job is paused and waiting for user interaction
+    /// </summary>
+    /// <param name="jobId">The job ID</param>
+    /// <param name="prompt">The prompt/question from the CLI agent</param>
+    /// <param name="interactionType">The type of interaction (confirmation, input, choice, etc.)</param>
+    /// <param name="choices">Available choices if applicable</param>
+    /// <param name="defaultResponse">Suggested default response</param>
+    Task NotifyJobInteractionRequired(Guid jobId, string prompt, string interactionType,
+        List<string>? choices = null, string? defaultResponse = null);
+
+    /// <summary>
+    /// Notifies clients that a job has resumed after user provided input
+    /// </summary>
+    /// <param name="jobId">The job ID</param>
+    Task NotifyJobResumed(Guid jobId);
 }

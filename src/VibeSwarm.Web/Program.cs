@@ -141,6 +141,9 @@ builder.Services.ConfigureApplicationCookie(options =>
 // Register SignalR job update service
 builder.Services.AddSingleton<IJobUpdateService, SignalRJobUpdateService>();
 
+// Register interaction response service (singleton for cross-service communication)
+builder.Services.AddSingleton<IInteractionResponseService, InMemoryInteractionResponseService>();
+
 // Register notification service (scoped per circuit for Blazor Server)
 builder.Services.AddScoped<NotificationService>();
 

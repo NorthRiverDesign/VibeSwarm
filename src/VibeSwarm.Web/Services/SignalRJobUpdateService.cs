@@ -250,4 +250,50 @@ public class SignalRJobUpdateService : IJobUpdateService
             _logger.LogWarning(ex, "Error sending JobGitDiffUpdated notification for job {JobId}", jobId);
         }
     }
+
+    public async Task NotifyJobInteractionRequired(Guid jobId, string prompt, string interactionType,
+        List<string>? choices = null, string? defaultResponse = null)
+    {
+        try
+        {
+            // Notify job-specific subscribers
+            await _hubContext.Clients
+                .Group($"job-{jobId}")
+                .SendAsync("JobInteractionRequired", jobId.ToString(), prompt, interactionType, choices, defaultResponse);
+
+            // Also notify global job list subscribers for dashboard alerts
+            await _hubContext.Clients
+                .Group("job-list")
+                .SendAsync("JobInteractionRequired", jobId.ToString(), prompt, interactionType, choices, defaultResponse);
+
+            _logger.LogInformation("Sent JobInteractionRequired notification for job {JobId}: Type={Type}, Prompt={Prompt}",
+                jobId, interactionType, prompt.Length > 50 ? prompt[..50] + "..." : prompt);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error sending JobInteractionRequired notification for job {JobId}", jobId);
+        }
+    }
+
+    public async Task NotifyJobResumed(Guid jobId)
+    {
+        try
+        {
+            // Notify job-specific subscribers
+            await _hubContext.Clients
+                .Group($"job-{jobId}")
+                .SendAsync("JobResumed", jobId.ToString());
+
+            // Also notify global job list subscribers
+            await _hubContext.Clients
+                .Group("job-list")
+                .SendAsync("JobResumed", jobId.ToString());
+
+            _logger.LogInformation("Sent JobResumed notification for job {JobId}", jobId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error sending JobResumed notification for job {JobId}", jobId);
+        }
+    }
 }

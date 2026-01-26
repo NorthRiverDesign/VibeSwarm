@@ -157,6 +157,79 @@ else
                 </div>
             </div>
 
+            @* User Interaction Section - shown when job is paused waiting for input *@
+            @if (Job.Status == JobStatus.Paused && !string.IsNullOrEmpty(Job.PendingInteractionPrompt))
+            {
+                <div class="card mb-3 mb-lg-4 border-warning">
+                    <div class="card-header bg-warning bg-opacity-25 d-flex align-items-center">
+                        <i class="bi bi-chat-left-text me-2 text-warning fs-5"></i>
+                        <strong class="text-warning">User Input Required</strong>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <p class="mb-2 text-body-secondary small">The CLI agent is asking:</p>
+                            <pre
+                                class="interaction-prompt bg-body-secondary p-3 rounded mb-0">@Job.PendingInteractionPrompt</pre>
+                        </div>
+
+                        @if (_interactionChoices != null && _interactionChoices.Count > 0)
+                        {
+                            <div class="mb-3">
+                                <label class="form-label small text-body-secondary">Choose an option:</label>
+                                <div class="d-flex flex-wrap gap-2">
+                                    @foreach (var choice in _interactionChoices)
+                                    {
+                                        <button type="button" class="btn btn-outline-primary"
+                                            @onclick="() => SubmitInteractionResponse(choice)" disabled="@_isSubmittingResponse">
+                                            @choice
+                                        </button>
+                                    }
+                                </div>
+                            </div>
+                        }
+
+                        <div class="mb-3">
+                            <label for="interactionResponse" class="form-label small text-body-secondary">
+                                Or enter your response:
+                            </label>
+                            <div class="input-group">
+                                <input type="text" id="interactionResponse" class="form-control" @bind="_interactionResponse"
+                                    @bind:event="oninput" @onkeyup="HandleResponseKeyPress" placeholder="Type your response..."
+                                    disabled="@_isSubmittingResponse" />
+                                <button class="btn btn-primary" type="button" @onclick="SubmitTypedResponse"
+                                    disabled="@(_isSubmittingResponse || string.IsNullOrWhiteSpace(_interactionResponse))">
+                                    @if (_isSubmittingResponse)
+                                    {
+                                        <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                                        <span>Sending...</span>
+                                    }
+                                    else
+                                    {
+                                        <i class="bi bi-send me-1"></i>
+                                        <span>Send</span>
+                                    }
+                                </button>
+                            </div>
+                        </div>
+
+                        @if (!string.IsNullOrEmpty(_interactionError))
+                        {
+                            <div class="alert alert-danger py-2 mb-0">
+                                <i class="bi bi-exclamation-triangle me-1"></i>@_interactionError
+                            </div>
+                        }
+
+                        @if (Job.InteractionRequestedAt.HasValue)
+                        {
+                            <p class="text-body-secondary small mb-0 mt-2">
+                                <i class="bi bi-clock me-1"></i>
+                                Waiting since @Job.InteractionRequestedAt.Value.FormatDateTimeShort()
+                            </p>
+                        }
+                    </div>
+                </div>
+            }
+
             @* Live Output Section - shown when job is running *@
             @if (IsJobActive && _liveOutput.Count > 0)
             {
@@ -554,6 +627,12 @@ else
     private const int PushTimeoutSeconds = 120;
     private bool _commitMessageInitialized = false;
 
+    // Interaction response state
+    private string _interactionResponse = string.Empty;
+    private bool _isSubmittingResponse = false;
+    private string? _interactionError = null;
+    private List<string>? _interactionChoices = null;
+
     private class OutputLine
     {
         public string Content { get; set; } = string.Empty;
@@ -592,7 +671,8 @@ else
     (Job.Status == JobStatus.New ||
     Job.Status == JobStatus.Pending ||
     Job.Status == JobStatus.Started ||
-    Job.Status == JobStatus.Processing);
+    Job.Status == JobStatus.Processing ||
+    Job.Status == JobStatus.Paused);
 
     private bool CanPush => !_isPushing &&
     !string.IsNullOrWhiteSpace(_commitMessage) &&
@@ -859,6 +939,115 @@ else
         }
     }
 
+    [JSInvokable]
+    public async Task OnJobInteractionRequired(string jobId, string prompt, string interactionType,
+    List<string>? choices, string? defaultResponse)
+    {
+        Console.WriteLine($"[Blazor] OnJobInteractionRequired: {jobId}, type: {interactionType}");
+
+        if (Job != null)
+        {
+            Job.Status = JobStatus.Paused;
+            Job.PendingInteractionPrompt = prompt;
+            Job.InteractionType = interactionType;
+            Job.InteractionRequestedAt = DateTime.UtcNow;
+            _interactionChoices = choices;
+            _interactionResponse = defaultResponse ?? string.Empty;
+            _interactionError = null;
+
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    [JSInvokable]
+    public async Task OnJobResumed(string jobId)
+    {
+        Console.WriteLine($"[Blazor] OnJobResumed: {jobId}");
+
+        if (Job != null)
+        {
+            Job.Status = JobStatus.Processing;
+            Job.PendingInteractionPrompt = null;
+            Job.InteractionType = null;
+            Job.InteractionRequestedAt = null;
+            _interactionChoices = null;
+            _interactionResponse = string.Empty;
+            _interactionError = null;
+            _isSubmittingResponse = false;
+
+            await InvokeAsync(StateHasChanged);
+        }
+
+        // Also refresh to get full state
+        if (!_isRefreshing)
+        {
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(500);
+                await InvokeAsync(async () => await RefreshJobSafely());
+            });
+        }
+    }
+
+    private async Task HandleResponseKeyPress(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !_isSubmittingResponse && !string.IsNullOrWhiteSpace(_interactionResponse))
+        {
+            await SubmitTypedResponse();
+        }
+    }
+
+    private async Task SubmitTypedResponse()
+    {
+        if (string.IsNullOrWhiteSpace(_interactionResponse))
+            return;
+
+        await SubmitInteractionResponse(_interactionResponse);
+    }
+
+    private async Task SubmitInteractionResponse(string response)
+    {
+        if (_isSubmittingResponse)
+            return;
+
+        _isSubmittingResponse = true;
+        _interactionError = null;
+        StateHasChanged();
+
+        try
+        {
+            // Use SignalR to send the response
+            if (_signalRModule != null)
+            {
+                var success = await _signalRModule.InvokeAsync<bool>("submitInteractionResponse", JobId.ToString(), response);
+
+                if (!success)
+                {
+                    _interactionError = "Failed to deliver response. The job may have already completed or been cancelled.";
+                }
+                else
+                {
+                    // Clear the input on success
+                    _interactionResponse = string.Empty;
+                }
+            }
+            else
+            {
+                _interactionError = "Connection to server not available. Please refresh the page.";
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error submitting interaction response: {ex.Message}");
+            _interactionError = "Failed to send response. Please try again.";
+        }
+        finally
+        {
+            _isSubmittingResponse = false;
+            StateHasChanged();
+        }
+    }
+
     private async Task ScrollToOutputBottom()
     {
         try
@@ -897,6 +1086,23 @@ else
             {
                 _changesPushed = true;
                 _pushedCommitHash = Job.GitCommitHash;
+            }
+
+            // Parse interaction choices if job is paused
+            if (Job != null && Job.Status == JobStatus.Paused && !string.IsNullOrEmpty(Job.InteractionChoices))
+            {
+                try
+                {
+                    _interactionChoices = System.Text.Json.JsonSerializer.Deserialize<List<string>>(Job.InteractionChoices);
+                }
+                catch
+                {
+                    _interactionChoices = null;
+                }
+            }
+            else if (Job?.Status != JobStatus.Paused)
+            {
+                _interactionChoices = null;
             }
 
             // Parse git diff into file-based structure

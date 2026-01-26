@@ -23,4 +23,37 @@ public interface IJobService
     Task DeleteAsync(Guid id, CancellationToken cancellationToken = default);
     Task<bool> UpdateGitCommitHashAsync(Guid id, string commitHash, CancellationToken cancellationToken = default);
     Task<bool> UpdateGitDiffAsync(Guid id, string? gitDiff, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Pauses a job to wait for user interaction
+    /// </summary>
+    /// <param name="id">The job ID</param>
+    /// <param name="interactionPrompt">The prompt/question from the CLI agent</param>
+    /// <param name="interactionType">The type of interaction (confirmation, input, choice, etc.)</param>
+    /// <param name="choices">Available choices if applicable (JSON array)</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    Task<bool> PauseForInteractionAsync(Guid id, string interactionPrompt, string interactionType,
+        string? choices = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets the pending interaction details for a paused job
+    /// </summary>
+    /// <param name="id">The job ID</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>The pending interaction prompt, or null if not paused</returns>
+    Task<(string? Prompt, string? Type, string? Choices)?> GetPendingInteractionAsync(Guid id,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Resumes a paused job after user provides input
+    /// </summary>
+    /// <param name="id">The job ID</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    Task<bool> ResumeJobAsync(Guid id, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets all paused jobs waiting for user interaction
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token</param>
+    Task<IEnumerable<Job>> GetPausedJobsAsync(CancellationToken cancellationToken = default);
 }

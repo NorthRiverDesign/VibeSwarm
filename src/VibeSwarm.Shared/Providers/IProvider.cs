@@ -80,6 +80,47 @@ public class ExecutionResult
     /// Process ID of the CLI process (for tracking and cancellation)
     /// </summary>
     public int? ProcessId { get; set; }
+
+    /// <summary>
+    /// True if the execution was paused due to an interaction request
+    /// </summary>
+    public bool IsPaused { get; set; }
+
+    /// <summary>
+    /// Details of the pending interaction if IsPaused is true
+    /// </summary>
+    public InteractionInfo? PendingInteraction { get; set; }
+}
+
+/// <summary>
+/// Information about a pending user interaction
+/// </summary>
+public class InteractionInfo
+{
+    /// <summary>
+    /// The prompt/question being asked
+    /// </summary>
+    public string Prompt { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The type of interaction (confirmation, input, choice, permission, etc.)
+    /// </summary>
+    public string Type { get; set; } = "unknown";
+
+    /// <summary>
+    /// Available choices if applicable
+    /// </summary>
+    public List<string>? Choices { get; set; }
+
+    /// <summary>
+    /// Suggested default response
+    /// </summary>
+    public string? DefaultResponse { get; set; }
+
+    /// <summary>
+    /// Timestamp when the interaction was detected
+    /// </summary>
+    public DateTime DetectedAt { get; set; } = DateTime.UtcNow;
 }
 
 /// <summary>
@@ -119,6 +160,16 @@ public class ExecutionProgress
     /// True if OutputLine is from stderr
     /// </summary>
     public bool IsErrorOutput { get; set; }
+
+    /// <summary>
+    /// True if an interaction is being requested by the CLI agent
+    /// </summary>
+    public bool IsInteractionRequested { get; set; }
+
+    /// <summary>
+    /// Details of the interaction request if IsInteractionRequested is true
+    /// </summary>
+    public InteractionInfo? InteractionRequest { get; set; }
 }
 
 /// <summary>

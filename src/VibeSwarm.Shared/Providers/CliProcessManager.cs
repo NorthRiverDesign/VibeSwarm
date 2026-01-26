@@ -46,6 +46,14 @@ public class CliProcessManager : IDisposable
 		public CancellationTokenSource? CancellationTokenSource { get; set; }
 		public bool IsCompleted { get; set; }
 		public int? ExitCode { get; set; }
+		/// <summary>
+		/// Whether this process keeps stdin open for interactive input
+		/// </summary>
+		public bool IsInteractive { get; set; }
+		/// <summary>
+		/// Whether stdin is still open for writing
+		/// </summary>
+		public bool StdinOpen { get; set; }
 	}
 
 	/// <summary>
@@ -92,6 +100,12 @@ public class CliProcessManager : IDisposable
 		/// Optional callback for each line of stderr
 		/// </summary>
 		public Action<string>? OnError { get; set; }
+
+		/// <summary>
+		/// Whether to keep stdin open for interactive input.
+		/// If true, stdin won't be closed automatically.
+		/// </summary>
+		public bool Interactive { get; set; }
 	}
 
 	/// <summary>
@@ -220,14 +234,25 @@ public class CliProcessManager : IDisposable
 			OutputReceived?.Invoke(process.Id, e.Data, true);
 		};
 
-		// Close stdin to signal no input is coming
-		try
+		// Handle stdin based on interactive mode
+		if (options.Interactive)
 		{
-			process.StandardInput.Close();
+			// Keep stdin open for interactive input
+			managedProcess.IsInteractive = true;
+			managedProcess.StdinOpen = true;
+			_logger?.Invoke($"Process {process.Id} started in interactive mode - stdin kept open");
 		}
-		catch
+		else
 		{
-			// Ignore if already closed
+			// Close stdin to signal no input is coming
+			try
+			{
+				process.StandardInput.Close();
+			}
+			catch
+			{
+				// Ignore if already closed
+			}
 		}
 
 		process.BeginOutputReadLine();
@@ -379,11 +404,96 @@ public class CliProcessManager : IDisposable
 		if (success)
 		{
 			managedProcess.IsCompleted = true;
+			managedProcess.StdinOpen = false;
 			managedProcess.OutputComplete.TrySetResult(true);
 			managedProcess.ErrorComplete.TrySetResult(true);
 		}
 
 		return success;
+	}
+
+	/// <summary>
+	/// Writes input to a process's stdin stream.
+	/// Used for responding to interactive prompts.
+	/// </summary>
+	/// <param name="processId">The process ID</param>
+	/// <param name="input">The input to write</param>
+	/// <param name="sendNewline">Whether to append a newline (default: true)</param>
+	/// <returns>True if the write was successful</returns>
+	public async Task<bool> WriteToStdinAsync(int processId, string input, bool sendNewline = true)
+	{
+		if (!_processes.TryGetValue(processId, out var managedProcess))
+		{
+			_logger?.Invoke($"Cannot write to stdin: Process {processId} not found");
+			return false;
+		}
+
+		if (!managedProcess.IsInteractive || !managedProcess.StdinOpen)
+		{
+			_logger?.Invoke($"Cannot write to stdin: Process {processId} is not interactive or stdin is closed");
+			return false;
+		}
+
+		if (managedProcess.IsCompleted)
+		{
+			_logger?.Invoke($"Cannot write to stdin: Process {processId} has already completed");
+			return false;
+		}
+
+		try
+		{
+			var process = managedProcess.Process;
+			if (process.HasExited)
+			{
+				managedProcess.StdinOpen = false;
+				_logger?.Invoke($"Cannot write to stdin: Process {processId} has exited");
+				return false;
+			}
+
+			var textToWrite = sendNewline ? input + Environment.NewLine : input;
+			await process.StandardInput.WriteAsync(textToWrite);
+			await process.StandardInput.FlushAsync();
+
+			_logger?.Invoke($"Wrote to stdin of process {processId}: {(input.Length > 50 ? input[..50] + "..." : input)}");
+			return true;
+		}
+		catch (Exception ex)
+		{
+			_logger?.Invoke($"Error writing to stdin of process {processId}: {ex.Message}");
+			managedProcess.StdinOpen = false;
+			return false;
+		}
+	}
+
+	/// <summary>
+	/// Closes stdin for an interactive process, signaling no more input.
+	/// </summary>
+	/// <param name="processId">The process ID</param>
+	/// <returns>True if successfully closed</returns>
+	public bool CloseStdin(int processId)
+	{
+		if (!_processes.TryGetValue(processId, out var managedProcess))
+		{
+			return false;
+		}
+
+		if (!managedProcess.StdinOpen)
+		{
+			return true; // Already closed
+		}
+
+		try
+		{
+			managedProcess.Process.StandardInput.Close();
+			managedProcess.StdinOpen = false;
+			_logger?.Invoke($"Closed stdin for process {processId}");
+			return true;
+		}
+		catch (Exception ex)
+		{
+			_logger?.Invoke($"Error closing stdin for process {processId}: {ex.Message}");
+			return false;
+		}
 	}
 
 	/// <summary>
@@ -402,6 +512,7 @@ public class CliProcessManager : IDisposable
 	{
 		return _processes.Values;
 	}
+
 
 	/// <summary>
 	/// Gets the number of running processes

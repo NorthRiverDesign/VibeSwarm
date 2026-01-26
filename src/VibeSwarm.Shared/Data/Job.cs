@@ -176,6 +176,28 @@ public class Job
     /// </summary>
     public string? ConsoleOutput { get; set; }
 
+    /// <summary>
+    /// The prompt/question from the CLI agent that requires user input.
+    /// Set when Status is Paused.
+    /// </summary>
+    public string? PendingInteractionPrompt { get; set; }
+
+    /// <summary>
+    /// The type of interaction being requested (e.g., "confirmation", "input", "choice")
+    /// </summary>
+    [StringLength(50)]
+    public string? InteractionType { get; set; }
+
+    /// <summary>
+    /// Available choices for the interaction (JSON array of options), if applicable
+    /// </summary>
+    public string? InteractionChoices { get; set; }
+
+    /// <summary>
+    /// Timestamp when the interaction was requested
+    /// </summary>
+    public DateTime? InteractionRequestedAt { get; set; }
+
     public ICollection<JobMessage> Messages { get; set; } = new List<JobMessage>();
 
     /// <summary>
@@ -211,5 +233,9 @@ public enum JobStatus
     /// <summary>
     /// Job stopped responding but may be recoverable
     /// </summary>
-    Stalled
+    Stalled,
+    /// <summary>
+    /// Job is paused waiting for user input/interaction
+    /// </summary>
+    Paused
 }
