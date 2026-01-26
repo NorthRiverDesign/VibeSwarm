@@ -505,6 +505,12 @@ public class ClaudeProvider : ProviderBase
                 // Assistant event contains a message object with content array
                 if (evt.Message?.Content != null)
                 {
+                    // Capture the model from the message if available
+                    if (!string.IsNullOrEmpty(evt.Message.Model))
+                    {
+                        result.ModelUsed = evt.Message.Model;
+                    }
+
                     foreach (var content in evt.Message.Content)
                     {
                         if (content.Type == "text" && !string.IsNullOrEmpty(content.Text))
@@ -645,6 +651,7 @@ public class ClaudeProvider : ProviderBase
                 result.SessionId = apiResult.Id;
                 result.InputTokens = apiResult.Usage?.InputTokens;
                 result.OutputTokens = apiResult.Usage?.OutputTokens;
+                result.ModelUsed = apiResult.Model;
 
                 var content = apiResult.Content?
                     .Where(c => c.Type == "text")

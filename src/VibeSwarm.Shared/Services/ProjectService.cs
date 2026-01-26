@@ -83,4 +83,38 @@ public class ProjectService : IProjectService
             await _dbContext.SaveChangesAsync(cancellationToken);
         }
     }
+
+    public async Task<IEnumerable<ProjectWithStats>> GetAllWithStatsAsync(CancellationToken cancellationToken = default)
+    {
+        var projects = await _dbContext.Projects
+            .OrderByDescending(p => p.CreatedAt)
+            .ToListAsync(cancellationToken);
+
+        var projectIds = projects.Select(p => p.Id).ToList();
+
+        // Get aggregated stats for all projects in one query
+        var stats = await _dbContext.Jobs
+            .Where(j => projectIds.Contains(j.ProjectId))
+            .GroupBy(j => j.ProjectId)
+            .Select(g => new ProjectJobStats
+            {
+                ProjectId = g.Key,
+                TotalJobs = g.Count(),
+                CompletedJobs = g.Count(j => j.Status == JobStatus.Completed),
+                FailedJobs = g.Count(j => j.Status == JobStatus.Failed || j.Status == JobStatus.Cancelled),
+                ActiveJobs = g.Count(j => j.Status == JobStatus.New || j.Status == JobStatus.Started || j.Status == JobStatus.Processing),
+                TotalInputTokens = g.Sum(j => j.InputTokens ?? 0),
+                TotalOutputTokens = g.Sum(j => j.OutputTokens ?? 0),
+                TotalCostUsd = g.Sum(j => j.TotalCostUsd ?? 0)
+            })
+            .ToListAsync(cancellationToken);
+
+        var statsByProject = stats.ToDictionary(s => s.ProjectId);
+
+        return projects.Select(p => new ProjectWithStats
+        {
+            Project = p,
+            Stats = statsByProject.TryGetValue(p.Id, out var s) ? s : new ProjectJobStats { ProjectId = p.Id }
+        });
+    }
 }

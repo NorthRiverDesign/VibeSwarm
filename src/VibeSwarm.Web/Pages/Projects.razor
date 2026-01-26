@@ -88,7 +88,7 @@
                 {
                     <LoadingSpinner />
                 }
-                else if (!ProjectList.Any())
+                else if (!ProjectsWithStats.Any())
                 {
                     <div class="p-3">
                         <EmptyState Icon="folder" Title="No projects yet"
@@ -98,8 +98,10 @@
                 else
                 {
                     <div class="list-group list-group-flush">
-                        @foreach (var project in ProjectList)
+                        @foreach (var projectWithStats in ProjectsWithStats)
                         {
+                            var project = projectWithStats.Project;
+                            var stats = projectWithStats.Stats;
                             var projectActiveJobs = ActiveJobs.Where(j => j.ProjectId == project.Id).ToList();
                             <div
                                 class="list-group-item d-flex flex-column flex-md-row align-items-md-center gap-2 gap-md-3 p-3 hover-bg-tertiary">
@@ -121,6 +123,32 @@
                                             @project.CreatedAt.FormatDateTimeShort()
                                         </span>
                                     </div>
+                                    @* Job Statistics Row *@
+                                    @if (stats.TotalJobs > 0)
+                                    {
+                                        <div class="d-flex flex-wrap gap-2 gap-md-3 mt-2 small">
+                                            <span class="d-flex align-items-center gap-1 text-body-secondary" title="Total jobs">
+                                                <i class="bi bi-list-check opacity-75"></i>
+                                                @stats.TotalJobs jobs
+                                            </span>
+                                            @if (stats.TotalInputTokens > 0 || stats.TotalOutputTokens > 0)
+                                            {
+                                                <span class="d-flex align-items-center gap-1 text-body-secondary"
+                                                    title="Total tokens (input / output)">
+                                                    <i class="bi bi-braces opacity-75"></i>
+                                                    @TokenHelper.FormatTokenCount(stats.TotalInputTokens) /
+                                                    @TokenHelper.FormatTokenCount(stats.TotalOutputTokens)
+                                                </span>
+                                            }
+                                            @if (stats.TotalCostUsd > 0)
+                                            {
+                                                <span class="d-flex align-items-center gap-1 text-success fw-medium" title="Total cost">
+                                                    <i class="bi bi-currency-dollar opacity-75"></i>
+                                                    @TokenHelper.FormatCost(stats.TotalCostUsd)
+                                                </span>
+                                            }
+                                        </div>
+                                    }
                                     @if (projectActiveJobs.Any())
                                     {
                                         <div class="border-top pt-2 mt-2">
@@ -165,7 +193,7 @@
 }
 
 @code {
-    private List<Project> ProjectList { get; set; } = new();
+    private List<ProjectWithStats> ProjectsWithStats { get; set; } = new();
     private List<Job> ActiveJobs { get; set; } = new();
     private Project CurrentProject { get; set; } = new();
     private bool IsLoading { get; set; } = true;
@@ -241,7 +269,7 @@
         IsLoading = true;
         try
         {
-            ProjectList = (await ProjectService.GetAllAsync()).ToList();
+            ProjectsWithStats = (await ProjectService.GetAllWithStatsAsync()).ToList();
         }
         finally
         {

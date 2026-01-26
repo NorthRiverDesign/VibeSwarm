@@ -96,10 +96,15 @@ else
                 <div class="card-body d-flex flex-column gap-3">
                     <div class="goal-prompt-box">@Job.GoalPrompt</div>
 
-                    @if (Job.SessionId != null || Job.InputTokens.HasValue || Job.OutputTokens.HasValue ||
+                    @if (Job.ModelUsed != null || Job.SessionId != null || Job.InputTokens.HasValue ||
+                                    Job.OutputTokens.HasValue ||
                                     Job.TotalCostUsd.HasValue)
                     {
                         <div class="d-flex flex-wrap gap-2">
+                            @if (Job.ModelUsed != null)
+                            {
+                                <StatItem Label="Model" Value="@Job.ModelUsed" />
+                            }
                             @if (Job.SessionId != null)
                             {
                                 <StatItem Label="Session ID" Value="@Job.SessionId" Monospace="true" />
@@ -112,6 +117,12 @@ else
                             @if (Job.OutputTokens.HasValue)
                             {
                                 <StatItem Label="Output" Value="@TokenHelper.FormatTokenCount(Job.OutputTokens.Value)"
+                                    FlexGrow="true" />
+                            }
+                            @if (Job.InputTokens.HasValue && Job.OutputTokens.HasValue)
+                            {
+                                <StatItem Label="Total"
+                                    Value="@TokenHelper.FormatTokenCount(Job.InputTokens.Value + Job.OutputTokens.Value)"
                                     FlexGrow="true" />
                             }
                             @if (Job.TotalCostUsd.HasValue)

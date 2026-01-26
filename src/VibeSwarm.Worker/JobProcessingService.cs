@@ -648,7 +648,7 @@ public class JobProcessingService : BackgroundService
             if (wasCancelled)
             {
                 await CompleteJobAsync(job.Id, JobStatus.Cancelled, result.SessionId, result.Output,
-                    "Job was cancelled by user", result.InputTokens, result.OutputTokens, result.CostUsd,
+                    "Job was cancelled by user", result.InputTokens, result.OutputTokens, result.CostUsd, result.ModelUsed,
                     executionContext, workingDirectory, dbContext, CancellationToken.None);
                 await NotifyJobCompletedAsync(job.Id, false, "Job was cancelled by user");
 
@@ -674,7 +674,7 @@ public class JobProcessingService : BackgroundService
                 }
 
                 await CompleteJobAsync(job.Id, JobStatus.Completed, result.SessionId, result.Output,
-                    null, result.InputTokens, result.OutputTokens, result.CostUsd,
+                    null, result.InputTokens, result.OutputTokens, result.CostUsd, result.ModelUsed,
                     executionContext, workingDirectory, dbContext, CancellationToken.None);
 
                 _logger.LogInformation("Job {JobId} completed successfully. Session: {SessionId}",
@@ -684,7 +684,7 @@ public class JobProcessingService : BackgroundService
             else
             {
                 await CompleteJobAsync(job.Id, JobStatus.Failed, result.SessionId, result.Output,
-                    result.ErrorMessage, result.InputTokens, result.OutputTokens, result.CostUsd,
+                    result.ErrorMessage, result.InputTokens, result.OutputTokens, result.CostUsd, result.ModelUsed,
                     executionContext, workingDirectory, dbContext, CancellationToken.None);
 
                 _logger.LogWarning("Job {JobId} failed: {Error}", job.Id, result.ErrorMessage);
@@ -810,7 +810,7 @@ public class JobProcessingService : BackgroundService
     /// </summary>
     private async Task CompleteJobAsync(
         Guid jobId, JobStatus status, string? sessionId, string? output, string? errorMessage,
-        int? inputTokens, int? outputTokens, decimal? costUsd,
+        int? inputTokens, int? outputTokens, decimal? costUsd, string? modelUsed,
         JobExecutionContext executionContext, string? workingDirectory,
         VibeSwarmDbContext dbContext, CancellationToken cancellationToken)
     {
@@ -825,6 +825,7 @@ public class JobProcessingService : BackgroundService
             job.InputTokens = inputTokens ?? job.InputTokens;
             job.OutputTokens = outputTokens ?? job.OutputTokens;
             job.TotalCostUsd = costUsd ?? job.TotalCostUsd;
+            job.ModelUsed = modelUsed ?? job.ModelUsed;
             job.WorkerInstanceId = null;
             job.LastHeartbeatAt = null;
             job.ProcessId = null;

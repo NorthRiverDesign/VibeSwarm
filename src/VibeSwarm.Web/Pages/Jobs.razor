@@ -86,7 +86,8 @@ else
                         Prompt="@job.GoalPrompt"
                         Activity="@((job.Status == JobStatus.Started || job.Status == JobStatus.Processing) ? (job.CurrentActivity ?? "Working...") : null)"
                         TimeDisplay="@((job.Status != JobStatus.Started && job.Status != JobStatus.Processing) ? GetTimeDisplay(job) : null)"
-                        Cost="@job.TotalCostUsd" OnClick="@(() => NavigateToJob(job.Id))" />
+                        Cost="@job.TotalCostUsd" InputTokens="@job.InputTokens" OutputTokens="@job.OutputTokens"
+                        ModelUsed="@job.ModelUsed" OnClick="@(() => NavigateToJob(job.Id))" />
                 </div>
             }
         </div>
