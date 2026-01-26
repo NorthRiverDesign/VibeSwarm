@@ -395,7 +395,84 @@ public class CopilotProvider : ProviderBase
 			result.ErrorMessage = error;
 		}
 
+		// Parse usage data from stderr (Copilot CLI outputs usage info to stderr)
+		if (!string.IsNullOrEmpty(error))
+		{
+			ParseCopilotUsageFromStderr(error, result);
+		}
+
 		return result;
+	}
+
+	/// <summary>
+	/// Parses usage information from Copilot CLI stderr output.
+	/// Example format:
+	/// [ERR]  claude-opus-4.5         49.0k in, 301 out, 32.0k cached (Est. 3 Premium requests)
+	/// </summary>
+	private static void ParseCopilotUsageFromStderr(string stderr, ExecutionResult result)
+	{
+		if (string.IsNullOrWhiteSpace(stderr))
+			return;
+
+		// Pattern to match: model_name  XXXk in, YYY out, ZZZk cached
+		// Examples: "49.0k in, 301 out" or "1.2k in, 500 out, 32.0k cached"
+		var usagePattern = new Regex(
+			@"(\d+(?:\.\d+)?)\s*k?\s*in\s*,\s*(\d+(?:\.\d+)?)\s*k?\s*out",
+			RegexOptions.IgnoreCase);
+
+		var match = usagePattern.Match(stderr);
+		if (match.Success)
+		{
+			// Parse input tokens
+			if (double.TryParse(match.Groups[1].Value, out var inputValue))
+			{
+				// Check if it was in "k" format (the k is optional in the pattern)
+				var inputStr = match.Groups[0].Value;
+				if (inputStr.Contains("k in", StringComparison.OrdinalIgnoreCase))
+				{
+					result.InputTokens = (int)(inputValue * 1000);
+				}
+				else
+				{
+					result.InputTokens = (int)inputValue;
+				}
+			}
+
+			// Parse output tokens
+			if (double.TryParse(match.Groups[2].Value, out var outputValue))
+			{
+				var outputStr = match.Groups[0].Value;
+				if (outputStr.Contains("k out", StringComparison.OrdinalIgnoreCase))
+				{
+					result.OutputTokens = (int)(outputValue * 1000);
+				}
+				else
+				{
+					result.OutputTokens = (int)outputValue;
+				}
+			}
+		}
+
+		// Also try to extract model name
+		var modelPattern = new Regex(@"^\s*(?:\[ERR\])?\s*(claude-[\w.-]+|gpt-[\w.-]+|gemini-[\w.-]+)", RegexOptions.IgnoreCase | RegexOptions.Multiline);
+		var modelMatch = modelPattern.Match(stderr);
+		if (modelMatch.Success && string.IsNullOrEmpty(result.ModelUsed))
+		{
+			result.ModelUsed = modelMatch.Groups[1].Value.Trim();
+		}
+
+		// Try to extract premium requests as a cost estimate
+		var premiumPattern = new Regex(@"Est\.\s*(\d+)\s*Premium\s*requests?", RegexOptions.IgnoreCase);
+		var premiumMatch = premiumPattern.Match(stderr);
+		if (premiumMatch.Success && int.TryParse(premiumMatch.Groups[1].Value, out var premiumRequests))
+		{
+			// Store premium requests in cost field (as a count, not actual cost)
+			// This gives users visibility into premium request usage
+			if (!result.CostUsd.HasValue)
+			{
+				result.CostUsd = premiumRequests;
+			}
+		}
 	}
 
 	private void ProcessStreamEvent(

@@ -952,9 +952,37 @@ public class JobProcessingService : BackgroundService
             {
                 try
                 {
-                    // Get diff since the commit we captured at start, or since HEAD if no commit was captured
+                    // Get diff since the commit we captured at start
                     var baseCommit = executionContext.GitCommitBefore;
-                    var gitDiff = await _versionControlService.GetWorkingDirectoryDiffAsync(workingDirectory, baseCommit, cancellationToken);
+                    string? gitDiff = null;
+
+                    if (!string.IsNullOrEmpty(baseCommit))
+                    {
+                        // First, get committed changes since the base commit (commits made by the agent)
+                        var committedDiff = await _versionControlService.GetCommitRangeDiffAsync(workingDirectory, baseCommit, null, cancellationToken);
+
+                        // Also get any uncommitted changes (working directory changes)
+                        var uncommittedDiff = await _versionControlService.GetWorkingDirectoryDiffAsync(workingDirectory, null, cancellationToken);
+
+                        // Combine both diffs
+                        if (!string.IsNullOrEmpty(committedDiff) && !string.IsNullOrEmpty(uncommittedDiff))
+                        {
+                            gitDiff = $"=== Committed changes since {baseCommit} ===\n{committedDiff}\n\n=== Uncommitted changes ===\n{uncommittedDiff}";
+                        }
+                        else if (!string.IsNullOrEmpty(committedDiff))
+                        {
+                            gitDiff = committedDiff;
+                        }
+                        else if (!string.IsNullOrEmpty(uncommittedDiff))
+                        {
+                            gitDiff = uncommittedDiff;
+                        }
+                    }
+                    else
+                    {
+                        // No base commit captured, just get uncommitted changes
+                        gitDiff = await _versionControlService.GetWorkingDirectoryDiffAsync(workingDirectory, null, cancellationToken);
+                    }
 
                     if (!string.IsNullOrEmpty(gitDiff))
                     {
