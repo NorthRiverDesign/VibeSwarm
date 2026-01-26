@@ -50,7 +50,15 @@ public class JobWatchdogService : BackgroundService
 		_logger.LogInformation("Job Watchdog Service started (Worker: {WorkerId})", _workerInstanceId);
 
 		// Wait a bit before first check to let jobs start up
-		await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
+		try
+		{
+			await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
+		}
+		catch (OperationCanceledException)
+		{
+			_logger.LogInformation("Job Watchdog Service cancelled during startup");
+			return;
+		}
 
 		while (!stoppingToken.IsCancellationRequested)
 		{

@@ -6,9 +6,11 @@
 @implements IAsyncDisposable
 @using System.Threading
 
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <h3 class="mb-0">Jobs</h3>
-    <span class="text-muted">@(_jobs?.Count() ?? 0) total jobs</span>
+<div class="page-header">
+    <div>
+        <h3>Jobs</h3>
+        <span class="text-muted small">@(_jobs?.Count() ?? 0) total</span>
+    </div>
 </div>
 
 @if (_isLoading)
@@ -28,14 +30,14 @@ else if (_jobs == null || !_jobs.Any())
 }
 else
 {
-    <div class="btn-group mb-3" role="group">
-        <button type="button" class="btn @(_filter == "all" ? "btn-primary" : "btn-outline-primary")"
+    <div class="filter-buttons mb-3">
+        <button type="button" class="btn btn-sm @(_filter == "all" ? "btn-primary" : "btn-outline-secondary")"
             @onclick='() => SetFilter("all")'>All</button>
-        <button type="button" class="btn @(_filter == "active" ? "btn-primary" : "btn-outline-primary")"
+        <button type="button" class="btn btn-sm @(_filter == "active" ? "btn-primary" : "btn-outline-secondary")"
             @onclick='() => SetFilter("active")'>Active</button>
-        <button type="button" class="btn @(_filter == "completed" ? "btn-primary" : "btn-outline-primary")"
+        <button type="button" class="btn btn-sm @(_filter == "completed" ? "btn-primary" : "btn-outline-secondary")"
             @onclick='() => SetFilter("completed")'>Completed</button>
-        <button type="button" class="btn @(_filter == "failed" ? "btn-primary" : "btn-outline-primary")"
+        <button type="button" class="btn btn-sm @(_filter == "failed" ? "btn-primary" : "btn-outline-secondary")"
             @onclick='() => SetFilter("failed")'>Failed</button>
     </div>
 
@@ -45,31 +47,34 @@ else
             <div class="col">
                 <div class="job-card" @onclick="() => NavigateToJob(job.Id)">
                     <div class="job-card-header">
-                        <span class="badge status-@job.Status.ToString().ToLower()">
-                            @if (job.Status == JobStatus.Started || job.Status == JobStatus.Processing)
-                            {
-                                <span class="status-spinner"></span>
-                            }
-                            @job.Status
-                        </span>
-                        @if (job.CancellationRequested && (job.Status == JobStatus.Started || job.Status ==
-                                        JobStatus.Processing))
-                        {
-                            <span class="badge status-cancelling">
-                                <span class="status-spinner"></span>
-                                Cancelling
+                        <div class="d-flex align-items-center gap-2 flex-wrap">
+                            <span class="badge status-@job.Status.ToString().ToLower()">
+                                @if (job.Status == JobStatus.Started || job.Status == JobStatus.Processing)
+                                {
+                                    <span class="status-spinner"></span>
+                                }
+                                @job.Status
                             </span>
-                        }
-                        <span class="job-project">@(job.Project?.Name ?? "Unknown Project")</span>
+                            @if (job.CancellationRequested && (job.Status == JobStatus.Started || job.Status ==
+                                                JobStatus.Processing))
+                            {
+                                <span class="badge status-cancelling">
+                                    <span class="status-spinner"></span>
+                                    Cancelling
+                                </span>
+                            }
+                        </div>
+                        <span class="job-project">@(job.Project?.Name ?? "Unknown")</span>
                     </div>
                     <div class="job-card-content">
-                        <p class="job-prompt">@TruncatePrompt(job.GoalPrompt, 150)</p>
+                        <p class="job-prompt">@TruncatePrompt(job.GoalPrompt, 120)</p>
                     </div>
                     <div class="job-card-footer">
                         <span class="job-provider">@(job.Provider?.Name ?? "Unknown")</span>
                         @if (job.Status == JobStatus.Started || job.Status == JobStatus.Processing)
                         {
-                            <span class="job-activity">@(job.CurrentActivity ?? "Working...")</span>
+                            <span class="job-activity text-truncate" style="max-width: 150px;">@(job.CurrentActivity ??
+                                                    "Working...")</span>
                         }
                         else
                         {

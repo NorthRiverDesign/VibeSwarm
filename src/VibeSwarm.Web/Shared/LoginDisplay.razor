@@ -2,11 +2,15 @@
 
 <AuthorizeView>
     <Authorized>
-        <div class="d-flex align-items-center">
-            <span class="navbar-text me-3">
-                Welcome, <strong>@context.User.Identity?.Name</strong>
-            </span>
-            <a href="/logout" class="btn btn-sm btn-outline-secondary">Logout</a>
+        <div class="login-display">
+            <div class="user-info">
+                <i class="bi bi-person-circle"></i>
+                <span class="user-name">@context.User.Identity?.Name</span>
+            </div>
+            <a href="/logout" class="btn btn-sm btn-outline-secondary">
+                <i class="bi bi-box-arrow-right d-lg-none"></i>
+                <span class="d-none d-lg-inline">Logout</span>
+            </a>
         </div>
     </Authorized>
     <NotAuthorized>

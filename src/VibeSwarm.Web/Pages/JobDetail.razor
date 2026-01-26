@@ -25,10 +25,11 @@ else if (Job == null)
 }
 else
 {
-    <div class="d-flex justify-content-between align-items-start mb-4">
-        <div>
-            <h3 class="mb-2">Job Details</h3>
-            <div class="d-flex align-items-center gap-2 mb-2">
+    @* Page Header - Mobile Responsive *@
+        <div class="page-header flex-column flex-md-row">
+        <div class="flex-grow-1 w-100">
+            <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                <h3 class="mb-0">Job Details</h3>
                 <span class="badge status-@Job.Status.ToString().ToLower()">
                     @if (Job.Status == JobStatus.Started || Job.Status == JobStatus.Processing)
                     {
@@ -44,69 +45,80 @@ else
                     </span>
                 }
             </div>
-            <p class="text-muted mb-0">
-                <span class="me-3">Project: <a href="/projects/@Job.ProjectId">@(Job.Project?.Name ?? "Unknown")</a></span>
-                <span class="me-3">Provider: @(Job.Provider?.Name ?? "Unknown")</span>
-                @if (Job.ProcessId.HasValue)
-                {
-                    <span class="process-info">PID: @Job.ProcessId</span>
-                }
-            </p>
-            <div class="job-timestamps mt-2">
-                <span class="me-3" title="Created"><i class="bi bi-calendar-plus me-1"></i>Created:
-                    @Job.CreatedAt.FormatDateTimeShort()</span>
-                @if (Job.StartedAt.HasValue)
-                {
-                    <span class="me-3" title="Started"><i class="bi bi-play-circle me-1"></i>Started:
-                        @Job.StartedAt.Value.FormatDateTimeShort()</span>
-                }
-                @if (Job.CompletedAt.HasValue)
-                {
-                    <span title="Completed"><i class="bi bi-check-circle me-1"></i>Completed:
-                        @Job.CompletedAt.Value.FormatDateTimeShort()</span>
-                }
+            <div class="job-meta text-muted small">
+                <div class="d-flex flex-wrap gap-2 gap-sm-3 mb-2">
+                    <span>Project: <a href="/projects/@Job.ProjectId">@(Job.Project?.Name ?? "Unknown")</a></span>
+                    <span>Provider: @(Job.Provider?.Name ?? "Unknown")</span>
+                    @if (Job.ProcessId.HasValue)
+                    {
+                        <span class="process-info d-none d-sm-inline">PID: @Job.ProcessId</span>
+                    }
+                </div>
+                <div class="job-timestamps d-flex flex-wrap gap-2 gap-sm-3">
+                    <span title="Created"><i
+                            class="bi bi-calendar-plus me-1"></i>@Job.CreatedAt.FormatDateTimeShort()</span>
+                    @if (Job.StartedAt.HasValue)
+                    {
+                        <span title="Started"><i
+                                class="bi bi-play-circle me-1"></i>@Job.StartedAt.Value.FormatDateTimeShort()</span>
+                    }
+                    @if (Job.CompletedAt.HasValue)
+                    {
+                        <span title="Completed"><i
+                                class="bi bi-check-circle me-1"></i>@Job.CompletedAt.Value.FormatDateTimeShort()</span>
+                    }
+                </div>
             </div>
         </div>
-        <div class="d-flex gap-2">
+        <div class="d-flex flex-wrap gap-2 mt-3 mt-md-0 w-100 w-md-auto">
             @if (CanRetry)
             {
-                <button class="btn btn-primary" @onclick="RetryJob" disabled="@IsRetrying">
+                <button class="btn btn-sm btn-primary flex-grow-1 flex-md-grow-0" @onclick="RetryJob" disabled="@IsRetrying">
                     @if (IsRetrying)
                     {
                         <span class="spinner-border spinner-border-sm me-1" role="status"></span>
                     }
-                    @(IsRetrying ? "Resetting..." : "Retry Job")
+                    <i class="bi bi-arrow-clockwise d-md-none"></i>
+                    <span class="d-none d-md-inline">@(IsRetrying ? "Resetting..." : "Retry")</span>
                 </button>
             }
             @if (CanCancel)
             {
-                <button class="btn btn-danger" @onclick="CancelJob" disabled="@IsCancelling">
+                <button class="btn btn-sm btn-danger flex-grow-1 flex-md-grow-0" @onclick="CancelJob" disabled="@IsCancelling">
                     @if (IsCancelling)
                     {
                         <span class="spinner-small"></span>
                     }
-                    @(IsCancelling ? "Cancelling..." : "Cancel Job")
+                    <i class="bi bi-x-circle d-md-none"></i>
+                    <span class="d-none d-md-inline">@(IsCancelling ? "Cancelling..." : "Cancel")</span>
                 </button>
             }
             @if (CanForceCancel)
             {
-                <button class="btn btn-outline-danger" @onclick="ForceCancelJob" disabled="@IsForceCancelling">
+                <button class="btn btn-sm btn-outline-danger flex-grow-1 flex-md-grow-0" @onclick="ForceCancelJob"
+                    disabled="@IsForceCancelling">
                     @if (IsForceCancelling)
                     {
                         <span class="spinner-small"></span>
                     }
-                    @(IsForceCancelling ? "Force Cancelling..." : "Force Cancel")
+                    <span class="d-none d-md-inline">@(IsForceCancelling ? "Force Cancelling..." : "Force Cancel")</span>
+                    <span class="d-md-none">Force</span>
                 </button>
             }
-            <a href="/projects/@Job.ProjectId" class="btn btn-secondary">Back to Project</a>
+            <a href="/projects/@Job.ProjectId" class="btn btn-sm btn-secondary flex-grow-1 flex-md-grow-0">
+                <i class="bi bi-arrow-left d-md-none"></i>
+                <span class="d-none d-md-inline">Back to Project</span>
+            </a>
         </div>
     </div>
 
-    <div class="row g-4">
-        <div class="col-lg-5">
-            <div class="card shadow-sm mb-4">
+    @* Main Content - Column Layout *@
+        <div class="row g-3 g-lg-4">
+        @* Left Column - Goal & Output on mobile first *@
+            <div class="col-12 col-lg-5 order-2 order-lg-1">
+            <div class="card mb-3 mb-lg-4">
                 <div class="card-header">
-                    <h5 class="mb-0">Goal Prompt</h5>
+                    <h5 class="mb-0"><i class="bi bi-bullseye me-2"></i>Goal Prompt</h5>
                 </div>
                 <div class="card-body">
                     <div class="goal-prompt-box mb-3">@Job.GoalPrompt</div>
@@ -116,38 +128,41 @@ else
                         {
                             <div class="stat-item">
                                 <span class="stat-label">Session ID</span>
-                                <span class="stat-value mono">@Job.SessionId</span>
+                                <span class="stat-value mono text-truncate">@Job.SessionId</span>
                             </div>
                         }
-                        @if (Job.InputTokens.HasValue)
-                        {
-                            <div class="stat-item">
-                                <span class="stat-label">Input Tokens</span>
-                                <span class="stat-value">@Job.InputTokens.Value.ToString("N0")</span>
-                            </div>
-                        }
-                        @if (Job.OutputTokens.HasValue)
-                        {
-                            <div class="stat-item">
-                                <span class="stat-label">Output Tokens</span>
-                                <span class="stat-value">@Job.OutputTokens.Value.ToString("N0")</span>
-                            </div>
-                        }
-                        @if (Job.TotalCostUsd.HasValue)
-                        {
-                            <div class="stat-item">
-                                <span class="stat-label">Cost</span>
-                                <span class="stat-value">$@Job.TotalCostUsd.Value.ToString("F4")</span>
-                            </div>
-                        }
+                        <div class="d-flex flex-wrap gap-3">
+                            @if (Job.InputTokens.HasValue)
+                            {
+                                <div class="stat-item flex-grow-1">
+                                    <span class="stat-label">Input</span>
+                                    <span class="stat-value">@Job.InputTokens.Value.ToString("N0")</span>
+                                </div>
+                            }
+                            @if (Job.OutputTokens.HasValue)
+                            {
+                                <div class="stat-item flex-grow-1">
+                                    <span class="stat-label">Output</span>
+                                    <span class="stat-value">@Job.OutputTokens.Value.ToString("N0")</span>
+                                </div>
+                            }
+                            @if (Job.TotalCostUsd.HasValue)
+                            {
+                                <div class="stat-item flex-grow-1">
+                                    <span class="stat-label">Cost</span>
+                                    <span class="stat-value">$@Job.TotalCostUsd.Value.ToString("F4")</span>
+                                </div>
+                            }
+                        </div>
                     </div>
 
                     @if (!string.IsNullOrEmpty(Job.ErrorMessage))
                     {
                         <div class="error-section">
-                            <h6 class="text-danger">Error</h6>
+                            <h6 class="text-danger"><i class="bi bi-exclamation-triangle me-1"></i>Error</h6>
                             <pre class="error-output">@Job.ErrorMessage</pre>
                         </div>
+                    }
                     }
 
                     @if (Job.Status == JobStatus.Cancelled)
@@ -169,23 +184,26 @@ else
             </div>
 
             @* Live Output Section - shown when job is running *@
-            @if (IsJobActive && _liveOutput.Count > 0)
+                @if (IsJobActive && _liveOutput.Count > 0)
             {
-                <div class="card shadow-sm mb-4">
-                    <div class="card-header d-flex justify-content-between align-items-center">
-                        <div>
+                <div class="card mb-3 mb-lg-4">
+                    <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                        <div class="d-flex align-items-center">
                             <span class="live-indicator me-2"></span>
                             <strong>Live Output</strong>
-                            <span class="text-muted ms-2">(@_liveOutput.Count lines)</span>
+                            <span class="text-muted ms-2 small">(@_liveOutput.Count)</span>
                         </div>
-                        <button class="btn btn-sm btn-outline-secondary" @onclick="ClearLiveOutput">Clear</button>
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="ClearLiveOutput">
+                            <i class="bi bi-trash d-sm-none"></i>
+                            <span class="d-none d-sm-inline">Clear</span>
+                        </button>
                     </div>
                     <div class="card-body p-0">
                         <div class="live-output-container" @ref="_outputContainer">
                             @foreach (var line in _liveOutput.TakeLast(MaxOutputLines))
                             {
                                 <div class="output-line @(line.IsError ? "output-error" : "output-stdout")">
-                                    <span class="output-time">[@line.Timestamp.FormatTime()]</span>
+                                    <span class="output-time d-none d-sm-inline">[@line.Timestamp.FormatTime()]</span>
                                     <span class="output-text">@line.Content</span>
                                 </div>
                             }
@@ -197,14 +215,15 @@ else
             @* Saved Console Output - shown after job completes *@
             @if (!IsJobActive && !string.IsNullOrEmpty(Job.ConsoleOutput))
             {
-                <div class="card shadow-sm mb-4">
+                <div class="card mb-3 mb-lg-4">
                     <div class="card-header d-flex justify-content-between align-items-center">
-                        <div>
-                            <span class="me-2">📋</span>
+                        <div class="d-flex align-items-center">
+                            <i class="bi bi-terminal me-2"></i>
                             <strong>Console Output</strong>
                         </div>
                         <button class="btn btn-sm btn-outline-secondary" @onclick="ToggleConsoleOutput">
-                            @(_showConsoleOutput ? "Hide" : "Show")
+                            <i class="bi @(_showConsoleOutput ? "bi-eye-slash" : "bi-eye")"></i>
+                            <span class="d-none d-sm-inline ms-1">@(_showConsoleOutput ? "Hide" : "Show")</span>
                         </button>
                     </div>
                     @if (_showConsoleOutput)
@@ -219,24 +238,28 @@ else
             @* Git Diff Section - shown after job completes if changes were detected *@
             @if (!IsJobActive && !string.IsNullOrEmpty(Job.GitDiff))
             {
-                <div class="card shadow-sm mb-4">
-                    <div class="card-header d-flex justify-content-between align-items-center">
-                        <div>
-                            <span class="me-2">📝</span>
-                            <strong>Git Changes</strong>
-                            <span class="badge bg-secondary ms-2">@_parsedDiffFiles.Count files</span>
-                        </div>
-                        <div class="d-flex gap-2">
-                            <button class="btn btn-sm btn-outline-secondary" @onclick="ExpandAllDiffs" title="Expand all files">
-                                <i class="bi bi-arrows-expand"></i> Expand All
-                            </button>
-                            <button class="btn btn-sm btn-outline-secondary" @onclick="CollapseAllDiffs"
-                                title="Collapse all files">
-                                <i class="bi bi-arrows-collapse"></i> Collapse All
-                            </button>
-                            <button class="btn btn-sm btn-outline-secondary" @onclick="ToggleGitDiff">
-                                @(_showGitDiff ? "Hide" : "Show")
-                            </button>
+                <div class="card mb-3 mb-lg-4">
+                    <div class="card-header">
+                        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                            <div class="d-flex align-items-center">
+                                <i class="bi bi-git me-2"></i>
+                                <strong>Git Changes</strong>
+                                <span class="badge bg-secondary ms-2">@_parsedDiffFiles.Count</span>
+                            </div>
+                            <div class="d-flex gap-1 gap-sm-2">
+                                <button class="btn btn-sm btn-outline-secondary d-none d-sm-inline-block"
+                                    @onclick="ExpandAllDiffs" title="Expand all files">
+                                    <i class="bi bi-arrows-expand"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-secondary d-none d-sm-inline-block"
+                                    @onclick="CollapseAllDiffs" title="Collapse all files">
+                                    <i class="bi bi-arrows-collapse"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-secondary" @onclick="ToggleGitDiff">
+                                    <i class="bi @(_showGitDiff ? "bi-eye-slash" : "bi-eye")"></i>
+                                    <span class="d-none d-sm-inline ms-1">@(_showGitDiff ? "Hide" : "Show")</span>
+                                </button>
+                            </div>
                         </div>
                     </div>
                     @if (_showGitDiff)
@@ -294,22 +317,22 @@ else
                 </div>
 
                 @* Commit and Push Section - shown when there are git changes *@
-                <div class="card shadow-sm mb-4">
+                        <div class="card mb-3 mb-lg-4">
                     <div class="card-header">
-                        <span class="me-2">🚀</span>
-                        <strong>Commit & Push Changes</strong>
+                        <i class="bi bi-cloud-upload me-2"></i>
+                        <strong>Commit & Push</strong>
                     </div>
                     <div class="card-body">
                         @if (!_changesPushed)
                         {
                             <div class="commit-form">
                                 <div class="mb-3">
-                                    <label for="commitMessage" class="form-label">
-                                        Commit Message
+                                    <label for="commitMessage" class="form-label d-flex flex-wrap align-items-center gap-2">
+                                        <span>Commit Message</span>
                                         @if (!string.IsNullOrWhiteSpace(Job.SessionSummary))
                                         {
-                                            <span class="badge bg-info ms-2" title="Pre-populated from AI session summary">
-                                                <span class="ai-icon">🤖</span> AI Generated
+                                            <span class="badge bg-info">
+                                                <i class="bi bi-robot me-1"></i>AI Generated
                                             </span>
                                         }
                                     </label>
@@ -318,23 +341,26 @@ else
                                         disabled="@_isPushing"></textarea>
                                 </div>
 
-                                <div class="d-flex align-items-center gap-3 flex-wrap">
+                                <div
+                                    class="d-flex flex-column flex-sm-row align-items-stretch align-items-sm-center gap-2 gap-sm-3">
                                     <button class="btn btn-primary" @onclick="CommitAndPushChanges" disabled="@(!CanPush)">
                                         @if (_isPushing)
                                         {
                                             <span class="spinner-border spinner-border-sm me-1" role="status"></span>
-                                            @_pushStatus
+                                            <span class="d-none d-sm-inline">@_pushStatus</span>
+                                            <span class="d-sm-none">Pushing...</span>
                                         }
                                         else
                                         {
-                                            <text>Commit & Push</text>
+                                            <i class="bi bi-cloud-upload me-1"></i>
+                                            <span>Commit & Push</span>
                                         }
                                     </button>
 
                                     @if (!string.IsNullOrEmpty(_branchName))
                                     {
-                                        <span class="branch-info">
-                                            <span class="branch-icon">🌿</span>
+                                        <span class="branch-info text-truncate">
+                                            <i class="bi bi-diagram-2 me-1"></i>
                                             @_branchName
                                         </span>
                                     }
@@ -344,7 +370,7 @@ else
                             @if (!string.IsNullOrEmpty(_pushError))
                             {
                                 <div class="push-error mt-3">
-                                    <span class="error-icon">❌</span>
+                                    <i class="bi bi-x-circle me-1"></i>
                                     @_pushError
                                 </div>
                             }
@@ -352,18 +378,24 @@ else
                         else
                         {
                             <div class="push-success">
-                                <span class="success-icon fs-4">✅</span>
+                                <i class="bi bi-check-circle-fill fs-4 text-success"></i>
                                 <div class="success-details">
                                     <strong>Changes pushed successfully!</strong>
-                                    @if (!string.IsNullOrEmpty(_pushedCommitHash))
-                                    {
-                                        <span class="commit-hash">Commit: @_pushedCommitHash[..Math.Min(7,
-                                                                        _pushedCommitHash.Length)]</span>
-                                                }
-                                    @if (!string.IsNullOrEmpty(_branchName))
-                                    {
-                                        <span class="branch-pushed">Branch: @_branchName</span>
-                                    }
+                                    <div class="d-flex flex-wrap gap-2 mt-1">
+                                        @if (!string.IsNullOrEmpty(_pushedCommitHash))
+                                        {
+                                            <span class="commit-hash">
+                                                <i class="bi bi-git me-1"></i>@_pushedCommitHash[..Math.Min(7,
+                                                                                _pushedCommitHash.Length)]
+                            </span>
+                                                        }
+                                        @if (!string.IsNullOrEmpty(_branchName))
+                                        {
+                                            <span class="branch-pushed">
+                                                <i class="bi bi-diagram-2 me-1"></i>@_branchName
+                                            </span>
+                                        }
+                                    </div>
                                 </div>
                             </div>
                         }
@@ -372,20 +404,23 @@ else
             }
             else if (!IsJobActive && Job.Status == JobStatus.Completed && string.IsNullOrEmpty(Job.GitDiff))
             {
-                <div class="card shadow-sm">
+                <div class="card">
                     <div class="card-body">
-                        <p class="text-muted mb-0 text-center">No file changes detected during this job.</p>
+                        <p class="text-muted mb-0 text-center"><i class="bi bi-info-circle me-2"></i>No file changes detected.
+                        </p>
                     </div>
                 </div>
             }
         </div>
 
-        <div class="col-lg-7">
-            <div class="card shadow-sm">
-                <div class="card-header">
-                    <h5 class="mb-0">Conversation (@Job.Messages.Count messages)</h5>
+        @* Right Column - Conversation Messages (shows first on mobile) *@
+            <div class="col-12 col-lg-7 order-1 order-lg-2">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="bi bi-chat-dots me-2"></i>Conversation</h5>
+                    <span class="badge bg-secondary">@Job.Messages.Count</span>
                 </div>
-                <div class="card-body">
+                <div class="card-body p-2 p-sm-3">
                     @if (Job.Status == JobStatus.Started || Job.Status == JobStatus.Processing)
                     {
                         <div class="activity-indicator mb-3">

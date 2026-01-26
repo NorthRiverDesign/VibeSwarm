@@ -49,13 +49,27 @@ if (!File.Exists(certPath))
 }
 
 // Configure Kestrel to use HTTPS
+// In Development, bind to localhost for better debugging experience
+// In Production, bind to all interfaces (0.0.0.0)
+var isDevelopment = builder.Environment.IsDevelopment();
 builder.WebHost.ConfigureKestrel(serverOptions =>
 {
-    serverOptions.ListenAnyIP(5000); // HTTP
-    serverOptions.ListenAnyIP(5001, listenOptions =>
+    if (isDevelopment)
     {
-        listenOptions.UseHttps(certPath, certPassword); // HTTPS with self-signed cert
-    });
+        serverOptions.ListenLocalhost(5000); // HTTP - localhost only
+        serverOptions.ListenLocalhost(5001, listenOptions =>
+        {
+            listenOptions.UseHttps(certPath, certPassword); // HTTPS with self-signed cert
+        });
+    }
+    else
+    {
+        serverOptions.ListenAnyIP(5000); // HTTP - all interfaces
+        serverOptions.ListenAnyIP(5001, listenOptions =>
+        {
+            listenOptions.UseHttps(certPath, certPassword); // HTTPS with self-signed cert
+        });
+    }
 });
 
 var connectionString = builder.Configuration.GetConnectionString("Default")
