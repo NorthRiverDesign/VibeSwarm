@@ -1,5 +1,5 @@
 /* VibeSwarm - Modern DevOps-Inspired Responsive UI */
-/* Mobile-first design with Bootstrap 5 integration */
+/* Mobile-first design with Bootstrap 5.3 dark mode integration */
 
 /* ============================================
    Bootstrap Icons Font Face (Local)
@@ -60,31 +60,12 @@
 .bi-terminal::before { content: "\f5d0"; }
 .bi-git::before { content: "\f3ed"; }
 .bi-send::before { content: "\f56d"; }
+.bi-bullseye::before { content: "\f1d0"; }
 
 /* ============================================
-   CSS Variables - DevOps Theme
+   CSS Variables - App-Specific
 ============================================ */
 :root {
-    /* Colors - Dark DevOps theme */
-    --vs-bg-primary: #1a1d21;
-    --vs-bg-secondary: #252a30;
-    --vs-bg-tertiary: #2d333b;
-    --vs-bg-surface: #22262c;
-    --vs-bg-hover: #373e47;
-    
-    --vs-text-primary: #e6edf3;
-    --vs-text-secondary: #8b949e;
-    --vs-text-muted: #6e7681;
-    
-    --vs-accent-blue: #58a6ff;
-    --vs-accent-green: #3fb950;
-    --vs-accent-orange: #d29922;
-    --vs-accent-red: #f85149;
-    --vs-accent-purple: #a371f7;
-    
-    --vs-border-color: #30363d;
-    --vs-border-subtle: #21262d;
-    
     /* Sizing */
     --vs-sidebar-width: 240px;
     --vs-header-height: 56px;
@@ -94,10 +75,12 @@
     --vs-spacing-lg: 1.5rem;
     --vs-spacing-xl: 2rem;
     
-    /* Radius */
-    --vs-radius-sm: 4px;
-    --vs-radius-md: 6px;
-    --vs-radius-lg: 8px;
+    /* Accent colors - used across themes */
+    --vs-accent-blue: #58a6ff;
+    --vs-accent-green: #3fb950;
+    --vs-accent-orange: #d29922;
+    --vs-accent-red: #f85149;
+    --vs-accent-purple: #a371f7;
     
     /* Transitions */
     --vs-transition: 0.2s ease;
@@ -106,22 +89,13 @@
 /* ============================================
    Base Styles
 ============================================ */
-*, *::before, *::after {
-    box-sizing: border-box;
-}
-
 html {
-    font-size: 14px;
+    font-size: 16px;
     -webkit-text-size-adjust: 100%;
 }
 
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif;
-    background-color: var(--vs-bg-primary);
-    color: var(--vs-text-primary);
-    margin: 0;
-    padding: 0;
-    overflow-x: hidden;
     line-height: 1.5;
 }
 
@@ -141,8 +115,8 @@ body {
     left: 0;
     right: 0;
     height: var(--vs-header-height);
-    background: var(--vs-bg-secondary);
-    border-bottom: 1px solid var(--vs-border-color);
+    background: var(--bs-secondary-bg);
+    border-bottom: 1px solid var(--bs-border-color);
     display: flex;
     align-items: center;
     padding: 0 var(--vs-spacing-md);
@@ -154,29 +128,34 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 40px;
-    height: 40px;
+    width: 44px;
+    height: 44px;
     padding: 0;
-    color: var(--vs-text-primary);
+    color: var(--bs-body-color);
     font-size: 1.5rem;
     background: transparent;
     border: none;
-    border-radius: var(--vs-radius-md);
+    border-radius: var(--bs-border-radius);
 }
 
 .nav-toggle:hover {
-    background: var(--vs-bg-hover);
-    color: var(--vs-text-primary);
+    background: var(--bs-tertiary-bg);
+    color: var(--bs-emphasis-color);
 }
 
 .app-brand {
     display: flex;
     align-items: center;
     gap: var(--vs-spacing-sm);
-    text-decoration: none;
-    color: var(--vs-text-primary);
+    text-decoration: none !important;
+    color: var(--bs-body-color);
     font-weight: 600;
     font-size: 1.125rem;
+}
+
+.app-brand:hover {
+    color: var(--bs-emphasis-color);
+    text-decoration: none !important;
 }
 
 .brand-icon {
@@ -194,8 +173,8 @@ body {
     left: 0;
     bottom: 0;
     width: var(--vs-sidebar-width);
-    background: var(--vs-bg-secondary);
-    border-right: 1px solid var(--vs-border-color);
+    background: var(--bs-secondary-bg);
+    border-right: 1px solid var(--bs-border-color);
     display: flex;
     flex-direction: column;
     z-index: 999;
@@ -220,7 +199,7 @@ body {
 
 .sidebar-header {
     padding: var(--vs-spacing-lg);
-    border-bottom: 1px solid var(--vs-border-color);
+    border-bottom: 1px solid var(--bs-border-color);
 }
 
 .sidebar-nav {
@@ -236,11 +215,12 @@ body {
     align-items: center;
     gap: var(--vs-spacing-md);
     padding: var(--vs-spacing-sm) var(--vs-spacing-md);
-    color: var(--vs-text-secondary);
-    text-decoration: none;
-    border-radius: var(--vs-radius-md);
+    color: var(--bs-secondary-color);
+    text-decoration: none !important;
+    border-radius: var(--bs-border-radius);
     transition: all var(--vs-transition);
     font-weight: 500;
+    font-size: 1rem;
 }
 
 .nav-item i {
@@ -250,19 +230,20 @@ body {
 }
 
 .nav-item:hover {
-    background: var(--vs-bg-hover);
-    color: var(--vs-text-primary);
+    background: var(--bs-tertiary-bg);
+    color: var(--bs-emphasis-color);
+    text-decoration: none !important;
 }
 
 .nav-item.active {
-    background: var(--vs-accent-blue);
     background: rgba(88, 166, 255, 0.15);
     color: var(--vs-accent-blue);
+    text-decoration: none !important;
 }
 
 .sidebar-footer {
     padding: var(--vs-spacing-md);
-    border-top: 1px solid var(--vs-border-color);
+    border-top: 1px solid var(--bs-border-color);
 }
 
 /* Main Content */
@@ -316,7 +297,6 @@ body {
     margin: 0;
     font-size: 1.5rem;
     font-weight: 600;
-    color: var(--vs-text-primary);
 }
 
 .page-header-actions {
@@ -334,19 +314,13 @@ body {
 }
 
 /* ============================================
-   Cards - DevOps Style
+   Cards - Bootstrap integration
 ============================================ */
 .card {
-    background: var(--vs-bg-secondary);
-    border: 1px solid var(--vs-border-color);
-    border-radius: var(--vs-radius-lg);
-    overflow: hidden;
+    border-radius: var(--bs-border-radius-lg);
 }
 
 .card-header {
-    background: var(--vs-bg-tertiary);
-    border-bottom: 1px solid var(--vs-border-color);
-    padding: var(--vs-spacing-md);
     font-weight: 600;
     display: flex;
     align-items: center;
@@ -360,29 +334,12 @@ body {
     font-size: 1rem;
 }
 
-.card-body {
-    padding: var(--vs-spacing-md);
-}
-
-.card-footer {
-    background: var(--vs-bg-tertiary);
-    border-top: 1px solid var(--vs-border-color);
-    padding: var(--vs-spacing-md);
-}
-
 /* ============================================
    Status Badges
 ============================================ */
-.badge {
-    font-weight: 500;
-    font-size: 0.75rem;
-    padding: 0.25rem 0.5rem;
-    border-radius: var(--vs-radius-sm);
-}
-
 .status-new {
-    background-color: var(--vs-bg-tertiary) !important;
-    color: var(--vs-text-secondary) !important;
+    background-color: var(--bs-secondary-bg) !important;
+    color: var(--bs-secondary-color) !important;
 }
 
 .status-pending {
@@ -390,11 +347,7 @@ body {
     color: var(--vs-accent-orange) !important;
 }
 
-.status-started {
-    background-color: rgba(88, 166, 255, 0.2) !important;
-    color: var(--vs-accent-blue) !important;
-}
-
+.status-started,
 .status-processing {
     background-color: rgba(88, 166, 255, 0.2) !important;
     color: var(--vs-accent-blue) !important;
@@ -411,8 +364,8 @@ body {
 }
 
 .status-cancelled {
-    background-color: var(--vs-bg-tertiary) !important;
-    color: var(--vs-text-muted) !important;
+    background-color: var(--bs-secondary-bg) !important;
+    color: var(--bs-tertiary-color) !important;
 }
 
 .status-cancelling {
@@ -439,225 +392,10 @@ body {
 }
 
 /* ============================================
-   Buttons
-============================================ */
-.btn {
-    font-weight: 500;
-    font-size: 0.875rem;
-    padding: 0.5rem 1rem;
-    border-radius: var(--vs-radius-md);
-    transition: all var(--vs-transition);
-}
-
-.btn-primary {
-    background: var(--vs-accent-blue);
-    border-color: var(--vs-accent-blue);
-    color: #fff;
-}
-
-.btn-primary:hover {
-    background: #4393e6;
-    border-color: #4393e6;
-}
-
-.btn-secondary {
-    background: var(--vs-bg-tertiary);
-    border-color: var(--vs-border-color);
-    color: var(--vs-text-primary);
-}
-
-.btn-secondary:hover {
-    background: var(--vs-bg-hover);
-    border-color: var(--vs-border-color);
-    color: var(--vs-text-primary);
-}
-
-.btn-outline-secondary {
-    background: transparent;
-    border-color: var(--vs-border-color);
-    color: var(--vs-text-secondary);
-}
-
-.btn-outline-secondary:hover {
-    background: var(--vs-bg-tertiary);
-    border-color: var(--vs-border-color);
-    color: var(--vs-text-primary);
-}
-
-.btn-danger {
-    background: var(--vs-accent-red);
-    border-color: var(--vs-accent-red);
-    color: #fff;
-}
-
-.btn-outline-danger {
-    background: transparent;
-    border-color: var(--vs-accent-red);
-    color: var(--vs-accent-red);
-}
-
-.btn-outline-danger:hover {
-    background: var(--vs-accent-red);
-    color: #fff;
-}
-
-.btn-outline-primary {
-    background: transparent;
-    border-color: var(--vs-accent-blue);
-    color: var(--vs-accent-blue);
-}
-
-.btn-outline-primary:hover {
-    background: var(--vs-accent-blue);
-    color: #fff;
-}
-
-.btn-sm {
-    padding: 0.375rem 0.75rem;
-    font-size: 0.8125rem;
-}
-
-.btn-group-sm > .btn {
-    padding: 0.25rem 0.5rem;
-    font-size: 0.75rem;
-}
-
-/* Mobile button groups */
-@media (max-width: 575.98px) {
-    .btn-group {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.25rem;
-    }
-    
-    .btn-group .btn {
-        border-radius: var(--vs-radius-sm) !important;
-    }
-}
-
-/* ============================================
-   Forms
-============================================ */
-.form-control, .form-select {
-    background: var(--vs-bg-primary);
-    border: 1px solid var(--vs-border-color);
-    color: var(--vs-text-primary);
-    border-radius: var(--vs-radius-md);
-    padding: 0.5rem 0.75rem;
-    font-size: 0.875rem;
-}
-
-.form-control:focus, .form-select:focus {
-    background: var(--vs-bg-primary);
-    border-color: var(--vs-accent-blue);
-    color: var(--vs-text-primary);
-    box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.2);
-}
-
-.form-control::placeholder {
-    color: var(--vs-text-muted);
-}
-
-.form-label {
-    font-weight: 500;
-    color: var(--vs-text-primary);
-    margin-bottom: 0.375rem;
-    font-size: 0.875rem;
-}
-
-.form-text {
-    color: var(--vs-text-muted);
-    font-size: 0.8125rem;
-}
-
-textarea.form-control {
-    min-height: 100px;
-    resize: vertical;
-}
-
-/* ============================================
-   Tables - Responsive
-============================================ */
-.table {
-    color: var(--vs-text-primary);
-    margin-bottom: 0;
-}
-
-.table > :not(caption) > * > * {
-    background: transparent;
-    border-color: var(--vs-border-color);
-    padding: var(--vs-spacing-md);
-}
-
-.table thead th {
-    background: var(--vs-bg-tertiary);
-    font-weight: 600;
-    font-size: 0.8125rem;
-    text-transform: uppercase;
-    letter-spacing: 0.03em;
-    color: var(--vs-text-secondary);
-    white-space: nowrap;
-}
-
-.table-hover tbody tr:hover {
-    background: var(--vs-bg-hover);
-}
-
-.table-light {
-    background: var(--vs-bg-tertiary) !important;
-}
-
-.table-light > * {
-    background: var(--vs-bg-tertiary) !important;
-}
-
-/* Responsive table wrapper */
-.table-responsive {
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-}
-
-/* Mobile table cards */
-@media (max-width: 767.98px) {
-    .table-mobile-cards thead {
-        display: none;
-    }
-    
-    .table-mobile-cards tbody tr {
-        display: block;
-        background: var(--vs-bg-tertiary);
-        margin-bottom: var(--vs-spacing-md);
-        border-radius: var(--vs-radius-md);
-        padding: var(--vs-spacing-md);
-        border: 1px solid var(--vs-border-color);
-    }
-    
-    .table-mobile-cards tbody td {
-        display: flex;
-        justify-content: space-between;
-        align-items: flex-start;
-        padding: var(--vs-spacing-sm) 0;
-        border: none;
-    }
-    
-    .table-mobile-cards tbody td::before {
-        content: attr(data-label);
-        font-weight: 600;
-        color: var(--vs-text-secondary);
-        font-size: 0.75rem;
-        text-transform: uppercase;
-        margin-right: var(--vs-spacing-md);
-    }
-}
-
-/* ============================================
    Project Cards
 ============================================ */
 .project-card {
-    background: var(--vs-bg-secondary);
-    border: 1px solid var(--vs-border-color);
     border-left: 3px solid var(--vs-accent-green);
-    border-radius: var(--vs-radius-md);
     transition: all var(--vs-transition);
     height: 100%;
 }
@@ -665,17 +403,7 @@ textarea.form-control {
 .project-card:hover {
     border-color: var(--vs-accent-green);
     transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-}
-
-.project-card .card-title {
-    color: var(--vs-text-primary);
-    font-size: 1rem;
-    font-weight: 600;
-}
-
-.project-card .card-text {
-    color: var(--vs-text-secondary);
+    box-shadow: var(--bs-box-shadow);
 }
 
 /* ============================================
@@ -686,7 +414,7 @@ textarea.form-control {
 }
 
 .provider-card.disabled {
-    border-left-color: var(--vs-text-muted);
+    border-left-color: var(--bs-tertiary-color);
     opacity: 0.6;
 }
 
@@ -707,157 +435,31 @@ textarea.form-control {
 
 .toggle-slider {
     position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: var(--vs-bg-tertiary);
-    border: 1px solid var(--vs-border-color);
+    cursor: pointer;
+    inset: 0;
+    background: var(--bs-tertiary-bg);
     border-radius: 24px;
     transition: var(--vs-transition);
 }
 
-.toggle-slider:before {
+.toggle-slider::before {
+    content: '';
     position: absolute;
-    content: "";
-    height: 18px;
     width: 18px;
-    left: 2px;
-    bottom: 2px;
-    background: var(--vs-text-secondary);
+    height: 18px;
+    left: 3px;
+    bottom: 3px;
+    background: var(--bs-body-bg);
     border-radius: 50%;
     transition: var(--vs-transition);
 }
 
 .toggle-switch input:checked + .toggle-slider {
     background: var(--vs-accent-green);
-    border-color: var(--vs-accent-green);
 }
 
-.toggle-switch input:checked + .toggle-slider:before {
-    background: #fff;
+.toggle-switch input:checked + .toggle-slider::before {
     transform: translateX(20px);
-}
-
-/* Default Provider Badge */
-.default-badge {
-    display: inline-block;
-    margin-left: 0.5rem;
-    padding: 0.15rem 0.4rem;
-    font-size: 0.65rem;
-    font-weight: 600;
-    color: var(--vs-accent-green);
-    background: rgba(63, 185, 80, 0.15);
-    border: 1px solid rgba(63, 185, 80, 0.3);
-    border-radius: var(--vs-radius-sm);
-    text-transform: uppercase;
-}
-
-.default-provider-row {
-    background: rgba(63, 185, 80, 0.05) !important;
-}
-
-/* Test Results */
-.test-success {
-    color: var(--vs-accent-green);
-    font-weight: 500;
-}
-
-.test-failure {
-    color: var(--vs-accent-red);
-    font-weight: 500;
-}
-
-.error-details {
-    margin-top: 0.5rem;
-    padding: 0.75rem;
-    background: rgba(248, 81, 73, 0.1);
-    border: 1px solid rgba(248, 81, 73, 0.3);
-    border-radius: var(--vs-radius-sm);
-}
-
-.error-details pre {
-    margin: 0;
-    font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
-    font-size: 0.75rem;
-    white-space: pre-wrap;
-    word-wrap: break-word;
-    color: var(--vs-accent-red);
-}
-
-/* ============================================
-   Job Cards
-============================================ */
-.job-card {
-    background: var(--vs-bg-secondary);
-    border: 1px solid var(--vs-border-color);
-    border-left: 3px solid var(--vs-accent-blue);
-    border-radius: var(--vs-radius-md);
-    padding: var(--vs-spacing-md);
-    cursor: pointer;
-    transition: all var(--vs-transition);
-}
-
-.job-card:hover {
-    border-color: var(--vs-accent-blue);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-}
-
-.job-card-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    gap: var(--vs-spacing-sm);
-    margin-bottom: var(--vs-spacing-sm);
-    flex-wrap: wrap;
-}
-
-.job-card-content {
-    margin-bottom: var(--vs-spacing-sm);
-}
-
-.job-prompt {
-    margin: 0;
-    color: var(--vs-text-primary);
-    font-size: 0.875rem;
-    line-height: 1.5;
-    word-break: break-word;
-}
-
-.job-card-footer {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: var(--vs-spacing-sm);
-    font-size: 0.75rem;
-    color: var(--vs-text-muted);
-}
-
-.job-provider {
-    font-weight: 500;
-}
-
-.job-time {
-    font-style: italic;
-}
-
-.job-cost {
-    font-family: 'SF Mono', monospace;
-    color: var(--vs-accent-green);
-}
-
-.job-project {
-    font-size: 0.7rem;
-    color: var(--vs-text-muted);
-    font-weight: 500;
-}
-
-.job-activity {
-    font-size: 0.75rem;
-    color: var(--vs-text-muted);
-    margin-top: 0.25rem;
-    font-style: italic;
 }
 
 /* ============================================
@@ -867,16 +469,9 @@ textarea.form-control {
     display: flex;
     flex-direction: column;
     gap: var(--vs-spacing-md);
-    margin-bottom: var(--vs-spacing-lg);
 }
 
-.job-detail-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--vs-spacing-sm);
-}
-
-@media (min-width: 768px) {
+@media (min-width: 576px) {
     .job-detail-header {
         flex-direction: row;
         align-items: flex-start;
@@ -885,8 +480,8 @@ textarea.form-control {
 }
 
 .job-timestamps {
-    font-size: 0.8rem;
-    color: var(--vs-text-muted);
+    font-size: 0.9rem;
+    color: var(--bs-secondary-color);
     display: flex;
     flex-wrap: wrap;
     gap: var(--vs-spacing-md);
@@ -898,13 +493,14 @@ textarea.form-control {
 
 /* Goal Prompt Box */
 .goal-prompt-box {
-    background: var(--vs-bg-tertiary);
+    background: var(--bs-tertiary-bg);
     padding: var(--vs-spacing-md);
-    border-radius: var(--vs-radius-md);
+    border-radius: var(--bs-border-radius);
     font-family: inherit;
     white-space: pre-wrap;
     word-break: break-word;
     line-height: 1.6;
+    font-size: 1rem;
 }
 
 /* Job Stats Grid */
@@ -924,13 +520,13 @@ textarea.form-control {
     display: flex;
     flex-direction: column;
     padding: var(--vs-spacing-sm);
-    background: var(--vs-bg-tertiary);
-    border-radius: var(--vs-radius-sm);
+    background: var(--bs-tertiary-bg);
+    border-radius: var(--bs-border-radius-sm);
 }
 
 .stat-label {
-    font-size: 0.7rem;
-    color: var(--vs-text-muted);
+    font-size: 0.75rem;
+    color: var(--bs-secondary-color);
     text-transform: uppercase;
     letter-spacing: 0.05em;
     margin-bottom: 0.25rem;
@@ -938,23 +534,22 @@ textarea.form-control {
 
 .stat-value {
     font-weight: 600;
-    font-size: 0.875rem;
-    color: var(--vs-text-primary);
+    font-size: 0.9rem;
 }
 
 .stat-value.mono {
     font-family: 'SF Mono', monospace;
-    font-size: 0.7rem;
+    font-size: 0.8rem;
     word-break: break-all;
 }
 
 /* Process Info Badge */
 .process-info {
     font-family: 'SF Mono', monospace;
-    font-size: 0.75rem;
-    background: var(--vs-bg-tertiary);
+    font-size: 0.8rem;
+    background: var(--bs-tertiary-bg);
     padding: 0.1rem 0.4rem;
-    border-radius: var(--vs-radius-sm);
+    border-radius: var(--bs-border-radius-sm);
 }
 
 /* ============================================
@@ -978,13 +573,13 @@ textarea.form-control {
     background: #0d1117;
     color: #e6edf3;
     font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
-    font-size: 0.75rem;
+    font-size: 0.85rem;
     line-height: 1.5;
     padding: var(--vs-spacing-md);
     max-height: 300px;
     overflow-y: auto;
     overflow-x: auto;
-    border-radius: 0 0 var(--vs-radius-md) var(--vs-radius-md);
+    border-radius: 0 0 var(--bs-border-radius) var(--bs-border-radius);
 }
 
 .output-line {
@@ -1000,9 +595,9 @@ textarea.form-control {
 }
 
 .output-time {
-    color: var(--vs-text-muted);
+    color: #8b949e;
     flex-shrink: 0;
-    font-size: 0.7rem;
+    font-size: 0.8rem;
 }
 
 .output-stdout .output-text {
@@ -1017,7 +612,7 @@ textarea.form-control {
     background: #0d1117;
     color: #e6edf3;
     font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
-    font-size: 0.75rem;
+    font-size: 0.85rem;
     line-height: 1.5;
     padding: var(--vs-spacing-md);
     max-height: 400px;
@@ -1026,7 +621,7 @@ textarea.form-control {
     white-space: pre-wrap;
     word-break: break-word;
     margin: 0;
-    border-radius: 0 0 var(--vs-radius-md) var(--vs-radius-md);
+    border-radius: 0 0 var(--bs-border-radius) var(--bs-border-radius);
 }
 
 /* ============================================
@@ -1036,7 +631,7 @@ textarea.form-control {
     background: #0d1117;
     color: #e6edf3;
     font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
-    font-size: 0.75rem;
+    font-size: 0.85rem;
     line-height: 1.5;
     padding: var(--vs-spacing-sm);
     max-height: 350px;
@@ -1080,15 +675,15 @@ textarea.form-control {
 }
 
 .diff-meta {
-    color: var(--vs-text-muted);
+    color: #8b949e;
     font-style: italic;
 }
 
 /* Diff Accordion */
 #diffAccordion .accordion-item {
-    background: var(--vs-bg-secondary);
+    background: var(--bs-secondary-bg);
     border: none;
-    border-bottom: 1px solid var(--vs-border-color);
+    border-bottom: 1px solid var(--bs-border-color);
 }
 
 #diffAccordion .accordion-item:last-child {
@@ -1097,25 +692,13 @@ textarea.form-control {
 
 #diffAccordion .accordion-button {
     padding: var(--vs-spacing-sm) var(--vs-spacing-md);
-    background: var(--vs-bg-tertiary);
-    color: var(--vs-text-primary);
-    font-size: 0.8rem;
+    font-size: 0.9rem;
     gap: var(--vs-spacing-sm);
     box-shadow: none;
 }
 
-#diffAccordion .accordion-button:not(.collapsed) {
-    background: var(--vs-bg-hover);
-    color: var(--vs-text-primary);
-}
-
-#diffAccordion .accordion-button::after {
-    filter: invert(1);
-    margin-left: 0;
-}
-
 .diff-file-icon {
-    font-size: 0.875rem;
+    font-size: 0.9rem;
     line-height: 1;
 }
 
@@ -1127,7 +710,7 @@ textarea.form-control {
 
 .diff-stats {
     font-family: 'SF Mono', monospace;
-    font-size: 0.7rem;
+    font-size: 0.8rem;
 }
 
 #diffAccordion .accordion-body {
@@ -1143,24 +726,24 @@ textarea.form-control {
    Commit & Push Section
 ============================================ */
 .commit-form {
-    background: var(--vs-bg-tertiary);
+    background: var(--bs-tertiary-bg);
     padding: var(--vs-spacing-md);
-    border-radius: var(--vs-radius-md);
-    border: 1px solid var(--vs-border-color);
+    border-radius: var(--bs-border-radius);
+    border: 1px solid var(--bs-border-color);
 }
 
 .commit-message-input {
     width: 100%;
     padding: var(--vs-spacing-sm) var(--vs-spacing-md);
-    border: 1px solid var(--vs-border-color);
-    border-radius: var(--vs-radius-md);
+    border: 1px solid var(--bs-border-color);
+    border-radius: var(--bs-border-radius);
     font-family: inherit;
-    font-size: 0.875rem;
+    font-size: 0.9rem;
     resize: vertical;
     min-height: 80px;
     transition: border-color var(--vs-transition), box-shadow var(--vs-transition);
-    background: var(--vs-bg-primary);
-    color: var(--vs-text-primary);
+    background: var(--bs-body-bg);
+    color: var(--bs-body-color);
 }
 
 .commit-message-input:focus {
@@ -1170,7 +753,7 @@ textarea.form-control {
 }
 
 .commit-message-input:disabled {
-    background: var(--vs-bg-tertiary);
+    background: var(--bs-tertiary-bg);
     cursor: not-allowed;
 }
 
@@ -1182,9 +765,9 @@ textarea.form-control {
     padding: var(--vs-spacing-md);
     background: rgba(248, 81, 73, 0.1);
     border: 1px solid rgba(248, 81, 73, 0.3);
-    border-radius: var(--vs-radius-md);
+    border-radius: var(--bs-border-radius);
     color: var(--vs-accent-red);
-    font-size: 0.875rem;
+    font-size: 0.9rem;
 }
 
 .push-success {
@@ -1194,7 +777,7 @@ textarea.form-control {
     padding: var(--vs-spacing-md);
     background: rgba(63, 185, 80, 0.1);
     border: 1px solid rgba(63, 185, 80, 0.3);
-    border-radius: var(--vs-radius-md);
+    border-radius: var(--bs-border-radius);
     color: var(--vs-accent-green);
 }
 
@@ -1206,7 +789,7 @@ textarea.form-control {
 
 .commit-hash,
 .branch-pushed {
-    font-size: 0.8rem;
+    font-size: 0.85rem;
     font-family: 'SF Mono', monospace;
 }
 
@@ -1216,8 +799,8 @@ textarea.form-control {
     gap: 0.35rem;
     padding: 0.35rem 0.75rem;
     background: rgba(63, 185, 80, 0.15);
-    border-radius: var(--vs-radius-sm);
-    font-size: 0.8rem;
+    border-radius: var(--bs-border-radius-sm);
+    font-size: 0.85rem;
     color: var(--vs-accent-green);
 }
 
@@ -1239,7 +822,7 @@ textarea.form-control {
 }
 
 .message {
-    border-radius: var(--vs-radius-md);
+    border-radius: var(--bs-border-radius);
     padding: var(--vs-spacing-md);
     border-left: 3px solid;
 }
@@ -1279,17 +862,16 @@ textarea.form-control {
 
 .message-role {
     font-weight: 600;
-    font-size: 0.8125rem;
-    color: var(--vs-text-primary);
+    font-size: 0.9rem;
 }
 
 .message-time {
-    font-size: 0.75rem;
-    color: var(--vs-text-muted);
+    font-size: 0.85rem;
+    color: var(--bs-secondary-color);
 }
 
 .message-content {
-    font-size: 0.875rem;
+    font-size: 0.95rem;
 }
 
 .message-text {
@@ -1300,20 +882,19 @@ textarea.form-control {
     background: none;
     border: none;
     padding: 0;
-    color: var(--vs-text-primary);
 }
 
 .tool-info {
-    font-size: 0.8125rem;
+    font-size: 0.9rem;
 }
 
 .tool-input, .tool-output {
     margin: var(--vs-spacing-sm) 0 0 0;
     padding: var(--vs-spacing-sm);
-    background: var(--vs-bg-primary);
-    border-radius: var(--vs-radius-sm);
+    background: var(--bs-body-bg);
+    border-radius: var(--bs-border-radius-sm);
     font-family: 'SF Mono', monospace;
-    font-size: 0.7rem;
+    font-size: 0.8rem;
     white-space: pre-wrap;
     overflow-x: auto;
     max-height: 180px;
@@ -1327,14 +908,14 @@ textarea.form-control {
     gap: var(--vs-spacing-md);
     padding: var(--vs-spacing-md);
     background: rgba(88, 166, 255, 0.1);
-    border-radius: var(--vs-radius-md);
+    border-radius: var(--bs-border-radius);
     border-left: 3px solid var(--vs-accent-blue);
 }
 
 .activity-spinner {
     width: 18px;
     height: 18px;
-    border: 2px solid var(--vs-bg-tertiary);
+    border: 2px solid var(--bs-tertiary-bg);
     border-top: 2px solid var(--vs-accent-blue);
     border-radius: 50%;
     animation: spin 1s linear infinite;
@@ -1344,14 +925,13 @@ textarea.form-control {
 .activity-text {
     flex: 1;
     font-weight: 500;
-    color: var(--vs-text-primary);
-    font-size: 0.875rem;
+    font-size: 0.95rem;
     word-break: break-word;
 }
 
 .activity-time {
-    font-size: 0.7rem;
-    color: var(--vs-text-muted);
+    font-size: 0.8rem;
+    color: var(--bs-secondary-color);
     font-family: 'SF Mono', monospace;
 }
 
@@ -1362,9 +942,9 @@ textarea.form-control {
     background: rgba(248, 81, 73, 0.1);
     border: 1px solid rgba(248, 81, 73, 0.3);
     padding: var(--vs-spacing-md);
-    border-radius: var(--vs-radius-md);
+    border-radius: var(--bs-border-radius);
     font-family: 'SF Mono', monospace;
-    font-size: 0.8rem;
+    font-size: 0.9rem;
     color: var(--vs-accent-red);
     white-space: pre-wrap;
     overflow-x: auto;
@@ -1379,7 +959,7 @@ textarea.form-control {
 .info-section {
     background: rgba(88, 166, 255, 0.1);
     border: 1px solid rgba(88, 166, 255, 0.3);
-    border-radius: var(--vs-radius-md);
+    border-radius: var(--bs-border-radius);
     padding: var(--vs-spacing-md);
 }
 
@@ -1390,20 +970,20 @@ textarea.form-control {
 
 .info-section p {
     margin: 0;
-    color: var(--vs-text-secondary);
-    font-size: 0.875rem;
+    color: var(--bs-secondary-color);
+    font-size: 0.95rem;
 }
 
 /* ============================================
    Empty State
 ============================================ */
 .empty-state {
-    color: var(--vs-text-muted);
+    color: var(--bs-secondary-color);
     font-style: italic;
     padding: var(--vs-spacing-xl);
     text-align: center;
-    background: var(--vs-bg-tertiary);
-    border-radius: var(--vs-radius-md);
+    background: var(--bs-tertiary-bg);
+    border-radius: var(--bs-border-radius);
 }
 
 .empty-state a {
@@ -1411,35 +991,21 @@ textarea.form-control {
 }
 
 /* ============================================
-   Alerts
+   Alerts - Use Bootstrap variables
 ============================================ */
-.alert {
-    border: none;
-    border-radius: var(--vs-radius-md);
-    padding: var(--vs-spacing-md);
-}
-
 .alert-danger {
-    background: rgba(248, 81, 73, 0.15);
-    color: var(--vs-accent-red);
     border-left: 3px solid var(--vs-accent-red);
 }
 
 .alert-success {
-    background: rgba(63, 185, 80, 0.15);
-    color: var(--vs-accent-green);
     border-left: 3px solid var(--vs-accent-green);
 }
 
 .alert-warning {
-    background: rgba(210, 153, 34, 0.15);
-    color: var(--vs-accent-orange);
     border-left: 3px solid var(--vs-accent-orange);
 }
 
 .alert-info {
-    background: rgba(88, 166, 255, 0.15);
-    color: var(--vs-accent-blue);
     border-left: 3px solid var(--vs-accent-blue);
 }
 
@@ -1453,41 +1019,8 @@ textarea.form-control {
 .toast-container .toast {
     min-width: 280px;
     max-width: 350px;
-    background: var(--vs-bg-secondary);
-    border: 1px solid var(--vs-border-color);
     border-left-width: 4px;
     animation: slideInRight 0.3s ease-out;
-}
-
-.toast-container .toast.border-success {
-    border-left-color: var(--vs-accent-green);
-}
-
-.toast-container .toast.border-danger {
-    border-left-color: var(--vs-accent-red);
-}
-
-.toast-container .toast.border-warning {
-    border-left-color: var(--vs-accent-orange);
-}
-
-.toast-container .toast.border-info {
-    border-left-color: var(--vs-accent-blue);
-}
-
-.toast-container .toast .toast-header {
-    background: var(--vs-bg-tertiary);
-    color: var(--vs-text-primary);
-    border-color: var(--vs-border-color);
-}
-
-.toast-container .toast .toast-body {
-    word-break: break-word;
-    color: var(--vs-text-primary);
-}
-
-.toast .btn-close {
-    filter: invert(1);
 }
 
 @keyframes slideInRight {
@@ -1505,17 +1038,17 @@ textarea.form-control {
    Active Jobs List (Projects Page)
 ============================================ */
 .active-jobs-list {
-    border-top: 1px solid var(--vs-border-color);
+    border-top: 1px solid var(--bs-border-color);
     padding-top: var(--vs-spacing-sm);
     margin-top: var(--vs-spacing-sm);
 }
 
 .active-job-item {
-    background: var(--vs-bg-tertiary);
-    border-radius: var(--vs-radius-sm);
+    background: var(--bs-tertiary-bg);
+    border-radius: var(--bs-border-radius-sm);
     padding: var(--vs-spacing-sm);
     margin-bottom: 0.25rem;
-    font-size: 0.8rem;
+    font-size: 0.9rem;
 }
 
 .active-job-item:last-child {
@@ -1523,15 +1056,11 @@ textarea.form-control {
 }
 
 .active-job-item:hover {
-    background: var(--vs-bg-hover);
-}
-
-.active-job-item a {
-    color: var(--vs-text-primary);
+    background: var(--bs-secondary-bg);
 }
 
 .job-goal-preview {
-    color: var(--vs-text-secondary);
+    color: var(--bs-secondary-color);
     max-width: 180px;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1551,7 +1080,7 @@ textarea.form-control {
 ============================================ */
 .path-cell {
     font-family: 'SF Mono', monospace;
-    font-size: 0.8rem;
+    font-size: 0.9rem;
     max-width: 200px;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1577,7 +1106,7 @@ textarea.form-control {
 
 .job-error {
     color: var(--vs-accent-red);
-    font-size: 0.8rem;
+    font-size: 0.9rem;
     font-family: 'SF Mono', monospace;
 }
 
@@ -1592,13 +1121,13 @@ textarea.form-control {
 
 .login-display .user-info {
     display: none;
-    color: var(--vs-text-secondary);
-    font-size: 0.875rem;
+    color: var(--bs-secondary-color);
+    font-size: 0.95rem;
 }
 
 .login-display .user-name {
     font-weight: 600;
-    color: var(--vs-text-primary);
+    color: var(--bs-emphasis-color);
 }
 
 @media (min-width: 992px) {
@@ -1623,53 +1152,30 @@ textarea.form-control {
     margin-right: 0.25rem;
 }
 
-.spinner-border {
-    border-color: var(--vs-border-color);
-    border-right-color: var(--vs-accent-blue);
+/* ============================================
+   Tables - Responsive
+============================================ */
+.table thead th {
+    font-weight: 600;
+    font-size: 0.9rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    white-space: nowrap;
 }
 
 /* ============================================
-   Links
+   Job Prompt Styles
 ============================================ */
-a {
-    color: var(--vs-accent-blue);
-    text-decoration: none;
-}
-
-a:hover {
-    color: #79c0ff;
-    text-decoration: underline;
-}
-
-/* ============================================
-   Validation
-============================================ */
-.text-danger {
-    color: var(--vs-accent-red) !important;
-}
-
-.text-success {
-    color: var(--vs-accent-green) !important;
-}
-
-.text-muted {
-    color: var(--vs-text-muted) !important;
-}
-
-.text-warning {
-    color: var(--vs-accent-orange) !important;
+.job-prompt {
+    font-size: 0.95rem;
 }
 
 /* ============================================
    Code / Mono Text
 ============================================ */
 code {
-    background: var(--vs-bg-tertiary);
-    padding: 0.125rem 0.375rem;
-    border-radius: var(--vs-radius-sm);
     font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
     font-size: 0.85em;
-    color: var(--vs-accent-orange);
 }
 
 .font-monospace {
@@ -1686,27 +1192,24 @@ code {
 }
 
 /* ============================================
-   Responsive Grid Helpers
+   Responsive Adjustments
 ============================================ */
 @media (max-width: 575.98px) {
     .row.g-4 {
         --bs-gutter-y: 1rem;
     }
     
-    /* Stack columns on mobile */
     .col-lg-4, .col-lg-5, .col-lg-7, .col-lg-8 {
         width: 100% !important;
         flex: 0 0 100% !important;
         max-width: 100% !important;
     }
     
-    /* Ensure cards take full width */
     .card {
         margin-bottom: var(--vs-spacing-md);
     }
 }
 
-/* Job detail button row */
 @media (max-width: 575.98px) {
     .job-detail-actions {
         flex-direction: column;
@@ -1718,40 +1221,15 @@ code {
 }
 
 /* ============================================
-   Mobile Row Adjustments
-============================================ */
-.row-cols-1 > * {
-    flex: 0 0 auto;
-    width: 100%;
-}
-
-@media (min-width: 768px) {
-    .row-cols-md-2 > * {
-        flex: 0 0 auto;
-        width: 50%;
-    }
-}
-
-@media (min-width: 1200px) {
-    .row-cols-xl-3 > * {
-        flex: 0 0 auto;
-        width: 33.333333%;
-    }
-}
-
-/* ============================================
    Touch-Friendly Adjustments
 ============================================ */
 @media (max-width: 767.98px) {
-    /* Larger touch targets */
     .btn {
         min-height: 44px;
-        padding: 0.625rem 1rem;
     }
     
     .btn-sm {
         min-height: 36px;
-        padding: 0.5rem 0.75rem;
     }
     
     .form-control, .form-select {
@@ -1759,82 +1237,27 @@ code {
         font-size: 16px; /* Prevent zoom on iOS */
     }
     
-    /* Better spacing for touch */
     .nav-item {
         padding: var(--vs-spacing-md);
     }
     
-    /* Ensure modals don't overflow */
     .modal-dialog {
         margin: var(--vs-spacing-md);
     }
 }
 
 /* ============================================
-   Utilities
+   Accent Color Utilities
 ============================================ */
-.overflow-hidden {
-    overflow: hidden !important;
-}
-
-.text-truncate {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.w-100 {
-    width: 100% !important;
-}
-
-.gap-2 {
-    gap: 0.5rem !important;
-}
-
-.gap-3 {
-    gap: 1rem !important;
-}
-
-.flex-wrap {
-    flex-wrap: wrap !important;
-}
-
-.align-items-center {
-    align-items: center !important;
-}
-
-.justify-content-between {
-    justify-content: space-between !important;
-}
-
-/* Shadow for cards */
-.shadow-sm {
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3) !important;
-}
+.text-accent-blue { color: var(--vs-accent-blue) !important; }
+.text-accent-green { color: var(--vs-accent-green) !important; }
+.text-accent-orange { color: var(--vs-accent-orange) !important; }
+.text-accent-red { color: var(--vs-accent-red) !important; }
+.text-accent-purple { color: var(--vs-accent-purple) !important; }
 
 /* ============================================
-   Background & Border Overrides
+   Shadow for cards
 ============================================ */
-.bg-dark {
-    background-color: var(--vs-bg-primary) !important;
-}
-
-.bg-success {
-    background-color: var(--vs-accent-green) !important;
-}
-
-.bg-danger {
-    background-color: var(--vs-accent-red) !important;
-}
-
-.bg-secondary {
-    background-color: var(--vs-bg-tertiary) !important;
-}
-
-.border-success {
-    border-color: var(--vs-accent-green) !important;
-}
-
-.border-danger {
-    border-color: var(--vs-accent-red) !important;
+.shadow-sm {
+    box-shadow: var(--bs-box-shadow-sm) !important;
 }
