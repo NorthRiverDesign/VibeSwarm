@@ -15,13 +15,29 @@
                 document.documentElement.setAttribute('data-bs-theme', prefersDark ? 'dark' : 'light');
             })();
         </script>
-        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+
+        <!-- PWA Meta Tags -->
+        <meta name="application-name" content="VibeSwarm" />
+        <meta name="theme-color" content="#1a1d21" />
+        <meta name="mobile-web-app-capable" content="yes" />
+
+        <!-- iOS PWA Meta Tags -->
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-        <meta name="theme-color" content="#1a1d21" />
+        <meta name="apple-mobile-web-app-title" content="VibeSwarm" />
+        <meta name="format-detection" content="telephone=no" />
+
         <title>VibeSwarm</title>
         <base href="~/" />
-        <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+
+        <!-- PWA Manifest -->
+        <link rel="manifest" href="manifest.json" />
+
+        <!-- Icons -->
+        <link rel="icon" type="image/png" sizes="96x96" href="favicon-96x96.png" />
+        <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+        <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png" />
         <link href="lib/bootstrap/css/bootstrap.min.css" rel="stylesheet" />
         <link href="css/site.css" rel="stylesheet" />
     </head>
@@ -32,6 +48,21 @@
         <script src="lib/signalr/signalr.min.js"></script>
         <script src="_framework/blazor.server.js"></script>
         <script src="js/globalSignalR.js"></script>
+
+        <!-- Service Worker Registration -->
+        <script>
+            if ('serviceWorker' in navigator) {
+                window.addEventListener('load', () => {
+                    navigator.serviceWorker.register('/service-worker.js')
+                        .then((registration) => {
+                            console.log('ServiceWorker registered:', registration.scope);
+                        })
+                        .catch((error) => {
+                            console.log('ServiceWorker registration failed:', error);
+                        });
+                });
+            }
+        </script>
     </body>
 
 </html>
