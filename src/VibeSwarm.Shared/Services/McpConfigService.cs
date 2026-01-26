@@ -35,10 +35,18 @@ public interface IMcpConfigService
 /// <summary>
 /// Implementation of MCP configuration service that generates config for skills.
 /// </summary>
-public class McpConfigService : IMcpConfigService, IDisposable
+/// <remarks>
+/// Note: This service does NOT implement IDisposable because MCP config files must persist
+/// beyond the scope lifetime. The generated config files are used by CLI tools that run
+/// after this service's scope has ended. Cleanup is performed by CleanupMcpConfigFiles()
+/// which should be called explicitly when jobs complete, or files will be cleaned up
+/// on the next application start or by the OS temp file cleanup.
+/// </remarks>
+public class McpConfigService : IMcpConfigService
 {
 	private readonly ISkillService _skillService;
-	private readonly List<string> _tempConfigFiles = new();
+	private static readonly List<string> _tempConfigFiles = new();
+	private static readonly object _tempFilesLock = new();
 	private static readonly JsonSerializerOptions JsonOptions = new()
 	{
 		WriteIndented = true,
@@ -72,7 +80,10 @@ public class McpConfigService : IMcpConfigService, IDisposable
 
 		await File.WriteAllTextAsync(filePath, json, cancellationToken);
 
-		_tempConfigFiles.Add(filePath);
+		lock (_tempFilesLock)
+		{
+			_tempConfigFiles.Add(filePath);
+		}
 		return filePath;
 	}
 
@@ -132,7 +143,10 @@ public class McpConfigService : IMcpConfigService, IDisposable
 		var json = JsonSerializer.Serialize(openCodeConfig, JsonOptions);
 		await File.WriteAllTextAsync(configPath, json, cancellationToken);
 
-		_tempConfigFiles.Add(configPath);
+		lock (_tempFilesLock)
+		{
+			_tempConfigFiles.Add(configPath);
+		}
 
 		// Return the CLI argument format for OpenCode
 		return $"--config \"{configPath}\"";
@@ -175,7 +189,14 @@ public class McpConfigService : IMcpConfigService, IDisposable
 
 	public void CleanupMcpConfigFiles()
 	{
-		foreach (var filePath in _tempConfigFiles)
+		List<string> filesToClean;
+		lock (_tempFilesLock)
+		{
+			filesToClean = new List<string>(_tempConfigFiles);
+			_tempConfigFiles.Clear();
+		}
+
+		foreach (var filePath in filesToClean)
 		{
 			try
 			{
@@ -189,12 +210,6 @@ public class McpConfigService : IMcpConfigService, IDisposable
 				// Ignore cleanup errors
 			}
 		}
-		_tempConfigFiles.Clear();
-	}
-
-	public void Dispose()
-	{
-		CleanupMcpConfigFiles();
 	}
 }
 
