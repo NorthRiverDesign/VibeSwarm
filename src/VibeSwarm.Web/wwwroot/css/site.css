@@ -667,6 +667,9 @@ body {
 ============================================ */
 .toast-container {
     z-index: 1100;
+    /* Ensure toast container respects safe areas */
+    padding-bottom: calc(1rem + var(--vs-safe-area-bottom)) !important;
+    padding-right: calc(1rem + var(--vs-safe-area-right)) !important;
 }
 
 .toast-container .toast {
@@ -679,6 +682,21 @@ body {
 @keyframes slideInRight {
     from { transform: translateX(100%); opacity: 0; }
     to { transform: translateX(0); opacity: 1; }
+}
+
+/* Mobile toast adjustments */
+@media (max-width: 575.98px) {
+    .toast-container {
+        left: 0 !important;
+        right: 0 !important;
+        padding-left: calc(1rem + var(--vs-safe-area-left)) !important;
+    }
+
+    .toast-container .toast {
+        min-width: auto;
+        max-width: none;
+        width: 100%;
+    }
 }
 
 /* ============================================
@@ -753,6 +771,74 @@ body {
     padding-bottom: calc(1rem + var(--vs-safe-area-bottom));
     padding-left: calc(1rem + var(--vs-safe-area-left));
     padding-right: calc(1rem + var(--vs-safe-area-right));
+}
+
+/* ============================================
+   Bootstrap Modal - PWA & Mobile Fixes
+============================================ */
+/* Ensure Bootstrap modals respect safe areas on PWA/mobile */
+.modal {
+    /* Account for safe areas on notched devices */
+    padding-top: var(--vs-safe-area-top) !important;
+    padding-bottom: var(--vs-safe-area-bottom) !important;
+    padding-left: var(--vs-safe-area-left) !important;
+    padding-right: var(--vs-safe-area-right) !important;
+}
+
+/* Custom modal backdrop for better PWA support */
+.modal.show {
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+}
+
+/* Modal dialog positioning - ensure it doesn't go behind mobile header */
+@media (max-width: 991.98px) {
+    .modal-dialog {
+        margin-top: calc(var(--vs-header-height) + var(--vs-safe-area-top) + 0.5rem);
+        max-height: calc(100vh - var(--vs-header-height) - var(--vs-safe-area-top) - var(--vs-safe-area-bottom) - 1rem);
+    }
+
+    .modal-dialog-scrollable {
+        max-height: calc(100vh - var(--vs-header-height) - var(--vs-safe-area-top) - var(--vs-safe-area-bottom) - 1rem);
+    }
+
+    .modal-dialog-scrollable .modal-content {
+        max-height: calc(100vh - var(--vs-header-height) - var(--vs-safe-area-top) - var(--vs-safe-area-bottom) - 1rem);
+    }
+}
+
+/* Desktop modal doesn't need header offset */
+@media (min-width: 992px) {
+    .modal-dialog {
+        margin-top: calc(var(--vs-safe-area-top) + 1.75rem);
+    }
+}
+
+/* Directory browser specific responsive height */
+.directory-list {
+    max-height: 50vh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+@media (max-width: 767.98px) {
+    .directory-list {
+        max-height: calc(100vh - var(--vs-header-height) - var(--vs-safe-area-top) - var(--vs-safe-area-bottom) - 280px);
+        min-height: 200px;
+    }
+}
+
+@media (min-width: 768px) and (max-width: 991.98px) {
+    .directory-list {
+        max-height: calc(100vh - var(--vs-header-height) - var(--vs-safe-area-top) - var(--vs-safe-area-bottom) - 250px);
+    }
+}
+
+@media (min-width: 992px) {
+    .directory-list {
+        max-height: 400px;
+    }
 }
 
 .modal-dialog-centered {
@@ -971,6 +1057,16 @@ body {
         background: var(--bs-secondary-bg);
         z-index: 1001;
     }
+
+    /* Prevent pull-to-refresh on PWA */
+    body {
+        overscroll-behavior-y: contain;
+    }
+
+    /* Better modal positioning in PWA mode */
+    .modal {
+        padding-top: calc(var(--vs-safe-area-top) + 0.5rem) !important;
+    }
 }
 
 /* iOS-specific PWA overrides */
@@ -984,7 +1080,143 @@ body {
     /* Enable smooth native scrolling on iOS */
     .app-main,
     .app-sidebar,
-    .main-content {
+    .main-content,
+    .directory-list,
+    .modal-body {
+        -webkit-overflow-scrolling: touch;
+    }
+
+    /* Prevent rubber-banding on fixed elements */
+    .app-header,
+    .app-sidebar {
+        -webkit-backface-visibility: hidden;
+        backface-visibility: hidden;
+    }
+}
+
+/* ============================================
+   Enhanced Mobile Touch & Interaction
+============================================ */
+/* Prevent double-tap zoom on interactive elements */
+.nav-item,
+.btn,
+.list-group-item-action,
+.form-control,
+.form-select {
+    touch-action: manipulation;
+}
+
+/* Active state feedback for touch devices */
+@media (hover: none) and (pointer: coarse) {
+    .nav-item:active,
+    .btn:active,
+    .list-group-item-action:active {
+        opacity: 0.7;
+        transition: opacity 0.1s ease;
+    }
+
+    /* Larger touch targets for list items */
+    .list-group-item-action {
+        min-height: 48px;
+        display: flex;
+        align-items: center;
+    }
+}
+
+/* ============================================
+   Scrollable Content Areas - Mobile Optimization
+============================================ */
+/* Ensure scrollable areas work well on mobile */
+.console-output-box,
+.live-output-container,
+.diff-container {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+}
+
+/* Prevent horizontal scroll causing navigation issues on mobile */
+.main-content {
+    overscroll-behavior-x: none;
+}
+
+/* ============================================
+   Mobile Landscape Adjustments
+============================================ */
+@media (max-height: 500px) and (orientation: landscape) {
+    .app-header {
+        height: calc(44px + var(--vs-safe-area-top));
+    }
+
+    .app-sidebar {
+        top: calc(44px + var(--vs-safe-area-top));
+    }
+
+    .app-main {
+        margin-top: calc(44px + var(--vs-safe-area-top));
+    }
+
+    .modal-dialog {
+        margin-top: calc(44px + var(--vs-safe-area-top) + 0.25rem);
+    }
+
+    .directory-list {
+        max-height: calc(100vh - 200px);
+        min-height: 120px;
+    }
+}
+
+/* ============================================
+   Login Layout - PWA Safe Area Support
+============================================ */
+.login-layout {
+    /* Respect safe areas on PWA/notched devices */
+    padding-top: var(--vs-safe-area-top);
+    padding-bottom: var(--vs-safe-area-bottom);
+    padding-left: var(--vs-safe-area-left);
+    padding-right: var(--vs-safe-area-right);
+}
+
+.login-content {
+    /* Ensure content is scrollable on small screens */
+    max-height: calc(100vh - var(--vs-safe-area-top) - var(--vs-safe-area-bottom));
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+/* ============================================
+   Messages Container - Mobile Optimization
+============================================ */
+.messages-container {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+/* Message headers on mobile */
+@media (max-width: 575.98px) {
+    .message-header {
+        flex-wrap: wrap;
+    }
+
+    .message {
+        padding: 0.75rem;
+    }
+
+    .tool-input,
+    .tool-output {
+        font-size: 0.75rem;
+        max-height: 150px;
+    }
+}
+
+/* ============================================
+   Card Body Scroll - Mobile Optimization
+============================================ */
+/* Ensure card bodies with long content are scrollable on mobile */
+@media (max-width: 767.98px) {
+    .goal-prompt-box {
+        max-height: 200px;
+        overflow-y: auto;
         -webkit-overflow-scrolling: touch;
     }
 }

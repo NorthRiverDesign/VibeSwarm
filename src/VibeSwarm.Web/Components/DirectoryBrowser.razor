@@ -1,6 +1,6 @@
 @inject IFileSystemService FileSystemService
 
-<div class="modal fade @(_isVisible ? "show d-block" : "")" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+<div class="modal fade @(_isVisible ? "show d-block" : "")" tabindex="-1">
 	<div class="modal-dialog modal-lg modal-dialog-scrollable">
 		<div class="modal-content">
 			<div class="modal-header">
@@ -47,7 +47,7 @@
 				}
 				else
 				{
-					<div class="directory-list" style="max-height: 400px; overflow-y: auto;">
+					<div class="directory-list">
 						@* Drives (Windows) *@
 						@if (_directoryResult?.Drives.Any() == true && string.IsNullOrEmpty(_directoryResult.CurrentPath))
 						{
