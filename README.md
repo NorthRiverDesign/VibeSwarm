@@ -241,6 +241,7 @@ ExecStart=/opt/vibeswarm/VibeSwarm.Web
 Restart=always
 RestartSec=10
 KillSignal=SIGINT
+Environment=ASPNETCORE_URLS=https://0.0.0.0:5001;http://0.0.0.0:5000
 Environment=ASPNETCORE_ENVIRONMENT=Production
 Environment=DEFAULT_ADMIN_USER=admin
 Environment=DEFAULT_ADMIN_PASS=YourSecurePassword123!
@@ -289,13 +290,15 @@ dotnet test
 
 ```
 VibeSwarm/
+├── build/
+|   └── .env               		# Your build configuration (create this)
 ├── src/
-│   ├── VibeSwarm.Shared/      # Data models and shared code
-│   ├── VibeSwarm.Web/          # Blazor Server web application
+│   ├── VibeSwarm.Shared/ 		# Data models and shared code
+│   ├── VibeSwarm.Web/ 			# Blazor Server web application
+|   |	├── .env               	# Your local configuration (create this)
+|	|	└── .env.example 		# Template for .env file
 │   └── VibeSwarm.Worker/       # Background worker services
-├── .env                        # Your local configuration (create this)
-├── .env.example               # Template for .env file
-└── README.md                  # This file
+└── README.md  					# This file
 ```
 
 ## Technologies
