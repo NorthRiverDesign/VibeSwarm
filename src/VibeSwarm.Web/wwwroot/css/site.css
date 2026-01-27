@@ -816,6 +816,13 @@ body {
 /* ============================================
    Text Truncation (multi-line)
 ============================================ */
+.text-truncate-lines-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
 .text-truncate-lines-3 {
     display: -webkit-box;
     -webkit-line-clamp: 3;
