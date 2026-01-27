@@ -3,11 +3,7 @@
         <Found Context="routeData">
             <AuthorizeRouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)">
                 <NotAuthorized>
-                    @if (context.User.Identity?.IsAuthenticated != true)
-                    {
-                        <RedirectToLogin />
-                    }
-                    else
+                    @if (context.User.Identity?.IsAuthenticated == true)
                     {
                         <LayoutView Layout="@typeof(MainLayout)">
                             <div class="container mt-5">
@@ -18,17 +14,18 @@
                             </div>
                         </LayoutView>
                     }
-                </NotAuthorized>
-                <Authorizing>
-                    <LayoutView Layout="@typeof(MainLayout)">
-                        <div class="container mt-5 text-center">
-                            <div class="spinner-border text-primary" role="status">
-                                <span class="visually-hidden">Loading...</span>
+                    else
+                    {
+                        @* Session expired mid-circuit — prompt user to reload through the middleware *@
+                        <div class="d-flex align-items-center justify-content-center min-vh-100">
+                            <div class="text-center">
+                                <h4>Session Expired</h4>
+                                <p class="text-muted">Your session has expired. Please log in again.</p>
+                                <a href="/login" class="btn btn-primary">Log In</a>
                             </div>
-                            <p class="mt-2">Checking authentication...</p>
                         </div>
-                    </LayoutView>
-                </Authorizing>
+                    }
+                </NotAuthorized>
             </AuthorizeRouteView>
             <FocusOnNavigate RouteData="@routeData" Selector="h1" />
         </Found>

@@ -6,28 +6,36 @@ using Microsoft.EntityFrameworkCore;
 using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Services;
 using VibeSwarm.Web;
+using VibeSwarm.Web.Endpoints;
 using VibeSwarm.Web.Hubs;
 using VibeSwarm.Web.Middleware;
 using VibeSwarm.Web.Services;
 using VibeSwarm.Worker;
 
 // Load environment variables from .env file (if it exists)
-// Check multiple locations: current directory, base directory, and parent of base directory
-var envPaths = new[]
+// Walk up from the current directory and base directory to find .env at the repo root
+static string? FindEnvFile()
 {
-    ".env",                                                    // Current working directory
-    Path.Combine(AppContext.BaseDirectory, ".env"),           // Application base directory (e.g., /build)
-    Path.Combine(AppContext.BaseDirectory, "..", ".env"),     // Parent of base directory (e.g., project root)
-};
-
-foreach (var envPath in envPaths)
-{
-    if (File.Exists(envPath))
+    var searchRoots = new[] { Directory.GetCurrentDirectory(), AppContext.BaseDirectory };
+    foreach (var root in searchRoots)
     {
-        Console.WriteLine($"Loading environment variables from: {Path.GetFullPath(envPath)}");
-        DotNetEnv.Env.Load(envPath);
-        break;
+        var dir = new DirectoryInfo(root);
+        while (dir is not null)
+        {
+            var envFile = Path.Combine(dir.FullName, ".env");
+            if (File.Exists(envFile))
+                return envFile;
+            dir = dir.Parent;
+        }
     }
+    return null;
+}
+
+var envPath = FindEnvFile();
+if (envPath is not null)
+{
+    Console.WriteLine($"Loading environment variables from: {envPath}");
+    DotNetEnv.Env.Load(envPath);
 }
 
 var builder = WebApplication.CreateBuilder(args);
@@ -48,29 +56,21 @@ if (!File.Exists(certPath))
     Console.WriteLine("Using self-signed certificate. Your browser will show a security warning - this is expected.");
 }
 
-// Configure Kestrel to use HTTPS
-// In Development, bind to localhost for better debugging experience
-// In Production, bind to all interfaces (0.0.0.0)
-var isDevelopment = builder.Environment.IsDevelopment();
+// Configure Kestrel HTTPS defaults with the self-signed certificate.
+// URL binding is controlled by ASPNETCORE_URLS (set in .env or environment).
 builder.WebHost.ConfigureKestrel(serverOptions =>
 {
-    if (isDevelopment)
+    serverOptions.ConfigureHttpsDefaults(httpsOptions =>
     {
-        serverOptions.ListenLocalhost(5000); // HTTP - localhost only
-        serverOptions.ListenLocalhost(5001, listenOptions =>
-        {
-            listenOptions.UseHttps(certPath, certPassword); // HTTPS with self-signed cert
-        });
-    }
-    else
-    {
-        serverOptions.ListenAnyIP(5000); // HTTP - all interfaces
-        serverOptions.ListenAnyIP(5001, listenOptions =>
-        {
-            listenOptions.UseHttps(certPath, certPassword); // HTTPS with self-signed cert
-        });
-    }
+        httpsOptions.ServerCertificate = X509CertificateLoader.LoadPkcs12FromFile(certPath, certPassword);
+    });
 });
+
+// Fallback URLs if ASPNETCORE_URLS is not set in .env or environment
+if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("ASPNETCORE_URLS")))
+{
+    builder.WebHost.UseUrls("http://localhost:5000", "https://localhost:5001");
+}
 
 var connectionString = builder.Configuration.GetConnectionString("Default")
     ?? "Data Source=vibeswarm.db";
@@ -189,6 +189,7 @@ app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();
 
+app.MapAuthEndpoints();
 app.MapRazorPages();
 app.MapBlazorHub();
 app.MapHub<JobHub>("/jobhub");
