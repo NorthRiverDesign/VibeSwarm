@@ -1,6 +1,6 @@
 # VibeSwarm
 
-Distributed AI agent job management system with secure authentication.
+A vibe-coded vibe coding orchestrator.
 
 ## Quick Start
 
@@ -26,6 +26,7 @@ DEFAULT_ADMIN_PASS=YourSecurePassword123!
 ```
 
 **Password Requirements:**
+
 - Minimum 8 characters
 - At least one uppercase letter
 - At least one lowercase letter
@@ -41,6 +42,7 @@ dotnet run
 ```
 
 The application will:
+
 - Generate a self-signed HTTPS certificate (first run only)
 - Run database migrations
 - Create the admin user
@@ -85,6 +87,7 @@ cd ../../publish
 Instead of using a `.env` file, you can set environment variables directly:
 
 **Windows (PowerShell):**
+
 ```powershell
 $env:DEFAULT_ADMIN_USER="admin"
 $env:DEFAULT_ADMIN_PASS="YourSecurePassword123!"
@@ -93,6 +96,7 @@ dotnet run
 ```
 
 **Linux/macOS:**
+
 ```bash
 export DEFAULT_ADMIN_USER=admin
 export DEFAULT_ADMIN_PASS=YourSecurePassword123!
@@ -114,6 +118,7 @@ dotnet run
 VibeSwarm uses SQLite for data storage. The database file `vibeswarm.db` is created automatically in the application directory.
 
 **Backup your database:**
+
 ```bash
 cp vibeswarm.db vibeswarm.db.backup
 ```
@@ -123,12 +128,14 @@ cp vibeswarm.db vibeswarm.db.backup
 ### No Admin User Created
 
 Check the logs on startup. You should see:
+
 ```
 info: Admin user 'admin' created successfully
 info: Database initialized with 1 user(s)
 ```
 
 If you see a warning about missing credentials:
+
 1. Create a `.env` file with `DEFAULT_ADMIN_USER` and `DEFAULT_ADMIN_PASS`
 2. Restart the application
 
@@ -137,6 +144,7 @@ If you see a warning about missing credentials:
 The self-signed certificate is stored as `vibeswarm.pfx` in the application directory.
 
 To regenerate it:
+
 1. Stop the application
 2. Delete `vibeswarm.pfx`
 3. Restart the application
@@ -146,6 +154,7 @@ To regenerate it:
 The application listens on ports 5000 (HTTP) and 5001 (HTTPS). If these are in use, the application will fail to start.
 
 Check what's using the ports:
+
 ```bash
 # Windows
 netstat -ano | findstr :5000
@@ -157,6 +166,7 @@ lsof -i :5000
 ### Redirect Loop
 
 If you get stuck in a redirect loop:
+
 1. Clear your browser cookies for `localhost`
 2. Restart the application
 3. Try accessing `https://localhost:5001` directly
@@ -172,11 +182,12 @@ export ConnectionStrings__Default="Data Source=/path/to/your/database.db"
 ```
 
 Or in `appsettings.json`:
+
 ```json
 {
-  "ConnectionStrings": {
-    "Default": "Data Source=/custom/path/vibeswarm.db"
-  }
+	"ConnectionStrings": {
+		"Default": "Data Source=/custom/path/vibeswarm.db"
+	}
 }
 ```
 
@@ -185,6 +196,7 @@ Or in `appsettings.json`:
 To access the application from other devices on your network, you need to bind to all interfaces:
 
 Set the `ASPNETCORE_URLS` environment variable:
+
 ```bash
 # Windows
 $env:ASPNETCORE_URLS="http://0.0.0.0:5000;https://0.0.0.0:5001"
@@ -194,6 +206,7 @@ export ASPNETCORE_URLS="http://0.0.0.0:5000;https://0.0.0.0:5001"
 ```
 
 Then access via:
+
 - `https://<your-machine-ip>:5001`
 
 **Note**: Your self-signed certificate won't be trusted on other devices. You'll need to accept the certificate warning.
@@ -237,6 +250,7 @@ WantedBy=multi-user.target
 ```
 
 Then:
+
 ```bash
 sudo systemctl daemon-reload
 sudo systemctl enable vibeswarm
@@ -253,6 +267,7 @@ dotnet run
 ```
 
 Development mode includes:
+
 - Detailed error pages
 - Hot reload
 - Verbose logging
