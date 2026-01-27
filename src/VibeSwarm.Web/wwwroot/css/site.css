@@ -1435,14 +1435,21 @@ body.vs-modal-open {
 .job-detail-content {
     width: 100%;
     overflow-x: hidden;
+    margin-left: 0;
+    margin-right: 0;
 }
 
-/* Prevent horizontal overflow on medium screens */
-@media (min-width: 768px) and (max-width: 1199.98px) {
+/* On large screens, ensure content fills the viewport properly */
+@media (min-width: 1200px) {
     .job-detail-content {
-        /* Stack columns on medium screens to prevent overflow */
+        margin-left: -0.75rem;
+        margin-right: -0.75rem;
     }
     
+    .job-detail-content > [class*="col-"] {
+        padding-left: 0.75rem;
+        padding-right: 0.75rem;
+    }
     .job-detail-content > .col-12 {
         flex: 0 0 100%;
         max-width: 100%;
@@ -1489,5 +1496,13 @@ body.vs-modal-open {
 @media (min-width: 992px) {
     .job-detail-content {
         max-width: 100%;
+    }
+}
+/* Allow job detail page to use more viewport width on large screens */
+@media (min-width: 1200px) {
+    .main-content:has(.job-detail-content) {
+        max-width: 1800px;
+        padding-left: 1.5rem;
+        padding-right: 1.5rem;
     }
 }

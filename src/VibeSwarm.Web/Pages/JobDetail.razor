@@ -24,7 +24,7 @@ else if (Job == null)
 else
 {
     @* Page Header - Full Width *@
-    <div
+        <div
         class="d-flex flex-column flex-lg-row justify-content-between align-items-start gap-3 mb-3 mb-lg-4 pb-3 border-bottom">
         <div class="flex-grow-1 min-width-0 w-100 w-lg-auto">
             <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
@@ -35,6 +35,26 @@ else
                     <StatusBadge Status="Cancelling" />
                 }
             </div>
+            @* Repository and Branch Info *@
+                @if (!string.IsNullOrEmpty(Job.Project?.GitHubRepository) || !string.IsNullOrEmpty(_branchName))
+            {
+                <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                    @if (!string.IsNullOrEmpty(Job.Project?.GitHubRepository))
+                    {
+                        <span class="badge bg-dark bg-opacity-75 d-inline-flex align-items-center gap-1 fw-normal">
+                            <i class="bi bi-github"></i>
+                            <span>@Job.Project.GitHubRepository</span>
+                        </span>
+                    }
+                    @if (!string.IsNullOrEmpty(_branchName))
+                    {
+                        <span class="badge bg-secondary bg-opacity-75 d-inline-flex align-items-center gap-1 fw-normal">
+                            <i class="bi bi-diagram-2"></i>
+                            <span>@_branchName</span>
+                        </span>
+                    }
+                </div>
+            }
             <div class="small text-body-secondary">
                 <div class="d-flex flex-wrap gap-2 gap-sm-3 mb-2">
                     <span>Project: <a href="/projects/@Job.ProjectId" class="text-decoration-none">@(Job.Project?.Name ??
@@ -61,9 +81,11 @@ else
                 </div>
             </div>
             @* Stats Row - Token usage and cost *@
-            @if (Job.ModelUsed != null || Job.InputTokens.HasValue || Job.OutputTokens.HasValue || Job.TotalCostUsd.HasValue)
+                @if (Job.ModelUsed != null || Job.InputTokens.HasValue || Job.OutputTokens.HasValue ||
+                    Job.TotalCostUsd.HasValue)
             {
-                <div class="d-flex flex-wrap gap-2 gap-sm-3 mt-2 pt-2 border-top border-secondary border-opacity-25 job-stats-row">
+                <div
+                    class="d-flex flex-wrap gap-2 gap-sm-3 mt-2 pt-2 border-top border-secondary border-opacity-25 job-stats-row">
                     @if (Job.ModelUsed != null)
                     {
                         <span class="stat-pill" title="Model">
@@ -73,21 +95,25 @@ else
                     @if (Job.InputTokens.HasValue)
                     {
                         <span class="stat-pill" title="Input Tokens">
-                            <i class="bi bi-arrow-right-circle me-1 opacity-75"></i>@TokenHelper.FormatTokenCount(Job.InputTokens.Value)
+                            <i
+                                class="bi bi-arrow-right-circle me-1 opacity-75"></i>@TokenHelper.FormatTokenCount(Job.InputTokens.Value)
                         </span>
                     }
                     @if (Job.OutputTokens.HasValue)
                     {
                         <span class="stat-pill" title="Output Tokens">
-                            <i class="bi bi-arrow-left-circle me-1 opacity-75"></i>@TokenHelper.FormatTokenCount(Job.OutputTokens.Value)
+                            <i
+                                class="bi bi-arrow-left-circle me-1 opacity-75"></i>@TokenHelper.FormatTokenCount(Job.OutputTokens.Value)
                         </span>
                     }
                     @if (Job.InputTokens.HasValue && Job.OutputTokens.HasValue)
                     {
                         <span class="stat-pill" title="Total Tokens">
-                            <i class="bi bi-arrow-left-right me-1 opacity-75"></i>@TokenHelper.FormatTokenCount(Job.InputTokens.Value + Job.OutputTokens.Value)
-                        </span>
-                    }
+                            <i
+                                class="bi bi-arrow-left-right me-1 opacity-75"></i>@TokenHelper.FormatTokenCount(Job.InputTokens.Value
+                                            + Job.OutputTokens.Value)
+            </span>
+                        }
                     @if (Job.TotalCostUsd.HasValue)
                     {
                         <span class="stat-pill stat-pill-cost" title="Total Cost">
@@ -122,13 +148,14 @@ else
     </div>
 
     @* Main Content - Column Layout *@
-    <div class="row g-3 g-lg-4 job-detail-content">
+        <div class="row g-3 g-lg-4 job-detail-content mx-0">
         @* Left Column - Goal & Output on mobile first *@
-        <div class="col-12 col-xl-5 order-2 order-xl-1">
+            <div class="col-12 col-xl-5 order-2 order-xl-1 px-0 px-lg-3">
             <div class="card mb-3 mb-lg-4">
                 <div class="card-header bg-body-secondary d-flex justify-content-between align-items-center">
                     <h5 class="mb-0 fw-semibold"><i class="bi bi-bullseye me-2 opacity-75"></i>Goal Prompt</h5>
-                    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="ShowFullPromptModal" title="View full prompt">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="ShowFullPromptModal"
+                        title="View full prompt">
                         <i class="bi bi-arrows-fullscreen me-1"></i>
                         <span class="d-none d-sm-inline">View Full</span>
                     </button>
@@ -169,7 +196,7 @@ else
             </div>
 
             @* User Interaction Section - shown when job is paused waiting for input *@
-            @if (Job.Status == JobStatus.Paused && !string.IsNullOrEmpty(Job.PendingInteractionPrompt))
+                @if (Job.Status == JobStatus.Paused && !string.IsNullOrEmpty(Job.PendingInteractionPrompt))
             {
                 <div class="card mb-3 mb-lg-4 border-warning">
                     <div class="card-header bg-warning bg-opacity-25 d-flex align-items-center">
@@ -322,14 +349,19 @@ else
                                 <span class="badge bg-secondary ms-2">@_parsedDiffFiles.Count</span>
                             </div>
                             <div class="d-flex gap-1 gap-sm-2">
-                                <button class="btn btn-sm btn-outline-secondary d-none d-sm-inline-block"
-                                    @onclick="ExpandAllDiffs" title="Expand all files">
-                                    <i class="bi bi-arrows-expand"></i>
-                                </button>
-                                <button class="btn btn-sm btn-outline-secondary d-none d-sm-inline-block"
-                                    @onclick="CollapseAllDiffs" title="Collapse all files">
-                                    <i class="bi bi-arrows-collapse"></i>
-                                </button>
+                                <div class="btn-group d-none d-sm-inline-flex" role="group"
+                                    aria-label="Expand/Collapse all files">
+                                    <button type="button"
+                                        class="btn btn-sm @(_allExpanded ? "btn-secondary" : "btn-outline-secondary")"
+                                        @onclick="ExpandAllDiffs" title="Expand all files" disabled="@_allExpanded">
+                                        <i class="bi bi-arrows-expand"></i>
+                                    </button>
+                                    <button type="button"
+                                        class="btn btn-sm @(_allCollapsed ? "btn-secondary" : "btn-outline-secondary")"
+                                        @onclick="CollapseAllDiffs" title="Collapse all files" disabled="@_allCollapsed">
+                                        <i class="bi bi-arrows-collapse"></i>
+                                    </button>
+                                </div>
                                 <ActionButton Icon="@(_showGitDiff ? "eye-slash" : "eye")"
                                     Text="@(_showGitDiff ? "Hide" : "Show")" Outline="true" Size="ActionButton.ButtonSize.Small"
                                     HideTextOnMobile="true" OnClick="ToggleGitDiff" />
@@ -391,7 +423,7 @@ else
                 </div>
 
                 @* Commit Section - shown when there are git changes *@
-                <div class="card mb-3 mb-lg-4">
+                        <div class="card mb-3 mb-lg-4">
                     <div class="card-header bg-body-secondary d-flex justify-content-between align-items-center">
                         <div class="d-flex align-items-center">
                             <i class="bi bi-cloud-upload me-2 opacity-75"></i>
@@ -504,7 +536,7 @@ else
         </div>
 
         @* Right Column - Conversation Messages (shows first on mobile) *@
-        <div class="col-12 col-xl-7 order-1 order-xl-2">
+            <div class="col-12 col-xl-7 order-1 order-xl-2 px-0 px-lg-3">
             <div class="card">
                 <div class="card-header bg-body-secondary d-flex justify-content-between align-items-center">
                     <h5 class="mb-0 fw-semibold"><i class="bi bi-chat-dots me-2 opacity-75"></i>Conversation</h5>
@@ -565,7 +597,8 @@ else
                                                 <div class="chat-tool-header">
                                                     <i class="bi bi-arrow-return-right me-1"></i>@message.ToolName
                                                 </div>
-                                                <pre class="chat-tool-code">@TruncateOutput(message.ToolOutput ?? message.Content, 500)</pre>
+                                                <pre
+                                                    class="chat-tool-code">@TruncateOutput(message.ToolOutput ?? message.Content, 500)</pre>
                                             </div>
                                         }
                                         else
@@ -647,6 +680,10 @@ else
     // Git diff accordion state
     private List<DiffFile> _parsedDiffFiles = new();
     private HashSet<int> _expandedDiffFiles = new();
+
+    // Computed properties for expand/collapse button states
+    private bool _allExpanded => _parsedDiffFiles.Count > 0 && _expandedDiffFiles.Count == _parsedDiffFiles.Count;
+    private bool _allCollapsed => _parsedDiffFiles.Count == 0 || _expandedDiffFiles.Count == 0;
 
     // Live output buffer
     private const int MaxOutputLines = 500;
@@ -878,12 +915,25 @@ else
             {
                 await RefreshJobSafely();
 
-                // If still no git diff after refresh, try fetching it directly
-                if (Job != null && string.IsNullOrEmpty(Job.GitDiff) && _isLoadingGitDiff)
+                // If still no git diff after refresh, actively fetch it from the working directory
+                if (Job != null && string.IsNullOrEmpty(Job.GitDiff) && _isLoadingGitDiff && success)
                 {
                     // Give it one more try after an additional delay
                     await Task.Delay(1000);
                     await RefreshJobSafely();
+
+                    // If still no diff, actively check the working directory
+                    if (string.IsNullOrEmpty(Job.GitDiff) && Job.Project?.WorkingPath != null)
+                    {
+                        try
+                        {
+                            await CheckGitDiffAsync();
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"Error auto-checking git diff: {ex.Message}");
+                        }
+                    }
                 }
 
                 // Clear loading state after we've attempted to get the data
