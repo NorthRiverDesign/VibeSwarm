@@ -3,173 +3,110 @@
 @inject ISkillService SkillService
 @using VibeSwarm.Shared.Utilities
 
-<PageHeader Title="Skills" Subtitle="Define agent skills that can be exposed via MCP to AI providers" />
+<PageHeader Title="Skills" Subtitle="Define agent skills that can be exposed via MCP to AI providers">
+	<Actions>
+		<ActionButton Icon="plus" Text="Add" OnClick="ShowAddModal" />
+	</Actions>
+</PageHeader>
 
-<div class="row g-3 g-lg-4">
-	@* Form first on mobile, second on desktop *@
-	<div class="col-12 col-lg-5 order-1 order-lg-2">
-		<div class="card">
-			<div class="card-header bg-body-secondary">
-				<h5 class="mb-0 fw-semibold">@(_isEditing ? "Edit Skill" : "New Skill")</h5>
+<div class="card skills-card">
+	<div class="card-body p-0">
+		@if (_isLoading)
+		{
+			<LoadingSpinner />
+		}
+		else if (!_skillsList.Any())
+		{
+			<div class="p-3">
+				<EmptyState Icon="lightbulb" Title="No skills yet"
+					Message="Create skills to define capabilities that AI agents can use during job execution." />
 			</div>
-			<div class="card-body">
-				<EditForm Model="@_currentSkill" OnValidSubmit="HandleValidSubmit">
-					<DataAnnotationsValidator />
-					<ValidationSummary class="text-danger mb-3" />
-
-					<div class="mb-3">
-						<label for="name" class="form-label">Name</label>
-						<InputText id="name" @bind-Value="_currentSkill.Name" class="form-control"
-							placeholder="my-skill-name" />
-						<ValidationMessage For="@(() => _currentSkill.Name)" class="text-danger small" />
-						<div class="form-text">
-							Used as the MCP tool identifier. Use lowercase with hyphens.
-						</div>
-					</div>
-
-					<div class="mb-3">
-						<label for="description" class="form-label">Description</label>
-						<InputTextArea id="description" @bind-Value="_currentSkill.Description" class="form-control"
-							rows="2" placeholder="Brief description of what this skill does..." />
-						<div class="form-text">
-							Shown to AI agents when they list available skills.
-						</div>
-					</div>
-
-					<div class="mb-3">
-						<label for="content" class="form-label">Content (Markdown)</label>
-						<InputTextArea id="content" @bind-Value="_currentSkill.Content"
-							class="form-control font-monospace" rows="12"
-							placeholder="# Skill Instructions&#10;&#10;Provide detailed instructions for the AI agent..." />
-						<ValidationMessage For="@(() => _currentSkill.Content)" class="text-danger small" />
-						<div class="form-text">
-							Markdown content defining the skill's instructions and capabilities.
-						</div>
-					</div>
-
-					<div class="mb-3">
-						<div class="form-check form-switch">
-							<InputCheckbox id="isEnabled" @bind-Value="_currentSkill.IsEnabled"
-								class="form-check-input" />
-							<label class="form-check-label" for="isEnabled">
-								Enabled
-							</label>
-						</div>
-						<div class="form-text">
-							Disabled skills will not be exposed to providers.
-						</div>
-					</div>
-
-					<div class="d-flex flex-column flex-sm-row gap-2">
-						<button type="submit" class="btn btn-primary flex-grow-1" disabled="@_isSaving">
-							@if (_isSaving)
-							{
-								<span class="spinner-border spinner-border-sm me-1" role="status"></span>
-							}
-							@(_isSaving ? "Saving..." : (_isEditing ? "Update" : "Create"))
-						</button>
-						@if (_isEditing)
-						{
-							<button type="button" class="btn btn-secondary" @onclick="CancelEdit">Cancel</button>
-						}
-					</div>
-
-					@if (!string.IsNullOrEmpty(_errorMessage))
-					{
-						<div class="alert alert-danger mt-3 mb-0">@_errorMessage</div>
-					}
-
-					@if (!string.IsNullOrEmpty(_successMessage))
-					{
-						<div class="alert alert-success mt-3 mb-0">@_successMessage</div>
-					}
-				</EditForm>
-			</div>
-		</div>
-	</div>
-
-	@* List second on mobile, first on desktop *@
-	<div class="col-12 col-lg-7 order-2 order-lg-1">
-		<div class="card">
-			<div class="card-header bg-body-secondary d-flex justify-content-between align-items-center">
-				<h5 class="mb-0 fw-semibold">All Skills</h5>
-				<span class="badge bg-secondary">@_skillsList.Count skill@(_skillsList.Count == 1 ? "" : "s")</span>
-			</div>
-			<div class="card-body p-0">
-				@if (_isLoading)
+		}
+		else
+		{
+			<div class="list-group list-group-flush">
+				@foreach (var skill in _skillsList)
 				{
-					<LoadingSpinner />
-				}
-				else if (!_skillsList.Any())
-				{
-					<div class="p-3">
-						<EmptyState Icon="lightbulb" Title="No skills yet"
-							Message="Create skills to define capabilities that AI agents can use during job execution." />
-					</div>
-				}
-				else
-				{
-					<div class="list-group list-group-flush">
-						@foreach (var skill in _skillsList)
-						{
-							<div
-								class="list-group-item d-flex flex-column flex-md-row align-items-md-start gap-2 gap-md-3 p-3 hover-bg-tertiary">
-								<div class="flex-grow-1 min-width-0">
-									<div class="d-flex align-items-center gap-2 flex-wrap">
-										<span class="fw-semibold font-monospace">@skill.Name</span>
-										<StatusBadge Status="@(skill.IsEnabled ? "Active" : "Off")" ShowSpinner="false" />
-									</div>
-									@if (!string.IsNullOrEmpty(skill.Description))
-									{
-										<div class="small text-body-secondary mt-1">@TruncateText(skill.Description, 120)</div>
-									}
-									<div class="d-flex flex-wrap gap-2 gap-md-3 mt-2 small text-body-secondary">
-										<span class="d-flex align-items-center gap-1">
-											<i class="bi bi-file-text opacity-75"></i>
-											@skill.Content.Length chars
-										</span>
-										<span class="d-flex align-items-center gap-1">
-											<i class="bi bi-calendar-plus opacity-75"></i>
-											@skill.CreatedAt.FormatDateTimeShort()
-										</span>
-										@if (skill.UpdatedAt.HasValue)
-										{
-											<span class="d-flex align-items-center gap-1">
-												<i class="bi bi-pencil opacity-75"></i>
-												@skill.UpdatedAt.Value.FormatDateTimeShort()
-											</span>
-										}
-									</div>
-								</div>
-								<div class="d-flex flex-wrap gap-2 flex-shrink-0 align-items-center">
-									<label class="toggle-switch me-1" title="@(skill.IsEnabled ? "Disable" : "Enable")">
-										<input type="checkbox" checked="@skill.IsEnabled"
-											@onchange="() => ToggleEnabled(skill)" />
-										<span class="toggle-slider"></span>
-									</label>
-									<ActionButton Icon="pencil" Text="Edit" Outline="true" Size="ActionButton.ButtonSize.Small"
-										HideTextOnMobile="true" OnClick="@(() => EditSkill(skill))" />
-									<ActionButton Icon="trash" Text="Delete" Outline="true" Size="ActionButton.ButtonSize.Small"
-										Style="ActionButton.ButtonStyle.Danger" HideTextOnMobile="true"
-										OnClick="@(() => DeleteSkill(skill.Id))" />
-								</div>
+					<div
+						class="list-group-item d-flex flex-column flex-md-row align-items-md-start gap-2 gap-md-3 p-3 hover-bg-tertiary">
+						<div class="flex-grow-1 min-width-0">
+							<div class="d-flex align-items-center gap-2 flex-wrap">
+								<span class="fw-semibold font-monospace">@skill.Name</span>
+								<StatusBadge Status="@(skill.IsEnabled ? "Active" : "Off")" ShowSpinner="false" />
 							</div>
-						}
+							@if (!string.IsNullOrEmpty(skill.Description))
+							{
+								<div class="small text-body-secondary mt-1">@TruncateText(skill.Description, 120)</div>
+							}
+							<div class="d-flex flex-wrap gap-2 gap-md-3 mt-2 small text-body-secondary">
+								<span class="d-flex align-items-center gap-1">
+									<i class="bi bi-file-text opacity-75"></i>
+									@skill.Content.Length chars
+								</span>
+								<span class="d-flex align-items-center gap-1">
+									<i class="bi bi-calendar-plus opacity-75"></i>
+									@skill.CreatedAt.FormatDateTimeShort()
+								</span>
+								@if (skill.UpdatedAt.HasValue)
+								{
+									<span class="d-flex align-items-center gap-1">
+										<i class="bi bi-pencil opacity-75"></i>
+										@skill.UpdatedAt.Value.FormatDateTimeShort()
+									</span>
+								}
+							</div>
+						</div>
+						<div class="d-flex flex-wrap gap-2 flex-shrink-0 align-items-center">
+							<label class="toggle-switch me-1" title="@(skill.IsEnabled ? "Disable" : "Enable")">
+								<input type="checkbox" checked="@skill.IsEnabled" @onchange="() => ToggleEnabled(skill)" />
+								<span class="toggle-slider"></span>
+							</label>
+							<ActionButton Icon="pencil" Text="Edit" Outline="true" Size="ActionButton.ButtonSize.Small"
+								HideTextOnMobile="true" OnClick="@(() => EditSkill(skill))" />
+							<ActionButton Icon="trash" Text="Delete" Outline="true" Size="ActionButton.ButtonSize.Small"
+								Style="ActionButton.ButtonStyle.Danger" HideTextOnMobile="true"
+								OnClick="@(() => ShowDeleteConfirmation(skill))" />
+						</div>
 					</div>
 				}
 			</div>
-		</div>
+		}
 	</div>
 </div>
 
+@* Skill Modal for Add/Edit *@
+<SkillModal @bind-IsVisible="_showSkillModal" EditSkill="@_editingSkill" OnSaved="HandleSkillSaved"
+	OnCancelled="HandleModalCancelled" OnClosed="HandleSkillModalClosed" />
+
+@* Delete Confirmation Modal *@
+<ModalDialog @bind-IsVisible="_showDeleteModal" Title="Delete Skill" Icon="exclamation-triangle"
+	Size="ModalDialog.ModalSize.Small" OnClose="HandleDeleteModalClosed">
+	<ChildContent>
+		<p>Are you sure you want to delete <strong>@_skillToDelete?.Name</strong>?</p>
+		<p class="text-body-secondary small mb-0">This action cannot be undone.</p>
+	</ChildContent>
+	<FooterContent>
+		<button type="button" class="btn btn-secondary" @onclick="CancelDelete">Cancel</button>
+		<button type="button" class="btn btn-danger" @onclick="ConfirmDelete" disabled="@_isDeleting">
+			@if (_isDeleting)
+			{
+				<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+			}
+			Delete
+		</button>
+	</FooterContent>
+</ModalDialog>
+
 @code {
 	private List<Skill> _skillsList = new();
-	private Skill _currentSkill = new();
 	private bool _isLoading = true;
-	private bool _isSaving;
-	private bool _isEditing;
-	private string? _errorMessage;
-	private string? _successMessage;
+	private bool _showSkillModal;
+	private Skill? _editingSkill;
+
+	// Delete confirmation state
+	private bool _showDeleteModal;
+	private Skill? _skillToDelete;
+	private bool _isDeleting;
 
 	protected override async Task OnInitializedAsync()
 	{
@@ -196,92 +133,89 @@
 		return text[..maxLength] + "...";
 	}
 
-	private async Task HandleValidSubmit()
+	private void ShowAddModal()
 	{
-		_isSaving = true;
-		_errorMessage = null;
-		_successMessage = null;
+		// Close any other open modals first
+		_showDeleteModal = false;
+		_skillToDelete = null;
 
-		try
-		{
-			// Validate unique name
-			var nameExists = await SkillService.NameExistsAsync(
-			_currentSkill.Name,
-			_isEditing ? _currentSkill.Id : null);
-
-			if (nameExists)
-			{
-				_errorMessage = "A skill with this name already exists.";
-				return;
-			}
-
-			if (_isEditing)
-			{
-				await SkillService.UpdateAsync(_currentSkill);
-				_successMessage = "Skill updated successfully.";
-			}
-			else
-			{
-				await SkillService.CreateAsync(_currentSkill);
-				_successMessage = "Skill created successfully.";
-			}
-
-			_currentSkill = new Skill();
-			_isEditing = false;
-			await LoadSkills();
-		}
-		catch (Exception ex)
-		{
-			_errorMessage = $"Error saving skill: {ex.Message}";
-		}
-		finally
-		{
-			_isSaving = false;
-		}
+		_editingSkill = null;
+		_showSkillModal = true;
+		StateHasChanged();
 	}
 
 	private void EditSkill(Skill skill)
 	{
-		_currentSkill = new Skill
-		{
-			Id = skill.Id,
-			Name = skill.Name,
-			Description = skill.Description,
-			Content = skill.Content,
-			IsEnabled = skill.IsEnabled,
-			CreatedAt = skill.CreatedAt,
-			UpdatedAt = skill.UpdatedAt
-		};
-		_isEditing = true;
-		_errorMessage = null;
-		_successMessage = null;
+		// Close any other open modals first
+		_showDeleteModal = false;
+		_skillToDelete = null;
+
+		_editingSkill = skill;
+		_showSkillModal = true;
+		StateHasChanged();
 	}
 
-	private void CancelEdit()
+	private async Task HandleSkillSaved(Guid? newSkillId)
 	{
-		_currentSkill = new Skill();
-		_isEditing = false;
-		_errorMessage = null;
-		_successMessage = null;
+		_showSkillModal = false;
+		_editingSkill = null;
+		await LoadSkills();
 	}
 
-	private async Task DeleteSkill(Guid id)
+	private void HandleModalCancelled()
 	{
+		_showSkillModal = false;
+		_editingSkill = null;
+	}
+
+	private void HandleSkillModalClosed()
+	{
+		// Called when modal is closed via backdrop click or X button
+		_showSkillModal = false;
+		_editingSkill = null;
+		StateHasChanged();
+	}
+
+	private void ShowDeleteConfirmation(Skill skill)
+	{
+		// Close any other open modals first
+		_showSkillModal = false;
+		_editingSkill = null;
+
+		_skillToDelete = skill;
+		_showDeleteModal = true;
+		StateHasChanged();
+	}
+
+	private void CancelDelete()
+	{
+		_showDeleteModal = false;
+		_skillToDelete = null;
+	}
+
+	private void HandleDeleteModalClosed()
+	{
+		// Called when modal is closed via backdrop click or X button
+		_showDeleteModal = false;
+		_skillToDelete = null;
+		StateHasChanged();
+	}
+
+	private async Task ConfirmDelete()
+	{
+		if (_skillToDelete == null) return;
+
+		_isDeleting = true;
 		try
 		{
-			await SkillService.DeleteAsync(id);
+			await SkillService.DeleteAsync(_skillToDelete.Id);
+			_showDeleteModal = false;
+			_skillToDelete = null;
 			await LoadSkills();
-			_successMessage = "Skill deleted successfully.";
-
-			// Clear form if we were editing the deleted skill
-			if (_isEditing && _currentSkill.Id == id)
-			{
-				CancelEdit();
-			}
 		}
-		catch (Exception ex)
+		finally
 		{
-			_errorMessage = $"Error deleting skill: {ex.Message}";
+			_isDeleting = false;
 		}
 	}
 
@@ -295,7 +229,7 @@
 		}
 		catch (Exception ex)
 		{
-			_errorMessage = $"Error updating skill: {ex.Message}";
+			Console.WriteLine($"Error updating skill: {ex.Message}");
 		}
 	}
 }

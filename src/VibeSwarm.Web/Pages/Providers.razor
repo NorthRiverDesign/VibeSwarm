@@ -2,6 +2,7 @@
 @attribute [Authorize]
 @using VibeSwarm.Shared.Services
 @using VibeSwarm.Shared.Data
+@using VibeSwarm.Shared.Utilities
 @inject IProviderService ProviderService
 
 <PageHeader Title="Providers" Subtitle="Manage your AI coding agent providers">
@@ -10,10 +11,7 @@
     </Actions>
 </PageHeader>
 
-<div class="card">
-    <div class="card-header bg-body-secondary">
-        <h5 class="mb-0 fw-semibold">Connected Providers</h5>
-    </div>
+<div class="card providers-card">
     <div class="card-body p-0">
         @if (IsLoading)
         {
@@ -151,7 +149,7 @@
                                 @if (provider.LastModelsRefreshAt.HasValue)
                                 {
                                     <small class="text-body-tertiary d-block mt-1">
-                                        Updated @provider.LastModelsRefreshAt.Value.ToLocalTime().ToString("g")
+                                        Updated @provider.LastModelsRefreshAt.Value.FormatDateTimeShort()
                                     </small>
                                 }
                             </div>

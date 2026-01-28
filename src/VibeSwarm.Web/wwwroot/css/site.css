@@ -1642,7 +1642,9 @@ body.vs-modal-open {
 ============================================ */
 @media (max-width: 575.98px) {
     /* Remove card styling on mobile for full-width feel */
-    .projects-card {
+    .projects-card,
+    .providers-card,
+    .skills-card {
         border-radius: 0;
         border-left: none;
         border-right: none;

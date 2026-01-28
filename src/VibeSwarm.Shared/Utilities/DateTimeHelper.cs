@@ -99,4 +99,28 @@ public static class DateTimeHelper
 	{
 		return dateTime?.FormatDateTimeShort() ?? string.Empty;
 	}
+
+	/// <summary>
+	/// Formats a nullable Date, returns empty string if null
+	/// </summary>
+	public static string FormatDate(this DateTime? dateTime)
+	{
+		return dateTime?.FormatDate() ?? string.Empty;
+	}
+
+	/// <summary>
+	/// Formats a nullable Time, returns empty string if null
+	/// </summary>
+	public static string FormatTime(this DateTime? dateTime)
+	{
+		return dateTime?.FormatTime() ?? string.Empty;
+	}
+
+	/// <summary>
+	/// Formats a nullable Time short format, returns empty string if null
+	/// </summary>
+	public static string FormatTimeShort(this DateTime? dateTime)
+	{
+		return dateTime?.FormatTimeShort() ?? string.Empty;
+	}
 }
