@@ -69,7 +69,6 @@ public class ProviderService : IProviderService
         existing.Type = provider.Type;
         existing.ConnectionMode = provider.ConnectionMode;
         existing.ExecutablePath = provider.ExecutablePath;
-        existing.WorkingDirectory = provider.WorkingDirectory;
         existing.ApiEndpoint = provider.ApiEndpoint;
         existing.ApiKey = provider.ApiKey;
         existing.IsEnabled = provider.IsEnabled;

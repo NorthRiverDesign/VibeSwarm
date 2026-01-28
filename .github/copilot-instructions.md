@@ -48,6 +48,14 @@ VibeSwarm is intended to stay simple but modular in 3 parts, the Web UI, the Wor
 
 Utility classes should exist in the Shared project to be used by both the Web and Worker projects. Data models should also exist in the Shared project to ensure consistency between the Web and Worker services.
 
+## Coding Best Practices
+
+VibeSwarm follows coding best practices to ensure maintainability, readability, and performance. This includes adhering to established coding standards, using meaningful variable and function names, and writing modular code. The application is structured to promote separation of concerns, with distinct layers for data access, business logic, and presentation.
+
+Because VibeSwarm interacts with rapidly changing AI agents and services, the codebase is designed to be flexible and adaptable. This includes using interfaces and abstractions to allow for easy integration of new agents and providers as they become available. Service provider implementations should be encapsulated to minimize the impact of changes on the overall application.
+
+The C# coding style follows the official Microsoft C# coding conventions. Consistent formatting, indentation, and spacing are used throughout the codebase to enhance readability. Comments and documentation are provided where necessary to explain complex logic and provide context for future developers.
+
 ## Usage Limits for AI Agents
 
 Some providers and models have usage limits, such as the number of requests per minute or total tokens per month. VibeSwarm monitors these limits and manages agent activity to avoid exceeding them. If an agent approaches its limit, VibeSwarm can throttle its requests or temporarily disable it until the limit resets.
@@ -90,7 +98,7 @@ The interface must be fully responsive and work on mobile devices as well as des
 
 VibeSwarm is designed to be mobile-friendly, ensuring that users can access and manage their projects from smartphones and tablets. The responsive design adapts to various screen sizes, providing an optimal user experience regardless of the device being used. The mobile interface includes touch-friendly elements and simplified navigation to facilitate ease of use on smaller screens.
 
-All pages and UI components are tested on an iPhone to ensure every aspect of the application works from anywhere the application is accessible.
+All pages and UI components are tested on an iPhone to ensure every aspect of the application works from anywhere the application is accessible. A best attempt is made to ensure the viewport is optimized for mobile devices and desktop devices alike with proper spacing, padding, and alignment.
 
 ## Bootstrap Integration
 
@@ -107,6 +115,8 @@ When adding icons, prefer using Bootstrap Icons over custom SVGs or other icon l
 ## Blazor Integration
 
 VibeSwarm is built using Blazor, a web framework for building interactive web applications with C# and .NET. The application leverages Blazor's component-based architecture to create reusable UI components and manage application state effectively. Blazor's capabilities allow for seamless integration with backend services, enabling real-time updates and dynamic content rendering. The SignalR library is used to facilitate real-time communication between the server and client, allowing for instant updates on agent activities and project status.
+
+Data fetching methods should use try/catch blocks to handle potential errors gracefully. This ensures that the application remains stable and provides informative feedback to users in case of data retrieval issues. Loading indicators should be displayed while data is being fetched to enhance user experience and provide visual feedback during asynchronous operations. The UI should not be blocked while waiting for data to load.
 
 ## UI Components
 

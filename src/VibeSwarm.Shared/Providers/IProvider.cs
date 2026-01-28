@@ -55,6 +55,21 @@ public interface IProvider
         string? workingDirectory = null,
         string? fallbackOutput = null,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Get a simple text response from the provider for a generic prompt.
+    /// This is a lightweight method that uses the CLI's -p flag for non-interactive queries
+    /// without full session management or agent capabilities.
+    /// Useful for quick questions, summaries, or helper tasks.
+    /// </summary>
+    /// <param name="prompt">The prompt or question to send to the provider</param>
+    /// <param name="workingDirectory">Optional working directory for context</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>A simple text response from the provider</returns>
+    Task<PromptResponse> GetPromptResponseAsync(
+        string prompt,
+        string? workingDirectory = null,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -354,6 +369,64 @@ public class ExecutionOptions
         {
             SessionId = sessionId,
             WorkingDirectory = workingDirectory
+        };
+    }
+}
+
+/// <summary>
+/// Response from a simple prompt query to a provider.
+/// Used for lightweight, non-session-based interactions.
+/// </summary>
+public class PromptResponse
+{
+    /// <summary>
+    /// Whether the prompt was executed successfully
+    /// </summary>
+    public bool Success { get; set; }
+
+    /// <summary>
+    /// The text response from the provider
+    /// </summary>
+    public string? Response { get; set; }
+
+    /// <summary>
+    /// Error message if the prompt failed
+    /// </summary>
+    public string? ErrorMessage { get; set; }
+
+    /// <summary>
+    /// Time taken to execute the prompt (in milliseconds)
+    /// </summary>
+    public long? ElapsedMilliseconds { get; set; }
+
+    /// <summary>
+    /// The model used for the response (if available)
+    /// </summary>
+    public string? ModelUsed { get; set; }
+
+    /// <summary>
+    /// Creates a successful response
+    /// </summary>
+    public static PromptResponse Ok(string response, long? elapsedMs = null, string? model = null)
+    {
+        return new PromptResponse
+        {
+            Success = true,
+            Response = response,
+            ElapsedMilliseconds = elapsedMs,
+            ModelUsed = model
+        };
+    }
+
+    /// <summary>
+    /// Creates a failed response
+    /// </summary>
+    public static PromptResponse Fail(string errorMessage)
+    {
+        return new PromptResponse
+        {
+            Success = false,
+            ErrorMessage = errorMessage
         };
     }
 }

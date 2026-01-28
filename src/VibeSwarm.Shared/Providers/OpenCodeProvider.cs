@@ -1241,6 +1241,130 @@ public class OpenCodeProvider : ProviderBase
         return string.Empty;
     }
 
+    public override async Task<PromptResponse> GetPromptResponseAsync(
+        string prompt,
+        string? workingDirectory = null,
+        CancellationToken cancellationToken = default)
+    {
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+
+        if (ConnectionMode == ProviderConnectionMode.CLI)
+        {
+            var execPath = GetExecutablePath();
+            if (string.IsNullOrEmpty(execPath))
+            {
+                return PromptResponse.Fail("OpenCode executable path is not configured.");
+            }
+
+            try
+            {
+                var effectiveWorkingDir = workingDirectory ?? _workingDirectory ?? Environment.CurrentDirectory;
+
+                // Use -p flag for simple non-interactive prompt response
+                // opencode -p "your question"
+                var args = $"-p \"{EscapeArgument(prompt)}\"";
+
+                var startInfo = new ProcessStartInfo
+                {
+                    FileName = execPath,
+                    Arguments = args,
+                    WorkingDirectory = effectiveWorkingDir
+                };
+
+                // Configure for cross-platform with enhanced PATH
+                PlatformHelper.ConfigureForCrossPlatform(startInfo);
+
+                using var process = new Process { StartInfo = startInfo };
+
+                // Use a reasonable timeout for simple prompts (2 minutes)
+                using var timeoutCts = new CancellationTokenSource(TimeSpan.FromMinutes(2));
+                using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
+
+                process.Start();
+
+                // Close stdin immediately
+                try { process.StandardInput.Close(); } catch { }
+
+                var output = await process.StandardOutput.ReadToEndAsync(linkedCts.Token);
+                var error = await process.StandardError.ReadToEndAsync(linkedCts.Token);
+
+                try
+                {
+                    await process.WaitForExitAsync(linkedCts.Token);
+                }
+                catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested)
+                {
+                    try { process.Kill(entireProcessTree: true); } catch { }
+                    return PromptResponse.Fail("Request timed out after 2 minutes.");
+                }
+
+                stopwatch.Stop();
+
+                if (process.ExitCode != 0 && !string.IsNullOrEmpty(error))
+                {
+                    return PromptResponse.Fail($"OpenCode CLI returned error: {error}");
+                }
+
+                return PromptResponse.Ok(output.Trim(), stopwatch.ElapsedMilliseconds, "opencode");
+            }
+            catch (System.ComponentModel.Win32Exception ex)
+            {
+                return PromptResponse.Fail($"Failed to start OpenCode CLI: {ex.Message}");
+            }
+            catch (OperationCanceledException)
+            {
+                return PromptResponse.Fail("Request was cancelled.");
+            }
+            catch (Exception ex)
+            {
+                return PromptResponse.Fail($"Error executing OpenCode CLI: {ex.Message}");
+            }
+        }
+        else
+        {
+            // REST API mode
+            if (_httpClient == null)
+            {
+                return PromptResponse.Fail("REST API client is not configured.");
+            }
+
+            try
+            {
+                var request = new
+                {
+                    prompt = prompt,
+                    max_tokens = 4096
+                };
+
+                var response = await _httpClient.PostAsJsonAsync("/v1/prompt", request, cancellationToken);
+                response.EnsureSuccessStatusCode();
+
+                var result = await response.Content.ReadFromJsonAsync<OpenCodeApiResponse>(JsonOptions, cancellationToken);
+
+                stopwatch.Stop();
+
+                if (result?.Success == true && !string.IsNullOrEmpty(result.Output))
+                {
+                    return PromptResponse.Ok(result.Output, stopwatch.ElapsedMilliseconds, "opencode");
+                }
+
+                return PromptResponse.Fail(result?.Error ?? "No response content received from OpenCode API.");
+            }
+            catch (HttpRequestException ex)
+            {
+                return PromptResponse.Fail($"HTTP error calling OpenCode API: {ex.Message}");
+            }
+            catch (OperationCanceledException)
+            {
+                return PromptResponse.Fail("Request was cancelled.");
+            }
+            catch (Exception ex)
+            {
+                return PromptResponse.Fail($"Error calling OpenCode API: {ex.Message}");
+            }
+        }
+    }
+
     // JSON models for OpenCode CLI and API output
     // Note: JsonPropertyName attributes support snake_case from CLI
     private class OpenCodeStreamEvent

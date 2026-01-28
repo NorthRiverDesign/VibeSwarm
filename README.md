@@ -1,6 +1,14 @@
 # VibeSwarm
 
-A vibe-coded vibe coding orchestrator.
+A vibe-coded vibe coding orchestrator. Imagine CI/CD but with AI. Bring your own provider. Own your own infrastructure.
+
+## Support
+
+This application is free for anyone to use. If you like it and want to donate, we have a donation link set up.
+
+[Donate to North River Design with Stripe](https://donate.stripe.com/3cI00i3SM2X88w55uGaZi00).
+
+Thank you!
 
 ## Quick Start
 
@@ -8,6 +16,16 @@ A vibe-coded vibe coding orchestrator.
 
 - .NET 10 SDK
 - Windows, Linux, or macOS
+- Git set up
+- Your own CLI coding agent
+
+### Supported Agents
+
+- OpenCode
+- Claude Code
+- GitHub Copilot
+
+## Development
 
 ### 1. Clone and Navigate
 
@@ -104,14 +122,9 @@ export ASPNETCORE_ENVIRONMENT=Production
 dotnet run
 ```
 
-## Security Features
+## Security
 
-✅ **Password Hashing** - PBKDF2-HMAC-SHA256 with 10,000 iterations
-✅ **Brute Force Protection** - Account lockout after 5 failed attempts
-✅ **Secure Cookies** - HttpOnly, SameSite protection
-✅ **Global Authentication** - All pages require login by default
-✅ **HTTPS** - Self-signed certificate generated automatically
-✅ **Security Headers** - X-Frame-Options, CSP, etc.
+This application is designed to utilize the host system's terminal and command line utilities. You set up your own coding agents. VibeSwarm just calls CLI commands on the host system.
 
 ## Database
 
@@ -162,14 +175,6 @@ netstat -ano | findstr :5000
 # Linux/macOS
 lsof -i :5000
 ```
-
-### Redirect Loop
-
-If you get stuck in a redirect loop:
-
-1. Clear your browser cookies for `localhost`
-2. Restart the application
-3. Try accessing `https://localhost:5001` directly
 
 ## Advanced Configuration
 
@@ -301,6 +306,10 @@ VibeSwarm/
 └── README.md  					# This file
 ```
 
+## Updates
+
+We are working on an update notification system and providing pre-built solutions. Things change fast. For now, we recommend checking out the `main` branch and running `dotnet publish -c Release -o ./build/`. If you have VibeSwarm installed as a service, restart the process.
+
 ## Technologies
 
 - **.NET 10.0** - Web framework
@@ -315,6 +324,14 @@ VibeSwarm/
 VibeSwarm is open sourced under the MIT license and developed by the company, North River Design LLC. The company retains all rights to claim intellectual property of VibeSwarm.
 
 Because this whole application is vibe coded, feel free to fork it. We just need to absolutely specify we are NOT responsible for ANY claims of damage.
+
+## Contributions
+
+If you would like to contribute to VibeSwarm, open a GitHub issue with any problems you are facing. We are an extremely small team (1 person) and rapidly developing this application in a changing landscape.
+
+Any attempt at submitting contributions with nefarious intent will be denied. Be a good person.
+
+This application is being developed to serve our needs and is distributed for free. Any negativitiy will not be tolerated or obliged. This project is open source and you are not entitled to any support or reimbursement for any damages.
 
 ## Warranty
 

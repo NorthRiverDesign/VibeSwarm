@@ -19,22 +19,38 @@
 
 			<div class="mb-3">
 				<label for="modal-type" class="form-label">Provider Type</label>
-				<InputSelect id="modal-type" @bind-Value="Provider.Type" class="form-select">
+				<InputSelect id="modal-type" Value="Provider.Type" ValueExpression="@(() => Provider.Type)"
+					ValueChanged="@((ProviderType value) => OnProviderTypeChanged(value))" class="form-select">
 					@foreach (var type in Enum.GetValues<ProviderType>())
 					{
 						<option value="@type">@type</option>
 					}
 				</InputSelect>
+				<div class="form-text">@ProviderCapabilities.GetDescription(Provider.Type)</div>
 			</div>
 
 			<div class="mb-3">
 				<label for="modal-connectionMode" class="form-label">Connection Mode</label>
-				<InputSelect id="modal-connectionMode" @bind-Value="Provider.ConnectionMode" class="form-select">
-					@foreach (var mode in Enum.GetValues<ProviderConnectionMode>())
-					{
-						<option value="@mode">@mode</option>
-					}
-				</InputSelect>
+				@{
+					var supportedModes = ProviderCapabilities.GetSupportedModes(Provider.Type);
+				}
+				@if (supportedModes.Count == 1)
+				{
+					<input type="text" class="form-control" value="@supportedModes[0]" disabled />
+					<div class="form-text text-body-secondary">
+						<i class="bi bi-info-circle me-1"></i>
+						@Provider.Type only supports @supportedModes[0] mode.
+					</div>
+				}
+				else
+				{
+					<InputSelect id="modal-connectionMode" @bind-Value="Provider.ConnectionMode" class="form-select">
+						@foreach (var mode in supportedModes)
+						{
+							<option value="@mode">@mode</option>
+						}
+					</InputSelect>
+				}
 			</div>
 
 			@if (Provider.ConnectionMode == ProviderConnectionMode.CLI)
@@ -45,20 +61,24 @@
 						placeholder="@GetExecutablePlaceholder()" />
 					<div class="form-text">@GetExecutableHelpText()</div>
 				</div>
-
-				<div class="mb-3">
-					<label for="modal-workingDirectory" class="form-label">Working Directory (optional)</label>
-					<InputText id="modal-workingDirectory" @bind-Value="Provider.WorkingDirectory" class="form-control"
-						placeholder="/path/to/working/directory" />
-				</div>
 			}
 			else
 			{
 				<div class="mb-3">
-					<label for="modal-apiEndpoint" class="form-label">API Endpoint</label>
+					<label for="modal-apiEndpoint" class="form-label">
+						API Endpoint <span class="text-danger">*</span>
+					</label>
 					<InputText id="modal-apiEndpoint" @bind-Value="Provider.ApiEndpoint" class="form-control"
 						placeholder="http://localhost:8080" />
 					<ValidationMessage For="@(() => Provider.ApiEndpoint)" class="text-danger small" />
+					@if (Provider.ConnectionMode == ProviderConnectionMode.REST &&
+									string.IsNullOrWhiteSpace(Provider.ApiEndpoint))
+					{
+						<div class="text-warning small mt-1">
+							<i class="bi bi-exclamation-triangle me-1"></i>
+							API Endpoint is required for REST connection mode.
+						</div>
+					}
 				</div>
 
 				<div class="mb-3">
@@ -72,6 +92,19 @@
 				<label for="modal-isEnabled" class="form-check-label">Enabled</label>
 			</div>
 
+			@if (ValidationErrors.Any())
+			{
+				<div class="alert alert-warning mb-3">
+					<strong>Please fix the following issues:</strong>
+					<ul class="mb-0 mt-2">
+						@foreach (var error in ValidationErrors)
+						{
+							<li>@error</li>
+						}
+					</ul>
+				</div>
+			}
+
 			@if (!string.IsNullOrEmpty(ErrorMessage))
 			{
 				<div class="alert alert-danger mb-3">@ErrorMessage</div>
@@ -84,7 +117,7 @@
 
 			<div class="d-flex gap-2 justify-content-end">
 				<button type="button" class="btn btn-secondary" @onclick="HandleCancel">Cancel</button>
-				<button type="submit" class="btn btn-primary" disabled="@IsSaving">
+				<button type="submit" class="btn btn-primary" disabled="@(IsSaving || ValidationErrors.Any())">
 					@if (IsSaving)
 					{
 						<span class="spinner-border spinner-border-sm me-1" role="status"></span>
@@ -122,6 +155,8 @@
 	private string? SuccessMessage { get; set; }
 	private bool _previousIsVisible;
 
+	private IReadOnlyList<string> ValidationErrors => ProviderCapabilities.ValidateConfiguration(Provider);
+
 	protected override void OnParametersSet()
 	{
 		// Only reset state when modal is opening (transitioning from hidden to visible)
@@ -139,28 +174,44 @@
 					Type = EditProvider.Type,
 					ConnectionMode = EditProvider.ConnectionMode,
 					ExecutablePath = EditProvider.ExecutablePath,
-					WorkingDirectory = EditProvider.WorkingDirectory,
 					ApiEndpoint = EditProvider.ApiEndpoint,
 					ApiKey = EditProvider.ApiKey,
 					IsEnabled = EditProvider.IsEnabled,
 					CreatedAt = EditProvider.CreatedAt,
 					LastConnectedAt = EditProvider.LastConnectedAt
 				};
+
+				// Ensure connection mode is valid for the provider type
+				if (!ProviderCapabilities.SupportsMode(Provider.Type, Provider.ConnectionMode))
+				{
+					Provider.ConnectionMode = ProviderCapabilities.GetDefaultMode(Provider.Type);
+				}
 			}
 			else
 			{
-				// Reset for new provider
-				Provider = new Provider();
+				// Reset for new provider with default settings
+				Provider = new Provider
+				{
+					ConnectionMode = ProviderCapabilities.GetDefaultMode(ProviderType.OpenCode)
+				};
 			}
 		}
 
 		_previousIsVisible = IsVisible;
 	}
 
+	private void OnProviderTypeChanged(ProviderType newType)
+	{
+		Provider.Type = newType;
+		// Update connection mode to default for the new provider type
+		Provider.ConnectionMode = ProviderCapabilities.GetDefaultMode(newType);
+	}
+
 	private string GetExecutablePlaceholder() => Provider.Type switch
 	{
 		ProviderType.OpenCode => "opencode or /path/to/opencode",
 		ProviderType.Claude => "claude or /path/to/claude",
+		ProviderType.Copilot => "github-copilot-cli or /path/to/github-copilot-cli",
 		_ => "executable name or path"
 	};
 
@@ -168,11 +219,20 @@
 	{
 		ProviderType.OpenCode => "Leave empty to use 'opencode' from PATH",
 		ProviderType.Claude => "Leave empty to use 'claude' from PATH",
+		ProviderType.Copilot => "Leave empty to use 'github-copilot-cli' from PATH",
 		_ => "Leave empty to use default executable from PATH"
 	};
 
 	private async Task HandleValidSubmit()
 	{
+		// Additional validation
+		var errors = ProviderCapabilities.ValidateConfiguration(Provider);
+		if (errors.Any())
+		{
+			ErrorMessage = string.Join(" ", errors);
+			return;
+		}
+
 		IsSaving = true;
 		ErrorMessage = null;
 		SuccessMessage = null;

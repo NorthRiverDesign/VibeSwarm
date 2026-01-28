@@ -1058,6 +1058,84 @@ public class CopilotProvider : ProviderBase
 		return string.Empty;
 	}
 
+	public override async Task<PromptResponse> GetPromptResponseAsync(
+		string prompt,
+		string? workingDirectory = null,
+		CancellationToken cancellationToken = default)
+	{
+		var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+
+		var execPath = GetExecutablePath();
+		if (string.IsNullOrEmpty(execPath))
+		{
+			return PromptResponse.Fail("GitHub Copilot CLI executable path is not configured.");
+		}
+
+		try
+		{
+			var effectiveWorkingDir = workingDirectory ?? _workingDirectory ?? Environment.CurrentDirectory;
+
+			// Use -p flag for simple non-interactive prompt response
+			// copilot -p "your basic prompt"
+			var args = $"-p \"{EscapeArgument(prompt)}\"";
+
+			var startInfo = new ProcessStartInfo
+			{
+				FileName = execPath,
+				Arguments = args,
+				WorkingDirectory = effectiveWorkingDir
+			};
+
+			// Configure for cross-platform with enhanced PATH
+			PlatformHelper.ConfigureForCrossPlatform(startInfo);
+
+			using var process = new Process { StartInfo = startInfo };
+
+			// Use a reasonable timeout for simple prompts (2 minutes)
+			using var timeoutCts = new CancellationTokenSource(TimeSpan.FromMinutes(2));
+			using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
+
+			process.Start();
+
+			// Close stdin immediately
+			try { process.StandardInput.Close(); } catch { }
+
+			var output = await process.StandardOutput.ReadToEndAsync(linkedCts.Token);
+			var error = await process.StandardError.ReadToEndAsync(linkedCts.Token);
+
+			try
+			{
+				await process.WaitForExitAsync(linkedCts.Token);
+			}
+			catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested)
+			{
+				try { process.Kill(entireProcessTree: true); } catch { }
+				return PromptResponse.Fail("Request timed out after 2 minutes.");
+			}
+
+			stopwatch.Stop();
+
+			if (process.ExitCode != 0 && !string.IsNullOrEmpty(error))
+			{
+				return PromptResponse.Fail($"GitHub Copilot CLI returned error: {error}");
+			}
+
+			return PromptResponse.Ok(output.Trim(), stopwatch.ElapsedMilliseconds, "copilot");
+		}
+		catch (System.ComponentModel.Win32Exception ex)
+		{
+			return PromptResponse.Fail($"Failed to start GitHub Copilot CLI: {ex.Message}");
+		}
+		catch (OperationCanceledException)
+		{
+			return PromptResponse.Fail("Request was cancelled.");
+		}
+		catch (Exception ex)
+		{
+			return PromptResponse.Fail($"Error executing GitHub Copilot CLI: {ex.Message}");
+		}
+	}
+
 	// JSON models for Copilot CLI output
 	// Note: JsonPropertyName attributes support both camelCase and snake_case from CLI
 	private class CopilotStreamEvent

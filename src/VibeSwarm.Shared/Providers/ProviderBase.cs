@@ -83,4 +83,9 @@ public abstract class ProviderBase : IProvider
         string? workingDirectory = null,
         string? fallbackOutput = null,
         CancellationToken cancellationToken = default);
+
+    public abstract Task<PromptResponse> GetPromptResponseAsync(
+        string prompt,
+        string? workingDirectory = null,
+        CancellationToken cancellationToken = default);
 }

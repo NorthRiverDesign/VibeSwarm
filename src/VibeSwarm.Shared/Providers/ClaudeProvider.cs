@@ -1277,6 +1277,138 @@ public class ClaudeProvider : ProviderBase
         public UsageInfo? Usage { get; set; }
     }
 
+    public override async Task<PromptResponse> GetPromptResponseAsync(
+        string prompt,
+        string? workingDirectory = null,
+        CancellationToken cancellationToken = default)
+    {
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+
+        if (ConnectionMode == ProviderConnectionMode.CLI)
+        {
+            var execPath = GetExecutablePath();
+            if (string.IsNullOrEmpty(execPath))
+            {
+                return PromptResponse.Fail("Claude executable path is not configured.");
+            }
+
+            try
+            {
+                var effectiveWorkingDir = workingDirectory ?? _workingDirectory ?? Environment.CurrentDirectory;
+
+                // Use -p flag for simple non-interactive prompt response
+                // claude -p "your query"
+                var args = $"-p \"{EscapeArgument(prompt)}\"";
+
+                var startInfo = new ProcessStartInfo
+                {
+                    FileName = execPath,
+                    Arguments = args,
+                    WorkingDirectory = effectiveWorkingDir
+                };
+
+                // Configure for cross-platform with enhanced PATH
+                PlatformHelper.ConfigureForCrossPlatform(startInfo);
+
+                using var process = new Process { StartInfo = startInfo };
+
+                // Use a reasonable timeout for simple prompts (2 minutes)
+                using var timeoutCts = new CancellationTokenSource(TimeSpan.FromMinutes(2));
+                using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
+
+                process.Start();
+
+                // Close stdin immediately
+                try { process.StandardInput.Close(); } catch { }
+
+                var output = await process.StandardOutput.ReadToEndAsync(linkedCts.Token);
+                var error = await process.StandardError.ReadToEndAsync(linkedCts.Token);
+
+                try
+                {
+                    await process.WaitForExitAsync(linkedCts.Token);
+                }
+                catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested)
+                {
+                    try { process.Kill(entireProcessTree: true); } catch { }
+                    return PromptResponse.Fail("Request timed out after 2 minutes.");
+                }
+
+                stopwatch.Stop();
+
+                if (process.ExitCode != 0 && !string.IsNullOrEmpty(error))
+                {
+                    return PromptResponse.Fail($"Claude CLI returned error: {error}");
+                }
+
+                return PromptResponse.Ok(output.Trim(), stopwatch.ElapsedMilliseconds, "claude");
+            }
+            catch (System.ComponentModel.Win32Exception ex)
+            {
+                return PromptResponse.Fail($"Failed to start Claude CLI: {ex.Message}");
+            }
+            catch (OperationCanceledException)
+            {
+                return PromptResponse.Fail("Request was cancelled.");
+            }
+            catch (Exception ex)
+            {
+                return PromptResponse.Fail($"Error executing Claude CLI: {ex.Message}");
+            }
+        }
+        else
+        {
+            // REST API mode
+            if (_httpClient == null)
+            {
+                return PromptResponse.Fail("REST API client is not configured.");
+            }
+
+            try
+            {
+                var request = new
+                {
+                    model = "claude-sonnet-4-20250514",
+                    max_tokens = 4096,
+                    messages = new[]
+                    {
+                        new { role = "user", content = prompt }
+                    }
+                };
+
+                var response = await _httpClient.PostAsJsonAsync("/v1/messages", request, cancellationToken);
+                response.EnsureSuccessStatusCode();
+
+                var result = await response.Content.ReadFromJsonAsync<ClaudeApiResponse>(JsonOptions, cancellationToken);
+
+                stopwatch.Stop();
+
+                if (result?.Content != null && result.Content.Length > 0)
+                {
+                    var text = string.Join("", result.Content
+                        .Where(c => c.Type == "text")
+                        .Select(c => c.Text));
+
+                    return PromptResponse.Ok(text, stopwatch.ElapsedMilliseconds, result.Model ?? "claude");
+                }
+
+                return PromptResponse.Fail("No response content received from Claude API.");
+            }
+            catch (HttpRequestException ex)
+            {
+                return PromptResponse.Fail($"HTTP error calling Claude API: {ex.Message}");
+            }
+            catch (OperationCanceledException)
+            {
+                return PromptResponse.Fail("Request was cancelled.");
+            }
+            catch (Exception ex)
+            {
+                return PromptResponse.Fail($"Error calling Claude API: {ex.Message}");
+            }
+        }
+    }
+
     private class ContentBlock
     {
         [JsonPropertyName("type")]
