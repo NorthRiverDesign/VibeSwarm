@@ -1,4 +1,4 @@
-[![VibeSwarm - AI Agent Orchestrator](./src/VibeSwarm.Web/wwwroot/img/logo_color.png)](https://github.com/NorthRiverDesign/VibeSwarm)
+[<img src="./src/VibeSwarm.Web/wwwroot/img/logo_color.png" alt="VibeSwarm - AI Agent Orchestrator" width="200" />](https://github.com/NorthRiverDesign/VibeSwarm)
 
 # VibeSwarm
 
