@@ -6,7 +6,7 @@
 
 <PageHeader Title="Providers" Subtitle="Manage your AI coding agent providers">
     <Actions>
-        <ActionButton Icon="plus" Text="Add Provider" OnClick="ShowAddModal" />
+        <ActionButton Icon="plus" Text="Add" OnClick="ShowAddModal" />
     </Actions>
 </PageHeader>
 
@@ -33,6 +33,14 @@
                 {
                     <div class="list-group-item p-3 hover-bg-tertiary @(provider.IsDefault ? "bg-success bg-opacity-10" : "")">
                         <div class="d-flex align-items-start gap-3">
+                            @* Enable toggle on left side *@
+                            <div class="flex-shrink-0 pt-1">
+                                <label class="toggle-switch" title="@(provider.IsEnabled ? "Disable" : "Enable")">
+                                    <input type="checkbox" checked="@provider.IsEnabled"
+                                        @onchange="() => ToggleEnabled(provider)" />
+                                    <span class="toggle-slider"></span>
+                                </label>
+                            </div>
                             <div class="flex-grow-1 min-width-0">
                                 <div class="d-flex align-items-center gap-2 flex-wrap">
                                     <span class="fw-semibold">@provider.Name</span>
@@ -58,32 +66,6 @@
                                         }
                                     </div>
                                 }
-                                @if (ProviderModels.TryGetValue(provider.Id, out var models) && models.Any())
-                                {
-                                    <div class="mt-2">
-                                        <span class="fw-medium small text-body-secondary">Models:</span>
-                                        <div class="d-flex flex-wrap gap-1 mt-1">
-                                            @foreach (var model in models.Where(m => m.IsAvailable).Take(5))
-                                            {
-                                                <span class="badge @(model.IsDefault ? "bg-primary" : "bg-secondary") bg-opacity-75"
-                                                    title="@model.ModelId">
-                                                    @(model.DisplayName ?? model.ModelId)
-                                                </span>
-                                            }
-                                            @if (models.Count(m => m.IsAvailable) > 5)
-                                            {
-                                                <span class="badge bg-secondary bg-opacity-50">+@(models.Count(m => m.IsAvailable) - 5)
-                                                    more</span>
-                                            }
-                                        </div>
-                                        @if (provider.LastModelsRefreshAt.HasValue)
-                                        {
-                                            <small class="text-body-tertiary d-block mt-1">
-                                                Updated @provider.LastModelsRefreshAt.Value.ToLocalTime().ToString("g")
-                                            </small>
-                                        }
-                                    </div>
-                                }
                                 @if (RefreshModelsErrors.TryGetValue(provider.Id, out var refreshError) &&
                                                         !string.IsNullOrEmpty(refreshError))
                                 {
@@ -95,19 +77,12 @@
                             </div>
                             <div class="d-flex align-items-center gap-2 flex-shrink-0">
                                 @* Test connection button *@
-                                        <ActionButton Icon="lightning" Text="Test" Outline="true" Size="ActionButton.ButtonSize.Small"
+                                <ActionButton Icon="lightning" Text="Test" Outline="true" Size="ActionButton.ButtonSize.Small"
                                     HideTextOnMobile="true" IsLoading="@(TestingId == provider.Id)"
                                     OnClick="@(() => TestConnection(provider))" />
 
-                                @* Enabled toggle *@
-                                        <label class="toggle-switch" title="@(provider.IsEnabled ? "Disable" : "Enable")">
-                                    <input type="checkbox" checked="@provider.IsEnabled"
-                                        @onchange="() => ToggleEnabled(provider)" />
-                                    <span class="toggle-slider"></span>
-                                </label>
-
                                 @* Gear dropdown menu *@
-                                        <div class="dropdown">
+                                <div class="dropdown">
                                     <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button"
                                         id="provider-menu-@provider.Id" data-bs-toggle="dropdown" aria-expanded="false"
                                         title="Provider actions">
@@ -154,6 +129,33 @@
                                 </div>
                             </div>
                         </div>
+                        @* Models section below main flex row *@
+                        @if (ProviderModels.TryGetValue(provider.Id, out var models) && models.Any())
+                        {
+                            <div class="mt-2 pt-2 border-top ms-5 ps-2">
+                                <span class="fw-medium small text-body-secondary">Models:</span>
+                                <div class="d-flex flex-wrap gap-1 mt-1">
+                                    @foreach (var model in models.Where(m => m.IsAvailable).Take(5))
+                                    {
+                                        <span class="badge @(model.IsDefault ? "bg-primary" : "bg-secondary") bg-opacity-75"
+                                            title="@model.ModelId">
+                                            @(model.DisplayName ?? model.ModelId)
+                                        </span>
+                                    }
+                                    @if (models.Count(m => m.IsAvailable) > 5)
+                                    {
+                                        <span class="badge bg-secondary bg-opacity-50">+@(models.Count(m => m.IsAvailable) - 5)
+                                            more</span>
+                                    }
+                                </div>
+                                @if (provider.LastModelsRefreshAt.HasValue)
+                                {
+                                    <small class="text-body-tertiary d-block mt-1">
+                                        Updated @provider.LastModelsRefreshAt.Value.ToLocalTime().ToString("g")
+                                    </small>
+                                }
+                            </div>
+                        }
                     </div>
                 }
             </div>
