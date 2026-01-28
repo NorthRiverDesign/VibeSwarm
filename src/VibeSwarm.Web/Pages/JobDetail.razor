@@ -25,7 +25,7 @@ else if (Job == null)
 else
 {
     @* Page Header - Full Width *@
-                            <div
+                                                <div
         class="d-flex flex-column flex-lg-row justify-content-between align-items-start gap-3 mb-3 mb-lg-4 pb-3 border-bottom">
         <div class="flex-grow-1 min-width-0 w-100 w-lg-auto">
             <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
@@ -37,7 +37,7 @@ else
                 }
             </div>
             @* Repository and Branch Info *@
-                                    @if (!string.IsNullOrEmpty(Job.Project?.GitHubRepository) || !string.IsNullOrEmpty(_branchName))
+                                                        @if (!string.IsNullOrEmpty(Job.Project?.GitHubRepository) || !string.IsNullOrEmpty(_branchName))
             {
                 <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
                     @if (!string.IsNullOrEmpty(Job.Project?.GitHubRepository))
@@ -82,7 +82,7 @@ else
                 </div>
             </div>
             @* Stats Row - Token usage and cost *@
-                                    @if (Job.ModelUsed != null || Job.InputTokens.HasValue || Job.OutputTokens.HasValue ||
+                                                        @if (Job.ModelUsed != null || Job.InputTokens.HasValue || Job.OutputTokens.HasValue ||
                     Job.TotalCostUsd.HasValue || Job.RetryCount > 0)
             {
                 <div
@@ -163,9 +163,9 @@ else
     </div>
 
     @* Main Content - Column Layout *@
-                            <div class="row g-3 g-lg-4 job-detail-content mx-0">
+                                                <div class="row g-3 g-lg-4 job-detail-content mx-0">
         @* Left Column - Goal & Output on mobile first *@
-                                <div class="col-12 col-xl-5 order-2 order-xl-1 px-0 px-lg-3">
+                                                    <div class="col-12 col-xl-5 order-2 order-xl-1 px-0 px-lg-3">
             <div class="card mb-3 mb-lg-4">
                 <div class="card-header bg-body-secondary d-flex justify-content-between align-items-center">
                     <h5 class="mb-0 fw-semibold"><i class="bi bi-bullseye me-2 opacity-75"></i>Goal Prompt</h5>
@@ -211,7 +211,7 @@ else
             </div>
 
             @* User Interaction Section - shown when job is paused waiting for input *@
-                                    @if (Job.Status == JobStatus.Paused && !string.IsNullOrEmpty(Job.PendingInteractionPrompt))
+                                                        @if (Job.Status == JobStatus.Paused && !string.IsNullOrEmpty(Job.PendingInteractionPrompt))
             {
                 <div class="card mb-3 mb-lg-4 border-warning">
                     <div class="card-header bg-warning bg-opacity-25 d-flex align-items-center">
@@ -438,7 +438,7 @@ else
                 </div>
 
                 @* Commit Section - shown when there are git changes *@
-                                                                <div class="card mb-3 mb-lg-4">
+                                                                                                        <div class="card mb-3 mb-lg-4">
                     <div class="card-header bg-body-secondary d-flex justify-content-between align-items-center">
                         <div class="d-flex align-items-center">
                             <i class="bi bi-cloud-upload me-2 opacity-75"></i>
@@ -457,7 +457,15 @@ else
                         <div class="card-body">
                             <label for="commitMessage" class="form-label d-flex flex-wrap align-items-center gap-2 mb-2">
                                 <span>Commit Message</span>
-                                @if (!string.IsNullOrWhiteSpace(Job.SessionSummary))
+                                @if (_isLoadingSummary)
+                                {
+                                    <span class="badge bg-secondary">
+                                        <span class="spinner-border spinner-border-sm me-1" role="status"
+                                            style="width: 0.75rem; height: 0.75rem;"></span>
+                                        Generating...
+                                    </span>
+                                }
+                                else if (!string.IsNullOrWhiteSpace(Job.SessionSummary))
                                 {
                                     <span class="badge bg-info">
                                         <i class="bi bi-robot me-1"></i>AI Generated
@@ -465,7 +473,19 @@ else
                                 }
                             </label>
                             <textarea id="commitMessage" class="commit-message-input" @bind="_commitMessage" @bind:event="oninput"
-                                placeholder="Enter a descriptive commit message..." rows="3" disabled="@_isPushing"></textarea>
+                                placeholder="@(_isLoadingSummary ? "Generating commit message..." : "Enter a descriptive commit message...")"
+                                rows="3" disabled="@_isPushing"></textarea>
+
+                            @if (!string.IsNullOrEmpty(_summaryError))
+                            {
+                                <div class="alert alert-warning mt-2 mb-0 py-2 px-3 small">
+                                    <i class="bi bi-exclamation-triangle me-1"></i>
+                                    @_summaryError
+                                    <button type="button" class="btn btn-sm btn-outline-warning ms-2" @onclick="RefreshSummary">
+                                        <i class="bi bi-arrow-repeat"></i> Retry
+                                    </button>
+                                </div>
+                            }
 
                             @if (!string.IsNullOrEmpty(_pushError))
                             {
@@ -551,7 +571,7 @@ else
         </div>
 
         @* Right Column - Conversation Messages (shows first on mobile) *@
-                                <div class="col-12 col-xl-7 order-1 order-xl-2 px-0 px-lg-3">
+                                                    <div class="col-12 col-xl-7 order-1 order-xl-2 px-0 px-lg-3">
             <div class="card">
                 <div class="card-header bg-body-secondary d-flex justify-content-between align-items-center">
                     <h5 class="mb-0 fw-semibold"><i class="bi bi-chat-dots me-2 opacity-75"></i>Conversation</h5>
@@ -716,6 +736,9 @@ else
     private bool _isPushing = false;
     private bool _isCheckingGitDiff = false;
     private bool _isLoadingGitDiff = false; // Loading state after job completes
+    private bool _isLoadingSummary = false; // Loading state for session summary
+    private string? _gitDiffError = null; // Error message if git diff check fails
+    private string? _summaryError = null; // Error message if summary generation fails
     private string _pushStatus = "Pushing...";
     private string? _pushError = null;
     private bool _changesPushed = false;
@@ -923,58 +946,102 @@ else
                 Job.ErrorMessage = errorMessage;
             }
 
-            // Show loading indicator for git diff section while we wait for it to be captured
+            // Show loading indicators for git diff and summary sections while we wait
             if (success)
             {
                 _isLoadingGitDiff = true;
+                _isLoadingSummary = true;
+                _gitDiffError = null;
+                _summaryError = null;
             }
             await InvokeAsync(StateHasChanged);
         }
 
-        // Wait a moment for the git diff to be captured in the database
-        // The job completion saves the git diff, but there may be a small delay
-        await Task.Delay(1500);
+        // Do initial refresh attempt with minimal delay to catch quick completions
+        await Task.Delay(500);
 
-        // Also do a full refresh to get complete data (git diff, etc.)
-        if (!_isRefreshing)
+        // Refresh job data - the git diff and session summary should now be captured
+        await InvokeAsync(async () =>
         {
-            await InvokeAsync(async () =>
+            await RefreshJobSafely();
+
+            // Check if we got the data we need
+            var hasGitDiff = Job != null && !string.IsNullOrEmpty(Job.GitDiff);
+            var hasSummary = Job != null && !string.IsNullOrWhiteSpace(Job.SessionSummary);
+
+            // If we have both, we're done
+            if (hasGitDiff && hasSummary)
             {
+                _isLoadingGitDiff = false;
+                _isLoadingSummary = false;
+                StateHasChanged();
+                return;
+            }
+
+            // If we don't have the data yet, retry a few times with increasing delays
+            var retryDelays = new[] { 1000, 2000, 3000 };
+            foreach (var delay in retryDelays)
+            {
+                await Task.Delay(delay);
                 await RefreshJobSafely();
 
-                // If still no git diff after refresh, actively fetch it from the working directory
-                if (Job != null && string.IsNullOrEmpty(Job.GitDiff) && _isLoadingGitDiff && success)
-                {
-                    // Give it one more try after an additional delay
-                    await Task.Delay(1000);
-                    await RefreshJobSafely();
+                hasGitDiff = Job != null && !string.IsNullOrEmpty(Job.GitDiff);
+                hasSummary = Job != null && !string.IsNullOrWhiteSpace(Job.SessionSummary);
 
-                    // If still no diff, actively check the working directory
-                    if (string.IsNullOrEmpty(Job.GitDiff) && Job.Project?.WorkingPath != null)
-                    {
-                        try
-                        {
-                            await CheckGitDiffAsync();
-                        }
-                        catch (Exception ex)
-                        {
-                            Console.WriteLine($"Error auto-checking git diff: {ex.Message}");
-                        }
-                    }
+                if (hasGitDiff && hasSummary)
+                {
+                    _isLoadingGitDiff = false;
+                    _isLoadingSummary = false;
+                    StateHasChanged();
+                    return;
                 }
 
-                // Clear loading state after we've attempted to get the data
-                _isLoadingGitDiff = false;
+                // Update the UI with what we have so far
+                if (hasGitDiff)
+                {
+                    _isLoadingGitDiff = false;
+                }
+                if (hasSummary)
+                {
+                    _isLoadingSummary = false;
+                }
                 StateHasChanged();
-            });
-        }
-        else
-        {
-            // If we couldn't refresh, still clear loading state after a timeout
-            await Task.Delay(3000);
+            }
+
+            // If we still don't have git diff after retries, try to actively fetch it
+            if (!hasGitDiff && success && Job?.Project?.WorkingPath != null)
+            {
+                try
+                {
+                    await CheckGitDiffAsync();
+                    // Refresh again to get the updated data
+                    await RefreshJobSafely();
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error auto-checking git diff: {ex.Message}");
+                    _gitDiffError = "Failed to load git changes. Click 'Check again' to retry.";
+                }
+            }
+
+            // Clear loading states and set appropriate error messages
             _isLoadingGitDiff = false;
-            await InvokeAsync(StateHasChanged);
-        }
+            _isLoadingSummary = false;
+
+            if (Job != null && string.IsNullOrEmpty(Job.GitDiff) && success)
+            {
+                // No git diff could be found - may have no changes
+                _gitDiffError = null; // No error, just no changes detected
+            }
+
+            if (Job != null && string.IsNullOrWhiteSpace(Job.SessionSummary) && success && !string.IsNullOrEmpty(Job.GitDiff))
+            {
+                // We have changes but no summary - try to generate one client-side as fallback
+                _summaryError = "Summary generation is in progress. You can write your own commit message.";
+            }
+
+            StateHasChanged();
+        });
     }
 
     [JSInvokable]
@@ -1038,15 +1105,22 @@ else
     {
         Console.WriteLine($"[Blazor] OnJobGitDiffUpdated: {jobId}, hasChanges: {hasChanges}");
 
-        // Reload job data to get the updated git diff
+        // Clear any error state since we're getting an update
+        _gitDiffError = null;
+
+        // Reload job data to get the updated git diff and session summary
         if (!_isRefreshing)
         {
             await InvokeAsync(async () =>
             {
                 await RefreshJobSafely();
 
-                // Clear loading state now that we have the git diff data
+                // Clear loading states now that we have the data
                 _isLoadingGitDiff = false;
+                if (Job != null && !string.IsNullOrWhiteSpace(Job.SessionSummary))
+                {
+                    _isLoadingSummary = false;
+                }
                 StateHasChanged();
             });
         }
@@ -1193,11 +1267,18 @@ else
         {
             Job = await JobService.GetByIdWithMessagesAsync(JobId);
 
-            // Pre-populate commit message from session summary if available and not already set
-            if (!_commitMessageInitialized && Job != null && !string.IsNullOrWhiteSpace(Job.SessionSummary))
+            // Pre-populate commit message from session summary if available and not already manually edited
+            // We update the commit message whenever the session summary changes AND the user hasn't manually edited it
+            if (Job != null && !string.IsNullOrWhiteSpace(Job.SessionSummary))
             {
-                _commitMessage = Job.SessionSummary;
-                _commitMessageInitialized = true;
+                // Only update if the user hasn't typed anything (empty or still matches previous summary)
+                if (string.IsNullOrWhiteSpace(_commitMessage) || !_commitMessageInitialized)
+                {
+                    _commitMessage = Job.SessionSummary;
+                    _commitMessageInitialized = true;
+                    _isLoadingSummary = false;
+                    _summaryError = null;
+                }
             }
 
             // Check if job results have already been committed
@@ -1442,12 +1523,53 @@ else
         }
     }
 
+    private async Task RefreshSummary()
+    {
+        if (Job == null) return;
+
+        _isLoadingSummary = true;
+        _summaryError = null;
+        StateHasChanged();
+
+        try
+        {
+            // Refresh the job data to check if the session summary has been generated
+            await RefreshJobSafely();
+
+            if (Job != null && string.IsNullOrWhiteSpace(Job.SessionSummary) && !string.IsNullOrEmpty(Job.GitDiff))
+            {
+                // If we still don't have a summary but have a diff, generate one locally
+                var localSummary = VibeSwarm.Shared.Services.JobSummaryGenerator.GenerateSummary(Job);
+                if (!string.IsNullOrWhiteSpace(localSummary))
+                {
+                    _commitMessage = localSummary;
+                    _commitMessageInitialized = true;
+                }
+                else
+                {
+                    _summaryError = "Unable to generate a summary. Please write your own commit message.";
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error refreshing summary: {ex.Message}");
+            _summaryError = "Failed to refresh summary. Please try again or write your own commit message.";
+        }
+        finally
+        {
+            _isLoadingSummary = false;
+            StateHasChanged();
+        }
+    }
+
     private async Task CheckGitDiffAsync()
     {
         if (Job?.Project?.WorkingPath == null || _isCheckingGitDiff)
             return;
 
         _isCheckingGitDiff = true;
+        _gitDiffError = null;
         StateHasChanged();
 
         try
@@ -1463,10 +1585,23 @@ else
             // The SignalR notification will trigger a refresh, but also refresh immediately
             // in case SignalR is delayed
             await RefreshJobSafely();
+
+            // If we now have a diff but no commit message, try to generate one
+            if (!string.IsNullOrEmpty(gitDiff) && string.IsNullOrWhiteSpace(_commitMessage))
+            {
+                var localSummary = VibeSwarm.Shared.Services.JobSummaryGenerator.GenerateSummary(
+                gitDiff, Job.GoalPrompt, Job.ConsoleOutput);
+                if (!string.IsNullOrWhiteSpace(localSummary))
+                {
+                    _commitMessage = localSummary;
+                    _commitMessageInitialized = true;
+                }
+            }
         }
         catch (Exception ex)
         {
             Console.WriteLine($"Error checking git diff: {ex.Message}");
+            _gitDiffError = $"Failed to check git changes: {ex.Message}";
             ErrorMessage = $"Error checking git changes: {ex.Message}";
         }
         finally

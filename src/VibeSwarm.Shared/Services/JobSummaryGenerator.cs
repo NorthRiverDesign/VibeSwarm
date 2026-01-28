@@ -21,7 +21,9 @@ public static partial class JobSummaryGenerator
 		"improve", "improved", "enhance", "enhanced", "optimize", "optimized",
 		"move", "moved", "rename", "renamed",
 		"configure", "configured", "setup", "set up",
-		"test", "tested"
+		"test", "tested",
+		"review", "reviewed", "audit", "audited", "check", "checked",
+		"secure", "secured", "harden", "hardened"
 	];
 
 	/// <summary>
@@ -103,7 +105,7 @@ public static partial class JobSummaryGenerator
 			}
 			// Parse shortstat line: "3 files changed, 42 insertions(+), 8 deletions(-)"
 			else if (line.Contains("file") && line.Contains("changed") &&
-			         (line.Contains("insertion") || line.Contains("deletion")))
+					 (line.Contains("insertion") || line.Contains("deletion")))
 			{
 				ParseStatLine(line, info);
 			}
@@ -176,6 +178,8 @@ public static partial class JobSummaryGenerator
 			"move" or "moved" or "rename" or "renamed" => "Rename",
 			"configure" or "configured" or "setup" or "set up" => "Configure",
 			"test" or "tested" => "Add tests for",
+			"review" or "reviewed" or "audit" or "audited" or "check" or "checked" => "Review",
+			"secure" or "secured" or "harden" or "hardened" => "Secure",
 			_ => char.ToUpper(verb[0]) + verb[1..].ToLower()
 		};
 	}
