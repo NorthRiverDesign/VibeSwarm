@@ -15,9 +15,9 @@
 else
 {
     @* Mobile: Project filter dropdown *@
-    <div class="d-lg-none mb-3">
-        <div class="d-flex align-items-center gap-2">
-            <select class="form-select form-select-sm" @onchange="OnProjectFilterChanged">
+        <div class="d-lg-none mb-3 jobs-mobile-filters">
+        <div class="d-flex flex-column gap-2">
+            <select class="form-select form-select-sm w-100" @onchange="OnProjectFilterChanged">
                 <option value="" selected="@(_selectedProjectId == null)">All Projects</option>
                 @foreach (var project in _projects)
                 {
@@ -26,31 +26,33 @@ else
                     </option>
                 }
             </select>
-            <div class="d-flex gap-1">
+            <div class="btn-group w-100" role="group" aria-label="Status filter">
                 <button type="button" class="btn btn-sm @(_statusFilter == "all" ? "btn-primary" : "btn-outline-secondary")"
-                        @onclick='() => SetStatusFilter("all")' title="All">
-                    <i class="bi bi-inbox"></i>
+                    @onclick='() => SetStatusFilter("all")' title="All">
+                    <i class="bi bi-inbox me-1"></i><span class="d-none d-sm-inline">All</span>
                 </button>
                 <button type="button" class="btn btn-sm @(_statusFilter == "active" ? "btn-info" : "btn-outline-secondary")"
-                        @onclick='() => SetStatusFilter("active")' title="Active">
-                    <i class="bi bi-play-circle"></i>
+                    @onclick='() => SetStatusFilter("active")' title="Active">
+                    <i class="bi bi-play-circle me-1"></i><span class="d-none d-sm-inline">Active</span>
                 </button>
-                <button type="button" class="btn btn-sm @(_statusFilter == "completed" ? "btn-success" : "btn-outline-secondary")"
-                        @onclick='() => SetStatusFilter("completed")' title="Completed">
-                    <i class="bi bi-check-circle"></i>
+                <button type="button"
+                    class="btn btn-sm @(_statusFilter == "completed" ? "btn-success" : "btn-outline-secondary")"
+                    @onclick='() => SetStatusFilter("completed")' title="Completed">
+                    <i class="bi bi-check-circle me-1"></i><span class="d-none d-sm-inline">Done</span>
                 </button>
-                <button type="button" class="btn btn-sm @(_statusFilter == "failed" ? "btn-danger" : "btn-outline-secondary")"
-                        @onclick='() => SetStatusFilter("failed")' title="Failed">
-                    <i class="bi bi-x-circle"></i>
+                <button type="button"
+                    class="btn btn-sm @(_statusFilter == "failed" ? "btn-danger" : "btn-outline-secondary")"
+                    @onclick='() => SetStatusFilter("failed")' title="Failed">
+                    <i class="bi bi-x-circle me-1"></i><span class="d-none d-sm-inline">Failed</span>
                 </button>
             </div>
         </div>
     </div>
 
     @* Desktop: Inbox-style split layout *@
-    <div class="jobs-inbox-layout">
+        <div class="jobs-inbox-layout">
         @* Project Sidebar (desktop only) *@
-        <aside class="jobs-project-sidebar d-none d-lg-flex flex-column border-end">
+            <aside class="jobs-project-sidebar d-none d-lg-flex flex-column border-end">
             <div class="p-3 border-bottom">
                 <h5 class="mb-0 fw-semibold d-flex align-items-center gap-2">
                     <i class="bi bi-inbox"></i> Jobs
@@ -58,9 +60,9 @@ else
             </div>
             <div class="flex-grow-1 overflow-auto">
                 @* All Projects option *@
-                <button type="button" 
-                        class="project-filter-item w-100 text-start border-0 bg-transparent d-flex align-items-center gap-2 p-3 @(_selectedProjectId == null ? "active" : "")"
-                        @onclick="() => SelectProject(null)">
+                    <button type="button"
+                    class="project-filter-item w-100 text-start border-0 bg-transparent d-flex align-items-center gap-2 p-3 @(_selectedProjectId == null ? "active" : "")"
+                    @onclick="() => SelectProject(null)">
                     <i class="bi bi-collection"></i>
                     <span class="flex-grow-1">All Projects</span>
                     <span class="badge bg-secondary-subtle text-secondary-emphasis rounded-pill">@_jobs?.Count()</span>
@@ -69,13 +71,13 @@ else
                 <div class="border-top"></div>
 
                 @* Project list *@
-                @foreach (var project in _projects)
+                    @foreach (var project in _projects)
                 {
                     var jobCount = GetJobCountForProject(project.Id);
                     var activeCount = GetActiveCountForProject(project.Id);
                     <button type="button"
-                            class="project-filter-item w-100 text-start border-0 bg-transparent d-flex align-items-center gap-2 p-3 @(_selectedProjectId == project.Id ? "active" : "")"
-                            @onclick="() => SelectProject(project.Id)">
+                        class="project-filter-item w-100 text-start border-0 bg-transparent d-flex align-items-center gap-2 p-3 @(_selectedProjectId == project.Id ? "active" : "")"
+                        @onclick="() => SelectProject(project.Id)">
                         <i class="bi bi-folder"></i>
                         <span class="flex-grow-1 text-truncate">@project.Name</span>
                         @if (activeCount > 0)
@@ -88,24 +90,28 @@ else
             </div>
 
             @* Status filter buttons in sidebar footer *@
-            <div class="p-3 border-top">
+                <div class="p-3 border-top">
                 <div class="btn-group w-100" role="group">
-                    <button type="button" class="btn btn-sm @(_statusFilter == "all" ? "btn-primary" : "btn-outline-secondary")"
-                            @onclick='() => SetStatusFilter("all")'>All</button>
-                    <button type="button" class="btn btn-sm @(_statusFilter == "active" ? "btn-info" : "btn-outline-secondary")"
-                            @onclick='() => SetStatusFilter("active")'>Active</button>
-                    <button type="button" class="btn btn-sm @(_statusFilter == "completed" ? "btn-success" : "btn-outline-secondary")"
-                            @onclick='() => SetStatusFilter("completed")'>Done</button>
-                    <button type="button" class="btn btn-sm @(_statusFilter == "failed" ? "btn-danger" : "btn-outline-secondary")"
-                            @onclick='() => SetStatusFilter("failed")'>Failed</button>
+                    <button type="button"
+                        class="btn btn-sm @(_statusFilter == "all" ? "btn-primary" : "btn-outline-secondary")"
+                        @onclick='() => SetStatusFilter("all")'>All</button>
+                    <button type="button"
+                        class="btn btn-sm @(_statusFilter == "active" ? "btn-info" : "btn-outline-secondary")"
+                        @onclick='() => SetStatusFilter("active")'>Active</button>
+                    <button type="button"
+                        class="btn btn-sm @(_statusFilter == "completed" ? "btn-success" : "btn-outline-secondary")"
+                        @onclick='() => SetStatusFilter("completed")'>Done</button>
+                    <button type="button"
+                        class="btn btn-sm @(_statusFilter == "failed" ? "btn-danger" : "btn-outline-secondary")"
+                        @onclick='() => SetStatusFilter("failed")'>Failed</button>
                 </div>
             </div>
         </aside>
 
         @* Job List Panel *@
-        <div class="jobs-list-panel flex-grow-1 d-flex flex-column">
+            <div class="jobs-list-panel flex-grow-1 d-flex flex-column">
             @* Stats header *@
-            @if (HasTokenData())
+                @if (HasTokenData())
             {
                 <div class="d-flex flex-wrap align-items-center gap-2 p-2 px-3 border-bottom bg-body-secondary small">
                     @if (GetTotalInputTokens() > 0 || GetTotalOutputTokens() > 0)
@@ -141,24 +147,19 @@ else
                 }
                 else if (!GetFilteredJobs().Any())
                 {
-                    <EmptyState Icon="@GetFilterEmptyIcon()" Title="@GetFilterEmptyTitle()" Message="@GetFilterEmptyMessage()" />
+                    <EmptyState Icon="@GetFilterEmptyIcon()" Title="@GetFilterEmptyTitle()"
+                        Message="@GetFilterEmptyMessage()" />
                 }
                 else
                 {
                     @foreach (var job in GetFilteredJobs())
                     {
-                        <JobListItem 
-                            Status="@job.Status.ToString()"
-                            Prompt="@job.GoalPrompt"
-                            ProjectName="@(job.Project?.Name ?? "Unknown")"
-                            ShowProjectName="@(_selectedProjectId == null)"
+                        <JobListItem Status="@job.Status.ToString()" Prompt="@job.GoalPrompt"
+                            ProjectName="@(job.Project?.Name ?? "Unknown")" ShowProjectName="@(_selectedProjectId == null)"
                             ModelUsed="@job.ModelUsed"
                             Activity="@((job.Status == JobStatus.Started || job.Status == JobStatus.Processing) ? (job.CurrentActivity ?? "Working...") : null)"
-                            TimeDisplay="@GetTimeDisplay(job)"
-                            Cost="@job.TotalCostUsd"
-                            InputTokens="@job.InputTokens"
-                            OutputTokens="@job.OutputTokens"
-                            OnClick="@(() => NavigateToJob(job.Id))" />
+                            TimeDisplay="@GetTimeDisplay(job)" Cost="@job.TotalCostUsd" InputTokens="@job.InputTokens"
+                            OutputTokens="@job.OutputTokens" OnClick="@(() => NavigateToJob(job.Id))" />
                     }
                 }
             </div>
@@ -365,9 +366,9 @@ else
         {
             var jobsTask = JobService.GetAllAsync();
             var projectsTask = ProjectService.GetAllAsync();
-            
+
             await Task.WhenAll(jobsTask, projectsTask);
-            
+
             _jobs = await jobsTask;
             _projects = await projectsTask;
         }
@@ -403,8 +404,8 @@ else
     }
 
     private int GetJobCountForProject(Guid projectId) => _jobs?.Count(j => j.ProjectId == projectId) ?? 0;
-    private int GetActiveCountForProject(Guid projectId) => _jobs?.Count(j => j.ProjectId == projectId && 
-        (j.Status == JobStatus.New || j.Status == JobStatus.Started || j.Status == JobStatus.Processing)) ?? 0;
+    private int GetActiveCountForProject(Guid projectId) => _jobs?.Count(j => j.ProjectId == projectId &&
+    (j.Status == JobStatus.New || j.Status == JobStatus.Started || j.Status == JobStatus.Processing)) ?? 0;
 
     private int GetActiveCount() => _jobs?.Count(j => j.Status == JobStatus.New || j.Status == JobStatus.Started || j.Status
     == JobStatus.Processing) ?? 0;
@@ -422,9 +423,9 @@ else
         if (_jobs == null) return Enumerable.Empty<Job>();
 
         // First filter by project if selected
-        var filtered = _selectedProjectId.HasValue 
-            ? _jobs.Where(j => j.ProjectId == _selectedProjectId.Value)
-            : _jobs;
+        var filtered = _selectedProjectId.HasValue
+        ? _jobs.Where(j => j.ProjectId == _selectedProjectId.Value)
+        : _jobs;
 
         // Then filter by status
         return _statusFilter switch

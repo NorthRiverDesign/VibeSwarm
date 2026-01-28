@@ -973,7 +973,7 @@ body.vs-modal-open {
     }
 
     .vs-modal-dialog .modal-header {
-        padding-top: calc(0.75rem + var(--vs-safe-area-top));
+        padding-top: calc(0.75rem + var(--vs-header-height) + var(--vs-safe-area-top));
         flex-shrink: 0;
     }
 
@@ -1635,4 +1635,41 @@ body.vs-modal-open {
     .jobs-list-panel > .overflow-auto {
         height: calc(100% - 50px);
     }
+}
+
+/* ============================================
+   Projects Page - Mobile Full Width
+============================================ */
+@media (max-width: 575.98px) {
+    /* Remove card styling on mobile for full-width feel */
+    .projects-card {
+        border-radius: 0;
+        border-left: none;
+        border-right: none;
+        margin-left: calc(-1 * (1rem + var(--vs-safe-area-left)));
+        margin-right: calc(-1 * (1rem + var(--vs-safe-area-right)));
+        width: calc(100% + 2rem + var(--vs-safe-area-left) + var(--vs-safe-area-right));
+    }
+    
+    /* Project filters full width on mobile */
+    .projects-filters {
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+    
+    .projects-filters .form-select,
+    .projects-filters .btn-group {
+        width: 100%;
+    }
+    
+    .projects-filters .btn-group .btn {
+        flex: 1;
+    }
+}
+
+/* ============================================
+   Jobs Page - Mobile Filters
+============================================ */
+.jobs-mobile-filters .btn-group .btn {
+    flex: 1;
 }
