@@ -660,15 +660,18 @@ public class OpenCodeProvider : ProviderBase
 
     public override async Task<ProviderInfo> GetProviderInfoAsync(CancellationToken cancellationToken = default)
     {
+        // Default fallback models if CLI query fails
+        var defaultModels = new List<string>
+        {
+            "anthropic/claude-sonnet-4-20250514",
+            "anthropic/claude-opus-4-20250514",
+            "openai/gpt-4o",
+            "openai/o1"
+        };
+
         var info = new ProviderInfo
         {
-            AvailableModels = new List<string>
-            {
-                "anthropic/claude-sonnet-4-20250514",
-                "anthropic/claude-opus-4-20250514",
-                "openai/gpt-4o",
-                "openai/o1"
-            },
+            AvailableModels = defaultModels,
             AvailableAgents = new List<AgentInfo>
             {
                 new() { Name = "build", Description = "Default, full access agent for development work", IsDefault = true },
@@ -694,11 +697,64 @@ public class OpenCodeProvider : ProviderBase
 
         if (ConnectionMode == ProviderConnectionMode.CLI)
         {
+            var execPath = GetExecutablePath();
+
+            // Fetch available models dynamically using `opencode models` command
             try
             {
-                var execPath = GetExecutablePath();
+                using var modelsTimeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+                using var modelsLinkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, modelsTimeoutCts.Token);
 
-                // Get version with timeout to avoid hanging
+                var modelsStartInfo = new ProcessStartInfo
+                {
+                    FileName = execPath,
+                    Arguments = "models"
+                };
+
+                // Configure for cross-platform with enhanced PATH
+                PlatformHelper.ConfigureForCrossPlatform(modelsStartInfo);
+
+                using var modelsProcess = new Process { StartInfo = modelsStartInfo };
+                modelsProcess.Start();
+
+                try
+                {
+                    var modelsOutput = await modelsProcess.StandardOutput.ReadToEndAsync(modelsLinkedCts.Token);
+                    await modelsProcess.WaitForExitAsync(modelsLinkedCts.Token);
+
+                    if (modelsProcess.ExitCode == 0 && !string.IsNullOrWhiteSpace(modelsOutput))
+                    {
+                        var models = ParseModelsOutput(modelsOutput);
+                        if (models.Count > 0)
+                        {
+                            info.AvailableModels = models;
+
+                            // Update pricing multipliers for dynamically discovered models
+                            foreach (var model in models)
+                            {
+                                if (!info.Pricing.ModelMultipliers.ContainsKey(model))
+                                {
+                                    // Assign default multiplier based on model name patterns
+                                    info.Pricing.ModelMultipliers[model] = GetDefaultModelMultiplier(model);
+                                }
+                            }
+                        }
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    try { modelsProcess.Kill(entireProcessTree: true); } catch { }
+                    info.AdditionalInfo["modelsWarning"] = "Timed out while fetching available models, using defaults";
+                }
+            }
+            catch (Exception ex)
+            {
+                info.AdditionalInfo["modelsWarning"] = $"Failed to fetch models: {ex.Message}, using defaults";
+            }
+
+            // Get version with timeout to avoid hanging
+            try
+            {
                 using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
                 using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
 
@@ -740,6 +796,120 @@ public class OpenCodeProvider : ProviderBase
         }
 
         return info;
+    }
+
+    /// <summary>
+    /// Parses the output of `opencode models` command to extract model names.
+    /// Filters out log/info lines and returns only valid model identifiers.
+    /// </summary>
+    private static List<string> ParseModelsOutput(string output)
+    {
+        var models = new List<string>();
+        var lines = output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+
+        foreach (var line in lines)
+        {
+            var trimmedLine = line.Trim();
+
+            // Skip empty lines
+            if (string.IsNullOrWhiteSpace(trimmedLine))
+                continue;
+
+            // Skip log/info lines (e.g., "INFO  2026-01-28T02:04:07 +77ms service=models.dev file={} refreshing")
+            // These typically start with INFO, WARN, ERROR, DEBUG, or contain timestamp patterns
+            if (IsLogLine(trimmedLine))
+                continue;
+
+            // Valid model names typically contain a slash (provider/model) or are simple identifiers
+            // They should not contain spaces or special log characters
+            if (IsValidModelName(trimmedLine))
+            {
+                models.Add(trimmedLine);
+            }
+        }
+
+        return models;
+    }
+
+    /// <summary>
+    /// Determines if a line appears to be a log/info line that should be filtered out.
+    /// </summary>
+    private static bool IsLogLine(string line)
+    {
+        // Check for common log level prefixes (case-insensitive)
+        var logPrefixes = new[] { "INFO", "WARN", "WARNING", "ERROR", "DEBUG", "TRACE", "FATAL" };
+        foreach (var prefix in logPrefixes)
+        {
+            if (line.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) &&
+                (line.Length == prefix.Length || char.IsWhiteSpace(line[prefix.Length]) || line[prefix.Length] == ':'))
+            {
+                return true;
+            }
+        }
+
+        // Check for timestamp patterns at the start (e.g., "2026-01-28" or "[2026-01-28")
+        if (line.Length > 10 && (char.IsDigit(line[0]) || line[0] == '[') && line.Contains('-') && line.Contains(':'))
+        {
+            // Likely a timestamp-prefixed log line
+            if (System.Text.RegularExpressions.Regex.IsMatch(line, @"^\[?\d{4}-\d{2}-\d{2}"))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Validates if a string looks like a valid model name.
+    /// </summary>
+    private static bool IsValidModelName(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+            return false;
+
+        // Model names should not contain spaces (log lines usually do)
+        if (name.Contains(' '))
+            return false;
+
+        // Model names typically follow patterns like "provider/model" or "model:tag"
+        // They should contain alphanumeric characters, slashes, colons, hyphens, underscores, or dots
+        foreach (var c in name)
+        {
+            if (!char.IsLetterOrDigit(c) && c != '/' && c != ':' && c != '-' && c != '_' && c != '.')
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Gets a default pricing multiplier based on the model name.
+    /// </summary>
+    private static decimal GetDefaultModelMultiplier(string modelName)
+    {
+        var lowerName = modelName.ToLowerInvariant();
+
+        // High-tier models (opus, large, max, etc.)
+        if (lowerName.Contains("opus") || lowerName.Contains("large") || lowerName.Contains("max") || lowerName.Contains("big"))
+            return 5.0m;
+
+        // Mid-tier models (sonnet, medium, pro)
+        if (lowerName.Contains("sonnet") || lowerName.Contains("medium") || lowerName.Contains("pro"))
+            return 1.0m;
+
+        // Low-tier models (haiku, mini, small, nano)
+        if (lowerName.Contains("haiku") || lowerName.Contains("mini") || lowerName.Contains("small") || lowerName.Contains("nano"))
+            return 0.25m;
+
+        // Local/Ollama models are typically free or very low cost
+        if (lowerName.StartsWith("ollama/") || lowerName.StartsWith("local/"))
+            return 0.01m;
+
+        // Default multiplier for unknown models
+        return 1.0m;
     }
 
     private string GetExecutablePath()
