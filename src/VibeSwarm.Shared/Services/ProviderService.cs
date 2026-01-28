@@ -326,6 +326,30 @@ public class ProviderService : IProviderService
         return await GetModelsAsync(providerId, cancellationToken);
     }
 
+    public async Task SetDefaultModelAsync(Guid providerId, Guid modelId, CancellationToken cancellationToken = default)
+    {
+        // Clear existing default for this provider
+        var existingDefaults = await _dbContext.ProviderModels
+            .Where(m => m.ProviderId == providerId && m.IsDefault)
+            .ToListAsync(cancellationToken);
+
+        foreach (var model in existingDefaults)
+        {
+            model.IsDefault = false;
+        }
+
+        // Set the new default
+        var newDefault = await _dbContext.ProviderModels
+            .FirstOrDefaultAsync(m => m.Id == modelId && m.ProviderId == providerId, cancellationToken);
+
+        if (newDefault != null)
+        {
+            newDefault.IsDefault = true;
+        }
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+    }
+
     private static string FormatModelDisplayName(string modelId)
     {
         // Convert model IDs like "claude-sonnet-4-20250514" to "Claude Sonnet 4"

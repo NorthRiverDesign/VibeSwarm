@@ -207,6 +207,23 @@ else
                             <div class="form-text">Leave empty to use the provider's default model.</div>
                         </div>
 
+                        @if (IsGitRepository && Branches.Any())
+                        {
+                            <div class="mb-3">
+                                <label for="branch" class="form-label">Branch</label>
+                                <InputSelect id="branch" @bind-Value="NewJob.Branch" class="form-select">
+                                    @foreach (var branch in Branches.Where(b => !b.IsRemote).OrderByDescending(b => b.Name ==
+                                                                CurrentBranch))
+                                    {
+                                        <option value="@branch.Name">
+                                            @branch.Name @(branch.Name == CurrentBranch ? "(current)" : "")
+                                        </option>
+                                    }
+                                </InputSelect>
+                                <div class="form-text">The branch where the AI agent will operate.</div>
+                            </div>
+                        }
+
                         <button type="submit" class="btn btn-primary w-100"
                             disabled="@(IsSaving || NewJob.ProviderId == Guid.Empty)">
                             @if (IsSaving)
@@ -530,6 +547,8 @@ else
                 CurrentBranch = await VersionControlService.GetCurrentBranchAsync(Project.WorkingPath);
                 CurrentCommitHash = await VersionControlService.GetCurrentCommitHashAsync(Project.WorkingPath);
                 SelectedBranch = CurrentBranch;
+                // Default the new job to operate on the current branch
+                NewJob.Branch = CurrentBranch;
                 await LoadBranches();
             }
         }

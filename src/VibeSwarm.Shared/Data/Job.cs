@@ -25,6 +25,13 @@ public class Job
     [StringLength(200)]
     public string? ModelUsed { get; set; }
 
+    /// <summary>
+    /// The git branch this job should operate within.
+    /// If specified, the worker will switch to this branch before starting the job.
+    /// </summary>
+    [StringLength(250)]
+    public string? Branch { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     public DateTime? StartedAt { get; set; }

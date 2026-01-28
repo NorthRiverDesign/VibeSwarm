@@ -41,6 +41,11 @@ public interface IProviderService
     /// Refreshes the available models for a provider by querying the provider and updating the database.
     /// </summary>
     Task<IEnumerable<ProviderModel>> RefreshModelsAsync(Guid providerId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Sets the default model for a provider. The default model will be pre-selected when creating new jobs.
+    /// </summary>
+    Task SetDefaultModelAsync(Guid providerId, Guid modelId, CancellationToken cancellationToken = default);
 }
 
 public class ConnectionTestResult
