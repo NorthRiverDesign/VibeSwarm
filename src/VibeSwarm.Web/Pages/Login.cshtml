@@ -9,91 +9,92 @@
 <!DOCTYPE html>
 <html lang="en" data-bs-theme="dark">
 
-<head>
-    <meta charset="utf-8" />
-    <script>
-        (function () {
-            const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-            document.documentElement.setAttribute('data-bs-theme', prefersDark ? 'dark' : 'light');
-        })();
-    </script>
-    <meta name="viewport"
-        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-    <title>Login - VibeSwarm</title>
-    <base href="~/" />
-    <link href="lib/bootstrap/css/bootstrap.min.css" rel="stylesheet" />
-    <link href="css/bootstrap-icons.min.css" rel="stylesheet" />
-    <link href="css/site.css" rel="stylesheet" />
-</head>
+    <head>
+        <meta charset="utf-8" />
+        <script>
+            (function () {
+                const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+                document.documentElement.setAttribute('data-bs-theme', prefersDark ? 'dark' : 'light');
+            })();
+        </script>
+        <meta name="viewport"
+            content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+        <title>Login - VibeSwarm</title>
+        <base href="~/" />
+        <link href="lib/bootstrap/css/bootstrap.min.css" rel="stylesheet" />
+        <link href="css/bootstrap-icons.min.css" rel="stylesheet" />
+        <link href="css/site.css" rel="stylesheet" />
+    </head>
 
-<body>
-    <div class="login-layout d-flex align-items-center justify-content-center min-vh-100"
-        style="background-image: url('/img/login_bg.jpg'); background-size: cover; background-position: center; background-repeat: no-repeat; background-attachment: fixed;">
-        <div class="position-absolute top-0 start-0 w-100 h-100" style="background-color: rgba(0, 0, 0, 0.5);"></div>
-        <div class="login-content position-relative w-100 px-3" style="z-index: 1; max-width: 100%;">
-            <div class="container-fluid">
-                <div class="row justify-content-center">
-                    <div class="col-12 col-sm-10 col-md-8 col-lg-5 col-xl-4">
-                        <div class="text-center mb-4">
-                            <img src="/img/logo_color.png" alt="VibeSwarm Logo" class="img-fluid"
-                                style="max-width: 200px;" />
-                        </div>
-                        @if (Model.NoUsersExist)
-                        {
-                            <div class="alert alert-warning mb-3" role="alert">
-                                <h5 class="alert-heading"><i class="bi bi-exclamation-triangle me-2"></i>Configuration
-                                    Warning</h5>
-                                <p class="mb-0">No users exist in the database. Please set
-                                    <code>DEFAULT_ADMIN_USER</code> and <code>DEFAULT_ADMIN_PASS</code> environment
-                                    variables in your <code>.env</code> file and restart the application.
-                                </p>
+    <body>
+        <div class="login-layout d-flex align-items-center justify-content-center min-vh-100"
+            style="background-image: url('/img/login_bg.jpg'); background-size: cover; background-position: center; background-repeat: no-repeat; background-attachment: fixed;">
+            <div class="position-absolute top-0 start-0 w-100 h-100" style="background-color: rgba(0, 0, 0, 0.5);">
+            </div>
+            <div class="login-content position-relative w-100 px-3" style="z-index: 1; max-width: 100%;">
+                <div class="container-fluid">
+                    <div class="row justify-content-center">
+                        <div class="col-12 col-sm-10 col-md-8 col-lg-5 col-xl-4">
+                            <div class="text-center mb-4">
+                                <img src="/img/logo_color.png" alt="VibeSwarm Logo" class="img-fluid"
+                                    style="max-width: 200px;" />
                             </div>
-                        }
-                        <div class="card shadow">
-                            <div class="card-body">
-                                <h3 class="card-title text-center mb-4">VibeSwarm Login</h3>
+                            @if (Model.NoUsersExist)
+                            {
+                                <div class="alert alert-info mb-3" role="alert">
+                                    <h5 class="alert-heading"><i class="bi bi-gear-fill me-2"></i>Setup Required</h5>
+                                    <p class="mb-2">No users exist in the database. Complete the initial setup to create
+                                        your administrator account.</p>
+                                    <a href="/setup" class="btn btn-primary">
+                                        <i class="bi bi-arrow-right-circle me-2"></i>Go to Setup
+                                    </a>
+                                </div>
+                            }
+                            <div class="card shadow">
+                                <div class="card-body">
+                                    <h3 class="card-title text-center mb-4">VibeSwarm Login</h3>
 
-                                @if (!string.IsNullOrEmpty(Model.ErrorMessage))
-                                {
-                                    <div class="alert alert-danger" role="alert">
-                                        @Model.ErrorMessage
-                                    </div>
-                                }
+                                    @if (!string.IsNullOrEmpty(Model.ErrorMessage))
+                                    {
+                                        <div class="alert alert-danger" role="alert">
+                                            @Model.ErrorMessage
+                                        </div>
+                                    }
 
-                                <form method="post">
-                                    <div class="mb-3">
-                                        <label for="username" class="form-label">Username</label>
-                                        <input type="text" id="username" name="Username" class="form-control"
-                                            placeholder="Enter username" required />
-                                    </div>
+                                    <form method="post">
+                                        <div class="mb-3">
+                                            <label for="username" class="form-label">Username</label>
+                                            <input type="text" id="username" name="Username" class="form-control"
+                                                placeholder="Enter username" required />
+                                        </div>
 
-                                    <div class="mb-3">
-                                        <label for="password" class="form-label">Password</label>
-                                        <input type="password" id="password" name="Password" class="form-control"
-                                            placeholder="Enter password" required />
-                                    </div>
+                                        <div class="mb-3">
+                                            <label for="password" class="form-label">Password</label>
+                                            <input type="password" id="password" name="Password" class="form-control"
+                                                placeholder="Enter password" required />
+                                        </div>
 
-                                    <div class="mb-3 form-check">
-                                        <input type="checkbox" id="rememberMe" name="RememberMe"
-                                            class="form-check-input" value="true" />
-                                        <label class="form-check-label" for="rememberMe">
-                                            Remember me
-                                        </label>
-                                    </div>
+                                        <div class="mb-3 form-check">
+                                            <input type="checkbox" id="rememberMe" name="RememberMe"
+                                                class="form-check-input" value="true" />
+                                            <label class="form-check-label" for="rememberMe">
+                                                Remember me
+                                            </label>
+                                        </div>
 
-                                    <div class="d-grid">
-                                        <button type="submit" class="btn btn-primary">
-                                            Login
-                                        </button>
-                                    </div>
-                                </form>
+                                        <div class="d-grid">
+                                            <button type="submit" class="btn btn-primary">
+                                                Login
+                                            </button>
+                                        </div>
+                                    </form>
+                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
-    </div>
-</body>
+    </body>
 
 </html>

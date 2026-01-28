@@ -36,7 +36,15 @@ git clone <repository-url>
 cd VibeSwarm
 ```
 
-### 2. Configure Authentication
+### 2. Configure Authentication (Optional)
+
+VibeSwarm supports two methods for creating the initial administrator account:
+
+#### Option A: Setup Wizard (Recommended for First-Time Users)
+
+Simply start the application without any configuration. On first run, you'll be automatically redirected to a setup wizard where you can create your admin account through a web interface.
+
+#### Option B: Environment Variables (Recommended for Automated Deployments)
 
 Create a `.env` file in the root directory:
 
@@ -44,6 +52,8 @@ Create a `.env` file in the root directory:
 DEFAULT_ADMIN_USER=admin
 DEFAULT_ADMIN_PASS=YourSecurePassword123!
 ```
+
+When these environment variables are set, the admin user is created automatically on startup without requiring the setup wizard.
 
 **Password Requirements:**
 
@@ -65,7 +75,7 @@ The application will:
 
 - Generate a self-signed HTTPS certificate (first run only)
 - Run database migrations
-- Create the admin user
+- Create the admin user (if credentials configured) or redirect to setup wizard
 - Start on:
   - HTTP: `http://localhost:5000`
   - HTTPS: `https://localhost:5001` (recommended)
@@ -79,7 +89,7 @@ Your browser will show a certificate warning because we're using a self-signed c
 - **Chrome/Edge**: Click "Advanced" → "Proceed to localhost"
 - **Firefox**: Click "Advanced" → "Accept the Risk and Continue"
 
-Login with the credentials you set in the `.env` file.
+If you configured credentials via environment variables, login with those credentials. Otherwise, complete the setup wizard to create your admin account.
 
 ## Running in Production
 
@@ -140,19 +150,34 @@ cp vibeswarm.db vibeswarm.db.backup
 
 ## Troubleshooting
 
-### No Admin User Created
+### Initial Setup
 
-Check the logs on startup. You should see:
+If no admin credentials are configured via environment variables, the application will:
+
+1. Automatically redirect to the setup wizard at `/setup`
+2. Allow you to create your admin account through the web interface
+3. Log you in automatically after account creation
+
+### Admin User Issues
+
+Check the logs on startup. You should see one of:
 
 ```
-info: Admin user 'admin' created successfully
+info: Admin user 'admin' created successfully from environment configuration
 info: Database initialized with 1 user(s)
 ```
 
-If you see a warning about missing credentials:
+Or if setup is required:
 
-1. Create a `.env` file with `DEFAULT_ADMIN_USER` and `DEFAULT_ADMIN_PASS`
-2. Restart the application
+```
+info: INITIAL SETUP REQUIRED
+info: Navigate to the application to complete setup.
+```
+
+If admin creation fails due to invalid password (when using env vars):
+
+1. Check that `DEFAULT_ADMIN_PASS` meets password requirements
+2. Or remove the env vars and use the setup wizard instead
 
 ### Certificate Issues
 

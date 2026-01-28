@@ -6,46 +6,43 @@ namespace VibeSwarm.Shared.Data;
 
 public static class DatabaseSeeder
 {
+    /// <summary>
+    /// Initializes the admin user if credentials are provided via environment variables.
+    /// If no credentials are configured, the setup page will be used instead.
+    /// </summary>
     public static async Task InitializeAdminUserAsync(
         UserManager<ApplicationUser> userManager,
         IConfiguration configuration,
         ILogger logger)
     {
-        // Validate configuration and warn about missing credentials
-        ValidateConfiguration(configuration, logger);
-
-        // Read admin credentials from environment variables or configuration
-        var adminUsername = Environment.GetEnvironmentVariable("DEFAULT_ADMIN_USER")
-            ?? configuration["DEFAULT_ADMIN_USER"]
-            ?? "admin";
-
-        var adminPassword = Environment.GetEnvironmentVariable("DEFAULT_ADMIN_PASS")
-            ?? configuration["DEFAULT_ADMIN_PASS"];
-
-        // Check if admin user already exists
-        var existingAdmin = await userManager.FindByNameAsync(adminUsername);
-        if (existingAdmin != null)
+        // Check if any users already exist
+        if (userManager.Users.Any())
         {
-            logger.LogInformation("Admin user '{Username}' already exists", adminUsername);
+            logger.LogInformation("Users already exist in the database, skipping admin initialization");
             return;
         }
 
-        // Generate a secure random password if not provided
-        bool passwordWasGenerated = false;
-        if (string.IsNullOrEmpty(adminPassword))
+        // Check if credentials are configured
+        var (hasCredentials, adminUsername, adminPassword) = GetConfiguredCredentials(configuration);
+
+        if (!hasCredentials)
         {
-            logger.LogWarning(
+            // No credentials configured - defer to setup page
+            logger.LogInformation(
                 "====================================================\n" +
-                "SECURITY WARNING: Application is MISCONFIGURED!\n" +
-                "DEFAULT_ADMIN_PASS environment variable is NOT SET.\n" +
-                "This is a security risk for production deployments.\n" +
+                "SETUP REQUIRED:\n" +
+                "No admin credentials configured (DEFAULT_ADMIN_USER/DEFAULT_ADMIN_PASS).\n" +
+                "The application will redirect to the setup page for initial configuration.\n" +
                 "====================================================");
 
-            adminPassword = GenerateSecurePassword();
-            passwordWasGenerated = true;
+            // Set environment flag to indicate setup is required
+            Environment.SetEnvironmentVariable("VIBESWARM_SETUP_REQUIRED", "true");
+            return;
         }
 
-        // Create the admin user
+        // Credentials are configured - create the admin user
+        logger.LogInformation("Admin credentials found, creating admin user '{Username}'", adminUsername);
+
         var adminUser = new ApplicationUser
         {
             UserName = adminUsername,
@@ -55,114 +52,76 @@ public static class DatabaseSeeder
             CreatedAt = DateTime.UtcNow
         };
 
-        var result = await userManager.CreateAsync(adminUser, adminPassword);
+        var result = await userManager.CreateAsync(adminUser, adminPassword!);
 
         if (result.Succeeded)
         {
-            logger.LogInformation("Admin user '{Username}' created successfully", adminUsername);
-
-            if (passwordWasGenerated)
-            {
-                logger.LogWarning(
-                    "====================================================\n" +
-                    "IMPORTANT: No DEFAULT_ADMIN_PASS was set!\n" +
-                    "A temporary password has been generated.\n" +
-                    "Username: {Username}\n" +
-                    "Password: {Password}\n" +
-                    "Please save this password - it will not be shown again!\n" +
-                    "Set DEFAULT_ADMIN_PASS in .env file for production.\n" +
-                    "====================================================",
-                    adminUsername,
-                    adminPassword);
-            }
-            else
-            {
-                logger.LogInformation("Admin user created with password from environment/configuration");
-            }
+            logger.LogInformation("Admin user '{Username}' created successfully from environment configuration", adminUsername);
+            Environment.SetEnvironmentVariable("VIBESWARM_SETUP_REQUIRED", "false");
         }
         else
         {
             var errors = string.Join(", ", result.Errors.Select(e => e.Description));
-            logger.LogError("Failed to create admin user: {Errors}", errors);
+            logger.LogError(
+                "====================================================\n" +
+                "ADMIN USER CREATION FAILED!\n" +
+                "Errors: {Errors}\n" +
+                "Please check your DEFAULT_ADMIN_PASS meets password requirements:\n" +
+                "- Minimum 8 characters\n" +
+                "- At least one uppercase letter\n" +
+                "- At least one lowercase letter\n" +
+                "- At least one digit\n" +
+                "====================================================",
+                errors);
+
+            // Set flag to indicate setup is needed due to invalid credentials
+            Environment.SetEnvironmentVariable("VIBESWARM_SETUP_REQUIRED", "true");
         }
-    }
-
-    private static string GenerateSecurePassword()
-    {
-        // Generate a secure random password that meets the default Identity requirements
-        // Requirements: 8+ chars, uppercase, lowercase, digit
-        const string uppercase = "ABCDEFGHJKLMNPQRSTUVWXYZ";
-        const string lowercase = "abcdefghijkmnopqrstuvwxyz";
-        const string digits = "23456789";
-        const string all = uppercase + lowercase + digits;
-
-        var random = new Random();
-        var password = new char[16];
-
-        // Ensure at least one of each required character type
-        password[0] = uppercase[random.Next(uppercase.Length)];
-        password[1] = lowercase[random.Next(lowercase.Length)];
-        password[2] = digits[random.Next(digits.Length)];
-
-        // Fill the rest randomly
-        for (int i = 3; i < password.Length; i++)
-        {
-            password[i] = all[random.Next(all.Length)];
-        }
-
-        // Shuffle the password
-        return new string(password.OrderBy(x => random.Next()).ToArray());
     }
 
     /// <summary>
-    /// Validates that authentication configuration is properly set up
+    /// Gets the configured admin credentials from environment variables or configuration.
+    /// Returns a tuple indicating if valid credentials are configured, and the username/password if so.
     /// </summary>
-    private static void ValidateConfiguration(IConfiguration configuration, ILogger logger)
+    private static (bool HasCredentials, string Username, string? Password) GetConfiguredCredentials(IConfiguration configuration)
     {
         var adminUserEnv = Environment.GetEnvironmentVariable("DEFAULT_ADMIN_USER");
         var adminPassEnv = Environment.GetEnvironmentVariable("DEFAULT_ADMIN_PASS");
         var adminUserConfig = configuration["DEFAULT_ADMIN_USER"];
         var adminPassConfig = configuration["DEFAULT_ADMIN_PASS"];
 
-        var hasUserConfigured = !string.IsNullOrWhiteSpace(adminUserEnv) || !string.IsNullOrWhiteSpace(adminUserConfig);
-        var hasPasswordConfigured = !string.IsNullOrWhiteSpace(adminPassEnv) || !string.IsNullOrWhiteSpace(adminPassConfig);
+        var adminUsername = adminUserEnv ?? adminUserConfig;
+        var adminPassword = adminPassEnv ?? adminPassConfig;
 
-        if (!hasUserConfigured && !hasPasswordConfigured)
+        // Both username and password must be configured for automatic user creation
+        var hasCredentials = !string.IsNullOrWhiteSpace(adminUsername) && !string.IsNullOrWhiteSpace(adminPassword);
+
+        // Default username to "admin" if only password is provided
+        if (string.IsNullOrWhiteSpace(adminUsername) && !string.IsNullOrWhiteSpace(adminPassword))
         {
-            logger.LogWarning(
-                "====================================================\n" +
-                "CONFIGURATION WARNING:\n" +
-                "Neither DEFAULT_ADMIN_USER nor DEFAULT_ADMIN_PASS are configured.\n" +
-                "Using default username 'admin' and auto-generated password.\n" +
-                "\n" +
-                "For production deployments, you MUST configure these:\n" +
-                "1. Create a .env file in the application root\n" +
-                "2. Set DEFAULT_ADMIN_USER=your-username\n" +
-                "3. Set DEFAULT_ADMIN_PASS=your-secure-password\n" +
-                "\n" +
-                "OR set them as environment variables in your deployment.\n" +
-                "====================================================");
+            adminUsername = "admin";
+            hasCredentials = true;
         }
-        else if (!hasPasswordConfigured)
+
+        return (hasCredentials, adminUsername ?? "admin", adminPassword);
+    }
+
+    /// <summary>
+    /// Checks if setup is required (no users exist and no env credentials configured).
+    /// This can be called from middleware to determine if redirect to setup is needed.
+    /// </summary>
+    public static bool IsSetupRequired(UserManager<ApplicationUser> userManager, IConfiguration configuration)
+    {
+        // If users exist, setup is not required
+        if (userManager.Users.Any())
         {
-            logger.LogWarning(
-                "====================================================\n" +
-                "SECURITY WARNING:\n" +
-                "DEFAULT_ADMIN_PASS is NOT configured!\n" +
-                "A random password will be generated and shown ONCE in logs.\n" +
-                "\n" +
-                "For production: Set DEFAULT_ADMIN_PASS in .env file or environment.\n" +
-                "====================================================");
+            return false;
         }
-        else if (!hasUserConfigured)
-        {
-            logger.LogInformation(
-                "Using default admin username 'admin'. " +
-                "To customize, set DEFAULT_ADMIN_USER in .env or environment.");
-        }
-        else
-        {
-            logger.LogInformation("Admin credentials configured from environment/configuration");
-        }
+
+        // Check if credentials are configured
+        var (hasCredentials, _, _) = GetConfiguredCredentials(configuration);
+
+        // Setup is required if no users exist and no credentials are configured
+        return !hasCredentials;
     }
 }

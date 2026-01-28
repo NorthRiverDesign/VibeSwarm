@@ -46,8 +46,15 @@ public class LoginModel : PageModel
 
     public bool NoUsersExist { get; set; }
 
-    public void OnGet()
+    public IActionResult OnGet()
     {
+        // Check if setup is required and redirect
+        var setupRequired = Environment.GetEnvironmentVariable("VIBESWARM_SETUP_REQUIRED") == "true";
+        if (setupRequired)
+        {
+            return Redirect("/setup");
+        }
+
         NoUsersExist = Environment.GetEnvironmentVariable("VIBESWARM_NO_USERS") == "true";
 
         ErrorMessage = Error switch
@@ -58,6 +65,8 @@ public class LoginModel : PageModel
             "exception" => "An error occurred during login. Please try again.",
             _ => null
         };
+
+        return Page();
     }
 
     public async Task<IActionResult> OnPostAsync()

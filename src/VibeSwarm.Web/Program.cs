@@ -155,29 +155,46 @@ using (var scope = app.Services.CreateScope())
     var dbContext = scope.ServiceProvider.GetRequiredService<VibeSwarmDbContext>();
     await dbContext.Database.MigrateAsync();
 
-    // Initialize admin user
+    // Initialize admin user (only if credentials are configured via env vars)
     var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
     var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
     await DatabaseSeeder.InitializeAdminUserAsync(userManager, builder.Configuration, logger);
 
-    // Check if users exist and set warning flag
+    // Check if users exist and set appropriate flags
     var userCount = userManager.Users.Count();
     if (userCount == 0)
     {
-        logger.LogWarning(
-            "====================================================\n" +
-            "WARNING: No users exist in the database!\n" +
-            "Admin user creation may have failed.\n" +
-            "Check that DEFAULT_ADMIN_USER and DEFAULT_ADMIN_PASS are set.\n" +
-            "The application will run but no one can log in until a user is created.\n" +
-            "====================================================");
-        // Set a flag that can be read by the login page
+        // Check if setup is required (no env credentials configured)
+        var setupRequired = DatabaseSeeder.IsSetupRequired(userManager, builder.Configuration);
+
+        if (setupRequired)
+        {
+            logger.LogInformation(
+                "====================================================\n" +
+                "INITIAL SETUP REQUIRED\n" +
+                "Navigate to the application to complete setup.\n" +
+                "You will be redirected to create your admin account.\n" +
+                "====================================================");
+            Environment.SetEnvironmentVariable("VIBESWARM_SETUP_REQUIRED", "true");
+        }
+        else
+        {
+            // Credentials were configured but user creation failed
+            logger.LogWarning(
+                "====================================================\n" +
+                "WARNING: No users exist in the database!\n" +
+                "Admin user creation may have failed.\n" +
+                "Check your DEFAULT_ADMIN_PASS meets password requirements.\n" +
+                "====================================================");
+        }
+
         Environment.SetEnvironmentVariable("VIBESWARM_NO_USERS", "true");
     }
     else
     {
         logger.LogInformation("Database initialized with {UserCount} user(s)", userCount);
         Environment.SetEnvironmentVariable("VIBESWARM_NO_USERS", "false");
+        Environment.SetEnvironmentVariable("VIBESWARM_SETUP_REQUIRED", "false");
     }
 }
 
@@ -185,6 +202,10 @@ app.UseHttpsRedirection();
 app.UseSecurityHeaders();
 app.UseStaticFiles();
 app.UseRouting();
+
+// Add setup required middleware before authentication
+// This ensures users are redirected to setup before auth checks
+app.UseSetupRequired();
 
 app.UseAuthentication();
 app.UseAuthorization();
@@ -196,3 +217,4 @@ app.MapHub<JobHub>("/jobhub");
 app.MapFallbackToPage("/_Host");
 
 app.Run();
+

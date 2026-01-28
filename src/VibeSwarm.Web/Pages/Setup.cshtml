@@ -1,0 +1,150 @@
+@page "/setup"
+@using Microsoft.AspNetCore.Authorization
+@attribute [AllowAnonymous]
+@model VibeSwarm.Web.Pages.SetupModel
+@{
+	Layout = null;
+}
+
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+
+	<head>
+		<meta charset="utf-8" />
+		<script>
+			(function () {
+				const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+				document.documentElement.setAttribute('data-bs-theme', prefersDark ? 'dark' : 'light');
+			})();
+		</script>
+		<meta name="viewport"
+			content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+		<title>Setup - VibeSwarm</title>
+		<base href="~/" />
+		<link href="lib/bootstrap/css/bootstrap.min.css" rel="stylesheet" />
+		<link href="css/bootstrap-icons.min.css" rel="stylesheet" />
+		<link href="css/site.css" rel="stylesheet" />
+	</head>
+
+	<body>
+		<div class="login-layout d-flex align-items-center justify-content-center min-vh-100"
+			style="background-image: url('/img/login_bg.jpg'); background-size: cover; background-position: center; background-repeat: no-repeat; background-attachment: fixed;">
+			<div class="position-absolute top-0 start-0 w-100 h-100" style="background-color: rgba(0, 0, 0, 0.5);">
+			</div>
+			<div class="login-content position-relative w-100 px-3" style="z-index: 1; max-width: 100%;">
+				<div class="container-fluid">
+					<div class="row justify-content-center">
+						<div class="col-12 col-sm-10 col-md-8 col-lg-5 col-xl-4">
+							<div class="text-center mb-4">
+								<img src="/img/logo_color.png" alt="VibeSwarm Logo" class="img-fluid"
+									style="max-width: 200px;" />
+							</div>
+							<div class="card shadow">
+								<div class="card-body">
+									<h3 class="card-title text-center mb-2">
+										<i class="bi bi-gear-fill me-2"></i>Initial Setup
+									</h3>
+									<p class="text-center text-muted mb-4">Create your administrator account</p>
+
+									@if (!string.IsNullOrEmpty(Model.ErrorMessage))
+									{
+										<div class="alert alert-danger" role="alert">
+											<i class="bi bi-exclamation-circle me-2"></i>@Model.ErrorMessage
+										</div>
+									}
+
+									@if (Model.ValidationErrors?.Any() == true)
+									{
+										<div class="alert alert-danger" role="alert">
+											<strong><i class="bi bi-exclamation-circle me-2"></i>Please fix the following
+												errors:</strong>
+											<ul class="mb-0 mt-2">
+												@foreach (var error in Model.ValidationErrors)
+												{
+													<li>@error</li>
+												}
+											</ul>
+										</div>
+									}
+
+									<form method="post">
+										<div class="mb-3">
+											<label for="username" class="form-label">
+												<i class="bi bi-person me-1"></i>Username
+											</label>
+											<input type="text" id="username" name="Username" class="form-control"
+												placeholder="Enter admin username" value="@Model.Username" required
+												pattern="^[a-zA-Z][a-zA-Z0-9._-]*$"
+												title="Username must start with a letter and contain only letters, numbers, dots, underscores, or hyphens" />
+											<div class="form-text">Username must start with a letter.</div>
+										</div>
+
+										<div class="mb-3">
+											<label for="email" class="form-label">
+												<i class="bi bi-envelope me-1"></i>Email <span
+													class="text-muted">(optional)</span>
+											</label>
+											<input type="email" id="email" name="Email" class="form-control"
+												placeholder="admin@example.com" value="@Model.Email" />
+											<div class="form-text">Optional email for the admin account.</div>
+										</div>
+
+										<div class="mb-3">
+											<label for="password" class="form-label">
+												<i class="bi bi-lock me-1"></i>Password
+											</label>
+											<input type="password" id="password" name="Password" class="form-control"
+												placeholder="Enter password" required minlength="8" />
+										</div>
+
+										<div class="mb-3">
+											<label for="confirmPassword" class="form-label">
+												<i class="bi bi-lock-fill me-1"></i>Confirm Password
+											</label>
+											<input type="password" id="confirmPassword" name="ConfirmPassword"
+												class="form-control" placeholder="Confirm password" required
+												minlength="8" />
+										</div>
+
+										<div class="alert alert-info mb-3">
+											<strong><i class="bi bi-shield-check me-2"></i>Password
+												Requirements:</strong>
+											<ul class="mb-0 mt-2 small">
+												<li>Minimum 8 characters</li>
+												<li>At least one uppercase letter (A-Z)</li>
+												<li>At least one lowercase letter (a-z)</li>
+												<li>At least one digit (0-9)</li>
+											</ul>
+										</div>
+
+										<div class="d-grid">
+											<button type="submit" class="btn btn-primary btn-lg">
+												<i class="bi bi-check-circle me-2"></i>Create Admin Account
+											</button>
+										</div>
+									</form>
+
+									<hr class="my-4" />
+
+									<div class="text-center small text-muted">
+										<p class="mb-1">
+											<i class="bi bi-lightbulb me-1"></i>
+											<strong>Tip:</strong> For future deployments, you can pre-configure admin
+											credentials
+										</p>
+										<p class="mb-0">
+											Set <code>DEFAULT_ADMIN_USER</code> and <code>DEFAULT_ADMIN_PASS</code>
+											environment variables
+											to skip this setup screen.
+										</p>
+									</div>
+								</div>
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	</body>
+
+</html>
