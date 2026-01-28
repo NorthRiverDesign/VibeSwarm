@@ -77,7 +77,7 @@
                                     }
                                 </div>
                                 @* Job Statistics Row *@
-                                @if (stats.TotalJobs > 0)
+                                        @if (stats.TotalJobs > 0)
                                 {
                                     <div class="d-flex flex-wrap gap-2 gap-md-3 mt-2 small">
                                         <span class="d-flex align-items-center gap-1 text-body-secondary" title="Total jobs">
@@ -108,7 +108,7 @@
                                     <div class="border-top pt-2 mt-2">
                                         <div class="d-flex align-items-center gap-2 small">
                                             <span class="text-body-tertiary">Latest:</span>
-                                            <a href="/jobs/@latestJob.Id"
+                                            <a href="/jobs/view/@latestJob.Id"
                                                 class="d-flex align-items-center gap-2 text-decoration-none">
                                                 <StatusBadge Status="@latestJob.Status.ToString()" />
                                                 <span class="text-truncate text-body-secondary"
@@ -124,7 +124,7 @@
                                         @foreach (var job in projectActiveJobs)
                                         {
                                             <div class="active-job-item">
-                                                <a href="/jobs/@job.Id"
+                                                <a href="/jobs/view/@job.Id"
                                                     class="d-flex align-items-center gap-2 text-decoration-none small">
                                                     <StatusBadge Status="@job.Status.ToString()" />
                                                     <span class="text-truncate" style="max-width: 200px;">@TruncateText(job.GoalPrompt,
@@ -141,7 +141,7 @@
                             </div>
                             <div class="d-flex align-items-center gap-2 flex-shrink-0">
                                 @* Gear dropdown menu *@
-                                <div class="dropdown">
+                                        <div class="dropdown">
                                     <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button"
                                         id="project-menu-@project.Id" data-bs-toggle="dropdown" aria-expanded="false"
                                         title="Project actions">

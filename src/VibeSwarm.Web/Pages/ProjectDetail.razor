@@ -143,7 +143,7 @@ else
 
     <div class="row g-3 g-lg-4">
         @* Create Job form first on mobile *@
-        <div class="col-12 col-lg-4 order-1 order-lg-2">
+            <div class="col-12 col-lg-4 order-1 order-lg-2">
             <div class="card">
                 <div class="card-header bg-body-secondary">
                     <h5 class="mb-0 fw-semibold">Create Job</h5>
@@ -222,7 +222,7 @@ else
         </div>
 
         @* Jobs list second on mobile *@
-        <div class="col-12 col-lg-8 order-2 order-lg-1">
+            <div class="col-12 col-lg-8 order-2 order-lg-1">
             <div class="card">
                 <div class="card-header bg-body-secondary">
                     <div class="d-flex justify-content-between align-items-center mb-2">
@@ -269,7 +269,7 @@ else
                                     <div class="d-flex justify-content-between align-items-start gap-2">
                                         <div class="d-flex align-items-start gap-2 flex-grow-1 min-width-0">
                                             @* Status Icon *@
-                                            <div class="flex-shrink-0 pt-1">
+                                                        <div class="flex-shrink-0 pt-1">
                                                 @switch (job.Status)
                                                 {
                                                     case JobStatus.Completed:
@@ -295,7 +295,7 @@ else
                                                 }
                                             </div>
                                             @* Job Content *@
-                                            <div class="flex-grow-1 min-width-0">
+                                                        <div class="flex-grow-1 min-width-0">
                                                 <a href="/jobs/@job.Id"
                                                     class="d-block text-decoration-none fw-medium text-truncate-lines-2">
                                                     @job.GoalPrompt
@@ -317,14 +317,14 @@ else
                                             </div>
                                         </div>
                                         @* Actions Dropdown *@
-                                        <div class="dropdown flex-shrink-0">
+                                                    <div class="dropdown flex-shrink-0">
                                             <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button"
                                                 data-bs-toggle="dropdown" aria-expanded="false">
                                                 <i class="bi bi-three-dots-vertical"></i>
                                             </button>
                                             <ul class="dropdown-menu dropdown-menu-end">
                                                 <li>
-                                                    <a class="dropdown-item" href="/jobs/@job.Id">
+                                                    <a class="dropdown-item" href="/jobs/view/@job.Id">
                                                         <i class="bi bi-eye me-2"></i>View Details
                                                     </a>
                                                 </li>
@@ -721,7 +721,7 @@ else
             var createdJob = await JobService.CreateAsync(NewJob);
 
             // Redirect to the job details page to watch progress in real-time
-            NavigationManager.NavigateTo($"/jobs/{createdJob.Id}");
+            NavigationManager.NavigateTo($"/jobs/view/{createdJob.Id}");
         }
         catch (Exception ex)
         {

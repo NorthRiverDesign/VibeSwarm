@@ -1,103 +1,180 @@
 @page "/jobs"
+@page "/jobs/{ProjectFilter:guid?}"
 @attribute [Authorize]
 @inject IJobService JobService
+@inject IProjectService ProjectService
 @inject NavigationManager NavigationManager
 @inject IJSRuntime JSRuntime
 @implements IAsyncDisposable
 @using System.Threading
 
-<PageHeader Title="Jobs" Subtitle="@($"{(_jobs?.Count() ?? 0)} total")" />
-
 @if (_isLoading)
 {
     <LoadingSpinner />
 }
-else if (_jobs == null || !_jobs.Any())
-{
-    <EmptyState Icon="list-check" Title="No jobs yet"
-        Message="Jobs are created when you run AI agent tasks on your projects.">
-        <a href="/projects" class="btn btn-sm btn-primary">
-            <i class="bi bi-folder me-1"></i>Go to Projects
-        </a>
-    </EmptyState>
-}
 else
 {
-    <div class="filter-buttons mb-3">
-        <button type="button" class="btn btn-sm @(_filter == "all" ? "btn-primary" : "btn-outline-secondary")"
-            @onclick='() => SetFilter("all")'>
-            All
-            <span class="badge bg-secondary ms-1">@_jobs.Count()</span>
-        </button>
-        <button type="button" class="btn btn-sm @(_filter == "active" ? "btn-primary" : "btn-outline-secondary")"
-            @onclick='() => SetFilter("active")'>
-            Active
-            <span class="badge bg-secondary ms-1">@GetActiveCount()</span>
-        </button>
-        <button type="button" class="btn btn-sm @(_filter == "completed" ? "btn-primary" : "btn-outline-secondary")"
-            @onclick='() => SetFilter("completed")'>
-            Completed
-            <span class="badge bg-secondary ms-1">@GetCompletedCount()</span>
-        </button>
-        <button type="button" class="btn btn-sm @(_filter == "failed" ? "btn-primary" : "btn-outline-secondary")"
-            @onclick='() => SetFilter("failed")'>
-            Failed
-            <span class="badge bg-secondary ms-1">@GetFailedCount()</span>
-        </button>
+    @* Mobile: Project filter dropdown *@
+    <div class="d-lg-none mb-3">
+        <div class="d-flex align-items-center gap-2">
+            <select class="form-select form-select-sm" @onchange="OnProjectFilterChanged">
+                <option value="" selected="@(_selectedProjectId == null)">All Projects</option>
+                @foreach (var project in _projects)
+                {
+                    <option value="@project.Id" selected="@(_selectedProjectId == project.Id)">
+                        @project.Name (@GetJobCountForProject(project.Id))
+                    </option>
+                }
+            </select>
+            <div class="d-flex gap-1">
+                <button type="button" class="btn btn-sm @(_statusFilter == "all" ? "btn-primary" : "btn-outline-secondary")"
+                        @onclick='() => SetStatusFilter("all")' title="All">
+                    <i class="bi bi-inbox"></i>
+                </button>
+                <button type="button" class="btn btn-sm @(_statusFilter == "active" ? "btn-info" : "btn-outline-secondary")"
+                        @onclick='() => SetStatusFilter("active")' title="Active">
+                    <i class="bi bi-play-circle"></i>
+                </button>
+                <button type="button" class="btn btn-sm @(_statusFilter == "completed" ? "btn-success" : "btn-outline-secondary")"
+                        @onclick='() => SetStatusFilter("completed")' title="Completed">
+                    <i class="bi bi-check-circle"></i>
+                </button>
+                <button type="button" class="btn btn-sm @(_statusFilter == "failed" ? "btn-danger" : "btn-outline-secondary")"
+                        @onclick='() => SetStatusFilter("failed")' title="Failed">
+                    <i class="bi bi-x-circle"></i>
+                </button>
+            </div>
+        </div>
     </div>
 
-    @* Token and Cost Summary *@
-    @if (HasTokenData())
-    {
-        <div class="d-flex flex-wrap gap-2 mb-3">
-            @if (GetTotalInputTokens() > 0)
-            {
-                <StatItem Label="Total Input" Value="@TokenHelper.FormatTokenCount(GetTotalInputTokens())" />
-            }
-            @if (GetTotalOutputTokens() > 0)
-            {
-                <StatItem Label="Total Output" Value="@TokenHelper.FormatTokenCount(GetTotalOutputTokens())" />
-            }
-            @if (GetTotalInputTokens() > 0 || GetTotalOutputTokens() > 0)
-            {
-                <StatItem Label="Total Tokens"
-                    Value="@TokenHelper.FormatTokenCount(GetTotalInputTokens() + GetTotalOutputTokens())" />
-            }
-            @if (GetTotalCost() > 0)
-            {
-                <StatItem Label="Total Cost" Value="@TokenHelper.FormatCost(GetTotalCost())" />
-            }
-        </div>
-    }
+    @* Desktop: Inbox-style split layout *@
+    <div class="jobs-inbox-layout">
+        @* Project Sidebar (desktop only) *@
+        <aside class="jobs-project-sidebar d-none d-lg-flex flex-column border-end">
+            <div class="p-3 border-bottom">
+                <h5 class="mb-0 fw-semibold d-flex align-items-center gap-2">
+                    <i class="bi bi-inbox"></i> Jobs
+                </h5>
+            </div>
+            <div class="flex-grow-1 overflow-auto">
+                @* All Projects option *@
+                <button type="button" 
+                        class="project-filter-item w-100 text-start border-0 bg-transparent d-flex align-items-center gap-2 p-3 @(_selectedProjectId == null ? "active" : "")"
+                        @onclick="() => SelectProject(null)">
+                    <i class="bi bi-collection"></i>
+                    <span class="flex-grow-1">All Projects</span>
+                    <span class="badge bg-secondary-subtle text-secondary-emphasis rounded-pill">@_jobs?.Count()</span>
+                </button>
 
-    @if (!GetFilteredJobs().Any())
-    {
-        <EmptyState Icon="@GetFilterEmptyIcon()" Title="@GetFilterEmptyTitle()" Message="@GetFilterEmptyMessage()" />
-    }
-    else
-    {
-        <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-3">
-            @foreach (var job in GetFilteredJobs())
+                <div class="border-top"></div>
+
+                @* Project list *@
+                @foreach (var project in _projects)
+                {
+                    var jobCount = GetJobCountForProject(project.Id);
+                    var activeCount = GetActiveCountForProject(project.Id);
+                    <button type="button"
+                            class="project-filter-item w-100 text-start border-0 bg-transparent d-flex align-items-center gap-2 p-3 @(_selectedProjectId == project.Id ? "active" : "")"
+                            @onclick="() => SelectProject(project.Id)">
+                        <i class="bi bi-folder"></i>
+                        <span class="flex-grow-1 text-truncate">@project.Name</span>
+                        @if (activeCount > 0)
+                        {
+                            <span class="badge bg-info rounded-pill">@activeCount</span>
+                        }
+                        <span class="badge bg-secondary-subtle text-secondary-emphasis rounded-pill">@jobCount</span>
+                    </button>
+                }
+            </div>
+
+            @* Status filter buttons in sidebar footer *@
+            <div class="p-3 border-top">
+                <div class="btn-group w-100" role="group">
+                    <button type="button" class="btn btn-sm @(_statusFilter == "all" ? "btn-primary" : "btn-outline-secondary")"
+                            @onclick='() => SetStatusFilter("all")'>All</button>
+                    <button type="button" class="btn btn-sm @(_statusFilter == "active" ? "btn-info" : "btn-outline-secondary")"
+                            @onclick='() => SetStatusFilter("active")'>Active</button>
+                    <button type="button" class="btn btn-sm @(_statusFilter == "completed" ? "btn-success" : "btn-outline-secondary")"
+                            @onclick='() => SetStatusFilter("completed")'>Done</button>
+                    <button type="button" class="btn btn-sm @(_statusFilter == "failed" ? "btn-danger" : "btn-outline-secondary")"
+                            @onclick='() => SetStatusFilter("failed")'>Failed</button>
+                </div>
+            </div>
+        </aside>
+
+        @* Job List Panel *@
+        <div class="jobs-list-panel flex-grow-1 d-flex flex-column">
+            @* Stats header *@
+            @if (HasTokenData())
             {
-                <div class="col">
-                    <JobCard Status="@job.Status.ToString()"
-                        IsCancelling="@(job.CancellationRequested && (job.Status == JobStatus.Started || job.Status == JobStatus.Processing))"
-                        ProjectName="@(job.Project?.Name ?? "Unknown")" ProviderName="@(job.Provider?.Name ?? "Unknown")"
-                        Prompt="@job.GoalPrompt"
-                        Activity="@((job.Status == JobStatus.Started || job.Status == JobStatus.Processing) ? (job.CurrentActivity ?? "Working...") : null)"
-                        TimeDisplay="@((job.Status != JobStatus.Started && job.Status != JobStatus.Processing) ? GetTimeDisplay(job) : null)"
-                        Cost="@job.TotalCostUsd" InputTokens="@job.InputTokens" OutputTokens="@job.OutputTokens"
-                        ModelUsed="@job.ModelUsed" OnClick="@(() => NavigateToJob(job.Id))" />
+                <div class="d-flex flex-wrap align-items-center gap-2 p-2 px-3 border-bottom bg-body-secondary small">
+                    @if (GetTotalInputTokens() > 0 || GetTotalOutputTokens() > 0)
+                    {
+                        <span class="d-flex align-items-center gap-1">
+                            <i class="bi bi-arrow-left-right opacity-75"></i>
+                            @TokenHelper.FormatTokenCount(GetTotalInputTokens() + GetTotalOutputTokens()) tokens
+                        </span>
+                    }
+                    @if (GetTotalCost() > 0)
+                    {
+                        <span class="d-flex align-items-center gap-1 text-success fw-medium">
+                            <i class="bi bi-currency-dollar opacity-75"></i>
+                            @TokenHelper.FormatCost(GetTotalCost())
+                        </span>
+                    }
+                    <span class="ms-auto text-body-secondary">
+                        @GetFilteredJobs().Count() jobs
+                    </span>
                 </div>
             }
+
+            @* Job list *@
+            <div class="flex-grow-1 overflow-auto">
+                @if (_jobs == null || !_jobs.Any())
+                {
+                    <EmptyState Icon="list-check" Title="No jobs yet"
+                        Message="Jobs are created when you run AI agent tasks on your projects.">
+                        <a href="/projects" class="btn btn-sm btn-primary">
+                            <i class="bi bi-folder me-1"></i>Go to Projects
+                        </a>
+                    </EmptyState>
+                }
+                else if (!GetFilteredJobs().Any())
+                {
+                    <EmptyState Icon="@GetFilterEmptyIcon()" Title="@GetFilterEmptyTitle()" Message="@GetFilterEmptyMessage()" />
+                }
+                else
+                {
+                    @foreach (var job in GetFilteredJobs())
+                    {
+                        <JobListItem 
+                            Status="@job.Status.ToString()"
+                            Prompt="@job.GoalPrompt"
+                            ProjectName="@(job.Project?.Name ?? "Unknown")"
+                            ShowProjectName="@(_selectedProjectId == null)"
+                            ModelUsed="@job.ModelUsed"
+                            Activity="@((job.Status == JobStatus.Started || job.Status == JobStatus.Processing) ? (job.CurrentActivity ?? "Working...") : null)"
+                            TimeDisplay="@GetTimeDisplay(job)"
+                            Cost="@job.TotalCostUsd"
+                            InputTokens="@job.InputTokens"
+                            OutputTokens="@job.OutputTokens"
+                            OnClick="@(() => NavigateToJob(job.Id))" />
+                    }
+                }
+            </div>
         </div>
-    }
+    </div>
 }
 
 @code {
+    [Parameter]
+    public Guid? ProjectFilter { get; set; }
+
     private IEnumerable<Job>? _jobs;
+    private IEnumerable<Project> _projects = Enumerable.Empty<Project>();
     private bool _isLoading = true;
-    private string _filter = "all";
+    private string _statusFilter = "all";
+    private Guid? _selectedProjectId;
     private DotNetObjectReference<Jobs>? _dotNetReference;
     private IJSObjectReference? _signalRModule;
     private Timer? _refreshTimer;
@@ -105,8 +182,18 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        await LoadJobs();
+        _selectedProjectId = ProjectFilter;
+        await LoadData();
         StartAutoRefresh();
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (ProjectFilter != _selectedProjectId)
+        {
+            _selectedProjectId = ProjectFilter;
+            StateHasChanged();
+        }
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -145,7 +232,7 @@ else
         try
         {
             _isRefreshing = true;
-            await LoadJobs();
+            await LoadData();
             StateHasChanged();
         }
         finally
@@ -272,11 +359,17 @@ else
         }
     }
 
-    private async Task LoadJobs()
+    private async Task LoadData()
     {
         try
         {
-            _jobs = await JobService.GetAllAsync();
+            var jobsTask = JobService.GetAllAsync();
+            var projectsTask = ProjectService.GetAllAsync();
+            
+            await Task.WhenAll(jobsTask, projectsTask);
+            
+            _jobs = await jobsTask;
+            _projects = await projectsTask;
         }
         finally
         {
@@ -284,10 +377,34 @@ else
         }
     }
 
-    private void SetFilter(string filter)
+    private void SetStatusFilter(string filter)
     {
-        _filter = filter;
+        _statusFilter = filter;
     }
+
+    private void SelectProject(Guid? projectId)
+    {
+        _selectedProjectId = projectId;
+        // Update URL without full navigation to preserve state
+        var url = projectId.HasValue ? $"/jobs/{projectId}" : "/jobs";
+        NavigationManager.NavigateTo(url, forceLoad: false, replace: true);
+    }
+
+    private void OnProjectFilterChanged(ChangeEventArgs e)
+    {
+        if (Guid.TryParse(e.Value?.ToString(), out var projectId))
+        {
+            SelectProject(projectId);
+        }
+        else
+        {
+            SelectProject(null);
+        }
+    }
+
+    private int GetJobCountForProject(Guid projectId) => _jobs?.Count(j => j.ProjectId == projectId) ?? 0;
+    private int GetActiveCountForProject(Guid projectId) => _jobs?.Count(j => j.ProjectId == projectId && 
+        (j.Status == JobStatus.New || j.Status == JobStatus.Started || j.Status == JobStatus.Processing)) ?? 0;
 
     private int GetActiveCount() => _jobs?.Count(j => j.Status == JobStatus.New || j.Status == JobStatus.Started || j.Status
     == JobStatus.Processing) ?? 0;
@@ -304,17 +421,23 @@ else
     {
         if (_jobs == null) return Enumerable.Empty<Job>();
 
-        return _filter switch
+        // First filter by project if selected
+        var filtered = _selectedProjectId.HasValue 
+            ? _jobs.Where(j => j.ProjectId == _selectedProjectId.Value)
+            : _jobs;
+
+        // Then filter by status
+        return _statusFilter switch
         {
-            "active" => _jobs.Where(j => j.Status == JobStatus.New || j.Status == JobStatus.Started || j.Status ==
+            "active" => filtered.Where(j => j.Status == JobStatus.New || j.Status == JobStatus.Started || j.Status ==
             JobStatus.Processing),
-            "completed" => _jobs.Where(j => j.Status == JobStatus.Completed),
-            "failed" => _jobs.Where(j => j.Status == JobStatus.Failed || j.Status == JobStatus.Cancelled),
-            _ => _jobs
+            "completed" => filtered.Where(j => j.Status == JobStatus.Completed),
+            "failed" => filtered.Where(j => j.Status == JobStatus.Failed || j.Status == JobStatus.Cancelled),
+            _ => filtered
         };
     }
 
-    private string GetFilterEmptyIcon() => _filter switch
+    private string GetFilterEmptyIcon() => _statusFilter switch
     {
         "active" => "activity",
         "completed" => "check-circle",
@@ -322,7 +445,7 @@ else
         _ => "inbox"
     };
 
-    private string GetFilterEmptyTitle() => _filter switch
+    private string GetFilterEmptyTitle() => _statusFilter switch
     {
         "active" => "No active jobs",
         "completed" => "No completed jobs",
@@ -330,7 +453,7 @@ else
         _ => "No jobs"
     };
 
-    private string GetFilterEmptyMessage() => _filter switch
+    private string GetFilterEmptyMessage() => _statusFilter switch
     {
         "active" => "There are no jobs currently running. Start a new job from a project.",
         "completed" => "No jobs have been completed yet.",
@@ -340,7 +463,9 @@ else
 
     private void NavigateToJob(Guid jobId)
     {
-        NavigationManager.NavigateTo($"/jobs/{jobId}");
+        // Include project filter as query param so we can return to the same view
+        var returnUrl = _selectedProjectId.HasValue ? $"/jobs/{_selectedProjectId}" : "/jobs";
+        NavigationManager.NavigateTo($"/jobs/view/{jobId}?returnUrl={Uri.EscapeDataString(returnUrl)}");
     }
 
     private static string TruncatePrompt(string prompt, int maxLength)
