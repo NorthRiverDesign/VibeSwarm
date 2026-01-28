@@ -65,4 +65,14 @@ public interface IJobService
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>The model ID if found, otherwise null</returns>
     Task<string?> GetLastUsedModelAsync(Guid projectId, Guid providerId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Resets a job for retry with optional provider and model changes
+    /// </summary>
+    /// <param name="id">The job ID</param>
+    /// <param name="providerId">New provider ID (null to keep current)</param>
+    /// <param name="modelId">Model ID to use (null for default)</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>True if successful</returns>
+    Task<bool> ResetJobWithOptionsAsync(Guid id, Guid? providerId = null, string? modelId = null, CancellationToken cancellationToken = default);
 }

@@ -611,4 +611,73 @@ public class JobService : IJobService
             .Select(j => j.ModelUsed)
             .FirstOrDefaultAsync(cancellationToken);
     }
+
+    public async Task<bool> ResetJobWithOptionsAsync(Guid id, Guid? providerId = null, string? modelId = null, CancellationToken cancellationToken = default)
+    {
+        var job = await _dbContext.Jobs
+            .FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
+
+        if (job == null)
+        {
+            return false;
+        }
+
+        // Only allow resetting jobs that are in terminal states
+        if (job.Status != JobStatus.Completed && job.Status != JobStatus.Failed && job.Status != JobStatus.Cancelled)
+        {
+            return false;
+        }
+
+        // If provider is being changed, verify it exists and is enabled
+        if (providerId.HasValue && providerId.Value != job.ProviderId)
+        {
+            var provider = await _dbContext.Providers
+                .FirstOrDefaultAsync(p => p.Id == providerId.Value && p.IsEnabled, cancellationToken);
+            if (provider == null)
+            {
+                return false;
+            }
+            job.ProviderId = providerId.Value;
+        }
+
+        // Reset job to initial state while preserving the original configuration
+        job.Status = JobStatus.New;
+        job.CancellationRequested = false;
+        job.StartedAt = null;
+        job.CompletedAt = null;
+        job.Output = null;
+        job.ErrorMessage = null;
+        job.CurrentActivity = null;
+        job.LastActivityAt = null;
+        job.WorkerInstanceId = null;
+        job.LastHeartbeatAt = null;
+        job.ProcessId = null;
+        job.ConsoleOutput = null;
+        job.GitDiff = null;
+        job.GitCommitBefore = null;
+        job.GitCommitHash = null;
+        job.SessionId = null; // Clear session for fresh start with potentially new provider
+        job.ModelUsed = modelId; // Set the requested model (null means use provider default)
+        job.RetryCount++; // Increment retry count to track attempts
+
+        // Clear token/cost tracking for fresh run
+        job.InputTokens = null;
+        job.OutputTokens = null;
+        job.TotalCostUsd = null;
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        // Notify about status change
+        if (_jobUpdateService != null)
+        {
+            try
+            {
+                await _jobUpdateService.NotifyJobStatusChanged(job.Id, job.Status.ToString());
+                await _jobUpdateService.NotifyJobListChanged();
+            }
+            catch { }
+        }
+
+        return true;
+    }
 }

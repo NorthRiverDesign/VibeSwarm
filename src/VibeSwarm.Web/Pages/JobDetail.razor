@@ -24,7 +24,7 @@ else if (Job == null)
 else
 {
     @* Page Header - Full Width *@
-                <div
+                    <div
         class="d-flex flex-column flex-lg-row justify-content-between align-items-start gap-3 mb-3 mb-lg-4 pb-3 border-bottom">
         <div class="flex-grow-1 min-width-0 w-100 w-lg-auto">
             <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
@@ -36,7 +36,7 @@ else
                 }
             </div>
             @* Repository and Branch Info *@
-                        @if (!string.IsNullOrEmpty(Job.Project?.GitHubRepository) || !string.IsNullOrEmpty(_branchName))
+                            @if (!string.IsNullOrEmpty(Job.Project?.GitHubRepository) || !string.IsNullOrEmpty(_branchName))
             {
                 <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
                     @if (!string.IsNullOrEmpty(Job.Project?.GitHubRepository))
@@ -81,8 +81,8 @@ else
                 </div>
             </div>
             @* Stats Row - Token usage and cost *@
-                        @if (Job.ModelUsed != null || Job.InputTokens.HasValue || Job.OutputTokens.HasValue ||
-                    Job.TotalCostUsd.HasValue)
+                            @if (Job.ModelUsed != null || Job.InputTokens.HasValue || Job.OutputTokens.HasValue ||
+                    Job.TotalCostUsd.HasValue || Job.RetryCount > 0)
             {
                 <div
                     class="d-flex flex-wrap gap-2 gap-sm-3 mt-2 pt-2 border-top border-secondary border-opacity-25 job-stats-row">
@@ -90,6 +90,12 @@ else
                     {
                         <span class="stat-pill" title="Model">
                             <i class="bi bi-cpu me-1 opacity-75"></i>@Job.ModelUsed
+                        </span>
+                    }
+                    @if (Job.RetryCount > 0)
+                    {
+                        <span class="stat-pill" title="Attempt Number">
+                            <i class="bi bi-arrow-repeat me-1 opacity-75"></i>Attempt @(Job.RetryCount + 1)
                         </span>
                     }
                     @if (Job.InputTokens.HasValue)
@@ -126,8 +132,16 @@ else
         <div class="d-flex flex-wrap gap-2 flex-shrink-0">
             @if (CanRetry)
             {
-                <ActionButton Icon="arrow-repeat" Text="@(IsRetrying ? "Retrying..." : "Retry")"
-                    Style="ActionButton.ButtonStyle.Primary" IsLoading="@IsRetrying" OnClick="RetryJob" />
+                @if (Job.Status == JobStatus.Failed)
+                {
+                    <ActionButton Icon="arrow-repeat" Text="@(IsRetrying ? "Retrying..." : "Retry")"
+                        Style="ActionButton.ButtonStyle.Primary" IsLoading="@IsRetrying" OnClick="ShowRetryModal" />
+                }
+                else
+                {
+                    <ActionButton Icon="arrow-repeat" Text="@(IsRetrying ? "Retrying..." : "Retry")"
+                        Style="ActionButton.ButtonStyle.Primary" IsLoading="@IsRetrying" OnClick="RetryJob" />
+                }
             }
             @if (CanCancel)
             {
@@ -148,9 +162,9 @@ else
     </div>
 
     @* Main Content - Column Layout *@
-                <div class="row g-3 g-lg-4 job-detail-content mx-0">
+                    <div class="row g-3 g-lg-4 job-detail-content mx-0">
         @* Left Column - Goal & Output on mobile first *@
-                    <div class="col-12 col-xl-5 order-2 order-xl-1 px-0 px-lg-3">
+                        <div class="col-12 col-xl-5 order-2 order-xl-1 px-0 px-lg-3">
             <div class="card mb-3 mb-lg-4">
                 <div class="card-header bg-body-secondary d-flex justify-content-between align-items-center">
                     <h5 class="mb-0 fw-semibold"><i class="bi bi-bullseye me-2 opacity-75"></i>Goal Prompt</h5>
@@ -196,7 +210,7 @@ else
             </div>
 
             @* User Interaction Section - shown when job is paused waiting for input *@
-                        @if (Job.Status == JobStatus.Paused && !string.IsNullOrEmpty(Job.PendingInteractionPrompt))
+                            @if (Job.Status == JobStatus.Paused && !string.IsNullOrEmpty(Job.PendingInteractionPrompt))
             {
                 <div class="card mb-3 mb-lg-4 border-warning">
                     <div class="card-header bg-warning bg-opacity-25 d-flex align-items-center">
@@ -423,7 +437,7 @@ else
                 </div>
 
                 @* Commit Section - shown when there are git changes *@
-                                        <div class="card mb-3 mb-lg-4">
+                                                <div class="card mb-3 mb-lg-4">
                     <div class="card-header bg-body-secondary d-flex justify-content-between align-items-center">
                         <div class="d-flex align-items-center">
                             <i class="bi bi-cloud-upload me-2 opacity-75"></i>
@@ -536,7 +550,7 @@ else
         </div>
 
         @* Right Column - Conversation Messages (shows first on mobile) *@
-                    <div class="col-12 col-xl-7 order-1 order-xl-2 px-0 px-lg-3">
+                        <div class="col-12 col-xl-7 order-1 order-xl-2 px-0 px-lg-3">
             <div class="card">
                 <div class="card-header bg-body-secondary d-flex justify-content-between align-items-center">
                     <h5 class="mb-0 fw-semibold"><i class="bi bi-chat-dots me-2 opacity-75"></i>Conversation</h5>
@@ -653,6 +667,9 @@ else
             </div>
         </div>
     }
+
+    @* Retry Job Modal *@
+    <RetryJobModal @bind-IsVisible="_showRetryModal" Job="Job" OnRetry="HandleRetryWithOptions" />
 }
 
 @code {
@@ -716,6 +733,9 @@ else
 
     // Full prompt modal state
     private bool _showFullPromptModal = false;
+
+    // Retry modal state
+    private bool _showRetryModal = false;
 
     private class OutputLine
     {
@@ -1300,6 +1320,43 @@ else
             else
             {
                 ErrorMessage = "Could not retry the job. It may not be in a terminal state.";
+            }
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Error retrying job: {ex.Message}";
+        }
+        finally
+        {
+            IsRetrying = false;
+        }
+    }
+
+    private void ShowRetryModal()
+    {
+        _showRetryModal = true;
+    }
+
+    private async Task HandleRetryWithOptions(RetryJobModal.RetryOptions options)
+    {
+        if (Job == null) return;
+
+        IsRetrying = true;
+        ErrorMessage = null;
+        SuccessMessage = null;
+        _showRetryModal = false;
+
+        try
+        {
+            var result = await JobService.ResetJobWithOptionsAsync(Job.Id, options.ProviderId, options.ModelId);
+            if (result)
+            {
+                SuccessMessage = "Job has been reset with new options and will be retried shortly.";
+                await LoadJob();
+            }
+            else
+            {
+                ErrorMessage = "Could not retry the job. It may not be in a terminal state or the provider is invalid.";
             }
         }
         catch (Exception ex)
