@@ -1,3 +1,5 @@
+[![VibeSwarm - AI Agent Orchestrator](./src/VibeSwarm.Web/wwwroot/img/logo_color.png)](https://github.com/NorthRiverDesign/VibeSwarm)
+
 # VibeSwarm
 
 A vibe-coded vibe coding orchestrator. Imagine CI/CD but with AI. Bring your own provider. Own your own infrastructure.
