@@ -843,12 +843,20 @@ body {
 .login-display {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: flex-end;
     gap: 0.5rem;
 }
 
+.login-display .user-menu {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
 .login-display .user-info {
-    display: none;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
     color: var(--bs-secondary-color);
     font-size: 0.95rem;
 }
@@ -858,12 +866,52 @@ body {
     color: var(--bs-emphasis-color);
 }
 
-@media (min-width: 992px) {
-    .login-display .user-info {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-    }
+.login-display .user-menu-toggle {
+    color: var(--bs-secondary-color);
+    font-size: 1rem;
+    line-height: 1;
+    transition: color 0.15s ease-in-out;
+}
+
+.login-display .user-menu-toggle:hover,
+.login-display .user-menu-toggle:focus {
+    color: var(--bs-emphasis-color);
+    text-decoration: none;
+}
+
+.login-display .user-menu-toggle-mobile {
+    display: flex;
+    align-items: center;
+    color: var(--bs-secondary-color);
+    font-size: 1.25rem;
+    line-height: 1;
+    transition: color 0.15s ease-in-out;
+}
+
+.login-display .user-menu-toggle-mobile:hover,
+.login-display .user-menu-toggle-mobile:focus {
+    color: var(--bs-emphasis-color);
+    text-decoration: none;
+}
+
+.login-display .user-menu-toggle-mobile .bi-chevron-down {
+    font-size: 0.65rem;
+    margin-left: 0.125rem;
+}
+
+.login-display .dropdown-menu {
+    min-width: 10rem;
+    box-shadow: var(--bs-box-shadow);
+}
+
+.login-display .dropdown-item {
+    display: flex;
+    align-items: center;
+}
+
+.login-display .dropdown-header {
+    font-size: 0.875rem;
+    color: var(--bs-emphasis-color);
 }
 
 /* ============================================
