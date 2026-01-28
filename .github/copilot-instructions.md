@@ -40,6 +40,8 @@ VibeSwarm is designed to be cross-platform, running on Windows, macOS, and Linux
 
 This app is intended to work on a variety of host systems, including local machines, VPS, Raspberry Pi, and cloud instances. The app attempts to remain as system agnostic as possible, relying on widely supported technologies and frameworks. Because VibeSwarm relies on system binaries, containerization is not currently supported.
 
+A future update may include Docker support to simplify deployment and ensure consistent environments across different host systems. This would involve creating Docker images that package the application along with its dependencies, allowing for easy deployment on any system that supports Docker.
+
 ## VibeSwarm Architecture
 
 VibeSwarm is intended to stay simple but modular in 3 parts, the Web UI, the Worker service that manages agents, and a Shared library for common code both services use. Code relevant to UI should go in the Web project, code relevant to agent management should go in the Worker project, and any code shared between the two should go in the Shared project.
@@ -51,6 +53,12 @@ Utility classes should exist in the Shared project to be used by both the Web an
 Some providers and models have usage limits, such as the number of requests per minute or total tokens per month. VibeSwarm monitors these limits and manages agent activity to avoid exceeding them. If an agent approaches its limit, VibeSwarm can throttle its requests or temporarily disable it until the limit resets.
 
 VibeSwarm can utilize local AI models to supplement cloud-based agents, ensuring continuous operation even when usage limits are reached. This hybrid approach allows for greater flexibility and reliability in code generation and review tasks.
+
+## Cost Management
+
+VibeSwarm tracks the costs associated with each AI agent and provider. It provides insights into usage patterns and expenses, allowing users to make informed decisions about which agents to use. VibeSwarm can also implement cost-saving strategies, such as switching to lower-cost models or providers when appropriate.
+
+VibeSwarm allows users to set budget limits for AI agent usage. If a budget limit is reached, VibeSwarm can pause agent activity or switch to more cost-effective alternatives to prevent overspending.
 
 ## Fresh Context Windows
 
@@ -78,9 +86,17 @@ Attempt to utilize existing Bootstrap components and utility classes to maintain
 
 The interface must be fully responsive and work on mobile devices as well as desktops. The layout should adapt to different screen sizes, ensuring usability across a range of devices. The application should follow accessibility best practices to ensure that all users, including those with disabilities, can effectively use the interface. This includes proper use of ARIA roles, keyboard navigation support, and sufficient color contrast.
 
+## Mobile Friendly
+
+VibeSwarm is designed to be mobile-friendly, ensuring that users can access and manage their projects from smartphones and tablets. The responsive design adapts to various screen sizes, providing an optimal user experience regardless of the device being used. The mobile interface includes touch-friendly elements and simplified navigation to facilitate ease of use on smaller screens.
+
+All pages and UI components are tested on an iPhone to ensure every aspect of the application works from anywhere the application is accessible.
+
 ## Bootstrap Integration
 
 Always attempt to leverage Bootstrap's built-in classes and components before creating custom styles. This ensures consistency across the application and reduces the need for additional CSS. Use a stacked utility class approach when creating UI components to maximize flexibility and maintainability. A component may use multiple classes such as `d-flex`, `flex-column`, `align-items-center`, and `p-3` to achieve the desired layout and styling without custom CSS. Use the TailwindCSS mindset when applying Bootstrap utility classes to create complex layouts and designs.
+
+The application specific `style.css` should only add helper utilities that can be used across the application, and are not intended to be specific to components.
 
 ## Bootstrap Icons
 
@@ -98,17 +114,24 @@ Large pages should be broken into smaller, reusable components to improve mainta
 
 UI should appear consistent and highly polished. Care should be used to maintain alignment, spacing, and visual hierarchy throughout the application. Attention to detail in UI design enhances user experience and promotes a professional appearance. The application must also be responsive and mobile-friendly, ensuring usability across a range of devices.
 
+If a page has over 500 lines of markup, it should be refactored into smaller components to keep the markup readable.
+
 ## Database
 
 VibeSwarm uses a relational database to store project configurations, agent settings, and code history. The database schema is designed to efficiently manage relationships between projects, agents, and code changes. The application uses an ORM (Object-Relational Mapping) tool to interact with the database, allowing for easier data manipulation and retrieval.
 
 The database is the source of truth for coordination across multiple agents. It ensures that all agents have access to the latest project information and code history, enabling them to operate effectively and collaboratively.
+
 The database should be designed to handle concurrent access from multiple agents, ensuring data integrity and consistency. Proper indexing and optimization techniques should be employed to maintain performance as the number of projects and agents grows.
+
 The database should support backup and recovery mechanisms to protect against data loss. Regular backups should be scheduled, and recovery procedures should be in place to restore data in case of failures.
+
+The database should be referred to for any locking procedures to ensure if multiple instances of VibeSwarm are used together there are no concurrency issues.
 
 ## Dashboard
 
 The VibeSwarm dashboard provides a comprehensive overview of all projects and agents. It displays the status of each agent, recent code changes, and overall project health. Users can monitor agent activities, view logs, and manage project settings from the dashboard.
+
 The dashboard should provide real-time updates on agent activities, allowing users to see the progress of code generation and review tasks as they happen. Notifications and alerts can be used to inform users of important events, such as agent errors or completed tasks.
 
 ## Git Integration
