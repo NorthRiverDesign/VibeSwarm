@@ -210,4 +210,18 @@ public interface IVersionControlService
 	/// <param name="remoteUrl">The Git remote URL.</param>
 	/// <returns>The owner/repo string (e.g., "microsoft/vscode"), or null if the URL is not a valid GitHub URL.</returns>
 	string? ExtractGitHubRepository(string? remoteUrl);
+
+	/// <summary>
+	/// Creates a new local branch from the current HEAD. This branch is not pushed to the remote.
+	/// </summary>
+	/// <param name="workingDirectory">The repository working directory.</param>
+	/// <param name="branchName">The name of the new branch to create.</param>
+	/// <param name="switchToBranch">If true, switches to the new branch after creation (default: true).</param>
+	/// <param name="cancellationToken">Cancellation token.</param>
+	/// <returns>Result containing success status, branch name, and any error message.</returns>
+	Task<GitOperationResult> CreateBranchAsync(
+		string workingDirectory,
+		string branchName,
+		bool switchToBranch = true,
+		CancellationToken cancellationToken = default);
 }

@@ -96,6 +96,10 @@ else
                                 }
                                 <i class="bi bi-box-arrow-in-right me-1"></i>Switch Branch
                             </button>
+                            <button class="btn btn-outline-secondary" @onclick="ShowCreateBranchModal"
+                                disabled="@IsGitOperationInProgress">
+                                <i class="bi bi-plus-lg me-1"></i>New Branch
+                            </button>
                             <button class="btn btn-outline-success" @onclick="SyncWithOrigin"
                                 disabled="@IsGitOperationInProgress">
                                 @if (IsGitOperationInProgress && _currentGitOperation == "sync")
@@ -143,7 +147,7 @@ else
 
     <div class="row g-3 g-lg-4">
         @* Create Job form first on mobile *@
-            <div class="col-12 col-lg-4 order-1 order-lg-2">
+        <div class="col-12 col-lg-4 order-1 order-lg-2">
             <div class="card">
                 <div class="card-header bg-body-secondary">
                     <h5 class="mb-0 fw-semibold">Create Job</h5>
@@ -196,7 +200,7 @@ else
                                     <option value="">Use provider default</option>
                                     @foreach (var model in AvailableModels.Where(m => m.IsAvailable))
                                     {
-                                        <option value="@model.ModelId">@(model.DisplayName ?? model.ModelId)@(model.IsDefault ? "                             (default)" : "")</option>
+                                        <option value="@model.ModelId">@(model.DisplayName ?? model.ModelId)@(model.IsDefault ? "                              (default)" : "")</option>
                                     }
                                 }
                             </InputSelect>
@@ -222,7 +226,7 @@ else
         </div>
 
         @* Jobs list second on mobile *@
-            <div class="col-12 col-lg-8 order-2 order-lg-1">
+        <div class="col-12 col-lg-8 order-2 order-lg-1">
             <div class="card">
                 <div class="card-header bg-body-secondary">
                     <div class="d-flex justify-content-between align-items-center mb-2">
@@ -269,7 +273,7 @@ else
                                     <div class="d-flex justify-content-between align-items-start gap-2">
                                         <div class="d-flex align-items-start gap-2 flex-grow-1 min-width-0">
                                             @* Status Icon *@
-                                                        <div class="flex-shrink-0 pt-1">
+                                            <div class="flex-shrink-0 pt-1">
                                                 @switch (job.Status)
                                                 {
                                                     case JobStatus.Completed:
@@ -295,7 +299,7 @@ else
                                                 }
                                             </div>
                                             @* Job Content *@
-                                                        <div class="flex-grow-1 min-width-0">
+                                            <div class="flex-grow-1 min-width-0">
                                                 <a href="/jobs/@job.Id"
                                                     class="d-block text-decoration-none fw-medium text-truncate-lines-2">
                                                     @job.GoalPrompt
@@ -317,7 +321,7 @@ else
                                             </div>
                                         </div>
                                         @* Actions Dropdown *@
-                                                    <div class="dropdown flex-shrink-0">
+                                        <div class="dropdown flex-shrink-0">
                                             <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button"
                                                 data-bs-toggle="dropdown" aria-expanded="false">
                                                 <i class="bi bi-three-dots-vertical"></i>
@@ -352,6 +356,65 @@ else
     {
         <div class="alert alert-success mt-3">@SuccessMessage</div>
     }
+
+    @* Create Branch Modal *@
+    @if (_showCreateBranchModal)
+    {
+        <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">
+                            <i class="bi bi-git me-2"></i>Create New Branch
+                        </h5>
+                        <button type="button" class="btn-close" @onclick="CloseCreateBranchModal"
+                            disabled="@_isCreatingBranch"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label for="newBranchName" class="form-label">Branch Name</label>
+                            <input type="text" class="form-control" id="newBranchName" @bind="_newBranchName"
+                                @bind:event="oninput" placeholder="e.g., feature/new-feature" disabled="@_isCreatingBranch" />
+                            <div class="form-text">
+                                <i class="bi bi-info-circle me-1"></i>
+                                Branch will be created from current branch: <strong>@CurrentBranch</strong>
+                            </div>
+                        </div>
+                        @if (!string.IsNullOrEmpty(_createBranchError))
+                        {
+                            <div class="alert alert-danger py-2 mb-0">
+                                <i class="bi bi-exclamation-triangle me-1"></i>@_createBranchError
+                            </div>
+                        }
+                        <div class="alert alert-info py-2 mb-0 mt-3">
+                            <i class="bi bi-lightbulb me-1"></i>
+                            <small>This branch will only be created locally. Use this to isolate Job changes before
+                                pushing.</small>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" @onclick="CloseCreateBranchModal"
+                            disabled="@_isCreatingBranch">
+                            Cancel
+                        </button>
+                        <button type="button" class="btn btn-primary" @onclick="CreateBranch"
+                            disabled="@(_isCreatingBranch || string.IsNullOrWhiteSpace(_newBranchName))">
+                            @if (_isCreatingBranch)
+                            {
+                                <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                                <span>Creating...</span>
+                            }
+                            else
+                            {
+                                <i class="bi bi-plus-lg me-1"></i>
+                                <span>Create & Switch</span>
+                            }
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
 }
 
 @code {
@@ -384,6 +447,12 @@ else
     private bool GitOperationSuccess { get; set; }
     private string? GitProgressMessage { get; set; }
     private string? _currentGitOperation;
+
+    // Create branch modal state
+    private bool _showCreateBranchModal { get; set; }
+    private string _newBranchName { get; set; } = string.Empty;
+    private bool _isCreatingBranch { get; set; }
+    private string? _createBranchError { get; set; }
 
     private bool HasActiveJobs => Jobs.Any(j =>
     j.Status == JobStatus.New ||
@@ -661,6 +730,65 @@ else
     {
         GitOperationMessage = null;
         StateHasChanged();
+    }
+
+    private void ShowCreateBranchModal()
+    {
+        _showCreateBranchModal = true;
+        _newBranchName = string.Empty;
+        _createBranchError = null;
+    }
+
+    private void CloseCreateBranchModal()
+    {
+        _showCreateBranchModal = false;
+        _newBranchName = string.Empty;
+        _createBranchError = null;
+    }
+
+    private async Task CreateBranch()
+    {
+        if (string.IsNullOrWhiteSpace(_newBranchName))
+            return;
+
+        if (Project == null || string.IsNullOrEmpty(Project.WorkingPath))
+            return;
+
+        _isCreatingBranch = true;
+        _createBranchError = null;
+        StateHasChanged();
+
+        try
+        {
+            var result = await VersionControlService.CreateBranchAsync(
+            Project.WorkingPath,
+            _newBranchName.Trim(),
+            switchToBranch: true);
+
+            if (result.Success)
+            {
+                GitOperationMessage = $"Successfully created and switched to branch '{_newBranchName.Trim()}'";
+                GitOperationSuccess = true;
+                CurrentBranch = _newBranchName.Trim();
+                SelectedBranch = CurrentBranch;
+                CurrentCommitHash = result.CommitHash;
+                await LoadBranches();
+                CloseCreateBranchModal();
+            }
+            else
+            {
+                _createBranchError = result.Error ?? "Failed to create branch";
+            }
+        }
+        catch (Exception ex)
+        {
+            _createBranchError = $"Error creating branch: {ex.Message}";
+        }
+        finally
+        {
+            _isCreatingBranch = false;
+            StateHasChanged();
+        }
     }
 
     private async Task OnProviderChanged(Guid providerId)

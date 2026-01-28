@@ -988,6 +988,15 @@ public class JobProcessingService : BackgroundService
                     {
                         job.GitDiff = gitDiff;
                         _logger.LogInformation("Captured git diff for job {JobId}: {Length} chars", jobId, gitDiff.Length);
+
+                        // Generate session summary from git diff for pre-populating commit messages
+                        var sessionSummary = JobSummaryGenerator.GenerateSummary(job);
+                        if (!string.IsNullOrWhiteSpace(sessionSummary))
+                        {
+                            job.SessionSummary = sessionSummary;
+                            _logger.LogInformation("Generated session summary for job {JobId}: {Summary}",
+                                jobId, sessionSummary.Length > 100 ? sessionSummary[..100] + "..." : sessionSummary);
+                        }
                     }
                     else
                     {

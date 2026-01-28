@@ -1071,4 +1071,96 @@ public sealed class VersionControlService : IVersionControlService
 		// Not a recognized GitHub URL format
 		return null;
 	}
+
+	/// <inheritdoc />
+	public async Task<GitOperationResult> CreateBranchAsync(
+		string workingDirectory,
+		string branchName,
+		bool switchToBranch = true,
+		CancellationToken cancellationToken = default)
+	{
+		try
+		{
+			// Validate inputs
+			if (string.IsNullOrWhiteSpace(workingDirectory))
+			{
+				return GitOperationResult.Failed("Working directory cannot be empty.");
+			}
+
+			if (string.IsNullOrWhiteSpace(branchName))
+			{
+				return GitOperationResult.Failed("Branch name cannot be empty.");
+			}
+
+			// Validate branch name format (basic check)
+			if (branchName.Contains(" ") || branchName.Contains("..") || branchName.StartsWith("-"))
+			{
+				return GitOperationResult.Failed("Invalid branch name. Branch names cannot contain spaces, '..' sequences, or start with '-'.");
+			}
+
+			// Check if git is available
+			var gitAvailable = await IsGitAvailableAsync(cancellationToken);
+			if (!gitAvailable)
+			{
+				return GitOperationResult.Failed("Git is not available on this system.");
+			}
+
+			// Check if directory is a git repository
+			var isRepo = await IsGitRepositoryAsync(workingDirectory, cancellationToken);
+			if (!isRepo)
+			{
+				return GitOperationResult.Failed("The specified directory is not a git repository.");
+			}
+
+			// Check if branch already exists
+			var branchCheckResult = await _commandExecutor.ExecuteAsync(
+				$"rev-parse --verify refs/heads/{branchName}",
+				workingDirectory,
+				cancellationToken,
+				timeoutSeconds: 10);
+
+			if (branchCheckResult.Success)
+			{
+				return GitOperationResult.Failed($"Branch '{branchName}' already exists.");
+			}
+
+			// Create the branch (optionally switching to it)
+			var command = switchToBranch
+				? $"checkout -b {branchName}"
+				: $"branch {branchName}";
+
+			var createResult = await _commandExecutor.ExecuteAsync(
+				command,
+				workingDirectory,
+				cancellationToken,
+				timeoutSeconds: 30);
+
+			if (!createResult.Success)
+			{
+				var errorMessage = !string.IsNullOrWhiteSpace(createResult.Error)
+					? createResult.Error.Trim()
+					: "Failed to create branch.";
+
+				return GitOperationResult.Failed($"Failed to create branch: {errorMessage}");
+			}
+
+			// Get the commit hash
+			var commitHash = await GetCurrentCommitHashAsync(workingDirectory, cancellationToken);
+
+			return GitOperationResult.Succeeded(
+				output: switchToBranch
+					? $"Created and switched to new branch '{branchName}'"
+					: $"Created new branch '{branchName}'",
+				branchName: branchName,
+				commitHash: commitHash);
+		}
+		catch (OperationCanceledException)
+		{
+			return GitOperationResult.Failed("Create branch operation was cancelled.");
+		}
+		catch (Exception ex)
+		{
+			return GitOperationResult.Failed($"Unexpected error creating branch: {ex.Message}");
+		}
+	}
 }
