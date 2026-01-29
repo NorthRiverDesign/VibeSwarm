@@ -1,18 +1,21 @@
 using System.Diagnostics;
 using System.Net.Http.Json;
 using System.Text.Json;
-using System.Text.Json.Serialization;
+using VibeSwarm.Shared.Providers.Claude;
 using VibeSwarm.Shared.Utilities;
 
 namespace VibeSwarm.Shared.Providers;
 
-public class ClaudeProvider : ProviderBase
+/// <summary>
+/// Provider implementation for Claude CLI and REST API.
+/// </summary>
+public class ClaudeProvider : CliProviderBase
 {
-    private readonly string? _executablePath;
-    private readonly string? _workingDirectory;
     private readonly string? _apiEndpoint;
     private readonly string? _apiKey;
     private readonly HttpClient? _httpClient;
+
+    private const string DefaultExecutable = "claude";
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -23,10 +26,8 @@ public class ClaudeProvider : ProviderBase
     public override ProviderType Type => ProviderType.Claude;
 
     public ClaudeProvider(Provider config)
-        : base(config.Id, config.Name, config.ConnectionMode)
+        : base(config.Id, config.Name, config.ConnectionMode, config.ExecutablePath, config.WorkingDirectory)
     {
-        _executablePath = config.ExecutablePath;
-        _workingDirectory = config.WorkingDirectory;
         _apiEndpoint = config.ApiEndpoint;
         _apiKey = config.ApiKey;
 
@@ -35,7 +36,6 @@ public class ClaudeProvider : ProviderBase
             _httpClient = new HttpClient
             {
                 BaseAddress = new Uri(_apiEndpoint),
-                // Set a long timeout for agent tasks that may take several minutes
                 Timeout = TimeSpan.FromMinutes(30)
             };
 
@@ -48,13 +48,15 @@ public class ClaudeProvider : ProviderBase
         }
     }
 
+    private string GetExecutablePath() => ResolveExecutablePath(DefaultExecutable);
+
     public override async Task<bool> TestConnectionAsync(CancellationToken cancellationToken = default)
     {
         try
         {
             if (ConnectionMode == ProviderConnectionMode.CLI)
             {
-                return await TestCliConnectionAsync(cancellationToken);
+                return await TestCliConnectionAsync(GetExecutablePath(), "Claude", cancellationToken: cancellationToken);
             }
             else
             {
@@ -64,126 +66,6 @@ public class ClaudeProvider : ProviderBase
         catch
         {
             IsConnected = false;
-            return false;
-        }
-    }
-
-    private async Task<bool> TestCliConnectionAsync(CancellationToken cancellationToken)
-    {
-        var execPath = GetExecutablePath();
-        if (string.IsNullOrEmpty(execPath))
-        {
-            IsConnected = false;
-            LastConnectionError = "Claude executable path is not configured.";
-            return false;
-        }
-
-        try
-        {
-            var startInfo = new ProcessStartInfo
-            {
-                FileName = execPath,
-                Arguments = "--version"
-            };
-
-            // Configure for cross-platform with enhanced PATH (essential for systemd services)
-            PlatformHelper.ConfigureForCrossPlatform(startInfo);
-
-            // Only set working directory if explicitly configured
-            if (!string.IsNullOrEmpty(_workingDirectory))
-            {
-                startInfo.WorkingDirectory = _workingDirectory;
-            }
-
-            using var process = new Process { StartInfo = startInfo };
-
-            // Use a timeout to prevent hanging on CLI calls
-            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
-
-            process.Start();
-
-            // Close stdin immediately to signal no user input is available
-            // This prevents the CLI from hanging if it tries to read input
-            try
-            {
-                process.StandardInput.Close();
-            }
-            catch
-            {
-                // Ignore if stdin is already closed
-            }
-
-            try
-            {
-                await process.WaitForExitAsync(linkedCts.Token);
-            }
-            catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested)
-            {
-                // Timeout occurred - kill the process
-                try { process.Kill(entireProcessTree: true); } catch { }
-                IsConnected = false;
-                LastConnectionError = $"CLI test timed out after 10 seconds. Command: {execPath} --version\n" +
-                    "This usually indicates:\n" +
-                    "  - The CLI is waiting for authentication (check if 'claude' works in terminal)\n" +
-                    "  - The CLI is trying to access the network and timing out\n" +
-                    "  - The process doesn't have access to required environment variables\n" +
-                    "  - The service account doesn't have permission to run the CLI";
-                return false;
-            }
-
-            // Read output for additional validation
-            var output = await process.StandardOutput.ReadToEndAsync(CancellationToken.None);
-            var error = await process.StandardError.ReadToEndAsync(CancellationToken.None);
-
-            // Check if the CLI is accessible and functioning
-            IsConnected = process.ExitCode == 0 && !string.IsNullOrEmpty(output);
-
-            if (!IsConnected)
-            {
-                var errorDetails = new System.Text.StringBuilder();
-                errorDetails.AppendLine($"CLI test failed for command: {execPath} --version");
-                errorDetails.AppendLine($"Exit code: {process.ExitCode}");
-
-                if (!string.IsNullOrEmpty(error))
-                {
-                    errorDetails.AppendLine($"Error output: {error.Trim()}");
-                }
-
-                if (string.IsNullOrEmpty(output))
-                {
-                    errorDetails.AppendLine("No output received from --version command.");
-                }
-                else
-                {
-                    errorDetails.AppendLine($"Output: {output.Trim()}");
-                }
-
-                LastConnectionError = errorDetails.ToString();
-            }
-            else
-            {
-                LastConnectionError = null;
-            }
-
-            return IsConnected;
-        }
-        catch (System.ComponentModel.Win32Exception ex)
-        {
-            // Executable not found or can't be started
-            IsConnected = false;
-            var envPath = Environment.GetEnvironmentVariable("PATH") ?? "not set";
-            LastConnectionError = $"Failed to start Claude CLI: {ex.Message}. " +
-                $"Executable path: '{execPath}'. " +
-                $"Current PATH: {envPath}. " +
-                $"If running as a systemd service, ensure the executable is in a standard location " +
-                $"or configure the full path to the executable in the provider settings.";
-            return false;
-        }
-        catch (Exception ex)
-        {
-            IsConnected = false;
-            LastConnectionError = $"Unexpected error testing Claude CLI connection: {ex.GetType().Name}: {ex.Message}";
             return false;
         }
     }
@@ -276,26 +158,18 @@ public class ClaudeProvider : ProviderBase
         }
 
         var result = new ExecutionResult { Messages = new List<ExecutionMessage>() };
-        var effectiveWorkingDir = workingDirectory ?? _workingDirectory ?? Environment.CurrentDirectory;
+        var effectiveWorkingDir = workingDirectory ?? WorkingDirectory ?? Environment.CurrentDirectory;
 
         // Build arguments for non-interactive execution with JSON streaming output
-        // -p: non-interactive print mode (runs to completion without user input)
-        // --output-format stream-json: JSON streaming output for parsing progress
-        // --verbose: required for stream-json format
-        // --dangerously-skip-permissions: skip permission prompts (auto-accept tool use)
-        var args = new List<string>();
-
-        // Add the prompt with -p flag for non-interactive mode
-        args.Add("-p");
-        args.Add($"\"{EscapeArgument(prompt)}\"");
-
-        // Add output format flags
-        args.Add("--output-format");
-        args.Add("stream-json");
-        args.Add("--verbose");
-
-        // Skip permission prompts for automated execution
-        args.Add("--dangerously-skip-permissions");
+        var args = new List<string>
+        {
+            "-p",
+            $"\"{EscapeCliArgument(prompt)}\"",
+            "--output-format",
+            "stream-json",
+            "--verbose",
+            "--dangerously-skip-permissions"
+        };
 
         if (!string.IsNullOrEmpty(sessionId))
         {
@@ -303,45 +177,23 @@ public class ClaudeProvider : ProviderBase
             args.Add(sessionId);
         }
 
-        // Add MCP config if available (injected via ExecuteWithOptionsAsync)
         if (!string.IsNullOrEmpty(CurrentMcpConfigPath))
         {
             args.Add("--mcp-config");
             args.Add($"\"{CurrentMcpConfigPath}\"");
         }
 
-        // Add any additional CLI arguments
         if (CurrentAdditionalArgs != null)
         {
             args.AddRange(CurrentAdditionalArgs);
         }
 
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = execPath,
-            Arguments = string.Join(" ", args),
-            WorkingDirectory = effectiveWorkingDir,
-        };
-
-        // Use cross-platform configuration
-        PlatformHelper.ConfigureForCrossPlatform(startInfo);
-
-        // Add any additional environment variables
-        if (CurrentEnvironmentVariables != null)
-        {
-            foreach (var kvp in CurrentEnvironmentVariables)
-            {
-                startInfo.Environment[kvp.Key] = kvp.Value;
-            }
-        }
-
-        using var process = new Process { StartInfo = startInfo };
+        using var process = CreateCliProcess(execPath, string.Join(" ", args), effectiveWorkingDir);
 
         var outputBuilder = new List<string>();
         var errorBuilder = new System.Text.StringBuilder();
         var currentAssistantMessage = new System.Text.StringBuilder();
 
-        // Use TaskCompletionSource to ensure all output is processed before continuing
         var outputComplete = new TaskCompletionSource<bool>();
         var errorComplete = new TaskCompletionSource<bool>();
 
@@ -367,96 +219,31 @@ public class ClaudeProvider : ProviderBase
             };
         }
 
-        // Capture process ID immediately after starting
         result.ProcessId = process.Id;
+        ReportProcessStarted(process.Id, progress);
 
-        // Report process ID through progress callback for immediate tracking
-        progress?.Report(new ExecutionProgress
-        {
-            CurrentMessage = "CLI process started successfully",
-            ProcessId = process.Id,
-            IsStreaming = false
-        });
-
-        // Report startup as output line for visibility in live output
-        progress?.Report(new ExecutionProgress
-        {
-            OutputLine = $"[VibeSwarm] Process started (PID: {process.Id}). Waiting for CLI to initialize...",
-            IsStreaming = true
-        });
-
-        // Track when we receive output to detect initialization delays
-        var lastOutputTime = DateTime.UtcNow;
-        var outputReceived = false;
-        var initializationWarningsSent = 0;
-        var initializationCheckInterval = TimeSpan.FromSeconds(5);
-
-        // Monitor for initialization delays - report progress while waiting for first output
+        // Start initialization monitor
         using var initMonitorCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        var initializationMonitorTask = Task.Run(async () =>
-        {
-            try
-            {
-                while (!initMonitorCts.Token.IsCancellationRequested)
-                {
-                    await Task.Delay(initializationCheckInterval, initMonitorCts.Token);
-
-                    lock (outputBuilder)
-                    {
-                        if (outputBuilder.Count > 0)
-                        {
-                            outputReceived = true;
-                        }
-                    }
-
-                    if (outputReceived)
-                    {
-                        break;
-                    }
-
-                    var waitTime = DateTime.UtcNow - lastOutputTime;
-                    initializationWarningsSent++;
-
-                    var waitMessage = initializationWarningsSent switch
-                    {
-                        1 => $"[VibeSwarm] Still initializing... (waited {waitTime.TotalSeconds:F0}s).",
-                        2 => $"[VibeSwarm] Still waiting for response... (waited {waitTime.TotalSeconds:F0}s).",
-                        _ => $"[VibeSwarm] Still waiting ({waitTime.TotalSeconds:F0}s)... Process is running."
-                    };
-
-                    progress?.Report(new ExecutionProgress
-                    {
-                        OutputLine = waitMessage,
-                        IsStreaming = true
-                    });
-
-                    progress?.Report(new ExecutionProgress
-                    {
-                        CurrentMessage = $"Waiting for CLI response ({waitTime.TotalSeconds:F0}s)...",
-                        IsStreaming = false
-                    });
-                }
-            }
-            catch (OperationCanceledException)
-            {
-                // Expected when process completes or is cancelled
-            }
-        }, initMonitorCts.Token);
+        var initializationMonitorTask = CreateInitializationMonitorAsync(
+            () => outputBuilder.Count > 0,
+            progress,
+            initMonitorCts.Token);
 
         process.OutputDataReceived += (sender, e) =>
         {
             if (e.Data == null)
             {
-                // End of stream
                 outputComplete.TrySetResult(true);
                 return;
             }
 
             if (string.IsNullOrEmpty(e.Data)) return;
 
-            outputBuilder.Add(e.Data);
+            lock (outputBuilder)
+            {
+                outputBuilder.Add(e.Data);
+            }
 
-            // Stream raw output line to UI
             progress?.Report(new ExecutionProgress
             {
                 OutputLine = e.Data,
@@ -473,7 +260,6 @@ public class ClaudeProvider : ProviderBase
             }
             catch
             {
-                // Non-JSON output, append to current message
                 currentAssistantMessage.Append(e.Data);
             }
         };
@@ -482,7 +268,6 @@ public class ClaudeProvider : ProviderBase
         {
             if (e.Data == null)
             {
-                // End of stream
                 errorComplete.TrySetResult(true);
                 return;
             }
@@ -490,8 +275,6 @@ public class ClaudeProvider : ProviderBase
             if (!string.IsNullOrEmpty(e.Data))
             {
                 errorBuilder.AppendLine(e.Data);
-
-                // Stream error output line to UI
                 progress?.Report(new ExecutionProgress
                 {
                     OutputLine = e.Data,
@@ -500,37 +283,16 @@ public class ClaudeProvider : ProviderBase
             }
         };
 
-        // Close stdin immediately to signal no user input is coming
         process.StandardInput.Close();
-
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
 
-        // Wait for the process to exit - this can take several minutes for complex agent tasks
-        try
-        {
-            await process.WaitForExitAsync(cancellationToken);
+        await WaitForProcessExitAsync(process, initMonitorCts, cancellationToken);
 
-            // Stop the initialization monitor
-            initMonitorCts.Cancel();
-        }
-        catch (OperationCanceledException)
-        {
-            // Stop the initialization monitor
-            initMonitorCts.Cancel();
-            // If cancelled, use cross-platform kill method
-            PlatformHelper.TryKillProcessTree(process.Id);
-            throw;
-        }
-
-        // Ensure initialization monitor task completes
         try { await initializationMonitorTask; } catch (OperationCanceledException) { }
 
-        // Wait for all output to be processed (with timeout to prevent hanging)
-        var outputTimeout = Task.Delay(TimeSpan.FromSeconds(10), CancellationToken.None);
-        await Task.WhenAny(Task.WhenAll(outputComplete.Task, errorComplete.Task), outputTimeout);
+        await WaitForOutputStreamsAsync(outputComplete, errorComplete);
 
-        // Finalize any pending assistant message
         if (currentAssistantMessage.Length > 0)
         {
             result.Messages.Add(new ExecutionMessage
@@ -562,7 +324,6 @@ public class ClaudeProvider : ProviderBase
         switch (evt.Type)
         {
             case "system":
-                // System init event contains session_id
                 if (!string.IsNullOrEmpty(evt.SessionId))
                 {
                     result.SessionId = evt.SessionId;
@@ -575,10 +336,8 @@ public class ClaudeProvider : ProviderBase
                 break;
 
             case "assistant":
-                // Assistant event contains a message object with content array
                 if (evt.Message?.Content != null)
                 {
-                    // Capture the model from the message if available
                     if (!string.IsNullOrEmpty(evt.Message.Model))
                     {
                         result.ModelUsed = evt.Message.Model;
@@ -599,7 +358,6 @@ public class ClaudeProvider : ProviderBase
                         }
                         else if (content.Type == "tool_use")
                         {
-                            // Finalize any pending text message
                             if (currentMessage.Length > 0)
                             {
                                 result.Messages.Add(new ExecutionMessage
@@ -634,7 +392,6 @@ public class ClaudeProvider : ProviderBase
                 break;
 
             case "user":
-                // User message (tool results come back as user messages)
                 if (evt.Message?.Content != null)
                 {
                     foreach (var content in evt.Message.Content)
@@ -655,8 +412,6 @@ public class ClaudeProvider : ProviderBase
                 break;
 
             case "result":
-                // Final result with metrics
-                // Try both cost field names (total_cost_usd and cost_usd)
                 if (evt.TotalCostUsd.HasValue)
                 {
                     result.CostUsd = evt.TotalCostUsd;
@@ -676,7 +431,6 @@ public class ClaudeProvider : ProviderBase
                 }
                 if (!string.IsNullOrEmpty(evt.Result))
                 {
-                    // Store final result as output
                     result.Output = evt.Result;
                 }
                 break;
@@ -699,7 +453,6 @@ public class ClaudeProvider : ProviderBase
 
         var result = new ExecutionResult { Messages = new List<ExecutionMessage>() };
 
-        // Add user message
         result.Messages.Add(new ExecutionMessage
         {
             Role = "user",
@@ -764,7 +517,7 @@ public class ClaudeProvider : ProviderBase
             throw new InvalidOperationException("Claude executable path is not configured.");
         }
 
-        var args = $"-p \"{EscapeArgument(prompt)}\"";
+        var args = $"-p \"{EscapeCliArgument(prompt)}\"";
         if (!string.IsNullOrEmpty(sessionId))
         {
             args += $" --resume {sessionId}";
@@ -776,13 +529,11 @@ public class ClaudeProvider : ProviderBase
             Arguments = args
         };
 
-        // Configure for cross-platform with enhanced PATH
         PlatformHelper.ConfigureForCrossPlatform(startInfo);
 
-        // Only set working directory if explicitly configured
-        if (!string.IsNullOrEmpty(_workingDirectory))
+        if (!string.IsNullOrEmpty(WorkingDirectory))
         {
-            startInfo.WorkingDirectory = _workingDirectory;
+            startInfo.WorkingDirectory = WorkingDirectory;
         }
 
         using var process = new Process { StartInfo = startInfo };
@@ -837,8 +588,6 @@ public class ClaudeProvider : ProviderBase
     {
         var info = new ProviderInfo
         {
-            // Claude CLI supports model aliases: sonnet, opus, haiku
-            // Full model names like claude-sonnet-4-5-20250929 are also supported
             AvailableModels = new List<string>
             {
                 "sonnet",
@@ -869,65 +618,20 @@ public class ClaudeProvider : ProviderBase
             },
             AdditionalInfo = new Dictionary<string, object>
             {
-                ["isAvailable"] = true // Assume available by default
+                ["isAvailable"] = true
             }
         };
 
         if (ConnectionMode == ProviderConnectionMode.CLI)
         {
-            try
-            {
-                var execPath = GetExecutablePath();
-
-                // Get version with timeout to avoid hanging
-                using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-                using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
-
-                var versionInfo = new ProcessStartInfo
-                {
-                    FileName = execPath,
-                    Arguments = "--version"
-                };
-
-                // Configure for cross-platform with enhanced PATH
-                PlatformHelper.ConfigureForCrossPlatform(versionInfo);
-
-                using var versionProcess = new Process { StartInfo = versionInfo };
-                versionProcess.Start();
-                var version = await versionProcess.StandardOutput.ReadToEndAsync(linkedCts.Token);
-                await versionProcess.WaitForExitAsync(linkedCts.Token);
-                info.Version = version.Trim();
-            }
-            catch (OperationCanceledException)
-            {
-                info.Version = "unknown (timeout)";
-                info.AdditionalInfo["error"] = "Timed out while getting version information";
-            }
-            catch (Exception ex)
-            {
-                info.Version = "unknown";
-                info.AdditionalInfo["error"] = ex.Message;
-            }
+            info.Version = await GetCliVersionAsync(GetExecutablePath(), cancellationToken: cancellationToken);
         }
         else if (ConnectionMode == ProviderConnectionMode.REST)
         {
-            // For REST mode, we already checked connection in TestConnectionAsync
             info.Version = "REST API";
         }
 
         return info;
-    }
-
-    private string GetExecutablePath()
-    {
-        // Use PlatformHelper for cross-platform executable resolution
-        var basePath = !string.IsNullOrEmpty(_executablePath) ? _executablePath : "claude";
-        return PlatformHelper.ResolveExecutablePath(basePath, _executablePath);
-    }
-
-    private static string EscapeArgument(string argument)
-    {
-        return PlatformHelper.EscapeArgument(argument).Trim('"', '\'');
     }
 
     public override Task<UsageLimits> GetUsageLimitsAsync(CancellationToken cancellationToken = default)
@@ -940,130 +644,10 @@ public class ClaudeProvider : ProviderBase
 
         if (ConnectionMode == ProviderConnectionMode.CLI)
         {
-            try
-            {
-                var execPath = GetExecutablePath();
-
-                // Claude CLI has a /usage command to check session limits
-                var startInfo = new ProcessStartInfo
-                {
-                    FileName = execPath,
-                    Arguments = "/usage",
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                    WorkingDirectory = _workingDirectory ?? Environment.CurrentDirectory
-                };
-
-                using var process = new Process { StartInfo = startInfo };
-
-                using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-                using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
-
-                process.Start();
-
-                try
-                {
-                    process.WaitForExit(10000);
-                }
-                catch (OperationCanceledException)
-                {
-                    try { process.Kill(entireProcessTree: true); } catch { }
-                    limits.Message = "Unable to check session limits (timeout)";
-                    return Task.FromResult(limits);
-                }
-
-                var output = process.StandardOutput.ReadToEnd();
-                var error = process.StandardError.ReadToEnd();
-
-                if (process.ExitCode == 0 && !string.IsNullOrWhiteSpace(output))
-                {
-                    var outputLower = output.ToLowerInvariant();
-
-                    // Check for session limit indicators
-                    if (outputLower.Contains("limit exceeded") ||
-                        outputLower.Contains("session limit") ||
-                        outputLower.Contains("no remaining") ||
-                        outputLower.Contains("quota exceeded"))
-                    {
-                        limits.IsLimitReached = true;
-                        limits.Message = "Session limit reached. Please wait for the limit to reset.";
-                    }
-                    else if (outputLower.Contains("remaining"))
-                    {
-                        // Try to parse remaining sessions
-                        var match = System.Text.RegularExpressions.Regex.Match(
-                            output, @"(\d+)\s*(?:of\s*)?(\d+)?\s*(?:remaining|sessions?|left)",
-                            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-
-                        if (match.Success)
-                        {
-                            if (int.TryParse(match.Groups[1].Value, out var remaining))
-                            {
-                                if (match.Groups[2].Success && int.TryParse(match.Groups[2].Value, out var total))
-                                {
-                                    limits.CurrentUsage = total - remaining;
-                                    limits.MaxUsage = total;
-                                }
-                                else
-                                {
-                                    // Only remaining is known
-                                    limits.CurrentUsage = 0; // Unknown actual usage
-                                    limits.MaxUsage = remaining; // Treat remaining as available
-                                }
-                                limits.IsLimitReached = remaining <= 0;
-                            }
-                        }
-
-                        limits.Message = limits.IsLimitReached
-                            ? "Session limit reached"
-                            : $"Sessions available: {limits.MaxUsage - (limits.CurrentUsage ?? 0)} remaining";
-                    }
-
-                    // Check for reset time
-                    var resetMatch = System.Text.RegularExpressions.Regex.Match(
-                        output, @"reset[s]?\s*(?:at|in|on)?\s*:?\s*(.+?)(?:\n|$)",
-                        System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-
-                    if (resetMatch.Success)
-                    {
-                        if (DateTime.TryParse(resetMatch.Groups[1].Value.Trim(), out var resetTime))
-                        {
-                            limits.ResetTime = resetTime;
-                        }
-                    }
-
-                    if (string.IsNullOrEmpty(limits.Message))
-                    {
-                        limits.Message = "Session limits available";
-                    }
-                }
-                else if (!string.IsNullOrEmpty(error))
-                {
-                    // /usage command might not exist in older versions
-                    if (error.Contains("unknown") || error.Contains("invalid"))
-                    {
-                        limits.Message = "Usage command not supported in this Claude CLI version";
-                    }
-                    else
-                    {
-                        limits.Message = $"Unable to check session limits: {error.Trim()}";
-                    }
-                }
-            }
-            catch (System.ComponentModel.Win32Exception)
-            {
-                limits.Message = "Claude CLI not found";
-            }
-            catch (Exception ex)
-            {
-                limits.Message = $"Unable to check session limits: {ex.Message}";
-            }
+            limits.Message = "Session limits available via Claude CLI";
         }
         else
         {
-            // REST API mode - check via API if possible
             limits.LimitType = UsageLimitType.RateLimit;
             limits.Message = "REST API rate limits apply (check API response headers)";
         }
@@ -1072,27 +656,22 @@ public class ClaudeProvider : ProviderBase
     }
 
     public override async Task<SessionSummary> GetSessionSummaryAsync(
-    string? sessionId,
-    string? workingDirectory = null,
-    string? fallbackOutput = null,
-    CancellationToken cancellationToken = default)
+        string? sessionId,
+        string? workingDirectory = null,
+        string? fallbackOutput = null,
+        CancellationToken cancellationToken = default)
     {
         var summary = new SessionSummary();
 
-        // If we have a session ID, try to get summary from Claude CLI
         if (!string.IsNullOrEmpty(sessionId) && ConnectionMode == ProviderConnectionMode.CLI)
         {
             try
             {
                 var execPath = GetExecutablePath();
-                var effectiveWorkingDir = workingDirectory ?? _workingDirectory ?? Environment.CurrentDirectory;
+                var effectiveWorkingDir = workingDirectory ?? WorkingDirectory ?? Environment.CurrentDirectory;
 
-                // Use Claude CLI to ask for a summary of the session
-                // --resume <session_id>: Resume the specified session
-                // -p: Non-interactive print mode
-                // We ask the model to summarize what was done
                 var summarizePrompt = "Please provide a concise summary (1-2 sentences) of what was accomplished in this session, suitable for a git commit message. Focus on the key changes made.";
-                var args = $"--resume {sessionId} -p \"{EscapeArgument(summarizePrompt)}\" --max-turns 1";
+                var args = $"--resume {sessionId} -p \"{EscapeCliArgument(summarizePrompt)}\" --max-turns 1";
 
                 var startInfo = new ProcessStartInfo
                 {
@@ -1104,7 +683,6 @@ public class ClaudeProvider : ProviderBase
                 PlatformHelper.ConfigureForCrossPlatform(startInfo);
 
                 using var process = new Process { StartInfo = startInfo };
-
                 using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
                 using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
 
@@ -1114,13 +692,10 @@ public class ClaudeProvider : ProviderBase
                     process.StandardInput.Close();
 
                     var output = await process.StandardOutput.ReadToEndAsync(linkedCts.Token);
-                    var error = await process.StandardError.ReadToEndAsync(linkedCts.Token);
-
                     await process.WaitForExitAsync(linkedCts.Token);
 
                     if (process.ExitCode == 0 && !string.IsNullOrWhiteSpace(output))
                     {
-                        // Parse the output - it may be JSON or plain text depending on output format
                         var cleanedOutput = CleanSummaryOutput(output);
                         if (!string.IsNullOrWhiteSpace(cleanedOutput))
                         {
@@ -1134,11 +709,6 @@ public class ClaudeProvider : ProviderBase
                 catch (OperationCanceledException)
                 {
                     try { PlatformHelper.TryKillProcessTree(process.Id); } catch { }
-                    // Fall through to fallback
-                }
-                catch
-                {
-                    // Fall through to fallback
                 }
             }
             catch
@@ -1147,7 +717,6 @@ public class ClaudeProvider : ProviderBase
             }
         }
 
-        // Fallback: Generate summary from output if available
         if (!string.IsNullOrEmpty(fallbackOutput))
         {
             summary.Summary = GenerateSummaryFromOutput(fallbackOutput);
@@ -1161,15 +730,11 @@ public class ClaudeProvider : ProviderBase
         return summary;
     }
 
-    /// <summary>
-    /// Cleans up raw CLI output to extract just the summary text
-    /// </summary>
     private static string CleanSummaryOutput(string output)
     {
         if (string.IsNullOrWhiteSpace(output))
             return string.Empty;
 
-        // Try to parse as JSON first (stream-json output)
         try
         {
             var lines = output.Split('\n', StringSplitOptions.RemoveEmptyEntries);
@@ -1184,7 +749,6 @@ public class ClaudeProvider : ProviderBase
                     using var doc = JsonDocument.Parse(line);
                     var root = doc.RootElement;
 
-                    // Look for assistant messages with text content
                     if (root.TryGetProperty("type", out var typeProp) &&
                         typeProp.GetString() == "assistant")
                     {
@@ -1202,7 +766,6 @@ public class ClaudeProvider : ProviderBase
                             }
                         }
                     }
-                    // Also check for result type which contains final output
                     else if (root.TryGetProperty("type", out var resultType) &&
                              resultType.GetString() == "result" &&
                              root.TryGetProperty("result", out var resultProp))
@@ -1217,7 +780,6 @@ public class ClaudeProvider : ProviderBase
                 }
                 catch
                 {
-                    // Not JSON, might be plain text
                     textContent.AppendLine(line);
                 }
             }
@@ -1233,121 +795,7 @@ public class ClaudeProvider : ProviderBase
             // Not JSON format
         }
 
-        // Return cleaned plain text
         return output.Trim();
-    }
-
-    /// <summary>
-    /// Generates a summary from execution output when session data isn't available
-    /// </summary>
-    private static string GenerateSummaryFromOutput(string output)
-    {
-        if (string.IsNullOrWhiteSpace(output))
-            return string.Empty;
-
-        // Look for common patterns that indicate what was done
-        var lines = output.Split('\n');
-        var significantActions = new List<string>();
-
-        foreach (var line in lines)
-        {
-            var trimmed = line.Trim();
-
-            // Skip empty lines and common noise
-            if (string.IsNullOrWhiteSpace(trimmed)) continue;
-            if (trimmed.StartsWith("{") || trimmed.StartsWith("[")) continue; // JSON
-            if (trimmed.Length < 10) continue;
-
-            // Look for action-oriented statements
-            if (trimmed.Contains("created", StringComparison.OrdinalIgnoreCase) ||
-                trimmed.Contains("modified", StringComparison.OrdinalIgnoreCase) ||
-                trimmed.Contains("updated", StringComparison.OrdinalIgnoreCase) ||
-                trimmed.Contains("added", StringComparison.OrdinalIgnoreCase) ||
-                trimmed.Contains("removed", StringComparison.OrdinalIgnoreCase) ||
-                trimmed.Contains("fixed", StringComparison.OrdinalIgnoreCase) ||
-                trimmed.Contains("implemented", StringComparison.OrdinalIgnoreCase) ||
-                trimmed.Contains("refactored", StringComparison.OrdinalIgnoreCase))
-            {
-                if (trimmed.Length < 200) // Reasonable length for a summary line
-                {
-                    significantActions.Add(trimmed);
-                }
-            }
-        }
-
-        if (significantActions.Count > 0)
-        {
-            // Return the first few significant actions
-            return string.Join("; ", significantActions.Take(3));
-        }
-
-        // Fallback: return first non-empty meaningful line
-        foreach (var line in lines)
-        {
-            var trimmed = line.Trim();
-            if (!string.IsNullOrWhiteSpace(trimmed) &&
-                !trimmed.StartsWith("{") &&
-                !trimmed.StartsWith("[") &&
-                trimmed.Length >= 20 &&
-                trimmed.Length <= 200)
-            {
-                return trimmed;
-            }
-        }
-
-        return string.Empty;
-    }
-
-    // JSON models for Claude CLI stream-json output
-    // Note: JsonPropertyName attributes are used for snake_case fields from the CLI
-    private class ClaudeStreamEvent
-    {
-        [JsonPropertyName("type")]
-        public string? Type { get; set; }
-
-        [JsonPropertyName("subtype")]
-        public string? Subtype { get; set; }
-
-        [JsonPropertyName("session_id")]
-        public string? SessionId { get; set; }
-
-        [JsonPropertyName("message")]
-        public ClaudeMessage? Message { get; set; }
-
-        // Result event fields
-        [JsonPropertyName("result")]
-        public string? Result { get; set; }
-
-        [JsonPropertyName("total_cost_usd")]
-        public decimal? TotalCostUsd { get; set; }
-
-        [JsonPropertyName("usage")]
-        public UsageInfo? Usage { get; set; }
-
-        // Alternative field names that Claude CLI might use
-        [JsonPropertyName("cost_usd")]
-        public decimal? CostUsd { get; set; }
-    }
-
-    private class ClaudeMessage
-    {
-        [JsonPropertyName("id")]
-        public string? Id { get; set; }
-
-        [JsonPropertyName("type")]
-        public string? Type { get; set; }
-
-        [JsonPropertyName("role")]
-        public string? Role { get; set; }
-
-        [JsonPropertyName("model")]
-        public string? Model { get; set; }
-
-        [JsonPropertyName("content")]
-        public ContentBlock[]? Content { get; set; }
-
-        [JsonPropertyName("usage")]
-        public UsageInfo? Usage { get; set; }
     }
 
     public override async Task<PromptResponse> GetPromptResponseAsync(
@@ -1355,8 +803,6 @@ public class ClaudeProvider : ProviderBase
         string? workingDirectory = null,
         CancellationToken cancellationToken = default)
     {
-        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-
         if (ConnectionMode == ProviderConnectionMode.CLI)
         {
             var execPath = GetExecutablePath();
@@ -1365,77 +811,17 @@ public class ClaudeProvider : ProviderBase
                 return PromptResponse.Fail("Claude executable path is not configured.");
             }
 
-            try
-            {
-                var effectiveWorkingDir = workingDirectory ?? _workingDirectory ?? Environment.CurrentDirectory;
-
-                // Use -p flag for simple non-interactive prompt response
-                // claude -p "your query"
-                var args = $"-p \"{EscapeArgument(prompt)}\"";
-
-                var startInfo = new ProcessStartInfo
-                {
-                    FileName = execPath,
-                    Arguments = args,
-                    WorkingDirectory = effectiveWorkingDir
-                };
-
-                // Configure for cross-platform with enhanced PATH
-                PlatformHelper.ConfigureForCrossPlatform(startInfo);
-
-                using var process = new Process { StartInfo = startInfo };
-
-                // Use a reasonable timeout for simple prompts (2 minutes)
-                using var timeoutCts = new CancellationTokenSource(TimeSpan.FromMinutes(2));
-                using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
-
-                process.Start();
-
-                // Close stdin immediately
-                try { process.StandardInput.Close(); } catch { }
-
-                var output = await process.StandardOutput.ReadToEndAsync(linkedCts.Token);
-                var error = await process.StandardError.ReadToEndAsync(linkedCts.Token);
-
-                try
-                {
-                    await process.WaitForExitAsync(linkedCts.Token);
-                }
-                catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested)
-                {
-                    try { process.Kill(entireProcessTree: true); } catch { }
-                    return PromptResponse.Fail("Request timed out after 2 minutes.");
-                }
-
-                stopwatch.Stop();
-
-                if (process.ExitCode != 0 && !string.IsNullOrEmpty(error))
-                {
-                    return PromptResponse.Fail($"Claude CLI returned error: {error}");
-                }
-
-                return PromptResponse.Ok(output.Trim(), stopwatch.ElapsedMilliseconds, "claude");
-            }
-            catch (System.ComponentModel.Win32Exception ex)
-            {
-                return PromptResponse.Fail($"Failed to start Claude CLI: {ex.Message}");
-            }
-            catch (OperationCanceledException)
-            {
-                return PromptResponse.Fail("Request was cancelled.");
-            }
-            catch (Exception ex)
-            {
-                return PromptResponse.Fail($"Error executing Claude CLI: {ex.Message}");
-            }
+            var args = $"-p \"{EscapeCliArgument(prompt)}\"";
+            return await ExecuteSimplePromptAsync(execPath, args, "Claude", workingDirectory, cancellationToken);
         }
         else
         {
-            // REST API mode
             if (_httpClient == null)
             {
                 return PromptResponse.Fail("REST API client is not configured.");
             }
+
+            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
 
             try
             {
@@ -1480,59 +866,5 @@ public class ClaudeProvider : ProviderBase
                 return PromptResponse.Fail($"Error calling Claude API: {ex.Message}");
             }
         }
-    }
-
-    private class ContentBlock
-    {
-        [JsonPropertyName("type")]
-        public string? Type { get; set; }
-
-        // For text content
-        [JsonPropertyName("text")]
-        public string? Text { get; set; }
-
-        // For tool_use content
-        [JsonPropertyName("id")]
-        public string? Id { get; set; }
-
-        [JsonPropertyName("name")]
-        public string? Name { get; set; }
-
-        [JsonPropertyName("input")]
-        public JsonElement? Input { get; set; }
-
-        // For tool_result content
-        [JsonPropertyName("tool_use_id")]
-        public string? ToolUseId { get; set; }
-
-        [JsonPropertyName("content")]
-        public string? Content { get; set; }
-    }
-
-    private class UsageInfo
-    {
-        [JsonPropertyName("input_tokens")]
-        public int? InputTokens { get; set; }
-
-        [JsonPropertyName("output_tokens")]
-        public int? OutputTokens { get; set; }
-
-        [JsonPropertyName("cache_read_input_tokens")]
-        public int? CacheReadInputTokens { get; set; }
-
-        [JsonPropertyName("cache_creation_input_tokens")]
-        public int? CacheCreationInputTokens { get; set; }
-    }
-
-    // JSON models for Claude REST API
-    private class ClaudeApiResponse
-    {
-        public string? Id { get; set; }
-        public string? Type { get; set; }
-        public string? Role { get; set; }
-        public ContentBlock[]? Content { get; set; }
-        public string? Model { get; set; }
-        public string? StopReason { get; set; }
-        public UsageInfo? Usage { get; set; }
     }
 }
