@@ -271,20 +271,22 @@ public class OpenCodeProvider : ProviderBase
         var result = new ExecutionResult { Messages = new List<ExecutionMessage>() };
         var effectiveWorkingDir = workingDirectory ?? _workingDirectory ?? Environment.CurrentDirectory;
 
-        // Build arguments - opencode uses 'run' command with --format json
-        var args = new List<string> { "run", "--format", "json" };
+        // Build arguments for opencode run command
+        // OpenCode v1.1.x uses: opencode run [message..] with options
+        var args = new List<string> { "run" };
 
+        // Session continuation uses -s or --session
         if (!string.IsNullOrEmpty(sessionId))
         {
-            args.AddRange(new[] { "--session", sessionId });
+            args.AddRange(new[] { "-s", sessionId });
         }
 
-        // Add MCP config if available (injected via ExecuteWithOptionsAsync)
-        // OpenCode uses --config flag to load MCP servers from JSON
-        if (!string.IsNullOrEmpty(CurrentMcpConfigPath))
+        // Add model if specified in environment variables
+        if (CurrentEnvironmentVariables != null &&
+            CurrentEnvironmentVariables.TryGetValue("OPENCODE_MODEL", out var model) &&
+            !string.IsNullOrEmpty(model))
         {
-            args.Add("--config");
-            args.Add($"\"{CurrentMcpConfigPath}\"");
+            args.AddRange(new[] { "-m", model });
         }
 
         // Add any additional CLI arguments
@@ -293,8 +295,9 @@ public class OpenCodeProvider : ProviderBase
             args.AddRange(CurrentAdditionalArgs);
         }
 
-        // Add the prompt at the end
-        args.Add($"\"{EscapeArgument(prompt)}\"");
+        // Add the prompt at the end (the message for the run command)
+        args.Add("--");
+        args.Add(EscapeArgument(prompt));
 
         var startInfo = new ProcessStartInfo
         {
@@ -338,19 +341,30 @@ public class OpenCodeProvider : ProviderBase
 
             outputBuilder.Add(e.Data);
 
+            // Try to parse as JSON first (in case format is json)
             try
             {
                 var jsonEvent = JsonSerializer.Deserialize<OpenCodeStreamEvent>(e.Data, JsonOptions);
-                if (jsonEvent != null)
+                if (jsonEvent != null && !string.IsNullOrEmpty(jsonEvent.Type))
                 {
                     ProcessStreamEvent(jsonEvent, result, currentAssistantMessage, progress);
+                    return;
                 }
             }
             catch
             {
-                // Non-JSON output, append to current message
-                currentAssistantMessage.Append(e.Data);
+                // Not JSON, continue with plain text handling
             }
+
+            // Plain text output - append to current message and report progress
+            currentAssistantMessage.AppendLine(e.Data);
+
+            // Report output line for live streaming
+            progress?.Report(new ExecutionProgress
+            {
+                OutputLine = e.Data,
+                IsStreaming = true
+            });
         };
 
         process.ErrorDataReceived += (sender, e) =>
@@ -365,6 +379,14 @@ public class OpenCodeProvider : ProviderBase
             if (!string.IsNullOrEmpty(e.Data))
             {
                 errorBuilder.AppendLine(e.Data);
+
+                // Also report stderr as output for visibility
+                progress?.Report(new ExecutionProgress
+                {
+                    OutputLine = e.Data,
+                    IsErrorOutput = true,
+                    IsStreaming = true
+                });
             }
         };
 
@@ -790,16 +812,19 @@ public class OpenCodeProvider : ProviderBase
             throw new InvalidOperationException("OpenCode executable path is not configured.");
         }
 
-        var args = $"run \"{EscapeArgument(prompt)}\"";
+        // Build args for opencode run command
+        var argsList = new List<string> { "run" };
         if (!string.IsNullOrEmpty(sessionId))
         {
-            args = $"run --session {sessionId} \"{EscapeArgument(prompt)}\"";
+            argsList.AddRange(new[] { "-s", sessionId });
         }
+        argsList.Add("--");
+        argsList.Add(EscapeArgument(prompt));
 
         var startInfo = new ProcessStartInfo
         {
             FileName = execPath,
-            Arguments = args
+            Arguments = string.Join(" ", argsList)
         };
 
         // Configure for cross-platform with enhanced PATH
