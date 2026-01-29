@@ -10,7 +10,7 @@ public interface IUserService
 	Task<(bool Success, string? Error)> UpdateUserAsync(Guid id, UpdateUserModel model);
 	Task<(bool Success, string? Error)> ResetPasswordAsync(Guid id, string newPassword);
 	Task<(bool Success, string? Error)> DeleteUserAsync(Guid id);
-	Task<(bool Success, string? Error)> ToggleUserActiveAsync(Guid id);
+	Task<(bool Success, string? Error)> ToggleUserActiveAsync(Guid id, Guid currentUserId);
 	Task<IEnumerable<string>> GetUserRolesAsync(Guid id);
 }
 

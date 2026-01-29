@@ -231,7 +231,7 @@ public class UserService : IUserService
 		}
 	}
 
-	public async Task<(bool Success, string? Error)> ToggleUserActiveAsync(Guid id)
+	public async Task<(bool Success, string? Error)> ToggleUserActiveAsync(Guid id, Guid currentUserId)
 	{
 		try
 		{
@@ -239,6 +239,12 @@ public class UserService : IUserService
 			if (user == null)
 			{
 				return (false, "User not found.");
+			}
+
+			// Prevent users from deactivating their own account
+			if (user.Id == currentUserId && user.IsActive)
+			{
+				return (false, "You cannot deactivate your own account.");
 			}
 
 			// Prevent deactivating the last active admin

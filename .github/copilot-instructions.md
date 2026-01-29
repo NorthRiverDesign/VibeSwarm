@@ -140,6 +140,8 @@ UI should appear consistent and highly polished. Care should be used to maintain
 
 If a page has over 300 lines of markup, it should be refactored into smaller components to keep the markup readable.
 
+Avoid table based layouts for non-tabular data. Use Bootstrap's grid system and flexbox utilities to create responsive and flexible layouts that adapt to different screen sizes. Utilize lists with list group items, cards, and other Bootstrap components to structure content effectively without relying on tables. Tables are prone to responsiveness issues and should be reserved for displaying tabular data only.
+
 ## C# Best Practices
 
 Use a Models folder to contain all data models used in the application. This promotes organization and makes it easier to locate and manage data structures. Use attributes such as [Required], [StringLength], and [Range] to enforce data validation rules on models. This ensures that data integrity is maintained and reduces the likelihood of errors during data processing.

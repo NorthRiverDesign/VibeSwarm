@@ -147,6 +147,9 @@ builder.Services.AddSingleton<IInteractionResponseService, InMemoryInteractionRe
 // Register notification service (scoped per circuit for Blazor Server)
 builder.Services.AddScoped<NotificationService>();
 
+// Register change password modal service (scoped to coordinate between LoginDisplay and MainLayout)
+builder.Services.AddScoped<ChangePasswordModalService>();
+
 var app = builder.Build();
 
 // Apply pending migrations on startup and initialize admin user
