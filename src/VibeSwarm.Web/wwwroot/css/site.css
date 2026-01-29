@@ -197,7 +197,6 @@ body {
     padding-left: calc(1rem + var(--vs-safe-area-left));
     padding-right: calc(1rem + var(--vs-safe-area-right));
     max-width: 100%;
-    overflow-x: hidden;
 }
 
 /* Desktop Layout */
