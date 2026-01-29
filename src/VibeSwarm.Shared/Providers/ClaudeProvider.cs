@@ -378,6 +378,71 @@ public class ClaudeProvider : ProviderBase
             IsStreaming = false
         });
 
+        // Report startup as output line for visibility in live output
+        progress?.Report(new ExecutionProgress
+        {
+            OutputLine = $"[VibeSwarm] Process started (PID: {process.Id}). Waiting for CLI to initialize...",
+            IsStreaming = true
+        });
+
+        // Track when we receive output to detect initialization delays
+        var lastOutputTime = DateTime.UtcNow;
+        var outputReceived = false;
+        var initializationWarningsSent = 0;
+        var initializationCheckInterval = TimeSpan.FromSeconds(5);
+
+        // Monitor for initialization delays - report progress while waiting for first output
+        using var initMonitorCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var initializationMonitorTask = Task.Run(async () =>
+        {
+            try
+            {
+                while (!initMonitorCts.Token.IsCancellationRequested)
+                {
+                    await Task.Delay(initializationCheckInterval, initMonitorCts.Token);
+
+                    lock (outputBuilder)
+                    {
+                        if (outputBuilder.Count > 0)
+                        {
+                            outputReceived = true;
+                        }
+                    }
+
+                    if (outputReceived)
+                    {
+                        break;
+                    }
+
+                    var waitTime = DateTime.UtcNow - lastOutputTime;
+                    initializationWarningsSent++;
+
+                    var waitMessage = initializationWarningsSent switch
+                    {
+                        1 => $"[VibeSwarm] Still initializing... (waited {waitTime.TotalSeconds:F0}s).",
+                        2 => $"[VibeSwarm] Still waiting for response... (waited {waitTime.TotalSeconds:F0}s).",
+                        _ => $"[VibeSwarm] Still waiting ({waitTime.TotalSeconds:F0}s)... Process is running."
+                    };
+
+                    progress?.Report(new ExecutionProgress
+                    {
+                        OutputLine = waitMessage,
+                        IsStreaming = true
+                    });
+
+                    progress?.Report(new ExecutionProgress
+                    {
+                        CurrentMessage = $"Waiting for CLI response ({waitTime.TotalSeconds:F0}s)...",
+                        IsStreaming = false
+                    });
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                // Expected when process completes or is cancelled
+            }
+        }, initMonitorCts.Token);
+
         process.OutputDataReceived += (sender, e) =>
         {
             if (e.Data == null)
@@ -445,13 +510,21 @@ public class ClaudeProvider : ProviderBase
         try
         {
             await process.WaitForExitAsync(cancellationToken);
+
+            // Stop the initialization monitor
+            initMonitorCts.Cancel();
         }
         catch (OperationCanceledException)
         {
+            // Stop the initialization monitor
+            initMonitorCts.Cancel();
             // If cancelled, use cross-platform kill method
             PlatformHelper.TryKillProcessTree(process.Id);
             throw;
         }
+
+        // Ensure initialization monitor task completes
+        try { await initializationMonitorTask; } catch (OperationCanceledException) { }
 
         // Wait for all output to be processed (with timeout to prevent hanging)
         var outputTimeout = Task.Delay(TimeSpan.FromSeconds(10), CancellationToken.None);

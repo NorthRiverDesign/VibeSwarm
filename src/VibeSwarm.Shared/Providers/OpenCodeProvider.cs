@@ -423,20 +423,98 @@ public class OpenCodeProvider : ProviderBase
             IsStreaming = false
         });
 
+        // Report startup as output line for visibility in live output
+        progress?.Report(new ExecutionProgress
+        {
+            OutputLine = $"[VibeSwarm] Process started (PID: {process.Id}). Waiting for CLI to initialize...",
+            IsStreaming = true
+        });
+
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
+
+        // Track when we last received output to detect initialization delays
+        var lastOutputTime = DateTime.UtcNow;
+        var outputReceived = false;
+        var initializationWarningsSent = 0;
+        var initializationCheckInterval = TimeSpan.FromSeconds(5);
+
+        // Monitor for initialization delays - report progress while waiting for first output
+        using var initMonitorCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var initializationMonitorTask = Task.Run(async () =>
+        {
+            try
+            {
+                while (!initMonitorCts.Token.IsCancellationRequested)
+                {
+                    await Task.Delay(initializationCheckInterval, initMonitorCts.Token);
+
+                    // Check if we've received any output yet
+                    lock (outputBuilder)
+                    {
+                        if (outputBuilder.Count > 0)
+                        {
+                            outputReceived = true;
+                        }
+                    }
+
+                    if (outputReceived)
+                    {
+                        // Output has started flowing, stop the initialization monitor
+                        break;
+                    }
+
+                    var waitTime = DateTime.UtcNow - lastOutputTime;
+                    initializationWarningsSent++;
+
+                    // Report waiting status as output line for visibility
+                    var waitMessage = initializationWarningsSent switch
+                    {
+                        1 => $"[VibeSwarm] Still initializing... (waited {waitTime.TotalSeconds:F0}s). The model may be loading.",
+                        2 => $"[VibeSwarm] Still waiting for response... (waited {waitTime.TotalSeconds:F0}s). Ollama models can take time to load.",
+                        3 => $"[VibeSwarm] Initialization taking longer than expected ({waitTime.TotalSeconds:F0}s). Please be patient.",
+                        _ => $"[VibeSwarm] Still waiting ({waitTime.TotalSeconds:F0}s)... Process is running but no output yet."
+                    };
+
+                    progress?.Report(new ExecutionProgress
+                    {
+                        OutputLine = waitMessage,
+                        IsStreaming = true
+                    });
+
+                    // Also update activity message
+                    progress?.Report(new ExecutionProgress
+                    {
+                        CurrentMessage = $"Waiting for CLI response ({waitTime.TotalSeconds:F0}s)...",
+                        IsStreaming = false
+                    });
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                // Expected when process completes or is cancelled
+            }
+        }, initMonitorCts.Token);
 
         // Wait for the process to exit - this can take several minutes for complex agent tasks
         try
         {
             await process.WaitForExitAsync(cancellationToken);
+
+            // Stop the initialization monitor
+            initMonitorCts.Cancel();
         }
         catch (OperationCanceledException)
         {
+            // Stop the initialization monitor
+            initMonitorCts.Cancel();
             // If cancelled, try to kill the process
             try { process.Kill(entireProcessTree: true); } catch { }
             throw;
         }
+
+        // Ensure initialization monitor task completes
+        try { await initializationMonitorTask; } catch (OperationCanceledException) { }
 
         // Wait for all output to be processed (with timeout to prevent hanging)
         var outputTimeout = Task.Delay(TimeSpan.FromSeconds(10), CancellationToken.None);
