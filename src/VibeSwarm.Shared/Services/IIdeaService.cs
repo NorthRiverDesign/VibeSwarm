@@ -86,4 +86,22 @@ public interface IIdeaService
 	/// Reorders ideas for a project
 	/// </summary>
 	Task ReorderIdeasAsync(Guid projectId, IEnumerable<Guid> ideaIdsInOrder, CancellationToken cancellationToken = default);
+
+	/// <summary>
+	/// Copies an idea to another project
+	/// </summary>
+	/// <param name="ideaId">The idea to copy</param>
+	/// <param name="targetProjectId">The target project to copy the idea to</param>
+	/// <param name="cancellationToken">Cancellation token</param>
+	/// <returns>The new copied idea</returns>
+	Task<Idea> CopyToProjectAsync(Guid ideaId, Guid targetProjectId, CancellationToken cancellationToken = default);
+
+	/// <summary>
+	/// Moves an idea to another project
+	/// </summary>
+	/// <param name="ideaId">The idea to move</param>
+	/// <param name="targetProjectId">The target project to move the idea to</param>
+	/// <param name="cancellationToken">Cancellation token</param>
+	/// <returns>The moved idea</returns>
+	Task<Idea> MoveToProjectAsync(Guid ideaId, Guid targetProjectId, CancellationToken cancellationToken = default);
 }

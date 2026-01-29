@@ -320,4 +320,64 @@ Begin by expanding this idea into a detailed specification, then implement it.";
 
 		await _dbContext.SaveChangesAsync(cancellationToken);
 	}
+
+	public async Task<Idea> CopyToProjectAsync(Guid ideaId, Guid targetProjectId, CancellationToken cancellationToken = default)
+	{
+		var sourceIdea = await _dbContext.Ideas.FindAsync(new object[] { ideaId }, cancellationToken);
+		if (sourceIdea == null)
+		{
+			throw new InvalidOperationException($"Idea with ID {ideaId} not found.");
+		}
+
+		// Verify target project exists
+		var targetProject = await _dbContext.Projects.FindAsync(new object[] { targetProjectId }, cancellationToken);
+		if (targetProject == null)
+		{
+			throw new InvalidOperationException($"Target project with ID {targetProjectId} not found.");
+		}
+
+		// Create a copy of the idea in the target project
+		var newIdea = new Idea
+		{
+			Description = sourceIdea.Description,
+			ProjectId = targetProjectId
+		};
+
+		return await CreateAsync(newIdea, cancellationToken);
+	}
+
+	public async Task<Idea> MoveToProjectAsync(Guid ideaId, Guid targetProjectId, CancellationToken cancellationToken = default)
+	{
+		var idea = await _dbContext.Ideas.FindAsync(new object[] { ideaId }, cancellationToken);
+		if (idea == null)
+		{
+			throw new InvalidOperationException($"Idea with ID {ideaId} not found.");
+		}
+
+		// Cannot move ideas that are currently processing
+		if (idea.IsProcessing)
+		{
+			throw new InvalidOperationException("Cannot move an idea that is currently being processed.");
+		}
+
+		// Verify target project exists
+		var targetProject = await _dbContext.Projects.FindAsync(new object[] { targetProjectId }, cancellationToken);
+		if (targetProject == null)
+		{
+			throw new InvalidOperationException($"Target project with ID {targetProjectId} not found.");
+		}
+
+		// Update the idea's project
+		idea.ProjectId = targetProjectId;
+
+		// Update sort order in new project
+		var maxSortOrder = await _dbContext.Ideas
+			.Where(i => i.ProjectId == targetProjectId && i.Id != ideaId)
+			.MaxAsync(i => (int?)i.SortOrder, cancellationToken) ?? -1;
+		idea.SortOrder = maxSortOrder + 1;
+
+		await _dbContext.SaveChangesAsync(cancellationToken);
+
+		return idea;
+	}
 }

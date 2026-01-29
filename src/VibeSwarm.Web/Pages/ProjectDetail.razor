@@ -68,6 +68,7 @@ else
 
             @* Ideas Panel Component *@
             <IdeasPanel Ideas="@Ideas"
+                CurrentProjectId="@ProjectId"
                 IsProcessingActive="@IsIdeasProcessingActive"
                 IsTogglingProcessing="@_isTogglingIdeasProcessing"
                 HasDefaultProvider="@HasDefaultProvider"
@@ -76,7 +77,9 @@ else
                 OnStopProcessing="StopIdeasProcessing"
                 OnAddIdea="AddIdea"
                 OnUpdateIdea="UpdateIdea"
-                OnDeleteIdea="DeleteIdea" />
+                OnDeleteIdea="DeleteIdea"
+                OnCopyIdea="CopyIdea"
+                OnMoveIdea="MoveIdea" />
         </div>
 
         @* Jobs list second on mobile *@
@@ -890,6 +893,35 @@ else
         catch (Exception ex)
         {
             ErrorMessage = $"Error deleting idea: {ex.Message}";
+        }
+    }
+
+    private async Task CopyIdea((Guid ideaId, Guid targetProjectId) args)
+    {
+        try
+        {
+            var targetProject = await ProjectService.GetByIdAsync(args.targetProjectId);
+            await IdeaService.CopyToProjectAsync(args.ideaId, args.targetProjectId);
+            SuccessMessage = $"Idea copied to {targetProject?.Name ?? "project"} successfully.";
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Error copying idea: {ex.Message}";
+        }
+    }
+
+    private async Task MoveIdea((Guid ideaId, Guid targetProjectId) args)
+    {
+        try
+        {
+            var targetProject = await ProjectService.GetByIdAsync(args.targetProjectId);
+            await IdeaService.MoveToProjectAsync(args.ideaId, args.targetProjectId);
+            await LoadIdeas();
+            SuccessMessage = $"Idea moved to {targetProject?.Name ?? "project"} successfully.";
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Error moving idea: {ex.Message}";
         }
     }
 

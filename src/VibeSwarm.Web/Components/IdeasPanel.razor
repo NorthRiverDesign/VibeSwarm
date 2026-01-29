@@ -1,4 +1,5 @@
 @* Ideas panel component for managing project feature ideas *@
+@inject IProjectService ProjectService
 
 <div class="card mt-3 mt-lg-4">
 	<div class="card-header bg-body-secondary d-flex justify-content-between align-items-center">
@@ -45,11 +46,13 @@
 	<div class="card-body">
 		@* Add New Idea Form *@
 		<div class="mb-3">
-			<div class="input-group">
-				<input type="text" class="form-control" placeholder="Enter a feature idea..." @bind="NewIdeaDescription"
-					@bind:event="oninput" @onkeypress="HandleKeyPress" />
+			<div class="d-flex gap-2 align-items-end">
+				<div class="flex-grow-1">
+					<textarea class="form-control" rows="2" placeholder="Enter a feature idea..." @bind="NewIdeaDescription"
+						@bind:event="oninput" @onkeypress="HandleKeyPress"></textarea>
+				</div>
 				<button type="button" class="btn btn-primary" @onclick="AddIdea"
-					disabled="@(string.IsNullOrWhiteSpace(NewIdeaDescription) || IsAddingIdea)">
+					disabled="@(string.IsNullOrWhiteSpace(NewIdeaDescription) || IsAddingIdea)" style="height: 58px;">
 					@if (IsAddingIdea)
 					{
 						<span class="spinner-border spinner-border-sm" role="status"></span>
@@ -61,7 +64,7 @@
 				</button>
 			</div>
 			<div class="form-text">
-				Short description of a feature or update. Ideas will be expanded into full specs when processed.
+				Short description of a feature or update. Ideas will be expanded into full specs when processed. Press Ctrl+Enter to submit.
 			</div>
 		</div>
 
@@ -90,16 +93,20 @@
 						@if (EditingIdeaId == idea.Id)
 						{
 							@* Edit Mode *@
-							<div class="d-flex gap-2">
-								<input type="text" class="form-control form-control-sm" @bind="EditingIdeaDescription"
-									@bind:event="oninput" />
-								<button type="button" class="btn btn-sm btn-success" @onclick="SaveIdeaEdit"
-									disabled="@(string.IsNullOrWhiteSpace(EditingIdeaDescription))">
-									<i class="bi bi-check-lg"></i>
-								</button>
-								<button type="button" class="btn btn-sm btn-outline-secondary" @onclick="CancelIdeaEdit">
-									<i class="bi bi-x-lg"></i>
-								</button>
+							<div class="d-flex gap-2 align-items-end">
+								<div class="flex-grow-1">
+									<textarea class="form-control form-control-sm" rows="2" @bind="EditingIdeaDescription"
+										@bind:event="oninput"></textarea>
+								</div>
+								<div class="d-flex flex-column gap-1">
+									<button type="button" class="btn btn-sm btn-success" @onclick="SaveIdeaEdit"
+										disabled="@(string.IsNullOrWhiteSpace(EditingIdeaDescription))">
+										<i class="bi bi-check-lg"></i>
+									</button>
+									<button type="button" class="btn btn-sm btn-outline-secondary" @onclick="CancelIdeaEdit">
+										<i class="bi bi-x-lg"></i>
+									</button>
+								</div>
 							</div>
 						}
 						else
@@ -107,19 +114,17 @@
 							@* View Mode *@
 							<div class="d-flex justify-content-between align-items-start gap-2">
 								<div class="flex-grow-1 min-width-0">
-									<div class="d-flex align-items-center gap-2">
+									<div class="d-flex align-items-start gap-2">
 										@if (idea.IsProcessing)
 										{
-											<span class="spinner-border spinner-border-sm text-primary flex-shrink-0" role="status"
+											<span class="spinner-border spinner-border-sm text-primary flex-shrink-0 mt-1" role="status"
 												title="Processing..."></span>
 										}
 										else
 										{
-											<i class="bi bi-lightbulb text-warning flex-shrink-0"></i>
+											<i class="bi bi-lightbulb text-warning flex-shrink-0 mt-1"></i>
 										}
-										<span class="@(idea.IsProcessing ? "text-body-secondary" : "")">
-											@idea.Description
-										</span>
+										<span class="@(idea.IsProcessing ? "text-body-secondary" : "") text-break" style="white-space: pre-wrap;">@idea.Description</span>
 									</div>
 									@if (idea.IsProcessing && idea.JobId.HasValue)
 									{
@@ -130,16 +135,34 @@
 										</small>
 									}
 								</div>
-								<div class="d-flex gap-1 flex-shrink-0">
-									<button type="button" class="btn btn-sm btn-outline-secondary"
-										@onclick="() => StartEditIdea(idea)" disabled="@idea.IsProcessing" title="Edit">
-										<i class="bi bi-pencil"></i>
+								<div class="dropdown flex-shrink-0">
+									<button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button"
+										data-bs-toggle="dropdown" aria-expanded="false" disabled="@idea.IsProcessing">
+										<i class="bi bi-three-dots-vertical"></i>
 									</button>
-									<button type="button" class="btn btn-sm btn-outline-danger"
-										@onclick="() => OnDeleteIdea.InvokeAsync(idea.Id)" disabled="@idea.IsProcessing"
-										title="Remove">
-										<i class="bi bi-trash"></i>
-									</button>
+									<ul class="dropdown-menu dropdown-menu-end">
+										<li>
+											<button class="dropdown-item" @onclick="() => StartEditIdea(idea)">
+												<i class="bi bi-pencil me-2"></i>Edit
+											</button>
+										</li>
+										<li>
+											<button class="dropdown-item" @onclick="() => OpenCopyModal(idea)">
+												<i class="bi bi-copy me-2"></i>Copy to Project
+											</button>
+										</li>
+										<li>
+											<button class="dropdown-item" @onclick="() => OpenMoveModal(idea)">
+												<i class="bi bi-box-arrow-right me-2"></i>Move to Project
+											</button>
+										</li>
+										<li><hr class="dropdown-divider"></li>
+										<li>
+											<button class="dropdown-item text-danger" @onclick="() => OnDeleteIdea.InvokeAsync(idea.Id)">
+												<i class="bi bi-trash me-2"></i>Delete
+											</button>
+										</li>
+									</ul>
 								</div>
 							</div>
 						}
@@ -158,9 +181,102 @@
 	</div>
 </div>
 
+@* Copy Idea Modal *@
+@if (ShowCopyModal && SelectedIdea != null)
+{
+	<div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+		<div class="modal-dialog modal-dialog-centered">
+			<div class="modal-content">
+				<div class="modal-header">
+					<h5 class="modal-title"><i class="bi bi-copy me-2"></i>Copy Idea to Project</h5>
+					<button type="button" class="btn-close" @onclick="CloseModals"></button>
+				</div>
+				<div class="modal-body">
+					<p class="text-body-secondary mb-3">Select a project to copy this idea to:</p>
+					<div class="mb-3">
+						<label class="form-label fw-semibold">Idea</label>
+						<div class="p-2 bg-body-tertiary rounded text-break" style="white-space: pre-wrap;">@SelectedIdea.Description</div>
+					</div>
+					<div class="mb-3">
+						<label class="form-label fw-semibold">Target Project</label>
+						<select class="form-select" @bind="SelectedTargetProjectId">
+							<option value="">Select a project...</option>
+							@foreach (var project in AvailableProjects.Where(p => p.Id != CurrentProjectId))
+							{
+								<option value="@project.Id">@project.Name</option>
+							}
+						</select>
+					</div>
+				</div>
+				<div class="modal-footer">
+					<button type="button" class="btn btn-secondary" @onclick="CloseModals">Cancel</button>
+					<button type="button" class="btn btn-primary" @onclick="ConfirmCopyIdea"
+						disabled="@(SelectedTargetProjectId == Guid.Empty || IsProcessingAction)">
+						@if (IsProcessingAction)
+						{
+							<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+						}
+						Copy Idea
+					</button>
+				</div>
+			</div>
+		</div>
+	</div>
+}
+
+@* Move Idea Modal *@
+@if (ShowMoveModal && SelectedIdea != null)
+{
+	<div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+		<div class="modal-dialog modal-dialog-centered">
+			<div class="modal-content">
+				<div class="modal-header">
+					<h5 class="modal-title"><i class="bi bi-box-arrow-right me-2"></i>Move Idea to Project</h5>
+					<button type="button" class="btn-close" @onclick="CloseModals"></button>
+				</div>
+				<div class="modal-body">
+					<p class="text-body-secondary mb-3">Select a project to move this idea to:</p>
+					<div class="mb-3">
+						<label class="form-label fw-semibold">Idea</label>
+						<div class="p-2 bg-body-tertiary rounded text-break" style="white-space: pre-wrap;">@SelectedIdea.Description</div>
+					</div>
+					<div class="mb-3">
+						<label class="form-label fw-semibold">Target Project</label>
+						<select class="form-select" @bind="SelectedTargetProjectId">
+							<option value="">Select a project...</option>
+							@foreach (var project in AvailableProjects.Where(p => p.Id != CurrentProjectId))
+							{
+								<option value="@project.Id">@project.Name</option>
+							}
+						</select>
+					</div>
+					<div class="alert alert-warning py-2 mb-0">
+						<i class="bi bi-exclamation-triangle me-1"></i>
+						This will remove the idea from the current project.
+					</div>
+				</div>
+				<div class="modal-footer">
+					<button type="button" class="btn btn-secondary" @onclick="CloseModals">Cancel</button>
+					<button type="button" class="btn btn-warning" @onclick="ConfirmMoveIdea"
+						disabled="@(SelectedTargetProjectId == Guid.Empty || IsProcessingAction)">
+						@if (IsProcessingAction)
+						{
+							<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+						}
+						Move Idea
+					</button>
+				</div>
+			</div>
+		</div>
+	</div>
+}
+
 @code {
 	[Parameter]
 	public List<Idea> Ideas { get; set; } = new();
+
+	[Parameter]
+	public Guid CurrentProjectId { get; set; }
 
 	[Parameter]
 	public bool IsProcessingActive { get; set; }
@@ -189,13 +305,28 @@
 	[Parameter]
 	public EventCallback<Guid> OnDeleteIdea { get; set; }
 
+	[Parameter]
+	public EventCallback<(Guid ideaId, Guid targetProjectId)> OnCopyIdea { get; set; }
+
+	[Parameter]
+	public EventCallback<(Guid ideaId, Guid targetProjectId)> OnMoveIdea { get; set; }
+
 	private string NewIdeaDescription { get; set; } = string.Empty;
 	private Guid? EditingIdeaId { get; set; }
 	private string EditingIdeaDescription { get; set; } = string.Empty;
 
+	// Modal state
+	private bool ShowCopyModal { get; set; }
+	private bool ShowMoveModal { get; set; }
+	private Idea? SelectedIdea { get; set; }
+	private Guid SelectedTargetProjectId { get; set; }
+	private List<Project> AvailableProjects { get; set; } = new();
+	private bool IsProcessingAction { get; set; }
+
 	private async Task HandleKeyPress(KeyboardEventArgs e)
 	{
-		if (e.Key == "Enter" && !string.IsNullOrWhiteSpace(NewIdeaDescription))
+		// Ctrl+Enter to submit for textarea
+		if (e.Key == "Enter" && e.CtrlKey && !string.IsNullOrWhiteSpace(NewIdeaDescription))
 		{
 			await AddIdea();
 		}
@@ -234,5 +365,75 @@
 			await OnUpdateIdea.InvokeAsync(idea);
 		}
 		CancelIdeaEdit();
+	}
+
+	private async Task OpenCopyModal(Idea idea)
+	{
+		SelectedIdea = idea;
+		SelectedTargetProjectId = Guid.Empty;
+		await LoadAvailableProjects();
+		ShowCopyModal = true;
+	}
+
+	private async Task OpenMoveModal(Idea idea)
+	{
+		SelectedIdea = idea;
+		SelectedTargetProjectId = Guid.Empty;
+		await LoadAvailableProjects();
+		ShowMoveModal = true;
+	}
+
+	private async Task LoadAvailableProjects()
+	{
+		try
+		{
+			AvailableProjects = (await ProjectService.GetAllAsync()).ToList();
+		}
+		catch
+		{
+			AvailableProjects = new List<Project>();
+		}
+	}
+
+	private void CloseModals()
+	{
+		ShowCopyModal = false;
+		ShowMoveModal = false;
+		SelectedIdea = null;
+		SelectedTargetProjectId = Guid.Empty;
+	}
+
+	private async Task ConfirmCopyIdea()
+	{
+		if (SelectedIdea == null || SelectedTargetProjectId == Guid.Empty)
+			return;
+
+		IsProcessingAction = true;
+		try
+		{
+			await OnCopyIdea.InvokeAsync((SelectedIdea.Id, SelectedTargetProjectId));
+			CloseModals();
+		}
+		finally
+		{
+			IsProcessingAction = false;
+		}
+	}
+
+	private async Task ConfirmMoveIdea()
+	{
+		if (SelectedIdea == null || SelectedTargetProjectId == Guid.Empty)
+			return;
+
+		IsProcessingAction = true;
+		try
+		{
+			await OnMoveIdea.InvokeAsync((SelectedIdea.Id, SelectedTargetProjectId));
+			CloseModals();
+		}
+		finally
+		{
+			IsProcessingAction = false;
+		}
 	}
 }
