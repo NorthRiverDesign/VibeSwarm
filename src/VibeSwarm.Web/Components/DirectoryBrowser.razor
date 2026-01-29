@@ -103,6 +103,33 @@
 								<p class="mt-2 mb-0">No subdirectories found</p>
 							</div>
 						}
+
+						@* Create Directory inline form *@
+						@if (_isCreatingDirectory && !string.IsNullOrEmpty(_directoryResult?.CurrentPath))
+						{
+							<div class="border-top p-3 bg-body-tertiary">
+								<div class="d-flex align-items-center gap-2">
+									<i class="bi bi-folder-plus text-success"></i>
+									<input type="text" class="form-control form-control-sm" @bind="_newDirectoryName"
+										@bind:event="oninput" @onkeydown="HandleCreateDirectoryKeydown"
+										placeholder="New folder name..." />
+									<button type="button" class="btn btn-success btn-sm" @onclick="CreateDirectory"
+										disabled="@(string.IsNullOrWhiteSpace(_newDirectoryName))">
+										<i class="bi bi-check-lg"></i>
+									</button>
+									<button type="button" class="btn btn-outline-secondary btn-sm"
+										@onclick="CancelCreateDirectory">
+										<i class="bi bi-x-lg"></i>
+									</button>
+								</div>
+								@if (!string.IsNullOrEmpty(_createDirectoryError))
+								{
+									<div class="text-danger small mt-2">
+										<i class="bi bi-exclamation-circle me-1"></i>@_createDirectoryError
+									</div>
+								}
+							</div>
+						}
 					</div>
 				}
 			</div>
@@ -112,9 +139,12 @@
 					{
 						<small class="text-muted font-monospace text-break">Selected: @_selectedPath</small>
 					}
-					else if (!string.IsNullOrEmpty(_directoryResult?.CurrentPath))
+					else
 					{
-						<small class="text-muted font-monospace text-break">Current: @_directoryResult.CurrentPath</small>
+						<button type="button" class="btn btn-outline-success btn-sm" @onclick="ShowCreateDirectoryInput"
+							disabled="@(_isCreatingDirectory || string.IsNullOrEmpty(_directoryResult?.CurrentPath))">
+							<i class="bi bi-folder-plus me-1"></i>Create Directory
+						</button>
 					}
 				</div>
 				<button type="button" class="btn btn-secondary" @onclick="Close">Cancel</button>
@@ -142,6 +172,9 @@
 	private string _currentPath = "";
 	private string? _selectedPath;
 	private DirectoryListResult? _directoryResult;
+	private bool _isCreatingDirectory = false;
+	private string _newDirectoryName = "";
+	private string? _createDirectoryError;
 
 	public async Task ShowAsync(string? initialPath = null)
 	{
@@ -253,6 +286,68 @@
 	{
 		Hide();
 		await OnClosed.InvokeAsync();
+	}
+
+	private void ShowCreateDirectoryInput()
+	{
+		_isCreatingDirectory = true;
+		_newDirectoryName = "";
+		_createDirectoryError = null;
+	}
+
+	private void CancelCreateDirectory()
+	{
+		_isCreatingDirectory = false;
+		_newDirectoryName = "";
+		_createDirectoryError = null;
+	}
+
+	private async Task HandleCreateDirectoryKeydown(KeyboardEventArgs e)
+	{
+		if (e.Key == "Enter" && !string.IsNullOrWhiteSpace(_newDirectoryName))
+		{
+			await CreateDirectory();
+		}
+		else if (e.Key == "Escape")
+		{
+			CancelCreateDirectory();
+		}
+	}
+
+	private async Task CreateDirectory()
+	{
+		if (string.IsNullOrWhiteSpace(_newDirectoryName) || string.IsNullOrEmpty(_directoryResult?.CurrentPath))
+			return;
+
+		_createDirectoryError = null;
+
+		try
+		{
+			var newPath = Path.Combine(_directoryResult.CurrentPath, _newDirectoryName.Trim());
+
+			if (Directory.Exists(newPath))
+			{
+				_createDirectoryError = "A directory with this name already exists.";
+				return;
+			}
+
+			Directory.CreateDirectory(newPath);
+
+			// Refresh the directory listing
+			CancelCreateDirectory();
+			await NavigateTo(_directoryResult.CurrentPath);
+
+			// Select the newly created directory
+			_selectedPath = newPath;
+		}
+		catch (UnauthorizedAccessException)
+		{
+			_createDirectoryError = "Access denied. You don't have permission to create a directory here.";
+		}
+		catch (Exception ex)
+		{
+			_createDirectoryError = $"Failed to create directory: {ex.Message}";
+		}
 	}
 
 	private static string FormatBytes(long bytes)
