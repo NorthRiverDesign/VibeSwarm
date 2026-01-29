@@ -3,7 +3,12 @@
 <div class="card">
 	<div class="card-header bg-body-secondary d-flex justify-content-between align-items-center">
 		<h5 class="mb-0 fw-semibold">Jobs</h5>
-		<span class="badge bg-secondary">@Jobs.Count</span>
+		<div class="d-flex align-items-center gap-2">
+			<span class="badge bg-secondary">@Jobs.Count</span>
+			<button type="button" class="btn btn-sm btn-primary" @onclick="() => OnCreateJob.InvokeAsync()">
+				<i class="bi bi-plus-lg me-1"></i>Create Job
+			</button>
+		</div>
 	</div>
 	<div class="card-body p-0">
 		@if (!Jobs.Any())
@@ -106,6 +111,9 @@
 
 	[Parameter]
 	public EventCallback<Guid> OnDeleteJob { get; set; }
+
+	[Parameter]
+	public EventCallback OnCreateJob { get; set; }
 
 	private static string TruncateText(string text, int maxLength)
 	{

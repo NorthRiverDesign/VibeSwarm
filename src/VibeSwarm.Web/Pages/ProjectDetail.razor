@@ -25,66 +25,32 @@ else if (Project == null)
 else
 {
     @* Project Header Component *@
-    <ProjectDetailHeader Name="@Project.Name"
-        Description="@Project.Description"
-        WorkingPath="@Project.WorkingPath"
-        GitHubRepository="@Project.GitHubRepository"
-        IsGitRepository="@IsGitRepository"
-        Branches="@Branches"
-        CurrentBranch="@CurrentBranch"
-        CurrentCommitHash="@CurrentCommitHash"
-        IsGitOperationInProgress="@IsGitOperationInProgress"
-        GitOperationMessage="@GitOperationMessage"
-        GitOperationSuccess="@GitOperationSuccess"
-        GitProgressMessage="@GitProgressMessage"
-        HasUncommittedChanges="@_hasUncommittedChangesHeader"
-        UncommittedFilesCount="@_uncommittedFilesCount"
-        HasTokenData="@HasProjectTokenData()"
-        TotalInputTokens="@GetProjectTotalInputTokens()"
-        TotalOutputTokens="@GetProjectTotalOutputTokens()"
-        TotalCost="@GetProjectTotalCost()"
-        OnCreateBranch="ShowCreateBranchModal"
-        OnSync="SyncWithOrigin"
-        OnRefresh="RefreshBranches"
-        OnBranchSelected="RequestBranchSwitch"
-        OnUncommittedChangesClick="ShowUncommittedChangesModal"
+    <ProjectDetailHeader Name="@Project.Name" Description="@Project.Description" WorkingPath="@Project.WorkingPath"
+        GitHubRepository="@Project.GitHubRepository" IsGitRepository="@IsGitRepository" Branches="@Branches"
+        CurrentBranch="@CurrentBranch" CurrentCommitHash="@CurrentCommitHash"
+        IsGitOperationInProgress="@IsGitOperationInProgress" GitOperationMessage="@GitOperationMessage"
+        GitOperationSuccess="@GitOperationSuccess" GitProgressMessage="@GitProgressMessage"
+        HasUncommittedChanges="@_hasUncommittedChangesHeader" UncommittedFilesCount="@_uncommittedFilesCount"
+        HasTokenData="@HasProjectTokenData()" TotalInputTokens="@GetProjectTotalInputTokens()"
+        TotalOutputTokens="@GetProjectTotalOutputTokens()" TotalCost="@GetProjectTotalCost()"
+        OnCreateBranch="ShowCreateBranchModal" OnSync="SyncWithOrigin" OnRefresh="RefreshBranches"
+        OnBranchSelected="RequestBranchSwitch" OnUncommittedChangesClick="ShowUncommittedChangesModal"
         OnClearGitMessage="ClearGitMessage" />
 
     <div class="row g-3 g-lg-4">
-        @* Create Job form first on mobile *@
+        @* Ideas Panel on right on desktop, second on mobile *@
         <div class="col-12 col-lg-4 order-1 order-lg-2">
-            <CreateJobForm JobModel="@NewJob"
-                Providers="@Providers"
-                AvailableModels="@AvailableModels"
-                Branches="@Branches"
-                CurrentBranch="@CurrentBranch"
-                ShowBranchSelector="@(IsGitRepository && Branches.Any())"
-                IsLoadingModels="@IsLoadingModels"
-                IsSaving="@IsSaving"
-                ErrorMessage="@ErrorMessage"
-                SelectedModelId="@SelectedModelId"
-                OnProviderChanged="OnProviderChanged"
-                OnSubmit="HandleCreateJob" />
-
             @* Ideas Panel Component *@
-            <IdeasPanel Ideas="@Ideas"
-                CurrentProjectId="@ProjectId"
-                IsProcessingActive="@IsIdeasProcessingActive"
-                IsTogglingProcessing="@_isTogglingIdeasProcessing"
-                HasDefaultProvider="@HasDefaultProvider"
-                IsAddingIdea="@_isAddingIdea"
-                OnStartProcessing="StartIdeasProcessing"
-                OnStopProcessing="StopIdeasProcessing"
-                OnAddIdea="AddIdea"
-                OnUpdateIdea="UpdateIdea"
-                OnDeleteIdea="DeleteIdea"
-                OnCopyIdea="CopyIdea"
-                OnMoveIdea="MoveIdea" />
+            <IdeasPanel Ideas="@Ideas" CurrentProjectId="@ProjectId" IsProcessingActive="@IsIdeasProcessingActive"
+                IsTogglingProcessing="@_isTogglingIdeasProcessing" HasDefaultProvider="@HasDefaultProvider"
+                HasActiveJobs="@HasActiveJobs" IsAddingIdea="@_isAddingIdea" OnStartProcessing="StartIdeasProcessing"
+                OnStopProcessing="StopIdeasProcessing" OnAddIdea="AddIdea" OnUpdateIdea="UpdateIdea"
+                OnDeleteIdea="DeleteIdea" OnCopyIdea="CopyIdea" OnMoveIdea="MoveIdea" OnStartSingleIdea="StartSingleIdea" />
         </div>
 
         @* Jobs list second on mobile *@
         <div class="col-12 col-lg-8 order-2 order-lg-1">
-            <ProjectJobsList Jobs="@Jobs" OnDeleteJob="DeleteJob" />
+            <ProjectJobsList Jobs="@Jobs" OnDeleteJob="DeleteJob" OnCreateJob="ShowCreateJobModal" />
         </div>
     </div>
 
@@ -94,36 +60,29 @@ else
     }
 
     @* Create Branch Modal *@
-    <CreateBranchModal @bind-IsVisible="_showCreateBranchModal"
-        CurrentBranch="@CurrentBranch"
-        IsCreating="@_isCreatingBranch"
-        ErrorMessage="@_createBranchError"
-        OnCreate="CreateBranch" />
+    <CreateBranchModal @bind-IsVisible="_showCreateBranchModal" CurrentBranch="@CurrentBranch"
+        IsCreating="@_isCreatingBranch" ErrorMessage="@_createBranchError" OnCreate="CreateBranch" />
 
     @* Branch Switch Confirmation Modal *@
-    <BranchSwitchModal @bind-IsVisible="_showBranchSwitchModal"
-        CurrentBranch="@CurrentBranch"
-        TargetBranch="@_targetBranch"
-        IsChecking="@_isCheckingUncommittedChanges"
-        IsSwitching="@_isSwitchingBranch"
-        HasUncommittedChanges="@_hasUncommittedChanges"
-        ErrorMessage="@_branchSwitchError"
-        OnSwitch="ConfirmBranchSwitch"
+    <BranchSwitchModal @bind-IsVisible="_showBranchSwitchModal" CurrentBranch="@CurrentBranch" TargetBranch="@_targetBranch"
+        IsChecking="@_isCheckingUncommittedChanges" IsSwitching="@_isSwitchingBranch"
+        HasUncommittedChanges="@_hasUncommittedChanges" ErrorMessage="@_branchSwitchError" OnSwitch="ConfirmBranchSwitch"
         OnCancel="CloseBranchSwitchModal" />
 
     @* Uncommitted Changes Modal *@
-    <UncommittedChangesModal @bind-IsVisible="_showUncommittedChangesModal"
-        IsLoading="@_isLoadingUncommittedDiff"
-        ErrorMessage="@_uncommittedDiffError"
-        DiffFiles="@_uncommittedDiffFiles"
-        CommitError="@_uncommittedCommitError"
-        IsCommitting="@_isCommittingChanges"
-        IsDiscarding="@_isDiscardingChanges"
-        ShowDiscardConfirmation="@_showDiscardConfirmation"
-        OnCommitAndPush="CommitAndPushUncommittedChanges"
-        OnShowDiscard="ShowDiscardConfirmation"
-        OnConfirmDiscard="DiscardAllChanges"
+    <UncommittedChangesModal @bind-IsVisible="_showUncommittedChangesModal" IsLoading="@_isLoadingUncommittedDiff"
+        ErrorMessage="@_uncommittedDiffError" DiffFiles="@_uncommittedDiffFiles" CommitError="@_uncommittedCommitError"
+        IsCommitting="@_isCommittingChanges" IsDiscarding="@_isDiscardingChanges"
+        ShowDiscardConfirmation="@_showDiscardConfirmation" OnCommitAndPush="CommitAndPushUncommittedChanges"
+        OnShowDiscard="ShowDiscardConfirmation" OnConfirmDiscard="DiscardAllChanges"
         OnCancelDiscard="CloseDiscardConfirmation" />
+
+    @* Create Job Modal *@
+    <CreateJobModal @bind-IsVisible="_showCreateJobModal" JobModel="@NewJob" Providers="@Providers"
+        AvailableModels="@AvailableModels" Branches="@Branches" CurrentBranch="@CurrentBranch"
+        ShowBranchSelector="@(IsGitRepository && Branches.Any())" IsLoadingModels="@IsLoadingModels" IsSaving="@IsSaving"
+        ErrorMessage="@ErrorMessage" SelectedModelId="@SelectedModelId" OnProviderChanged="OnProviderChanged"
+        OnSubmit="HandleCreateJob" />
 }
 
 @code {
@@ -161,6 +120,9 @@ else
     private bool _isCreatingBranch { get; set; }
     private string? _createBranchError { get; set; }
 
+    // Create job modal state
+    private bool _showCreateJobModal { get; set; }
+
     // Branch switch confirmation modal state
     private bool _showBranchSwitchModal { get; set; }
     private string? _targetBranch { get; set; }
@@ -189,10 +151,10 @@ else
     private bool HasDefaultProvider => Providers.Any(p => p.IsDefault && p.IsEnabled);
 
     private bool HasActiveJobs => Jobs.Any(j =>
-        j.Status == JobStatus.New ||
-        j.Status == JobStatus.Pending ||
-        j.Status == JobStatus.Started ||
-        j.Status == JobStatus.Processing);
+    j.Status == JobStatus.New ||
+    j.Status == JobStatus.Pending ||
+    j.Status == JobStatus.Started ||
+    j.Status == JobStatus.Processing);
 
     protected override async Task OnInitializedAsync()
     {
@@ -208,11 +170,11 @@ else
             if (HasActiveJobs || IsIdeasProcessingActive)
             {
                 await InvokeAsync(async () =>
-                {
-                    await RefreshJobs();
-                    await LoadIdeas();
-                    StateHasChanged();
-                });
+        {
+            await RefreshJobs();
+            await LoadIdeas();
+            StateHasChanged();
+        });
             }
         }, null, TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(3));
     }
@@ -294,7 +256,8 @@ else
                 if (!string.IsNullOrEmpty(diffOutput))
                 {
                     var lines = diffOutput.Split('\n', StringSplitOptions.RemoveEmptyEntries);
-                    _uncommittedFilesCount = lines.Count(l => l.Contains('|') || (l.Trim().Length > 0 && !l.Contains("changed") && !l.Contains("insertion") && !l.Contains("deletion")));
+                    _uncommittedFilesCount = lines.Count(l => l.Contains('|') || (l.Trim().Length > 0 && !l.Contains("changed") &&
+                    !l.Contains("insertion") && !l.Contains("deletion")));
                     if (_uncommittedFilesCount == 0) _uncommittedFilesCount = 1;
                 }
             }
@@ -410,8 +373,8 @@ else
             if (args.commitFirst && _hasUncommittedChanges && !string.IsNullOrWhiteSpace(args.commitMessage))
             {
                 var commitResult = await VersionControlService.CommitAllChangesAsync(
-                    Project.WorkingPath,
-                    args.commitMessage.Trim());
+                Project.WorkingPath,
+                args.commitMessage.Trim());
 
                 if (!commitResult.Success)
                 {
@@ -423,13 +386,13 @@ else
             }
 
             var result = await VersionControlService.HardCheckoutBranchAsync(
-                Project.WorkingPath,
-                _targetBranch,
-                progressCallback: progress =>
-                {
-                    GitProgressMessage = progress;
-                    InvokeAsync(StateHasChanged);
-                });
+            Project.WorkingPath,
+            _targetBranch,
+            progressCallback: progress =>
+            {
+                GitProgressMessage = progress;
+                InvokeAsync(StateHasChanged);
+            });
 
             if (result.Success)
             {
@@ -470,12 +433,12 @@ else
         try
         {
             var result = await VersionControlService.SyncWithOriginAsync(
-                Project.WorkingPath,
-                progressCallback: progress =>
-                {
-                    GitProgressMessage = progress;
-                    InvokeAsync(StateHasChanged);
-                });
+            Project.WorkingPath,
+            progressCallback: progress =>
+            {
+                GitProgressMessage = progress;
+                InvokeAsync(StateHasChanged);
+            });
 
             if (result.Success)
             {
@@ -535,6 +498,24 @@ else
         _createBranchError = null;
     }
 
+    private void ShowCreateJobModal()
+    {
+        // Reset the form for a new job
+        NewJob = new Job();
+        NewJob.Branch = CurrentBranch;
+
+        // Set default provider if available
+        var defaultProvider = Providers.FirstOrDefault(p => p.IsDefault && p.IsEnabled);
+        if (defaultProvider != null)
+        {
+            NewJob.ProviderId = defaultProvider.Id;
+            _ = LoadModelsForProvider(defaultProvider.Id);
+        }
+
+        ErrorMessage = null;
+        _showCreateJobModal = true;
+    }
+
     private async Task CreateBranch(string branchName)
     {
         if (string.IsNullOrWhiteSpace(branchName)) return;
@@ -547,9 +528,9 @@ else
         try
         {
             var result = await VersionControlService.CreateBranchAsync(
-                Project.WorkingPath,
-                branchName.Trim(),
-                switchToBranch: true);
+            Project.WorkingPath,
+            branchName.Trim(),
+            switchToBranch: true);
 
             if (result.Success)
             {
@@ -655,7 +636,8 @@ else
     private int GetProjectTotalInputTokens() => Jobs.Sum(j => j.InputTokens ?? 0);
     private int GetProjectTotalOutputTokens() => Jobs.Sum(j => j.OutputTokens ?? 0);
     private decimal GetProjectTotalCost() => Jobs.Sum(j => j.TotalCostUsd ?? 0);
-    private bool HasProjectTokenData() => GetProjectTotalInputTokens() > 0 || GetProjectTotalOutputTokens() > 0 || GetProjectTotalCost() > 0;
+    private bool HasProjectTokenData() => GetProjectTotalInputTokens() > 0 || GetProjectTotalOutputTokens() > 0 ||
+    GetProjectTotalCost() > 0;
 
     // Uncommitted changes modal methods
     private async Task ShowUncommittedChangesModal()
@@ -709,8 +691,8 @@ else
         try
         {
             var commitResult = await VersionControlService.CommitAllChangesAsync(
-                Project.WorkingPath,
-                commitMessage.Trim());
+            Project.WorkingPath,
+            commitMessage.Trim());
 
             if (!commitResult.Success)
             {
@@ -966,6 +948,28 @@ else
         {
             _isTogglingIdeasProcessing = false;
             StateHasChanged();
+        }
+    }
+
+    private async Task StartSingleIdea(Guid ideaId)
+    {
+        try
+        {
+            var job = await IdeaService.ConvertToJobAsync(ideaId);
+            if (job != null)
+            {
+                await RefreshJobs();
+                await LoadIdeas();
+                SuccessMessage = "Idea queued as a job successfully.";
+            }
+            else
+            {
+                ErrorMessage = "Failed to convert idea to job.";
+            }
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Error starting idea: {ex.Message}";
         }
     }
 
