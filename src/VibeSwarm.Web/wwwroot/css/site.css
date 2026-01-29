@@ -1490,25 +1490,6 @@ body.vs-modal-open {
 .job-detail-content {
     width: 100%;
     overflow-x: hidden;
-    margin-left: 0;
-    margin-right: 0;
-}
-
-/* On large screens, ensure content fills the viewport properly */
-@media (min-width: 1200px) {
-    .job-detail-content {
-        margin-left: -0.75rem;
-        margin-right: -0.75rem;
-    }
-    
-    .job-detail-content > [class*="col-"] {
-        padding-left: 0.75rem;
-        padding-right: 0.75rem;
-    }
-    .job-detail-content > .col-12 {
-        flex: 0 0 100%;
-        max-width: 100%;
-    }
 }
 
 /* Chat messages responsive */
@@ -1667,10 +1648,14 @@ body.vs-modal-open {
     .main-content:has(.jobs-inbox-layout) {
         padding: 0;
         max-width: none;
+        display: flex;
+        flex-direction: column;
+        height: calc(100vh - var(--vs-header-height) - var(--vs-safe-area-top));
     }
     
     .jobs-inbox-layout {
-        height: calc(100vh - var(--vs-header-height) - var(--vs-safe-area-top));
+        flex: 1;
+        height: 100%;
         margin: 0;
     }
     

@@ -22,51 +22,49 @@
 							<ValidationMessage For="@(() => JobModel.GoalPrompt)" class="text-danger small" />
 						</div>
 
-						<div class="row">
-							<div class="col-md-6 mb-3">
-								<label for="provider" class="form-label">Provider</label>
-								<InputSelect id="provider" Value="JobModel.ProviderId"
-									ValueExpression="@(() => JobModel.ProviderId)"
-									ValueChanged="@((Guid value) => HandleProviderChanged(value))" class="form-select">
-									<option value="@Guid.Empty">Select a provider...</option>
-									@foreach (var provider in Providers.Where(p => p.IsEnabled))
-									{
-										<option value="@provider.Id">@provider.Name (@provider.Type)</option>
-									}
-								</InputSelect>
-								@if (!Providers.Any(p => p.IsEnabled))
+						<div class="mb-3">
+							<label for="provider" class="form-label">Provider</label>
+							<InputSelect id="provider" Value="JobModel.ProviderId"
+								ValueExpression="@(() => JobModel.ProviderId)"
+								ValueChanged="@((Guid value) => HandleProviderChanged(value))" class="form-select">
+								<option value="@Guid.Empty">Select a provider...</option>
+								@foreach (var provider in Providers.Where(p => p.IsEnabled))
 								{
-									<div class="form-text text-warning">
-										No enabled providers. <a href="/providers">Configure one</a> first.
-									</div>
+									<option value="@provider.Id">@provider.Name (@provider.Type)</option>
 								}
-							</div>
+							</InputSelect>
+							@if (!Providers.Any(p => p.IsEnabled))
+							{
+								<div class="form-text text-warning">
+									No enabled providers. <a href="/providers">Configure one</a> first.
+								</div>
+							}
+						</div>
 
-							<div class="col-md-6 mb-3">
-								<label for="model" class="form-label">Model</label>
-								<InputSelect id="model" @bind-Value="SelectedModelId" class="form-select"
-									disabled="@(JobModel.ProviderId == Guid.Empty || IsLoadingModels)">
-									@if (IsLoadingModels)
+						<div class="mb-3">
+							<label for="model" class="form-label">Model</label>
+							<InputSelect id="model" @bind-Value="SelectedModelId" class="form-select"
+								disabled="@(JobModel.ProviderId == Guid.Empty || IsLoadingModels)">
+								@if (IsLoadingModels)
+								{
+									<option value="">Loading models...</option>
+								}
+								else if (!AvailableModels.Any())
+								{
+									<option value="">@(JobModel.ProviderId == Guid.Empty ? "Select a provider first..." :
+																			"No models available")</option>
+								}
+								else
+								{
+									<option value="">Use provider default</option>
+									@foreach (var model in AvailableModels.Where(m => m.IsAvailable))
 									{
-										<option value="">Loading models...</option>
+										<option value="@model.ModelId">@(model.DisplayName ?? model.ModelId)@(model.IsDefault ?
+																				" (default)" : "")</option>
 									}
-									else if (!AvailableModels.Any())
-									{
-										<option value="">@(JobModel.ProviderId == Guid.Empty ? "Select a provider first..." :
-																				"No models available")</option>
-									}
-									else
-									{
-										<option value="">Use provider default</option>
-										@foreach (var model in AvailableModels.Where(m => m.IsAvailable))
-										{
-											<option value="@model.ModelId">@(model.DisplayName ?? model.ModelId)@(model.IsDefault ?
-																					" (default)" : "")</option>
-										}
-									}
-								</InputSelect>
-								<div class="form-text">Leave empty to use the provider's default model.</div>
-							</div>
+								}
+							</InputSelect>
+							<div class="form-text">Leave empty to use the provider's default model.</div>
 						</div>
 
 						@if (ShowBranchSelector && Branches.Any())
