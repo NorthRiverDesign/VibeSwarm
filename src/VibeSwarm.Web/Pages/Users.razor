@@ -23,10 +23,10 @@
 		}
 		else
 		{
-			<ul class="list-group list-group-flush">
+			<ul class="list-group list-group-flush pb-5">
 				@foreach (var user in _users)
 				{
-					<li class="list-group-item @(!user.IsActive ? "bg-body-secondary" : "")">
+					<li class="list-group-item py-3 @(!user.IsActive ? "bg-body-secondary" : "")">
 						<div class="d-flex align-items-center justify-content-between gap-3">
 							@* User info section *@
 							<div class="d-flex align-items-center gap-3 flex-grow-1 min-w-0">
