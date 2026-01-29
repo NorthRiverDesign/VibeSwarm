@@ -98,17 +98,33 @@ VibeSwarm is designed to be mobile-friendly, ensuring that users can access and 
 
 All pages and UI components are tested on an iPhone to ensure every aspect of the application works from anywhere the application is accessible. A best attempt is made to ensure the viewport is optimized for mobile devices and desktop devices alike with proper spacing, padding, and alignment.
 
+## Desktop Friendly
+
+The UI should also be optimized for desktop use, taking advantage of larger screen real estate to provide a more detailed and comprehensive view of projects and agent activities. The desktop interface includes additional features and information that may not be necessary on mobile devices, enhancing the overall user experience for desktop users.
+
+Consider the entire viewport when designing layouts, ensuring that content is well-organized and easily accessible on larger screens. Utilize grid systems and flexible layouts to create a visually appealing and functional desktop interface. Ensure there are no gaps of unused space on larger screens by expanding content areas or adding supplementary information where appropriate.
+
+Elements such as Modals should expand to a reasonable size on desktop screens to improve usability, while still being fully functional on mobile devices.
+
 ## Bootstrap Integration
 
-Always attempt to leverage Bootstrap's built-in classes and components before creating custom styles. This ensures consistency across the application and reduces the need for additional CSS. Use a stacked utility class approach when creating UI components to maximize flexibility and maintainability. A component may use multiple classes such as `d-flex`, `flex-column`, `align-items-center`, and `p-3` to achieve the desired layout and styling without custom CSS. Use the TailwindCSS mindset when applying Bootstrap utility classes to create complex layouts and designs.
+Always attempt to leverage Bootstrap's built-in classes and components. Avoid custom styles at all costs, unless absolutely necessary. Custom classes should ONLY exist when there is no equivalent in Bootstrap and should be named using a clear and consistent naming convention. This ensures consistency across the application and reduces the need for additional CSS. Use a stacked utility class approach when creating UI components to maximize flexibility and maintainability. A component may use multiple classes such as `d-flex`, `flex-column`, `align-items-center`, `bg-body-secondary`, and `p-3` to achieve the desired layout and styling without custom CSS. Use the TailwindCSS mindset when applying Bootstrap utility classes to create complex layouts and designs.
+
+## Style.css
 
 The application specific `style.css` should only add helper utilities that can be used across the application, and are not intended to be specific to components.
+
+No components should need a `*.razor.css` file. All styling should be achievable via Bootstrap utility classes alone. If a component requires specific styling that cannot be achieved with Bootstrap classes, consider refactoring the component to better align with Bootstrap's capabilities.
+
+The `style.css` should never contain specific component styles. It should only contain helper classes that can be used across multiple components. Razor components should stack Bootstrap utility classes to achieve the desired styling and layout.
 
 ## Bootstrap Icons
 
 VibeSwarm uses Bootstrap Icons for visual enhancements and to improve user experience. Icons are used throughout the interface to represent actions, statuses, and navigation elements. The application leverages the extensive library of Bootstrap Icons to maintain a consistent look and feel.
 
 When adding icons, prefer using Bootstrap Icons over custom SVGs or other icon libraries to ensure visual consistency. Icons should be appropriately sized and aligned within UI components to enhance usability without overwhelming the design.
+
+Icon usage in buttons should always contain a Title attribute for accessibility and better user experience. This provides additional context for users, especially those using screen readers.
 
 ## Blazor Integration
 
@@ -122,7 +138,15 @@ Large pages should be broken into smaller, reusable components to improve mainta
 
 UI should appear consistent and highly polished. Care should be used to maintain alignment, spacing, and visual hierarchy throughout the application. Attention to detail in UI design enhances user experience and promotes a professional appearance. The application must also be responsive and mobile-friendly, ensuring usability across a range of devices.
 
-If a page has over 500 lines of markup, it should be refactored into smaller components to keep the markup readable.
+If a page has over 300 lines of markup, it should be refactored into smaller components to keep the markup readable.
+
+## C# Best Practices
+
+Use a Models folder to contain all data models used in the application. This promotes organization and makes it easier to locate and manage data structures. Use attributes such as [Required], [StringLength], and [Range] to enforce data validation rules on models. This ensures that data integrity is maintained and reduces the likelihood of errors during data processing.
+
+When working with asynchronous operations, prefer using async/await patterns to improve application responsiveness and scalability. This allows for non-blocking operations, enhancing user experience during long-running tasks.
+
+Use dependency injection to manage service lifetimes and dependencies. This promotes loose coupling and enhances testability by allowing for easier mocking of services during unit testing.
 
 ## Database
 
