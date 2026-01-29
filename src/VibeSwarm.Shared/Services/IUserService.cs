@@ -1,0 +1,40 @@
+using VibeSwarm.Shared.Data;
+
+namespace VibeSwarm.Shared.Services;
+
+public interface IUserService
+{
+	Task<IEnumerable<UserDto>> GetAllUsersAsync();
+	Task<UserDto?> GetUserByIdAsync(Guid id);
+	Task<(bool Success, string? Error, UserDto? User)> CreateUserAsync(CreateUserModel model);
+	Task<(bool Success, string? Error)> UpdateUserAsync(Guid id, UpdateUserModel model);
+	Task<(bool Success, string? Error)> ResetPasswordAsync(Guid id, string newPassword);
+	Task<(bool Success, string? Error)> DeleteUserAsync(Guid id);
+	Task<(bool Success, string? Error)> ToggleUserActiveAsync(Guid id);
+	Task<IEnumerable<string>> GetUserRolesAsync(Guid id);
+}
+
+public class UserDto
+{
+	public Guid Id { get; set; }
+	public string UserName { get; set; } = string.Empty;
+	public string? Email { get; set; }
+	public bool IsActive { get; set; }
+	public DateTime CreatedAt { get; set; }
+	public DateTime? LastLoginAt { get; set; }
+	public IEnumerable<string> Roles { get; set; } = [];
+}
+
+public class CreateUserModel
+{
+	public string UserName { get; set; } = string.Empty;
+	public string? Email { get; set; }
+	public string Password { get; set; } = string.Empty;
+	public string Role { get; set; } = DatabaseSeeder.UserRole;
+}
+
+public class UpdateUserModel
+{
+	public string? Email { get; set; }
+	public string? Role { get; set; }
+}

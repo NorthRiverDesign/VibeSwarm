@@ -17,15 +17,18 @@ namespace VibeSwarm.Web.Pages;
 public class SetupModel : PageModel
 {
 	private readonly UserManager<ApplicationUser> _userManager;
+	private readonly RoleManager<IdentityRole<Guid>> _roleManager;
 	private readonly SignInManager<ApplicationUser> _signInManager;
 	private readonly ILogger<SetupModel> _logger;
 
 	public SetupModel(
 		UserManager<ApplicationUser> userManager,
+		RoleManager<IdentityRole<Guid>> roleManager,
 		SignInManager<ApplicationUser> signInManager,
 		ILogger<SetupModel> logger)
 	{
 		_userManager = userManager;
+		_roleManager = roleManager;
 		_signInManager = signInManager;
 		_logger = logger;
 	}
@@ -99,6 +102,9 @@ public class SetupModel : PageModel
 
 		try
 		{
+			// Ensure roles exist
+			await DatabaseSeeder.InitializeRolesAsync(_roleManager, _logger);
+
 			// Create the admin user
 			var adminUser = new ApplicationUser
 			{
@@ -113,6 +119,9 @@ public class SetupModel : PageModel
 
 			if (result.Succeeded)
 			{
+				// Assign Admin role to the first user
+				await _userManager.AddToRoleAsync(adminUser, DatabaseSeeder.AdminRole);
+
 				_logger.LogInformation(
 					"Initial admin user '{Username}' created successfully via setup page",
 					Username);

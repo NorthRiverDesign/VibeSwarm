@@ -49,6 +49,14 @@
                 <i class="bi bi-lightbulb"></i>
                 <span>Skills</span>
             </NavLink>
+            <AuthorizeView Roles="Admin">
+                <Authorized>
+                    <NavLink class="nav-item" href="/users" @onclick="CloseMobileMenu">
+                        <i class="bi bi-people"></i>
+                        <span>Users</span>
+                    </NavLink>
+                </Authorized>
+            </AuthorizeView>
             <NavLink class="nav-item" href="/settings" @onclick="CloseMobileMenu">
                 <i class="bi bi-sliders"></i>
                 <span>Settings</span>

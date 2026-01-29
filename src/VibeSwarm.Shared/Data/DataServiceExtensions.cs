@@ -18,6 +18,7 @@ public static class DataServiceExtensions
         services.AddScoped<ISkillService, SkillService>();
         services.AddScoped<IMcpConfigService, McpConfigService>();
         services.AddScoped<IIdeaService, IdeaService>();
+        services.AddScoped<IUserService, UserService>();
         services.AddSingleton<IFileSystemService, FileSystemService>();
 
         return services;

@@ -155,10 +155,11 @@ using (var scope = app.Services.CreateScope())
     var dbContext = scope.ServiceProvider.GetRequiredService<VibeSwarmDbContext>();
     await dbContext.Database.MigrateAsync();
 
-    // Initialize admin user (only if credentials are configured via env vars)
+    // Initialize admin user and roles
     var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+    var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole<Guid>>>();
     var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
-    await DatabaseSeeder.InitializeAdminUserAsync(userManager, builder.Configuration, logger);
+    await DatabaseSeeder.InitializeAdminUserAsync(userManager, roleManager, builder.Configuration, logger);
 
     // Check if users exist and set appropriate flags
     var userCount = userManager.Users.Count();

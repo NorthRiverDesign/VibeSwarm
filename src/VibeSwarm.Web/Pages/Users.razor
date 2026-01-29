@@ -1,0 +1,566 @@
+@page "/users"
+@attribute [Authorize(Roles = "Admin")]
+@inject IUserService UserService
+
+<PageHeader Title="Users" Subtitle="Manage user accounts and permissions">
+	<Actions>
+		<ActionButton Icon="plus" Text="Add User" OnClick="ShowAddUserModal" />
+	</Actions>
+</PageHeader>
+
+<div class="card">
+	<div class="card-body p-0">
+		@if (_isLoading)
+		{
+			<LoadingSpinner />
+		}
+		else if (!_users.Any())
+		{
+			<div class="p-3">
+				<EmptyState Icon="people" Title="No users found" Message="Add users to allow access to VibeSwarm." />
+			</div>
+		}
+		else
+		{
+			<div class="table-responsive">
+				<table class="table table-hover mb-0">
+					<thead class="table-light">
+						<tr>
+							<th class="ps-3">User</th>
+							<th>Role</th>
+							<th>Status</th>
+							<th class="d-none d-md-table-cell">Created</th>
+							<th class="d-none d-lg-table-cell">Last Login</th>
+							<th class="text-end pe-3">Actions</th>
+						</tr>
+					</thead>
+					<tbody>
+						@foreach (var user in _users)
+						{
+							<tr class="@(!user.IsActive ? "table-secondary" : "")">
+								<td class="ps-3">
+									<div class="d-flex align-items-center gap-2">
+										<i class="bi bi-person-circle fs-5 text-secondary"></i>
+										<div>
+											<div class="fw-semibold">@user.UserName</div>
+											<small class="text-body-secondary">@user.Email</small>
+										</div>
+									</div>
+								</td>
+								<td>
+									@if (user.Roles.Contains(DatabaseSeeder.AdminRole))
+									{
+										<span class="badge bg-primary">Admin</span>
+									}
+									else
+									{
+										<span class="badge bg-secondary">User</span>
+									}
+								</td>
+								<td>
+									@if (user.IsActive)
+									{
+										<span class="badge bg-success-subtle text-success-emphasis">
+											<i class="bi bi-check-circle me-1"></i>Active
+										</span>
+									}
+									else
+									{
+										<span class="badge bg-secondary-subtle text-secondary-emphasis">
+											<i class="bi bi-x-circle me-1"></i>Inactive
+										</span>
+									}
+								</td>
+								<td class="d-none d-md-table-cell text-body-secondary">
+									@user.CreatedAt.FormatDateTimeShort()
+								</td>
+								<td class="d-none d-lg-table-cell text-body-secondary">
+									@(user.LastLoginAt.HasValue? user.LastLoginAt.Value.FormatDateTimeShort() : "Never")
+								</td>
+								<td class="text-end pe-3">
+									<div class="dropdown">
+										<button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button"
+											data-bs-toggle="dropdown" aria-expanded="false" title="User actions">
+											<i class="bi bi-gear"></i>
+										</button>
+										<ul class="dropdown-menu dropdown-menu-end">
+											<li>
+												<button class="dropdown-item" @onclick="@(() => ShowResetPasswordModal(user))">
+													<i class="bi bi-key me-2"></i>Reset Password
+												</button>
+											</li>
+											<li>
+												<button class="dropdown-item" @onclick="@(() => ShowEditUserModal(user))">
+													<i class="bi bi-pencil me-2"></i>Edit Role
+												</button>
+											</li>
+											<li>
+												<button class="dropdown-item" @onclick="@(() => ToggleUserActive(user))">
+													<i class="bi bi-@(user.IsActive ? "x-circle" : "check-circle") me-2"></i>
+													@(user.IsActive ? "Deactivate" : "Activate")
+												</button>
+											</li>
+											<li>
+												<hr class="dropdown-divider">
+											</li>
+											<li>
+												<button class="dropdown-item text-danger"
+													@onclick="@(() => ShowDeleteUserModal(user))">
+													<i class="bi bi-trash me-2"></i>Delete
+												</button>
+											</li>
+										</ul>
+									</div>
+								</td>
+							</tr>
+						}
+					</tbody>
+				</table>
+			</div>
+		}
+	</div>
+</div>
+
+@* Add User Modal *@
+<ModalDialog @bind-IsVisible="_showAddUserModal" Title="Add User" Icon="person-plus"
+	Size="ModalDialog.ModalSize.Default">
+	<ChildContent>
+		<EditForm Model="@_addUserModel" OnValidSubmit="HandleAddUser">
+			<DataAnnotationsValidator />
+
+			@if (!string.IsNullOrEmpty(_addUserError))
+			{
+				<div class="alert alert-danger">
+					<i class="bi bi-exclamation-circle me-1"></i>@_addUserError
+				</div>
+			}
+
+			<div class="mb-3">
+				<label for="addUserName" class="form-label">Username</label>
+				<InputText id="addUserName" @bind-Value="_addUserModel.UserName" class="form-control" />
+				<ValidationMessage For="@(() => _addUserModel.UserName)" class="text-danger small" />
+			</div>
+
+			<div class="mb-3">
+				<label for="addUserEmail" class="form-label">Email (optional)</label>
+				<InputText id="addUserEmail" @bind-Value="_addUserModel.Email" class="form-control" type="email" />
+				<ValidationMessage For="@(() => _addUserModel.Email)" class="text-danger small" />
+			</div>
+
+			<div class="mb-3">
+				<label for="addUserPassword" class="form-label">Password</label>
+				<InputText id="addUserPassword" @bind-Value="_addUserModel.Password" class="form-control"
+					type="password" />
+				<ValidationMessage For="@(() => _addUserModel.Password)" class="text-danger small" />
+				<div class="form-text">
+					Password must be at least 8 characters with uppercase, lowercase, and a digit.
+				</div>
+			</div>
+
+			<div class="mb-3">
+				<label for="addUserRole" class="form-label">Role</label>
+				<InputSelect id="addUserRole" @bind-Value="_addUserModel.Role" class="form-select">
+					<option value="@DatabaseSeeder.UserRole">User</option>
+					<option value="@DatabaseSeeder.AdminRole">Admin</option>
+				</InputSelect>
+			</div>
+
+			<div class="d-flex justify-content-end gap-2">
+				<button type="button" class="btn btn-secondary" @onclick="CloseAddUserModal">Cancel</button>
+				<button type="submit" class="btn btn-primary" disabled="@_isAddingUser">
+					@if (_isAddingUser)
+					{
+						<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+					}
+					Add User
+				</button>
+			</div>
+		</EditForm>
+	</ChildContent>
+</ModalDialog>
+
+@* Reset Password Modal *@
+<ModalDialog @bind-IsVisible="_showResetPasswordModal" Title="Reset Password" Icon="key"
+	Size="ModalDialog.ModalSize.Default">
+	<ChildContent>
+		@if (_selectedUser != null)
+		{
+			<p class="text-body-secondary">
+				Reset password for <strong>@_selectedUser.UserName</strong>
+			</p>
+
+			@if (!string.IsNullOrEmpty(_resetPasswordError))
+			{
+				<div class="alert alert-danger">
+					<i class="bi bi-exclamation-circle me-1"></i>@_resetPasswordError
+				</div>
+			}
+
+			@if (!string.IsNullOrEmpty(_resetPasswordSuccess))
+			{
+				<div class="alert alert-success">
+					<i class="bi bi-check-circle me-1"></i>@_resetPasswordSuccess
+				</div>
+			}
+
+			<div class="mb-3">
+				<label for="newPassword" class="form-label">New Password</label>
+				<input type="password" id="newPassword" @bind="_newPassword" class="form-control" />
+				<div class="form-text">
+					Password must be at least 8 characters with uppercase, lowercase, and a digit.
+				</div>
+			</div>
+
+			<div class="mb-3">
+				<label for="confirmNewPassword" class="form-label">Confirm Password</label>
+				<input type="password" id="confirmNewPassword" @bind="_confirmNewPassword" class="form-control" />
+			</div>
+
+			<div class="d-flex justify-content-end gap-2">
+				<button type="button" class="btn btn-secondary" @onclick="CloseResetPasswordModal">Cancel</button>
+				<button type="button" class="btn btn-primary" @onclick="HandleResetPassword"
+					disabled="@_isResettingPassword">
+					@if (_isResettingPassword)
+					{
+						<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+					}
+					Reset Password
+				</button>
+			</div>
+		}
+	</ChildContent>
+</ModalDialog>
+
+@* Edit User Modal *@
+<ModalDialog @bind-IsVisible="_showEditUserModal" Title="Edit User" Icon="pencil" Size="ModalDialog.ModalSize.Default">
+	<ChildContent>
+		@if (_selectedUser != null)
+		{
+			<p class="text-body-secondary">
+				Edit role for <strong>@_selectedUser.UserName</strong>
+			</p>
+
+			@if (!string.IsNullOrEmpty(_editUserError))
+			{
+				<div class="alert alert-danger">
+					<i class="bi bi-exclamation-circle me-1"></i>@_editUserError
+				</div>
+			}
+
+			<div class="mb-3">
+				<label for="editUserRole" class="form-label">Role</label>
+				<select id="editUserRole" @bind="_editRole" class="form-select">
+					<option value="@DatabaseSeeder.UserRole">User</option>
+					<option value="@DatabaseSeeder.AdminRole">Admin</option>
+				</select>
+			</div>
+
+			<div class="d-flex justify-content-end gap-2">
+				<button type="button" class="btn btn-secondary" @onclick="CloseEditUserModal">Cancel</button>
+				<button type="button" class="btn btn-primary" @onclick="HandleEditUser" disabled="@_isEditingUser">
+					@if (_isEditingUser)
+					{
+						<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+					}
+					Save Changes
+				</button>
+			</div>
+		}
+	</ChildContent>
+</ModalDialog>
+
+@* Delete User Modal *@
+<ModalDialog @bind-IsVisible="_showDeleteUserModal" Title="Delete User" Icon="exclamation-triangle"
+	Size="ModalDialog.ModalSize.Small">
+	<ChildContent>
+		@if (_selectedUser != null)
+		{
+			<p>Are you sure you want to delete <strong>@_selectedUser.UserName</strong>?</p>
+			<p class="text-body-secondary small mb-0">This action cannot be undone.</p>
+
+			@if (!string.IsNullOrEmpty(_deleteUserError))
+			{
+				<div class="alert alert-danger mt-3 mb-0">
+					<i class="bi bi-exclamation-circle me-1"></i>@_deleteUserError
+				</div>
+			}
+		}
+	</ChildContent>
+	<FooterContent>
+		<button type="button" class="btn btn-secondary" @onclick="CloseDeleteUserModal">Cancel</button>
+		<button type="button" class="btn btn-danger" @onclick="HandleDeleteUser" disabled="@_isDeletingUser">
+			@if (_isDeletingUser)
+			{
+				<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+			}
+			Delete
+		</button>
+	</FooterContent>
+</ModalDialog>
+
+@code {
+	private List<UserDto> _users = [];
+	private bool _isLoading = true;
+
+	// Add User Modal
+	private bool _showAddUserModal;
+	private bool _isAddingUser;
+	private string? _addUserError;
+	private AddUserFormModel _addUserModel = new();
+
+	// Reset Password Modal
+	private bool _showResetPasswordModal;
+	private bool _isResettingPassword;
+	private string? _resetPasswordError;
+	private string? _resetPasswordSuccess;
+	private string _newPassword = string.Empty;
+	private string _confirmNewPassword = string.Empty;
+
+	// Edit User Modal
+	private bool _showEditUserModal;
+	private bool _isEditingUser;
+	private string? _editUserError;
+	private string _editRole = DatabaseSeeder.UserRole;
+
+	// Delete User Modal
+	private bool _showDeleteUserModal;
+	private bool _isDeletingUser;
+	private string? _deleteUserError;
+
+	// Selected user for operations
+	private UserDto? _selectedUser;
+
+	protected override async Task OnInitializedAsync()
+	{
+		await LoadUsers();
+	}
+
+	private async Task LoadUsers()
+	{
+		_isLoading = true;
+		try
+		{
+			_users = (await UserService.GetAllUsersAsync()).ToList();
+		}
+		finally
+		{
+			_isLoading = false;
+		}
+	}
+
+	// Add User
+	private void ShowAddUserModal()
+	{
+		_addUserModel = new AddUserFormModel();
+		_addUserError = null;
+		_showAddUserModal = true;
+	}
+
+	private void CloseAddUserModal()
+	{
+		_showAddUserModal = false;
+	}
+
+	private async Task HandleAddUser()
+	{
+		_addUserError = null;
+		_isAddingUser = true;
+
+		try
+		{
+			var result = await UserService.CreateUserAsync(new CreateUserModel
+			{
+				UserName = _addUserModel.UserName,
+				Email = _addUserModel.Email,
+				Password = _addUserModel.Password,
+				Role = _addUserModel.Role
+			});
+
+			if (result.Success)
+			{
+				_showAddUserModal = false;
+				await LoadUsers();
+			}
+			else
+			{
+				_addUserError = result.Error;
+			}
+		}
+		finally
+		{
+			_isAddingUser = false;
+		}
+	}
+
+	// Reset Password
+	private void ShowResetPasswordModal(UserDto user)
+	{
+		_selectedUser = user;
+		_newPassword = string.Empty;
+		_confirmNewPassword = string.Empty;
+		_resetPasswordError = null;
+		_resetPasswordSuccess = null;
+		_showResetPasswordModal = true;
+	}
+
+	private void CloseResetPasswordModal()
+	{
+		_showResetPasswordModal = false;
+		_selectedUser = null;
+	}
+
+	private async Task HandleResetPassword()
+	{
+		if (_selectedUser == null) return;
+
+		_resetPasswordError = null;
+		_resetPasswordSuccess = null;
+
+		if (string.IsNullOrWhiteSpace(_newPassword))
+		{
+			_resetPasswordError = "Password is required.";
+			return;
+		}
+
+		if (_newPassword != _confirmNewPassword)
+		{
+			_resetPasswordError = "Passwords do not match.";
+			return;
+		}
+
+		_isResettingPassword = true;
+
+		try
+		{
+			var result = await UserService.ResetPasswordAsync(_selectedUser.Id, _newPassword);
+
+			if (result.Success)
+			{
+				_resetPasswordSuccess = "Password reset successfully.";
+				_newPassword = string.Empty;
+				_confirmNewPassword = string.Empty;
+			}
+			else
+			{
+				_resetPasswordError = result.Error;
+			}
+		}
+		finally
+		{
+			_isResettingPassword = false;
+		}
+	}
+
+	// Edit User
+	private void ShowEditUserModal(UserDto user)
+	{
+		_selectedUser = user;
+		_editRole = user.Roles.Contains(DatabaseSeeder.AdminRole) ? DatabaseSeeder.AdminRole : DatabaseSeeder.UserRole;
+		_editUserError = null;
+		_showEditUserModal = true;
+	}
+
+	private void CloseEditUserModal()
+	{
+		_showEditUserModal = false;
+		_selectedUser = null;
+	}
+
+	private async Task HandleEditUser()
+	{
+		if (_selectedUser == null) return;
+
+		_editUserError = null;
+		_isEditingUser = true;
+
+		try
+		{
+			var result = await UserService.UpdateUserAsync(_selectedUser.Id, new UpdateUserModel
+			{
+				Role = _editRole
+			});
+
+			if (result.Success)
+			{
+				_showEditUserModal = false;
+				await LoadUsers();
+			}
+			else
+			{
+				_editUserError = result.Error;
+			}
+		}
+		finally
+		{
+			_isEditingUser = false;
+		}
+	}
+
+	// Delete User
+	private void ShowDeleteUserModal(UserDto user)
+	{
+		_selectedUser = user;
+		_deleteUserError = null;
+		_showDeleteUserModal = true;
+	}
+
+	private void CloseDeleteUserModal()
+	{
+		_showDeleteUserModal = false;
+		_selectedUser = null;
+	}
+
+	private async Task HandleDeleteUser()
+	{
+		if (_selectedUser == null) return;
+
+		_deleteUserError = null;
+		_isDeletingUser = true;
+
+		try
+		{
+			var result = await UserService.DeleteUserAsync(_selectedUser.Id);
+
+			if (result.Success)
+			{
+				_showDeleteUserModal = false;
+				await LoadUsers();
+			}
+			else
+			{
+				_deleteUserError = result.Error;
+			}
+		}
+		finally
+		{
+			_isDeletingUser = false;
+		}
+	}
+
+	// Toggle Active
+	private async Task ToggleUserActive(UserDto user)
+	{
+		var result = await UserService.ToggleUserActiveAsync(user.Id);
+
+		if (result.Success)
+		{
+			await LoadUsers();
+		}
+	}
+
+	public class AddUserFormModel
+	{
+		[System.ComponentModel.DataAnnotations.Required(ErrorMessage = "Username is required.")]
+		[System.ComponentModel.DataAnnotations.StringLength(50, MinimumLength = 3, ErrorMessage = "Username must be between 3 and 50 characters.")]
+		public string UserName { get; set; } = string.Empty;
+
+		[System.ComponentModel.DataAnnotations.EmailAddress(ErrorMessage = "Invalid email address.")]
+		public string? Email { get; set; }
+
+		[System.ComponentModel.DataAnnotations.Required(ErrorMessage = "Password is required.")]
+		[System.ComponentModel.DataAnnotations.MinLength(8, ErrorMessage = "Password must be at least 8 characters.")]
+		public string Password { get; set; } = string.Empty;
+
+		public string Role { get; set; } = DatabaseSeeder.UserRole;
+	}
+}

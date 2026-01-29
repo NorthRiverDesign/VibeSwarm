@@ -6,18 +6,54 @@ namespace VibeSwarm.Shared.Data;
 
 public static class DatabaseSeeder
 {
+    public const string AdminRole = "Admin";
+    public const string UserRole = "User";
+
+    /// <summary>
+    /// Initializes the roles for the application.
+    /// </summary>
+    public static async Task InitializeRolesAsync(
+        RoleManager<IdentityRole<Guid>> roleManager,
+        ILogger logger)
+    {
+        var roles = new[] { AdminRole, UserRole };
+
+        foreach (var roleName in roles)
+        {
+            if (!await roleManager.RoleExistsAsync(roleName))
+            {
+                var result = await roleManager.CreateAsync(new IdentityRole<Guid>(roleName));
+                if (result.Succeeded)
+                {
+                    logger.LogInformation("Created role '{RoleName}'", roleName);
+                }
+                else
+                {
+                    var errors = string.Join(", ", result.Errors.Select(e => e.Description));
+                    logger.LogError("Failed to create role '{RoleName}': {Errors}", roleName, errors);
+                }
+            }
+        }
+    }
+
     /// <summary>
     /// Initializes the admin user if credentials are provided via environment variables.
     /// If no credentials are configured, the setup page will be used instead.
     /// </summary>
     public static async Task InitializeAdminUserAsync(
         UserManager<ApplicationUser> userManager,
+        RoleManager<IdentityRole<Guid>> roleManager,
         IConfiguration configuration,
         ILogger logger)
     {
+        // First ensure roles exist
+        await InitializeRolesAsync(roleManager, logger);
+
         // Check if any users already exist
         if (userManager.Users.Any())
         {
+            // Ensure all existing users have at least the User role
+            await EnsureUsersHaveRolesAsync(userManager, logger);
             logger.LogInformation("Users already exist in the database, skipping admin initialization");
             return;
         }
@@ -56,6 +92,8 @@ public static class DatabaseSeeder
 
         if (result.Succeeded)
         {
+            // Assign Admin role to the user
+            await userManager.AddToRoleAsync(adminUser, AdminRole);
             logger.LogInformation("Admin user '{Username}' created successfully from environment configuration", adminUsername);
             Environment.SetEnvironmentVariable("VIBESWARM_SETUP_REQUIRED", "false");
         }
@@ -76,6 +114,33 @@ public static class DatabaseSeeder
 
             // Set flag to indicate setup is needed due to invalid credentials
             Environment.SetEnvironmentVariable("VIBESWARM_SETUP_REQUIRED", "true");
+        }
+    }
+
+    /// <summary>
+    /// Ensures all existing users have at least the User role.
+    /// Admins are identified and given the Admin role.
+    /// </summary>
+    private static async Task EnsureUsersHaveRolesAsync(
+        UserManager<ApplicationUser> userManager,
+        ILogger logger)
+    {
+        var users = userManager.Users.ToList();
+        foreach (var user in users)
+        {
+            var roles = await userManager.GetRolesAsync(user);
+            if (!roles.Any())
+            {
+                // First user created gets Admin role, others get User role
+                var isFirstUser = users.IndexOf(user) == 0;
+                var roleToAssign = isFirstUser ? AdminRole : UserRole;
+
+                var result = await userManager.AddToRoleAsync(user, roleToAssign);
+                if (result.Succeeded)
+                {
+                    logger.LogInformation("Assigned role '{Role}' to user '{Username}'", roleToAssign, user.UserName);
+                }
+            }
         }
     }
 
