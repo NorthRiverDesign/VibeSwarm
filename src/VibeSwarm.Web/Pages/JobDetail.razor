@@ -26,10 +26,10 @@ else if (Job == null)
 else
 {
     @* Breadcrumb Navigation *@
-        <Breadcrumb Items="@_breadcrumbItems" />
+                <Breadcrumb Items="@_breadcrumbItems" />
 
     @* Page Header - Full Width *@
-                                                                <div
+                                                                        <div
         class="d-flex flex-column flex-lg-row justify-content-between align-items-start gap-3 mb-3 mb-lg-4 pb-3 border-bottom">
         <div class="flex-grow-1 min-width-0 w-100 w-lg-auto">
             <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
@@ -41,7 +41,7 @@ else
                 }
             </div>
             @* Repository and Branch Info *@
-                                                                        @if (!string.IsNullOrEmpty(Job.Project?.GitHubRepository) || !string.IsNullOrEmpty(_branchName))
+                                                                                @if (!string.IsNullOrEmpty(Job.Project?.GitHubRepository) || !string.IsNullOrEmpty(_branchName))
             {
                 <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
                     @if (!string.IsNullOrEmpty(Job.Project?.GitHubRepository))
@@ -86,7 +86,7 @@ else
                 </div>
             </div>
             @* Stats Row - Token usage and cost *@
-                                                                        @if (Job.ModelUsed != null || Job.InputTokens.HasValue || Job.OutputTokens.HasValue ||
+                                                                                @if (Job.ModelUsed != null || Job.InputTokens.HasValue || Job.OutputTokens.HasValue ||
                     Job.TotalCostUsd.HasValue || Job.RetryCount > 0)
             {
                 <div
@@ -163,9 +163,9 @@ else
     </div>
 
     @* Main Content - Column Layout *@
-    <div class="row g-3 g-lg-4 job-detail-content">
+            <div class="row g-3 g-lg-4 job-detail-content">
         @* Left Column - Goal & Output on mobile first *@
-        <div class="col-12 col-xl-5 order-2 order-xl-1">
+                <div class="col-12 col-xl-5 order-2 order-xl-1">
             <div class="card mb-3 mb-lg-4">
                 <div class="card-header bg-body-secondary d-flex justify-content-between align-items-center">
                     <h5 class="mb-0 fw-semibold"><i class="bi bi-bullseye me-2 opacity-75"></i>Goal Prompt</h5>
@@ -204,14 +204,22 @@ else
                     {
                         <div class="info-section">
                             <h6>Job Failed</h6>
-                            <p class="mb-0">This job failed during execution. You can retry it by clicking "Retry" above.</p>
+                            @if (string.IsNullOrEmpty(Job.ErrorMessage) && !string.IsNullOrEmpty(Job.ConsoleOutput))
+                            {
+                                <p class="mb-0">This job failed during execution. Check the console output below for details. You
+                                    can retry by clicking "Retry" above.</p>
+                            }
+                            else
+                            {
+                                <p class="mb-0">This job failed during execution. You can retry it by clicking "Retry" above.</p>
+                            }
                         </div>
                     }
                 </div>
             </div>
 
             @* User Interaction Section - shown when job is paused waiting for input *@
-                                                                        @if (Job.Status == JobStatus.Paused && !string.IsNullOrEmpty(Job.PendingInteractionPrompt))
+                                                                                @if (Job.Status == JobStatus.Paused && !string.IsNullOrEmpty(Job.PendingInteractionPrompt))
             {
                 <div class="card mb-3 mb-lg-4 border-warning">
                     <div class="card-header bg-warning bg-opacity-25 d-flex align-items-center">
@@ -422,7 +430,7 @@ else
                         </div>
                     </div>
                     @* Working copy divergence warning *@
-                                            @if (_workingCopyComparisonDone && !_workingCopyMatches && !_changesPushed &&
+                                                            @if (_workingCopyComparisonDone && !_workingCopyMatches && !_changesPushed &&
                                 string.IsNullOrEmpty(Job.GitCommitHash))
                     {
                         <div class="alert alert-warning mb-0 rounded-0 border-start-0 border-end-0 py-2 px-3">
@@ -526,7 +534,7 @@ else
                 </div>
 
                 @* Commit Section - shown when there are git changes *@
-                                                                                                                                        <div class="card mb-3 mb-lg-4">
+                                                                                                                                                        <div class="card mb-3 mb-lg-4">
                     <div class="card-header bg-body-secondary d-flex justify-content-between align-items-center">
                         <div class="d-flex align-items-center">
                             <i class="bi bi-cloud-upload me-2 opacity-75"></i>
@@ -659,7 +667,7 @@ else
         </div>
 
         @* Right Column - Conversation Messages (shows first on mobile) *@
-        <div class="col-12 col-xl-7 order-1 order-xl-2">
+                <div class="col-12 col-xl-7 order-1 order-xl-2">
             <div class="card">
                 <div class="card-header bg-body-secondary d-flex justify-content-between align-items-center">
                     <h5 class="mb-0 fw-semibold"><i class="bi bi-chat-dots me-2 opacity-75"></i>Conversation</h5>
@@ -1443,6 +1451,12 @@ new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
                     // Fire and forget - don't block the UI
                     _ = CompareWithWorkingCopy();
                 }
+            }
+
+            // Auto-expand console output when a job fails to help users see what went wrong
+            if (Job != null && Job.Status == JobStatus.Failed && !string.IsNullOrEmpty(Job.ConsoleOutput))
+            {
+                _showConsoleOutput = true;
             }
         }
         finally

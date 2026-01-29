@@ -431,16 +431,117 @@ public class OpenCodeProvider : ProviderBase
             });
         }
 
-        result.Success = process.ExitCode == 0;
+        // Determine success based on exit code (may have been set to false by error events)
+        if (process.ExitCode != 0)
+        {
+            result.Success = false;
+        }
         result.Output = string.Join("\n", outputBuilder);
 
-        var error = errorBuilder.ToString();
-        if (!result.Success && !string.IsNullOrEmpty(error))
+        var stderrError = errorBuilder.ToString();
+
+        // Build a comprehensive error message when the process failed
+        if (!result.Success)
         {
-            result.ErrorMessage = error;
+            var errorMessages = new List<string>();
+
+            // Add stderr if present
+            if (!string.IsNullOrWhiteSpace(stderrError))
+            {
+                errorMessages.Add($"[stderr] {stderrError.Trim()}");
+            }
+
+            // Add any error captured from stream events
+            if (!string.IsNullOrWhiteSpace(result.ErrorMessage))
+            {
+                errorMessages.Add(result.ErrorMessage);
+            }
+
+            // Try to extract error information from stdout if no other errors found
+            if (errorMessages.Count == 0)
+            {
+                var errorFromOutput = ExtractErrorFromOutput(outputBuilder);
+                if (!string.IsNullOrWhiteSpace(errorFromOutput))
+                {
+                    errorMessages.Add(errorFromOutput);
+                }
+            }
+
+            // Always provide some error context
+            if (errorMessages.Count == 0)
+            {
+                errorMessages.Add($"OpenCode CLI exited with code {process.ExitCode}. Check the console output for details.");
+            }
+
+            result.ErrorMessage = string.Join("\n", errorMessages);
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// Attempts to extract meaningful error information from CLI output
+    /// </summary>
+    private static string? ExtractErrorFromOutput(List<string> outputLines)
+    {
+        var errorLines = new List<string>();
+
+        foreach (var line in outputLines)
+        {
+            // Try to parse as JSON and look for error fields
+            try
+            {
+                using var doc = JsonDocument.Parse(line);
+                var root = doc.RootElement;
+
+                // Check for error type events
+                if (root.TryGetProperty("type", out var typeProp) &&
+                    typeProp.GetString()?.Equals("error", StringComparison.OrdinalIgnoreCase) == true)
+                {
+                    if (root.TryGetProperty("error", out var errorProp))
+                    {
+                        var errorText = errorProp.GetString();
+                        if (!string.IsNullOrWhiteSpace(errorText))
+                            errorLines.Add(errorText);
+                    }
+                    else if (root.TryGetProperty("message", out var msgProp))
+                    {
+                        var msgText = msgProp.GetString();
+                        if (!string.IsNullOrWhiteSpace(msgText))
+                            errorLines.Add(msgText);
+                    }
+                    else if (root.TryGetProperty("content", out var contentProp))
+                    {
+                        var contentText = contentProp.GetString();
+                        if (!string.IsNullOrWhiteSpace(contentText))
+                            errorLines.Add(contentText);
+                    }
+                }
+
+                // Also check for error field on any event type
+                if (root.TryGetProperty("error", out var anyErrorProp))
+                {
+                    var errorText = anyErrorProp.GetString();
+                    if (!string.IsNullOrWhiteSpace(errorText) && !errorLines.Contains(errorText))
+                        errorLines.Add(errorText);
+                }
+            }
+            catch
+            {
+                // Not JSON - check for common error patterns in plain text
+                var lowerLine = line.ToLowerInvariant();
+                if (lowerLine.Contains("error:") ||
+                    lowerLine.Contains("failed:") ||
+                    lowerLine.Contains("exception:") ||
+                    lowerLine.Contains("fatal:") ||
+                    (lowerLine.Contains("error") && lowerLine.Contains("model")))
+                {
+                    errorLines.Add(line.Trim());
+                }
+            }
+        }
+
+        return errorLines.Count > 0 ? string.Join("\n", errorLines.Take(10)) : null;
     }
 
     private void ProcessStreamEvent(
@@ -522,6 +623,44 @@ public class OpenCodeProvider : ProviderBase
                 if (evt.CostUsd.HasValue)
                 {
                     result.CostUsd = evt.CostUsd;
+                }
+                if (!string.IsNullOrEmpty(evt.Model))
+                {
+                    result.ModelUsed = evt.Model;
+                }
+                break;
+
+            case "error":
+                // Capture error details from the stream
+                var errorContent = evt.Error ?? evt.Message ?? evt.Content ?? "Unknown error";
+                result.Success = false;
+                result.ErrorMessage = string.IsNullOrEmpty(result.ErrorMessage)
+                    ? errorContent
+                    : $"{result.ErrorMessage}\n{errorContent}";
+
+                // Also add as a message for visibility
+                result.Messages.Add(new ExecutionMessage
+                {
+                    Role = "error",
+                    Content = errorContent,
+                    Timestamp = DateTime.UtcNow
+                });
+
+                progress?.Report(new ExecutionProgress
+                {
+                    CurrentMessage = $"Error: {errorContent}",
+                    IsStreaming = false,
+                    IsErrorOutput = true
+                });
+                break;
+
+            default:
+                // Capture any unhandled event types that might contain error info
+                if (!string.IsNullOrEmpty(evt.Error))
+                {
+                    result.ErrorMessage = string.IsNullOrEmpty(result.ErrorMessage)
+                        ? evt.Error
+                        : $"{result.ErrorMessage}\n{evt.Error}";
                 }
                 break;
         }
@@ -1395,6 +1534,15 @@ public class OpenCodeProvider : ProviderBase
 
         [JsonPropertyName("output_tokens")]
         public int? OutputTokens { get; set; }
+
+        [JsonPropertyName("error")]
+        public string? Error { get; set; }
+
+        [JsonPropertyName("message")]
+        public string? Message { get; set; }
+
+        [JsonPropertyName("model")]
+        public string? Model { get; set; }
     }
 
     private class OpenCodeApiResponse
