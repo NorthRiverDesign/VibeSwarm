@@ -457,20 +457,33 @@ public class OpenCodeProvider : ProviderBase
                 errorMessages.Add(result.ErrorMessage);
             }
 
-            // Try to extract error information from stdout if no other errors found
-            if (errorMessages.Count == 0)
+            // Always try to extract error information from stdout
+            var errorFromOutput = ExtractErrorFromOutput(outputBuilder);
+            if (!string.IsNullOrWhiteSpace(errorFromOutput))
             {
-                var errorFromOutput = ExtractErrorFromOutput(outputBuilder);
-                if (!string.IsNullOrWhiteSpace(errorFromOutput))
+                errorMessages.Add(errorFromOutput);
+            }
+
+            // If still no meaningful error, include the last few lines of output as context
+            if (errorMessages.Count == 0 && outputBuilder.Count > 0)
+            {
+                var lastLines = outputBuilder.TakeLast(10).ToList();
+                var contextOutput = string.Join("\n", lastLines);
+                if (!string.IsNullOrWhiteSpace(contextOutput))
                 {
-                    errorMessages.Add(errorFromOutput);
+                    errorMessages.Add($"Last output:\n{contextOutput}");
                 }
             }
 
-            // Always provide some error context
+            // Always provide exit code context
             if (errorMessages.Count == 0)
             {
                 errorMessages.Add($"OpenCode CLI exited with code {process.ExitCode}. Check the console output for details.");
+            }
+            else
+            {
+                // Prepend exit code info for context
+                errorMessages.Insert(0, $"OpenCode CLI exited with code {process.ExitCode}:");
             }
 
             result.ErrorMessage = string.Join("\n", errorMessages);
@@ -488,6 +501,8 @@ public class OpenCodeProvider : ProviderBase
 
         foreach (var line in outputLines)
         {
+            if (string.IsNullOrWhiteSpace(line)) continue;
+
             // Try to parse as JSON and look for error fields
             try
             {
@@ -495,53 +510,84 @@ public class OpenCodeProvider : ProviderBase
                 var root = doc.RootElement;
 
                 // Check for error type events
-                if (root.TryGetProperty("type", out var typeProp) &&
-                    typeProp.GetString()?.Equals("error", StringComparison.OrdinalIgnoreCase) == true)
+                if (root.TryGetProperty("type", out var typeProp))
                 {
-                    if (root.TryGetProperty("error", out var errorProp))
+                    var eventType = typeProp.GetString()?.ToLowerInvariant();
+                    if (eventType == "error" || eventType == "fatal" || eventType == "panic")
                     {
-                        var errorText = errorProp.GetString();
-                        if (!string.IsNullOrWhiteSpace(errorText))
+                        // Extract error details from various possible fields
+                        var errorText = GetJsonStringProperty(root, "error")
+                            ?? GetJsonStringProperty(root, "message")
+                            ?? GetJsonStringProperty(root, "content")
+                            ?? GetJsonStringProperty(root, "detail")
+                            ?? GetJsonStringProperty(root, "reason");
+
+                        if (!string.IsNullOrWhiteSpace(errorText) && !errorLines.Contains(errorText))
+                        {
                             errorLines.Add(errorText);
-                    }
-                    else if (root.TryGetProperty("message", out var msgProp))
-                    {
-                        var msgText = msgProp.GetString();
-                        if (!string.IsNullOrWhiteSpace(msgText))
-                            errorLines.Add(msgText);
-                    }
-                    else if (root.TryGetProperty("content", out var contentProp))
-                    {
-                        var contentText = contentProp.GetString();
-                        if (!string.IsNullOrWhiteSpace(contentText))
-                            errorLines.Add(contentText);
+                        }
                     }
                 }
 
-                // Also check for error field on any event type
-                if (root.TryGetProperty("error", out var anyErrorProp))
+                // Check for error field on any event type
+                var anyError = GetJsonStringProperty(root, "error");
+                if (!string.IsNullOrWhiteSpace(anyError) && !errorLines.Contains(anyError))
                 {
-                    var errorText = anyErrorProp.GetString();
-                    if (!string.IsNullOrWhiteSpace(errorText) && !errorLines.Contains(errorText))
-                        errorLines.Add(errorText);
+                    errorLines.Add(anyError);
+                }
+
+                // Check for common error indicator fields
+                var errorMsg = GetJsonStringProperty(root, "error_message")
+                    ?? GetJsonStringProperty(root, "errorMessage")
+                    ?? GetJsonStringProperty(root, "err");
+                if (!string.IsNullOrWhiteSpace(errorMsg) && !errorLines.Contains(errorMsg))
+                {
+                    errorLines.Add(errorMsg);
                 }
             }
             catch
             {
                 // Not JSON - check for common error patterns in plain text
-                var lowerLine = line.ToLowerInvariant();
-                if (lowerLine.Contains("error:") ||
-                    lowerLine.Contains("failed:") ||
-                    lowerLine.Contains("exception:") ||
-                    lowerLine.Contains("fatal:") ||
-                    (lowerLine.Contains("error") && lowerLine.Contains("model")))
+                var trimmedLine = line.Trim();
+                var lowerLine = trimmedLine.ToLowerInvariant();
+
+                // Check for explicit error indicators
+                if (lowerLine.StartsWith("error:") ||
+                    lowerLine.StartsWith("error ") ||
+                    lowerLine.StartsWith("failed:") ||
+                    lowerLine.StartsWith("fatal:") ||
+                    lowerLine.StartsWith("panic:") ||
+                    lowerLine.StartsWith("exception:") ||
+                    lowerLine.Contains("error:") ||
+                    lowerLine.Contains("failed to") ||
+                    lowerLine.Contains("cannot ") ||
+                    lowerLine.Contains("unable to") ||
+                    lowerLine.Contains("not found") ||
+                    lowerLine.Contains("invalid ") ||
+                    lowerLine.Contains("no such") ||
+                    (lowerLine.Contains("error") && (lowerLine.Contains("model") || lowerLine.Contains("api") || lowerLine.Contains("key"))))
                 {
-                    errorLines.Add(line.Trim());
+                    if (!errorLines.Contains(trimmedLine))
+                    {
+                        errorLines.Add(trimmedLine);
+                    }
                 }
             }
         }
 
-        return errorLines.Count > 0 ? string.Join("\n", errorLines.Take(10)) : null;
+        return errorLines.Count > 0 ? string.Join("\n", errorLines.Take(15)) : null;
+    }
+
+    /// <summary>
+    /// Safely gets a string property from a JSON element
+    /// </summary>
+    private static string? GetJsonStringProperty(JsonElement element, string propertyName)
+    {
+        if (element.TryGetProperty(propertyName, out var prop) && prop.ValueKind == JsonValueKind.String)
+        {
+            return prop.GetString();
+        }
+        return null;
     }
 
     private void ProcessStreamEvent(
