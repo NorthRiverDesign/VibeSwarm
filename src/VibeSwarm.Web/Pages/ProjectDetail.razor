@@ -24,10 +24,10 @@ else if (Project == null)
 else
 {
     @* Project Header *@
-    <div class="card mb-3 mb-lg-4 border-0 shadow-sm">
+            <div class="card mb-3 mb-lg-4 border-0 shadow-sm">
         <div class="card-body p-3 p-md-4">
             @* Top Row: Back Button, Title, Actions *@
-            <div class="d-flex flex-wrap align-items-start gap-2 gap-md-3 mb-3">
+                    <div class="d-flex flex-wrap align-items-start gap-2 gap-md-3 mb-3">
                 <a href="/projects" class="btn btn-sm btn-outline-secondary flex-shrink-0" title="Back to projects">
                     <i class="bi bi-arrow-left"></i>
                     <span class="d-none d-sm-inline ms-1">Back</span>
@@ -37,9 +37,9 @@ else
                         <h3 class="mb-0 fs-4 fw-semibold">@Project.Name</h3>
                         @if (IsGitRepository && !string.IsNullOrEmpty(Project.GitHubRepository))
                         {
-                            <a href="https://github.com/@Project.GitHubRepository" target="_blank" 
-                               class="d-flex align-items-center gap-1 text-body-secondary text-decoration-none small hover-underline"
-                               title="View on GitHub">
+                            <a href="https://github.com/@Project.GitHubRepository" target="_blank"
+                                class="d-flex align-items-center gap-1 text-body-secondary text-decoration-none small hover-underline"
+                                title="View on GitHub">
                                 <i class="bi bi-github"></i>
                                 <span class="d-none d-md-inline">@Project.GitHubRepository</span>
                             </a>
@@ -50,20 +50,20 @@ else
                         <p class="text-body-secondary mb-0 mt-1 small d-none d-sm-block">@Project.Description</p>
                     }
                 </div>
-                
+
                 @* Git Actions Dropdown (when Git repo) *@
-                @if (IsGitRepository)
+                        @if (IsGitRepository)
                 {
                     <div class="dropdown flex-shrink-0">
-                        <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" 
-                                data-bs-toggle="dropdown" aria-expanded="false" disabled="@IsGitOperationInProgress"
-                                title="Git actions">
+                        <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown"
+                            aria-expanded="false" disabled="@IsGitOperationInProgress" title="Git actions">
                             <i class="bi bi-git"></i>
                             <span class="d-none d-sm-inline ms-1">Git</span>
                         </button>
                         <ul class="dropdown-menu dropdown-menu-end">
                             <li>
-                                <button class="dropdown-item" @onclick="ShowCreateBranchModal" disabled="@IsGitOperationInProgress">
+                                <button class="dropdown-item" @onclick="ShowCreateBranchModal"
+                                    disabled="@IsGitOperationInProgress">
                                     <i class="bi bi-plus-lg me-2 text-primary"></i>New Branch
                                 </button>
                             </li>
@@ -80,7 +80,9 @@ else
                                     Sync with Origin
                                 </button>
                             </li>
-                            <li><hr class="dropdown-divider"></li>
+                            <li>
+                                <hr class="dropdown-divider">
+                            </li>
                             <li>
                                 <button class="dropdown-item" @onclick="RefreshBranches" disabled="@IsGitOperationInProgress">
                                     <i class="bi bi-arrow-clockwise me-2 @(IsGitOperationInProgress ? "spin" : "")"></i>
@@ -91,40 +93,43 @@ else
                     </div>
                 }
             </div>
-            
+
             @* Second Row: Path, Branch Selector, Stats *@
-            <div class="d-flex flex-wrap align-items-center gap-2 gap-md-3 pt-3 border-top">
+                    <div class="d-flex flex-wrap align-items-center gap-2 gap-md-3 pt-3 border-top">
                 @* Working Path *@
-                <div class="d-flex align-items-center gap-1 text-body-secondary small">
+                        <div class="d-flex align-items-center gap-1 text-body-secondary small">
                     <i class="bi bi-folder opacity-75"></i>
-                    <code class="bg-body-tertiary px-2 py-1 rounded-1 text-truncate d-inline-block" style="max-width: 240px;" 
-                          title="@Project.WorkingPath">@Project.WorkingPath</code>
+                    <code class="bg-body-tertiary px-2 py-1 rounded-1 text-truncate d-inline-block"
+                        style="max-width: 240px;" title="@Project.WorkingPath">@Project.WorkingPath</code>
                 </div>
-                
+
                 @* Branch Selector (Git repos only) *@
-                @if (IsGitRepository && Branches.Any())
+                        @if (IsGitRepository && Branches.Any())
                 {
                     <div class="d-flex align-items-center gap-1">
                         <div class="dropdown">
-                            <button class="btn btn-sm bg-body-tertiary border d-flex align-items-center gap-2 dropdown-toggle" 
-                                    type="button" data-bs-toggle="dropdown" aria-expanded="false"
-                                    disabled="@(IsGitOperationInProgress || !Branches.Any())" title="Current branch">
+                            <button class="btn btn-sm bg-body-tertiary border d-flex align-items-center gap-2 dropdown-toggle"
+                                type="button" data-bs-toggle="dropdown" aria-expanded="false"
+                                disabled="@(IsGitOperationInProgress || !Branches.Any())" title="Current branch">
                                 <i class="bi bi-git text-danger"></i>
                                 <span class="fw-medium">@(CurrentBranch ?? "No branch")</span>
                                 @if (!string.IsNullOrEmpty(CurrentCommitHash))
                                 {
-                                    <span class="font-monospace text-body-secondary small">@CurrentCommitHash[..Math.Min(7, CurrentCommitHash.Length)]</span>
-                                }
+                                    <span class="font-monospace text-body-secondary small">@CurrentCommitHash[..Math.Min(7,
+                                                                    CurrentCommitHash.Length)]</span>
+                                                }
                             </button>
                             <ul class="dropdown-menu dropdown-menu-end" style="max-height: 300px; overflow-y: auto;">
-                                <li><h6 class="dropdown-header">Local Branches</h6></li>
+                                <li>
+                                    <h6 class="dropdown-header">Local Branches</h6>
+                                </li>
                                 @foreach (var branch in Branches.Where(b => !b.IsRemote))
                                 {
                                     var isCurrentBranch = branch.Name == CurrentBranch;
                                     <li>
-                                        <button class="dropdown-item d-flex align-items-center gap-2 @(isCurrentBranch ? "active" : "")" 
-                                                @onclick="@(() => RequestBranchSwitch(branch.Name))"
-                                                disabled="@isCurrentBranch">
+                                        <button
+                                            class="dropdown-item d-flex align-items-center gap-2 @(isCurrentBranch ? "active" : "")"
+                                            @onclick="@(() => RequestBranchSwitch(branch.Name))" disabled="@isCurrentBranch">
                                             @if (isCurrentBranch)
                                             {
                                                 <i class="bi bi-check-lg"></i>
@@ -139,13 +144,17 @@ else
                                 }
                                 @if (Branches.Any(b => b.IsRemote))
                                 {
-                                    <li><hr class="dropdown-divider"></li>
-                                    <li><h6 class="dropdown-header">Remote Branches</h6></li>
+                                    <li>
+                                        <hr class="dropdown-divider">
+                                    </li>
+                                    <li>
+                                        <h6 class="dropdown-header">Remote Branches</h6>
+                                    </li>
                                     @foreach (var branch in Branches.Where(b => b.IsRemote))
                                     {
                                         <li>
-                                            <button class="dropdown-item d-flex align-items-center gap-2" 
-                                                    @onclick="@(() => RequestBranchSwitch(branch.ShortName))">
+                                            <button class="dropdown-item d-flex align-items-center gap-2"
+                                                @onclick="@(() => RequestBranchSwitch(branch.ShortName))">
                                                 <i class="bi bi-cloud opacity-50"></i>
                                                 <span>@branch.Name</span>
                                             </button>
@@ -163,19 +172,36 @@ else
                         @CurrentBranch
                     </span>
                 }
-                
+
+                @* Uncommitted Changes Warning Icon *@
+                @if (IsGitRepository && _hasUncommittedChangesHeader)
+                {
+                    <button type="button"
+                        class="btn btn-sm btn-outline-warning d-flex align-items-center gap-1 position-relative"
+                        @onclick="ShowUncommittedChangesModal" title="Uncommitted changes detected - click to view">
+                        <i class="bi bi-exclamation-triangle-fill"></i>
+                        <span class="d-none d-sm-inline">Changes</span>
+                        @if (_uncommittedFilesCount > 0)
+                        {
+                            <span class="badge bg-warning text-dark ms-1">@_uncommittedFilesCount</span>
+                        }
+                    </button>
+                }
+
                 @* Stats Section - Spacer *@
                 <div class="flex-grow-1"></div>
-                
+
                 @* Token/Cost Stats (when data exists) *@
-                @if (HasProjectTokenData())
+                        @if (HasProjectTokenData())
                 {
                     <div class="d-flex flex-wrap align-items-center gap-2 gap-md-3">
                         @if (GetProjectTotalInputTokens() > 0 || GetProjectTotalOutputTokens() > 0)
                         {
-                            <div class="d-flex align-items-center gap-1 small text-body-secondary" title="Total tokens (input / output)">
+                            <div class="d-flex align-items-center gap-1 small text-body-secondary"
+                                title="Total tokens (input / output)">
                                 <i class="bi bi-braces opacity-75"></i>
-                                <span>@TokenHelper.FormatTokenCount(GetProjectTotalInputTokens()) / @TokenHelper.FormatTokenCount(GetProjectTotalOutputTokens())</span>
+                                <span>@TokenHelper.FormatTokenCount(GetProjectTotalInputTokens()) /
+                                    @TokenHelper.FormatTokenCount(GetProjectTotalOutputTokens())</span>
                             </div>
                         }
                         @if (GetProjectTotalCost() > 0)
@@ -188,11 +214,12 @@ else
                     </div>
                 }
             </div>
-            
+
             @* Git Operation Messages *@
-            @if (!string.IsNullOrEmpty(GitOperationMessage))
+                    @if (!string.IsNullOrEmpty(GitOperationMessage))
             {
-                <div class="alert @(GitOperationSuccess ? "alert-success" : "alert-danger") mt-3 mb-0 py-2 d-flex align-items-center gap-2">
+                <div
+                    class="alert @(GitOperationSuccess ? "alert-success" : "alert-danger") mt-3 mb-0 py-2 d-flex align-items-center gap-2">
                     <i class="bi @(GitOperationSuccess ? "bi-check-circle" : "bi-exclamation-triangle")"></i>
                     <span class="flex-grow-1">@GitOperationMessage</span>
                     <button type="button" class="btn-close btn-close-sm" @onclick="ClearGitMessage" aria-label="Close"></button>
@@ -210,7 +237,7 @@ else
 
     <div class="row g-3 g-lg-4">
         @* Create Job form first on mobile *@
-        <div class="col-12 col-lg-4 order-1 order-lg-2">
+                <div class="col-12 col-lg-4 order-1 order-lg-2">
             <div class="card">
                 <div class="card-header bg-body-secondary">
                     <h5 class="mb-0 fw-semibold">Create Job</h5>
@@ -306,7 +333,7 @@ else
         </div>
 
         @* Jobs list second on mobile *@
-        <div class="col-12 col-lg-8 order-2 order-lg-1">
+                <div class="col-12 col-lg-8 order-2 order-lg-1">
             <div class="card">
                 <div class="card-header bg-body-secondary d-flex justify-content-between align-items-center">
                     <h5 class="mb-0 fw-semibold">Jobs</h5>
@@ -329,7 +356,7 @@ else
                                     <div class="d-flex justify-content-between align-items-start gap-2">
                                         <div class="d-flex align-items-start gap-2 flex-grow-1 min-width-0">
                                             @* Status Icon *@
-                                            <div class="flex-shrink-0 pt-1">
+                                                                    <div class="flex-shrink-0 pt-1">
                                                 @switch (job.Status)
                                                 {
                                                     case JobStatus.Completed:
@@ -355,7 +382,7 @@ else
                                                 }
                                             </div>
                                             @* Job Content *@
-                                            <div class="flex-grow-1 min-width-0">
+                                                                    <div class="flex-grow-1 min-width-0">
                                                 <a href="/jobs/@job.Id"
                                                     class="d-block text-decoration-none fw-medium text-truncate-lines-2">
                                                     @job.GoalPrompt
@@ -377,7 +404,7 @@ else
                                             </div>
                                         </div>
                                         @* Actions Dropdown *@
-                                        <div class="dropdown flex-shrink-0">
+                                                                <div class="dropdown flex-shrink-0">
                                             <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button"
                                                 data-bs-toggle="dropdown" aria-expanded="false">
                                                 <i class="bi bi-three-dots-vertical"></i>
@@ -497,10 +524,10 @@ else
                         else
                         {
                             <p class="mb-3">
-                                Switch from <strong class="text-primary">@CurrentBranch</strong> to 
+                                Switch from <strong class="text-primary">@CurrentBranch</strong> to
                                 <strong class="text-success">@_targetBranch</strong>?
                             </p>
-                            
+
                             @if (_hasUncommittedChanges)
                             {
                                 <div class="alert alert-warning py-2 mb-3 d-flex align-items-start gap-2">
@@ -508,30 +535,29 @@ else
                                     <div>
                                         <strong>Uncommitted changes detected!</strong>
                                         <p class="mb-0 mt-1 small">
-                                            You have uncommitted changes in your working directory. 
+                                            You have uncommitted changes in your working directory.
                                             These changes may be lost or cause conflicts when switching branches.
                                         </p>
                                     </div>
                                 </div>
-                                
+
                                 <div class="mb-3">
                                     <div class="form-check">
-                                        <input class="form-check-input" type="checkbox" id="commitBeforeSwitch" 
-                                               @bind="_commitBeforeSwitch">
+                                        <input class="form-check-input" type="checkbox" id="commitBeforeSwitch"
+                                            @bind="_commitBeforeSwitch">
                                         <label class="form-check-label" for="commitBeforeSwitch">
                                             Commit changes before switching
                                         </label>
                                     </div>
                                 </div>
-                                
+
                                 @if (_commitBeforeSwitch)
                                 {
                                     <div class="mb-3">
                                         <label for="commitMessage" class="form-label small fw-medium">Commit Message</label>
-                                        <input type="text" class="form-control" id="commitMessage" 
-                                               @bind="_commitMessage" @bind:event="oninput"
-                                               placeholder="e.g., WIP: Save changes before branch switch"
-                                               disabled="@_isSwitchingBranch" />
+                                        <input type="text" class="form-control" id="commitMessage" @bind="_commitMessage"
+                                            @bind:event="oninput" placeholder="e.g., WIP: Save changes before branch switch"
+                                            disabled="@_isSwitchingBranch" />
                                     </div>
                                 }
                             }
@@ -542,7 +568,7 @@ else
                                     <span>No uncommitted changes. Safe to switch branches.</span>
                                 </div>
                             }
-                            
+
                             @if (!string.IsNullOrEmpty(_branchSwitchError))
                             {
                                 <div class="alert alert-danger py-2 mt-3 mb-0">
@@ -572,6 +598,207 @@ else
                             {
                                 <i class="bi bi-arrow-left-right me-1"></i>
                                 <span>Switch Branch</span>
+                            }
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+
+    @* Uncommitted Changes Modal *@
+    @if (_showUncommittedChangesModal)
+    {
+        <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+            <div class="modal-dialog modal-dialog-centered modal-xl modal-dialog-scrollable">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title d-flex align-items-center gap-2">
+                            <i class="bi bi-exclamation-triangle text-warning"></i>
+                            Uncommitted Changes
+                            @if (_uncommittedDiffFiles.Any())
+                            {
+                                <span class="badge bg-secondary">@_uncommittedDiffFiles.Count files</span>
+                            }
+                        </h5>
+                        <button type="button" class="btn-close" @onclick="CloseUncommittedChangesModal"
+                            disabled="@(_isCommittingChanges || _isDiscardingChanges)"></button>
+                    </div>
+                    <div class="modal-body p-0">
+                        @if (_isLoadingUncommittedDiff)
+                        {
+                            <div class="p-4 text-center">
+                                <span class="spinner-border text-primary mb-3" role="status"></span>
+                                <p class="text-body-secondary mb-0">Loading changes...</p>
+                            </div>
+                        }
+                        else if (!string.IsNullOrEmpty(_uncommittedDiffError))
+                        {
+                            <div class="p-3">
+                                <div class="alert alert-danger mb-0">
+                                    <i class="bi bi-exclamation-triangle me-1"></i>@_uncommittedDiffError
+                                </div>
+                            </div>
+                        }
+                        else if (!_uncommittedDiffFiles.Any())
+                        {
+                            <div class="p-4 text-center">
+                                <i class="bi bi-check-circle text-success fs-1 mb-3"></i>
+                                <p class="text-body-secondary mb-0">No uncommitted changes found.</p>
+                            </div>
+                        }
+                        else
+                        {
+                            @* Diff Accordion *@
+                                                    <div class="accordion" id="uncommittedDiffAccordion">
+                                @foreach (var (file, index) in _uncommittedDiffFiles.Select((f, i) => (f, i)))
+                                {
+                                    var collapseId = $"uncommittedDiffCollapse{index}";
+                                    var headerId = $"uncommittedDiffHeader{index}";
+                                    var isExpanded = _expandedUncommittedDiffFiles.Contains(index);
+                                    <div class="accordion-item">
+                                        <h2 class="accordion-header" id="@headerId">
+                                            <button class="accordion-button @(isExpanded ? "" : "collapsed")" type="button"
+                                                @onclick="() => ToggleUncommittedDiffFile(index)">
+                                                <span class="diff-file-icon me-2">
+                                                    @if (file.IsNew)
+                                                    {
+                                                        <i class="bi bi-file-earmark-plus text-success" title="New file"></i>
+                                                    }
+                                                    else if (file.IsDeleted)
+                                                    {
+                                                        <i class="bi bi-file-earmark-minus text-danger" title="Deleted file"></i>
+                                                    }
+                                                    else
+                                                    {
+                                                        <i class="bi bi-file-earmark-diff text-warning" title="Modified file"></i>
+                                                    }
+                                                </span>
+                                                <span class="diff-file-name flex-grow-1 text-truncate">@file.FileName</span>
+                                                <span class="diff-stats ms-2">
+                                                    @if (file.Additions > 0)
+                                                    {
+                                                        <span class="text-success fw-medium">+@file.Additions</span>
+                                                    }
+                                                    @if (file.Deletions > 0)
+                                                    {
+                                                        <span class="text-danger fw-medium ms-1">-@file.Deletions</span>
+                                                    }
+                                                </span>
+                                            </button>
+                                        </h2>
+                                        <div id="@collapseId" class="accordion-collapse @(isExpanded ? "show" : "collapse")">
+                                            <div class="accordion-body p-0">
+                                                <div class="diff-container">
+                                                    @((MarkupString)FormatFileDiff(file.DiffContent))
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+
+                            @* Commit Section *@
+                                                    <div class="p-3 border-top bg-body-secondary">
+                                <label for="uncommittedCommitMessage" class="form-label small fw-medium mb-2">
+                                    Commit Message
+                                </label>
+                                <textarea id="uncommittedCommitMessage" class="form-control mb-2" rows="2"
+                                    @bind="_uncommittedCommitMessage" @bind:event="oninput" placeholder="Enter a commit message..."
+                                    disabled="@(_isCommittingChanges || _isDiscardingChanges)"></textarea>
+
+                                @if (!string.IsNullOrEmpty(_uncommittedCommitError))
+                                {
+                                    <div class="alert alert-danger py-2 mt-2 mb-0">
+                                        <i class="bi bi-exclamation-triangle me-1"></i>@_uncommittedCommitError
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
+                    <div class="modal-footer flex-wrap gap-2">
+                        @if (_uncommittedDiffFiles.Any())
+                        {
+                            <div class="d-flex gap-2 me-auto">
+                                <div class="btn-group" role="group" aria-label="Expand/Collapse all files">
+                                    <button type="button" class="btn btn-sm btn-outline-secondary"
+                                        @onclick="ExpandAllUncommittedDiffs" title="Expand all" disabled="@_allUncommittedExpanded">
+                                        <i class="bi bi-arrows-expand"></i>
+                                    </button>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary"
+                                        @onclick="CollapseAllUncommittedDiffs" title="Collapse all"
+                                        disabled="@_allUncommittedCollapsed">
+                                        <i class="bi bi-arrows-collapse"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <button type="button" class="btn btn-outline-danger" @onclick="ShowDiscardConfirmation"
+                                disabled="@(_isCommittingChanges || _isDiscardingChanges)">
+                                <i class="bi bi-trash me-1"></i>Discard Changes
+                            </button>
+                            <button type="button" class="btn btn-primary" @onclick="CommitAndPushUncommittedChanges"
+                                disabled="@(_isCommittingChanges || _isDiscardingChanges || string.IsNullOrWhiteSpace(_uncommittedCommitMessage))">
+                                @if (_isCommittingChanges)
+                                {
+                                    <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                                    <span>Pushing...</span>
+                                }
+                                else
+                                {
+                                    <i class="bi bi-cloud-upload me-1"></i>
+                                    <span>Commit & Push</span>
+                                }
+                            </button>
+                        }
+                        <button type="button" class="btn btn-secondary" @onclick="CloseUncommittedChangesModal"
+                            disabled="@(_isCommittingChanges || _isDiscardingChanges)">
+                            Close
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+
+    @* Discard Changes Confirmation Modal *@
+    @if (_showDiscardConfirmation)
+    {
+        <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.6);">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header bg-danger text-white">
+                        <h5 class="modal-title d-flex align-items-center gap-2">
+                            <i class="bi bi-exclamation-triangle-fill"></i>
+                            Discard All Changes?
+                        </h5>
+                    </div>
+                    <div class="modal-body">
+                        <p class="mb-3">
+                            <strong>Warning:</strong> This action will permanently discard all uncommitted changes in the
+                            working directory.
+                        </p>
+                        <div class="alert alert-danger py-2 mb-0">
+                            <i class="bi bi-exclamation-triangle me-1"></i>
+                            <strong>@_uncommittedDiffFiles.Count file(s)</strong> will be reverted to their last committed
+                            state. This cannot be undone.
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" @onclick="CloseDiscardConfirmation"
+                            disabled="@_isDiscardingChanges">
+                            Cancel
+                        </button>
+                        <button type="button" class="btn btn-danger" @onclick="DiscardAllChanges"
+                            disabled="@_isDiscardingChanges">
+                            @if (_isDiscardingChanges)
+                            {
+                                <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                                <span>Discarding...</span>
+                            }
+                            else
+                            {
+                                <i class="bi bi-trash me-1"></i>
+                                <span>Discard All Changes</span>
                             }
                         </button>
                     </div>
@@ -627,6 +854,36 @@ else
     private string _commitMessage { get; set; } = string.Empty;
     private bool _isSwitchingBranch { get; set; }
     private string? _branchSwitchError { get; set; }
+
+    // Uncommitted changes modal state (header indicator)
+    private bool _hasUncommittedChangesHeader { get; set; }
+    private int _uncommittedFilesCount { get; set; }
+    private bool _showUncommittedChangesModal { get; set; }
+    private bool _isLoadingUncommittedDiff { get; set; }
+    private string? _uncommittedDiffError { get; set; }
+    private List<DiffFile> _uncommittedDiffFiles { get; set; } = new();
+    private HashSet<int> _expandedUncommittedDiffFiles { get; set; } = new();
+    private string _uncommittedCommitMessage { get; set; } = string.Empty;
+    private string? _uncommittedCommitError { get; set; }
+    private bool _isCommittingChanges { get; set; }
+    private bool _showDiscardConfirmation { get; set; }
+    private bool _isDiscardingChanges { get; set; }
+
+    // Computed properties for expand/collapse buttons
+    private bool _allUncommittedExpanded => _uncommittedDiffFiles.Count > 0 && _expandedUncommittedDiffFiles.Count ==
+    _uncommittedDiffFiles.Count;
+    private bool _allUncommittedCollapsed => _uncommittedDiffFiles.Count == 0 || _expandedUncommittedDiffFiles.Count == 0;
+
+    // DiffFile class (same structure as in JobDetail)
+    private class DiffFile
+    {
+        public string FileName { get; set; } = string.Empty;
+        public string DiffContent { get; set; } = string.Empty;
+        public int Additions { get; set; }
+        public int Deletions { get; set; }
+        public bool IsNew { get; set; }
+        public bool IsDeleted { get; set; }
+    }
 
     private bool HasActiveJobs => Jobs.Any(j =>
     j.Status == JobStatus.New ||
@@ -707,11 +964,50 @@ else
                 // Default the new job to operate on the current branch
                 NewJob.Branch = CurrentBranch;
                 await LoadBranches();
+                
+                // Check for uncommitted changes to show in header indicator
+                await RefreshUncommittedChangesStatus();
             }
         }
         catch
         {
             IsGitRepository = false;
+        }
+    }
+    
+    private async Task RefreshUncommittedChangesStatus()
+    {
+        if (Project == null || string.IsNullOrEmpty(Project.WorkingPath) || !IsGitRepository)
+            return;
+            
+        try
+        {
+            _hasUncommittedChangesHeader = await VersionControlService.HasUncommittedChangesAsync(Project.WorkingPath);
+            if (_hasUncommittedChangesHeader)
+            {
+                // Get a quick count of changed files
+                var diffOutput = await VersionControlService.GetWorkingDirectoryDiffAsync(Project.WorkingPath, "--stat");
+                if (!string.IsNullOrEmpty(diffOutput))
+                {
+                    // Count lines that represent file changes (ends with insertions/deletions pattern or just file path)
+                    var lines = diffOutput.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+                    _uncommittedFilesCount = lines.Count(l => l.Contains('|') || (l.Trim().Length > 0 && !l.Contains("changed") && !l.Contains("insertion") && !l.Contains("deletion")));
+                    if (_uncommittedFilesCount == 0) _uncommittedFilesCount = 1; // At least one file if there are changes
+                }
+                else
+                {
+                    _uncommittedFilesCount = 0;
+                }
+            }
+            else
+            {
+                _uncommittedFilesCount = 0;
+            }
+        }
+        catch
+        {
+            _hasUncommittedChangesHeader = false;
+            _uncommittedFilesCount = 0;
         }
     }
 
@@ -823,8 +1119,8 @@ else
             if (_commitBeforeSwitch && _hasUncommittedChanges && !string.IsNullOrWhiteSpace(_commitMessage))
             {
                 var commitResult = await VersionControlService.CommitAllChangesAsync(
-                    Project.WorkingPath,
-                    _commitMessage.Trim());
+                Project.WorkingPath,
+                _commitMessage.Trim());
 
                 if (!commitResult.Success)
                 {
@@ -837,13 +1133,13 @@ else
 
             // Now switch branches
             var result = await VersionControlService.HardCheckoutBranchAsync(
-                Project.WorkingPath,
-                _targetBranch,
-                progressCallback: progress =>
-                {
-                    GitProgressMessage = progress;
-                    InvokeAsync(StateHasChanged);
-                });
+            Project.WorkingPath,
+            _targetBranch,
+            progressCallback: progress =>
+            {
+                GitProgressMessage = progress;
+                InvokeAsync(StateHasChanged);
+            });
 
             if (result.Success)
             {
@@ -1123,6 +1419,294 @@ else
     private decimal GetProjectTotalCost() => Jobs.Sum(j => j.TotalCostUsd ?? 0);
     private bool HasProjectTokenData() => GetProjectTotalInputTokens() > 0 || GetProjectTotalOutputTokens() > 0 ||
     GetProjectTotalCost() > 0;
+
+    // Uncommitted changes modal methods
+    private async Task ShowUncommittedChangesModal()
+    {
+        _showUncommittedChangesModal = true;
+        _uncommittedDiffError = null;
+        _uncommittedDiffFiles = new List<DiffFile>();
+        _expandedUncommittedDiffFiles = new HashSet<int>();
+        _isLoadingUncommittedDiff = true;
+        _uncommittedCommitMessage = string.Empty;
+        StateHasChanged();
+
+        if (Project == null || string.IsNullOrEmpty(Project.WorkingPath))
+        {
+            _uncommittedDiffError = "Project path not available";
+            _isLoadingUncommittedDiff = false;
+            StateHasChanged();
+            return;
+        }
+
+        try
+        {
+            var diffOutput = await VersionControlService.GetWorkingDirectoryDiffAsync(Project.WorkingPath);
+            if (!string.IsNullOrEmpty(diffOutput))
+            {
+                _uncommittedDiffFiles = ParseGitDiff(diffOutput);
+                // Auto-expand if only a few files
+                if (_uncommittedDiffFiles.Count <= 3)
+                {
+                    for (int i = 0; i < _uncommittedDiffFiles.Count; i++)
+                    {
+                        _expandedUncommittedDiffFiles.Add(i);
+                    }
+                }
+            }
+            else
+            {
+                _uncommittedDiffError = "No uncommitted changes found";
+            }
+        }
+        catch (Exception ex)
+        {
+            _uncommittedDiffError = $"Failed to load diff: {ex.Message}";
+        }
+        finally
+        {
+            _isLoadingUncommittedDiff = false;
+            StateHasChanged();
+        }
+    }
+
+    private void CloseUncommittedChangesModal()
+    {
+        _showUncommittedChangesModal = false;
+        _uncommittedDiffError = null;
+        _uncommittedDiffFiles = new List<DiffFile>();
+        _expandedUncommittedDiffFiles = new HashSet<int>();
+        _uncommittedCommitMessage = string.Empty;
+    }
+
+    private void ToggleUncommittedDiffFile(int index)
+    {
+        if (_expandedUncommittedDiffFiles.Contains(index))
+            _expandedUncommittedDiffFiles.Remove(index);
+        else
+            _expandedUncommittedDiffFiles.Add(index);
+    }
+
+    private void ExpandAllUncommittedDiffs()
+    {
+        _expandedUncommittedDiffFiles = Enumerable.Range(0, _uncommittedDiffFiles.Count).ToHashSet();
+    }
+
+    private void CollapseAllUncommittedDiffs()
+    {
+        _expandedUncommittedDiffFiles = new HashSet<int>();
+    }
+
+    private async Task CommitAndPushUncommittedChanges()
+    {
+        if (string.IsNullOrWhiteSpace(_uncommittedCommitMessage))
+            return;
+
+        if (Project == null || string.IsNullOrEmpty(Project.WorkingPath))
+            return;
+
+        _isCommittingChanges = true;
+        _uncommittedDiffError = null;
+        StateHasChanged();
+
+        try
+        {
+            // Commit all changes
+            var commitResult = await VersionControlService.CommitAllChangesAsync(
+                Project.WorkingPath,
+                _uncommittedCommitMessage.Trim());
+
+            if (!commitResult.Success)
+            {
+                _uncommittedDiffError = $"Failed to commit: {commitResult.Error}";
+                return;
+            }
+
+            // Push to origin
+            var pushResult = await VersionControlService.PushAsync(Project.WorkingPath);
+
+            if (pushResult.Success)
+            {
+                GitOperationMessage = "Successfully committed and pushed changes";
+                GitOperationSuccess = true;
+                CurrentCommitHash = commitResult.CommitHash;
+                CloseUncommittedChangesModal();
+                await RefreshUncommittedChangesStatus();
+            }
+            else
+            {
+                // Commit succeeded but push failed - still close modal but show warning
+                GitOperationMessage = $"Changes committed but push failed: {pushResult.Error}";
+                GitOperationSuccess = false;
+                CloseUncommittedChangesModal();
+                await RefreshUncommittedChangesStatus();
+            }
+        }
+        catch (Exception ex)
+        {
+            _uncommittedDiffError = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            _isCommittingChanges = false;
+            StateHasChanged();
+        }
+    }
+
+    private void ShowDiscardConfirmation()
+    {
+        _showDiscardConfirmation = true;
+    }
+
+    private void CloseDiscardConfirmation()
+    {
+        _showDiscardConfirmation = false;
+    }
+
+    private async Task DiscardAllChanges()
+    {
+        if (Project == null || string.IsNullOrEmpty(Project.WorkingPath))
+            return;
+
+        _isDiscardingChanges = true;
+        StateHasChanged();
+
+        try
+        {
+            // Reset all tracked changes and clean untracked files
+            var result = await VersionControlService.DiscardAllChangesAsync(Project.WorkingPath);
+
+            if (result.Success)
+            {
+                GitOperationMessage = "Successfully discarded all uncommitted changes";
+                GitOperationSuccess = true;
+                CloseDiscardConfirmation();
+                CloseUncommittedChangesModal();
+                await RefreshUncommittedChangesStatus();
+            }
+            else
+            {
+                GitOperationMessage = $"Failed to discard changes: {result.Error}";
+                GitOperationSuccess = false;
+                CloseDiscardConfirmation();
+            }
+        }
+        catch (Exception ex)
+        {
+            GitOperationMessage = $"Error discarding changes: {ex.Message}";
+            GitOperationSuccess = false;
+            CloseDiscardConfirmation();
+        }
+        finally
+        {
+            _isDiscardingChanges = false;
+            StateHasChanged();
+        }
+    }
+
+    // Git diff parsing helpers
+    private List<DiffFile> ParseGitDiff(string diffOutput)
+    {
+        var files = new List<DiffFile>();
+        if (string.IsNullOrWhiteSpace(diffOutput))
+            return files;
+
+        var lines = diffOutput.Split('\n');
+        DiffFile? currentFile = null;
+        var currentDiff = new System.Text.StringBuilder();
+
+        foreach (var line in lines)
+        {
+            if (line.StartsWith("diff --git"))
+            {
+                // Save previous file
+                if (currentFile != null)
+                {
+                    currentFile.DiffContent = currentDiff.ToString();
+                    files.Add(currentFile);
+                }
+
+                // Extract filename from "diff --git a/path/to/file b/path/to/file"
+                var parts = line.Split(' ');
+                var fileName = parts.Length >= 4 ? parts[3].TrimStart('b', '/') : "Unknown";
+                currentFile = new DiffFile { FileName = fileName };
+                currentDiff = new System.Text.StringBuilder();
+            }
+            else if (currentFile != null)
+            {
+                if (line.StartsWith("new file mode"))
+                {
+                    currentFile.IsNew = true;
+                }
+                else if (line.StartsWith("deleted file mode"))
+                {
+                    currentFile.IsDeleted = true;
+                }
+                else if (line.StartsWith("+") && !line.StartsWith("+++"))
+                {
+                    currentFile.Additions++;
+                    currentDiff.AppendLine(line);
+                }
+                else if (line.StartsWith("-") && !line.StartsWith("---"))
+                {
+                    currentFile.Deletions++;
+                    currentDiff.AppendLine(line);
+                }
+                else
+                {
+                    currentDiff.AppendLine(line);
+                }
+            }
+        }
+
+        // Don't forget the last file
+        if (currentFile != null)
+        {
+            currentFile.DiffContent = currentDiff.ToString();
+            files.Add(currentFile);
+        }
+
+        return files;
+    }
+
+    private MarkupString FormatFileDiff(string diffContent)
+    {
+        if (string.IsNullOrWhiteSpace(diffContent))
+            return new MarkupString("<span class=\"text-muted\">No changes</span>");
+
+        var lines = diffContent.Split('\n');
+        var formattedLines = new System.Text.StringBuilder();
+        formattedLines.Append("<div class=\"diff-content font-monospace small\">");
+
+        foreach (var line in lines)
+        {
+            var escapedLine = System.Net.WebUtility.HtmlEncode(line);
+            
+            if (line.StartsWith("@@"))
+            {
+                formattedLines.Append($"<div class=\"diff-hunk text-info bg-dark bg-opacity-50 px-2\">{escapedLine}</div>");
+            }
+            else if (line.StartsWith("+") && !line.StartsWith("+++"))
+            {
+                formattedLines.Append($"<div class=\"diff-add text-success bg-success bg-opacity-10 px-2\">{escapedLine}</div>");
+            }
+            else if (line.StartsWith("-") && !line.StartsWith("---"))
+            {
+                formattedLines.Append($"<div class=\"diff-del text-danger bg-danger bg-opacity-10 px-2\">{escapedLine}</div>");
+            }
+            else if (line.StartsWith("index ") || line.StartsWith("--- ") || line.StartsWith("+++ "))
+            {
+                formattedLines.Append($"<div class=\"diff-meta text-secondary px-2\">{escapedLine}</div>");
+            }
+            else
+            {
+                formattedLines.Append($"<div class=\"diff-context px-2\">{escapedLine}</div>");
+            }
+        }
+
+        formattedLines.Append("</div>");
+        return new MarkupString(formattedLines.ToString());
+    }
 
     public void Dispose()
     {

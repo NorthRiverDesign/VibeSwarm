@@ -224,4 +224,18 @@ public interface IVersionControlService
 		string branchName,
 		bool switchToBranch = true,
 		CancellationToken cancellationToken = default);
+
+	/// <summary>
+	/// Discards all uncommitted changes in the working directory.
+	/// This includes staged changes, unstaged modifications, and optionally untracked files.
+	/// Equivalent to: git reset --hard HEAD && git clean -fd
+	/// </summary>
+	/// <param name="workingDirectory">The repository working directory.</param>
+	/// <param name="includeUntracked">If true, also removes untracked files (default: true).</param>
+	/// <param name="cancellationToken">Cancellation token.</param>
+	/// <returns>Result containing success status and any error message.</returns>
+	Task<GitOperationResult> DiscardAllChangesAsync(
+		string workingDirectory,
+		bool includeUntracked = true,
+		CancellationToken cancellationToken = default);
 }

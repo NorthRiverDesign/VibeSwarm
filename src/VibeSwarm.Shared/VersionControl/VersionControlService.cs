@@ -1163,4 +1163,74 @@ public sealed class VersionControlService : IVersionControlService
 			return GitOperationResult.Failed($"Unexpected error creating branch: {ex.Message}");
 		}
 	}
+
+	/// <inheritdoc />
+	public async Task<GitOperationResult> DiscardAllChangesAsync(
+		string workingDirectory,
+		bool includeUntracked = true,
+		CancellationToken cancellationToken = default)
+	{
+		try
+		{
+			// Check if git is available
+			var gitAvailable = await IsGitAvailableAsync(cancellationToken);
+			if (!gitAvailable)
+			{
+				return GitOperationResult.Failed("Git is not available on this system.");
+			}
+
+			// Check if directory is a git repository
+			var isRepo = await IsGitRepositoryAsync(workingDirectory, cancellationToken);
+			if (!isRepo)
+			{
+				return GitOperationResult.Failed("The specified directory is not a git repository.");
+			}
+
+			// Reset all tracked changes (staged and unstaged)
+			var resetResult = await _commandExecutor.ExecuteAsync(
+				"reset --hard HEAD",
+				workingDirectory,
+				cancellationToken,
+				timeoutSeconds: 30);
+
+			if (!resetResult.Success)
+			{
+				var errorMessage = !string.IsNullOrWhiteSpace(resetResult.Error)
+					? resetResult.Error.Trim()
+					: "Failed to reset changes.";
+
+				return GitOperationResult.Failed($"Failed to reset changes: {errorMessage}");
+			}
+
+			// Optionally clean untracked files
+			if (includeUntracked)
+			{
+				var cleanResult = await _commandExecutor.ExecuteAsync(
+					"clean -fd",
+					workingDirectory,
+					cancellationToken,
+					timeoutSeconds: 30);
+
+				if (!cleanResult.Success)
+				{
+					// Reset succeeded but clean failed - still report partial success
+					return GitOperationResult.Succeeded(
+						output: "Tracked changes discarded, but failed to remove untracked files.");
+				}
+			}
+
+			return GitOperationResult.Succeeded(
+				output: includeUntracked
+					? "All changes discarded (including untracked files)."
+					: "All tracked changes discarded.");
+		}
+		catch (OperationCanceledException)
+		{
+			return GitOperationResult.Failed("Discard changes operation was cancelled.");
+		}
+		catch (Exception ex)
+		{
+			return GitOperationResult.Failed($"Unexpected error discarding changes: {ex.Message}");
+		}
+	}
 }
