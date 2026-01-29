@@ -4,8 +4,6 @@ VibeSwarm is an AI coding agent orchestrator that leverages multiple AI models t
 
 ## Requirements
 
-VibeSwarm expects a host system with coding agents installed and signed in. As AI coding agents are rapidly changing, VibeSwarm attempts to be flexible and work with a variety of agents and CLI tools. VibeSwarm is the top level management interface for various CLI tools and implementing loops of agents to achieve coding goals.
-
 A user of VibeSwarm is expected to have accounts with various AI providers and have the necessary API keys or authentication tokens available for use by VibeSwarm. The user is also expected to have a basic understanding of how to set up and configure AI coding agents on their host system.
 
 ## Features
@@ -151,7 +149,3 @@ VibeSwarm integrates with Git to manage code versioning and collaboration. Each 
 VibeSwarm assumes git is installed on the host system and accessible via the command line. The application uses Git to track code changes made by agents, providing a history of modifications and enabling easy rollback if necessary. Even if a project is not initially set up as a Git repository, VibeSwarm can initialize a new repository in the project directory to enable version control.
 
 VibeSwarm assumes the login and credentials for any remote Git repositories are already set up on the host system. This may include SSH keys, access tokens, or other authentication methods required to interact with private repositories. VibeSwarm does not handle Git authentication directly but relies on the host system's configuration.
-
-## Open Source
-
-VibeSwarm is for everyone looking to build at light speed. Although VibeSwarm is open source, its maintainers retain the right to deny contributions or usage that conflict with the project's goals or values. Users and contributors must adhere to the project's code of conduct and contribution guidelines to ensure a positive and collaborative environment.

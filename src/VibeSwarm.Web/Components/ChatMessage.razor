@@ -1,0 +1,72 @@
+@* Single chat message component *@
+
+<div class="chat-message chat-message-@Role.ToString().ToLower()">
+	<div class="chat-bubble">
+		@if (Role == MessageRole.ToolUse)
+		{
+			<div class="chat-tool-info">
+				<div class="chat-tool-header">
+					<i class="bi bi-tools me-1"></i>@ToolName
+				</div>
+				@if (!string.IsNullOrEmpty(ToolInput))
+				{
+					<pre class="chat-tool-code">@ToolInput</pre>
+				}
+			</div>
+		}
+		else if (Role == MessageRole.ToolResult)
+		{
+			<div class="chat-tool-info">
+				<div class="chat-tool-header">
+					<i class="bi bi-arrow-return-right me-1"></i>@ToolName
+				</div>
+				<pre class="chat-tool-code">@TruncateOutput(ToolOutput ?? Content, 500)</pre>
+			</div>
+		}
+		else
+		{
+			<div class="chat-text">@Content</div>
+		}
+	</div>
+	<div class="chat-meta">
+		<span class="chat-role">@GetRoleDisplayName(Role)</span>
+		<span class="chat-time">@Timestamp.FormatTime()</span>
+	</div>
+</div>
+
+@code {
+	[Parameter, EditorRequired]
+	public MessageRole Role { get; set; }
+
+	[Parameter]
+	public string? Content { get; set; }
+
+	[Parameter]
+	public string? ToolName { get; set; }
+
+	[Parameter]
+	public string? ToolInput { get; set; }
+
+	[Parameter]
+	public string? ToolOutput { get; set; }
+
+	[Parameter]
+	public DateTime Timestamp { get; set; }
+
+	private static string TruncateOutput(string text, int maxLength)
+	{
+		if (string.IsNullOrEmpty(text) || text.Length <= maxLength)
+			return text;
+		return text[..maxLength] + "\n... (truncated)";
+	}
+
+	private static string GetRoleDisplayName(MessageRole role) => role switch
+	{
+		MessageRole.User => "User",
+		MessageRole.Assistant => "Assistant",
+		MessageRole.System => "System",
+		MessageRole.ToolUse => "Tool Call",
+		MessageRole.ToolResult => "Tool Result",
+		_ => role.ToString()
+	};
+}

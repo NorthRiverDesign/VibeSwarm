@@ -1,0 +1,238 @@
+@* Ideas panel component for managing project feature ideas *@
+
+<div class="card mt-3 mt-lg-4">
+	<div class="card-header bg-body-secondary d-flex justify-content-between align-items-center">
+		<h5 class="mb-0 fw-semibold">
+			<i class="bi bi-lightbulb me-2"></i>Ideas
+		</h5>
+		<div class="d-flex align-items-center gap-2">
+			<span class="badge bg-secondary">@Ideas.Count</span>
+			@if (Ideas.Count >= 1)
+			{
+				@if (IsProcessingActive)
+				{
+					<button type="button" class="btn btn-sm btn-outline-danger" @onclick="OnStopProcessing"
+						disabled="@IsTogglingProcessing">
+						@if (IsTogglingProcessing)
+						{
+							<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+						}
+						else
+						{
+							<i class="bi bi-stop-fill me-1"></i>
+						}
+						Stop
+					</button>
+				}
+				else
+				{
+					<button type="button" class="btn btn-sm btn-success" @onclick="OnStartProcessing"
+						disabled="@(IsTogglingProcessing || !HasDefaultProvider)">
+						@if (IsTogglingProcessing)
+						{
+							<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+						}
+						else
+						{
+							<i class="bi bi-play-fill me-1"></i>
+						}
+						Start
+					</button>
+				}
+			}
+		</div>
+	</div>
+	<div class="card-body">
+		@* Add New Idea Form *@
+		<div class="mb-3">
+			<div class="input-group">
+				<input type="text" class="form-control" placeholder="Enter a feature idea..." @bind="NewIdeaDescription"
+					@bind:event="oninput" @onkeypress="HandleKeyPress" />
+				<button type="button" class="btn btn-primary" @onclick="AddIdea"
+					disabled="@(string.IsNullOrWhiteSpace(NewIdeaDescription) || IsAddingIdea)">
+					@if (IsAddingIdea)
+					{
+						<span class="spinner-border spinner-border-sm" role="status"></span>
+					}
+					else
+					{
+						<i class="bi bi-plus-lg"></i>
+					}
+				</button>
+			</div>
+			<div class="form-text">
+				Short description of a feature or update. Ideas will be expanded into full specs when processed.
+			</div>
+		</div>
+
+		@if (IsProcessingActive)
+		{
+			<div class="alert alert-info py-2 mb-3 d-flex align-items-center gap-2">
+				<span class="spinner-border spinner-border-sm" role="status"></span>
+				<span>Auto-processing active. Ideas will be converted to jobs automatically.</span>
+			</div>
+		}
+
+		@* Ideas List *@
+		@if (!Ideas.Any())
+		{
+			<div class="text-body-secondary text-center py-3">
+				<i class="bi bi-lightbulb fs-1 opacity-50 mb-2 d-block"></i>
+				<p class="mb-0">No ideas yet. Add some feature ideas above!</p>
+			</div>
+		}
+		else
+		{
+			<ul class="list-group list-group-flush">
+				@foreach (var idea in Ideas)
+				{
+					<li class="list-group-item px-0">
+						@if (EditingIdeaId == idea.Id)
+						{
+							@* Edit Mode *@
+							<div class="d-flex gap-2">
+								<input type="text" class="form-control form-control-sm" @bind="EditingIdeaDescription"
+									@bind:event="oninput" />
+								<button type="button" class="btn btn-sm btn-success" @onclick="SaveIdeaEdit"
+									disabled="@(string.IsNullOrWhiteSpace(EditingIdeaDescription))">
+									<i class="bi bi-check-lg"></i>
+								</button>
+								<button type="button" class="btn btn-sm btn-outline-secondary" @onclick="CancelIdeaEdit">
+									<i class="bi bi-x-lg"></i>
+								</button>
+							</div>
+						}
+						else
+						{
+							@* View Mode *@
+							<div class="d-flex justify-content-between align-items-start gap-2">
+								<div class="flex-grow-1 min-width-0">
+									<div class="d-flex align-items-center gap-2">
+										@if (idea.IsProcessing)
+										{
+											<span class="spinner-border spinner-border-sm text-primary flex-shrink-0" role="status"
+												title="Processing..."></span>
+										}
+										else
+										{
+											<i class="bi bi-lightbulb text-warning flex-shrink-0"></i>
+										}
+										<span class="@(idea.IsProcessing ? "text-body-secondary" : "")">
+											@idea.Description
+										</span>
+									</div>
+									@if (idea.IsProcessing && idea.JobId.HasValue)
+									{
+										<small class="text-body-secondary ms-4">
+											<a href="/jobs/view/@idea.JobId" class="text-decoration-none">
+												View Job <i class="bi bi-arrow-right-short"></i>
+											</a>
+										</small>
+									}
+								</div>
+								<div class="d-flex gap-1 flex-shrink-0">
+									<button type="button" class="btn btn-sm btn-outline-secondary"
+										@onclick="() => StartEditIdea(idea)" disabled="@idea.IsProcessing" title="Edit">
+										<i class="bi bi-pencil"></i>
+									</button>
+									<button type="button" class="btn btn-sm btn-outline-danger"
+										@onclick="() => OnDeleteIdea.InvokeAsync(idea.Id)" disabled="@idea.IsProcessing"
+										title="Remove">
+										<i class="bi bi-trash"></i>
+									</button>
+								</div>
+							</div>
+						}
+					</li>
+				}
+			</ul>
+		}
+
+		@if (!HasDefaultProvider && Ideas.Any())
+		{
+			<div class="alert alert-warning py-2 mt-3 mb-0">
+				<i class="bi bi-exclamation-triangle me-1"></i>
+				<a href="/providers">Set a default provider</a> to enable Ideas auto-processing.
+			</div>
+		}
+	</div>
+</div>
+
+@code {
+	[Parameter]
+	public List<Idea> Ideas { get; set; } = new();
+
+	[Parameter]
+	public bool IsProcessingActive { get; set; }
+
+	[Parameter]
+	public bool IsTogglingProcessing { get; set; }
+
+	[Parameter]
+	public bool HasDefaultProvider { get; set; }
+
+	[Parameter]
+	public bool IsAddingIdea { get; set; }
+
+	[Parameter]
+	public EventCallback OnStartProcessing { get; set; }
+
+	[Parameter]
+	public EventCallback OnStopProcessing { get; set; }
+
+	[Parameter]
+	public EventCallback<string> OnAddIdea { get; set; }
+
+	[Parameter]
+	public EventCallback<Idea> OnUpdateIdea { get; set; }
+
+	[Parameter]
+	public EventCallback<Guid> OnDeleteIdea { get; set; }
+
+	private string NewIdeaDescription { get; set; } = string.Empty;
+	private Guid? EditingIdeaId { get; set; }
+	private string EditingIdeaDescription { get; set; } = string.Empty;
+
+	private async Task HandleKeyPress(KeyboardEventArgs e)
+	{
+		if (e.Key == "Enter" && !string.IsNullOrWhiteSpace(NewIdeaDescription))
+		{
+			await AddIdea();
+		}
+	}
+
+	private async Task AddIdea()
+	{
+		if (string.IsNullOrWhiteSpace(NewIdeaDescription))
+			return;
+
+		await OnAddIdea.InvokeAsync(NewIdeaDescription.Trim());
+		NewIdeaDescription = string.Empty;
+	}
+
+	private void StartEditIdea(Idea idea)
+	{
+		EditingIdeaId = idea.Id;
+		EditingIdeaDescription = idea.Description;
+	}
+
+	private void CancelIdeaEdit()
+	{
+		EditingIdeaId = null;
+		EditingIdeaDescription = string.Empty;
+	}
+
+	private async Task SaveIdeaEdit()
+	{
+		if (EditingIdeaId == null || string.IsNullOrWhiteSpace(EditingIdeaDescription))
+			return;
+
+		var idea = Ideas.FirstOrDefault(i => i.Id == EditingIdeaId);
+		if (idea != null)
+		{
+			idea.Description = EditingIdeaDescription.Trim();
+			await OnUpdateIdea.InvokeAsync(idea);
+		}
+		CancelIdeaEdit();
+	}
+}

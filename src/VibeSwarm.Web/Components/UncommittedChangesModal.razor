@@ -1,0 +1,329 @@
+@* Uncommitted changes management modal component *@
+@using System.Net
+
+<ModalDialog @bind-IsVisible="IsVisible" Title="Uncommitted Changes" Icon="file-diff"
+    Size="ModalDialog.ModalSize.ExtraLarge" OnClose="HandleClose">
+    <ChildContent>
+        @if (IsLoading)
+        {
+            <div class="d-flex align-items-center justify-content-center gap-2 py-5 text-body-secondary">
+                <span class="spinner-border spinner-border-sm" role="status"></span>
+                <span>Loading changes...</span>
+            </div>
+        }
+        else if (DiffFiles != null && DiffFiles.Any())
+        {
+            @* Diff Viewer Section *@
+            <div class="mb-3">
+                <div class="d-flex align-items-center justify-content-between mb-2">
+                    <span class="text-body-secondary small">
+                        <i class="bi bi-files me-1"></i>
+                        @DiffFiles.Count file(s) modified
+                        <span class="ms-2">
+                            <span class="text-success">+@DiffFiles.Sum(f => f.Additions)</span>
+                            <span class="text-danger ms-1">-@DiffFiles.Sum(f => f.Deletions)</span>
+                        </span>
+                    </span>
+                    <div class="btn-group btn-group-sm">
+                        <button type="button" class="btn btn-outline-secondary" @onclick="ExpandAll"
+                            title="Expand all" disabled="@AllExpanded">
+                            <i class="bi bi-arrows-expand"></i>
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary" @onclick="CollapseAll"
+                            title="Collapse all" disabled="@AllCollapsed">
+                            <i class="bi bi-arrows-collapse"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="accordion border rounded" id="uncommittedChangesAccordion" style="max-height: 400px; overflow-y: auto;">
+                    @foreach (var (file, index) in DiffFiles.Select((f, i) => (f, i)))
+                    {
+                        var isExpanded = _expandedItems.Contains(index);
+
+                        <div class="accordion-item">
+                            <h2 class="accordion-header">
+                                <button class="accordion-button @(isExpanded ? "" : "collapsed") py-2 px-3"
+                                    type="button" @onclick="() => ToggleExpanded(index)">
+                                    <span class="d-flex align-items-center gap-2 w-100">
+                                        @if (file.IsNew)
+                                        {
+                                            <i class="bi bi-file-earmark-plus text-success" title="New file"></i>
+                                        }
+                                        else if (file.IsDeleted)
+                                        {
+                                            <i class="bi bi-file-earmark-minus text-danger" title="Deleted file"></i>
+                                        }
+                                        else
+                                        {
+                                            <i class="bi bi-file-earmark-diff text-warning" title="Modified file"></i>
+                                        }
+                                        <span class="font-monospace small text-truncate flex-grow-1">@file.FileName</span>
+                                        <span class="small">
+                                            @if (file.Additions > 0)
+                                            {
+                                                <span class="text-success fw-medium">+@file.Additions</span>
+                                            }
+                                            @if (file.Deletions > 0)
+                                            {
+                                                <span class="text-danger fw-medium ms-1">-@file.Deletions</span>
+                                            }
+                                        </span>
+                                    </span>
+                                </button>
+                            </h2>
+                            <div class="accordion-collapse collapse @(isExpanded ? "show" : "")">
+                                <div class="accordion-body p-0">
+                                    @if (!file.IsDeleted)
+                                    {
+                                        <div class="diff-container" style="max-height: 300px; overflow: auto;">
+                                            @((MarkupString)FormatDiff(file.DiffContent))
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <div class="p-3 text-body-secondary small">
+                                            <i class="bi bi-trash me-1"></i>File deleted
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <hr class="my-4" />
+
+            @* Commit Section *@
+            <div class="mb-3">
+                <label for="uncommittedCommitMessage" class="form-label fw-medium">
+                    <i class="bi bi-chat-square-text me-1"></i>Commit Message
+                </label>
+                <textarea class="form-control font-monospace" id="uncommittedCommitMessage"
+                    @bind="_commitMessage" @bind:event="oninput" rows="2"
+                    placeholder="Enter commit message..." disabled="@IsCommitting"></textarea>
+            </div>
+
+            @if (!string.IsNullOrEmpty(ErrorMessage))
+            {
+                <div class="alert alert-danger py-2">
+                    <i class="bi bi-exclamation-triangle me-1"></i>@ErrorMessage
+                </div>
+            }
+
+            @if (!string.IsNullOrEmpty(CommitError))
+            {
+                <div class="alert alert-danger py-2">
+                    <i class="bi bi-exclamation-triangle me-1"></i>@CommitError
+                </div>
+            }
+
+            @* Discard Confirmation *@
+            @if (ShowDiscardConfirmation)
+            {
+                <div class="alert alert-warning py-3">
+                    <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+                        <div>
+                            <i class="bi bi-exclamation-triangle me-2"></i>
+                            <strong>Are you sure?</strong> This will permanently discard all uncommitted changes.
+                        </div>
+                        <div class="d-flex gap-2">
+                            <button type="button" class="btn btn-secondary btn-sm" @onclick="HandleCancelDiscard">
+                                Cancel
+                            </button>
+                            <button type="button" class="btn btn-danger btn-sm" @onclick="HandleConfirmDiscard"
+                                disabled="@IsDiscarding">
+                                @if (IsDiscarding)
+                                {
+                                    <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                                }
+                                Yes, Discard All
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            }
+        }
+        else
+        {
+            <EmptyState Icon="check-circle" Message="No uncommitted changes"
+                Description="Your working directory is clean." />
+        }
+    </ChildContent>
+    <FooterContent>
+        @if (DiffFiles != null && DiffFiles.Any() && !ShowDiscardConfirmation)
+        {
+            <div class="d-flex justify-content-between w-100">
+                <button type="button" class="btn btn-outline-danger" @onclick="HandleShowDiscard"
+                    disabled="@(IsCommitting || IsDiscarding)">
+                    <i class="bi bi-trash me-1"></i>
+                    <span>Discard All</span>
+                </button>
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-secondary" @onclick="HandleClose"
+                        disabled="@(IsCommitting || IsDiscarding)">
+                        Close
+                    </button>
+                    <button type="button" class="btn btn-primary" @onclick="HandleCommitAndPush"
+                        disabled="@(IsCommitting || IsDiscarding || string.IsNullOrWhiteSpace(_commitMessage))">
+                        @if (IsCommitting)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                            <span>Committing...</span>
+                        }
+                        else
+                        {
+                            <i class="bi bi-cloud-arrow-up me-1"></i>
+                            <span>Commit & Push</span>
+                        }
+                    </button>
+                </div>
+            </div>
+        }
+        else if (!ShowDiscardConfirmation)
+        {
+            <button type="button" class="btn btn-secondary" @onclick="HandleClose">
+                Close
+            </button>
+        }
+    </FooterContent>
+</ModalDialog>
+
+@code {
+    [Parameter]
+    public bool IsVisible { get; set; }
+
+    [Parameter]
+    public EventCallback<bool> IsVisibleChanged { get; set; }
+
+    [Parameter]
+    public List<GitDiffViewer.DiffFile>? DiffFiles { get; set; }
+
+    [Parameter]
+    public bool IsLoading { get; set; }
+
+    [Parameter]
+    public bool IsCommitting { get; set; }
+
+    [Parameter]
+    public bool IsDiscarding { get; set; }
+
+    [Parameter]
+    public string? ErrorMessage { get; set; }
+
+    [Parameter]
+    public string? CommitError { get; set; }
+
+    [Parameter]
+    public bool ShowDiscardConfirmation { get; set; }
+
+    [Parameter]
+    public EventCallback<string> OnCommitAndPush { get; set; }
+
+    [Parameter]
+    public EventCallback OnShowDiscard { get; set; }
+
+    [Parameter]
+    public EventCallback OnConfirmDiscard { get; set; }
+
+    [Parameter]
+    public EventCallback OnCancelDiscard { get; set; }
+
+    private string _commitMessage = string.Empty;
+    private HashSet<int> _expandedItems = new();
+
+    private bool AllExpanded => DiffFiles?.Count > 0 && _expandedItems.Count == DiffFiles.Count;
+    private bool AllCollapsed => DiffFiles == null || DiffFiles.Count == 0 || _expandedItems.Count == 0;
+
+    private void ToggleExpanded(int index)
+    {
+        if (!_expandedItems.Add(index))
+        {
+            _expandedItems.Remove(index);
+        }
+    }
+
+    private void ExpandAll()
+    {
+        if (DiffFiles != null)
+        {
+            _expandedItems = Enumerable.Range(0, DiffFiles.Count).ToHashSet();
+        }
+    }
+
+    private void CollapseAll()
+    {
+        _expandedItems.Clear();
+    }
+
+    private async Task HandleCommitAndPush()
+    {
+        if (!string.IsNullOrWhiteSpace(_commitMessage))
+        {
+            await OnCommitAndPush.InvokeAsync(_commitMessage);
+            _commitMessage = string.Empty;
+        }
+    }
+
+    private async Task HandleShowDiscard()
+    {
+        await OnShowDiscard.InvokeAsync();
+    }
+
+    private async Task HandleConfirmDiscard()
+    {
+        await OnConfirmDiscard.InvokeAsync();
+    }
+
+    private async Task HandleCancelDiscard()
+    {
+        await OnCancelDiscard.InvokeAsync();
+    }
+
+    private async Task HandleClose()
+    {
+        _commitMessage = string.Empty;
+        _expandedItems.Clear();
+        await IsVisibleChanged.InvokeAsync(false);
+    }
+
+    private static MarkupString FormatDiff(string diffContent)
+    {
+        if (string.IsNullOrWhiteSpace(diffContent))
+            return new MarkupString("<span class=\"text-muted\">No changes</span>");
+
+        var lines = diffContent.Split('\n');
+        var formattedLines = new System.Text.StringBuilder();
+        formattedLines.Append("<div class=\"diff-content font-monospace small\">");
+
+        foreach (var line in lines)
+        {
+            var escapedLine = WebUtility.HtmlEncode(line);
+
+            if (line.StartsWith("@@"))
+            {
+                formattedLines.Append($"<div class=\"diff-hunk text-info bg-dark bg-opacity-50 px-2\">{escapedLine}</div>");
+            }
+            else if (line.StartsWith("+") && !line.StartsWith("+++"))
+            {
+                formattedLines.Append($"<div class=\"diff-add text-success bg-success bg-opacity-10 px-2\">{escapedLine}</div>");
+            }
+            else if (line.StartsWith("-") && !line.StartsWith("---"))
+            {
+                formattedLines.Append($"<div class=\"diff-del text-danger bg-danger bg-opacity-10 px-2\">{escapedLine}</div>");
+            }
+            else if (line.StartsWith("index ") || line.StartsWith("--- ") || line.StartsWith("+++ "))
+            {
+                formattedLines.Append($"<div class=\"diff-meta text-secondary px-2\">{escapedLine}</div>");
+            }
+            else
+            {
+                formattedLines.Append($"<div class=\"diff-context px-2\">{escapedLine}</div>");
+            }
+        }
+
+        formattedLines.Append("</div>");
+        return new MarkupString(formattedLines.ToString());
+    }
+}

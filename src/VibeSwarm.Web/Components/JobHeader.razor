@@ -1,0 +1,215 @@
+@* Job detail header component with status, metadata, stats, and action buttons *@
+@using VibeSwarm.Shared.Utilities
+
+<div class="d-flex flex-column flex-lg-row justify-content-between align-items-start gap-3 mb-3 mb-lg-4 pb-3 border-bottom">
+    <div class="flex-grow-1 min-width-0 w-100 w-lg-auto">
+        <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+            <h3 class="mb-0 fs-4 fw-semibold">Job Details</h3>
+            <StatusBadge Status="@Status.ToString()" />
+            @if (CancellationRequested && (Status == JobStatus.Started || Status == JobStatus.Processing))
+            {
+                <StatusBadge Status="Cancelling" />
+            }
+        </div>
+
+        @* Repository and Branch Info *@
+        @if (!string.IsNullOrEmpty(GitHubRepository) || !string.IsNullOrEmpty(BranchName))
+        {
+            <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                @if (!string.IsNullOrEmpty(GitHubRepository))
+                {
+                    <span class="badge bg-dark bg-opacity-75 d-inline-flex align-items-center gap-1 fw-normal">
+                        <i class="bi bi-github"></i>
+                        <span>@GitHubRepository</span>
+                    </span>
+                }
+                @if (!string.IsNullOrEmpty(BranchName))
+                {
+                    <span class="badge bg-secondary bg-opacity-75 d-inline-flex align-items-center gap-1 fw-normal">
+                        <i class="bi bi-diagram-2"></i>
+                        <span>@BranchName</span>
+                    </span>
+                }
+            </div>
+        }
+
+        <div class="small text-body-secondary">
+            <div class="d-flex flex-wrap gap-2 gap-sm-3 mb-2">
+                <span>Project: <a href="/projects/@ProjectId" class="text-decoration-none">@(ProjectName ?? "Unknown")</a></span>
+                <span>Provider: @(ProviderName ?? "Unknown")</span>
+                @if (ProcessId.HasValue)
+                {
+                    <span class="process-info d-none d-sm-inline">PID: @ProcessId</span>
+                }
+            </div>
+            <div class="d-flex flex-wrap gap-2 gap-sm-3">
+                <span title="Created"><i class="bi bi-calendar-plus me-1 opacity-75"></i>@CreatedAt.FormatDateTimeShort()</span>
+                @if (StartedAt.HasValue)
+                {
+                    <span title="Started"><i class="bi bi-play-circle me-1 opacity-75"></i>@StartedAt.Value.FormatDateTimeShort()</span>
+                }
+                @if (CompletedAt.HasValue)
+                {
+                    <span title="Completed"><i class="bi bi-check-circle me-1 opacity-75"></i>@CompletedAt.Value.FormatDateTimeShort()</span>
+                }
+            </div>
+        </div>
+
+        @* Stats Row - Token usage and cost *@
+        @if (ModelUsed != null || InputTokens.HasValue || OutputTokens.HasValue || TotalCostUsd.HasValue || RetryCount > 0)
+        {
+            <div class="d-flex flex-wrap gap-2 gap-sm-3 mt-2 pt-2 border-top border-secondary border-opacity-25 job-stats-row">
+                @if (ModelUsed != null)
+                {
+                    <span class="stat-pill" title="Model">
+                        <i class="bi bi-cpu me-1 opacity-75"></i>@ModelUsed
+                    </span>
+                }
+                @if (RetryCount > 0)
+                {
+                    <span class="stat-pill" title="Attempt Number">
+                        <i class="bi bi-arrow-repeat me-1 opacity-75"></i>Attempt @(RetryCount + 1)
+                    </span>
+                }
+                @if (InputTokens.HasValue)
+                {
+                    <span class="stat-pill" title="Input Tokens">
+                        <i class="bi bi-arrow-right-circle me-1 opacity-75"></i>@TokenHelper.FormatTokenCount(InputTokens.Value)
+                    </span>
+                }
+                @if (OutputTokens.HasValue)
+                {
+                    <span class="stat-pill" title="Output Tokens">
+                        <i class="bi bi-arrow-left-circle me-1 opacity-75"></i>@TokenHelper.FormatTokenCount(OutputTokens.Value)
+                    </span>
+                }
+                @if (InputTokens.HasValue && OutputTokens.HasValue)
+                {
+                    <span class="stat-pill" title="Total Tokens">
+                        <i class="bi bi-arrow-left-right me-1 opacity-75"></i>@TokenHelper.FormatTokenCount(InputTokens.Value + OutputTokens.Value)
+                    </span>
+                }
+                @if (TotalCostUsd.HasValue)
+                {
+                    <span class="stat-pill stat-pill-cost" title="Total Cost">
+                        <i class="bi bi-currency-dollar me-1 opacity-75"></i>@TokenHelper.FormatCost(TotalCostUsd.Value)
+                    </span>
+                }
+            </div>
+        }
+    </div>
+
+    <div class="d-flex flex-wrap gap-2 flex-shrink-0">
+        @if (CanRetry)
+        {
+            @if (Status == JobStatus.Failed)
+            {
+                <ActionButton Icon="arrow-repeat" Text="@(IsRetrying ? "Retrying..." : "Retry")"
+                    Style="ActionButton.ButtonStyle.Primary" IsLoading="@IsRetrying" OnClick="OnShowRetryModal" />
+            }
+            else
+            {
+                <ActionButton Icon="arrow-repeat" Text="@(IsRetrying ? "Retrying..." : "Retry")"
+                    Style="ActionButton.ButtonStyle.Primary" IsLoading="@IsRetrying" OnClick="OnRetry" />
+            }
+        }
+        @if (CanCancel)
+        {
+            <ActionButton Icon="x-circle" Text="@(IsCancelling ? "Cancelling..." : "Cancel")"
+                Style="ActionButton.ButtonStyle.Danger" IsLoading="@IsCancelling" OnClick="OnCancel" />
+        }
+        @if (CanForceCancel)
+        {
+            <ActionButton Icon="stop-circle" Text="@(IsForceCancelling ? "Stopping..." : "Force Stop")"
+                Style="ActionButton.ButtonStyle.Danger" Outline="true" IsLoading="@IsForceCancelling"
+                OnClick="OnForceCancel" />
+        }
+        <a href="@BackUrl" class="btn btn-secondary d-inline-flex align-items-center gap-1">
+            <i class="bi bi-arrow-left"></i>
+            <span>Back</span>
+        </a>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public JobStatus Status { get; set; }
+
+    [Parameter]
+    public bool CancellationRequested { get; set; }
+
+    [Parameter]
+    public string? GitHubRepository { get; set; }
+
+    [Parameter]
+    public string? BranchName { get; set; }
+
+    [Parameter, EditorRequired]
+    public Guid ProjectId { get; set; }
+
+    [Parameter]
+    public string? ProjectName { get; set; }
+
+    [Parameter]
+    public string? ProviderName { get; set; }
+
+    [Parameter]
+    public int? ProcessId { get; set; }
+
+    [Parameter, EditorRequired]
+    public DateTime CreatedAt { get; set; }
+
+    [Parameter]
+    public DateTime? StartedAt { get; set; }
+
+    [Parameter]
+    public DateTime? CompletedAt { get; set; }
+
+    [Parameter]
+    public string? ModelUsed { get; set; }
+
+    [Parameter]
+    public int RetryCount { get; set; }
+
+    [Parameter]
+    public int? InputTokens { get; set; }
+
+    [Parameter]
+    public int? OutputTokens { get; set; }
+
+    [Parameter]
+    public decimal? TotalCostUsd { get; set; }
+
+    [Parameter]
+    public bool CanRetry { get; set; }
+
+    [Parameter]
+    public bool CanCancel { get; set; }
+
+    [Parameter]
+    public bool CanForceCancel { get; set; }
+
+    [Parameter]
+    public bool IsRetrying { get; set; }
+
+    [Parameter]
+    public bool IsCancelling { get; set; }
+
+    [Parameter]
+    public bool IsForceCancelling { get; set; }
+
+    [Parameter]
+    public string BackUrl { get; set; } = "/projects";
+
+    [Parameter]
+    public EventCallback OnRetry { get; set; }
+
+    [Parameter]
+    public EventCallback OnShowRetryModal { get; set; }
+
+    [Parameter]
+    public EventCallback OnCancel { get; set; }
+
+    [Parameter]
+    public EventCallback OnForceCancel { get; set; }
+}

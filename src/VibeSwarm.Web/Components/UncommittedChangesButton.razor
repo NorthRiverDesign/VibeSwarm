@@ -1,0 +1,19 @@
+@* Uncommitted changes indicator button *@
+
+<button type="button" class="btn btn-sm btn-outline-warning d-flex align-items-center gap-1 position-relative"
+	@onclick="OnClick" title="Uncommitted changes detected - click to view">
+	<i class="bi bi-exclamation-triangle-fill"></i>
+	<span class="d-none d-sm-inline">Changes</span>
+	@if (FilesCount > 0)
+	{
+		<span class="badge bg-warning text-dark ms-1">@FilesCount</span>
+	}
+</button>
+
+@code {
+	[Parameter]
+	public int FilesCount { get; set; }
+
+	[Parameter]
+	public EventCallback OnClick { get; set; }
+}

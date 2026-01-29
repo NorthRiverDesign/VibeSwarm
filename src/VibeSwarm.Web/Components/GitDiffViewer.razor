@@ -1,0 +1,294 @@
+@* Git diff viewer accordion component *@
+@using System.Net
+
+<div class="card mb-3 mb-lg-4">
+	<div class="card-header bg-body-secondary">
+		<div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+			<div class="d-flex align-items-center flex-wrap gap-2">
+				<div class="d-flex align-items-center">
+					<i class="bi bi-git me-2 opacity-75"></i>
+					<strong>Git Changes</strong>
+					<span class="badge bg-secondary ms-2">@DiffFiles.Count</span>
+				</div>
+				@if (IsVerifying)
+				{
+					<span class="badge bg-info d-inline-flex align-items-center gap-1">
+						<span class="spinner-border spinner-border-sm" style="width: 0.75rem; height: 0.75rem;"></span>
+						Verifying...
+					</span>
+				}
+				else if (ShowVerificationStatus)
+				{
+					@if (IsVerified)
+					{
+						<span class="badge bg-success d-inline-flex align-items-center gap-1"
+							title="Working copy matches job changes">
+							<i class="bi bi-check-circle"></i>
+							<span class="d-none d-sm-inline">Verified</span>
+						</span>
+					}
+					else if (IsDiverged)
+					{
+						<span class="badge bg-warning text-dark d-inline-flex align-items-center gap-1"
+							title="Working copy has diverged from job changes">
+							<i class="bi bi-exclamation-triangle"></i>
+							<span class="d-none d-sm-inline">Diverged</span>
+						</span>
+					}
+				}
+				@if (IsCommitted)
+				{
+					<span class="badge bg-success d-inline-flex align-items-center gap-1"
+						title="Changes have been committed">
+						<i class="bi bi-check-circle"></i>
+						<span class="d-none d-sm-inline">Committed</span>
+					</span>
+				}
+			</div>
+			<div class="d-flex gap-1 gap-sm-2">
+				<div class="btn-group d-none d-sm-inline-flex" role="group" aria-label="Expand/Collapse all files">
+					<button type="button" class="btn btn-sm @(AllExpanded ? "btn-secondary" : "btn-outline-secondary")"
+						@onclick="ExpandAll" title="Expand all files" disabled="@AllExpanded">
+						<i class="bi bi-arrows-expand"></i>
+					</button>
+					<button type="button" class="btn btn-sm @(AllCollapsed ? "btn-secondary" : "btn-outline-secondary")"
+						@onclick="CollapseAll" title="Collapse all files" disabled="@AllCollapsed">
+						<i class="bi bi-arrows-collapse"></i>
+					</button>
+				</div>
+				<ActionButton Icon="@(IsVisible ? "eye-slash" : "eye")" Text="@(IsVisible ? "Hide" : "Show")"
+					Outline="true" Size="ActionButton.ButtonSize.Small" HideTextOnMobile="true"
+					OnClick="ToggleVisibility" />
+			</div>
+		</div>
+	</div>
+
+	@* Divergence warning *@
+	@if (IsDiverged && ShowVerificationStatus)
+	{
+		<div class="alert alert-warning mb-0 rounded-0 border-start-0 border-end-0 py-2 px-3">
+			<div class="d-flex align-items-start gap-2">
+				<i class="bi bi-exclamation-triangle-fill flex-shrink-0 mt-1"></i>
+				<div class="flex-grow-1">
+					<strong>Working copy has diverged from job changes</strong>
+					<div class="small mt-1">
+						The current working directory state doesn't match what was captured when the job completed.
+						This may happen if files were modified after the job finished.
+					</div>
+					@if (MissingFiles.Any() || ExtraFiles.Any() || ModifiedFiles.Any())
+					{
+						<div class="mt-2 small">
+							@if (MissingFiles.Any())
+							{
+								<div class="text-danger">
+									<i class="bi bi-dash-circle me-1"></i>Missing from working copy: @string.Join(", ",
+															MissingFiles.Take(5))@(MissingFiles.Count > 5 ? $" (+{MissingFiles.Count - 5} more)" : "")
+					</div>
+										}
+							@if (ExtraFiles.Any())
+							{
+								<div class="text-success">
+									<i class="bi bi-plus-circle me-1"></i>Extra in working copy: @string.Join(", ",
+															ExtraFiles.Take(5))@(ExtraFiles.Count > 5 ? $" (+{ExtraFiles.Count - 5} more)" : "")
+					</div>
+										}
+							@if (ModifiedFiles.Any())
+							{
+								<div class="text-warning">
+									<i class="bi bi-pencil me-1"></i>Different content: @string.Join(", ",
+															ModifiedFiles.Take(5))@(ModifiedFiles.Count > 5 ? $" (+{ModifiedFiles.Count - 5} more)" : "")
+					</div>
+										}
+						</div>
+					}
+					<div class="mt-2">
+						<button class="btn btn-sm btn-outline-warning" @onclick="OnRecheck" disabled="@IsVerifying">
+							<i class="bi bi-arrow-repeat me-1"></i>Re-check
+						</button>
+					</div>
+				</div>
+			</div>
+		</div>
+	}
+
+	@if (IsVisible)
+	{
+		<div class="card-body p-0">
+			<div class="accordion" id="diffAccordion">
+				@foreach (var (file, index) in DiffFiles.Select((f, i) => (f, i)))
+				{
+					var collapseId = $"diffCollapse{index}";
+					var headerId = $"diffHeader{index}";
+					var isExpanded = _expandedFiles.Contains(index);
+					<div class="accordion-item">
+						<h2 class="accordion-header" id="@headerId">
+							<button class="accordion-button @(isExpanded ? "" : "collapsed")" type="button"
+								@onclick="() => ToggleFile(index)">
+								<span class="diff-file-icon me-2">
+									@if (file.IsNew)
+									{
+										<i class="bi bi-file-earmark-plus text-success" title="New file"></i>
+									}
+									else if (file.IsDeleted)
+									{
+										<i class="bi bi-file-earmark-minus text-danger" title="Deleted file"></i>
+									}
+									else
+									{
+										<i class="bi bi-file-earmark-diff text-warning" title="Modified file"></i>
+									}
+								</span>
+								<span class="diff-file-name flex-grow-1 text-truncate">@file.FileName</span>
+								<span class="diff-stats ms-2">
+									@if (file.Additions > 0)
+									{
+										<span class="text-success fw-medium">+@file.Additions</span>
+									}
+									@if (file.Deletions > 0)
+									{
+										<span class="text-danger fw-medium ms-1">-@file.Deletions</span>
+									}
+								</span>
+							</button>
+						</h2>
+						<div id="@collapseId" class="accordion-collapse @(isExpanded ? "show" : "collapse")">
+							<div class="accordion-body p-0">
+								<div class="diff-container">
+									@((MarkupString)FormatDiff(file.DiffContent))
+								</div>
+							</div>
+						</div>
+					</div>
+				}
+			</div>
+		</div>
+	}
+</div>
+
+@code {
+	[Parameter]
+	public List<DiffFile> DiffFiles { get; set; } = new();
+
+	[Parameter]
+	public bool IsVisible { get; set; } = true;
+
+	[Parameter]
+	public EventCallback<bool> IsVisibleChanged { get; set; }
+
+	[Parameter]
+	public bool IsVerifying { get; set; }
+
+	[Parameter]
+	public bool ShowVerificationStatus { get; set; }
+
+	[Parameter]
+	public bool IsVerified { get; set; }
+
+	[Parameter]
+	public bool IsDiverged { get; set; }
+
+	[Parameter]
+	public bool IsCommitted { get; set; }
+
+	[Parameter]
+	public List<string> MissingFiles { get; set; } = new();
+
+	[Parameter]
+	public List<string> ExtraFiles { get; set; } = new();
+
+	[Parameter]
+	public List<string> ModifiedFiles { get; set; } = new();
+
+	[Parameter]
+	public EventCallback OnRecheck { get; set; }
+
+	private HashSet<int> _expandedFiles = new();
+
+	private bool AllExpanded => DiffFiles.Count > 0 && _expandedFiles.Count == DiffFiles.Count;
+	private bool AllCollapsed => DiffFiles.Count == 0 || _expandedFiles.Count == 0;
+
+	protected override void OnParametersSet()
+	{
+		// Auto-expand first file if there are any and nothing is expanded
+		if (DiffFiles.Any() && !_expandedFiles.Any())
+		{
+			_expandedFiles.Add(0);
+		}
+	}
+
+	private void ToggleFile(int index)
+	{
+		if (_expandedFiles.Contains(index))
+			_expandedFiles.Remove(index);
+		else
+			_expandedFiles.Add(index);
+	}
+
+	private void ExpandAll()
+	{
+		_expandedFiles = Enumerable.Range(0, DiffFiles.Count).ToHashSet();
+	}
+
+	private void CollapseAll()
+	{
+		_expandedFiles = new HashSet<int>();
+	}
+
+	private async Task ToggleVisibility()
+	{
+		IsVisible = !IsVisible;
+		await IsVisibleChanged.InvokeAsync(IsVisible);
+	}
+
+	private static MarkupString FormatDiff(string diffContent)
+	{
+		if (string.IsNullOrWhiteSpace(diffContent))
+			return new MarkupString("<span class=\"text-muted\">No changes</span>");
+
+		var lines = diffContent.Split('\n');
+		var formattedLines = new System.Text.StringBuilder();
+		formattedLines.Append("<div class=\"diff-content font-monospace small\">");
+
+		foreach (var line in lines)
+		{
+			var escapedLine = WebUtility.HtmlEncode(line);
+
+			if (line.StartsWith("@@"))
+			{
+				formattedLines.Append($"<div class=\"diff-hunk text-info bg-dark bg-opacity-50 px-2\">{escapedLine}</div>");
+			}
+			else if (line.StartsWith("+") && !line.StartsWith("+++"))
+			{
+				formattedLines.Append($"<div class=\"diff-add text-success bg-success bg-opacity-10 px-2\">{escapedLine}</div>");
+			}
+			else if (line.StartsWith("-") && !line.StartsWith("---"))
+			{
+				formattedLines.Append($"<div class=\"diff-del text-danger bg-danger bg-opacity-10 px-2\">{escapedLine}</div>");
+			}
+			else if (line.StartsWith("index ") || line.StartsWith("--- ") || line.StartsWith("+++ "))
+			{
+				formattedLines.Append($"<div class=\"diff-meta text-secondary px-2\">{escapedLine}</div>");
+			}
+			else
+			{
+				formattedLines.Append($"<div class=\"diff-context px-2\">{escapedLine}</div>");
+			}
+		}
+
+		formattedLines.Append("</div>");
+		return new MarkupString(formattedLines.ToString());
+	}
+
+	/// <summary>
+	/// DiffFile model for parsed git diff data
+	/// </summary>
+	public class DiffFile
+	{
+		public string FileName { get; set; } = string.Empty;
+		public string DiffContent { get; set; } = string.Empty;
+		public int Additions { get; set; }
+		public int Deletions { get; set; }
+		public bool IsNew { get; set; }
+		public bool IsDeleted { get; set; }
+	}
+}

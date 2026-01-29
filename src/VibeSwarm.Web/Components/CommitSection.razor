@@ -1,0 +1,145 @@
+@* Commit and push section component *@
+
+<div class="card mb-3 mb-lg-4">
+	<div class="card-header bg-body-secondary d-flex justify-content-between align-items-center">
+		<div class="d-flex align-items-center">
+			<i class="bi bi-cloud-upload me-2 opacity-75"></i>
+			<strong>Commit</strong>
+		</div>
+		@if (!string.IsNullOrEmpty(BranchName) && !IsPushed)
+		{
+			<span class="branch-info text-truncate">
+				<i class="bi bi-diagram-2 me-1"></i>
+				@BranchName
+			</span>
+		}
+	</div>
+	@if (!IsPushed)
+	{
+		<div class="card-body">
+			<label for="commitMessage" class="form-label d-flex flex-wrap align-items-center gap-2 mb-2">
+				<span>Commit Message</span>
+				@if (IsLoadingSummary)
+				{
+					<span class="badge bg-secondary">
+						<span class="spinner-border spinner-border-sm me-1" role="status"
+							style="width: 0.75rem; height: 0.75rem;"></span>
+						Generating...
+					</span>
+				}
+				else if (HasAISummary)
+				{
+					<span class="badge bg-info">
+						<i class="bi bi-robot me-1"></i>AI Generated
+					</span>
+				}
+			</label>
+			<textarea id="commitMessage" class="commit-message-input" @bind="CommitMessage" @bind:event="oninput"
+				placeholder="@(IsLoadingSummary ? "Generating commit message..." : "Enter a descriptive commit message...")"
+				rows="3" disabled="@IsPushing"></textarea>
+
+			@if (!string.IsNullOrEmpty(SummaryError))
+			{
+				<div class="alert alert-warning mt-2 mb-0 py-2 px-3 small">
+					<i class="bi bi-exclamation-triangle me-1"></i>
+					@SummaryError
+					<button type="button" class="btn btn-sm btn-outline-warning ms-2" @onclick="OnRefreshSummary">
+						<i class="bi bi-arrow-repeat"></i> Retry
+					</button>
+				</div>
+			}
+
+			@if (!string.IsNullOrEmpty(PushError))
+			{
+				<div class="push-error mt-3">
+					<i class="bi bi-x-circle me-1"></i>
+					@PushError
+				</div>
+			}
+		</div>
+		<div class="card-footer bg-body-secondary">
+			<button class="btn btn-primary" @onclick="OnCommitAndPush" disabled="@(!CanPush)">
+				@if (IsPushing)
+				{
+					<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+					<span class="d-none d-sm-inline">@PushStatus</span>
+					<span class="d-sm-none">Pushing...</span>
+				}
+				else
+				{
+					<i class="bi bi-cloud-upload me-1"></i>
+					<span>Commit & Push</span>
+				}
+			</button>
+		</div>
+	}
+	else
+	{
+		<div class="card-body">
+			<div class="push-success">
+				<i class="bi bi-check-circle-fill fs-4 text-success"></i>
+				<div>
+					<strong>Changes pushed successfully!</strong>
+					<div class="d-flex flex-wrap gap-2 mt-1">
+						@if (!string.IsNullOrEmpty(PushedCommitHash))
+						{
+							<span class="font-monospace small">
+								<i class="bi bi-git me-1"></i>@PushedCommitHash[..Math.Min(7, PushedCommitHash.Length)]
+							</span>
+						}
+						@if (!string.IsNullOrEmpty(BranchName))
+						{
+							<span class="font-monospace small">
+								<i class="bi bi-diagram-2 me-1"></i>@BranchName
+							</span>
+						}
+					</div>
+				</div>
+			</div>
+		</div>
+	}
+</div>
+
+@code {
+	[Parameter]
+	public string CommitMessage { get; set; } = string.Empty;
+
+	[Parameter]
+	public EventCallback<string> CommitMessageChanged { get; set; }
+
+	[Parameter]
+	public string? BranchName { get; set; }
+
+	[Parameter]
+	public bool IsLoadingSummary { get; set; }
+
+	[Parameter]
+	public bool HasAISummary { get; set; }
+
+	[Parameter]
+	public string? SummaryError { get; set; }
+
+	[Parameter]
+	public string? PushError { get; set; }
+
+	[Parameter]
+	public bool IsPushing { get; set; }
+
+	[Parameter]
+	public string PushStatus { get; set; } = "Pushing...";
+
+	[Parameter]
+	public bool IsPushed { get; set; }
+
+	[Parameter]
+	public string? PushedCommitHash { get; set; }
+
+	[Parameter]
+	public bool CanPush { get; set; }
+
+	[Parameter]
+	public EventCallback OnCommitAndPush { get; set; }
+
+	[Parameter]
+	public EventCallback OnRefreshSummary { get; set; }
+}
