@@ -1,14 +1,13 @@
 @* Project detail header component with stats and git info *@
 @using VibeSwarm.Shared.VersionControl.Models
 
+@* Breadcrumb Navigation *@
+<Breadcrumb Items="@_breadcrumbItems" />
+
 <div class="card mb-3 mb-lg-4 border-0 shadow-sm">
 	<div class="card-body bg-body-secondary p-3 p-md-4">
-		@* Top Row: Back Button, Title, Actions *@
+		@* Top Row: Title, Actions *@
 		<div class="d-flex flex-wrap align-items-start gap-2 gap-md-3 mb-3">
-			<a href="/projects" class="btn btn-sm btn-outline-secondary flex-shrink-0" title="Back to projects">
-				<i class="bi bi-arrow-left"></i>
-				<span class="d-none d-sm-inline ms-1">Back</span>
-			</a>
 			<div class="flex-grow-1 min-width-0">
 				<div class="d-flex align-items-center gap-2 flex-wrap">
 					<h3 class="mb-0 fs-4 fw-semibold">@Name</h3>
@@ -117,6 +116,12 @@
 
 	[Parameter]
 	public bool IsGitRepository { get; set; }
+
+	private List<Breadcrumb.BreadcrumbItem> _breadcrumbItems => new()
+{
+new Breadcrumb.BreadcrumbItem("Projects", "/projects", "folder"),
+new Breadcrumb.BreadcrumbItem(Name)
+};
 
 	[Parameter]
 	public List<GitBranchInfo> Branches { get; set; } = new();

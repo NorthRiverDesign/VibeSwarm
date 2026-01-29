@@ -27,7 +27,7 @@
 						<div class="d-flex justify-content-between align-items-start gap-2">
 							<div class="d-flex align-items-start gap-2 flex-grow-1 min-width-0">
 								@* Status Icon *@
-								<div class="flex-shrink-0 pt-1">
+										<div class="flex-shrink-0 pt-1">
 									@switch (job.Status)
 									{
 										case JobStatus.Completed:
@@ -53,10 +53,11 @@
 									}
 								</div>
 								@* Job Content *@
-								<div class="flex-grow-1 min-width-0">
+										<div class="flex-grow-1 min-width-0">
 									<a href="/jobs/view/@job.Id"
-										class="d-block text-decoration-none fw-medium text-truncate-lines-2">
-										@job.GoalPrompt
+										class="d-block text-decoration-none fw-medium text-truncate-lines-2"
+										title="@job.GoalPrompt">
+										@GetJobDisplayTitle(job)
 									</a>
 									<div class="d-flex flex-wrap gap-2 mt-1 small text-body-secondary">
 										<span>@(job.Provider?.Name ?? "Unknown")</span>
@@ -75,7 +76,7 @@
 								</div>
 							</div>
 							@* Actions Dropdown *@
-							<div class="dropdown flex-shrink-0">
+									<div class="dropdown flex-shrink-0">
 								<button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button"
 									data-bs-toggle="dropdown" aria-expanded="false">
 									<i class="bi bi-three-dots-vertical"></i>
@@ -114,6 +115,14 @@
 
 	[Parameter]
 	public EventCallback OnCreateJob { get; set; }
+
+	private static string GetJobDisplayTitle(Job job)
+	{
+		// Use Title if available, otherwise truncate GoalPrompt
+		if (!string.IsNullOrEmpty(job.Title))
+			return TruncateText(job.Title, 100);
+		return TruncateText(job.GoalPrompt, 100);
+	}
 
 	private static string TruncateText(string text, int maxLength)
 	{

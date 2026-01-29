@@ -17,10 +17,11 @@
 }
 else if (Project == null)
 {
+    <Breadcrumb
+        Items="@(new List<Breadcrumb.BreadcrumbItem> { new("Projects", "/projects", "folder"), new("Not Found") })" />
     <div class="alert alert-warning">
         <p class="mb-0">Project not found.</p>
     </div>
-    <a href="/projects" class="btn btn-secondary">Back to Projects</a>
 }
 else
 {
@@ -609,6 +610,8 @@ else
         {
             NewJob.ProjectId = ProjectId;
             NewJob.ModelUsed = string.IsNullOrEmpty(SelectedModelId) ? null : SelectedModelId;
+            // For manual jobs, use the goal prompt as the title
+            NewJob.Title = NewJob.GoalPrompt;
             var createdJob = await JobService.CreateAsync(NewJob);
             NavigationManager.NavigateTo($"/jobs/view/{createdJob.Id}");
         }

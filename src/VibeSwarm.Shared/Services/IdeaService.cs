@@ -136,11 +136,12 @@ public class IdeaService : IIdeaService
 		// Build the prompt that expands the idea into a feature spec
 		var expandedPrompt = BuildExpandedPrompt(idea.Description);
 
-		// Create the job
+		// Create the job with the original idea as the title
 		var job = new Job
 		{
 			ProjectId = idea.ProjectId,
 			ProviderId = defaultProvider.Id,
+			Title = idea.Description,  // Use the original idea text as the title
 			GoalPrompt = expandedPrompt,
 			ModelUsed = defaultModel,
 			Branch = currentBranch,

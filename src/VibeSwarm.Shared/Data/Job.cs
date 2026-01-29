@@ -7,6 +7,13 @@ public class Job
 {
     public Guid Id { get; set; }
 
+    /// <summary>
+    /// Short display title for the job. For manual jobs, this is derived from the goal prompt.
+    /// For jobs created from ideas, this is the original idea text.
+    /// </summary>
+    [StringLength(200)]
+    public string? Title { get; set; }
+
     [Required]
     [StringLength(2000, MinimumLength = 1)]
     public string GoalPrompt { get; set; } = string.Empty;
