@@ -11,163 +11,156 @@
     </Actions>
 </PageHeader>
 
-<div class="card providers-card">
-    <div class="card-body p-0">
-        @if (IsLoading)
+@if (IsLoading)
+{
+    <LoadingSpinner />
+}
+else if (!ProvidersList.Any())
+{
+    <EmptyState Icon="cpu" Title="No providers configured"
+        Message="Add a provider to connect to AI coding agents like Claude Code CLI." />
+}
+else
+{
+    <div class="list-group">
+        @foreach (var provider in ProvidersList)
         {
-            <LoadingSpinner />
-        }
-        else if (!ProvidersList.Any())
-        {
-            <div class="p-3">
-                <EmptyState Icon="cpu" Title="No providers configured"
-                    Message="Add a provider to connect to AI coding agents like Claude Code CLI." />
-            </div>
-        }
-        else
-        {
-            <div class="list-group list-group-flush">
-                @foreach (var provider in ProvidersList)
-                {
-                    <div class="list-group-item p-3 hover-bg-tertiary @(provider.IsDefault ? "bg-success bg-opacity-10" : "")">
-                        <div class="d-flex align-items-start gap-3">
-                            @* Enable toggle on left side *@
-                            <div class="flex-shrink-0 pt-1">
-                                <label class="toggle-switch" title="@(provider.IsEnabled ? "Disable" : "Enable")">
-                                    <input type="checkbox" checked="@provider.IsEnabled"
-                                        @onchange="() => ToggleEnabled(provider)" />
-                                    <span class="toggle-slider"></span>
-                                </label>
-                            </div>
-                            <div class="flex-grow-1 min-width-0">
-                                <div class="d-flex align-items-center gap-2 flex-wrap">
-                                    <span class="fw-semibold">@provider.Name</span>
-                                    @if (provider.IsDefault)
-                                    {
-                                        <span class="default-badge">Default</span>
-                                    }
-                                    <StatusBadge Status="@(provider.IsEnabled ? "Active" : "Off")" ShowSpinner="false" />
-                                </div>
-                                <div class="d-flex flex-wrap gap-2 gap-md-3 mt-2 small text-body-secondary">
-                                    <span><span class="fw-medium">Type:</span> @provider.Type</span>
-                                    <span><span class="fw-medium">Mode:</span> @provider.ConnectionMode</span>
-                                </div>
-                                @if (TestResults.TryGetValue(provider.Id, out var result))
-                                {
-                                    <div class="mt-2 @(result.IsConnected ? "test-success" : "test-failure")">
-                                        <strong>@(result.IsConnected ? "Connected" : "Connection Failed")</strong>
-                                        @if (!result.IsConnected && !string.IsNullOrEmpty(result.ErrorMessage))
-                                        {
-                                            <div class="mt-1">
-                                                <pre class="mb-0 small">@result.ErrorMessage</pre>
-                                            </div>
-                                        }
-                                    </div>
-                                }
-                                @if (RefreshModelsErrors.TryGetValue(provider.Id, out var refreshError) &&
-                                                        !string.IsNullOrEmpty(refreshError))
-                                {
-                                    <div class="alert alert-warning mt-2 mb-0 py-2 px-3 small">
-                                        <i class="bi bi-exclamation-triangle me-1"></i>
-                                        @refreshError
-                                    </div>
-                                }
-                            </div>
-                            <div class="d-flex align-items-center gap-2 flex-shrink-0">
-                                @* Test connection button *@
-                                <ActionButton Icon="lightning" Text="Test" Outline="true" Size="ActionButton.ButtonSize.Small"
-                                    HideTextOnMobile="true" IsLoading="@(TestingId == provider.Id)"
-                                    OnClick="@(() => TestConnection(provider))" />
-
-                                @* Gear dropdown menu *@
-                                <div class="dropdown">
-                                    <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button"
-                                        id="provider-menu-@provider.Id" data-bs-toggle="dropdown" aria-expanded="false"
-                                        title="Provider actions">
-                                        <i class="bi bi-gear"></i>
-                                    </button>
-                                    <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="provider-menu-@provider.Id">
-                                        <li>
-                                            <button class="dropdown-item" @onclick="@(() => RefreshModels(provider))"
-                                                @onclick:stopPropagation="true" disabled="@(RefreshingModelsId == provider.Id)">
-                                                <i
-                                                    class="bi bi-arrow-repeat me-2 @(RefreshingModelsId == provider.Id ? "spin" : "")"></i>
-                                                Refresh Models
-                                            </button>
-                                        </li>
-                                        <li>
-                                            <button class="dropdown-item"
-                                                @onclick="@(() => ShowSelectDefaultModelModal(provider))"
-                                                @onclick:stopPropagation="true">
-                                                <i class="bi bi-star me-2"></i>
-                                                Select Default Model
-                                            </button>
-                                        </li>
-                                        @if (!provider.IsDefault)
-                                        {
-                                            <li>
-                                                <button class="dropdown-item" @onclick="@(() => MakeDefault(provider))"
-                                                    @onclick:stopPropagation="true">
-                                                    <i class="bi bi-check2-circle me-2"></i>
-                                                    Set as Default
-                                                </button>
-                                            </li>
-                                        }
-                                        <li>
-                                            <button class="dropdown-item" @onclick="@(() => EditProvider(provider))"
-                                                @onclick:stopPropagation="true">
-                                                <i class="bi bi-pencil me-2"></i>
-                                                Edit
-                                            </button>
-                                        </li>
-                                        <li>
-                                            <hr class="dropdown-divider">
-                                        </li>
-                                        <li>
-                                            <button class="dropdown-item text-danger"
-                                                @onclick="@(() => ShowDeleteConfirmation(provider))"
-                                                @onclick:stopPropagation="true">
-                                                <i class="bi bi-trash me-2"></i>
-                                                Delete
-                                            </button>
-                                        </li>
-                                    </ul>
-                                </div>
-                            </div>
+            <div class="list-group-item p-3 hover-bg-tertiary @(provider.IsDefault ? "bg-success bg-opacity-10" : "")">
+                <div class="d-flex align-items-start gap-3">
+                    @* Enable toggle on left side *@
+                    <div class="flex-shrink-0 pt-1">
+                        <label class="toggle-switch" title="@(provider.IsEnabled ? "Disable" : "Enable")">
+                            <input type="checkbox" checked="@provider.IsEnabled" @onchange="() => ToggleEnabled(provider)" />
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    <div class="flex-grow-1 min-width-0">
+                        <div class="d-flex align-items-center gap-2 flex-wrap">
+                            <span class="fw-semibold">@provider.Name</span>
+                            @if (provider.IsDefault)
+                            {
+                                <span class="default-badge">Default</span>
+                            }
+                            <StatusBadge Status="@(provider.IsEnabled ? "Active" : "Off")" ShowSpinner="false" />
                         </div>
-                        @* Models section below main flex row *@
-                        @if (ProviderModels.TryGetValue(provider.Id, out var models) && models.Any())
+                        <div class="d-flex flex-wrap gap-2 gap-md-3 mt-2 small text-body-secondary">
+                            <span><span class="fw-medium">Type:</span> @provider.Type</span>
+                            <span><span class="fw-medium">Mode:</span> @provider.ConnectionMode</span>
+                        </div>
+                        @if (TestResults.TryGetValue(provider.Id, out var result))
                         {
-                            <div class="mt-2 pt-2 border-top ms-5 ps-2">
-                                <span class="fw-medium small text-body-secondary">Models:</span>
-                                <div class="d-flex flex-wrap gap-1 mt-1">
-                                    @foreach (var model in models.Where(m => m.IsAvailable).Take(5))
-                                    {
-                                        <span class="badge @(model.IsDefault ? "bg-primary" : "bg-secondary") bg-opacity-75"
-                                            title="@model.ModelId">
-                                            @(model.DisplayName ?? model.ModelId)
-                                        </span>
-                                    }
-                                    @if (models.Count(m => m.IsAvailable) > 5)
-                                    {
-                                        <span class="badge bg-secondary bg-opacity-50">+@(models.Count(m => m.IsAvailable) - 5)
-                                            more</span>
-                                    }
-                                </div>
-                                @if (provider.LastModelsRefreshAt.HasValue)
+                            <div class="mt-2 @(result.IsConnected ? "test-success" : "test-failure")">
+                                <strong>@(result.IsConnected ? "Connected" : "Connection Failed")</strong>
+                                @if (!result.IsConnected && !string.IsNullOrEmpty(result.ErrorMessage))
                                 {
-                                    <small class="text-body-tertiary d-block mt-1">
-                                        Updated @provider.LastModelsRefreshAt.Value.FormatDateTimeShort()
-                                    </small>
+                                    <div class="mt-1">
+                                        <pre class="mb-0 small">@result.ErrorMessage</pre>
+                                    </div>
                                 }
                             </div>
+                        }
+                        @if (RefreshModelsErrors.TryGetValue(provider.Id, out var refreshError) &&
+                                        !string.IsNullOrEmpty(refreshError))
+                        {
+                            <div class="alert alert-warning mt-2 mb-0 py-2 px-3 small">
+                                <i class="bi bi-exclamation-triangle me-1"></i>
+                                @refreshError
+                            </div>
+                        }
+                    </div>
+                    <div class="d-flex align-items-center gap-2 flex-shrink-0">
+                        @* Test connection button *@
+                        <ActionButton Icon="lightning" Text="Test" Outline="true" Size="ActionButton.ButtonSize.Small"
+                            HideTextOnMobile="true" IsLoading="@(TestingId == provider.Id)"
+                            OnClick="@(() => TestConnection(provider))" />
+
+                        @* Gear dropdown menu *@
+                        <div class="dropdown">
+                            <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button"
+                                id="provider-menu-@provider.Id" data-bs-toggle="dropdown" aria-expanded="false"
+                                title="Provider actions">
+                                <i class="bi bi-gear"></i>
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="provider-menu-@provider.Id">
+                                <li>
+                                    <button class="dropdown-item" @onclick="@(() => RefreshModels(provider))"
+                                        @onclick:stopPropagation="true" disabled="@(RefreshingModelsId == provider.Id)">
+                                        <i
+                                            class="bi bi-arrow-repeat me-2 @(RefreshingModelsId == provider.Id ? "spin" : "")"></i>
+                                        Refresh Models
+                                    </button>
+                                </li>
+                                <li>
+                                    <button class="dropdown-item" @onclick="@(() => ShowSelectDefaultModelModal(provider))"
+                                        @onclick:stopPropagation="true">
+                                        <i class="bi bi-star me-2"></i>
+                                        Select Default Model
+                                    </button>
+                                </li>
+                                @if (!provider.IsDefault)
+                                {
+                                    <li>
+                                        <button class="dropdown-item" @onclick="@(() => MakeDefault(provider))"
+                                            @onclick:stopPropagation="true">
+                                            <i class="bi bi-check2-circle me-2"></i>
+                                            Set as Default
+                                        </button>
+                                    </li>
+                                }
+                                <li>
+                                    <button class="dropdown-item" @onclick="@(() => EditProvider(provider))"
+                                        @onclick:stopPropagation="true">
+                                        <i class="bi bi-pencil me-2"></i>
+                                        Edit
+                                    </button>
+                                </li>
+                                <li>
+                                    <hr class="dropdown-divider">
+                                </li>
+                                <li>
+                                    <button class="dropdown-item text-danger"
+                                        @onclick="@(() => ShowDeleteConfirmation(provider))" @onclick:stopPropagation="true">
+                                        <i class="bi bi-trash me-2"></i>
+                                        Delete
+                                    </button>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+                @* Models section below main flex row *@
+                @if (ProviderModels.TryGetValue(provider.Id, out var models) && models.Any())
+                {
+                    <div class="mt-2 pt-2 border-top ms-5 ps-2">
+                        <span class="fw-medium small text-body-secondary">Models:</span>
+                        <div class="d-flex flex-wrap gap-1 mt-1">
+                            @foreach (var model in models.Where(m => m.IsAvailable).Take(5))
+                            {
+                                <span class="badge @(model.IsDefault ? "bg-primary" : "bg-secondary") bg-opacity-75"
+                                    title="@model.ModelId">
+                                    @(model.DisplayName ?? model.ModelId)
+                                </span>
+                            }
+                            @if (models.Count(m => m.IsAvailable) > 5)
+                            {
+                                <span class="badge bg-secondary bg-opacity-50">+@(models.Count(m => m.IsAvailable) - 5)
+                                    more</span>
+                            }
+                        </div>
+                        @if (provider.LastModelsRefreshAt.HasValue)
+                        {
+                            <small class="text-body-tertiary d-block mt-1">
+                                Updated @provider.LastModelsRefreshAt.Value.FormatDateTimeShort()
+                            </small>
                         }
                     </div>
                 }
             </div>
         }
     </div>
+}
 </div>
+}
 
 @* Provider Modal for Add/Edit *@
 <ProviderModal @bind-IsVisible="ShowProviderModal" EditProvider="@EditingProvider" OnSaved="HandleProviderSaved"

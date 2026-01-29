@@ -9,108 +9,102 @@
 	</Actions>
 </PageHeader>
 
-<div class="card">
-	<div class="card-body p-0">
-		@if (_isLoading)
+@if (_isLoading)
+{
+	<LoadingSpinner />
+}
+else if (!_users.Any())
+{
+	<EmptyState Icon="people" Title="No users found" Message="Add users to allow access to VibeSwarm." />
+}
+else
+{
+	<ul class="list-group">
+		@foreach (var user in _users)
 		{
-			<LoadingSpinner />
-		}
-		else if (!_users.Any())
-		{
-			<div class="p-3">
-				<EmptyState Icon="people" Title="No users found" Message="Add users to allow access to VibeSwarm." />
-			</div>
-		}
-		else
-		{
-			<ul class="list-group list-group-flush">
-				@foreach (var user in _users)
-				{
-					<li class="list-group-item py-3 @(!user.IsActive ? "bg-body-secondary" : "")">
-						<div class="d-flex align-items-center justify-content-between gap-3">
-							@* User info section *@
-							<div class="d-flex align-items-center gap-3 flex-grow-1 min-w-0">
-								<i class="bi bi-person-circle fs-4 text-secondary flex-shrink-0"></i>
-								<div class="min-w-0">
-									<div class="d-flex align-items-center gap-2 flex-wrap">
-										<span class="fw-semibold">@user.UserName</span>
-										@if (user.Roles.Contains(DatabaseSeeder.AdminRole))
-										{
-											<span class="badge bg-primary">Admin</span>
-										}
-										else
-										{
-											<span class="badge bg-secondary">User</span>
-										}
-										@if (user.IsActive)
-										{
-											<span class="badge bg-success-subtle text-success-emphasis">
-												<i class="bi bi-check-circle me-1"></i>Active
-											</span>
-										}
-										else
-										{
-											<span class="badge bg-secondary-subtle text-secondary-emphasis">
-												<i class="bi bi-x-circle me-1"></i>Inactive
-											</span>
-										}
-									</div>
-									<div class="d-flex flex-wrap gap-2 text-body-secondary small mt-1">
-										@if (!string.IsNullOrEmpty(user.Email))
-										{
-											<span>@user.Email</span>
-										}
-										<span class="d-none d-md-inline">
-											<i class="bi bi-calendar me-1"></i>Created @user.CreatedAt.FormatDateTimeShort()
-										</span>
-										<span class="d-none d-lg-inline">
-											<i class="bi bi-clock me-1"></i>Last login: @(user.LastLoginAt.HasValue ?
-																			user.LastLoginAt.Value.FormatDateTimeShort() : "Never")
-										</span>
-									</div>
-								</div>
+			<li class="list-group-item py-3 @(!user.IsActive ? "bg-body-secondary" : "")">
+				<div class="d-flex align-items-center justify-content-between gap-3">
+					@* User info section *@
+					<div class="d-flex align-items-center gap-3 flex-grow-1 min-w-0">
+						<i class="bi bi-person-circle fs-4 text-secondary flex-shrink-0"></i>
+						<div class="min-w-0">
+							<div class="d-flex align-items-center gap-2 flex-wrap">
+								<span class="fw-semibold">@user.UserName</span>
+								@if (user.Roles.Contains(DatabaseSeeder.AdminRole))
+								{
+									<span class="badge bg-primary">Admin</span>
+								}
+								else
+								{
+									<span class="badge bg-secondary">User</span>
+								}
+								@if (user.IsActive)
+								{
+									<span class="badge bg-success-subtle text-success-emphasis">
+										<i class="bi bi-check-circle me-1"></i>Active
+									</span>
+								}
+								else
+								{
+									<span class="badge bg-secondary-subtle text-secondary-emphasis">
+										<i class="bi bi-x-circle me-1"></i>Inactive
+									</span>
+								}
 							</div>
-
-							@* Actions dropdown *@
-							<div class="dropdown flex-shrink-0">
-								<button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button"
-									data-bs-toggle="dropdown" aria-expanded="false" title="User actions">
-									<i class="bi bi-gear"></i>
-								</button>
-								<ul class="dropdown-menu dropdown-menu-end">
-									<li>
-										<button class="dropdown-item" @onclick="@(() => ShowResetPasswordModal(user))">
-											<i class="bi bi-key me-2"></i>Reset Password
-										</button>
-									</li>
-									<li>
-										<button class="dropdown-item" @onclick="@(() => ShowEditUserModal(user))">
-											<i class="bi bi-pencil me-2"></i>Edit Role
-										</button>
-									</li>
-									<li>
-										<button class="dropdown-item" @onclick="@(() => ToggleUserActive(user))">
-											<i class="bi bi-@(user.IsActive ? "x-circle" : "check-circle") me-2"></i>
-											@(user.IsActive ? "Deactivate" : "Activate")
-										</button>
-									</li>
-									<li>
-										<hr class="dropdown-divider">
-									</li>
-									<li>
-										<button class="dropdown-item text-danger" @onclick="@(() => ShowDeleteUserModal(user))">
-											<i class="bi bi-trash me-2"></i>Delete
-										</button>
-									</li>
-								</ul>
+							<div class="d-flex flex-wrap gap-2 text-body-secondary small mt-1">
+								@if (!string.IsNullOrEmpty(user.Email))
+								{
+									<span>@user.Email</span>
+								}
+								<span class="d-none d-md-inline">
+									<i class="bi bi-calendar me-1"></i>Created @user.CreatedAt.FormatDateTimeShort()
+								</span>
+								<span class="d-none d-lg-inline">
+									<i class="bi bi-clock me-1"></i>Last login: @(user.LastLoginAt.HasValue ?
+															user.LastLoginAt.Value.FormatDateTimeShort() : "Never")
+								</span>
 							</div>
 						</div>
-					</li>
-				}
-			</ul>
+					</div>
+
+					@* Actions dropdown *@
+					<div class="dropdown flex-shrink-0">
+						<button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown"
+							aria-expanded="false" title="User actions">
+							<i class="bi bi-gear"></i>
+						</button>
+						<ul class="dropdown-menu dropdown-menu-end">
+							<li>
+								<button class="dropdown-item" @onclick="@(() => ShowResetPasswordModal(user))">
+									<i class="bi bi-key me-2"></i>Reset Password
+								</button>
+							</li>
+							<li>
+								<button class="dropdown-item" @onclick="@(() => ShowEditUserModal(user))">
+									<i class="bi bi-pencil me-2"></i>Edit Role
+								</button>
+							</li>
+							<li>
+								<button class="dropdown-item" @onclick="@(() => ToggleUserActive(user))">
+									<i class="bi bi-@(user.IsActive ? "x-circle" : "check-circle") me-2"></i>
+									@(user.IsActive ? "Deactivate" : "Activate")
+								</button>
+							</li>
+							<li>
+								<hr class="dropdown-divider">
+							</li>
+							<li>
+								<button class="dropdown-item text-danger" @onclick="@(() => ShowDeleteUserModal(user))">
+									<i class="bi bi-trash me-2"></i>Delete
+								</button>
+							</li>
+						</ul>
+					</div>
+				</div>
+			</li>
 		}
-	</div>
-</div>
+	</ul>
+}
 
 @* Add User Modal *@
 <ModalDialog @bind-IsVisible="_showAddUserModal" Title="Add User" Icon="person-plus"

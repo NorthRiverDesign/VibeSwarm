@@ -15,7 +15,7 @@
 else
 {
     @* Mobile: Project filter dropdown *@
-            <div class="d-lg-none mb-3 jobs-mobile-filters">
+    <div class="d-lg-none mb-3 jobs-mobile-filters">
         <div class="d-flex flex-column gap-2">
             <select class="form-select form-select-sm w-100" @onchange="OnProjectFilterChanged">
                 <option value="" selected="@(_selectedProjectId == null)">All Projects</option>
@@ -50,9 +50,9 @@ else
     </div>
 
     @* Desktop: Inbox-style split layout *@
-            <div class="jobs-inbox-layout">
+    <div class="jobs-inbox-layout">
         @* Project Sidebar (desktop only) *@
-                <aside class="jobs-project-sidebar d-none d-lg-flex flex-column border-end">
+        <aside class="jobs-project-sidebar d-none d-lg-flex flex-column border-end">
             <div class="p-3 border-bottom">
                 <h5 class="mb-0 fw-semibold d-flex align-items-center gap-2">
                     <i class="bi bi-inbox"></i> Jobs
@@ -60,7 +60,7 @@ else
             </div>
             <div class="flex-grow-1 overflow-auto">
                 @* All Projects option *@
-                        <button type="button"
+                <button type="button"
                     class="project-filter-item w-100 text-start border-0 bg-transparent d-flex align-items-center gap-2 p-3 @(_selectedProjectId == null ? "active" : "")"
                     @onclick="() => SelectProject(null)">
                     <i class="bi bi-collection"></i>
@@ -71,7 +71,7 @@ else
                 <div class="border-top"></div>
 
                 @* Project list *@
-                        @foreach (var project in _projects)
+                @foreach (var project in _projects)
                 {
                     var jobCount = GetJobCountForProject(project.Id);
                     var activeCount = GetActiveCountForProject(project.Id);
@@ -90,7 +90,7 @@ else
             </div>
 
             @* Status filter buttons in sidebar footer *@
-                    <div class="p-3 border-top">
+            <div class="p-3 border-top">
                 <div class="btn-group w-100" role="group">
                     <button type="button"
                         class="btn btn-sm @(_statusFilter == "all" ? "btn-primary" : "btn-outline-secondary")"
@@ -109,9 +109,9 @@ else
         </aside>
 
         @* Job List Panel *@
-                <div class="jobs-list-panel flex-grow-1 d-flex flex-column">
+        <div class="jobs-list-panel flex-grow-1 d-flex flex-column">
             @* Stats header *@
-                    @if (HasTokenData())
+            @if (HasTokenData())
             {
                 <div class="d-flex flex-wrap align-items-center gap-2 p-2 px-3 border-bottom bg-body-secondary small">
                     @if (GetTotalInputTokens() > 0 || GetTotalOutputTokens() > 0)

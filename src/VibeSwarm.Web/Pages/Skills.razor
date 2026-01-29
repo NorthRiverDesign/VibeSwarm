@@ -9,70 +9,64 @@
 	</Actions>
 </PageHeader>
 
-<div class="card skills-card">
-	<div class="card-body p-0">
-		@if (_isLoading)
+@if (_isLoading)
+{
+	<LoadingSpinner />
+}
+else if (!_skillsList.Any())
+{
+	<EmptyState Icon="lightbulb" Title="No skills yet"
+		Message="Create skills to define capabilities that AI agents can use during job execution." />
+}
+else
+{
+	<div class="list-group">
+		@foreach (var skill in _skillsList)
 		{
-			<LoadingSpinner />
-		}
-		else if (!_skillsList.Any())
-		{
-			<div class="p-3">
-				<EmptyState Icon="lightbulb" Title="No skills yet"
-					Message="Create skills to define capabilities that AI agents can use during job execution." />
-			</div>
-		}
-		else
-		{
-			<div class="list-group list-group-flush">
-				@foreach (var skill in _skillsList)
-				{
-					<div
-						class="list-group-item d-flex flex-column flex-md-row align-items-md-start gap-2 gap-md-3 p-3 hover-bg-tertiary">
-						<div class="flex-grow-1 min-width-0">
-							<div class="d-flex align-items-center gap-2 flex-wrap">
-								<span class="fw-semibold font-monospace">@skill.Name</span>
-								<StatusBadge Status="@(skill.IsEnabled ? "Active" : "Off")" ShowSpinner="false" />
-							</div>
-							@if (!string.IsNullOrEmpty(skill.Description))
-							{
-								<div class="small text-body-secondary mt-1">@TruncateText(skill.Description, 120)</div>
-							}
-							<div class="d-flex flex-wrap gap-2 gap-md-3 mt-2 small text-body-secondary">
-								<span class="d-flex align-items-center gap-1">
-									<i class="bi bi-file-text opacity-75"></i>
-									@skill.Content.Length chars
-								</span>
-								<span class="d-flex align-items-center gap-1">
-									<i class="bi bi-calendar-plus opacity-75"></i>
-									@skill.CreatedAt.FormatDateTimeShort()
-								</span>
-								@if (skill.UpdatedAt.HasValue)
-								{
-									<span class="d-flex align-items-center gap-1">
-										<i class="bi bi-pencil opacity-75"></i>
-										@skill.UpdatedAt.Value.FormatDateTimeShort()
-									</span>
-								}
-							</div>
-						</div>
-						<div class="d-flex flex-wrap gap-2 flex-shrink-0 align-items-center">
-							<label class="toggle-switch me-1" title="@(skill.IsEnabled ? "Disable" : "Enable")">
-								<input type="checkbox" checked="@skill.IsEnabled" @onchange="() => ToggleEnabled(skill)" />
-								<span class="toggle-slider"></span>
-							</label>
-							<ActionButton Icon="pencil" Text="Edit" Outline="true" Size="ActionButton.ButtonSize.Small"
-								HideTextOnMobile="true" OnClick="@(() => EditSkill(skill))" />
-							<ActionButton Icon="trash" Text="Delete" Outline="true" Size="ActionButton.ButtonSize.Small"
-								Style="ActionButton.ButtonStyle.Danger" HideTextOnMobile="true"
-								OnClick="@(() => ShowDeleteConfirmation(skill))" />
-						</div>
+			<div
+				class="list-group-item d-flex flex-column flex-md-row align-items-md-start gap-2 gap-md-3 p-3 hover-bg-tertiary">
+				<div class="flex-grow-1 min-width-0">
+					<div class="d-flex align-items-center gap-2 flex-wrap">
+						<span class="fw-semibold font-monospace">@skill.Name</span>
+						<StatusBadge Status="@(skill.IsEnabled ? "Active" : "Off")" ShowSpinner="false" />
 					</div>
-				}
+					@if (!string.IsNullOrEmpty(skill.Description))
+					{
+						<div class="small text-body-secondary mt-1">@TruncateText(skill.Description, 120)</div>
+					}
+					<div class="d-flex flex-wrap gap-2 gap-md-3 mt-2 small text-body-secondary">
+						<span class="d-flex align-items-center gap-1">
+							<i class="bi bi-file-text opacity-75"></i>
+							@skill.Content.Length chars
+						</span>
+						<span class="d-flex align-items-center gap-1">
+							<i class="bi bi-calendar-plus opacity-75"></i>
+							@skill.CreatedAt.FormatDateTimeShort()
+						</span>
+						@if (skill.UpdatedAt.HasValue)
+						{
+							<span class="d-flex align-items-center gap-1">
+								<i class="bi bi-pencil opacity-75"></i>
+								@skill.UpdatedAt.Value.FormatDateTimeShort()
+							</span>
+						}
+					</div>
+				</div>
+				<div class="d-flex flex-wrap gap-2 flex-shrink-0 align-items-center">
+					<label class="toggle-switch me-1" title="@(skill.IsEnabled ? "Disable" : "Enable")">
+						<input type="checkbox" checked="@skill.IsEnabled" @onchange="() => ToggleEnabled(skill)" />
+						<span class="toggle-slider"></span>
+					</label>
+					<ActionButton Icon="pencil" Text="Edit" Outline="true" Size="ActionButton.ButtonSize.Small"
+						HideTextOnMobile="true" OnClick="@(() => EditSkill(skill))" />
+					<ActionButton Icon="trash" Text="Delete" Outline="true" Size="ActionButton.ButtonSize.Small"
+						Style="ActionButton.ButtonStyle.Danger" HideTextOnMobile="true"
+						OnClick="@(() => ShowDeleteConfirmation(skill))" />
+				</div>
 			</div>
 		}
 	</div>
-</div>
+}
 
 @* Skill Modal for Add/Edit *@
 <SkillModal @bind-IsVisible="_showSkillModal" EditSkill="@_editingSkill" OnSaved="HandleSkillSaved"
