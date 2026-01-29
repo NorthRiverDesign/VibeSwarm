@@ -4,6 +4,7 @@
 @inject IJobService JobService
 @inject IProviderService ProviderService
 @inject IVersionControlService VersionControlService
+@inject IIdeaService IdeaService
 @inject NavigationManager NavigationManager
 @implements IDisposable
 @using VibeSwarm.Shared.Utilities
@@ -24,10 +25,10 @@ else if (Project == null)
 else
 {
     @* Project Header *@
-            <div class="card mb-3 mb-lg-4 border-0 shadow-sm">
+                    <div class="card mb-3 mb-lg-4 border-0 shadow-sm">
         <div class="card-body p-3 p-md-4">
             @* Top Row: Back Button, Title, Actions *@
-                    <div class="d-flex flex-wrap align-items-start gap-2 gap-md-3 mb-3">
+                            <div class="d-flex flex-wrap align-items-start gap-2 gap-md-3 mb-3">
                 <a href="/projects" class="btn btn-sm btn-outline-secondary flex-shrink-0" title="Back to projects">
                     <i class="bi bi-arrow-left"></i>
                     <span class="d-none d-sm-inline ms-1">Back</span>
@@ -52,7 +53,7 @@ else
                 </div>
 
                 @* Git Actions Dropdown (when Git repo) *@
-                        @if (IsGitRepository)
+                                @if (IsGitRepository)
                 {
                     <div class="dropdown flex-shrink-0">
                         <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown"
@@ -95,16 +96,16 @@ else
             </div>
 
             @* Second Row: Path, Branch Selector, Stats *@
-                    <div class="d-flex flex-wrap align-items-center gap-2 gap-md-3 pt-3 border-top">
+                            <div class="d-flex flex-wrap align-items-center gap-2 gap-md-3 pt-3 border-top">
                 @* Working Path *@
-                        <div class="d-flex align-items-center gap-1 text-body-secondary small">
+                                <div class="d-flex align-items-center gap-1 text-body-secondary small">
                     <i class="bi bi-folder opacity-75"></i>
                     <code class="bg-body-tertiary px-2 py-1 rounded-1 text-truncate d-inline-block"
                         style="max-width: 240px;" title="@Project.WorkingPath">@Project.WorkingPath</code>
                 </div>
 
                 @* Branch Selector (Git repos only) *@
-                        @if (IsGitRepository && Branches.Any())
+                                @if (IsGitRepository && Branches.Any())
                 {
                     <div class="d-flex align-items-center gap-1">
                         <div class="dropdown">
@@ -192,7 +193,7 @@ else
                 <div class="flex-grow-1"></div>
 
                 @* Token/Cost Stats (when data exists) *@
-                        @if (HasProjectTokenData())
+                                @if (HasProjectTokenData())
                 {
                     <div class="d-flex flex-wrap align-items-center gap-2 gap-md-3">
                         @if (GetProjectTotalInputTokens() > 0 || GetProjectTotalOutputTokens() > 0)
@@ -216,7 +217,7 @@ else
             </div>
 
             @* Git Operation Messages *@
-                    @if (!string.IsNullOrEmpty(GitOperationMessage))
+                            @if (!string.IsNullOrEmpty(GitOperationMessage))
             {
                 <div
                     class="alert @(GitOperationSuccess ? "alert-success" : "alert-danger") mt-3 mb-0 py-2 d-flex align-items-center gap-2">
@@ -237,7 +238,7 @@ else
 
     <div class="row g-3 g-lg-4">
         @* Create Job form first on mobile *@
-                <div class="col-12 col-lg-4 order-1 order-lg-2">
+                        <div class="col-12 col-lg-4 order-1 order-lg-2">
             <div class="card">
                 <div class="card-header bg-body-secondary">
                     <h5 class="mb-0 fw-semibold">Create Job</h5>
@@ -330,10 +331,168 @@ else
                     </EditForm>
                 </div>
             </div>
+
+            @* Ideas Section *@
+                    <div class="card mt-3 mt-lg-4">
+                <div class="card-header bg-body-secondary d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0 fw-semibold">
+                        <i class="bi bi-lightbulb me-2"></i>Ideas
+                    </h5>
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="badge bg-secondary">@Ideas.Count</span>
+                        @if (Ideas.Count >= 1)
+                        {
+                            @if (IsIdeasProcessingActive)
+                            {
+                                <button type="button" class="btn btn-sm btn-outline-danger" @onclick="StopIdeasProcessing"
+                                    disabled="@_isTogglingIdeasProcessing">
+                                    @if (_isTogglingIdeasProcessing)
+                                    {
+                                        <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                                    }
+                                    else
+                                    {
+                                        <i class="bi bi-stop-fill me-1"></i>
+                                    }
+                                    Stop
+                                </button>
+                            }
+                            else
+                            {
+                                <button type="button" class="btn btn-sm btn-success" @onclick="StartIdeasProcessing"
+                                    disabled="@(_isTogglingIdeasProcessing || !HasDefaultProvider)">
+                                    @if (_isTogglingIdeasProcessing)
+                                    {
+                                        <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                                    }
+                                    else
+                                    {
+                                        <i class="bi bi-play-fill me-1"></i>
+                                    }
+                                    Start
+                                </button>
+                            }
+                        }
+                    </div>
+                </div>
+                <div class="card-body">
+                    @* Add New Idea Form *@
+                            <div class="mb-3">
+                        <div class="input-group">
+                            <input type="text" class="form-control" placeholder="Enter a feature idea..."
+                                @bind="_newIdeaDescription" @bind:event="oninput" @onkeypress="HandleIdeaKeyPress" />
+                            <button type="button" class="btn btn-primary" @onclick="AddIdea"
+                                disabled="@(string.IsNullOrWhiteSpace(_newIdeaDescription) || _isAddingIdea)">
+                                @if (_isAddingIdea)
+                                {
+                                    <span class="spinner-border spinner-border-sm" role="status"></span>
+                                }
+                                else
+                                {
+                                    <i class="bi bi-plus-lg"></i>
+                                }
+                            </button>
+                        </div>
+                        <div class="form-text">
+                            Short description of a feature or update. Ideas will be expanded into full specs when processed.
+                        </div>
+                    </div>
+
+                    @if (IsIdeasProcessingActive)
+                    {
+                        <div class="alert alert-info py-2 mb-3 d-flex align-items-center gap-2">
+                            <span class="spinner-border spinner-border-sm" role="status"></span>
+                            <span>Auto-processing active. Ideas will be converted to jobs automatically.</span>
+                        </div>
+                    }
+
+                    @* Ideas List *@
+                    @if (!Ideas.Any())
+                    {
+                        <div class="text-body-secondary text-center py-3">
+                            <i class="bi bi-lightbulb fs-1 opacity-50 mb-2 d-block"></i>
+                            <p class="mb-0">No ideas yet. Add some feature ideas above!</p>
+                        </div>
+                    }
+                    else
+                    {
+                        <ul class="list-group list-group-flush">
+                            @foreach (var idea in Ideas)
+                            {
+                                <li class="list-group-item px-0">
+                                    @if (_editingIdeaId == idea.Id)
+                                    {
+                                        @* Edit Mode *@
+                                                                        <div class="d-flex gap-2">
+                                            <input type="text" class="form-control form-control-sm" @bind="_editingIdeaDescription"
+                                                @bind:event="oninput" />
+                                            <button type="button" class="btn btn-sm btn-success" @onclick="SaveIdeaEdit"
+                                                disabled="@(string.IsNullOrWhiteSpace(_editingIdeaDescription))">
+                                                <i class="bi bi-check-lg"></i>
+                                            </button>
+                                            <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="CancelIdeaEdit">
+                                                <i class="bi bi-x-lg"></i>
+                                            </button>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        @* View Mode *@
+                                                                        <div class="d-flex justify-content-between align-items-start gap-2">
+                                            <div class="flex-grow-1 min-width-0">
+                                                <div class="d-flex align-items-center gap-2">
+                                                    @if (idea.IsProcessing)
+                                                    {
+                                                        <span class="spinner-border spinner-border-sm text-primary flex-shrink-0"
+                                                            role="status" title="Processing..."></span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <i class="bi bi-lightbulb text-warning flex-shrink-0"></i>
+                                                    }
+                                                    <span class="@(idea.IsProcessing ? "text-body-secondary" : "")">
+                                                        @idea.Description
+                                                    </span>
+                                                </div>
+                                                @if (idea.IsProcessing && idea.JobId.HasValue)
+                                                {
+                                                    <small class="text-body-secondary ms-4">
+                                                        <a href="/jobs/view/@idea.JobId" class="text-decoration-none">
+                                                            View Job <i class="bi bi-arrow-right-short"></i>
+                                                        </a>
+                                                    </small>
+                                                }
+                                            </div>
+                                            <div class="d-flex gap-1 flex-shrink-0">
+                                                <button type="button" class="btn btn-sm btn-outline-secondary"
+                                                    @onclick="() => StartEditIdea(idea)" disabled="@idea.IsProcessing" title="Edit">
+                                                    <i class="bi bi-pencil"></i>
+                                                </button>
+                                                <button type="button" class="btn btn-sm btn-outline-danger"
+                                                    @onclick="() => DeleteIdea(idea.Id)" disabled="@idea.IsProcessing" title="Remove">
+                                                    <i class="bi bi-trash"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    }
+                                </li>
+                            }
+                        </ul>
+                    }
+
+                    @if (!HasDefaultProvider && Ideas.Any())
+                    {
+                        <div class="alert alert-warning py-2 mt-3 mb-0">
+                            <i class="bi bi-exclamation-triangle me-1"></i>
+                            <a href="/providers">Set a default provider</a> to enable Ideas auto-processing.
+                        </div>
+                    }
+                </div>
+            </div>
         </div>
 
         @* Jobs list second on mobile *@
-                <div class="col-12 col-lg-8 order-2 order-lg-1">
+                        <div class="col-12 col-lg-8 order-2 order-lg-1">
             <div class="card">
                 <div class="card-header bg-body-secondary d-flex justify-content-between align-items-center">
                     <h5 class="mb-0 fw-semibold">Jobs</h5>
@@ -356,7 +515,7 @@ else
                                     <div class="d-flex justify-content-between align-items-start gap-2">
                                         <div class="d-flex align-items-start gap-2 flex-grow-1 min-width-0">
                                             @* Status Icon *@
-                                                                    <div class="flex-shrink-0 pt-1">
+                                                                                            <div class="flex-shrink-0 pt-1">
                                                 @switch (job.Status)
                                                 {
                                                     case JobStatus.Completed:
@@ -382,7 +541,7 @@ else
                                                 }
                                             </div>
                                             @* Job Content *@
-                                                                    <div class="flex-grow-1 min-width-0">
+                                                                                            <div class="flex-grow-1 min-width-0">
                                                 <a href="/jobs/@job.Id"
                                                     class="d-block text-decoration-none fw-medium text-truncate-lines-2">
                                                     @job.GoalPrompt
@@ -404,7 +563,7 @@ else
                                             </div>
                                         </div>
                                         @* Actions Dropdown *@
-                                                                <div class="dropdown flex-shrink-0">
+                                                                                        <div class="dropdown flex-shrink-0">
                                             <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button"
                                                 data-bs-toggle="dropdown" aria-expanded="false">
                                                 <i class="bi bi-three-dots-vertical"></i>
@@ -650,7 +809,7 @@ else
                         else
                         {
                             @* Diff Accordion *@
-                                                    <div class="accordion" id="uncommittedDiffAccordion">
+                                                                            <div class="accordion" id="uncommittedDiffAccordion">
                                 @foreach (var (file, index) in _uncommittedDiffFiles.Select((f, i) => (f, i)))
                                 {
                                     var collapseId = $"uncommittedDiffCollapse{index}";
@@ -699,7 +858,7 @@ else
                             </div>
 
                             @* Commit Section *@
-                                                    <div class="p-3 border-top bg-body-secondary">
+                                                                            <div class="p-3 border-top bg-body-secondary">
                                 <label for="uncommittedCommitMessage" class="form-label small fw-medium mb-2">
                                     Commit Message
                                 </label>
@@ -874,6 +1033,16 @@ else
     _uncommittedDiffFiles.Count;
     private bool _allUncommittedCollapsed => _uncommittedDiffFiles.Count == 0 || _expandedUncommittedDiffFiles.Count == 0;
 
+    // Ideas state
+    private List<Idea> Ideas { get; set; } = new();
+    private string _newIdeaDescription { get; set; } = string.Empty;
+    private bool _isAddingIdea { get; set; }
+    private Guid? _editingIdeaId { get; set; }
+    private string _editingIdeaDescription { get; set; } = string.Empty;
+    private bool IsIdeasProcessingActive { get; set; }
+    private bool _isTogglingIdeasProcessing { get; set; }
+    private bool HasDefaultProvider => Providers.Any(p => p.IsDefault && p.IsEnabled);
+
     // DiffFile class (same structure as in JobDetail)
     private class DiffFile
     {
@@ -902,11 +1071,12 @@ else
     {
         _refreshTimer = new System.Threading.Timer(async _ =>
         {
-            if (HasActiveJobs)
+            if (HasActiveJobs || IsIdeasProcessingActive)
             {
                 await InvokeAsync(async () =>
         {
             await RefreshJobs();
+            await LoadIdeas();
             StateHasChanged();
         });
             }
@@ -930,6 +1100,7 @@ else
             if (Project != null)
             {
                 Jobs = (await JobService.GetByProjectIdAsync(ProjectId)).ToList();
+                await LoadIdeas();
             }
             Providers = (await ProviderService.GetAllAsync()).ToList();
 
@@ -948,6 +1119,12 @@ else
         }
     }
 
+    private async Task LoadIdeas()
+    {
+        Ideas = (await IdeaService.GetByProjectIdAsync(ProjectId)).ToList();
+        IsIdeasProcessingActive = await IdeaService.IsProcessingActiveAsync(ProjectId);
+    }
+
     private async Task LoadGitInfo()
     {
         if (Project == null || string.IsNullOrEmpty(Project.WorkingPath))
@@ -964,7 +1141,7 @@ else
                 // Default the new job to operate on the current branch
                 NewJob.Branch = CurrentBranch;
                 await LoadBranches();
-                
+
                 // Check for uncommitted changes to show in header indicator
                 await RefreshUncommittedChangesStatus();
             }
@@ -974,12 +1151,12 @@ else
             IsGitRepository = false;
         }
     }
-    
+
     private async Task RefreshUncommittedChangesStatus()
     {
         if (Project == null || string.IsNullOrEmpty(Project.WorkingPath) || !IsGitRepository)
             return;
-            
+
         try
         {
             _hasUncommittedChangesHeader = await VersionControlService.HasUncommittedChangesAsync(Project.WorkingPath);
@@ -991,7 +1168,8 @@ else
                 {
                     // Count lines that represent file changes (ends with insertions/deletions pattern or just file path)
                     var lines = diffOutput.Split('\n', StringSplitOptions.RemoveEmptyEntries);
-                    _uncommittedFilesCount = lines.Count(l => l.Contains('|') || (l.Trim().Length > 0 && !l.Contains("changed") && !l.Contains("insertion") && !l.Contains("deletion")));
+                    _uncommittedFilesCount = lines.Count(l => l.Contains('|') || (l.Trim().Length > 0 && !l.Contains("changed") &&
+                    !l.Contains("insertion") && !l.Contains("deletion")));
                     if (_uncommittedFilesCount == 0) _uncommittedFilesCount = 1; // At least one file if there are changes
                 }
                 else
@@ -1513,8 +1691,8 @@ else
         {
             // Commit all changes
             var commitResult = await VersionControlService.CommitAllChangesAsync(
-                Project.WorkingPath,
-                _uncommittedCommitMessage.Trim());
+            Project.WorkingPath,
+            _uncommittedCommitMessage.Trim());
 
             if (!commitResult.Success)
             {
@@ -1681,7 +1859,7 @@ else
         foreach (var line in lines)
         {
             var escapedLine = System.Net.WebUtility.HtmlEncode(line);
-            
+
             if (line.StartsWith("@@"))
             {
                 formattedLines.Append($"<div class=\"diff-hunk text-info bg-dark bg-opacity-50 px-2\">{escapedLine}</div>");
@@ -1706,6 +1884,140 @@ else
 
         formattedLines.Append("</div>");
         return new MarkupString(formattedLines.ToString());
+    }
+
+    // Ideas management methods
+    private async Task HandleIdeaKeyPress(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !string.IsNullOrWhiteSpace(_newIdeaDescription))
+        {
+            await AddIdea();
+        }
+    }
+
+    private async Task AddIdea()
+    {
+        if (string.IsNullOrWhiteSpace(_newIdeaDescription))
+            return;
+
+        _isAddingIdea = true;
+        StateHasChanged();
+
+        try
+        {
+            var idea = new Idea
+            {
+                ProjectId = ProjectId,
+                Description = _newIdeaDescription.Trim()
+            };
+
+            await IdeaService.CreateAsync(idea);
+            _newIdeaDescription = string.Empty;
+            await LoadIdeas();
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Error adding idea: {ex.Message}";
+        }
+        finally
+        {
+            _isAddingIdea = false;
+            StateHasChanged();
+        }
+    }
+
+    private void StartEditIdea(Idea idea)
+    {
+        _editingIdeaId = idea.Id;
+        _editingIdeaDescription = idea.Description;
+    }
+
+    private void CancelIdeaEdit()
+    {
+        _editingIdeaId = null;
+        _editingIdeaDescription = string.Empty;
+    }
+
+    private async Task SaveIdeaEdit()
+    {
+        if (_editingIdeaId == null || string.IsNullOrWhiteSpace(_editingIdeaDescription))
+            return;
+
+        try
+        {
+            var idea = Ideas.FirstOrDefault(i => i.Id == _editingIdeaId);
+            if (idea != null)
+            {
+                idea.Description = _editingIdeaDescription.Trim();
+                await IdeaService.UpdateAsync(idea);
+                await LoadIdeas();
+            }
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Error updating idea: {ex.Message}";
+        }
+        finally
+        {
+            CancelIdeaEdit();
+        }
+    }
+
+    private async Task DeleteIdea(Guid ideaId)
+    {
+        try
+        {
+            await IdeaService.DeleteAsync(ideaId);
+            await LoadIdeas();
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Error deleting idea: {ex.Message}";
+        }
+    }
+
+    private async Task StartIdeasProcessing()
+    {
+        _isTogglingIdeasProcessing = true;
+        StateHasChanged();
+
+        try
+        {
+            await IdeaService.StartProcessingAsync(ProjectId);
+            IsIdeasProcessingActive = true;
+            SuccessMessage = "Ideas auto-processing started. Ideas will be converted to jobs automatically.";
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Error starting Ideas processing: {ex.Message}";
+        }
+        finally
+        {
+            _isTogglingIdeasProcessing = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task StopIdeasProcessing()
+    {
+        _isTogglingIdeasProcessing = true;
+        StateHasChanged();
+
+        try
+        {
+            await IdeaService.StopProcessingAsync(ProjectId);
+            IsIdeasProcessingActive = false;
+            SuccessMessage = "Ideas auto-processing stopped.";
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Error stopping Ideas processing: {ex.Message}";
+        }
+        finally
+        {
+            _isTogglingIdeasProcessing = false;
+            StateHasChanged();
+        }
     }
 
     public void Dispose()

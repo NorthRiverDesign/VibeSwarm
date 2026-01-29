@@ -22,6 +22,7 @@ public static class WorkerServiceExtensions
         services.AddHostedService<JobProcessingService>();
         services.AddHostedService<JobWatchdogService>();
         services.AddHostedService<JobCompletionMonitorService>();
+        services.AddHostedService<IdeasProcessingService>();
 
         return services;
     }

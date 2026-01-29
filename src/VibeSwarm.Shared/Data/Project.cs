@@ -29,4 +29,11 @@ public class Project
     public DateTime? UpdatedAt { get; set; }
 
     public ICollection<Job> Jobs { get; set; } = new List<Job>();
+
+    public ICollection<Idea> Ideas { get; set; } = new List<Idea>();
+
+    /// <summary>
+    /// Whether Ideas auto-processing is currently running for this project
+    /// </summary>
+    public bool IdeasProcessingActive { get; set; }
 }
