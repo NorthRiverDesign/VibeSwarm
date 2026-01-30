@@ -168,7 +168,7 @@ else
         <div class="d-flex flex-wrap gap-2 flex-shrink-0">
             @if (CanRetry)
             {
-                @if (Job.Status == JobStatus.Failed)
+                @if (Job.Status == JobStatus.Failed || Job.Status == JobStatus.Cancelled)
                 {
                     <ActionButton Icon="arrow-repeat" Text="@(IsRetrying ? "Retrying..." : "Retry")"
                         Style="ActionButton.ButtonStyle.Primary" IsLoading="@IsRetrying" OnClick="ShowRetryModal" />
