@@ -202,7 +202,8 @@ using (var scope = app.Services.CreateScope())
     }
 }
 
-app.UseHttpsRedirection();
+// HTTPS redirection disabled - reverse proxy handles TLS termination
+// app.UseHttpsRedirection();
 app.UseSecurityHeaders();
 app.UseStaticFiles();
 app.UseRouting();
