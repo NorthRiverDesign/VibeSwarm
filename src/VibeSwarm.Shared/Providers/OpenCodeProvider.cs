@@ -158,10 +158,10 @@ public class OpenCodeProvider : CliProviderBase
         var result = new ExecutionResult { Messages = new List<ExecutionMessage>() };
         var effectiveWorkingDir = workingDirectory ?? WorkingDirectory ?? Environment.CurrentDirectory;
 
-        // Build arguments for opencode non-interactive mode
-        // Using --prompt for non-interactive mode which runs a single prompt and exits
+        // Build arguments for opencode non-interactive mode using 'run' subcommand
+        // Syntax: opencode run [message..]
         // Working directory is set via ProcessStartInfo.WorkingDirectory in CreateCliProcess
-        var args = new List<string>();
+        var args = new List<string> { "run" };
 
         // Continue a specific session if provided
         if (!string.IsNullOrEmpty(sessionId))
@@ -181,8 +181,7 @@ public class OpenCodeProvider : CliProviderBase
             args.AddRange(CurrentAdditionalArgs);
         }
 
-        // Add the prompt using --prompt flag for non-interactive mode
-        args.Add("--prompt");
+        // Add the prompt message as the final argument
         args.Add($"\"{EscapeCliArgument(prompt)}\"");
 
         var fullArguments = string.Join(" ", args);
@@ -557,13 +556,13 @@ public class OpenCodeProvider : CliProviderBase
             throw new InvalidOperationException("OpenCode executable path is not configured.");
         }
 
-        // Build arguments for non-interactive mode
-        var argsList = new List<string>();
+        // Build arguments for non-interactive mode using 'run' subcommand
+        var argsList = new List<string> { "run" };
         if (!string.IsNullOrEmpty(sessionId))
         {
             argsList.AddRange(new[] { "--session", sessionId });
         }
-        argsList.Add("--prompt");
+        // Add the prompt message as the final argument
         argsList.Add($"\"{EscapeCliArgument(prompt)}\"");
 
         var startInfo = new ProcessStartInfo
@@ -807,7 +806,8 @@ public class OpenCodeProvider : CliProviderBase
                 return PromptResponse.Fail("OpenCode executable path is not configured.");
             }
 
-            var args = $"--prompt \"{EscapeCliArgument(prompt)}\"";
+            // Use 'run' subcommand for non-interactive mode
+            var args = $"run \"{EscapeCliArgument(prompt)}\"";
             return await ExecuteSimplePromptAsync(execPath, args, "OpenCode", workingDirectory, cancellationToken);
         }
         else
