@@ -368,6 +368,17 @@ public class OpenCodeProvider : CliProviderBase
             };
         }
 
+        // Close stdin to signal the CLI that no interactive input is coming.
+        // Many CLI tools (including OpenCode) wait for stdin to close before processing.
+        try
+        {
+            process.StandardInput.Close();
+        }
+        catch
+        {
+            // Ignore if stdin is already closed
+        }
+
         result.ProcessId = process.Id;
         result.CommandUsed = fullCommand;
         ReportProcessStarted(process.Id, progress, fullCommand);
@@ -738,6 +749,17 @@ public class OpenCodeProvider : CliProviderBase
 
         using var process = new Process { StartInfo = startInfo };
         process.Start();
+
+        // Close stdin to signal the CLI that no interactive input is coming.
+        // Many CLI tools (including OpenCode) wait for stdin to close before processing.
+        try
+        {
+            process.StandardInput.Close();
+        }
+        catch
+        {
+            // Ignore if stdin is already closed
+        }
 
         var output = await process.StandardOutput.ReadToEndAsync(cancellationToken);
         var error = await process.StandardError.ReadToEndAsync(cancellationToken);
