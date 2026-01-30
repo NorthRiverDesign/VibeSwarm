@@ -112,6 +112,12 @@ public class Job
     public int? ProcessId { get; set; }
 
     /// <summary>
+    /// The exact CLI command used to execute this job (for debugging and transparency)
+    /// </summary>
+    [StringLength(4000)]
+    public string? CommandUsed { get; set; }
+
+    /// <summary>
     /// Priority level for job scheduling (higher = more urgent)
     /// </summary>
     public int Priority { get; set; } = 0;

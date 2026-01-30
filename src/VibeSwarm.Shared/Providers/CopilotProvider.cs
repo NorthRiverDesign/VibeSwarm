@@ -97,7 +97,10 @@ public class CopilotProvider : CliProviderBase
             args.AddRange(CurrentAdditionalArgs);
         }
 
-        using var process = CreateCliProcess(execPath, string.Join(" ", args), effectiveWorkingDir);
+        var fullArguments = string.Join(" ", args);
+        var fullCommand = $"{execPath} {fullArguments}";
+
+        using var process = CreateCliProcess(execPath, fullArguments, effectiveWorkingDir);
 
         var outputBuilder = new List<string>();
         var errorBuilder = new System.Text.StringBuilder();
@@ -129,7 +132,8 @@ public class CopilotProvider : CliProviderBase
         }
 
         result.ProcessId = process.Id;
-        ReportProcessStarted(process.Id, progress);
+        result.CommandUsed = fullCommand;
+        ReportProcessStarted(process.Id, progress, fullCommand);
 
         // Start initialization monitor
         using var initMonitorCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);

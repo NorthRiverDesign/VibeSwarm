@@ -97,6 +97,11 @@ public class ExecutionResult
     public int? ProcessId { get; set; }
 
     /// <summary>
+    /// The full CLI command that was executed (for debugging and transparency)
+    /// </summary>
+    public string? CommandUsed { get; set; }
+
+    /// <summary>
     /// True if the execution was paused due to an interaction request
     /// </summary>
     public bool IsPaused { get; set; }
@@ -165,6 +170,11 @@ public class ExecutionProgress
     /// Process ID (reported once when process starts)
     /// </summary>
     public int? ProcessId { get; set; }
+
+    /// <summary>
+    /// The full CLI command being executed (reported once when process starts)
+    /// </summary>
+    public string? CommandUsed { get; set; }
 
     /// <summary>
     /// Raw output line from the CLI process (for streaming to UI)

@@ -65,6 +65,11 @@ public class JobProcessingService : BackgroundService
         public Guid ProviderId { get; set; }
 
         /// <summary>
+        /// The full CLI command used to execute this job
+        /// </summary>
+        public string? CommandUsed { get; set; }
+
+        /// <summary>
         /// Accumulates console output during execution for storage in the database
         /// </summary>
         public StringBuilder ConsoleOutputBuffer { get; } = new StringBuilder();
@@ -551,14 +556,15 @@ public class JobProcessingService : BackgroundService
             // that fires updates in the background with proper scoping to avoid DbContext disposal issues
             var progress = new Progress<ExecutionProgress>(p =>
             {
-                // Capture and store process ID as soon as it's reported
+                // Capture and store process ID and command as soon as they're reported
                 if (p.ProcessId.HasValue && !executionContext.ProcessId.HasValue)
                 {
                     executionContext.ProcessId = p.ProcessId.Value;
-                    _logger.LogInformation("Captured process ID {ProcessId} for job {JobId}",
-                        p.ProcessId.Value, job.Id);
+                    executionContext.CommandUsed = p.CommandUsed;
+                    _logger.LogInformation("Captured process ID {ProcessId} for job {JobId}. Command: {Command}",
+                        p.ProcessId.Value, job.Id, p.CommandUsed ?? "(unknown)");
 
-                    // Notify UI about process start
+                    // Notify UI about process start with full command
                     _ = Task.Run(async () =>
                     {
                         try
@@ -566,13 +572,13 @@ public class JobProcessingService : BackgroundService
                             if (_jobUpdateService != null)
                             {
                                 await _jobUpdateService.NotifyProcessStarted(job.Id, p.ProcessId.Value,
-                                    $"{job.Provider?.Type} CLI");
+                                    p.CommandUsed ?? $"{job.Provider?.Type} CLI");
                             }
                         }
                         catch { }
                     });
 
-                    // Store process ID in database immediately
+                    // Store process ID and command in database immediately
                     _ = Task.Run(async () =>
                     {
                         try
@@ -583,14 +589,15 @@ public class JobProcessingService : BackgroundService
                             if (jobForPid != null)
                             {
                                 jobForPid.ProcessId = p.ProcessId.Value;
+                                jobForPid.CommandUsed = p.CommandUsed;
                                 await pidDbContext.SaveChangesAsync(CancellationToken.None);
-                                _logger.LogDebug("Stored process ID {ProcessId} in database for job {JobId}",
+                                _logger.LogDebug("Stored process ID {ProcessId} and command in database for job {JobId}",
                                     p.ProcessId.Value, job.Id);
                             }
                         }
                         catch (Exception ex)
                         {
-                            _logger.LogWarning(ex, "Failed to store process ID for job {JobId}", job.Id);
+                            _logger.LogWarning(ex, "Failed to store process ID/command for job {JobId}", job.Id);
                         }
                     });
                 }

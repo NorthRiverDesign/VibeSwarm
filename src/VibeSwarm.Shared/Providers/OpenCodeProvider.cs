@@ -158,8 +158,16 @@ public class OpenCodeProvider : CliProviderBase
         var result = new ExecutionResult { Messages = new List<ExecutionMessage>() };
         var effectiveWorkingDir = workingDirectory ?? WorkingDirectory ?? Environment.CurrentDirectory;
 
-        // Build arguments for opencode run command
-        var args = new List<string> { "run" };
+        // Build arguments for opencode non-interactive mode
+        // Using -p for prompt mode which runs a single prompt and exits
+        // Per OpenCode docs: opencode -p "prompt"
+        var args = new List<string>();
+
+        // Set working directory via -c flag if not the current directory
+        if (!string.IsNullOrEmpty(effectiveWorkingDir) && effectiveWorkingDir != Environment.CurrentDirectory)
+        {
+            args.AddRange(new[] { "-c", $"\"{effectiveWorkingDir}\"" });
+        }
 
         if (!string.IsNullOrEmpty(sessionId))
         {
@@ -178,10 +186,14 @@ public class OpenCodeProvider : CliProviderBase
             args.AddRange(CurrentAdditionalArgs);
         }
 
-        args.Add("--");
-        args.Add(EscapeCliArgument(prompt));
+        // Add the prompt using -p flag for non-interactive mode
+        args.Add("-p");
+        args.Add($"\"{EscapeCliArgument(prompt)}\"");
 
-        using var process = CreateCliProcess(execPath, string.Join(" ", args), effectiveWorkingDir);
+        var fullArguments = string.Join(" ", args);
+        var fullCommand = $"{execPath} {fullArguments}";
+
+        using var process = CreateCliProcess(execPath, fullArguments, effectiveWorkingDir);
 
         var outputBuilder = new List<string>();
         var errorBuilder = new System.Text.StringBuilder();
@@ -272,7 +284,8 @@ public class OpenCodeProvider : CliProviderBase
         }
 
         result.ProcessId = process.Id;
-        ReportProcessStarted(process.Id, progress);
+        result.CommandUsed = fullCommand;
+        ReportProcessStarted(process.Id, progress, fullCommand);
 
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
@@ -549,13 +562,14 @@ public class OpenCodeProvider : CliProviderBase
             throw new InvalidOperationException("OpenCode executable path is not configured.");
         }
 
-        var argsList = new List<string> { "run" };
+        // Build arguments for non-interactive mode
+        var argsList = new List<string>();
         if (!string.IsNullOrEmpty(sessionId))
         {
             argsList.AddRange(new[] { "-s", sessionId });
         }
-        argsList.Add("--");
-        argsList.Add(EscapeCliArgument(prompt));
+        argsList.Add("-p");
+        argsList.Add($"\"{EscapeCliArgument(prompt)}\"");
 
         var startInfo = new ProcessStartInfo
         {

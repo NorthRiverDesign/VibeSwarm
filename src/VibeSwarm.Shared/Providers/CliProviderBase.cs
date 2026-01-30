@@ -322,12 +322,13 @@ public abstract class CliProviderBase : ProviderBase
 	/// <summary>
 	/// Reports process startup progress to the UI.
 	/// </summary>
-	protected void ReportProcessStarted(int processId, IProgress<ExecutionProgress>? progress)
+	protected void ReportProcessStarted(int processId, IProgress<ExecutionProgress>? progress, string? fullCommand = null)
 	{
 		progress?.Report(new ExecutionProgress
 		{
 			CurrentMessage = "CLI process started successfully",
 			ProcessId = processId,
+			CommandUsed = fullCommand,
 			IsStreaming = false
 		});
 

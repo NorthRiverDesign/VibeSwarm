@@ -133,6 +133,37 @@ else
                     }
                 </div>
             }
+            @* Command Display - Show the CLI command used *@
+            @if (!string.IsNullOrEmpty(Job.CommandUsed) || !string.IsNullOrEmpty(_liveCommand))
+            {
+                var displayCommand = !string.IsNullOrEmpty(_liveCommand) ? _liveCommand : Job.CommandUsed;
+                <div class="mt-2 pt-2 border-top border-secondary border-opacity-25">
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                        <button type="button" class="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1"
+                            @onclick="() => ToggleCommandDisplay()" title="@(_showFullCommand ? "Hide command" : "Show command")">
+                            <i class="bi bi-terminal"></i>
+                            <span class="d-none d-sm-inline">Command</span>
+                            <i class="bi @(_showFullCommand ? "bi-chevron-up" : "bi-chevron-down") ms-1 small"></i>
+                        </button>
+                        @if (!_showFullCommand)
+                        {
+                            <code class="small text-truncate flex-grow-1" style="max-width: 400px;" title="@displayCommand">
+                                @TruncateCommand(displayCommand!, 60)
+                            </code>
+                        }
+                        <button type="button" class="btn btn-sm btn-link text-body-secondary p-0"
+                            @onclick="() => CopyCommandToClipboard(displayCommand!)" title="Copy command">
+                            <i class="bi bi-clipboard"></i>
+                        </button>
+                    </div>
+                    @if (_showFullCommand)
+                    {
+                        <div class="mt-2 p-2 bg-body-tertiary rounded border">
+                            <code class="small d-block text-break" style="white-space: pre-wrap; word-break: break-all;">@displayCommand</code>
+                        </div>
+                    }
+                </div>
+            }
         </div>
         <div class="d-flex flex-wrap gap-2 flex-shrink-0">
             @if (CanRetry)
@@ -814,6 +845,10 @@ else
     // Toggle states for collapsible sections
     private bool _showConsoleOutput = false;
     private bool _showGitDiff = true; // Show by default since it's usually the most interesting part
+    private bool _showFullCommand = false; // Command display toggle
+
+    // Live command from SignalR (for running jobs)
+    private string? _liveCommand = null;
 
     // Git diff accordion state
     private List<DiffFile> _parsedDiffFiles = new();
@@ -1201,10 +1236,15 @@ new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
     [JSInvokable]
     public async Task OnProcessStarted(string jobId, int processId, string command)
     {
-        Console.WriteLine($"[Blazor] OnProcessStarted: {jobId}, PID: {processId}");
+        Console.WriteLine($"[Blazor] OnProcessStarted: {jobId}, PID: {processId}, Command: {command}");
         if (Job != null)
         {
             Job.ProcessId = processId;
+            _liveCommand = command;
+            if (string.IsNullOrEmpty(Job.CommandUsed))
+            {
+                Job.CommandUsed = command;
+            }
             await InvokeAsync(StateHasChanged);
         }
     }
@@ -1623,6 +1663,31 @@ new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
     private void ToggleGitDiff()
     {
         _showGitDiff = !_showGitDiff;
+    }
+
+    private void ToggleCommandDisplay()
+    {
+        _showFullCommand = !_showFullCommand;
+    }
+
+    private async Task CopyCommandToClipboard(string command)
+    {
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", command);
+            NotificationService.ShowSuccess("Command copied to clipboard!", "Copied");
+        }
+        catch (Exception ex)
+        {
+            NotificationService.ShowError($"Failed to copy to clipboard: {ex.Message}", "Copy Failed");
+        }
+    }
+
+    private static string TruncateCommand(string command, int maxLength)
+    {
+        if (string.IsNullOrEmpty(command) || command.Length <= maxLength)
+            return command;
+        return command[..maxLength] + "...";
     }
 
     private void ShowFullPromptModal()
