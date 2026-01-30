@@ -215,6 +215,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapAuthEndpoints();
+app.MapCertificateEndpoints();
 app.MapRazorPages();
 app.MapBlazorHub();
 app.MapHub<JobHub>("/jobhub");

@@ -20,6 +20,7 @@ public class SetupRequiredMiddleware
 		"/img/",
 		"/fonts/",
 		"/favicon",
+		"/cert",
 		"/_framework/",
 		"/_blazor"
 	};
