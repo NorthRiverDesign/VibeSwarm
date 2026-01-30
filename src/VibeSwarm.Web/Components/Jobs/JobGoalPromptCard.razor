@@ -65,12 +65,13 @@
 		{
 			@if (IsEditable && _isEditing)
 			{
-				<textarea class="form-control goal-prompt-textarea" @bind="_editedPrompt" rows="6"
-					placeholder="Enter the goal prompt for the AI agent..."></textarea>
+				<textarea class="form-control lh-base" style="min-height: 150px; resize: vertical;" @bind="_editedPrompt"
+					rows="6" placeholder="Enter the goal prompt for the AI agent..."></textarea>
 			}
 			else
 			{
-				<div class="goal-prompt-box">@GoalPrompt</div>
+				<div class="bg-body-tertiary p-3 rounded lh-base" style="white-space: pre-wrap; word-break: break-word;">
+					@GoalPrompt</div>
 			}
 		}
 		else if (_activeTab == "command")
@@ -92,36 +93,38 @@
 		{
 			<div>
 				<h6 class="text-danger mb-2"><i class="bi bi-exclamation-triangle me-1"></i>Error</h6>
-				<pre class="error-output">@ErrorMessage</pre>
+				<pre class="bg-danger bg-opacity-10 border border-danger border-opacity-25 p-3 rounded font-monospace small m-0 text-danger overflow-auto"
+					style="white-space: pre-wrap;">@ErrorMessage</pre>
 			</div>
 		}
 
 		@if (Status == JobStatus.Cancelled)
 		{
-			<div class="info-section">
-				<h6>Job Cancelled</h6>
-				<p class="mb-0">This job was cancelled. You can edit the prompt and retry.</p>
+			<div class="bg-info bg-opacity-10 border border-info border-opacity-25 rounded p-3">
+				<h6 class="text-info mb-2">Job Cancelled</h6>
+				<p class="mb-0 text-secondary">This job was cancelled. You can edit the prompt and retry.</p>
 			</div>
 		}
 		else if (Status == JobStatus.Failed && CanRetry)
 		{
-			<div class="info-section">
-				<h6>Job Failed</h6>
+			<div class="bg-info bg-opacity-10 border border-info border-opacity-25 rounded p-3">
+				<h6 class="text-info mb-2">Job Failed</h6>
 				@if (string.IsNullOrEmpty(ErrorMessage) && HasConsoleOutput)
 				{
-					<p class="mb-0">Check the console output for details. You can edit the prompt and retry.</p>
+					<p class="mb-0 text-secondary">Check the console output for details. You can edit the prompt and retry.</p>
 				}
 				else
 				{
-					<p class="mb-0">You can edit the prompt and retry.</p>
+					<p class="mb-0 text-secondary">You can edit the prompt and retry.</p>
 				}
 			</div>
 		}
 		else if (Status == JobStatus.New)
 		{
-			<div class="info-section">
-				<h6>Pending Execution</h6>
-				<p class="mb-0">This job is queued for processing. You can edit the prompt before it starts.</p>
+			<div class="bg-info bg-opacity-10 border border-info border-opacity-25 rounded p-3">
+				<h6 class="text-info mb-2">Pending Execution</h6>
+				<p class="mb-0 text-secondary">This job is queued for processing. You can edit the prompt before it starts.
+				</p>
 			</div>
 		}
 	</div>
@@ -140,7 +143,8 @@
 					<button type="button" class="btn-close" @onclick="CloseModal" aria-label="Close"></button>
 				</div>
 				<div class="modal-body">
-					<pre class="full-prompt-content">@GoalPrompt</pre>
+					<pre class="bg-body-tertiary border rounded p-3 overflow-auto lh-base m-0"
+						style="white-space: pre-wrap; word-break: break-word; max-height: 60vh;">@GoalPrompt</pre>
 				</div>
 				<div class="modal-footer">
 					<button type="button" class="btn btn-outline-secondary" @onclick="CopyToClipboard">

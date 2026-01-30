@@ -1,24 +1,30 @@
 /* ============================================
-   VibeSwarm - Application Styles
+   VibeSwarm - Application Styles (Minimized)
    ============================================
    
-   This file contains app-specific styles that cannot be achieved 
-   with Bootstrap utility classes alone. Following the Bootstrap-first
-   approach, prefer using Bootstrap utilities in Razor components.
+   This file contains ONLY styles that cannot be achieved with Bootstrap.
+   All padding, margin, colors, flexbox, and common utilities should use 
+   Bootstrap classes directly in Razor components.
    
    Organization:
-   1. CSS Variables (App-specific theming)
-   2. Base Styles (Typography, body)
-   3. Layout (App shell, header, sidebar, main)
-   4. Utility Classes (Bootstrap extensions)
-   5. Domain-Specific Components (Git, Chat, Console)
-   6. Responsive & PWA Optimizations
+   1. CSS Variables (App-specific theming & PWA safe areas)
+   2. App Layout Shell (PWA-optimized positioning)
+   3. Navigation (Custom nav styling with active states)
+   4. Utility Classes (Bootstrap extensions that don't exist)
+   5. Console/Terminal Output (Specialized monospace styling)
+   6. Git Diff Viewer (Syntax highlighting)
+   7. Chat/Message Bubbles (iMessage-style specialized UI)
+   8. Toggle Switch (Custom form control)
+   9. Jobs Inbox Layout (Complex responsive layout)
+   10. Modal System (PWA-optimized)
+   11. Toast Container (Safe area aware)
+   12. Responsive Overrides
+   13. PWA & Touch Optimizations
    
 ============================================ */
 
 /* ============================================
    1. CSS VARIABLES
-   App-specific theming that extends Bootstrap
 ============================================ */
 :root {
     /* Layout dimensions */
@@ -43,7 +49,7 @@
 }
 
 /* ============================================
-   2. BASE STYLES
+   2. APP LAYOUT SHELL (PWA-optimized)
 ============================================ */
 html {
     font-size: 16px;
@@ -56,19 +62,12 @@ body {
     padding-right: var(--vs-safe-area-right);
 }
 
-/* ============================================
-   3. APP LAYOUT STRUCTURE
-   Core application shell components
-============================================ */
-
-/* --- App Container --- */
 .app-layout {
     min-height: 100vh;
     display: flex;
     flex-direction: column;
 }
 
-/* --- Mobile Header --- */
 .app-header {
     position: fixed;
     top: 0;
@@ -115,9 +114,7 @@ body {
     font-size: 1.125rem;
 }
 
-.app-brand:hover {
-    color: var(--bs-emphasis-color);
-}
+.app-brand:hover { color: var(--bs-emphasis-color); }
 
 .brand-icon {
     width: 24px;
@@ -125,11 +122,6 @@ body {
     object-fit: contain;
 }
 
-.header-actions {
-    margin-left: auto;
-}
-
-/* --- Sidebar Navigation --- */
 .app-sidebar {
     position: fixed;
     top: calc(var(--vs-header-height) + var(--vs-safe-area-top));
@@ -148,9 +140,7 @@ body {
     padding-left: var(--vs-safe-area-left);
 }
 
-.app-sidebar.open {
-    transform: translateX(0);
-}
+.app-sidebar.open { transform: translateX(0); }
 
 .sidebar-overlay {
     position: fixed;
@@ -162,25 +152,48 @@ body {
     z-index: 998;
 }
 
-.sidebar-header {
-    padding: 1.5rem;
-    border-bottom: 1px solid var(--bs-border-color);
-}
-
-.sidebar-nav {
+.app-main {
     flex: 1;
-    padding: 1rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
+    margin-top: calc(var(--vs-header-height) + var(--vs-safe-area-top));
+    min-height: calc(100vh - var(--vs-header-height) - var(--vs-safe-area-top));
+    padding-bottom: var(--vs-safe-area-bottom);
 }
 
-.sidebar-footer {
+.main-content {
     padding: 1rem;
-    border-top: 1px solid var(--bs-border-color);
+    padding-left: calc(1rem + var(--vs-safe-area-left));
+    padding-right: calc(1rem + var(--vs-safe-area-right));
+    max-width: 100%;
 }
 
-/* --- Navigation Items --- */
+/* Desktop Layout */
+@media (min-width: 992px) {
+    .app-layout { flex-direction: row; }
+
+    .app-sidebar {
+        position: fixed;
+        top: 0;
+        transform: translateX(0);
+        padding-top: var(--vs-safe-area-top);
+    }
+
+    .app-main {
+        margin-top: var(--vs-safe-area-top);
+        margin-left: var(--vs-sidebar-width);
+        min-height: calc(100vh - var(--vs-safe-area-top));
+    }
+
+    .main-content {
+        padding: 1.5rem 2rem;
+        padding-right: calc(2rem + var(--vs-safe-area-right));
+        max-width: 1400px;
+        margin-inline: auto;
+    }
+}
+
+/* ============================================
+   3. NAVIGATION (Custom active states)
+============================================ */
 .nav-item {
     display: flex;
     align-items: center;
@@ -209,59 +222,11 @@ body {
     color: var(--vs-accent-blue);
 }
 
-/* --- Main Content Area --- */
-.app-main {
-    flex: 1;
-    margin-top: calc(var(--vs-header-height) + var(--vs-safe-area-top));
-    min-height: calc(100vh - var(--vs-header-height) - var(--vs-safe-area-top));
-    padding-bottom: var(--vs-safe-area-bottom);
-}
-
-.main-content {
-    padding: 1rem;
-    padding-left: calc(1rem + var(--vs-safe-area-left));
-    padding-right: calc(1rem + var(--vs-safe-area-right));
-    max-width: 100%;
-}
-
-/* --- Desktop Layout --- */
-@media (min-width: 992px) {
-    .app-layout {
-        flex-direction: row;
-    }
-
-    .app-sidebar {
-        position: fixed;
-        top: 0;
-        transform: translateX(0);
-        padding-top: var(--vs-safe-area-top);
-    }
-
-    .app-main {
-        margin-top: var(--vs-safe-area-top);
-        margin-left: var(--vs-sidebar-width);
-        min-height: calc(100vh - var(--vs-safe-area-top));
-    }
-
-    .main-content {
-        padding: 1.5rem 2rem;
-        padding-right: calc(2rem + var(--vs-safe-area-right));
-        max-width: 1400px;
-        margin-inline: auto;
-    }
-}
-
 /* ============================================
-   4. UTILITY CLASSES
-   Bootstrap extensions (utilities not provided by Bootstrap)
+   4. UTILITY CLASSES (Bootstrap extensions)
 ============================================ */
+.cursor-pointer { cursor: pointer; }
 
-/* Cursor pointer - Bootstrap doesn't have this */
-.cursor-pointer {
-    cursor: pointer;
-}
-
-/* Card hover effects */
 .project-card-hover,
 .job-card-hover {
     transition: all var(--vs-transition);
@@ -273,15 +238,8 @@ body {
     box-shadow: var(--bs-box-shadow);
 }
 
-/* Hover background */
-.hover-bg-tertiary:hover {
-    background: var(--bs-tertiary-bg);
-}
-
-/* Hover underline */
-.hover-underline:hover {
-    text-decoration: underline !important;
-}
+.hover-bg-tertiary:hover { background: var(--bs-tertiary-bg); }
+.hover-underline:hover { text-decoration: underline !important; }
 
 /* Multi-line text truncation (Bootstrap only has single-line) */
 .text-truncate-lines-2 {
@@ -298,15 +256,11 @@ body {
     overflow: hidden;
 }
 
-/* Min-width utility */
-.min-width-0 {
-    min-width: 0;
-}
+/* Critical for flex truncation - Bootstrap lacks this */
+.min-width-0 { min-width: 0; }
 
-/* Spin animation for loading icons */
-.spin {
-    animation: spin 1s linear infinite;
-}
+/* Loading spinner animation */
+.spin { animation: spin 1s linear infinite; }
 
 @keyframes spin {
     0% { transform: rotate(0deg); }
@@ -328,18 +282,15 @@ body {
     50% { opacity: 0.5; transform: scale(0.9); }
 }
 
-/* Alert accent borders enhancement */
+/* Alert accent borders */
 .alert-danger { border-left: 3px solid var(--vs-accent-red); }
 .alert-success { border-left: 3px solid var(--vs-accent-green); }
 .alert-warning { border-left: 3px solid var(--vs-accent-orange); }
 .alert-info { border-left: 3px solid var(--vs-accent-blue); }
 
 /* ============================================
-   5. DOMAIN-SPECIFIC COMPONENTS
-   Styles for specialized UI that Bootstrap doesn't cover
+   5. CONSOLE/TERMINAL OUTPUT
 ============================================ */
-
-/* --- Console / Terminal Output --- */
 .console-output-box,
 .live-output-container {
     background: #0d1117;
@@ -362,9 +313,7 @@ body {
     margin: 0;
 }
 
-.live-output-container {
-    max-height: 300px;
-}
+.live-output-container { max-height: 300px; }
 
 .output-line {
     display: flex;
@@ -374,9 +323,7 @@ body {
     word-break: break-word;
 }
 
-.output-line:hover {
-    background: rgba(255, 255, 255, 0.05);
-}
+.output-line:hover { background: rgba(255, 255, 255, 0.05); }
 
 .output-time {
     color: #8b949e;
@@ -384,11 +331,11 @@ body {
     font-size: 0.8rem;
 }
 
-.output-error .output-text {
-    color: var(--vs-accent-red);
-}
+.output-error .output-text { color: var(--vs-accent-red); }
 
-/* --- Git Diff Viewer --- */
+/* ============================================
+   6. GIT DIFF VIEWER
+============================================ */
 .diff-container {
     background: #0d1117;
     color: #e6edf3;
@@ -403,10 +350,7 @@ body {
     overscroll-behavior: contain;
 }
 
-.diff-container > div {
-    padding: 0.1rem 0.5rem;
-    white-space: pre;
-}
+.diff-container > div { padding: 0.1rem 0.5rem; white-space: pre; }
 
 .diff-header { color: var(--vs-accent-blue); font-weight: bold; margin-top: 0.5rem; }
 .diff-file-header { color: var(--vs-accent-green); font-weight: bold; }
@@ -436,9 +380,7 @@ body {
     border-bottom: 1px solid var(--bs-border-color);
 }
 
-#diffAccordion .accordion-item:last-child {
-    border-bottom: none;
-}
+#diffAccordion .accordion-item:last-child { border-bottom: none; }
 
 #diffAccordion .accordion-button {
     padding: 0.5rem 1rem;
@@ -447,11 +389,11 @@ body {
     box-shadow: none;
 }
 
-#diffAccordion .accordion-body {
-    padding: 0;
-}
+#diffAccordion .accordion-body { padding: 0; }
 
-/* --- Chat/Conversation Bubbles (iMessage-style) --- */
+/* ============================================
+   7. CHAT/MESSAGE BUBBLES (iMessage-style)
+============================================ */
 .chat-messages-container {
     display: flex;
     flex-direction: column;
@@ -467,28 +409,11 @@ body {
     max-width: 85%;
 }
 
-.chat-message-user {
-    align-self: flex-end;
-    align-items: flex-end;
-}
-
-.chat-message-assistant {
-    align-self: flex-start;
-    align-items: flex-start;
-}
-
-.chat-message-system {
-    align-self: center;
-    align-items: center;
-    max-width: 90%;
-}
-
+.chat-message-user { align-self: flex-end; align-items: flex-end; }
+.chat-message-assistant { align-self: flex-start; align-items: flex-start; }
+.chat-message-system { align-self: center; align-items: center; max-width: 90%; }
 .chat-message-tooluse,
-.chat-message-toolresult {
-    align-self: flex-start;
-    align-items: flex-start;
-    margin-left: 1rem;
-}
+.chat-message-toolresult { align-self: flex-start; align-items: flex-start; margin-left: 1rem; }
 
 .chat-bubble {
     padding: 0.75rem 1rem;
@@ -540,17 +465,8 @@ body {
     line-height: 1.5;
 }
 
-.chat-tool-info {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-}
-
-.chat-tool-header {
-    font-weight: 600;
-    font-size: 0.8rem;
-    opacity: 0.9;
-}
+.chat-tool-info { display: flex; flex-direction: column; gap: 0.5rem; }
+.chat-tool-header { font-weight: 600; font-size: 0.8rem; opacity: 0.9; }
 
 .chat-tool-code {
     margin: 0;
@@ -577,7 +493,7 @@ body {
 .chat-role { font-weight: 500; }
 .chat-time { opacity: 0.8; }
 
-/* Legacy message format (kept for compatibility) */
+/* Legacy message format */
 .message {
     border-radius: var(--bs-border-radius);
     padding: 1rem;
@@ -590,11 +506,7 @@ body {
 .message-tooluse { background: rgba(163, 113, 247, 0.1); border-left-color: var(--vs-accent-purple); }
 .message-toolresult { background: rgba(63, 185, 80, 0.05); border-left-color: var(--vs-accent-green); }
 
-.message-text {
-    margin: 0;
-    white-space: pre-wrap;
-    word-break: break-word;
-}
+.message-text { margin: 0; white-space: pre-wrap; word-break: break-word; }
 
 .tool-input, .tool-output {
     margin: 0.5rem 0 0 0;
@@ -609,7 +521,9 @@ body {
     overflow-y: auto;
 }
 
-/* --- Toggle Switch (Custom form control) --- */
+/* ============================================
+   8. TOGGLE SWITCH (Custom form control)
+============================================ */
 .toggle-switch {
     position: relative;
     display: inline-block;
@@ -618,11 +532,7 @@ body {
     cursor: pointer;
 }
 
-.toggle-switch input {
-    opacity: 0;
-    width: 0;
-    height: 0;
-}
+.toggle-switch input { opacity: 0; width: 0; height: 0; }
 
 .toggle-slider {
     position: absolute;
@@ -645,280 +555,82 @@ body {
     transition: var(--vs-transition);
 }
 
-.toggle-switch input:checked + .toggle-slider {
-    background: var(--vs-accent-green);
-}
+.toggle-switch input:checked + .toggle-slider { background: var(--vs-accent-green); }
+.toggle-switch input:checked + .toggle-slider::before { transform: translateX(20px); }
 
-.toggle-switch input:checked + .toggle-slider::before {
-    transform: translateX(20px);
-}
-
-/* --- Status Pills & Badges --- */
-.stat-pill {
-    display: inline-flex;
-    align-items: center;
-    padding: 0.25rem 0.6rem;
-    background: var(--bs-tertiary-bg);
-    border-radius: 1rem;
-    color: var(--bs-body-color);
-    font-size: 0.8rem;
-    white-space: nowrap;
-}
-
-.stat-pill-cost {
-    background: rgba(63, 185, 80, 0.15);
-    color: var(--vs-accent-green);
-    font-weight: 500;
-}
-
-.default-badge {
-    display: inline-flex;
-    align-items: center;
-    padding: 0.2em 0.5em;
-    font-size: 0.7rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.03em;
-    color: var(--vs-accent-green);
-    background: rgba(63, 185, 80, 0.15);
-    border-radius: var(--bs-border-radius-sm);
-}
-
-/* --- Git Branch Info --- */
-.branch-info {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    padding: 0.35rem 0.75rem;
-    background: rgba(63, 185, 80, 0.15);
-    border-radius: var(--bs-border-radius-sm);
-    font-size: 0.85rem;
-    color: var(--vs-accent-green);
-}
-
-/* --- Activity Indicator --- */
-.activity-indicator {
+/* ============================================
+   9. JOBS INBOX LAYOUT
+============================================ */
+.jobs-inbox-layout {
     display: flex;
-    align-items: center;
-    gap: 1rem;
-    padding: 1rem;
-    background: rgba(88, 166, 255, 0.1);
-    border-radius: var(--bs-border-radius);
-    border-left: 3px solid var(--vs-accent-blue);
+    flex-direction: column;
+    min-height: calc(100vh - var(--vs-header-height) - var(--vs-safe-area-top) - 2rem);
+    margin: -1rem;
+    margin-top: 0;
 }
 
-.activity-spinner {
-    width: 18px;
-    height: 18px;
-    border: 2px solid var(--bs-tertiary-bg);
-    border-top: 2px solid var(--vs-accent-blue);
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
+.jobs-project-sidebar {
+    width: 280px;
+    min-width: 280px;
+    max-width: 280px;
+    background: var(--bs-body-bg);
     flex-shrink: 0;
 }
 
-/* --- Empty State --- */
-.empty-state-container {
+.project-filter-item {
+    cursor: pointer;
+    color: var(--bs-body-color);
+    transition: all var(--vs-transition);
+    border-left: 3px solid transparent;
+}
+
+.project-filter-item:hover { background: var(--bs-tertiary-bg); }
+
+.project-filter-item.active {
+    background: rgba(88, 166, 255, 0.1);
+    border-left-color: var(--vs-accent-blue);
+    color: var(--vs-accent-blue);
+}
+
+.project-filter-item .badge { font-size: 0.7rem; }
+
+.jobs-list-panel {
+    min-width: 0;
+    background: var(--bs-body-bg);
+}
+
+.job-list-item {
+    cursor: pointer;
+    transition: background-color var(--vs-transition);
+    border-left: 3px solid transparent;
+}
+
+.job-list-item:hover { background: var(--bs-tertiary-bg); }
+
+.job-list-item.job-selected {
+    background: rgba(88, 166, 255, 0.1);
+    border-left-color: var(--vs-accent-blue);
+}
+
+.job-status-icon {
+    width: 24px;
+    min-width: 24px;
     display: flex;
-    flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 2rem 1.5rem;
-    text-align: center;
-    background: var(--bs-tertiary-bg);
-    border-radius: var(--bs-border-radius-lg);
-    min-height: 200px;
+    padding-top: 2px;
 }
 
-.empty-state-icon {
-    font-size: 3rem;
-    color: var(--bs-tertiary-color);
-    margin-bottom: 1rem;
-    opacity: 0.6;
-}
+.job-prompt { line-height: 1.4; }
+.job-stats { min-width: 100px; }
 
-.empty-state-content { max-width: 320px; }
-
-.empty-state-title {
-    font-size: 1.1rem;
-    font-weight: 600;
-    color: var(--bs-body-color);
-    margin-bottom: 0.5rem;
-}
-
-.empty-state-message {
-    font-size: 0.9rem;
-    color: var(--bs-secondary-color);
-    margin-bottom: 1rem;
-    line-height: 1.5;
-}
-
-.empty-state-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-    justify-content: center;
-}
-
-/* --- Form Elements --- */
-.commit-message-input {
+.job-detail-content {
     width: 100%;
-    padding: 0.5rem 1rem;
-    border: 1px solid var(--bs-border-color);
-    border-radius: var(--bs-border-radius);
-    font-family: inherit;
-    font-size: 0.9rem;
-    resize: vertical;
-    min-height: 80px;
-    transition: border-color var(--vs-transition), box-shadow var(--vs-transition);
-    background: var(--bs-tertiary-bg);
-    color: var(--bs-body-color);
+    overflow-x: hidden;
 }
 
-.commit-message-input:focus {
-    outline: none;
-    border-color: var(--vs-accent-blue);
-    box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.2);
-}
-
-.commit-message-input:disabled {
-    cursor: not-allowed;
-}
-
-.goal-prompt-box {
-    background: var(--bs-tertiary-bg);
-    padding: 1rem;
-    border-radius: var(--bs-border-radius);
-    white-space: pre-wrap;
-    word-break: break-word;
-    line-height: 1.6;
-}
-
-.goal-prompt-textarea {
-    min-height: 150px;
-    font-family: inherit;
-    line-height: 1.6;
-    resize: vertical;
-}
-
-.full-prompt-content {
-    background: var(--bs-tertiary-bg);
-    border: 1px solid var(--bs-border-color);
-    border-radius: var(--bs-border-radius);
-    padding: 1rem;
-    margin: 0;
-    white-space: pre-wrap;
-    word-break: break-word;
-    max-height: 60vh;
-    overflow-y: auto;
-    font-family: inherit;
-    font-size: 0.9rem;
-    line-height: 1.6;
-}
-
-/* --- Feedback States --- */
-.test-success {
-    color: var(--vs-accent-green);
-    padding: 0.5rem;
-    background: rgba(63, 185, 80, 0.1);
-    border-radius: var(--bs-border-radius-sm);
-}
-
-.test-failure {
-    color: var(--vs-accent-red);
-    padding: 0.5rem;
-    background: rgba(248, 81, 73, 0.1);
-    border-radius: var(--bs-border-radius-sm);
-}
-
-.push-error {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.5rem;
-    padding: 1rem;
-    background: rgba(248, 81, 73, 0.1);
-    border: 1px solid rgba(248, 81, 73, 0.3);
-    border-radius: var(--bs-border-radius);
-    color: var(--vs-accent-red);
-}
-
-.push-success {
-    display: flex;
-    align-items: flex-start;
-    gap: 1rem;
-    padding: 1rem;
-    background: rgba(63, 185, 80, 0.1);
-    border: 1px solid rgba(63, 185, 80, 0.3);
-    border-radius: var(--bs-border-radius);
-    color: var(--vs-accent-green);
-}
-
-.error-output {
-    background: rgba(248, 81, 73, 0.1);
-    border: 1px solid rgba(248, 81, 73, 0.3);
-    padding: 1rem;
-    border-radius: var(--bs-border-radius);
-    font-family: 'SF Mono', monospace;
-    font-size: 0.9rem;
-    color: var(--vs-accent-red);
-    white-space: pre-wrap;
-    overflow-x: auto;
-    margin: 0;
-}
-
-.info-section {
-    background: rgba(88, 166, 255, 0.1);
-    border: 1px solid rgba(88, 166, 255, 0.3);
-    border-radius: var(--bs-border-radius);
-    padding: 1rem;
-}
-
-.info-section h6 {
-    color: var(--vs-accent-blue);
-    margin: 0 0 0.5rem 0;
-}
-
-.info-section p {
-    margin: 0;
-    color: var(--bs-secondary-color);
-}
-
-/* --- Job List Items --- */
-.active-job-item {
-    background: var(--bs-tertiary-bg);
-    border-radius: var(--bs-border-radius-sm);
-    padding: 0.5rem;
-    margin-bottom: 0.25rem;
-    font-size: 0.9rem;
-}
-
-.active-job-item:last-child { margin-bottom: 0; }
-.active-job-item:hover { background: var(--bs-secondary-bg); }
-
-.job-activity {
-    color: var(--vs-accent-blue);
-    font-style: italic;
-    font-size: 0.85rem;
-}
-
-.job-error {
-    color: var(--vs-accent-red);
-    font-size: 0.9rem;
-    font-family: 'SF Mono', monospace;
-}
-
-.process-info {
-    font-family: 'SF Mono', monospace;
-    font-size: 0.8rem;
-    background: var(--bs-tertiary-bg);
-    padding: 0.1rem 0.4rem;
-    border-radius: var(--bs-border-radius-sm);
-}
-
-/* --- Nav Tabs (Card variant) --- */
-.nav-tabs-card {
-    background: transparent;
-}
+/* Nav tabs variant */
+.nav-tabs-card { background: transparent; }
 
 .nav-tabs-card .nav-link {
     border: none;
@@ -930,10 +642,7 @@ body {
     transition: opacity var(--vs-transition), border-color var(--vs-transition);
 }
 
-.nav-tabs-card .nav-link:hover {
-    border-color: transparent;
-    opacity: 1;
-}
+.nav-tabs-card .nav-link:hover { border-color: transparent; opacity: 1; }
 
 .nav-tabs-card .nav-link.active {
     border-color: transparent;
@@ -943,111 +652,26 @@ body {
     opacity: 1;
 }
 
-/* --- Filter Buttons --- */
-.filter-buttons {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-}
-
-/* --- Login Display --- */
-.login-display {
-    display: flex;
+/* Git branch info */
+.branch-info {
+    display: inline-flex;
     align-items: center;
-    justify-content: flex-end;
-    gap: 0.5rem;
-}
-
-.login-display .user-menu {
-    display: flex;
-    align-items: center;
-    gap: 0.25rem;
-}
-
-.login-display .user-info {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    color: var(--bs-secondary-color);
-    font-size: 0.95rem;
-}
-
-.login-display .user-name {
-    font-weight: 600;
-    color: var(--bs-emphasis-color);
-}
-
-.login-display .user-menu-toggle,
-.login-display .user-menu-toggle-mobile {
-    color: var(--bs-secondary-color);
-    line-height: 1;
-    transition: color 0.15s ease-in-out;
-}
-
-.login-display .user-menu-toggle { font-size: 1rem; }
-.login-display .user-menu-toggle-mobile { 
-    font-size: 1.25rem; 
-    display: flex;
-    align-items: center;
-}
-
-.login-display .user-menu-toggle:hover,
-.login-display .user-menu-toggle:focus,
-.login-display .user-menu-toggle-mobile:hover,
-.login-display .user-menu-toggle-mobile:focus {
-    color: var(--bs-emphasis-color);
-    text-decoration: none;
-}
-
-.login-display .user-menu-toggle-mobile .bi-chevron-down {
-    font-size: 0.65rem;
-    margin-left: 0.125rem;
-}
-
-.login-display .dropdown-menu {
-    min-width: 10rem;
-    box-shadow: var(--bs-box-shadow);
-}
-
-.login-display .dropdown-item {
-    display: flex;
-    align-items: center;
-}
-
-.login-display .dropdown-header {
-    font-size: 0.875rem;
-    color: var(--bs-emphasis-color);
+    gap: 0.35rem;
+    padding: 0.35rem 0.75rem;
+    background: rgba(63, 185, 80, 0.15);
+    border-radius: var(--bs-border-radius-sm);
+    font-size: 0.85rem;
+    color: var(--vs-accent-green);
 }
 
 /* ============================================
-   6. MODAL SYSTEM (PWA-Optimized)
+   10. MODAL SYSTEM (PWA-Optimized)
 ============================================ */
-
-/* Lock body scroll when modal is open */
 body.vs-modal-open {
     overflow: hidden !important;
     position: fixed;
     width: 100%;
     height: 100%;
-}
-
-.modal-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0, 0, 0, 0.6);
-    backdrop-filter: blur(4px);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 1050;
-    padding: 1rem;
-    padding-top: calc(1rem + var(--vs-safe-area-top));
-    padding-bottom: calc(1rem + var(--vs-safe-area-bottom));
-    padding-left: calc(1rem + var(--vs-safe-area-left));
-    padding-right: calc(1rem + var(--vs-safe-area-right));
 }
 
 .vs-modal-container {
@@ -1083,19 +707,12 @@ body.vs-modal-open {
     pointer-events: none;
 }
 
-.vs-modal-content {
-    pointer-events: auto;
-}
+.vs-modal-content { pointer-events: auto; }
 
-.modal-dialog-centered {
-    width: 100%;
-    max-width: 400px;
-    animation: modalFadeIn 0.2s ease-out;
-}
-
-.logout-dialog {
-    border: 1px solid var(--bs-border-color);
-    border-radius: var(--bs-border-radius-lg);
+.directory-list {
+    max-height: 50vh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
 }
 
 @keyframes modalFadeIn {
@@ -1103,15 +720,8 @@ body.vs-modal-open {
     to { opacity: 1; transform: scale(1) translateY(0); }
 }
 
-/* Directory browser scrollable list */
-.directory-list {
-    max-height: 50vh;
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
-}
-
 /* ============================================
-   7. TOAST NOTIFICATIONS
+   11. TOAST CONTAINER
 ============================================ */
 .toast-container {
     z-index: 1100;
@@ -1132,290 +742,74 @@ body.vs-modal-open {
 }
 
 /* ============================================
-   8. PAGE-SPECIFIC LAYOUTS
+   12. RESPONSIVE OVERRIDES
 ============================================ */
 
-/* --- Jobs Inbox Layout --- */
-.jobs-inbox-layout {
-    display: flex;
-    flex-direction: column;
-    min-height: calc(100vh - var(--vs-header-height) - var(--vs-safe-area-top) - 2rem);
-    margin: -1rem;
-    margin-top: 0;
-}
-
-.jobs-project-sidebar {
-    width: 280px;
-    min-width: 280px;
-    max-width: 280px;
-    background: var(--bs-body-bg);
-    flex-shrink: 0;
-}
-
-.project-filter-item {
-    cursor: pointer;
-    color: var(--bs-body-color);
-    transition: all var(--vs-transition);
-    border-left: 3px solid transparent;
-}
-
-.project-filter-item:hover {
-    background: var(--bs-tertiary-bg);
-}
-
-.project-filter-item.active {
-    background: rgba(88, 166, 255, 0.1);
-    border-left-color: var(--vs-accent-blue);
-    color: var(--vs-accent-blue);
-}
-
-.project-filter-item .badge {
-    font-size: 0.7rem;
-}
-
-.jobs-list-panel {
-    min-width: 0;
-    background: var(--bs-body-bg);
-}
-
-.job-list-item {
-    cursor: pointer;
-    transition: background-color var(--vs-transition);
-    border-left: 3px solid transparent;
-}
-
-.job-list-item:hover {
-    background: var(--bs-tertiary-bg);
-}
-
-.job-list-item.job-selected {
-    background: rgba(88, 166, 255, 0.1);
-    border-left-color: var(--vs-accent-blue);
-}
-
-.job-status-icon {
-    width: 24px;
-    min-width: 24px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding-top: 2px;
-}
-
-.job-prompt { line-height: 1.4; }
-.job-stats { min-width: 100px; }
-.job-stats-row { font-size: 0.8rem; }
-
-/* --- Job Detail Layout --- */
-.job-detail-content {
-    width: 100%;
-    overflow-x: hidden;
-}
-
-/* ============================================
-   9. RESPONSIVE BREAKPOINTS
-============================================ */
-
-/* --- Extra Small (< 576px) --- */
+/* Extra Small (< 576px) */
 @media (max-width: 575.98px) {
-    .btn { 
-        min-height: 44px; 
-        display: inline-flex; 
-        align-items: center; 
-        justify-content: center; 
-    }
-    
-    .btn-sm { 
-        min-height: 40px; 
-        display: inline-flex; 
-        align-items: center; 
-        justify-content: center; 
-    }
-    
-    .form-control, .form-select {
-        min-height: 44px;
-        font-size: 16px; /* Prevent zoom on iOS */
-    }
-    
-    .nav-item {
-        padding: 1rem;
-    }
-    
-    .full-prompt-content {
-        max-height: none;
-        font-size: 0.85rem;
-    }
-    
+    .btn { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
+    .btn-sm { min-height: 40px; display: inline-flex; align-items: center; justify-content: center; }
+    .form-control, .form-select { min-height: 44px; font-size: 16px; }
+    .nav-item { padding: 1rem; }
+
     .toast-container {
         left: 0 !important;
         right: 0 !important;
         padding-left: calc(1rem + var(--vs-safe-area-left)) !important;
     }
 
-    .toast-container .toast {
-        min-width: auto;
-        max-width: none;
-        width: 100%;
-    }
-    
-    .message-header { flex-wrap: wrap; }
+    .toast-container .toast { min-width: auto; max-width: none; width: 100%; }
     .message { padding: 0.75rem; }
     .tool-input, .tool-output { font-size: 0.75rem; max-height: 150px; }
-    
     .chat-message { max-width: 95%; }
     .chat-bubble { padding: 0.5rem 0.75rem; }
     .chat-messages-container { max-height: 400px; padding: 0.25rem; }
     .chat-tool-code { max-height: 100px; }
-    .stat-pill { font-size: 0.7rem; padding: 0.2rem 0.5rem; }
-    .job-stats-row { font-size: 0.75rem; }
-    
-    /* Full-width cards on mobile */
-    .projects-card,
-    .providers-card,
-    .skills-card {
-        border-radius: 0;
-        border-left: none;
-        border-right: none;
-        margin-left: calc(-1 * (1rem + var(--vs-safe-area-left)));
-        margin-right: calc(-1 * (1rem + var(--vs-safe-area-right)));
-        width: calc(100% + 2rem + var(--vs-safe-area-left) + var(--vs-safe-area-right));
-    }
-    
-    .projects-filters {
-        flex-direction: column;
-        gap: 0.75rem;
-    }
-    
-    .projects-filters .form-select,
-    .projects-filters .btn-group { width: 100%; }
-    .projects-filters .btn-group .btn { flex: 1; }
-    
+
     /* Fullscreen modal on mobile */
-    .vs-modal-container {
-        padding: 0 !important;
-        align-items: stretch !important;
-    }
-
-    .vs-modal-dialog {
-        margin: 0 !important;
-        width: 100% !important;
-        max-width: 100% !important;
-        min-height: 100% !important;
-        max-height: 100% !important;
-    }
-
-    .vs-modal-dialog.modal-dialog-centered {
-        align-items: stretch !important;
-        min-height: 100% !important;
-    }
-
-    .vs-modal-dialog .modal-content {
-        min-height: 100vh !important;
-        min-height: 100dvh !important;
-        border-radius: 0 !important;
-        border: none !important;
-        display: flex;
-        flex-direction: column;
-    }
-
-    .vs-modal-dialog .modal-header {
-        padding-top: calc(0.75rem + var(--vs-header-height) + var(--vs-safe-area-top));
-        flex-shrink: 0;
-    }
-
-    .vs-modal-dialog .modal-body {
-        flex: 1;
-        overflow-y: auto;
-        -webkit-overflow-scrolling: touch;
-        padding-bottom: calc(1rem + var(--vs-safe-area-bottom));
-    }
-
-    .vs-modal-dialog .modal-footer {
-        flex-shrink: 0;
-        padding-bottom: calc(0.75rem + var(--vs-safe-area-bottom));
-    }
-    
+    .vs-modal-container { padding: 0 !important; align-items: stretch !important; }
+    .vs-modal-dialog { margin: 0 !important; width: 100% !important; max-width: 100% !important; min-height: 100% !important; }
+    .vs-modal-dialog .modal-content { min-height: 100vh !important; min-height: 100dvh !important; border-radius: 0 !important; border: none !important; display: flex; flex-direction: column; }
+    .vs-modal-dialog .modal-header { padding-top: calc(0.75rem + var(--vs-header-height) + var(--vs-safe-area-top)); flex-shrink: 0; }
+    .vs-modal-dialog .modal-body { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding-bottom: calc(1rem + var(--vs-safe-area-bottom)); }
+    .vs-modal-dialog .modal-footer { flex-shrink: 0; padding-bottom: calc(0.75rem + var(--vs-safe-area-bottom)); }
     .vs-modal-dialog.modal-sm { max-width: 100% !important; }
 }
 
-/* --- Small to Medium (576px - 991px) --- */
+/* Small to Medium (576px - 991px) */
 @media (min-width: 576px) and (max-width: 991.98px) {
-    .vs-modal-container {
-        padding: 1rem !important;
-        padding-top: calc(var(--vs-header-height) + var(--vs-safe-area-top) + 1rem) !important;
-        padding-bottom: calc(1rem + var(--vs-safe-area-bottom)) !important;
-    }
-
-    .vs-modal-dialog {
-        max-height: calc(100vh - var(--vs-header-height) - var(--vs-safe-area-top) - var(--vs-safe-area-bottom) - 2rem);
-    }
-
-    .vs-modal-dialog .modal-content {
-        max-height: calc(100vh - var(--vs-header-height) - var(--vs-safe-area-top) - var(--vs-safe-area-bottom) - 2rem);
-    }
-
-    .vs-modal-dialog .modal-body {
-        overflow-y: auto;
-        -webkit-overflow-scrolling: touch;
-    }
+    .vs-modal-container { padding: 1rem !important; padding-top: calc(var(--vs-header-height) + var(--vs-safe-area-top) + 1rem) !important; padding-bottom: calc(1rem + var(--vs-safe-area-bottom)) !important; }
+    .vs-modal-dialog { max-height: calc(100vh - var(--vs-header-height) - var(--vs-safe-area-top) - var(--vs-safe-area-bottom) - 2rem); }
+    .vs-modal-dialog .modal-content { max-height: calc(100vh - var(--vs-header-height) - var(--vs-safe-area-top) - var(--vs-safe-area-bottom) - 2rem); }
+    .vs-modal-dialog .modal-body { overflow-y: auto; -webkit-overflow-scrolling: touch; }
 }
 
-/* --- Medium (< 768px) --- */
+/* Medium (< 768px) */
 @media (max-width: 767.98px) {
-    .goal-prompt-box {
-        max-height: 200px;
-        overflow-y: auto;
-        -webkit-overflow-scrolling: touch;
-    }
-    
-    .directory-list {
-        max-height: calc(100vh - var(--vs-header-height) - var(--vs-safe-area-top) - var(--vs-safe-area-bottom) - 280px);
-        min-height: 200px;
-    }
+    .directory-list { max-height: calc(100vh - var(--vs-header-height) - var(--vs-safe-area-top) - var(--vs-safe-area-bottom) - 280px); min-height: 200px; }
 }
 
-/* --- Medium to Large (768px - 991px) --- */
+/* Medium to Large (768px - 991px) */
 @media (min-width: 768px) and (max-width: 991.98px) {
-    .directory-list {
-        max-height: calc(100vh - var(--vs-header-height) - var(--vs-safe-area-top) - var(--vs-safe-area-bottom) - 250px);
-    }
+    .directory-list { max-height: calc(100vh - var(--vs-header-height) - var(--vs-safe-area-top) - var(--vs-safe-area-bottom) - 250px); }
 }
 
-/* --- Medium screens chat adjustment --- */
+/* Medium screens */
 @media (max-width: 991.98px) {
     .chat-messages-container { max-height: 500px; }
     .jobs-inbox-layout { min-height: auto; }
-    
-    .jobs-list-panel {
-        border: 1px solid var(--bs-border-color);
-        border-radius: var(--bs-border-radius);
-        overflow: hidden;
-    }
+    .jobs-list-panel { border: 1px solid var(--bs-border-color); border-radius: var(--bs-border-radius); overflow: hidden; }
 }
 
-/* --- Desktop (≥ 992px) --- */
+/* Desktop (≥ 992px) */
 @media (min-width: 992px) {
-    .vs-modal-container {
-        padding: 1.75rem !important;
-        padding-top: calc(var(--vs-safe-area-top) + 1.75rem) !important;
-    }
-
-    .vs-modal-dialog {
-        max-height: calc(100vh - var(--vs-safe-area-top) - var(--vs-safe-area-bottom) - 3.5rem);
-    }
-
-    .vs-modal-dialog .modal-content {
-        max-height: calc(100vh - var(--vs-safe-area-top) - var(--vs-safe-area-bottom) - 3.5rem);
-    }
-    
+    .vs-modal-container { padding: 1.75rem !important; padding-top: calc(var(--vs-safe-area-top) + 1.75rem) !important; }
+    .vs-modal-dialog { max-height: calc(100vh - var(--vs-safe-area-top) - var(--vs-safe-area-bottom) - 3.5rem); }
+    .vs-modal-dialog .modal-content { max-height: calc(100vh - var(--vs-safe-area-top) - var(--vs-safe-area-bottom) - 3.5rem); }
     .directory-list { max-height: 400px; }
     .job-detail-content { max-width: 100%; }
-    
-    .jobs-inbox-layout {
-        flex-direction: row;
-        margin: -1rem;
-    }
-    
+    .jobs-inbox-layout { flex-direction: row; margin: -1rem; }
+
     .main-content:has(.jobs-inbox-layout) {
         padding: 0;
         max-width: none;
@@ -1423,34 +817,18 @@ body.vs-modal-open {
         flex-direction: column;
         height: calc(100vh - var(--vs-header-height) - var(--vs-safe-area-top));
     }
-    
-    .jobs-inbox-layout {
-        flex: 1;
-        height: 100%;
-        margin: 0;
-    }
-    
-    .jobs-project-sidebar,
-    .jobs-list-panel {
-        height: 100%;
-        overflow: hidden;
-    }
-    
-    .jobs-list-panel > .overflow-auto {
-        height: calc(100% - 50px);
-    }
+
+    .jobs-inbox-layout { flex: 1; height: 100%; margin: 0; }
+    .jobs-project-sidebar, .jobs-list-panel { height: 100%; overflow: hidden; }
+    .jobs-list-panel > .overflow-auto { height: calc(100% - 50px); }
 }
 
-/* --- Extra Large (≥ 1200px) --- */
+/* Extra Large (≥ 1200px) */
 @media (min-width: 1200px) {
-    .main-content:has(.job-detail-content) {
-        max-width: 1800px;
-        padding-left: 1.5rem;
-        padding-right: 1.5rem;
-    }
+    .main-content:has(.job-detail-content) { max-width: 1800px; padding-left: 1.5rem; padding-right: 1.5rem; }
 }
 
-/* --- Landscape Mobile --- */
+/* Landscape Mobile */
 @media (max-height: 500px) and (orientation: landscape) {
     .app-header { height: calc(44px + var(--vs-safe-area-top)); }
     .app-sidebar { top: calc(44px + var(--vs-safe-area-top)); }
@@ -1460,40 +838,22 @@ body.vs-modal-open {
 }
 
 /* ============================================
-   10. PWA & TOUCH OPTIMIZATIONS
+   13. PWA & TOUCH OPTIMIZATIONS
 ============================================ */
-
-/* Touch-friendly interactions */
-.nav-item,
-.btn,
-.list-group-item-action,
-.form-control,
-.form-select {
+.nav-item, .btn, .list-group-item-action, .form-control, .form-select {
     touch-action: manipulation;
 }
 
-/* Touch device active states */
 @media (hover: none) and (pointer: coarse) {
-    .nav-item:active,
-    .btn:active,
-    .list-group-item-action:active {
+    .nav-item:active, .btn:active, .list-group-item-action:active {
         opacity: 0.7;
         transition: opacity 0.1s ease;
     }
-
-    .list-group-item-action {
-        min-height: 48px;
-        display: flex;
-        align-items: center;
-    }
+    .list-group-item-action { min-height: 48px; display: flex; align-items: center; }
 }
 
-/* Prevent horizontal scroll issues */
-.main-content {
-    overscroll-behavior-x: none;
-}
+.main-content { overscroll-behavior-x: none; }
 
-/* Login layout safe areas */
 .login-layout {
     padding-top: var(--vs-safe-area-top);
     padding-bottom: var(--vs-safe-area-bottom);
@@ -1507,31 +867,12 @@ body.vs-modal-open {
     -webkit-overflow-scrolling: touch;
 }
 
-/* Messages container */
-.messages-container {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-}
+.jobs-mobile-filters .btn-group .btn { flex: 1; }
 
-/* Jobs mobile filters */
-.jobs-mobile-filters .btn-group .btn {
-    flex: 1;
-}
-
-/* --- PWA Standalone Mode --- */
+/* PWA Standalone Mode */
 @media all and (display-mode: standalone) {
-    html {
-        background: var(--bs-body-bg, #1a1d21);
-    }
-
-    .app-header,
-    .app-sidebar,
-    .nav-item,
-    .btn {
-        -webkit-user-select: none;
-        user-select: none;
-    }
+    html { background: var(--bs-body-bg, #1a1d21); }
+    .app-header, .app-sidebar, .nav-item, .btn { -webkit-user-select: none; user-select: none; }
 
     body::before {
         content: '';
@@ -1544,28 +885,12 @@ body.vs-modal-open {
         z-index: 1001;
     }
 
-    body {
-        overscroll-behavior-y: contain;
-    }
+    body { overscroll-behavior-y: contain; }
 }
 
-/* --- iOS-specific fixes --- */
+/* iOS-specific fixes */
 @supports (-webkit-touch-callout: none) {
-    .app-header {
-        -webkit-transform: translateZ(0);
-    }
-
-    .app-main,
-    .app-sidebar,
-    .main-content,
-    .directory-list,
-    .modal-body {
-        -webkit-overflow-scrolling: touch;
-    }
-
-    .app-header,
-    .app-sidebar {
-        -webkit-backface-visibility: hidden;
-        backface-visibility: hidden;
-    }
+    .app-header { -webkit-transform: translateZ(0); }
+    .app-main, .app-sidebar, .main-content, .directory-list, .modal-body { -webkit-overflow-scrolling: touch; }
+    .app-header, .app-sidebar { -webkit-backface-visibility: hidden; backface-visibility: hidden; }
 }

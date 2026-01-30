@@ -27,7 +27,7 @@
 						<div class="d-flex justify-content-between align-items-start gap-2">
 							<div class="d-flex align-items-start gap-2 flex-grow-1 min-width-0">
 								@* Status Icon *@
-										<div class="flex-shrink-0 pt-1">
+								<div class="flex-shrink-0 pt-1">
 									@switch (job.Status)
 									{
 										case JobStatus.Completed:
@@ -53,7 +53,7 @@
 									}
 								</div>
 								@* Job Content *@
-										<div class="flex-grow-1 min-width-0">
+								<div class="flex-grow-1 min-width-0">
 									<a href="/jobs/view/@job.Id"
 										class="d-block text-decoration-none fw-medium text-truncate-lines-2"
 										title="@job.GoalPrompt">
@@ -67,16 +67,17 @@
 									@if ((job.Status == JobStatus.Started || job.Status == JobStatus.Processing) &&
 																!string.IsNullOrEmpty(job.CurrentActivity))
 									{
-										<div class="job-activity mt-1">@TruncateText(job.CurrentActivity, 80)</div>
+										<div class="text-info fst-italic small mt-1">@TruncateText(job.CurrentActivity, 80)</div>
 									}
 									@if (!string.IsNullOrEmpty(job.ErrorMessage))
 									{
-										<div class="job-error mt-2">@TruncateText(job.ErrorMessage, 100)</div>
+										<div class="text-danger small font-monospace mt-2">@TruncateText(job.ErrorMessage, 100)
+										</div>
 									}
 								</div>
 							</div>
 							@* Actions Dropdown *@
-									<div class="dropdown flex-shrink-0">
+							<div class="dropdown flex-shrink-0">
 								<button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button"
 									data-bs-toggle="dropdown" aria-expanded="false">
 									<i class="bi bi-three-dots-vertical"></i>

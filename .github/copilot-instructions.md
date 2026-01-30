@@ -116,6 +116,8 @@ Elements such as Modals should expand to a reasonable size on desktop screens to
 
 Always attempt to leverage Bootstrap's built-in classes and components. Avoid custom styles at all costs, unless absolutely necessary. Custom classes should ONLY exist when there is no equivalent in Bootstrap and should be named using a clear and consistent naming convention. This ensures consistency across the application and reduces the need for additional CSS. Use a stacked utility class approach when creating UI components to maximize flexibility and maintainability. A component may use multiple classes such as `d-flex`, `flex-column`, `align-items-center`, `bg-body-secondary`, and `p-3` to achieve the desired layout and styling without custom CSS. Use the TailwindCSS mindset when applying Bootstrap utility classes to create complex layouts and designs.
 
+Always favor Bootstrap components such as Cards, Modals, Buttons, and Forms to maintain a consistent look and feel throughout the application. Customize these components using Bootstrap's utility classes rather than creating new styles.
+
 ### Site.css
 
 The application specific `site.css` should only add helper utilities that can be used across the application, and are not intended to be specific to components.
@@ -159,6 +161,10 @@ UI should appear consistent and highly polished. Care should be used to maintain
 If a page has over 300 lines of markup, it should be refactored into smaller components to keep the markup readable.
 
 Avoid table based layouts for non-tabular data. Use Bootstrap's grid system and flexbox utilities to create responsive and flexible layouts that adapt to different screen sizes. Utilize lists with list group items, cards, and other Bootstrap components to structure content effectively without relying on tables. Tables are prone to responsiveness issues and should be reserved for displaying tabular data only.
+
+### Toast Messages
+
+Favor using toast messages instead of Flash messages for user notifications. Toast messages provide a non-intrusive way to inform users of important events, such as successful actions or errors, without disrupting their workflow. They can be easily dismissed and do not require page reloads or navigations. If there is no actionable item for the user to take, avoid using modal popups and favor toast messages instead.
 
 ## C# Best Practices
 

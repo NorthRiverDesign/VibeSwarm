@@ -116,42 +116,47 @@
 		@* Stats Row - Token usage and cost *@
 		@if (ShowStats)
 		{
-			<div
-				class="d-flex flex-wrap gap-2 gap-sm-3 mt-2 pt-2 border-top border-secondary border-opacity-25 job-stats-row">
+			<div class="d-flex flex-wrap gap-2 gap-sm-3 mt-2 pt-2 border-top border-secondary border-opacity-25 small">
 				@if (!string.IsNullOrEmpty(ModelUsed))
 				{
-					<span class="stat-pill" title="Model">
+					<span class="d-inline-flex align-items-center px-2 py-1 bg-body-tertiary rounded-pill text-nowrap"
+						title="Model">
 						<i class="bi bi-cpu me-1 opacity-75"></i>@ModelUsed
 					</span>
 				}
 				@if (RetryCount > 0)
 				{
-					<span class="stat-pill" title="Attempt Number">
+					<span class="d-inline-flex align-items-center px-2 py-1 bg-body-tertiary rounded-pill text-nowrap"
+						title="Attempt Number">
 						<i class="bi bi-arrow-repeat me-1 opacity-75"></i>Attempt @(RetryCount + 1)
 					</span>
 				}
 				@if (InputTokens.HasValue)
 				{
-					<span class="stat-pill" title="Input Tokens">
+					<span class="d-inline-flex align-items-center px-2 py-1 bg-body-tertiary rounded-pill text-nowrap"
+						title="Input Tokens">
 						<i class="bi bi-arrow-right-circle me-1 opacity-75"></i>@TokenHelper.FormatTokenCount(InputTokens.Value)
 					</span>
 				}
 				@if (OutputTokens.HasValue)
 				{
-					<span class="stat-pill" title="Output Tokens">
+					<span class="d-inline-flex align-items-center px-2 py-1 bg-body-tertiary rounded-pill text-nowrap"
+						title="Output Tokens">
 						<i class="bi bi-arrow-left-circle me-1 opacity-75"></i>@TokenHelper.FormatTokenCount(OutputTokens.Value)
 					</span>
 				}
 				@if (InputTokens.HasValue && OutputTokens.HasValue)
 				{
-					<span class="stat-pill" title="Total Tokens">
+					<span class="d-inline-flex align-items-center px-2 py-1 bg-body-tertiary rounded-pill text-nowrap"
+						title="Total Tokens">
 						<i class="bi bi-arrow-left-right me-1 opacity-75"></i>@TokenHelper.FormatTokenCount(InputTokens.Value +
 										OutputTokens.Value)
 			</span>
 						}
 				@if (TotalCostUsd.HasValue)
 				{
-					<span class="stat-pill stat-pill-cost" title="Total Cost">
+					<span class="d-inline-flex align-items-center px-2 py-1 rounded-pill text-nowrap text-success fw-medium"
+						style="background: rgba(63, 185, 80, 0.15);" title="Total Cost">
 						<i class="bi bi-currency-dollar me-1 opacity-75"></i>@TokenHelper.FormatCost(TotalCostUsd.Value)
 					</span>
 				}
@@ -172,8 +177,8 @@
 					@if (!_showFullCommand)
 					{
 						<code class="small text-truncate flex-grow-1" style="max-width: 400px;" title="@DisplayCommand">
-				                            @TruncateCommand(DisplayCommand, 60)
-				                        </code>
+						                            @TruncateCommand(DisplayCommand, 60)
+						                        </code>
 					}
 					<button type="button" class="btn btn-sm btn-link text-body-secondary p-0" @onclick="CopyCommand"
 						title="Copy command">
