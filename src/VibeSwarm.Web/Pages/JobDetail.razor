@@ -695,6 +695,217 @@ else
                     </div>
                 </div>
             }
+
+            @* Working Directory Changes - shown for failed/cancelled jobs that may have made partial changes *@
+            @if (!IsJobActive && (Job.Status == JobStatus.Failed || Job.Status == JobStatus.Cancelled) && Job?.Project?.WorkingPath != null)
+            {
+                <div class="card mb-3 mb-lg-4 @(_hasUncommittedChanges ? "border-warning" : "")">
+                    <div class="card-header @(_hasUncommittedChanges ? "bg-warning bg-opacity-25" : "bg-body-secondary")">
+                        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                            <div class="d-flex align-items-center gap-2">
+                                <i class="bi bi-folder-symlink me-1 opacity-75"></i>
+                                <strong>Working Directory Changes</strong>
+                                @if (_hasUncommittedChanges && _uncommittedDiffFiles.Count > 0)
+                                {
+                                    <span class="badge bg-warning text-dark">@_uncommittedDiffFiles.Count file(s)</span>
+                                }
+                            </div>
+                            @if (!_isCheckingUncommittedChanges)
+                            {
+                                <button class="btn btn-sm btn-outline-secondary" @onclick="CheckUncommittedChangesAsync"
+                                    title="Check for changes in working directory">
+                                    <i class="bi bi-arrow-repeat me-1"></i>
+                                    <span class="d-none d-sm-inline">Refresh</span>
+                                </button>
+                            }
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        @if (_isCheckingUncommittedChanges)
+                        {
+                            <div class="d-flex align-items-center justify-content-center gap-2 py-4 text-body-secondary">
+                                <span class="spinner-border spinner-border-sm" role="status"></span>
+                                <span>Checking for uncommitted changes...</span>
+                            </div>
+                        }
+                        else if (!string.IsNullOrEmpty(_uncommittedChangesError))
+                        {
+                            <div class="alert alert-danger mb-0">
+                                <i class="bi bi-exclamation-triangle me-1"></i>@_uncommittedChangesError
+                            </div>
+                        }
+                        else if (!_hasCheckedUncommittedChanges)
+                        {
+                            <div class="text-center py-3">
+                                <p class="text-body-secondary mb-3">
+                                    <i class="bi bi-exclamation-circle me-2"></i>
+                                    This job @(Job.Status == JobStatus.Failed ? "failed" : "was cancelled") but the CLI agent may have made changes to the working directory.
+                                </p>
+                                <button class="btn btn-primary" @onclick="CheckUncommittedChangesAsync">
+                                    <i class="bi bi-search me-1"></i>Check for Changes
+                                </button>
+                            </div>
+                        }
+                        else if (!_hasUncommittedChanges)
+                        {
+                            <div class="text-center py-3 text-body-secondary">
+                                <i class="bi bi-check-circle me-2 text-success"></i>
+                                No uncommitted changes found in the working directory.
+                            </div>
+                        }
+                        else
+                        {
+                            @* Show uncommitted changes with options to commit or discard *@
+                            <div class="alert alert-warning mb-3">
+                                <i class="bi bi-exclamation-triangle me-2"></i>
+                                <strong>Uncommitted changes detected!</strong>
+                                <span class="d-block d-sm-inline mt-1 mt-sm-0 ms-sm-1">
+                                    The CLI agent made changes before the job @(Job.Status == JobStatus.Failed ? "failed" : "was cancelled").
+                                </span>
+                            </div>
+
+                            @* Diff viewer for uncommitted changes *@
+                            <div class="mb-3">
+                                <div class="d-flex align-items-center justify-content-between mb-2">
+                                    <span class="text-body-secondary small">
+                                        <span class="text-success">+@_uncommittedDiffFiles.Sum(f => f.Additions)</span>
+                                        <span class="text-danger ms-1">-@_uncommittedDiffFiles.Sum(f => f.Deletions)</span>
+                                    </span>
+                                    <div class="btn-group btn-group-sm">
+                                        <button type="button" class="btn btn-outline-secondary" @onclick="ExpandAllUncommitted" 
+                                            title="Expand all" disabled="@(_expandedUncommittedFiles.Count == _uncommittedDiffFiles.Count)">
+                                            <i class="bi bi-arrows-expand"></i>
+                                        </button>
+                                        <button type="button" class="btn btn-outline-secondary" @onclick="CollapseAllUncommitted" 
+                                            title="Collapse all" disabled="@(_expandedUncommittedFiles.Count == 0)">
+                                            <i class="bi bi-arrows-collapse"></i>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div class="accordion border rounded" style="max-height: 350px; overflow-y: auto;">
+                                    @foreach (var (file, index) in _uncommittedDiffFiles.Select((f, i) => (f, i)))
+                                    {
+                                        var isExpanded = _expandedUncommittedFiles.Contains(index);
+                                        <div class="accordion-item">
+                                            <h2 class="accordion-header">
+                                                <button class="accordion-button @(isExpanded ? "" : "collapsed") py-2 px-3" type="button"
+                                                    @onclick="() => ToggleUncommittedFile(index)">
+                                                    <span class="d-flex align-items-center gap-2 w-100">
+                                                        @if (file.IsNew)
+                                                        {
+                                                            <i class="bi bi-file-earmark-plus text-success" title="New file"></i>
+                                                        }
+                                                        else if (file.IsDeleted)
+                                                        {
+                                                            <i class="bi bi-file-earmark-minus text-danger" title="Deleted file"></i>
+                                                        }
+                                                        else
+                                                        {
+                                                            <i class="bi bi-file-earmark-diff text-warning" title="Modified file"></i>
+                                                        }
+                                                        <span class="font-monospace small text-truncate flex-grow-1">@file.FileName</span>
+                                                        <span class="small">
+                                                            @if (file.Additions > 0)
+                                                            {
+                                                                <span class="text-success fw-medium">+@file.Additions</span>
+                                                            }
+                                                            @if (file.Deletions > 0)
+                                                            {
+                                                                <span class="text-danger fw-medium ms-1">-@file.Deletions</span>
+                                                            }
+                                                        </span>
+                                                    </span>
+                                                </button>
+                                            </h2>
+                                            <div class="accordion-collapse @(isExpanded ? "show" : "collapse")">
+                                                <div class="accordion-body p-0">
+                                                    @if (!file.IsDeleted)
+                                                    {
+                                                        <div class="diff-container" style="max-height: 250px; overflow: auto;">
+                                                            @((MarkupString)FormatFileDiff(file.DiffContent))
+                                                        </div>
+                                                    }
+                                                    else
+                                                    {
+                                                        <div class="p-3 text-body-secondary small">
+                                                            <i class="bi bi-trash me-1"></i>File deleted
+                                                        </div>
+                                                    }
+                                                </div>
+                                            </div>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+
+                            <hr class="my-3" />
+
+                            @* Commit section for uncommitted changes *@
+                            <div class="mb-3">
+                                <label for="uncommittedCommitMsg" class="form-label fw-medium small">
+                                    <i class="bi bi-chat-square-text me-1"></i>Commit Message (to keep changes)
+                                </label>
+                                <textarea class="form-control font-monospace" id="uncommittedCommitMsg" 
+                                    @bind="_uncommittedCommitMessage" @bind:event="oninput" rows="2" 
+                                    placeholder="Enter commit message to keep these changes..."
+                                    disabled="@(_isCommittingUncommittedChanges || _isDiscardingChanges)"></textarea>
+                            </div>
+
+                            @* Discard confirmation *@
+                            @if (_showDiscardConfirmation)
+                            {
+                                <div class="alert alert-danger py-3 mb-3">
+                                    <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+                                        <div>
+                                            <i class="bi bi-exclamation-triangle me-2"></i>
+                                            <strong>Are you sure?</strong> This will permanently discard all uncommitted changes.
+                                        </div>
+                                        <div class="d-flex gap-2">
+                                            <button type="button" class="btn btn-secondary btn-sm" 
+                                                @onclick="() => _showDiscardConfirmation = false"
+                                                disabled="@_isDiscardingChanges">
+                                                Cancel
+                                            </button>
+                                            <button type="button" class="btn btn-danger btn-sm" 
+                                                @onclick="DiscardUncommittedChangesAsync"
+                                                disabled="@_isDiscardingChanges">
+                                                @if (_isDiscardingChanges)
+                                                {
+                                                    <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                                                }
+                                                Yes, Discard All
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+
+                            @* Action buttons *@
+                            <div class="d-flex flex-wrap gap-2">
+                                <button class="btn btn-success" @onclick="CommitUncommittedChangesAsync"
+                                    disabled="@(_isCommittingUncommittedChanges || _isDiscardingChanges || string.IsNullOrWhiteSpace(_uncommittedCommitMessage))">
+                                    @if (_isCommittingUncommittedChanges)
+                                    {
+                                        <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                                        <span>Committing...</span>
+                                    }
+                                    else
+                                    {
+                                        <i class="bi bi-check-circle me-1"></i>
+                                        <span>Keep Changes</span>
+                                    }
+                                </button>
+                                <button class="btn btn-outline-danger" @onclick="() => _showDiscardConfirmation = true"
+                                    disabled="@(_isCommittingUncommittedChanges || _isDiscardingChanges || _showDiscardConfirmation)">
+                                    <i class="bi bi-trash me-1"></i>
+                                    <span>Discard Changes</span>
+                                </button>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
         </div>
 
         @* Right Column - Conversation Messages (shows first on mobile) *@
@@ -875,6 +1086,18 @@ else
     private bool _changesPushed = false;
     private string? _pushedCommitHash = null;
 
+    // Uncommitted changes state (for failed/cancelled jobs that may have made changes)
+    private bool _isCheckingUncommittedChanges = false;
+    private bool _hasCheckedUncommittedChanges = false;
+    private bool _hasUncommittedChanges = false;
+    private List<DiffFile> _uncommittedDiffFiles = new();
+    private string? _uncommittedChangesError = null;
+    private bool _isDiscardingChanges = false;
+    private bool _showDiscardConfirmation = false;
+    private string _uncommittedCommitMessage = string.Empty;
+    private bool _isCommittingUncommittedChanges = false;
+    private HashSet<int> _expandedUncommittedFiles = new();
+
     private string BackUrl => !string.IsNullOrEmpty(ReturnUrl) ? ReturnUrl : $"/projects/{Job?.ProjectId}";
     private string? _branchName = null;
 
@@ -1053,6 +1276,20 @@ new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
             else if (newStatus == JobStatus.Completed || newStatus == JobStatus.Failed || newStatus == JobStatus.Cancelled)
             {
                 Job.CompletedAt = DateTime.UtcNow;
+                
+                // For failed or cancelled jobs, automatically check for uncommitted changes
+                // The CLI may have made partial changes before failing/being cancelled
+                if (newStatus == JobStatus.Failed || newStatus == JobStatus.Cancelled)
+                {
+                    _ = Task.Run(async () =>
+                    {
+                        await Task.Delay(1000); // Small delay to let things settle
+                        await InvokeAsync(async () =>
+                        {
+                            await CheckUncommittedChangesAsync();
+                        });
+                    });
+                }
             }
             await InvokeAsync(StateHasChanged);
         }
@@ -1114,6 +1351,19 @@ new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
                 _isLoadingSummary = true;
                 _gitDiffError = null;
                 _summaryError = null;
+            }
+            else
+            {
+                // For failed jobs, automatically check for uncommitted changes
+                // The CLI may have made partial changes before failing
+                _ = Task.Run(async () =>
+                {
+                    await Task.Delay(1000); // Small delay to let things settle
+                    await InvokeAsync(async () =>
+                    {
+                        await CheckUncommittedChangesAsync();
+                    });
+                });
             }
             await InvokeAsync(StateHasChanged);
         }
@@ -1497,6 +1747,24 @@ new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
             if (Job != null && Job.Status == JobStatus.Failed && !string.IsNullOrEmpty(Job.ConsoleOutput))
             {
                 _showConsoleOutput = true;
+            }
+
+            // For failed or cancelled jobs that haven't been checked yet, auto-check for uncommitted changes
+            // This helps users immediately see if the CLI made partial changes before failing
+            if (Job != null && 
+                (Job.Status == JobStatus.Failed || Job.Status == JobStatus.Cancelled) && 
+                Job.Project?.WorkingPath != null &&
+                !_hasCheckedUncommittedChanges)
+            {
+                // Fire and forget - don't block the UI
+                _ = Task.Run(async () =>
+                {
+                    await Task.Delay(500); // Small delay to let UI render first
+                    await InvokeAsync(async () =>
+                    {
+                        await CheckUncommittedChangesAsync();
+                    });
+                });
             }
         }
         finally
@@ -2097,6 +2365,171 @@ new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
     private void CollapseAllDiffs()
     {
         _expandedDiffFiles.Clear();
+    }
+
+    // Uncommitted changes methods for failed/cancelled jobs
+    private async Task CheckUncommittedChangesAsync()
+    {
+        if (Job?.Project?.WorkingPath == null || _isCheckingUncommittedChanges)
+            return;
+
+        _isCheckingUncommittedChanges = true;
+        _uncommittedChangesError = null;
+        _uncommittedDiffFiles.Clear();
+        _expandedUncommittedFiles.Clear();
+        StateHasChanged();
+
+        try
+        {
+            // Check if there are uncommitted changes
+            _hasUncommittedChanges = await VersionControlService.HasUncommittedChangesAsync(Job.Project.WorkingPath);
+
+            if (_hasUncommittedChanges)
+            {
+                // Get the diff for uncommitted changes
+                var diff = await VersionControlService.GetWorkingDirectoryDiffAsync(Job.Project.WorkingPath, null);
+                
+                if (!string.IsNullOrEmpty(diff))
+                {
+                    _uncommittedDiffFiles = ParseGitDiff(diff);
+                    
+                    // Auto-expand first file if there's only one
+                    if (_uncommittedDiffFiles.Count == 1)
+                    {
+                        _expandedUncommittedFiles.Add(0);
+                    }
+
+                    // Generate a default commit message based on the job
+                    if (string.IsNullOrWhiteSpace(_uncommittedCommitMessage))
+                    {
+                        var prefix = Job.Status == JobStatus.Failed ? "WIP (partial):" : "WIP (cancelled):";
+                        var goalSummary = Job.GoalPrompt.Length > 60 
+                            ? Job.GoalPrompt[..60] + "..." 
+                            : Job.GoalPrompt;
+                        _uncommittedCommitMessage = $"{prefix} {goalSummary}";
+                    }
+                }
+            }
+
+            _hasCheckedUncommittedChanges = true;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error checking uncommitted changes: {ex.Message}");
+            _uncommittedChangesError = $"Failed to check for uncommitted changes: {ex.Message}";
+        }
+        finally
+        {
+            _isCheckingUncommittedChanges = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task CommitUncommittedChangesAsync()
+    {
+        if (Job?.Project?.WorkingPath == null || string.IsNullOrWhiteSpace(_uncommittedCommitMessage) || _isCommittingUncommittedChanges)
+            return;
+
+        _isCommittingUncommittedChanges = true;
+        _uncommittedChangesError = null;
+        StateHasChanged();
+
+        try
+        {
+            // Stage all changes and commit
+            var commitResult = await VersionControlService.CommitAllChangesAsync(
+                Job.Project.WorkingPath,
+                _uncommittedCommitMessage);
+
+            if (commitResult.Success)
+            {
+                NotificationService.ShowSuccess($"Changes committed successfully: {commitResult.CommitHash?[..7] ?? "unknown"}", "Committed");
+                
+                // Clear the uncommitted changes state
+                _hasUncommittedChanges = false;
+                _uncommittedDiffFiles.Clear();
+                _uncommittedCommitMessage = string.Empty;
+                _hasCheckedUncommittedChanges = false;
+            }
+            else
+            {
+                _uncommittedChangesError = $"Failed to commit: {commitResult.Error}";
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error committing uncommitted changes: {ex.Message}");
+            _uncommittedChangesError = $"Failed to commit changes: {ex.Message}";
+        }
+        finally
+        {
+            _isCommittingUncommittedChanges = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task DiscardUncommittedChangesAsync()
+    {
+        if (Job?.Project?.WorkingPath == null || _isDiscardingChanges)
+            return;
+
+        _isDiscardingChanges = true;
+        _uncommittedChangesError = null;
+        StateHasChanged();
+
+        try
+        {
+            // Discard all uncommitted changes
+            var result = await VersionControlService.DiscardAllChangesAsync(Job.Project.WorkingPath);
+
+            if (result.Success)
+            {
+                NotificationService.ShowSuccess("All uncommitted changes have been discarded.", "Changes Discarded");
+                
+                // Clear the uncommitted changes state
+                _hasUncommittedChanges = false;
+                _uncommittedDiffFiles.Clear();
+                _uncommittedCommitMessage = string.Empty;
+                _showDiscardConfirmation = false;
+                _hasCheckedUncommittedChanges = false;
+            }
+            else
+            {
+                _uncommittedChangesError = $"Failed to discard changes: {result.Error}";
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error discarding uncommitted changes: {ex.Message}");
+            _uncommittedChangesError = $"Failed to discard changes: {ex.Message}";
+        }
+        finally
+        {
+            _isDiscardingChanges = false;
+            StateHasChanged();
+        }
+    }
+
+    private void ToggleUncommittedFile(int index)
+    {
+        if (_expandedUncommittedFiles.Contains(index))
+        {
+            _expandedUncommittedFiles.Remove(index);
+        }
+        else
+        {
+            _expandedUncommittedFiles.Add(index);
+        }
+    }
+
+    private void ExpandAllUncommitted()
+    {
+        _expandedUncommittedFiles = Enumerable.Range(0, _uncommittedDiffFiles.Count).ToHashSet();
+    }
+
+    private void CollapseAllUncommitted()
+    {
+        _expandedUncommittedFiles.Clear();
     }
 
     public async ValueTask DisposeAsync()
