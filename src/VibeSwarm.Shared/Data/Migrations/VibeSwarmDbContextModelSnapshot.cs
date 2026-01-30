@@ -301,6 +301,9 @@ namespace VibeSwarm.Shared.Data.Migrations
                     b.Property<string>("ErrorMessage")
                         .HasColumnType("TEXT");
 
+                    b.Property<double?>("ExecutionDurationSeconds")
+                        .HasColumnType("REAL");
+
                     b.Property<string>("FailurePattern")
                         .HasMaxLength(1000)
                         .HasColumnType("TEXT");
@@ -636,6 +639,9 @@ namespace VibeSwarm.Shared.Data.Migrations
 
                     b.Property<DateTime?>("LastModelsRefreshAt")
                         .HasColumnType("TEXT");
+
+                    b.Property<int?>("MaxExecutionMinutes")
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("Name")
                         .IsRequired()

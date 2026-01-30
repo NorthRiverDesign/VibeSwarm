@@ -28,7 +28,7 @@ else
             <div class="list-group-item p-3 hover-bg-tertiary @(provider.IsDefault ? "bg-success bg-opacity-10" : "")">
                 <div class="d-flex align-items-start gap-3">
                     @* Enable toggle on left side *@
-                            <div class="flex-shrink-0 pt-1">
+                    <div class="flex-shrink-0 pt-1">
                         <label class="toggle-switch" title="@(provider.IsEnabled ? "Disable" : "Enable")">
                             <input type="checkbox" checked="@provider.IsEnabled" @onchange="() => ToggleEnabled(provider)" />
                             <span class="toggle-slider"></span>
@@ -68,12 +68,12 @@ else
                     </div>
                     <div class="d-flex align-items-center gap-2 flex-shrink-0">
                         @* Test connection button *@
-                                <ActionButton Icon="lightning" Text="Test" Outline="true" Size="ActionButton.ButtonSize.Small"
+                        <ActionButton Icon="lightning" Text="Test" Outline="true" Size="ActionButton.ButtonSize.Small"
                             HideTextOnMobile="true" IsLoading="@(TestingId == provider.Id)"
                             OnClick="@(() => TestConnection(provider))" />
 
                         @* Gear dropdown menu *@
-                                <div class="dropdown">
+                        <div class="dropdown">
                             <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button"
                                 id="provider-menu-@provider.Id" data-bs-toggle="dropdown" aria-expanded="false"
                                 title="Provider actions">
@@ -127,7 +127,7 @@ else
                     </div>
                 </div>
                 @* Models section below main flex row *@
-                        @if (ProviderModels.TryGetValue(provider.Id, out var models) && models.Any())
+                @if (ProviderModels.TryGetValue(provider.Id, out var models) && models.Any())
                 {
                     <div class="mt-2 pt-2 border-top ms-5 ps-2">
                         <span class="fw-medium small text-body-secondary">Models:</span>
@@ -202,7 +202,8 @@ else
             }
             else if (!DefaultModelList.Any())
             {
-                <Alert Type="Alert.AlertType.Info" Message="No models available. Try refreshing the model list first." Class="mb-0" />
+                <Alert Type="Alert.AlertType.Info" Message="No models available. Try refreshing the model list first."
+                    Class="mb-0" />
             }
             else
             {
@@ -491,8 +492,11 @@ else
         {
             // Refresh models first to get the latest list
             var models = await ProviderService.RefreshModelsAsync(provider.Id);
-            DefaultModelList = models.ToList();
-            ProviderModels[provider.Id] = DefaultModelList;
+            var modelsList = models.ToList();
+            // Store in ProviderModels (this is the main storage)
+            ProviderModels[provider.Id] = modelsList;
+            // Create a separate copy for the modal to prevent shared reference issues
+            DefaultModelList = modelsList.ToList();
         }
         catch (Exception ex)
         {
@@ -500,7 +504,8 @@ else
             // Fall back to cached models if refresh fails
             if (ProviderModels.TryGetValue(provider.Id, out var cachedModels))
             {
-                DefaultModelList = cachedModels;
+                // Create a copy for the modal
+                DefaultModelList = cachedModels.ToList();
             }
         }
         finally
@@ -551,14 +556,16 @@ else
     {
         ShowDefaultModelModal = false;
         DefaultModelProvider = null;
-        DefaultModelList.Clear();
+        // Create a new empty list instead of clearing - prevents clearing shared reference in ProviderModels
+        DefaultModelList = new List<ProviderModel>();
     }
 
     private void HandleDefaultModelModalClosed()
     {
         ShowDefaultModelModal = false;
         DefaultModelProvider = null;
-        DefaultModelList.Clear();
+        // Create a new empty list instead of clearing - prevents clearing shared reference in ProviderModels
+        DefaultModelList = new List<ProviderModel>();
         StateHasChanged();
     }
 }

@@ -159,4 +159,39 @@ public static class TokenHelper
 			_ => "$0.00"
 		};
 	}
+
+	/// <summary>
+	/// Formats a duration for display in a human-readable format.
+	/// </summary>
+	/// <param name="duration">The duration to format.</param>
+	/// <returns>Formatted duration string (e.g., "2m 30s", "1h 15m").</returns>
+	public static string FormatDuration(TimeSpan? duration)
+	{
+		if (!duration.HasValue)
+			return "-";
+
+		var d = duration.Value;
+
+		if (d.TotalDays >= 1)
+			return $"{(int)d.TotalDays}d {d.Hours}h";
+		if (d.TotalHours >= 1)
+			return $"{(int)d.TotalHours}h {d.Minutes}m";
+		if (d.TotalMinutes >= 1)
+			return $"{(int)d.TotalMinutes}m {d.Seconds}s";
+		if (d.TotalSeconds >= 1)
+			return $"{d.TotalSeconds:F1}s";
+		return $"{d.TotalMilliseconds:F0}ms";
+	}
+
+	/// <summary>
+	/// Formats a duration in seconds for display.
+	/// </summary>
+	/// <param name="seconds">The duration in seconds.</param>
+	/// <returns>Formatted duration string.</returns>
+	public static string FormatDuration(double? seconds)
+	{
+		if (!seconds.HasValue)
+			return "-";
+		return FormatDuration(TimeSpan.FromSeconds(seconds.Value));
+	}
 }

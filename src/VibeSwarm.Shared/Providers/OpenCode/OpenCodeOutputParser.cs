@@ -114,6 +114,60 @@ public static class OpenCodeOutputParser
 	}
 
 	/// <summary>
+	/// Determines if a line is OpenCode tool progress output, not an actual error.
+	/// OpenCode outputs tool actions (Read, Edit, Write, Bash, Glob, etc.) to stderr as progress indicators.
+	/// These should NOT be treated as errors.
+	/// </summary>
+	public static bool IsToolProgressLine(string line)
+	{
+		if (string.IsNullOrWhiteSpace(line))
+			return false;
+
+		var trimmed = line.Trim();
+
+		// OpenCode tool progress format: "|  ToolName    path/to/file" or similar
+		// Common tools: Read, Write, Edit, Bash, Glob, Grep, LS, TodoRead, TodoWrite, etc.
+		if (trimmed.StartsWith("|"))
+		{
+			var afterPipe = trimmed.TrimStart('|').TrimStart();
+
+			// Common OpenCode tool names
+			var toolKeywords = new[]
+			{
+				"Read", "Write", "Edit", "Bash", "Glob", "Grep", "LS", "List",
+				"Todo", "TodoRead", "TodoWrite", "Fetch", "Search", "Find",
+				"MultiEdit", "Patch", "View", "Cat", "Head", "Tail",
+				"Mkdir", "Rm", "Mv", "Cp", "Touch", "Chmod"
+			};
+
+			foreach (var tool in toolKeywords)
+			{
+				if (afterPipe.StartsWith(tool, StringComparison.OrdinalIgnoreCase))
+				{
+					return true;
+				}
+			}
+		}
+
+		// Also check for thinking/reasoning indicators
+		if (trimmed.StartsWith("Thinking", StringComparison.OrdinalIgnoreCase) ||
+			trimmed.StartsWith("Planning", StringComparison.OrdinalIgnoreCase) ||
+			trimmed.StartsWith("Analyzing", StringComparison.OrdinalIgnoreCase))
+		{
+			return true;
+		}
+
+		// File listing output from bash commands (e.g., "-rw-rw-r-- 1 kyle kyle 842 ...")
+		// These often appear in stderr but are not errors
+		if (System.Text.RegularExpressions.Regex.IsMatch(trimmed, @"^[-drwx]{10}\s+\d+\s+\w+\s+\w+\s+\d+"))
+		{
+			return true;
+		}
+
+		return false;
+	}
+
+	/// <summary>
 	/// Attempts to extract meaningful error information from CLI output.
 	/// </summary>
 	public static string? ExtractErrorFromOutput(List<string> outputLines)
@@ -123,6 +177,11 @@ public static class OpenCodeOutputParser
 		foreach (var line in outputLines)
 		{
 			if (string.IsNullOrWhiteSpace(line)) continue;
+
+			// Skip OpenCode tool progress lines - these are NOT errors
+			// Tool progress format: "|  ToolName    path/to/file" or similar
+			if (IsToolProgressLine(line))
+				continue;
 
 			// Try to parse as JSON and look for error fields
 			try

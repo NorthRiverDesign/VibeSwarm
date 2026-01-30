@@ -454,28 +454,51 @@ public class OpenCodeProvider : CliProviderBase
         }
         result.Output = string.Join("\n", cleanedOutput);
 
-        var stderrError = StripAnsiCodes(errorBuilder.ToString());
+        var stderrContent = StripAnsiCodes(errorBuilder.ToString());
 
         // Check for errors in output even if exit code was 0
         // Some CLIs output errors but still return 0
         var errorFromOutput = OpenCodeOutputParser.ExtractErrorFromOutput(cleanedOutput);
-        var errorFromStderr = !string.IsNullOrWhiteSpace(stderrError)
-            ? OpenCodeOutputParser.ExtractErrorFromOutput(stderrError.Split('\n').ToList())
+        var errorFromStderr = !string.IsNullOrWhiteSpace(stderrContent)
+            ? OpenCodeOutputParser.ExtractErrorFromOutput(stderrContent.Split('\n').ToList())
             : null;
 
-        // If we found error patterns in output/stderr, mark as failed
+        // Only mark as failed if we found actual error patterns (not just tool progress in stderr)
+        // Exit code 0 with only tool progress in stderr is a SUCCESS
         if (!string.IsNullOrWhiteSpace(errorFromOutput) || !string.IsNullOrWhiteSpace(errorFromStderr))
         {
             result.Success = false;
+        }
+
+        // If exit code is 0 and no error patterns were found, ensure success is true
+        // even if there's content in stderr (likely just tool progress output)
+        if (process.ExitCode == 0 && string.IsNullOrWhiteSpace(errorFromOutput) && string.IsNullOrWhiteSpace(errorFromStderr))
+        {
+            result.Success = true;
         }
 
         if (!result.Success)
         {
             var errorMessages = new List<string>();
 
-            if (!string.IsNullOrWhiteSpace(stderrError))
+            // Only include stderr in error if it contains actual errors, not just tool progress
+            if (!string.IsNullOrWhiteSpace(errorFromStderr))
             {
-                errorMessages.Add($"[stderr] {stderrError.Trim()}");
+                // Include the actual error content, not the full stderr
+                errorMessages.Add($"[stderr] {errorFromStderr.Trim()}");
+            }
+            else if (!string.IsNullOrWhiteSpace(stderrContent) && process.ExitCode != 0)
+            {
+                // Include full stderr only if exit code indicates failure
+                // Filter out tool progress lines for cleaner error display
+                var stderrLines = stderrContent.Split('\n')
+                    .Where(line => !OpenCodeOutputParser.IsToolProgressLine(line))
+                    .ToList();
+                var filteredStderr = string.Join("\n", stderrLines).Trim();
+                if (!string.IsNullOrWhiteSpace(filteredStderr))
+                {
+                    errorMessages.Add($"[stderr] {filteredStderr}");
+                }
             }
 
             if (!string.IsNullOrWhiteSpace(result.ErrorMessage))
@@ -486,11 +509,6 @@ public class OpenCodeProvider : CliProviderBase
             if (!string.IsNullOrWhiteSpace(errorFromOutput))
             {
                 errorMessages.Add(errorFromOutput);
-            }
-
-            if (!string.IsNullOrWhiteSpace(errorFromStderr) && errorFromStderr != errorFromOutput)
-            {
-                errorMessages.Add(errorFromStderr);
             }
 
             if (errorMessages.Count == 0 && cleanedOutput.Count > 0)

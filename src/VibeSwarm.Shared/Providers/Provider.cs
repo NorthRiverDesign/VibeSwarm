@@ -34,6 +34,14 @@ public class Provider
 
     public bool IsDefault { get; set; } = false;
 
+    /// <summary>
+    /// Maximum execution time for jobs using this provider (in minutes).
+    /// Jobs exceeding this time will be automatically terminated.
+    /// Null means no provider-level limit (uses job or system defaults).
+    /// </summary>
+    [Range(1, 10080)] // 1 minute to 7 days
+    public int? MaxExecutionMinutes { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     public DateTime? LastConnectedAt { get; set; }

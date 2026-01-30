@@ -45,6 +45,30 @@ public class Job
 
     public DateTime? CompletedAt { get; set; }
 
+    /// <summary>
+    /// Total execution time in seconds. Stored explicitly to preserve duration
+    /// even if StartedAt/CompletedAt are modified or unavailable.
+    /// </summary>
+    public double? ExecutionDurationSeconds { get; set; }
+
+    /// <summary>
+    /// Gets the execution duration as a TimeSpan.
+    /// Returns the explicit duration if stored, otherwise calculates from timestamps.
+    /// </summary>
+    public TimeSpan? ExecutionDuration
+    {
+        get
+        {
+            if (ExecutionDurationSeconds.HasValue)
+                return TimeSpan.FromSeconds(ExecutionDurationSeconds.Value);
+            if (StartedAt.HasValue && CompletedAt.HasValue)
+                return CompletedAt.Value - StartedAt.Value;
+            if (StartedAt.HasValue && (Status == JobStatus.Started || Status == JobStatus.Processing))
+                return DateTime.UtcNow - StartedAt.Value;
+            return null;
+        }
+    }
+
     public string? Output { get; set; }
 
     public string? ErrorMessage { get; set; }
@@ -221,15 +245,29 @@ public class Job
     public ICollection<JobMessage> Messages { get; set; } = new List<JobMessage>();
 
     /// <summary>
-    /// Creates completion criteria from this job's settings
+    /// Creates completion criteria from this job's settings.
+    /// Uses job-level settings if available, falling back to provider settings, then defaults.
     /// </summary>
     public Services.JobCompletionCriteria GetCompletionCriteria()
     {
+        // Priority: Job-level setting > Provider-level setting > Default (1 hour)
+        TimeSpan maxExecutionTime;
+        if (MaxExecutionMinutes.HasValue)
+        {
+            maxExecutionTime = TimeSpan.FromMinutes(MaxExecutionMinutes.Value);
+        }
+        else if (Provider?.MaxExecutionMinutes.HasValue == true)
+        {
+            maxExecutionTime = TimeSpan.FromMinutes(Provider.MaxExecutionMinutes.Value);
+        }
+        else
+        {
+            maxExecutionTime = TimeSpan.FromHours(1);
+        }
+
         return new Services.JobCompletionCriteria
         {
-            MaxExecutionTime = MaxExecutionMinutes.HasValue
-                ? TimeSpan.FromMinutes(MaxExecutionMinutes.Value)
-                : TimeSpan.FromHours(1),
+            MaxExecutionTime = maxExecutionTime,
             MaxCostUsd = MaxCostUsd,
             MaxTokens = MaxTokens,
             StallTimeout = StallTimeoutSeconds.HasValue

@@ -31,9 +31,9 @@ else
         GitHubRepository="@Job.Project?.GitHubRepository" BranchName="@_branchName" ProjectId="@Job.ProjectId"
         ProjectName="@(Job.Project?.Name ?? "Unknown")" ProviderName="@(Job.Provider?.Name ?? "Unknown")"
         ProcessId="@Job.ProcessId" CreatedAt="@Job.CreatedAt" StartedAt="@Job.StartedAt" CompletedAt="@Job.CompletedAt"
-        ModelUsed="@Job.ModelUsed" RetryCount="@Job.RetryCount" InputTokens="@Job.InputTokens"
-        OutputTokens="@Job.OutputTokens" TotalCostUsd="@Job.TotalCostUsd" CanRetry="@CanRetry" CanCancel="@CanCancel"
-        CanForceCancel="@CanForceCancel"
+        ExecutionDuration="@Job.ExecutionDuration" ModelUsed="@Job.ModelUsed" RetryCount="@Job.RetryCount"
+        InputTokens="@Job.InputTokens" OutputTokens="@Job.OutputTokens" TotalCostUsd="@Job.TotalCostUsd"
+        CanRetry="@CanRetry" CanCancel="@CanCancel" CanForceCancel="@CanForceCancel"
         ShowRetryOptions="@(Job.Status == JobStatus.Failed || Job.Status == JobStatus.Cancelled)" IsRetrying="@IsRetrying"
         IsCancelling="@IsCancelling" IsForceCancelling="@IsForceCancelling" OnRetry="RetryJob"
         OnRetryWithOptions="ShowRetryModal" OnCancel="CancelJob" OnForceCancel="ForceCancelJob"
@@ -45,9 +45,9 @@ else
         <div class="col-12 col-xl-5 order-2 order-xl-1">
 
             @* Goal Prompt Card *@
-            <JobGoalPromptCard GoalPrompt="@Job.GoalPrompt"
-                Status="@Job.Status" CanRetry="@CanRetry" HasConsoleOutput="@(!string.IsNullOrEmpty(Job.ConsoleOutput))"
-                OnCopyToClipboard="CopyPromptToClipboard" OnPromptChanged="UpdateJobPrompt" />
+            <JobGoalPromptCard GoalPrompt="@Job.GoalPrompt" Status="@Job.Status" CanRetry="@CanRetry"
+                HasConsoleOutput="@(!string.IsNullOrEmpty(Job.ConsoleOutput))" OnCopyToClipboard="CopyPromptToClipboard"
+                OnPromptChanged="UpdateJobPrompt" />
 
             @* User Interaction Section - shown when job is paused waiting for input *@
             @if (Job.Status == JobStatus.Paused && !string.IsNullOrEmpty(Job.PendingInteractionPrompt))
@@ -145,18 +145,10 @@ else
 
         @* Right Column - Session Panel (Live Output, Console, Command, Conversation) *@
         <div class="col-12 col-xl-7 order-1 order-xl-2 d-flex flex-column">
-            <JobSessionPanel
-                Messages="@(Job.Messages?.ToList() ?? new())"
-                Status="@Job.Status"
-                IsJobActive="@IsJobActive"
-                ErrorMessage="@Job.ErrorMessage"
-                ConsoleOutput="@Job.ConsoleOutput"
-                CommandUsed="@Job.CommandUsed"
-                SessionId="@Job.SessionId"
-                LiveOutputLines="@_liveOutput.ToList()"
-                MaxOutputLines="@MaxOutputLines"
-                OnClearLiveOutput="ClearLiveOutput"
-                OnSendFollowUp="CreateFollowUpJob" />
+            <JobSessionPanel Messages="@(Job.Messages?.ToList() ?? new())" Status="@Job.Status" IsJobActive="@IsJobActive"
+                ErrorMessage="@Job.ErrorMessage" ConsoleOutput="@Job.ConsoleOutput" CommandUsed="@Job.CommandUsed"
+                SessionId="@Job.SessionId" LiveOutputLines="@_liveOutput.ToList()" MaxOutputLines="@MaxOutputLines"
+                OnClearLiveOutput="ClearLiveOutput" OnSendFollowUp="CreateFollowUpJob" />
         </div>
     </div>
 

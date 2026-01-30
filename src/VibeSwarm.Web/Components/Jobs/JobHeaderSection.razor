@@ -110,6 +110,17 @@
 					<span title="Completed"><i
 							class="bi bi-check-circle me-1 opacity-75"></i>@CompletedAt.Value.FormatDateTimeShort()</span>
 				}
+				@if (ExecutionDuration.HasValue)
+				{
+					<span title="Execution Time" class="fw-medium"><i
+							class="bi bi-stopwatch me-1 opacity-75"></i>@TokenHelper.FormatDuration(ExecutionDuration)</span>
+				}
+				else if (IsRunning && StartedAt.HasValue)
+				{
+					<span title="Running Time" class="fw-medium text-info"><i
+							class="bi bi-stopwatch me-1 opacity-75"></i>@TokenHelper.FormatDuration(DateTime.UtcNow -
+											StartedAt.Value)</span>
+								}
 			</div>
 		</div>
 
@@ -198,6 +209,9 @@
 
 	[Parameter]
 	public DateTime? CompletedAt { get; set; }
+
+	[Parameter]
+	public TimeSpan? ExecutionDuration { get; set; }
 
 	[Parameter]
 	public string? ModelUsed { get; set; }

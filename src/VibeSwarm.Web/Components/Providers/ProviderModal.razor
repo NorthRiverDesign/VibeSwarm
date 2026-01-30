@@ -88,6 +88,17 @@
 				</div>
 			}
 
+			<div class="mb-3">
+				<label for="modal-maxExecutionMinutes" class="form-label">Max Execution Time (optional)</label>
+				<div class="input-group">
+					<InputNumber id="modal-maxExecutionMinutes" @bind-Value="Provider.MaxExecutionMinutes"
+						class="form-control" placeholder="No limit" min="1" max="10080" />
+					<span class="input-group-text">minutes</span>
+				</div>
+				<div class="form-text">Jobs using this provider will be automatically stopped after this time. Leave
+					empty for no limit.</div>
+			</div>
+
 			<div class="mb-3 form-check">
 				<InputCheckbox id="modal-isEnabled" @bind-Value="Provider.IsEnabled" class="form-check-input" />
 				<label for="modal-isEnabled" class="form-check-label">Enabled</label>
@@ -178,6 +189,7 @@
 					ApiEndpoint = EditProvider.ApiEndpoint,
 					ApiKey = EditProvider.ApiKey,
 					IsEnabled = EditProvider.IsEnabled,
+					MaxExecutionMinutes = EditProvider.MaxExecutionMinutes,
 					CreatedAt = EditProvider.CreatedAt,
 					LastConnectedAt = EditProvider.LastConnectedAt
 				};

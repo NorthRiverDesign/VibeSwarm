@@ -127,6 +127,11 @@ public class JobService : IJobService
         if (status == JobStatus.Completed || status == JobStatus.Failed || status == JobStatus.Cancelled)
         {
             job.CompletedAt = DateTime.UtcNow;
+            // Calculate and store execution duration
+            if (job.StartedAt.HasValue)
+            {
+                job.ExecutionDurationSeconds = (job.CompletedAt.Value - job.StartedAt.Value).TotalSeconds;
+            }
         }
 
         if (output != null)
@@ -173,6 +178,11 @@ public class JobService : IJobService
         if (status == JobStatus.Completed || status == JobStatus.Failed || status == JobStatus.Cancelled)
         {
             job.CompletedAt = DateTime.UtcNow;
+            // Calculate and store execution duration
+            if (job.StartedAt.HasValue)
+            {
+                job.ExecutionDurationSeconds = (job.CompletedAt.Value - job.StartedAt.Value).TotalSeconds;
+            }
             // Clear progress tracking when job reaches terminal state
             job.CurrentActivity = null;
             job.LastActivityAt = DateTime.UtcNow;
