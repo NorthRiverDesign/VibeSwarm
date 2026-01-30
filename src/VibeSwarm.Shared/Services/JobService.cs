@@ -680,4 +680,34 @@ public class JobService : IJobService
 
         return true;
     }
+
+    public async Task<bool> UpdateJobPromptAsync(Guid id, string newPrompt, CancellationToken cancellationToken = default)
+    {
+        var job = await _dbContext.Jobs
+            .FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
+
+        if (job == null)
+        {
+            return false;
+        }
+
+        // Only allow updating prompt for jobs that haven't started yet or are in terminal states
+        if (job.Status != JobStatus.New && job.Status != JobStatus.Failed && job.Status != JobStatus.Cancelled)
+        {
+            return false;
+        }
+
+        job.GoalPrompt = newPrompt;
+
+        // If job has a title that was derived from the original prompt, update it too
+        if (!string.IsNullOrEmpty(job.Title) && job.Title.Length <= 200)
+        {
+            // Update title to reflect new prompt (truncated to first 200 chars)
+            job.Title = newPrompt.Length > 200 ? newPrompt[..197] + "..." : newPrompt;
+        }
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return true;
+    }
 }

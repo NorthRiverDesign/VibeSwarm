@@ -1,16 +1,85 @@
-@* Goal prompt display card with full view modal support *@
+@* Goal prompt display card with tabs for Prompt/Command and editable support *@
 
 <div class="card mb-3 mb-lg-4">
-	<div class="card-header bg-body-secondary d-flex justify-content-between align-items-center">
-		<h5 class="mb-0 fw-semibold"><i class="bi bi-bullseye me-2 opacity-75"></i>Goal Prompt</h5>
-		<button type="button" class="btn btn-sm btn-outline-secondary" @onclick="ShowFullPrompt"
-			title="View full prompt">
-			<i class="bi bi-arrows-fullscreen me-1"></i>
-			<span class="d-none d-sm-inline">View Full</span>
-		</button>
+	<div class="card-header bg-body-secondary p-0">
+		<div class="d-flex align-items-center justify-content-between border-bottom border-secondary border-opacity-25">
+			@* Tabs *@
+			<ul class="nav nav-tabs nav-tabs-card border-0 flex-grow-1" role="tablist">
+				<li class="nav-item" role="presentation">
+					<button type="button" class="nav-link @(_activeTab == "prompt" ? "active" : "")"
+						@onclick="@(() => _activeTab = "prompt")" role="tab">
+						<i class="bi bi-bullseye me-1 opacity-75"></i>
+						<span class="d-none d-sm-inline">Goal Prompt</span>
+						<span class="d-sm-none">Prompt</span>
+					</button>
+				</li>
+				@if (!string.IsNullOrEmpty(CommandUsed))
+				{
+					<li class="nav-item" role="presentation">
+						<button type="button" class="nav-link @(_activeTab == "command" ? "active" : "")"
+							@onclick="@(() => _activeTab = "command")" role="tab">
+							<i class="bi bi-terminal me-1 opacity-75"></i>
+							<span>Command</span>
+						</button>
+					</li>
+				}
+			</ul>
+			@* Actions *@
+			<div class="d-flex align-items-center gap-1 px-2">
+				@if (IsEditable && _isEditing)
+				{
+					<button type="button" class="btn btn-sm btn-outline-secondary" @onclick="CancelEdit"
+						title="Cancel editing">
+						<i class="bi bi-x-lg"></i>
+					</button>
+					<button type="button" class="btn btn-sm btn-primary" @onclick="SavePrompt" disabled="@_isSaving"
+						title="Save changes">
+						@if (_isSaving)
+						{
+							<span class="spinner-border spinner-border-sm" role="status"></span>
+						}
+						else
+						{
+							<i class="bi bi-check-lg"></i>
+						}
+					</button>
+				}
+				else
+				{
+					@if (IsEditable)
+					{
+						<button type="button" class="btn btn-sm btn-outline-secondary" @onclick="StartEdit" title="Edit prompt">
+							<i class="bi bi-pencil"></i>
+						</button>
+					}
+					<button type="button" class="btn btn-sm btn-outline-secondary" @onclick="ShowFullPrompt"
+						title="View full">
+						<i class="bi bi-arrows-fullscreen"></i>
+					</button>
+				}
+			</div>
+		</div>
 	</div>
 	<div class="card-body d-flex flex-column gap-3">
-		<div class="goal-prompt-box">@GoalPrompt</div>
+		@if (_activeTab == "prompt")
+		{
+			@if (IsEditable && _isEditing)
+			{
+				<textarea class="form-control goal-prompt-textarea" @bind="_editedPrompt" rows="6"
+					placeholder="Enter the goal prompt for the AI agent..."></textarea>
+			}
+			else
+			{
+				<div class="goal-prompt-box">@GoalPrompt</div>
+			}
+		}
+		else if (_activeTab == "command")
+		{
+			<div class="p-2 bg-body-tertiary rounded border">
+				<code class="small d-block text-break"
+					style="white-space: pre-wrap; word-break: break-all;">@CommandUsed</code>
+			</div>
+		}
 
 		@if (!string.IsNullOrEmpty(SessionId))
 		{
@@ -31,7 +100,7 @@
 		{
 			<div class="info-section">
 				<h6>Job Cancelled</h6>
-				<p class="mb-0">This job was cancelled and can be retried. Click "Retry" to run it again.</p>
+				<p class="mb-0">This job was cancelled. You can edit the prompt and retry.</p>
 			</div>
 		}
 		else if (Status == JobStatus.Failed && CanRetry)
@@ -40,13 +109,19 @@
 				<h6>Job Failed</h6>
 				@if (string.IsNullOrEmpty(ErrorMessage) && HasConsoleOutput)
 				{
-					<p class="mb-0">This job failed during execution. Check the console output below for details. You can retry
-						by clicking "Retry" above.</p>
+					<p class="mb-0">Check the console output for details. You can edit the prompt and retry.</p>
 				}
 				else
 				{
-					<p class="mb-0">This job failed during execution. You can retry it by clicking "Retry" above.</p>
+					<p class="mb-0">You can edit the prompt and retry.</p>
 				}
+			</div>
+		}
+		else if (Status == JobStatus.New)
+		{
+			<div class="info-section">
+				<h6>Pending Execution</h6>
+				<p class="mb-0">This job is queued for processing. You can edit the prompt before it starts.</p>
 			</div>
 		}
 	</div>
@@ -83,6 +158,9 @@
 	public string GoalPrompt { get; set; } = string.Empty;
 
 	[Parameter]
+	public string? CommandUsed { get; set; }
+
+	[Parameter]
 	public string? SessionId { get; set; }
 
 	[Parameter]
@@ -100,7 +178,16 @@
 	[Parameter]
 	public EventCallback OnCopyToClipboard { get; set; }
 
+	[Parameter]
+	public EventCallback<string> OnPromptChanged { get; set; }
+
 	private bool _showModal = false;
+	private string _activeTab = "prompt";
+	private bool _isEditing = false;
+	private string _editedPrompt = string.Empty;
+	private bool _isSaving = false;
+
+	private bool IsEditable => Status == JobStatus.New || Status == JobStatus.Failed || Status == JobStatus.Cancelled;
 
 	private void ShowFullPrompt()
 	{
@@ -115,5 +202,33 @@
 	private async Task CopyToClipboard()
 	{
 		await OnCopyToClipboard.InvokeAsync();
+	}
+
+	private void StartEdit()
+	{
+		_editedPrompt = GoalPrompt;
+		_isEditing = true;
+	}
+
+	private void CancelEdit()
+	{
+		_isEditing = false;
+		_editedPrompt = string.Empty;
+	}
+
+	private async Task SavePrompt()
+	{
+		if (string.IsNullOrWhiteSpace(_editedPrompt)) return;
+
+		_isSaving = true;
+		try
+		{
+			await OnPromptChanged.InvokeAsync(_editedPrompt);
+			_isEditing = false;
+		}
+		finally
+		{
+			_isSaving = false;
+		}
 	}
 }

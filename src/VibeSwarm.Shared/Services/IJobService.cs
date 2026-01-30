@@ -75,4 +75,13 @@ public interface IJobService
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>True if successful</returns>
     Task<bool> ResetJobWithOptionsAsync(Guid id, Guid? providerId = null, string? modelId = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Updates the goal prompt for a job that hasn't started yet
+    /// </summary>
+    /// <param name="id">The job ID</param>
+    /// <param name="newPrompt">The new goal prompt</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>True if successful</returns>
+    Task<bool> UpdateJobPromptAsync(Guid id, string newPrompt, CancellationToken cancellationToken = default);
 }

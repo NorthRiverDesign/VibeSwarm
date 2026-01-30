@@ -92,6 +92,12 @@ Attempt to utilize existing Bootstrap components and utility classes to maintain
 
 The interface must be fully responsive and work on mobile devices as well as desktops. The layout should adapt to different screen sizes, ensuring usability across a range of devices. The application should follow accessibility best practices to ensure that all users, including those with disabilities, can effectively use the interface. This includes proper use of ARIA roles, keyboard navigation support, and sufficient color contrast.
 
+Always ensure consistent spacing, alignment, and visual hierarchy throughout the application. Attention to detail in UI design enhances user experience and promotes a professional appearance. The viewport is considered when designing layouts, ensuring that content is well-organized and easily accessible on various screen sizes. There should never be instances of large gaps, or unused space on larger screens.
+
+Classes should never target one single concern, such as `.goal-prompt-textarea` or `.agent-card`. Instead, use a stacked utility class approach to achieve the desired layout and styling without custom CSS. This ensures flexibility and maintainability across the application. A component may use multiple classes such as `d-flex`, `flex-column`, `align-items-center`, `bg-body-secondary`, and `p-3` to achieve the desired layout and styling without custom CSS.
+
+Consider the entire viewport when designing layouts, ensuring that content is well-organized and easily accessible on different screen sizes. Utilize grid systems and flexible layouts to create a visually appealing and functional interface. When on a larger screen, ensure there are no gaps of unused space by expanding content areas or adding supplementary information where appropriate.
+
 ## Mobile Friendly
 
 VibeSwarm is designed to be mobile-friendly, ensuring that users can access and manage their projects from smartphones and tablets. The responsive design adapts to various screen sizes, providing an optimal user experience regardless of the device being used. The mobile interface includes touch-friendly elements and simplified navigation to facilitate ease of use on smaller screens.
@@ -118,6 +124,8 @@ No components should need a `*.razor.css` file. All styling should be achievable
 
 The `style.css` should never contain specific component styles. It should only contain helper classes that can be used across multiple components. Razor components should stack Bootstrap utility classes to achieve the desired styling and layout.
 
+There may be rare cases where a custom class is necessary for a specific component due to limitations in Bootstrap. In such cases, the custom class should be clearly named to indicate its purpose and should be documented within the `style.css` file for clarity. The custom classes should aim to only override properties where a utility class does not exist in Bootstrap.
+
 ## Bootstrap Icons
 
 VibeSwarm uses Bootstrap Icons for visual enhancements and to improve user experience. Icons are used throughout the interface to represent actions, statuses, and navigation elements. The application leverages the extensive library of Bootstrap Icons to maintain a consistent look and feel.
@@ -132,6 +140,14 @@ VibeSwarm is built using Blazor, a web framework for building interactive web ap
 
 Data fetching methods should use try/catch blocks to handle potential errors gracefully. This ensures that the application remains stable and provides informative feedback to users in case of data retrieval issues. Loading indicators should be displayed while data is being fetched to enhance user experience and provide visual feedback during asynchronous operations. The UI should not be blocked while waiting for data to load.
 
+Do not use code-behind files for Razor components. All logic should be contained within the `.razor` file itself to maintain clarity and reduce complexity. This approach simplifies component management and enhances readability.
+
+Attempt to keep Razor components under 300 lines of markup and code combined. If a component exceeds this limit, consider refactoring it into smaller, more manageable components to improve maintainability and readability.
+
+All interaction should be real-time using SignalR where applicable. Avoid page reloads or full page navigations for data updates. Instead, use Blazor's data binding and event handling capabilities to provide a seamless and dynamic user experience.
+
+The application will be primarily used as a PWA (Progressive Web App). Ensure that all Blazor components and pages are optimized for PWA usage, including offline capabilities, responsive design, and efficient resource loading. The application should not have any issues with loading or interactivity when used as a PWA, even if the user has not opened the app for an extended period.
+
 ## UI Components
 
 Large pages should be broken into smaller, reusable components to improve maintainability and readability. Components such as agent cards, project lists, and status indicators can be created to encapsulate specific functionality and styling. This modular approach allows for easier updates and enhancements to individual components without affecting the overall application.
@@ -145,6 +161,8 @@ Avoid table based layouts for non-tabular data. Use Bootstrap's grid system and 
 ## C# Best Practices
 
 Use a Models folder to contain all data models used in the application. This promotes organization and makes it easier to locate and manage data structures. Use attributes such as [Required], [StringLength], and [Range] to enforce data validation rules on models. This ensures that data integrity is maintained and reduces the likelihood of errors during data processing.
+
+Classes should follow the Single Responsibility Principle, ensuring that each class has a clear and focused purpose. This enhances maintainability and makes it easier to understand the codebase. Class files should be named according to the class they contain, following PascalCase naming conventions. This promotes consistency and makes it easier to locate specific classes within the project. Keep class files in a one class per file structure to enhance readability and maintainability.
 
 When working with asynchronous operations, prefer using async/await patterns to improve application responsiveness and scalability. This allows for non-blocking operations, enhancing user experience during long-running tasks.
 
@@ -175,3 +193,11 @@ VibeSwarm integrates with Git to manage code versioning and collaboration. Each 
 VibeSwarm assumes git is installed on the host system and accessible via the command line. The application uses Git to track code changes made by agents, providing a history of modifications and enabling easy rollback if necessary. Even if a project is not initially set up as a Git repository, VibeSwarm can initialize a new repository in the project directory to enable version control.
 
 VibeSwarm assumes the login and credentials for any remote Git repositories are already set up on the host system. This may include SSH keys, access tokens, or other authentication methods required to interact with private repositories. VibeSwarm does not handle Git authentication directly but relies on the host system's configuration.
+
+## Tool Use and Research
+
+Any AI coding agent working on this codebase should attempt to research any questions it has using web search or other research tools before asking the user for help. The agent should only ask the user for help if it is unable to find a satisfactory answer through its research efforts. This approach helps minimize interruptions to the user and allows the agent to operate more autonomously.
+
+Research documentation, especially for Provider documentation, API references, and coding best practices, should be prioritized to ensure that the agent has a solid understanding of the tools and technologies it is working with. This knowledge enables the agent to make informed decisions and produce high-quality code.
+
+When asking the user for help, the agent should provide context about what it has already researched and why it is seeking assistance. This helps the user understand the situation and provide more targeted support.

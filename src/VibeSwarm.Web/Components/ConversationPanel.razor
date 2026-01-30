@@ -1,37 +1,29 @@
-@* Conversation messages container component *@
+@* Conversation messages container component - shown after job completes *@
 
 <div class="card">
 	<div class="card-header bg-body-secondary d-flex justify-content-between align-items-center">
 		<h5 class="mb-0 fw-semibold"><i class="bi bi-chat-dots me-2 opacity-75"></i>Conversation</h5>
-		<span class="badge bg-secondary">@Messages.Count</span>
+		@if (Messages.Any())
+		{
+			<span class="badge bg-secondary">@Messages.Count</span>
+		}
 	</div>
 	<div class="card-body p-2 p-sm-3">
-		@if (IsActive)
-		{
-			<div class="activity-indicator mb-3">
-				<span class="activity-spinner"></span>
-				<span class="activity-text">@(CurrentActivity ?? "Working...")</span>
-				@if (LastActivityAt.HasValue)
-				{
-					<span class="activity-time">@LastActivityAt.Value.FormatTime()</span>
-				}
-			</div>
-		}
-
 		@if (!Messages.Any())
 		{
-			<div class="empty-state">
-				@if (Status == JobStatus.New || Status == JobStatus.Pending)
+			<div class="empty-state text-center py-4">
+				<i class="bi bi-chat-left-text opacity-50 d-block mb-2" style="font-size: 2rem;"></i>
+				@if (IsJobRunning)
 				{
-					<text>Job is waiting to be processed...</text>
+					<span class="text-body-secondary">Conversation will appear here when the agent completes.</span>
 				}
-				else if (Status == JobStatus.Started || Status == JobStatus.Processing)
+				else if (Status == JobStatus.New || Status == JobStatus.Pending)
 				{
-					<text>Agent is working on the task...</text>
+					<span class="text-body-secondary">Conversation will appear after the job runs.</span>
 				}
 				else
 				{
-					<text>No conversation messages recorded.</text>
+					<span class="text-body-secondary">No conversation recorded for this job.</span>
 				}
 			</div>
 		}
@@ -63,4 +55,6 @@
 
 	[Parameter]
 	public DateTime? LastActivityAt { get; set; }
+
+	private bool IsJobRunning => Status == JobStatus.Started || Status == JobStatus.Processing;
 }

@@ -4,45 +4,99 @@
 <div
 	class="d-flex flex-column flex-lg-row justify-content-between align-items-start gap-3 mb-3 mb-lg-4 pb-3 border-bottom">
 	<div class="flex-grow-1 min-width-0 w-100 w-lg-auto">
-		<div class="d-flex flex-wrap align-items-center gap-2 mb-2">
-			<h3 class="mb-0 fs-4 fw-semibold">Job Details</h3>
-			<StatusBadge Status="@Status.ToString()" />
-			@if (CancellationRequested && IsRunning)
-			{
-				<StatusBadge Status="Cancelling" />
-			}
+		@* Title row with status and action buttons *@
+		<div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+			<div class="d-flex flex-wrap align-items-center gap-2">
+				<h3 class="mb-0 fs-4 fw-semibold">Job Details</h3>
+				<StatusBadge Status="@Status.ToString()" />
+				@if (CancellationRequested && IsRunning)
+				{
+					<StatusBadge Status="Cancelling" />
+				}
+			</div>
+			@* Action Buttons - integrated in header *@
+			<div class="d-flex flex-wrap gap-2 flex-shrink-0">
+				@if (CanRetry)
+				{
+					@if (ShowRetryOptions)
+					{
+						<ActionButton Icon="arrow-repeat" Text="@(IsRetrying ? "Retrying..." : "Retry")"
+							Style="ActionButton.ButtonStyle.Primary" Size="ActionButton.ButtonSize.Small"
+							IsLoading="@IsRetrying" OnClick="OnRetryWithOptions" />
+					}
+					else
+					{
+						<ActionButton Icon="arrow-repeat" Text="@(IsRetrying ? "Retrying..." : "Retry")"
+							Style="ActionButton.ButtonStyle.Primary" Size="ActionButton.ButtonSize.Small"
+							IsLoading="@IsRetrying" OnClick="OnRetry" />
+					}
+				}
+				@if (CanCancel)
+				{
+					<ActionButton Icon="x-circle" Text="@(IsCancelling ? "Cancelling..." : "Cancel")"
+						Style="ActionButton.ButtonStyle.Danger" Size="ActionButton.ButtonSize.Small"
+						IsLoading="@IsCancelling" OnClick="OnCancel" />
+				}
+				@if (CanForceCancel)
+				{
+					<ActionButton Icon="stop-circle" Text="@(IsForceCancelling ? "Stopping..." : "Force Stop")"
+						Style="ActionButton.ButtonStyle.Danger" Outline="true" Size="ActionButton.ButtonSize.Small"
+						IsLoading="@IsForceCancelling" OnClick="OnForceCancel" />
+				}
+			</div>
 		</div>
 
-		@* Repository and Branch Info *@
-		@if (!string.IsNullOrEmpty(GitHubRepository) || !string.IsNullOrEmpty(BranchName))
+		@* Activity indicator when job is running *@
+		@if (IsRunning && !string.IsNullOrEmpty(CurrentActivity))
 		{
-			<div class="d-flex flex-wrap align-items-center gap-2 mb-2">
-				@if (!string.IsNullOrEmpty(GitHubRepository))
+			<div
+				class="d-flex align-items-center gap-2 mb-2 p-2 bg-info bg-opacity-10 rounded border border-info border-opacity-25">
+				<span class="spinner-border spinner-border-sm text-info" role="status"></span>
+				<span class="text-body small fw-medium">@CurrentActivity</span>
+				@if (LastActivityAt.HasValue)
 				{
-					<span class="badge bg-dark bg-opacity-75 d-inline-flex align-items-center gap-1 fw-normal">
-						<i class="bi bi-github"></i>
-						<span>@GitHubRepository</span>
-					</span>
-				}
-				@if (!string.IsNullOrEmpty(BranchName))
-				{
-					<span class="badge bg-secondary bg-opacity-75 d-inline-flex align-items-center gap-1 fw-normal">
-						<i class="bi bi-diagram-2"></i>
-						<span>@BranchName</span>
-					</span>
+					<span class="text-body-secondary small ms-auto">@LastActivityAt.Value.FormatTime()</span>
 				}
 			</div>
 		}
 
+		@* Metadata chips row *@
+		<div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+			@if (!string.IsNullOrEmpty(ProviderName))
+			{
+				<span class="badge bg-primary bg-opacity-75 d-inline-flex align-items-center gap-1 fw-normal"
+					title="Provider">
+					<i class="bi bi-robot"></i>
+					<span>@ProviderName</span>
+				</span>
+			}
+			@if (!string.IsNullOrEmpty(GitHubRepository))
+			{
+				<span class="badge bg-dark bg-opacity-75 d-inline-flex align-items-center gap-1 fw-normal">
+					<i class="bi bi-github"></i>
+					<span>@GitHubRepository</span>
+				</span>
+			}
+			@if (!string.IsNullOrEmpty(BranchName))
+			{
+				<span class="badge bg-secondary bg-opacity-75 d-inline-flex align-items-center gap-1 fw-normal">
+					<i class="bi bi-diagram-2"></i>
+					<span>@BranchName</span>
+				</span>
+			}
+			@if (ProcessId.HasValue)
+			{
+				<span
+					class="badge bg-secondary bg-opacity-50 d-inline-flex align-items-center gap-1 fw-normal d-none d-sm-inline-flex"
+					title="Process ID">
+					<i class="bi bi-cpu"></i>
+					<span>PID: @ProcessId</span>
+				</span>
+			}
+		</div>
+
+		@* Timestamps row *@
 		<div class="small text-body-secondary">
-			<div class="d-flex flex-wrap gap-2 gap-sm-3 mb-2">
-				<span>Project: <a href="/projects/@ProjectId" class="text-decoration-none">@ProjectName</a></span>
-				<span>Provider: @ProviderName</span>
-				@if (ProcessId.HasValue)
-				{
-					<span class="process-info d-none d-sm-inline">PID: @ProcessId</span>
-				}
-			</div>
 			<div class="d-flex flex-wrap gap-2 gap-sm-3">
 				<span title="Created"><i
 						class="bi bi-calendar-plus me-1 opacity-75"></i>@CreatedAt.FormatDateTimeShort()</span>
@@ -118,8 +172,8 @@
 					@if (!_showFullCommand)
 					{
 						<code class="small text-truncate flex-grow-1" style="max-width: 400px;" title="@DisplayCommand">
-		                            @TruncateCommand(DisplayCommand, 60)
-		                        </code>
+				                            @TruncateCommand(DisplayCommand, 60)
+				                        </code>
 					}
 					<button type="button" class="btn btn-sm btn-link text-body-secondary p-0" @onclick="CopyCommand"
 						title="Copy command">
@@ -134,34 +188,6 @@
 					</div>
 				}
 			</div>
-		}
-	</div>
-
-	@* Action Buttons *@
-	<div class="d-flex flex-wrap gap-2 flex-shrink-0">
-		@if (CanRetry)
-		{
-			@if (ShowRetryOptions)
-			{
-				<ActionButton Icon="arrow-repeat" Text="@(IsRetrying ? "Retrying..." : "Retry")"
-					Style="ActionButton.ButtonStyle.Primary" IsLoading="@IsRetrying" OnClick="OnRetryWithOptions" />
-			}
-			else
-			{
-				<ActionButton Icon="arrow-repeat" Text="@(IsRetrying ? "Retrying..." : "Retry")"
-					Style="ActionButton.ButtonStyle.Primary" IsLoading="@IsRetrying" OnClick="OnRetry" />
-			}
-		}
-		@if (CanCancel)
-		{
-			<ActionButton Icon="x-circle" Text="@(IsCancelling ? "Cancelling..." : "Cancel")"
-				Style="ActionButton.ButtonStyle.Danger" IsLoading="@IsCancelling" OnClick="OnCancel" />
-		}
-		@if (CanForceCancel)
-		{
-			<ActionButton Icon="stop-circle" Text="@(IsForceCancelling ? "Stopping..." : "Force Stop")"
-				Style="ActionButton.ButtonStyle.Danger" Outline="true" IsLoading="@IsForceCancelling"
-				OnClick="OnForceCancel" />
 		}
 	</div>
 </div>
@@ -256,6 +282,12 @@
 
 	[Parameter]
 	public EventCallback<string> OnCopyCommand { get; set; }
+
+	[Parameter]
+	public string? CurrentActivity { get; set; }
+
+	[Parameter]
+	public DateTime? LastActivityAt { get; set; }
 
 	private bool _showFullCommand = false;
 

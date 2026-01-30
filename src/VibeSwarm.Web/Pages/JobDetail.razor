@@ -39,7 +39,8 @@ else
         ShowRetryOptions="@(Job.Status == JobStatus.Failed || Job.Status == JobStatus.Cancelled)" IsRetrying="@IsRetrying"
         IsCancelling="@IsCancelling" IsForceCancelling="@IsForceCancelling" OnRetry="RetryJob"
         OnRetryWithOptions="ShowRetryModal" OnCancel="CancelJob" OnForceCancel="ForceCancelJob"
-        OnCopyCommand="CopyCommandToClipboard" />
+        OnCopyCommand="CopyCommandToClipboard" CurrentActivity="@Job.CurrentActivity"
+        LastActivityAt="@Job.LastActivityAt" />
 
     @* Main Content - Column Layout *@
     <div class="row g-3 g-lg-4 job-detail-content">
@@ -47,9 +48,10 @@ else
         <div class="col-12 col-xl-5 order-2 order-xl-1">
 
             @* Goal Prompt Card *@
-            <JobGoalPromptCard GoalPrompt="@Job.GoalPrompt" SessionId="@Job.SessionId" ErrorMessage="@Job.ErrorMessage"
-                Status="@Job.Status" CanRetry="@CanRetry" HasConsoleOutput="@(!string.IsNullOrEmpty(Job.ConsoleOutput))"
-                OnCopyToClipboard="CopyPromptToClipboard" />
+            <JobGoalPromptCard GoalPrompt="@Job.GoalPrompt" CommandUsed="@Job.CommandUsed" SessionId="@Job.SessionId"
+                ErrorMessage="@Job.ErrorMessage" Status="@Job.Status" CanRetry="@CanRetry"
+                HasConsoleOutput="@(!string.IsNullOrEmpty(Job.ConsoleOutput))" OnCopyToClipboard="CopyPromptToClipboard"
+                OnPromptChanged="UpdateJobPrompt" />
 
             @* User Interaction Section - shown when job is paused waiting for input *@
             @if (Job.Status == JobStatus.Paused && !string.IsNullOrEmpty(Job.PendingInteractionPrompt))
@@ -60,15 +62,7 @@ else
                     OnSubmitResponse="SubmitInteractionResponse" />
             }
 
-            @* Live Output Section - shown when job is running *@
-            @if (IsJobActive && _liveOutput.Count > 0)
-            {
-                <LiveOutputPanel
-                    OutputLines="@_liveOutput.Select(o => new LiveOutputPanel.OutputLine { Content = o.Content, IsError = o.IsError, Timestamp = o.Timestamp }).ToList()"
-                    MaxLines="@MaxOutputLines" OnClear="ClearLiveOutput" />
-            }
-
-            @* Saved Console Output - shown after job completes *@
+            @* Saved Console Output - shown after job completes (not while running) *@
             @if (!IsJobActive && !string.IsNullOrEmpty(Job.ConsoleOutput))
             {
                 <div class="card mb-3 mb-lg-4">
@@ -175,11 +169,42 @@ else
             }
         </div>
 
-        @* Right Column - Conversation Messages (shows first on mobile) *@
+        @* Right Column - Live Output when running, Conversation when complete (shows first on mobile) *@
         <div class="col-12 col-xl-7 order-1 order-xl-2">
-            <ConversationPanel Messages="@Job.Messages.ToList()" Status="@Job.Status"
-                IsActive="@(Job.Status == JobStatus.Started || Job.Status == JobStatus.Processing)"
-                CurrentActivity="@Job.CurrentActivity" LastActivityAt="@Job.LastActivityAt" />
+            @if (IsJobActive)
+            {
+                @* Live Output Section - prominent when job is running *@
+                @if (_liveOutput.Count > 0)
+                {
+                    <LiveOutputPanel
+                        OutputLines="@_liveOutput.Select(o => new LiveOutputPanel.OutputLine { Content = o.Content, IsError = o.IsError, Timestamp = o.Timestamp }).ToList()"
+                        MaxLines="@MaxOutputLines" OnClear="ClearLiveOutput" />
+                }
+                else
+                {
+                    @* Waiting for output placeholder *@
+                    <div class="card">
+                        <div class="card-header bg-body-secondary d-flex align-items-center">
+                            <span class="live-indicator me-2"></span>
+                            <strong>Live Output</strong>
+                        </div>
+                        <div class="card-body text-center py-5">
+                            <div class="spinner-border text-info mb-3" role="status">
+                                <span class="visually-hidden">Waiting for output...</span>
+                            </div>
+                            <p class="text-body-secondary mb-0">
+                                Waiting for agent output...
+                            </p>
+                        </div>
+                    </div>
+                }
+            }
+            else
+            {
+                @* Conversation Panel - shown after job completes *@
+                <ConversationPanel Messages="@(Job.Messages?.ToList() ?? new())" Status="@Job.Status" IsActive="@false"
+                    CurrentActivity="@Job.CurrentActivity" LastActivityAt="@Job.LastActivityAt" />
+            }
         </div>
     </div>
 
@@ -903,6 +928,30 @@ new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
             {
                 NotificationService.ShowError($"Failed to copy to clipboard: {ex.Message}", "Copy Failed");
             }
+        }
+    }
+
+    private async Task UpdateJobPrompt(string newPrompt)
+    {
+        if (Job == null || string.IsNullOrWhiteSpace(newPrompt)) return;
+
+        try
+        {
+            var success = await JobService.UpdateJobPromptAsync(Job.Id, newPrompt);
+            if (success)
+            {
+                Job.GoalPrompt = newPrompt;
+                NotificationService.ShowSuccess("Prompt updated successfully!", "Saved");
+                StateHasChanged();
+            }
+            else
+            {
+                NotificationService.ShowError("Could not update prompt. Job may have already started.", "Update Failed");
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.ShowError($"Failed to update prompt: {ex.Message}", "Update Failed");
         }
     }
 
