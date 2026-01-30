@@ -371,6 +371,36 @@ public class ExecutionOptions
     public Dictionary<string, string>? EnvironmentVariables { get; set; }
 
     /// <summary>
+    /// The AI model to use for execution (in provider/model format, e.g., "anthropic/claude-sonnet-4-20250514")
+    /// </summary>
+    public string? Model { get; set; }
+
+    /// <summary>
+    /// Title for the session (useful for tracking and display)
+    /// </summary>
+    public string? Title { get; set; }
+
+    /// <summary>
+    /// Agent to use for execution (provider-specific)
+    /// </summary>
+    public string? Agent { get; set; }
+
+    /// <summary>
+    /// File paths to attach to the message
+    /// </summary>
+    public List<string>? AttachedFiles { get; set; }
+
+    /// <summary>
+    /// Output format preference (e.g., "default", "json")
+    /// </summary>
+    public string? OutputFormat { get; set; }
+
+    /// <summary>
+    /// Whether to continue the last session (used when SessionId is not specified)
+    /// </summary>
+    public bool ContinueLastSession { get; set; }
+
+    /// <summary>
     /// Creates ExecutionOptions from the legacy parameters
     /// </summary>
     public static ExecutionOptions FromLegacy(string? sessionId = null, string? workingDirectory = null)

@@ -746,7 +746,9 @@ public class JobProcessingService : BackgroundService
                 {
                     SessionId = job.SessionId,
                     WorkingDirectory = workingDirectory,
-                    McpConfigPath = await GetMcpConfigPathAsync(job.ProviderId)
+                    McpConfigPath = await GetMcpConfigPathAsync(job.ProviderId),
+                    Model = job.ModelUsed,
+                    Title = job.Title
                 },
                 progress,
                 cancellationToken);

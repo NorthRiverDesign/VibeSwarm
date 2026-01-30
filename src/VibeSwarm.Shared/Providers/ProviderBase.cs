@@ -36,10 +36,16 @@ public abstract class ProviderBase : IProvider
         IProgress<ExecutionProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
-        // Store the MCP config path for use by child implementations
+        // Store execution options for use by child implementations
         CurrentMcpConfigPath = options.McpConfigPath;
         CurrentAdditionalArgs = options.AdditionalArgs;
         CurrentEnvironmentVariables = options.EnvironmentVariables;
+        CurrentModel = options.Model;
+        CurrentTitle = options.Title;
+        CurrentAgent = options.Agent;
+        CurrentAttachedFiles = options.AttachedFiles;
+        CurrentOutputFormat = options.OutputFormat;
+        CurrentContinueLastSession = options.ContinueLastSession;
 
         return ExecuteWithSessionAsync(
             prompt,
@@ -65,6 +71,36 @@ public abstract class ProviderBase : IProvider
     protected Dictionary<string, string>? CurrentEnvironmentVariables { get; private set; }
 
     /// <summary>
+    /// Current model to use (set by ExecuteWithOptionsAsync)
+    /// </summary>
+    protected string? CurrentModel { get; private set; }
+
+    /// <summary>
+    /// Current session title (set by ExecuteWithOptionsAsync)
+    /// </summary>
+    protected string? CurrentTitle { get; private set; }
+
+    /// <summary>
+    /// Current agent to use (set by ExecuteWithOptionsAsync)
+    /// </summary>
+    protected string? CurrentAgent { get; private set; }
+
+    /// <summary>
+    /// Current attached files (set by ExecuteWithOptionsAsync)
+    /// </summary>
+    protected List<string>? CurrentAttachedFiles { get; private set; }
+
+    /// <summary>
+    /// Current output format (set by ExecuteWithOptionsAsync)
+    /// </summary>
+    protected string? CurrentOutputFormat { get; private set; }
+
+    /// <summary>
+    /// Whether to continue the last session (set by ExecuteWithOptionsAsync)
+    /// </summary>
+    protected bool CurrentContinueLastSession { get; private set; }
+
+    /// <summary>
     /// Clears the execution context after a run completes
     /// </summary>
     protected void ClearExecutionContext()
@@ -72,6 +108,12 @@ public abstract class ProviderBase : IProvider
         CurrentMcpConfigPath = null;
         CurrentAdditionalArgs = null;
         CurrentEnvironmentVariables = null;
+        CurrentModel = null;
+        CurrentTitle = null;
+        CurrentAgent = null;
+        CurrentAttachedFiles = null;
+        CurrentOutputFormat = null;
+        CurrentContinueLastSession = false;
     }
 
     public abstract Task<ProviderInfo> GetProviderInfoAsync(CancellationToken cancellationToken = default);

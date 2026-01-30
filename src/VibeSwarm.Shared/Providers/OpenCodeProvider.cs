@@ -138,6 +138,88 @@ public class OpenCodeProvider : CliProviderBase
         }
     }
 
+    /// <summary>
+    /// Builds the CLI arguments for the OpenCode 'run' command.
+    /// Reference: https://opencode.ai/docs/cli#run
+    /// 
+    /// Available flags for 'run' command:
+    /// --command       The command to run, use message for args
+    /// --continue, -c  Continue the last session
+    /// --session, -s   Session ID to continue
+    /// --share         Share the session
+    /// --model, -m     Model to use in the form of provider/model
+    /// --agent         Agent to use
+    /// --file, -f      File(s) to attach to message
+    /// --format        Format: default (formatted) or json (raw JSON events)
+    /// --title         Title for the session
+    /// --attach        Attach to a running opencode server
+    /// --port          Port for the local server
+    /// </summary>
+    private List<string> BuildRunCommandArgs(string prompt, string? sessionId)
+    {
+        var args = new List<string> { "run" };
+
+        // Session continuation options (--session takes precedence over --continue)
+        if (!string.IsNullOrEmpty(sessionId))
+        {
+            args.AddRange(new[] { "--session", sessionId });
+        }
+        else if (CurrentContinueLastSession)
+        {
+            args.Add("--continue");
+        }
+
+        // Model selection (required for proper operation)
+        // Priority: CurrentModel > Environment variable > None
+        var model = CurrentModel;
+        if (string.IsNullOrEmpty(model) && CurrentEnvironmentVariables != null)
+        {
+            CurrentEnvironmentVariables.TryGetValue("OPENCODE_MODEL", out model);
+        }
+        if (!string.IsNullOrEmpty(model))
+        {
+            args.AddRange(new[] { "--model", model });
+        }
+
+        // Agent selection
+        if (!string.IsNullOrEmpty(CurrentAgent))
+        {
+            args.AddRange(new[] { "--agent", CurrentAgent });
+        }
+
+        // Session title
+        if (!string.IsNullOrEmpty(CurrentTitle))
+        {
+            args.AddRange(new[] { "--title", $"\"{EscapeCliArgument(CurrentTitle)}\"" });
+        }
+
+        // Output format (default or json)
+        if (!string.IsNullOrEmpty(CurrentOutputFormat))
+        {
+            args.AddRange(new[] { "--format", CurrentOutputFormat });
+        }
+
+        // File attachments
+        if (CurrentAttachedFiles != null && CurrentAttachedFiles.Count > 0)
+        {
+            foreach (var file in CurrentAttachedFiles)
+            {
+                args.AddRange(new[] { "--file", $"\"{EscapeCliArgument(file)}\"" });
+            }
+        }
+
+        // Additional custom arguments (provider-specific or user-defined)
+        if (CurrentAdditionalArgs != null)
+        {
+            args.AddRange(CurrentAdditionalArgs);
+        }
+
+        // The prompt message must be the final argument
+        args.Add($"\"{EscapeCliArgument(prompt)}\"");
+
+        return args;
+    }
+
     private async Task<ExecutionResult> ExecuteCliWithSessionAsync(
         string prompt,
         string? sessionId,
@@ -158,31 +240,9 @@ public class OpenCodeProvider : CliProviderBase
         var result = new ExecutionResult { Messages = new List<ExecutionMessage>() };
         var effectiveWorkingDir = workingDirectory ?? WorkingDirectory ?? Environment.CurrentDirectory;
 
-        // Build arguments for opencode non-interactive mode using 'run' subcommand
-        // Syntax: opencode run [message..]
-        // Working directory is set via ProcessStartInfo.WorkingDirectory in CreateCliProcess
-        var args = new List<string> { "run" };
-
-        // Continue a specific session if provided
-        if (!string.IsNullOrEmpty(sessionId))
-        {
-            args.AddRange(new[] { "--session", sessionId });
-        }
-
-        if (CurrentEnvironmentVariables != null &&
-            CurrentEnvironmentVariables.TryGetValue("OPENCODE_MODEL", out var model) &&
-            !string.IsNullOrEmpty(model))
-        {
-            args.AddRange(new[] { "--model", model });
-        }
-
-        if (CurrentAdditionalArgs != null)
-        {
-            args.AddRange(CurrentAdditionalArgs);
-        }
-
-        // Add the prompt message as the final argument
-        args.Add($"\"{EscapeCliArgument(prompt)}\"");
+        // Build the full command using the centralized argument builder
+        // Reference: https://opencode.ai/docs/cli#run
+        var args = BuildRunCommandArgs(prompt, sessionId);
 
         var fullArguments = string.Join(" ", args);
         var fullCommand = $"{execPath} {fullArguments}";
@@ -556,14 +616,9 @@ public class OpenCodeProvider : CliProviderBase
             throw new InvalidOperationException("OpenCode executable path is not configured.");
         }
 
-        // Build arguments for non-interactive mode using 'run' subcommand
-        var argsList = new List<string> { "run" };
-        if (!string.IsNullOrEmpty(sessionId))
-        {
-            argsList.AddRange(new[] { "--session", sessionId });
-        }
-        // Add the prompt message as the final argument
-        argsList.Add($"\"{EscapeCliArgument(prompt)}\"");
+        // Build arguments using the centralized command builder
+        // Reference: https://opencode.ai/docs/cli#run
+        var argsList = BuildRunCommandArgs(prompt, sessionId);
 
         var startInfo = new ProcessStartInfo
         {
@@ -806,8 +861,20 @@ public class OpenCodeProvider : CliProviderBase
                 return PromptResponse.Fail("OpenCode executable path is not configured.");
             }
 
-            // Use 'run' subcommand for non-interactive mode
-            var args = $"run \"{EscapeCliArgument(prompt)}\"";
+            // Build arguments for simple prompt execution
+            // Reference: https://opencode.ai/docs/cli#run
+            var argsList = new List<string> { "run" };
+
+            // Add model if specified
+            if (!string.IsNullOrEmpty(CurrentModel))
+            {
+                argsList.AddRange(new[] { "--model", CurrentModel });
+            }
+
+            // Add the prompt message
+            argsList.Add($"\"{EscapeCliArgument(prompt)}\"");
+
+            var args = string.Join(" ", argsList);
             return await ExecuteSimplePromptAsync(execPath, args, "OpenCode", workingDirectory, cancellationToken);
         }
         else
@@ -832,7 +899,7 @@ public class OpenCodeProvider : CliProviderBase
 
                 var result = await response.Content.ReadFromJsonAsync<OpenCodeApiResponse>(JsonOptions, cancellationToken);
 
-                stopwatch.Stop();
+                stopwatch.Stop(); ;
 
                 if (result?.Success == true && !string.IsNullOrEmpty(result.Output))
                 {
