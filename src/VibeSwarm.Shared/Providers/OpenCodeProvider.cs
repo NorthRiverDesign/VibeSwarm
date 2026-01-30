@@ -255,6 +255,7 @@ public class OpenCodeProvider : CliProviderBase
 
         var outputComplete = new TaskCompletionSource<bool>();
         var errorComplete = new TaskCompletionSource<bool>();
+        var earlyErrorDetected = false;
 
         process.OutputDataReceived += (sender, e) =>
         {
@@ -266,15 +267,34 @@ public class OpenCodeProvider : CliProviderBase
 
             if (string.IsNullOrEmpty(e.Data)) return;
 
+            // Strip ANSI codes for storage and parsing
+            var cleanedData = StripAnsiCodes(e.Data);
+
             lock (outputBuilder)
             {
-                outputBuilder.Add(e.Data);
+                outputBuilder.Add(cleanedData);
+            }
+
+            // Check for early error patterns in the output
+            // This allows us to detect errors like "model 'x' not found" immediately
+            if (!earlyErrorDetected && IsCliErrorLine(cleanedData))
+            {
+                earlyErrorDetected = true;
+                result.Success = false;
+                progress?.Report(new ExecutionProgress
+                {
+                    OutputLine = cleanedData,
+                    IsErrorOutput = true,
+                    IsStreaming = true,
+                    CurrentMessage = $"CLI Error: {cleanedData}"
+                });
+                return;
             }
 
             // Try to parse as JSON first
             try
             {
-                var jsonEvent = JsonSerializer.Deserialize<OpenCodeStreamEvent>(e.Data, JsonOptions);
+                var jsonEvent = JsonSerializer.Deserialize<OpenCodeStreamEvent>(cleanedData, JsonOptions);
                 if (jsonEvent != null && !string.IsNullOrEmpty(jsonEvent.Type))
                 {
                     ProcessStreamEvent(jsonEvent, result, currentAssistantMessage, progress);
@@ -287,10 +307,10 @@ public class OpenCodeProvider : CliProviderBase
             }
 
             // Plain text output
-            currentAssistantMessage.AppendLine(e.Data);
+            currentAssistantMessage.AppendLine(cleanedData);
             progress?.Report(new ExecutionProgress
             {
-                OutputLine = e.Data,
+                OutputLine = cleanedData,
                 IsStreaming = true
             });
         };
@@ -305,12 +325,23 @@ public class OpenCodeProvider : CliProviderBase
 
             if (!string.IsNullOrEmpty(e.Data))
             {
-                errorBuilder.AppendLine(e.Data);
+                // Strip ANSI codes from stderr as well
+                var cleanedError = StripAnsiCodes(e.Data);
+                errorBuilder.AppendLine(cleanedError);
+
+                // Mark as error if stderr contains content
+                if (!earlyErrorDetected && IsCliErrorLine(cleanedError))
+                {
+                    earlyErrorDetected = true;
+                    result.Success = false;
+                }
+
                 progress?.Report(new ExecutionProgress
                 {
-                    OutputLine = e.Data,
+                    OutputLine = cleanedError,
                     IsErrorOutput = true,
-                    IsStreaming = true
+                    IsStreaming = true,
+                    CurrentMessage = earlyErrorDetected ? $"CLI Error: {cleanedError}" : null
                 });
             }
         };
@@ -371,9 +402,25 @@ public class OpenCodeProvider : CliProviderBase
         {
             result.Success = false;
         }
-        result.Output = string.Join("\n", outputBuilder);
 
-        var stderrError = errorBuilder.ToString();
+        // Strip ANSI codes from output for cleaner parsing
+        var cleanedOutput = outputBuilder.Select(StripAnsiCodes).ToList();
+        result.Output = string.Join("\n", cleanedOutput);
+
+        var stderrError = StripAnsiCodes(errorBuilder.ToString());
+
+        // Check for errors in output even if exit code was 0
+        // Some CLIs output errors but still return 0
+        var errorFromOutput = OpenCodeOutputParser.ExtractErrorFromOutput(cleanedOutput);
+        var errorFromStderr = !string.IsNullOrWhiteSpace(stderrError)
+            ? OpenCodeOutputParser.ExtractErrorFromOutput(stderrError.Split('\n').ToList())
+            : null;
+
+        // If we found error patterns in output/stderr, mark as failed
+        if (!string.IsNullOrWhiteSpace(errorFromOutput) || !string.IsNullOrWhiteSpace(errorFromStderr))
+        {
+            result.Success = false;
+        }
 
         if (!result.Success)
         {
@@ -389,15 +436,19 @@ public class OpenCodeProvider : CliProviderBase
                 errorMessages.Add(result.ErrorMessage);
             }
 
-            var errorFromOutput = OpenCodeOutputParser.ExtractErrorFromOutput(outputBuilder);
             if (!string.IsNullOrWhiteSpace(errorFromOutput))
             {
                 errorMessages.Add(errorFromOutput);
             }
 
-            if (errorMessages.Count == 0 && outputBuilder.Count > 0)
+            if (!string.IsNullOrWhiteSpace(errorFromStderr) && errorFromStderr != errorFromOutput)
             {
-                var lastLines = outputBuilder.TakeLast(10).ToList();
+                errorMessages.Add(errorFromStderr);
+            }
+
+            if (errorMessages.Count == 0 && cleanedOutput.Count > 0)
+            {
+                var lastLines = cleanedOutput.TakeLast(10).ToList();
                 var contextOutput = string.Join("\n", lastLines);
                 if (!string.IsNullOrWhiteSpace(contextOutput))
                 {
@@ -418,6 +469,58 @@ public class OpenCodeProvider : CliProviderBase
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// Strips ANSI escape codes from a string for cleaner parsing.
+    /// </summary>
+    private static string StripAnsiCodes(string input)
+    {
+        if (string.IsNullOrEmpty(input))
+            return input;
+
+        // Pattern matches ANSI escape sequences: ESC [ ... (letter or ~)
+        return System.Text.RegularExpressions.Regex.Replace(
+            input,
+            @"\x1B\[[0-9;]*[a-zA-Z~]|\x1B\].*?\x07|\x1B[PX^_].*?\x1B\\|\x1B.?",
+            string.Empty);
+    }
+
+    /// <summary>
+    /// Determines if a line represents a CLI error that should cause immediate failure.
+    /// This helps detect errors early in the streaming output.
+    /// </summary>
+    private static bool IsCliErrorLine(string line)
+    {
+        if (string.IsNullOrWhiteSpace(line))
+            return false;
+
+        var lowerLine = line.Trim().ToLowerInvariant();
+
+        // Common CLI error patterns
+        return lowerLine.StartsWith("error:") ||
+               lowerLine.StartsWith("error ") ||
+               lowerLine.StartsWith("fatal:") ||
+               lowerLine.StartsWith("fatal ") ||
+               lowerLine.StartsWith("panic:") ||
+               // Model not found errors (e.g., "Error: model 'kimi-k2.5' not found")
+               (lowerLine.Contains("model") && lowerLine.Contains("not found")) ||
+               // API key errors
+               (lowerLine.Contains("api") && (lowerLine.Contains("key") || lowerLine.Contains("invalid") || lowerLine.Contains("missing"))) ||
+               // Authentication errors
+               (lowerLine.Contains("auth") && (lowerLine.Contains("failed") || lowerLine.Contains("error") || lowerLine.Contains("invalid"))) ||
+               // Connection errors
+               (lowerLine.Contains("connection") && (lowerLine.Contains("refused") || lowerLine.Contains("failed") || lowerLine.Contains("timeout"))) ||
+               // Provider errors
+               (lowerLine.Contains("provider") && (lowerLine.Contains("not found") || lowerLine.Contains("unavailable") || lowerLine.Contains("error"))) ||
+               // Permission errors
+               lowerLine.Contains("permission denied") ||
+               lowerLine.Contains("access denied") ||
+               // Generic not found that starts the line
+               lowerLine.StartsWith("not found:") ||
+               // Rate limiting
+               lowerLine.Contains("rate limit") ||
+               lowerLine.Contains("quota exceeded");
     }
 
     private void ProcessStreamEvent(

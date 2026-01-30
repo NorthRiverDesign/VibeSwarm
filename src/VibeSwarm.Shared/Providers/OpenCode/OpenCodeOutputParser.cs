@@ -171,20 +171,44 @@ public static class OpenCodeOutputParser
 				var trimmedLine = line.Trim();
 				var lowerLine = trimmedLine.ToLowerInvariant();
 
+				// Check for explicit error prefixes
 				if (lowerLine.StartsWith("error:") ||
 					lowerLine.StartsWith("error ") ||
 					lowerLine.StartsWith("failed:") ||
 					lowerLine.StartsWith("fatal:") ||
+					lowerLine.StartsWith("fatal ") ||
 					lowerLine.StartsWith("panic:") ||
-					lowerLine.StartsWith("exception:") ||
-					lowerLine.Contains("error:") ||
+					lowerLine.StartsWith("exception:"))
+				{
+					if (!errorLines.Contains(trimmedLine))
+					{
+						errorLines.Add(trimmedLine);
+					}
+					continue;
+				}
+
+				// Check for error patterns anywhere in the line
+				if (lowerLine.Contains("error:") ||
 					lowerLine.Contains("failed to") ||
 					lowerLine.Contains("cannot ") ||
 					lowerLine.Contains("unable to") ||
 					lowerLine.Contains("not found") ||
 					lowerLine.Contains("invalid ") ||
 					lowerLine.Contains("no such") ||
-					(lowerLine.Contains("error") && (lowerLine.Contains("model") || lowerLine.Contains("api") || lowerLine.Contains("key"))))
+					lowerLine.Contains("permission denied") ||
+					lowerLine.Contains("access denied") ||
+					lowerLine.Contains("rate limit") ||
+					lowerLine.Contains("quota exceeded") ||
+					lowerLine.Contains("connection refused") ||
+					lowerLine.Contains("connection failed") ||
+					lowerLine.Contains("timeout") ||
+					// Model-related errors
+					(lowerLine.Contains("model") && (lowerLine.Contains("not found") || lowerLine.Contains("invalid") || lowerLine.Contains("unavailable"))) ||
+					// API/Auth errors
+					(lowerLine.Contains("api") && (lowerLine.Contains("key") || lowerLine.Contains("invalid") || lowerLine.Contains("missing") || lowerLine.Contains("error"))) ||
+					(lowerLine.Contains("auth") && (lowerLine.Contains("failed") || lowerLine.Contains("error") || lowerLine.Contains("invalid"))) ||
+					// Provider errors
+					(lowerLine.Contains("provider") && (lowerLine.Contains("not found") || lowerLine.Contains("unavailable") || lowerLine.Contains("error"))))
 				{
 					if (!errorLines.Contains(trimmedLine))
 					{
