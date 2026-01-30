@@ -180,6 +180,18 @@ The database should support backup and recovery mechanisms to protect against da
 
 The database should be referred to for any locking procedures to ensure if multiple instances of VibeSwarm are used together there are no concurrency issues.
 
+## Jobs and Providers
+
+Jobs are the heart of the application. Each job represents a specific task assigned to an AI agent, such as code generation, code review, or optimization. Jobs are created based on project requirements and are managed through the VibeSwarm dashboard. Each job is associated with a specific provider and model, allowing for targeted AI assistance. VibeSwarm supports multiple providers and models, enabling users to choose the most suitable AI services for their projects.
+
+The application is designed to be an automatic CI/CD system for AI coding agents. Once a project is set up with the desired agents and configurations, VibeSwarm can autonomously manage the coding process, from code generation to review and optimization. This automation streamlines the development workflow and reduces the need for manual intervention.
+
+VibeSwarm attempts to utilize Skills, and other prompt engineering techniques to improve job outcomes. By leveraging specialized knowledge and strategies, VibeSwarm enhances the effectiveness of AI agents in completing their assigned tasks. Skills are defined in the application and are automatically applied to jobs based on the project type and requirements.
+
+The CLI agents used by VibeSwarm are assumed to be already installed and configured on the host system. This includes any necessary authentication, API keys, or environment variables required for the agents to operate. VibeSwarm does not handle the installation or configuration of these agents but relies on the host system's setup.
+
+Defer to the CLI agents documentation for any specific configuration or usage instructions. VibeSwarm interacts with these agents through their command-line interfaces, leveraging their capabilities to perform coding tasks. Keep up to date with the latest versions of the CLI agents to ensure compatibility and access to new features. Regularly check for updates and review release notes to stay informed about changes that may impact VibeSwarm's operation.
+
 ## Dashboard
 
 The VibeSwarm dashboard provides a comprehensive overview of all projects and agents. It displays the status of each agent, recent code changes, and overall project health. Users can monitor agent activities, view logs, and manage project settings from the dashboard.
@@ -201,3 +213,41 @@ Any AI coding agent working on this codebase should attempt to research any ques
 Research documentation, especially for Provider documentation, API references, and coding best practices, should be prioritized to ensure that the agent has a solid understanding of the tools and technologies it is working with. This knowledge enables the agent to make informed decisions and produce high-quality code.
 
 When asking the user for help, the agent should provide context about what it has already researched and why it is seeking assistance. This helps the user understand the situation and provide more targeted support.
+
+## Goal Prompts
+
+Each job in VibeSwarm is associated with a goal prompt that defines the desired outcome for the task. The goal prompt provides context and guidance for the AI agent, helping it understand what needs to be accomplished. Goal prompts should be clear, concise, and specific to ensure that agents can effectively interpret and act upon them.
+
+Jobs are intended to take vague instructions from a goal prompt and break them down into smaller, manageable tasks. The AI agents should analyze the goal prompt and determine the necessary steps to achieve the desired outcome. This may involve generating code, reviewing existing code, or optimizing performance based on the instructions provided in the goal prompt.
+
+A user should be able to enter a goal prompt as simple as `Add user management to the project` and have the agents break that down into smaller tasks such as creating user models, setting up authentication, and designing user interfaces. The agents should collaborate to complete these tasks and ultimately fulfill the overall goal defined in the prompt.
+
+## CLI Agent Process Lifecycle Management
+
+VibeSwarm manages the lifecycle of CLI agent processes to ensure efficient operation and resource utilization. This includes starting, monitoring, and terminating agent processes as needed. VibeSwarm tracks the status of each agent process, allowing for real-time updates on their activities and performance.
+
+VibeSwarm implements error handling and recovery mechanisms for CLI agent processes. If an agent encounters an error or becomes unresponsive, VibeSwarm can attempt to restart the process or switch to an alternative agent to maintain project progress.
+
+The most important part is that the user is in control of what the agents output and do.
+
+## The Goal of VibeSwarm
+
+VibeSwarm is intended to allow users to install the application on a low-powered or even more capable device. VibeSwarm defers to coding agent CLI tools that may or may not operate in the cloud. The goal is to allow users to run VibeSwarm on inexpensive hardware while leveraging cloud-based AI agents as needed. Users should quickly be able to set up VibeSwarm, set up their CLI tools, and be able to manage projects through the Web UI.
+
+The application user must be able to create a Project, define Providers, add Ideas to a project, and know the application can handle the rest. VibeSwarm attempts to manage the agents, jobs, and code changes with minimal user intervention. The user should be able to focus on defining project goals and reviewing results rather than managing the intricacies of agent interactions.
+
+VibeSwarm is a vibe-coded application that lets users create high-quality software that follows best software development practices.
+
+## Application Security
+
+VibeSwarm is particularly concious of application security and best practices in coding. VibeSwarm itself must be secure, and any code generated by agents should also follow security best practices. This includes proper input validation, secure authentication mechanisms, and adherence to data protection regulations. VibeSwarm implements security measures such as encryption, access controls, and regular security audits to protect user data and maintain the integrity of the application.
+
+Always ensure user data is not trusted blindly. Input validation and sanitization should be performed on all user inputs to prevent security vulnerabilities such as SQL injection, cross-site scripting (XSS), and other common attacks. VibeSwarm should follow the principle of least privilege, ensuring that users and agents only have access to the resources and data necessary for their tasks. This minimizes the potential impact of security breaches and reduces the attack surface of the application.
+
+## Prompt Generation
+
+VibeSwarm attempts to generate effective prompts for AI agents based on the project context and requirements. This includes analyzing the project type, programming languages used, and specific tasks to create prompts that guide agents towards desired outcomes. VibeSwarm utilizes prompt engineering techniques to optimize the clarity and specificity of prompts, enhancing the quality of code generation and review processes.
+
+When generating prompts, VibeSwarm attempts to best incorporate a format for AI agents to operate on. VibeSwarm attempts to generate a structure in an XML format that AI LLMs recognize and can easily parse. This structured approach helps ensure that agents can effectively interpret and act upon the prompts provided, leading to more accurate and relevant code outputs.
+
+The XML format generally includes <overview>, <goal>, and <objective> tags to help define the context and desired outcomes for AI agents. This structured format provides clarity and guidance, enabling agents to better understand the tasks at hand and produce high-quality code that aligns with project goals.
