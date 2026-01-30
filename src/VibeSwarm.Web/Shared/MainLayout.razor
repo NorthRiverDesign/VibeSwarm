@@ -96,16 +96,12 @@
 
             @if (!string.IsNullOrEmpty(_changePasswordError))
             {
-                <div class="alert alert-danger">
-                    <i class="bi bi-exclamation-circle me-1"></i>@_changePasswordError
-                </div>
+                <Alert Type="Alert.AlertType.Danger" Message="@_changePasswordError" />
             }
 
             @if (!string.IsNullOrEmpty(_changePasswordSuccess))
             {
-                <div class="alert alert-success">
-                    <i class="bi bi-check-circle me-1"></i>@_changePasswordSuccess
-                </div>
+                <Alert Type="Alert.AlertType.Success" Message="@_changePasswordSuccess" />
             }
 
             <div class="mb-3">

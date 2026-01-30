@@ -1,6 +1,6 @@
 @* Unified job session panel - combines session log, error, console output, command, and live output *@
 
-<div class="card h-100 d-flex flex-column">
+<div class="card d-flex flex-column">
     <div class="card-header bg-body-secondary p-0">
         <div class="d-flex align-items-center justify-content-between border-bottom border-secondary border-opacity-25">
             @* Tabs *@
@@ -152,8 +152,7 @@
                             @foreach (var message in Messages)
                             {
                                 <ChatMessage Role="@message.Role" Content="@message.Content" ToolName="@message.ToolName"
-                                    ToolInput="@message.ToolInput" ToolOutput="@message.ToolOutput"
-                                    Timestamp="@message.CreatedAt" />
+                                    ToolInput="@message.ToolInput" ToolOutput="@message.ToolOutput" Timestamp="@message.CreatedAt" />
                             }
                         </div>
                     }
@@ -185,27 +184,20 @@
     @if (CanSendFollowUp)
     {
         <div class="card-footer bg-body-tertiary border-top">
-            <div class="d-flex flex-column gap-2">
-                <label class="form-label mb-0 small text-body-secondary">
-                    <i class="bi bi-arrow-return-right me-1"></i>Continue with follow-up instructions
-                </label>
-                <div class="d-flex gap-2">
-                    <textarea class="form-control" rows="2"
-                        placeholder="Add more instructions to continue working on this task..." @bind="_followUpPrompt"
-                        @bind:event="oninput" disabled="@_isSendingFollowUp"></textarea>
-                    <button class="btn btn-primary align-self-end flex-shrink-0" @onclick="SendFollowUp"
-                        disabled="@(string.IsNullOrWhiteSpace(_followUpPrompt) || _isSendingFollowUp)"
-                        title="Send follow-up">
-                        @if (_isSendingFollowUp)
-                        {
-                            <span class="spinner-border spinner-border-sm" role="status"></span>
-                        }
-                        else
-                        {
-                            <i class="bi bi-send"></i>
-                        }
-                    </button>
-                </div>
+            <div class="d-flex gap-2">
+                <textarea class="form-control" rows="2" placeholder="Add follow-up instructions..." @bind="_followUpPrompt"
+                    @bind:event="oninput" disabled="@_isSendingFollowUp"></textarea>
+                <button class="btn btn-primary align-self-end flex-shrink-0" @onclick="SendFollowUp"
+                    disabled="@(string.IsNullOrWhiteSpace(_followUpPrompt) || _isSendingFollowUp)" title="Send follow-up">
+                    @if (_isSendingFollowUp)
+                    {
+                        <span class="spinner-border spinner-border-sm" role="status"></span>
+                    }
+                    else
+                    {
+                        <i class="bi bi-send"></i>
+                    }
+                </button>
             </div>
         </div>
     }
@@ -265,15 +257,5 @@
         {
             _isSendingFollowUp = false;
         }
-    }
-
-    /// <summary>
-    /// Output line model
-    /// </summary>
-    public class OutputLine
-    {
-        public string Content { get; set; } = string.Empty;
-        public bool IsError { get; set; }
-        public DateTime Timestamp { get; set; }
     }
 }

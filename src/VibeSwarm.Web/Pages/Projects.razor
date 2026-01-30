@@ -214,11 +214,11 @@ else
         </div>
         @if (DeleteDirectoryConfirmed)
         {
-            <div class="alert alert-danger mt-2 py-2 px-3 small mb-0">
+            <Alert Type="Alert.AlertType.Danger" Class="mt-2 py-2 px-3 small mb-0">
                 <strong>Warning:</strong> This will permanently delete
                 <code class="text-break">@ProjectToDelete?.WorkingPath</code>
                 and all its contents!
-            </div>
+            </Alert>
         }
     </ChildContent>
     <FooterContent>
@@ -454,16 +454,5 @@ else
     public void Dispose()
     {
         _refreshTimer?.Dispose();
-    }
-
-    /// <summary>
-    /// Combined project info with stats, branch, and latest job
-    /// </summary>
-    private class ProjectInfoWithStats
-    {
-        public required Project Project { get; set; }
-        public ProjectJobStats Stats { get; set; } = new();
-        public string? CurrentBranch { get; set; }
-        public Job? LatestJob { get; set; }
     }
 }

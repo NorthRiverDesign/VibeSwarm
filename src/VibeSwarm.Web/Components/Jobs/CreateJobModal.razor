@@ -52,7 +52,7 @@
 								else if (!AvailableModels.Any())
 								{
 									<option value="">@(JobModel.ProviderId == Guid.Empty ? "Select a provider first..." :
-																			"No models available")</option>
+																		"No models available")</option>
 								}
 								else
 								{
@@ -60,7 +60,7 @@
 									@foreach (var model in AvailableModels.Where(m => m.IsAvailable))
 									{
 										<option value="@model.ModelId">@(model.DisplayName ?? model.ModelId)@(model.IsDefault ?
-																				" (default)" : "")</option>
+																			" (default)" : "")</option>
 									}
 								}
 							</InputSelect>
@@ -86,7 +86,7 @@
 
 						@if (!string.IsNullOrEmpty(ErrorMessage))
 						{
-							<div class="alert alert-danger mb-0">@ErrorMessage</div>
+							<Alert Type="Alert.AlertType.Danger" Message="@ErrorMessage" Class="mb-0" />
 						}
 					</EditForm>
 				</div>

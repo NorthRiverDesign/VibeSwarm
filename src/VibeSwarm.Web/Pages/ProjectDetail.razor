@@ -19,9 +19,7 @@ else if (Project == null)
 {
     <Breadcrumb
         Items="@(new List<Breadcrumb.BreadcrumbItem> { new("Projects", "/projects", "folder"), new("Not Found") })" />
-    <div class="alert alert-warning">
-        <p class="mb-0">Project not found.</p>
-    </div>
+    <Alert Type="Alert.AlertType.Warning" Message="Project not found." />
 }
 else
 {
@@ -57,7 +55,7 @@ else
 
     @if (!string.IsNullOrEmpty(SuccessMessage))
     {
-        <div class="alert alert-success mt-3">@SuccessMessage</div>
+        <Alert Type="Alert.AlertType.Success" Message="@SuccessMessage" Class="mt-3" />
     }
 
     @* Create Branch Modal *@

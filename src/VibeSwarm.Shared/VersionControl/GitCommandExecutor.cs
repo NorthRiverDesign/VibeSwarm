@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Text;
 using VibeSwarm.Shared.Utilities;
@@ -50,7 +51,21 @@ public sealed class GitCommandExecutor : IGitCommandExecutor
 			}
 		};
 
-		process.Start();
+		try
+		{
+			process.Start();
+		}
+		catch (Win32Exception ex)
+		{
+			// Git executable not found or not accessible
+			return new GitCommandResult
+			{
+				ExitCode = -1,
+				Output = string.Empty,
+				Error = $"Failed to start git: {ex.Message}"
+			};
+		}
+
 		process.BeginOutputReadLine();
 		process.BeginErrorReadLine();
 

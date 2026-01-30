@@ -63,10 +63,7 @@ else
                         @if (RefreshModelsErrors.TryGetValue(provider.Id, out var refreshError) &&
                                         !string.IsNullOrEmpty(refreshError))
                         {
-                            <div class="alert alert-warning mt-2 mb-0 py-2 px-3 small">
-                                <i class="bi bi-exclamation-triangle me-1"></i>
-                                @refreshError
-                            </div>
+                            <Alert Type="Alert.AlertType.Warning" Message="@refreshError" Class="mt-2 mb-0 py-2 px-3 small" />
                         }
                     </div>
                     <div class="d-flex align-items-center gap-2 flex-shrink-0">
@@ -205,10 +202,7 @@ else
             }
             else if (!DefaultModelList.Any())
             {
-                <div class="alert alert-info mb-0">
-                    <i class="bi bi-info-circle me-2"></i>
-                    No models available. Try refreshing the model list first.
-                </div>
+                <Alert Type="Alert.AlertType.Info" Message="No models available. Try refreshing the model list first." Class="mb-0" />
             }
             else
             {

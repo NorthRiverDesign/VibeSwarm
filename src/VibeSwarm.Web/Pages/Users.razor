@@ -115,9 +115,7 @@ else
 
 			@if (!string.IsNullOrEmpty(_addUserError))
 			{
-				<div class="alert alert-danger">
-					<i class="bi bi-exclamation-circle me-1"></i>@_addUserError
-				</div>
+				<Alert Type="Alert.AlertType.Danger" Message="@_addUserError" />
 			}
 
 			<div class="mb-3">
@@ -176,16 +174,12 @@ else
 
 			@if (!string.IsNullOrEmpty(_resetPasswordError))
 			{
-				<div class="alert alert-danger">
-					<i class="bi bi-exclamation-circle me-1"></i>@_resetPasswordError
-				</div>
+				<Alert Type="Alert.AlertType.Danger" Message="@_resetPasswordError" />
 			}
 
 			@if (!string.IsNullOrEmpty(_resetPasswordSuccess))
 			{
-				<div class="alert alert-success">
-					<i class="bi bi-check-circle me-1"></i>@_resetPasswordSuccess
-				</div>
+				<Alert Type="Alert.AlertType.Success" Message="@_resetPasswordSuccess" />
 			}
 
 			<div class="mb-3">
@@ -227,9 +221,7 @@ else
 
 			@if (!string.IsNullOrEmpty(_editUserError))
 			{
-				<div class="alert alert-danger">
-					<i class="bi bi-exclamation-circle me-1"></i>@_editUserError
-				</div>
+				<Alert Type="Alert.AlertType.Danger" Message="@_editUserError" />
 			}
 
 			<div class="mb-3">
@@ -265,9 +257,7 @@ else
 
 			@if (!string.IsNullOrEmpty(_deleteUserError))
 			{
-				<div class="alert alert-danger mt-3 mb-0">
-					<i class="bi bi-exclamation-circle me-1"></i>@_deleteUserError
-				</div>
+				<Alert Type="Alert.AlertType.Danger" Message="@_deleteUserError" Class="mt-3 mb-0" />
 			}
 		}
 	</ChildContent>
@@ -546,21 +536,5 @@ else
 		{
 			await LoadUsers();
 		}
-	}
-
-	public class AddUserFormModel
-	{
-		[System.ComponentModel.DataAnnotations.Required(ErrorMessage = "Username is required.")]
-		[System.ComponentModel.DataAnnotations.StringLength(50, MinimumLength = 3, ErrorMessage = "Username must be between 3 and 50 characters.")]
-		public string UserName { get; set; } = string.Empty;
-
-		[System.ComponentModel.DataAnnotations.EmailAddress(ErrorMessage = "Invalid email address.")]
-		public string? Email { get; set; }
-
-		[System.ComponentModel.DataAnnotations.Required(ErrorMessage = "Password is required.")]
-		[System.ComponentModel.DataAnnotations.MinLength(8, ErrorMessage = "Password must be at least 8 characters.")]
-		public string Password { get; set; } = string.Empty;
-
-		public string Role { get; set; } = DatabaseSeeder.UserRole;
 	}
 }

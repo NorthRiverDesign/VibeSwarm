@@ -68,49 +68,46 @@
 	@* Divergence warning *@
 	@if (IsDiverged && ShowVerificationStatus)
 	{
-		<div class="alert alert-warning mb-0 rounded-0 border-start-0 border-end-0 py-2 px-3">
-			<div class="d-flex align-items-start gap-2">
-				<i class="bi bi-exclamation-triangle-fill flex-shrink-0 mt-1"></i>
-				<div class="flex-grow-1">
-					<strong>Working copy has diverged from job changes</strong>
-					<div class="small mt-1">
-						The current working directory state doesn't match what was captured when the job completed.
-						This may happen if files were modified after the job finished.
+		<Alert Type="Alert.AlertType.Warning" ShowIcon="true" Class="mb-0 rounded-0 border-start-0 border-end-0 py-2 px-3">
+			<div class="flex-grow-1">
+				<strong>Working copy has diverged from job changes</strong>
+				<div class="small mt-1">
+					The current working directory state doesn't match what was captured when the job completed.
+					This may happen if files were modified after the job finished.
+				</div>
+				@if (MissingFiles.Any() || ExtraFiles.Any() || ModifiedFiles.Any())
+				{
+					<div class="mt-2 small">
+						@if (MissingFiles.Any())
+						{
+							<div class="text-danger">
+								<i class="bi bi-dash-circle me-1"></i>Missing from working copy: @string.Join(", ",
+													MissingFiles.Take(5))@(MissingFiles.Count > 5 ? $" (+{MissingFiles.Count - 5} more)" : "")
+				</div>
+								}
+						@if (ExtraFiles.Any())
+						{
+							<div class="text-success">
+								<i class="bi bi-plus-circle me-1"></i>Extra in working copy: @string.Join(", ",
+													ExtraFiles.Take(5))@(ExtraFiles.Count > 5 ? $" (+{ExtraFiles.Count - 5} more)" : "")
+				</div>
+								}
+						@if (ModifiedFiles.Any())
+						{
+							<div class="text-warning">
+								<i class="bi bi-pencil me-1"></i>Different content: @string.Join(", ",
+													ModifiedFiles.Take(5))@(ModifiedFiles.Count > 5 ? $" (+{ModifiedFiles.Count - 5} more)" : "")
+				</div>
+								}
 					</div>
-					@if (MissingFiles.Any() || ExtraFiles.Any() || ModifiedFiles.Any())
-					{
-						<div class="mt-2 small">
-							@if (MissingFiles.Any())
-							{
-								<div class="text-danger">
-									<i class="bi bi-dash-circle me-1"></i>Missing from working copy: @string.Join(", ",
-															MissingFiles.Take(5))@(MissingFiles.Count > 5 ? $" (+{MissingFiles.Count - 5} more)" : "")
-					</div>
-										}
-							@if (ExtraFiles.Any())
-							{
-								<div class="text-success">
-									<i class="bi bi-plus-circle me-1"></i>Extra in working copy: @string.Join(", ",
-															ExtraFiles.Take(5))@(ExtraFiles.Count > 5 ? $" (+{ExtraFiles.Count - 5} more)" : "")
-					</div>
-										}
-							@if (ModifiedFiles.Any())
-							{
-								<div class="text-warning">
-									<i class="bi bi-pencil me-1"></i>Different content: @string.Join(", ",
-															ModifiedFiles.Take(5))@(ModifiedFiles.Count > 5 ? $" (+{ModifiedFiles.Count - 5} more)" : "")
-					</div>
-										}
-						</div>
-					}
-					<div class="mt-2">
-						<button class="btn btn-sm btn-outline-warning" @onclick="OnRecheck" disabled="@IsVerifying">
-							<i class="bi bi-arrow-repeat me-1"></i>Re-check
-						</button>
-					</div>
+				}
+				<div class="mt-2">
+					<button class="btn btn-sm btn-outline-warning" @onclick="OnRecheck" disabled="@IsVerifying">
+						<i class="bi bi-arrow-repeat me-1"></i>Re-check
+					</button>
 				</div>
 			</div>
-		</div>
+		</Alert>
 	}
 
 	@if (IsVisible)
@@ -249,5 +246,4 @@
 
 		return new MarkupString(GitDiffParser.FormatDiffHtml(diffContent));
 	}
-}
 }

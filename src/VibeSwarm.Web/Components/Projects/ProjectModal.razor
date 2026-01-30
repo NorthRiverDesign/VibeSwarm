@@ -61,19 +61,17 @@
 
 			@if (!string.IsNullOrEmpty(_cloneProgressMessage))
 			{
-				<div class="alert alert-info mb-3">
-					<i class="bi bi-info-circle me-1"></i>@_cloneProgressMessage
-				</div>
+				<Alert Type="Alert.AlertType.Info" Message="@_cloneProgressMessage" Class="mb-3" />
 			}
 
 			@if (!string.IsNullOrEmpty(ErrorMessage))
 			{
-				<div class="alert alert-danger mb-3">@ErrorMessage</div>
+				<Alert Type="Alert.AlertType.Danger" Message="@ErrorMessage" Class="mb-3" />
 			}
 
 			@if (!string.IsNullOrEmpty(SuccessMessage))
 			{
-				<div class="alert alert-success mb-3">@SuccessMessage</div>
+				<Alert Type="Alert.AlertType.Success" Message="@SuccessMessage" Class="mb-3" />
 			}
 
 			<div class="d-flex gap-2 justify-content-end">

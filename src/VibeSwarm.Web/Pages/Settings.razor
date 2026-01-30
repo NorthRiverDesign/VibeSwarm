@@ -96,16 +96,12 @@
 
 						@if (!string.IsNullOrEmpty(_errorMessage))
 						{
-							<div class="alert alert-danger mt-3 mb-0">
-								<i class="bi bi-exclamation-circle me-1"></i>@_errorMessage
-							</div>
+							<Alert Type="Alert.AlertType.Danger" Message="@_errorMessage" Class="mt-3 mb-0" />
 						}
 
 						@if (!string.IsNullOrEmpty(_successMessage))
 						{
-							<div class="alert alert-success mt-3 mb-0">
-								<i class="bi bi-check-circle me-1"></i>@_successMessage
-							</div>
+							<Alert Type="Alert.AlertType.Success" Message="@_successMessage" Class="mt-3 mb-0" />
 						}
 					</EditForm>
 				}

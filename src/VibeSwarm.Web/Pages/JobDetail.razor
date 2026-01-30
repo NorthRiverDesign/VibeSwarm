@@ -19,9 +19,7 @@ else if (Job == null)
 {
     <Breadcrumb
         Items="@(new List<Breadcrumb.BreadcrumbItem> { new("Projects", "/projects", "folder"), new("Job Not Found") })" />
-    <div class="alert alert-warning">
-        <p class="mb-0">Job not found.</p>
-    </div>
+    <Alert Type="Alert.AlertType.Warning" Message="Job not found." />
 }
 else
 {
@@ -155,7 +153,7 @@ else
                 ConsoleOutput="@Job.ConsoleOutput"
                 CommandUsed="@Job.CommandUsed"
                 SessionId="@Job.SessionId"
-                LiveOutputLines="@_liveOutput.Select(o => new JobSessionPanel.OutputLine { Content = o.Content, IsError = o.IsError, Timestamp = o.Timestamp }).ToList()"
+                LiveOutputLines="@_liveOutput.ToList()"
                 MaxOutputLines="@MaxOutputLines"
                 OnClearLiveOutput="ClearLiveOutput"
                 OnSendFollowUp="CreateFollowUpJob" />
@@ -164,12 +162,12 @@ else
 
     @if (!string.IsNullOrEmpty(ErrorMessage))
     {
-        <div class="alert alert-danger mt-3">@ErrorMessage</div>
+        <Alert Type="Alert.AlertType.Danger" Message="@ErrorMessage" Class="mt-3" />
     }
 
     @if (!string.IsNullOrEmpty(SuccessMessage))
     {
-        <div class="alert alert-success mt-3">@SuccessMessage</div>
+        <Alert Type="Alert.AlertType.Success" Message="@SuccessMessage" Class="mt-3" />
     }
 
     @* Retry Job Modal *@
@@ -256,13 +254,6 @@ new Breadcrumb.BreadcrumbItem("Projects", "/projects", "folder"),
 new Breadcrumb.BreadcrumbItem(Job?.Project?.Name ?? "Project", $"/projects/{Job?.ProjectId}"),
 new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
 };
-
-    private class OutputLine
-    {
-        public string Content { get; set; } = string.Empty;
-        public bool IsError { get; set; }
-        public DateTime Timestamp { get; set; }
-    }
 
     private bool CanCancel => Job != null &&
     (Job.Status == JobStatus.New ||
