@@ -26,11 +26,13 @@ public class SecurityHeadersMiddleware
         // Content-Security-Policy: Restricts resource loading
         // Note: Blazor Server requires 'unsafe-eval' for proper operation
         var csp = "default-src 'self'; " +
-                  "script-src 'self' 'unsafe-eval'; " +
+                  "script-src 'self' 'unsafe-eval' 'unsafe-inline'; " +
                   "style-src 'self' 'unsafe-inline'; " +
                   "img-src 'self' data:; " +
                   "font-src 'self'; " +
-                  "connect-src 'self'; " +
+                  "connect-src 'self' ws: wss:; " +
+                  "worker-src 'self'; " +
+                  "manifest-src 'self'; " +
                   "frame-ancestors 'none';";
         context.Response.Headers.Append("Content-Security-Policy", csp);
 

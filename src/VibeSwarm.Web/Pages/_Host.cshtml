@@ -33,18 +33,18 @@
         <base href="~/" />
 
         <!-- PWA Manifest -->
-        <link rel="manifest" href="manifest.json" />
+        <link rel="manifest" href="manifest.json?v=5" />
 
         <!-- Icons - cache-busted for PWA updates -->
         <link rel="icon" type="image/png" sizes="96x96" href="/favicon-96x96.png?v=5" />
         <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=5" />
 
-        <!-- iOS Icons - multiple sizes for different devices, absolute paths required -->
-        <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=5" />
-        <link rel="apple-touch-icon" sizes="167x167" href="/apple-touch-icon-167x167.png?v=5" />
-        <link rel="apple-touch-icon" sizes="152x152" href="/apple-touch-icon-152x152.png?v=5" />
-        <link rel="apple-touch-icon" sizes="120x120" href="/apple-touch-icon-120x120.png?v=5" />
-        <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=5" />
+        <!-- iOS Icons - no query strings; iOS Safari strips/ignores them and caches icons separately -->
+        <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+        <link rel="apple-touch-icon" sizes="167x167" href="/apple-touch-icon-167x167.png" />
+        <link rel="apple-touch-icon" sizes="152x152" href="/apple-touch-icon-152x152.png" />
+        <link rel="apple-touch-icon" sizes="120x120" href="/apple-touch-icon-120x120.png" />
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
         <link href="lib/bootstrap/css/bootstrap.min.css" rel="stylesheet" />
         <link href="css/bootstrap-icons.min.css" rel="stylesheet" />
         <link href="css/site.css" rel="stylesheet" />
