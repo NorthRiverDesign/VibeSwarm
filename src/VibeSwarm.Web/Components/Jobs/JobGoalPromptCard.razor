@@ -10,8 +10,7 @@
 		<div class="d-flex align-items-center gap-1">
 			@if (IsEditable && _isEditing)
 			{
-				<button type="button" class="btn btn-sm btn-outline-secondary" @onclick="CancelEdit"
-					title="Cancel editing">
+				<button type="button" class="btn btn-sm btn-outline-secondary" @onclick="CancelEdit" title="Cancel editing">
 					<i class="bi bi-x-lg"></i>
 				</button>
 				<button type="button" class="btn btn-sm btn-primary" @onclick="SavePrompt" disabled="@_isSaving"
@@ -34,8 +33,7 @@
 						<i class="bi bi-pencil"></i>
 					</button>
 				}
-				<button type="button" class="btn btn-sm btn-outline-secondary" @onclick="ShowFullPrompt"
-					title="View full">
+				<button type="button" class="btn btn-sm btn-outline-secondary" @onclick="ShowFullPrompt" title="View full">
 					<i class="bi bi-arrows-fullscreen"></i>
 				</button>
 			}
@@ -51,35 +49,6 @@
 		{
 			<div class="bg-body-tertiary p-3 rounded lh-base" style="white-space: pre-wrap; word-break: break-word;">
 				@GoalPrompt</div>
-		}
-
-		@if (Status == JobStatus.Cancelled)
-		{
-			<div class="bg-info bg-opacity-10 border border-info border-opacity-25 rounded p-3">
-				<p class="mb-0 text-secondary"><i class="bi bi-info-circle me-1"></i>This job was cancelled. You can edit
-					the prompt and retry.</p>
-			</div>
-		}
-		else if (Status == JobStatus.Failed && CanRetry)
-		{
-			<div class="bg-info bg-opacity-10 border border-info border-opacity-25 rounded p-3">
-				@if (HasConsoleOutput)
-				{
-					<p class="mb-0 text-secondary"><i class="bi bi-info-circle me-1"></i>Check the console output for details.
-						You can edit the prompt and retry.</p>
-				}
-				else
-				{
-					<p class="mb-0 text-secondary"><i class="bi bi-info-circle me-1"></i>You can edit the prompt and retry.</p>
-				}
-			</div>
-		}
-		else if (Status == JobStatus.New)
-		{
-			<div class="bg-info bg-opacity-10 border border-info border-opacity-25 rounded p-3">
-				<p class="mb-0 text-secondary"><i class="bi bi-info-circle me-1"></i>This job is queued for processing. You
-					can edit the prompt before it starts.</p>
-			</div>
 		}
 	</div>
 </div>
