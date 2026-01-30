@@ -89,42 +89,32 @@
 			</div>
 		}
 
-		@if (!string.IsNullOrEmpty(ErrorMessage))
-		{
-			<div>
-				<h6 class="text-danger mb-2"><i class="bi bi-exclamation-triangle me-1"></i>Error</h6>
-				<pre class="bg-danger bg-opacity-10 border border-danger border-opacity-25 p-3 rounded font-monospace small m-0 text-danger overflow-auto"
-					style="white-space: pre-wrap;">@ErrorMessage</pre>
-			</div>
-		}
-
 		@if (Status == JobStatus.Cancelled)
 		{
 			<div class="bg-info bg-opacity-10 border border-info border-opacity-25 rounded p-3">
-				<h6 class="text-info mb-2">Job Cancelled</h6>
-				<p class="mb-0 text-secondary">This job was cancelled. You can edit the prompt and retry.</p>
+				<p class="mb-0 text-secondary"><i class="bi bi-info-circle me-1"></i>This job was cancelled. You can edit
+					the prompt and retry.</p>
 			</div>
 		}
 		else if (Status == JobStatus.Failed && CanRetry)
 		{
 			<div class="bg-info bg-opacity-10 border border-info border-opacity-25 rounded p-3">
-				<h6 class="text-info mb-2">Job Failed</h6>
-				@if (string.IsNullOrEmpty(ErrorMessage) && HasConsoleOutput)
+				@if (HasConsoleOutput)
 				{
-					<p class="mb-0 text-secondary">Check the console output for details. You can edit the prompt and retry.</p>
+					<p class="mb-0 text-secondary"><i class="bi bi-info-circle me-1"></i>Check the console output for details.
+						You can edit the prompt and retry.</p>
 				}
 				else
 				{
-					<p class="mb-0 text-secondary">You can edit the prompt and retry.</p>
+					<p class="mb-0 text-secondary"><i class="bi bi-info-circle me-1"></i>You can edit the prompt and retry.</p>
 				}
 			</div>
 		}
 		else if (Status == JobStatus.New)
 		{
 			<div class="bg-info bg-opacity-10 border border-info border-opacity-25 rounded p-3">
-				<h6 class="text-info mb-2">Pending Execution</h6>
-				<p class="mb-0 text-secondary">This job is queued for processing. You can edit the prompt before it starts.
-				</p>
+				<p class="mb-0 text-secondary"><i class="bi bi-info-circle me-1"></i>This job is queued for processing. You
+					can edit the prompt before it starts.</p>
 			</div>
 		}
 	</div>
@@ -166,9 +156,6 @@
 
 	[Parameter]
 	public string? SessionId { get; set; }
-
-	[Parameter]
-	public string? ErrorMessage { get; set; }
 
 	[Parameter]
 	public JobStatus Status { get; set; }

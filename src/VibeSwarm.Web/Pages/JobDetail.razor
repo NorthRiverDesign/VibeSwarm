@@ -34,13 +34,25 @@ else
         ProjectName="@(Job.Project?.Name ?? "Unknown")" ProviderName="@(Job.Provider?.Name ?? "Unknown")"
         ProcessId="@Job.ProcessId" CreatedAt="@Job.CreatedAt" StartedAt="@Job.StartedAt" CompletedAt="@Job.CompletedAt"
         ModelUsed="@Job.ModelUsed" RetryCount="@Job.RetryCount" InputTokens="@Job.InputTokens"
-        OutputTokens="@Job.OutputTokens" TotalCostUsd="@Job.TotalCostUsd" CommandUsed="@Job.CommandUsed"
-        LiveCommand="@_liveCommand" CanRetry="@CanRetry" CanCancel="@CanCancel" CanForceCancel="@CanForceCancel"
+        OutputTokens="@Job.OutputTokens" TotalCostUsd="@Job.TotalCostUsd" CanRetry="@CanRetry" CanCancel="@CanCancel"
+        CanForceCancel="@CanForceCancel"
         ShowRetryOptions="@(Job.Status == JobStatus.Failed || Job.Status == JobStatus.Cancelled)" IsRetrying="@IsRetrying"
         IsCancelling="@IsCancelling" IsForceCancelling="@IsForceCancelling" OnRetry="RetryJob"
         OnRetryWithOptions="ShowRetryModal" OnCancel="CancelJob" OnForceCancel="ForceCancelJob"
-        OnCopyCommand="CopyCommandToClipboard" CurrentActivity="@Job.CurrentActivity"
-        LastActivityAt="@Job.LastActivityAt" />
+        CurrentActivity="@Job.CurrentActivity" LastActivityAt="@Job.LastActivityAt" />
+
+    @* Job Error Alert - displayed above main content when job has an error *@
+    @if (!string.IsNullOrEmpty(Job.ErrorMessage))
+    {
+        <div class="alert alert-danger d-flex align-items-start gap-2 mb-3 mb-lg-4" role="alert">
+            <i class="bi bi-exclamation-triangle-fill flex-shrink-0 mt-1"></i>
+            <div class="flex-grow-1 min-width-0">
+                <strong class="d-block mb-1">Error</strong>
+                <pre class="mb-0 small font-monospace overflow-auto"
+                    style="white-space: pre-wrap; max-height: 200px;">@Job.ErrorMessage</pre>
+            </div>
+        </div>
+    }
 
     @* Main Content - Column Layout *@
     <div class="row g-3 g-lg-4 job-detail-content">
@@ -49,9 +61,8 @@ else
 
             @* Goal Prompt Card *@
             <JobGoalPromptCard GoalPrompt="@Job.GoalPrompt" CommandUsed="@Job.CommandUsed" SessionId="@Job.SessionId"
-                ErrorMessage="@Job.ErrorMessage" Status="@Job.Status" CanRetry="@CanRetry"
-                HasConsoleOutput="@(!string.IsNullOrEmpty(Job.ConsoleOutput))" OnCopyToClipboard="CopyPromptToClipboard"
-                OnPromptChanged="UpdateJobPrompt" />
+                Status="@Job.Status" CanRetry="@CanRetry" HasConsoleOutput="@(!string.IsNullOrEmpty(Job.ConsoleOutput))"
+                OnCopyToClipboard="CopyPromptToClipboard" OnPromptChanged="UpdateJobPrompt" />
 
             @* User Interaction Section - shown when job is paused waiting for input *@
             @if (Job.Status == JobStatus.Paused && !string.IsNullOrEmpty(Job.PendingInteractionPrompt))
@@ -170,7 +181,7 @@ else
         </div>
 
         @* Right Column - Live Output when running, Conversation when complete (shows first on mobile) *@
-        <div class="col-12 col-xl-7 order-1 order-xl-2">
+        <div class="col-12 col-xl-7 order-1 order-xl-2 d-flex flex-column">
             @if (IsJobActive)
             {
                 @* Live Output Section - prominent when job is running *@
@@ -183,12 +194,12 @@ else
                 else
                 {
                     @* Waiting for output placeholder *@
-                    <div class="card">
+                    <div class="card flex-grow-1">
                         <div class="card-header bg-body-secondary d-flex align-items-center">
                             <span class="live-indicator me-2"></span>
                             <strong>Live Output</strong>
                         </div>
-                        <div class="card-body text-center py-5">
+                        <div class="card-body d-flex flex-column justify-content-center align-items-center py-5">
                             <div class="spinner-border text-info mb-3" role="status">
                                 <span class="visually-hidden">Waiting for output...</span>
                             </div>
@@ -203,7 +214,8 @@ else
             {
                 @* Conversation Panel - shown after job completes *@
                 <ConversationPanel Messages="@(Job.Messages?.ToList() ?? new())" Status="@Job.Status" IsActive="@false"
-                    CurrentActivity="@Job.CurrentActivity" LastActivityAt="@Job.LastActivityAt" />
+                    CurrentActivity="@Job.CurrentActivity" LastActivityAt="@Job.LastActivityAt"
+                    OnSendFollowUp="CreateFollowUpJob" />
             }
         </div>
     </div>
@@ -819,6 +831,38 @@ new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
         finally
         {
             IsRetrying = false;
+        }
+    }
+
+    private async Task CreateFollowUpJob(string followUpPrompt)
+    {
+        if (Job == null || string.IsNullOrWhiteSpace(followUpPrompt)) return;
+
+        try
+        {
+            // Build a context-aware prompt that references the previous job
+            var contextPrompt = $"Continue from previous work. Previous goal: \"{Job.GoalPrompt.Substring(0, Math.Min(200,
+            Job.GoalPrompt.Length))}...\"\n\nNew instructions: {followUpPrompt}";
+
+            var newJob = new Job
+            {
+                ProjectId = Job.ProjectId,
+                ProviderId = Job.ProviderId,
+                GoalPrompt = contextPrompt,
+                Title = $"Follow-up: {followUpPrompt.Substring(0, Math.Min(50, followUpPrompt.Length))}...",
+                Branch = Job.Branch,
+                Status = JobStatus.New
+            };
+
+            var createdJob = await JobService.CreateAsync(newJob);
+            NotificationService.ShowSuccess("Follow-up job created and queued.", "Job Created");
+
+            // Navigate to the new job
+            NavigationManager.NavigateTo($"/jobs/view/{createdJob.Id}");
+        }
+        catch (Exception ex)
+        {
+            NotificationService.ShowError($"Failed to create follow-up job: {ex.Message}", "Error");
         }
     }
 

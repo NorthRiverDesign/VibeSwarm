@@ -176,6 +176,12 @@ When working with asynchronous operations, prefer using async/await patterns to 
 
 Use dependency injection to manage service lifetimes and dependencies. This promotes loose coupling and enhances testability by allowing for easier mocking of services during unit testing.
 
+### Coding Stanards
+
+The less code the better. Always attempt to write the simplest code possible to achieve the desired functionality. Avoid unnecessary complexity and strive for clarity in code structure and logic. Rely on framework features and libraries to reduce boilerplate code and improve maintainability.
+
+No individual file should exceed 500 lines of code. If a file exceeds this limit, consider refactoring it into smaller, more manageable files to improve readability and maintainability. Use good OOP principles such as encapsulation, inheritance, and polymorphism to create a well-structured and modular codebase. This promotes code reuse and enhances maintainability.
+
 ### Database
 
 VibeSwarm uses a relational database to store project configurations, agent settings, and code history. The database schema is designed to efficiently manage relationships between projects, agents, and code changes. The application uses an ORM (Object-Relational Mapping) tool to interact with the database, allowing for easier data manipulation and retrieval.

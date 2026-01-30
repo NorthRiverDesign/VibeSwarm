@@ -1,17 +1,17 @@
 @* Live output panel for job execution output *@
 
-<div class="card mb-3 mb-lg-4">
+<div class="card mb-3 mb-lg-4 h-100 d-flex flex-column">
 	<div class="card-header bg-body-secondary d-flex justify-content-between align-items-center flex-wrap gap-2">
 		<div class="d-flex align-items-center">
 			<span class="live-indicator me-2"></span>
 			<strong>Live Output</strong>
-			<span class="text-body-secondary ms-2 small">(@OutputLines.Count)</span>
+			<span class="text-body-secondary ms-2 small">(@OutputLines.Count lines)</span>
 		</div>
 		<ActionButton Icon="trash" Text="Clear" Outline="true" Size="ActionButton.ButtonSize.Small"
 			HideTextOnMobile="true" OnClick="OnClear" />
 	</div>
-	<div class="card-body p-0">
-		<div class="live-output-container" @ref="_outputContainer">
+	<div class="card-body p-0 flex-grow-1 overflow-hidden">
+		<div class="live-output-container h-100" @ref="_outputContainer" style="min-height: 300px;">
 			@foreach (var line in OutputLines.TakeLast(MaxLines))
 			{
 				<div class="output-line @(line.IsError ? "output-error" : "output-stdout")">

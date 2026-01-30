@@ -1,28 +1,56 @@
-@* Conversation messages container component - shown after job completes *@
+@* Conversation/Output panel - shown after job completes with follow-up capabilities *@
 
-<div class="card">
+<div class="card h-100 d-flex flex-column">
 	<div class="card-header bg-body-secondary d-flex justify-content-between align-items-center">
-		<h5 class="mb-0 fw-semibold"><i class="bi bi-chat-dots me-2 opacity-75"></i>Conversation</h5>
+		<h5 class="mb-0 fw-semibold">
+			@if (Status == JobStatus.Completed)
+			{
+				<i class="bi bi-check-circle me-2 opacity-75 text-success"></i>
+				<span>Output</span>
+			}
+			else if (Status == JobStatus.Failed || Status == JobStatus.Cancelled)
+			{
+				<i class="bi bi-x-circle me-2 opacity-75 text-danger"></i>
+				<span>Session Log</span>
+			}
+			else
+			{
+				<i class="bi bi-chat-dots me-2 opacity-75"></i>
+				<span>Conversation</span>
+			}
+		</h5>
 		@if (Messages.Any())
 		{
-			<span class="badge bg-secondary">@Messages.Count</span>
+			<span class="badge bg-secondary">@Messages.Count messages</span>
 		}
 	</div>
-	<div class="card-body p-2 p-sm-3">
+	<div class="card-body p-2 p-sm-3 flex-grow-1 overflow-auto" style="min-height: 200px;">
 		@if (!Messages.Any())
 		{
-			<div class="empty-state text-center py-4">
-				<i class="bi bi-chat-left-text opacity-50 d-block mb-2" style="font-size: 2rem;"></i>
-				@if (IsJobRunning)
+			<div class="empty-state text-center py-5">
+				@if (Status == JobStatus.Completed)
 				{
-					<span class="text-body-secondary">Conversation will appear here when the agent completes.</span>
+					<i class="bi bi-check-circle opacity-50 d-block mb-2" style="font-size: 2.5rem;"></i>
+					<span class="text-body-secondary">Job completed but no conversation was recorded.</span>
+				}
+				else if (Status == JobStatus.Failed)
+				{
+					<i class="bi bi-exclamation-circle opacity-50 d-block mb-2" style="font-size: 2.5rem;"></i>
+					<span class="text-body-secondary">Job failed. Check the error message above for details.</span>
+				}
+				else if (Status == JobStatus.Cancelled)
+				{
+					<i class="bi bi-x-circle opacity-50 d-block mb-2" style="font-size: 2.5rem;"></i>
+					<span class="text-body-secondary">Job was cancelled. No conversation recorded.</span>
 				}
 				else if (Status == JobStatus.New || Status == JobStatus.Pending)
 				{
+					<i class="bi bi-hourglass opacity-50 d-block mb-2" style="font-size: 2.5rem;"></i>
 					<span class="text-body-secondary">Conversation will appear after the job runs.</span>
 				}
 				else
 				{
+					<i class="bi bi-chat-left-text opacity-50 d-block mb-2" style="font-size: 2.5rem;"></i>
 					<span class="text-body-secondary">No conversation recorded for this job.</span>
 				}
 			</div>
@@ -38,6 +66,34 @@
 			</div>
 		}
 	</div>
+	@* Follow-up input section - only for completed jobs *@
+	@if (CanSendFollowUp)
+	{
+		<div class="card-footer bg-body-tertiary border-top">
+			<div class="d-flex flex-column gap-2">
+				<label class="form-label mb-0 small text-body-secondary">
+					<i class="bi bi-arrow-return-right me-1"></i>Continue with follow-up instructions
+				</label>
+				<div class="d-flex gap-2">
+					<textarea class="form-control" rows="2"
+						placeholder="Add more instructions to continue working on this task..." @bind="_followUpPrompt"
+						@bind:event="oninput" disabled="@_isSendingFollowUp"></textarea>
+					<button class="btn btn-primary align-self-end flex-shrink-0" @onclick="SendFollowUp"
+						disabled="@(string.IsNullOrWhiteSpace(_followUpPrompt) || _isSendingFollowUp)"
+						title="Send follow-up">
+						@if (_isSendingFollowUp)
+						{
+							<span class="spinner-border spinner-border-sm" role="status"></span>
+						}
+						else
+						{
+							<i class="bi bi-send"></i>
+						}
+					</button>
+				</div>
+			</div>
+		</div>
+	}
 </div>
 
 @code {
@@ -56,5 +112,27 @@
 	[Parameter]
 	public DateTime? LastActivityAt { get; set; }
 
-	private bool IsJobRunning => Status == JobStatus.Started || Status == JobStatus.Processing;
+	[Parameter]
+	public EventCallback<string> OnSendFollowUp { get; set; }
+
+	private string _followUpPrompt = string.Empty;
+	private bool _isSendingFollowUp = false;
+
+	private bool CanSendFollowUp => Status == JobStatus.Completed && OnSendFollowUp.HasDelegate;
+
+	private async Task SendFollowUp()
+	{
+		if (string.IsNullOrWhiteSpace(_followUpPrompt) || _isSendingFollowUp) return;
+
+		_isSendingFollowUp = true;
+		try
+		{
+			await OnSendFollowUp.InvokeAsync(_followUpPrompt);
+			_followUpPrompt = string.Empty;
+		}
+		finally
+		{
+			_isSendingFollowUp = false;
+		}
+	}
 }

@@ -162,38 +162,6 @@
 				}
 			</div>
 		}
-
-		@* Command Display *@
-		@if (!string.IsNullOrEmpty(DisplayCommand))
-		{
-			<div class="mt-2 pt-2 border-top border-secondary border-opacity-25">
-				<div class="d-flex align-items-center gap-2 flex-wrap">
-					<button type="button" class="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1"
-						@onclick="ToggleCommandDisplay" title="@(_showFullCommand ? "Hide command" : "Show command")">
-						<i class="bi bi-terminal"></i>
-						<span class="d-none d-sm-inline">Command</span>
-						<i class="bi @(_showFullCommand ? "bi-chevron-up" : "bi-chevron-down") ms-1 small"></i>
-					</button>
-					@if (!_showFullCommand)
-					{
-						<code class="small text-truncate flex-grow-1" style="max-width: 400px;" title="@DisplayCommand">
-						                            @TruncateCommand(DisplayCommand, 60)
-						                        </code>
-					}
-					<button type="button" class="btn btn-sm btn-link text-body-secondary p-0" @onclick="CopyCommand"
-						title="Copy command">
-						<i class="bi bi-clipboard"></i>
-					</button>
-				</div>
-				@if (_showFullCommand)
-				{
-					<div class="mt-2 p-2 bg-body-tertiary rounded border">
-						<code class="small d-block text-break"
-							style="white-space: pre-wrap; word-break: break-all;">@DisplayCommand</code>
-					</div>
-				}
-			</div>
-		}
 	</div>
 </div>
 
@@ -247,12 +215,6 @@
 	public decimal? TotalCostUsd { get; set; }
 
 	[Parameter]
-	public string? CommandUsed { get; set; }
-
-	[Parameter]
-	public string? LiveCommand { get; set; }
-
-	[Parameter]
 	public bool CanRetry { get; set; }
 
 	[Parameter]
@@ -286,40 +248,13 @@
 	public EventCallback OnForceCancel { get; set; }
 
 	[Parameter]
-	public EventCallback<string> OnCopyCommand { get; set; }
-
-	[Parameter]
 	public string? CurrentActivity { get; set; }
 
 	[Parameter]
 	public DateTime? LastActivityAt { get; set; }
 
-	private bool _showFullCommand = false;
-
 	private bool IsRunning => Status == JobStatus.Started || Status == JobStatus.Processing;
 
 	private bool ShowStats => !string.IsNullOrEmpty(ModelUsed) || InputTokens.HasValue || OutputTokens.HasValue ||
 	TotalCostUsd.HasValue || RetryCount > 0;
-
-	private string? DisplayCommand => !string.IsNullOrEmpty(LiveCommand) ? LiveCommand : CommandUsed;
-
-	private void ToggleCommandDisplay()
-	{
-		_showFullCommand = !_showFullCommand;
-	}
-
-	private async Task CopyCommand()
-	{
-		if (!string.IsNullOrEmpty(DisplayCommand))
-		{
-			await OnCopyCommand.InvokeAsync(DisplayCommand);
-		}
-	}
-
-	private static string TruncateCommand(string command, int maxLength)
-	{
-		if (string.IsNullOrEmpty(command) || command.Length <= maxLength)
-			return command;
-		return command[..maxLength] + "...";
-	}
 }
