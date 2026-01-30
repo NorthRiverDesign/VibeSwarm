@@ -1,5 +1,6 @@
 @* Uncommitted changes management modal component *@
 @using System.Net
+@using VibeSwarm.Shared.VersionControl.Models
 
 <ModalDialog IsVisible="IsVisible" IsVisibleChanged="HandleModalVisibilityChanged" Title="Uncommitted Changes"
     Icon="file-diff" Size="ModalDialog.ModalSize.ExtraLarge" OnClose="HandleClose">
@@ -199,7 +200,7 @@
     public EventCallback<bool> IsVisibleChanged { get; set; }
 
     [Parameter]
-    public List<GitDiffViewer.DiffFile>? DiffFiles { get; set; }
+    public List<DiffFile>? DiffFiles { get; set; }
 
     [Parameter]
     public bool IsLoading { get; set; }

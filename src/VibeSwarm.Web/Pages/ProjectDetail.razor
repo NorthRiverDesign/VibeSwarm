@@ -138,7 +138,7 @@ else
     private bool _showUncommittedChangesModal { get; set; }
     private bool _isLoadingUncommittedDiff { get; set; }
     private string? _uncommittedDiffError { get; set; }
-    private List<GitDiffViewer.DiffFile> _uncommittedDiffFiles { get; set; } = new();
+    private List<DiffFile> _uncommittedDiffFiles { get; set; } = new();
     private string? _uncommittedCommitError { get; set; }
     private bool _isCommittingChanges { get; set; }
     private bool _showDiscardConfirmation { get; set; }
@@ -647,7 +647,7 @@ else
     {
         _showUncommittedChangesModal = true;
         _uncommittedDiffError = null;
-        _uncommittedDiffFiles = new List<GitDiffViewer.DiffFile>();
+        _uncommittedDiffFiles = new List<DiffFile>();
         _isLoadingUncommittedDiff = true;
         StateHasChanged();
 
@@ -781,48 +781,9 @@ else
         }
     }
 
-    private List<GitDiffViewer.DiffFile> ParseGitDiff(string diffOutput)
+    private List<DiffFile> ParseGitDiff(string diffOutput)
     {
-        var files = new List<GitDiffViewer.DiffFile>();
-        if (string.IsNullOrWhiteSpace(diffOutput)) return files;
-
-        var lines = diffOutput.Split('\n');
-        GitDiffViewer.DiffFile? currentFile = null;
-        var currentDiff = new System.Text.StringBuilder();
-
-        foreach (var line in lines)
-        {
-            if (line.StartsWith("diff --git"))
-            {
-                if (currentFile != null)
-                {
-                    currentFile.DiffContent = currentDiff.ToString();
-                    files.Add(currentFile);
-                }
-
-                var parts = line.Split(' ');
-                var fileName = parts.Length >= 4 ? parts[3].TrimStart('b', '/') : "Unknown";
-                currentFile = new GitDiffViewer.DiffFile { FileName = fileName };
-                currentDiff = new System.Text.StringBuilder();
-            }
-            else if (currentFile != null)
-            {
-                if (line.StartsWith("new file mode")) currentFile.IsNew = true;
-                else if (line.StartsWith("deleted file mode")) currentFile.IsDeleted = true;
-                else if (line.StartsWith("+") && !line.StartsWith("+++")) currentFile.Additions++;
-                else if (line.StartsWith("-") && !line.StartsWith("---")) currentFile.Deletions++;
-
-                currentDiff.AppendLine(line);
-            }
-        }
-
-        if (currentFile != null)
-        {
-            currentFile.DiffContent = currentDiff.ToString();
-            files.Add(currentFile);
-        }
-
-        return files;
+        return GitDiffParser.ParseDiff(diffOutput);
     }
 
     // Ideas management methods

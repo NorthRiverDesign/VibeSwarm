@@ -1,5 +1,7 @@
 @* Git diff viewer accordion component *@
 @using System.Net
+@using VibeSwarm.Shared.VersionControl
+@using VibeSwarm.Shared.VersionControl.Models
 
 <div class="card mb-3 mb-lg-4">
 	<div class="card-header bg-body-secondary">
@@ -245,50 +247,7 @@
 		if (string.IsNullOrWhiteSpace(diffContent))
 			return new MarkupString("<span class=\"text-muted\">No changes</span>");
 
-		var lines = diffContent.Split('\n');
-		var formattedLines = new System.Text.StringBuilder();
-		formattedLines.Append("<div class=\"diff-content font-monospace small\">");
-
-		foreach (var line in lines)
-		{
-			var escapedLine = WebUtility.HtmlEncode(line);
-
-			if (line.StartsWith("@@"))
-			{
-				formattedLines.Append($"<div class=\"diff-hunk text-info bg-dark bg-opacity-50 px-2\">{escapedLine}</div>");
-			}
-			else if (line.StartsWith("+") && !line.StartsWith("+++"))
-			{
-				formattedLines.Append($"<div class=\"diff-add text-success bg-success bg-opacity-10 px-2\">{escapedLine}</div>");
-			}
-			else if (line.StartsWith("-") && !line.StartsWith("---"))
-			{
-				formattedLines.Append($"<div class=\"diff-del text-danger bg-danger bg-opacity-10 px-2\">{escapedLine}</div>");
-			}
-			else if (line.StartsWith("index ") || line.StartsWith("--- ") || line.StartsWith("+++ "))
-			{
-				formattedLines.Append($"<div class=\"diff-meta text-secondary px-2\">{escapedLine}</div>");
-			}
-			else
-			{
-				formattedLines.Append($"<div class=\"diff-context px-2\">{escapedLine}</div>");
-			}
-		}
-
-		formattedLines.Append("</div>");
-		return new MarkupString(formattedLines.ToString());
+		return new MarkupString(GitDiffParser.FormatDiffHtml(diffContent));
 	}
-
-	/// <summary>
-	/// DiffFile model for parsed git diff data
-	/// </summary>
-	public class DiffFile
-	{
-		public string FileName { get; set; } = string.Empty;
-		public string DiffContent { get; set; } = string.Empty;
-		public int Additions { get; set; }
-		public int Deletions { get; set; }
-		public bool IsNew { get; set; }
-		public bool IsDeleted { get; set; }
-	}
+}
 }

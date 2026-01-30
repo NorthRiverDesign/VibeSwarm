@@ -7,9 +7,9 @@
 @inject NotificationService NotificationService
 @implements IAsyncDisposable
 @using System.Threading
-@using System.Collections.Concurrent
 @using VibeSwarm.Shared.Utilities
 @using VibeSwarm.Shared.VersionControl
+@using VibeSwarm.Shared.VersionControl.Models
 
 @if (IsLoading)
 {
@@ -26,328 +26,46 @@ else if (Job == null)
 else
 {
     @* Breadcrumb Navigation *@
-                <Breadcrumb Items="@_breadcrumbItems" />
+    <Breadcrumb Items="@_breadcrumbItems" />
 
-    @* Page Header - Full Width *@
-                                                                        <div
-        class="d-flex flex-column flex-lg-row justify-content-between align-items-start gap-3 mb-3 mb-lg-4 pb-3 border-bottom">
-        <div class="flex-grow-1 min-width-0 w-100 w-lg-auto">
-            <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
-                <h3 class="mb-0 fs-4 fw-semibold">Job Details</h3>
-                <StatusBadge Status="@Job.Status.ToString()" />
-                @if (Job.CancellationRequested && (Job.Status == JobStatus.Started || Job.Status == JobStatus.Processing))
-                {
-                    <StatusBadge Status="Cancelling" />
-                }
-            </div>
-            @* Repository and Branch Info *@
-                                                                                @if (!string.IsNullOrEmpty(Job.Project?.GitHubRepository) || !string.IsNullOrEmpty(_branchName))
-            {
-                <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
-                    @if (!string.IsNullOrEmpty(Job.Project?.GitHubRepository))
-                    {
-                        <span class="badge bg-dark bg-opacity-75 d-inline-flex align-items-center gap-1 fw-normal">
-                            <i class="bi bi-github"></i>
-                            <span>@Job.Project.GitHubRepository</span>
-                        </span>
-                    }
-                    @if (!string.IsNullOrEmpty(_branchName))
-                    {
-                        <span class="badge bg-secondary bg-opacity-75 d-inline-flex align-items-center gap-1 fw-normal">
-                            <i class="bi bi-diagram-2"></i>
-                            <span>@_branchName</span>
-                        </span>
-                    }
-                </div>
-            }
-            <div class="small text-body-secondary">
-                <div class="d-flex flex-wrap gap-2 gap-sm-3 mb-2">
-                    <span>Project: <a href="/projects/@Job.ProjectId" class="text-decoration-none">@(Job.Project?.Name ??
-                                                    "Unknown")</a></span>
-                    <span>Provider: @(Job.Provider?.Name ?? "Unknown")</span>
-                    @if (Job.ProcessId.HasValue)
-                    {
-                        <span class="process-info d-none d-sm-inline">PID: @Job.ProcessId</span>
-                    }
-                </div>
-                <div class="d-flex flex-wrap gap-2 gap-sm-3">
-                    <span title="Created"><i
-                            class="bi bi-calendar-plus me-1 opacity-75"></i>@Job.CreatedAt.FormatDateTimeShort()</span>
-                    @if (Job.StartedAt.HasValue)
-                    {
-                        <span title="Started"><i
-                                class="bi bi-play-circle me-1 opacity-75"></i>@Job.StartedAt.Value.FormatDateTimeShort()</span>
-                    }
-                    @if (Job.CompletedAt.HasValue)
-                    {
-                        <span title="Completed"><i
-                                class="bi bi-check-circle me-1 opacity-75"></i>@Job.CompletedAt.Value.FormatDateTimeShort()</span>
-                    }
-                </div>
-            </div>
-            @* Stats Row - Token usage and cost *@
-                                                                                @if (Job.ModelUsed != null || Job.InputTokens.HasValue || Job.OutputTokens.HasValue ||
-                    Job.TotalCostUsd.HasValue || Job.RetryCount > 0)
-            {
-                <div
-                    class="d-flex flex-wrap gap-2 gap-sm-3 mt-2 pt-2 border-top border-secondary border-opacity-25 job-stats-row">
-                    @if (Job.ModelUsed != null)
-                    {
-                        <span class="stat-pill" title="Model">
-                            <i class="bi bi-cpu me-1 opacity-75"></i>@Job.ModelUsed
-                        </span>
-                    }
-                    @if (Job.RetryCount > 0)
-                    {
-                        <span class="stat-pill" title="Attempt Number">
-                            <i class="bi bi-arrow-repeat me-1 opacity-75"></i>Attempt @(Job.RetryCount + 1)
-                        </span>
-                    }
-                    @if (Job.InputTokens.HasValue)
-                    {
-                        <span class="stat-pill" title="Input Tokens">
-                            <i
-                                class="bi bi-arrow-right-circle me-1 opacity-75"></i>@TokenHelper.FormatTokenCount(Job.InputTokens.Value)
-                        </span>
-                    }
-                    @if (Job.OutputTokens.HasValue)
-                    {
-                        <span class="stat-pill" title="Output Tokens">
-                            <i
-                                class="bi bi-arrow-left-circle me-1 opacity-75"></i>@TokenHelper.FormatTokenCount(Job.OutputTokens.Value)
-                        </span>
-                    }
-                    @if (Job.InputTokens.HasValue && Job.OutputTokens.HasValue)
-                    {
-                        <span class="stat-pill" title="Total Tokens">
-                            <i
-                                class="bi bi-arrow-left-right me-1 opacity-75"></i>@TokenHelper.FormatTokenCount(Job.InputTokens.Value
-                                            + Job.OutputTokens.Value)
-            </span>
-                        }
-                    @if (Job.TotalCostUsd.HasValue)
-                    {
-                        <span class="stat-pill stat-pill-cost" title="Total Cost">
-                            <i class="bi bi-currency-dollar me-1 opacity-75"></i>@TokenHelper.FormatCost(Job.TotalCostUsd.Value)
-                        </span>
-                    }
-                </div>
-            }
-            @* Command Display - Show the CLI command used *@
-            @if (!string.IsNullOrEmpty(Job.CommandUsed) || !string.IsNullOrEmpty(_liveCommand))
-            {
-                var displayCommand = !string.IsNullOrEmpty(_liveCommand) ? _liveCommand : Job.CommandUsed;
-                <div class="mt-2 pt-2 border-top border-secondary border-opacity-25">
-                    <div class="d-flex align-items-center gap-2 flex-wrap">
-                        <button type="button" class="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1"
-                            @onclick="() => ToggleCommandDisplay()" title="@(_showFullCommand ? "Hide command" : "Show command")">
-                            <i class="bi bi-terminal"></i>
-                            <span class="d-none d-sm-inline">Command</span>
-                            <i class="bi @(_showFullCommand ? "bi-chevron-up" : "bi-chevron-down") ms-1 small"></i>
-                        </button>
-                        @if (!_showFullCommand)
-                        {
-                            <code class="small text-truncate flex-grow-1" style="max-width: 400px;" title="@displayCommand">
-                                @TruncateCommand(displayCommand!, 60)
-                            </code>
-                        }
-                        <button type="button" class="btn btn-sm btn-link text-body-secondary p-0"
-                            @onclick="() => CopyCommandToClipboard(displayCommand!)" title="Copy command">
-                            <i class="bi bi-clipboard"></i>
-                        </button>
-                    </div>
-                    @if (_showFullCommand)
-                    {
-                        <div class="mt-2 p-2 bg-body-tertiary rounded border">
-                            <code class="small d-block text-break" style="white-space: pre-wrap; word-break: break-all;">@displayCommand</code>
-                        </div>
-                    }
-                </div>
-            }
-        </div>
-        <div class="d-flex flex-wrap gap-2 flex-shrink-0">
-            @if (CanRetry)
-            {
-                @if (Job.Status == JobStatus.Failed || Job.Status == JobStatus.Cancelled)
-                {
-                    <ActionButton Icon="arrow-repeat" Text="@(IsRetrying ? "Retrying..." : "Retry")"
-                        Style="ActionButton.ButtonStyle.Primary" IsLoading="@IsRetrying" OnClick="ShowRetryModal" />
-                }
-                else
-                {
-                    <ActionButton Icon="arrow-repeat" Text="@(IsRetrying ? "Retrying..." : "Retry")"
-                        Style="ActionButton.ButtonStyle.Primary" IsLoading="@IsRetrying" OnClick="RetryJob" />
-                }
-            }
-            @if (CanCancel)
-            {
-                <ActionButton Icon="x-circle" Text="@(IsCancelling ? "Cancelling..." : "Cancel")"
-                    Style="ActionButton.ButtonStyle.Danger" IsLoading="@IsCancelling" OnClick="CancelJob" />
-            }
-            @if (CanForceCancel)
-            {
-                <ActionButton Icon="stop-circle" Text="@(IsForceCancelling ? "Stopping..." : "Force Stop")"
-                    Style="ActionButton.ButtonStyle.Danger" Outline="true" IsLoading="@IsForceCancelling"
-                    OnClick="ForceCancelJob" />
-            }
-        </div>
-    </div>
+    @* Page Header Section *@
+    <JobHeaderSection Status="@Job.Status" CancellationRequested="@Job.CancellationRequested"
+        GitHubRepository="@Job.Project?.GitHubRepository" BranchName="@_branchName" ProjectId="@Job.ProjectId"
+        ProjectName="@(Job.Project?.Name ?? "Unknown")" ProviderName="@(Job.Provider?.Name ?? "Unknown")"
+        ProcessId="@Job.ProcessId" CreatedAt="@Job.CreatedAt" StartedAt="@Job.StartedAt" CompletedAt="@Job.CompletedAt"
+        ModelUsed="@Job.ModelUsed" RetryCount="@Job.RetryCount" InputTokens="@Job.InputTokens"
+        OutputTokens="@Job.OutputTokens" TotalCostUsd="@Job.TotalCostUsd" CommandUsed="@Job.CommandUsed"
+        LiveCommand="@_liveCommand" CanRetry="@CanRetry" CanCancel="@CanCancel" CanForceCancel="@CanForceCancel"
+        ShowRetryOptions="@(Job.Status == JobStatus.Failed || Job.Status == JobStatus.Cancelled)" IsRetrying="@IsRetrying"
+        IsCancelling="@IsCancelling" IsForceCancelling="@IsForceCancelling" OnRetry="RetryJob"
+        OnRetryWithOptions="ShowRetryModal" OnCancel="CancelJob" OnForceCancel="ForceCancelJob"
+        OnCopyCommand="CopyCommandToClipboard" />
 
     @* Main Content - Column Layout *@
-            <div class="row g-3 g-lg-4 job-detail-content">
+    <div class="row g-3 g-lg-4 job-detail-content">
         @* Left Column - Goal & Output on mobile first *@
-                <div class="col-12 col-xl-5 order-2 order-xl-1">
-            <div class="card mb-3 mb-lg-4">
-                <div class="card-header bg-body-secondary d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0 fw-semibold"><i class="bi bi-bullseye me-2 opacity-75"></i>Goal Prompt</h5>
-                    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="ShowFullPromptModal"
-                        title="View full prompt">
-                        <i class="bi bi-arrows-fullscreen me-1"></i>
-                        <span class="d-none d-sm-inline">View Full</span>
-                    </button>
-                </div>
-                <div class="card-body d-flex flex-column gap-3">
-                    <div class="goal-prompt-box">@Job.GoalPrompt</div>
+        <div class="col-12 col-xl-5 order-2 order-xl-1">
 
-                    @if (Job.SessionId != null)
-                    {
-                        <div class="d-flex flex-wrap gap-2">
-                            <StatItem Label="Session ID" Value="@Job.SessionId" Monospace="true" />
-                        </div>
-                    }
-
-                    @if (!string.IsNullOrEmpty(Job.ErrorMessage))
-                    {
-                        <div>
-                            <h6 class="text-danger mb-2"><i class="bi bi-exclamation-triangle me-1"></i>Error</h6>
-                            <pre class="error-output">@Job.ErrorMessage</pre>
-                        </div>
-                    }
-
-                    @if (Job.Status == JobStatus.Cancelled)
-                    {
-                        <div class="info-section">
-                            <h6>Job Cancelled</h6>
-                            <p class="mb-0">This job was cancelled and can be retried. Click "Retry" to run it again.</p>
-                        </div>
-                    }
-                    else if (Job.Status == JobStatus.Failed && CanRetry)
-                    {
-                        <div class="info-section">
-                            <h6>Job Failed</h6>
-                            @if (string.IsNullOrEmpty(Job.ErrorMessage) && !string.IsNullOrEmpty(Job.ConsoleOutput))
-                            {
-                                <p class="mb-0">This job failed during execution. Check the console output below for details. You
-                                    can retry by clicking "Retry" above.</p>
-                            }
-                            else
-                            {
-                                <p class="mb-0">This job failed during execution. You can retry it by clicking "Retry" above.</p>
-                            }
-                        </div>
-                    }
-                </div>
-            </div>
+            @* Goal Prompt Card *@
+            <JobGoalPromptCard GoalPrompt="@Job.GoalPrompt" SessionId="@Job.SessionId" ErrorMessage="@Job.ErrorMessage"
+                Status="@Job.Status" CanRetry="@CanRetry" HasConsoleOutput="@(!string.IsNullOrEmpty(Job.ConsoleOutput))"
+                OnCopyToClipboard="CopyPromptToClipboard" />
 
             @* User Interaction Section - shown when job is paused waiting for input *@
-                                                                                @if (Job.Status == JobStatus.Paused && !string.IsNullOrEmpty(Job.PendingInteractionPrompt))
+            @if (Job.Status == JobStatus.Paused && !string.IsNullOrEmpty(Job.PendingInteractionPrompt))
             {
-                <div class="card mb-3 mb-lg-4 border-warning">
-                    <div class="card-header bg-warning bg-opacity-25 d-flex align-items-center">
-                        <i class="bi bi-chat-left-text me-2 text-warning fs-5"></i>
-                        <strong class="text-warning">User Input Required</strong>
-                    </div>
-                    <div class="card-body">
-                        <div class="mb-3">
-                            <p class="mb-2 text-body-secondary small">The CLI agent is asking:</p>
-                            <pre
-                                class="interaction-prompt bg-body-secondary p-3 rounded mb-0">@Job.PendingInteractionPrompt</pre>
-                        </div>
-
-                        @if (_interactionChoices != null && _interactionChoices.Count > 0)
-                        {
-                            <div class="mb-3">
-                                <label class="form-label small text-body-secondary">Choose an option:</label>
-                                <div class="d-flex flex-wrap gap-2">
-                                    @foreach (var choice in _interactionChoices)
-                                    {
-                                        <button type="button" class="btn btn-outline-primary"
-                                            @onclick="() => SubmitInteractionResponse(choice)" disabled="@_isSubmittingResponse">
-                                            @choice
-                                        </button>
-                                    }
-                                </div>
-                            </div>
-                        }
-
-                        <div class="mb-3">
-                            <label for="interactionResponse" class="form-label small text-body-secondary">
-                                Or enter your response:
-                            </label>
-                            <div class="input-group">
-                                <input type="text" id="interactionResponse" class="form-control" @bind="_interactionResponse"
-                                    @bind:event="oninput" @onkeyup="HandleResponseKeyPress" placeholder="Type your response..."
-                                    disabled="@_isSubmittingResponse" />
-                                <button class="btn btn-primary" type="button" @onclick="SubmitTypedResponse"
-                                    disabled="@(_isSubmittingResponse || string.IsNullOrWhiteSpace(_interactionResponse))">
-                                    @if (_isSubmittingResponse)
-                                    {
-                                        <span class="spinner-border spinner-border-sm me-1" role="status"></span>
-                                        <span>Sending...</span>
-                                    }
-                                    else
-                                    {
-                                        <i class="bi bi-send me-1"></i>
-                                        <span>Send</span>
-                                    }
-                                </button>
-                            </div>
-                        </div>
-
-                        @if (!string.IsNullOrEmpty(_interactionError))
-                        {
-                            <div class="alert alert-danger py-2 mb-0">
-                                <i class="bi bi-exclamation-triangle me-1"></i>@_interactionError
-                            </div>
-                        }
-
-                        @if (Job.InteractionRequestedAt.HasValue)
-                        {
-                            <p class="text-body-secondary small mb-0 mt-2">
-                                <i class="bi bi-clock me-1"></i>
-                                Waiting since @Job.InteractionRequestedAt.Value.FormatDateTimeShort()
-                            </p>
-                        }
-                    </div>
-                </div>
+                <UserInteractionPanel Prompt="@Job.PendingInteractionPrompt" Choices="@_interactionChoices"
+                    IsSubmitting="@_isSubmittingResponse" ErrorMessage="@_interactionError"
+                    RequestedAt="@Job.InteractionRequestedAt" OnSubmitChoice="SubmitInteractionResponse"
+                    OnSubmitResponse="SubmitInteractionResponse" />
             }
 
             @* Live Output Section - shown when job is running *@
             @if (IsJobActive && _liveOutput.Count > 0)
             {
-                <div class="card mb-3 mb-lg-4">
-                    <div
-                        class="card-header bg-body-secondary d-flex justify-content-between align-items-center flex-wrap gap-2">
-                        <div class="d-flex align-items-center">
-                            <span class="live-indicator me-2"></span>
-                            <strong>Live Output</strong>
-                            <span class="text-body-secondary ms-2 small">(@_liveOutput.Count)</span>
-                        </div>
-                        <ActionButton Icon="trash" Text="Clear" Outline="true" Size="ActionButton.ButtonSize.Small"
-                            HideTextOnMobile="true" OnClick="ClearLiveOutput" />
-                    </div>
-                    <div class="card-body p-0">
-                        <div class="live-output-container" @ref="_outputContainer">
-                            @foreach (var line in _liveOutput.TakeLast(MaxOutputLines))
-                            {
-                                <div class="output-line @(line.IsError ? "output-error" : "output-stdout")">
-                                    <span class="output-time d-none d-sm-inline">[@line.Timestamp.FormatTime()]</span>
-                                    <span class="output-text">@line.Content</span>
-                                </div>
-                            }
-                        </div>
-                    </div>
-                </div>
+                <LiveOutputPanel
+                    OutputLines="@_liveOutput.Select(o => new LiveOutputPanel.OutputLine { Content = o.Content, IsError = o.IsError, Timestamp = o.Timestamp }).ToList()"
+                    MaxLines="@MaxOutputLines" OnClear="ClearLiveOutput" />
             }
 
             @* Saved Console Output - shown after job completes *@
@@ -372,7 +90,7 @@ else
                 </div>
             }
 
-            @* Git Diff Section - shown after job completes if changes were detected *@
+            @* Git Diff Loading State *@
             @if (_isLoadingGitDiff)
             {
                 <div class="card mb-3 mb-lg-4">
@@ -392,283 +110,29 @@ else
                     </div>
                 </div>
             }
+            @* Git Diff Viewer - shown after job completes if changes were detected *@
             else if (!IsJobActive && !string.IsNullOrEmpty(Job.GitDiff))
             {
-                <div class="card mb-3 mb-lg-4">
-                    <div class="card-header bg-body-secondary">
-                        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
-                            <div class="d-flex align-items-center flex-wrap gap-2">
-                                <div class="d-flex align-items-center">
-                                    <i class="bi bi-git me-2 opacity-75"></i>
-                                    <strong>Git Changes</strong>
-                                    <span class="badge bg-secondary ms-2">@_parsedDiffFiles.Count</span>
-                                </div>
-                                @if (_isComparingWorkingCopy)
-                                {
-                                    <span class="badge bg-info d-inline-flex align-items-center gap-1">
-                                        <span class="spinner-border spinner-border-sm"
-                                            style="width: 0.75rem; height: 0.75rem;"></span>
-                                        Verifying...
-                                    </span>
-                                }
-                                else if (_workingCopyComparisonDone && !_changesPushed &&
-                                string.IsNullOrEmpty(Job.GitCommitHash))
-                                {
-                                    @if (_workingCopyMatches)
-                                    {
-                                        <span class="badge bg-success d-inline-flex align-items-center gap-1"
-                                            title="Working copy matches job changes">
-                                            <i class="bi bi-check-circle"></i>
-                                            <span class="d-none d-sm-inline">Verified</span>
-                                        </span>
-                                    }
-                                    else
-                                    {
-                                        <span class="badge bg-warning text-dark d-inline-flex align-items-center gap-1"
-                                            title="Working copy has diverged from job changes">
-                                            <i class="bi bi-exclamation-triangle"></i>
-                                            <span class="d-none d-sm-inline">Diverged</span>
-                                        </span>
-                                    }
-                                }
-                                else if (!string.IsNullOrEmpty(Job.GitCommitHash))
-                                {
-                                    <span class="badge bg-success d-inline-flex align-items-center gap-1"
-                                        title="Changes have been committed">
-                                        <i class="bi bi-check-circle"></i>
-                                        <span class="d-none d-sm-inline">Committed</span>
-                                    </span>
-                                }
-                            </div>
-                            <div class="d-flex gap-1 gap-sm-2">
-                                <div class="btn-group d-none d-sm-inline-flex" role="group"
-                                    aria-label="Expand/Collapse all files">
-                                    <button type="button"
-                                        class="btn btn-sm @(_allExpanded ? "btn-secondary" : "btn-outline-secondary")"
-                                        @onclick="ExpandAllDiffs" title="Expand all files" disabled="@_allExpanded">
-                                        <i class="bi bi-arrows-expand"></i>
-                                    </button>
-                                    <button type="button"
-                                        class="btn btn-sm @(_allCollapsed ? "btn-secondary" : "btn-outline-secondary")"
-                                        @onclick="CollapseAllDiffs" title="Collapse all files" disabled="@_allCollapsed">
-                                        <i class="bi bi-arrows-collapse"></i>
-                                    </button>
-                                </div>
-                                <ActionButton Icon="@(_showGitDiff ? "eye-slash" : "eye")"
-                                    Text="@(_showGitDiff ? "Hide" : "Show")" Outline="true" Size="ActionButton.ButtonSize.Small"
-                                    HideTextOnMobile="true" OnClick="ToggleGitDiff" />
-                            </div>
-                        </div>
-                    </div>
-                    @* Working copy divergence warning *@
-                                                            @if (_workingCopyComparisonDone && !_workingCopyMatches && !_changesPushed &&
-                                string.IsNullOrEmpty(Job.GitCommitHash))
-                    {
-                        <div class="alert alert-warning mb-0 rounded-0 border-start-0 border-end-0 py-2 px-3">
-                            <div class="d-flex align-items-start gap-2">
-                                <i class="bi bi-exclamation-triangle-fill flex-shrink-0 mt-1"></i>
-                                <div class="flex-grow-1">
-                                    <strong>Working copy has diverged from job changes</strong>
-                                    <div class="small mt-1">
-                                        The current working directory state doesn't match what was captured when the job completed.
-                                        This may happen if files were modified after the job finished.
-                                    </div>
-                                    @if (_workingCopyMissingFiles.Any() || _workingCopyExtraFiles.Any() ||
-                                                            _workingCopyModifiedFiles.Any())
-                                    {
-                                        <div class="mt-2 small">
-                                            @if (_workingCopyMissingFiles.Any())
-                                            {
-                                                <div class="text-danger">
-                                                    <i class="bi bi-dash-circle me-1"></i>Missing from working copy: @string.Join(", ",
-                                                                                    _workingCopyMissingFiles.Take(5))@(_workingCopyMissingFiles.Count > 5 ? $" (+{_workingCopyMissingFiles.Count - 5} more)" : "")
-                            </div>
-                                                        }
-                                            @if (_workingCopyExtraFiles.Any())
-                                            {
-                                                <div class="text-success">
-                                                    <i class="bi bi-plus-circle me-1"></i>Extra in working copy: @string.Join(", ",
-                                                                                    _workingCopyExtraFiles.Take(5))@(_workingCopyExtraFiles.Count > 5 ? $" (+{_workingCopyExtraFiles.Count - 5} more)" : "")
-                            </div>
-                                                        }
-                                            @if (_workingCopyModifiedFiles.Any())
-                                            {
-                                                <div class="text-warning">
-                                                    <i class="bi bi-pencil me-1"></i>Different content: @string.Join(", ",
-                                                                                    _workingCopyModifiedFiles.Take(5))@(_workingCopyModifiedFiles.Count > 5 ? $" (+{_workingCopyModifiedFiles.Count - 5} more)" : "")
-                            </div>
-                                                        }
-                                        </div>
-                                    }
-                                    <div class="mt-2">
-                                        <button class="btn btn-sm btn-outline-warning" @onclick="CompareWithWorkingCopy"
-                                            disabled="@_isComparingWorkingCopy">
-                                            <i class="bi bi-arrow-repeat me-1"></i>Re-check
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    }
-                    @if (_showGitDiff)
-                    {
-                        <div class="card-body p-0">
-                            <div class="accordion" id="diffAccordion">
-                                @foreach (var (file, index) in _parsedDiffFiles.Select((f, i) => (f, i)))
-                                {
-                                    var collapseId = $"diffCollapse{index}";
-                                    var headerId = $"diffHeader{index}";
-                                    var isExpanded = _expandedDiffFiles.Contains(index);
-                                    <div class="accordion-item">
-                                        <h2 class="accordion-header" id="@headerId">
-                                            <button class="accordion-button @(isExpanded ? "" : "collapsed")" type="button"
-                                                @onclick="() => ToggleDiffFile(index)">
-                                                <span class="diff-file-icon">
-                                                    @if (file.IsNew)
-                                                    {
-                                                        <i class="bi bi-file-earmark-plus text-success" title="New file"></i>
-                                                    }
-                                                    else if (file.IsDeleted)
-                                                    {
-                                                        <i class="bi bi-file-earmark-minus text-danger" title="Deleted file"></i>
-                                                    }
-                                                    else
-                                                    {
-                                                        <i class="bi bi-file-earmark-diff text-warning" title="Modified file"></i>
-                                                    }
-                                                </span>
-                                                <span class="diff-file-name">@file.FileName</span>
-                                                <span class="diff-stats">
-                                                    @if (file.Additions > 0)
-                                                    {
-                                                        <span class="text-success">+@file.Additions</span>
-                                                    }
-                                                    @if (file.Deletions > 0)
-                                                    {
-                                                        <span class="text-danger ms-1">-@file.Deletions</span>
-                                                    }
-                                                </span>
-                                            </button>
-                                        </h2>
-                                        <div id="@collapseId" class="accordion-collapse @(isExpanded ? "show" : "collapse")">
-                                            <div class="accordion-body p-0">
-                                                <div class="diff-container">
-                                                    @((MarkupString)FormatFileDiff(file.DiffContent))
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                }
-                            </div>
-                        </div>
-                    }
-                </div>
+                <GitDiffViewer DiffFiles="@_parsedDiffFiles" @bind-IsVisible="_showGitDiff"
+                    IsVerifying="@_isComparingWorkingCopy"
+                    ShowVerificationStatus="@(_workingCopyComparisonDone && !_changesPushed && string.IsNullOrEmpty(Job.GitCommitHash))"
+                    IsVerified="@_workingCopyMatches" IsDiverged="@(!_workingCopyMatches)"
+                    IsCommitted="@(!string.IsNullOrEmpty(Job.GitCommitHash))" MissingFiles="@_workingCopyMissingFiles"
+                    ExtraFiles="@_workingCopyExtraFiles" ModifiedFiles="@_workingCopyModifiedFiles"
+                    OnRecheck="CompareWithWorkingCopy" />
 
                 @* Commit Section - shown when there are git changes *@
-                                                                                                                                                        <div class="card mb-3 mb-lg-4">
-                    <div class="card-header bg-body-secondary d-flex justify-content-between align-items-center">
-                        <div class="d-flex align-items-center">
-                            <i class="bi bi-cloud-upload me-2 opacity-75"></i>
-                            <strong>Commit</strong>
-                        </div>
-                        @if (!string.IsNullOrEmpty(_branchName) && !_changesPushed)
-                        {
-                            <span class="branch-info text-truncate">
-                                <i class="bi bi-diagram-2 me-1"></i>
-                                @_branchName
-                            </span>
-                        }
-                    </div>
-                    @if (!_changesPushed)
-                    {
-                        <div class="card-body">
-                            <label for="commitMessage" class="form-label d-flex flex-wrap align-items-center gap-2 mb-2">
-                                <span>Commit Message</span>
-                                @if (_isLoadingSummary)
-                                {
-                                    <span class="badge bg-secondary">
-                                        <span class="spinner-border spinner-border-sm me-1" role="status"
-                                            style="width: 0.75rem; height: 0.75rem;"></span>
-                                        Generating...
-                                    </span>
-                                }
-                                else if (!string.IsNullOrWhiteSpace(Job.SessionSummary))
-                                {
-                                    <span class="badge bg-info">
-                                        <i class="bi bi-robot me-1"></i>AI Generated
-                                    </span>
-                                }
-                            </label>
-                            <textarea id="commitMessage" class="commit-message-input" @bind="_commitMessage" @bind:event="oninput"
-                                placeholder="@(_isLoadingSummary ? "Generating commit message..." : "Enter a descriptive commit message...")"
-                                rows="3" disabled="@_isPushing"></textarea>
-
-                            @if (!string.IsNullOrEmpty(_summaryError))
-                            {
-                                <div class="alert alert-warning mt-2 mb-0 py-2 px-3 small">
-                                    <i class="bi bi-exclamation-triangle me-1"></i>
-                                    @_summaryError
-                                    <button type="button" class="btn btn-sm btn-outline-warning ms-2" @onclick="RefreshSummary">
-                                        <i class="bi bi-arrow-repeat"></i> Retry
-                                    </button>
-                                </div>
-                            }
-
-                            @if (!string.IsNullOrEmpty(_pushError))
-                            {
-                                <div class="push-error mt-3">
-                                    <i class="bi bi-x-circle me-1"></i>
-                                    @_pushError
-                                </div>
-                            }
-                        </div>
-                        <div class="card-footer bg-body-secondary">
-                            <button class="btn btn-primary" @onclick="CommitAndPushChanges" disabled="@(!CanPush)">
-                                @if (_isPushing)
-                                {
-                                    <span class="spinner-border spinner-border-sm me-1" role="status"></span>
-                                    <span class="d-none d-sm-inline">@_pushStatus</span>
-                                    <span class="d-sm-none">Pushing...</span>
-                                }
-                                else
-                                {
-                                    <i class="bi bi-cloud-upload me-1"></i>
-                                    <span>Commit & Push</span>
-                                }
-                            </button>
-                        </div>
-                    }
-                    else
-                    {
-                        <div class="card-body">
-                            <div class="push-success">
-                                <i class="bi bi-check-circle-fill fs-4 text-success"></i>
-                                <div>
-                                    <strong>Changes pushed successfully!</strong>
-                                    <div class="d-flex flex-wrap gap-2 mt-1">
-                                        @if (!string.IsNullOrEmpty(_pushedCommitHash))
-                                        {
-                                            <span class="font-monospace small">
-                                                <i class="bi bi-git me-1"></i>@_pushedCommitHash[..Math.Min(7,
-                                                                                _pushedCommitHash.Length)]
-                            </span>
-                                                        }
-                                        @if (!string.IsNullOrEmpty(_branchName))
-                                        {
-                                            <span class="font-monospace small">
-                                                <i class="bi bi-diagram-2 me-1"></i>@_branchName
-                                            </span>
-                                        }
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    }
-                </div>
+                <CommitSection CommitMessage="@_commitMessage" CommitMessageChanged="@((msg) => _commitMessage = msg)"
+                    BranchName="@_branchName" IsLoadingSummary="@_isLoadingSummary"
+                    HasAISummary="@(!string.IsNullOrWhiteSpace(Job.SessionSummary))" SummaryError="@_summaryError"
+                    PushError="@_pushError" IsPushing="@_isPushing" PushStatus="@_pushStatus" IsPushed="@_changesPushed"
+                    PushedCommitHash="@_pushedCommitHash" CanPush="@CanPush" OnCommitAndPush="CommitAndPushChanges"
+                    OnRefreshSummary="RefreshSummary" />
             }
             else if (!IsJobActive && Job.Status == JobStatus.Completed && string.IsNullOrEmpty(Job.GitDiff))
             {
-                <div class="card">
+                @* No changes detected placeholder *@
+                <div class="card mb-3 mb-lg-4">
                     <div class="card-header bg-body-secondary">
                         <div class="d-flex align-items-center">
                             <i class="bi bi-git me-2 opacity-75"></i>
@@ -696,299 +160,26 @@ else
                 </div>
             }
 
-            @* Working Directory Changes - shown for failed/cancelled jobs that may have made partial changes *@
-            @if (!IsJobActive && (Job.Status == JobStatus.Failed || Job.Status == JobStatus.Cancelled) && Job?.Project?.WorkingPath != null)
+            @* Working Directory Changes - shown for failed/cancelled jobs *@
+            @if (!IsJobActive && (Job.Status == JobStatus.Failed || Job.Status == JobStatus.Cancelled) &&
+                    Job?.Project?.WorkingPath != null)
             {
-                <div class="card mb-3 mb-lg-4 @(_hasUncommittedChanges ? "border-warning" : "")">
-                    <div class="card-header @(_hasUncommittedChanges ? "bg-warning bg-opacity-25" : "bg-body-secondary")">
-                        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
-                            <div class="d-flex align-items-center gap-2">
-                                <i class="bi bi-folder-symlink me-1 opacity-75"></i>
-                                <strong>Working Directory Changes</strong>
-                                @if (_hasUncommittedChanges && _uncommittedDiffFiles.Count > 0)
-                                {
-                                    <span class="badge bg-warning text-dark">@_uncommittedDiffFiles.Count file(s)</span>
-                                }
-                            </div>
-                            @if (!_isCheckingUncommittedChanges)
-                            {
-                                <button class="btn btn-sm btn-outline-secondary" @onclick="CheckUncommittedChangesAsync"
-                                    title="Check for changes in working directory">
-                                    <i class="bi bi-arrow-repeat me-1"></i>
-                                    <span class="d-none d-sm-inline">Refresh</span>
-                                </button>
-                            }
-                        </div>
-                    </div>
-                    <div class="card-body">
-                        @if (_isCheckingUncommittedChanges)
-                        {
-                            <div class="d-flex align-items-center justify-content-center gap-2 py-4 text-body-secondary">
-                                <span class="spinner-border spinner-border-sm" role="status"></span>
-                                <span>Checking for uncommitted changes...</span>
-                            </div>
-                        }
-                        else if (!string.IsNullOrEmpty(_uncommittedChangesError))
-                        {
-                            <div class="alert alert-danger mb-0">
-                                <i class="bi bi-exclamation-triangle me-1"></i>@_uncommittedChangesError
-                            </div>
-                        }
-                        else if (!_hasCheckedUncommittedChanges)
-                        {
-                            <div class="text-center py-3">
-                                <p class="text-body-secondary mb-3">
-                                    <i class="bi bi-exclamation-circle me-2"></i>
-                                    This job @(Job.Status == JobStatus.Failed ? "failed" : "was cancelled") but the CLI agent may have made changes to the working directory.
-                                </p>
-                                <button class="btn btn-primary" @onclick="CheckUncommittedChangesAsync">
-                                    <i class="bi bi-search me-1"></i>Check for Changes
-                                </button>
-                            </div>
-                        }
-                        else if (!_hasUncommittedChanges)
-                        {
-                            <div class="text-center py-3 text-body-secondary">
-                                <i class="bi bi-check-circle me-2 text-success"></i>
-                                No uncommitted changes found in the working directory.
-                            </div>
-                        }
-                        else
-                        {
-                            @* Show uncommitted changes with options to commit or discard *@
-                            <div class="alert alert-warning mb-3">
-                                <i class="bi bi-exclamation-triangle me-2"></i>
-                                <strong>Uncommitted changes detected!</strong>
-                                <span class="d-block d-sm-inline mt-1 mt-sm-0 ms-sm-1">
-                                    The CLI agent made changes before the job @(Job.Status == JobStatus.Failed ? "failed" : "was cancelled").
-                                </span>
-                            </div>
-
-                            @* Diff viewer for uncommitted changes *@
-                            <div class="mb-3">
-                                <div class="d-flex align-items-center justify-content-between mb-2">
-                                    <span class="text-body-secondary small">
-                                        <span class="text-success">+@_uncommittedDiffFiles.Sum(f => f.Additions)</span>
-                                        <span class="text-danger ms-1">-@_uncommittedDiffFiles.Sum(f => f.Deletions)</span>
-                                    </span>
-                                    <div class="btn-group btn-group-sm">
-                                        <button type="button" class="btn btn-outline-secondary" @onclick="ExpandAllUncommitted" 
-                                            title="Expand all" disabled="@(_expandedUncommittedFiles.Count == _uncommittedDiffFiles.Count)">
-                                            <i class="bi bi-arrows-expand"></i>
-                                        </button>
-                                        <button type="button" class="btn btn-outline-secondary" @onclick="CollapseAllUncommitted" 
-                                            title="Collapse all" disabled="@(_expandedUncommittedFiles.Count == 0)">
-                                            <i class="bi bi-arrows-collapse"></i>
-                                        </button>
-                                    </div>
-                                </div>
-
-                                <div class="accordion border rounded" style="max-height: 350px; overflow-y: auto;">
-                                    @foreach (var (file, index) in _uncommittedDiffFiles.Select((f, i) => (f, i)))
-                                    {
-                                        var isExpanded = _expandedUncommittedFiles.Contains(index);
-                                        <div class="accordion-item">
-                                            <h2 class="accordion-header">
-                                                <button class="accordion-button @(isExpanded ? "" : "collapsed") py-2 px-3" type="button"
-                                                    @onclick="() => ToggleUncommittedFile(index)">
-                                                    <span class="d-flex align-items-center gap-2 w-100">
-                                                        @if (file.IsNew)
-                                                        {
-                                                            <i class="bi bi-file-earmark-plus text-success" title="New file"></i>
-                                                        }
-                                                        else if (file.IsDeleted)
-                                                        {
-                                                            <i class="bi bi-file-earmark-minus text-danger" title="Deleted file"></i>
-                                                        }
-                                                        else
-                                                        {
-                                                            <i class="bi bi-file-earmark-diff text-warning" title="Modified file"></i>
-                                                        }
-                                                        <span class="font-monospace small text-truncate flex-grow-1">@file.FileName</span>
-                                                        <span class="small">
-                                                            @if (file.Additions > 0)
-                                                            {
-                                                                <span class="text-success fw-medium">+@file.Additions</span>
-                                                            }
-                                                            @if (file.Deletions > 0)
-                                                            {
-                                                                <span class="text-danger fw-medium ms-1">-@file.Deletions</span>
-                                                            }
-                                                        </span>
-                                                    </span>
-                                                </button>
-                                            </h2>
-                                            <div class="accordion-collapse @(isExpanded ? "show" : "collapse")">
-                                                <div class="accordion-body p-0">
-                                                    @if (!file.IsDeleted)
-                                                    {
-                                                        <div class="diff-container" style="max-height: 250px; overflow: auto;">
-                                                            @((MarkupString)FormatFileDiff(file.DiffContent))
-                                                        </div>
-                                                    }
-                                                    else
-                                                    {
-                                                        <div class="p-3 text-body-secondary small">
-                                                            <i class="bi bi-trash me-1"></i>File deleted
-                                                        </div>
-                                                    }
-                                                </div>
-                                            </div>
-                                        </div>
-                                    }
-                                </div>
-                            </div>
-
-                            <hr class="my-3" />
-
-                            @* Commit section for uncommitted changes *@
-                            <div class="mb-3">
-                                <label for="uncommittedCommitMsg" class="form-label fw-medium small">
-                                    <i class="bi bi-chat-square-text me-1"></i>Commit Message (to keep changes)
-                                </label>
-                                <textarea class="form-control font-monospace" id="uncommittedCommitMsg" 
-                                    @bind="_uncommittedCommitMessage" @bind:event="oninput" rows="2" 
-                                    placeholder="Enter commit message to keep these changes..."
-                                    disabled="@(_isCommittingUncommittedChanges || _isDiscardingChanges)"></textarea>
-                            </div>
-
-                            @* Discard confirmation *@
-                            @if (_showDiscardConfirmation)
-                            {
-                                <div class="alert alert-danger py-3 mb-3">
-                                    <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
-                                        <div>
-                                            <i class="bi bi-exclamation-triangle me-2"></i>
-                                            <strong>Are you sure?</strong> This will permanently discard all uncommitted changes.
-                                        </div>
-                                        <div class="d-flex gap-2">
-                                            <button type="button" class="btn btn-secondary btn-sm" 
-                                                @onclick="() => _showDiscardConfirmation = false"
-                                                disabled="@_isDiscardingChanges">
-                                                Cancel
-                                            </button>
-                                            <button type="button" class="btn btn-danger btn-sm" 
-                                                @onclick="DiscardUncommittedChangesAsync"
-                                                disabled="@_isDiscardingChanges">
-                                                @if (_isDiscardingChanges)
-                                                {
-                                                    <span class="spinner-border spinner-border-sm me-1" role="status"></span>
-                                                }
-                                                Yes, Discard All
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-                            }
-
-                            @* Action buttons *@
-                            <div class="d-flex flex-wrap gap-2">
-                                <button class="btn btn-success" @onclick="CommitUncommittedChangesAsync"
-                                    disabled="@(_isCommittingUncommittedChanges || _isDiscardingChanges || string.IsNullOrWhiteSpace(_uncommittedCommitMessage))">
-                                    @if (_isCommittingUncommittedChanges)
-                                    {
-                                        <span class="spinner-border spinner-border-sm me-1" role="status"></span>
-                                        <span>Committing...</span>
-                                    }
-                                    else
-                                    {
-                                        <i class="bi bi-check-circle me-1"></i>
-                                        <span>Keep Changes</span>
-                                    }
-                                </button>
-                                <button class="btn btn-outline-danger" @onclick="() => _showDiscardConfirmation = true"
-                                    disabled="@(_isCommittingUncommittedChanges || _isDiscardingChanges || _showDiscardConfirmation)">
-                                    <i class="bi bi-trash me-1"></i>
-                                    <span>Discard Changes</span>
-                                </button>
-                            </div>
-                        }
-                    </div>
-                </div>
+                <UncommittedChangesCard DiffFiles="@_uncommittedDiffFiles" IsChecking="@_isCheckingUncommittedChanges"
+                    HasChecked="@_hasCheckedUncommittedChanges" HasChanges="@_hasUncommittedChanges"
+                    ErrorMessage="@_uncommittedChangesError" JobFailed="@(Job.Status == JobStatus.Failed)"
+                    CommitMessage="@_uncommittedCommitMessage"
+                    CommitMessageChanged="@((msg) => _uncommittedCommitMessage = msg)"
+                    IsCommitting="@_isCommittingUncommittedChanges" IsDiscarding="@_isDiscardingChanges"
+                    OnCheck="CheckUncommittedChangesAsync" OnRefresh="CheckUncommittedChangesAsync"
+                    OnCommit="CommitUncommittedChangesAsync" OnDiscard="DiscardUncommittedChangesAsync" />
             }
         </div>
 
         @* Right Column - Conversation Messages (shows first on mobile) *@
-                <div class="col-12 col-xl-7 order-1 order-xl-2">
-            <div class="card">
-                <div class="card-header bg-body-secondary d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0 fw-semibold"><i class="bi bi-chat-dots me-2 opacity-75"></i>Conversation</h5>
-                    <span class="badge bg-secondary">@Job.Messages.Count</span>
-                </div>
-                <div class="card-body p-2 p-sm-3">
-                    @if (Job.Status == JobStatus.Started || Job.Status == JobStatus.Processing)
-                    {
-                        <div class="activity-indicator mb-3">
-                            <span class="activity-spinner"></span>
-                            <span class="activity-text">@(Job.CurrentActivity ?? "Working...")</span>
-                            @if (Job.LastActivityAt.HasValue)
-                            {
-                                <span class="activity-time">@Job.LastActivityAt.Value.FormatTime()</span>
-                            }
-                        </div>
-                    }
-
-                    @if (!Job.Messages.Any())
-                    {
-                        <div class="empty-state">
-                            @if (Job.Status == JobStatus.New || Job.Status == JobStatus.Pending)
-                            {
-                                <text>Job is waiting to be processed...</text>
-                            }
-                            else if (Job.Status == JobStatus.Started || Job.Status == JobStatus.Processing)
-                            {
-                                <text>Agent is working on the task...</text>
-                            }
-                            else
-                            {
-                                <text>No conversation messages recorded.</text>
-                            }
-                        </div>
-                    }
-                    else
-                    {
-                        <div class="chat-messages-container">
-                            @foreach (var message in Job.Messages)
-                            {
-                                <div class="chat-message chat-message-@message.Role.ToString().ToLower()">
-                                    <div class="chat-bubble">
-                                        @if (message.Role == MessageRole.ToolUse)
-                                        {
-                                            <div class="chat-tool-info">
-                                                <div class="chat-tool-header">
-                                                    <i class="bi bi-tools me-1"></i>@message.ToolName
-                                                </div>
-                                                @if (!string.IsNullOrEmpty(message.ToolInput))
-                                                {
-                                                    <pre class="chat-tool-code">@message.ToolInput</pre>
-                                                }
-                                            </div>
-                                        }
-                                        else if (message.Role == MessageRole.ToolResult)
-                                        {
-                                            <div class="chat-tool-info">
-                                                <div class="chat-tool-header">
-                                                    <i class="bi bi-arrow-return-right me-1"></i>@message.ToolName
-                                                </div>
-                                                <pre
-                                                    class="chat-tool-code">@TruncateOutput(message.ToolOutput ?? message.Content, 500)</pre>
-                                            </div>
-                                        }
-                                        else
-                                        {
-                                            <div class="chat-text">@message.Content</div>
-                                        }
-                                    </div>
-                                    <div class="chat-meta">
-                                        <span class="chat-role">@GetRoleDisplayName(message.Role)</span>
-                                        <span class="chat-time">@message.CreatedAt.FormatTime()</span>
-                                    </div>
-                                </div>
-                            }
-                        </div>
-                    }
-                </div>
-            </div>
+        <div class="col-12 col-xl-7 order-1 order-xl-2">
+            <ConversationPanel Messages="@Job.Messages.ToList()" Status="@Job.Status"
+                IsActive="@(Job.Status == JobStatus.Started || Job.Status == JobStatus.Processing)"
+                CurrentActivity="@Job.CurrentActivity" LastActivityAt="@Job.LastActivityAt" />
         </div>
     </div>
 
@@ -1000,32 +191,6 @@ else
     @if (!string.IsNullOrEmpty(SuccessMessage))
     {
         <div class="alert alert-success mt-3">@SuccessMessage</div>
-    }
-
-    @* Full Prompt Modal *@
-    @if (_showFullPromptModal)
-    {
-        <div class="modal-backdrop fade show vs-modal-backdrop"></div>
-        <div class="modal fade show d-block vs-modal-container" tabindex="-1" role="dialog" @onclick="CloseFullPromptModal">
-            <div class="modal-dialog modal-lg vs-modal-dialog modal-dialog-centered modal-dialog-scrollable"
-                @onclick:stopPropagation="true">
-                <div class="modal-content vs-modal-content">
-                    <div class="modal-header">
-                        <h5 class="modal-title"><i class="bi bi-file-text me-2"></i>Full Input Prompt</h5>
-                        <button type="button" class="btn-close" @onclick="CloseFullPromptModal" aria-label="Close"></button>
-                    </div>
-                    <div class="modal-body">
-                        <pre class="full-prompt-content">@Job.GoalPrompt</pre>
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-outline-secondary" @onclick="CopyPromptToClipboard">
-                            <i class="bi bi-clipboard me-1"></i>Copy to Clipboard
-                        </button>
-                        <button type="button" class="btn btn-secondary" @onclick="CloseFullPromptModal">Close</button>
-                    </div>
-                </div>
-            </div>
-        </div>
     }
 
     @* Retry Job Modal *@
@@ -1051,23 +216,14 @@ else
     private Timer? _refreshTimer;
     private bool _isRefreshing = false;
     private DateTime _pageLoadTime = DateTime.UtcNow;
-    private ElementReference _outputContainer;
 
     // Toggle states for collapsible sections
     private bool _showConsoleOutput = false;
-    private bool _showGitDiff = true; // Show by default since it's usually the most interesting part
-    private bool _showFullCommand = false; // Command display toggle
-
-    // Live command from SignalR (for running jobs)
+    private bool _showGitDiff = true;
     private string? _liveCommand = null;
 
-    // Git diff accordion state
+    // Git diff state
     private List<DiffFile> _parsedDiffFiles = new();
-    private HashSet<int> _expandedDiffFiles = new();
-
-    // Computed properties for expand/collapse button states
-    private bool _allExpanded => _parsedDiffFiles.Count > 0 && _expandedDiffFiles.Count == _parsedDiffFiles.Count;
-    private bool _allCollapsed => _parsedDiffFiles.Count == 0 || _expandedDiffFiles.Count == 0;
 
     // Live output buffer
     private const int MaxOutputLines = 500;
@@ -1077,29 +233,44 @@ else
     private string _commitMessage = string.Empty;
     private bool _isPushing = false;
     private bool _isCheckingGitDiff = false;
-    private bool _isLoadingGitDiff = false; // Loading state after job completes
-    private bool _isLoadingSummary = false; // Loading state for session summary
-    private string? _gitDiffError = null; // Error message if git diff check fails
-    private string? _summaryError = null; // Error message if summary generation fails
+    private bool _isLoadingGitDiff = false;
+    private bool _isLoadingSummary = false;
+    private string? _summaryError = null;
     private string _pushStatus = "Pushing...";
     private string? _pushError = null;
     private bool _changesPushed = false;
     private string? _pushedCommitHash = null;
 
-    // Uncommitted changes state (for failed/cancelled jobs that may have made changes)
+    // Uncommitted changes state
     private bool _isCheckingUncommittedChanges = false;
     private bool _hasCheckedUncommittedChanges = false;
     private bool _hasUncommittedChanges = false;
     private List<DiffFile> _uncommittedDiffFiles = new();
     private string? _uncommittedChangesError = null;
     private bool _isDiscardingChanges = false;
-    private bool _showDiscardConfirmation = false;
     private string _uncommittedCommitMessage = string.Empty;
     private bool _isCommittingUncommittedChanges = false;
-    private HashSet<int> _expandedUncommittedFiles = new();
 
-    private string BackUrl => !string.IsNullOrEmpty(ReturnUrl) ? ReturnUrl : $"/projects/{Job?.ProjectId}";
     private string? _branchName = null;
+    private CancellationTokenSource? _pushCancellationTokenSource;
+    private const int PushTimeoutSeconds = 120;
+    private bool _commitMessageInitialized = false;
+
+    // Interaction response state
+    private bool _isSubmittingResponse = false;
+    private string? _interactionError = null;
+    private List<string>? _interactionChoices = null;
+
+    // Retry modal state
+    private bool _showRetryModal = false;
+
+    // Working copy comparison state
+    private bool _isComparingWorkingCopy = false;
+    private bool _workingCopyComparisonDone = false;
+    private bool _workingCopyMatches = true;
+    private List<string> _workingCopyMissingFiles = new();
+    private List<string> _workingCopyExtraFiles = new();
+    private List<string> _workingCopyModifiedFiles = new();
 
     private List<Breadcrumb.BreadcrumbItem> _breadcrumbItems => new()
 {
@@ -1108,59 +279,11 @@ new Breadcrumb.BreadcrumbItem(Job?.Project?.Name ?? "Project", $"/projects/{Job?
 new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
 };
 
-    private string GetJobDisplayTitle()
-    {
-        if (Job == null) return "Job";
-        if (!string.IsNullOrEmpty(Job.Title)) return TruncateTitle(Job.Title, 40);
-        return TruncateTitle(Job.GoalPrompt, 40);
-    }
-
-    private static string TruncateTitle(string text, int maxLength)
-    {
-        if (string.IsNullOrEmpty(text) || text.Length <= maxLength) return text;
-        return text[..maxLength] + "...";
-    }
-
-    private CancellationTokenSource? _pushCancellationTokenSource;
-    private const int PushTimeoutSeconds = 120;
-    private bool _commitMessageInitialized = false;
-
-    // Interaction response state
-    private string _interactionResponse = string.Empty;
-    private bool _isSubmittingResponse = false;
-    private string? _interactionError = null;
-    private List<string>? _interactionChoices = null;
-
-    // Full prompt modal state
-    private bool _showFullPromptModal = false;
-
-    // Retry modal state
-    private bool _showRetryModal = false;
-
-    // Working copy comparison state (for uncommitted job changes)
-    private bool _isComparingWorkingCopy = false;
-    private bool _workingCopyComparisonDone = false;
-    private bool _workingCopyMatches = true;
-    private string? _workingCopyComparisonError = null;
-    private List<string> _workingCopyMissingFiles = new();
-    private List<string> _workingCopyExtraFiles = new();
-    private List<string> _workingCopyModifiedFiles = new();
-
     private class OutputLine
     {
         public string Content { get; set; } = string.Empty;
         public bool IsError { get; set; }
         public DateTime Timestamp { get; set; }
-    }
-
-    private class DiffFile
-    {
-        public string FileName { get; set; } = string.Empty;
-        public string DiffContent { get; set; } = string.Empty;
-        public int Additions { get; set; }
-        public int Deletions { get; set; }
-        public bool IsNew { get; set; }
-        public bool IsDeleted { get; set; }
     }
 
     private bool CanCancel => Job != null &&
@@ -1170,7 +293,6 @@ new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
     Job.Status == JobStatus.Processing) &&
     !Job.CancellationRequested;
 
-    // Force cancel is available when cancellation was requested but job is still running
     private bool CanForceCancel => Job != null &&
     (Job.Status == JobStatus.Started || Job.Status == JobStatus.Processing) &&
     Job.CancellationRequested;
@@ -1204,7 +326,6 @@ new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
         if (firstRender)
         {
             await InitializeSignalR();
-            // Refresh job after SignalR is connected in case status changed during page load
             await Task.Delay(500);
             await RefreshJobSafely();
         }
@@ -1212,8 +333,6 @@ new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
 
     private void StartAutoRefresh()
     {
-        // SignalR handles real-time updates, this is just a fallback for connection issues
-        // Poll every 3 seconds when job is active, every 10 seconds otherwise
         _refreshTimer = new Timer(async _ =>
         {
             var secondsSincePageLoad = (DateTime.UtcNow - _pageLoadTime).TotalSeconds;
@@ -1221,17 +340,13 @@ new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
 
             if (shouldPoll && !_isRefreshing)
             {
-                await InvokeAsync(async () =>
-        {
-            await RefreshJobSafely();
-        });
+                await InvokeAsync(async () => await RefreshJobSafely());
             }
         }, null, TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(3));
     }
 
     private async Task RefreshJobSafely()
     {
-        // Prevent overlapping refreshes that could hammer the database
         if (_isRefreshing) return;
 
         try
@@ -1260,12 +375,24 @@ new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
         }
     }
 
+    private string GetJobDisplayTitle()
+    {
+        if (Job == null) return "Job";
+        if (!string.IsNullOrEmpty(Job.Title)) return TruncateTitle(Job.Title, 40);
+        return TruncateTitle(Job.GoalPrompt, 40);
+    }
+
+    private static string TruncateTitle(string text, int maxLength)
+    {
+        if (string.IsNullOrEmpty(text) || text.Length <= maxLength) return text;
+        return text[..maxLength] + "...";
+    }
+
+    #region SignalR Handlers
+
     [JSInvokable]
     public async Task OnJobStatusChanged(string jobId, string status)
     {
-        Console.WriteLine($"[Blazor] OnJobStatusChanged: {jobId} -> {status}");
-
-        // Update status in-place for immediate UI feedback
         if (Job != null && Enum.TryParse<JobStatus>(status, out var newStatus))
         {
             Job.Status = newStatus;
@@ -1276,25 +403,18 @@ new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
             else if (newStatus == JobStatus.Completed || newStatus == JobStatus.Failed || newStatus == JobStatus.Cancelled)
             {
                 Job.CompletedAt = DateTime.UtcNow;
-                
-                // For failed or cancelled jobs, automatically check for uncommitted changes
-                // The CLI may have made partial changes before failing/being cancelled
                 if (newStatus == JobStatus.Failed || newStatus == JobStatus.Cancelled)
                 {
                     _ = Task.Run(async () =>
                     {
-                        await Task.Delay(1000); // Small delay to let things settle
-                        await InvokeAsync(async () =>
-                        {
-                            await CheckUncommittedChangesAsync();
-                        });
+                        await Task.Delay(1000);
+                        await InvokeAsync(async () => await CheckUncommittedChangesAsync());
                     });
                 }
             }
             await InvokeAsync(StateHasChanged);
         }
 
-        // Also do a background refresh to get full data
         if (!_isRefreshing)
         {
             _ = Task.Run(async () =>
@@ -1308,8 +428,6 @@ new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
     [JSInvokable]
     public async Task OnJobActivityUpdated(string jobId, string activity, DateTime timestamp)
     {
-        Console.WriteLine($"[Blazor] OnJobActivityUpdated: {jobId} -> {activity}");
-        // Update activity in-place without reloading - this is much faster
         if (Job != null)
         {
             Job.CurrentActivity = activity;
@@ -1321,8 +439,6 @@ new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
     [JSInvokable]
     public async Task OnJobMessageAdded(string jobId)
     {
-        Console.WriteLine($"[Blazor] OnJobMessageAdded: {jobId}");
-        // Reload to get new messages
         if (!_isRefreshing)
         {
             await InvokeAsync(async () => await RefreshJobSafely());
@@ -1332,9 +448,6 @@ new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
     [JSInvokable]
     public async Task OnJobCompleted(string jobId, bool success, string? errorMessage)
     {
-        Console.WriteLine($"[Blazor] OnJobCompleted: {jobId}, success: {success}");
-
-        // Immediately update status in-place for instant UI feedback
         if (Job != null)
         {
             Job.Status = success ? JobStatus.Completed : JobStatus.Failed;
@@ -1344,149 +457,94 @@ new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
                 Job.ErrorMessage = errorMessage;
             }
 
-            // Show loading indicators for git diff and summary sections while we wait
             if (success)
             {
                 _isLoadingGitDiff = true;
                 _isLoadingSummary = true;
-                _gitDiffError = null;
-                _summaryError = null;
             }
             else
             {
-                // For failed jobs, automatically check for uncommitted changes
-                // The CLI may have made partial changes before failing
                 _ = Task.Run(async () =>
                 {
-                    await Task.Delay(1000); // Small delay to let things settle
-                    await InvokeAsync(async () =>
-                    {
-                        await CheckUncommittedChangesAsync();
-                    });
+                    await Task.Delay(1000);
+                    await InvokeAsync(async () => await CheckUncommittedChangesAsync());
                 });
             }
             await InvokeAsync(StateHasChanged);
         }
 
-        // Do initial refresh attempt with minimal delay to catch quick completions
         await Task.Delay(500);
-
-        // Refresh job data - the git diff and session summary should now be captured
         await InvokeAsync(async () =>
         {
             await RefreshJobSafely();
+            await HandlePostCompletionDataLoading(success);
+        });
+    }
 
-            // Check if we got the data we need
-            var hasGitDiff = Job != null && !string.IsNullOrEmpty(Job.GitDiff);
-            var hasSummary = Job != null && !string.IsNullOrWhiteSpace(Job.SessionSummary);
+    private async Task HandlePostCompletionDataLoading(bool success)
+    {
+        var hasGitDiff = Job != null && !string.IsNullOrEmpty(Job.GitDiff);
+        var hasSummary = Job != null && !string.IsNullOrWhiteSpace(Job.SessionSummary);
 
-            // If we have both, we're done
-            if (hasGitDiff && hasSummary)
-            {
-                _isLoadingGitDiff = false;
-                _isLoadingSummary = false;
-                StateHasChanged();
-                return;
-            }
-
-            // If we don't have the data yet, retry a few times with increasing delays
-            var retryDelays = new[] { 1000, 2000, 3000 };
-            foreach (var delay in retryDelays)
-            {
-                await Task.Delay(delay);
-                await RefreshJobSafely();
-
-                hasGitDiff = Job != null && !string.IsNullOrEmpty(Job.GitDiff);
-                hasSummary = Job != null && !string.IsNullOrWhiteSpace(Job.SessionSummary);
-
-                if (hasGitDiff && hasSummary)
-                {
-                    _isLoadingGitDiff = false;
-                    _isLoadingSummary = false;
-                    StateHasChanged();
-                    return;
-                }
-
-                // Update the UI with what we have so far
-                if (hasGitDiff)
-                {
-                    _isLoadingGitDiff = false;
-                }
-                if (hasSummary)
-                {
-                    _isLoadingSummary = false;
-                }
-                StateHasChanged();
-            }
-
-            // If we still don't have git diff after retries, try to actively fetch it
-            if (!hasGitDiff && success && Job?.Project?.WorkingPath != null)
-            {
-                try
-                {
-                    await CheckGitDiffAsync();
-                    // Refresh again to get the updated data
-                    await RefreshJobSafely();
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"Error auto-checking git diff: {ex.Message}");
-                    _gitDiffError = "Failed to load git changes. Click 'Check again' to retry.";
-                }
-            }
-
-            // Clear loading states and set appropriate error messages
+        if (hasGitDiff && hasSummary)
+        {
             _isLoadingGitDiff = false;
             _isLoadingSummary = false;
-
-            if (Job != null && string.IsNullOrEmpty(Job.GitDiff) && success)
-            {
-                // No git diff could be found - may have no changes
-                _gitDiffError = null; // No error, just no changes detected
-            }
-
-            if (Job != null && string.IsNullOrWhiteSpace(Job.SessionSummary) && success && !string.IsNullOrEmpty(Job.GitDiff))
-            {
-                // We have changes but no summary - try to generate one client-side as fallback
-                _summaryError = "Summary generation is in progress. You can write your own commit message.";
-            }
-
             StateHasChanged();
-        });
+            return;
+        }
+
+        var retryDelays = new[] { 1000, 2000, 3000 };
+        foreach (var delay in retryDelays)
+        {
+            await Task.Delay(delay);
+            await RefreshJobSafely();
+
+            hasGitDiff = Job != null && !string.IsNullOrEmpty(Job.GitDiff);
+            hasSummary = Job != null && !string.IsNullOrWhiteSpace(Job.SessionSummary);
+
+            if (hasGitDiff && hasSummary) break;
+
+            if (hasGitDiff) _isLoadingGitDiff = false;
+            if (hasSummary) _isLoadingSummary = false;
+            StateHasChanged();
+        }
+
+        if (!hasGitDiff && success && Job?.Project?.WorkingPath != null)
+        {
+            try
+            {
+                await CheckGitDiffAsync();
+                await RefreshJobSafely();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error auto-checking git diff: {ex.Message}");
+            }
+        }
+
+        _isLoadingGitDiff = false;
+        _isLoadingSummary = false;
+        StateHasChanged();
     }
 
     [JSInvokable]
     public async Task OnJobOutput(string jobId, string line, bool isError, DateTime timestamp)
     {
-        // Add output line to buffer
         lock (_liveOutput)
         {
-            _liveOutput.Add(new OutputLine
-            {
-                Content = line,
-                IsError = isError,
-                Timestamp = timestamp
-            });
-
-            // Trim buffer if too large
+            _liveOutput.Add(new OutputLine { Content = line, IsError = isError, Timestamp = timestamp });
             while (_liveOutput.Count > MaxOutputLines)
             {
                 _liveOutput.RemoveAt(0);
             }
         }
-
-        await InvokeAsync(async () =>
-        {
-            StateHasChanged();
-            // Auto-scroll to bottom
-            await ScrollToOutputBottom();
-        });
+        await InvokeAsync(StateHasChanged);
     }
 
     [JSInvokable]
     public async Task OnProcessStarted(string jobId, int processId, string command)
     {
-        Console.WriteLine($"[Blazor] OnProcessStarted: {jobId}, PID: {processId}, Command: {command}");
         if (Job != null)
         {
             Job.ProcessId = processId;
@@ -1502,8 +560,6 @@ new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
     [JSInvokable]
     public async Task OnProcessExited(string jobId, int processId, int exitCode, double durationSeconds)
     {
-        Console.WriteLine($"[Blazor] OnProcessExited: {jobId}, PID: {processId}, ExitCode: {exitCode}");
-        // Add a marker line in the output
         lock (_liveOutput)
         {
             _liveOutput.Add(new OutputLine
@@ -1519,19 +575,11 @@ new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
     [JSInvokable]
     public async Task OnJobGitDiffUpdated(string jobId, bool hasChanges)
     {
-        Console.WriteLine($"[Blazor] OnJobGitDiffUpdated: {jobId}, hasChanges: {hasChanges}");
-
-        // Clear any error state since we're getting an update
-        _gitDiffError = null;
-
-        // Reload job data to get the updated git diff and session summary
         if (!_isRefreshing)
         {
             await InvokeAsync(async () =>
             {
                 await RefreshJobSafely();
-
-                // Clear loading states now that we have the data
                 _isLoadingGitDiff = false;
                 if (Job != null && !string.IsNullOrWhiteSpace(Job.SessionSummary))
                 {
@@ -1542,7 +590,6 @@ new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
         }
         else
         {
-            // Clear loading state even if we couldn't refresh
             _isLoadingGitDiff = false;
             await InvokeAsync(StateHasChanged);
         }
@@ -1552,8 +599,6 @@ new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
     public async Task OnJobInteractionRequired(string jobId, string prompt, string interactionType,
     List<string>? choices, string? defaultResponse)
     {
-        Console.WriteLine($"[Blazor] OnJobInteractionRequired: {jobId}, type: {interactionType}");
-
         if (Job != null)
         {
             Job.Status = JobStatus.Paused;
@@ -1561,9 +606,7 @@ new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
             Job.InteractionType = interactionType;
             Job.InteractionRequestedAt = DateTime.UtcNow;
             _interactionChoices = choices;
-            _interactionResponse = defaultResponse ?? string.Empty;
             _interactionError = null;
-
             await InvokeAsync(StateHasChanged);
         }
     }
@@ -1571,8 +614,6 @@ new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
     [JSInvokable]
     public async Task OnJobResumed(string jobId)
     {
-        Console.WriteLine($"[Blazor] OnJobResumed: {jobId}");
-
         if (Job != null)
         {
             Job.Status = JobStatus.Processing;
@@ -1580,14 +621,11 @@ new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
             Job.InteractionType = null;
             Job.InteractionRequestedAt = null;
             _interactionChoices = null;
-            _interactionResponse = string.Empty;
             _interactionError = null;
             _isSubmittingResponse = false;
-
             await InvokeAsync(StateHasChanged);
         }
 
-        // Also refresh to get full state
         if (!_isRefreshing)
         {
             _ = Task.Run(async () =>
@@ -1598,84 +636,9 @@ new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
         }
     }
 
-    private async Task HandleResponseKeyPress(KeyboardEventArgs e)
-    {
-        if (e.Key == "Enter" && !_isSubmittingResponse && !string.IsNullOrWhiteSpace(_interactionResponse))
-        {
-            await SubmitTypedResponse();
-        }
-    }
+    #endregion
 
-    private async Task SubmitTypedResponse()
-    {
-        if (string.IsNullOrWhiteSpace(_interactionResponse))
-            return;
-
-        await SubmitInteractionResponse(_interactionResponse);
-    }
-
-    private async Task SubmitInteractionResponse(string response)
-    {
-        if (_isSubmittingResponse)
-            return;
-
-        _isSubmittingResponse = true;
-        _interactionError = null;
-        StateHasChanged();
-
-        try
-        {
-            // Use SignalR to send the response
-            if (_signalRModule != null)
-            {
-                var success = await _signalRModule.InvokeAsync<bool>("submitInteractionResponse", JobId.ToString(), response);
-
-                if (!success)
-                {
-                    _interactionError = "Failed to deliver response. The job may have already completed or been cancelled.";
-                }
-                else
-                {
-                    // Clear the input on success
-                    _interactionResponse = string.Empty;
-                }
-            }
-            else
-            {
-                _interactionError = "Connection to server not available. Please refresh the page.";
-            }
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Error submitting interaction response: {ex.Message}");
-            _interactionError = "Failed to send response. Please try again.";
-        }
-        finally
-        {
-            _isSubmittingResponse = false;
-            StateHasChanged();
-        }
-    }
-
-    private async Task ScrollToOutputBottom()
-    {
-        try
-        {
-            await JSRuntime.InvokeVoidAsync("scrollToBottom", _outputContainer);
-        }
-        catch
-        {
-            // Ignore scroll errors
-        }
-    }
-
-    private void ClearLiveOutput()
-    {
-        lock (_liveOutput)
-        {
-            _liveOutput.Clear();
-        }
-    }
+    #region Job Actions
 
     private async Task LoadJob()
     {
@@ -1683,87 +646,55 @@ new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
         {
             Job = await JobService.GetByIdWithMessagesAsync(JobId);
 
-            // Pre-populate commit message from session summary if available and not already manually edited
-            // We update the commit message whenever the session summary changes AND the user hasn't manually edited it
             if (Job != null && !string.IsNullOrWhiteSpace(Job.SessionSummary))
             {
-                // Only update if the user hasn't typed anything (empty or still matches previous summary)
                 if (string.IsNullOrWhiteSpace(_commitMessage) || !_commitMessageInitialized)
                 {
                     _commitMessage = Job.SessionSummary;
                     _commitMessageInitialized = true;
                     _isLoadingSummary = false;
-                    _summaryError = null;
                 }
             }
 
-            // Check if job results have already been committed
             if (Job != null && !string.IsNullOrEmpty(Job.GitCommitHash))
             {
                 _changesPushed = true;
                 _pushedCommitHash = Job.GitCommitHash;
             }
 
-            // Parse interaction choices if job is paused
             if (Job != null && Job.Status == JobStatus.Paused && !string.IsNullOrEmpty(Job.InteractionChoices))
             {
-                try
-                {
-                    _interactionChoices = System.Text.Json.JsonSerializer.Deserialize<List<string>>(Job.InteractionChoices);
-                }
-                catch
-                {
-                    _interactionChoices = null;
-                }
+                try { _interactionChoices = System.Text.Json.JsonSerializer.Deserialize<List<string>>(Job.InteractionChoices); }
+                catch { _interactionChoices = null; }
             }
             else if (Job?.Status != JobStatus.Paused)
             {
                 _interactionChoices = null;
             }
 
-            // Parse git diff into file-based structure
             if (Job != null && !string.IsNullOrEmpty(Job.GitDiff))
             {
-                _parsedDiffFiles = ParseGitDiff(Job.GitDiff);
-                // Expand first file by default if there are any
-                if (_parsedDiffFiles.Any() && !_expandedDiffFiles.Any())
-                {
-                    _expandedDiffFiles.Add(0);
-                }
+                _parsedDiffFiles = GitDiffParser.ParseDiff(Job.GitDiff);
 
-                // If job has changes but hasn't been committed yet, compare with working copy
-                if (string.IsNullOrEmpty(Job.GitCommitHash) &&
-                !_changesPushed &&
-                !_workingCopyComparisonDone &&
-                !IsJobActive &&
-                Job.Project?.WorkingPath != null)
+                if (string.IsNullOrEmpty(Job.GitCommitHash) && !_changesPushed && !_workingCopyComparisonDone &&
+                !IsJobActive && Job.Project?.WorkingPath != null)
                 {
-                    // Fire and forget - don't block the UI
                     _ = CompareWithWorkingCopy();
                 }
             }
 
-            // Auto-expand console output when a job fails to help users see what went wrong
             if (Job != null && Job.Status == JobStatus.Failed && !string.IsNullOrEmpty(Job.ConsoleOutput))
             {
                 _showConsoleOutput = true;
             }
 
-            // For failed or cancelled jobs that haven't been checked yet, auto-check for uncommitted changes
-            // This helps users immediately see if the CLI made partial changes before failing
-            if (Job != null && 
-                (Job.Status == JobStatus.Failed || Job.Status == JobStatus.Cancelled) && 
-                Job.Project?.WorkingPath != null &&
-                !_hasCheckedUncommittedChanges)
+            if (Job != null && (Job.Status == JobStatus.Failed || Job.Status == JobStatus.Cancelled) &&
+            Job.Project?.WorkingPath != null && !_hasCheckedUncommittedChanges)
             {
-                // Fire and forget - don't block the UI
                 _ = Task.Run(async () =>
                 {
-                    await Task.Delay(500); // Small delay to let UI render first
-                    await InvokeAsync(async () =>
-                    {
-                        await CheckUncommittedChangesAsync();
-                    });
+                    await Task.Delay(500);
+                    await InvokeAsync(async () => await CheckUncommittedChangesAsync());
                 });
             }
         }
@@ -1866,10 +797,7 @@ new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
         }
     }
 
-    private void ShowRetryModal()
-    {
-        _showRetryModal = true;
-    }
+    private void ShowRetryModal() => _showRetryModal = true;
 
     private async Task HandleRetryWithOptions(RetryJobModal.RetryOptions options)
     {
@@ -1903,40 +831,51 @@ new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
         }
     }
 
-    private static string GetRoleDisplayName(MessageRole role)
+    #endregion
+
+    #region Interaction
+
+    private async Task SubmitInteractionResponse(string response)
     {
-        return role switch
+        if (_isSubmittingResponse) return;
+
+        _isSubmittingResponse = true;
+        _interactionError = null;
+        StateHasChanged();
+
+        try
         {
-            MessageRole.User => "User",
-            MessageRole.Assistant => "Assistant",
-            MessageRole.System => "System",
-            MessageRole.ToolUse => "Tool Call",
-            MessageRole.ToolResult => "Tool Result",
-            _ => role.ToString()
-        };
+            if (_signalRModule != null)
+            {
+                var success = await _signalRModule.InvokeAsync<bool>("submitInteractionResponse", JobId.ToString(), response);
+                if (!success)
+                {
+                    _interactionError = "Failed to deliver response. The job may have already completed or been cancelled.";
+                }
+            }
+            else
+            {
+                _interactionError = "Connection to server not available. Please refresh the page.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _interactionError = "Failed to send response. Please try again.";
+            Console.WriteLine($"Error submitting interaction response: {ex.Message}");
+        }
+        finally
+        {
+            _isSubmittingResponse = false;
+            StateHasChanged();
+        }
     }
 
-    private static string TruncateOutput(string text, int maxLength)
-    {
-        if (string.IsNullOrEmpty(text) || text.Length <= maxLength)
-            return text;
-        return text[..maxLength] + "\n... (truncated)";
-    }
+    #endregion
 
-    private void ToggleConsoleOutput()
-    {
-        _showConsoleOutput = !_showConsoleOutput;
-    }
+    #region UI Actions
 
-    private void ToggleGitDiff()
-    {
-        _showGitDiff = !_showGitDiff;
-    }
-
-    private void ToggleCommandDisplay()
-    {
-        _showFullCommand = !_showFullCommand;
-    }
+    private void ToggleConsoleOutput() => _showConsoleOutput = !_showConsoleOutput;
+    private void ClearLiveOutput() { lock (_liveOutput) { _liveOutput.Clear(); } }
 
     private async Task CopyCommandToClipboard(string command)
     {
@@ -1949,23 +888,6 @@ new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
         {
             NotificationService.ShowError($"Failed to copy to clipboard: {ex.Message}", "Copy Failed");
         }
-    }
-
-    private static string TruncateCommand(string command, int maxLength)
-    {
-        if (string.IsNullOrEmpty(command) || command.Length <= maxLength)
-            return command;
-        return command[..maxLength] + "...";
-    }
-
-    private void ShowFullPromptModal()
-    {
-        _showFullPromptModal = true;
-    }
-
-    private void CloseFullPromptModal()
-    {
-        _showFullPromptModal = false;
     }
 
     private async Task CopyPromptToClipboard()
@@ -1984,6 +906,10 @@ new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
         }
     }
 
+    #endregion
+
+    #region Git Operations
+
     private async Task LoadBranchName()
     {
         try
@@ -1993,10 +919,7 @@ new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
                 _branchName = await VersionControlService.GetCurrentBranchAsync(Job.Project.WorkingPath);
             }
         }
-        catch
-        {
-            // Ignore errors loading branch name
-        }
+        catch { }
     }
 
     private async Task RefreshSummary()
@@ -2009,12 +932,10 @@ new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
 
         try
         {
-            // Refresh the job data to check if the session summary has been generated
             await RefreshJobSafely();
 
             if (Job != null && string.IsNullOrWhiteSpace(Job.SessionSummary) && !string.IsNullOrEmpty(Job.GitDiff))
             {
-                // If we still don't have a summary but have a diff, generate one locally
                 var localSummary = VibeSwarm.Shared.Services.JobSummaryGenerator.GenerateSummary(Job);
                 if (!string.IsNullOrWhiteSpace(localSummary))
                 {
@@ -2029,8 +950,8 @@ new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error refreshing summary: {ex.Message}");
             _summaryError = "Failed to refresh summary. Please try again or write your own commit message.";
+            Console.WriteLine($"Error refreshing summary: {ex.Message}");
         }
         finally
         {
@@ -2041,32 +962,21 @@ new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
 
     private async Task CheckGitDiffAsync()
     {
-        if (Job?.Project?.WorkingPath == null || _isCheckingGitDiff)
-            return;
+        if (Job?.Project?.WorkingPath == null || _isCheckingGitDiff) return;
 
         _isCheckingGitDiff = true;
-        _gitDiffError = null;
         StateHasChanged();
 
         try
         {
-            // Get the git diff using the baseline commit if available
-            var gitDiff = await VersionControlService.GetWorkingDirectoryDiffAsync(
-            Job.Project.WorkingPath,
-            Job.GitCommitBefore);
-
-            // Update the job with the new git diff (this will trigger SignalR notification)
+            var gitDiff = await VersionControlService.GetWorkingDirectoryDiffAsync(Job.Project.WorkingPath, Job.GitCommitBefore);
             await JobService.UpdateGitDiffAsync(Job.Id, gitDiff);
-
-            // The SignalR notification will trigger a refresh, but also refresh immediately
-            // in case SignalR is delayed
             await RefreshJobSafely();
 
-            // If we now have a diff but no commit message, try to generate one
             if (!string.IsNullOrEmpty(gitDiff) && string.IsNullOrWhiteSpace(_commitMessage))
             {
-                var localSummary = VibeSwarm.Shared.Services.JobSummaryGenerator.GenerateSummary(
-                gitDiff, Job.GoalPrompt, Job.ConsoleOutput);
+                var localSummary = VibeSwarm.Shared.Services.JobSummaryGenerator.GenerateSummary(gitDiff, Job.GoalPrompt,
+                Job.ConsoleOutput);
                 if (!string.IsNullOrWhiteSpace(localSummary))
                 {
                     _commitMessage = localSummary;
@@ -2076,9 +986,8 @@ new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error checking git diff: {ex.Message}");
-            _gitDiffError = $"Failed to check git changes: {ex.Message}";
             ErrorMessage = $"Error checking git changes: {ex.Message}";
+            Console.WriteLine($"Error checking git diff: {ex.Message}");
         }
         finally
         {
@@ -2089,11 +998,9 @@ new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
 
     private async Task CompareWithWorkingCopy()
     {
-        if (Job?.Project?.WorkingPath == null || string.IsNullOrEmpty(Job.GitDiff) || _isComparingWorkingCopy)
-            return;
+        if (Job?.Project?.WorkingPath == null || string.IsNullOrEmpty(Job.GitDiff) || _isComparingWorkingCopy) return;
 
         _isComparingWorkingCopy = true;
-        _workingCopyComparisonError = null;
         _workingCopyMissingFiles.Clear();
         _workingCopyExtraFiles.Clear();
         _workingCopyModifiedFiles.Clear();
@@ -2101,60 +1008,24 @@ new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
 
         try
         {
-            // Get current working directory diff
-            var currentDiff = await VersionControlService.GetWorkingDirectoryDiffAsync(
-            Job.Project.WorkingPath,
+            var currentDiff = await VersionControlService.GetWorkingDirectoryDiffAsync(Job.Project.WorkingPath,
             Job.GitCommitBefore);
+            var jobFiles = GitDiffParser.ParseDiff(Job.GitDiff);
+            var currentFiles = GitDiffParser.ParseDiff(currentDiff ?? string.Empty);
 
-            // Parse both diffs into file structures
-            var jobFiles = ParseGitDiff(Job.GitDiff);
-            var currentFiles = ParseGitDiff(currentDiff ?? string.Empty);
+            var (missing, extra, modified) = GitDiffParser.CompareDiffs(jobFiles, currentFiles);
+            _workingCopyMissingFiles = missing;
+            _workingCopyExtraFiles = extra;
+            _workingCopyModifiedFiles = modified;
 
-            // Create dictionaries for comparison
-            var jobFileDict = jobFiles.ToDictionary(f => f.FileName, f => f);
-            var currentFileDict = currentFiles.ToDictionary(f => f.FileName, f => f);
-
-            // Find files in job diff but not in current working copy
-            foreach (var jobFile in jobFiles)
-            {
-                if (!currentFileDict.ContainsKey(jobFile.FileName))
-                {
-                    _workingCopyMissingFiles.Add(jobFile.FileName);
-                }
-                else
-                {
-                    // Check if the content differs (compare addition/deletion counts as a proxy)
-                    var currentFile = currentFileDict[jobFile.FileName];
-                    if (jobFile.Additions != currentFile.Additions ||
-                    jobFile.Deletions != currentFile.Deletions ||
-                    jobFile.DiffContent.Trim() != currentFile.DiffContent.Trim())
-                    {
-                        _workingCopyModifiedFiles.Add(jobFile.FileName);
-                    }
-                }
-            }
-
-            // Find files in current working copy but not in job diff
-            foreach (var currentFile in currentFiles)
-            {
-                if (!jobFileDict.ContainsKey(currentFile.FileName))
-                {
-                    _workingCopyExtraFiles.Add(currentFile.FileName);
-                }
-            }
-
-            // Determine if working copy matches
-            _workingCopyMatches = !_workingCopyMissingFiles.Any() &&
-            !_workingCopyExtraFiles.Any() &&
-            !_workingCopyModifiedFiles.Any();
+            _workingCopyMatches = !missing.Any() && !extra.Any() && !modified.Any();
             _workingCopyComparisonDone = true;
         }
         catch (Exception ex)
         {
             Console.WriteLine($"Error comparing working copy: {ex.Message}");
-            _workingCopyComparisonError = $"Failed to compare: {ex.Message}";
             _workingCopyComparisonDone = true;
-            _workingCopyMatches = false; // Assume mismatch on error
+            _workingCopyMatches = false;
         }
         finally
         {
@@ -2165,8 +1036,7 @@ new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
 
     private async Task CommitAndPushChanges()
     {
-        if (Job?.Project?.WorkingPath == null || string.IsNullOrWhiteSpace(_commitMessage))
-            return;
+        if (Job?.Project?.WorkingPath == null || string.IsNullOrWhiteSpace(_commitMessage)) return;
 
         _isPushing = true;
         _pushError = null;
@@ -2182,11 +1052,7 @@ new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
             Job.Project.WorkingPath,
             _commitMessage,
             "origin",
-            status =>
-            {
-                _pushStatus = status;
-                InvokeAsync(StateHasChanged);
-            },
+            status => { _pushStatus = status; InvokeAsync(StateHasChanged); },
             _pushCancellationTokenSource.Token);
 
             if (result.Success)
@@ -2196,7 +1062,6 @@ new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
                 _branchName = result.BranchName ?? _branchName;
                 SuccessMessage = "Changes committed and pushed successfully!";
 
-                // Save the commit hash to the database
                 if (!string.IsNullOrEmpty(result.CommitHash) && Job != null)
                 {
                     await JobService.UpdateGitCommitHashAsync(Job.Id, result.CommitHash);
@@ -2224,188 +1089,34 @@ new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
         }
     }
 
-    /// <summary>
-    /// Formats git diff output with syntax highlighting for HTML display
-    /// </summary>
-    private static string FormatGitDiff(string diff)
-    {
-        if (string.IsNullOrEmpty(diff))
-            return string.Empty;
+    #endregion
 
-        var lines = diff.Split('\n');
-        var result = new System.Text.StringBuilder();
+    #region Uncommitted Changes
 
-        foreach (var line in lines)
-        {
-            var escapedLine = System.Net.WebUtility.HtmlEncode(line);
-
-            if (line.StartsWith("+++") || line.StartsWith("---"))
-            {
-                result.AppendLine($"<div class=\"diff-file-header\">{escapedLine}</div>");
-            }
-            else if (line.StartsWith("@@"))
-            {
-                result.AppendLine($"<div class=\"diff-hunk-header\">{escapedLine}</div>");
-            }
-            else if (line.StartsWith("+") && !line.StartsWith("+++"))
-            {
-                result.AppendLine($"<div class=\"diff-added\">{escapedLine}</div>");
-            }
-            else if (line.StartsWith("-") && !line.StartsWith("---"))
-            {
-                result.AppendLine($"<div class=\"diff-removed\">{escapedLine}</div>");
-            }
-            else if (line.StartsWith("diff "))
-            {
-                result.AppendLine($"<div class=\"diff-header\">{escapedLine}</div>");
-            }
-            else if (line.StartsWith("index ") || line.StartsWith("new file") || line.StartsWith("deleted file"))
-            {
-                result.AppendLine($"<div class=\"diff-meta\">{escapedLine}</div>");
-            }
-            else
-            {
-                result.AppendLine($"<div class=\"diff-context\">{escapedLine}</div>");
-            }
-        }
-
-        return result.ToString();
-    }
-
-    /// <summary>
-    /// Parses git diff into individual file diffs
-    /// </summary>
-    private static List<DiffFile> ParseGitDiff(string diff)
-    {
-        var files = new List<DiffFile>();
-        if (string.IsNullOrEmpty(diff))
-            return files;
-
-        var lines = diff.Split('\n');
-        DiffFile? currentFile = null;
-        var currentContent = new System.Text.StringBuilder();
-
-        foreach (var line in lines)
-        {
-            if (line.StartsWith("diff --git"))
-            {
-                // Save previous file
-                if (currentFile != null)
-                {
-                    currentFile.DiffContent = currentContent.ToString();
-                    files.Add(currentFile);
-                }
-
-                // Extract filename from "diff --git a/path/to/file b/path/to/file"
-                var parts = line.Split(' ');
-                var fileName = parts.Length >= 4 ? parts[3].TrimStart('b', '/') : "unknown";
-
-                currentFile = new DiffFile { FileName = fileName };
-                currentContent.Clear();
-                currentContent.AppendLine(line);
-            }
-            else if (currentFile != null)
-            {
-                currentContent.AppendLine(line);
-
-                if (line.StartsWith("new file"))
-                {
-                    currentFile.IsNew = true;
-                }
-                else if (line.StartsWith("deleted file"))
-                {
-                    currentFile.IsDeleted = true;
-                }
-                else if (line.StartsWith("+") && !line.StartsWith("+++"))
-                {
-                    currentFile.Additions++;
-                }
-                else if (line.StartsWith("-") && !line.StartsWith("---"))
-                {
-                    currentFile.Deletions++;
-                }
-            }
-        }
-
-        // Save the last file
-        if (currentFile != null)
-        {
-            currentFile.DiffContent = currentContent.ToString();
-            files.Add(currentFile);
-        }
-
-        return files;
-    }
-
-    /// <summary>
-    /// Formats a single file's diff content with syntax highlighting
-    /// </summary>
-    private static string FormatFileDiff(string diff)
-    {
-        return FormatGitDiff(diff);
-    }
-
-    private void ToggleDiffFile(int index)
-    {
-        if (_expandedDiffFiles.Contains(index))
-        {
-            _expandedDiffFiles.Remove(index);
-        }
-        else
-        {
-            _expandedDiffFiles.Add(index);
-        }
-    }
-
-    private void ExpandAllDiffs()
-    {
-        _expandedDiffFiles = Enumerable.Range(0, _parsedDiffFiles.Count).ToHashSet();
-    }
-
-    private void CollapseAllDiffs()
-    {
-        _expandedDiffFiles.Clear();
-    }
-
-    // Uncommitted changes methods for failed/cancelled jobs
     private async Task CheckUncommittedChangesAsync()
     {
-        if (Job?.Project?.WorkingPath == null || _isCheckingUncommittedChanges)
-            return;
+        if (Job?.Project?.WorkingPath == null || _isCheckingUncommittedChanges) return;
 
         _isCheckingUncommittedChanges = true;
         _uncommittedChangesError = null;
         _uncommittedDiffFiles.Clear();
-        _expandedUncommittedFiles.Clear();
         StateHasChanged();
 
         try
         {
-            // Check if there are uncommitted changes
             _hasUncommittedChanges = await VersionControlService.HasUncommittedChangesAsync(Job.Project.WorkingPath);
 
             if (_hasUncommittedChanges)
             {
-                // Get the diff for uncommitted changes
                 var diff = await VersionControlService.GetWorkingDirectoryDiffAsync(Job.Project.WorkingPath, null);
-                
                 if (!string.IsNullOrEmpty(diff))
                 {
-                    _uncommittedDiffFiles = ParseGitDiff(diff);
-                    
-                    // Auto-expand first file if there's only one
-                    if (_uncommittedDiffFiles.Count == 1)
-                    {
-                        _expandedUncommittedFiles.Add(0);
-                    }
+                    _uncommittedDiffFiles = GitDiffParser.ParseDiff(diff);
 
-                    // Generate a default commit message based on the job
                     if (string.IsNullOrWhiteSpace(_uncommittedCommitMessage))
                     {
                         var prefix = Job.Status == JobStatus.Failed ? "WIP (partial):" : "WIP (cancelled):";
-                        var goalSummary = Job.GoalPrompt.Length > 60 
-                            ? Job.GoalPrompt[..60] + "..." 
-                            : Job.GoalPrompt;
+                        var goalSummary = Job.GoalPrompt.Length > 60 ? Job.GoalPrompt[..60] + "..." : Job.GoalPrompt;
                         _uncommittedCommitMessage = $"{prefix} {goalSummary}";
                     }
                 }
@@ -2415,8 +1126,8 @@ new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error checking uncommitted changes: {ex.Message}");
             _uncommittedChangesError = $"Failed to check for uncommitted changes: {ex.Message}";
+            Console.WriteLine($"Error checking uncommitted changes: {ex.Message}");
         }
         finally
         {
@@ -2427,8 +1138,8 @@ new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
 
     private async Task CommitUncommittedChangesAsync()
     {
-        if (Job?.Project?.WorkingPath == null || string.IsNullOrWhiteSpace(_uncommittedCommitMessage) || _isCommittingUncommittedChanges)
-            return;
+        if (Job?.Project?.WorkingPath == null || string.IsNullOrWhiteSpace(_uncommittedCommitMessage) ||
+        _isCommittingUncommittedChanges) return;
 
         _isCommittingUncommittedChanges = true;
         _uncommittedChangesError = null;
@@ -2436,16 +1147,13 @@ new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
 
         try
         {
-            // Stage all changes and commit
-            var commitResult = await VersionControlService.CommitAllChangesAsync(
-                Job.Project.WorkingPath,
-                _uncommittedCommitMessage);
+            var commitResult = await VersionControlService.CommitAllChangesAsync(Job.Project.WorkingPath,
+            _uncommittedCommitMessage);
 
             if (commitResult.Success)
             {
-                NotificationService.ShowSuccess($"Changes committed successfully: {commitResult.CommitHash?[..7] ?? "unknown"}", "Committed");
-                
-                // Clear the uncommitted changes state
+                NotificationService.ShowSuccess($"Changes committed successfully: {commitResult.CommitHash?[..7] ?? "unknown"}",
+                "Committed");
                 _hasUncommittedChanges = false;
                 _uncommittedDiffFiles.Clear();
                 _uncommittedCommitMessage = string.Empty;
@@ -2458,8 +1166,8 @@ new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error committing uncommitted changes: {ex.Message}");
             _uncommittedChangesError = $"Failed to commit changes: {ex.Message}";
+            Console.WriteLine($"Error committing uncommitted changes: {ex.Message}");
         }
         finally
         {
@@ -2470,8 +1178,7 @@ new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
 
     private async Task DiscardUncommittedChangesAsync()
     {
-        if (Job?.Project?.WorkingPath == null || _isDiscardingChanges)
-            return;
+        if (Job?.Project?.WorkingPath == null || _isDiscardingChanges) return;
 
         _isDiscardingChanges = true;
         _uncommittedChangesError = null;
@@ -2479,18 +1186,14 @@ new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
 
         try
         {
-            // Discard all uncommitted changes
             var result = await VersionControlService.DiscardAllChangesAsync(Job.Project.WorkingPath);
 
             if (result.Success)
             {
                 NotificationService.ShowSuccess("All uncommitted changes have been discarded.", "Changes Discarded");
-                
-                // Clear the uncommitted changes state
                 _hasUncommittedChanges = false;
                 _uncommittedDiffFiles.Clear();
                 _uncommittedCommitMessage = string.Empty;
-                _showDiscardConfirmation = false;
                 _hasCheckedUncommittedChanges = false;
             }
             else
@@ -2500,8 +1203,8 @@ new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error discarding uncommitted changes: {ex.Message}");
             _uncommittedChangesError = $"Failed to discard changes: {ex.Message}";
+            Console.WriteLine($"Error discarding uncommitted changes: {ex.Message}");
         }
         finally
         {
@@ -2510,27 +1213,7 @@ new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
         }
     }
 
-    private void ToggleUncommittedFile(int index)
-    {
-        if (_expandedUncommittedFiles.Contains(index))
-        {
-            _expandedUncommittedFiles.Remove(index);
-        }
-        else
-        {
-            _expandedUncommittedFiles.Add(index);
-        }
-    }
-
-    private void ExpandAllUncommitted()
-    {
-        _expandedUncommittedFiles = Enumerable.Range(0, _uncommittedDiffFiles.Count).ToHashSet();
-    }
-
-    private void CollapseAllUncommitted()
-    {
-        _expandedUncommittedFiles.Clear();
-    }
+    #endregion
 
     public async ValueTask DisposeAsync()
     {
