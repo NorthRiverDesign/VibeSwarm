@@ -1,12 +1,13 @@
 @* Unified job session panel - combines session log, error, console output, command, and live output *@
+@inject IJSRuntime JSRuntime
 
 <div class="card d-flex flex-column">
     <div class="card-header bg-body-secondary p-0">
         <div class="d-flex align-items-center justify-content-between border-bottom border-secondary border-opacity-25">
             @* Tabs *@
-            <ul class="nav nav-tabs nav-tabs-card border-0 flex-grow-1" role="tablist">
+            <ul class="nav nav-tabs nav-tabs-card border-0 flex-grow-1 flex-nowrap" role="tablist">
                 <li class="nav-item" role="presentation">
-                    <button type="button" class="nav-link @(_activeTab == "session" ? "active" : "")"
+                    <button type="button" class="nav-link px-2 px-sm-3 @(_activeTab == "session" ? "active" : "")"
                         @onclick="@(() => _activeTab = "session")" role="tab">
                         @if (IsJobActive)
                         {
@@ -36,7 +37,7 @@
                 @if (!string.IsNullOrEmpty(ConsoleOutput) && !IsJobActive)
                 {
                     <li class="nav-item" role="presentation">
-                        <button type="button" class="nav-link @(_activeTab == "console" ? "active" : "")"
+                        <button type="button" class="nav-link px-2 px-sm-3 @(_activeTab == "console" ? "active" : "")"
                             @onclick="@(() => _activeTab = "console")" role="tab">
                             <i class="bi bi-terminal me-1 opacity-75"></i>
                             <span class="d-none d-sm-inline">Console Output</span>
@@ -47,7 +48,7 @@
                 @if (!string.IsNullOrEmpty(CommandUsed))
                 {
                     <li class="nav-item" role="presentation">
-                        <button type="button" class="nav-link @(_activeTab == "command" ? "active" : "")"
+                        <button type="button" class="nav-link px-2 px-sm-3 @(_activeTab == "command" ? "active" : "")"
                             @onclick="@(() => _activeTab = "command")" role="tab">
                             <i class="bi bi-terminal-fill me-1 opacity-75"></i>
                             <span>Command</span>
@@ -61,10 +62,6 @@
                 {
                     <ActionButton Icon="trash" Text="Clear" Outline="true" Size="ActionButton.ButtonSize.Small"
                         HideTextOnMobile="true" OnClick="OnClearLiveOutput" />
-                }
-                @if (Messages.Any())
-                {
-                    <span class="badge bg-secondary">@Messages.Count messages</span>
                 }
             </div>
         </div>
@@ -116,6 +113,12 @@
             {
                 @* Session Log / Conversation *@
                 <div class="flex-grow-1 overflow-auto p-2 p-sm-3">
+                    @if (Messages.Any())
+                    {
+                        <div class="d-flex justify-content-end mb-2">
+                            <span class="badge bg-secondary">@Messages.Count messages</span>
+                        </div>
+                    }
                     @if (!Messages.Any())
                     {
                         <div class="empty-state text-center py-5">
@@ -166,6 +169,13 @@
         else if (_activeTab == "command")
         {
             <div class="p-3 flex-grow-1 overflow-auto">
+                <div class="d-flex justify-content-end mb-2">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="CopyCommandToClipboard"
+                        title="Copy command to clipboard">
+                        <i class="bi bi-clipboard me-1"></i>
+                        <span class="d-none d-sm-inline">Copy</span>
+                    </button>
+                </div>
                 <div class="p-3 bg-body-tertiary rounded border">
                     <code class="small d-block text-break"
                         style="white-space: pre-wrap; word-break: break-all;">@CommandUsed</code>
@@ -256,6 +266,14 @@
         finally
         {
             _isSendingFollowUp = false;
+        }
+    }
+
+    private async Task CopyCommandToClipboard()
+    {
+        if (!string.IsNullOrEmpty(CommandUsed))
+        {
+            await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", CommandUsed);
         }
     }
 }

@@ -24,10 +24,10 @@ else if (Job == null)
 else
 {
     @* Breadcrumb Navigation *@
-    <Breadcrumb Items="@_breadcrumbItems" />
+        <Breadcrumb Items="@_breadcrumbItems" />
 
     @* Page Header Section *@
-    <JobHeaderSection Status="@Job.Status" CancellationRequested="@Job.CancellationRequested"
+        <JobHeaderSection Status="@Job.Status" CancellationRequested="@Job.CancellationRequested"
         GitHubRepository="@Job.Project?.GitHubRepository" BranchName="@_branchName" ProjectId="@Job.ProjectId"
         ProjectName="@(Job.Project?.Name ?? "Unknown")" ProviderName="@(Job.Provider?.Name ?? "Unknown")"
         ProcessId="@Job.ProcessId" CreatedAt="@Job.CreatedAt" StartedAt="@Job.StartedAt" CompletedAt="@Job.CompletedAt"
@@ -40,17 +40,17 @@ else
         CurrentActivity="@Job.CurrentActivity" LastActivityAt="@Job.LastActivityAt" />
 
     @* Main Content - Column Layout *@
-    <div class="row g-3 g-lg-4 job-detail-content">
+        <div class="row g-3 g-lg-4 job-detail-content">
         @* Left Column - Goal Prompt & Git sections *@
-        <div class="col-12 col-xl-5 order-2 order-xl-1">
+            <div class="col-12 col-xl-5 order-2 order-xl-1">
 
             @* Goal Prompt Card *@
-            <JobGoalPromptCard GoalPrompt="@Job.GoalPrompt" Status="@Job.Status" CanRetry="@CanRetry"
+                <JobGoalPromptCard GoalPrompt="@Job.GoalPrompt" Status="@Job.Status" CanRetry="@CanRetry"
                 HasConsoleOutput="@(!string.IsNullOrEmpty(Job.ConsoleOutput))" OnCopyToClipboard="CopyPromptToClipboard"
                 OnPromptChanged="UpdateJobPrompt" />
 
             @* User Interaction Section - shown when job is paused waiting for input *@
-            @if (Job.Status == JobStatus.Paused && !string.IsNullOrEmpty(Job.PendingInteractionPrompt))
+                @if (Job.Status == JobStatus.Paused && !string.IsNullOrEmpty(Job.PendingInteractionPrompt))
             {
                 <UserInteractionPanel Prompt="@Job.PendingInteractionPrompt" Choices="@_interactionChoices"
                     IsSubmitting="@_isSubmittingResponse" ErrorMessage="@_interactionError"
@@ -59,7 +59,7 @@ else
             }
 
             @* Git Diff Loading State *@
-            @if (_isLoadingGitDiff)
+            @if (_isGitRepository && _isLoadingGitDiff)
             {
                 <div class="card mb-3 mb-lg-4">
                     <div class="card-header bg-body-secondary">
@@ -79,7 +79,7 @@ else
                 </div>
             }
             @* Git Diff Viewer - shown after job completes if changes were detected *@
-            else if (!IsJobActive && !string.IsNullOrEmpty(Job.GitDiff))
+                else if (_isGitRepository && !IsJobActive && !string.IsNullOrEmpty(Job.GitDiff))
             {
                 <GitDiffViewer DiffFiles="@_parsedDiffFiles" @bind-IsVisible="_showGitDiff"
                     IsVerifying="@_isComparingWorkingCopy"
@@ -90,17 +90,18 @@ else
                     OnRecheck="CompareWithWorkingCopy" />
 
                 @* Commit Section - shown when there are git changes *@
-                <CommitSection CommitMessage="@_commitMessage" CommitMessageChanged="@((msg) => _commitMessage = msg)"
+                        <CommitSection CommitMessage="@_commitMessage" CommitMessageChanged="@((msg) => _commitMessage = msg)"
                     BranchName="@_branchName" IsLoadingSummary="@_isLoadingSummary"
                     HasAISummary="@(!string.IsNullOrWhiteSpace(Job.SessionSummary))" SummaryError="@_summaryError"
                     PushError="@_pushError" IsPushing="@_isPushing" PushStatus="@_pushStatus" IsPushed="@_changesPushed"
                     PushedCommitHash="@_pushedCommitHash" CanPush="@CanPush" OnCommitAndPush="CommitAndPushChanges"
                     OnRefreshSummary="RefreshSummary" />
             }
-            else if (!IsJobActive && Job.Status == JobStatus.Completed && string.IsNullOrEmpty(Job.GitDiff))
+            else if (_isGitRepository && !IsJobActive && Job.Status == JobStatus.Completed &&
+            string.IsNullOrEmpty(Job.GitDiff))
             {
                 @* No changes detected placeholder *@
-                <div class="card mb-3 mb-lg-4">
+                        <div class="card mb-3 mb-lg-4">
                     <div class="card-header bg-body-secondary">
                         <div class="d-flex align-items-center">
                             <i class="bi bi-git me-2 opacity-75"></i>
@@ -129,7 +130,8 @@ else
             }
 
             @* Working Directory Changes - shown for failed/cancelled jobs *@
-            @if (!IsJobActive && (Job.Status == JobStatus.Failed || Job.Status == JobStatus.Cancelled) &&
+            @if (_isGitRepository && !IsJobActive && (Job.Status == JobStatus.Failed || Job.Status == JobStatus.Cancelled)
+                    &&
                     Job?.Project?.WorkingPath != null)
             {
                 <UncommittedChangesCard DiffFiles="@_uncommittedDiffFiles" IsChecking="@_isCheckingUncommittedChanges"
@@ -144,7 +146,7 @@ else
         </div>
 
         @* Right Column - Session Panel (Live Output, Console, Command, Conversation) *@
-        <div class="col-12 col-xl-7 order-1 order-xl-2 d-flex flex-column">
+            <div class="col-12 col-xl-7 order-1 order-xl-2 d-flex flex-column">
             <JobSessionPanel Messages="@(Job.Messages?.ToList() ?? new())" Status="@Job.Status" IsJobActive="@IsJobActive"
                 ErrorMessage="@Job.ErrorMessage" ConsoleOutput="@Job.ConsoleOutput" CommandUsed="@Job.CommandUsed"
                 SessionId="@Job.SessionId" LiveOutputLines="@_liveOutput.ToList()" MaxOutputLines="@MaxOutputLines"
@@ -220,6 +222,7 @@ else
     private bool _isCommittingUncommittedChanges = false;
 
     private string? _branchName = null;
+    private bool _isGitRepository = false;
     private CancellationTokenSource? _pushCancellationTokenSource;
     private const int PushTimeoutSeconds = 120;
     private bool _commitMessageInitialized = false;
@@ -927,10 +930,17 @@ new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
         {
             if (Job?.Project?.WorkingPath != null)
             {
-                _branchName = await VersionControlService.GetCurrentBranchAsync(Job.Project.WorkingPath);
+                _isGitRepository = await VersionControlService.IsGitRepositoryAsync(Job.Project.WorkingPath);
+                if (_isGitRepository)
+                {
+                    _branchName = await VersionControlService.GetCurrentBranchAsync(Job.Project.WorkingPath);
+                }
             }
         }
-        catch { }
+        catch
+        {
+            _isGitRepository = false;
+        }
     }
 
     private async Task RefreshSummary()
