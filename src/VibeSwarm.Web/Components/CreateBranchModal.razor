@@ -1,12 +1,12 @@
 @* Create branch modal component *@
 
-<ModalDialog @bind-IsVisible="IsVisible" Title="Create New Branch" Icon="git"
-    Size="ModalDialog.ModalSize.Default" OnClose="HandleClose">
+<ModalDialog IsVisible="IsVisible" IsVisibleChanged="HandleModalVisibilityChanged" Title="Create New Branch" Icon="git"
+    Size="ModalDialog.ModalSize.Default">
     <ChildContent>
         <div class="mb-3">
             <label for="newBranchName" class="form-label">Branch Name</label>
-            <input type="text" class="form-control" id="newBranchName" @bind="_branchName"
-                @bind:event="oninput" placeholder="e.g., feature/new-feature" disabled="@IsCreating" />
+            <input type="text" class="form-control" id="newBranchName" @bind="_branchName" @bind:event="oninput"
+                placeholder="e.g., feature/new-feature" disabled="@IsCreating" />
             <div class="form-text">
                 <i class="bi bi-info-circle me-1"></i>
                 Branch will be created from current branch: <strong>@CurrentBranch</strong>
@@ -64,10 +64,18 @@
 
     private string _branchName = string.Empty;
 
+    private async Task HandleModalVisibilityChanged(bool visible)
+    {
+        if (!visible)
+        {
+            _branchName = string.Empty;
+            await IsVisibleChanged.InvokeAsync(false);
+        }
+    }
+
     private async Task HandleClose()
     {
         _branchName = string.Empty;
-        IsVisible = false;
         await IsVisibleChanged.InvokeAsync(false);
     }
 

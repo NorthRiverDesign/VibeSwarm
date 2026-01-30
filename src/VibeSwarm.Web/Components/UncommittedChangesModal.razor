@@ -1,8 +1,8 @@
 @* Uncommitted changes management modal component *@
 @using System.Net
 
-<ModalDialog @bind-IsVisible="IsVisible" Title="Uncommitted Changes" Icon="file-diff"
-    Size="ModalDialog.ModalSize.ExtraLarge" OnClose="HandleClose">
+<ModalDialog IsVisible="IsVisible" IsVisibleChanged="HandleModalVisibilityChanged" Title="Uncommitted Changes"
+    Icon="file-diff" Size="ModalDialog.ModalSize.ExtraLarge" OnClose="HandleClose">
     <ChildContent>
         @if (IsLoading)
         {
@@ -25,26 +25,27 @@
                         </span>
                     </span>
                     <div class="btn-group btn-group-sm">
-                        <button type="button" class="btn btn-outline-secondary" @onclick="ExpandAll"
-                            title="Expand all" disabled="@AllExpanded">
+                        <button type="button" class="btn btn-outline-secondary" @onclick="ExpandAll" title="Expand all"
+                            disabled="@AllExpanded">
                             <i class="bi bi-arrows-expand"></i>
                         </button>
-                        <button type="button" class="btn btn-outline-secondary" @onclick="CollapseAll"
-                            title="Collapse all" disabled="@AllCollapsed">
+                        <button type="button" class="btn btn-outline-secondary" @onclick="CollapseAll" title="Collapse all"
+                            disabled="@AllCollapsed">
                             <i class="bi bi-arrows-collapse"></i>
                         </button>
                     </div>
                 </div>
 
-                <div class="accordion border rounded" id="uncommittedChangesAccordion" style="max-height: 400px; overflow-y: auto;">
+                <div class="accordion border rounded" id="uncommittedChangesAccordion"
+                    style="max-height: 400px; overflow-y: auto;">
                     @foreach (var (file, index) in DiffFiles.Select((f, i) => (f, i)))
                     {
                         var isExpanded = _expandedItems.Contains(index);
 
                         <div class="accordion-item">
                             <h2 class="accordion-header">
-                                <button class="accordion-button @(isExpanded ? "" : "collapsed") py-2 px-3"
-                                    type="button" @onclick="() => ToggleExpanded(index)">
+                                <button class="accordion-button @(isExpanded ? "" : "collapsed") py-2 px-3" type="button"
+                                    @onclick="() => ToggleExpanded(index)">
                                     <span class="d-flex align-items-center gap-2 w-100">
                                         @if (file.IsNew)
                                         {
@@ -100,9 +101,9 @@
                 <label for="uncommittedCommitMessage" class="form-label fw-medium">
                     <i class="bi bi-chat-square-text me-1"></i>Commit Message
                 </label>
-                <textarea class="form-control font-monospace" id="uncommittedCommitMessage"
-                    @bind="_commitMessage" @bind:event="oninput" rows="2"
-                    placeholder="Enter commit message..." disabled="@IsCommitting"></textarea>
+                <textarea class="form-control font-monospace" id="uncommittedCommitMessage" @bind="_commitMessage"
+                    @bind:event="oninput" rows="2" placeholder="Enter commit message..."
+                    disabled="@IsCommitting"></textarea>
             </div>
 
             @if (!string.IsNullOrEmpty(ErrorMessage))
@@ -286,6 +287,16 @@
         _commitMessage = string.Empty;
         _expandedItems.Clear();
         await IsVisibleChanged.InvokeAsync(false);
+    }
+
+    private async Task HandleModalVisibilityChanged(bool visible)
+    {
+        if (!visible)
+        {
+            _commitMessage = string.Empty;
+            _expandedItems.Clear();
+            await IsVisibleChanged.InvokeAsync(false);
+        }
     }
 
     private static MarkupString FormatDiff(string diffContent)

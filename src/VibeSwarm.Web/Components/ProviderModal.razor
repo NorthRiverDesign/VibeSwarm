@@ -3,8 +3,9 @@
 @using VibeSwarm.Shared.Services
 @inject IProviderService ProviderService
 
-<ModalDialog @bind-IsVisible="IsVisible" Title="@(IsEdit ? "Edit Provider" : "Add Provider")"
-	Icon="@(IsEdit ? "pencil" : "plus-circle")" Size="ModalDialog.ModalSize.Default" OnClose="HandleClose">
+<ModalDialog IsVisible="IsVisible" IsVisibleChanged="HandleModalVisibilityChanged"
+	Title="@(IsEdit ? "Edit Provider" : "Add Provider")" Icon="@(IsEdit ? "pencil" : "plus-circle")"
+	Size="ModalDialog.ModalSize.Default" OnClose="HandleClose">
 	<ChildContent>
 		<EditForm Model="@Provider" OnValidSubmit="HandleValidSubmit">
 			<DataAnnotationsValidator />
@@ -276,6 +277,15 @@
 	{
 		ResetState();
 		await OnClosed.InvokeAsync();
+	}
+
+	private async Task HandleModalVisibilityChanged(bool visible)
+	{
+		if (!visible)
+		{
+			ResetState();
+			await IsVisibleChanged.InvokeAsync(false);
+		}
 	}
 
 	private async Task CloseModal()

@@ -1,7 +1,8 @@
 @* Modal dialog for retrying a failed job with provider/model selection *@
 @inject IProviderService ProviderService
 
-<ModalDialog @bind-IsVisible="IsVisible" Title="Retry Job" Icon="arrow-repeat" Size="ModalDialog.ModalSize.Default">
+<ModalDialog IsVisible="IsVisible" IsVisibleChanged="HandleModalVisibilityChanged" Title="Retry Job" Icon="arrow-repeat"
+	Size="ModalDialog.ModalSize.Default">
 	<ChildContent>
 		<div class="retry-job-form">
 			@if (IsLoading)
@@ -263,12 +264,24 @@
 
 	private async Task Close()
 	{
-		IsVisible = false;
 		await IsVisibleChanged.InvokeAsync(false);
 		// Reset state for next open
 		IsLoading = true;
 		SelectedModelId = null;
 		ErrorMessage = null;
+	}
+
+	private async Task HandleModalVisibilityChanged(bool visible)
+	{
+		if (!visible)
+		{
+			// Modal was closed (e.g., by backdrop click or close button)
+			// Propagate to parent and reset state
+			await IsVisibleChanged.InvokeAsync(false);
+			IsLoading = true;
+			SelectedModelId = null;
+			ErrorMessage = null;
+		}
 	}
 
 	public class RetryOptions

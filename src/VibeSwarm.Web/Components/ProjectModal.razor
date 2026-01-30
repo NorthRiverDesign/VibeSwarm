@@ -6,8 +6,9 @@
 @inject ISettingsService SettingsService
 @inject IVersionControlService VersionControlService
 
-<ModalDialog @bind-IsVisible="IsVisible" Title="@(IsEdit ? "Edit Project" : "New Project")"
-	Icon="@(IsEdit ? "pencil" : "folder-plus")" Size="ModalDialog.ModalSize.Default" OnClose="HandleClose">
+<ModalDialog IsVisible="IsVisible" IsVisibleChanged="HandleModalVisibilityChanged"
+	Title="@(IsEdit ? "Edit Project" : "New Project")" Icon="@(IsEdit ? "pencil" : "folder-plus")"
+	Size="ModalDialog.ModalSize.Default" OnClose="HandleClose">
 	<ChildContent>
 		<EditForm Model="@Project" OnValidSubmit="HandleValidSubmit">
 			<DataAnnotationsValidator />
@@ -311,6 +312,15 @@
 	{
 		ResetState();
 		await OnClosed.InvokeAsync();
+	}
+
+	private async Task HandleModalVisibilityChanged(bool visible)
+	{
+		if (!visible)
+		{
+			ResetState();
+			await IsVisibleChanged.InvokeAsync(false);
+		}
 	}
 
 	private async Task CloseModal()

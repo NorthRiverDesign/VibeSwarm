@@ -3,8 +3,9 @@
 @using VibeSwarm.Shared.Services
 @inject ISkillService SkillService
 
-<ModalDialog @bind-IsVisible="IsVisible" Title="@(IsEdit ? "Edit Skill" : "Add Skill")"
-	Icon="@(IsEdit ? "pencil" : "lightbulb")" Size="ModalDialog.ModalSize.Large" OnClose="HandleClose">
+<ModalDialog IsVisible="IsVisible" IsVisibleChanged="HandleModalVisibilityChanged"
+	Title="@(IsEdit ? "Edit Skill" : "Add Skill")" Icon="@(IsEdit ? "pencil" : "lightbulb")"
+	Size="ModalDialog.ModalSize.Large" OnClose="HandleClose">
 	<ChildContent>
 		<EditForm Model="@Skill" OnValidSubmit="HandleValidSubmit">
 			<DataAnnotationsValidator />
@@ -189,6 +190,15 @@
 	{
 		ResetState();
 		await OnClosed.InvokeAsync();
+	}
+
+	private async Task HandleModalVisibilityChanged(bool visible)
+	{
+		if (!visible)
+		{
+			ResetState();
+			await IsVisibleChanged.InvokeAsync(false);
+		}
 	}
 
 	private async Task CloseModal()

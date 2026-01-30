@@ -1,7 +1,7 @@
 @* Branch switch confirmation modal component *@
 
-<ModalDialog @bind-IsVisible="IsVisible" Title="Switch Branch" Icon="arrow-left-right"
-    Size="ModalDialog.ModalSize.Default" OnClose="HandleCancel">
+<ModalDialog IsVisible="IsVisible" IsVisibleChanged="HandleModalVisibilityChanged" Title="Switch Branch"
+    Icon="arrow-left-right" Size="ModalDialog.ModalSize.Default">
     <ChildContent>
         @if (IsChecking)
         {
@@ -32,8 +32,7 @@
 
                 <div class="mb-3">
                     <div class="form-check">
-                        <input class="form-check-input" type="checkbox" id="commitBeforeSwitch"
-                            @bind="_commitBeforeSwitch">
+                        <input class="form-check-input" type="checkbox" id="commitBeforeSwitch" @bind="_commitBeforeSwitch">
                         <label class="form-check-label" for="commitBeforeSwitch">
                             Commit changes before switching
                         </label>
@@ -44,9 +43,8 @@
                 {
                     <div class="mb-3">
                         <label for="commitMessage" class="form-label small fw-medium">Commit Message</label>
-                        <input type="text" class="form-control" id="commitMessage" @bind="_commitMessage"
-                            @bind:event="oninput" placeholder="e.g., WIP: Save changes before branch switch"
-                            disabled="@IsSwitching" />
+                        <input type="text" class="form-control" id="commitMessage" @bind="_commitMessage" @bind:event="oninput"
+                            placeholder="e.g., WIP: Save changes before branch switch" disabled="@IsSwitching" />
                     </div>
                 }
             }
@@ -124,6 +122,16 @@
 
     private bool _commitBeforeSwitch;
     private string _commitMessage = string.Empty;
+
+    private async Task HandleModalVisibilityChanged(bool visible)
+    {
+        if (!visible)
+        {
+            _commitBeforeSwitch = false;
+            _commitMessage = string.Empty;
+            await IsVisibleChanged.InvokeAsync(false);
+        }
+    }
 
     private async Task HandleCancel()
     {
