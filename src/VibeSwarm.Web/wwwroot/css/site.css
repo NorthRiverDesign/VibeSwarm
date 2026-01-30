@@ -1,19 +1,41 @@
-/* VibeSwarm - Clean Bootstrap-First Styles */
-/* Only app-specific styles that can't be achieved with Bootstrap utilities */
+/* ============================================
+   VibeSwarm - Application Styles
+   ============================================
+   
+   This file contains app-specific styles that cannot be achieved 
+   with Bootstrap utility classes alone. Following the Bootstrap-first
+   approach, prefer using Bootstrap utilities in Razor components.
+   
+   Organization:
+   1. CSS Variables (App-specific theming)
+   2. Base Styles (Typography, body)
+   3. Layout (App shell, header, sidebar, main)
+   4. Utility Classes (Bootstrap extensions)
+   5. Domain-Specific Components (Git, Chat, Console)
+   6. Responsive & PWA Optimizations
+   
+============================================ */
 
 /* ============================================
-   CSS Variables - App-Specific
+   1. CSS VARIABLES
+   App-specific theming that extends Bootstrap
 ============================================ */
 :root {
+    /* Layout dimensions */
     --vs-sidebar-width: 240px;
     --vs-header-height: 56px;
+    
+    /* Accent colors (GitHub-inspired) */
     --vs-accent-blue: #58a6ff;
     --vs-accent-green: #3fb950;
     --vs-accent-orange: #d29922;
     --vs-accent-red: #f85149;
     --vs-accent-purple: #a371f7;
+    
+    /* Animation timing */
     --vs-transition: 0.2s ease;
-    /* iOS Safe Area Insets */
+    
+    /* PWA: iOS Safe Area Insets */
     --vs-safe-area-top: env(safe-area-inset-top, 0px);
     --vs-safe-area-bottom: env(safe-area-inset-bottom, 0px);
     --vs-safe-area-left: env(safe-area-inset-left, 0px);
@@ -21,7 +43,7 @@
 }
 
 /* ============================================
-   Base Styles
+   2. BASE STYLES
 ============================================ */
 html {
     font-size: 16px;
@@ -30,21 +52,23 @@ html {
 
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif;
-    /* PWA: Ensure content respects safe areas on notched devices */
     padding-left: var(--vs-safe-area-left);
     padding-right: var(--vs-safe-area-right);
 }
 
 /* ============================================
-   App Layout Structure
+   3. APP LAYOUT STRUCTURE
+   Core application shell components
 ============================================ */
+
+/* --- App Container --- */
 .app-layout {
     min-height: 100vh;
     display: flex;
     flex-direction: column;
 }
 
-/* Mobile Header */
+/* --- Mobile Header --- */
 .app-header {
     position: fixed;
     top: 0;
@@ -91,21 +115,21 @@ body {
     font-size: 1.125rem;
 }
 
+.app-brand:hover {
+    color: var(--bs-emphasis-color);
+}
+
 .brand-icon {
     width: 24px;
     height: 24px;
     object-fit: contain;
 }
 
-.app-brand:hover {
-    color: var(--bs-emphasis-color);
-}
-
 .header-actions {
     margin-left: auto;
 }
 
-/* Sidebar Navigation */
+/* --- Sidebar Navigation --- */
 .app-sidebar {
     position: fixed;
     top: calc(var(--vs-header-height) + var(--vs-safe-area-top));
@@ -151,6 +175,12 @@ body {
     gap: 0.25rem;
 }
 
+.sidebar-footer {
+    padding: 1rem;
+    border-top: 1px solid var(--bs-border-color);
+}
+
+/* --- Navigation Items --- */
 .nav-item {
     display: flex;
     align-items: center;
@@ -179,12 +209,7 @@ body {
     color: var(--vs-accent-blue);
 }
 
-.sidebar-footer {
-    padding: 1rem;
-    border-top: 1px solid var(--bs-border-color);
-}
-
-/* Main Content */
+/* --- Main Content Area --- */
 .app-main {
     flex: 1;
     margin-top: calc(var(--vs-header-height) + var(--vs-safe-area-top));
@@ -199,7 +224,7 @@ body {
     max-width: 100%;
 }
 
-/* Desktop Layout */
+/* --- Desktop Layout --- */
 @media (min-width: 992px) {
     .app-layout {
         flex-direction: row;
@@ -227,8 +252,16 @@ body {
 }
 
 /* ============================================
-   Card Hover Effects (project & job cards)
+   4. UTILITY CLASSES
+   Bootstrap extensions (utilities not provided by Bootstrap)
 ============================================ */
+
+/* Cursor pointer - Bootstrap doesn't have this */
+.cursor-pointer {
+    cursor: pointer;
+}
+
+/* Card hover effects */
 .project-card-hover,
 .job-card-hover {
     transition: all var(--vs-transition);
@@ -240,29 +273,74 @@ body {
     box-shadow: var(--bs-box-shadow);
 }
 
-.cursor-pointer {
-    cursor: pointer;
+/* Hover background */
+.hover-bg-tertiary:hover {
+    background: var(--bs-tertiary-bg);
 }
+
+/* Hover underline */
+.hover-underline:hover {
+    text-decoration: underline !important;
+}
+
+/* Multi-line text truncation (Bootstrap only has single-line) */
+.text-truncate-lines-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.text-truncate-lines-3 {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+/* Min-width utility */
+.min-width-0 {
+    min-width: 0;
+}
+
+/* Spin animation for loading icons */
+.spin {
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Live indicator pulse */
+.live-indicator {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    background: var(--vs-accent-green);
+    border-radius: 50%;
+    animation: pulse-live 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-live {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(0.9); }
+}
+
+/* Alert accent borders enhancement */
+.alert-danger { border-left: 3px solid var(--vs-accent-red); }
+.alert-success { border-left: 3px solid var(--vs-accent-green); }
+.alert-warning { border-left: 3px solid var(--vs-accent-orange); }
+.alert-info { border-left: 3px solid var(--vs-accent-blue); }
 
 /* ============================================
-   Console / Terminal Output
+   5. DOMAIN-SPECIFIC COMPONENTS
+   Styles for specialized UI that Bootstrap doesn't cover
 ============================================ */
-.console-output-box {
-    background: #0d1117;
-    color: #e6edf3;
-    font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
-    font-size: 0.85rem;
-    line-height: 1.5;
-    padding: 1rem;
-    max-height: 400px;
-    overflow-y: auto;
-    overflow-x: auto;
-    white-space: pre-wrap;
-    word-break: break-word;
-    margin: 0;
-    border-radius: 0 0 var(--bs-border-radius) var(--bs-border-radius);
-}
 
+/* --- Console / Terminal Output --- */
+.console-output-box,
 .live-output-container {
     background: #0d1117;
     color: #e6edf3;
@@ -270,10 +348,22 @@ body {
     font-size: 0.85rem;
     line-height: 1.5;
     padding: 1rem;
-    max-height: 300px;
     overflow-y: auto;
     overflow-x: auto;
     border-radius: 0 0 var(--bs-border-radius) var(--bs-border-radius);
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+}
+
+.console-output-box {
+    max-height: 400px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    margin: 0;
+}
+
+.live-output-container {
+    max-height: 300px;
 }
 
 .output-line {
@@ -298,24 +388,7 @@ body {
     color: var(--vs-accent-red);
 }
 
-/* Live indicator pulse */
-.live-indicator {
-    display: inline-block;
-    width: 8px;
-    height: 8px;
-    background: var(--vs-accent-green);
-    border-radius: 50%;
-    animation: pulse-live 1.5s ease-in-out infinite;
-}
-
-@keyframes pulse-live {
-    0%, 100% { opacity: 1; transform: scale(1); }
-    50% { opacity: 0.5; transform: scale(0.9); }
-}
-
-/* ============================================
-   Git Diff Styling
-============================================ */
+/* --- Git Diff Viewer --- */
 .diff-container {
     background: #0d1117;
     color: #e6edf3;
@@ -326,6 +399,8 @@ body {
     max-height: 350px;
     overflow-y: auto;
     overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
 }
 
 .diff-container > div {
@@ -341,7 +416,20 @@ body {
 .diff-context { color: #8b949e; }
 .diff-meta { color: #8b949e; font-style: italic; }
 
-/* Diff Accordion */
+.diff-file-name {
+    font-family: 'SF Mono', monospace;
+    font-weight: 500;
+    word-break: break-all;
+    flex: 1;
+    min-width: 0;
+}
+
+.diff-stats {
+    font-family: 'SF Mono', monospace;
+    font-size: 0.8rem;
+    flex-shrink: 0;
+}
+
 #diffAccordion .accordion-item {
     background: var(--bs-secondary-bg);
     border: none;
@@ -363,103 +451,7 @@ body {
     padding: 0;
 }
 
-.diff-file-name {
-    font-family: 'SF Mono', monospace;
-    font-weight: 500;
-    word-break: break-all;
-    flex: 1;
-    min-width: 0;
-}
-
-.diff-stats {
-    font-family: 'SF Mono', monospace;
-    font-size: 0.8rem;
-    flex-shrink: 0;
-}
-
-/* ============================================
-   Toggle Switch
-============================================ */
-.toggle-switch {
-    position: relative;
-    display: inline-block;
-    width: 44px;
-    height: 24px;
-    cursor: pointer;
-}
-
-.toggle-switch input {
-    opacity: 0;
-    width: 0;
-    height: 0;
-}
-
-.toggle-slider {
-    position: absolute;
-    cursor: pointer;
-    inset: 0;
-    background: var(--bs-tertiary-bg);
-    border-radius: 24px;
-    transition: var(--vs-transition);
-}
-
-.toggle-slider::before {
-    content: '';
-    position: absolute;
-    width: 18px;
-    height: 18px;
-    left: 3px;
-    bottom: 3px;
-    background: var(--bs-body-bg);
-    border-radius: 50%;
-    transition: var(--vs-transition);
-}
-
-.toggle-switch input:checked + .toggle-slider {
-    background: var(--vs-accent-green);
-}
-
-.toggle-switch input:checked + .toggle-slider::before {
-    transform: translateX(20px);
-}
-
-/* ============================================
-   Messages / Conversation (Legacy - kept for compatibility)
-============================================ */
-.message {
-    border-radius: var(--bs-border-radius);
-    padding: 1rem;
-    border-left: 3px solid;
-}
-
-.message-user { background: rgba(88, 166, 255, 0.1); border-left-color: var(--vs-accent-blue); }
-.message-assistant { background: rgba(63, 185, 80, 0.1); border-left-color: var(--vs-accent-green); }
-.message-system { background: rgba(210, 153, 34, 0.1); border-left-color: var(--vs-accent-orange); }
-.message-tooluse { background: rgba(163, 113, 247, 0.1); border-left-color: var(--vs-accent-purple); }
-.message-toolresult { background: rgba(63, 185, 80, 0.05); border-left-color: var(--vs-accent-green); }
-
-.message-text {
-    margin: 0;
-    white-space: pre-wrap;
-    word-break: break-word;
-}
-
-.tool-input, .tool-output {
-    margin: 0.5rem 0 0 0;
-    padding: 0.5rem;
-    background: var(--bs-body-bg);
-    border-radius: var(--bs-border-radius-sm);
-    font-family: 'SF Mono', monospace;
-    font-size: 0.8rem;
-    white-space: pre-wrap;
-    overflow-x: auto;
-    max-height: 180px;
-    overflow-y: auto;
-}
-
-/* ============================================
-   iMessage-Style Chat Bubbles
-============================================ */
+/* --- Chat/Conversation Bubbles (iMessage-style) --- */
 .chat-messages-container {
     display: flex;
     flex-direction: column;
@@ -475,26 +467,22 @@ body {
     max-width: 85%;
 }
 
-/* User messages align right */
 .chat-message-user {
     align-self: flex-end;
     align-items: flex-end;
 }
 
-/* Assistant messages align left */
 .chat-message-assistant {
     align-self: flex-start;
     align-items: flex-start;
 }
 
-/* System messages center */
 .chat-message-system {
     align-self: center;
     align-items: center;
     max-width: 90%;
 }
 
-/* Tool messages align left but slightly indented */
 .chat-message-tooluse,
 .chat-message-toolresult {
     align-self: flex-start;
@@ -509,14 +497,12 @@ body {
     position: relative;
 }
 
-/* User bubble - blue like iMessage */
 .chat-message-user .chat-bubble {
     background: var(--vs-accent-blue);
     color: #fff;
     border-bottom-right-radius: 0.25rem;
 }
 
-/* Assistant bubble - gray/green */
 .chat-message-assistant .chat-bubble {
     background: var(--bs-tertiary-bg);
     color: var(--bs-body-color);
@@ -524,7 +510,6 @@ body {
     border: 1px solid var(--bs-border-color);
 }
 
-/* System bubble - yellow/warning tint */
 .chat-message-system .chat-bubble {
     background: rgba(210, 153, 34, 0.15);
     color: var(--bs-body-color);
@@ -533,7 +518,6 @@ body {
     border: 1px solid rgba(210, 153, 34, 0.3);
 }
 
-/* Tool use bubble - purple tint */
 .chat-message-tooluse .chat-bubble {
     background: rgba(163, 113, 247, 0.1);
     color: var(--bs-body-color);
@@ -542,7 +526,6 @@ body {
     font-size: 0.85rem;
 }
 
-/* Tool result bubble - green tint */
 .chat-message-toolresult .chat-bubble {
     background: rgba(63, 185, 80, 0.1);
     color: var(--bs-body-color);
@@ -591,21 +574,86 @@ body {
     padding: 0 0.5rem;
 }
 
-.chat-role {
-    font-weight: 500;
+.chat-role { font-weight: 500; }
+.chat-time { opacity: 0.8; }
+
+/* Legacy message format (kept for compatibility) */
+.message {
+    border-radius: var(--bs-border-radius);
+    padding: 1rem;
+    border-left: 3px solid;
 }
 
-.chat-time {
-    opacity: 0.8;
+.message-user { background: rgba(88, 166, 255, 0.1); border-left-color: var(--vs-accent-blue); }
+.message-assistant { background: rgba(63, 185, 80, 0.1); border-left-color: var(--vs-accent-green); }
+.message-system { background: rgba(210, 153, 34, 0.1); border-left-color: var(--vs-accent-orange); }
+.message-tooluse { background: rgba(163, 113, 247, 0.1); border-left-color: var(--vs-accent-purple); }
+.message-toolresult { background: rgba(63, 185, 80, 0.05); border-left-color: var(--vs-accent-green); }
+
+.message-text {
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-word;
 }
 
-/* ============================================
-   Job Stats Pills (Header)
-============================================ */
-.job-stats-row {
+.tool-input, .tool-output {
+    margin: 0.5rem 0 0 0;
+    padding: 0.5rem;
+    background: var(--bs-body-bg);
+    border-radius: var(--bs-border-radius-sm);
+    font-family: 'SF Mono', monospace;
     font-size: 0.8rem;
+    white-space: pre-wrap;
+    overflow-x: auto;
+    max-height: 180px;
+    overflow-y: auto;
 }
 
+/* --- Toggle Switch (Custom form control) --- */
+.toggle-switch {
+    position: relative;
+    display: inline-block;
+    width: 44px;
+    height: 24px;
+    cursor: pointer;
+}
+
+.toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    inset: 0;
+    background: var(--bs-tertiary-bg);
+    border-radius: 24px;
+    transition: var(--vs-transition);
+}
+
+.toggle-slider::before {
+    content: '';
+    position: absolute;
+    width: 18px;
+    height: 18px;
+    left: 3px;
+    bottom: 3px;
+    background: var(--bs-body-bg);
+    border-radius: 50%;
+    transition: var(--vs-transition);
+}
+
+.toggle-switch input:checked + .toggle-slider {
+    background: var(--vs-accent-green);
+}
+
+.toggle-switch input:checked + .toggle-slider::before {
+    transform: translateX(20px);
+}
+
+/* --- Status Pills & Badges --- */
 .stat-pill {
     display: inline-flex;
     align-items: center;
@@ -623,32 +671,32 @@ body {
     font-weight: 500;
 }
 
-/* ============================================
-   Full Prompt Modal
-============================================ */
-.full-prompt-content {
-    background: var(--bs-tertiary-bg);
-    border: 1px solid var(--bs-border-color);
-    border-radius: var(--bs-border-radius);
-    padding: 1rem;
-    margin: 0;
-    white-space: pre-wrap;
-    word-break: break-word;
-    max-height: 60vh;
-    overflow-y: auto;
-    font-family: inherit;
-    font-size: 0.9rem;
-    line-height: 1.6;
+.default-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.2em 0.5em;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--vs-accent-green);
+    background: rgba(63, 185, 80, 0.15);
+    border-radius: var(--bs-border-radius-sm);
 }
 
-@media (max-width: 575.98px) {
-    .full-prompt-content {
-        max-height: none;
-        font-size: 0.85rem;
-    }
+/* --- Git Branch Info --- */
+.branch-info {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.35rem 0.75rem;
+    background: rgba(63, 185, 80, 0.15);
+    border-radius: var(--bs-border-radius-sm);
+    font-size: 0.85rem;
+    color: var(--vs-accent-green);
 }
 
-/* Activity Indicator */
+/* --- Activity Indicator --- */
 .activity-indicator {
     display: flex;
     align-items: center;
@@ -669,19 +717,50 @@ body {
     flex-shrink: 0;
 }
 
-@keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
+/* --- Empty State --- */
+.empty-state-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem 1.5rem;
+    text-align: center;
+    background: var(--bs-tertiary-bg);
+    border-radius: var(--bs-border-radius-lg);
+    min-height: 200px;
 }
 
-/* Utility class for spin animation on icons */
-.spin {
-    animation: spin 1s linear infinite;
+.empty-state-icon {
+    font-size: 3rem;
+    color: var(--bs-tertiary-color);
+    margin-bottom: 1rem;
+    opacity: 0.6;
 }
 
-/* ============================================
-   Commit Section
-============================================ */
+.empty-state-content { max-width: 320px; }
+
+.empty-state-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--bs-body-color);
+    margin-bottom: 0.5rem;
+}
+
+.empty-state-message {
+    font-size: 0.9rem;
+    color: var(--bs-secondary-color);
+    margin-bottom: 1rem;
+    line-height: 1.5;
+}
+
+.empty-state-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    justify-content: center;
+}
+
+/* --- Form Elements --- */
 .commit-message-input {
     width: 100%;
     padding: 0.5rem 1rem;
@@ -706,139 +785,172 @@ body {
     cursor: not-allowed;
 }
 
-/* ============================================
-   Empty State
-============================================ */
-.empty-state-container {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 2rem 1.5rem;
-    text-align: center;
+.goal-prompt-box {
     background: var(--bs-tertiary-bg);
-    border-radius: var(--bs-border-radius-lg);
-    min-height: 200px;
+    padding: 1rem;
+    border-radius: var(--bs-border-radius);
+    white-space: pre-wrap;
+    word-break: break-word;
+    line-height: 1.6;
 }
 
-.empty-state-icon {
-    font-size: 3rem;
-    color: var(--bs-tertiary-color);
-    margin-bottom: 1rem;
-    opacity: 0.6;
+.goal-prompt-textarea {
+    min-height: 150px;
+    font-family: inherit;
+    line-height: 1.6;
+    resize: vertical;
 }
 
-.empty-state-content {
-    max-width: 320px;
-}
-
-.empty-state-title {
-    font-size: 1.1rem;
-    font-weight: 600;
-    color: var(--bs-body-color);
-    margin-bottom: 0.5rem;
-}
-
-.empty-state-message {
+.full-prompt-content {
+    background: var(--bs-tertiary-bg);
+    border: 1px solid var(--bs-border-color);
+    border-radius: var(--bs-border-radius);
+    padding: 1rem;
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 60vh;
+    overflow-y: auto;
+    font-family: inherit;
     font-size: 0.9rem;
-    color: var(--bs-secondary-color);
-    margin-bottom: 1rem;
-    line-height: 1.5;
+    line-height: 1.6;
 }
 
-.empty-state-actions {
+/* --- Feedback States --- */
+.test-success {
+    color: var(--vs-accent-green);
+    padding: 0.5rem;
+    background: rgba(63, 185, 80, 0.1);
+    border-radius: var(--bs-border-radius-sm);
+}
+
+.test-failure {
+    color: var(--vs-accent-red);
+    padding: 0.5rem;
+    background: rgba(248, 81, 73, 0.1);
+    border-radius: var(--bs-border-radius-sm);
+}
+
+.push-error {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    padding: 1rem;
+    background: rgba(248, 81, 73, 0.1);
+    border: 1px solid rgba(248, 81, 73, 0.3);
+    border-radius: var(--bs-border-radius);
+    color: var(--vs-accent-red);
+}
+
+.push-success {
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+    padding: 1rem;
+    background: rgba(63, 185, 80, 0.1);
+    border: 1px solid rgba(63, 185, 80, 0.3);
+    border-radius: var(--bs-border-radius);
+    color: var(--vs-accent-green);
+}
+
+.error-output {
+    background: rgba(248, 81, 73, 0.1);
+    border: 1px solid rgba(248, 81, 73, 0.3);
+    padding: 1rem;
+    border-radius: var(--bs-border-radius);
+    font-family: 'SF Mono', monospace;
+    font-size: 0.9rem;
+    color: var(--vs-accent-red);
+    white-space: pre-wrap;
+    overflow-x: auto;
+    margin: 0;
+}
+
+.info-section {
+    background: rgba(88, 166, 255, 0.1);
+    border: 1px solid rgba(88, 166, 255, 0.3);
+    border-radius: var(--bs-border-radius);
+    padding: 1rem;
+}
+
+.info-section h6 {
+    color: var(--vs-accent-blue);
+    margin: 0 0 0.5rem 0;
+}
+
+.info-section p {
+    margin: 0;
+    color: var(--bs-secondary-color);
+}
+
+/* --- Job List Items --- */
+.active-job-item {
+    background: var(--bs-tertiary-bg);
+    border-radius: var(--bs-border-radius-sm);
+    padding: 0.5rem;
+    margin-bottom: 0.25rem;
+    font-size: 0.9rem;
+}
+
+.active-job-item:last-child { margin-bottom: 0; }
+.active-job-item:hover { background: var(--bs-secondary-bg); }
+
+.job-activity {
+    color: var(--vs-accent-blue);
+    font-style: italic;
+    font-size: 0.85rem;
+}
+
+.job-error {
+    color: var(--vs-accent-red);
+    font-size: 0.9rem;
+    font-family: 'SF Mono', monospace;
+}
+
+.process-info {
+    font-family: 'SF Mono', monospace;
+    font-size: 0.8rem;
+    background: var(--bs-tertiary-bg);
+    padding: 0.1rem 0.4rem;
+    border-radius: var(--bs-border-radius-sm);
+}
+
+/* --- Nav Tabs (Card variant) --- */
+.nav-tabs-card {
+    background: transparent;
+}
+
+.nav-tabs-card .nav-link {
+    border: none;
+    border-bottom: 2px solid transparent;
+    border-radius: 0;
+    color: var(--bs-body-color);
+    padding: 0.75rem 1rem;
+    opacity: 0.7;
+    transition: opacity var(--vs-transition), border-color var(--vs-transition);
+}
+
+.nav-tabs-card .nav-link:hover {
+    border-color: transparent;
+    opacity: 1;
+}
+
+.nav-tabs-card .nav-link.active {
+    border-color: transparent;
+    border-bottom-color: var(--bs-primary);
+    background: transparent;
+    color: var(--bs-body-color);
+    opacity: 1;
+}
+
+/* --- Filter Buttons --- */
+.filter-buttons {
     display: flex;
     flex-wrap: wrap;
     gap: 0.5rem;
-    justify-content: center;
 }
 
-/* ============================================
-   Alert Accent Borders
-============================================ */
-.alert-danger { border-left: 3px solid var(--vs-accent-red); }
-.alert-success { border-left: 3px solid var(--vs-accent-green); }
-.alert-warning { border-left: 3px solid var(--vs-accent-orange); }
-.alert-info { border-left: 3px solid var(--vs-accent-blue); }
-
-/* ============================================
-   Toast Container
-============================================ */
-.toast-container {
-    z-index: 1100;
-    /* Ensure toast container respects safe areas */
-    padding-bottom: calc(1rem + var(--vs-safe-area-bottom)) !important;
-    padding-right: calc(1rem + var(--vs-safe-area-right)) !important;
-}
-
-.toast-container .toast {
-    min-width: 280px;
-    max-width: 350px;
-    border-left-width: 4px;
-    animation: slideInRight 0.3s ease-out;
-}
-
-@keyframes slideInRight {
-    from { transform: translateX(100%); opacity: 0; }
-    to { transform: translateX(0); opacity: 1; }
-}
-
-/* Mobile toast adjustments */
-@media (max-width: 575.98px) {
-    .toast-container {
-        left: 0 !important;
-        right: 0 !important;
-        padding-left: calc(1rem + var(--vs-safe-area-left)) !important;
-    }
-
-    .toast-container .toast {
-        min-width: auto;
-        max-width: none;
-        width: 100%;
-    }
-}
-
-/* ============================================
-   Hover Background Utility
-============================================ */
-.hover-bg-tertiary:hover {
-    background: var(--bs-tertiary-bg);
-}
-
-/* ============================================
-   Hover Underline Utility
-============================================ */
-.hover-underline:hover {
-    text-decoration: underline !important;
-}
-
-/* ============================================
-   Text Truncation (multi-line)
-============================================ */
-.text-truncate-lines-2 {
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-}
-
-.text-truncate-lines-3 {
-    display: -webkit-box;
-    -webkit-line-clamp: 3;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-}
-
-/* ============================================
-   Min-width utility
-============================================ */
-.min-width-0 {
-    min-width: 0;
-}
-
-/* ============================================
-   Login Display
-============================================ */
+/* --- Login Display --- */
 .login-display {
     display: flex;
     align-items: center;
@@ -865,28 +977,22 @@ body {
     color: var(--bs-emphasis-color);
 }
 
-.login-display .user-menu-toggle {
+.login-display .user-menu-toggle,
+.login-display .user-menu-toggle-mobile {
     color: var(--bs-secondary-color);
-    font-size: 1rem;
     line-height: 1;
     transition: color 0.15s ease-in-out;
+}
+
+.login-display .user-menu-toggle { font-size: 1rem; }
+.login-display .user-menu-toggle-mobile { 
+    font-size: 1.25rem; 
+    display: flex;
+    align-items: center;
 }
 
 .login-display .user-menu-toggle:hover,
-.login-display .user-menu-toggle:focus {
-    color: var(--bs-emphasis-color);
-    text-decoration: none;
-}
-
-.login-display .user-menu-toggle-mobile {
-    display: flex;
-    align-items: center;
-    color: var(--bs-secondary-color);
-    font-size: 1.25rem;
-    line-height: 1;
-    transition: color 0.15s ease-in-out;
-}
-
+.login-display .user-menu-toggle:focus,
 .login-display .user-menu-toggle-mobile:hover,
 .login-display .user-menu-toggle-mobile:focus {
     color: var(--bs-emphasis-color);
@@ -914,8 +1020,17 @@ body {
 }
 
 /* ============================================
-   Modal Overlay (Logout dialog)
+   6. MODAL SYSTEM (PWA-Optimized)
 ============================================ */
+
+/* Lock body scroll when modal is open */
+body.vs-modal-open {
+    overflow: hidden !important;
+    position: fixed;
+    width: 100%;
+    height: 100%;
+}
+
 .modal-overlay {
     position: fixed;
     top: 0;
@@ -935,24 +1050,9 @@ body {
     padding-right: calc(1rem + var(--vs-safe-area-right));
 }
 
-/* ============================================
-   Bootstrap Modal - PWA & Mobile Fixes
-============================================ */
-/* Lock body scroll when modal is open */
-body.vs-modal-open {
-    overflow: hidden !important;
-    position: fixed;
-    width: 100%;
-    height: 100%;
-}
-
-/* Modal container - covers full viewport */
 .vs-modal-container {
     position: fixed !important;
-    top: 0 !important;
-    left: 0 !important;
-    right: 0 !important;
-    bottom: 0 !important;
+    inset: 0 !important;
     width: 100% !important;
     height: 100% !important;
     display: flex !important;
@@ -964,11 +1064,9 @@ body.vs-modal-open {
     z-index: 1055 !important;
 }
 
-/* Modal backdrop */
 .vs-modal-backdrop {
     position: fixed !important;
-    top: 0 !important;
-    left: 0 !important;
+    inset: 0 !important;
     width: 100% !important;
     height: 100% !important;
     background: rgba(0, 0, 0, 0.6) !important;
@@ -977,7 +1075,6 @@ body.vs-modal-open {
     z-index: 1050 !important;
 }
 
-/* Modal dialog - centered by default */
 .vs-modal-dialog {
     position: relative !important;
     margin: auto !important;
@@ -990,8 +1087,210 @@ body.vs-modal-open {
     pointer-events: auto;
 }
 
-/* Small screens (iPhone 13 = 390px width, 844px height) - fullscreen modal */
+.modal-dialog-centered {
+    width: 100%;
+    max-width: 400px;
+    animation: modalFadeIn 0.2s ease-out;
+}
+
+.logout-dialog {
+    border: 1px solid var(--bs-border-color);
+    border-radius: var(--bs-border-radius-lg);
+}
+
+@keyframes modalFadeIn {
+    from { opacity: 0; transform: scale(0.95) translateY(-10px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+/* Directory browser scrollable list */
+.directory-list {
+    max-height: 50vh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+/* ============================================
+   7. TOAST NOTIFICATIONS
+============================================ */
+.toast-container {
+    z-index: 1100;
+    padding-bottom: calc(1rem + var(--vs-safe-area-bottom)) !important;
+    padding-right: calc(1rem + var(--vs-safe-area-right)) !important;
+}
+
+.toast-container .toast {
+    min-width: 280px;
+    max-width: 350px;
+    border-left-width: 4px;
+    animation: slideInRight 0.3s ease-out;
+}
+
+@keyframes slideInRight {
+    from { transform: translateX(100%); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+}
+
+/* ============================================
+   8. PAGE-SPECIFIC LAYOUTS
+============================================ */
+
+/* --- Jobs Inbox Layout --- */
+.jobs-inbox-layout {
+    display: flex;
+    flex-direction: column;
+    min-height: calc(100vh - var(--vs-header-height) - var(--vs-safe-area-top) - 2rem);
+    margin: -1rem;
+    margin-top: 0;
+}
+
+.jobs-project-sidebar {
+    width: 280px;
+    min-width: 280px;
+    max-width: 280px;
+    background: var(--bs-body-bg);
+    flex-shrink: 0;
+}
+
+.project-filter-item {
+    cursor: pointer;
+    color: var(--bs-body-color);
+    transition: all var(--vs-transition);
+    border-left: 3px solid transparent;
+}
+
+.project-filter-item:hover {
+    background: var(--bs-tertiary-bg);
+}
+
+.project-filter-item.active {
+    background: rgba(88, 166, 255, 0.1);
+    border-left-color: var(--vs-accent-blue);
+    color: var(--vs-accent-blue);
+}
+
+.project-filter-item .badge {
+    font-size: 0.7rem;
+}
+
+.jobs-list-panel {
+    min-width: 0;
+    background: var(--bs-body-bg);
+}
+
+.job-list-item {
+    cursor: pointer;
+    transition: background-color var(--vs-transition);
+    border-left: 3px solid transparent;
+}
+
+.job-list-item:hover {
+    background: var(--bs-tertiary-bg);
+}
+
+.job-list-item.job-selected {
+    background: rgba(88, 166, 255, 0.1);
+    border-left-color: var(--vs-accent-blue);
+}
+
+.job-status-icon {
+    width: 24px;
+    min-width: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding-top: 2px;
+}
+
+.job-prompt { line-height: 1.4; }
+.job-stats { min-width: 100px; }
+.job-stats-row { font-size: 0.8rem; }
+
+/* --- Job Detail Layout --- */
+.job-detail-content {
+    width: 100%;
+    overflow-x: hidden;
+}
+
+/* ============================================
+   9. RESPONSIVE BREAKPOINTS
+============================================ */
+
+/* --- Extra Small (< 576px) --- */
 @media (max-width: 575.98px) {
+    .btn { 
+        min-height: 44px; 
+        display: inline-flex; 
+        align-items: center; 
+        justify-content: center; 
+    }
+    
+    .btn-sm { 
+        min-height: 40px; 
+        display: inline-flex; 
+        align-items: center; 
+        justify-content: center; 
+    }
+    
+    .form-control, .form-select {
+        min-height: 44px;
+        font-size: 16px; /* Prevent zoom on iOS */
+    }
+    
+    .nav-item {
+        padding: 1rem;
+    }
+    
+    .full-prompt-content {
+        max-height: none;
+        font-size: 0.85rem;
+    }
+    
+    .toast-container {
+        left: 0 !important;
+        right: 0 !important;
+        padding-left: calc(1rem + var(--vs-safe-area-left)) !important;
+    }
+
+    .toast-container .toast {
+        min-width: auto;
+        max-width: none;
+        width: 100%;
+    }
+    
+    .message-header { flex-wrap: wrap; }
+    .message { padding: 0.75rem; }
+    .tool-input, .tool-output { font-size: 0.75rem; max-height: 150px; }
+    
+    .chat-message { max-width: 95%; }
+    .chat-bubble { padding: 0.5rem 0.75rem; }
+    .chat-messages-container { max-height: 400px; padding: 0.25rem; }
+    .chat-tool-code { max-height: 100px; }
+    .stat-pill { font-size: 0.7rem; padding: 0.2rem 0.5rem; }
+    .job-stats-row { font-size: 0.75rem; }
+    
+    /* Full-width cards on mobile */
+    .projects-card,
+    .providers-card,
+    .skills-card {
+        border-radius: 0;
+        border-left: none;
+        border-right: none;
+        margin-left: calc(-1 * (1rem + var(--vs-safe-area-left)));
+        margin-right: calc(-1 * (1rem + var(--vs-safe-area-right)));
+        width: calc(100% + 2rem + var(--vs-safe-area-left) + var(--vs-safe-area-right));
+    }
+    
+    .projects-filters {
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+    
+    .projects-filters .form-select,
+    .projects-filters .btn-group { width: 100%; }
+    .projects-filters .btn-group .btn { flex: 1; }
+    
+    /* Fullscreen modal on mobile */
     .vs-modal-container {
         padding: 0 !important;
         align-items: stretch !important;
@@ -1036,13 +1335,10 @@ body.vs-modal-open {
         padding-bottom: calc(0.75rem + var(--vs-safe-area-bottom));
     }
     
-    /* Small modal still gets constrained on mobile */
-    .vs-modal-dialog.modal-sm {
-        max-width: 100% !important;
-    }
+    .vs-modal-dialog.modal-sm { max-width: 100% !important; }
 }
 
-/* Medium screens - centered modal with margins */
+/* --- Small to Medium (576px - 991px) --- */
 @media (min-width: 576px) and (max-width: 991.98px) {
     .vs-modal-container {
         padding: 1rem !important;
@@ -1064,7 +1360,40 @@ body.vs-modal-open {
     }
 }
 
-/* Desktop - standard Bootstrap behavior */
+/* --- Medium (< 768px) --- */
+@media (max-width: 767.98px) {
+    .goal-prompt-box {
+        max-height: 200px;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+    
+    .directory-list {
+        max-height: calc(100vh - var(--vs-header-height) - var(--vs-safe-area-top) - var(--vs-safe-area-bottom) - 280px);
+        min-height: 200px;
+    }
+}
+
+/* --- Medium to Large (768px - 991px) --- */
+@media (min-width: 768px) and (max-width: 991.98px) {
+    .directory-list {
+        max-height: calc(100vh - var(--vs-header-height) - var(--vs-safe-area-top) - var(--vs-safe-area-bottom) - 250px);
+    }
+}
+
+/* --- Medium screens chat adjustment --- */
+@media (max-width: 991.98px) {
+    .chat-messages-container { max-height: 500px; }
+    .jobs-inbox-layout { min-height: auto; }
+    
+    .jobs-list-panel {
+        border: 1px solid var(--bs-border-color);
+        border-radius: var(--bs-border-radius);
+        overflow: hidden;
+    }
+}
+
+/* --- Desktop (≥ 992px) --- */
 @media (min-width: 992px) {
     .vs-modal-container {
         padding: 1.75rem !important;
@@ -1078,608 +1407,15 @@ body.vs-modal-open {
     .vs-modal-dialog .modal-content {
         max-height: calc(100vh - var(--vs-safe-area-top) - var(--vs-safe-area-bottom) - 3.5rem);
     }
-}
-
-/* Directory browser specific responsive height */
-.directory-list {
-    max-height: 50vh;
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
-}
-
-@media (max-width: 767.98px) {
-    .directory-list {
-        max-height: calc(100vh - var(--vs-header-height) - var(--vs-safe-area-top) - var(--vs-safe-area-bottom) - 280px);
-        min-height: 200px;
-    }
-}
-
-@media (min-width: 768px) and (max-width: 991.98px) {
-    .directory-list {
-        max-height: calc(100vh - var(--vs-header-height) - var(--vs-safe-area-top) - var(--vs-safe-area-bottom) - 250px);
-    }
-}
-
-@media (min-width: 992px) {
-    .directory-list {
-        max-height: 400px;
-    }
-}
-
-.modal-dialog-centered {
-    width: 100%;
-    max-width: 400px;
-    animation: modalFadeIn 0.2s ease-out;
-}
-
-@keyframes modalFadeIn {
-    from { opacity: 0; transform: scale(0.95) translateY(-10px); }
-    to { opacity: 1; transform: scale(1) translateY(0); }
-}
-
-.logout-dialog {
-    border: 1px solid var(--bs-border-color);
-    border-radius: var(--bs-border-radius-lg);
-}
-
-/* ============================================
-   Touch-Friendly Mobile Adjustments
-============================================ */
-@media (max-width: 767.98px) {
-    .btn { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
-    .btn-sm { min-height: 40px; display: inline-flex; align-items: center; justify-content: center; }
     
-    .form-control, .form-select {
-        min-height: 44px;
-        font-size: 16px; /* Prevent zoom on iOS */
-    }
+    .directory-list { max-height: 400px; }
+    .job-detail-content { max-width: 100%; }
     
-    .nav-item {
-        padding: 1rem;
-    }
-}
-
-/* ============================================
-   Default badge for providers
-============================================ */
-.default-badge {
-    display: inline-flex;
-    align-items: center;
-    padding: 0.2em 0.5em;
-    font-size: 0.7rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.03em;
-    color: var(--vs-accent-green);
-    background: rgba(63, 185, 80, 0.15);
-    border-radius: var(--bs-border-radius-sm);
-}
-
-/* Test connection results */
-.test-success {
-    color: var(--vs-accent-green);
-    padding: 0.5rem;
-    background: rgba(63, 185, 80, 0.1);
-    border-radius: var(--bs-border-radius-sm);
-}
-
-.test-failure {
-    color: var(--vs-accent-red);
-    padding: 0.5rem;
-    background: rgba(248, 81, 73, 0.1);
-    border-radius: var(--bs-border-radius-sm);
-}
-
-/* Error output styling */
-.error-output {
-    background: rgba(248, 81, 73, 0.1);
-    border: 1px solid rgba(248, 81, 73, 0.3);
-    padding: 1rem;
-    border-radius: var(--bs-border-radius);
-    font-family: 'SF Mono', monospace;
-    font-size: 0.9rem;
-    color: var(--vs-accent-red);
-    white-space: pre-wrap;
-    overflow-x: auto;
-    margin: 0;
-}
-
-/* Info section styling */
-.info-section {
-    background: rgba(88, 166, 255, 0.1);
-    border: 1px solid rgba(88, 166, 255, 0.3);
-    border-radius: var(--bs-border-radius);
-    padding: 1rem;
-}
-
-.info-section h6 {
-    color: var(--vs-accent-blue);
-    margin: 0 0 0.5rem 0;
-}
-
-.info-section p {
-    margin: 0;
-    color: var(--bs-secondary-color);
-}
-
-/* Push success/error feedback */
-.push-error {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.5rem;
-    padding: 1rem;
-    background: rgba(248, 81, 73, 0.1);
-    border: 1px solid rgba(248, 81, 73, 0.3);
-    border-radius: var(--bs-border-radius);
-    color: var(--vs-accent-red);
-}
-
-.push-success {
-    display: flex;
-    align-items: flex-start;
-    gap: 1rem;
-    padding: 1rem;
-    background: rgba(63, 185, 80, 0.1);
-    border: 1px solid rgba(63, 185, 80, 0.3);
-    border-radius: var(--bs-border-radius);
-    color: var(--vs-accent-green);
-}
-
-.branch-info {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    padding: 0.35rem 0.75rem;
-    background: rgba(63, 185, 80, 0.15);
-    border-radius: var(--bs-border-radius-sm);
-    font-size: 0.85rem;
-    color: var(--vs-accent-green);
-}
-
-/* Active job item in project list */
-.active-job-item {
-    background: var(--bs-tertiary-bg);
-    border-radius: var(--bs-border-radius-sm);
-    padding: 0.5rem;
-    margin-bottom: 0.25rem;
-    font-size: 0.9rem;
-}
-
-.active-job-item:last-child {
-    margin-bottom: 0;
-}
-
-.active-job-item:hover {
-    background: var(--bs-secondary-bg);
-}
-
-/* Job activity display */
-.job-activity {
-    color: var(--vs-accent-blue);
-    font-style: italic;
-    font-size: 0.85rem;
-}
-
-.job-error {
-    color: var(--vs-accent-red);
-    font-size: 0.9rem;
-    font-family: 'SF Mono', monospace;
-}
-
-/* Process info badge */
-.process-info {
-    font-family: 'SF Mono', monospace;
-    font-size: 0.8rem;
-    background: var(--bs-tertiary-bg);
-    padding: 0.1rem 0.4rem;
-    border-radius: var(--bs-border-radius-sm);
-}
-
-/* Goal prompt box */
-.goal-prompt-box {
-    background: var(--bs-tertiary-bg);
-    padding: 1rem;
-    border-radius: var(--bs-border-radius);
-    white-space: pre-wrap;
-    word-break: break-word;
-    line-height: 1.6;
-}
-
-/* Goal prompt textarea for editing */
-.goal-prompt-textarea {
-    min-height: 150px;
-    font-family: inherit;
-    line-height: 1.6;
-    resize: vertical;
-}
-
-/* Nav tabs inside cards - cleaner appearance */
-.nav-tabs-card {
-    background: transparent;
-}
-
-.nav-tabs-card .nav-link {
-    border: none;
-    border-bottom: 2px solid transparent;
-    border-radius: 0;
-    color: var(--bs-body-color);
-    padding: 0.75rem 1rem;
-    opacity: 0.7;
-    transition: opacity var(--vs-transition), border-color var(--vs-transition);
-}
-
-.nav-tabs-card .nav-link:hover {
-    border-color: transparent;
-    opacity: 1;
-}
-
-.nav-tabs-card .nav-link.active {
-    border-color: transparent;
-    border-bottom-color: var(--bs-primary);
-    background: transparent;
-    color: var(--bs-body-color);
-    opacity: 1;
-}
-
-/* Filter buttons container */
-.filter-buttons {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-}
-
-/* ============================================
-   PWA Standalone Mode Styles
-============================================ */
-/* Applied when running as installed PWA */
-@media all and (display-mode: standalone) {
-    /* Ensure safe areas are respected in standalone mode */
-    html {
-        background: var(--bs-body-bg, #1a1d21);
-    }
-
-    /* Prevent text selection on UI elements for app-like feel */
-    .app-header,
-    .app-sidebar,
-    .nav-item,
-    .btn {
-        -webkit-user-select: none;
-        user-select: none;
-    }
-
-    /* Ensure the status bar area has the correct background color */
-    body::before {
-        content: '';
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        height: var(--vs-safe-area-top);
-        background: var(--bs-secondary-bg);
-        z-index: 1001;
-    }
-
-    /* Prevent pull-to-refresh on PWA */
-    body {
-        overscroll-behavior-y: contain;
-    }
-
-    /* Modal in PWA mode - handled by vs-modal classes */
-}
-
-/* iOS-specific PWA overrides */
-@supports (-webkit-touch-callout: none) {
-    /* iOS Safari and PWA */
-    .app-header {
-        /* Ensure header doesn't get clipped by notch */
-        -webkit-transform: translateZ(0);
-    }
-
-    /* Enable smooth native scrolling on iOS */
-    .app-main,
-    .app-sidebar,
-    .main-content,
-    .directory-list,
-    .modal-body {
-        -webkit-overflow-scrolling: touch;
-    }
-
-    /* Prevent rubber-banding on fixed elements */
-    .app-header,
-    .app-sidebar {
-        -webkit-backface-visibility: hidden;
-        backface-visibility: hidden;
-    }
-}
-
-/* ============================================
-   Enhanced Mobile Touch & Interaction
-============================================ */
-/* Prevent double-tap zoom on interactive elements */
-.nav-item,
-.btn,
-.list-group-item-action,
-.form-control,
-.form-select {
-    touch-action: manipulation;
-}
-
-/* Active state feedback for touch devices */
-@media (hover: none) and (pointer: coarse) {
-    .nav-item:active,
-    .btn:active,
-    .list-group-item-action:active {
-        opacity: 0.7;
-        transition: opacity 0.1s ease;
-    }
-
-    /* Larger touch targets for list items */
-    .list-group-item-action {
-        min-height: 48px;
-        display: flex;
-        align-items: center;
-    }
-}
-
-/* ============================================
-   Scrollable Content Areas - Mobile Optimization
-============================================ */
-/* Ensure scrollable areas work well on mobile */
-.console-output-box,
-.live-output-container,
-.diff-container {
-    -webkit-overflow-scrolling: touch;
-    overscroll-behavior: contain;
-}
-
-/* Prevent horizontal scroll causing navigation issues on mobile */
-.main-content {
-    overscroll-behavior-x: none;
-}
-
-/* ============================================
-   Mobile Landscape Adjustments
-============================================ */
-@media (max-height: 500px) and (orientation: landscape) {
-    .app-header {
-        height: calc(44px + var(--vs-safe-area-top));
-    }
-
-    .app-sidebar {
-        top: calc(44px + var(--vs-safe-area-top));
-    }
-
-    .app-main {
-        margin-top: calc(44px + var(--vs-safe-area-top));
-    }
-
-    .vs-modal-dialog .modal-body {
-        max-height: calc(100vh - 120px);
-    }
-
-    .directory-list {
-        max-height: calc(100vh - 200px);
-        min-height: 120px;
-    }
-}
-
-/* ============================================
-   Login Layout - PWA Safe Area Support
-============================================ */
-.login-layout {
-    /* Respect safe areas on PWA/notched devices */
-    padding-top: var(--vs-safe-area-top);
-    padding-bottom: var(--vs-safe-area-bottom);
-    padding-left: var(--vs-safe-area-left);
-    padding-right: var(--vs-safe-area-right);
-}
-
-.login-content {
-    /* Ensure content is scrollable on small screens */
-    max-height: calc(100vh - var(--vs-safe-area-top) - var(--vs-safe-area-bottom));
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
-}
-
-/* ============================================
-   Messages Container - Mobile Optimization
-============================================ */
-.messages-container {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-}
-
-/* Message headers on mobile */
-@media (max-width: 575.98px) {
-    .message-header {
-        flex-wrap: wrap;
-    }
-
-    .message {
-        padding: 0.75rem;
-    }
-
-    .tool-input,
-    .tool-output {
-        font-size: 0.75rem;
-        max-height: 150px;
-    }
-}
-
-/* ============================================
-   Card Body Scroll - Mobile Optimization
-============================================ */
-/* Ensure card bodies with long content are scrollable on mobile */
-@media (max-width: 767.98px) {
-    .goal-prompt-box {
-        max-height: 200px;
-        overflow-y: auto;
-        -webkit-overflow-scrolling: touch;
-    }
-}
-
-/* ============================================
-   Job Detail Page - Responsive Layout
-============================================ */
-.job-detail-content {
-    width: 100%;
-    overflow-x: hidden;
-}
-
-/* Chat messages responsive */
-@media (max-width: 575.98px) {
-    .chat-message {
-        max-width: 95%;
-    }
-    
-    .chat-bubble {
-        padding: 0.5rem 0.75rem;
-    }
-    
-    .chat-messages-container {
-        max-height: 400px;
-        padding: 0.25rem;
-    }
-    
-    .chat-tool-code {
-        max-height: 100px;
-    }
-    
-    .stat-pill {
-        font-size: 0.7rem;
-        padding: 0.2rem 0.5rem;
-    }
-    
-    .job-stats-row {
-        font-size: 0.75rem;
-    }
-}
-
-/* Medium screen adjustments */
-@media (max-width: 991.98px) {
-    .chat-messages-container {
-        max-height: 500px;
-    }
-}
-
-/* Ensure proper main content width accounting for sidebar */
-@media (min-width: 992px) {
-    .job-detail-content {
-        max-width: 100%;
-    }
-}
-/* Allow job detail page to use more viewport width on large screens */
-@media (min-width: 1200px) {
-    .main-content:has(.job-detail-content) {
-        max-width: 1800px;
-        padding-left: 1.5rem;
-        padding-right: 1.5rem;
-    }
-}
-
-/* ============================================
-   Jobs Inbox Layout
-============================================ */
-.jobs-inbox-layout {
-    display: flex;
-    flex-direction: column;
-    min-height: calc(100vh - var(--vs-header-height) - var(--vs-safe-area-top) - 2rem);
-    margin: -1rem;
-    margin-top: 0;
-}
-
-@media (min-width: 992px) {
     .jobs-inbox-layout {
         flex-direction: row;
-        margin: -1rem -1rem -1rem -1rem;
-    }
-}
-
-/* Project Sidebar */
-.jobs-project-sidebar {
-    width: 280px;
-    min-width: 280px;
-    max-width: 280px;
-    background: var(--bs-body-bg);
-    flex-shrink: 0;
-}
-
-.project-filter-item {
-    cursor: pointer;
-    color: var(--bs-body-color);
-    transition: all var(--vs-transition);
-    border-left: 3px solid transparent;
-}
-
-.project-filter-item:hover {
-    background: var(--bs-tertiary-bg);
-}
-
-.project-filter-item.active {
-    background: rgba(88, 166, 255, 0.1);
-    border-left-color: var(--vs-accent-blue);
-    color: var(--vs-accent-blue);
-}
-
-.project-filter-item .badge {
-    font-size: 0.7rem;
-}
-
-/* Job List Panel */
-.jobs-list-panel {
-    min-width: 0;
-    background: var(--bs-body-bg);
-}
-
-/* Job List Item */
-.job-list-item {
-    cursor: pointer;
-    transition: background-color var(--vs-transition);
-    border-left: 3px solid transparent;
-}
-
-.job-list-item:hover {
-    background: var(--bs-tertiary-bg);
-}
-
-.job-list-item.job-selected {
-    background: rgba(88, 166, 255, 0.1);
-    border-left-color: var(--vs-accent-blue);
-}
-
-.job-status-icon {
-    width: 24px;
-    min-width: 24px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding-top: 2px;
-}
-
-.job-prompt {
-    line-height: 1.4;
-}
-
-.job-stats {
-    min-width: 100px;
-}
-
-/* Job list responsive adjustments */
-@media (max-width: 991.98px) {
-    .jobs-inbox-layout {
-        min-height: auto;
+        margin: -1rem;
     }
     
-    .jobs-list-panel {
-        border: 1px solid var(--bs-border-color);
-        border-radius: var(--bs-border-radius);
-        overflow: hidden;
-    }
-}
-
-/* Full height layout for jobs page */
-@media (min-width: 992px) {
     .main-content:has(.jobs-inbox-layout) {
         padding: 0;
         max-width: none;
@@ -1705,41 +1441,131 @@ body.vs-modal-open {
     }
 }
 
-/* ============================================
-   Projects Page - Mobile Full Width
-============================================ */
-@media (max-width: 575.98px) {
-    /* Remove card styling on mobile for full-width feel */
-    .projects-card,
-    .providers-card,
-    .skills-card {
-        border-radius: 0;
-        border-left: none;
-        border-right: none;
-        margin-left: calc(-1 * (1rem + var(--vs-safe-area-left)));
-        margin-right: calc(-1 * (1rem + var(--vs-safe-area-right)));
-        width: calc(100% + 2rem + var(--vs-safe-area-left) + var(--vs-safe-area-right));
-    }
-    
-    /* Project filters full width on mobile */
-    .projects-filters {
-        flex-direction: column;
-        gap: 0.75rem;
-    }
-    
-    .projects-filters .form-select,
-    .projects-filters .btn-group {
-        width: 100%;
-    }
-    
-    .projects-filters .btn-group .btn {
-        flex: 1;
+/* --- Extra Large (≥ 1200px) --- */
+@media (min-width: 1200px) {
+    .main-content:has(.job-detail-content) {
+        max-width: 1800px;
+        padding-left: 1.5rem;
+        padding-right: 1.5rem;
     }
 }
 
+/* --- Landscape Mobile --- */
+@media (max-height: 500px) and (orientation: landscape) {
+    .app-header { height: calc(44px + var(--vs-safe-area-top)); }
+    .app-sidebar { top: calc(44px + var(--vs-safe-area-top)); }
+    .app-main { margin-top: calc(44px + var(--vs-safe-area-top)); }
+    .vs-modal-dialog .modal-body { max-height: calc(100vh - 120px); }
+    .directory-list { max-height: calc(100vh - 200px); min-height: 120px; }
+}
+
 /* ============================================
-   Jobs Page - Mobile Filters
+   10. PWA & TOUCH OPTIMIZATIONS
 ============================================ */
+
+/* Touch-friendly interactions */
+.nav-item,
+.btn,
+.list-group-item-action,
+.form-control,
+.form-select {
+    touch-action: manipulation;
+}
+
+/* Touch device active states */
+@media (hover: none) and (pointer: coarse) {
+    .nav-item:active,
+    .btn:active,
+    .list-group-item-action:active {
+        opacity: 0.7;
+        transition: opacity 0.1s ease;
+    }
+
+    .list-group-item-action {
+        min-height: 48px;
+        display: flex;
+        align-items: center;
+    }
+}
+
+/* Prevent horizontal scroll issues */
+.main-content {
+    overscroll-behavior-x: none;
+}
+
+/* Login layout safe areas */
+.login-layout {
+    padding-top: var(--vs-safe-area-top);
+    padding-bottom: var(--vs-safe-area-bottom);
+    padding-left: var(--vs-safe-area-left);
+    padding-right: var(--vs-safe-area-right);
+}
+
+.login-content {
+    max-height: calc(100vh - var(--vs-safe-area-top) - var(--vs-safe-area-bottom));
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+/* Messages container */
+.messages-container {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+/* Jobs mobile filters */
 .jobs-mobile-filters .btn-group .btn {
     flex: 1;
+}
+
+/* --- PWA Standalone Mode --- */
+@media all and (display-mode: standalone) {
+    html {
+        background: var(--bs-body-bg, #1a1d21);
+    }
+
+    .app-header,
+    .app-sidebar,
+    .nav-item,
+    .btn {
+        -webkit-user-select: none;
+        user-select: none;
+    }
+
+    body::before {
+        content: '';
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: var(--vs-safe-area-top);
+        background: var(--bs-secondary-bg);
+        z-index: 1001;
+    }
+
+    body {
+        overscroll-behavior-y: contain;
+    }
+}
+
+/* --- iOS-specific fixes --- */
+@supports (-webkit-touch-callout: none) {
+    .app-header {
+        -webkit-transform: translateZ(0);
+    }
+
+    .app-main,
+    .app-sidebar,
+    .main-content,
+    .directory-list,
+    .modal-body {
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .app-header,
+    .app-sidebar {
+        -webkit-backface-visibility: hidden;
+        backface-visibility: hidden;
+    }
 }

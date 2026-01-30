@@ -98,13 +98,13 @@ Classes should never target one single concern, such as `.goal-prompt-textarea` 
 
 Consider the entire viewport when designing layouts, ensuring that content is well-organized and easily accessible on different screen sizes. Utilize grid systems and flexible layouts to create a visually appealing and functional interface. When on a larger screen, ensure there are no gaps of unused space by expanding content areas or adding supplementary information where appropriate.
 
-## Mobile Friendly
+### Mobile Friendly
 
 VibeSwarm is designed to be mobile-friendly, ensuring that users can access and manage their projects from smartphones and tablets. The responsive design adapts to various screen sizes, providing an optimal user experience regardless of the device being used. The mobile interface includes touch-friendly elements and simplified navigation to facilitate ease of use on smaller screens.
 
 All pages and UI components are tested on an iPhone to ensure every aspect of the application works from anywhere the application is accessible. A best attempt is made to ensure the viewport is optimized for mobile devices and desktop devices alike with proper spacing, padding, and alignment.
 
-## Desktop Friendly
+### Desktop Friendly
 
 The UI should also be optimized for desktop use, taking advantage of larger screen real estate to provide a more detailed and comprehensive view of projects and agent activities. The desktop interface includes additional features and information that may not be necessary on mobile devices, enhancing the overall user experience for desktop users.
 
@@ -112,21 +112,23 @@ Consider the entire viewport when designing layouts, ensuring that content is we
 
 Elements such as Modals should expand to a reasonable size on desktop screens to improve usability, while still being fully functional on mobile devices.
 
-## Bootstrap Integration
+### Bootstrap Integration
 
 Always attempt to leverage Bootstrap's built-in classes and components. Avoid custom styles at all costs, unless absolutely necessary. Custom classes should ONLY exist when there is no equivalent in Bootstrap and should be named using a clear and consistent naming convention. This ensures consistency across the application and reduces the need for additional CSS. Use a stacked utility class approach when creating UI components to maximize flexibility and maintainability. A component may use multiple classes such as `d-flex`, `flex-column`, `align-items-center`, `bg-body-secondary`, and `p-3` to achieve the desired layout and styling without custom CSS. Use the TailwindCSS mindset when applying Bootstrap utility classes to create complex layouts and designs.
 
-## Style.css
+### Site.css
 
-The application specific `style.css` should only add helper utilities that can be used across the application, and are not intended to be specific to components.
+The application specific `site.css` should only add helper utilities that can be used across the application, and are not intended to be specific to components.
 
 No components should need a `*.razor.css` file. All styling should be achievable via Bootstrap utility classes alone. If a component requires specific styling that cannot be achieved with Bootstrap classes, consider refactoring the component to better align with Bootstrap's capabilities.
 
-The `style.css` should never contain specific component styles. It should only contain helper classes that can be used across multiple components. Razor components should stack Bootstrap utility classes to achieve the desired styling and layout.
+The `site.css` should never contain specific component styles. It should only contain helper classes that can be used across multiple components. Razor components should stack Bootstrap utility classes to achieve the desired styling and layout.
 
-There may be rare cases where a custom class is necessary for a specific component due to limitations in Bootstrap. In such cases, the custom class should be clearly named to indicate its purpose and should be documented within the `style.css` file for clarity. The custom classes should aim to only override properties where a utility class does not exist in Bootstrap.
+There may be rare cases where a custom class is necessary for a specific component due to limitations in Bootstrap. In such cases, the custom class should be clearly named to indicate its purpose and should be documented within the `site.css` file for clarity. The custom classes should aim to only override properties where a utility class does not exist in Bootstrap.
 
-## Bootstrap Icons
+For any reference, see the official Boostrap utility classes documentation: `https://getbootstrap.com/docs/5.3/utilities/`. There are sub-sections for various utility types such as spacing, flexbox, colors, and more. Always prefer these built-in classes over custom styles.
+
+### Bootstrap Icons
 
 VibeSwarm uses Bootstrap Icons for visual enhancements and to improve user experience. Icons are used throughout the interface to represent actions, statuses, and navigation elements. The application leverages the extensive library of Bootstrap Icons to maintain a consistent look and feel.
 
@@ -148,7 +150,7 @@ All interaction should be real-time using SignalR where applicable. Avoid page r
 
 The application will be primarily used as a PWA (Progressive Web App). Ensure that all Blazor components and pages are optimized for PWA usage, including offline capabilities, responsive design, and efficient resource loading. The application should not have any issues with loading or interactivity when used as a PWA, even if the user has not opened the app for an extended period.
 
-## UI Components
+### UI Components
 
 Large pages should be broken into smaller, reusable components to improve maintainability and readability. Components such as agent cards, project lists, and status indicators can be created to encapsulate specific functionality and styling. This modular approach allows for easier updates and enhancements to individual components without affecting the overall application.
 
@@ -168,7 +170,7 @@ When working with asynchronous operations, prefer using async/await patterns to 
 
 Use dependency injection to manage service lifetimes and dependencies. This promotes loose coupling and enhances testability by allowing for easier mocking of services during unit testing.
 
-## Database
+### Database
 
 VibeSwarm uses a relational database to store project configurations, agent settings, and code history. The database schema is designed to efficiently manage relationships between projects, agents, and code changes. The application uses an ORM (Object-Relational Mapping) tool to interact with the database, allowing for easier data manipulation and retrieval.
 
