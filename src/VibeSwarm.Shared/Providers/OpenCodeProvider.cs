@@ -159,26 +159,21 @@ public class OpenCodeProvider : CliProviderBase
         var effectiveWorkingDir = workingDirectory ?? WorkingDirectory ?? Environment.CurrentDirectory;
 
         // Build arguments for opencode non-interactive mode
-        // Using -p for prompt mode which runs a single prompt and exits
-        // Per OpenCode docs: opencode -p "prompt"
+        // Using --prompt for non-interactive mode which runs a single prompt and exits
+        // Working directory is set via ProcessStartInfo.WorkingDirectory in CreateCliProcess
         var args = new List<string>();
 
-        // Set working directory via -c flag if not the current directory
-        if (!string.IsNullOrEmpty(effectiveWorkingDir) && effectiveWorkingDir != Environment.CurrentDirectory)
-        {
-            args.AddRange(new[] { "-c", $"\"{effectiveWorkingDir}\"" });
-        }
-
+        // Continue a specific session if provided
         if (!string.IsNullOrEmpty(sessionId))
         {
-            args.AddRange(new[] { "-s", sessionId });
+            args.AddRange(new[] { "--session", sessionId });
         }
 
         if (CurrentEnvironmentVariables != null &&
             CurrentEnvironmentVariables.TryGetValue("OPENCODE_MODEL", out var model) &&
             !string.IsNullOrEmpty(model))
         {
-            args.AddRange(new[] { "-m", model });
+            args.AddRange(new[] { "--model", model });
         }
 
         if (CurrentAdditionalArgs != null)
@@ -186,8 +181,8 @@ public class OpenCodeProvider : CliProviderBase
             args.AddRange(CurrentAdditionalArgs);
         }
 
-        // Add the prompt using -p flag for non-interactive mode
-        args.Add("-p");
+        // Add the prompt using --prompt flag for non-interactive mode
+        args.Add("--prompt");
         args.Add($"\"{EscapeCliArgument(prompt)}\"");
 
         var fullArguments = string.Join(" ", args);
@@ -566,9 +561,9 @@ public class OpenCodeProvider : CliProviderBase
         var argsList = new List<string>();
         if (!string.IsNullOrEmpty(sessionId))
         {
-            argsList.AddRange(new[] { "-s", sessionId });
+            argsList.AddRange(new[] { "--session", sessionId });
         }
-        argsList.Add("-p");
+        argsList.Add("--prompt");
         argsList.Add($"\"{EscapeCliArgument(prompt)}\"");
 
         var startInfo = new ProcessStartInfo
@@ -812,7 +807,7 @@ public class OpenCodeProvider : CliProviderBase
                 return PromptResponse.Fail("OpenCode executable path is not configured.");
             }
 
-            var args = $"-p \"{EscapeCliArgument(prompt)}\"";
+            var args = $"--prompt \"{EscapeCliArgument(prompt)}\"";
             return await ExecuteSimplePromptAsync(execPath, args, "OpenCode", workingDirectory, cancellationToken);
         }
         else
