@@ -209,7 +209,76 @@
 				this.isConnected = false;
 				console.log("[VibeSwarmHub] Connection closed", error);
 				this.notifyDotNet("OnConnectionStateChanged", "Disconnected");
+
+				// Auto-reconnect after connection closed (handles iOS background suspension)
+				if (!this.isConnecting && document.visibilityState === "visible") {
+					console.log(
+						"[VibeSwarmHub] Attempting auto-reconnect after connection close",
+					);
+					setTimeout(() => this.attemptReconnect(), 2000);
+				}
 			});
+		},
+
+		// Attempt to reconnect the SignalR hub
+		async attemptReconnect() {
+			if (this.isConnecting || this.isConnected) {
+				return;
+			}
+
+			this.reconnectAttempts++;
+			if (this.reconnectAttempts > this.maxReconnectAttempts) {
+				console.log("[VibeSwarmHub] Max reconnect attempts reached");
+				return;
+			}
+
+			console.log(
+				`[VibeSwarmHub] Reconnect attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts}`,
+			);
+
+			try {
+				this.isConnecting = true;
+
+				// Create a fresh connection
+				await this.waitForSignalR();
+
+				this.connection = new signalR.HubConnectionBuilder()
+					.withUrl("/jobhub")
+					.withAutomaticReconnect({
+						nextRetryDelayInMilliseconds: (retryContext) => {
+							const delays = [0, 1000, 2000, 5000, 10000, 30000, 60000];
+							return delays[
+								Math.min(retryContext.previousRetryCount, delays.length - 1)
+							];
+						},
+					})
+					.configureLogging(signalR.LogLevel.Warning)
+					.build();
+
+				this.registerEventHandlers();
+				this.setupConnectionEvents();
+
+				await this.connection.start();
+				this.isConnected = true;
+				this.isConnecting = false;
+				this.reconnectAttempts = 0;
+
+				console.log("[VibeSwarmHub] Reconnected successfully");
+				this.notifyDotNet("OnConnectionStateChanged", "Connected");
+
+				// Re-process subscriptions
+				await this.processPendingSubscriptions();
+			} catch (err) {
+				this.isConnecting = false;
+				console.error("[VibeSwarmHub] Reconnect failed:", err);
+
+				// Try again with exponential backoff
+				const delay = Math.min(
+					1000 * Math.pow(2, this.reconnectAttempts),
+					60000,
+				);
+				setTimeout(() => this.attemptReconnect(), delay);
+			}
 		},
 
 		// Notify .NET of events

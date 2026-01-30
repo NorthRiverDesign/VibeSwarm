@@ -52,10 +52,23 @@
 
     <body>
         <component type="typeof(App)" render-mode="ServerPrerendered" />
+
+        <!-- Blazor Reconnection UI - shown when SignalR connection is lost -->
+        <div id="components-reconnect-modal" class="reconnect-modal">
+            <div class="reconnect-content">
+                <div class="reconnect-spinner"></div>
+                <p class="reconnect-message">Reconnecting to server...</p>
+                <button id="reconnect-reload-btn" class="btn btn-primary d-none" onclick="location.reload()">
+                    Reload App
+                </button>
+            </div>
+        </div>
+
         <script src="lib/bootstrap/js/bootstrap.bundle.min.js"></script>
         <script src="lib/signalr/signalr.min.js"></script>
         <script src="_framework/blazor.server.js"></script>
         <script src="js/globalSignalR.js"></script>
+        <script src="js/blazorReconnect.js"></script>
 
         <!-- Service Worker Registration -->
         <script>

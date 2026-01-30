@@ -894,3 +894,53 @@ body.vs-modal-open {
     .app-main, .app-sidebar, .main-content, .directory-list, .modal-body { -webkit-overflow-scrolling: touch; }
     .app-header, .app-sidebar { -webkit-backface-visibility: hidden; backface-visibility: hidden; }
 }
+
+/* ============================================
+   14. BLAZOR RECONNECTION MODAL (PWA)
+============================================ */
+#components-reconnect-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.8);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    padding: var(--vs-safe-area-top) var(--vs-safe-area-right) var(--vs-safe-area-bottom) var(--vs-safe-area-left);
+}
+
+#components-reconnect-modal.components-reconnect-show {
+    display: flex;
+}
+
+.reconnect-content {
+    text-align: center;
+    padding: 2rem;
+    background: var(--bs-body-bg);
+    border-radius: var(--bs-border-radius-lg);
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+    max-width: 90%;
+    width: 320px;
+}
+
+.reconnect-spinner {
+    width: 48px;
+    height: 48px;
+    margin: 0 auto 1rem;
+    border: 3px solid var(--bs-border-color);
+    border-top-color: var(--vs-accent-blue);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+.reconnect-message {
+    color: var(--bs-body-color);
+    font-size: 1rem;
+    margin-bottom: 1rem;
+}
+
+#reconnect-reload-btn {
+    min-width: 140px;
+}
