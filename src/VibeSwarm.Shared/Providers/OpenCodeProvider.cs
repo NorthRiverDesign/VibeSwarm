@@ -257,6 +257,11 @@ public class OpenCodeProvider : CliProviderBase
         var errorComplete = new TaskCompletionSource<bool>();
         var earlyErrorDetected = false;
 
+        // Track if we've received ANY meaningful output (from stdout OR stderr)
+        // This is used to stop the "waiting for response" messages once the CLI starts working
+        var hasReceivedMeaningfulOutput = false;
+        var outputLock = new object();
+
         process.OutputDataReceived += (sender, e) =>
         {
             if (e.Data == null)
@@ -270,9 +275,10 @@ public class OpenCodeProvider : CliProviderBase
             // Strip ANSI codes for storage and parsing
             var cleanedData = StripAnsiCodes(e.Data);
 
-            lock (outputBuilder)
+            lock (outputLock)
             {
                 outputBuilder.Add(cleanedData);
+                hasReceivedMeaningfulOutput = true;
             }
 
             // Check for early error patterns in the output
@@ -329,20 +335,46 @@ public class OpenCodeProvider : CliProviderBase
                 var cleanedError = StripAnsiCodes(e.Data);
                 errorBuilder.AppendLine(cleanedError);
 
-                // Mark as error if stderr contains content
-                if (!earlyErrorDetected && IsCliErrorLine(cleanedError))
+                // OpenCode outputs tool progress (Read, Edit, Write, etc.) to stderr
+                // These are NOT errors - they're progress indicators
+                var isToolProgress = IsOpenCodeToolProgress(cleanedError);
+
+                // Only mark as error if it's a real CLI error, not tool progress
+                if (!earlyErrorDetected && !isToolProgress && IsCliErrorLine(cleanedError))
                 {
                     earlyErrorDetected = true;
                     result.Success = false;
                 }
 
-                progress?.Report(new ExecutionProgress
+                // Mark that we've received meaningful output (tool progress counts!)
+                lock (outputLock)
                 {
-                    OutputLine = cleanedError,
-                    IsErrorOutput = true,
-                    IsStreaming = true,
-                    CurrentMessage = earlyErrorDetected ? $"CLI Error: {cleanedError}" : null
-                });
+                    hasReceivedMeaningfulOutput = true;
+                }
+
+                // Report with appropriate labeling
+                if (isToolProgress)
+                {
+                    // Tool progress - show as normal output with tool indicator
+                    progress?.Report(new ExecutionProgress
+                    {
+                        OutputLine = cleanedError,
+                        IsErrorOutput = false, // Don't mark tool progress as error
+                        IsStreaming = true,
+                        ToolName = ExtractToolNameFromProgress(cleanedError)
+                    });
+                }
+                else
+                {
+                    // Actual stderr content
+                    progress?.Report(new ExecutionProgress
+                    {
+                        OutputLine = cleanedError,
+                        IsErrorOutput = true,
+                        IsStreaming = true,
+                        CurrentMessage = earlyErrorDetected ? $"CLI Error: {cleanedError}" : null
+                    });
+                }
             }
         };
 
@@ -386,10 +418,10 @@ public class OpenCodeProvider : CliProviderBase
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
 
-        // Start initialization monitor
+        // Start initialization monitor - checks BOTH stdout and stderr for output
         using var initMonitorCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var initializationMonitorTask = CreateInitializationMonitorAsync(
-            () => outputBuilder.Count > 0,
+            () => { lock (outputLock) { return hasReceivedMeaningfulOutput; } },
             progress,
             initMonitorCts.Token);
 
@@ -415,7 +447,11 @@ public class OpenCodeProvider : CliProviderBase
         }
 
         // Strip ANSI codes from output for cleaner parsing
-        var cleanedOutput = outputBuilder.Select(StripAnsiCodes).ToList();
+        List<string> cleanedOutput;
+        lock (outputLock)
+        {
+            cleanedOutput = outputBuilder.Select(StripAnsiCodes).ToList();
+        }
         result.Output = string.Join("\n", cleanedOutput);
 
         var stderrError = StripAnsiCodes(errorBuilder.ToString());
@@ -532,6 +568,84 @@ public class OpenCodeProvider : CliProviderBase
                // Rate limiting
                lowerLine.Contains("rate limit") ||
                lowerLine.Contains("quota exceeded");
+    }
+
+    /// <summary>
+    /// Determines if a stderr line is OpenCode tool progress output, not an actual error.
+    /// OpenCode outputs tool actions (Read, Edit, Write, Bash, Glob, etc.) to stderr as progress indicators.
+    /// These should be displayed to the user but NOT treated as errors.
+    /// </summary>
+    private static bool IsOpenCodeToolProgress(string line)
+    {
+        if (string.IsNullOrWhiteSpace(line))
+            return false;
+
+        var trimmed = line.Trim();
+
+        // OpenCode tool progress format: "|  ToolName    path/to/file" or similar
+        // Common tools: Read, Write, Edit, Bash, Glob, Grep, LS, TodoRead, TodoWrite, etc.
+
+        // Check for the pipe character pattern that OpenCode uses
+        if (trimmed.StartsWith("|"))
+        {
+            var afterPipe = trimmed.TrimStart('|').TrimStart();
+
+            // Common OpenCode tool names
+            var toolKeywords = new[]
+            {
+                "Read", "Write", "Edit", "Bash", "Glob", "Grep", "LS", "List",
+                "Todo", "TodoRead", "TodoWrite", "Fetch", "Search", "Find",
+                "MultiEdit", "Patch", "View", "Cat", "Head", "Tail",
+                "Mkdir", "Rm", "Mv", "Cp", "Touch", "Chmod"
+            };
+
+            foreach (var tool in toolKeywords)
+            {
+                if (afterPipe.StartsWith(tool, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+        }
+
+        // Also check for thinking/reasoning indicators
+        if (trimmed.StartsWith("Thinking", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.StartsWith("Planning", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.StartsWith("Analyzing", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Extracts the tool name from an OpenCode progress line.
+    /// </summary>
+    private static string? ExtractToolNameFromProgress(string line)
+    {
+        if (string.IsNullOrWhiteSpace(line))
+            return null;
+
+        var trimmed = line.Trim();
+
+        if (trimmed.StartsWith("|"))
+        {
+            var afterPipe = trimmed.TrimStart('|').TrimStart();
+
+            // Extract the first word as the tool name
+            var spaceIndex = afterPipe.IndexOf(' ');
+            if (spaceIndex > 0)
+            {
+                return afterPipe[..spaceIndex];
+            }
+            else if (afterPipe.Length > 0)
+            {
+                return afterPipe;
+            }
+        }
+
+        return null;
     }
 
     private void ProcessStreamEvent(
