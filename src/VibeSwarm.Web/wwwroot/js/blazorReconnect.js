@@ -6,9 +6,9 @@
 
 	const ReconnectHandler = {
 		// Configuration
-		maxReconnectAttempts: 25,
+		maxReconnectAttempts: 15,
 		reconnectAttempts: 0,
-		reconnectInterval: null,
+		reconnectTimeout: null,
 		isReconnecting: false,
 		lastVisibilityChange: Date.now(),
 		connectionLostTime: null,
@@ -19,6 +19,13 @@
 		isStandalone:
 			window.navigator.standalone === true ||
 			window.matchMedia("(display-mode: standalone)").matches,
+
+		// Retry delay configuration with exponential backoff
+		getRetryDelay(attempt) {
+			// Delays: 2s, 4s, 6s, 8s, 10s, 15s, 20s, 30s, then cap at 30s
+			const delays = [2000, 4000, 6000, 8000, 10000, 15000, 20000, 30000];
+			return delays[Math.min(attempt, delays.length - 1)];
+		},
 
 		// Thresholds (adjusted for iOS behavior)
 		get backgroundThreshold() {
@@ -239,7 +246,7 @@
 
 			this.hideReconnectToast();
 			this.hideReconnectModal();
-			this.clearReconnectInterval();
+			this.clearReconnectTimeout();
 
 			// Reinitialize the global SignalR hub
 			this.reinitializeSignalR();
@@ -321,47 +328,70 @@
 
 		// Start reconnection attempts
 		startReconnectAttempts() {
-			if (this.reconnectInterval) {
+			if (this.reconnectTimeout) {
 				return; // Already attempting
 			}
 
 			this.isReconnecting = true;
 			this.reconnectAttempts = 0;
 
-			// iOS needs more aggressive initial retries
-			const baseInterval = this.isIOSPWA ? 2000 : 3000;
+			// Start the first attempt
+			this.scheduleNextReconnectAttempt();
+		},
 
-			this.reconnectInterval = setInterval(
-				() => {
-					this.reconnectAttempts++;
+		// Schedule the next reconnect attempt with exponential backoff
+		scheduleNextReconnectAttempt() {
+			this.reconnectAttempts++;
 
-					console.log(
-						`[ReconnectHandler] Reconnect attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts}`,
-					);
+			if (this.reconnectAttempts > this.maxReconnectAttempts) {
+				this.handleReconnectFailure();
+				return;
+			}
 
-					// Update toast/modal message
-					this.updateReconnectMessage(`Attempt ${this.reconnectAttempts}...`);
-
-					if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-						this.handleReconnectFailure();
-					} else {
-						// Try to reconnect by triggering Blazor's internal reconnect
-						this.triggerBlazorReconnect();
-					}
-				},
-				this.isIOSPWA ? 2500 : 3000,
+			const delay = this.getRetryDelay(this.reconnectAttempts - 1);
+			console.log(
+				`[ReconnectHandler] Scheduling reconnect attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts} in ${delay}ms`,
 			);
+
+			// Update toast/modal message
+			this.updateReconnectMessage(`Attempt ${this.reconnectAttempts}...`);
+
+			this.reconnectTimeout = setTimeout(async () => {
+				this.reconnectTimeout = null;
+
+				console.log(
+					`[ReconnectHandler] Reconnect attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts}`,
+				);
+
+				// Try to reconnect
+				const success = await this.triggerBlazorReconnect();
+
+				if (success) {
+					console.log("[ReconnectHandler] Reconnect succeeded!");
+					this.handleConnectionUp();
+				} else {
+					// Schedule next attempt
+					this.scheduleNextReconnectAttempt();
+				}
+			}, delay);
 		},
 
 		// Trigger Blazor's reconnection mechanism
-		triggerBlazorReconnect() {
+		async triggerBlazorReconnect() {
 			try {
 				// Try Blazor's reconnect method first
 				if (window.Blazor && window.Blazor.reconnect) {
-					window.Blazor.reconnect().catch(() => {
-						// Reconnect failed, will retry
-					});
-					return;
+					const result = await window.Blazor.reconnect();
+					// reconnect() returns true if successful
+					if (result === true) {
+						return true;
+					}
+				}
+
+				// Check if connection was restored by other means
+				const isConnected = await this.isBlazorConnected();
+				if (isConnected) {
+					return true;
 				}
 
 				// Fallback: Try to find and click the reconnect button if it exists
@@ -370,15 +400,21 @@
 				);
 				if (reconnectButton) {
 					reconnectButton.click();
+					// Wait a moment and check if it worked
+					await new Promise((resolve) => setTimeout(resolve, 1000));
+					return await this.isBlazorConnected();
 				}
+
+				return false;
 			} catch (error) {
 				console.error("[ReconnectHandler] Error triggering reconnect:", error);
+				return false;
 			}
 		},
 
 		// Handle when all reconnect attempts fail
 		handleReconnectFailure() {
-			this.clearReconnectInterval();
+			this.clearReconnectTimeout();
 			this.isReconnecting = false;
 
 			console.log(
@@ -393,11 +429,11 @@
 			this.showReloadButton();
 		},
 
-		// Clear reconnection interval
-		clearReconnectInterval() {
-			if (this.reconnectInterval) {
-				clearInterval(this.reconnectInterval);
-				this.reconnectInterval = null;
+		// Clear reconnection timeout
+		clearReconnectTimeout() {
+			if (this.reconnectTimeout) {
+				clearTimeout(this.reconnectTimeout);
+				this.reconnectTimeout = null;
 			}
 		},
 
