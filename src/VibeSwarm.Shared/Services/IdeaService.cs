@@ -106,6 +106,13 @@ public class IdeaService : IIdeaService
 			return null;
 		}
 
+		// Prevent double-add: if idea already has a job, return null
+		if (idea.JobId.HasValue || idea.IsProcessing)
+		{
+			_logger.LogWarning("Idea {IdeaId} is already being processed or has a job", ideaId);
+			return null;
+		}
+
 		// Get the default provider
 		var defaultProvider = await _providerService.GetDefaultAsync(cancellationToken);
 		if (defaultProvider == null)

@@ -6,6 +6,7 @@
 @inject IVersionControlService VersionControlService
 @inject IIdeaService IdeaService
 @inject NavigationManager NavigationManager
+@inject NotificationService NotificationService
 @implements IAsyncDisposable
 @using VibeSwarm.Shared.Utilities
 @using VibeSwarm.Shared.VersionControl
@@ -43,9 +44,10 @@ else
             @* Ideas Panel Component *@
             <IdeasPanel Ideas="@Ideas" CurrentProjectId="@ProjectId" IsProcessingActive="@IsIdeasProcessingActive"
                 IsTogglingProcessing="@_isTogglingIdeasProcessing" HasDefaultProvider="@HasDefaultProvider"
-                HasActiveJobs="@HasActiveJobs" IsAddingIdea="@_isAddingIdea" OnStartProcessing="StartIdeasProcessing"
-                OnStopProcessing="StopIdeasProcessing" OnAddIdea="AddIdea" OnUpdateIdea="UpdateIdea"
-                OnDeleteIdea="DeleteIdea" OnCopyIdea="CopyIdea" OnMoveIdea="MoveIdea" OnStartSingleIdea="StartSingleIdea" />
+                HasActiveJobs="@HasActiveJobs" IsAddingIdea="@_isAddingIdea" ProcessingIdeaIds="@ProcessingIdeaIds"
+                OnStartProcessing="StartIdeasProcessing" OnStopProcessing="StopIdeasProcessing" OnAddIdea="AddIdea"
+                OnUpdateIdea="UpdateIdea" OnDeleteIdea="DeleteIdea" OnCopyIdea="CopyIdea" OnMoveIdea="MoveIdea"
+                OnStartSingleIdea="StartSingleIdea" />
         </div>
 
         @* Jobs list on RIGHT for monitoring progress *@
@@ -148,6 +150,7 @@ else
     private bool IsIdeasProcessingActive { get; set; }
     private bool _isTogglingIdeasProcessing { get; set; }
     private bool HasDefaultProvider => Providers.Any(p => p.IsDefault && p.IsEnabled);
+    private HashSet<Guid> ProcessingIdeaIds { get; set; } = new();
 
     private bool HasActiveJobs => Jobs.Any(j =>
     j.Status == JobStatus.New ||
@@ -225,8 +228,31 @@ else
         {
             await InvokeAsync(async () =>
     {
+        // Check if this job was from an idea before refreshing
+            var completedJob = Jobs.FirstOrDefault(j => j.Id.ToString() == jobId);
+            var wasFromIdea = Ideas.Any(i => i.JobId.ToString() == jobId);
+
             await RefreshJobs();
             await LoadIdeas();
+            ProcessingIdeaIds.Clear(); // Clear any stale processing states
+
+        // Show toast for idea-based job completion
+            if (wasFromIdea)
+            {
+                if (success)
+                {
+                    NotificationService.ShowSuccess(
+            completedJob?.Title ?? "Job completed successfully.",
+            "Idea Job Completed");
+                }
+                else
+                {
+                    NotificationService.ShowError(
+            errorMessage ?? "Job failed.",
+            "Idea Job Failed");
+                }
+            }
+
             StateHasChanged();
         });
         });
@@ -950,17 +976,24 @@ else
     private async Task StartIdeasProcessing()
     {
         _isTogglingIdeasProcessing = true;
+        // Mark all unprocessed ideas as processing immediately for UI feedback
+        foreach (var idea in Ideas.Where(i => !i.IsProcessing && !i.JobId.HasValue))
+        {
+            ProcessingIdeaIds.Add(idea.Id);
+        }
         StateHasChanged();
 
         try
         {
             await IdeaService.StartProcessingAsync(ProjectId);
             IsIdeasProcessingActive = true;
-            SuccessMessage = "Ideas auto-processing started. Ideas will be converted to jobs automatically.";
+            NotificationService.ShowInfo("Ideas will be converted to jobs automatically.", "Auto-Processing Started");
         }
         catch (Exception ex)
         {
-            ErrorMessage = $"Error starting Ideas processing: {ex.Message}";
+            // Clear processing state on error
+            ProcessingIdeaIds.Clear();
+            NotificationService.ShowError($"Error starting Ideas processing: {ex.Message}");
         }
         finally
         {
@@ -978,11 +1011,12 @@ else
         {
             await IdeaService.StopProcessingAsync(ProjectId);
             IsIdeasProcessingActive = false;
-            SuccessMessage = "Ideas auto-processing stopped.";
+            ProcessingIdeaIds.Clear();
+            NotificationService.ShowInfo("Ideas auto-processing stopped.", "Processing Stopped");
         }
         catch (Exception ex)
         {
-            ErrorMessage = $"Error stopping Ideas processing: {ex.Message}";
+            NotificationService.ShowError($"Error stopping Ideas processing: {ex.Message}");
         }
         finally
         {
@@ -993,6 +1027,18 @@ else
 
     private async Task StartSingleIdea(Guid ideaId)
     {
+        // Prevent double-add by checking if already processing
+        var idea = Ideas.FirstOrDefault(i => i.Id == ideaId);
+        if (idea == null || idea.JobId.HasValue || idea.IsProcessing || ProcessingIdeaIds.Contains(ideaId))
+        {
+            NotificationService.ShowWarning("This idea is already being processed.");
+            return;
+        }
+
+        // Mark as processing immediately for UI feedback
+        ProcessingIdeaIds.Add(ideaId);
+        StateHasChanged();
+
         try
         {
             var job = await IdeaService.ConvertToJobAsync(ideaId);
@@ -1000,16 +1046,18 @@ else
             {
                 await RefreshJobs();
                 await LoadIdeas();
-                SuccessMessage = "Idea queued as a job successfully.";
+                NotificationService.ShowSuccess($"Idea queued as job successfully.", "Idea Started");
             }
             else
             {
-                ErrorMessage = "Failed to convert idea to job.";
+                ProcessingIdeaIds.Remove(ideaId);
+                NotificationService.ShowError("Failed to convert idea to job.");
             }
         }
         catch (Exception ex)
         {
-            ErrorMessage = $"Error starting idea: {ex.Message}";
+            ProcessingIdeaIds.Remove(ideaId);
+            NotificationService.ShowError($"Error starting idea: {ex.Message}");
         }
     }
 
