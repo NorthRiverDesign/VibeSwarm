@@ -145,11 +145,34 @@ builder.Services.ConfigureApplicationCookie(options =>
     options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
     options.Cookie.SameSite = SameSiteMode.Lax;
     options.Cookie.Name = "VibeSwarm.Auth";
-    options.ExpireTimeSpan = TimeSpan.FromHours(8);
-    options.SlidingExpiration = true;
+
+    // Default expiration for session cookies (when Remember Me is NOT checked)
+    // This is the server-side ticket lifetime
+    options.ExpireTimeSpan = TimeSpan.FromDays(365); // 1 year for persistent sessions
+    options.SlidingExpiration = true; // Refresh the cookie on each request when past halfway
+
     options.LoginPath = "/login";
     options.LogoutPath = "/logout";
     options.AccessDeniedPath = "/access-denied";
+
+    // Handle persistent cookies for "Remember Me" - this ensures the cookie
+    // persists across browser/app restarts, rebuilds, and updates
+    options.Events.OnSigningIn = context =>
+    {
+        if (context.Properties.IsPersistent)
+        {
+            // When Remember Me is checked, make the cookie last for 1 year
+            // The cookie will be refreshed via sliding expiration on each visit
+            context.Properties.ExpiresUtc = DateTimeOffset.UtcNow.AddDays(365);
+            context.Properties.IsPersistent = true;
+        }
+        else
+        {
+            // Session cookie - expires when browser closes
+            context.Properties.ExpiresUtc = DateTimeOffset.UtcNow.AddHours(8);
+        }
+        return Task.CompletedTask;
+    };
 
     // Important for Blazor Server: Don't redirect on API calls
     options.Events.OnRedirectToLogin = context =>
