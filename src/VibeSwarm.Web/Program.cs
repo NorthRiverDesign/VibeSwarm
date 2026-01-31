@@ -79,8 +79,37 @@ var connectionString = builder.Configuration.GetConnectionString("Default")
 builder.Services.AddAuthorization();
 
 builder.Services.AddRazorPages();
-builder.Services.AddServerSideBlazor();
-builder.Services.AddSignalR();
+
+// Configure Blazor Server with iOS PWA-optimized settings
+builder.Services.AddServerSideBlazor(options =>
+{
+    // Extend timeouts for iOS PWA background/foreground transitions
+    // iOS Safari can delay WebSocket reconnection by 10-30 seconds
+    options.DisconnectedCircuitMaxRetained = 100;
+    options.DisconnectedCircuitRetentionPeriod = TimeSpan.FromMinutes(10);
+    options.JSInteropDefaultCallTimeout = TimeSpan.FromMinutes(2);
+    options.MaxBufferedUnacknowledgedRenderBatches = 20;
+});
+
+// Configure SignalR with iOS-optimized timeouts and stateful reconnect support
+builder.Services.AddSignalR(options =>
+{
+    // Server timeout: How long to wait for a message from the client
+    // Set higher for iOS which can suspend WebSocket for 10-30 seconds
+    options.ClientTimeoutInterval = TimeSpan.FromSeconds(60);
+
+    // Keep alive interval: How often to ping the client
+    options.KeepAliveInterval = TimeSpan.FromSeconds(15);
+
+    // Enable detailed errors in development
+    options.EnableDetailedErrors = builder.Environment.IsDevelopment();
+
+    // Allow larger messages for complex state transfers
+    options.MaximumReceiveMessageSize = 256 * 1024; // 256KB
+
+    // Stateful reconnect buffer size (for .NET 10 stateful reconnect)
+    options.StatefulReconnectBufferSize = 100 * 1024; // 100KB
+});
 builder.Services.AddWorkerServices();
 builder.Services.AddVibeSwarmData(connectionString);
 

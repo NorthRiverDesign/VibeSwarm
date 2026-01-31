@@ -1,9 +1,18 @@
 // Global SignalR connection manager for VibeSwarm
+// Enhanced for iOS PWA with stateful reconnect support
 // This maintains a single SignalR connection that persists across page navigation
 // and provides global notification capabilities
 
 (function () {
 	"use strict";
+
+	// iOS PWA detection
+	const isIOS =
+		/iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+	const isStandalone =
+		window.navigator.standalone === true ||
+		window.matchMedia("(display-mode: standalone)").matches;
+	const isIOSPWA = isIOS && isStandalone;
 
 	const VibeSwarmHub = {
 		connection: null,
@@ -11,11 +20,13 @@
 		isConnected: false,
 		dotNetReference: null,
 		reconnectAttempts: 0,
-		maxReconnectAttempts: 10,
+		maxReconnectAttempts: isIOSPWA ? 20 : 10,
 		eventHandlers: {},
 		pendingSubscriptions: [],
+		lastPingTime: Date.now(),
+		isIOSPWA: isIOSPWA,
 
-		// Initialize the global SignalR connection
+		// Initialize the global SignalR connection with stateful reconnect
 		async initialize(dotNetRef) {
 			if (this.isConnecting || this.isConnected) {
 				// Already connected or connecting, just update the reference
@@ -30,19 +41,54 @@
 				// Wait for signalR to be available
 				await this.waitForSignalR();
 
-				this.connection = new signalR.HubConnectionBuilder()
+				// Build connection with stateful reconnect support
+				const builder = new signalR.HubConnectionBuilder()
 					.withUrl("/jobhub")
 					.withAutomaticReconnect({
 						nextRetryDelayInMilliseconds: (retryContext) => {
-							// Exponential backoff: 0, 1s, 2s, 5s, 10s, 30s, then 60s
+							// iOS needs longer delays due to WebSocket suspension
+							if (isIOSPWA) {
+								const iosDelays = [
+									0, 2000, 5000, 10000, 15000, 20000, 30000, 45000, 60000,
+								];
+								return retryContext.previousRetryCount < iosDelays.length
+									? iosDelays[retryContext.previousRetryCount]
+									: 60000;
+							}
+							// Standard exponential backoff
 							const delays = [0, 1000, 2000, 5000, 10000, 30000, 60000];
 							return delays[
 								Math.min(retryContext.previousRetryCount, delays.length - 1)
 							];
 						},
 					})
-					.configureLogging(signalR.LogLevel.Warning)
-					.build();
+					.configureLogging(signalR.LogLevel.Warning);
+
+				// Enable stateful reconnect for .NET 10+ (buffers messages during brief disconnections)
+				if (builder.withStatefulReconnect) {
+					builder.withStatefulReconnect({ bufferSize: 100000 });
+					console.log("[VibeSwarmHub] Stateful reconnect enabled");
+				}
+
+				// Set timeouts optimized for iOS
+				if (builder.withServerTimeout) {
+					builder.withServerTimeout(isIOSPWA ? 60000 : 30000);
+				}
+				if (builder.withKeepAliveInterval) {
+					builder.withKeepAliveInterval(15000);
+				}
+
+				this.connection = builder.build();
+
+				// Set connection properties directly if available
+				if (this.connection.serverTimeoutInMilliseconds !== undefined) {
+					this.connection.serverTimeoutInMilliseconds = isIOSPWA
+						? 60000
+						: 30000;
+				}
+				if (this.connection.keepAliveIntervalInMilliseconds !== undefined) {
+					this.connection.keepAliveIntervalInMilliseconds = 15000;
+				}
 
 				this.registerEventHandlers();
 				this.setupConnectionEvents();
@@ -51,8 +97,11 @@
 				this.isConnected = true;
 				this.isConnecting = false;
 				this.reconnectAttempts = 0;
+				this.lastPingTime = Date.now();
 
-				console.log("[VibeSwarmHub] Connected successfully");
+				console.log(
+					`[VibeSwarmHub] Connected successfully ${isIOSPWA ? "(iOS PWA mode)" : ""}`,
+				);
 
 				// Process any pending subscriptions
 				await this.processPendingSubscriptions();
@@ -191,31 +240,57 @@
 		setupConnectionEvents() {
 			this.connection.onreconnecting((error) => {
 				this.isConnected = false;
-				console.log("[VibeSwarmHub] Reconnecting...", error);
+				console.log("[VibeSwarmHub] Reconnecting...", error?.message || "");
 				this.notifyDotNet("OnConnectionStateChanged", "Reconnecting");
+
+				// Dispatch event for reconnect handler
+				window.dispatchEvent(
+					new CustomEvent("signalr-reconnecting", { detail: { error } }),
+				);
 			});
 
 			this.connection.onreconnected(async (connectionId) => {
 				this.isConnected = true;
 				this.reconnectAttempts = 0;
-				console.log("[VibeSwarmHub] Reconnected");
+				this.lastPingTime = Date.now();
+				console.log(
+					"[VibeSwarmHub] Reconnected with connectionId:",
+					connectionId,
+				);
 				this.notifyDotNet("OnConnectionStateChanged", "Connected");
 
 				// Re-process subscriptions after reconnection
 				await this.processPendingSubscriptions();
+
+				// Dispatch event for reconnect handler
+				window.dispatchEvent(
+					new CustomEvent("signalr-reconnected", { detail: { connectionId } }),
+				);
+
+				// Update ReconnectHandler's ping time
+				if (window.ReconnectHandler) {
+					window.ReconnectHandler.lastSuccessfulPing = Date.now();
+				}
 			});
 
 			this.connection.onclose(async (error) => {
 				this.isConnected = false;
-				console.log("[VibeSwarmHub] Connection closed", error);
+				console.log("[VibeSwarmHub] Connection closed", error?.message || "");
 				this.notifyDotNet("OnConnectionStateChanged", "Disconnected");
+
+				// Dispatch event for reconnect handler
+				window.dispatchEvent(
+					new CustomEvent("signalr-closed", { detail: { error } }),
+				);
 
 				// Auto-reconnect after connection closed (handles iOS background suspension)
 				if (!this.isConnecting && document.visibilityState === "visible") {
 					console.log(
 						"[VibeSwarmHub] Attempting auto-reconnect after connection close",
 					);
-					setTimeout(() => this.attemptReconnect(), 2000);
+					// Use longer delay for iOS PWA
+					const delay = this.isIOSPWA ? 3000 : 2000;
+					setTimeout(() => this.attemptReconnect(), delay);
 				}
 			});
 		},
@@ -239,21 +314,41 @@
 			try {
 				this.isConnecting = true;
 
-				// Create a fresh connection
+				// Create a fresh connection with stateful reconnect
 				await this.waitForSignalR();
 
-				this.connection = new signalR.HubConnectionBuilder()
+				const builder = new signalR.HubConnectionBuilder()
 					.withUrl("/jobhub")
 					.withAutomaticReconnect({
 						nextRetryDelayInMilliseconds: (retryContext) => {
+							if (this.isIOSPWA) {
+								const iosDelays = [
+									0, 2000, 5000, 10000, 15000, 20000, 30000, 45000, 60000,
+								];
+								return retryContext.previousRetryCount < iosDelays.length
+									? iosDelays[retryContext.previousRetryCount]
+									: 60000;
+							}
 							const delays = [0, 1000, 2000, 5000, 10000, 30000, 60000];
 							return delays[
 								Math.min(retryContext.previousRetryCount, delays.length - 1)
 							];
 						},
 					})
-					.configureLogging(signalR.LogLevel.Warning)
-					.build();
+					.configureLogging(signalR.LogLevel.Warning);
+
+				// Enable stateful reconnect
+				if (builder.withStatefulReconnect) {
+					builder.withStatefulReconnect({ bufferSize: 100000 });
+				}
+				if (builder.withServerTimeout) {
+					builder.withServerTimeout(this.isIOSPWA ? 60000 : 30000);
+				}
+				if (builder.withKeepAliveInterval) {
+					builder.withKeepAliveInterval(15000);
+				}
+
+				this.connection = builder.build();
 
 				this.registerEventHandlers();
 				this.setupConnectionEvents();
@@ -262,19 +357,28 @@
 				this.isConnected = true;
 				this.isConnecting = false;
 				this.reconnectAttempts = 0;
+				this.lastPingTime = Date.now();
 
 				console.log("[VibeSwarmHub] Reconnected successfully");
 				this.notifyDotNet("OnConnectionStateChanged", "Connected");
 
 				// Re-process subscriptions
 				await this.processPendingSubscriptions();
+
+				// Dispatch reconnect event
+				window.dispatchEvent(
+					new CustomEvent("signalr-reconnected", {
+						detail: { connectionId: this.connection.connectionId },
+					}),
+				);
 			} catch (err) {
 				this.isConnecting = false;
 				console.error("[VibeSwarmHub] Reconnect failed:", err);
 
 				// Try again with exponential backoff
+				const baseDelay = this.isIOSPWA ? 2000 : 1000;
 				const delay = Math.min(
-					1000 * Math.pow(2, this.reconnectAttempts),
+					baseDelay * Math.pow(2, this.reconnectAttempts),
 					60000,
 				);
 				setTimeout(() => this.attemptReconnect(), delay);

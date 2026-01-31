@@ -898,6 +898,80 @@ body.vs-modal-open {
 /* ============================================
    14. BLAZOR RECONNECTION MODAL (PWA)
 ============================================ */
+
+/* Non-intrusive Toast Notification (iOS-native style) */
+.reconnect-toast {
+    position: fixed;
+    top: calc(var(--vs-safe-area-top, 0px) + 1rem);
+    left: 50%;
+    transform: translateX(-50%) translateY(-120%);
+    z-index: 10000;
+    min-width: 200px;
+    max-width: calc(100% - 2rem);
+    background: var(--bs-body-bg);
+    border: 1px solid var(--bs-border-color);
+    border-radius: 1rem;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    opacity: 0;
+    transition: transform 0.3s ease-out, opacity 0.3s ease-out;
+    overflow: hidden;
+}
+
+.reconnect-toast-show {
+    transform: translateX(-50%) translateY(0);
+    opacity: 1;
+}
+
+.reconnect-toast-content {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+}
+
+.reconnect-toast-icon {
+    flex-shrink: 0;
+}
+
+.reconnect-toast-spinner {
+    width: 20px;
+    height: 20px;
+    border: 2px solid var(--bs-border-color);
+    border-top-color: var(--vs-accent-blue);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+.reconnect-toast-text {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+}
+
+.reconnect-toast-title {
+    font-weight: 600;
+    font-size: 0.875rem;
+    color: var(--bs-body-color);
+}
+
+.reconnect-toast-message {
+    font-size: 0.75rem;
+    color: var(--bs-secondary-color);
+}
+
+.reconnect-toast-progress {
+    height: 2px;
+    background: var(--vs-accent-blue);
+    width: 100%;
+    transform-origin: left;
+}
+
+@keyframes reconnect-progress {
+    from { transform: scaleX(1); }
+    to { transform: scaleX(0); }
+}
+
+/* Full-screen Modal (for extended disconnections) */
 #components-reconnect-modal {
     position: fixed;
     inset: 0;
@@ -938,6 +1012,10 @@ body.vs-modal-open {
 .reconnect-message {
     color: var(--bs-body-color);
     font-size: 1rem;
+    margin-bottom: 0.5rem;
+}
+
+.reconnect-submessage {
     margin-bottom: 1rem;
 }
 
