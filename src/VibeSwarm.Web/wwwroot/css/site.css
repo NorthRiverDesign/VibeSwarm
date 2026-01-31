@@ -815,7 +815,7 @@ body.vs-modal-open {
         max-width: none;
         display: flex;
         flex-direction: column;
-        height: calc(100vh - var(--vs-header-height) - var(--vs-safe-area-top));
+        height: calc(100vh - var(--vs-safe-area-top));
     }
 
     .jobs-inbox-layout { flex: 1; height: 100%; margin: 0; }
