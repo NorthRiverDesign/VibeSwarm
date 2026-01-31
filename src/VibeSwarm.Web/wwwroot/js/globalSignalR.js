@@ -283,8 +283,15 @@
 					new CustomEvent("signalr-closed", { detail: { error } }),
 				);
 
-				// Auto-reconnect after connection closed (handles iOS background suspension)
-				if (!this.isConnecting && document.visibilityState === "visible") {
+				// Only auto-reconnect if:
+				// 1. Not already connecting
+				// 2. Page is visible
+				// 3. Blazor circuit isn't marked as dead
+				if (
+					!this.isConnecting &&
+					document.visibilityState === "visible" &&
+					!window.VibeSwarmReconnect?.circuitDead
+				) {
 					console.log(
 						"[VibeSwarmHub] Attempting auto-reconnect after connection close",
 					);
@@ -298,6 +305,14 @@
 		// Attempt to reconnect the SignalR hub
 		async attemptReconnect() {
 			if (this.isConnecting || this.isConnected) {
+				return;
+			}
+
+			// Don't attempt if Blazor circuit is dead
+			if (window.VibeSwarmReconnect?.circuitDead) {
+				console.log(
+					"[VibeSwarmHub] Blazor circuit is dead, skipping SignalR reconnect",
+				);
 				return;
 			}
 

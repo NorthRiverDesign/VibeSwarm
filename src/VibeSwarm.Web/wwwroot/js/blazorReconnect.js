@@ -6,13 +6,15 @@
 
 	const ReconnectHandler = {
 		// Configuration
-		maxReconnectAttempts: 15,
+		maxReconnectAttempts: 8, // Reduced - if circuit is dead, more attempts won't help
 		reconnectAttempts: 0,
 		reconnectTimeout: null,
 		isReconnecting: false,
 		lastVisibilityChange: Date.now(),
 		connectionLostTime: null,
 		lastSuccessfulPing: Date.now(),
+		circuitDead: false, // Track if circuit is confirmed dead
+		consecutiveFailures: 0, // Track consecutive reconnect failures
 
 		// iOS-specific detection
 		isIOS: /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream,
@@ -22,8 +24,8 @@
 
 		// Retry delay configuration with exponential backoff
 		getRetryDelay(attempt) {
-			// Delays: 2s, 4s, 6s, 8s, 10s, 15s, 20s, 30s, then cap at 30s
-			const delays = [2000, 4000, 6000, 8000, 10000, 15000, 20000, 30000];
+			// Shorter delays - if circuit is dead, we want to detect it quickly
+			const delays = [1000, 2000, 3000, 4000, 5000, 8000, 10000, 15000];
 			return delays[Math.min(attempt, delays.length - 1)];
 		},
 
@@ -38,6 +40,12 @@
 			return this.isIOSPWA ? 120000 : 180000; // 2 or 3 minutes
 		},
 
+		// Circuit timeout threshold - if background for longer than this, circuit is likely dead
+		get circuitDeadThreshold() {
+			// Blazor Server circuits typically timeout after 3-5 minutes of inactivity
+			return 180000; // 3 minutes
+		},
+
 		get isIOSPWA() {
 			return this.isIOS && this.isStandalone;
 		},
@@ -48,6 +56,7 @@
 			this.setupHeartbeat();
 			this.setupNetworkHandlers();
 			this.setupFreezeHandler();
+			this.setupCircuitDeadDetection();
 
 			// Store reference in global state
 			if (window.VibeSwarmReconnect) {
@@ -59,6 +68,40 @@
 			);
 		},
 
+		// Setup detection for dead circuit scenarios
+		setupCircuitDeadDetection() {
+			// Listen for Blazor's "Circuit not initialized" error
+			const originalConsoleError = console.error;
+			console.error = (...args) => {
+				const message = args.join(" ");
+				if (
+					message.includes("Circuit not initialized") ||
+					message.includes("circuit has been shut down") ||
+					message.includes("Circuit has been disposed")
+				) {
+					console.log(
+						"[ReconnectHandler] Circuit dead detected via console error",
+					);
+					this.handleCircuitDead();
+				}
+				originalConsoleError.apply(console, args);
+			};
+
+			// Also listen for the SignalR disconnection after reconnect (indicates circuit is dead)
+			window.addEventListener("signalr-closed", (event) => {
+				// If we just reconnected but then immediately closed, circuit is likely dead
+				if (this.isReconnecting) {
+					this.consecutiveFailures++;
+					if (this.consecutiveFailures >= 2) {
+						console.log(
+							"[ReconnectHandler] Multiple reconnect failures - circuit likely dead",
+						);
+						this.handleCircuitDead();
+					}
+				}
+			});
+		},
+
 		// Handle page visibility changes (app going to/from background)
 		setupVisibilityHandler() {
 			document.addEventListener("visibilitychange", () => {
@@ -67,6 +110,15 @@
 					console.log(
 						`[ReconnectHandler] App became visible after ${Math.round(timeSinceHidden / 1000)}s`,
 					);
+
+					// If we were in background longer than circuit timeout, circuit is likely dead
+					if (timeSinceHidden > this.circuitDeadThreshold) {
+						console.log(
+							"[ReconnectHandler] Background duration exceeded circuit timeout - reloading",
+						);
+						this.reloadPage();
+						return;
+					}
 
 					// iOS PWA: Always check connection when becoming visible
 					if (this.isIOSPWA || timeSinceHidden > this.backgroundThreshold) {
@@ -222,6 +274,11 @@
 				error?.message || "Unknown",
 			);
 
+			// Reset circuit dead flag on new connection down
+			this.circuitDead = false;
+			this.consecutiveFailures = 0;
+			this.connectionLostTime = Date.now();
+
 			// Determine if we should show toast or modal
 			const timeSinceHidden = Date.now() - this.lastVisibilityChange;
 			const isExtendedBackground =
@@ -236,6 +293,42 @@
 			this.startReconnectAttempts();
 		},
 
+		// Handle when circuit is confirmed dead (requires page reload)
+		handleCircuitDead() {
+			if (this.circuitDead) return; // Already handled
+
+			this.circuitDead = true;
+			this.clearReconnectTimeout();
+			this.isReconnecting = false;
+
+			console.log("[ReconnectHandler] Circuit is dead - page reload required");
+
+			// Show modal with reload button immediately
+			this.hideReconnectToast();
+			this.showReconnectModal();
+			this.updateReconnectMessage("Connection lost - reload required");
+			this.showReloadButton();
+
+			// Auto-reload after a short delay for better UX
+			setTimeout(() => {
+				if (this.circuitDead) {
+					console.log("[ReconnectHandler] Auto-reloading page");
+					this.reloadPage();
+				}
+			}, 3000);
+		},
+
+		// Reload the page with cache bypass
+		reloadPage() {
+			// Clear any stale state
+			if (window.VibeSwarmReconnect) {
+				window.VibeSwarmReconnect.isReconnecting = false;
+			}
+
+			// Use cache-busting reload
+			window.location.reload(true);
+		},
+
 		// Handle connection restored
 		handleConnectionUp() {
 			console.log("[ReconnectHandler] Connection restored");
@@ -243,6 +336,8 @@
 			this.reconnectAttempts = 0;
 			this.isReconnecting = false;
 			this.lastSuccessfulPing = Date.now();
+			this.circuitDead = false;
+			this.consecutiveFailures = 0;
 
 			this.hideReconnectToast();
 			this.hideReconnectModal();
@@ -259,6 +354,15 @@
 		async checkAndReconnect(useModal = false) {
 			if (this.isReconnecting) {
 				console.log("[ReconnectHandler] Already reconnecting, skipping");
+				return;
+			}
+
+			// If circuit is known dead, just reload
+			if (this.circuitDead || window.VibeSwarmReconnect?.circuitDead) {
+				console.log(
+					"[ReconnectHandler] Circuit is dead, triggering page reload",
+				);
+				this.reloadPage();
 				return;
 			}
 
@@ -296,44 +400,53 @@
 		// Check Blazor connection status
 		isBlazorConnected() {
 			return new Promise((resolve) => {
+				// If circuit is known dead, not connected
+				if (this.circuitDead) {
+					resolve(false);
+					return;
+				}
+
 				// Check the reconnect state flag
 				if (window.VibeSwarmReconnect?.isReconnecting) {
 					resolve(false);
 					return;
 				}
 
+				// Check if the reconnect modal is showing (Blazor's indication of disconnect)
+				const modal = document.getElementById("components-reconnect-modal");
+				if (modal && modal.classList.contains("components-reconnect-show")) {
+					resolve(false);
+					return;
+				}
+
 				// Try to check internal Blazor state
-				if (
-					window.Blazor &&
-					window.Blazor._internal &&
-					window.Blazor._internal.navigationManager
-				) {
+				if (window.Blazor) {
 					try {
-						// Circuit is likely alive if we can access internal state
-						resolve(true);
+						// Check for internal circuit state if available
+						if (window.Blazor._internal?.navigationManager) {
+							// Circuit is likely alive if we can access internal state
+							resolve(true);
+							return;
+						}
 					} catch {
-						resolve(false);
-					}
-				} else {
-					// Check if the reconnect modal is showing (Blazor's indication)
-					const modal = document.getElementById("components-reconnect-modal");
-					if (modal && modal.classList.contains("components-reconnect-show")) {
-						resolve(false);
-					} else {
-						resolve(true);
+						// Access error might indicate circuit issues
 					}
 				}
+
+				// Default to checking if Blazor object exists and looks healthy
+				resolve(!!window.Blazor);
 			});
 		},
 
 		// Start reconnection attempts
 		startReconnectAttempts() {
-			if (this.reconnectTimeout) {
-				return; // Already attempting
+			if (this.reconnectTimeout || this.circuitDead) {
+				return; // Already attempting or circuit is dead
 			}
 
 			this.isReconnecting = true;
 			this.reconnectAttempts = 0;
+			this.consecutiveFailures = 0;
 
 			// Start the first attempt
 			this.scheduleNextReconnectAttempt();
@@ -341,6 +454,11 @@
 
 		// Schedule the next reconnect attempt with exponential backoff
 		scheduleNextReconnectAttempt() {
+			// Don't schedule if circuit is dead
+			if (this.circuitDead) {
+				return;
+			}
+
 			this.reconnectAttempts++;
 
 			if (this.reconnectAttempts > this.maxReconnectAttempts) {
@@ -359,6 +477,11 @@
 			this.reconnectTimeout = setTimeout(async () => {
 				this.reconnectTimeout = null;
 
+				// Check again if circuit died while waiting
+				if (this.circuitDead) {
+					return;
+				}
+
 				console.log(
 					`[ReconnectHandler] Reconnect attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts}`,
 				);
@@ -369,8 +492,8 @@
 				if (success) {
 					console.log("[ReconnectHandler] Reconnect succeeded!");
 					this.handleConnectionUp();
-				} else {
-					// Schedule next attempt
+				} else if (!this.circuitDead) {
+					// Only schedule next attempt if circuit isn't confirmed dead
 					this.scheduleNextReconnectAttempt();
 				}
 			}, delay);
@@ -378,12 +501,28 @@
 
 		// Trigger Blazor's reconnection mechanism
 		async triggerBlazorReconnect() {
+			// Don't attempt if circuit is known to be dead
+			if (this.circuitDead) {
+				console.log(
+					"[ReconnectHandler] Circuit is dead, skipping reconnect attempt",
+				);
+				return false;
+			}
+
 			try {
 				// Try Blazor's reconnect method first
 				if (window.Blazor && window.Blazor.reconnect) {
-					const result = await window.Blazor.reconnect();
+					const result = await Promise.race([
+						window.Blazor.reconnect(),
+						// Timeout after 10 seconds
+						new Promise((_, reject) =>
+							setTimeout(() => reject(new Error("Reconnect timeout")), 10000),
+						),
+					]);
+
 					// reconnect() returns true if successful
 					if (result === true) {
+						this.consecutiveFailures = 0;
 						return true;
 					}
 				}
@@ -391,7 +530,20 @@
 				// Check if connection was restored by other means
 				const isConnected = await this.isBlazorConnected();
 				if (isConnected) {
+					this.consecutiveFailures = 0;
 					return true;
+				}
+
+				// Track failure
+				this.consecutiveFailures++;
+
+				// If we've failed multiple times quickly, circuit is likely dead
+				if (this.consecutiveFailures >= 3) {
+					console.log(
+						"[ReconnectHandler] Multiple consecutive failures - circuit likely dead",
+					);
+					this.handleCircuitDead();
+					return false;
 				}
 
 				// Fallback: Try to find and click the reconnect button if it exists
@@ -401,13 +553,29 @@
 				if (reconnectButton) {
 					reconnectButton.click();
 					// Wait a moment and check if it worked
-					await new Promise((resolve) => setTimeout(resolve, 1000));
-					return await this.isBlazorConnected();
+					await new Promise((resolve) => setTimeout(resolve, 2000));
+					const connected = await this.isBlazorConnected();
+					if (connected) {
+						this.consecutiveFailures = 0;
+					}
+					return connected;
 				}
 
 				return false;
 			} catch (error) {
 				console.error("[ReconnectHandler] Error triggering reconnect:", error);
+				this.consecutiveFailures++;
+
+				// Check for circuit dead indicators in error
+				const errorMessage = error?.message || "";
+				if (
+					errorMessage.includes("Circuit") ||
+					errorMessage.includes("timeout") ||
+					this.consecutiveFailures >= 3
+				) {
+					this.handleCircuitDead();
+				}
+
 				return false;
 			}
 		},
@@ -418,15 +586,11 @@
 			this.isReconnecting = false;
 
 			console.log(
-				"[ReconnectHandler] Max reconnect attempts reached, showing reload option",
+				"[ReconnectHandler] Max reconnect attempts reached - circuit is dead",
 			);
 
-			// Switch to modal if we were showing toast
-			this.hideReconnectToast();
-			this.showReconnectModal();
-
-			this.updateReconnectMessage("Connection lost");
-			this.showReloadButton();
+			// Mark circuit as dead and trigger reload
+			this.handleCircuitDead();
 		},
 
 		// Clear reconnection timeout

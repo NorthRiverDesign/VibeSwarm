@@ -72,7 +72,8 @@
             <div class="reconnect-content">
                 <div class="reconnect-spinner"></div>
                 <p class="reconnect-message">Reconnecting to server...</p>
-                <p class="reconnect-submessage text-muted small">This may take a moment after being in the background</p>
+                <p class="reconnect-submessage text-muted small">This may take a moment after being in the background
+                </p>
                 <button id="reconnect-reload-btn" class="btn btn-primary d-none" onclick="location.reload()">
                     Reload App
                 </button>
@@ -81,7 +82,7 @@
 
         <script src="lib/bootstrap/js/bootstrap.bundle.min.js"></script>
         <script src="lib/signalr/signalr.min.js"></script>
-        
+
         <!-- Blazor Server with iOS PWA-optimized reconnection settings -->
         <script src="_framework/blazor.server.js" autostart="false"></script>
         <script>
@@ -89,35 +90,37 @@
             const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
             const isStandalone = window.navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches;
             const isIOSPWA = isIOS && isStandalone;
-            
+
             // Store for reconnection state
             window.VibeSwarmReconnect = {
                 isIOS: isIOS,
                 isIOSPWA: isIOSPWA,
                 lastHiddenTime: null,
                 reconnectAttempts: 0,
-                maxAttempts: 20,
+                maxAttempts: 10,
                 circuitId: null,
-                isReconnecting: false
+                isReconnecting: false,
+                circuitDead: false,
+                lastConnectionTime: Date.now()
             };
-            
+
             // Configure and start Blazor with stateful reconnect
             Blazor.start({
                 // Enable stateful reconnect for .NET 10+ (preserves circuit state during brief disconnections)
                 circuit: {
                     // Configure reconnection policy with iOS-specific delays
                     reconnectionOptions: {
-                        maxRetries: isIOSPWA ? 30 : 20,
-                        retryIntervalMilliseconds: isIOSPWA ? 3000 : 2000,
+                        maxRetries: isIOSPWA ? 15 : 10,
+                        retryIntervalMilliseconds: isIOSPWA ? 2000 : 1500,
                         // Exponential backoff for iOS
                         retryIntervalFunc: (retryContext) => {
                             if (isIOSPWA) {
                                 // iOS needs longer delays due to WebSocket suspension
-                                const delays = [0, 1000, 2000, 3000, 5000, 10000, 15000, 20000, 30000];
+                                const delays = [0, 1000, 2000, 3000, 5000, 8000, 12000, 15000, 20000];
                                 return delays[Math.min(retryContext.previousRetryCount, delays.length - 1)];
                             }
-                            // Standard exponential backoff
-                            return Math.min(1000 * Math.pow(2, retryContext.previousRetryCount), 30000);
+                            // Standard exponential backoff with cap
+                            return Math.min(1000 * Math.pow(1.5, retryContext.previousRetryCount), 20000);
                         }
                     },
                     // Stateful reconnect configuration
@@ -131,15 +134,15 @@
                                     // iOS Safari can take 10-30 seconds to resume WebSocket
                                     if (isIOSPWA) {
                                         const iosDelays = [0, 2000, 5000, 10000, 15000, 20000, 30000, 45000, 60000];
-                                        return retryContext.previousRetryCount < iosDelays.length 
-                                            ? iosDelays[retryContext.previousRetryCount] 
+                                        return retryContext.previousRetryCount < iosDelays.length
+                                            ? iosDelays[retryContext.previousRetryCount]
                                             : 60000;
                                     }
-                                    // Standard delays for other platforms
-                                    const delays = [0, 1000, 2000, 5000, 10000, 30000];
-                                    return retryContext.previousRetryCount < delays.length 
-                                        ? delays[retryContext.previousRetryCount] 
-                                        : null;
+                                    // Standard delays for other platforms - shorter to detect dead circuits faster
+                                    const delays = [0, 1000, 2000, 4000, 8000, 15000];
+                                    return retryContext.previousRetryCount < delays.length
+                                        ? delays[retryContext.previousRetryCount]
+                                        : null; // Stop trying after delays exhausted
                                 }
                             });
                     }
@@ -147,21 +150,41 @@
                 // Custom reconnection handlers
                 reconnectionHandler: {
                     onConnectionDown: function (options, error) {
-                        console.log('[Blazor] Connection down:', error?.message || 'Unknown error');
+                        const errorMsg = error?.message || 'Unknown error';
+                        console.log('[Blazor] Connection down:', errorMsg);
+
                         window.VibeSwarmReconnect.isReconnecting = true;
-                        window.dispatchEvent(new CustomEvent('blazor-connection-down', { detail: { error, options } }));
+                        window.VibeSwarmReconnect.reconnectAttempts++;
+
+                        // Check for circuit-specific errors that indicate permanent failure
+                        if (errorMsg.includes('Circuit') ||
+                            errorMsg.includes('circuit') ||
+                            errorMsg.includes('not initialized') ||
+                            errorMsg.includes('disposed')) {
+                            console.log('[Blazor] Circuit appears to be dead, marking for reload');
+                            window.VibeSwarmReconnect.circuitDead = true;
+                        }
+
+                        window.dispatchEvent(new CustomEvent('blazor-connection-down', {
+                            detail: { error, options, circuitDead: window.VibeSwarmReconnect.circuitDead }
+                        }));
                     },
                     onConnectionUp: function () {
                         console.log('[Blazor] Connection restored');
                         window.VibeSwarmReconnect.isReconnecting = false;
                         window.VibeSwarmReconnect.reconnectAttempts = 0;
+                        window.VibeSwarmReconnect.circuitDead = false;
+                        window.VibeSwarmReconnect.lastConnectionTime = Date.now();
                         window.dispatchEvent(new CustomEvent('blazor-connection-up'));
                     }
                 }
             }).then(() => {
                 console.log('[Blazor] Started successfully', isIOSPWA ? '(iOS PWA mode)' : '');
+                window.VibeSwarmReconnect.lastConnectionTime = Date.now();
             }).catch((err) => {
                 console.error('[Blazor] Failed to start:', err);
+                // If Blazor fails to start, reload after a delay
+                setTimeout(() => window.location.reload(true), 3000);
             });
         </script>
         <script src="js/globalSignalR.js"></script>
