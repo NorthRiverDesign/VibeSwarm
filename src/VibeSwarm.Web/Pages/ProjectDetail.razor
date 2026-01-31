@@ -6,10 +6,11 @@
 @inject IVersionControlService VersionControlService
 @inject IIdeaService IdeaService
 @inject NavigationManager NavigationManager
-@implements IDisposable
+@implements IAsyncDisposable
 @using VibeSwarm.Shared.Utilities
 @using VibeSwarm.Shared.VersionControl
 @using VibeSwarm.Shared.VersionControl.Models
+@using Microsoft.AspNetCore.SignalR.Client
 
 @if (IsLoading)
 {
@@ -24,7 +25,7 @@ else if (Project == null)
 else
 {
     @* Project Header Component *@
-    <ProjectDetailHeader Name="@Project.Name" Description="@Project.Description" WorkingPath="@Project.WorkingPath"
+    <ProjectDetailHeaderCompact Name="@Project.Name" WorkingPath="@Project.WorkingPath"
         GitHubRepository="@Project.GitHubRepository" IsGitRepository="@IsGitRepository" Branches="@Branches"
         CurrentBranch="@CurrentBranch" CurrentCommitHash="@CurrentCommitHash"
         IsGitOperationInProgress="@IsGitOperationInProgress" GitOperationMessage="@GitOperationMessage"
@@ -36,9 +37,9 @@ else
         OnBranchSelected="RequestBranchSwitch" OnUncommittedChangesClick="ShowUncommittedChangesModal"
         OnClearGitMessage="ClearGitMessage" />
 
-    <div class="row g-3 g-lg-4">
-        @* Ideas Panel on right on desktop, second on mobile *@
-        <div class="col-12 col-lg-4 order-1 order-lg-2">
+    <div class="row g-3">
+        @* Ideas Panel on LEFT on desktop for easier access *@
+        <div class="col-12 col-xl-5 col-xxl-4 order-2 order-xl-1">
             @* Ideas Panel Component *@
             <IdeasPanel Ideas="@Ideas" CurrentProjectId="@ProjectId" IsProcessingActive="@IsIdeasProcessingActive"
                 IsTogglingProcessing="@_isTogglingIdeasProcessing" HasDefaultProvider="@HasDefaultProvider"
@@ -47,8 +48,8 @@ else
                 OnDeleteIdea="DeleteIdea" OnCopyIdea="CopyIdea" OnMoveIdea="MoveIdea" OnStartSingleIdea="StartSingleIdea" />
         </div>
 
-        @* Jobs list second on mobile *@
-        <div class="col-12 col-lg-8 order-2 order-lg-1">
+        @* Jobs list on RIGHT for monitoring progress *@
+        <div class="col-12 col-xl-7 col-xxl-8 order-1 order-xl-2">
             <ProjectJobsList Jobs="@Jobs" OnDeleteJob="DeleteJob" OnCreateJob="ShowCreateJobModal" />
         </div>
     </div>
@@ -112,7 +113,6 @@ else
     private string? GitOperationMessage { get; set; }
     private bool GitOperationSuccess { get; set; }
     private string? GitProgressMessage { get; set; }
-    private string? _currentGitOperation;
 
     // Create branch modal state
     private bool _showCreateBranchModal { get; set; }
@@ -155,11 +155,93 @@ else
     j.Status == JobStatus.Started ||
     j.Status == JobStatus.Processing);
 
+    // SignalR connection
+    private HubConnection? _hubConnection;
+
     protected override async Task OnInitializedAsync()
     {
         await LoadData();
         await LoadGitInfo();
+        await InitializeSignalR();
         StartAutoRefresh();
+    }
+
+    private async Task InitializeSignalR()
+    {
+        _hubConnection = new HubConnectionBuilder()
+        .WithUrl(NavigationManager.ToAbsoluteUri("/hubs/job"))
+        .WithAutomaticReconnect()
+        .Build();
+
+        // Listen for job updates (status changes sent as jobId, status)
+        _hubConnection.On<string, string>("JobStatusChanged", async (jobId, status) =>
+        {
+            await InvokeAsync(async () =>
+    {
+            await RefreshJobs();
+            await LoadIdeas();
+            StateHasChanged();
+        });
+        });
+
+        // Job created events include jobId and projectId
+        _hubConnection.On<string, string>("JobCreated", async (jobId, projectId) =>
+        {
+            await InvokeAsync(async () =>
+    {
+            await RefreshJobs();
+            await LoadIdeas();
+            StateHasChanged();
+        });
+        });
+
+        // Job deleted events include jobId and projectId
+        _hubConnection.On<string, string>("JobDeleted", async (jobId, projectId) =>
+        {
+            await InvokeAsync(async () =>
+    {
+            await RefreshJobs();
+            StateHasChanged();
+        });
+        });
+
+        // Activity updates include jobId, activity, and timestamp
+        _hubConnection.On<string, string, DateTime>("JobActivityUpdated", async (jobId, activity, timestamp) =>
+        {
+            await InvokeAsync(() =>
+    {
+            var job = Jobs.FirstOrDefault(j => j.Id.ToString() == jobId);
+            if (job != null)
+            {
+                job.CurrentActivity = activity;
+                StateHasChanged();
+            }
+            return Task.CompletedTask;
+        });
+        });
+
+        // Job completed events
+        _hubConnection.On<string, bool, string?>("JobCompleted", async (jobId, success, errorMessage) =>
+        {
+            await InvokeAsync(async () =>
+    {
+            await RefreshJobs();
+            await LoadIdeas();
+            StateHasChanged();
+        });
+        });
+
+        try
+        {
+            await _hubConnection.StartAsync();
+            // Subscribe to both project-specific and global job list updates for complete coverage
+            await _hubConnection.InvokeAsync("SubscribeToProject", ProjectId.ToString());
+            await _hubConnection.InvokeAsync("SubscribeToJobList");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"SignalR connection failed: {ex.Message}");
+        }
     }
 
     private void StartAutoRefresh()
@@ -292,7 +374,6 @@ else
         if (IsGitOperationInProgress) return;
 
         IsGitOperationInProgress = true;
-        _currentGitOperation = "refresh";
         GitProgressMessage = "Fetching latest branches...";
         StateHasChanged();
 
@@ -315,7 +396,6 @@ else
         {
             IsGitOperationInProgress = false;
             GitProgressMessage = null;
-            _currentGitOperation = null;
             StateHasChanged();
         }
     }
@@ -425,7 +505,6 @@ else
         if (Project == null || string.IsNullOrEmpty(Project.WorkingPath)) return;
 
         IsGitOperationInProgress = true;
-        _currentGitOperation = "sync";
         GitOperationMessage = null;
         StateHasChanged();
 
@@ -461,7 +540,6 @@ else
         {
             IsGitOperationInProgress = false;
             GitProgressMessage = null;
-            _currentGitOperation = null;
             StateHasChanged();
         }
     }
@@ -935,8 +1013,18 @@ else
         }
     }
 
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
         _refreshTimer?.Dispose();
+        if (_hubConnection != null)
+        {
+            try
+            {
+                await _hubConnection.InvokeAsync("UnsubscribeFromProject", ProjectId.ToString());
+                await _hubConnection.InvokeAsync("UnsubscribeFromJobList");
+                await _hubConnection.DisposeAsync();
+            }
+            catch { }
+        }
     }
 }
