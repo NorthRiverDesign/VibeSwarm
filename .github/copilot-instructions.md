@@ -8,6 +8,10 @@ VibeSwarm is written in C# using .NET 10 and Blazor.
 
 A user of VibeSwarm is expected to have accounts with various AI providers and have the necessary API keys or authentication tokens available for use by VibeSwarm. The user is also expected to have a basic understanding of how to set up and configure AI coding agents on their host system.
 
+## Login
+
+When locally developing, use the default credentials stored in the .env.example or .env file.
+
 ## Features
 
 Projects are set up in VibeSwarm which define a code directory. A project may have a single Job running at a time to avoid code conflicts. Multiple jobs can be queued to create features in a sequential manner.

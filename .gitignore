@@ -1,5 +1,6 @@
 # AI Agent files
 .claude/settings.local.json
+.playwright-mcp/
 
 # Environment variables (contains sensitive credentials)
 .env

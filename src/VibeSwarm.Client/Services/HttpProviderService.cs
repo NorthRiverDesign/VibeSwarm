@@ -20,7 +20,13 @@ public class HttpProviderService : IProviderService
         => await _http.GetFromJsonAsync<Provider>($"/api/providers/{id}", ct);
 
     public async Task<Provider?> GetDefaultAsync(CancellationToken ct = default)
-        => await _http.GetFromJsonAsync<Provider?>("/api/providers/default", ct);
+    {
+        var response = await _http.GetAsync("/api/providers/default", ct);
+        if (response.StatusCode == System.Net.HttpStatusCode.NoContent)
+            return null;
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<Provider?>(ct);
+    }
 
     public async Task<Provider> CreateAsync(Provider provider, CancellationToken ct = default)
     {

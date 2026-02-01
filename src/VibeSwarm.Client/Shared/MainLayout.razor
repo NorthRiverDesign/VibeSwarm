@@ -4,6 +4,7 @@
 @inject IJobService JobService
 @inject ChangePasswordModalService ChangePasswordModalService
 @inject HttpClient HttpClient
+@inject NavigationManager NavigationManager
 @implements IAsyncDisposable
 @implements IDisposable
 
@@ -97,9 +98,9 @@
                                 <button class="btn btn-primary" @onclick="RecoverFromError">
                                     <i class="bi bi-arrow-clockwise me-2"></i>Try Again
                                 </button>
-                                <a href="/" class="btn btn-secondary">
+                                <button class="btn btn-secondary" @onclick="NavigateToDashboard">
                                     <i class="bi bi-house me-2"></i>Go to Dashboard
-                                </a>
+                                </button>
                             </div>
                             @if (IsDevelopment())
                             {
@@ -389,6 +390,12 @@
     private void RecoverFromError()
     {
         _errorBoundary?.Recover();
+    }
+
+    private void NavigateToDashboard()
+    {
+        _errorBoundary?.Recover();
+        NavigationManager.NavigateTo("/", forceLoad: false);
     }
 
     private static bool IsDevelopment()
