@@ -298,14 +298,6 @@ else
         ProviderToDelete = null;
     }
 
-    private void HandleDeleteModalClosed()
-    {
-        // Called when modal is closed via backdrop click or X button
-        ShowDeleteModal = false;
-        ProviderToDelete = null;
-        StateHasChanged();
-    }
-
     private async Task ConfirmDelete()
     {
         if (ProviderToDelete == null) return;

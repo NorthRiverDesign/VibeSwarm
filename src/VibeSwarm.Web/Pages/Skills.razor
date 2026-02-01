@@ -73,23 +73,15 @@ else
 	OnCancelled="HandleModalCancelled" OnClosed="HandleSkillModalClosed" />
 
 @* Delete Confirmation Modal *@
-<ModalDialog @bind-IsVisible="_showDeleteModal" Title="Delete Skill" Icon="exclamation-triangle"
-	Size="ModalDialog.ModalSize.Small" OnClose="HandleDeleteModalClosed">
-	<ChildContent>
-		<p>Are you sure you want to delete <strong>@_skillToDelete?.Name</strong>?</p>
-		<p class="text-body-secondary small mb-0">This action cannot be undone.</p>
-	</ChildContent>
-	<FooterContent>
-		<button type="button" class="btn btn-secondary" @onclick="CancelDelete">Cancel</button>
-		<button type="button" class="btn btn-danger" @onclick="ConfirmDelete" disabled="@_isDeleting">
-			@if (_isDeleting)
-			{
-				<span class="spinner-border spinner-border-sm me-1" role="status"></span>
-			}
-			Delete
-		</button>
-	</FooterContent>
-</ModalDialog>
+<ConfirmationModal @bind-IsVisible="_showDeleteModal"
+	Title="Delete Skill"
+	Message="@($"Are you sure you want to delete {_skillToDelete?.Name}?")"
+	SubMessage="This action cannot be undone."
+	ConfirmText="Delete"
+	ButtonClass="btn-danger"
+	IsProcessing="_isDeleting"
+	OnConfirm="ConfirmDelete"
+	OnCancel="CancelDelete" />
 
 @code {
 	private List<Skill> _skillsList = new();
@@ -185,14 +177,6 @@ else
 	{
 		_showDeleteModal = false;
 		_skillToDelete = null;
-	}
-
-	private void HandleDeleteModalClosed()
-	{
-		// Called when modal is closed via backdrop click or X button
-		_showDeleteModal = false;
-		_skillToDelete = null;
-		StateHasChanged();
 	}
 
 	private async Task ConfirmDelete()
