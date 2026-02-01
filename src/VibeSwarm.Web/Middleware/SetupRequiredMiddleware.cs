@@ -22,7 +22,8 @@ public class SetupRequiredMiddleware
 		"/favicon",
 		"/cert",
 		"/_framework/",
-		"/_blazor"
+		"/_blazor",
+		"/api/"
 	};
 
 	public SetupRequiredMiddleware(RequestDelegate next, ILogger<SetupRequiredMiddleware> logger)
