@@ -30,11 +30,20 @@ public class CreateUserModel
 	public string UserName { get; set; } = string.Empty;
 	public string? Email { get; set; }
 	public string Password { get; set; } = string.Empty;
-	public string Role { get; set; } = DatabaseSeeder.UserRole;
+	public string Role { get; set; } = UserRoles.User;
 }
 
 public class UpdateUserModel
 {
 	public string? Email { get; set; }
 	public string? Role { get; set; }
+}
+
+/// <summary>
+/// User role constants shared across client and server
+/// </summary>
+public static class UserRoles
+{
+	public const string Admin = "Admin";
+	public const string User = "User";
 }

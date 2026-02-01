@@ -1,0 +1,829 @@
+/* ============================================
+   VibeSwarm - Application Styles (Minimized)
+   ============================================
+   
+   This file contains ONLY styles that cannot be achieved with Bootstrap.
+   All padding, margin, colors, flexbox, and common utilities should use 
+   Bootstrap classes directly in Razor components.
+   
+   Organization:
+   1. CSS Variables (App-specific theming & PWA safe areas)
+   2. App Layout Shell (PWA-optimized positioning)
+   3. Navigation (Custom nav styling with active states)
+   4. Utility Classes (Bootstrap extensions that don't exist)
+   5. Console/Terminal Output (Specialized monospace styling)
+   6. Git Diff Viewer (Syntax highlighting)
+   7. Chat/Message Bubbles (iMessage-style specialized UI)
+   8. Toggle Switch (Custom form control)
+   9. Jobs Inbox Layout (Complex responsive layout)
+   10. Modal System (PWA-optimized)
+   11. Toast Container (Safe area aware)
+   12. Responsive Overrides
+   13. PWA & Touch Optimizations
+   
+============================================ */
+
+/* ============================================
+   1. CSS VARIABLES
+============================================ */
+:root {
+    /* Layout dimensions */
+    --vs-sidebar-width: 240px;
+    --vs-header-height: 56px;
+    
+    /* Accent colors (GitHub-inspired) */
+    --vs-accent-blue: #58a6ff;
+    --vs-accent-green: #3fb950;
+    --vs-accent-orange: #d29922;
+    --vs-accent-red: #f85149;
+    --vs-accent-purple: #a371f7;
+    
+    /* Animation timing */
+    --vs-transition: 0.2s ease;
+    
+    /* PWA: iOS Safe Area Insets */
+    --vs-safe-area-top: env(safe-area-inset-top, 0px);
+    --vs-safe-area-bottom: env(safe-area-inset-bottom, 0px);
+    --vs-safe-area-left: env(safe-area-inset-left, 0px);
+    --vs-safe-area-right: env(safe-area-inset-right, 0px);
+}
+
+/* ============================================
+   2. APP LAYOUT SHELL (PWA-optimized)
+============================================ */
+html {
+    font-size: 16px;
+    -webkit-text-size-adjust: 100%;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif;
+    padding-left: var(--vs-safe-area-left);
+    padding-right: var(--vs-safe-area-right);
+}
+
+.app-layout {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.app-header {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: calc(var(--vs-header-height) + var(--vs-safe-area-top));
+    background: var(--bs-secondary-bg);
+    border-bottom: 1px solid var(--bs-border-color);
+    display: flex;
+    align-items: center;
+    padding: var(--vs-safe-area-top) 1rem 0 1rem;
+    padding-left: calc(1rem + var(--vs-safe-area-left));
+    padding-right: calc(1rem + var(--vs-safe-area-right));
+    z-index: 1000;
+    gap: 1rem;
+}
+
+.nav-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    color: var(--bs-body-color);
+    font-size: 1.5rem;
+    background: transparent;
+    border: none;
+    border-radius: var(--bs-border-radius);
+}
+
+.nav-toggle:hover {
+    background: var(--bs-tertiary-bg);
+    color: var(--bs-emphasis-color);
+}
+
+.app-brand {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    text-decoration: none !important;
+    color: var(--bs-body-color);
+    font-weight: 600;
+    font-size: 1.125rem;
+}
+
+.app-brand:hover { color: var(--bs-emphasis-color); }
+
+.brand-icon {
+    width: 24px;
+    height: 24px;
+    object-fit: contain;
+}
+
+.app-sidebar {
+    position: fixed;
+    top: calc(var(--vs-header-height) + var(--vs-safe-area-top));
+    left: 0;
+    bottom: 0;
+    width: var(--vs-sidebar-width);
+    background: var(--bs-secondary-bg);
+    border-right: 1px solid var(--bs-border-color);
+    display: flex;
+    flex-direction: column;
+    z-index: 999;
+    transform: translateX(-100%);
+    transition: transform var(--vs-transition);
+    overflow-y: auto;
+    padding-bottom: var(--vs-safe-area-bottom);
+    padding-left: var(--vs-safe-area-left);
+}
+
+.app-sidebar.open { transform: translateX(0); }
+
+.sidebar-overlay {
+    position: fixed;
+    top: calc(var(--vs-header-height) + var(--vs-safe-area-top));
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 998;
+}
+
+.app-main {
+    flex: 1;
+    margin-top: calc(var(--vs-header-height) + var(--vs-safe-area-top));
+    min-height: calc(100vh - var(--vs-header-height) - var(--vs-safe-area-top));
+    padding-bottom: var(--vs-safe-area-bottom);
+}
+
+.main-content {
+    padding: 1rem;
+    padding-left: calc(1rem + var(--vs-safe-area-left));
+    padding-right: calc(1rem + var(--vs-safe-area-right));
+    max-width: 100%;
+}
+
+/* Desktop Layout */
+@media (min-width: 992px) {
+    .app-layout { flex-direction: row; }
+
+    .app-sidebar {
+        position: fixed;
+        top: 0;
+        transform: translateX(0);
+        padding-top: var(--vs-safe-area-top);
+    }
+
+    .app-main {
+        margin-top: var(--vs-safe-area-top);
+        margin-left: var(--vs-sidebar-width);
+        min-height: calc(100vh - var(--vs-safe-area-top));
+    }
+
+    .main-content {
+        padding: 1.5rem 2rem;
+        padding-right: calc(2rem + var(--vs-safe-area-right));
+        max-width: 1400px;
+        margin-inline: auto;
+    }
+}
+
+/* ============================================
+   3. NAVIGATION (Custom active states)
+============================================ */
+.nav-item {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.5rem 1rem;
+    color: var(--bs-secondary-color);
+    text-decoration: none !important;
+    border-radius: var(--bs-border-radius);
+    transition: all var(--vs-transition);
+    font-weight: 500;
+}
+
+.nav-item i {
+    font-size: 1.125rem;
+    width: 20px;
+    text-align: center;
+}
+
+.nav-item:hover {
+    background: var(--bs-tertiary-bg);
+    color: var(--bs-emphasis-color);
+}
+
+.nav-item.active {
+    background: rgba(88, 166, 255, 0.15);
+    color: var(--vs-accent-blue);
+}
+
+/* ============================================
+   4. UTILITY CLASSES (Bootstrap extensions)
+============================================ */
+.cursor-pointer { cursor: pointer; }
+
+.project-card-hover {
+    transition: all var(--vs-transition);
+}
+
+.project-card-hover:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--bs-box-shadow);
+}
+
+.hover-bg-tertiary:hover { background: var(--bs-tertiary-bg); }
+.hover-underline:hover { text-decoration: underline !important; }
+
+/* Multi-line text truncation (Bootstrap only has single-line) */
+.text-truncate-lines-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.text-truncate-lines-3 {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+/* Critical for flex truncation - Bootstrap lacks this */
+.min-width-0 { min-width: 0; }
+
+/* Loading spinner animation */
+.spin { animation: spin 1s linear infinite; }
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Live indicator pulse */
+.live-indicator {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    background: var(--vs-accent-green);
+    border-radius: 50%;
+    animation: pulse-live 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-live {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(0.9); }
+}
+
+/* Alert accent borders */
+.alert-danger { border-left: 3px solid var(--vs-accent-red); }
+.alert-success { border-left: 3px solid var(--vs-accent-green); }
+.alert-warning { border-left: 3px solid var(--vs-accent-orange); }
+.alert-info { border-left: 3px solid var(--vs-accent-blue); }
+
+/* ============================================
+   5. CONSOLE/TERMINAL OUTPUT
+   Only styles Bootstrap cannot provide:
+   - Terminal dark background color
+   - SF Mono font stack (Bootstrap font-monospace is generic)
+   - white-space: pre-wrap (no Bootstrap utility)
+   - overscroll-behavior (no Bootstrap utility)
+   Use with Bootstrap: overflow-auto p-3 rounded-bottom text-break small
+============================================ */
+.terminal-output {
+    background: #0d1117;
+    color: #e6edf3;
+    font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+    white-space: pre-wrap;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+}
+
+/* output-line: Use d-flex gap-2 py-0 in markup. Hover state only. */
+.output-line:hover { background: rgba(255, 255, 255, 0.05); }
+
+/* Terminal timestamp color (no Bootstrap equivalent) */
+.output-time { color: #8b949e; }
+
+/* Terminal error text color */
+.output-error .output-text { color: var(--vs-accent-red); }
+
+/* ============================================
+   6. GIT DIFF VIEWER
+   Extends terminal-output. Add overflow-auto p-2 small in markup.
+============================================ */
+.diff-container > div { padding: 0.1rem 0.5rem; white-space: pre; }
+
+/* Diff syntax highlighting colors (no Bootstrap equivalent) */
+.diff-header { color: var(--vs-accent-blue); }
+.diff-file-header { color: var(--vs-accent-green); }
+.diff-hunk-header { color: var(--vs-accent-purple); background: rgba(163, 113, 247, 0.1); }
+.diff-added { background: rgba(63, 185, 80, 0.2); color: #7ee787; }
+.diff-removed { background: rgba(248, 81, 73, 0.2); color: #ffa198; }
+.diff-context { color: #8b949e; }
+.diff-meta { color: #8b949e; font-style: italic; }
+
+/* Monospace font for diff file names (Bootstrap font-monospace is generic) */
+.diff-file-name { font-family: 'SF Mono', monospace; }
+.diff-stats { font-family: 'SF Mono', monospace; }
+
+/* ============================================
+   7. CHAT/MESSAGE BUBBLES (iMessage-style)
+   Use d-flex flex-column gap-3 overflow-auto p-2 in markup.
+   Custom styles only for specialized radii and accent colors.
+============================================ */
+
+/* Chat message alignment (no Bootstrap equivalent for self-alignment) */
+.chat-message { max-width: 85%; }
+.chat-message-user { align-self: flex-end; align-items: flex-end; }
+.chat-message-assistant { align-self: flex-start; align-items: flex-start; }
+.chat-message-system { align-self: center; align-items: center; max-width: 90%; }
+.chat-message-tooluse,
+.chat-message-toolresult { align-self: flex-start; align-items: flex-start; }
+
+/* Chat bubble styling - specialized rounded corners and accent colors */
+.chat-bubble {
+    border-radius: 1.25rem;
+}
+
+.chat-message-user .chat-bubble {
+    background: var(--vs-accent-blue);
+    border-bottom-right-radius: 0.25rem;
+}
+
+.chat-message-assistant .chat-bubble {
+    border-bottom-left-radius: 0.25rem;
+}
+
+.chat-message-system .chat-bubble {
+    background: rgba(210, 153, 34, 0.15);
+    border: 1px solid rgba(210, 153, 34, 0.3);
+}
+
+.chat-message-tooluse .chat-bubble {
+    background: rgba(163, 113, 247, 0.1);
+    border: 1px solid rgba(163, 113, 247, 0.3);
+}
+
+.chat-message-toolresult .chat-bubble {
+    background: rgba(63, 185, 80, 0.1);
+    border: 1px solid rgba(63, 185, 80, 0.3);
+}
+
+/* Chat text whitespace (no Bootstrap utility) */
+.chat-text { white-space: pre-wrap; }
+
+/* Tool code block - specialized styling */
+.chat-tool-code {
+    background: rgba(0, 0, 0, 0.2);
+    font-family: 'SF Mono', monospace;
+    white-space: pre-wrap;
+}
+
+/* Chat meta - use d-flex gap-2 mt-1 small text-secondary px-2 in markup */
+.chat-time { opacity: 0.8; }
+
+/* ============================================
+   8. TOGGLE SWITCH (Custom form control)
+============================================ */
+.toggle-switch {
+    position: relative;
+    display: inline-block;
+    width: 44px;
+    height: 24px;
+    cursor: pointer;
+}
+
+.toggle-switch input { opacity: 0; width: 0; height: 0; }
+
+.toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    inset: 0;
+    background: var(--bs-tertiary-bg);
+    border-radius: 24px;
+    transition: var(--vs-transition);
+}
+
+.toggle-slider::before {
+    content: '';
+    position: absolute;
+    width: 18px;
+    height: 18px;
+    left: 3px;
+    bottom: 3px;
+    background: var(--bs-body-bg);
+    border-radius: 50%;
+    transition: var(--vs-transition);
+}
+
+.toggle-switch input:checked + .toggle-slider { background: var(--vs-accent-green); }
+.toggle-switch input:checked + .toggle-slider::before { transform: translateX(20px); }
+
+/* ============================================
+   9. JOBS INBOX LAYOUT
+   Complex layout requiring calc() for PWA safe areas.
+   Use d-flex flex-column in markup where possible.
+============================================ */
+.jobs-inbox-layout {
+    min-height: 0;
+    flex: 1;
+}
+
+/* Fixed sidebar width (no Bootstrap utility for specific widths) */
+.jobs-project-sidebar {
+    width: 280px;
+    min-width: 280px;
+    max-width: 280px;
+}
+
+/* Interactive item states - hover/active with accent color */
+.project-filter-item {
+    border-left: 3px solid transparent;
+    transition: all var(--vs-transition);
+}
+.project-filter-item:hover { background: var(--bs-tertiary-bg); }
+.project-filter-item.active {
+    background: rgba(88, 166, 255, 0.1);
+    border-left-color: var(--vs-accent-blue);
+    color: var(--vs-accent-blue);
+}
+
+.job-list-item {
+    border-left: 3px solid transparent;
+    transition: background-color var(--vs-transition);
+}
+.job-list-item:hover { background: var(--bs-tertiary-bg); }
+.job-list-item.job-selected {
+    background: rgba(88, 166, 255, 0.1);
+    border-left-color: var(--vs-accent-blue);
+}
+
+/* Job status icon fixed width */
+.job-status-icon {
+    width: 24px;
+    min-width: 24px;
+}
+
+/* Nav tabs variant - underline style */
+.nav-tabs-card .nav-link {
+    border: none;
+    border-bottom: 2px solid transparent;
+    opacity: 0.7;
+    transition: opacity var(--vs-transition), border-color var(--vs-transition);
+}
+.nav-tabs-card .nav-link:hover { opacity: 1; }
+.nav-tabs-card .nav-link.active {
+    border-bottom-color: var(--bs-primary);
+    opacity: 1;
+}
+
+/* Git branch badge with accent color */
+.branch-info {
+    background: rgba(63, 185, 80, 0.15);
+    color: var(--vs-accent-green);
+}
+
+/* ============================================
+   10. MODAL SYSTEM (PWA-Optimized)
+   PWA-specific safe area handling requires custom CSS.
+============================================ */
+body.vs-modal-open {
+    overflow: hidden !important;
+    position: fixed;
+}
+
+.vs-modal-container {
+    position: fixed !important;
+    inset: 0 !important;
+    padding: var(--vs-safe-area-top) var(--vs-safe-area-right) var(--vs-safe-area-bottom) var(--vs-safe-area-left) !important;
+    -webkit-overflow-scrolling: touch;
+    z-index: 1055 !important;
+}
+
+.vs-modal-backdrop {
+    position: fixed !important;
+    inset: 0 !important;
+    background: rgba(0, 0, 0, 0.6) !important;
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+    z-index: 1050 !important;
+}
+
+.vs-modal-dialog {
+    pointer-events: none;
+}
+
+.vs-modal-content { pointer-events: auto; }
+
+/* Directory list max-height for modal (no Bootstrap utility) */
+.directory-list {
+    max-height: 50vh;
+    -webkit-overflow-scrolling: touch;
+}
+
+@keyframes modalFadeIn {
+    from { opacity: 0; transform: scale(0.95) translateY(-10px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+/* ============================================
+   11. TOAST CONTAINER
+============================================ */
+.toast-container {
+    z-index: 1100;
+    padding-bottom: calc(1rem + var(--vs-safe-area-bottom)) !important;
+    padding-right: calc(1rem + var(--vs-safe-area-right)) !important;
+}
+
+.toast-container .toast {
+    min-width: 280px;
+    max-width: 350px;
+    border-left-width: 4px;
+    animation: slideInRight 0.3s ease-out;
+}
+
+@keyframes slideInRight {
+    from { transform: translateX(100%); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+}
+
+/* ============================================
+   12. RESPONSIVE OVERRIDES
+============================================ */
+
+/* Extra Small (< 576px) */
+@media (max-width: 575.98px) {
+    .btn { min-height: 44px; }
+    .btn-sm { min-height: 40px; }
+    .form-control, .form-select { min-height: 44px; font-size: 16px; }
+
+    .toast-container {
+        left: 0 !important;
+        right: 0 !important;
+        padding-left: calc(1rem + var(--vs-safe-area-left)) !important;
+    }
+    .toast-container .toast { min-width: auto; max-width: none; width: 100%; }
+    
+    /* Chat mobile adjustments */
+    .chat-message { max-width: 95%; }
+    .chat-bubble { padding: 0.5rem 0.75rem; }
+    .chat-tool-code { max-height: 100px; }
+
+    /* Fullscreen modal on mobile */
+    .vs-modal-container { padding: 0 !important; align-items: stretch !important; }
+    .vs-modal-dialog { margin: 0 !important; width: 100% !important; max-width: 100% !important; min-height: 100% !important; }
+    .vs-modal-dialog .modal-content { min-height: 100vh !important; min-height: 100dvh !important; border-radius: 0 !important; border: none !important; }
+    .vs-modal-dialog .modal-header { padding-top: calc(0.75rem + var(--vs-header-height) + var(--vs-safe-area-top)); }
+    .vs-modal-dialog .modal-body { -webkit-overflow-scrolling: touch; padding-bottom: calc(1rem + var(--vs-safe-area-bottom)); }
+    .vs-modal-dialog .modal-footer { padding-bottom: calc(0.75rem + var(--vs-safe-area-bottom)); }
+    .vs-modal-dialog.modal-sm { max-width: 100% !important; }
+}
+
+/* Small to Medium (576px - 991px) */
+@media (min-width: 576px) and (max-width: 991.98px) {
+    .vs-modal-container { padding: 1rem !important; padding-top: calc(var(--vs-header-height) + var(--vs-safe-area-top) + 1rem) !important; padding-bottom: calc(1rem + var(--vs-safe-area-bottom)) !important; }
+    .vs-modal-dialog { max-height: calc(100vh - var(--vs-header-height) - var(--vs-safe-area-top) - var(--vs-safe-area-bottom) - 2rem); }
+    .vs-modal-dialog .modal-content { max-height: calc(100vh - var(--vs-header-height) - var(--vs-safe-area-top) - var(--vs-safe-area-bottom) - 2rem); }
+    .vs-modal-dialog .modal-body { overflow-y: auto; -webkit-overflow-scrolling: touch; }
+}
+
+/* Medium (< 768px) */
+@media (max-width: 767.98px) {
+    .directory-list { max-height: calc(100vh - var(--vs-header-height) - var(--vs-safe-area-top) - var(--vs-safe-area-bottom) - 280px); min-height: 200px; }
+}
+
+/* Medium to Large (768px - 991px) */
+@media (min-width: 768px) and (max-width: 991.98px) {
+    .directory-list { max-height: calc(100vh - var(--vs-header-height) - var(--vs-safe-area-top) - var(--vs-safe-area-bottom) - 250px); }
+}
+
+/* Medium screens */
+@media (max-width: 991.98px) {
+    .jobs-inbox-layout { min-height: auto; }
+    .jobs-list-panel { border: 1px solid var(--bs-border-color); border-radius: var(--bs-border-radius); }
+}
+
+/* Desktop (≥ 992px) */
+@media (min-width: 992px) {
+    .vs-modal-container { padding: 1.75rem !important; padding-top: calc(var(--vs-safe-area-top) + 1.75rem) !important; }
+    .vs-modal-dialog { max-height: calc(100vh - var(--vs-safe-area-top) - var(--vs-safe-area-bottom) - 3.5rem); }
+    .vs-modal-dialog .modal-content { max-height: calc(100vh - var(--vs-safe-area-top) - var(--vs-safe-area-bottom) - 3.5rem); }
+    .directory-list { max-height: 400px; }
+
+    .main-content:has(.jobs-inbox-layout) {
+        padding: 0;
+        max-width: none;
+        display: flex;
+        flex-direction: column;
+        height: calc(100vh - var(--vs-safe-area-top));
+    }
+
+    .jobs-inbox-layout {
+        flex: 1;
+        height: 100%;
+        margin: 0;
+    }
+    .jobs-project-sidebar, .jobs-list-panel { height: 100%; }
+    .jobs-list-panel > .overflow-auto { flex: 1; min-height: 0; }
+}
+
+/* Landscape Mobile */
+@media (max-height: 500px) and (orientation: landscape) {
+    .app-header { height: calc(44px + var(--vs-safe-area-top)); }
+    .app-sidebar { top: calc(44px + var(--vs-safe-area-top)); }
+    .app-main { margin-top: calc(44px + var(--vs-safe-area-top)); }
+    .vs-modal-dialog .modal-body { max-height: calc(100vh - 120px); }
+    .directory-list { max-height: calc(100vh - 200px); min-height: 120px; }
+}
+
+/* ============================================
+   13. PWA & TOUCH OPTIMIZATIONS
+============================================ */
+.nav-item, .btn, .list-group-item-action, .form-control, .form-select {
+    touch-action: manipulation;
+}
+
+@media (hover: none) and (pointer: coarse) {
+    .nav-item:active, .btn:active, .list-group-item-action:active {
+        opacity: 0.7;
+        transition: opacity 0.1s ease;
+    }
+    .list-group-item-action { min-height: 48px; display: flex; align-items: center; }
+}
+
+.main-content { overscroll-behavior-x: none; }
+
+.login-layout {
+    padding-top: var(--vs-safe-area-top);
+    padding-bottom: var(--vs-safe-area-bottom);
+    padding-left: var(--vs-safe-area-left);
+    padding-right: var(--vs-safe-area-right);
+}
+
+.login-content {
+    max-height: calc(100vh - var(--vs-safe-area-top) - var(--vs-safe-area-bottom));
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.jobs-mobile-filters .btn-group .btn { flex: 1; }
+
+/* PWA Standalone Mode */
+@media all and (display-mode: standalone) {
+    html { background: var(--bs-body-bg, #1a1d21); }
+    .app-header, .app-sidebar, .nav-item, .btn { -webkit-user-select: none; user-select: none; }
+
+    body::before {
+        content: '';
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: var(--vs-safe-area-top);
+        background: var(--bs-secondary-bg);
+        z-index: 1001;
+    }
+
+    body { overscroll-behavior-y: contain; }
+}
+
+/* iOS-specific fixes */
+@supports (-webkit-touch-callout: none) {
+    .app-header { -webkit-transform: translateZ(0); transform: translateZ(0); }
+    .app-main, .app-sidebar, .main-content, .directory-list, .modal-body { -webkit-overflow-scrolling: touch; }
+    .app-header, .app-sidebar { -webkit-backface-visibility: hidden; backface-visibility: hidden; }
+}
+
+/* ============================================
+   14. BLAZOR RECONNECTION MODAL (PWA)
+============================================ */
+
+/* Non-intrusive Toast Notification (iOS-native style) */
+.reconnect-toast {
+    position: fixed;
+    top: calc(var(--vs-safe-area-top, 0px) + 1rem);
+    left: 50%;
+    transform: translateX(-50%) translateY(-120%);
+    z-index: 10000;
+    min-width: 200px;
+    max-width: calc(100% - 2rem);
+    background: var(--bs-body-bg);
+    border: 1px solid var(--bs-border-color);
+    border-radius: 1rem;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    opacity: 0;
+    transition: transform 0.3s ease-out, opacity 0.3s ease-out;
+    overflow: hidden;
+}
+
+.reconnect-toast-show {
+    transform: translateX(-50%) translateY(0);
+    opacity: 1;
+}
+
+.reconnect-toast-content {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+}
+
+.reconnect-toast-icon {
+    flex-shrink: 0;
+}
+
+.reconnect-toast-spinner {
+    width: 20px;
+    height: 20px;
+    border: 2px solid var(--bs-border-color);
+    border-top-color: var(--vs-accent-blue);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+.reconnect-toast-text {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+}
+
+.reconnect-toast-title {
+    font-weight: 600;
+    font-size: 0.875rem;
+    color: var(--bs-body-color);
+}
+
+.reconnect-toast-message {
+    font-size: 0.75rem;
+    color: var(--bs-secondary-color);
+}
+
+.reconnect-toast-progress {
+    height: 2px;
+    background: var(--vs-accent-blue);
+    width: 100%;
+    transform-origin: left;
+}
+
+@keyframes reconnect-progress {
+    from { transform: scaleX(1); }
+    to { transform: scaleX(0); }
+}
+
+/* Full-screen Modal (for extended disconnections) */
+#components-reconnect-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.8);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    padding: var(--vs-safe-area-top) var(--vs-safe-area-right) var(--vs-safe-area-bottom) var(--vs-safe-area-left);
+}
+
+#components-reconnect-modal.components-reconnect-show {
+    display: flex;
+}
+
+.reconnect-content {
+    text-align: center;
+    padding: 2rem;
+    background: var(--bs-body-bg);
+    border-radius: var(--bs-border-radius-lg);
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+    max-width: 90%;
+    width: 320px;
+}
+
+.reconnect-spinner {
+    width: 48px;
+    height: 48px;
+    margin: 0 auto 1rem;
+    border: 3px solid var(--bs-border-color);
+    border-top-color: var(--vs-accent-blue);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+.reconnect-message {
+    color: var(--bs-body-color);
+    font-size: 1rem;
+    margin-bottom: 0.5rem;
+}
+
+.reconnect-submessage {
+    margin-bottom: 1rem;
+}
+
+#reconnect-reload-btn {
+    min-width: 140px;
+}

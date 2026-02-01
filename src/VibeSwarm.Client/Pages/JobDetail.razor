@@ -1,0 +1,1257 @@
+@page "/jobs/view/{JobId:guid}"
+@attribute [Authorize]
+@inject IJobService JobService
+@inject IVersionControlService VersionControlService
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JSRuntime
+@inject NotificationService NotificationService
+@implements IAsyncDisposable
+@using System.Threading
+@using VibeSwarm.Shared.Utilities
+@using VibeSwarm.Shared.VersionControl
+@using VibeSwarm.Shared.VersionControl.Models
+
+@if (IsLoading)
+{
+    <LoadingSpinner />
+}
+else if (Job == null)
+{
+    <Breadcrumb
+        Items="@(new List<Breadcrumb.BreadcrumbItem> { new("Projects", "/projects", "folder"), new("Job Not Found") })" />
+    <Alert Type="Alert.AlertType.Warning" Message="Job not found." />
+}
+else
+{
+    @* Breadcrumb Navigation *@
+        <Breadcrumb Items="@_breadcrumbItems" />
+
+    @* Page Header Section *@
+        <JobHeaderSection Status="@Job.Status" CancellationRequested="@Job.CancellationRequested"
+        GitHubRepository="@Job.Project?.GitHubRepository" BranchName="@_branchName" ProjectId="@Job.ProjectId"
+        ProjectName="@(Job.Project?.Name ?? "Unknown")" ProviderName="@(Job.Provider?.Name ?? "Unknown")"
+        ProcessId="@Job.ProcessId" CreatedAt="@Job.CreatedAt" StartedAt="@Job.StartedAt" CompletedAt="@Job.CompletedAt"
+        ExecutionDuration="@Job.ExecutionDuration" ModelUsed="@Job.ModelUsed" RetryCount="@Job.RetryCount"
+        InputTokens="@Job.InputTokens" OutputTokens="@Job.OutputTokens" TotalCostUsd="@Job.TotalCostUsd"
+        CanRetry="@CanRetry" CanCancel="@CanCancel" CanForceCancel="@CanForceCancel"
+        ShowRetryOptions="@(Job.Status == JobStatus.Failed || Job.Status == JobStatus.Cancelled)" IsRetrying="@IsRetrying"
+        IsCancelling="@IsCancelling" IsForceCancelling="@IsForceCancelling" OnRetry="RetryJob"
+        OnRetryWithOptions="ShowRetryModal" OnCancel="CancelJob" OnForceCancel="ForceCancelJob"
+        CurrentActivity="@Job.CurrentActivity" LastActivityAt="@Job.LastActivityAt" />
+
+    @* Main Content - Column Layout *@
+        <div class="row g-3 g-lg-4">
+        @* Left Column - Goal Prompt & Git sections *@
+            <div class="col-12 col-xl-5 order-2 order-xl-1">
+
+            @* Goal Prompt Card *@
+                <JobGoalPromptCard GoalPrompt="@Job.GoalPrompt" Status="@Job.Status" CanRetry="@CanRetry"
+                HasConsoleOutput="@(!string.IsNullOrEmpty(Job.ConsoleOutput))" OnCopyToClipboard="CopyPromptToClipboard"
+                OnPromptChanged="UpdateJobPrompt" />
+
+            @* User Interaction Section - shown when job is paused waiting for input *@
+                @if (Job.Status == JobStatus.Paused && !string.IsNullOrEmpty(Job.PendingInteractionPrompt))
+            {
+                <UserInteractionPanel Prompt="@Job.PendingInteractionPrompt" Choices="@_interactionChoices"
+                    IsSubmitting="@_isSubmittingResponse" ErrorMessage="@_interactionError"
+                    RequestedAt="@Job.InteractionRequestedAt" OnSubmitChoice="SubmitInteractionResponse"
+                    OnSubmitResponse="SubmitInteractionResponse" />
+            }
+
+            @* Git Diff Loading State *@
+            @if (_isGitRepository && _isLoadingGitDiff)
+            {
+                <div class="card mb-3 mb-lg-4">
+                    <div class="card-header bg-body-secondary">
+                        <div class="d-flex align-items-center">
+                            <i class="bi bi-git me-2 opacity-75"></i>
+                            <strong>Git Changes</strong>
+                        </div>
+                    </div>
+                    <div class="card-body text-center py-4">
+                        <div class="spinner-border text-primary mb-3" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="text-body-secondary mb-0">
+                            <i class="bi bi-hourglass-split me-1"></i>Analyzing git changes...
+                        </p>
+                    </div>
+                </div>
+            }
+            @* Git Diff Viewer - shown after job completes if changes were detected *@
+                else if (_isGitRepository && !IsJobActive && !string.IsNullOrEmpty(Job.GitDiff))
+            {
+                <GitDiffViewer DiffFiles="@_parsedDiffFiles" @bind-IsVisible="_showGitDiff"
+                    IsVerifying="@_isComparingWorkingCopy"
+                    ShowVerificationStatus="@(_workingCopyComparisonDone && !_changesPushed && string.IsNullOrEmpty(Job.GitCommitHash))"
+                    IsVerified="@_workingCopyMatches" IsDiverged="@(!_workingCopyMatches)"
+                    IsCommitted="@(!string.IsNullOrEmpty(Job.GitCommitHash))" MissingFiles="@_workingCopyMissingFiles"
+                    ExtraFiles="@_workingCopyExtraFiles" ModifiedFiles="@_workingCopyModifiedFiles"
+                    OnRecheck="CompareWithWorkingCopy" />
+
+                @* Commit Section - shown when there are git changes *@
+                        <CommitSection CommitMessage="@_commitMessage" CommitMessageChanged="@((msg) => _commitMessage = msg)"
+                    BranchName="@_branchName" IsLoadingSummary="@_isLoadingSummary"
+                    HasAISummary="@(!string.IsNullOrWhiteSpace(Job.SessionSummary))" SummaryError="@_summaryError"
+                    PushError="@_pushError" IsPushing="@_isPushing" PushStatus="@_pushStatus" IsPushed="@_changesPushed"
+                    PushedCommitHash="@_pushedCommitHash" CanPush="@CanPush" OnCommitAndPush="CommitAndPushChanges"
+                    OnRefreshSummary="RefreshSummary" />
+            }
+            else if (_isGitRepository && !IsJobActive && Job.Status == JobStatus.Completed &&
+            string.IsNullOrEmpty(Job.GitDiff))
+            {
+                @* No changes detected placeholder *@
+                        <div class="card mb-3 mb-lg-4">
+                    <div class="card-header bg-body-secondary">
+                        <div class="d-flex align-items-center">
+                            <i class="bi bi-git me-2 opacity-75"></i>
+                            <strong>Git Changes</strong>
+                        </div>
+                    </div>
+                    <div class="card-body text-center">
+                        <p class="text-body-secondary mb-3">
+                            <i class="bi bi-info-circle me-2 opacity-75"></i>No file changes detected.
+                        </p>
+                        <button class="btn btn-outline-secondary btn-sm" @onclick="CheckGitDiffAsync"
+                            disabled="@_isCheckingGitDiff">
+                            @if (_isCheckingGitDiff)
+                            {
+                                <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                                <span>Checking...</span>
+                            }
+                            else
+                            {
+                                <i class="bi bi-arrow-repeat me-1"></i>
+                                <span>Check again</span>
+                            }
+                        </button>
+                    </div>
+                </div>
+            }
+
+            @* Working Directory Changes - shown for failed/cancelled jobs *@
+            @if (_isGitRepository && !IsJobActive && (Job.Status == JobStatus.Failed || Job.Status == JobStatus.Cancelled)
+                    &&
+                    Job?.Project?.WorkingPath != null)
+            {
+                <UncommittedChangesCard DiffFiles="@_uncommittedDiffFiles" IsChecking="@_isCheckingUncommittedChanges"
+                    HasChecked="@_hasCheckedUncommittedChanges" HasChanges="@_hasUncommittedChanges"
+                    ErrorMessage="@_uncommittedChangesError" JobFailed="@(Job.Status == JobStatus.Failed)"
+                    CommitMessage="@_uncommittedCommitMessage"
+                    CommitMessageChanged="@((msg) => _uncommittedCommitMessage = msg)"
+                    IsCommitting="@_isCommittingUncommittedChanges" IsDiscarding="@_isDiscardingChanges"
+                    OnCheck="CheckUncommittedChangesAsync" OnRefresh="CheckUncommittedChangesAsync"
+                    OnCommit="CommitUncommittedChangesAsync" OnDiscard="DiscardUncommittedChangesAsync" />
+            }
+        </div>
+
+        @* Right Column - Session Panel (Live Output, Console, Command, Conversation) *@
+            <div class="col-12 col-xl-7 order-1 order-xl-2 d-flex flex-column">
+            <JobSessionPanel Messages="@(Job.Messages?.ToList() ?? new())" Status="@Job.Status" IsJobActive="@IsJobActive"
+                ErrorMessage="@Job.ErrorMessage" ConsoleOutput="@Job.ConsoleOutput" CommandUsed="@Job.CommandUsed"
+                SessionId="@Job.SessionId" LiveOutputLines="@_liveOutput.ToList()" MaxOutputLines="@MaxOutputLines"
+                OnClearLiveOutput="ClearLiveOutput" OnSendFollowUp="CreateFollowUpJob" />
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(ErrorMessage))
+    {
+        <Alert Type="Alert.AlertType.Danger" Message="@ErrorMessage" Class="mt-3" />
+    }
+
+    @if (!string.IsNullOrEmpty(SuccessMessage))
+    {
+        <Alert Type="Alert.AlertType.Success" Message="@SuccessMessage" Class="mt-3" />
+    }
+
+    @* Retry Job Modal *@
+    <RetryJobModal @bind-IsVisible="_showRetryModal" Job="Job" OnRetry="HandleRetryWithOptions" />
+}
+
+@code {
+    [Parameter]
+    public Guid JobId { get; set; }
+
+    [SupplyParameterFromQuery(Name = "returnUrl")]
+    public string? ReturnUrl { get; set; }
+
+    private Job? Job { get; set; }
+    private bool IsLoading { get; set; } = true;
+    private bool IsCancelling { get; set; }
+    private bool IsForceCancelling { get; set; }
+    private bool IsRetrying { get; set; }
+    private string? ErrorMessage { get; set; }
+    private string? SuccessMessage { get; set; }
+    private DotNetObjectReference<JobDetail>? _dotNetReference;
+    private IJSObjectReference? _signalRModule;
+    private Timer? _refreshTimer;
+    private bool _isRefreshing = false;
+    private DateTime _pageLoadTime = DateTime.UtcNow;
+
+    // Toggle states for collapsible sections
+    private bool _showGitDiff = true;
+    private string? _liveCommand = null;
+
+    // Git diff state
+    private List<DiffFile> _parsedDiffFiles = new();
+
+    // Live output buffer
+    private const int MaxOutputLines = 500;
+    private readonly List<OutputLine> _liveOutput = new();
+
+    // Commit and push state
+    private string _commitMessage = string.Empty;
+    private bool _isPushing = false;
+    private bool _isCheckingGitDiff = false;
+    private bool _isLoadingGitDiff = false;
+    private bool _isLoadingSummary = false;
+    private string? _summaryError = null;
+    private string _pushStatus = "Pushing...";
+    private string? _pushError = null;
+    private bool _changesPushed = false;
+    private string? _pushedCommitHash = null;
+
+    // Uncommitted changes state
+    private bool _isCheckingUncommittedChanges = false;
+    private bool _hasCheckedUncommittedChanges = false;
+    private bool _hasUncommittedChanges = false;
+    private List<DiffFile> _uncommittedDiffFiles = new();
+    private string? _uncommittedChangesError = null;
+    private bool _isDiscardingChanges = false;
+    private string _uncommittedCommitMessage = string.Empty;
+    private bool _isCommittingUncommittedChanges = false;
+
+    private string? _branchName = null;
+    private bool _isGitRepository = false;
+    private CancellationTokenSource? _pushCancellationTokenSource;
+    private const int PushTimeoutSeconds = 120;
+    private bool _commitMessageInitialized = false;
+
+    // Interaction response state
+    private bool _isSubmittingResponse = false;
+    private string? _interactionError = null;
+    private List<string>? _interactionChoices = null;
+
+    // Retry modal state
+    private bool _showRetryModal = false;
+
+    // Working copy comparison state
+    private bool _isComparingWorkingCopy = false;
+    private bool _workingCopyComparisonDone = false;
+    private bool _workingCopyMatches = true;
+    private List<string> _workingCopyMissingFiles = new();
+    private List<string> _workingCopyExtraFiles = new();
+    private List<string> _workingCopyModifiedFiles = new();
+
+    private List<Breadcrumb.BreadcrumbItem> _breadcrumbItems => new()
+{
+new Breadcrumb.BreadcrumbItem("Projects", "/projects", "folder"),
+new Breadcrumb.BreadcrumbItem(Job?.Project?.Name ?? "Project", $"/projects/{Job?.ProjectId}"),
+new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
+};
+
+    private bool CanCancel => Job != null &&
+    (Job.Status == JobStatus.New ||
+    Job.Status == JobStatus.Pending ||
+    Job.Status == JobStatus.Started ||
+    Job.Status == JobStatus.Processing) &&
+    !Job.CancellationRequested;
+
+    private bool CanForceCancel => Job != null &&
+    (Job.Status == JobStatus.Started || Job.Status == JobStatus.Processing) &&
+    Job.CancellationRequested;
+
+    private bool CanRetry => Job != null &&
+    (Job.Status == JobStatus.Cancelled ||
+    Job.Status == JobStatus.Failed ||
+    Job.Status == JobStatus.Completed);
+
+    private bool IsJobActive => Job != null &&
+    (Job.Status == JobStatus.New ||
+    Job.Status == JobStatus.Pending ||
+    Job.Status == JobStatus.Started ||
+    Job.Status == JobStatus.Processing ||
+    Job.Status == JobStatus.Paused);
+
+    private bool CanPush => !_isPushing &&
+    !string.IsNullOrWhiteSpace(_commitMessage) &&
+    !_changesPushed &&
+    Job?.Project?.WorkingPath != null;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadJob();
+        StartAutoRefresh();
+        await LoadBranchName();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await InitializeSignalR();
+            await Task.Delay(500);
+            await RefreshJobSafely();
+        }
+    }
+
+    private void StartAutoRefresh()
+    {
+        _refreshTimer = new Timer(async _ =>
+        {
+            var secondsSincePageLoad = (DateTime.UtcNow - _pageLoadTime).TotalSeconds;
+            var shouldPoll = secondsSincePageLoad < 10 || IsJobActive;
+
+            if (shouldPoll && !_isRefreshing)
+            {
+                await InvokeAsync(async () => await RefreshJobSafely());
+            }
+        }, null, TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(3));
+    }
+
+    private async Task RefreshJobSafely()
+    {
+        if (_isRefreshing) return;
+
+        try
+        {
+            _isRefreshing = true;
+            await LoadJob();
+            StateHasChanged();
+        }
+        finally
+        {
+            _isRefreshing = false;
+        }
+    }
+
+    private async Task InitializeSignalR()
+    {
+        try
+        {
+            _dotNetReference = DotNetObjectReference.Create(this);
+            _signalRModule = await JSRuntime.InvokeAsync<IJSObjectReference>("import", "/js/jobSignalR.js");
+            await _signalRModule.InvokeVoidAsync("initializeJobHub", JobId.ToString(), _dotNetReference);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error initializing SignalR: {ex.Message}");
+        }
+    }
+
+    private string GetJobDisplayTitle()
+    {
+        if (Job == null) return "Job";
+        if (!string.IsNullOrEmpty(Job.Title)) return TruncateTitle(Job.Title, 40);
+        return TruncateTitle(Job.GoalPrompt, 40);
+    }
+
+    private static string TruncateTitle(string text, int maxLength)
+    {
+        if (string.IsNullOrEmpty(text) || text.Length <= maxLength) return text;
+        return text[..maxLength] + "...";
+    }
+
+    #region SignalR Handlers
+
+    [JSInvokable]
+    public async Task OnJobStatusChanged(string jobId, string status)
+    {
+        if (Job != null && Enum.TryParse<JobStatus>(status, out var newStatus))
+        {
+            Job.Status = newStatus;
+            if (newStatus == JobStatus.Started)
+            {
+                Job.StartedAt = DateTime.UtcNow;
+            }
+            else if (newStatus == JobStatus.Completed || newStatus == JobStatus.Failed || newStatus == JobStatus.Cancelled)
+            {
+                Job.CompletedAt = DateTime.UtcNow;
+                if (newStatus == JobStatus.Failed || newStatus == JobStatus.Cancelled)
+                {
+                    _ = Task.Run(async () =>
+                    {
+                        await Task.Delay(1000);
+                        await InvokeAsync(async () => await CheckUncommittedChangesAsync());
+                    });
+                }
+            }
+            await InvokeAsync(StateHasChanged);
+        }
+
+        if (!_isRefreshing)
+        {
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(500);
+                await InvokeAsync(async () => await RefreshJobSafely());
+            });
+        }
+    }
+
+    [JSInvokable]
+    public async Task OnJobActivityUpdated(string jobId, string activity, DateTime timestamp)
+    {
+        if (Job != null)
+        {
+            Job.CurrentActivity = activity;
+            Job.LastActivityAt = timestamp;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    [JSInvokable]
+    public async Task OnJobMessageAdded(string jobId)
+    {
+        if (!_isRefreshing)
+        {
+            await InvokeAsync(async () => await RefreshJobSafely());
+        }
+    }
+
+    [JSInvokable]
+    public async Task OnJobCompleted(string jobId, bool success, string? errorMessage)
+    {
+        if (Job != null)
+        {
+            Job.Status = success ? JobStatus.Completed : JobStatus.Failed;
+            Job.CompletedAt = DateTime.UtcNow;
+            if (!string.IsNullOrEmpty(errorMessage))
+            {
+                Job.ErrorMessage = errorMessage;
+            }
+
+            if (success)
+            {
+                _isLoadingGitDiff = true;
+                _isLoadingSummary = true;
+            }
+            else
+            {
+                _ = Task.Run(async () =>
+                {
+                    await Task.Delay(1000);
+                    await InvokeAsync(async () => await CheckUncommittedChangesAsync());
+                });
+            }
+            await InvokeAsync(StateHasChanged);
+        }
+
+        await Task.Delay(500);
+        await InvokeAsync(async () =>
+        {
+            await RefreshJobSafely();
+            await HandlePostCompletionDataLoading(success);
+        });
+    }
+
+    private async Task HandlePostCompletionDataLoading(bool success)
+    {
+        var hasGitDiff = Job != null && !string.IsNullOrEmpty(Job.GitDiff);
+        var hasSummary = Job != null && !string.IsNullOrWhiteSpace(Job.SessionSummary);
+
+        if (hasGitDiff && hasSummary)
+        {
+            _isLoadingGitDiff = false;
+            _isLoadingSummary = false;
+            StateHasChanged();
+            return;
+        }
+
+        var retryDelays = new[] { 1000, 2000, 3000 };
+        foreach (var delay in retryDelays)
+        {
+            await Task.Delay(delay);
+            await RefreshJobSafely();
+
+            hasGitDiff = Job != null && !string.IsNullOrEmpty(Job.GitDiff);
+            hasSummary = Job != null && !string.IsNullOrWhiteSpace(Job.SessionSummary);
+
+            if (hasGitDiff && hasSummary) break;
+
+            if (hasGitDiff) _isLoadingGitDiff = false;
+            if (hasSummary) _isLoadingSummary = false;
+            StateHasChanged();
+        }
+
+        if (!hasGitDiff && success && Job?.Project?.WorkingPath != null)
+        {
+            try
+            {
+                await CheckGitDiffAsync();
+                await RefreshJobSafely();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error auto-checking git diff: {ex.Message}");
+            }
+        }
+
+        _isLoadingGitDiff = false;
+        _isLoadingSummary = false;
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public async Task OnJobOutput(string jobId, string line, bool isError, DateTime timestamp)
+    {
+        lock (_liveOutput)
+        {
+            _liveOutput.Add(new OutputLine { Content = line, IsError = isError, Timestamp = timestamp });
+            while (_liveOutput.Count > MaxOutputLines)
+            {
+                _liveOutput.RemoveAt(0);
+            }
+        }
+        await InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public async Task OnProcessStarted(string jobId, int processId, string command)
+    {
+        if (Job != null)
+        {
+            Job.ProcessId = processId;
+            _liveCommand = command;
+            if (string.IsNullOrEmpty(Job.CommandUsed))
+            {
+                Job.CommandUsed = command;
+            }
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    [JSInvokable]
+    public async Task OnProcessExited(string jobId, int processId, int exitCode, double durationSeconds)
+    {
+        lock (_liveOutput)
+        {
+            _liveOutput.Add(new OutputLine
+            {
+                Content = $"--- Process {processId} exited with code {exitCode} (ran for {durationSeconds:F1}s) ---",
+                IsError = exitCode != 0,
+                Timestamp = DateTime.UtcNow
+            });
+        }
+        await InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public async Task OnJobGitDiffUpdated(string jobId, bool hasChanges)
+    {
+        if (!_isRefreshing)
+        {
+            await InvokeAsync(async () =>
+            {
+                await RefreshJobSafely();
+                _isLoadingGitDiff = false;
+                if (Job != null && !string.IsNullOrWhiteSpace(Job.SessionSummary))
+                {
+                    _isLoadingSummary = false;
+                }
+                StateHasChanged();
+            });
+        }
+        else
+        {
+            _isLoadingGitDiff = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    [JSInvokable]
+    public async Task OnJobInteractionRequired(string jobId, string prompt, string interactionType,
+    List<string>? choices, string? defaultResponse)
+    {
+        if (Job != null)
+        {
+            Job.Status = JobStatus.Paused;
+            Job.PendingInteractionPrompt = prompt;
+            Job.InteractionType = interactionType;
+            Job.InteractionRequestedAt = DateTime.UtcNow;
+            _interactionChoices = choices;
+            _interactionError = null;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    [JSInvokable]
+    public async Task OnJobResumed(string jobId)
+    {
+        if (Job != null)
+        {
+            Job.Status = JobStatus.Processing;
+            Job.PendingInteractionPrompt = null;
+            Job.InteractionType = null;
+            Job.InteractionRequestedAt = null;
+            _interactionChoices = null;
+            _interactionError = null;
+            _isSubmittingResponse = false;
+            await InvokeAsync(StateHasChanged);
+        }
+
+        if (!_isRefreshing)
+        {
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(500);
+                await InvokeAsync(async () => await RefreshJobSafely());
+            });
+        }
+    }
+
+    #endregion
+
+    #region Job Actions
+
+    private async Task LoadJob()
+    {
+        try
+        {
+            Job = await JobService.GetByIdWithMessagesAsync(JobId);
+
+            if (Job != null && !string.IsNullOrWhiteSpace(Job.SessionSummary))
+            {
+                if (string.IsNullOrWhiteSpace(_commitMessage) || !_commitMessageInitialized)
+                {
+                    _commitMessage = Job.SessionSummary;
+                    _commitMessageInitialized = true;
+                    _isLoadingSummary = false;
+                }
+            }
+
+            if (Job != null && !string.IsNullOrEmpty(Job.GitCommitHash))
+            {
+                _changesPushed = true;
+                _pushedCommitHash = Job.GitCommitHash;
+            }
+
+            if (Job != null && Job.Status == JobStatus.Paused && !string.IsNullOrEmpty(Job.InteractionChoices))
+            {
+                try { _interactionChoices = System.Text.Json.JsonSerializer.Deserialize<List<string>>(Job.InteractionChoices); }
+                catch { _interactionChoices = null; }
+            }
+            else if (Job?.Status != JobStatus.Paused)
+            {
+                _interactionChoices = null;
+            }
+
+            if (Job != null && !string.IsNullOrEmpty(Job.GitDiff))
+            {
+                _parsedDiffFiles = GitDiffParser.ParseDiff(Job.GitDiff);
+
+                if (string.IsNullOrEmpty(Job.GitCommitHash) && !_changesPushed && !_workingCopyComparisonDone &&
+                !IsJobActive && Job.Project?.WorkingPath != null)
+                {
+                    _ = CompareWithWorkingCopy();
+                }
+            }
+
+            if (Job != null && (Job.Status == JobStatus.Failed || Job.Status == JobStatus.Cancelled) &&
+            Job.Project?.WorkingPath != null && !_hasCheckedUncommittedChanges)
+            {
+                _ = Task.Run(async () =>
+                {
+                    await Task.Delay(500);
+                    await InvokeAsync(async () => await CheckUncommittedChangesAsync());
+                });
+            }
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    private async Task CancelJob()
+    {
+        if (Job == null) return;
+
+        IsCancelling = true;
+        ErrorMessage = null;
+        SuccessMessage = null;
+
+        try
+        {
+            var result = await JobService.RequestCancellationAsync(Job.Id);
+            if (result)
+            {
+                SuccessMessage = "Cancellation requested. The job will be cancelled shortly.";
+                await LoadJob();
+            }
+            else
+            {
+                ErrorMessage = "Could not cancel the job. It may have already completed.";
+            }
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Error cancelling job: {ex.Message}";
+        }
+        finally
+        {
+            IsCancelling = false;
+        }
+    }
+
+    private async Task ForceCancelJob()
+    {
+        if (Job == null) return;
+
+        IsForceCancelling = true;
+        ErrorMessage = null;
+        SuccessMessage = null;
+
+        try
+        {
+            var result = await JobService.ForceCancelAsync(Job.Id);
+            if (result)
+            {
+                SuccessMessage = "Job has been force-cancelled.";
+                await LoadJob();
+            }
+            else
+            {
+                ErrorMessage = "Could not force-cancel the job. It may have already completed.";
+            }
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Error force-cancelling job: {ex.Message}";
+        }
+        finally
+        {
+            IsForceCancelling = false;
+        }
+    }
+
+    private async Task RetryJob()
+    {
+        if (Job == null) return;
+
+        IsRetrying = true;
+        ErrorMessage = null;
+        SuccessMessage = null;
+
+        try
+        {
+            var result = await JobService.ResetJobAsync(Job.Id);
+            if (result)
+            {
+                SuccessMessage = "Job has been reset and will be retried shortly.";
+                await LoadJob();
+            }
+            else
+            {
+                ErrorMessage = "Could not retry the job. It may not be in a terminal state.";
+            }
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Error retrying job: {ex.Message}";
+        }
+        finally
+        {
+            IsRetrying = false;
+        }
+    }
+
+    private async Task CreateFollowUpJob(string followUpPrompt)
+    {
+        if (Job == null || string.IsNullOrWhiteSpace(followUpPrompt)) return;
+
+        try
+        {
+            // Build a context-aware prompt that references the previous job
+            var contextPrompt = $"Continue from previous work. Previous goal: \"{Job.GoalPrompt.Substring(0, Math.Min(200,
+            Job.GoalPrompt.Length))}...\"\n\nNew instructions: {followUpPrompt}";
+
+            var newJob = new Job
+            {
+                ProjectId = Job.ProjectId,
+                ProviderId = Job.ProviderId,
+                GoalPrompt = contextPrompt,
+                Title = $"Follow-up: {followUpPrompt.Substring(0, Math.Min(50, followUpPrompt.Length))}...",
+                Branch = Job.Branch,
+                Status = JobStatus.New
+            };
+
+            var createdJob = await JobService.CreateAsync(newJob);
+            NotificationService.ShowSuccess("Follow-up job created and queued.", "Job Created");
+
+            // Navigate to the new job
+            NavigationManager.NavigateTo($"/jobs/view/{createdJob.Id}");
+        }
+        catch (Exception ex)
+        {
+            NotificationService.ShowError($"Failed to create follow-up job: {ex.Message}", "Error");
+        }
+    }
+
+    private void ShowRetryModal() => _showRetryModal = true;
+
+    private async Task HandleRetryWithOptions(RetryJobModal.RetryOptions options)
+    {
+        if (Job == null) return;
+
+        IsRetrying = true;
+        ErrorMessage = null;
+        SuccessMessage = null;
+        _showRetryModal = false;
+
+        try
+        {
+            var result = await JobService.ResetJobWithOptionsAsync(Job.Id, options.ProviderId, options.ModelId);
+            if (result)
+            {
+                SuccessMessage = "Job has been reset with new options and will be retried shortly.";
+                await LoadJob();
+            }
+            else
+            {
+                ErrorMessage = "Could not retry the job. It may not be in a terminal state or the provider is invalid.";
+            }
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Error retrying job: {ex.Message}";
+        }
+        finally
+        {
+            IsRetrying = false;
+        }
+    }
+
+    #endregion
+
+    #region Interaction
+
+    private async Task SubmitInteractionResponse(string response)
+    {
+        if (_isSubmittingResponse) return;
+
+        _isSubmittingResponse = true;
+        _interactionError = null;
+        StateHasChanged();
+
+        try
+        {
+            if (_signalRModule != null)
+            {
+                var success = await _signalRModule.InvokeAsync<bool>("submitInteractionResponse", JobId.ToString(), response);
+                if (!success)
+                {
+                    _interactionError = "Failed to deliver response. The job may have already completed or been cancelled.";
+                }
+            }
+            else
+            {
+                _interactionError = "Connection to server not available. Please refresh the page.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _interactionError = "Failed to send response. Please try again.";
+            Console.WriteLine($"Error submitting interaction response: {ex.Message}");
+        }
+        finally
+        {
+            _isSubmittingResponse = false;
+            StateHasChanged();
+        }
+    }
+
+    #endregion
+
+    #region UI Actions
+
+    private void ClearLiveOutput() { lock (_liveOutput) { _liveOutput.Clear(); } }
+
+    private async Task CopyCommandToClipboard(string command)
+    {
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", command);
+            NotificationService.ShowSuccess("Command copied to clipboard!", "Copied");
+        }
+        catch (Exception ex)
+        {
+            NotificationService.ShowError($"Failed to copy to clipboard: {ex.Message}", "Copy Failed");
+        }
+    }
+
+    private async Task CopyPromptToClipboard()
+    {
+        if (Job != null && !string.IsNullOrEmpty(Job.GoalPrompt))
+        {
+            try
+            {
+                await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", Job.GoalPrompt);
+                NotificationService.ShowSuccess("Prompt copied to clipboard!", "Copied");
+            }
+            catch (Exception ex)
+            {
+                NotificationService.ShowError($"Failed to copy to clipboard: {ex.Message}", "Copy Failed");
+            }
+        }
+    }
+
+    private async Task UpdateJobPrompt(string newPrompt)
+    {
+        if (Job == null || string.IsNullOrWhiteSpace(newPrompt)) return;
+
+        try
+        {
+            var success = await JobService.UpdateJobPromptAsync(Job.Id, newPrompt);
+            if (success)
+            {
+                Job.GoalPrompt = newPrompt;
+                NotificationService.ShowSuccess("Prompt updated successfully!", "Saved");
+                StateHasChanged();
+            }
+            else
+            {
+                NotificationService.ShowError("Could not update prompt. Job may have already started.", "Update Failed");
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.ShowError($"Failed to update prompt: {ex.Message}", "Update Failed");
+        }
+    }
+
+    #endregion
+
+    #region Git Operations
+
+    private async Task LoadBranchName()
+    {
+        try
+        {
+            if (Job?.Project?.WorkingPath != null)
+            {
+                _isGitRepository = await VersionControlService.IsGitRepositoryAsync(Job.Project.WorkingPath);
+                if (_isGitRepository)
+                {
+                    _branchName = await VersionControlService.GetCurrentBranchAsync(Job.Project.WorkingPath);
+                }
+            }
+        }
+        catch
+        {
+            _isGitRepository = false;
+        }
+    }
+
+    private async Task RefreshSummary()
+    {
+        if (Job == null) return;
+
+        _isLoadingSummary = true;
+        _summaryError = null;
+        StateHasChanged();
+
+        try
+        {
+            await RefreshJobSafely();
+
+            if (Job != null && string.IsNullOrWhiteSpace(Job.SessionSummary) && !string.IsNullOrEmpty(Job.GitDiff))
+            {
+                var localSummary = VibeSwarm.Shared.Services.JobSummaryGenerator.GenerateSummary(Job);
+                if (!string.IsNullOrWhiteSpace(localSummary))
+                {
+                    _commitMessage = localSummary;
+                    _commitMessageInitialized = true;
+                }
+                else
+                {
+                    _summaryError = "Unable to generate a summary. Please write your own commit message.";
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _summaryError = "Failed to refresh summary. Please try again or write your own commit message.";
+            Console.WriteLine($"Error refreshing summary: {ex.Message}");
+        }
+        finally
+        {
+            _isLoadingSummary = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task CheckGitDiffAsync()
+    {
+        if (Job?.Project?.WorkingPath == null || _isCheckingGitDiff) return;
+
+        _isCheckingGitDiff = true;
+        StateHasChanged();
+
+        try
+        {
+            var gitDiff = await VersionControlService.GetWorkingDirectoryDiffAsync(Job.Project.WorkingPath, Job.GitCommitBefore);
+            await JobService.UpdateGitDiffAsync(Job.Id, gitDiff);
+            await RefreshJobSafely();
+
+            if (!string.IsNullOrEmpty(gitDiff) && string.IsNullOrWhiteSpace(_commitMessage))
+            {
+                var localSummary = VibeSwarm.Shared.Services.JobSummaryGenerator.GenerateSummary(gitDiff, Job.GoalPrompt,
+                Job.ConsoleOutput);
+                if (!string.IsNullOrWhiteSpace(localSummary))
+                {
+                    _commitMessage = localSummary;
+                    _commitMessageInitialized = true;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Error checking git changes: {ex.Message}";
+            Console.WriteLine($"Error checking git diff: {ex.Message}");
+        }
+        finally
+        {
+            _isCheckingGitDiff = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task CompareWithWorkingCopy()
+    {
+        if (Job?.Project?.WorkingPath == null || string.IsNullOrEmpty(Job.GitDiff) || _isComparingWorkingCopy) return;
+
+        _isComparingWorkingCopy = true;
+        _workingCopyMissingFiles.Clear();
+        _workingCopyExtraFiles.Clear();
+        _workingCopyModifiedFiles.Clear();
+        StateHasChanged();
+
+        try
+        {
+            var currentDiff = await VersionControlService.GetWorkingDirectoryDiffAsync(Job.Project.WorkingPath,
+            Job.GitCommitBefore);
+            var jobFiles = GitDiffParser.ParseDiff(Job.GitDiff);
+            var currentFiles = GitDiffParser.ParseDiff(currentDiff ?? string.Empty);
+
+            var (missing, extra, modified) = GitDiffParser.CompareDiffs(jobFiles, currentFiles);
+            _workingCopyMissingFiles = missing;
+            _workingCopyExtraFiles = extra;
+            _workingCopyModifiedFiles = modified;
+
+            _workingCopyMatches = !missing.Any() && !extra.Any() && !modified.Any();
+            _workingCopyComparisonDone = true;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error comparing working copy: {ex.Message}");
+            _workingCopyComparisonDone = true;
+            _workingCopyMatches = false;
+        }
+        finally
+        {
+            _isComparingWorkingCopy = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task CommitAndPushChanges()
+    {
+        if (Job?.Project?.WorkingPath == null || string.IsNullOrWhiteSpace(_commitMessage)) return;
+
+        _isPushing = true;
+        _pushError = null;
+        _pushStatus = "Checking for changes...";
+        StateHasChanged();
+
+        _pushCancellationTokenSource?.Cancel();
+        _pushCancellationTokenSource = new CancellationTokenSource(TimeSpan.FromSeconds(PushTimeoutSeconds));
+
+        try
+        {
+            var result = await VersionControlService.CommitAndPushAsync(
+            Job.Project.WorkingPath,
+            _commitMessage,
+            "origin",
+            status => { _pushStatus = status; InvokeAsync(StateHasChanged); },
+            _pushCancellationTokenSource.Token);
+
+            if (result.Success)
+            {
+                _changesPushed = true;
+                _pushedCommitHash = result.CommitHash;
+                _branchName = result.BranchName ?? _branchName;
+                SuccessMessage = "Changes committed and pushed successfully!";
+
+                if (!string.IsNullOrEmpty(result.CommitHash) && Job != null)
+                {
+                    await JobService.UpdateGitCommitHashAsync(Job.Id, result.CommitHash);
+                    Job.GitCommitHash = result.CommitHash;
+                }
+            }
+            else
+            {
+                _pushError = result.Error ?? "An unknown error occurred";
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            _pushError = "Push operation timed out. Please check your network connection and try again.";
+        }
+        catch (Exception ex)
+        {
+            _pushError = $"Unexpected error: {ex.Message}";
+        }
+        finally
+        {
+            _isPushing = false;
+            _pushStatus = "Pushing...";
+            StateHasChanged();
+        }
+    }
+
+    #endregion
+
+    #region Uncommitted Changes
+
+    private async Task CheckUncommittedChangesAsync()
+    {
+        if (Job?.Project?.WorkingPath == null || _isCheckingUncommittedChanges) return;
+
+        _isCheckingUncommittedChanges = true;
+        _uncommittedChangesError = null;
+        _uncommittedDiffFiles.Clear();
+        StateHasChanged();
+
+        try
+        {
+            _hasUncommittedChanges = await VersionControlService.HasUncommittedChangesAsync(Job.Project.WorkingPath);
+
+            if (_hasUncommittedChanges)
+            {
+                var diff = await VersionControlService.GetWorkingDirectoryDiffAsync(Job.Project.WorkingPath, null);
+                if (!string.IsNullOrEmpty(diff))
+                {
+                    _uncommittedDiffFiles = GitDiffParser.ParseDiff(diff);
+
+                    if (string.IsNullOrWhiteSpace(_uncommittedCommitMessage))
+                    {
+                        var prefix = Job.Status == JobStatus.Failed ? "WIP (partial):" : "WIP (cancelled):";
+                        var goalSummary = Job.GoalPrompt.Length > 60 ? Job.GoalPrompt[..60] + "..." : Job.GoalPrompt;
+                        _uncommittedCommitMessage = $"{prefix} {goalSummary}";
+                    }
+                }
+            }
+
+            _hasCheckedUncommittedChanges = true;
+        }
+        catch (Exception ex)
+        {
+            _uncommittedChangesError = $"Failed to check for uncommitted changes: {ex.Message}";
+            Console.WriteLine($"Error checking uncommitted changes: {ex.Message}");
+        }
+        finally
+        {
+            _isCheckingUncommittedChanges = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task CommitUncommittedChangesAsync()
+    {
+        if (Job?.Project?.WorkingPath == null || string.IsNullOrWhiteSpace(_uncommittedCommitMessage) ||
+        _isCommittingUncommittedChanges) return;
+
+        _isCommittingUncommittedChanges = true;
+        _uncommittedChangesError = null;
+        StateHasChanged();
+
+        try
+        {
+            var commitResult = await VersionControlService.CommitAllChangesAsync(Job.Project.WorkingPath,
+            _uncommittedCommitMessage);
+
+            if (commitResult.Success)
+            {
+                NotificationService.ShowSuccess($"Changes committed successfully: {commitResult.CommitHash?[..7] ?? "unknown"}",
+                "Committed");
+                _hasUncommittedChanges = false;
+                _uncommittedDiffFiles.Clear();
+                _uncommittedCommitMessage = string.Empty;
+                _hasCheckedUncommittedChanges = false;
+            }
+            else
+            {
+                _uncommittedChangesError = $"Failed to commit: {commitResult.Error}";
+            }
+        }
+        catch (Exception ex)
+        {
+            _uncommittedChangesError = $"Failed to commit changes: {ex.Message}";
+            Console.WriteLine($"Error committing uncommitted changes: {ex.Message}");
+        }
+        finally
+        {
+            _isCommittingUncommittedChanges = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task DiscardUncommittedChangesAsync()
+    {
+        if (Job?.Project?.WorkingPath == null || _isDiscardingChanges) return;
+
+        _isDiscardingChanges = true;
+        _uncommittedChangesError = null;
+        StateHasChanged();
+
+        try
+        {
+            var result = await VersionControlService.DiscardAllChangesAsync(Job.Project.WorkingPath);
+
+            if (result.Success)
+            {
+                NotificationService.ShowSuccess("All uncommitted changes have been discarded.", "Changes Discarded");
+                _hasUncommittedChanges = false;
+                _uncommittedDiffFiles.Clear();
+                _uncommittedCommitMessage = string.Empty;
+                _hasCheckedUncommittedChanges = false;
+            }
+            else
+            {
+                _uncommittedChangesError = $"Failed to discard changes: {result.Error}";
+            }
+        }
+        catch (Exception ex)
+        {
+            _uncommittedChangesError = $"Failed to discard changes: {ex.Message}";
+            Console.WriteLine($"Error discarding uncommitted changes: {ex.Message}");
+        }
+        finally
+        {
+            _isDiscardingChanges = false;
+            StateHasChanged();
+        }
+    }
+
+    #endregion
+
+    public async ValueTask DisposeAsync()
+    {
+        _refreshTimer?.Dispose();
+        _pushCancellationTokenSource?.Cancel();
+        _pushCancellationTokenSource?.Dispose();
+
+        if (_signalRModule != null)
+        {
+            try
+            {
+                await _signalRModule.InvokeVoidAsync("disposeJobHub");
+                await _signalRModule.DisposeAsync();
+            }
+            catch { }
+        }
+
+        _dotNetReference?.Dispose();
+    }
+}

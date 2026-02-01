@@ -41,11 +41,10 @@ Assume the user has already set up and configured these agents tools. Use their 
 
 ## Coding Best Practices
 
-VibeSwarm follows coding best practices to ensure maintainability, readability, and performance. This includes adhering to established coding standards, using meaningful variable and function names, and writing modular code. The application is structured to promote separation of concerns, with distinct layers for data access, business logic, and presentation.
-
-Because VibeSwarm interacts with rapidly changing AI agents and services, the codebase is designed to be flexible and adaptable. This includes using interfaces and abstractions to allow for easy integration of new agents and providers as they become available. Service provider implementations should be encapsulated to minimize the impact of changes on the overall application.
-
-The C# coding style follows the official Microsoft C# coding conventions. Consistent formatting, indentation, and spacing are used throughout the codebase to enhance readability. Comments and documentation are provided where necessary to explain complex logic and provide context for future developers.
+1. Produce maintainable, readable, and performant code. Follow best practices. Separate logic into services, model types, and UI components.
+2. The application should be flexible to allow for rapid changes in AI providers and agent tooling.
+3. Follow C# coding conventions and style guidelines.
+4. Use tabs for indentation, with a tab size of 4 spaces.
 
 ## Usage Limits for AI Agents
 
@@ -84,37 +83,32 @@ All pages and UI components are tested on an iPhone to ensure every aspect of th
 
 ### Desktop Friendly
 
-The UI should also be optimized for desktop use, taking advantage of larger screen real estate to provide a more detailed and comprehensive view of projects and agent activities. The desktop interface includes additional features and information that may not be necessary on mobile devices, enhancing the overall user experience for desktop users.
-
-Consider the entire viewport when designing layouts, ensuring that content is well-organized and easily accessible on larger screens. Utilize grid systems and flexible layouts to create a visually appealing and functional desktop interface. Ensure there are no gaps of unused space on larger screens by expanding content areas or adding supplementary information where appropriate.
-
-Elements such as Modals should expand to a reasonable size on desktop screens to improve usability, while still being fully functional on mobile devices.
+1. The UI is fully responsive and adapts to various screen sizes, including desktops and larger monitors.
+2. Ensure that all features and functionalities are easily accessible on desktop devices.
+3. Utilize the grid system for consistent spacing.
 
 ### Bootstrap Integration
 
-Always attempt to leverage Bootstrap's built-in classes and components. Avoid custom styles at all costs, unless absolutely necessary. Custom classes should ONLY exist when there is no equivalent in Bootstrap and should be named using a clear and consistent naming convention. This ensures consistency across the application and reduces the need for additional CSS. Use a stacked utility class approach when creating UI components to maximize flexibility and maintainability. A component may use multiple classes such as `d-flex`, `flex-column`, `align-items-center`, `bg-body-secondary`, and `p-3` to achieve the desired layout and styling without custom CSS. Use the TailwindCSS mindset when applying Bootstrap utility classes to create complex layouts and designs.
-
-Always favor Bootstrap components such as Cards, Modals, Buttons, and Forms to maintain a consistent look and feel throughout the application. Customize these components using Bootstrap's utility classes rather than creating new styles.
+1. Always attempt to leverage existing features of Bootstrap such as padding, colors, margins, and flexbox utilities.
+2. Favor using Lists and List Items over Tables for layout. Tables are only for tabular data.
+3. Avoid outlined buttons where possible. Use filled buttons for primary actions and secondary buttons for secondary actions.
+4. Support both light and dark mode by using the primary, secondary and accent classes.
 
 ### Site.css
 
-The application specific `site.css` should only add helper utilities that can be used across the application, and are not intended to be specific to components.
-
-No components should need a `*.razor.css` file. All styling should be achievable via Bootstrap utility classes alone. If a component requires specific styling that cannot be achieved with Bootstrap classes, consider refactoring the component to better align with Bootstrap's capabilities.
-
-The `site.css` should never contain specific component styles. It should only contain helper classes that can be used across multiple components. Razor components should stack Bootstrap utility classes to achieve the desired styling and layout.
-
-There may be rare cases where a custom class is necessary for a specific component due to limitations in Bootstrap. In such cases, the custom class should be clearly named to indicate its purpose and should be documented within the `site.css` file for clarity. The custom classes should aim to only override properties where a utility class does not exist in Bootstrap.
-
-For any reference, see the official Boostrap utility classes documentation: `https://getbootstrap.com/docs/5.3/utilities/`. There are sub-sections for various utility types such as spacing, flexbox, colors, and more. Always prefer these built-in classes over custom styles.
+1. Only add generic utilities to `site.css` that can be reused across the application.
+2. Avoid adding component specific styles to `site.css`.
+3. Reference the links under the Bootstrap Utilities (`https://getbootstrap.com/docs/5.3/utilities/`) section before adding any custom styles.
+4. Utility classes should be short and ideally a single declaration. For example, a utility class to add a semitransparent background or blur.
 
 ### Bootstrap Icons
 
-VibeSwarm uses Bootstrap Icons for visual enhancements and to improve user experience. Icons are used throughout the interface to represent actions, statuses, and navigation elements. The application leverages the extensive library of Bootstrap Icons to maintain a consistent look and feel.
-
-When adding icons, prefer using Bootstrap Icons over custom SVGs or other icon libraries to ensure visual consistency. Icons should be appropriately sized and aligned within UI components to enhance usability without overwhelming the design.
-
-Icon usage in buttons should always contain a Title attribute for accessibility and better user experience. This provides additional context for users, especially those using screen readers.
+1. Use Bootstrap Icons for all icons in the application.
+2. Avoid using custom SVGs or other icon libraries unless absolutely necessary.
+3. Avoid emojis for icons.
+4. Use consistent icon sizes and alignments throughout the application.
+5. Ensure padding between icons and text for better readability.
+6. When space is constrained, hide text labels and show only icons, but provide tooltips for clarity.
 
 ### Blazor Best Practices
 
@@ -173,7 +167,9 @@ The VibeSwarm dashboard provides a comprehensive overview of what is going on in
 
 ## Git Integration
 
-The application has a deep reliance on Git for version control of software, but is not required. Users must be able to queue up code changes suggested by agents and review them before applying to the codebase. Git is the preferred method for managing code changes, allowing for easy tracking of modifications and collaboration among multiple agents.
+1. The application supports projects with or without Git repositories initialized.
+2. If a Git repository is present, VibeSwarm leverages Git for version control and collaboration.
+3. If no Git repository is present, VibeSwarm can still operate on the code.
 
 ## Tool Use and Research
 

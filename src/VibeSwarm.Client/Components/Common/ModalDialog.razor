@@ -1,0 +1,141 @@
+@* Reusable modal dialog component *@
+@inject IJSRuntime JSRuntime
+
+@if (IsVisible)
+{
+	<div class="modal-backdrop fade show vs-modal-backdrop"></div>
+	<div class="modal fade show d-block vs-modal-container" tabindex="-1" role="dialog"
+		@onmousedown="HandleBackdropMouseDown" @onclick="HandleBackdropClick">
+		<div class="modal-dialog vs-modal-dialog @SizeClass @(IsCentered ? "modal-dialog-centered" : "") @(IsScrollable ? "modal-dialog-scrollable" : "")"
+			@onmousedown:stopPropagation="true" @onclick:stopPropagation="true">
+			<div class="modal-content vs-modal-content">
+				<div class="modal-header">
+					<h5 class="modal-title">
+						@if (!string.IsNullOrEmpty(Icon))
+						{
+							<i class="bi bi-@Icon me-2"></i>
+						}
+						@Title
+					</h5>
+					@if (ShowCloseButton)
+					{
+						<button type="button" class="btn-close" @onclick="Close" aria-label="Close"></button>
+					}
+				</div>
+				<div class="modal-body">
+					@ChildContent
+				</div>
+				@if (FooterContent != null)
+				{
+					<div class="modal-footer">
+						@FooterContent
+					</div>
+				}
+			</div>
+		</div>
+	</div>
+}
+
+@code {
+	public enum ModalSize
+	{
+		Small,
+		Default,
+		Large,
+		ExtraLarge
+	}
+
+	[Parameter]
+	public bool IsVisible { get; set; }
+
+	[Parameter]
+	public EventCallback<bool> IsVisibleChanged { get; set; }
+
+	[Parameter]
+	public string Title { get; set; } = string.Empty;
+
+	[Parameter]
+	public string? Icon { get; set; }
+
+	[Parameter]
+	public ModalSize Size { get; set; } = ModalSize.Default;
+
+	[Parameter]
+	public bool IsCentered { get; set; } = true;
+
+	[Parameter]
+	public bool IsScrollable { get; set; } = true;
+
+	[Parameter]
+	public bool ShowCloseButton { get; set; } = true;
+
+	[Parameter]
+	public bool CloseOnBackdropClick { get; set; } = true;
+
+	[Parameter]
+	public RenderFragment? ChildContent { get; set; }
+
+	[Parameter]
+	public RenderFragment? FooterContent { get; set; }
+
+	[Parameter]
+	public EventCallback OnClose { get; set; }
+
+	private string SizeClass => Size switch
+	{
+		ModalSize.Small => "modal-sm",
+		ModalSize.Large => "modal-lg",
+		ModalSize.ExtraLarge => "modal-xl",
+		_ => ""
+	};
+
+	// Track if mousedown started on the backdrop (not inside modal content)
+	private bool _mouseDownOnBackdrop;
+	private bool _wasVisible;
+
+	protected override async Task OnAfterRenderAsync(bool firstRender)
+	{
+		if (IsVisible && !_wasVisible)
+		{
+			// Modal just opened - lock body scroll
+			await JSRuntime.InvokeVoidAsync("eval", "document.body.classList.add('vs-modal-open')");
+			_wasVisible = true;
+		}
+		else if (!IsVisible && _wasVisible)
+		{
+			// Modal just closed - unlock body scroll
+			await JSRuntime.InvokeVoidAsync("eval", "document.body.classList.remove('vs-modal-open')");
+			_wasVisible = false;
+		}
+	}
+
+	private void HandleBackdropMouseDown()
+	{
+		// This will only fire if mousedown is on the backdrop (not stopped by modal-dialog)
+		_mouseDownOnBackdrop = true;
+	}
+
+	private async Task HandleBackdropClick()
+	{
+		// Only close if both mousedown and click (mouseup) happened on the backdrop
+		// This prevents closing when user drags text selection outside the modal
+		if (CloseOnBackdropClick && _mouseDownOnBackdrop)
+		{
+			await Close();
+		}
+		_mouseDownOnBackdrop = false;
+	}
+
+	public async Task Close()
+	{
+		IsVisible = false;
+		await IsVisibleChanged.InvokeAsync(false);
+		await OnClose.InvokeAsync();
+	}
+
+	public void Show()
+	{
+		IsVisible = true;
+		StateHasChanged();
+	}
+}

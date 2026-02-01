@@ -1,0 +1,39 @@
+<CascadingAuthenticationState>
+    <Router AppAssembly="@typeof(App).Assembly">
+        <Found Context="routeData">
+            <AuthorizeRouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)">
+                <NotAuthorized>
+                    @if (context.User.Identity?.IsAuthenticated == true)
+                    {
+                        <LayoutView Layout="@typeof(MainLayout)">
+                            <div class="container mt-5">
+                                <div class="alert alert-danger" role="alert">
+                                    <h4 class="alert-heading">Access Denied</h4>
+                                    <p>You do not have permission to access this page.</p>
+                                </div>
+                            </div>
+                        </LayoutView>
+                    }
+                    else
+                    {
+                        @* Session expired mid-circuit — prompt user to reload through the middleware *@
+                        <div class="d-flex align-items-center justify-content-center min-vh-100">
+                            <div class="text-center">
+                                <h4>Session Expired</h4>
+                                <p class="text-muted">Your session has expired. Please log in again.</p>
+                                <a href="/login" class="btn btn-primary">Log In</a>
+                            </div>
+                        </div>
+                    }
+                </NotAuthorized>
+            </AuthorizeRouteView>
+            <FocusOnNavigate RouteData="@routeData" Selector="h1" />
+        </Found>
+        <NotFound>
+            <PageTitle>Not found</PageTitle>
+            <LayoutView Layout="@typeof(MainLayout)">
+                <p>Sorry, there's nothing at this address.</p>
+            </LayoutView>
+        </NotFound>
+    </Router>
+</CascadingAuthenticationState>

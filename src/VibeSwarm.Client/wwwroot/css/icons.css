@@ -1,0 +1,126 @@
+/* ============================================
+   Bootstrap Icons Font Face (Local)
+   Official Bootstrap Icons v1.13.1
+   Only includes icons used in the VibeSwarm app
+============================================ */
+@font-face {
+    font-family: 'bootstrap-icons';
+    font-display: swap;
+    src: url('../fonts/bootstrap-icons.woff2') format('woff2'),
+         url('../fonts/bootstrap-icons.woff') format('woff');
+}
+
+.bi::before,
+[class^="bi-"]::before,
+[class*=" bi-"]::before {
+    font-family: 'bootstrap-icons' !important;
+    font-style: normal;
+    font-weight: normal;
+    font-variant: normal;
+    text-transform: none;
+    line-height: 1;
+    vertical-align: -0.125em;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+/* ============================================
+   Navigation & Layout Icons
+============================================ */
+.bi-house-door::before { content: "\f423"; }
+.bi-house::before { content: "\f425"; }
+.bi-folder::before { content: "\f3d7"; }
+.bi-folder-fill::before { content: "\f3d1"; }
+.bi-folder2-open::before { content: "\f3d8"; }
+.bi-folder-x::before { content: "\f3d6"; }
+.bi-gear::before { content: "\f3e5"; }
+.bi-gear-wide-connected::before { content: "\f3e3"; }
+.bi-plug::before { content: "\f4f7"; }
+.bi-list::before { content: "\f479"; }
+.bi-list-check::before { content: "\f473"; }
+
+/* ============================================
+   Action & Control Icons
+============================================ */
+.bi-x::before { content: "\f62a"; }
+.bi-x-lg::before { content: "\f659"; }
+.bi-x-circle::before { content: "\f623"; }
+.bi-x-circle-fill::before { content: "\f622"; }
+.bi-check2::before { content: "\f272"; }
+.bi-check-lg::before { content: "\f633"; }
+.bi-check-circle::before { content: "\f26b"; }
+.bi-check-circle-fill::before { content: "\f26a"; }
+.bi-plus-lg::before { content: "\f64d"; }
+.bi-trash::before { content: "\f5de"; }
+.bi-pencil::before { content: "\f4cb"; }
+.bi-eye::before { content: "\f341"; }
+.bi-eye-slash::before { content: "\f340"; }
+.bi-send::before { content: "\f6c0"; }
+
+/* ============================================
+   Navigation Arrows & Chevrons
+============================================ */
+.bi-arrow-left::before { content: "\f12f"; }
+.bi-arrow-right::before { content: "\f138"; }
+.bi-arrow-up::before { content: "\f148"; }
+.bi-arrow-repeat::before { content: "\f130"; }
+.bi-arrow-counterclockwise::before { content: "\f117"; }
+.bi-arrows-expand::before { content: "\f14c"; }
+.bi-arrows-collapse::before { content: "\f14b"; }
+.bi-chevron-left::before { content: "\f284"; }
+.bi-chevron-right::before { content: "\f285"; }
+.bi-chevron-down::before { content: "\f282"; }
+.bi-box-arrow-right::before { content: "\f1c3"; }
+
+/* ============================================
+   Status & State Icons
+============================================ */
+.bi-play-circle::before { content: "\f4f3"; }
+.bi-stop-circle::before { content: "\f591"; }
+.bi-clock::before { content: "\f293"; }
+.bi-clock-history::before { content: "\f292"; }
+.bi-activity::before { content: "\f66b"; }
+.bi-lightning::before { content: "\f46f"; }
+.bi-cpu::before { content: "\f2d6"; }
+.bi-bullseye::before { content: "\f1de"; }
+.bi-inbox::before { content: "\f42d"; }
+.bi-sliders::before { content: "\f56b"; }
+
+/* ============================================
+   Alert & Notification Icons
+============================================ */
+.bi-exclamation-triangle::before { content: "\f33b"; }
+.bi-exclamation-triangle-fill::before { content: "\f33a"; }
+.bi-exclamation-circle::before { content: "\f333"; }
+.bi-info-circle::before { content: "\f431"; }
+.bi-info-circle-fill::before { content: "\f430"; }
+.bi-bell-fill::before { content: "\f189"; }
+
+/* ============================================
+   User & Account Icons
+============================================ */
+.bi-person-circle::before { content: "\f4d7"; }
+.bi-shield-lock::before { content: "\f538"; }
+
+/* ============================================
+   Development & System Icons
+============================================ */
+.bi-terminal::before { content: "\f5c3"; }
+.bi-git::before { content: "\f69d"; }
+.bi-robot::before { content: "\f6b1"; }
+.bi-cloud-upload::before { content: "\f2c0"; }
+.bi-diagram-2::before { content: "\f2ec"; }
+.bi-pc-display::before { content: "\f6a6"; }
+.bi-hdd::before { content: "\f412"; }
+.bi-lightbulb::before { content: "\f46b"; }
+
+/* ============================================
+   Calendar & Time Icons
+============================================ */
+.bi-calendar-plus::before { content: "\f1ef"; }
+
+/* ============================================
+   Miscellaneous Icons
+============================================ */
+.bi-three-dots-vertical::before { content: "\f5d3"; }
+.bi-chat-dots::before { content: "\f24a"; }

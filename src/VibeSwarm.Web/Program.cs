@@ -1,16 +1,14 @@
 using System.Security.Cryptography.X509Certificates;
-using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Components.Authorization;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Services;
-using VibeSwarm.Web;
 using VibeSwarm.Web.Endpoints;
 using VibeSwarm.Web.Hubs;
 using VibeSwarm.Web.Middleware;
 using VibeSwarm.Web.Services;
-using VibeSwarm.Worker;
 
 // Load environment variables from .env file (if it exists)
 // Walk up from the current directory and base directory to find .env at the repo root
@@ -80,16 +78,14 @@ builder.Services.AddAuthorization();
 
 builder.Services.AddRazorPages();
 
-// Configure Blazor Server with iOS PWA-optimized settings
-builder.Services.AddServerSideBlazor(options =>
-{
-    // Extend timeouts for iOS PWA background/foreground transitions
-    // iOS Safari can delay WebSocket reconnection by 10-30 seconds
-    options.DisconnectedCircuitMaxRetained = 100;
-    options.DisconnectedCircuitRetentionPeriod = TimeSpan.FromMinutes(10);
-    options.JSInteropDefaultCallTimeout = TimeSpan.FromMinutes(2);
-    options.MaxBufferedUnacknowledgedRenderBatches = 20;
-});
+// Add controllers for API endpoints with JSON serialization config
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
+        options.JsonSerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
+        options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+    });
 
 // Configure SignalR with iOS-optimized timeouts and stateful reconnect support
 builder.Services.AddSignalR(options =>
@@ -110,11 +106,9 @@ builder.Services.AddSignalR(options =>
     // Stateful reconnect buffer size (for .NET 10 stateful reconnect)
     options.StatefulReconnectBufferSize = 100 * 1024; // 100KB
 });
+
 builder.Services.AddWorkerServices();
 builder.Services.AddVibeSwarmData(connectionString);
-
-// Add authentication state provider for Blazor Server
-builder.Services.AddScoped<AuthenticationStateProvider, RevalidatingIdentityAuthenticationStateProvider<ApplicationUser>>();
 
 // Add Identity services
 builder.Services.AddIdentity<ApplicationUser, IdentityRole<Guid>>(options =>
@@ -174,7 +168,7 @@ builder.Services.ConfigureApplicationCookie(options =>
         return Task.CompletedTask;
     };
 
-    // Important for Blazor Server: Don't redirect on API calls
+    // Important: Don't redirect on API calls - return 401 instead
     options.Events.OnRedirectToLogin = context =>
     {
         // If this is an API call or AJAX request, return 401 instead of redirecting
@@ -195,12 +189,6 @@ builder.Services.AddSingleton<IJobUpdateService, SignalRJobUpdateService>();
 
 // Register interaction response service (singleton for cross-service communication)
 builder.Services.AddSingleton<IInteractionResponseService, InMemoryInteractionResponseService>();
-
-// Register notification service (scoped per circuit for Blazor Server)
-builder.Services.AddScoped<NotificationService>();
-
-// Register change password modal service (scoped to coordinate between LoginDisplay and MainLayout)
-builder.Services.AddScoped<ChangePasswordModalService>();
 
 var app = builder.Build();
 
@@ -257,6 +245,9 @@ using (var scope = app.Services.CreateScope())
 // HTTPS redirection disabled - reverse proxy handles TLS termination
 // app.UseHttpsRedirection();
 app.UseSecurityHeaders();
+
+// Serve Blazor WebAssembly static files
+app.UseBlazorFrameworkFiles();
 app.UseStaticFiles();
 app.UseRouting();
 
@@ -267,12 +258,21 @@ app.UseSetupRequired();
 app.UseAuthentication();
 app.UseAuthorization();
 
+// Map API controllers
+app.MapControllers();
+
+// Map auth endpoints and certificate endpoints
 app.MapAuthEndpoints();
 app.MapCertificateEndpoints();
+
+// Map Razor Pages (Login, Setup)
 app.MapRazorPages();
-app.MapBlazorHub();
+
+// Map SignalR hub
 app.MapHub<JobHub>("/jobhub");
-app.MapFallbackToPage("/_Host");
+
+// Fallback to WASM entry point for client-side routing
+app.MapFallbackToFile("index.html");
 
 app.Run();
 

@@ -1,0 +1,292 @@
+@* Modal dialog for retrying a failed job with provider/model selection *@
+@inject IProviderService ProviderService
+
+<ModalDialog IsVisible="IsVisible" IsVisibleChanged="HandleModalVisibilityChanged" Title="Retry Job" Icon="arrow-repeat"
+	Size="ModalDialog.ModalSize.Default">
+	<ChildContent>
+		<div class="retry-job-form">
+			@if (IsLoading)
+			{
+				<div class="text-center py-4">
+					<div class="spinner-border text-primary" role="status">
+						<span class="visually-hidden">Loading...</span>
+					</div>
+					<p class="text-body-secondary mt-2 mb-0">Loading providers...</p>
+				</div>
+			}
+			else if (Providers.Count == 0)
+			{
+				<div class="alert alert-warning mb-0">
+					<i class="bi bi-exclamation-triangle me-2"></i>
+					No enabled providers available. Please enable at least one provider in settings.
+				</div>
+			}
+			else
+			{
+				@if (Job != null && Job.RetryCount > 0)
+				{
+					<div class="alert alert-info d-flex align-items-center mb-3 py-2">
+						<i class="bi bi-info-circle me-2"></i>
+						<span>This job has been attempted <strong>@(Job.RetryCount + 1)</strong> time(s)</span>
+					</div>
+				}
+
+				<div class="mb-3">
+					<label for="retryProvider" class="form-label">Provider</label>
+					<select id="retryProvider" class="form-select" @bind="SelectedProviderId"
+						@bind:after="OnProviderChanged">
+						@foreach (var provider in Providers)
+						{
+							<option value="@provider.Id">
+								@provider.Name
+								@if (provider.Id == Job?.ProviderId)
+								{
+									<text> (current)</text>
+								}
+							</option>
+						}
+					</select>
+					<div class="form-text">Select the provider to use for this retry attempt.</div>
+				</div>
+
+				<div class="mb-3">
+					<label for="retryModel" class="form-label">Model</label>
+					@if (IsLoadingModels)
+					{
+						<div class="d-flex align-items-center gap-2 py-2">
+							<div class="spinner-border spinner-border-sm text-secondary" role="status">
+								<span class="visually-hidden">Loading models...</span>
+							</div>
+							<span class="text-body-secondary small">Loading available models...</span>
+						</div>
+					}
+					else if (AvailableModels.Count == 0)
+					{
+						<select id="retryModel" class="form-select" disabled>
+							<option value="">Default (provider decides)</option>
+						</select>
+						<div class="form-text text-warning">
+							<i class="bi bi-exclamation-triangle me-1"></i>
+							No models loaded for this provider. The provider's default model will be used.
+						</div>
+					}
+					else
+					{
+						<select id="retryModel" class="form-select" @bind="SelectedModelId">
+							<option value="">Default (provider decides)</option>
+							@foreach (var model in AvailableModels.Where(m => m.IsAvailable))
+							{
+								<option value="@model.ModelId">
+									@(model.DisplayName ?? model.ModelId)
+									@if (model.IsDefault)
+									{
+										<text> ★</text>
+									}
+									@if (model.ModelId == Job?.ModelUsed)
+									{
+										<text> (last used)</text>
+									}
+								</option>
+							}
+						</select>
+						<div class="form-text">Choose a specific model or use the provider's default.</div>
+					}
+				</div>
+
+				@if (!string.IsNullOrEmpty(ErrorMessage))
+				{
+					<div class="alert alert-danger py-2 mb-0">
+						<i class="bi bi-exclamation-triangle me-1"></i>@ErrorMessage
+					</div>
+				}
+			}
+		</div>
+	</ChildContent>
+	<FooterContent>
+		<button type="button" class="btn btn-secondary" @onclick="Close" disabled="@IsSubmitting">
+			Cancel
+		</button>
+		<button type="button" class="btn btn-primary" @onclick="Submit"
+			disabled="@(IsLoading || Providers.Count == 0 || IsSubmitting || IsLoadingModels)">
+			@if (IsSubmitting)
+			{
+				<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+				<span>Retrying...</span>
+			}
+			else
+			{
+				<i class="bi bi-arrow-repeat me-1"></i>
+				<span>Retry Job</span>
+			}
+		</button>
+	</FooterContent>
+</ModalDialog>
+
+@code {
+	[Parameter]
+	public bool IsVisible { get; set; }
+
+	[Parameter]
+	public EventCallback<bool> IsVisibleChanged { get; set; }
+
+	[Parameter]
+	public Job? Job { get; set; }
+
+	[Parameter]
+	public EventCallback<RetryOptions> OnRetry { get; set; }
+
+	private List<Provider> Providers { get; set; } = new();
+	private List<ProviderModel> AvailableModels { get; set; } = new();
+	private Guid SelectedProviderId { get; set; }
+	private string? SelectedModelId { get; set; }
+	private bool IsLoading { get; set; } = true;
+	private bool IsLoadingModels { get; set; }
+	private bool IsSubmitting { get; set; }
+	private string? ErrorMessage { get; set; }
+
+	protected override async Task OnParametersSetAsync()
+	{
+		if (IsVisible && IsLoading)
+		{
+			await LoadProviders();
+		}
+	}
+
+	private async Task LoadProviders()
+	{
+		IsLoading = true;
+		ErrorMessage = null;
+		StateHasChanged();
+
+		try
+		{
+			var allProviders = await ProviderService.GetAllAsync();
+			Providers = allProviders.Where(p => p.IsEnabled).ToList();
+
+			// Set default selection to current job's provider
+			if (Job != null && Providers.Any(p => p.Id == Job.ProviderId))
+			{
+				SelectedProviderId = Job.ProviderId;
+			}
+			else if (Providers.Count > 0)
+			{
+				SelectedProviderId = Providers.First().Id;
+			}
+
+			// Load models for the selected provider
+			if (SelectedProviderId != Guid.Empty)
+			{
+				await LoadModelsForProvider(SelectedProviderId);
+			}
+		}
+		catch (Exception ex)
+		{
+			ErrorMessage = $"Failed to load providers: {ex.Message}";
+		}
+		finally
+		{
+			IsLoading = false;
+		}
+	}
+
+	private async Task LoadModelsForProvider(Guid providerId)
+	{
+		IsLoadingModels = true;
+		StateHasChanged();
+
+		try
+		{
+			var models = await ProviderService.GetModelsAsync(providerId);
+			AvailableModels = models.ToList();
+
+			// Pre-select the last used model if available
+			if (Job?.ModelUsed != null && AvailableModels.Any(m => m.ModelId == Job.ModelUsed))
+			{
+				SelectedModelId = Job.ModelUsed;
+			}
+			else
+			{
+				SelectedModelId = null; // Use default
+			}
+		}
+		catch (Exception ex)
+		{
+			ErrorMessage = $"Failed to load models: {ex.Message}";
+			AvailableModels.Clear();
+		}
+		finally
+		{
+			IsLoadingModels = false;
+		}
+	}
+
+	private async Task OnProviderChanged()
+	{
+		SelectedModelId = null;
+		if (SelectedProviderId != Guid.Empty)
+		{
+			await LoadModelsForProvider(SelectedProviderId);
+		}
+		else
+		{
+			AvailableModels.Clear();
+		}
+	}
+
+	private async Task Submit()
+	{
+		if (Job == null) return;
+
+		IsSubmitting = true;
+		ErrorMessage = null;
+		StateHasChanged();
+
+		try
+		{
+			var options = new RetryOptions
+			{
+				ProviderId = SelectedProviderId,
+				ModelId = string.IsNullOrEmpty(SelectedModelId) ? null : SelectedModelId
+			};
+
+			await OnRetry.InvokeAsync(options);
+			await Close();
+		}
+		catch (Exception ex)
+		{
+			ErrorMessage = $"Failed to retry job: {ex.Message}";
+		}
+		finally
+		{
+			IsSubmitting = false;
+		}
+	}
+
+	private async Task Close()
+	{
+		await IsVisibleChanged.InvokeAsync(false);
+		// Reset state for next open
+		IsLoading = true;
+		SelectedModelId = null;
+		ErrorMessage = null;
+	}
+
+	private async Task HandleModalVisibilityChanged(bool visible)
+	{
+		if (!visible)
+		{
+			// Modal was closed (e.g., by backdrop click or close button)
+			// Propagate to parent and reset state
+			await IsVisibleChanged.InvokeAsync(false);
+			IsLoading = true;
+			SelectedModelId = null;
+			ErrorMessage = null;
+		}
+	}
+
+	public class RetryOptions
+	{
+		public Guid ProviderId { get; set; }
+		public string? ModelId { get; set; }
+	}
+}

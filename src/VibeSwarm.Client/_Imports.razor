@@ -1,0 +1,31 @@
+@using System.Net.Http
+@using System.Net.Http.Json
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.AspNetCore.Components.Routing
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.AspNetCore.Components.WebAssembly.Http
+@using Microsoft.JSInterop
+@using VibeSwarm.Client
+@using VibeSwarm.Client.Shared
+@using VibeSwarm.Client.Services
+@using VibeSwarm.Shared
+@using VibeSwarm.Shared.Data
+@using VibeSwarm.Shared.Providers
+@using VibeSwarm.Shared.Services
+@using VibeSwarm.Shared.Utilities
+@using VibeSwarm.Shared.VersionControl
+
+@* Component namespaces - organized by domain *@
+@using VibeSwarm.Client.Components.Common
+@using VibeSwarm.Client.Components.Git
+@using VibeSwarm.Client.Components.Jobs
+@using VibeSwarm.Client.Components.Projects
+@using VibeSwarm.Client.Components.Providers
+@using VibeSwarm.Client.Components.Ideas
+@using VibeSwarm.Client.Components.Chat
+@using VibeSwarm.Client.Models
+
+@* All pages require authentication by default. Use [AllowAnonymous] to override. *@
+@attribute [Authorize]

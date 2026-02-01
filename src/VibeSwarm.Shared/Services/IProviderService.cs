@@ -17,12 +17,6 @@ public interface IProviderService
     Task SetDefaultAsync(Guid id, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Creates a provider instance from a provider configuration.
-    /// Useful for calling provider-specific methods like GetSessionSummaryAsync.
-    /// </summary>
-    IProvider? CreateInstance(Provider config);
-
-    /// <summary>
     /// Gets the session summary for a completed job.
     /// </summary>
     Task<SessionSummary> GetSessionSummaryAsync(

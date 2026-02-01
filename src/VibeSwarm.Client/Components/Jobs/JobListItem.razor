@@ -1,0 +1,173 @@
+@* Job list item component for inbox-style CI/CD pipeline layout *@
+@using VibeSwarm.Shared.Utilities
+
+<div class="job-list-item p-3 border-bottom cursor-pointer @(_isSelected ? "job-selected" : "")" @onclick="HandleClick">
+    <div class="d-flex align-items-start gap-3">
+        @* Status Icon Column *@
+        <div class="job-status-icon d-flex align-items-center justify-content-center flex-shrink-0">
+            @switch (Status.ToLowerInvariant())
+            {
+                case "new":
+                case "pending":
+                    <i class="bi bi-clock text-secondary fs-5" title="Pending"></i>
+                    break;
+                case "started":
+                case "processing":
+                    <div class="spinner-border spinner-border-sm text-info" role="status" title="Running">
+                        <span class="visually-hidden">Running...</span>
+                    </div>
+                    break;
+                case "completed":
+                    <i class="bi bi-check-circle-fill text-success fs-5" title="Completed"></i>
+                    break;
+                case "failed":
+                    <i class="bi bi-x-circle-fill text-danger fs-5" title="Failed"></i>
+                    break;
+                case "cancelled":
+                    <i class="bi bi-slash-circle text-secondary fs-5" title="Cancelled"></i>
+                    break;
+                case "stalled":
+                    <i class="bi bi-exclamation-triangle-fill text-warning fs-5" title="Stalled"></i>
+                    break;
+                case "paused":
+                    <i class="bi bi-pause-circle-fill text-warning fs-5" title="Paused"></i>
+                    break;
+                default:
+                    <i class="bi bi-question-circle text-secondary fs-5"></i>
+                    break;
+            }
+        </div>
+
+        @* Main Content *@
+        <div class="flex-grow-1 min-width-0">
+            @* Goal Prompt *@
+            <div class="mb-1 text-break lh-sm">
+                <span class="@(IsActiveStatus() ? "fw-semibold" : "")">@TruncateText(Prompt, 150)</span>
+            </div>
+
+            @* Meta info row *@
+            <div class="d-flex flex-wrap align-items-center gap-2 small text-body-secondary">
+                @if (!string.IsNullOrEmpty(ProjectName) && ShowProjectName)
+                {
+                    <span class="badge bg-secondary-subtle text-secondary-emphasis">@ProjectName</span>
+                }
+                @if (!string.IsNullOrEmpty(ModelUsed))
+                {
+                    <span class="text-body-tertiary">@FormatModelName(ModelUsed)</span>
+                }
+                @if (!string.IsNullOrEmpty(Activity) && IsActiveStatus())
+                {
+                    <span class="text-info fst-italic text-truncate" style="max-width: 200px;">@Activity</span>
+                }
+            </div>
+        </div>
+
+        @* Right Column - Tokens, Cost (no time here) *@
+        <div class="job-stats d-none d-sm-flex flex-column align-items-end gap-1 flex-shrink-0 text-end">
+            @* Token info *@
+            @if (InputTokens.HasValue || OutputTokens.HasValue)
+            {
+                <span class="font-monospace small text-body-secondary" title="Input / Output tokens">
+                    @TokenHelper.FormatTokenCount(InputTokens ?? 0) / @TokenHelper.FormatTokenCount(OutputTokens ?? 0)
+                </span>
+            }
+            @* Cost *@
+            @if (Cost.HasValue && Cost.Value > 0)
+            {
+                <span class="font-monospace small fw-medium text-success">@TokenHelper.FormatCost(Cost.Value)</span>
+            }
+        </div>
+    </div>
+
+    @* Footer row - Time display on its own line *@
+    <div class="d-flex align-items-center gap-2 small text-body-secondary mt-2 ps-4 ms-2">
+        @* Mobile: Compact token stats *@
+        <div class="d-sm-none">
+            @if (InputTokens.HasValue || OutputTokens.HasValue || Cost.HasValue)
+            {
+                <span class="font-monospace">
+                    @TokenHelper.FormatTokenCount((InputTokens ?? 0) + (OutputTokens ?? 0)) tokens
+                    @if (Cost.HasValue && Cost.Value > 0)
+                    {
+                        <span class="text-success ms-1">@TokenHelper.FormatCost(Cost.Value)</span>
+                    }
+                </span>
+            }
+        </div>
+        <span class="ms-auto text-body-tertiary">@TimeDisplay</span>
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public string Status { get; set; } = string.Empty;
+
+    [Parameter]
+    public string Prompt { get; set; } = string.Empty;
+
+    [Parameter]
+    public string? ProjectName { get; set; }
+
+    [Parameter]
+    public bool ShowProjectName { get; set; } = true;
+
+    [Parameter]
+    public string? ModelUsed { get; set; }
+
+    [Parameter]
+    public string? Activity { get; set; }
+
+    [Parameter]
+    public string TimeDisplay { get; set; } = string.Empty;
+
+    [Parameter]
+    public decimal? Cost { get; set; }
+
+    [Parameter]
+    public int? InputTokens { get; set; }
+
+    [Parameter]
+    public int? OutputTokens { get; set; }
+
+    [Parameter]
+    public bool IsSelected { get; set; }
+
+    [Parameter]
+    public EventCallback OnClick { get; set; }
+
+    private bool _isSelected => IsSelected;
+
+    private bool IsActiveStatus()
+    {
+        var status = Status.ToLowerInvariant();
+        return status is "started" or "processing" or "new" or "pending";
+    }
+
+    private async Task HandleClick()
+    {
+        await OnClick.InvokeAsync();
+    }
+
+    private static string TruncateText(string text, int maxLength)
+    {
+        if (string.IsNullOrEmpty(text) || text.Length <= maxLength)
+            return text;
+        return text[..maxLength] + "...";
+    }
+
+    private static string FormatModelName(string model)
+    {
+        // Shorten long model names like "claude-sonnet-4-20250514" to "sonnet-4"
+        if (string.IsNullOrEmpty(model)) return model;
+
+        var parts = model.Split('-');
+        if (parts.Length >= 2)
+        {
+            // Try to extract a meaningful short name
+            var relevantParts = parts.Where(p => !p.All(char.IsDigit) || p.Length <= 2).Take(3);
+            return string.Join("-", relevantParts);
+        }
+
+        return model.Length > 20 ? model[..20] + "..." : model;
+    }
+}

@@ -1,0 +1,147 @@
+@* Branch switch confirmation modal component *@
+
+<ModalDialog IsVisible="IsVisible" IsVisibleChanged="HandleModalVisibilityChanged" Title="Switch Branch"
+    Icon="arrow-left-right" Size="ModalDialog.ModalSize.Default">
+    <ChildContent>
+        @if (IsChecking)
+        {
+            <div class="d-flex align-items-center gap-2 text-body-secondary">
+                <span class="spinner-border spinner-border-sm" role="status"></span>
+                <span>Checking for uncommitted changes...</span>
+            </div>
+        }
+        else
+        {
+            <p class="mb-3">
+                Switch from <strong class="text-primary">@CurrentBranch</strong> to
+                <strong class="text-success">@TargetBranch</strong>?
+            </p>
+
+            @if (HasUncommittedChanges)
+            {
+                <div class="alert alert-warning py-2 mb-3 d-flex align-items-start gap-2">
+                    <i class="bi bi-exclamation-triangle-fill mt-1 flex-shrink-0"></i>
+                    <div>
+                        <strong>Uncommitted changes detected!</strong>
+                        <p class="mb-0 mt-1 small">
+                            You have uncommitted changes in your working directory.
+                            These changes may be lost or cause conflicts when switching branches.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="commitBeforeSwitch" @bind="_commitBeforeSwitch">
+                        <label class="form-check-label" for="commitBeforeSwitch">
+                            Commit changes before switching
+                        </label>
+                    </div>
+                </div>
+
+                @if (_commitBeforeSwitch)
+                {
+                    <div class="mb-3">
+                        <label for="commitMessage" class="form-label small fw-medium">Commit Message</label>
+                        <input type="text" class="form-control" id="commitMessage" @bind="_commitMessage" @bind:event="oninput"
+                            placeholder="e.g., WIP: Save changes before branch switch" disabled="@IsSwitching" />
+                    </div>
+                }
+            }
+            else
+            {
+                <div class="alert alert-info py-2 mb-0 d-flex align-items-center gap-2">
+                    <i class="bi bi-check-circle"></i>
+                    <span>No uncommitted changes. Safe to switch branches.</span>
+                </div>
+            }
+
+            @if (!string.IsNullOrEmpty(ErrorMessage))
+            {
+                <div class="alert alert-danger py-2 mt-3 mb-0">
+                    <i class="bi bi-exclamation-triangle me-1"></i>@ErrorMessage
+                </div>
+            }
+        }
+    </ChildContent>
+    <FooterContent>
+        <button type="button" class="btn btn-secondary" @onclick="HandleCancel" disabled="@IsSwitching">
+            Cancel
+        </button>
+        <button type="button" class="btn btn-primary" @onclick="HandleSwitch"
+            disabled="@(IsSwitching || IsChecking || (_commitBeforeSwitch && string.IsNullOrWhiteSpace(_commitMessage)))">
+            @if (IsSwitching)
+            {
+                <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                <span>Switching...</span>
+            }
+            else if (_commitBeforeSwitch && HasUncommittedChanges)
+            {
+                <i class="bi bi-check-lg me-1"></i>
+                <span>Commit & Switch</span>
+            }
+            else
+            {
+                <i class="bi bi-arrow-left-right me-1"></i>
+                <span>Switch Branch</span>
+            }
+        </button>
+    </FooterContent>
+</ModalDialog>
+
+@code {
+    [Parameter]
+    public bool IsVisible { get; set; }
+
+    [Parameter]
+    public EventCallback<bool> IsVisibleChanged { get; set; }
+
+    [Parameter]
+    public string? CurrentBranch { get; set; }
+
+    [Parameter]
+    public string? TargetBranch { get; set; }
+
+    [Parameter]
+    public bool IsChecking { get; set; }
+
+    [Parameter]
+    public bool IsSwitching { get; set; }
+
+    [Parameter]
+    public bool HasUncommittedChanges { get; set; }
+
+    [Parameter]
+    public string? ErrorMessage { get; set; }
+
+    [Parameter]
+    public EventCallback<(bool commitFirst, string? commitMessage)> OnSwitch { get; set; }
+
+    [Parameter]
+    public EventCallback OnCancel { get; set; }
+
+    private bool _commitBeforeSwitch;
+    private string _commitMessage = string.Empty;
+
+    private async Task HandleModalVisibilityChanged(bool visible)
+    {
+        if (!visible)
+        {
+            _commitBeforeSwitch = false;
+            _commitMessage = string.Empty;
+            await IsVisibleChanged.InvokeAsync(false);
+        }
+    }
+
+    private async Task HandleCancel()
+    {
+        _commitBeforeSwitch = false;
+        _commitMessage = string.Empty;
+        await OnCancel.InvokeAsync();
+    }
+
+    private async Task HandleSwitch()
+    {
+        await OnSwitch.InvokeAsync((_commitBeforeSwitch, _commitMessage));
+    }
+}

@@ -1,0 +1,173 @@
+@* Modal component for creating new jobs *@
+@using VibeSwarm.Shared.VersionControl.Models
+
+@if (IsVisible)
+{
+	<div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+		<div class="modal-dialog modal-dialog-centered modal-lg">
+			<div class="modal-content">
+				<div class="modal-header">
+					<h5 class="modal-title"><i class="bi bi-plus-circle me-2"></i>Create Job</h5>
+					<button type="button" class="btn-close" @onclick="Close" disabled="@IsSaving"></button>
+				</div>
+				<div class="modal-body">
+					<EditForm Model="@JobModel" OnValidSubmit="HandleSubmit">
+						<DataAnnotationsValidator />
+						<ValidationSummary class="text-danger mb-3" />
+
+						<div class="mb-3">
+							<label for="goalPrompt" class="form-label">Goal Prompt</label>
+							<InputTextArea id="goalPrompt" @bind-Value="JobModel.GoalPrompt" class="form-control" rows="4"
+								placeholder="Describe what you want the AI agent to accomplish..." />
+							<ValidationMessage For="@(() => JobModel.GoalPrompt)" class="text-danger small" />
+						</div>
+
+						<div class="mb-3">
+							<label for="provider" class="form-label">Provider</label>
+							<InputSelect id="provider" Value="JobModel.ProviderId"
+								ValueExpression="@(() => JobModel.ProviderId)"
+								ValueChanged="@((Guid value) => HandleProviderChanged(value))" class="form-select">
+								<option value="@Guid.Empty">Select a provider...</option>
+								@foreach (var provider in Providers.Where(p => p.IsEnabled))
+								{
+									<option value="@provider.Id">@provider.Name (@provider.Type)</option>
+								}
+							</InputSelect>
+							@if (!Providers.Any(p => p.IsEnabled))
+							{
+								<div class="form-text text-warning">
+									No enabled providers. <a href="/providers">Configure one</a> first.
+								</div>
+							}
+						</div>
+
+						<div class="mb-3">
+							<label for="model" class="form-label">Model</label>
+							<InputSelect id="model" @bind-Value="SelectedModelId" class="form-select"
+								disabled="@(JobModel.ProviderId == Guid.Empty || IsLoadingModels)">
+								@if (IsLoadingModels)
+								{
+									<option value="">Loading models...</option>
+								}
+								else if (!AvailableModels.Any())
+								{
+									<option value="">@(JobModel.ProviderId == Guid.Empty ? "Select a provider first..." :
+																		"No models available")</option>
+								}
+								else
+								{
+									<option value="">Use provider default</option>
+									@foreach (var model in AvailableModels.Where(m => m.IsAvailable))
+									{
+										<option value="@model.ModelId">@(model.DisplayName ?? model.ModelId)@(model.IsDefault ?
+																			" (default)" : "")</option>
+									}
+								}
+							</InputSelect>
+							<div class="form-text">Leave empty to use the provider's default model.</div>
+						</div>
+
+						@if (ShowBranchSelector && Branches.Any())
+						{
+							<div class="mb-3">
+								<label for="branch" class="form-label">Branch</label>
+								<InputSelect id="branch" @bind-Value="JobModel.Branch" class="form-select">
+									@foreach (var branch in Branches.Where(b => !b.IsRemote).OrderByDescending(b => b.Name ==
+																CurrentBranch))
+									{
+										<option value="@branch.Name">
+											@branch.Name @(branch.Name == CurrentBranch ? "(current)" : "")
+										</option>
+									}
+								</InputSelect>
+								<div class="form-text">The branch where the AI agent will operate.</div>
+							</div>
+						}
+
+						@if (!string.IsNullOrEmpty(ErrorMessage))
+						{
+							<Alert Type="Alert.AlertType.Danger" Message="@ErrorMessage" Class="mb-0" />
+						}
+					</EditForm>
+				</div>
+				<div class="modal-footer">
+					<button type="button" class="btn btn-secondary" @onclick="Close" disabled="@IsSaving">Cancel</button>
+					<button type="button" class="btn btn-primary" @onclick="HandleSubmit"
+						disabled="@(IsSaving || JobModel.ProviderId == Guid.Empty)">
+						@if (IsSaving)
+						{
+							<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+							<span>Creating...</span>
+						}
+						else
+						{
+							<i class="bi bi-plus-lg me-1"></i>
+							<span>Create Job</span>
+						}
+					</button>
+				</div>
+			</div>
+		</div>
+	</div>
+}
+
+@code {
+	[Parameter]
+	public bool IsVisible { get; set; }
+
+	[Parameter]
+	public EventCallback<bool> IsVisibleChanged { get; set; }
+
+	[Parameter, EditorRequired]
+	public Job JobModel { get; set; } = new();
+
+	[Parameter]
+	public List<Provider> Providers { get; set; } = new();
+
+	[Parameter]
+	public List<ProviderModel> AvailableModels { get; set; } = new();
+
+	[Parameter]
+	public List<GitBranchInfo> Branches { get; set; } = new();
+
+	[Parameter]
+	public string? CurrentBranch { get; set; }
+
+	[Parameter]
+	public bool ShowBranchSelector { get; set; }
+
+	[Parameter]
+	public bool IsLoadingModels { get; set; }
+
+	[Parameter]
+	public bool IsSaving { get; set; }
+
+	[Parameter]
+	public string? ErrorMessage { get; set; }
+
+	[Parameter]
+	public string SelectedModelId { get; set; } = string.Empty;
+
+	[Parameter]
+	public EventCallback<Guid> OnProviderChanged { get; set; }
+
+	[Parameter]
+	public EventCallback OnSubmit { get; set; }
+
+	private async Task HandleProviderChanged(Guid providerId)
+	{
+		JobModel.ProviderId = providerId;
+		await OnProviderChanged.InvokeAsync(providerId);
+	}
+
+	private async Task HandleSubmit()
+	{
+		JobModel.ModelUsed = string.IsNullOrEmpty(SelectedModelId) ? null : SelectedModelId;
+		await OnSubmit.InvokeAsync();
+	}
+
+	private async Task Close()
+	{
+		await IsVisibleChanged.InvokeAsync(false);
+	}
+}

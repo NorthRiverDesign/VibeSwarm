@@ -1,0 +1,213 @@
+@page "/skills"
+@attribute [Authorize]
+@inject ISkillService SkillService
+@using VibeSwarm.Shared.Utilities
+
+<PageHeader Title="Skills" Subtitle="Define agent skills that can be exposed via MCP to AI providers">
+	<Actions>
+		<ActionButton Icon="plus" Text="Add" OnClick="ShowAddModal" />
+	</Actions>
+</PageHeader>
+
+@if (_isLoading)
+{
+	<LoadingSpinner />
+}
+else if (!_skillsList.Any())
+{
+	<EmptyState Icon="lightbulb" Title="No skills yet"
+		Message="Create skills to define capabilities that AI agents can use during job execution." />
+}
+else
+{
+	<div class="list-group">
+		@foreach (var skill in _skillsList)
+		{
+			<div
+				class="list-group-item d-flex flex-column flex-md-row align-items-md-start gap-2 gap-md-3 p-3 hover-bg-tertiary">
+				<div class="flex-grow-1 min-width-0">
+					<div class="d-flex align-items-center gap-2 flex-wrap">
+						<span class="fw-semibold font-monospace">@skill.Name</span>
+						<StatusBadge Status="@(skill.IsEnabled ? "Active" : "Off")" ShowSpinner="false" />
+					</div>
+					@if (!string.IsNullOrEmpty(skill.Description))
+					{
+						<div class="small text-body-secondary mt-1">@TruncateText(skill.Description, 120)</div>
+					}
+					<div class="d-flex flex-wrap gap-2 gap-md-3 mt-2 small text-body-secondary">
+						<span class="d-flex align-items-center gap-1">
+							<i class="bi bi-file-text opacity-75"></i>
+							@skill.Content.Length chars
+						</span>
+						<span class="d-flex align-items-center gap-1">
+							<i class="bi bi-calendar-plus opacity-75"></i>
+							@skill.CreatedAt.FormatDateTimeShort()
+						</span>
+						@if (skill.UpdatedAt.HasValue)
+						{
+							<span class="d-flex align-items-center gap-1">
+								<i class="bi bi-pencil opacity-75"></i>
+								@skill.UpdatedAt.Value.FormatDateTimeShort()
+							</span>
+						}
+					</div>
+				</div>
+				<div class="d-flex flex-wrap gap-2 flex-shrink-0 align-items-center">
+					<label class="toggle-switch me-1" title="@(skill.IsEnabled ? "Disable" : "Enable")">
+						<input type="checkbox" checked="@skill.IsEnabled" @onchange="() => ToggleEnabled(skill)" />
+						<span class="toggle-slider"></span>
+					</label>
+					<ActionButton Icon="pencil" Text="Edit" Outline="true" Size="ActionButton.ButtonSize.Small"
+						HideTextOnMobile="true" OnClick="@(() => EditSkill(skill))" />
+					<ActionButton Icon="trash" Text="Delete" Outline="true" Size="ActionButton.ButtonSize.Small"
+						Style="ActionButton.ButtonStyle.Danger" HideTextOnMobile="true"
+						OnClick="@(() => ShowDeleteConfirmation(skill))" />
+				</div>
+			</div>
+		}
+	</div>
+}
+
+@* Skill Modal for Add/Edit *@
+<SkillModal @bind-IsVisible="_showSkillModal" EditSkill="@_editingSkill" OnSaved="HandleSkillSaved"
+	OnCancelled="HandleModalCancelled" OnClosed="HandleSkillModalClosed" />
+
+@* Delete Confirmation Modal *@
+<ConfirmationModal @bind-IsVisible="_showDeleteModal"
+	Title="Delete Skill"
+	Message="@($"Are you sure you want to delete {_skillToDelete?.Name}?")"
+	SubMessage="This action cannot be undone."
+	ConfirmText="Delete"
+	ButtonClass="btn-danger"
+	IsProcessing="_isDeleting"
+	OnConfirm="ConfirmDelete"
+	OnCancel="CancelDelete" />
+
+@code {
+	private List<Skill> _skillsList = new();
+	private bool _isLoading = true;
+	private bool _showSkillModal;
+	private Skill? _editingSkill;
+
+	// Delete confirmation state
+	private bool _showDeleteModal;
+	private Skill? _skillToDelete;
+	private bool _isDeleting;
+
+	protected override async Task OnInitializedAsync()
+	{
+		await LoadSkills();
+	}
+
+	private async Task LoadSkills()
+	{
+		_isLoading = true;
+		try
+		{
+			_skillsList = (await SkillService.GetAllAsync()).ToList();
+		}
+		finally
+		{
+			_isLoading = false;
+		}
+	}
+
+	private static string TruncateText(string text, int maxLength)
+	{
+		if (string.IsNullOrEmpty(text) || text.Length <= maxLength)
+			return text;
+		return text[..maxLength] + "...";
+	}
+
+	private void ShowAddModal()
+	{
+		// Close any other open modals first
+		_showDeleteModal = false;
+		_skillToDelete = null;
+
+		_editingSkill = null;
+		_showSkillModal = true;
+		StateHasChanged();
+	}
+
+	private void EditSkill(Skill skill)
+	{
+		// Close any other open modals first
+		_showDeleteModal = false;
+		_skillToDelete = null;
+
+		_editingSkill = skill;
+		_showSkillModal = true;
+		StateHasChanged();
+	}
+
+	private async Task HandleSkillSaved(Guid? newSkillId)
+	{
+		_showSkillModal = false;
+		_editingSkill = null;
+		await LoadSkills();
+	}
+
+	private void HandleModalCancelled()
+	{
+		_showSkillModal = false;
+		_editingSkill = null;
+	}
+
+	private void HandleSkillModalClosed()
+	{
+		// Called when modal is closed via backdrop click or X button
+		_showSkillModal = false;
+		_editingSkill = null;
+		StateHasChanged();
+	}
+
+	private void ShowDeleteConfirmation(Skill skill)
+	{
+		// Close any other open modals first
+		_showSkillModal = false;
+		_editingSkill = null;
+
+		_skillToDelete = skill;
+		_showDeleteModal = true;
+		StateHasChanged();
+	}
+
+	private void CancelDelete()
+	{
+		_showDeleteModal = false;
+		_skillToDelete = null;
+	}
+
+	private async Task ConfirmDelete()
+	{
+		if (_skillToDelete == null) return;
+
+		_isDeleting = true;
+		try
+		{
+			await SkillService.DeleteAsync(_skillToDelete.Id);
+			_showDeleteModal = false;
+			_skillToDelete = null;
+			await LoadSkills();
+		}
+		finally
+		{
+			_isDeleting = false;
+		}
+	}
+
+	private async Task ToggleEnabled(Skill skill)
+	{
+		try
+		{
+			skill.IsEnabled = !skill.IsEnabled;
+			await SkillService.UpdateAsync(skill);
+			await LoadSkills();
+		}
+		catch (Exception ex)
+		{
+			Console.WriteLine($"Error updating skill: {ex.Message}");
+		}
+	}
+}

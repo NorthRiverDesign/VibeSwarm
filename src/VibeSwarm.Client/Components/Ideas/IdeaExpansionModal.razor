@@ -1,0 +1,231 @@
+@* Modal for reviewing and editing AI-expanded idea specifications *@
+
+<ModalDialog IsVisible="IsVisible" IsVisibleChanged="HandleVisibilityChanged" Title="Expand Idea" Icon="magic"
+	Size="ModalDialog.ModalSize.Large" OnClose="HandleClose">
+	<ChildContent>
+		@if (Idea == null)
+		{
+			<div class="text-center py-4">
+				<span class="spinner-border spinner-border-sm" role="status"></span>
+				<span class="ms-2">Loading...</span>
+			</div>
+		}
+		else
+		{
+			<div class="mb-4">
+				<label class="form-label fw-semibold">
+					<i class="bi bi-lightbulb text-warning me-1"></i>Original Idea
+				</label>
+				<div class="p-3 bg-body-tertiary rounded text-break" style="white-space: pre-wrap;">@Idea.Description</div>
+			</div>
+
+			@if (IsExpanding)
+			{
+				<div class="d-flex flex-column align-items-center justify-content-center py-5 gap-3">
+					<div class="spinner-border text-primary" role="status">
+						<span class="visually-hidden">Expanding...</span>
+					</div>
+					<div class="text-body-secondary">
+						<i class="bi bi-stars me-1"></i>AI is expanding your idea into a detailed specification...
+					</div>
+				</div>
+			}
+			else if (Idea.ExpansionStatus == IdeaExpansionStatus.Failed)
+			{
+				<div class="alert alert-danger">
+					<i class="bi bi-exclamation-triangle me-1"></i>
+					Expansion failed: @(Idea.ExpansionError ?? "Unknown error")
+				</div>
+				<div class="d-flex gap-2">
+					<button type="button" class="btn btn-primary" @onclick="RequestExpansion" disabled="@IsExpanding">
+						<i class="bi bi-arrow-clockwise me-1"></i>Try Again
+					</button>
+					<button type="button" class="btn btn-outline-secondary" @onclick="HandleClose">
+						Cancel
+					</button>
+				</div>
+			}
+			else if (Idea.ExpansionStatus == IdeaExpansionStatus.PendingReview ||
+			Idea.ExpansionStatus == IdeaExpansionStatus.Approved ||
+			!string.IsNullOrWhiteSpace(EditedDescription))
+			{
+				<div class="mb-3">
+					<label class="form-label fw-semibold d-flex align-items-center justify-content-between">
+						<span>
+							<i class="bi bi-file-text me-1"></i>Expanded Specification
+							@if (Idea.ExpansionStatus == IdeaExpansionStatus.PendingReview)
+							{
+								<span class="badge bg-warning text-dark ms-2">Pending Review</span>
+							}
+							else if (Idea.ExpansionStatus == IdeaExpansionStatus.Approved)
+							{
+								<span class="badge bg-success ms-2">Approved</span>
+							}
+						</span>
+						<button type="button" class="btn btn-sm btn-outline-secondary" @onclick="ToggleEditMode"
+							title="@(IsEditMode ? "View mode" : "Edit mode")">
+							<i class="bi @(IsEditMode ? "bi-eye" : "bi-pencil")"></i>
+						</button>
+					</label>
+
+					@if (IsEditMode)
+					{
+						<textarea class="form-control font-monospace" rows="15" @bind="EditedDescription" @bind:event="oninput"
+				placeholder="Edit the expanded specification..."></textarea>
+						<div class="form-text">
+							Edit the specification to better match your requirements before approving.
+						</div>
+					}
+					else
+					{
+						<div class="p-3 bg-body-tertiary rounded overflow-auto" style="max-height: 400px; white-space: pre-wrap;">
+							@(EditedDescription ?? Idea.ExpandedDescription)
+						</div>
+					}
+				</div>
+
+				<div class="d-flex flex-wrap gap-2">
+					@if (Idea.ExpansionStatus != IdeaExpansionStatus.Approved)
+					{
+						<button type="button" class="btn btn-success" @onclick="ApproveExpansion" disabled="@IsProcessing">
+							@if (IsProcessing)
+							{
+								<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+							}
+							else
+							{
+								<i class="bi bi-check-lg me-1"></i>
+							}
+							Approve & Use
+						</button>
+					}
+					<button type="button" class="btn btn-primary" @onclick="RequestExpansion" disabled="@IsExpanding">
+						<i class="bi bi-arrow-clockwise me-1"></i>Re-generate
+					</button>
+					<button type="button" class="btn btn-outline-danger" @onclick="RejectExpansion" disabled="@IsProcessing">
+						<i class="bi bi-x-lg me-1"></i>Discard
+					</button>
+					<button type="button" class="btn btn-outline-secondary ms-auto" @onclick="HandleClose">
+						Close
+					</button>
+				</div>
+			}
+			else
+			{
+				@* Initial state - not expanded yet *@
+				<div class="text-center py-4">
+					<p class="text-body-secondary mb-4">
+						<i class="bi bi-stars text-primary fs-3 d-block mb-2"></i>
+						Use AI to expand this brief idea into a detailed implementation specification.
+						You'll be able to review and edit before using it.
+					</p>
+					<button type="button" class="btn btn-primary btn-lg" @onclick="RequestExpansion" disabled="@IsExpanding">
+						@if (IsExpanding)
+						{
+							<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+						}
+						else
+						{
+							<i class="bi bi-magic me-1"></i>
+						}
+						Expand with AI
+					</button>
+				</div>
+			}
+		}
+	</ChildContent>
+</ModalDialog>
+
+@code {
+	[Parameter]
+	public bool IsVisible { get; set; }
+
+	[Parameter]
+	public EventCallback<bool> IsVisibleChanged { get; set; }
+
+	[Parameter]
+	public Idea? Idea { get; set; }
+
+	[Parameter]
+	public EventCallback<Guid> OnExpand { get; set; }
+
+	[Parameter]
+	public EventCallback<(Guid ideaId, string? editedDescription)> OnApprove { get; set; }
+
+	[Parameter]
+	public EventCallback<Guid> OnReject { get; set; }
+
+	[Parameter]
+	public bool IsExpanding { get; set; }
+
+	[Parameter]
+	public bool IsProcessing { get; set; }
+
+	private bool IsEditMode { get; set; }
+	private string? EditedDescription { get; set; }
+
+	protected override void OnParametersSet()
+	{
+		// Reset edit mode when modal opens with new idea
+		if (IsVisible && Idea != null)
+		{
+			EditedDescription = Idea.ExpandedDescription;
+		}
+	}
+
+	private async Task HandleVisibilityChanged(bool visible)
+	{
+		IsVisible = visible;
+		await IsVisibleChanged.InvokeAsync(visible);
+
+		if (!visible)
+		{
+			IsEditMode = false;
+		}
+	}
+
+	private async Task HandleClose()
+	{
+		await HandleVisibilityChanged(false);
+	}
+
+	private async Task RequestExpansion()
+	{
+		if (Idea != null)
+		{
+			await OnExpand.InvokeAsync(Idea.Id);
+		}
+	}
+
+	private async Task ApproveExpansion()
+	{
+		if (Idea != null)
+		{
+			// Pass edited description if it was changed
+			var edited = IsEditMode && EditedDescription != Idea.ExpandedDescription
+			? EditedDescription
+			: null;
+			await OnApprove.InvokeAsync((Idea.Id, edited));
+			await HandleClose();
+		}
+	}
+
+	private async Task RejectExpansion()
+	{
+		if (Idea != null)
+		{
+			await OnReject.InvokeAsync(Idea.Id);
+			EditedDescription = null;
+			IsEditMode = false;
+		}
+	}
+
+	private void ToggleEditMode()
+	{
+		IsEditMode = !IsEditMode;
+		if (IsEditMode && string.IsNullOrEmpty(EditedDescription))
+		{
+			EditedDescription = Idea?.ExpandedDescription;
+		}
+	}
+}

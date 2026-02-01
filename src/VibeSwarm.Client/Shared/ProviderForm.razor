@@ -1,0 +1,215 @@
+@inject IProviderService ProviderService
+
+<EditForm Model="@Provider" OnValidSubmit="HandleValidSubmit">
+	<DataAnnotationsValidator />
+	<ValidationSummary class="text-danger mb-3" />
+
+	<div class="mb-3">
+		<label for="name" class="form-label">Name</label>
+		<InputText id="name" @bind-Value="Provider.Name" class="form-control" placeholder="My OpenCode Provider" />
+		<ValidationMessage For="@(() => Provider.Name)" class="text-danger small" />
+	</div>
+
+	<div class="mb-3">
+		<label for="type" class="form-label">Provider Type</label>
+		<InputSelect id="type" Value="Provider.Type" ValueExpression="@(() => Provider.Type)"
+			ValueChanged="@((ProviderType value) => OnProviderTypeChanged(value))" class="form-select">
+			@foreach (var type in Enum.GetValues<ProviderType>())
+			{
+				<option value="@type">@type</option>
+			}
+		</InputSelect>
+		<div class="form-text">@ProviderCapabilities.GetDescription(Provider.Type)</div>
+	</div>
+
+	<div class="mb-3">
+		<label for="connectionMode" class="form-label">Connection Mode</label>
+		@{
+			var supportedModes = ProviderCapabilities.GetSupportedModes(Provider.Type);
+		}
+		@if (supportedModes.Count == 1)
+		{
+			<input type="text" class="form-control" value="@supportedModes[0]" disabled />
+			<div class="form-text text-body-secondary">
+				<i class="bi bi-info-circle me-1"></i>
+				@Provider.Type only supports @supportedModes[0] mode.
+			</div>
+		}
+		else
+		{
+			<InputSelect id="connectionMode" @bind-Value="Provider.ConnectionMode" class="form-select">
+				@foreach (var mode in supportedModes)
+				{
+					<option value="@mode">@mode</option>
+				}
+			</InputSelect>
+		}
+	</div>
+
+	@if (Provider.ConnectionMode == ProviderConnectionMode.CLI)
+	{
+		<div class="mb-3">
+			<label for="executablePath" class="form-label">Executable Path (optional)</label>
+			<InputText id="executablePath" @bind-Value="Provider.ExecutablePath" class="form-control"
+				placeholder="@GetExecutablePlaceholder()" />
+			<div class="form-text">@GetExecutableHelpText()</div>
+		</div>
+	}
+	else
+	{
+		<div class="mb-3">
+			<label for="apiEndpoint" class="form-label">
+				API Endpoint <span class="text-danger">*</span>
+			</label>
+			<InputText id="apiEndpoint" @bind-Value="Provider.ApiEndpoint" class="form-control"
+				placeholder="http://localhost:8080" />
+			<ValidationMessage For="@(() => Provider.ApiEndpoint)" class="text-danger small" />
+			@if (Provider.ConnectionMode == ProviderConnectionMode.REST && string.IsNullOrWhiteSpace(Provider.ApiEndpoint))
+			{
+				<div class="text-warning small mt-1">
+					<i class="bi bi-exclamation-triangle me-1"></i>
+					API Endpoint is required for REST connection mode.
+				</div>
+			}
+		</div>
+
+		<div class="mb-3">
+			<label for="apiKey" class="form-label">API Key (optional)</label>
+			<InputText id="apiKey" @bind-Value="Provider.ApiKey" class="form-control" type="password" />
+		</div>
+	}
+
+	<div class="mb-3 form-check">
+		<InputCheckbox id="isEnabled" @bind-Value="Provider.IsEnabled" class="form-check-input" />
+		<label for="isEnabled" class="form-check-label">Enabled</label>
+	</div>
+
+	@if (ValidationErrors.Any())
+	{
+		<Alert Type="Alert.AlertType.Warning" Class="mb-3">
+			<strong>Please fix the following issues:</strong>
+			<ul class="mb-0 mt-2">
+				@foreach (var error in ValidationErrors)
+				{
+					<li>@error</li>
+				}
+			</ul>
+		</Alert>
+	}
+
+	<div class="d-flex gap-2">
+		<button type="submit" class="btn btn-primary" disabled="@(IsSaving || ValidationErrors.Any())">
+			@if (IsSaving)
+			{
+				<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+			}
+			@(IsSaving ? "Saving..." : (IsEdit ? "Update Provider" : "Add Provider"))
+		</button>
+		@if (IsEdit)
+		{
+			<button type="button" class="btn btn-secondary" @onclick="OnCancel">Cancel</button>
+		}
+	</div>
+
+	@if (!string.IsNullOrEmpty(ErrorMessage))
+	{
+		<Alert Type="Alert.AlertType.Danger" Message="@ErrorMessage" Class="mt-3 mb-0" />
+	}
+
+	@if (!string.IsNullOrEmpty(SuccessMessage))
+	{
+		<Alert Type="Alert.AlertType.Success" Message="@SuccessMessage" Class="mt-3 mb-0" />
+	}
+</EditForm>
+
+@code {
+	[Parameter]
+	public Provider Provider { get; set; } = new();
+
+	[Parameter]
+	public bool IsEdit { get; set; }
+
+	[Parameter]
+	public EventCallback OnSaved { get; set; }
+
+	[Parameter]
+	public EventCallback OnCancel { get; set; }
+
+	private bool IsSaving { get; set; }
+	private string? ErrorMessage { get; set; }
+	private string? SuccessMessage { get; set; }
+
+	private IReadOnlyList<string> ValidationErrors => ProviderCapabilities.ValidateConfiguration(Provider);
+
+	protected override void OnParametersSet()
+	{
+		// Ensure connection mode is valid for the provider type
+		if (!ProviderCapabilities.SupportsMode(Provider.Type, Provider.ConnectionMode))
+		{
+			Provider.ConnectionMode = ProviderCapabilities.GetDefaultMode(Provider.Type);
+		}
+	}
+
+	private void OnProviderTypeChanged(ProviderType newType)
+	{
+		Provider.Type = newType;
+		// Update connection mode to default for the new provider type
+		Provider.ConnectionMode = ProviderCapabilities.GetDefaultMode(newType);
+	}
+
+	private string GetExecutablePlaceholder() => Provider.Type switch
+	{
+		ProviderType.OpenCode => "opencode or /path/to/opencode",
+		ProviderType.Claude => "claude or /path/to/claude",
+		ProviderType.Copilot => "github-copilot-cli or /path/to/github-copilot-cli",
+		_ => "executable name or path"
+	};
+
+	private string GetExecutableHelpText() => Provider.Type switch
+	{
+		ProviderType.OpenCode => "Leave empty to use 'opencode' from PATH",
+		ProviderType.Claude => "Leave empty to use 'claude' from PATH",
+		ProviderType.Copilot => "Leave empty to use 'github-copilot-cli' from PATH",
+		_ => "Leave empty to use default executable from PATH"
+	};
+
+	private async Task HandleValidSubmit()
+	{
+		// Additional validation
+		var errors = ProviderCapabilities.ValidateConfiguration(Provider);
+		if (errors.Any())
+		{
+			ErrorMessage = string.Join(" ", errors);
+			return;
+		}
+
+		IsSaving = true;
+		ErrorMessage = null;
+		SuccessMessage = null;
+
+		try
+		{
+			if (IsEdit)
+			{
+				await ProviderService.UpdateAsync(Provider);
+				SuccessMessage = "Provider updated successfully.";
+			}
+			else
+			{
+				await ProviderService.CreateAsync(Provider);
+				SuccessMessage = "Provider added successfully.";
+				Provider = new Provider();
+			}
+
+			await OnSaved.InvokeAsync();
+		}
+		catch (Exception ex)
+		{
+			ErrorMessage = $"Error saving provider: {ex.Message}";
+		}
+		finally
+		{
+			IsSaving = false;
+		}
+	}
+}

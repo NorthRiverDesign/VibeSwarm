@@ -1,0 +1,85 @@
+@* Single chat message component *@
+
+<div
+	class="chat-message d-flex flex-column chat-message-@Role.ToString().ToLower() @(Role == MessageRole.ToolUse || Role == MessageRole.ToolResult ? "ms-3" : "")">
+	<div class="chat-bubble py-2 px-3 text-break @GetBubbleClasses()">
+		@if (Role == MessageRole.ToolUse)
+		{
+			<div class="d-flex flex-column gap-2">
+				<div class="fw-semibold small opacity-75">
+					<i class="bi bi-tools me-1"></i>@ToolName
+				</div>
+				@if (!string.IsNullOrEmpty(ToolInput))
+				{
+					<pre class="chat-tool-code m-0 p-2 rounded small text-break overflow-auto"
+						style="max-height: 150px;">@ToolInput</pre>
+				}
+			</div>
+		}
+		else if (Role == MessageRole.ToolResult)
+		{
+			<div class="d-flex flex-column gap-2">
+				<div class="fw-semibold small opacity-75">
+					<i class="bi bi-arrow-return-right me-1"></i>@ToolName
+				</div>
+				<pre class="chat-tool-code m-0 p-2 rounded small text-break overflow-auto"
+					style="max-height: 150px;">@TruncateOutput(ToolOutput ?? Content ?? "", 500)</pre>
+			</div>
+		}
+		else
+		{
+			<div class="chat-text m-0 lh-base">@Content</div>
+		}
+	</div>
+	<div class="d-flex gap-2 mt-1 px-2 small text-secondary">
+		<span class="fw-medium">@GetRoleDisplayName(Role)</span>
+		<span class="chat-time">@Timestamp.FormatTime()</span>
+	</div>
+</div>
+
+@code {
+	[Parameter, EditorRequired]
+	public MessageRole Role { get; set; }
+
+	[Parameter]
+	public string? Content { get; set; }
+
+	[Parameter]
+	public string? ToolName { get; set; }
+
+	[Parameter]
+	public string? ToolInput { get; set; }
+
+	[Parameter]
+	public string? ToolOutput { get; set; }
+
+	[Parameter]
+	public DateTime Timestamp { get; set; }
+
+	private static string TruncateOutput(string text, int maxLength)
+	{
+		if (string.IsNullOrEmpty(text) || text.Length <= maxLength)
+			return text;
+		return text[..maxLength] + "\n... (truncated)";
+	}
+
+	private static string GetRoleDisplayName(MessageRole role) => role switch
+	{
+		MessageRole.User => "User",
+		MessageRole.Assistant => "Assistant",
+		MessageRole.System => "System",
+		MessageRole.ToolUse => "Tool Call",
+		MessageRole.ToolResult => "Tool Result",
+		_ => role.ToString()
+	};
+
+	private string GetBubbleClasses() => Role switch
+	{
+		MessageRole.User => "text-white",
+		MessageRole.Assistant => "bg-body-tertiary border",
+		MessageRole.System => "small",
+		MessageRole.ToolUse => "small",
+		MessageRole.ToolResult => "small",
+		_ => ""
+	};
+}

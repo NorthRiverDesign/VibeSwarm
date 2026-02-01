@@ -1,0 +1,411 @@
+@inherits LayoutComponentBase
+@inject IJSRuntime JSRuntime
+@inject NotificationService NotificationService
+@inject IJobService JobService
+@inject ChangePasswordModalService ChangePasswordModalService
+@inject HttpClient HttpClient
+@implements IAsyncDisposable
+@implements IDisposable
+
+<div class="app-layout">
+    @* Mobile Header *@
+    <header class="app-header d-lg-none">
+        <button id="mobile-menu-toggle" class="btn btn-link nav-toggle" @onclick="ToggleMobileMenu"
+            aria-label="Toggle navigation">
+            <i class="bi bi-list"></i>
+        </button>
+        <a class="app-brand" href="/">
+            <img src="img/logo_icon.png" alt="VibeSwarm" class="brand-icon" />
+            <span class="brand-text">VibeSwarm</span>
+        </a>
+        <div class="ms-auto">
+            <LoginDisplay />
+        </div>
+    </header>
+
+    @* Sidebar Navigation *@
+    <nav id="app-sidebar" class="app-sidebar @(_mobileMenuOpen ? "open" : "")">
+        <div class="p-4 border-bottom d-none d-lg-flex">
+            <a class="app-brand" href="/">
+                <img src="img/logo_icon.png" alt="VibeSwarm" class="brand-icon" />
+                <span class="brand-text">VibeSwarm</span>
+            </a>
+        </div>
+
+        <div class="flex-grow-1 p-3 d-flex flex-column gap-1">
+            <NavLink class="nav-item" href="/" Match="NavLinkMatch.All" @onclick="CloseMobileMenu">
+                <i class="bi bi-house-door"></i>
+                <span>Dashboard</span>
+            </NavLink>
+            <NavLink class="nav-item" href="/projects" @onclick="CloseMobileMenu">
+                <i class="bi bi-folder"></i>
+                <span>Projects</span>
+            </NavLink>
+            <NavLink class="nav-item" href="/jobs" @onclick="CloseMobileMenu">
+                <i class="bi bi-list-check"></i>
+                <span>Jobs</span>
+            </NavLink>
+            <NavLink class="nav-item" href="/providers" @onclick="CloseMobileMenu">
+                <i class="bi bi-cpu"></i>
+                <span>Providers</span>
+            </NavLink>
+            <NavLink class="nav-item" href="/skills" @onclick="CloseMobileMenu">
+                <i class="bi bi-lightbulb"></i>
+                <span>Skills</span>
+            </NavLink>
+            <AuthorizeView Roles="Admin">
+                <Authorized>
+                    <NavLink class="nav-item" href="/users" @onclick="CloseMobileMenu">
+                        <i class="bi bi-people"></i>
+                        <span>Users</span>
+                    </NavLink>
+                </Authorized>
+            </AuthorizeView>
+            <NavLink class="nav-item" href="/settings" @onclick="CloseMobileMenu">
+                <i class="bi bi-sliders"></i>
+                <span>Settings</span>
+            </NavLink>
+        </div>
+
+        <div class="p-3 border-top d-none d-lg-block">
+            <LoginDisplay />
+        </div>
+    </nav>
+
+    @* Mobile Menu Overlay *@
+    @if (_mobileMenuOpen)
+    {
+        <div id="sidebar-overlay" class="sidebar-overlay d-lg-none" @onclick="CloseMobileMenu"></div>
+    }
+
+    @* Main Content *@
+    <main class="app-main">
+        <div class="main-content">
+            @Body
+        </div>
+    </main>
+</div>
+
+<ToastContainer />
+
+@* Change Password Modal - rendered outside sidebar to avoid stacking context issues *@
+<ModalDialog @bind-IsVisible="_showChangePasswordModal" Title="Change Password" Icon="key"
+    Size="ModalDialog.ModalSize.Default">
+    <ChildContent>
+        <EditForm Model="@_changePasswordModel" OnValidSubmit="HandleChangePassword">
+            <DataAnnotationsValidator />
+
+            @if (!string.IsNullOrEmpty(_changePasswordError))
+            {
+                <Alert Type="Alert.AlertType.Danger" Message="@_changePasswordError" />
+            }
+
+            @if (!string.IsNullOrEmpty(_changePasswordSuccess))
+            {
+                <Alert Type="Alert.AlertType.Success" Message="@_changePasswordSuccess" />
+            }
+
+            <div class="mb-3">
+                <label for="currentPassword" class="form-label">Current Password</label>
+                <InputText id="currentPassword" type="password" @bind-Value="_changePasswordModel.CurrentPassword"
+                    class="form-control" />
+                <ValidationMessage For="@(() => _changePasswordModel.CurrentPassword)" class="text-danger small" />
+            </div>
+
+            <div class="mb-3">
+                <label for="newPassword" class="form-label">New Password</label>
+                <InputText id="newPassword" type="password" @bind-Value="_changePasswordModel.NewPassword"
+                    class="form-control" />
+                <ValidationMessage For="@(() => _changePasswordModel.NewPassword)" class="text-danger small" />
+                <div class="form-text">
+                    Password must be at least 8 characters and contain uppercase, lowercase, and a digit.
+                </div>
+            </div>
+
+            <div class="mb-3">
+                <label for="confirmPassword" class="form-label">Confirm New Password</label>
+                <InputText id="confirmPassword" type="password" @bind-Value="_changePasswordModel.ConfirmPassword"
+                    class="form-control" />
+                <ValidationMessage For="@(() => _changePasswordModel.ConfirmPassword)" class="text-danger small" />
+            </div>
+
+            <div class="d-flex justify-content-end gap-2">
+                <button type="button" class="btn btn-secondary" @onclick="CloseChangePasswordModal">Cancel</button>
+                <button type="submit" class="btn btn-primary" disabled="@_isChangingPassword">
+                    @if (_isChangingPassword)
+                    {
+                        <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                    }
+                    Change Password
+                </button>
+            </div>
+        </EditForm>
+    </ChildContent>
+</ModalDialog>
+
+@code {
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthenticationStateTask { get; set; }
+
+    private DotNetObjectReference<MainLayout>? _dotNetReference;
+    private bool _hubInitialized = false;
+    private bool _mobileMenuOpen = false;
+
+    // Change Password Modal
+    private bool _showChangePasswordModal;
+    private bool _isChangingPassword;
+    private string? _changePasswordError;
+    private string? _changePasswordSuccess;
+    private ChangePasswordModel _changePasswordModel = new();
+
+    protected override void OnInitialized()
+    {
+        ChangePasswordModalService.OnShowModal += ShowChangePasswordModal;
+        ChangePasswordModalService.OnHideModal += CloseChangePasswordModal;
+    }
+
+    private void ShowChangePasswordModal()
+    {
+        _changePasswordModel = new ChangePasswordModel();
+        _changePasswordError = null;
+        _changePasswordSuccess = null;
+        _showChangePasswordModal = true;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void CloseChangePasswordModal()
+    {
+        _showChangePasswordModal = false;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private async Task HandleChangePassword()
+    {
+        _changePasswordError = null;
+        _changePasswordSuccess = null;
+
+        if (_changePasswordModel.NewPassword != _changePasswordModel.ConfirmPassword)
+        {
+            _changePasswordError = "New password and confirmation do not match.";
+            return;
+        }
+
+        _isChangingPassword = true;
+
+        try
+        {
+            var request = new
+            {
+                CurrentPassword = _changePasswordModel.CurrentPassword,
+                NewPassword = _changePasswordModel.NewPassword
+            };
+
+            var response = await HttpClient.PostAsJsonAsync("/api/auth/change-password", request);
+
+            if (response.IsSuccessStatusCode)
+            {
+                _changePasswordSuccess = "Password changed successfully.";
+                _changePasswordModel = new ChangePasswordModel();
+            }
+            else
+            {
+                var error = await response.Content.ReadFromJsonAsync<ChangePasswordResult>();
+                _changePasswordError = error?.Message ?? "Failed to change password.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _changePasswordError = $"An error occurred: {ex.Message}";
+        }
+        finally
+        {
+            _isChangingPassword = false;
+        }
+    }
+
+    private void ToggleMobileMenu()
+    {
+        _mobileMenuOpen = !_mobileMenuOpen;
+    }
+
+    private void CloseMobileMenu()
+    {
+        _mobileMenuOpen = false;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await InitializeGlobalHub();
+        }
+    }
+
+    private async Task InitializeGlobalHub()
+    {
+        if (_hubInitialized) return;
+
+        try
+        {
+            _dotNetReference = DotNetObjectReference.Create(this);
+            await JSRuntime.InvokeVoidAsync("VibeSwarmHub.initialize", _dotNetReference);
+            _hubInitialized = true;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[MainLayout] Error initializing global hub: {ex.Message}");
+        }
+    }
+
+    [JSInvokable]
+    public void OnConnectionStateChanged(string state)
+    {
+        Console.WriteLine($"[MainLayout] Connection state: {state}");
+    }
+
+    [JSInvokable]
+    public async Task OnGlobalJobStatusChanged(string jobId, string status)
+    {
+        Console.WriteLine($"[MainLayout] Job {jobId} status changed to {status}");
+        // Additional global handling can be added here
+        await Task.CompletedTask;
+    }
+
+    [JSInvokable]
+    public Task OnGlobalJobActivityUpdated(string jobId, string activity, DateTime timestamp)
+    {
+        // Activity updates are handled silently
+        return Task.CompletedTask;
+    }
+
+    [JSInvokable]
+    public Task OnGlobalJobCreated(string jobId, string projectId)
+    {
+        Console.WriteLine($"[MainLayout] New job created: {jobId}");
+        return Task.CompletedTask;
+    }
+
+    [JSInvokable]
+    public Task OnGlobalJobDeleted(string jobId, string projectId)
+    {
+        Console.WriteLine($"[MainLayout] Job deleted: {jobId}");
+        return Task.CompletedTask;
+    }
+
+    [JSInvokable]
+    public async Task OnGlobalJobCompleted(string jobId, bool success, string? errorMessage)
+    {
+        Console.WriteLine($"[MainLayout] Job {jobId} completed, success: {success}");
+
+        // Get job details to show in notification
+        if (Guid.TryParse(jobId, out var id))
+        {
+            try
+            {
+                var job = await JobService.GetByIdAsync(id);
+                var projectName = job?.Project?.Name;
+
+                await InvokeAsync(() =>
+                {
+                    NotificationService.ShowJobCompleted(id, success, projectName, errorMessage);
+                    StateHasChanged();
+                });
+            }
+            catch
+            {
+                // If we can't get the job details, show a generic notification
+                await InvokeAsync(() =>
+                {
+                    NotificationService.ShowJobCompleted(id, success, null, errorMessage);
+                    StateHasChanged();
+                });
+            }
+        }
+    }
+
+    [JSInvokable]
+    public Task OnGlobalJobListChanged()
+    {
+        // Job list changes don't need global notifications
+        return Task.CompletedTask;
+    }
+
+    [JSInvokable]
+    public Task OnGlobalJobMessageAdded(string jobId)
+    {
+        // Message additions don't need global notifications
+        return Task.CompletedTask;
+    }
+
+    [JSInvokable]
+    public Task OnGlobalProcessStarted(string jobId, int processId, string command)
+    {
+        return Task.CompletedTask;
+    }
+
+    [JSInvokable]
+    public Task OnGlobalProcessExited(string jobId, int processId, int exitCode, double durationSeconds)
+    {
+        return Task.CompletedTask;
+    }
+
+    [JSInvokable]
+    public async Task OnShowNotification(string title, string message, string type)
+    {
+        await InvokeAsync(() =>
+        {
+            var notificationType = type?.ToLower() switch
+            {
+                "success" => NotificationType.Success,
+                "error" => NotificationType.Error,
+                "warning" => NotificationType.Warning,
+                _ => NotificationType.Info
+            };
+
+            NotificationService.Show(message, title, notificationType);
+            StateHasChanged();
+        });
+    }
+
+    public void Dispose()
+    {
+        ChangePasswordModalService.OnShowModal -= ShowChangePasswordModal;
+        ChangePasswordModalService.OnHideModal -= CloseChangePasswordModal;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        Dispose();
+        _dotNetReference?.Dispose();
+
+        try
+        {
+            // Don't dispose the global hub - it persists across navigation
+            // Just clear the .NET reference
+        }
+        catch
+        {
+            // Ignore disposal errors
+        }
+    }
+
+    public class ChangePasswordModel
+    {
+        [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "Current password is required.")]
+        public string CurrentPassword { get; set; } = string.Empty;
+
+        [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "New password is required.")]
+        [System.ComponentModel.DataAnnotations.MinLength(8, ErrorMessage = "Password must be at least 8 characters.")]
+        public string NewPassword { get; set; } = string.Empty;
+
+        [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "Please confirm your new password.")]
+        [System.ComponentModel.DataAnnotations.Compare(nameof(NewPassword), ErrorMessage = "Passwords do not match.")]
+        public string ConfirmPassword { get; set; } = string.Empty;
+    }
+
+    public class ChangePasswordResult
+    {
+        public bool Success { get; set; }
+        public string? Message { get; set; }
+    }
+}

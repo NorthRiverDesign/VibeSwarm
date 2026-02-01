@@ -1,0 +1,29 @@
+@* Reusable loading spinner component *@
+
+<div class="d-flex justify-content-center py-@(Size == SpinnerSize.Small ? "3" : "5")">
+	<div class="spinner-border @GetSizeClass() text-primary" role="status">
+		<span class="visually-hidden">@Text</span>
+	</div>
+</div>
+
+@code {
+	[Parameter]
+	public string Text { get; set; } = "Loading...";
+
+	[Parameter]
+	public SpinnerSize Size { get; set; } = SpinnerSize.Default;
+
+	private string GetSizeClass() => Size switch
+	{
+		SpinnerSize.Small => "spinner-border-sm",
+		SpinnerSize.Large => "",
+		_ => ""
+	};
+
+	public enum SpinnerSize
+	{
+		Small,
+		Default,
+		Large
+	}
+}

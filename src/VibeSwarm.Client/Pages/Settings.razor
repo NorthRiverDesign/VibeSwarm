@@ -1,0 +1,316 @@
+@page "/settings"
+@attribute [Authorize]
+@inject ISettingsService SettingsService
+@inject IFileSystemService FileSystemService
+@inject IProjectService ProjectService
+@using VibeSwarm.Shared.Utilities
+
+<PageHeader Title="Settings" />
+
+<div class="row g-3 g-lg-4">
+	<div class="col-12 col-lg-8">
+		<div class="card">
+			<div class="card-header bg-body-secondary">
+				<h5 class="mb-0 fw-semibold">
+					<i class="bi bi-gear me-2"></i>Application Settings
+				</h5>
+			</div>
+			<div class="card-body">
+				@if (_isLoading)
+				{
+					<LoadingSpinner />
+				}
+				else
+				{
+					<EditForm Model="@_settings" OnValidSubmit="SaveSettings">
+						<DataAnnotationsValidator />
+
+						<div class="mb-4">
+							<h6 class="text-body-secondary mb-3">
+								<i class="bi bi-folder me-1"></i>Project Defaults
+							</h6>
+
+							<div class="mb-3">
+								<label for="defaultProjectsDirectory" class="form-label">Default Projects Directory</label>
+								<div class="input-group">
+									<input type="text" id="defaultProjectsDirectory" class="form-control font-monospace"
+										@bind="_settings.DefaultProjectsDirectory" placeholder="@_placeholder" />
+									<button type="button" class="btn btn-outline-secondary" @onclick="OpenDirectoryBrowser"
+										title="Browse directories">
+										<i class="bi bi-folder2-open"></i>
+									</button>
+								</div>
+								<div class="form-text">
+									This path will be used as the default prefix when creating new projects.
+									For example, if you set this to <code>@_examplePath</code> and create a project named
+									"MyApp",
+									the working path will default to
+									<code>@_examplePath@Path.DirectorySeparatorChar@("MyApp")</code>.
+								</div>
+
+								@if (!string.IsNullOrEmpty(_settings.DefaultProjectsDirectory))
+								{
+									<div class="mt-2 d-flex flex-wrap align-items-center gap-2">
+										@if (_directoryExists)
+										{
+											<span class="badge bg-success-subtle text-success-emphasis">
+												<i class="bi bi-check-circle me-1"></i>Directory exists
+											</span>
+											<button type="button" class="btn btn-outline-primary btn-sm"
+												@onclick="OpenScanProjectsModal">
+												<i class="bi bi-folder-symlink me-1"></i>Scan For Projects
+											</button>
+										}
+										else
+										{
+											<span class="badge bg-warning-subtle text-warning-emphasis">
+												<i class="bi bi-exclamation-triangle me-1"></i>Directory does not exist
+											</span>
+										}
+									</div>
+								}
+							</div>
+						</div>
+
+						<hr />
+
+						<div class="d-flex flex-column flex-sm-row gap-2">
+							<button type="submit" class="btn btn-primary" disabled="@_isSaving">
+								@if (_isSaving)
+								{
+									<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+									<span>Saving...</span>
+								}
+								else
+								{
+									<i class="bi bi-check-lg me-1"></i>
+									<span>Save Settings</span>
+								}
+							</button>
+							<button type="button" class="btn btn-outline-secondary" @onclick="ReloadSettings"
+								disabled="@_isSaving">
+								<i class="bi bi-arrow-counterclockwise me-1"></i>
+								Reset
+							</button>
+						</div>
+
+						@if (!string.IsNullOrEmpty(_errorMessage))
+						{
+							<Alert Type="Alert.AlertType.Danger" Message="@_errorMessage" Class="mt-3 mb-0" />
+						}
+
+						@if (!string.IsNullOrEmpty(_successMessage))
+						{
+							<Alert Type="Alert.AlertType.Success" Message="@_successMessage" Class="mt-3 mb-0" />
+						}
+					</EditForm>
+				}
+			</div>
+		</div>
+	</div>
+
+	<div class="col-12 col-lg-4">
+		<div class="card">
+			<div class="card-header bg-body-secondary">
+				<h5 class="mb-0 fw-semibold">
+					<i class="bi bi-info-circle me-2"></i>About
+				</h5>
+			</div>
+			<div class="card-body">
+				<div class="mb-3">
+					<div class="d-flex align-items-center gap-2 mb-2">
+						<img src="img/logo_icon.png" alt="VibeSwarm" class="brand-icon"
+							style="width: 32px; height: 32px;" />
+						<h5 class="mb-0">VibeSwarm</h5>
+					</div>
+					<p class="text-body-secondary small mb-0">
+						AI coding agent orchestrator that leverages multiple AI models to assist developers
+						in writing, reviewing, and optimizing code.
+					</p>
+				</div>
+
+				<hr />
+
+				<div class="small text-body-secondary">
+					<div class="mb-2">
+						<i class="bi bi-pc-display me-2"></i>
+						<strong>Platform:</strong> @System.Runtime.InteropServices.RuntimeInformation.OSDescription
+					</div>
+					<div class="mb-2">
+						<i class="bi bi-hdd me-2"></i>
+						<strong>Runtime:</strong>
+						@System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription
+					</div>
+					@if (_settings.UpdatedAt.HasValue)
+					{
+						<div>
+							<i class="bi bi-clock-history me-2"></i>
+							<strong>Last Updated:</strong> @_settings.UpdatedAt.Value.FormatDateTimeShort()
+						</div>
+					}
+				</div>
+			</div>
+		</div>
+
+		<div class="card mt-3">
+			<div class="card-header bg-body-secondary">
+				<h5 class="mb-0 fw-semibold">
+					<i class="bi bi-lightbulb me-2"></i>Tips
+				</h5>
+			</div>
+			<div class="card-body small">
+				<ul class="mb-0 ps-3">
+					<li class="mb-2">
+						Set a default projects directory to quickly create new projects without typing the full path
+						each time.
+					</li>
+					<li class="mb-2">
+						The directory browser helps you navigate the host file system to find the right folder.
+					</li>
+					<li>
+						VibeSwarm can work with any directory that the host process has access to.
+					</li>
+				</ul>
+			</div>
+		</div>
+	</div>
+</div>
+
+@if (_showDirectoryBrowser)
+{
+	<DirectoryBrowser @ref="_directoryBrowser" InitialPath="@_settings.DefaultProjectsDirectory"
+		OnDirectorySelected="OnDirectorySelected" OnClosed="CloseDirectoryBrowser" />
+}
+
+<ScanProjectsModal @ref="_scanProjectsModal" OnProjectsImported="OnProjectsImported" />
+
+@code {
+	private AppSettings _settings = new();
+	private bool _isLoading = true;
+	private bool _isSaving = false;
+	private bool _showDirectoryBrowser = false;
+	private bool _directoryExists = false;
+	private string? _errorMessage;
+	private string? _successMessage;
+	private DirectoryBrowser? _directoryBrowser;
+	private ScanProjectsModal? _scanProjectsModal;
+
+	private string _placeholder => OperatingSystem.IsWindows() ? @"C:\Projects" : "/home/user/projects";
+	private string _examplePath => OperatingSystem.IsWindows() ? @"C:\Projects" : "/home/user/projects";
+
+	protected override async Task OnInitializedAsync()
+	{
+		await LoadSettings();
+	}
+
+	private async Task LoadSettings()
+	{
+		_isLoading = true;
+		_errorMessage = null;
+		_successMessage = null;
+
+		try
+		{
+			_settings = await SettingsService.GetSettingsAsync();
+			await CheckDirectoryExists();
+		}
+		catch (Exception ex)
+		{
+			_errorMessage = $"Failed to load settings: {ex.Message}";
+		}
+		finally
+		{
+			_isLoading = false;
+		}
+	}
+
+	private async Task SaveSettings()
+	{
+		_isSaving = true;
+		_errorMessage = null;
+		_successMessage = null;
+
+		try
+		{
+			// Normalize the path if provided
+			if (!string.IsNullOrWhiteSpace(_settings.DefaultProjectsDirectory))
+			{
+				_settings.DefaultProjectsDirectory = _settings.DefaultProjectsDirectory.Trim();
+			}
+			else
+			{
+				_settings.DefaultProjectsDirectory = null;
+			}
+
+			await SettingsService.UpdateSettingsAsync(_settings);
+			await CheckDirectoryExists();
+			_successMessage = "Settings saved successfully!";
+		}
+		catch (Exception ex)
+		{
+			_errorMessage = $"Failed to save settings: {ex.Message}";
+		}
+		finally
+		{
+			_isSaving = false;
+		}
+	}
+
+	private async Task ReloadSettings()
+	{
+		await LoadSettings();
+	}
+
+	private async Task CheckDirectoryExists()
+	{
+		if (!string.IsNullOrWhiteSpace(_settings.DefaultProjectsDirectory))
+		{
+			_directoryExists = await FileSystemService.DirectoryExistsAsync(_settings.DefaultProjectsDirectory);
+		}
+		else
+		{
+			_directoryExists = false;
+		}
+	}
+
+	private async Task OpenDirectoryBrowser()
+	{
+		_showDirectoryBrowser = true;
+		StateHasChanged();
+
+		// Wait for the component to render
+		await Task.Delay(50);
+
+		if (_directoryBrowser != null)
+		{
+			await _directoryBrowser.ShowAsync(_settings.DefaultProjectsDirectory);
+		}
+	}
+
+	private async Task OnDirectorySelected(string path)
+	{
+		_settings.DefaultProjectsDirectory = path;
+		_showDirectoryBrowser = false;
+		await CheckDirectoryExists();
+		StateHasChanged();
+	}
+
+	private void CloseDirectoryBrowser()
+	{
+		_showDirectoryBrowser = false;
+	}
+
+	private async Task OpenScanProjectsModal()
+	{
+		if (_scanProjectsModal != null)
+		{
+			await _scanProjectsModal.ShowAsync(_settings.DefaultProjectsDirectory);
+		}
+	}
+
+	private void OnProjectsImported()
+	{
+		_successMessage = "Projects imported successfully!";
+		StateHasChanged();
+	}
+}

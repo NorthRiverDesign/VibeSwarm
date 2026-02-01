@@ -1,0 +1,86 @@
+@page "/logout"
+@attribute [Authorize]
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JSRuntime
+@implements IDisposable
+
+<PageTitle>Logout - VibeSwarm</PageTitle>
+
+<div class="modal-backdrop fade show vs-modal-backdrop"></div>
+<div class="modal fade show d-block vs-modal-container" tabindex="-1" role="dialog">
+    <div class="modal-dialog vs-modal-dialog modal-sm modal-dialog-centered">
+        <div class="modal-content vs-modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-box-arrow-right me-2"></i>Log Out
+                </h5>
+            </div>
+            <div class="modal-body text-center">
+                @if (_isLoggingOut)
+                {
+                    <div class="py-3">
+                        <div class="spinner-border text-primary mb-3" role="status">
+                            <span class="visually-hidden">Logging out...</span>
+                        </div>
+                        <p class="mb-0 text-muted">Logging out...</p>
+                    </div>
+                }
+                else
+                {
+                    <p class="mb-3 text-muted">Are you sure you want to log out?</p>
+                }
+            </div>
+            @if (!_isLoggingOut)
+            {
+                <div class="modal-footer justify-content-center">
+                    <button class="btn btn-secondary" @onclick="Cancel">
+                        <i class="bi bi-x-lg me-1"></i>Cancel
+                    </button>
+                    <button class="btn btn-danger" @onclick="ConfirmLogout">
+                        <i class="bi bi-box-arrow-right me-1"></i>Log Out
+                    </button>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    private bool _isLoggingOut = false;
+    private bool _bodyClassAdded = false;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !_bodyClassAdded)
+        {
+            await JSRuntime.InvokeVoidAsync("eval", "document.body.classList.add('vs-modal-open')");
+            _bodyClassAdded = true;
+        }
+    }
+
+    private void ConfirmLogout()
+    {
+        _isLoggingOut = true;
+        NavigationManager.NavigateTo("/account/logout", forceLoad: true);
+    }
+
+    private async Task Cancel()
+    {
+        await RemoveBodyClass();
+        NavigationManager.NavigateTo("/");
+    }
+
+    private async Task RemoveBodyClass()
+    {
+        if (_bodyClassAdded)
+        {
+            await JSRuntime.InvokeVoidAsync("eval", "document.body.classList.remove('vs-modal-open')");
+            _bodyClassAdded = false;
+        }
+    }
+
+    public void Dispose()
+    {
+        // Note: Can't await in Dispose, but the navigation will handle cleanup
+    }
+}
