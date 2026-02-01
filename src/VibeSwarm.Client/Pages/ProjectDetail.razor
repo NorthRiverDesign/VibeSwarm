@@ -261,6 +261,89 @@ else
         });
         });
 
+        // Idea started processing (converted to job) - another user clicked Start
+        _hubConnection.On<string, string, string>("IdeaStarted", async (ideaId, projectId, jobId) =>
+        {
+            await InvokeAsync(async () =>
+    {
+        // Only refresh if this is for our project
+            if (projectId == ProjectId.ToString())
+            {
+            // Update local state immediately
+                if (Guid.TryParse(ideaId, out var ideaGuid))
+                {
+                    ProcessingIdeaIds.Add(ideaGuid);
+                }
+                await RefreshJobs();
+                await LoadIdeas();
+                StateHasChanged();
+            }
+        });
+        });
+
+        // Ideas auto-processing state changed
+        _hubConnection.On<string, bool>("IdeasProcessingStateChanged", async (projectId, isActive) =>
+        {
+            await InvokeAsync(async () =>
+    {
+        // Only update if this is for our project
+            if (projectId == ProjectId.ToString())
+            {
+                IsIdeasProcessingActive = isActive;
+                if (!isActive)
+                {
+                    ProcessingIdeaIds.Clear();
+                }
+                await LoadIdeas();
+                StateHasChanged();
+            }
+        });
+        });
+
+        // Idea created - another user added an idea
+        _hubConnection.On<string, string>("IdeaCreated", async (ideaId, projectId) =>
+        {
+            await InvokeAsync(async () =>
+    {
+            if (projectId == ProjectId.ToString())
+            {
+                await LoadIdeas();
+                StateHasChanged();
+            }
+        });
+        });
+
+        // Idea deleted - another user deleted an idea
+        _hubConnection.On<string, string>("IdeaDeleted", async (ideaId, projectId) =>
+        {
+            await InvokeAsync(async () =>
+    {
+            if (projectId == ProjectId.ToString())
+            {
+            // Remove from local processing set if present
+                if (Guid.TryParse(ideaId, out var ideaGuid))
+                {
+                    ProcessingIdeaIds.Remove(ideaGuid);
+                }
+                await LoadIdeas();
+                StateHasChanged();
+            }
+        });
+        });
+
+        // Idea updated - another user edited/expanded an idea
+        _hubConnection.On<string, string>("IdeaUpdated", async (ideaId, projectId) =>
+        {
+            await InvokeAsync(async () =>
+    {
+            if (projectId == ProjectId.ToString())
+            {
+                await LoadIdeas();
+                StateHasChanged();
+            }
+        });
+        });
+
         try
         {
             await _hubConnection.StartAsync();

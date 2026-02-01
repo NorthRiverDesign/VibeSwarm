@@ -296,4 +296,120 @@ public class SignalRJobUpdateService : IJobUpdateService
             _logger.LogError(ex, "Error sending JobResumed notification for job {JobId}", jobId);
         }
     }
+
+    public async Task NotifyIdeaStarted(Guid ideaId, Guid projectId, Guid jobId)
+    {
+        try
+        {
+            // Notify project-specific subscribers
+            await _hubContext.Clients
+                .Group($"project-{projectId}")
+                .SendAsync("IdeaStarted", ideaId.ToString(), projectId.ToString(), jobId.ToString());
+
+            // Also notify global job list subscribers
+            await _hubContext.Clients
+                .Group("job-list")
+                .SendAsync("IdeaStarted", ideaId.ToString(), projectId.ToString(), jobId.ToString());
+
+            // Notify global event subscribers
+            await _hubContext.Clients
+                .Group("global-events")
+                .SendAsync("IdeaStarted", ideaId.ToString(), projectId.ToString(), jobId.ToString());
+
+            _logger.LogDebug("Sent IdeaStarted notification for idea {IdeaId} -> job {JobId}", ideaId, jobId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error sending IdeaStarted notification for idea {IdeaId}", ideaId);
+        }
+    }
+
+    public async Task NotifyIdeasProcessingStateChanged(Guid projectId, bool isActive)
+    {
+        try
+        {
+            // Notify project-specific subscribers
+            await _hubContext.Clients
+                .Group($"project-{projectId}")
+                .SendAsync("IdeasProcessingStateChanged", projectId.ToString(), isActive);
+
+            // Also notify global event subscribers
+            await _hubContext.Clients
+                .Group("global-events")
+                .SendAsync("IdeasProcessingStateChanged", projectId.ToString(), isActive);
+
+            _logger.LogDebug("Sent IdeasProcessingStateChanged notification for project {ProjectId}: {IsActive}",
+                projectId, isActive);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error sending IdeasProcessingStateChanged notification for project {ProjectId}", projectId);
+        }
+    }
+
+    public async Task NotifyIdeaCreated(Guid ideaId, Guid projectId)
+    {
+        try
+        {
+            // Notify project-specific subscribers
+            await _hubContext.Clients
+                .Group($"project-{projectId}")
+                .SendAsync("IdeaCreated", ideaId.ToString(), projectId.ToString());
+
+            // Also notify global event subscribers
+            await _hubContext.Clients
+                .Group("global-events")
+                .SendAsync("IdeaCreated", ideaId.ToString(), projectId.ToString());
+
+            _logger.LogDebug("Sent IdeaCreated notification for idea {IdeaId}", ideaId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error sending IdeaCreated notification for idea {IdeaId}", ideaId);
+        }
+    }
+
+    public async Task NotifyIdeaDeleted(Guid ideaId, Guid projectId)
+    {
+        try
+        {
+            // Notify project-specific subscribers
+            await _hubContext.Clients
+                .Group($"project-{projectId}")
+                .SendAsync("IdeaDeleted", ideaId.ToString(), projectId.ToString());
+
+            // Also notify global event subscribers
+            await _hubContext.Clients
+                .Group("global-events")
+                .SendAsync("IdeaDeleted", ideaId.ToString(), projectId.ToString());
+
+            _logger.LogDebug("Sent IdeaDeleted notification for idea {IdeaId}", ideaId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error sending IdeaDeleted notification for idea {IdeaId}", ideaId);
+        }
+    }
+
+    public async Task NotifyIdeaUpdated(Guid ideaId, Guid projectId)
+    {
+        try
+        {
+            // Notify project-specific subscribers
+            await _hubContext.Clients
+                .Group($"project-{projectId}")
+                .SendAsync("IdeaUpdated", ideaId.ToString(), projectId.ToString());
+
+            // Also notify global event subscribers
+            await _hubContext.Clients
+                .Group("global-events")
+                .SendAsync("IdeaUpdated", ideaId.ToString(), projectId.ToString());
+
+            _logger.LogDebug("Sent IdeaUpdated notification for idea {IdeaId}", ideaId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error sending IdeaUpdated notification for idea {IdeaId}", ideaId);
+        }
+    }
 }

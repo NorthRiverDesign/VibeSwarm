@@ -43,8 +43,25 @@ public class IdeasController : ControllerBase
     [HttpPost("{id:guid}/convert-to-job")]
     public async Task<IActionResult> ConvertToJob(Guid id, CancellationToken ct)
     {
+        // First check if the idea is already being processed (before acquiring lock)
+        var idea = await _ideaService.GetByIdAsync(id, ct);
+        if (idea == null)
+        {
+            return NotFound(new { error = "Idea not found", code = "NOT_FOUND" });
+        }
+        if (idea.IsProcessing || idea.JobId.HasValue)
+        {
+            // Return 409 Conflict - idea is already being processed by another user
+            return Conflict(new { error = "This idea is already being processed", code = "ALREADY_PROCESSING", ideaId = id, jobId = idea.JobId });
+        }
+
         var job = await _ideaService.ConvertToJobAsync(id, ct);
-        return job == null ? BadRequest() : Ok(job);
+        if (job == null)
+        {
+            // The lock prevented double-start, or another error occurred
+            return Conflict(new { error = "Could not start this idea. It may have been started by another user.", code = "START_FAILED" });
+        }
+        return Ok(job);
     }
 
     [HttpPost("complete-from-job/{jobId:guid}")]

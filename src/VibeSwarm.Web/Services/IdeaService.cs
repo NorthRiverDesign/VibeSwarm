@@ -12,20 +12,33 @@ public class IdeaService : IIdeaService
 	private readonly IJobService _jobService;
 	private readonly IProviderService _providerService;
 	private readonly IVersionControlService _versionControlService;
+	private readonly IJobUpdateService? _jobUpdateService;
 	private readonly ILogger<IdeaService> _logger;
+
+	/// <summary>
+	/// Global lock to prevent race conditions when converting ideas to jobs
+	/// </summary>
+	private static readonly SemaphoreSlim _ideaConversionLock = new(1, 1);
+
+	/// <summary>
+	/// Lock for toggling ideas processing state
+	/// </summary>
+	private static readonly SemaphoreSlim _processingStateLock = new(1, 1);
 
 	public IdeaService(
 		VibeSwarmDbContext dbContext,
 		IJobService jobService,
 		IProviderService providerService,
 		IVersionControlService versionControlService,
-		ILogger<IdeaService> logger)
+		ILogger<IdeaService> logger,
+		IJobUpdateService? jobUpdateService = null)
 	{
 		_dbContext = dbContext;
 		_jobService = jobService;
 		_providerService = providerService;
 		_versionControlService = versionControlService;
 		_logger = logger;
+		_jobUpdateService = jobUpdateService;
 	}
 
 	public async Task<IEnumerable<Idea>> GetByProjectIdAsync(Guid projectId, CancellationToken cancellationToken = default)
@@ -58,6 +71,16 @@ public class IdeaService : IIdeaService
 		_dbContext.Ideas.Add(idea);
 		await _dbContext.SaveChangesAsync(cancellationToken);
 
+		// Notify all clients about the new idea
+		if (_jobUpdateService != null)
+		{
+			try
+			{
+				await _jobUpdateService.NotifyIdeaCreated(idea.Id, idea.ProjectId);
+			}
+			catch { /* Don't fail creation if notification fails */ }
+		}
+
 		return idea;
 	}
 
@@ -73,6 +96,17 @@ public class IdeaService : IIdeaService
 		existing.SortOrder = idea.SortOrder;
 
 		await _dbContext.SaveChangesAsync(cancellationToken);
+
+		// Notify all clients about the update
+		if (_jobUpdateService != null)
+		{
+			try
+			{
+				await _jobUpdateService.NotifyIdeaUpdated(existing.Id, existing.ProjectId);
+			}
+			catch { /* Don't fail update if notification fails */ }
+		}
+
 		return existing;
 	}
 
@@ -81,8 +115,19 @@ public class IdeaService : IIdeaService
 		var idea = await _dbContext.Ideas.FindAsync(new object[] { id }, cancellationToken);
 		if (idea != null)
 		{
+			var projectId = idea.ProjectId;
 			_dbContext.Ideas.Remove(idea);
 			await _dbContext.SaveChangesAsync(cancellationToken);
+
+			// Notify all clients about the deletion
+			if (_jobUpdateService != null)
+			{
+				try
+				{
+					await _jobUpdateService.NotifyIdeaDeleted(id, projectId);
+				}
+				catch { /* Don't fail deletion if notification fails */ }
+			}
 		}
 	}
 
@@ -97,77 +142,114 @@ public class IdeaService : IIdeaService
 
 	public async Task<Job?> ConvertToJobAsync(Guid ideaId, CancellationToken cancellationToken = default)
 	{
-		var idea = await _dbContext.Ideas
-			.Include(i => i.Project)
-			.FirstOrDefaultAsync(i => i.Id == ideaId, cancellationToken);
-
-		if (idea?.Project == null)
-		{
-			_logger.LogWarning("Idea {IdeaId} not found or has no project", ideaId);
-			return null;
-		}
-
-		// Prevent double-add: if idea already has a job, return null
-		if (idea.JobId.HasValue || idea.IsProcessing)
-		{
-			_logger.LogWarning("Idea {IdeaId} is already being processed or has a job", ideaId);
-			return null;
-		}
-
-		// Get the default provider
-		var defaultProvider = await _providerService.GetDefaultAsync(cancellationToken);
-		if (defaultProvider == null)
-		{
-			_logger.LogWarning("No default provider configured. Cannot convert idea to job.");
-			return null;
-		}
-
-		// Get the default model for the provider
-		var models = await _providerService.GetModelsAsync(defaultProvider.Id, cancellationToken);
-		var defaultModel = models.FirstOrDefault(m => m.IsDefault && m.IsAvailable)?.ModelId;
-
-		// Get the current branch if it's a git repository
-		string? currentBranch = null;
+		// Use a lock to prevent race conditions when multiple users click "Start" simultaneously
+		await _ideaConversionLock.WaitAsync(cancellationToken);
 		try
 		{
-			var isGitRepo = await _versionControlService.IsGitRepositoryAsync(idea.Project.WorkingPath);
-			if (isGitRepo)
+			// Re-fetch the idea inside the lock to ensure we have the latest state
+			var idea = await _dbContext.Ideas
+				.Include(i => i.Project)
+				.FirstOrDefaultAsync(i => i.Id == ideaId, cancellationToken);
+
+			if (idea?.Project == null)
 			{
-				currentBranch = await _versionControlService.GetCurrentBranchAsync(idea.Project.WorkingPath);
+				_logger.LogWarning("Idea {IdeaId} not found or has no project", ideaId);
+				return null;
 			}
+
+			// Prevent double-add: if idea already has a job, return null
+			// This check inside the lock prevents race conditions
+			if (idea.JobId.HasValue || idea.IsProcessing)
+			{
+				_logger.LogWarning("Idea {IdeaId} is already being processed or has a job (caught by lock)", ideaId);
+				return null;
+			}
+
+			// Mark as processing immediately to prevent other requests
+			idea.IsProcessing = true;
+			await _dbContext.SaveChangesAsync(cancellationToken);
+
+			// Notify clients immediately that this idea is now being processed
+			if (_jobUpdateService != null)
+			{
+				try
+				{
+					await _jobUpdateService.NotifyIdeaUpdated(idea.Id, idea.ProjectId);
+				}
+				catch { /* Don't fail if notification fails */ }
+			}
+
+			// Get the default provider
+			var defaultProvider = await _providerService.GetDefaultAsync(cancellationToken);
+			if (defaultProvider == null)
+			{
+				_logger.LogWarning("No default provider configured. Cannot convert idea to job.");
+				// Reset processing state on failure
+				idea.IsProcessing = false;
+				await _dbContext.SaveChangesAsync(cancellationToken);
+				return null;
+			}
+
+			// Get the default model for the provider
+			var models = await _providerService.GetModelsAsync(defaultProvider.Id, cancellationToken);
+			var defaultModel = models.FirstOrDefault(m => m.IsDefault && m.IsAvailable)?.ModelId;
+
+			// Get the current branch if it's a git repository
+			string? currentBranch = null;
+			try
+			{
+				var isGitRepo = await _versionControlService.IsGitRepositoryAsync(idea.Project.WorkingPath);
+				if (isGitRepo)
+				{
+					currentBranch = await _versionControlService.GetCurrentBranchAsync(idea.Project.WorkingPath);
+				}
+			}
+			catch (Exception ex)
+			{
+				_logger.LogWarning(ex, "Could not get current branch for project {ProjectId}", idea.ProjectId);
+			}
+
+			// Use expanded description if approved, otherwise build a prompt
+			var goalPrompt = idea.HasExpandedDescription
+				? BuildPromptFromExpanded(idea.Description, idea.ExpandedDescription!)
+				: BuildExpandedPrompt(idea.Description);
+
+			// Create the job with the original idea as the title
+			var job = new Job
+			{
+				ProjectId = idea.ProjectId,
+				ProviderId = defaultProvider.Id,
+				Title = idea.Description,  // Use the original idea text as the title
+				GoalPrompt = goalPrompt,
+				ModelUsed = defaultModel,
+				Branch = currentBranch,
+				Status = JobStatus.New
+			};
+
+			var createdJob = await _jobService.CreateAsync(job, cancellationToken);
+
+			// Link the idea to the job
+			idea.JobId = createdJob.Id;
+			await _dbContext.SaveChangesAsync(cancellationToken);
+
+			_logger.LogInformation("Converted Idea {IdeaId} to Job {JobId}", ideaId, createdJob.Id);
+
+			// Notify all clients that this idea has started processing
+			if (_jobUpdateService != null)
+			{
+				try
+				{
+					await _jobUpdateService.NotifyIdeaStarted(idea.Id, idea.ProjectId, createdJob.Id);
+				}
+				catch { /* Don't fail if notification fails */ }
+			}
+
+			return createdJob;
 		}
-		catch (Exception ex)
+		finally
 		{
-			_logger.LogWarning(ex, "Could not get current branch for project {ProjectId}", idea.ProjectId);
+			_ideaConversionLock.Release();
 		}
-
-		// Use expanded description if approved, otherwise build a prompt
-		var goalPrompt = idea.HasExpandedDescription
-			? BuildPromptFromExpanded(idea.Description, idea.ExpandedDescription!)
-			: BuildExpandedPrompt(idea.Description);
-
-		// Create the job with the original idea as the title
-		var job = new Job
-		{
-			ProjectId = idea.ProjectId,
-			ProviderId = defaultProvider.Id,
-			Title = idea.Description,  // Use the original idea text as the title
-			GoalPrompt = goalPrompt,
-			ModelUsed = defaultModel,
-			Branch = currentBranch,
-			Status = JobStatus.New
-		};
-
-		var createdJob = await _jobService.CreateAsync(job, cancellationToken);
-
-		// Link the idea to the job and mark it as processing
-		idea.JobId = createdJob.Id;
-		idea.IsProcessing = true;
-		await _dbContext.SaveChangesAsync(cancellationToken);
-
-		_logger.LogInformation("Converted Idea {IdeaId} to Job {JobId}", ideaId, createdJob.Id);
-
-		return createdJob;
 	}
 
 	private static string BuildPromptFromExpanded(string originalIdea, string expandedDescription)
@@ -232,23 +314,75 @@ Begin by expanding this idea into a detailed specification, then implement it.";
 
 	public async Task StartProcessingAsync(Guid projectId, CancellationToken cancellationToken = default)
 	{
-		var project = await _dbContext.Projects.FindAsync(new object[] { projectId }, cancellationToken);
-		if (project != null)
+		// Use a lock to prevent race conditions when toggling processing state
+		await _processingStateLock.WaitAsync(cancellationToken);
+		try
 		{
-			project.IdeasProcessingActive = true;
-			await _dbContext.SaveChangesAsync(cancellationToken);
-			_logger.LogInformation("Started Ideas auto-processing for project {ProjectId}", projectId);
+			var project = await _dbContext.Projects.FindAsync(new object[] { projectId }, cancellationToken);
+			if (project != null)
+			{
+				// Check if already active (prevents duplicate start requests)
+				if (project.IdeasProcessingActive)
+				{
+					_logger.LogDebug("Ideas auto-processing already active for project {ProjectId}", projectId);
+					return;
+				}
+
+				project.IdeasProcessingActive = true;
+				await _dbContext.SaveChangesAsync(cancellationToken);
+				_logger.LogInformation("Started Ideas auto-processing for project {ProjectId}", projectId);
+
+				// Notify all clients about the state change
+				if (_jobUpdateService != null)
+				{
+					try
+					{
+						await _jobUpdateService.NotifyIdeasProcessingStateChanged(projectId, true);
+					}
+					catch { /* Don't fail if notification fails */ }
+				}
+			}
+		}
+		finally
+		{
+			_processingStateLock.Release();
 		}
 	}
 
 	public async Task StopProcessingAsync(Guid projectId, CancellationToken cancellationToken = default)
 	{
-		var project = await _dbContext.Projects.FindAsync(new object[] { projectId }, cancellationToken);
-		if (project != null)
+		// Use a lock to prevent race conditions when toggling processing state
+		await _processingStateLock.WaitAsync(cancellationToken);
+		try
 		{
-			project.IdeasProcessingActive = false;
-			await _dbContext.SaveChangesAsync(cancellationToken);
-			_logger.LogInformation("Stopped Ideas auto-processing for project {ProjectId}", projectId);
+			var project = await _dbContext.Projects.FindAsync(new object[] { projectId }, cancellationToken);
+			if (project != null)
+			{
+				// Check if already stopped (prevents duplicate stop requests)
+				if (!project.IdeasProcessingActive)
+				{
+					_logger.LogDebug("Ideas auto-processing already stopped for project {ProjectId}", projectId);
+					return;
+				}
+
+				project.IdeasProcessingActive = false;
+				await _dbContext.SaveChangesAsync(cancellationToken);
+				_logger.LogInformation("Stopped Ideas auto-processing for project {ProjectId}", projectId);
+
+				// Notify all clients about the state change
+				if (_jobUpdateService != null)
+				{
+					try
+					{
+						await _jobUpdateService.NotifyIdeasProcessingStateChanged(projectId, false);
+					}
+					catch { /* Don't fail if notification fails */ }
+				}
+			}
+		}
+		finally
+		{
+			_processingStateLock.Release();
 		}
 	}
 
@@ -435,6 +569,16 @@ Begin by expanding this idea into a detailed specification, then implement it.";
 		idea.ExpansionError = null;
 		await _dbContext.SaveChangesAsync(cancellationToken);
 
+		// Notify clients about the expansion starting
+		if (_jobUpdateService != null)
+		{
+			try
+			{
+				await _jobUpdateService.NotifyIdeaUpdated(idea.Id, idea.ProjectId);
+			}
+			catch { /* Don't fail if notification fails */ }
+		}
+
 		try
 		{
 			// Get the default provider for AI expansion
@@ -444,6 +588,7 @@ Begin by expanding this idea into a detailed specification, then implement it.";
 				idea.ExpansionStatus = IdeaExpansionStatus.Failed;
 				idea.ExpansionError = "No default provider configured";
 				await _dbContext.SaveChangesAsync(cancellationToken);
+				await NotifyIdeaUpdateSafe(idea.Id, idea.ProjectId);
 				return idea;
 			}
 
@@ -454,6 +599,7 @@ Begin by expanding this idea into a detailed specification, then implement it.";
 				idea.ExpansionStatus = IdeaExpansionStatus.Failed;
 				idea.ExpansionError = "Could not create provider instance";
 				await _dbContext.SaveChangesAsync(cancellationToken);
+				await NotifyIdeaUpdateSafe(idea.Id, idea.ProjectId);
 				return idea;
 			}
 
@@ -488,7 +634,23 @@ Begin by expanding this idea into a detailed specification, then implement it.";
 		}
 
 		await _dbContext.SaveChangesAsync(cancellationToken);
+		await NotifyIdeaUpdateSafe(idea.Id, idea.ProjectId);
 		return idea;
+	}
+
+	/// <summary>
+	/// Helper to notify clients about idea updates without failing the main operation
+	/// </summary>
+	private async Task NotifyIdeaUpdateSafe(Guid ideaId, Guid projectId)
+	{
+		if (_jobUpdateService != null)
+		{
+			try
+			{
+				await _jobUpdateService.NotifyIdeaUpdated(ideaId, projectId);
+			}
+			catch { /* Don't fail if notification fails */ }
+		}
 	}
 
 	public async Task<Idea?> ApproveExpansionAsync(Guid ideaId, string? editedDescription = null, CancellationToken cancellationToken = default)
@@ -517,6 +679,10 @@ Begin by expanding this idea into a detailed specification, then implement it.";
 		await _dbContext.SaveChangesAsync(cancellationToken);
 
 		_logger.LogInformation("Approved expansion for idea {IdeaId}", ideaId);
+
+		// Notify clients about the approval
+		await NotifyIdeaUpdateSafe(idea.Id, idea.ProjectId);
+
 		return idea;
 	}
 
@@ -528,6 +694,8 @@ Begin by expanding this idea into a detailed specification, then implement it.";
 			return null;
 		}
 
+		var projectId = idea.ProjectId;
+
 		// Reset expansion state
 		idea.ExpandedDescription = null;
 		idea.ExpansionStatus = IdeaExpansionStatus.NotExpanded;
@@ -536,6 +704,10 @@ Begin by expanding this idea into a detailed specification, then implement it.";
 		await _dbContext.SaveChangesAsync(cancellationToken);
 
 		_logger.LogInformation("Rejected expansion for idea {IdeaId}", ideaId);
+
+		// Notify clients about the rejection
+		await NotifyIdeaUpdateSafe(ideaId, projectId);
+
 		return idea;
 	}
 

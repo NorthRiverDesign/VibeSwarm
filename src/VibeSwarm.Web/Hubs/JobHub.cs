@@ -67,6 +67,23 @@ public class JobHub : Hub
     }
 
     /// <summary>
+    /// Subscribe to global swarm events (receives all state changes across projects)
+    /// Used by dashboards and multi-project views
+    /// </summary>
+    public async Task SubscribeToGlobalEvents()
+    {
+        await Groups.AddToGroupAsync(Context.ConnectionId, "global-events");
+    }
+
+    /// <summary>
+    /// Unsubscribe from global swarm events
+    /// </summary>
+    public async Task UnsubscribeFromGlobalEvents()
+    {
+        await Groups.RemoveFromGroupAsync(Context.ConnectionId, "global-events");
+    }
+
+    /// <summary>
     /// Submit a response to a paused job that is waiting for user interaction
     /// </summary>
     /// <param name="jobId">The job ID</param>

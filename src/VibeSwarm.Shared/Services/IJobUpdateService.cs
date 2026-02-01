@@ -94,4 +94,40 @@ public interface IJobUpdateService
     /// </summary>
     /// <param name="jobId">The job ID</param>
     Task NotifyJobResumed(Guid jobId);
+
+    /// <summary>
+    /// Notifies all clients that an idea has started processing (converted to job)
+    /// </summary>
+    /// <param name="ideaId">The idea ID</param>
+    /// <param name="projectId">The project ID</param>
+    /// <param name="jobId">The created job ID</param>
+    Task NotifyIdeaStarted(Guid ideaId, Guid projectId, Guid jobId);
+
+    /// <summary>
+    /// Notifies all clients that ideas auto-processing state changed for a project
+    /// </summary>
+    /// <param name="projectId">The project ID</param>
+    /// <param name="isActive">Whether auto-processing is now active</param>
+    Task NotifyIdeasProcessingStateChanged(Guid projectId, bool isActive);
+
+    /// <summary>
+    /// Notifies all clients that an idea was created
+    /// </summary>
+    /// <param name="ideaId">The idea ID</param>
+    /// <param name="projectId">The project ID</param>
+    Task NotifyIdeaCreated(Guid ideaId, Guid projectId);
+
+    /// <summary>
+    /// Notifies all clients that an idea was deleted
+    /// </summary>
+    /// <param name="ideaId">The idea ID</param>
+    /// <param name="projectId">The project ID</param>
+    Task NotifyIdeaDeleted(Guid ideaId, Guid projectId);
+
+    /// <summary>
+    /// Notifies all clients that an idea was updated (edited, expansion status changed, etc.)
+    /// </summary>
+    /// <param name="ideaId">The idea ID</param>
+    /// <param name="projectId">The project ID</param>
+    Task NotifyIdeaUpdated(Guid ideaId, Guid projectId);
 }

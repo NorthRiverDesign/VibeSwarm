@@ -285,14 +285,19 @@
 
 	private async Task StartSingleIdea(Idea idea)
 	{
+		// Set the starting ID to show spinner immediately
 		StartingIdeaId = idea.Id;
+		StateHasChanged();
+
 		try
 		{
+			// The parent component handles adding to ProcessingIdeaIds and calling the API
 			await OnStartSingleIdea.InvokeAsync(idea.Id);
 		}
 		finally
 		{
 			StartingIdeaId = null;
+			StateHasChanged();
 		}
 	}
 
