@@ -269,7 +269,7 @@ app.MapCertificateEndpoints();
 app.MapRazorPages();
 
 // Map SignalR hub
-app.MapHub<JobHub>("/jobhub");
+app.MapHub<JobHub>("/hubs/job");
 
 // Fallback to WASM entry point for client-side routing
 app.MapFallbackToFile("index.html");
