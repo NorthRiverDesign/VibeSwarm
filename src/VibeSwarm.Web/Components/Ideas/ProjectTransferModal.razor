@@ -1,0 +1,99 @@
+@* Project transfer modal for copying/moving ideas between projects *@
+
+<ModalDialog @bind-IsVisible="IsVisible" Title="@ModalTitle" Icon="@ModalIcon" Size="ModalDialog.ModalSize.Default"
+	OnClose="HandleClose">
+	<ChildContent>
+		<p class="text-body-secondary mb-3">Select a project to @ActionVerb this idea to:</p>
+		<div class="mb-3">
+			<label class="form-label fw-semibold">Idea</label>
+			<div class="p-2 bg-body-tertiary rounded text-break" style="white-space: pre-wrap;">
+				@IdeaDescription
+			</div>
+		</div>
+		<div class="mb-3">
+			<label class="form-label fw-semibold">Target Project</label>
+			<select class="form-select" @bind="SelectedProjectId">
+				<option value="">Select a project...</option>
+				@foreach (var project in AvailableProjects.Where(p => p.Id != ExcludeProjectId))
+				{
+					<option value="@project.Id">@project.Name</option>
+				}
+			</select>
+		</div>
+		@if (IsMove)
+		{
+			<div class="alert alert-warning py-2 mb-0">
+				<i class="bi bi-exclamation-triangle me-1"></i>
+				This will remove the idea from the current project.
+			</div>
+		}
+	</ChildContent>
+	<FooterContent>
+		<button type="button" class="btn btn-secondary" @onclick="HandleClose">Cancel</button>
+		<button type="button" class="btn @(IsMove ? "btn-warning" : "btn-primary")" @onclick="HandleConfirm"
+			disabled="@(SelectedProjectId == Guid.Empty || IsProcessing)">
+			@if (IsProcessing)
+			{
+				<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+			}
+			@ButtonText
+		</button>
+	</FooterContent>
+</ModalDialog>
+
+@code {
+	[Parameter]
+	public bool IsVisible { get; set; }
+
+	[Parameter]
+	public EventCallback<bool> IsVisibleChanged { get; set; }
+
+	[Parameter]
+	public string IdeaDescription { get; set; } = string.Empty;
+
+	[Parameter]
+	public Guid ExcludeProjectId { get; set; }
+
+	[Parameter]
+	public List<Project> AvailableProjects { get; set; } = new();
+
+	[Parameter]
+	public bool IsMove { get; set; }
+
+	[Parameter]
+	public bool IsProcessing { get; set; }
+
+	[Parameter]
+	public EventCallback<Guid> OnConfirm { get; set; }
+
+	[Parameter]
+	public EventCallback OnCancel { get; set; }
+
+	private Guid SelectedProjectId { get; set; }
+
+	private string ModalTitle => IsMove ? "Move Idea to Project" : "Copy Idea to Project";
+	private string ModalIcon => IsMove ? "box-arrow-right" : "copy";
+	private string ActionVerb => IsMove ? "move" : "copy";
+	private string ButtonText => IsMove ? "Move Idea" : "Copy Idea";
+
+	protected override void OnParametersSet()
+	{
+		if (IsVisible)
+		{
+			SelectedProjectId = Guid.Empty;
+		}
+	}
+
+	private async Task HandleConfirm()
+	{
+		if (SelectedProjectId == Guid.Empty) return;
+		await OnConfirm.InvokeAsync(SelectedProjectId);
+	}
+
+	private async Task HandleClose()
+	{
+		SelectedProjectId = Guid.Empty;
+		await IsVisibleChanged.InvokeAsync(false);
+		await OnCancel.InvokeAsync();
+	}
+}

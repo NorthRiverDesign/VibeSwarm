@@ -247,31 +247,10 @@ else
 </ModalDialog>
 
 @* Delete User Modal *@
-<ModalDialog @bind-IsVisible="_showDeleteUserModal" Title="Delete User" Icon="exclamation-triangle"
-	Size="ModalDialog.ModalSize.Small">
-	<ChildContent>
-		@if (_selectedUser != null)
-		{
-			<p>Are you sure you want to delete <strong>@_selectedUser.UserName</strong>?</p>
-			<p class="text-body-secondary small mb-0">This action cannot be undone.</p>
-
-			@if (!string.IsNullOrEmpty(_deleteUserError))
-			{
-				<Alert Type="Alert.AlertType.Danger" Message="@_deleteUserError" Class="mt-3 mb-0" />
-			}
-		}
-	</ChildContent>
-	<FooterContent>
-		<button type="button" class="btn btn-secondary" @onclick="CloseDeleteUserModal">Cancel</button>
-		<button type="button" class="btn btn-danger" @onclick="HandleDeleteUser" disabled="@_isDeletingUser">
-			@if (_isDeletingUser)
-			{
-				<span class="spinner-border spinner-border-sm me-1" role="status"></span>
-			}
-			Delete
-		</button>
-	</FooterContent>
-</ModalDialog>
+<ConfirmationModal @bind-IsVisible="_showDeleteUserModal" Title="Delete User"
+	Message="@($"Are you sure you want to delete {_selectedUser?.UserName}?")"
+	SubMessage="This action cannot be undone." ErrorMessage="@_deleteUserError" ConfirmText="Delete"
+	IsProcessing="@_isDeletingUser" OnConfirm="HandleDeleteUser" OnCancel="CloseDeleteUserModal" />
 
 @code {
 	[CascadingParameter]

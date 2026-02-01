@@ -788,7 +788,7 @@ else
             // Load completed jobs without a commit hash (pending attribution)
             _pendingCommitJobs = Jobs
             .Where(j => j.Status == JobStatus.Completed && string.IsNullOrEmpty(j.GitCommitHash))
-            .OrderByDescending(j => j.CompletedAt ?? j.UpdatedAt)
+            .OrderByDescending(j => j.CompletedAt ?? j.StartedAt)
             .ToList();
         }
         catch (Exception ex)

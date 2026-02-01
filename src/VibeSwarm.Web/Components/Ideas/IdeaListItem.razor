@@ -1,0 +1,246 @@
+@* Individual idea list item component *@
+
+<li class="list-group-item px-0">
+	@if (IsEditing)
+	{
+		@* Edit Mode *@
+		<div class="d-flex gap-2 align-items-end">
+			<div class="flex-grow-1">
+				<textarea class="form-control form-control-sm" rows="2" @bind="EditDescription" @bind:event="oninput">
+					</textarea>
+			</div>
+			<div class="d-flex flex-column gap-1">
+				<button type="button" class="btn btn-sm btn-success" @onclick="SaveEdit"
+					disabled="@(string.IsNullOrWhiteSpace(EditDescription))">
+					<i class="bi bi-check-lg"></i>
+				</button>
+				<button type="button" class="btn btn-sm btn-outline-secondary" @onclick="CancelEdit">
+					<i class="bi bi-x-lg"></i>
+				</button>
+			</div>
+		</div>
+	}
+	else
+	{
+		@* View Mode *@
+		<div class="d-flex justify-content-between align-items-start gap-2">
+			<div class="flex-grow-1 min-width-0">
+				<div class="d-flex align-items-start gap-2">
+					@* Status Icon *@
+					@if (Idea.IsProcessing || IsProcessing)
+					{
+						<span class="spinner-border spinner-border-sm text-primary flex-shrink-0 mt-1" role="status"
+							title="Processing..."></span>
+					}
+					else if (Idea.ExpansionStatus == IdeaExpansionStatus.Expanding)
+					{
+						<span class="spinner-border spinner-border-sm text-info flex-shrink-0 mt-1" role="status"
+							title="Expanding..."></span>
+					}
+					else if (Idea.ExpansionStatus == IdeaExpansionStatus.Approved)
+					{
+						<i class="bi bi-check-circle-fill text-success flex-shrink-0 mt-1" title="Specification approved"></i>
+					}
+					else if (Idea.ExpansionStatus == IdeaExpansionStatus.PendingReview)
+					{
+						<i class="bi bi-eye-fill text-warning flex-shrink-0 mt-1" title="Pending review"></i>
+					}
+					else
+					{
+						<i class="bi bi-lightbulb text-warning flex-shrink-0 mt-1"></i>
+					}
+
+					@* Description and badges *@
+					<div class="flex-grow-1">
+						<span class="@(Idea.IsProcessing || IsProcessing ? "text-body-secondary" : "") text-break"
+							style="white-space: pre-wrap;">@Idea.Description</span>
+						@if (Idea.ExpansionStatus == IdeaExpansionStatus.Approved)
+						{
+							<span class="badge bg-success-subtle text-success ms-2">Expanded</span>
+						}
+						else if (Idea.ExpansionStatus == IdeaExpansionStatus.PendingReview)
+						{
+							<span class="badge bg-warning-subtle text-warning ms-2">Review</span>
+						}
+					</div>
+				</div>
+				@if ((Idea.IsProcessing || IsProcessing) && Idea.JobId.HasValue)
+				{
+					<small class="text-body-secondary ms-4">
+						<a href="/jobs/view/@Idea.JobId" class="text-decoration-none">
+							View Job <i class="bi bi-arrow-right-short"></i>
+						</a>
+					</small>
+				}
+			</div>
+
+			@* Action buttons *@
+			<div class="d-flex align-items-center gap-1 flex-shrink-0">
+				@if (!Idea.IsProcessing && !IsProcessing)
+				{
+					@* Expand button *@
+					<button type="button" class="btn btn-sm btn-outline-info" @onclick="HandleExpand"
+						disabled="@(Idea.JobId.HasValue || Idea.ExpansionStatus == IdeaExpansionStatus.Expanding)"
+						title="@GetExpandButtonTooltip()">
+						@if (Idea.ExpansionStatus == IdeaExpansionStatus.Expanding)
+						{
+							<span class="spinner-border spinner-border-sm" role="status"></span>
+						}
+						else if (Idea.ExpansionStatus == IdeaExpansionStatus.Approved || Idea.ExpansionStatus ==
+						IdeaExpansionStatus.PendingReview)
+						{
+							<i class="bi bi-file-text"></i>
+						}
+						else
+						{
+							<i class="bi bi-magic"></i>
+						}
+					</button>
+
+					@* Start button *@
+					<button type="button" class="btn btn-sm btn-success" @onclick="HandleStart"
+						disabled="@(HasActiveJobs || !HasDefaultProvider || IsStarting || Idea.JobId.HasValue)"
+						title="@(HasActiveJobs ? "A job is already running on this project" : "Start this idea")">
+						@if (IsStarting)
+						{
+							<span class="spinner-border spinner-border-sm" role="status"></span>
+						}
+						else
+						{
+							<i class="bi bi-play-fill"></i>
+						}
+					</button>
+				}
+				else
+				{
+					@* Show spinner when idea is processing *@
+					<button type="button" class="btn btn-sm btn-outline-secondary" disabled>
+						<span class="spinner-border spinner-border-sm" role="status"></span>
+					</button>
+				}
+
+				@* Dropdown menu *@
+				<div class="dropdown">
+					<button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown"
+						aria-expanded="false" disabled="@(Idea.IsProcessing || IsProcessing || Idea.JobId.HasValue)">
+						<i class="bi bi-three-dots-vertical"></i>
+					</button>
+					<ul class="dropdown-menu dropdown-menu-end">
+						<li>
+							<button class="dropdown-item" @onclick="HandleExpand"
+								disabled="@(Idea.JobId.HasValue || Idea.ExpansionStatus == IdeaExpansionStatus.Expanding)">
+								<i class="bi bi-magic me-2"></i>Expand with AI
+							</button>
+						</li>
+						<li>
+							<hr class="dropdown-divider">
+						</li>
+						<li>
+							<button class="dropdown-item" @onclick="StartEdit"
+								disabled="@(Idea.IsProcessing || IsProcessing || Idea.JobId.HasValue)">
+								<i class="bi bi-pencil me-2"></i>Edit
+							</button>
+						</li>
+						<li>
+							<button class="dropdown-item" @onclick="HandleCopy">
+								<i class="bi bi-copy me-2"></i>Copy to Project
+							</button>
+						</li>
+						<li>
+							<button class="dropdown-item" @onclick="HandleMove"
+								disabled="@(Idea.IsProcessing || IsProcessing || Idea.JobId.HasValue)">
+								<i class="bi bi-box-arrow-right me-2"></i>Move to Project
+							</button>
+						</li>
+						<li>
+							<hr class="dropdown-divider">
+						</li>
+						<li>
+							<button class="dropdown-item text-danger" @onclick="HandleDelete"
+								disabled="@(Idea.IsProcessing || IsProcessing || Idea.JobId.HasValue)">
+								<i class="bi bi-trash me-2"></i>Delete
+							</button>
+						</li>
+					</ul>
+				</div>
+			</div>
+		</div>
+	}
+</li>
+
+@code {
+	[Parameter, EditorRequired]
+	public Idea Idea { get; set; } = null!;
+
+	[Parameter]
+	public bool IsProcessing { get; set; }
+
+	[Parameter]
+	public bool IsStarting { get; set; }
+
+	[Parameter]
+	public bool HasActiveJobs { get; set; }
+
+	[Parameter]
+	public bool HasDefaultProvider { get; set; }
+
+	[Parameter]
+	public EventCallback OnExpand { get; set; }
+
+	[Parameter]
+	public EventCallback OnStart { get; set; }
+
+	[Parameter]
+	public EventCallback OnCopy { get; set; }
+
+	[Parameter]
+	public EventCallback OnMove { get; set; }
+
+	[Parameter]
+	public EventCallback OnDelete { get; set; }
+
+	[Parameter]
+	public EventCallback<Idea> OnSaveEdit { get; set; }
+
+	private bool IsEditing { get; set; }
+	private string EditDescription { get; set; } = string.Empty;
+
+	private void StartEdit()
+	{
+		IsEditing = true;
+		EditDescription = Idea.Description;
+	}
+
+	private void CancelEdit()
+	{
+		IsEditing = false;
+		EditDescription = string.Empty;
+	}
+
+	private async Task SaveEdit()
+	{
+		if (string.IsNullOrWhiteSpace(EditDescription)) return;
+
+		Idea.Description = EditDescription.Trim();
+		await OnSaveEdit.InvokeAsync(Idea);
+		IsEditing = false;
+		EditDescription = string.Empty;
+	}
+
+	private async Task HandleExpand() => await OnExpand.InvokeAsync();
+	private async Task HandleStart() => await OnStart.InvokeAsync();
+	private async Task HandleCopy() => await OnCopy.InvokeAsync();
+	private async Task HandleMove() => await OnMove.InvokeAsync();
+	private async Task HandleDelete() => await OnDelete.InvokeAsync();
+
+	private string GetExpandButtonTooltip()
+	{
+		return Idea.ExpansionStatus switch
+		{
+			IdeaExpansionStatus.Approved => "View approved specification",
+			IdeaExpansionStatus.PendingReview => "Review AI-generated specification",
+			IdeaExpansionStatus.Expanding => "Expanding...",
+			_ => "Expand with AI"
+		};
+	}
+}

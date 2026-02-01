@@ -1,0 +1,72 @@
+@* Reusable confirmation modal for destructive actions *@
+
+<ModalDialog @bind-IsVisible="IsVisible" Title="@Title" Icon="exclamation-triangle" Size="ModalDialog.ModalSize.Small"
+	OnClose="HandleCancel">
+	<ChildContent>
+		<p>@Message</p>
+		@if (!string.IsNullOrEmpty(SubMessage))
+		{
+			<p class="text-body-secondary small mb-0">@SubMessage</p>
+		}
+		@if (!string.IsNullOrEmpty(ErrorMessage))
+		{
+			<Alert Type="Alert.AlertType.Danger" Message="@ErrorMessage" Class="mt-3 mb-0" />
+		}
+	</ChildContent>
+	<FooterContent>
+		<button type="button" class="btn btn-secondary" @onclick="HandleCancel">Cancel</button>
+		<button type="button" class="btn @ButtonClass" @onclick="HandleConfirm" disabled="@IsProcessing">
+			@if (IsProcessing)
+			{
+				<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+			}
+			@ConfirmText
+		</button>
+	</FooterContent>
+</ModalDialog>
+
+@code {
+	[Parameter]
+	public bool IsVisible { get; set; }
+
+	[Parameter]
+	public EventCallback<bool> IsVisibleChanged { get; set; }
+
+	[Parameter]
+	public string Title { get; set; } = "Confirm Action";
+
+	[Parameter]
+	public string Message { get; set; } = "Are you sure you want to proceed?";
+
+	[Parameter]
+	public string? SubMessage { get; set; }
+
+	[Parameter]
+	public string? ErrorMessage { get; set; }
+
+	[Parameter]
+	public string ConfirmText { get; set; } = "Confirm";
+
+	[Parameter]
+	public string ButtonClass { get; set; } = "btn-danger";
+
+	[Parameter]
+	public bool IsProcessing { get; set; }
+
+	[Parameter]
+	public EventCallback OnConfirm { get; set; }
+
+	[Parameter]
+	public EventCallback OnCancel { get; set; }
+
+	private async Task HandleConfirm()
+	{
+		await OnConfirm.InvokeAsync();
+	}
+
+	private async Task HandleCancel()
+	{
+		await IsVisibleChanged.InvokeAsync(false);
+		await OnCancel.InvokeAsync();
+	}
+}

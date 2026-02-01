@@ -24,21 +24,20 @@ Assume the user has already set up and configured these agents tools. Use their 
 
 ## Cross Platform
 
-VibeSwarm is designed to be cross-platform, running on Windows, macOS, and Linux. It uses platform-agnostic libraries and tools to ensure compatibility across different operating systems. The application detects the operating system at runtime and adjusts its behavior accordingly to provide a consistent user experience.
-
-Because VibeSwarm relies on CLI-based AI agents, it is important that the host system has the necessary tools and dependencies installed for each agent to function properly. VibeSwarm provides documentation and guidance on setting up these agents on various platforms to ensure smooth operation.
+1. The application must work identically on Windows, Linux and Mac.
+2. Users may deploy to a VPS, Raspberry Pi, their own workstation, a random computer, a toaster, etc.
+3. Utilize .NET's cross platform capabilities to their fullest, with minimal platform specific code.
 
 ## Deployment
 
-This app is intended to work on a variety of host systems, including local machines, VPS, Raspberry Pi, and cloud instances. The app attempts to remain as system agnostic as possible, relying on widely supported technologies and frameworks. Because VibeSwarm relies on system binaries, containerization is not currently supported.
-
-A future update may include Docker support to simplify deployment and ensure consistent environments across different host systems. This would involve creating Docker images that package the application along with its dependencies, allowing for easy deployment on any system that supports Docker.
+1. This application calls host system CLI tools.
+2. Avoid Docker for now, as CLI tools would have to be configured inside a container to work properly.
+3. A simple `dotnet publish ...` should handle the entire build.
 
 ## VibeSwarm Architecture
 
-VibeSwarm is intended to stay simple but modular in 3 parts, the Web UI, the Worker service that manages agents, and a Shared library for common code both services use. Code relevant to UI should go in the Web project, code relevant to agent management should go in the Worker project, and any code shared between the two should go in the Shared project.
-
-Utility classes should exist in the Shared project to be used by both the Web and Worker projects. Data models should also exist in the Shared project to ensure consistency between the Web and Worker services.
+1. The application is in 3 parts. A web UI, a Shared project for reusing code, and a worker process that manages CLI processes.
+2. If code is used by the Web UI and Worker process, it should live in the Shared project.
 
 ## Coding Best Practices
 
@@ -50,11 +49,9 @@ The C# coding style follows the official Microsoft C# coding conventions. Consis
 
 ## Usage Limits for AI Agents
 
-Some providers and models have usage limits, such as the number of requests per minute or total tokens per month. VibeSwarm monitors these limits and manages agent activity to avoid exceeding them. If an agent approaches its limit, VibeSwarm can throttle its requests or temporarily disable it until the limit resets.
-
-VibeSwarm can utilize local AI models to supplement cloud-based agents, ensuring continuous operation even when usage limits are reached. This hybrid approach allows for greater flexibility and reliability in code generation and review tasks.
-
-VibeSwarm will not overly spam the provider and must wait for a short duration between executions per provider in order to avoid overloading the underlying service provider.
+1. Attempt to detect and respect usage limits of providers. Some like Copilot use premium requests, and others like Claude use a token limit. The application should see these as a percentage of utilized resources.
+2. Always avoid going over-limit with a provider if the information is available. Some provides like OpenCode may use local models where a usage limit does not exist.
+3. Do not spam providers. If a provider has a known rate limit, always wait the appropriate amount of time before sending another request. Even with jobs, ensure there is a delay between executions to avoid overwhelming the provider.
 
 ## Cost Management
 
@@ -70,17 +67,14 @@ VibeSwarm has a Skills feature where instructions may be present for specific ta
 
 ## User Interface
 
-This application is currently built using the Boostrap v5.x framework for styling and layout. The user interface is designed to be intuitive and user-friendly, allowing developers to easily navigate through projects, manage agents, and monitor progress. The dashboard provides a clear overview of agent activities, recent changes, and project status, making it easy for users to stay informed and in control of their coding assistance.
-
-Attempt to utilize existing Bootstrap components and utility classes to maintain consistency and reduce custom styling. Future enhancements may include additional UI frameworks or libraries to further improve the user experience.
-
-The interface must be fully responsive and work on mobile devices as well as desktops. The layout should adapt to different screen sizes, ensuring usability across a range of devices. The application should follow accessibility best practices to ensure that all users, including those with disabilities, can effectively use the interface. This includes proper use of ARIA roles, keyboard navigation support, and sufficient color contrast.
-
-Always ensure consistent spacing, alignment, and visual hierarchy throughout the application. Attention to detail in UI design enhances user experience and promotes a professional appearance. The viewport is considered when designing layouts, ensuring that content is well-organized and easily accessible on various screen sizes. There should never be instances of large gaps, or unused space on larger screens.
-
-Classes should never target one single concern, such as `.goal-prompt-textarea` or `.agent-card`. Instead, use a stacked utility class approach to achieve the desired layout and styling without custom CSS. This ensures flexibility and maintainability across the application. A component may use multiple classes such as `d-flex`, `flex-column`, `align-items-center`, `bg-body-secondary`, and `p-3` to achieve the desired layout and styling without custom CSS.
-
-Consider the entire viewport when designing layouts, ensuring that content is well-organized and easily accessible on different screen sizes. Utilize grid systems and flexible layouts to create a visually appealing and functional interface. When on a larger screen, ensure there are no gaps of unused space by expanding content areas or adding supplementary information where appropriate.
+1. The application front-end is based on Bootstrap v5.x.
+2. Stick to what the framework provides as much as possible.
+3. Always ensure a consistent look and feel across the entire application.
+4. Make sure the application is fully responsive and mobile-friendly.
+5. Ensure consistent spacing, alignment, and visual hierarchy throughout the application. Use the framework and its utility classes to achieve this.
+6. Create reusable UI components for common elements such as buttons, forms, modals, and cards to promote consistency and reduce code duplication.
+7. Use a Tailwind-approach of stacking utility classes to achieve complex layouts and designs without custom CSS.
+8. Ensure all UI components are accessible, following WCAG guidelines to provide an inclusive experience for all users.
 
 ### Mobile Friendly
 
@@ -122,29 +116,28 @@ When adding icons, prefer using Bootstrap Icons over custom SVGs or other icon l
 
 Icon usage in buttons should always contain a Title attribute for accessibility and better user experience. This provides additional context for users, especially those using screen readers.
 
-## Blazor Integration
+### Blazor Best Practices
 
-VibeSwarm is built using Blazor, a web framework for building interactive web applications with C# and .NET. The application leverages Blazor's component-based architecture to create reusable UI components and manage application state effectively. Blazor's capabilities allow for seamless integration with backend services, enabling real-time updates and dynamic content rendering. The SignalR library is used to facilitate real-time communication between the server and client, allowing for instant updates on agent activities and project status.
+1. Use dependency injection to manage services and promote loose coupling between components.
+2. Leverage Blazor's built-in state management features to maintain application state across components.
+3. Use event callbacks to handle user interactions and communicate between parent and child components.
+4. Optimize component rendering by using `ShouldRender` method to prevent unnecessary re-renders.
+5. Use asynchronous programming patterns (async/await) to improve application responsiveness.
+6. Always consider PWA usage when designing components and pages, ensuring offline capabilities and efficient resource loading.
 
-Data fetching methods should use try/catch blocks to handle potential errors gracefully. This ensures that the application remains stable and provides informative feedback to users in case of data retrieval issues. Loading indicators should be displayed while data is being fetched to enhance user experience and provide visual feedback during asynchronous operations. The UI should not be blocked while waiting for data to load.
+### UI Patterns
 
-Do not use code-behind files for Razor components. All logic should be contained within the `.razor` file itself to maintain clarity and reduce complexity. This approach simplifies component management and enhances readability.
-
-Attempt to keep Razor components under 300 lines of markup and code combined. If a component exceeds this limit, consider refactoring it into smaller, more manageable components to improve maintainability and readability.
-
-All interaction should be real-time using SignalR where applicable. Avoid page reloads or full page navigations for data updates. Instead, use Blazor's data binding and event handling capabilities to provide a seamless and dynamic user experience.
-
-The application will be primarily used as a PWA (Progressive Web App). Ensure that all Blazor components and pages are optimized for PWA usage, including offline capabilities, responsive design, and efficient resource loading. The application should not have any issues with loading or interactivity when used as a PWA, even if the user has not opened the app for an extended period.
-
-### UI Components
-
-Large pages should be broken into smaller, reusable components to improve maintainability and readability. Components such as agent cards, project lists, and status indicators can be created to encapsulate specific functionality and styling. This modular approach allows for easier updates and enhancements to individual components without affecting the overall application.
-
-UI should appear consistent and highly polished. Care should be used to maintain alignment, spacing, and visual hierarchy throughout the application. Attention to detail in UI design enhances user experience and promotes a professional appearance. The application must also be responsive and mobile-friendly, ensuring usability across a range of devices.
-
-If a page has over 300 lines of markup, it should be refactored into smaller components to keep the markup readable.
-
-Avoid table based layouts for non-tabular data. Use Bootstrap's grid system and flexbox utilities to create responsive and flexible layouts that adapt to different screen sizes. Utilize lists with list group items, cards, and other Bootstrap components to structure content effectively without relying on tables. Tables are prone to responsiveness issues and should be reserved for displaying tabular data only.
+1. Always favor components over large pages.
+2. Use Bootstrap utility classes to achieve layout and styling without custom CSS.
+3. Keep components under 300 lines of markup and code combined.
+4. Use try/catch blocks for data fetching methods to handle errors gracefully.
+5. Display loading indicators during asynchronous operations to enhance user experience.
+6. Ensure all UI components are responsive and mobile-friendly.
+7. The application must function on every screen size without layout issues or unused space.
+8. Make common components under `src/VibeSwarm.Web/Components/Common` and reuse them wherever possible.
+9. Avoid code-behind files for Razor components; keep logic within the `.razor` file itself.
+10. Use SignalR for real-time updates and avoid full page reloads or navigations.
+11. Never use tables for layout purposes; reserve tables for tabular data only.
 
 ### Toast Messages
 
@@ -152,27 +145,23 @@ Favor using toast messages instead of Flash messages for user notifications. Toa
 
 ## C# Best Practices
 
-Use a Models folder to contain all data models used in the application. This promotes organization and makes it easier to locate and manage data structures. Use attributes such as [Required], [StringLength], and [Range] to enforce data validation rules on models. This ensures that data integrity is maintained and reduces the likelihood of errors during data processing.
-
-Classes should follow the Single Responsibility Principle, ensuring that each class has a clear and focused purpose. This enhances maintainability and makes it easier to understand the codebase. Class files should be named according to the class they contain, following PascalCase naming conventions. This promotes consistency and makes it easier to locate specific classes within the project. Keep class files in a one class per file structure to enhance readability and maintainability.
-
-When working with asynchronous operations, prefer using async/await patterns to improve application responsiveness and scalability. This allows for non-blocking operations, enhancing user experience during long-running tasks.
-
-Use dependency injection to manage service lifetimes and dependencies. This promotes loose coupling and enhances testability by allowing for easier mocking of services during unit testing.
+1. Keep models simple and focused, and in a Models folder.
+2. Use data annotations for model validation.
+3. Use async/await for all I/O-bound operations.
+4. Follow SOLID principles to ensure maintainable and scalable code.
+5. Use dependency injection to manage service lifetimes and dependencies.
 
 ### Coding Stanards
 
-The less code the better. Always attempt to write the simplest code possible to achieve the desired functionality. Avoid unnecessary complexity and strive for clarity in code structure and logic. Rely on framework features and libraries to reduce boilerplate code and improve maintainability.
-
-No individual file should exceed 500 lines of code. If a file exceeds this limit, consider refactoring it into smaller, more manageable files to improve readability and maintainability. Use good OOP principles such as encapsulation, inheritance, and polymorphism to create a well-structured and modular codebase. This promotes code reuse and enhances maintainability.
+1. Keep components small and focused. Refactor to smaller components where it makes sense.
+2. Reuse common UI components already built. Do not use markup like `<div class="alert">` when an <Alert> component exists.
+3. Use try/catch blocks and a loading state boolean to ensure UI responsiveness.
 
 ### Database
 
-The relational database (default SQLite) is the source of truth for all application data. Use Entity Framework Core as the ORM to manage database interactions. Define DbContext classes to represent the database context and DbSet properties for each entity model. Use migrations to manage database schema changes and ensure consistency across different environments.
-
-The application should query the database efficiently, using LINQ queries and eager loading where appropriate to minimize the number of database calls. Avoid loading unnecessary data and use pagination for large datasets to improve performance.
-
-Multiple instances of the application should be able to connect to the same database without causing data corruption or conflicts. Use proper transaction management and concurrency control mechanisms to ensure data integrity when multiple instances are accessing and modifying the database simultaneously.
+1. The default database setup is SQLite but allow a real relational database.
+2. Use EF Core to provide support for multiple databases.
+3. Use LINQ queries efficiently.
 
 ## Jobs and Providers
 

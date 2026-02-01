@@ -163,84 +163,14 @@ else
     OnCancelled="HandleModalCancelled" OnClosed="HandleProviderModalClosed" />
 
 @* Delete Confirmation Modal *@
-<ModalDialog @bind-IsVisible="ShowDeleteModal" Title="Delete Provider" Icon="exclamation-triangle"
-    Size="ModalDialog.ModalSize.Small" OnClose="HandleDeleteModalClosed">
-    <ChildContent>
-        <p>Are you sure you want to delete <strong>@ProviderToDelete?.Name</strong>?</p>
-        <p class="text-body-secondary small mb-0">This action cannot be undone.</p>
-    </ChildContent>
-    <FooterContent>
-        <button type="button" class="btn btn-secondary" @onclick="CancelDelete">Cancel</button>
-        <button type="button" class="btn btn-danger" @onclick="ConfirmDelete" disabled="@IsDeleting">
-            @if (IsDeleting)
-            {
-                <span class="spinner-border spinner-border-sm me-1" role="status"></span>
-            }
-            Delete
-        </button>
-    </FooterContent>
-</ModalDialog>
+<ConfirmationModal @bind-IsVisible="ShowDeleteModal" Title="Delete Provider"
+    Message="@($"Are you sure you want to delete {ProviderToDelete?.Name}?")" SubMessage="This action cannot be undone."
+    ConfirmText="Delete" IsProcessing="@IsDeleting" OnConfirm="ConfirmDelete" OnCancel="CancelDelete" />
 
 @* Select Default Model Modal *@
-<ModalDialog @bind-IsVisible="ShowDefaultModelModal" Title="Select Default Model" Icon="star"
-    Size="ModalDialog.ModalSize.Default" OnClose="HandleDefaultModelModalClosed">
-    <ChildContent>
-        @if (DefaultModelProvider != null)
-        {
-            <p class="text-body-secondary mb-3">
-                Choose a default model for <strong>@DefaultModelProvider.Name</strong>.
-                This model will be pre-selected when creating new jobs.
-            </p>
-
-            @if (IsLoadingDefaultModels)
-            {
-                <div class="d-flex justify-content-center py-4">
-                    <div class="spinner-border text-primary" role="status">
-                        <span class="visually-hidden">Loading models...</span>
-                    </div>
-                </div>
-            }
-            else if (!DefaultModelList.Any())
-            {
-                <Alert Type="Alert.AlertType.Info" Message="No models available. Try refreshing the model list first."
-                    Class="mb-0" />
-            }
-            else
-            {
-                <div class="list-group">
-                    @foreach (var model in DefaultModelList.Where(m => m.IsAvailable))
-                    {
-                        <button type="button"
-                            class="list-group-item list-group-item-action d-flex align-items-center gap-3 @(model.IsDefault ? "active" : "")"
-                            @onclick="@(() => SelectDefaultModel(model))" disabled="@IsSettingDefaultModel">
-                            <div class="flex-grow-1">
-                                <div class="fw-medium">@(model.DisplayName ?? model.ModelId)</div>
-                                @if (!string.IsNullOrEmpty(model.Description))
-                                {
-                                    <small class="@(model.IsDefault ? "" : "text-body-secondary")">@model.Description</small>
-                                }
-                                <small class="@(model.IsDefault ? "" : "text-body-tertiary") d-block">@model.ModelId</small>
-                            </div>
-                            @if (model.IsDefault)
-                            {
-                                <i class="bi bi-check-circle-fill text-white"></i>
-                            }
-                            else if (model.PriceMultiplier.HasValue)
-                            {
-                                <span class="badge bg-secondary-subtle text-secondary-emphasis">
-                                    @(model.PriceMultiplier.Value)x
-                                </span>
-                            }
-                        </button>
-                    }
-                </div>
-            }
-        }
-    </ChildContent>
-    <FooterContent>
-        <button type="button" class="btn btn-secondary" @onclick="CloseDefaultModelModal">Close</button>
-    </FooterContent>
-</ModalDialog>
+<DefaultModelModal @bind-IsVisible="ShowDefaultModelModal" Provider="@DefaultModelProvider" Models="@DefaultModelList"
+    IsLoading="@IsLoadingDefaultModels" IsSelecting="@IsSettingDefaultModel" OnModelSelected="SelectDefaultModel"
+    OnClose="HandleDefaultModelModalClosed" />
 
 @code {
     private List<Provider> ProvidersList { get; set; } = new();
@@ -552,19 +482,10 @@ else
         }
     }
 
-    private void CloseDefaultModelModal()
-    {
-        ShowDefaultModelModal = false;
-        DefaultModelProvider = null;
-        // Create a new empty list instead of clearing - prevents clearing shared reference in ProviderModels
-        DefaultModelList = new List<ProviderModel>();
-    }
-
     private void HandleDefaultModelModalClosed()
     {
         ShowDefaultModelModal = false;
         DefaultModelProvider = null;
-        // Create a new empty list instead of clearing - prevents clearing shared reference in ProviderModels
         DefaultModelList = new List<ProviderModel>();
         StateHasChanged();
     }
