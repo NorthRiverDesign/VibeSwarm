@@ -1,101 +1,145 @@
 <!DOCTYPE html>
 <html lang="en" data-bs-theme="dark">
 
-<head>
-    <meta charset="utf-8" />
-    <script>
-        // Auto-detect OS color scheme preference
-        (function () {
-            const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-            document.documentElement.setAttribute('data-bs-theme', prefersDark ? 'dark' : 'light');
-        })();
-    </script>
-    <meta name="viewport"
-        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <head>
+        <meta charset="utf-8" />
+        <script>
+            // Auto-detect OS color scheme preference
+            (function () {
+                const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+                document.documentElement.setAttribute('data-bs-theme', prefersDark ? 'dark' : 'light');
+            })();
+        </script>
+        <meta name="viewport"
+            content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
 
-    <!-- PWA Meta Tags -->
-    <meta name="application-name" content="VibeSwarm" />
-    <meta name="theme-color" content="#1a1d21" />
-    <meta name="mobile-web-app-capable" content="yes" />
+        <!-- PWA Meta Tags -->
+        <meta name="application-name" content="VibeSwarm" />
+        <meta name="theme-color" content="#1a1d21" />
+        <meta name="mobile-web-app-capable" content="yes" />
 
-    <!-- iOS PWA Meta Tags -->
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="VibeSwarm" />
-    <meta name="format-detection" content="telephone=no" />
+        <!-- iOS PWA Meta Tags -->
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+        <meta name="apple-mobile-web-app-title" content="VibeSwarm" />
+        <meta name="format-detection" content="telephone=no" />
 
-    <title>VibeSwarm</title>
-    <base href="/" />
+        <title>VibeSwarm</title>
+        <base href="/" />
 
-    <!-- PWA Manifest -->
-    <link rel="manifest" href="manifest.json?v=5" />
+        <!-- PWA Manifest -->
+        <link rel="manifest" href="manifest.json?v=5" />
 
-    <!-- Icons -->
-    <link rel="icon" type="image/png" sizes="96x96" href="/favicon-96x96.png?v=5" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=5" />
+        <!-- Icons -->
+        <link rel="icon" type="image/png" sizes="96x96" href="/favicon-96x96.png?v=5" />
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=5" />
 
-    <!-- iOS Icons -->
-    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
-    <link rel="apple-touch-icon" sizes="167x167" href="/apple-touch-icon-167x167.png" />
-    <link rel="apple-touch-icon" sizes="152x152" href="/apple-touch-icon-152x152.png" />
-    <link rel="apple-touch-icon" sizes="120x120" href="/apple-touch-icon-120x120.png" />
-    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-    <link href="lib/bootstrap/css/bootstrap.min.css" rel="stylesheet" />
-    <link href="css/bootstrap-icons.min.css" rel="stylesheet" />
-    <link href="css/site.css" rel="stylesheet" />
-</head>
+        <!-- iOS Icons -->
+        <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+        <link rel="apple-touch-icon" sizes="167x167" href="/apple-touch-icon-167x167.png" />
+        <link rel="apple-touch-icon" sizes="152x152" href="/apple-touch-icon-152x152.png" />
+        <link rel="apple-touch-icon" sizes="120x120" href="/apple-touch-icon-120x120.png" />
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+        <link href="lib/bootstrap/css/bootstrap.min.css" rel="stylesheet" />
+        <link href="css/bootstrap-icons.min.css" rel="stylesheet" />
+        <link href="css/site.css" rel="stylesheet" />
+    </head>
 
-<body>
-    <div id="app">
-        <div class="d-flex align-items-center justify-content-center min-vh-100">
-            <div class="text-center">
-                <div class="spinner-border text-primary mb-3" role="status">
-                    <span class="visually-hidden">Loading...</span>
+    <body>
+        <div id="app">
+            <div class="d-flex align-items-center justify-content-center min-vh-100">
+                <div class="text-center">
+                    <div class="spinner-border text-primary mb-3" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="text-muted" id="loading-message">Loading VibeSwarm...</p>
                 </div>
-                <p class="text-muted">Loading VibeSwarm...</p>
             </div>
         </div>
-    </div>
 
-    <div id="blazor-error-ui" style="display:none">
-        An unhandled error has occurred.
-        <a href="" class="reload">Reload</a>
-        <a class="dismiss">Dismiss</a>
-    </div>
+        <div id="blazor-error-ui" class="alert alert-danger m-3" style="display:none">
+            <strong>An error occurred while loading the application.</strong>
+            <p class="mb-2">This may be due to a network issue or cached data.</p>
+            <a href="javascript:location.reload(true)" class="btn btn-primary btn-sm me-2">Reload</a>
+            <a href="javascript:clearCacheAndReload()" class="btn btn-outline-secondary btn-sm">Clear Cache & Reload</a>
+        </div>
 
-    <script src="lib/bootstrap/js/bootstrap.bundle.min.js"></script>
-    <script src="_framework/blazor.webassembly.js"></script>
+        <script src="lib/bootstrap/js/bootstrap.bundle.min.js"></script>
 
-    <!-- Service Worker Registration -->
-    <script>
-        if ('serviceWorker' in navigator && window.location.protocol === 'https:') {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('/service-worker.js')
-                    .then((registration) => {
-                        console.log('ServiceWorker registered:', registration.scope);
-                        registration.update();
-                        setInterval(() => registration.update(), 60 * 60 * 1000);
+        <!-- Error handling for iOS Safari and WebAssembly loading issues -->
+        <script>
+            // Set a timeout to show error UI if Blazor doesn't load
+            var loadTimeout = setTimeout(function () {
+                var loadingMsg = document.getElementById('loading-message');
+                if (loadingMsg) {
+                    loadingMsg.textContent = 'Loading is taking longer than expected...';
+                }
+            }, 10000);
 
-                        registration.addEventListener('updatefound', () => {
-                            const newWorker = registration.installing;
-                            newWorker.addEventListener('statechange', () => {
-                                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                                    console.log('New version available, refreshing...');
-                                    window.location.reload();
-                                }
-                            });
-                        });
-                    })
-                    .catch((error) => {
-                        console.log('ServiceWorker registration failed:', error);
-                    });
-
-                navigator.serviceWorker.addEventListener('controllerchange', () => {
-                    window.location.reload();
-                });
+            // Clear timeout when Blazor starts
+            window.addEventListener('blazorStarted', function () {
+                clearTimeout(loadTimeout);
             });
-        }
-    </script>
-</body>
+
+            // Function to clear cache and reload for stuck situations
+            function clearCacheAndReload() {
+                if ('caches' in window) {
+                    caches.keys().then(function (names) {
+                        for (var name of names) {
+                            caches.delete(name);
+                        }
+                    }).then(function () {
+                        location.reload(true);
+                    });
+                } else {
+                    location.reload(true);
+                }
+            }
+        </script>
+
+        <script src="_framework/blazor.webassembly.js" autostart="false"></script>
+        <script>
+            // Start Blazor manually with error handling
+            Blazor.start().then(function () {
+                clearTimeout(loadTimeout);
+                console.log('Blazor WebAssembly started successfully');
+            }).catch(function (err) {
+                console.error('Blazor WebAssembly failed to start:', err);
+                document.getElementById('blazor-error-ui').style.display = 'block';
+                document.getElementById('app').style.display = 'none';
+            });
+        </script>
+
+        <!-- Service Worker Registration -->
+        <script>
+            if ('serviceWorker' in navigator && window.location.protocol === 'https:') {
+                window.addEventListener('load', () => {
+                    navigator.serviceWorker.register('/service-worker.js')
+                        .then((registration) => {
+                            console.log('ServiceWorker registered:', registration.scope);
+                            registration.update();
+                            setInterval(() => registration.update(), 60 * 60 * 1000);
+
+                            registration.addEventListener('updatefound', () => {
+                                const newWorker = registration.installing;
+                                newWorker.addEventListener('statechange', () => {
+                                    if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                                        console.log('New version available, refreshing...');
+                                        window.location.reload();
+                                    }
+                                });
+                            });
+                        })
+                        .catch((error) => {
+                            console.log('ServiceWorker registration failed:', error);
+                        });
+
+                    navigator.serviceWorker.addEventListener('controllerchange', () => {
+                        window.location.reload();
+                    });
+                });
+            }
+        </script>
+    </body>
 
 </html>

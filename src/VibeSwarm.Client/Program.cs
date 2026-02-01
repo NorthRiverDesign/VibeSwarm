@@ -11,9 +11,22 @@ var builder = WebAssemblyHostBuilder.CreateDefault(args);
 builder.RootComponents.Add<App>("#app");
 builder.RootComponents.Add<HeadOutlet>("head::after");
 
-builder.Services.AddScoped(sp => new HttpClient
+// Register the CookieHandler for browser fetch credential inclusion
+builder.Services.AddTransient<CookieHandler>();
+
+// Configure HttpClient with the CookieHandler for cookie authentication
+// This ensures credentials (cookies) are included with all requests,
+// which is critical for iOS Safari's stricter cookie policies
+builder.Services.AddHttpClient("VibeSwarm", client =>
 {
-    BaseAddress = new Uri(builder.HostEnvironment.BaseAddress)
+    client.BaseAddress = new Uri(builder.HostEnvironment.BaseAddress);
+}).AddHttpMessageHandler<CookieHandler>();
+
+// Register the default HttpClient as the named client for DI
+builder.Services.AddScoped(sp =>
+{
+    var factory = sp.GetRequiredService<IHttpClientFactory>();
+    return factory.CreateClient("VibeSwarm");
 });
 
 // HTTP service implementations

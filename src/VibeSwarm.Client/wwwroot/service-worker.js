@@ -1,6 +1,6 @@
 // VibeSwarm Service Worker
 // Increment CACHE_VERSION when icons or critical assets change to force cache refresh
-const CACHE_VERSION = 7;
+const CACHE_VERSION = 8;
 const CACHE_NAME = `vibeswarm-v${CACHE_VERSION}`;
 const OFFLINE_URL = "/offline.html";
 
@@ -68,11 +68,16 @@ self.addEventListener("fetch", (event) => {
 		return;
 	}
 
-	// Skip SignalR and Blazor framework requests - these must go to network
+	// Skip API, SignalR, and Blazor framework requests - these must go to network
+	// This is critical for authentication to work correctly on iOS Safari
 	if (
+		request.url.includes("/api/") ||
 		request.url.includes("_blazor") ||
 		request.url.includes("_framework") ||
-		request.url.includes("negotiate")
+		request.url.includes("negotiate") ||
+		request.url.includes("/login") ||
+		request.url.includes("/logout") ||
+		request.url.includes("/account/")
 	) {
 		return;
 	}

@@ -1,6 +1,7 @@
 using System.Net.Http.Json;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.AspNetCore.Components.WebAssembly.Http;
 
 namespace VibeSwarm.Client.Auth;
 
@@ -19,13 +20,20 @@ public class CookieAuthenticationStateProvider : AuthenticationStateProvider
     {
         try
         {
+            _logger.LogDebug("Fetching authentication state from /api/auth/user");
+
+            // Use the HttpClient which is configured with CookieHandler for credentials
             var response = await _httpClient.GetAsync("/api/auth/user");
+
+            _logger.LogDebug("Auth response status: {StatusCode}", response.StatusCode);
 
             if (response.IsSuccessStatusCode)
             {
                 var userInfo = await response.Content.ReadFromJsonAsync<UserInfo>();
                 if (userInfo != null)
                 {
+                    _logger.LogInformation("User authenticated: {UserName}", userInfo.UserName);
+
                     var claims = new List<Claim>
                     {
                         new(ClaimTypes.Name, userInfo.UserName ?? string.Empty),
@@ -43,6 +51,14 @@ public class CookieAuthenticationStateProvider : AuthenticationStateProvider
                     var identity = new ClaimsIdentity(claims, "cookie");
                     return new AuthenticationState(new ClaimsPrincipal(identity));
                 }
+            }
+            else if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+            {
+                _logger.LogDebug("User is not authenticated (401 Unauthorized)");
+            }
+            else
+            {
+                _logger.LogWarning("Unexpected auth response: {StatusCode}", response.StatusCode);
             }
         }
         catch (Exception ex)
