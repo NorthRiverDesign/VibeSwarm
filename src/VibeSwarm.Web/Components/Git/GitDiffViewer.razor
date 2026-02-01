@@ -123,7 +123,7 @@
 						<h2 class="accordion-header" id="@headerId">
 							<button class="accordion-button @(isExpanded ? "" : "collapsed")" type="button"
 								@onclick="() => ToggleFile(index)">
-								<span class="diff-file-icon me-2">
+								<span class="me-2">
 									@if (file.IsNew)
 									{
 										<i class="bi bi-file-earmark-plus text-success" title="New file"></i>
@@ -137,8 +137,9 @@
 										<i class="bi bi-file-earmark-diff text-warning" title="Modified file"></i>
 									}
 								</span>
-								<span class="diff-file-name flex-grow-1 text-truncate">@file.FileName</span>
-								<span class="diff-stats ms-2">
+								<span
+									class="diff-file-name flex-grow-1 text-truncate fw-medium text-break min-width-0">@file.FileName</span>
+								<span class="diff-stats ms-2 flex-shrink-0 small">
 									@if (file.Additions > 0)
 									{
 										<span class="text-success fw-medium">+@file.Additions</span>
@@ -152,7 +153,7 @@
 						</h2>
 						<div id="@collapseId" class="accordion-collapse @(isExpanded ? "show" : "collapse")">
 							<div class="accordion-body p-0">
-								<div class="diff-container">
+								<div class="terminal-output overflow-auto p-2 small" style="max-height: 350px;">
 									@((MarkupString)FormatDiff(file.DiffContent))
 								</div>
 							</div>

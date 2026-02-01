@@ -87,7 +87,7 @@
 					</div>
 				</div>
 
-				<div class="accordion border rounded" style="max-height: 350px; overflow-y: auto;">
+				<div class="accordion border rounded overflow-y-auto" style="max-height: 350px;">
 					@foreach (var (file, index) in DiffFiles.Select((f, i) => (f, i)))
 					{
 						var isExpanded = _expandedFiles.Contains(index);
@@ -126,7 +126,7 @@
 								<div class="accordion-body p-0">
 									@if (!file.IsDeleted)
 									{
-										<div class="diff-container" style="max-height: 250px; overflow: auto;">
+										<div class="terminal-output overflow-auto p-2 small" style="max-height: 250px;">
 											@((MarkupString)GitDiffParser.FormatDiffHtml(file.DiffContent))
 										</div>
 									}

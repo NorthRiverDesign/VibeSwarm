@@ -11,12 +11,12 @@
 			HideTextOnMobile="true" OnClick="OnClear" />
 	</div>
 	<div class="card-body p-0 flex-grow-1 overflow-hidden">
-		<div class="live-output-container h-100" @ref="_outputContainer" style="min-height: 300px;">
+		<div class="terminal-output h-100 p-3 overflow-auto small" @ref="_outputContainer" style="min-height: 300px;">
 			@foreach (var line in OutputLines.TakeLast(MaxLines))
 			{
-				<div class="output-line @(line.IsError ? "output-error" : "output-stdout")">
-					<span class="output-time d-none d-sm-inline">[@line.Timestamp.FormatTime()]</span>
-					<span class="output-text">@line.Content</span>
+				<div class="output-line d-flex gap-2 py-0 @(line.IsError ? "output-error" : "output-stdout")">
+					<span class="output-time flex-shrink-0 small d-none d-sm-inline">[@line.Timestamp.FormatTime()]</span>
+					<span class="output-text text-break">@line.Content</span>
 				</div>
 			}
 		</div>

@@ -50,9 +50,9 @@ else
     </div>
 
     @* Desktop: Inbox-style split layout *@
-    <div class="jobs-inbox-layout">
+    <div class="jobs-inbox-layout d-flex flex-column">
         @* Project Sidebar (desktop only) *@
-        <aside class="jobs-project-sidebar d-none d-lg-flex flex-column border-end">
+        <aside class="jobs-project-sidebar d-none d-lg-flex flex-column border-end bg-body flex-shrink-0">
             <div class="p-3 border-bottom">
                 <h5 class="mb-0 fw-semibold d-flex align-items-center gap-2">
                     <i class="bi bi-inbox"></i> Jobs
@@ -61,7 +61,7 @@ else
             <div class="flex-grow-1 overflow-auto">
                 @* All Projects option *@
                 <button type="button"
-                    class="project-filter-item w-100 text-start border-0 bg-transparent d-flex align-items-center gap-2 p-3 @(_selectedProjectId == null ? "active" : "")"
+                    class="project-filter-item w-100 text-start border-0 bg-transparent d-flex align-items-center gap-2 p-3 cursor-pointer @(_selectedProjectId == null ? "active" : "")"
                     @onclick="() => SelectProject(null)">
                     <i class="bi bi-collection"></i>
                     <span class="flex-grow-1">All Projects</span>
@@ -76,7 +76,7 @@ else
                     var jobCount = GetJobCountForProject(project.Id);
                     var activeCount = GetActiveCountForProject(project.Id);
                     <button type="button"
-                        class="project-filter-item w-100 text-start border-0 bg-transparent d-flex align-items-center gap-2 p-3 @(_selectedProjectId == project.Id ? "active" : "")"
+                        class="project-filter-item w-100 text-start border-0 bg-transparent d-flex align-items-center gap-2 p-3 cursor-pointer @(_selectedProjectId == project.Id ? "active" : "")"
                         @onclick="() => SelectProject(project.Id)">
                         <i class="bi bi-folder"></i>
                         <span class="flex-grow-1 text-truncate">@project.Name</span>
@@ -109,7 +109,7 @@ else
         </aside>
 
         @* Job List Panel *@
-        <div class="jobs-list-panel flex-grow-1 d-flex flex-column">
+        <div class="jobs-list-panel flex-grow-1 d-flex flex-column min-width-0 bg-body">
             @* Stats header *@
             @if (HasTokenData())
             {

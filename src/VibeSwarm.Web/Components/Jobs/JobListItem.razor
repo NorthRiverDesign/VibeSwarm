@@ -4,7 +4,7 @@
 <div class="job-list-item p-3 border-bottom cursor-pointer @(_isSelected ? "job-selected" : "")" @onclick="HandleClick">
     <div class="d-flex align-items-start gap-3">
         @* Status Icon Column *@
-        <div class="job-status-icon flex-shrink-0">
+        <div class="job-status-icon d-flex align-items-center justify-content-center flex-shrink-0">
             @switch (Status.ToLowerInvariant())
             {
                 case "new":
@@ -41,7 +41,7 @@
         @* Main Content *@
         <div class="flex-grow-1 min-width-0">
             @* Goal Prompt *@
-            <div class="job-prompt mb-1 text-break">
+            <div class="mb-1 text-break lh-sm">
                 <span class="@(IsActiveStatus() ? "fw-semibold" : "")">@TruncateText(Prompt, 150)</span>
             </div>
 

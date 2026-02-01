@@ -88,12 +88,12 @@
                 @* Live Output *@
                 @if (LiveOutputLines.Any())
                 {
-                    <div class="live-output-container flex-grow-1 overflow-auto">
+                    <div class="terminal-output flex-grow-1 p-3 overflow-auto rounded-bottom small" style="max-height: 300px;">
                         @foreach (var line in LiveOutputLines.TakeLast(MaxOutputLines))
                         {
-                            <div class="output-line @(line.IsError ? "output-error" : "output-stdout")">
-                                <span class="output-time d-none d-sm-inline">[@line.Timestamp.FormatTime()]</span>
-                                <span class="output-text">@line.Content</span>
+                            <div class="output-line d-flex gap-2 py-0 @(line.IsError ? "output-error" : "output-stdout")">
+                                <span class="output-time flex-shrink-0 small d-none d-sm-inline">[@line.Timestamp.FormatTime()]</span>
+                                <span class="output-text text-break">@line.Content</span>
                             </div>
                         }
                     </div>
@@ -151,7 +151,7 @@
                     }
                     else
                     {
-                        <div class="chat-messages-container">
+                        <div class="d-flex flex-column gap-3 overflow-auto p-2" style="max-height: 600px;">
                             @foreach (var message in Messages)
                             {
                                 <ChatMessage Role="@message.Role" Content="@message.Content" ToolName="@message.ToolName"
@@ -164,7 +164,8 @@
         }
         else if (_activeTab == "console")
         {
-            <pre class="console-output-box flex-grow-1 m-0 overflow-auto">@ConsoleOutput</pre>
+            <pre class="terminal-output flex-grow-1 m-0 p-3 overflow-auto rounded-bottom small text-break"
+                style="max-height: 400px;">@ConsoleOutput</pre>
         }
         else if (_activeTab == "command")
         {
@@ -177,8 +178,7 @@
                     </button>
                 </div>
                 <div class="p-3 bg-body-tertiary rounded border">
-                    <code class="small d-block text-break"
-                        style="white-space: pre-wrap; word-break: break-all;">@CommandUsed</code>
+                    <code class="small d-block text-break" style="white-space: pre-wrap;">@CommandUsed</code>
                 </div>
                 @if (!string.IsNullOrEmpty(SessionId))
                 {

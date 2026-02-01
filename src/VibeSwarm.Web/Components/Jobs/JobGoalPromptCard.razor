@@ -51,7 +51,7 @@
 		}
 		else
 		{
-			<div class="bg-body-tertiary p-3 rounded lh-base" style="white-space: pre-wrap; word-break: break-word;">
+			<div class="bg-body-tertiary p-3 rounded lh-base text-break" style="white-space: pre-wrap;">
 				@GoalPrompt</div>
 		}
 	</div>
@@ -70,8 +70,8 @@
 					<button type="button" class="btn-close" @onclick="CloseModal" aria-label="Close"></button>
 				</div>
 				<div class="modal-body">
-					<pre class="bg-body-tertiary border rounded p-3 overflow-auto lh-base m-0"
-						style="white-space: pre-wrap; word-break: break-word; max-height: 60vh;">@GoalPrompt</pre>
+					<pre class="bg-body-tertiary border rounded p-3 overflow-auto lh-base m-0 text-break"
+						style="white-space: pre-wrap; max-height: 60vh;">@GoalPrompt</pre>
 				</div>
 				<div class="modal-footer">
 					<button type="button" class="btn btn-outline-secondary" @onclick="CopyToClipboard">
