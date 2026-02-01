@@ -54,22 +54,28 @@
 html {
     font-size: 16px;
     -webkit-text-size-adjust: 100%;
+    /* Use dvh for dynamic viewport height to handle mobile browser chrome */
+    height: 100%;
 }
 
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif;
     padding-left: var(--vs-safe-area-left);
     padding-right: var(--vs-safe-area-right);
+    min-height: 100%;
+    min-height: 100dvh;
 }
 
 .app-layout {
     min-height: 100vh;
+    min-height: 100dvh;
     display: flex;
     flex-direction: column;
 }
 
 .app-header {
-    position: fixed;
+    position: -webkit-sticky;
+    position: sticky;
     top: 0;
     left: 0;
     right: 0;
@@ -83,6 +89,7 @@ body {
     padding-right: calc(1rem + var(--vs-safe-area-right));
     z-index: 1000;
     gap: 1rem;
+    flex-shrink: 0;
 }
 
 .nav-toggle {
@@ -136,6 +143,7 @@ body {
     transform: translateX(-100%);
     transition: transform var(--vs-transition);
     overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
     padding-bottom: var(--vs-safe-area-bottom);
     padding-left: var(--vs-safe-area-left);
 }
@@ -154,8 +162,7 @@ body {
 
 .app-main {
     flex: 1;
-    margin-top: calc(var(--vs-header-height) + var(--vs-safe-area-top));
-    min-height: calc(100vh - var(--vs-header-height) - var(--vs-safe-area-top));
+    min-height: 0;
     padding-bottom: var(--vs-safe-area-bottom);
 }
 
@@ -170,6 +177,10 @@ body {
 @media (min-width: 992px) {
     .app-layout { flex-direction: row; }
 
+    .app-header {
+        position: fixed;
+    }
+
     .app-sidebar {
         position: fixed;
         top: 0;
@@ -178,9 +189,10 @@ body {
     }
 
     .app-main {
-        margin-top: var(--vs-safe-area-top);
+        margin-top: calc(var(--vs-header-height) + var(--vs-safe-area-top));
         margin-left: var(--vs-sidebar-width);
-        min-height: calc(100vh - var(--vs-safe-area-top));
+        min-height: calc(100vh - var(--vs-header-height) - var(--vs-safe-area-top));
+        min-height: calc(100dvh - var(--vs-header-height) - var(--vs-safe-area-top));
     }
 
     .main-content {
@@ -612,8 +624,8 @@ body.vs-modal-open {
 /* Desktop (≥ 992px) */
 @media (min-width: 992px) {
     .vs-modal-container { padding: 1.75rem !important; padding-top: calc(var(--vs-safe-area-top) + 1.75rem) !important; }
-    .vs-modal-dialog { max-height: calc(100vh - var(--vs-safe-area-top) - var(--vs-safe-area-bottom) - 3.5rem); }
-    .vs-modal-dialog .modal-content { max-height: calc(100vh - var(--vs-safe-area-top) - var(--vs-safe-area-bottom) - 3.5rem); }
+    .vs-modal-dialog { max-height: calc(100vh - var(--vs-safe-area-top) - var(--vs-safe-area-bottom) - 3.5rem); max-height: calc(100dvh - var(--vs-safe-area-top) - var(--vs-safe-area-bottom) - 3.5rem); }
+    .vs-modal-dialog .modal-content { max-height: calc(100vh - var(--vs-safe-area-top) - var(--vs-safe-area-bottom) - 3.5rem); max-height: calc(100dvh - var(--vs-safe-area-top) - var(--vs-safe-area-bottom) - 3.5rem); }
     .directory-list { max-height: 400px; }
 
     .main-content:has(.jobs-inbox-layout) {
@@ -621,7 +633,8 @@ body.vs-modal-open {
         max-width: none;
         display: flex;
         flex-direction: column;
-        height: calc(100vh - var(--vs-safe-area-top));
+        height: calc(100vh - var(--vs-safe-area-top) - var(--vs-header-height));
+        height: calc(100dvh - var(--vs-safe-area-top) - var(--vs-header-height));
     }
 
     .jobs-inbox-layout {
@@ -635,11 +648,9 @@ body.vs-modal-open {
 
 /* Landscape Mobile */
 @media (max-height: 500px) and (orientation: landscape) {
-    .app-header { height: calc(44px + var(--vs-safe-area-top)); }
-    .app-sidebar { top: calc(44px + var(--vs-safe-area-top)); }
-    .app-main { margin-top: calc(44px + var(--vs-safe-area-top)); }
-    .vs-modal-dialog .modal-body { max-height: calc(100vh - 120px); }
-    .directory-list { max-height: calc(100vh - 200px); min-height: 120px; }
+    :root { --vs-header-height: 44px; }
+    .vs-modal-dialog .modal-body { max-height: calc(100vh - 120px); max-height: calc(100dvh - 120px); }
+    .directory-list { max-height: calc(100vh - 200px); max-height: calc(100dvh - 200px); min-height: 120px; }
 }
 
 /* ============================================
