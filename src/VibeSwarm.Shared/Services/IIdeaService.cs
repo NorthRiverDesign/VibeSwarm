@@ -104,4 +104,30 @@ public interface IIdeaService
 	/// <param name="cancellationToken">Cancellation token</param>
 	/// <returns>The moved idea</returns>
 	Task<Idea> MoveToProjectAsync(Guid ideaId, Guid targetProjectId, CancellationToken cancellationToken = default);
+
+	/// <summary>
+	/// Uses AI to expand a brief idea into a detailed specification.
+	/// The expanded spec is stored for user review before converting to a job.
+	/// </summary>
+	/// <param name="ideaId">The idea to expand</param>
+	/// <param name="cancellationToken">Cancellation token</param>
+	/// <returns>The updated idea with expansion status</returns>
+	Task<Idea?> ExpandIdeaAsync(Guid ideaId, CancellationToken cancellationToken = default);
+
+	/// <summary>
+	/// Approves an expanded idea specification, allowing it to be converted to a job.
+	/// </summary>
+	/// <param name="ideaId">The idea to approve</param>
+	/// <param name="editedDescription">Optional edited description to use instead of the AI-generated one</param>
+	/// <param name="cancellationToken">Cancellation token</param>
+	/// <returns>The approved idea</returns>
+	Task<Idea?> ApproveExpansionAsync(Guid ideaId, string? editedDescription = null, CancellationToken cancellationToken = default);
+
+	/// <summary>
+	/// Rejects an expanded idea specification and resets it for re-expansion or manual editing.
+	/// </summary>
+	/// <param name="ideaId">The idea to reject</param>
+	/// <param name="cancellationToken">Cancellation token</param>
+	/// <returns>The reset idea</returns>
+	Task<Idea?> RejectExpansionAsync(Guid ideaId, CancellationToken cancellationToken = default);
 }

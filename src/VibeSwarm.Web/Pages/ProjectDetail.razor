@@ -47,7 +47,8 @@ else
                 HasActiveJobs="@HasActiveJobs" IsAddingIdea="@_isAddingIdea" ProcessingIdeaIds="@ProcessingIdeaIds"
                 OnStartProcessing="StartIdeasProcessing" OnStopProcessing="StopIdeasProcessing" OnAddIdea="AddIdea"
                 OnUpdateIdea="UpdateIdea" OnDeleteIdea="DeleteIdea" OnCopyIdea="CopyIdea" OnMoveIdea="MoveIdea"
-                OnStartSingleIdea="StartSingleIdea" />
+                OnStartSingleIdea="StartSingleIdea" OnExpandIdea="ExpandIdea" OnApproveExpansion="ApproveIdeaExpansion"
+                OnRejectExpansion="RejectIdeaExpansion" />
         </div>
 
         @* Jobs list on RIGHT for monitoring progress *@
@@ -234,22 +235,24 @@ else
 
             await RefreshJobs();
             await LoadIdeas();
+            await RefreshUncommittedChangesStatus();
             ProcessingIdeaIds.Clear(); // Clear any stale processing states
 
-        // Show toast for idea-based job completion
-            if (wasFromIdea)
+        // Show toast notification for job completion
+            if (completedJob != null)
             {
+                var jobTitle = completedJob.Title ?? "Job";
                 if (success)
                 {
                     NotificationService.ShowSuccess(
-            completedJob?.Title ?? "Job completed successfully.",
-            "Idea Job Completed");
+            $"{TruncateForToast(jobTitle)} completed successfully.",
+            wasFromIdea ? "Idea Completed" : "Job Completed");
                 }
                 else
                 {
                     NotificationService.ShowError(
-            errorMessage ?? "Job failed.",
-            "Idea Job Failed");
+            errorMessage ?? $"{TruncateForToast(jobTitle)} failed.",
+            wasFromIdea ? "Idea Failed" : "Job Failed");
                 }
             }
 
@@ -744,6 +747,13 @@ else
     private bool HasProjectTokenData() => GetProjectTotalInputTokens() > 0 || GetProjectTotalOutputTokens() > 0 ||
     GetProjectTotalCost() > 0;
 
+    private static string TruncateForToast(string text, int maxLength = 50)
+    {
+        if (string.IsNullOrEmpty(text) || text.Length <= maxLength)
+            return text;
+        return text[..(maxLength - 3)] + "...";
+    }
+
     // Uncommitted changes modal methods
     private async Task ShowUncommittedChangesModal()
     {
@@ -1058,6 +1068,61 @@ else
         {
             ProcessingIdeaIds.Remove(ideaId);
             NotificationService.ShowError($"Error starting idea: {ex.Message}");
+        }
+    }
+
+    private async Task ExpandIdea(Guid ideaId)
+    {
+        try
+        {
+            var result = await IdeaService.ExpandIdeaAsync(ideaId);
+            if (result != null)
+            {
+                await LoadIdeas();
+                if (result.ExpansionStatus == IdeaExpansionStatus.PendingReview)
+                {
+                    NotificationService.ShowSuccess("Idea expanded successfully. Review the specification.", "AI Expansion Complete");
+                }
+                else if (result.ExpansionStatus == IdeaExpansionStatus.Failed)
+                {
+                    NotificationService.ShowError(result.ExpansionError ?? "Expansion failed", "AI Expansion Failed");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.ShowError($"Error expanding idea: {ex.Message}");
+        }
+    }
+
+    private async Task ApproveIdeaExpansion((Guid ideaId, string? editedDescription) args)
+    {
+        try
+        {
+            var result = await IdeaService.ApproveExpansionAsync(args.ideaId, args.editedDescription);
+            if (result != null)
+            {
+                await LoadIdeas();
+                NotificationService.ShowSuccess("Specification approved. The idea is ready to run.", "Expansion Approved");
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.ShowError($"Error approving expansion: {ex.Message}");
+        }
+    }
+
+    private async Task RejectIdeaExpansion(Guid ideaId)
+    {
+        try
+        {
+            await IdeaService.RejectExpansionAsync(ideaId);
+            await LoadIdeas();
+            NotificationService.ShowInfo("Expansion discarded. You can try again or edit manually.", "Expansion Discarded");
+        }
+        catch (Exception ex)
+        {
+            NotificationService.ShowError($"Error rejecting expansion: {ex.Message}");
         }
     }
 

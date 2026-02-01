@@ -140,8 +140,10 @@ public class IdeaService : IIdeaService
 			_logger.LogWarning(ex, "Could not get current branch for project {ProjectId}", idea.ProjectId);
 		}
 
-		// Build the prompt that expands the idea into a feature spec
-		var expandedPrompt = BuildExpandedPrompt(idea.Description);
+		// Use expanded description if approved, otherwise build a prompt
+		var goalPrompt = idea.HasExpandedDescription
+			? BuildPromptFromExpanded(idea.Description, idea.ExpandedDescription!)
+			: BuildExpandedPrompt(idea.Description);
 
 		// Create the job with the original idea as the title
 		var job = new Job
@@ -149,7 +151,7 @@ public class IdeaService : IIdeaService
 			ProjectId = idea.ProjectId,
 			ProviderId = defaultProvider.Id,
 			Title = idea.Description,  // Use the original idea text as the title
-			GoalPrompt = expandedPrompt,
+			GoalPrompt = goalPrompt,
 			ModelUsed = defaultModel,
 			Branch = currentBranch,
 			Status = JobStatus.New
@@ -165,6 +167,25 @@ public class IdeaService : IIdeaService
 		_logger.LogInformation("Converted Idea {IdeaId} to Job {JobId}", ideaId, createdJob.Id);
 
 		return createdJob;
+	}
+
+	private static string BuildPromptFromExpanded(string originalIdea, string expandedDescription)
+	{
+		return $@"You are implementing a feature based on the following specification. This specification was reviewed and approved by the user.
+
+## Original Idea
+{originalIdea}
+
+## Detailed Specification
+{expandedDescription}
+
+## Instructions
+1. Implement the feature according to the specification above
+2. Handle edge cases and error scenarios as described
+3. Follow the existing code patterns and style in the project
+4. Ensure the implementation is complete and functional
+
+Implement this feature now.";
 	}
 
 	private static string BuildExpandedPrompt(string ideaDescription)
@@ -387,5 +408,154 @@ Begin by expanding this idea into a detailed specification, then implement it.";
 		await _dbContext.SaveChangesAsync(cancellationToken);
 
 		return idea;
+	}
+
+	public async Task<Idea?> ExpandIdeaAsync(Guid ideaId, CancellationToken cancellationToken = default)
+	{
+		var idea = await _dbContext.Ideas
+			.Include(i => i.Project)
+			.FirstOrDefaultAsync(i => i.Id == ideaId, cancellationToken);
+
+		if (idea?.Project == null)
+		{
+			_logger.LogWarning("Idea {IdeaId} not found or has no project", ideaId);
+			return null;
+		}
+
+		// Cannot expand if already processing
+		if (idea.IsProcessing || idea.JobId.HasValue)
+		{
+			_logger.LogWarning("Cannot expand idea {IdeaId} - already has a job or is processing", ideaId);
+			return idea;
+		}
+
+		// Mark as expanding
+		idea.ExpansionStatus = IdeaExpansionStatus.Expanding;
+		idea.ExpansionError = null;
+		await _dbContext.SaveChangesAsync(cancellationToken);
+
+		try
+		{
+			// Get the default provider for AI expansion
+			var defaultProvider = await _providerService.GetDefaultAsync(cancellationToken);
+			if (defaultProvider == null)
+			{
+				idea.ExpansionStatus = IdeaExpansionStatus.Failed;
+				idea.ExpansionError = "No default provider configured";
+				await _dbContext.SaveChangesAsync(cancellationToken);
+				return idea;
+			}
+
+			// Create provider instance
+			var providerInstance = _providerService.CreateInstance(defaultProvider);
+			if (providerInstance == null)
+			{
+				idea.ExpansionStatus = IdeaExpansionStatus.Failed;
+				idea.ExpansionError = "Could not create provider instance";
+				await _dbContext.SaveChangesAsync(cancellationToken);
+				return idea;
+			}
+
+			// Build the expansion prompt
+			var expansionPrompt = BuildIdeaExpansionPrompt(idea.Description);
+
+			// Call the provider for a simple text response
+			var response = await providerInstance.GetPromptResponseAsync(
+				expansionPrompt,
+				idea.Project.WorkingPath,
+				cancellationToken);
+
+			if (response.Success && !string.IsNullOrWhiteSpace(response.Response))
+			{
+				idea.ExpandedDescription = response.Response.Trim();
+				idea.ExpansionStatus = IdeaExpansionStatus.PendingReview;
+				idea.ExpandedAt = DateTime.UtcNow;
+				_logger.LogInformation("Successfully expanded idea {IdeaId}", ideaId);
+			}
+			else
+			{
+				idea.ExpansionStatus = IdeaExpansionStatus.Failed;
+				idea.ExpansionError = response.ErrorMessage ?? "No response from provider";
+				_logger.LogWarning("Failed to expand idea {IdeaId}: {Error}", ideaId, idea.ExpansionError);
+			}
+		}
+		catch (Exception ex)
+		{
+			idea.ExpansionStatus = IdeaExpansionStatus.Failed;
+			idea.ExpansionError = ex.Message;
+			_logger.LogError(ex, "Error expanding idea {IdeaId}", ideaId);
+		}
+
+		await _dbContext.SaveChangesAsync(cancellationToken);
+		return idea;
+	}
+
+	public async Task<Idea?> ApproveExpansionAsync(Guid ideaId, string? editedDescription = null, CancellationToken cancellationToken = default)
+	{
+		var idea = await _dbContext.Ideas.FindAsync(new object[] { ideaId }, cancellationToken);
+		if (idea == null)
+		{
+			return null;
+		}
+
+		// Can only approve if pending review or if user is providing their own edit
+		if (idea.ExpansionStatus != IdeaExpansionStatus.PendingReview && string.IsNullOrWhiteSpace(editedDescription))
+		{
+			_logger.LogWarning("Cannot approve idea {IdeaId} - not pending review", ideaId);
+			return idea;
+		}
+
+		// Use edited description if provided, otherwise keep the AI-generated one
+		if (!string.IsNullOrWhiteSpace(editedDescription))
+		{
+			idea.ExpandedDescription = editedDescription.Trim();
+		}
+
+		idea.ExpansionStatus = IdeaExpansionStatus.Approved;
+		idea.ExpandedAt = DateTime.UtcNow;
+		await _dbContext.SaveChangesAsync(cancellationToken);
+
+		_logger.LogInformation("Approved expansion for idea {IdeaId}", ideaId);
+		return idea;
+	}
+
+	public async Task<Idea?> RejectExpansionAsync(Guid ideaId, CancellationToken cancellationToken = default)
+	{
+		var idea = await _dbContext.Ideas.FindAsync(new object[] { ideaId }, cancellationToken);
+		if (idea == null)
+		{
+			return null;
+		}
+
+		// Reset expansion state
+		idea.ExpandedDescription = null;
+		idea.ExpansionStatus = IdeaExpansionStatus.NotExpanded;
+		idea.ExpansionError = null;
+		idea.ExpandedAt = null;
+		await _dbContext.SaveChangesAsync(cancellationToken);
+
+		_logger.LogInformation("Rejected expansion for idea {IdeaId}", ideaId);
+		return idea;
+	}
+
+	private static string BuildIdeaExpansionPrompt(string ideaDescription)
+	{
+		return $@"You are a software architect helping to expand a brief feature idea into a detailed specification.
+
+## Feature Idea
+{ideaDescription}
+
+## Your Task
+Expand this idea into a detailed implementation specification. Include:
+
+1. Overview: A clear summary of what the feature does
+2. User Stories: Key user interactions (e.g., As a user, I can...)
+3. Components: What UI components, services, or data models are needed
+4. Implementation Steps: A logical order of implementation tasks
+5. Edge Cases: Important scenarios to handle (validation, errors, empty states)
+6. Acceptance Criteria: How to verify the feature works correctly
+
+Keep the specification concise but complete. Focus on actionable implementation details.
+Do not include code samples - just describe what needs to be built.";
 	}
 }

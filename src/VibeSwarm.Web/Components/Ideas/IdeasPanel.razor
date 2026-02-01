@@ -122,13 +122,37 @@
 											<span class="spinner-border spinner-border-sm text-primary flex-shrink-0 mt-1" role="status"
 												title="Processing..."></span>
 										}
+										else if (idea.ExpansionStatus == IdeaExpansionStatus.Expanding)
+										{
+											<span class="spinner-border spinner-border-sm text-info flex-shrink-0 mt-1" role="status"
+												title="Expanding..."></span>
+										}
+										else if (idea.ExpansionStatus == IdeaExpansionStatus.Approved)
+										{
+											<i class="bi bi-check-circle-fill text-success flex-shrink-0 mt-1"
+												title="Specification approved"></i>
+										}
+										else if (idea.ExpansionStatus == IdeaExpansionStatus.PendingReview)
+										{
+											<i class="bi bi-eye-fill text-warning flex-shrink-0 mt-1" title="Pending review"></i>
+										}
 										else
 										{
 											<i class="bi bi-lightbulb text-warning flex-shrink-0 mt-1"></i>
 										}
-										<span
-											class="@(idea.IsProcessing || IsIdeaProcessing(idea.Id) ? "text-body-secondary" : "") text-break"
-											style="white-space: pre-wrap;">@idea.Description</span>
+										<div class="flex-grow-1">
+											<span
+												class="@(idea.IsProcessing || IsIdeaProcessing(idea.Id) ? "text-body-secondary" : "") text-break"
+												style="white-space: pre-wrap;">@idea.Description</span>
+											@if (idea.ExpansionStatus == IdeaExpansionStatus.Approved)
+											{
+												<span class="badge bg-success-subtle text-success ms-2">Expanded</span>
+											}
+											else if (idea.ExpansionStatus == IdeaExpansionStatus.PendingReview)
+											{
+												<span class="badge bg-warning-subtle text-warning ms-2">Review</span>
+											}
+										</div>
 									</div>
 									@if ((idea.IsProcessing || IsIdeaProcessing(idea.Id)) && idea.JobId.HasValue)
 									{
@@ -142,6 +166,25 @@
 								<div class="d-flex align-items-center gap-1 flex-shrink-0">
 									@if (!idea.IsProcessing && !IsIdeaProcessing(idea.Id))
 									{
+										@* Expand button - show AI expand option *@
+										<button type="button" class="btn btn-sm btn-outline-info" @onclick="() => OpenExpandModal(idea)"
+											disabled="@(idea.JobId.HasValue || idea.ExpansionStatus == IdeaExpansionStatus.Expanding)"
+											title="@GetExpandButtonTooltip(idea)">
+											@if (idea.ExpansionStatus == IdeaExpansionStatus.Expanding)
+											{
+												<span class="spinner-border spinner-border-sm" role="status"></span>
+											}
+											else if (idea.ExpansionStatus == IdeaExpansionStatus.Approved || idea.ExpansionStatus ==
+											IdeaExpansionStatus.PendingReview)
+											{
+												<i class="bi bi-file-text"></i>
+											}
+											else
+											{
+												<i class="bi bi-magic"></i>
+											}
+										</button>
+
 										<button type="button" class="btn btn-sm btn-success" @onclick="() => StartSingleIdea(idea)"
 											disabled="@(HasActiveJobs || !HasDefaultProvider || StartingIdeaId == idea.Id || idea.JobId.HasValue)"
 											title="@(HasActiveJobs ? "A job is already running on this project" : "Start this idea")">
@@ -169,6 +212,15 @@
 											<i class="bi bi-three-dots-vertical"></i>
 										</button>
 										<ul class="dropdown-menu dropdown-menu-end">
+											<li>
+												<button class="dropdown-item" @onclick="() => OpenExpandModal(idea)"
+													disabled="@(idea.JobId.HasValue || idea.ExpansionStatus == IdeaExpansionStatus.Expanding)">
+													<i class="bi bi-magic me-2"></i>Expand with AI
+												</button>
+											</li>
+											<li>
+												<hr class="dropdown-divider">
+											</li>
 											<li>
 												<button class="dropdown-item" @onclick="() => StartEditIdea(idea)"
 													disabled="@(idea.IsProcessing || IsIdeaProcessing(idea.Id) || idea.JobId.HasValue)">
@@ -308,6 +360,11 @@
 	</div>
 }
 
+@* Idea Expansion Modal *@
+<IdeaExpansionModal @bind-IsVisible="ShowExpansionModal" Idea="SelectedIdeaForExpansion" IsExpanding="IsExpandingIdea"
+	IsProcessing="IsProcessingExpansion" OnExpand="HandleExpandIdea" OnApprove="HandleApproveExpansion"
+	OnReject="HandleRejectExpansion" />
+
 @code {
 	[Parameter]
 	public List<Idea> Ideas { get; set; } = new();
@@ -357,6 +414,15 @@
 	[Parameter]
 	public EventCallback<Guid> OnStartSingleIdea { get; set; }
 
+	[Parameter]
+	public EventCallback<Guid> OnExpandIdea { get; set; }
+
+	[Parameter]
+	public EventCallback<(Guid ideaId, string? editedDescription)> OnApproveExpansion { get; set; }
+
+	[Parameter]
+	public EventCallback<Guid> OnRejectExpansion { get; set; }
+
 	private string NewIdeaDescription { get; set; } = string.Empty;
 	private Guid? EditingIdeaId { get; set; }
 	private string EditingIdeaDescription { get; set; } = string.Empty;
@@ -365,10 +431,14 @@
 	// Modal state
 	private bool ShowCopyModal { get; set; }
 	private bool ShowMoveModal { get; set; }
+	private bool ShowExpansionModal { get; set; }
 	private Idea? SelectedIdea { get; set; }
+	private Idea? SelectedIdeaForExpansion { get; set; }
 	private Guid SelectedTargetProjectId { get; set; }
 	private List<Project> AvailableProjects { get; set; } = new();
 	private bool IsProcessingAction { get; set; }
+	private bool IsExpandingIdea { get; set; }
+	private bool IsProcessingExpansion { get; set; }
 
 	private async Task HandleKeyPress(KeyboardEventArgs e)
 	{
@@ -500,5 +570,84 @@
 	private bool IsIdeaProcessing(Guid ideaId)
 	{
 		return ProcessingIdeaIds.Contains(ideaId);
+	}
+
+	private void OpenExpandModal(Idea idea)
+	{
+		SelectedIdeaForExpansion = idea;
+		ShowExpansionModal = true;
+	}
+
+	private async Task HandleExpandIdea(Guid ideaId)
+	{
+		IsExpandingIdea = true;
+		StateHasChanged();
+
+		try
+		{
+			await OnExpandIdea.InvokeAsync(ideaId);
+			// Update the local reference with updated data
+			var updated = Ideas.FirstOrDefault(i => i.Id == ideaId);
+			if (updated != null)
+			{
+				SelectedIdeaForExpansion = updated;
+			}
+		}
+		finally
+		{
+			IsExpandingIdea = false;
+			StateHasChanged();
+		}
+	}
+
+	private async Task HandleApproveExpansion((Guid ideaId, string? editedDescription) args)
+	{
+		IsProcessingExpansion = true;
+		StateHasChanged();
+
+		try
+		{
+			await OnApproveExpansion.InvokeAsync(args);
+		}
+		finally
+		{
+			IsProcessingExpansion = false;
+			ShowExpansionModal = false;
+			SelectedIdeaForExpansion = null;
+			StateHasChanged();
+		}
+	}
+
+	private async Task HandleRejectExpansion(Guid ideaId)
+	{
+		IsProcessingExpansion = true;
+		StateHasChanged();
+
+		try
+		{
+			await OnRejectExpansion.InvokeAsync(ideaId);
+			// Update the local reference with reset data
+			var updated = Ideas.FirstOrDefault(i => i.Id == ideaId);
+			if (updated != null)
+			{
+				SelectedIdeaForExpansion = updated;
+			}
+		}
+		finally
+		{
+			IsProcessingExpansion = false;
+			StateHasChanged();
+		}
+	}
+
+	private static string GetExpandButtonTooltip(Idea idea)
+	{
+		return idea.ExpansionStatus switch
+		{
+			IdeaExpansionStatus.Approved => "View approved specification",
+			IdeaExpansionStatus.PendingReview => "Review AI-generated specification",
+			IdeaExpansionStatus.Expanding => "Expanding...",
+			_ => "Expand with AI"
+		};
 	}
 }

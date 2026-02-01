@@ -14,6 +14,34 @@
         }
         else if (DiffFiles != null && DiffFiles.Any())
         {
+            @* Pending Jobs Section - Show completed jobs that may have contributed to these changes *@
+            @if (PendingJobs != null && PendingJobs.Any())
+            {
+                <div class="alert alert-info py-2 mb-3">
+                    <div class="d-flex align-items-center gap-2 mb-2">
+                        <i class="bi bi-info-circle"></i>
+                        <strong>@PendingJobs.Count completed job(s) may have contributed to these changes</strong>
+                    </div>
+                    <div class="d-flex flex-wrap gap-1">
+                        @foreach (var job in PendingJobs.Take(5))
+                        {
+                            <span class="badge bg-success-subtle text-success border border-success-subtle">
+                                <i class="bi bi-check-circle me-1"></i>@TruncateTitle(job.Title ?? job.GoalPrompt, 40)
+                            </span>
+                        }
+                        @if (PendingJobs.Count > 5)
+                        {
+                            <span class="badge bg-secondary-subtle text-secondary">
+                                +@(PendingJobs.Count - 5) more
+                            </span>
+                        }
+                    </div>
+                    <div class="mt-2 small text-body-secondary">
+                        <i class="bi bi-lightbulb me-1"></i>Committing will link this commit to these jobs.
+                    </div>
+                </div>
+            }
+
             @* Diff Viewer Section *@
             <div class="mb-3">
                 <div class="d-flex align-items-center justify-content-between mb-2">
@@ -38,7 +66,7 @@
                 </div>
 
                 <div class="accordion border rounded overflow-y-auto" id="uncommittedChangesAccordion"
-                    style="max-height: 400px;">
+                    style="max-height: 350px;">
                     @foreach (var (file, index) in DiffFiles.Select((f, i) => (f, i)))
                     {
                         var isExpanded = _expandedItems.Contains(index);
@@ -95,15 +123,24 @@
                 </div>
             </div>
 
-            <hr class="my-4" />
+            <hr class="my-3" />
 
             @* Commit Section *@
             <div class="mb-3">
-                <label for="uncommittedCommitMessage" class="form-label fw-medium">
-                    <i class="bi bi-chat-square-text me-1"></i>Commit Message
-                </label>
+                <div class="d-flex align-items-center justify-content-between mb-2">
+                    <label for="uncommittedCommitMessage" class="form-label fw-medium mb-0">
+                        <i class="bi bi-chat-square-text me-1"></i>Commit Message
+                    </label>
+                    @if (PendingJobs != null && PendingJobs.Any() && string.IsNullOrWhiteSpace(_commitMessage))
+                    {
+                        <button type="button" class="btn btn-sm btn-outline-primary" @onclick="GenerateCommitMessage"
+                            title="Generate commit message from job summaries">
+                            <i class="bi bi-magic me-1"></i>Generate
+                        </button>
+                    }
+                </div>
                 <textarea class="form-control font-monospace" id="uncommittedCommitMessage" @bind="_commitMessage"
-                    @bind:event="oninput" rows="2" placeholder="Enter commit message..."
+                    @bind:event="oninput" rows="3" placeholder="Enter commit message..."
                     disabled="@IsCommitting"></textarea>
             </div>
 
