@@ -3,7 +3,19 @@
 @code {
 	protected override void OnInitialized()
 	{
-		var returnUrl = Uri.EscapeDataString(NavigationManager.Uri);
-		NavigationManager.NavigateTo($"/login?returnUrl={returnUrl}", forceLoad: true);
+		// Get relative path only to avoid issues with full URL encoding
+		var uri = new Uri(NavigationManager.Uri);
+		var relativePath = uri.PathAndQuery;
+
+		// Don't include returnUrl if we're already at root or login
+		if (string.IsNullOrEmpty(relativePath) || relativePath == "/" || relativePath.StartsWith("/login"))
+		{
+			NavigationManager.NavigateTo("/login", forceLoad: true);
+		}
+		else
+		{
+			var returnUrl = Uri.EscapeDataString(relativePath);
+			NavigationManager.NavigateTo($"/login?returnUrl={returnUrl}", forceLoad: true);
+		}
 	}
 }
