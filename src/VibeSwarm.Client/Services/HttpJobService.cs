@@ -126,7 +126,13 @@ public class HttpJobService : IJobService
         => await _http.GetFromJsonAsync<List<Job>>("/api/jobs/paused", ct) ?? [];
 
     public async Task<string?> GetLastUsedModelAsync(Guid projectId, Guid providerId, CancellationToken ct = default)
-        => await _http.GetFromJsonAsync<string?>($"/api/jobs/last-model?projectId={projectId}&providerId={providerId}", ct);
+    {
+        var response = await _http.GetAsync($"/api/jobs/last-model?projectId={projectId}&providerId={providerId}", ct);
+        if (response.StatusCode == System.Net.HttpStatusCode.NoContent)
+            return null;
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<string?>(ct);
+    }
 
     public async Task<bool> ResetJobWithOptionsAsync(Guid id, Guid? providerId = null, string? modelId = null, CancellationToken ct = default)
     {
