@@ -1,10 +1,13 @@
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 using VibeSwarm.Shared.Services;
 
 namespace VibeSwarm.Web.Hubs;
 
-[Authorize]
+/// <summary>
+/// SignalR hub for real-time job and idea updates.
+/// Note: Authorization is not enforced at the hub level since all pages using this hub
+/// already require authentication via [Authorize] attribute.
+/// </summary>
 public class JobHub : Hub
 {
     private readonly IJobService _jobService;

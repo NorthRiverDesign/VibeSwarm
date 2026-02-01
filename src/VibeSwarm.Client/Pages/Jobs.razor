@@ -247,7 +247,7 @@ else
         try
         {
             _hubConnection = new HubConnectionBuilder()
-            .WithUrl(NavigationManager.ToAbsoluteUri("/jobhub"))
+            .WithUrl(NavigationManager.ToAbsoluteUri("/hubs/job"))
             .WithAutomaticReconnect()
             .Build();
 
