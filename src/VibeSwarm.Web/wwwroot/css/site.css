@@ -626,7 +626,6 @@ body.vs-modal-open {
 
     .jobs-inbox-layout {
         flex: 1;
-        flex-direction: row;
         height: 100%;
         margin: 0;
     }
