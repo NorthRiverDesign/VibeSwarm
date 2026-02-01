@@ -143,7 +143,7 @@ public class JobsController : ControllerBase
     public async Task<IActionResult> GetLastUsedModel([FromQuery] Guid projectId, [FromQuery] Guid providerId, CancellationToken ct)
     {
         var model = await _jobService.GetLastUsedModelAsync(projectId, providerId, ct);
-        return model != null ? Ok(model) : NoContent();
+        return model != null ? new JsonResult(model) : NoContent();
     }
 
     [HttpPost("{id:guid}/retry")]
