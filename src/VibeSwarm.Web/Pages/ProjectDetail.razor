@@ -74,8 +74,8 @@ else
 
     @* Uncommitted Changes Modal *@
     <UncommittedChangesModal @bind-IsVisible="_showUncommittedChangesModal" IsLoading="@_isLoadingUncommittedDiff"
-        ErrorMessage="@_uncommittedDiffError" DiffFiles="@_uncommittedDiffFiles" CommitError="@_uncommittedCommitError"
-        IsCommitting="@_isCommittingChanges" IsDiscarding="@_isDiscardingChanges"
+        ErrorMessage="@_uncommittedDiffError" DiffFiles="@_uncommittedDiffFiles" PendingJobs="@_pendingCommitJobs"
+        CommitError="@_uncommittedCommitError" IsCommitting="@_isCommittingChanges" IsDiscarding="@_isDiscardingChanges"
         ShowDiscardConfirmation="@_showDiscardConfirmation" OnCommitAndPush="CommitAndPushUncommittedChanges"
         OnShowDiscard="ShowDiscardConfirmation" OnConfirmDiscard="DiscardAllChanges"
         OnCancelDiscard="CloseDiscardConfirmation" />
@@ -140,6 +140,7 @@ else
     private bool _isLoadingUncommittedDiff { get; set; }
     private string? _uncommittedDiffError { get; set; }
     private List<DiffFile> _uncommittedDiffFiles { get; set; } = new();
+    private List<Job> _pendingCommitJobs { get; set; } = new();
     private string? _uncommittedCommitError { get; set; }
     private bool _isCommittingChanges { get; set; }
     private bool _showDiscardConfirmation { get; set; }
@@ -760,6 +761,7 @@ else
         _showUncommittedChangesModal = true;
         _uncommittedDiffError = null;
         _uncommittedDiffFiles = new List<DiffFile>();
+        _pendingCommitJobs = new List<Job>();
         _isLoadingUncommittedDiff = true;
         StateHasChanged();
 
@@ -782,6 +784,12 @@ else
             {
                 _uncommittedDiffError = "No uncommitted changes found";
             }
+
+            // Load completed jobs without a commit hash (pending attribution)
+            _pendingCommitJobs = Jobs
+            .Where(j => j.Status == JobStatus.Completed && string.IsNullOrEmpty(j.GitCommitHash))
+            .OrderByDescending(j => j.CompletedAt ?? j.UpdatedAt)
+            .ToList();
         }
         catch (Exception ex)
         {
@@ -815,11 +823,29 @@ else
                 return;
             }
 
+            // Update pending jobs with the commit hash
+            if (!string.IsNullOrEmpty(commitResult.CommitHash) && _pendingCommitJobs.Any())
+            {
+                foreach (var job in _pendingCommitJobs)
+                {
+                    await JobService.UpdateGitCommitHashAsync(job.Id, commitResult.CommitHash);
+                    // Update local cache
+                    var localJob = Jobs.FirstOrDefault(j => j.Id == job.Id);
+                    if (localJob != null)
+                    {
+                        localJob.GitCommitHash = commitResult.CommitHash;
+                    }
+                }
+            }
+
             var pushResult = await VersionControlService.PushAsync(Project.WorkingPath);
 
             if (pushResult.Success)
             {
-                GitOperationMessage = "Successfully committed and pushed changes";
+                var jobCount = _pendingCommitJobs.Count;
+                GitOperationMessage = jobCount > 0
+                ? $"Successfully committed and pushed changes. {jobCount} job(s) linked to commit."
+                : "Successfully committed and pushed changes";
                 GitOperationSuccess = true;
                 CurrentCommitHash = commitResult.CommitHash;
                 _showUncommittedChangesModal = false;
