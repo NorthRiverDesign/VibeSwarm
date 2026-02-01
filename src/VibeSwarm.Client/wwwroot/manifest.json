@@ -12,60 +12,63 @@
   "scope": "/",
   "icons": [
     {
-      "src": "/favicon-96x96.png?v=5",
+      "src": "/favicon-96x96.png?v=8",
       "sizes": "96x96",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/apple-touch-icon-120x120.png?v=5",
+      "src": "/apple-touch-icon-120x120.png?v=8",
       "sizes": "120x120",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/apple-touch-icon-152x152.png?v=5",
+      "src": "/apple-touch-icon-152x152.png?v=8",
       "sizes": "152x152",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/apple-touch-icon-167x167.png?v=5",
+      "src": "/apple-touch-icon-167x167.png?v=8",
       "sizes": "167x167",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/apple-touch-icon.png?v=5",
+      "src": "/apple-touch-icon.png?v=8",
       "sizes": "180x180",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/web-app-manifest-192x192.png?v=5",
+      "src": "/web-app-manifest-192x192.png?v=8",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/web-app-manifest-512x512.png?v=5",
+      "src": "/web-app-manifest-512x512.png?v=8",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/web-app-manifest-192x192.png?v=5",
+      "src": "/web-app-manifest-192x192.png?v=8",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "maskable"
     },
     {
-      "src": "/web-app-manifest-512x512.png?v=5",
+      "src": "/web-app-manifest-512x512.png?v=8",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
     }
   ],
-  "categories": ["productivity", "utilities"],
+  "categories": [
+    "productivity",
+    "utilities"
+  ],
   "prefer_related_applications": false
 }

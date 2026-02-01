@@ -68,6 +68,12 @@ self.addEventListener("fetch", (event) => {
 		return;
 	}
 
+	// iOS Safari sends range requests for media - handle them specially
+	// Range requests can't be satisfied from cache easily, so always go to network
+	if (request.headers.get("range")) {
+		return;
+	}
+
 	// Skip API, SignalR, and Blazor framework requests - these must go to network
 	// This is critical for authentication to work correctly on iOS Safari
 	if (

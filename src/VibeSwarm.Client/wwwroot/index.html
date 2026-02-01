@@ -28,11 +28,11 @@
         <base href="/" />
 
         <!-- PWA Manifest -->
-        <link rel="manifest" href="manifest.json?v=5" />
+        <link rel="manifest" href="manifest.json?v=8" />
 
         <!-- Icons -->
-        <link rel="icon" type="image/png" sizes="96x96" href="/favicon-96x96.png?v=5" />
-        <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=5" />
+        <link rel="icon" type="image/png" sizes="96x96" href="/favicon-96x96.png?v=8" />
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=8" />
 
         <!-- iOS Icons -->
         <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
@@ -57,18 +57,29 @@
             </div>
         </div>
 
-        <div id="blazor-error-ui" class="alert alert-danger m-3" style="display:none">
-            <strong>An error occurred while loading the application.</strong>
-            <p class="mb-2">This may be due to a network issue or cached data.</p>
-            <a href="javascript:location.reload(true)" class="btn btn-primary btn-sm me-2">Reload</a>
-            <a href="javascript:clearCacheAndReload()" class="btn btn-outline-secondary btn-sm">Clear Cache & Reload</a>
+        <div id="blazor-error-ui"
+            style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:var(--bs-body-bg,#1a1d21);z-index:9999;padding:env(safe-area-inset-top,20px) env(safe-area-inset-right,20px) env(safe-area-inset-bottom,20px) env(safe-area-inset-left,20px);">
+            <div class="d-flex align-items-center justify-content-center min-vh-100">
+                <div class="text-center p-4" style="max-width:400px;">
+                    <div class="mb-4">
+                        <i class="bi bi-exclamation-triangle text-warning" style="font-size:3rem;"></i>
+                    </div>
+                    <h4 class="text-body mb-3">Unable to Load Application</h4>
+                    <p class="text-muted mb-4">This may be due to a network issue or cached data. Try reloading or
+                        clearing the cache.</p>
+                    <div class="d-flex flex-column gap-2">
+                        <a href="javascript:location.reload(true)" class="btn btn-primary">Reload App</a>
+                        <a href="javascript:clearCacheAndReload()" class="btn btn-secondary">Clear Cache & Reload</a>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <script src="lib/bootstrap/js/bootstrap.bundle.min.js"></script>
 
         <!-- Error handling for iOS Safari and WebAssembly loading issues -->
         <script>
-            // Set a timeout to show error UI if Blazor doesn't load
+            // Set a timeout to show loading status if Blazor takes too long
             var loadTimeout = setTimeout(function () {
                 var loadingMsg = document.getElementById('loading-message');
                 if (loadingMsg) {
@@ -76,10 +87,11 @@
                 }
             }, 10000);
 
-            // Clear timeout when Blazor starts
-            window.addEventListener('blazorStarted', function () {
-                clearTimeout(loadTimeout);
-            });
+            // Show error UI after extended timeout (30s)
+            var errorTimeout = setTimeout(function () {
+                document.getElementById('blazor-error-ui').style.display = 'block';
+                document.getElementById('app').style.display = 'none';
+            }, 30000);
 
             // Function to clear cache and reload for stuck situations
             function clearCacheAndReload() {
@@ -89,6 +101,8 @@
                             caches.delete(name);
                         }
                     }).then(function () {
+                        // Also clear localStorage in case of stale tokens
+                        try { localStorage.clear(); } catch (e) { }
                         location.reload(true);
                     });
                 } else {
@@ -102,8 +116,11 @@
             // Start Blazor manually with error handling
             Blazor.start().then(function () {
                 clearTimeout(loadTimeout);
+                clearTimeout(errorTimeout);
                 console.log('Blazor WebAssembly started successfully');
             }).catch(function (err) {
+                clearTimeout(loadTimeout);
+                clearTimeout(errorTimeout);
                 console.error('Blazor WebAssembly failed to start:', err);
                 document.getElementById('blazor-error-ui').style.display = 'block';
                 document.getElementById('app').style.display = 'none';
