@@ -162,21 +162,108 @@ else
 
     // SignalR connection
     private HubConnection? _hubConnection;
+    private bool _signalRConnected;
+    private CancellationTokenSource? _signalRCts;
 
     protected override async Task OnInitializedAsync()
     {
+        // Load data first - this controls the loading spinner
         await LoadData();
-        await LoadGitInfo();
-        await InitializeSignalR();
+
+        // These operations run after loading completes and shouldn't block UI
+        // Use fire-and-forget pattern with error handling for non-critical operations
+        _ = LoadGitInfoSafe();
+        _ = InitializeSignalRSafe();
         StartAutoRefresh();
     }
 
-    private async Task InitializeSignalR()
+    /// <summary>
+    /// Safe wrapper for LoadGitInfo that won't crash the component
+    /// </summary>
+    private async Task LoadGitInfoSafe()
+    {
+        try
+        {
+            await LoadGitInfo();
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Git info load failed (non-critical): {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Safe wrapper for SignalR initialization with timeout and error handling.
+    /// SignalR is a progressive enhancement - the app works without it via polling.
+    /// </summary>
+    private async Task InitializeSignalRSafe()
+    {
+        try
+        {
+            _signalRCts = new CancellationTokenSource();
+
+            // Give SignalR 10 seconds to connect on mobile, then fall back to polling
+            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
+            _signalRCts.Token, timeoutCts.Token);
+
+            await InitializeSignalR(linkedCts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            Console.WriteLine("SignalR connection timed out - falling back to polling");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"SignalR initialization failed (non-critical): {ex.Message}");
+        }
+    }
+
+    private async Task InitializeSignalR(CancellationToken cancellationToken)
     {
         _hubConnection = new HubConnectionBuilder()
         .WithUrl(NavigationManager.ToAbsoluteUri("/hubs/job"))
-        .WithAutomaticReconnect()
+        .WithAutomaticReconnect(new[] { TimeSpan.Zero, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(5),
+TimeSpan.FromSeconds(10) })
         .Build();
+
+        // Register all event handlers before connecting
+        RegisterSignalRHandlers();
+
+        // Handle connection state changes
+        _hubConnection.Closed += async (error) =>
+        {
+            _signalRConnected = false;
+            Console.WriteLine($"SignalR connection closed: {error?.Message ?? "No error"}");
+            await Task.CompletedTask;
+        };
+
+        _hubConnection.Reconnected += async (connectionId) =>
+        {
+            _signalRConnected = true;
+            Console.WriteLine($"SignalR reconnected: {connectionId}");
+            // Re-subscribe after reconnection
+            await SubscribeToSignalRGroups();
+        };
+
+        try
+        {
+            await _hubConnection.StartAsync(cancellationToken);
+            _signalRConnected = true;
+            Console.WriteLine("SignalR connected successfully");
+            await SubscribeToSignalRGroups();
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            Console.WriteLine($"SignalR connection failed: {ex.Message}");
+            _signalRConnected = false;
+        }
+    }
+
+    private void RegisterSignalRHandlers()
+    {
+        if (_hubConnection == null) return;
 
         // Listen for job updates (status changes sent as jobId, status)
         _hubConnection.On<string, string>("JobStatusChanged", async (jobId, status) =>
@@ -343,17 +430,21 @@ else
             }
         });
         });
+    }
+
+    private async Task SubscribeToSignalRGroups()
+    {
+        if (_hubConnection?.State != HubConnectionState.Connected) return;
 
         try
         {
-            await _hubConnection.StartAsync();
             // Subscribe to both project-specific and global job list updates for complete coverage
             await _hubConnection.InvokeAsync("SubscribeToProject", ProjectId.ToString());
             await _hubConnection.InvokeAsync("SubscribeToJobList");
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"SignalR connection failed: {ex.Message}");
+            Console.WriteLine($"SignalR subscription failed: {ex.Message}");
         }
     }
 
@@ -1237,16 +1328,27 @@ else
 
     public async ValueTask DisposeAsync()
     {
+        // Cancel any pending SignalR connection attempts
+        _signalRCts?.Cancel();
+        _signalRCts?.Dispose();
+
         _refreshTimer?.Dispose();
+
         if (_hubConnection != null)
         {
             try
             {
-                await _hubConnection.InvokeAsync("UnsubscribeFromProject", ProjectId.ToString());
-                await _hubConnection.InvokeAsync("UnsubscribeFromJobList");
+                if (_hubConnection.State == HubConnectionState.Connected)
+                {
+                    await _hubConnection.InvokeAsync("UnsubscribeFromProject", ProjectId.ToString());
+                    await _hubConnection.InvokeAsync("UnsubscribeFromJobList");
+                }
                 await _hubConnection.DisposeAsync();
             }
-            catch { }
+            catch
+            {
+                // Ignore disposal errors
+            }
         }
     }
 }

@@ -226,6 +226,7 @@ else
     private CancellationTokenSource? _pushCancellationTokenSource;
     private const int PushTimeoutSeconds = 120;
     private bool _commitMessageInitialized = false;
+    private CancellationTokenSource? _signalRCts;
 
     // Interaction response state
     private bool _isSubmittingResponse = false;
@@ -289,9 +290,34 @@ new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
     {
         if (firstRender)
         {
-            await InitializeSignalR();
+            // Fire-and-forget with timeout protection for SignalR
+            _ = InitializeSignalRSafe();
             await Task.Delay(500);
             await RefreshJobSafely();
+        }
+    }
+
+    /// <summary>
+    /// Safe wrapper for SignalR initialization with timeout
+    /// </summary>
+    private async Task InitializeSignalRSafe()
+    {
+        try
+        {
+            _signalRCts = new CancellationTokenSource();
+            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
+            _signalRCts.Token, timeoutCts.Token);
+
+            await InitializeSignalR(linkedCts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            Console.WriteLine("SignalR connection timed out - falling back to polling");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"SignalR initialization failed (non-critical): {ex.Message}");
         }
     }
 
@@ -325,13 +351,14 @@ new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
         }
     }
 
-    private async Task InitializeSignalR()
+    private async Task InitializeSignalR(CancellationToken cancellationToken)
     {
         try
         {
             _hubConnection = new HubConnectionBuilder()
             .WithUrl(NavigationManager.ToAbsoluteUri("/hubs/job"))
-            .WithAutomaticReconnect()
+            .WithAutomaticReconnect(new[] { TimeSpan.Zero, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(5),
+TimeSpan.FromSeconds(10) })
             .Build();
 
             _hubConnection.On<string, string>("JobStatusChanged", async (jobId, status) =>
@@ -364,9 +391,10 @@ new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
                 await OnJobInteractionCompleted(jobId);
             });
 
-            await _hubConnection.StartAsync();
+            await _hubConnection.StartAsync(cancellationToken);
+            Console.WriteLine("SignalR connected successfully");
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             Console.WriteLine($"Error initializing SignalR: {ex.Message}");
         }
@@ -1213,6 +1241,8 @@ new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
 
     public async ValueTask DisposeAsync()
     {
+        _signalRCts?.Cancel();
+        _signalRCts?.Dispose();
         _refreshTimer?.Dispose();
         _pushCancellationTokenSource?.Cancel();
         _pushCancellationTokenSource?.Dispose();
@@ -1223,7 +1253,10 @@ new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
             {
                 await _hubConnection.DisposeAsync();
             }
-            catch { }
+            catch
+            {
+                // Ignore disposal errors
+            }
         }
     }
 }

@@ -180,6 +180,7 @@ else
     private HubConnection? _hubConnection;
     private Timer? _refreshTimer;
     private bool _isRefreshing = false;
+    private CancellationTokenSource? _signalRCts;
 
     protected override async Task OnInitializedAsync()
     {
@@ -201,7 +202,32 @@ else
     {
         if (firstRender)
         {
-            await InitializeSignalR();
+            // Fire-and-forget with timeout protection for SignalR
+            _ = InitializeSignalRSafe();
+        }
+    }
+
+    /// <summary>
+    /// Safe wrapper for SignalR initialization with timeout
+    /// </summary>
+    private async Task InitializeSignalRSafe()
+    {
+        try
+        {
+            _signalRCts = new CancellationTokenSource();
+            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
+            _signalRCts.Token, timeoutCts.Token);
+
+            await InitializeSignalR(linkedCts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            Console.WriteLine("SignalR connection timed out - falling back to polling");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"SignalR initialization failed (non-critical): {ex.Message}");
         }
     }
 
@@ -242,13 +268,14 @@ else
         }
     }
 
-    private async Task InitializeSignalR()
+    private async Task InitializeSignalR(CancellationToken cancellationToken)
     {
         try
         {
             _hubConnection = new HubConnectionBuilder()
             .WithUrl(NavigationManager.ToAbsoluteUri("/hubs/job"))
-            .WithAutomaticReconnect()
+            .WithAutomaticReconnect(new[] { TimeSpan.Zero, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(5),
+TimeSpan.FromSeconds(10) })
             .Build();
 
             _hubConnection.On<string, string>("JobStatusChanged", async (jobId, status) =>
@@ -266,9 +293,10 @@ else
                 await OnJobCreated(jobId, projectId);
             });
 
-            await _hubConnection.StartAsync();
+            await _hubConnection.StartAsync(cancellationToken);
+            Console.WriteLine("SignalR connected successfully");
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             Console.WriteLine($"Error initializing SignalR: {ex.Message}");
         }
@@ -530,6 +558,8 @@ else
 
     public async ValueTask DisposeAsync()
     {
+        _signalRCts?.Cancel();
+        _signalRCts?.Dispose();
         _refreshTimer?.Dispose();
 
         if (_hubConnection != null)
@@ -538,7 +568,10 @@ else
             {
                 await _hubConnection.DisposeAsync();
             }
-            catch { }
+            catch
+            {
+                // Ignore disposal errors
+            }
         }
     }
 }
