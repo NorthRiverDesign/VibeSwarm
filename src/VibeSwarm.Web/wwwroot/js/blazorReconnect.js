@@ -15,6 +15,8 @@
 		lastSuccessfulPing: Date.now(),
 		circuitDead: false, // Track if circuit is confirmed dead
 		consecutiveFailures: 0, // Track consecutive reconnect failures
+		interactivityTestPending: false, // Track if we're waiting for interactivity test
+		lastInteractivityCheck: 0, // Timestamp of last interactivity check
 
 		// iOS-specific detection
 		isIOS: /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream,
@@ -37,13 +39,14 @@
 
 		get extendedBackgroundThreshold() {
 			// After this long, show full modal instead of toast
-			return this.isIOSPWA ? 120000 : 180000; // 2 or 3 minutes
+			return this.isIOSPWA ? 60000 : 180000; // 1 minute for iOS, 3 for others
 		},
 
 		// Circuit timeout threshold - if background for longer than this, circuit is likely dead
 		get circuitDeadThreshold() {
-			// Blazor Server circuits typically timeout after 3-5 minutes of inactivity
-			return 180000; // 3 minutes
+			// iOS PWA circuits become unreliable much faster due to aggressive background suspension
+			// Standard Blazor circuits timeout after 3-5 minutes, but iOS can kill the connection sooner
+			return this.isIOSPWA ? 120000 : 180000; // 2 minutes for iOS, 3 for others
 		},
 
 		get isIOSPWA() {
@@ -120,11 +123,21 @@
 						return;
 					}
 
-					// iOS PWA: Always check connection when becoming visible
+					// iOS PWA: Always check connection and interactivity when becoming visible
 					if (this.isIOSPWA || timeSinceHidden > this.backgroundThreshold) {
 						// Use toast for short backgrounds, modal for extended
 						const useModal = timeSinceHidden > this.extendedBackgroundThreshold;
 						this.checkAndReconnect(useModal);
+
+						// iOS PWA: Also test interactivity after a short delay
+						// Even if connection appears fine, event handlers may be stale
+						if (this.isIOSPWA && timeSinceHidden > 30000) {
+							setTimeout(() => {
+								if (!this.isReconnecting && !this.circuitDead) {
+									this.testInteractivityAfterReconnect();
+								}
+							}, 2000);
+						}
 					}
 				} else {
 					this.lastVisibilityChange = Date.now();
@@ -142,8 +155,12 @@
 			window.addEventListener("pageshow", (event) => {
 				if (event.persisted) {
 					console.log("[ReconnectHandler] Page restored from bfcache");
-					// bfcache restore always needs reconnection check
+					// bfcache restore always needs reconnection check and interactivity test
 					setTimeout(() => this.checkAndReconnect(true), 500);
+					// Test interactivity after reconnect attempt
+					if (this.isIOSPWA) {
+						setTimeout(() => this.testInteractivityAfterReconnect(), 3000);
+					}
 				}
 			});
 
@@ -155,6 +172,10 @@
 						"[ReconnectHandler] Window focused after extended period",
 					);
 					this.checkAndReconnect(false);
+					// iOS PWA: Also test interactivity
+					if (this.isIOSPWA) {
+						setTimeout(() => this.testInteractivityAfterReconnect(), 2000);
+					}
 				}
 			});
 
@@ -163,6 +184,10 @@
 				window.addEventListener("resume", () => {
 					console.log("[ReconnectHandler] iOS resume event");
 					setTimeout(() => this.checkAndReconnect(false), 1000);
+					// Test interactivity after resume
+					if (this.isIOSPWA) {
+						setTimeout(() => this.testInteractivityAfterReconnect(), 3000);
+					}
 				});
 			}
 		},
@@ -348,6 +373,133 @@
 
 			// Notify the app to refresh any stale data
 			this.notifyAppReconnected();
+
+			// iOS PWA: Test interactivity after reconnection
+			// Event handlers can become stale even when connection appears restored
+			if (this.isIOSPWA) {
+				this.testInteractivityAfterReconnect();
+			}
+		},
+
+		// Test if Blazor interactivity is actually working after reconnection
+		// This is crucial for iOS PWAs where event handlers can become stale
+		testInteractivityAfterReconnect() {
+			// Avoid multiple concurrent tests
+			const now = Date.now();
+			if (now - this.lastInteractivityCheck < 5000) {
+				return;
+			}
+			this.lastInteractivityCheck = now;
+			this.interactivityTestPending = true;
+
+			console.log("[ReconnectHandler] Testing Blazor interactivity...");
+
+			// Create a test by invoking a JS interop method if available
+			// This verifies the round-trip to .NET is working
+			const testTimeout = setTimeout(() => {
+				if (this.interactivityTestPending) {
+					console.log(
+						"[ReconnectHandler] Interactivity test timeout - Blazor events may be stale",
+					);
+					this.handleStaleInteractivity();
+				}
+			}, 5000);
+
+			// Try to invoke a .NET method via Blazor
+			if (window.Blazor && window.Blazor._internal) {
+				try {
+					// Try to invoke a simple method that should always work
+					// This tests if the circuit can actually process events
+					const testPromise = this.invokeBlazorTest();
+					testPromise
+						.then((result) => {
+							clearTimeout(testTimeout);
+							this.interactivityTestPending = false;
+							if (result) {
+								console.log("[ReconnectHandler] Interactivity test passed");
+							} else {
+								console.log(
+									"[ReconnectHandler] Interactivity test failed - reloading",
+								);
+								this.handleStaleInteractivity();
+							}
+						})
+						.catch(() => {
+							clearTimeout(testTimeout);
+							this.interactivityTestPending = false;
+							console.log(
+								"[ReconnectHandler] Interactivity test error - reloading",
+							);
+							this.handleStaleInteractivity();
+						});
+				} catch (e) {
+					clearTimeout(testTimeout);
+					this.interactivityTestPending = false;
+					console.log("[ReconnectHandler] Interactivity test exception:", e);
+					this.handleStaleInteractivity();
+				}
+			} else {
+				clearTimeout(testTimeout);
+				this.interactivityTestPending = false;
+				// If Blazor._internal is not available, we can't test properly
+				// Give it a pass but watch for user-reported issues
+				console.log(
+					"[ReconnectHandler] Cannot test interactivity - Blazor._internal not available",
+				);
+			}
+		},
+
+		// Attempt to invoke a Blazor test to verify interactivity
+		async invokeBlazorTest() {
+			return new Promise((resolve) => {
+				// Method 1: Try DotNet.invokeMethodAsync if available
+				if (window.DotNet && window.DotNet.invokeMethodAsync) {
+					// This will fail gracefully if the assembly/method doesn't exist
+					// The important thing is whether it throws due to circuit issues
+					window.DotNet.invokeMethodAsync("VibeSwarm.Web", "InteractivityPing")
+						.then(() => resolve(true))
+						.catch((err) => {
+							// Method not found is OK (expected), circuit errors are not
+							const errMsg = err?.message || "";
+							if (
+								errMsg.includes("Circuit") ||
+								errMsg.includes("circuit") ||
+								errMsg.includes("disposed") ||
+								errMsg.includes("not initialized")
+							) {
+								resolve(false);
+							} else {
+								// Other errors (like method not found) are OK
+								resolve(true);
+							}
+						});
+				} else {
+					// Fallback: Check if Blazor internal state looks healthy
+					try {
+						const hasCircuit =
+							window.Blazor?._internal?.navigationManager != null;
+						resolve(hasCircuit);
+					} catch {
+						resolve(false);
+					}
+				}
+			});
+		},
+
+		// Handle the case where connection is restored but interactivity is broken
+		handleStaleInteractivity() {
+			console.log(
+				"[ReconnectHandler] Detected stale Blazor interactivity - forcing reload",
+			);
+
+			// Show a brief message before reloading
+			this.showReconnectToast();
+			this.updateToastMessage("Refreshing app...");
+
+			// Reload after a short delay for user feedback
+			setTimeout(() => {
+				this.reloadPage();
+			}, 1000);
 		},
 
 		// Check if connection is alive and reconnect if needed

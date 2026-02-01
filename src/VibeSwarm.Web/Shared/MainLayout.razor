@@ -10,7 +10,8 @@
 <div class="app-layout">
     @* Mobile Header *@
     <header class="app-header d-lg-none">
-        <button class="btn btn-link nav-toggle" @onclick="ToggleMobileMenu" aria-label="Toggle navigation">
+        <button id="mobile-menu-toggle" class="btn btn-link nav-toggle" @onclick="ToggleMobileMenu"
+            aria-label="Toggle navigation">
             <i class="bi bi-list"></i>
         </button>
         <a class="app-brand" href="/">
@@ -23,7 +24,7 @@
     </header>
 
     @* Sidebar Navigation *@
-    <nav class="app-sidebar @(_mobileMenuOpen ? "open" : "")">
+    <nav id="app-sidebar" class="app-sidebar @(_mobileMenuOpen ? "open" : "")">
         <div class="p-4 border-bottom d-none d-lg-flex">
             <a class="app-brand" href="/">
                 <img src="img/logo_icon.png" alt="VibeSwarm" class="brand-icon" />
@@ -74,7 +75,7 @@
     @* Mobile Menu Overlay *@
     @if (_mobileMenuOpen)
     {
-        <div class="sidebar-overlay d-lg-none" @onclick="CloseMobileMenu"></div>
+        <div id="sidebar-overlay" class="sidebar-overlay d-lg-none" @onclick="CloseMobileMenu"></div>
     }
 
     @* Main Content *@

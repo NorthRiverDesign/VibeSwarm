@@ -190,6 +190,136 @@
         <script src="js/globalSignalR.js"></script>
         <script src="js/blazorReconnect.js"></script>
 
+        <!-- iOS PWA Mobile Menu Fallback -->
+        <!-- Provides native JS fallback when Blazor events become stale after backgrounding -->
+        <script>
+            (function () {
+                'use strict';
+
+                // Only needed for iOS PWA
+                const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+                const isStandalone = window.navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches;
+                if (!isIOS || !isStandalone) return;
+
+                let lastToggleTime = 0;
+                const DEBOUNCE_MS = 300;
+
+                // Native toggle function that works even when Blazor is stale
+                function toggleMobileMenu() {
+                    const now = Date.now();
+                    if (now - lastToggleTime < DEBOUNCE_MS) return;
+                    lastToggleTime = now;
+
+                    const sidebar = document.getElementById('app-sidebar');
+                    const overlay = document.getElementById('sidebar-overlay');
+
+                    if (!sidebar) return;
+
+                    const isOpen = sidebar.classList.contains('open');
+
+                    if (isOpen) {
+                        sidebar.classList.remove('open');
+                        if (overlay) overlay.style.display = 'none';
+                    } else {
+                        sidebar.classList.add('open');
+                        // Create overlay if it doesn't exist (Blazor hasn't rendered it)
+                        if (!overlay) {
+                            const newOverlay = document.createElement('div');
+                            newOverlay.id = 'sidebar-overlay';
+                            newOverlay.className = 'sidebar-overlay d-lg-none';
+                            newOverlay.style.display = 'block';
+                            newOverlay.addEventListener('click', closeMobileMenu);
+                            newOverlay.addEventListener('touchend', closeMobileMenu);
+                            document.querySelector('.app-layout').appendChild(newOverlay);
+                        } else {
+                            overlay.style.display = 'block';
+                        }
+                    }
+
+                    console.log('[MobileMenuFallback] Toggled menu via native JS');
+                }
+
+                function closeMobileMenu() {
+                    const sidebar = document.getElementById('app-sidebar');
+                    const overlay = document.getElementById('sidebar-overlay');
+
+                    if (sidebar) sidebar.classList.remove('open');
+                    if (overlay) overlay.style.display = 'none';
+
+                    console.log('[MobileMenuFallback] Closed menu via native JS');
+                }
+
+                // Setup fallback event listeners on the toggle button
+                function setupFallbackListeners() {
+                    const toggleBtn = document.getElementById('mobile-menu-toggle');
+                    if (!toggleBtn) {
+                        // Retry if not found yet
+                        setTimeout(setupFallbackListeners, 500);
+                        return;
+                    }
+
+                    // Use capture phase to intercept before Blazor
+                    // Only trigger if Blazor event didn't fire within a short window
+                    let blazorHandled = false;
+
+                    toggleBtn.addEventListener('click', function (e) {
+                        // Give Blazor a moment to handle it
+                        setTimeout(() => {
+                            if (!blazorHandled) {
+                                toggleMobileMenu();
+                            }
+                            blazorHandled = false;
+                        }, 100);
+                    }, { passive: true });
+
+                    // Also add touchend for iOS
+                    toggleBtn.addEventListener('touchend', function (e) {
+                        // Prevent ghost click on iOS
+                        e.preventDefault();
+                        setTimeout(() => {
+                            if (!blazorHandled) {
+                                toggleMobileMenu();
+                            }
+                            blazorHandled = false;
+                        }, 100);
+                    }, { passive: false });
+
+                    // Listen for Blazor's state change to know if it handled the event
+                    const observer = new MutationObserver((mutations) => {
+                        mutations.forEach((mutation) => {
+                            if (mutation.attributeName === 'class') {
+                                blazorHandled = true;
+                            }
+                        });
+                    });
+
+                    const sidebar = document.getElementById('app-sidebar');
+                    if (sidebar) {
+                        observer.observe(sidebar, { attributes: true });
+                    }
+
+                    console.log('[MobileMenuFallback] Fallback listeners setup for iOS PWA');
+                }
+
+                // Also listen for overlay clicks as backup
+                document.addEventListener('click', function (e) {
+                    if (e.target && e.target.id === 'sidebar-overlay') {
+                        closeMobileMenu();
+                    }
+                }, { capture: true });
+
+                // Setup when DOM is ready
+                if (document.readyState === 'loading') {
+                    document.addEventListener('DOMContentLoaded', setupFallbackListeners);
+                } else {
+                    setupFallbackListeners();
+                }
+
+                // Re-setup after Blazor enhanced navigation
+                document.addEventListener('enhanced-navigation-end', setupFallbackListeners);
+            })();
+        </script>
+
         <!-- Service Worker Registration -->
         <script>
             if ('serviceWorker' in navigator) {
