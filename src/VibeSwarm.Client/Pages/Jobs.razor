@@ -7,6 +7,7 @@
 @inject IJSRuntime JSRuntime
 @implements IAsyncDisposable
 @using System.Threading
+@using Microsoft.AspNetCore.SignalR.Client
 
 @if (_isLoading)
 {
@@ -176,8 +177,7 @@ else
     private bool _isLoading = true;
     private string _statusFilter = "all";
     private Guid? _selectedProjectId;
-    private DotNetObjectReference<Jobs>? _dotNetReference;
-    private IJSObjectReference? _signalRModule;
+    private HubConnection? _hubConnection;
     private Timer? _refreshTimer;
     private bool _isRefreshing = false;
 
@@ -246,9 +246,27 @@ else
     {
         try
         {
-            _dotNetReference = DotNetObjectReference.Create(this);
-            _signalRModule = await JSRuntime.InvokeAsync<IJSObjectReference>("import", "/js/jobListSignalR.js");
-            await _signalRModule.InvokeVoidAsync("initializeJobListHub", _dotNetReference);
+            _hubConnection = new HubConnectionBuilder()
+            .WithUrl(NavigationManager.ToAbsoluteUri("/jobhub"))
+            .WithAutomaticReconnect()
+            .Build();
+
+            _hubConnection.On<string, string>("JobStatusChanged", async (jobId, status) =>
+            {
+                await OnJobStatusChanged(jobId, status);
+            });
+
+            _hubConnection.On<string, string, DateTime>("JobActivityUpdated", async (jobId, activity, timestamp) =>
+            {
+                await OnJobActivityUpdated(jobId, activity, timestamp);
+            });
+
+            _hubConnection.On<string, string>("JobCreated", async (jobId, projectId) =>
+            {
+                await OnJobCreated(jobId, projectId);
+            });
+
+            await _hubConnection.StartAsync();
         }
         catch (Exception ex)
         {
@@ -256,8 +274,7 @@ else
         }
     }
 
-    [JSInvokable]
-    public async Task OnJobStatusChanged(string jobId, string status)
+    private async Task OnJobStatusChanged(string jobId, string status)
     {
         Console.WriteLine($"[Jobs] OnJobStatusChanged: {jobId} -> {status}");
 
@@ -289,8 +306,7 @@ else
         }
     }
 
-    [JSInvokable]
-    public async Task OnJobActivityUpdated(string jobId, string activity, DateTime timestamp)
+    private async Task OnJobActivityUpdated(string jobId, string activity, DateTime timestamp)
     {
         if (_jobs != null && Guid.TryParse(jobId, out var id))
         {
@@ -304,8 +320,7 @@ else
         }
     }
 
-    [JSInvokable]
-    public async Task OnJobCreated(string jobId, string projectId)
+    private async Task OnJobCreated(string jobId, string projectId)
     {
         Console.WriteLine($"[Jobs] OnJobCreated: {jobId}");
         if (!_isRefreshing)
@@ -517,16 +532,13 @@ else
     {
         _refreshTimer?.Dispose();
 
-        if (_signalRModule != null)
+        if (_hubConnection != null)
         {
             try
             {
-                await _signalRModule.InvokeVoidAsync("disposeJobListHub");
-                await _signalRModule.DisposeAsync();
+                await _hubConnection.DisposeAsync();
             }
             catch { }
         }
-
-        _dotNetReference?.Dispose();
     }
 }

@@ -24,14 +24,14 @@ public class SecurityHeadersMiddleware
         context.Response.Headers.Append("Referrer-Policy", "no-referrer");
 
         // Content-Security-Policy: Restricts resource loading
-        // Note: Blazor Server requires 'unsafe-eval' for proper operation
+        // Note: Blazor WebAssembly requires 'wasm-unsafe-eval' for proper operation
         var csp = "default-src 'self'; " +
-                  "script-src 'self' 'unsafe-eval' 'unsafe-inline'; " +
+                  "script-src 'self' 'unsafe-eval' 'unsafe-inline' 'wasm-unsafe-eval'; " +
                   "style-src 'self' 'unsafe-inline'; " +
                   "img-src 'self' data:; " +
                   "font-src 'self'; " +
                   "connect-src 'self' ws: wss:; " +
-                  "worker-src 'self'; " +
+                  "worker-src 'self' blob:; " +
                   "manifest-src 'self'; " +
                   "frame-ancestors 'none';";
         context.Response.Headers.Append("Content-Security-Policy", csp);

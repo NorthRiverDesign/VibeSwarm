@@ -147,7 +147,6 @@
     [CascadingParameter]
     private Task<AuthenticationState>? AuthenticationStateTask { get; set; }
 
-    private DotNetObjectReference<MainLayout>? _dotNetReference;
     private bool _hubInitialized = false;
     private bool _mobileMenuOpen = false;
 
@@ -157,7 +156,6 @@
     private string? _changePasswordError;
     private string? _changePasswordSuccess;
     private ChangePasswordModel _changePasswordModel = new();
-
     protected override void OnInitialized()
     {
         ChangePasswordModalService.OnShowModal += ShowChangePasswordModal;
@@ -247,9 +245,10 @@
 
         try
         {
-            _dotNetReference = DotNetObjectReference.Create(this);
-            await JSRuntime.InvokeVoidAsync("VibeSwarmHub.initialize", _dotNetReference);
+            // TODO: Initialize C# HubConnection for global notifications
+            // For now, this is a no-op since we're transitioning from JS SignalR to C# HubConnection
             _hubInitialized = true;
+            await Task.CompletedTask;
         }
         catch (Exception ex)
         {
@@ -257,47 +256,39 @@
         }
     }
 
-    [JSInvokable]
-    public void OnConnectionStateChanged(string state)
+    // Note: These methods are no longer called by JS interop but kept for potential C# HubConnection use
+    private void OnConnectionStateChanged(string state)
     {
         Console.WriteLine($"[MainLayout] Connection state: {state}");
     }
 
-    [JSInvokable]
-    public async Task OnGlobalJobStatusChanged(string jobId, string status)
+    private async Task OnGlobalJobStatusChanged(string jobId, string status)
     {
         Console.WriteLine($"[MainLayout] Job {jobId} status changed to {status}");
-        // Additional global handling can be added here
         await Task.CompletedTask;
     }
 
-    [JSInvokable]
-    public Task OnGlobalJobActivityUpdated(string jobId, string activity, DateTime timestamp)
+    private Task OnGlobalJobActivityUpdated(string jobId, string activity, DateTime timestamp)
     {
-        // Activity updates are handled silently
         return Task.CompletedTask;
     }
 
-    [JSInvokable]
-    public Task OnGlobalJobCreated(string jobId, string projectId)
+    private Task OnGlobalJobCreated(string jobId, string projectId)
     {
         Console.WriteLine($"[MainLayout] New job created: {jobId}");
         return Task.CompletedTask;
     }
 
-    [JSInvokable]
-    public Task OnGlobalJobDeleted(string jobId, string projectId)
+    private Task OnGlobalJobDeleted(string jobId, string projectId)
     {
         Console.WriteLine($"[MainLayout] Job deleted: {jobId}");
         return Task.CompletedTask;
     }
 
-    [JSInvokable]
-    public async Task OnGlobalJobCompleted(string jobId, bool success, string? errorMessage)
+    private async Task OnGlobalJobCompleted(string jobId, bool success, string? errorMessage)
     {
         Console.WriteLine($"[MainLayout] Job {jobId} completed, success: {success}");
 
-        // Get job details to show in notification
         if (Guid.TryParse(jobId, out var id))
         {
             try
@@ -313,7 +304,6 @@
             }
             catch
             {
-                // If we can't get the job details, show a generic notification
                 await InvokeAsync(() =>
                 {
                     NotificationService.ShowJobCompleted(id, success, null, errorMessage);
@@ -323,34 +313,27 @@
         }
     }
 
-    [JSInvokable]
-    public Task OnGlobalJobListChanged()
-    {
-        // Job list changes don't need global notifications
-        return Task.CompletedTask;
-    }
-
-    [JSInvokable]
-    public Task OnGlobalJobMessageAdded(string jobId)
-    {
-        // Message additions don't need global notifications
-        return Task.CompletedTask;
-    }
-
-    [JSInvokable]
-    public Task OnGlobalProcessStarted(string jobId, int processId, string command)
+    private Task OnGlobalJobListChanged()
     {
         return Task.CompletedTask;
     }
 
-    [JSInvokable]
-    public Task OnGlobalProcessExited(string jobId, int processId, int exitCode, double durationSeconds)
+    private Task OnGlobalJobMessageAdded(string jobId)
     {
         return Task.CompletedTask;
     }
 
-    [JSInvokable]
-    public async Task OnShowNotification(string title, string message, string type)
+    private Task OnGlobalProcessStarted(string jobId, int processId, string command)
+    {
+        return Task.CompletedTask;
+    }
+
+    private Task OnGlobalProcessExited(string jobId, int processId, int exitCode, double durationSeconds)
+    {
+        return Task.CompletedTask;
+    }
+
+    private async Task OnShowNotification(string title, string message, string type)
     {
         await InvokeAsync(() =>
         {
@@ -376,17 +359,7 @@
     public async ValueTask DisposeAsync()
     {
         Dispose();
-        _dotNetReference?.Dispose();
-
-        try
-        {
-            // Don't dispose the global hub - it persists across navigation
-            // Just clear the .NET reference
-        }
-        catch
-        {
-            // Ignore disposal errors
-        }
+        await Task.CompletedTask;
     }
 
     public class ChangePasswordModel

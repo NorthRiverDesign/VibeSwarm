@@ -10,14 +10,14 @@ public class IdeaService : IIdeaService
 {
 	private readonly VibeSwarmDbContext _dbContext;
 	private readonly IJobService _jobService;
-	private readonly ProviderService _providerService;
+	private readonly IProviderService _providerService;
 	private readonly IVersionControlService _versionControlService;
 	private readonly ILogger<IdeaService> _logger;
 
 	public IdeaService(
 		VibeSwarmDbContext dbContext,
 		IJobService jobService,
-		ProviderService providerService,
+		IProviderService providerService,
 		IVersionControlService versionControlService,
 		ILogger<IdeaService> logger)
 	{

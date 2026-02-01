@@ -10,6 +10,7 @@
 @using VibeSwarm.Shared.Utilities
 @using VibeSwarm.Shared.VersionControl
 @using VibeSwarm.Shared.VersionControl.Models
+@using Microsoft.AspNetCore.SignalR.Client
 
 @if (IsLoading)
 {
@@ -24,10 +25,10 @@ else if (Job == null)
 else
 {
     @* Breadcrumb Navigation *@
-        <Breadcrumb Items="@_breadcrumbItems" />
+    <Breadcrumb Items="@_breadcrumbItems" />
 
     @* Page Header Section *@
-        <JobHeaderSection Status="@Job.Status" CancellationRequested="@Job.CancellationRequested"
+    <JobHeaderSection Status="@Job.Status" CancellationRequested="@Job.CancellationRequested"
         GitHubRepository="@Job.Project?.GitHubRepository" BranchName="@_branchName" ProjectId="@Job.ProjectId"
         ProjectName="@(Job.Project?.Name ?? "Unknown")" ProviderName="@(Job.Provider?.Name ?? "Unknown")"
         ProcessId="@Job.ProcessId" CreatedAt="@Job.CreatedAt" StartedAt="@Job.StartedAt" CompletedAt="@Job.CompletedAt"
@@ -40,17 +41,17 @@ else
         CurrentActivity="@Job.CurrentActivity" LastActivityAt="@Job.LastActivityAt" />
 
     @* Main Content - Column Layout *@
-        <div class="row g-3 g-lg-4">
+    <div class="row g-3 g-lg-4">
         @* Left Column - Goal Prompt & Git sections *@
-            <div class="col-12 col-xl-5 order-2 order-xl-1">
+        <div class="col-12 col-xl-5 order-2 order-xl-1">
 
             @* Goal Prompt Card *@
-                <JobGoalPromptCard GoalPrompt="@Job.GoalPrompt" Status="@Job.Status" CanRetry="@CanRetry"
+            <JobGoalPromptCard GoalPrompt="@Job.GoalPrompt" Status="@Job.Status" CanRetry="@CanRetry"
                 HasConsoleOutput="@(!string.IsNullOrEmpty(Job.ConsoleOutput))" OnCopyToClipboard="CopyPromptToClipboard"
                 OnPromptChanged="UpdateJobPrompt" />
 
             @* User Interaction Section - shown when job is paused waiting for input *@
-                @if (Job.Status == JobStatus.Paused && !string.IsNullOrEmpty(Job.PendingInteractionPrompt))
+            @if (Job.Status == JobStatus.Paused && !string.IsNullOrEmpty(Job.PendingInteractionPrompt))
             {
                 <UserInteractionPanel Prompt="@Job.PendingInteractionPrompt" Choices="@_interactionChoices"
                     IsSubmitting="@_isSubmittingResponse" ErrorMessage="@_interactionError"
@@ -79,7 +80,7 @@ else
                 </div>
             }
             @* Git Diff Viewer - shown after job completes if changes were detected *@
-                else if (_isGitRepository && !IsJobActive && !string.IsNullOrEmpty(Job.GitDiff))
+            else if (_isGitRepository && !IsJobActive && !string.IsNullOrEmpty(Job.GitDiff))
             {
                 <GitDiffViewer DiffFiles="@_parsedDiffFiles" @bind-IsVisible="_showGitDiff"
                     IsVerifying="@_isComparingWorkingCopy"
@@ -90,7 +91,7 @@ else
                     OnRecheck="CompareWithWorkingCopy" />
 
                 @* Commit Section - shown when there are git changes *@
-                        <CommitSection CommitMessage="@_commitMessage" CommitMessageChanged="@((msg) => _commitMessage = msg)"
+                <CommitSection CommitMessage="@_commitMessage" CommitMessageChanged="@((msg) => _commitMessage = msg)"
                     BranchName="@_branchName" IsLoadingSummary="@_isLoadingSummary"
                     HasAISummary="@(!string.IsNullOrWhiteSpace(Job.SessionSummary))" SummaryError="@_summaryError"
                     PushError="@_pushError" IsPushing="@_isPushing" PushStatus="@_pushStatus" IsPushed="@_changesPushed"
@@ -101,7 +102,7 @@ else
             string.IsNullOrEmpty(Job.GitDiff))
             {
                 @* No changes detected placeholder *@
-                        <div class="card mb-3 mb-lg-4">
+                <div class="card mb-3 mb-lg-4">
                     <div class="card-header bg-body-secondary">
                         <div class="d-flex align-items-center">
                             <i class="bi bi-git me-2 opacity-75"></i>
@@ -146,7 +147,7 @@ else
         </div>
 
         @* Right Column - Session Panel (Live Output, Console, Command, Conversation) *@
-            <div class="col-12 col-xl-7 order-1 order-xl-2 d-flex flex-column">
+        <div class="col-12 col-xl-7 order-1 order-xl-2 d-flex flex-column">
             <JobSessionPanel Messages="@(Job.Messages?.ToList() ?? new())" Status="@Job.Status" IsJobActive="@IsJobActive"
                 ErrorMessage="@Job.ErrorMessage" ConsoleOutput="@Job.ConsoleOutput" CommandUsed="@Job.CommandUsed"
                 SessionId="@Job.SessionId" LiveOutputLines="@_liveOutput.ToList()" MaxOutputLines="@MaxOutputLines"
@@ -182,8 +183,7 @@ else
     private bool IsRetrying { get; set; }
     private string? ErrorMessage { get; set; }
     private string? SuccessMessage { get; set; }
-    private DotNetObjectReference<JobDetail>? _dotNetReference;
-    private IJSObjectReference? _signalRModule;
+    private HubConnection? _hubConnection;
     private Timer? _refreshTimer;
     private bool _isRefreshing = false;
     private DateTime _pageLoadTime = DateTime.UtcNow;
@@ -329,9 +329,42 @@ new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
     {
         try
         {
-            _dotNetReference = DotNetObjectReference.Create(this);
-            _signalRModule = await JSRuntime.InvokeAsync<IJSObjectReference>("import", "/js/jobSignalR.js");
-            await _signalRModule.InvokeVoidAsync("initializeJobHub", JobId.ToString(), _dotNetReference);
+            _hubConnection = new HubConnectionBuilder()
+            .WithUrl(NavigationManager.ToAbsoluteUri("/jobhub"))
+            .WithAutomaticReconnect()
+            .Build();
+
+            _hubConnection.On<string, string>("JobStatusChanged", async (jobId, status) =>
+            {
+                await OnJobStatusChanged(jobId, status);
+            });
+
+            _hubConnection.On<string, string, DateTime>("JobActivityUpdated", async (jobId, activity, timestamp) =>
+            {
+                await OnJobActivityUpdated(jobId, activity, timestamp);
+            });
+
+            _hubConnection.On<string, string>("JobOutputReceived", async (jobId, output) =>
+            {
+                await OnJobOutputReceived(jobId, output);
+            });
+
+            _hubConnection.On<string, string>("JobLiveCommand", async (jobId, command) =>
+            {
+                await OnJobLiveCommand(jobId, command);
+            });
+
+            _hubConnection.On<string, string, List<string>>("JobInteractionRequested", async (jobId, prompt, choices) =>
+            {
+                await OnJobInteractionRequested(jobId, prompt, choices);
+            });
+
+            _hubConnection.On<string>("JobInteractionCompleted", async (jobId) =>
+            {
+                await OnJobInteractionCompleted(jobId);
+            });
+
+            await _hubConnection.StartAsync();
         }
         catch (Exception ex)
         {
@@ -354,8 +387,7 @@ new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
 
     #region SignalR Handlers
 
-    [JSInvokable]
-    public async Task OnJobStatusChanged(string jobId, string status)
+    private async Task OnJobStatusChanged(string jobId, string status)
     {
         if (Job != null && Enum.TryParse<JobStatus>(status, out var newStatus))
         {
@@ -389,8 +421,7 @@ new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
         }
     }
 
-    [JSInvokable]
-    public async Task OnJobActivityUpdated(string jobId, string activity, DateTime timestamp)
+    private async Task OnJobActivityUpdated(string jobId, string activity, DateTime timestamp)
     {
         if (Job != null)
         {
@@ -400,8 +431,7 @@ new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
         }
     }
 
-    [JSInvokable]
-    public async Task OnJobMessageAdded(string jobId)
+    private async Task OnJobMessageAdded(string jobId)
     {
         if (!_isRefreshing)
         {
@@ -409,8 +439,61 @@ new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
         }
     }
 
-    [JSInvokable]
-    public async Task OnJobCompleted(string jobId, bool success, string? errorMessage)
+    private async Task OnJobOutputReceived(string jobId, string output)
+    {
+        lock (_liveOutput)
+        {
+            _liveOutput.Add(new OutputLine { Content = output, IsError = false, Timestamp = DateTime.UtcNow });
+            while (_liveOutput.Count > MaxOutputLines)
+            {
+                _liveOutput.RemoveAt(0);
+            }
+        }
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OnJobLiveCommand(string jobId, string command)
+    {
+        if (Job != null)
+        {
+            _liveCommand = command;
+            if (string.IsNullOrEmpty(Job.CommandUsed))
+            {
+                Job.CommandUsed = command;
+            }
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task OnJobInteractionRequested(string jobId, string prompt, List<string>? choices)
+    {
+        if (Job != null)
+        {
+            Job.Status = JobStatus.Paused;
+            Job.PendingInteractionPrompt = prompt;
+            Job.InteractionRequestedAt = DateTime.UtcNow;
+            _interactionChoices = choices;
+            _interactionError = null;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task OnJobInteractionCompleted(string jobId)
+    {
+        if (Job != null)
+        {
+            Job.Status = JobStatus.Processing;
+            Job.PendingInteractionPrompt = null;
+            Job.InteractionType = null;
+            Job.InteractionRequestedAt = null;
+            _interactionChoices = null;
+            _interactionError = null;
+            _isSubmittingResponse = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task OnJobCompleted(string jobId, bool success, string? errorMessage)
     {
         if (Job != null)
         {
@@ -490,114 +573,6 @@ new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
         _isLoadingGitDiff = false;
         _isLoadingSummary = false;
         StateHasChanged();
-    }
-
-    [JSInvokable]
-    public async Task OnJobOutput(string jobId, string line, bool isError, DateTime timestamp)
-    {
-        lock (_liveOutput)
-        {
-            _liveOutput.Add(new OutputLine { Content = line, IsError = isError, Timestamp = timestamp });
-            while (_liveOutput.Count > MaxOutputLines)
-            {
-                _liveOutput.RemoveAt(0);
-            }
-        }
-        await InvokeAsync(StateHasChanged);
-    }
-
-    [JSInvokable]
-    public async Task OnProcessStarted(string jobId, int processId, string command)
-    {
-        if (Job != null)
-        {
-            Job.ProcessId = processId;
-            _liveCommand = command;
-            if (string.IsNullOrEmpty(Job.CommandUsed))
-            {
-                Job.CommandUsed = command;
-            }
-            await InvokeAsync(StateHasChanged);
-        }
-    }
-
-    [JSInvokable]
-    public async Task OnProcessExited(string jobId, int processId, int exitCode, double durationSeconds)
-    {
-        lock (_liveOutput)
-        {
-            _liveOutput.Add(new OutputLine
-            {
-                Content = $"--- Process {processId} exited with code {exitCode} (ran for {durationSeconds:F1}s) ---",
-                IsError = exitCode != 0,
-                Timestamp = DateTime.UtcNow
-            });
-        }
-        await InvokeAsync(StateHasChanged);
-    }
-
-    [JSInvokable]
-    public async Task OnJobGitDiffUpdated(string jobId, bool hasChanges)
-    {
-        if (!_isRefreshing)
-        {
-            await InvokeAsync(async () =>
-            {
-                await RefreshJobSafely();
-                _isLoadingGitDiff = false;
-                if (Job != null && !string.IsNullOrWhiteSpace(Job.SessionSummary))
-                {
-                    _isLoadingSummary = false;
-                }
-                StateHasChanged();
-            });
-        }
-        else
-        {
-            _isLoadingGitDiff = false;
-            await InvokeAsync(StateHasChanged);
-        }
-    }
-
-    [JSInvokable]
-    public async Task OnJobInteractionRequired(string jobId, string prompt, string interactionType,
-    List<string>? choices, string? defaultResponse)
-    {
-        if (Job != null)
-        {
-            Job.Status = JobStatus.Paused;
-            Job.PendingInteractionPrompt = prompt;
-            Job.InteractionType = interactionType;
-            Job.InteractionRequestedAt = DateTime.UtcNow;
-            _interactionChoices = choices;
-            _interactionError = null;
-            await InvokeAsync(StateHasChanged);
-        }
-    }
-
-    [JSInvokable]
-    public async Task OnJobResumed(string jobId)
-    {
-        if (Job != null)
-        {
-            Job.Status = JobStatus.Processing;
-            Job.PendingInteractionPrompt = null;
-            Job.InteractionType = null;
-            Job.InteractionRequestedAt = null;
-            _interactionChoices = null;
-            _interactionError = null;
-            _isSubmittingResponse = false;
-            await InvokeAsync(StateHasChanged);
-        }
-
-        if (!_isRefreshing)
-        {
-            _ = Task.Run(async () =>
-            {
-                await Task.Delay(500);
-                await InvokeAsync(async () => await RefreshJobSafely());
-            });
-        }
     }
 
     #endregion
@@ -763,8 +738,8 @@ new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
         try
         {
             // Build a context-aware prompt that references the previous job
-            var contextPrompt = $"Continue from previous work. Previous goal: \"{Job.GoalPrompt.Substring(0, Math.Min(200,
-            Job.GoalPrompt.Length))}...\"\n\nNew instructions: {followUpPrompt}";
+            var previousGoalSnippet = Job.GoalPrompt.Substring(0, Math.Min(200, Job.GoalPrompt.Length));
+            var contextPrompt = $"Continue from previous work. Previous goal: \"{previousGoalSnippet}...\"\n\nNew instructions: {followUpPrompt}";
 
             var newJob = new Job
             {
@@ -836,9 +811,9 @@ new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
 
         try
         {
-            if (_signalRModule != null)
+            if (_hubConnection != null && _hubConnection.State == HubConnectionState.Connected)
             {
-                var success = await _signalRModule.InvokeAsync<bool>("submitInteractionResponse", JobId.ToString(), response);
+                var success = await _hubConnection.InvokeAsync<bool>("SubmitInteractionResponse", JobId.ToString(), response);
                 if (!success)
                 {
                     _interactionError = "Failed to deliver response. The job may have already completed or been cancelled.";
@@ -1242,16 +1217,13 @@ new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
         _pushCancellationTokenSource?.Cancel();
         _pushCancellationTokenSource?.Dispose();
 
-        if (_signalRModule != null)
+        if (_hubConnection != null)
         {
             try
             {
-                await _signalRModule.InvokeVoidAsync("disposeJobHub");
-                await _signalRModule.DisposeAsync();
+                await _hubConnection.DisposeAsync();
             }
             catch { }
         }
-
-        _dotNetReference?.Dispose();
     }
 }

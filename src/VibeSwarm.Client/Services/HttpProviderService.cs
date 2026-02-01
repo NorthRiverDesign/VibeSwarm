@@ -10,6 +10,9 @@ public class HttpProviderService : IProviderService
     private readonly HttpClient _http;
     public HttpProviderService(HttpClient http) => _http = http;
 
+    public IProvider? CreateInstance(Provider config)
+        => throw new NotSupportedException("CreateInstance is a server-only operation");
+
     public async Task<IEnumerable<Provider>> GetAllAsync(CancellationToken ct = default)
         => await _http.GetFromJsonAsync<List<Provider>>("/api/providers", ct) ?? [];
 
