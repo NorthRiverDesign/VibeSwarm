@@ -160,6 +160,7 @@ Favor using toast messages instead of Flash messages for user notifications. Toa
 1. The default database setup is SQLite but allow a real relational database.
 2. Use EF Core to provide support for multiple databases.
 3. Use LINQ queries efficiently.
+4. ALWAYS use migrations to manage database schema changes.
 
 ## Jobs and Providers
 
