@@ -244,6 +244,10 @@ using (var scope = app.Services.CreateScope())
 
 // HTTPS redirection disabled - reverse proxy handles TLS termination
 // app.UseHttpsRedirection();
+
+// Add global exception handling middleware for API endpoints
+app.UseVibeSwarmExceptionHandling();
+
 app.UseSecurityHeaders();
 
 // Serve Blazor WebAssembly static files
