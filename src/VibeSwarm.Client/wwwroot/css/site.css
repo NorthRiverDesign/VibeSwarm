@@ -501,7 +501,7 @@ body {
 ============================================ */
 body.vs-modal-open {
     overflow: hidden !important;
-    position: fixed;
+    width: 100%;
 }
 
 .vs-modal-container {
@@ -516,8 +516,8 @@ body.vs-modal-open {
     position: fixed !important;
     inset: 0 !important;
     background: rgba(0, 0, 0, 0.6) !important;
-    backdrop-filter: blur(2px);
-    -webkit-backdrop-filter: blur(2px);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
     z-index: 1050 !important;
 }
 
@@ -585,7 +585,7 @@ body.vs-modal-open {
     .vs-modal-container { padding: 0 !important; align-items: stretch !important; }
     .vs-modal-dialog { margin: 0 !important; width: 100% !important; max-width: 100% !important; min-height: 100% !important; }
     .vs-modal-dialog .modal-content { min-height: 100vh !important; min-height: 100dvh !important; border-radius: 0 !important; border: none !important; }
-    .vs-modal-dialog .modal-header { padding-top: calc(0.75rem + var(--vs-header-height) + var(--vs-safe-area-top)); }
+    .vs-modal-dialog .modal-header { padding-top: calc(0.75rem + var(--vs-safe-area-top)); }
     .vs-modal-dialog .modal-body { -webkit-overflow-scrolling: touch; padding-bottom: calc(1rem + var(--vs-safe-area-bottom)); }
     .vs-modal-dialog .modal-footer { padding-bottom: calc(0.75rem + var(--vs-safe-area-bottom)); }
     .vs-modal-dialog.modal-sm { max-width: 100% !important; }
@@ -593,9 +593,9 @@ body.vs-modal-open {
 
 /* Small to Medium (576px - 991px) */
 @media (min-width: 576px) and (max-width: 991.98px) {
-    .vs-modal-container { padding: 1rem !important; padding-top: calc(var(--vs-header-height) + var(--vs-safe-area-top) + 1rem) !important; padding-bottom: calc(1rem + var(--vs-safe-area-bottom)) !important; }
-    .vs-modal-dialog { max-height: calc(100vh - var(--vs-header-height) - var(--vs-safe-area-top) - var(--vs-safe-area-bottom) - 2rem); }
-    .vs-modal-dialog .modal-content { max-height: calc(100vh - var(--vs-header-height) - var(--vs-safe-area-top) - var(--vs-safe-area-bottom) - 2rem); }
+    .vs-modal-container { padding: 1rem !important; padding-top: calc(var(--vs-safe-area-top) + 1rem) !important; padding-bottom: calc(1rem + var(--vs-safe-area-bottom)) !important; }
+    .vs-modal-dialog { max-height: calc(100vh - var(--vs-safe-area-top) - var(--vs-safe-area-bottom) - 2rem); max-height: calc(100dvh - var(--vs-safe-area-top) - var(--vs-safe-area-bottom) - 2rem); }
+    .vs-modal-dialog .modal-content { max-height: calc(100vh - var(--vs-safe-area-top) - var(--vs-safe-area-bottom) - 2rem); max-height: calc(100dvh - var(--vs-safe-area-top) - var(--vs-safe-area-bottom) - 2rem); }
     .vs-modal-dialog .modal-body { overflow-y: auto; -webkit-overflow-scrolling: touch; }
 }
 
