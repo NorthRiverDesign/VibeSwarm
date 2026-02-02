@@ -184,21 +184,26 @@ body {
     .app-sidebar {
         position: fixed;
         top: 0;
+        bottom: 0;
         transform: translateX(0);
         padding-top: var(--vs-safe-area-top);
     }
 
     .app-main {
         margin-left: var(--vs-sidebar-width);
-        min-height: 100vh;
-        min-height: 100dvh;
+        height: 100vh;
+        height: 100dvh;
+        display: flex;
+        flex-direction: column;
     }
 
     .main-content {
+        flex: 1;
         padding: 1.5rem 2rem;
         padding-right: calc(2rem + var(--vs-safe-area-right));
         max-width: 1400px;
         margin-inline: auto;
+        min-height: 0;
     }
 }
 
@@ -632,8 +637,8 @@ body.vs-modal-open {
         max-width: none;
         display: flex;
         flex-direction: column;
-        height: calc(100vh - var(--vs-safe-area-top) - var(--vs-header-height));
-        height: calc(100dvh - var(--vs-safe-area-top) - var(--vs-header-height));
+        height: 100vh;
+        height: 100dvh;
     }
 
     .jobs-inbox-layout {
