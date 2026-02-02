@@ -10,10 +10,28 @@ public class HttpVersionControlService : IVersionControlService
     public HttpVersionControlService(HttpClient http) => _http = http;
 
     public async Task<bool> IsGitAvailableAsync(CancellationToken ct = default)
-        => await _http.GetFromJsonAsync<bool>("/api/git/available", ct);
+    {
+        try
+        {
+            return await _http.GetFromJsonAsync<bool>("/api/git/available", ct);
+        }
+        catch
+        {
+            return false;
+        }
+    }
 
     public async Task<bool> IsGitRepositoryAsync(string workingDirectory, CancellationToken ct = default)
-        => await _http.GetFromJsonAsync<bool>($"/api/git/is-repo?path={Enc(workingDirectory)}", ct);
+    {
+        try
+        {
+            return await _http.GetFromJsonAsync<bool>($"/api/git/is-repo?path={Enc(workingDirectory)}", ct);
+        }
+        catch
+        {
+            return false;
+        }
+    }
 
     public async Task<string?> GetCurrentCommitHashAsync(string workingDirectory, CancellationToken ct = default)
         => await _http.GetFromJsonAsync<string?>($"/api/git/commit-hash?path={Enc(workingDirectory)}", ct);

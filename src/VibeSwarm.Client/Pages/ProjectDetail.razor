@@ -186,11 +186,16 @@ else
         try
         {
             await LoadGitInfo();
-            await InvokeAsync(StateHasChanged);
         }
         catch (Exception ex)
         {
             Console.WriteLine($"Git info load failed (non-critical): {ex.Message}");
+            _isLoadingGitInfo = false;
+            IsGitRepository = false;
+        }
+        finally
+        {
+            await InvokeAsync(StateHasChanged);
         }
     }
 
@@ -513,16 +518,21 @@ TimeSpan.FromSeconds(10) })
             return;
         }
 
+        _isLoadingGitInfo = true;
+
         try
         {
-            _isLoadingGitInfo = true;
             IsGitRepository = await VersionControlService.IsGitRepositoryAsync(Project.WorkingPath);
+            Console.WriteLine($"IsGitRepositoryAsync returned: {IsGitRepository} for path: {Project.WorkingPath}");
+
             if (IsGitRepository)
             {
                 CurrentBranch = await VersionControlService.GetCurrentBranchAsync(Project.WorkingPath);
                 CurrentCommitHash = await VersionControlService.GetCurrentCommitHashAsync(Project.WorkingPath);
+                Console.WriteLine($"Git info: Branch={CurrentBranch}, Commit={CurrentCommitHash}");
                 NewJob.Branch = CurrentBranch;
                 await LoadBranches();
+                Console.WriteLine($"Loaded {Branches.Count} branches");
                 await RefreshUncommittedChangesStatus();
             }
         }
