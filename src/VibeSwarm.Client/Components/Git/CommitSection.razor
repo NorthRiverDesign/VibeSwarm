@@ -6,15 +6,22 @@
 			<i class="bi bi-cloud-upload me-2 opacity-75"></i>
 			<strong>Commit</strong>
 		</div>
-		@if (!string.IsNullOrEmpty(BranchName) && !IsPushed)
+		@if (!string.IsNullOrEmpty(BranchName) && !IsPushed && !IsAutoCommitted)
 		{
 			<span class="branch-info d-inline-flex align-items-center gap-1 py-1 px-2 rounded-1 small text-truncate">
 				<i class="bi bi-diagram-2 me-1"></i>
 				@BranchName
 			</span>
 		}
+		@if (IsAutoCommitted)
+		{
+			<span class="badge bg-success d-inline-flex align-items-center gap-1">
+				<i class="bi bi-robot"></i>
+				<span>Auto-committed</span>
+			</span>
+		}
 	</div>
-	@if (!IsPushed)
+	@if (!IsPushed && !IsAutoCommitted)
 	{
 		<div class="card-body">
 			<label for="commitMessage" class="form-label d-flex flex-wrap align-items-center gap-2 mb-2">
@@ -70,6 +77,30 @@
 					<span>Commit & Push</span>
 				}
 			</button>
+		</div>
+	}
+	else if (IsAutoCommitted)
+	{
+		<div class="card-body">
+			<Alert Type="Alert.AlertType.Success" ShowIcon="true" Class="mb-0">
+				<div>
+					<strong>Changes auto-committed!</strong>
+					<div class="d-flex flex-wrap gap-2 mt-1">
+						@if (!string.IsNullOrEmpty(PushedCommitHash))
+						{
+							<span class="font-monospace small">
+								<i class="bi bi-git me-1"></i>@PushedCommitHash[..Math.Min(7, PushedCommitHash.Length)]
+							</span>
+						}
+						@if (!string.IsNullOrEmpty(BranchName))
+						{
+							<span class="font-monospace small">
+								<i class="bi bi-diagram-2 me-1"></i>@BranchName
+							</span>
+						}
+					</div>
+				</div>
+			</Alert>
 		</div>
 	}
 	else
@@ -134,6 +165,9 @@
 
 	[Parameter]
 	public bool CanPush { get; set; }
+
+	[Parameter]
+	public bool IsAutoCommitted { get; set; }
 
 	[Parameter]
 	public EventCallback OnCommitAndPush { get; set; }

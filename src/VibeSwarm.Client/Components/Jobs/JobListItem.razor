@@ -51,6 +51,12 @@
                 {
                     <span class="badge bg-secondary-subtle text-secondary-emphasis">@ProjectName</span>
                 }
+                @if (MaxCycles > 1)
+                {
+                    <span class="badge bg-info-subtle text-info-emphasis" title="@GetCycleModeTitle()">
+                        <i class="bi bi-arrow-repeat me-1"></i>@CurrentCycle/@MaxCycles
+                    </span>
+                }
                 @if (!string.IsNullOrEmpty(ModelUsed))
                 {
                     <span class="text-body-tertiary">@FormatModelName(ModelUsed)</span>
@@ -135,6 +141,15 @@
     [Parameter]
     public EventCallback OnClick { get; set; }
 
+    [Parameter]
+    public int CurrentCycle { get; set; } = 1;
+
+    [Parameter]
+    public int MaxCycles { get; set; } = 1;
+
+    [Parameter]
+    public CycleMode CycleMode { get; set; } = CycleMode.SingleCycle;
+
     private bool _isSelected => IsSelected;
 
     private bool IsActiveStatus()
@@ -146,6 +161,16 @@
     private async Task HandleClick()
     {
         await OnClick.InvokeAsync();
+    }
+
+    private string GetCycleModeTitle()
+    {
+        return CycleMode switch
+        {
+            CycleMode.FixedCount => $"Fixed Count Mode: {CurrentCycle} of {MaxCycles} cycles",
+            CycleMode.Autonomous => $"Autonomous Mode: {CurrentCycle} of {MaxCycles} max cycles",
+            _ => $"Cycle {CurrentCycle} of {MaxCycles}"
+        };
     }
 
     private static string TruncateText(string text, int maxLength)

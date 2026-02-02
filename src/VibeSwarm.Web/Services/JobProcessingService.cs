@@ -547,6 +547,15 @@ public class JobProcessingService : BackgroundService
             _logger.LogInformation("Starting provider execution for job {JobId} in directory {WorkingDir}",
                 job.Id, workingDirectory ?? "(default)");
 
+            // Multi-cycle execution support
+            var effectiveMaxCycles = job.CycleMode == CycleMode.SingleCycle ? 1 : job.MaxCycles;
+            var currentCycle = job.CurrentCycle;
+            var sessionId = job.SessionId;
+            ExecutionResult? lastResult = null;
+            var totalInputTokens = 0;
+            var totalOutputTokens = 0;
+            decimal totalCostUsd = 0;
+
             // Track last progress update time to avoid excessive database writes
             var lastProgressUpdate = DateTime.MinValue;
             var progressUpdateInterval = TimeSpan.FromSeconds(2); // Update every 2 seconds to reduce database load
@@ -740,18 +749,112 @@ public class JobProcessingService : BackgroundService
                 }
             });
 
-            var result = await provider.ExecuteWithOptionsAsync(
-                job.GoalPrompt,
-                new ExecutionOptions
+            // ===== Multi-Cycle Execution Loop =====
+            var currentPrompt = job.GoalPrompt;
+            var cycleComplete = false;
+
+            while (currentCycle <= effectiveMaxCycles && !cycleComplete && !cancellationToken.IsCancellationRequested)
+            {
+                if (effectiveMaxCycles > 1)
                 {
-                    SessionId = job.SessionId,
-                    WorkingDirectory = workingDirectory,
-                    McpConfigPath = await GetMcpConfigPathAsync(job.ProviderId),
-                    Model = job.ModelUsed,
-                    Title = job.Title
-                },
-                progress,
-                cancellationToken);
+                    _logger.LogInformation("Starting cycle {Current}/{Max} for job {JobId}",
+                        currentCycle, effectiveMaxCycles, job.Id);
+
+                    // Notify UI about cycle progress
+                    if (_jobUpdateService != null)
+                    {
+                        await _jobUpdateService.NotifyJobCycleProgress(job.Id, currentCycle, effectiveMaxCycles);
+                    }
+
+                    // Update current cycle in database
+                    using var cycleScope = _scopeFactory.CreateScope();
+                    var cycleDbContext = cycleScope.ServiceProvider.GetRequiredService<VibeSwarmDbContext>();
+                    var jobForCycle = await cycleDbContext.Jobs.FindAsync(new object[] { job.Id }, cancellationToken);
+                    if (jobForCycle != null)
+                    {
+                        jobForCycle.CurrentCycle = currentCycle;
+                        await cycleDbContext.SaveChangesAsync(cancellationToken);
+                    }
+                }
+
+                // Determine session ID for this cycle
+                var cycleSessionId = job.CycleSessionMode == CycleSessionMode.ContinueSession ? sessionId : null;
+
+                var result = await provider.ExecuteWithOptionsAsync(
+                    currentPrompt,
+                    new ExecutionOptions
+                    {
+                        SessionId = cycleSessionId,
+                        WorkingDirectory = workingDirectory,
+                        McpConfigPath = await GetMcpConfigPathAsync(job.ProviderId),
+                        Model = job.ModelUsed,
+                        Title = job.Title
+                    },
+                    progress,
+                    cancellationToken);
+
+                // Store last result and accumulate tokens/cost
+                lastResult = result;
+                sessionId = result.SessionId ?? sessionId;
+                totalInputTokens += result.InputTokens ?? 0;
+                totalOutputTokens += result.OutputTokens ?? 0;
+                totalCostUsd += result.CostUsd ?? 0;
+
+                // Check for cycle completion conditions
+                if (!result.Success)
+                {
+                    _logger.LogWarning("Cycle {Current} failed for job {JobId}: {Error}",
+                        currentCycle, job.Id, result.ErrorMessage);
+                    cycleComplete = true;
+                    break;
+                }
+
+                // Check cancellation between cycles
+                using var cancelCheckScope = _scopeFactory.CreateScope();
+                var cancelCheckService = cancelCheckScope.ServiceProvider.GetRequiredService<IJobService>();
+                if (await cancelCheckService.IsCancellationRequestedAsync(job.Id, CancellationToken.None))
+                {
+                    _logger.LogInformation("Job {JobId} cancelled between cycles", job.Id);
+                    cycleComplete = true;
+                    break;
+                }
+
+                // Determine if we should continue cycling
+                if (job.CycleMode == CycleMode.SingleCycle || currentCycle >= effectiveMaxCycles)
+                {
+                    cycleComplete = true;
+                }
+                else if (job.CycleMode == CycleMode.Autonomous)
+                {
+                    // Check if output contains CYCLE_COMPLETE marker
+                    if (result.Output?.Contains("CYCLE_COMPLETE", StringComparison.OrdinalIgnoreCase) == true)
+                    {
+                        _logger.LogInformation("Job {JobId} completed autonomously at cycle {Current}",
+                            job.Id, currentCycle);
+                        cycleComplete = true;
+                    }
+                    else
+                    {
+                        // Build next cycle prompt for autonomous mode
+                        currentPrompt = string.IsNullOrWhiteSpace(job.CycleReviewPrompt)
+                            ? "Review all changes made so far. Verify the code compiles and tests pass. If the task is complete and working correctly, respond with CYCLE_COMPLETE. Otherwise, continue implementing the remaining work."
+                            : job.CycleReviewPrompt;
+                        currentCycle++;
+                    }
+                }
+                else if (job.CycleMode == CycleMode.FixedCount)
+                {
+                    // Build next cycle prompt for fixed count mode
+                    currentPrompt = $"Continue implementing the task. This is cycle {currentCycle + 1} of {effectiveMaxCycles}. Review the current state and continue where you left off.";
+                    currentCycle++;
+                }
+            }
+
+            // Use accumulated results
+            var finalResult = lastResult ?? new ExecutionResult { Success = false, ErrorMessage = "No execution result" };
+            finalResult.InputTokens = totalInputTokens;
+            finalResult.OutputTokens = totalOutputTokens;
+            finalResult.CostUsd = totalCostUsd;
 
             // Stop monitoring cancellation
             executionContext.CancellationTokenSource?.Cancel();
@@ -764,19 +867,19 @@ public class JobProcessingService : BackgroundService
 
             if (wasCancelled)
             {
-                await CompleteJobAsync(job.Id, JobStatus.Cancelled, result.SessionId, result.Output,
-                    "Job was cancelled by user", result.InputTokens, result.OutputTokens, result.CostUsd, result.ModelUsed,
+                await CompleteJobAsync(job.Id, JobStatus.Cancelled, finalResult.SessionId, finalResult.Output,
+                    "Job was cancelled by user", finalResult.InputTokens, finalResult.OutputTokens, finalResult.CostUsd, finalResult.ModelUsed,
                     executionContext, workingDirectory, dbContext, CancellationToken.None);
                 await NotifyJobCompletedAsync(job.Id, false, "Job was cancelled by user");
 
                 _logger.LogInformation("Job {JobId} was cancelled during execution", job.Id);
             }
-            else if (result.Success)
+            else if (finalResult.Success)
             {
                 // Save messages
-                if (result.Messages.Count > 0)
+                if (finalResult.Messages.Count > 0)
                 {
-                    var messages = result.Messages.Select(m => new JobMessage
+                    var messages = finalResult.Messages.Select(m => new JobMessage
                     {
                         Role = ParseMessageRole(m.Role),
                         Content = m.Content,
@@ -790,23 +893,23 @@ public class JobProcessingService : BackgroundService
                     await NotifyJobMessageAddedAsync(job.Id);
                 }
 
-                await CompleteJobAsync(job.Id, JobStatus.Completed, result.SessionId, result.Output,
-                    null, result.InputTokens, result.OutputTokens, result.CostUsd, result.ModelUsed,
+                await CompleteJobAsync(job.Id, JobStatus.Completed, finalResult.SessionId, finalResult.Output,
+                    null, finalResult.InputTokens, finalResult.OutputTokens, finalResult.CostUsd, finalResult.ModelUsed,
                     executionContext, workingDirectory, dbContext, CancellationToken.None);
 
                 _logger.LogInformation("Job {JobId} completed successfully. Session: {SessionId}, InputTokens: {InputTokens}, OutputTokens: {OutputTokens}, Cost: {CostUsd}",
-                    job.Id, result.SessionId, result.InputTokens, result.OutputTokens, result.CostUsd);
+                    job.Id, finalResult.SessionId, finalResult.InputTokens, finalResult.OutputTokens, finalResult.CostUsd);
                 await NotifyJobCompletedAsync(job.Id, true);
             }
             else
             {
-                await CompleteJobAsync(job.Id, JobStatus.Failed, result.SessionId, result.Output,
-                    result.ErrorMessage, result.InputTokens, result.OutputTokens, result.CostUsd, result.ModelUsed,
+                await CompleteJobAsync(job.Id, JobStatus.Failed, finalResult.SessionId, finalResult.Output,
+                    finalResult.ErrorMessage, finalResult.InputTokens, finalResult.OutputTokens, finalResult.CostUsd, finalResult.ModelUsed,
                     executionContext, workingDirectory, dbContext, CancellationToken.None);
 
                 _logger.LogWarning("Job {JobId} failed: {Error}. InputTokens: {InputTokens}, OutputTokens: {OutputTokens}, Cost: {CostUsd}",
-                    job.Id, result.ErrorMessage, result.InputTokens, result.OutputTokens, result.CostUsd);
-                await NotifyJobCompletedAsync(job.Id, false, result.ErrorMessage);
+                    job.Id, finalResult.ErrorMessage, finalResult.InputTokens, finalResult.OutputTokens, finalResult.CostUsd);
+                await NotifyJobCompletedAsync(job.Id, false, finalResult.ErrorMessage);
             }
         }
         catch (OperationCanceledException)
@@ -932,7 +1035,9 @@ public class JobProcessingService : BackgroundService
         JobExecutionContext executionContext, string? workingDirectory,
         VibeSwarmDbContext dbContext, CancellationToken cancellationToken)
     {
-        var job = await dbContext.Jobs.FindAsync(new object[] { jobId }, cancellationToken);
+        var job = await dbContext.Jobs
+            .Include(j => j.Project)
+            .FirstOrDefaultAsync(j => j.Id == jobId, cancellationToken);
         if (job != null)
         {
             job.Status = status;
@@ -964,11 +1069,19 @@ public class JobProcessingService : BackgroundService
                     // Get diff since the commit we captured at start
                     var baseCommit = executionContext.GitCommitBefore;
                     string? gitDiff = null;
+                    IReadOnlyList<string>? commitLog = null;
 
                     if (!string.IsNullOrEmpty(baseCommit))
                     {
                         // First, get committed changes since the base commit (commits made by the agent)
                         var committedDiff = await _versionControlService.GetCommitRangeDiffAsync(workingDirectory, baseCommit, null, cancellationToken);
+
+                        // Get commit log (commit messages made by the agent)
+                        commitLog = await _versionControlService.GetCommitLogAsync(workingDirectory, baseCommit, null, cancellationToken);
+                        if (commitLog.Count > 0)
+                        {
+                            _logger.LogInformation("Found {Count} commits made during job {JobId} execution", commitLog.Count, jobId);
+                        }
 
                         // Also get any uncommitted changes (working directory changes)
                         var uncommittedDiff = await _versionControlService.GetWorkingDirectoryDiffAsync(workingDirectory, null, cancellationToken);
@@ -999,7 +1112,8 @@ public class JobProcessingService : BackgroundService
                         _logger.LogInformation("Captured git diff for job {JobId}: {Length} chars", jobId, gitDiff.Length);
 
                         // Generate session summary from git diff for pre-populating commit messages
-                        var sessionSummary = JobSummaryGenerator.GenerateSummary(job);
+                        // Pass the commit log so we can include agent commit messages as bullet points
+                        var sessionSummary = JobSummaryGenerator.GenerateSummary(job, commitLog);
                         if (!string.IsNullOrWhiteSpace(sessionSummary))
                         {
                             job.SessionSummary = sessionSummary;
@@ -1016,9 +1130,74 @@ public class JobProcessingService : BackgroundService
                 {
                     _logger.LogWarning(ex, "Failed to capture git diff for job {JobId}", jobId);
                 }
+
+                // Perform auto-commit if configured and job completed successfully
+                if (status == JobStatus.Completed && job.Project?.AutoCommitMode != AutoCommitMode.Off)
+                {
+                    await PerformAutoCommitAsync(job, workingDirectory, cancellationToken);
+                }
             }
 
             await dbContext.SaveChangesAsync(cancellationToken);
+        }
+    }
+
+    /// <summary>
+    /// Performs auto-commit (and optionally push) based on project settings.
+    /// </summary>
+    private async Task PerformAutoCommitAsync(Job job, string workingDirectory, CancellationToken cancellationToken)
+    {
+        try
+        {
+            // Check if there are uncommitted changes
+            var hasChanges = await _versionControlService.HasUncommittedChangesAsync(workingDirectory, cancellationToken);
+            if (!hasChanges)
+            {
+                _logger.LogDebug("No uncommitted changes to auto-commit for job {JobId}", job.Id);
+                return;
+            }
+
+            var commitMessage = job.SessionSummary ?? $"VibeSwarm: {job.Title ?? "Job completed"}";
+
+            _logger.LogInformation("Auto-committing changes for job {JobId} with mode {Mode}",
+                job.Id, job.Project!.AutoCommitMode);
+
+            var commitResult = await _versionControlService.CommitAllChangesAsync(
+                workingDirectory,
+                commitMessage,
+                cancellationToken);
+
+            if (commitResult.Success)
+            {
+                job.GitCommitHash = commitResult.CommitHash;
+                _logger.LogInformation("Auto-committed changes for job {JobId}: {CommitHash}",
+                    job.Id, commitResult.CommitHash?[..Math.Min(8, commitResult.CommitHash?.Length ?? 0)]);
+
+                // Push if configured
+                if (job.Project!.AutoCommitMode == AutoCommitMode.CommitAndPush)
+                {
+                    var pushResult = await _versionControlService.PushAsync(workingDirectory, cancellationToken: cancellationToken);
+                    if (pushResult.Success)
+                    {
+                        _logger.LogInformation("Auto-pushed changes for job {JobId}", job.Id);
+                    }
+                    else
+                    {
+                        // Push failed, but commit succeeded - log warning but don't fail the job
+                        _logger.LogWarning("Auto-push failed for job {JobId}: {Error}. Changes were committed but not pushed.",
+                            job.Id, pushResult.Error);
+                    }
+                }
+            }
+            else
+            {
+                _logger.LogWarning("Auto-commit failed for job {JobId}: {Error}", job.Id, commitResult.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            // Auto-commit failures should not fail the job
+            _logger.LogWarning(ex, "Error during auto-commit for job {JobId}", job.Id);
         }
     }
 

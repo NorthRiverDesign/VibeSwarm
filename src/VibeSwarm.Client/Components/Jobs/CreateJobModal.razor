@@ -84,6 +84,81 @@
 							</div>
 						}
 
+						@* Multi-Cycle Options (Collapsible) *@
+						<div class="mb-3">
+							<button type="button" class="btn btn-link p-0 text-decoration-none"
+								@onclick="ToggleAdvancedOptions">
+								<i class="bi @(ShowAdvancedOptions ? "bi-chevron-down" : "bi-chevron-right") me-1"></i>
+								Advanced Options
+							</button>
+						</div>
+
+						@if (ShowAdvancedOptions)
+						{
+							<div class="border rounded p-3 mb-3 bg-body-tertiary">
+								<div class="mb-3">
+									<label for="cycleMode" class="form-label">Cycle Mode</label>
+									<InputSelect id="cycleMode" @bind-Value="JobModel.CycleMode" class="form-select">
+										<option value="@CycleMode.SingleCycle">Single Cycle (default)</option>
+										<option value="@CycleMode.FixedCount">Fixed Count</option>
+										<option value="@CycleMode.Autonomous">Autonomous</option>
+									</InputSelect>
+									<div class="form-text">
+										@switch (JobModel.CycleMode)
+										{
+											case CycleMode.SingleCycle:
+												<span>Agent runs once and completes.</span>
+												break;
+											case CycleMode.FixedCount:
+												<span>Agent runs for a fixed number of cycles.</span>
+												break;
+											case CycleMode.Autonomous:
+												<span>Agent decides when the task is complete (max cycles as safety limit).</span>
+												break;
+										}
+									</div>
+								</div>
+
+								@if (JobModel.CycleMode != CycleMode.SingleCycle)
+								{
+									<div class="mb-3">
+										<label for="maxCycles" class="form-label">Max Cycles</label>
+										<InputNumber id="maxCycles" @bind-Value="JobModel.MaxCycles" class="form-control" min="1"
+											max="100" />
+										<div class="form-text">Maximum number of execution cycles (1-100).</div>
+									</div>
+
+									<div class="mb-3">
+										<label for="cycleSessionMode" class="form-label">Session Mode</label>
+										<InputSelect id="cycleSessionMode" @bind-Value="JobModel.CycleSessionMode"
+											class="form-select">
+											<option value="@CycleSessionMode.ContinueSession">Continue Session</option>
+											<option value="@CycleSessionMode.FreshSession">Fresh Session</option>
+										</InputSelect>
+										<div class="form-text">
+											@if (JobModel.CycleSessionMode == CycleSessionMode.ContinueSession)
+											{
+												<span>Maintain context between cycles (recommended for iterative work).</span>
+											}
+											else
+											{
+												<span>Start fresh context each cycle (useful for independent tasks).</span>
+											}
+										</div>
+									</div>
+
+									<div class="mb-3">
+										<label for="cycleReviewPrompt" class="form-label">Cycle Review Prompt (Optional)</label>
+										<InputTextArea id="cycleReviewPrompt" @bind-Value="JobModel.CycleReviewPrompt"
+											class="form-control" rows="2"
+											placeholder="Instructions for reviewing progress between cycles..." />
+										<div class="form-text">Additional context provided at the start of each subsequent cycle.
+										</div>
+									</div>
+								}
+							</div>
+						}
+
 						@if (!string.IsNullOrEmpty(ErrorMessage))
 						{
 							<Alert Type="Alert.AlertType.Danger" Message="@ErrorMessage" Class="mb-0" />
@@ -153,6 +228,13 @@
 
 	[Parameter]
 	public EventCallback OnSubmit { get; set; }
+
+	private bool ShowAdvancedOptions { get; set; } = false;
+
+	private void ToggleAdvancedOptions()
+	{
+		ShowAdvancedOptions = !ShowAdvancedOptions;
+	}
 
 	private async Task HandleProviderChanged(Guid providerId)
 	{

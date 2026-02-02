@@ -136,5 +136,12 @@ public class HttpVersionControlService : IVersionControlService
         return await response.Content.ReadFromJsonAsync<GitOperationResult>(ct) ?? new GitOperationResult { Success = false };
     }
 
+    public async Task<IReadOnlyList<string>> GetCommitLogAsync(string workingDirectory, string fromCommit, string? toCommit = null, CancellationToken ct = default)
+    {
+        var url = $"/api/git/commit-log?path={Enc(workingDirectory)}&from={Uri.EscapeDataString(fromCommit)}";
+        if (toCommit != null) url += $"&to={Uri.EscapeDataString(toCommit)}";
+        return await _http.GetFromJsonAsync<List<string>>(url, ct) ?? [];
+    }
+
     private static string Enc(string value) => Uri.EscapeDataString(value);
 }

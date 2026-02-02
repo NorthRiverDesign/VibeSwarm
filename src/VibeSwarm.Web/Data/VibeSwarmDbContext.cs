@@ -57,6 +57,7 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
             entity.Property(e => e.Name).IsRequired().HasMaxLength(100);
             entity.Property(e => e.Description).HasMaxLength(500);
             entity.Property(e => e.WorkingPath).IsRequired().HasMaxLength(500);
+            entity.Property(e => e.AutoCommitMode).HasConversion<string>().HasDefaultValue(AutoCommitMode.Off);
             entity.HasMany(e => e.Jobs)
                 .WithOne(j => j.Project)
                 .HasForeignKey(j => j.ProjectId)
@@ -77,6 +78,12 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
             entity.Property(e => e.FailurePattern).HasMaxLength(1000);
             entity.Property(e => e.GitCommitBefore).HasMaxLength(100);
             entity.Property(e => e.GitCommitHash).HasMaxLength(100);
+            // Multi-cycle properties
+            entity.Property(e => e.CycleMode).HasConversion<string>().HasDefaultValue(CycleMode.SingleCycle);
+            entity.Property(e => e.CycleSessionMode).HasConversion<string>().HasDefaultValue(CycleSessionMode.ContinueSession);
+            entity.Property(e => e.MaxCycles).HasDefaultValue(1);
+            entity.Property(e => e.CurrentCycle).HasDefaultValue(1);
+            entity.Property(e => e.CycleReviewPrompt).HasMaxLength(2000);
             // GitDiff and ConsoleOutput can be large, no max length constraint
             entity.HasOne(e => e.Provider)
                 .WithMany()

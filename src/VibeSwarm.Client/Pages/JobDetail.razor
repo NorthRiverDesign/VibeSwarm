@@ -38,7 +38,8 @@ else
         ShowRetryOptions="@(Job.Status == JobStatus.Failed || Job.Status == JobStatus.Cancelled)" IsRetrying="@IsRetrying"
         IsCancelling="@IsCancelling" IsForceCancelling="@IsForceCancelling" OnRetry="RetryJob"
         OnRetryWithOptions="ShowRetryModal" OnCancel="CancelJob" OnForceCancel="ForceCancelJob"
-        CurrentActivity="@Job.CurrentActivity" LastActivityAt="@Job.LastActivityAt" />
+        CurrentActivity="@Job.CurrentActivity" LastActivityAt="@Job.LastActivityAt" CurrentCycle="@Job.CurrentCycle"
+        MaxCycles="@Job.MaxCycles" CycleMode="@Job.CycleMode" />
 
     @* Main Content - Column Layout *@
     <div class="row g-3 g-lg-4">
@@ -95,8 +96,9 @@ else
                     BranchName="@_branchName" IsLoadingSummary="@_isLoadingSummary"
                     HasAISummary="@(!string.IsNullOrWhiteSpace(Job.SessionSummary))" SummaryError="@_summaryError"
                     PushError="@_pushError" IsPushing="@_isPushing" PushStatus="@_pushStatus" IsPushed="@_changesPushed"
-                    PushedCommitHash="@_pushedCommitHash" CanPush="@CanPush" OnCommitAndPush="CommitAndPushChanges"
-                    OnRefreshSummary="RefreshSummary" />
+                    PushedCommitHash="@_pushedCommitHash" CanPush="@CanPush"
+                    IsAutoCommitted="@(!string.IsNullOrEmpty(Job.GitCommitHash) && !_changesPushed)"
+                    OnCommitAndPush="CommitAndPushChanges" OnRefreshSummary="RefreshSummary" />
             }
             else if (_isGitRepository && !IsJobActive && Job.Status == JobStatus.Completed &&
             string.IsNullOrEmpty(Job.GitDiff))
@@ -391,6 +393,11 @@ TimeSpan.FromSeconds(10) })
                 await OnJobInteractionCompleted(jobId);
             });
 
+            _hubConnection.On<string, int, int>("JobCycleProgress", async (jobId, currentCycle, maxCycles) =>
+            {
+                await OnJobCycleProgress(jobId, currentCycle, maxCycles);
+            });
+
             await _hubConnection.StartAsync(cancellationToken);
             Console.WriteLine("SignalR connected successfully");
         }
@@ -517,6 +524,16 @@ TimeSpan.FromSeconds(10) })
             _interactionChoices = null;
             _interactionError = null;
             _isSubmittingResponse = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task OnJobCycleProgress(string jobId, int currentCycle, int maxCycles)
+    {
+        if (Job != null && Job.Id.ToString() == jobId)
+        {
+            Job.CurrentCycle = currentCycle;
+            Job.MaxCycles = maxCycles;
             await InvokeAsync(StateHasChanged);
         }
     }

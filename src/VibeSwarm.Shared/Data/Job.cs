@@ -3,6 +3,43 @@ using VibeSwarm.Shared.Providers;
 
 namespace VibeSwarm.Shared.Data;
 
+/// <summary>
+/// Specifies how cycles are managed for a job.
+/// </summary>
+public enum CycleMode
+{
+    /// <summary>
+    /// Single cycle only (default behavior).
+    /// </summary>
+    SingleCycle = 0,
+
+    /// <summary>
+    /// Fixed number of cycles. Job runs exactly MaxCycles times.
+    /// </summary>
+    FixedCount = 1,
+
+    /// <summary>
+    /// Autonomous mode. Agent decides when to stop by responding with CYCLE_COMPLETE.
+    /// </summary>
+    Autonomous = 2
+}
+
+/// <summary>
+/// Specifies how sessions are handled between cycles.
+/// </summary>
+public enum CycleSessionMode
+{
+    /// <summary>
+    /// Continue using the same session across cycles.
+    /// </summary>
+    ContinueSession = 0,
+
+    /// <summary>
+    /// Start a fresh session for each cycle.
+    /// </summary>
+    FreshSession = 1
+}
+
 public class Job
 {
     public Guid Id { get; set; }
@@ -191,6 +228,36 @@ public class Job
     /// </summary>
     public Guid? DependsOnJobId { get; set; }
 
+    #region Multi-Cycle Properties
+
+    /// <summary>
+    /// How cycles are managed for this job.
+    /// </summary>
+    public CycleMode CycleMode { get; set; } = CycleMode.SingleCycle;
+
+    /// <summary>
+    /// How sessions are handled between cycles.
+    /// </summary>
+    public CycleSessionMode CycleSessionMode { get; set; } = CycleSessionMode.ContinueSession;
+
+    /// <summary>
+    /// Maximum number of cycles to execute (default 1, meaning single execution).
+    /// </summary>
+    public int MaxCycles { get; set; } = 1;
+
+    /// <summary>
+    /// Current cycle number (1-based, updated during execution).
+    /// </summary>
+    public int CurrentCycle { get; set; } = 1;
+
+    /// <summary>
+    /// Custom prompt for cycle review in Autonomous mode.
+    /// If empty, uses default: "Review all changes. Verify compile/tests. Respond with CYCLE_COMPLETE if done, otherwise continue."
+    /// </summary>
+    [StringLength(2000)]
+    public string? CycleReviewPrompt { get; set; }
+
+    #endregion
     /// <summary>
     /// Git diff showing changes made during job execution.
     /// Captured after job completes by comparing working directory state.

@@ -93,6 +93,14 @@
 					<span>PID: @ProcessId</span>
 				</span>
 			}
+			@if (MaxCycles > 1)
+			{
+				<span class="badge bg-info bg-opacity-75 d-inline-flex align-items-center gap-1 fw-normal"
+					title="@GetCycleModeTitle()">
+					<i class="bi bi-arrow-repeat"></i>
+					<span>Cycle @CurrentCycle/@MaxCycles</span>
+				</span>
+			}
 		</div>
 
 		@* Timestamps row *@
@@ -267,8 +275,27 @@
 	[Parameter]
 	public DateTime? LastActivityAt { get; set; }
 
+	[Parameter]
+	public int CurrentCycle { get; set; } = 1;
+
+	[Parameter]
+	public int MaxCycles { get; set; } = 1;
+
+	[Parameter]
+	public CycleMode CycleMode { get; set; } = CycleMode.SingleCycle;
+
 	private bool IsRunning => Status == JobStatus.Started || Status == JobStatus.Processing;
 
 	private bool ShowStats => !string.IsNullOrEmpty(ModelUsed) || InputTokens.HasValue || OutputTokens.HasValue ||
 	TotalCostUsd.HasValue || RetryCount > 0;
+
+	private string GetCycleModeTitle()
+	{
+		return CycleMode switch
+		{
+			CycleMode.FixedCount => $"Fixed Count Mode: {CurrentCycle} of {MaxCycles} cycles",
+			CycleMode.Autonomous => $"Autonomous Mode: {CurrentCycle} of {MaxCycles} max cycles",
+			_ => $"Cycle {CurrentCycle} of {MaxCycles}"
+		};
+	}
 }

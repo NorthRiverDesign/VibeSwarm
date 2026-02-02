@@ -2,6 +2,27 @@ using System.ComponentModel.DataAnnotations;
 
 namespace VibeSwarm.Shared.Data;
 
+/// <summary>
+/// Specifies the auto-commit behavior after a job completes successfully.
+/// </summary>
+public enum AutoCommitMode
+{
+    /// <summary>
+    /// No automatic commit. Changes must be committed manually.
+    /// </summary>
+    Off = 0,
+
+    /// <summary>
+    /// Automatically commit changes after job completion, but do not push.
+    /// </summary>
+    CommitOnly = 1,
+
+    /// <summary>
+    /// Automatically commit and push changes after job completion.
+    /// </summary>
+    CommitAndPush = 2
+}
+
 public class Project
 {
     public Guid Id { get; set; }
@@ -23,6 +44,11 @@ public class Project
     /// </summary>
     [StringLength(200)]
     public string? GitHubRepository { get; set; }
+
+    /// <summary>
+    /// Auto-commit behavior after job completion.
+    /// </summary>
+    public AutoCommitMode AutoCommitMode { get; set; } = AutoCommitMode.Off;
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 

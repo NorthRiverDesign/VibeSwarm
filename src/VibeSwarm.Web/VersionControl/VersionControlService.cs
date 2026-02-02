@@ -1233,4 +1233,51 @@ public sealed class VersionControlService : IVersionControlService
 			return GitOperationResult.Failed($"Unexpected error discarding changes: {ex.Message}");
 		}
 	}
+
+	/// <inheritdoc />
+	public async Task<IReadOnlyList<string>> GetCommitLogAsync(
+		string workingDirectory,
+		string fromCommit,
+		string? toCommit = null,
+		CancellationToken cancellationToken = default)
+	{
+		try
+		{
+			var isRepo = await IsGitRepositoryAsync(workingDirectory, cancellationToken);
+			if (!isRepo)
+			{
+				return Array.Empty<string>();
+			}
+
+			var targetCommit = string.IsNullOrEmpty(toCommit) ? "HEAD" : toCommit;
+
+			// Use --oneline format which gives us: <short-hash> <subject>
+			// We want the subject line only, so we'll strip the hash
+			var result = await _commandExecutor.ExecuteAsync(
+				$"log {fromCommit}..{targetCommit} --oneline --no-decorate",
+				workingDirectory,
+				cancellationToken,
+				timeoutSeconds: 30);
+
+			if (result.Success && !string.IsNullOrWhiteSpace(result.Output))
+			{
+				return result.Output
+					.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+					.Select(line =>
+					{
+						// Strip the hash prefix (format: "abc1234 Subject line")
+						var spaceIndex = line.IndexOf(' ');
+						return spaceIndex > 0 ? line[(spaceIndex + 1)..].Trim() : line.Trim();
+					})
+					.Where(msg => !string.IsNullOrEmpty(msg))
+					.ToList();
+			}
+		}
+		catch
+		{
+			// Git not available or error running command
+		}
+
+		return Array.Empty<string>();
+	}
 }

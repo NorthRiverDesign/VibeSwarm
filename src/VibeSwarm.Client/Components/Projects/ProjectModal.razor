@@ -59,6 +59,20 @@
 				<div class="form-text">Directory where CLI providers execute commands.</div>
 			</div>
 
+			<div class="mb-3">
+				<label for="modal-autoCommitMode" class="form-label">
+					<i class="bi bi-git me-1"></i>Auto-Commit
+				</label>
+				<InputSelect id="modal-autoCommitMode" @bind-Value="Project.AutoCommitMode" class="form-select">
+					<option value="@AutoCommitMode.Off">Off - Manual commit required</option>
+					<option value="@AutoCommitMode.CommitOnly">Commit Only - Auto-commit after job completion</option>
+					<option value="@AutoCommitMode.CommitAndPush">Commit & Push - Auto-commit and push after job
+						completion</option>
+				</InputSelect>
+				<div class="form-text">Automatically commit (and optionally push) changes after successful job
+					completion.</div>
+			</div>
+
 			@if (!string.IsNullOrEmpty(_cloneProgressMessage))
 			{
 				<Alert Type="Alert.AlertType.Info" Message="@_cloneProgressMessage" Class="mb-3" />
@@ -171,6 +185,7 @@
 					Description = EditProject.Description,
 					WorkingPath = EditProject.WorkingPath,
 					GitHubRepository = EditProject.GitHubRepository,
+					AutoCommitMode = EditProject.AutoCommitMode,
 					CreatedAt = EditProject.CreatedAt,
 					UpdatedAt = EditProject.UpdatedAt
 				};

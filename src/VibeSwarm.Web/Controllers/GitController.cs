@@ -73,6 +73,9 @@ public class GitController : ControllerBase
     [HttpPost("discard")]
     public async Task<IActionResult> Discard([FromBody] DiscardRequest req, CancellationToken ct) => Ok(await _gitService.DiscardAllChangesAsync(req.Path, req.IncludeUntracked, ct));
 
+    [HttpGet("commit-log")]
+    public async Task<IActionResult> GetCommitLog([FromQuery] string path, [FromQuery] string from, [FromQuery] string? to = null, CancellationToken ct = default) => Ok(await _gitService.GetCommitLogAsync(path, from, to, ct));
+
     // Request DTOs
     public record CommitRequest(string Path, string Message);
     public record PushRequest(string Path, string? Remote, string? Branch);

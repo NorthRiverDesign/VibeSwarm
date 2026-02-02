@@ -238,4 +238,19 @@ public interface IVersionControlService
 		string workingDirectory,
 		bool includeUntracked = true,
 		CancellationToken cancellationToken = default);
+
+	/// <summary>
+	/// Gets the commit log messages between two commits.
+	/// Used to retrieve commit messages made by an AI agent during job execution.
+	/// </summary>
+	/// <param name="workingDirectory">The repository working directory.</param>
+	/// <param name="fromCommit">The starting commit (exclusive).</param>
+	/// <param name="toCommit">The ending commit (inclusive, defaults to HEAD).</param>
+	/// <param name="cancellationToken">Cancellation token.</param>
+	/// <returns>List of commit messages (subject line only from --oneline format).</returns>
+	Task<IReadOnlyList<string>> GetCommitLogAsync(
+		string workingDirectory,
+		string fromCommit,
+		string? toCommit = null,
+		CancellationToken cancellationToken = default);
 }

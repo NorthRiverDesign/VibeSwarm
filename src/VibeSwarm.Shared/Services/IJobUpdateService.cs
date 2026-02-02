@@ -96,6 +96,14 @@ public interface IJobUpdateService
     Task NotifyJobResumed(Guid jobId);
 
     /// <summary>
+    /// Notifies clients about job cycle progress in multi-cycle jobs
+    /// </summary>
+    /// <param name="jobId">The job ID</param>
+    /// <param name="currentCycle">Current cycle number (1-based)</param>
+    /// <param name="maxCycles">Maximum number of cycles</param>
+    Task NotifyJobCycleProgress(Guid jobId, int currentCycle, int maxCycles);
+
+    /// <summary>
     /// Notifies all clients that an idea has started processing (converted to job)
     /// </summary>
     /// <param name="ideaId">The idea ID</param>

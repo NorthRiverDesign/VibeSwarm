@@ -11,6 +11,8 @@ namespace VibeSwarm.Shared.Services;
 /// </summary>
 public static partial class JobSummaryGenerator
 {
+	private const int MaxCommitLogEntries = 10;
+
 	private static readonly string[] ActionKeywords =
 	[
 		"add", "added", "create", "created", "implement", "implemented",
@@ -39,7 +41,27 @@ public static partial class JobSummaryGenerator
 		return GenerateSummary(
 			gitDiff: job.GitDiff,
 			goalPrompt: job.GoalPrompt,
-			consoleOutput: job.ConsoleOutput);
+			consoleOutput: job.ConsoleOutput,
+			title: job.Title);
+	}
+
+	/// <summary>
+	/// Generates a commit message summary from job data with an explicit commit log.
+	/// </summary>
+	/// <param name="job">The completed job</param>
+	/// <param name="commitLog">List of commit messages made during job execution</param>
+	/// <returns>A concise summary suitable for a commit message, or null if insufficient data</returns>
+	public static string? GenerateSummary(Job job, IReadOnlyList<string>? commitLog)
+	{
+		if (job == null)
+			return null;
+
+		return GenerateSummary(
+			gitDiff: job.GitDiff,
+			goalPrompt: job.GoalPrompt,
+			consoleOutput: job.ConsoleOutput,
+			title: job.Title,
+			commitLog: commitLog);
 	}
 
 	/// <summary>
@@ -48,8 +70,15 @@ public static partial class JobSummaryGenerator
 	/// <param name="gitDiff">The git diff output (from Job.GitDiff)</param>
 	/// <param name="goalPrompt">The original goal/task prompt</param>
 	/// <param name="consoleOutput">Optional console output to scan for context</param>
+	/// <param name="title">Optional job title to use as the headline</param>
+	/// <param name="commitLog">Optional list of commit messages made during job execution</param>
 	/// <returns>A concise summary suitable for a commit message, or null if insufficient data</returns>
-	public static string? GenerateSummary(string? gitDiff, string? goalPrompt, string? consoleOutput = null)
+	public static string? GenerateSummary(
+		string? gitDiff,
+		string? goalPrompt,
+		string? consoleOutput = null,
+		string? title = null,
+		IReadOnlyList<string>? commitLog = null)
 	{
 		// Parse the git diff for file information
 		var diffInfo = ParseGitDiff(gitDiff);
@@ -58,7 +87,7 @@ public static partial class JobSummaryGenerator
 		var actionContext = ExtractActionContext(goalPrompt);
 
 		// Build the summary
-		return BuildSummary(diffInfo, actionContext, goalPrompt);
+		return BuildSummary(diffInfo, actionContext, goalPrompt, title, commitLog);
 	}
 
 	/// <summary>
@@ -237,18 +266,30 @@ public static partial class JobSummaryGenerator
 	/// <summary>
 	/// Builds the final summary from parsed information.
 	/// </summary>
-	private static string? BuildSummary(DiffInfo diffInfo, ActionContext actionContext, string? goalPrompt)
+	private static string? BuildSummary(
+		DiffInfo diffInfo,
+		ActionContext actionContext,
+		string? goalPrompt,
+		string? title = null,
+		IReadOnlyList<string>? commitLog = null)
 	{
 		var sb = new StringBuilder();
 
 		// If we have no meaningful data, return null
-		if (diffInfo.ChangedFiles.Count == 0 && string.IsNullOrWhiteSpace(goalPrompt))
+		if (diffInfo.ChangedFiles.Count == 0 && string.IsNullOrWhiteSpace(goalPrompt) && string.IsNullOrWhiteSpace(title))
 			return null;
 
-		// Build the title line
-		if (!string.IsNullOrEmpty(actionContext.Subject))
+		// Build the title line - prefer explicit title over parsing goalPrompt
+		if (!string.IsNullOrWhiteSpace(title))
 		{
-			// Check if subject already starts with an action verb
+			// Use the title directly as the headline, capitalizing the first letter
+			var cleanTitle = title.Trim();
+			sb.Append(char.ToUpper(cleanTitle[0]));
+			sb.Append(cleanTitle[1..]);
+		}
+		else if (!string.IsNullOrEmpty(actionContext.Subject))
+		{
+			// Fall back to parsing goalPrompt for action + subject
 			var subjectLower = actionContext.Subject.ToLowerInvariant();
 			var startsWithVerb = ActionKeywords.Any(k => subjectLower.StartsWith(k));
 
@@ -272,8 +313,27 @@ public static partial class JobSummaryGenerator
 			sb.Append(" code");
 		}
 
-		// If we have file change info, add a brief summary
-		if (diffInfo.ChangedFiles.Count > 0)
+		// If we have commit log entries, add them as bullet points
+		if (commitLog != null && commitLog.Count > 0)
+		{
+			sb.AppendLine();
+			sb.AppendLine();
+			sb.AppendLine("Changes:");
+
+			var entries = commitLog.Take(MaxCommitLogEntries);
+			foreach (var entry in entries)
+			{
+				sb.Append("• ");
+				sb.AppendLine(entry);
+			}
+
+			if (commitLog.Count > MaxCommitLogEntries)
+			{
+				sb.AppendLine($"... and {commitLog.Count - MaxCommitLogEntries} more commit(s)");
+			}
+		}
+		// If no commit log but we have file change info, add a brief summary
+		else if (diffInfo.ChangedFiles.Count > 0)
 		{
 			sb.AppendLine();
 			sb.AppendLine();
