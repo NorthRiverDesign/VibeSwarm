@@ -537,14 +537,10 @@ TimeSpan.FromSeconds(10) })
             _hasUncommittedChangesHeader = await VersionControlService.HasUncommittedChangesAsync(Project.WorkingPath);
             if (_hasUncommittedChangesHeader)
             {
-                var diffOutput = await VersionControlService.GetWorkingDirectoryDiffAsync(Project.WorkingPath, "--stat");
-                if (!string.IsNullOrEmpty(diffOutput))
-                {
-                    var lines = diffOutput.Split('\n', StringSplitOptions.RemoveEmptyEntries);
-                    _uncommittedFilesCount = lines.Count(l => l.Contains('|') || (l.Trim().Length > 0 && !l.Contains("changed") &&
-                    !l.Contains("insertion") && !l.Contains("deletion")));
-                    if (_uncommittedFilesCount == 0) _uncommittedFilesCount = 1;
-                }
+                // Use GetChangedFilesAsync which returns a proper list of changed files
+                var changedFiles = await VersionControlService.GetChangedFilesAsync(Project.WorkingPath);
+                _uncommittedFilesCount = changedFiles.Count;
+                if (_uncommittedFilesCount == 0) _uncommittedFilesCount = 1; // At least 1 if HasUncommittedChanges is true
             }
             else
             {
