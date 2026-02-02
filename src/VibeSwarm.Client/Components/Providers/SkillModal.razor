@@ -2,6 +2,7 @@
 @using VibeSwarm.Shared.Data
 @using VibeSwarm.Shared.Services
 @inject ISkillService SkillService
+@inject IProviderService ProviderService
 
 <ModalDialog IsVisible="IsVisible" IsVisibleChanged="HandleModalVisibilityChanged"
 	Title="@(IsEdit ? "Edit Skill" : "Add Skill")" Icon="@(IsEdit ? "pencil" : "lightbulb")"
@@ -30,7 +31,68 @@
 			</div>
 
 			<div class="mb-3">
-				<label for="modal-content" class="form-label">Content (Markdown)</label>
+				<label for="modal-content" class="form-label d-flex align-items-center justify-content-between">
+					<span>Content (Markdown)</span>
+					<button type="button" class="btn btn-sm btn-outline-info" @onclick="ToggleExpansionPanel"
+						disabled="@(string.IsNullOrWhiteSpace(Skill.Description))">
+						<i class="bi bi-magic me-1"></i>AI Expand
+					</button>
+				</label>
+
+				@* AI Expansion Panel *@
+				@if (_showExpansionPanel)
+				{
+					<div class="card bg-body-tertiary mb-2">
+						<div class="card-body py-2">
+							<div class="row g-2 align-items-end">
+								<div class="col-12 col-md-5">
+									<label class="form-label small mb-1">Provider</label>
+									<select class="form-select form-select-sm" @bind="_selectedProviderId"
+										@bind:after="LoadModelsForProvider">
+										<option value="">Select provider...</option>
+										@foreach (var provider in _providers.Where(p => p.IsEnabled))
+										{
+											<option value="@provider.Id">@provider.Name</option>
+										}
+									</select>
+								</div>
+								<div class="col-12 col-md-4">
+									<label class="form-label small mb-1">Model</label>
+									<select class="form-select form-select-sm" @bind="_selectedModelId"
+										disabled="@(!_models.Any())">
+										<option value="">@(_isLoadingModels ? "Loading..." : "Default")</option>
+										@foreach (var model in _models.Where(m => m.IsAvailable))
+										{
+											<option value="@model.ModelId">@model.DisplayName</option>
+										}
+									</select>
+								</div>
+								<div class="col-12 col-md-3">
+									<button type="button" class="btn btn-sm btn-primary w-100" @onclick="ExpandWithAI"
+										disabled="@(_selectedProviderId == Guid.Empty || _isExpanding)">
+										@if (_isExpanding)
+										{
+											<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+											<span>Expanding...</span>
+										}
+										else
+										{
+											<i class="bi bi-stars me-1"></i>
+											<span>Generate</span>
+										}
+									</button>
+								</div>
+							</div>
+							@if (!string.IsNullOrEmpty(_expansionError))
+							{
+								<div class="alert alert-danger py-1 px-2 mt-2 mb-0 small">
+									<i class="bi bi-exclamation-triangle me-1"></i>@_expansionError
+								</div>
+							}
+						</div>
+					</div>
+				}
+
 				<InputTextArea id="modal-content" @bind-Value="Skill.Content" class="form-control font-monospace"
 					rows="10"
 					placeholder="# Skill Instructions&#10;&#10;Provide detailed instructions for the AI agent..." />
@@ -102,6 +164,21 @@
 	private string? SuccessMessage { get; set; }
 	private bool _previousIsVisible;
 
+	// AI Expansion state
+	private bool _showExpansionPanel;
+	private bool _isExpanding;
+	private string? _expansionError;
+	private List<Provider> _providers = new();
+	private List<ProviderModel> _models = new();
+	private Guid _selectedProviderId;
+	private string _selectedModelId = string.Empty;
+	private bool _isLoadingModels;
+
+	protected override async Task OnInitializedAsync()
+	{
+		await LoadProviders();
+	}
+
 	protected override void OnParametersSet()
 	{
 		// Only reset state when modal is opening (transitioning from hidden to visible)
@@ -131,6 +208,101 @@
 		}
 
 		_previousIsVisible = IsVisible;
+	}
+
+	private async Task LoadProviders()
+	{
+		try
+		{
+			_providers = (await ProviderService.GetAllAsync()).ToList();
+
+			// Pre-select default provider if available
+			var defaultProvider = _providers.FirstOrDefault(p => p.IsDefault && p.IsEnabled);
+			if (defaultProvider != null)
+			{
+				_selectedProviderId = defaultProvider.Id;
+				await LoadModelsForProvider();
+			}
+		}
+		catch
+		{
+			_providers = new();
+		}
+	}
+
+	private async Task LoadModelsForProvider()
+	{
+		if (_selectedProviderId == Guid.Empty)
+		{
+			_models = new();
+			return;
+		}
+
+		_isLoadingModels = true;
+		_selectedModelId = string.Empty;
+		StateHasChanged();
+
+		try
+		{
+			_models = (await ProviderService.GetModelsAsync(_selectedProviderId)).ToList();
+
+			// Pre-select default model if available
+			var defaultModel = _models.FirstOrDefault(m => m.IsDefault && m.IsAvailable);
+			if (defaultModel != null)
+			{
+				_selectedModelId = defaultModel.ModelId;
+			}
+		}
+		catch
+		{
+			_models = new();
+		}
+		finally
+		{
+			_isLoadingModels = false;
+		}
+	}
+
+	private void ToggleExpansionPanel()
+	{
+		_showExpansionPanel = !_showExpansionPanel;
+		_expansionError = null;
+	}
+
+	private async Task ExpandWithAI()
+	{
+		if (_selectedProviderId == Guid.Empty || string.IsNullOrWhiteSpace(Skill.Description))
+			return;
+
+		_isExpanding = true;
+		_expansionError = null;
+		StateHasChanged();
+
+		try
+		{
+			var result = await SkillService.ExpandSkillAsync(
+			Skill.Description,
+			_selectedProviderId,
+			string.IsNullOrEmpty(_selectedModelId) ? null : _selectedModelId);
+
+			if (!string.IsNullOrWhiteSpace(result))
+			{
+				Skill.Content = result;
+				_showExpansionPanel = false;
+			}
+			else
+			{
+				_expansionError = "Failed to expand skill. Please try again.";
+			}
+		}
+		catch (Exception ex)
+		{
+			_expansionError = $"Error: {ex.Message}";
+		}
+		finally
+		{
+			_isExpanding = false;
+		}
 	}
 
 	private async Task HandleValidSubmit()
@@ -214,5 +386,9 @@
 		ErrorMessage = null;
 		SuccessMessage = null;
 		IsSaving = false;
+		_showExpansionPanel = false;
+		_isExpanding = false;
+		_expansionError = null;
+		_selectedModelId = string.Empty;
 	}
 }

@@ -49,6 +49,16 @@ public interface IIdeaService
 	Task<bool> CompleteIdeaFromJobAsync(Guid jobId, CancellationToken cancellationToken = default);
 
 	/// <summary>
+	/// Handles job completion for an idea. If successful, removes the idea.
+	/// If failed or cancelled, resets the idea for potential retry.
+	/// </summary>
+	/// <param name="jobId">The job that completed</param>
+	/// <param name="success">Whether the job completed successfully</param>
+	/// <param name="cancellationToken">Cancellation token</param>
+	/// <returns>True if an idea was found and handled</returns>
+	Task<bool> HandleJobCompletionAsync(Guid jobId, bool success, CancellationToken cancellationToken = default);
+
+	/// <summary>
 	/// Gets the idea associated with a job (if any)
 	/// </summary>
 	Task<Idea?> GetByJobIdAsync(Guid jobId, CancellationToken cancellationToken = default);

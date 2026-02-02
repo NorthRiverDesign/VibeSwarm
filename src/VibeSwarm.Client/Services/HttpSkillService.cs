@@ -44,4 +44,15 @@ public class HttpSkillService : ISkillService
         if (excludeId.HasValue) url += $"&excludeId={excludeId}";
         return await _http.GetFromJsonAsync<bool>(url, ct);
     }
+
+    public async Task<string?> ExpandSkillAsync(string description, Guid providerId, string? modelId = null, CancellationToken ct = default)
+    {
+        var request = new { description, providerId, modelId };
+        var response = await _http.PostAsJsonAsync("/api/skills/expand", request, ct);
+
+        if (!response.IsSuccessStatusCode)
+            return null;
+
+        return await response.Content.ReadAsStringAsync(ct);
+    }
 }

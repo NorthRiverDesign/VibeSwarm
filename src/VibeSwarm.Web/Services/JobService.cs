@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using VibeSwarm.Shared.Data;
 
 namespace VibeSwarm.Shared.Services;
@@ -7,10 +8,12 @@ public class JobService : IJobService
 {
     private readonly VibeSwarmDbContext _dbContext;
     private readonly IJobUpdateService? _jobUpdateService;
+    private readonly IServiceProvider _serviceProvider;
 
-    public JobService(VibeSwarmDbContext dbContext, IJobUpdateService? jobUpdateService = null)
+    public JobService(VibeSwarmDbContext dbContext, IServiceProvider serviceProvider, IJobUpdateService? jobUpdateService = null)
     {
         _dbContext = dbContext;
+        _serviceProvider = serviceProvider;
         _jobUpdateService = jobUpdateService;
     }
 
@@ -347,6 +350,17 @@ public class JobService : IJobService
             }
             catch { }
         }
+
+        // Handle idea state when job is force-cancelled
+        try
+        {
+            var ideaService = _serviceProvider.GetService<IIdeaService>();
+            if (ideaService != null)
+            {
+                await ideaService.HandleJobCompletionAsync(job.Id, false, cancellationToken);
+            }
+        }
+        catch { /* Ignore errors handling idea state */ }
 
         return true;
     }

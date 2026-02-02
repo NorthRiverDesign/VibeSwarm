@@ -311,5 +311,17 @@ public class JobWatchdogService : BackgroundService
 				_logger.LogWarning(ex, "Failed to notify job completion for {JobId}", jobId);
 			}
 		}
+
+		// Handle idea state when job completes (reset IsProcessing for failed jobs, remove for successful ones)
+		try
+		{
+			using var scope = _scopeFactory.CreateScope();
+			var ideaService = scope.ServiceProvider.GetRequiredService<IIdeaService>();
+			await ideaService.HandleJobCompletionAsync(jobId, success);
+		}
+		catch (Exception ex)
+		{
+			_logger.LogWarning(ex, "Failed to handle idea completion for job {JobId}", jobId);
+		}
 	}
 }

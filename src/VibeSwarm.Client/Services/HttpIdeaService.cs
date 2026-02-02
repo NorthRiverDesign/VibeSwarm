@@ -48,6 +48,12 @@ public class HttpIdeaService : IIdeaService
         return response.IsSuccessStatusCode;
     }
 
+    public async Task<bool> HandleJobCompletionAsync(Guid jobId, bool success, CancellationToken ct = default)
+    {
+        var response = await _http.PostAsync($"/api/ideas/handle-job-completion/{jobId}?success={success}", null, ct);
+        return response.IsSuccessStatusCode;
+    }
+
     public async Task<Idea?> GetByJobIdAsync(Guid jobId, CancellationToken ct = default)
         => await _http.GetFromJsonAsync<Idea?>($"/api/ideas/by-job/{jobId}", ct);
 

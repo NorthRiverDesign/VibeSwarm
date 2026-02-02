@@ -1,4 +1,5 @@
 @* Project jobs list component *@
+@using VibeSwarm.Shared.Utilities
 
 <div class="card">
 	<div class="card-header bg-body-secondary d-flex justify-content-between align-items-center">
@@ -61,9 +62,34 @@
 									</a>
 									<div class="d-flex flex-wrap gap-2 mt-1 small text-body-secondary">
 										<span>@(job.Provider?.Name ?? "Unknown")</span>
-										<span>•</span>
+										@if (!string.IsNullOrEmpty(job.ModelUsed))
+										{
+											<span class="text-body-tertiary">•</span>
+											<span class="text-body-tertiary" title="Model">@FormatModelName(job.ModelUsed)</span>
+										}
+										<span class="text-body-tertiary">•</span>
 										<span>@job.CreatedAt.FormatDateTimeShort()</span>
 									</div>
+									@* Token and cost stats row *@
+									@if (job.InputTokens.HasValue || job.OutputTokens.HasValue || job.TotalCostUsd.HasValue)
+									{
+										<div class="d-flex flex-wrap gap-2 mt-1 small">
+											@if (job.InputTokens.HasValue || job.OutputTokens.HasValue)
+											{
+												<span class="font-monospace text-body-secondary" title="Input / Output tokens">
+													<i
+														class="bi bi-arrow-left-right me-1 opacity-75"></i>@TokenHelper.FormatTokenCount(job.InputTokens
+																						?? 0) / @TokenHelper.FormatTokenCount(job.OutputTokens ?? 0)
+								</span>
+																}
+											@if (job.TotalCostUsd.HasValue && job.TotalCostUsd.Value > 0)
+											{
+												<span class="font-monospace fw-medium text-success" title="Cost">
+													@TokenHelper.FormatCost(job.TotalCostUsd.Value)
+												</span>
+											}
+										</div>
+									}
 									@if ((job.Status == JobStatus.Started || job.Status == JobStatus.Processing) &&
 																!string.IsNullOrEmpty(job.CurrentActivity))
 									{
@@ -130,5 +156,39 @@
 		if (string.IsNullOrEmpty(text) || text.Length <= maxLength)
 			return text;
 		return text[..maxLength] + "...";
+	}
+
+	private static string FormatModelName(string modelName)
+	{
+		// Shorten common model names for display
+		if (string.IsNullOrEmpty(modelName)) return modelName;
+
+		// Remove common prefixes and date suffixes
+		var name = modelName;
+		if (name.Contains('-'))
+		{
+			// Try to get a shorter version (e.g., "claude-sonnet-4-20250514" -> "sonnet-4")
+			var parts = name.Split('-');
+			if (parts.Length >= 3)
+			{
+				// Look for version number pattern
+				for (int i = 1; i < parts.Length - 1; i++)
+				{
+					if (char.IsDigit(parts[i][0]) || parts[i].All(char.IsDigit))
+					{
+						// Return model name + version
+						return $"{parts[i - 1]}-{parts[i]}";
+					}
+				}
+				// Fallback: skip first part and date-like suffix
+				if (parts[^1].Length == 8 && parts[^1].All(char.IsDigit))
+				{
+					return string.Join("-", parts.Skip(1).Take(parts.Length - 2));
+				}
+			}
+		}
+
+		// Truncate if still too long
+		return name.Length > 20 ? name[..17] + "..." : name;
 	}
 }

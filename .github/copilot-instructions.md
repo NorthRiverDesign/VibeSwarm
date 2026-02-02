@@ -202,6 +202,10 @@ Ensure all user inputs are validated and sanitized to prevent injection attacks 
 
 When generating a prompt, use an XML-style approach to give the best segmentation of context. A task to complete might include an <overview>, multiple <objective> tags, and a <goal> tag.
 
+## Bug Fixes
+
+When you encounter a bug and fix it, always attempt to write a unit test that replicates the bug. This ensures that the bug does not reoccur in the future. Add documentation to the code where necessary to explain why the code is written a certain way.
+
 # Critical Goals
 
 1. Avoid custom CSS wherever possible. Use Bootstrap utility classes to achieve desired layouts and styling. If you have to make a class, name it as a utility and reuse it wherever possible.

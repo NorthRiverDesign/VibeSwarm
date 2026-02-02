@@ -68,6 +68,10 @@ public class IdeasController : ControllerBase
     public async Task<IActionResult> CompleteFromJob(Guid jobId, CancellationToken ct)
         => await _ideaService.CompleteIdeaFromJobAsync(jobId, ct) ? Ok() : BadRequest();
 
+    [HttpPost("handle-job-completion/{jobId:guid}")]
+    public async Task<IActionResult> HandleJobCompletion(Guid jobId, [FromQuery] bool success, CancellationToken ct)
+        => await _ideaService.HandleJobCompletionAsync(jobId, success, ct) ? Ok() : BadRequest();
+
     [HttpGet("by-job/{jobId:guid}")]
     public async Task<IActionResult> GetByJobId(Guid jobId, CancellationToken ct) => Ok(await _ideaService.GetByJobIdAsync(jobId, ct));
 

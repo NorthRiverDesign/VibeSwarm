@@ -50,4 +50,16 @@ public class SkillsController : ControllerBase
     [HttpGet("name-exists")]
     public async Task<IActionResult> NameExists([FromQuery] string name, [FromQuery] Guid? excludeId = null, CancellationToken ct = default)
         => Ok(await _skillService.NameExistsAsync(name, excludeId, ct));
+
+    [HttpPost("expand")]
+    public async Task<IActionResult> ExpandSkill([FromBody] ExpandSkillRequest request, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(request.Description))
+            return BadRequest("Description is required");
+
+        var result = await _skillService.ExpandSkillAsync(request.Description, request.ProviderId, request.ModelId, ct);
+        return result != null ? Content(result, "text/plain") : BadRequest("Failed to expand skill");
+    }
+
+    public record ExpandSkillRequest(string Description, Guid ProviderId, string? ModelId);
 }

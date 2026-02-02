@@ -28,7 +28,7 @@ else
     <Breadcrumb Items="@_breadcrumbItems" />
 
     @* Page Header Section *@
-    <JobHeaderSection Status="@Job.Status" CancellationRequested="@Job.CancellationRequested"
+    <JobHeaderSection Status="@Job.Status" JobTitle="@Job.Title" CancellationRequested="@Job.CancellationRequested"
         GitHubRepository="@Job.Project?.GitHubRepository" BranchName="@_branchName" ProjectId="@Job.ProjectId"
         ProjectName="@(Job.Project?.Name ?? "Unknown")" ProviderName="@(Job.Provider?.Name ?? "Unknown")"
         ProcessId="@Job.ProcessId" CreatedAt="@Job.CreatedAt" StartedAt="@Job.StartedAt" CompletedAt="@Job.CompletedAt"
@@ -47,7 +47,7 @@ else
         <div class="col-12 col-xl-5 order-2 order-xl-1">
 
             @* Goal Prompt Card *@
-            <JobGoalPromptCard GoalPrompt="@Job.GoalPrompt" Status="@Job.Status" CanRetry="@CanRetry"
+            <JobGoalPromptCard GoalPrompt="@Job.GoalPrompt" IdeaText="@Job.Title" Status="@Job.Status" CanRetry="@CanRetry"
                 HasConsoleOutput="@(!string.IsNullOrEmpty(Job.ConsoleOutput))" OnCopyToClipboard="CopyPromptToClipboard"
                 OnPromptChanged="UpdateJobPrompt" />
 

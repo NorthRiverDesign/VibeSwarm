@@ -4,7 +4,11 @@
 	<div class="card-header bg-body-secondary d-flex align-items-center justify-content-between">
 		<div class="d-flex align-items-center">
 			<i class="bi bi-bullseye me-2 opacity-75"></i>
-			<strong>Goal Prompt</strong>
+			<strong>@(HasIdeaText ? "Idea" : "Goal Prompt")</strong>
+			@if (HasIdeaText)
+			{
+				<span class="badge bg-info-subtle text-info ms-2 small">from idea</span>
+			}
 		</div>
 		@* Actions *@
 		<div class="d-flex align-items-center gap-1">
@@ -37,7 +41,8 @@
 					title="Copy to clipboard">
 					<i class="bi bi-clipboard"></i>
 				</button>
-				<button type="button" class="btn btn-sm btn-outline-secondary" @onclick="ShowFullPrompt" title="View full">
+				<button type="button" class="btn btn-sm btn-outline-secondary" @onclick="ShowFullPrompt"
+					title="View full prompt">
 					<i class="bi bi-arrows-fullscreen"></i>
 				</button>
 			}
@@ -51,8 +56,8 @@
 		}
 		else
 		{
-			<div class="bg-body-tertiary p-3 rounded lh-base text-break" style="white-space: pre-wrap;">
-				@GoalPrompt</div>
+			<div class="bg-body-tertiary p-3 rounded lh-base text-break"
+				style="white-space: pre-wrap; max-height: 200px; overflow-y: auto;">@DisplayText</div>
 		}
 	</div>
 </div>
@@ -88,6 +93,13 @@
 	[Parameter, EditorRequired]
 	public string GoalPrompt { get; set; } = string.Empty;
 
+	/// <summary>
+	/// Original idea text if this job was created from an idea.
+	/// When set, this is displayed by default instead of the full prompt.
+	/// </summary>
+	[Parameter]
+	public string? IdeaText { get; set; }
+
 	[Parameter]
 	public JobStatus Status { get; set; }
 
@@ -109,6 +121,16 @@
 	private bool _isSaving = false;
 
 	private bool IsEditable => Status == JobStatus.New || Status == JobStatus.Failed || Status == JobStatus.Cancelled;
+
+	/// <summary>
+	/// Whether this job has idea text (created from an idea)
+	/// </summary>
+	private bool HasIdeaText => !string.IsNullOrWhiteSpace(IdeaText);
+
+	/// <summary>
+	/// Text to display in the card - show idea text if available, otherwise full prompt
+	/// </summary>
+	private string DisplayText => HasIdeaText ? IdeaText! : GoalPrompt;
 
 	private void ShowFullPrompt()
 	{

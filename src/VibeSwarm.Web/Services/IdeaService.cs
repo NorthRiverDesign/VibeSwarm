@@ -306,6 +306,45 @@ Begin by expanding this idea into a detailed specification, then implement it.";
 		return true;
 	}
 
+	public async Task<bool> HandleJobCompletionAsync(Guid jobId, bool success, CancellationToken cancellationToken = default)
+	{
+		var idea = await _dbContext.Ideas
+			.FirstOrDefaultAsync(i => i.JobId == jobId, cancellationToken);
+
+		if (idea == null)
+		{
+			return false;
+		}
+
+		if (success)
+		{
+			// Job completed successfully - remove the idea
+			_logger.LogInformation("Removing completed Idea {IdeaId} after Job {JobId} completed successfully", idea.Id, jobId);
+			_dbContext.Ideas.Remove(idea);
+		}
+		else
+		{
+			// Job failed or was cancelled - reset the idea for potential retry
+			_logger.LogInformation("Resetting Idea {IdeaId} after Job {JobId} failed/cancelled", idea.Id, jobId);
+			idea.IsProcessing = false;
+			idea.JobId = null;
+		}
+
+		await _dbContext.SaveChangesAsync(cancellationToken);
+
+		// Notify clients about the idea state change
+		if (_jobUpdateService != null)
+		{
+			try
+			{
+				await _jobUpdateService.NotifyIdeaUpdated(idea.Id, idea.ProjectId);
+			}
+			catch { /* Don't fail if notification fails */ }
+		}
+
+		return true;
+	}
+
 	public async Task<Idea?> GetByJobIdAsync(Guid jobId, CancellationToken cancellationToken = default)
 	{
 		return await _dbContext.Ideas
