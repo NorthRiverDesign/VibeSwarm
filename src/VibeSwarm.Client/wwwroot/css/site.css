@@ -189,10 +189,9 @@ body {
     }
 
     .app-main {
-        margin-top: calc(var(--vs-header-height) + var(--vs-safe-area-top));
         margin-left: var(--vs-sidebar-width);
-        min-height: calc(100vh - var(--vs-header-height) - var(--vs-safe-area-top));
-        min-height: calc(100dvh - var(--vs-header-height) - var(--vs-safe-area-top));
+        min-height: 100vh;
+        min-height: 100dvh;
     }
 
     .main-content {
