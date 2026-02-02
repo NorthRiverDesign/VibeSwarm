@@ -27,20 +27,20 @@ else
 {
     @* Project Header Component *@
     <ProjectDetailHeaderCompact Name="@Project.Name" WorkingPath="@Project.WorkingPath"
-        GitHubRepository="@Project.GitHubRepository" IsGitRepository="@IsGitRepository" Branches="@Branches"
-        CurrentBranch="@CurrentBranch" CurrentCommitHash="@CurrentCommitHash"
-        IsGitOperationInProgress="@IsGitOperationInProgress" GitOperationMessage="@GitOperationMessage"
-        GitOperationSuccess="@GitOperationSuccess" GitProgressMessage="@GitProgressMessage"
-        HasUncommittedChanges="@_hasUncommittedChangesHeader" UncommittedFilesCount="@_uncommittedFilesCount"
-        HasTokenData="@HasProjectTokenData()" TotalInputTokens="@GetProjectTotalInputTokens()"
-        TotalOutputTokens="@GetProjectTotalOutputTokens()" TotalCost="@GetProjectTotalCost()"
-        OnCreateBranch="ShowCreateBranchModal" OnSync="SyncWithOrigin" OnRefresh="RefreshBranches"
-        OnBranchSelected="RequestBranchSwitch" OnUncommittedChangesClick="ShowUncommittedChangesModal"
-        OnClearGitMessage="ClearGitMessage" />
+        GitHubRepository="@Project.GitHubRepository" IsGitRepository="@IsGitRepository"
+        IsLoadingGitInfo="@_isLoadingGitInfo" Branches="@Branches" CurrentBranch="@CurrentBranch"
+        CurrentCommitHash="@CurrentCommitHash" IsGitOperationInProgress="@IsGitOperationInProgress"
+        GitOperationMessage="@GitOperationMessage" GitOperationSuccess="@GitOperationSuccess"
+        GitProgressMessage="@GitProgressMessage" HasUncommittedChanges="@_hasUncommittedChangesHeader"
+        UncommittedFilesCount="@_uncommittedFilesCount" HasTokenData="@HasProjectTokenData()"
+        TotalInputTokens="@GetProjectTotalInputTokens()" TotalOutputTokens="@GetProjectTotalOutputTokens()"
+        TotalCost="@GetProjectTotalCost()" OnCreateBranch="ShowCreateBranchModal" OnSync="SyncWithOrigin"
+        OnRefresh="RefreshBranches" OnBranchSelected="RequestBranchSwitch"
+        OnUncommittedChangesClick="ShowUncommittedChangesModal" OnClearGitMessage="ClearGitMessage" />
 
     <div class="row g-3">
         @* Ideas Panel on LEFT on desktop for easier access *@
-        <div class="col-12 col-xl-5 col-xxl-4 order-2 order-xl-1">
+        <div class="col-12 col-xl-5 col-xxl-4 order-1 order-xl-1">
             @* Ideas Panel Component *@
             <IdeasPanel Ideas="@Ideas" CurrentProjectId="@ProjectId" IsProcessingActive="@IsIdeasProcessingActive"
                 IsTogglingProcessing="@_isTogglingIdeasProcessing" HasDefaultProvider="@HasDefaultProvider"
@@ -52,7 +52,7 @@ else
         </div>
 
         @* Jobs list on RIGHT for monitoring progress *@
-        <div class="col-12 col-xl-7 col-xxl-8 order-1 order-xl-2">
+        <div class="col-12 col-xl-7 col-xxl-8 order-2 order-xl-2">
             <ProjectJobsList Jobs="@Jobs" OnDeleteJob="DeleteJob" OnCreateJob="ShowCreateJobModal" />
         </div>
     </div>
@@ -109,6 +109,7 @@ else
 
     // Git-related properties
     private bool IsGitRepository { get; set; }
+    private bool _isLoadingGitInfo { get; set; } = true; // Start true, will be set false after check
     private List<GitBranchInfo> Branches { get; set; } = new();
     private string? CurrentBranch { get; set; }
     private string? CurrentCommitHash { get; set; }
@@ -507,10 +508,14 @@ TimeSpan.FromSeconds(10) })
     private async Task LoadGitInfo()
     {
         if (Project == null || string.IsNullOrEmpty(Project.WorkingPath))
+        {
+            _isLoadingGitInfo = false;
             return;
+        }
 
         try
         {
+            _isLoadingGitInfo = true;
             IsGitRepository = await VersionControlService.IsGitRepositoryAsync(Project.WorkingPath);
             if (IsGitRepository)
             {
@@ -521,9 +526,14 @@ TimeSpan.FromSeconds(10) })
                 await RefreshUncommittedChangesStatus();
             }
         }
-        catch
+        catch (Exception ex)
         {
+            Console.WriteLine($"LoadGitInfo error: {ex.Message}");
             IsGitRepository = false;
+        }
+        finally
+        {
+            _isLoadingGitInfo = false;
         }
     }
 

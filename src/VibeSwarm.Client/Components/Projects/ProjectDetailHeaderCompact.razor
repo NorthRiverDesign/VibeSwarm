@@ -1,4 +1,4 @@
-@* Compact project detail header with title on left, working directory on right *@
+@* Compact project detail header with title, Git info, and stats *@
 @using VibeSwarm.Shared.VersionControl.Models
 
 @* Breadcrumb Navigation *@
@@ -6,16 +6,16 @@
 
 <div class="card mb-3 border-0 shadow-sm">
 	<div class="card-body bg-body-secondary p-3">
-		@* Single Row: Title left, Working Path + Git right *@
+		@* Row 1: Title and Git controls *@
 		<div class="d-flex flex-wrap align-items-center gap-2 gap-md-3">
-			@* Title Section *@
+			@* Title Section with GitHub link *@
 			<div class="d-flex align-items-center gap-2 flex-shrink-0">
 				<h3 class="mb-0 fs-5 fw-semibold">@Name</h3>
-				@if (IsGitRepository && !string.IsNullOrEmpty(GitHubRepository))
+				@if (!string.IsNullOrEmpty(GitHubRepository))
 				{
 					<a href="https://github.com/@GitHubRepository" target="_blank"
-						class="d-flex align-items-center gap-1 text-body-secondary text-decoration-none small"
-						title="View on GitHub">
+						class="d-flex align-items-center gap-1 text-body-secondary text-decoration-none"
+						title="View on GitHub: @GitHubRepository">
 						<i class="bi bi-github"></i>
 					</a>
 				}
@@ -24,42 +24,82 @@
 			@* Spacer *@
 			<div class="flex-grow-1"></div>
 
-			@* Working Path *@
-			<div class="d-none d-md-flex align-items-center gap-1 text-body-secondary small">
-				<i class="bi bi-folder opacity-75"></i>
-				<code class="bg-body-tertiary px-2 py-1 rounded-1 text-truncate d-inline-block"
-					style="max-width: 300px;" title="@WorkingPath">@WorkingPath</code>
-			</div>
+			@* Git Controls Group - visible on all screen sizes *@
+			@if (IsGitRepository)
+			{
+				@* Branch Selector *@
+				@if (Branches.Any())
+				{
+					<GitBranchSelector Branches="@Branches" CurrentBranch="@CurrentBranch"
+						CurrentCommitHash="@CurrentCommitHash" IsDisabled="@IsGitOperationInProgress"
+						OnBranchSelected="OnBranchSelected" />
+				}
+				else if (!string.IsNullOrEmpty(CurrentBranch))
+				{
+					@* Fallback: Simple branch badge with commit hash *@
+					<span class="badge bg-body-tertiary text-body d-flex align-items-center gap-1 px-2 py-1"
+						title="Current branch: @CurrentBranch">
+						<i class="bi bi-git text-danger"></i>
+						<span class="fw-medium">@CurrentBranch</span>
+						@if (!string.IsNullOrEmpty(CurrentCommitHash))
+						{
+							<span class="font-monospace text-body-secondary small">@CurrentCommitHash[..Math.Min(7,
+													CurrentCommitHash.Length)]</span>
+								}
+					</span>
+				}
 
-			@* Branch Selector (Git repos only) *@
-			@if (IsGitRepository && Branches.Any())
-			{
-				<GitBranchSelector Branches="@Branches" CurrentBranch="@CurrentBranch"
-					CurrentCommitHash="@CurrentCommitHash" IsDisabled="@IsGitOperationInProgress"
-					OnBranchSelected="OnBranchSelected" />
+				@* Uncommitted Changes Warning *@
+				@if (HasUncommittedChanges)
+				{
+					<UncommittedChangesButton FilesCount="@UncommittedFilesCount" OnClick="OnUncommittedChangesClick" />
+				}
+
+				@* Git Actions Dropdown *@
+				<GitActionsDropdown IsDisabled="@IsGitOperationInProgress" IsSyncing="@(_currentGitOperation == "sync")"
+					IsRefreshing="@(_currentGitOperation == "refresh")" OnCreateBranch="OnCreateBranch" OnSync="OnSync"
+					OnRefresh="OnRefresh" />
 			}
-			else if (IsGitRepository && !string.IsNullOrEmpty(CurrentBranch))
+			else if (IsLoadingGitInfo)
 			{
-				<span class="badge bg-body-tertiary text-body d-flex align-items-center gap-1">
-					<i class="bi bi-git text-danger"></i>
-					@CurrentBranch
+				@* Loading indicator while checking Git status *@
+				<span class="badge bg-body-tertiary text-body-secondary d-flex align-items-center gap-1 px-2 py-1">
+					<span class="spinner-border spinner-border-sm" role="status"
+						style="width: 0.75rem; height: 0.75rem;"></span>
+					<span class="d-none d-sm-inline small">Checking Git...</span>
 				</span>
 			}
+		</div>
 
-			@* Uncommitted Changes Warning Icon *@
-			@if (IsGitRepository && HasUncommittedChanges)
+		@* Row 2: Working path, stats *@
+		<div class="d-flex flex-wrap align-items-center gap-2 gap-md-3 mt-2 pt-2 border-top border-body-tertiary small">
+			@* Working Path *@
+			<div class="d-flex align-items-center gap-1 text-body-secondary">
+				<i class="bi bi-folder opacity-75"></i>
+				<code class="bg-body-tertiary px-2 py-1 rounded-1 text-truncate d-inline-block"
+					style="max-width: 280px;" title="@WorkingPath">@WorkingPath</code>
+			</div>
+
+			@* GitHub Repository (mobile-friendly text version) *@
+			@if (!string.IsNullOrEmpty(GitHubRepository))
 			{
-				<UncommittedChangesButton FilesCount="@UncommittedFilesCount" OnClick="OnUncommittedChangesClick" />
+				<a href="https://github.com/@GitHubRepository" target="_blank"
+					class="d-flex d-md-none align-items-center gap-1 text-body-secondary text-decoration-none hover-underline">
+					<i class="bi bi-github opacity-75"></i>
+					<span class="text-truncate" style="max-width: 150px;">@GitHubRepository</span>
+				</a>
 			}
 
-			@* Token/Cost Stats (when data exists) *@
+			@* Spacer *@
+			<div class="flex-grow-1"></div>
+
+			@* Token/Cost Stats *@
 			@if (HasTokenData)
 			{
-				<div class="d-none d-lg-flex align-items-center gap-2">
+				<div class="d-flex align-items-center gap-2 gap-md-3">
 					@if (TotalInputTokens > 0 || TotalOutputTokens > 0)
 					{
-						<div class="d-flex align-items-center gap-1 small text-body-secondary"
-							title="Total tokens (input / output)">
+						<div class="d-flex align-items-center gap-1 text-body-secondary" title="Total tokens (input / output)">
 							<i class="bi bi-braces opacity-75"></i>
 							<span>@TokenHelper.FormatTokenCount(TotalInputTokens) /
 								@TokenHelper.FormatTokenCount(TotalOutputTokens)</span>
@@ -67,20 +107,12 @@
 					}
 					@if (TotalCost > 0)
 					{
-						<div class="d-flex align-items-center gap-1 small fw-medium text-success" title="Total cost">
+						<div class="d-flex align-items-center gap-1 fw-medium text-success" title="Total cost">
 							<i class="bi bi-currency-dollar opacity-75"></i>
 							<span>@TokenHelper.FormatCost(TotalCost)</span>
 						</div>
 					}
 				</div>
-			}
-
-			@* Git Actions Dropdown (when Git repo) *@
-			@if (IsGitRepository)
-			{
-				<GitActionsDropdown IsDisabled="@IsGitOperationInProgress" IsSyncing="@(_currentGitOperation == "sync")"
-					IsRefreshing="@(_currentGitOperation == "refresh")" OnCreateBranch="OnCreateBranch" OnSync="OnSync"
-					OnRefresh="OnRefresh" />
 			}
 		</div>
 
@@ -102,6 +134,9 @@
 
 	[Parameter]
 	public bool IsGitRepository { get; set; }
+
+	[Parameter]
+	public bool IsLoadingGitInfo { get; set; }
 
 	private List<Breadcrumb.BreadcrumbItem> _breadcrumbItems => new()
 {
