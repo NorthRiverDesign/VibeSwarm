@@ -13,7 +13,10 @@ public class HttpVersionControlService : IVersionControlService
     {
         try
         {
-            return await _http.GetFromJsonAsync<bool>("/api/git/available", ct);
+            var response = await _http.GetAsync("/api/git/available", ct);
+            if (!response.IsSuccessStatusCode) return false;
+            var content = await response.Content.ReadAsStringAsync(ct);
+            return bool.TryParse(content, out var result) && result;
         }
         catch
         {
@@ -25,25 +28,75 @@ public class HttpVersionControlService : IVersionControlService
     {
         try
         {
-            return await _http.GetFromJsonAsync<bool>($"/api/git/is-repo?path={Enc(workingDirectory)}", ct);
+            var url = $"/api/git/is-repo?path={Enc(workingDirectory)}";
+            Console.WriteLine($"[Git] IsGitRepositoryAsync: Calling {url}");
+            var response = await _http.GetAsync(url, ct);
+            Console.WriteLine($"[Git] IsGitRepositoryAsync: Status={response.StatusCode}");
+            if (!response.IsSuccessStatusCode)
+            {
+                Console.WriteLine($"[Git] IsGitRepositoryAsync: Failed with {response.StatusCode}");
+                return false;
+            }
+            var content = await response.Content.ReadAsStringAsync(ct);
+            Console.WriteLine($"[Git] IsGitRepositoryAsync: Response content='{content}'");
+            return bool.TryParse(content, out var result) && result;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Git] IsGitRepositoryAsync exception: {ex.Message}");
+            return false;
+        }
+    }
+
+    public async Task<string?> GetCurrentCommitHashAsync(string workingDirectory, CancellationToken ct = default)
+    {
+        try
+        {
+            var response = await _http.GetAsync($"/api/git/commit-hash?path={Enc(workingDirectory)}", ct);
+            if (!response.IsSuccessStatusCode) return null;
+            var content = await response.Content.ReadAsStringAsync(ct);
+            // Remove surrounding quotes if present (JSON string format)
+            return content.Trim().Trim('"');
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    public async Task<string?> GetCurrentBranchAsync(string workingDirectory, CancellationToken ct = default)
+    {
+        try
+        {
+            var response = await _http.GetAsync($"/api/git/branch?path={Enc(workingDirectory)}", ct);
+            if (!response.IsSuccessStatusCode) return null;
+            var content = await response.Content.ReadAsStringAsync(ct);
+            // Remove surrounding quotes if present (JSON string format)
+            return content.Trim().Trim('"');
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    public async Task<string?> GetRemoteUrlAsync(string workingDirectory, string remoteName = "origin", CancellationToken ct = default)
+        => await _http.GetFromJsonAsync<string?>($"/api/git/remote-url?path={Enc(workingDirectory)}&remote={Uri.EscapeDataString(remoteName)}", ct);
+
+    public async Task<bool> HasUncommittedChangesAsync(string workingDirectory, CancellationToken ct = default)
+    {
+        try
+        {
+            var response = await _http.GetAsync($"/api/git/has-changes?path={Enc(workingDirectory)}", ct);
+            if (!response.IsSuccessStatusCode) return false;
+            var content = await response.Content.ReadAsStringAsync(ct);
+            return bool.TryParse(content, out var result) && result;
         }
         catch
         {
             return false;
         }
     }
-
-    public async Task<string?> GetCurrentCommitHashAsync(string workingDirectory, CancellationToken ct = default)
-        => await _http.GetFromJsonAsync<string?>($"/api/git/commit-hash?path={Enc(workingDirectory)}", ct);
-
-    public async Task<string?> GetCurrentBranchAsync(string workingDirectory, CancellationToken ct = default)
-        => await _http.GetFromJsonAsync<string?>($"/api/git/branch?path={Enc(workingDirectory)}", ct);
-
-    public async Task<string?> GetRemoteUrlAsync(string workingDirectory, string remoteName = "origin", CancellationToken ct = default)
-        => await _http.GetFromJsonAsync<string?>($"/api/git/remote-url?path={Enc(workingDirectory)}&remote={Uri.EscapeDataString(remoteName)}", ct);
-
-    public async Task<bool> HasUncommittedChangesAsync(string workingDirectory, CancellationToken ct = default)
-        => await _http.GetFromJsonAsync<bool>($"/api/git/has-changes?path={Enc(workingDirectory)}", ct);
 
     public async Task<IReadOnlyList<string>> GetChangedFilesAsync(string workingDirectory, string? baseCommit = null, CancellationToken ct = default)
     {
