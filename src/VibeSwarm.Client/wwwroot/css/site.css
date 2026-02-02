@@ -175,12 +175,6 @@ body {
 
 /* Desktop Layout */
 @media (min-width: 992px) {
-    .app-layout { flex-direction: row; }
-
-    .app-header {
-        position: fixed;
-    }
-
     .app-sidebar {
         position: fixed;
         top: 0;
@@ -191,19 +185,15 @@ body {
 
     .app-main {
         margin-left: var(--vs-sidebar-width);
-        height: 100vh;
-        height: 100dvh;
-        display: flex;
-        flex-direction: column;
+        min-height: 100vh;
+        min-height: 100dvh;
     }
 
     .main-content {
-        flex: 1;
         padding: 1.5rem 2rem;
         padding-right: calc(2rem + var(--vs-safe-area-right));
         max-width: 1400px;
         margin-inline: auto;
-        min-height: 0;
     }
 }
 
@@ -632,22 +622,27 @@ body.vs-modal-open {
     .vs-modal-dialog .modal-content { max-height: calc(100vh - var(--vs-safe-area-top) - var(--vs-safe-area-bottom) - 3.5rem); max-height: calc(100dvh - var(--vs-safe-area-top) - var(--vs-safe-area-bottom) - 3.5rem); }
     .directory-list { max-height: 400px; }
 
+    /* Jobs inbox full-height layout */
     .main-content:has(.jobs-inbox-layout) {
         padding: 0;
         max-width: none;
-        display: flex;
-        flex-direction: column;
-        height: 100vh;
-        height: 100dvh;
     }
 
     .jobs-inbox-layout {
-        flex: 1;
-        height: 100%;
-        margin: 0;
+        height: calc(100vh - var(--vs-safe-area-bottom));
+        height: calc(100dvh - var(--vs-safe-area-bottom));
     }
-    .jobs-project-sidebar, .jobs-list-panel { height: 100%; }
-    .jobs-list-panel > .overflow-auto { flex: 1; min-height: 0; }
+
+    .jobs-project-sidebar,
+    .jobs-list-panel {
+        height: 100%;
+        overflow: hidden;
+    }
+
+    .jobs-project-sidebar > .flex-grow-1,
+    .jobs-list-panel > .flex-grow-1 {
+        overflow-y: auto;
+    }
 }
 
 /* Landscape Mobile */
