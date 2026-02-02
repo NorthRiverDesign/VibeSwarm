@@ -276,7 +276,10 @@ public abstract class CliProviderBase : ProviderBase
 				return PromptResponse.Fail($"{providerName} CLI returned error: {error}");
 			}
 
-			return PromptResponse.Ok(output.Trim(), stopwatch.ElapsedMilliseconds, providerName.ToLowerInvariant());
+			// Clean the output to remove tool usage lines and ANSI codes
+			var cleanedOutput = OutputCleaner.CleanCliOutput(output);
+
+			return PromptResponse.Ok(cleanedOutput, stopwatch.ElapsedMilliseconds, providerName.ToLowerInvariant());
 		}
 		catch (System.ComponentModel.Win32Exception ex)
 		{
