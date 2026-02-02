@@ -1,4 +1,4 @@
-[<img src="./src/VibeSwarm.Web/wwwroot/img/logo_color.png" alt="VibeSwarm - AI Agent Orchestrator" width="200" />](https://github.com/NorthRiverDesign/VibeSwarm)
+[<img src="./src/VibeSwarm.Client/wwwroot/img/logo_color.png" alt="VibeSwarm - AI Agent Orchestrator" width="200" />](https://github.com/NorthRiverDesign/VibeSwarm)
 
 # VibeSwarm
 
@@ -105,10 +105,10 @@ dotnet run --environment Production
 ```bash
 # Build for production
 cd src/VibeSwarm.Web
-dotnet publish -c Release -o ../../publish
+dotnet publish -c Release -o ./build/
 
 # Run the published app
-cd ../../publish
+cd ./build/
 ./VibeSwarm.Web
 ```
 
@@ -326,10 +326,10 @@ VibeSwarm/
 |   └── .env               		# Your build configuration (create this)
 ├── src/
 │   ├── VibeSwarm.Shared/ 		# Data models and shared code
-│   ├── VibeSwarm.Web/ 			# Blazor Server web application
+│   ├── VibeSwarm.Web/ 			# Blazor WebAssembly web application
 |   |	├── .env               	# Your local configuration (create this)
 |	|	└── .env.example 		# Template for .env file
-│   └── VibeSwarm.Worker/       # Background worker services
+│   └── VibeSwarm.Client/       # Front-end WASM client
 └── README.md  					# This file
 ```
 
