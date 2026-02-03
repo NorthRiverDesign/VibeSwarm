@@ -435,4 +435,30 @@ public class SignalRJobUpdateService : IJobUpdateService
             _logger.LogError(ex, "Error sending IdeaUpdated notification for idea {IdeaId}", ideaId);
         }
     }
+
+    public async Task NotifyProviderUsageWarning(Guid providerId, string providerName, int percentUsed,
+        string message, bool isExhausted, DateTime? resetTime)
+    {
+        try
+        {
+            // Broadcast to global events for dashboard and provider pages
+            await _hubContext.Clients
+                .Group("global-events")
+                .SendAsync("ProviderUsageWarning",
+                    providerId.ToString(),
+                    providerName,
+                    percentUsed,
+                    message,
+                    isExhausted,
+                    resetTime?.ToString("o"));
+
+            var logLevel = isExhausted ? LogLevel.Warning : LogLevel.Information;
+            _logger.Log(logLevel, "Sent ProviderUsageWarning for {ProviderName}: {PercentUsed}% used, exhausted: {IsExhausted}",
+                providerName, percentUsed, isExhausted);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error sending ProviderUsageWarning notification for provider {ProviderId}", providerId);
+        }
+    }
 }

@@ -7,10 +7,12 @@ namespace VibeSwarm.Shared.Services;
 public class ProviderService : IProviderService
 {
     private readonly VibeSwarmDbContext _dbContext;
+    private readonly IProviderUsageService? _providerUsageService;
 
-    public ProviderService(VibeSwarmDbContext dbContext)
+    public ProviderService(VibeSwarmDbContext dbContext, IProviderUsageService? providerUsageService = null)
     {
         _dbContext = dbContext;
+        _providerUsageService = providerUsageService;
     }
 
     public async Task<IEnumerable<Provider>> GetAllAsync(CancellationToken cancellationToken = default)
@@ -115,6 +117,20 @@ public class ProviderService : IProviderService
         {
             provider.LastConnectedAt = DateTime.UtcNow;
             await _dbContext.SaveChangesAsync(cancellationToken);
+
+            // Try to get and cache version info
+            try
+            {
+                var providerInfo = await instance.GetProviderInfoAsync(cancellationToken);
+                if (!string.IsNullOrWhiteSpace(providerInfo.Version) && _providerUsageService != null)
+                {
+                    await _providerUsageService.UpdateVersionInfoAsync(id, providerInfo.Version, cancellationToken);
+                }
+            }
+            catch
+            {
+                // Don't fail the connection test due to version caching errors
+            }
         }
 
         return new ConnectionTestResult
@@ -258,6 +274,19 @@ public class ProviderService : IProviderService
         catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested)
         {
             throw new TimeoutException($"Timed out while refreshing models for provider {provider.Name}. The CLI may be unresponsive or require authentication.");
+        }
+
+        // Cache version info if available
+        if (!string.IsNullOrWhiteSpace(providerInfo.Version) && _providerUsageService != null)
+        {
+            try
+            {
+                await _providerUsageService.UpdateVersionInfoAsync(providerId, providerInfo.Version, cancellationToken);
+            }
+            catch
+            {
+                // Don't fail model refresh due to version caching errors
+            }
         }
 
         // Get existing models for this provider

@@ -19,6 +19,7 @@ public class JobProcessingService : BackgroundService
     private readonly IJobUpdateService? _jobUpdateService;
     private readonly IJobCoordinatorService? _jobCoordinator;
     private readonly IProviderHealthTracker? _healthTracker;
+    private readonly IProviderUsageService? _providerUsageService;
     private readonly ProcessSupervisor? _processSupervisor;
     private readonly IVersionControlService _versionControlService;
     private readonly IInteractionResponseService? _interactionResponseService;
@@ -41,6 +42,7 @@ public class JobProcessingService : BackgroundService
         IJobUpdateService? jobUpdateService = null,
         IJobCoordinatorService? jobCoordinator = null,
         IProviderHealthTracker? healthTracker = null,
+        IProviderUsageService? providerUsageService = null,
         ProcessSupervisor? processSupervisor = null,
         IInteractionResponseService? interactionResponseService = null)
     {
@@ -50,6 +52,7 @@ public class JobProcessingService : BackgroundService
         _jobUpdateService = jobUpdateService;
         _jobCoordinator = jobCoordinator;
         _healthTracker = healthTracker;
+        _providerUsageService = providerUsageService;
         _processSupervisor = processSupervisor;
         _interactionResponseService = interactionResponseService;
     }
@@ -461,6 +464,32 @@ public class JobProcessingService : BackgroundService
                 return;
             }
 
+            // Check usage exhaustion before execution
+            if (_providerUsageService != null)
+            {
+                var exhaustionWarning = await _providerUsageService.CheckExhaustionAsync(job.ProviderId, cancellationToken: cancellationToken);
+                if (exhaustionWarning?.IsExhausted == true)
+                {
+                    var reason = $"Provider usage limit exhausted: {exhaustionWarning.Message}";
+                    _logger.LogWarning("Job {JobId} blocked due to provider usage exhaustion: {Message}", job.Id, exhaustionWarning.Message);
+                    await ReleaseJobAsync(job.Id, JobStatus.Failed, reason, dbContext, cancellationToken);
+                    await NotifyJobCompletedAsync(job.Id, false, reason);
+
+                    // Also broadcast the warning via SignalR
+                    if (_jobUpdateService != null)
+                    {
+                        await _jobUpdateService.NotifyProviderUsageWarning(
+                            job.ProviderId,
+                            job.Provider.Name,
+                            exhaustionWarning.PercentUsed,
+                            exhaustionWarning.Message,
+                            exhaustionWarning.IsExhausted,
+                            exhaustionWarning.ResetTime);
+                    }
+                    return;
+                }
+            }
+
             // Update status to processing
             await UpdateJobStatusAsync(job.Id, JobStatus.Processing, dbContext, cancellationToken);
             await NotifyStatusChangedAsync(job.Id, JobStatus.Processing);
@@ -870,6 +899,10 @@ public class JobProcessingService : BackgroundService
                 await CompleteJobAsync(job.Id, JobStatus.Cancelled, finalResult.SessionId, finalResult.Output,
                     "Job was cancelled by user", finalResult.InputTokens, finalResult.OutputTokens, finalResult.CostUsd, finalResult.ModelUsed,
                     executionContext, workingDirectory, dbContext, CancellationToken.None);
+
+                // Record usage even for cancelled jobs
+                await RecordUsageAndCheckExhaustionAsync(job.ProviderId, job.Provider.Name, job.Id, finalResult, CancellationToken.None);
+
                 await NotifyJobCompletedAsync(job.Id, false, "Job was cancelled by user");
 
                 _logger.LogInformation("Job {JobId} was cancelled during execution", job.Id);
@@ -897,6 +930,9 @@ public class JobProcessingService : BackgroundService
                     null, finalResult.InputTokens, finalResult.OutputTokens, finalResult.CostUsd, finalResult.ModelUsed,
                     executionContext, workingDirectory, dbContext, CancellationToken.None);
 
+                // Record usage after successful completion
+                await RecordUsageAndCheckExhaustionAsync(job.ProviderId, job.Provider.Name, job.Id, finalResult, CancellationToken.None);
+
                 _logger.LogInformation("Job {JobId} completed successfully. Session: {SessionId}, InputTokens: {InputTokens}, OutputTokens: {OutputTokens}, Cost: {CostUsd}",
                     job.Id, finalResult.SessionId, finalResult.InputTokens, finalResult.OutputTokens, finalResult.CostUsd);
                 await NotifyJobCompletedAsync(job.Id, true);
@@ -906,6 +942,9 @@ public class JobProcessingService : BackgroundService
                 await CompleteJobAsync(job.Id, JobStatus.Failed, finalResult.SessionId, finalResult.Output,
                     finalResult.ErrorMessage, finalResult.InputTokens, finalResult.OutputTokens, finalResult.CostUsd, finalResult.ModelUsed,
                     executionContext, workingDirectory, dbContext, CancellationToken.None);
+
+                // Record usage even for failed jobs
+                await RecordUsageAndCheckExhaustionAsync(job.ProviderId, job.Provider.Name, job.Id, finalResult, CancellationToken.None);
 
                 _logger.LogWarning("Job {JobId} failed: {Error}. InputTokens: {InputTokens}, OutputTokens: {OutputTokens}, Cost: {CostUsd}",
                     job.Id, finalResult.ErrorMessage, finalResult.InputTokens, finalResult.OutputTokens, finalResult.CostUsd);
@@ -975,6 +1014,54 @@ public class JobProcessingService : BackgroundService
             job.WorkerInstanceId = _workerInstanceId;
             job.LastHeartbeatAt = DateTime.UtcNow;
             await dbContext.SaveChangesAsync(cancellationToken);
+        }
+    }
+
+    /// <summary>
+    /// Records usage from an execution result and checks for exhaustion warnings.
+    /// </summary>
+    private async Task RecordUsageAndCheckExhaustionAsync(
+        Guid providerId,
+        string providerName,
+        Guid jobId,
+        ExecutionResult result,
+        CancellationToken cancellationToken)
+    {
+        if (_providerUsageService == null)
+            return;
+
+        try
+        {
+            // Record the usage
+            await _providerUsageService.RecordUsageAsync(providerId, jobId, result, cancellationToken);
+
+            // Check for exhaustion warning and broadcast via SignalR
+            var warning = await _providerUsageService.CheckExhaustionAsync(providerId, cancellationToken: cancellationToken);
+            if (warning != null && _jobUpdateService != null)
+            {
+                await _jobUpdateService.NotifyProviderUsageWarning(
+                    providerId,
+                    providerName,
+                    warning.PercentUsed,
+                    warning.Message,
+                    warning.IsExhausted,
+                    warning.ResetTime);
+
+                if (warning.IsExhausted)
+                {
+                    _logger.LogWarning("Provider {ProviderName} has reached usage limit after job {JobId}", providerName, jobId);
+                }
+                else
+                {
+                    _logger.LogInformation("Provider {ProviderName} is at {PercentUsed}% usage after job {JobId}",
+                        providerName, warning.PercentUsed, jobId);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            // Don't fail job processing due to usage tracking errors
+            _logger.LogWarning(ex, "Failed to record usage for job {JobId}", jobId);
         }
     }
 

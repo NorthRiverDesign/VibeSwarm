@@ -138,4 +138,16 @@ public interface IJobUpdateService
     /// <param name="ideaId">The idea ID</param>
     /// <param name="projectId">The project ID</param>
     Task NotifyIdeaUpdated(Guid ideaId, Guid projectId);
+
+    /// <summary>
+    /// Notifies all clients that a provider is approaching or has reached its usage limit
+    /// </summary>
+    /// <param name="providerId">The provider ID</param>
+    /// <param name="providerName">The provider name for display</param>
+    /// <param name="percentUsed">Current percentage of limit used</param>
+    /// <param name="message">Human-readable warning message</param>
+    /// <param name="isExhausted">True if the limit has been reached</param>
+    /// <param name="resetTime">When the limit resets (if known)</param>
+    Task NotifyProviderUsageWarning(Guid providerId, string providerName, int percentUsed,
+        string message, bool isExhausted, DateTime? resetTime);
 }
