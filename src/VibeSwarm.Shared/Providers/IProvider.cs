@@ -72,6 +72,71 @@ public interface IProvider
         string prompt,
         string? workingDirectory = null,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Update the CLI tool to the latest version.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Result of the update operation</returns>
+    Task<CliUpdateResult> UpdateCliAsync(CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// Result of a CLI update operation
+/// </summary>
+public class CliUpdateResult
+{
+    /// <summary>
+    /// Whether the update was successful
+    /// </summary>
+    public bool Success { get; set; }
+
+    /// <summary>
+    /// The version before the update (if known)
+    /// </summary>
+    public string? PreviousVersion { get; set; }
+
+    /// <summary>
+    /// The version after the update (if known)
+    /// </summary>
+    public string? NewVersion { get; set; }
+
+    /// <summary>
+    /// Output from the update command
+    /// </summary>
+    public string? Output { get; set; }
+
+    /// <summary>
+    /// Error message if the update failed
+    /// </summary>
+    public string? ErrorMessage { get; set; }
+
+    /// <summary>
+    /// Creates a successful update result
+    /// </summary>
+    public static CliUpdateResult Ok(string? previousVersion, string? newVersion, string? output = null)
+    {
+        return new CliUpdateResult
+        {
+            Success = true,
+            PreviousVersion = previousVersion,
+            NewVersion = newVersion,
+            Output = output
+        };
+    }
+
+    /// <summary>
+    /// Creates a failed update result
+    /// </summary>
+    public static CliUpdateResult Fail(string errorMessage, string? previousVersion = null)
+    {
+        return new CliUpdateResult
+        {
+            Success = false,
+            PreviousVersion = previousVersion,
+            ErrorMessage = errorMessage
+        };
+    }
 }
 
 /// <summary>
@@ -112,6 +177,17 @@ public class ExecutionResult
     /// Details of the pending interaction if IsPaused is true
     /// </summary>
     public InteractionInfo? PendingInteraction { get; set; }
+
+    /// <summary>
+    /// Usage limit information parsed from CLI output (if detected)
+    /// </summary>
+    public UsageLimits? DetectedUsageLimits { get; set; }
+
+    /// <summary>
+    /// Number of premium requests consumed (Copilot-specific).
+    /// Parsed from stderr lines like "Est. 3 Premium requests"
+    /// </summary>
+    public int? PremiumRequestsConsumed { get; set; }
 }
 
 /// <summary>

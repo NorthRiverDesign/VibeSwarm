@@ -226,6 +226,103 @@ public abstract class CliProviderBase : ProviderBase
 	}
 
 	/// <summary>
+	/// Updates the CLI tool to the latest version.
+	/// Derived classes should override GetUpdateCommand() and GetUpdateArguments() to specify the update command.
+	/// </summary>
+	public override async Task<CliUpdateResult> UpdateCliAsync(CancellationToken cancellationToken = default)
+	{
+		var updateCommand = GetUpdateCommand();
+		var updateArgs = GetUpdateArguments();
+
+		if (string.IsNullOrEmpty(updateCommand))
+		{
+			return CliUpdateResult.Fail("Update command not configured for this provider");
+		}
+
+		string? previousVersion = null;
+
+		try
+		{
+			// Get current version before update
+			var execPath = GetDefaultExecutablePath();
+			if (!string.IsNullOrEmpty(execPath))
+			{
+				previousVersion = await GetCliVersionAsync(execPath, cancellationToken: cancellationToken);
+			}
+
+			// Execute the update command
+			var startInfo = new ProcessStartInfo
+			{
+				FileName = updateCommand,
+				Arguments = updateArgs
+			};
+
+			PlatformHelper.ConfigureForCrossPlatform(startInfo);
+
+			using var process = new Process { StartInfo = startInfo };
+			using var timeoutCts = new CancellationTokenSource(TimeSpan.FromMinutes(5));
+			using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
+
+			process.Start();
+
+			var output = await process.StandardOutput.ReadToEndAsync(linkedCts.Token);
+			var error = await process.StandardError.ReadToEndAsync(linkedCts.Token);
+
+			try
+			{
+				await process.WaitForExitAsync(linkedCts.Token);
+			}
+			catch (OperationCanceledException)
+			{
+				try { process.Kill(entireProcessTree: true); } catch { }
+				return CliUpdateResult.Fail("Update command timed out", previousVersion);
+			}
+
+			if (process.ExitCode != 0)
+			{
+				var errorMsg = !string.IsNullOrEmpty(error) ? error.Trim() : $"Exit code: {process.ExitCode}";
+				return CliUpdateResult.Fail($"Update failed: {errorMsg}", previousVersion);
+			}
+
+			// Get new version after update
+			string? newVersion = null;
+			if (!string.IsNullOrEmpty(execPath))
+			{
+				newVersion = await GetCliVersionAsync(execPath, cancellationToken: cancellationToken);
+			}
+
+			var combinedOutput = !string.IsNullOrEmpty(output) ? output.Trim() : null;
+			return CliUpdateResult.Ok(previousVersion, newVersion, combinedOutput);
+		}
+		catch (System.ComponentModel.Win32Exception ex)
+		{
+			return CliUpdateResult.Fail($"Update command not found: {ex.Message}", previousVersion);
+		}
+		catch (Exception ex)
+		{
+			return CliUpdateResult.Fail($"Update failed: {ex.Message}", previousVersion);
+		}
+	}
+
+	/// <summary>
+	/// Gets the command to run for updating the CLI tool.
+	/// Override in derived classes to specify the update command.
+	/// </summary>
+	protected virtual string? GetUpdateCommand() => null;
+
+	/// <summary>
+	/// Gets the arguments for the update command.
+	/// Override in derived classes to specify update arguments.
+	/// </summary>
+	protected virtual string GetUpdateArguments() => string.Empty;
+
+	/// <summary>
+	/// Gets the default executable path for version checking during updates.
+	/// Override in derived classes to return the executable path.
+	/// </summary>
+	protected virtual string? GetDefaultExecutablePath() => null;
+
+	/// <summary>
 	/// Executes a simple CLI prompt and returns the response.
 	/// </summary>
 	protected async Task<PromptResponse> ExecuteSimplePromptAsync(

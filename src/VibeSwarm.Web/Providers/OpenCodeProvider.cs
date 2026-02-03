@@ -49,6 +49,10 @@ public class OpenCodeProvider : CliProviderBase
 
     private string GetExecutablePath() => ResolveExecutablePath(DefaultExecutable);
 
+    protected override string? GetUpdateCommand() => GetExecutablePath();
+    protected override string GetUpdateArguments() => "upgrade";
+    protected override string? GetDefaultExecutablePath() => GetExecutablePath();
+
     public override async Task<bool> TestConnectionAsync(CancellationToken cancellationToken = default)
     {
         try

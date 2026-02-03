@@ -132,4 +132,6 @@ public abstract class ProviderBase : IProvider
         string prompt,
         string? workingDirectory = null,
         CancellationToken cancellationToken = default);
+
+    public abstract Task<CliUpdateResult> UpdateCliAsync(CancellationToken cancellationToken = default);
 }

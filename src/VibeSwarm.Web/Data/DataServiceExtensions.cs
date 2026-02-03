@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using VibeSwarm.Shared.Services;
+using VibeSwarm.Web.Services;
 
 namespace VibeSwarm.Shared.Data;
 
@@ -19,6 +20,7 @@ public static class DataServiceExtensions
         services.AddScoped<IMcpConfigService, McpConfigService>();
         services.AddScoped<IIdeaService, IdeaService>();
         services.AddScoped<IUserService, UserService>();
+        services.AddScoped<IProviderUsageService, ProviderUsageService>();
         services.AddSingleton<IFileSystemService, FileSystemService>();
 
         return services;

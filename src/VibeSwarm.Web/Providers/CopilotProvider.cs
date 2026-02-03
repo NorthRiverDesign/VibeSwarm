@@ -31,6 +31,10 @@ public class CopilotProvider : CliProviderBase
 
     private string GetExecutablePath() => ResolveExecutablePath(DefaultExecutable);
 
+    protected override string? GetUpdateCommand() => GetExecutablePath();
+    protected override string GetUpdateArguments() => "update";
+    protected override string? GetDefaultExecutablePath() => GetExecutablePath();
+
     public override async Task<bool> TestConnectionAsync(CancellationToken cancellationToken = default)
     {
         try
@@ -311,14 +315,12 @@ public class CopilotProvider : CliProviderBase
             result.ModelUsed = modelMatch.Groups[1].Value.Trim();
         }
 
+        // Parse premium requests consumed (Copilot-specific)
         var premiumPattern = new Regex(@"Est\.\s*(\d+)\s*Premium\s*requests?", RegexOptions.IgnoreCase);
         var premiumMatch = premiumPattern.Match(stderr);
         if (premiumMatch.Success && int.TryParse(premiumMatch.Groups[1].Value, out var premiumRequests))
         {
-            if (!result.CostUsd.HasValue)
-            {
-                result.CostUsd = premiumRequests;
-            }
+            result.PremiumRequestsConsumed = premiumRequests;
         }
     }
 
@@ -552,205 +554,20 @@ public class CopilotProvider : CliProviderBase
         return info;
     }
 
-    public override async Task<UsageLimits> GetUsageLimitsAsync(CancellationToken cancellationToken = default)
+    public override Task<UsageLimits> GetUsageLimitsAsync(CancellationToken cancellationToken = default)
     {
+        // Copilot CLI is a standalone binary and doesn't have an API to query usage limits.
+        // Usage tracking is done by parsing stderr output during job execution.
+        // The user can configure their plan's limit (e.g., 300 premium requests/month for Copilot Pro)
+        // in the provider settings, and we track against that.
         var limits = new UsageLimits
         {
             LimitType = UsageLimitType.PremiumRequests,
-            IsLimitReached = false
+            IsLimitReached = false,
+            Message = "Premium request usage is tracked per-job execution. Configure your plan's limit in provider settings."
         };
 
-        try
-        {
-            var startInfo = new ProcessStartInfo
-            {
-                FileName = "gh",
-                Arguments = "api user"
-            };
-
-            PlatformHelper.ConfigureForCrossPlatform(startInfo);
-
-            using var process = new Process { StartInfo = startInfo };
-            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
-
-            process.Start();
-
-            try
-            {
-                await process.WaitForExitAsync(linkedCts.Token);
-            }
-            catch (OperationCanceledException)
-            {
-                try { process.Kill(entireProcessTree: true); } catch { }
-                limits.Message = "Unable to check usage limits (timeout)";
-                return limits;
-            }
-
-            var output = await process.StandardOutput.ReadToEndAsync(CancellationToken.None);
-            var error = await process.StandardError.ReadToEndAsync(CancellationToken.None);
-
-            if (process.ExitCode == 0)
-            {
-                limits.Message = "Premium requests available";
-
-                var copilotLimits = await CheckCopilotLimitsAsync(cancellationToken);
-                if (copilotLimits != null)
-                {
-                    limits.CurrentUsage = copilotLimits.Value.current;
-                    limits.MaxUsage = copilotLimits.Value.max;
-                    limits.IsLimitReached = copilotLimits.Value.current >= copilotLimits.Value.max;
-                    limits.ResetTime = copilotLimits.Value.resetTime;
-
-                    if (limits.IsLimitReached)
-                    {
-                        limits.Message = $"Premium request limit reached ({limits.CurrentUsage}/{limits.MaxUsage}). Resets at {limits.ResetTime?.ToString("g") ?? "unknown"}";
-                    }
-                    else
-                    {
-                        limits.Message = $"Premium requests: {limits.CurrentUsage}/{limits.MaxUsage} used";
-                    }
-                }
-            }
-            else if (!string.IsNullOrEmpty(error))
-            {
-                var errorLower = error.ToLowerInvariant();
-                if (errorLower.Contains("rate limit") ||
-                    errorLower.Contains("premium") && errorLower.Contains("limit") ||
-                    errorLower.Contains("quota exceeded"))
-                {
-                    limits.IsLimitReached = true;
-                    limits.Message = "Premium request limit reached. Please wait for the limit to reset.";
-                }
-                else if (errorLower.Contains("not authenticated") ||
-                         errorLower.Contains("unauthorized"))
-                {
-                    limits.Message = "Authentication required. Run 'gh auth login' to authenticate.";
-                }
-            }
-        }
-        catch (System.ComponentModel.Win32Exception)
-        {
-            limits.Message = "GitHub CLI (gh) not found. Install it to check usage limits.";
-        }
-        catch (Exception ex)
-        {
-            limits.Message = $"Unable to check usage limits: {ex.Message}";
-        }
-
-        return limits;
-    }
-
-    private async Task<(int current, int max, DateTime? resetTime)?> CheckCopilotLimitsAsync(CancellationToken cancellationToken)
-    {
-        try
-        {
-            var startInfo = new ProcessStartInfo
-            {
-                FileName = "gh",
-                Arguments = "api /copilot/usage --jq '.premium_requests // empty'"
-            };
-
-            PlatformHelper.ConfigureForCrossPlatform(startInfo);
-
-            using var process = new Process { StartInfo = startInfo };
-            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
-
-            process.Start();
-
-            try
-            {
-                await process.WaitForExitAsync(linkedCts.Token);
-            }
-            catch (OperationCanceledException)
-            {
-                try { process.Kill(entireProcessTree: true); } catch { }
-                return null;
-            }
-
-            var output = await process.StandardOutput.ReadToEndAsync(CancellationToken.None);
-
-            if (process.ExitCode == 0 && !string.IsNullOrWhiteSpace(output))
-            {
-                try
-                {
-                    using var doc = JsonDocument.Parse(output);
-                    var root = doc.RootElement;
-
-                    int current = 0;
-                    int max = 0;
-                    DateTime? resetTime = null;
-
-                    if (root.TryGetProperty("used", out var usedProp))
-                    {
-                        current = usedProp.GetInt32();
-                    }
-                    if (root.TryGetProperty("limit", out var limitProp))
-                    {
-                        max = limitProp.GetInt32();
-                    }
-                    if (root.TryGetProperty("reset_at", out var resetProp))
-                    {
-                        if (DateTime.TryParse(resetProp.GetString(), out var parsed))
-                        {
-                            resetTime = parsed;
-                        }
-                    }
-
-                    if (max > 0)
-                    {
-                        return (current, max, resetTime);
-                    }
-                }
-                catch
-                {
-                    // JSON parsing failed
-                }
-            }
-
-            // Alternative: Try to parse from X-RateLimit headers
-            var headerInfo = new ProcessStartInfo
-            {
-                FileName = "gh",
-                Arguments = "api -i /user"
-            };
-
-            PlatformHelper.ConfigureForCrossPlatform(headerInfo);
-
-            using var headerProcess = new Process { StartInfo = headerInfo };
-            headerProcess.Start();
-            var headerOutput = await headerProcess.StandardOutput.ReadToEndAsync(cancellationToken);
-            await headerProcess.WaitForExitAsync(cancellationToken);
-
-            if (headerProcess.ExitCode == 0)
-            {
-                var remainingMatch = Regex.Match(headerOutput, @"X-RateLimit-Remaining:\s*(\d+)", RegexOptions.IgnoreCase);
-                var limitMatch = Regex.Match(headerOutput, @"X-RateLimit-Limit:\s*(\d+)", RegexOptions.IgnoreCase);
-                var resetMatch = Regex.Match(headerOutput, @"X-RateLimit-Reset:\s*(\d+)", RegexOptions.IgnoreCase);
-
-                if (remainingMatch.Success && limitMatch.Success)
-                {
-                    var remaining = int.Parse(remainingMatch.Groups[1].Value);
-                    var limit = int.Parse(limitMatch.Groups[1].Value);
-                    DateTime? reset = null;
-
-                    if (resetMatch.Success)
-                    {
-                        var resetUnix = long.Parse(resetMatch.Groups[1].Value);
-                        reset = DateTimeOffset.FromUnixTimeSeconds(resetUnix).UtcDateTime;
-                    }
-
-                    return (limit - remaining, limit, reset);
-                }
-            }
-        }
-        catch
-        {
-            // Ignore errors in optional limit checking
-        }
-
-        return null;
+        return Task.FromResult(limits);
     }
 
     public override Task<SessionSummary> GetSessionSummaryAsync(

@@ -51,6 +51,10 @@ public class ClaudeProvider : CliProviderBase
 
     private string GetExecutablePath() => ResolveExecutablePath(DefaultExecutable);
 
+    protected override string? GetUpdateCommand() => GetExecutablePath();
+    protected override string GetUpdateArguments() => "update";
+    protected override string? GetDefaultExecutablePath() => GetExecutablePath();
+
     public override async Task<bool> TestConnectionAsync(CancellationToken cancellationToken = default)
     {
         try
@@ -315,6 +319,16 @@ public class ClaudeProvider : CliProviderBase
         if (!result.Success && !string.IsNullOrEmpty(error))
         {
             result.ErrorMessage = error;
+        }
+
+        // Parse usage limit signals from stderr
+        if (!string.IsNullOrEmpty(error))
+        {
+            var usageLimits = ClaudeUsageParser.ParseLimitSignals(error);
+            if (usageLimits != null)
+            {
+                result.DetectedUsageLimits = usageLimits;
+            }
         }
 
         return result;
