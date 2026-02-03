@@ -14,6 +14,8 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 
     public DbSet<Provider> Providers => Set<Provider>();
     public DbSet<ProviderModel> ProviderModels => Set<ProviderModel>();
+    public DbSet<ProviderUsageRecord> ProviderUsageRecords => Set<ProviderUsageRecord>();
+    public DbSet<ProviderUsageSummary> ProviderUsageSummaries => Set<ProviderUsageSummary>();
     public DbSet<Project> Projects => Set<Project>();
     public DbSet<Job> Jobs => Set<Job>();
     public DbSet<JobMessage> JobMessages => Set<JobMessage>();
@@ -35,6 +37,7 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
             entity.Property(e => e.ApiKey).HasMaxLength(200);
             entity.Property(e => e.Type).HasConversion<string>();
             entity.Property(e => e.ConnectionMode).HasConversion<string>();
+            entity.Property(e => e.ConfiguredLimitType).HasConversion<string>();
             entity.HasMany(e => e.AvailableModels)
                 .WithOne(m => m.Provider)
                 .HasForeignKey(m => m.ProviderId)
@@ -49,6 +52,40 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
             entity.Property(e => e.Description).HasMaxLength(500);
             entity.Property(e => e.PriceMultiplier).HasPrecision(18, 4);
             entity.HasIndex(e => new { e.ProviderId, e.ModelId }).IsUnique();
+        });
+
+        modelBuilder.Entity<ProviderUsageRecord>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.ModelUsed).HasMaxLength(200);
+            entity.Property(e => e.RawLimitMessage).HasMaxLength(1000);
+            entity.Property(e => e.CostUsd).HasPrecision(18, 6);
+            entity.Property(e => e.DetectedLimitType).HasConversion<string>();
+            entity.HasOne(e => e.Provider)
+                .WithMany()
+                .HasForeignKey(e => e.ProviderId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.Job)
+                .WithMany()
+                .HasForeignKey(e => e.JobId)
+                .OnDelete(DeleteBehavior.SetNull);
+            // Index for efficient querying by provider and time
+            entity.HasIndex(e => new { e.ProviderId, e.RecordedAt });
+        });
+
+        modelBuilder.Entity<ProviderUsageSummary>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.LimitMessage).HasMaxLength(500);
+            entity.Property(e => e.CliVersion).HasMaxLength(50);
+            entity.Property(e => e.TotalCostUsd).HasPrecision(18, 6);
+            entity.Property(e => e.LimitType).HasConversion<string>();
+            entity.HasOne(e => e.Provider)
+                .WithMany()
+                .HasForeignKey(e => e.ProviderId)
+                .OnDelete(DeleteBehavior.Cascade);
+            // Ensure one summary per provider
+            entity.HasIndex(e => e.ProviderId).IsUnique();
         });
 
         modelBuilder.Entity<Project>(entity =>

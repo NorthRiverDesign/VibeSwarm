@@ -52,6 +52,17 @@ public class Provider
     public DateTime? LastModelsRefreshAt { get; set; }
 
     /// <summary>
+    /// User-configured usage limit for this provider (e.g., Copilot Pro = 300 premium requests/month).
+    /// Used for exhaustion detection when the provider doesn't expose limits via API.
+    /// </summary>
+    public int? ConfiguredUsageLimit { get; set; }
+
+    /// <summary>
+    /// The type of limit that ConfiguredUsageLimit represents.
+    /// </summary>
+    public UsageLimitType ConfiguredLimitType { get; set; } = UsageLimitType.None;
+
+    /// <summary>
     /// Available AI models for this provider
     /// </summary>
     public ICollection<ProviderModel> AvailableModels { get; set; } = new List<ProviderModel>();
