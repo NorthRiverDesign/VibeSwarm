@@ -3,6 +3,7 @@
 @inject IProviderService ProviderService
 @inject IProjectService ProjectService
 @inject IVersionControlService VersionControlService
+@inject HttpProviderService HttpProviderService
 
 <PageHeader Title="Dashboard" Subtitle="Your distributed agent job management system" />
 
@@ -75,7 +76,8 @@
                     {
                         <div class="col">
                             <ProviderCard Name="@provider.Name" ProviderType="@provider.Type.ToString()"
-                                ConnectionMode="@provider.ConnectionMode.ToString()" IsEnabled="@provider.IsEnabled" />
+                                ConnectionMode="@provider.ConnectionMode.ToString()" IsEnabled="@provider.IsEnabled"
+                                CliVersion="@GetCliVersion(provider.Id)" UsageSummary="@GetUsageSummary(provider.Id)" />
                         </div>
                     }
                 </div>
@@ -87,6 +89,7 @@
 @code {
     private List<Provider> Providers { get; set; } = new();
     private List<DashboardProjectInfo> DashboardProjects { get; set; } = new();
+    private Dictionary<Guid, ProviderUsageSummary> UsageSummaries { get; set; } = new();
     private bool IsLoading { get; set; } = true;
 
     protected override async Task OnInitializedAsync()
@@ -95,11 +98,13 @@
         {
             var providersTask = ProviderService.GetAllAsync();
             var projectsTask = ProjectService.GetRecentWithLatestJobAsync(10);
+            var usageTask = HttpProviderService.GetAllUsageSummariesAsync();
 
-            await Task.WhenAll(providersTask, projectsTask);
+            await Task.WhenAll(providersTask, projectsTask, usageTask);
 
             Providers = (await providersTask).ToList();
             DashboardProjects = (await projectsTask).ToList();
+            UsageSummaries = await usageTask;
 
             // Fetch current branch for each project in parallel
             await FetchBranchInfoAsync();
@@ -108,6 +113,16 @@
         {
             IsLoading = false;
         }
+    }
+
+    private string? GetCliVersion(Guid providerId)
+    {
+        return UsageSummaries.TryGetValue(providerId, out var summary) ? summary.CliVersion : null;
+    }
+
+    private ProviderUsageSummary? GetUsageSummary(Guid providerId)
+    {
+        return UsageSummaries.TryGetValue(providerId, out var summary) ? summary : null;
     }
 
     private async Task FetchBranchInfoAsync()

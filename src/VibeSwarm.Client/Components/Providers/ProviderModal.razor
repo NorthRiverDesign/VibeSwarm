@@ -99,6 +99,61 @@
 					empty for no limit.</div>
 			</div>
 
+			@* Usage Limit Configuration *@
+			@if (Provider.Type == ProviderType.Copilot || Provider.Type == ProviderType.Claude)
+			{
+				<div class="mb-3 p-3 rounded bg-body-secondary">
+					<h6 class="fw-semibold mb-3">
+						<i class="bi bi-graph-up me-2"></i>Usage Limit Configuration
+					</h6>
+
+					@if (Provider.Type == ProviderType.Copilot)
+					{
+						<div class="mb-2">
+							<label for="modal-usageLimit" class="form-label">Monthly Premium Request Limit</label>
+							<InputNumber id="modal-usageLimit" @bind-Value="Provider.ConfiguredUsageLimit" class="form-control"
+								placeholder="300" min="1" />
+							<div class="form-text">
+								Set your Copilot plan's monthly premium request limit (e.g., 300 for Copilot Pro, 1000 for
+								Business).
+								Jobs will be blocked when this limit is reached.
+							</div>
+						</div>
+					}
+					else if (Provider.Type == ProviderType.Claude)
+					{
+						<div class="mb-2">
+							<label for="modal-limitType" class="form-label">Limit Type</label>
+							<InputSelect id="modal-limitType" @bind-Value="Provider.ConfiguredLimitType" class="form-select">
+								<option value="@UsageLimitType.None">Auto-detect from CLI</option>
+								<option value="@UsageLimitType.TokenLimit">Tokens</option>
+								<option value="@UsageLimitType.SessionLimit">Session</option>
+							</InputSelect>
+						</div>
+						@if (Provider.ConfiguredLimitType != UsageLimitType.None)
+						{
+							<div class="mb-2">
+								<label for="modal-usageLimit" class="form-label">
+									@(Provider.ConfiguredLimitType == UsageLimitType.TokenLimit ? "Token Limit" : "Session Limit")
+								</label>
+								<InputNumber id="modal-usageLimit" @bind-Value="Provider.ConfiguredUsageLimit" class="form-control"
+									placeholder="Enter limit" min="1" />
+								<div class="form-text">
+									@if (Provider.ConfiguredLimitType == UsageLimitType.TokenLimit)
+									{
+										<text>Maximum tokens per period. Jobs will be blocked when this limit is reached.</text>
+									}
+									else
+									{
+										<text>Maximum usage per session. Jobs will be blocked when this limit is reached.</text>
+									}
+								</div>
+							</div>
+						}
+					}
+				</div>
+			}
+
 			<div class="mb-3 form-check">
 				<InputCheckbox id="modal-isEnabled" @bind-Value="Provider.IsEnabled" class="form-check-input" />
 				<label for="modal-isEnabled" class="form-check-label">Enabled</label>
@@ -190,6 +245,8 @@
 					ApiKey = EditProvider.ApiKey,
 					IsEnabled = EditProvider.IsEnabled,
 					MaxExecutionMinutes = EditProvider.MaxExecutionMinutes,
+					ConfiguredUsageLimit = EditProvider.ConfiguredUsageLimit,
+					ConfiguredLimitType = EditProvider.ConfiguredLimitType,
 					CreatedAt = EditProvider.CreatedAt,
 					LastConnectedAt = EditProvider.LastConnectedAt
 				};
@@ -218,6 +275,10 @@
 		Provider.Type = newType;
 		// Update connection mode to default for the new provider type
 		Provider.ConnectionMode = ProviderCapabilities.GetDefaultMode(newType);
+		// Set default limit type based on provider
+		Provider.ConfiguredLimitType = newType == ProviderType.Copilot
+		? UsageLimitType.PremiumRequests
+		: UsageLimitType.None;
 	}
 
 	private string GetExecutablePlaceholder() => Provider.Type switch

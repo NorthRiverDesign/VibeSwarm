@@ -4,12 +4,19 @@
 @using VibeSwarm.Shared.Data
 @using VibeSwarm.Shared.Utilities
 @inject IProviderService ProviderService
+@inject HttpProviderService HttpProviderService
 
 <PageHeader Title="Providers" Subtitle="Manage your AI coding agent providers">
     <Actions>
         <ActionButton Icon="plus" Text="Add" OnClick="ShowAddModal" />
     </Actions>
 </PageHeader>
+
+@if (!string.IsNullOrEmpty(CliUpdateMessage))
+{
+    <Alert Type="@(CliUpdateSuccess? Alert.AlertType.Success : Alert.AlertType.Danger)" Message="@CliUpdateMessage"
+        Class="mb-3" Dismissible="true" />
+}
 
 @if (IsLoading)
 {
@@ -46,7 +53,17 @@ else
                         <div class="d-flex flex-wrap gap-2 gap-md-3 mt-2 small text-body-secondary">
                             <span><span class="fw-medium">Type:</span> @provider.Type</span>
                             <span><span class="fw-medium">Mode:</span> @provider.ConnectionMode</span>
+                            @if (GetCliVersion(provider.Id) is string version && !string.IsNullOrEmpty(version))
+                            {
+                                <span><span class="fw-medium">Version:</span> @version</span>
+                            }
                         </div>
+                        @if (GetUsageSummary(provider.Id) is ProviderUsageSummary summary && summary.EffectiveMaxUsage > 0)
+                        {
+                            <div class="mt-2" style="max-width: 300px;">
+                                <UsageMeter UsageSummary="summary" ShowResetTime="true" />
+                            </div>
+                        }
                         @if (TestResults.TryGetValue(provider.Id, out var result))
                         {
                             <div
@@ -86,6 +103,13 @@ else
                                         <i
                                             class="bi bi-arrow-repeat me-2 @(RefreshingModelsId == provider.Id ? "spin" : "")"></i>
                                         Refresh Models
+                                    </button>
+                                </li>
+                                <li>
+                                    <button class="dropdown-item" @onclick="@(() => UpdateCli(provider))"
+                                        @onclick:stopPropagation="true" disabled="@(UpdatingCliId == provider.Id)">
+                                        <i class="bi bi-download me-2 @(UpdatingCliId == provider.Id ? "spin" : "")"></i>
+                                        Update CLI
                                     </button>
                                 </li>
                                 <li>
@@ -179,9 +203,13 @@ else
     private Provider? EditingProvider { get; set; }
     private Guid? TestingId { get; set; }
     private Guid? RefreshingModelsId { get; set; }
+    private Guid? UpdatingCliId { get; set; }
     private Dictionary<Guid, string> RefreshModelsErrors { get; set; } = new();
     private Dictionary<Guid, ConnectionTestResult> TestResults { get; set; } = new();
     private Dictionary<Guid, List<ProviderModel>> ProviderModels { get; set; } = new();
+    private Dictionary<Guid, ProviderUsageSummary> UsageSummaries { get; set; } = new();
+    private string? CliUpdateMessage { get; set; }
+    private bool CliUpdateSuccess { get; set; }
 
     // Delete confirmation state
     private bool ShowDeleteModal { get; set; }
@@ -214,11 +242,24 @@ else
                 var models = await ProviderService.GetModelsAsync(provider.Id);
                 ProviderModels[provider.Id] = models.ToList();
             }
+
+            // Load usage summaries
+            UsageSummaries = await HttpProviderService.GetAllUsageSummariesAsync();
         }
         finally
         {
             IsLoading = false;
         }
+    }
+
+    private string? GetCliVersion(Guid providerId)
+    {
+        return UsageSummaries.TryGetValue(providerId, out var summary) ? summary.CliVersion : null;
+    }
+
+    private ProviderUsageSummary? GetUsageSummary(Guid providerId)
+    {
+        return UsageSummaries.TryGetValue(providerId, out var summary) ? summary : null;
     }
 
     private void ShowAddModal()
@@ -394,6 +435,51 @@ else
         finally
         {
             RefreshingModelsId = null;
+        }
+    }
+
+    private async Task UpdateCli(Provider provider)
+    {
+        UpdatingCliId = provider.Id;
+        CliUpdateMessage = null;
+        StateHasChanged();
+
+        try
+        {
+            var result = await HttpProviderService.UpdateCliAsync(provider.Id);
+            CliUpdateSuccess = result.Success;
+
+            if (result.Success)
+            {
+                var versionInfo = string.IsNullOrEmpty(result.PreviousVersion) || result.PreviousVersion == result.NewVersion
+                ? $"Version: {result.NewVersion}"
+                : $"Updated from {result.PreviousVersion} to {result.NewVersion}";
+                CliUpdateMessage = $"{provider.Name} CLI updated successfully. {versionInfo}";
+
+                // Reload usage summaries to get updated version
+                UsageSummaries = await HttpProviderService.GetAllUsageSummariesAsync();
+            }
+            else
+            {
+                CliUpdateMessage = $"Failed to update {provider.Name} CLI: {result.ErrorMessage}";
+            }
+        }
+        catch (Exception ex)
+        {
+            CliUpdateSuccess = false;
+            CliUpdateMessage = $"Error updating {provider.Name} CLI: {ex.Message}";
+        }
+        finally
+        {
+            UpdatingCliId = null;
+            StateHasChanged();
+
+            // Clear message after 5 seconds
+            _ = Task.Delay(5000).ContinueWith(_ =>
+            {
+                CliUpdateMessage = null;
+                InvokeAsync(StateHasChanged);
+            });
         }
     }
 

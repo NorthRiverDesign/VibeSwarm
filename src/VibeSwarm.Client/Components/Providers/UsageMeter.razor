@@ -1,0 +1,134 @@
+@* Usage meter component showing provider usage as a progress bar *@
+
+@if (UsageSummary != null && UsageSummary.EffectiveMaxUsage > 0)
+{
+	<div class="usage-meter @Class">
+		<div class="d-flex justify-content-between align-items-center small mb-1">
+			<span class="text-body-secondary">
+				@GetUsageLabel()
+			</span>
+			<span class="fw-medium @GetTextColorClass()">
+				@UsageSummary.PercentUsed%
+			</span>
+		</div>
+		<div class="progress" style="height: 6px;" role="progressbar" aria-valuenow="@UsageSummary.PercentUsed"
+			aria-valuemin="0" aria-valuemax="100">
+			<div class="progress-bar @GetProgressBarClass()" style="width: @UsageSummary.PercentUsed%"></div>
+		</div>
+		@if (ShowResetTime && UsageSummary.LimitResetTime.HasValue)
+		{
+			<div class="small text-body-tertiary mt-1">
+				<i class="bi bi-clock me-1"></i>Resets @FormatResetTime(UsageSummary.LimitResetTime.Value)
+			</div>
+		}
+		@if (UsageSummary.IsLimitReached)
+		{
+			<div class="small text-danger mt-1">
+				<i class="bi bi-exclamation-triangle-fill me-1"></i>Limit reached
+			</div>
+		}
+	</div>
+}
+else if (ShowEmptyState)
+{
+	<div class="usage-meter @Class">
+		<div class="small text-body-tertiary">
+			<i class="bi bi-graph-up me-1"></i>No usage data
+		</div>
+	</div>
+}
+
+@code {
+	[Parameter]
+	public ProviderUsageSummary? UsageSummary { get; set; }
+
+	[Parameter]
+	public string Class { get; set; } = "";
+
+	[Parameter]
+	public bool ShowResetTime { get; set; } = true;
+
+	[Parameter]
+	public bool ShowEmptyState { get; set; } = false;
+
+	[Parameter]
+	public bool Compact { get; set; } = false;
+
+	private string GetUsageLabel()
+	{
+		if (UsageSummary == null) return "";
+
+		long current = UsageSummary.LimitType switch
+		{
+			UsageLimitType.PremiumRequests => UsageSummary.TotalPremiumRequestsConsumed,
+			UsageLimitType.TokenLimit => UsageSummary.TotalInputTokens + UsageSummary.TotalOutputTokens,
+			UsageLimitType.SessionLimit => (long)(UsageSummary.CurrentUsage ?? 0),
+			_ => (long)(UsageSummary.CurrentUsage ?? 0)
+		};
+
+		long max = (long)(UsageSummary.EffectiveMaxUsage ?? 0);
+
+		return UsageSummary.LimitType switch
+		{
+			UsageLimitType.PremiumRequests => Compact
+			? $"{current}/{max}"
+			: $"{current:N0} / {max:N0} Premium Requests",
+			UsageLimitType.TokenLimit => Compact
+			? $"{FormatTokens(current)}/{FormatTokens(max)}"
+			: $"{FormatTokens(current)} / {FormatTokens(max)} Tokens",
+			UsageLimitType.SessionLimit => Compact
+			? $"{current}/{max}"
+			: $"{current:N0} / {max:N0} (Session)",
+			_ => Compact
+			? $"{current}/{max}"
+			: $"{current:N0} / {max:N0}"
+		};
+	}
+
+	private string FormatTokens(long tokens)
+	{
+		if (tokens >= 1_000_000) return $"{tokens / 1_000_000.0:F1}M";
+		if (tokens >= 1_000) return $"{tokens / 1_000.0:F1}K";
+		return tokens.ToString("N0");
+	}
+
+	private string GetProgressBarClass()
+	{
+		var percent = UsageSummary?.PercentUsed ?? 0;
+		return percent switch
+		{
+			>= 95 => "bg-danger",
+			>= 80 => "bg-warning",
+			>= 60 => "bg-info",
+			_ => "bg-success"
+		};
+	}
+
+	private string GetTextColorClass()
+	{
+		var percent = UsageSummary?.PercentUsed ?? 0;
+		return percent switch
+		{
+			>= 95 => "text-danger",
+			>= 80 => "text-warning",
+			_ => ""
+		};
+	}
+
+	private string FormatResetTime(DateTime resetTime)
+	{
+		var now = DateTime.UtcNow;
+		var diff = resetTime - now;
+
+		if (diff.TotalDays > 1)
+			return $"in {(int)diff.TotalDays} days";
+		if (diff.TotalHours > 1)
+			return $"in {(int)diff.TotalHours} hours";
+		if (diff.TotalMinutes > 1)
+			return $"in {(int)diff.TotalMinutes} minutes";
+		if (diff.TotalSeconds > 0)
+			return "soon";
+
+		return resetTime.ToString("MMM d");
+	}
+}

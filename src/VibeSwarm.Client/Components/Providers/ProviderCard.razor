@@ -1,15 +1,32 @@
 @* Reusable provider card component for dashboard view *@
+@using VibeSwarm.Shared.Data
 
 <div class="card h-100 border-start border-info border-3 @(IsEnabled ? "" : "opacity-50")">
 	<div class="card-body">
 		<div class="d-flex justify-content-between align-items-start mb-2">
 			<h6 class="card-title fw-semibold mb-0">@Name</h6>
-			<StatusBadge Status="@(IsEnabled ? "Active" : "Off")" ShowSpinner="false" />
+			<div class="d-flex align-items-center gap-2">
+				@if (UsageSummary?.IsLimitReached == true)
+				{
+					<span class="badge bg-danger" title="Usage limit reached">Limit Reached</span>
+				}
+				<StatusBadge Status="@(IsEnabled ? "Active" : "Off")" ShowSpinner="false" />
+			</div>
 		</div>
 		<div class="small text-body-secondary">
 			<div class="mb-1"><span class="fw-medium">Type:</span> @ProviderType</div>
-			<div><span class="fw-medium">Mode:</span> @ConnectionMode</div>
+			<div class="mb-1"><span class="fw-medium">Mode:</span> @ConnectionMode</div>
+			@if (!string.IsNullOrEmpty(CliVersion))
+			{
+				<div><span class="fw-medium">Version:</span> @CliVersion</div>
+			}
 		</div>
+		@if (UsageSummary != null && UsageSummary.EffectiveMaxUsage > 0)
+		{
+			<div class="mt-2 pt-2 border-top">
+				<UsageMeter UsageSummary="UsageSummary" Compact="true" ShowResetTime="false" />
+			</div>
+		}
 	</div>
 </div>
 
@@ -25,4 +42,10 @@
 
 	[Parameter]
 	public bool IsEnabled { get; set; }
+
+	[Parameter]
+	public string? CliVersion { get; set; }
+
+	[Parameter]
+	public ProviderUsageSummary? UsageSummary { get; set; }
 }
