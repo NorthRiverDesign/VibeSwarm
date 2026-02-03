@@ -45,6 +45,11 @@ public interface IProviderService
     /// Sets the default model for a provider. The default model will be pre-selected when creating new jobs.
     /// </summary>
     Task SetDefaultModelAsync(Guid providerId, Guid modelId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Updates the CLI for a provider by running its update command.
+    /// </summary>
+    Task<CliUpdateResult> UpdateCliAsync(Guid id, CancellationToken cancellationToken = default);
 }
 
 public class ConnectionTestResult

@@ -82,4 +82,34 @@ public class HttpProviderService : IProviderService
 
     public async Task SetDefaultModelAsync(Guid providerId, Guid modelId, CancellationToken ct = default)
         => await _http.PutAsJsonAsync($"/api/providers/{providerId}/default-model", new { ModelId = modelId }, ct);
+
+    public async Task<CliUpdateResult> UpdateCliAsync(Guid id, CancellationToken ct = default)
+    {
+        var response = await _http.PostAsync($"/api/providers/{id}/update-cli", null, ct);
+        return await response.Content.ReadFromJsonAsync<CliUpdateResult>(ct) ?? new CliUpdateResult
+        {
+            Success = false,
+            ErrorMessage = response.IsSuccessStatusCode ? null : "Update failed"
+        };
+    }
+
+    // Usage-specific methods (not part of IProviderService but useful for client)
+
+    public async Task<ProviderUsageSummary?> GetUsageSummaryAsync(Guid id, CancellationToken ct = default)
+    {
+        var response = await _http.GetAsync($"/api/providers/{id}/usage", ct);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            return null;
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<ProviderUsageSummary>(ct);
+    }
+
+    public async Task<Dictionary<Guid, ProviderUsageSummary>> GetAllUsageSummariesAsync(CancellationToken ct = default)
+        => await _http.GetFromJsonAsync<Dictionary<Guid, ProviderUsageSummary>>("/api/providers/usage-summaries", ct) ?? [];
+
+    public async Task<UsageExhaustionWarning?> CheckExhaustionAsync(Guid id, int threshold = 80, CancellationToken ct = default)
+        => await _http.GetFromJsonAsync<UsageExhaustionWarning?>($"/api/providers/{id}/check-exhaustion?threshold={threshold}", ct);
+
+    public async Task ResetUsageAsync(Guid id, CancellationToken ct = default)
+        => await _http.PostAsync($"/api/providers/{id}/reset-usage", null, ct);
 }

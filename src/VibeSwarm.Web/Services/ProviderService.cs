@@ -410,4 +410,35 @@ public class ProviderService : IProviderService
 
         return string.Join(" ", formattedParts);
     }
+
+    public async Task<CliUpdateResult> UpdateCliAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        var provider = await GetByIdAsync(id, cancellationToken);
+        if (provider == null)
+        {
+            return new CliUpdateResult
+            {
+                Success = false,
+                ErrorMessage = "Provider not found."
+            };
+        }
+
+        var instance = CreateProviderInstance(provider);
+        var result = await instance.UpdateCliAsync(cancellationToken);
+
+        // Cache the new version if update succeeded
+        if (result.Success && !string.IsNullOrWhiteSpace(result.NewVersion) && _providerUsageService != null)
+        {
+            try
+            {
+                await _providerUsageService.UpdateVersionInfoAsync(id, result.NewVersion, cancellationToken);
+            }
+            catch
+            {
+                // Don't fail the update due to version caching errors
+            }
+        }
+
+        return result;
+    }
 }

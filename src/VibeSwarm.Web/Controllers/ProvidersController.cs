@@ -12,8 +12,13 @@ namespace VibeSwarm.Web.Controllers;
 public class ProvidersController : ControllerBase
 {
     private readonly IProviderService _providerService;
+    private readonly IProviderUsageService _usageService;
 
-    public ProvidersController(IProviderService providerService) => _providerService = providerService;
+    public ProvidersController(IProviderService providerService, IProviderUsageService usageService)
+    {
+        _providerService = providerService;
+        _usageService = usageService;
+    }
 
     [HttpGet]
     public async Task<IActionResult> GetAll(CancellationToken ct) => Ok(await _providerService.GetAllAsync(ct));
@@ -72,6 +77,40 @@ public class ProvidersController : ControllerBase
     public async Task<IActionResult> SetDefaultModel(Guid providerId, [FromBody] SetDefaultModelRequest req, CancellationToken ct)
     {
         await _providerService.SetDefaultModelAsync(providerId, req.ModelId, ct);
+        return Ok();
+    }
+
+    // Usage tracking endpoints
+
+    [HttpGet("{id:guid}/usage")]
+    public async Task<IActionResult> GetUsage(Guid id, CancellationToken ct)
+    {
+        var summary = await _usageService.GetUsageSummaryAsync(id, ct);
+        return summary == null ? NotFound() : Ok(summary);
+    }
+
+    [HttpGet("usage-summaries")]
+    public async Task<IActionResult> GetAllUsageSummaries(CancellationToken ct)
+        => Ok(await _usageService.GetAllUsageSummariesAsync(ct));
+
+    [HttpPost("{id:guid}/update-cli")]
+    public async Task<IActionResult> UpdateCli(Guid id, CancellationToken ct)
+    {
+        var result = await _providerService.UpdateCliAsync(id, ct);
+        return result.Success ? Ok(result) : BadRequest(result);
+    }
+
+    [HttpPost("{id:guid}/check-exhaustion")]
+    public async Task<IActionResult> CheckExhaustion(Guid id, [FromQuery] int threshold = 80, CancellationToken ct = default)
+    {
+        var warning = await _usageService.CheckExhaustionAsync(id, threshold, ct);
+        return Ok(warning);
+    }
+
+    [HttpPost("{id:guid}/reset-usage")]
+    public async Task<IActionResult> ResetUsage(Guid id, CancellationToken ct)
+    {
+        await _usageService.ResetPeriodAsync(id, ct);
         return Ok();
     }
 
