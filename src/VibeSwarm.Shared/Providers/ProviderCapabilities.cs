@@ -52,9 +52,28 @@ public static class ProviderCapabilities
 	{
 		ProviderType.OpenCode => "opencode",
 		ProviderType.Claude => "claude",
-		ProviderType.Copilot => "github-copilot-cli",
+		ProviderType.Copilot => "copilot",
 		_ => ""
 	};
+
+	/// <summary>
+	/// Gets a brief description of the connection mode for a provider type.
+	/// </summary>
+	public static string GetModeDescription(ProviderType providerType, ProviderConnectionMode mode) => (providerType, mode) switch
+	{
+		(ProviderType.Copilot, ProviderConnectionMode.SDK) => "Uses the GitHub.Copilot.SDK NuGet package for programmatic control via JSON-RPC. Requires the Copilot CLI installed.",
+		(ProviderType.Copilot, ProviderConnectionMode.CLI) => "Spawns the Copilot CLI process directly for each job execution.",
+		(ProviderType.Claude, ProviderConnectionMode.SDK) => "Uses the Anthropic .NET SDK for direct API access. Requires an Anthropic API key.",
+		(ProviderType.Claude, ProviderConnectionMode.CLI) => "Spawns the Claude Code CLI process directly for each job execution.",
+		(ProviderType.OpenCode, ProviderConnectionMode.REST) => "Connects to the OpenCode REST API server.",
+		(ProviderType.OpenCode, ProviderConnectionMode.CLI) => "Spawns the OpenCode CLI process directly for each job execution.",
+		_ => $"{mode} mode for {providerType}."
+	};
+
+	/// <summary>
+	/// Returns whether the "Update CLI" action is applicable for a given mode.
+	/// </summary>
+	public static bool SupportsCliUpdate(ProviderConnectionMode mode) => mode == ProviderConnectionMode.CLI;
 
 	/// <summary>
 	/// Validates provider configuration and returns validation errors.

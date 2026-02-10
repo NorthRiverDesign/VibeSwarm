@@ -18,7 +18,7 @@
 			<div class="mb-1"><span class="fw-medium">Mode:</span> @ConnectionMode</div>
 			@if (!string.IsNullOrEmpty(CliVersion))
 			{
-				<div><span class="fw-medium">Version:</span> @CliVersion</div>
+				<div><span class="fw-medium">@(ConnectionMode == "SDK" ? "SDK:" : "Version:")</span> @CliVersion</div>
 			}
 		</div>
 		@if (UsageSummary != null && UsageSummary.EffectiveMaxUsage > 0)

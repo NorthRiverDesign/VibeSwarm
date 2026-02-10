@@ -107,9 +107,10 @@ else
                                 </li>
                                 <li>
                                     <button class="dropdown-item" @onclick="@(() => UpdateCli(provider))"
-                                        @onclick:stopPropagation="true" disabled="@(UpdatingCliId == provider.Id)">
+                                        @onclick:stopPropagation="true"
+                                        disabled="@(UpdatingCliId == provider.Id || provider.ConnectionMode == ProviderConnectionMode.SDK)">
                                         <i class="bi bi-download me-2 @(UpdatingCliId == provider.Id ? "spin" : "")"></i>
-                                        Update CLI
+                                        @(provider.ConnectionMode == ProviderConnectionMode.SDK ? "Update via NuGet" : "Update CLI")
                                     </button>
                                 </li>
                                 <li>

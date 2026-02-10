@@ -79,6 +79,23 @@ public class CopilotSdkProvider : SdkProviderBase
 		return !string.IsNullOrEmpty(CurrentModel) ? CurrentModel : DefaultModel;
 	}
 
+	/// <summary>
+	/// Applies BYOK (Bring Your Own Key) provider configuration to a session config
+	/// when an API endpoint is configured. This enables routing requests through
+	/// custom providers like OpenAI, Azure AI Foundry, or Anthropic.
+	/// </summary>
+	private void ApplyByokConfig(SessionConfig sessionConfig)
+	{
+		if (!string.IsNullOrEmpty(ApiEndpoint))
+		{
+			sessionConfig.Provider = new ProviderConfig
+			{
+				BaseUrl = ApiEndpoint,
+				ApiKey = ApiKey ?? string.Empty
+			};
+		}
+	}
+
 	public override async Task<bool> TestConnectionAsync(CancellationToken cancellationToken = default)
 	{
 		try
@@ -103,6 +120,7 @@ public class CopilotSdkProvider : SdkProviderBase
 		var client = await EnsureClientAsync(cancellationToken: cancellationToken);
 
 		var sessionConfig = new SessionConfig { Model = ResolveModel() };
+		ApplyByokConfig(sessionConfig);
 		await using var session = await client.CreateSessionAsync(sessionConfig);
 
 		var responseBuilder = new StringBuilder();
@@ -165,6 +183,9 @@ public class CopilotSdkProvider : SdkProviderBase
 				Model = model,
 				Streaming = true
 			};
+
+			// Apply BYOK provider configuration if an API endpoint is set
+			ApplyByokConfig(sessionConfig);
 
 			if (!string.IsNullOrEmpty(sessionId))
 			{
@@ -638,6 +659,7 @@ public class CopilotSdkProvider : SdkProviderBase
 			var model = ResolveModel();
 
 			var sessionConfig = new SessionConfig { Model = model };
+			ApplyByokConfig(sessionConfig);
 			await using var session = await client.CreateSessionAsync(sessionConfig);
 
 			var responseBuilder = new StringBuilder();
