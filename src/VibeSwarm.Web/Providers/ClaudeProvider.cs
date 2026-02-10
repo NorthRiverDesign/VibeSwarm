@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Net.Http.Json;
 using System.Text.Json;
 using VibeSwarm.Shared.Providers.Claude;
 using VibeSwarm.Shared.Services;
@@ -8,14 +7,11 @@ using VibeSwarm.Shared.Utilities;
 namespace VibeSwarm.Shared.Providers;
 
 /// <summary>
-/// Provider implementation for Claude CLI and REST API.
+/// Provider implementation for Claude CLI mode.
+/// For SDK mode, use ClaudeSdkProvider instead.
 /// </summary>
 public class ClaudeProvider : CliProviderBase
 {
-    private readonly string? _apiEndpoint;
-    private readonly string? _apiKey;
-    private readonly HttpClient? _httpClient;
-
     private const string DefaultExecutable = "claude";
 
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -29,24 +25,6 @@ public class ClaudeProvider : CliProviderBase
     public ClaudeProvider(Provider config)
         : base(config.Id, config.Name, config.ConnectionMode, config.ExecutablePath, config.WorkingDirectory)
     {
-        _apiEndpoint = config.ApiEndpoint;
-        _apiKey = config.ApiKey;
-
-        if (ConnectionMode == ProviderConnectionMode.REST && !string.IsNullOrEmpty(_apiEndpoint))
-        {
-            _httpClient = new HttpClient
-            {
-                BaseAddress = new Uri(_apiEndpoint),
-                Timeout = TimeSpan.FromMinutes(30)
-            };
-
-            if (!string.IsNullOrEmpty(_apiKey))
-            {
-                _httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {_apiKey}");
-                _httpClient.DefaultRequestHeaders.Add("anthropic-version", "2023-06-01");
-                _httpClient.DefaultRequestHeaders.Add("x-api-key", _apiKey);
-            }
-        }
     }
 
     private string GetExecutablePath() => ResolveExecutablePath(DefaultExecutable);
@@ -59,14 +37,7 @@ public class ClaudeProvider : CliProviderBase
     {
         try
         {
-            if (ConnectionMode == ProviderConnectionMode.CLI)
-            {
-                return await TestCliConnectionAsync(GetExecutablePath(), "Claude", cancellationToken: cancellationToken);
-            }
-            else
-            {
-                return await TestRestConnectionAsync(cancellationToken);
-            }
+            return await TestCliConnectionAsync(GetExecutablePath(), "Claude", cancellationToken: cancellationToken);
         }
         catch
         {
@@ -75,57 +46,9 @@ public class ClaudeProvider : CliProviderBase
         }
     }
 
-    private async Task<bool> TestRestConnectionAsync(CancellationToken cancellationToken)
-    {
-        if (_httpClient == null)
-        {
-            IsConnected = false;
-            LastConnectionError = "REST API client is not configured. Check API endpoint and key settings.";
-            return false;
-        }
-
-        try
-        {
-            var response = await _httpClient.GetAsync("/v1/models", cancellationToken);
-            IsConnected = response.IsSuccessStatusCode;
-
-            if (!IsConnected)
-            {
-                var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
-                LastConnectionError = $"REST API test failed. Status: {(int)response.StatusCode} {response.ReasonPhrase}. " +
-                    $"Endpoint: {_apiEndpoint}/v1/models. Response: {responseBody}";
-            }
-            else
-            {
-                LastConnectionError = null;
-            }
-
-            return IsConnected;
-        }
-        catch (HttpRequestException ex)
-        {
-            IsConnected = false;
-            LastConnectionError = $"Failed to connect to Claude API at {_apiEndpoint}: {ex.Message}";
-            return false;
-        }
-        catch (Exception ex)
-        {
-            IsConnected = false;
-            LastConnectionError = $"Unexpected error testing Claude REST API: {ex.GetType().Name}: {ex.Message}";
-            return false;
-        }
-    }
-
     public override async Task<string> ExecuteAsync(string prompt, CancellationToken cancellationToken = default)
     {
-        if (ConnectionMode == ProviderConnectionMode.CLI)
-        {
-            return await ExecuteCliAsync(prompt, null, cancellationToken);
-        }
-        else
-        {
-            return await ExecuteRestAsync(prompt, cancellationToken);
-        }
+        return await ExecuteCliAsync(prompt, null, cancellationToken);
     }
 
     public override async Task<ExecutionResult> ExecuteWithSessionAsync(
@@ -135,14 +58,7 @@ public class ClaudeProvider : CliProviderBase
         IProgress<ExecutionProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
-        if (ConnectionMode == ProviderConnectionMode.CLI)
-        {
-            return await ExecuteCliWithSessionAsync(prompt, sessionId, workingDirectory, progress, cancellationToken);
-        }
-        else
-        {
-            return await ExecuteRestWithSessionAsync(prompt, progress, cancellationToken);
-        }
+        return await ExecuteCliWithSessionAsync(prompt, sessionId, workingDirectory, progress, cancellationToken);
     }
 
     private async Task<ExecutionResult> ExecuteCliWithSessionAsync(
@@ -456,78 +372,6 @@ public class ClaudeProvider : CliProviderBase
         }
     }
 
-    private async Task<ExecutionResult> ExecuteRestWithSessionAsync(
-        string prompt,
-        IProgress<ExecutionProgress>? progress,
-        CancellationToken cancellationToken)
-    {
-        if (_httpClient == null)
-        {
-            return new ExecutionResult
-            {
-                Success = false,
-                ErrorMessage = "REST client is not configured."
-            };
-        }
-
-        var result = new ExecutionResult { Messages = new List<ExecutionMessage>() };
-
-        result.Messages.Add(new ExecutionMessage
-        {
-            Role = "user",
-            Content = prompt,
-            Timestamp = DateTime.UtcNow
-        });
-
-        var request = new
-        {
-            model = "claude-sonnet-4-20250514",
-            max_tokens = 4096,
-            messages = new[]
-            {
-                new { role = "user", content = prompt }
-            }
-        };
-
-        try
-        {
-            var response = await _httpClient.PostAsJsonAsync("/v1/messages", request, cancellationToken);
-            response.EnsureSuccessStatusCode();
-
-            var apiResult = await response.Content.ReadFromJsonAsync<ClaudeApiResponse>(JsonOptions, cancellationToken);
-
-            if (apiResult != null)
-            {
-                result.SessionId = apiResult.Id;
-                result.InputTokens = apiResult.Usage?.InputTokens;
-                result.OutputTokens = apiResult.Usage?.OutputTokens;
-                result.ModelUsed = apiResult.Model;
-
-                var content = apiResult.Content?
-                    .Where(c => c.Type == "text")
-                    .Select(c => c.Text)
-                    .FirstOrDefault() ?? "";
-
-                result.Messages.Add(new ExecutionMessage
-                {
-                    Role = "assistant",
-                    Content = content,
-                    Timestamp = DateTime.UtcNow
-                });
-
-                result.Output = content;
-                result.Success = true;
-            }
-        }
-        catch (Exception ex)
-        {
-            result.Success = false;
-            result.ErrorMessage = ex.Message;
-        }
-
-        return result;
-    }
-
     private async Task<string> ExecuteCliAsync(string prompt, string? sessionId, CancellationToken cancellationToken)
     {
         var execPath = GetExecutablePath();
@@ -569,38 +413,6 @@ public class ClaudeProvider : CliProviderBase
         }
 
         return output;
-    }
-
-    private async Task<string> ExecuteRestAsync(string prompt, CancellationToken cancellationToken)
-    {
-        if (_httpClient == null)
-        {
-            throw new InvalidOperationException("REST client is not configured.");
-        }
-
-        var request = new
-        {
-            model = "claude-sonnet-4-20250514",
-            max_tokens = 4096,
-            messages = new[]
-            {
-                new { role = "user", content = prompt }
-            }
-        };
-
-        var response = await _httpClient.PostAsJsonAsync("/v1/messages", request, cancellationToken);
-        response.EnsureSuccessStatusCode();
-
-        var result = await response.Content.ReadFromJsonAsync<ClaudeApiResponse>(JsonOptions, cancellationToken);
-
-        if (result?.Content != null && result.Content.Length > 0)
-        {
-            return string.Join("", result.Content
-                .Where(c => c.Type == "text")
-                .Select(c => c.Text));
-        }
-
-        return string.Empty;
     }
 
     public override async Task<ProviderInfo> GetProviderInfoAsync(CancellationToken cancellationToken = default)
@@ -645,10 +457,6 @@ public class ClaudeProvider : CliProviderBase
         {
             info.Version = await GetCliVersionAsync(GetExecutablePath(), cancellationToken: cancellationToken);
         }
-        else if (ConnectionMode == ProviderConnectionMode.REST)
-        {
-            info.Version = "REST API";
-        }
 
         return info;
     }
@@ -658,18 +466,9 @@ public class ClaudeProvider : CliProviderBase
         var limits = new UsageLimits
         {
             LimitType = UsageLimitType.SessionLimit,
-            IsLimitReached = false
+            IsLimitReached = false,
+            Message = "Session limits available via Claude CLI"
         };
-
-        if (ConnectionMode == ProviderConnectionMode.CLI)
-        {
-            limits.Message = "Session limits available via Claude CLI";
-        }
-        else
-        {
-            limits.LimitType = UsageLimitType.RateLimit;
-            limits.Message = "REST API rate limits apply (check API response headers)";
-        }
 
         return Task.FromResult(limits);
     }
@@ -822,68 +621,13 @@ public class ClaudeProvider : CliProviderBase
         string? workingDirectory = null,
         CancellationToken cancellationToken = default)
     {
-        if (ConnectionMode == ProviderConnectionMode.CLI)
+        var execPath = GetExecutablePath();
+        if (string.IsNullOrEmpty(execPath))
         {
-            var execPath = GetExecutablePath();
-            if (string.IsNullOrEmpty(execPath))
-            {
-                return PromptResponse.Fail("Claude executable path is not configured.");
-            }
-
-            var args = $"-p \"{EscapeCliArgument(prompt)}\"";
-            return await ExecuteSimplePromptAsync(execPath, args, "Claude", workingDirectory, cancellationToken);
+            return PromptResponse.Fail("Claude executable path is not configured.");
         }
-        else
-        {
-            if (_httpClient == null)
-            {
-                return PromptResponse.Fail("REST API client is not configured.");
-            }
 
-            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-
-            try
-            {
-                var request = new
-                {
-                    model = "claude-sonnet-4-20250514",
-                    max_tokens = 4096,
-                    messages = new[]
-                    {
-                        new { role = "user", content = prompt }
-                    }
-                };
-
-                var response = await _httpClient.PostAsJsonAsync("/v1/messages", request, cancellationToken);
-                response.EnsureSuccessStatusCode();
-
-                var result = await response.Content.ReadFromJsonAsync<ClaudeApiResponse>(JsonOptions, cancellationToken);
-
-                stopwatch.Stop();
-
-                if (result?.Content != null && result.Content.Length > 0)
-                {
-                    var text = string.Join("", result.Content
-                        .Where(c => c.Type == "text")
-                        .Select(c => c.Text));
-
-                    return PromptResponse.Ok(text, stopwatch.ElapsedMilliseconds, result.Model ?? "claude");
-                }
-
-                return PromptResponse.Fail("No response content received from Claude API.");
-            }
-            catch (HttpRequestException ex)
-            {
-                return PromptResponse.Fail($"HTTP error calling Claude API: {ex.Message}");
-            }
-            catch (OperationCanceledException)
-            {
-                return PromptResponse.Fail("Request was cancelled.");
-            }
-            catch (Exception ex)
-            {
-                return PromptResponse.Fail($"Error calling Claude API: {ex.Message}");
-            }
-        }
+        var args = $"-p \"{EscapeCliArgument(prompt)}\"";
+        return await ExecuteSimplePromptAsync(execPath, args, "Claude", workingDirectory, cancellationToken);
     }
 }

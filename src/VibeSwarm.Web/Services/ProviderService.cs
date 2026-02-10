@@ -234,12 +234,14 @@ public class ProviderService : IProviderService
 
     private static IProvider CreateProviderInstance(Provider config)
     {
-        return config.Type switch
+        return (config.Type, config.ConnectionMode) switch
         {
-            ProviderType.OpenCode => new OpenCodeProvider(config),
-            ProviderType.Claude => new ClaudeProvider(config),
-            ProviderType.Copilot => new CopilotProvider(config),
-            _ => throw new NotSupportedException($"Provider type {config.Type} is not supported.")
+            (ProviderType.Claude, ProviderConnectionMode.SDK) => new ClaudeSdkProvider(config),
+            (ProviderType.Copilot, ProviderConnectionMode.SDK) => new CopilotSdkProvider(config),
+            (ProviderType.OpenCode, _) => new OpenCodeProvider(config),
+            (ProviderType.Claude, _) => new ClaudeProvider(config),
+            (ProviderType.Copilot, _) => new CopilotProvider(config),
+            _ => throw new NotSupportedException($"Provider type {config.Type} with mode {config.ConnectionMode} is not supported.")
         };
     }
 

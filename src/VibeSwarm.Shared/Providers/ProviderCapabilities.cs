@@ -2,7 +2,7 @@ namespace VibeSwarm.Shared.Providers;
 
 /// <summary>
 /// Defines the capabilities and supported connection modes for each provider type.
-/// Only OpenCode currently supports REST API, other providers are CLI-only.
+/// Claude and Copilot support CLI and SDK modes. OpenCode supports CLI and REST.
 /// </summary>
 public static class ProviderCapabilities
 {
@@ -12,8 +12,8 @@ public static class ProviderCapabilities
 	public static IReadOnlyList<ProviderConnectionMode> GetSupportedModes(ProviderType providerType) => providerType switch
 	{
 		ProviderType.OpenCode => [ProviderConnectionMode.CLI, ProviderConnectionMode.REST],
-		ProviderType.Claude => [ProviderConnectionMode.CLI],
-		ProviderType.Copilot => [ProviderConnectionMode.CLI],
+		ProviderType.Claude => [ProviderConnectionMode.CLI, ProviderConnectionMode.SDK],
+		ProviderType.Copilot => [ProviderConnectionMode.CLI, ProviderConnectionMode.SDK],
 		_ => [ProviderConnectionMode.CLI]
 	};
 
@@ -40,8 +40,8 @@ public static class ProviderCapabilities
 	public static string GetDescription(ProviderType providerType) => providerType switch
 	{
 		ProviderType.OpenCode => "OpenCode AI agent with REST API and CLI support",
-		ProviderType.Claude => "Anthropic Claude Code CLI agent",
-		ProviderType.Copilot => "GitHub Copilot CLI agent",
+		ProviderType.Claude => "Anthropic Claude Code with CLI and SDK support",
+		ProviderType.Copilot => "GitHub Copilot with CLI and SDK support",
 		_ => "Unknown provider"
 	};
 
@@ -80,6 +80,15 @@ public static class ProviderCapabilities
 					 (uri.Scheme != "http" && uri.Scheme != "https"))
 			{
 				errors.Add("API Endpoint must be a valid HTTP or HTTPS URL.");
+			}
+		}
+
+		// Validate SDK mode requirements
+		if (provider.ConnectionMode == ProviderConnectionMode.SDK)
+		{
+			if (provider.Type == ProviderType.Claude && string.IsNullOrWhiteSpace(provider.ApiKey))
+			{
+				errors.Add("API Key is required for Claude SDK connection mode.");
 			}
 		}
 

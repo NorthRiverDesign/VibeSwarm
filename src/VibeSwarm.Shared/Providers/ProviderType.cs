@@ -10,5 +10,6 @@ public enum ProviderType
 public enum ProviderConnectionMode
 {
     CLI,
-    REST
+    REST,
+    SDK
 }

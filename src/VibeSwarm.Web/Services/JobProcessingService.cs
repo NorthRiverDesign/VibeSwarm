@@ -68,6 +68,12 @@ public class JobProcessingService : BackgroundService
         public Guid ProviderId { get; set; }
 
         /// <summary>
+        /// The provider instance used for this job execution.
+        /// Stored for disposal of SDK providers that implement IAsyncDisposable.
+        /// </summary>
+        public IProvider? ProviderInstance { get; set; }
+
+        /// <summary>
         /// The full CLI command used to execute this job
         /// </summary>
         public string? CommandUsed { get; set; }
@@ -430,6 +436,7 @@ public class JobProcessingService : BackgroundService
 
             // Create provider instance
             var provider = CreateProviderInstance(job.Provider);
+            executionContext.ProviderInstance = provider;
 
             // Preflight health check: Test connection and validate CLI accessibility
             _logger.LogInformation("Running preflight health checks for job {JobId}", job.Id);
@@ -999,6 +1006,21 @@ public class JobProcessingService : BackgroundService
             catch { }
             await NotifyJobCompletedAsync(job.Id, false, ex.Message);
         }
+        finally
+        {
+            // Dispose SDK providers that implement IAsyncDisposable
+            if (executionContext.ProviderInstance is IAsyncDisposable disposable)
+            {
+                try
+                {
+                    await disposable.DisposeAsync();
+                }
+                catch (Exception disposeEx)
+                {
+                    _logger.LogWarning(disposeEx, "Error disposing provider for job {JobId}", job.Id);
+                }
+            }
+        }
     }
 
     /// <summary>
@@ -1370,12 +1392,14 @@ public class JobProcessingService : BackgroundService
 
     private static IProvider CreateProviderInstance(Provider config)
     {
-        return config.Type switch
+        return (config.Type, config.ConnectionMode) switch
         {
-            ProviderType.OpenCode => new OpenCodeProvider(config),
-            ProviderType.Claude => new ClaudeProvider(config),
-            ProviderType.Copilot => new CopilotProvider(config),
-            _ => throw new NotSupportedException($"Provider type {config.Type} is not supported.")
+            (ProviderType.Claude, ProviderConnectionMode.SDK) => new ClaudeSdkProvider(config),
+            (ProviderType.Copilot, ProviderConnectionMode.SDK) => new CopilotSdkProvider(config),
+            (ProviderType.OpenCode, _) => new OpenCodeProvider(config),
+            (ProviderType.Claude, _) => new ClaudeProvider(config),
+            (ProviderType.Copilot, _) => new CopilotProvider(config),
+            _ => throw new NotSupportedException($"Provider type {config.Type} with mode {config.ConnectionMode} is not supported.")
         };
     }
 

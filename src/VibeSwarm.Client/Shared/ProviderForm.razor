@@ -55,6 +55,42 @@
 			<div class="form-text">@GetExecutableHelpText()</div>
 		</div>
 	}
+	else if (Provider.ConnectionMode == ProviderConnectionMode.SDK)
+	{
+		@if (Provider.Type == ProviderType.Claude)
+		{
+			<div class="mb-3">
+				<label for="apiKey" class="form-label">
+					API Key <span class="text-danger">*</span>
+				</label>
+				<InputText id="apiKey" @bind-Value="Provider.ApiKey" class="form-control" type="password"
+					placeholder="sk-ant-..." />
+				<div class="form-text">Your Anthropic API key for direct SDK access.</div>
+				@if (string.IsNullOrWhiteSpace(Provider.ApiKey))
+				{
+					<div class="text-warning small mt-1">
+						<i class="bi bi-exclamation-triangle me-1"></i>
+						API Key is required for Claude SDK mode.
+					</div>
+				}
+			</div>
+			<div class="mb-3">
+				<label for="apiEndpoint" class="form-label">API Endpoint (optional)</label>
+				<InputText id="apiEndpoint" @bind-Value="Provider.ApiEndpoint" class="form-control"
+					placeholder="https://api.anthropic.com" />
+				<div class="form-text">Leave empty to use the default Anthropic API endpoint.</div>
+			</div>
+		}
+		@if (Provider.Type == ProviderType.Copilot)
+		{
+			<div class="mb-3">
+				<label for="executablePath" class="form-label">CLI Path (optional)</label>
+				<InputText id="executablePath" @bind-Value="Provider.ExecutablePath" class="form-control"
+					placeholder="copilot or /path/to/copilot" />
+				<div class="form-text">The SDK uses the Copilot CLI internally. Leave empty to use from PATH.</div>
+			</div>
+		}
+	}
 	else
 	{
 		<div class="mb-3">
