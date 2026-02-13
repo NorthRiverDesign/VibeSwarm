@@ -1,0 +1,380 @@
+@* Git Settings Card - Displays Git configuration and allows creating GitHub repositories *@
+@using VibeSwarm.Shared.Data
+@using VibeSwarm.Shared.Services
+@using VibeSwarm.Shared.VersionControl
+@using VibeSwarm.Shared.VersionControl.Models
+@inject IVersionControlService VersionControlService
+@inject IProjectService ProjectService
+
+<div class="card mb-3">
+	<div class="card-header bg-body-secondary d-flex align-items-center justify-content-between">
+		<h6 class="mb-0 fw-semibold">
+			<i class="bi bi-git me-2 text-danger"></i>Git Settings
+		</h6>
+		<button type="button" class="btn btn-sm btn-outline-secondary" @onclick="RefreshStatus"
+			disabled="@_isLoading" title="Refresh Git status">
+			<i class="bi bi-arrow-clockwise @(_isLoading ? "spin" : "")"></i>
+		</button>
+	</div>
+	<div class="card-body">
+		@if (_isLoading)
+		{
+			<div class="d-flex align-items-center gap-2 text-body-secondary">
+				<span class="spinner-border spinner-border-sm" role="status"></span>
+				<span>Checking Git status...</span>
+			</div>
+		}
+		else
+		{
+			@* Git Repository Status *@
+			<div class="mb-3">
+				<div class="d-flex align-items-center gap-2 mb-2">
+					@if (_isGitRepository)
+					{
+						<span class="badge bg-success-subtle text-success-emphasis">
+							<i class="bi bi-check-circle me-1"></i>Git Repository
+						</span>
+					}
+					else
+					{
+						<span class="badge bg-warning-subtle text-warning-emphasis">
+							<i class="bi bi-exclamation-triangle me-1"></i>Not a Git Repository
+						</span>
+					}
+				</div>
+
+				@if (!_isGitRepository)
+				{
+					<p class="text-body-secondary small mb-2">
+						This directory is not a Git repository. Initialize it to track changes.
+					</p>
+					<button type="button" class="btn btn-sm btn-outline-primary" @onclick="InitializeRepository"
+						disabled="@_isInitializing">
+						@if (_isInitializing)
+						{
+							<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+							<span>Initializing...</span>
+						}
+						else
+						{
+							<i class="bi bi-git me-1"></i>
+							<span>Initialize Git Repository</span>
+						}
+					</button>
+				}
+			</div>
+
+			@if (_isGitRepository)
+			{
+				@* Remote Configuration *@
+				<div class="mb-3">
+					<h6 class="text-body-secondary small text-uppercase mb-2">
+						<i class="bi bi-cloud me-1"></i>Remote Repositories
+					</h6>
+
+					@if (_remotes.Any())
+					{
+						<ul class="list-unstyled mb-2">
+							@foreach (var remote in _remotes)
+							{
+								<li class="d-flex align-items-center gap-2 mb-1">
+									<span class="badge bg-body-tertiary text-body fw-medium">@remote.Key</span>
+									<code class="small text-truncate flex-grow-1" style="max-width: 300px;"
+										title="@remote.Value">@remote.Value</code>
+									@if (IsGitHubUrl(remote.Value))
+									{
+										<a href="@GetGitHubWebUrl(remote.Value)" target="_blank"
+											class="text-body-secondary" title="Open on GitHub">
+											<i class="bi bi-box-arrow-up-right"></i>
+										</a>
+									}
+								</li>
+							}
+						</ul>
+					}
+					else
+					{
+						<p class="text-body-secondary small mb-2">
+							No remote repositories configured. Create a GitHub repository to push your code.
+						</p>
+
+						@* GitHub CLI Status *@
+						<div class="d-flex flex-wrap gap-2 mb-3">
+							@if (_isGitHubCliAvailable)
+							{
+								<span class="badge bg-success-subtle text-success-emphasis">
+									<i class="bi bi-check-circle me-1"></i>GitHub CLI Installed
+								</span>
+								@if (_isGitHubCliAuthenticated)
+								{
+									<span class="badge bg-success-subtle text-success-emphasis">
+										<i class="bi bi-check-circle me-1"></i>Authenticated
+									</span>
+								}
+								else
+								{
+									<span class="badge bg-warning-subtle text-warning-emphasis">
+										<i class="bi bi-exclamation-triangle me-1"></i>Not Authenticated
+									</span>
+								}
+							}
+							else
+							{
+								<span class="badge bg-secondary-subtle text-secondary-emphasis">
+									<i class="bi bi-info-circle me-1"></i>GitHub CLI Not Found
+								</span>
+							}
+						</div>
+
+						@if (_isGitHubCliAvailable && _isGitHubCliAuthenticated)
+						{
+							<button type="button" class="btn btn-primary btn-sm" @onclick="ShowCreateRepoModal">
+								<i class="bi bi-github me-1"></i>
+								Create GitHub Repository
+							</button>
+						}
+						else if (_isGitHubCliAvailable && !_isGitHubCliAuthenticated)
+						{
+							<Alert Type="Alert.AlertType.Warning" Class="mb-0 py-2 small">
+								<i class="bi bi-exclamation-triangle me-2"></i>
+								Please authenticate with GitHub CLI by running <code>gh auth login</code> in your terminal.
+							</Alert>
+						}
+						else
+						{
+							<Alert Type="Alert.AlertType.Info" Class="mb-0 py-2 small">
+								<i class="bi bi-info-circle me-2"></i>
+								Install <a href="https://cli.github.com/" target="_blank">GitHub CLI</a> to create repositories directly from VibeSwarm.
+							</Alert>
+						}
+					}
+				</div>
+			}
+
+			@* Messages *@
+			@if (!string.IsNullOrEmpty(_errorMessage))
+			{
+				<Alert Type="Alert.AlertType.Danger" Message="@_errorMessage" Class="mb-0 mt-3" Dismissible="true"
+					OnDismiss="ClearMessages" />
+			}
+
+			@if (!string.IsNullOrEmpty(_successMessage))
+			{
+				<Alert Type="Alert.AlertType.Success" Message="@_successMessage" Class="mb-0 mt-3" Dismissible="true"
+					OnDismiss="ClearMessages" />
+			}
+		}
+	</div>
+</div>
+
+@* Create GitHub Repository Modal *@
+<CreateGitHubRepositoryModal @bind-IsVisible="_showCreateRepoModal" ProjectName="@ProjectName"
+	IsCreating="@_isCreatingRepo" ErrorMessage="@_createRepoError" OnCreate="HandleCreateRepository" />
+
+@code {
+	[Parameter, EditorRequired]
+	public string WorkingPath { get; set; } = string.Empty;
+
+	[Parameter]
+	public string? ProjectName { get; set; }
+
+	[Parameter]
+	public Guid? ProjectId { get; set; }
+
+	[Parameter]
+	public EventCallback<string> OnRepositoryCreated { get; set; }
+
+	private bool _isLoading = true;
+	private bool _isGitRepository;
+	private bool _isGitHubCliAvailable;
+	private bool _isGitHubCliAuthenticated;
+	private Dictionary<string, string> _remotes = new();
+	private string? _errorMessage;
+	private string? _successMessage;
+
+	private bool _isInitializing;
+	private bool _showCreateRepoModal;
+	private bool _isCreatingRepo;
+	private string? _createRepoError;
+	private string? _lastWorkingPath;
+
+	protected override async Task OnParametersSetAsync()
+	{
+		// Only refresh if WorkingPath has changed to avoid excessive API calls
+		if (!string.IsNullOrEmpty(WorkingPath) && WorkingPath != _lastWorkingPath)
+		{
+			_lastWorkingPath = WorkingPath;
+			await RefreshStatus();
+		}
+	}
+
+	private async Task RefreshStatus()
+	{
+		_isLoading = true;
+		_errorMessage = null;
+		StateHasChanged();
+
+		try
+		{
+			_isGitRepository = await VersionControlService.IsGitRepositoryAsync(WorkingPath);
+
+			if (_isGitRepository)
+			{
+				var remotes = await VersionControlService.GetRemotesAsync(WorkingPath);
+				_remotes = remotes.ToDictionary(r => r.Key, r => r.Value);
+			}
+			else
+			{
+				_remotes.Clear();
+			}
+
+			// Check GitHub CLI status for creating repos
+			_isGitHubCliAvailable = await VersionControlService.IsGitHubCliAvailableAsync();
+			if (_isGitHubCliAvailable)
+			{
+				_isGitHubCliAuthenticated = await VersionControlService.IsGitHubCliAuthenticatedAsync();
+			}
+		}
+		catch (Exception ex)
+		{
+			_errorMessage = $"Failed to check Git status: {ex.Message}";
+		}
+		finally
+		{
+			_isLoading = false;
+			StateHasChanged();
+		}
+	}
+
+	private async Task InitializeRepository()
+	{
+		_isInitializing = true;
+		_errorMessage = null;
+		StateHasChanged();
+
+		try
+		{
+			var result = await VersionControlService.InitializeRepositoryAsync(WorkingPath);
+			if (result.Success)
+			{
+				_successMessage = "Git repository initialized successfully.";
+				_isGitRepository = true;
+			}
+			else
+			{
+				_errorMessage = result.Error ?? "Failed to initialize repository.";
+			}
+		}
+		catch (Exception ex)
+		{
+			_errorMessage = $"Error initializing repository: {ex.Message}";
+		}
+		finally
+		{
+			_isInitializing = false;
+			StateHasChanged();
+		}
+	}
+
+	private void ShowCreateRepoModal()
+	{
+		_createRepoError = null;
+		_showCreateRepoModal = true;
+	}
+
+	private async Task HandleCreateRepository(CreateGitHubRepositoryModal.CreateGitHubRepoArgs args)
+	{
+		_isCreatingRepo = true;
+		_createRepoError = null;
+		StateHasChanged();
+
+		try
+		{
+			var result = await VersionControlService.CreateGitHubRepositoryAsync(
+				WorkingPath,
+				args.Name,
+				args.Description,
+				args.IsPrivate);
+
+			if (result.Success)
+			{
+				_showCreateRepoModal = false;
+				_successMessage = $"GitHub repository '{args.Name}' created and linked successfully!";
+
+				// Update the project's GitHubRepository field if we have a project ID
+				string? gitHubRepoPath = null;
+				if (ProjectId.HasValue)
+				{
+					try
+					{
+						// Get the remote URL to extract owner/repo
+						var remoteUrl = await VersionControlService.GetRemoteUrlAsync(WorkingPath, "origin");
+						gitHubRepoPath = VersionControlService.ExtractGitHubRepository(remoteUrl);
+
+						if (!string.IsNullOrEmpty(gitHubRepoPath))
+						{
+							var project = await ProjectService.GetByIdAsync(ProjectId.Value);
+							if (project != null)
+							{
+								project.GitHubRepository = gitHubRepoPath;
+								await ProjectService.UpdateAsync(project);
+							}
+						}
+					}
+					catch
+					{
+						// Non-critical: continue even if we can't update the project
+					}
+				}
+
+				await RefreshStatus();
+				await OnRepositoryCreated.InvokeAsync(gitHubRepoPath);
+			}
+			else
+			{
+				_createRepoError = result.Error ?? "Failed to create repository.";
+			}
+		}
+		catch (Exception ex)
+		{
+			_createRepoError = $"Error creating repository: {ex.Message}";
+		}
+		finally
+		{
+			_isCreatingRepo = false;
+			StateHasChanged();
+		}
+	}
+
+	private void ClearMessages()
+	{
+		_errorMessage = null;
+		_successMessage = null;
+	}
+
+	private static bool IsGitHubUrl(string url)
+	{
+		return url.Contains("github.com", StringComparison.OrdinalIgnoreCase);
+	}
+
+	private static string GetGitHubWebUrl(string remoteUrl)
+	{
+		// Convert git@github.com:owner/repo.git to https://github.com/owner/repo
+		if (remoteUrl.StartsWith("git@github.com:"))
+		{
+			var path = remoteUrl["git@github.com:".Length..].TrimEnd('/');
+			if (path.EndsWith(".git")) path = path[..^4];
+			return $"https://github.com/{path}";
+		}
+
+		// Already HTTPS URL, just clean up
+		if (remoteUrl.Contains("github.com/"))
+		{
+			var url = remoteUrl;
+			if (url.EndsWith(".git")) url = url[..^4];
+			return url;
+		}
+
+		return remoteUrl;
+	}
+}

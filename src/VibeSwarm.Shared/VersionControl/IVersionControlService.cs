@@ -253,4 +253,71 @@ public interface IVersionControlService
 		string fromCommit,
 		string? toCommit = null,
 		CancellationToken cancellationToken = default);
+
+	/// <summary>
+	/// Initializes a new git repository in the specified directory.
+	/// </summary>
+	/// <param name="workingDirectory">The directory to initialize.</param>
+	/// <param name="cancellationToken">Cancellation token.</param>
+	/// <returns>Result containing success status and any error message.</returns>
+	Task<GitOperationResult> InitializeRepositoryAsync(
+		string workingDirectory,
+		CancellationToken cancellationToken = default);
+
+	/// <summary>
+	/// Checks if the GitHub CLI (gh) is installed and available.
+	/// </summary>
+	/// <param name="cancellationToken">Cancellation token.</param>
+	/// <returns>True if gh CLI is available.</returns>
+	Task<bool> IsGitHubCliAvailableAsync(CancellationToken cancellationToken = default);
+
+	/// <summary>
+	/// Checks if the user is authenticated with GitHub CLI.
+	/// </summary>
+	/// <param name="cancellationToken">Cancellation token.</param>
+	/// <returns>True if authenticated with GitHub.</returns>
+	Task<bool> IsGitHubCliAuthenticatedAsync(CancellationToken cancellationToken = default);
+
+	/// <summary>
+	/// Creates a new GitHub repository and links it to the local repository.
+	/// Uses the GitHub CLI (gh) to create the repository.
+	/// </summary>
+	/// <param name="workingDirectory">The local repository directory.</param>
+	/// <param name="repositoryName">The name of the new repository.</param>
+	/// <param name="description">Optional repository description.</param>
+	/// <param name="isPrivate">Whether the repository should be private (default: false).</param>
+	/// <param name="progressCallback">Optional callback for progress updates.</param>
+	/// <param name="cancellationToken">Cancellation token.</param>
+	/// <returns>Result containing success status, the new repository URL, and any error message.</returns>
+	Task<GitOperationResult> CreateGitHubRepositoryAsync(
+		string workingDirectory,
+		string repositoryName,
+		string? description = null,
+		bool isPrivate = false,
+		Action<string>? progressCallback = null,
+		CancellationToken cancellationToken = default);
+
+	/// <summary>
+	/// Adds a remote to an existing git repository.
+	/// </summary>
+	/// <param name="workingDirectory">The repository working directory.</param>
+	/// <param name="remoteName">The name of the remote (e.g., "origin").</param>
+	/// <param name="remoteUrl">The URL of the remote repository.</param>
+	/// <param name="cancellationToken">Cancellation token.</param>
+	/// <returns>Result containing success status and any error message.</returns>
+	Task<GitOperationResult> AddRemoteAsync(
+		string workingDirectory,
+		string remoteName,
+		string remoteUrl,
+		CancellationToken cancellationToken = default);
+
+	/// <summary>
+	/// Gets the list of configured remotes for a repository.
+	/// </summary>
+	/// <param name="workingDirectory">The repository working directory.</param>
+	/// <param name="cancellationToken">Cancellation token.</param>
+	/// <returns>Dictionary of remote name to URL pairs.</returns>
+	Task<IReadOnlyDictionary<string, string>> GetRemotesAsync(
+		string workingDirectory,
+		CancellationToken cancellationToken = default);
 }

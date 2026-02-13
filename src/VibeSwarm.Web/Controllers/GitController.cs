@@ -76,6 +76,24 @@ public class GitController : ControllerBase
     [HttpGet("commit-log")]
     public async Task<IActionResult> GetCommitLog([FromQuery] string path, [FromQuery] string from, [FromQuery] string? to = null, CancellationToken ct = default) => Ok(await _gitService.GetCommitLogAsync(path, from, to, ct));
 
+    [HttpPost("init")]
+    public async Task<IActionResult> Init([FromBody] InitRequest req, CancellationToken ct) => Ok(await _gitService.InitializeRepositoryAsync(req.Path, ct));
+
+    [HttpGet("gh-available")]
+    public async Task<IActionResult> IsGitHubCliAvailable(CancellationToken ct) => Ok(await _gitService.IsGitHubCliAvailableAsync(ct));
+
+    [HttpGet("gh-authenticated")]
+    public async Task<IActionResult> IsGitHubCliAuthenticated(CancellationToken ct) => Ok(await _gitService.IsGitHubCliAuthenticatedAsync(ct));
+
+    [HttpPost("create-github-repo")]
+    public async Task<IActionResult> CreateGitHubRepo([FromBody] CreateGitHubRepoRequest req, CancellationToken ct) => Ok(await _gitService.CreateGitHubRepositoryAsync(req.Path, req.Name, req.Description, req.IsPrivate, null, ct));
+
+    [HttpPost("add-remote")]
+    public async Task<IActionResult> AddRemote([FromBody] AddRemoteRequest req, CancellationToken ct) => Ok(await _gitService.AddRemoteAsync(req.Path, req.RemoteName, req.RemoteUrl, ct));
+
+    [HttpGet("remotes")]
+    public async Task<IActionResult> GetRemotes([FromQuery] string path, CancellationToken ct) => Ok(await _gitService.GetRemotesAsync(path, ct));
+
     // Request DTOs
     public record CommitRequest(string Path, string Message);
     public record PushRequest(string Path, string? Remote, string? Branch);
@@ -86,4 +104,7 @@ public class GitController : ControllerBase
     public record CloneRequest(string Url, string Path, string? Branch);
     public record CreateBranchRequest(string Path, string Branch, bool SwitchToBranch = true);
     public record DiscardRequest(string Path, bool IncludeUntracked = true);
+    public record InitRequest(string Path);
+    public record CreateGitHubRepoRequest(string Path, string Name, string? Description, bool IsPrivate = false);
+    public record AddRemoteRequest(string Path, string RemoteName, string RemoteUrl);
 }

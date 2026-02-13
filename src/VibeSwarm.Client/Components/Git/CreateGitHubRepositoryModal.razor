@@ -1,0 +1,174 @@
+@* Modal for creating a new GitHub repository from a local project *@
+
+<ModalDialog IsVisible="IsVisible" IsVisibleChanged="HandleModalVisibilityChanged"
+	Title="Create GitHub Repository" Icon="github"
+	Size="ModalDialog.ModalSize.Default">
+	<ChildContent>
+		<div class="mb-3">
+			<label for="repoName" class="form-label">Repository Name</label>
+			<input type="text" class="form-control" id="repoName" @bind="_repositoryName" @bind:event="oninput"
+				placeholder="my-project" disabled="@IsCreating" />
+			<div class="form-text">
+				The name of the new repository on GitHub.
+			</div>
+		</div>
+
+		<div class="mb-3">
+			<label for="repoDescription" class="form-label">
+				Description <span class="text-body-secondary fw-normal">(optional)</span>
+			</label>
+			<input type="text" class="form-control" id="repoDescription" @bind="_description" @bind:event="oninput"
+				placeholder="A brief description of your project" disabled="@IsCreating" />
+		</div>
+
+		<div class="mb-3">
+			<label class="form-label">Visibility</label>
+			<div class="d-flex gap-3">
+				<div class="form-check">
+					<input class="form-check-input" type="radio" name="visibility" id="visibilityPublic"
+						checked="@(!_isPrivate)" @onchange="() => _isPrivate = false" disabled="@IsCreating">
+					<label class="form-check-label" for="visibilityPublic">
+						<i class="bi bi-globe me-1"></i>Public
+					</label>
+				</div>
+				<div class="form-check">
+					<input class="form-check-input" type="radio" name="visibility" id="visibilityPrivate"
+						checked="@_isPrivate" @onchange="() => _isPrivate = true" disabled="@IsCreating">
+					<label class="form-check-label" for="visibilityPrivate">
+						<i class="bi bi-lock me-1"></i>Private
+					</label>
+				</div>
+			</div>
+		</div>
+
+		@if (!string.IsNullOrEmpty(_progressMessage))
+		{
+			<Alert Type="Alert.AlertType.Info" Class="mb-0 mt-3">
+				<span class="spinner-border spinner-border-sm me-2" role="status"></span>
+				@_progressMessage
+			</Alert>
+		}
+
+		@if (!string.IsNullOrEmpty(ErrorMessage))
+		{
+			<Alert Type="Alert.AlertType.Danger" Message="@ErrorMessage" Class="mb-0 mt-3" />
+		}
+
+		<div class="alert alert-info py-2 mb-0 mt-3">
+			<i class="bi bi-lightbulb me-1"></i>
+			<small>
+				This will create a new GitHub repository and push your local code.
+				Make sure you're logged in to the GitHub CLI (<code>gh auth login</code>).
+			</small>
+		</div>
+	</ChildContent>
+	<FooterContent>
+		<button type="button" class="btn btn-secondary" @onclick="HandleClose" disabled="@IsCreating">
+			Cancel
+		</button>
+		<button type="button" class="btn btn-primary" @onclick="HandleCreate"
+			disabled="@(IsCreating || string.IsNullOrWhiteSpace(_repositoryName))">
+			@if (IsCreating)
+			{
+				<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+				<span>Creating...</span>
+			}
+			else
+			{
+				<i class="bi bi-github me-1"></i>
+				<span>Create Repository</span>
+			}
+		</button>
+	</FooterContent>
+</ModalDialog>
+
+@code {
+	[Parameter]
+	public bool IsVisible { get; set; }
+
+	[Parameter]
+	public EventCallback<bool> IsVisibleChanged { get; set; }
+
+	[Parameter]
+	public string? ProjectName { get; set; }
+
+	[Parameter]
+	public bool IsCreating { get; set; }
+
+	[Parameter]
+	public string? ErrorMessage { get; set; }
+
+	[Parameter]
+	public EventCallback<CreateGitHubRepoArgs> OnCreate { get; set; }
+
+	private string _repositoryName = string.Empty;
+	private string _description = string.Empty;
+	private bool _isPrivate = false;
+	private string? _progressMessage;
+
+	protected override void OnParametersSet()
+	{
+		// Default repository name to project name when modal opens
+		if (IsVisible && string.IsNullOrEmpty(_repositoryName) && !string.IsNullOrEmpty(ProjectName))
+		{
+			_repositoryName = SanitizeRepoName(ProjectName);
+		}
+	}
+
+	private async Task HandleModalVisibilityChanged(bool visible)
+	{
+		if (!visible)
+		{
+			ResetForm();
+			await IsVisibleChanged.InvokeAsync(false);
+		}
+	}
+
+	private async Task HandleClose()
+	{
+		ResetForm();
+		await IsVisibleChanged.InvokeAsync(false);
+	}
+
+	private async Task HandleCreate()
+	{
+		if (string.IsNullOrWhiteSpace(_repositoryName)) return;
+
+		await OnCreate.InvokeAsync(new CreateGitHubRepoArgs
+		{
+			Name = _repositoryName.Trim(),
+			Description = _description?.Trim(),
+			IsPrivate = _isPrivate
+		});
+	}
+
+	private void ResetForm()
+	{
+		_repositoryName = string.Empty;
+		_description = string.Empty;
+		_isPrivate = false;
+		_progressMessage = null;
+	}
+
+	private static string SanitizeRepoName(string name)
+	{
+		// GitHub repo names can contain alphanumeric, hyphens, underscores, and periods
+		var sanitized = string.Join("", name.Select(c =>
+			char.IsLetterOrDigit(c) || c == '-' || c == '_' || c == '.' ? c : '-'));
+
+		// Remove consecutive hyphens
+		while (sanitized.Contains("--"))
+		{
+			sanitized = sanitized.Replace("--", "-");
+		}
+
+		return sanitized.Trim('-').ToLowerInvariant();
+	}
+
+	public record CreateGitHubRepoArgs
+	{
+		public required string Name { get; init; }
+		public string? Description { get; init; }
+		public bool IsPrivate { get; init; }
+	}
+}

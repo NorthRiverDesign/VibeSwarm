@@ -1280,4 +1280,285 @@ public sealed class VersionControlService : IVersionControlService
 
 		return Array.Empty<string>();
 	}
+
+	/// <inheritdoc />
+	public async Task<GitOperationResult> InitializeRepositoryAsync(
+		string workingDirectory,
+		CancellationToken cancellationToken = default)
+	{
+		try
+		{
+			if (!Directory.Exists(workingDirectory))
+			{
+				return GitOperationResult.Failed($"Directory does not exist: {workingDirectory}");
+			}
+
+			// Check if already a git repository
+			var isRepo = await IsGitRepositoryAsync(workingDirectory, cancellationToken);
+			if (isRepo)
+			{
+				return GitOperationResult.Failed("Directory is already a git repository.");
+			}
+
+			var result = await _commandExecutor.ExecuteAsync(
+				"init",
+				workingDirectory,
+				cancellationToken,
+				timeoutSeconds: DefaultTimeoutSeconds);
+
+			if (result.Success)
+			{
+				return GitOperationResult.Succeeded(output: result.Output?.Trim());
+			}
+
+			return GitOperationResult.Failed(result.Error ?? "Failed to initialize git repository.");
+		}
+		catch (OperationCanceledException)
+		{
+			return GitOperationResult.Failed("Git init operation was cancelled.");
+		}
+		catch (Exception ex)
+		{
+			return GitOperationResult.Failed($"Unexpected error initializing repository: {ex.Message}");
+		}
+	}
+
+	/// <inheritdoc />
+	public async Task<bool> IsGitHubCliAvailableAsync(CancellationToken cancellationToken = default)
+	{
+		try
+		{
+			var result = await _commandExecutor.ExecuteRawAsync(
+				"gh",
+				"--version",
+				Directory.GetCurrentDirectory(),
+				cancellationToken,
+				timeoutSeconds: 5);
+
+			return result.Success && result.Output.Contains("gh version");
+		}
+		catch
+		{
+			return false;
+		}
+	}
+
+	/// <inheritdoc />
+	public async Task<bool> IsGitHubCliAuthenticatedAsync(CancellationToken cancellationToken = default)
+	{
+		try
+		{
+			var result = await _commandExecutor.ExecuteRawAsync(
+				"gh",
+				"auth status",
+				Directory.GetCurrentDirectory(),
+				cancellationToken,
+				timeoutSeconds: 10);
+
+			// gh auth status returns exit code 0 if logged in
+			return result.Success;
+		}
+		catch
+		{
+			return false;
+		}
+	}
+
+	/// <inheritdoc />
+	public async Task<GitOperationResult> CreateGitHubRepositoryAsync(
+		string workingDirectory,
+		string repositoryName,
+		string? description = null,
+		bool isPrivate = false,
+		Action<string>? progressCallback = null,
+		CancellationToken cancellationToken = default)
+	{
+		try
+		{
+			if (!Directory.Exists(workingDirectory))
+			{
+				return GitOperationResult.Failed($"Directory does not exist: {workingDirectory}");
+			}
+
+			// Check if gh CLI is available
+			var ghAvailable = await IsGitHubCliAvailableAsync(cancellationToken);
+			if (!ghAvailable)
+			{
+				return GitOperationResult.Failed("GitHub CLI (gh) is not installed. Please install it from https://cli.github.com/");
+			}
+
+			// Check authentication
+			var ghAuthenticated = await IsGitHubCliAuthenticatedAsync(cancellationToken);
+			if (!ghAuthenticated)
+			{
+				return GitOperationResult.Failed("Not authenticated with GitHub CLI. Please run 'gh auth login' to authenticate.");
+			}
+
+			progressCallback?.Invoke("Checking git repository status...");
+
+			// Check if it's a git repository, if not initialize it
+			var isRepo = await IsGitRepositoryAsync(workingDirectory, cancellationToken);
+			if (!isRepo)
+			{
+				progressCallback?.Invoke("Initializing git repository...");
+				var initResult = await InitializeRepositoryAsync(workingDirectory, cancellationToken);
+				if (!initResult.Success)
+				{
+					return GitOperationResult.Failed($"Failed to initialize git repository: {initResult.Error}");
+				}
+			}
+
+			// Check if remote already exists
+			var existingRemote = await GetRemoteUrlAsync(workingDirectory, "origin", cancellationToken);
+			if (!string.IsNullOrEmpty(existingRemote))
+			{
+				return GitOperationResult.Failed($"Remote 'origin' already exists: {existingRemote}");
+			}
+
+			progressCallback?.Invoke("Creating GitHub repository...");
+
+			// Build the gh repo create command
+			var visibility = isPrivate ? "--private" : "--public";
+			var descArg = !string.IsNullOrWhiteSpace(description)
+				? $"--description \"{description.Replace("\"", "\\\"")}\""
+				: "";
+
+			// Use gh repo create with --source flag to link to existing directory
+			var ghArgs = $"repo create \"{repositoryName}\" {visibility} {descArg} --source \"{workingDirectory}\" --remote origin --push".Trim();
+
+			var result = await _commandExecutor.ExecuteRawAsync(
+				"gh",
+				ghArgs,
+				workingDirectory,
+				cancellationToken,
+				timeoutSeconds: 120);
+
+			if (result.Success)
+			{
+				// Try to get the new remote URL
+				var newRemoteUrl = await GetRemoteUrlAsync(workingDirectory, "origin", cancellationToken);
+
+				progressCallback?.Invoke("Repository created successfully!");
+
+				return GitOperationResult.Succeeded(
+					output: result.Output?.Trim(),
+					remoteName: "origin");
+			}
+
+			// Parse error message
+			var errorMessage = result.Error ?? result.Output ?? "Failed to create GitHub repository.";
+
+			// Check for common errors
+			if (errorMessage.Contains("already exists"))
+			{
+				return GitOperationResult.Failed($"Repository '{repositoryName}' already exists on GitHub. Please choose a different name.");
+			}
+
+			return GitOperationResult.Failed(errorMessage.Trim());
+		}
+		catch (OperationCanceledException)
+		{
+			return GitOperationResult.Failed("Create GitHub repository operation was cancelled.");
+		}
+		catch (Exception ex)
+		{
+			return GitOperationResult.Failed($"Unexpected error creating GitHub repository: {ex.Message}");
+		}
+	}
+
+	/// <inheritdoc />
+	public async Task<GitOperationResult> AddRemoteAsync(
+		string workingDirectory,
+		string remoteName,
+		string remoteUrl,
+		CancellationToken cancellationToken = default)
+	{
+		try
+		{
+			var isRepo = await IsGitRepositoryAsync(workingDirectory, cancellationToken);
+			if (!isRepo)
+			{
+				return GitOperationResult.Failed("The specified directory is not a git repository.");
+			}
+
+			// Check if remote already exists
+			var existingUrl = await GetRemoteUrlAsync(workingDirectory, remoteName, cancellationToken);
+			if (!string.IsNullOrEmpty(existingUrl))
+			{
+				return GitOperationResult.Failed($"Remote '{remoteName}' already exists with URL: {existingUrl}");
+			}
+
+			var result = await _commandExecutor.ExecuteAsync(
+				$"remote add {remoteName} \"{remoteUrl}\"",
+				workingDirectory,
+				cancellationToken,
+				timeoutSeconds: DefaultTimeoutSeconds);
+
+			if (result.Success)
+			{
+				return GitOperationResult.Succeeded(
+					output: $"Remote '{remoteName}' added successfully.",
+					remoteName: remoteName);
+			}
+
+			return GitOperationResult.Failed(result.Error ?? "Failed to add remote.");
+		}
+		catch (OperationCanceledException)
+		{
+			return GitOperationResult.Failed("Add remote operation was cancelled.");
+		}
+		catch (Exception ex)
+		{
+			return GitOperationResult.Failed($"Unexpected error adding remote: {ex.Message}");
+		}
+	}
+
+	/// <inheritdoc />
+	public async Task<IReadOnlyDictionary<string, string>> GetRemotesAsync(
+		string workingDirectory,
+		CancellationToken cancellationToken = default)
+	{
+		var remotes = new Dictionary<string, string>();
+
+		try
+		{
+			var isRepo = await IsGitRepositoryAsync(workingDirectory, cancellationToken);
+			if (!isRepo)
+			{
+				return remotes;
+			}
+
+			var result = await _commandExecutor.ExecuteAsync(
+				"remote -v",
+				workingDirectory,
+				cancellationToken,
+				timeoutSeconds: DefaultTimeoutSeconds);
+
+			if (result.Success && !string.IsNullOrWhiteSpace(result.Output))
+			{
+				// Parse output: "origin  git@github.com:owner/repo.git (fetch)"
+				foreach (var line in result.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+				{
+					var parts = line.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+					if (parts.Length >= 2)
+					{
+						var name = parts[0];
+						var url = parts[1];
+
+						// Only add if not already present (we get both fetch and push lines)
+						if (!remotes.ContainsKey(name))
+						{
+							remotes[name] = url;
+						}
+					}
+				}
+			}
+		}
+		catch
+		{
+			// Return empty dictionary on error
+		}
+
+		return remotes;
+	}
 }

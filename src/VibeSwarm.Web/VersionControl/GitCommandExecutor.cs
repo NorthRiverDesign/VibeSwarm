@@ -18,9 +18,21 @@ public sealed class GitCommandExecutor : IGitCommandExecutor
 		CancellationToken cancellationToken = default,
 		int timeoutSeconds = 30)
 	{
+		var command = PlatformHelper.IsWindows ? "git.exe" : "git";
+		return await ExecuteRawAsync(command, arguments, workingDirectory, cancellationToken, timeoutSeconds);
+	}
+
+	/// <inheritdoc />
+	public async Task<GitCommandResult> ExecuteRawAsync(
+		string command,
+		string arguments,
+		string workingDirectory,
+		CancellationToken cancellationToken = default,
+		int timeoutSeconds = 30)
+	{
 		var startInfo = new ProcessStartInfo
 		{
-			FileName = PlatformHelper.IsWindows ? "git.exe" : "git",
+			FileName = command,
 			Arguments = arguments,
 			WorkingDirectory = workingDirectory,
 			UseShellExecute = false,
@@ -57,12 +69,12 @@ public sealed class GitCommandExecutor : IGitCommandExecutor
 		}
 		catch (Win32Exception ex)
 		{
-			// Git executable not found or not accessible
+			// Executable not found or not accessible
 			return new GitCommandResult
 			{
 				ExitCode = -1,
 				Output = string.Empty,
-				Error = $"Failed to start git: {ex.Message}"
+				Error = $"Failed to start {command}: {ex.Message}"
 			};
 		}
 

@@ -50,6 +50,10 @@ else
                 OnUpdateIdea="UpdateIdea" OnDeleteIdea="DeleteIdea" OnCopyIdea="CopyIdea" OnMoveIdea="MoveIdea"
                 OnStartSingleIdea="StartSingleIdea" OnExpandIdea="ExpandIdea" OnApproveExpansion="ApproveIdeaExpansion"
                 OnRejectExpansion="RejectIdeaExpansion" />
+
+            @* Git Settings Card *@
+            <GitSettingsCard WorkingPath="@Project.WorkingPath" ProjectName="@Project.Name"
+                ProjectId="@Project.Id" OnRepositoryCreated="HandleRepositoryCreated" />
         </div>
 
         @* Jobs list on RIGHT for monitoring progress *@
@@ -843,6 +847,14 @@ TimeSpan.FromSeconds(10) })
     private void HandleProjectModalClosed()
     {
         _showEditProjectModal = false;
+    }
+
+    private async Task HandleRepositoryCreated(string? gitHubRepository)
+    {
+        // Reload data after a repository is created (this updates Project.GitHubRepository in UI)
+        await LoadData();
+        await LoadGitInfo();
+        await NotificationService.ShowSuccessAsync("GitHub repository created and linked successfully!");
     }
 
     private async Task CreateBranch(string branchName)

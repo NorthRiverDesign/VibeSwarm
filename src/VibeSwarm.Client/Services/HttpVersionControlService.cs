@@ -214,5 +214,86 @@ public class HttpVersionControlService : IVersionControlService
         return await _http.GetFromJsonAsync<List<string>>(url, ct) ?? [];
     }
 
+    public async Task<GitOperationResult> InitializeRepositoryAsync(string workingDirectory, CancellationToken ct = default)
+    {
+        var response = await _http.PostAsJsonAsync("/api/git/init", new { Path = workingDirectory }, ct);
+        return await response.Content.ReadFromJsonAsync<GitOperationResult>(ct) ?? new GitOperationResult { Success = false, Error = "Failed to parse response" };
+    }
+
+    public async Task<bool> IsGitHubCliAvailableAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            var response = await _http.GetAsync("/api/git/gh-available", ct);
+            if (!response.IsSuccessStatusCode) return false;
+            var content = await response.Content.ReadAsStringAsync(ct);
+            return bool.TryParse(content, out var result) && result;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    public async Task<bool> IsGitHubCliAuthenticatedAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            var response = await _http.GetAsync("/api/git/gh-authenticated", ct);
+            if (!response.IsSuccessStatusCode) return false;
+            var content = await response.Content.ReadAsStringAsync(ct);
+            return bool.TryParse(content, out var result) && result;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    public async Task<GitOperationResult> CreateGitHubRepositoryAsync(
+        string workingDirectory,
+        string repositoryName,
+        string? description = null,
+        bool isPrivate = false,
+        Action<string>? progressCallback = null,
+        CancellationToken ct = default)
+    {
+        var response = await _http.PostAsJsonAsync("/api/git/create-github-repo", new
+        {
+            Path = workingDirectory,
+            Name = repositoryName,
+            Description = description,
+            IsPrivate = isPrivate
+        }, ct);
+        return await response.Content.ReadFromJsonAsync<GitOperationResult>(ct) ?? new GitOperationResult { Success = false, Error = "Failed to parse response" };
+    }
+
+    public async Task<GitOperationResult> AddRemoteAsync(
+        string workingDirectory,
+        string remoteName,
+        string remoteUrl,
+        CancellationToken ct = default)
+    {
+        var response = await _http.PostAsJsonAsync("/api/git/add-remote", new
+        {
+            Path = workingDirectory,
+            RemoteName = remoteName,
+            RemoteUrl = remoteUrl
+        }, ct);
+        return await response.Content.ReadFromJsonAsync<GitOperationResult>(ct) ?? new GitOperationResult { Success = false, Error = "Failed to parse response" };
+    }
+
+    public async Task<IReadOnlyDictionary<string, string>> GetRemotesAsync(string workingDirectory, CancellationToken ct = default)
+    {
+        try
+        {
+            return await _http.GetFromJsonAsync<Dictionary<string, string>>($"/api/git/remotes?path={Enc(workingDirectory)}", ct) ?? new Dictionary<string, string>();
+        }
+        catch
+        {
+            return new Dictionary<string, string>();
+        }
+    }
+
     private static string Enc(string value) => Uri.EscapeDataString(value);
 }
