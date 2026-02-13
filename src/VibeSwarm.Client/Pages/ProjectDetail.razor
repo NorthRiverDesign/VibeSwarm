@@ -36,7 +36,8 @@ else
         TotalInputTokens="@GetProjectTotalInputTokens()" TotalOutputTokens="@GetProjectTotalOutputTokens()"
         TotalCost="@GetProjectTotalCost()" OnCreateBranch="ShowCreateBranchModal" OnSync="SyncWithOrigin"
         OnRefresh="RefreshBranches" OnBranchSelected="RequestBranchSwitch"
-        OnUncommittedChangesClick="ShowUncommittedChangesModal" OnClearGitMessage="ClearGitMessage" />
+        OnUncommittedChangesClick="ShowUncommittedChangesModal" OnClearGitMessage="ClearGitMessage"
+        OnEdit="ShowEditProjectModal" />
 
     <div class="row g-3">
         @* Ideas Panel on LEFT on desktop for easier access *@
@@ -86,6 +87,11 @@ else
         ShowBranchSelector="@(IsGitRepository && Branches.Any())" IsLoadingModels="@IsLoadingModels" IsSaving="@IsSaving"
         ErrorMessage="@ErrorMessage" SelectedModelId="@SelectedModelId" OnProviderChanged="OnProviderChanged"
         OnSubmit="HandleCreateJob" />
+
+    @* Edit Project Modal *@
+    <ProjectModal @bind-IsVisible="_showEditProjectModal" EditProject="@Project" 
+        OnSaved="HandleProjectSaved" OnCancelled="HandleProjectModalCancelled" 
+        OnClosed="HandleProjectModalClosed" />
 }
 
 @code {
@@ -125,6 +131,9 @@ else
 
     // Create job modal state
     private bool _showCreateJobModal { get; set; }
+
+    // Edit project modal state
+    private bool _showEditProjectModal { get; set; }
 
     // Branch switch confirmation modal state
     private bool _showBranchSwitchModal { get; set; }
@@ -811,6 +820,29 @@ TimeSpan.FromSeconds(10) })
 
         ErrorMessage = null;
         _showCreateJobModal = true;
+    }
+
+    private void ShowEditProjectModal()
+    {
+        _showEditProjectModal = true;
+    }
+
+    private async Task HandleProjectSaved(Guid? projectId)
+    {
+        _showEditProjectModal = false;
+        // Reload project data to reflect changes
+        await LoadData();
+        await NotificationService.ShowSuccessAsync("Project updated successfully.");
+    }
+
+    private void HandleProjectModalCancelled()
+    {
+        _showEditProjectModal = false;
+    }
+
+    private void HandleProjectModalClosed()
+    {
+        _showEditProjectModal = false;
     }
 
     private async Task CreateBranch(string branchName)

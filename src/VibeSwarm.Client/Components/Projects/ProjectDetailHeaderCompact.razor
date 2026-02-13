@@ -69,6 +69,9 @@
 					<span class="d-none d-sm-inline small">Checking Git...</span>
 				</span>
 			}
+
+			@* Project Actions Dropdown *@
+			<ProjectActionsDropdown OnEdit="OnEdit" />
 		</div>
 
 		@* Row 2: Working path, stats *@
@@ -200,6 +203,9 @@ new Breadcrumb.BreadcrumbItem(Name)
 
 	[Parameter]
 	public EventCallback OnClearGitMessage { get; set; }
+
+	[Parameter]
+	public EventCallback OnEdit { get; set; }
 
 	private string? _currentGitOperation => IsGitOperationInProgress ? GitProgressMessage?.Contains("Fetching") == true ?
 	"refresh" : "sync" : null;
