@@ -836,7 +836,7 @@ TimeSpan.FromSeconds(10) })
         _showEditProjectModal = false;
         // Reload project data to reflect changes
         await LoadData();
-        await NotificationService.ShowSuccessAsync("Project updated successfully.");
+        NotificationService.ShowSuccess("Project updated successfully.");
     }
 
     private void HandleProjectModalCancelled()
@@ -854,7 +854,7 @@ TimeSpan.FromSeconds(10) })
         // Reload data after a repository is created (this updates Project.GitHubRepository in UI)
         await LoadData();
         await LoadGitInfo();
-        await NotificationService.ShowSuccessAsync("GitHub repository created and linked successfully!");
+        NotificationService.ShowSuccess("GitHub repository created and linked successfully!");
     }
 
     private async Task CreateBranch(string branchName)
