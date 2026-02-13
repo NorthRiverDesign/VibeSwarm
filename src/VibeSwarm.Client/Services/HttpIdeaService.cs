@@ -57,8 +57,8 @@ public class HttpIdeaService : IIdeaService
     public async Task<Idea?> GetByJobIdAsync(Guid jobId, CancellationToken ct = default)
         => await _http.GetFromJsonAsync<Idea?>($"/api/ideas/by-job/{jobId}", ct);
 
-    public async Task StartProcessingAsync(Guid projectId, CancellationToken ct = default)
-        => await _http.PostAsync($"/api/ideas/project/{projectId}/start-processing", null, ct);
+	public async Task StartProcessingAsync(Guid projectId, bool autoCommit = false, CancellationToken ct = default)
+		=> await _http.PostAsync($"/api/ideas/project/{projectId}/start-processing?autoCommit={autoCommit}", null, ct);
 
     public async Task StopProcessingAsync(Guid projectId, CancellationToken ct = default)
         => await _http.PostAsync($"/api/ideas/project/{projectId}/stop-processing", null, ct);

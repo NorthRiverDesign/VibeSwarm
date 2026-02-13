@@ -66,7 +66,10 @@ public interface IIdeaService
 	/// <summary>
 	/// Starts auto-processing of ideas for a project
 	/// </summary>
-	Task StartProcessingAsync(Guid projectId, CancellationToken cancellationToken = default);
+	/// <param name="projectId">The project to start processing</param>
+	/// <param name="autoCommit">Whether to auto-commit changes when jobs complete</param>
+	/// <param name="cancellationToken">Cancellation token</param>
+	Task StartProcessingAsync(Guid projectId, bool autoCommit = false, CancellationToken cancellationToken = default);
 
 	/// <summary>
 	/// Stops auto-processing of ideas for a project

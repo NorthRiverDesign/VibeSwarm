@@ -1,0 +1,80 @@
+@* Modal for confirming Start All ideas processing with options *@
+
+<ModalDialog @bind-IsVisible="IsVisible" Title="Start All Ideas" Icon="play-circle"
+	Size="ModalDialog.ModalSize.Default" OnClose="HandleCancel">
+	<ChildContent>
+		<p>
+			You are about to start processing <strong>@IdeasCount</strong> idea@(IdeasCount != 1 ? "s" : "").
+			Each idea will be converted to a job and queued for execution.
+		</p>
+
+		<div class="form-check mt-3">
+			<input class="form-check-input" type="checkbox" id="autoCommit" @bind="AutoCommit" />
+			<label class="form-check-label" for="autoCommit">
+				<i class="bi bi-git me-1"></i>
+				Auto-commit changes when jobs complete
+			</label>
+			<div class="form-text">
+				When enabled, changes from completed jobs will be automatically committed to the repository.
+			</div>
+		</div>
+	</ChildContent>
+	<FooterContent>
+		<button type="button" class="btn btn-secondary" @onclick="HandleCancel" disabled="@IsProcessing">
+			Cancel
+		</button>
+		<button type="button" class="btn btn-success" @onclick="HandleConfirm" disabled="@IsProcessing">
+			@if (IsProcessing)
+			{
+				<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+				<span>Starting...</span>
+			}
+			else
+			{
+				<i class="bi bi-play-fill me-1"></i>
+				<span>Start Processing</span>
+			}
+		</button>
+	</FooterContent>
+</ModalDialog>
+
+@code {
+	[Parameter]
+	public bool IsVisible { get; set; }
+
+	[Parameter]
+	public EventCallback<bool> IsVisibleChanged { get; set; }
+
+	[Parameter]
+	public int IdeasCount { get; set; }
+
+	[Parameter]
+	public bool IsProcessing { get; set; }
+
+	[Parameter]
+	public EventCallback<bool> OnConfirm { get; set; }
+
+	[Parameter]
+	public EventCallback OnCancel { get; set; }
+
+	private bool AutoCommit { get; set; }
+
+	private async Task HandleConfirm()
+	{
+		await OnConfirm.InvokeAsync(AutoCommit);
+	}
+
+	private async Task HandleCancel()
+	{
+		await IsVisibleChanged.InvokeAsync(false);
+		await OnCancel.InvokeAsync();
+	}
+
+	/// <summary>
+	/// Resets the modal state when opened
+	/// </summary>
+	public void Reset()
+	{
+		AutoCommit = false;
+	}
+}

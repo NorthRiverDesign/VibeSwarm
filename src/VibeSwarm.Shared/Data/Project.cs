@@ -58,8 +58,13 @@ public class Project
 
     public ICollection<Idea> Ideas { get; set; } = new List<Idea>();
 
-    /// <summary>
-    /// Whether Ideas auto-processing is currently running for this project
-    /// </summary>
-    public bool IdeasProcessingActive { get; set; }
+	/// <summary>
+	/// Whether Ideas auto-processing is currently running for this project
+	/// </summary>
+	public bool IdeasProcessingActive { get; set; }
+
+	/// <summary>
+	/// Whether to auto-commit changes when jobs from ideas complete during auto-processing
+	/// </summary>
+	public bool IdeasAutoCommit { get; set; }
 }

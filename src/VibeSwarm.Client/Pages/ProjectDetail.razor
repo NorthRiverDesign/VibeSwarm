@@ -1231,34 +1231,35 @@ TimeSpan.FromSeconds(10) })
         }
     }
 
-    private async Task StartIdeasProcessing()
-    {
-        _isTogglingIdeasProcessing = true;
-        // Mark all unprocessed ideas as processing immediately for UI feedback
-        foreach (var idea in Ideas.Where(i => !i.IsProcessing && !i.JobId.HasValue))
-        {
-            ProcessingIdeaIds.Add(idea.Id);
-        }
-        StateHasChanged();
+	private async Task StartIdeasProcessing(bool autoCommit)
+	{
+		_isTogglingIdeasProcessing = true;
+		// Mark all unprocessed ideas as processing immediately for UI feedback
+		foreach (var idea in Ideas.Where(i => !i.IsProcessing && !i.JobId.HasValue))
+		{
+			ProcessingIdeaIds.Add(idea.Id);
+		}
+		StateHasChanged();
 
-        try
-        {
-            await IdeaService.StartProcessingAsync(ProjectId);
-            IsIdeasProcessingActive = true;
-            NotificationService.ShowInfo("Ideas will be converted to jobs automatically.", "Auto-Processing Started");
-        }
-        catch (Exception ex)
-        {
-            // Clear processing state on error
-            ProcessingIdeaIds.Clear();
-            NotificationService.ShowError($"Error starting Ideas processing: {ex.Message}");
-        }
-        finally
-        {
-            _isTogglingIdeasProcessing = false;
-            StateHasChanged();
-        }
-    }
+		try
+		{
+			await IdeaService.StartProcessingAsync(ProjectId, autoCommit);
+			IsIdeasProcessingActive = true;
+			var commitMessage = autoCommit ? " Auto-commit is enabled." : "";
+			NotificationService.ShowInfo($"Ideas will be converted to jobs automatically.{commitMessage}", "Auto-Processing Started");
+		}
+		catch (Exception ex)
+		{
+			// Clear processing state on error
+			ProcessingIdeaIds.Clear();
+			NotificationService.ShowError($"Error starting Ideas processing: {ex.Message}");
+		}
+		finally
+		{
+			_isTogglingIdeasProcessing = false;
+			StateHasChanged();
+		}
+	}
 
     private async Task StopIdeasProcessing()
     {

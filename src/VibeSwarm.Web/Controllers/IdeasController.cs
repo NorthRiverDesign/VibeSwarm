@@ -75,8 +75,8 @@ public class IdeasController : ControllerBase
     [HttpGet("by-job/{jobId:guid}")]
     public async Task<IActionResult> GetByJobId(Guid jobId, CancellationToken ct) => Ok(await _ideaService.GetByJobIdAsync(jobId, ct));
 
-    [HttpPost("project/{projectId:guid}/start-processing")]
-    public async Task<IActionResult> StartProcessing(Guid projectId, CancellationToken ct) { await _ideaService.StartProcessingAsync(projectId, ct); return Ok(); }
+	[HttpPost("project/{projectId:guid}/start-processing")]
+	public async Task<IActionResult> StartProcessing(Guid projectId, [FromQuery] bool autoCommit = false, CancellationToken ct = default) { await _ideaService.StartProcessingAsync(projectId, autoCommit, ct); return Ok(); }
 
     [HttpPost("project/{projectId:guid}/stop-processing")]
     public async Task<IActionResult> StopProcessing(Guid projectId, CancellationToken ct) { await _ideaService.StopProcessingAsync(projectId, ct); return Ok(); }

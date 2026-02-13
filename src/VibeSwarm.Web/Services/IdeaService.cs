@@ -351,7 +351,7 @@ Begin by expanding this idea into a detailed specification, then implement it.";
 			.FirstOrDefaultAsync(i => i.JobId == jobId, cancellationToken);
 	}
 
-	public async Task StartProcessingAsync(Guid projectId, CancellationToken cancellationToken = default)
+	public async Task StartProcessingAsync(Guid projectId, bool autoCommit = false, CancellationToken cancellationToken = default)
 	{
 		// Use a lock to prevent race conditions when toggling processing state
 		await _processingStateLock.WaitAsync(cancellationToken);
@@ -368,8 +368,9 @@ Begin by expanding this idea into a detailed specification, then implement it.";
 				}
 
 				project.IdeasProcessingActive = true;
+				project.IdeasAutoCommit = autoCommit;
 				await _dbContext.SaveChangesAsync(cancellationToken);
-				_logger.LogInformation("Started Ideas auto-processing for project {ProjectId}", projectId);
+				_logger.LogInformation("Started Ideas auto-processing for project {ProjectId} (AutoCommit: {AutoCommit})", projectId, autoCommit);
 
 				// Notify all clients about the state change
 				if (_jobUpdateService != null)
