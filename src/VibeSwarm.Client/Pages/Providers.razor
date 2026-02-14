@@ -73,7 +73,7 @@ else
                             </div>
                         }
                         @if (RefreshModelsErrors.TryGetValue(provider.Id, out var refreshError) &&
-                                                                !string.IsNullOrEmpty(refreshError))
+                                        !string.IsNullOrEmpty(refreshError))
                         {
                             <Alert Type="Alert.AlertType.Warning" Message="@refreshError" Class="mt-2 mb-0 py-2 px-3 small" />
                         }
@@ -102,12 +102,8 @@ else
                                 </li>
                                 <li>
                                     <button class="dropdown-item" @onclick="@(() => UpdateCli(provider))"
-<<<<<<< Updated upstream
-                                        @onclick:stopPropagation="true"
-                                        disabled="@(UpdatingCliId == provider.Id || provider.ConnectionMode == ProviderConnectionMode.SDK)">
-=======
-                                            @onclick:stopPropagation="true" disabled="@(UpdatingCliId == provider.Id)">
->>>>>>> Stashed changes
+                                            @onclick:stopPropagation="true"
+                                            disabled="@(UpdatingCliId == provider.Id || provider.ConnectionMode == ProviderConnectionMode.SDK)">
                                         <i class="bi bi-download me-2 @(UpdatingCliId == provider.Id ? "spin" : "")"></i>
                                         @(provider.ConnectionMode == ProviderConnectionMode.SDK ? "Update via NuGet" : "Update CLI")
                                     </button>

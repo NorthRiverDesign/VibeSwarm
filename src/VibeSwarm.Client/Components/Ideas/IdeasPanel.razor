@@ -29,13 +29,8 @@
 				else
 				{
 					<button type="button" class="btn btn-sm btn-success" @onclick="OpenStartAllModal"
-<<<<<<< Updated upstream
-						disabled="@(IsTogglingProcessing || !HasDefaultProvider || HasActiveJobs)"
-						title="@(HasActiveJobs ? "A job is already running on this project" : "Start all ideas processing")">
-=======
 							disabled="@(IsTogglingProcessing || !HasDefaultProvider || HasActiveJobs || UnprocessedIdeasCount == 0)"
 							title="@(HasActiveJobs ? "A job is already running on this project" : UnprocessedIdeasCount == 0 ? "All ideas have already been processed" : "Start all ideas processing")">
->>>>>>> Stashed changes
 						@if (IsTogglingProcessing)
 						{
 							<span class="spinner-border spinner-border-sm me-1" role="status"></span>
@@ -164,11 +159,6 @@
 		</FooterContent>
 	</ModalDialog>
 
-@* Start All Ideas Modal *@
-<StartAllIdeasModal @ref="StartAllModal" @bind-IsVisible="ShowStartAllModal"
-	IdeasCount="@UnprocessedIdeasCount" IsProcessing="@IsTogglingProcessing"
-	OnConfirm="HandleStartAllConfirm" OnCancel="CloseStartAllModal" />
-
 @code {
 	[Parameter]
 	public List<Idea> Ideas { get; set; } = new();
@@ -247,33 +237,12 @@
 	private bool ShowCopyModal { get; set; }
 	private bool ShowMoveModal { get; set; }
 	private bool ShowExpansionModal { get; set; }
-	private bool ShowStartAllModal { get; set; }
-	private StartAllIdeasModal? StartAllModal { get; set; }
 	private Idea? SelectedIdea { get; set; }
 	private Idea? SelectedIdeaForExpansion { get; set; }
 	private List<Project> AvailableProjects { get; set; } = new();
 	private bool IsProcessingAction { get; set; }
 	private bool IsExpandingIdea { get; set; }
 	private bool IsProcessingExpansion { get; set; }
-
-	private int UnprocessedIdeasCount => Ideas.Count(i => !i.IsProcessing && !i.JobId.HasValue);
-
-	private void OpenStartAllModal()
-	{
-		StartAllModal?.Reset();
-		ShowStartAllModal = true;
-	}
-
-	private void CloseStartAllModal()
-	{
-		ShowStartAllModal = false;
-	}
-
-	private async Task HandleStartAllConfirm(bool autoCommit)
-	{
-		await OnStartProcessing.InvokeAsync(autoCommit);
-		ShowStartAllModal = false;
-	}
 
 	private async Task HandleKeyPress(KeyboardEventArgs e)
 	{
