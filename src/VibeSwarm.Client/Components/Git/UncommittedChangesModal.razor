@@ -66,7 +66,7 @@
                 </div>
 
                 <div class="accordion border rounded overflow-y-auto" id="uncommittedChangesAccordion"
-                    style="max-height: 350px;">
+                    style="max-height: min(350px, 40vh);">
                     @foreach (var (file, index) in DiffFiles.Select((f, i) => (f, i)))
                     {
                         var isExpanded = _expandedItems.Contains(index);
@@ -153,8 +153,17 @@
 
             @if (!string.IsNullOrEmpty(CommitError))
             {
-                <div class="alert alert-danger py-2">
-                    <i class="bi bi-exclamation-triangle me-1"></i>@CommitError
+                <div class="alert alert-danger py-2 d-flex align-items-center justify-content-between">
+                    <div>
+                        <i class="bi bi-exclamation-triangle me-1"></i>@CommitError
+                    </div>
+                    @if (ShowPushRetry)
+                    {
+                        <button type="button" class="btn btn-sm btn-outline-danger ms-2" @onclick="HandleRetryPush"
+                            disabled="@IsCommitting">
+                            <i class="bi bi-arrow-repeat me-1"></i>Retry Push
+                        </button>
+                    }
                 </div>
             }
 
@@ -192,7 +201,7 @@
     <FooterContent>
         @if (DiffFiles != null && DiffFiles.Any() && !ShowDiscardConfirmation)
         {
-            <div class="d-flex justify-content-between w-100">
+            <div class="d-flex flex-column flex-sm-row justify-content-between w-100 gap-2">
                 <button type="button" class="btn btn-outline-danger" @onclick="HandleShowDiscard"
                     disabled="@(IsCommitting || IsDiscarding)">
                     <i class="bi bi-trash me-1"></i>
@@ -208,7 +217,7 @@
                         @if (IsCommitting)
                         {
                             <span class="spinner-border spinner-border-sm me-1" role="status"></span>
-                            <span>Committing...</span>
+                            <span>@(string.IsNullOrEmpty(CommitProgress) ? "Committing..." : CommitProgress)</span>
                         }
                         else
                         {
@@ -255,6 +264,15 @@
 
     [Parameter]
     public string? CommitError { get; set; }
+
+    [Parameter]
+    public string? CommitProgress { get; set; }
+
+    [Parameter]
+    public bool ShowPushRetry { get; set; }
+
+    [Parameter]
+    public EventCallback OnRetryPush { get; set; }
 
     [Parameter]
     public bool ShowDiscardConfirmation { get; set; }
@@ -356,6 +374,11 @@
     private async Task HandleCancelDiscard()
     {
         await OnCancelDiscard.InvokeAsync();
+    }
+
+    private async Task HandleRetryPush()
+    {
+        await OnRetryPush.InvokeAsync();
     }
 
     private async Task HandleClose()

@@ -97,35 +97,38 @@
 						<p class="text-body-secondary small mb-2">
 							No remote repositories configured. Create a GitHub repository to push your code.
 						</p>
+					}
 
-						@* GitHub CLI Status *@
-						<div class="d-flex flex-wrap gap-2 mb-3">
-							@if (_isGitHubCliAvailable)
+					@* GitHub CLI Status - always show regardless of remotes *@
+					<div class="d-flex flex-wrap gap-2 mb-3">
+						@if (_isGitHubCliAvailable)
+						{
+							<span class="badge bg-success-subtle text-success-emphasis">
+								<i class="bi bi-check-circle me-1"></i>GitHub CLI Installed
+							</span>
+							@if (_isGitHubCliAuthenticated)
 							{
 								<span class="badge bg-success-subtle text-success-emphasis">
-									<i class="bi bi-check-circle me-1"></i>GitHub CLI Installed
+									<i class="bi bi-check-circle me-1"></i>Authenticated
 								</span>
-								@if (_isGitHubCliAuthenticated)
-								{
-									<span class="badge bg-success-subtle text-success-emphasis">
-										<i class="bi bi-check-circle me-1"></i>Authenticated
-									</span>
-								}
-								else
-								{
-									<span class="badge bg-warning-subtle text-warning-emphasis">
-										<i class="bi bi-exclamation-triangle me-1"></i>Not Authenticated
-									</span>
-								}
 							}
 							else
 							{
-								<span class="badge bg-secondary-subtle text-secondary-emphasis">
-									<i class="bi bi-info-circle me-1"></i>GitHub CLI Not Found
+								<span class="badge bg-warning-subtle text-warning-emphasis">
+									<i class="bi bi-exclamation-triangle me-1"></i>Not Authenticated
 								</span>
 							}
-						</div>
+						}
+						else
+						{
+							<span class="badge bg-secondary-subtle text-secondary-emphasis">
+								<i class="bi bi-info-circle me-1"></i>GitHub CLI Not Found
+							</span>
+						}
+					</div>
 
+					@if (!_remotes.Any())
+					{
 						@if (_isGitHubCliAvailable && _isGitHubCliAuthenticated)
 						{
 							<button type="button" class="btn btn-primary btn-sm" @onclick="ShowCreateRepoModal">

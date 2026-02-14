@@ -26,6 +26,19 @@
 			</button>
 		</li>
 		<li>
+			<button class="dropdown-item" @onclick="OnPruneBranches" disabled="@(IsDisabled || IsPruning)">
+				@if (IsPruning)
+				{
+					<span class="spinner-border spinner-border-sm me-2" role="status"></span>
+				}
+				else
+				{
+					<i class="bi bi-scissors me-2 text-warning"></i>
+				}
+				Prune Stale Branches
+			</button>
+		</li>
+		<li>
 			<hr class="dropdown-divider">
 		</li>
 		<li>
@@ -48,6 +61,9 @@
 	public bool IsRefreshing { get; set; }
 
 	[Parameter]
+	public bool IsPruning { get; set; }
+
+	[Parameter]
 	public EventCallback OnCreateBranch { get; set; }
 
 	[Parameter]
@@ -55,4 +71,7 @@
 
 	[Parameter]
 	public EventCallback OnRefresh { get; set; }
+
+	[Parameter]
+	public EventCallback OnPruneBranches { get; set; }
 }

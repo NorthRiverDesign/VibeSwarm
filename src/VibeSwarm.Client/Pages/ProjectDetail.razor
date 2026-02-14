@@ -37,7 +37,7 @@ else
                                 TotalCost="@GetProjectTotalCost()" OnCreateBranch="ShowCreateBranchModal" OnSync="SyncWithOrigin"
                                 OnRefresh="RefreshBranches" OnBranchSelected="RequestBranchSwitch"
                                 OnUncommittedChangesClick="ShowUncommittedChangesModal" OnClearGitMessage="ClearGitMessage"
-                                OnEdit="ShowEditProjectModal" />
+                                OnEdit="ShowEditProjectModal" OnPruneBranches="PruneRemoteBranches" />
 
     <div class="row g-3">
         @* Ideas Panel on LEFT on desktop for easier access *@
@@ -73,7 +73,9 @@ else
     @* Uncommitted Changes Modal *@
     <UncommittedChangesModal @bind-IsVisible="_showUncommittedChangesModal" IsLoading="@_isLoadingUncommittedDiff"
                              ErrorMessage="@_uncommittedDiffError" DiffFiles="@_uncommittedDiffFiles" PendingJobs="@_pendingCommitJobs"
-                             CommitError="@_uncommittedCommitError" IsCommitting="@_isCommittingChanges" IsDiscarding="@_isDiscardingChanges"
+                             CommitError="@_uncommittedCommitError" CommitProgress="@_commitPushStep"
+                             ShowPushRetry="@_pushRetryAvailable" OnRetryPush="RetryPush"
+                             IsCommitting="@_isCommittingChanges" IsDiscarding="@_isDiscardingChanges"
                              ShowDiscardConfirmation="@_showDiscardConfirmation" OnCommitAndPush="CommitAndPushUncommittedChanges"
                              OnShowDiscard="ShowDiscardConfirmation" OnConfirmDiscard="DiscardAllChanges"
                              OnCancelDiscard="CloseDiscardConfirmation" />
@@ -147,9 +149,15 @@ else
     private List<DiffFile> _uncommittedDiffFiles { get; set; } = new();
     private List<Job> _pendingCommitJobs { get; set; } = new();
     private string? _uncommittedCommitError { get; set; }
+    private string? _commitPushStep { get; set; }
+    private bool _pushRetryAvailable { get; set; }
+    private string? _lastSuccessfulCommitHash { get; set; }
     private bool _isCommittingChanges { get; set; }
     private bool _showDiscardConfirmation { get; set; }
     private bool _isDiscardingChanges { get; set; }
+
+    // Prune state
+    private bool _isPruningBranches { get; set; }
 
     // Ideas state
     private List<Idea> Ideas { get; set; } = new();
@@ -1033,6 +1041,9 @@ TimeSpan.FromSeconds(10) })
 
         _isCommittingChanges = true;
         _uncommittedCommitError = null;
+        _pushRetryAvailable = false;
+        _lastSuccessfulCommitHash = null;
+        _commitPushStep = "Staging and committing...";
         StateHasChanged();
 
         try
@@ -1044,8 +1055,11 @@ TimeSpan.FromSeconds(10) })
             if (!commitResult.Success)
             {
                 _uncommittedCommitError = $"Failed to commit: {commitResult.Error}";
+                _commitPushStep = null;
                 return;
             }
+
+            _lastSuccessfulCommitHash = commitResult.CommitHash;
 
             // Update pending jobs with the commit hash
             if (!string.IsNullOrEmpty(commitResult.CommitHash) && _pendingCommitJobs.Any())
@@ -1062,6 +1076,9 @@ TimeSpan.FromSeconds(10) })
                 }
             }
 
+            _commitPushStep = "Pushing to remote...";
+            StateHasChanged();
+
             var pushResult = await VersionControlService.PushAsync(Project.WorkingPath);
 
             if (pushResult.Success)
@@ -1077,10 +1094,9 @@ TimeSpan.FromSeconds(10) })
             }
             else
             {
-                GitOperationMessage = $"Changes committed but push failed: {pushResult.Error}";
-                GitOperationSuccess = false;
-                _showUncommittedChangesModal = false;
-                await RefreshUncommittedChangesStatus();
+                var shortHash = commitResult.CommitHash?[..Math.Min(7, commitResult.CommitHash?.Length ?? 0)] ?? "unknown";
+                _uncommittedCommitError = $"Commit succeeded ({shortHash}) but push failed: {pushResult.Error}";
+                _pushRetryAvailable = true;
             }
         }
         catch (Exception ex)
@@ -1090,6 +1106,7 @@ TimeSpan.FromSeconds(10) })
         finally
         {
             _isCommittingChanges = false;
+            _commitPushStep = null;
             StateHasChanged();
         }
     }
@@ -1139,6 +1156,86 @@ TimeSpan.FromSeconds(10) })
         finally
         {
             _isDiscardingChanges = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task RetryPush()
+    {
+        if (Project == null || string.IsNullOrEmpty(Project.WorkingPath)) return;
+
+        _isCommittingChanges = true;
+        _uncommittedCommitError = null;
+        _pushRetryAvailable = false;
+        _commitPushStep = "Pushing to remote...";
+        StateHasChanged();
+
+        try
+        {
+            var pushResult = await VersionControlService.PushAsync(Project.WorkingPath);
+
+            if (pushResult.Success)
+            {
+                GitOperationMessage = "Successfully pushed changes";
+                GitOperationSuccess = true;
+                CurrentCommitHash = _lastSuccessfulCommitHash;
+                _showUncommittedChangesModal = false;
+                await RefreshUncommittedChangesStatus();
+            }
+            else
+            {
+                _uncommittedCommitError = $"Push failed: {pushResult.Error}";
+                _pushRetryAvailable = true;
+            }
+        }
+        catch (Exception ex)
+        {
+            _uncommittedCommitError = $"Error: {ex.Message}";
+            _pushRetryAvailable = true;
+        }
+        finally
+        {
+            _isCommittingChanges = false;
+            _commitPushStep = null;
+            StateHasChanged();
+        }
+    }
+
+    private async Task PruneRemoteBranches()
+    {
+        if (IsGitOperationInProgress) return;
+        if (Project == null || string.IsNullOrEmpty(Project.WorkingPath)) return;
+
+        IsGitOperationInProgress = true;
+        GitOperationMessage = null;
+        GitProgressMessage = "Pruning stale branches...";
+        StateHasChanged();
+
+        try
+        {
+            var result = await VersionControlService.PruneRemoteBranchesAsync(Project.WorkingPath);
+
+            if (result.Success)
+            {
+                GitOperationMessage = result.Output ?? "Prune completed successfully";
+                GitOperationSuccess = true;
+                await LoadBranches();
+            }
+            else
+            {
+                GitOperationMessage = result.Error ?? "Failed to prune branches";
+                GitOperationSuccess = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            GitOperationMessage = $"Error pruning branches: {ex.Message}";
+            GitOperationSuccess = false;
+        }
+        finally
+        {
+            IsGitOperationInProgress = false;
+            GitProgressMessage = null;
             StateHasChanged();
         }
     }

@@ -24,41 +24,41 @@
 			@* Spacer *@
 			<div class="flex-grow-1"></div>
 
-			@* Git Controls Group - visible on all screen sizes *@
+			@* Git Controls Group - show inline on lg+, hidden on mobile (shown in row below) *@
 			@if (IsGitRepository)
 			{
-				@* Branch Selector *@
-				@if (Branches.Any())
-				{
-					<GitBranchSelector Branches="@Branches" CurrentBranch="@CurrentBranch"
-						CurrentCommitHash="@CurrentCommitHash" IsDisabled="@IsGitOperationInProgress"
-						OnBranchSelected="OnBranchSelected" />
-				}
-				else if (!string.IsNullOrEmpty(CurrentBranch))
-				{
-					@* Fallback: Simple branch badge with commit hash *@
-					<span class="badge bg-body-tertiary text-body d-flex align-items-center gap-1 px-2 py-1"
-						title="Current branch: @CurrentBranch">
-						<i class="bi bi-git text-danger"></i>
-						<span class="fw-medium">@CurrentBranch</span>
-						@if (!string.IsNullOrEmpty(CurrentCommitHash))
-						{
-							<span class="font-monospace text-body-secondary small">@CurrentCommitHash[..Math.Min(7,
-													CurrentCommitHash.Length)]</span>
-								}
-					</span>
-				}
+				<div class="d-none d-lg-flex align-items-center gap-2">
+					@* Branch Selector *@
+					@if (Branches.Any())
+					{
+						<GitBranchSelector Branches="@Branches" CurrentBranch="@CurrentBranch"
+							CurrentCommitHash="@CurrentCommitHash" IsDisabled="@IsGitOperationInProgress"
+							OnBranchSelected="OnBranchSelected" />
+					}
+					else if (!string.IsNullOrEmpty(CurrentBranch))
+					{
+						<span class="badge bg-body-tertiary text-body d-flex align-items-center gap-1 px-2 py-1"
+							title="Current branch: @CurrentBranch">
+							<i class="bi bi-git text-danger"></i>
+							<span class="fw-medium">@CurrentBranch</span>
+							@if (!string.IsNullOrEmpty(CurrentCommitHash))
+							{
+								<span class="font-monospace text-body-secondary small">@CurrentCommitHash[..Math.Min(7,
+														CurrentCommitHash.Length)]</span>
+									}
+						</span>
+					}
 
-				@* Uncommitted Changes Warning *@
-				@if (HasUncommittedChanges)
-				{
-					<UncommittedChangesButton FilesCount="@UncommittedFilesCount" OnClick="OnUncommittedChangesClick" />
-				}
+					@if (HasUncommittedChanges)
+					{
+						<UncommittedChangesButton FilesCount="@UncommittedFilesCount" OnClick="OnUncommittedChangesClick" />
+					}
 
-				@* Git Actions Dropdown *@
-				<GitActionsDropdown IsDisabled="@IsGitOperationInProgress" IsSyncing="@(_currentGitOperation == "sync")"
-					IsRefreshing="@(_currentGitOperation == "refresh")" OnCreateBranch="OnCreateBranch" OnSync="OnSync"
-					OnRefresh="OnRefresh" />
+					<GitActionsDropdown IsDisabled="@IsGitOperationInProgress" IsSyncing="@(_currentGitOperation == "sync")"
+						IsRefreshing="@(_currentGitOperation == "refresh")" IsPruning="@(_currentGitOperation == "prune")"
+						OnCreateBranch="OnCreateBranch" OnSync="OnSync"
+						OnRefresh="OnRefresh" OnPruneBranches="OnPruneBranches" />
+				</div>
 			}
 			else if (IsLoadingGitInfo)
 			{
@@ -74,13 +74,44 @@
 			<ProjectActionsDropdown OnEdit="OnEdit" />
 		</div>
 
+		@* Mobile-only Git controls row *@
+		@if (IsGitRepository)
+		{
+			<div class="d-flex d-lg-none flex-wrap align-items-center gap-2 mt-2">
+				@if (Branches.Any())
+				{
+					<GitBranchSelector Branches="@Branches" CurrentBranch="@CurrentBranch"
+						CurrentCommitHash="@CurrentCommitHash" IsDisabled="@IsGitOperationInProgress"
+						OnBranchSelected="OnBranchSelected" />
+				}
+				else if (!string.IsNullOrEmpty(CurrentBranch))
+				{
+					<span class="badge bg-body-tertiary text-body d-flex align-items-center gap-1 px-2 py-1"
+						title="Current branch: @CurrentBranch">
+						<i class="bi bi-git text-danger"></i>
+						<span class="fw-medium">@CurrentBranch</span>
+					</span>
+				}
+
+				@if (HasUncommittedChanges)
+				{
+					<UncommittedChangesButton FilesCount="@UncommittedFilesCount" OnClick="OnUncommittedChangesClick" />
+				}
+
+				<GitActionsDropdown IsDisabled="@IsGitOperationInProgress" IsSyncing="@(_currentGitOperation == "sync")"
+					IsRefreshing="@(_currentGitOperation == "refresh")" IsPruning="@(_currentGitOperation == "prune")"
+					OnCreateBranch="OnCreateBranch" OnSync="OnSync"
+					OnRefresh="OnRefresh" OnPruneBranches="OnPruneBranches" />
+			</div>
+		}
+
 		@* Row 2: Working path, stats *@
 		<div class="d-flex flex-wrap align-items-center gap-2 gap-md-3 mt-2 pt-2 border-top border-body-tertiary small">
 			@* Working Path *@
 			<div class="d-flex align-items-center gap-1 text-body-secondary">
 				<i class="bi bi-folder opacity-75"></i>
 				<code class="bg-body-tertiary px-2 py-1 rounded-1 text-truncate d-inline-block"
-					style="max-width: 280px;" title="@WorkingPath">@WorkingPath</code>
+					style="max-width: min(280px, 50vw);" title="@WorkingPath">@WorkingPath</code>
 			</div>
 
 			@* GitHub Repository (mobile-friendly text version) *@
@@ -99,7 +130,7 @@
 			@* Token/Cost Stats *@
 			@if (HasTokenData)
 			{
-				<div class="d-flex align-items-center gap-2 gap-md-3">
+				<div class="d-none d-sm-flex align-items-center gap-2 gap-md-3">
 					@if (TotalInputTokens > 0 || TotalOutputTokens > 0)
 					{
 						<div class="d-flex align-items-center gap-1 text-body-secondary" title="Total tokens (input / output)">
@@ -196,6 +227,9 @@ new Breadcrumb.BreadcrumbItem(Name)
 	public EventCallback OnRefresh { get; set; }
 
 	[Parameter]
+	public EventCallback OnPruneBranches { get; set; }
+
+	[Parameter]
 	public EventCallback<string> OnBranchSelected { get; set; }
 
 	[Parameter]
@@ -207,6 +241,9 @@ new Breadcrumb.BreadcrumbItem(Name)
 	[Parameter]
 	public EventCallback OnEdit { get; set; }
 
-	private string? _currentGitOperation => IsGitOperationInProgress ? GitProgressMessage?.Contains("Fetching") == true ?
-	"refresh" : "sync" : null;
+	private string? _currentGitOperation => IsGitOperationInProgress
+		? GitProgressMessage?.Contains("Pruning") == true ? "prune"
+		: GitProgressMessage?.Contains("Fetching") == true ? "refresh"
+		: "sync"
+		: null;
 }

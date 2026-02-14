@@ -94,6 +94,24 @@ public class GitController : ControllerBase
     [HttpGet("remotes")]
     public async Task<IActionResult> GetRemotes([FromQuery] string path, CancellationToken ct) => Ok(await _gitService.GetRemotesAsync(path, ct));
 
+    [HttpPost("prune")]
+    public async Task<IActionResult> Prune([FromBody] PruneRequest req, CancellationToken ct) => Ok(await _gitService.PruneRemoteBranchesAsync(req.Path, req.Remote ?? "origin", ct));
+
+    [HttpGet("detected-tools")]
+    public async Task<IActionResult> GetDetectedTools(CancellationToken ct)
+    {
+        var gitAvailable = await _gitService.IsGitAvailableAsync(ct);
+        var ghAvailable = await _gitService.IsGitHubCliAvailableAsync(ct);
+        var ghAuthenticated = ghAvailable && await _gitService.IsGitHubCliAuthenticatedAsync(ct);
+
+        return Ok(new
+        {
+            GitAvailable = gitAvailable,
+            GitHubCliAvailable = ghAvailable,
+            GitHubCliAuthenticated = ghAuthenticated
+        });
+    }
+
     // Request DTOs
     public record CommitRequest(string Path, string Message);
     public record PushRequest(string Path, string? Remote, string? Branch);
@@ -107,4 +125,5 @@ public class GitController : ControllerBase
     public record InitRequest(string Path);
     public record CreateGitHubRepoRequest(string Path, string Name, string? Description, bool IsPrivate = false);
     public record AddRemoteRequest(string Path, string RemoteName, string RemoteUrl);
+    public record PruneRequest(string Path, string? Remote);
 }

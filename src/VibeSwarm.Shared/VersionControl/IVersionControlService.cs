@@ -320,4 +320,17 @@ public interface IVersionControlService
 	Task<IReadOnlyDictionary<string, string>> GetRemotesAsync(
 		string workingDirectory,
 		CancellationToken cancellationToken = default);
+
+	/// <summary>
+	/// Prunes stale remote-tracking branches that no longer exist on the remote.
+	/// Equivalent to: git remote prune {remoteName}
+	/// </summary>
+	/// <param name="workingDirectory">The repository working directory.</param>
+	/// <param name="remoteName">The remote name (defaults to 'origin').</param>
+	/// <param name="cancellationToken">Cancellation token.</param>
+	/// <returns>Result containing success status, pruned branch count in output, and any error message.</returns>
+	Task<GitOperationResult> PruneRemoteBranchesAsync(
+		string workingDirectory,
+		string remoteName = "origin",
+		CancellationToken cancellationToken = default);
 }

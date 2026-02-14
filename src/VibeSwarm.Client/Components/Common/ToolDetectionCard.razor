@@ -1,0 +1,146 @@
+@* Tool Detection Card - Shows status of detected CLI tools *@
+@inject HttpClient Http
+
+<div class="card mt-3">
+	<div class="card-header bg-body-secondary d-flex align-items-center justify-content-between">
+		<h5 class="mb-0 fw-semibold">
+			<i class="bi bi-tools me-2"></i>Detected Tools
+		</h5>
+		<button type="button" class="btn btn-sm btn-outline-secondary" @onclick="DetectTools"
+			disabled="@_isLoading" title="Re-detect tools">
+			<i class="bi bi-arrow-clockwise @(_isLoading ? "spin" : "")"></i>
+		</button>
+	</div>
+	<div class="card-body">
+		@if (_isLoading)
+		{
+			<div class="d-flex align-items-center gap-2 text-body-secondary">
+				<span class="spinner-border spinner-border-sm" role="status"></span>
+				<span>Detecting tools...</span>
+			</div>
+		}
+		else
+		{
+			<ul class="list-unstyled mb-0">
+				@* Git *@
+				<li class="d-flex align-items-center gap-2 mb-2">
+					<i class="bi bi-git text-danger"></i>
+					<span class="flex-grow-1">Git</span>
+					@if (_gitAvailable)
+					{
+						<span class="badge bg-success-subtle text-success-emphasis">
+							<i class="bi bi-check-circle me-1"></i>Available
+						</span>
+					}
+					else
+					{
+						<span class="badge bg-danger-subtle text-danger-emphasis">
+							<i class="bi bi-x-circle me-1"></i>Not Found
+						</span>
+					}
+				</li>
+
+				@* GitHub CLI *@
+				<li class="d-flex align-items-center gap-2 mb-2">
+					<i class="bi bi-github"></i>
+					<span class="flex-grow-1">GitHub CLI</span>
+					@if (_ghAvailable)
+					{
+						<span class="badge bg-success-subtle text-success-emphasis">
+							<i class="bi bi-check-circle me-1"></i>Available
+						</span>
+					}
+					else
+					{
+						<span class="badge bg-danger-subtle text-danger-emphasis">
+							<i class="bi bi-x-circle me-1"></i>Not Found
+						</span>
+					}
+				</li>
+
+				@* GitHub CLI Auth Status (sub-status) *@
+				@if (_ghAvailable)
+				{
+					<li class="d-flex align-items-center gap-2 ps-4">
+						<i class="bi bi-shield-lock opacity-50"></i>
+						<span class="flex-grow-1 text-body-secondary small">Authentication</span>
+						@if (_ghAuthenticated)
+						{
+							<span class="badge bg-success-subtle text-success-emphasis">
+								<i class="bi bi-check-circle me-1"></i>Authenticated
+							</span>
+						}
+						else
+						{
+							<span class="badge bg-warning-subtle text-warning-emphasis">
+								<i class="bi bi-exclamation-triangle me-1"></i>Not Authenticated
+							</span>
+						}
+					</li>
+				}
+			</ul>
+
+			@if (_error != null)
+			{
+				<div class="text-danger small mt-2">
+					<i class="bi bi-exclamation-triangle me-1"></i>@_error
+				</div>
+			}
+		}
+	</div>
+</div>
+
+@code {
+	private bool _isLoading = true;
+	private bool _gitAvailable;
+	private bool _ghAvailable;
+	private bool _ghAuthenticated;
+	private string? _error;
+
+	protected override async Task OnInitializedAsync()
+	{
+		await DetectTools();
+	}
+
+	private async Task DetectTools()
+	{
+		_isLoading = true;
+		_error = null;
+		StateHasChanged();
+
+		try
+		{
+			var response = await Http.GetAsync("/api/git/detected-tools");
+			if (response.IsSuccessStatusCode)
+			{
+				var result = await response.Content.ReadFromJsonAsync<DetectedToolsResult>();
+				if (result != null)
+				{
+					_gitAvailable = result.GitAvailable;
+					_ghAvailable = result.GitHubCliAvailable;
+					_ghAuthenticated = result.GitHubCliAuthenticated;
+				}
+			}
+			else
+			{
+				_error = "Failed to detect tools";
+			}
+		}
+		catch (Exception ex)
+		{
+			_error = $"Error detecting tools: {ex.Message}";
+		}
+		finally
+		{
+			_isLoading = false;
+			StateHasChanged();
+		}
+	}
+
+	private sealed class DetectedToolsResult
+	{
+		public bool GitAvailable { get; set; }
+		public bool GitHubCliAvailable { get; set; }
+		public bool GitHubCliAuthenticated { get; set; }
+	}
+}

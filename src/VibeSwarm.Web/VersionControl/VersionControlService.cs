@@ -1642,4 +1642,60 @@ public sealed class VersionControlService : IVersionControlService
 
 		return remotes;
 	}
+
+	/// <inheritdoc />
+	public async Task<GitOperationResult> PruneRemoteBranchesAsync(
+		string workingDirectory,
+		string remoteName = "origin",
+		CancellationToken cancellationToken = default)
+	{
+		try
+		{
+			var isRepo = await IsGitRepositoryAsync(workingDirectory, cancellationToken);
+			if (!isRepo)
+			{
+				return GitOperationResult.Failed("The specified directory is not a git repository.");
+			}
+
+			var result = await _commandExecutor.ExecuteAsync(
+				$"remote prune {remoteName}",
+				workingDirectory,
+				cancellationToken,
+				timeoutSeconds: 60);
+
+			if (!result.Success)
+			{
+				var errorMessage = result.Error;
+
+				if (errorMessage.Contains("does not appear to be a git repository"))
+				{
+					return GitOperationResult.Failed($"Remote '{remoteName}' not found or is not a valid repository.");
+				}
+
+				return GitOperationResult.Failed($"Prune failed: {errorMessage}");
+			}
+
+			// Count pruned branches from output (lines containing "[pruned]")
+			var output = result.Output + result.Error; // Git may write to stderr
+			var prunedCount = output
+				.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+				.Count(line => line.Contains("[pruned]", StringComparison.OrdinalIgnoreCase));
+
+			var message = prunedCount > 0
+				? $"Pruned {prunedCount} stale remote-tracking branch(es) from {remoteName}."
+				: $"No stale branches to prune from {remoteName}.";
+
+			return GitOperationResult.Succeeded(
+				output: message,
+				remoteName: remoteName);
+		}
+		catch (OperationCanceledException)
+		{
+			return GitOperationResult.Failed("Prune operation was cancelled or timed out");
+		}
+		catch (Exception ex)
+		{
+			return GitOperationResult.Failed($"Unexpected error: {ex.Message}");
+		}
+	}
 }

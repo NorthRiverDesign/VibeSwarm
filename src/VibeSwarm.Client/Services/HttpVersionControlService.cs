@@ -295,5 +295,11 @@ public class HttpVersionControlService : IVersionControlService
         }
     }
 
+    public async Task<GitOperationResult> PruneRemoteBranchesAsync(string workingDirectory, string remoteName = "origin", CancellationToken ct = default)
+    {
+        var response = await _http.PostAsJsonAsync("/api/git/prune", new { Path = workingDirectory, Remote = remoteName }, ct);
+        return await response.Content.ReadFromJsonAsync<GitOperationResult>(ct) ?? new GitOperationResult { Success = false, Error = "Failed to parse response" };
+    }
+
     private static string Enc(string value) => Uri.EscapeDataString(value);
 }
