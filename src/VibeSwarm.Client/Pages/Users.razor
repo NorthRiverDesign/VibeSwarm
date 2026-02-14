@@ -2,6 +2,7 @@
 @attribute [Authorize(Roles = "Admin")]
 @inject IUserService UserService
 @inject AuthenticationStateProvider AuthStateProvider
+@inject NotificationService NotificationService
 
 <PageHeader Title="Users" Subtitle="Manage user accounts and permissions">
 	<Actions>
@@ -61,7 +62,7 @@ else
 								</span>
 								<span class="d-none d-lg-inline">
 									<i class="bi bi-clock me-1"></i>Last login: @(user.LastLoginAt.HasValue ?
-															user.LastLoginAt.Value.FormatDateTimeShort() : "Never")
+																							user.LastLoginAt.Value.FormatDateTimeShort() : "Never")
 								</span>
 							</div>
 						</div>
@@ -70,7 +71,7 @@ else
 					@* Actions dropdown *@
 					<div class="dropdown flex-shrink-0">
 						<button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown"
-							aria-expanded="false" title="User actions">
+								aria-expanded="false" title="User actions">
 							<i class="bi bi-gear"></i>
 						</button>
 						<ul class="dropdown-menu dropdown-menu-end">
@@ -108,14 +109,16 @@ else
 
 @* Add User Modal *@
 <ModalDialog @bind-IsVisible="_showAddUserModal" Title="Add User" Icon="person-plus"
-	Size="ModalDialog.ModalSize.Default">
+			 Size="ModalDialog.ModalSize.Default">
 	<ChildContent>
 		<EditForm Model="@_addUserModel" OnValidSubmit="HandleAddUser">
 			<DataAnnotationsValidator />
 
 			@if (!string.IsNullOrEmpty(_addUserError))
 			{
-				<Alert Type="Alert.AlertType.Danger" Message="@_addUserError" />
+				<div class="text-danger small mb-3">
+					<i class="bi bi-exclamation-circle me-1"></i>@_addUserError
+				</div>
 			}
 
 			<div class="mb-3">
@@ -133,7 +136,7 @@ else
 			<div class="mb-3">
 				<label for="addUserPassword" class="form-label">Password</label>
 				<InputText id="addUserPassword" @bind-Value="_addUserModel.Password" class="form-control"
-					type="password" />
+						   type="password" />
 				<ValidationMessage For="@(() => _addUserModel.Password)" class="text-danger small" />
 				<div class="form-text">
 					Password must be at least 8 characters with uppercase, lowercase, and a digit.
@@ -164,7 +167,7 @@ else
 
 @* Reset Password Modal *@
 <ModalDialog @bind-IsVisible="_showResetPasswordModal" Title="Reset Password" Icon="key"
-	Size="ModalDialog.ModalSize.Default">
+			 Size="ModalDialog.ModalSize.Default">
 	<ChildContent>
 		@if (_selectedUser != null)
 		{
@@ -174,12 +177,9 @@ else
 
 			@if (!string.IsNullOrEmpty(_resetPasswordError))
 			{
-				<Alert Type="Alert.AlertType.Danger" Message="@_resetPasswordError" />
-			}
-
-			@if (!string.IsNullOrEmpty(_resetPasswordSuccess))
-			{
-				<Alert Type="Alert.AlertType.Success" Message="@_resetPasswordSuccess" />
+				<div class="text-danger small mb-3">
+					<i class="bi bi-exclamation-circle me-1"></i>@_resetPasswordError
+				</div>
 			}
 
 			<div class="mb-3">
@@ -198,7 +198,7 @@ else
 			<div class="d-flex justify-content-end gap-2">
 				<button type="button" class="btn btn-secondary" @onclick="CloseResetPasswordModal">Cancel</button>
 				<button type="button" class="btn btn-primary" @onclick="HandleResetPassword"
-					disabled="@_isResettingPassword">
+						disabled="@_isResettingPassword">
 					@if (_isResettingPassword)
 					{
 						<span class="spinner-border spinner-border-sm me-1" role="status"></span>
@@ -221,7 +221,9 @@ else
 
 			@if (!string.IsNullOrEmpty(_editUserError))
 			{
-				<Alert Type="Alert.AlertType.Danger" Message="@_editUserError" />
+				<div class="text-danger small mb-3">
+					<i class="bi bi-exclamation-circle me-1"></i>@_editUserError
+				</div>
 			}
 
 			<div class="mb-3">
@@ -248,9 +250,9 @@ else
 
 @* Delete User Modal *@
 <ConfirmationModal @bind-IsVisible="_showDeleteUserModal" Title="Delete User"
-	Message="@($"Are you sure you want to delete {_selectedUser?.UserName}?")"
-	SubMessage="This action cannot be undone." ErrorMessage="@_deleteUserError" ConfirmText="Delete"
-	IsProcessing="@_isDeletingUser" OnConfirm="HandleDeleteUser" OnCancel="CloseDeleteUserModal" />
+				   Message="@($"Are you sure you want to delete {_selectedUser?.UserName}?")"
+				   SubMessage="This action cannot be undone." ErrorMessage="@_deleteUserError" ConfirmText="Delete"
+				   IsProcessing="@_isDeletingUser" OnConfirm="HandleDeleteUser" OnCancel="CloseDeleteUserModal" />
 
 @code {
 	[CascadingParameter]
@@ -270,7 +272,6 @@ else
 	private bool _showResetPasswordModal;
 	private bool _isResettingPassword;
 	private string? _resetPasswordError;
-	private string? _resetPasswordSuccess;
 	private string _newPassword = string.Empty;
 	private string _confirmNewPassword = string.Empty;
 
@@ -347,6 +348,7 @@ else
 
 			if (result.Success)
 			{
+				NotificationService.ShowSuccess("User added successfully.");
 				_showAddUserModal = false;
 				await LoadUsers();
 			}
@@ -368,7 +370,6 @@ else
 		_newPassword = string.Empty;
 		_confirmNewPassword = string.Empty;
 		_resetPasswordError = null;
-		_resetPasswordSuccess = null;
 		_showResetPasswordModal = true;
 	}
 
@@ -383,7 +384,6 @@ else
 		if (_selectedUser == null) return;
 
 		_resetPasswordError = null;
-		_resetPasswordSuccess = null;
 
 		if (string.IsNullOrWhiteSpace(_newPassword))
 		{
@@ -405,7 +405,8 @@ else
 
 			if (result.Success)
 			{
-				_resetPasswordSuccess = "Password reset successfully.";
+				NotificationService.ShowSuccess("Password reset successfully.");
+				_showResetPasswordModal = false;
 				_newPassword = string.Empty;
 				_confirmNewPassword = string.Empty;
 			}
@@ -451,6 +452,7 @@ else
 
 			if (result.Success)
 			{
+				NotificationService.ShowSuccess("User role updated successfully.");
 				_showEditUserModal = false;
 				await LoadUsers();
 			}
@@ -492,6 +494,7 @@ else
 
 			if (result.Success)
 			{
+				NotificationService.ShowSuccess("User deleted successfully.");
 				_showDeleteUserModal = false;
 				await LoadUsers();
 			}

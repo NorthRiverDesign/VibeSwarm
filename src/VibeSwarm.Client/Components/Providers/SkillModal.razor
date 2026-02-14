@@ -3,10 +3,11 @@
 @using VibeSwarm.Shared.Services
 @inject ISkillService SkillService
 @inject IProviderService ProviderService
+@inject NotificationService NotificationService
 
 <ModalDialog IsVisible="IsVisible" IsVisibleChanged="HandleModalVisibilityChanged"
-	Title="@(IsEdit ? "Edit Skill" : "Add Skill")" Icon="@(IsEdit ? "pencil" : "lightbulb")"
-	Size="ModalDialog.ModalSize.Large" OnClose="HandleClose">
+			 Title="@(IsEdit ? "Edit Skill" : "Add Skill")" Icon="@(IsEdit ? "pencil" : "lightbulb")"
+			 Size="ModalDialog.ModalSize.Large" OnClose="HandleClose">
 	<ChildContent>
 		<EditForm Model="@Skill" OnValidSubmit="HandleValidSubmit">
 			<DataAnnotationsValidator />
@@ -24,7 +25,7 @@
 			<div class="mb-3">
 				<label for="modal-description" class="form-label">Description</label>
 				<InputTextArea id="modal-description" @bind-Value="Skill.Description" class="form-control" rows="2"
-					placeholder="Brief description of what this skill does..." />
+							   placeholder="Brief description of what this skill does..." />
 				<div class="form-text">
 					Shown to AI agents when they list available skills.
 				</div>
@@ -34,7 +35,7 @@
 				<label for="modal-content" class="form-label d-flex align-items-center justify-content-between">
 					<span>Content (Markdown)</span>
 					<button type="button" class="btn btn-sm btn-outline-info" @onclick="ToggleExpansionPanel"
-						disabled="@(string.IsNullOrWhiteSpace(Skill.Description))">
+							disabled="@(string.IsNullOrWhiteSpace(Skill.Description))">
 						<i class="bi bi-magic me-1"></i>AI Expand
 					</button>
 				</label>
@@ -48,7 +49,7 @@
 								<div class="col-12 col-md-5">
 									<label class="form-label small mb-1">Provider</label>
 									<select class="form-select form-select-sm" @bind="_selectedProviderId"
-										@bind:after="LoadModelsForProvider">
+											@bind:after="LoadModelsForProvider">
 										<option value="">Select provider...</option>
 										@foreach (var provider in _providers.Where(p => p.IsEnabled))
 										{
@@ -59,7 +60,7 @@
 								<div class="col-12 col-md-4">
 									<label class="form-label small mb-1">Model</label>
 									<select class="form-select form-select-sm" @bind="_selectedModelId"
-										disabled="@(!_models.Any())">
+											disabled="@(!_models.Any())">
 										<option value="">@(_isLoadingModels ? "Loading..." : "Default")</option>
 										@foreach (var model in _models.Where(m => m.IsAvailable))
 										{
@@ -69,7 +70,7 @@
 								</div>
 								<div class="col-12 col-md-3">
 									<button type="button" class="btn btn-sm btn-primary w-100" @onclick="ExpandWithAI"
-										disabled="@(_selectedProviderId == Guid.Empty || _isExpanding)">
+											disabled="@(_selectedProviderId == Guid.Empty || _isExpanding)">
 										@if (_isExpanding)
 										{
 											<span class="spinner-border spinner-border-sm me-1" role="status"></span>
@@ -94,8 +95,8 @@
 				}
 
 				<InputTextArea id="modal-content" @bind-Value="Skill.Content" class="form-control font-monospace"
-					rows="10"
-					placeholder="# Skill Instructions&#10;&#10;Provide detailed instructions for the AI agent..." />
+							   rows="10"
+							   placeholder="# Skill Instructions&#10;&#10;Provide detailed instructions for the AI agent..." />
 				<ValidationMessage For="@(() => Skill.Content)" class="text-danger small" />
 				<div class="form-text">
 					Markdown content defining the skill's instructions and capabilities.
@@ -116,12 +117,9 @@
 
 			@if (!string.IsNullOrEmpty(ErrorMessage))
 			{
-				<Alert Type="Alert.AlertType.Danger" Message="@ErrorMessage" Class="mb-3" />
-			}
-
-			@if (!string.IsNullOrEmpty(SuccessMessage))
-			{
-				<Alert Type="Alert.AlertType.Success" Message="@SuccessMessage" Class="mb-3" />
+				<div class="text-danger small mb-3">
+					<i class="bi bi-exclamation-circle me-1"></i>@ErrorMessage
+				</div>
 			}
 
 			<div class="d-flex gap-2 justify-content-end">
@@ -161,7 +159,6 @@
 	private bool IsEdit => EditSkill != null;
 	private bool IsSaving { get; set; }
 	private string? ErrorMessage { get; set; }
-	private string? SuccessMessage { get; set; }
 	private bool _previousIsVisible;
 
 	// AI Expansion state
@@ -309,7 +306,6 @@
 	{
 		IsSaving = true;
 		ErrorMessage = null;
-		SuccessMessage = null;
 
 		try
 		{
@@ -330,13 +326,13 @@
 			if (IsEdit)
 			{
 				await SkillService.UpdateAsync(Skill);
-				SuccessMessage = "Skill updated successfully.";
+				NotificationService.ShowSuccess("Skill updated successfully.");
 			}
 			else
 			{
 				var created = await SkillService.CreateAsync(Skill);
 				newSkillId = created.Id;
-				SuccessMessage = "Skill added successfully.";
+				NotificationService.ShowSuccess("Skill added successfully.");
 			}
 
 			await OnSaved.InvokeAsync(newSkillId);
@@ -384,7 +380,6 @@
 	{
 		Skill = new Skill();
 		ErrorMessage = null;
-		SuccessMessage = null;
 		IsSaving = false;
 		_showExpansionPanel = false;
 		_isExpanding = false;

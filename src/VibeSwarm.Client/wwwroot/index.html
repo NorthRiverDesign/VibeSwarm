@@ -112,6 +112,30 @@
         </script>
 
         <script src="_framework/blazor.webassembly.js" autostart="false"></script>
+
+        <script>
+            // Clipboard helper with fallback for older browsers and non-HTTPS contexts
+            window.copyToClipboard = function (text) {
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    return navigator.clipboard.writeText(text);
+                }
+                // Fallback: use a temporary textarea and execCommand
+                var textarea = document.createElement('textarea');
+                textarea.value = text;
+                textarea.style.position = 'fixed';
+                textarea.style.opacity = '0';
+                document.body.appendChild(textarea);
+                textarea.select();
+                try {
+                    document.execCommand('copy');
+                } catch (err) {
+                    console.error('Clipboard fallback failed:', err);
+                }
+                document.body.removeChild(textarea);
+                return Promise.resolve();
+            };
+        </script>
+
         <script>
             // Start Blazor manually with error handling
             Blazor.start().then(function () {

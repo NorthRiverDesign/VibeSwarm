@@ -3,6 +3,7 @@
 @inject ISettingsService SettingsService
 @inject IFileSystemService FileSystemService
 @inject IProjectService ProjectService
+@inject NotificationService NotificationService
 @using VibeSwarm.Shared.Utilities
 
 <PageHeader Title="Settings" />
@@ -34,9 +35,9 @@
 								<label for="defaultProjectsDirectory" class="form-label">Default Projects Directory</label>
 								<div class="input-group">
 									<input type="text" id="defaultProjectsDirectory" class="form-control font-monospace"
-										@bind="_settings.DefaultProjectsDirectory" placeholder="@_placeholder" />
+										   @bind="_settings.DefaultProjectsDirectory" placeholder="@_placeholder" />
 									<button type="button" class="btn btn-outline-secondary" @onclick="OpenDirectoryBrowser"
-										title="Browse directories">
+											title="Browse directories">
 										<i class="bi bi-folder2-open"></i>
 									</button>
 								</div>
@@ -57,7 +58,7 @@
 												<i class="bi bi-check-circle me-1"></i>Directory exists
 											</span>
 											<button type="button" class="btn btn-outline-primary btn-sm"
-												@onclick="OpenScanProjectsModal">
+													@onclick="OpenScanProjectsModal">
 												<i class="bi bi-folder-symlink me-1"></i>Scan For Projects
 											</button>
 										}
@@ -88,21 +89,11 @@
 								}
 							</button>
 							<button type="button" class="btn btn-outline-secondary" @onclick="ReloadSettings"
-								disabled="@_isSaving">
+									disabled="@_isSaving">
 								<i class="bi bi-arrow-counterclockwise me-1"></i>
 								Reset
 							</button>
 						</div>
-
-						@if (!string.IsNullOrEmpty(_errorMessage))
-						{
-							<Alert Type="Alert.AlertType.Danger" Message="@_errorMessage" Class="mt-3 mb-0" />
-						}
-
-						@if (!string.IsNullOrEmpty(_successMessage))
-						{
-							<Alert Type="Alert.AlertType.Success" Message="@_successMessage" Class="mt-3 mb-0" />
-						}
 					</EditForm>
 				}
 			</div>
@@ -120,7 +111,7 @@
 				<div class="mb-3">
 					<div class="d-flex align-items-center gap-2 mb-2">
 						<img src="img/logo_icon.png" alt="VibeSwarm" class="brand-icon"
-							style="width: 32px; height: 32px;" />
+							 style="width: 32px; height: 32px;" />
 						<h5 class="mb-0">VibeSwarm</h5>
 					</div>
 					<p class="text-body-secondary small mb-0">
@@ -179,7 +170,7 @@
 @if (_showDirectoryBrowser)
 {
 	<DirectoryBrowser @ref="_directoryBrowser" InitialPath="@_settings.DefaultProjectsDirectory"
-		OnDirectorySelected="OnDirectorySelected" OnClosed="CloseDirectoryBrowser" />
+					  OnDirectorySelected="OnDirectorySelected" OnClosed="CloseDirectoryBrowser" />
 }
 
 <ScanProjectsModal @ref="_scanProjectsModal" OnProjectsImported="OnProjectsImported" />
@@ -190,8 +181,6 @@
 	private bool _isSaving = false;
 	private bool _showDirectoryBrowser = false;
 	private bool _directoryExists = false;
-	private string? _errorMessage;
-	private string? _successMessage;
 	private DirectoryBrowser? _directoryBrowser;
 	private ScanProjectsModal? _scanProjectsModal;
 
@@ -206,8 +195,6 @@
 	private async Task LoadSettings()
 	{
 		_isLoading = true;
-		_errorMessage = null;
-		_successMessage = null;
 
 		try
 		{
@@ -216,7 +203,7 @@
 		}
 		catch (Exception ex)
 		{
-			_errorMessage = $"Failed to load settings: {ex.Message}";
+			NotificationService.ShowError($"Failed to load settings: {ex.Message}");
 		}
 		finally
 		{
@@ -227,8 +214,6 @@
 	private async Task SaveSettings()
 	{
 		_isSaving = true;
-		_errorMessage = null;
-		_successMessage = null;
 
 		try
 		{
@@ -244,11 +229,11 @@
 
 			await SettingsService.UpdateSettingsAsync(_settings);
 			await CheckDirectoryExists();
-			_successMessage = "Settings saved successfully!";
+			NotificationService.ShowSuccess("Settings saved successfully!");
 		}
 		catch (Exception ex)
 		{
-			_errorMessage = $"Failed to save settings: {ex.Message}";
+			NotificationService.ShowError($"Failed to save settings: {ex.Message}");
 		}
 		finally
 		{
@@ -310,7 +295,7 @@
 
 	private void OnProjectsImported()
 	{
-		_successMessage = "Projects imported successfully!";
+		NotificationService.ShowSuccess("Projects imported successfully!");
 		StateHasChanged();
 	}
 }

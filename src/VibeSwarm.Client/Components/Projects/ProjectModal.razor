@@ -5,10 +5,11 @@
 @inject IProjectService ProjectService
 @inject ISettingsService SettingsService
 @inject IVersionControlService VersionControlService
+@inject NotificationService NotificationService
 
 <ModalDialog IsVisible="IsVisible" IsVisibleChanged="HandleModalVisibilityChanged"
-	Title="@(IsEdit ? "Edit Project" : "New Project")" Icon="@(IsEdit ? "pencil" : "folder-plus")"
-	Size="ModalDialog.ModalSize.Default" OnClose="HandleClose">
+			 Title="@(IsEdit ? "Edit Project" : "New Project")" Icon="@(IsEdit ? "pencil" : "folder-plus")"
+			 Size="ModalDialog.ModalSize.Default" OnClose="HandleClose">
 	<ChildContent>
 		<EditForm Model="@Project" OnValidSubmit="HandleValidSubmit">
 			<DataAnnotationsValidator />
@@ -23,7 +24,7 @@
 			<div class="mb-3">
 				<label for="modal-description" class="form-label">Description</label>
 				<InputTextArea id="modal-description" @bind-Value="Project.Description" class="form-control" rows="2"
-					placeholder="Brief description..." />
+							   placeholder="Brief description..." />
 			</div>
 
 			@if (!IsEdit)
@@ -36,7 +37,7 @@
 					<div class="input-group">
 						<span class="input-group-text">github.com/</span>
 						<InputText id="modal-githubRepo" @bind-Value="Project.GitHubRepository" class="form-control"
-							placeholder="owner/repo" @oninput="OnGitHubRepoChanged" />
+								   placeholder="owner/repo" @oninput="OnGitHubRepoChanged" />
 					</div>
 					<div class="form-text">
 						Enter a GitHub repository to clone (e.g., <code>microsoft/vscode</code>).
@@ -49,9 +50,9 @@
 				<label for="modal-workingPath" class="form-label">Working Path</label>
 				<div class="input-group">
 					<InputText id="modal-workingPath" @bind-Value="Project.WorkingPath" class="form-control"
-						placeholder="@_workingPathPlaceholder" />
+							   placeholder="@_workingPathPlaceholder" />
 					<button type="button" class="btn btn-outline-secondary" @onclick="OpenDirectoryBrowser"
-						title="Browse directories">
+							title="Browse directories">
 						<i class="bi bi-folder2-open"></i>
 					</button>
 				</div>
@@ -68,53 +69,50 @@
 					<option value="@AutoCommitMode.CommitOnly">Commit Only - Auto-commit after job completion</option>
 					<option value="@AutoCommitMode.CommitAndPush">Commit & Push - Auto-commit and push after job
 						completion</option>
-				</InputSelect>
-				<div class="form-text">Automatically commit (and optionally push) changes after successful job
-					completion.</div>
-			</div>
+					</InputSelect>
+					<div class="form-text">Automatically commit (and optionally push) changes after successful job
+						completion.</div>
+					</div>
 
-			@if (!string.IsNullOrEmpty(_cloneProgressMessage))
-			{
-				<Alert Type="Alert.AlertType.Info" Message="@_cloneProgressMessage" Class="mb-3" />
-			}
-
-			@if (!string.IsNullOrEmpty(ErrorMessage))
-			{
-				<Alert Type="Alert.AlertType.Danger" Message="@ErrorMessage" Class="mb-3" />
-			}
-
-			@if (!string.IsNullOrEmpty(SuccessMessage))
-			{
-				<Alert Type="Alert.AlertType.Success" Message="@SuccessMessage" Class="mb-3" />
-			}
-
-			<div class="d-flex gap-2 justify-content-end">
-				<button type="button" class="btn btn-secondary" @onclick="HandleCancel">Cancel</button>
-				<button type="submit" class="btn btn-primary" disabled="@IsSaving">
-					@if (IsSaving)
+					@if (!string.IsNullOrEmpty(_cloneProgressMessage))
 					{
-						<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+						<Alert Type="Alert.AlertType.Info" Message="@_cloneProgressMessage" Class="mb-3" />
 					}
-					@if (IsSaving && _isCloning)
-					{
-						@:Cloning...
-					}
-					else
-					{
-						@(IsSaving ? "Saving..." : (IsEdit ? "Update Project" :
-											(!string.IsNullOrWhiteSpace(Project.GitHubRepository) ? "Clone & Create" : "Create Project")))
-					}
-				</button>
-			</div>
-		</EditForm>
-	</ChildContent>
-</ModalDialog>
 
-@if (_showDirectoryBrowser)
-{
-	<DirectoryBrowser @ref="_directoryBrowser" InitialPath="@_defaultProjectsDirectory"
-		OnDirectorySelected="OnDirectorySelected" OnClosed="CloseDirectoryBrowser" />
-}
+					@if (!string.IsNullOrEmpty(ErrorMessage))
+					{
+						<div class="text-danger small mb-3">
+							<i class="bi bi-exclamation-circle me-1"></i>@ErrorMessage
+						</div>
+					}
+
+					<div class="d-flex gap-2 justify-content-end">
+						<button type="button" class="btn btn-secondary" @onclick="HandleCancel">Cancel</button>
+						<button type="submit" class="btn btn-primary" disabled="@IsSaving">
+							@if (IsSaving)
+							{
+								<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+							}
+							@if (IsSaving && _isCloning)
+							{
+								@:Cloning...
+							}
+							else
+							{
+								@(IsSaving ? "Saving..." : (IsEdit ? "Update Project" :
+													(!string.IsNullOrWhiteSpace(Project.GitHubRepository) ? "Clone & Create" : "Create Project")))
+							}
+						</button>
+					</div>
+				</EditForm>
+			</ChildContent>
+		</ModalDialog>
+
+		@if (_showDirectoryBrowser)
+		{
+			<DirectoryBrowser @ref="_directoryBrowser" InitialPath="@_defaultProjectsDirectory"
+							  OnDirectorySelected="OnDirectorySelected" OnClosed="CloseDirectoryBrowser" />
+		}
 
 @code {
 	[Parameter]
@@ -139,7 +137,6 @@
 	private bool IsEdit => EditProject != null;
 	private bool IsSaving { get; set; }
 	private string? ErrorMessage { get; set; }
-	private string? SuccessMessage { get; set; }
 	private bool _previousIsVisible;
 	private bool _isCloning;
 	private string? _cloneProgressMessage;
@@ -240,7 +237,6 @@
 	{
 		IsSaving = true;
 		ErrorMessage = null;
-		SuccessMessage = null;
 		_cloneProgressMessage = null;
 
 		try
@@ -250,7 +246,7 @@
 			if (IsEdit)
 			{
 				await ProjectService.UpdateAsync(Project);
-				SuccessMessage = "Project updated successfully.";
+				NotificationService.ShowSuccess("Project updated successfully.");
 			}
 			else
 			{
@@ -295,9 +291,9 @@
 
 				var created = await ProjectService.CreateAsync(Project);
 				newProjectId = created.Id;
-				SuccessMessage = !string.IsNullOrWhiteSpace(Project.GitHubRepository)
-				? "Project created and repository cloned successfully."
-				: "Project created successfully.";
+				NotificationService.ShowSuccess(!string.IsNullOrWhiteSpace(Project.GitHubRepository)
+					? "Project created and repository cloned successfully."
+					: "Project created successfully.");
 			}
 
 			await OnSaved.InvokeAsync(newProjectId);
@@ -347,7 +343,6 @@
 	{
 		Project = new Project();
 		ErrorMessage = null;
-		SuccessMessage = null;
 		IsSaving = false;
 		_isCloning = false;
 		_cloneProgressMessage = null;

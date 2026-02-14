@@ -20,13 +20,14 @@
 else if (Project == null)
 {
     <Breadcrumb
-        Items="@(new List<Breadcrumb.BreadcrumbItem> { new("Projects", "/projects", "folder"), new("Not Found") })" />
+    Items="@(new List<Breadcrumb.BreadcrumbItem> { new("Projects", "/projects", "folder"), new("Not Found") })" />
     <Alert Type="Alert.AlertType.Warning" Message="Project not found." />
 }
 else
 {
     @* Project Header Component *@
     <ProjectDetailHeaderCompact Name="@Project.Name" WorkingPath="@Project.WorkingPath"
+<<<<<<< Updated upstream
         GitHubRepository="@Project.GitHubRepository" IsGitRepository="@IsGitRepository"
         IsLoadingGitInfo="@_isLoadingGitInfo" Branches="@Branches" CurrentBranch="@CurrentBranch"
         CurrentCommitHash="@CurrentCommitHash" IsGitOperationInProgress="@IsGitOperationInProgress"
@@ -38,12 +39,25 @@ else
         OnRefresh="RefreshBranches" OnBranchSelected="RequestBranchSwitch"
         OnUncommittedChangesClick="ShowUncommittedChangesModal" OnClearGitMessage="ClearGitMessage"
         OnEdit="ShowEditProjectModal" />
+=======
+                                GitHubRepository="@Project.GitHubRepository" IsGitRepository="@IsGitRepository"
+                                IsLoadingGitInfo="@_isLoadingGitInfo" Branches="@Branches" CurrentBranch="@CurrentBranch"
+                                CurrentCommitHash="@CurrentCommitHash" IsGitOperationInProgress="@IsGitOperationInProgress"
+                                GitOperationMessage="@GitOperationMessage" GitOperationSuccess="@GitOperationSuccess"
+                                GitProgressMessage="@GitProgressMessage" HasUncommittedChanges="@_hasUncommittedChangesHeader"
+                                UncommittedFilesCount="@_uncommittedFilesCount" HasTokenData="@HasProjectTokenData()"
+                                TotalInputTokens="@GetProjectTotalInputTokens()" TotalOutputTokens="@GetProjectTotalOutputTokens()"
+                                TotalCost="@GetProjectTotalCost()" OnCreateBranch="ShowCreateBranchModal" OnSync="SyncWithOrigin"
+                                OnRefresh="RefreshBranches" OnBranchSelected="RequestBranchSwitch"
+                                OnUncommittedChangesClick="ShowUncommittedChangesModal" OnClearGitMessage="ClearGitMessage" />
+>>>>>>> Stashed changes
 
     <div class="row g-3">
         @* Ideas Panel on LEFT on desktop for easier access *@
         <div class="col-12 col-xl-5 col-xxl-4 order-1 order-xl-1">
             @* Ideas Panel Component *@
             <IdeasPanel Ideas="@Ideas" CurrentProjectId="@ProjectId" IsProcessingActive="@IsIdeasProcessingActive"
+<<<<<<< Updated upstream
                 IsTogglingProcessing="@_isTogglingIdeasProcessing" HasDefaultProvider="@HasDefaultProvider"
                 HasActiveJobs="@HasActiveJobs" IsAddingIdea="@_isAddingIdea" ProcessingIdeaIds="@ProcessingIdeaIds"
                 OnStartProcessing="StartIdeasProcessing" OnStopProcessing="StopIdeasProcessing" OnAddIdea="AddIdea"
@@ -54,6 +68,16 @@ else
             @* Git Settings Card *@
             <GitSettingsCard WorkingPath="@Project.WorkingPath" ProjectName="@Project.Name"
                 ProjectId="@Project.Id" OnRepositoryCreated="HandleRepositoryCreated" />
+=======
+                        IsTogglingProcessing="@_isTogglingIdeasProcessing" HasDefaultProvider="@HasDefaultProvider"
+                        HasActiveJobs="@HasActiveJobs" IsAddingIdea="@_isAddingIdea" ProcessingIdeaIds="@ProcessingIdeaIds"
+                        CurrentAutoCommitMode="@(Project?.AutoCommitMode ?? AutoCommitMode.Off)" IsGitRepository="@IsGitRepository"
+                        OnStartProcessing="StartIdeasProcessing" OnStartProcessingWithOptions="StartIdeasProcessingWithOptions"
+                        OnStopProcessing="StopIdeasProcessing" OnAddIdea="AddIdea" OnUpdateIdea="UpdateIdea"
+                        OnDeleteIdea="DeleteIdea" OnCopyIdea="CopyIdea" OnMoveIdea="MoveIdea" OnStartSingleIdea="StartSingleIdea"
+                        OnExpandIdea="ExpandIdea" OnApproveExpansion="ApproveIdeaExpansion"
+                        OnRejectExpansion="RejectIdeaExpansion" />
+>>>>>>> Stashed changes
         </div>
 
         @* Jobs list on RIGHT for monitoring progress *@
@@ -62,31 +86,27 @@ else
         </div>
     </div>
 
-    @if (!string.IsNullOrEmpty(SuccessMessage))
-    {
-        <Alert Type="Alert.AlertType.Success" Message="@SuccessMessage" Class="mt-3" />
-    }
-
     @* Create Branch Modal *@
     <CreateBranchModal @bind-IsVisible="_showCreateBranchModal" CurrentBranch="@CurrentBranch"
-        IsCreating="@_isCreatingBranch" ErrorMessage="@_createBranchError" OnCreate="CreateBranch" />
+                       IsCreating="@_isCreatingBranch" ErrorMessage="@_createBranchError" OnCreate="CreateBranch" />
 
     @* Branch Switch Confirmation Modal *@
     <BranchSwitchModal @bind-IsVisible="_showBranchSwitchModal" CurrentBranch="@CurrentBranch" TargetBranch="@_targetBranch"
-        IsChecking="@_isCheckingUncommittedChanges" IsSwitching="@_isSwitchingBranch"
-        HasUncommittedChanges="@_hasUncommittedChanges" ErrorMessage="@_branchSwitchError" OnSwitch="ConfirmBranchSwitch"
-        OnCancel="CloseBranchSwitchModal" />
+                       IsChecking="@_isCheckingUncommittedChanges" IsSwitching="@_isSwitchingBranch"
+                       HasUncommittedChanges="@_hasUncommittedChanges" ErrorMessage="@_branchSwitchError" OnSwitch="ConfirmBranchSwitch"
+                       OnCancel="CloseBranchSwitchModal" />
 
     @* Uncommitted Changes Modal *@
     <UncommittedChangesModal @bind-IsVisible="_showUncommittedChangesModal" IsLoading="@_isLoadingUncommittedDiff"
-        ErrorMessage="@_uncommittedDiffError" DiffFiles="@_uncommittedDiffFiles" PendingJobs="@_pendingCommitJobs"
-        CommitError="@_uncommittedCommitError" IsCommitting="@_isCommittingChanges" IsDiscarding="@_isDiscardingChanges"
-        ShowDiscardConfirmation="@_showDiscardConfirmation" OnCommitAndPush="CommitAndPushUncommittedChanges"
-        OnShowDiscard="ShowDiscardConfirmation" OnConfirmDiscard="DiscardAllChanges"
-        OnCancelDiscard="CloseDiscardConfirmation" />
+                             ErrorMessage="@_uncommittedDiffError" DiffFiles="@_uncommittedDiffFiles" PendingJobs="@_pendingCommitJobs"
+                             CommitError="@_uncommittedCommitError" IsCommitting="@_isCommittingChanges" IsDiscarding="@_isDiscardingChanges"
+                             ShowDiscardConfirmation="@_showDiscardConfirmation" OnCommitAndPush="CommitAndPushUncommittedChanges"
+                             OnShowDiscard="ShowDiscardConfirmation" OnConfirmDiscard="DiscardAllChanges"
+                             OnCancelDiscard="CloseDiscardConfirmation" />
 
     @* Create Job Modal *@
     <CreateJobModal @bind-IsVisible="_showCreateJobModal" JobModel="@NewJob" Providers="@Providers"
+<<<<<<< Updated upstream
         AvailableModels="@AvailableModels" Branches="@Branches" CurrentBranch="@CurrentBranch"
         ShowBranchSelector="@(IsGitRepository && Branches.Any())" IsLoadingModels="@IsLoadingModels" IsSaving="@IsSaving"
         ErrorMessage="@ErrorMessage" SelectedModelId="@SelectedModelId" OnProviderChanged="OnProviderChanged"
@@ -96,6 +116,12 @@ else
     <ProjectModal @bind-IsVisible="_showEditProjectModal" EditProject="@Project" 
         OnSaved="HandleProjectSaved" OnCancelled="HandleProjectModalCancelled" 
         OnClosed="HandleProjectModalClosed" />
+=======
+                    AvailableModels="@AvailableModels" Branches="@Branches" CurrentBranch="@CurrentBranch"
+                    ShowBranchSelector="@(IsGitRepository && Branches.Any())" IsLoadingModels="@IsLoadingModels" IsSaving="@IsSaving"
+                    ErrorMessage="@ErrorMessage" SelectedModelId="@SelectedModelId" OnProviderChanged="OnProviderChanged"
+                    OnSubmit="HandleCreateJob" />
+>>>>>>> Stashed changes
 }
 
 @code {
@@ -109,7 +135,6 @@ else
     private bool IsLoading { get; set; } = true;
     private bool IsSaving { get; set; }
     private string? ErrorMessage { get; set; }
-    private string? SuccessMessage { get; set; }
     private System.Threading.Timer? _refreshTimer;
 
     // Model selection
@@ -944,7 +969,6 @@ TimeSpan.FromSeconds(10) })
 
         IsSaving = true;
         ErrorMessage = null;
-        SuccessMessage = null;
 
         try
         {
@@ -968,11 +992,11 @@ TimeSpan.FromSeconds(10) })
         {
             await JobService.DeleteAsync(jobId);
             Jobs = (await JobService.GetByProjectIdAsync(ProjectId)).ToList();
-            SuccessMessage = "Job deleted successfully.";
+            NotificationService.ShowSuccess("Job deleted successfully.");
         }
         catch (Exception ex)
         {
-            ErrorMessage = $"Error deleting job: {ex.Message}";
+            NotificationService.ShowError($"Error deleting job: {ex.Message}");
         }
     }
 
@@ -1179,7 +1203,7 @@ TimeSpan.FromSeconds(10) })
         }
         catch (Exception ex)
         {
-            ErrorMessage = $"Error adding idea: {ex.Message}";
+            NotificationService.ShowError($"Error adding idea: {ex.Message}");
         }
         finally
         {
@@ -1197,7 +1221,7 @@ TimeSpan.FromSeconds(10) })
         }
         catch (Exception ex)
         {
-            ErrorMessage = $"Error updating idea: {ex.Message}";
+            NotificationService.ShowError($"Error updating idea: {ex.Message}");
         }
     }
 
@@ -1210,7 +1234,7 @@ TimeSpan.FromSeconds(10) })
         }
         catch (Exception ex)
         {
-            ErrorMessage = $"Error deleting idea: {ex.Message}";
+            NotificationService.ShowError($"Error deleting idea: {ex.Message}");
         }
     }
 
@@ -1220,11 +1244,11 @@ TimeSpan.FromSeconds(10) })
         {
             var targetProject = await ProjectService.GetByIdAsync(args.targetProjectId);
             await IdeaService.CopyToProjectAsync(args.ideaId, args.targetProjectId);
-            SuccessMessage = $"Idea copied to {targetProject?.Name ?? "project"} successfully.";
+            NotificationService.ShowSuccess($"Idea copied to {targetProject?.Name ?? "project"} successfully.");
         }
         catch (Exception ex)
         {
-            ErrorMessage = $"Error copying idea: {ex.Message}";
+            NotificationService.ShowError($"Error copying idea: {ex.Message}");
         }
     }
 
@@ -1235,14 +1259,15 @@ TimeSpan.FromSeconds(10) })
             var targetProject = await ProjectService.GetByIdAsync(args.targetProjectId);
             await IdeaService.MoveToProjectAsync(args.ideaId, args.targetProjectId);
             await LoadIdeas();
-            SuccessMessage = $"Idea moved to {targetProject?.Name ?? "project"} successfully.";
+            NotificationService.ShowSuccess($"Idea moved to {targetProject?.Name ?? "project"} successfully.");
         }
         catch (Exception ex)
         {
-            ErrorMessage = $"Error moving idea: {ex.Message}";
+            NotificationService.ShowError($"Error moving idea: {ex.Message}");
         }
     }
 
+<<<<<<< Updated upstream
 	private async Task StartIdeasProcessing(bool autoCommit)
 	{
 		_isTogglingIdeasProcessing = true;
@@ -1272,6 +1297,48 @@ TimeSpan.FromSeconds(10) })
 			StateHasChanged();
 		}
 	}
+=======
+    private async Task StartIdeasProcessing()
+    {
+        await StartIdeasProcessingWithOptions(Project?.AutoCommitMode ?? AutoCommitMode.Off);
+    }
+
+    private async Task StartIdeasProcessingWithOptions(AutoCommitMode autoCommitMode)
+    {
+        _isTogglingIdeasProcessing = true;
+        // Mark all unprocessed ideas as processing immediately for UI feedback
+        foreach (var idea in Ideas.Where(i => !i.IsProcessing && !i.JobId.HasValue))
+        {
+            ProcessingIdeaIds.Add(idea.Id);
+        }
+        StateHasChanged();
+
+        try
+        {
+            // Update auto-commit mode if changed
+            if (Project != null && Project.AutoCommitMode != autoCommitMode)
+            {
+                Project.AutoCommitMode = autoCommitMode;
+                await ProjectService.UpdateAsync(Project);
+            }
+
+            await IdeaService.StartProcessingAsync(ProjectId);
+            IsIdeasProcessingActive = true;
+            NotificationService.ShowInfo("Ideas will be converted to jobs automatically.", "Auto-Processing Started");
+        }
+        catch (Exception ex)
+        {
+            // Clear processing state on error
+            ProcessingIdeaIds.Clear();
+            NotificationService.ShowError($"Error starting Ideas processing: {ex.Message}");
+        }
+        finally
+        {
+            _isTogglingIdeasProcessing = false;
+            StateHasChanged();
+        }
+    }
+>>>>>>> Stashed changes
 
     private async Task StopIdeasProcessing()
     {

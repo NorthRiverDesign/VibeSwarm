@@ -5,18 +5,13 @@
 @using VibeSwarm.Shared.Utilities
 @inject IProviderService ProviderService
 @inject HttpProviderService HttpProviderService
+@inject NotificationService NotificationService
 
 <PageHeader Title="Providers" Subtitle="Manage your AI coding agent providers">
     <Actions>
         <ActionButton Icon="plus" Text="Add" OnClick="ShowAddModal" />
     </Actions>
 </PageHeader>
-
-@if (!string.IsNullOrEmpty(CliUpdateMessage))
-{
-    <Alert Type="@(CliUpdateSuccess? Alert.AlertType.Success : Alert.AlertType.Danger)" Message="@CliUpdateMessage"
-        Class="mb-3" Dismissible="true" />
-}
 
 @if (IsLoading)
 {
@@ -25,7 +20,7 @@
 else if (!ProvidersList.Any())
 {
     <EmptyState Icon="cpu" Title="No providers configured"
-        Message="Add a provider to connect to AI coding agents like Claude Code CLI." />
+                Message="Add a provider to connect to AI coding agents like Claude Code CLI." />
 }
 else
 {
@@ -78,7 +73,7 @@ else
                             </div>
                         }
                         @if (RefreshModelsErrors.TryGetValue(provider.Id, out var refreshError) &&
-                                        !string.IsNullOrEmpty(refreshError))
+                                                                !string.IsNullOrEmpty(refreshError))
                         {
                             <Alert Type="Alert.AlertType.Warning" Message="@refreshError" Class="mt-2 mb-0 py-2 px-3 small" />
                         }
@@ -86,36 +81,40 @@ else
                     <div class="d-flex align-items-center gap-2 flex-shrink-0">
                         @* Test connection button *@
                         <ActionButton Icon="lightning" Text="Test" Outline="true" Size="ActionButton.ButtonSize.Small"
-                            HideTextOnMobile="true" IsLoading="@(TestingId == provider.Id)"
-                            OnClick="@(() => TestConnection(provider))" />
+                                      HideTextOnMobile="true" IsLoading="@(TestingId == provider.Id)"
+                                      OnClick="@(() => TestConnection(provider))" />
 
                         @* Gear dropdown menu *@
                         <div class="dropdown">
                             <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button"
-                                id="provider-menu-@provider.Id" data-bs-toggle="dropdown" aria-expanded="false"
-                                title="Provider actions">
+                                    id="provider-menu-@provider.Id" data-bs-toggle="dropdown" aria-expanded="false"
+                                    title="Provider actions">
                                 <i class="bi bi-gear"></i>
                             </button>
                             <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="provider-menu-@provider.Id">
                                 <li>
                                     <button class="dropdown-item" @onclick="@(() => RefreshModels(provider))"
-                                        @onclick:stopPropagation="true" disabled="@(RefreshingModelsId == provider.Id)">
+                                            @onclick:stopPropagation="true" disabled="@(RefreshingModelsId == provider.Id)">
                                         <i
-                                            class="bi bi-arrow-repeat me-2 @(RefreshingModelsId == provider.Id ? "spin" : "")"></i>
+                                        class="bi bi-arrow-repeat me-2 @(RefreshingModelsId == provider.Id ? "spin" : "")"></i>
                                         Refresh Models
                                     </button>
                                 </li>
                                 <li>
                                     <button class="dropdown-item" @onclick="@(() => UpdateCli(provider))"
+<<<<<<< Updated upstream
                                         @onclick:stopPropagation="true"
                                         disabled="@(UpdatingCliId == provider.Id || provider.ConnectionMode == ProviderConnectionMode.SDK)">
+=======
+                                            @onclick:stopPropagation="true" disabled="@(UpdatingCliId == provider.Id)">
+>>>>>>> Stashed changes
                                         <i class="bi bi-download me-2 @(UpdatingCliId == provider.Id ? "spin" : "")"></i>
                                         @(provider.ConnectionMode == ProviderConnectionMode.SDK ? "Update via NuGet" : "Update CLI")
                                     </button>
                                 </li>
                                 <li>
                                     <button class="dropdown-item" @onclick="@(() => ShowSelectDefaultModelModal(provider))"
-                                        @onclick:stopPropagation="true">
+                                            @onclick:stopPropagation="true">
                                         <i class="bi bi-star me-2"></i>
                                         Select Default Model
                                     </button>
@@ -124,7 +123,7 @@ else
                                 {
                                     <li>
                                         <button class="dropdown-item" @onclick="@(() => MakeDefault(provider))"
-                                            @onclick:stopPropagation="true">
+                                                @onclick:stopPropagation="true">
                                             <i class="bi bi-check2-circle me-2"></i>
                                             Set as Default
                                         </button>
@@ -132,7 +131,7 @@ else
                                 }
                                 <li>
                                     <button class="dropdown-item" @onclick="@(() => EditProvider(provider))"
-                                        @onclick:stopPropagation="true">
+                                            @onclick:stopPropagation="true">
                                         <i class="bi bi-pencil me-2"></i>
                                         Edit
                                     </button>
@@ -142,7 +141,7 @@ else
                                 </li>
                                 <li>
                                     <button class="dropdown-item text-danger"
-                                        @onclick="@(() => ShowDeleteConfirmation(provider))" @onclick:stopPropagation="true">
+                                            @onclick="@(() => ShowDeleteConfirmation(provider))" @onclick:stopPropagation="true">
                                         <i class="bi bi-trash me-2"></i>
                                         Delete
                                     </button>
@@ -160,7 +159,7 @@ else
                             @foreach (var model in models.Where(m => m.IsAvailable).Take(5))
                             {
                                 <span class="badge @(model.IsDefault ? "bg-primary" : "bg-secondary") bg-opacity-75"
-                                    title="@model.ModelId">
+                                      title="@model.ModelId">
                                     @(model.DisplayName ?? model.ModelId)
                                 </span>
                             }
@@ -168,34 +167,34 @@ else
                             {
                                 <span class="badge bg-secondary bg-opacity-50">+@(models.Count(m => m.IsAvailable) - 5)
                                     more</span>
+                                }
+                            </div>
+                            @if (provider.LastModelsRefreshAt.HasValue)
+                            {
+                                <small class="text-body-tertiary d-block mt-1">
+                                    Updated @provider.LastModelsRefreshAt.Value.FormatDateTimeShort()
+                                </small>
                             }
                         </div>
-                        @if (provider.LastModelsRefreshAt.HasValue)
-                        {
-                            <small class="text-body-tertiary d-block mt-1">
-                                Updated @provider.LastModelsRefreshAt.Value.FormatDateTimeShort()
-                            </small>
-                        }
-                    </div>
-                }
-            </div>
-        }
-    </div>
-}
+                    }
+                </div>
+            }
+        </div>
+    }
 
 @* Provider Modal for Add/Edit *@
 <ProviderModal @bind-IsVisible="ShowProviderModal" EditProvider="@EditingProvider" OnSaved="HandleProviderSaved"
-    OnCancelled="HandleModalCancelled" OnClosed="HandleProviderModalClosed" />
+               OnCancelled="HandleModalCancelled" OnClosed="HandleProviderModalClosed" />
 
-@* Delete Confirmation Modal *@
-<ConfirmationModal @bind-IsVisible="ShowDeleteModal" Title="Delete Provider"
-    Message="@($"Are you sure you want to delete {ProviderToDelete?.Name}?")" SubMessage="This action cannot be undone."
-    ConfirmText="Delete" IsProcessing="@IsDeleting" OnConfirm="ConfirmDelete" OnCancel="CancelDelete" />
+    @* Delete Confirmation Modal *@
+    <ConfirmationModal @bind-IsVisible="ShowDeleteModal" Title="Delete Provider"
+                       Message="@($"Are you sure you want to delete {ProviderToDelete?.Name}?")" SubMessage="This action cannot be undone."
+                       ConfirmText="Delete" IsProcessing="@IsDeleting" OnConfirm="ConfirmDelete" OnCancel="CancelDelete" />
 
-@* Select Default Model Modal *@
-<DefaultModelModal @bind-IsVisible="ShowDefaultModelModal" Provider="@DefaultModelProvider" Models="@DefaultModelList"
-    IsLoading="@IsLoadingDefaultModels" IsSelecting="@IsSettingDefaultModel" OnModelSelected="SelectDefaultModel"
-    OnClose="HandleDefaultModelModalClosed" />
+    @* Select Default Model Modal *@
+    <DefaultModelModal @bind-IsVisible="ShowDefaultModelModal" Provider="@DefaultModelProvider" Models="@DefaultModelList"
+                       IsLoading="@IsLoadingDefaultModels" IsSelecting="@IsSettingDefaultModel" OnModelSelected="SelectDefaultModel"
+                       OnClose="HandleDefaultModelModalClosed" />
 
 @code {
     private List<Provider> ProvidersList { get; set; } = new();
@@ -209,8 +208,6 @@ else
     private Dictionary<Guid, ConnectionTestResult> TestResults { get; set; } = new();
     private Dictionary<Guid, List<ProviderModel>> ProviderModels { get; set; } = new();
     private Dictionary<Guid, ProviderUsageSummary> UsageSummaries { get; set; } = new();
-    private string? CliUpdateMessage { get; set; }
-    private bool CliUpdateSuccess { get; set; }
 
     // Delete confirmation state
     private bool ShowDeleteModal { get; set; }
@@ -442,45 +439,35 @@ else
     private async Task UpdateCli(Provider provider)
     {
         UpdatingCliId = provider.Id;
-        CliUpdateMessage = null;
         StateHasChanged();
 
         try
         {
             var result = await HttpProviderService.UpdateCliAsync(provider.Id);
-            CliUpdateSuccess = result.Success;
 
             if (result.Success)
             {
                 var versionInfo = string.IsNullOrEmpty(result.PreviousVersion) || result.PreviousVersion == result.NewVersion
                 ? $"Version: {result.NewVersion}"
                 : $"Updated from {result.PreviousVersion} to {result.NewVersion}";
-                CliUpdateMessage = $"{provider.Name} CLI updated successfully. {versionInfo}";
+                NotificationService.ShowSuccess($"{provider.Name} CLI updated successfully. {versionInfo}", "CLI Updated");
 
                 // Reload usage summaries to get updated version
                 UsageSummaries = await HttpProviderService.GetAllUsageSummariesAsync();
             }
             else
             {
-                CliUpdateMessage = $"Failed to update {provider.Name} CLI: {result.ErrorMessage}";
+                NotificationService.ShowError($"Failed to update {provider.Name} CLI: {result.ErrorMessage}", "CLI Update Failed");
             }
         }
         catch (Exception ex)
         {
-            CliUpdateSuccess = false;
-            CliUpdateMessage = $"Error updating {provider.Name} CLI: {ex.Message}";
+            NotificationService.ShowError($"Error updating {provider.Name} CLI: {ex.Message}", "CLI Update Failed");
         }
         finally
         {
             UpdatingCliId = null;
             StateHasChanged();
-
-            // Clear message after 5 seconds
-            _ = Task.Delay(5000).ContinueWith(_ =>
-            {
-                CliUpdateMessage = null;
-                InvokeAsync(StateHasChanged);
-            });
         }
     }
 

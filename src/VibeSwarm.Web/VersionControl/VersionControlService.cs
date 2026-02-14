@@ -152,6 +152,9 @@ public sealed class VersionControlService : IVersionControlService
 		try
 		{
 			var diffTarget = string.IsNullOrEmpty(baseCommit) ? "HEAD" : baseCommit;
+			var changedFiles = new List<string>();
+
+			// Get tracked file changes (modified, deleted, renamed) vs HEAD
 			var result = await _commandExecutor.ExecuteAsync(
 				$"diff {diffTarget} --name-only",
 				workingDirectory,
@@ -159,12 +162,44 @@ public sealed class VersionControlService : IVersionControlService
 
 			if (result.Success && !string.IsNullOrWhiteSpace(result.Output))
 			{
-				return result.Output
+				changedFiles.AddRange(result.Output
 					.Split('\n', StringSplitOptions.RemoveEmptyEntries)
 					.Select(f => f.Trim())
-					.Where(f => !string.IsNullOrEmpty(f))
-					.ToList();
+					.Where(f => !string.IsNullOrEmpty(f)));
 			}
+
+			// If diff against HEAD failed (e.g., fresh repo with no commits), fall back to staged files
+			if (!result.Success)
+			{
+				var stagedResult = await _commandExecutor.ExecuteAsync(
+					"diff --cached --name-only",
+					workingDirectory,
+					cancellationToken);
+
+				if (stagedResult.Success && !string.IsNullOrWhiteSpace(stagedResult.Output))
+				{
+					changedFiles.AddRange(stagedResult.Output
+						.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+						.Select(f => f.Trim())
+						.Where(f => !string.IsNullOrEmpty(f)));
+				}
+			}
+
+			// Get untracked files (new files not yet added to Git)
+			var untrackedResult = await _commandExecutor.ExecuteAsync(
+				"ls-files --others --exclude-standard",
+				workingDirectory,
+				cancellationToken);
+
+			if (untrackedResult.Success && !string.IsNullOrWhiteSpace(untrackedResult.Output))
+			{
+				changedFiles.AddRange(untrackedResult.Output
+					.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+					.Select(f => f.Trim())
+					.Where(f => !string.IsNullOrEmpty(f)));
+			}
+
+			return changedFiles.Distinct().ToList();
 		}
 		catch
 		{
@@ -186,23 +221,18 @@ public sealed class VersionControlService : IVersionControlService
 			}
 
 			var diffTarget = string.IsNullOrEmpty(baseCommit) ? "HEAD" : baseCommit;
+			var diffParts = new List<string>();
 
+			// Get diff for tracked changes (modified + deleted)
 			var result = await _commandExecutor.ExecuteAsync(
 				$"diff {diffTarget} --stat --patch --find-renames --find-copies",
 				workingDirectory,
 				cancellationToken,
 				timeoutSeconds: 60);
 
-			if (result.Success)
+			if (result.Success && !string.IsNullOrWhiteSpace(result.Output))
 			{
-				var diff = result.Output;
-
-				if (!string.IsNullOrEmpty(diff) && Encoding.UTF8.GetByteCount(diff) > MaxDiffSizeBytes)
-				{
-					diff = TruncateDiff(diff, MaxDiffSizeBytes);
-				}
-
-				return string.IsNullOrWhiteSpace(diff) ? null : diff;
+				diffParts.Add(result.Output);
 			}
 
 			// If diff against commit fails (e.g., no commits yet), try diff against empty tree
@@ -215,9 +245,60 @@ public sealed class VersionControlService : IVersionControlService
 
 				if (emptyTreeResult.Success && !string.IsNullOrWhiteSpace(emptyTreeResult.Output))
 				{
-					return emptyTreeResult.Output;
+					diffParts.Add(emptyTreeResult.Output);
 				}
 			}
+
+			// Get untracked files and generate synthetic diff for them
+			var untrackedResult = await _commandExecutor.ExecuteAsync(
+				"ls-files --others --exclude-standard",
+				workingDirectory,
+				cancellationToken);
+
+			if (untrackedResult.Success && !string.IsNullOrWhiteSpace(untrackedResult.Output))
+			{
+				var untrackedFiles = untrackedResult.Output
+					.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+					.Select(f => f.Trim())
+					.Where(f => !string.IsNullOrEmpty(f))
+					.ToList();
+
+				foreach (var file in untrackedFiles)
+				{
+					// Use git diff --no-index to generate a proper diff for untracked files
+					var fileDiffResult = await _commandExecutor.ExecuteAsync(
+						$"diff --no-index -- /dev/null \"{file}\"",
+						workingDirectory,
+						cancellationToken,
+						timeoutSeconds: 10);
+
+					// git diff --no-index returns exit code 1 when files differ (which is expected)
+					// so we check the output rather than success
+					if (!string.IsNullOrWhiteSpace(fileDiffResult.Output))
+					{
+						diffParts.Add(fileDiffResult.Output);
+					}
+					else
+					{
+						// Fallback: generate a minimal synthetic diff header
+						diffParts.Add($"diff --git a/{file} b/{file}\nnew file mode 100644\n--- /dev/null\n+++ b/{file}");
+					}
+				}
+			}
+
+			if (diffParts.Count == 0)
+			{
+				return null;
+			}
+
+			var combinedDiff = string.Join("\n", diffParts);
+
+			if (!string.IsNullOrEmpty(combinedDiff) && Encoding.UTF8.GetByteCount(combinedDiff) > MaxDiffSizeBytes)
+			{
+				combinedDiff = TruncateDiff(combinedDiff, MaxDiffSizeBytes);
+			}
+
+			return string.IsNullOrWhiteSpace(combinedDiff) ? null : combinedDiff;
 		}
 		catch
 		{

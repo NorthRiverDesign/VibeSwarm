@@ -12,7 +12,7 @@
     @* Mobile Header *@
     <header class="app-header d-lg-none">
         <button id="mobile-menu-toggle" class="btn btn-link nav-toggle" @onclick="ToggleMobileMenu"
-            aria-label="Toggle navigation">
+                aria-label="Toggle navigation">
             <i class="bi bi-list"></i>
         </button>
         <a class="app-brand" href="/">
@@ -109,75 +109,72 @@
                                         <summary class="text-muted small" style="cursor: pointer;">Technical Details
                                         </summary>
                                         <pre class="bg-body-tertiary p-3 rounded mt-2 small text-danger overflow-auto"
-                                            style="max-height: 200px;">@exception.Message
-        @exception.StackTrace</pre>
-                                    </details>
-                                </div>
-                            }
+                                             style="max-height: 200px;">@exception.Message
+                                            @exception.StackTrace</pre>
+                                        </details>
+                                    </div>
+                                }
+                            </div>
                         </div>
+                    </ErrorContent>
+                </ErrorBoundary>
+            </div>
+        </main>
+    </div>
+
+    <ToastContainer />
+
+    @* Change Password Modal - rendered outside sidebar to avoid stacking context issues *@
+    <ModalDialog @bind-IsVisible="_showChangePasswordModal" Title="Change Password" Icon="key"
+                 Size="ModalDialog.ModalSize.Default">
+        <ChildContent>
+            <EditForm Model="@_changePasswordModel" OnValidSubmit="HandleChangePassword">
+                <DataAnnotationsValidator />
+
+                @if (!string.IsNullOrEmpty(_changePasswordError))
+                {
+                    <div class="text-danger small mb-3">
+                        <i class="bi bi-exclamation-circle me-1"></i>@_changePasswordError
                     </div>
-                </ErrorContent>
-            </ErrorBoundary>
-        </div>
-    </main>
-</div>
+                }
 
-<ToastContainer />
-
-@* Change Password Modal - rendered outside sidebar to avoid stacking context issues *@
-<ModalDialog @bind-IsVisible="_showChangePasswordModal" Title="Change Password" Icon="key"
-    Size="ModalDialog.ModalSize.Default">
-    <ChildContent>
-        <EditForm Model="@_changePasswordModel" OnValidSubmit="HandleChangePassword">
-            <DataAnnotationsValidator />
-
-            @if (!string.IsNullOrEmpty(_changePasswordError))
-            {
-                <Alert Type="Alert.AlertType.Danger" Message="@_changePasswordError" />
-            }
-
-            @if (!string.IsNullOrEmpty(_changePasswordSuccess))
-            {
-                <Alert Type="Alert.AlertType.Success" Message="@_changePasswordSuccess" />
-            }
-
-            <div class="mb-3">
-                <label for="currentPassword" class="form-label">Current Password</label>
-                <InputText id="currentPassword" type="password" @bind-Value="_changePasswordModel.CurrentPassword"
-                    class="form-control" />
-                <ValidationMessage For="@(() => _changePasswordModel.CurrentPassword)" class="text-danger small" />
-            </div>
-
-            <div class="mb-3">
-                <label for="newPassword" class="form-label">New Password</label>
-                <InputText id="newPassword" type="password" @bind-Value="_changePasswordModel.NewPassword"
-                    class="form-control" />
-                <ValidationMessage For="@(() => _changePasswordModel.NewPassword)" class="text-danger small" />
-                <div class="form-text">
-                    Password must be at least 8 characters and contain uppercase, lowercase, and a digit.
+                <div class="mb-3">
+                    <label for="currentPassword" class="form-label">Current Password</label>
+                    <InputText id="currentPassword" type="password" @bind-Value="_changePasswordModel.CurrentPassword"
+                               class="form-control" />
+                    <ValidationMessage For="@(() => _changePasswordModel.CurrentPassword)" class="text-danger small" />
                 </div>
-            </div>
 
-            <div class="mb-3">
-                <label for="confirmPassword" class="form-label">Confirm New Password</label>
-                <InputText id="confirmPassword" type="password" @bind-Value="_changePasswordModel.ConfirmPassword"
-                    class="form-control" />
-                <ValidationMessage For="@(() => _changePasswordModel.ConfirmPassword)" class="text-danger small" />
-            </div>
+                <div class="mb-3">
+                    <label for="newPassword" class="form-label">New Password</label>
+                    <InputText id="newPassword" type="password" @bind-Value="_changePasswordModel.NewPassword"
+                               class="form-control" />
+                    <ValidationMessage For="@(() => _changePasswordModel.NewPassword)" class="text-danger small" />
+                    <div class="form-text">
+                        Password must be at least 8 characters and contain uppercase, lowercase, and a digit.
+                    </div>
+                </div>
 
-            <div class="d-flex justify-content-end gap-2">
-                <button type="button" class="btn btn-secondary" @onclick="CloseChangePasswordModal">Cancel</button>
-                <button type="submit" class="btn btn-primary" disabled="@_isChangingPassword">
-                    @if (_isChangingPassword)
-                    {
-                        <span class="spinner-border spinner-border-sm me-1" role="status"></span>
-                    }
-                    Change Password
-                </button>
-            </div>
-        </EditForm>
-    </ChildContent>
-</ModalDialog>
+                <div class="mb-3">
+                    <label for="confirmPassword" class="form-label">Confirm New Password</label>
+                    <InputText id="confirmPassword" type="password" @bind-Value="_changePasswordModel.ConfirmPassword"
+                               class="form-control" />
+                    <ValidationMessage For="@(() => _changePasswordModel.ConfirmPassword)" class="text-danger small" />
+                </div>
+
+                <div class="d-flex justify-content-end gap-2">
+                    <button type="button" class="btn btn-secondary" @onclick="CloseChangePasswordModal">Cancel</button>
+                    <button type="submit" class="btn btn-primary" disabled="@_isChangingPassword">
+                        @if (_isChangingPassword)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                        }
+                        Change Password
+                    </button>
+                </div>
+            </EditForm>
+        </ChildContent>
+    </ModalDialog>
 
 @code {
     [CascadingParameter]
@@ -191,7 +188,6 @@
     private bool _showChangePasswordModal;
     private bool _isChangingPassword;
     private string? _changePasswordError;
-    private string? _changePasswordSuccess;
     private ChangePasswordModel _changePasswordModel = new();
     protected override void OnInitialized()
     {
@@ -203,7 +199,6 @@
     {
         _changePasswordModel = new ChangePasswordModel();
         _changePasswordError = null;
-        _changePasswordSuccess = null;
         _showChangePasswordModal = true;
         InvokeAsync(StateHasChanged);
     }
@@ -217,7 +212,6 @@
     private async Task HandleChangePassword()
     {
         _changePasswordError = null;
-        _changePasswordSuccess = null;
 
         if (_changePasswordModel.NewPassword != _changePasswordModel.ConfirmPassword)
         {
@@ -239,8 +233,9 @@
 
             if (response.IsSuccessStatusCode)
             {
-                _changePasswordSuccess = "Password changed successfully.";
+                NotificationService.ShowSuccess("Password changed successfully.");
                 _changePasswordModel = new ChangePasswordModel();
+                _showChangePasswordModal = false;
             }
             else
             {

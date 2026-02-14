@@ -3,6 +3,7 @@
 @inject IProjectService ProjectService
 @inject IJobService JobService
 @inject IVersionControlService VersionControlService
+@inject NotificationService NotificationService
 @implements IDisposable
 @using VibeSwarm.Shared.Utilities
 @using VibeSwarm.Shared.VersionControl
@@ -47,7 +48,7 @@ else
                         }
                         <div class="d-flex flex-wrap gap-2 gap-md-3 mt-2 small text-body-secondary">
                             <span class="font-monospace bg-body-tertiary px-2 py-1 rounded-1 text-truncate"
-                                style="max-width: 280px;" title="@project.WorkingPath">
+                                  style="max-width: 280px;" title="@project.WorkingPath">
                                 @project.WorkingPath
                             </span>
                             @if (!string.IsNullOrEmpty(project.GitHubRepository))
@@ -55,7 +56,7 @@ else
                                 <span class="d-flex align-items-center gap-1" title="GitHub Repository">
                                     <i class="bi bi-github opacity-75"></i>
                                     <a href="https://github.com/@project.GitHubRepository" target="_blank"
-                                        class="text-body-secondary text-decoration-none hover-underline">
+                                           class="text-body-secondary text-decoration-none hover-underline">
                                         @project.GitHubRepository
                                     </a>
                                 </span>
@@ -79,7 +80,7 @@ else
                                 @if (stats.TotalInputTokens > 0 || stats.TotalOutputTokens > 0)
                                 {
                                     <span class="d-flex align-items-center gap-1 text-body-secondary"
-                                        title="Total tokens (input / output)">
+                                          title="Total tokens (input / output)">
                                         <i class="bi bi-braces opacity-75"></i>
                                         @TokenHelper.FormatTokenCount(stats.TotalInputTokens) /
                                         @TokenHelper.FormatTokenCount(stats.TotalOutputTokens)
@@ -100,8 +101,8 @@ else
                             <div class="border-top pt-2 mt-2">
                                 <div class="d-flex align-items-center gap-2 small min-width-0">
                                     <a href="/jobs/view/@latestJob.Id"
-                                        class="d-flex align-items-center gap-2 text-decoration-none min-width-0"
-                                        title="@latestJob.GoalPrompt">
+                                           class="d-flex align-items-center gap-2 text-decoration-none min-width-0"
+                                           title="@latestJob.GoalPrompt">
                                         @switch (latestJob.Status)
                                         {
                                             case JobStatus.Completed:
@@ -113,7 +114,7 @@ else
                                             case JobStatus.Started:
                                             case JobStatus.Processing:
                                                 <span class="spinner-border spinner-border-sm text-info flex-shrink-0" role="status"
-                                                    title="Running"></span>
+                                                      title="Running"></span>
                                                 break;
                                             case JobStatus.Cancelled:
                                                 <i class="bi bi-slash-circle text-secondary flex-shrink-0" title="Cancelled"></i>
@@ -126,112 +127,122 @@ else
                                                 break;
                                         }
                                         <span class="text-truncate text-body-secondary">@TruncateText(latestJob.GoalPrompt,
-                                                                            60)</span>
-                        </a>
-                    </div>
-                </div>
-                                }
-                        @* Active Jobs Display *@
-                        @if (projectActiveJobs.Any())
-                        {
-                            <div class="@(latestJob == null ? "border-top pt-2 mt-2" : "mt-1")">
-                                @foreach (var job in projectActiveJobs)
-                                {
-                                    <div class="bg-body-tertiary rounded-2 p-2 mb-1 small">
-                                        <a href="/jobs/view/@job.Id" class="d-flex align-items-center gap-2 text-decoration-none small">
-                                            <StatusBadge Status="@job.Status.ToString()" />
-                                            <span class="text-truncate" style="max-width: 200px;">@TruncateText(job.GoalPrompt,
-                                                                                50)</span>
-                            @if (!string.IsNullOrEmpty(job.CurrentActivity))
-                                            {
-                                                <span class="text-info fst-italic small d-none d-md-inline">@job.CurrentActivity</span>
-                                            }
+                                                                                                                                                                    60)</span>
                                         </a>
+                                    </div>
+                                </div>
+                            }
+                            @* Active Jobs Display *@
+                            @if (projectActiveJobs.Any())
+                            {
+                                <div class="@(latestJob == null ? "border-top pt-2 mt-2" : "mt-1")">
+                                    @foreach (var job in projectActiveJobs)
+                                    {
+                                        <div class="bg-body-tertiary rounded-2 p-2 mb-1 small">
+                                            <a href="/jobs/view/@job.Id" class="d-flex align-items-center gap-2 text-decoration-none small">
+                                                <StatusBadge Status="@job.Status.ToString()" />
+                                                <span class="text-truncate" style="max-width: 200px;">@TruncateText(job.GoalPrompt,
+                                                                                                                                                                                        50)</span>
+                                                    @if (!string.IsNullOrEmpty(job.CurrentActivity))
+                                                    {
+                                                        <span class="text-info fst-italic small d-none d-md-inline">@job.CurrentActivity</span>
+                                                    }
+                                                </a>
+                                            </div>
+                                        }
                                     </div>
                                 }
                             </div>
-                        }
-                    </div>
-                    <div class="d-flex align-items-center gap-2 flex-shrink-0">
-                        @* Gear dropdown menu *@
-                        <div class="dropdown">
-                            <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button"
-                                id="project-menu-@project.Id" data-bs-toggle="dropdown" aria-expanded="false"
-                                title="Project actions">
-                                <i class="bi bi-gear"></i>
-                            </button>
-                            <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="project-menu-@project.Id">
-                                <li>
-                                    <a class="dropdown-item" href="/projects/@project.Id">
-                                        <i class="bi bi-eye me-2"></i>
-                                        View Details
-                                    </a>
-                                </li>
-                                <li>
-                                    <button class="dropdown-item" @onclick="@(() => EditProject(project))"
-                                        @onclick:stopPropagation="true">
-                                        <i class="bi bi-pencil me-2"></i>
-                                        Edit
+                            <div class="d-flex align-items-center gap-2 flex-shrink-0">
+                                @* Gear dropdown menu *@
+                                <div class="dropdown">
+                                    <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button"
+                                            id="project-menu-@project.Id" data-bs-toggle="dropdown" aria-expanded="false"
+                                            title="Project actions">
+                                        <i class="bi bi-gear"></i>
                                     </button>
-                                </li>
-                                <li>
-                                    <hr class="dropdown-divider">
-                                </li>
-                                <li>
-                                    <button class="dropdown-item text-danger"
-                                        @onclick="@(() => ShowDeleteConfirmation(project))" @onclick:stopPropagation="true">
-                                        <i class="bi bi-trash me-2"></i>
-                                        Delete
-                                    </button>
-                                </li>
-                            </ul>
+                                    <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="project-menu-@project.Id">
+                                        <li>
+                                            <a class="dropdown-item" href="/projects/@project.Id">
+                                                <i class="bi bi-eye me-2"></i>
+                                                View Details
+                                            </a>
+                                        </li>
+                                        <li>
+                                            <button class="dropdown-item" @onclick="@(() => EditProject(project))"
+                                                    @onclick:stopPropagation="true">
+                                                <i class="bi bi-pencil me-2"></i>
+                                                Edit
+                                            </button>
+                                        </li>
+                                        @if (projectInfo.CurrentBranch != null)
+                                        {
+                                            <li>
+                                                <button class="dropdown-item" @onclick="@(() => PruneBranches(project))"
+                                                        @onclick:stopPropagation="true">
+                                                    <i class="bi bi-scissors me-2"></i>
+                                                    Prune Branches
+                                                </button>
+                                            </li>
+                                        }
+                                        <li>
+                                            <hr class="dropdown-divider">
+                                        </li>
+                                        <li>
+                                            <button class="dropdown-item text-danger"
+                                                    @onclick="@(() => ShowDeleteConfirmation(project))" @onclick:stopPropagation="true">
+                                                <i class="bi bi-trash me-2"></i>
+                                                Delete
+                                            </button>
+                                        </li>
+                                    </ul>
+                                </div>
+                            </div>
                         </div>
                     </div>
-                </div>
+                }
             </div>
         }
-    </div>
-}
 
-@* Project Modal for Add/Edit *@
-<ProjectModal @bind-IsVisible="ShowProjectModal" EditProject="@EditingProject" OnSaved="HandleProjectSaved"
-    OnCancelled="HandleModalCancelled" OnClosed="HandleProjectModalClosed" />
+        @* Project Modal for Add/Edit *@
+        <ProjectModal @bind-IsVisible="ShowProjectModal" EditProject="@EditingProject" OnSaved="HandleProjectSaved"
+                      OnCancelled="HandleModalCancelled" OnClosed="HandleProjectModalClosed" />
 
-@* Delete Confirmation Modal *@
-<ModalDialog @bind-IsVisible="ShowDeleteModal" Title="Delete Project" Icon="exclamation-triangle"
-    Size="ModalDialog.ModalSize.Small" OnClose="HandleDeleteModalClosed">
-    <ChildContent>
-        <p>Are you sure you want to delete <strong>@ProjectToDelete?.Name</strong>?</p>
-        <p class="text-body-secondary small">This will remove the project from VibeSwarm and delete all associated jobs.
-        </p>
+        @* Delete Confirmation Modal *@
+        <ModalDialog @bind-IsVisible="ShowDeleteModal" Title="Delete Project" Icon="exclamation-triangle"
+                     Size="ModalDialog.ModalSize.Small" OnClose="HandleDeleteModalClosed">
+            <ChildContent>
+                <p>Are you sure you want to delete <strong>@ProjectToDelete?.Name</strong>?</p>
+                <p class="text-body-secondary small">This will remove the project from VibeSwarm and delete all associated jobs.
+                </p>
 
-        <div class="form-check mt-3">
-            <input class="form-check-input" type="checkbox" id="deleteDirectory" @bind="DeleteDirectoryConfirmed">
-            <label class="form-check-label text-danger" for="deleteDirectory">
-                <i class="bi bi-exclamation-triangle me-1"></i>
-                Also delete the project directory from disk
-            </label>
-        </div>
-        @if (DeleteDirectoryConfirmed)
-        {
-            <Alert Type="Alert.AlertType.Danger" Class="mt-2 py-2 px-3 small mb-0">
-                <strong>Warning:</strong> This will permanently delete
-                <code class="text-break">@ProjectToDelete?.WorkingPath</code>
-                and all its contents!
-            </Alert>
-        }
-    </ChildContent>
-    <FooterContent>
-        <button type="button" class="btn btn-secondary" @onclick="CancelDelete">Cancel</button>
-        <button type="button" class="btn btn-danger" @onclick="ConfirmDelete" disabled="@IsDeleting">
-            @if (IsDeleting)
-            {
-                <span class="spinner-border spinner-border-sm me-1" role="status"></span>
-            }
-            Delete@(DeleteDirectoryConfirmed ? " & Remove Files" : "")
-        </button>
-    </FooterContent>
-</ModalDialog>
+                <div class="form-check mt-3">
+                    <input class="form-check-input" type="checkbox" id="deleteDirectory" @bind="DeleteDirectoryConfirmed">
+                        <label class="form-check-label text-danger" for="deleteDirectory">
+                            <i class="bi bi-exclamation-triangle me-1"></i>
+                            Also delete the project directory from disk
+                        </label>
+                    </div>
+                    @if (DeleteDirectoryConfirmed)
+                    {
+                        <Alert Type="Alert.AlertType.Danger" Class="mt-2 py-2 px-3 small mb-0">
+                            <strong>Warning:</strong> This will permanently delete
+                            <code class="text-break">@ProjectToDelete?.WorkingPath</code>
+                            and all its contents!
+                        </Alert>
+                    }
+                </ChildContent>
+                <FooterContent>
+                    <button type="button" class="btn btn-secondary" @onclick="CancelDelete">Cancel</button>
+                    <button type="button" class="btn btn-danger" @onclick="ConfirmDelete" disabled="@IsDeleting">
+                        @if (IsDeleting)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                        }
+                        Delete@(DeleteDirectoryConfirmed ? " & Remove Files" : "")
+                    </button>
+                </FooterContent>
+            </ModalDialog>
 
 @code {
     private List<ProjectInfoWithStats> ProjectsWithInfo { get; set; } = new();
@@ -454,5 +465,32 @@ else
     public void Dispose()
     {
         _refreshTimer?.Dispose();
+    }
+
+    private async Task PruneBranches(Project project)
+    {
+        try
+        {
+            var isRepo = await VersionControlService.IsGitRepositoryAsync(project.WorkingPath);
+            if (!isRepo)
+            {
+                NotificationService.ShowWarning("This project is not a Git repository.", "Not a Git Repository");
+                return;
+            }
+
+            var result = await VersionControlService.FetchAsync(project.WorkingPath, "origin", prune: true);
+            if (result.Success)
+            {
+                NotificationService.ShowSuccess($"Branches pruned for {project.Name}.", "Prune Complete");
+            }
+            else
+            {
+                NotificationService.ShowError(result.Error ?? "Failed to prune branches.", "Prune Failed");
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.ShowError($"Error pruning branches: {ex.Message}", "Prune Failed");
+        }
     }
 }

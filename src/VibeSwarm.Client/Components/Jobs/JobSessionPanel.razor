@@ -8,7 +8,7 @@
             <ul class="nav nav-tabs nav-tabs-card border-0 flex-grow-1 flex-nowrap" role="tablist">
                 <li class="nav-item" role="presentation">
                     <button type="button" class="nav-link px-2 px-sm-3 @(_activeTab == "session" ? "active" : "")"
-                        @onclick="@(() => _activeTab = "session")" role="tab">
+                            @onclick="@(() => _activeTab = "session")" role="tab">
                         @if (IsJobActive)
                         {
                             <span class="live-indicator me-1"></span>
@@ -38,7 +38,7 @@
                 {
                     <li class="nav-item" role="presentation">
                         <button type="button" class="nav-link px-2 px-sm-3 @(_activeTab == "console" ? "active" : "")"
-                            @onclick="@(() => _activeTab = "console")" role="tab">
+                                @onclick="@(() => _activeTab = "console")" role="tab">
                             <i class="bi bi-terminal me-1 opacity-75"></i>
                             <span class="d-none d-sm-inline">Console Output</span>
                             <span class="d-sm-none">Console</span>
@@ -49,7 +49,7 @@
                 {
                     <li class="nav-item" role="presentation">
                         <button type="button" class="nav-link px-2 px-sm-3 @(_activeTab == "command" ? "active" : "")"
-                            @onclick="@(() => _activeTab = "command")" role="tab">
+                                @onclick="@(() => _activeTab = "command")" role="tab">
                             <i class="bi bi-terminal-fill me-1 opacity-75"></i>
                             <span>Command</span>
                         </button>
@@ -61,7 +61,7 @@
                 @if (IsJobActive && LiveOutputLines.Any())
                 {
                     <ActionButton Icon="trash" Text="Clear" Outline="true" Size="ActionButton.ButtonSize.Small"
-                        HideTextOnMobile="true" OnClick="OnClearLiveOutput" />
+                                  HideTextOnMobile="true" OnClick="OnClearLiveOutput" />
                 }
             </div>
         </div>
@@ -75,7 +75,7 @@
             <div class="flex-grow-1 min-width-0">
                 <strong class="d-block mb-1">Error</strong>
                 <pre class="mb-0 small font-monospace overflow-auto"
-                    style="white-space: pre-wrap; max-height: 150px;">@ErrorMessage</pre>
+                     style="white-space: pre-wrap; max-height: 150px;">@ErrorMessage</pre>
             </div>
         </div>
     }
@@ -155,7 +155,7 @@
                             @foreach (var message in Messages)
                             {
                                 <ChatMessage Role="@message.Role" Content="@message.Content" ToolName="@message.ToolName"
-                                    ToolInput="@message.ToolInput" ToolOutput="@message.ToolOutput" Timestamp="@message.CreatedAt" />
+                                             ToolInput="@message.ToolInput" ToolOutput="@message.ToolOutput" Timestamp="@message.CreatedAt" />
                             }
                         </div>
                     }
@@ -165,14 +165,14 @@
         else if (_activeTab == "console")
         {
             <pre class="terminal-output flex-grow-1 m-0 p-3 overflow-auto rounded-bottom small text-break"
-                style="max-height: 400px;">@ConsoleOutput</pre>
+                 style="max-height: 400px;">@ConsoleOutput</pre>
         }
         else if (_activeTab == "command")
         {
             <div class="p-3 flex-grow-1 overflow-auto">
                 <div class="d-flex justify-content-end mb-2">
                     <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="CopyCommandToClipboard"
-                        title="Copy command to clipboard">
+                            title="Copy command to clipboard">
                         <i class="bi bi-clipboard me-1"></i>
                         <span class="d-none d-sm-inline">Copy</span>
                     </button>
@@ -196,9 +196,9 @@
         <div class="card-footer bg-body-tertiary border-top">
             <div class="d-flex gap-2">
                 <textarea class="form-control" rows="2" placeholder="Add follow-up instructions..." @bind="_followUpPrompt"
-                    @bind:event="oninput" disabled="@_isSendingFollowUp"></textarea>
+                          @bind:event="oninput" disabled="@_isSendingFollowUp"></textarea>
                 <button class="btn btn-primary align-self-end flex-shrink-0" @onclick="SendFollowUp"
-                    disabled="@(string.IsNullOrWhiteSpace(_followUpPrompt) || _isSendingFollowUp)" title="Send follow-up">
+                        disabled="@(string.IsNullOrWhiteSpace(_followUpPrompt) || _isSendingFollowUp)" title="Send follow-up">
                     @if (_isSendingFollowUp)
                     {
                         <span class="spinner-border spinner-border-sm" role="status"></span>
@@ -273,7 +273,7 @@
     {
         if (!string.IsNullOrEmpty(CommandUsed))
         {
-            await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", CommandUsed);
+            await JSRuntime.InvokeVoidAsync("copyToClipboard", CommandUsed);
         }
     }
 }

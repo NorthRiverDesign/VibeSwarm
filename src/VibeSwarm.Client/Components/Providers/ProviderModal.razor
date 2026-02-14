@@ -2,10 +2,11 @@
 @using VibeSwarm.Shared.Data
 @using VibeSwarm.Shared.Services
 @inject IProviderService ProviderService
+@inject NotificationService NotificationService
 
 <ModalDialog IsVisible="IsVisible" IsVisibleChanged="HandleModalVisibilityChanged"
-	Title="@(IsEdit ? "Edit Provider" : "Add Provider")" Icon="@(IsEdit ? "pencil" : "plus-circle")"
-	Size="ModalDialog.ModalSize.Default" OnClose="HandleClose">
+			 Title="@(IsEdit ? "Edit Provider" : "Add Provider")" Icon="@(IsEdit ? "pencil" : "plus-circle")"
+			 Size="ModalDialog.ModalSize.Default" OnClose="HandleClose">
 	<ChildContent>
 		<EditForm Model="@Provider" OnValidSubmit="HandleValidSubmit">
 			<DataAnnotationsValidator />
@@ -14,14 +15,14 @@
 			<div class="mb-3">
 				<label for="modal-name" class="form-label">Name</label>
 				<InputText id="modal-name" @bind-Value="Provider.Name" class="form-control"
-					placeholder="My OpenCode Provider" />
+						   placeholder="My OpenCode Provider" />
 				<ValidationMessage For="@(() => Provider.Name)" class="text-danger small" />
 			</div>
 
 			<div class="mb-3">
 				<label for="modal-type" class="form-label">Provider Type</label>
 				<InputSelect id="modal-type" Value="Provider.Type" ValueExpression="@(() => Provider.Type)"
-					ValueChanged="@((ProviderType value) => OnProviderTypeChanged(value))" class="form-select">
+							 ValueChanged="@((ProviderType value) => OnProviderTypeChanged(value))" class="form-select">
 					@foreach (var type in Enum.GetValues<ProviderType>())
 					{
 						<option value="@type">@type</option>
@@ -60,7 +61,7 @@
 				<div class="mb-3">
 					<label for="modal-executablePath" class="form-label">Executable Path (optional)</label>
 					<InputText id="modal-executablePath" @bind-Value="Provider.ExecutablePath" class="form-control"
-						placeholder="@GetExecutablePlaceholder()" />
+							   placeholder="@GetExecutablePlaceholder()" />
 					<div class="form-text">@GetExecutableHelpText()</div>
 				</div>
 			}
@@ -119,10 +120,10 @@
 						API Endpoint <span class="text-danger">*</span>
 					</label>
 					<InputText id="modal-apiEndpoint" @bind-Value="Provider.ApiEndpoint" class="form-control"
-						placeholder="http://localhost:8080" />
+							   placeholder="http://localhost:8080" />
 					<ValidationMessage For="@(() => Provider.ApiEndpoint)" class="text-danger small" />
 					@if (Provider.ConnectionMode == ProviderConnectionMode.REST &&
-									string.IsNullOrWhiteSpace(Provider.ApiEndpoint))
+																			string.IsNullOrWhiteSpace(Provider.ApiEndpoint))
 					{
 						<div class="text-warning small mt-1">
 							<i class="bi bi-exclamation-triangle me-1"></i>
@@ -141,109 +142,106 @@
 				<label for="modal-maxExecutionMinutes" class="form-label">Max Execution Time (optional)</label>
 				<div class="input-group">
 					<InputNumber id="modal-maxExecutionMinutes" @bind-Value="Provider.MaxExecutionMinutes"
-						class="form-control" placeholder="No limit" min="1" max="10080" />
+								 class="form-control" placeholder="No limit" min="1" max="10080" />
 					<span class="input-group-text">minutes</span>
 				</div>
 				<div class="form-text">Jobs using this provider will be automatically stopped after this time. Leave
 					empty for no limit.</div>
-			</div>
+				</div>
 
-			@* Usage Limit Configuration *@
-			@if (Provider.Type == ProviderType.Copilot || Provider.Type == ProviderType.Claude)
-			{
-				<div class="mb-3 p-3 rounded bg-body-secondary">
-					<h6 class="fw-semibold mb-3">
-						<i class="bi bi-graph-up me-2"></i>Usage Limit Configuration
-					</h6>
+				@* Usage Limit Configuration *@
+				@if (Provider.Type == ProviderType.Copilot || Provider.Type == ProviderType.Claude)
+				{
+					<div class="mb-3 p-3 rounded bg-body-secondary">
+						<h6 class="fw-semibold mb-3">
+							<i class="bi bi-graph-up me-2"></i>Usage Limit Configuration
+						</h6>
 
-					@if (Provider.Type == ProviderType.Copilot)
-					{
-						<div class="mb-2">
-							<label for="modal-usageLimit" class="form-label">Monthly Premium Request Limit</label>
-							<InputNumber id="modal-usageLimit" @bind-Value="Provider.ConfiguredUsageLimit" class="form-control"
-								placeholder="300" min="1" />
-							<div class="form-text">
-								Set your Copilot plan's monthly premium request limit (e.g., 300 for Copilot Pro, 1000 for
-								Business).
-								Jobs will be blocked when this limit is reached.
-							</div>
-						</div>
-					}
-					else if (Provider.Type == ProviderType.Claude)
-					{
-						<div class="mb-2">
-							<label for="modal-limitType" class="form-label">Limit Type</label>
-							<InputSelect id="modal-limitType" @bind-Value="Provider.ConfiguredLimitType" class="form-select">
-								<option value="@UsageLimitType.None">Auto-detect from CLI</option>
-								<option value="@UsageLimitType.TokenLimit">Tokens</option>
-								<option value="@UsageLimitType.SessionLimit">Session</option>
-							</InputSelect>
-						</div>
-						@if (Provider.ConfiguredLimitType != UsageLimitType.None)
+						@if (Provider.Type == ProviderType.Copilot)
 						{
 							<div class="mb-2">
-								<label for="modal-usageLimit" class="form-label">
-									@(Provider.ConfiguredLimitType == UsageLimitType.TokenLimit ? "Token Limit" : "Session Limit")
-								</label>
+								<label for="modal-usageLimit" class="form-label">Monthly Premium Request Limit</label>
 								<InputNumber id="modal-usageLimit" @bind-Value="Provider.ConfiguredUsageLimit" class="form-control"
-									placeholder="Enter limit" min="1" />
+											 placeholder="300" min="1" />
 								<div class="form-text">
-									@if (Provider.ConfiguredLimitType == UsageLimitType.TokenLimit)
-									{
-										<text>Maximum tokens per period. Jobs will be blocked when this limit is reached.</text>
-									}
-									else
-									{
-										<text>Maximum usage per session. Jobs will be blocked when this limit is reached.</text>
-									}
+									Set your Copilot plan's monthly premium request limit (e.g., 300 for Copilot Pro, 1000 for
+									Business).
+									Jobs will be blocked when this limit is reached.
 								</div>
 							</div>
 						}
-					}
-				</div>
-			}
-
-			<div class="mb-3 form-check">
-				<InputCheckbox id="modal-isEnabled" @bind-Value="Provider.IsEnabled" class="form-check-input" />
-				<label for="modal-isEnabled" class="form-check-label">Enabled</label>
-			</div>
-
-			@if (ValidationErrors.Any())
-			{
-				<Alert Type="Alert.AlertType.Warning" Class="mb-3">
-					<strong>Please fix the following issues:</strong>
-					<ul class="mb-0 mt-2">
-						@foreach (var error in ValidationErrors)
+						else if (Provider.Type == ProviderType.Claude)
 						{
-							<li>@error</li>
+							<div class="mb-2">
+								<label for="modal-limitType" class="form-label">Limit Type</label>
+								<InputSelect id="modal-limitType" @bind-Value="Provider.ConfiguredLimitType" class="form-select">
+									<option value="@UsageLimitType.None">Auto-detect from CLI</option>
+									<option value="@UsageLimitType.TokenLimit">Tokens</option>
+									<option value="@UsageLimitType.SessionLimit">Session</option>
+								</InputSelect>
+							</div>
+							@if (Provider.ConfiguredLimitType != UsageLimitType.None)
+							{
+								<div class="mb-2">
+									<label for="modal-usageLimit" class="form-label">
+										@(Provider.ConfiguredLimitType == UsageLimitType.TokenLimit ? "Token Limit" : "Session Limit")
+									</label>
+									<InputNumber id="modal-usageLimit" @bind-Value="Provider.ConfiguredUsageLimit" class="form-control"
+												 placeholder="Enter limit" min="1" />
+									<div class="form-text">
+										@if (Provider.ConfiguredLimitType == UsageLimitType.TokenLimit)
+										{
+											<text>Maximum tokens per period. Jobs will be blocked when this limit is reached.</text>
+										}
+										else
+										{
+											<text>Maximum usage per session. Jobs will be blocked when this limit is reached.</text>
+										}
+									</div>
+								</div>
+							}
 						}
-					</ul>
-				</Alert>
-			}
+					</div>
+				}
 
-			@if (!string.IsNullOrEmpty(ErrorMessage))
-			{
-				<Alert Type="Alert.AlertType.Danger" Message="@ErrorMessage" Class="mb-3" />
-			}
+				<div class="mb-3 form-check">
+					<InputCheckbox id="modal-isEnabled" @bind-Value="Provider.IsEnabled" class="form-check-input" />
+					<label for="modal-isEnabled" class="form-check-label">Enabled</label>
+				</div>
 
-			@if (!string.IsNullOrEmpty(SuccessMessage))
-			{
-				<Alert Type="Alert.AlertType.Success" Message="@SuccessMessage" Class="mb-3" />
-			}
+				@if (ValidationErrors.Any())
+				{
+					<Alert Type="Alert.AlertType.Warning" Class="mb-3">
+						<strong>Please fix the following issues:</strong>
+						<ul class="mb-0 mt-2">
+							@foreach (var error in ValidationErrors)
+							{
+								<li>@error</li>
+							}
+						</ul>
+					</Alert>
+				}
 
-			<div class="d-flex gap-2 justify-content-end">
-				<button type="button" class="btn btn-secondary" @onclick="HandleCancel">Cancel</button>
-				<button type="submit" class="btn btn-primary" disabled="@(IsSaving || ValidationErrors.Any())">
-					@if (IsSaving)
-					{
-						<span class="spinner-border spinner-border-sm me-1" role="status"></span>
-					}
-					@(IsSaving ? "Saving..." : (IsEdit ? "Update Provider" : "Add Provider"))
-				</button>
-			</div>
-		</EditForm>
-	</ChildContent>
-</ModalDialog>
+				@if (!string.IsNullOrEmpty(ErrorMessage))
+				{
+					<div class="text-danger small mb-3">
+						<i class="bi bi-exclamation-circle me-1"></i>@ErrorMessage
+					</div>
+				}
+
+				<div class="d-flex gap-2 justify-content-end">
+					<button type="button" class="btn btn-secondary" @onclick="HandleCancel">Cancel</button>
+					<button type="submit" class="btn btn-primary" disabled="@(IsSaving || ValidationErrors.Any())">
+						@if (IsSaving)
+						{
+							<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+						}
+						@(IsSaving ? "Saving..." : (IsEdit ? "Update Provider" : "Add Provider"))
+					</button>
+				</div>
+			</EditForm>
+		</ChildContent>
+	</ModalDialog>
 
 @code {
 	[Parameter]
@@ -268,7 +266,6 @@
 	private bool IsEdit => EditProvider != null;
 	private bool IsSaving { get; set; }
 	private string? ErrorMessage { get; set; }
-	private string? SuccessMessage { get; set; }
 	private bool _previousIsVisible;
 
 	private IReadOnlyList<string> ValidationErrors => ProviderCapabilities.ValidateConfiguration(Provider);
@@ -358,7 +355,6 @@
 
 		IsSaving = true;
 		ErrorMessage = null;
-		SuccessMessage = null;
 
 		try
 		{
@@ -367,13 +363,13 @@
 			if (IsEdit)
 			{
 				await ProviderService.UpdateAsync(Provider);
-				SuccessMessage = "Provider updated successfully.";
+				NotificationService.ShowSuccess("Provider updated successfully.");
 			}
 			else
 			{
 				var created = await ProviderService.CreateAsync(Provider);
 				newProviderId = created.Id;
-				SuccessMessage = "Provider added successfully.";
+				NotificationService.ShowSuccess("Provider added successfully.");
 			}
 
 			await OnSaved.InvokeAsync(newProviderId);
@@ -421,7 +417,6 @@
 	{
 		Provider = new Provider();
 		ErrorMessage = null;
-		SuccessMessage = null;
 		IsSaving = false;
 	}
 }

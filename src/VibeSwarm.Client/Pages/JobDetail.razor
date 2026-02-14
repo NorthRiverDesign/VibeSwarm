@@ -19,7 +19,7 @@
 else if (Job == null)
 {
     <Breadcrumb
-        Items="@(new List<Breadcrumb.BreadcrumbItem> { new("Projects", "/projects", "folder"), new("Job Not Found") })" />
+    Items="@(new List<Breadcrumb.BreadcrumbItem> { new("Projects", "/projects", "folder"), new("Job Not Found") })" />
     <Alert Type="Alert.AlertType.Warning" Message="Job not found." />
 }
 else
@@ -29,17 +29,17 @@ else
 
     @* Page Header Section *@
     <JobHeaderSection Status="@Job.Status" JobTitle="@Job.Title" CancellationRequested="@Job.CancellationRequested"
-        GitHubRepository="@Job.Project?.GitHubRepository" BranchName="@_branchName" ProjectId="@Job.ProjectId"
-        ProjectName="@(Job.Project?.Name ?? "Unknown")" ProviderName="@(Job.Provider?.Name ?? "Unknown")"
-        ProcessId="@Job.ProcessId" CreatedAt="@Job.CreatedAt" StartedAt="@Job.StartedAt" CompletedAt="@Job.CompletedAt"
-        ExecutionDuration="@Job.ExecutionDuration" ModelUsed="@Job.ModelUsed" RetryCount="@Job.RetryCount"
-        InputTokens="@Job.InputTokens" OutputTokens="@Job.OutputTokens" TotalCostUsd="@Job.TotalCostUsd"
-        CanRetry="@CanRetry" CanCancel="@CanCancel" CanForceCancel="@CanForceCancel"
-        ShowRetryOptions="@(Job.Status == JobStatus.Failed || Job.Status == JobStatus.Cancelled)" IsRetrying="@IsRetrying"
-        IsCancelling="@IsCancelling" IsForceCancelling="@IsForceCancelling" OnRetry="RetryJob"
-        OnRetryWithOptions="ShowRetryModal" OnCancel="CancelJob" OnForceCancel="ForceCancelJob"
-        CurrentActivity="@Job.CurrentActivity" LastActivityAt="@Job.LastActivityAt" CurrentCycle="@Job.CurrentCycle"
-        MaxCycles="@Job.MaxCycles" CycleMode="@Job.CycleMode" />
+                      GitHubRepository="@Job.Project?.GitHubRepository" BranchName="@_branchName" ProjectId="@Job.ProjectId"
+                      ProjectName="@(Job.Project?.Name ?? "Unknown")" ProviderName="@(Job.Provider?.Name ?? "Unknown")"
+                      ProcessId="@Job.ProcessId" CreatedAt="@Job.CreatedAt" StartedAt="@Job.StartedAt" CompletedAt="@Job.CompletedAt"
+                      ExecutionDuration="@Job.ExecutionDuration" ModelUsed="@Job.ModelUsed" RetryCount="@Job.RetryCount"
+                      InputTokens="@Job.InputTokens" OutputTokens="@Job.OutputTokens" TotalCostUsd="@Job.TotalCostUsd"
+                      CanRetry="@CanRetry" CanCancel="@CanCancel" CanForceCancel="@CanForceCancel"
+                      ShowRetryOptions="@(Job.Status == JobStatus.Failed || Job.Status == JobStatus.Cancelled)" IsRetrying="@IsRetrying"
+                      IsCancelling="@IsCancelling" IsForceCancelling="@IsForceCancelling" OnRetry="RetryJob"
+                      OnRetryWithOptions="ShowRetryModal" OnCancel="CancelJob" OnForceCancel="ForceCancelJob"
+                      CurrentActivity="@Job.CurrentActivity" LastActivityAt="@Job.LastActivityAt" CurrentCycle="@Job.CurrentCycle"
+                      MaxCycles="@Job.MaxCycles" CycleMode="@Job.CycleMode" />
 
     @* Main Content - Column Layout *@
     <div class="row g-3 g-lg-4">
@@ -48,16 +48,16 @@ else
 
             @* Goal Prompt Card *@
             <JobGoalPromptCard GoalPrompt="@Job.GoalPrompt" IdeaText="@Job.Title" Status="@Job.Status" CanRetry="@CanRetry"
-                HasConsoleOutput="@(!string.IsNullOrEmpty(Job.ConsoleOutput))" OnCopyToClipboard="CopyPromptToClipboard"
-                OnPromptChanged="UpdateJobPrompt" />
+                               HasConsoleOutput="@(!string.IsNullOrEmpty(Job.ConsoleOutput))" OnCopyToClipboard="CopyPromptToClipboard"
+                               OnPromptChanged="UpdateJobPrompt" />
 
             @* User Interaction Section - shown when job is paused waiting for input *@
             @if (Job.Status == JobStatus.Paused && !string.IsNullOrEmpty(Job.PendingInteractionPrompt))
             {
                 <UserInteractionPanel Prompt="@Job.PendingInteractionPrompt" Choices="@_interactionChoices"
-                    IsSubmitting="@_isSubmittingResponse" ErrorMessage="@_interactionError"
-                    RequestedAt="@Job.InteractionRequestedAt" OnSubmitChoice="SubmitInteractionResponse"
-                    OnSubmitResponse="SubmitInteractionResponse" />
+                                      IsSubmitting="@_isSubmittingResponse" ErrorMessage="@_interactionError"
+                                      RequestedAt="@Job.InteractionRequestedAt" OnSubmitChoice="SubmitInteractionResponse"
+                                      OnSubmitResponse="SubmitInteractionResponse" />
             }
 
             @* Git Diff Loading State *@
@@ -84,21 +84,21 @@ else
             else if (_isGitRepository && !IsJobActive && !string.IsNullOrEmpty(Job.GitDiff))
             {
                 <GitDiffViewer DiffFiles="@_parsedDiffFiles" @bind-IsVisible="_showGitDiff"
-                    IsVerifying="@_isComparingWorkingCopy"
-                    ShowVerificationStatus="@(_workingCopyComparisonDone && !_changesPushed && string.IsNullOrEmpty(Job.GitCommitHash))"
-                    IsVerified="@_workingCopyMatches" IsDiverged="@(!_workingCopyMatches)"
-                    IsCommitted="@(!string.IsNullOrEmpty(Job.GitCommitHash))" MissingFiles="@_workingCopyMissingFiles"
-                    ExtraFiles="@_workingCopyExtraFiles" ModifiedFiles="@_workingCopyModifiedFiles"
-                    OnRecheck="CompareWithWorkingCopy" />
+                               IsVerifying="@_isComparingWorkingCopy"
+                               ShowVerificationStatus="@(_workingCopyComparisonDone && !_changesPushed && string.IsNullOrEmpty(Job.GitCommitHash))"
+                               IsVerified="@_workingCopyMatches" IsDiverged="@(!_workingCopyMatches)"
+                               IsCommitted="@(!string.IsNullOrEmpty(Job.GitCommitHash))" MissingFiles="@_workingCopyMissingFiles"
+                               ExtraFiles="@_workingCopyExtraFiles" ModifiedFiles="@_workingCopyModifiedFiles"
+                               OnRecheck="CompareWithWorkingCopy" />
 
                 @* Commit Section - shown when there are git changes *@
                 <CommitSection CommitMessage="@_commitMessage" CommitMessageChanged="@((msg) => _commitMessage = msg)"
-                    BranchName="@_branchName" IsLoadingSummary="@_isLoadingSummary"
-                    HasAISummary="@(!string.IsNullOrWhiteSpace(Job.SessionSummary))" SummaryError="@_summaryError"
-                    PushError="@_pushError" IsPushing="@_isPushing" PushStatus="@_pushStatus" IsPushed="@_changesPushed"
-                    PushedCommitHash="@_pushedCommitHash" CanPush="@CanPush"
-                    IsAutoCommitted="@(!string.IsNullOrEmpty(Job.GitCommitHash) && !_changesPushed)"
-                    OnCommitAndPush="CommitAndPushChanges" OnRefreshSummary="RefreshSummary" />
+                               BranchName="@_branchName" IsLoadingSummary="@_isLoadingSummary"
+                               HasAISummary="@(!string.IsNullOrWhiteSpace(Job.SessionSummary))" SummaryError="@_summaryError"
+                               PushError="@_pushError" IsPushing="@_isPushing" PushStatus="@_pushStatus" IsPushed="@_changesPushed"
+                               PushedCommitHash="@_pushedCommitHash" CanPush="@CanPush"
+                               IsAutoCommitted="@(!string.IsNullOrEmpty(Job.GitCommitHash) && !_changesPushed)"
+                               OnCommitAndPush="CommitAndPushChanges" OnRefreshSummary="RefreshSummary" />
             }
             else if (_isGitRepository && !IsJobActive && Job.Status == JobStatus.Completed &&
             string.IsNullOrEmpty(Job.GitDiff))
@@ -116,7 +116,7 @@ else
                             <i class="bi bi-info-circle me-2 opacity-75"></i>No file changes detected.
                         </p>
                         <button class="btn btn-outline-secondary btn-sm" @onclick="CheckGitDiffAsync"
-                            disabled="@_isCheckingGitDiff">
+                                disabled="@_isCheckingGitDiff">
                             @if (_isCheckingGitDiff)
                             {
                                 <span class="spinner-border spinner-border-sm me-1" role="status"></span>
@@ -134,38 +134,28 @@ else
 
             @* Working Directory Changes - shown for failed/cancelled jobs *@
             @if (_isGitRepository && !IsJobActive && (Job.Status == JobStatus.Failed || Job.Status == JobStatus.Cancelled)
-                    &&
-                    Job?.Project?.WorkingPath != null)
+                                &&
+                                Job?.Project?.WorkingPath != null)
             {
                 <UncommittedChangesCard DiffFiles="@_uncommittedDiffFiles" IsChecking="@_isCheckingUncommittedChanges"
-                    HasChecked="@_hasCheckedUncommittedChanges" HasChanges="@_hasUncommittedChanges"
-                    ErrorMessage="@_uncommittedChangesError" JobFailed="@(Job.Status == JobStatus.Failed)"
-                    CommitMessage="@_uncommittedCommitMessage"
-                    CommitMessageChanged="@((msg) => _uncommittedCommitMessage = msg)"
-                    IsCommitting="@_isCommittingUncommittedChanges" IsDiscarding="@_isDiscardingChanges"
-                    OnCheck="CheckUncommittedChangesAsync" OnRefresh="CheckUncommittedChangesAsync"
-                    OnCommit="CommitUncommittedChangesAsync" OnDiscard="DiscardUncommittedChangesAsync" />
+                                        HasChecked="@_hasCheckedUncommittedChanges" HasChanges="@_hasUncommittedChanges"
+                                        ErrorMessage="@_uncommittedChangesError" JobFailed="@(Job.Status == JobStatus.Failed)"
+                                        CommitMessage="@_uncommittedCommitMessage"
+                                        CommitMessageChanged="@((msg) => _uncommittedCommitMessage = msg)"
+                                        IsCommitting="@_isCommittingUncommittedChanges" IsDiscarding="@_isDiscardingChanges"
+                                        OnCheck="CheckUncommittedChangesAsync" OnRefresh="CheckUncommittedChangesAsync"
+                                        OnCommit="CommitUncommittedChangesAsync" OnDiscard="DiscardUncommittedChangesAsync" />
             }
         </div>
 
         @* Right Column - Session Panel (Live Output, Console, Command, Conversation) *@
         <div class="col-12 col-xl-7 order-1 order-xl-2 d-flex flex-column">
             <JobSessionPanel Messages="@(Job.Messages?.ToList() ?? new())" Status="@Job.Status" IsJobActive="@IsJobActive"
-                ErrorMessage="@Job.ErrorMessage" ConsoleOutput="@Job.ConsoleOutput" CommandUsed="@Job.CommandUsed"
-                SessionId="@Job.SessionId" LiveOutputLines="@_liveOutput.ToList()" MaxOutputLines="@MaxOutputLines"
-                OnClearLiveOutput="ClearLiveOutput" OnSendFollowUp="CreateFollowUpJob" />
+                             ErrorMessage="@Job.ErrorMessage" ConsoleOutput="@Job.ConsoleOutput" CommandUsed="@Job.CommandUsed"
+                             SessionId="@Job.SessionId" LiveOutputLines="@_liveOutput.ToList()" MaxOutputLines="@MaxOutputLines"
+                             OnClearLiveOutput="ClearLiveOutput" OnSendFollowUp="CreateFollowUpJob" />
         </div>
     </div>
-
-    @if (!string.IsNullOrEmpty(ErrorMessage))
-    {
-        <Alert Type="Alert.AlertType.Danger" Message="@ErrorMessage" Class="mt-3" />
-    }
-
-    @if (!string.IsNullOrEmpty(SuccessMessage))
-    {
-        <Alert Type="Alert.AlertType.Success" Message="@SuccessMessage" Class="mt-3" />
-    }
 
     @* Retry Job Modal *@
     <RetryJobModal @bind-IsVisible="_showRetryModal" Job="Job" OnRetry="HandleRetryWithOptions" />
@@ -183,8 +173,6 @@ else
     private bool IsCancelling { get; set; }
     private bool IsForceCancelling { get; set; }
     private bool IsRetrying { get; set; }
-    private string? ErrorMessage { get; set; }
-    private string? SuccessMessage { get; set; }
     private HubConnection? _hubConnection;
     private Timer? _refreshTimer;
     private bool _isRefreshing = false;
@@ -688,25 +676,23 @@ TimeSpan.FromSeconds(10) })
         if (Job == null) return;
 
         IsCancelling = true;
-        ErrorMessage = null;
-        SuccessMessage = null;
 
         try
         {
             var result = await JobService.RequestCancellationAsync(Job.Id);
             if (result)
             {
-                SuccessMessage = "Cancellation requested. The job will be cancelled shortly.";
+                NotificationService.ShowSuccess("Cancellation requested. The job will be cancelled shortly.");
                 await LoadJob();
             }
             else
             {
-                ErrorMessage = "Could not cancel the job. It may have already completed.";
+                NotificationService.ShowError("Could not cancel the job. It may have already completed.");
             }
         }
         catch (Exception ex)
         {
-            ErrorMessage = $"Error cancelling job: {ex.Message}";
+            NotificationService.ShowError($"Error cancelling job: {ex.Message}");
         }
         finally
         {
@@ -719,25 +705,23 @@ TimeSpan.FromSeconds(10) })
         if (Job == null) return;
 
         IsForceCancelling = true;
-        ErrorMessage = null;
-        SuccessMessage = null;
 
         try
         {
             var result = await JobService.ForceCancelAsync(Job.Id);
             if (result)
             {
-                SuccessMessage = "Job has been force-cancelled.";
+                NotificationService.ShowSuccess("Job has been force-cancelled.");
                 await LoadJob();
             }
             else
             {
-                ErrorMessage = "Could not force-cancel the job. It may have already completed.";
+                NotificationService.ShowError("Could not force-cancel the job. It may have already completed.");
             }
         }
         catch (Exception ex)
         {
-            ErrorMessage = $"Error force-cancelling job: {ex.Message}";
+            NotificationService.ShowError($"Error force-cancelling job: {ex.Message}");
         }
         finally
         {
@@ -750,25 +734,23 @@ TimeSpan.FromSeconds(10) })
         if (Job == null) return;
 
         IsRetrying = true;
-        ErrorMessage = null;
-        SuccessMessage = null;
 
         try
         {
             var result = await JobService.ResetJobAsync(Job.Id);
             if (result)
             {
-                SuccessMessage = "Job has been reset and will be retried shortly.";
+                NotificationService.ShowSuccess("Job has been reset and will be retried shortly.");
                 await LoadJob();
             }
             else
             {
-                ErrorMessage = "Could not retry the job. It may not be in a terminal state.";
+                NotificationService.ShowError("Could not retry the job. It may not be in a terminal state.");
             }
         }
         catch (Exception ex)
         {
-            ErrorMessage = $"Error retrying job: {ex.Message}";
+            NotificationService.ShowError($"Error retrying job: {ex.Message}");
         }
         finally
         {
@@ -815,8 +797,6 @@ TimeSpan.FromSeconds(10) })
         if (Job == null) return;
 
         IsRetrying = true;
-        ErrorMessage = null;
-        SuccessMessage = null;
         _showRetryModal = false;
 
         try
@@ -824,17 +804,17 @@ TimeSpan.FromSeconds(10) })
             var result = await JobService.ResetJobWithOptionsAsync(Job.Id, options.ProviderId, options.ModelId);
             if (result)
             {
-                SuccessMessage = "Job has been reset with new options and will be retried shortly.";
+                NotificationService.ShowSuccess("Job has been reset with new options and will be retried shortly.");
                 await LoadJob();
             }
             else
             {
-                ErrorMessage = "Could not retry the job. It may not be in a terminal state or the provider is invalid.";
+                NotificationService.ShowError("Could not retry the job. It may not be in a terminal state or the provider is invalid.");
             }
         }
         catch (Exception ex)
         {
-            ErrorMessage = $"Error retrying job: {ex.Message}";
+            NotificationService.ShowError($"Error retrying job: {ex.Message}");
         }
         finally
         {
@@ -891,7 +871,7 @@ TimeSpan.FromSeconds(10) })
     {
         try
         {
-            await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", command);
+            await JSRuntime.InvokeVoidAsync("copyToClipboard", command);
             NotificationService.ShowSuccess("Command copied to clipboard!", "Copied");
         }
         catch (Exception ex)
@@ -906,7 +886,7 @@ TimeSpan.FromSeconds(10) })
         {
             try
             {
-                await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", Job.GoalPrompt);
+                await JSRuntime.InvokeVoidAsync("copyToClipboard", Job.GoalPrompt);
                 NotificationService.ShowSuccess("Prompt copied to clipboard!", "Copied");
             }
             catch (Exception ex)
@@ -1027,7 +1007,7 @@ TimeSpan.FromSeconds(10) })
         }
         catch (Exception ex)
         {
-            ErrorMessage = $"Error checking git changes: {ex.Message}";
+            NotificationService.ShowError($"Error checking git changes: {ex.Message}");
             Console.WriteLine($"Error checking git diff: {ex.Message}");
         }
         finally
@@ -1101,7 +1081,7 @@ TimeSpan.FromSeconds(10) })
                 _changesPushed = true;
                 _pushedCommitHash = result.CommitHash;
                 _branchName = result.BranchName ?? _branchName;
-                SuccessMessage = "Changes committed and pushed successfully!";
+                NotificationService.ShowSuccess("Changes committed and pushed successfully!");
 
                 if (!string.IsNullOrEmpty(result.CommitHash) && Job != null)
                 {

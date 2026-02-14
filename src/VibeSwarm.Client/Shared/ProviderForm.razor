@@ -1,4 +1,5 @@
 @inject IProviderService ProviderService
+@inject NotificationService NotificationService
 
 <EditForm Model="@Provider" OnValidSubmit="HandleValidSubmit">
 	<DataAnnotationsValidator />
@@ -13,7 +14,7 @@
 	<div class="mb-3">
 		<label for="type" class="form-label">Provider Type</label>
 		<InputSelect id="type" Value="Provider.Type" ValueExpression="@(() => Provider.Type)"
-			ValueChanged="@((ProviderType value) => OnProviderTypeChanged(value))" class="form-select">
+					 ValueChanged="@((ProviderType value) => OnProviderTypeChanged(value))" class="form-select">
 			@foreach (var type in Enum.GetValues<ProviderType>())
 			{
 				<option value="@type">@type</option>
@@ -52,7 +53,7 @@
 		<div class="mb-3">
 			<label for="executablePath" class="form-label">Executable Path (optional)</label>
 			<InputText id="executablePath" @bind-Value="Provider.ExecutablePath" class="form-control"
-				placeholder="@GetExecutablePlaceholder()" />
+					   placeholder="@GetExecutablePlaceholder()" />
 			<div class="form-text">@GetExecutableHelpText()</div>
 		</div>
 	}
@@ -111,7 +112,7 @@
 				API Endpoint <span class="text-danger">*</span>
 			</label>
 			<InputText id="apiEndpoint" @bind-Value="Provider.ApiEndpoint" class="form-control"
-				placeholder="http://localhost:8080" />
+					   placeholder="http://localhost:8080" />
 			<ValidationMessage For="@(() => Provider.ApiEndpoint)" class="text-danger small" />
 			@if (Provider.ConnectionMode == ProviderConnectionMode.REST && string.IsNullOrWhiteSpace(Provider.ApiEndpoint))
 			{
@@ -162,12 +163,9 @@
 
 	@if (!string.IsNullOrEmpty(ErrorMessage))
 	{
-		<Alert Type="Alert.AlertType.Danger" Message="@ErrorMessage" Class="mt-3 mb-0" />
-	}
-
-	@if (!string.IsNullOrEmpty(SuccessMessage))
-	{
-		<Alert Type="Alert.AlertType.Success" Message="@SuccessMessage" Class="mt-3 mb-0" />
+		<div class="text-danger small mt-3 mb-0">
+			<i class="bi bi-exclamation-circle me-1"></i>@ErrorMessage
+		</div>
 	}
 </EditForm>
 
@@ -186,7 +184,6 @@
 
 	private bool IsSaving { get; set; }
 	private string? ErrorMessage { get; set; }
-	private string? SuccessMessage { get; set; }
 
 	private IReadOnlyList<string> ValidationErrors => ProviderCapabilities.ValidateConfiguration(Provider);
 
@@ -234,19 +231,18 @@
 
 		IsSaving = true;
 		ErrorMessage = null;
-		SuccessMessage = null;
 
 		try
 		{
 			if (IsEdit)
 			{
 				await ProviderService.UpdateAsync(Provider);
-				SuccessMessage = "Provider updated successfully.";
+				NotificationService.ShowSuccess("Provider updated successfully.");
 			}
 			else
 			{
 				await ProviderService.CreateAsync(Provider);
-				SuccessMessage = "Provider added successfully.";
+				NotificationService.ShowSuccess("Provider added successfully.");
 				Provider = new Provider();
 			}
 
