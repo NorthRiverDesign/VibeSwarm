@@ -588,9 +588,9 @@ public class JobProcessingService : BackgroundService
             var currentCycle = job.CurrentCycle;
             var sessionId = job.SessionId;
             ExecutionResult? lastResult = null;
-            var totalInputTokens = 0;
-            var totalOutputTokens = 0;
-            decimal totalCostUsd = 0;
+            int? totalInputTokens = null;
+            int? totalOutputTokens = null;
+            decimal? totalCostUsd = null;
 
             // Track last progress update time to avoid excessive database writes
             var lastProgressUpdate = DateTime.MinValue;
@@ -832,9 +832,12 @@ public class JobProcessingService : BackgroundService
                 // Store last result and accumulate tokens/cost
                 lastResult = result;
                 sessionId = result.SessionId ?? sessionId;
-                totalInputTokens += result.InputTokens ?? 0;
-                totalOutputTokens += result.OutputTokens ?? 0;
-                totalCostUsd += result.CostUsd ?? 0;
+                if (result.InputTokens.HasValue)
+                    totalInputTokens = (totalInputTokens ?? 0) + result.InputTokens.Value;
+                if (result.OutputTokens.HasValue)
+                    totalOutputTokens = (totalOutputTokens ?? 0) + result.OutputTokens.Value;
+                if (result.CostUsd.HasValue)
+                    totalCostUsd = (totalCostUsd ?? 0) + result.CostUsd.Value;
 
                 // Check for cycle completion conditions
                 if (!result.Success)

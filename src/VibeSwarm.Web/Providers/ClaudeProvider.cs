@@ -81,6 +81,11 @@ public class ClaudeProvider : CliProviderBase
         var result = new ExecutionResult { Messages = new List<ExecutionMessage>() };
         var effectiveWorkingDir = workingDirectory ?? WorkingDirectory ?? Environment.CurrentDirectory;
 
+        // Reset accumulated token counters for this execution
+        _accumulatedInputTokens = 0;
+        _accumulatedOutputTokens = 0;
+        _hasAccumulatedTokens = false;
+
         // Build arguments for non-interactive execution with JSON streaming output
         var args = new List<string>
         {
@@ -247,8 +252,23 @@ public class ClaudeProvider : CliProviderBase
             }
         }
 
+        // Final fallback: if no result event provided tokens, use accumulated from assistant messages
+        if (!result.InputTokens.HasValue && _hasAccumulatedTokens && _accumulatedInputTokens > 0)
+        {
+            result.InputTokens = _accumulatedInputTokens;
+        }
+        if (!result.OutputTokens.HasValue && _hasAccumulatedTokens && _accumulatedOutputTokens > 0)
+        {
+            result.OutputTokens = _accumulatedOutputTokens;
+        }
+
         return result;
     }
+
+    // Accumulated token usage across all assistant message events
+    private int _accumulatedInputTokens = 0;
+    private int _accumulatedOutputTokens = 0;
+    private bool _hasAccumulatedTokens = false;
 
     private void ProcessStreamEvent(
         ClaudeStreamEvent evt,
@@ -271,6 +291,20 @@ public class ClaudeProvider : CliProviderBase
                 break;
 
             case "assistant":
+                // Accumulate token usage from each assistant message event
+                if (evt.Message?.Usage != null)
+                {
+                    if (evt.Message.Usage.InputTokens.HasValue)
+                    {
+                        _accumulatedInputTokens += evt.Message.Usage.InputTokens.Value;
+                        _hasAccumulatedTokens = true;
+                    }
+                    if (evt.Message.Usage.OutputTokens.HasValue)
+                    {
+                        _accumulatedOutputTokens += evt.Message.Usage.OutputTokens.Value;
+                        _hasAccumulatedTokens = true;
+                    }
+                }
                 if (evt.Message?.Content != null)
                 {
                     if (!string.IsNullOrEmpty(evt.Message.Model))
@@ -355,10 +389,29 @@ public class ClaudeProvider : CliProviderBase
                 {
                     result.CostUsd = evt.CostUsd;
                 }
+                // Try nested usage object first
                 if (evt.Usage != null)
                 {
                     result.InputTokens = evt.Usage.InputTokens;
                     result.OutputTokens = evt.Usage.OutputTokens;
+                }
+                // Fall back to flat token fields on the result event
+                if (!result.InputTokens.HasValue && evt.InputTokens.HasValue)
+                {
+                    result.InputTokens = evt.InputTokens;
+                }
+                if (!result.OutputTokens.HasValue && evt.OutputTokens.HasValue)
+                {
+                    result.OutputTokens = evt.OutputTokens;
+                }
+                // Fall back to accumulated tokens from assistant message events
+                if (!result.InputTokens.HasValue && _hasAccumulatedTokens)
+                {
+                    result.InputTokens = _accumulatedInputTokens;
+                }
+                if (!result.OutputTokens.HasValue && _hasAccumulatedTokens)
+                {
+                    result.OutputTokens = _accumulatedOutputTokens;
                 }
                 if (!string.IsNullOrEmpty(evt.SessionId))
                 {

@@ -77,7 +77,8 @@ public static class GitDiffParser
 	}
 
 	/// <summary>
-	/// Formats git diff output with HTML syntax highlighting for display
+	/// Formats git diff output with HTML syntax highlighting for display.
+	/// Hides diff metadata lines (diff --git, index, ---, +++) and shows only relevant content with line numbers.
 	/// </summary>
 	/// <param name="diff">The raw git diff string</param>
 	/// <returns>HTML formatted diff content</returns>
@@ -90,37 +91,59 @@ public static class GitDiffParser
 		var result = new StringBuilder();
 		result.Append("<div class=\"diff-content font-monospace small\">");
 
+		int oldLine = 0;
+		int newLine = 0;
+
 		foreach (var line in lines)
 		{
+			// Skip diff metadata lines - only show relevant content
+			if (line.StartsWith("diff --git") ||
+				line.StartsWith("index ") ||
+				line.StartsWith("--- ") ||
+				line.StartsWith("+++ ") ||
+				line.StartsWith("new file") ||
+				line.StartsWith("deleted file") ||
+				line.StartsWith("old mode") ||
+				line.StartsWith("new mode") ||
+				line.StartsWith("similarity index") ||
+				line.StartsWith("rename from") ||
+				line.StartsWith("rename to") ||
+				line.StartsWith("Binary files"))
+			{
+				continue;
+			}
+
 			var escapedLine = WebUtility.HtmlEncode(line);
 
 			if (line.StartsWith("@@"))
 			{
-				result.Append($"<div class=\"diff-hunk text-info bg-dark bg-opacity-50 px-2\">{escapedLine}</div>");
+				// Parse hunk header: @@ -oldStart,oldCount +newStart,newCount @@
+				var match = System.Text.RegularExpressions.Regex.Match(line, @"@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@");
+				if (match.Success)
+				{
+					oldLine = int.Parse(match.Groups[1].Value);
+					newLine = int.Parse(match.Groups[2].Value);
+				}
+				// Show hunk header spanning both line number columns
+				result.Append($"<div class=\"diff-hunk d-flex text-info bg-dark bg-opacity-50\"><span class=\"diff-line-nums text-end pe-2 opacity-50 flex-shrink-0\">...</span><span class=\"px-2 flex-grow-1\">{escapedLine}</span></div>");
 			}
 			else if (line.StartsWith("+") && !line.StartsWith("+++"))
 			{
-				result.Append($"<div class=\"diff-add text-success bg-success bg-opacity-10 px-2\">{escapedLine}</div>");
+				result.Append($"<div class=\"diff-add d-flex text-success bg-success bg-opacity-10\"><span class=\"diff-line-nums text-end pe-2 opacity-75 flex-shrink-0\">{newLine}</span><span class=\"px-2 flex-grow-1\">{escapedLine}</span></div>");
+				newLine++;
 			}
 			else if (line.StartsWith("-") && !line.StartsWith("---"))
 			{
-				result.Append($"<div class=\"diff-del text-danger bg-danger bg-opacity-10 px-2\">{escapedLine}</div>");
-			}
-			else if (line.StartsWith("index ") || line.StartsWith("--- ") || line.StartsWith("+++ "))
-			{
-				result.Append($"<div class=\"diff-meta text-secondary px-2\">{escapedLine}</div>");
-			}
-			else if (line.StartsWith("diff "))
-			{
-				result.Append($"<div class=\"diff-header fw-bold px-2\">{escapedLine}</div>");
-			}
-			else if (line.StartsWith("new file") || line.StartsWith("deleted file"))
-			{
-				result.Append($"<div class=\"diff-meta text-secondary px-2\">{escapedLine}</div>");
+				result.Append($"<div class=\"diff-del d-flex text-danger bg-danger bg-opacity-10\"><span class=\"diff-line-nums text-end pe-2 opacity-75 flex-shrink-0\">{oldLine}</span><span class=\"px-2 flex-grow-1\">{escapedLine}</span></div>");
+				oldLine++;
 			}
 			else
 			{
-				result.Append($"<div class=\"diff-context px-2\">{escapedLine}</div>");
+				// Context line - both line numbers advance
+				var lineNum = oldLine > 0 ? oldLine.ToString() : "";
+				result.Append($"<div class=\"diff-context d-flex\"><span class=\"diff-line-nums text-end pe-2 opacity-50 flex-shrink-0\">{lineNum}</span><span class=\"px-2 flex-grow-1\">{escapedLine}</span></div>");
+				oldLine++;
+				newLine++;
 			}
 		}
 

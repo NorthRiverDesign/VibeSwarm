@@ -403,6 +403,15 @@ body {
 .diff-stats {
 	font-family: "SF Mono", monospace;
 }
+/* Diff line number column */
+.diff-line-nums {
+	width: 3.5rem;
+	min-width: 3.5rem;
+	user-select: none;
+	border-right: 1px solid rgba(128, 128, 128, 0.2);
+	font-size: 0.75em;
+	line-height: inherit;
+}
 
 /* ============================================
    7. CHAT/MESSAGE BUBBLES (iMessage-style)

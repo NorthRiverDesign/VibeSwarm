@@ -98,7 +98,8 @@ else
                                PushError="@_pushError" IsPushing="@_isPushing" PushStatus="@_pushStatus" IsPushed="@_changesPushed"
                                PushedCommitHash="@_pushedCommitHash" CanPush="@CanPush"
                                IsAutoCommitted="@(!string.IsNullOrEmpty(Job.GitCommitHash) && !_changesPushed)"
-                               OnCommitAndPush="CommitAndPushChanges" OnRefreshSummary="RefreshSummary" />
+                               CommitMessageUsed="@(Job.SessionSummary ?? _commitMessage)" OnCommitAndPush="CommitAndPushChanges"
+                               OnRefreshSummary="RefreshSummary" />
             }
             else if (_isGitRepository && !IsJobActive && Job.Status == JobStatus.Completed &&
             string.IsNullOrEmpty(Job.GitDiff))
@@ -134,8 +135,8 @@ else
 
             @* Working Directory Changes - shown for failed/cancelled jobs *@
             @if (_isGitRepository && !IsJobActive && (Job.Status == JobStatus.Failed || Job.Status == JobStatus.Cancelled)
-                                &&
-                                Job?.Project?.WorkingPath != null)
+                    &&
+                    Job?.Project?.WorkingPath != null)
             {
                 <UncommittedChangesCard DiffFiles="@_uncommittedDiffFiles" IsChecking="@_isCheckingUncommittedChanges"
                                         HasChecked="@_hasCheckedUncommittedChanges" HasChanges="@_hasUncommittedChanges"
@@ -380,12 +381,13 @@ TimeSpan.FromSeconds(10) })
                 await InvokeAsync(StateHasChanged);
             });
 
-            // Match server's NotifyJobInteractionRequired: SendAsync("JobInteractionRequired", jobId, prompt, interactionType, choices, defaultResponse)
-            _hubConnection.On<string, string, string, List<string>?, string?>("JobInteractionRequired",
-                async (jobId, prompt, interactionType, choices, defaultResponse) =>
-            {
-                await OnJobInteractionRequested(jobId, prompt, choices);
-            });
+            // Match server's NotifyJobInteractionRequired: SendAsync("JobInteractionRequired", jobId, prompt, interactionType,
+            choices, defaultResponse)
+_hubConnection.On<string, string, string, List<string>?, string?>("JobInteractionRequired",
+async (jobId, prompt, interactionType, choices, defaultResponse) =>
+{
+    await OnJobInteractionRequested(jobId, prompt, choices);
+});
 
             // Match server's NotifyJobResumed: SendAsync("JobResumed", jobId)
             _hubConnection.On<string>("JobResumed", async (jobId) =>

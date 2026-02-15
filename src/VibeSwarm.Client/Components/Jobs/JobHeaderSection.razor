@@ -14,7 +14,7 @@
 					@* Retry dropdown menu *@
 					<div class="dropdown">
 						<button class="btn btn-sm btn-primary dropdown-toggle" type="button" data-bs-toggle="dropdown"
-							aria-expanded="false" disabled="@IsRetrying">
+								aria-expanded="false" disabled="@IsRetrying">
 							@if (IsRetrying)
 							{
 								<span class="spinner-border spinner-border-sm me-1" role="status"></span>
@@ -46,14 +46,14 @@
 				@if (CanCancel)
 				{
 					<ActionButton Icon="x-circle" Text="@(IsCancelling ? "Cancelling..." : "Cancel")"
-						Style="ActionButton.ButtonStyle.Danger" Size="ActionButton.ButtonSize.Small"
-						IsLoading="@IsCancelling" OnClick="OnCancel" />
+								  Style="ActionButton.ButtonStyle.Danger" Size="ActionButton.ButtonSize.Small"
+								  IsLoading="@IsCancelling" OnClick="OnCancel" />
 				}
 				@if (CanForceCancel)
 				{
 					<ActionButton Icon="stop-circle" Text="@(IsForceCancelling ? "Stopping..." : "Force Stop")"
-						Style="ActionButton.ButtonStyle.Danger" Outline="true" Size="ActionButton.ButtonSize.Small"
-						IsLoading="@IsForceCancelling" OnClick="OnForceCancel" />
+								  Style="ActionButton.ButtonStyle.Danger" Outline="true" Size="ActionButton.ButtonSize.Small"
+								  IsLoading="@IsForceCancelling" OnClick="OnForceCancel" />
 				}
 			</div>
 		</div>
@@ -82,7 +82,7 @@
 			@if (!string.IsNullOrEmpty(ProviderName))
 			{
 				<span class="badge bg-primary bg-opacity-75 d-inline-flex align-items-center gap-1 fw-normal"
-					title="Provider">
+					  title="Provider">
 					<i class="bi bi-robot"></i>
 					<span>@ProviderName</span>
 				</span>
@@ -113,7 +113,7 @@
 			@if (MaxCycles > 1)
 			{
 				<span class="badge bg-info bg-opacity-75 d-inline-flex align-items-center gap-1 fw-normal"
-					title="@GetCycleModeTitle()">
+					  title="@GetCycleModeTitle()">
 					<i class="bi bi-arrow-repeat"></i>
 					<span>Cycle @CurrentCycle/@MaxCycles</span>
 				</span>
@@ -124,91 +124,92 @@
 		<div class="small text-body-secondary">
 			<div class="d-flex flex-wrap gap-2 gap-sm-3">
 				<span title="Created"><i
-						class="bi bi-calendar-plus me-1 opacity-75"></i>@CreatedAt.FormatDateTimeShort()</span>
-				@if (StartedAt.HasValue)
-				{
-					<span title="Started"><i
+					class="bi bi-calendar-plus me-1 opacity-75"></i>@CreatedAt.FormatDateTimeShort()</span>
+					@if (StartedAt.HasValue)
+					{
+						<span title="Started"><i
 							class="bi bi-play-circle me-1 opacity-75"></i>@StartedAt.Value.FormatDateTimeShort()</span>
-				}
-				@if (CompletedAt.HasValue)
-				{
-					<span title="Completed"><i
-							class="bi bi-check-circle me-1 opacity-75"></i>@CompletedAt.Value.FormatDateTimeShort()</span>
-				}
-				@if (ExecutionDuration.HasValue)
-				{
-					<span title="Execution Time" class="fw-medium"><i
-							class="bi bi-stopwatch me-1 opacity-75"></i>@TokenHelper.FormatDuration(ExecutionDuration)</span>
-				}
-				else if (IsRunning && StartedAt.HasValue)
-				{
-					<span title="Running Time" class="fw-medium text-info"><i
-							class="bi bi-stopwatch me-1 opacity-75"></i>@TokenHelper.FormatDuration(DateTime.UtcNow -
-											StartedAt.Value)</span>
-								}
-			</div>
-		</div>
-
-		@* Stats Row - Token usage and cost *@
-		@if (ShowStats)
-		{
-			<div class="d-flex flex-wrap gap-2 gap-sm-3 mt-2 pt-2 border-top border-secondary border-opacity-25 small">
-				@if (!string.IsNullOrEmpty(ModelUsed))
-				{
-					<span class="d-inline-flex align-items-center px-2 py-1 bg-body-tertiary rounded-pill text-nowrap"
-						title="Model">
-						<i class="bi bi-cpu me-1 opacity-75"></i>@ModelUsed
-					</span>
-				}
-				@if (RetryCount > 0)
-				{
-					<span class="d-inline-flex align-items-center px-2 py-1 bg-body-tertiary rounded-pill text-nowrap"
-						title="Attempt Number">
-						<i class="bi bi-arrow-repeat me-1 opacity-75"></i>Attempt @(RetryCount + 1)
-					</span>
-				}
-				@if (InputTokens.HasValue)
-				{
-					<span class="d-inline-flex align-items-center px-2 py-1 bg-body-tertiary rounded-pill text-nowrap"
-						title="Input Tokens">
-						<i class="bi bi-arrow-right-circle me-1 opacity-75"></i>@TokenHelper.FormatTokenCount(InputTokens.Value)
-					</span>
-				}
-				@if (OutputTokens.HasValue)
-				{
-					<span class="d-inline-flex align-items-center px-2 py-1 bg-body-tertiary rounded-pill text-nowrap"
-						title="Output Tokens">
-						<i class="bi bi-arrow-left-circle me-1 opacity-75"></i>@TokenHelper.FormatTokenCount(OutputTokens.Value)
-					</span>
-				}
-				@if (InputTokens.HasValue && OutputTokens.HasValue)
-				{
-					<span class="d-inline-flex align-items-center px-2 py-1 bg-body-tertiary rounded-pill text-nowrap"
-						title="Total Tokens">
-						<i class="bi bi-arrow-left-right me-1 opacity-75"></i>@TokenHelper.FormatTokenCount(InputTokens.Value +
-										OutputTokens.Value)
-			</span>
 						}
-				@if (TotalCostUsd.HasValue)
-				{
-					<span class="d-inline-flex align-items-center px-2 py-1 rounded-pill text-nowrap text-success fw-medium"
-						style="background: rgba(63, 185, 80, 0.15);" title="Total Cost">
-						<i class="bi bi-currency-dollar me-1 opacity-75"></i>@TokenHelper.FormatCost(TotalCostUsd.Value)
-					</span>
-				}
-			</div>
-		}
-	</div>
-</div>
+						@if (CompletedAt.HasValue)
+						{
+							<span title="Completed"><i
+								class="bi bi-check-circle me-1 opacity-75"></i>@CompletedAt.Value.FormatDateTimeShort()</span>
+							}
+							@if (ExecutionDuration.HasValue)
+							{
+								<span title="Execution Time" class="fw-medium"><i
+									class="bi bi-stopwatch me-1 opacity-75"></i>@TokenHelper.FormatDuration(ExecutionDuration)</span>
+								}
+				else if (IsRunning && StartedAt.HasValue)
+								{
+									<span title="Running Time" class="fw-medium text-info"><i
+										class="bi bi-stopwatch me-1 opacity-75"></i>@TokenHelper.FormatDuration(DateTime.UtcNow -
+															StartedAt.Value)</span>
+									}
+								</div>
+							</div>
+
+							@* Stats Row - Token usage and cost *@
+							@if (ShowStats)
+							{
+								<div class="d-flex flex-wrap gap-2 gap-sm-3 mt-2 pt-2 border-top border-secondary border-opacity-25 small">
+									@if (!string.IsNullOrEmpty(ModelUsed))
+									{
+										<span class="d-inline-flex align-items-center px-2 py-1 bg-body-tertiary rounded-pill text-nowrap"
+											  title="Model">
+											<i class="bi bi-cpu me-1 opacity-75"></i>@ModelUsed
+										</span>
+									}
+									@if (RetryCount > 0)
+									{
+										<span class="d-inline-flex align-items-center px-2 py-1 bg-body-tertiary rounded-pill text-nowrap"
+											  title="Attempt Number">
+											<i class="bi bi-arrow-repeat me-1 opacity-75"></i>Attempt @(RetryCount + 1)
+										</span>
+									}
+									@if (InputTokens.HasValue && InputTokens.Value > 0)
+									{
+										<span class="d-inline-flex align-items-center px-2 py-1 bg-body-tertiary rounded-pill text-nowrap"
+											  title="Input Tokens">
+											<i class="bi bi-arrow-right-circle me-1 opacity-75"></i>@TokenHelper.FormatTokenCount(InputTokens.Value)
+										</span>
+									}
+									@if (OutputTokens.HasValue && OutputTokens.Value > 0)
+									{
+										<span class="d-inline-flex align-items-center px-2 py-1 bg-body-tertiary rounded-pill text-nowrap"
+											  title="Output Tokens">
+											<i class="bi bi-arrow-left-circle me-1 opacity-75"></i>@TokenHelper.FormatTokenCount(OutputTokens.Value)
+										</span>
+									}
+									@if (InputTokens.HasValue && InputTokens.Value > 0 && OutputTokens.HasValue && OutputTokens.Value > 0)
+									{
+										<span class="d-inline-flex align-items-center px-2 py-1 bg-body-tertiary rounded-pill text-nowrap"
+											  title="Total Tokens">
+											<i class="bi bi-arrow-left-right me-1 opacity-75"></i>@TokenHelper.FormatTokenCount(InputTokens.Value +
+															OutputTokens.Value)
+										</span>
+									}
+									@if (TotalCostUsd.HasValue && TotalCostUsd.Value > 0)
+									{
+										<span class="d-inline-flex align-items-center px-2 py-1 rounded-pill text-nowrap text-success fw-medium"
+											  style="background: rgba(63, 185, 80, 0.15);" title="Total Cost">
+											<i class="bi bi-currency-dollar me-1 opacity-75"></i>@TokenHelper.FormatCost(TotalCostUsd.Value)
+										</span>
+									}
+								</div>
+							}
+						</div>
+					</div>
 
 @code {
 	[Parameter, EditorRequired]
 	public JobStatus Status { get; set; }
 
 	/// <summary>
-	/// The job title to display in the header (uses Title property from job, which is the original idea text for idea-based jobs)
-	/// </summary>
-	[Parameter]
+	/// The job title to display in the header (uses Title property from job, which is the original idea text for idea-based
+	jobs)
+/// </summary>
+[Parameter]
 	public string? JobTitle { get; set; }
 
 	[Parameter]
@@ -309,8 +310,11 @@
 
 	private bool IsRunning => Status == JobStatus.Started || Status == JobStatus.Processing;
 
-	private bool ShowStats => !string.IsNullOrEmpty(ModelUsed) || InputTokens.HasValue || OutputTokens.HasValue ||
-	TotalCostUsd.HasValue || RetryCount > 0;
+	private bool ShowStats => !string.IsNullOrEmpty(ModelUsed) ||
+	(InputTokens.HasValue && InputTokens.Value > 0) ||
+	(OutputTokens.HasValue && OutputTokens.Value > 0) ||
+	(TotalCostUsd.HasValue && TotalCostUsd.Value > 0) ||
+	RetryCount > 0;
 
 	private string GetCycleModeTitle()
 	{

@@ -32,6 +32,22 @@ public class ClaudeStreamEvent
 	// Alternative field names that Claude CLI might use
 	[JsonPropertyName("cost_usd")]
 	public decimal? CostUsd { get; set; }
+
+	// Flat token fields - some Claude CLI versions output these directly on the result event
+	[JsonPropertyName("input_tokens")]
+	public int? InputTokens { get; set; }
+
+	[JsonPropertyName("output_tokens")]
+	public int? OutputTokens { get; set; }
+
+	[JsonPropertyName("num_turns")]
+	public int? NumTurns { get; set; }
+
+	[JsonPropertyName("duration_ms")]
+	public double? DurationMs { get; set; }
+
+	[JsonPropertyName("duration_api_ms")]
+	public double? DurationApiMs { get; set; }
 }
 
 /// <summary>

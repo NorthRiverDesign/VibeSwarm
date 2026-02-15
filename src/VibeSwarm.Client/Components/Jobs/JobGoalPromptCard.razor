@@ -4,11 +4,7 @@
 	<div class="card-header bg-body-secondary d-flex align-items-center justify-content-between">
 		<div class="d-flex align-items-center">
 			<i class="bi bi-bullseye me-2 opacity-75"></i>
-			<strong>@(HasIdeaText ? "Idea" : "Goal Prompt")</strong>
-			@if (HasIdeaText)
-			{
-				<span class="badge bg-info-subtle text-info ms-2 small">from idea</span>
-			}
+			<strong>Goal Prompt</strong>
 		</div>
 		@* Actions *@
 		<div class="d-flex align-items-center gap-1">
@@ -18,7 +14,7 @@
 					<i class="bi bi-x-lg"></i>
 				</button>
 				<button type="button" class="btn btn-sm btn-primary" @onclick="SavePrompt" disabled="@_isSaving"
-					title="Save changes">
+						title="Save changes">
 					@if (_isSaving)
 					{
 						<span class="spinner-border spinner-border-sm" role="status"></span>
@@ -38,11 +34,11 @@
 					</button>
 				}
 				<button type="button" class="btn btn-sm btn-outline-secondary" @onclick="CopyToClipboard"
-					title="Copy to clipboard">
+						title="Copy to clipboard">
 					<i class="bi bi-clipboard"></i>
 				</button>
 				<button type="button" class="btn btn-sm btn-outline-secondary" @onclick="ShowFullPrompt"
-					title="View full prompt">
+						title="View full prompt">
 					<i class="bi bi-arrows-fullscreen"></i>
 				</button>
 			}
@@ -52,12 +48,12 @@
 		@if (IsEditable && _isEditing)
 		{
 			<textarea class="form-control lh-base" style="min-height: 150px; resize: vertical;" @bind="_editedPrompt"
-				rows="6" placeholder="Enter the goal prompt for the AI agent..."></textarea>
+					  rows="6" placeholder="Enter the goal prompt for the AI agent..."></textarea>
 		}
 		else
 		{
 			<div class="bg-body-tertiary p-3 rounded lh-base text-break"
-				style="white-space: pre-wrap; max-height: 200px; overflow-y: auto;">@DisplayText</div>
+				 style="white-space: pre-wrap; max-height: 200px; overflow-y: auto;">@DisplayText</div>
 		}
 	</div>
 </div>
@@ -68,7 +64,7 @@
 	<div class="modal-backdrop fade show vs-modal-backdrop"></div>
 	<div class="modal fade show d-block vs-modal-container" tabindex="-1" role="dialog" @onclick="CloseModal">
 		<div class="modal-dialog modal-lg vs-modal-dialog modal-dialog-centered modal-dialog-scrollable"
-			@onclick:stopPropagation="true">
+			 @onclick:stopPropagation="true">
 			<div class="modal-content vs-modal-content">
 				<div class="modal-header">
 					<h5 class="modal-title"><i class="bi bi-file-text me-2"></i>Full Input Prompt</h5>
@@ -76,7 +72,7 @@
 				</div>
 				<div class="modal-body">
 					<pre class="bg-body-tertiary border rounded p-3 overflow-auto lh-base m-0 text-break"
-						style="white-space: pre-wrap; max-height: 60vh;">@GoalPrompt</pre>
+						 style="white-space: pre-wrap; max-height: 60vh;">@GoalPrompt</pre>
 				</div>
 				<div class="modal-footer">
 					<button type="button" class="btn btn-outline-secondary" @onclick="CopyToClipboard">
