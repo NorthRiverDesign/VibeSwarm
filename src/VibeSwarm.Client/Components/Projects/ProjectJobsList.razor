@@ -6,7 +6,9 @@
 		<h5 class="mb-0 fw-semibold">Jobs</h5>
 		<div class="d-flex align-items-center gap-2">
 			<span class="badge bg-secondary">@Jobs.Count</span>
-			<button type="button" class="btn btn-sm btn-primary" @onclick="() => OnCreateJob.InvokeAsync()">
+			<button type="button" class="btn btn-sm btn-primary" @onclick="() => OnCreateJob.InvokeAsync()"
+					disabled="@HasActiveJobs"
+					title="@(HasActiveJobs ? "A job is already running on this project" : "Create a new job")">
 				<i class="bi bi-plus-lg me-1"></i>Create Job
 			</button>
 		</div>
@@ -16,7 +18,7 @@
 		{
 			<div class="p-3">
 				<EmptyState Icon="list-check" Title="No jobs yet"
-					Message="Create a job to start working on this project." />
+							Message="Create a job to start working on this project." />
 			</div>
 		}
 		else
@@ -41,12 +43,18 @@
 										case JobStatus.Started:
 										case JobStatus.Processing:
 											<div class="spinner-border spinner-border-sm text-primary" role="status"
-												title="@job.Status.ToString()">
+												 title="@job.Status.ToString()">
 												<span class="visually-hidden">Processing...</span>
 											</div>
 											break;
 										case JobStatus.Pending:
 											<i class="bi bi-hourglass-split text-warning fs-5" title="Pending"></i>
+											break;
+										case JobStatus.Paused:
+											<i class="bi bi-pause-circle-fill text-warning fs-5" title="Paused - Waiting for input"></i>
+											break;
+										case JobStatus.Stalled:
+											<i class="bi bi-exclamation-triangle-fill text-warning fs-5" title="Stalled"></i>
 											break;
 										default:
 											<i class="bi bi-circle text-secondary fs-5" title="@job.Status.ToString()"></i>
@@ -56,8 +64,8 @@
 								@* Job Content *@
 								<div class="flex-grow-1 min-width-0">
 									<a href="/jobs/view/@job.Id"
-										class="d-block text-decoration-none fw-medium text-truncate-lines-2"
-										title="@job.GoalPrompt">
+										   class="d-block text-decoration-none fw-medium text-truncate-lines-2"
+										   title="@job.GoalPrompt">
 										@GetJobDisplayTitle(job)
 									</a>
 									<div class="d-flex flex-wrap gap-2 mt-1 small text-body-secondary">
@@ -78,10 +86,10 @@
 											{
 												<span class="font-monospace text-body-secondary" title="Input / Output tokens">
 													<i
-														class="bi bi-arrow-left-right me-1 opacity-75"></i>@TokenHelper.FormatTokenCount(job.InputTokens
+													class="bi bi-arrow-left-right me-1 opacity-75"></i>@TokenHelper.FormatTokenCount(job.InputTokens
 																						?? 0) / @TokenHelper.FormatTokenCount(job.OutputTokens ?? 0)
-								</span>
-																}
+												</span>
+											}
 											@if (job.TotalCostUsd.HasValue && job.TotalCostUsd.Value > 0)
 											{
 												<span class="font-monospace fw-medium text-success" title="Cost">
@@ -95,6 +103,12 @@
 									{
 										<div class="text-info fst-italic small mt-1">@TruncateText(job.CurrentActivity, 80)</div>
 									}
+									@if (job.Status == JobStatus.Paused)
+									{
+										<div class="text-warning fst-italic small mt-1">
+											<i class="bi bi-chat-dots me-1"></i>Waiting for user input
+										</div>
+									}
 									@if (!string.IsNullOrEmpty(job.ErrorMessage))
 									{
 										<div class="text-danger small font-monospace mt-2">@TruncateText(job.ErrorMessage, 100)
@@ -105,7 +119,7 @@
 							@* Actions Dropdown *@
 							<div class="dropdown flex-shrink-0">
 								<button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button"
-									data-bs-toggle="dropdown" aria-expanded="false">
+										data-bs-toggle="dropdown" aria-expanded="false">
 									<i class="bi bi-three-dots-vertical"></i>
 								</button>
 								<ul class="dropdown-menu dropdown-menu-end">
@@ -119,7 +133,7 @@
 									</li>
 									<li>
 										<button class="dropdown-item text-danger"
-											@onclick="() => OnDeleteJob.InvokeAsync(job.Id)">
+												@onclick="() => OnDeleteJob.InvokeAsync(job.Id)">
 											<i class="bi bi-trash me-2"></i>Delete
 										</button>
 									</li>
@@ -136,6 +150,9 @@
 @code {
 	[Parameter]
 	public List<Job> Jobs { get; set; } = new();
+
+	[Parameter]
+	public bool HasActiveJobs { get; set; }
 
 	[Parameter]
 	public EventCallback<Guid> OnDeleteJob { get; set; }

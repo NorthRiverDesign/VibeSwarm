@@ -94,7 +94,9 @@
 				{
 					<IdeaListItem Idea="idea" IsProcessing="@(idea.IsProcessing || IsIdeaProcessing(idea.Id))"
 								  IsStarting="@(StartingIdeaId == idea.Id)" HasActiveJobs="@HasActiveJobs"
-								  HasDefaultProvider="@HasDefaultProvider" OnExpand="@(() => OpenExpandModal(idea))"
+							  HasDefaultProvider="@HasDefaultProvider"
+							  IsQueuedForProcessing="@(IsProcessingActive && !idea.IsProcessing && !IsIdeaProcessing(idea.Id) && !idea.JobId.HasValue)"
+							  OnExpand="@(() => OpenExpandModal(idea))"
 								  OnStart="@(() => StartSingleIdea(idea))" OnCopy="@(() => OpenCopyModal(idea))"
 								  OnMove="@(() => OpenMoveModal(idea))" OnDelete="@(() => OnDeleteIdea.InvokeAsync(idea.Id))"
 								  OnSaveEdit="HandleIdeaEdit" />

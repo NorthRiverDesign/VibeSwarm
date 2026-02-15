@@ -1355,6 +1355,14 @@ public class JobProcessingService : BackgroundService
                             if (heartbeatJob != null)
                             {
                                 heartbeatJob.LastHeartbeatAt = now;
+
+                                // Persist console output buffer periodically so page refreshes show accumulated output
+                                var currentOutput = executionContext.GetConsoleOutput();
+                                if (!string.IsNullOrEmpty(currentOutput))
+                                {
+                                    heartbeatJob.ConsoleOutput = currentOutput;
+                                }
+
                                 await heartbeatDbContext.SaveChangesAsync(cancellationToken);
                             }
                         }

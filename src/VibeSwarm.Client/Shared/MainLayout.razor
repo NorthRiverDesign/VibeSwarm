@@ -7,6 +7,7 @@
 @inject NavigationManager NavigationManager
 @implements IAsyncDisposable
 @implements IDisposable
+@using Microsoft.AspNetCore.SignalR.Client
 
 <div class="app-layout">
     @* Mobile Header *@
@@ -182,6 +183,7 @@
 
     private ErrorBoundary? _errorBoundary;
     private bool _hubInitialized = false;
+    private HubConnection? _globalHubConnection;
     private bool _mobileMenuOpen = false;
 
     // Change Password Modal
@@ -277,18 +279,54 @@
 
         try
         {
-            // TODO: Initialize C# HubConnection for global notifications
-            // For now, this is a no-op since we're transitioning from JS SignalR to C# HubConnection
+            _globalHubConnection = new HubConnectionBuilder()
+            .WithUrl(NavigationManager.ToAbsoluteUri("/hubs/job"))
+            .WithAutomaticReconnect(new[] { TimeSpan.Zero, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(5),
+TimeSpan.FromSeconds(10) })
+            .Build();
+
+            // Register global event handlers for toast notifications across all pages
+            _globalHubConnection.On<string, bool, string?>("JobCompleted", async (jobId, success, errorMessage) =>
+            {
+                await OnGlobalJobCompleted(jobId, success, errorMessage);
+            });
+
+            _globalHubConnection.On<string, string, string, List<string>?, string?>("JobInteractionRequired",
+            async (jobId, prompt, interactionType, choices, defaultResponse) =>
+            {
+                await InvokeAsync(() =>
+    {
+                NotificationService.ShowWarning($"Job requires input: {(prompt.Length > 60 ? prompt[..60] + "..." : prompt)}",
+    "Interaction Required");
+                StateHasChanged();
+            });
+            });
+
+            _globalHubConnection.Reconnected += async (connectionId) =>
+            {
+                Console.WriteLine($"[MainLayout] Global hub reconnected: {connectionId}");
+                try { await _globalHubConnection.InvokeAsync("SubscribeToGlobalEvents"); } catch { }
+            };
+
+            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            await _globalHubConnection.StartAsync(timeoutCts.Token);
+            await _globalHubConnection.InvokeAsync("SubscribeToGlobalEvents");
             _hubInitialized = true;
-            await Task.CompletedTask;
+            Console.WriteLine("[MainLayout] Global hub connected successfully");
+        }
+        catch (OperationCanceledException)
+        {
+            Console.WriteLine("[MainLayout] Global hub connection timed out - non-critical");
+            _hubInitialized = true;
         }
         catch (Exception ex)
         {
             Console.WriteLine($"[MainLayout] Error initializing global hub: {ex.Message}");
+            _hubInitialized = true;
         }
     }
 
-    // Note: These methods are no longer called by JS interop but kept for potential C# HubConnection use
+    // Global SignalR event handlers for cross-page notifications
     private void OnConnectionStateChanged(string state)
     {
         Console.WriteLine($"[MainLayout] Connection state: {state}");
@@ -421,7 +459,21 @@ return true;
     public async ValueTask DisposeAsync()
     {
         Dispose();
-        await Task.CompletedTask;
+        if (_globalHubConnection != null)
+        {
+            try
+            {
+                if (_globalHubConnection.State == HubConnectionState.Connected)
+                {
+                    await _globalHubConnection.InvokeAsync("UnsubscribeFromGlobalEvents");
+                }
+                await _globalHubConnection.DisposeAsync();
+            }
+            catch
+            {
+                // Ignore disposal errors
+            }
+        }
     }
 
     public class ChangePasswordModel

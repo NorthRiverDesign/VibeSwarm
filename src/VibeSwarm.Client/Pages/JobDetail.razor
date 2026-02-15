@@ -351,6 +351,7 @@ new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
 TimeSpan.FromSeconds(10) })
             .Build();
 
+            // Register all event handlers matching server-side event names
             _hubConnection.On<string, string>("JobStatusChanged", async (jobId, status) =>
             {
                 await OnJobStatusChanged(jobId, status);
@@ -361,24 +362,41 @@ TimeSpan.FromSeconds(10) })
                 await OnJobActivityUpdated(jobId, activity, timestamp);
             });
 
-            _hubConnection.On<string, string>("JobOutputReceived", async (jobId, output) =>
+            // Match server's NotifyJobOutput: SendAsync("JobOutput", jobId, line, isError, timestamp)
+            _hubConnection.On<string, string, bool, DateTime>("JobOutput", async (jobId, line, isError, timestamp) =>
             {
-                await OnJobOutputReceived(jobId, output);
+                await OnJobOutputReceived(jobId, line, isError, timestamp);
             });
 
-            _hubConnection.On<string, string>("JobLiveCommand", async (jobId, command) =>
+            // Match server's NotifyProcessStarted: SendAsync("ProcessStarted", jobId, processId, command)
+            _hubConnection.On<string, int, string>("ProcessStarted", async (jobId, processId, command) =>
             {
-                await OnJobLiveCommand(jobId, command);
+                await OnProcessStarted(jobId, processId, command);
             });
 
-            _hubConnection.On<string, string, List<string>>("JobInteractionRequested", async (jobId, prompt, choices) =>
+            // Match server's NotifyProcessExited: SendAsync("ProcessExited", jobId, processId, exitCode, durationSeconds)
+            _hubConnection.On<string, int, int, double>("ProcessExited", async (jobId, processId, exitCode, durationSeconds) =>
+            {
+                await InvokeAsync(StateHasChanged);
+            });
+
+            // Match server's NotifyJobInteractionRequired: SendAsync("JobInteractionRequired", jobId, prompt, interactionType, choices, defaultResponse)
+            _hubConnection.On<string, string, string, List<string>?, string?>("JobInteractionRequired",
+                async (jobId, prompt, interactionType, choices, defaultResponse) =>
             {
                 await OnJobInteractionRequested(jobId, prompt, choices);
             });
 
-            _hubConnection.On<string>("JobInteractionCompleted", async (jobId) =>
+            // Match server's NotifyJobResumed: SendAsync("JobResumed", jobId)
+            _hubConnection.On<string>("JobResumed", async (jobId) =>
             {
                 await OnJobInteractionCompleted(jobId);
+            });
+
+            // Match server's NotifyJobCompleted: SendAsync("JobCompleted", jobId, success, errorMessage)
+            _hubConnection.On<string, bool, string?>("JobCompleted", async (jobId, success, errorMessage) =>
+            {
+                await OnJobCompleted(jobId, success, errorMessage);
             });
 
             _hubConnection.On<string, int, int>("JobCycleProgress", async (jobId, currentCycle, maxCycles) =>
@@ -386,12 +404,46 @@ TimeSpan.FromSeconds(10) })
                 await OnJobCycleProgress(jobId, currentCycle, maxCycles);
             });
 
+            // Match server's NotifyJobGitDiffUpdated: SendAsync("JobGitDiffUpdated", jobId, hasChanges)
+            _hubConnection.On<string, bool>("JobGitDiffUpdated", async (jobId, hasChanges) =>
+            {
+                if (hasChanges)
+                {
+                    await InvokeAsync(async () => await RefreshJobSafely());
+                }
+            });
+
+            // Handle reconnection - re-subscribe to groups
+            _hubConnection.Reconnected += async (connectionId) =>
+            {
+                Console.WriteLine($"SignalR reconnected: {connectionId}");
+                await SubscribeToSignalRGroups();
+            };
+
             await _hubConnection.StartAsync(cancellationToken);
             Console.WriteLine("SignalR connected successfully");
+
+            // Subscribe to the job-specific group to receive events
+            await SubscribeToSignalRGroups();
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             Console.WriteLine($"Error initializing SignalR: {ex.Message}");
+        }
+    }
+
+    private async Task SubscribeToSignalRGroups()
+    {
+        if (_hubConnection?.State != HubConnectionState.Connected) return;
+
+        try
+        {
+            await _hubConnection.InvokeAsync("SubscribeToJob", JobId.ToString());
+            await _hubConnection.InvokeAsync("SubscribeToJobList");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"SignalR subscription failed: {ex.Message}");
         }
     }
 
@@ -462,11 +514,11 @@ TimeSpan.FromSeconds(10) })
         }
     }
 
-    private async Task OnJobOutputReceived(string jobId, string output)
+    private async Task OnJobOutputReceived(string jobId, string line, bool isError, DateTime timestamp)
     {
         lock (_liveOutput)
         {
-            _liveOutput.Add(new OutputLine { Content = output, IsError = false, Timestamp = DateTime.UtcNow });
+            _liveOutput.Add(new OutputLine { Content = line, IsError = isError, Timestamp = timestamp });
             while (_liveOutput.Count > MaxOutputLines)
             {
                 _liveOutput.RemoveAt(0);
@@ -475,11 +527,12 @@ TimeSpan.FromSeconds(10) })
         await InvokeAsync(StateHasChanged);
     }
 
-    private async Task OnJobLiveCommand(string jobId, string command)
+    private async Task OnProcessStarted(string jobId, int processId, string command)
     {
         if (Job != null)
         {
             _liveCommand = command;
+            Job.ProcessId = processId;
             if (string.IsNullOrEmpty(Job.CommandUsed))
             {
                 Job.CommandUsed = command;
@@ -632,6 +685,30 @@ TimeSpan.FromSeconds(10) })
             {
                 _changesPushed = true;
                 _pushedCommitHash = Job.GitCommitHash;
+            }
+
+            // Populate live output buffer from persisted console output when job is active
+            // This ensures page refresh shows accumulated output instead of "Waiting for output..."
+            if (Job != null && IsJobActive && !string.IsNullOrEmpty(Job.ConsoleOutput))
+            {
+                lock (_liveOutput)
+                {
+                    if (!_liveOutput.Any())
+                    {
+                        var lines = Job.ConsoleOutput.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+                        foreach (var line in lines.TakeLast(MaxOutputLines))
+                        {
+                            var isError = line.StartsWith("[ERR] ");
+                            var content = isError ? line[6..] : line;
+                            _liveOutput.Add(new OutputLine
+                            {
+                                Content = content,
+                                IsError = isError,
+                                Timestamp = DateTime.UtcNow
+                            });
+                        }
+                    }
+                }
             }
 
             if (Job != null && Job.Status == JobStatus.Paused && !string.IsNullOrEmpty(Job.InteractionChoices))
@@ -1248,6 +1325,11 @@ TimeSpan.FromSeconds(10) })
         {
             try
             {
+                if (_hubConnection.State == HubConnectionState.Connected)
+                {
+                    await _hubConnection.InvokeAsync("UnsubscribeFromJob", JobId.ToString());
+                    await _hubConnection.InvokeAsync("UnsubscribeFromJobList");
+                }
                 await _hubConnection.DisposeAsync();
             }
             catch

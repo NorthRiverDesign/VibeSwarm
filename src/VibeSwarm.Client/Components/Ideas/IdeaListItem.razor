@@ -32,6 +32,10 @@
 						<span class="spinner-border spinner-border-sm text-primary flex-shrink-0 mt-1" role="status"
 							title="Processing..."></span>
 					}
+					else if (IsQueuedForProcessing)
+					{
+						<i class="bi bi-hourglass-split text-info flex-shrink-0 mt-1" title="Queued for processing"></i>
+					}
 					else if (Idea.ExpansionStatus == IdeaExpansionStatus.Expanding)
 					{
 						<span class="spinner-border spinner-border-sm text-info flex-shrink-0 mt-1" role="status"
@@ -76,7 +80,7 @@
 
 			@* Action buttons *@
 			<div class="d-flex align-items-center gap-1 flex-shrink-0">
-				@if (!Idea.IsProcessing && !IsProcessing)
+				@if (!Idea.IsProcessing && !IsProcessing && !IsQueuedForProcessing)
 				{
 					@* Expand button *@
 					<button type="button" class="btn btn-sm btn-outline-info" @onclick="HandleExpand"
@@ -109,6 +113,13 @@
 						{
 							<i class="bi bi-play-fill"></i>
 						}
+					</button>
+				}
+				else if (IsQueuedForProcessing)
+				{
+					@* Show queued indicator *@
+					<button type="button" class="btn btn-sm btn-outline-info" disabled title="Queued for auto-processing">
+						<i class="bi bi-hourglass-split"></i>
 					</button>
 				}
 				else
@@ -180,6 +191,12 @@
 
 	[Parameter]
 	public bool HasActiveJobs { get; set; }
+
+	/// <summary>
+	/// Whether this idea is implicitly queued for processing (auto-processing is active and idea hasn't started yet)
+	/// </summary>
+	[Parameter]
+	public bool IsQueuedForProcessing { get; set; }
 
 	[Parameter]
 	public bool HasDefaultProvider { get; set; }

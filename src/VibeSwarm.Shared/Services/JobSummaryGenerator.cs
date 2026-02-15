@@ -80,6 +80,13 @@ public static partial class JobSummaryGenerator
 		string? title = null,
 		IReadOnlyList<string>? commitLog = null)
 	{
+		// First, try to extract an AI-generated commit summary from console output
+		var agentSummary = ExtractAgentCommitSummary(consoleOutput);
+		if (!string.IsNullOrWhiteSpace(agentSummary))
+		{
+			return agentSummary;
+		}
+
 		// Parse the git diff for file information
 		var diffInfo = ParseGitDiff(gitDiff);
 
@@ -89,6 +96,33 @@ public static partial class JobSummaryGenerator
 		// Build the summary
 		return BuildSummary(diffInfo, actionContext, goalPrompt, title, commitLog);
 	}
+
+	/// <summary>
+	/// Extracts the AI agent's commit summary from console output.
+	/// Looks for content between &lt;commit-summary&gt; tags.
+	/// </summary>
+	private static string? ExtractAgentCommitSummary(string? consoleOutput)
+	{
+		if (string.IsNullOrWhiteSpace(consoleOutput))
+			return null;
+
+		var match = CommitSummaryTagRegex().Match(consoleOutput);
+		if (match.Success)
+		{
+			var summary = match.Groups[1].Value.Trim();
+			// Enforce max length for commit subject line
+			if (summary.Length > 72)
+			{
+				summary = summary[..72];
+			}
+			return summary;
+		}
+
+		return null;
+	}
+
+	[GeneratedRegex(@"<commit-summary>\s*(.+?)\s*</commit-summary>", RegexOptions.Singleline | RegexOptions.IgnoreCase)]
+	private static partial Regex CommitSummaryTagRegex();
 
 	/// <summary>
 	/// Parses a git diff string to extract file changes and statistics.

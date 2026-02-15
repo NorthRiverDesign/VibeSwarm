@@ -29,21 +29,21 @@ else
             </select>
             <div class="btn-group w-100" role="group" aria-label="Status filter">
                 <button type="button" class="btn btn-sm @(_statusFilter == "all" ? "btn-primary" : "btn-outline-secondary")"
-                    @onclick='() => SetStatusFilter("all")' title="All">
+                        @onclick='() => SetStatusFilter("all")' title="All">
                     <i class="bi bi-inbox me-1"></i><span class="d-none d-sm-inline">All</span>
                 </button>
                 <button type="button" class="btn btn-sm @(_statusFilter == "active" ? "btn-info" : "btn-outline-secondary")"
-                    @onclick='() => SetStatusFilter("active")' title="Active">
+                        @onclick='() => SetStatusFilter("active")' title="Active">
                     <i class="bi bi-play-circle me-1"></i><span class="d-none d-sm-inline">Active</span>
                 </button>
                 <button type="button"
-                    class="btn btn-sm @(_statusFilter == "completed" ? "btn-success" : "btn-outline-secondary")"
-                    @onclick='() => SetStatusFilter("completed")' title="Completed">
+                        class="btn btn-sm @(_statusFilter == "completed" ? "btn-success" : "btn-outline-secondary")"
+                        @onclick='() => SetStatusFilter("completed")' title="Completed">
                     <i class="bi bi-check-circle me-1"></i><span class="d-none d-sm-inline">Done</span>
                 </button>
                 <button type="button"
-                    class="btn btn-sm @(_statusFilter == "failed" ? "btn-danger" : "btn-outline-secondary")"
-                    @onclick='() => SetStatusFilter("failed")' title="Failed">
+                        class="btn btn-sm @(_statusFilter == "failed" ? "btn-danger" : "btn-outline-secondary")"
+                        @onclick='() => SetStatusFilter("failed")' title="Failed">
                     <i class="bi bi-x-circle me-1"></i><span class="d-none d-sm-inline">Failed</span>
                 </button>
             </div>
@@ -62,8 +62,8 @@ else
             <div class="flex-grow-1 overflow-auto">
                 @* All Projects option *@
                 <button type="button"
-                    class="project-filter-item w-100 text-start border-0 bg-transparent d-flex align-items-center gap-2 p-3 cursor-pointer @(_selectedProjectId == null ? "active" : "")"
-                    @onclick="() => SelectProject(null)">
+                        class="project-filter-item w-100 text-start border-0 bg-transparent d-flex align-items-center gap-2 p-3 cursor-pointer @(_selectedProjectId == null ? "active" : "")"
+                        @onclick="() => SelectProject(null)">
                     <i class="bi bi-collection"></i>
                     <span class="flex-grow-1">All Projects</span>
                     <span class="badge bg-secondary-subtle text-secondary-emphasis rounded-pill">@_jobs?.Count()</span>
@@ -77,8 +77,8 @@ else
                     var jobCount = GetJobCountForProject(project.Id);
                     var activeCount = GetActiveCountForProject(project.Id);
                     <button type="button"
-                        class="project-filter-item w-100 text-start border-0 bg-transparent d-flex align-items-center gap-2 p-3 cursor-pointer @(_selectedProjectId == project.Id ? "active" : "")"
-                        @onclick="() => SelectProject(project.Id)">
+                            class="project-filter-item w-100 text-start border-0 bg-transparent d-flex align-items-center gap-2 p-3 cursor-pointer @(_selectedProjectId == project.Id ? "active" : "")"
+                            @onclick="() => SelectProject(project.Id)">
                         <i class="bi bi-folder"></i>
                         <span class="flex-grow-1 text-truncate">@project.Name</span>
                         @if (activeCount > 0)
@@ -94,17 +94,17 @@ else
             <div class="p-3 border-top">
                 <div class="btn-group w-100" role="group">
                     <button type="button"
-                        class="btn btn-sm @(_statusFilter == "all" ? "btn-primary" : "btn-outline-secondary")"
-                        @onclick='() => SetStatusFilter("all")'>All</button>
+                            class="btn btn-sm @(_statusFilter == "all" ? "btn-primary" : "btn-outline-secondary")"
+                            @onclick='() => SetStatusFilter("all")'>All</button>
                     <button type="button"
-                        class="btn btn-sm @(_statusFilter == "active" ? "btn-info" : "btn-outline-secondary")"
-                        @onclick='() => SetStatusFilter("active")'>Active</button>
+                            class="btn btn-sm @(_statusFilter == "active" ? "btn-info" : "btn-outline-secondary")"
+                            @onclick='() => SetStatusFilter("active")'>Active</button>
                     <button type="button"
-                        class="btn btn-sm @(_statusFilter == "completed" ? "btn-success" : "btn-outline-secondary")"
-                        @onclick='() => SetStatusFilter("completed")'>Done</button>
+                            class="btn btn-sm @(_statusFilter == "completed" ? "btn-success" : "btn-outline-secondary")"
+                            @onclick='() => SetStatusFilter("completed")'>Done</button>
                     <button type="button"
-                        class="btn btn-sm @(_statusFilter == "failed" ? "btn-danger" : "btn-outline-secondary")"
-                        @onclick='() => SetStatusFilter("failed")'>Failed</button>
+                            class="btn btn-sm @(_statusFilter == "failed" ? "btn-danger" : "btn-outline-secondary")"
+                            @onclick='() => SetStatusFilter("failed")'>Failed</button>
                 </div>
             </div>
         </aside>
@@ -140,7 +140,7 @@ else
                 @if (_jobs == null || !_jobs.Any())
                 {
                     <EmptyState Icon="list-check" Title="No jobs yet"
-                        Message="Jobs are created when you run AI agent tasks on your projects.">
+                                Message="Jobs are created when you run AI agent tasks on your projects.">
                         <a href="/projects" class="btn btn-sm btn-primary">
                             <i class="bi bi-folder me-1"></i>Go to Projects
                         </a>
@@ -149,19 +149,19 @@ else
                 else if (!GetFilteredJobs().Any())
                 {
                     <EmptyState Icon="@GetFilterEmptyIcon()" Title="@GetFilterEmptyTitle()"
-                        Message="@GetFilterEmptyMessage()" />
+                                Message="@GetFilterEmptyMessage()" />
                 }
                 else
                 {
                     @foreach (var job in GetFilteredJobs())
                     {
                         <JobListItem Status="@job.Status.ToString()" Prompt="@GetJobDisplayTitle(job)"
-                            ProjectName="@(job.Project?.Name ?? "Unknown")" ShowProjectName="@(_selectedProjectId == null)"
-                            ModelUsed="@job.ModelUsed"
-                            Activity="@((job.Status == JobStatus.Started || job.Status == JobStatus.Processing) ? (job.CurrentActivity ?? "Working...") : null)"
-                            TimeDisplay="@GetTimeDisplay(job)" Cost="@job.TotalCostUsd" InputTokens="@job.InputTokens"
-                            OutputTokens="@job.OutputTokens" CurrentCycle="@job.CurrentCycle" MaxCycles="@job.MaxCycles"
-                            CycleMode="@job.CycleMode" OnClick="@(() => NavigateToJob(job.Id))" />
+                                     ProjectName="@(job.Project?.Name ?? "Unknown")" ShowProjectName="@(_selectedProjectId == null)"
+                                     ModelUsed="@job.ModelUsed"
+                                     Activity="@((job.Status == JobStatus.Started || job.Status == JobStatus.Processing) ? (job.CurrentActivity ?? "Working...") : null)"
+                                     TimeDisplay="@GetTimeDisplay(job)" Cost="@job.TotalCostUsd" InputTokens="@job.InputTokens"
+                                     OutputTokens="@job.OutputTokens" CurrentCycle="@job.CurrentCycle" MaxCycles="@job.MaxCycles"
+                                     CycleMode="@job.CycleMode" OnClick="@(() => NavigateToJob(job.Id))" />
                     }
                 }
             </div>
@@ -294,7 +294,44 @@ TimeSpan.FromSeconds(10) })
                 await OnJobCreated(jobId, projectId);
             });
 
+            _hubConnection.On<string, string>("JobDeleted", async (jobId, projectId) =>
+            {
+                await OnJobDeleted(jobId, projectId);
+            });
+
+            _hubConnection.On<string, bool, string?>("JobCompleted", async (jobId, success, errorMessage) =>
+            {
+                await OnJobCompleted(jobId, success, errorMessage);
+            });
+
+            _hubConnection.On("JobListChanged", async () =>
+            {
+                await OnJobListChanged();
+            });
+
+            _hubConnection.On<string, int, int>("JobCycleProgress", async (jobId, currentCycle, maxCycles) =>
+            {
+                if (_jobs != null && Guid.TryParse(jobId, out var id))
+                {
+                    var job = _jobs.FirstOrDefault(j => j.Id == id);
+                    if (job != null)
+                    {
+                        job.CurrentCycle = currentCycle;
+                        job.MaxCycles = maxCycles;
+                        await InvokeAsync(StateHasChanged);
+                    }
+                }
+            });
+
+            // Handle reconnection - re-subscribe to groups
+            _hubConnection.Reconnected += async (connectionId) =>
+            {
+                Console.WriteLine($"SignalR reconnected: {connectionId}");
+                try { await _hubConnection.InvokeAsync("SubscribeToJobList"); } catch { }
+            };
+
             await _hubConnection.StartAsync(cancellationToken);
+            await _hubConnection.InvokeAsync("SubscribeToJobList");
             Console.WriteLine("SignalR connected successfully");
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -358,7 +395,6 @@ TimeSpan.FromSeconds(10) })
         }
     }
 
-    [JSInvokable]
     public async Task OnJobDeleted(string jobId, string projectId)
     {
         Console.WriteLine($"[Jobs] OnJobDeleted: {jobId}");
@@ -368,7 +404,6 @@ TimeSpan.FromSeconds(10) })
         }
     }
 
-    [JSInvokable]
     public async Task OnJobCompleted(string jobId, bool success, string? errorMessage)
     {
         Console.WriteLine($"[Jobs] OnJobCompleted: {jobId}, success: {success}");
@@ -394,7 +429,6 @@ TimeSpan.FromSeconds(10) })
         }
     }
 
-    [JSInvokable]
     public async Task OnJobListChanged()
     {
         Console.WriteLine($"[Jobs] OnJobListChanged");

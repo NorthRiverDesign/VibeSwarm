@@ -56,7 +56,8 @@ else
 
         @* Jobs list on RIGHT for monitoring progress *@
         <div class="col-12 col-xl-7 col-xxl-8 order-2 order-xl-2">
-            <ProjectJobsList Jobs="@Jobs" OnDeleteJob="DeleteJob" OnCreateJob="ShowCreateJobModal" />
+            <ProjectJobsList Jobs="@Jobs" HasActiveJobs="@HasActiveJobs" OnDeleteJob="DeleteJob"
+                             OnCreateJob="ShowCreateJobModal" />
         </div>
     </div>
 
@@ -73,9 +74,8 @@ else
     @* Uncommitted Changes Modal *@
     <UncommittedChangesModal @bind-IsVisible="_showUncommittedChangesModal" IsLoading="@_isLoadingUncommittedDiff"
                              ErrorMessage="@_uncommittedDiffError" DiffFiles="@_uncommittedDiffFiles" PendingJobs="@_pendingCommitJobs"
-                             CommitError="@_uncommittedCommitError" CommitProgress="@_commitPushStep"
-                             ShowPushRetry="@_pushRetryAvailable" OnRetryPush="RetryPush"
-                             IsCommitting="@_isCommittingChanges" IsDiscarding="@_isDiscardingChanges"
+                             CommitError="@_uncommittedCommitError" CommitProgress="@_commitPushStep" ShowPushRetry="@_pushRetryAvailable"
+                             OnRetryPush="RetryPush" IsCommitting="@_isCommittingChanges" IsDiscarding="@_isDiscardingChanges"
                              ShowDiscardConfirmation="@_showDiscardConfirmation" OnCommitAndPush="CommitAndPushUncommittedChanges"
                              OnShowDiscard="ShowDiscardConfirmation" OnConfirmDiscard="DiscardAllChanges"
                              OnCancelDiscard="CloseDiscardConfirmation" />
@@ -171,7 +171,8 @@ else
     j.Status == JobStatus.New ||
     j.Status == JobStatus.Pending ||
     j.Status == JobStatus.Started ||
-    j.Status == JobStatus.Processing);
+    j.Status == JobStatus.Processing ||
+    j.Status == JobStatus.Paused);
 
     // SignalR connection
     private HubConnection? _hubConnection;

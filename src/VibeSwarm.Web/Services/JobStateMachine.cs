@@ -29,6 +29,7 @@ public class JobStateMachine
 			JobStatus.Failed,
 			JobStatus.Cancelled,
 			JobStatus.Stalled,
+			JobStatus.Paused,
 			JobStatus.New // Allow reset for retry
         },
 		[JobStatus.Processing] = new HashSet<JobStatus>
@@ -37,9 +38,19 @@ public class JobStateMachine
 			JobStatus.Failed,
 			JobStatus.Cancelled,
 			JobStatus.Stalled,
+			JobStatus.Paused,
 			JobStatus.Started, // Allow transition back if interrupted
             JobStatus.New // Allow reset for retry
         },
+		[JobStatus.Paused] = new HashSet<JobStatus>
+		{
+			JobStatus.Processing, // Resume after interaction
+			JobStatus.Started,    // Re-start after pause
+			JobStatus.Cancelled,
+			JobStatus.Failed,
+			JobStatus.Stalled,
+			JobStatus.New // Allow reset for retry
+		},
 		[JobStatus.Stalled] = new HashSet<JobStatus>
 		{
 			JobStatus.New, // Reset for retry
@@ -88,11 +99,11 @@ public class JobStateMachine
 	}
 
 	/// <summary>
-	/// Checks if a job is in an active state (work is being done)
+	/// Checks if a job is in an active state (work is being done or waiting for interaction)
 	/// </summary>
 	public static bool IsActiveState(JobStatus status)
 	{
-		return status is JobStatus.Started or JobStatus.Processing;
+		return status is JobStatus.Started or JobStatus.Processing or JobStatus.Paused;
 	}
 
 	/// <summary>

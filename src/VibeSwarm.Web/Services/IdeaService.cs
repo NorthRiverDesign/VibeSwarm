@@ -268,7 +268,12 @@ public class IdeaService : IIdeaService
 3. Follow the existing code patterns and style in the project
 4. Ensure the implementation is complete and functional
 
-Implement this feature now.";
+Implement this feature now.
+
+When you are finished, end your response with a short summary in this exact format:
+<commit-summary>
+A concise one-line description of what was implemented (max 72 chars)
+</commit-summary>";
 	}
 
 	private static string BuildExpandedPrompt(string ideaDescription)
@@ -285,7 +290,12 @@ Implement this feature now.";
 4. Implement the feature completely, including any necessary tests
 5. Make sure the implementation follows the existing code patterns and style in the project
 
-Begin by expanding this idea into a detailed specification, then implement it.";
+Begin by expanding this idea into a detailed specification, then implement it.
+
+When you are finished, end your response with a short summary in this exact format:
+<commit-summary>
+A concise one-line description of what was implemented (max 72 chars)
+</commit-summary>";
 	}
 
 	public async Task<bool> CompleteIdeaFromJobAsync(Guid jobId, CancellationToken cancellationToken = default)
