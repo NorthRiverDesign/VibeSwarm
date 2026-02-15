@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
+using VibeSwarm.Shared.LocalInference;
 using VibeSwarm.Shared.Providers;
 
 namespace VibeSwarm.Shared.Data;
@@ -22,6 +23,8 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
     public DbSet<AppSettings> AppSettings => Set<AppSettings>();
     public DbSet<Skill> Skills => Set<Skill>();
     public DbSet<Idea> Ideas => Set<Idea>();
+    public DbSet<InferenceProvider> InferenceProviders => Set<InferenceProvider>();
+    public DbSet<InferenceModel> InferenceModels => Set<InferenceModel>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -173,6 +176,31 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
                 .HasForeignKey(e => e.JobId)
                 .OnDelete(DeleteBehavior.SetNull);
             entity.HasIndex(e => new { e.ProjectId, e.SortOrder });
+        });
+
+        modelBuilder.Entity<InferenceProvider>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Name).IsRequired().HasMaxLength(100);
+            entity.Property(e => e.Endpoint).IsRequired().HasMaxLength(500);
+            entity.Property(e => e.ApiKey).HasMaxLength(200);
+            entity.Property(e => e.ProviderType).HasConversion<string>();
+            entity.HasMany(e => e.Models)
+                .WithOne(m => m.InferenceProvider)
+                .HasForeignKey(m => m.InferenceProviderId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<InferenceModel>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.ModelId).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.DisplayName).HasMaxLength(200);
+            entity.Property(e => e.ParameterSize).HasMaxLength(50);
+            entity.Property(e => e.Family).HasMaxLength(100);
+            entity.Property(e => e.QuantizationLevel).HasMaxLength(50);
+            entity.Property(e => e.TaskType).IsRequired().HasMaxLength(100).HasDefaultValue("default");
+            entity.HasIndex(e => new { e.InferenceProviderId, e.ModelId }).IsUnique();
         });
     }
 }

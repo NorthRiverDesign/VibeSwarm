@@ -22,6 +22,9 @@ public static class DataServiceExtensions
         services.AddScoped<IUserService, UserService>();
         services.AddScoped<IProviderUsageService, ProviderUsageService>();
         services.AddSingleton<IFileSystemService, FileSystemService>();
+        services.AddHttpClient("LocalInference");
+        services.AddScoped<IInferenceProviderService, InferenceProviderService>();
+        services.AddScoped<IInferenceService, OllamaInferenceService>();
 
         return services;
     }

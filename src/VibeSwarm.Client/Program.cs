@@ -40,6 +40,9 @@ builder.Services.AddScoped<IIdeaService, HttpIdeaService>();
 builder.Services.AddScoped<IUserService, HttpUserService>();
 builder.Services.AddScoped<IFileSystemService, HttpFileSystemService>();
 builder.Services.AddScoped<IVersionControlService, HttpVersionControlService>();
+builder.Services.AddScoped<HttpInferenceProviderService>();
+builder.Services.AddScoped<IInferenceProviderService>(sp => sp.GetRequiredService<HttpInferenceProviderService>());
+builder.Services.AddScoped<IInferenceService, HttpInferenceService>();
 
 // UI services
 builder.Services.AddScoped<NotificationService>();
