@@ -382,12 +382,12 @@ TimeSpan.FromSeconds(10) })
             });
 
             // Match server's NotifyJobInteractionRequired: SendAsync("JobInteractionRequired", jobId, prompt, interactionType,
-            choices, defaultResponse)
-_hubConnection.On<string, string, string, List<string>?, string?>("JobInteractionRequired",
-async (jobId, prompt, interactionType, choices, defaultResponse) =>
-{
-    await OnJobInteractionRequested(jobId, prompt, choices);
-});
+            // choices, defaultResponse)
+            _hubConnection.On<string, string, string, List<string>?, string?>("JobInteractionRequired",
+            async (jobId, prompt, interactionType, choices, defaultResponse) =>
+            {
+                await OnJobInteractionRequested(jobId, prompt, choices);
+            });
 
             // Match server's NotifyJobResumed: SendAsync("JobResumed", jobId)
             _hubConnection.On<string>("JobResumed", async (jobId) =>
