@@ -28,56 +28,52 @@
 					<EditForm Model="@_settings" OnValidSubmit="SaveSettings">
 						<DataAnnotationsValidator />
 
-						<div class="mb-4">
-							<h6 class="text-body-secondary mb-3">
-								<i class="bi bi-folder me-1"></i>Project Defaults
-							</h6>
+						<h6 class="text-body-secondary mb-3">
+							<i class="bi bi-folder me-1"></i>Project Defaults
+						</h6>
 
-							<div class="mb-3">
-								<label for="defaultProjectsDirectory" class="form-label">Default Projects Directory</label>
-								<div class="input-group">
-									<input type="text" id="defaultProjectsDirectory" class="form-control font-monospace"
-										   @bind="_settings.DefaultProjectsDirectory" placeholder="@_placeholder" />
-									<button type="button" class="btn btn-outline-secondary" @onclick="OpenDirectoryBrowser"
-											title="Browse directories">
-										<i class="bi bi-folder2-open"></i>
-									</button>
-								</div>
-								<div class="form-text">
-									This path will be used as the default prefix when creating new projects.
-									For example, if you set this to <code>@_examplePath</code> and create a project named
-									"MyApp",
-									the working path will default to
-									<code>@_examplePath@Path.DirectorySeparatorChar@("MyApp")</code>.
-								</div>
-
-								@if (!string.IsNullOrEmpty(_settings.DefaultProjectsDirectory))
-								{
-									<div class="mt-2 d-flex flex-wrap align-items-center gap-2">
-										@if (_directoryExists)
-										{
-											<span class="badge bg-success-subtle text-success-emphasis">
-												<i class="bi bi-check-circle me-1"></i>Directory exists
-											</span>
-											<button type="button" class="btn btn-outline-primary btn-sm"
-													@onclick="OpenScanProjectsModal">
-												<i class="bi bi-folder-symlink me-1"></i>Scan For Projects
-											</button>
-										}
-										else
-										{
-											<span class="badge bg-warning-subtle text-warning-emphasis">
-												<i class="bi bi-exclamation-triangle me-1"></i>Directory does not exist
-											</span>
-										}
-									</div>
-								}
+						<div class="mb-3">
+							<label for="defaultProjectsDirectory" class="form-label">Default Projects Directory</label>
+							<div class="input-group">
+								<input type="text" id="defaultProjectsDirectory" class="form-control font-monospace"
+									   @bind="_settings.DefaultProjectsDirectory" placeholder="@_placeholder" />
+								<button type="button" class="btn btn-outline-secondary" @onclick="OpenDirectoryBrowser"
+										title="Browse directories">
+									<i class="bi bi-folder2-open"></i>
+								</button>
 							</div>
+							<div class="form-text">
+								This path will be used as the default prefix when creating new projects.
+								For example, if you set this to <code>@_examplePath</code> and create a project named
+								"MyApp",
+								the working path will default to
+								<code>@_examplePath@Path.DirectorySeparatorChar@("MyApp")</code>.
+							</div>
+
+							@if (!string.IsNullOrEmpty(_settings.DefaultProjectsDirectory))
+							{
+								<div class="mt-2 d-flex flex-wrap align-items-center gap-2">
+									@if (_directoryExists)
+									{
+										<span class="badge bg-success-subtle text-success-emphasis">
+											<i class="bi bi-check-circle me-1"></i>Directory exists
+										</span>
+										<button type="button" class="btn btn-outline-primary btn-sm"
+												@onclick="OpenScanProjectsModal">
+											<i class="bi bi-folder-symlink me-1"></i>Scan For Projects
+										</button>
+									}
+									else
+									{
+										<span class="badge bg-warning-subtle text-warning-emphasis">
+											<i class="bi bi-exclamation-triangle me-1"></i>Directory does not exist
+										</span>
+									}
+								</div>
+							}
 						</div>
 
-						<hr />
-
-						<div class="d-flex flex-column flex-sm-row gap-2">
+						<div class="d-flex flex-column flex-sm-row gap-2 mt-4">
 							<button type="submit" class="btn btn-primary" disabled="@_isSaving">
 								@if (_isSaving)
 								{
@@ -100,80 +96,7 @@
 				}
 			</div>
 		</div>
-	</div>
-
-	<div class="col-12 col-lg-4">
-		<div class="card">
-			<div class="card-header bg-body-secondary">
-				<h5 class="mb-0 fw-semibold">
-					<i class="bi bi-info-circle me-2"></i>About
-				</h5>
-			</div>
-			<div class="card-body">
-				<div class="mb-3">
-					<div class="d-flex align-items-center gap-2 mb-2">
-						<img src="img/logo_icon.png" alt="VibeSwarm" class="brand-icon"
-							 style="width: 32px; height: 32px;" />
-						<h5 class="mb-0">VibeSwarm</h5>
-					</div>
-					<p class="text-body-secondary small mb-0">
-						AI coding agent orchestrator that leverages multiple AI models to assist developers
-						in writing, reviewing, and optimizing code.
-					</p>
-				</div>
-
-				<hr />
-
-				<div class="small text-body-secondary">
-					<div class="mb-2">
-						<i class="bi bi-pc-display me-2"></i>
-						<strong>Platform:</strong> @System.Runtime.InteropServices.RuntimeInformation.OSDescription
-					</div>
-					<div class="mb-2">
-						<i class="bi bi-hdd me-2"></i>
-						<strong>Runtime:</strong>
-						@System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription
-					</div>
-					@if (_settings.UpdatedAt.HasValue)
-					{
-						<div>
-							<i class="bi bi-clock-history me-2"></i>
-							<strong>Last Updated:</strong> @_settings.UpdatedAt.Value.FormatDateTimeShort()
-						</div>
-					}
-				</div>
-			</div>
-		</div>
-
-		<div class="card mt-3">
-			<div class="card-header bg-body-secondary">
-				<h5 class="mb-0 fw-semibold">
-					<i class="bi bi-lightbulb me-2"></i>Tips
-				</h5>
-			</div>
-			<div class="card-body small">
-				<ul class="mb-0 ps-3">
-					<li class="mb-2">
-						Set a default projects directory to quickly create new projects without typing the full path
-						each time.
-					</li>
-					<li class="mb-2">
-						The directory browser helps you navigate the host file system to find the right folder.
-					</li>
-					<li>
-						VibeSwarm can work with any directory that the host process has access to.
-					</li>
-				</ul>
-			</div>
-		</div>
-
-		<ToolDetectionCard />
-	</div>
-</div>
-
-<div class="row g-3 g-lg-4 mt-1">
-	<div class="col-12">
-		<div class="card">
+		<div class="card mt-3 mt-lg-4">
 			<div class="card-header bg-body-secondary d-flex align-items-center justify-content-between">
 				<h5 class="mb-0 fw-semibold">
 					<i class="bi bi-cpu me-2"></i>Local Inference
@@ -205,7 +128,11 @@
 				{
 					<div class="text-center py-4">
 						<i class="bi bi-cpu display-4 text-body-secondary mb-3 d-block"></i>
-						<p class="text-body-secondary mb-3">No local inference provider configured. Set up Ollama or another local inference provider for lightweight AI tasks like generating commit messages and summarization.</p>
+						<p class="text-body-secondary mb-3">
+							No local inference provider configured. Set up Ollama or another local
+							inference provider for lightweight AI tasks like generating commit messages
+							and summarization.
+						</p>
 						<button class="btn btn-primary" @onclick="SetupInferenceProvider">
 							<i class="bi bi-plus-lg me-1"></i>Set Up Local Inference
 						</button>
@@ -221,8 +148,7 @@
 						</div>
 						<div class="col-12 col-md-6">
 							<label for="inferenceProviderType" class="form-label">Provider Type</label>
-							<select id="inferenceProviderType" class="form-select"
-									@bind="_inferenceProvider.ProviderType">
+							<select id="inferenceProviderType" class="form-select" @bind="_inferenceProvider.ProviderType">
 								@foreach (var type in Enum.GetValues<InferenceProviderType>())
 								{
 									<option value="@type">@type</option>
@@ -233,8 +159,7 @@
 							<label for="inferenceEndpoint" class="form-label">Endpoint URL</label>
 							<div class="input-group">
 								<input type="url" id="inferenceEndpoint" class="form-control font-monospace"
-									   @bind="_inferenceProvider.Endpoint"
-									   placeholder="http://localhost:11434" />
+									   @bind="_inferenceProvider.Endpoint"   placeholder="http://localhost:11434" />
 								<button type="button" class="btn btn-outline-secondary" @onclick="TestInferenceConnection"
 										disabled="@_isTestingInference" title="Test Connection">
 									@if (_isTestingInference)
@@ -316,13 +241,78 @@
 			</div>
 		</div>
 	</div>
-</div>
 
-@if (_showDirectoryBrowser)
-{
-	<DirectoryBrowser @ref="_directoryBrowser" InitialPath="@_settings.DefaultProjectsDirectory"
-					  OnDirectorySelected="OnDirectorySelected" OnClosed="CloseDirectoryBrowser" />
-}
+	<div class="col-12 col-lg-4">
+		<div class="card">
+			<div class="card-header bg-body-secondary">
+				<h5 class="mb-0 fw-semibold">
+					<i class="bi bi-info-circle me-2"></i>About
+				</h5>
+			</div>
+			<div class="card-body">
+				<div class="d-flex align-items-center gap-2 mb-3">
+					<img src="img/logo_icon.png" alt="VibeSwarm" class="brand-icon"
+						 style="width: 32px; height: 32px;" />
+					<h5 class="mb-0">VibeSwarm</h5>
+				</div>
+				<p class="text-body-secondary small mb-3">
+					AI coding agent orchestrator that leverages multiple AI models to assist developers
+					in writing, reviewing, and optimizing code.
+				</p>
+				<div class="small text-body-secondary">
+					<div class="d-flex align-items-center gap-2 mb-2">
+						<i class="bi bi-pc-display opacity-75"></i>
+						<span><strong>Platform:</strong>
+							@System.Runtime.InteropServices.RuntimeInformation.OSDescription</span>
+						</div>
+						<div class="d-flex align-items-center gap-2 mb-2">
+							<i class="bi bi-hdd opacity-75"></i>
+							<span><strong>Runtime:</strong>
+								@System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription</span>
+							</div>
+							@if (_settings.UpdatedAt.HasValue)
+							{
+								<div class="d-flex align-items-center gap-2">
+									<i class="bi bi-clock-history opacity-75"></i>
+									<span><strong>Last Updated:</strong> @_settings.UpdatedAt.Value.FormatDateTimeShort()</span>
+								</div>
+							}
+						</div>
+					</div>
+				</div>
+
+				<div class="card mt-3">
+					<div class="card-header bg-body-secondary">
+						<h5 class="mb-0 fw-semibold">
+							<i class="bi bi-lightbulb me-2"></i>Tips
+						</h5>
+					</div>
+					<div class="card-body small">
+						<ul class="mb-0 ps-3">
+							<li class="mb-2">
+								Set a default projects directory to quickly create new projects without typing
+								the full path each time.
+							</li>
+							<li class="mb-2">
+								The directory browser helps you navigate the host file system to find the right
+								folder.
+							</li>
+							<li>
+								VibeSwarm can work with any directory that the host process has access to.
+							</li>
+						</ul>
+					</div>
+				</div>
+
+				<ToolDetectionCard />
+			</div>
+		</div>
+
+		@if (_showDirectoryBrowser)
+		{
+			<DirectoryBrowser @ref="_directoryBrowser" InitialPath="@_settings.DefaultProjectsDirectory"
+							  OnDirectorySelected="OnDirectorySelected" OnClosed="CloseDirectoryBrowser" />
+		}
 
 <ScanProjectsModal @ref="_scanProjectsModal" OnProjectsImported="OnProjectsImported" />
 
