@@ -1,5 +1,6 @@
 using System.Net.Http.Json;
 using VibeSwarm.Shared.Data;
+using VibeSwarm.Shared.Models;
 using VibeSwarm.Shared.Services;
 
 namespace VibeSwarm.Client.Services;
@@ -57,8 +58,8 @@ public class HttpIdeaService : IIdeaService
     public async Task<Idea?> GetByJobIdAsync(Guid jobId, CancellationToken ct = default)
         => await _http.GetFromJsonAsync<Idea?>($"/api/ideas/by-job/{jobId}", ct);
 
-	public async Task StartProcessingAsync(Guid projectId, bool autoCommit = false, CancellationToken ct = default)
-		=> await _http.PostAsync($"/api/ideas/project/{projectId}/start-processing?autoCommit={autoCommit}", null, ct);
+    public async Task StartProcessingAsync(Guid projectId, bool autoCommit = false, CancellationToken ct = default)
+        => await _http.PostAsync($"/api/ideas/project/{projectId}/start-processing?autoCommit={autoCommit}", null, ct);
 
     public async Task StopProcessingAsync(Guid projectId, CancellationToken ct = default)
         => await _http.PostAsync($"/api/ideas/project/{projectId}/stop-processing", null, ct);
@@ -89,9 +90,16 @@ public class HttpIdeaService : IIdeaService
         return await response.Content.ReadFromJsonAsync<Idea>(ct) ?? new Idea();
     }
 
-    public async Task<Idea?> ExpandIdeaAsync(Guid ideaId, CancellationToken ct = default)
+    public async Task<Idea?> ExpandIdeaAsync(Guid ideaId, IdeaExpansionRequest? request = null, CancellationToken ct = default)
     {
-        var response = await _http.PostAsync($"/api/ideas/{ideaId}/expand", null, ct);
+        var response = await _http.PostAsJsonAsync($"/api/ideas/{ideaId}/expand", request ?? new IdeaExpansionRequest(), ct);
+        if (!response.IsSuccessStatusCode) return null;
+        return await response.Content.ReadFromJsonAsync<Idea>(ct);
+    }
+
+    public async Task<Idea?> CancelExpansionAsync(Guid ideaId, CancellationToken ct = default)
+    {
+        var response = await _http.PostAsync($"/api/ideas/{ideaId}/cancel-expansion", null, ct);
         if (!response.IsSuccessStatusCode) return null;
         return await response.Content.ReadFromJsonAsync<Idea>(ct);
     }

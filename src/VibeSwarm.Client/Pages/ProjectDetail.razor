@@ -5,9 +5,13 @@
 @inject IProviderService ProviderService
 @inject IVersionControlService VersionControlService
 @inject IIdeaService IdeaService
+@inject IInferenceService InferenceService
+@inject IInferenceProviderService InferenceProviderService
 @inject NavigationManager NavigationManager
 @inject NotificationService NotificationService
 @implements IAsyncDisposable
+@using VibeSwarm.Shared.LocalInference
+@using VibeSwarm.Shared.Models
 @using VibeSwarm.Shared.Utilities
 @using VibeSwarm.Shared.VersionControl
 @using VibeSwarm.Shared.VersionControl.Models
@@ -50,8 +54,9 @@ else
                         OnStartProcessing="StartIdeasProcessing" OnStartProcessingWithOptions="StartIdeasProcessingWithOptions"
                         OnStopProcessing="StopIdeasProcessing" OnAddIdea="AddIdea" OnUpdateIdea="UpdateIdea"
                         OnDeleteIdea="DeleteIdea" OnCopyIdea="CopyIdea" OnMoveIdea="MoveIdea" OnStartSingleIdea="StartSingleIdea"
-                        OnExpandIdea="ExpandIdea" OnApproveExpansion="ApproveIdeaExpansion"
-                        OnRejectExpansion="RejectIdeaExpansion" />
+                        OnExpandIdea="ExpandIdea" OnCancelExpansion="CancelIdeaExpansion" OnApproveExpansion="ApproveIdeaExpansion"
+                        OnRejectExpansion="RejectIdeaExpansion" AvailableLocalModels="@_availableLocalModels"
+                        HasLocalInference="@_hasLocalInference" />
         </div>
 
         @* Jobs list on RIGHT for monitoring progress *@
@@ -166,6 +171,12 @@ else
     private bool _isTogglingIdeasProcessing { get; set; }
     private bool HasDefaultProvider => Providers.Any(p => p.IsDefault && p.IsEnabled);
     private HashSet<Guid> ProcessingIdeaIds { get; set; } = new();
+    private CancellationTokenSource? _expandCts;
+    private Guid? _expandingIdeaId;
+
+    // Local inference state for idea expansion
+    private List<DiscoveredModel> _availableLocalModels { get; set; } = new();
+    private bool _hasLocalInference { get; set; }
 
     private bool HasActiveJobs => Jobs.Any(j =>
     j.Status == JobStatus.New ||
@@ -510,10 +521,37 @@ TimeSpan.FromSeconds(10) })
                 NewJob.ProviderId = defaultProvider.Id;
                 await LoadModelsForProvider(defaultProvider.Id);
             }
+
+            // Load local inference models for idea expansion
+            await LoadLocalInferenceModels();
         }
         finally
         {
             IsLoading = false;
+        }
+    }
+
+    private async Task LoadLocalInferenceModels()
+    {
+        try
+        {
+            var inferenceProviders = (await InferenceProviderService.GetEnabledAsync()).ToList();
+            _hasLocalInference = inferenceProviders.Any();
+
+            if (_hasLocalInference)
+            {
+                var health = await InferenceService.CheckHealthAsync();
+                if (health.IsAvailable)
+                {
+                    _availableLocalModels = health.DiscoveredModels;
+                }
+            }
+        }
+        catch
+        {
+            // Non-critical - local inference is optional
+            _hasLocalInference = false;
+            _availableLocalModels = new();
         }
     }
 
@@ -1433,11 +1471,21 @@ TimeSpan.FromSeconds(10) })
         }
     }
 
-    private async Task ExpandIdea(Guid ideaId)
+    private async Task ExpandIdea((Guid ideaId, IdeaExpansionRequest request) args)
     {
+        var ideaId = args.ideaId;
+        var request = args.request;
+        _expandingIdeaId = ideaId;
+
+        // Cancel any previous expansion
+        _expandCts?.Cancel();
+        _expandCts?.Dispose();
+        _expandCts = new CancellationTokenSource();
+        var ct = _expandCts.Token;
+
         try
         {
-            var result = await IdeaService.ExpandIdeaAsync(ideaId);
+            var result = await IdeaService.ExpandIdeaAsync(ideaId, request, ct);
             if (result != null)
             {
                 await LoadIdeas();
@@ -1451,9 +1499,51 @@ TimeSpan.FromSeconds(10) })
                 }
             }
         }
+        catch (OperationCanceledException)
+        {
+            // User cancelled - try to reset the server-side status
+            try
+            {
+                await IdeaService.CancelExpansionAsync(ideaId);
+                await LoadIdeas();
+            }
+            catch { /* Best effort */ }
+            NotificationService.ShowInfo("Expansion cancelled.", "Cancelled");
+        }
         catch (Exception ex)
         {
+            // On error, also cancel the server-side expansion status
+            try
+            {
+                await IdeaService.CancelExpansionAsync(ideaId);
+                await LoadIdeas();
+            }
+            catch { /* Best effort */ }
             NotificationService.ShowError($"Error expanding idea: {ex.Message}");
+        }
+        finally
+        {
+            _expandingIdeaId = null;
+        }
+    }
+
+    private async Task CancelIdeaExpansion(Guid ideaId)
+    {
+        _expandCts?.Cancel();
+
+        try
+        {
+            await IdeaService.CancelExpansionAsync(ideaId);
+            await LoadIdeas();
+            NotificationService.ShowInfo("Expansion cancelled.", "Cancelled");
+        }
+        catch (Exception ex)
+        {
+            NotificationService.ShowError($"Error cancelling expansion: {ex.Message}");
+        }
+        finally
+        {
+            _expandingIdeaId = null;
         }
     }
 
@@ -1490,6 +1580,10 @@ TimeSpan.FromSeconds(10) })
 
     public async ValueTask DisposeAsync()
     {
+        // Cancel any pending expansion
+        _expandCts?.Cancel();
+        _expandCts?.Dispose();
+
         // Cancel any pending SignalR connection attempts
         _signalRCts?.Cancel();
         _signalRCts?.Dispose();

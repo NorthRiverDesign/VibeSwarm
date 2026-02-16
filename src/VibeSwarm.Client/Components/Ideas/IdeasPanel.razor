@@ -1,6 +1,8 @@
 @* Ideas panel component for managing project feature ideas *@
 @inject IProjectService ProjectService
 @using VibeSwarm.Shared.Data
+@using VibeSwarm.Shared.LocalInference
+@using VibeSwarm.Shared.Models
 
 <div class="card">
 	<div class="card-header bg-body-secondary d-flex justify-content-between align-items-center">
@@ -94,12 +96,11 @@
 				{
 					<IdeaListItem Idea="idea" IsProcessing="@(idea.IsProcessing || IsIdeaProcessing(idea.Id))"
 								  IsStarting="@(StartingIdeaId == idea.Id)" HasActiveJobs="@HasActiveJobs"
-							  HasDefaultProvider="@HasDefaultProvider"
-							  IsQueuedForProcessing="@(IsProcessingActive && !idea.IsProcessing && !IsIdeaProcessing(idea.Id) && !idea.JobId.HasValue)"
-							  OnExpand="@(() => OpenExpandModal(idea))"
-								  OnStart="@(() => StartSingleIdea(idea))" OnCopy="@(() => OpenCopyModal(idea))"
-								  OnMove="@(() => OpenMoveModal(idea))" OnDelete="@(() => OnDeleteIdea.InvokeAsync(idea.Id))"
-								  OnSaveEdit="HandleIdeaEdit" />
+								  HasDefaultProvider="@HasDefaultProvider"
+								  IsQueuedForProcessing="@(IsProcessingActive && !idea.IsProcessing && !IsIdeaProcessing(idea.Id) && !idea.JobId.HasValue)"
+								  OnExpand="@(() => OpenExpandModal(idea))"  OnStart="@(() => StartSingleIdea(idea))"
+								  OnCopy="@(() => OpenCopyModal(idea))"  OnMove="@(() => OpenMoveModal(idea))"
+								  OnDelete="@(() => OnDeleteIdea.InvokeAsync(idea.Id))"  OnSaveEdit="HandleIdeaEdit" />
 				}
 			</ul>
 		}
@@ -126,8 +127,9 @@
 
 @* Idea Expansion Modal *@
 <IdeaExpansionModal @bind-IsVisible="ShowExpansionModal" Idea="SelectedIdeaForExpansion" IsExpanding="IsExpandingIdea"
-					IsProcessing="IsProcessingExpansion" OnExpand="HandleExpandIdea" OnApprove="HandleApproveExpansion"
-					OnReject="HandleRejectExpansion" />
+					IsProcessing="IsProcessingExpansion" OnExpand="HandleExpandIdea" OnCancel="HandleCancelExpansion"
+					OnApprove="HandleApproveExpansion" OnReject="HandleRejectExpansion" AvailableModels="@AvailableLocalModels"
+					HasLocalInference="@HasLocalInference" />
 
 @* Start All Confirmation Modal *@
 <ModalDialog @bind-IsVisible="_showStartAllModal" Title="Start All Ideas" Icon="play-fill"
@@ -211,7 +213,10 @@
 	public EventCallback<Guid> OnStartSingleIdea { get; set; }
 
 	[Parameter]
-	public EventCallback<Guid> OnExpandIdea { get; set; }
+	public EventCallback<(Guid ideaId, IdeaExpansionRequest request)> OnExpandIdea { get; set; }
+
+	[Parameter]
+	public EventCallback<Guid> OnCancelExpansion { get; set; }
 
 	[Parameter]
 	public EventCallback<(Guid ideaId, string? editedDescription)> OnApproveExpansion { get; set; }
@@ -227,6 +232,12 @@
 
 	[Parameter]
 	public EventCallback<AutoCommitMode> OnStartProcessingWithOptions { get; set; }
+
+	[Parameter]
+	public List<DiscoveredModel> AvailableLocalModels { get; set; } = new();
+
+	[Parameter]
+	public bool HasLocalInference { get; set; }
 
 	private string NewIdeaDescription { get; set; } = string.Empty;
 	private Guid? StartingIdeaId { get; set; }
@@ -357,15 +368,38 @@
 		ShowExpansionModal = true;
 	}
 
-	private async Task HandleExpandIdea(Guid ideaId)
+	private async Task HandleExpandIdea(IdeaExpansionRequest request)
 	{
+		if (SelectedIdeaForExpansion == null) return;
+
 		IsExpandingIdea = true;
 		StateHasChanged();
 
 		try
 		{
-			await OnExpandIdea.InvokeAsync(ideaId);
-			var updated = Ideas.FirstOrDefault(i => i.Id == ideaId);
+			await OnExpandIdea.InvokeAsync((SelectedIdeaForExpansion.Id, request));
+			var updated = Ideas.FirstOrDefault(i => i.Id == SelectedIdeaForExpansion.Id);
+			if (updated != null)
+			{
+				SelectedIdeaForExpansion = updated;
+			}
+		}
+		finally
+		{
+			IsExpandingIdea = false;
+			StateHasChanged();
+		}
+	}
+
+	private async Task HandleCancelExpansion()
+	{
+		var ideaId = SelectedIdeaForExpansion?.Id;
+		if (ideaId == null) return;
+
+		try
+		{
+			await OnCancelExpansion.InvokeAsync(ideaId.Value);
+			var updated = Ideas.FirstOrDefault(i => i.Id == ideaId.Value);
 			if (updated != null)
 			{
 				SelectedIdeaForExpansion = updated;

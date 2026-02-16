@@ -1,7 +1,9 @@
 @* Modal for reviewing and editing AI-expanded idea specifications *@
+@using VibeSwarm.Shared.LocalInference
+@using VibeSwarm.Shared.Models
 
 <ModalDialog IsVisible="IsVisible" IsVisibleChanged="HandleVisibilityChanged" Title="Expand Idea" Icon="magic"
-	Size="ModalDialog.ModalSize.Large" OnClose="HandleClose">
+			 Size="ModalDialog.ModalSize.Large" OnClose="HandleClose">
 	<ChildContent>
 		@if (Idea == null)
 		{
@@ -28,6 +30,9 @@
 					<div class="text-body-secondary">
 						<i class="bi bi-stars me-1"></i>AI is expanding your idea into a detailed specification...
 					</div>
+					<button type="button" class="btn btn-outline-danger btn-sm mt-2" @onclick="RequestCancel">
+						<i class="bi bi-x-circle me-1"></i>Cancel Expansion
+					</button>
 				</div>
 			}
 			else if (Idea.ExpansionStatus == IdeaExpansionStatus.Failed)
@@ -36,7 +41,14 @@
 					<i class="bi bi-exclamation-triangle me-1"></i>
 					Expansion failed: @(Idea.ExpansionError ?? "Unknown error")
 				</div>
-				<div class="d-flex gap-2">
+
+				@* Show model selection for retry *@
+				<ExpansionModelSelector UseLocalInference="@_useLocalInference"
+										UseLocalInferenceChanged="@((v) => _useLocalInference = v)" SelectedModelName="@_selectedModelName"
+										SelectedModelNameChanged="@((v) => _selectedModelName = v)" AvailableModels="@AvailableModels"
+										HasLocalInference="@HasLocalInference" />
+
+				<div class="d-flex gap-2 mt-3">
 					<button type="button" class="btn btn-primary" @onclick="RequestExpansion" disabled="@IsExpanding">
 						<i class="bi bi-arrow-clockwise me-1"></i>Try Again
 					</button>
@@ -63,7 +75,7 @@
 							}
 						</span>
 						<button type="button" class="btn btn-sm btn-outline-secondary" @onclick="ToggleEditMode"
-							title="@(IsEditMode ? "View mode" : "Edit mode")">
+								title="@(IsEditMode ? "View mode" : "Edit mode")">
 							<i class="bi @(IsEditMode ? "bi-eye" : "bi-pencil")"></i>
 						</button>
 					</label>
@@ -71,7 +83,7 @@
 					@if (IsEditMode)
 					{
 						<textarea class="form-control font-monospace" rows="15" @bind="EditedDescription" @bind:event="oninput"
-				placeholder="Edit the expanded specification..."></textarea>
+								  placeholder="Edit the expanded specification..."></textarea>
 						<div class="form-text">
 							Edit the specification to better match your requirements before approving.
 						</div>
@@ -119,7 +131,15 @@
 						Use AI to expand this brief idea into a detailed implementation specification.
 						You'll be able to review and edit before using it.
 					</p>
-					<button type="button" class="btn btn-primary btn-lg" @onclick="RequestExpansion" disabled="@IsExpanding">
+
+					@* Model selection *@
+					<ExpansionModelSelector UseLocalInference="@_useLocalInference"
+											UseLocalInferenceChanged="@((v) => _useLocalInference = v)" SelectedModelName="@_selectedModelName"
+											SelectedModelNameChanged="@((v) => _selectedModelName = v)" AvailableModels="@AvailableModels"
+											HasLocalInference="@HasLocalInference" />
+
+					<button type="button" class="btn btn-primary btn-lg mt-3" @onclick="RequestExpansion"
+							disabled="@IsExpanding">
 						@if (IsExpanding)
 						{
 							<span class="spinner-border spinner-border-sm me-1" role="status"></span>
@@ -147,7 +167,10 @@
 	public Idea? Idea { get; set; }
 
 	[Parameter]
-	public EventCallback<Guid> OnExpand { get; set; }
+	public EventCallback<IdeaExpansionRequest> OnExpand { get; set; }
+
+	[Parameter]
+	public EventCallback OnCancel { get; set; }
 
 	[Parameter]
 	public EventCallback<(Guid ideaId, string? editedDescription)> OnApprove { get; set; }
@@ -161,8 +184,16 @@
 	[Parameter]
 	public bool IsProcessing { get; set; }
 
+	[Parameter]
+	public List<DiscoveredModel> AvailableModels { get; set; } = new();
+
+	[Parameter]
+	public bool HasLocalInference { get; set; }
+
 	private bool IsEditMode { get; set; }
 	private string? EditedDescription { get; set; }
+	private bool _useLocalInference;
+	private string? _selectedModelName;
 
 	protected override void OnParametersSet()
 	{
@@ -193,8 +224,18 @@
 	{
 		if (Idea != null)
 		{
-			await OnExpand.InvokeAsync(Idea.Id);
+			var request = new IdeaExpansionRequest
+			{
+				UseLocalInference = _useLocalInference,
+				ModelName = _useLocalInference ? _selectedModelName : null
+			};
+			await OnExpand.InvokeAsync(request);
 		}
+	}
+
+	private async Task RequestCancel()
+	{
+		await OnCancel.InvokeAsync();
 	}
 
 	private async Task ApproveExpansion()

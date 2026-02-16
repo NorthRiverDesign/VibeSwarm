@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using VibeSwarm.Shared.Data;
+using VibeSwarm.Shared.Models;
 using VibeSwarm.Shared.Services;
 
 namespace VibeSwarm.Web.Controllers;
@@ -75,8 +76,8 @@ public class IdeasController : ControllerBase
     [HttpGet("by-job/{jobId:guid}")]
     public async Task<IActionResult> GetByJobId(Guid jobId, CancellationToken ct) => Ok(await _ideaService.GetByJobIdAsync(jobId, ct));
 
-	[HttpPost("project/{projectId:guid}/start-processing")]
-	public async Task<IActionResult> StartProcessing(Guid projectId, [FromQuery] bool autoCommit = false, CancellationToken ct = default) { await _ideaService.StartProcessingAsync(projectId, autoCommit, ct); return Ok(); }
+    [HttpPost("project/{projectId:guid}/start-processing")]
+    public async Task<IActionResult> StartProcessing(Guid projectId, [FromQuery] bool autoCommit = false, CancellationToken ct = default) { await _ideaService.StartProcessingAsync(projectId, autoCommit, ct); return Ok(); }
 
     [HttpPost("project/{projectId:guid}/stop-processing")]
     public async Task<IActionResult> StopProcessing(Guid projectId, CancellationToken ct) { await _ideaService.StopProcessingAsync(projectId, ct); return Ok(); }
@@ -94,10 +95,17 @@ public class IdeasController : ControllerBase
     public async Task<IActionResult> Move(Guid id, [FromBody] TransferRequest req, CancellationToken ct) => Ok(await _ideaService.MoveToProjectAsync(id, req.TargetProjectId, ct));
 
     [HttpPost("{id:guid}/expand")]
-    public async Task<IActionResult> Expand(Guid id, CancellationToken ct)
+    public async Task<IActionResult> Expand(Guid id, [FromBody] IdeaExpansionRequest? request, CancellationToken ct)
     {
-        var result = await _ideaService.ExpandIdeaAsync(id, ct);
+        var result = await _ideaService.ExpandIdeaAsync(id, request, ct);
         return result == null ? BadRequest() : Ok(result);
+    }
+
+    [HttpPost("{id:guid}/cancel-expansion")]
+    public async Task<IActionResult> CancelExpansion(Guid id, CancellationToken ct)
+    {
+        var result = await _ideaService.CancelExpansionAsync(id, ct);
+        return result == null ? NotFound() : Ok(result);
     }
 
     [HttpPost("{id:guid}/approve")]

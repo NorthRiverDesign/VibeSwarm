@@ -1,0 +1,92 @@
+@* Reusable model selection component for idea expansion *@
+@using VibeSwarm.Shared.LocalInference
+
+<div class="text-start mb-2">
+	@if (HasLocalInference)
+	{
+		<div class="form-check form-switch mb-2">
+			<input class="form-check-input" type="checkbox" id="useLocalInference"   checked="@UseLocalInference"
+				   @onchange="HandleToggleLocalInference">
+				<label class="form-check-label" for="useLocalInference">
+					<i class="bi bi-pc-display me-1"></i>Use local inference
+				</label>
+			</div>
+		}
+
+		@if (UseLocalInference && AvailableModels.Any())
+		{
+			<div class="mb-2">
+				<label class="form-label fw-semibold small mb-1">
+					<i class="bi bi-cpu me-1"></i>Model
+				</label>
+				<select class="form-select form-select-sm" value="@SelectedModelName" @onchange="HandleModelChanged">
+					<option value="">Auto (default model)</option>
+					@foreach (var model in AvailableModels)
+					{
+						<option value="@model.Name">
+							@(model.DisplayName ?? model.Name)
+							@if (!string.IsNullOrEmpty(model.ParameterSize))
+							{
+								@($" ({model.ParameterSize})")
+							}
+						</option>
+					}
+				</select>
+			</div>
+		}
+		else if (UseLocalInference && !AvailableModels.Any())
+		{
+			<div class="text-warning small">
+				<i class="bi bi-exclamation-triangle me-1"></i>No local models available. Check your inference provider
+				settings.
+			</div>
+		}
+
+		@if (!UseLocalInference)
+		{
+			<div class="text-body-secondary small">
+				<i class="bi bi-cloud me-1"></i>Using default CLI provider
+			</div>
+		}
+	</div>
+
+@code {
+	[Parameter]
+	public bool UseLocalInference { get; set; }
+
+	[Parameter]
+	public EventCallback<bool> UseLocalInferenceChanged { get; set; }
+
+	[Parameter]
+	public string? SelectedModelName { get; set; }
+
+	[Parameter]
+	public EventCallback<string?> SelectedModelNameChanged { get; set; }
+
+	[Parameter]
+	public List<DiscoveredModel> AvailableModels { get; set; } = new();
+
+	[Parameter]
+	public bool HasLocalInference { get; set; }
+
+	private async Task HandleToggleLocalInference(ChangeEventArgs e)
+	{
+		var value = (bool)(e.Value ?? false);
+		UseLocalInference = value;
+		await UseLocalInferenceChanged.InvokeAsync(value);
+
+		// Reset model selection when toggling
+		if (!value)
+		{
+			SelectedModelName = null;
+			await SelectedModelNameChanged.InvokeAsync(null);
+		}
+	}
+
+	private async Task HandleModelChanged(ChangeEventArgs e)
+	{
+		var value = e.Value?.ToString();
+		SelectedModelName = string.IsNullOrEmpty(value) ? null : value;
+		await SelectedModelNameChanged.InvokeAsync(SelectedModelName);
+	}
+}

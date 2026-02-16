@@ -1,4 +1,5 @@
 using VibeSwarm.Shared.Data;
+using VibeSwarm.Shared.Models;
 
 namespace VibeSwarm.Shared.Services;
 
@@ -121,11 +122,22 @@ public interface IIdeaService
 	/// <summary>
 	/// Uses AI to expand a brief idea into a detailed specification.
 	/// The expanded spec is stored for user review before converting to a job.
+	/// Supports both CLI coding providers and local inference providers.
 	/// </summary>
 	/// <param name="ideaId">The idea to expand</param>
+	/// <param name="request">Optional expansion options (local inference, model selection)</param>
 	/// <param name="cancellationToken">Cancellation token</param>
 	/// <returns>The updated idea with expansion status</returns>
-	Task<Idea?> ExpandIdeaAsync(Guid ideaId, CancellationToken cancellationToken = default);
+	Task<Idea?> ExpandIdeaAsync(Guid ideaId, IdeaExpansionRequest? request = null, CancellationToken cancellationToken = default);
+
+	/// <summary>
+	/// Cancels an in-progress idea expansion and resets the status.
+	/// Used when the expansion times out, errors, or the user explicitly cancels.
+	/// </summary>
+	/// <param name="ideaId">The idea to cancel expansion for</param>
+	/// <param name="cancellationToken">Cancellation token</param>
+	/// <returns>The reset idea, or null if not found</returns>
+	Task<Idea?> CancelExpansionAsync(Guid ideaId, CancellationToken cancellationToken = default);
 
 	/// <summary>
 	/// Approves an expanded idea specification, allowing it to be converted to a job.

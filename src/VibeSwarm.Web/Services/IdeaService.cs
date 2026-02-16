@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using VibeSwarm.Shared.Data;
+using VibeSwarm.Shared.LocalInference;
+using VibeSwarm.Shared.Models;
 using VibeSwarm.Shared.VersionControl;
 using VibeSwarm.Web.Services;
 
@@ -12,8 +14,14 @@ public class IdeaService : IIdeaService
 	private readonly IJobService _jobService;
 	private readonly IProviderService _providerService;
 	private readonly IVersionControlService _versionControlService;
+	private readonly IInferenceService? _inferenceService;
 	private readonly IJobUpdateService? _jobUpdateService;
 	private readonly ILogger<IdeaService> _logger;
+
+	/// <summary>
+	/// Timeout for AI expansion operations (5 minutes)
+	/// </summary>
+	private static readonly TimeSpan ExpansionTimeout = TimeSpan.FromMinutes(5);
 
 	/// <summary>
 	/// Global lock to prevent race conditions when converting ideas to jobs
@@ -31,6 +39,7 @@ public class IdeaService : IIdeaService
 		IProviderService providerService,
 		IVersionControlService versionControlService,
 		ILogger<IdeaService> logger,
+		IInferenceService? inferenceService = null,
 		IJobUpdateService? jobUpdateService = null)
 	{
 		_dbContext = dbContext;
@@ -38,6 +47,7 @@ public class IdeaService : IIdeaService
 		_providerService = providerService;
 		_versionControlService = versionControlService;
 		_logger = logger;
+		_inferenceService = inferenceService;
 		_jobUpdateService = jobUpdateService;
 	}
 
@@ -595,7 +605,7 @@ A concise one-line description of what was implemented (max 72 chars)
 		return idea;
 	}
 
-	public async Task<Idea?> ExpandIdeaAsync(Guid ideaId, CancellationToken cancellationToken = default)
+	public async Task<Idea?> ExpandIdeaAsync(Guid ideaId, IdeaExpansionRequest? request = null, CancellationToken cancellationToken = default)
 	{
 		var idea = await _dbContext.Ideas
 			.Include(i => i.Project)
@@ -620,61 +630,34 @@ A concise one-line description of what was implemented (max 72 chars)
 		await _dbContext.SaveChangesAsync(cancellationToken);
 
 		// Notify clients about the expansion starting
-		if (_jobUpdateService != null)
-		{
-			try
-			{
-				await _jobUpdateService.NotifyIdeaUpdated(idea.Id, idea.ProjectId);
-			}
-			catch { /* Don't fail if notification fails */ }
-		}
+		await NotifyIdeaUpdateSafe(idea.Id, idea.ProjectId);
+
+		// Create a linked cancellation token with timeout to prevent hanging
+		using var timeoutCts = new CancellationTokenSource(ExpansionTimeout);
+		using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
+		var expandToken = linkedCts.Token;
 
 		try
 		{
-			// Get the default provider for AI expansion
-			var defaultProvider = await _providerService.GetDefaultAsync(cancellationToken);
-			if (defaultProvider == null)
+			var useLocalInference = request?.UseLocalInference ?? false;
+			var modelName = request?.ModelName;
+
+			if (useLocalInference)
 			{
-				idea.ExpansionStatus = IdeaExpansionStatus.Failed;
-				idea.ExpansionError = "No default provider configured";
-				await _dbContext.SaveChangesAsync(cancellationToken);
-				await NotifyIdeaUpdateSafe(idea.Id, idea.ProjectId);
-				return idea;
-			}
-
-			// Create provider instance
-			var providerInstance = _providerService.CreateInstance(defaultProvider);
-			if (providerInstance == null)
-			{
-				idea.ExpansionStatus = IdeaExpansionStatus.Failed;
-				idea.ExpansionError = "Could not create provider instance";
-				await _dbContext.SaveChangesAsync(cancellationToken);
-				await NotifyIdeaUpdateSafe(idea.Id, idea.ProjectId);
-				return idea;
-			}
-
-			// Build the expansion prompt
-			var expansionPrompt = BuildIdeaExpansionPrompt(idea.Description);
-
-			// Call the provider for a simple text response
-			var response = await providerInstance.GetPromptResponseAsync(
-				expansionPrompt,
-				idea.Project.WorkingPath,
-				cancellationToken);
-
-			if (response.Success && !string.IsNullOrWhiteSpace(response.Response))
-			{
-				idea.ExpandedDescription = response.Response.Trim();
-				idea.ExpansionStatus = IdeaExpansionStatus.PendingReview;
-				idea.ExpandedAt = DateTime.UtcNow;
-				_logger.LogInformation("Successfully expanded idea {IdeaId}", ideaId);
+				await ExpandWithLocalInferenceAsync(idea, modelName, expandToken);
 			}
 			else
 			{
-				idea.ExpansionStatus = IdeaExpansionStatus.Failed;
-				idea.ExpansionError = response.ErrorMessage ?? "No response from provider";
-				_logger.LogWarning("Failed to expand idea {IdeaId}: {Error}", ideaId, idea.ExpansionError);
+				await ExpandWithProviderAsync(idea, expandToken);
 			}
+		}
+		catch (OperationCanceledException)
+		{
+			idea.ExpansionStatus = IdeaExpansionStatus.Failed;
+			idea.ExpansionError = cancellationToken.IsCancellationRequested
+				? "Expansion was cancelled"
+				: "Expansion timed out after " + (int)ExpansionTimeout.TotalMinutes + " minutes";
+			_logger.LogWarning("Idea {IdeaId} expansion cancelled/timed out", ideaId);
 		}
 		catch (Exception ex)
 		{
@@ -683,8 +666,126 @@ A concise one-line description of what was implemented (max 72 chars)
 			_logger.LogError(ex, "Error expanding idea {IdeaId}", ideaId);
 		}
 
+		// Always save final state and notify, even if cancelled
+		try
+		{
+			await _dbContext.SaveChangesAsync(CancellationToken.None);
+			await NotifyIdeaUpdateSafe(idea.Id, idea.ProjectId);
+		}
+		catch (Exception ex)
+		{
+			_logger.LogError(ex, "Failed to save final expansion state for idea {IdeaId}", ideaId);
+		}
+
+		return idea;
+	}
+
+	/// <summary>
+	/// Expands an idea using the default CLI coding provider (Claude, Copilot, OpenCode)
+	/// </summary>
+	private async Task ExpandWithProviderAsync(Idea idea, CancellationToken cancellationToken)
+	{
+		var defaultProvider = await _providerService.GetDefaultAsync(cancellationToken);
+		if (defaultProvider == null)
+		{
+			idea.ExpansionStatus = IdeaExpansionStatus.Failed;
+			idea.ExpansionError = "No default provider configured";
+			return;
+		}
+
+		var providerInstance = _providerService.CreateInstance(defaultProvider);
+		if (providerInstance == null)
+		{
+			idea.ExpansionStatus = IdeaExpansionStatus.Failed;
+			idea.ExpansionError = "Could not create provider instance";
+			return;
+		}
+
+		var expansionPrompt = BuildIdeaExpansionPrompt(idea.Description);
+
+		var response = await providerInstance.GetPromptResponseAsync(
+			expansionPrompt,
+			idea.Project!.WorkingPath,
+			cancellationToken);
+
+		if (response.Success && !string.IsNullOrWhiteSpace(response.Response))
+		{
+			idea.ExpandedDescription = response.Response.Trim();
+			idea.ExpansionStatus = IdeaExpansionStatus.PendingReview;
+			idea.ExpandedAt = DateTime.UtcNow;
+			_logger.LogInformation("Successfully expanded idea {IdeaId} using CLI provider", idea.Id);
+		}
+		else
+		{
+			idea.ExpansionStatus = IdeaExpansionStatus.Failed;
+			idea.ExpansionError = response.ErrorMessage ?? "No response from provider";
+			_logger.LogWarning("Failed to expand idea {IdeaId}: {Error}", idea.Id, idea.ExpansionError);
+		}
+	}
+
+	/// <summary>
+	/// Expands an idea using a local inference provider (e.g., Ollama)
+	/// </summary>
+	private async Task ExpandWithLocalInferenceAsync(Idea idea, string? modelName, CancellationToken cancellationToken)
+	{
+		if (_inferenceService == null)
+		{
+			idea.ExpansionStatus = IdeaExpansionStatus.Failed;
+			idea.ExpansionError = "Local inference service is not available";
+			return;
+		}
+
+		var expansionPrompt = BuildIdeaExpansionPrompt(idea.Description);
+
+		var inferenceRequest = new InferenceRequest
+		{
+			Prompt = expansionPrompt,
+			SystemPrompt = "You are a software architect helping to expand feature ideas into detailed specifications.",
+			TaskType = "idea_expansion",
+			Model = modelName
+		};
+
+		var response = await _inferenceService.GenerateAsync(inferenceRequest, cancellationToken);
+
+		if (response.Success && !string.IsNullOrWhiteSpace(response.Response))
+		{
+			idea.ExpandedDescription = response.Response.Trim();
+			idea.ExpansionStatus = IdeaExpansionStatus.PendingReview;
+			idea.ExpandedAt = DateTime.UtcNow;
+			_logger.LogInformation("Successfully expanded idea {IdeaId} using local inference (model: {Model})",
+				idea.Id, response.ModelUsed ?? modelName ?? "default");
+		}
+		else
+		{
+			idea.ExpansionStatus = IdeaExpansionStatus.Failed;
+			idea.ExpansionError = response.Error ?? "No response from local inference";
+			_logger.LogWarning("Failed to expand idea {IdeaId} with local inference: {Error}", idea.Id, idea.ExpansionError);
+		}
+	}
+
+	public async Task<Idea?> CancelExpansionAsync(Guid ideaId, CancellationToken cancellationToken = default)
+	{
+		var idea = await _dbContext.Ideas.FindAsync(new object[] { ideaId }, cancellationToken);
+		if (idea == null)
+		{
+			return null;
+		}
+
+		// Only cancel if currently expanding
+		if (idea.ExpansionStatus != IdeaExpansionStatus.Expanding)
+		{
+			return idea;
+		}
+
+		idea.ExpansionStatus = IdeaExpansionStatus.NotExpanded;
+		idea.ExpansionError = null;
+		idea.ExpandedDescription = null;
+		idea.ExpandedAt = null;
 		await _dbContext.SaveChangesAsync(cancellationToken);
-		await NotifyIdeaUpdateSafe(idea.Id, idea.ProjectId);
+
+		_logger.LogInformation("Cancelled expansion for idea {IdeaId}", ideaId);
+		await NotifyIdeaUpdateSafe(ideaId, idea.ProjectId);
+
 		return idea;
 	}
 
