@@ -120,7 +120,7 @@ public class OllamaInferenceService : IInferenceService
 
 		try
 		{
-			using var client = CreateClient(TimeSpan.FromSeconds(120));
+			using var client = CreateClient(TimeSpan.FromMinutes(10));
 
 			var ollamaRequest = new OllamaGenerateRequest
 			{

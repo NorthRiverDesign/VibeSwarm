@@ -2,7 +2,7 @@ namespace VibeSwarm.Shared.Models;
 
 /// <summary>
 /// Request model for expanding an idea with AI.
-/// Allows specifying whether to use local inference and which model to use.
+/// Allows specifying whether to use local inference and which model/provider to use.
 /// </summary>
 public class IdeaExpansionRequest
 {
@@ -17,4 +17,10 @@ public class IdeaExpansionRequest
 	/// For CLI providers, this is ignored (provider uses its own model).
 	/// </summary>
 	public string? ModelName { get; set; }
+
+	/// <summary>
+	/// The CLI provider ID to use for expansion. If null, the default provider is used.
+	/// Only used when UseLocalInference is false.
+	/// </summary>
+	public Guid? ProviderId { get; set; }
 }

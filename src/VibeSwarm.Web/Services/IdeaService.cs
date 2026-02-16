@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.LocalInference;
 using VibeSwarm.Shared.Models;
+using VibeSwarm.Shared.Providers;
 using VibeSwarm.Shared.VersionControl;
 using VibeSwarm.Web.Services;
 
@@ -641,6 +642,7 @@ A concise one-line description of what was implemented (max 72 chars)
 		{
 			var useLocalInference = request?.UseLocalInference ?? false;
 			var modelName = request?.ModelName;
+			var providerId = request?.ProviderId;
 
 			if (useLocalInference)
 			{
@@ -648,7 +650,7 @@ A concise one-line description of what was implemented (max 72 chars)
 			}
 			else
 			{
-				await ExpandWithProviderAsync(idea, expandToken);
+				await ExpandWithProviderAsync(idea, providerId, expandToken);
 			}
 		}
 		catch (OperationCanceledException)
@@ -681,19 +683,34 @@ A concise one-line description of what was implemented (max 72 chars)
 	}
 
 	/// <summary>
-	/// Expands an idea using the default CLI coding provider (Claude, Copilot, OpenCode)
+	/// Expands an idea using a CLI coding provider (Claude, Copilot, OpenCode)
 	/// </summary>
-	private async Task ExpandWithProviderAsync(Idea idea, CancellationToken cancellationToken)
+	private async Task ExpandWithProviderAsync(Idea idea, Guid? providerId, CancellationToken cancellationToken)
 	{
-		var defaultProvider = await _providerService.GetDefaultAsync(cancellationToken);
-		if (defaultProvider == null)
+		Provider? provider;
+		if (providerId.HasValue)
+		{
+			provider = await _providerService.GetByIdAsync(providerId.Value, cancellationToken);
+			if (provider == null)
+			{
+				idea.ExpansionStatus = IdeaExpansionStatus.Failed;
+				idea.ExpansionError = "Selected provider not found";
+				return;
+			}
+		}
+		else
+		{
+			provider = await _providerService.GetDefaultAsync(cancellationToken);
+		}
+
+		if (provider == null)
 		{
 			idea.ExpansionStatus = IdeaExpansionStatus.Failed;
 			idea.ExpansionError = "No default provider configured";
 			return;
 		}
 
-		var providerInstance = _providerService.CreateInstance(defaultProvider);
+		var providerInstance = _providerService.CreateInstance(provider);
 		if (providerInstance == null)
 		{
 			idea.ExpansionStatus = IdeaExpansionStatus.Failed;

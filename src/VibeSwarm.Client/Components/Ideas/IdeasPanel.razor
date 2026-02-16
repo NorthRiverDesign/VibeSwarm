@@ -3,6 +3,7 @@
 @using VibeSwarm.Shared.Data
 @using VibeSwarm.Shared.LocalInference
 @using VibeSwarm.Shared.Models
+@using VibeSwarm.Shared.Providers
 
 <div class="card">
 	<div class="card-header bg-body-secondary d-flex justify-content-between align-items-center">
@@ -98,9 +99,9 @@
 								  IsStarting="@(StartingIdeaId == idea.Id)" HasActiveJobs="@HasActiveJobs"
 								  HasDefaultProvider="@HasDefaultProvider"
 								  IsQueuedForProcessing="@(IsProcessingActive && !idea.IsProcessing && !IsIdeaProcessing(idea.Id) && !idea.JobId.HasValue)"
-								  OnExpand="@(() => OpenExpandModal(idea))"  OnStart="@(() => StartSingleIdea(idea))"
-								  OnCopy="@(() => OpenCopyModal(idea))"  OnMove="@(() => OpenMoveModal(idea))"
-								  OnDelete="@(() => OnDeleteIdea.InvokeAsync(idea.Id))"  OnSaveEdit="HandleIdeaEdit" />
+								  OnExpand="@(() => OpenExpandModal(idea))" OnStart="@(() => StartSingleIdea(idea))"
+								  OnCopy="@(() => OpenCopyModal(idea))" OnMove="@(() => OpenMoveModal(idea))"
+								  OnDelete="@(() => OnDeleteIdea.InvokeAsync(idea.Id))" OnSaveEdit="HandleIdeaEdit" />
 				}
 			</ul>
 		}
@@ -129,7 +130,7 @@
 <IdeaExpansionModal @bind-IsVisible="ShowExpansionModal" Idea="SelectedIdeaForExpansion" IsExpanding="IsExpandingIdea"
 					IsProcessing="IsProcessingExpansion" OnExpand="HandleExpandIdea" OnCancel="HandleCancelExpansion"
 					OnApprove="HandleApproveExpansion" OnReject="HandleRejectExpansion" AvailableModels="@AvailableLocalModels"
-					HasLocalInference="@HasLocalInference" />
+					HasLocalInference="@HasLocalInference" AvailableProviders="@AvailableProviders" />
 
 @* Start All Confirmation Modal *@
 <ModalDialog @bind-IsVisible="_showStartAllModal" Title="Start All Ideas" Icon="play-fill"
@@ -238,6 +239,9 @@
 
 	[Parameter]
 	public bool HasLocalInference { get; set; }
+
+	[Parameter]
+	public List<Provider> AvailableProviders { get; set; } = new();
 
 	private string NewIdeaDescription { get; set; } = string.Empty;
 	private Guid? StartingIdeaId { get; set; }

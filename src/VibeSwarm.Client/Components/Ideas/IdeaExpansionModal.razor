@@ -1,6 +1,7 @@
 @* Modal for reviewing and editing AI-expanded idea specifications *@
 @using VibeSwarm.Shared.LocalInference
 @using VibeSwarm.Shared.Models
+@using VibeSwarm.Shared.Providers
 
 <ModalDialog IsVisible="IsVisible" IsVisibleChanged="HandleVisibilityChanged" Title="Expand Idea" Icon="magic"
 			 Size="ModalDialog.ModalSize.Large" OnClose="HandleClose">
@@ -46,7 +47,8 @@
 				<ExpansionModelSelector UseLocalInference="@_useLocalInference"
 										UseLocalInferenceChanged="@((v) => _useLocalInference = v)" SelectedModelName="@_selectedModelName"
 										SelectedModelNameChanged="@((v) => _selectedModelName = v)" AvailableModels="@AvailableModels"
-										HasLocalInference="@HasLocalInference" />
+										HasLocalInference="@HasLocalInference" AvailableProviders="@AvailableProviders"
+										SelectedProviderId="@_selectedProviderId" SelectedProviderIdChanged="@((v) => _selectedProviderId = v)" />
 
 				<div class="d-flex gap-2 mt-3">
 					<button type="button" class="btn btn-primary" @onclick="RequestExpansion" disabled="@IsExpanding">
@@ -136,7 +138,9 @@
 					<ExpansionModelSelector UseLocalInference="@_useLocalInference"
 											UseLocalInferenceChanged="@((v) => _useLocalInference = v)" SelectedModelName="@_selectedModelName"
 											SelectedModelNameChanged="@((v) => _selectedModelName = v)" AvailableModels="@AvailableModels"
-											HasLocalInference="@HasLocalInference" />
+											HasLocalInference="@HasLocalInference" AvailableProviders="@AvailableProviders"
+											SelectedProviderId="@_selectedProviderId"
+											SelectedProviderIdChanged="@((v) => _selectedProviderId = v)" />
 
 					<button type="button" class="btn btn-primary btn-lg mt-3" @onclick="RequestExpansion"
 							disabled="@IsExpanding">
@@ -190,10 +194,14 @@
 	[Parameter]
 	public bool HasLocalInference { get; set; }
 
+	[Parameter]
+	public List<Provider> AvailableProviders { get; set; } = new();
+
 	private bool IsEditMode { get; set; }
 	private string? EditedDescription { get; set; }
 	private bool _useLocalInference;
 	private string? _selectedModelName;
+	private string? _selectedProviderId;
 
 	protected override void OnParametersSet()
 	{
@@ -224,10 +232,17 @@
 	{
 		if (Idea != null)
 		{
+			Guid? providerId = null;
+			if (!_useLocalInference && Guid.TryParse(_selectedProviderId, out var parsed))
+			{
+				providerId = parsed;
+			}
+
 			var request = new IdeaExpansionRequest
 			{
 				UseLocalInference = _useLocalInference,
-				ModelName = _useLocalInference ? _selectedModelName : null
+				ModelName = _useLocalInference ? _selectedModelName : null,
+				ProviderId = providerId
 			};
 			await OnExpand.InvokeAsync(request);
 		}

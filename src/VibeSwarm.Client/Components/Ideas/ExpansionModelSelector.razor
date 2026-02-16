@@ -1,11 +1,12 @@
 @* Reusable model selection component for idea expansion *@
 @using VibeSwarm.Shared.LocalInference
+@using VibeSwarm.Shared.Providers
 
 <div class="text-start mb-2">
 	@if (HasLocalInference)
 	{
 		<div class="form-check form-switch mb-2">
-			<input class="form-check-input" type="checkbox" id="useLocalInference"   checked="@UseLocalInference"
+			<input class="form-check-input" type="checkbox" id="useLocalInference" checked="@UseLocalInference"
 				   @onchange="HandleToggleLocalInference">
 				<label class="form-check-label" for="useLocalInference">
 					<i class="bi bi-pc-display me-1"></i>Use local inference
@@ -13,40 +14,72 @@
 			</div>
 		}
 
-		@if (UseLocalInference && AvailableModels.Any())
+		@if (UseLocalInference)
 		{
-			<div class="mb-2">
-				<label class="form-label fw-semibold small mb-1">
-					<i class="bi bi-cpu me-1"></i>Model
-				</label>
-				<select class="form-select form-select-sm" value="@SelectedModelName" @onchange="HandleModelChanged">
-					<option value="">Auto (default model)</option>
-					@foreach (var model in AvailableModels)
-					{
-						<option value="@model.Name">
-							@(model.DisplayName ?? model.Name)
-							@if (!string.IsNullOrEmpty(model.ParameterSize))
-							{
-								@($" ({model.ParameterSize})")
-							}
-						</option>
-					}
-				</select>
-			</div>
+			@if (AvailableModels.Any())
+			{
+				<div class="mb-2">
+					<label class="form-label fw-semibold small mb-1">
+						<i class="bi bi-cpu me-1"></i>Model
+					</label>
+					<select class="form-select form-select-sm" value="@SelectedModelName" @onchange="HandleModelChanged">
+						<option value="">Auto (default model)</option>
+						@foreach (var model in AvailableModels)
+						{
+							<option value="@model.Name">
+								@(model.DisplayName ?? model.Name)
+								@if (!string.IsNullOrEmpty(model.ParameterSize))
+								{
+									@($" ({model.ParameterSize})")
+								}
+							</option>
+						}
+					</select>
+				</div>
+			}
+			else
+			{
+				<div class="text-warning small">
+					<i class="bi bi-exclamation-triangle me-1"></i>No local models available. Check your inference provider
+					settings.
+				</div>
+			}
 		}
-		else if (UseLocalInference && !AvailableModels.Any())
+		else
 		{
-			<div class="text-warning small">
-				<i class="bi bi-exclamation-triangle me-1"></i>No local models available. Check your inference provider
-				settings.
-			</div>
-		}
-
-		@if (!UseLocalInference)
-		{
-			<div class="text-body-secondary small">
-				<i class="bi bi-cloud me-1"></i>Using default CLI provider
-			</div>
+			@if (AvailableProviders.Count > 1)
+			{
+				<div class="mb-2">
+					<label class="form-label fw-semibold small mb-1">
+						<i class="bi bi-cloud me-1"></i>Provider
+					</label>
+					<select class="form-select form-select-sm" value="@SelectedProviderId" @onchange="HandleProviderChanged">
+						@foreach (var provider in AvailableProviders)
+						{
+							<option value="@provider.Id">
+								@provider.Name
+								@if (provider.IsDefault)
+								{
+									@(" (default)")
+								}
+							</option>
+						}
+					</select>
+				</div>
+			}
+			else if (AvailableProviders.Count == 1)
+			{
+				<div class="text-body-secondary small">
+					<i class="bi bi-cloud me-1"></i>Using @AvailableProviders[0].Name
+				</div>
+			}
+			else
+			{
+				<div class="text-warning small">
+					<i class="bi bi-exclamation-triangle me-1"></i>No providers configured.
+					<a href="/providers">Set up a provider</a> first.
+				</div>
+			}
 		}
 	</div>
 
@@ -69,6 +102,15 @@
 	[Parameter]
 	public bool HasLocalInference { get; set; }
 
+	[Parameter]
+	public List<Provider> AvailableProviders { get; set; } = new();
+
+	[Parameter]
+	public string? SelectedProviderId { get; set; }
+
+	[Parameter]
+	public EventCallback<string?> SelectedProviderIdChanged { get; set; }
+
 	private async Task HandleToggleLocalInference(ChangeEventArgs e)
 	{
 		var value = (bool)(e.Value ?? false);
@@ -88,5 +130,12 @@
 		var value = e.Value?.ToString();
 		SelectedModelName = string.IsNullOrEmpty(value) ? null : value;
 		await SelectedModelNameChanged.InvokeAsync(SelectedModelName);
+	}
+
+	private async Task HandleProviderChanged(ChangeEventArgs e)
+	{
+		var value = e.Value?.ToString();
+		SelectedProviderId = string.IsNullOrEmpty(value) ? null : value;
+		await SelectedProviderIdChanged.InvokeAsync(SelectedProviderId);
 	}
 }

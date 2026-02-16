@@ -56,7 +56,7 @@ else
                         OnDeleteIdea="DeleteIdea" OnCopyIdea="CopyIdea" OnMoveIdea="MoveIdea" OnStartSingleIdea="StartSingleIdea"
                         OnExpandIdea="ExpandIdea" OnCancelExpansion="CancelIdeaExpansion" OnApproveExpansion="ApproveIdeaExpansion"
                         OnRejectExpansion="RejectIdeaExpansion" AvailableLocalModels="@_availableLocalModels"
-                        HasLocalInference="@_hasLocalInference" />
+                        HasLocalInference="@_hasLocalInference" AvailableProviders="@Providers.Where(p => p.IsEnabled).ToList()" />
         </div>
 
         @* Jobs list on RIGHT for monitoring progress *@
