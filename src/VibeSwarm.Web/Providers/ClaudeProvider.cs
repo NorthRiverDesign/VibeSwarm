@@ -103,6 +103,65 @@ public class ClaudeProvider : CliProviderBase
             args.Add(sessionId);
         }
 
+        // Model selection (e.g., --model opus, --model sonnet)
+        if (!string.IsNullOrEmpty(CurrentModel))
+        {
+            args.Add("--model");
+            args.Add(CurrentModel);
+        }
+
+        // Agent selection (e.g., --agent my-agent)
+        if (!string.IsNullOrEmpty(CurrentAgent))
+        {
+            args.Add("--agent");
+            args.Add(CurrentAgent);
+        }
+
+        // System prompt override
+        if (!string.IsNullOrEmpty(CurrentSystemPrompt))
+        {
+            args.Add("--system-prompt");
+            args.Add($"\"{EscapeCliArgument(CurrentSystemPrompt)}\"");
+        }
+
+        // Append to system prompt (used for injecting skills/instructions)
+        if (!string.IsNullOrEmpty(CurrentAppendSystemPrompt))
+        {
+            args.Add("--append-system-prompt");
+            args.Add($"\"{EscapeCliArgument(CurrentAppendSystemPrompt)}\"");
+        }
+
+        // Max turns limit
+        if (CurrentMaxTurns.HasValue)
+        {
+            args.Add("--max-turns");
+            args.Add(CurrentMaxTurns.Value.ToString());
+        }
+
+        // Additional working directories
+        if (CurrentAdditionalDirectories != null)
+        {
+            foreach (var dir in CurrentAdditionalDirectories)
+            {
+                args.Add("--add-dir");
+                args.Add($"\"{EscapeCliArgument(dir)}\"");
+            }
+        }
+
+        // Tool restrictions
+        if (CurrentAllowedTools != null && CurrentAllowedTools.Count > 0)
+        {
+            foreach (var tool in CurrentAllowedTools)
+            {
+                args.Add("--tools");
+                args.Add(tool);
+            }
+        }
+
+        // File attachments (via @-mention syntax isn't available in -p mode,
+        // but files can be referenced in the prompt)
+        // Note: Claude CLI doesn't have a --file flag; files are @-mentioned in the prompt.
+
         if (!string.IsNullOrEmpty(CurrentMcpConfigPath))
         {
             args.Add("--mcp-config");
@@ -325,6 +384,21 @@ public class ClaudeProvider : CliProviderBase
                                 IsStreaming = true
                             });
                         }
+                        else if (content.Type == "thinking" && !string.IsNullOrEmpty(content.Thinking))
+                        {
+                            // Interleaved thinking blocks (ultrathink, v1.0.0+)
+                            result.Messages.Add(new ExecutionMessage
+                            {
+                                Role = "thinking",
+                                Content = content.Thinking,
+                                Timestamp = DateTime.UtcNow
+                            });
+                            progress?.Report(new ExecutionProgress
+                            {
+                                CurrentMessage = "Thinking...",
+                                IsStreaming = true
+                            });
+                        }
                         else if (content.Type == "tool_use")
                         {
                             if (currentMessage.Length > 0)
@@ -369,7 +443,7 @@ public class ClaudeProvider : CliProviderBase
                         {
                             result.Messages.Add(new ExecutionMessage
                             {
-                                Role = "tool_result",
+                                Role = content.IsError == true ? "tool_error" : "tool_result",
                                 Content = content.Content ?? "",
                                 ToolName = content.ToolUseId,
                                 ToolOutput = content.Content,
@@ -478,6 +552,7 @@ public class ClaudeProvider : CliProviderBase
                 "opus",
                 "haiku",
                 "claude-sonnet-4-5-20250929",
+                "claude-opus-4-6-20260101",
                 "claude-opus-4-20250514",
                 "claude-3-5-haiku-20241022"
             },
@@ -496,6 +571,7 @@ public class ClaudeProvider : CliProviderBase
                     ["opus"] = 5.0m,
                     ["haiku"] = 0.27m,
                     ["claude-sonnet-4-5-20250929"] = 1.0m,
+                    ["claude-opus-4-6-20260101"] = 5.0m,
                     ["claude-opus-4-20250514"] = 5.0m,
                     ["claude-3-5-haiku-20241022"] = 0.27m
                 }

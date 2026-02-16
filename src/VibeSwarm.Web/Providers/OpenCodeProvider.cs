@@ -159,6 +159,8 @@ public class OpenCodeProvider : CliProviderBase
     /// --title         Title for the session
     /// --attach        Attach to a running opencode server
     /// --port          Port for the local server
+    /// --dir           Working directory for the session (v1.2.0+)
+    /// --timeout       Timeout in seconds for the execution (v1.2.0+)
     /// </summary>
     private List<string> BuildRunCommandArgs(string prompt, string? sessionId)
     {
@@ -196,6 +198,19 @@ public class OpenCodeProvider : CliProviderBase
         if (!string.IsNullOrEmpty(CurrentTitle))
         {
             args.AddRange(new[] { "--title", $"\"{EscapeCliArgument(CurrentTitle)}\"" });
+        }
+
+        // Working directory override (v1.2.0+)
+        if (CurrentAdditionalDirectories != null && CurrentAdditionalDirectories.Count > 0)
+        {
+            // OpenCode uses --dir for the working directory
+            args.AddRange(new[] { "--dir", $"\"{EscapeCliArgument(CurrentAdditionalDirectories[0])}\"" });
+        }
+
+        // Timeout in seconds (v1.2.0+)
+        if (CurrentTimeoutSeconds.HasValue)
+        {
+            args.AddRange(new[] { "--timeout", CurrentTimeoutSeconds.Value.ToString() });
         }
 
         // Output format (default or json)
@@ -931,8 +946,10 @@ public class OpenCodeProvider : CliProviderBase
     {
         var defaultModels = new List<string>
         {
-            "anthropic/claude-sonnet-4-20250514",
+            "anthropic/claude-opus-4-6-20260101",
+            "anthropic/claude-sonnet-4-5-20250929",
             "anthropic/claude-opus-4-20250514",
+            "openai/gpt-5.2",
             "openai/gpt-4o",
             "openai/o1"
         };
@@ -943,15 +960,17 @@ public class OpenCodeProvider : CliProviderBase
             AvailableAgents = new List<AgentInfo>
             {
                 new() { Name = "build", Description = "Default, full access agent for development work", IsDefault = true },
-                new() { Name = "plan", Description = "Read-only agent for analysis and code exploration", IsDefault = false }
+                new() { Name = "plan", Description = "Read-only agent for analysis, code exploration, and planning", IsDefault = false }
             },
             Pricing = new PricingInfo
             {
                 Currency = "USD",
                 ModelMultipliers = new Dictionary<string, decimal>
                 {
-                    ["anthropic/claude-sonnet-4-20250514"] = 1.0m,
+                    ["anthropic/claude-opus-4-6-20260101"] = 5.0m,
+                    ["anthropic/claude-sonnet-4-5-20250929"] = 1.0m,
                     ["anthropic/claude-opus-4-20250514"] = 5.0m,
+                    ["openai/gpt-5.2"] = 1.5m,
                     ["openai/gpt-4o"] = 0.83m,
                     ["openai/o1"] = 5.0m
                 }

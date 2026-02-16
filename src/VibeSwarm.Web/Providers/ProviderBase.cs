@@ -48,6 +48,14 @@ public abstract class ProviderBase : IProvider
         CurrentAttachedFiles = options.AttachedFiles;
         CurrentOutputFormat = options.OutputFormat;
         CurrentContinueLastSession = options.ContinueLastSession;
+        CurrentSystemPrompt = options.SystemPrompt;
+        CurrentAppendSystemPrompt = options.AppendSystemPrompt;
+        CurrentMaxTurns = options.MaxTurns;
+        CurrentMaxBudgetUsd = options.MaxBudgetUsd;
+        CurrentAdditionalDirectories = options.AdditionalDirectories;
+        CurrentTimeoutSeconds = options.TimeoutSeconds;
+        CurrentAllowedTools = options.AllowedTools;
+        CurrentExcludedTools = options.ExcludedTools;
 
         return ExecuteWithSessionAsync(
             prompt,
@@ -103,6 +111,46 @@ public abstract class ProviderBase : IProvider
     protected bool CurrentContinueLastSession { get; private set; }
 
     /// <summary>
+    /// System prompt override (set by ExecuteWithOptionsAsync)
+    /// </summary>
+    protected string? CurrentSystemPrompt { get; private set; }
+
+    /// <summary>
+    /// System prompt to append (set by ExecuteWithOptionsAsync)
+    /// </summary>
+    protected string? CurrentAppendSystemPrompt { get; private set; }
+
+    /// <summary>
+    /// Maximum number of agentic turns (set by ExecuteWithOptionsAsync)
+    /// </summary>
+    protected int? CurrentMaxTurns { get; private set; }
+
+    /// <summary>
+    /// Maximum budget in USD (set by ExecuteWithOptionsAsync)
+    /// </summary>
+    protected decimal? CurrentMaxBudgetUsd { get; private set; }
+
+    /// <summary>
+    /// Additional working directories (set by ExecuteWithOptionsAsync)
+    /// </summary>
+    protected List<string>? CurrentAdditionalDirectories { get; private set; }
+
+    /// <summary>
+    /// Timeout in seconds (set by ExecuteWithOptionsAsync)
+    /// </summary>
+    protected int? CurrentTimeoutSeconds { get; private set; }
+
+    /// <summary>
+    /// Allowed tools filter (set by ExecuteWithOptionsAsync)
+    /// </summary>
+    protected List<string>? CurrentAllowedTools { get; private set; }
+
+    /// <summary>
+    /// Excluded tools filter (set by ExecuteWithOptionsAsync)
+    /// </summary>
+    protected List<string>? CurrentExcludedTools { get; private set; }
+
+    /// <summary>
     /// Clears the execution context after a run completes
     /// </summary>
     protected void ClearExecutionContext()
@@ -116,6 +164,14 @@ public abstract class ProviderBase : IProvider
         CurrentAttachedFiles = null;
         CurrentOutputFormat = null;
         CurrentContinueLastSession = false;
+        CurrentSystemPrompt = null;
+        CurrentAppendSystemPrompt = null;
+        CurrentMaxTurns = null;
+        CurrentMaxBudgetUsd = null;
+        CurrentAdditionalDirectories = null;
+        CurrentTimeoutSeconds = null;
+        CurrentAllowedTools = null;
+        CurrentExcludedTools = null;
     }
 
     public abstract Task<ProviderInfo> GetProviderInfoAsync(CancellationToken cancellationToken = default);

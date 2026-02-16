@@ -84,12 +84,57 @@ public class CopilotProvider : CliProviderBase
         var effectiveWorkingDir = workingDirectory ?? WorkingDirectory ?? Environment.CurrentDirectory;
 
         // Build arguments for non-interactive execution
+        // Reference: https://github.com/github/copilot-cli/blob/main/changelog.md
         var args = new List<string>
         {
             "-p",
             $"\"{EscapeCliArgument(prompt)}\"",
-            "--allow-all-tools"
+            "--yolo",    // Auto-approve all tool permissions (v0.0.381+)
+            "--silent"   // Suppress stats output for cleaner capture (v0.0.365+)
         };
+
+        // Session resume support (v0.0.372+)
+        if (!string.IsNullOrEmpty(sessionId))
+        {
+            args.Add("--resume");
+            args.Add(sessionId);
+        }
+        else if (CurrentContinueLastSession)
+        {
+            args.Add("--continue");
+        }
+
+        // Model selection (v0.0.329+)
+        if (!string.IsNullOrEmpty(CurrentModel))
+        {
+            args.Add("--model");
+            args.Add(CurrentModel);
+        }
+
+        // Agent selection (v0.0.353+ for custom agents, v0.0.380+ in interactive)
+        if (!string.IsNullOrEmpty(CurrentAgent))
+        {
+            args.Add("--agent");
+            args.Add(CurrentAgent);
+        }
+
+        // Tool filtering (v0.0.370+)
+        if (CurrentAllowedTools != null && CurrentAllowedTools.Count > 0)
+        {
+            foreach (var tool in CurrentAllowedTools)
+            {
+                args.Add("--available-tools");
+                args.Add(tool);
+            }
+        }
+        if (CurrentExcludedTools != null && CurrentExcludedTools.Count > 0)
+        {
+            foreach (var tool in CurrentExcludedTools)
+            {
+                args.Add("--excluded-tools");
+                args.Add(tool);
+            }
+        }
 
         if (!string.IsNullOrEmpty(CurrentMcpConfigPath))
         {
@@ -330,6 +375,18 @@ public class CopilotProvider : CliProviderBase
         System.Text.StringBuilder currentMessage,
         IProgress<ExecutionProgress>? progress)
     {
+        // Capture session ID from any event that includes it (v0.0.372+)
+        if (!string.IsNullOrEmpty(evt.SessionId) && string.IsNullOrEmpty(result.SessionId))
+        {
+            result.SessionId = evt.SessionId;
+        }
+
+        // Track premium request usage
+        if (evt.PremiumRequests.HasValue)
+        {
+            result.PremiumRequestsConsumed = evt.PremiumRequests;
+        }
+
         switch (evt.Type?.ToLowerInvariant())
         {
             case "message":
@@ -431,7 +488,7 @@ public class CopilotProvider : CliProviderBase
             throw new InvalidOperationException("GitHub Copilot CLI executable path is not configured.");
         }
 
-        var args = $"-p \"{EscapeCliArgument(prompt)}\" --allow-all-tools";
+        var args = $"-p \"{EscapeCliArgument(prompt)}\" --yolo --silent";
 
         var startInfo = new ProcessStartInfo
         {
@@ -468,45 +525,44 @@ public class CopilotProvider : CliProviderBase
         {
             AvailableModels = new List<string>
             {
+                "claude-opus-4.6",
                 "claude-sonnet-4.5",
                 "claude-haiku-4.5",
                 "claude-opus-4.5",
                 "claude-sonnet-4",
                 "gpt-5.2-codex",
+                "gpt-5.2",
                 "gpt-5.1-codex-max",
                 "gpt-5.1-codex",
-                "gpt-5.2",
                 "gpt-5.1",
-                "gpt-5",
                 "gpt-5.1-codex-mini",
+                "gpt-5",
                 "gpt-5-mini",
-                "gpt-4.1",
-                "gemini-3-pro-preview"
+                "gpt-4.1"
             },
             AvailableAgents = new List<AgentInfo>
             {
-                new() { Name = "suggest", Description = "Suggest shell commands, Git commands, or GitHub CLI commands", IsDefault = true },
-                new() { Name = "explain", Description = "Explain code or commands", IsDefault = false }
+                new() { Name = "default", Description = "Default coding agent with full capabilities", IsDefault = true }
             },
             Pricing = new PricingInfo
             {
                 Currency = "USD",
                 ModelMultipliers = new Dictionary<string, decimal>
                 {
+                    ["claude-opus-4.6"] = 5.0m,
                     ["claude-sonnet-4.5"] = 1.0m,
                     ["claude-haiku-4.5"] = 0.2m,
                     ["claude-opus-4.5"] = 5.0m,
                     ["claude-sonnet-4"] = 1.0m,
                     ["gpt-5.2-codex"] = 1.5m,
+                    ["gpt-5.2"] = 1.5m,
                     ["gpt-5.1-codex-max"] = 2.0m,
                     ["gpt-5.1-codex"] = 1.0m,
-                    ["gpt-5.2"] = 1.5m,
                     ["gpt-5.1"] = 1.0m,
-                    ["gpt-5"] = 1.0m,
                     ["gpt-5.1-codex-mini"] = 0.3m,
+                    ["gpt-5"] = 1.0m,
                     ["gpt-5-mini"] = 0.3m,
-                    ["gpt-4.1"] = 0.5m,
-                    ["gemini-3-pro-preview"] = 0.5m
+                    ["gpt-4.1"] = 0.5m
                 }
             },
             AdditionalInfo = new Dictionary<string, object>
@@ -570,7 +626,7 @@ public class CopilotProvider : CliProviderBase
         return Task.FromResult(limits);
     }
 
-    public override Task<SessionSummary> GetSessionSummaryAsync(
+    public override async Task<SessionSummary> GetSessionSummaryAsync(
         string? sessionId,
         string? workingDirectory = null,
         string? fallbackOutput = null,
@@ -578,20 +634,73 @@ public class CopilotProvider : CliProviderBase
     {
         var summary = new SessionSummary();
 
-        // GitHub Copilot CLI doesn't have persistent sessions like Claude
-        // We rely on the fallback output to generate a summary
+        // GitHub Copilot CLI supports sessions since v0.0.372 (--resume) and v0.0.333 (--continue).
+        // Attempt to resume the session and ask for a summary.
+        if (!string.IsNullOrEmpty(sessionId) && ConnectionMode == ProviderConnectionMode.CLI)
+        {
+            try
+            {
+                var execPath = GetExecutablePath();
+                var effectiveWorkingDir = workingDirectory ?? WorkingDirectory ?? Environment.CurrentDirectory;
+
+                var summarizePrompt = "Please provide a concise summary (1-2 sentences) of what was accomplished in this session, suitable for a git commit message. Focus on the key changes made.";
+                var args = $"--resume {sessionId} -p \"{EscapeCliArgument(summarizePrompt)}\" --yolo --silent";
+
+                var startInfo = new ProcessStartInfo
+                {
+                    FileName = execPath,
+                    Arguments = args,
+                    WorkingDirectory = effectiveWorkingDir
+                };
+
+                PlatformHelper.ConfigureForCrossPlatform(startInfo);
+
+                using var process = new Process { StartInfo = startInfo };
+                using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+                using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
+
+                try
+                {
+                    process.Start();
+                    process.StandardInput.Close();
+
+                    var output = await process.StandardOutput.ReadToEndAsync(linkedCts.Token);
+                    await process.WaitForExitAsync(linkedCts.Token);
+
+                    if (process.ExitCode == 0 && !string.IsNullOrWhiteSpace(output))
+                    {
+                        var cleanedOutput = output.Trim();
+                        if (!string.IsNullOrWhiteSpace(cleanedOutput))
+                        {
+                            summary.Success = true;
+                            summary.Summary = cleanedOutput;
+                            summary.Source = "session";
+                            return summary;
+                        }
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    try { PlatformHelper.TryKillProcessTree(process.Id); } catch { }
+                }
+            }
+            catch
+            {
+                // Fall through to fallback
+            }
+        }
 
         if (!string.IsNullOrEmpty(fallbackOutput))
         {
             summary.Summary = GenerateSummaryFromOutput(fallbackOutput);
             summary.Success = !string.IsNullOrEmpty(summary.Summary);
             summary.Source = "output";
-            return Task.FromResult(summary);
+            return summary;
         }
 
         summary.Success = false;
-        summary.ErrorMessage = "GitHub Copilot CLI does not support session persistence. No output available to generate summary.";
-        return Task.FromResult(summary);
+        summary.ErrorMessage = "No session ID or output available to generate summary.";
+        return summary;
     }
 
     public override async Task<PromptResponse> GetPromptResponseAsync(

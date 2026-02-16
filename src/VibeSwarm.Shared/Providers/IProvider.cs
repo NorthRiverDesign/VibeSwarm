@@ -443,6 +443,46 @@ public class ExecutionOptions
     public bool ContinueLastSession { get; set; }
 
     /// <summary>
+    /// System prompt to override the default system prompt (Claude: --system-prompt)
+    /// </summary>
+    public string? SystemPrompt { get; set; }
+
+    /// <summary>
+    /// System prompt to append to the default system prompt (Claude: --append-system-prompt)
+    /// </summary>
+    public string? AppendSystemPrompt { get; set; }
+
+    /// <summary>
+    /// Maximum number of agentic turns to allow (Claude: --max-turns)
+    /// </summary>
+    public int? MaxTurns { get; set; }
+
+    /// <summary>
+    /// Maximum budget in USD for this execution (Claude SDK: --max-budget-usd)
+    /// </summary>
+    public decimal? MaxBudgetUsd { get; set; }
+
+    /// <summary>
+    /// Additional working directories to include (Claude: --add-dir)
+    /// </summary>
+    public List<string>? AdditionalDirectories { get; set; }
+
+    /// <summary>
+    /// Timeout in seconds for the execution (OpenCode: --timeout)
+    /// </summary>
+    public int? TimeoutSeconds { get; set; }
+
+    /// <summary>
+    /// Restrict which tools are available (Claude: --tools, Copilot: --available-tools)
+    /// </summary>
+    public List<string>? AllowedTools { get; set; }
+
+    /// <summary>
+    /// Tools to exclude from availability (Copilot: --excluded-tools)
+    /// </summary>
+    public List<string>? ExcludedTools { get; set; }
+
+    /// <summary>
     /// Creates ExecutionOptions from the legacy parameters
     /// </summary>
     public static ExecutionOptions FromLegacy(string? sessionId = null, string? workingDirectory = null)

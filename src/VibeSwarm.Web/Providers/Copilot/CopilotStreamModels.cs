@@ -22,6 +22,10 @@ public class CopilotStreamEvent
 	[JsonPropertyName("message")]
 	public string? Message { get; set; }
 
+	// Session tracking (v0.0.372+)
+	[JsonPropertyName("session_id")]
+	public string? SessionId { get; set; }
+
 	// Token usage fields
 	[JsonPropertyName("input_tokens")]
 	public int? InputTokens { get; set; }
@@ -40,6 +44,20 @@ public class CopilotStreamEvent
 
 	[JsonPropertyName("model")]
 	public string? Model { get; set; }
+
+	// Premium request tracking (Copilot-specific)
+	[JsonPropertyName("premium_requests")]
+	public int? PremiumRequests { get; set; }
+
+	// Tool execution details
+	[JsonPropertyName("tool_name")]
+	public string? ToolName { get; set; }
+
+	[JsonPropertyName("tool_input")]
+	public string? ToolInput { get; set; }
+
+	[JsonPropertyName("tool_output")]
+	public string? ToolOutput { get; set; }
 }
 
 /// <summary>
@@ -55,4 +73,7 @@ public class CopilotUsageInfo
 
 	[JsonPropertyName("total_tokens")]
 	public int? TotalTokens { get; set; }
+
+	[JsonPropertyName("cached_tokens")]
+	public int? CachedTokens { get; set; }
 }

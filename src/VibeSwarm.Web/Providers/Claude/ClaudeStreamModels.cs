@@ -75,7 +75,7 @@ public class ClaudeMessage
 }
 
 /// <summary>
-/// Represents a content block in Claude's message (text, tool_use, tool_result).
+/// Represents a content block in Claude's message (text, tool_use, tool_result, thinking).
 /// </summary>
 public class ClaudeContentBlock
 {
@@ -85,6 +85,10 @@ public class ClaudeContentBlock
 	// For text content
 	[JsonPropertyName("text")]
 	public string? Text { get; set; }
+
+	// For thinking content (interleaved thinking, v1.0.0+)
+	[JsonPropertyName("thinking")]
+	public string? Thinking { get; set; }
 
 	// For tool_use content
 	[JsonPropertyName("id")]
@@ -102,6 +106,9 @@ public class ClaudeContentBlock
 
 	[JsonPropertyName("content")]
 	public string? Content { get; set; }
+
+	[JsonPropertyName("is_error")]
+	public bool? IsError { get; set; }
 }
 
 /// <summary>
