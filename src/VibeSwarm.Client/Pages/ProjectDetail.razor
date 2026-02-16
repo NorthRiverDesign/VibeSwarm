@@ -300,10 +300,10 @@ TimeSpan.FromSeconds(10) })
         {
             await InvokeAsync(async () =>
     {
-            await RefreshJobs();
-            await LoadIdeas();
-            StateHasChanged();
-        });
+        await RefreshJobs();
+        await LoadIdeas();
+        StateHasChanged();
+    });
         });
 
         // Job created events include jobId and projectId
@@ -311,10 +311,10 @@ TimeSpan.FromSeconds(10) })
         {
             await InvokeAsync(async () =>
     {
-            await RefreshJobs();
-            await LoadIdeas();
-            StateHasChanged();
-        });
+        await RefreshJobs();
+        await LoadIdeas();
+        StateHasChanged();
+    });
         });
 
         // Job deleted events include jobId and projectId
@@ -322,9 +322,9 @@ TimeSpan.FromSeconds(10) })
         {
             await InvokeAsync(async () =>
     {
-            await RefreshJobs();
-            StateHasChanged();
-        });
+        await RefreshJobs();
+        StateHasChanged();
+    });
         });
 
         // Activity updates include jobId, activity, and timestamp
@@ -332,14 +332,14 @@ TimeSpan.FromSeconds(10) })
         {
             await InvokeAsync(() =>
     {
-            var job = Jobs.FirstOrDefault(j => j.Id.ToString() == jobId);
-            if (job != null)
-            {
-                job.CurrentActivity = activity;
-                StateHasChanged();
-            }
-            return Task.CompletedTask;
-        });
+        var job = Jobs.FirstOrDefault(j => j.Id.ToString() == jobId);
+        if (job != null)
+        {
+            job.CurrentActivity = activity;
+            StateHasChanged();
+        }
+        return Task.CompletedTask;
+    });
         });
 
         // Job completed events
@@ -348,34 +348,34 @@ TimeSpan.FromSeconds(10) })
             await InvokeAsync(async () =>
     {
         // Check if this job was from an idea before refreshing
-            var completedJob = Jobs.FirstOrDefault(j => j.Id.ToString() == jobId);
-            var wasFromIdea = Ideas.Any(i => i.JobId.ToString() == jobId);
+        var completedJob = Jobs.FirstOrDefault(j => j.Id.ToString() == jobId);
+        var wasFromIdea = Ideas.Any(i => i.JobId.ToString() == jobId);
 
-            await RefreshJobs();
-            await LoadIdeas();
-            await RefreshUncommittedChangesStatus();
-            ProcessingIdeaIds.Clear(); // Clear any stale processing states
+        await RefreshJobs();
+        await LoadIdeas();
+        await RefreshUncommittedChangesStatus();
+        ProcessingIdeaIds.Clear(); // Clear any stale processing states
 
         // Show toast notification for job completion
-            if (completedJob != null)
+        if (completedJob != null)
+        {
+            var jobTitle = completedJob.Title ?? "Job";
+            if (success)
             {
-                var jobTitle = completedJob.Title ?? "Job";
-                if (success)
-                {
-                    NotificationService.ShowSuccess(
-            $"{TruncateForToast(jobTitle)} completed successfully.",
-            wasFromIdea ? "Idea Completed" : "Job Completed");
-                }
-                else
-                {
-                    NotificationService.ShowError(
-            errorMessage ?? $"{TruncateForToast(jobTitle)} failed.",
-            wasFromIdea ? "Idea Failed" : "Job Failed");
-                }
+                NotificationService.ShowSuccess(
+        $"{TruncateForToast(jobTitle)} completed successfully.",
+        wasFromIdea ? "Idea Completed" : "Job Completed");
             }
+            else
+            {
+                NotificationService.ShowError(
+        errorMessage ?? $"{TruncateForToast(jobTitle)} failed.",
+        wasFromIdea ? "Idea Failed" : "Job Failed");
+            }
+        }
 
-            StateHasChanged();
-        });
+        StateHasChanged();
+    });
         });
 
         // Idea started processing (converted to job) - another user clicked Start
@@ -384,18 +384,18 @@ TimeSpan.FromSeconds(10) })
             await InvokeAsync(async () =>
     {
         // Only refresh if this is for our project
-            if (projectId == ProjectId.ToString())
-            {
+        if (projectId == ProjectId.ToString())
+        {
             // Update local state immediately
-                if (Guid.TryParse(ideaId, out var ideaGuid))
-                {
-                    ProcessingIdeaIds.Add(ideaGuid);
-                }
-                await RefreshJobs();
-                await LoadIdeas();
-                StateHasChanged();
+            if (Guid.TryParse(ideaId, out var ideaGuid))
+            {
+                ProcessingIdeaIds.Add(ideaGuid);
             }
-        });
+            await RefreshJobs();
+            await LoadIdeas();
+            StateHasChanged();
+        }
+    });
         });
 
         // Ideas auto-processing state changed
@@ -404,17 +404,17 @@ TimeSpan.FromSeconds(10) })
             await InvokeAsync(async () =>
     {
         // Only update if this is for our project
-            if (projectId == ProjectId.ToString())
+        if (projectId == ProjectId.ToString())
+        {
+            IsIdeasProcessingActive = isActive;
+            if (!isActive)
             {
-                IsIdeasProcessingActive = isActive;
-                if (!isActive)
-                {
-                    ProcessingIdeaIds.Clear();
-                }
-                await LoadIdeas();
-                StateHasChanged();
+                ProcessingIdeaIds.Clear();
             }
-        });
+            await LoadIdeas();
+            StateHasChanged();
+        }
+    });
         });
 
         // Idea created - another user added an idea
@@ -422,12 +422,12 @@ TimeSpan.FromSeconds(10) })
         {
             await InvokeAsync(async () =>
     {
-            if (projectId == ProjectId.ToString())
-            {
-                await LoadIdeas();
-                StateHasChanged();
-            }
-        });
+        if (projectId == ProjectId.ToString())
+        {
+            await LoadIdeas();
+            StateHasChanged();
+        }
+    });
         });
 
         // Idea deleted - another user deleted an idea
@@ -435,17 +435,17 @@ TimeSpan.FromSeconds(10) })
         {
             await InvokeAsync(async () =>
     {
-            if (projectId == ProjectId.ToString())
-            {
+        if (projectId == ProjectId.ToString())
+        {
             // Remove from local processing set if present
-                if (Guid.TryParse(ideaId, out var ideaGuid))
-                {
-                    ProcessingIdeaIds.Remove(ideaGuid);
-                }
-                await LoadIdeas();
-                StateHasChanged();
+            if (Guid.TryParse(ideaId, out var ideaGuid))
+            {
+                ProcessingIdeaIds.Remove(ideaGuid);
             }
-        });
+            await LoadIdeas();
+            StateHasChanged();
+        }
+    });
         });
 
         // Idea updated - another user edited/expanded an idea
@@ -453,12 +453,12 @@ TimeSpan.FromSeconds(10) })
         {
             await InvokeAsync(async () =>
     {
-            if (projectId == ProjectId.ToString())
-            {
-                await LoadIdeas();
-                StateHasChanged();
-            }
-        });
+        if (projectId == ProjectId.ToString())
+        {
+            await LoadIdeas();
+            StateHasChanged();
+        }
+    });
         });
     }
 
@@ -874,7 +874,6 @@ TimeSpan.FromSeconds(10) })
         _showEditProjectModal = false;
         // Reload project data to reflect changes
         await LoadData();
-        NotificationService.ShowSuccess("Project updated successfully.");
     }
 
     private void HandleProjectModalCancelled()

@@ -41,7 +41,7 @@
 					</span>
 				}
 			</label>
-			<textarea id="commitMessage" class="commit-message-input" @bind="CommitMessage" @bind:event="oninput"
+			<textarea id="commitMessage" class="form-control w-100" @bind="CommitMessage" @bind:event="oninput"
 					  placeholder="@(IsLoadingSummary ? "Generating commit message..." : "Enter a descriptive commit message...")"
 					  rows="3" disabled="@IsPushing"></textarea>
 

@@ -66,6 +66,8 @@ public class ProjectService : IProjectService
         existing.Description = project.Description;
         existing.WorkingPath = project.WorkingPath;
         existing.GitHubRepository = project.GitHubRepository;
+        existing.AutoCommitMode = project.AutoCommitMode;
+        existing.PromptContext = project.PromptContext;
         existing.UpdatedAt = DateTime.UtcNow;
 
         await _dbContext.SaveChangesAsync(cancellationToken);
