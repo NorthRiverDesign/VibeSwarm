@@ -92,6 +92,51 @@
 								Reset
 							</button>
 						</div>
+
+						<hr class="my-4" />
+
+						<h6 class="text-body-secondary mb-3">
+							<i class="bi bi-robot me-1"></i>Agent Quality
+						</h6>
+
+						<div class="mb-3">
+							<div class="form-check form-switch">
+								<input class="form-check-input" type="checkbox" id="enablePromptStructuring"
+									   @bind="_settings.EnablePromptStructuring" />
+								<label class="form-check-label" for="enablePromptStructuring">
+									Structure job prompts with XML tags
+								</label>
+							</div>
+							<div class="form-text">
+								Wraps job prompts with project context and constraints using XML tags for clearer agent instructions.
+							</div>
+						</div>
+
+						<div class="mb-3">
+							<div class="form-check form-switch">
+								<input class="form-check-input" type="checkbox" id="injectRepoMap"
+									   @bind="_settings.InjectRepoMap" />
+								<label class="form-check-label" for="injectRepoMap">
+									Inject repo map into system prompt
+								</label>
+							</div>
+							<div class="form-text">
+								Auto-generates a compact project file tree and injects it into the agent's system prompt for faster codebase navigation.
+							</div>
+						</div>
+
+						<div class="mb-3">
+							<div class="form-check form-switch">
+								<input class="form-check-input" type="checkbox" id="injectEfficiencyRules"
+									   @bind="_settings.InjectEfficiencyRules" />
+								<label class="form-check-label" for="injectEfficiencyRules">
+									Inject efficiency rules into system prompt
+								</label>
+							</div>
+							<div class="form-text">
+								Adds rules to prevent agents from modifying unrelated files, adding unnecessary comments, or refactoring beyond the task.
+							</div>
+						</div>
 					</EditForm>
 				}
 			</div>

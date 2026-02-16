@@ -21,4 +21,19 @@ public class AppSettings
 	/// When the settings were last updated.
 	/// </summary>
 	public DateTime? UpdatedAt { get; set; }
+
+	/// <summary>
+	/// Whether to wrap job prompts with XML-tagged structure including project context.
+	/// </summary>
+	public bool EnablePromptStructuring { get; set; } = true;
+
+	/// <summary>
+	/// Whether to inject the project repo map into the system prompt.
+	/// </summary>
+	public bool InjectRepoMap { get; set; } = true;
+
+	/// <summary>
+	/// Whether to inject efficiency rules into the system prompt to reduce wasted tokens.
+	/// </summary>
+	public bool InjectEfficiencyRules { get; set; } = true;
 }

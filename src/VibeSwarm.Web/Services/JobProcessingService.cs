@@ -575,6 +575,40 @@ public class JobProcessingService : BackgroundService
                 }
             }
 
+            // Auto-generate or refresh repo map if stale (>24 hours) or missing
+            if (!string.IsNullOrEmpty(workingDirectory) && Directory.Exists(workingDirectory) && job.Project != null)
+            {
+                try
+                {
+                    if (job.Project.RepoMap == null || job.Project.RepoMapGeneratedAt == null ||
+                        job.Project.RepoMapGeneratedAt < DateTime.UtcNow.AddHours(-24))
+                    {
+                        _logger.LogInformation("Generating repo map for project {ProjectName} (job {JobId})", job.Project.Name, job.Id);
+                        var repoMap = RepoMapGenerator.GenerateRepoMap(workingDirectory);
+                        if (repoMap != null)
+                        {
+                            var projectForMap = await dbContext.Projects.FindAsync(new object[] { job.Project.Id }, cancellationToken);
+                            if (projectForMap != null)
+                            {
+                                projectForMap.RepoMap = repoMap;
+                                projectForMap.RepoMapGeneratedAt = DateTime.UtcNow;
+                                await dbContext.SaveChangesAsync(cancellationToken);
+                                // Update the in-memory project reference
+                                job.Project.RepoMap = repoMap;
+                                job.Project.RepoMapGeneratedAt = projectForMap.RepoMapGeneratedAt;
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to generate repo map for job {JobId}", job.Id);
+                }
+            }
+
+            // Load app settings for prompt structuring and efficiency rules
+            var appSettings = await dbContext.AppSettings.FirstOrDefaultAsync(cancellationToken);
+
             // Start a background task to monitor for cancellation requests and send heartbeats
             // Note: This task manages its own DbContext scopes to avoid disposal issues
             var cancellationMonitorTask = MonitorCancellationAndHeartbeatAsync(job.Id, executionContext, cancellationToken);
@@ -786,8 +820,14 @@ public class JobProcessingService : BackgroundService
             });
 
             // ===== Multi-Cycle Execution Loop =====
-            var currentPrompt = job.GoalPrompt;
+            var enableStructuring = appSettings?.EnablePromptStructuring ?? true;
+            var currentPrompt = PromptBuilder.BuildStructuredPrompt(job, enableStructuring);
             var cycleComplete = false;
+
+            // Build system prompt rules for agent efficiency
+            var injectEfficiencyRules = appSettings?.InjectEfficiencyRules ?? true;
+            var injectRepoMap = appSettings?.InjectRepoMap ?? true;
+            var systemPromptRules = PromptBuilder.BuildSystemPromptRules(job.Project, injectEfficiencyRules, injectRepoMap);
 
             while (currentCycle <= effectiveMaxCycles && !cycleComplete && !cancellationToken.IsCancellationRequested)
             {
@@ -824,7 +864,8 @@ public class JobProcessingService : BackgroundService
                         WorkingDirectory = workingDirectory,
                         McpConfigPath = await GetMcpConfigPathAsync(job.ProviderId),
                         Model = job.ModelUsed,
-                        Title = job.Title
+                        Title = job.Title,
+                        AppendSystemPrompt = systemPromptRules
                     },
                     progress,
                     cancellationToken);

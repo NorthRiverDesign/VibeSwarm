@@ -74,6 +74,16 @@
 						completion.</div>
 					</div>
 
+					<div class="mb-3">
+						<label for="modal-promptContext" class="form-label">
+							<i class="bi bi-chat-left-text me-1"></i>Prompt Context
+							<span class="text-body-secondary fw-normal">(optional)</span>
+						</label>
+						<InputTextArea id="modal-promptContext" @bind-Value="Project.PromptContext" class="form-control" rows="3"
+									   placeholder="Optional instructions injected into every job prompt for this project (e.g., coding conventions, framework preferences)" />
+						<div class="form-text">These instructions are automatically included in every job prompt for this project to guide AI agents.</div>
+					</div>
+
 					@if (!string.IsNullOrEmpty(_cloneProgressMessage))
 					{
 						<Alert Type="Alert.AlertType.Info" Message="@_cloneProgressMessage" Class="mb-3" />
@@ -183,6 +193,7 @@
 					WorkingPath = EditProject.WorkingPath,
 					GitHubRepository = EditProject.GitHubRepository,
 					AutoCommitMode = EditProject.AutoCommitMode,
+					PromptContext = EditProject.PromptContext,
 					CreatedAt = EditProject.CreatedAt,
 					UpdatedAt = EditProject.UpdatedAt
 				};

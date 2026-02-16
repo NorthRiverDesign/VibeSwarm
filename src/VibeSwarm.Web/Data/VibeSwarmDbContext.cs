@@ -152,6 +152,9 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
         {
             entity.HasKey(e => e.Id);
             entity.Property(e => e.DefaultProjectsDirectory).HasMaxLength(1000);
+            entity.Property(e => e.EnablePromptStructuring).HasDefaultValue(true);
+            entity.Property(e => e.InjectRepoMap).HasDefaultValue(true);
+            entity.Property(e => e.InjectEfficiencyRules).HasDefaultValue(true);
         });
 
         modelBuilder.Entity<Skill>(entity =>
