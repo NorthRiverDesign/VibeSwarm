@@ -73,6 +73,22 @@ if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("ASPNETCORE_URLS")))
 var connectionString = builder.Configuration.GetConnectionString("Default")
     ?? "Data Source=vibeswarm.db";
 
+// Determine database provider: env var > config > default (sqlite)
+var databaseProvider = Environment.GetEnvironmentVariable("DATABASE_PROVIDER")
+    ?? builder.Configuration["Database:Provider"]
+    ?? "sqlite";
+
+// Validate that non-SQLite providers have a connection string configured
+var resolvedProvider = VibeSwarm.Shared.Data.DataServiceExtensions.ResolveProviderName(databaseProvider);
+if (resolvedProvider != "sqlite" && connectionString == "Data Source=vibeswarm.db")
+{
+    throw new InvalidOperationException(
+        $"DATABASE_PROVIDER is set to '{databaseProvider}' but no connection string is configured. " +
+        "Set ConnectionStrings__Default as an environment variable or in appsettings.json.");
+}
+
+Console.WriteLine($"Database provider: {resolvedProvider}");
+
 // Add authorization services
 builder.Services.AddAuthorization();
 
@@ -108,7 +124,7 @@ builder.Services.AddSignalR(options =>
 });
 
 builder.Services.AddWorkerServices();
-builder.Services.AddVibeSwarmData(connectionString);
+builder.Services.AddVibeSwarmData(connectionString, databaseProvider);
 
 // Add Identity services
 builder.Services.AddIdentity<ApplicationUser, IdentityRole<Guid>>(options =>
@@ -203,6 +219,10 @@ using (var scope = app.Services.CreateScope())
     var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole<Guid>>>();
     var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
     await DatabaseSeeder.InitializeAdminUserAsync(userManager, roleManager, builder.Configuration, logger);
+
+    // Auto-detect and register CLI coding agents
+    var agentDetection = scope.ServiceProvider.GetRequiredService<AgentDetectionService>();
+    await agentDetection.DetectAndRegisterAsync();
 
     // Check if users exist and set appropriate flags
     var userCount = userManager.Users.Count();

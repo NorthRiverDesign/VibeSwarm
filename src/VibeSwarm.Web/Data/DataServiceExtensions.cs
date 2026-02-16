@@ -7,10 +7,40 @@ namespace VibeSwarm.Shared.Data;
 
 public static class DataServiceExtensions
 {
-    public static IServiceCollection AddVibeSwarmData(this IServiceCollection services, string connectionString)
+    /// <summary>
+    /// Supported database provider aliases mapped to canonical names.
+    /// </summary>
+    private static readonly Dictionary<string, string> ProviderAliases = new(StringComparer.OrdinalIgnoreCase)
     {
+        ["sqlite"] = "sqlite",
+        ["postgres"] = "postgresql",
+        ["postgresql"] = "postgresql",
+        ["sqlserver"] = "sqlserver",
+        ["mssql"] = "sqlserver",
+    };
+
+    public static IServiceCollection AddVibeSwarmData(
+        this IServiceCollection services,
+        string connectionString,
+        string databaseProvider = "sqlite")
+    {
+        var canonical = ResolveProviderName(databaseProvider);
+
         services.AddDbContext<VibeSwarmDbContext>(options =>
-            options.UseSqlite(connectionString));
+        {
+            switch (canonical)
+            {
+                case "postgresql":
+                    options.UseNpgsql(connectionString);
+                    break;
+                case "sqlserver":
+                    options.UseSqlServer(connectionString);
+                    break;
+                default:
+                    options.UseSqlite(connectionString);
+                    break;
+            }
+        });
 
         services.AddScoped<IProviderService, ProviderService>();
         services.AddScoped<IProjectService, ProjectService>();
@@ -25,7 +55,22 @@ public static class DataServiceExtensions
         services.AddHttpClient("LocalInference");
         services.AddScoped<IInferenceProviderService, InferenceProviderService>();
         services.AddScoped<IInferenceService, OllamaInferenceService>();
+        services.AddScoped<AgentDetectionService>();
 
         return services;
+    }
+
+    /// <summary>
+    /// Resolves a provider alias (e.g. "postgres", "mssql") to its canonical name.
+    /// Throws if the provider is not recognized.
+    /// </summary>
+    public static string ResolveProviderName(string provider)
+    {
+        if (ProviderAliases.TryGetValue(provider, out var canonical))
+            return canonical;
+
+        throw new InvalidOperationException(
+            $"Unsupported DATABASE_PROVIDER '{provider}'. " +
+            $"Supported values: {string.Join(", ", ProviderAliases.Keys)}");
     }
 }

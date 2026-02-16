@@ -2,7 +2,7 @@
 
 # VibeSwarm
 
-A vibe-coded vibe coding orchestrator. Imagine CI/CD but with AI. Bring your own provider. Own your own infrastructure.
+A web dashboard that orchestrates CLI-based AI coding agents. You bring your own tools and infrastructure — VibeSwarm turns ideas into code.
 
 ## Support
 
@@ -12,59 +12,50 @@ This application is free for anyone to use. If you like it and want to donate, w
 
 Thank you!
 
+---
+
+## What is VibeSwarm?
+
+VibeSwarm is an agentic CI/CD system for turning ideas into application code. It provides a responsive web UI for managing projects and orchestrating AI coding agents running on your host machine. Think of it as a self-hosted control panel for your AI workforce.
+
+- **Self-hosted** — runs on a Raspberry Pi, VPS, laptop, or cloud instance.
+- **Bring your own agents** — install the CLI tools you already use and VibeSwarm detects them automatically.
+- **No API keys stored** — authentication lives in your host environment; VibeSwarm just calls CLI commands.
+
+## Supported Agents
+
+| Agent          | CLI Command | Install                                           |
+| -------------- | ----------- | ------------------------------------------------- |
+| Claude Code    | `claude`    | [claude.ai/code](https://claude.ai/code)          |
+| OpenCode       | `opencode`  | [opencode.ai](https://opencode.ai)                |
+| GitHub Copilot | `copilot`   | [copilot CLI](https://docs.github.com/en/copilot) |
+
+Agents are **auto-detected** at startup. If a supported CLI tool is on your PATH, VibeSwarm registers it as a provider automatically.
+
+---
+
 ## Quick Start
 
-### Prerequisites
+### 1. Install .NET 9 Runtime
 
-- .NET 10 SDK
-- Windows, Linux, or macOS
-- Git set up
-- Your own CLI coding agent
+Download from [dot.net/download](https://dotnet.microsoft.com/download/dotnet/9.0). Install the **ASP.NET Core Runtime** for your platform.
 
-### Supported Agents
-
-- OpenCode
-- Claude Code
-- GitHub Copilot
-
-## Development
-
-### 1. Clone and Navigate
+### 2. Clone the Repository
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/NorthRiverDesign/VibeSwarm.git
 cd VibeSwarm
 ```
 
-### 2. Configure Authentication (Optional)
-
-VibeSwarm supports two methods for creating the initial administrator account:
-
-#### Option A: Setup Wizard (Recommended for First-Time Users)
-
-Simply start the application without any configuration. On first run, you'll be automatically redirected to a setup wizard where you can create your admin account through a web interface.
-
-#### Option B: Environment Variables (Recommended for Automated Deployments)
-
-Create a `.env` file in the root directory:
+### 3. Copy the Example Configuration
 
 ```bash
-DEFAULT_ADMIN_USER=admin
-DEFAULT_ADMIN_PASS=YourSecurePassword123!
+cp src/VibeSwarm.Web/.env.example .env
 ```
 
-When these environment variables are set, the admin user is created automatically on startup without requiring the setup wizard.
+Edit `.env` if needed — the defaults work for local development.
 
-**Password Requirements:**
-
-- Minimum 8 characters
-- At least one uppercase letter
-- At least one lowercase letter
-- At least one digit
-
-**Note**: The `.env` file is gitignored to prevent accidentally committing credentials.
-
-### 3. Build and Run
+### 4. Run
 
 ```bash
 cd src/VibeSwarm.Web
@@ -74,190 +65,70 @@ dotnet run
 The application will:
 
 - Generate a self-signed HTTPS certificate (first run only)
-- Run database migrations
-- Create the admin user (if credentials configured) or redirect to setup wizard
-- Start on:
-  - HTTP: `http://localhost:5000`
-  - HTTPS: `https://localhost:5001` (recommended)
+- Run database migrations (SQLite by default, zero configuration)
+- Auto-detect installed CLI agents
+- Start on **https://localhost:5001** and **http://localhost:5000**
 
-### 4. Access the Application
+### 5. Open Your Browser
 
 Navigate to `https://localhost:5001`
 
-Your browser will show a certificate warning because we're using a self-signed certificate. This is expected and safe for local/private deployments.
+Your browser will show a certificate warning (self-signed cert). This is expected:
 
 - **Chrome/Edge**: Click "Advanced" → "Proceed to localhost"
 - **Firefox**: Click "Advanced" → "Accept the Risk and Continue"
 
-If you configured credentials via environment variables, login with those credentials. Otherwise, complete the setup wizard to create your admin account.
+On first launch you will be redirected to a setup wizard to create your admin account. Alternatively, set `DEFAULT_ADMIN_USER` and `DEFAULT_ADMIN_PASS` in your `.env` file for automated deployments.
 
-## Running in Production
+---
 
-### Option 1: Direct Execution
+## Configuration
 
-```bash
-cd src/VibeSwarm.Web
-dotnet run --environment Production
-```
+The `.env` file is the **only** configuration you need. Place it in the repo root or in `src/VibeSwarm.Web/`.
 
-### Option 2: Published Application
+| Variable                     | Default                                        | Description                                              |
+| ---------------------------- | ---------------------------------------------- | -------------------------------------------------------- |
+| `ASPNETCORE_URLS`            | `https://localhost:5001;http://localhost:5000` | Bind addresses. Use `0.0.0.0` for remote access.         |
+| `DEFAULT_ADMIN_USER`         | _(empty — setup wizard)_                       | Admin username for automated setup.                      |
+| `DEFAULT_ADMIN_PASS`         | _(empty — setup wizard)_                       | Admin password. Min 8 chars, upper + lower + digit.      |
+| `DATABASE_PROVIDER`          | `sqlite`                                       | Database engine: `sqlite`, `postgresql`, or `sqlserver`. |
+| `ConnectionStrings__Default` | `Data Source=vibeswarm.db`                     | Connection string for the chosen provider.               |
 
-```bash
-# Build for production
-cd src/VibeSwarm.Web
-dotnet publish -c Release -o ./build/
+You can also set these as system environment variables instead of using `.env`.
 
-# Run the published app
-cd ./build/
-./VibeSwarm.Web
-```
+---
 
-### Environment Variables
+## Database Options
 
-Instead of using a `.env` file, you can set environment variables directly:
+**SQLite (default)** — zero configuration. The file `vibeswarm.db` is created next to the app.
 
-**Windows (PowerShell):**
-
-```powershell
-$env:DEFAULT_ADMIN_USER="admin"
-$env:DEFAULT_ADMIN_PASS="YourSecurePassword123!"
-$env:ASPNETCORE_ENVIRONMENT="Production"
-dotnet run
-```
-
-**Linux/macOS:**
+**PostgreSQL:**
 
 ```bash
-export DEFAULT_ADMIN_USER=admin
-export DEFAULT_ADMIN_PASS=YourSecurePassword123!
-export ASPNETCORE_ENVIRONMENT=Production
-dotnet run
+DATABASE_PROVIDER=postgresql
+ConnectionStrings__Default=Host=localhost;Database=vibeswarm;Username=vibeswarm;Password=secret
 ```
 
-## Security
+**SQL Server:**
 
-This application is designed to utilize the host system's terminal and command line utilities. You set up your own coding agents. VibeSwarm just calls CLI commands on the host system.
+```bash
+DATABASE_PROVIDER=sqlserver
+ConnectionStrings__Default=Server=localhost;Database=vibeswarm;Trusted_Connection=true;TrustServerCertificate=true
+```
 
-## Database
+Provider aliases are supported: `postgres` / `postgresql`, `mssql` / `sqlserver`.
 
-VibeSwarm uses SQLite for data storage. The database file `vibeswarm.db` is created automatically in the application directory.
-
-**Backup your database:**
+### Backup (SQLite)
 
 ```bash
 cp vibeswarm.db vibeswarm.db.backup
 ```
 
-## Troubleshooting
-
-### Initial Setup
-
-If no admin credentials are configured via environment variables, the application will:
-
-1. Automatically redirect to the setup wizard at `/setup`
-2. Allow you to create your admin account through the web interface
-3. Log you in automatically after account creation
-
-### Admin User Issues
-
-Check the logs on startup. You should see one of:
-
-```
-info: Admin user 'admin' created successfully from environment configuration
-info: Database initialized with 1 user(s)
-```
-
-Or if setup is required:
-
-```
-info: INITIAL SETUP REQUIRED
-info: Navigate to the application to complete setup.
-```
-
-If admin creation fails due to invalid password (when using env vars):
-
-1. Check that `DEFAULT_ADMIN_PASS` meets password requirements
-2. Or remove the env vars and use the setup wizard instead
-
-### Certificate Issues
-
-The self-signed certificate is stored as `vibeswarm.pfx` in the application directory.
-
-To regenerate it:
-
-1. Stop the application
-2. Delete `vibeswarm.pfx`
-3. Restart the application
-
-### Port Already in Use
-
-The application listens on ports 5000 (HTTP) and 5001 (HTTPS). If these are in use, the application will fail to start.
-
-Check what's using the ports:
-
-```bash
-# Windows
-netstat -ano | findstr :5000
-
-# Linux/macOS
-lsof -i :5000
-```
-
-## Advanced Configuration
-
-### Custom Database Location
-
-Set the connection string in environment variables:
-
-```bash
-export ConnectionStrings__Default="Data Source=/path/to/your/database.db"
-```
-
-Or in `appsettings.json`:
-
-```json
-{
-	"ConnectionStrings": {
-		"Default": "Data Source=/custom/path/vibeswarm.db"
-	}
-}
-```
-
-### Accessing from Other Devices
-
-To access the application from other devices on your network, you need to bind to all interfaces:
-
-Set the `ASPNETCORE_URLS` environment variable:
-
-```bash
-# Windows
-$env:ASPNETCORE_URLS="http://0.0.0.0:5000;https://0.0.0.0:5001"
-
-# Linux/macOS
-export ASPNETCORE_URLS="http://0.0.0.0:5000;https://0.0.0.0:5001"
-```
-
-Then access via:
-
-- `https://<your-machine-ip>:5001`
-
-**Note**: Your self-signed certificate won't be trusted on other devices. You'll need to accept the certificate warning.
+---
 
 ## Running as a Service
 
-### Windows Service
-
-Use NSSM (Non-Sucking Service Manager):
-
-```powershell
-# Download NSSM from nssm.cc
-nssm install VibeSwarm "C:\path\to\publish\VibeSwarm.Web.exe"
-nssm set VibeSwarm AppDirectory "C:\path\to\publish"
-nssm set VibeSwarm AppEnvironmentExtra DEFAULT_ADMIN_USER=admin DEFAULT_ADMIN_PASS=YourPass123!
-nssm start VibeSwarm
-```
-
-### Linux systemd Service
+### Linux (systemd)
 
 Create `/etc/systemd/system/vibeswarm.service`:
 
@@ -275,14 +146,10 @@ RestartSec=10
 KillSignal=SIGINT
 Environment=ASPNETCORE_URLS=https://0.0.0.0:5001;http://0.0.0.0:5000
 Environment=ASPNETCORE_ENVIRONMENT=Production
-Environment=DEFAULT_ADMIN_USER=admin
-Environment=DEFAULT_ADMIN_PASS=YourSecurePassword123!
 
 [Install]
 WantedBy=multi-user.target
 ```
-
-Then:
 
 ```bash
 sudo systemctl daemon-reload
@@ -290,61 +157,110 @@ sudo systemctl enable vibeswarm
 sudo systemctl start vibeswarm
 ```
 
+### Windows (NSSM)
+
+```powershell
+# Download NSSM from nssm.cc
+nssm install VibeSwarm "C:\path\to\publish\VibeSwarm.Web.exe"
+nssm set VibeSwarm AppDirectory "C:\path\to\publish"
+nssm start VibeSwarm
+```
+
+---
+
+## Security
+
+- VibeSwarm generates a self-signed HTTPS certificate on first run. For production, place behind a reverse proxy with a real certificate.
+- The application calls CLI tools on the host system. It does **not** store API keys — your agents authenticate through their own configurations.
+- All user passwords are hashed with ASP.NET Core Identity defaults.
+
+---
+
+## Troubleshooting
+
+### Certificate Warning
+
+Expected with self-signed certificates. Accept the warning in your browser, or replace with a real cert behind a reverse proxy.
+
+### Port Already in Use
+
+```bash
+# Windows
+netstat -ano | findstr :5001
+
+# Linux/macOS
+lsof -i :5001
+```
+
+Change the port in `.env` via `ASPNETCORE_URLS`.
+
+### Agent Not Detected
+
+- Verify the CLI tool is on your PATH: `claude --version`, `opencode --version`, `copilot --version`
+- Check the application logs for detection results.
+- You can always add agents manually through the web UI under Providers.
+
+---
+
 ## Development
 
-### Running in Development Mode
+### Prerequisites
+
+- .NET 9 SDK
+- Windows, Linux, or macOS
+- Git
+
+### Build
+
+```bash
+dotnet build VibeSwarm.sln
+```
+
+### Run (Development)
 
 ```bash
 cd src/VibeSwarm.Web
 dotnet run
 ```
 
-Development mode includes:
-
-- Detailed error pages
-- Hot reload
-- Verbose logging
-
-### Building
-
-```bash
-cd src/VibeSwarm.Web
-dotnet build
-```
-
-### Running Tests
+### Run Tests
 
 ```bash
 dotnet test
 ```
 
-## Project Structure
+### Publish
+
+```bash
+dotnet publish src/VibeSwarm.Web/VibeSwarm.Web.csproj -c Release -o ./build/
+```
+
+### Project Structure
 
 ```
 VibeSwarm/
-├── build/
-|   └── .env               		# Your build configuration (create this)
 ├── src/
-│   ├── VibeSwarm.Shared/ 		# Data models and shared code
-│   ├── VibeSwarm.Web/ 			# Blazor WebAssembly web application
-|   |	├── .env               	# Your local configuration (create this)
-|	|	└── .env.example 		# Template for .env file
-│   └── VibeSwarm.Client/       # Front-end WASM client
-└── README.md  					# This file
+│   ├── VibeSwarm.Client/     # Blazor WebAssembly front-end
+│   ├── VibeSwarm.Shared/     # Shared models, services, utilities
+│   └── VibeSwarm.Web/        # Server — API, SignalR, Identity, CLI orchestration
+│       └── .env.example      # Configuration template
+├── build/                    # Published output
+└── README.md
 ```
+
+### Technologies
+
+- **.NET 9.0** - Web framework
+- **Blazor WebAssembly** - UI
+- **SignalR** - Real-time communication
+- **Entity Framework Core** - ORM (SQLite, PostgreSQL, SQL Server)
+- **ASP.NET Core Identity** - Authentication
+
+---
 
 ## Updates
 
 We are working on an update notification system and providing pre-built solutions. Things change fast. For now, we recommend checking out the `main` branch and running `dotnet publish -c Release -o ./build/`. If you have VibeSwarm installed as a service, restart the process.
-
-## Technologies
-
-- **.NET 10.0** - Web framework
-- **Blazor Server** - UI framework
-- **SignalR** - Real-time communication
-- **Entity Framework Core** - ORM
-- **SQLite** - Database
-- **ASP.NET Core Identity** - Authentication
 
 ## License
 
@@ -358,7 +274,7 @@ If you would like to contribute to VibeSwarm, open a GitHub issue with any probl
 
 Any attempt at submitting contributions with nefarious intent will be denied. Be a good person.
 
-This application is being developed to serve our needs and is distributed for free. Any negativitiy will not be tolerated or obliged. This project is open source and you are not entitled to any support or reimbursement for any damages.
+This application is being developed to serve our needs and is distributed for free. Any negativity will not be tolerated or obliged. This project is open source and you are not entitled to any support or reimbursement for any damages.
 
 ## Warranty
 
@@ -368,4 +284,4 @@ VibeSwarm is for expert developers who know the limitations and risks of using A
 
 Any and all use of VibeSwarm must comply with the terms of service and usage policies of the AI providers whose agents are utilized. Users are responsible for understanding and adhering to these policies to avoid violations that could lead to account suspension or other penalties.
 
-By using VibeSwarm, users agree to indemnify and hold harmless the maintainers from any claims, damages, or liabilities arising from their use of the application. In short, we are NOT responsible if the AI agent decides to delete important information on your system - it's just a wrapper application.
+By using VibeSwarm, users agree to indemnify and hold harmless the maintainers from any claims, damages, or liabilities arising from their use of the application. In short, we are NOT responsible if the AI agent decides to delete important information on your system — it's just a wrapper application.
