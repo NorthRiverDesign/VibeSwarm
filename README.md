@@ -4,14 +4,6 @@
 
 A web dashboard that orchestrates CLI-based AI coding agents. You bring your own tools and infrastructure — VibeSwarm turns ideas into code.
 
-## Support
-
-This application is free for anyone to use. If you like it and want to donate, we have a donation link set up.
-
-[Donate to North River Design with Stripe](https://donate.stripe.com/3cI00i3SM2X88w55uGaZi00).
-
-Thank you!
-
 ---
 
 ## What is VibeSwarm?
@@ -285,3 +277,11 @@ VibeSwarm is for expert developers who know the limitations and risks of using A
 Any and all use of VibeSwarm must comply with the terms of service and usage policies of the AI providers whose agents are utilized. Users are responsible for understanding and adhering to these policies to avoid violations that could lead to account suspension or other penalties.
 
 By using VibeSwarm, users agree to indemnify and hold harmless the maintainers from any claims, damages, or liabilities arising from their use of the application. In short, we are NOT responsible if the AI agent decides to delete important information on your system — it's just a wrapper application.
+
+## Support
+
+This application is free for anyone to use. If you like it and want to donate, we have a donation link set up.
+
+[Donate to North River Design with Stripe](https://donate.stripe.com/3cI00i3SM2X88w55uGaZi00).
+
+Thank you!
