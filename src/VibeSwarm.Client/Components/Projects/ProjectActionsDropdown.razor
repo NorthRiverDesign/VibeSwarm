@@ -2,7 +2,7 @@
 
 <div class="dropdown flex-shrink-0">
 	<button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown"
-		aria-expanded="false" title="Project actions">
+			aria-expanded="false" title="Project actions">
 		<i class="bi bi-gear"></i>
 	</button>
 	<ul class="dropdown-menu dropdown-menu-end">
@@ -11,10 +11,32 @@
 				<i class="bi bi-pencil me-2 text-primary"></i>Edit Project
 			</button>
 		</li>
+		<li>
+			<button class="dropdown-item" @onclick="OnToggleActive">
+				@if (IsActive)
+				{
+					<i class="bi bi-pause-circle me-2 text-secondary"></i>
+				
+					@:Deactivate
+				}
+				else
+				{
+					<i class="bi bi-play-circle me-2 text-success"></i>
+				
+					@:Activate
+				}
+			</button>
+		</li>
 	</ul>
 </div>
 
 @code {
 	[Parameter]
 	public EventCallback OnEdit { get; set; }
+
+	[Parameter]
+	public bool IsActive { get; set; } = true;
+
+	[Parameter]
+	public EventCallback OnToggleActive { get; set; }
 }

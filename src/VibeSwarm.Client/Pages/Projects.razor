@@ -25,7 +25,7 @@ else if (!ProjectsWithInfo.Any())
 else
 {
     @* Active / Inactive filter tabs *@
-    <ul class="nav nav-tabs mb-3">
+    <ul class="nav nav-tabs">
         <li class="nav-item">
             <button class="nav-link @(ActiveFilter == "active" ? "active" : "")" @onclick='() => SetFilter("active")'>
                 <i class="bi bi-check-circle me-1"></i>Active
@@ -48,7 +48,7 @@ else
     }
     else
     {
-        <div class="list-group">
+        <div class="list-group rounded-top-0 border-top-0">
             @foreach (var projectInfo in GetFilteredProjects())
             {
                 var project = projectInfo.Project;
@@ -159,7 +159,7 @@ else
                                                     break;
                                             }
                                             <span class="text-truncate text-body-secondary">@TruncateText(latestJob.GoalPrompt,
-                                                                                                                                                                                                                    60)</span>
+                                                                                                                                                                                                                                                                    60)</span>
                                             </a>
                                         </div>
                                     </div>
@@ -174,7 +174,7 @@ else
                                                 <a href="/jobs/view/@job.Id" class="d-flex align-items-center gap-2 text-decoration-none small">
                                                     <StatusBadge Status="@job.Status.ToString()" />
                                                     <span class="text-truncate" style="max-width: 200px;">@TruncateText(job.GoalPrompt,
-                                                                                                                                                                                                                                                50)</span>
+                                                                                                                                                                                                                                                                                                        50)</span>
                                                         @if (!string.IsNullOrEmpty(job.CurrentActivity))
                                                         {
                                                             <span class="text-info fst-italic small d-none d-md-inline">@job.CurrentActivity</span>

@@ -41,7 +41,8 @@ else
                                 TotalCost="@GetProjectTotalCost()" OnCreateBranch="ShowCreateBranchModal" OnSync="SyncWithOrigin"
                                 OnRefresh="RefreshBranches" OnBranchSelected="RequestBranchSwitch"
                                 OnUncommittedChangesClick="ShowUncommittedChangesModal" OnClearGitMessage="ClearGitMessage"
-                                OnEdit="ShowEditProjectModal" OnPruneBranches="PruneRemoteBranches" />
+                                OnEdit="ShowEditProjectModal" OnPruneBranches="PruneRemoteBranches"                                IsActive="@(Project?.IsActive ?? true)"
+                                OnToggleActive="ToggleProjectActive" />
 
     <div class="row g-3">
         @* Ideas Panel on LEFT on desktop for easier access *@
@@ -867,6 +868,23 @@ TimeSpan.FromSeconds(10) })
     private void ShowEditProjectModal()
     {
         _showEditProjectModal = true;
+    }
+
+    private async Task ToggleProjectActive()
+    {
+        if (Project == null) return;
+        try
+        {
+            Project.IsActive = !Project.IsActive;
+            await ProjectService.UpdateAsync(Project);
+            NotificationService.ShowSuccess($"{Project.Name} is now {(Project.IsActive ? "active" : "inactive")}.");
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Project.IsActive = !Project.IsActive; // Revert on failure
+            NotificationService.ShowError($"Error toggling project status: {ex.Message}");
+        }
     }
 
     private async Task HandleProjectSaved(Guid? projectId)
