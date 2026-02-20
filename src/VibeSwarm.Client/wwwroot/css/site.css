@@ -204,9 +204,9 @@ body {
 }
 
 /* ============================================
-   3. NAVIGATION (Custom active states)
+   3. NAVIGATION (Sidebar nav active states)
 ============================================ */
-.nav-item {
+.app-sidebar .nav-item {
 	display: flex;
 	align-items: center;
 	gap: 1rem;
@@ -218,18 +218,18 @@ body {
 	font-weight: 500;
 }
 
-.nav-item i {
+.app-sidebar .nav-item i {
 	font-size: 1.125rem;
 	width: 20px;
 	text-align: center;
 }
 
-.nav-item:hover {
+.app-sidebar .nav-item:hover {
 	background: var(--bs-tertiary-bg);
 	color: var(--bs-emphasis-color);
 }
 
-.nav-item.active {
+.app-sidebar .nav-item.active {
 	background: rgba(88, 166, 255, 0.15);
 	color: var(--vs-accent-blue);
 }
