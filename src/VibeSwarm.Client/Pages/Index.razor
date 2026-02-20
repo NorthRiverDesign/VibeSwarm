@@ -12,7 +12,7 @@
         <section>
             <div class="d-flex justify-content-between align-items-center mb-3">
                 <h5 class="mb-0 fw-semibold">
-                    <i class="bi bi-folder me-2 opacity-75"></i>Recent Projects
+                    <i class="bi bi-folder me-2 opacity-75"></i>Active Projects
                 </h5>
                 <a href="/projects" class="btn btn-sm btn-outline-secondary">View All</a>
             </div>
@@ -24,7 +24,7 @@
             else if (!DashboardProjects.Any())
             {
                 <EmptyState Icon="folder" Title="No projects yet"
-                    Message="Create your first project to start running AI agent jobs.">
+                            Message="Create your first project to start running AI agent jobs.">
                     <a href="/projects" class="btn btn-sm btn-primary">
                         <i class="bi bi-plus-lg me-1"></i>Create Project
                     </a>
@@ -37,9 +37,9 @@
                     {
                         <div class="col">
                             <ProjectCard ProjectId="@item.Project.Id" Name="@item.Project.Name"
-                                Description="@item.Project.Description" WorkingPath="@item.Project.WorkingPath"
-                                GitHubRepository="@item.Project.GitHubRepository" CurrentBranch="@item.CurrentBranch"
-                                LatestJob="@item.LatestJob" CreatedAt="@item.Project.CreatedAt" />
+                                         Description="@item.Project.Description" WorkingPath="@item.Project.WorkingPath"
+                                         GitHubRepository="@item.Project.GitHubRepository" CurrentBranch="@item.CurrentBranch"
+                                         LatestJob="@item.LatestJob" CreatedAt="@item.Project.CreatedAt" />
                         </div>
                     }
                 </div>
@@ -63,7 +63,7 @@
             else if (!Providers.Any())
             {
                 <EmptyState Icon="cpu" Title="No providers configured"
-                    Message="Connect to AI coding agents like Claude Code CLI.">
+                            Message="Connect to AI coding agents like Claude Code CLI.">
                     <a href="/providers" class="btn btn-sm btn-primary">
                         <i class="bi bi-plus-lg me-1"></i>Add Provider
                     </a>
@@ -76,8 +76,8 @@
                     {
                         <div class="col">
                             <ProviderCard Name="@provider.Name" ProviderType="@provider.Type.ToString()"
-                                ConnectionMode="@provider.ConnectionMode.ToString()" IsEnabled="@provider.IsEnabled"
-                                CliVersion="@GetCliVersion(provider.Id)" UsageSummary="@GetUsageSummary(provider.Id)" />
+                                          ConnectionMode="@provider.ConnectionMode.ToString()" IsEnabled="@provider.IsEnabled"
+                                          CliVersion="@GetCliVersion(provider.Id)" UsageSummary="@GetUsageSummary(provider.Id)" />
                         </div>
                     }
                 </div>

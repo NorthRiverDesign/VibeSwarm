@@ -68,6 +68,7 @@ public class ProjectService : IProjectService
         existing.GitHubRepository = project.GitHubRepository;
         existing.AutoCommitMode = project.AutoCommitMode;
         existing.PromptContext = project.PromptContext;
+        existing.IsActive = project.IsActive;
         existing.UpdatedAt = DateTime.UtcNow;
 
         await _dbContext.SaveChangesAsync(cancellationToken);
@@ -124,6 +125,7 @@ public class ProjectService : IProjectService
     public async Task<IEnumerable<DashboardProjectInfo>> GetRecentWithLatestJobAsync(int count, CancellationToken cancellationToken = default)
     {
         var projects = await _dbContext.Projects
+            .Where(p => p.IsActive)
             .OrderByDescending(p => p.CreatedAt)
             .Take(count)
             .ToListAsync(cancellationToken);

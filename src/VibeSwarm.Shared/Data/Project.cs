@@ -77,6 +77,12 @@ public class Project
     public DateTime? RepoMapGeneratedAt { get; set; }
 
     /// <summary>
+    /// Whether the project is active. Inactive projects are hidden from the dashboard
+    /// and shown with reduced emphasis in other views.
+    /// </summary>
+    public bool IsActive { get; set; } = true;
+
+    /// <summary>
     /// Whether Ideas auto-processing is currently running for this project
     /// </summary>
     public bool IdeasProcessingActive { get; set; }

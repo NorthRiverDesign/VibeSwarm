@@ -98,6 +98,7 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
             entity.Property(e => e.Description).HasMaxLength(500);
             entity.Property(e => e.WorkingPath).IsRequired().HasMaxLength(500);
             entity.Property(e => e.AutoCommitMode).HasConversion<string>().HasDefaultValue(AutoCommitMode.Off);
+            entity.Property(e => e.IsActive).HasDefaultValue(true);
             entity.HasMany(e => e.Jobs)
                 .WithOne(j => j.Project)
                 .HasForeignKey(j => j.ProjectId)
