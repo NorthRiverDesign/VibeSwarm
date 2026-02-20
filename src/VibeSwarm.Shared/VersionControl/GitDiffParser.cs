@@ -37,9 +37,9 @@ public static class GitDiffParser
 
 				// Extract filename from "diff --git a/path/to/file b/path/to/file"
 				var parts = line.Split(' ');
-				var fileName = parts.Length >= 4 ? parts[3].TrimStart('b', '/') : "unknown";
-
-				currentFile = new DiffFile { FileName = fileName };
+				var rawName = parts.Length >= 4 ? parts[3] : "unknown";
+				// Remove the "b/" prefix (not TrimStart which would strip repeated b/b chars)
+				var fileName = rawName.StartsWith("b/") ? rawName[2..] : rawName;
 				currentContent.Clear();
 				currentContent.AppendLine(line);
 			}
@@ -165,35 +165,62 @@ public static class GitDiffParser
 		var extraFiles = new List<string>();
 		var modifiedFiles = new List<string>();
 
-		var jobFileDict = jobDiff.ToDictionary(f => f.FileName, f => f);
-		var workingFileDict = workingDiff.ToDictionary(f => f.FileName, f => f);
+		// Use GroupBy instead of ToDictionary to handle duplicate file entries
+		// (e.g. when a file appears in both committed and uncommitted sections).
+		// For duplicates, merge additions/deletions across all entries.
+		var jobFileDict = jobDiff
+			.GroupBy(f => f.FileName)
+			.ToDictionary(
+				g => g.Key,
+				g => new DiffFile
+				{
+					FileName = g.Key,
+					Additions = g.Sum(f => f.Additions),
+					Deletions = g.Sum(f => f.Deletions),
+					IsNew = g.Any(f => f.IsNew),
+					IsDeleted = g.Any(f => f.IsDeleted),
+					DiffContent = string.Join("\n", g.Select(f => f.DiffContent))
+				});
+
+		var workingFileDict = workingDiff
+			.GroupBy(f => f.FileName)
+			.ToDictionary(
+				g => g.Key,
+				g => new DiffFile
+				{
+					FileName = g.Key,
+					Additions = g.Sum(f => f.Additions),
+					Deletions = g.Sum(f => f.Deletions),
+					IsNew = g.Any(f => f.IsNew),
+					IsDeleted = g.Any(f => f.IsDeleted),
+					DiffContent = string.Join("\n", g.Select(f => f.DiffContent))
+				});
 
 		// Find files in job diff but not in current working copy
-		foreach (var jobFile in jobDiff)
+		foreach (var (fileName, jobFile) in jobFileDict)
 		{
-			if (!workingFileDict.ContainsKey(jobFile.FileName))
+			if (!workingFileDict.TryGetValue(fileName, out var workingFile))
 			{
-				missingFiles.Add(jobFile.FileName);
+				missingFiles.Add(fileName);
 			}
 			else
 			{
-				// Check if the content differs
-				var workingFile = workingFileDict[jobFile.FileName];
+				// Compare by additions/deletions counts only — raw diff content
+				// varies between different git diff invocations for the same changes.
 				if (jobFile.Additions != workingFile.Additions ||
-					jobFile.Deletions != workingFile.Deletions ||
-					jobFile.DiffContent.Trim() != workingFile.DiffContent.Trim())
+					jobFile.Deletions != workingFile.Deletions)
 				{
-					modifiedFiles.Add(jobFile.FileName);
+					modifiedFiles.Add(fileName);
 				}
 			}
 		}
 
 		// Find files in current working copy but not in job diff
-		foreach (var workingFile in workingDiff)
+		foreach (var fileName in workingFileDict.Keys)
 		{
-			if (!jobFileDict.ContainsKey(workingFile.FileName))
+			if (!jobFileDict.ContainsKey(fileName))
 			{
-				extraFiles.Add(workingFile.FileName);
+				extraFiles.Add(fileName);
 			}
 		}
 

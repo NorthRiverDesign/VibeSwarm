@@ -1306,7 +1306,44 @@ public class JobProcessingService : BackgroundService
             var hasChanges = await _versionControlService.HasUncommittedChangesAsync(workingDirectory, cancellationToken);
             if (!hasChanges)
             {
-                _logger.LogDebug("No uncommitted changes to auto-commit for job {JobId}", job.Id);
+                // No uncommitted changes — the agent may have committed changes itself.
+                // If the HEAD has moved since the job started, record the current HEAD hash
+                // so the UI knows the changes are committed.
+                if (!string.IsNullOrEmpty(job.GitCommitBefore))
+                {
+                    var currentHash = await _versionControlService.GetCurrentCommitHashAsync(workingDirectory, cancellationToken);
+                    if (!string.IsNullOrEmpty(currentHash) &&
+                        !string.Equals(currentHash, job.GitCommitBefore, StringComparison.OrdinalIgnoreCase))
+                    {
+                        job.GitCommitHash = currentHash;
+                        _logger.LogInformation(
+                            "Agent already committed changes for job {JobId}. Recorded HEAD {CommitHash} as GitCommitHash.",
+                            job.Id, currentHash[..Math.Min(8, currentHash.Length)]);
+
+                        // Push if configured
+                        if (job.Project!.AutoCommitMode == AutoCommitMode.CommitAndPush)
+                        {
+                            var pushResult = await _versionControlService.PushAsync(workingDirectory, cancellationToken: cancellationToken);
+                            if (pushResult.Success)
+                            {
+                                _logger.LogInformation("Auto-pushed agent-committed changes for job {JobId}", job.Id);
+                            }
+                            else
+                            {
+                                _logger.LogWarning("Auto-push failed for job {JobId}: {Error}. Changes were committed but not pushed.",
+                                    job.Id, pushResult.Error);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        _logger.LogDebug("No uncommitted or committed changes to auto-commit for job {JobId}", job.Id);
+                    }
+                }
+                else
+                {
+                    _logger.LogDebug("No uncommitted changes to auto-commit for job {JobId}", job.Id);
+                }
                 return;
             }
 

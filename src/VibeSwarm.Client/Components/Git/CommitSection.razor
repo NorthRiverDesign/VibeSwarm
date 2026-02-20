@@ -57,14 +57,13 @@
 
 			@if (!string.IsNullOrEmpty(PushError))
 			{
-				<div class="push-error mt-3">
-					<i class="bi bi-x-circle me-1"></i>
+				<Alert Type="Alert.AlertType.Danger" ShowIcon="true" Class="mt-3 mb-0">
 					@PushError
-				</div>
+				</Alert>
 			}
 		</div>
 		<div class="card-footer bg-body-secondary">
-			<button class="btn btn-primary" @onclick="OnCommitAndPush" disabled="@(!CanPush)">
+			<button class="btn btn-primary" @onclick="OnCommitAndPush" disabled="@(!CanPush || IsPushing)">
 				@if (IsPushing)
 				{
 					<span class="spinner-border spinner-border-sm me-1" role="status"></span>

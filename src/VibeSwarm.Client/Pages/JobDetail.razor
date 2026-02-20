@@ -1108,8 +1108,20 @@ TimeSpan.FromSeconds(10) })
 
         try
         {
-            var currentDiff = await VersionControlService.GetWorkingDirectoryDiffAsync(Job.Project.WorkingPath,
-            Job.GitCommitBefore);
+            // Get the full diff from the base commit to the current working tree.
+            // This includes both committed changes (by the agent) and any uncommitted changes,
+            // matching the scope of how Job.GitDiff was originally captured.
+            var currentDiff = await VersionControlService.GetWorkingDirectoryDiffAsync(
+                Job.Project.WorkingPath, Job.GitCommitBefore);
+
+            // If the job already has a commit hash (auto-committed or agent committed),
+            // also try comparing with committed range diff to cover committed-only changes.
+            if (string.IsNullOrEmpty(currentDiff) && !string.IsNullOrEmpty(Job.GitCommitBefore))
+            {
+                currentDiff = await VersionControlService.GetCommitRangeDiffAsync(
+                    Job.Project.WorkingPath, Job.GitCommitBefore);
+            }
+
             var jobFiles = GitDiffParser.ParseDiff(Job.GitDiff);
             var currentFiles = GitDiffParser.ParseDiff(currentDiff ?? string.Empty);
 
@@ -1148,12 +1160,52 @@ TimeSpan.FromSeconds(10) })
 
         try
         {
-            var result = await VersionControlService.CommitAndPushAsync(
-            Job.Project.WorkingPath,
-            _commitMessage,
-            "origin",
-            status => { _pushStatus = status; InvokeAsync(StateHasChanged); },
-            _pushCancellationTokenSource.Token);
+            // First check if there are uncommitted changes to commit
+            var hasUncommitted = await VersionControlService.HasUncommittedChangesAsync(Job.Project.WorkingPath,
+                _pushCancellationTokenSource.Token);
+
+            GitOperationResult result;
+
+            if (hasUncommitted)
+            {
+                // Normal flow: commit & push uncommitted changes
+                _pushStatus = "Committing and pushing...";
+                StateHasChanged();
+
+                result = await VersionControlService.CommitAndPushAsync(
+                    Job.Project.WorkingPath,
+                    _commitMessage,
+                    "origin",
+                    status => { _pushStatus = status; InvokeAsync(StateHasChanged); },
+                    _pushCancellationTokenSource.Token);
+            }
+            else
+            {
+                // Agent already committed changes — just push
+                _pushStatus = "Changes already committed. Pushing...";
+                StateHasChanged();
+
+                result = await VersionControlService.PushAsync(
+                    Job.Project.WorkingPath,
+                    "origin",
+                    null,
+                    _pushCancellationTokenSource.Token);
+
+                // Record the current commit hash for the job
+                if (result.Success)
+                {
+                    var currentHash = await VersionControlService.GetCurrentCommitHashAsync(Job.Project.WorkingPath,
+                        _pushCancellationTokenSource.Token);
+                    result = new GitOperationResult
+                    {
+                        Success = true,
+                        CommitHash = currentHash,
+                        BranchName = result.BranchName,
+                        RemoteName = result.RemoteName,
+                        Output = result.Output
+                    };
+                }
+            }
 
             if (result.Success)
             {
@@ -1171,15 +1223,18 @@ TimeSpan.FromSeconds(10) })
             else
             {
                 _pushError = result.Error ?? "An unknown error occurred";
+                NotificationService.ShowError(_pushError);
             }
         }
         catch (OperationCanceledException)
         {
             _pushError = "Push operation timed out. Please check your network connection and try again.";
+            NotificationService.ShowError(_pushError);
         }
         catch (Exception ex)
         {
             _pushError = $"Unexpected error: {ex.Message}";
+            NotificationService.ShowError(_pushError);
         }
         finally
         {
