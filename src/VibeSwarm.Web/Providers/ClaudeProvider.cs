@@ -158,6 +158,42 @@ public class ClaudeProvider : CliProviderBase
             }
         }
 
+        // Disallowed tools (v2.1.0+)
+        if (CurrentDisallowedTools != null && CurrentDisallowedTools.Count > 0)
+        {
+            foreach (var tool in CurrentDisallowedTools)
+            {
+                args.Add("--disallowedTools");
+                args.Add(tool);
+            }
+        }
+
+        // Maximum budget in USD for cost control (v2.0.28+)
+        if (CurrentMaxBudgetUsd.HasValue)
+        {
+            args.Add("--max-budget-usd");
+            args.Add(CurrentMaxBudgetUsd.Value.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        }
+
+        // Isolated git worktree mode (v2.1.49+)
+        if (CurrentUseWorktree)
+        {
+            args.Add("--worktree");
+        }
+
+        // Resume from PR (v2.1.27+)
+        if (!string.IsNullOrEmpty(CurrentFromPullRequest))
+        {
+            args.Add("--from-pr");
+            args.Add(CurrentFromPullRequest);
+        }
+
+        // Initialization mode for setup hooks (v2.1.10+)
+        if (!string.IsNullOrEmpty(CurrentInitMode))
+        {
+            args.Add($"--{CurrentInitMode}");
+        }
+
         // File attachments (via @-mention syntax isn't available in -p mode,
         // but files can be referenced in the prompt)
         // Note: Claude CLI doesn't have a --file flag; files are @-mentioned in the prompt.
@@ -551,6 +587,7 @@ public class ClaudeProvider : CliProviderBase
                 "sonnet",
                 "opus",
                 "haiku",
+                "claude-sonnet-4-6-20260201",
                 "claude-sonnet-4-5-20250929",
                 "claude-opus-4-6-20260101",
                 "claude-opus-4-20250514",
@@ -570,6 +607,7 @@ public class ClaudeProvider : CliProviderBase
                     ["sonnet"] = 1.0m,
                     ["opus"] = 5.0m,
                     ["haiku"] = 0.27m,
+                    ["claude-sonnet-4-6-20260201"] = 1.0m,
                     ["claude-sonnet-4-5-20250929"] = 1.0m,
                     ["claude-opus-4-6-20260101"] = 5.0m,
                     ["claude-opus-4-20250514"] = 5.0m,

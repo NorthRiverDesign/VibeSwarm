@@ -58,6 +58,17 @@ public class CopilotStreamEvent
 
 	[JsonPropertyName("tool_output")]
 	public string? ToolOutput { get; set; }
+
+	// Reasoning summaries for GPT models (v0.0.403+)
+	[JsonPropertyName("reasoning")]
+	public string? Reasoning { get; set; }
+
+	[JsonPropertyName("reasoning_summary")]
+	public string? ReasoningSummary { get; set; }
+
+	// Plan mode events (v0.0.412+)
+	[JsonPropertyName("plan")]
+	public string? Plan { get; set; }
 }
 
 /// <summary>

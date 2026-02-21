@@ -56,6 +56,13 @@ public abstract class ProviderBase : IProvider
         CurrentTimeoutSeconds = options.TimeoutSeconds;
         CurrentAllowedTools = options.AllowedTools;
         CurrentExcludedTools = options.ExcludedTools;
+        CurrentDisallowedTools = options.DisallowedTools;
+        CurrentUseWorktree = options.UseWorktree;
+        CurrentUseAutopilot = options.UseAutopilot;
+        CurrentFromPullRequest = options.FromPullRequest;
+        CurrentInitMode = options.InitMode;
+        CurrentForkSession = options.ForkSession;
+        CurrentUseAltScreen = options.UseAltScreen;
 
         return ExecuteWithSessionAsync(
             prompt,
@@ -151,6 +158,41 @@ public abstract class ProviderBase : IProvider
     protected List<string>? CurrentExcludedTools { get; private set; }
 
     /// <summary>
+    /// Disallowed tools (Claude --disallowed-tools, set by ExecuteWithOptionsAsync)
+    /// </summary>
+    protected List<string>? CurrentDisallowedTools { get; private set; }
+
+    /// <summary>
+    /// Whether to use isolated git worktree (Claude --worktree, set by ExecuteWithOptionsAsync)
+    /// </summary>
+    protected bool CurrentUseWorktree { get; private set; }
+
+    /// <summary>
+    /// Whether to use autopilot mode (Copilot autopilot, set by ExecuteWithOptionsAsync)
+    /// </summary>
+    protected bool CurrentUseAutopilot { get; private set; }
+
+    /// <summary>
+    /// PR number/URL for session linking (Claude --from-pr, set by ExecuteWithOptionsAsync)
+    /// </summary>
+    protected string? CurrentFromPullRequest { get; private set; }
+
+    /// <summary>
+    /// Init mode for setup hooks (Claude --init/--init-only/--maintenance, set by ExecuteWithOptionsAsync)
+    /// </summary>
+    protected string? CurrentInitMode { get; private set; }
+
+    /// <summary>
+    /// Whether to fork the session (OpenCode --fork, set by ExecuteWithOptionsAsync)
+    /// </summary>
+    protected bool CurrentForkSession { get; private set; }
+
+    /// <summary>
+    /// Whether to use alt-screen mode (Copilot --alt-screen, set by ExecuteWithOptionsAsync)
+    /// </summary>
+    protected bool CurrentUseAltScreen { get; private set; }
+
+    /// <summary>
     /// Clears the execution context after a run completes
     /// </summary>
     protected void ClearExecutionContext()
@@ -172,6 +214,13 @@ public abstract class ProviderBase : IProvider
         CurrentTimeoutSeconds = null;
         CurrentAllowedTools = null;
         CurrentExcludedTools = null;
+        CurrentDisallowedTools = null;
+        CurrentUseWorktree = false;
+        CurrentUseAutopilot = false;
+        CurrentFromPullRequest = null;
+        CurrentInitMode = null;
+        CurrentForkSession = false;
+        CurrentUseAltScreen = false;
     }
 
     public abstract Task<ProviderInfo> GetProviderInfoAsync(CancellationToken cancellationToken = default);
