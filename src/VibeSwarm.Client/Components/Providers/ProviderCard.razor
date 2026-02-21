@@ -22,8 +22,9 @@
 			</span>
 			@if (!string.IsNullOrEmpty(CliVersion))
 			{
-				<span class="badge bg-secondary-subtle text-secondary-emphasis">
-					<i class="bi bi-tag me-1"></i>@CliVersion
+				<span class="badge bg-secondary-subtle text-secondary-emphasis text-truncate"
+					  style="max-width: min(200px, 50vw);" title="@CliVersion">
+					<i class="bi bi-tag me-1"></i>@TruncateVersion(CliVersion)
 				</span>
 			}
 		</div>
@@ -70,4 +71,15 @@
 		"SDK" => "box",
 		_ => "plug"
 	};
+
+	private static string TruncateVersion(string version)
+	{
+		if (string.IsNullOrEmpty(version)) return version;
+		// Take only the first line and trim advisory text
+		var firstLine = version.Split('\n', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault()?.Trim() ?? version;
+		// Remove trailing sentences like "Run 'copilot update'..."
+		var dotIndex = firstLine.IndexOf(". ");
+		if (dotIndex > 0) firstLine = firstLine[..dotIndex];
+		return firstLine.Length > 40 ? firstLine[..37] + "..." : firstLine;
+	}
 }

@@ -700,6 +700,9 @@ body.vs-modal-open {
 @media (max-width: 575.98px) {
 	.btn {
 		min-height: 44px;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
 	}
 	.btn-sm {
 		min-height: 40px;
