@@ -52,7 +52,7 @@
 				@if (CanForceCancel)
 				{
 					<ActionButton Icon="stop-circle" Text="@(IsForceCancelling ? "Stopping..." : "Force Stop")"
-								  Style="ActionButton.ButtonStyle.Danger" Outline="true" Size="ActionButton.ButtonSize.Small"
+								  Style="ActionButton.ButtonStyle.Danger" Size="ActionButton.ButtonSize.Small"
 								  IsLoading="@IsForceCancelling" OnClick="OnForceCancel" />
 				}
 			</div>
@@ -144,7 +144,7 @@
 								{
 									<span title="Running Time" class="fw-medium text-info"><i
 										class="bi bi-stopwatch me-1 opacity-75"></i>@TokenHelper.FormatDuration(DateTime.UtcNow -
-																																			StartedAt.Value)</span>
+															StartedAt.Value)</span>
 									}
 								</div>
 							</div>
@@ -186,7 +186,7 @@
 										<span class="d-inline-flex align-items-center px-2 py-1 bg-body-tertiary rounded-pill text-nowrap"
 											  title="Total Tokens">
 											<i class="bi bi-arrow-left-right me-1 opacity-75"></i>@TokenHelper.FormatTokenCount(InputTokens.Value +
-																																					OutputTokens.Value)
+																																											OutputTokens.Value)
 										</span>
 									}
 									@if (TotalCostUsd.HasValue && TotalCostUsd.Value > 0)

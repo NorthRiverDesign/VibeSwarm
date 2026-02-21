@@ -1,8 +1,8 @@
 @* Reusable action button with icon and optional text *@
 
 <button type="@Type"
-	class="btn @GetButtonClass() @SizeClass d-inline-flex align-items-center justify-content-center gap-1"
-	@onclick="HandleClick" disabled="@(IsLoading || Disabled)" title="@Title">
+		class="btn @GetButtonClass() @SizeClass d-inline-flex align-items-center justify-content-center gap-1"
+		@onclick="HandleClick" disabled="@(IsLoading || Disabled)" title="@Title">
 	@if (IsLoading)
 	{
 		<span class="spinner-border spinner-border-sm" role="status"></span>
@@ -34,6 +34,7 @@
 	public ButtonStyle Style { get; set; } = ButtonStyle.Secondary;
 
 	[Parameter]
+	[Obsolete("Outline buttons are no longer used. This parameter is ignored.")]
 	public bool Outline { get; set; }
 
 	[Parameter]
@@ -60,7 +61,7 @@
 
 	private string GetButtonClass()
 	{
-		var prefix = Outline ? "btn-outline-" : "btn-";
+		var prefix = "btn-";
 		return prefix + Style switch
 		{
 			ButtonStyle.Primary => "primary",

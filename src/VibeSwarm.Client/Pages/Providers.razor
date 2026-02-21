@@ -45,12 +45,19 @@ else
                             }
                             <StatusBadge Status="@(provider.IsEnabled ? "Active" : "Off")" ShowSpinner="false" />
                         </div>
-                        <div class="d-flex flex-wrap gap-2 gap-md-3 mt-2 small text-body-secondary">
-                            <span><span class="fw-medium">Type:</span> @provider.Type</span>
-                            <span><span class="fw-medium">Mode:</span> @provider.ConnectionMode</span>
+                        <div class="d-flex flex-wrap gap-2 gap-md-3 mt-2">
+                            <span class="badge bg-primary-subtle text-primary-emphasis">
+                                <i class="bi bi-@GetProviderTypeIcon(provider.Type) me-1"></i>@provider.Type
+                            </span>
+                            <span class="badge bg-info-subtle text-info-emphasis">
+                                <i
+                                class="bi bi-@GetConnectionModeIcon(provider.ConnectionMode) me-1"></i>@provider.ConnectionMode
+                            </span>
                             @if (GetCliVersion(provider.Id) is string version && !string.IsNullOrEmpty(version))
                             {
-                                <span><span class="fw-medium">Version:</span> @version</span>
+                                <span class="badge bg-secondary-subtle text-secondary-emphasis">
+                                    <i class="bi bi-tag me-1"></i>@version
+                                </span>
                             }
                         </div>
                         @if (GetUsageSummary(provider.Id) is ProviderUsageSummary summary && summary.EffectiveMaxUsage > 0)
@@ -80,13 +87,12 @@ else
                     </div>
                     <div class="d-flex align-items-center gap-2 flex-shrink-0">
                         @* Test connection button *@
-                        <ActionButton Icon="lightning" Text="Test" Outline="true" Size="ActionButton.ButtonSize.Small"
-                                      HideTextOnMobile="true" IsLoading="@(TestingId == provider.Id)"
-                                      OnClick="@(() => TestConnection(provider))" />
+                        <ActionButton Icon="lightning" Text="Test" Size="ActionButton.ButtonSize.Small" HideTextOnMobile="true"
+                                      IsLoading="@(TestingId == provider.Id)" OnClick="@(() => TestConnection(provider))" />
 
                         @* Gear dropdown menu *@
                         <div class="dropdown">
-                            <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button"
+                            <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
                                     id="provider-menu-@provider.Id" data-bs-toggle="dropdown" aria-expanded="false"
                                     title="Provider actions">
                                 <i class="bi bi-gear"></i>
@@ -154,8 +160,9 @@ else
                         <div class="d-flex flex-wrap gap-1 mt-1">
                             @foreach (var model in models.Where(m => m.IsAvailable).Take(5))
                             {
-                                <span class="badge @(model.IsDefault ? "bg-primary bg-opacity-75" : "bg-secondary-subtle text-secondary-emphasis")"
-                                      title="@model.ModelId">
+                                <span
+                                    class="badge @(model.IsDefault ? "bg-primary bg-opacity-75" : "bg-secondary-subtle text-secondary-emphasis")"
+                                    title="@model.ModelId">
                                     @(model.DisplayName ?? model.ModelId)
                                 </span>
                             }
@@ -255,6 +262,22 @@ else
     {
         return UsageSummaries.TryGetValue(providerId, out var summary) ? summary : null;
     }
+
+    private static string GetProviderTypeIcon(ProviderType type) => type switch
+    {
+        ProviderType.OpenCode => "code-slash",
+        ProviderType.Claude => "robot",
+        ProviderType.Copilot => "github",
+        _ => "cpu"
+    };
+
+    private static string GetConnectionModeIcon(ProviderConnectionMode mode) => mode switch
+    {
+        ProviderConnectionMode.CLI => "terminal",
+        ProviderConnectionMode.REST => "globe",
+        ProviderConnectionMode.SDK => "box",
+        _ => "plug"
+    };
 
     private void ShowAddModal()
     {

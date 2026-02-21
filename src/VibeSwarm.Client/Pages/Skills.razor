@@ -16,7 +16,7 @@
 else if (!_skillsList.Any())
 {
 	<EmptyState Icon="lightbulb" Title="No skills yet"
-		Message="Create skills to define capabilities that AI agents can use during job execution." />
+				Message="Create skills to define capabilities that AI agents can use during job execution." />
 }
 else
 {
@@ -57,11 +57,11 @@ else
 						<input type="checkbox" checked="@skill.IsEnabled" @onchange="() => ToggleEnabled(skill)" />
 						<span class="toggle-slider"></span>
 					</label>
-					<ActionButton Icon="pencil" Text="Edit" Outline="true" Size="ActionButton.ButtonSize.Small"
-						HideTextOnMobile="true" OnClick="@(() => EditSkill(skill))" />
-					<ActionButton Icon="trash" Text="Delete" Outline="true" Size="ActionButton.ButtonSize.Small"
-						Style="ActionButton.ButtonStyle.Danger" HideTextOnMobile="true"
-						OnClick="@(() => ShowDeleteConfirmation(skill))" />
+					<ActionButton Icon="pencil" Text="Edit" Size="ActionButton.ButtonSize.Small" HideTextOnMobile="true"
+								  OnClick="@(() => EditSkill(skill))" />
+					<ActionButton Icon="trash" Text="Delete" Size="ActionButton.ButtonSize.Small"
+								  Style="ActionButton.ButtonStyle.Danger" HideTextOnMobile="true"
+								  OnClick="@(() => ShowDeleteConfirmation(skill))" />
 				</div>
 			</div>
 		}
@@ -70,18 +70,13 @@ else
 
 @* Skill Modal for Add/Edit *@
 <SkillModal @bind-IsVisible="_showSkillModal" EditSkill="@_editingSkill" OnSaved="HandleSkillSaved"
-	OnCancelled="HandleModalCancelled" OnClosed="HandleSkillModalClosed" />
+			OnCancelled="HandleModalCancelled" OnClosed="HandleSkillModalClosed" />
 
 @* Delete Confirmation Modal *@
-<ConfirmationModal @bind-IsVisible="_showDeleteModal"
-	Title="Delete Skill"
-	Message="@($"Are you sure you want to delete {_skillToDelete?.Name}?")"
-	SubMessage="This action cannot be undone."
-	ConfirmText="Delete"
-	ButtonClass="btn-danger"
-	IsProcessing="_isDeleting"
-	OnConfirm="ConfirmDelete"
-	OnCancel="CancelDelete" />
+<ConfirmationModal @bind-IsVisible="_showDeleteModal" Title="Delete Skill"
+				   Message="@($"Are you sure you want to delete {_skillToDelete?.Name}?")" SubMessage="This action cannot be undone."
+				   ConfirmText="Delete" ButtonClass="btn-danger" IsProcessing="_isDeleting" OnConfirm="ConfirmDelete"
+				   OnCancel="CancelDelete" />
 
 @code {
 	private List<Skill> _skillsList = new();

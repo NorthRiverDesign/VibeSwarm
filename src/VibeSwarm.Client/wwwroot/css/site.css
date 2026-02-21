@@ -631,9 +631,9 @@ body.vs-modal-open {
 .vs-modal-backdrop {
 	position: fixed !important;
 	inset: 0 !important;
-	background: rgba(0, 0, 0, 0.6) !important;
-	backdrop-filter: blur(8px);
-	-webkit-backdrop-filter: blur(8px);
+	background: rgba(0, 0, 0, 0.75) !important;
+	backdrop-filter: blur(16px);
+	-webkit-backdrop-filter: blur(16px);
 	z-index: 1050 !important;
 }
 

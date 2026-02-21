@@ -159,7 +159,7 @@ else
                                                     break;
                                             }
                                             <span class="text-truncate text-body-secondary">@TruncateText(latestJob.GoalPrompt,
-                                                                                                                                                                                                                                                                    60)</span>
+                                                                                                                                                                                                                                                                                                                    60)</span>
                                             </a>
                                         </div>
                                     </div>
@@ -174,7 +174,7 @@ else
                                                 <a href="/jobs/view/@job.Id" class="d-flex align-items-center gap-2 text-decoration-none small">
                                                     <StatusBadge Status="@job.Status.ToString()" />
                                                     <span class="text-truncate" style="max-width: 200px;">@TruncateText(job.GoalPrompt,
-                                                                                                                                                                                                                                                                                                        50)</span>
+                                                                                                                                                                                                                                                                                                                                                                50)</span>
                                                         @if (!string.IsNullOrEmpty(job.CurrentActivity))
                                                         {
                                                             <span class="text-info fst-italic small d-none d-md-inline">@job.CurrentActivity</span>
@@ -188,9 +188,8 @@ else
                                 <div class="d-flex align-items-center gap-2 flex-shrink-0">
                                     @* Gear dropdown menu *@
                                     <div class="dropdown">
-                                        <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button"
-                                                id="project-menu-@project.Id" data-bs-toggle="dropdown" aria-expanded="false"
-                                                title="Project actions">
+                                        <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"                                       id="project-menu-@project.Id"
+                                                data-bs-toggle="dropdown" aria-expanded="false" title="Project actions">
                                             <i class="bi bi-gear"></i>
                                         </button>
                                         <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="project-menu-@project.Id">

@@ -10,7 +10,7 @@
 		<div class="d-flex align-items-center gap-1">
 			@if (IsEditable && _isEditing)
 			{
-				<button type="button" class="btn btn-sm btn-outline-secondary" @onclick="CancelEdit" title="Cancel editing">
+				<button type="button" class="btn btn-sm btn-secondary" @onclick="CancelEdit" title="Cancel editing">
 					<i class="bi bi-x-lg"></i>
 				</button>
 				<button type="button" class="btn btn-sm btn-primary" @onclick="SavePrompt" disabled="@_isSaving"
@@ -29,16 +29,14 @@
 			{
 				@if (IsEditable)
 				{
-					<button type="button" class="btn btn-sm btn-outline-secondary" @onclick="StartEdit" title="Edit prompt">
+					<button type="button" class="btn btn-sm btn-secondary" @onclick="StartEdit" title="Edit prompt">
 						<i class="bi bi-pencil"></i>
 					</button>
 				}
-				<button type="button" class="btn btn-sm btn-outline-secondary" @onclick="CopyToClipboard"
-						title="Copy to clipboard">
+				<button type="button" class="btn btn-sm btn-secondary" @onclick="CopyToClipboard" title="Copy to clipboard">
 					<i class="bi bi-clipboard"></i>
 				</button>
-				<button type="button" class="btn btn-sm btn-outline-secondary" @onclick="ShowFullPrompt"
-						title="View full prompt">
+				<button type="button" class="btn btn-sm btn-secondary" @onclick="ShowFullPrompt" title="View full prompt">
 					<i class="bi bi-arrows-fullscreen"></i>
 				</button>
 			}
@@ -75,7 +73,7 @@
 						 style="white-space: pre-wrap; max-height: 60vh;">@GoalPrompt</pre>
 				</div>
 				<div class="modal-footer">
-					<button type="button" class="btn btn-outline-secondary" @onclick="CopyToClipboard">
+					<button type="button" class="btn btn-secondary" @onclick="CopyToClipboard">
 						<i class="bi bi-clipboard me-1"></i>Copy to Clipboard
 					</button>
 					<button type="button" class="btn btn-secondary" @onclick="CloseModal">Close</button>

@@ -3,7 +3,7 @@
 @using VibeSwarm.Shared.VersionControl.Models
 
 <ModalDialog IsVisible="IsVisible" IsVisibleChanged="HandleModalVisibilityChanged" Title="Uncommitted Changes"
-    Icon="file-diff" Size="ModalDialog.ModalSize.ExtraLarge" OnClose="HandleClose">
+             Icon="file-diff" Size="ModalDialog.ModalSize.ExtraLarge" OnClose="HandleClose">
     <ChildContent>
         @if (IsLoading)
         {
@@ -54,19 +54,19 @@
                         </span>
                     </span>
                     <div class="btn-group btn-group-sm">
-                        <button type="button" class="btn btn-outline-secondary" @onclick="ExpandAll" title="Expand all"
-                            disabled="@AllExpanded">
+                        <button type="button" class="btn btn-secondary" @onclick="ExpandAll" title="Expand all"
+                                disabled="@AllExpanded">
                             <i class="bi bi-arrows-expand"></i>
                         </button>
-                        <button type="button" class="btn btn-outline-secondary" @onclick="CollapseAll" title="Collapse all"
-                            disabled="@AllCollapsed">
+                        <button type="button" class="btn btn-secondary" @onclick="CollapseAll" title="Collapse all"
+                                disabled="@AllCollapsed">
                             <i class="bi bi-arrows-collapse"></i>
                         </button>
                     </div>
                 </div>
 
                 <div class="accordion border rounded overflow-y-auto" id="uncommittedChangesAccordion"
-                    style="max-height: min(350px, 40vh);">
+                     style="max-height: min(350px, 40vh);">
                     @foreach (var (file, index) in DiffFiles.Select((f, i) => (f, i)))
                     {
                         var isExpanded = _expandedItems.Contains(index);
@@ -74,7 +74,7 @@
                         <div class="accordion-item">
                             <h2 class="accordion-header">
                                 <button class="accordion-button @(isExpanded ? "" : "collapsed") py-2 px-3" type="button"
-                                    @onclick="() => ToggleExpanded(index)">
+                                        @onclick="() => ToggleExpanded(index)">
                                     <span class="d-flex align-items-center gap-2 w-100">
                                         @if (file.IsNew)
                                         {
@@ -133,15 +133,15 @@
                     </label>
                     @if (PendingJobs != null && PendingJobs.Any() && string.IsNullOrWhiteSpace(_commitMessage))
                     {
-                        <button type="button" class="btn btn-sm btn-outline-primary" @onclick="GenerateCommitMessage"
-                            title="Generate commit message from job summaries">
+                        <button type="button" class="btn btn-sm btn-primary" @onclick="GenerateCommitMessage"
+                                title="Generate commit message from job summaries">
                             <i class="bi bi-magic me-1"></i>Generate
                         </button>
                     }
                 </div>
                 <textarea class="form-control font-monospace" id="uncommittedCommitMessage" @bind="_commitMessage"
-                    @bind:event="oninput" rows="3" placeholder="Enter commit message..."
-                    disabled="@IsCommitting"></textarea>
+                          @bind:event="oninput" rows="3" placeholder="Enter commit message..."
+                          disabled="@IsCommitting"></textarea>
             </div>
 
             @if (!string.IsNullOrEmpty(ErrorMessage))
@@ -159,8 +159,8 @@
                     </div>
                     @if (ShowPushRetry)
                     {
-                        <button type="button" class="btn btn-sm btn-outline-danger ms-2" @onclick="HandleRetryPush"
-                            disabled="@IsCommitting">
+                        <button type="button" class="btn btn-sm btn-danger ms-2" @onclick="HandleRetryPush"
+                                disabled="@IsCommitting">
                             <i class="bi bi-arrow-repeat me-1"></i>Retry Push
                         </button>
                     }
@@ -181,7 +181,7 @@
                                 Cancel
                             </button>
                             <button type="button" class="btn btn-danger btn-sm" @onclick="HandleConfirmDiscard"
-                                disabled="@IsDiscarding">
+                                    disabled="@IsDiscarding">
                                 @if (IsDiscarding)
                                 {
                                     <span class="spinner-border spinner-border-sm me-1" role="status"></span>
@@ -202,18 +202,18 @@
         @if (DiffFiles != null && DiffFiles.Any() && !ShowDiscardConfirmation)
         {
             <div class="d-flex flex-column flex-sm-row justify-content-between w-100 gap-2">
-                <button type="button" class="btn btn-outline-danger" @onclick="HandleShowDiscard"
-                    disabled="@(IsCommitting || IsDiscarding)">
+                <button type="button" class="btn btn-danger" @onclick="HandleShowDiscard"
+                        disabled="@(IsCommitting || IsDiscarding)">
                     <i class="bi bi-trash me-1"></i>
                     <span>Discard All</span>
                 </button>
                 <div class="d-flex gap-2">
                     <button type="button" class="btn btn-secondary" @onclick="HandleClose"
-                        disabled="@(IsCommitting || IsDiscarding)">
+                            disabled="@(IsCommitting || IsDiscarding)">
                         Close
                     </button>
                     <button type="button" class="btn btn-primary" @onclick="HandleCommitAndPush"
-                        disabled="@(IsCommitting || IsDiscarding || string.IsNullOrWhiteSpace(_commitMessage))">
+                            disabled="@(IsCommitting || IsDiscarding || string.IsNullOrWhiteSpace(_commitMessage))">
                         @if (IsCommitting)
                         {
                             <span class="spinner-border spinner-border-sm me-1" role="status"></span>

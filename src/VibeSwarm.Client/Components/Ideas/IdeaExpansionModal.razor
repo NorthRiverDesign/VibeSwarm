@@ -31,7 +31,7 @@
 					<div class="text-body-secondary">
 						<i class="bi bi-stars me-1"></i>AI is expanding your idea into a detailed specification...
 					</div>
-					<button type="button" class="btn btn-outline-danger btn-sm mt-2" @onclick="RequestCancel">
+					<button type="button" class="btn btn-danger btn-sm mt-2" @onclick="RequestCancel">
 						<i class="bi bi-x-circle me-1"></i>Cancel Expansion
 					</button>
 				</div>
@@ -54,7 +54,7 @@
 					<button type="button" class="btn btn-primary" @onclick="RequestExpansion" disabled="@IsExpanding">
 						<i class="bi bi-arrow-clockwise me-1"></i>Try Again
 					</button>
-					<button type="button" class="btn btn-outline-secondary" @onclick="HandleClose">
+					<button type="button" class="btn btn-secondary" @onclick="HandleClose">
 						Cancel
 					</button>
 				</div>
@@ -76,7 +76,7 @@
 								<span class="badge bg-success ms-2">Approved</span>
 							}
 						</span>
-						<button type="button" class="btn btn-sm btn-outline-secondary" @onclick="ToggleEditMode"
+						<button type="button" class="btn btn-sm btn-secondary" @onclick="ToggleEditMode"
 								title="@(IsEditMode ? "View mode" : "Edit mode")">
 							<i class="bi @(IsEditMode ? "bi-eye" : "bi-pencil")"></i>
 						</button>
@@ -116,10 +116,10 @@
 					<button type="button" class="btn btn-primary" @onclick="RequestExpansion" disabled="@IsExpanding">
 						<i class="bi bi-arrow-clockwise me-1"></i>Re-generate
 					</button>
-					<button type="button" class="btn btn-outline-danger" @onclick="RejectExpansion" disabled="@IsProcessing">
+					<button type="button" class="btn btn-danger" @onclick="RejectExpansion" disabled="@IsProcessing">
 						<i class="bi bi-x-lg me-1"></i>Discard
 					</button>
-					<button type="button" class="btn btn-outline-secondary ms-auto" @onclick="HandleClose">
+					<button type="button" class="btn btn-secondary ms-auto" @onclick="HandleClose">
 						Close
 					</button>
 				</div>

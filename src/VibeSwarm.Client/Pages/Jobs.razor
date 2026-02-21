@@ -32,21 +32,19 @@ else
                 }
             </select>
             <div class="btn-group w-100" role="group" aria-label="Status filter">
-                <button type="button" class="btn btn-sm @(_statusFilter == "all" ? "btn-primary" : "btn-outline-secondary")"
+                <button type="button" class="btn btn-sm @(_statusFilter == "all" ? "btn-primary" : "btn-secondary")"
                         @onclick='() => SetStatusFilter("all")' title="All">
                     <i class="bi bi-inbox me-1"></i><span class="d-none d-sm-inline">All</span>
                 </button>
-                <button type="button" class="btn btn-sm @(_statusFilter == "active" ? "btn-info" : "btn-outline-secondary")"
+                <button type="button" class="btn btn-sm @(_statusFilter == "active" ? "btn-info" : "btn-secondary")"
                         @onclick='() => SetStatusFilter("active")' title="Active">
                     <i class="bi bi-play-circle me-1"></i><span class="d-none d-sm-inline">Active</span>
                 </button>
-                <button type="button"
-                        class="btn btn-sm @(_statusFilter == "completed" ? "btn-success" : "btn-outline-secondary")"
+                <button type="button" class="btn btn-sm @(_statusFilter == "completed" ? "btn-success" : "btn-secondary")"
                         @onclick='() => SetStatusFilter("completed")' title="Completed">
                     <i class="bi bi-check-circle me-1"></i><span class="d-none d-sm-inline">Done</span>
                 </button>
-                <button type="button"
-                        class="btn btn-sm @(_statusFilter == "failed" ? "btn-danger" : "btn-outline-secondary")"
+                <button type="button" class="btn btn-sm @(_statusFilter == "failed" ? "btn-danger" : "btn-secondary")"
                         @onclick='() => SetStatusFilter("failed")' title="Failed">
                     <i class="bi bi-x-circle me-1"></i><span class="d-none d-sm-inline">Failed</span>
                 </button>
@@ -114,17 +112,14 @@ else
             @* Status filter buttons in sidebar footer *@
             <div class="p-3 border-top">
                 <div class="btn-group w-100" role="group">
-                    <button type="button"
-                            class="btn btn-sm @(_statusFilter == "all" ? "btn-primary" : "btn-outline-secondary")"
+                    <button type="button" class="btn btn-sm @(_statusFilter == "all" ? "btn-primary" : "btn-secondary")"
                             @onclick='() => SetStatusFilter("all")'>All</button>
-                    <button type="button"
-                            class="btn btn-sm @(_statusFilter == "active" ? "btn-info" : "btn-outline-secondary")"
+                    <button type="button" class="btn btn-sm @(_statusFilter == "active" ? "btn-info" : "btn-secondary")"
                             @onclick='() => SetStatusFilter("active")'>Active</button>
                     <button type="button"
-                            class="btn btn-sm @(_statusFilter == "completed" ? "btn-success" : "btn-outline-secondary")"
+                            class="btn btn-sm @(_statusFilter == "completed" ? "btn-success" : "btn-secondary")"
                             @onclick='() => SetStatusFilter("completed")'>Done</button>
-                    <button type="button"
-                            class="btn btn-sm @(_statusFilter == "failed" ? "btn-danger" : "btn-outline-secondary")"
+                    <button type="button" class="btn btn-sm @(_statusFilter == "failed" ? "btn-danger" : "btn-secondary")"
                             @onclick='() => SetStatusFilter("failed")'>Failed</button>
                 </div>
             </div>
@@ -178,8 +173,7 @@ else
                 }
                 else if (!GetFilteredJobs().Any())
                 {
-                    <EmptyState Icon="@GetFilterEmptyIcon()" Title="@GetFilterEmptyTitle()"
-                                Message="@GetFilterEmptyMessage()">
+                    <EmptyState Icon="@GetFilterEmptyIcon()" Title="@GetFilterEmptyTitle()" Message="@GetFilterEmptyMessage()">
                         @if (_selectedProjectId.HasValue)
                         {
                             <button type="button" class="btn btn-sm btn-primary" @onclick="ShowCreateJobModal">
@@ -209,8 +203,8 @@ else
     <CreateJobModal @bind-IsVisible="_showCreateJobModal" JobModel="@_newJob" Providers="@_providers"
                     AvailableModels="@_availableModels" Branches="@_branches" CurrentBranch="@_currentBranch"
                     ShowBranchSelector="@(_branches.Any())" IsLoadingModels="@_isLoadingModels" IsSaving="@_isSaving"
-                    ErrorMessage="@_createJobError" SelectedModelId="@_selectedModelId"
-                    OnProviderChanged="OnCreateJobProviderChanged" OnSubmit="HandleCreateJob" />
+                    ErrorMessage="@_createJobError" SelectedModelId="@_selectedModelId" OnProviderChanged="OnCreateJobProviderChanged"
+                    OnSubmit="HandleCreateJob" />
 }
 
 @code {

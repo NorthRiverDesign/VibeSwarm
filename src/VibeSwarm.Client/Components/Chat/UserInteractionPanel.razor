@@ -18,8 +18,8 @@
 				<div class="d-flex flex-wrap gap-2">
 					@foreach (var choice in Choices)
 					{
-						<button type="button" class="btn btn-outline-primary"
-							@onclick="() => OnSubmitChoice.InvokeAsync(choice)" disabled="@IsSubmitting">
+						<button type="button" class="btn btn-primary" @onclick="() => OnSubmitChoice.InvokeAsync(choice)"
+								disabled="@IsSubmitting">
 							@choice
 						</button>
 					}
@@ -33,9 +33,9 @@
 			</label>
 			<div class="input-group">
 				<input type="text" id="interactionResponse" class="form-control" @bind="Response" @bind:event="oninput"
-					@onkeyup="HandleKeyPress" placeholder="Type your response..." disabled="@IsSubmitting" />
+					   @onkeyup="HandleKeyPress" placeholder="Type your response..." disabled="@IsSubmitting" />
 				<button class="btn btn-primary" type="button" @onclick="SubmitTypedResponse"
-					disabled="@(IsSubmitting || string.IsNullOrWhiteSpace(Response))">
+						disabled="@(IsSubmitting || string.IsNullOrWhiteSpace(Response))">
 					@if (IsSubmitting)
 					{
 						<span class="spinner-border spinner-border-sm me-1" role="status"></span>

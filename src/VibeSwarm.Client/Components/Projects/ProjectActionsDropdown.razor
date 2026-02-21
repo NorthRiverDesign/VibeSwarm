@@ -1,7 +1,7 @@
 @* Project actions dropdown menu component *@
 
 <div class="dropdown flex-shrink-0">
-	<button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown"
+	<button class="btn btn-sm btn-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown"
 			aria-expanded="false" title="Project actions">
 		<i class="bi bi-gear"></i>
 	</button>
@@ -16,13 +16,13 @@
 				@if (IsActive)
 				{
 					<i class="bi bi-pause-circle me-2 text-secondary"></i>
-				
+
 					@:Deactivate
 				}
 				else
 				{
 					<i class="bi bi-play-circle me-2 text-success"></i>
-				
+
 					@:Activate
 				}
 			</button>

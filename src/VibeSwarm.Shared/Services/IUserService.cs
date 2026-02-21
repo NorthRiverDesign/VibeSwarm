@@ -18,7 +18,6 @@ public class UserDto
 {
 	public Guid Id { get; set; }
 	public string UserName { get; set; } = string.Empty;
-	public string? Email { get; set; }
 	public bool IsActive { get; set; }
 	public DateTime CreatedAt { get; set; }
 	public DateTime? LastLoginAt { get; set; }
@@ -28,14 +27,12 @@ public class UserDto
 public class CreateUserModel
 {
 	public string UserName { get; set; } = string.Empty;
-	public string? Email { get; set; }
 	public string Password { get; set; } = string.Empty;
 	public string Role { get; set; } = UserRoles.User;
 }
 
 public class UpdateUserModel
 {
-	public string? Email { get; set; }
 	public string? Role { get; set; }
 }
 

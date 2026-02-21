@@ -51,7 +51,7 @@
 				<div class="input-group">
 					<InputText id="modal-workingPath" @bind-Value="Project.WorkingPath" class="form-control"
 							   placeholder="@_workingPathPlaceholder" />
-					<button type="button" class="btn btn-outline-secondary" @onclick="OpenDirectoryBrowser"
+					<button type="button" class="btn btn-secondary" @onclick="OpenDirectoryBrowser"
 							title="Browse directories">
 						<i class="bi bi-folder2-open"></i>
 					</button>
@@ -91,7 +91,8 @@
 								<div class="form-check form-switch">
 									<InputCheckbox id="modal-isActive" @bind-Value="Project.IsActive" class="form-check-input" />
 									<label class="form-check-label" for="modal-isActive">
-										<i class="bi bi-@(Project.IsActive ? "check-circle text-success" : "pause-circle text-secondary") me-1"></i>
+										<i
+										class="bi bi-@(Project.IsActive ? "check-circle text-success" : "pause-circle text-secondary") me-1"></i>
 										@(Project.IsActive ? "Active" : "Inactive")
 									</label>
 								</div>
@@ -125,7 +126,7 @@
 									else
 									{
 										@(IsSaving ? "Saving..." : (IsEdit ? "Update Project" :
-															(!string.IsNullOrWhiteSpace(Project.GitHubRepository) ? "Clone & Create" : "Create Project")))
+										(!string.IsNullOrWhiteSpace(Project.GitHubRepository) ? "Clone & Create" : "Create Project")))
 									}
 								</button>
 							</div>
@@ -319,8 +320,8 @@
 				var created = await ProjectService.CreateAsync(Project);
 				newProjectId = created.Id;
 				NotificationService.ShowSuccess(!string.IsNullOrWhiteSpace(Project.GitHubRepository)
-					? "Project created and repository cloned successfully."
-					: "Project created successfully.");
+				? "Project created and repository cloned successfully."
+									: "Project created successfully.");
 			}
 
 			await OnSaved.InvokeAsync(newProjectId);

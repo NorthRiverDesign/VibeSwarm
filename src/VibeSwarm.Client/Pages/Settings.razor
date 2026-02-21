@@ -37,7 +37,7 @@
 							<div class="input-group">
 								<input type="text" id="defaultProjectsDirectory" class="form-control font-monospace"
 									   @bind="_settings.DefaultProjectsDirectory" placeholder="@_placeholder" />
-								<button type="button" class="btn btn-outline-secondary" @onclick="OpenDirectoryBrowser"
+								<button type="button" class="btn btn-secondary" @onclick="OpenDirectoryBrowser"
 										title="Browse directories">
 									<i class="bi bi-folder2-open"></i>
 								</button>
@@ -58,8 +58,7 @@
 										<span class="badge bg-success-subtle text-success-emphasis">
 											<i class="bi bi-check-circle me-1"></i>Directory exists
 										</span>
-										<button type="button" class="btn btn-outline-primary btn-sm"
-												@onclick="OpenScanProjectsModal">
+										<button type="button" class="btn btn-primary btn-sm" @onclick="OpenScanProjectsModal">
 											<i class="bi bi-folder-symlink me-1"></i>Scan For Projects
 										</button>
 									}
@@ -86,8 +85,7 @@
 									<span>Save Settings</span>
 								}
 							</button>
-							<button type="button" class="btn btn-outline-secondary" @onclick="ReloadSettings"
-									disabled="@_isSaving">
+							<button type="button" class="btn btn-secondary" @onclick="ReloadSettings" disabled="@_isSaving">
 								<i class="bi bi-arrow-counterclockwise me-1"></i>
 								Reset
 							</button>
@@ -108,7 +106,8 @@
 								</label>
 							</div>
 							<div class="form-text">
-								Wraps job prompts with project context and constraints using XML tags for clearer agent instructions.
+								Wraps job prompts with project context and constraints using XML tags for clearer agent
+								instructions.
 							</div>
 						</div>
 
@@ -121,7 +120,8 @@
 								</label>
 							</div>
 							<div class="form-text">
-								Auto-generates a compact project file tree and injects it into the agent's system prompt for faster codebase navigation.
+								Auto-generates a compact project file tree and injects it into the agent's system prompt for
+								faster codebase navigation.
 							</div>
 						</div>
 
@@ -134,7 +134,8 @@
 								</label>
 							</div>
 							<div class="form-text">
-								Adds rules to prevent agents from modifying unrelated files, adding unnecessary comments, or refactoring beyond the task.
+								Adds rules to prevent agents from modifying unrelated files, adding unnecessary comments, or
+								refactoring beyond the task.
 							</div>
 						</div>
 					</EditForm>
@@ -204,8 +205,8 @@
 							<label for="inferenceEndpoint" class="form-label">Endpoint URL</label>
 							<div class="input-group">
 								<input type="url" id="inferenceEndpoint" class="form-control font-monospace"
-									   @bind="_inferenceProvider.Endpoint"   placeholder="http://localhost:11434" />
-								<button type="button" class="btn btn-outline-secondary" @onclick="TestInferenceConnection"
+									   @bind="_inferenceProvider.Endpoint" placeholder="http://localhost:11434" />
+								<button type="button" class="btn btn-secondary" @onclick="TestInferenceConnection"
 										disabled="@_isTestingInference" title="Test Connection">
 									@if (_isTestingInference)
 									{
@@ -234,7 +235,7 @@
 										</option>
 									}
 								</select>
-								<button type="button" class="btn btn-outline-secondary" @onclick="RefreshInferenceModels"
+								<button type="button" class="btn btn-secondary" @onclick="RefreshInferenceModels"
 										disabled="@_isRefreshingModels" title="Refresh models from provider">
 									@if (_isRefreshingModels)
 									{
@@ -278,7 +279,7 @@
 								<span>Save</span>
 							}
 						</button>
-						<button type="button" class="btn btn-outline-danger" @onclick="DeleteInferenceProvider">
+						<button type="button" class="btn btn-danger" @onclick="DeleteInferenceProvider">
 							<i class="bi bi-trash me-1"></i>Remove
 						</button>
 					</div>

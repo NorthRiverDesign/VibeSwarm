@@ -6,8 +6,8 @@
 		<h5 class="mb-0 fw-semibold">
 			<i class="bi bi-tools me-2"></i>Detected Tools
 		</h5>
-		<button type="button" class="btn btn-sm btn-outline-secondary" @onclick="DetectTools"
-			disabled="@_isLoading" title="Re-detect tools">
+		<button type="button" class="btn btn-sm btn-secondary" @onclick="DetectTools" disabled="@_isLoading"
+				title="Re-detect tools">
 			<i class="bi bi-arrow-clockwise @(_isLoading ? "spin" : "")"></i>
 		</button>
 	</div>
