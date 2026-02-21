@@ -28,7 +28,7 @@ else
         @foreach (var provider in ProvidersList)
         {
             <div class="list-group-item p-3 hover-bg-tertiary @(provider.IsDefault ? "bg-success bg-opacity-10" : "")">
-                <div class="d-flex align-items-start gap-3">
+                <div class="d-flex align-items-start gap-2 gap-md-3">
                     @* Enable toggle on left side *@
                     <div class="flex-shrink-0 pt-1">
                         <label class="toggle-switch" title="@(provider.IsEnabled ? "Disable" : "Enable")">
@@ -62,7 +62,7 @@ else
                         </div>
                         @if (GetUsageSummary(provider.Id) is ProviderUsageSummary summary && summary.EffectiveMaxUsage > 0)
                         {
-                            <div class="mt-2" style="max-width: 300px;">
+                            <div class="mt-2" style="max-width: min(300px, 100%);">
                                 <UsageMeter UsageSummary="summary" ShowResetTime="true" />
                             </div>
                         }
@@ -74,7 +74,7 @@ else
                                 @if (!result.IsConnected && !string.IsNullOrEmpty(result.ErrorMessage))
                                 {
                                     <div class="mt-1">
-                                        <pre class="mb-0 small">@result.ErrorMessage</pre>
+                                        <pre class="mb-0 small text-break overflow-auto">@result.ErrorMessage</pre>
                                     </div>
                                 }
                             </div>
@@ -155,7 +155,7 @@ else
                 @* Models section below main flex row *@
                 @if (ProviderModels.TryGetValue(provider.Id, out var models) && models.Any())
                 {
-                    <div class="mt-2 pt-2 border-top ms-5 ps-2">
+                    <div class="mt-2 pt-2 border-top ms-3 ms-md-5 ps-2">
                         <span class="fw-medium small text-body-secondary">Models:</span>
                         <div class="d-flex flex-wrap gap-1 mt-1">
                             @foreach (var model in models.Where(m => m.IsAvailable).Take(5))

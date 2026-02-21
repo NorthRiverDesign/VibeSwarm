@@ -16,7 +16,7 @@
 			{
 				<div class="d-flex align-items-center gap-2 small">
 					<i class="bi bi-github opacity-75"></i>
-					<span class="text-body-secondary font-monospace text-truncate" style="max-width: 150px;"
+					<span class="text-body-secondary font-monospace text-truncate" style="max-width: min(150px, 40vw);"
 						title="@GitHubRepository">
 						@GitHubRepository
 					</span>
@@ -30,7 +30,7 @@
 			}
 			else
 			{
-				<small class="text-body-secondary font-monospace text-truncate d-block" style="max-width: 220px;"
+			<small class="text-body-secondary font-monospace text-truncate d-block" style="max-width: min(220px, 60vw);"
 					title="@WorkingPath">
 					<i class="bi bi-folder2 me-1 opacity-75"></i>@TruncateText(WorkingPath, 30)
 				</small>

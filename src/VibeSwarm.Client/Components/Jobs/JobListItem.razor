@@ -63,7 +63,7 @@
                 }
                 @if (!string.IsNullOrEmpty(Activity) && IsActiveStatus())
                 {
-                    <span class="text-info fst-italic text-truncate" style="max-width: 200px;">@Activity</span>
+                    <span class="text-info fst-italic text-truncate" style="max-width: min(200px, 40vw);">@Activity</span>
                 }
             </div>
 

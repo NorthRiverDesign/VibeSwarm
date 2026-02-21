@@ -56,6 +56,7 @@ html {
 	-webkit-text-size-adjust: 100%;
 	/* Use dvh for dynamic viewport height to handle mobile browser chrome */
 	height: 100%;
+	overflow-x: hidden;
 }
 
 body {
@@ -66,6 +67,7 @@ body {
 	padding-right: var(--vs-safe-area-right);
 	min-height: 100%;
 	min-height: 100dvh;
+	overflow-x: hidden;
 }
 
 .app-layout {
@@ -177,6 +179,7 @@ body {
 	padding-left: calc(1rem + var(--vs-safe-area-left));
 	padding-right: calc(1rem + var(--vs-safe-area-right));
 	max-width: 100%;
+	overflow-x: hidden;
 }
 
 /* Desktop Layout */
@@ -705,6 +708,31 @@ body.vs-modal-open {
 	.form-select {
 		min-height: 44px;
 		font-size: 16px;
+	}
+
+	/* Prevent layout overflow on small screens */
+	.card-header {
+		flex-wrap: wrap;
+	}
+	.card-header .d-flex {
+		flex-wrap: wrap;
+	}
+
+	/* Ensure list group items don't overflow */
+	.list-group-item {
+		overflow-x: hidden;
+	}
+
+	/* Center-align full-width buttons on mobile */
+	.btn.w-100 {
+		justify-content: center;
+		text-align: center;
+	}
+
+	/* Monospace path badges should not exceed viewport */
+	.font-monospace.text-truncate,
+	code.text-truncate {
+		max-width: calc(100vw - 4rem) !important;
 	}
 
 	.toast-container {

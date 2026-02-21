@@ -80,7 +80,7 @@ else
                             }
                             <div class="d-flex flex-wrap gap-2 gap-md-3 mt-2 small text-body-secondary">
                                 <span class="font-monospace bg-body-tertiary px-2 py-1 rounded-1 text-truncate"
-                                      style="max-width: 280px;" title="@project.WorkingPath">
+                                      style="max-width: min(280px, 50vw);" title="@project.WorkingPath">
                                     @project.WorkingPath
                                 </span>
                                 @if (!string.IsNullOrEmpty(project.GitHubRepository))
@@ -173,7 +173,7 @@ else
                                             <div class="bg-body-tertiary rounded-2 p-2 mb-1 small">
                                                 <a href="/jobs/view/@job.Id" class="d-flex align-items-center gap-2 text-decoration-none small">
                                                     <StatusBadge Status="@job.Status.ToString()" />
-                                                    <span class="text-truncate" style="max-width: 200px;">@TruncateText(job.GoalPrompt,
+                                                    <span class="text-truncate" style="max-width: min(200px, 40vw);">@TruncateText(job.GoalPrompt,
                                                                                                                                                                                                                                                                                                                                                                 50)</span>
                                                         @if (!string.IsNullOrEmpty(job.CurrentActivity))
                                                         {
