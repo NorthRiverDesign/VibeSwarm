@@ -154,7 +154,7 @@ else
                         <div class="d-flex flex-wrap gap-1 mt-1">
                             @foreach (var model in models.Where(m => m.IsAvailable).Take(5))
                             {
-                                <span class="badge @(model.IsDefault ? "bg-primary" : "bg-secondary") bg-opacity-75"
+                                <span class="badge @(model.IsDefault ? "bg-primary bg-opacity-75" : "bg-secondary-subtle text-secondary-emphasis")"
                                       title="@model.ModelId">
                                     @(model.DisplayName ?? model.ModelId)
                                 </span>

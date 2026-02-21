@@ -277,6 +277,11 @@ body {
 	min-width: 0;
 }
 
+/* Prevent textareas from expanding too large */
+textarea.form-control {
+	max-height: 40rem;
+}
+
 /* Loading spinner animation */
 .spin {
 	animation: spin 1s linear infinite;

@@ -66,6 +66,12 @@
                     <span class="text-info fst-italic text-truncate" style="max-width: 200px;">@Activity</span>
                 }
             </div>
+
+            @* Time display *@
+            @if (!string.IsNullOrEmpty(TimeDisplay))
+            {
+                <div class="small text-body-tertiary mt-1">@TimeDisplay</div>
+            }
         </div>
 
         @* Right Column - Tokens, Cost (no time here) *@
@@ -85,22 +91,18 @@
         </div>
     </div>
 
-    @* Footer row - Time display on its own line *@
-    <div class="d-flex align-items-center gap-2 small text-body-secondary mt-2 ps-4 ms-2">
-        @* Mobile: Compact token stats *@
-        <div class="d-sm-none">
-            @if (InputTokens.HasValue || OutputTokens.HasValue || Cost.HasValue)
-            {
-                <span class="font-monospace">
-                    @TokenHelper.FormatTokenCount((InputTokens ?? 0) + (OutputTokens ?? 0)) tokens
-                    @if (Cost.HasValue && Cost.Value > 0)
-                    {
-                        <span class="text-success ms-1">@TokenHelper.FormatCost(Cost.Value)</span>
-                    }
-                </span>
-            }
-        </div>
-        <span class="ms-auto text-body-tertiary">@TimeDisplay</span>
+    @* Footer row - Mobile token stats *@
+    <div class="d-sm-none d-flex align-items-center gap-2 small text-body-secondary mt-2 ps-4 ms-2">
+        @if (InputTokens.HasValue || OutputTokens.HasValue || Cost.HasValue)
+        {
+            <span class="font-monospace">
+                @TokenHelper.FormatTokenCount((InputTokens ?? 0) + (OutputTokens ?? 0)) tokens
+                @if (Cost.HasValue && Cost.Value > 0)
+                {
+                    <span class="text-success ms-1">@TokenHelper.FormatCost(Cost.Value)</span>
+                }
+            </span>
+        }
     </div>
 </div>
 

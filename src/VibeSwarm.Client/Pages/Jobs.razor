@@ -3,11 +3,15 @@
 @attribute [Authorize]
 @inject IJobService JobService
 @inject IProjectService ProjectService
+@inject IProviderService ProviderService
+@inject IVersionControlService VersionControlService
 @inject NavigationManager NavigationManager
+@inject NotificationService NotificationService
 @inject IJSRuntime JSRuntime
 @implements IAsyncDisposable
 @using System.Threading
 @using Microsoft.AspNetCore.SignalR.Client
+@using VibeSwarm.Shared.VersionControl.Models
 
 @if (_isLoading)
 {
@@ -48,6 +52,12 @@ else
                 </button>
             </div>
         </div>
+        @if (_selectedProjectId.HasValue)
+        {
+            <button type="button" class="btn btn-sm btn-primary w-100" @onclick="ShowCreateJobModal">
+                <i class="bi bi-plus-lg me-1"></i>Create Job
+            </button>
+        }
     </div>
 
     @* Desktop: Inbox-style split layout *@
@@ -57,6 +67,13 @@ else
             <div class="p-3 border-bottom">
                 <h5 class="mb-0 fw-semibold d-flex align-items-center gap-2">
                     <i class="bi bi-inbox"></i> Jobs
+                    @if (_selectedProjectId.HasValue)
+                    {
+                        <button type="button" class="btn btn-sm btn-primary ms-auto" @onclick="ShowCreateJobModal"
+                                title="Create Job">
+                            <i class="bi bi-plus-lg me-1"></i><span class="d-none d-xl-inline">Create Job</span>
+                        </button>
+                    }
                 </h5>
             </div>
             <div class="flex-grow-1 overflow-auto">
@@ -145,15 +162,31 @@ else
                 {
                     <EmptyState Icon="list-check" Title="No jobs yet"
                                 Message="Jobs are created when you run AI agent tasks on your projects.">
-                        <a href="/projects" class="btn btn-sm btn-primary">
-                            <i class="bi bi-folder me-1"></i>Go to Projects
-                        </a>
+                        @if (_selectedProjectId.HasValue)
+                        {
+                            <button type="button" class="btn btn-sm btn-primary" @onclick="ShowCreateJobModal">
+                                <i class="bi bi-plus-lg me-1"></i>Create Job
+                            </button>
+                        }
+                        else
+                        {
+                            <a href="/projects" class="btn btn-sm btn-primary">
+                                <i class="bi bi-folder me-1"></i>Go to Projects
+                            </a>
+                        }
                     </EmptyState>
                 }
                 else if (!GetFilteredJobs().Any())
                 {
                     <EmptyState Icon="@GetFilterEmptyIcon()" Title="@GetFilterEmptyTitle()"
-                                Message="@GetFilterEmptyMessage()" />
+                                Message="@GetFilterEmptyMessage()">
+                        @if (_selectedProjectId.HasValue)
+                        {
+                            <button type="button" class="btn btn-sm btn-primary" @onclick="ShowCreateJobModal">
+                                <i class="bi bi-plus-lg me-1"></i>Create Job
+                            </button>
+                        }
+                    </EmptyState>
                 }
                 else
                 {
@@ -171,6 +204,13 @@ else
             </div>
         </div>
     </div>
+
+    @* Create Job Modal *@
+    <CreateJobModal @bind-IsVisible="_showCreateJobModal" JobModel="@_newJob" Providers="@_providers"
+                    AvailableModels="@_availableModels" Branches="@_branches" CurrentBranch="@_currentBranch"
+                    ShowBranchSelector="@(_branches.Any())" IsLoadingModels="@_isLoadingModels" IsSaving="@_isSaving"
+                    ErrorMessage="@_createJobError" SelectedModelId="@_selectedModelId"
+                    OnProviderChanged="OnCreateJobProviderChanged" OnSubmit="HandleCreateJob" />
 }
 
 @code {
@@ -186,6 +226,18 @@ else
     private Timer? _refreshTimer;
     private bool _isRefreshing = false;
     private CancellationTokenSource? _signalRCts;
+
+    // Create Job modal state
+    private bool _showCreateJobModal;
+    private Job _newJob = new();
+    private List<Provider> _providers = new();
+    private List<ProviderModel> _availableModels = new();
+    private List<GitBranchInfo> _branches = new();
+    private string? _currentBranch;
+    private bool _isLoadingModels;
+    private bool _isSaving;
+    private string? _createJobError;
+    private string _selectedModelId = string.Empty;
 
     protected override async Task OnInitializedAsync()
     {
@@ -593,6 +645,129 @@ TimeSpan.FromSeconds(10) })
     {
         // Use Title if available, otherwise use GoalPrompt
         return !string.IsNullOrEmpty(job.Title) ? job.Title : job.GoalPrompt;
+    }
+
+    // Create Job modal methods
+    private async Task ShowCreateJobModal()
+    {
+        if (!_selectedProjectId.HasValue) return;
+
+        _newJob = new Job
+        {
+            ProjectId = _selectedProjectId.Value
+        };
+        _createJobError = null;
+        _selectedModelId = string.Empty;
+        _availableModels.Clear();
+        _branches.Clear();
+
+        try
+        {
+            // Load providers
+            _providers = (await ProviderService.GetAllAsync()).ToList();
+
+            // Load branch info for the selected project
+            var project = _projects.FirstOrDefault(p => p.Id == _selectedProjectId.Value);
+            if (project != null && !string.IsNullOrEmpty(project.WorkingPath))
+            {
+                try
+                {
+                    var isRepo = await VersionControlService.IsGitRepositoryAsync(project.WorkingPath);
+                    if (isRepo)
+                    {
+                        _currentBranch = await VersionControlService.GetCurrentBranchAsync(project.WorkingPath);
+                        _branches = (await VersionControlService.GetBranchesAsync(project.WorkingPath)).ToList();
+                        _newJob.Branch = _currentBranch;
+                    }
+                }
+                catch
+                {
+                    // Ignore git errors — branch selection will be hidden
+                }
+            }
+
+            // Set default provider and load its models
+            var defaultProvider = _providers.FirstOrDefault(p => p.IsDefault && p.IsEnabled);
+            if (defaultProvider != null)
+            {
+                _newJob.ProviderId = defaultProvider.Id;
+                await LoadCreateJobModels(defaultProvider.Id);
+            }
+        }
+        catch (Exception ex)
+        {
+            _createJobError = $"Error loading data: {ex.Message}";
+        }
+
+        _showCreateJobModal = true;
+    }
+
+    private async Task OnCreateJobProviderChanged(Guid providerId)
+    {
+        _newJob.ProviderId = providerId;
+        _selectedModelId = string.Empty;
+        _availableModels.Clear();
+
+        if (providerId != Guid.Empty)
+        {
+            await LoadCreateJobModels(providerId);
+        }
+    }
+
+    private async Task LoadCreateJobModels(Guid providerId)
+    {
+        _isLoadingModels = true;
+        try
+        {
+            _availableModels = (await ProviderService.GetModelsAsync(providerId)).ToList();
+
+            if (_selectedProjectId.HasValue)
+            {
+                var lastUsedModel = await JobService.GetLastUsedModelAsync(_selectedProjectId.Value, providerId);
+                if (!string.IsNullOrEmpty(lastUsedModel) && _availableModels.Any(m => m.ModelId == lastUsedModel))
+                {
+                    _selectedModelId = lastUsedModel;
+                }
+                else
+                {
+                    var defaultModel = _availableModels.FirstOrDefault(m => m.IsDefault && m.IsAvailable);
+                    _selectedModelId = defaultModel?.ModelId ?? string.Empty;
+                }
+            }
+        }
+        finally
+        {
+            _isLoadingModels = false;
+        }
+    }
+
+    private async Task HandleCreateJob()
+    {
+        if (_newJob.ProviderId == Guid.Empty)
+        {
+            _createJobError = "Please select a provider.";
+            return;
+        }
+
+        _isSaving = true;
+        _createJobError = null;
+
+        try
+        {
+            _newJob.ModelUsed = string.IsNullOrEmpty(_selectedModelId) ? null : _selectedModelId;
+            var createdJob = await JobService.CreateAsync(_newJob);
+            _showCreateJobModal = false;
+            NotificationService.ShowSuccess("Job created successfully.");
+            await RefreshJobsSafely();
+        }
+        catch (Exception ex)
+        {
+            _createJobError = $"Error creating job: {ex.Message}";
+        }
+        finally
+        {
+            _isSaving = false;
+        }
     }
 
     public async ValueTask DisposeAsync()

@@ -37,17 +37,19 @@
 								{
 									<small class="@(model.IsDefault ? "" : "text-body-secondary")">@model.Description</small>
 								}
-								<small class="@(model.IsDefault ? "" : "text-body-tertiary") d-block">@model.ModelId</small>
+								<small class="@(model.IsDefault ? "" : "text-body-tertiary") d-flex align-items-center gap-1">
+									@model.ModelId
+									@if (model.PriceMultiplier.HasValue)
+									{
+										<span class="badge @(model.IsDefault ? "bg-light text-dark" : "bg-secondary-subtle text-secondary-emphasis")">
+											@(model.PriceMultiplier.Value)x
+										</span>
+									}
+								</small>
 							</div>
 							@if (model.IsDefault)
 							{
 								<i class="bi bi-check-circle-fill text-white"></i>
-							}
-							else if (model.PriceMultiplier.HasValue)
-							{
-								<span class="badge bg-secondary-subtle text-secondary-emphasis">
-									@(model.PriceMultiplier.Value)x
-								</span>
 							}
 						</button>
 					}
