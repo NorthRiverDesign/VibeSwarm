@@ -3,7 +3,8 @@
 
 <div class="card d-flex flex-column">
     <div class="card-header bg-body-secondary p-0">
-        <div class="d-flex align-items-center justify-content-between border-bottom border-secondary border-opacity-25">
+        <div
+            class="d-flex align-items-center justify-content-between flex-wrap gap-2 border-bottom border-secondary border-opacity-25">
             @* Tabs *@
             <ul class="nav nav-tabs nav-tabs-card border-0 flex-grow-1 flex-nowrap" role="tablist">
                 <li class="nav-item" role="presentation">
@@ -60,7 +61,7 @@
             <div class="d-flex align-items-center gap-1 px-2">
                 @if (IsJobActive && LiveOutputLines.Any())
                 {
-                    <ActionButton Icon="trash" Text="Clear" Size="ActionButton.ButtonSize.Small"           HideTextOnMobile="true"
+                    <ActionButton Icon="trash" Text="Clear" Size="ActionButton.ButtonSize.Small" HideTextOnMobile="true"
                                   OnClick="OnClearLiveOutput" />
                 }
             </div>

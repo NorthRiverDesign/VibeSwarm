@@ -7,12 +7,12 @@
 @inject IProjectService ProjectService
 
 <div class="card mb-3">
-	<div class="card-header bg-body-secondary d-flex align-items-center justify-content-between">
+	<div class="card-header bg-body-secondary d-flex align-items-center justify-content-between flex-wrap gap-2">
 		<h6 class="mb-0 fw-semibold">
 			<i class="bi bi-git me-2 text-danger"></i>Git Settings
 		</h6>
-		<button type="button" class="btn btn-sm btn-secondary" @onclick="RefreshStatus"
-			disabled="@_isLoading" title="Refresh Git status">
+		<button type="button" class="btn btn-sm btn-secondary" @onclick="RefreshStatus" disabled="@_isLoading"
+				title="Refresh Git status">
 			<i class="bi bi-arrow-clockwise @(_isLoading ? "spin" : "")"></i>
 		</button>
 	</div>
@@ -49,7 +49,7 @@
 						This directory is not a Git repository. Initialize it to track changes.
 					</p>
 					<button type="button" class="btn btn-sm btn-primary" @onclick="InitializeRepository"
-						disabled="@_isInitializing">
+							disabled="@_isInitializing">
 						@if (_isInitializing)
 						{
 							<span class="spinner-border spinner-border-sm me-1" role="status"></span>
@@ -80,11 +80,11 @@
 								<li class="d-flex align-items-center gap-2 mb-1">
 									<span class="badge bg-body-tertiary text-body fw-medium">@remote.Key</span>
 									<code class="small text-truncate flex-grow-1" style="max-width: 300px;"
-										title="@remote.Value">@remote.Value</code>
+										  title="@remote.Value">@remote.Value</code>
 									@if (IsGitHubUrl(remote.Value))
 									{
-										<a href="@GetGitHubWebUrl(remote.Value)" target="_blank"
-											class="text-body-secondary" title="Open on GitHub">
+										<a href="@GetGitHubWebUrl(remote.Value)" target="_blank" class="text-body-secondary"
+											   title="Open on GitHub">
 											<i class="bi bi-box-arrow-up-right"></i>
 										</a>
 									}
@@ -147,7 +147,8 @@
 						{
 							<Alert Type="Alert.AlertType.Info" Class="mb-0 py-2 small">
 								<i class="bi bi-info-circle me-2"></i>
-								Install <a href="https://cli.github.com/" target="_blank">GitHub CLI</a> to create repositories directly from VibeSwarm.
+								Install <a href="https://cli.github.com/" target="_blank">GitHub CLI</a> to create repositories directly
+								from VibeSwarm.
 							</Alert>
 						}
 					}
@@ -158,13 +159,13 @@
 			@if (!string.IsNullOrEmpty(_errorMessage))
 			{
 				<Alert Type="Alert.AlertType.Danger" Message="@_errorMessage" Class="mb-0 mt-3" Dismissible="true"
-					OnDismiss="ClearMessages" />
+					   OnDismiss="ClearMessages" />
 			}
 
 			@if (!string.IsNullOrEmpty(_successMessage))
 			{
 				<Alert Type="Alert.AlertType.Success" Message="@_successMessage" Class="mb-0 mt-3" Dismissible="true"
-					OnDismiss="ClearMessages" />
+					   OnDismiss="ClearMessages" />
 			}
 		}
 	</div>
@@ -172,7 +173,7 @@
 
 @* Create GitHub Repository Modal *@
 <CreateGitHubRepositoryModal @bind-IsVisible="_showCreateRepoModal" ProjectName="@ProjectName"
-	IsCreating="@_isCreatingRepo" ErrorMessage="@_createRepoError" OnCreate="HandleCreateRepository" />
+							 IsCreating="@_isCreatingRepo" ErrorMessage="@_createRepoError" OnCreate="HandleCreateRepository" />
 
 @code {
 	[Parameter, EditorRequired]
