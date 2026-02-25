@@ -19,7 +19,6 @@ public class JobProcessingService : BackgroundService
     private readonly IJobUpdateService? _jobUpdateService;
     private readonly IJobCoordinatorService? _jobCoordinator;
     private readonly IProviderHealthTracker? _healthTracker;
-    private readonly IProviderUsageService? _providerUsageService;
     private readonly ProcessSupervisor? _processSupervisor;
     private readonly IVersionControlService _versionControlService;
     private readonly IInteractionResponseService? _interactionResponseService;
@@ -42,7 +41,6 @@ public class JobProcessingService : BackgroundService
         IJobUpdateService? jobUpdateService = null,
         IJobCoordinatorService? jobCoordinator = null,
         IProviderHealthTracker? healthTracker = null,
-        IProviderUsageService? providerUsageService = null,
         ProcessSupervisor? processSupervisor = null,
         IInteractionResponseService? interactionResponseService = null)
     {
@@ -52,7 +50,6 @@ public class JobProcessingService : BackgroundService
         _jobUpdateService = jobUpdateService;
         _jobCoordinator = jobCoordinator;
         _healthTracker = healthTracker;
-        _providerUsageService = providerUsageService;
         _processSupervisor = processSupervisor;
         _interactionResponseService = interactionResponseService;
     }
@@ -472,9 +469,11 @@ public class JobProcessingService : BackgroundService
             }
 
             // Check usage exhaustion before execution
-            if (_providerUsageService != null)
+            using var usageScope = _scopeFactory.CreateScope();
+            var providerUsageService = usageScope.ServiceProvider.GetService<IProviderUsageService>();
+            if (providerUsageService != null)
             {
-                var exhaustionWarning = await _providerUsageService.CheckExhaustionAsync(job.ProviderId, cancellationToken: cancellationToken);
+                var exhaustionWarning = await providerUsageService.CheckExhaustionAsync(job.ProviderId, cancellationToken: cancellationToken);
                 if (exhaustionWarning?.IsExhausted == true)
                 {
                     var reason = $"Provider usage limit exhausted: {exhaustionWarning.Message}";
@@ -1093,16 +1092,18 @@ public class JobProcessingService : BackgroundService
         ExecutionResult result,
         CancellationToken cancellationToken)
     {
-        if (_providerUsageService == null)
-            return;
-
         try
         {
+            using var usageScope = _scopeFactory.CreateScope();
+            var providerUsageService = usageScope.ServiceProvider.GetService<IProviderUsageService>();
+            if (providerUsageService == null)
+                return;
+
             // Record the usage
-            await _providerUsageService.RecordUsageAsync(providerId, jobId, result, cancellationToken);
+            await providerUsageService.RecordUsageAsync(providerId, jobId, result, cancellationToken);
 
             // Check for exhaustion warning and broadcast via SignalR
-            var warning = await _providerUsageService.CheckExhaustionAsync(providerId, cancellationToken: cancellationToken);
+            var warning = await providerUsageService.CheckExhaustionAsync(providerId, cancellationToken: cancellationToken);
             if (warning != null && _jobUpdateService != null)
             {
                 await _jobUpdateService.NotifyProviderUsageWarning(
