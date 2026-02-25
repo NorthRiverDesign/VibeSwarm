@@ -29,7 +29,7 @@ public class CopilotSdkProvider : SdkProviderBase
 			AutoStart = true,
 			AutoRestart = false,
 			UseStdio = true,
-			LogLevel = "warn"
+			LogLevel = "warning"
 		};
 
 		if (!string.IsNullOrEmpty(ExecutablePath))
@@ -45,7 +45,7 @@ public class CopilotSdkProvider : SdkProviderBase
 
 		if (!string.IsNullOrEmpty(ApiKey))
 		{
-			options.GithubToken = ApiKey;
+			options.GitHubToken = ApiKey;
 		}
 
 		if (CurrentEnvironmentVariables is { Count: > 0 })
