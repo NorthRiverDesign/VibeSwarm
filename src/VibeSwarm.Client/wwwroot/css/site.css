@@ -19,7 +19,8 @@
    10. Modal System (PWA-optimized)
    11. Toast Container (Safe area aware)
    12. Responsive Overrides
-   13. PWA & Touch Optimizations
+   13. PWA Standalone Mode
+   14. Blazor Reconnection Modal
    
 ============================================ */
 
@@ -54,8 +55,9 @@
 html {
 	font-size: 16px;
 	-webkit-text-size-adjust: 100%;
-	/* Use dvh for dynamic viewport height to handle mobile browser chrome */
 	height: 100%;
+	/* clip prevents horizontal scrollbar without clipping positioned elements like dropdowns */
+	overflow-x: clip;
 }
 
 body {
@@ -147,7 +149,6 @@ body {
 	transform: translateX(-100%);
 	transition: transform var(--vs-transition);
 	overflow-y: auto;
-	-webkit-overflow-scrolling: touch;
 	padding-bottom: var(--vs-safe-area-bottom);
 	padding-left: var(--vs-safe-area-left);
 }
@@ -265,16 +266,19 @@ body {
 	overflow: hidden;
 }
 
-.text-truncate-lines-3 {
-	display: -webkit-box;
-	-webkit-line-clamp: 3;
-	-webkit-box-orient: vertical;
-	overflow: hidden;
-}
-
 /* Critical for flex truncation - Bootstrap lacks this */
 .min-width-0 {
 	min-width: 0;
+}
+
+/* Touch-action utility for interactive elements (apply in markup) */
+.touch-manipulation {
+	touch-action: manipulation;
+}
+
+/* Prevent textareas from expanding too large */
+textarea.form-control {
+	max-height: 40rem;
 }
 
 /* Loading spinner animation */
@@ -341,7 +345,6 @@ body {
 	color: #e6edf3;
 	font-family: "SF Mono", "Monaco", "Consolas", monospace;
 	white-space: pre-wrap;
-	-webkit-overflow-scrolling: touch;
 	overscroll-behavior: contain;
 }
 
@@ -619,16 +622,15 @@ body.vs-modal-open {
 	inset: 0 !important;
 	padding: var(--vs-safe-area-top) var(--vs-safe-area-right)
 		var(--vs-safe-area-bottom) var(--vs-safe-area-left) !important;
-	-webkit-overflow-scrolling: touch;
 	z-index: 1055 !important;
 }
 
 .vs-modal-backdrop {
 	position: fixed !important;
 	inset: 0 !important;
-	background: rgba(0, 0, 0, 0.6) !important;
-	backdrop-filter: blur(8px);
-	-webkit-backdrop-filter: blur(8px);
+	background: rgba(0, 0, 0, 0.75) !important;
+	backdrop-filter: blur(16px);
+	-webkit-backdrop-filter: blur(16px);
 	z-index: 1050 !important;
 }
 
@@ -643,7 +645,6 @@ body.vs-modal-open {
 /* Directory list max-height for modal (no Bootstrap utility) */
 .directory-list {
 	max-height: 50vh;
-	-webkit-overflow-scrolling: touch;
 }
 
 @keyframes modalFadeIn {
@@ -690,15 +691,9 @@ body.vs-modal-open {
 
 /* Extra Small (< 576px) */
 @media (max-width: 575.98px) {
-	.btn {
-		min-height: 44px;
-	}
-	.btn-sm {
-		min-height: 40px;
-	}
+	/* Prevent iOS zoom on input focus (requires 16px minimum) */
 	.form-control,
 	.form-select {
-		min-height: 44px;
 		font-size: 16px;
 	}
 
@@ -745,7 +740,6 @@ body.vs-modal-open {
 		padding-top: calc(0.75rem + var(--vs-safe-area-top));
 	}
 	.vs-modal-dialog .modal-body {
-		-webkit-overflow-scrolling: touch;
 		padding-bottom: calc(1rem + var(--vs-safe-area-bottom));
 	}
 	.vs-modal-dialog .modal-footer {
@@ -781,7 +775,6 @@ body.vs-modal-open {
 	}
 	.vs-modal-dialog .modal-body {
 		overflow-y: auto;
-		-webkit-overflow-scrolling: touch;
 	}
 }
 
@@ -883,30 +876,8 @@ body.vs-modal-open {
 }
 
 /* ============================================
-   13. PWA & TOUCH OPTIMIZATIONS
+   13. PWA STANDALONE MODE
 ============================================ */
-.nav-item,
-.btn,
-.list-group-item-action,
-.form-control,
-.form-select {
-	touch-action: manipulation;
-}
-
-@media (hover: none) and (pointer: coarse) {
-	.nav-item:active,
-	.btn:active,
-	.list-group-item-action:active {
-		opacity: 0.7;
-		transition: opacity 0.1s ease;
-	}
-	.list-group-item-action {
-		min-height: 48px;
-		display: flex;
-		align-items: center;
-	}
-}
-
 .main-content {
 	overscroll-behavior-x: none;
 }
@@ -923,14 +894,12 @@ body.vs-modal-open {
 		100vh - var(--vs-safe-area-top) - var(--vs-safe-area-bottom)
 	);
 	overflow-y: auto;
-	-webkit-overflow-scrolling: touch;
 }
 
 .jobs-mobile-filters .btn-group .btn {
 	flex: 1;
 }
 
-/* PWA Standalone Mode */
 @media all and (display-mode: standalone) {
 	html {
 		background: var(--bs-body-bg, #1a1d21);
@@ -956,26 +925,6 @@ body.vs-modal-open {
 
 	body {
 		overscroll-behavior-y: contain;
-	}
-}
-
-/* iOS-specific fixes */
-@supports (-webkit-touch-callout: none) {
-	.app-header {
-		-webkit-transform: translateZ(0);
-		transform: translateZ(0);
-	}
-	.app-main,
-	.app-sidebar,
-	.main-content,
-	.directory-list,
-	.modal-body {
-		-webkit-overflow-scrolling: touch;
-	}
-	.app-header,
-	.app-sidebar {
-		-webkit-backface-visibility: hidden;
-		backface-visibility: hidden;
 	}
 }
 
@@ -1114,7 +1063,7 @@ body.vs-modal-open {
 	min-width: 140px;
 }
 
-/* ===== 13. Git Branch Dropdown Mobile ===== */
+/* ===== 15. Git Branch Dropdown Mobile ===== */
 
 @media (max-width: 575.98px) {
 	.git-branch-dropdown .dropdown-menu {

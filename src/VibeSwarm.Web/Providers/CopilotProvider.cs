@@ -118,6 +118,26 @@ public class CopilotProvider : CliProviderBase
             args.Add(CurrentAgent);
         }
 
+        // System prompt override (v0.0.397+)
+        if (!string.IsNullOrEmpty(CurrentSystemPrompt))
+        {
+            args.Add("--system-prompt");
+            args.Add($"\"{EscapeCliArgument(CurrentSystemPrompt)}\"");
+        }
+
+        // Autopilot mode for autonomous task completion (v0.0.400+, GA v0.0.411+)
+        if (CurrentUseAutopilot)
+        {
+            args.Add("--autopilot");
+        }
+
+        // Alt-screen buffer mode (v0.0.407+, experimental)
+        if (CurrentUseAltScreen)
+        {
+            args.Add("--alt-screen");
+            args.Add("on");
+        }
+
         // Tool filtering (v0.0.370+)
         if (CurrentAllowedTools != null && CurrentAllowedTools.Count > 0)
         {
@@ -526,6 +546,8 @@ public class CopilotProvider : CliProviderBase
             AvailableModels = new List<string>
             {
                 "claude-opus-4.6",
+                "claude-opus-4.6-fast",
+                "claude-sonnet-4.6",
                 "claude-sonnet-4.5",
                 "claude-haiku-4.5",
                 "claude-opus-4.5",
@@ -536,7 +558,6 @@ public class CopilotProvider : CliProviderBase
                 "gpt-5.1-codex",
                 "gpt-5.1",
                 "gpt-5.1-codex-mini",
-                "gpt-5",
                 "gpt-5-mini",
                 "gpt-4.1"
             },
@@ -550,6 +571,8 @@ public class CopilotProvider : CliProviderBase
                 ModelMultipliers = new Dictionary<string, decimal>
                 {
                     ["claude-opus-4.6"] = 5.0m,
+                    ["claude-opus-4.6-fast"] = 3.0m,
+                    ["claude-sonnet-4.6"] = 1.0m,
                     ["claude-sonnet-4.5"] = 1.0m,
                     ["claude-haiku-4.5"] = 0.2m,
                     ["claude-opus-4.5"] = 5.0m,
@@ -560,7 +583,6 @@ public class CopilotProvider : CliProviderBase
                     ["gpt-5.1-codex"] = 1.0m,
                     ["gpt-5.1"] = 1.0m,
                     ["gpt-5.1-codex-mini"] = 0.3m,
-                    ["gpt-5"] = 1.0m,
                     ["gpt-5-mini"] = 0.3m,
                     ["gpt-4.1"] = 0.5m
                 }

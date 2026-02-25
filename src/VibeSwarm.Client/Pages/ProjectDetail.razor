@@ -847,18 +847,19 @@ TimeSpan.FromSeconds(10) })
         _createBranchError = null;
     }
 
-    private void ShowCreateJobModal()
+    private async Task ShowCreateJobModal()
     {
         // Reset the form for a new job
         NewJob = new Job();
         NewJob.Branch = CurrentBranch;
+        SelectedModelId = string.Empty;
 
         // Set default provider if available
         var defaultProvider = Providers.FirstOrDefault(p => p.IsDefault && p.IsEnabled);
         if (defaultProvider != null)
         {
             NewJob.ProviderId = defaultProvider.Id;
-            _ = LoadModelsForProvider(defaultProvider.Id);
+            await LoadModelsForProvider(defaultProvider.Id);
         }
 
         ErrorMessage = null;

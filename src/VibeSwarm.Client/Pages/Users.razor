@@ -20,91 +20,108 @@ else if (!_users.Any())
 }
 else
 {
-	<ul class="list-group">
-		@foreach (var user in _users)
-		{
-			<li class="list-group-item py-3 @(!user.IsActive ? "bg-body-secondary" : "")">
-				<div class="d-flex align-items-center justify-content-between gap-3">
-					@* User info section *@
-					<div class="d-flex align-items-center gap-3 flex-grow-1 min-w-0">
-						<i class="bi bi-person-circle fs-4 text-secondary flex-shrink-0"></i>
-						<div class="min-w-0">
-							<div class="d-flex align-items-center gap-2 flex-wrap">
-								<span class="fw-semibold">@user.UserName</span>
-								@if (user.Roles.Contains(UserRoles.Admin))
-								{
-									<span class="badge bg-primary">Admin</span>
-								}
-								else
-								{
-									<span class="badge bg-secondary">User</span>
-								}
-								@if (user.IsActive)
-								{
-									<span class="badge bg-success-subtle text-success-emphasis">
-										<i class="bi bi-check-circle me-1"></i>Active
+	@* Active / Inactive filter tabs *@
+	<ul class="nav nav-tabs">
+		<li class="nav-item">
+			<button class="nav-link @(_activeFilter == "active" ? "active" : "")" @onclick='() => SetFilter("active")'>
+				<i class="bi bi-check-circle me-1"></i>Active
+				<span class="badge bg-primary-subtle text-primary-emphasis ms-1">@GetActiveCount()</span>
+			</button>
+		</li>
+		<li class="nav-item">
+			<button class="nav-link @(_activeFilter == "inactive" ? "active" : "")" @onclick='() => SetFilter("inactive")'>
+				<i class="bi bi-pause-circle me-1"></i>Inactive
+				<span class="badge bg-secondary-subtle text-secondary-emphasis ms-1">@GetInactiveCount()</span>
+			</button>
+		</li>
+	</ul>
+
+	@if (!GetFilteredUsers().Any())
+	{
+		<EmptyState Icon="@(_activeFilter == "active" ? "people" : "pause-circle")"
+					Title="@(_activeFilter == "active" ? "No active users" : "No inactive users")"
+					Message="@(_activeFilter == "active" ? "All users are currently inactive." : "All users are currently active.")" />
+	}
+	else
+	{
+		<ul class="list-group list-group-flush border border-top-0 rounded-top-0">
+			@foreach (var user in GetFilteredUsers())
+			{
+				<li class="list-group-item py-3">
+					<div class="d-flex align-items-center justify-content-between gap-3">
+						@* User info section *@
+						<div class="d-flex align-items-center gap-3 flex-grow-1 min-w-0">
+							<i class="bi bi-person-circle fs-4 text-secondary flex-shrink-0"></i>
+							<div class="min-w-0">
+								<div class="d-flex align-items-center gap-2 flex-wrap">
+									<span class="fw-semibold">@user.UserName</span>
+									@if (user.Roles.Contains(UserRoles.Admin))
+									{
+										<span class="badge bg-primary">Admin</span>
+									}
+									else
+									{
+										<span class="badge bg-secondary">User</span>
+									}
+								</div>
+								<div class="d-flex flex-wrap gap-2 text-body-secondary small mt-1">
+									<span class="d-none d-md-inline">
+										<i class="bi bi-calendar me-1"></i>Created @user.CreatedAt.FormatDateTimeShort()
 									</span>
-								}
-								else
-								{
-									<span class="badge bg-secondary-subtle text-secondary-emphasis">
-										<i class="bi bi-x-circle me-1"></i>Inactive
+									<span class="d-none d-lg-inline">
+										<i class="bi bi-clock me-1"></i>Last login: @(user.LastLoginAt.HasValue ?
+																																										user.LastLoginAt.Value.FormatDateTimeShort() : "Never")
 									</span>
-								}
-							</div>
-							<div class="d-flex flex-wrap gap-2 text-body-secondary small mt-1">
-								@if (!string.IsNullOrEmpty(user.Email))
-								{
-									<span>@user.Email</span>
-								}
-								<span class="d-none d-md-inline">
-									<i class="bi bi-calendar me-1"></i>Created @user.CreatedAt.FormatDateTimeShort()
-								</span>
-								<span class="d-none d-lg-inline">
-									<i class="bi bi-clock me-1"></i>Last login: @(user.LastLoginAt.HasValue ?
-																							user.LastLoginAt.Value.FormatDateTimeShort() : "Never")
-								</span>
+								</div>
 							</div>
 						</div>
-					</div>
 
-					@* Actions dropdown *@
-					<div class="dropdown flex-shrink-0">
-						<button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown"
-								aria-expanded="false" title="User actions">
-							<i class="bi bi-gear"></i>
-						</button>
-						<ul class="dropdown-menu dropdown-menu-end">
-							<li>
-								<button class="dropdown-item" @onclick="@(() => ShowResetPasswordModal(user))">
-									<i class="bi bi-key me-2"></i>Reset Password
-								</button>
-							</li>
-							<li>
-								<button class="dropdown-item" @onclick="@(() => ShowEditUserModal(user))">
-									<i class="bi bi-pencil me-2"></i>Edit Role
-								</button>
-							</li>
-							<li>
-								<button class="dropdown-item" @onclick="@(() => ToggleUserActive(user))">
-									<i class="bi bi-@(user.IsActive ? "x-circle" : "check-circle") me-2"></i>
-									@(user.IsActive ? "Deactivate" : "Activate")
-								</button>
-							</li>
-							<li>
-								<hr class="dropdown-divider">
-							</li>
-							<li>
-								<button class="dropdown-item text-danger" @onclick="@(() => ShowDeleteUserModal(user))">
-									<i class="bi bi-trash me-2"></i>Delete
-								</button>
-							</li>
-						</ul>
+						@* Actions dropdown *@
+						<div class="dropdown flex-shrink-0">
+							<button class="btn btn-sm btn-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown"
+									aria-expanded="false" title="User actions">
+								<i class="bi bi-gear"></i>
+							</button>
+							<ul class="dropdown-menu dropdown-menu-end">
+								<li>
+									<button class="dropdown-item" @onclick="@(() => ShowResetPasswordModal(user))">
+										<i class="bi bi-key me-2"></i>Reset Password
+									</button>
+								</li>
+								<li>
+									<button class="dropdown-item" @onclick="@(() => ShowEditUserModal(user))">
+										<i class="bi bi-pencil me-2"></i>Edit Role
+									</button>
+								</li>
+								<li>
+									<button class="dropdown-item" @onclick="@(() => ToggleUserActive(user))"
+											disabled="@(user.Id == _currentUserId && user.IsActive)">
+										<i class="bi bi-@(user.IsActive ? "x-circle" : "check-circle") me-2"></i>
+										@if (user.Id == _currentUserId && user.IsActive)
+										{
+											<span class="text-body-secondary">Cannot deactivate yourself</span>
+										}
+										else
+										{
+											@(user.IsActive ? "Deactivate" : "Activate")
+										}
+									</button>
+								</li>
+								<li>
+									<hr class="dropdown-divider">
+								</li>
+								<li>
+									<button class="dropdown-item text-danger" @onclick="@(() => ShowDeleteUserModal(user))">
+										<i class="bi bi-trash me-2"></i>Delete
+									</button>
+								</li>
+							</ul>
+						</div>
 					</div>
-				</div>
-			</li>
-		}
-	</ul>
+				</li>
+			}
+		</ul>
+	}
 }
 
 @* Add User Modal *@
@@ -125,12 +142,6 @@ else
 				<label for="addUserName" class="form-label">Username</label>
 				<InputText id="addUserName" @bind-Value="_addUserModel.UserName" class="form-control" />
 				<ValidationMessage For="@(() => _addUserModel.UserName)" class="text-danger small" />
-			</div>
-
-			<div class="mb-3">
-				<label for="addUserEmail" class="form-label">Email (optional)</label>
-				<InputText id="addUserEmail" @bind-Value="_addUserModel.Email" class="form-control" type="email" />
-				<ValidationMessage For="@(() => _addUserModel.Email)" class="text-danger small" />
 			</div>
 
 			<div class="mb-3">
@@ -261,6 +272,7 @@ else
 	private List<UserDto> _users = [];
 	private bool _isLoading = true;
 	private Guid _currentUserId;
+	private string _activeFilter = "active";
 
 	// Add User Modal
 	private bool _showAddUserModal;
@@ -341,7 +353,6 @@ else
 			var result = await UserService.CreateUserAsync(new CreateUserModel
 			{
 				UserName = _addUserModel.UserName,
-				Email = _addUserModel.Email,
 				Password = _addUserModel.Password,
 				Role = _addUserModel.Role
 			});
@@ -516,7 +527,28 @@ else
 
 		if (result.Success)
 		{
+			NotificationService.ShowSuccess($"User {(user.IsActive ? "deactivated" : "activated")} successfully.");
 			await LoadUsers();
 		}
+		else
+		{
+			NotificationService.ShowError(result.Error ?? "Failed to toggle user status.");
+		}
+	}
+
+	// Filter helpers
+	private void SetFilter(string filter)
+	{
+		_activeFilter = filter;
+	}
+
+	private int GetActiveCount() => _users.Count(u => u.IsActive);
+	private int GetInactiveCount() => _users.Count(u => !u.IsActive);
+
+	private IEnumerable<UserDto> GetFilteredUsers()
+	{
+		return _activeFilter == "active"
+			? _users.Where(u => u.IsActive)
+			: _users.Where(u => !u.IsActive);
 	}
 }

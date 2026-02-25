@@ -7,8 +7,8 @@
 			<strong>Live Output</strong>
 			<span class="text-body-secondary ms-2 small">(@OutputLines.Count lines)</span>
 		</div>
-		<ActionButton Icon="trash" Text="Clear" Outline="true" Size="ActionButton.ButtonSize.Small"
-			HideTextOnMobile="true" OnClick="OnClear" />
+		<ActionButton Icon="trash" Text="Clear" Size="ActionButton.ButtonSize.Small" HideTextOnMobile="true"
+					  OnClick="OnClear" />
 	</div>
 	<div class="card-body p-0 flex-grow-1 overflow-hidden">
 		<div class="terminal-output h-100 p-3 overflow-auto small" @ref="_outputContainer" style="min-height: 300px;">

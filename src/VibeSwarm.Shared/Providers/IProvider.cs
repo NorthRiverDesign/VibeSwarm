@@ -483,6 +483,46 @@ public class ExecutionOptions
     public List<string>? ExcludedTools { get; set; }
 
     /// <summary>
+    /// Tools to explicitly disallow (Claude: --disallowed-tools, v2.1.0+).
+    /// Different from ExcludedTools: disallowed tools are blocked even if auto-discovered.
+    /// </summary>
+    public List<string>? DisallowedTools { get; set; }
+
+    /// <summary>
+    /// Run in an isolated git worktree (Claude: --worktree/-w, v2.1.49+).
+    /// Prevents code conflicts when running concurrent sessions.
+    /// </summary>
+    public bool UseWorktree { get; set; }
+
+    /// <summary>
+    /// Enable autonomous task completion mode (Copilot: autopilot mode, v0.0.400+).
+    /// When enabled, the agent will complete tasks without manual approval steps.
+    /// </summary>
+    public bool UseAutopilot { get; set; }
+
+    /// <summary>
+    /// Resume a session linked to a specific GitHub PR number or URL (Claude: --from-pr, v2.1.27+).
+    /// </summary>
+    public string? FromPullRequest { get; set; }
+
+    /// <summary>
+    /// Initialization mode for setup hooks (Claude: --init, --init-only, --maintenance, v2.1.10+).
+    /// Values: "init", "init-only", "maintenance", or null for normal operation.
+    /// </summary>
+    public string? InitMode { get; set; }
+
+    /// <summary>
+    /// Fork the session instead of continuing it (OpenCode: --fork, v1.2.6+).
+    /// </summary>
+    public bool ForkSession { get; set; }
+
+    /// <summary>
+    /// Enable alternate screen buffer mode (Copilot: --alt-screen, v0.0.407+).
+    /// Experimental feature for improved display.
+    /// </summary>
+    public bool UseAltScreen { get; set; }
+
+    /// <summary>
     /// Creates ExecutionOptions from the legacy parameters
     /// </summary>
     public static ExecutionOptions FromLegacy(string? sessionId = null, string? workingDirectory = null)

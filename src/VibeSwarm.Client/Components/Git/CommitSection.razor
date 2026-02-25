@@ -1,7 +1,7 @@
 @* Commit and push section component *@
 
 <div class="card mb-3 mb-lg-4">
-	<div class="card-header bg-body-secondary d-flex justify-content-between align-items-center">
+	<div class="card-header bg-body-secondary d-flex justify-content-between align-items-center flex-wrap gap-2">
 		<div class="d-flex align-items-center">
 			<i class="bi bi-cloud-upload me-2 opacity-75"></i>
 			<strong>Commit</strong>
@@ -49,7 +49,7 @@
 			{
 				<Alert Type="Alert.AlertType.Warning" Class="mt-2 mb-0 py-2 px-3 small">
 					@SummaryError
-					<button type="button" class="btn btn-sm btn-outline-warning ms-2" @onclick="OnRefreshSummary">
+					<button type="button" class="btn btn-sm btn-warning ms-2" @onclick="OnRefreshSummary">
 						<i class="bi bi-arrow-repeat"></i> Retry
 					</button>
 				</Alert>

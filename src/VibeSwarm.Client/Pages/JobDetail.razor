@@ -116,8 +116,7 @@ else
                         <p class="text-body-secondary mb-3">
                             <i class="bi bi-info-circle me-2 opacity-75"></i>No file changes detected.
                         </p>
-                        <button class="btn btn-outline-secondary btn-sm" @onclick="CheckGitDiffAsync"
-                                disabled="@_isCheckingGitDiff">
+                        <button class="btn btn-secondary btn-sm" @onclick="CheckGitDiffAsync" disabled="@_isCheckingGitDiff">
                             @if (_isCheckingGitDiff)
                             {
                                 <span class="spinner-border spinner-border-sm me-1" role="status"></span>
@@ -1112,14 +1111,14 @@ TimeSpan.FromSeconds(10) })
             // This includes both committed changes (by the agent) and any uncommitted changes,
             // matching the scope of how Job.GitDiff was originally captured.
             var currentDiff = await VersionControlService.GetWorkingDirectoryDiffAsync(
-                Job.Project.WorkingPath, Job.GitCommitBefore);
+            Job.Project.WorkingPath, Job.GitCommitBefore);
 
             // If the job already has a commit hash (auto-committed or agent committed),
             // also try comparing with committed range diff to cover committed-only changes.
             if (string.IsNullOrEmpty(currentDiff) && !string.IsNullOrEmpty(Job.GitCommitBefore))
             {
                 currentDiff = await VersionControlService.GetCommitRangeDiffAsync(
-                    Job.Project.WorkingPath, Job.GitCommitBefore);
+                Job.Project.WorkingPath, Job.GitCommitBefore);
             }
 
             var jobFiles = GitDiffParser.ParseDiff(Job.GitDiff);
@@ -1162,7 +1161,7 @@ TimeSpan.FromSeconds(10) })
         {
             // First check if there are uncommitted changes to commit
             var hasUncommitted = await VersionControlService.HasUncommittedChangesAsync(Job.Project.WorkingPath,
-                _pushCancellationTokenSource.Token);
+            _pushCancellationTokenSource.Token);
 
             GitOperationResult result;
 
@@ -1173,11 +1172,11 @@ TimeSpan.FromSeconds(10) })
                 StateHasChanged();
 
                 result = await VersionControlService.CommitAndPushAsync(
-                    Job.Project.WorkingPath,
-                    _commitMessage,
-                    "origin",
-                    status => { _pushStatus = status; InvokeAsync(StateHasChanged); },
-                    _pushCancellationTokenSource.Token);
+                Job.Project.WorkingPath,
+                _commitMessage,
+                "origin",
+                status => { _pushStatus = status; InvokeAsync(StateHasChanged); },
+                _pushCancellationTokenSource.Token);
             }
             else
             {
@@ -1186,16 +1185,16 @@ TimeSpan.FromSeconds(10) })
                 StateHasChanged();
 
                 result = await VersionControlService.PushAsync(
-                    Job.Project.WorkingPath,
-                    "origin",
-                    null,
-                    _pushCancellationTokenSource.Token);
+                Job.Project.WorkingPath,
+                "origin",
+                null,
+                _pushCancellationTokenSource.Token);
 
                 // Record the current commit hash for the job
                 if (result.Success)
                 {
                     var currentHash = await VersionControlService.GetCurrentCommitHashAsync(Job.Project.WorkingPath,
-                        _pushCancellationTokenSource.Token);
+                    _pushCancellationTokenSource.Token);
                     result = new GitOperationResult
                     {
                         Success = true,

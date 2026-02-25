@@ -33,7 +33,6 @@ public class UserService : IUserService
 			{
 				Id = user.Id,
 				UserName = user.UserName ?? string.Empty,
-				Email = user.Email,
 				IsActive = user.IsActive,
 				CreatedAt = user.CreatedAt,
 				LastLoginAt = user.LastLoginAt,
@@ -54,7 +53,6 @@ public class UserService : IUserService
 		{
 			Id = user.Id,
 			UserName = user.UserName ?? string.Empty,
-			Email = user.Email,
 			IsActive = user.IsActive,
 			CreatedAt = user.CreatedAt,
 			LastLoginAt = user.LastLoginAt,
@@ -76,7 +74,7 @@ public class UserService : IUserService
 			var user = new ApplicationUser
 			{
 				UserName = model.UserName,
-				Email = string.IsNullOrWhiteSpace(model.Email) ? $"{model.UserName}@vibeswarm.local" : model.Email,
+				Email = $"{model.UserName}@vibeswarm.local",
 				EmailConfirmed = true,
 				IsActive = true,
 				CreatedAt = DateTime.UtcNow
@@ -102,7 +100,6 @@ public class UserService : IUserService
 			{
 				Id = user.Id,
 				UserName = user.UserName ?? string.Empty,
-				Email = user.Email,
 				IsActive = user.IsActive,
 				CreatedAt = user.CreatedAt,
 				LastLoginAt = user.LastLoginAt,
@@ -126,17 +123,6 @@ public class UserService : IUserService
 			if (user == null)
 			{
 				return (false, "User not found.");
-			}
-
-			if (!string.IsNullOrWhiteSpace(model.Email))
-			{
-				user.Email = model.Email;
-				var result = await _userManager.UpdateAsync(user);
-				if (!result.Succeeded)
-				{
-					var errors = string.Join(" ", result.Errors.Select(e => e.Description));
-					return (false, errors);
-				}
 			}
 
 			if (!string.IsNullOrWhiteSpace(model.Role))

@@ -228,6 +228,12 @@ public class OpenCodeProvider : CliProviderBase
             }
         }
 
+        // Fork an existing session into a new branch (v1.2.6+)
+        if (CurrentForkSession && !string.IsNullOrEmpty(sessionId))
+        {
+            args.Add("--fork");
+        }
+
         // Additional custom arguments (provider-specific or user-defined)
         if (CurrentAdditionalArgs != null)
         {
@@ -947,6 +953,7 @@ public class OpenCodeProvider : CliProviderBase
         var defaultModels = new List<string>
         {
             "anthropic/claude-opus-4-6-20260101",
+            "anthropic/claude-sonnet-4-6-20260201",
             "anthropic/claude-sonnet-4-5-20250929",
             "anthropic/claude-opus-4-20250514",
             "openai/gpt-5.2",
@@ -968,6 +975,7 @@ public class OpenCodeProvider : CliProviderBase
                 ModelMultipliers = new Dictionary<string, decimal>
                 {
                     ["anthropic/claude-opus-4-6-20260101"] = 5.0m,
+                    ["anthropic/claude-sonnet-4-6-20260201"] = 1.0m,
                     ["anthropic/claude-sonnet-4-5-20250929"] = 1.0m,
                     ["anthropic/claude-opus-4-20250514"] = 5.0m,
                     ["openai/gpt-5.2"] = 1.5m,
