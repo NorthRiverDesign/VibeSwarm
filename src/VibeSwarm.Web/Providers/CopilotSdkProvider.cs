@@ -58,6 +58,7 @@ public class CopilotSdkProvider : SdkProviderBase
 
 	/// <summary>
 	/// Ensures a CopilotClient is created and started.
+	/// If a previous client exists but is unhealthy, it is disposed and recreated.
 	/// </summary>
 	private async Task<CopilotClient> EnsureClientAsync(
 		string? workingDirectory = null,
@@ -66,9 +67,32 @@ public class CopilotSdkProvider : SdkProviderBase
 		if (_client != null) return _client;
 
 		var options = BuildClientOptions(workingDirectory);
-		_client = new CopilotClient(options);
-		await _client.StartAsync();
-		return _client;
+		var client = new CopilotClient(options);
+		try
+		{
+			await client.StartAsync(cancellationToken);
+			_client = client;
+			return _client;
+		}
+		catch
+		{
+			try { await client.DisposeAsync(); } catch { }
+			throw;
+		}
+	}
+
+	/// <summary>
+	/// Disposes the current client so the next call to EnsureClientAsync creates a fresh one.
+	/// </summary>
+	private async Task ResetClientAsync()
+	{
+		var client = _client;
+		_client = null;
+		if (client != null)
+		{
+			try { await client.StopAsync(); } catch { }
+			try { await client.DisposeAsync(); } catch { }
+		}
 	}
 
 	/// <summary>
@@ -98,60 +122,86 @@ public class CopilotSdkProvider : SdkProviderBase
 
 	public override async Task<bool> TestConnectionAsync(CancellationToken cancellationToken = default)
 	{
-		try
+		// Retry once with a fresh client if the first attempt fails (handles stale/crashed CLI processes)
+		for (var attempt = 0; attempt < 2; attempt++)
 		{
-			var client = await EnsureClientAsync(cancellationToken: cancellationToken);
-			var ping = await client.PingAsync();
+			try
+			{
+				var client = await EnsureClientAsync(cancellationToken: cancellationToken);
+				var ping = await client.PingAsync(cancellationToken: cancellationToken);
 
-			IsConnected = ping != null;
-			LastConnectionError = IsConnected ? null : "Copilot SDK ping returned null.";
-			return IsConnected;
+				IsConnected = ping != null;
+				LastConnectionError = IsConnected ? null : "Copilot SDK ping returned null.";
+				return IsConnected;
+			}
+			catch (Exception ex) when (attempt == 0)
+			{
+				// First attempt failed — reset the client and try once more with a fresh process
+				await ResetClientAsync();
+			}
+			catch (Exception ex)
+			{
+				IsConnected = false;
+				await ResetClientAsync();
+
+				var cliPath = ExecutablePath ?? "copilot";
+				var hint = ex.Message.Contains("JSON-RPC", StringComparison.OrdinalIgnoreCase)
+					? " The CLI process may have exited unexpectedly. Verify the Copilot CLI version is compatible with GitHub.Copilot.SDK, and that authentication is valid (run 'copilot login')."
+					: string.Empty;
+				LastConnectionError = $"Failed to connect to Copilot SDK (CLI: {cliPath}): {ex.Message}{hint}";
+				return false;
+			}
 		}
-		catch (Exception ex)
-		{
-			IsConnected = false;
-			LastConnectionError = $"Failed to connect to Copilot SDK: {ex.Message}";
-			return false;
-		}
+
+		return false;
 	}
 
 	public override async Task<string> ExecuteAsync(string prompt, CancellationToken cancellationToken = default)
 	{
-		var client = await EnsureClientAsync(cancellationToken: cancellationToken);
-
-		var sessionConfig = new SessionConfig { Model = ResolveModel() };
-		ApplyByokConfig(sessionConfig);
-		await using var session = await client.CreateSessionAsync(sessionConfig);
-
-		var responseBuilder = new StringBuilder();
-		var done = new TaskCompletionSource();
-
-		using var _ = session.On(evt =>
+		try
 		{
-			switch (evt)
+			var client = await EnsureClientAsync(cancellationToken: cancellationToken);
+
+			var sessionConfig = new SessionConfig { Model = ResolveModel() };
+			ApplyByokConfig(sessionConfig);
+			await using var session = await client.CreateSessionAsync(sessionConfig);
+
+			var responseBuilder = new StringBuilder();
+			var done = new TaskCompletionSource();
+
+			using var _ = session.On(evt =>
 			{
-				case AssistantMessageEvent msg:
-					responseBuilder.Append(msg.Data.Content);
-					break;
-				case SessionIdleEvent:
-					done.TrySetResult();
-					break;
-				case SessionErrorEvent err:
-					done.TrySetException(new InvalidOperationException(
-						err.Data.Message ?? "Unknown Copilot session error"));
-					break;
-			}
-		});
+				switch (evt)
+				{
+					case AssistantMessageEvent msg:
+						responseBuilder.Append(msg.Data.Content);
+						break;
+					case SessionIdleEvent:
+						done.TrySetResult();
+						break;
+					case SessionErrorEvent err:
+						done.TrySetException(new InvalidOperationException(
+							err.Data.Message ?? "Unknown Copilot session error"));
+						break;
+				}
+			});
 
-		await session.SendAsync(new MessageOptions { Prompt = prompt });
+			await session.SendAsync(new MessageOptions { Prompt = prompt });
 
-		using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-		cts.CancelAfter(TimeSpan.FromMinutes(10));
-		using var reg = cts.Token.Register(() => done.TrySetCanceled());
+			using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+			cts.CancelAfter(TimeSpan.FromMinutes(10));
+			using var reg = cts.Token.Register(() => done.TrySetCanceled());
 
-		await done.Task;
+			await done.Task;
 
-		return responseBuilder.ToString();
+			return responseBuilder.ToString();
+		}
+		catch (Exception) when (!cancellationToken.IsCancellationRequested)
+		{
+			// Reset the client so the next call starts a fresh CLI process
+			await ResetClientAsync();
+			throw;
+		}
 	}
 
 	public override async Task<ExecutionResult> ExecuteWithSessionAsync(
@@ -297,6 +347,8 @@ public class CopilotSdkProvider : SdkProviderBase
 		{
 			result.Success = false;
 			result.ErrorMessage = $"Copilot SDK error: {ex.Message}";
+			// Reset the client so the next execution starts a fresh CLI process
+			await ResetClientAsync();
 		}
 
 		return result;
@@ -573,6 +625,7 @@ public class CopilotSdkProvider : SdkProviderBase
 		catch
 		{
 			info.AdditionalInfo["isAvailable"] = false;
+			await ResetClientAsync();
 		}
 
 		return info;
@@ -699,6 +752,7 @@ public class CopilotSdkProvider : SdkProviderBase
 		}
 		catch (Exception ex)
 		{
+			await ResetClientAsync();
 			return PromptResponse.Fail($"Copilot SDK error: {ex.Message}");
 		}
 	}
