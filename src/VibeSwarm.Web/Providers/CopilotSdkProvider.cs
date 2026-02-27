@@ -32,9 +32,19 @@ public class CopilotSdkProvider : SdkProviderBase
 			LogLevel = "warning"
 		};
 
+		// Resolve and validate CLI path if provided
 		if (!string.IsNullOrEmpty(ExecutablePath))
 		{
-			options.CliPath = ExecutablePath;
+			var resolvedPath = Path.IsPathRooted(ExecutablePath)
+				? ExecutablePath
+				: Path.GetFullPath(ExecutablePath);
+
+			// Only set CliPath if the executable exists
+			if (File.Exists(resolvedPath))
+			{
+				options.CliPath = resolvedPath;
+			}
+			// Otherwise, let the SDK find 'copilot' in PATH automatically
 		}
 
 		var cwd = workingDirectory ?? WorkingDirectory;
@@ -122,6 +132,21 @@ public class CopilotSdkProvider : SdkProviderBase
 
 	public override async Task<bool> TestConnectionAsync(CancellationToken cancellationToken = default)
 	{
+		// Validate CLI path before attempting connection
+		if (!string.IsNullOrEmpty(ExecutablePath))
+		{
+			var resolvedPath = Path.IsPathRooted(ExecutablePath)
+				? ExecutablePath
+				: Path.GetFullPath(ExecutablePath);
+
+			if (!File.Exists(resolvedPath))
+			{
+				IsConnected = false;
+				LastConnectionError = $"Copilot CLI not found at path: {resolvedPath}. Please verify the executable path or leave it empty to use PATH.";
+				return false;
+			}
+		}
+
 		// Retry once with a fresh client if the first attempt fails (handles stale/crashed CLI processes)
 		for (var attempt = 0; attempt < 2; attempt++)
 		{
@@ -134,7 +159,7 @@ public class CopilotSdkProvider : SdkProviderBase
 				LastConnectionError = IsConnected ? null : "Copilot SDK ping returned null.";
 				return IsConnected;
 			}
-			catch (Exception ex) when (attempt == 0)
+			catch (Exception) when (attempt == 0)
 			{
 				// First attempt failed — reset the client and try once more with a fresh process
 				await ResetClientAsync();
@@ -144,10 +169,19 @@ public class CopilotSdkProvider : SdkProviderBase
 				IsConnected = false;
 				await ResetClientAsync();
 
-				var cliPath = ExecutablePath ?? "copilot";
-				var hint = ex.Message.Contains("JSON-RPC", StringComparison.OrdinalIgnoreCase)
-					? " The CLI process may have exited unexpectedly. Verify the Copilot CLI version is compatible with GitHub.Copilot.SDK, and that authentication is valid (run 'copilot login')."
+				var cliPath = ExecutablePath ?? "copilot (from PATH)";
+				
+				// Provide specific hints based on the error
+				var hint = ex.Message.Contains("JSON-RPC", StringComparison.OrdinalIgnoreCase) ||
+				           ex.Message.Contains("RPC", StringComparison.OrdinalIgnoreCase)
+					? " The CLI may not support SDK mode or version is incompatible. Verify 'copilot --version' shows 0.0.400+ and GitHub.Copilot.SDK is compatible."
+					: ex.Message.Contains("not found", StringComparison.OrdinalIgnoreCase) ||
+					  ex.Message.Contains("cannot find", StringComparison.OrdinalIgnoreCase)
+					? " CLI executable not found in PATH. Install the GitHub Copilot CLI or specify the full path."
+					: ex.Message.Contains("auth", StringComparison.OrdinalIgnoreCase)
+					? " Authentication may have expired. Run 'copilot login' to authenticate."
 					: string.Empty;
+
 				LastConnectionError = $"Failed to connect to Copilot SDK (CLI: {cliPath}): {ex.Message}{hint}";
 				return false;
 			}
