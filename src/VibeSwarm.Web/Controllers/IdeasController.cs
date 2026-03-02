@@ -125,8 +125,10 @@ public class IdeasController : ControllerBase
     [HttpPost("project/{projectId:guid}/suggest")]
     public async Task<IActionResult> SuggestIdeas(Guid projectId, CancellationToken ct)
     {
-        var ideas = await _ideaService.SuggestIdeasFromCodebaseAsync(projectId, ct);
-        return Ok(ideas);
+        var result = await _ideaService.SuggestIdeasFromCodebaseAsync(projectId, ct);
+        // Always return 200 so the client can read the diagnostic stage and message.
+        // Success/failure is communicated via SuggestIdeasResult.Success.
+        return Ok(result);
     }
 
     public record TransferRequest(Guid TargetProjectId);

@@ -901,12 +901,16 @@ Keep the specification concise but complete. Focus on actionable implementation 
 Do not include code samples - just describe what needs to be built.";
 	}
 
-	public async Task<IEnumerable<Idea>> SuggestIdeasFromCodebaseAsync(Guid projectId, CancellationToken cancellationToken = default)
+	public async Task<SuggestIdeasResult> SuggestIdeasFromCodebaseAsync(Guid projectId, CancellationToken cancellationToken = default)
 	{
 		if (_inferenceService == null)
 		{
-			_logger.LogWarning("Local inference service is not available for codebase suggestion on project {ProjectId}", projectId);
-			return [];
+			_logger.LogWarning("Local inference service is not configured for project {ProjectId}", projectId);
+			return new SuggestIdeasResult
+			{
+				Stage = SuggestIdeasStage.NotConfigured,
+				Message = "No local inference service is configured. Add a provider under Settings → Local Inference."
+			};
 		}
 
 		var project = await _dbContext.Projects
@@ -915,10 +919,14 @@ Do not include code samples - just describe what needs to be built.";
 		if (project == null || string.IsNullOrEmpty(project.WorkingPath))
 		{
 			_logger.LogWarning("Project {ProjectId} not found or has no working path", projectId);
-			return [];
+			return new SuggestIdeasResult
+			{
+				Stage = SuggestIdeasStage.RepoMapFailed,
+				Message = "Project not found or has no working directory configured."
+			};
 		}
 
-		// Verify inference is reachable before building the prompt
+		// Verify the provider is reachable and discover any assigned model
 		InferenceHealthResult health;
 		try
 		{
@@ -926,48 +934,102 @@ Do not include code samples - just describe what needs to be built.";
 		}
 		catch (Exception ex)
 		{
-			_logger.LogWarning(ex, "Failed to check inference health for project {ProjectId}", projectId);
-			return [];
+			_logger.LogWarning(ex, "Health check failed for project {ProjectId} suggestion", projectId);
+			return new SuggestIdeasResult
+			{
+				Stage = SuggestIdeasStage.ProviderUnreachable,
+				Message = $"Could not reach the local inference provider: {ex.Message}",
+				InferenceError = ex.Message
+			};
 		}
 
 		if (!health.IsAvailable)
 		{
-			_logger.LogWarning("Local inference is not available for project {ProjectId} suggestion", projectId);
-			return [];
+			var detail = string.IsNullOrEmpty(health.Error) ? "No error detail returned." : health.Error;
+			_logger.LogWarning("Local inference unavailable for project {ProjectId}: {Error}", projectId, detail);
+			return new SuggestIdeasResult
+			{
+				Stage = SuggestIdeasStage.ProviderUnreachable,
+				Message = $"Local inference provider is not responding. {detail}",
+				InferenceError = detail
+			};
 		}
 
+		// Build the repo map — gives the model a compact view of the codebase
 		var repoMap = RepoMapGenerator.GenerateRepoMap(project.WorkingPath);
 		if (string.IsNullOrEmpty(repoMap))
 		{
-			_logger.LogWarning("Could not generate repo map for project {ProjectId}", projectId);
-			return [];
+			_logger.LogWarning("Repo map generation failed for project {ProjectId} at path {Path}", projectId, project.WorkingPath);
+			return new SuggestIdeasResult
+			{
+				Stage = SuggestIdeasStage.RepoMapFailed,
+				Message = $"Could not scan the project directory at \"{project.WorkingPath}\". Verify the path exists and is readable."
+			};
 		}
 
 		var prompt = BuildCodebaseSuggestionPrompt(repoMap, project.Name, project.Description, project.PromptContext);
 		const string systemPrompt = "You are a senior software engineer performing a codebase review. Identify concrete, actionable improvements. Return only a plain list of ideas, one per line starting with \"- \". No explanations or headers.";
 
-		InferenceResponse response;
+		InferenceResponse inferenceResponse;
 		try
 		{
-			response = await _inferenceService.GenerateForTaskAsync("suggest", prompt, systemPrompt, cancellationToken);
+			_logger.LogInformation("Sending codebase suggestion request to local inference for project {ProjectId}", projectId);
+			inferenceResponse = await _inferenceService.GenerateForTaskAsync("suggest", prompt, systemPrompt, cancellationToken);
+		}
+		catch (OperationCanceledException)
+		{
+			_logger.LogWarning("Codebase suggestion request timed out for project {ProjectId}", projectId);
+			return new SuggestIdeasResult
+			{
+				Stage = SuggestIdeasStage.GenerateFailed,
+				Message = "The inference request timed out. Try a smaller or faster model, or increase the client timeout."
+			};
 		}
 		catch (Exception ex)
 		{
-			_logger.LogWarning(ex, "Local inference request failed for codebase suggestion on project {ProjectId}", projectId);
-			return [];
+			_logger.LogWarning(ex, "Inference request failed for project {ProjectId} suggestion", projectId);
+			return new SuggestIdeasResult
+			{
+				Stage = SuggestIdeasStage.GenerateFailed,
+				Message = $"Inference request failed: {ex.Message}",
+				InferenceError = ex.Message
+			};
 		}
 
-		if (!response.Success || string.IsNullOrEmpty(response.Response))
+		if (!inferenceResponse.Success || string.IsNullOrWhiteSpace(inferenceResponse.Response))
 		{
-			_logger.LogWarning("Inference returned no response for project {ProjectId} suggestion: {Error}", projectId, response.Error);
-			return [];
+			var error = inferenceResponse.Error ?? "The model returned an empty response.";
+			_logger.LogWarning("Inference returned no usable response for project {ProjectId}: {Error}", projectId, error);
+
+			// Distinguish between "no model configured" and a genuine generation failure
+			var isNoModel = error.Contains("No model configured", StringComparison.OrdinalIgnoreCase)
+				|| error.Contains("model", StringComparison.OrdinalIgnoreCase) && error.Contains("configure", StringComparison.OrdinalIgnoreCase);
+
+			return new SuggestIdeasResult
+			{
+				Stage = isNoModel ? SuggestIdeasStage.NoModel : SuggestIdeasStage.GenerateFailed,
+				Message = isNoModel
+					? "No model is assigned to the \"suggest\" or \"default\" task. Go to Settings → Local Inference to assign a model."
+					: $"The model did not return a usable response: {error}",
+				ModelUsed = inferenceResponse.ModelUsed,
+				InferenceDurationMs = inferenceResponse.DurationMs,
+				InferenceError = error
+			};
 		}
 
-		var suggestions = ParseCodebaseSuggestions(response.Response);
+		var suggestions = ParseCodebaseSuggestions(inferenceResponse.Response);
 		if (suggestions.Count == 0)
 		{
-			_logger.LogWarning("Could not parse any suggestions from inference response for project {ProjectId}", projectId);
-			return [];
+			_logger.LogWarning("No parseable suggestions in inference response for project {ProjectId}. Raw response length: {Len}",
+				projectId, inferenceResponse.Response.Length);
+			return new SuggestIdeasResult
+			{
+				Stage = SuggestIdeasStage.ParseFailed,
+				Message = "The model responded but did not produce ideas in the expected format. Try a different model or re-run.",
+				ModelUsed = inferenceResponse.ModelUsed,
+				InferenceDurationMs = inferenceResponse.DurationMs,
+				InferenceError = $"Raw response ({inferenceResponse.Response.Length} chars): {inferenceResponse.Response[..Math.Min(200, inferenceResponse.Response.Length)]}…"
+			};
 		}
 
 		var createdIdeas = new List<Idea>();
@@ -988,8 +1050,18 @@ Do not include code samples - just describe what needs to be built.";
 			}
 		}
 
-		_logger.LogInformation("Created {Count} suggested ideas for project {ProjectId}", createdIdeas.Count, projectId);
-		return createdIdeas;
+		_logger.LogInformation("Created {Count} suggested ideas for project {ProjectId} using model {Model}",
+			createdIdeas.Count, projectId, inferenceResponse.ModelUsed ?? "unknown");
+
+		return new SuggestIdeasResult
+		{
+			Success = true,
+			Stage = SuggestIdeasStage.Success,
+			Ideas = createdIdeas,
+			Message = $"{createdIdeas.Count} idea{(createdIdeas.Count == 1 ? "" : "s")} added from codebase analysis.",
+			ModelUsed = inferenceResponse.ModelUsed,
+			InferenceDurationMs = inferenceResponse.DurationMs
+		};
 	}
 
 	private static string BuildCodebaseSuggestionPrompt(string repoMap, string projectName, string? description, string? promptContext)

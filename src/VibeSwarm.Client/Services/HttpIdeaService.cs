@@ -118,10 +118,39 @@ public class HttpIdeaService : IIdeaService
         return await response.Content.ReadFromJsonAsync<Idea>(ct);
     }
 
-    public async Task<IEnumerable<Idea>> SuggestIdeasFromCodebaseAsync(Guid projectId, CancellationToken ct = default)
+    public async Task<SuggestIdeasResult> SuggestIdeasFromCodebaseAsync(Guid projectId, CancellationToken ct = default)
     {
-        var response = await _http.PostAsync($"/api/ideas/project/{projectId}/suggest", null, ct);
-        if (!response.IsSuccessStatusCode) return [];
-        return await response.Content.ReadFromJsonAsync<List<Idea>>(ct) ?? [];
+        // Local model generation can take well over 100 s (the browser HttpClient default).
+        // Use a 5-minute window so slower models still have a chance to respond.
+        using var timeoutCts = new CancellationTokenSource(TimeSpan.FromMinutes(5));
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
+
+        try
+        {
+            var response = await _http.PostAsync($"/api/ideas/project/{projectId}/suggest", null, linkedCts.Token);
+            if (!response.IsSuccessStatusCode)
+            {
+                return new SuggestIdeasResult
+                {
+                    Stage = SuggestIdeasStage.GenerateFailed,
+                    Message = $"Server returned {(int)response.StatusCode} {response.ReasonPhrase}."
+                };
+            }
+
+            return await response.Content.ReadFromJsonAsync<SuggestIdeasResult>(linkedCts.Token)
+                ?? new SuggestIdeasResult
+                {
+                    Stage = SuggestIdeasStage.GenerateFailed,
+                    Message = "Server returned an empty response."
+                };
+        }
+        catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested)
+        {
+            return new SuggestIdeasResult
+            {
+                Stage = SuggestIdeasStage.GenerateFailed,
+                Message = "The request timed out after 5 minutes. Try a smaller or faster model."
+            };
+        }
     }
 }

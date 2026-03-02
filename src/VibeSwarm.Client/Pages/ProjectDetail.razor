@@ -1601,21 +1601,35 @@ TimeSpan.FromSeconds(10) })
     {
         try
         {
-            var suggested = (await IdeaService.SuggestIdeasFromCodebaseAsync(ProjectId)).ToList();
-            await LoadIdeas();
+            var result = await IdeaService.SuggestIdeasFromCodebaseAsync(ProjectId);
 
-            if (suggested.Count > 0)
+            if (result.Success)
             {
-                var label = suggested.Count == 1 ? "idea" : "ideas";
+                await LoadIdeas();
+                var label = result.Ideas.Count == 1 ? "idea" : "ideas";
+                var durationHint = result.InferenceDurationMs.HasValue
+                    ? $" ({result.InferenceDurationMs.Value / 1000.0:F1}s)"
+                    : string.Empty;
+                var modelHint = !string.IsNullOrEmpty(result.ModelUsed)
+                    ? $" via {result.ModelUsed}"
+                    : string.Empty;
                 NotificationService.ShowSuccess(
-                    $"{suggested.Count} {label} added from codebase analysis.",
+                    $"{result.Ideas.Count} {label} added{modelHint}{durationHint}.",
                     "Suggestions Ready");
             }
             else
             {
-                NotificationService.ShowWarning(
-                    "No suggestions were returned. Ensure a local inference provider is configured and a model is available.",
-                    "No Suggestions");
+                var title = result.Stage switch
+                {
+                    SuggestIdeasStage.NotConfigured     => "Inference Not Configured",
+                    SuggestIdeasStage.ProviderUnreachable => "Provider Unreachable",
+                    SuggestIdeasStage.NoModel           => "No Model Assigned",
+                    SuggestIdeasStage.RepoMapFailed     => "Directory Scan Failed",
+                    SuggestIdeasStage.GenerateFailed    => "Inference Failed",
+                    SuggestIdeasStage.ParseFailed       => "Unexpected Response",
+                    _                                   => "Suggestion Failed"
+                };
+                NotificationService.ShowWarning(result.Message, title);
             }
         }
         catch (Exception ex)

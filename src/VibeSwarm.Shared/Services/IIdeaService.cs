@@ -159,9 +159,10 @@ public interface IIdeaService
 	/// <summary>
 	/// Uses local AI inference to scan the project directory and suggest feature ideas or improvements.
 	/// Requires a configured and available local inference provider.
+	/// Returns a <see cref="SuggestIdeasResult"/> that always carries a diagnostic stage and message,
+	/// even on failure, so the caller can surface precise feedback to the user.
 	/// </summary>
 	/// <param name="projectId">The project to analyze</param>
 	/// <param name="cancellationToken">Cancellation token</param>
-	/// <returns>The newly created idea suggestions, or empty if inference is unavailable</returns>
-	Task<IEnumerable<Idea>> SuggestIdeasFromCodebaseAsync(Guid projectId, CancellationToken cancellationToken = default);
+	Task<SuggestIdeasResult> SuggestIdeasFromCodebaseAsync(Guid projectId, CancellationToken cancellationToken = default);
 }
