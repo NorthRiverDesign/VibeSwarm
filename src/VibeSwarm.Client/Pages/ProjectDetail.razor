@@ -1599,43 +1599,10 @@ TimeSpan.FromSeconds(10) })
 
     private async Task SuggestIdeasFromCodebase()
     {
-        try
-        {
-            var result = await IdeaService.SuggestIdeasFromCodebaseAsync(ProjectId);
-
-            if (result.Success)
-            {
-                await LoadIdeas();
-                var label = result.Ideas.Count == 1 ? "idea" : "ideas";
-                var durationHint = result.InferenceDurationMs.HasValue
-                    ? $" ({result.InferenceDurationMs.Value / 1000.0:F1}s)"
-                    : string.Empty;
-                var modelHint = !string.IsNullOrEmpty(result.ModelUsed)
-                    ? $" via {result.ModelUsed}"
-                    : string.Empty;
-                NotificationService.ShowSuccess(
-                    $"{result.Ideas.Count} {label} added{modelHint}{durationHint}.",
-                    "Suggestions Ready");
-            }
-            else
-            {
-                var title = result.Stage switch
-                {
-                    SuggestIdeasStage.NotConfigured     => "Inference Not Configured",
-                    SuggestIdeasStage.ProviderUnreachable => "Provider Unreachable",
-                    SuggestIdeasStage.NoModel           => "No Model Assigned",
-                    SuggestIdeasStage.RepoMapFailed     => "Directory Scan Failed",
-                    SuggestIdeasStage.GenerateFailed    => "Inference Failed",
-                    SuggestIdeasStage.ParseFailed       => "Unexpected Response",
-                    _                                   => "Suggestion Failed"
-                };
-                NotificationService.ShowWarning(result.Message, title);
-            }
-        }
-        catch (Exception ex)
-        {
-            NotificationService.ShowError($"Error generating suggestions: {ex.Message}");
-        }
+        // The panel handles the full suggestion flow and notifications.
+        // This callback is invoked only on success so we reload the ideas list.
+        await LoadIdeas();
+        StateHasChanged();
     }
 
     public async ValueTask DisposeAsync()

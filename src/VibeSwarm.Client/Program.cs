@@ -16,10 +16,13 @@ builder.Services.AddTransient<CookieHandler>();
 
 // Configure HttpClient with the CookieHandler for cookie authentication
 // This ensures credentials (cookies) are included with all requests,
-// which is critical for iOS Safari's stricter cookie policies
+// which is critical for iOS Safari's stricter cookie policies.
+// Timeout is set to InfiniteTimeSpan so that per-request CancellationTokens
+// (e.g., the 5-minute window for local inference) are the sole timeout mechanism.
 builder.Services.AddHttpClient("VibeSwarm", client =>
 {
     client.BaseAddress = new Uri(builder.HostEnvironment.BaseAddress);
+    client.Timeout = Timeout.InfiniteTimeSpan;
 }).AddHttpMessageHandler<CookieHandler>();
 
 // Register the default HttpClient as the named client for DI

@@ -1,5 +1,7 @@
 @* Ideas panel component for managing project feature ideas *@
 @inject IProjectService ProjectService
+@inject IIdeaService IdeaService
+@inject NotificationService NotificationService
 @using VibeSwarm.Shared.Data
 @using VibeSwarm.Shared.LocalInference
 @using VibeSwarm.Shared.Models
@@ -65,6 +67,24 @@
 		</div>
 	</div>
 	<div class="card-body">
+		@* Suggestion feedback — shown when a suggest attempt finishes, success or failure *@
+		@if (_suggestResult != null)
+		{
+			<div class="alert @(_suggestResult.Success ? "alert-success" : "alert-warning") alert-dismissible py-2 mb-3 d-flex align-items-start gap-2">
+				<i class="bi @(_suggestResult.Success ? "bi-stars" : "bi-exclamation-triangle") flex-shrink-0 mt-1"></i>
+				<div class="flex-grow-1">
+					<span>@_suggestResult.Message</span>
+					@if (!string.IsNullOrEmpty(_suggestResult.InferenceError) && !_suggestResult.Success)
+					{
+						<div class="mt-1">
+							<small class="text-body-secondary font-monospace">@_suggestResult.InferenceError[..Math.Min(200, _suggestResult.InferenceError.Length)]</small>
+						</div>
+					}
+				</div>
+				<button type="button" class="btn-close" @onclick="() => _suggestResult = null" aria-label="Close"></button>
+			</div>
+		}
+
 		@* Add New Idea Form *@
 		<div class="mb-3">
 			<div class="d-flex gap-2 align-items-end">
@@ -265,6 +285,7 @@
 	private string NewIdeaDescription { get; set; } = string.Empty;
 	private Guid? StartingIdeaId { get; set; }
 	private bool IsSuggestingIdeas { get; set; }
+	private SuggestIdeasResult? _suggestResult;
 
 	// Start All confirmation modal state
 	private bool _showStartAllModal { get; set; }
@@ -480,11 +501,57 @@
 	private async Task SuggestIdeas()
 	{
 		IsSuggestingIdeas = true;
+		_suggestResult = null;
 		StateHasChanged();
 
 		try
 		{
-			await OnSuggestIdeas.InvokeAsync();
+			var result = await IdeaService.SuggestIdeasFromCodebaseAsync(CurrentProjectId);
+			_suggestResult = result;
+
+			if (result.Success)
+			{
+				// Tell the parent to reload the ideas list so the new suggestions appear
+				await OnSuggestIdeas.InvokeAsync();
+
+				var durationHint = result.InferenceDurationMs.HasValue
+					? $" ({result.InferenceDurationMs.Value / 1000.0:F1}s)"
+					: string.Empty;
+				var modelHint = !string.IsNullOrEmpty(result.ModelUsed)
+					? $" via {result.ModelUsed}"
+					: string.Empty;
+				NotificationService.ShowSuccess(
+					$"{result.Ideas.Count} idea{(result.Ideas.Count == 1 ? "" : "s")} added{modelHint}{durationHint}.",
+					"Suggestions Ready");
+			}
+			else
+			{
+				var title = result.Stage switch
+				{
+					SuggestIdeasStage.NotConfigured      => "Inference Not Configured",
+					SuggestIdeasStage.ProviderUnreachable => "Provider Unreachable",
+					SuggestIdeasStage.NoModel            => "No Model Assigned",
+					SuggestIdeasStage.RepoMapFailed      => "Directory Scan Failed",
+					SuggestIdeasStage.GenerateFailed     => "Inference Failed",
+					SuggestIdeasStage.ParseFailed        => "Unexpected Response",
+					_                                    => "Suggestion Failed"
+				};
+				NotificationService.ShowWarning(result.Message, title);
+			}
+		}
+		catch (OperationCanceledException)
+		{
+			// User navigated away — don't show any feedback
+		}
+		catch (Exception ex)
+		{
+			Console.Error.WriteLine($"[IdeasPanel.SuggestIdeas] Unexpected error: {ex}");
+			_suggestResult = new SuggestIdeasResult
+			{
+				Stage = SuggestIdeasStage.GenerateFailed,
+				Message = $"Unexpected error: {ex.Message}"
+			};
+			NotificationService.ShowError($"Error generating suggestions: {ex.Message}");
 		}
 		finally
 		{

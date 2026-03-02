@@ -120,16 +120,20 @@ public class HttpIdeaService : IIdeaService
 
     public async Task<SuggestIdeasResult> SuggestIdeasFromCodebaseAsync(Guid projectId, CancellationToken ct = default)
     {
-        // Local model generation can take well over 100 s (the browser HttpClient default).
-        // Use a 5-minute window so slower models still have a chance to respond.
+        // Local model generation can take well over 100 s (the old HttpClient default).
+        // The HttpClient registered in DI uses Timeout.InfiniteTimeSpan, so this
+        // CancellationTokenSource is now the sole timeout for the suggestion request.
         using var timeoutCts = new CancellationTokenSource(TimeSpan.FromMinutes(5));
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
 
         try
         {
             var response = await _http.PostAsync($"/api/ideas/project/{projectId}/suggest", null, linkedCts.Token);
+
             if (!response.IsSuccessStatusCode)
             {
+                var body = await response.Content.ReadAsStringAsync(CancellationToken.None);
+                Console.Error.WriteLine($"[Suggest] HTTP {(int)response.StatusCode}: {body}");
                 return new SuggestIdeasResult
                 {
                     Stage = SuggestIdeasStage.GenerateFailed,
@@ -137,19 +141,43 @@ public class HttpIdeaService : IIdeaService
                 };
             }
 
-            return await response.Content.ReadFromJsonAsync<SuggestIdeasResult>(linkedCts.Token)
-                ?? new SuggestIdeasResult
+            var result = await response.Content.ReadFromJsonAsync<SuggestIdeasResult>(CancellationToken.None);
+            if (result == null)
+            {
+                Console.Error.WriteLine("[Suggest] Response body deserialized to null.");
+                return new SuggestIdeasResult
                 {
                     Stage = SuggestIdeasStage.GenerateFailed,
-                    Message = "Server returned an empty response."
+                    Message = "Server returned an unreadable response."
                 };
+            }
+
+            Console.WriteLine($"[Suggest] Stage={result.Stage} Success={result.Success} Message={result.Message}");
+            return result;
         }
         catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested)
         {
+            Console.Error.WriteLine("[Suggest] Client-side 5-minute timeout fired.");
             return new SuggestIdeasResult
             {
                 Stage = SuggestIdeasStage.GenerateFailed,
                 Message = "The request timed out after 5 minutes. Try a smaller or faster model."
+            };
+        }
+        catch (OperationCanceledException ex)
+        {
+            // Cancelled by the caller (e.g. user navigated away) — not an error worth surfacing.
+            Console.WriteLine($"[Suggest] Request cancelled by caller: {ex.Message}");
+            throw;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[Suggest] Unexpected exception: {ex}");
+            return new SuggestIdeasResult
+            {
+                Stage = SuggestIdeasStage.GenerateFailed,
+                Message = $"Request failed: {ex.Message}",
+                InferenceError = ex.ToString()
             };
         }
     }
