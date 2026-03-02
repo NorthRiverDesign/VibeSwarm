@@ -125,10 +125,29 @@ public class IdeasController : ControllerBase
     [HttpPost("project/{projectId:guid}/suggest")]
     public async Task<IActionResult> SuggestIdeas(Guid projectId, CancellationToken ct)
     {
-        var result = await _ideaService.SuggestIdeasFromCodebaseAsync(projectId, ct);
         // Always return 200 so the client can read the diagnostic stage and message.
         // Success/failure is communicated via SuggestIdeasResult.Success.
-        return Ok(result);
+        try
+        {
+            var result = await _ideaService.SuggestIdeasFromCodebaseAsync(projectId, ct);
+            return Ok(result);
+        }
+        catch (OperationCanceledException)
+        {
+            return Ok(new SuggestIdeasResult
+            {
+                Stage = SuggestIdeasStage.GenerateFailed,
+                Message = "The suggestion request was cancelled."
+            });
+        }
+        catch (Exception ex)
+        {
+            return Ok(new SuggestIdeasResult
+            {
+                Stage = SuggestIdeasStage.GenerateFailed,
+                Message = $"An unexpected error occurred: {ex.Message}"
+            });
+        }
     }
 
     public record TransferRequest(Guid TargetProjectId);

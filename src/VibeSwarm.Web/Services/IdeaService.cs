@@ -913,6 +913,37 @@ Do not include code samples - just describe what needs to be built.";
 			};
 		}
 
+		try
+		{
+			return await SuggestIdeasInternalAsync(projectId, cancellationToken);
+		}
+		catch (OperationCanceledException)
+		{
+			_logger.LogWarning("Codebase suggestion was cancelled for project {ProjectId}", projectId);
+			return new SuggestIdeasResult
+			{
+				Stage = SuggestIdeasStage.GenerateFailed,
+				Message = "The suggestion request was cancelled."
+			};
+		}
+		catch (Exception ex)
+		{
+			_logger.LogError(ex, "Unhandled error in SuggestIdeasFromCodebaseAsync for project {ProjectId}", projectId);
+			return new SuggestIdeasResult
+			{
+				Stage = SuggestIdeasStage.GenerateFailed,
+				Message = $"An unexpected error occurred: {ex.Message}",
+				InferenceError = ex.ToString()
+			};
+		}
+	}
+
+	/// <summary>
+	/// Internal implementation of SuggestIdeasFromCodebaseAsync with all per-stage error handling.
+	/// The public method wraps this with a top-level safety net.
+	/// </summary>
+	private async Task<SuggestIdeasResult> SuggestIdeasInternalAsync(Guid projectId, CancellationToken cancellationToken)
+	{
 		var project = await _dbContext.Projects
 			.FirstOrDefaultAsync(p => p.Id == projectId, cancellationToken);
 
@@ -930,7 +961,8 @@ Do not include code samples - just describe what needs to be built.";
 		InferenceHealthResult health;
 		try
 		{
-			health = await _inferenceService.CheckHealthAsync(ct: cancellationToken);
+			// _inferenceService is guaranteed non-null by the caller (SuggestIdeasFromCodebaseAsync checks it)
+			health = await _inferenceService!.CheckHealthAsync(ct: cancellationToken);
 		}
 		catch (Exception ex)
 		{
@@ -974,7 +1006,7 @@ Do not include code samples - just describe what needs to be built.";
 		try
 		{
 			_logger.LogInformation("Sending codebase suggestion request to local inference for project {ProjectId}", projectId);
-			inferenceResponse = await _inferenceService.GenerateForTaskAsync("suggest", prompt, systemPrompt, cancellationToken);
+			inferenceResponse = await _inferenceService!.GenerateForTaskAsync("suggest", prompt, systemPrompt, cancellationToken);
 		}
 		catch (OperationCanceledException)
 		{

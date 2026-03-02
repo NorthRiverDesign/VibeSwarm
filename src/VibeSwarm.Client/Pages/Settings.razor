@@ -10,14 +10,36 @@
 
 <PageHeader Title="Settings" />
 
-<div class="row g-3 g-lg-4">
-	<div class="col-12 col-lg-8">
-		<div class="card">
-			<div class="card-header bg-body-secondary">
-				<h5 class="mb-0 fw-semibold">
-					<i class="bi bi-gear me-2"></i>Application Settings
-				</h5>
-			</div>
+<ul class="nav nav-tabs mb-4" role="tablist">
+	<li class="nav-item" role="presentation">
+		<button class="nav-link @(_activeTab == "app" ? "active" : "")" @onclick='() => SetTab("app")' type="button">
+			<i class="bi bi-gear me-2 d-none d-sm-inline"></i>App Settings
+		</button>
+	</li>
+	<li class="nav-item" role="presentation">
+		<button class="nav-link @(_activeTab == "inference" ? "active" : "")" @onclick='() => SetTab("inference")' type="button">
+			<i class="bi bi-cpu me-2 d-none d-sm-inline"></i>Local Inference
+			@if (_inferenceProvider != null)
+			{
+				<span class="ms-1 badge rounded-pill @(_inferenceHealthy ? "bg-success" : "bg-danger")" style="font-size:.65em">●</span>
+			}
+		</button>
+	</li>
+	<li class="nav-item" role="presentation">
+		<button class="nav-link @(_activeTab == "about" ? "active" : "")" @onclick='() => SetTab("about")' type="button">
+			<i class="bi bi-info-circle me-2 d-none d-sm-inline"></i>About
+		</button>
+	</li>
+</ul>
+
+@if (_activeTab == "app")
+{
+	<div class="card">
+		<div class="card-header bg-body-secondary">
+			<h5 class="mb-0 fw-semibold">
+				<i class="bi bi-gear me-2"></i>Application Settings
+			</h5>
+		</div>
 			<div class="card-body">
 				@if (_isLoading)
 				{
@@ -142,12 +164,14 @@
 				}
 			</div>
 		</div>
-		<div class="card mt-3 mt-lg-4">
-			<div
-				class="card-header bg-body-secondary d-flex align-items-center justify-content-between flex-wrap gap-2">
-				<h5 class="mb-0 fw-semibold">
-					<i class="bi bi-cpu me-2"></i>Local Inference
-				</h5>
+}
+else if (_activeTab == "inference")
+{
+	<div class="card">
+		<div class="card-header bg-body-secondary d-flex align-items-center justify-content-between flex-wrap gap-2">
+			<h5 class="mb-0 fw-semibold">
+				<i class="bi bi-cpu me-2"></i>Local Inference
+			</h5>
 				@if (_inferenceProvider != null)
 				{
 					<div class="d-flex align-items-center gap-2">
@@ -287,16 +311,74 @@
 				}
 			</div>
 		</div>
-	</div>
 
-	<div class="col-12 col-lg-4">
-		<div class="card">
+	@if (_inferenceProvider != null)
+	{
+		<div class="card mt-3">
 			<div class="card-header bg-body-secondary">
 				<h5 class="mb-0 fw-semibold">
-					<i class="bi bi-info-circle me-2"></i>About
+					<i class="bi bi-chat-square-dots me-2"></i>Test Inference
 				</h5>
 			</div>
 			<div class="card-body">
+				<div class="mb-3">
+					<label for="testPrompt" class="form-label">Prompt</label>
+					<textarea id="testPrompt" class="form-control font-monospace" rows="3"
+							  @bind="_testPrompt" placeholder="Enter a test prompt..."></textarea>
+				</div>
+				<button type="button" class="btn btn-primary"
+						@onclick="TestInferenceGeneration"
+						disabled="@(_isTesting || string.IsNullOrWhiteSpace(_testPrompt))">
+					@if (_isTesting)
+					{
+						<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+						<span>Sending...</span>
+					}
+					else
+					{
+						<i class="bi bi-send me-1"></i>
+						<span>Send</span>
+					}
+				</button>
+				@if (_testResponse != null)
+				{
+					<hr />
+					@if (_testResponse.Success)
+					{
+						<div class="d-flex flex-wrap gap-3 small text-body-secondary mb-2">
+							@if (!string.IsNullOrEmpty(_testResponse.ModelUsed))
+							{
+								<span><i class="bi bi-cpu me-1"></i>@_testResponse.ModelUsed</span>
+							}
+							@if (_testResponse.DurationMs.HasValue)
+							{
+								<span><i class="bi bi-clock me-1"></i>@((_testResponse.DurationMs.Value / 1000.0).ToString("F2"))s</span>
+							}
+							@if (_testResponse.CompletionTokens.HasValue)
+							{
+								<span><i class="bi bi-hash me-1"></i>@_testResponse.CompletionTokens tokens</span>
+							}
+						</div>
+						<pre class="p-3 rounded bg-body-secondary small mb-0" style="white-space:pre-wrap;word-break:break-word;">@_testResponse.Response</pre>
+					}
+					else
+					{
+						<Alert Type="Alert.AlertType.Danger" Message="@(_testResponse.Error ?? "An unknown error occurred.")" />
+					}
+				}
+			</div>
+		</div>
+	}
+}
+else
+{
+	<div class="card">
+		<div class="card-header bg-body-secondary">
+			<h5 class="mb-0 fw-semibold">
+				<i class="bi bi-info-circle me-2"></i>About VibeSwarm
+			</h5>
+		</div>
+		<div class="card-body">
 				<div class="d-flex align-items-center gap-2 mb-3">
 					<img src="img/logo_icon.png" alt="VibeSwarm" class="brand-icon"
 						 style="width: 32px; height: 32px;" />
@@ -307,59 +389,57 @@
 					in writing, reviewing, and optimizing code.
 				</p>
 				<div class="small text-body-secondary">
-					<div class="d-flex align-items-center gap-2 mb-2">
-						<i class="bi bi-pc-display opacity-75"></i>
-						<span><strong>Platform:</strong>
-							@System.Runtime.InteropServices.RuntimeInformation.OSDescription</span>
-						</div>
-						<div class="d-flex align-items-center gap-2 mb-2">
-							<i class="bi bi-hdd opacity-75"></i>
-							<span><strong>Runtime:</strong>
-								@System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription</span>
-							</div>
-							@if (_settings.UpdatedAt.HasValue)
-							{
-								<div class="d-flex align-items-center gap-2">
-									<i class="bi bi-clock-history opacity-75"></i>
-									<span><strong>Last Updated:</strong> @_settings.UpdatedAt.Value.FormatDateTimeShort()</span>
-								</div>
-							}
-						</div>
-					</div>
+				<div class="d-flex align-items-center gap-2 mb-2">
+					<i class="bi bi-pc-display opacity-75"></i>
+					<span><strong>Platform:</strong> @System.Runtime.InteropServices.RuntimeInformation.OSDescription</span>
 				</div>
-
-				<div class="card mt-3">
-					<div class="card-header bg-body-secondary">
-						<h5 class="mb-0 fw-semibold">
-							<i class="bi bi-lightbulb me-2"></i>Tips
-						</h5>
-					</div>
-					<div class="card-body small">
-						<ul class="mb-0 ps-3">
-							<li class="mb-2">
-								Set a default projects directory to quickly create new projects without typing
-								the full path each time.
-							</li>
-							<li class="mb-2">
-								The directory browser helps you navigate the host file system to find the right
-								folder.
-							</li>
-							<li>
-								VibeSwarm can work with any directory that the host process has access to.
-							</li>
-						</ul>
-					</div>
+				<div class="d-flex align-items-center gap-2 mb-2">
+					<i class="bi bi-hdd opacity-75"></i>
+					<span><strong>Runtime:</strong> @System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription</span>
 				</div>
-
-				<ToolDetectionCard />
+				@if (_settings.UpdatedAt.HasValue)
+				{
+					<div class="d-flex align-items-center gap-2">
+						<i class="bi bi-clock-history opacity-75"></i>
+						<span><strong>Settings Last Updated:</strong> @_settings.UpdatedAt.Value.FormatDateTimeShort()</span>
+					</div>
+				}
 			</div>
 		</div>
+	</div>
 
-		@if (_showDirectoryBrowser)
-		{
-			<DirectoryBrowser @ref="_directoryBrowser" InitialPath="@_settings.DefaultProjectsDirectory"
-							  OnDirectorySelected="OnDirectorySelected" OnClosed="CloseDirectoryBrowser" />
-		}
+	<div class="card mt-3">
+		<div class="card-header bg-body-secondary">
+			<h5 class="mb-0 fw-semibold">
+				<i class="bi bi-lightbulb me-2"></i>Tips
+			</h5>
+		</div>
+		<div class="card-body small">
+			<ul class="mb-0 ps-3">
+				<li class="mb-2">
+					Set a default projects directory to quickly create new projects without typing
+					the full path each time.
+				</li>
+				<li class="mb-2">
+					The directory browser helps you navigate the host file system to find the right folder.
+				</li>
+				<li>
+					VibeSwarm can work with any directory that the host process has access to.
+				</li>
+			</ul>
+		</div>
+	</div>
+
+	<div class="mt-3">
+		<ToolDetectionCard />
+	</div>
+}
+
+@if (_showDirectoryBrowser)
+{
+	<DirectoryBrowser @ref="_directoryBrowser" InitialPath="@_settings.DefaultProjectsDirectory"
+					  OnDirectorySelected="OnDirectorySelected" OnClosed="CloseDirectoryBrowser" />
+}
 
 <ScanProjectsModal @ref="_scanProjectsModal" OnProjectsImported="OnProjectsImported" />
 
@@ -382,8 +462,22 @@
 	private bool _isRefreshingModels = false;
 	private bool _inferenceHealthy = false;
 
+	// Tab navigation state
+	private string _activeTab = "app";
+
+	// Inference test state
+	private string _testPrompt = "Say hello in one sentence.";
+	private bool _isTesting = false;
+	private InferenceResponse? _testResponse = null;
+
 	private string _placeholder => OperatingSystem.IsWindows() ? @"C:\Projects" : "/home/user/projects";
 	private string _examplePath => OperatingSystem.IsWindows() ? @"C:\Projects" : "/home/user/projects";
+
+	private void SetTab(string tab)
+	{
+		_activeTab = tab;
+		_testResponse = null;
+	}
 
 	protected override async Task OnInitializedAsync()
 	{
@@ -663,6 +757,32 @@
 		catch
 		{
 			_inferenceHealthy = false;
+		}
+	}
+
+	private async Task TestInferenceGeneration()
+	{
+		if (string.IsNullOrWhiteSpace(_testPrompt)) return;
+
+		_isTesting = true;
+		_testResponse = null;
+
+		try
+		{
+			var model = string.IsNullOrEmpty(_selectedModelId) ? null : _selectedModelId;
+			_testResponse = await InferenceService.GenerateAsync(new InferenceRequest
+			{
+				Prompt = _testPrompt.Trim(),
+				Model = model
+			});
+		}
+		catch (Exception ex)
+		{
+			_testResponse = new InferenceResponse { Success = false, Error = ex.Message };
+		}
+		finally
+		{
+			_isTesting = false;
 		}
 	}
 }

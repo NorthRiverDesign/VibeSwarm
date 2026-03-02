@@ -30,9 +30,31 @@ public class HttpInferenceService : IInferenceService
 
 	public async Task<InferenceResponse> GenerateAsync(InferenceRequest request, CancellationToken ct = default)
 	{
-		var response = await _http.PostAsJsonAsync("/api/inference/generate", request, ct);
-		response.EnsureSuccessStatusCode();
-		return await response.Content.ReadFromJsonAsync<InferenceResponse>(ct) ?? new InferenceResponse { Success = false, Error = "Empty response" };
+		try
+		{
+			var response = await _http.PostAsJsonAsync("/api/inference/generate", request, ct);
+
+			if (!response.IsSuccessStatusCode)
+			{
+				var body = await response.Content.ReadAsStringAsync(CancellationToken.None);
+				return new InferenceResponse
+				{
+					Success = false,
+					Error = $"Server returned {(int)response.StatusCode}: {(string.IsNullOrWhiteSpace(body) ? response.ReasonPhrase : body)}"
+				};
+			}
+
+			return await response.Content.ReadFromJsonAsync<InferenceResponse>(ct)
+				?? new InferenceResponse { Success = false, Error = "Empty response from server" };
+		}
+		catch (OperationCanceledException)
+		{
+			return new InferenceResponse { Success = false, Error = "Request was cancelled or timed out." };
+		}
+		catch (Exception ex)
+		{
+			return new InferenceResponse { Success = false, Error = ex.Message };
+		}
 	}
 
 	public async Task<InferenceResponse> GenerateForTaskAsync(string taskType, string prompt, string? systemPrompt = null, CancellationToken ct = default)
