@@ -117,4 +117,11 @@ public class HttpIdeaService : IIdeaService
         if (!response.IsSuccessStatusCode) return null;
         return await response.Content.ReadFromJsonAsync<Idea>(ct);
     }
+
+    public async Task<IEnumerable<Idea>> SuggestIdeasFromCodebaseAsync(Guid projectId, CancellationToken ct = default)
+    {
+        var response = await _http.PostAsync($"/api/ideas/project/{projectId}/suggest", null, ct);
+        if (!response.IsSuccessStatusCode) return [];
+        return await response.Content.ReadFromJsonAsync<List<Idea>>(ct) ?? [];
+    }
 }

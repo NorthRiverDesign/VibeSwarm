@@ -1,3 +1,4 @@
+using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using VibeSwarm.Shared.Data;
@@ -898,5 +899,173 @@ Expand this idea into a detailed implementation specification. Include:
 
 Keep the specification concise but complete. Focus on actionable implementation details.
 Do not include code samples - just describe what needs to be built.";
+	}
+
+	public async Task<IEnumerable<Idea>> SuggestIdeasFromCodebaseAsync(Guid projectId, CancellationToken cancellationToken = default)
+	{
+		if (_inferenceService == null)
+		{
+			_logger.LogWarning("Local inference service is not available for codebase suggestion on project {ProjectId}", projectId);
+			return [];
+		}
+
+		var project = await _dbContext.Projects
+			.FirstOrDefaultAsync(p => p.Id == projectId, cancellationToken);
+
+		if (project == null || string.IsNullOrEmpty(project.WorkingPath))
+		{
+			_logger.LogWarning("Project {ProjectId} not found or has no working path", projectId);
+			return [];
+		}
+
+		// Verify inference is reachable before building the prompt
+		InferenceHealthResult health;
+		try
+		{
+			health = await _inferenceService.CheckHealthAsync(ct: cancellationToken);
+		}
+		catch (Exception ex)
+		{
+			_logger.LogWarning(ex, "Failed to check inference health for project {ProjectId}", projectId);
+			return [];
+		}
+
+		if (!health.IsAvailable)
+		{
+			_logger.LogWarning("Local inference is not available for project {ProjectId} suggestion", projectId);
+			return [];
+		}
+
+		var repoMap = RepoMapGenerator.GenerateRepoMap(project.WorkingPath);
+		if (string.IsNullOrEmpty(repoMap))
+		{
+			_logger.LogWarning("Could not generate repo map for project {ProjectId}", projectId);
+			return [];
+		}
+
+		var prompt = BuildCodebaseSuggestionPrompt(repoMap, project.Name, project.Description, project.PromptContext);
+		const string systemPrompt = "You are a senior software engineer performing a codebase review. Identify concrete, actionable improvements. Return only a plain list of ideas, one per line starting with \"- \". No explanations or headers.";
+
+		InferenceResponse response;
+		try
+		{
+			response = await _inferenceService.GenerateForTaskAsync("suggest", prompt, systemPrompt, cancellationToken);
+		}
+		catch (Exception ex)
+		{
+			_logger.LogWarning(ex, "Local inference request failed for codebase suggestion on project {ProjectId}", projectId);
+			return [];
+		}
+
+		if (!response.Success || string.IsNullOrEmpty(response.Response))
+		{
+			_logger.LogWarning("Inference returned no response for project {ProjectId} suggestion: {Error}", projectId, response.Error);
+			return [];
+		}
+
+		var suggestions = ParseCodebaseSuggestions(response.Response);
+		if (suggestions.Count == 0)
+		{
+			_logger.LogWarning("Could not parse any suggestions from inference response for project {ProjectId}", projectId);
+			return [];
+		}
+
+		var createdIdeas = new List<Idea>();
+		foreach (var suggestion in suggestions)
+		{
+			try
+			{
+				var idea = await CreateAsync(new Idea
+				{
+					ProjectId = projectId,
+					Description = suggestion
+				}, cancellationToken);
+				createdIdeas.Add(idea);
+			}
+			catch (Exception ex)
+			{
+				_logger.LogWarning(ex, "Failed to save suggested idea for project {ProjectId}", projectId);
+			}
+		}
+
+		_logger.LogInformation("Created {Count} suggested ideas for project {ProjectId}", createdIdeas.Count, projectId);
+		return createdIdeas;
+	}
+
+	private static string BuildCodebaseSuggestionPrompt(string repoMap, string projectName, string? description, string? promptContext)
+	{
+		var sb = new StringBuilder();
+
+		sb.AppendLine($"<overview>");
+		sb.AppendLine($"You are reviewing the \"{projectName}\" codebase to identify improvements and missing features.");
+		sb.AppendLine("</overview>");
+
+		if (!string.IsNullOrEmpty(description))
+		{
+			sb.AppendLine("<context>");
+			sb.AppendLine($"Project description: {description}");
+			sb.AppendLine("</context>");
+		}
+
+		if (!string.IsNullOrEmpty(promptContext))
+		{
+			sb.AppendLine("<project_instructions>");
+			sb.AppendLine(promptContext);
+			sb.AppendLine("</project_instructions>");
+		}
+
+		sb.AppendLine("<repository_structure>");
+		sb.AppendLine(repoMap);
+		sb.AppendLine("</repository_structure>");
+
+		sb.AppendLine("<objective>");
+		sb.AppendLine("Analyze the repository structure and identify areas for improvement. Consider:");
+		sb.AppendLine("- Missing features that would benefit users");
+		sb.AppendLine("- Error handling, logging, or validation gaps");
+		sb.AppendLine("- Performance or security improvements");
+		sb.AppendLine("- Testing gaps or developer experience improvements");
+		sb.AppendLine("- UX improvements for any UI components");
+		sb.AppendLine("</objective>");
+
+		sb.AppendLine("<goal>");
+		sb.AppendLine("Return a list of 3 to 7 concrete, actionable ideas. Each idea must be a short description (1-2 sentences).");
+		sb.AppendLine("Format: one idea per line, each starting with \"- \". No headers, no explanations outside the list.");
+		sb.AppendLine("Example:");
+		sb.AppendLine("- Add input validation to the registration form to prevent invalid email addresses");
+		sb.AppendLine("- Implement a retry mechanism for failed API calls to improve reliability");
+		sb.AppendLine("</goal>");
+
+		return sb.ToString();
+	}
+
+	/// <summary>
+	/// Parses a list of suggestions from an LLM response.
+	/// Handles common formats: "- item", "• item", and "1. item".
+	/// </summary>
+	private static List<string> ParseCodebaseSuggestions(string response)
+	{
+		var suggestions = new List<string>();
+
+		foreach (var rawLine in response.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+		{
+			var line = rawLine.Trim();
+
+			string? extracted = null;
+
+			if (line.StartsWith("- ") && line.Length > 2)
+				extracted = line[2..].Trim();
+			else if (line.StartsWith("• ") && line.Length > 2)
+				extracted = line[2..].Trim();
+			else if (line.Length > 3 && char.IsDigit(line[0]) && line[1] == '.' && line[2] == ' ')
+				extracted = line[3..].Trim();
+			else if (line.Length > 4 && char.IsDigit(line[0]) && char.IsDigit(line[1]) && line[2] == '.' && line[3] == ' ')
+				extracted = line[4..].Trim();
+
+			if (!string.IsNullOrWhiteSpace(extracted) && extracted.Length >= 10)
+				suggestions.Add(extracted);
+		}
+
+		// Cap at 7 ideas as instructed in the prompt
+		return suggestions.Take(7).ToList();
 	}
 }

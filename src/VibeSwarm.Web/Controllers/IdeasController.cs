@@ -122,6 +122,13 @@ public class IdeasController : ControllerBase
         return result == null ? BadRequest() : Ok(result);
     }
 
+    [HttpPost("project/{projectId:guid}/suggest")]
+    public async Task<IActionResult> SuggestIdeas(Guid projectId, CancellationToken ct)
+    {
+        var ideas = await _ideaService.SuggestIdeasFromCodebaseAsync(projectId, ct);
+        return Ok(ideas);
+    }
+
     public record TransferRequest(Guid TargetProjectId);
     public record ApproveRequest(string? EditedDescription);
 }

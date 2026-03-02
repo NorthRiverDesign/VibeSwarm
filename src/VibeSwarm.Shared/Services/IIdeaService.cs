@@ -155,4 +155,13 @@ public interface IIdeaService
 	/// <param name="cancellationToken">Cancellation token</param>
 	/// <returns>The reset idea</returns>
 	Task<Idea?> RejectExpansionAsync(Guid ideaId, CancellationToken cancellationToken = default);
+
+	/// <summary>
+	/// Uses local AI inference to scan the project directory and suggest feature ideas or improvements.
+	/// Requires a configured and available local inference provider.
+	/// </summary>
+	/// <param name="projectId">The project to analyze</param>
+	/// <param name="cancellationToken">Cancellation token</param>
+	/// <returns>The newly created idea suggestions, or empty if inference is unavailable</returns>
+	Task<IEnumerable<Idea>> SuggestIdeasFromCodebaseAsync(Guid projectId, CancellationToken cancellationToken = default);
 }

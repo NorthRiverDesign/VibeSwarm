@@ -12,6 +12,22 @@
 		</h5>
 		<div class="d-flex align-items-center gap-2">
 			<span class="badge bg-secondary">@Ideas.Count</span>
+			@if (HasLocalInference)
+			{
+				<button type="button" class="btn btn-sm btn-outline-secondary" @onclick="SuggestIdeas"
+						disabled="@(IsSuggestingIdeas || IsProcessingActive)"
+						title="Use local AI to scan the codebase and suggest ideas">
+					@if (IsSuggestingIdeas)
+					{
+						<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+					}
+					else
+					{
+						<i class="bi bi-stars me-1"></i>
+					}
+					<span class="d-none d-sm-inline">Suggest</span>
+				</button>
+			}
 			@if (Ideas.Count >= 1)
 			{
 				@if (IsProcessingActive)
@@ -226,6 +242,9 @@
 	public EventCallback<Guid> OnRejectExpansion { get; set; }
 
 	[Parameter]
+	public EventCallback OnSuggestIdeas { get; set; }
+
+	[Parameter]
 	public AutoCommitMode CurrentAutoCommitMode { get; set; } = AutoCommitMode.Off;
 
 	[Parameter]
@@ -245,6 +264,7 @@
 
 	private string NewIdeaDescription { get; set; } = string.Empty;
 	private Guid? StartingIdeaId { get; set; }
+	private bool IsSuggestingIdeas { get; set; }
 
 	// Start All confirmation modal state
 	private bool _showStartAllModal { get; set; }
