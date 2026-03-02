@@ -477,6 +477,22 @@
 
 	private int UnprocessedIdeasCount => Ideas.Count(i => !i.IsProcessing && !i.JobId.HasValue);
 
+	private async Task SuggestIdeas()
+	{
+		IsSuggestingIdeas = true;
+		StateHasChanged();
+
+		try
+		{
+			await OnSuggestIdeas.InvokeAsync();
+		}
+		finally
+		{
+			IsSuggestingIdeas = false;
+			StateHasChanged();
+		}
+	}
+
 	private void OpenStartAllModal()
 	{
 		_startAllAutoCommitMode = CurrentAutoCommitMode;

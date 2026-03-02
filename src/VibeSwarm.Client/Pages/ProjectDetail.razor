@@ -57,7 +57,8 @@ else
                         OnDeleteIdea="DeleteIdea" OnCopyIdea="CopyIdea" OnMoveIdea="MoveIdea" OnStartSingleIdea="StartSingleIdea"
                         OnExpandIdea="ExpandIdea" OnCancelExpansion="CancelIdeaExpansion" OnApproveExpansion="ApproveIdeaExpansion"
                         OnRejectExpansion="RejectIdeaExpansion" AvailableLocalModels="@_availableLocalModels"
-                        HasLocalInference="@_hasLocalInference" AvailableProviders="@Providers.Where(p => p.IsEnabled).ToList()" />
+                        HasLocalInference="@_hasLocalInference" AvailableProviders="@Providers.Where(p => p.IsEnabled).ToList()"
+                        OnSuggestIdeas="SuggestIdeasFromCodebase" />
         </div>
 
         @* Jobs list on RIGHT for monitoring progress *@
@@ -1593,6 +1594,33 @@ TimeSpan.FromSeconds(10) })
         catch (Exception ex)
         {
             NotificationService.ShowError($"Error rejecting expansion: {ex.Message}");
+        }
+    }
+
+    private async Task SuggestIdeasFromCodebase()
+    {
+        try
+        {
+            var suggested = (await IdeaService.SuggestIdeasFromCodebaseAsync(ProjectId)).ToList();
+            await LoadIdeas();
+
+            if (suggested.Count > 0)
+            {
+                var label = suggested.Count == 1 ? "idea" : "ideas";
+                NotificationService.ShowSuccess(
+                    $"{suggested.Count} {label} added from codebase analysis.",
+                    "Suggestions Ready");
+            }
+            else
+            {
+                NotificationService.ShowWarning(
+                    "No suggestions were returned. Ensure a local inference provider is configured and a model is available.",
+                    "No Suggestions");
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.ShowError($"Error generating suggestions: {ex.Message}");
         }
     }
 
