@@ -86,7 +86,7 @@ public class GitController : ControllerBase
     public async Task<IActionResult> IsGitHubCliAuthenticated(CancellationToken ct) => Ok(await _gitService.IsGitHubCliAuthenticatedAsync(ct));
 
     [HttpPost("create-github-repo")]
-    public async Task<IActionResult> CreateGitHubRepo([FromBody] CreateGitHubRepoRequest req, CancellationToken ct) => Ok(await _gitService.CreateGitHubRepositoryAsync(req.Path, req.Name, req.Description, req.IsPrivate, null, ct));
+    public async Task<IActionResult> CreateGitHubRepo([FromBody] CreateGitHubRepoRequest req, CancellationToken ct) => Ok(await _gitService.CreateGitHubRepositoryAsync(req.Path, req.Name, req.Description, req.IsPrivate, null, ct, req.GitignoreTemplate, req.LicenseTemplate, req.InitializeReadme));
 
     [HttpPost("add-remote")]
     public async Task<IActionResult> AddRemote([FromBody] AddRemoteRequest req, CancellationToken ct) => Ok(await _gitService.AddRemoteAsync(req.Path, req.RemoteName, req.RemoteUrl, ct));
@@ -123,7 +123,7 @@ public class GitController : ControllerBase
     public record CreateBranchRequest(string Path, string Branch, bool SwitchToBranch = true);
     public record DiscardRequest(string Path, bool IncludeUntracked = true);
     public record InitRequest(string Path);
-    public record CreateGitHubRepoRequest(string Path, string Name, string? Description, bool IsPrivate = false);
+    public record CreateGitHubRepoRequest(string Path, string Name, string? Description, bool IsPrivate = false, string? GitignoreTemplate = null, string? LicenseTemplate = null, bool InitializeReadme = false);
     public record AddRemoteRequest(string Path, string RemoteName, string RemoteUrl);
     public record PruneRequest(string Path, string? Remote);
 }

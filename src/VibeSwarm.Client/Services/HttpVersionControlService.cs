@@ -256,14 +256,20 @@ public class HttpVersionControlService : IVersionControlService
         string? description = null,
         bool isPrivate = false,
         Action<string>? progressCallback = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        string? gitignoreTemplate = null,
+        string? licenseTemplate = null,
+        bool initializeReadme = false)
     {
         var response = await _http.PostAsJsonAsync("/api/git/create-github-repo", new
         {
             Path = workingDirectory,
             Name = repositoryName,
             Description = description,
-            IsPrivate = isPrivate
+            IsPrivate = isPrivate,
+            GitignoreTemplate = gitignoreTemplate,
+            LicenseTemplate = licenseTemplate,
+            InitializeReadme = initializeReadme
         }, ct);
         return await response.Content.ReadFromJsonAsync<GitOperationResult>(ct) ?? new GitOperationResult { Success = false, Error = "Failed to parse response" };
     }

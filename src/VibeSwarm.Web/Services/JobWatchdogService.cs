@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using VibeSwarm.Shared.Data;
+using VibeSwarm.Shared.Providers;
 using VibeSwarm.Shared.Services;
 using VibeSwarm.Shared.Utilities;
 
@@ -20,9 +21,14 @@ public class JobWatchdogService : BackgroundService
 	private readonly string _workerInstanceId;
 
 	/// <summary>
-	/// How long a job can go without a heartbeat before it's considered stalled
+	/// Default stall threshold for SDK providers with streaming (regular events expected)
 	/// </summary>
-	private readonly TimeSpan _stallThreshold = TimeSpan.FromMinutes(2);
+	private readonly TimeSpan _sdkStallThreshold = TimeSpan.FromMinutes(3);
+
+	/// <summary>
+	/// Default stall threshold for CLI providers (model loading on low-powered hardware)
+	/// </summary>
+	private readonly TimeSpan _cliStallThreshold = TimeSpan.FromMinutes(5);
 
 	/// <summary>
 	/// How long a job can be in cancellation requested state before force cancellation
@@ -93,27 +99,77 @@ public class JobWatchdogService : BackgroundService
 	/// <summary>
 	/// Check for jobs that have stopped sending heartbeats but are still marked as running
 	/// </summary>
+	/// <summary>
+	/// Gets the stall threshold for a job based on its provider configuration.
+	/// Priority: Provider.StallTimeoutSeconds > connection-mode default
+	/// </summary>
+	private TimeSpan GetStallThreshold(Job job)
+	{
+		// User override on the provider entity
+		if (job.Provider?.StallTimeoutSeconds is > 0)
+		{
+			return TimeSpan.FromSeconds(job.Provider.StallTimeoutSeconds.Value);
+		}
+
+		// Provider-aware defaults
+		return job.Provider?.ConnectionMode switch
+		{
+			ProviderConnectionMode.SDK => _sdkStallThreshold,
+			_ => _cliStallThreshold
+		};
+	}
+
 	private async Task CheckForStalledJobsAsync(CancellationToken cancellationToken)
 	{
 		using var scope = _scopeFactory.CreateScope();
 		var dbContext = scope.ServiceProvider.GetRequiredService<VibeSwarmDbContext>();
 		var jobService = scope.ServiceProvider.GetRequiredService<IJobService>();
 
-		var cutoffTime = DateTime.UtcNow - _stallThreshold;
+		// Use the most conservative (longest) threshold to fetch candidates,
+		// then apply per-provider thresholds in memory
+		var maxCutoffTime = DateTime.UtcNow - _cliStallThreshold;
 
 		// Find jobs that are running but haven't had activity in a while
 		// Only consider jobs owned by THIS worker instance
-		var stalledJobs = await dbContext.Jobs
+		var candidateJobs = await dbContext.Jobs
+			.Include(j => j.Provider)
 			.Where(j => (j.Status == JobStatus.Started || j.Status == JobStatus.Processing))
 			.Where(j => j.WorkerInstanceId == _workerInstanceId)
-			.Where(j => j.LastHeartbeatAt.HasValue && j.LastHeartbeatAt.Value < cutoffTime)
+			.Where(j => j.LastHeartbeatAt.HasValue && j.LastHeartbeatAt.Value < maxCutoffTime)
 			.ToListAsync(cancellationToken);
+
+		// Apply per-provider stall thresholds
+		var stalledJobs = candidateJobs
+			.Where(j => j.LastHeartbeatAt!.Value < DateTime.UtcNow - GetStallThreshold(j))
+			.ToList();
 
 		foreach (var job in stalledJobs)
 		{
+			var threshold = GetStallThreshold(job);
+			var providerInfo = job.Provider != null ? $"{job.Provider.Name} ({job.Provider.ConnectionMode})" : "unknown";
+
 			_logger.LogWarning(
-				"Job {JobId} appears stalled (no heartbeat since {LastHeartbeat}). Retry count: {RetryCount}/{MaxRetries}. ProcessId: {ProcessId}",
-				job.Id, job.LastHeartbeatAt, job.RetryCount, job.MaxRetries, job.ProcessId);
+				"Job {JobId} appears stalled (no heartbeat since {LastHeartbeat}, threshold: {Threshold}s, provider: {Provider}). Retry count: {RetryCount}/{MaxRetries}. ProcessId: {ProcessId}",
+				job.Id, job.LastHeartbeatAt, (int)threshold.TotalSeconds, providerInfo, job.RetryCount, job.MaxRetries, job.ProcessId);
+
+			// Graduated response: first detection = warn, 2x threshold = take action
+			var timeSinceHeartbeat = DateTime.UtcNow - job.LastHeartbeatAt!.Value;
+			if (timeSinceHeartbeat < threshold * 2 && !job.ErrorMessage?.Contains("Stall detected") == true)
+			{
+				// First detection: warn but don't kill yet
+				_logger.LogWarning("Stall detected for job {JobId}, monitoring... (will act at {ActionTime})",
+					job.Id, job.LastHeartbeatAt.Value + threshold * 2);
+
+				job.CurrentActivity = "Stall detected, monitoring...";
+				job.ErrorMessage = "Stall detected, monitoring...";
+				await dbContext.SaveChangesAsync(cancellationToken);
+
+				if (_jobUpdateService != null)
+				{
+					await _jobUpdateService.NotifyJobActivity(job.Id, "Stall detected, monitoring...", DateTime.UtcNow);
+				}
+				continue;
+			}
 
 			// Try to kill the process if we have a PID
 			if (job.ProcessId.HasValue)
@@ -141,7 +197,7 @@ public class JobWatchdogService : BackgroundService
 				var errorDetails = job.ProcessId.HasValue
 					? "CLI process started but became unresponsive"
 					: "CLI process failed to start - check that the executable is accessible";
-				job.ErrorMessage = $"Job stalled after {_stallThreshold.TotalMinutes:F0} minutes without activity. {errorDetails}. Retry {job.RetryCount}/{job.MaxRetries}";
+				job.ErrorMessage = $"Job stalled after {threshold.TotalMinutes:F0} minutes without activity. {errorDetails}. Retry {job.RetryCount}/{job.MaxRetries}";
 
 				_logger.LogInformation("Job {JobId} reset for retry (attempt {RetryCount})", job.Id, job.RetryCount);
 			}

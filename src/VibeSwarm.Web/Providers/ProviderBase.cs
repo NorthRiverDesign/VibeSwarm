@@ -63,6 +63,9 @@ public abstract class ProviderBase : IProvider
         CurrentInitMode = options.InitMode;
         CurrentForkSession = options.ForkSession;
         CurrentUseAltScreen = options.UseAltScreen;
+        CurrentReasoningEffort = options.ReasoningEffort;
+        CurrentDisableLargeContext = options.DisableLargeContext;
+        CurrentBashEnvPath = options.BashEnvPath;
 
         return ExecuteWithSessionAsync(
             prompt,
@@ -85,7 +88,7 @@ public abstract class ProviderBase : IProvider
     /// <summary>
     /// Current environment variables (set by ExecuteWithOptionsAsync)
     /// </summary>
-    protected Dictionary<string, string>? CurrentEnvironmentVariables { get; private set; }
+    protected Dictionary<string, string>? CurrentEnvironmentVariables { get; set; }
 
     /// <summary>
     /// Current model to use (set by ExecuteWithOptionsAsync)
@@ -193,6 +196,21 @@ public abstract class ProviderBase : IProvider
     protected bool CurrentUseAltScreen { get; private set; }
 
     /// <summary>
+    /// Reasoning effort level (Claude --effort, Copilot SessionConfig.ReasoningEffort, OpenCode --reasoning)
+    /// </summary>
+    protected string? CurrentReasoningEffort { get; private set; }
+
+    /// <summary>
+    /// Whether to disable large context window (Claude CLAUDE_CODE_DISABLE_1M_CONTEXT)
+    /// </summary>
+    protected bool CurrentDisableLargeContext { get; private set; }
+
+    /// <summary>
+    /// Path to bash environment file (Copilot --bash-env)
+    /// </summary>
+    protected string? CurrentBashEnvPath { get; private set; }
+
+    /// <summary>
     /// Clears the execution context after a run completes
     /// </summary>
     protected void ClearExecutionContext()
@@ -221,6 +239,9 @@ public abstract class ProviderBase : IProvider
         CurrentInitMode = null;
         CurrentForkSession = false;
         CurrentUseAltScreen = false;
+        CurrentReasoningEffort = null;
+        CurrentDisableLargeContext = false;
+        CurrentBashEnvPath = null;
     }
 
     public abstract Task<ProviderInfo> GetProviderInfoAsync(CancellationToken cancellationToken = default);

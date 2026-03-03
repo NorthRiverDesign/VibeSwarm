@@ -1452,7 +1452,10 @@ public sealed class VersionControlService : IVersionControlService
 		string? description = null,
 		bool isPrivate = false,
 		Action<string>? progressCallback = null,
-		CancellationToken cancellationToken = default)
+		CancellationToken cancellationToken = default,
+		string? gitignoreTemplate = null,
+		string? licenseTemplate = null,
+		bool initializeReadme = false)
 	{
 		try
 		{
@@ -1504,8 +1507,16 @@ public sealed class VersionControlService : IVersionControlService
 				? $"--description \"{description.Replace("\"", "\\\"")}\""
 				: "";
 
+			var gitignoreArg = !string.IsNullOrEmpty(gitignoreTemplate)
+				? $"--gitignore \"{gitignoreTemplate}\""
+				: "";
+			var licenseArg = !string.IsNullOrEmpty(licenseTemplate)
+				? $"--license \"{licenseTemplate}\""
+				: "";
+			var readmeArg = initializeReadme ? "--add-readme" : "";
+
 			// Use gh repo create with --source flag to link to existing directory
-			var ghArgs = $"repo create \"{repositoryName}\" {visibility} {descArg} --source \"{workingDirectory}\" --remote origin --push".Trim();
+			var ghArgs = $"repo create \"{repositoryName}\" {visibility} {descArg} {gitignoreArg} {licenseArg} {readmeArg} --source \"{workingDirectory}\" --remote origin --push".Trim();
 
 			var result = await _commandExecutor.ExecuteRawAsync(
 				"gh",

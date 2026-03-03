@@ -194,6 +194,13 @@ public class ClaudeProvider : CliProviderBase
             args.Add($"--{CurrentInitMode}");
         }
 
+        // Reasoning effort level (v2.1.63+)
+        if (!string.IsNullOrEmpty(CurrentReasoningEffort))
+        {
+            args.Add("--effort");
+            args.Add(CurrentReasoningEffort);
+        }
+
         // File attachments (via @-mention syntax isn't available in -p mode,
         // but files can be referenced in the prompt)
         // Note: Claude CLI doesn't have a --file flag; files are @-mentioned in the prompt.
@@ -207,6 +214,13 @@ public class ClaudeProvider : CliProviderBase
         if (CurrentAdditionalArgs != null)
         {
             args.AddRange(CurrentAdditionalArgs);
+        }
+
+        // Inject env var to disable 1M context window when requested
+        if (CurrentDisableLargeContext)
+        {
+            CurrentEnvironmentVariables ??= new Dictionary<string, string>();
+            CurrentEnvironmentVariables["CLAUDE_CODE_DISABLE_1M_CONTEXT"] = "1";
         }
 
         var fullArguments = string.Join(" ", args);

@@ -298,7 +298,10 @@
 				WorkingPath,
 				args.Name,
 				args.Description,
-				args.IsPrivate);
+				args.IsPrivate,
+				gitignoreTemplate: args.GitignoreTemplate,
+				licenseTemplate: args.LicenseTemplate,
+				initializeReadme: args.InitializeReadme);
 
 			if (result.Success)
 			{

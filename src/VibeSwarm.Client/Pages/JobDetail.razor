@@ -519,7 +519,18 @@ TimeSpan.FromSeconds(10) })
     {
         lock (_liveOutput)
         {
-            _liveOutput.Add(new OutputLine { Content = line, IsError = isError, Timestamp = timestamp });
+            var isThinking = line.StartsWith("[Reasoning]") || line.StartsWith("[Thinking]");
+            var category = isThinking ? "thinking"
+                : line.StartsWith("[Tool]") || line.StartsWith("[Tool Result]") ? "tool"
+                : "text";
+            _liveOutput.Add(new OutputLine
+            {
+                Content = line,
+                IsError = isError,
+                Timestamp = timestamp,
+                IsThinking = isThinking,
+                ContentCategory = category
+            });
             while (_liveOutput.Count > MaxOutputLines)
             {
                 _liveOutput.RemoveAt(0);

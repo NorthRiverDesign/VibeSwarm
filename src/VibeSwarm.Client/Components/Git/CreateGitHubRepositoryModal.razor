@@ -41,6 +41,47 @@
 			</div>
 		</div>
 
+		<div class="mb-3">
+			<label for="gitignoreTemplate" class="form-label">
+				.gitignore Template <span class="text-body-secondary fw-normal">(optional)</span>
+			</label>
+			<select class="form-select" id="gitignoreTemplate" @bind="_gitignoreTemplate" disabled="@IsCreating">
+				<option value="">None</option>
+				<option value="Node">Node</option>
+				<option value="Python">Python</option>
+				<option value="CSharp">C#</option>
+				<option value="Java">Java</option>
+				<option value="Go">Go</option>
+				<option value="Rust">Rust</option>
+				<option value="VisualStudio">Visual Studio</option>
+				<option value="Unity">Unity</option>
+			</select>
+		</div>
+
+		<div class="mb-3">
+			<label for="licenseTemplate" class="form-label">
+				License <span class="text-body-secondary fw-normal">(optional)</span>
+			</label>
+			<select class="form-select" id="licenseTemplate" @bind="_licenseTemplate" disabled="@IsCreating">
+				<option value="">None</option>
+				<option value="mit">MIT</option>
+				<option value="apache-2.0">Apache 2.0</option>
+				<option value="gpl-3.0">GPL 3.0</option>
+				<option value="bsd-2-clause">BSD 2-Clause</option>
+				<option value="mpl-2.0">MPL 2.0</option>
+				<option value="unlicense">Unlicense</option>
+			</select>
+		</div>
+
+		<div class="mb-3">
+			<div class="form-check">
+				<input class="form-check-input" type="checkbox" id="initReadme" @bind="_initializeReadme" disabled="@IsCreating">
+				<label class="form-check-label" for="initReadme">
+					Initialize with README
+				</label>
+			</div>
+		</div>
+
 		@if (!string.IsNullOrEmpty(_progressMessage))
 		{
 			<Alert Type="Alert.AlertType.Info" Class="mb-0 mt-3">
@@ -104,6 +145,9 @@
 	private string _repositoryName = string.Empty;
 	private string _description = string.Empty;
 	private bool _isPrivate = false;
+	private string _gitignoreTemplate = string.Empty;
+	private string _licenseTemplate = string.Empty;
+	private bool _initializeReadme = false;
 	private string? _progressMessage;
 
 	protected override void OnParametersSet()
@@ -138,7 +182,10 @@
 		{
 			Name = _repositoryName.Trim(),
 			Description = _description?.Trim(),
-			IsPrivate = _isPrivate
+			IsPrivate = _isPrivate,
+			GitignoreTemplate = string.IsNullOrEmpty(_gitignoreTemplate) ? null : _gitignoreTemplate,
+			LicenseTemplate = string.IsNullOrEmpty(_licenseTemplate) ? null : _licenseTemplate,
+			InitializeReadme = _initializeReadme
 		});
 	}
 
@@ -147,6 +194,9 @@
 		_repositoryName = string.Empty;
 		_description = string.Empty;
 		_isPrivate = false;
+		_gitignoreTemplate = string.Empty;
+		_licenseTemplate = string.Empty;
+		_initializeReadme = false;
 		_progressMessage = null;
 	}
 
@@ -170,5 +220,8 @@
 		public required string Name { get; init; }
 		public string? Description { get; init; }
 		public bool IsPrivate { get; init; }
+		public string? GitignoreTemplate { get; init; }
+		public string? LicenseTemplate { get; init; }
+		public bool InitializeReadme { get; init; }
 	}
 }

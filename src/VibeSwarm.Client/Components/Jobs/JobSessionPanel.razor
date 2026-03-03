@@ -92,10 +92,21 @@
                     <div class="terminal-output flex-grow-1 p-3 overflow-auto rounded-bottom small" style="max-height: 300px;">
                         @foreach (var line in LiveOutputLines.TakeLast(MaxOutputLines))
                         {
-                            <div class="output-line d-flex gap-2 py-0 @(line.IsError ? "output-error" : "output-stdout")">
-                                <span class="output-time flex-shrink-0 small d-none d-sm-inline">[@line.Timestamp.FormatTime()]</span>
-                                <span class="output-text text-break">@line.Content</span>
-                            </div>
+                            @if (line.IsThinking)
+                            {
+                                <div class="output-line d-flex gap-2 py-0 output-thinking">
+                                    <span class="output-time flex-shrink-0 small d-none d-sm-inline">[@line.Timestamp.FormatTime()]</span>
+                                    <span class="output-icon flex-shrink-0" title="Thinking">&#128161;</span>
+                                    <span class="output-text text-break fst-italic text-body-secondary">@line.Content</span>
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="output-line d-flex gap-2 py-0 @(line.IsError ? "output-error" : "output-stdout")">
+                                    <span class="output-time flex-shrink-0 small d-none d-sm-inline">[@line.Timestamp.FormatTime()]</span>
+                                    <span class="output-text text-break">@line.Content</span>
+                                </div>
+                            }
                         }
                     </div>
                 }

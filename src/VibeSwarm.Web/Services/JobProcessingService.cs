@@ -680,6 +680,12 @@ public class JobProcessingService : BackgroundService
                     });
                 }
 
+                // Log provider connection state changes
+                if (!string.IsNullOrEmpty(p.OutputLine) && p.OutputLine.StartsWith("[Connection]"))
+                {
+                    _logger.LogInformation("Job {JobId} provider connection state: {State}", job.Id, p.OutputLine);
+                }
+
                 // Stream output lines to UI in real-time AND accumulate in buffer for storage
                 if (!string.IsNullOrEmpty(p.OutputLine))
                 {

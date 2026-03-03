@@ -14,10 +14,12 @@ namespace VibeSwarm.Shared.Providers;
 public class ClaudeSdkProvider : SdkProviderBase
 {
 	private AnthropicClient? _client;
-	private const string DefaultModel = "claude-sonnet-4-5-20250929";
+	private const string DefaultModel = "claude-sonnet-4-6-20260201";
 
 	private static readonly string[] AvailableModels =
 	[
+		"claude-sonnet-4-6-20260201",
+		"claude-opus-4-6-20260101",
 		"claude-sonnet-4-5-20250929",
 		"claude-opus-4-20250514",
 		"claude-haiku-4-5-20251001"
@@ -63,8 +65,8 @@ public class ClaudeSdkProvider : SdkProviderBase
 		// Map short aliases
 		return model.ToLowerInvariant() switch
 		{
-			"sonnet" => "claude-sonnet-4-5-20250929",
-			"opus" => "claude-opus-4-20250514",
+			"sonnet" => "claude-sonnet-4-6-20260201",
+			"opus" => "claude-opus-4-6-20260101",
 			"haiku" => "claude-haiku-4-5-20251001",
 			_ => model
 		};
@@ -186,16 +188,35 @@ public class ClaudeSdkProvider : SdkProviderBase
 				}
 				else if (evt.TryPickContentBlockDelta(out var deltaEvent))
 				{
-					var deltaText = deltaEvent.Delta.ToString();
-					if (!string.IsNullOrEmpty(deltaText))
+					// Check if this is a thinking delta
+					if (deltaEvent.Delta.TryPickThinking(out var thinkingDelta))
 					{
-						contentBuilder.Append(deltaText);
-
-						progress?.Report(new ExecutionProgress
+						var thinkingText = thinkingDelta.Thinking;
+						if (!string.IsNullOrEmpty(thinkingText))
 						{
-							OutputLine = deltaText,
-							IsStreaming = true
-						});
+							progress?.Report(new ExecutionProgress
+							{
+								OutputLine = thinkingText,
+								IsStreaming = true,
+								IsThinkingContent = true,
+								ContentCategory = "thinking"
+							});
+						}
+					}
+					else
+					{
+						var deltaText = deltaEvent.Delta.ToString();
+						if (!string.IsNullOrEmpty(deltaText))
+						{
+							contentBuilder.Append(deltaText);
+
+							progress?.Report(new ExecutionProgress
+							{
+								OutputLine = deltaText,
+								IsStreaming = true,
+								ContentCategory = "text"
+							});
+						}
 					}
 				}
 				else if (evt.TryPickDelta(out var messageDelta))
@@ -274,6 +295,8 @@ public class ClaudeSdkProvider : SdkProviderBase
 				Currency = "USD",
 				ModelMultipliers = new Dictionary<string, decimal>
 				{
+					["claude-sonnet-4-6-20260201"] = 1.0m,
+					["claude-opus-4-6-20260101"] = 5.0m,
 					["claude-sonnet-4-5-20250929"] = 1.0m,
 					["claude-opus-4-20250514"] = 5.0m,
 					["claude-haiku-4-5-20251001"] = 0.27m

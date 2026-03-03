@@ -234,6 +234,12 @@ public class OpenCodeProvider : CliProviderBase
             args.Add("--fork");
         }
 
+        // Adaptive reasoning effort level (v1.2.0+)
+        if (!string.IsNullOrEmpty(CurrentReasoningEffort))
+        {
+            args.AddRange(new[] { "--reasoning", CurrentReasoningEffort });
+        }
+
         // Additional custom arguments (provider-specific or user-defined)
         if (CurrentAdditionalArgs != null)
         {

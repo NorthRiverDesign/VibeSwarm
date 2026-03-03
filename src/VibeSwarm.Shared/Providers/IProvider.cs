@@ -265,6 +265,16 @@ public class ExecutionProgress
     public bool IsErrorOutput { get; set; }
 
     /// <summary>
+    /// True if the content is thinking/reasoning output (not final text)
+    /// </summary>
+    public bool IsThinkingContent { get; set; }
+
+    /// <summary>
+    /// Category of the content: "text", "thinking", "tool", "reasoning"
+    /// </summary>
+    public string? ContentCategory { get; set; }
+
+    /// <summary>
     /// True if an interaction is being requested by the CLI agent
     /// </summary>
     public bool IsInteractionRequested { get; set; }
@@ -515,6 +525,21 @@ public class ExecutionOptions
     /// Fork the session instead of continuing it (OpenCode: --fork, v1.2.6+).
     /// </summary>
     public bool ForkSession { get; set; }
+
+    /// <summary>
+    /// Reasoning effort level: "low", "medium", or "high" (Claude: --effort, Copilot: SessionConfig.ReasoningEffort, OpenCode: --reasoning)
+    /// </summary>
+    public string? ReasoningEffort { get; set; }
+
+    /// <summary>
+    /// Disable large context window (Claude: CLAUDE_CODE_DISABLE_1M_CONTEXT env var)
+    /// </summary>
+    public bool DisableLargeContext { get; set; }
+
+    /// <summary>
+    /// Path to bash environment file (Copilot: --bash-env)
+    /// </summary>
+    public string? BashEnvPath { get; set; }
 
     /// <summary>
     /// Enable alternate screen buffer mode (Copilot: --alt-screen, v0.0.407+).

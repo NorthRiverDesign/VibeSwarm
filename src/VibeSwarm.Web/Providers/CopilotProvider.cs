@@ -138,6 +138,16 @@ public class CopilotProvider : CliProviderBase
             args.Add("on");
         }
 
+        // Bash environment file (v0.0.418+)
+        if (!string.IsNullOrEmpty(CurrentBashEnvPath))
+        {
+            args.Add("--bash-env");
+            args.Add($"\"{EscapeCliArgument(CurrentBashEnvPath)}\"");
+        }
+
+        // Disable mouse input for headless/non-interactive jobs
+        args.Add("--no-mouse");
+
         // Tool filtering (v0.0.370+)
         if (CurrentAllowedTools != null && CurrentAllowedTools.Count > 0)
         {

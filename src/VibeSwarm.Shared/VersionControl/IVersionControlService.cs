@@ -295,7 +295,10 @@ public interface IVersionControlService
 		string? description = null,
 		bool isPrivate = false,
 		Action<string>? progressCallback = null,
-		CancellationToken cancellationToken = default);
+		CancellationToken cancellationToken = default,
+		string? gitignoreTemplate = null,
+		string? licenseTemplate = null,
+		bool initializeReadme = false);
 
 	/// <summary>
 	/// Adds a remote to an existing git repository.

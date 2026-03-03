@@ -8,4 +8,7 @@ public class OutputLine
 	public string Content { get; set; } = string.Empty;
 	public bool IsError { get; set; }
 	public DateTime Timestamp { get; set; }
+	public bool IsThinking { get; set; }
+	public string? ContentCategory { get; set; }
+	public bool IsCollapsed { get; set; }
 }

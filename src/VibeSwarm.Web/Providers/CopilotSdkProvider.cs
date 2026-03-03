@@ -70,6 +70,11 @@ public class CopilotSdkProvider : SdkProviderBase
 	/// Ensures a CopilotClient is created and started.
 	/// If a previous client exists but is unhealthy, it is disposed and recreated.
 	/// </summary>
+	/// <summary>
+	/// Progress reporter for connection state changes, set during ExecuteWithSessionAsync.
+	/// </summary>
+	private IProgress<ExecutionProgress>? _connectionStateProgress;
+
 	private async Task<CopilotClient> EnsureClientAsync(
 		string? workingDirectory = null,
 		CancellationToken cancellationToken = default)
@@ -81,6 +86,7 @@ public class CopilotSdkProvider : SdkProviderBase
 		try
 		{
 			await client.StartAsync(cancellationToken);
+
 			_client = client;
 			return _client;
 		}
@@ -249,6 +255,9 @@ public class CopilotSdkProvider : SdkProviderBase
 		var effectiveWorkingDir = workingDirectory ?? WorkingDirectory ?? Environment.CurrentDirectory;
 		var model = ResolveModel();
 
+		// Wire connection state tracking to progress
+		_connectionStateProgress = progress;
+
 		try
 		{
 			progress?.Report(new ExecutionProgress
@@ -265,11 +274,18 @@ public class CopilotSdkProvider : SdkProviderBase
 			var sessionConfig = new SessionConfig
 			{
 				Model = model,
-				Streaming = true
+				Streaming = true,
+				InfiniteSessions = new InfiniteSessionConfig { Enabled = true }
 			};
 
 			// Apply BYOK provider configuration if an API endpoint is set
 			ApplyByokConfig(sessionConfig);
+
+			// Set reasoning effort if specified
+			if (!string.IsNullOrEmpty(CurrentReasoningEffort))
+			{
+				sessionConfig.ReasoningEffort = CurrentReasoningEffort;
+			}
 
 			if (!string.IsNullOrEmpty(sessionId))
 			{
@@ -333,8 +349,21 @@ public class CopilotSdkProvider : SdkProviderBase
 					}
 				});
 
-				// Send the prompt
-				await session.SendAsync(new MessageOptions { Prompt = prompt });
+				// Send the prompt with optional file attachments
+				var messageOptions = new MessageOptions { Prompt = prompt };
+
+				if (CurrentAttachedFiles is { Count: > 0 })
+				{
+					messageOptions.Attachments = CurrentAttachedFiles
+						.Select(f => (UserMessageDataAttachmentsItem)new UserMessageDataAttachmentsItemFile
+						{
+							Path = f,
+							DisplayName = System.IO.Path.GetFileName(f)
+						})
+						.ToList();
+				}
+
+				await session.SendAsync(messageOptions);
 
 				// Wait for session idle or cancellation
 				using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -377,6 +406,21 @@ public class CopilotSdkProvider : SdkProviderBase
 			result.Success = false;
 			result.ErrorMessage = "Execution was cancelled.";
 		}
+		catch (Exception ex) when (!cancellationToken.IsCancellationRequested && _retryCount < MaxRetries)
+		{
+			_retryCount++;
+			progress?.Report(new ExecutionProgress
+			{
+				OutputLine = $"[Retry] Transient error (attempt {_retryCount}/{MaxRetries}): {ex.Message}",
+				IsErrorOutput = true,
+				IsStreaming = false
+			});
+
+			await ResetClientAsync();
+
+			// Retry the execution
+			return await ExecuteWithSessionAsync(prompt, sessionId, workingDirectory, progress, cancellationToken);
+		}
 		catch (Exception ex)
 		{
 			result.Success = false;
@@ -384,9 +428,16 @@ public class CopilotSdkProvider : SdkProviderBase
 			// Reset the client so the next execution starts a fresh CLI process
 			await ResetClientAsync();
 		}
+		finally
+		{
+			_retryCount = 0;
+		}
 
 		return result;
 	}
+
+	private const int MaxRetries = 2;
+	private int _retryCount;
 
 	/// <summary>
 	/// Processes a typed SDK session event, populating the result
@@ -571,7 +622,9 @@ public class CopilotSdkProvider : SdkProviderBase
 						progress?.Report(new ExecutionProgress
 						{
 							OutputLine = $"[Reasoning] {reasoning.Data.DeltaContent}",
-							IsStreaming = true
+							IsStreaming = true,
+							IsThinkingContent = true,
+							ContentCategory = "reasoning"
 						});
 					}
 					break;
@@ -616,6 +669,8 @@ public class CopilotSdkProvider : SdkProviderBase
 			{
 				"gpt-4o",
 				"gpt-5",
+				"claude-opus-4.6",
+				"claude-sonnet-4.6",
 				"claude-sonnet-4.5",
 				"o3-mini"
 			},

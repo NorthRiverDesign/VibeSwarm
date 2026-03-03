@@ -63,6 +63,14 @@ public class Provider
     public UsageLimitType ConfiguredLimitType { get; set; } = UsageLimitType.None;
 
     /// <summary>
+    /// Override for stall detection timeout in seconds.
+    /// When null, the system uses provider-aware defaults:
+    /// SDK providers with streaming = 180s, CLI providers = 300s.
+    /// </summary>
+    [Range(30, 1800)]
+    public int? StallTimeoutSeconds { get; set; }
+
+    /// <summary>
     /// Available AI models for this provider
     /// </summary>
     public ICollection<ProviderModel> AvailableModels { get; set; } = new List<ProviderModel>();
