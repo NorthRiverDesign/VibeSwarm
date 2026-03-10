@@ -176,10 +176,10 @@ public class CopilotSdkProvider : SdkProviderBase
 				await ResetClientAsync();
 
 				var cliPath = ExecutablePath ?? "copilot (from PATH)";
-				
+
 				// Provide specific hints based on the error
 				var hint = ex.Message.Contains("JSON-RPC", StringComparison.OrdinalIgnoreCase) ||
-				           ex.Message.Contains("RPC", StringComparison.OrdinalIgnoreCase)
+						   ex.Message.Contains("RPC", StringComparison.OrdinalIgnoreCase)
 					? " The CLI may not support SDK mode or version is incompatible. Verify 'copilot --version' shows 0.0.400+ and GitHub.Copilot.SDK is compatible."
 					: ex.Message.Contains("not found", StringComparison.OrdinalIgnoreCase) ||
 					  ex.Message.Contains("cannot find", StringComparison.OrdinalIgnoreCase)
@@ -669,6 +669,7 @@ public class CopilotSdkProvider : SdkProviderBase
 			{
 				"gpt-4o",
 				"gpt-5",
+				"gpt-5.4",
 				"claude-opus-4.6",
 				"claude-sonnet-4.6",
 				"claude-sonnet-4.5",

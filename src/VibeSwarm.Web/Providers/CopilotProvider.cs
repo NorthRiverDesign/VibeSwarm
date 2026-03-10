@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using GitHub.Copilot.SDK;
 using VibeSwarm.Shared.Providers.Copilot;
 using VibeSwarm.Shared.Services;
 using VibeSwarm.Shared.Utilities;
@@ -39,7 +40,7 @@ public class CopilotProvider : CliProviderBase
     {
         try
         {
-            return await TestCliConnectionAsync(GetExecutablePath(), "GitHub Copilot", cancellationToken: cancellationToken);
+            return await TestCliConnectionAsync(GetExecutablePath(), "GitHub Copilot", "--binary-version", cancellationToken);
         }
         catch
         {
@@ -169,7 +170,7 @@ public class CopilotProvider : CliProviderBase
         if (!string.IsNullOrEmpty(CurrentMcpConfigPath))
         {
             args.Add("--additional-mcp-config");
-            args.Add($"\"@{CurrentMcpConfigPath}\"");
+            args.Add($"\"@{EscapeCliArgument(CurrentMcpConfigPath)}\"");
         }
 
         if (CurrentAdditionalArgs != null)
@@ -417,6 +418,15 @@ public class CopilotProvider : CliProviderBase
             result.PremiumRequestsConsumed = evt.PremiumRequests;
         }
 
+        if (!string.IsNullOrEmpty(evt.Model))
+        {
+            result.ModelUsed = evt.Model;
+        }
+
+        ReportStructuredEvent(evt.ReasoningSummary, "reasoning_summary", result, progress, true);
+        ReportStructuredEvent(evt.Reasoning, "reasoning", result, progress, true);
+        ReportStructuredEvent(evt.Plan, "plan", result, progress, false);
+
         switch (evt.Type?.ToLowerInvariant())
         {
             case "message":
@@ -484,6 +494,11 @@ public class CopilotProvider : CliProviderBase
                 {
                     result.CostUsd = evt.CostUsd;
                 }
+                if (evt.Usage != null)
+                {
+                    result.InputTokens = evt.Usage.InputTokens ?? result.InputTokens;
+                    result.OutputTokens = evt.Usage.OutputTokens ?? result.OutputTokens;
+                }
                 break;
 
             case "done":
@@ -507,6 +522,122 @@ public class CopilotProvider : CliProviderBase
                     result.OutputTokens = evt.Usage.OutputTokens ?? result.OutputTokens;
                 }
                 break;
+        }
+    }
+
+    private static void ReportStructuredEvent(
+        string? content,
+        string role,
+        ExecutionResult result,
+        IProgress<ExecutionProgress>? progress,
+        bool isThinking)
+    {
+        if (string.IsNullOrWhiteSpace(content))
+        {
+            return;
+        }
+
+        result.Messages.Add(new ExecutionMessage
+        {
+            Role = role,
+            Content = content,
+            Timestamp = DateTime.UtcNow
+        });
+
+        progress?.Report(new ExecutionProgress
+        {
+            CurrentMessage = content.Length > 100 ? content[..100] + "..." : content,
+            IsStreaming = true,
+            IsThinkingContent = isThinking,
+            ContentCategory = isThinking ? "reasoning" : role
+        });
+    }
+
+    private CopilotClientOptions BuildMetadataClientOptions()
+    {
+        var options = new CopilotClientOptions
+        {
+            AutoStart = true,
+            AutoRestart = false,
+            UseStdio = true,
+            LogLevel = "warning"
+        };
+
+        var cwd = WorkingDirectory ?? Environment.CurrentDirectory;
+        if (!string.IsNullOrWhiteSpace(cwd))
+        {
+            options.Cwd = cwd;
+        }
+
+        if (!string.IsNullOrEmpty(ExecutablePath))
+        {
+            var resolvedPath = Path.IsPathRooted(ExecutablePath)
+                ? ExecutablePath
+                : Path.GetFullPath(ExecutablePath);
+
+            if (File.Exists(resolvedPath))
+            {
+                options.CliPath = resolvedPath;
+            }
+        }
+
+        return options;
+    }
+
+    private static decimal GetDefaultModelMultiplier(string modelId)
+    {
+        var normalized = modelId.ToLowerInvariant();
+
+        if (normalized.Contains("opus") || normalized.Contains("o1") || normalized.Contains("o3") || normalized.Contains("max"))
+        {
+            return 5.0m;
+        }
+
+        if (normalized.Contains("haiku") || normalized.Contains("mini"))
+        {
+            return 0.3m;
+        }
+
+        if (normalized.Contains("gpt-4.1"))
+        {
+            return 0.5m;
+        }
+
+        if (normalized.Contains("gpt-5.4") || normalized.Contains("gpt-5.2"))
+        {
+            return 1.5m;
+        }
+
+        return 1.0m;
+    }
+
+    private async Task<List<string>?> TryGetAvailableModelsAsync(CancellationToken cancellationToken)
+    {
+        CopilotClient? client = null;
+
+        try
+        {
+            client = new CopilotClient(BuildMetadataClientOptions());
+            await client.StartAsync(cancellationToken);
+
+            var models = await client.ListModelsAsync(cancellationToken);
+            return models?
+                .Select(model => model.Id)
+                .Where(modelId => !string.IsNullOrWhiteSpace(modelId))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+        catch
+        {
+            return null;
+        }
+        finally
+        {
+            if (client != null)
+            {
+                try { await client.StopAsync(); } catch { }
+                try { await client.DisposeAsync(); } catch { }
+            }
         }
     }
 
@@ -555,6 +686,7 @@ public class CopilotProvider : CliProviderBase
         {
             AvailableModels = new List<string>
             {
+                "gpt-5.4",
                 "claude-opus-4.6",
                 "claude-opus-4.6-fast",
                 "claude-sonnet-4.6",
@@ -580,6 +712,7 @@ public class CopilotProvider : CliProviderBase
                 Currency = "USD",
                 ModelMultipliers = new Dictionary<string, decimal>
                 {
+                    ["gpt-5.4"] = 1.5m,
                     ["claude-opus-4.6"] = 5.0m,
                     ["claude-opus-4.6-fast"] = 3.0m,
                     ["claude-sonnet-4.6"] = 1.0m,
@@ -606,7 +739,25 @@ public class CopilotProvider : CliProviderBase
 
         try
         {
-            info.Version = await GetCliVersionAsync(GetExecutablePath(), cancellationToken: cancellationToken);
+            info.Version = await GetCliVersionAsync(GetExecutablePath(), "--binary-version", cancellationToken);
+
+            var discoveredModels = await TryGetAvailableModelsAsync(cancellationToken);
+            if (discoveredModels is { Count: > 0 })
+            {
+                info.AvailableModels = discoveredModels;
+
+                foreach (var modelId in discoveredModels)
+                {
+                    if (!info.Pricing!.ModelMultipliers!.ContainsKey(modelId))
+                    {
+                        info.Pricing.ModelMultipliers[modelId] = GetDefaultModelMultiplier(modelId);
+                    }
+                }
+            }
+            else
+            {
+                info.AdditionalInfo["modelsWarning"] = "Unable to query Copilot for live model metadata, using fallback model list.";
+            }
 
             var limits = await GetUsageLimitsAsync(cancellationToken);
             if (limits.IsLimitReached)

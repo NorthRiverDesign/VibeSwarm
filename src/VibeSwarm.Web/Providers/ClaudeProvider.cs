@@ -102,6 +102,10 @@ public class ClaudeProvider : CliProviderBase
             args.Add("--resume");
             args.Add(sessionId);
         }
+        else if (CurrentContinueLastSession)
+        {
+            args.Add("--continue");
+        }
 
         // Model selection (e.g., --model opus, --model sonnet)
         if (!string.IsNullOrEmpty(CurrentModel))
@@ -163,7 +167,7 @@ public class ClaudeProvider : CliProviderBase
         {
             foreach (var tool in CurrentDisallowedTools)
             {
-                args.Add("--disallowedTools");
+                args.Add("--disallowed-tools");
                 args.Add(tool);
             }
         }
@@ -195,10 +199,11 @@ public class ClaudeProvider : CliProviderBase
         }
 
         // Reasoning effort level (v2.1.63+)
-        if (!string.IsNullOrEmpty(CurrentReasoningEffort))
+        var reasoningEffort = NormalizeReasoningEffort(CurrentReasoningEffort, "low", "medium", "high");
+        if (!string.IsNullOrEmpty(reasoningEffort))
         {
             args.Add("--effort");
-            args.Add(CurrentReasoningEffort);
+            args.Add(reasoningEffort);
         }
 
         // File attachments (via @-mention syntax isn't available in -p mode,
@@ -208,7 +213,7 @@ public class ClaudeProvider : CliProviderBase
         if (!string.IsNullOrEmpty(CurrentMcpConfigPath))
         {
             args.Add("--mcp-config");
-            args.Add($"\"{CurrentMcpConfigPath}\"");
+            args.Add($"\"{EscapeCliArgument(CurrentMcpConfigPath)}\"");
         }
 
         if (CurrentAdditionalArgs != null)
@@ -605,7 +610,7 @@ public class ClaudeProvider : CliProviderBase
                 "claude-sonnet-4-5-20250929",
                 "claude-opus-4-6-20260101",
                 "claude-opus-4-20250514",
-                "claude-3-5-haiku-20241022"
+                "claude-haiku-4-5-20251001"
             },
             AvailableAgents = new List<AgentInfo>
             {
@@ -625,7 +630,7 @@ public class ClaudeProvider : CliProviderBase
                     ["claude-sonnet-4-5-20250929"] = 1.0m,
                     ["claude-opus-4-6-20260101"] = 5.0m,
                     ["claude-opus-4-20250514"] = 5.0m,
-                    ["claude-3-5-haiku-20241022"] = 0.27m
+                    ["claude-haiku-4-5-20251001"] = 0.27m
                 }
             },
             AdditionalInfo = new Dictionary<string, object>

@@ -527,7 +527,8 @@ public class ExecutionOptions
     public bool ForkSession { get; set; }
 
     /// <summary>
-    /// Reasoning effort level: "low", "medium", or "high" (Claude: --effort, Copilot: SessionConfig.ReasoningEffort, OpenCode: --reasoning)
+    /// Reasoning effort level.
+    /// Common values are "low", "medium", and "high"; some providers support additional values such as "xhigh".
     /// </summary>
     public string? ReasoningEffort { get; set; }
 

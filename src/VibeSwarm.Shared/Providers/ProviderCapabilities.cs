@@ -22,7 +22,7 @@ public static class ProviderCapabilities
 	/// </summary>
 	public static ProviderConnectionMode GetDefaultMode(ProviderType providerType) => providerType switch
 	{
-		ProviderType.OpenCode => ProviderConnectionMode.REST,
+		ProviderType.OpenCode => ProviderConnectionMode.CLI,
 		ProviderType.Claude => ProviderConnectionMode.CLI,
 		ProviderType.Copilot => ProviderConnectionMode.CLI,
 		_ => ProviderConnectionMode.CLI
@@ -39,7 +39,7 @@ public static class ProviderCapabilities
 	/// </summary>
 	public static string GetDescription(ProviderType providerType) => providerType switch
 	{
-		ProviderType.OpenCode => "OpenCode AI agent with REST API and CLI support",
+		ProviderType.OpenCode => "OpenCode AI agent with CLI-first execution and optional REST API support",
 		ProviderType.Claude => "Anthropic Claude Code with CLI and SDK support",
 		ProviderType.Copilot => "GitHub Copilot with CLI and SDK support",
 		_ => "Unknown provider"

@@ -32,7 +32,7 @@ public abstract class ProviderBase : IProvider
     /// Execute with options - provides MCP config support
     /// Default implementation delegates to ExecuteWithSessionAsync after storing MCP config path
     /// </summary>
-    public virtual Task<ExecutionResult> ExecuteWithOptionsAsync(
+    public virtual async Task<ExecutionResult> ExecuteWithOptionsAsync(
         string prompt,
         ExecutionOptions options,
         IProgress<ExecutionProgress>? progress = null,
@@ -67,12 +67,19 @@ public abstract class ProviderBase : IProvider
         CurrentDisableLargeContext = options.DisableLargeContext;
         CurrentBashEnvPath = options.BashEnvPath;
 
-        return ExecuteWithSessionAsync(
-            prompt,
-            options.SessionId,
-            options.WorkingDirectory,
-            progress,
-            cancellationToken);
+        try
+        {
+            return await ExecuteWithSessionAsync(
+                prompt,
+                options.SessionId,
+                options.WorkingDirectory,
+                progress,
+                cancellationToken);
+        }
+        finally
+        {
+            ClearExecutionContext();
+        }
     }
 
     /// <summary>
@@ -196,7 +203,7 @@ public abstract class ProviderBase : IProvider
     protected bool CurrentUseAltScreen { get; private set; }
 
     /// <summary>
-    /// Reasoning effort level (Claude --effort, Copilot SessionConfig.ReasoningEffort, OpenCode --reasoning)
+    /// Reasoning effort level (provider-specific, e.g. low/medium/high/xhigh)
     /// </summary>
     protected string? CurrentReasoningEffort { get; private set; }
 
@@ -242,6 +249,29 @@ public abstract class ProviderBase : IProvider
         CurrentReasoningEffort = null;
         CurrentDisableLargeContext = false;
         CurrentBashEnvPath = null;
+    }
+
+    /// <summary>
+    /// Normalizes a provider-specific reasoning effort value against an allow-list.
+    /// Returns null when the supplied value is blank or unsupported.
+    /// </summary>
+    protected static string? NormalizeReasoningEffort(string? reasoningEffort, params string[] allowedValues)
+    {
+        if (string.IsNullOrWhiteSpace(reasoningEffort))
+        {
+            return null;
+        }
+
+        var normalized = reasoningEffort.Trim().ToLowerInvariant();
+        foreach (var allowedValue in allowedValues)
+        {
+            if (string.Equals(normalized, allowedValue, StringComparison.OrdinalIgnoreCase))
+            {
+                return allowedValue;
+            }
+        }
+
+        return null;
     }
 
     public abstract Task<ProviderInfo> GetProviderInfoAsync(CancellationToken cancellationToken = default);

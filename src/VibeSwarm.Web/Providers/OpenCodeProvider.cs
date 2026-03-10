@@ -235,9 +235,10 @@ public class OpenCodeProvider : CliProviderBase
         }
 
         // Adaptive reasoning effort level (v1.2.0+)
-        if (!string.IsNullOrEmpty(CurrentReasoningEffort))
+        var reasoningEffort = NormalizeReasoningEffort(CurrentReasoningEffort, "low", "medium", "high", "xhigh");
+        if (!string.IsNullOrEmpty(reasoningEffort))
         {
-            args.AddRange(new[] { "--reasoning", CurrentReasoningEffort });
+            args.AddRange(new[] { "--reasoning", reasoningEffort });
         }
 
         // Additional custom arguments (provider-specific or user-defined)
@@ -962,6 +963,7 @@ public class OpenCodeProvider : CliProviderBase
             "anthropic/claude-sonnet-4-6-20260201",
             "anthropic/claude-sonnet-4-5-20250929",
             "anthropic/claude-opus-4-20250514",
+            "openai/gpt-5.4",
             "openai/gpt-5.2",
             "openai/gpt-4o",
             "openai/o1"
@@ -984,6 +986,7 @@ public class OpenCodeProvider : CliProviderBase
                     ["anthropic/claude-sonnet-4-6-20260201"] = 1.0m,
                     ["anthropic/claude-sonnet-4-5-20250929"] = 1.0m,
                     ["anthropic/claude-opus-4-20250514"] = 5.0m,
+                    ["openai/gpt-5.4"] = 1.5m,
                     ["openai/gpt-5.2"] = 1.5m,
                     ["openai/gpt-4o"] = 0.83m,
                     ["openai/o1"] = 5.0m
@@ -1008,7 +1011,7 @@ public class OpenCodeProvider : CliProviderBase
                 var modelsStartInfo = new ProcessStartInfo
                 {
                     FileName = execPath,
-                    Arguments = "models"
+                    Arguments = "models --refresh"
                 };
 
                 PlatformHelper.ConfigureForCrossPlatform(modelsStartInfo);
