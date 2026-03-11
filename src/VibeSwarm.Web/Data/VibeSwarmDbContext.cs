@@ -18,7 +18,9 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
     public DbSet<ProviderUsageRecord> ProviderUsageRecords => Set<ProviderUsageRecord>();
     public DbSet<ProviderUsageSummary> ProviderUsageSummaries => Set<ProviderUsageSummary>();
     public DbSet<Project> Projects => Set<Project>();
+    public DbSet<ProjectProvider> ProjectProviders => Set<ProjectProvider>();
     public DbSet<Job> Jobs => Set<Job>();
+    public DbSet<JobProviderAttempt> JobProviderAttempts => Set<JobProviderAttempt>();
     public DbSet<JobMessage> JobMessages => Set<JobMessage>();
     public DbSet<AppSettings> AppSettings => Set<AppSettings>();
     public DbSet<Skill> Skills => Set<Skill>();
@@ -103,6 +105,24 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
                 .WithOne(j => j.Project)
                 .HasForeignKey(j => j.ProjectId)
                 .OnDelete(DeleteBehavior.Cascade);
+            entity.HasMany(e => e.ProviderSelections)
+                .WithOne(pp => pp.Project)
+                .HasForeignKey(pp => pp.ProjectId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<ProjectProvider>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.PreferredModelId).HasMaxLength(200);
+            entity.Property(e => e.Priority).HasDefaultValue(0);
+            entity.Property(e => e.IsEnabled).HasDefaultValue(true);
+            entity.HasOne(e => e.Provider)
+                .WithMany()
+                .HasForeignKey(e => e.ProviderId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(e => new { e.ProjectId, e.ProviderId }).IsUnique();
+            entity.HasIndex(e => new { e.ProjectId, e.Priority });
         });
 
         modelBuilder.Entity<Job>(entity =>
@@ -119,6 +139,9 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
             entity.Property(e => e.FailurePattern).HasMaxLength(1000);
             entity.Property(e => e.GitCommitBefore).HasMaxLength(100);
             entity.Property(e => e.GitCommitHash).HasMaxLength(100);
+            entity.Property(e => e.ExecutionPlan).HasMaxLength(8000);
+            entity.Property(e => e.LastSwitchReason).HasMaxLength(200);
+            entity.Property(e => e.ActiveExecutionIndex).HasDefaultValue(0);
             // Multi-cycle properties
             entity.Property(e => e.CycleMode).HasConversion<string>().HasDefaultValue(CycleMode.SingleCycle);
             entity.Property(e => e.CycleSessionMode).HasConversion<string>().HasDefaultValue(CycleSessionMode.ContinueSession);
@@ -134,12 +157,26 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
                 .WithOne(m => m.Job)
                 .HasForeignKey(m => m.JobId)
                 .OnDelete(DeleteBehavior.Cascade);
+            entity.HasMany(e => e.ProviderAttempts)
+                .WithOne(a => a.Job)
+                .HasForeignKey(a => a.JobId)
+                .OnDelete(DeleteBehavior.Cascade);
 
             // Index for efficient querying
             entity.HasIndex(e => e.Status);
             entity.HasIndex(e => new { e.Status, e.Priority, e.CreatedAt });
             entity.HasIndex(e => e.ParentJobId);
             entity.HasIndex(e => e.DependsOnJobId);
+        });
+
+        modelBuilder.Entity<JobProviderAttempt>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.ProviderName).IsRequired().HasMaxLength(100);
+            entity.Property(e => e.ModelId).HasMaxLength(200);
+            entity.Property(e => e.Reason).IsRequired().HasMaxLength(100);
+            entity.HasIndex(e => new { e.JobId, e.AttemptOrder }).IsUnique();
+            entity.HasIndex(e => new { e.JobId, e.AttemptedAt });
         });
 
         modelBuilder.Entity<JobMessage>(entity =>

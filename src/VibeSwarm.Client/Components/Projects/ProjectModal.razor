@@ -1,8 +1,10 @@
 @* Modal component for adding and editing projects *@
 @using VibeSwarm.Shared.Data
+@using VibeSwarm.Shared.Providers
 @using VibeSwarm.Shared.Services
 @using VibeSwarm.Shared.VersionControl
 @inject IProjectService ProjectService
+@inject IProviderService ProviderService
 @inject ISettingsService SettingsService
 @inject IVersionControlService VersionControlService
 @inject NotificationService NotificationService
@@ -69,10 +71,101 @@
 					<option value="@AutoCommitMode.CommitOnly">Commit Only - Auto-commit after job completion</option>
 					<option value="@AutoCommitMode.CommitAndPush">Commit & Push - Auto-commit and push after job
 						completion</option>
-					</InputSelect>
-					<div class="form-text">Automatically commit (and optionally push) changes after successful job
-						completion.</div>
+				</InputSelect>
+				<div class="form-text">Automatically commit (and optionally push) changes after successful job completion.</div>
+			</div>
+
+			<div class="mb-3">
+				<label class="form-label d-flex align-items-center gap-2 mb-2">
+					<i class="bi bi-diagram-3"></i>
+					<span>Provider Priority</span>
+				</label>
+
+				<Alert Type="Alert.AlertType.Info" Class="py-2 px-3 small">
+					@if (Project.ProviderSelections.Any())
+					{
+						<span>This project will prefer providers in the order shown below. Jobs can fall back to the next provider when one is unavailable or at limit.</span>
+					}
+					else
+					{
+						<span>No providers selected yet. If you save without a provider list, the project can use any enabled provider system-wide.</span>
+					}
+				</Alert>
+
+				@if (!_availableProviders.Any())
+				{
+					<div class="text-warning small mt-2">
+						<i class="bi bi-exclamation-triangle me-1"></i>No enabled providers available. Configure a provider first.
 					</div>
+				}
+				else
+				{
+					<div class="border rounded p-2 bg-body-tertiary">
+						<div class="small text-body-secondary fw-semibold mb-2">Priority Order</div>
+						@if (Project.ProviderSelections.Any())
+						{
+							<div class="d-grid gap-2 mb-3">
+								@foreach (var selection in Project.ProviderSelections.OrderBy(pp => pp.Priority).ToList())
+								{
+									var provider = ResolveProvider(selection.ProviderId);
+									<div class="d-flex align-items-center justify-content-between gap-2 rounded border bg-body p-2">
+										<div class="min-width-0">
+											<div class="d-flex align-items-center gap-2 flex-wrap">
+												<span class="badge text-bg-primary">#@(selection.Priority + 1)</span>
+												<span class="fw-semibold">@(provider?.Name ?? "Unknown Provider")</span>
+												@if (provider != null)
+												{
+													<span class="badge bg-secondary-subtle text-secondary-emphasis">@provider.Type</span>
+												}
+											</div>
+										</div>
+										<div class="btn-group btn-group-sm" role="group">
+											<button type="button" class="btn btn-secondary" @onclick="() => MoveProviderSelectionUp(selection.ProviderId)"
+												disabled="@(selection.Priority == 0)" title="Move up">
+												<i class="bi bi-arrow-up"></i>
+											</button>
+											<button type="button" class="btn btn-secondary" @onclick="() => MoveProviderSelectionDown(selection.ProviderId)"
+												disabled="@(selection.Priority >= Project.ProviderSelections.Count - 1)" title="Move down">
+												<i class="bi bi-arrow-down"></i>
+											</button>
+											<button type="button" class="btn btn-danger" @onclick="() => RemoveProviderSelection(selection.ProviderId)" title="Remove provider">
+												<i class="bi bi-x-lg"></i>
+											</button>
+										</div>
+									</div>
+								}
+							</div>
+						}
+						else
+						{
+							<div class="small text-body-secondary fst-italic mb-3">No project-specific provider priority configured.</div>
+						}
+
+						<div class="small text-body-secondary fw-semibold mb-2">Add Provider</div>
+						<div class="d-grid gap-2">
+							@foreach (var provider in _availableProviders)
+							{
+								var isSelected = IsProviderSelected(provider.Id);
+								<button type="button" class="btn @(isSelected ? "btn-secondary" : "btn-outline-secondary") d-flex align-items-center justify-content-between"
+										@onclick="() => AddProviderSelection(provider)" disabled="@isSelected">
+									<span class="text-start">
+										<span class="fw-semibold">@provider.Name</span>
+										<span class="text-body-secondary ms-2">@provider.Type</span>
+									</span>
+									@if (isSelected)
+									{
+										<i class="bi bi-check-lg"></i>
+									}
+									else
+									{
+										<i class="bi bi-plus-lg"></i>
+									}
+								</button>
+							}
+						</div>
+					</div>
+				}
+			</div>
 
 					<div class="mb-3">
 						<label for="modal-promptContext" class="form-label">
@@ -169,6 +262,7 @@
 	private bool _showDirectoryBrowser;
 	private DirectoryBrowser? _directoryBrowser;
 	private string? _defaultProjectsDirectory;
+	private List<Provider> _availableProviders = [];
 
 	private string _workingPathPlaceholder => !string.IsNullOrEmpty(_defaultProjectsDirectory)
 	? Path.Combine(_defaultProjectsDirectory, "project-name")
@@ -177,6 +271,55 @@
 	protected override async Task OnInitializedAsync()
 	{
 		await LoadDefaultProjectsDirectory();
+		await LoadProvidersAsync();
+	}
+
+	protected override async Task OnParametersSetAsync()
+	{
+		if (IsVisible && !_previousIsVisible)
+		{
+			await LoadProvidersAsync();
+			ResetState();
+
+			if (EditProject != null)
+			{
+				Project = new Project
+				{
+					Id = EditProject.Id,
+					Name = EditProject.Name,
+					Description = EditProject.Description,
+					WorkingPath = EditProject.WorkingPath,
+					GitHubRepository = EditProject.GitHubRepository,
+					AutoCommitMode = EditProject.AutoCommitMode,
+					PromptContext = EditProject.PromptContext,
+					IsActive = EditProject.IsActive,
+					CreatedAt = EditProject.CreatedAt,
+					UpdatedAt = EditProject.UpdatedAt,
+					ProviderSelections = EditProject.ProviderSelections
+						.OrderBy(pp => pp.Priority)
+						.Select(pp => new ProjectProvider
+						{
+							Id = pp.Id,
+							ProjectId = pp.ProjectId,
+							ProviderId = pp.ProviderId,
+							Priority = pp.Priority,
+							IsEnabled = pp.IsEnabled,
+							PreferredModelId = pp.PreferredModelId,
+							CreatedAt = pp.CreatedAt,
+							UpdatedAt = pp.UpdatedAt,
+							Provider = ResolveProvider(pp.ProviderId)
+						})
+						.ToList()
+				};
+			}
+			else
+			{
+				Project = new Project();
+				SeedDefaultProviderSelection();
+			}
+		}
+
+		_previousIsVisible = IsVisible;
 	}
 
 	private async Task LoadDefaultProjectsDirectory()
@@ -189,40 +332,6 @@
 		{
 			// Ignore errors loading default directory
 		}
-	}
-
-	protected override void OnParametersSet()
-	{
-		// Only reset state when modal is opening (transitioning from hidden to visible)
-		if (IsVisible && !_previousIsVisible)
-		{
-			ResetState();
-
-			if (EditProject != null)
-			{
-				// Clone the project for editing
-				Project = new Project
-				{
-					Id = EditProject.Id,
-					Name = EditProject.Name,
-					Description = EditProject.Description,
-					WorkingPath = EditProject.WorkingPath,
-					GitHubRepository = EditProject.GitHubRepository,
-					AutoCommitMode = EditProject.AutoCommitMode,
-					PromptContext = EditProject.PromptContext,
-					IsActive = EditProject.IsActive,
-					CreatedAt = EditProject.CreatedAt,
-					UpdatedAt = EditProject.UpdatedAt
-				};
-			}
-			else
-			{
-				// Reset for new project
-				Project = new Project();
-			}
-		}
-
-		_previousIsVisible = IsVisible;
 	}
 
 	private void OnGitHubRepoChanged(ChangeEventArgs e)
@@ -403,5 +512,113 @@
 	private void CloseDirectoryBrowser()
 	{
 		_showDirectoryBrowser = false;
+	}
+
+	private async Task LoadProvidersAsync()
+	{
+		_availableProviders = (await ProviderService.GetAllAsync())
+			.Where(p => p.IsEnabled)
+			.OrderBy(p => p.Name)
+			.ToList();
+	}
+
+	private Provider? ResolveProvider(Guid providerId)
+	{
+		return _availableProviders.FirstOrDefault(p => p.Id == providerId)
+			?? EditProject?.ProviderSelections.FirstOrDefault(pp => pp.ProviderId == providerId)?.Provider;
+	}
+
+	private bool IsProviderSelected(Guid providerId)
+	{
+		return Project.ProviderSelections.Any(pp => pp.ProviderId == providerId);
+	}
+
+	private void AddProviderSelection(Provider provider)
+	{
+		if (IsProviderSelected(provider.Id))
+		{
+			return;
+		}
+
+		Project.ProviderSelections.Add(new ProjectProvider
+		{
+			ProviderId = provider.Id,
+			Provider = provider,
+			Priority = Project.ProviderSelections.Count,
+			IsEnabled = true,
+			CreatedAt = DateTime.UtcNow,
+			UpdatedAt = DateTime.UtcNow
+		});
+
+		NormalizeProviderSelectionOrder();
+	}
+
+	private void RemoveProviderSelection(Guid providerId)
+	{
+		var selection = Project.ProviderSelections.FirstOrDefault(pp => pp.ProviderId == providerId);
+		if (selection == null)
+		{
+			return;
+		}
+
+		Project.ProviderSelections.Remove(selection);
+		NormalizeProviderSelectionOrder();
+	}
+
+	private void MoveProviderSelectionUp(Guid providerId)
+	{
+		var ordered = Project.ProviderSelections.OrderBy(pp => pp.Priority).ToList();
+		var index = ordered.FindIndex(pp => pp.ProviderId == providerId);
+		if (index <= 0)
+		{
+			return;
+		}
+
+		(ordered[index - 1], ordered[index]) = (ordered[index], ordered[index - 1]);
+		Project.ProviderSelections = ordered;
+		NormalizeProviderSelectionOrder();
+	}
+
+	private void MoveProviderSelectionDown(Guid providerId)
+	{
+		var ordered = Project.ProviderSelections.OrderBy(pp => pp.Priority).ToList();
+		var index = ordered.FindIndex(pp => pp.ProviderId == providerId);
+		if (index < 0 || index >= ordered.Count - 1)
+		{
+			return;
+		}
+
+		(ordered[index + 1], ordered[index]) = (ordered[index], ordered[index + 1]);
+		Project.ProviderSelections = ordered;
+		NormalizeProviderSelectionOrder();
+	}
+
+	private void NormalizeProviderSelectionOrder()
+	{
+		Project.ProviderSelections = Project.ProviderSelections
+			.OrderBy(pp => pp.Priority)
+			.Select((selection, index) =>
+			{
+				selection.Priority = index;
+				selection.ProjectId = Project.Id;
+				selection.Provider ??= ResolveProvider(selection.ProviderId);
+				selection.UpdatedAt = DateTime.UtcNow;
+				return selection;
+			})
+			.ToList();
+	}
+
+	private void SeedDefaultProviderSelection()
+	{
+		if (Project.ProviderSelections.Any())
+		{
+			return;
+		}
+
+		var defaultProvider = _availableProviders.FirstOrDefault(p => p.IsDefault);
+		if (defaultProvider != null)
+		{
+			AddProviderSelection(defaultProvider);
+		}
 	}
 }

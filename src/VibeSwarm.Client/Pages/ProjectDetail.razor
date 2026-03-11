@@ -88,10 +88,10 @@ else
                              OnCancelDiscard="CloseDiscardConfirmation" />
 
     @* Create Job Modal *@
-    <CreateJobModal @bind-IsVisible="_showCreateJobModal" JobModel="@NewJob" Providers="@Providers"
+    <CreateJobModal @bind-IsVisible="_showCreateJobModal" JobModel="@NewJob" Providers="@GetAllowedJobProviders()"
                     AvailableModels="@AvailableModels" Branches="@Branches" CurrentBranch="@CurrentBranch"
                     ShowBranchSelector="@(IsGitRepository && Branches.Any())" IsLoadingModels="@IsLoadingModels" IsSaving="@IsSaving"
-                    ErrorMessage="@ErrorMessage" SelectedModelId="@SelectedModelId" OnProviderChanged="OnProviderChanged"
+                    ErrorMessage="@ErrorMessage" SelectedModelId="@SelectedModelId" ProviderHint="@GetProviderHint()" OnProviderChanged="OnProviderChanged"
                     OnSubmit="HandleCreateJob" />
 
     @* Edit Project Modal *@
@@ -854,13 +854,13 @@ TimeSpan.FromSeconds(10) })
         NewJob = new Job();
         NewJob.Branch = CurrentBranch;
         SelectedModelId = string.Empty;
+        AvailableModels.Clear();
 
-        // Set default provider if available
-        var defaultProvider = Providers.FirstOrDefault(p => p.IsDefault && p.IsEnabled);
-        if (defaultProvider != null)
+        var initialProvider = GetPreferredJobProvider();
+        if (initialProvider != null)
         {
-            NewJob.ProviderId = defaultProvider.Id;
-            await LoadModelsForProvider(defaultProvider.Id);
+            NewJob.ProviderId = initialProvider.Id;
+            await LoadModelsForProvider(initialProvider.Id);
         }
 
         ErrorMessage = null;
@@ -957,9 +957,16 @@ TimeSpan.FromSeconds(10) })
 
     private async Task OnProviderChanged(Guid providerId)
     {
+        if (providerId != Guid.Empty && !GetAllowedJobProviders().Any(p => p.Id == providerId))
+        {
+            ErrorMessage = "This provider is not enabled for the current project.";
+            return;
+        }
+
         NewJob.ProviderId = providerId;
         SelectedModelId = string.Empty;
         AvailableModels.Clear();
+        ErrorMessage = null;
 
         if (providerId != Guid.Empty)
         {
@@ -999,6 +1006,12 @@ TimeSpan.FromSeconds(10) })
             return;
         }
 
+        if (!GetAllowedJobProviders().Any(p => p.Id == NewJob.ProviderId))
+        {
+            ErrorMessage = "The selected provider is not allowed for this project.";
+            return;
+        }
+
         IsSaving = true;
         ErrorMessage = null;
 
@@ -1016,6 +1029,56 @@ TimeSpan.FromSeconds(10) })
             ErrorMessage = $"Error creating job: {ex.Message}";
             IsSaving = false;
         }
+    }
+
+    private List<Provider> GetAllowedJobProviders()
+    {
+        var enabledProviders = Providers.Where(p => p.IsEnabled).ToList();
+        var projectSelections = Project?.ProviderSelections?
+            .Where(pp => pp.IsEnabled)
+            .OrderBy(pp => pp.Priority)
+            .ToList();
+
+        if (projectSelections == null || projectSelections.Count == 0)
+        {
+            return enabledProviders;
+        }
+
+        return projectSelections
+            .Select(selection => enabledProviders.FirstOrDefault(provider => provider.Id == selection.ProviderId))
+            .Where(provider => provider != null)
+            .Cast<Provider>()
+            .ToList();
+    }
+
+    private Provider? GetPreferredJobProvider()
+    {
+        var allowedProviders = GetAllowedJobProviders();
+        if (allowedProviders.Count == 0)
+        {
+            return null;
+        }
+
+        var preferredAllowedDefault = allowedProviders.FirstOrDefault(p => p.IsDefault);
+        return preferredAllowedDefault ?? allowedProviders.First();
+    }
+
+    private string? GetProviderHint()
+    {
+        var allowedProviders = GetAllowedJobProviders();
+        if (allowedProviders.Count == 0)
+        {
+            return null;
+        }
+
+        var hasProjectPriority = Project?.ProviderSelections?.Any(pp => pp.IsEnabled) == true;
+        if (!hasProjectPriority)
+        {
+            return "This project can use any enabled provider. The list below is ordered by the current provider defaults.";
+        }
+
+        var chain = string.Join(" -> ", allowedProviders.Select(p => p.Name));
+        return $"This project will try providers in this order: {chain}.";
     }
 
     private async Task DeleteJob(Guid jobId)

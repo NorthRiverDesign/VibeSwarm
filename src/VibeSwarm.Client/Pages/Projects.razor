@@ -101,6 +101,19 @@ else
                                     </span>
                                 }
                             </div>
+                                @if (project.ProviderSelections.Any(pp => pp.IsEnabled))
+                                {
+                                    <div class="d-flex flex-wrap align-items-center gap-2 mt-2 small">
+                                        <span class="text-body-secondary d-flex align-items-center gap-1">
+                                            <i class="bi bi-diagram-3 opacity-75"></i>
+                                            Providers
+                                        </span>
+                                        @foreach (var selection in project.ProviderSelections.Where(pp => pp.IsEnabled).OrderBy(pp => pp.Priority))
+                                        {
+                                            <span class="badge bg-secondary-subtle text-secondary-emphasis">#@(selection.Priority + 1) @(selection.Provider?.Name ?? "Unknown")</span>
+                                        }
+                                    </div>
+                                }
                             @* Job Statistics Row *@
                             @if (stats.TotalJobs > 0)
                             {

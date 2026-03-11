@@ -70,6 +70,28 @@ public class Job
     public string? ModelUsed { get; set; }
 
     /// <summary>
+    /// Ordered provider-model execution plan captured when the job is scheduled or reset.
+    /// Stored as JSON so retries can resume deterministic fallback.
+    /// </summary>
+    public string? ExecutionPlan { get; set; }
+
+    /// <summary>
+    /// Index of the currently active provider-model candidate within ExecutionPlan.
+    /// </summary>
+    public int ActiveExecutionIndex { get; set; }
+
+    /// <summary>
+    /// Last reason the job switched providers or models.
+    /// </summary>
+    [StringLength(200)]
+    public string? LastSwitchReason { get; set; }
+
+    /// <summary>
+    /// When the job last switched providers or models.
+    /// </summary>
+    public DateTime? LastSwitchAt { get; set; }
+
+    /// <summary>
     /// The git branch this job should operate within.
     /// If specified, the worker will switch to this branch before starting the job.
     /// </summary>
@@ -310,6 +332,8 @@ public class Job
     public DateTime? InteractionRequestedAt { get; set; }
 
     public ICollection<JobMessage> Messages { get; set; } = new List<JobMessage>();
+
+    public ICollection<JobProviderAttempt> ProviderAttempts { get; set; } = new List<JobProviderAttempt>();
 
     /// <summary>
     /// Creates completion criteria from this job's settings.

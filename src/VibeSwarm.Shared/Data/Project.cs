@@ -58,6 +58,8 @@ public class Project
 
     public ICollection<Idea> Ideas { get; set; } = new List<Idea>();
 
+    public ICollection<ProjectProvider> ProviderSelections { get; set; } = new List<ProjectProvider>();
+
     /// <summary>
     /// Optional per-project instructions injected into every job prompt.
     /// E.g., coding conventions, framework preferences, language requirements.

@@ -861,6 +861,19 @@ public class JobProcessingService : BackgroundService
                 // Determine session ID for this cycle
                 var cycleSessionId = job.CycleSessionMode == CycleSessionMode.ContinueSession ? sessionId : null;
 
+                if (currentCycle == job.CurrentCycle)
+                {
+                    await RecordProviderAttemptAsync(
+                        job.Id,
+                        job.ProviderId,
+                        job.Provider?.Name ?? provider.Name,
+                        job.ModelUsed,
+                        job.ActiveExecutionIndex,
+                        "initial-execution",
+                        dbContext,
+                        cancellationToken);
+                }
+
                 var result = await provider.ExecuteWithOptionsAsync(
                     currentPrompt,
                     new ExecutionOptions
@@ -952,12 +965,16 @@ public class JobProcessingService : BackgroundService
 
             if (wasCancelled)
             {
+                await UpdateProviderAttemptOutcomeAsync(job.Id, job.ActiveExecutionIndex, false, finalResult.ModelUsed ?? job.ModelUsed, dbContext, CancellationToken.None);
+                var providerDisplayName = job.Provider?.Name;
+                providerDisplayName ??= provider?.Name;
+                providerDisplayName ??= "Unknown Provider";
                 await CompleteJobAsync(job.Id, JobStatus.Cancelled, finalResult.SessionId, finalResult.Output,
                     "Job was cancelled by user", finalResult.InputTokens, finalResult.OutputTokens, finalResult.CostUsd, finalResult.ModelUsed,
                     executionContext, workingDirectory, dbContext, CancellationToken.None);
 
                 // Record usage even for cancelled jobs
-                await RecordUsageAndCheckExhaustionAsync(job.ProviderId, job.Provider.Name, job.Id, finalResult, CancellationToken.None);
+                await RecordUsageAndCheckExhaustionAsync(job.ProviderId, providerDisplayName, job.Id, finalResult, CancellationToken.None);
 
                 await NotifyJobCompletedAsync(job.Id, false, "Job was cancelled by user");
 
@@ -965,6 +982,10 @@ public class JobProcessingService : BackgroundService
             }
             else if (finalResult.Success)
             {
+                await UpdateProviderAttemptOutcomeAsync(job.Id, job.ActiveExecutionIndex, true, finalResult.ModelUsed ?? job.ModelUsed, dbContext, CancellationToken.None);
+                var providerDisplayName = job.Provider?.Name;
+                providerDisplayName ??= provider?.Name;
+                providerDisplayName ??= "Unknown Provider";
                 // Save messages
                 if (finalResult.Messages.Count > 0)
                 {
@@ -987,7 +1008,7 @@ public class JobProcessingService : BackgroundService
                     executionContext, workingDirectory, dbContext, CancellationToken.None);
 
                 // Record usage after successful completion
-                await RecordUsageAndCheckExhaustionAsync(job.ProviderId, job.Provider.Name, job.Id, finalResult, CancellationToken.None);
+                await RecordUsageAndCheckExhaustionAsync(job.ProviderId, providerDisplayName, job.Id, finalResult, CancellationToken.None);
 
                 _logger.LogInformation("Job {JobId} completed successfully. Session: {SessionId}, InputTokens: {InputTokens}, OutputTokens: {OutputTokens}, Cost: {CostUsd}",
                     job.Id, finalResult.SessionId, finalResult.InputTokens, finalResult.OutputTokens, finalResult.CostUsd);
@@ -995,12 +1016,16 @@ public class JobProcessingService : BackgroundService
             }
             else
             {
+                await UpdateProviderAttemptOutcomeAsync(job.Id, job.ActiveExecutionIndex, false, finalResult.ModelUsed ?? job.ModelUsed, dbContext, CancellationToken.None);
+                var providerDisplayName = job.Provider?.Name;
+                providerDisplayName ??= provider?.Name;
+                providerDisplayName ??= "Unknown Provider";
                 await CompleteJobAsync(job.Id, JobStatus.Failed, finalResult.SessionId, finalResult.Output,
                     finalResult.ErrorMessage, finalResult.InputTokens, finalResult.OutputTokens, finalResult.CostUsd, finalResult.ModelUsed,
                     executionContext, workingDirectory, dbContext, CancellationToken.None);
 
                 // Record usage even for failed jobs
-                await RecordUsageAndCheckExhaustionAsync(job.ProviderId, job.Provider.Name, job.Id, finalResult, CancellationToken.None);
+                await RecordUsageAndCheckExhaustionAsync(job.ProviderId, providerDisplayName, job.Id, finalResult, CancellationToken.None);
 
                 _logger.LogWarning("Job {JobId} failed: {Error}. InputTokens: {InputTokens}, OutputTokens: {OutputTokens}, Cost: {CostUsd}",
                     job.Id, finalResult.ErrorMessage, finalResult.InputTokens, finalResult.OutputTokens, finalResult.CostUsd);
@@ -1300,6 +1325,66 @@ public class JobProcessingService : BackgroundService
 
             await dbContext.SaveChangesAsync(cancellationToken);
         }
+    }
+
+    private static async Task RecordProviderAttemptAsync(
+        Guid jobId,
+        Guid providerId,
+        string providerName,
+        string? modelId,
+        int attemptOrder,
+        string reason,
+        VibeSwarmDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        var attempt = await dbContext.JobProviderAttempts
+            .FirstOrDefaultAsync(a => a.JobId == jobId && a.AttemptOrder == attemptOrder, cancellationToken);
+
+        if (attempt != null)
+        {
+            attempt.ProviderId = providerId;
+            attempt.ProviderName = providerName;
+            attempt.ModelId = modelId;
+            attempt.Reason = reason;
+            attempt.AttemptedAt = DateTime.UtcNow;
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return;
+        }
+
+        dbContext.JobProviderAttempts.Add(new JobProviderAttempt
+        {
+            JobId = jobId,
+            ProviderId = providerId,
+            ProviderName = providerName,
+            ModelId = modelId,
+            AttemptOrder = attemptOrder,
+            Reason = reason,
+            WasSuccessful = false,
+            AttemptedAt = DateTime.UtcNow
+        });
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    private static async Task UpdateProviderAttemptOutcomeAsync(
+        Guid jobId,
+        int attemptOrder,
+        bool wasSuccessful,
+        string? modelId,
+        VibeSwarmDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        var attempt = await dbContext.JobProviderAttempts
+            .FirstOrDefaultAsync(a => a.JobId == jobId && a.AttemptOrder == attemptOrder, cancellationToken);
+
+        if (attempt == null)
+        {
+            return;
+        }
+
+        attempt.WasSuccessful = wasSuccessful;
+        attempt.ModelId = modelId ?? attempt.ModelId;
+        await dbContext.SaveChangesAsync(cancellationToken);
     }
 
     /// <summary>

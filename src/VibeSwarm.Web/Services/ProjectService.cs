@@ -15,6 +15,8 @@ public class ProjectService : IProjectService
     public async Task<IEnumerable<Project>> GetAllAsync(CancellationToken cancellationToken = default)
     {
         return await _dbContext.Projects
+            .Include(p => p.ProviderSelections.OrderBy(pp => pp.Priority))
+                .ThenInclude(pp => pp.Provider)
             .OrderByDescending(p => p.CreatedAt)
             .ToListAsync(cancellationToken);
     }
@@ -22,6 +24,8 @@ public class ProjectService : IProjectService
     public async Task<IEnumerable<Project>> GetRecentAsync(int count, CancellationToken cancellationToken = default)
     {
         return await _dbContext.Projects
+            .Include(p => p.ProviderSelections.OrderBy(pp => pp.Priority))
+                .ThenInclude(pp => pp.Provider)
             .OrderByDescending(p => p.CreatedAt)
             .Take(count)
             .ToListAsync(cancellationToken);
@@ -30,12 +34,16 @@ public class ProjectService : IProjectService
     public async Task<Project?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {
         return await _dbContext.Projects
+            .Include(p => p.ProviderSelections.OrderBy(pp => pp.Priority))
+                .ThenInclude(pp => pp.Provider)
             .FirstOrDefaultAsync(p => p.Id == id, cancellationToken);
     }
 
     public async Task<Project?> GetByIdWithJobsAsync(Guid id, CancellationToken cancellationToken = default)
     {
         return await _dbContext.Projects
+            .Include(p => p.ProviderSelections.OrderBy(pp => pp.Priority))
+                .ThenInclude(pp => pp.Provider)
             .Include(p => p.Jobs)
                 .ThenInclude(j => j.Provider)
             .FirstOrDefaultAsync(p => p.Id == id, cancellationToken);
@@ -46,10 +54,12 @@ public class ProjectService : IProjectService
         project.Id = Guid.NewGuid();
         project.CreatedAt = DateTime.UtcNow;
 
+        NormalizeProviderSelections(project);
+
         _dbContext.Projects.Add(project);
         await _dbContext.SaveChangesAsync(cancellationToken);
 
-        return project;
+        return await GetByIdAsync(project.Id, cancellationToken) ?? project;
     }
 
     public async Task<Project> UpdateAsync(Project project, CancellationToken cancellationToken = default)
@@ -71,9 +81,15 @@ public class ProjectService : IProjectService
         existing.IsActive = project.IsActive;
         existing.UpdatedAt = DateTime.UtcNow;
 
+        await _dbContext.Entry(existing)
+            .Collection(p => p.ProviderSelections)
+            .LoadAsync(cancellationToken);
+
+        SynchronizeProviderSelections(existing, project.ProviderSelections);
+
         await _dbContext.SaveChangesAsync(cancellationToken);
 
-        return existing;
+        return await GetByIdAsync(existing.Id, cancellationToken) ?? existing;
     }
 
     public async Task DeleteAsync(Guid id, CancellationToken cancellationToken = default)
@@ -91,6 +107,8 @@ public class ProjectService : IProjectService
     public async Task<IEnumerable<ProjectWithStats>> GetAllWithStatsAsync(CancellationToken cancellationToken = default)
     {
         var projects = await _dbContext.Projects
+            .Include(p => p.ProviderSelections.OrderBy(pp => pp.Priority))
+                .ThenInclude(pp => pp.Provider)
             .OrderByDescending(p => p.CreatedAt)
             .ToListAsync(cancellationToken);
 
@@ -126,6 +144,8 @@ public class ProjectService : IProjectService
     {
         var projects = await _dbContext.Projects
             .Where(p => p.IsActive)
+            .Include(p => p.ProviderSelections.OrderBy(pp => pp.Priority))
+                .ThenInclude(pp => pp.Provider)
             .OrderByDescending(p => p.CreatedAt)
             .Take(count)
             .ToListAsync(cancellationToken);
@@ -151,5 +171,81 @@ public class ProjectService : IProjectService
             Project = p,
             LatestJob = latestJobsByProject.TryGetValue(p.Id, out var job) ? job : null
         });
+    }
+
+    private static void NormalizeProviderSelections(Project project)
+    {
+        if (project.ProviderSelections == null || project.ProviderSelections.Count == 0)
+        {
+            project.ProviderSelections = [];
+            return;
+        }
+
+        var orderedSelections = project.ProviderSelections
+            .GroupBy(pp => pp.ProviderId)
+            .Select(g => g.OrderBy(pp => pp.Priority).First())
+            .OrderBy(pp => pp.Priority)
+            .ToList();
+
+        for (var index = 0; index < orderedSelections.Count; index++)
+        {
+            var selection = orderedSelections[index];
+            selection.Id = selection.Id == Guid.Empty ? Guid.NewGuid() : selection.Id;
+            selection.ProjectId = project.Id;
+            selection.Priority = index;
+            selection.UpdatedAt = DateTime.UtcNow;
+            if (selection.CreatedAt == default)
+            {
+                selection.CreatedAt = DateTime.UtcNow;
+            }
+        }
+
+        project.ProviderSelections = orderedSelections;
+    }
+
+    private void SynchronizeProviderSelections(Project existing, ICollection<ProjectProvider> requestedSelections)
+    {
+        var requestedProject = new Project
+        {
+            Id = existing.Id,
+            ProviderSelections = requestedSelections ?? []
+        };
+
+        NormalizeProviderSelections(requestedProject);
+        var requestedByProvider = requestedProject.ProviderSelections.ToDictionary(pp => pp.ProviderId);
+
+        var selectionsToRemove = existing.ProviderSelections
+            .Where(current => !requestedByProvider.ContainsKey(current.ProviderId))
+            .ToList();
+
+        foreach (var selection in selectionsToRemove)
+        {
+            _dbContext.ProjectProviders.Remove(selection);
+        }
+
+        foreach (var requested in requestedProject.ProviderSelections)
+        {
+            var current = existing.ProviderSelections.FirstOrDefault(pp => pp.ProviderId == requested.ProviderId);
+            if (current == null)
+            {
+                existing.ProviderSelections.Add(new ProjectProvider
+                {
+                    Id = requested.Id,
+                    ProjectId = existing.Id,
+                    ProviderId = requested.ProviderId,
+                    Priority = requested.Priority,
+                    IsEnabled = requested.IsEnabled,
+                    PreferredModelId = requested.PreferredModelId,
+                    CreatedAt = requested.CreatedAt,
+                    UpdatedAt = requested.UpdatedAt
+                });
+                continue;
+            }
+
+            current.Priority = requested.Priority;
+            current.IsEnabled = requested.IsEnabled;
+            current.PreferredModelId = requested.PreferredModelId;
+            current.UpdatedAt = DateTime.UtcNow;
+        }
     }
 }

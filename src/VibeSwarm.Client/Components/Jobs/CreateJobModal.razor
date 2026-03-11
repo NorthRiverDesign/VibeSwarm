@@ -17,12 +17,16 @@
 
 			<div class="mb-3">
 				<label for="provider" class="form-label">Provider</label>
+				@if (!string.IsNullOrEmpty(ProviderHint))
+				{
+					<div class="form-text mb-2">@ProviderHint</div>
+				}
 				<InputSelect id="provider" Value="JobModel.ProviderId" ValueExpression="@(() => JobModel.ProviderId)"
 					ValueChanged="@((Guid value) => HandleProviderChanged(value))" class="form-select">
 					<option value="@Guid.Empty">Select a provider...</option>
 					@foreach (var provider in Providers.Where(p => p.IsEnabled))
 					{
-						<option value="@provider.Id">@provider.Name (@provider.Type)</option>
+						<option value="@provider.Id">@GetProviderDisplayText(provider)</option>
 					}
 				</InputSelect>
 				@if (!Providers.Any(p => p.IsEnabled))
@@ -215,6 +219,9 @@
 	[Parameter]
 	public EventCallback OnSubmit { get; set; }
 
+	[Parameter]
+	public string? ProviderHint { get; set; }
+
 	private bool ShowAdvancedOptions { get; set; } = false;
 
 	private void ToggleAdvancedOptions()
@@ -237,5 +244,13 @@
 	private async Task Close()
 	{
 		await IsVisibleChanged.InvokeAsync(false);
+	}
+
+	private string GetProviderDisplayText(Provider provider)
+	{
+		var index = Providers.FindIndex(p => p.Id == provider.Id);
+		return index >= 0
+			? $"#{index + 1} {provider.Name} ({provider.Type})"
+			: $"{provider.Name} ({provider.Type})";
 	}
 }

@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using System.Text.Json;
 using VibeSwarm.Shared.Data;
+using VibeSwarm.Shared.Providers;
 
 namespace VibeSwarm.Shared.Services;
 
@@ -72,6 +74,7 @@ public class JobService : IJobService
         return await _dbContext.Jobs
             .Include(j => j.Project)
             .Include(j => j.Provider)
+            .Include(j => j.ProviderAttempts.OrderBy(a => a.AttemptOrder))
             .FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
     }
 
@@ -80,6 +83,7 @@ public class JobService : IJobService
         return await _dbContext.Jobs
             .Include(j => j.Project)
             .Include(j => j.Provider)
+            .Include(j => j.ProviderAttempts.OrderBy(a => a.AttemptOrder))
             .Include(j => j.Messages.OrderBy(m => m.CreatedAt))
             .FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
     }
@@ -89,6 +93,12 @@ public class JobService : IJobService
         job.Id = Guid.NewGuid();
         job.CreatedAt = DateTime.UtcNow;
         job.Status = JobStatus.New;
+        job.ActiveExecutionIndex = 0;
+        job.LastSwitchAt = null;
+        job.LastSwitchReason = null;
+        job.ProviderAttempts.Clear();
+
+        await InitializeExecutionPlanAsync(job, cancellationToken);
 
         _dbContext.Jobs.Add(job);
         await _dbContext.SaveChangesAsync(cancellationToken);
@@ -683,11 +693,25 @@ public class JobService : IJobService
         job.SessionId = null; // Clear session for fresh start with potentially new provider
         job.ModelUsed = modelId; // Set the requested model (null means use provider default)
         job.RetryCount++; // Increment retry count to track attempts
+        job.ActiveExecutionIndex = 0;
+        job.ExecutionPlan = null;
+        job.LastSwitchAt = null;
+        job.LastSwitchReason = null;
 
         // Clear token/cost tracking for fresh run
         job.InputTokens = null;
         job.OutputTokens = null;
         job.TotalCostUsd = null;
+
+        var attempts = await _dbContext.JobProviderAttempts
+            .Where(a => a.JobId == job.Id)
+            .ToListAsync(cancellationToken);
+        if (attempts.Count > 0)
+        {
+            _dbContext.JobProviderAttempts.RemoveRange(attempts);
+        }
+
+        await InitializeExecutionPlanAsync(job, cancellationToken);
 
         await _dbContext.SaveChangesAsync(cancellationToken);
 
@@ -733,5 +757,138 @@ public class JobService : IJobService
         await _dbContext.SaveChangesAsync(cancellationToken);
 
         return true;
+    }
+
+    private async Task InitializeExecutionPlanAsync(Job job, CancellationToken cancellationToken)
+    {
+        var targets = await BuildExecutionPlanAsync(job, cancellationToken);
+        job.ExecutionPlan = targets.Count > 0 ? JsonSerializer.Serialize(targets) : null;
+        job.ActiveExecutionIndex = 0;
+        job.LastSwitchAt = null;
+        job.LastSwitchReason = null;
+
+        if (job.ProviderId == Guid.Empty && targets.Count > 0)
+        {
+            job.ProviderId = targets[0].ProviderId;
+        }
+    }
+
+    private async Task<List<JobExecutionTarget>> BuildExecutionPlanAsync(Job job, CancellationToken cancellationToken)
+    {
+        var enabledProviders = await _dbContext.Providers
+            .Where(p => p.IsEnabled)
+            .OrderByDescending(p => p.IsDefault)
+            .ThenBy(p => p.Name)
+            .ToListAsync(cancellationToken);
+
+        if (enabledProviders.Count == 0)
+        {
+            return [];
+        }
+
+        var providerIds = enabledProviders.Select(p => p.Id).ToList();
+        var projectSelections = await _dbContext.ProjectProviders
+            .Where(pp => pp.ProjectId == job.ProjectId && pp.IsEnabled && providerIds.Contains(pp.ProviderId))
+            .OrderBy(pp => pp.Priority)
+            .ToListAsync(cancellationToken);
+
+        var providerOrder = BuildProviderOrder(job.ProviderId, enabledProviders, projectSelections);
+
+        var modelLookup = await _dbContext.ProviderModels
+            .Where(m => providerIds.Contains(m.ProviderId) && m.IsAvailable)
+            .OrderByDescending(m => m.IsDefault)
+            .ThenBy(m => m.DisplayName ?? m.ModelId)
+            .ToListAsync(cancellationToken);
+
+        var modelsByProvider = modelLookup
+            .GroupBy(m => m.ProviderId)
+            .ToDictionary(g => g.Key, g => g.ToList());
+
+        var targets = new List<JobExecutionTarget>();
+        var order = 0;
+
+        foreach (var provider in providerOrder)
+        {
+            var selection = projectSelections.FirstOrDefault(pp => pp.ProviderId == provider.Id);
+            modelsByProvider.TryGetValue(provider.Id, out var providerModels);
+            providerModels ??= [];
+
+            var plannedModels = new List<(string? ModelId, string Source)>();
+            if (provider.Id == job.ProviderId)
+            {
+                plannedModels.Add((job.ModelUsed, string.IsNullOrWhiteSpace(job.ModelUsed) ? "job-provider-default" : "job-selected-model"));
+            }
+            else if (!string.IsNullOrWhiteSpace(selection?.PreferredModelId))
+            {
+                plannedModels.Add((selection.PreferredModelId, "project-preferred-model"));
+            }
+
+            var defaultModel = providerModels.FirstOrDefault(m => m.IsDefault);
+            if (defaultModel != null)
+            {
+                plannedModels.Add((defaultModel.ModelId, "provider-default-model"));
+            }
+
+            foreach (var model in providerModels)
+            {
+                plannedModels.Add((model.ModelId, "provider-available-model"));
+            }
+
+            if (plannedModels.Count == 0)
+            {
+                plannedModels.Add((null, "provider-default-model"));
+            }
+
+            foreach (var candidate in plannedModels)
+            {
+                if (targets.Any(existing => existing.ProviderId == provider.Id && existing.ModelId == candidate.ModelId))
+                {
+                    continue;
+                }
+
+                targets.Add(new JobExecutionTarget
+                {
+                    ProviderId = provider.Id,
+                    ProviderName = provider.Name,
+                    ModelId = candidate.ModelId,
+                    Order = order++,
+                    Source = candidate.Source
+                });
+            }
+        }
+
+        return targets;
+    }
+
+    private static List<Provider> BuildProviderOrder(Guid selectedProviderId, List<Provider> enabledProviders, List<ProjectProvider> projectSelections)
+    {
+        if (projectSelections.Count == 0)
+        {
+            return OrderProvidersWithSelectionFirst(selectedProviderId, enabledProviders);
+        }
+
+        var providerById = enabledProviders.ToDictionary(p => p.Id);
+        var orderedProviders = projectSelections
+            .Where(pp => providerById.ContainsKey(pp.ProviderId))
+            .Select(pp => providerById[pp.ProviderId])
+            .ToList();
+
+        return OrderProvidersWithSelectionFirst(selectedProviderId, orderedProviders);
+    }
+
+    private static List<Provider> OrderProvidersWithSelectionFirst(Guid selectedProviderId, List<Provider> providers)
+    {
+        if (selectedProviderId == Guid.Empty)
+        {
+            return providers;
+        }
+
+        var selectedProvider = providers.FirstOrDefault(p => p.Id == selectedProviderId);
+        if (selectedProvider == null)
+        {
+            return providers;
+        }
+
+        return [selectedProvider, .. providers.Where(p => p.Id != selectedProviderId)];
     }
 }

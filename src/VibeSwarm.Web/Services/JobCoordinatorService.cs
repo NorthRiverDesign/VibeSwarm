@@ -18,6 +18,8 @@ public class JobCoordinatorService : IJobCoordinatorService
 	private readonly JobQueueManager _queueManager;
 	private readonly SemaphoreSlim _coordinatorLock = new(1, 1);
 
+	private sealed record ProviderCandidate(Provider Provider, ProjectProvider? ProjectSelection, ProviderHealth Health, double Score);
+
 	/// <summary>
 	/// Maximum number of jobs that can be assigned to a single provider at once
 	/// </summary>
@@ -50,6 +52,17 @@ public class JobCoordinatorService : IJobCoordinatorService
 		{
 			using var scope = _scopeFactory.CreateScope();
 			var dbContext = scope.ServiceProvider.GetRequiredService<VibeSwarmDbContext>();
+			var usageService = scope.ServiceProvider.GetService<IProviderUsageService>();
+
+			var projectProviderSelections = await dbContext.ProjectProviders
+				.Include(pp => pp.Provider)
+				.Where(pp => pp.ProjectId == job.ProjectId && pp.IsEnabled)
+				.OrderBy(pp => pp.Priority)
+				.ToListAsync(cancellationToken);
+
+			var allowedProviderIds = projectProviderSelections
+				.Select(pp => pp.ProviderId)
+				.ToHashSet();
 
 			// If job has a specific provider assigned, validate and return it
 			if (job.ProviderId != Guid.Empty)
@@ -59,23 +72,42 @@ public class JobCoordinatorService : IJobCoordinatorService
 
 				if (assignedProvider != null)
 				{
+					var providerIsAllowed = allowedProviderIds.Count == 0 || allowedProviderIds.Contains(assignedProvider.Id);
 					var health = _healthTracker.GetProviderHealth(assignedProvider.Id);
-					if (health.IsHealthy && health.CurrentLoad < MaxJobsPerProvider)
+					var exhaustionWarning = usageService != null
+						? await usageService.CheckExhaustionAsync(assignedProvider.Id, cancellationToken: cancellationToken)
+						: null;
+					if (providerIsAllowed && health.IsHealthy && health.CurrentLoad < MaxJobsPerProvider && exhaustionWarning?.IsExhausted != true)
 					{
 						_logger.LogDebug("Using assigned provider {ProviderId} for job {JobId}",
 							assignedProvider.Id, job.Id);
 						return assignedProvider;
 					}
 
-					_logger.LogWarning("Assigned provider {ProviderId} is unhealthy or overloaded for job {JobId}",
-						assignedProvider.Id, job.Id);
+					_logger.LogWarning("Assigned provider {ProviderId} is not eligible for job {JobId}. Allowed={Allowed}, Healthy={Healthy}, Load={Load}, Exhausted={Exhausted}",
+						assignedProvider.Id,
+						job.Id,
+						providerIsAllowed,
+						health.IsHealthy,
+						health.CurrentLoad,
+						exhaustionWarning?.IsExhausted == true);
 				}
 			}
 
-			// Get all enabled providers
-			var providers = await dbContext.Providers
-				.Where(p => p.IsEnabled)
-				.ToListAsync(cancellationToken);
+			List<Provider> providers;
+			if (projectProviderSelections.Count > 0)
+			{
+				providers = projectProviderSelections
+					.Where(pp => pp.Provider is { IsEnabled: true })
+					.Select(pp => pp.Provider!)
+					.ToList();
+			}
+			else
+			{
+				providers = await dbContext.Providers
+					.Where(p => p.IsEnabled)
+					.ToListAsync(cancellationToken);
+			}
 
 			if (!providers.Any())
 			{
@@ -88,22 +120,45 @@ public class JobCoordinatorService : IJobCoordinatorService
 				.Select(p => new
 				{
 					Provider = p,
+					ProjectSelection = projectProviderSelections.FirstOrDefault(pp => pp.ProviderId == p.Id),
 					Health = _healthTracker.GetProviderHealth(p.Id),
 					Score = CalculateProviderScore(p, _healthTracker.GetProviderHealth(p.Id))
 				})
-				.Where(x => x.Health.IsHealthy && x.Health.CurrentLoad < MaxJobsPerProvider)
-				.OrderByDescending(x => x.Score)
 				.ToList();
 
-			if (!scoredProviders.Any())
+			var eligibleProviders = new List<ProviderCandidate>();
+			foreach (var providerCandidate in scoredProviders)
+			{
+				var exhaustionWarning = usageService != null
+					? await usageService.CheckExhaustionAsync(providerCandidate.Provider.Id, cancellationToken: cancellationToken)
+					: null;
+
+				if (!providerCandidate.Health.IsHealthy || providerCandidate.Health.CurrentLoad >= MaxJobsPerProvider || exhaustionWarning?.IsExhausted == true)
+				{
+					continue;
+				}
+
+				eligibleProviders.Add(new ProviderCandidate(
+					providerCandidate.Provider,
+					providerCandidate.ProjectSelection,
+					providerCandidate.Health,
+					providerCandidate.Score));
+			}
+
+			var rankedProviders = eligibleProviders
+				.OrderBy(x => x.ProjectSelection?.Priority ?? int.MaxValue)
+				.ThenByDescending(x => x.Score)
+				.ToList();
+
+			if (!rankedProviders.Any())
 			{
 				_logger.LogWarning("No healthy providers with available capacity for job {JobId}", job.Id);
 				return null;
 			}
 
-			var selected = scoredProviders.First();
-			_logger.LogInformation("Selected provider {ProviderName} (score: {Score:F2}) for job {JobId}",
-				selected.Provider.Name, selected.Score, job.Id);
+			var selected = rankedProviders.First();
+			_logger.LogInformation("Selected provider {ProviderName} (priority: {Priority}, score: {Score:F2}) for job {JobId}",
+				selected.Provider.Name, selected.ProjectSelection?.Priority ?? -1, selected.Score, job.Id);
 
 			return selected.Provider;
 		}
