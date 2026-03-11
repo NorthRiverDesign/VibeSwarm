@@ -15,6 +15,7 @@ public class ClaudeSdkProvider : SdkProviderBase
 {
 	private AnthropicClient? _client;
 	private const string DefaultModel = "claude-sonnet-4-6-20260201";
+	private const string ConnectionTestFallbackModel = "claude-sonnet-4-5-20250929";
 
 	private static readonly string[] AvailableModels =
 	[
@@ -74,21 +75,48 @@ public class ClaudeSdkProvider : SdkProviderBase
 
 	public override async Task<bool> TestConnectionAsync(CancellationToken cancellationToken = default)
 	{
+		var attemptedModels = new List<string>();
+
 		try
 		{
 			var client = EnsureClient();
 
-			// Minimal call to verify API key works
-			var message = await client.Messages.Create(new MessageCreateParams
+			foreach (var model in GetConnectionTestModels())
 			{
-				MaxTokens = 1,
-				Messages = [new MessageParam { Role = Role.User, Content = "Hi" }],
-				Model = DefaultModel
-			}, cancellationToken);
+				attemptedModels.Add(model);
 
-			IsConnected = true;
-			LastConnectionError = null;
-			return true;
+				try
+				{
+					await client.Messages.Create(new MessageCreateParams
+					{
+						MaxTokens = 1,
+						Messages = [new MessageParam { Role = Role.User, Content = "Hi" }],
+						Model = model
+					}, cancellationToken);
+
+					IsConnected = true;
+					LastConnectionError = null;
+					return true;
+				}
+				catch (AnthropicUnauthorizedException)
+				{
+					throw;
+				}
+				catch (AnthropicRateLimitException)
+				{
+					IsConnected = true;
+					LastConnectionError = null;
+					return true;
+				}
+				catch (AnthropicApiException ex) when (IsModelNotFoundError(ex))
+				{
+					continue;
+				}
+			}
+
+			IsConnected = false;
+			LastConnectionError = $"Claude API rejected all fallback test models. Tried: {string.Join(", ", attemptedModels)}. Refresh models or choose a different SDK model.";
+			return false;
 		}
 		catch (AnthropicUnauthorizedException)
 		{
@@ -305,7 +333,8 @@ public class ClaudeSdkProvider : SdkProviderBase
 			AdditionalInfo = new Dictionary<string, object>
 			{
 				["isAvailable"] = true,
-				["connectionMode"] = "SDK"
+				["connectionMode"] = "SDK",
+				["modelsWarning"] = "Claude SDK currently uses a curated fallback model list. Account access can vary by Anthropic workspace, so connection testing tries multiple fallback models."
 			}
 		};
 
@@ -411,6 +440,25 @@ public class ClaudeSdkProvider : SdkProviderBase
 		}
 		return string.Join("", texts);
 	}
+
+	private static IEnumerable<string> GetConnectionTestModels()
+	{
+		var models = new[]
+		{
+			ConnectionTestFallbackModel,
+			DefaultModel,
+			"claude-haiku-4-5-20251001",
+			"claude-opus-4-20250514",
+			"claude-opus-4-6-20260101"
+		};
+
+		return models.Distinct(StringComparer.OrdinalIgnoreCase);
+	}
+
+	private static bool IsModelNotFoundError(AnthropicApiException ex)
+		=> ex.Message.Contains("not_found_error", StringComparison.OrdinalIgnoreCase)
+			|| ex.Message.Contains("model:", StringComparison.OrdinalIgnoreCase)
+			|| ex.Message.Contains("not found", StringComparison.OrdinalIgnoreCase);
 
 	public override ValueTask DisposeAsync()
 	{
