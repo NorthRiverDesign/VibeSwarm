@@ -27,12 +27,12 @@
 			<div class="flex-grow-1 min-width-0">
 				<div class="d-flex align-items-start gap-2">
 					@* Status Icon *@
-					@if (Idea.IsProcessing || IsProcessing)
+					@if (IsRunningIdea())
 					{
 						<span class="spinner-border spinner-border-sm text-primary flex-shrink-0 mt-1" role="status"
 							  title="Processing..."></span>
 					}
-					else if (IsQueuedForProcessing)
+					else if (IsQueuedIdea())
 					{
 						<i class="bi bi-hourglass-split text-info flex-shrink-0 mt-1" title="Queued for processing"></i>
 					}
@@ -56,7 +56,7 @@
 
 					@* Description and badges *@
 					<div class="flex-grow-1">
-						<span class="@(Idea.IsProcessing || IsProcessing ? "text-body-secondary" : "") text-break"
+						<span class="@(IsRunningIdea() ? "text-body-secondary" : "") text-break"
 							  style="white-space: pre-wrap;">@Idea.Description</span>
 						@if (Idea.ExpansionStatus == IdeaExpansionStatus.Approved)
 						{
@@ -68,11 +68,11 @@
 						}
 					</div>
 				</div>
-				@if ((Idea.IsProcessing || IsProcessing) && Idea.JobId.HasValue)
+				@if ((IsRunningIdea() || IsQueuedIdea()) && Idea.JobId.HasValue)
 				{
 					<small class="text-body-secondary ms-4">
 						<a href="/jobs/view/@Idea.JobId" class="text-decoration-none">
-							View Job <i class="bi bi-arrow-right-short"></i>
+							@(IsQueuedIdea() ? "Queued Job" : "View Job") <i class="bi bi-arrow-right-short"></i>
 						</a>
 					</small>
 				}
@@ -80,7 +80,7 @@
 
 			@* Action buttons *@
 			<div class="d-flex align-items-center gap-1 flex-shrink-0">
-				@if (!Idea.IsProcessing && !IsProcessing && !IsQueuedForProcessing)
+				@if (!IsRunningIdea() && !IsQueuedIdea())
 				{
 					@* Expand button *@
 					<button type="button" class="btn btn-sm btn-info" @onclick="HandleExpand"
@@ -103,8 +103,8 @@
 
 					@* Start button *@
 					<button type="button" class="btn btn-sm btn-success" @onclick="HandleStart"
-							disabled="@(HasActiveJobs || !HasDefaultProvider || IsStarting || Idea.JobId.HasValue)"
-							title="@(HasActiveJobs ? "A job is already running on this project" : "Start this idea")">
+							disabled="@(!HasDefaultProvider || IsStarting || Idea.JobId.HasValue)"
+							title="@(HasActiveJobs ? "Queue this idea after the current job" : "Start this idea")">
 						@if (IsStarting)
 						{
 							<span class="spinner-border spinner-border-sm" role="status"></span>
@@ -115,7 +115,7 @@
 						}
 					</button>
 				}
-				else if (IsQueuedForProcessing)
+				else if (IsQueuedIdea())
 				{
 					@* Show queued indicator *@
 					<button type="button" class="btn btn-sm btn-info" disabled title="Queued for auto-processing">
@@ -133,7 +133,7 @@
 				@* Dropdown menu *@
 				<div class="dropdown">
 					<button class="btn btn-sm btn-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown"
-							aria-expanded="false" disabled="@(Idea.IsProcessing || IsProcessing || Idea.JobId.HasValue)">
+							aria-expanded="false" disabled="@(IsRunningIdea() || IsQueuedIdea() || Idea.JobId.HasValue)">
 						<i class="bi bi-three-dots-vertical"></i>
 					</button>
 					<ul class="dropdown-menu dropdown-menu-end">
@@ -148,7 +148,7 @@
 						</li>
 						<li>
 							<button class="dropdown-item" @onclick="StartEdit"
-									disabled="@(Idea.IsProcessing || IsProcessing || Idea.JobId.HasValue)">
+									disabled="@(IsRunningIdea() || IsQueuedIdea() || Idea.JobId.HasValue)">
 								<i class="bi bi-pencil me-2"></i>Edit
 							</button>
 						</li>
@@ -159,7 +159,7 @@
 						</li>
 						<li>
 							<button class="dropdown-item" @onclick="HandleMove"
-									disabled="@(Idea.IsProcessing || IsProcessing || Idea.JobId.HasValue)">
+									disabled="@(IsRunningIdea() || IsQueuedIdea() || Idea.JobId.HasValue)">
 								<i class="bi bi-box-arrow-right me-2"></i>Move to Project
 							</button>
 						</li>
@@ -168,7 +168,7 @@
 						</li>
 						<li>
 							<button class="dropdown-item text-danger" @onclick="HandleDelete"
-									disabled="@(Idea.IsProcessing || IsProcessing || Idea.JobId.HasValue)">
+									disabled="@(IsRunningIdea() || IsQueuedIdea() || Idea.JobId.HasValue)">
 								<i class="bi bi-trash me-2"></i>Delete
 							</button>
 						</li>
@@ -217,7 +217,7 @@
 	public EventCallback OnDelete { get; set; }
 
 	[Parameter]
-	public EventCallback<Idea> OnSaveEdit { get; set; }
+	public EventCallback<(Guid IdeaId, string Description)> OnSaveEdit { get; set; }
 
 	private bool IsEditing { get; set; }
 	private string EditDescription { get; set; } = string.Empty;
@@ -238,10 +238,20 @@
 	{
 		if (string.IsNullOrWhiteSpace(EditDescription)) return;
 
-		Idea.Description = EditDescription.Trim();
-		await OnSaveEdit.InvokeAsync(Idea);
+		await OnSaveEdit.InvokeAsync((Idea.Id, EditDescription.Trim()));
 		IsEditing = false;
 		EditDescription = string.Empty;
+	}
+
+	private bool IsQueuedIdea()
+	{
+		return IsQueuedForProcessing || Idea.Job?.Status == JobStatus.New || Idea.Job?.Status == JobStatus.Pending;
+	}
+
+	private bool IsRunningIdea()
+	{
+		return IsProcessing || Idea.Job?.Status == JobStatus.Started || Idea.Job?.Status == JobStatus.Processing ||
+			Idea.Job?.Status == JobStatus.Paused;
 	}
 
 	private async Task HandleExpand() => await OnExpand.InvokeAsync();

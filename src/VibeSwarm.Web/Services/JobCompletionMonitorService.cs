@@ -19,18 +19,21 @@ public class JobCompletionMonitorService : BackgroundService
 	private readonly IProviderHealthTracker _healthTracker;
 	private readonly IJobUpdateService? _jobUpdateService;
 	private readonly ProcessSupervisor _processSupervisor;
+	private readonly JobProcessingService _jobProcessingService;
 	private readonly TimeSpan _checkInterval = TimeSpan.FromSeconds(15);
 
 	public JobCompletionMonitorService(
 		IServiceScopeFactory scopeFactory,
 		ILogger<JobCompletionMonitorService> logger,
 		IProviderHealthTracker healthTracker,
+		JobProcessingService jobProcessingService,
 		ProcessSupervisor processSupervisor,
 		IJobUpdateService? jobUpdateService = null)
 	{
 		_scopeFactory = scopeFactory;
 		_logger = logger;
 		_healthTracker = healthTracker;
+		_jobProcessingService = jobProcessingService;
 		_processSupervisor = processSupervisor;
 		_jobUpdateService = jobUpdateService;
 
@@ -189,6 +192,11 @@ public class JobCompletionMonitorService : BackgroundService
 		if (JobStateMachine.IsTerminalState(newStatus))
 		{
 			await NotifyJobCompletedAsync(job.Id, newStatus == JobStatus.Completed, errorMessage);
+		}
+
+		if (newStatus == JobStatus.New || JobStateMachine.IsTerminalState(newStatus))
+		{
+			_jobProcessingService.TriggerProcessing();
 		}
 	}
 

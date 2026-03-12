@@ -56,6 +56,7 @@ public class IdeaService : IIdeaService
 	public async Task<IEnumerable<Idea>> GetByProjectIdAsync(Guid projectId, CancellationToken cancellationToken = default)
 	{
 		return await _dbContext.Ideas
+			.Include(i => i.Job)
 			.Where(i => i.ProjectId == projectId)
 			.OrderBy(i => i.SortOrder)
 			.ThenBy(i => i.CreatedAt)

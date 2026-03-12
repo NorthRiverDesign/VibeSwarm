@@ -1667,6 +1667,8 @@ public class JobProcessingService : BackgroundService
         {
             _logger.LogWarning(ex, "Failed to handle idea completion for job {JobId}", jobId);
         }
+
+        TriggerProcessing();
     }
 
     /// <summary>

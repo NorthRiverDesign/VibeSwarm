@@ -10,19 +10,20 @@ public static class WorkerServiceExtensions
     public static IServiceCollection AddWorkerServices(this IServiceCollection services)
     {
         // Version control services
-        services.AddVersionControlServices();
+		services.AddVersionControlServices();
 
-        // Core services for job coordination
-        services.AddSingleton<IProviderHealthTracker, ProviderHealthTracker>();
-        services.AddSingleton<JobQueueManager>();
-        services.AddSingleton<IJobCoordinatorService, JobCoordinatorService>();
-        services.AddSingleton<ProcessSupervisor>();
+		// Core services for job coordination
+		services.AddSingleton<IProviderHealthTracker, ProviderHealthTracker>();
+		services.AddSingleton<JobQueueManager>();
+		services.AddSingleton<IJobCoordinatorService, JobCoordinatorService>();
+		services.AddSingleton<ProcessSupervisor>();
+		services.AddSingleton<JobProcessingService>();
 
-        // Background services
-        services.AddHostedService<JobProcessingService>();
-        services.AddHostedService<JobWatchdogService>();
-        services.AddHostedService<JobCompletionMonitorService>();
-        services.AddHostedService<IdeasProcessingService>();
+		// Background services
+		services.AddHostedService(sp => sp.GetRequiredService<JobProcessingService>());
+		services.AddHostedService<JobWatchdogService>();
+		services.AddHostedService<JobCompletionMonitorService>();
+		services.AddHostedService<IdeasProcessingService>();
 
         return services;
     }

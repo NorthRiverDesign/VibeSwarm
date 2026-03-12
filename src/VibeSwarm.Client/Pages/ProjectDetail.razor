@@ -191,6 +191,7 @@ else
     private HubConnection? _hubConnection;
     private bool _signalRConnected;
     private CancellationTokenSource? _signalRCts;
+    private HashSet<Guid> _localIdeaUpdateIds = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -388,11 +389,6 @@ TimeSpan.FromSeconds(10) })
         // Only refresh if this is for our project
         if (projectId == ProjectId.ToString())
         {
-            // Update local state immediately
-            if (Guid.TryParse(ideaId, out var ideaGuid))
-            {
-                ProcessingIdeaIds.Add(ideaGuid);
-            }
             await RefreshJobs();
             await LoadIdeas();
             StateHasChanged();
@@ -457,6 +453,11 @@ TimeSpan.FromSeconds(10) })
     {
         if (projectId == ProjectId.ToString())
         {
+            if (Guid.TryParse(ideaId, out var updatedIdeaId) && _localIdeaUpdateIds.Remove(updatedIdeaId))
+            {
+                StateHasChanged();
+                return;
+            }
             await LoadIdeas();
             StateHasChanged();
         }
@@ -560,6 +561,11 @@ TimeSpan.FromSeconds(10) })
     private async Task LoadIdeas()
     {
         Ideas = (await IdeaService.GetByProjectIdAsync(ProjectId)).ToList();
+        var ideaIdsWithJobs = Ideas
+            .Where(i => i.JobId.HasValue)
+            .Select(i => i.Id)
+            .ToHashSet();
+        ProcessingIdeaIds.RemoveWhere(id => ideaIdsWithJobs.Contains(id) || Ideas.All(i => i.Id != id));
         IsIdeasProcessingActive = await IdeaService.IsProcessingActiveAsync(ProjectId);
     }
 
@@ -1396,15 +1402,46 @@ TimeSpan.FromSeconds(10) })
         }
     }
 
-    private async Task UpdateIdea(Idea idea)
+    private async Task UpdateIdea((Guid IdeaId, string Description) update)
     {
         try
         {
-            await IdeaService.UpdateAsync(idea);
-            await LoadIdeas();
+            var existingIdea = Ideas.FirstOrDefault(i => i.Id == update.IdeaId);
+            if (existingIdea == null)
+            {
+                NotificationService.ShowError("Error updating idea: Idea not found.");
+                return;
+            }
+
+            var trimmedDescription = update.Description.Trim();
+            if (string.Equals(existingIdea.Description, trimmedDescription, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            _localIdeaUpdateIds.Add(existingIdea.Id);
+
+            var updatedIdea = await IdeaService.UpdateAsync(new Idea
+            {
+                Id = existingIdea.Id,
+                ProjectId = existingIdea.ProjectId,
+                Description = trimmedDescription,
+                SortOrder = existingIdea.SortOrder
+            });
+
+            updatedIdea.Job = existingIdea.Job;
+
+            var ideaIndex = Ideas.FindIndex(i => i.Id == updatedIdea.Id);
+            if (ideaIndex >= 0)
+            {
+                Ideas[ideaIndex] = updatedIdea;
+            }
+
+            StateHasChanged();
         }
         catch (Exception ex)
         {
+            _localIdeaUpdateIds.Remove(update.IdeaId);
             NotificationService.ShowError($"Error updating idea: {ex.Message}");
         }
     }
@@ -1459,15 +1496,15 @@ TimeSpan.FromSeconds(10) })
     private async Task StartIdeasProcessingWithOptions(AutoCommitMode autoCommitMode)
     {
         _isTogglingIdeasProcessing = true;
-        // Mark all unprocessed ideas as processing immediately for UI feedback
-        foreach (var idea in Ideas.Where(i => !i.IsProcessing && !i.JobId.HasValue))
-        {
-            ProcessingIdeaIds.Add(idea.Id);
-        }
         StateHasChanged();
 
         try
         {
+            var hasRunningJob = Jobs.Any(j =>
+                j.Status == JobStatus.Started ||
+                j.Status == JobStatus.Processing ||
+                j.Status == JobStatus.Paused);
+
             // Update auto-commit mode if changed
             if (Project != null && Project.AutoCommitMode != autoCommitMode)
             {
@@ -1479,7 +1516,10 @@ TimeSpan.FromSeconds(10) })
             await IdeaService.StartProcessingAsync(ProjectId, autoCommit);
             IsIdeasProcessingActive = true;
             var commitMessage = autoCommit ? " Auto-commit is enabled." : "";
-            NotificationService.ShowInfo($"Ideas will be converted to jobs automatically.{commitMessage}", "Auto-Processing Started");
+            var queueMessage = hasRunningJob ? " New ideas will queue behind the current job." : string.Empty;
+            NotificationService.ShowInfo(
+                $"Ideas will be converted to jobs automatically.{queueMessage}{commitMessage}",
+                "Auto-Processing Started");
         }
         catch (Exception ex)
         {
@@ -1533,12 +1573,20 @@ TimeSpan.FromSeconds(10) })
 
         try
         {
+            var hasRunningJob = Jobs.Any(j =>
+                j.Status == JobStatus.Started ||
+                j.Status == JobStatus.Processing ||
+                j.Status == JobStatus.Paused);
             var job = await IdeaService.ConvertToJobAsync(ideaId);
             if (job != null)
             {
                 await RefreshJobs();
                 await LoadIdeas();
-                NotificationService.ShowSuccess($"Idea queued as job successfully.", "Idea Started");
+                NotificationService.ShowSuccess(
+                    hasRunningJob
+                        ? "Idea queued successfully. It will start after the current job finishes."
+                        : "Idea queued as job successfully.",
+                    "Idea Started");
             }
             else
             {

@@ -50,8 +50,8 @@
 				else
 				{
 					<button type="button" class="btn btn-sm btn-success" @onclick="OpenStartAllModal"
-							disabled="@(IsTogglingProcessing || !HasDefaultProvider || HasActiveJobs || UnprocessedIdeasCount == 0)"
-							title="@(HasActiveJobs ? "A job is already running on this project" : UnprocessedIdeasCount == 0 ? "All ideas have already been processed" : "Start all ideas processing")">
+							disabled="@(IsTogglingProcessing || !HasDefaultProvider || UnprocessedIdeasCount == 0)"
+							title="@(UnprocessedIdeasCount == 0 ? "All ideas have already been processed" : HasActiveJobs ? "Queue all ideas behind the current job" : "Start all ideas processing")">
 						@if (IsTogglingProcessing)
 						{
 							<span class="spinner-border spinner-border-sm me-1" role="status"></span>
@@ -114,7 +114,7 @@
 		{
 			<div class="alert alert-info py-2 mb-3 d-flex align-items-center gap-2">
 				<span class="spinner-border spinner-border-sm" role="status"></span>
-				<span>Auto-processing active. Ideas will be converted to jobs automatically.</span>
+				<span>Auto-processing active. Ideas will be queued and converted to jobs automatically.</span>
 			</div>
 		}
 
@@ -131,7 +131,7 @@
 			<ul class="list-group list-group-flush">
 				@foreach (var idea in Ideas)
 				{
-					<IdeaListItem Idea="idea" IsProcessing="@(idea.IsProcessing || IsIdeaProcessing(idea.Id))"
+					<IdeaListItem @key="idea.Id" Idea="idea" IsProcessing="@IsIdeaProcessing(idea.Id)"
 								  IsStarting="@(StartingIdeaId == idea.Id)" HasActiveJobs="@HasActiveJobs"
 								  HasDefaultProvider="@HasDefaultProvider"
 								  IsQueuedForProcessing="@(IsProcessingActive && !idea.IsProcessing && !IsIdeaProcessing(idea.Id) && !idea.JobId.HasValue)"
@@ -173,7 +173,7 @@
 			 Size="ModalDialog.ModalSize.Small">
 	<ChildContent>
 		<p>Start processing <strong>@UnprocessedIdeasCount</strong> idea@(UnprocessedIdeasCount == 1 ? "" : "s")? Ideas
-			will be expanded and converted to jobs automatically.</p>
+			will be expanded and converted to jobs automatically. Only one job runs per project at a time, so extra jobs stay queued until the current run finishes.</p>
 
 			@if (IsGitRepository)
 			{
@@ -235,7 +235,7 @@
 	public EventCallback<string> OnAddIdea { get; set; }
 
 	[Parameter]
-	public EventCallback<Idea> OnUpdateIdea { get; set; }
+	public EventCallback<(Guid IdeaId, string Description)> OnUpdateIdea { get; set; }
 
 	[Parameter]
 	public EventCallback<Guid> OnDeleteIdea { get; set; }
@@ -317,9 +317,9 @@
 		NewIdeaDescription = string.Empty;
 	}
 
-	private async Task HandleIdeaEdit(Idea idea)
+	private async Task HandleIdeaEdit((Guid IdeaId, string Description) update)
 	{
-		await OnUpdateIdea.InvokeAsync(idea);
+		await OnUpdateIdea.InvokeAsync(update);
 	}
 
 	private async Task OpenCopyModal(Idea idea)

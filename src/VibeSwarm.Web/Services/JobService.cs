@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using System.Text.Json;
 using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Providers;
+using VibeSwarm.Web.Services;
 
 namespace VibeSwarm.Shared.Services;
 
@@ -11,12 +12,18 @@ public class JobService : IJobService
     private readonly VibeSwarmDbContext _dbContext;
     private readonly IJobUpdateService? _jobUpdateService;
     private readonly IServiceProvider _serviceProvider;
+    private readonly JobProcessingService? _jobProcessingService;
 
-    public JobService(VibeSwarmDbContext dbContext, IServiceProvider serviceProvider, IJobUpdateService? jobUpdateService = null)
+    public JobService(
+        VibeSwarmDbContext dbContext,
+        IServiceProvider serviceProvider,
+        IJobUpdateService? jobUpdateService = null,
+        JobProcessingService? jobProcessingService = null)
     {
         _dbContext = dbContext;
         _serviceProvider = serviceProvider;
         _jobUpdateService = jobUpdateService;
+        _jobProcessingService = jobProcessingService;
     }
 
     public async Task<IEnumerable<Job>> GetAllAsync(CancellationToken cancellationToken = default)
@@ -116,6 +123,8 @@ public class JobService : IJobService
                 // Don't fail job creation if notification fails
             }
         }
+
+        _jobProcessingService?.TriggerProcessing();
 
         return job;
     }
@@ -303,6 +312,8 @@ public class JobService : IJobService
             catch { }
         }
 
+        _jobProcessingService?.TriggerProcessing();
+
         return true;
     }
 
@@ -447,6 +458,8 @@ public class JobService : IJobService
             }
             catch { }
         }
+
+        _jobProcessingService?.TriggerProcessing();
 
         return true;
     }
@@ -725,6 +738,8 @@ public class JobService : IJobService
             }
             catch { }
         }
+
+        _jobProcessingService?.TriggerProcessing();
 
         return true;
     }

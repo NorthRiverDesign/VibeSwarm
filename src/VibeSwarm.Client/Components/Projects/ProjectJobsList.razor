@@ -7,8 +7,7 @@
 		<div class="d-flex align-items-center gap-2">
 			<span class="badge bg-secondary">@Jobs.Count</span>
 			<button type="button" class="btn btn-sm btn-primary" @onclick="() => OnCreateJob.InvokeAsync()"
-					disabled="@HasActiveJobs"
-					title="@(HasActiveJobs ? "A job is already running on this project" : "Create a new job")">
+					title="@(HasActiveJobs ? "Create a new job. It will be queued behind the current run." : "Create a new job")">
 				<i class="bi bi-plus-lg me-1"></i>Create Job
 			</button>
 		</div>
@@ -47,8 +46,9 @@
 												<span class="visually-hidden">Processing...</span>
 											</div>
 											break;
+										case JobStatus.New:
 										case JobStatus.Pending:
-											<i class="bi bi-hourglass-split text-warning fs-5" title="Pending"></i>
+											<i class="bi bi-hourglass-split text-warning fs-5" title="Queued"></i>
 											break;
 										case JobStatus.Paused:
 											<i class="bi bi-pause-circle-fill text-warning fs-5" title="Paused - Waiting for input"></i>
