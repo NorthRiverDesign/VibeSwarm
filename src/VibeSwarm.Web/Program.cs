@@ -1,6 +1,7 @@
 using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using VibeSwarm.Shared.Data;

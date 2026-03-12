@@ -2,57 +2,57 @@
 
 @if (Environments == null || !Environments.Any(environment => environment.IsEnabled))
 {
-<EmptyState Icon="globe2" Title="No environments configured"
-Message="Add a web URL, release page, or deployment target so jobs can use real project environments." />
+	<EmptyState Icon="globe2" Title="No environments configured"
+		Message="Add a web URL, release page, or deployment target so jobs can use real project environments." />
 }
 else
 {
-<div class="d-grid gap-3">
-@foreach (var environment in Environments.Where(environment => environment.IsEnabled).OrderByDescending(environment => environment.IsDefault).ThenBy(environment => environment.SortOrder))
-{
-<div class="border rounded p-3 bg-body-tertiary">
-<div class="d-flex align-items-start justify-content-between gap-3 flex-wrap">
-<div class="min-width-0">
-<div class="d-flex align-items-center gap-2 flex-wrap">
-<span class="fw-semibold">@environment.Name</span>
-<span class="badge bg-secondary-subtle text-secondary-emphasis">@environment.Type</span>
-@if (environment.IsDefault)
-{
-<span class="badge bg-success-subtle text-success-emphasis">Default</span>
-}
-@if (environment.Type == EnvironmentType.Web)
-{
-<span class="badge bg-info-subtle text-info-emphasis">Playwright MCP</span>
-}
-</div>
-<div class="small mt-2">
-<a href="@environment.Url" target="_blank" rel="noopener noreferrer" class="text-decoration-none font-monospace">
-@environment.Url
-</a>
-</div>
-@if (!string.IsNullOrWhiteSpace(environment.Notes))
-{
-<div class="small text-body-secondary mt-2">@environment.Notes</div>
-}
-</div>
-@if (environment.Type == EnvironmentType.Web && !string.IsNullOrWhiteSpace(environment.Username))
-{
-<div class="small text-body-secondary">
-<div class="fw-semibold text-body">Saved login</div>
-<div>@environment.Username</div>
-@if (environment.HasPassword)
-{
-<div class="mt-1">Password stored securely</div>
-}
-</div>
-}
-</div>
-</div>
-}
-</div>
+	<div class="d-grid gap-3">
+		@foreach (var environment in Environments.Where(environment => environment.IsEnabled).OrderByDescending(environment => environment.IsDefault).ThenBy(environment => environment.SortOrder))
+		{
+			<div class="border rounded p-3 bg-body-tertiary">
+				<div class="d-flex align-items-start justify-content-between gap-3 flex-wrap">
+					<div class="min-width-0">
+						<div class="d-flex align-items-center gap-2 flex-wrap">
+							<span class="fw-semibold">@environment.Name</span>
+							<span class="badge bg-secondary-subtle text-secondary-emphasis">@environment.Type</span>
+							@if (environment.IsDefault)
+							{
+								<span class="badge bg-success-subtle text-success-emphasis">Default</span>
+							}
+							@if (environment.Type == EnvironmentType.Web)
+							{
+								<span class="badge bg-info-subtle text-info-emphasis">Playwright MCP</span>
+							}
+						</div>
+						<div class="small mt-2">
+							<a href="@environment.Url" target="_blank" rel="noopener noreferrer" class="text-decoration-none font-monospace">
+								@environment.Url
+							</a>
+						</div>
+						@if (!string.IsNullOrWhiteSpace(environment.Notes))
+						{
+							<div class="small text-body-secondary mt-2">@environment.Notes</div>
+						}
+					</div>
+					@if (environment.Type == EnvironmentType.Web && !string.IsNullOrWhiteSpace(environment.Username))
+					{
+						<div class="small text-body-secondary">
+							<div class="fw-semibold text-body">Saved login</div>
+							<div>@environment.Username</div>
+							@if (environment.HasPassword)
+							{
+								<div class="mt-1">Password stored securely</div>
+							}
+						</div>
+					}
+				</div>
+			</div>
+		}
+	</div>
 }
 
 @code {
-[Parameter, EditorRequired]
-public ICollection<ProjectEnvironment> Environments { get; set; } = new List<ProjectEnvironment>();
+	[Parameter, EditorRequired]
+	public ICollection<ProjectEnvironment> Environments { get; set; } = new List<ProjectEnvironment>();
 }

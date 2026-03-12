@@ -1732,6 +1732,7 @@ public class JobProcessingService : BackgroundService
             }
 
             var mcpConfigPath = await mcpConfigService.GenerateMcpConfigFileAsync(
+                provider.Type,
                 project,
                 workingDirectory,
                 cancellationToken);

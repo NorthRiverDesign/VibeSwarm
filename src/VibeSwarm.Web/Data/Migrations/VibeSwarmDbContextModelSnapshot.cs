@@ -768,7 +768,7 @@ namespace VibeSwarm.Shared.Data.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("TEXT");
 
-                    b.Property<string>("Description")
+                    b.Property<string>("Notes")
                         .HasMaxLength(1000)
                         .HasColumnType("TEXT");
 
@@ -777,15 +777,17 @@ namespace VibeSwarm.Shared.Data.Migrations
                         .HasColumnType("INTEGER")
                         .HasDefaultValue(true);
 
-                    b.Property<bool>("IsPrimary")
-                        .HasColumnType("INTEGER");
+                    b.Property<bool>("IsDefault")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(false);
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("TEXT");
 
-                    b.Property<string>("PasswordCiphertext")
+                    b.Property<string>("EncryptedPassword")
                         .HasMaxLength(4000)
                         .HasColumnType("TEXT");
 
@@ -809,7 +811,7 @@ namespace VibeSwarm.Shared.Data.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("TEXT");
 
-                    b.Property<string>("UsernameCiphertext")
+                    b.Property<string>("EncryptedUsername")
                         .HasMaxLength(4000)
                         .HasColumnType("TEXT");
 

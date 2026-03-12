@@ -1,4 +1,3 @@
-using System.Security.Cryptography;
 using Microsoft.AspNetCore.DataProtection;
 using VibeSwarm.Shared.Data;
 
@@ -6,115 +5,154 @@ namespace VibeSwarm.Web.Services;
 
 public interface IProjectEnvironmentCredentialService
 {
-void PopulateForClient(Project project);
-void PopulateForExecution(Project project);
-void Encrypt(ProjectEnvironment environment, ProjectEnvironment? existingEnvironment = null);
+	void PrepareForStorage(Project project, IReadOnlyCollection<ProjectEnvironment>? existingEnvironments = null);
+	void PopulateForEditing(Project? project);
+	void PopulateForExecution(Project? project);
 }
 
 public class ProjectEnvironmentCredentialService : IProjectEnvironmentCredentialService
 {
-private const string ProtectorPurpose = "VibeSwarm.ProjectEnvironmentCredentials.v1";
-private readonly IDataProtector _protector;
+	private const string ProtectionPurpose = "VibeSwarm.ProjectEnvironmentCredentials.v1";
+	private readonly IDataProtector _protector;
 
-public ProjectEnvironmentCredentialService(IDataProtectionProvider dataProtectionProvider)
-{
-_protector = dataProtectionProvider.CreateProtector(ProtectorPurpose);
-}
+	public ProjectEnvironmentCredentialService(IDataProtectionProvider dataProtectionProvider)
+	{
+		_protector = dataProtectionProvider.CreateProtector(ProtectionPurpose);
+	}
 
-public void PopulateForClient(Project project)
-{
-Populate(project, includePassword: false);
-}
+	public void PrepareForStorage(Project project, IReadOnlyCollection<ProjectEnvironment>? existingEnvironments = null)
+	{
+		foreach (var environment in project.Environments)
+		{
+			var existingEnvironment = existingEnvironments?.FirstOrDefault(item => item.Id == environment.Id);
+			PrepareForStorage(environment, existingEnvironment);
+		}
+	}
 
-public void PopulateForExecution(Project project)
-{
-Populate(project, includePassword: true);
-}
+	public void PopulateForEditing(Project? project)
+	{
+		if (project == null)
+		{
+			return;
+		}
 
-public void Encrypt(ProjectEnvironment environment, ProjectEnvironment? existingEnvironment = null)
-{
-if (environment.Type != EnvironmentType.Web)
-{
-environment.Username = null;
-environment.Password = null;
-environment.ClearPassword = false;
-environment.EncryptedUsername = null;
-environment.EncryptedPassword = null;
-environment.HasPassword = false;
-return;
-}
+		foreach (var environment in project.Environments)
+		{
+			if (environment.Type != EnvironmentType.Web)
+			{
+				environment.Username = null;
+				environment.Password = null;
+				continue;
+			}
 
-if (!string.IsNullOrWhiteSpace(environment.Username))
-{
-environment.EncryptedUsername = _protector.Protect(environment.Username.Trim());
-}
-else if (!string.IsNullOrWhiteSpace(existingEnvironment?.EncryptedUsername))
-{
-environment.EncryptedUsername = existingEnvironment.EncryptedUsername;
-}
-else
-{
-environment.EncryptedUsername = null;
-}
+			environment.Username = Unprotect(environment.UsernameCiphertext, environment, "username");
+			environment.Password = null;
+		}
+	}
 
-if (environment.ClearPassword)
-{
-environment.EncryptedPassword = null;
-}
-else if (!string.IsNullOrWhiteSpace(environment.Password))
-{
-environment.EncryptedPassword = _protector.Protect(environment.Password);
-}
-else if (!string.IsNullOrWhiteSpace(existingEnvironment?.EncryptedPassword))
-{
-environment.EncryptedPassword = existingEnvironment.EncryptedPassword;
-}
-else
-{
-environment.EncryptedPassword = null;
-}
+	public void PopulateForExecution(Project? project)
+	{
+		if (project == null)
+		{
+			return;
+		}
 
-environment.HasPassword = !string.IsNullOrWhiteSpace(environment.EncryptedPassword);
-environment.Password = null;
-environment.ClearPassword = false;
-}
+		foreach (var environment in project.Environments)
+		{
+			if (environment.Type != EnvironmentType.Web)
+			{
+				environment.Username = null;
+				environment.Password = null;
+				continue;
+			}
 
-private void Populate(Project project, bool includePassword)
-{
-foreach (var environment in project.Environments)
-{
-if (environment.Type != EnvironmentType.Web)
-{
-environment.Username = null;
-environment.Password = null;
-environment.ClearPassword = false;
-environment.HasPassword = false;
-continue;
-}
+			environment.Username = Unprotect(environment.UsernameCiphertext, environment, "username");
+			environment.Password = Unprotect(environment.PasswordCiphertext, environment, "password");
+		}
+	}
 
-environment.Username = DecryptOrNull(environment.EncryptedUsername);
-environment.Password = includePassword
-? DecryptOrNull(environment.EncryptedPassword)
-: null;
-environment.ClearPassword = false;
-environment.HasPassword = !string.IsNullOrWhiteSpace(environment.EncryptedPassword);
-}
-}
+	private void PrepareForStorage(ProjectEnvironment environment, ProjectEnvironment? existingEnvironment)
+	{
+		if (environment.Type != EnvironmentType.Web)
+		{
+			ClearCredentials(environment);
+			return;
+		}
 
-private string? DecryptOrNull(string? protectedValue)
-{
-if (string.IsNullOrWhiteSpace(protectedValue))
-{
-return null;
-}
+		environment.Username = string.IsNullOrWhiteSpace(environment.Username)
+			? null
+			: environment.Username.Trim();
+		environment.Password = string.IsNullOrEmpty(environment.Password)
+			? null
+			: environment.Password;
 
-try
-{
-return _protector.Unprotect(protectedValue);
-}
-catch (CryptographicException ex)
-{
-throw new InvalidOperationException("Failed to decrypt stored environment credentials. Ensure data protection keys are persisted correctly.", ex);
-}
-}
+		var hasUsername = !string.IsNullOrWhiteSpace(environment.Username);
+		var hasPassword = !string.IsNullOrEmpty(environment.Password);
+
+		if (environment.ClearPassword && !hasPassword)
+		{
+			ClearCredentials(environment);
+			return;
+		}
+
+		if (!hasUsername && !hasPassword)
+		{
+			if (environment.ClearPassword || existingEnvironment == null)
+			{
+				ClearCredentials(environment);
+				return;
+			}
+
+			environment.UsernameCiphertext = existingEnvironment.UsernameCiphertext;
+			environment.PasswordCiphertext = existingEnvironment.PasswordCiphertext;
+			return;
+		}
+
+		if (!hasUsername)
+		{
+			throw new InvalidOperationException($"Web environment '{environment.Name}' requires a username when a password is provided.");
+		}
+
+		environment.UsernameCiphertext = _protector.Protect(environment.Username!);
+
+		if (hasPassword)
+		{
+			environment.PasswordCiphertext = _protector.Protect(environment.Password!);
+			environment.Password = null;
+			return;
+		}
+
+		if (!string.IsNullOrEmpty(existingEnvironment?.PasswordCiphertext) && !environment.ClearPassword)
+		{
+			environment.PasswordCiphertext = existingEnvironment.PasswordCiphertext;
+			return;
+		}
+
+		throw new InvalidOperationException($"Web environment '{environment.Name}' requires both a username and password when credentials are provided.");
+	}
+
+	private static void ClearCredentials(ProjectEnvironment environment)
+	{
+		environment.Username = null;
+		environment.Password = null;
+		environment.UsernameCiphertext = null;
+		environment.PasswordCiphertext = null;
+	}
+
+	private string? Unprotect(string? ciphertext, ProjectEnvironment environment, string fieldName)
+	{
+		if (string.IsNullOrEmpty(ciphertext))
+		{
+			return null;
+		}
+
+		try
+		{
+			return _protector.Unprotect(ciphertext);
+		}
+		catch (Exception ex)
+		{
+			throw new InvalidOperationException($"Stored {fieldName} credentials for environment '{environment.Name}' could not be decrypted.", ex);
+		}
+	}
 }

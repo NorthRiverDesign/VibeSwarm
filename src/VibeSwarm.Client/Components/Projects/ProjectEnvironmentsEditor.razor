@@ -1,201 +1,256 @@
 @using VibeSwarm.Shared.Data
 
-<div class="mb-3">
-<label class="form-label d-flex align-items-center gap-2 mb-2">
-<i class="bi bi-globe2"></i>
-<span>Environments</span>
-</label>
-
-<Alert Type="Alert.AlertType.Info" Class="py-2 px-3 small">
-@if (Project.Environments.Any())
+@if (!_environments.Any())
 {
-<span>Configured web environments are added to job context and automatically enable Playwright MCP for browser-based validation.</span>
+	<div class="border rounded p-3 bg-body-tertiary">
+		<div class="d-flex align-items-center justify-content-between gap-2 flex-wrap">
+			<div>
+				<div class="fw-semibold d-flex align-items-center gap-2">
+					<i class="bi bi-globe2"></i>
+					<span>Project Environments</span>
+				</div>
+				<div class="small text-body-secondary mt-1">
+					Add deployed URLs or release pages so jobs can target the right environment instead of assuming localhost.
+				</div>
+			</div>
+			<button type="button" class="btn btn-primary btn-sm" @onclick="AddEnvironment">
+				<i class="bi bi-plus-lg me-1"></i>Add Environment
+			</button>
+		</div>
+	</div>
 }
 else
 {
-<span>Add staging URLs, release pages, or other deployment targets. Web environments can optionally store login credentials securely.</span>
-}
-</Alert>
+	<div class="d-grid gap-3">
+		<div class="d-flex align-items-center justify-content-between gap-2 flex-wrap">
+			<div>
+				<div class="fw-semibold d-flex align-items-center gap-2">
+					<i class="bi bi-globe2"></i>
+					<span>Project Environments</span>
+				</div>
+				<div class="small text-body-secondary mt-1">
+					Configured environments are included in job context and Web environments enable Playwright MCP.
+				</div>
+			</div>
+			<button type="button" class="btn btn-primary btn-sm" @onclick="AddEnvironment">
+				<i class="bi bi-plus-lg me-1"></i>Add Environment
+			</button>
+		</div>
 
-@if (!Project.Environments.Any())
-{
-<div class="border rounded p-3 bg-body-tertiary small text-body-secondary">
-No environments configured yet.
-</div>
-}
-else
-{
-<div class="d-grid gap-3">
-@foreach (var environment in Project.Environments.OrderBy(environment => environment.SortOrder).ToList())
-{
-<div class="border rounded p-3 bg-body-tertiary">
-<div class="d-flex justify-content-between align-items-center gap-2 mb-3 flex-wrap">
-<div class="d-flex align-items-center gap-2 flex-wrap">
-<span class="badge @(environment.IsPrimary ? "text-bg-primary" : "bg-secondary-subtle text-secondary-emphasis")">
-@(environment.IsPrimary ? "Primary" : "Environment")
-</span>
-<span class="small text-body-secondary">@environment.Type</span>
-@if (!environment.IsEnabled)
-{
-<span class="badge bg-secondary-subtle text-secondary-emphasis">Disabled</span>
-}
-</div>
-<div class="d-flex gap-2">
-@if (!environment.IsPrimary)
-{
-<button type="button" class="btn btn-sm btn-secondary" @onclick="() => SetPrimaryEnvironment(environment.Id)">
-<i class="bi bi-star me-1"></i>Make Primary
-</button>
-}
-<button type="button" class="btn btn-sm btn-danger" @onclick="() => RemoveEnvironment(environment.Id)">
-<i class="bi bi-trash me-1"></i>Remove
-</button>
-</div>
-</div>
+		@foreach (var environment in _environments.Select((value, index) => new { value, index }))
+		{
+			var item = environment.value;
+			<div class="border rounded p-3 bg-body-tertiary">
+				<div class="d-flex align-items-start justify-content-between gap-2 flex-wrap mb-3">
+					<div class="d-flex align-items-center gap-2 flex-wrap">
+						<span class="badge text-bg-primary">#@(environment.index + 1)</span>
+						<span class="badge bg-secondary-subtle text-secondary-emphasis">@item.Type</span>
+						@if (item.IsDefault)
+						{
+							<span class="badge bg-success-subtle text-success-emphasis">Default</span>
+						}
+						@if (!item.IsEnabled)
+						{
+							<span class="badge bg-secondary-subtle text-secondary-emphasis">Disabled</span>
+						}
+					</div>
+					<div class="btn-group btn-group-sm" role="group">
+						<button type="button" class="btn btn-secondary" title="Move up"
+								@onclick="() => MoveEnvironmentUp(item.Id)" disabled="@(environment.index == 0)">
+							<i class="bi bi-arrow-up"></i>
+						</button>
+						<button type="button" class="btn btn-secondary" title="Move down"
+								@onclick="() => MoveEnvironmentDown(item.Id)" disabled="@(environment.index >= _environments.Count - 1)">
+							<i class="bi bi-arrow-down"></i>
+						</button>
+						<button type="button" class="btn btn-danger" title="Remove environment"
+								@onclick="() => RemoveEnvironment(item.Id)">
+							<i class="bi bi-x-lg"></i>
+						</button>
+					</div>
+				</div>
 
-<div class="row g-3">
-<div class="col-12 col-lg-4">
-<label class="form-label">Name</label>
-<input class="form-control" @bind="environment.Name" placeholder="Staging" />
-</div>
-<div class="col-12 col-lg-3">
-<label class="form-label">Type</label>
-<InputSelect TValue="EnvironmentType" class="form-select" Value="environment.Type" ValueChanged="value => SetEnvironmentType(environment, value)" ValueExpression="@(() => environment.Type)">
-<option value="@EnvironmentType.Web">Web</option>
-<option value="@EnvironmentType.Release">Release</option>
-<option value="@EnvironmentType.Other">Other</option>
-</InputSelect>
-</div>
-<div class="col-12 col-lg-5">
-<label class="form-label">URL</label>
-<input class="form-control" @bind="environment.Url" placeholder="https://staging.example.com" />
-</div>
-<div class="col-12">
-<label class="form-label">Description</label>
-<textarea class="form-control" rows="2" @bind="environment.Description" placeholder="What this environment is for, deployment notes, or anything agents should know."></textarea>
-</div>
-<div class="col-12">
-<div class="form-check form-switch">
-<InputCheckbox id="@($"env-enabled-{environment.Id}")" @bind-Value="environment.IsEnabled" class="form-check-input" />
-<label class="form-check-label" for="@($"env-enabled-{environment.Id}")">Enabled</label>
-</div>
-</div>
+				<div class="row g-3">
+					<div class="col-12 col-lg-4">
+						<label class="form-label">Name</label>
+						<InputText @bind-Value="item.Name" class="form-control" placeholder="Staging" />
+					</div>
+					<div class="col-12 col-lg-4">
+						<label class="form-label">Type</label>
+						<InputSelect @bind-Value="item.Type" @bind-Value:after="() => OnEnvironmentTypeChanged(item)" class="form-select">
+							<option value="@EnvironmentType.Web">Web</option>
+							<option value="@EnvironmentType.GitHubReleases">GitHub Releases</option>
+							<option value="@EnvironmentType.Generic">Generic</option>
+						</InputSelect>
+					</div>
+					<div class="col-12 col-lg-4">
+						<label class="form-label">URL</label>
+						<InputText @bind-Value="item.Url" class="form-control" placeholder="https://staging.example.com" />
+					</div>
+					<div class="col-12">
+						<label class="form-label">Notes</label>
+						<InputTextArea @bind-Value="item.Notes" class="form-control" rows="2"
+									   placeholder="Optional instructions for agents, such as login flow, deployment notes, or release context." />
+					</div>
+				</div>
 
-@if (environment.Type == EnvironmentType.Web)
-{
-<div class="col-12">
-<div class="small text-body-secondary mb-2">Optional credentials for Playwright-based login and validation.</div>
-</div>
-<div class="col-12 col-lg-6">
-<label class="form-label">Username</label>
-<input class="form-control" @bind="environment.Username" placeholder="tester@example.com" />
-</div>
-<div class="col-12 col-lg-6">
-<label class="form-label">Password</label>
-<input type="password" class="form-control" @bind="environment.Password"
-placeholder="@(environment.HasPassword ? "Leave blank to keep saved password" : "Password")" />
-@if (environment.HasPassword)
-{
-<div class="form-text d-flex align-items-center justify-content-between gap-2 flex-wrap">
-<span>Password is already stored securely.</span>
-<div class="form-check m-0">
-<InputCheckbox id="@($"clear-password-{environment.Id}")" @bind-Value="environment.ClearPassword" class="form-check-input" />
-<label class="form-check-label" for="@($"clear-password-{environment.Id}")">Clear saved password</label>
-</div>
-</div>
-}
-</div>
-}
-</div>
-</div>
-}
-</div>
-}
+				<div class="d-flex flex-wrap align-items-center gap-3 mt-3">
+					<div class="form-check form-switch m-0">
+						<InputCheckbox id="@($"env-enabled-{item.Id}")" @bind-Value="item.IsEnabled" class="form-check-input" />
+						<label class="form-check-label" for="@($"env-enabled-{item.Id}")">Enabled</label>
+					</div>
+					<div class="form-check form-switch m-0">
+						<InputCheckbox id="@($"env-default-{item.Id}")" Value="@item.IsDefault"
+									   ValueChanged="@(value => ToggleDefaultEnvironment(item.Id, value))" class="form-check-input" />
+						<label class="form-check-label" for="@($"env-default-{item.Id}")">Default environment</label>
+					</div>
+				</div>
 
-<div class="mt-3">
-<button type="button" class="btn btn-secondary" @onclick="AddEnvironment">
-<i class="bi bi-plus-lg me-1"></i>Add Environment
-</button>
-</div>
-</div>
+				@if (item.Type == EnvironmentType.Web)
+				{
+					<div class="border rounded p-3 mt-3 bg-body">
+						<div class="fw-semibold d-flex align-items-center gap-2 mb-2">
+							<i class="bi bi-person-lock"></i>
+							<span>Web Login</span>
+						</div>
+						<div class="small text-body-secondary mb-3">
+							Credentials are encrypted at rest and only decrypted for job execution.
+						</div>
+						<div class="row g-3">
+							<div class="col-12 col-lg-6">
+								<label class="form-label">Username</label>
+								<InputText @bind-Value="item.Username" class="form-control" placeholder="tester@example.com" />
+							</div>
+							<div class="col-12 col-lg-6">
+								<label class="form-label">Password</label>
+								<InputText @bind-Value="item.Password" class="form-control" type="password"
+										   placeholder="Leave blank to keep the saved password" />
+								@if (item.HasPassword)
+								{
+									<div class="form-text d-flex align-items-center justify-content-between gap-2 flex-wrap">
+										<span>Saved password is already stored securely.</span>
+										<div class="form-check m-0">
+											<InputCheckbox id="@($"env-clear-password-{item.Id}")" @bind-Value="item.ClearPassword" class="form-check-input" />
+											<label class="form-check-label" for="@($"env-clear-password-{item.Id}")">Clear saved password</label>
+										</div>
+									</div>
+								}
+							</div>
+						</div>
+					</div>
+				}
+			</div>
+		}
+	</div>
+}
 
 @code {
-[Parameter, EditorRequired]
-public Project Project { get; set; } = new();
+	[Parameter, EditorRequired]
+	public Project Project { get; set; } = new();
 
-private void AddEnvironment()
-{
-var environment = new ProjectEnvironment
-{
-Id = Guid.NewGuid(),
-Name = $"Environment {Project.Environments.Count + 1}",
-Type = EnvironmentType.Web,
-Url = string.Empty,
-IsPrimary = Project.Environments.Count == 0,
-IsEnabled = true,
-SortOrder = Project.Environments.Count,
-CreatedAt = DateTime.UtcNow,
-UpdatedAt = DateTime.UtcNow
-};
+	private List<ProjectEnvironment> _environments => Project.Environments.OrderBy(environment => environment.SortOrder).ToList();
 
-Project.Environments.Add(environment);
-EnsurePrimaryEnvironment();
-}
+	private void AddEnvironment()
+	{
+		Project.Environments.Add(new ProjectEnvironment
+		{
+			Id = Guid.NewGuid(),
+			Name = $"Environment {Project.Environments.Count + 1}",
+			Type = EnvironmentType.Web,
+			IsEnabled = true,
+			IsDefault = Project.Environments.Count == 0,
+			SortOrder = Project.Environments.Count
+		});
+		NormalizeOrder();
+	}
 
-private void RemoveEnvironment(Guid environmentId)
-{
-var environment = Project.Environments.FirstOrDefault(item => item.Id == environmentId);
-if (environment == null)
-{
-return;
-}
+	private void RemoveEnvironment(Guid environmentId)
+	{
+		var environment = Project.Environments.FirstOrDefault(item => item.Id == environmentId);
+		if (environment == null)
+		{
+			return;
+		}
 
-Project.Environments.Remove(environment);
-NormalizeOrder();
-EnsurePrimaryEnvironment();
-}
+		Project.Environments.Remove(environment);
+		NormalizeOrder();
+	}
 
-private void SetPrimaryEnvironment(Guid environmentId)
-{
-foreach (var environment in Project.Environments)
-{
-environment.IsPrimary = environment.Id == environmentId;
-}
-}
+	private void MoveEnvironmentUp(Guid environmentId)
+	{
+		var ordered = _environments;
+		var index = ordered.FindIndex(environment => environment.Id == environmentId);
+		if (index <= 0)
+		{
+			return;
+		}
 
-private void SetEnvironmentType(ProjectEnvironment environment, EnvironmentType value)
-{
-environment.Type = value;
-if (environment.Type != EnvironmentType.Web)
-{
-environment.Username = null;
-environment.Password = null;
-environment.ClearPassword = true;
-}
-}
+		(ordered[index - 1], ordered[index]) = (ordered[index], ordered[index - 1]);
+		Project.Environments = ordered;
+		NormalizeOrder();
+	}
 
-private void EnsurePrimaryEnvironment()
-{
-if (!Project.Environments.Any())
-{
-return;
-}
+	private void MoveEnvironmentDown(Guid environmentId)
+	{
+		var ordered = _environments;
+		var index = ordered.FindIndex(environment => environment.Id == environmentId);
+		if (index < 0 || index >= ordered.Count - 1)
+		{
+			return;
+		}
 
-var primary = Project.Environments.FirstOrDefault(environment => environment.IsPrimary) ?? Project.Environments.First();
-foreach (var environment in Project.Environments)
-{
-environment.IsPrimary = environment.Id == primary.Id;
-}
-}
+		(ordered[index + 1], ordered[index]) = (ordered[index], ordered[index + 1]);
+		Project.Environments = ordered;
+		NormalizeOrder();
+	}
 
-private void NormalizeOrder()
-{
-var ordered = Project.Environments.OrderBy(environment => environment.SortOrder).ToList();
-for (var index = 0; index < ordered.Count; index++)
-{
-ordered[index].SortOrder = index;
-}
+	private void ToggleDefaultEnvironment(Guid environmentId, bool isDefault)
+	{
+		foreach (var environment in Project.Environments)
+		{
+			environment.IsDefault = isDefault && environment.Id == environmentId;
+		}
 
-Project.Environments = ordered;
-}
+		if (!Project.Environments.Any(environment => environment.IsDefault) && Project.Environments.Count == 1)
+		{
+			Project.Environments.First().IsDefault = true;
+		}
+	}
+
+	private void OnEnvironmentTypeChanged(ProjectEnvironment environment)
+	{
+		if (environment.Type == EnvironmentType.Web)
+		{
+			return;
+		}
+
+		environment.Username = null;
+		environment.Password = null;
+		environment.ClearPassword = true;
+	}
+
+	private void NormalizeOrder()
+	{
+		Project.Environments = Project.Environments
+			.OrderBy(environment => environment.SortOrder)
+			.Select((environment, index) =>
+			{
+				environment.SortOrder = index;
+				if (environment.CreatedAt == default)
+				{
+					environment.CreatedAt = DateTime.UtcNow;
+				}
+				environment.UpdatedAt = DateTime.UtcNow;
+				return environment;
+			})
+			.ToList();
+
+		var defaultEnvironment = Project.Environments.FirstOrDefault(environment => environment.IsDefault && environment.IsEnabled)
+			?? Project.Environments.FirstOrDefault(environment => environment.IsEnabled)
+			?? Project.Environments.FirstOrDefault();
+		foreach (var environment in Project.Environments)
+		{
+			environment.IsDefault = defaultEnvironment != null && environment.Id == defaultEnvironment.Id;
+		}
+	}
 }

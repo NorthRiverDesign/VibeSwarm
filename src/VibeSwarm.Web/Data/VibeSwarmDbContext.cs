@@ -1,268 +1,158 @@
-using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
-using VibeSwarm.Shared.LocalInference;
-using VibeSwarm.Shared.Providers;
+using VibeSwarm.Shared.Data;
 
-namespace VibeSwarm.Shared.Data;
+namespace VibeSwarm.Web.Services;
 
-public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRole<Guid>, Guid>
+public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser>
 {
-    public VibeSwarmDbContext(DbContextOptions<VibeSwarmDbContext> options)
-        : base(options)
-    {
-    }
+	public VibeSwarmDbContext(DbContextOptions<VibeSwarmDbContext> options)
+		: base(options)
+	{
+	}
 
-    public DbSet<Provider> Providers => Set<Provider>();
-    public DbSet<ProviderModel> ProviderModels => Set<ProviderModel>();
-    public DbSet<ProviderUsageRecord> ProviderUsageRecords => Set<ProviderUsageRecord>();
-    public DbSet<ProviderUsageSummary> ProviderUsageSummaries => Set<ProviderUsageSummary>();
-    public DbSet<Project> Projects => Set<Project>();
-    public DbSet<ProjectProvider> ProjectProviders => Set<ProjectProvider>();
-    public DbSet<ProjectEnvironment> ProjectEnvironments => Set<ProjectEnvironment>();
-    public DbSet<Job> Jobs => Set<Job>();
-    public DbSet<JobProviderAttempt> JobProviderAttempts => Set<JobProviderAttempt>();
-    public DbSet<JobMessage> JobMessages => Set<JobMessage>();
-    public DbSet<AppSettings> AppSettings => Set<AppSettings>();
-    public DbSet<Skill> Skills => Set<Skill>();
-    public DbSet<Idea> Ideas => Set<Idea>();
-    public DbSet<InferenceProvider> InferenceProviders => Set<InferenceProvider>();
-    public DbSet<InferenceModel> InferenceModels => Set<InferenceModel>();
+	public DbSet<Provider> Providers { get; set; }
+	public DbSet<Project> Projects { get; set; }
+	public DbSet<ProjectProvider> ProjectProviders { get; set; }
+	public DbSet<ProjectEnvironment> ProjectEnvironments { get; set; }
+	public DbSet<Job> Jobs { get; set; }
+	public DbSet<JobExecution> JobExecutions { get; set; }
+	public DbSet<Skill> Skills { get; set; }
+	public DbSet<Idea> Ideas { get; set; }
 
-    protected override void OnModelCreating(ModelBuilder modelBuilder)
-    {
-        base.OnModelCreating(modelBuilder);
+	protected override void OnModelCreating(ModelBuilder modelBuilder)
+	{
+		base.OnModelCreating(modelBuilder);
 
-        modelBuilder.Entity<Provider>(entity =>
-        {
-            entity.HasKey(e => e.Id);
-            entity.Property(e => e.Name).IsRequired().HasMaxLength(100);
-            entity.Property(e => e.ExecutablePath).HasMaxLength(500);
-            entity.Property(e => e.WorkingDirectory).HasMaxLength(500);
-            entity.Property(e => e.ApiEndpoint).HasMaxLength(500);
-            entity.Property(e => e.ApiKey).HasMaxLength(200);
-            entity.Property(e => e.Type).HasConversion<string>();
-            entity.Property(e => e.ConnectionMode).HasConversion<string>();
-            entity.Property(e => e.ConfiguredLimitType).HasConversion<string>();
-            entity.HasMany(e => e.AvailableModels)
-                .WithOne(m => m.Provider)
-                .HasForeignKey(m => m.ProviderId)
-                .OnDelete(DeleteBehavior.Cascade);
-        });
+		modelBuilder.Entity<Provider>(entity =>
+		{
+			entity.HasKey(e => e.Id);
+			entity.Property(e => e.Name).IsRequired().HasMaxLength(100);
+			entity.Property(e => e.Description).HasMaxLength(500);
+			entity.Property(e => e.BaseUrl).HasMaxLength(500);
+			entity.Property(e => e.ApiKeyEncrypted).HasMaxLength(1000);
+			entity.Property(e => e.SecretEncrypted).HasMaxLength(1000);
+			entity.Property(e => e.CurrentMcpConfigPath).HasMaxLength(1000);
+			entity.HasIndex(e => e.Name).IsUnique();
+		});
 
-        modelBuilder.Entity<ProviderModel>(entity =>
-        {
-            entity.HasKey(e => e.Id);
-            entity.Property(e => e.ModelId).IsRequired().HasMaxLength(200);
-            entity.Property(e => e.DisplayName).HasMaxLength(200);
-            entity.Property(e => e.Description).HasMaxLength(500);
-            entity.Property(e => e.PriceMultiplier).HasPrecision(18, 4);
-            entity.HasIndex(e => new { e.ProviderId, e.ModelId }).IsUnique();
-        });
+		modelBuilder.Entity<Project>(entity =>
+		{
+			entity.HasKey(e => e.Id);
+			entity.Property(e => e.Name).IsRequired().HasMaxLength(100);
+			entity.Property(e => e.Description).HasMaxLength(500);
+			entity.Property(e => e.WorkingPath).IsRequired().HasMaxLength(500);
+			entity.Property(e => e.GitHubRepository).HasMaxLength(200);
+			entity.Property(e => e.PromptContext).HasMaxLength(1000);
+			entity.HasIndex(e => e.Name).IsUnique();
+		});
 
-        modelBuilder.Entity<ProviderUsageRecord>(entity =>
-        {
-            entity.HasKey(e => e.Id);
-            entity.Property(e => e.ModelUsed).HasMaxLength(200);
-            entity.Property(e => e.RawLimitMessage).HasMaxLength(1000);
-            entity.Property(e => e.CostUsd).HasPrecision(18, 6);
-            entity.Property(e => e.DetectedLimitType).HasConversion<string>();
-            entity.HasOne(e => e.Provider)
-                .WithMany()
-                .HasForeignKey(e => e.ProviderId)
-                .OnDelete(DeleteBehavior.Cascade);
-            entity.HasOne(e => e.Job)
-                .WithMany()
-                .HasForeignKey(e => e.JobId)
-                .OnDelete(DeleteBehavior.SetNull);
-            // Index for efficient querying by provider and time
-            entity.HasIndex(e => new { e.ProviderId, e.RecordedAt });
-        });
+		modelBuilder.Entity<ProjectProvider>(entity =>
+		{
+			entity.HasKey(e => e.Id);
+			entity.HasOne(e => e.Project)
+				.WithMany(p => p.ProviderSelections)
+				.HasForeignKey(e => e.ProjectId)
+				.OnDelete(DeleteBehavior.Cascade);
+			entity.HasOne(e => e.Provider)
+				.WithMany()
+				.HasForeignKey(e => e.ProviderId)
+				.OnDelete(DeleteBehavior.Cascade);
+			entity.Property(e => e.PreferredModelId).HasMaxLength(200);
+			entity.HasIndex(e => new { e.ProjectId, e.ProviderId }).IsUnique();
+			entity.HasIndex(e => new { e.ProjectId, e.Priority });
+		});
 
-        modelBuilder.Entity<ProviderUsageSummary>(entity =>
-        {
-            entity.HasKey(e => e.Id);
-            entity.Property(e => e.LimitMessage).HasMaxLength(500);
-            entity.Property(e => e.CliVersion).HasMaxLength(50);
-            entity.Property(e => e.TotalCostUsd).HasPrecision(18, 6);
-            entity.Property(e => e.LimitType).HasConversion<string>();
-            entity.HasOne(e => e.Provider)
-                .WithMany()
-                .HasForeignKey(e => e.ProviderId)
-                .OnDelete(DeleteBehavior.Cascade);
-            // Ensure one summary per provider
-            entity.HasIndex(e => e.ProviderId).IsUnique();
-        });
+		modelBuilder.Entity<ProjectEnvironment>(entity =>
+		{
+			entity.HasKey(e => e.Id);
+			entity.HasOne(e => e.Project)
+				.WithMany(p => p.Environments)
+				.HasForeignKey(e => e.ProjectId)
+				.OnDelete(DeleteBehavior.Cascade);
+			entity.Property(e => e.Name).IsRequired().HasMaxLength(100);
+			entity.Property(e => e.Description).HasMaxLength(1000);
+			entity.Property(e => e.Url).IsRequired().HasMaxLength(1000);
+			entity.Property(e => e.Type).HasConversion<string>();
+			entity.Property(e => e.IsEnabled).HasDefaultValue(true);
+			entity.Property(e => e.SortOrder).HasDefaultValue(0);
+			entity.Property(e => e.UsernameCiphertext).HasMaxLength(4000);
+			entity.Property(e => e.PasswordCiphertext).HasMaxLength(4000);
+			entity.HasIndex(e => new { e.ProjectId, e.Name }).IsUnique();
+			entity.HasIndex(e => new { e.ProjectId, e.SortOrder });
+		});
 
-        modelBuilder.Entity<Project>(entity =>
-        {
-            entity.HasKey(e => e.Id);
-            entity.Property(e => e.Name).IsRequired().HasMaxLength(100);
-            entity.Property(e => e.Description).HasMaxLength(500);
-            entity.Property(e => e.WorkingPath).IsRequired().HasMaxLength(500);
-            entity.Property(e => e.AutoCommitMode).HasConversion<string>().HasDefaultValue(AutoCommitMode.Off);
-            entity.Property(e => e.IsActive).HasDefaultValue(true);
-            entity.HasMany(e => e.Jobs)
-                .WithOne(j => j.Project)
-                .HasForeignKey(j => j.ProjectId)
-                .OnDelete(DeleteBehavior.Cascade);
-            entity.HasMany(e => e.ProviderSelections)
-                .WithOne(pp => pp.Project)
-                .HasForeignKey(pp => pp.ProjectId)
-                .OnDelete(DeleteBehavior.Cascade);
-            entity.HasMany(e => e.Environments)
-                .WithOne(environment => environment.Project)
-                .HasForeignKey(environment => environment.ProjectId)
-                .OnDelete(DeleteBehavior.Cascade);
-        });
+		modelBuilder.Entity<Job>(entity =>
+		{
+			entity.HasKey(e => e.Id);
+			entity.Property(e => e.GoalPrompt).IsRequired();
+			entity.Property(e => e.Branch).HasMaxLength(200);
+			entity.Property(e => e.ErrorMessage).HasMaxLength(2000);
+			entity.Property(e => e.CommitSha).HasMaxLength(200);
+			entity.Property(e => e.SessionId).HasMaxLength(200);
+			entity.Property(e => e.ProviderMetadataJson);
+			entity.HasOne(e => e.Project)
+				.WithMany(p => p.Jobs)
+				.HasForeignKey(e => e.ProjectId)
+				.OnDelete(DeleteBehavior.Cascade);
+			entity.HasOne(e => e.Provider)
+				.WithMany()
+				.HasForeignKey(e => e.ProviderId)
+				.OnDelete(DeleteBehavior.Restrict);
+			entity.HasIndex(e => e.Status);
+			entity.HasIndex(e => e.CreatedAt);
+		});
 
-        modelBuilder.Entity<ProjectProvider>(entity =>
-        {
-            entity.HasKey(e => e.Id);
-            entity.Property(e => e.PreferredModelId).HasMaxLength(200);
-            entity.Property(e => e.Priority).HasDefaultValue(0);
-            entity.Property(e => e.IsEnabled).HasDefaultValue(true);
-            entity.HasOne(e => e.Provider)
-                .WithMany()
-                .HasForeignKey(e => e.ProviderId)
-                .OnDelete(DeleteBehavior.Restrict);
-            entity.HasIndex(e => new { e.ProjectId, e.ProviderId }).IsUnique();
-            entity.HasIndex(e => new { e.ProjectId, e.Priority });
-        });
+		modelBuilder.Entity<JobExecution>(entity =>
+		{
+			entity.HasKey(e => e.Id);
+			entity.Property(e => e.ProviderName).IsRequired().HasMaxLength(100);
+			entity.Property(e => e.ProviderType).HasConversion<string>().HasMaxLength(50);
+			entity.Property(e => e.ModelId).HasMaxLength(100);
+			entity.Property(e => e.StartedAt).IsRequired();
+			entity.Property(e => e.CompletedAt);
+			entity.Property(e => e.ExitCode);
+			entity.Property(e => e.ErrorMessage).HasMaxLength(2000);
+			entity.Property(e => e.SessionId).HasMaxLength(200);
+			entity.Property(e => e.ProviderMetadataJson);
+			entity.HasOne(e => e.Job)
+				.WithMany(j => j.Executions)
+				.HasForeignKey(e => e.JobId)
+				.OnDelete(DeleteBehavior.Cascade);
+			entity.HasIndex(e => e.JobId);
+			entity.HasIndex(e => e.StartedAt);
+		});
 
-        modelBuilder.Entity<ProjectEnvironment>(entity =>
-        {
-            entity.HasKey(e => e.Id);
-            entity.Property(e => e.Name).IsRequired().HasMaxLength(100);
-            entity.Property(e => e.Notes).HasMaxLength(1000);
-            entity.Property(e => e.Url).IsRequired().HasMaxLength(1000);
-            entity.Property(e => e.Type).HasConversion<string>();
-            entity.Property(e => e.IsEnabled).HasDefaultValue(true);
-            entity.Property(e => e.SortOrder).HasDefaultValue(0);
-            entity.Property(e => e.EncryptedUsername).HasMaxLength(4000);
-            entity.Property(e => e.EncryptedPassword).HasMaxLength(4000);
-            entity.HasIndex(e => new { e.ProjectId, e.Name }).IsUnique();
-            entity.HasIndex(e => new { e.ProjectId, e.SortOrder });
-        });
+		modelBuilder.Entity<Skill>(entity =>
+		{
+			entity.HasKey(e => e.Id);
+			entity.Property(e => e.Name).IsRequired().HasMaxLength(100);
+			entity.Property(e => e.Description).HasMaxLength(500);
+			entity.Property(e => e.Content).IsRequired();
+			entity.HasIndex(e => e.Name).IsUnique();
+		});
 
-        modelBuilder.Entity<Job>(entity =>
-        {
-            entity.HasKey(e => e.Id);
-            entity.Property(e => e.GoalPrompt).IsRequired().HasMaxLength(2000);
-            entity.Property(e => e.Status).HasConversion<string>();
-            entity.Property(e => e.SessionId).HasMaxLength(100);
-            entity.Property(e => e.ModelUsed).HasMaxLength(200);
-            entity.Property(e => e.TotalCostUsd).HasPrecision(18, 6);
-            entity.Property(e => e.MaxCostUsd).HasPrecision(18, 6);
-            entity.Property(e => e.Tags).HasMaxLength(500);
-            entity.Property(e => e.SuccessPattern).HasMaxLength(1000);
-            entity.Property(e => e.FailurePattern).HasMaxLength(1000);
-            entity.Property(e => e.GitCommitBefore).HasMaxLength(100);
-            entity.Property(e => e.GitCommitHash).HasMaxLength(100);
-            entity.Property(e => e.ExecutionPlan).HasMaxLength(8000);
-            entity.Property(e => e.LastSwitchReason).HasMaxLength(200);
-            entity.Property(e => e.ActiveExecutionIndex).HasDefaultValue(0);
-            // Multi-cycle properties
-            entity.Property(e => e.CycleMode).HasConversion<string>().HasDefaultValue(CycleMode.SingleCycle);
-            entity.Property(e => e.CycleSessionMode).HasConversion<string>().HasDefaultValue(CycleSessionMode.ContinueSession);
-            entity.Property(e => e.MaxCycles).HasDefaultValue(1);
-            entity.Property(e => e.CurrentCycle).HasDefaultValue(1);
-            entity.Property(e => e.CycleReviewPrompt).HasMaxLength(2000);
-            // ChangedFilesCount is nullable int, no special config needed
-            // GitDiff and ConsoleOutput can be large, no max length constraint
-            entity.HasOne(e => e.Provider)
-                .WithMany()
-                .HasForeignKey(e => e.ProviderId)
-                .OnDelete(DeleteBehavior.Restrict);
-            entity.HasMany(e => e.Messages)
-                .WithOne(m => m.Job)
-                .HasForeignKey(m => m.JobId)
-                .OnDelete(DeleteBehavior.Cascade);
-            entity.HasMany(e => e.ProviderAttempts)
-                .WithOne(a => a.Job)
-                .HasForeignKey(a => a.JobId)
-                .OnDelete(DeleteBehavior.Cascade);
-
-            // Index for efficient querying
-            entity.HasIndex(e => e.Status);
-            entity.HasIndex(e => new { e.Status, e.Priority, e.CreatedAt });
-            entity.HasIndex(e => e.ParentJobId);
-            entity.HasIndex(e => e.DependsOnJobId);
-        });
-
-        modelBuilder.Entity<JobProviderAttempt>(entity =>
-        {
-            entity.HasKey(e => e.Id);
-            entity.Property(e => e.ProviderName).IsRequired().HasMaxLength(100);
-            entity.Property(e => e.ModelId).HasMaxLength(200);
-            entity.Property(e => e.Reason).IsRequired().HasMaxLength(100);
-            entity.HasIndex(e => new { e.JobId, e.AttemptOrder }).IsUnique();
-            entity.HasIndex(e => new { e.JobId, e.AttemptedAt });
-        });
-
-        modelBuilder.Entity<JobMessage>(entity =>
-        {
-            entity.HasKey(e => e.Id);
-            entity.Property(e => e.Role).HasConversion<string>();
-            entity.Property(e => e.Content).IsRequired();
-        });
-
-        modelBuilder.Entity<AppSettings>(entity =>
-        {
-            entity.HasKey(e => e.Id);
-            entity.Property(e => e.DefaultProjectsDirectory).HasMaxLength(1000);
-            entity.Property(e => e.EnablePromptStructuring).HasDefaultValue(true);
-            entity.Property(e => e.InjectRepoMap).HasDefaultValue(true);
-            entity.Property(e => e.InjectEfficiencyRules).HasDefaultValue(true);
-        });
-
-        modelBuilder.Entity<Skill>(entity =>
-        {
-            entity.HasKey(e => e.Id);
-            entity.Property(e => e.Name).IsRequired().HasMaxLength(100);
-            entity.Property(e => e.Description).HasMaxLength(500);
-            entity.Property(e => e.Content).IsRequired();
-            entity.HasIndex(e => e.Name).IsUnique();
-        });
-
-        modelBuilder.Entity<Idea>(entity =>
-        {
-            entity.HasKey(e => e.Id);
-            entity.Property(e => e.Description).IsRequired().HasMaxLength(2000);
-            entity.HasOne(e => e.Project)
-                .WithMany(p => p.Ideas)
-                .HasForeignKey(e => e.ProjectId)
-                .OnDelete(DeleteBehavior.Cascade);
-            entity.HasOne(e => e.Job)
-                .WithMany()
-                .HasForeignKey(e => e.JobId)
-                .OnDelete(DeleteBehavior.SetNull);
-            entity.HasIndex(e => new { e.ProjectId, e.SortOrder });
-        });
-
-        modelBuilder.Entity<InferenceProvider>(entity =>
-        {
-            entity.HasKey(e => e.Id);
-            entity.Property(e => e.Name).IsRequired().HasMaxLength(100);
-            entity.Property(e => e.Endpoint).IsRequired().HasMaxLength(500);
-            entity.Property(e => e.ApiKey).HasMaxLength(200);
-            entity.Property(e => e.ProviderType).HasConversion<string>();
-            entity.HasMany(e => e.Models)
-                .WithOne(m => m.InferenceProvider)
-                .HasForeignKey(m => m.InferenceProviderId)
-                .OnDelete(DeleteBehavior.Cascade);
-        });
-
-        modelBuilder.Entity<InferenceModel>(entity =>
-        {
-            entity.HasKey(e => e.Id);
-            entity.Property(e => e.ModelId).IsRequired().HasMaxLength(200);
-            entity.Property(e => e.DisplayName).HasMaxLength(200);
-            entity.Property(e => e.ParameterSize).HasMaxLength(50);
-            entity.Property(e => e.Family).HasMaxLength(100);
-            entity.Property(e => e.QuantizationLevel).HasMaxLength(50);
-            entity.Property(e => e.TaskType).IsRequired().HasMaxLength(100).HasDefaultValue("default");
-            entity.HasIndex(e => new { e.InferenceProviderId, e.ModelId }).IsUnique();
-        });
-    }
+		modelBuilder.Entity<Idea>(entity =>
+		{
+			entity.HasKey(e => e.Id);
+			entity.Property(e => e.Title).IsRequired().HasMaxLength(200);
+			entity.Property(e => e.Description);
+			entity.Property(e => e.Analysis).HasMaxLength(4000);
+			entity.Property(e => e.FailureReason).HasMaxLength(1000);
+			entity.Property(e => e.BranchName).HasMaxLength(200);
+			entity.Property(e => e.GeneratedPrompt);
+			entity.HasOne(e => e.Project)
+				.WithMany(p => p.Ideas)
+				.HasForeignKey(e => e.ProjectId)
+				.OnDelete(DeleteBehavior.Cascade);
+			entity.HasOne(e => e.AssignedJob)
+				.WithMany()
+				.HasForeignKey(e => e.AssignedJobId)
+				.OnDelete(DeleteBehavior.SetNull);
+			entity.HasIndex(e => e.ProjectId);
+			entity.HasIndex(e => e.Status);
+			entity.HasIndex(e => e.Priority);
+			entity.HasIndex(e => e.CreatedAt);
+		});
+	}
 }

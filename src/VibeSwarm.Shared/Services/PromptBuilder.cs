@@ -136,7 +136,7 @@ if (project.Environments == null || project.Environments.Count == 0)
 return string.Empty;
 }
 
-var environments = project.Environments
+	var environments = project.Environments
 .Where(environment => environment.IsEnabled)
 .OrderByDescending(environment => environment.IsDefault)
 .ThenBy(environment => environment.SortOrder)
@@ -159,21 +159,21 @@ foreach (var environment in environments)
 {
 var lineBuilder = new StringBuilder();
 lineBuilder.Append("  - ");
-if (environment.IsDefault)
-{
-lineBuilder.Append("Default ");
-}
+	if (environment.IsDefault)
+	{
+	lineBuilder.Append("Default ");
+	}
 lineBuilder.Append(environment.Type);
 lineBuilder.Append(": ");
 lineBuilder.Append(environment.Name);
 lineBuilder.Append(" | URL: ");
 lineBuilder.Append(environment.Url);
 
-if (!string.IsNullOrWhiteSpace(environment.Notes))
-{
-lineBuilder.Append(" | Notes: ");
-lineBuilder.Append(environment.Notes);
-}
+	if (!string.IsNullOrWhiteSpace(environment.Notes))
+	{
+	lineBuilder.Append(" | Notes: ");
+	lineBuilder.Append(environment.Notes);
+	}
 
 if (environment.Type == EnvironmentType.Web
 && !string.IsNullOrWhiteSpace(environment.Username)
