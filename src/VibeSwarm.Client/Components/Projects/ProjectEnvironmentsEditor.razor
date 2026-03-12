@@ -45,9 +45,9 @@ else
 					<div class="d-flex align-items-center gap-2 flex-wrap">
 						<span class="badge text-bg-primary">#@(environment.index + 1)</span>
 						<span class="badge bg-secondary-subtle text-secondary-emphasis">@item.Type</span>
-						@if (item.IsDefault)
+						@if (item.IsPrimary)
 						{
-							<span class="badge bg-success-subtle text-success-emphasis">Default</span>
+							<span class="badge bg-success-subtle text-success-emphasis">Primary</span>
 						}
 						@if (!item.IsEnabled)
 						{
@@ -56,15 +56,15 @@ else
 					</div>
 					<div class="btn-group btn-group-sm" role="group">
 						<button type="button" class="btn btn-secondary" title="Move up"
-								@onclick="() => MoveEnvironmentUp(item.Id)" disabled="@(environment.index == 0)">
+							@onclick="() => MoveEnvironmentUp(item.Id)" disabled="@(environment.index == 0)">
 							<i class="bi bi-arrow-up"></i>
 						</button>
 						<button type="button" class="btn btn-secondary" title="Move down"
-								@onclick="() => MoveEnvironmentDown(item.Id)" disabled="@(environment.index >= _environments.Count - 1)">
+							@onclick="() => MoveEnvironmentDown(item.Id)" disabled="@(environment.index >= _environments.Count - 1)">
 							<i class="bi bi-arrow-down"></i>
 						</button>
 						<button type="button" class="btn btn-danger" title="Remove environment"
-								@onclick="() => RemoveEnvironment(item.Id)">
+							@onclick="() => RemoveEnvironment(item.Id)">
 							<i class="bi bi-x-lg"></i>
 						</button>
 					</div>
@@ -79,8 +79,8 @@ else
 						<label class="form-label">Type</label>
 						<InputSelect @bind-Value="item.Type" @bind-Value:after="() => OnEnvironmentTypeChanged(item)" class="form-select">
 							<option value="@EnvironmentType.Web">Web</option>
-							<option value="@EnvironmentType.GitHubReleases">GitHub Releases</option>
-							<option value="@EnvironmentType.Generic">Generic</option>
+							<option value="@EnvironmentType.Release">GitHub Releases</option>
+							<option value="@EnvironmentType.Other">Generic</option>
 						</InputSelect>
 					</div>
 					<div class="col-12 col-lg-4">
@@ -88,9 +88,9 @@ else
 						<InputText @bind-Value="item.Url" class="form-control" placeholder="https://staging.example.com" />
 					</div>
 					<div class="col-12">
-						<label class="form-label">Notes</label>
-						<InputTextArea @bind-Value="item.Notes" class="form-control" rows="2"
-									   placeholder="Optional instructions for agents, such as login flow, deployment notes, or release context." />
+						<label class="form-label">Description</label>
+						<InputTextArea @bind-Value="item.Description" class="form-control" rows="2"
+							placeholder="Optional instructions for agents, such as login flow, deployment notes, or release context." />
 					</div>
 				</div>
 
@@ -100,9 +100,9 @@ else
 						<label class="form-check-label" for="@($"env-enabled-{item.Id}")">Enabled</label>
 					</div>
 					<div class="form-check form-switch m-0">
-						<InputCheckbox id="@($"env-default-{item.Id}")" Value="@item.IsDefault"
-									   ValueChanged="@(value => ToggleDefaultEnvironment(item.Id, value))" class="form-check-input" />
-						<label class="form-check-label" for="@($"env-default-{item.Id}")">Default environment</label>
+						<InputCheckbox id="@($"env-primary-{item.Id}")" Value="@item.IsPrimary"
+							ValueChanged="@(value => TogglePrimaryEnvironment(item.Id, value))" class="form-check-input" />
+						<label class="form-check-label" for="@($"env-primary-{item.Id}")">Primary environment</label>
 					</div>
 				</div>
 
@@ -124,7 +124,7 @@ else
 							<div class="col-12 col-lg-6">
 								<label class="form-label">Password</label>
 								<InputText @bind-Value="item.Password" class="form-control" type="password"
-										   placeholder="Leave blank to keep the saved password" />
+									placeholder="Leave blank to keep the saved password" />
 								@if (item.HasPassword)
 								{
 									<div class="form-text d-flex align-items-center justify-content-between gap-2 flex-wrap">
@@ -158,7 +158,7 @@ else
 			Name = $"Environment {Project.Environments.Count + 1}",
 			Type = EnvironmentType.Web,
 			IsEnabled = true,
-			IsDefault = Project.Environments.Count == 0,
+			IsPrimary = Project.Environments.Count == 0,
 			SortOrder = Project.Environments.Count
 		});
 		NormalizeOrder();
@@ -204,16 +204,16 @@ else
 		NormalizeOrder();
 	}
 
-	private void ToggleDefaultEnvironment(Guid environmentId, bool isDefault)
+	private void TogglePrimaryEnvironment(Guid environmentId, bool isPrimary)
 	{
 		foreach (var environment in Project.Environments)
 		{
-			environment.IsDefault = isDefault && environment.Id == environmentId;
+			environment.IsPrimary = isPrimary && environment.Id == environmentId;
 		}
 
-		if (!Project.Environments.Any(environment => environment.IsDefault) && Project.Environments.Count == 1)
+		if (!Project.Environments.Any(environment => environment.IsPrimary) && Project.Environments.Count > 0)
 		{
-			Project.Environments.First().IsDefault = true;
+			Project.Environments.First().IsPrimary = true;
 		}
 	}
 
@@ -245,12 +245,12 @@ else
 			})
 			.ToList();
 
-		var defaultEnvironment = Project.Environments.FirstOrDefault(environment => environment.IsDefault && environment.IsEnabled)
+		var primaryEnvironment = Project.Environments.FirstOrDefault(environment => environment.IsPrimary && environment.IsEnabled)
 			?? Project.Environments.FirstOrDefault(environment => environment.IsEnabled)
 			?? Project.Environments.FirstOrDefault();
 		foreach (var environment in Project.Environments)
 		{
-			environment.IsDefault = defaultEnvironment != null && environment.Id == defaultEnvironment.Id;
+			environment.IsPrimary = primaryEnvironment != null && environment.Id == primaryEnvironment.Id;
 		}
 	}
 }

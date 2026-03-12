@@ -8,7 +8,7 @@
 else
 {
 	<div class="d-grid gap-3">
-		@foreach (var environment in Environments.Where(environment => environment.IsEnabled).OrderByDescending(environment => environment.IsDefault).ThenBy(environment => environment.SortOrder))
+		@foreach (var environment in Environments.Where(environment => environment.IsEnabled).OrderByDescending(environment => environment.IsPrimary).ThenBy(environment => environment.SortOrder))
 		{
 			<div class="border rounded p-3 bg-body-tertiary">
 				<div class="d-flex align-items-start justify-content-between gap-3 flex-wrap">
@@ -16,9 +16,9 @@ else
 						<div class="d-flex align-items-center gap-2 flex-wrap">
 							<span class="fw-semibold">@environment.Name</span>
 							<span class="badge bg-secondary-subtle text-secondary-emphasis">@environment.Type</span>
-							@if (environment.IsDefault)
+							@if (environment.IsPrimary)
 							{
-								<span class="badge bg-success-subtle text-success-emphasis">Default</span>
+								<span class="badge bg-success-subtle text-success-emphasis">Primary</span>
 							}
 							@if (environment.Type == EnvironmentType.Web)
 							{
@@ -30,9 +30,9 @@ else
 								@environment.Url
 							</a>
 						</div>
-						@if (!string.IsNullOrWhiteSpace(environment.Notes))
+						@if (!string.IsNullOrWhiteSpace(environment.Description))
 						{
-							<div class="small text-body-secondary mt-2">@environment.Notes</div>
+							<div class="small text-body-secondary mt-2">@environment.Description</div>
 						}
 					</div>
 					@if (environment.Type == EnvironmentType.Web && !string.IsNullOrWhiteSpace(environment.Username))

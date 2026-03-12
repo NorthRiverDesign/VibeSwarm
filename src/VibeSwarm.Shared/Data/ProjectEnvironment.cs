@@ -7,8 +7,8 @@ namespace VibeSwarm.Shared.Data;
 public enum EnvironmentType
 {
 	Web = 0,
-	GitHubReleases = 1,
-	Generic = 2
+	Release = 1,
+	Other = 2
 }
 
 public class ProjectEnvironment
@@ -25,7 +25,7 @@ public class ProjectEnvironment
 	public string Name { get; set; } = string.Empty;
 
 	[StringLength(1000)]
-	public string? Notes { get; set; }
+	public string? Description { get; set; }
 
 	[Required]
 	[StringLength(1000, MinimumLength = 1)]
@@ -34,7 +34,7 @@ public class ProjectEnvironment
 
 	public EnvironmentType Type { get; set; } = EnvironmentType.Web;
 
-	public bool IsDefault { get; set; }
+	public bool IsPrimary { get; set; }
 
 	public bool IsEnabled { get; set; } = true;
 
@@ -53,14 +53,14 @@ public class ProjectEnvironment
 
 	[JsonIgnore]
 	[StringLength(4000)]
-	public string? EncryptedUsername { get; set; }
+	public string? UsernameCiphertext { get; set; }
 
 	[JsonIgnore]
 	[StringLength(4000)]
-	public string? EncryptedPassword { get; set; }
+	public string? PasswordCiphertext { get; set; }
 
 	[NotMapped]
-	public bool HasPassword { get; set; }
+	public bool HasPassword => !string.IsNullOrEmpty(PasswordCiphertext) || !string.IsNullOrEmpty(Password);
 
 	public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 

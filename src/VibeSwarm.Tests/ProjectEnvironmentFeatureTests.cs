@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using VibeSwarm.Shared.Data;
+using VibeSwarm.Shared.Providers;
 using VibeSwarm.Shared.Services;
 using VibeSwarm.Web.Services;
 
@@ -54,8 +55,8 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 		});
 
 		var stored = await dbContext.ProjectEnvironments.AsNoTracking().SingleAsync();
-		Assert.NotEqual("tester@example.com", stored.EncryptedUsername);
-		Assert.NotEqual("Sup3rSecret!", stored.EncryptedPassword);
+		Assert.NotEqual("tester@example.com", stored.UsernameCiphertext);
+		Assert.NotEqual("Sup3rSecret!", stored.PasswordCiphertext);
 
 		var environment = Assert.Single(created.Environments);
 		Assert.Equal("tester@example.com", environment.Username);
@@ -87,7 +88,7 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 		});
 
 		var storedBefore = await dbContext.ProjectEnvironments.AsNoTracking().SingleAsync();
-		var originalEncryptedPassword = storedBefore.EncryptedPassword;
+		var originalPasswordCiphertext = storedBefore.PasswordCiphertext;
 
 		var environment = Assert.Single(created.Environments);
 		environment.Password = null;
@@ -96,14 +97,14 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 		await service.UpdateAsync(created);
 
 		var storedAfterPreserve = await dbContext.ProjectEnvironments.AsNoTracking().SingleAsync();
-		Assert.Equal(originalEncryptedPassword, storedAfterPreserve.EncryptedPassword);
+		Assert.Equal(originalPasswordCiphertext, storedAfterPreserve.PasswordCiphertext);
 
 		environment.ClearPassword = true;
 		created.Environments = [environment];
 		var updated = await service.UpdateAsync(created);
 
 		var storedAfterClear = await dbContext.ProjectEnvironments.AsNoTracking().SingleAsync();
-		Assert.Null(storedAfterClear.EncryptedPassword);
+		Assert.Null(storedAfterClear.PasswordCiphertext);
 		Assert.False(Assert.Single(updated.Environments).HasPassword);
 	}
 
@@ -124,8 +125,8 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 						Name = "Staging",
 						Type = EnvironmentType.Web,
 						Url = "https://staging.example.com",
-						Notes = "Use the seeded admin account.",
-						IsDefault = true,
+						Description = "Use the seeded admin account.",
+						IsPrimary = true,
 						IsEnabled = true,
 						Username = "admin@example.com",
 						Password = "StagingPassword!"
@@ -133,7 +134,7 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 					new ProjectEnvironment
 					{
 						Name = "Releases",
-						Type = EnvironmentType.GitHubReleases,
+						Type = EnvironmentType.Release,
 						Url = "https://github.com/octo/repo/releases",
 						IsEnabled = true
 					}
@@ -172,9 +173,39 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 			]
 		});
 
+		Assert.NotNull(json);
 		Assert.Contains("\"playwright\"", json);
 		Assert.Contains("@playwright/mcp@latest", json);
 		Assert.Contains("\"repo-map\"", json);
+	}
+
+	[Fact]
+	public async Task GenerateMcpConfigFileAsync_UsesOpenCodeShapeForOpenCodeProvider()
+	{
+		var service = new McpConfigService(new FakeSkillService());
+
+		var filePath = await service.GenerateMcpConfigFileAsync(
+			ProviderType.OpenCode,
+			new Project
+			{
+				Name = "Web App",
+				WorkingPath = "/tmp/web-app",
+				Environments =
+				[
+					new ProjectEnvironment
+					{
+						Name = "Production",
+						Type = EnvironmentType.Web,
+						Url = "https://app.example.com",
+						IsEnabled = true
+					}
+				]
+			});
+
+		Assert.NotNull(filePath);
+		var json = await File.ReadAllTextAsync(filePath!);
+		Assert.Contains("\"mcp\"", json);
+		Assert.Contains("@playwright/mcp@latest", json);
 	}
 
 	private VibeSwarmDbContext CreateDbContext() => new(_dbOptions);

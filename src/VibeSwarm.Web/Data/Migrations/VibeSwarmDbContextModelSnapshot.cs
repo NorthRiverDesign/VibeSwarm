@@ -319,7 +319,7 @@ namespace VibeSwarm.Shared.Data.Migrations
                     b.Property<bool>("IsAvailable")
                         .HasColumnType("INTEGER");
 
-                    b.Property<bool>("IsDefault")
+                    b.Property<bool>("IsPrimary")
                         .HasColumnType("INTEGER");
 
                     b.Property<string>("ModelId")
@@ -768,7 +768,7 @@ namespace VibeSwarm.Shared.Data.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("TEXT");
 
-                    b.Property<string>("Notes")
+                    b.Property<string>("Description")
                         .HasMaxLength(1000)
                         .HasColumnType("TEXT");
 
@@ -777,7 +777,7 @@ namespace VibeSwarm.Shared.Data.Migrations
                         .HasColumnType("INTEGER")
                         .HasDefaultValue(true);
 
-                    b.Property<bool>("IsDefault")
+                    b.Property<bool>("IsPrimary")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER")
                         .HasDefaultValue(false);
@@ -787,7 +787,7 @@ namespace VibeSwarm.Shared.Data.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("TEXT");
 
-                    b.Property<string>("EncryptedPassword")
+                    b.Property<string>("PasswordCiphertext")
                         .HasMaxLength(4000)
                         .HasColumnType("TEXT");
 
@@ -811,7 +811,7 @@ namespace VibeSwarm.Shared.Data.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("TEXT");
 
-                    b.Property<string>("EncryptedUsername")
+                    b.Property<string>("UsernameCiphertext")
                         .HasMaxLength(4000)
                         .HasColumnType("TEXT");
 
@@ -886,7 +886,7 @@ namespace VibeSwarm.Shared.Data.Migrations
                     b.Property<bool>("IsAvailable")
                         .HasColumnType("INTEGER");
 
-                    b.Property<bool>("IsDefault")
+                    b.Property<bool>("IsPrimary")
                         .HasColumnType("INTEGER");
 
                     b.Property<int?>("MaxContextTokens")
@@ -1112,7 +1112,7 @@ namespace VibeSwarm.Shared.Data.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("TEXT");
 
-                    b.Property<bool>("IsDefault")
+                    b.Property<bool>("IsPrimary")
                         .HasColumnType("INTEGER");
 
                     b.Property<bool>("IsEnabled")
