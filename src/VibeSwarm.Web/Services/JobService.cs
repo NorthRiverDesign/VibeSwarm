@@ -30,6 +30,7 @@ public class JobService : IJobService
     {
         return await _dbContext.Jobs
             .Include(j => j.Project)
+                .ThenInclude(p => p.Environments)
             .Include(j => j.Provider)
             .OrderByDescending(j => j.CreatedAt)
             .ToListAsync(cancellationToken);
@@ -58,6 +59,7 @@ public class JobService : IJobService
         // Exclude jobs from projects that already have a running job
         return await _dbContext.Jobs
             .Include(j => j.Project)
+                .ThenInclude(p => p.Environments)
             .Include(j => j.Provider)
             .Where(j => j.Status == JobStatus.New && !j.CancellationRequested)
             .Where(j => !projectsWithRunningJobs.Contains(j.ProjectId))
@@ -70,6 +72,7 @@ public class JobService : IJobService
     {
         return await _dbContext.Jobs
             .Include(j => j.Project)
+                .ThenInclude(p => p.Environments)
             .Include(j => j.Provider)
             .Where(j => j.Status == JobStatus.Started || j.Status == JobStatus.Processing || j.Status == JobStatus.New)
             .OrderByDescending(j => j.StartedAt ?? j.CreatedAt)
@@ -80,6 +83,7 @@ public class JobService : IJobService
     {
         return await _dbContext.Jobs
             .Include(j => j.Project)
+                .ThenInclude(p => p.Environments)
             .Include(j => j.Provider)
             .Include(j => j.ProviderAttempts.OrderBy(a => a.AttemptOrder))
             .FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
@@ -89,6 +93,7 @@ public class JobService : IJobService
     {
         return await _dbContext.Jobs
             .Include(j => j.Project)
+                .ThenInclude(p => p.Environments)
             .Include(j => j.Provider)
             .Include(j => j.ProviderAttempts.OrderBy(a => a.AttemptOrder))
             .Include(j => j.Messages.OrderBy(m => m.CreatedAt))

@@ -22,6 +22,7 @@ public class JobProcessingService : BackgroundService
     private readonly ProcessSupervisor? _processSupervisor;
     private readonly IVersionControlService _versionControlService;
     private readonly IInteractionResponseService? _interactionResponseService;
+    private readonly IProjectEnvironmentCredentialService _projectEnvironmentCredentialService;
     private readonly TimeSpan _pollingInterval = TimeSpan.FromSeconds(3); // Poll less frequently, SignalR handles real-time updates
     private readonly int _maxConcurrentJobs = 5; // Maximum number of concurrent jobs
     private readonly Dictionary<Guid, JobExecutionContext> _runningJobs = new();
@@ -42,7 +43,8 @@ public class JobProcessingService : BackgroundService
         IJobCoordinatorService? jobCoordinator = null,
         IProviderHealthTracker? healthTracker = null,
         ProcessSupervisor? processSupervisor = null,
-        IInteractionResponseService? interactionResponseService = null)
+        IInteractionResponseService? interactionResponseService = null,
+        IProjectEnvironmentCredentialService? projectEnvironmentCredentialService = null)
     {
         _scopeFactory = scopeFactory;
         _logger = logger;
@@ -52,6 +54,7 @@ public class JobProcessingService : BackgroundService
         _healthTracker = healthTracker;
         _processSupervisor = processSupervisor;
         _interactionResponseService = interactionResponseService;
+        _projectEnvironmentCredentialService = projectEnvironmentCredentialService ?? throw new ArgumentNullException(nameof(projectEnvironmentCredentialService));
     }
 
     /// <summary>
@@ -825,6 +828,11 @@ public class JobProcessingService : BackgroundService
             });
 
             // ===== Multi-Cycle Execution Loop =====
+            if (job.Project != null)
+            {
+                _projectEnvironmentCredentialService.PopulateForExecution(job.Project);
+            }
+
             var enableStructuring = appSettings?.EnablePromptStructuring ?? true;
             var currentPrompt = PromptBuilder.BuildStructuredPrompt(job, enableStructuring);
             var cycleComplete = false;
@@ -874,13 +882,16 @@ public class JobProcessingService : BackgroundService
                         cancellationToken);
                 }
 
+                var mcpOptions = await GetMcpExecutionOptionsAsync(job.ProviderId, job.Project, workingDirectory, cancellationToken);
+
                 var result = await provider.ExecuteWithOptionsAsync(
                     currentPrompt,
                     new ExecutionOptions
                     {
                         SessionId = cycleSessionId,
                         WorkingDirectory = workingDirectory,
-                        McpConfigPath = await GetMcpConfigPathAsync(job.ProviderId),
+                        McpConfigPath = mcpOptions.McpConfigPath,
+                        AdditionalArgs = mcpOptions.AdditionalArgs,
                         Model = job.ModelUsed,
                         Title = job.Title,
                         AppendSystemPrompt = systemPromptRules
@@ -1700,7 +1711,11 @@ public class JobProcessingService : BackgroundService
     /// Gets the MCP config file path for the given provider.
     /// Generates a temporary MCP config file containing all enabled skills.
     /// </summary>
-    private async Task<string?> GetMcpConfigPathAsync(Guid providerId)
+    private async Task<(string? McpConfigPath, List<string>? AdditionalArgs)> GetMcpExecutionOptionsAsync(
+        Guid providerId,
+        Project? project,
+        string? workingDirectory,
+        CancellationToken cancellationToken)
     {
         try
         {
@@ -1713,22 +1728,24 @@ public class JobProcessingService : BackgroundService
             if (provider == null)
             {
                 _logger.LogWarning("Could not find provider {ProviderId} to generate MCP config", providerId);
-                return null;
+                return (null, null);
             }
 
-            // Generate the MCP config file
-            var configPath = await mcpConfigService.GenerateMcpConfigFileAsync();
-            if (!string.IsNullOrEmpty(configPath))
+            var mcpConfigPath = await mcpConfigService.GenerateMcpConfigFileAsync(
+                project,
+                workingDirectory,
+                cancellationToken);
+            if (!string.IsNullOrEmpty(mcpConfigPath))
             {
-                _logger.LogDebug("Generated MCP config at {ConfigPath} for provider {ProviderId}", configPath, providerId);
+                _logger.LogDebug("Generated MCP config at {ConfigPath} for provider {ProviderId}", mcpConfigPath, providerId);
             }
 
-            return configPath;
+            return (mcpConfigPath, null);
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Failed to generate MCP config for provider {ProviderId}", providerId);
-            return null;
+            return (null, null);
         }
     }
 }

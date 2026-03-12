@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.Http.Json;
 using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Services;
@@ -24,14 +25,14 @@ public class HttpProjectService : IProjectService
     public async Task<Project> CreateAsync(Project project, CancellationToken ct = default)
     {
         var response = await _http.PostAsJsonAsync("/api/projects", project, ct);
-        response.EnsureSuccessStatusCode();
+        await EnsureSuccessAsync(response, ct);
         return await response.Content.ReadFromJsonAsync<Project>(ct) ?? project;
     }
 
     public async Task<Project> UpdateAsync(Project project, CancellationToken ct = default)
     {
         var response = await _http.PutAsJsonAsync($"/api/projects/{project.Id}", project, ct);
-        response.EnsureSuccessStatusCode();
+        await EnsureSuccessAsync(response, ct);
         return await response.Content.ReadFromJsonAsync<Project>(ct) ?? project;
     }
 
@@ -43,4 +44,40 @@ public class HttpProjectService : IProjectService
 
     public async Task<IEnumerable<DashboardProjectInfo>> GetRecentWithLatestJobAsync(int count, CancellationToken ct = default)
         => await _http.GetFromJsonAsync<List<DashboardProjectInfo>>("/api/projects/recent-dashboard?count=" + count, ct) ?? [];
+
+    private async Task EnsureSuccessAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        if (response.IsSuccessStatusCode)
+        {
+            return;
+        }
+
+        string? errorMessage = null;
+        try
+        {
+            var error = await response.Content.ReadFromJsonAsync<ProjectErrorResponse>(cancellationToken);
+            errorMessage = error?.Error;
+        }
+        catch
+        {
+            // Fall back to the default response handling below when the payload isn't JSON.
+        }
+
+        if (!string.IsNullOrWhiteSpace(errorMessage))
+        {
+            throw new HttpRequestException(errorMessage, null, response.StatusCode);
+        }
+
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            throw new HttpRequestException("Project not found.", null, response.StatusCode);
+        }
+
+        response.EnsureSuccessStatusCode();
+    }
+
+    private sealed class ProjectErrorResponse
+    {
+        public string? Error { get; set; }
+    }
 }

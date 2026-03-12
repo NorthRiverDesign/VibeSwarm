@@ -42,9 +42,11 @@ public class ProjectsController : ControllerBase
         {
             return Ok(await _projectService.CreateAsync(project, ct));
         }
-        catch (InvalidOperationException ex) when (ex.Message.Contains("Provider"))
+        catch (InvalidOperationException ex)
         {
-            return BadRequest(new { error = ex.Message });
+            return ex.Message.Contains("not found", StringComparison.OrdinalIgnoreCase)
+                ? NotFound(new { error = ex.Message })
+                : BadRequest(new { error = ex.Message });
         }
         catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("FOREIGN KEY") == true || 
                                            ex.InnerException?.Message.Contains("foreign key") == true)
@@ -54,7 +56,7 @@ public class ProjectsController : ControllerBase
         catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("UNIQUE") == true || 
                                            ex.InnerException?.Message.Contains("unique") == true)
         {
-            return BadRequest(new { error = "Duplicate provider selected for this project." });
+            return BadRequest(new { error = "Duplicate provider or environment name selected for this project." });
         }
     }
 
@@ -66,9 +68,11 @@ public class ProjectsController : ControllerBase
             project.Id = id;
             return Ok(await _projectService.UpdateAsync(project, ct));
         }
-        catch (InvalidOperationException ex) when (ex.Message.Contains("Provider"))
+        catch (InvalidOperationException ex)
         {
-            return BadRequest(new { error = ex.Message });
+            return ex.Message.Contains("not found", StringComparison.OrdinalIgnoreCase)
+                ? NotFound(new { error = ex.Message })
+                : BadRequest(new { error = ex.Message });
         }
         catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("FOREIGN KEY") == true || 
                                            ex.InnerException?.Message.Contains("foreign key") == true)
@@ -78,7 +82,7 @@ public class ProjectsController : ControllerBase
         catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("UNIQUE") == true || 
                                            ex.InnerException?.Message.Contains("unique") == true)
         {
-            return BadRequest(new { error = "Duplicate provider selected for this project." });
+            return BadRequest(new { error = "Duplicate provider or environment name selected for this project." });
         }
     }
 

@@ -60,6 +60,8 @@ public class Project
 
     public ICollection<ProjectProvider> ProviderSelections { get; set; } = new List<ProjectProvider>();
 
+    public ICollection<ProjectEnvironment> Environments { get; set; } = new List<ProjectEnvironment>();
+
     /// <summary>
     /// Optional per-project instructions injected into every job prompt.
     /// E.g., coding conventions, framework preferences, language requirements.

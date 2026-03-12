@@ -1,4 +1,5 @@
 @* Modal component for adding and editing projects *@
+@using VibeSwarm.Client.Components.Projects
 @using VibeSwarm.Shared.Data
 @using VibeSwarm.Shared.Providers
 @using VibeSwarm.Shared.Services
@@ -168,6 +169,8 @@
 				}
 			</div>
 
+			<ProjectEnvironmentsEditor Project="Project" />
+
 					<div class="mb-3">
 						<label for="modal-promptContext" class="form-label">
 							<i class="bi bi-chat-left-text me-1"></i>Prompt Context
@@ -284,34 +287,8 @@
 
 			if (EditProject != null)
 			{
-				Project = new Project
-				{
-					Id = EditProject.Id,
-					Name = EditProject.Name,
-					Description = EditProject.Description,
-					WorkingPath = EditProject.WorkingPath,
-					GitHubRepository = EditProject.GitHubRepository,
-					AutoCommitMode = EditProject.AutoCommitMode,
-					PromptContext = EditProject.PromptContext,
-					IsActive = EditProject.IsActive,
-					CreatedAt = EditProject.CreatedAt,
-					UpdatedAt = EditProject.UpdatedAt,
-					ProviderSelections = EditProject.ProviderSelections
-						.OrderBy(pp => pp.Priority)
-						.Select(pp => new ProjectProvider
-						{
-							Id = pp.Id,
-							ProjectId = pp.ProjectId,
-							ProviderId = pp.ProviderId,
-							Priority = pp.Priority,
-							IsEnabled = pp.IsEnabled,
-							PreferredModelId = pp.PreferredModelId,
-							CreatedAt = pp.CreatedAt,
-							UpdatedAt = pp.UpdatedAt,
-							Provider = ResolveProvider(pp.ProviderId)
-						})
-						.ToList()
-				};
+				var editableProject = await ProjectService.GetByIdAsync(EditProject.Id) ?? EditProject;
+				Project = CloneProjectForEditing(editableProject);
 			}
 			else
 			{
@@ -641,5 +618,59 @@
 		{
 			AddProviderSelection(defaultProvider);
 		}
+	}
+
+	private Project CloneProjectForEditing(Project source)
+	{
+		return new Project
+		{
+			Id = source.Id,
+			Name = source.Name,
+			Description = source.Description,
+			WorkingPath = source.WorkingPath,
+			GitHubRepository = source.GitHubRepository,
+			AutoCommitMode = source.AutoCommitMode,
+			PromptContext = source.PromptContext,
+			IsActive = source.IsActive,
+			CreatedAt = source.CreatedAt,
+			UpdatedAt = source.UpdatedAt,
+			ProviderSelections = source.ProviderSelections
+				.OrderBy(pp => pp.Priority)
+				.Select(pp => new ProjectProvider
+				{
+					Id = pp.Id,
+					ProjectId = pp.ProjectId,
+					ProviderId = pp.ProviderId,
+					Priority = pp.Priority,
+					IsEnabled = pp.IsEnabled,
+					PreferredModelId = pp.PreferredModelId,
+					CreatedAt = pp.CreatedAt,
+					UpdatedAt = pp.UpdatedAt,
+					Provider = ResolveProvider(pp.ProviderId)
+				})
+				.ToList(),
+			Environments = source.Environments
+				.OrderBy(environment => environment.SortOrder)
+				.Select(environment => new ProjectEnvironment
+				{
+					Id = environment.Id,
+					ProjectId = environment.ProjectId,
+					Name = environment.Name,
+					Notes = environment.Notes,
+					Type = environment.Type,
+					Url = environment.Url,
+					IsDefault = environment.IsDefault,
+					IsEnabled = environment.IsEnabled,
+					SortOrder = environment.SortOrder,
+					Username = environment.Username,
+					Password = environment.Password,
+					ClearPassword = false,
+					EncryptedUsername = environment.EncryptedUsername,
+					EncryptedPassword = environment.EncryptedPassword,
+					CreatedAt = environment.CreatedAt,
+					UpdatedAt = environment.UpdatedAt
+				})
+				.ToList()
+		};
 	}
 }

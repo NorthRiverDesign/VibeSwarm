@@ -69,6 +69,12 @@ else
                                 {
                                     <span class="badge bg-secondary-subtle text-secondary-emphasis">Inactive</span>
                                 }
+                                @if (project.Environments.Any(environment => environment.IsEnabled))
+                                {
+                                    <span class="badge bg-info-subtle text-info-emphasis">
+                                        <i class="bi bi-globe2 me-1"></i>@project.Environments.Count(environment => environment.IsEnabled)
+                                    </span>
+                                }
                                 @if (stats.ActiveJobs > 0)
                                 {
                                     <span class="badge bg-primary bg-opacity-75">@stats.ActiveJobs active</span>
@@ -213,7 +219,7 @@ else
                                                 </a>
                                             </li>
                                             <li>
-                                                <button class="dropdown-item" @onclick="@(() => EditProject(project))"
+                                                <button class="dropdown-item" @onclick="@(() => EditProject(project.Id))"
                                                         @onclick:stopPropagation="true">
                                                     <i class="bi bi-pencil me-2"></i>
                                                     Edit
@@ -459,14 +465,20 @@ else
         StateHasChanged();
     }
 
-    private void EditProject(Project project)
+    private async Task EditProject(Guid projectId)
     {
         // Close any other open modals first
         ShowDeleteModal = false;
         ProjectToDelete = null;
         DeleteDirectoryConfirmed = false;
 
-        EditingProject = project;
+        EditingProject = await ProjectService.GetByIdAsync(projectId);
+        if (EditingProject == null)
+        {
+            NotificationService.ShowError("Unable to load project details for editing.");
+            return;
+        }
+
         ShowProjectModal = true;
         StateHasChanged();
     }

@@ -91,6 +91,14 @@ Console.WriteLine($"Database provider: {resolvedProvider}");
 
 // Add authorization services
 builder.Services.AddAuthorization();
+var dataProtectionDirectory = Path.Combine(
+    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+    "VibeSwarm",
+    "DataProtectionKeys");
+Directory.CreateDirectory(dataProtectionDirectory);
+builder.Services.AddDataProtection()
+    .PersistKeysToFileSystem(new DirectoryInfo(dataProtectionDirectory))
+    .SetApplicationName("VibeSwarm");
 
 builder.Services.AddRazorPages();
 
@@ -299,4 +307,3 @@ app.MapHub<JobHub>("/hubs/job");
 app.MapFallbackToFile("index.html");
 
 app.Run();
-

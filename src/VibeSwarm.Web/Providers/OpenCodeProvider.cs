@@ -241,6 +241,11 @@ public class OpenCodeProvider : CliProviderBase
             args.AddRange(new[] { "--reasoning", reasoningEffort });
         }
 
+        if (!string.IsNullOrEmpty(CurrentMcpConfigPath))
+        {
+            args.AddRange(new[] { "--config", $"\"{EscapeCliArgument(CurrentMcpConfigPath)}\"" });
+        }
+
         // Additional custom arguments (provider-specific or user-defined)
         if (CurrentAdditionalArgs != null)
         {

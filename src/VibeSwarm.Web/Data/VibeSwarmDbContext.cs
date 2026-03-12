@@ -19,6 +19,7 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
     public DbSet<ProviderUsageSummary> ProviderUsageSummaries => Set<ProviderUsageSummary>();
     public DbSet<Project> Projects => Set<Project>();
     public DbSet<ProjectProvider> ProjectProviders => Set<ProjectProvider>();
+    public DbSet<ProjectEnvironment> ProjectEnvironments => Set<ProjectEnvironment>();
     public DbSet<Job> Jobs => Set<Job>();
     public DbSet<JobProviderAttempt> JobProviderAttempts => Set<JobProviderAttempt>();
     public DbSet<JobMessage> JobMessages => Set<JobMessage>();
@@ -109,6 +110,10 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
                 .WithOne(pp => pp.Project)
                 .HasForeignKey(pp => pp.ProjectId)
                 .OnDelete(DeleteBehavior.Cascade);
+            entity.HasMany(e => e.Environments)
+                .WithOne(environment => environment.Project)
+                .HasForeignKey(environment => environment.ProjectId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<ProjectProvider>(entity =>
@@ -123,6 +128,21 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
                 .OnDelete(DeleteBehavior.Restrict);
             entity.HasIndex(e => new { e.ProjectId, e.ProviderId }).IsUnique();
             entity.HasIndex(e => new { e.ProjectId, e.Priority });
+        });
+
+        modelBuilder.Entity<ProjectEnvironment>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Name).IsRequired().HasMaxLength(100);
+            entity.Property(e => e.Notes).HasMaxLength(1000);
+            entity.Property(e => e.Url).IsRequired().HasMaxLength(1000);
+            entity.Property(e => e.Type).HasConversion<string>();
+            entity.Property(e => e.IsEnabled).HasDefaultValue(true);
+            entity.Property(e => e.SortOrder).HasDefaultValue(0);
+            entity.Property(e => e.EncryptedUsername).HasMaxLength(4000);
+            entity.Property(e => e.EncryptedPassword).HasMaxLength(4000);
+            entity.HasIndex(e => new { e.ProjectId, e.Name }).IsUnique();
+            entity.HasIndex(e => new { e.ProjectId, e.SortOrder });
         });
 
         modelBuilder.Entity<Job>(entity =>
