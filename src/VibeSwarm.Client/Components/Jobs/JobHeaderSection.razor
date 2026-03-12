@@ -9,34 +9,85 @@
 			<h3 class="mb-0 fs-4 fw-semibold text-truncate" title="@JobTitle">@(string.IsNullOrEmpty(JobTitle) ? "Job Details" : JobTitle)</h3>
 			@* Action Buttons - integrated in header *@
 			<div class="d-flex flex-wrap gap-2 flex-shrink-0">
-				@if (CanRetry)
+				@if (HasActionMenu)
 				{
-					@* Retry dropdown menu *@
 					<div class="dropdown">
-						<button class="btn btn-sm btn-primary dropdown-toggle" type="button" data-bs-toggle="dropdown"
-								aria-expanded="false" disabled="@IsRetrying">
-							@if (IsRetrying)
-							{
-								<span class="spinner-border spinner-border-sm me-1" role="status"></span>
-								<span>Retrying...</span>
-							}
-							else
-							{
-								<i class="bi bi-three-dots-vertical me-1"></i>
-								<span>Actions</span>
-							}
+						<button class="btn btn-sm btn-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown"
+								aria-expanded="false" title="Job actions">
+							<i class="bi bi-gear me-1"></i>
+							<span>Actions</span>
 						</button>
 						<ul class="dropdown-menu dropdown-menu-end">
-							<li>
-								<button class="dropdown-item" @onclick="OnRetry">
-									<i class="bi bi-arrow-repeat me-2"></i>Retry Job
-								</button>
-							</li>
-							@if (ShowRetryOptions)
+							@if (CanRetry)
 							{
 								<li>
-									<button class="dropdown-item" @onclick="OnRetryWithOptions">
-										<i class="bi bi-sliders me-2"></i>Retry with Options...
+									<button class="dropdown-item" @onclick="OnRetry" disabled="@IsRetrying">
+										@if (IsRetrying)
+										{
+											<span class="spinner-border spinner-border-sm me-2" role="status"></span>
+										}
+										else
+										{
+											<i class="bi bi-arrow-repeat me-2"></i>
+										}
+										@(IsRetrying ? "Retrying..." : "Retry Job")
+									</button>
+								</li>
+								@if (ShowRetryOptions)
+								{
+									<li>
+										<button class="dropdown-item" @onclick="OnRetryWithOptions" disabled="@IsRetrying">
+											<i class="bi bi-sliders me-2"></i>Retry with Options...
+										</button>
+									</li>
+								}
+							}
+							@if (ShowGitActions)
+							{
+								@if (CanRetry)
+								{
+									<li>
+										<hr class="dropdown-divider">
+									</li>
+								}
+								<li>
+									<h6 class="dropdown-header">Git</h6>
+								</li>
+								<li>
+									<button class="dropdown-item" @onclick="OnCreateBranch" disabled="@AreGitActionsBusy">
+										<i class="bi bi-plus-lg me-2 text-primary"></i>New Branch
+									</button>
+								</li>
+								<li>
+									<button class="dropdown-item" @onclick="OnSync" disabled="@AreGitActionsBusy">
+										@if (IsGitSyncing)
+										{
+											<span class="spinner-border spinner-border-sm me-2" role="status"></span>
+										}
+										else
+										{
+											<i class="bi bi-cloud-download me-2 text-success"></i>
+										}
+										Sync with Origin
+									</button>
+								</li>
+								<li>
+									<button class="dropdown-item" @onclick="OnPruneBranches" disabled="@AreGitActionsBusy">
+										@if (IsGitPruning)
+										{
+											<span class="spinner-border spinner-border-sm me-2" role="status"></span>
+										}
+										else
+										{
+											<i class="bi bi-scissors me-2 text-warning"></i>
+										}
+										Prune Stale Branches
+									</button>
+								</li>
+								<li>
+									<button class="dropdown-item" @onclick="OnRefresh" disabled="@AreGitActionsBusy">
+										<i class="bi bi-arrow-clockwise me-2 @(IsGitRefreshing ? "spin" : string.Empty)"></i>
+										Refresh Branches
 									</button>
 								</li>
 							}
@@ -281,10 +332,34 @@
 	public bool IsForceCancelling { get; set; }
 
 	[Parameter]
+	public bool ShowGitActions { get; set; }
+
+	[Parameter]
+	public bool IsGitSyncing { get; set; }
+
+	[Parameter]
+	public bool IsGitRefreshing { get; set; }
+
+	[Parameter]
+	public bool IsGitPruning { get; set; }
+
+	[Parameter]
 	public EventCallback OnRetry { get; set; }
 
 	[Parameter]
 	public EventCallback OnRetryWithOptions { get; set; }
+
+	[Parameter]
+	public EventCallback OnCreateBranch { get; set; }
+
+	[Parameter]
+	public EventCallback OnSync { get; set; }
+
+	[Parameter]
+	public EventCallback OnRefresh { get; set; }
+
+	[Parameter]
+	public EventCallback OnPruneBranches { get; set; }
 
 	[Parameter]
 	public EventCallback OnCancel { get; set; }
@@ -306,6 +381,10 @@
 
 	[Parameter]
 	public CycleMode CycleMode { get; set; } = CycleMode.SingleCycle;
+
+	private bool HasActionMenu => CanRetry || ShowGitActions;
+
+	private bool AreGitActionsBusy => IsGitSyncing || IsGitRefreshing || IsGitPruning;
 
 	private bool IsRunning => Status == JobStatus.Started || Status == JobStatus.Processing;
 

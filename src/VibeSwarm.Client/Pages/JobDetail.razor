@@ -32,14 +32,18 @@ else
                       GitHubRepository="@Job.Project?.GitHubRepository" BranchName="@_branchName" ProjectId="@Job.ProjectId"
                       ProjectName="@(Job.Project?.Name ?? "Unknown")" ProviderName="@(Job.Provider?.Name ?? "Unknown")"
                       ProcessId="@Job.ProcessId" CreatedAt="@Job.CreatedAt" StartedAt="@Job.StartedAt" CompletedAt="@Job.CompletedAt"
-                      ExecutionDuration="@Job.ExecutionDuration" ModelUsed="@Job.ModelUsed" RetryCount="@Job.RetryCount"
-                      InputTokens="@Job.InputTokens" OutputTokens="@Job.OutputTokens" TotalCostUsd="@Job.TotalCostUsd"
-                      CanRetry="@CanRetry" CanCancel="@CanCancel" CanForceCancel="@CanForceCancel"
-                      ShowRetryOptions="@(Job.Status == JobStatus.Failed || Job.Status == JobStatus.Cancelled)" IsRetrying="@IsRetrying"
-                      IsCancelling="@IsCancelling" IsForceCancelling="@IsForceCancelling" OnRetry="RetryJob"
-                      OnRetryWithOptions="ShowRetryModal" OnCancel="CancelJob" OnForceCancel="ForceCancelJob"
-                      CurrentActivity="@Job.CurrentActivity" LastActivityAt="@Job.LastActivityAt" CurrentCycle="@Job.CurrentCycle"
-                      MaxCycles="@Job.MaxCycles" CycleMode="@Job.CycleMode" />
+					   ExecutionDuration="@Job.ExecutionDuration" ModelUsed="@Job.ModelUsed" RetryCount="@Job.RetryCount"
+					   InputTokens="@Job.InputTokens" OutputTokens="@Job.OutputTokens" TotalCostUsd="@Job.TotalCostUsd"
+					   CanRetry="@CanRetry" CanCancel="@CanCancel" CanForceCancel="@CanForceCancel"
+					   ShowRetryOptions="@(Job.Status == JobStatus.Failed || Job.Status == JobStatus.Cancelled)" IsRetrying="@IsRetrying"
+					   IsCancelling="@IsCancelling" IsForceCancelling="@IsForceCancelling" OnRetry="RetryJob"
+					   ShowGitActions="@ShowGitActions" IsGitSyncing="@_isSyncingWithOrigin"
+					   IsGitRefreshing="@_isRefreshingBranches" IsGitPruning="@_isPruningBranches"
+					   OnRetryWithOptions="ShowRetryModal" OnCreateBranch="ShowCreateBranchModal" OnSync="SyncWithOrigin"
+					   OnRefresh="RefreshBranches" OnPruneBranches="PruneRemoteBranches"
+					   OnCancel="CancelJob" OnForceCancel="ForceCancelJob"
+					   CurrentActivity="@Job.CurrentActivity" LastActivityAt="@Job.LastActivityAt" CurrentCycle="@Job.CurrentCycle"
+					   MaxCycles="@Job.MaxCycles" CycleMode="@Job.CycleMode" />
 
     @* Main Content - Column Layout *@
     <div class="row g-3 g-lg-4">
@@ -157,8 +161,11 @@ else
         </div>
     </div>
 
-    @* Retry Job Modal *@
-    <RetryJobModal @bind-IsVisible="_showRetryModal" Job="Job" OnRetry="HandleRetryWithOptions" />
+	<CreateBranchModal @bind-IsVisible="_showCreateBranchModal" CurrentBranch="@_branchName"
+					   IsCreating="@_isCreatingBranch" ErrorMessage="@_createBranchError" OnCreate="CreateBranch" />
+
+	@* Retry Job Modal *@
+	<RetryJobModal @bind-IsVisible="_showRetryModal" Job="Job" OnRetry="HandleRetryWithOptions" />
 }
 
 @code {
@@ -211,11 +218,17 @@ else
     private string _uncommittedCommitMessage = string.Empty;
     private bool _isCommittingUncommittedChanges = false;
 
-    private string? _branchName = null;
-    private bool _isGitRepository = false;
-    private CancellationTokenSource? _pushCancellationTokenSource;
-    private const int PushTimeoutSeconds = 120;
-    private bool _commitMessageInitialized = false;
+	private string? _branchName = null;
+	private bool _isGitRepository = false;
+	private bool _showCreateBranchModal = false;
+	private bool _isCreatingBranch = false;
+	private string? _createBranchError = null;
+	private bool _isSyncingWithOrigin = false;
+	private bool _isRefreshingBranches = false;
+	private bool _isPruningBranches = false;
+	private CancellationTokenSource? _pushCancellationTokenSource;
+	private const int PushTimeoutSeconds = 120;
+	private bool _commitMessageInitialized = false;
     private CancellationTokenSource? _signalRCts;
 
     // Interaction response state
@@ -248,21 +261,22 @@ new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
     Job.Status == JobStatus.Processing) &&
     !Job.CancellationRequested;
 
-    private bool CanForceCancel => Job != null &&
-    (Job.Status == JobStatus.Started || Job.Status == JobStatus.Processing) &&
-    Job.CancellationRequested;
+	private bool CanForceCancel => Job != null &&
+	(Job.Status == JobStatus.Started || Job.Status == JobStatus.Processing) &&
+	Job.CancellationRequested;
 
-    private bool CanRetry => Job != null &&
-    (Job.Status == JobStatus.Cancelled ||
-    Job.Status == JobStatus.Failed ||
-    Job.Status == JobStatus.Completed);
+	private bool CanRetry => Job != null &&
+	(Job.Status == JobStatus.Cancelled ||
+	Job.Status == JobStatus.Failed);
 
-    private bool IsJobActive => Job != null &&
-    (Job.Status == JobStatus.New ||
-    Job.Status == JobStatus.Pending ||
-    Job.Status == JobStatus.Started ||
-    Job.Status == JobStatus.Processing ||
-    Job.Status == JobStatus.Paused);
+	private bool IsJobActive => Job != null &&
+	(Job.Status == JobStatus.New ||
+	Job.Status == JobStatus.Pending ||
+	Job.Status == JobStatus.Started ||
+	Job.Status == JobStatus.Processing ||
+	Job.Status == JobStatus.Paused);
+
+	private bool ShowGitActions => Job?.Project?.WorkingPath != null && _isGitRepository && !IsJobActive;
 
     private bool CanPush => !_isPushing &&
     !string.IsNullOrWhiteSpace(_commitMessage) &&
@@ -1013,10 +1027,10 @@ TimeSpan.FromSeconds(10) })
 
     #region Git Operations
 
-    private async Task LoadBranchName()
-    {
-        try
-        {
+	private async Task LoadBranchName()
+	{
+		try
+		{
             if (Job?.Project?.WorkingPath != null)
             {
                 _isGitRepository = await VersionControlService.IsGitRepositoryAsync(Job.Project.WorkingPath);
@@ -1029,11 +1043,157 @@ TimeSpan.FromSeconds(10) })
         catch
         {
             _isGitRepository = false;
-        }
-    }
+		}
+	}
 
-    private async Task RefreshSummary()
-    {
+	private void ShowCreateBranchModal()
+	{
+		if (!ShowGitActions || _isSyncingWithOrigin || _isRefreshingBranches || _isPruningBranches)
+		{
+			return;
+		}
+
+		_showCreateBranchModal = true;
+		_createBranchError = null;
+	}
+
+	private async Task CreateBranch(string branchName)
+	{
+		if (string.IsNullOrWhiteSpace(branchName) || Job?.Project?.WorkingPath == null)
+		{
+			return;
+		}
+
+		_isCreatingBranch = true;
+		_createBranchError = null;
+		StateHasChanged();
+
+		try
+		{
+			var trimmedBranchName = branchName.Trim();
+			var result = await VersionControlService.CreateBranchAsync(Job.Project.WorkingPath, trimmedBranchName, switchToBranch: true);
+
+			if (result.Success)
+			{
+				_branchName = result.BranchName ?? trimmedBranchName;
+				_showCreateBranchModal = false;
+				NotificationService.ShowSuccess($"Created and switched to branch '{_branchName}'.");
+			}
+			else
+			{
+				_createBranchError = result.Error ?? "Failed to create branch.";
+			}
+		}
+		catch (Exception ex)
+		{
+			_createBranchError = $"Error creating branch: {ex.Message}";
+		}
+		finally
+		{
+			_isCreatingBranch = false;
+			StateHasChanged();
+		}
+	}
+
+	private async Task SyncWithOrigin()
+	{
+		if (_isSyncingWithOrigin || Job?.Project?.WorkingPath == null)
+		{
+			return;
+		}
+
+		_isSyncingWithOrigin = true;
+		StateHasChanged();
+
+		try
+		{
+			var result = await VersionControlService.SyncWithOriginAsync(Job.Project.WorkingPath);
+			if (result.Success)
+			{
+				await LoadBranchName();
+				NotificationService.ShowSuccess(string.IsNullOrWhiteSpace(_branchName)
+					? "Successfully synced with origin."
+					: $"Successfully synced with origin/{_branchName}.");
+			}
+			else
+			{
+				NotificationService.ShowError(result.Error ?? "Failed to sync with origin.");
+			}
+		}
+		catch (Exception ex)
+		{
+			NotificationService.ShowError($"Error syncing with origin: {ex.Message}");
+		}
+		finally
+		{
+			_isSyncingWithOrigin = false;
+			StateHasChanged();
+		}
+	}
+
+	private async Task RefreshBranches()
+	{
+		if (_isRefreshingBranches || Job?.Project?.WorkingPath == null)
+		{
+			return;
+		}
+
+		_isRefreshingBranches = true;
+		StateHasChanged();
+
+		try
+		{
+			await VersionControlService.FetchAsync(Job.Project.WorkingPath);
+			await LoadBranchName();
+			NotificationService.ShowSuccess("Branch information refreshed.");
+		}
+		catch (Exception ex)
+		{
+			NotificationService.ShowError($"Failed to refresh branches: {ex.Message}");
+		}
+		finally
+		{
+			_isRefreshingBranches = false;
+			StateHasChanged();
+		}
+	}
+
+	private async Task PruneRemoteBranches()
+	{
+		if (_isPruningBranches || Job?.Project?.WorkingPath == null)
+		{
+			return;
+		}
+
+		_isPruningBranches = true;
+		StateHasChanged();
+
+		try
+		{
+			var result = await VersionControlService.PruneRemoteBranchesAsync(Job.Project.WorkingPath);
+			if (result.Success)
+			{
+				await LoadBranchName();
+				NotificationService.ShowSuccess("Stale remote branches pruned successfully.");
+			}
+			else
+			{
+				NotificationService.ShowError(result.Error ?? "Failed to prune stale branches.");
+			}
+		}
+		catch (Exception ex)
+		{
+			NotificationService.ShowError($"Error pruning stale branches: {ex.Message}");
+		}
+		finally
+		{
+			_isPruningBranches = false;
+			StateHasChanged();
+		}
+	}
+
+	private async Task RefreshSummary()
+	{
         if (Job == null) return;
 
         _isLoadingSummary = true;

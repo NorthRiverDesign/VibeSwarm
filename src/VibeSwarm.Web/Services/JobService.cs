@@ -411,7 +411,7 @@ public class JobService : IJobService
         }
 
         // Only allow resetting jobs that are in terminal states
-        if (job.Status != JobStatus.Completed && job.Status != JobStatus.Failed && job.Status != JobStatus.Cancelled)
+        if (job.Status != JobStatus.Failed && job.Status != JobStatus.Cancelled)
         {
             return false;
         }
@@ -657,7 +657,7 @@ public class JobService : IJobService
         }
 
         // Only allow resetting jobs that are in terminal states
-        if (job.Status != JobStatus.Completed && job.Status != JobStatus.Failed && job.Status != JobStatus.Cancelled)
+        if (job.Status != JobStatus.Failed && job.Status != JobStatus.Cancelled)
         {
             return false;
         }
