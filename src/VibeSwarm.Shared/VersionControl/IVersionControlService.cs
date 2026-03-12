@@ -325,6 +325,21 @@ public interface IVersionControlService
 		CancellationToken cancellationToken = default);
 
 	/// <summary>
+	/// Clones a repository using the GitHub CLI (gh repo clone).
+	/// Useful for private repos where the user is authenticated via gh.
+	/// </summary>
+	/// <param name="ownerRepo">The owner/repo string (e.g., "microsoft/vscode").</param>
+	/// <param name="targetDirectory">The local directory to clone into.</param>
+	/// <param name="progressCallback">Optional callback for progress updates.</param>
+	/// <param name="cancellationToken">Cancellation token.</param>
+	/// <returns>Result containing success status and any error message.</returns>
+	Task<GitOperationResult> CloneWithGitHubCliAsync(
+		string ownerRepo,
+		string targetDirectory,
+		Action<string>? progressCallback = null,
+		CancellationToken cancellationToken = default);
+
+	/// <summary>
 	/// Prunes stale remote-tracking branches that no longer exist on the remote.
 	/// Equivalent to: git remote prune {remoteName}
 	/// </summary>

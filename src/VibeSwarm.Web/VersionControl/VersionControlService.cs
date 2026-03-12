@@ -1655,6 +1655,90 @@ public sealed class VersionControlService : IVersionControlService
 	}
 
 	/// <inheritdoc />
+	/// <inheritdoc />
+	public async Task<GitOperationResult> CloneWithGitHubCliAsync(
+		string ownerRepo,
+		string targetDirectory,
+		Action<string>? progressCallback = null,
+		CancellationToken cancellationToken = default)
+	{
+		try
+		{
+			if (string.IsNullOrWhiteSpace(ownerRepo))
+			{
+				return GitOperationResult.Failed("Owner/repo cannot be empty.");
+			}
+
+			if (string.IsNullOrWhiteSpace(targetDirectory))
+			{
+				return GitOperationResult.Failed("Target directory cannot be empty.");
+			}
+
+			var ghAvailable = await IsGitHubCliAvailableAsync(cancellationToken);
+			if (!ghAvailable)
+			{
+				return GitOperationResult.Failed("GitHub CLI (gh) is not installed.");
+			}
+
+			var ghAuthenticated = await IsGitHubCliAuthenticatedAsync(cancellationToken);
+			if (!ghAuthenticated)
+			{
+				return GitOperationResult.Failed("Not authenticated with GitHub CLI. Please run 'gh auth login'.");
+			}
+
+			// Check if target directory exists and is not empty
+			if (Directory.Exists(targetDirectory))
+			{
+				var entries = Directory.GetFileSystemEntries(targetDirectory);
+				if (entries.Length > 0)
+				{
+					return GitOperationResult.Failed($"Target directory '{targetDirectory}' exists and is not empty.");
+				}
+			}
+			else
+			{
+				var parentDir = Path.GetDirectoryName(targetDirectory);
+				if (!string.IsNullOrEmpty(parentDir) && !Directory.Exists(parentDir))
+				{
+					Directory.CreateDirectory(parentDir);
+				}
+			}
+
+			progressCallback?.Invoke($"Cloning {ownerRepo} using GitHub CLI...");
+
+			var workingDir = Path.GetDirectoryName(targetDirectory) ?? Directory.GetCurrentDirectory();
+
+			var result = await _commandExecutor.ExecuteRawAsync(
+				"gh",
+				$"repo clone {ownerRepo} \"{targetDirectory}\"",
+				workingDir,
+				cancellationToken,
+				timeoutSeconds: 300);
+
+			if (!result.Success)
+			{
+				// Clean up partially cloned directory
+				if (Directory.Exists(targetDirectory))
+				{
+					try { Directory.Delete(targetDirectory, true); } catch { }
+				}
+				return GitOperationResult.Failed($"gh clone failed: {result.Error}");
+			}
+
+			progressCallback?.Invoke("Clone complete.");
+
+			return GitOperationResult.Succeeded(output: $"Successfully cloned {ownerRepo}");
+		}
+		catch (OperationCanceledException)
+		{
+			return GitOperationResult.Failed("Clone operation was cancelled or timed out.");
+		}
+		catch (Exception ex)
+		{
+			return GitOperationResult.Failed($"Unexpected error: {ex.Message}");
+		}
+	}
+
 	public async Task<GitOperationResult> PruneRemoteBranchesAsync(
 		string workingDirectory,
 		string remoteName = "origin",

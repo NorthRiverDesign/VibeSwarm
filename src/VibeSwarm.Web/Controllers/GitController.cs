@@ -94,6 +94,9 @@ public class GitController : ControllerBase
     [HttpGet("remotes")]
     public async Task<IActionResult> GetRemotes([FromQuery] string path, CancellationToken ct) => Ok(await _gitService.GetRemotesAsync(path, ct));
 
+    [HttpPost("gh-clone")]
+    public async Task<IActionResult> GhClone([FromBody] GhCloneRequest req, CancellationToken ct) => Ok(await _gitService.CloneWithGitHubCliAsync(req.OwnerRepo, req.Path, null, ct));
+
     [HttpPost("prune")]
     public async Task<IActionResult> Prune([FromBody] PruneRequest req, CancellationToken ct) => Ok(await _gitService.PruneRemoteBranchesAsync(req.Path, req.Remote ?? "origin", ct));
 
@@ -125,5 +128,6 @@ public class GitController : ControllerBase
     public record InitRequest(string Path);
     public record CreateGitHubRepoRequest(string Path, string Name, string? Description, bool IsPrivate = false, string? GitignoreTemplate = null, string? LicenseTemplate = null, bool InitializeReadme = false);
     public record AddRemoteRequest(string Path, string RemoteName, string RemoteUrl);
+    public record GhCloneRequest(string OwnerRepo, string Path);
     public record PruneRequest(string Path, string? Remote);
 }

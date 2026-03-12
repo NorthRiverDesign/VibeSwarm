@@ -212,9 +212,22 @@
                             disabled="@(IsCommitting || IsDiscarding)">
                         Close
                     </button>
+                    <button type="button" class="btn btn-outline-primary" @onclick="HandleCommitOnly"
+                            disabled="@(IsCommitting || IsDiscarding || string.IsNullOrWhiteSpace(_commitMessage))">
+                        @if (IsCommitting && _isCommitOnly)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                            <span>Committing...</span>
+                        }
+                        else
+                        {
+                            <i class="bi bi-check-circle me-1"></i>
+                            <span>Commit</span>
+                        }
+                    </button>
                     <button type="button" class="btn btn-primary" @onclick="HandleCommitAndPush"
                             disabled="@(IsCommitting || IsDiscarding || string.IsNullOrWhiteSpace(_commitMessage))">
-                        @if (IsCommitting)
+                        @if (IsCommitting && !_isCommitOnly)
                         {
                             <span class="spinner-border spinner-border-sm me-1" role="status"></span>
                             <span>@(string.IsNullOrEmpty(CommitProgress) ? "Committing..." : CommitProgress)</span>
@@ -281,6 +294,9 @@
     public EventCallback<string> OnCommitAndPush { get; set; }
 
     [Parameter]
+    public EventCallback<string> OnCommitOnly { get; set; }
+
+    [Parameter]
     public EventCallback OnShowDiscard { get; set; }
 
     [Parameter]
@@ -291,6 +307,7 @@
 
     private string _commitMessage = string.Empty;
     private HashSet<int> _expandedItems = new();
+    private bool _isCommitOnly;
 
     private static string TruncateTitle(string? text, int maxLength)
     {
@@ -352,10 +369,22 @@
         _expandedItems.Clear();
     }
 
+    private async Task HandleCommitOnly()
+    {
+        if (!string.IsNullOrWhiteSpace(_commitMessage))
+        {
+            _isCommitOnly = true;
+            await OnCommitOnly.InvokeAsync(_commitMessage);
+            _commitMessage = string.Empty;
+            _isCommitOnly = false;
+        }
+    }
+
     private async Task HandleCommitAndPush()
     {
         if (!string.IsNullOrWhiteSpace(_commitMessage))
         {
+            _isCommitOnly = false;
             await OnCommitAndPush.InvokeAsync(_commitMessage);
             _commitMessage = string.Empty;
         }

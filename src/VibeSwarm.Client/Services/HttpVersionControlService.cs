@@ -301,6 +301,12 @@ public class HttpVersionControlService : IVersionControlService
         }
     }
 
+    public async Task<GitOperationResult> CloneWithGitHubCliAsync(string ownerRepo, string targetDirectory, Action<string>? progressCallback = null, CancellationToken ct = default)
+    {
+        var response = await _http.PostAsJsonAsync("/api/git/gh-clone", new { OwnerRepo = ownerRepo, Path = targetDirectory }, ct);
+        return await response.Content.ReadFromJsonAsync<GitOperationResult>(ct) ?? new GitOperationResult { Success = false, Error = "Failed to parse response" };
+    }
+
     public async Task<GitOperationResult> PruneRemoteBranchesAsync(string workingDirectory, string remoteName = "origin", CancellationToken ct = default)
     {
         var response = await _http.PostAsJsonAsync("/api/git/prune", new { Path = workingDirectory, Remote = remoteName }, ct);

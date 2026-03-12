@@ -148,6 +148,7 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
             entity.Property(e => e.MaxCycles).HasDefaultValue(1);
             entity.Property(e => e.CurrentCycle).HasDefaultValue(1);
             entity.Property(e => e.CycleReviewPrompt).HasMaxLength(2000);
+            // ChangedFilesCount is nullable int, no special config needed
             // GitDiff and ConsoleOutput can be large, no max length constraint
             entity.HasOne(e => e.Provider)
                 .WithMany()

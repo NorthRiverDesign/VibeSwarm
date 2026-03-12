@@ -3,6 +3,7 @@
 @using VibeSwarm.Shared.Providers
 @using VibeSwarm.Shared.Services
 @using VibeSwarm.Shared.VersionControl
+@using VibeSwarm.Shared.VersionControl.Models
 @inject IProjectService ProjectService
 @inject IProviderService ProviderService
 @inject ISettingsService SettingsService
@@ -395,18 +396,38 @@
 
 					try
 					{
-						// Get the clone URL
-						var cloneUrl = VersionControlService.GetGitHubCloneUrl(Project.GitHubRepository);
+						GitOperationResult cloneResult;
 
-						// Clone the repository with progress updates
-						var cloneResult = await VersionControlService.CloneRepositoryAsync(
-						cloneUrl,
-						Project.WorkingPath,
-						progressCallback: async (message) =>
+						// Try gh clone first (supports private repos via GitHub CLI auth)
+						var ghAvailable = await VersionControlService.IsGitHubCliAvailableAsync();
+						var ghAuthenticated = ghAvailable && await VersionControlService.IsGitHubCliAuthenticatedAsync();
+
+						if (ghAuthenticated)
 						{
-							_cloneProgressMessage = message;
-							await InvokeAsync(StateHasChanged);
-						});
+							_cloneProgressMessage = "Cloning with GitHub CLI...";
+							StateHasChanged();
+							cloneResult = await VersionControlService.CloneWithGitHubCliAsync(
+								Project.GitHubRepository,
+								Project.WorkingPath,
+								progressCallback: async (message) =>
+								{
+									_cloneProgressMessage = message;
+									await InvokeAsync(StateHasChanged);
+								});
+						}
+						else
+						{
+							// Fall back to git clone
+							var cloneUrl = VersionControlService.GetGitHubCloneUrl(Project.GitHubRepository);
+							cloneResult = await VersionControlService.CloneRepositoryAsync(
+								cloneUrl,
+								Project.WorkingPath,
+								progressCallback: async (message) =>
+								{
+									_cloneProgressMessage = message;
+									await InvokeAsync(StateHasChanged);
+								});
+						}
 
 						if (!cloneResult.Success)
 						{

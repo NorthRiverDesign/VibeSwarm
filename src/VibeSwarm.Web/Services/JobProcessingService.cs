@@ -1296,6 +1296,18 @@ public class JobProcessingService : BackgroundService
                         job.GitDiff = gitDiff;
                         _logger.LogInformation("Captured git diff for job {JobId}: {Length} chars", jobId, gitDiff.Length);
 
+                        // Count changed files for the badge/toast
+                        try
+                        {
+                            var changedFiles = await _versionControlService.GetChangedFilesAsync(workingDirectory, baseCommit, cancellationToken);
+                            job.ChangedFilesCount = changedFiles.Count;
+                            _logger.LogInformation("Job {JobId} changed {Count} file(s)", jobId, changedFiles.Count);
+                        }
+                        catch (Exception cfEx)
+                        {
+                            _logger.LogWarning(cfEx, "Failed to count changed files for job {JobId}", jobId);
+                        }
+
                         // Generate session summary from git diff for pre-populating commit messages
                         // Pass the commit log so we can include agent commit messages as bullet points
                         var sessionSummary = JobSummaryGenerator.GenerateSummary(job, commitLog);
@@ -1308,6 +1320,7 @@ public class JobProcessingService : BackgroundService
                     }
                     else
                     {
+                        job.ChangedFilesCount = 0;
                         _logger.LogDebug("No git changes detected for job {JobId}", jobId);
                     }
                 }
@@ -1317,7 +1330,9 @@ public class JobProcessingService : BackgroundService
                 }
 
                 // Perform auto-commit if configured and job completed successfully
-                if (status == JobStatus.Completed && job.Project?.AutoCommitMode != AutoCommitMode.Off)
+                // Also auto-commit when IdeasAutoCommit is true (even if project-level AutoCommitMode is Off)
+                if (status == JobStatus.Completed &&
+                    (job.Project?.AutoCommitMode != AutoCommitMode.Off || job.Project?.IdeasAutoCommit == true))
                 {
                     await PerformAutoCommitAsync(job, workingDirectory, cancellationToken);
                 }
@@ -1412,8 +1427,13 @@ public class JobProcessingService : BackgroundService
                             "Agent already committed changes for job {JobId}. Recorded HEAD {CommitHash} as GitCommitHash.",
                             job.Id, currentHash[..Math.Min(8, currentHash.Length)]);
 
+                        // Determine effective commit mode: use project setting, or default to CommitOnly for IdeasAutoCommit
+                        var effectiveMode = job.Project!.AutoCommitMode != AutoCommitMode.Off
+                            ? job.Project.AutoCommitMode
+                            : AutoCommitMode.CommitOnly;
+
                         // Push if configured
-                        if (job.Project!.AutoCommitMode == AutoCommitMode.CommitAndPush)
+                        if (effectiveMode == AutoCommitMode.CommitAndPush)
                         {
                             var pushResult = await _versionControlService.PushAsync(workingDirectory, cancellationToken: cancellationToken);
                             if (pushResult.Success)
@@ -1439,10 +1459,15 @@ public class JobProcessingService : BackgroundService
                 return;
             }
 
+            // Determine effective commit mode: use project setting, or default to CommitOnly for IdeasAutoCommit
+            var effectiveCommitMode = job.Project!.AutoCommitMode != AutoCommitMode.Off
+                ? job.Project.AutoCommitMode
+                : AutoCommitMode.CommitOnly;
+
             var commitMessage = job.SessionSummary ?? $"VibeSwarm: {job.Title ?? "Job completed"}";
 
             _logger.LogInformation("Auto-committing changes for job {JobId} with mode {Mode}",
-                job.Id, job.Project!.AutoCommitMode);
+                job.Id, effectiveCommitMode);
 
             var commitResult = await _versionControlService.CommitAllChangesAsync(
                 workingDirectory,
@@ -1456,7 +1481,7 @@ public class JobProcessingService : BackgroundService
                     job.Id, commitResult.CommitHash?[..Math.Min(8, commitResult.CommitHash?.Length ?? 0)]);
 
                 // Push if configured
-                if (job.Project!.AutoCommitMode == AutoCommitMode.CommitAndPush)
+                if (effectiveCommitMode == AutoCommitMode.CommitAndPush)
                 {
                     var pushResult = await _versionControlService.PushAsync(workingDirectory, cancellationToken: cancellationToken);
                     if (pushResult.Success)

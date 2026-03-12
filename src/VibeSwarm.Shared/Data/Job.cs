@@ -304,6 +304,12 @@ public class Job
     public string? GitCommitHash { get; set; }
 
     /// <summary>
+    /// Number of files changed during job execution.
+    /// null = unchecked, 0 = verified no changes, >0 = changes detected.
+    /// </summary>
+    public int? ChangedFilesCount { get; set; }
+
+    /// <summary>
     /// Accumulated console output from the CLI process during execution.
     /// This is the full output log, separate from Output which contains the result summary.
     /// </summary>
