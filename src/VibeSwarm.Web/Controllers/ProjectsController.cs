@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Services;
 
@@ -35,13 +36,50 @@ public class ProjectsController : ControllerBase
     }
 
     [HttpPost]
-    public async Task<IActionResult> Create([FromBody] Project project, CancellationToken ct) => Ok(await _projectService.CreateAsync(project, ct));
+    public async Task<IActionResult> Create([FromBody] Project project, CancellationToken ct)
+    {
+        try
+        {
+            return Ok(await _projectService.CreateAsync(project, ct));
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("Provider"))
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+        catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("FOREIGN KEY") == true || 
+                                           ex.InnerException?.Message.Contains("foreign key") == true)
+        {
+            return BadRequest(new { error = "One or more selected providers do not exist." });
+        }
+        catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("UNIQUE") == true || 
+                                           ex.InnerException?.Message.Contains("unique") == true)
+        {
+            return BadRequest(new { error = "Duplicate provider selected for this project." });
+        }
+    }
 
     [HttpPut("{id:guid}")]
     public async Task<IActionResult> Update(Guid id, [FromBody] Project project, CancellationToken ct)
     {
-        project.Id = id;
-        return Ok(await _projectService.UpdateAsync(project, ct));
+        try
+        {
+            project.Id = id;
+            return Ok(await _projectService.UpdateAsync(project, ct));
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("Provider"))
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+        catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("FOREIGN KEY") == true || 
+                                           ex.InnerException?.Message.Contains("foreign key") == true)
+        {
+            return BadRequest(new { error = "One or more selected providers do not exist." });
+        }
+        catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("UNIQUE") == true || 
+                                           ex.InnerException?.Message.Contains("unique") == true)
+        {
+            return BadRequest(new { error = "Duplicate provider selected for this project." });
+        }
     }
 
     [HttpDelete("{id:guid}")]

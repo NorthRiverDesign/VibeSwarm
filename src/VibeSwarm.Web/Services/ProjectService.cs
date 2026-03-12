@@ -55,6 +55,7 @@ public class ProjectService : IProjectService
         project.CreatedAt = DateTime.UtcNow;
 
         NormalizeProviderSelections(project);
+        await ValidateProviderSelectionsAsync(project.ProviderSelections, cancellationToken);
 
         _dbContext.Projects.Add(project);
         await _dbContext.SaveChangesAsync(cancellationToken);
@@ -85,6 +86,7 @@ public class ProjectService : IProjectService
             .Collection(p => p.ProviderSelections)
             .LoadAsync(cancellationToken);
 
+        await ValidateProviderSelectionsAsync(project.ProviderSelections, cancellationToken);
         SynchronizeProviderSelections(existing, project.ProviderSelections);
 
         await _dbContext.SaveChangesAsync(cancellationToken);
@@ -246,6 +248,34 @@ public class ProjectService : IProjectService
             current.IsEnabled = requested.IsEnabled;
             current.PreferredModelId = requested.PreferredModelId;
             current.UpdatedAt = DateTime.UtcNow;
+        }
+    }
+
+    private async Task ValidateProviderSelectionsAsync(ICollection<ProjectProvider> selections, CancellationToken cancellationToken)
+    {
+        if (selections == null || !selections.Any())
+        {
+            return;
+        }
+
+        // Check for duplicate provider IDs
+        var providerIds = selections.Select(s => s.ProviderId).ToList();
+        var duplicates = providerIds.GroupBy(id => id).Where(g => g.Count() > 1).Select(g => g.Key).ToList();
+        if (duplicates.Any())
+        {
+            throw new InvalidOperationException($"Duplicate provider selection detected. Provider IDs cannot be repeated.");
+        }
+
+        // Validate all provider IDs exist in database
+        var existingProviderIds = await _dbContext.Providers
+            .Where(p => providerIds.Contains(p.Id))
+            .Select(p => p.Id)
+            .ToListAsync(cancellationToken);
+
+        var invalidIds = providerIds.Except(existingProviderIds).ToList();
+        if (invalidIds.Any())
+        {
+            throw new InvalidOperationException($"One or more provider IDs do not exist: {string.Join(", ", invalidIds)}");
         }
     }
 }
