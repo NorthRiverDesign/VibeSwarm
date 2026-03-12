@@ -90,8 +90,9 @@ public class CopilotProvider : CliProviderBase
         {
             "-p",
             $"\"{EscapeCliArgument(prompt)}\"",
-            "--yolo",    // Auto-approve all tool permissions (v0.0.381+)
-            "--silent"   // Suppress stats output for cleaner capture (v0.0.365+)
+            "--yolo",       // Auto-approve all tool permissions (v0.0.381+)
+            "--silent",     // Suppress stats output for cleaner capture (v0.0.365+)
+            "--autopilot"   // Autonomous task completion mode (v0.0.400+, GA v0.0.411+)
         };
 
         // Session resume support (v0.0.372+)
@@ -124,12 +125,6 @@ public class CopilotProvider : CliProviderBase
         {
             args.Add("--system-prompt");
             args.Add($"\"{EscapeCliArgument(CurrentSystemPrompt)}\"");
-        }
-
-        // Autopilot mode for autonomous task completion (v0.0.400+, GA v0.0.411+)
-        if (CurrentUseAutopilot)
-        {
-            args.Add("--autopilot");
         }
 
         // Alt-screen buffer mode (v0.0.407+, experimental)
@@ -649,7 +644,7 @@ public class CopilotProvider : CliProviderBase
             throw new InvalidOperationException("GitHub Copilot CLI executable path is not configured.");
         }
 
-        var args = $"-p \"{EscapeCliArgument(prompt)}\" --yolo --silent";
+        var args = $"-p \"{EscapeCliArgument(prompt)}\" --yolo --silent --autopilot";
 
         var startInfo = new ProcessStartInfo
         {
