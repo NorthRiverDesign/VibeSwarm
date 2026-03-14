@@ -101,7 +101,8 @@ else
 					</div>
 					<div class="form-check form-switch m-0">
 						<InputCheckbox id="@($"env-primary-{item.Id}")" Value="@item.IsPrimary"
-							ValueChanged="@(value => TogglePrimaryEnvironment(item.Id, value))" class="form-check-input" />
+							ValueChanged="@(value => TogglePrimaryEnvironment(item.Id, value))"
+							ValueExpression="@(() => item.IsPrimary)" class="form-check-input" />
 						<label class="form-check-label" for="@($"env-primary-{item.Id}")">Primary environment</label>
 					</div>
 				</div>
@@ -148,31 +149,38 @@ else
 	[Parameter, EditorRequired]
 	public Project Project { get; set; } = new();
 
-	private List<ProjectEnvironment> _environments => Project.Environments.OrderBy(environment => environment.SortOrder).ToList();
+	private ICollection<ProjectEnvironment> Environments => Project.Environments ??= [];
+
+	private List<ProjectEnvironment> _environments => Environments.OrderBy(environment => environment.SortOrder).ToList();
+
+	protected override void OnParametersSet()
+	{
+		Project.Environments ??= [];
+	}
 
 	private void AddEnvironment()
 	{
-		Project.Environments.Add(new ProjectEnvironment
+		Environments.Add(new ProjectEnvironment
 		{
 			Id = Guid.NewGuid(),
-			Name = $"Environment {Project.Environments.Count + 1}",
+			Name = $"Environment {Environments.Count + 1}",
 			Type = EnvironmentType.Web,
 			IsEnabled = true,
-			IsPrimary = Project.Environments.Count == 0,
-			SortOrder = Project.Environments.Count
+			IsPrimary = Environments.Count == 0,
+			SortOrder = Environments.Count
 		});
 		NormalizeOrder();
 	}
 
 	private void RemoveEnvironment(Guid environmentId)
 	{
-		var environment = Project.Environments.FirstOrDefault(item => item.Id == environmentId);
+		var environment = Environments.FirstOrDefault(item => item.Id == environmentId);
 		if (environment == null)
 		{
 			return;
 		}
 
-		Project.Environments.Remove(environment);
+		Environments.Remove(environment);
 		NormalizeOrder();
 	}
 
@@ -206,14 +214,14 @@ else
 
 	private void TogglePrimaryEnvironment(Guid environmentId, bool isPrimary)
 	{
-		foreach (var environment in Project.Environments)
+		foreach (var environment in Environments)
 		{
 			environment.IsPrimary = isPrimary && environment.Id == environmentId;
 		}
 
-		if (!Project.Environments.Any(environment => environment.IsPrimary) && Project.Environments.Count > 0)
+		if (!Environments.Any(environment => environment.IsPrimary) && Environments.Count > 0)
 		{
-			Project.Environments.First().IsPrimary = true;
+			Environments.First().IsPrimary = true;
 		}
 	}
 
@@ -231,7 +239,7 @@ else
 
 	private void NormalizeOrder()
 	{
-		Project.Environments = Project.Environments
+		Project.Environments = Environments
 			.OrderBy(environment => environment.SortOrder)
 			.Select((environment, index) =>
 			{
@@ -245,10 +253,10 @@ else
 			})
 			.ToList();
 
-		var primaryEnvironment = Project.Environments.FirstOrDefault(environment => environment.IsPrimary && environment.IsEnabled)
-			?? Project.Environments.FirstOrDefault(environment => environment.IsEnabled)
-			?? Project.Environments.FirstOrDefault();
-		foreach (var environment in Project.Environments)
+		var primaryEnvironment = Environments.FirstOrDefault(environment => environment.IsPrimary && environment.IsEnabled)
+			?? Environments.FirstOrDefault(environment => environment.IsEnabled)
+			?? Environments.FirstOrDefault();
+		foreach (var environment in Environments)
 		{
 			environment.IsPrimary = primaryEnvironment != null && environment.Id == primaryEnvironment.Id;
 		}

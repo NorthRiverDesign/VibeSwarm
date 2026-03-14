@@ -74,9 +74,9 @@ else
                     @onclick="@(() => _activeTab = "environments")" role="tab">
                 <i class="bi bi-globe2 me-1"></i>
                 <span>Environments</span>
-                @if (Project.Environments.Any(environment => environment.IsEnabled))
+                @if (Project.Environments?.Any(environment => environment.IsEnabled) == true)
                 {
-                    <span class="badge bg-secondary ms-1">@Project.Environments.Count(environment => environment.IsEnabled)</span>
+                    <span class="badge bg-secondary ms-1">@((Project.Environments?.Count(environment => environment.IsEnabled)).GetValueOrDefault())</span>
                 }
             </button>
         </li>

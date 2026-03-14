@@ -818,7 +818,7 @@
 					Provider = ResolveProvider(pp.ProviderId)
 				})
 				.ToList(),
-			Environments = source.Environments
+			Environments = (source.Environments ?? [])
 				.OrderBy(environment => environment.SortOrder)
 				.Select(environment => new ProjectEnvironment
 				{
