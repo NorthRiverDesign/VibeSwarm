@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Linq;
 using System.Text;
 using VibeSwarm.Shared.Utilities;
 
@@ -51,6 +52,15 @@ public abstract class CliProviderBase : ProviderBase
 	protected static string EscapeCliArgument(string argument)
 	{
 		return PlatformHelper.EscapeArgument(argument).Trim('"', '\'');
+	}
+
+	/// <summary>
+	/// Formats a command for display without relying on shell parsing.
+	/// </summary>
+	protected static string FormatCommandForDisplay(string executablePath, IEnumerable<string> args)
+	{
+		var escapedArgs = args.Select(PlatformHelper.EscapeArgument);
+		return string.Join(" ", new[] { PlatformHelper.EscapeArgument(executablePath) }.Concat(escapedArgs));
 	}
 
 	/// <summary>
@@ -393,6 +403,65 @@ public abstract class CliProviderBase : ProviderBase
 	}
 
 	/// <summary>
+	/// Executes a simple CLI prompt with raw arguments to avoid shell re-parsing issues.
+	/// </summary>
+	protected async Task<PromptResponse> ExecuteSimplePromptAsync(
+		string executablePath,
+		IReadOnlyList<string> args,
+		string providerName,
+		string? workingDirectory = null,
+		CancellationToken cancellationToken = default)
+	{
+		var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+		var effectiveWorkingDir = workingDirectory ?? WorkingDirectory ?? Environment.CurrentDirectory;
+
+		try
+		{
+			using var process = CreateCliProcess(executablePath, args, effectiveWorkingDir);
+			using var timeoutCts = new CancellationTokenSource(PromptTimeout);
+			using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
+
+			process.Start();
+			try { process.StandardInput.Close(); } catch { }
+
+			var output = await process.StandardOutput.ReadToEndAsync(linkedCts.Token);
+			var error = await process.StandardError.ReadToEndAsync(linkedCts.Token);
+
+			try
+			{
+				await process.WaitForExitAsync(linkedCts.Token);
+			}
+			catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested)
+			{
+				try { process.Kill(entireProcessTree: true); } catch { }
+				return PromptResponse.Fail($"Request timed out after {PromptTimeout.TotalMinutes} minutes.");
+			}
+
+			stopwatch.Stop();
+
+			if (process.ExitCode != 0 && !string.IsNullOrEmpty(error))
+			{
+				return PromptResponse.Fail($"{providerName} CLI returned error: {error}");
+			}
+
+			var cleanedOutput = OutputCleaner.CleanCliOutput(output);
+			return PromptResponse.Ok(cleanedOutput, stopwatch.ElapsedMilliseconds, providerName.ToLowerInvariant());
+		}
+		catch (System.ComponentModel.Win32Exception ex)
+		{
+			return PromptResponse.Fail($"Failed to start {providerName} CLI: {ex.Message}");
+		}
+		catch (OperationCanceledException)
+		{
+			return PromptResponse.Fail("Request was cancelled.");
+		}
+		catch (Exception ex)
+		{
+			return PromptResponse.Fail($"Error executing {providerName} CLI: {ex.Message}");
+		}
+	}
+
+	/// <summary>
 	/// Creates and starts a CLI process with standard configuration.
 	/// </summary>
 	protected Process CreateCliProcess(string executablePath, string args, string? workingDirectory = null)
@@ -407,6 +476,37 @@ public abstract class CliProviderBase : ProviderBase
 		};
 
 		PlatformHelper.ConfigureForCrossPlatform(startInfo);
+
+		if (CurrentEnvironmentVariables != null)
+		{
+			foreach (var kvp in CurrentEnvironmentVariables)
+			{
+				startInfo.Environment[kvp.Key] = kvp.Value;
+			}
+		}
+
+		return new Process { StartInfo = startInfo };
+	}
+
+	/// <summary>
+	/// Creates and starts a CLI process with raw arguments to avoid shell re-parsing issues.
+	/// </summary>
+	protected Process CreateCliProcess(string executablePath, IReadOnlyList<string> args, string? workingDirectory = null)
+	{
+		var effectiveWorkingDir = workingDirectory ?? WorkingDirectory ?? Environment.CurrentDirectory;
+
+		var startInfo = new ProcessStartInfo
+		{
+			FileName = executablePath,
+			WorkingDirectory = effectiveWorkingDir
+		};
+
+		PlatformHelper.ConfigureForCrossPlatform(startInfo);
+
+		foreach (var arg in args)
+		{
+			startInfo.ArgumentList.Add(arg);
+		}
 
 		if (CurrentEnvironmentVariables != null)
 		{

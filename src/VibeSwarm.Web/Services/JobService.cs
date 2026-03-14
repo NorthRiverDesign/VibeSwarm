@@ -4,6 +4,7 @@ using System.Text.Json;
 using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Models;
 using VibeSwarm.Shared.Providers;
+using VibeSwarm.Shared.VersionControl;
 using VibeSwarm.Web.Services;
 
 namespace VibeSwarm.Shared.Services;
@@ -195,6 +196,8 @@ public class JobService : IJobService
 
     public async Task<Job> CreateAsync(Job job, CancellationToken cancellationToken = default)
     {
+        NormalizeJobForPersistence(job);
+
         job.Id = Guid.NewGuid();
         job.CreatedAt = DateTime.UtcNow;
         job.Status = JobStatus.New;
@@ -612,6 +615,9 @@ public class JobService : IJobService
         }
 
         job.GitDiff = gitDiff;
+        job.ChangedFilesCount = string.IsNullOrWhiteSpace(gitDiff)
+            ? 0
+            : GitDiffParser.ParseDiff(gitDiff).Count;
         await _dbContext.SaveChangesAsync(cancellationToken);
 
         // Notify about git diff update
@@ -894,14 +900,8 @@ public class JobService : IJobService
             return false;
         }
 
-        job.GoalPrompt = newPrompt;
-
-        // If job has a title that was derived from the original prompt, update it too
-        if (!string.IsNullOrEmpty(job.Title) && job.Title.Length <= 200)
-        {
-            // Update title to reflect new prompt (truncated to first 200 chars)
-            job.Title = newPrompt.Length > 200 ? newPrompt[..197] + "..." : newPrompt;
-        }
+        job.GoalPrompt = newPrompt?.Trim() ?? string.Empty;
+        job.Title = BuildSafeJobTitle(job.Title, job.GoalPrompt);
 
         await _dbContext.SaveChangesAsync(cancellationToken);
 
@@ -1171,6 +1171,26 @@ public class JobService : IJobService
             "failed" => "failed",
             _ => "all"
         };
+    }
+
+    private static void NormalizeJobForPersistence(Job job)
+    {
+        job.GoalPrompt = job.GoalPrompt?.Trim() ?? string.Empty;
+        job.Title = BuildSafeJobTitle(job.Title, job.GoalPrompt);
+        job.ModelUsed = string.IsNullOrWhiteSpace(job.ModelUsed) ? null : job.ModelUsed.Trim();
+        job.Branch = string.IsNullOrWhiteSpace(job.Branch) ? null : job.Branch.Trim();
+    }
+
+    private static string? BuildSafeJobTitle(string? title, string goalPrompt)
+    {
+        var source = string.IsNullOrWhiteSpace(title) ? goalPrompt : title;
+        var normalized = source?.Trim();
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            return null;
+        }
+
+        return normalized.Length > 200 ? normalized[..197] + "..." : normalized;
     }
 
     private static int NormalizePageSize(int pageSize, int defaultPageSize)

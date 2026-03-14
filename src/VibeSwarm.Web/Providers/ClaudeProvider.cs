@@ -90,7 +90,7 @@ public class ClaudeProvider : CliProviderBase
         var args = new List<string>
         {
             "-p",
-            $"\"{EscapeCliArgument(prompt)}\"",
+            prompt,
             "--output-format",
             "stream-json",
             "--verbose",
@@ -125,14 +125,14 @@ public class ClaudeProvider : CliProviderBase
         if (!string.IsNullOrEmpty(CurrentSystemPrompt))
         {
             args.Add("--system-prompt");
-            args.Add($"\"{EscapeCliArgument(CurrentSystemPrompt)}\"");
+            args.Add(CurrentSystemPrompt);
         }
 
         // Append to system prompt (used for injecting skills/instructions)
         if (!string.IsNullOrEmpty(CurrentAppendSystemPrompt))
         {
             args.Add("--append-system-prompt");
-            args.Add($"\"{EscapeCliArgument(CurrentAppendSystemPrompt)}\"");
+            args.Add(CurrentAppendSystemPrompt);
         }
 
         // Max turns limit
@@ -148,7 +148,7 @@ public class ClaudeProvider : CliProviderBase
             foreach (var dir in CurrentAdditionalDirectories)
             {
                 args.Add("--add-dir");
-                args.Add($"\"{EscapeCliArgument(dir)}\"");
+                args.Add(dir);
             }
         }
 
@@ -213,7 +213,7 @@ public class ClaudeProvider : CliProviderBase
         if (!string.IsNullOrEmpty(CurrentMcpConfigPath))
         {
             args.Add("--mcp-config");
-            args.Add($"\"{EscapeCliArgument(CurrentMcpConfigPath)}\"");
+            args.Add(CurrentMcpConfigPath);
         }
 
         if (CurrentAdditionalArgs != null)
@@ -228,10 +228,9 @@ public class ClaudeProvider : CliProviderBase
             CurrentEnvironmentVariables["CLAUDE_CODE_DISABLE_1M_CONTEXT"] = "1";
         }
 
-        var fullArguments = string.Join(" ", args);
-        var fullCommand = $"{execPath} {fullArguments}";
+        var fullCommand = FormatCommandForDisplay(execPath, args);
 
-        using var process = CreateCliProcess(execPath, fullArguments, effectiveWorkingDir);
+        using var process = CreateCliProcess(execPath, args, effectiveWorkingDir);
 
         var outputBuilder = new List<string>();
         var errorBuilder = new System.Text.StringBuilder();

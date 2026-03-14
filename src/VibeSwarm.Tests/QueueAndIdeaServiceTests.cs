@@ -779,6 +779,101 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 	}
 
 	[Fact]
+	public async Task CreateAsync_TruncatesDerivedTitleToEntityLimit()
+	{
+		await using var dbContext = CreateDbContext();
+		var project = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Manual Job Project",
+			WorkingPath = "/tmp/manual-job"
+		};
+		var provider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Copilot",
+			Type = ProviderType.Copilot,
+			IsEnabled = true,
+			IsDefault = true
+		};
+
+		dbContext.Projects.Add(project);
+		dbContext.Providers.Add(provider);
+		await dbContext.SaveChangesAsync();
+
+		var jobService = new JobService(dbContext, new ServiceCollection().BuildServiceProvider());
+		var longPrompt = new string('A', 240);
+
+		var createdJob = await jobService.CreateAsync(new Job
+		{
+			ProjectId = project.Id,
+			ProviderId = provider.Id,
+			GoalPrompt = longPrompt,
+			Title = longPrompt
+		});
+
+		Assert.NotNull(createdJob.Title);
+		Assert.Equal(200, createdJob.Title!.Length);
+		Assert.EndsWith("...", createdJob.Title);
+	}
+
+	[Fact]
+	public async Task UpdateGitDiffAsync_UpdatesChangedFilesCountFromDiff()
+	{
+		await using var dbContext = CreateDbContext();
+		var project = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Git Diff Project",
+			WorkingPath = "/tmp/git-diff-project"
+		};
+		var provider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "OpenCode",
+			Type = ProviderType.OpenCode,
+			IsEnabled = true,
+			IsDefault = true
+		};
+		var job = new Job
+		{
+			Id = Guid.NewGuid(),
+			ProjectId = project.Id,
+			ProviderId = provider.Id,
+			GoalPrompt = "Check git diff state",
+			Status = JobStatus.Completed
+		};
+
+		dbContext.Projects.Add(project);
+		dbContext.Providers.Add(provider);
+		dbContext.Jobs.Add(job);
+		await dbContext.SaveChangesAsync();
+
+		var jobService = new JobService(dbContext, new ServiceCollection().BuildServiceProvider());
+		var gitDiff = """
+			diff --git a/src/FileOne.cs b/src/FileOne.cs
+			--- a/src/FileOne.cs
+			+++ b/src/FileOne.cs
+			@@ -1 +1 @@
+			-old
+			+new
+			diff --git a/src/FileTwo.cs b/src/FileTwo.cs
+			--- a/src/FileTwo.cs
+			+++ b/src/FileTwo.cs
+			@@ -1 +1 @@
+			-old
+			+new
+			""";
+
+		var updated = await jobService.UpdateGitDiffAsync(job.Id, gitDiff);
+
+		Assert.True(updated);
+		var storedJob = await dbContext.Jobs.SingleAsync(j => j.Id == job.Id);
+		Assert.Equal(2, storedJob.ChangedFilesCount);
+		Assert.Equal(gitDiff, storedJob.GitDiff);
+	}
+
+	[Fact]
 	public async Task ProjectService_UpdateAsync_PersistsIdeasAutoExpandSetting()
 	{
 		await using var dbContext = CreateDbContext();

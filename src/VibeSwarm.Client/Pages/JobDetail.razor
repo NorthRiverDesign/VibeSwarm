@@ -905,18 +905,43 @@ TimeSpan.FromSeconds(10) })
 
         try
         {
-            // Build a context-aware prompt that references the previous job
-            var previousGoalSnippet = Job.GoalPrompt.Substring(0, Math.Min(200, Job.GoalPrompt.Length));
-            var contextPrompt = $"Continue from previous work. Previous goal: \"{previousGoalSnippet}...\"\n\nNew instructions: {followUpPrompt}";
+            const int maxPromptLength = 2000;
+            var trimmedFollowUp = followUpPrompt.Trim();
+            var templatePrefix = "Continue the previous job for this project.\nPrevious goal: ";
+            var templateMiddle = "\n\nFollow-up instructions:\n";
+            var maxFollowUpLength = Math.Max(0, maxPromptLength - templatePrefix.Length - templateMiddle.Length);
+            if (trimmedFollowUp.Length > maxFollowUpLength)
+            {
+                trimmedFollowUp = maxFollowUpLength <= 3
+                    ? trimmedFollowUp[..maxFollowUpLength]
+                    : trimmedFollowUp[..(maxFollowUpLength - 3)] + "...";
+            }
+
+            var reservedLength = templatePrefix.Length + templateMiddle.Length + trimmedFollowUp.Length;
+            var availableForPreviousGoal = Math.Max(0, maxPromptLength - reservedLength);
+            var previousGoalSnippet = Job.GoalPrompt;
+
+            if (previousGoalSnippet.Length > availableForPreviousGoal)
+            {
+                previousGoalSnippet = availableForPreviousGoal switch
+                {
+                    <= 0 => string.Empty,
+                    <= 3 => previousGoalSnippet[..availableForPreviousGoal],
+                    _ => previousGoalSnippet[..(availableForPreviousGoal - 3)] + "..."
+                };
+            }
+
+            var contextPrompt = $"{templatePrefix}{previousGoalSnippet}{templateMiddle}{trimmedFollowUp}";
 
             var newJob = new Job
             {
                 ProjectId = Job.ProjectId,
                 ProviderId = Job.ProviderId,
                 GoalPrompt = contextPrompt,
-                Title = $"Follow-up: {followUpPrompt.Substring(0, Math.Min(50, followUpPrompt.Length))}...",
+                Title = $"Follow-up: {trimmedFollowUp}",
                 Branch = Job.Branch,
-                Status = JobStatus.New
+                Status = JobStatus.New,
+                ParentJobId = Job.Id
             };
 
             var createdJob = await JobService.CreateAsync(newJob);

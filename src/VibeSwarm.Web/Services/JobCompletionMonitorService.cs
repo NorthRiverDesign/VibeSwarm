@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Providers;
 using VibeSwarm.Shared.Services;
+using VibeSwarm.Shared.VersionControl;
 
 namespace VibeSwarm.Web.Services;
 
@@ -20,6 +21,7 @@ public class JobCompletionMonitorService : BackgroundService
 	private readonly IJobUpdateService? _jobUpdateService;
 	private readonly ProcessSupervisor _processSupervisor;
 	private readonly JobProcessingService _jobProcessingService;
+	private readonly IVersionControlService _versionControlService;
 	private readonly TimeSpan _checkInterval = TimeSpan.FromSeconds(15);
 
 	public JobCompletionMonitorService(
@@ -27,6 +29,7 @@ public class JobCompletionMonitorService : BackgroundService
 		ILogger<JobCompletionMonitorService> logger,
 		IProviderHealthTracker healthTracker,
 		JobProcessingService jobProcessingService,
+		IVersionControlService versionControlService,
 		ProcessSupervisor processSupervisor,
 		IJobUpdateService? jobUpdateService = null)
 	{
@@ -34,6 +37,7 @@ public class JobCompletionMonitorService : BackgroundService
 		_logger = logger;
 		_healthTracker = healthTracker;
 		_jobProcessingService = jobProcessingService;
+		_versionControlService = versionControlService;
 		_processSupervisor = processSupervisor;
 		_jobUpdateService = jobUpdateService;
 
@@ -160,9 +164,12 @@ public class JobCompletionMonitorService : BackgroundService
 			job.ErrorMessage = errorMessage;
 		}
 
-		// If job completed successfully, try to get a session summary
+		var hasGitChanges = false;
+
+		// If job completed successfully, capture git changes before generating the summary.
 		if (newStatus == JobStatus.Completed)
 		{
+			hasGitChanges = await TryCaptureGitResultAsync(job, cancellationToken);
 			await TryFetchSessionSummaryAsync(job, dbContext, cancellationToken);
 		}
 
@@ -192,6 +199,10 @@ public class JobCompletionMonitorService : BackgroundService
 		if (JobStateMachine.IsTerminalState(newStatus))
 		{
 			await NotifyJobCompletedAsync(job.Id, newStatus == JobStatus.Completed, errorMessage);
+			if (hasGitChanges)
+			{
+				await NotifyJobGitDiffUpdatedAsync(job.Id, true);
+			}
 		}
 
 		if (newStatus == JobStatus.New || JobStateMachine.IsTerminalState(newStatus))
@@ -270,6 +281,82 @@ public class JobCompletionMonitorService : BackgroundService
 				_logger.LogInformation("Using diff-based summary for job {JobId} after provider error: {Summary}",
 					job.Id, diffBasedSummary.Length > 100 ? diffBasedSummary[..100] + "..." : diffBasedSummary);
 			}
+		}
+	}
+
+	private async Task<bool> TryCaptureGitResultAsync(Job job, CancellationToken cancellationToken)
+	{
+		var workingDirectory = job.Project?.WorkingPath;
+		if (string.IsNullOrWhiteSpace(workingDirectory) || !Directory.Exists(workingDirectory))
+		{
+			job.ChangedFilesCount ??= 0;
+			return false;
+		}
+
+		try
+		{
+			var baseCommit = job.GitCommitBefore;
+			string? gitDiff;
+			IReadOnlyList<string> commitLog = [];
+
+			if (!string.IsNullOrWhiteSpace(baseCommit))
+			{
+				var committedDiff = await _versionControlService.GetCommitRangeDiffAsync(
+					workingDirectory,
+					baseCommit,
+					null,
+					cancellationToken);
+				commitLog = await _versionControlService.GetCommitLogAsync(
+					workingDirectory,
+					baseCommit,
+					null,
+					cancellationToken);
+				var uncommittedDiff = await _versionControlService.GetWorkingDirectoryDiffAsync(
+					workingDirectory,
+					null,
+					cancellationToken);
+
+				gitDiff = !string.IsNullOrEmpty(committedDiff) && !string.IsNullOrEmpty(uncommittedDiff)
+					? $"=== Committed changes since {baseCommit} ===\n{committedDiff}\n\n=== Uncommitted changes ===\n{uncommittedDiff}"
+					: committedDiff ?? uncommittedDiff;
+			}
+			else
+			{
+				gitDiff = await _versionControlService.GetWorkingDirectoryDiffAsync(
+					workingDirectory,
+					null,
+					cancellationToken);
+			}
+
+			if (string.IsNullOrWhiteSpace(gitDiff))
+			{
+				job.GitDiff = null;
+				job.ChangedFilesCount = 0;
+				return false;
+			}
+
+			job.GitDiff = gitDiff;
+			var changedFiles = await _versionControlService.GetChangedFilesAsync(
+				workingDirectory,
+				baseCommit,
+				cancellationToken);
+			job.ChangedFilesCount = changedFiles.Count;
+
+			if (string.IsNullOrWhiteSpace(job.SessionSummary))
+			{
+				var sessionSummary = JobSummaryGenerator.GenerateSummary(job, commitLog);
+				if (!string.IsNullOrWhiteSpace(sessionSummary))
+				{
+					job.SessionSummary = sessionSummary;
+				}
+			}
+
+			return true;
+		}
+		catch (Exception ex)
+		{
+			_logger.LogWarning(ex, "Failed to capture git result for job {JobId}", job.Id);
+			return !string.IsNullOrWhiteSpace(job.GitDiff);
 		}
 	}
 
@@ -397,6 +484,11 @@ public class JobCompletionMonitorService : BackgroundService
 					{
 						await NotifyJobCompletedAsync(job.Id, job.Status == JobStatus.Completed, job.ErrorMessage);
 					}
+
+					if (job.Status == JobStatus.New || JobStateMachine.IsTerminalState(job.Status))
+					{
+						_jobProcessingService.TriggerProcessing();
+					}
 				}
 			}
 			catch (Exception ex)
@@ -436,6 +528,23 @@ public class JobCompletionMonitorService : BackgroundService
 		}
 	}
 
+	private async Task NotifyJobGitDiffUpdatedAsync(Guid jobId, bool hasChanges)
+	{
+		if (_jobUpdateService == null)
+		{
+			return;
+		}
+
+		try
+		{
+			await _jobUpdateService.NotifyJobGitDiffUpdated(jobId, hasChanges);
+		}
+		catch (Exception ex)
+		{
+			_logger.LogWarning(ex, "Failed to notify git diff update for job {JobId}", jobId);
+		}
+	}
+
 	/// <summary>
 	/// Handles any process exit (success or failure) to ensure UI is updated immediately
 	/// </summary>
@@ -467,6 +576,8 @@ public class JobCompletionMonitorService : BackgroundService
 
 						_logger.LogInformation("Job {JobId} completed successfully", jobId);
 
+						var hasGitChanges = await TryCaptureGitResultAsync(job, CancellationToken.None);
+
 						// Try to get a session summary for pre-populating commit messages
 						await TryFetchSessionSummaryAsync(job, dbContext, CancellationToken.None);
 
@@ -483,6 +594,11 @@ public class JobCompletionMonitorService : BackgroundService
 						// Notify UI immediately
 						await NotifyJobStatusChangedAsync(job.Id, job.Status.ToString());
 						await NotifyJobCompletedAsync(job.Id, true, null);
+						if (hasGitChanges)
+						{
+							await NotifyJobGitDiffUpdatedAsync(job.Id, true);
+						}
+						_jobProcessingService.TriggerProcessing();
 					}
 					// Non-zero exit codes are handled by OnProcessExitedUnexpectedly
 				}

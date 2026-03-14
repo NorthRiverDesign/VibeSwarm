@@ -89,7 +89,7 @@ public class CopilotProvider : CliProviderBase
         var args = new List<string>
         {
             "-p",
-            $"\"{EscapeCliArgument(prompt)}\"",
+            prompt,
             "--yolo",       // Auto-approve all tool permissions (v0.0.381+)
             "--silent",     // Suppress stats output for cleaner capture (v0.0.365+)
             "--autopilot"   // Autonomous task completion mode (v0.0.400+, GA v0.0.411+)
@@ -124,7 +124,7 @@ public class CopilotProvider : CliProviderBase
         if (!string.IsNullOrEmpty(CurrentSystemPrompt))
         {
             args.Add("--system-prompt");
-            args.Add($"\"{EscapeCliArgument(CurrentSystemPrompt)}\"");
+            args.Add(CurrentSystemPrompt);
         }
 
         // Alt-screen buffer mode (v0.0.407+, experimental)
@@ -138,7 +138,7 @@ public class CopilotProvider : CliProviderBase
         if (!string.IsNullOrEmpty(CurrentBashEnvPath))
         {
             args.Add("--bash-env");
-            args.Add($"\"{EscapeCliArgument(CurrentBashEnvPath)}\"");
+            args.Add(CurrentBashEnvPath);
         }
 
         // Disable mouse input for headless/non-interactive jobs
@@ -165,7 +165,7 @@ public class CopilotProvider : CliProviderBase
         if (!string.IsNullOrEmpty(CurrentMcpConfigPath))
         {
             args.Add("--additional-mcp-config");
-            args.Add($"\"@{EscapeCliArgument(CurrentMcpConfigPath)}\"");
+            args.Add($"@{CurrentMcpConfigPath}");
         }
 
         if (CurrentAdditionalArgs != null)
@@ -173,10 +173,9 @@ public class CopilotProvider : CliProviderBase
             args.AddRange(CurrentAdditionalArgs);
         }
 
-        var fullArguments = string.Join(" ", args);
-        var fullCommand = $"{execPath} {fullArguments}";
+        var fullCommand = FormatCommandForDisplay(execPath, args);
 
-        using var process = CreateCliProcess(execPath, fullArguments, effectiveWorkingDir);
+        using var process = CreateCliProcess(execPath, args, effectiveWorkingDir);
 
         var outputBuilder = new List<string>();
         var errorBuilder = new System.Text.StringBuilder();

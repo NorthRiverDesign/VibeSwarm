@@ -197,14 +197,14 @@ public class OpenCodeProvider : CliProviderBase
         // Session title
         if (!string.IsNullOrEmpty(CurrentTitle))
         {
-            args.AddRange(new[] { "--title", $"\"{EscapeCliArgument(CurrentTitle)}\"" });
+            args.AddRange(new[] { "--title", CurrentTitle });
         }
 
         // Working directory override (v1.2.0+)
         if (CurrentAdditionalDirectories != null && CurrentAdditionalDirectories.Count > 0)
         {
             // OpenCode uses --dir for the working directory
-            args.AddRange(new[] { "--dir", $"\"{EscapeCliArgument(CurrentAdditionalDirectories[0])}\"" });
+            args.AddRange(new[] { "--dir", CurrentAdditionalDirectories[0] });
         }
 
         // Timeout in seconds (v1.2.0+)
@@ -224,7 +224,7 @@ public class OpenCodeProvider : CliProviderBase
         {
             foreach (var file in CurrentAttachedFiles)
             {
-                args.AddRange(new[] { "--file", $"\"{EscapeCliArgument(file)}\"" });
+                args.AddRange(new[] { "--file", file });
             }
         }
 
@@ -243,7 +243,7 @@ public class OpenCodeProvider : CliProviderBase
 
         if (!string.IsNullOrEmpty(CurrentMcpConfigPath))
         {
-            args.AddRange(new[] { "--config", $"\"{EscapeCliArgument(CurrentMcpConfigPath)}\"" });
+            args.AddRange(new[] { "--config", CurrentMcpConfigPath });
         }
 
         // Additional custom arguments (provider-specific or user-defined)
@@ -253,7 +253,7 @@ public class OpenCodeProvider : CliProviderBase
         }
 
         // The prompt message must be the final argument
-        args.Add($"\"{EscapeCliArgument(prompt)}\"");
+        args.Add(prompt);
 
         return args;
     }
@@ -282,10 +282,9 @@ public class OpenCodeProvider : CliProviderBase
         // Reference: https://opencode.ai/docs/cli#run
         var args = BuildRunCommandArgs(prompt, sessionId);
 
-        var fullArguments = string.Join(" ", args);
-        var fullCommand = $"{execPath} {fullArguments}";
+        var fullCommand = FormatCommandForDisplay(execPath, args);
 
-        using var process = CreateCliProcess(execPath, fullArguments, effectiveWorkingDir);
+        using var process = CreateCliProcess(execPath, args, effectiveWorkingDir);
 
         var outputBuilder = new List<string>();
         var errorBuilder = new System.Text.StringBuilder();
@@ -904,20 +903,7 @@ public class OpenCodeProvider : CliProviderBase
         // Reference: https://opencode.ai/docs/cli#run
         var argsList = BuildRunCommandArgs(prompt, sessionId);
 
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = execPath,
-            Arguments = string.Join(" ", argsList)
-        };
-
-        PlatformHelper.ConfigureForCrossPlatform(startInfo);
-
-        if (!string.IsNullOrEmpty(WorkingDirectory))
-        {
-            startInfo.WorkingDirectory = WorkingDirectory;
-        }
-
-        using var process = new Process { StartInfo = startInfo };
+        using var process = CreateCliProcess(execPath, argsList, WorkingDirectory);
         process.Start();
 
         // Close stdin to signal the CLI that no interactive input is coming.
@@ -1175,10 +1161,9 @@ public class OpenCodeProvider : CliProviderBase
             }
 
             // Add the prompt message
-            argsList.Add($"\"{EscapeCliArgument(prompt)}\"");
+            argsList.Add(prompt);
 
-            var args = string.Join(" ", argsList);
-            return await ExecuteSimplePromptAsync(execPath, args, "OpenCode", workingDirectory, cancellationToken);
+            return await ExecuteSimplePromptAsync(execPath, argsList, "OpenCode", workingDirectory, cancellationToken);
         }
         else
         {

@@ -1037,11 +1037,11 @@ public class JobProcessingService : BackgroundService
                     await NotifyJobMessageAddedAsync(job.Id);
                 }
 
-                await CompleteJobAsync(job.Id, JobStatus.Completed, finalResult.SessionId, finalResult.Output,
+                var hasGitChanges = await CompleteJobAsync(job.Id, JobStatus.Completed, finalResult.SessionId, finalResult.Output,
                     null, finalResult.InputTokens, finalResult.OutputTokens, finalResult.CostUsd, finalResult.ModelUsed,
                     executionContext, workingDirectory, dbContext, CancellationToken.None);
 
-                if (!string.IsNullOrEmpty(job.GitDiff))
+                if (hasGitChanges)
                 {
                     await NotifyJobGitDiffUpdatedAsync(job.Id, true);
                 }
@@ -1253,12 +1253,13 @@ public class JobProcessingService : BackgroundService
     /// <summary>
     /// Completes a job with full result data, console output, and git diff
     /// </summary>
-    private async Task CompleteJobAsync(
+    private async Task<bool> CompleteJobAsync(
         Guid jobId, JobStatus status, string? sessionId, string? output, string? errorMessage,
         int? inputTokens, int? outputTokens, decimal? costUsd, string? modelUsed,
         JobExecutionContext executionContext, string? workingDirectory,
         VibeSwarmDbContext dbContext, CancellationToken cancellationToken)
     {
+        var hasGitChanges = false;
         var job = await dbContext.Jobs
             .Include(j => j.Project)
             .FirstOrDefaultAsync(j => j.Id == jobId, cancellationToken);
@@ -1333,6 +1334,7 @@ public class JobProcessingService : BackgroundService
                     if (!string.IsNullOrEmpty(gitDiff))
                     {
                         job.GitDiff = gitDiff;
+                        hasGitChanges = true;
                         _logger.LogInformation("Captured git diff for job {JobId}: {Length} chars", jobId, gitDiff.Length);
 
                         // Count changed files for the badge/toast
@@ -1379,6 +1381,8 @@ public class JobProcessingService : BackgroundService
 
             await dbContext.SaveChangesAsync(cancellationToken);
         }
+
+        return hasGitChanges;
     }
 
     private static async Task RecordProviderAttemptAsync(
