@@ -40,6 +40,10 @@ public static class GitDiffParser
 				var rawName = parts.Length >= 4 ? parts[3] : "unknown";
 				// Remove the "b/" prefix (not TrimStart which would strip repeated b/b chars)
 				var fileName = rawName.StartsWith("b/") ? rawName[2..] : rawName;
+				currentFile = new DiffFile
+				{
+					FileName = fileName
+				};
 				currentContent.Clear();
 				currentContent.AppendLine(line);
 			}
