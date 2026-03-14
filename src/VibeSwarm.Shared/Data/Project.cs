@@ -25,7 +25,7 @@ public enum AutoCommitMode
 
 public class Project
 {
-    public Guid Id { get; set; }
+	public Guid Id { get; set; }
 
     [Required]
     [StringLength(100, MinimumLength = 1)]
@@ -45,12 +45,32 @@ public class Project
     [StringLength(200)]
     public string? GitHubRepository { get; set; }
 
-    /// <summary>
-    /// Auto-commit behavior after job completion.
-    /// </summary>
-    public AutoCommitMode AutoCommitMode { get; set; } = AutoCommitMode.Off;
+	/// <summary>
+	/// Auto-commit behavior after job completion.
+	/// </summary>
+	public AutoCommitMode AutoCommitMode { get; set; } = AutoCommitMode.Off;
 
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+	/// <summary>
+	/// Whether idea expansion should use provider-native planning mode.
+	/// When enabled, idea expansion uses the configured planning provider/model to generate
+	/// a reviewed implementation plan before the idea is converted into a job.
+	/// </summary>
+	public bool PlanningEnabled { get; set; }
+
+	/// <summary>
+	/// Optional provider to use for project planning.
+	/// Supported planning providers are currently Claude and GitHub Copilot.
+	/// </summary>
+	public Guid? PlanningProviderId { get; set; }
+
+	/// <summary>
+	/// Optional model override to use for project planning.
+	/// When omitted, the planning provider's default model is used.
+	/// </summary>
+	[StringLength(200)]
+	public string? PlanningModelId { get; set; }
+
+	public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     public DateTime? UpdatedAt { get; set; }
 

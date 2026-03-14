@@ -14,7 +14,7 @@ public class IdeaExpansionRequest
 	/// <summary>
 	/// The model name to use for expansion. If null, the default model is used.
 	/// For local inference, this is the Ollama model name (e.g., "llama3.2").
-	/// For CLI providers, this is ignored (provider uses its own model).
+	/// For CLI providers, this may be used when the provider supports model selection.
 	/// </summary>
 	public string? ModelName { get; set; }
 

@@ -90,17 +90,18 @@ entity.HasOne(e => e.Provider)
 entity.HasIndex(e => e.ProviderId).IsUnique();
 });
 
-modelBuilder.Entity<Project>(entity =>
-{
-entity.HasKey(e => e.Id);
-entity.Property(e => e.Name).IsRequired().HasMaxLength(100);
-entity.Property(e => e.Description).HasMaxLength(500);
-entity.Property(e => e.WorkingPath).IsRequired().HasMaxLength(500);
-entity.Property(e => e.GitHubRepository).HasMaxLength(200);
-entity.Property(e => e.PromptContext).HasMaxLength(1000);
-entity.Property(e => e.IdeasAutoExpand).HasDefaultValue(true);
-entity.HasIndex(e => e.Name).IsUnique();
-});
+		modelBuilder.Entity<Project>(entity =>
+		{
+			entity.HasKey(e => e.Id);
+			entity.Property(e => e.Name).IsRequired().HasMaxLength(100);
+			entity.Property(e => e.Description).HasMaxLength(500);
+			entity.Property(e => e.WorkingPath).IsRequired().HasMaxLength(500);
+			entity.Property(e => e.GitHubRepository).HasMaxLength(200);
+			entity.Property(e => e.PlanningModelId).HasMaxLength(200);
+			entity.Property(e => e.PromptContext).HasMaxLength(1000);
+			entity.Property(e => e.IdeasAutoExpand).HasDefaultValue(true);
+			entity.HasIndex(e => e.Name).IsUnique();
+		});
 
 modelBuilder.Entity<ProjectProvider>(entity =>
 {

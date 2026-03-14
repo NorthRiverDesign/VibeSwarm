@@ -731,6 +731,148 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 			.SingleAsync());
 	}
 
+	[Fact]
+	public async Task ProjectService_UpdateAsync_PersistsPlanningSettings()
+	{
+		await using var dbContext = CreateDbContext();
+		var provider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Claude Planner",
+			Type = ProviderType.Claude,
+			IsEnabled = true
+		};
+		var project = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Planning Project",
+			WorkingPath = "/tmp/planning-project"
+		};
+		var model = new ProviderModel
+		{
+			Id = Guid.NewGuid(),
+			ProviderId = provider.Id,
+			ModelId = "claude-sonnet-4.6",
+			DisplayName = "Claude Sonnet 4.6",
+			IsAvailable = true,
+			IsDefault = true
+		};
+
+		dbContext.Providers.Add(provider);
+		dbContext.ProviderModels.Add(model);
+		dbContext.Projects.Add(project);
+		await dbContext.SaveChangesAsync();
+
+		var projectService = new ProjectService(dbContext, new NoOpProjectEnvironmentCredentialService());
+		var updated = await projectService.UpdateAsync(new Project
+		{
+			Id = project.Id,
+			Name = project.Name,
+			WorkingPath = project.WorkingPath,
+			PlanningEnabled = true,
+			PlanningProviderId = provider.Id,
+			PlanningModelId = model.ModelId
+		});
+
+		Assert.True(updated.PlanningEnabled);
+		Assert.Equal(provider.Id, updated.PlanningProviderId);
+		Assert.Equal(model.ModelId, updated.PlanningModelId);
+
+		var stored = await dbContext.Projects.AsNoTracking().SingleAsync(p => p.Id == project.Id);
+		Assert.True(stored.PlanningEnabled);
+		Assert.Equal(provider.Id, stored.PlanningProviderId);
+		Assert.Equal(model.ModelId, stored.PlanningModelId);
+	}
+
+	[Fact]
+	public async Task ProjectService_CreateAsync_RejectsUnsupportedPlanningProvider()
+	{
+		await using var dbContext = CreateDbContext();
+		var provider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "OpenCode Planner",
+			Type = ProviderType.OpenCode,
+			IsEnabled = true
+		};
+
+		dbContext.Providers.Add(provider);
+		await dbContext.SaveChangesAsync();
+
+		var projectService = new ProjectService(dbContext, new NoOpProjectEnvironmentCredentialService());
+
+		var error = await Assert.ThrowsAsync<InvalidOperationException>(() => projectService.CreateAsync(new Project
+		{
+			Name = "Unsupported Planning",
+			WorkingPath = "/tmp/unsupported-planning",
+			PlanningEnabled = true,
+			PlanningProviderId = provider.Id
+		}));
+
+		Assert.Contains("supports only Claude and GitHub Copilot", error.Message);
+	}
+
+	[Fact]
+	public async Task ExpandIdeaAsync_UsesProjectPlanningProviderAndModel()
+	{
+		await using var dbContext = CreateDbContext();
+		var provider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Claude Planner",
+			Type = ProviderType.Claude,
+			IsEnabled = true,
+			IsDefault = true
+		};
+		var project = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Planned Ideas Project",
+			WorkingPath = "/tmp/planned-ideas",
+			PlanningEnabled = true,
+			PlanningProviderId = provider.Id,
+			PlanningModelId = "claude-sonnet-4.6"
+		};
+		var idea = new Idea
+		{
+			Id = Guid.NewGuid(),
+			ProjectId = project.Id,
+			Description = "Add a planning settings card to the project page",
+			SortOrder = 0
+		};
+		var providerInstance = new FakeProviderInstance
+		{
+			ExecutionResult = new ExecutionResult
+			{
+				Success = true,
+				ModelUsed = "claude-sonnet-4.6",
+				Messages =
+				[
+					new ExecutionMessage
+					{
+						Role = "plan",
+						Content = "Overview: Add project planning controls.\nAcceptance Criteria: Users can configure planning.",
+					}
+				]
+			}
+		};
+
+		dbContext.Projects.Add(project);
+		dbContext.Providers.Add(provider);
+		dbContext.Ideas.Add(idea);
+		await dbContext.SaveChangesAsync();
+
+		var ideaService = CreateIdeaService(dbContext, provider, providerInstance);
+		var result = await ideaService.ExpandIdeaAsync(idea.Id);
+
+		Assert.NotNull(result);
+		Assert.Equal(IdeaExpansionStatus.PendingReview, result!.ExpansionStatus);
+		Assert.Contains("Overview: Add project planning controls.", result.ExpandedDescription);
+		Assert.NotNull(providerInstance.LastExecutePrompt);
+		Assert.StartsWith("/plan", providerInstance.LastExecutePrompt!);
+		Assert.Equal(project.PlanningModelId, providerInstance.LastExecutionOptions?.Model);
+	}
+
 	private VibeSwarmDbContext CreateDbContext()
 	{
 		return new VibeSwarmDbContext(_dbOptions);
@@ -744,11 +886,15 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		return services.BuildServiceProvider();
 	}
 
-	private static IdeaService CreateIdeaService(VibeSwarmDbContext dbContext, Provider provider)
+	private static IdeaService CreateIdeaService(
+		VibeSwarmDbContext dbContext,
+		Provider provider,
+		IProvider? providerInstance = null,
+		IEnumerable<ProviderModel>? models = null)
 	{
 		var serviceProvider = new ServiceCollection().BuildServiceProvider();
 		var jobService = new JobService(dbContext, serviceProvider);
-		var providerService = new FakeProviderService(provider);
+		var providerService = new FakeProviderService(provider, providerInstance, models);
 		var versionControlService = new FakeVersionControlService();
 
 		return new IdeaService(
@@ -764,9 +910,14 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		_connection.Dispose();
 	}
 
-	private sealed class FakeProviderService(Provider provider) : IProviderService
+	private sealed class FakeProviderService(
+		Provider provider,
+		IProvider? providerInstance = null,
+		IEnumerable<ProviderModel>? models = null) : IProviderService
 	{
 		private readonly Provider _provider = provider;
+		private readonly IProvider? _providerInstance = providerInstance;
+		private readonly IReadOnlyList<ProviderModel> _models = models?.ToList() ?? [];
 
 		public Task<IEnumerable<Provider>> GetAllAsync(CancellationToken cancellationToken = default)
 			=> Task.FromResult<IEnumerable<Provider>>([_provider]);
@@ -777,7 +928,7 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		public Task<Provider?> GetDefaultAsync(CancellationToken cancellationToken = default)
 			=> Task.FromResult<Provider?>(_provider);
 
-		public IProvider? CreateInstance(Provider config) => throw new NotSupportedException();
+		public IProvider? CreateInstance(Provider config) => config.Id == _provider.Id ? _providerInstance : null;
 		public Task<Provider> CreateAsync(Provider provider, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<Provider> UpdateAsync(Provider provider, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task DeleteAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
@@ -787,10 +938,51 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		public Task SetDefaultAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<SessionSummary> GetSessionSummaryAsync(Guid providerId, string? sessionId, string? workingDirectory = null, string? fallbackOutput = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<IEnumerable<ProviderModel>> GetModelsAsync(Guid providerId, CancellationToken cancellationToken = default)
-			=> Task.FromResult<IEnumerable<ProviderModel>>([]);
+			=> Task.FromResult<IEnumerable<ProviderModel>>(providerId == _provider.Id ? _models : []);
 		public Task<IEnumerable<ProviderModel>> RefreshModelsAsync(Guid providerId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task SetDefaultModelAsync(Guid providerId, Guid modelId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<CliUpdateResult> UpdateCliAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+	}
+
+	private sealed class FakeProviderInstance : IProvider
+	{
+		public Guid Id { get; init; } = Guid.NewGuid();
+		public string Name { get; init; } = "Fake Planner";
+		public ProviderType Type { get; init; } = ProviderType.Claude;
+		public ProviderConnectionMode ConnectionMode { get; init; } = ProviderConnectionMode.CLI;
+		public bool IsConnected { get; } = true;
+		public string? LastConnectionError { get; }
+		public ExecutionResult ExecutionResult { get; set; } = new() { Success = true };
+		public PromptResponse PromptResponse { get; set; } = PromptResponse.Ok("Default fake response");
+		public string? LastExecutePrompt { get; private set; }
+		public ExecutionOptions? LastExecutionOptions { get; private set; }
+
+		public Task<bool> TestConnectionAsync(CancellationToken cancellationToken = default) => Task.FromResult(true);
+		public Task<string> ExecuteAsync(string prompt, CancellationToken cancellationToken = default) => Task.FromResult(string.Empty);
+
+		public Task<ExecutionResult> ExecuteWithSessionAsync(
+			string prompt,
+			string? sessionId = null,
+			string? workingDirectory = null,
+			IProgress<ExecutionProgress>? progress = null,
+			CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+		public Task<ExecutionResult> ExecuteWithOptionsAsync(
+			string prompt,
+			ExecutionOptions options,
+			IProgress<ExecutionProgress>? progress = null,
+			CancellationToken cancellationToken = default)
+		{
+			LastExecutePrompt = prompt;
+			LastExecutionOptions = options;
+			return Task.FromResult(ExecutionResult);
+		}
+
+		public Task<ProviderInfo> GetProviderInfoAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<UsageLimits> GetUsageLimitsAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<SessionSummary> GetSessionSummaryAsync(string? sessionId, string? workingDirectory = null, string? fallbackOutput = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<PromptResponse> GetPromptResponseAsync(string prompt, string? workingDirectory = null, CancellationToken cancellationToken = default) => Task.FromResult(PromptResponse);
+		public Task<CliUpdateResult> UpdateCliAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	}
 
 	private sealed class FakeVersionControlService : IVersionControlService

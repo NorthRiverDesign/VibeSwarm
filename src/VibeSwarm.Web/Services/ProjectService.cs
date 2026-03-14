@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using VibeSwarm.Shared.Data;
+using VibeSwarm.Shared.Providers;
 using VibeSwarm.Shared.Services;
 
 namespace VibeSwarm.Web.Services;
@@ -57,9 +58,11 @@ public class ProjectService : IProjectService
 		project.Id = Guid.NewGuid();
 		project.CreatedAt = DateTime.UtcNow;
 
+		NormalizePlanningSettings(project);
 		NormalizeProviderSelections(project);
 		NormalizeEnvironments(project);
 		await ValidateProviderSelectionsAsync(project.ProviderSelections, cancellationToken);
+		await ValidatePlanningAsync(project, cancellationToken);
 		ValidateEnvironments(project.Environments);
 		_credentialService.PrepareForStorage(project);
 
@@ -79,11 +82,15 @@ public class ProjectService : IProjectService
 			throw new InvalidOperationException($"Project with ID {project.Id} not found.");
 		}
 
+		NormalizePlanningSettings(project);
 		existing.Name = project.Name;
 		existing.Description = project.Description;
 		existing.WorkingPath = project.WorkingPath;
 		existing.GitHubRepository = project.GitHubRepository;
 		existing.AutoCommitMode = project.AutoCommitMode;
+		existing.PlanningEnabled = project.PlanningEnabled;
+		existing.PlanningProviderId = project.PlanningProviderId;
+		existing.PlanningModelId = project.PlanningModelId;
 		existing.PromptContext = project.PromptContext;
 		existing.IsActive = project.IsActive;
 		existing.IdeasAutoExpand = project.IdeasAutoExpand;
@@ -99,6 +106,7 @@ public class ProjectService : IProjectService
 		NormalizeProviderSelections(project);
 		NormalizeEnvironments(project);
 		await ValidateProviderSelectionsAsync(project.ProviderSelections, cancellationToken);
+		await ValidatePlanningAsync(project, cancellationToken);
 		ValidateEnvironments(project.Environments);
 		_credentialService.PrepareForStorage(project, existing.Environments.ToList());
 
@@ -219,6 +227,13 @@ public class ProjectService : IProjectService
 		}
 
 		project.ProviderSelections = orderedSelections;
+	}
+
+	private static void NormalizePlanningSettings(Project project)
+	{
+		project.PlanningModelId = string.IsNullOrWhiteSpace(project.PlanningModelId)
+			? null
+			: project.PlanningModelId.Trim();
 	}
 
 	private static void NormalizeEnvironments(Project project)
@@ -393,6 +408,54 @@ public class ProjectService : IProjectService
 		if (invalidIds.Any())
 		{
 			throw new InvalidOperationException($"One or more provider IDs do not exist: {string.Join(", ", invalidIds)}");
+		}
+	}
+
+	private async Task ValidatePlanningAsync(Project project, CancellationToken cancellationToken)
+	{
+		if (!project.PlanningEnabled)
+		{
+			return;
+		}
+
+		if (!project.PlanningProviderId.HasValue)
+		{
+			throw new InvalidOperationException("Planning requires selecting a provider.");
+		}
+
+		var provider = await _dbContext.Providers
+			.AsNoTracking()
+			.FirstOrDefaultAsync(p => p.Id == project.PlanningProviderId.Value, cancellationToken);
+		if (provider == null)
+		{
+			throw new InvalidOperationException("The selected planning provider does not exist.");
+		}
+
+		if (!provider.IsEnabled)
+		{
+			throw new InvalidOperationException("The selected planning provider is disabled.");
+		}
+
+		if (provider.Type is not (ProviderType.Claude or ProviderType.Copilot))
+		{
+			throw new InvalidOperationException("Planning currently supports only Claude and GitHub Copilot providers.");
+		}
+
+		if (string.IsNullOrWhiteSpace(project.PlanningModelId))
+		{
+			return;
+		}
+
+		var modelExists = await _dbContext.ProviderModels
+			.AsNoTracking()
+			.AnyAsync(
+				model => model.ProviderId == provider.Id &&
+					model.IsAvailable &&
+					model.ModelId == project.PlanningModelId,
+				cancellationToken);
+		if (!modelExists)
+		{
+			throw new InvalidOperationException("The selected planning model is not available for the chosen provider.");
 		}
 	}
 

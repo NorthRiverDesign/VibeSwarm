@@ -711,8 +711,7 @@ A concise one-line description of what was implemented (max 72 chars)
 		try
 		{
 			var useLocalInference = request?.UseLocalInference ?? false;
-			var modelName = request?.ModelName;
-			var providerId = request?.ProviderId;
+			var (providerId, modelName, usePlanningMode) = ResolveProviderExpansionRequest(idea.Project, request);
 
 			if (useLocalInference)
 			{
@@ -720,7 +719,7 @@ A concise one-line description of what was implemented (max 72 chars)
 			}
 			else
 			{
-				await ExpandWithProviderAsync(idea, providerId, expandToken);
+				await ExpandWithProviderAsync(idea, providerId, modelName, usePlanningMode, expandToken);
 			}
 		}
 		catch (OperationCanceledException)
@@ -755,7 +754,12 @@ A concise one-line description of what was implemented (max 72 chars)
 	/// <summary>
 	/// Expands an idea using a CLI coding provider (Claude, Copilot, OpenCode)
 	/// </summary>
-	private async Task ExpandWithProviderAsync(Idea idea, Guid? providerId, CancellationToken cancellationToken)
+	private async Task ExpandWithProviderAsync(
+		Idea idea,
+		Guid? providerId,
+		string? modelName,
+		bool usePlanningMode,
+		CancellationToken cancellationToken)
 	{
 		Provider? provider;
 		if (providerId.HasValue)
@@ -780,6 +784,22 @@ A concise one-line description of what was implemented (max 72 chars)
 			return;
 		}
 
+		if (!provider.IsEnabled)
+		{
+			idea.ExpansionStatus = IdeaExpansionStatus.Failed;
+			idea.ExpansionError = usePlanningMode
+				? "The selected planning provider is disabled"
+				: "The selected provider is disabled";
+			return;
+		}
+
+		if (usePlanningMode && !SupportsPlanningMode(provider.Type))
+		{
+			idea.ExpansionStatus = IdeaExpansionStatus.Failed;
+			idea.ExpansionError = "Planning currently supports only Claude and GitHub Copilot providers";
+			return;
+		}
+
 		var providerInstance = _providerService.CreateInstance(provider);
 		if (providerInstance == null)
 		{
@@ -789,10 +809,14 @@ A concise one-line description of what was implemented (max 72 chars)
 		}
 
 		var expansionPrompt = BuildIdeaExpansionPrompt(idea.Description);
-
-		var response = await providerInstance.GetPromptResponseAsync(
-			expansionPrompt,
+		var response = await ExecuteProviderExpansionAsync(
+			providerInstance,
+			provider,
 			idea.Project!.WorkingPath,
+			idea.Description,
+			expansionPrompt,
+			modelName,
+			usePlanningMode,
 			cancellationToken);
 
 		if (response.Success && !string.IsNullOrWhiteSpace(response.Response))
@@ -808,6 +832,117 @@ A concise one-line description of what was implemented (max 72 chars)
 			idea.ExpansionError = response.ErrorMessage ?? "No response from provider";
 			_logger.LogWarning("Failed to expand idea {IdeaId}: {Error}", idea.Id, idea.ExpansionError);
 		}
+	}
+
+	private async Task<PromptResponse> ExecuteProviderExpansionAsync(
+		IProvider providerInstance,
+		Provider provider,
+		string workingDirectory,
+		string ideaDescription,
+		string expansionPrompt,
+		string? modelName,
+		bool usePlanningMode,
+		CancellationToken cancellationToken)
+	{
+		if (!usePlanningMode && string.IsNullOrWhiteSpace(modelName))
+		{
+			return await providerInstance.GetPromptResponseAsync(expansionPrompt, workingDirectory, cancellationToken);
+		}
+
+		var result = await providerInstance.ExecuteWithOptionsAsync(
+			usePlanningMode ? BuildProviderPlanningPrompt(ideaDescription) : expansionPrompt,
+			new ExecutionOptions
+			{
+				WorkingDirectory = workingDirectory,
+				Model = modelName
+			},
+			cancellationToken: cancellationToken);
+		var responseText = ExtractExecutionText(result);
+		if (result.Success && !string.IsNullOrWhiteSpace(responseText))
+		{
+			return PromptResponse.Ok(responseText.Trim(), model: result.ModelUsed ?? modelName);
+		}
+
+		var errorMessage = result.ErrorMessage;
+		if (string.IsNullOrWhiteSpace(errorMessage))
+		{
+			errorMessage = usePlanningMode
+				? $"{provider.Name} did not return a plan"
+				: $"{provider.Name} did not return a response";
+		}
+
+		return PromptResponse.Fail(errorMessage);
+	}
+
+	private static (Guid? ProviderId, string? ModelName, bool UsePlanningMode) ResolveProviderExpansionRequest(Project project, IdeaExpansionRequest? request)
+	{
+		var requestedModelName = string.IsNullOrWhiteSpace(request?.ModelName)
+			? null
+			: request.ModelName.Trim();
+		if (request?.UseLocalInference == true)
+		{
+			return (request.ProviderId, requestedModelName, false);
+		}
+
+		if (!project.PlanningEnabled)
+		{
+			return (request?.ProviderId, requestedModelName, false);
+		}
+
+		if (request?.ProviderId.HasValue == true || requestedModelName != null)
+		{
+			var usePlanningMode = project.PlanningProviderId.HasValue &&
+				request?.ProviderId == project.PlanningProviderId &&
+				(requestedModelName == null || string.Equals(requestedModelName, project.PlanningModelId, StringComparison.Ordinal));
+			return (request?.ProviderId, requestedModelName, usePlanningMode);
+		}
+
+		return (project.PlanningProviderId, project.PlanningModelId, project.PlanningProviderId.HasValue);
+	}
+
+	private static bool SupportsPlanningMode(ProviderType providerType)
+	{
+		return providerType is ProviderType.Claude or ProviderType.Copilot;
+	}
+
+	private static string BuildProviderPlanningPrompt(string ideaDescription)
+	{
+		return $@"/plan Expand the feature idea below into a detailed, implementation-ready specification that can be reviewed before coding.
+
+## Feature Idea
+{ideaDescription}
+
+## Planning Requirements
+1. Overview: Summarize the feature and intended outcome
+2. User Experience: Describe the primary user interactions and flows
+3. Components: Identify the pages, components, services, data models, or infrastructure involved
+4. Implementation Steps: Outline a sensible build order
+5. Edge Cases: Call out important validation, error, and empty-state scenarios
+6. Acceptance Criteria: List the observable behaviors that confirm completion
+
+Return only the plan/specification. Do not implement the feature and do not include code samples.";
+	}
+
+	private static string? ExtractExecutionText(ExecutionResult result)
+	{
+		var preferredRoles = new[] { "plan", "assistant", "response", "message", "suggestion" };
+		foreach (var role in preferredRoles)
+		{
+			var content = result.Messages
+				.Where(message =>
+					string.Equals(message.Role, role, StringComparison.OrdinalIgnoreCase) &&
+					!string.IsNullOrWhiteSpace(message.Content))
+				.Select(message => message.Content.Trim())
+				.ToList();
+			if (content.Count > 0)
+			{
+				return string.Join(Environment.NewLine + Environment.NewLine, content);
+			}
+		}
+
+		return string.IsNullOrWhiteSpace(result.Output)
+			? null
+			: result.Output.Trim();
 	}
 
 	/// <summary>

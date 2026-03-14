@@ -741,6 +741,16 @@ namespace VibeSwarm.Shared.Data.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("TEXT");
 
+                    b.Property<bool>("PlanningEnabled")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("PlanningModelId")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("PlanningProviderId")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("PromptContext")
                         .HasMaxLength(1000)
                         .HasColumnType("TEXT");
