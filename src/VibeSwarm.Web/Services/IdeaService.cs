@@ -558,6 +558,22 @@ A concise one-line description of what was implemented (max 72 chars)
 			}
 		}
 
+		// Only advance the ideas queue when the project has no other incomplete jobs.
+		// This keeps auto-processing aligned with the one-job-per-project execution model.
+		var hasIncompleteProjectJobs = await _dbContext.Jobs
+			.AsNoTracking()
+			.AnyAsync(j => j.ProjectId == projectId
+				&& j.Status != JobStatus.Completed
+				&& j.Status != JobStatus.Failed
+				&& j.Status != JobStatus.Cancelled,
+				cancellationToken);
+
+		if (hasIncompleteProjectJobs)
+		{
+			_logger.LogDebug("Ideas queue for project {ProjectId} is waiting for an existing job to finish", projectId);
+			return false;
+		}
+
 		// Get the next unprocessed idea
 		var nextIdea = await GetNextUnprocessedAsync(projectId, cancellationToken);
 		if (nextIdea == null)

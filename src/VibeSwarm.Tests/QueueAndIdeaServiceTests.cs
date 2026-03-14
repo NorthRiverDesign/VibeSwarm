@@ -78,6 +78,80 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 	}
 
 	[Fact]
+	public async Task GetPendingJobsAsync_ReturnsOnlyOneQueuedJobPerProject()
+	{
+		await using var dbContext = CreateDbContext();
+		var firstProject = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "First Queue Project",
+			WorkingPath = "/tmp/first-queue-project"
+		};
+		var secondProject = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Second Queue Project",
+			WorkingPath = "/tmp/second-queue-project"
+		};
+		var provider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Copilot",
+			Type = ProviderType.Copilot,
+			IsEnabled = true,
+			IsDefault = true
+		};
+
+		dbContext.Projects.AddRange(firstProject, secondProject);
+		dbContext.Providers.Add(provider);
+		dbContext.Jobs.AddRange(
+			new Job
+			{
+				Id = Guid.NewGuid(),
+				ProjectId = firstProject.Id,
+				ProviderId = provider.Id,
+				GoalPrompt = "First project, first queued job",
+				Title = "First project, first queued job",
+				Status = JobStatus.New,
+				Priority = 5,
+				CreatedAt = DateTime.UtcNow.AddMinutes(-3)
+			},
+			new Job
+			{
+				Id = Guid.NewGuid(),
+				ProjectId = firstProject.Id,
+				ProviderId = provider.Id,
+				GoalPrompt = "First project, second queued job",
+				Title = "First project, second queued job",
+				Status = JobStatus.New,
+				Priority = 1,
+				CreatedAt = DateTime.UtcNow.AddMinutes(-2)
+			},
+			new Job
+			{
+				Id = Guid.NewGuid(),
+				ProjectId = secondProject.Id,
+				ProviderId = provider.Id,
+				GoalPrompt = "Second project queued job",
+				Title = "Second project queued job",
+				Status = JobStatus.New,
+				Priority = 3,
+				CreatedAt = DateTime.UtcNow.AddMinutes(-1)
+			});
+		await dbContext.SaveChangesAsync();
+
+		var serviceProvider = new ServiceCollection().BuildServiceProvider();
+		var jobService = new JobService(dbContext, serviceProvider);
+
+		var pendingJobs = (await jobService.GetPendingJobsAsync()).ToList();
+
+		Assert.Equal(2, pendingJobs.Count);
+		Assert.Equal(2, pendingJobs.Select(job => job.ProjectId).Distinct().Count());
+		Assert.Contains(pendingJobs, job => job.ProjectId == firstProject.Id && job.Title == "First project, first queued job");
+		Assert.DoesNotContain(pendingJobs, job => job.ProjectId == firstProject.Id && job.Title == "First project, second queued job");
+	}
+
+	[Fact]
 	public async Task UpdateAsync_UpdatesExistingIdeaWithoutCreatingDuplicate()
 	{
 		await using var dbContext = CreateDbContext();
@@ -345,6 +419,151 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 	}
 
 	[Fact]
+	public async Task ProcessNextIdeaIfReadyAsync_WaitsForExistingProjectJobToFinish()
+	{
+		await using var dbContext = CreateDbContext();
+		var project = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Ideas Queue Project",
+			WorkingPath = "/tmp/ideas-queue-project",
+			IdeasProcessingActive = true,
+			IdeasAutoExpand = false
+		};
+		var provider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Claude",
+			Type = ProviderType.Claude,
+			IsEnabled = true,
+			IsDefault = true
+		};
+		var blockingJob = new Job
+		{
+			Id = Guid.NewGuid(),
+			ProjectId = project.Id,
+			ProviderId = provider.Id,
+			GoalPrompt = "Finish current project job first",
+			Status = JobStatus.New,
+			CreatedAt = DateTime.UtcNow.AddMinutes(-5)
+		};
+		var firstIdea = new Idea
+		{
+			Id = Guid.NewGuid(),
+			ProjectId = project.Id,
+			Description = "First queued idea",
+			SortOrder = 0,
+			CreatedAt = DateTime.UtcNow.AddMinutes(-4)
+		};
+		var secondIdea = new Idea
+		{
+			Id = Guid.NewGuid(),
+			ProjectId = project.Id,
+			Description = "Second queued idea",
+			SortOrder = 1,
+			CreatedAt = DateTime.UtcNow.AddMinutes(-3)
+		};
+
+		dbContext.Projects.Add(project);
+		dbContext.Providers.Add(provider);
+		dbContext.Jobs.Add(blockingJob);
+		dbContext.Ideas.AddRange(firstIdea, secondIdea);
+		await dbContext.SaveChangesAsync();
+
+		var ideaService = CreateIdeaService(dbContext, provider);
+
+		var processedWhileBlocked = await ideaService.ProcessNextIdeaIfReadyAsync(project.Id);
+		Assert.False(processedWhileBlocked);
+		Assert.Equal(1, await dbContext.Jobs.CountAsync(job => job.ProjectId == project.Id));
+		Assert.Equal(0, await dbContext.Ideas.CountAsync(idea => idea.ProjectId == project.Id && idea.JobId != null));
+
+		blockingJob.Status = JobStatus.Completed;
+		blockingJob.CompletedAt = DateTime.UtcNow;
+		await dbContext.SaveChangesAsync();
+
+		var processedAfterCompletion = await ideaService.ProcessNextIdeaIfReadyAsync(project.Id);
+		Assert.True(processedAfterCompletion);
+
+		var linkedIdea = await dbContext.Ideas.FirstAsync(idea => idea.Id == firstIdea.Id);
+		Assert.True(linkedIdea.IsProcessing);
+		Assert.NotNull(linkedIdea.JobId);
+		Assert.Equal(2, await dbContext.Jobs.CountAsync(job => job.ProjectId == project.Id));
+	}
+
+	[Fact]
+	public async Task JobQueueManager_GetPendingJobsAsync_ReturnsSingleJobPerProject()
+	{
+		await using var dbContext = CreateDbContext();
+		var firstProject = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Queue Manager Project One",
+			WorkingPath = "/tmp/queue-manager-one"
+		};
+		var secondProject = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Queue Manager Project Two",
+			WorkingPath = "/tmp/queue-manager-two"
+		};
+		var provider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "OpenCode",
+			Type = ProviderType.OpenCode,
+			IsEnabled = true,
+			IsDefault = true
+		};
+
+		dbContext.Projects.AddRange(firstProject, secondProject);
+		dbContext.Providers.Add(provider);
+		dbContext.Jobs.AddRange(
+			new Job
+			{
+				Id = Guid.NewGuid(),
+				ProjectId = firstProject.Id,
+				ProviderId = provider.Id,
+				GoalPrompt = "First project first queued job",
+				Status = JobStatus.New,
+				Priority = 10,
+				CreatedAt = DateTime.UtcNow.AddMinutes(-4)
+			},
+			new Job
+			{
+				Id = Guid.NewGuid(),
+				ProjectId = firstProject.Id,
+				ProviderId = provider.Id,
+				GoalPrompt = "First project second queued job",
+				Status = JobStatus.New,
+				Priority = 5,
+				CreatedAt = DateTime.UtcNow.AddMinutes(-3)
+			},
+			new Job
+			{
+				Id = Guid.NewGuid(),
+				ProjectId = secondProject.Id,
+				ProviderId = provider.Id,
+				GoalPrompt = "Second project queued job",
+				Status = JobStatus.New,
+				Priority = 1,
+				CreatedAt = DateTime.UtcNow.AddMinutes(-2)
+			});
+		await dbContext.SaveChangesAsync();
+
+		using var serviceProvider = CreateScopedServiceProvider();
+		var queueManager = new JobQueueManager(
+			serviceProvider.GetRequiredService<IServiceScopeFactory>(),
+			NullLogger<JobQueueManager>.Instance);
+
+		var pendingJobs = await queueManager.GetPendingJobsAsync(10);
+
+		Assert.Equal(2, pendingJobs.Count);
+		Assert.Equal(2, pendingJobs.Select(job => job.ProjectId).Distinct().Count());
+		Assert.Contains(pendingJobs, job => job.ProjectId == firstProject.Id && job.GoalPrompt == "First project first queued job");
+		Assert.DoesNotContain(pendingJobs, job => job.ProjectId == firstProject.Id && job.GoalPrompt == "First project second queued job");
+	}
+
+	[Fact]
 	public async Task GetPagedByProjectIdAsync_ReturnsRequestedJobPageAndActiveCount()
 	{
 		await using var dbContext = CreateDbContext();
@@ -515,6 +734,14 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 	private VibeSwarmDbContext CreateDbContext()
 	{
 		return new VibeSwarmDbContext(_dbOptions);
+	}
+
+	private ServiceProvider CreateScopedServiceProvider()
+	{
+		var services = new ServiceCollection();
+		services.AddLogging();
+		services.AddDbContext<VibeSwarmDbContext>(options => options.UseSqlite(_connection));
+		return services.BuildServiceProvider();
 	}
 
 	private static IdeaService CreateIdeaService(VibeSwarmDbContext dbContext, Provider provider)

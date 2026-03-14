@@ -130,17 +130,19 @@ public class JobService : IJobService
 
     public async Task<IEnumerable<Job>> GetPendingJobsAsync(CancellationToken cancellationToken = default)
     {
-        // Get projects that already have a running job (Started, Processing, or Paused)
-        // Only one job should run per project at a time
+        // Get projects that already have an in-flight job. Queued "New" jobs are handled below
+        // so only the next eligible job per project is returned.
         var projectsWithRunningJobs = await _dbContext.Jobs
-            .Where(j => j.Status == JobStatus.Started || j.Status == JobStatus.Processing || j.Status == JobStatus.Paused)
+            .Where(j => j.Status == JobStatus.Pending
+                || j.Status == JobStatus.Started
+                || j.Status == JobStatus.Processing
+                || j.Status == JobStatus.Paused
+                || j.Status == JobStatus.Stalled)
             .Select(j => j.ProjectId)
             .Distinct()
             .ToListAsync(cancellationToken);
 
-        // Return pending jobs ordered by priority (desc) then creation time (oldest first)
-        // Exclude jobs from projects that already have a running job
-        return await _dbContext.Jobs
+        var pendingJobs = await _dbContext.Jobs
             .Include(j => j.Project)
                 .ThenInclude(p => p.Environments)
             .Include(j => j.Provider)
@@ -149,6 +151,13 @@ public class JobService : IJobService
             .OrderByDescending(j => j.Priority)
             .ThenBy(j => j.CreatedAt)
             .ToListAsync(cancellationToken);
+
+        // Return only the next queued job per project so dispatchers cannot start multiple
+        // jobs for the same repository in the same scheduling pass.
+        return pendingJobs
+            .GroupBy(j => j.ProjectId)
+            .Select(group => group.First())
+            .ToList();
     }
 
     public async Task<IEnumerable<Job>> GetActiveJobsAsync(CancellationToken cancellationToken = default)

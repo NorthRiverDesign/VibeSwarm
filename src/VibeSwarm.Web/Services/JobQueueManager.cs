@@ -48,9 +48,13 @@ public class JobQueueManager
 			using var scope = _scopeFactory.CreateScope();
 			var dbContext = scope.ServiceProvider.GetRequiredService<VibeSwarmDbContext>();
 
-			// Get projects that already have a running job (Started, Processing, or Paused)
+			// Get projects that already have an in-flight job.
 			var projectsWithRunningJobs = await dbContext.Jobs
-				.Where(j => j.Status == JobStatus.Started || j.Status == JobStatus.Processing || j.Status == JobStatus.Paused)
+				.Where(j => j.Status == JobStatus.Pending
+					|| j.Status == JobStatus.Started
+					|| j.Status == JobStatus.Processing
+					|| j.Status == JobStatus.Paused
+					|| j.Status == JobStatus.Stalled)
 				.Select(j => j.ProjectId)
 				.Distinct()
 				.ToListAsync(cancellationToken);
@@ -231,21 +235,6 @@ public class JobQueueManager
 			{
 				result.Add(job);
 				jobCountByProject[projectId] = count + 1;
-			}
-		}
-
-		// If we still have room and skipped some jobs, add them
-		if (result.Count < maxJobs)
-		{
-			foreach (var job in jobs)
-			{
-				if (result.Count >= maxJobs)
-					break;
-
-				if (!result.Contains(job))
-				{
-					result.Add(job);
-				}
 			}
 		}
 
