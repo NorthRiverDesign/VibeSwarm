@@ -1291,45 +1291,12 @@ public class JobProcessingService : BackgroundService
             {
                 try
                 {
-                    // Get diff since the commit we captured at start
+                    // Brief delay to let git release file locks after the agent process exits
+                    await Task.Delay(750, cancellationToken);
+
                     var baseCommit = executionContext.GitCommitBefore;
-                    string? gitDiff = null;
-                    IReadOnlyList<string>? commitLog = null;
-
-                    if (!string.IsNullOrEmpty(baseCommit))
-                    {
-                        // First, get committed changes since the base commit (commits made by the agent)
-                        var committedDiff = await _versionControlService.GetCommitRangeDiffAsync(workingDirectory, baseCommit, null, cancellationToken);
-
-                        // Get commit log (commit messages made by the agent)
-                        commitLog = await _versionControlService.GetCommitLogAsync(workingDirectory, baseCommit, null, cancellationToken);
-                        if (commitLog.Count > 0)
-                        {
-                            _logger.LogInformation("Found {Count} commits made during job {JobId} execution", commitLog.Count, jobId);
-                        }
-
-                        // Also get any uncommitted changes (working directory changes)
-                        var uncommittedDiff = await _versionControlService.GetWorkingDirectoryDiffAsync(workingDirectory, null, cancellationToken);
-
-                        // Combine both diffs
-                        if (!string.IsNullOrEmpty(committedDiff) && !string.IsNullOrEmpty(uncommittedDiff))
-                        {
-                            gitDiff = $"=== Committed changes since {baseCommit} ===\n{committedDiff}\n\n=== Uncommitted changes ===\n{uncommittedDiff}";
-                        }
-                        else if (!string.IsNullOrEmpty(committedDiff))
-                        {
-                            gitDiff = committedDiff;
-                        }
-                        else if (!string.IsNullOrEmpty(uncommittedDiff))
-                        {
-                            gitDiff = uncommittedDiff;
-                        }
-                    }
-                    else
-                    {
-                        // No base commit captured, just get uncommitted changes
-                        gitDiff = await _versionControlService.GetWorkingDirectoryDiffAsync(workingDirectory, null, cancellationToken);
-                    }
+                    var (gitDiff, commitLog) = await CaptureGitDiffWithRetryAsync(
+                        workingDirectory, baseCommit, cancellationToken);
 
                     if (!string.IsNullOrEmpty(gitDiff))
                     {
@@ -1443,6 +1410,68 @@ public class JobProcessingService : BackgroundService
         attempt.WasSuccessful = wasSuccessful;
         attempt.ModelId = modelId ?? attempt.ModelId;
         await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task<(string? GitDiff, IReadOnlyList<string>? CommitLog)> CaptureGitDiffWithRetryAsync(
+        string workingDirectory, string? baseCommit,
+        CancellationToken cancellationToken, int maxAttempts = 2)
+    {
+        for (var attempt = 1; attempt <= maxAttempts; attempt++)
+        {
+            string? gitDiff = null;
+            IReadOnlyList<string>? commitLog = null;
+
+            if (!string.IsNullOrEmpty(baseCommit))
+            {
+                var committedDiff = await _versionControlService.GetCommitRangeDiffAsync(workingDirectory, baseCommit, null, cancellationToken);
+
+                commitLog = await _versionControlService.GetCommitLogAsync(workingDirectory, baseCommit, null, cancellationToken);
+                if (commitLog.Count > 0)
+                {
+                    _logger.LogInformation("Found {Count} commits since base commit {BaseCommit}", commitLog.Count, baseCommit);
+                }
+
+                var uncommittedDiff = await _versionControlService.GetWorkingDirectoryDiffAsync(workingDirectory, null, cancellationToken);
+
+                if (!string.IsNullOrEmpty(committedDiff) && !string.IsNullOrEmpty(uncommittedDiff))
+                {
+                    gitDiff = $"=== Committed changes since {baseCommit} ===\n{committedDiff}\n\n=== Uncommitted changes ===\n{uncommittedDiff}";
+                }
+                else if (!string.IsNullOrEmpty(committedDiff))
+                {
+                    gitDiff = committedDiff;
+                }
+                else if (!string.IsNullOrEmpty(uncommittedDiff))
+                {
+                    gitDiff = uncommittedDiff;
+                }
+
+                // Fallback: if both were empty, try a single diff from baseCommit against working tree
+                if (string.IsNullOrEmpty(gitDiff))
+                {
+                    _logger.LogInformation("Committed and uncommitted diffs both empty, trying fallback diff from {BaseCommit} against working tree (attempt {Attempt}/{Max})",
+                        baseCommit, attempt, maxAttempts);
+                    gitDiff = await _versionControlService.GetWorkingDirectoryDiffAsync(workingDirectory, baseCommit, cancellationToken);
+                }
+            }
+            else
+            {
+                gitDiff = await _versionControlService.GetWorkingDirectoryDiffAsync(workingDirectory, null, cancellationToken);
+            }
+
+            if (!string.IsNullOrEmpty(gitDiff))
+            {
+                return (gitDiff, commitLog);
+            }
+
+            if (attempt < maxAttempts)
+            {
+                _logger.LogInformation("Git diff capture returned empty on attempt {Attempt}/{Max}, retrying after delay", attempt, maxAttempts);
+                await Task.Delay(1000, cancellationToken);
+            }
+        }
+
+        return (null, null);
     }
 
     /// <summary>

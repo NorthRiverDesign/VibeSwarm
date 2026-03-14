@@ -100,6 +100,21 @@ public class IdeaService : IIdeaService
 
 	public async Task<Idea> CreateAsync(Idea idea, CancellationToken cancellationToken = default)
 	{
+		// Check for duplicate: same project + description within the last 10 seconds
+		var duplicateCutoff = DateTime.UtcNow.AddSeconds(-10);
+		var existingDuplicate = await _dbContext.Ideas
+			.FirstOrDefaultAsync(i => i.ProjectId == idea.ProjectId
+				&& i.Description == idea.Description
+				&& i.CreatedAt >= duplicateCutoff, cancellationToken);
+
+		if (existingDuplicate != null)
+		{
+			_logger.LogWarning("Duplicate idea rejected for project {ProjectId}: \"{Description}\" (existing idea {IdeaId} created at {CreatedAt})",
+				idea.ProjectId, idea.Description?.Length > 80 ? idea.Description[..80] + "..." : idea.Description,
+				existingDuplicate.Id, existingDuplicate.CreatedAt);
+			return existingDuplicate;
+		}
+
 		idea.Id = Guid.NewGuid();
 		idea.CreatedAt = DateTime.UtcNow;
 

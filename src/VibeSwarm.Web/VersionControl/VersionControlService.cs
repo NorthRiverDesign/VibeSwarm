@@ -1,4 +1,5 @@
 using System.Text;
+using Microsoft.Extensions.Logging;
 using VibeSwarm.Shared.VersionControl.Models;
 
 namespace VibeSwarm.Shared.VersionControl;
@@ -12,10 +13,12 @@ public sealed class VersionControlService : IVersionControlService
 	private const int MaxDiffSizeBytes = 1024 * 1024; // 1 MB max diff size
 
 	private readonly IGitCommandExecutor _commandExecutor;
+	private readonly ILogger<VersionControlService> _logger;
 
-	public VersionControlService(IGitCommandExecutor commandExecutor)
+	public VersionControlService(IGitCommandExecutor commandExecutor, ILogger<VersionControlService> logger)
 	{
 		_commandExecutor = commandExecutor;
+		_logger = logger;
 	}
 
 	/// <inheritdoc />
@@ -31,8 +34,9 @@ public sealed class VersionControlService : IVersionControlService
 
 			return result.Success && result.Output.Contains("git version");
 		}
-		catch
+		catch (Exception ex)
 		{
+			_logger.LogWarning(ex, "Failed to check git availability");
 			return false;
 		}
 	}
@@ -50,8 +54,9 @@ public sealed class VersionControlService : IVersionControlService
 
 			return result.Success && result.Output.Trim().Equals("true", StringComparison.OrdinalIgnoreCase);
 		}
-		catch
+		catch (Exception ex)
 		{
+			_logger.LogWarning(ex, "Failed to check if {Directory} is a git repository", workingDirectory);
 			return false;
 		}
 	}
@@ -71,9 +76,9 @@ public sealed class VersionControlService : IVersionControlService
 				return result.Output.Trim();
 			}
 		}
-		catch
+		catch (Exception ex)
 		{
-			// Git not available or not a git repository
+			_logger.LogWarning(ex, "Failed to get current commit hash for {Directory}", workingDirectory);
 		}
 
 		return null;
@@ -95,9 +100,9 @@ public sealed class VersionControlService : IVersionControlService
 				return result.Output.Trim();
 			}
 		}
-		catch
+		catch (Exception ex)
 		{
-			// Git not available or error
+			_logger.LogWarning(ex, "Failed to get current branch for {Directory}", workingDirectory);
 		}
 
 		return null;
@@ -119,9 +124,9 @@ public sealed class VersionControlService : IVersionControlService
 				return result.Output.Trim();
 			}
 		}
-		catch
+		catch (Exception ex)
 		{
-			// Git not available or error
+			_logger.LogWarning(ex, "Failed to get remote URL for {Directory}", workingDirectory);
 		}
 
 		return null;
@@ -140,8 +145,9 @@ public sealed class VersionControlService : IVersionControlService
 
 			return result.Success && !string.IsNullOrWhiteSpace(result.Output);
 		}
-		catch
+		catch (Exception ex)
 		{
+			_logger.LogWarning(ex, "Failed to check uncommitted changes for {Directory}", workingDirectory);
 			return false;
 		}
 	}
@@ -201,9 +207,9 @@ public sealed class VersionControlService : IVersionControlService
 
 			return changedFiles.Distinct().ToList();
 		}
-		catch
+		catch (Exception ex)
 		{
-			// Git not available or error
+			_logger.LogWarning(ex, "Failed to get changed files for {Directory} (baseCommit: {BaseCommit})", workingDirectory, baseCommit);
 		}
 
 		return Array.Empty<string>();
@@ -300,9 +306,9 @@ public sealed class VersionControlService : IVersionControlService
 
 			return string.IsNullOrWhiteSpace(combinedDiff) ? null : combinedDiff;
 		}
-		catch
+		catch (Exception ex)
 		{
-			// Git not available or error running command
+			_logger.LogWarning(ex, "Failed to get working directory diff for {Directory} (baseCommit: {BaseCommit})", workingDirectory, baseCommit);
 		}
 
 		return null;
@@ -332,9 +338,9 @@ public sealed class VersionControlService : IVersionControlService
 				return string.IsNullOrWhiteSpace(diff) ? null : diff;
 			}
 		}
-		catch
+		catch (Exception ex)
 		{
-			// Git not available or error running command
+			_logger.LogWarning(ex, "Failed to get commit range diff for {Directory} (from: {FromCommit})", workingDirectory, fromCommit);
 		}
 
 		return null;
@@ -356,9 +362,9 @@ public sealed class VersionControlService : IVersionControlService
 				return ParseDiffSummary(result.Output);
 			}
 		}
-		catch
+		catch (Exception ex)
 		{
-			// Git not available or error
+			_logger.LogWarning(ex, "Failed to get diff summary for {Directory} (baseCommit: {BaseCommit})", workingDirectory, baseCommit);
 		}
 
 		return null;
@@ -675,9 +681,9 @@ public sealed class VersionControlService : IVersionControlService
 				}
 			}
 		}
-		catch
+		catch (Exception ex)
 		{
-			// Git not available or error
+			_logger.LogWarning(ex, "Failed to get branches for {Directory}", workingDirectory);
 		}
 
 		// Sort: current branch first, then local branches, then remote branches
@@ -1354,9 +1360,9 @@ public sealed class VersionControlService : IVersionControlService
 					.ToList();
 			}
 		}
-		catch
+		catch (Exception ex)
 		{
-			// Git not available or error running command
+			_logger.LogWarning(ex, "Failed to get commit log for {Directory} (from: {FromCommit})", workingDirectory, fromCommit);
 		}
 
 		return Array.Empty<string>();
@@ -1418,8 +1424,9 @@ public sealed class VersionControlService : IVersionControlService
 
 			return result.Success && result.Output.Contains("gh version");
 		}
-		catch
+		catch (Exception ex)
 		{
+			_logger.LogWarning(ex, "Failed to check GitHub CLI availability");
 			return false;
 		}
 	}
@@ -1439,8 +1446,9 @@ public sealed class VersionControlService : IVersionControlService
 			// gh auth status returns exit code 0 if logged in
 			return result.Success;
 		}
-		catch
+		catch (Exception ex)
 		{
+			_logger.LogWarning(ex, "Failed to check GitHub CLI authentication");
 			return false;
 		}
 	}
@@ -1646,9 +1654,9 @@ public sealed class VersionControlService : IVersionControlService
 				}
 			}
 		}
-		catch
+		catch (Exception ex)
 		{
-			// Return empty dictionary on error
+			_logger.LogWarning(ex, "Failed to get remotes for {Directory}", workingDirectory);
 		}
 
 		return remotes;
