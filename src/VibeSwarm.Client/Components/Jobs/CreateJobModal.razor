@@ -4,7 +4,7 @@
 <ModalDialog IsVisible="IsVisible" IsVisibleChanged="IsVisibleChanged" Title="Create Job" Icon="plus-circle"
 	Size="ModalDialog.ModalSize.Large" OnClose="Close">
 	<ChildContent>
-		<EditForm Model="@JobModel" OnValidSubmit="HandleSubmit">
+		<EditForm id="@_formId" Model="@JobModel" OnValidSubmit="HandleSubmit">
 			<DataAnnotationsValidator />
 			<ValidationSummary class="text-danger mb-3" />
 
@@ -160,7 +160,7 @@
 	</ChildContent>
 	<FooterContent>
 		<button type="button" class="btn btn-secondary" @onclick="Close" disabled="@IsSaving">Cancel</button>
-		<button type="button" class="btn btn-primary" @onclick="HandleSubmit"
+		<button type="submit" form="@_formId" class="btn btn-primary"
 			disabled="@(IsSaving || JobModel.ProviderId == Guid.Empty)">
 			@if (IsSaving)
 			{
@@ -222,6 +222,7 @@
 	[Parameter]
 	public string? ProviderHint { get; set; }
 
+	private readonly string _formId = $"create-job-form-{Guid.NewGuid():N}";
 	private bool ShowAdvancedOptions { get; set; } = false;
 
 	private void ToggleAdvancedOptions()

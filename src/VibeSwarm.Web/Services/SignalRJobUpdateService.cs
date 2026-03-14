@@ -242,6 +242,10 @@ public class SignalRJobUpdateService : IJobUpdateService
                 .Group($"job-{jobId}")
                 .SendAsync("JobGitDiffUpdated", jobId.ToString(), hasChanges);
 
+            await _hubContext.Clients
+                .Group("job-list")
+                .SendAsync("JobGitDiffUpdated", jobId.ToString(), hasChanges);
+
             _logger.LogDebug("Sent JobGitDiffUpdated notification for job {JobId}: HasChanges={HasChanges}",
                 jobId, hasChanges);
         }

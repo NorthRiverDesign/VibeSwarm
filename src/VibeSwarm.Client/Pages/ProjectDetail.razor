@@ -663,6 +663,11 @@ TimeSpan.FromSeconds(10) })
         await RefreshUncommittedChangesStatus();
         ProcessingIdeaIds.Clear(); // Clear any stale processing states
 
+        if (success && (_activeTab == "changes" || _hasUncommittedChangesHeader))
+        {
+            await LoadChangesTabData();
+        }
+
         // Show toast notification for job completion with change info
         if (completedJob != null)
         {
@@ -688,6 +693,27 @@ TimeSpan.FromSeconds(10) })
         errorMessage ?? $"{TruncateForToast(jobTitle)} failed.",
         wasFromIdea ? "Idea Failed" : "Job Failed");
             }
+        }
+
+        StateHasChanged();
+    });
+        });
+
+        _hubConnection.On<string, bool>("JobGitDiffUpdated", async (jobId, hasChanges) =>
+        {
+            await InvokeAsync(async () =>
+    {
+        if (!Jobs.Any(j => j.Id.ToString() == jobId))
+        {
+            return;
+        }
+
+        await RefreshJobs();
+        await RefreshUncommittedChangesStatus();
+
+        if (hasChanges || _activeTab == "changes")
+        {
+            await LoadChangesTabData();
         }
 
         StateHasChanged();

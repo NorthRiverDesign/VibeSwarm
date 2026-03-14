@@ -1018,6 +1018,11 @@ public class JobProcessingService : BackgroundService
                     null, finalResult.InputTokens, finalResult.OutputTokens, finalResult.CostUsd, finalResult.ModelUsed,
                     executionContext, workingDirectory, dbContext, CancellationToken.None);
 
+                if (!string.IsNullOrEmpty(job.GitDiff))
+                {
+                    await NotifyJobGitDiffUpdatedAsync(job.Id, true);
+                }
+
                 // Record usage after successful completion
                 await RecordUsageAndCheckExhaustionAsync(job.ProviderId, providerDisplayName, job.Id, finalResult, CancellationToken.None);
 
@@ -1747,6 +1752,21 @@ public class JobProcessingService : BackgroundService
         {
             _logger.LogWarning(ex, "Failed to generate MCP config for provider {ProviderId}", providerId);
             return (null, null);
+        }
+    }
+
+    private async Task NotifyJobGitDiffUpdatedAsync(Guid jobId, bool hasChanges)
+    {
+        if (_jobUpdateService != null)
+        {
+            try
+            {
+                await _jobUpdateService.NotifyJobGitDiffUpdated(jobId, hasChanges);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to send git diff notification for job {JobId}", jobId);
+            }
         }
     }
 }
