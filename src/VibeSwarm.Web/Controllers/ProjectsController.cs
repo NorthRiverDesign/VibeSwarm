@@ -48,15 +48,19 @@ public class ProjectsController : ControllerBase
                 ? NotFound(new { error = ex.Message })
                 : BadRequest(new { error = ex.Message });
         }
-        catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("FOREIGN KEY") == true || 
+        catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("FOREIGN KEY") == true ||
                                            ex.InnerException?.Message.Contains("foreign key") == true)
         {
             return BadRequest(new { error = "One or more selected providers do not exist." });
         }
-        catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("UNIQUE") == true || 
+        catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("UNIQUE") == true ||
                                            ex.InnerException?.Message.Contains("unique") == true)
         {
             return BadRequest(new { error = "Duplicate provider or environment name selected for this project." });
+        }
+        catch (DbUpdateException ex)
+        {
+            return BadRequest(new { error = ex.InnerException?.Message ?? ex.Message });
         }
     }
 
@@ -74,15 +78,19 @@ public class ProjectsController : ControllerBase
                 ? NotFound(new { error = ex.Message })
                 : BadRequest(new { error = ex.Message });
         }
-        catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("FOREIGN KEY") == true || 
+        catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("FOREIGN KEY") == true ||
                                            ex.InnerException?.Message.Contains("foreign key") == true)
         {
             return BadRequest(new { error = "One or more selected providers do not exist." });
         }
-        catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("UNIQUE") == true || 
+        catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("UNIQUE") == true ||
                                            ex.InnerException?.Message.Contains("unique") == true)
         {
             return BadRequest(new { error = "Duplicate provider or environment name selected for this project." });
+        }
+        catch (DbUpdateException ex)
+        {
+            return BadRequest(new { error = ex.InnerException?.Message ?? ex.Message });
         }
     }
 

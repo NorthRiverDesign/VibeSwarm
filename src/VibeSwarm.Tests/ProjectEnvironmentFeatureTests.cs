@@ -208,6 +208,96 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 		Assert.Contains("@playwright/mcp@latest", json);
 	}
 
+	[Fact]
+	public async Task CreateAsync_MultipleEnvironments_NonPrimaryIsPrimary_False_Inserts()
+	{
+		// Regression: HasDefaultValue(false) on IsPrimary caused EF Core to omit
+		// the column from INSERT when the value was false. The DB had no DEFAULT
+		// clause, resulting in a NOT NULL constraint error (500).
+		await using var dbContext = CreateDbContext();
+		var service = CreateProjectService(dbContext);
+
+		var created = await service.CreateAsync(new Project
+		{
+			Name = "Multi Env Project",
+			WorkingPath = "/tmp/multi-env",
+			Environments =
+			[
+				new ProjectEnvironment
+				{
+					Name = "Production",
+					Type = EnvironmentType.Web,
+					Url = "https://prod.example.com",
+					IsPrimary = true,
+					IsEnabled = true
+				},
+				new ProjectEnvironment
+				{
+					Name = "Staging",
+					Type = EnvironmentType.Web,
+					Url = "https://staging.example.com",
+					IsPrimary = false,
+					IsEnabled = true
+				}
+			]
+		});
+
+		var environments = await dbContext.ProjectEnvironments
+			.AsNoTracking()
+			.OrderBy(e => e.SortOrder)
+			.ToListAsync();
+
+		Assert.Equal(2, environments.Count);
+		Assert.True(environments[0].IsPrimary);
+		Assert.False(environments[1].IsPrimary);
+	}
+
+	[Fact]
+	public async Task UpdateAsync_AddSecondEnvironment_NonPrimary_Succeeds()
+	{
+		// Regression: Adding a second environment where IsPrimary = false would
+		// fail on INSERT due to missing DB DEFAULT for the IsPrimary column.
+		await using var dbContext = CreateDbContext();
+		var service = CreateProjectService(dbContext);
+
+		var created = await service.CreateAsync(new Project
+		{
+			Name = "Single Env Project",
+			WorkingPath = "/tmp/single-env",
+			Environments =
+			[
+				new ProjectEnvironment
+				{
+					Name = "Production",
+					Type = EnvironmentType.Web,
+					Url = "https://prod.example.com",
+					IsPrimary = true,
+					IsEnabled = true
+				}
+			]
+		});
+
+		var env = Assert.Single(created.Environments);
+		created.Environments = new List<ProjectEnvironment>
+		{
+			env,
+			new ProjectEnvironment
+			{
+				Name = "Staging",
+				Type = EnvironmentType.Web,
+				Url = "https://staging.example.com",
+				IsPrimary = false,
+				IsEnabled = true
+			}
+		};
+
+		var updated = await service.UpdateAsync(created);
+
+		Assert.Equal(2, updated.Environments.Count);
+		Assert.Single(updated.Environments, e => e.IsPrimary);
+		Assert.Single(updated.Environments, e => !e.IsPrimary);
+	}
+
 	private VibeSwarmDbContext CreateDbContext() => new(_dbOptions);
 
 	private ProjectService CreateProjectService(VibeSwarmDbContext dbContext)
