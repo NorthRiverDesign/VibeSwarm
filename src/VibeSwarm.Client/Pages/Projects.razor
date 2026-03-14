@@ -240,13 +240,13 @@ else
                                                     }
                                                 </button>
                                             </li>
-                                            @if (projectInfo.CurrentBranch != null)
+                                            @if (!string.IsNullOrEmpty(projectInfo.CurrentBranch))
                                             {
                                                 <li>
-                                                    <button class="dropdown-item" @onclick="@(() => PruneBranches(project))"
+                                                    <button class="dropdown-item" @onclick="@(() => ResyncWithGit(project))"
                                                             @onclick:stopPropagation="true">
-                                                        <i class="bi bi-scissors me-2"></i>
-                                                        Prune Branches
+                                                        <i class="bi bi-arrow-repeat me-2"></i>
+                                                        Resync with Git
                                                     </button>
                                                 </li>
                                             }
@@ -571,7 +571,7 @@ else
         _refreshTimer?.Dispose();
     }
 
-    private async Task PruneBranches(Project project)
+    private async Task ResyncWithGit(Project project)
     {
         try
         {
@@ -582,19 +582,25 @@ else
                 return;
             }
 
-            var result = await VersionControlService.FetchAsync(project.WorkingPath, "origin", prune: true);
+            if (ActiveJobs.Any(job => job.ProjectId == project.Id))
+            {
+                NotificationService.ShowWarning("Stop active jobs before resyncing this project.", "Project Busy");
+                return;
+            }
+
+            var result = await VersionControlService.SyncWithOriginAsync(project.WorkingPath, "origin");
             if (result.Success)
             {
-                NotificationService.ShowSuccess($"Branches pruned for {project.Name}.", "Prune Complete");
+                NotificationService.ShowSuccess($"Successfully resynced {project.Name} with Git.", "Resync Complete");
             }
             else
             {
-                NotificationService.ShowError(result.Error ?? "Failed to prune branches.", "Prune Failed");
+                NotificationService.ShowError(result.Error ?? "Failed to resync with git.", "Resync Failed");
             }
         }
         catch (Exception ex)
         {
-            NotificationService.ShowError($"Error pruning branches: {ex.Message}", "Prune Failed");
+            NotificationService.ShowError($"Error resyncing with git: {ex.Message}", "Resync Failed");
         }
     }
 }
