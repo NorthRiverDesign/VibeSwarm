@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Services;
 
@@ -10,12 +11,12 @@ namespace VibeSwarm.Web.Services;
 public class InferenceProviderService : IInferenceProviderService
 {
 	private readonly VibeSwarmDbContext _db;
-	private readonly IInferenceService _inferenceService;
+	private readonly IServiceProvider _serviceProvider;
 
-	public InferenceProviderService(VibeSwarmDbContext db, IInferenceService inferenceService)
+	public InferenceProviderService(VibeSwarmDbContext db, IServiceProvider serviceProvider)
 	{
 		_db = db;
-		_inferenceService = inferenceService;
+		_serviceProvider = serviceProvider;
 	}
 
 	public async Task<IEnumerable<InferenceProvider>> GetAllAsync(CancellationToken ct = default)
@@ -84,7 +85,10 @@ public class InferenceProviderService : IInferenceProviderService
 		var provider = await _db.InferenceProviders.FindAsync([providerId], ct)
 			?? throw new KeyNotFoundException($"Inference provider {providerId} not found");
 
-		var discovered = await _inferenceService.GetAvailableModelsAsync(provider.Endpoint, ct);
+		// Resolve lazily to break circular dependency:
+		// InferenceProviderService -> IInferenceService -> OllamaInferenceService -> IInferenceProviderService
+		var inferenceService = _serviceProvider.GetRequiredService<IInferenceService>();
+		var discovered = await inferenceService.GetAvailableModelsAsync(provider.Endpoint, ct);
 
 		var existingModels = await _db.InferenceModels
 			.Where(m => m.InferenceProviderId == providerId)

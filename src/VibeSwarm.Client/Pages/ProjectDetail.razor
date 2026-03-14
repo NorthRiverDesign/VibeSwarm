@@ -946,17 +946,27 @@ TimeSpan.FromSeconds(10) })
 
     private async Task LoadIdeas()
     {
-        var result = await IdeaService.GetPagedByProjectIdAsync(ProjectId, _ideasPageNumber, IdeasPageSize);
-        _ideasPageNumber = result.PageNumber;
-        Ideas = result.Items;
-        IdeasTotalCount = result.TotalCount;
-        IdeasUnprocessedCount = result.UnprocessedCount;
-        var ideaIdsWithJobs = Ideas
-            .Where(i => i.JobId.HasValue)
-            .Select(i => i.Id)
-            .ToHashSet();
-        ProcessingIdeaIds.RemoveWhere(id => ideaIdsWithJobs.Contains(id) || Ideas.All(i => i.Id != id));
-        IsIdeasProcessingActive = await IdeaService.IsProcessingActiveAsync(ProjectId);
+        try
+        {
+            var result = await IdeaService.GetPagedByProjectIdAsync(ProjectId, _ideasPageNumber, IdeasPageSize);
+            _ideasPageNumber = result.PageNumber;
+            Ideas = result.Items;
+            IdeasTotalCount = result.TotalCount;
+            IdeasUnprocessedCount = result.UnprocessedCount;
+            var ideaIdsWithJobs = Ideas
+                .Where(i => i.JobId.HasValue)
+                .Select(i => i.Id)
+                .ToHashSet();
+            ProcessingIdeaIds.RemoveWhere(id => ideaIdsWithJobs.Contains(id) || Ideas.All(i => i.Id != id));
+            IsIdeasProcessingActive = await IdeaService.IsProcessingActiveAsync(ProjectId);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Failed to load ideas: {ex.Message}");
+            Ideas = new List<Idea>();
+            IdeasTotalCount = 0;
+            IdeasUnprocessedCount = 0;
+        }
     }
 
     private async Task LoadPreviousJobsPage()
