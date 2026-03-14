@@ -12,6 +12,7 @@
 @implements IAsyncDisposable
 @using VibeSwarm.Shared.LocalInference
 @using VibeSwarm.Shared.Models
+@using VibeSwarm.Shared.Services
 @using VibeSwarm.Shared.Utilities
 @using VibeSwarm.Shared.VersionControl
 @using VibeSwarm.Shared.VersionControl.Models
@@ -80,9 +81,9 @@ else
             </button>
         </li>
         <li class="nav-item" role="presentation">
-            <button type="button" class="nav-link @(_activeTab == "changes" ? "active" : "") @(!IsGitRepository || !_hasUncommittedChangesHeader ? "disabled" : "")"
-                    @onclick="@(() => { if (IsGitRepository && _hasUncommittedChangesHeader) { _activeTab = "changes"; _ = LoadChangesTabData(); } })" role="tab"
-                    disabled="@(!IsGitRepository || !_hasUncommittedChangesHeader)">
+            <button type="button" class="nav-link @(_activeTab == "changes" ? "active" : "") @(!IsGitRepository || !HasChangesTabContent ? "disabled" : "")"
+                    @onclick="@(() => { if (IsGitRepository && HasChangesTabContent) { _activeTab = "changes"; _ = LoadChangesTabData(); } })" role="tab"
+                    disabled="@(!IsGitRepository || !HasChangesTabContent)">
                 <i class="bi bi-file-diff me-1"></i>
                 <span>Changes</span>
                 @if (_hasUncommittedChangesHeader && _uncommittedFilesCount > 0)
@@ -144,8 +145,35 @@ else
                 }
                 else if (_changesTabDiffFiles != null && _changesTabDiffFiles.Any())
                 {
+                    @if (_changesTabShowingCommittedDiff && _changesTabCommittedJobs.Any())
+                    {
+                        <div class="alert alert-success py-2 mb-3">
+                            <div class="d-flex align-items-center gap-2 mb-2">
+                                <i class="bi bi-git"></i>
+                                <strong>Showing committed changes from @ShortCommitHash(_changesTabCommittedHash)</strong>
+                            </div>
+                            <div class="d-flex flex-wrap gap-1">
+                                @foreach (var job in _changesTabCommittedJobs.Take(5))
+                                {
+                                    <span class="badge bg-success-subtle text-success border border-success-subtle">
+                                        <i class="bi bi-check-circle me-1"></i>@TruncateForToast(job.Title ?? job.GoalPrompt, 40)
+                                    </span>
+                                }
+                                @if (_changesTabCommittedJobs.Count > 5)
+                                {
+                                    <span class="badge bg-secondary-subtle text-secondary">
+                                        +@(_changesTabCommittedJobs.Count - 5) more
+                                    </span>
+                                }
+                            </div>
+                            <div class="mt-2 small text-body-secondary">
+                                <i class="bi bi-info-circle me-1"></i>The working directory is clean, so this view is using the linked commit diff.
+                            </div>
+                        </div>
+                    }
+
                     @* Pending Jobs Section *@
-                    @if (_changesTabPendingJobs != null && _changesTabPendingJobs.Any())
+                    @if (!_changesTabShowingCommittedDiff && _changesTabPendingJobs != null && _changesTabPendingJobs.Any())
                     {
                         <div class="alert alert-info py-2 mb-3">
                             <div class="d-flex align-items-center gap-2 mb-2">
@@ -252,104 +280,107 @@ else
                         </div>
                     </div>
 
-                    <hr class="my-3" />
-
-                    @* Commit Section *@
-                    <div class="mb-3">
-                        <div class="d-flex align-items-center justify-content-between mb-2">
-                            <label for="changesTabCommitMessage" class="form-label fw-medium mb-0">
-                                <i class="bi bi-chat-square-text me-1"></i>Commit Message
-                            </label>
-                            @if (_changesTabPendingJobs != null && _changesTabPendingJobs.Any() && string.IsNullOrWhiteSpace(_changesTabCommitMessage))
-                            {
-                                <button type="button" class="btn btn-sm btn-primary" @onclick="GenerateChangesTabCommitMessage"
-                                        title="Generate commit message from job summaries">
-                                    <i class="bi bi-magic me-1"></i>Generate
-                                </button>
-                            }
-                        </div>
-                        <textarea class="form-control font-monospace" id="changesTabCommitMessage" @bind="_changesTabCommitMessage"
-                                  @bind:event="oninput" rows="3" placeholder="Enter commit message..."
-                                  disabled="@_isChangesTabCommitting"></textarea>
-                    </div>
-
-                    @if (!string.IsNullOrEmpty(_changesTabCommitError))
+                    @if (!_changesTabShowingCommittedDiff)
                     {
-                        <div class="alert alert-danger py-2">
-                            <i class="bi bi-exclamation-triangle me-1"></i>@_changesTabCommitError
-                        </div>
-                    }
+                        <hr class="my-3" />
 
-                    @* Discard Confirmation *@
-                    @if (_changesTabShowDiscardConfirm)
-                    {
-                        <div class="alert alert-warning py-3">
-                            <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
-                                <div>
-                                    <i class="bi bi-exclamation-triangle me-2"></i>
-                                    <strong>Are you sure?</strong> This will permanently discard all uncommitted changes.
-                                </div>
-                                <div class="d-flex gap-2">
-                                    <button type="button" class="btn btn-secondary btn-sm" @onclick="@(() => _changesTabShowDiscardConfirm = false)">
-                                        Cancel
+                        @* Commit Section *@
+                        <div class="mb-3">
+                            <div class="d-flex align-items-center justify-content-between mb-2">
+                                <label for="changesTabCommitMessage" class="form-label fw-medium mb-0">
+                                    <i class="bi bi-chat-square-text me-1"></i>Commit Message
+                                </label>
+                                @if (_changesTabPendingJobs != null && _changesTabPendingJobs.Any() && string.IsNullOrWhiteSpace(_changesTabCommitMessage))
+                                {
+                                    <button type="button" class="btn btn-sm btn-primary" @onclick="GenerateChangesTabCommitMessage"
+                                            title="Generate commit message from job summaries">
+                                        <i class="bi bi-magic me-1"></i>Generate
                                     </button>
-                                    <button type="button" class="btn btn-danger btn-sm" @onclick="ChangesTabDiscardAll"
-                                            disabled="@_isChangesTabDiscarding">
-                                        @if (_isChangesTabDiscarding)
+                                }
+                            </div>
+                            <textarea class="form-control font-monospace" id="changesTabCommitMessage" @bind="_changesTabCommitMessage"
+                                      @bind:event="oninput" rows="3" placeholder="Enter commit message..."
+                                      disabled="@_isChangesTabCommitting"></textarea>
+                        </div>
+
+                        @if (!string.IsNullOrEmpty(_changesTabCommitError))
+                        {
+                            <div class="alert alert-danger py-2">
+                                <i class="bi bi-exclamation-triangle me-1"></i>@_changesTabCommitError
+                            </div>
+                        }
+
+                        @* Discard Confirmation *@
+                        @if (_changesTabShowDiscardConfirm)
+                        {
+                            <div class="alert alert-warning py-3">
+                                <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+                                    <div>
+                                        <i class="bi bi-exclamation-triangle me-2"></i>
+                                        <strong>Are you sure?</strong> This will permanently discard all uncommitted changes.
+                                    </div>
+                                    <div class="d-flex gap-2">
+                                        <button type="button" class="btn btn-secondary btn-sm" @onclick="@(() => _changesTabShowDiscardConfirm = false)">
+                                            Cancel
+                                        </button>
+                                        <button type="button" class="btn btn-danger btn-sm" @onclick="ChangesTabDiscardAll"
+                                                disabled="@_isChangesTabDiscarding">
+                                            @if (_isChangesTabDiscarding)
+                                            {
+                                                <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                                            }
+                                            Yes, Discard All
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+
+                        @* Action Buttons *@
+                        @if (!_changesTabShowDiscardConfirm)
+                        {
+                            <div class="d-flex flex-column flex-sm-row justify-content-between gap-2">
+                                <button type="button" class="btn btn-danger" @onclick="@(() => _changesTabShowDiscardConfirm = true)"
+                                        disabled="@(_isChangesTabCommitting || _isChangesTabDiscarding)">
+                                    <i class="bi bi-trash me-1"></i>Discard All
+                                </button>
+                                <div class="d-flex gap-2">
+                                    <button type="button" class="btn btn-outline-primary" @onclick="ChangesTabCommitOnly"
+                                            disabled="@(_isChangesTabCommitting || _isChangesTabDiscarding || string.IsNullOrWhiteSpace(_changesTabCommitMessage))">
+                                        @if (_isChangesTabCommitting && _isChangesTabCommitOnly)
                                         {
                                             <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                                            <span>Committing...</span>
                                         }
-                                        Yes, Discard All
+                                        else
+                                        {
+                                            <i class="bi bi-check-circle me-1"></i>
+                                            <span>Commit Only</span>
+                                        }
+                                    </button>
+                                    <button type="button" class="btn btn-primary" @onclick="ChangesTabCommitAndPush"
+                                            disabled="@(_isChangesTabCommitting || _isChangesTabDiscarding || string.IsNullOrWhiteSpace(_changesTabCommitMessage))">
+                                        @if (_isChangesTabCommitting && !_isChangesTabCommitOnly)
+                                        {
+                                            <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                                            <span>Pushing...</span>
+                                        }
+                                        else
+                                        {
+                                            <i class="bi bi-cloud-arrow-up me-1"></i>
+                                            <span>Commit & Push</span>
+                                        }
                                     </button>
                                 </div>
                             </div>
-                        </div>
-                    }
-
-                    @* Action Buttons *@
-                    @if (!_changesTabShowDiscardConfirm)
-                    {
-                        <div class="d-flex flex-column flex-sm-row justify-content-between gap-2">
-                            <button type="button" class="btn btn-danger" @onclick="@(() => _changesTabShowDiscardConfirm = true)"
-                                    disabled="@(_isChangesTabCommitting || _isChangesTabDiscarding)">
-                                <i class="bi bi-trash me-1"></i>Discard All
-                            </button>
-                            <div class="d-flex gap-2">
-                                <button type="button" class="btn btn-outline-primary" @onclick="ChangesTabCommitOnly"
-                                        disabled="@(_isChangesTabCommitting || _isChangesTabDiscarding || string.IsNullOrWhiteSpace(_changesTabCommitMessage))">
-                                    @if (_isChangesTabCommitting && _isChangesTabCommitOnly)
-                                    {
-                                        <span class="spinner-border spinner-border-sm me-1" role="status"></span>
-                                        <span>Committing...</span>
-                                    }
-                                    else
-                                    {
-                                        <i class="bi bi-check-circle me-1"></i>
-                                        <span>Commit Only</span>
-                                    }
-                                </button>
-                                <button type="button" class="btn btn-primary" @onclick="ChangesTabCommitAndPush"
-                                        disabled="@(_isChangesTabCommitting || _isChangesTabDiscarding || string.IsNullOrWhiteSpace(_changesTabCommitMessage))">
-                                    @if (_isChangesTabCommitting && !_isChangesTabCommitOnly)
-                                    {
-                                        <span class="spinner-border spinner-border-sm me-1" role="status"></span>
-                                        <span>Pushing...</span>
-                                    }
-                                    else
-                                    {
-                                        <i class="bi bi-cloud-arrow-up me-1"></i>
-                                        <span>Commit & Push</span>
-                                    }
-                                </button>
-                            </div>
-                        </div>
+                        }
                     }
                 }
                 else
                 {
                     <div class="text-center py-5 text-body-secondary">
                         <i class="bi bi-check-circle fs-1 d-block mb-2"></i>
-                        <p class="mb-0">No uncommitted changes. Your working directory is clean.</p>
+                        <p class="mb-0">@(_changesTabEmptyStateMessage ?? "No project changes are available to show.")</p>
                     </div>
                 }
             </div>
@@ -459,6 +490,10 @@ else
     private bool _isLoadingChangesTab;
     private List<DiffFile> _changesTabDiffFiles = new();
     private List<Job> _changesTabPendingJobs = new();
+    private List<Job> _changesTabCommittedJobs = new();
+    private bool _changesTabShowingCommittedDiff;
+    private string? _changesTabCommittedHash;
+    private string? _changesTabEmptyStateMessage;
     private string _changesTabCommitMessage = string.Empty;
     private string? _changesTabCommitError;
     private bool _isChangesTabCommitting;
@@ -467,6 +502,7 @@ else
     private bool _changesTabShowDiscardConfirm;
     private HashSet<int> _changesTabExpandedItems = new();
     private bool _changesTabAllExpanded => _changesTabDiffFiles.Count > 0 && _changesTabExpandedItems.Count == _changesTabDiffFiles.Count;
+    private bool HasChangesTabContent => IsGitRepository && GetProjectChangesSelection().HasChanges;
 
     // Prune state
     private bool _isPruningBranches { get; set; }
@@ -2124,22 +2160,42 @@ TimeSpan.FromSeconds(10) })
         _isLoadingChangesTab = true;
         _changesTabDiffFiles = new List<DiffFile>();
         _changesTabPendingJobs = new List<Job>();
+        _changesTabCommittedJobs = new List<Job>();
+        _changesTabShowingCommittedDiff = false;
+        _changesTabCommittedHash = null;
+        _changesTabEmptyStateMessage = null;
         _changesTabCommitError = null;
         _changesTabExpandedItems.Clear();
         StateHasChanged();
 
         try
         {
-            var diffOutput = await VersionControlService.GetWorkingDirectoryDiffAsync(Project.WorkingPath);
+            var changeSelection = GetProjectChangesSelection();
+            string? diffOutput = null;
+
+            if (changeSelection.SourceType == ProjectChangesSourceType.WorkingDirectory)
+            {
+                diffOutput = await VersionControlService.GetWorkingDirectoryDiffAsync(Project.WorkingPath);
+                _changesTabPendingJobs = changeSelection.LinkedJobs.ToList();
+                _changesTabEmptyStateMessage = "No uncommitted changes. Your working directory is clean.";
+            }
+            else if (changeSelection.SourceType == ProjectChangesSourceType.Commit)
+            {
+                _changesTabShowingCommittedDiff = true;
+                _changesTabCommittedHash = changeSelection.CommitHash;
+                _changesTabCommittedJobs = changeSelection.LinkedJobs.ToList();
+                diffOutput = await LoadCommittedChangesDiffAsync(changeSelection);
+                _changesTabEmptyStateMessage = $"No diff is available for commit {ShortCommitHash(changeSelection.CommitHash)}.";
+            }
+            else
+            {
+                _changesTabEmptyStateMessage = "No project changes are available to show.";
+            }
+
             if (!string.IsNullOrEmpty(diffOutput))
             {
                 _changesTabDiffFiles = ParseGitDiff(diffOutput);
             }
-
-            _changesTabPendingJobs = Jobs
-                .Where(j => j.Status == JobStatus.Completed && string.IsNullOrEmpty(j.GitCommitHash))
-                .OrderByDescending(j => j.CompletedAt ?? j.StartedAt)
-                .ToList();
         }
         catch (Exception ex)
         {
@@ -2150,6 +2206,46 @@ TimeSpan.FromSeconds(10) })
             _isLoadingChangesTab = false;
             StateHasChanged();
         }
+    }
+
+    private ProjectChangesSelection GetProjectChangesSelection()
+        => ProjectChangesSectionResolver.Resolve(Jobs, _hasUncommittedChangesHeader);
+
+    private async Task<string?> LoadCommittedChangesDiffAsync(ProjectChangesSelection changeSelection)
+    {
+        if (Project == null || string.IsNullOrEmpty(Project.WorkingPath) || string.IsNullOrWhiteSpace(changeSelection.CommitHash))
+        {
+            return null;
+        }
+
+        if (!string.IsNullOrWhiteSpace(changeSelection.BaseCommit) &&
+            !string.Equals(changeSelection.BaseCommit, changeSelection.CommitHash, StringComparison.OrdinalIgnoreCase))
+        {
+            var rangeDiff = await VersionControlService.GetCommitRangeDiffAsync(
+                Project.WorkingPath,
+                changeSelection.BaseCommit,
+                changeSelection.CommitHash);
+
+            if (!string.IsNullOrWhiteSpace(rangeDiff))
+            {
+                return rangeDiff;
+            }
+        }
+
+        return await VersionControlService.GetCommitRangeDiffAsync(
+            Project.WorkingPath,
+            $"{changeSelection.CommitHash}^",
+            changeSelection.CommitHash);
+    }
+
+    private static string ShortCommitHash(string? commitHash)
+    {
+        if (string.IsNullOrWhiteSpace(commitHash))
+        {
+            return "unknown commit";
+        }
+
+        return commitHash[..Math.Min(7, commitHash.Length)];
     }
 
     private void ToggleChangesTabExpanded(int index)
