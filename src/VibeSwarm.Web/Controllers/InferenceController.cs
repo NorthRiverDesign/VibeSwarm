@@ -64,55 +64,7 @@ public class InferenceController : ControllerBase
 		var provider = await _providerService.GetByIdAsync(id, ct);
 		if (provider == null) return NotFound();
 
-		var discovered = await _inferenceService.GetAvailableModelsAsync(provider.Endpoint, ct);
-
-		// Sync discovered models into the database
-		var dbContext = HttpContext.RequestServices.GetRequiredService<VibeSwarmDbContext>();
-		var existingModels = await dbContext.InferenceModels
-			.Where(m => m.InferenceProviderId == id)
-			.ToListAsync(ct);
-
-		var discoveredNames = discovered.Select(d => d.Name).ToHashSet();
-		var existingNames = existingModels.Select(m => m.ModelId).ToHashSet();
-
-		// Mark models no longer available
-		foreach (var model in existingModels.Where(m => !discoveredNames.Contains(m.ModelId)))
-			model.IsAvailable = false;
-
-		// Add or update discovered models
-		foreach (var disc in discovered)
-		{
-			var existing = existingModels.FirstOrDefault(m => m.ModelId == disc.Name);
-			if (existing != null)
-			{
-				existing.DisplayName = disc.DisplayName;
-				existing.ParameterSize = disc.ParameterSize;
-				existing.Family = disc.Family;
-				existing.QuantizationLevel = disc.QuantizationLevel;
-				existing.SizeBytes = disc.SizeBytes;
-				existing.IsAvailable = true;
-				existing.UpdatedAt = DateTime.UtcNow;
-			}
-			else
-			{
-				dbContext.InferenceModels.Add(new InferenceModel
-				{
-					InferenceProviderId = id,
-					ModelId = disc.Name,
-					DisplayName = disc.DisplayName,
-					ParameterSize = disc.ParameterSize,
-					Family = disc.Family,
-					QuantizationLevel = disc.QuantizationLevel,
-					SizeBytes = disc.SizeBytes,
-					IsAvailable = true
-				});
-			}
-		}
-
-		await dbContext.SaveChangesAsync(ct);
-
-		var updatedModels = await _providerService.GetModelsAsync(id, ct);
-		return Ok(updatedModels);
+		return Ok(await _providerService.RefreshModelsAsync(id, ct));
 	}
 
 	[HttpPut("models/{id:guid}/task")]

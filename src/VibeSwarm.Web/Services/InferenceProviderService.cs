@@ -10,8 +10,13 @@ namespace VibeSwarm.Web.Services;
 public class InferenceProviderService : IInferenceProviderService
 {
 	private readonly VibeSwarmDbContext _db;
+	private readonly IInferenceService _inferenceService;
 
-	public InferenceProviderService(VibeSwarmDbContext db) => _db = db;
+	public InferenceProviderService(VibeSwarmDbContext db, IInferenceService inferenceService)
+	{
+		_db = db;
+		_inferenceService = inferenceService;
+	}
 
 	public async Task<IEnumerable<InferenceProvider>> GetAllAsync(CancellationToken ct = default)
 		=> await _db.InferenceProviders
@@ -73,6 +78,57 @@ public class InferenceProviderService : IInferenceProviderService
 			.Where(m => m.InferenceProviderId == providerId)
 			.OrderBy(m => m.ModelId)
 			.ToListAsync(ct);
+
+	public async Task<IEnumerable<InferenceModel>> RefreshModelsAsync(Guid providerId, CancellationToken ct = default)
+	{
+		var provider = await _db.InferenceProviders.FindAsync([providerId], ct)
+			?? throw new KeyNotFoundException($"Inference provider {providerId} not found");
+
+		var discovered = await _inferenceService.GetAvailableModelsAsync(provider.Endpoint, ct);
+
+		var existingModels = await _db.InferenceModels
+			.Where(m => m.InferenceProviderId == providerId)
+			.ToListAsync(ct);
+
+		var discoveredNames = discovered.Select(d => d.Name).ToHashSet();
+
+		// Mark models no longer available
+		foreach (var model in existingModels.Where(m => !discoveredNames.Contains(m.ModelId)))
+			model.IsAvailable = false;
+
+		// Add or update discovered models
+		foreach (var disc in discovered)
+		{
+			var existing = existingModels.FirstOrDefault(m => m.ModelId == disc.Name);
+			if (existing != null)
+			{
+				existing.DisplayName = disc.DisplayName;
+				existing.ParameterSize = disc.ParameterSize;
+				existing.Family = disc.Family;
+				existing.QuantizationLevel = disc.QuantizationLevel;
+				existing.SizeBytes = disc.SizeBytes;
+				existing.IsAvailable = true;
+				existing.UpdatedAt = DateTime.UtcNow;
+			}
+			else
+			{
+				_db.InferenceModels.Add(new InferenceModel
+				{
+					InferenceProviderId = providerId,
+					ModelId = disc.Name,
+					DisplayName = disc.DisplayName,
+					ParameterSize = disc.ParameterSize,
+					Family = disc.Family,
+					QuantizationLevel = disc.QuantizationLevel,
+					SizeBytes = disc.SizeBytes,
+					IsAvailable = true
+				});
+			}
+		}
+
+		await _db.SaveChangesAsync(ct);
+		return await GetModelsAsync(providerId, ct);
+	}
 
 	public async Task SetModelForTaskAsync(Guid providerId, string modelId, string taskType, CancellationToken ct = default)
 	{
