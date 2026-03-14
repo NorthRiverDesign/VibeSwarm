@@ -618,7 +618,85 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		Assert.Equal(2, page.PageNumber);
 		Assert.Equal(5, page.TotalCount);
 		Assert.Equal(3, page.ActiveCount);
+		Assert.Equal(1, page.CompletedCount);
 		Assert.Equal(new[] { "Job 3", "Job 2" }, page.Items.Select(job => job.Title).ToArray());
+	}
+
+	[Fact]
+	public async Task DeleteCompletedByProjectIdAsync_RemovesOnlyCompletedJobsForProject()
+	{
+		await using var dbContext = CreateDbContext();
+		var project = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Cleanup Jobs",
+			WorkingPath = "/tmp/cleanup-jobs"
+		};
+		var otherProject = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Other Project",
+			WorkingPath = "/tmp/other-project"
+		};
+		var provider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Copilot",
+			Type = ProviderType.Copilot,
+			IsEnabled = true,
+			IsDefault = true
+		};
+
+		dbContext.Projects.AddRange(project, otherProject);
+		dbContext.Providers.Add(provider);
+		dbContext.Jobs.AddRange(
+			new Job
+			{
+				Id = Guid.NewGuid(),
+				ProjectId = project.Id,
+				ProviderId = provider.Id,
+				GoalPrompt = "Completed job 1",
+				Status = JobStatus.Completed,
+				CreatedAt = DateTime.UtcNow.AddMinutes(-3)
+			},
+			new Job
+			{
+				Id = Guid.NewGuid(),
+				ProjectId = project.Id,
+				ProviderId = provider.Id,
+				GoalPrompt = "Completed job 2",
+				Status = JobStatus.Completed,
+				CreatedAt = DateTime.UtcNow.AddMinutes(-2)
+			},
+			new Job
+			{
+				Id = Guid.NewGuid(),
+				ProjectId = project.Id,
+				ProviderId = provider.Id,
+				GoalPrompt = "Processing job",
+				Status = JobStatus.Processing,
+				CreatedAt = DateTime.UtcNow.AddMinutes(-1)
+			},
+			new Job
+			{
+				Id = Guid.NewGuid(),
+				ProjectId = otherProject.Id,
+				ProviderId = provider.Id,
+				GoalPrompt = "Other project completed job",
+				Status = JobStatus.Completed,
+				CreatedAt = DateTime.UtcNow
+			});
+		await dbContext.SaveChangesAsync();
+
+		var serviceProvider = new ServiceCollection().BuildServiceProvider();
+		var jobService = new JobService(dbContext, serviceProvider);
+
+		var deletedCount = await jobService.DeleteCompletedByProjectIdAsync(project.Id);
+
+		Assert.Equal(2, deletedCount);
+		Assert.Equal(2, await dbContext.Jobs.CountAsync());
+		Assert.DoesNotContain(await dbContext.Jobs.Where(j => j.ProjectId == project.Id).ToListAsync(), job => job.Status == JobStatus.Completed);
+		Assert.Single(await dbContext.Jobs.Where(j => j.ProjectId == otherProject.Id && j.Status == JobStatus.Completed).ToListAsync());
 	}
 
 	[Fact]

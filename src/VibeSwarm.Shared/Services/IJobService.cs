@@ -98,6 +98,14 @@ public interface IJobService
     Task<int> CancelAllByProjectIdAsync(Guid projectId, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Deletes all completed jobs for a project.
+    /// </summary>
+    /// <param name="projectId">The project ID</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>The number of jobs deleted</returns>
+    Task<int> DeleteCompletedByProjectIdAsync(Guid projectId, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Bypasses the state machine and directly sets a non-terminal job to Failed.
     /// Use as a last resort for jobs stuck in active states with no recovery path.
     /// </summary>

@@ -176,6 +176,13 @@ public class JobsController : ControllerBase
         return Ok(new { Cancelled = count });
     }
 
+    [HttpDelete("project/{projectId:guid}/completed")]
+    public async Task<IActionResult> DeleteCompletedByProject(Guid projectId, CancellationToken ct)
+    {
+        var count = await _jobService.DeleteCompletedByProjectIdAsync(projectId, ct);
+        return Ok(new { Deleted = count });
+    }
+
     // Request DTOs
     public record UpdateStatusRequest(string Status, string? Output, string? ErrorMessage);
     public record UpdateResultRequest(string Status, string? SessionId, string? Output, string? ErrorMessage, int? InputTokens, int? OutputTokens, decimal? CostUsd);

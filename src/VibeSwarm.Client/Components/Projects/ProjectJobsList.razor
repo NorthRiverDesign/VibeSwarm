@@ -6,16 +6,54 @@
 		<h5 class="mb-0 fw-semibold">Jobs</h5>
 		<div class="d-flex align-items-center gap-2">
 			<span class="badge bg-secondary">@TotalJobsCount</span>
-			@if (HasActiveJobs)
+			@if (HasBulkActions)
 			{
-				<button type="button" class="btn btn-sm btn-danger" @onclick="HandleCancelAll"
-						disabled="@_isCancellingAll" title="Cancel all queued and active jobs">
-					@if (_isCancellingAll)
-					{
-						<span class="spinner-border spinner-border-sm me-1" role="status"></span>
-					}
-					<i class="bi bi-x-octagon me-1"></i>Cancel All
-				</button>
+				<div class="dropdown">
+					<button type="button" class="btn btn-sm btn-secondary dropdown-toggle" data-bs-toggle="dropdown"
+							aria-expanded="false" title="More job actions">
+						<i class="bi bi-three-dots me-1"></i>More
+					</button>
+					<ul class="dropdown-menu dropdown-menu-end">
+						@if (HasActiveJobs)
+						{
+							<li>
+								<button type="button" class="dropdown-item text-danger" @onclick="HandleCancelAll"
+										disabled="@IsBulkActionInProgress" title="Cancel all queued and active jobs">
+									@if (_isCancellingAll)
+									{
+										<span class="spinner-border spinner-border-sm me-2" role="status"></span>
+									}
+									else
+									{
+										<i class="bi bi-x-octagon me-2"></i>
+									}
+									Cancel All
+								</button>
+							</li>
+						}
+						@if (HasActiveJobs && HasCompletedJobs)
+						{
+							<li><hr class="dropdown-divider"></li>
+						}
+						@if (HasCompletedJobs)
+						{
+							<li>
+								<button type="button" class="dropdown-item text-danger" @onclick="HandleDeleteCompleted"
+										disabled="@IsBulkActionInProgress" title="Delete completed jobs for this project">
+									@if (_isDeletingCompleted)
+									{
+										<span class="spinner-border spinner-border-sm me-2" role="status"></span>
+									}
+									else
+									{
+										<i class="bi bi-trash me-2"></i>
+									}
+									Delete Completed Jobs
+								</button>
+							</li>
+						}
+					</ul>
+				</div>
 			}
 			<button type="button" class="btn btn-sm btn-primary" @onclick="() => OnCreateJob.InvokeAsync()"
 					title="@(HasActiveJobs ? "Create a new job. It will be queued behind the current run." : "Create a new job")">
@@ -181,6 +219,9 @@
 	public bool HasActiveJobs { get; set; }
 
 	[Parameter]
+	public bool HasCompletedJobs { get; set; }
+
+	[Parameter]
 	public EventCallback<Guid> OnDeleteJob { get; set; }
 
 	[Parameter]
@@ -195,13 +236,27 @@
 	[Parameter]
 	public EventCallback OnCancelAll { get; set; }
 
+	[Parameter]
+	public EventCallback OnDeleteCompleted { get; set; }
+
 	private bool _isCancellingAll;
+	private bool _isDeletingCompleted;
+
+	private bool HasBulkActions => HasActiveJobs || HasCompletedJobs;
+	private bool IsBulkActionInProgress => _isCancellingAll || _isDeletingCompleted;
 
 	private async Task HandleCancelAll()
 	{
 		_isCancellingAll = true;
 		await OnCancelAll.InvokeAsync();
 		_isCancellingAll = false;
+	}
+
+	private async Task HandleDeleteCompleted()
+	{
+		_isDeletingCompleted = true;
+		await OnDeleteCompleted.InvokeAsync();
+		_isDeletingCompleted = false;
 	}
 
 	private static string GetJobDisplayTitle(Job job)

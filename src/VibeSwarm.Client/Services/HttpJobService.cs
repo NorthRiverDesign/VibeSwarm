@@ -165,8 +165,16 @@ public class HttpJobService : IJobService
     {
         var response = await _http.PostAsync($"/api/jobs/project/{projectId}/cancel-all", null, ct);
         if (!response.IsSuccessStatusCode) return 0;
-        var result = await response.Content.ReadFromJsonAsync<CancelAllResponse>(ct);
+        var result = await response.Content.ReadFromJsonAsync<JobBulkActionResponse>(ct);
         return result?.Cancelled ?? 0;
+    }
+
+    public async Task<int> DeleteCompletedByProjectIdAsync(Guid projectId, CancellationToken ct = default)
+    {
+        var response = await _http.DeleteAsync($"/api/jobs/project/{projectId}/completed", ct);
+        if (!response.IsSuccessStatusCode) return 0;
+        var result = await response.Content.ReadFromJsonAsync<JobBulkActionResponse>(ct);
+        return result?.Deleted ?? 0;
     }
 
     private class InteractionInfo
@@ -176,8 +184,9 @@ public class HttpJobService : IJobService
         public string? Choices { get; set; }
     }
 
-    private class CancelAllResponse
+    private class JobBulkActionResponse
     {
         public int Cancelled { get; set; }
+        public int Deleted { get; set; }
     }
 }

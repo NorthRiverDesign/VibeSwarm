@@ -119,9 +119,11 @@ else
         {
             <div class="tab-pane fade show active">
                 <ProjectJobsList Jobs="@PagedJobs" TotalJobsCount="@JobsTotalCount" CurrentPage="@_jobsPageNumber"
-                                 PageSize="@ProjectJobsPageSize" IsPageLoading="@_isLoadingJobsPage" HasActiveJobs="@HasActiveJobs"
-                                 OnDeleteJob="DeleteJob" OnCreateJob="ShowCreateJobModal" OnPreviousPage="LoadPreviousJobsPage"
-                                 OnNextPage="LoadNextJobsPage" OnCancelAll="CancelAllJobs" />
+                                  PageSize="@ProjectJobsPageSize" IsPageLoading="@_isLoadingJobsPage" HasActiveJobs="@HasActiveJobs"
+                                  HasCompletedJobs="@HasCompletedJobs"
+                                  OnDeleteJob="DeleteJob" OnCreateJob="ShowCreateJobModal" OnPreviousPage="LoadPreviousJobsPage"
+                                  OnNextPage="LoadNextJobsPage" OnCancelAll="CancelAllJobs"
+                                  OnDeleteCompleted="DeleteCompletedJobs" />
             </div>
         }
         @if (_activeTab == "environments")
@@ -537,6 +539,7 @@ else
     private int IdeasTotalCount { get; set; }
     private int IdeasUnprocessedCount { get; set; }
     private int ProjectActiveJobsCount { get; set; }
+    private int ProjectCompletedJobsCount { get; set; }
     private bool _isAddingIdea { get; set; }
     private bool IsIdeasProcessingActive { get; set; }
     private bool _isTogglingIdeasProcessing { get; set; }
@@ -550,6 +553,7 @@ else
     private bool _hasLocalInference { get; set; }
 
     private bool HasActiveJobs => ProjectActiveJobsCount > 0;
+    private bool HasCompletedJobs => ProjectCompletedJobsCount > 0;
 
     // SignalR connection
     private HubConnection? _hubConnection;
@@ -881,6 +885,7 @@ TimeSpan.FromSeconds(10) })
             _jobsPageNumber = result.PageNumber;
             PagedJobs = result.Items;
             JobsTotalCount = result.TotalCount;
+            ProjectCompletedJobsCount = result.CompletedCount;
         }
     }
 
@@ -974,6 +979,15 @@ TimeSpan.FromSeconds(10) })
 
         _jobsPageNumber++;
         await RefreshProjectJobsPage();
+    }
+
+    private void ClampJobsPageNumber(int totalJobsCount)
+    {
+        var maxPage = Math.Max(1, (int)Math.Ceiling(totalJobsCount / (double)ProjectJobsPageSize));
+        if (_jobsPageNumber > maxPage)
+        {
+            _jobsPageNumber = maxPage;
+        }
     }
 
     private async Task RefreshProjectJobsPage()
@@ -1553,16 +1567,35 @@ TimeSpan.FromSeconds(10) })
         try
         {
             await JobService.DeleteAsync(jobId);
-            if ((_jobsPageNumber - 1) * ProjectJobsPageSize >= Math.Max(JobsTotalCount - 1, 0) && _jobsPageNumber > 1)
-            {
-                _jobsPageNumber--;
-            }
+            ClampJobsPageNumber(Math.Max(JobsTotalCount - 1, 0));
             await RefreshJobs();
             NotificationService.ShowSuccess("Job deleted successfully.");
         }
         catch (Exception ex)
         {
             NotificationService.ShowError($"Error deleting job: {ex.Message}");
+        }
+    }
+
+    private async Task DeleteCompletedJobs()
+    {
+        try
+        {
+            var count = await JobService.DeleteCompletedByProjectIdAsync(ProjectId);
+            if (count > 0)
+            {
+                ClampJobsPageNumber(Math.Max(JobsTotalCount - count, 0));
+                await RefreshJobs();
+                NotificationService.ShowSuccess($"Deleted {count} completed job(s).");
+            }
+            else
+            {
+                NotificationService.ShowInfo("No completed jobs to delete.");
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.ShowError($"Error deleting completed jobs: {ex.Message}");
         }
     }
 

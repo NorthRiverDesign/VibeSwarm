@@ -119,6 +119,7 @@ public class JobService : IJobService
                 j.Status == JobStatus.Started ||
                 j.Status == JobStatus.Processing ||
                 j.Status == JobStatus.Paused, cancellationToken),
+            CompletedCount = await baseQuery.CountAsync(j => j.Status == JobStatus.Completed, cancellationToken),
             Items = await baseQuery
                 .Include(j => j.Provider)
                 .OrderByDescending(j => j.CreatedAt)
@@ -965,6 +966,39 @@ public class JobService : IJobService
         _jobProcessingService?.TriggerProcessing();
 
         return jobs.Count;
+    }
+
+    public async Task<int> DeleteCompletedByProjectIdAsync(Guid projectId, CancellationToken cancellationToken = default)
+    {
+        var jobs = await _dbContext.Jobs
+            .Where(j => j.ProjectId == projectId && j.Status == JobStatus.Completed)
+            .ToListAsync(cancellationToken);
+
+        if (jobs.Count == 0)
+        {
+            return 0;
+        }
+
+        var deletedJobs = jobs
+            .Select(job => new { job.Id, job.ProjectId })
+            .ToList();
+
+        _dbContext.Jobs.RemoveRange(jobs);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        if (_jobUpdateService != null)
+        {
+            foreach (var job in deletedJobs)
+            {
+                try
+                {
+                    await _jobUpdateService.NotifyJobDeleted(job.Id, job.ProjectId);
+                }
+                catch { }
+            }
+        }
+
+        return deletedJobs.Count;
     }
 
     private async Task InitializeExecutionPlanAsync(Job job, CancellationToken cancellationToken)
