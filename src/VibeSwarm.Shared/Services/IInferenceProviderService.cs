@@ -20,6 +20,11 @@ public interface IInferenceProviderService
 	Task<IEnumerable<InferenceModel>> GetModelsAsync(Guid providerId, CancellationToken ct = default);
 
 	/// <summary>
+	/// Refreshes models from the provider API and syncs them to storage.
+	/// </summary>
+	Task<IEnumerable<InferenceModel>> RefreshModelsAsync(Guid providerId, CancellationToken ct = default);
+
+	/// <summary>
 	/// Assigns a model to a specific task type.
 	/// </summary>
 	Task SetModelForTaskAsync(Guid providerId, string modelId, string taskType, CancellationToken ct = default);

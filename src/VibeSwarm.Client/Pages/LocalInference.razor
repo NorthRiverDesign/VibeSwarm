@@ -1,0 +1,442 @@
+@page "/local-inference"
+@attribute [Authorize]
+@inject IInferenceProviderService InferenceProviderService
+@inject IInferenceService InferenceService
+@inject NotificationService NotificationService
+
+<PageHeader Title="Local Inference" Subtitle="Manage your on-device inference provider and models" />
+
+<div class="card">
+<div class="card-header bg-body-secondary d-flex align-items-center justify-content-between flex-wrap gap-2">
+<h5 class="mb-0 fw-semibold">
+<i class="bi bi-cpu me-2"></i>Local Inference
+</h5>
+@if (_inferenceProvider != null)
+{
+<div class="d-flex align-items-center gap-2">
+@if (_inferenceHealthy)
+{
+<span class="badge bg-success-subtle text-success-emphasis">
+<i class="bi bi-check-circle me-1"></i>Connected
+</span>
+}
+else
+{
+<span class="badge bg-danger-subtle text-danger-emphasis">
+<i class="bi bi-x-circle me-1"></i>Disconnected
+</span>
+}
+</div>
+}
+</div>
+<div class="card-body">
+@if (_isLoadingInference)
+{
+<LoadingSpinner />
+}
+else if (_inferenceProvider == null)
+{
+<div class="text-center py-4">
+<i class="bi bi-cpu display-4 text-body-secondary mb-3 d-block"></i>
+<p class="text-body-secondary mb-3">
+No local inference provider configured. Set up Ollama or another local
+inference provider for lightweight AI tasks like generating commit messages
+and summarization.
+</p>
+<button class="btn btn-primary" @onclick="SetupInferenceProvider">
+<i class="bi bi-plus-lg me-1"></i>Set Up Local Inference
+</button>
+</div>
+}
+else
+{
+<div class="row g-3">
+<div class="col-12 col-md-6">
+<label for="inferenceProviderName" class="form-label">Provider Name</label>
+<input type="text" id="inferenceProviderName" class="form-control"
+   @bind="_inferenceProvider.Name" />
+</div>
+<div class="col-12 col-md-6">
+<label for="inferenceProviderType" class="form-label">Provider Type</label>
+<select id="inferenceProviderType" class="form-select" @bind="_inferenceProvider.ProviderType">
+@foreach (var type in Enum.GetValues<InferenceProviderType>())
+{
+<option value="@type">@type</option>
+}
+</select>
+</div>
+<div class="col-12">
+<label for="inferenceEndpoint" class="form-label">Endpoint URL</label>
+<div class="input-group">
+<input type="url" id="inferenceEndpoint" class="form-control font-monospace"
+   @bind="_inferenceProvider.Endpoint" placeholder="http://localhost:11434" />
+<button type="button" class="btn btn-secondary" @onclick="TestInferenceConnection"
+disabled="@_isTestingInference" title="Test Connection">
+@if (_isTestingInference)
+{
+<span class="spinner-border spinner-border-sm" role="status"></span>
+}
+else
+{
+<i class="bi bi-plug"></i>
+}
+</button>
+</div>
+</div>
+<div class="col-12 col-md-8">
+<label for="inferenceDefaultModel" class="form-label">Default Model</label>
+<div class="input-group">
+<select id="inferenceDefaultModel" class="form-select" @bind="_selectedModelId">
+<option value="">-- Select a model --</option>
+@foreach (var model in _inferenceModels.Where(m => m.IsAvailable))
+{
+<option value="@model.ModelId">
+@(model.DisplayName ?? model.ModelId)
+@if (!string.IsNullOrEmpty(model.ParameterSize))
+{
+@($" ({model.ParameterSize})")
+}
+</option>
+}
+</select>
+<button type="button" class="btn btn-secondary" @onclick="RefreshInferenceModels"
+disabled="@_isRefreshingModels" title="Refresh models from provider">
+@if (_isRefreshingModels)
+{
+<span class="spinner-border spinner-border-sm" role="status"></span>
+}
+else
+{
+<i class="bi bi-arrow-clockwise"></i>
+}
+</button>
+</div>
+@if (!_inferenceModels.Any())
+{
+<div class="form-text text-warning">
+No models found. Click refresh to discover models from the provider.
+</div>
+}
+</div>
+<div class="col-12 col-md-4 d-flex align-items-end">
+<div class="form-check form-switch">
+<input class="form-check-input" type="checkbox" id="inferenceEnabled"
+   @bind="_inferenceProvider.IsEnabled" />
+<label class="form-check-label" for="inferenceEnabled">Enabled</label>
+</div>
+</div>
+</div>
+
+<hr />
+
+<div class="d-flex flex-column flex-sm-row gap-2">
+<button type="button" class="btn btn-primary" @onclick="SaveInferenceProvider"
+disabled="@_isSavingInference">
+@if (_isSavingInference)
+{
+<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+<span>Saving...</span>
+}
+else
+{
+<i class="bi bi-check-lg me-1"></i>
+<span>Save</span>
+}
+</button>
+<button type="button" class="btn btn-danger" @onclick="DeleteInferenceProvider">
+<i class="bi bi-trash me-1"></i>Remove
+</button>
+</div>
+}
+</div>
+</div>
+
+@if (_inferenceProvider != null)
+{
+<div class="card mt-3">
+<div class="card-header bg-body-secondary">
+<h5 class="mb-0 fw-semibold">
+<i class="bi bi-chat-square-dots me-2"></i>Test Inference
+</h5>
+</div>
+<div class="card-body">
+<div class="mb-3">
+<label for="testPrompt" class="form-label">Prompt</label>
+<textarea id="testPrompt" class="form-control font-monospace" rows="3"
+  @bind="_testPrompt" placeholder="Enter a test prompt..."></textarea>
+</div>
+<button type="button" class="btn btn-primary"
+@onclick="TestInferenceGeneration"
+disabled="@(_isTesting || string.IsNullOrWhiteSpace(_testPrompt))">
+@if (_isTesting)
+{
+<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+<span>Sending...</span>
+}
+else
+{
+<i class="bi bi-send me-1"></i>
+<span>Send</span>
+}
+</button>
+@if (_testResponse != null)
+{
+<hr />
+@if (_testResponse.Success)
+{
+<div class="d-flex flex-wrap gap-3 small text-body-secondary mb-2">
+@if (!string.IsNullOrEmpty(_testResponse.ModelUsed))
+{
+<span><i class="bi bi-cpu me-1"></i>@_testResponse.ModelUsed</span>
+}
+@if (_testResponse.DurationMs.HasValue)
+{
+<span><i class="bi bi-clock me-1"></i>@((_testResponse.DurationMs.Value / 1000.0).ToString("F2"))s</span>
+}
+@if (_testResponse.CompletionTokens.HasValue)
+{
+<span><i class="bi bi-hash me-1"></i>@_testResponse.CompletionTokens tokens</span>
+}
+</div>
+<pre class="p-3 rounded bg-body-secondary small mb-0" style="white-space:pre-wrap;word-break:break-word;">@_testResponse.Response</pre>
+}
+else
+{
+<Alert Type="Alert.AlertType.Danger" Message="@(_testResponse.Error ?? "An unknown error occurred.")" />
+}
+}
+</div>
+</div>
+}
+
+@code {
+private InferenceProvider? _inferenceProvider;
+private List<InferenceModel> _inferenceModels = [];
+private string _selectedModelId = string.Empty;
+private bool _isLoadingInference = true;
+private bool _isSavingInference = false;
+private bool _isTestingInference = false;
+private bool _isRefreshingModels = false;
+private bool _inferenceHealthy = false;
+private string _testPrompt = "Say hello in one sentence.";
+private bool _isTesting = false;
+private InferenceResponse? _testResponse = null;
+
+protected override async Task OnInitializedAsync()
+{
+await LoadInferenceProvider();
+}
+
+private async Task LoadInferenceProvider()
+{
+_isLoadingInference = true;
+
+try
+{
+var providers = await InferenceProviderService.GetAllAsync();
+_inferenceProvider = providers.FirstOrDefault();
+
+if (_inferenceProvider != null)
+{
+_inferenceModels = (await InferenceProviderService.GetModelsAsync(_inferenceProvider.Id)).ToList();
+_selectedModelId = _inferenceModels.FirstOrDefault(m => m.IsDefault)?.ModelId ?? string.Empty;
+_ = CheckInferenceHealth();
+}
+}
+catch (Exception ex)
+{
+NotificationService.ShowError($"Failed to load local inference: {ex.Message}");
+}
+finally
+{
+_isLoadingInference = false;
+}
+}
+
+private async Task SetupInferenceProvider()
+{
+_inferenceProvider = new InferenceProvider
+{
+Name = "Local Ollama",
+ProviderType = InferenceProviderType.Ollama,
+Endpoint = "http://localhost:11434"
+};
+
+try
+{
+_inferenceProvider = await InferenceProviderService.CreateAsync(_inferenceProvider);
+NotificationService.ShowSuccess("Inference provider created. Test the connection and refresh models.");
+_ = CheckInferenceHealth();
+}
+catch (Exception ex)
+{
+NotificationService.ShowError($"Failed to create inference provider: {ex.Message}");
+_inferenceProvider = null;
+}
+}
+
+private async Task SaveInferenceProvider()
+{
+if (_inferenceProvider == null)
+{
+return;
+}
+
+_isSavingInference = true;
+
+try
+{
+_inferenceProvider = await InferenceProviderService.UpdateAsync(_inferenceProvider);
+
+if (!string.IsNullOrEmpty(_selectedModelId))
+{
+await InferenceProviderService.SetModelForTaskAsync(_inferenceProvider.Id, _selectedModelId, "default");
+}
+
+NotificationService.ShowSuccess("Inference provider saved successfully!");
+}
+catch (Exception ex)
+{
+NotificationService.ShowError($"Failed to save inference provider: {ex.Message}");
+}
+finally
+{
+_isSavingInference = false;
+}
+}
+
+private async Task DeleteInferenceProvider()
+{
+if (_inferenceProvider == null)
+{
+return;
+}
+
+try
+{
+await InferenceProviderService.DeleteAsync(_inferenceProvider.Id);
+_inferenceProvider = null;
+_inferenceModels.Clear();
+_selectedModelId = string.Empty;
+_inferenceHealthy = false;
+_testResponse = null;
+NotificationService.ShowSuccess("Inference provider removed.");
+}
+catch (Exception ex)
+{
+NotificationService.ShowError($"Failed to delete inference provider: {ex.Message}");
+}
+}
+
+private async Task TestInferenceConnection()
+{
+if (_inferenceProvider == null)
+{
+return;
+}
+
+_isTestingInference = true;
+
+try
+{
+var result = await InferenceService.CheckHealthAsync(_inferenceProvider.Endpoint);
+_inferenceHealthy = result.IsAvailable;
+
+if (result.IsAvailable)
+{
+NotificationService.ShowSuccess($"Connected to {_inferenceProvider.ProviderType}! {result.DiscoveredModels.Count} model(s) available.");
+}
+else
+{
+NotificationService.ShowError($"Connection failed: {result.Error ?? "Unable to reach endpoint"}");
+}
+}
+catch (Exception ex)
+{
+_inferenceHealthy = false;
+NotificationService.ShowError($"Connection test failed: {ex.Message}");
+}
+finally
+{
+_isTestingInference = false;
+}
+}
+
+private async Task RefreshInferenceModels()
+{
+if (_inferenceProvider == null)
+{
+return;
+}
+
+_isRefreshingModels = true;
+
+try
+{
+_inferenceModels = (await InferenceProviderService.RefreshModelsAsync(_inferenceProvider.Id)).ToList();
+
+if (!_inferenceModels.Any(m => m.ModelId == _selectedModelId))
+{
+_selectedModelId = _inferenceModels.FirstOrDefault(m => m.IsDefault)?.ModelId ?? string.Empty;
+}
+
+NotificationService.ShowSuccess($"Found {_inferenceModels.Count(m => m.IsAvailable)} model(s).");
+}
+catch (Exception ex)
+{
+NotificationService.ShowError($"Failed to refresh models: {ex.Message}");
+}
+finally
+{
+_isRefreshingModels = false;
+}
+}
+
+private async Task CheckInferenceHealth()
+{
+if (_inferenceProvider == null)
+{
+return;
+}
+
+try
+{
+var result = await InferenceService.CheckHealthAsync(_inferenceProvider.Endpoint);
+_inferenceHealthy = result.IsAvailable;
+await InvokeAsync(StateHasChanged);
+}
+catch (Exception)
+{
+_inferenceHealthy = false;
+}
+}
+
+private async Task TestInferenceGeneration()
+{
+if (string.IsNullOrWhiteSpace(_testPrompt))
+{
+return;
+}
+
+_isTesting = true;
+_testResponse = null;
+
+try
+{
+var model = string.IsNullOrEmpty(_selectedModelId) ? null : _selectedModelId;
+_testResponse = await InferenceService.GenerateAsync(new InferenceRequest
+{
+Prompt = _testPrompt.Trim(),
+Model = model
+});
+}
+catch (Exception ex)
+{
+_testResponse = new InferenceResponse { Success = false, Error = ex.Message };
+}
+finally
+{
+_isTesting = false;
+}
+}
+}

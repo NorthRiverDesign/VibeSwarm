@@ -2,787 +2,355 @@
 @attribute [Authorize]
 @inject ISettingsService SettingsService
 @inject IFileSystemService FileSystemService
-@inject IProjectService ProjectService
 @inject NotificationService NotificationService
-@inject HttpInferenceProviderService InferenceProviderService
-@inject IInferenceService InferenceService
 @using VibeSwarm.Shared.Utilities
 
 <PageHeader Title="Settings" />
 
 <ul class="nav nav-tabs mb-4" role="tablist">
-	<li class="nav-item" role="presentation">
-		<button class="nav-link @(_activeTab == "app" ? "active" : "")" @onclick='() => SetTab("app")' type="button">
-			<i class="bi bi-gear me-2 d-none d-sm-inline"></i>App Settings
-		</button>
-	</li>
-	<li class="nav-item" role="presentation">
-		<button class="nav-link @(_activeTab == "inference" ? "active" : "")" @onclick='() => SetTab("inference")' type="button">
-			<i class="bi bi-cpu me-2 d-none d-sm-inline"></i>Local Inference
-			@if (_inferenceProvider != null)
-			{
-				<span class="ms-1 badge rounded-pill @(_inferenceHealthy ? "bg-success" : "bg-danger")" style="font-size:.65em">●</span>
-			}
-		</button>
-	</li>
-	<li class="nav-item" role="presentation">
-		<button class="nav-link @(_activeTab == "about" ? "active" : "")" @onclick='() => SetTab("about")' type="button">
-			<i class="bi bi-info-circle me-2 d-none d-sm-inline"></i>About
-		</button>
-	</li>
+<li class="nav-item" role="presentation">
+<button class="nav-link @(_activeTab == "app" ? "active" : "")" @onclick='() => SetTab("app")' type="button">
+<i class="bi bi-gear me-2 d-none d-sm-inline"></i>App Settings
+</button>
+</li>
+<li class="nav-item" role="presentation">
+<button class="nav-link @(_activeTab == "about" ? "active" : "")" @onclick='() => SetTab("about")' type="button">
+<i class="bi bi-info-circle me-2 d-none d-sm-inline"></i>About
+</button>
+</li>
 </ul>
 
 @if (_activeTab == "app")
 {
-	<div class="card">
-		<div class="card-header bg-body-secondary">
-			<h5 class="mb-0 fw-semibold">
-				<i class="bi bi-gear me-2"></i>Application Settings
-			</h5>
-		</div>
-			<div class="card-body">
-				@if (_isLoading)
-				{
-					<LoadingSpinner />
-				}
-				else
-				{
-					<EditForm Model="@_settings" OnValidSubmit="SaveSettings">
-						<DataAnnotationsValidator />
-
-						<h6 class="text-body-secondary mb-3">
-							<i class="bi bi-folder me-1"></i>Project Defaults
-						</h6>
-
-						<div class="mb-3">
-							<label for="defaultProjectsDirectory" class="form-label">Default Projects Directory</label>
-							<div class="input-group">
-								<input type="text" id="defaultProjectsDirectory" class="form-control font-monospace"
-									   @bind="_settings.DefaultProjectsDirectory" placeholder="@_placeholder" />
-								<button type="button" class="btn btn-secondary" @onclick="OpenDirectoryBrowser"
-										title="Browse directories">
-									<i class="bi bi-folder2-open"></i>
-								</button>
-							</div>
-							<div class="form-text">
-								This path will be used as the default prefix when creating new projects.
-								For example, if you set this to <code>@_examplePath</code> and create a project named
-								"MyApp",
-								the working path will default to
-								<code>@_examplePath@Path.DirectorySeparatorChar@("MyApp")</code>.
-							</div>
-
-							@if (!string.IsNullOrEmpty(_settings.DefaultProjectsDirectory))
-							{
-								<div class="mt-2 d-flex flex-wrap align-items-center gap-2">
-									@if (_directoryExists)
-									{
-										<span class="badge bg-success-subtle text-success-emphasis">
-											<i class="bi bi-check-circle me-1"></i>Directory exists
-										</span>
-										<button type="button" class="btn btn-primary btn-sm" @onclick="OpenScanProjectsModal">
-											<i class="bi bi-folder-symlink me-1"></i>Scan For Projects
-										</button>
-									}
-									else
-									{
-										<span class="badge bg-warning-subtle text-warning-emphasis">
-											<i class="bi bi-exclamation-triangle me-1"></i>Directory does not exist
-										</span>
-									}
-								</div>
-							}
-						</div>
-
-						<div class="d-flex flex-column flex-sm-row gap-2 mt-4">
-							<button type="submit" class="btn btn-primary" disabled="@_isSaving">
-								@if (_isSaving)
-								{
-									<span class="spinner-border spinner-border-sm me-1" role="status"></span>
-									<span>Saving...</span>
-								}
-								else
-								{
-									<i class="bi bi-check-lg me-1"></i>
-									<span>Save Settings</span>
-								}
-							</button>
-							<button type="button" class="btn btn-secondary" @onclick="ReloadSettings" disabled="@_isSaving">
-								<i class="bi bi-arrow-counterclockwise me-1"></i>
-								Reset
-							</button>
-						</div>
-
-						<hr class="my-4" />
-
-						<h6 class="text-body-secondary mb-3">
-							<i class="bi bi-robot me-1"></i>Agent Quality
-						</h6>
-
-						<div class="mb-3">
-							<div class="form-check form-switch">
-								<input class="form-check-input" type="checkbox" id="enablePromptStructuring"
-									   @bind="_settings.EnablePromptStructuring" />
-								<label class="form-check-label" for="enablePromptStructuring">
-									Structure job prompts with XML tags
-								</label>
-							</div>
-							<div class="form-text">
-								Wraps job prompts with project context and constraints using XML tags for clearer agent
-								instructions.
-							</div>
-						</div>
-
-						<div class="mb-3">
-							<div class="form-check form-switch">
-								<input class="form-check-input" type="checkbox" id="injectRepoMap"
-									   @bind="_settings.InjectRepoMap" />
-								<label class="form-check-label" for="injectRepoMap">
-									Inject repo map into system prompt
-								</label>
-							</div>
-							<div class="form-text">
-								Auto-generates a compact project file tree and injects it into the agent's system prompt for
-								faster codebase navigation.
-							</div>
-						</div>
-
-						<div class="mb-3">
-							<div class="form-check form-switch">
-								<input class="form-check-input" type="checkbox" id="injectEfficiencyRules"
-									   @bind="_settings.InjectEfficiencyRules" />
-								<label class="form-check-label" for="injectEfficiencyRules">
-									Inject efficiency rules into system prompt
-								</label>
-							</div>
-							<div class="form-text">
-								Adds rules to prevent agents from modifying unrelated files, adding unnecessary comments, or
-								refactoring beyond the task.
-							</div>
-						</div>
-					</EditForm>
-				}
-			</div>
-		</div>
-}
-else if (_activeTab == "inference")
+<div class="card">
+<div class="card-header bg-body-secondary">
+<h5 class="mb-0 fw-semibold">
+<i class="bi bi-gear me-2"></i>Application Settings
+</h5>
+</div>
+<div class="card-body">
+@if (_isLoading)
 {
-	<div class="card">
-		<div class="card-header bg-body-secondary d-flex align-items-center justify-content-between flex-wrap gap-2">
-			<h5 class="mb-0 fw-semibold">
-				<i class="bi bi-cpu me-2"></i>Local Inference
-			</h5>
-				@if (_inferenceProvider != null)
-				{
-					<div class="d-flex align-items-center gap-2">
-						@if (_inferenceHealthy)
-						{
-							<span class="badge bg-success-subtle text-success-emphasis">
-								<i class="bi bi-check-circle me-1"></i>Connected
-							</span>
-						}
-						else
-						{
-							<span class="badge bg-danger-subtle text-danger-emphasis">
-								<i class="bi bi-x-circle me-1"></i>Disconnected
-							</span>
-						}
-					</div>
-				}
-			</div>
-			<div class="card-body">
-				@if (_isLoadingInference)
-				{
-					<LoadingSpinner />
-				}
-				else if (_inferenceProvider == null)
-				{
-					<div class="text-center py-4">
-						<i class="bi bi-cpu display-4 text-body-secondary mb-3 d-block"></i>
-						<p class="text-body-secondary mb-3">
-							No local inference provider configured. Set up Ollama or another local
-							inference provider for lightweight AI tasks like generating commit messages
-							and summarization.
-						</p>
-						<button class="btn btn-primary" @onclick="SetupInferenceProvider">
-							<i class="bi bi-plus-lg me-1"></i>Set Up Local Inference
-						</button>
-					</div>
-				}
-				else
-				{
-					<div class="row g-3">
-						<div class="col-12 col-md-6">
-							<label for="inferenceProviderName" class="form-label">Provider Name</label>
-							<input type="text" id="inferenceProviderName" class="form-control"
-								   @bind="_inferenceProvider.Name" />
-						</div>
-						<div class="col-12 col-md-6">
-							<label for="inferenceProviderType" class="form-label">Provider Type</label>
-							<select id="inferenceProviderType" class="form-select" @bind="_inferenceProvider.ProviderType">
-								@foreach (var type in Enum.GetValues<InferenceProviderType>())
-								{
-									<option value="@type">@type</option>
-								}
-							</select>
-						</div>
-						<div class="col-12">
-							<label for="inferenceEndpoint" class="form-label">Endpoint URL</label>
-							<div class="input-group">
-								<input type="url" id="inferenceEndpoint" class="form-control font-monospace"
-									   @bind="_inferenceProvider.Endpoint" placeholder="http://localhost:11434" />
-								<button type="button" class="btn btn-secondary" @onclick="TestInferenceConnection"
-										disabled="@_isTestingInference" title="Test Connection">
-									@if (_isTestingInference)
-									{
-										<span class="spinner-border spinner-border-sm" role="status"></span>
-									}
-									else
-									{
-										<i class="bi bi-plug"></i>
-									}
-								</button>
-							</div>
-						</div>
-						<div class="col-12 col-md-8">
-							<label for="inferenceDefaultModel" class="form-label">Default Model</label>
-							<div class="input-group">
-								<select id="inferenceDefaultModel" class="form-select" @bind="_selectedModelId">
-									<option value="">-- Select a model --</option>
-									@foreach (var model in _inferenceModels.Where(m => m.IsAvailable))
-									{
-										<option value="@model.ModelId">
-											@(model.DisplayName ?? model.ModelId)
-											@if (!string.IsNullOrEmpty(model.ParameterSize))
-											{
-												@($" ({model.ParameterSize})")
-											}
-										</option>
-									}
-								</select>
-								<button type="button" class="btn btn-secondary" @onclick="RefreshInferenceModels"
-										disabled="@_isRefreshingModels" title="Refresh models from provider">
-									@if (_isRefreshingModels)
-									{
-										<span class="spinner-border spinner-border-sm" role="status"></span>
-									}
-									else
-									{
-										<i class="bi bi-arrow-clockwise"></i>
-									}
-								</button>
-							</div>
-							@if (!_inferenceModels.Any())
-							{
-								<div class="form-text text-warning">
-									No models found. Click refresh to discover models from the provider.
-								</div>
-							}
-						</div>
-						<div class="col-12 col-md-4 d-flex align-items-end">
-							<div class="form-check form-switch">
-								<input class="form-check-input" type="checkbox" id="inferenceEnabled"
-									   @bind="_inferenceProvider.IsEnabled" />
-								<label class="form-check-label" for="inferenceEnabled">Enabled</label>
-							</div>
-						</div>
-					</div>
-
-					<hr />
-
-					<div class="d-flex flex-column flex-sm-row gap-2">
-						<button type="button" class="btn btn-primary" @onclick="SaveInferenceProvider"
-								disabled="@_isSavingInference">
-							@if (_isSavingInference)
-							{
-								<span class="spinner-border spinner-border-sm me-1" role="status"></span>
-								<span>Saving...</span>
-							}
-							else
-							{
-								<i class="bi bi-check-lg me-1"></i>
-								<span>Save</span>
-							}
-						</button>
-						<button type="button" class="btn btn-danger" @onclick="DeleteInferenceProvider">
-							<i class="bi bi-trash me-1"></i>Remove
-						</button>
-					</div>
-				}
-			</div>
-		</div>
-
-	@if (_inferenceProvider != null)
-	{
-		<div class="card mt-3">
-			<div class="card-header bg-body-secondary">
-				<h5 class="mb-0 fw-semibold">
-					<i class="bi bi-chat-square-dots me-2"></i>Test Inference
-				</h5>
-			</div>
-			<div class="card-body">
-				<div class="mb-3">
-					<label for="testPrompt" class="form-label">Prompt</label>
-					<textarea id="testPrompt" class="form-control font-monospace" rows="3"
-							  @bind="_testPrompt" placeholder="Enter a test prompt..."></textarea>
-				</div>
-				<button type="button" class="btn btn-primary"
-						@onclick="TestInferenceGeneration"
-						disabled="@(_isTesting || string.IsNullOrWhiteSpace(_testPrompt))">
-					@if (_isTesting)
-					{
-						<span class="spinner-border spinner-border-sm me-1" role="status"></span>
-						<span>Sending...</span>
-					}
-					else
-					{
-						<i class="bi bi-send me-1"></i>
-						<span>Send</span>
-					}
-				</button>
-				@if (_testResponse != null)
-				{
-					<hr />
-					@if (_testResponse.Success)
-					{
-						<div class="d-flex flex-wrap gap-3 small text-body-secondary mb-2">
-							@if (!string.IsNullOrEmpty(_testResponse.ModelUsed))
-							{
-								<span><i class="bi bi-cpu me-1"></i>@_testResponse.ModelUsed</span>
-							}
-							@if (_testResponse.DurationMs.HasValue)
-							{
-								<span><i class="bi bi-clock me-1"></i>@((_testResponse.DurationMs.Value / 1000.0).ToString("F2"))s</span>
-							}
-							@if (_testResponse.CompletionTokens.HasValue)
-							{
-								<span><i class="bi bi-hash me-1"></i>@_testResponse.CompletionTokens tokens</span>
-							}
-						</div>
-						<pre class="p-3 rounded bg-body-secondary small mb-0" style="white-space:pre-wrap;word-break:break-word;">@_testResponse.Response</pre>
-					}
-					else
-					{
-						<Alert Type="Alert.AlertType.Danger" Message="@(_testResponse.Error ?? "An unknown error occurred.")" />
-					}
-				}
-			</div>
-		</div>
-	}
+<LoadingSpinner />
 }
 else
 {
-	<div class="card">
-		<div class="card-header bg-body-secondary">
-			<h5 class="mb-0 fw-semibold">
-				<i class="bi bi-info-circle me-2"></i>About VibeSwarm
-			</h5>
-		</div>
-		<div class="card-body">
-				<div class="d-flex align-items-center gap-2 mb-3">
-					<img src="img/logo_icon.png" alt="VibeSwarm" class="brand-icon"
-						 style="width: 32px; height: 32px;" />
-					<h5 class="mb-0">VibeSwarm</h5>
-				</div>
-				<p class="text-body-secondary small mb-3">
-					AI coding agent orchestrator that leverages multiple AI models to assist developers
-					in writing, reviewing, and optimizing code.
-				</p>
-				<div class="small text-body-secondary">
-				<div class="d-flex align-items-center gap-2 mb-2">
-					<i class="bi bi-pc-display opacity-75"></i>
-					<span><strong>Platform:</strong> @System.Runtime.InteropServices.RuntimeInformation.OSDescription</span>
-				</div>
-				<div class="d-flex align-items-center gap-2 mb-2">
-					<i class="bi bi-hdd opacity-75"></i>
-					<span><strong>Runtime:</strong> @System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription</span>
-				</div>
-				@if (_settings.UpdatedAt.HasValue)
-				{
-					<div class="d-flex align-items-center gap-2">
-						<i class="bi bi-clock-history opacity-75"></i>
-						<span><strong>Settings Last Updated:</strong> @_settings.UpdatedAt.Value.FormatDateTimeShort()</span>
-					</div>
-				}
-			</div>
-		</div>
-	</div>
+<EditForm Model="@_settings" OnValidSubmit="SaveSettings">
+<DataAnnotationsValidator />
 
-	<div class="card mt-3">
-		<div class="card-header bg-body-secondary">
-			<h5 class="mb-0 fw-semibold">
-				<i class="bi bi-lightbulb me-2"></i>Tips
-			</h5>
-		</div>
-		<div class="card-body small">
-			<ul class="mb-0 ps-3">
-				<li class="mb-2">
-					Set a default projects directory to quickly create new projects without typing
-					the full path each time.
-				</li>
-				<li class="mb-2">
-					The directory browser helps you navigate the host file system to find the right folder.
-				</li>
-				<li>
-					VibeSwarm can work with any directory that the host process has access to.
-				</li>
-			</ul>
-		</div>
-	</div>
+<h6 class="text-body-secondary mb-3">
+<i class="bi bi-folder me-1"></i>Project Defaults
+</h6>
 
-	<div class="mt-3">
-		<ToolDetectionCard />
-	</div>
+<div class="mb-3">
+<label for="defaultProjectsDirectory" class="form-label">Default Projects Directory</label>
+<div class="input-group">
+<input type="text" id="defaultProjectsDirectory" class="form-control font-monospace"
+   @bind="_settings.DefaultProjectsDirectory" placeholder="@_placeholder" />
+<button type="button" class="btn btn-secondary" @onclick="OpenDirectoryBrowser"
+title="Browse directories">
+<i class="bi bi-folder2-open"></i>
+</button>
+</div>
+<div class="form-text">
+This path will be used as the default prefix when creating new projects.
+For example, if you set this to <code>@_examplePath</code> and create a project named
+"MyApp",
+the working path will default to
+<code>@_examplePath@Path.DirectorySeparatorChar@("MyApp")</code>.
+</div>
+
+@if (!string.IsNullOrEmpty(_settings.DefaultProjectsDirectory))
+{
+<div class="mt-2 d-flex flex-wrap align-items-center gap-2">
+@if (_directoryExists)
+{
+<span class="badge bg-success-subtle text-success-emphasis">
+<i class="bi bi-check-circle me-1"></i>Directory exists
+</span>
+<button type="button" class="btn btn-primary btn-sm" @onclick="OpenScanProjectsModal">
+<i class="bi bi-folder-symlink me-1"></i>Scan For Projects
+</button>
+}
+else
+{
+<span class="badge bg-warning-subtle text-warning-emphasis">
+<i class="bi bi-exclamation-triangle me-1"></i>Directory does not exist
+</span>
+}
+</div>
+}
+</div>
+
+<div class="d-flex flex-column flex-sm-row gap-2 mt-4">
+<button type="submit" class="btn btn-primary" disabled="@_isSaving">
+@if (_isSaving)
+{
+<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+<span>Saving...</span>
+}
+else
+{
+<i class="bi bi-check-lg me-1"></i>
+<span>Save Settings</span>
+}
+</button>
+<button type="button" class="btn btn-secondary" @onclick="ReloadSettings" disabled="@_isSaving">
+<i class="bi bi-arrow-counterclockwise me-1"></i>
+Reset
+</button>
+</div>
+
+<hr class="my-4" />
+
+<h6 class="text-body-secondary mb-3">
+<i class="bi bi-robot me-1"></i>Agent Quality
+</h6>
+
+<div class="mb-3">
+<div class="form-check form-switch">
+<input class="form-check-input" type="checkbox" id="enablePromptStructuring"
+   @bind="_settings.EnablePromptStructuring" />
+<label class="form-check-label" for="enablePromptStructuring">
+Structure job prompts with XML tags
+</label>
+</div>
+<div class="form-text">
+Wraps job prompts with project context and constraints using XML tags for clearer agent
+instructions.
+</div>
+</div>
+
+<div class="mb-3">
+<div class="form-check form-switch">
+<input class="form-check-input" type="checkbox" id="injectRepoMap"
+   @bind="_settings.InjectRepoMap" />
+<label class="form-check-label" for="injectRepoMap">
+Inject repo map into system prompt
+</label>
+</div>
+<div class="form-text">
+Auto-generates a compact project file tree and injects it into the agent's system prompt for
+faster codebase navigation.
+</div>
+</div>
+
+<div class="mb-3">
+<div class="form-check form-switch">
+<input class="form-check-input" type="checkbox" id="injectEfficiencyRules"
+   @bind="_settings.InjectEfficiencyRules" />
+<label class="form-check-label" for="injectEfficiencyRules">
+Inject efficiency rules into system prompt
+</label>
+</div>
+<div class="form-text">
+Adds rules to prevent agents from modifying unrelated files, adding unnecessary comments, or
+refactoring beyond the task.
+</div>
+</div>
+</EditForm>
+}
+</div>
+</div>
+}
+else
+{
+<div class="card">
+<div class="card-header bg-body-secondary">
+<h5 class="mb-0 fw-semibold">
+<i class="bi bi-info-circle me-2"></i>About VibeSwarm
+</h5>
+</div>
+<div class="card-body">
+<div class="d-flex align-items-center gap-2 mb-3">
+<img src="img/logo_icon.png" alt="VibeSwarm" class="brand-icon"
+ style="width: 32px; height: 32px;" />
+<h5 class="mb-0">VibeSwarm</h5>
+</div>
+<p class="text-body-secondary small mb-3">
+AI coding agent orchestrator that leverages multiple AI models to assist developers
+in writing, reviewing, and optimizing code.
+</p>
+<div class="small text-body-secondary">
+<div class="d-flex align-items-center gap-2 mb-2">
+<i class="bi bi-pc-display opacity-75"></i>
+<span><strong>Platform:</strong> @System.Runtime.InteropServices.RuntimeInformation.OSDescription</span>
+</div>
+<div class="d-flex align-items-center gap-2 mb-2">
+<i class="bi bi-hdd opacity-75"></i>
+<span><strong>Runtime:</strong> @System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription</span>
+</div>
+@if (_settings.UpdatedAt.HasValue)
+{
+<div class="d-flex align-items-center gap-2">
+<i class="bi bi-clock-history opacity-75"></i>
+<span><strong>Settings Last Updated:</strong> @_settings.UpdatedAt.Value.FormatDateTimeShort()</span>
+</div>
+}
+</div>
+</div>
+</div>
+
+<div class="card mt-3">
+<div class="card-header bg-body-secondary">
+<h5 class="mb-0 fw-semibold">
+<i class="bi bi-lightbulb me-2"></i>Tips
+</h5>
+</div>
+<div class="card-body small">
+<ul class="mb-0 ps-3">
+<li class="mb-2">
+Set a default projects directory to quickly create new projects without typing
+the full path each time.
+</li>
+<li class="mb-2">
+The directory browser helps you navigate the host file system to find the right folder.
+</li>
+<li>
+VibeSwarm can work with any directory that the host process has access to.
+</li>
+</ul>
+</div>
+</div>
+
+<div class="mt-3">
+<ToolDetectionCard />
+</div>
 }
 
 @if (_showDirectoryBrowser)
 {
-	<DirectoryBrowser @ref="_directoryBrowser" InitialPath="@_settings.DefaultProjectsDirectory"
-					  OnDirectorySelected="OnDirectorySelected" OnClosed="CloseDirectoryBrowser" />
+<DirectoryBrowser @ref="_directoryBrowser" InitialPath="@_settings.DefaultProjectsDirectory"
+  OnDirectorySelected="OnDirectorySelected" OnClosed="CloseDirectoryBrowser" />
 }
 
 <ScanProjectsModal @ref="_scanProjectsModal" OnProjectsImported="OnProjectsImported" />
 
 @code {
-	private AppSettings _settings = new();
-	private bool _isLoading = true;
-	private bool _isSaving = false;
-	private bool _showDirectoryBrowser = false;
-	private bool _directoryExists = false;
-	private DirectoryBrowser? _directoryBrowser;
-	private ScanProjectsModal? _scanProjectsModal;
+private AppSettings _settings = new();
+private bool _isLoading = true;
+private bool _isSaving = false;
+private bool _showDirectoryBrowser = false;
+private bool _directoryExists = false;
+private DirectoryBrowser? _directoryBrowser;
+private ScanProjectsModal? _scanProjectsModal;
+private string _activeTab = "app";
 
-	// Inference state
-	private InferenceProvider? _inferenceProvider;
-	private List<InferenceModel> _inferenceModels = [];
-	private string _selectedModelId = string.Empty;
-	private bool _isLoadingInference = true;
-	private bool _isSavingInference = false;
-	private bool _isTestingInference = false;
-	private bool _isRefreshingModels = false;
-	private bool _inferenceHealthy = false;
+private string _placeholder => OperatingSystem.IsWindows() ? @"C:\Projects" : "/home/user/projects";
+private string _examplePath => OperatingSystem.IsWindows() ? @"C:\Projects" : "/home/user/projects";
 
-	// Tab navigation state
-	private string _activeTab = "app";
+private void SetTab(string tab)
+{
+_activeTab = tab;
+}
 
-	// Inference test state
-	private string _testPrompt = "Say hello in one sentence.";
-	private bool _isTesting = false;
-	private InferenceResponse? _testResponse = null;
+protected override async Task OnInitializedAsync()
+{
+await LoadSettings();
+}
 
-	private string _placeholder => OperatingSystem.IsWindows() ? @"C:\Projects" : "/home/user/projects";
-	private string _examplePath => OperatingSystem.IsWindows() ? @"C:\Projects" : "/home/user/projects";
+private async Task LoadSettings()
+{
+_isLoading = true;
 
-	private void SetTab(string tab)
-	{
-		_activeTab = tab;
-		_testResponse = null;
-	}
+try
+{
+_settings = await SettingsService.GetSettingsAsync();
+await CheckDirectoryExists();
+}
+catch (Exception ex)
+{
+NotificationService.ShowError($"Failed to load settings: {ex.Message}");
+}
+finally
+{
+_isLoading = false;
+}
+}
 
-	protected override async Task OnInitializedAsync()
-	{
-		await Task.WhenAll(LoadSettings(), LoadInferenceProvider());
-	}
+private async Task SaveSettings()
+{
+_isSaving = true;
 
-	private async Task LoadSettings()
-	{
-		_isLoading = true;
+try
+{
+if (!string.IsNullOrWhiteSpace(_settings.DefaultProjectsDirectory))
+{
+_settings.DefaultProjectsDirectory = _settings.DefaultProjectsDirectory.Trim();
+}
+else
+{
+_settings.DefaultProjectsDirectory = null;
+}
 
-		try
-		{
-			_settings = await SettingsService.GetSettingsAsync();
-			await CheckDirectoryExists();
-		}
-		catch (Exception ex)
-		{
-			NotificationService.ShowError($"Failed to load settings: {ex.Message}");
-		}
-		finally
-		{
-			_isLoading = false;
-		}
-	}
+await SettingsService.UpdateSettingsAsync(_settings);
+await CheckDirectoryExists();
+NotificationService.ShowSuccess("Settings saved successfully!");
+}
+catch (Exception ex)
+{
+NotificationService.ShowError($"Failed to save settings: {ex.Message}");
+}
+finally
+{
+_isSaving = false;
+}
+}
 
-	private async Task SaveSettings()
-	{
-		_isSaving = true;
+private async Task ReloadSettings()
+{
+await LoadSettings();
+}
 
-		try
-		{
-			// Normalize the path if provided
-			if (!string.IsNullOrWhiteSpace(_settings.DefaultProjectsDirectory))
-			{
-				_settings.DefaultProjectsDirectory = _settings.DefaultProjectsDirectory.Trim();
-			}
-			else
-			{
-				_settings.DefaultProjectsDirectory = null;
-			}
+private async Task CheckDirectoryExists()
+{
+if (!string.IsNullOrWhiteSpace(_settings.DefaultProjectsDirectory))
+{
+_directoryExists = await FileSystemService.DirectoryExistsAsync(_settings.DefaultProjectsDirectory);
+}
+else
+{
+_directoryExists = false;
+}
+}
 
-			await SettingsService.UpdateSettingsAsync(_settings);
-			await CheckDirectoryExists();
-			NotificationService.ShowSuccess("Settings saved successfully!");
-		}
-		catch (Exception ex)
-		{
-			NotificationService.ShowError($"Failed to save settings: {ex.Message}");
-		}
-		finally
-		{
-			_isSaving = false;
-		}
-	}
+private async Task OpenDirectoryBrowser()
+{
+_showDirectoryBrowser = true;
+StateHasChanged();
 
-	private async Task ReloadSettings()
-	{
-		await LoadSettings();
-	}
+await Task.Delay(50);
 
-	private async Task CheckDirectoryExists()
-	{
-		if (!string.IsNullOrWhiteSpace(_settings.DefaultProjectsDirectory))
-		{
-			_directoryExists = await FileSystemService.DirectoryExistsAsync(_settings.DefaultProjectsDirectory);
-		}
-		else
-		{
-			_directoryExists = false;
-		}
-	}
+if (_directoryBrowser != null)
+{
+await _directoryBrowser.ShowAsync(_settings.DefaultProjectsDirectory);
+}
+}
 
-	private async Task OpenDirectoryBrowser()
-	{
-		_showDirectoryBrowser = true;
-		StateHasChanged();
+private async Task OnDirectorySelected(string path)
+{
+_settings.DefaultProjectsDirectory = path;
+_showDirectoryBrowser = false;
+await CheckDirectoryExists();
+StateHasChanged();
+}
 
-		// Wait for the component to render
-		await Task.Delay(50);
+private void CloseDirectoryBrowser()
+{
+_showDirectoryBrowser = false;
+}
 
-		if (_directoryBrowser != null)
-		{
-			await _directoryBrowser.ShowAsync(_settings.DefaultProjectsDirectory);
-		}
-	}
+private async Task OpenScanProjectsModal()
+{
+if (_scanProjectsModal != null)
+{
+await _scanProjectsModal.ShowAsync(_settings.DefaultProjectsDirectory);
+}
+}
 
-	private async Task OnDirectorySelected(string path)
-	{
-		_settings.DefaultProjectsDirectory = path;
-		_showDirectoryBrowser = false;
-		await CheckDirectoryExists();
-		StateHasChanged();
-	}
-
-	private void CloseDirectoryBrowser()
-	{
-		_showDirectoryBrowser = false;
-	}
-
-	private async Task OpenScanProjectsModal()
-	{
-		if (_scanProjectsModal != null)
-		{
-			await _scanProjectsModal.ShowAsync(_settings.DefaultProjectsDirectory);
-		}
-	}
-
-	private void OnProjectsImported()
-	{
-		NotificationService.ShowSuccess("Projects imported successfully!");
-		StateHasChanged();
-	}
-
-	// ---- Local Inference Methods ----
-
-	private async Task LoadInferenceProvider()
-	{
-		_isLoadingInference = true;
-
-		try
-		{
-			var providers = await InferenceProviderService.GetAllAsync();
-			_inferenceProvider = providers.FirstOrDefault();
-
-			if (_inferenceProvider != null)
-			{
-				_inferenceModels = (await InferenceProviderService.GetModelsAsync(_inferenceProvider.Id)).ToList();
-				_selectedModelId = _inferenceModels.FirstOrDefault(m => m.IsDefault)?.ModelId ?? string.Empty;
-
-				// Check health in background
-				_ = CheckInferenceHealth();
-			}
-		}
-		catch (Exception ex)
-		{
-			NotificationService.ShowError($"Failed to load inference settings: {ex.Message}");
-		}
-		finally
-		{
-			_isLoadingInference = false;
-		}
-	}
-
-	private async Task SetupInferenceProvider()
-	{
-		_inferenceProvider = new InferenceProvider
-		{
-			Name = "Local Ollama",
-			ProviderType = InferenceProviderType.Ollama,
-			Endpoint = "http://localhost:11434"
-		};
-
-		try
-		{
-			_inferenceProvider = await InferenceProviderService.CreateAsync(_inferenceProvider);
-			NotificationService.ShowSuccess("Inference provider created. Test the connection and refresh models.");
-			_ = CheckInferenceHealth();
-		}
-		catch (Exception ex)
-		{
-			NotificationService.ShowError($"Failed to create inference provider: {ex.Message}");
-			_inferenceProvider = null;
-		}
-	}
-
-	private async Task SaveInferenceProvider()
-	{
-		if (_inferenceProvider == null) return;
-		_isSavingInference = true;
-
-		try
-		{
-			_inferenceProvider = await InferenceProviderService.UpdateAsync(_inferenceProvider);
-
-			// Set default model if selected
-			if (!string.IsNullOrEmpty(_selectedModelId))
-			{
-				await InferenceProviderService.SetModelForTaskAsync(_inferenceProvider.Id, _selectedModelId, "default");
-			}
-
-			NotificationService.ShowSuccess("Inference provider saved successfully!");
-		}
-		catch (Exception ex)
-		{
-			NotificationService.ShowError($"Failed to save inference provider: {ex.Message}");
-		}
-		finally
-		{
-			_isSavingInference = false;
-		}
-	}
-
-	private async Task DeleteInferenceProvider()
-	{
-		if (_inferenceProvider == null) return;
-
-		try
-		{
-			await InferenceProviderService.DeleteAsync(_inferenceProvider.Id);
-			_inferenceProvider = null;
-			_inferenceModels.Clear();
-			_selectedModelId = string.Empty;
-			_inferenceHealthy = false;
-			NotificationService.ShowSuccess("Inference provider removed.");
-		}
-		catch (Exception ex)
-		{
-			NotificationService.ShowError($"Failed to delete inference provider: {ex.Message}");
-		}
-	}
-
-	private async Task TestInferenceConnection()
-	{
-		if (_inferenceProvider == null) return;
-		_isTestingInference = true;
-
-		try
-		{
-			var result = await InferenceService.CheckHealthAsync(_inferenceProvider.Endpoint);
-			_inferenceHealthy = result.IsAvailable;
-
-			if (result.IsAvailable)
-			{
-				NotificationService.ShowSuccess($"Connected to {_inferenceProvider.ProviderType}! {result.DiscoveredModels.Count} model(s) available.");
-			}
-			else
-			{
-				NotificationService.ShowError($"Connection failed: {result.Error ?? "Unable to reach endpoint"}");
-			}
-		}
-		catch (Exception ex)
-		{
-			_inferenceHealthy = false;
-			NotificationService.ShowError($"Connection test failed: {ex.Message}");
-		}
-		finally
-		{
-			_isTestingInference = false;
-		}
-	}
-
-	private async Task RefreshInferenceModels()
-	{
-		if (_inferenceProvider == null) return;
-		_isRefreshingModels = true;
-
-		try
-		{
-			_inferenceModels = (await InferenceProviderService.RefreshModelsAsync(_inferenceProvider.Id)).ToList();
-
-			// Preserve selected model if still available
-			if (!_inferenceModels.Any(m => m.ModelId == _selectedModelId))
-				_selectedModelId = _inferenceModels.FirstOrDefault(m => m.IsDefault)?.ModelId ?? string.Empty;
-
-			NotificationService.ShowSuccess($"Found {_inferenceModels.Count(m => m.IsAvailable)} model(s).");
-		}
-		catch (Exception ex)
-		{
-			NotificationService.ShowError($"Failed to refresh models: {ex.Message}");
-		}
-		finally
-		{
-			_isRefreshingModels = false;
-		}
-	}
-
-	private async Task CheckInferenceHealth()
-	{
-		if (_inferenceProvider == null) return;
-
-		try
-		{
-			var result = await InferenceService.CheckHealthAsync(_inferenceProvider.Endpoint);
-			_inferenceHealthy = result.IsAvailable;
-			StateHasChanged();
-		}
-		catch
-		{
-			_inferenceHealthy = false;
-		}
-	}
-
-	private async Task TestInferenceGeneration()
-	{
-		if (string.IsNullOrWhiteSpace(_testPrompt)) return;
-
-		_isTesting = true;
-		_testResponse = null;
-
-		try
-		{
-			var model = string.IsNullOrEmpty(_selectedModelId) ? null : _selectedModelId;
-			_testResponse = await InferenceService.GenerateAsync(new InferenceRequest
-			{
-				Prompt = _testPrompt.Trim(),
-				Model = model
-			});
-		}
-		catch (Exception ex)
-		{
-			_testResponse = new InferenceResponse { Success = false, Error = ex.Message };
-		}
-		finally
-		{
-			_isTesting = false;
-		}
-	}
+private void OnProjectsImported()
+{
+NotificationService.ShowSuccess("Projects imported successfully!");
+StateHasChanged();
+}
 }
