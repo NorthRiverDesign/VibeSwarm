@@ -162,6 +162,13 @@ public class JobsController : ControllerBase
     public async Task<IActionResult> UpdatePrompt(Guid id, [FromBody] UpdatePromptRequest req, CancellationToken ct)
         => await _jobService.UpdateJobPromptAsync(id, req.Prompt, ct) ? Ok() : BadRequest();
 
+    [HttpPost("project/{projectId:guid}/cancel-all")]
+    public async Task<IActionResult> CancelAllByProject(Guid projectId, CancellationToken ct)
+    {
+        var count = await _jobService.CancelAllByProjectIdAsync(projectId, ct);
+        return Ok(new { Cancelled = count });
+    }
+
     // Request DTOs
     public record UpdateStatusRequest(string Status, string? Output, string? ErrorMessage);
     public record UpdateResultRequest(string Status, string? SessionId, string? Output, string? ErrorMessage, int? InputTokens, int? OutputTokens, decimal? CostUsd);

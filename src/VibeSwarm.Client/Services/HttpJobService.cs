@@ -158,10 +158,23 @@ public class HttpJobService : IJobService
         return response.IsSuccessStatusCode;
     }
 
+    public async Task<int> CancelAllByProjectIdAsync(Guid projectId, CancellationToken ct = default)
+    {
+        var response = await _http.PostAsync($"/api/jobs/project/{projectId}/cancel-all", null, ct);
+        if (!response.IsSuccessStatusCode) return 0;
+        var result = await response.Content.ReadFromJsonAsync<CancelAllResponse>(ct);
+        return result?.Cancelled ?? 0;
+    }
+
     private class InteractionInfo
     {
         public string? Prompt { get; set; }
         public string? Type { get; set; }
         public string? Choices { get; set; }
+    }
+
+    private class CancelAllResponse
+    {
+        public int Cancelled { get; set; }
     }
 }

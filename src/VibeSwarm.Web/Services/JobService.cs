@@ -871,6 +871,66 @@ public class JobService : IJobService
         return true;
     }
 
+    public async Task<int> CancelAllByProjectIdAsync(Guid projectId, CancellationToken cancellationToken = default)
+    {
+        var activeStatuses = new[]
+        {
+            JobStatus.New, JobStatus.Pending, JobStatus.Started,
+            JobStatus.Processing, JobStatus.Paused, JobStatus.Stalled
+        };
+
+        var jobs = await _dbContext.Jobs
+            .Where(j => j.ProjectId == projectId && activeStatuses.Contains(j.Status))
+            .ToListAsync(cancellationToken);
+
+        if (jobs.Count == 0)
+        {
+            return 0;
+        }
+
+        var now = DateTime.UtcNow;
+        foreach (var job in jobs)
+        {
+            // Kill running processes
+            if (job.ProcessId.HasValue && (job.Status == JobStatus.Started || job.Status == JobStatus.Processing))
+            {
+                try
+                {
+                    var process = System.Diagnostics.Process.GetProcessById(job.ProcessId.Value);
+                    process.Kill(entireProcessTree: true);
+                }
+                catch { /* Process already exited or inaccessible */ }
+            }
+
+            job.Status = JobStatus.Cancelled;
+            job.CompletedAt = now;
+            job.CancellationRequested = true;
+            job.CurrentActivity = null;
+            job.WorkerInstanceId = null;
+            job.ProcessId = null;
+            job.ErrorMessage ??= "Cancelled in bulk by user.";
+        }
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        // Notify about cancellations
+        if (_jobUpdateService != null)
+        {
+            foreach (var job in jobs)
+            {
+                try
+                {
+                    await _jobUpdateService.NotifyJobStatusChanged(job.Id, job.Status.ToString());
+                }
+                catch { }
+            }
+        }
+
+        _jobProcessingService?.TriggerProcessing();
+
+        return jobs.Count;
+    }
+
     private async Task InitializeExecutionPlanAsync(Job job, CancellationToken cancellationToken)
     {
         var targets = await BuildExecutionPlanAsync(job, cancellationToken);

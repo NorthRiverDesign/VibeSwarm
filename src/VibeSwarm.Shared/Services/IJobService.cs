@@ -87,4 +87,13 @@ public interface IJobService
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>True if successful</returns>
     Task<bool> UpdateJobPromptAsync(Guid id, string newPrompt, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Cancels all non-terminal jobs for a project (New, Pending, Started, Processing, Paused, Stalled).
+    /// Queued jobs are cancelled immediately; running jobs are force-cancelled.
+    /// </summary>
+    /// <param name="projectId">The project ID</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>The number of jobs cancelled</returns>
+    Task<int> CancelAllByProjectIdAsync(Guid projectId, CancellationToken cancellationToken = default);
 }

@@ -6,6 +6,17 @@
 		<h5 class="mb-0 fw-semibold">Jobs</h5>
 		<div class="d-flex align-items-center gap-2">
 			<span class="badge bg-secondary">@TotalJobsCount</span>
+			@if (HasActiveJobs)
+			{
+				<button type="button" class="btn btn-sm btn-danger" @onclick="HandleCancelAll"
+						disabled="@_isCancellingAll" title="Cancel all queued and active jobs">
+					@if (_isCancellingAll)
+					{
+						<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+					}
+					<i class="bi bi-x-octagon me-1"></i>Cancel All
+				</button>
+			}
 			<button type="button" class="btn btn-sm btn-primary" @onclick="() => OnCreateJob.InvokeAsync()"
 					title="@(HasActiveJobs ? "Create a new job. It will be queued behind the current run." : "Create a new job")">
 				<i class="bi bi-plus-lg me-1"></i>Create Job
@@ -180,6 +191,18 @@
 
 	[Parameter]
 	public EventCallback OnNextPage { get; set; }
+
+	[Parameter]
+	public EventCallback OnCancelAll { get; set; }
+
+	private bool _isCancellingAll;
+
+	private async Task HandleCancelAll()
+	{
+		_isCancellingAll = true;
+		await OnCancelAll.InvokeAsync();
+		_isCancellingAll = false;
+	}
 
 	private static string GetJobDisplayTitle(Job job)
 	{
