@@ -298,6 +298,178 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 		Assert.Single(updated.Environments, e => !e.IsPrimary);
 	}
 
+	[Fact]
+	public async Task UpdateAsync_AddFirstEnvironment_SeparateContexts_Succeeds()
+	{
+		// Simulate the real-world flow: project created in one request,
+		// environment added in a separate request (different DbContext).
+		Guid projectId;
+
+		// Request 1: Create a project with no environments
+		{
+			await using var ctx = CreateDbContext();
+			var svc = CreateProjectService(ctx);
+			var created = await svc.CreateAsync(new Project
+			{
+				Name = "Fresh Project",
+				WorkingPath = "/tmp/fresh"
+			});
+			projectId = created.Id;
+		}
+
+		// Request 2: Load the project, add an environment, save
+		{
+			await using var ctx = CreateDbContext();
+			var svc = CreateProjectService(ctx);
+
+			// Simulates what the client does: GET project, add env, PUT project
+			var project = await svc.GetByIdAsync(projectId);
+			Assert.NotNull(project);
+
+			// Simulate a JSON round-trip (client serializes properties it knows about)
+			var roundTripped = new Project
+			{
+				Id = project!.Id,
+				Name = project.Name,
+				Description = project.Description,
+				WorkingPath = project.WorkingPath,
+				IsActive = project.IsActive,
+				IdeasAutoExpand = project.IdeasAutoExpand,
+				ProviderSelections = project.ProviderSelections
+					.Select(ps => new ProjectProvider
+					{
+						Id = ps.Id,
+						ProjectId = ps.ProjectId,
+						ProviderId = ps.ProviderId,
+						Priority = ps.Priority,
+						IsEnabled = ps.IsEnabled,
+						PreferredModelId = ps.PreferredModelId,
+						CreatedAt = ps.CreatedAt,
+						UpdatedAt = ps.UpdatedAt
+					}).ToList(),
+				Environments = new List<ProjectEnvironment>
+				{
+					new()
+					{
+						Id = Guid.NewGuid(),
+						Name = "Staging",
+						Type = EnvironmentType.Web,
+						Url = "https://staging.example.com",
+						IsEnabled = true,
+						IsPrimary = true
+					}
+				}
+			};
+
+			var updated = await svc.UpdateAsync(roundTripped);
+
+			var env = Assert.Single(updated.Environments);
+			Assert.Equal("Staging", env.Name);
+			Assert.True(env.IsPrimary);
+		}
+
+		// Verify the environment is persisted
+		{
+			await using var ctx = CreateDbContext();
+			var envs = await ctx.ProjectEnvironments.AsNoTracking().ToListAsync();
+			Assert.Single(envs);
+		}
+	}
+
+	[Fact]
+	public async Task UpdateAsync_AddFirstEnvironment_WithProviderSelections_SeparateContexts_Succeeds()
+	{
+		// When saving environments, the client also sends back provider selections.
+		// This test verifies that both collections are handled correctly in separate contexts.
+		Guid projectId;
+		Guid providerId;
+
+		// Setup: Create a provider
+		{
+			await using var ctx = CreateDbContext();
+			var provider = new Provider
+			{
+				Name = "Test Provider",
+				Type = ProviderType.Claude,
+				IsEnabled = true
+			};
+			ctx.Providers.Add(provider);
+			await ctx.SaveChangesAsync();
+			providerId = provider.Id;
+		}
+
+		// Request 1: Create a project with a provider selection
+		{
+			await using var ctx = CreateDbContext();
+			var svc = CreateProjectService(ctx);
+			var created = await svc.CreateAsync(new Project
+			{
+				Name = "Project With Provider",
+				WorkingPath = "/tmp/with-provider",
+				ProviderSelections =
+				[
+					new ProjectProvider
+					{
+						ProviderId = providerId,
+						Priority = 0,
+						IsEnabled = true
+					}
+				]
+			});
+			projectId = created.Id;
+			Assert.Single(created.ProviderSelections);
+		}
+
+		// Request 2: Load the project, add an environment, send back with existing provider selections
+		{
+			await using var ctx = CreateDbContext();
+			var svc = CreateProjectService(ctx);
+
+			var project = await svc.GetByIdAsync(projectId);
+			Assert.NotNull(project);
+
+			// Simulate client round-trip: reconstruct from JSON-like data
+			var roundTripped = new Project
+			{
+				Id = project!.Id,
+				Name = project.Name,
+				Description = project.Description,
+				WorkingPath = project.WorkingPath,
+				IsActive = project.IsActive,
+				IdeasAutoExpand = project.IdeasAutoExpand,
+				ProviderSelections = project.ProviderSelections
+					.Select(ps => new ProjectProvider
+					{
+						Id = ps.Id,
+						ProjectId = ps.ProjectId,
+						ProviderId = ps.ProviderId,
+						Priority = ps.Priority,
+						IsEnabled = ps.IsEnabled,
+						PreferredModelId = ps.PreferredModelId,
+						CreatedAt = ps.CreatedAt,
+						UpdatedAt = ps.UpdatedAt
+					}).ToList(),
+				Environments = new List<ProjectEnvironment>
+				{
+					new()
+					{
+						Id = Guid.NewGuid(),
+						Name = "Production",
+						Type = EnvironmentType.Web,
+						Url = "https://prod.example.com",
+						IsEnabled = true,
+						IsPrimary = true
+					}
+				}
+			};
+
+			var updated = await svc.UpdateAsync(roundTripped);
+
+			Assert.Single(updated.Environments);
+			Assert.Single(updated.ProviderSelections);
+		}
+	}
+
 	private VibeSwarmDbContext CreateDbContext() => new(_dbOptions);
 
 	private ProjectService CreateProjectService(VibeSwarmDbContext dbContext)

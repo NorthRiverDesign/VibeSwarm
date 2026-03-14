@@ -307,7 +307,7 @@ public class ProjectService : IProjectService
 			var current = existing.ProviderSelections.FirstOrDefault(pp => pp.ProviderId == requested.ProviderId);
 			if (current == null)
 			{
-				existing.ProviderSelections.Add(new ProjectProvider
+				_dbContext.ProjectProviders.Add(new ProjectProvider
 				{
 					Id = requested.Id,
 					ProjectId = existing.Id,
@@ -353,7 +353,10 @@ public class ProjectService : IProjectService
 			var current = existing.Environments.FirstOrDefault(environment => environment.Id == requested.Id);
 			if (current == null)
 			{
-				existing.Environments.Add(new ProjectEnvironment
+				// Use DbSet.Add to explicitly mark as Added. Adding to the
+				// navigation collection with a pre-set GUID key causes EF Core
+				// to treat the entity as Modified (existing), not Added (new).
+				_dbContext.ProjectEnvironments.Add(new ProjectEnvironment
 				{
 					Id = requested.Id,
 					ProjectId = existing.Id,
