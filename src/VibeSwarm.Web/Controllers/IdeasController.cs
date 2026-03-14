@@ -18,6 +18,10 @@ public class IdeasController : ControllerBase
     [HttpGet("project/{projectId:guid}")]
     public async Task<IActionResult> GetByProject(Guid projectId, CancellationToken ct) => Ok(await _ideaService.GetByProjectIdAsync(projectId, ct));
 
+    [HttpGet("project/{projectId:guid}/paged")]
+    public async Task<IActionResult> GetPagedByProject(Guid projectId, [FromQuery] int page = 1, [FromQuery] int pageSize = 10, CancellationToken ct = default)
+        => Ok(await _ideaService.GetPagedByProjectIdAsync(projectId, page, pageSize, ct));
+
     [HttpGet("{id:guid}")]
     public async Task<IActionResult> GetById(Guid id, CancellationToken ct)
     {

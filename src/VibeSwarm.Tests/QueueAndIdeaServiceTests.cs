@@ -179,6 +179,50 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 	}
 
 	[Fact]
+	public async Task GetPagedByProjectIdAsync_ReturnsRequestedIdeaPageWithAggregateCounts()
+	{
+		await using var dbContext = CreateDbContext();
+		var projectId = Guid.NewGuid();
+
+		dbContext.Projects.Add(new Project
+		{
+			Id = projectId,
+			Name = "Paged Ideas",
+			WorkingPath = "/tmp/paged-ideas"
+		});
+
+		for (var index = 0; index < 6; index++)
+		{
+			dbContext.Ideas.Add(new Idea
+			{
+				Id = Guid.NewGuid(),
+				ProjectId = projectId,
+				Description = $"Idea {index + 1}",
+				SortOrder = index,
+				CreatedAt = DateTime.UtcNow.AddMinutes(index),
+				IsProcessing = index == 5
+			});
+		}
+
+		await dbContext.SaveChangesAsync();
+
+		var ideaService = new IdeaService(
+			dbContext,
+			null!,
+			null!,
+			null!,
+			NullLogger<IdeaService>.Instance);
+
+		var page = await ideaService.GetPagedByProjectIdAsync(projectId, page: 2, pageSize: 2);
+
+		Assert.Equal(2, page.PageNumber);
+		Assert.Equal(2, page.PageSize);
+		Assert.Equal(6, page.TotalCount);
+		Assert.Equal(5, page.UnprocessedCount);
+		Assert.Equal(new[] { "Idea 3", "Idea 4" }, page.Items.Select(idea => idea.Description).ToArray());
+	}
+
+	[Fact]
 	public async Task ConvertToJobAsync_UsesDirectImplementationPrompt_WhenProjectAutoExpandDisabled()
 	{
 		await using var dbContext = CreateDbContext();
@@ -298,6 +342,143 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		Assert.Contains("## Detailed Specification", job!.GoalPrompt);
 		Assert.Contains(idea.ExpandedDescription, job.GoalPrompt);
 		Assert.DoesNotContain("Work directly from the idea below", job.GoalPrompt);
+	}
+
+	[Fact]
+	public async Task GetPagedByProjectIdAsync_ReturnsRequestedJobPageAndActiveCount()
+	{
+		await using var dbContext = CreateDbContext();
+		var project = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Paged Jobs",
+			WorkingPath = "/tmp/paged-jobs"
+		};
+		var provider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Copilot",
+			Type = ProviderType.Copilot,
+			IsEnabled = true,
+			IsDefault = true
+		};
+
+		dbContext.Projects.Add(project);
+		dbContext.Providers.Add(provider);
+
+		var statuses = new[]
+		{
+			JobStatus.Completed,
+			JobStatus.Failed,
+			JobStatus.Paused,
+			JobStatus.Processing,
+			JobStatus.New
+		};
+
+		for (var index = 0; index < statuses.Length; index++)
+		{
+			dbContext.Jobs.Add(new Job
+			{
+				Id = Guid.NewGuid(),
+				ProjectId = project.Id,
+				ProviderId = provider.Id,
+				GoalPrompt = $"Job {index + 1}",
+				Title = $"Job {index + 1}",
+				Status = statuses[index],
+				CreatedAt = DateTime.UtcNow.AddMinutes(index)
+			});
+		}
+
+		await dbContext.SaveChangesAsync();
+
+		var serviceProvider = new ServiceCollection().BuildServiceProvider();
+		var jobService = new JobService(dbContext, serviceProvider);
+
+		var page = await jobService.GetPagedByProjectIdAsync(project.Id, page: 2, pageSize: 2);
+
+		Assert.Equal(2, page.PageNumber);
+		Assert.Equal(5, page.TotalCount);
+		Assert.Equal(3, page.ActiveCount);
+		Assert.Equal(new[] { "Job 3", "Job 2" }, page.Items.Select(job => job.Title).ToArray());
+	}
+
+	[Fact]
+	public async Task GetPagedAsync_FiltersJobsServerSideAndReturnsProjectSummaries()
+	{
+		await using var dbContext = CreateDbContext();
+		var firstProject = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Project One",
+			WorkingPath = "/tmp/project-one"
+		};
+		var secondProject = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Project Two",
+			WorkingPath = "/tmp/project-two"
+		};
+		var provider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Claude",
+			Type = ProviderType.Claude,
+			IsEnabled = true,
+			IsDefault = true
+		};
+
+		dbContext.Projects.AddRange(firstProject, secondProject);
+		dbContext.Providers.Add(provider);
+		dbContext.Jobs.AddRange(
+			new Job
+			{
+				Id = Guid.NewGuid(),
+				ProjectId = firstProject.Id,
+				ProviderId = provider.Id,
+				GoalPrompt = "Completed job",
+				Title = "Completed job",
+				Status = JobStatus.Completed,
+				CreatedAt = DateTime.UtcNow.AddMinutes(-3),
+				InputTokens = 100,
+				OutputTokens = 50,
+				TotalCostUsd = 1.25m
+			},
+			new Job
+			{
+				Id = Guid.NewGuid(),
+				ProjectId = firstProject.Id,
+				ProviderId = provider.Id,
+				GoalPrompt = "Queued job",
+				Title = "Queued job",
+				Status = JobStatus.New,
+				CreatedAt = DateTime.UtcNow.AddMinutes(-2)
+			},
+			new Job
+			{
+				Id = Guid.NewGuid(),
+				ProjectId = secondProject.Id,
+				ProviderId = provider.Id,
+				GoalPrompt = "Failed job",
+				Title = "Failed job",
+				Status = JobStatus.Failed,
+				CreatedAt = DateTime.UtcNow.AddMinutes(-1)
+			});
+
+		await dbContext.SaveChangesAsync();
+
+		var serviceProvider = new ServiceCollection().BuildServiceProvider();
+		var jobService = new JobService(dbContext, serviceProvider);
+
+		var result = await jobService.GetPagedAsync(statusFilter: "completed", page: 1, pageSize: 10);
+
+		var completedJob = Assert.Single(result.Items);
+		Assert.Equal("Completed job", completedJob.Title);
+		Assert.Equal(1, result.TotalCount);
+		Assert.Equal(100, result.TotalInputTokens);
+		Assert.Equal(50, result.TotalOutputTokens);
+		Assert.Equal(1.25m, result.TotalCostUsd);
+		Assert.Equal(2, result.ProjectCounts.Count);
+		Assert.Equal(1, result.ProjectCounts.Single(summary => summary.ProjectId == firstProject.Id).ActiveCount);
 	}
 
 	[Fact]

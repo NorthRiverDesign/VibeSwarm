@@ -18,9 +18,17 @@ public class JobsController : ControllerBase
     public async Task<IActionResult> GetAll(CancellationToken ct)
         => Ok(await _jobService.GetAllAsync(ct));
 
+    [HttpGet("paged")]
+    public async Task<IActionResult> GetPaged([FromQuery] Guid? projectId, [FromQuery] string status = "all", [FromQuery] int page = 1, [FromQuery] int pageSize = 25, CancellationToken ct = default)
+        => Ok(await _jobService.GetPagedAsync(projectId, status, page, pageSize, ct));
+
     [HttpGet("project/{projectId:guid}")]
     public async Task<IActionResult> GetByProject(Guid projectId, CancellationToken ct)
         => Ok(await _jobService.GetByProjectIdAsync(projectId, ct));
+
+    [HttpGet("project/{projectId:guid}/paged")]
+    public async Task<IActionResult> GetPagedByProject(Guid projectId, [FromQuery] int page = 1, [FromQuery] int pageSize = 10, CancellationToken ct = default)
+        => Ok(await _jobService.GetPagedByProjectIdAsync(projectId, page, pageSize, ct));
 
     [HttpGet("pending")]
     public async Task<IActionResult> GetPending(CancellationToken ct)

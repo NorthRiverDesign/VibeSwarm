@@ -12,6 +12,9 @@ namespace VibeSwarm.Shared.Services;
 
 public class IdeaService : IIdeaService
 {
+	private const int DefaultIdeaPageSize = 10;
+	private const int MaxPageSize = 100;
+
 	private readonly VibeSwarmDbContext _dbContext;
 	private readonly IJobService _jobService;
 	private readonly IProviderService _providerService;
@@ -61,6 +64,31 @@ public class IdeaService : IIdeaService
 			.OrderBy(i => i.SortOrder)
 			.ThenBy(i => i.CreatedAt)
 			.ToListAsync(cancellationToken);
+	}
+
+	public async Task<ProjectIdeasListResult> GetPagedByProjectIdAsync(Guid projectId, int page = 1, int pageSize = DefaultIdeaPageSize, CancellationToken cancellationToken = default)
+	{
+		var normalizedPageSize = NormalizePageSize(pageSize, DefaultIdeaPageSize);
+		var baseQuery = _dbContext.Ideas
+			.Where(i => i.ProjectId == projectId);
+
+		var totalCount = await baseQuery.CountAsync(cancellationToken);
+		var normalizedPage = NormalizePageNumber(page, normalizedPageSize, totalCount);
+
+		return new ProjectIdeasListResult
+		{
+			PageNumber = normalizedPage,
+			PageSize = normalizedPageSize,
+			TotalCount = totalCount,
+			UnprocessedCount = await baseQuery.CountAsync(i => !i.IsProcessing && i.JobId == null, cancellationToken),
+			Items = await baseQuery
+				.Include(i => i.Job)
+				.OrderBy(i => i.SortOrder)
+				.ThenBy(i => i.CreatedAt)
+				.Skip((normalizedPage - 1) * normalizedPageSize)
+				.Take(normalizedPageSize)
+				.ToListAsync(cancellationToken)
+		};
 	}
 
 	public async Task<Idea?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
@@ -1196,5 +1224,26 @@ Do not include code samples - just describe what needs to be built.";
 
 		// Cap at 7 ideas as instructed in the prompt
 		return suggestions.Take(7).ToList();
+	}
+
+	private static int NormalizePageSize(int pageSize, int defaultPageSize)
+	{
+		if (pageSize <= 0)
+		{
+			return defaultPageSize;
+		}
+
+		return Math.Min(pageSize, MaxPageSize);
+	}
+
+	private static int NormalizePageNumber(int pageNumber, int pageSize, int totalCount)
+	{
+		if (totalCount <= 0)
+		{
+			return 1;
+		}
+
+		var totalPages = (int)Math.Ceiling(totalCount / (double)pageSize);
+		return Math.Min(Math.Max(pageNumber, 1), totalPages);
 	}
 }

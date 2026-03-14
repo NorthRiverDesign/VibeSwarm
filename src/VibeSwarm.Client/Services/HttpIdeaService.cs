@@ -13,6 +13,10 @@ public class HttpIdeaService : IIdeaService
     public async Task<IEnumerable<Idea>> GetByProjectIdAsync(Guid projectId, CancellationToken ct = default)
         => await _http.GetFromJsonAsync<List<Idea>>($"/api/ideas/project/{projectId}", ct) ?? [];
 
+    public async Task<ProjectIdeasListResult> GetPagedByProjectIdAsync(Guid projectId, int page = 1, int pageSize = 10, CancellationToken ct = default)
+        => await _http.GetFromJsonAsync<ProjectIdeasListResult>($"/api/ideas/project/{projectId}/paged?page={page}&pageSize={pageSize}", ct)
+            ?? new ProjectIdeasListResult();
+
     public async Task<Idea?> GetByIdAsync(Guid id, CancellationToken ct = default)
         => await _http.GetFromJsonAsync<Idea>($"/api/ideas/{id}", ct);
 

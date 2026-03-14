@@ -5,7 +5,7 @@
 	<div class="card-header bg-body-secondary d-flex flex-wrap justify-content-between align-items-center gap-2">
 		<h5 class="mb-0 fw-semibold">Jobs</h5>
 		<div class="d-flex align-items-center gap-2">
-			<span class="badge bg-secondary">@Jobs.Count</span>
+			<span class="badge bg-secondary">@TotalJobsCount</span>
 			<button type="button" class="btn btn-sm btn-primary" @onclick="() => OnCreateJob.InvokeAsync()"
 					title="@(HasActiveJobs ? "Create a new job. It will be queued behind the current run." : "Create a new job")">
 				<i class="bi bi-plus-lg me-1"></i>Create Job
@@ -145,11 +145,26 @@
 			</ul>
 		}
 	</div>
+
+	<PaginationControls PageNumber="@CurrentPage" PageSize="@PageSize" TotalCount="@TotalJobsCount"
+						IsLoading="@IsPageLoading" OnPreviousPage="OnPreviousPage" OnNextPage="OnNextPage" />
 </div>
 
 @code {
 	[Parameter]
 	public List<Job> Jobs { get; set; } = new();
+
+	[Parameter]
+	public int TotalJobsCount { get; set; }
+
+	[Parameter]
+	public int CurrentPage { get; set; } = 1;
+
+	[Parameter]
+	public int PageSize { get; set; } = 10;
+
+	[Parameter]
+	public bool IsPageLoading { get; set; }
 
 	[Parameter]
 	public bool HasActiveJobs { get; set; }
@@ -159,6 +174,12 @@
 
 	[Parameter]
 	public EventCallback OnCreateJob { get; set; }
+
+	[Parameter]
+	public EventCallback OnPreviousPage { get; set; }
+
+	[Parameter]
+	public EventCallback OnNextPage { get; set; }
 
 	private static string GetJobDisplayTitle(Job job)
 	{

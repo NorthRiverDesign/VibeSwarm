@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using System.Text.Json;
 using VibeSwarm.Shared.Data;
+using VibeSwarm.Shared.Models;
 using VibeSwarm.Shared.Providers;
 using VibeSwarm.Web.Services;
 
@@ -9,6 +10,10 @@ namespace VibeSwarm.Shared.Services;
 
 public class JobService : IJobService
 {
+    private const int DefaultJobsPageSize = 25;
+    private const int DefaultProjectJobsPageSize = 10;
+    private const int MaxPageSize = 100;
+
     private readonly VibeSwarmDbContext _dbContext;
     private readonly IJobUpdateService? _jobUpdateService;
     private readonly IServiceProvider _serviceProvider;
@@ -36,6 +41,56 @@ public class JobService : IJobService
             .ToListAsync(cancellationToken);
     }
 
+    public async Task<JobsListResult> GetPagedAsync(Guid? projectId = null, string statusFilter = "all", int page = 1, int pageSize = DefaultJobsPageSize, CancellationToken cancellationToken = default)
+    {
+        var normalizedPageSize = NormalizePageSize(pageSize, DefaultJobsPageSize);
+        var filteredQuery = BuildFilteredJobsQuery(projectId, statusFilter);
+        var totalCount = await filteredQuery.CountAsync(cancellationToken);
+        var normalizedPage = NormalizePageNumber(page, normalizedPageSize, totalCount);
+
+        var aggregates = totalCount == 0
+            ? null
+            : await filteredQuery
+                .GroupBy(_ => 1)
+                .Select(group => new
+                {
+                    TotalInputTokens = group.Sum(job => job.InputTokens ?? 0),
+                    TotalOutputTokens = group.Sum(job => job.OutputTokens ?? 0),
+                    TotalCostUsd = group.Sum(job => job.TotalCostUsd ?? 0m)
+                })
+                .FirstOrDefaultAsync(cancellationToken);
+
+        return new JobsListResult
+        {
+            PageNumber = normalizedPage,
+            PageSize = normalizedPageSize,
+            TotalCount = totalCount,
+            TotalInputTokens = aggregates?.TotalInputTokens ?? 0,
+            TotalOutputTokens = aggregates?.TotalOutputTokens ?? 0,
+            TotalCostUsd = aggregates?.TotalCostUsd ?? 0m,
+            ProjectCounts = await _dbContext.Jobs
+                .GroupBy(job => job.ProjectId)
+                .Select(group => new JobProjectCountSummary
+                {
+                    ProjectId = group.Key,
+                    TotalCount = group.Count(),
+                    ActiveCount = group.Count(job =>
+                        job.Status == JobStatus.New ||
+                        job.Status == JobStatus.Started ||
+                        job.Status == JobStatus.Processing)
+                })
+                .ToListAsync(cancellationToken),
+            Items = await filteredQuery
+                .Include(j => j.Project)
+                    .ThenInclude(p => p.Environments)
+                .Include(j => j.Provider)
+                .OrderByDescending(j => j.CreatedAt)
+                .Skip((normalizedPage - 1) * normalizedPageSize)
+                .Take(normalizedPageSize)
+                .ToListAsync(cancellationToken)
+        };
+    }
+
     public async Task<IEnumerable<Job>> GetByProjectIdAsync(Guid projectId, CancellationToken cancellationToken = default)
     {
         return await _dbContext.Jobs
@@ -43,6 +98,34 @@ public class JobService : IJobService
             .Where(j => j.ProjectId == projectId)
             .OrderByDescending(j => j.CreatedAt)
             .ToListAsync(cancellationToken);
+    }
+
+    public async Task<ProjectJobsListResult> GetPagedByProjectIdAsync(Guid projectId, int page = 1, int pageSize = DefaultProjectJobsPageSize, CancellationToken cancellationToken = default)
+    {
+        var normalizedPageSize = NormalizePageSize(pageSize, DefaultProjectJobsPageSize);
+        var baseQuery = _dbContext.Jobs
+            .Where(j => j.ProjectId == projectId);
+        var totalCount = await baseQuery.CountAsync(cancellationToken);
+        var normalizedPage = NormalizePageNumber(page, normalizedPageSize, totalCount);
+
+        return new ProjectJobsListResult
+        {
+            PageNumber = normalizedPage,
+            PageSize = normalizedPageSize,
+            TotalCount = totalCount,
+            ActiveCount = await baseQuery.CountAsync(j =>
+                j.Status == JobStatus.New ||
+                j.Status == JobStatus.Pending ||
+                j.Status == JobStatus.Started ||
+                j.Status == JobStatus.Processing ||
+                j.Status == JobStatus.Paused, cancellationToken),
+            Items = await baseQuery
+                .Include(j => j.Provider)
+                .OrderByDescending(j => j.CreatedAt)
+                .Skip((normalizedPage - 1) * normalizedPageSize)
+                .Take(normalizedPageSize)
+                .ToListAsync(cancellationToken)
+        };
     }
 
     public async Task<IEnumerable<Job>> GetPendingJobsAsync(CancellationToken cancellationToken = default)
@@ -910,5 +993,65 @@ public class JobService : IJobService
         }
 
         return [selectedProvider, .. providers.Where(p => p.Id != selectedProviderId)];
+    }
+
+    private IQueryable<Job> BuildFilteredJobsQuery(Guid? projectId, string statusFilter)
+    {
+        var query = _dbContext.Jobs.AsQueryable();
+
+        if (projectId.HasValue)
+        {
+            query = query.Where(job => job.ProjectId == projectId.Value);
+        }
+
+        return NormalizeStatusFilter(statusFilter) switch
+        {
+            "active" => query.Where(job =>
+                job.Status == JobStatus.New ||
+                job.Status == JobStatus.Started ||
+                job.Status == JobStatus.Processing),
+            "completed" => query.Where(job => job.Status == JobStatus.Completed),
+            "failed" => query.Where(job =>
+                job.Status == JobStatus.Failed ||
+                job.Status == JobStatus.Cancelled),
+            _ => query
+        };
+    }
+
+    private static string NormalizeStatusFilter(string? statusFilter)
+    {
+        if (string.IsNullOrWhiteSpace(statusFilter))
+        {
+            return "all";
+        }
+
+        return statusFilter.Trim().ToLowerInvariant() switch
+        {
+            "active" => "active",
+            "completed" => "completed",
+            "failed" => "failed",
+            _ => "all"
+        };
+    }
+
+    private static int NormalizePageSize(int pageSize, int defaultPageSize)
+    {
+        if (pageSize <= 0)
+        {
+            return defaultPageSize;
+        }
+
+        return Math.Min(pageSize, MaxPageSize);
+    }
+
+    private static int NormalizePageNumber(int pageNumber, int pageSize, int totalCount)
+    {
+        if (totalCount <= 0)
+        {
+            return 1;
+        }
+
+        var totalPages = (int)Math.Ceiling(totalCount / (double)pageSize);
+        return Math.Min(Math.Max(pageNumber, 1), totalPages);
     }
 }

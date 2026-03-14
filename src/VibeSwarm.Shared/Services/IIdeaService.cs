@@ -11,6 +11,12 @@ public interface IIdeaService
 	Task<IEnumerable<Idea>> GetByProjectIdAsync(Guid projectId, CancellationToken cancellationToken = default);
 
 	/// <summary>
+	/// Gets a paged set of ideas for a project ordered by SortOrder.
+	/// Includes aggregate counts needed by the Ideas panel.
+	/// </summary>
+	Task<ProjectIdeasListResult> GetPagedByProjectIdAsync(Guid projectId, int page = 1, int pageSize = 10, CancellationToken cancellationToken = default);
+
+	/// <summary>
 	/// Gets an idea by its ID
 	/// </summary>
 	Task<Idea?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);

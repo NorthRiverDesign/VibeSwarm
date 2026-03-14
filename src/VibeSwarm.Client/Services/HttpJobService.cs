@@ -1,5 +1,6 @@
 using System.Net.Http.Json;
 using VibeSwarm.Shared.Data;
+using VibeSwarm.Shared.Models;
 using VibeSwarm.Shared.Services;
 
 namespace VibeSwarm.Client.Services;
@@ -12,8 +13,19 @@ public class HttpJobService : IJobService
     public async Task<IEnumerable<Job>> GetAllAsync(CancellationToken ct = default)
         => await _http.GetFromJsonAsync<List<Job>>("/api/jobs", ct) ?? [];
 
+    public async Task<JobsListResult> GetPagedAsync(Guid? projectId = null, string statusFilter = "all", int page = 1, int pageSize = 25, CancellationToken ct = default)
+    {
+        var projectQuery = projectId.HasValue ? $"&projectId={projectId.Value}" : string.Empty;
+        return await _http.GetFromJsonAsync<JobsListResult>($"/api/jobs/paged?status={Uri.EscapeDataString(statusFilter)}&page={page}&pageSize={pageSize}{projectQuery}", ct)
+            ?? new JobsListResult();
+    }
+
     public async Task<IEnumerable<Job>> GetByProjectIdAsync(Guid projectId, CancellationToken ct = default)
         => await _http.GetFromJsonAsync<List<Job>>($"/api/jobs/project/{projectId}", ct) ?? [];
+
+    public async Task<ProjectJobsListResult> GetPagedByProjectIdAsync(Guid projectId, int page = 1, int pageSize = 10, CancellationToken ct = default)
+        => await _http.GetFromJsonAsync<ProjectJobsListResult>($"/api/jobs/project/{projectId}/paged?page={page}&pageSize={pageSize}", ct)
+            ?? new ProjectJobsListResult();
 
     public async Task<IEnumerable<Job>> GetPendingJobsAsync(CancellationToken ct = default)
         => await _http.GetFromJsonAsync<List<Job>>("/api/jobs/pending", ct) ?? [];

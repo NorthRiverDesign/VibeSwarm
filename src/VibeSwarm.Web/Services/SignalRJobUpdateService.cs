@@ -99,6 +99,11 @@ public class SignalRJobUpdateService : IJobUpdateService
                 .Group("job-list")
                 .SendAsync("JobCompleted", jobId.ToString(), success, errorMessage);
 
+            // Notify global event subscribers so layout-level toasts work from any page
+            await _hubContext.Clients
+                .Group("global-events")
+                .SendAsync("JobCompleted", jobId.ToString(), success, errorMessage);
+
             _logger.LogDebug("Sent JobCompleted notification for job {JobId}: Success={Success}", jobId, success);
         }
         catch (Exception ex)

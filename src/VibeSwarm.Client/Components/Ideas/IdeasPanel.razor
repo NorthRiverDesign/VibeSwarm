@@ -13,7 +13,7 @@
 			<i class="bi bi-lightbulb me-2"></i>Ideas
 		</h5>
 		<div class="d-flex align-items-center gap-2">
-			<span class="badge bg-secondary">@Ideas.Count</span>
+			<span class="badge bg-secondary">@TotalIdeasCount</span>
 			@if (HasLocalInference)
 			{
 				<button type="button" class="btn btn-sm btn-outline-secondary" @onclick="SuggestIdeas"
@@ -30,7 +30,7 @@
 					<span class="d-none d-sm-inline">Suggest</span>
 				</button>
 			}
-			@if (Ideas.Count >= 1)
+			@if (TotalIdeasCount >= 1)
 			{
 				@if (IsProcessingActive)
 				{
@@ -152,7 +152,7 @@
 				</ul>
 			}
 
-			@if (!HasDefaultProvider && Ideas.Any())
+			@if (!HasDefaultProvider && TotalIdeasCount > 0)
 			{
 				<div class="alert alert-warning py-2 mt-3 mb-0">
 					<i class="bi bi-exclamation-triangle me-1"></i>
@@ -160,6 +160,9 @@
 				</div>
 			}
 		</div>
+
+		<PaginationControls PageNumber="@CurrentPage" PageSize="@PageSize" TotalCount="@TotalIdeasCount"
+							IsLoading="@IsPageLoading" OnPreviousPage="OnPreviousPage" OnNextPage="OnNextPage" />
 	</div>
 
 	@* Copy Idea Modal *@
@@ -215,6 +218,18 @@
 @code {
 	[Parameter]
 	public List<Idea> Ideas { get; set; } = new();
+
+	[Parameter]
+	public int TotalIdeasCount { get; set; }
+
+	[Parameter]
+	public int CurrentPage { get; set; } = 1;
+
+	[Parameter]
+	public int PageSize { get; set; } = 10;
+
+	[Parameter]
+	public bool IsPageLoading { get; set; }
 
 	[Parameter]
 	public Guid CurrentProjectId { get; set; }
@@ -275,6 +290,12 @@
 
 	[Parameter]
 	public EventCallback OnSuggestIdeas { get; set; }
+
+	[Parameter]
+	public EventCallback OnPreviousPage { get; set; }
+
+	[Parameter]
+	public EventCallback OnNextPage { get; set; }
 
 	[Parameter]
 	public AutoCommitMode CurrentAutoCommitMode { get; set; } = AutoCommitMode.Off;
@@ -511,7 +532,8 @@
 		}
 	}
 
-	private int UnprocessedIdeasCount => Ideas.Count(i => !i.IsProcessing && !i.JobId.HasValue);
+	[Parameter]
+	public int UnprocessedIdeasCount { get; set; }
 
 	private string ActiveProcessingMessage => CurrentAutoExpandIdeas
 		? "Auto-processing active. Ideas will be expanded, queued, and converted to jobs automatically."

@@ -1,0 +1,53 @@
+@if (TotalCount > 0)
+{
+	<div class="d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-2 p-3 border-top">
+		<div class="small text-body-secondary">
+			Showing @StartItem-@EndItem of @TotalCount
+		</div>
+		<div class="d-flex align-items-center gap-2">
+			<span class="small text-body-secondary">Page @PageNumber of @TotalPages</span>
+			<div class="btn-group btn-group-sm" role="group" aria-label="Pagination">
+				<button type="button" class="btn btn-secondary" @onclick="OnPreviousPage"
+						disabled="@(!HasPreviousPage || IsLoading)">
+					<i class="bi bi-chevron-left me-1"></i>Previous
+				</button>
+				<button type="button" class="btn btn-secondary" @onclick="OnNextPage"
+						disabled="@(!HasNextPage || IsLoading)">
+					Next<i class="bi bi-chevron-right ms-1"></i>
+				</button>
+			</div>
+		</div>
+	</div>
+}
+
+@code {
+	[Parameter]
+	public int PageNumber { get; set; }
+
+	[Parameter]
+	public int PageSize { get; set; }
+
+	[Parameter]
+	public int TotalCount { get; set; }
+
+	[Parameter]
+	public bool IsLoading { get; set; }
+
+	[Parameter]
+	public EventCallback OnPreviousPage { get; set; }
+
+	[Parameter]
+	public EventCallback OnNextPage { get; set; }
+
+	private int TotalPages => PageSize <= 0 || TotalCount <= 0
+		? 0
+		: (int)Math.Ceiling(TotalCount / (double)PageSize);
+
+	private int StartItem => TotalCount == 0 ? 0 : ((PageNumber - 1) * PageSize) + 1;
+
+	private int EndItem => TotalCount == 0 ? 0 : Math.Min(PageNumber * PageSize, TotalCount);
+
+	private bool HasPreviousPage => PageNumber > 1;
+
+	private bool HasNextPage => PageNumber < TotalPages;
+}

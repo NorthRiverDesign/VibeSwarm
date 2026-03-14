@@ -11,6 +11,7 @@
 @implements IAsyncDisposable
 @using System.Threading
 @using Microsoft.AspNetCore.SignalR.Client
+@using VibeSwarm.Shared.Models
 @using VibeSwarm.Shared.VersionControl.Models
 
 @if (_isLoading)
@@ -81,7 +82,7 @@ else
                         @onclick="() => SelectProject(null)">
                     <i class="bi bi-collection"></i>
                     <span class="flex-grow-1">All Projects</span>
-                    <span class="badge bg-secondary-subtle text-secondary-emphasis rounded-pill">@_jobs?.Count()</span>
+                    <span class="badge bg-secondary-subtle text-secondary-emphasis rounded-pill">@GetOverallJobCount()</span>
                 </button>
 
                 <div class="border-top"></div>
@@ -146,14 +147,14 @@ else
                         </span>
                     }
                     <span class="ms-auto text-body-secondary">
-                        @GetFilteredJobs().Count() jobs
+                        @_jobsResult.TotalCount jobs
                     </span>
                 </div>
             }
 
             @* Job list *@
             <div class="flex-grow-1 overflow-auto">
-                @if (_jobs == null || !_jobs.Any())
+                @if (GetOverallJobCount() == 0)
                 {
                     <EmptyState Icon="list-check" Title="No jobs yet"
                                 Message="Jobs are created when you run AI agent tasks on your projects.">
@@ -171,7 +172,7 @@ else
                         }
                     </EmptyState>
                 }
-                else if (!GetFilteredJobs().Any())
+                else if (!_jobsResult.Items.Any())
                 {
                     <EmptyState Icon="@GetFilterEmptyIcon()" Title="@GetFilterEmptyTitle()" Message="@GetFilterEmptyMessage()">
                         @if (_selectedProjectId.HasValue)
@@ -184,7 +185,7 @@ else
                 }
                 else
                 {
-                    @foreach (var job in GetFilteredJobs())
+                    @foreach (var job in _jobsResult.Items)
                     {
                         <JobListItem Status="@job.Status.ToString()" Prompt="@GetJobDisplayTitle(job)"
                                      ProjectName="@(job.Project?.Name ?? "Unknown")" ShowProjectName="@(_selectedProjectId == null)"
@@ -196,6 +197,9 @@ else
                     }
                 }
             </div>
+
+            <PaginationControls PageNumber="@_pageNumber" PageSize="@JobsPageSize" TotalCount="@_jobsResult.TotalCount"
+                                IsLoading="@_isRefreshing" OnPreviousPage="LoadPreviousPage" OnNextPage="LoadNextPage" />
         </div>
     </div>
 
@@ -211,11 +215,14 @@ else
     [Parameter]
     public Guid? ProjectFilter { get; set; }
 
-    private IEnumerable<Job>? _jobs;
+    private const int JobsPageSize = 25;
+
+    private JobsListResult _jobsResult = new();
     private IEnumerable<Project> _projects = Enumerable.Empty<Project>();
     private bool _isLoading = true;
     private string _statusFilter = "all";
     private Guid? _selectedProjectId;
+    private int _pageNumber = 1;
     private HubConnection? _hubConnection;
     private Timer? _refreshTimer;
     private bool _isRefreshing = false;
@@ -245,7 +252,11 @@ else
         if (ProjectFilter != _selectedProjectId)
         {
             _selectedProjectId = ProjectFilter;
-            StateHasChanged();
+            _pageNumber = 1;
+            if (!_isLoading)
+            {
+                _ = RefreshJobsSafely();
+            }
         }
     }
 
@@ -298,9 +309,7 @@ else
 
     private bool HasActiveJobs()
     {
-        return _jobs?.Any(j => j.Status == JobStatus.New ||
-        j.Status == JobStatus.Started ||
-        j.Status == JobStatus.Processing) ?? false;
+        return _jobsResult.ProjectCounts.Sum(count => count.ActiveCount) > 0;
     }
 
     private async Task RefreshJobsSafely()
@@ -361,9 +370,9 @@ TimeSpan.FromSeconds(10) })
 
             _hubConnection.On<string, int, int>("JobCycleProgress", async (jobId, currentCycle, maxCycles) =>
             {
-                if (_jobs != null && Guid.TryParse(jobId, out var id))
+                if (Guid.TryParse(jobId, out var id))
                 {
-                    var job = _jobs.FirstOrDefault(j => j.Id == id);
+                    var job = _jobsResult.Items.FirstOrDefault(j => j.Id == id);
                     if (job != null)
                     {
                         job.CurrentCycle = currentCycle;
@@ -394,9 +403,9 @@ TimeSpan.FromSeconds(10) })
     {
         Console.WriteLine($"[Jobs] OnJobStatusChanged: {jobId} -> {status}");
 
-        if (_jobs != null && Guid.TryParse(jobId, out var id) && Enum.TryParse<JobStatus>(status, out var newStatus))
+        if (Guid.TryParse(jobId, out var id) && Enum.TryParse<JobStatus>(status, out var newStatus))
         {
-            var job = _jobs.FirstOrDefault(j => j.Id == id);
+            var job = _jobsResult.Items.FirstOrDefault(j => j.Id == id);
             if (job != null)
             {
                 job.Status = newStatus;
@@ -424,9 +433,9 @@ TimeSpan.FromSeconds(10) })
 
     private async Task OnJobActivityUpdated(string jobId, string activity, DateTime timestamp)
     {
-        if (_jobs != null && Guid.TryParse(jobId, out var id))
+        if (Guid.TryParse(jobId, out var id))
         {
-            var job = _jobs.FirstOrDefault(j => j.Id == id);
+            var job = _jobsResult.Items.FirstOrDefault(j => j.Id == id);
             if (job != null)
             {
                 job.CurrentActivity = activity;
@@ -458,9 +467,9 @@ TimeSpan.FromSeconds(10) })
     {
         Console.WriteLine($"[Jobs] OnJobCompleted: {jobId}, success: {success}");
 
-        if (_jobs != null && Guid.TryParse(jobId, out var id))
+        if (Guid.TryParse(jobId, out var id))
         {
-            var job = _jobs.FirstOrDefault(j => j.Id == id);
+            var job = _jobsResult.Items.FirstOrDefault(j => j.Id == id);
             if (job != null)
             {
                 job.Status = success ? JobStatus.Completed : JobStatus.Failed;
@@ -492,12 +501,13 @@ TimeSpan.FromSeconds(10) })
     {
         try
         {
-            var jobsTask = JobService.GetAllAsync();
+            var jobsTask = JobService.GetPagedAsync(_selectedProjectId, _statusFilter, _pageNumber, JobsPageSize);
             var projectsTask = ProjectService.GetAllAsync();
 
             await Task.WhenAll(jobsTask, projectsTask);
 
-            _jobs = await jobsTask;
+            _jobsResult = await jobsTask;
+            _pageNumber = _jobsResult.PageNumber;
             _projects = await projectsTask;
         }
         finally
@@ -509,14 +519,18 @@ TimeSpan.FromSeconds(10) })
     private void SetStatusFilter(string filter)
     {
         _statusFilter = filter;
+        _pageNumber = 1;
+        _ = RefreshJobsSafely();
     }
 
     private void SelectProject(Guid? projectId)
     {
         _selectedProjectId = projectId;
+        _pageNumber = 1;
         // Update URL without full navigation to preserve state
         var url = projectId.HasValue ? $"/jobs/{projectId}" : "/jobs";
         NavigationManager.NavigateTo(url, forceLoad: false, replace: true);
+        _ = RefreshJobsSafely();
     }
 
     private void OnProjectFilterChanged(ChangeEventArgs e)
@@ -531,40 +545,15 @@ TimeSpan.FromSeconds(10) })
         }
     }
 
-    private int GetJobCountForProject(Guid projectId) => _jobs?.Count(j => j.ProjectId == projectId) ?? 0;
-    private int GetActiveCountForProject(Guid projectId) => _jobs?.Count(j => j.ProjectId == projectId &&
-    (j.Status == JobStatus.New || j.Status == JobStatus.Started || j.Status == JobStatus.Processing)) ?? 0;
-
-    private int GetActiveCount() => _jobs?.Count(j => j.Status == JobStatus.New || j.Status == JobStatus.Started || j.Status
-    == JobStatus.Processing) ?? 0;
-    private int GetCompletedCount() => _jobs?.Count(j => j.Status == JobStatus.Completed) ?? 0;
-    private int GetFailedCount() => _jobs?.Count(j => j.Status == JobStatus.Failed || j.Status == JobStatus.Cancelled) ?? 0;
+    private int GetJobCountForProject(Guid projectId) => _jobsResult.ProjectCounts.FirstOrDefault(c => c.ProjectId == projectId)?.TotalCount ?? 0;
+    private int GetActiveCountForProject(Guid projectId) => _jobsResult.ProjectCounts.FirstOrDefault(c => c.ProjectId == projectId)?.ActiveCount ?? 0;
+    private int GetOverallJobCount() => _jobsResult.ProjectCounts.Sum(c => c.TotalCount);
 
     // Token and cost summary methods
-    private int GetTotalInputTokens() => GetFilteredJobs().Sum(j => j.InputTokens ?? 0);
-    private int GetTotalOutputTokens() => GetFilteredJobs().Sum(j => j.OutputTokens ?? 0);
-    private decimal GetTotalCost() => GetFilteredJobs().Sum(j => j.TotalCostUsd ?? 0);
+    private int GetTotalInputTokens() => _jobsResult.TotalInputTokens;
+    private int GetTotalOutputTokens() => _jobsResult.TotalOutputTokens;
+    private decimal GetTotalCost() => _jobsResult.TotalCostUsd;
     private bool HasTokenData() => GetTotalInputTokens() > 0 || GetTotalOutputTokens() > 0 || GetTotalCost() > 0;
-
-    private IEnumerable<Job> GetFilteredJobs()
-    {
-        if (_jobs == null) return Enumerable.Empty<Job>();
-
-        // First filter by project if selected
-        var filtered = _selectedProjectId.HasValue
-        ? _jobs.Where(j => j.ProjectId == _selectedProjectId.Value)
-        : _jobs;
-
-        // Then filter by status
-        return _statusFilter switch
-        {
-            "active" => filtered.Where(j => j.Status == JobStatus.New || j.Status == JobStatus.Started || j.Status ==
-            JobStatus.Processing),
-            "completed" => filtered.Where(j => j.Status == JobStatus.Completed),
-            "failed" => filtered.Where(j => j.Status == JobStatus.Failed || j.Status == JobStatus.Cancelled),
-            _ => filtered
-        };
-    }
 
     private string GetFilterEmptyIcon() => _statusFilter switch
     {
@@ -639,6 +628,28 @@ TimeSpan.FromSeconds(10) })
     {
         // Use Title if available, otherwise use GoalPrompt
         return !string.IsNullOrEmpty(job.Title) ? job.Title : job.GoalPrompt;
+    }
+
+    private async Task LoadPreviousPage()
+    {
+        if (_pageNumber <= 1 || _isRefreshing)
+        {
+            return;
+        }
+
+        _pageNumber--;
+        await RefreshJobsSafely();
+    }
+
+    private async Task LoadNextPage()
+    {
+        if (_isRefreshing || (_pageNumber * JobsPageSize) >= _jobsResult.TotalCount)
+        {
+            return;
+        }
+
+        _pageNumber++;
+        await RefreshJobsSafely();
     }
 
     // Create Job modal methods
@@ -751,6 +762,7 @@ TimeSpan.FromSeconds(10) })
             _newJob.ModelUsed = string.IsNullOrEmpty(_selectedModelId) ? null : _selectedModelId;
             var createdJob = await JobService.CreateAsync(_newJob);
             _showCreateJobModal = false;
+            _pageNumber = 1;
             NotificationService.ShowSuccess("Job created successfully.");
             await RefreshJobsSafely();
         }

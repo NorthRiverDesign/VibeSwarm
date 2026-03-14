@@ -52,9 +52,9 @@ else
                     @onclick="@(() => _activeTab = "ideas")" role="tab">
                 <i class="bi bi-lightbulb me-1"></i>
                 <span>Ideas</span>
-                @if (Ideas.Any())
+                @if (IdeasTotalCount > 0)
                 {
-                    <span class="badge bg-secondary ms-1">@Ideas.Count</span>
+                    <span class="badge bg-secondary ms-1">@IdeasTotalCount</span>
                 }
             </button>
         </li>
@@ -63,9 +63,9 @@ else
                     @onclick="@(() => _activeTab = "jobs")" role="tab">
                 <i class="bi bi-list-task me-1"></i>
                 <span>Jobs</span>
-                @if (Jobs.Any())
+                @if (JobsTotalCount > 0)
                 {
-                    <span class="badge bg-secondary ms-1">@Jobs.Count</span>
+                    <span class="badge bg-secondary ms-1">@JobsTotalCount</span>
                 }
             </button>
         </li>
@@ -98,7 +98,9 @@ else
         @if (_activeTab == "ideas")
         {
             <div class="tab-pane fade show active">
-                <IdeasPanel Ideas="@Ideas" CurrentProjectId="@ProjectId" IsProcessingActive="@IsIdeasProcessingActive"
+                <IdeasPanel Ideas="@Ideas" TotalIdeasCount="@IdeasTotalCount" CurrentPage="@_ideasPageNumber"
+                            PageSize="@IdeasPageSize" IsPageLoading="@_isLoadingIdeasPage" UnprocessedIdeasCount="@IdeasUnprocessedCount"
+                            CurrentProjectId="@ProjectId" IsProcessingActive="@IsIdeasProcessingActive"
                             IsTogglingProcessing="@_isTogglingIdeasProcessing" HasDefaultProvider="@HasDefaultProvider"
                             HasActiveJobs="@HasActiveJobs" IsAddingIdea="@_isAddingIdea" ProcessingIdeaIds="@ProcessingIdeaIds"
                             CurrentAutoCommitMode="@(Project?.AutoCommitMode ?? AutoCommitMode.Off)"
@@ -109,14 +111,17 @@ else
                             OnExpandIdea="ExpandIdea" OnCancelExpansion="CancelIdeaExpansion" OnApproveExpansion="ApproveIdeaExpansion"
                             OnRejectExpansion="RejectIdeaExpansion" AvailableLocalModels="@_availableLocalModels"
                             HasLocalInference="@_hasLocalInference" AvailableProviders="@Providers.Where(p => p.IsEnabled).ToList()"
-                            OnSuggestIdeas="SuggestIdeasFromCodebase" />
+                            OnSuggestIdeas="SuggestIdeasFromCodebase" OnPreviousPage="LoadPreviousIdeasPage"
+                            OnNextPage="LoadNextIdeasPage" />
             </div>
         }
         @if (_activeTab == "jobs")
         {
             <div class="tab-pane fade show active">
-                <ProjectJobsList Jobs="@Jobs" HasActiveJobs="@HasActiveJobs" OnDeleteJob="DeleteJob"
-                                 OnCreateJob="ShowCreateJobModal" />
+                <ProjectJobsList Jobs="@PagedJobs" TotalJobsCount="@JobsTotalCount" CurrentPage="@_jobsPageNumber"
+                                 PageSize="@ProjectJobsPageSize" IsPageLoading="@_isLoadingJobsPage" HasActiveJobs="@HasActiveJobs"
+                                 OnDeleteJob="DeleteJob" OnCreateJob="ShowCreateJobModal" OnPreviousPage="LoadPreviousJobsPage"
+                                 OnNextPage="LoadNextJobsPage" />
             </div>
         }
         @if (_activeTab == "environments")
@@ -423,11 +428,17 @@ else
     [Parameter]
     public Guid ProjectId { get; set; }
 
+    private const int ProjectJobsPageSize = 10;
+    private const int IdeasPageSize = 10;
+
     private Project? Project { get; set; }
     private List<Job> Jobs { get; set; } = new();
+    private List<Job> PagedJobs { get; set; } = new();
     private List<Provider> Providers { get; set; } = new();
     private Job NewJob { get; set; } = new();
     private bool IsLoading { get; set; } = true;
+    private bool _isLoadingJobsPage;
+    private bool _isLoadingIdeasPage;
     private bool IsSaving { get; set; }
     private string? ErrorMessage { get; set; }
     private System.Threading.Timer? _refreshTimer;
@@ -509,6 +520,12 @@ else
 
     // Ideas state
     private List<Idea> Ideas { get; set; } = new();
+    private int _jobsPageNumber = 1;
+    private int _ideasPageNumber = 1;
+    private int JobsTotalCount { get; set; }
+    private int IdeasTotalCount { get; set; }
+    private int IdeasUnprocessedCount { get; set; }
+    private int ProjectActiveJobsCount { get; set; }
     private bool _isAddingIdea { get; set; }
     private bool IsIdeasProcessingActive { get; set; }
     private bool _isTogglingIdeasProcessing { get; set; }
@@ -521,12 +538,7 @@ else
     private List<DiscoveredModel> _availableLocalModels { get; set; } = new();
     private bool _hasLocalInference { get; set; }
 
-    private bool HasActiveJobs => Jobs.Any(j =>
-    j.Status == JobStatus.New ||
-    j.Status == JobStatus.Pending ||
-    j.Status == JobStatus.Started ||
-    j.Status == JobStatus.Processing ||
-    j.Status == JobStatus.Paused);
+    private bool HasActiveJobs => ProjectActiveJobsCount > 0;
 
     // SignalR connection
     private HubConnection? _hubConnection;
@@ -691,10 +703,6 @@ TimeSpan.FromSeconds(10) })
         {
             await InvokeAsync(async () =>
     {
-        // Check if this job was from an idea before refreshing
-        var completedJob = Jobs.FirstOrDefault(j => j.Id.ToString() == jobId);
-        var wasFromIdea = Ideas.Any(i => i.JobId.ToString() == jobId);
-
         await RefreshJobs();
         await LoadIdeas();
         await RefreshUncommittedChangesStatus();
@@ -703,33 +711,6 @@ TimeSpan.FromSeconds(10) })
         if (success && (_activeTab == "changes" || _hasUncommittedChangesHeader))
         {
             await LoadChangesTabData();
-        }
-
-        // Show toast notification for job completion with change info
-        if (completedJob != null)
-        {
-            // Re-fetch the job to get ChangedFilesCount
-            var freshJob = Jobs.FirstOrDefault(j => j.Id == completedJob.Id);
-            var jobTitle = completedJob.Title ?? "Job";
-            if (success)
-            {
-                var changeInfo = "";
-                if (freshJob?.ChangedFilesCount.HasValue == true)
-                {
-                    changeInfo = freshJob.ChangedFilesCount > 0
-                        ? $" - {freshJob.ChangedFilesCount} file(s) changed"
-                        : " - no changes detected";
-                }
-                NotificationService.ShowSuccess(
-        $"{TruncateForToast(jobTitle)} completed successfully.{changeInfo}",
-        wasFromIdea ? "Idea Completed" : "Job Completed");
-            }
-            else
-            {
-                NotificationService.ShowError(
-        errorMessage ?? $"{TruncateForToast(jobTitle)} failed.",
-        wasFromIdea ? "Idea Failed" : "Job Failed");
-            }
         }
 
         StateHasChanged();
@@ -878,6 +859,17 @@ TimeSpan.FromSeconds(10) })
         if (Project != null)
         {
             Jobs = (await JobService.GetByProjectIdAsync(ProjectId)).ToList();
+            ProjectActiveJobsCount = Jobs.Count(job =>
+                job.Status == JobStatus.New ||
+                job.Status == JobStatus.Pending ||
+                job.Status == JobStatus.Started ||
+                job.Status == JobStatus.Processing ||
+                job.Status == JobStatus.Paused);
+
+            var result = await JobService.GetPagedByProjectIdAsync(ProjectId, _jobsPageNumber, ProjectJobsPageSize);
+            _jobsPageNumber = result.PageNumber;
+            PagedJobs = result.Items;
+            JobsTotalCount = result.TotalCount;
         }
     }
 
@@ -889,7 +881,9 @@ TimeSpan.FromSeconds(10) })
             Project = await ProjectService.GetByIdAsync(ProjectId);
             if (Project != null)
             {
-                Jobs = (await JobService.GetByProjectIdAsync(ProjectId)).ToList();
+                _jobsPageNumber = 1;
+                _ideasPageNumber = 1;
+                await RefreshJobs();
                 await LoadIdeas();
             }
             Providers = (await ProviderService.GetAllAsync()).ToList();
@@ -936,13 +930,93 @@ TimeSpan.FromSeconds(10) })
 
     private async Task LoadIdeas()
     {
-        Ideas = (await IdeaService.GetByProjectIdAsync(ProjectId)).ToList();
+        var result = await IdeaService.GetPagedByProjectIdAsync(ProjectId, _ideasPageNumber, IdeasPageSize);
+        _ideasPageNumber = result.PageNumber;
+        Ideas = result.Items;
+        IdeasTotalCount = result.TotalCount;
+        IdeasUnprocessedCount = result.UnprocessedCount;
         var ideaIdsWithJobs = Ideas
             .Where(i => i.JobId.HasValue)
             .Select(i => i.Id)
             .ToHashSet();
         ProcessingIdeaIds.RemoveWhere(id => ideaIdsWithJobs.Contains(id) || Ideas.All(i => i.Id != id));
         IsIdeasProcessingActive = await IdeaService.IsProcessingActiveAsync(ProjectId);
+    }
+
+    private async Task LoadPreviousJobsPage()
+    {
+        if (_jobsPageNumber <= 1 || _isLoadingJobsPage)
+        {
+            return;
+        }
+
+        _jobsPageNumber--;
+        await RefreshProjectJobsPage();
+    }
+
+    private async Task LoadNextJobsPage()
+    {
+        if (_isLoadingJobsPage || (_jobsPageNumber * ProjectJobsPageSize) >= JobsTotalCount)
+        {
+            return;
+        }
+
+        _jobsPageNumber++;
+        await RefreshProjectJobsPage();
+    }
+
+    private async Task RefreshProjectJobsPage()
+    {
+        _isLoadingJobsPage = true;
+        StateHasChanged();
+
+        try
+        {
+            await RefreshJobs();
+        }
+        finally
+        {
+            _isLoadingJobsPage = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task LoadPreviousIdeasPage()
+    {
+        if (_ideasPageNumber <= 1 || _isLoadingIdeasPage)
+        {
+            return;
+        }
+
+        _ideasPageNumber--;
+        await RefreshIdeasPage();
+    }
+
+    private async Task LoadNextIdeasPage()
+    {
+        if (_isLoadingIdeasPage || (_ideasPageNumber * IdeasPageSize) >= IdeasTotalCount)
+        {
+            return;
+        }
+
+        _ideasPageNumber++;
+        await RefreshIdeasPage();
+    }
+
+    private async Task RefreshIdeasPage()
+    {
+        _isLoadingIdeasPage = true;
+        StateHasChanged();
+
+        try
+        {
+            await LoadIdeas();
+        }
+        finally
+        {
+            _isLoadingIdeasPage = false;
+            StateHasChanged();
+        }
     }
 
     private async Task LoadGitInfo()
@@ -1468,7 +1542,11 @@ TimeSpan.FromSeconds(10) })
         try
         {
             await JobService.DeleteAsync(jobId);
-            Jobs = (await JobService.GetByProjectIdAsync(ProjectId)).ToList();
+            if ((_jobsPageNumber - 1) * ProjectJobsPageSize >= Math.Max(JobsTotalCount - 1, 0) && _jobsPageNumber > 1)
+            {
+                _jobsPageNumber--;
+            }
+            await RefreshJobs();
             NotificationService.ShowSuccess("Job deleted successfully.");
         }
         catch (Exception ex)
@@ -1765,6 +1843,7 @@ TimeSpan.FromSeconds(10) })
             };
 
             await IdeaService.CreateAsync(idea);
+            _ideasPageNumber = Math.Max(1, ((IdeasTotalCount + 1) + IdeasPageSize - 1) / IdeasPageSize);
             await LoadIdeas();
         }
         catch (Exception ex)
@@ -1876,10 +1955,7 @@ TimeSpan.FromSeconds(10) })
 
         try
         {
-            var hasRunningJob = Jobs.Any(j =>
-                j.Status == JobStatus.Started ||
-                j.Status == JobStatus.Processing ||
-                j.Status == JobStatus.Paused);
+            var hasRunningJob = HasActiveJobs;
 
             // Update auto-commit mode if changed
             if (Project != null && Project.AutoCommitMode != autoCommitMode)
@@ -1949,20 +2025,11 @@ TimeSpan.FromSeconds(10) })
 
         try
         {
-            var hasRunningJob = Jobs.Any(j =>
-                j.Status == JobStatus.Started ||
-                j.Status == JobStatus.Processing ||
-                j.Status == JobStatus.Paused);
             var job = await IdeaService.ConvertToJobAsync(ideaId);
             if (job != null)
             {
                 await RefreshJobs();
                 await LoadIdeas();
-                NotificationService.ShowSuccess(
-                    hasRunningJob
-                        ? "Idea queued successfully. It will start after the current job finishes."
-                        : "Idea queued as job successfully.",
-                    "Idea Started");
             }
             else
             {
@@ -2088,6 +2155,8 @@ TimeSpan.FromSeconds(10) })
     {
         // The panel handles the full suggestion flow and notifications.
         // This callback is invoked only on success so we reload the ideas list.
+        var expectedTotalIdeas = Math.Max(IdeasTotalCount, 1);
+        _ideasPageNumber = Math.Max(1, (expectedTotalIdeas + IdeasPageSize - 1) / IdeasPageSize);
         await LoadIdeas();
         StateHasChanged();
     }

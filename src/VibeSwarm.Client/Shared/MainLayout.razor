@@ -2,6 +2,7 @@
 @inject IJSRuntime JSRuntime
 @inject NotificationService NotificationService
 @inject IJobService JobService
+@inject IIdeaService IdeaService
 @inject ChangePasswordModalService ChangePasswordModalService
 @inject HttpClient HttpClient
 @inject NavigationManager NavigationManager
@@ -291,6 +292,21 @@ TimeSpan.FromSeconds(10) })
                 await OnGlobalJobCompleted(jobId, success, errorMessage);
             });
 
+            _globalHubConnection.On<string, string>("IdeaCreated", async (ideaId, projectId) =>
+            {
+                await OnGlobalIdeaCreated(ideaId);
+            });
+
+            _globalHubConnection.On<string, string>("IdeaUpdated", async (ideaId, projectId) =>
+            {
+                await OnGlobalIdeaUpdated(ideaId);
+            });
+
+            _globalHubConnection.On<string, string, string>("IdeaStarted", async (ideaId, projectId, jobId) =>
+            {
+                await OnGlobalIdeaStarted(ideaId, jobId);
+            });
+
             _globalHubConnection.On<string, string, string, List<string>?, string?>("JobInteractionRequired",
             async (jobId, prompt, interactionType, choices, defaultResponse) =>
             {
@@ -357,18 +373,19 @@ TimeSpan.FromSeconds(10) })
 
     private async Task OnGlobalJobCompleted(string jobId, bool success, string? errorMessage)
     {
-        Console.WriteLine($"[MainLayout] Job {jobId} completed, success: {success}");
+        if (!TryBeginToastEvent($"job-completed:{jobId}:{success}:{errorMessage}"))
+        {
+            return;
+        }
 
         if (Guid.TryParse(jobId, out var id))
         {
             try
             {
                 var job = await JobService.GetByIdAsync(id);
-                var projectName = job?.Project?.Name;
-
                 await InvokeAsync(() =>
                 {
-                    NotificationService.ShowJobCompleted(id, success, projectName, errorMessage);
+                    ShowJobCompletedToast(job, success, errorMessage);
                     StateHasChanged();
                 });
             }
@@ -380,6 +397,120 @@ TimeSpan.FromSeconds(10) })
                     StateHasChanged();
                 });
             }
+        }
+    }
+
+    private async Task OnGlobalIdeaCreated(string ideaId)
+    {
+        if (!TryBeginToastEvent($"idea-created:{ideaId}"))
+        {
+            return;
+        }
+
+        if (!Guid.TryParse(ideaId, out var parsedIdeaId))
+        {
+            return;
+        }
+
+        try
+        {
+            var idea = await IdeaService.GetByIdAsync(parsedIdeaId);
+
+            await InvokeAsync(() =>
+            {
+                var ideaText = TruncateForToast(idea?.Description, 80, "New idea");
+                var projectName = idea?.Project?.Name;
+                var message = projectName is null
+                    ? $"{ideaText} was added."
+                    : $"{ideaText} was added to '{projectName}'.";
+
+                NotificationService.ShowSuccess(message, "Idea Created");
+                StateHasChanged();
+            });
+        }
+        catch
+        {
+            await InvokeAsync(() =>
+            {
+                NotificationService.ShowSuccess("A new idea was added.", "Idea Created");
+                StateHasChanged();
+            });
+        }
+    }
+
+    private async Task OnGlobalIdeaUpdated(string ideaId)
+    {
+        if (!TryBeginToastEvent($"idea-updated:{ideaId}"))
+        {
+            return;
+        }
+
+        if (!Guid.TryParse(ideaId, out var parsedIdeaId))
+        {
+            return;
+        }
+
+        try
+        {
+            var idea = await IdeaService.GetByIdAsync(parsedIdeaId);
+
+            await InvokeAsync(() =>
+            {
+                var ideaText = TruncateForToast(idea?.Description, 80, "Idea");
+                var projectName = idea?.Project?.Name;
+                var message = projectName is null
+                    ? $"{ideaText} was updated."
+                    : $"{ideaText} was updated in '{projectName}'.";
+
+                NotificationService.ShowInfo(message, "Idea Updated");
+                StateHasChanged();
+            });
+        }
+        catch
+        {
+            await InvokeAsync(() =>
+            {
+                NotificationService.ShowInfo("An idea was updated.", "Idea Updated");
+                StateHasChanged();
+            });
+        }
+    }
+
+    private async Task OnGlobalIdeaStarted(string ideaId, string jobId)
+    {
+        if (!TryBeginToastEvent($"idea-started:{ideaId}:{jobId}"))
+        {
+            return;
+        }
+
+        if (!Guid.TryParse(jobId, out var parsedJobId))
+        {
+            return;
+        }
+
+        try
+        {
+            var job = await JobService.GetByIdAsync(parsedJobId);
+
+            await InvokeAsync(() =>
+            {
+                var title = TruncateForToast(job?.Title, 80, "Idea");
+                var projectName = job?.Project?.Name;
+                var message = projectName is null
+                    ? $"{title} started as a job."
+                    : $"{title} started in '{projectName}'.";
+
+                NotificationService.ShowSuccess(message, "Idea Started");
+                StateHasChanged();
+            });
+        }
+        catch
+        {
+            await InvokeAsync(() =>
+            {
+                NotificationService.ShowSuccess("An idea started as a job.", "Idea Started");
+                StateHasChanged();
+            });
         }
     }
 
@@ -401,6 +532,67 @@ TimeSpan.FromSeconds(10) })
     private Task OnGlobalProcessExited(string jobId, int processId, int exitCode, double durationSeconds)
     {
         return Task.CompletedTask;
+    }
+
+    private void ShowJobCompletedToast(Job? job, bool success, string? errorMessage)
+    {
+        if (success)
+        {
+            var jobTitle = TruncateForToast(job?.Title, 80, "Job");
+            var projectName = job?.Project?.Name;
+            var scope = projectName is null ? string.Empty : $" in '{projectName}'";
+            var changeInfo = job?.ChangedFilesCount switch
+            {
+                > 0 => $" {job.ChangedFilesCount} file(s) changed.",
+                0 => " No files changed.",
+                _ => string.Empty
+            };
+
+            NotificationService.ShowSuccess($"{jobTitle} completed successfully{scope}.{changeInfo}", "Job Completed");
+            return;
+        }
+
+        NotificationService.ShowError(
+            errorMessage ?? $"{TruncateForToast(job?.Title, 80, "Job")} failed.",
+            "Job Failed");
+    }
+
+    private readonly Dictionary<string, DateTime> _recentToastEvents = new();
+
+    private bool TryBeginToastEvent(string eventKey)
+    {
+        var now = DateTime.UtcNow;
+        var expiry = now.AddSeconds(-5);
+
+        foreach (var staleKey in _recentToastEvents
+                     .Where(entry => entry.Value < expiry)
+                     .Select(entry => entry.Key)
+                     .ToList())
+        {
+            _recentToastEvents.Remove(staleKey);
+        }
+
+        if (_recentToastEvents.TryGetValue(eventKey, out var lastSeen) &&
+            now - lastSeen < TimeSpan.FromSeconds(5))
+        {
+            return false;
+        }
+
+        _recentToastEvents[eventKey] = now;
+        return true;
+    }
+
+    private static string TruncateForToast(string? text, int maxLength, string fallback)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return fallback;
+        }
+
+        var value = text.Trim();
+        return value.Length <= maxLength
+            ? value
+            : $"{value[..(maxLength - 3)]}...";
     }
 
     private async Task OnShowNotification(string title, string message, string type)
