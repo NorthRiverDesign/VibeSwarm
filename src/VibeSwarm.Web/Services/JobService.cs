@@ -518,8 +518,8 @@ public class JobService : IJobService
             return false;
         }
 
-        // Only allow resetting jobs that are in terminal states
-        if (job.Status != JobStatus.Failed && job.Status != JobStatus.Cancelled)
+        // Do not allow resetting completed jobs
+        if (job.Status == JobStatus.Completed)
         {
             return false;
         }
@@ -766,8 +766,8 @@ public class JobService : IJobService
             return false;
         }
 
-        // Only allow resetting jobs that are in terminal states
-        if (job.Status != JobStatus.Failed && job.Status != JobStatus.Cancelled)
+        // Do not allow resetting completed jobs
+        if (job.Status == JobStatus.Completed)
         {
             return false;
         }
@@ -826,6 +826,42 @@ public class JobService : IJobService
         await _dbContext.SaveChangesAsync(cancellationToken);
 
         // Notify about status change
+        if (_jobUpdateService != null)
+        {
+            try
+            {
+                await _jobUpdateService.NotifyJobStatusChanged(job.Id, job.Status.ToString());
+                await _jobUpdateService.NotifyJobListChanged();
+            }
+            catch { }
+        }
+
+        _jobProcessingService?.TriggerProcessing();
+
+        return true;
+    }
+
+    public async Task<bool> ForceFailJobAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        var job = await _dbContext.Jobs
+            .FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
+
+        if (job == null || JobStateMachine.IsTerminalState(job.Status))
+        {
+            return false;
+        }
+
+        job.Status = JobStatus.Failed;
+        job.CompletedAt = DateTime.UtcNow;
+        job.ErrorMessage = "Manually marked as failed by user.";
+        job.CurrentActivity = null;
+        job.WorkerInstanceId = null;
+        job.ProcessId = null;
+        job.LastHeartbeatAt = null;
+        job.CancellationRequested = false;
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
         if (_jobUpdateService != null)
         {
             try

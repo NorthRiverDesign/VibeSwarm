@@ -42,7 +42,29 @@
 									</li>
 								}
 							}
-							@if (ShowGitActions)
+							@if (CanForceReset)
+						{
+							@if (CanRetry)
+							{
+								<li>
+									<hr class="dropdown-divider">
+								</li>
+							}
+							<li>
+								<button class="dropdown-item text-danger" @onclick="OnForceReset" disabled="@IsForceResetting">
+									@if (IsForceResetting)
+									{
+										<span class="spinner-border spinner-border-sm me-2" role="status"></span>
+									}
+									else
+									{
+										<i class="bi bi-exclamation-triangle me-2"></i>
+									}
+									@(IsForceResetting ? "Marking as Failed..." : "Mark as Failed")
+								</button>
+							</li>
+						}
+						@if (ShowGitActions)
 							{
 								@if (CanRetry)
 								{
@@ -362,6 +384,15 @@
 	public EventCallback OnPruneBranches { get; set; }
 
 	[Parameter]
+	public bool CanForceReset { get; set; }
+
+	[Parameter]
+	public bool IsForceResetting { get; set; }
+
+	[Parameter]
+	public EventCallback OnForceReset { get; set; }
+
+	[Parameter]
 	public EventCallback OnCancel { get; set; }
 
 	[Parameter]
@@ -382,7 +413,7 @@
 	[Parameter]
 	public CycleMode CycleMode { get; set; } = CycleMode.SingleCycle;
 
-	private bool HasActionMenu => CanRetry || ShowGitActions;
+	private bool HasActionMenu => CanRetry || ShowGitActions || CanForceReset;
 
 	private bool AreGitActionsBusy => IsGitSyncing || IsGitRefreshing || IsGitPruning;
 

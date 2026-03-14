@@ -230,11 +230,34 @@ public class JobProcessingService : BackgroundService
             using var scope = _scopeFactory.CreateScope();
             var dbContext = scope.ServiceProvider.GetRequiredService<VibeSwarmDbContext>();
 
+            // Fix jobs that completed (CompletedAt set) but crashed before persisting terminal status
+            var completedWrongStatus = await dbContext.Jobs
+                .Where(j => j.Status == JobStatus.Started || j.Status == JobStatus.Processing)
+                .Where(j => j.CompletedAt.HasValue)
+                .ToListAsync(cancellationToken);
+
+            foreach (var job in completedWrongStatus)
+            {
+                _logger.LogWarning("Fixing job {JobId} with completed timestamp but non-terminal status {Status}",
+                    job.Id, job.Status);
+                job.Status = JobStatus.Completed;
+                job.WorkerInstanceId = null;
+                job.ProcessId = null;
+                job.CurrentActivity = null;
+            }
+
+            if (completedWrongStatus.Any())
+            {
+                await dbContext.SaveChangesAsync(cancellationToken);
+                _logger.LogInformation("Fixed {Count} jobs with completed timestamp but non-terminal status", completedWrongStatus.Count);
+            }
+
             // Find jobs that were being processed by any worker but appear orphaned
-            // (Started/Processing with old heartbeats)
+            // (Started/Processing with old heartbeats, excluding already-completed jobs)
             var cutoffTime = DateTime.UtcNow - TimeSpan.FromMinutes(5);
             var orphanedJobs = await dbContext.Jobs
                 .Where(j => (j.Status == JobStatus.Started || j.Status == JobStatus.Processing))
+                .Where(j => !j.CompletedAt.HasValue)
                 .Where(j => !j.LastHeartbeatAt.HasValue || j.LastHeartbeatAt.Value < cutoffTime)
                 .ToListAsync(cancellationToken);
 

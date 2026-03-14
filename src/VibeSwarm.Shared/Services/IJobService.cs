@@ -96,4 +96,13 @@ public interface IJobService
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>The number of jobs cancelled</returns>
     Task<int> CancelAllByProjectIdAsync(Guid projectId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Bypasses the state machine and directly sets a non-terminal job to Failed.
+    /// Use as a last resort for jobs stuck in active states with no recovery path.
+    /// </summary>
+    /// <param name="id">The job ID</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>True if successful; false if job is already in a terminal state or not found</returns>
+    Task<bool> ForceFailJobAsync(Guid id, CancellationToken cancellationToken = default);
 }

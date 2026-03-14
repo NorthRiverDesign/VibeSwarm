@@ -42,6 +42,7 @@ else
 					   OnRetryWithOptions="ShowRetryModal" OnCreateBranch="ShowCreateBranchModal" OnSync="SyncWithOrigin"
 					   OnRefresh="RefreshBranches" OnPruneBranches="PruneRemoteBranches"
 					   OnCancel="CancelJob" OnForceCancel="ForceCancelJob"
+					   CanForceReset="@CanForceReset" IsForceResetting="@IsForceResetting" OnForceReset="ForceResetJob"
 					   CurrentActivity="@Job.CurrentActivity" LastActivityAt="@Job.LastActivityAt" CurrentCycle="@Job.CurrentCycle"
 					   MaxCycles="@Job.MaxCycles" CycleMode="@Job.CycleMode" />
 
@@ -180,6 +181,7 @@ else
     private bool IsCancelling { get; set; }
     private bool IsForceCancelling { get; set; }
     private bool IsRetrying { get; set; }
+    private bool IsForceResetting { get; set; }
     private HubConnection? _hubConnection;
     private Timer? _refreshTimer;
     private bool _isRefreshing = false;
@@ -265,9 +267,12 @@ new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
 	(Job.Status == JobStatus.Started || Job.Status == JobStatus.Processing) &&
 	Job.CancellationRequested;
 
-	private bool CanRetry => Job != null &&
-	(Job.Status == JobStatus.Cancelled ||
-	Job.Status == JobStatus.Failed);
+	private bool CanRetry => Job != null && Job.Status != JobStatus.Completed;
+
+	private bool CanForceReset => Job != null &&
+		Job.Status != JobStatus.Completed &&
+		Job.Status != JobStatus.Failed &&
+		Job.Status != JobStatus.Cancelled;
 
 	private bool IsJobActive => Job != null &&
 	(Job.Status == JobStatus.New ||
@@ -858,6 +863,39 @@ TimeSpan.FromSeconds(10) })
         finally
         {
             IsRetrying = false;
+        }
+    }
+
+    private async Task ForceResetJob()
+    {
+        if (Job == null) return;
+
+        var confirmed = await JSRuntime.InvokeAsync<bool>("confirm",
+            "Are you sure you want to mark this job as Failed? This cannot be undone, but you can retry afterward.");
+        if (!confirmed) return;
+
+        IsForceResetting = true;
+
+        try
+        {
+            var result = await JobService.ForceFailJobAsync(Job.Id);
+            if (result)
+            {
+                NotificationService.ShowSuccess("Job has been marked as failed.");
+                await LoadJob();
+            }
+            else
+            {
+                NotificationService.ShowError("Could not mark the job as failed. It may already be in a terminal state.");
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.ShowError($"Error marking job as failed: {ex.Message}");
+        }
+        finally
+        {
+            IsForceResetting = false;
         }
     }
 

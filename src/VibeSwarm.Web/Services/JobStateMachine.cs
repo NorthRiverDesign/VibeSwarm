@@ -127,7 +127,7 @@ public class JobStateMachine
 	/// </summary>
 	public static bool CanRetry(JobStatus status)
 	{
-		return status is JobStatus.Failed or JobStatus.Cancelled or JobStatus.Stalled;
+		return status != JobStatus.Completed;
 	}
 
 	/// <summary>

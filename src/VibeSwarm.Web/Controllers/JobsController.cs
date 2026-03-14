@@ -162,6 +162,13 @@ public class JobsController : ControllerBase
     public async Task<IActionResult> UpdatePrompt(Guid id, [FromBody] UpdatePromptRequest req, CancellationToken ct)
         => await _jobService.UpdateJobPromptAsync(id, req.Prompt, ct) ? Ok() : BadRequest();
 
+    [HttpPost("{id:guid}/force-failed")]
+    public async Task<IActionResult> ForceFailed(Guid id, CancellationToken ct)
+    {
+        var result = await _jobService.ForceFailJobAsync(id, ct);
+        return result ? Ok() : BadRequest("Job is already in a terminal state or not found.");
+    }
+
     [HttpPost("project/{projectId:guid}/cancel-all")]
     public async Task<IActionResult> CancelAllByProject(Guid projectId, CancellationToken ct)
     {
