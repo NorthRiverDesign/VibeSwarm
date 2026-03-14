@@ -91,8 +91,14 @@ public class Project
     /// </summary>
     public bool IdeasProcessingActive { get; set; }
 
-    /// <summary>
-    /// Whether to auto-commit changes when jobs from ideas complete during auto-processing
-    /// </summary>
-    public bool IdeasAutoCommit { get; set; }
+	/// <summary>
+	/// Whether to auto-commit changes when jobs from ideas complete during auto-processing
+	/// </summary>
+	public bool IdeasAutoCommit { get; set; }
+
+	/// <summary>
+	/// Whether ideas should be automatically expanded into detailed specs before creating jobs.
+	/// When disabled, ideas are sent directly to implementation unless an approved expansion exists.
+	/// </summary>
+	public bool IdeasAutoExpand { get; set; } = true;
 }

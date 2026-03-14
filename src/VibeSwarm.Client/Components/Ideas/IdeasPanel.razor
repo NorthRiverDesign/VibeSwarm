@@ -107,8 +107,16 @@
 					</button>
 				</div>
 				<div class="form-text">
-					Short description of a feature or update. Ideas will be expanded into full specs when processed. Press
-					Ctrl+Enter to submit.
+					Short description of a feature or update.
+					@if (CurrentAutoExpandIdeas)
+					{
+						<span> Ideas will be expanded into full specs when processed.</span>
+					}
+					else
+					{
+						<span> Ideas will be sent directly to implementation unless they already have an approved expansion.</span>
+					}
+					<span> Press Ctrl+Enter to submit.</span>
 				</div>
 			</div>
 
@@ -116,7 +124,7 @@
 			{
 				<div class="alert alert-info py-2 mb-3 d-flex align-items-center gap-2">
 					<span class="spinner-border spinner-border-sm" role="status"></span>
-					<span>Auto-processing active. Ideas will be queued and converted to jobs automatically.</span>
+					<span>@ActiveProcessingMessage</span>
 				</div>
 			}
 
@@ -174,9 +182,10 @@
 	<ModalDialog @bind-IsVisible="_showStartAllModal" Title="Start All Ideas" Icon="play-fill"
 				 Size="ModalDialog.ModalSize.Small">
 		<ChildContent>
-			<p>Start processing <strong>@UnprocessedIdeasCount</strong> idea@(UnprocessedIdeasCount == 1 ? "" : "s")? Ideas
-				will be expanded and converted to jobs automatically. Only one job runs per project at a time, so extra jobs
-				stay queued until the current run finishes.</p>
+			<p>
+				Start processing <strong>@UnprocessedIdeasCount</strong> idea@(UnprocessedIdeasCount == 1 ? "" : "s")?
+				@StartAllDescription
+			</p>
 
 				@if (IsGitRepository)
 				{
@@ -269,6 +278,9 @@
 
 	[Parameter]
 	public AutoCommitMode CurrentAutoCommitMode { get; set; } = AutoCommitMode.Off;
+
+	[Parameter]
+	public bool CurrentAutoExpandIdeas { get; set; } = true;
 
 	[Parameter]
 	public bool IsGitRepository { get; set; }
@@ -500,6 +512,14 @@
 	}
 
 	private int UnprocessedIdeasCount => Ideas.Count(i => !i.IsProcessing && !i.JobId.HasValue);
+
+	private string ActiveProcessingMessage => CurrentAutoExpandIdeas
+		? "Auto-processing active. Ideas will be expanded, queued, and converted to jobs automatically."
+		: "Auto-processing active. Ideas will be queued and converted directly to jobs unless they already have an approved expansion.";
+
+	private string StartAllDescription => CurrentAutoExpandIdeas
+		? "Ideas will be expanded into fuller specs and converted to jobs automatically. Only one job runs per project at a time, so extra jobs stay queued until the current run finishes."
+		: "Ideas will be converted directly to jobs unless they already have an approved expansion. Only one job runs per project at a time, so extra jobs stay queued until the current run finishes.";
 
 	private async Task SuggestIdeas()
 	{

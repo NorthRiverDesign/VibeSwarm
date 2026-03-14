@@ -98,6 +98,7 @@ entity.Property(e => e.Description).HasMaxLength(500);
 entity.Property(e => e.WorkingPath).IsRequired().HasMaxLength(500);
 entity.Property(e => e.GitHubRepository).HasMaxLength(200);
 entity.Property(e => e.PromptContext).HasMaxLength(1000);
+entity.Property(e => e.IdeasAutoExpand).HasDefaultValue(true);
 entity.HasIndex(e => e.Name).IsUnique();
 });
 

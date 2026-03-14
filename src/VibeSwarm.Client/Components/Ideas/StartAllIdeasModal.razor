@@ -5,7 +5,14 @@
 	<ChildContent>
 		<p>
 			You are about to start processing <strong>@IdeasCount</strong> idea@(IdeasCount != 1 ? "s" : "").
-			Each idea will be converted to a job and queued for execution.
+			@if (AutoExpandIdeas)
+			{
+				<span>Each idea will be expanded into a fuller spec, converted to a job, and queued for execution.</span>
+			}
+			else
+			{
+				<span>Each idea will be converted directly to a job unless it already has an approved expansion, then queued for execution.</span>
+			}
 		</p>
 
 		<div class="form-check mt-3">
@@ -50,6 +57,9 @@
 
 	[Parameter]
 	public bool IsProcessing { get; set; }
+
+	[Parameter]
+	public bool AutoExpandIdeas { get; set; } = true;
 
 	[Parameter]
 	public EventCallback<bool> OnConfirm { get; set; }

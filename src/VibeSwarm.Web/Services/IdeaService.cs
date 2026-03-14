@@ -222,10 +222,12 @@ public class IdeaService : IIdeaService
 				_logger.LogWarning(ex, "Could not get current branch for project {ProjectId}", idea.ProjectId);
 			}
 
-			// Use expanded description if approved, otherwise build a prompt
+			// Use an approved expansion when available; otherwise honor the project's auto-expand setting.
 			var goalPrompt = idea.HasExpandedDescription
 				? BuildPromptFromExpanded(idea.Description, idea.ExpandedDescription!)
-				: BuildExpandedPrompt(idea.Description);
+				: idea.Project.IdeasAutoExpand
+					? BuildExpandedPrompt(idea.Description)
+					: BuildImplementationPrompt(idea.Description);
 
 			// Create the job with the original idea as the title
 			var job = new Job
@@ -304,6 +306,28 @@ A concise one-line description of what was implemented (max 72 chars)
 5. Make sure the implementation follows the existing code patterns and style in the project
 
 Begin by expanding this idea into a detailed specification, then implement it.
+
+When you are finished, end your response with a short summary in this exact format:
+<commit-summary>
+A concise one-line description of what was implemented (max 72 chars)
+</commit-summary>";
+	}
+
+	private static string BuildImplementationPrompt(string ideaDescription)
+	{
+		return $@"You are implementing a feature based on the following idea. Work directly from the idea below instead of first expanding it into a separate detailed specification.
+
+## Feature Idea
+{ideaDescription}
+
+## Instructions
+1. Implement the feature directly from the idea above
+2. Fill in necessary implementation details while staying aligned with the original intent
+3. Consider edge cases and error handling
+4. Make sure the implementation follows the existing code patterns and style in the project
+5. Add or update tests when needed to cover the change
+
+Begin implementing this feature now without first expanding it into a detailed specification.
 
 When you are finished, end your response with a short summary in this exact format:
 <commit-summary>

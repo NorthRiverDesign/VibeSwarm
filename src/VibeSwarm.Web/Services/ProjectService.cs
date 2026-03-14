@@ -86,6 +86,7 @@ public class ProjectService : IProjectService
 		existing.AutoCommitMode = project.AutoCommitMode;
 		existing.PromptContext = project.PromptContext;
 		existing.IsActive = project.IsActive;
+		existing.IdeasAutoExpand = project.IdeasAutoExpand;
 		existing.UpdatedAt = DateTime.UtcNow;
 
 		await _dbContext.Entry(existing)

@@ -78,6 +78,16 @@
 			</div>
 
 			<div class="mb-3">
+				<div class="form-check form-switch">
+					<InputCheckbox id="modal-ideasAutoExpand" @bind-Value="Project.IdeasAutoExpand" class="form-check-input" />
+					<label class="form-check-label" for="modal-ideasAutoExpand">
+						<i class="bi bi-stars me-1"></i>Auto-Expand Ideas
+					</label>
+				</div>
+				<div class="form-text">When enabled, ideas without an approved expansion are first turned into a fuller specification before a job is created.</div>
+			</div>
+
+			<div class="mb-3">
 				<label class="form-label d-flex align-items-center gap-2 mb-2">
 					<i class="bi bi-diagram-3"></i>
 					<span>Provider Priority</span>
@@ -630,6 +640,7 @@
 			WorkingPath = source.WorkingPath,
 			GitHubRepository = source.GitHubRepository,
 			AutoCommitMode = source.AutoCommitMode,
+			IdeasAutoExpand = source.IdeasAutoExpand,
 			PromptContext = source.PromptContext,
 			IsActive = source.IsActive,
 			CreatedAt = source.CreatedAt,
