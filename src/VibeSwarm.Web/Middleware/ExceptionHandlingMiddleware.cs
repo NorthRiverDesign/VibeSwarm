@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using System.Net;
 using System.Text.Json;
 using VibeSwarm.Shared.Exceptions;
@@ -94,6 +95,7 @@ public class ExceptionHandlingMiddleware
 			UnauthorizedAccessException => (int)HttpStatusCode.Unauthorized,
 			ArgumentNullException => (int)HttpStatusCode.BadRequest,
 			ArgumentException => (int)HttpStatusCode.BadRequest,
+			ValidationException => (int)HttpStatusCode.BadRequest,
 			InvalidOperationException => (int)HttpStatusCode.BadRequest,
 			NotAGitRepositoryException => (int)HttpStatusCode.BadRequest,
 			GitNotAvailableException => (int)HttpStatusCode.ServiceUnavailable,

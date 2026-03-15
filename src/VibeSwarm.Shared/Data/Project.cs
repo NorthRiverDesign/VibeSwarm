@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using VibeSwarm.Shared.Validation;
 
 namespace VibeSwarm.Shared.Data;
 
@@ -28,21 +29,21 @@ public class Project
 	public Guid Id { get; set; }
 
     [Required]
-    [StringLength(100, MinimumLength = 1)]
+    [StringLength(ValidationLimits.ProjectNameMaxLength, MinimumLength = 1)]
     public string Name { get; set; } = string.Empty;
 
-    [StringLength(500)]
+    [StringLength(ValidationLimits.ProjectDescriptionMaxLength)]
     public string? Description { get; set; }
 
     [Required]
-    [StringLength(500, MinimumLength = 1)]
+    [StringLength(ValidationLimits.ProjectWorkingPathMaxLength, MinimumLength = 1)]
     public string WorkingPath { get; set; } = string.Empty;
 
     /// <summary>
     /// Optional GitHub repository in "owner/repo" format.
     /// Used when creating a project from a GitHub repository.
     /// </summary>
-    [StringLength(200)]
+    [StringLength(ValidationLimits.ProjectGitHubRepositoryMaxLength)]
     public string? GitHubRepository { get; set; }
 
 	/// <summary>
@@ -58,7 +59,7 @@ public class Project
 	/// <summary>
 	/// Optional default target branch used when jobs create pull requests or merge changes.
 	/// </summary>
-	[StringLength(250)]
+	[StringLength(ValidationLimits.ProjectDefaultTargetBranchMaxLength)]
 	public string? DefaultTargetBranch { get; set; }
 
 	/// <summary>
@@ -78,7 +79,7 @@ public class Project
 	/// Optional model override to use for project planning.
 	/// When omitted, the planning provider's default model is used.
 	/// </summary>
-	[StringLength(200)]
+	[StringLength(ValidationLimits.ProjectPlanningModelIdMaxLength)]
 	public string? PlanningModelId { get; set; }
 
 	public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
@@ -97,7 +98,7 @@ public class Project
     /// Optional per-project instructions injected into every job prompt.
     /// E.g., coding conventions, framework preferences, language requirements.
     /// </summary>
-    [StringLength(1000)]
+    [StringLength(ValidationLimits.ProjectPromptContextMaxLength)]
     public string? PromptContext { get; set; }
 
     /// <summary>

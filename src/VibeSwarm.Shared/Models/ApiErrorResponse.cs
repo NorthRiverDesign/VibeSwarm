@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using System.Text.Json.Serialization;
 
 namespace VibeSwarm.Shared.Models;
@@ -45,6 +46,7 @@ public class ApiErrorResponse
 		return exception switch
 		{
 			Exceptions.VibeSwarmException vex => vex.ErrorCode,
+			ValidationException => "VALIDATION_ERROR",
 			UnauthorizedAccessException => "UNAUTHORIZED",
 			ArgumentException => "INVALID_ARGUMENT",
 			InvalidOperationException => "INVALID_OPERATION",
@@ -75,6 +77,7 @@ public class ApiErrorResponse
 		return exception switch
 		{
 			Exceptions.VibeSwarmException vex => vex.IsRecoverable,
+			ValidationException => true,
 			UnauthorizedAccessException => true,
 			ArgumentException => true,
 			InvalidOperationException => true,

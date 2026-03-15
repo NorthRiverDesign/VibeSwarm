@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using VibeSwarm.Shared.Validation;
 
 namespace VibeSwarm.Shared.Data;
 
@@ -48,14 +49,14 @@ public class Idea
 	/// Short description of the feature or update idea
 	/// </summary>
 	[Required]
-	[StringLength(2000, MinimumLength = 1)]
+	[StringLength(ValidationLimits.IdeaDescriptionMaxLength, MinimumLength = 1)]
 	public string Description { get; set; } = string.Empty;
 
 	/// <summary>
 	/// AI-expanded detailed specification of the idea.
 	/// Generated when user requests expansion before converting to a job.
 	/// </summary>
-	[StringLength(10000)]
+	[StringLength(ValidationLimits.IdeaExpandedDescriptionMaxLength)]
 	public string? ExpandedDescription { get; set; }
 
 	/// <summary>
@@ -66,7 +67,7 @@ public class Idea
 	/// <summary>
 	/// Error message if expansion failed
 	/// </summary>
-	[StringLength(1000)]
+	[StringLength(ValidationLimits.IdeaExpansionErrorMaxLength)]
 	public string? ExpansionError { get; set; }
 
 	/// <summary>

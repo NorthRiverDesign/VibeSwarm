@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using VibeSwarm.Shared.Providers;
+using VibeSwarm.Shared.Validation;
 
 namespace VibeSwarm.Shared.Data;
 
@@ -93,13 +94,13 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 		modelBuilder.Entity<Project>(entity =>
 		{
 			entity.HasKey(e => e.Id);
-			entity.Property(e => e.Name).IsRequired().HasMaxLength(100);
-			entity.Property(e => e.Description).HasMaxLength(500);
-			entity.Property(e => e.WorkingPath).IsRequired().HasMaxLength(500);
-			entity.Property(e => e.GitHubRepository).HasMaxLength(200);
-			entity.Property(e => e.DefaultTargetBranch).HasMaxLength(250);
-			entity.Property(e => e.PlanningModelId).HasMaxLength(200);
-			entity.Property(e => e.PromptContext).HasMaxLength(1000);
+			entity.Property(e => e.Name).IsRequired().HasMaxLength(ValidationLimits.ProjectNameMaxLength);
+			entity.Property(e => e.Description).HasMaxLength(ValidationLimits.ProjectDescriptionMaxLength);
+			entity.Property(e => e.WorkingPath).IsRequired().HasMaxLength(ValidationLimits.ProjectWorkingPathMaxLength);
+			entity.Property(e => e.GitHubRepository).HasMaxLength(ValidationLimits.ProjectGitHubRepositoryMaxLength);
+			entity.Property(e => e.DefaultTargetBranch).HasMaxLength(ValidationLimits.ProjectDefaultTargetBranchMaxLength);
+			entity.Property(e => e.PlanningModelId).HasMaxLength(ValidationLimits.ProjectPlanningModelIdMaxLength);
+			entity.Property(e => e.PromptContext).HasMaxLength(ValidationLimits.ProjectPromptContextMaxLength);
 			entity.Property(e => e.IdeasAutoExpand).HasDefaultValue(true);
 			entity.HasIndex(e => e.Name).IsUnique();
 		});
@@ -201,10 +202,10 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 		modelBuilder.Entity<Idea>(entity =>
 		{
 			entity.HasKey(e => e.Id);
-			entity.Property(e => e.Description).IsRequired().HasMaxLength(2000);
-			entity.Property(e => e.ExpandedDescription).HasMaxLength(10000);
+			entity.Property(e => e.Description).IsRequired().HasMaxLength(ValidationLimits.IdeaDescriptionMaxLength);
+			entity.Property(e => e.ExpandedDescription).HasMaxLength(ValidationLimits.IdeaExpandedDescriptionMaxLength);
 			entity.Property(e => e.ExpansionStatus).HasConversion<string>();
-			entity.Property(e => e.ExpansionError).HasMaxLength(1000);
+			entity.Property(e => e.ExpansionError).HasMaxLength(ValidationLimits.IdeaExpansionErrorMaxLength);
 			entity.HasOne(e => e.Project)
 	.WithMany(p => p.Ideas)
 	.HasForeignKey(e => e.ProjectId)

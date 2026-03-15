@@ -7,6 +7,7 @@ using VibeSwarm.Shared.LocalInference;
 using VibeSwarm.Shared.Models;
 using VibeSwarm.Shared.Providers;
 using VibeSwarm.Shared.Services;
+using VibeSwarm.Shared.Validation;
 using VibeSwarm.Shared.VersionControl;
 using VibeSwarm.Shared.VersionControl.Models;
 using VibeSwarm.Web.Services;
@@ -293,6 +294,36 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 			.Where(i => i.Id == idea.Id)
 			.Select(i => i.Description)
 			.SingleAsync());
+	}
+
+	[Fact]
+	public async Task CreateAsync_RejectsIdeaDescriptionThatExceedsLimit()
+	{
+		await using var dbContext = CreateDbContext();
+		var project = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Long Idea Project",
+			WorkingPath = "/tmp/long-idea-project"
+		};
+
+		dbContext.Projects.Add(project);
+		await dbContext.SaveChangesAsync();
+
+		var ideaService = new IdeaService(
+			dbContext,
+			null!,
+			null!,
+			null!,
+			NullLogger<IdeaService>.Instance);
+
+		var error = await Assert.ThrowsAsync<System.ComponentModel.DataAnnotations.ValidationException>(() => ideaService.CreateAsync(new Idea
+		{
+			ProjectId = project.Id,
+			Description = new string('x', ValidationLimits.IdeaDescriptionMaxLength + 1)
+		}));
+
+		Assert.Contains(nameof(Idea.Description), error.Message);
 	}
 
 	[Fact]

@@ -1,10 +1,12 @@
 using System.Text;
+using System.ComponentModel.DataAnnotations;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.LocalInference;
 using VibeSwarm.Shared.Models;
 using VibeSwarm.Shared.Providers;
+using VibeSwarm.Shared.Validation;
 using VibeSwarm.Shared.VersionControl;
 using VibeSwarm.Web.Services;
 
@@ -100,6 +102,8 @@ public class IdeaService : IIdeaService
 
 	public async Task<Idea> CreateAsync(Idea idea, CancellationToken cancellationToken = default)
 	{
+		ValidateIdea(idea);
+
 		// Check for duplicate: same project + description within the last 10 seconds
 		var duplicateCutoff = DateTime.UtcNow.AddSeconds(-10);
 		var existingDuplicate = await _dbContext.Ideas
@@ -150,6 +154,7 @@ public class IdeaService : IIdeaService
 
 		existing.Description = idea.Description;
 		existing.SortOrder = idea.SortOrder;
+		ValidateIdea(existing);
 
 		await _dbContext.SaveChangesAsync(cancellationToken);
 
@@ -836,10 +841,17 @@ A concise one-line description of what was implemented (max 72 chars)
 
 		if (response.Success && !string.IsNullOrWhiteSpace(response.Response))
 		{
-			idea.ExpandedDescription = response.Response.Trim();
-			idea.ExpansionStatus = IdeaExpansionStatus.PendingReview;
-			idea.ExpandedAt = DateTime.UtcNow;
-			_logger.LogInformation("Successfully expanded idea {IdeaId} using CLI provider", idea.Id);
+			if (TryApplyExpandedDescription(idea, response.Response, out var validationError))
+			{
+				idea.ExpansionStatus = IdeaExpansionStatus.PendingReview;
+				idea.ExpandedAt = DateTime.UtcNow;
+				_logger.LogInformation("Successfully expanded idea {IdeaId} using CLI provider", idea.Id);
+			}
+			else
+			{
+				idea.ExpansionStatus = IdeaExpansionStatus.Failed;
+				idea.ExpansionError = validationError;
+			}
 		}
 		else
 		{
@@ -986,11 +998,18 @@ Return only the plan/specification. Do not implement the feature and do not incl
 
 		if (response.Success && !string.IsNullOrWhiteSpace(response.Response))
 		{
-			idea.ExpandedDescription = response.Response.Trim();
-			idea.ExpansionStatus = IdeaExpansionStatus.PendingReview;
-			idea.ExpandedAt = DateTime.UtcNow;
-			_logger.LogInformation("Successfully expanded idea {IdeaId} using local inference (model: {Model})",
-				idea.Id, response.ModelUsed ?? modelName ?? "default");
+			if (TryApplyExpandedDescription(idea, response.Response, out var validationError))
+			{
+				idea.ExpansionStatus = IdeaExpansionStatus.PendingReview;
+				idea.ExpandedAt = DateTime.UtcNow;
+				_logger.LogInformation("Successfully expanded idea {IdeaId} using local inference (model: {Model})",
+					idea.Id, response.ModelUsed ?? modelName ?? "default");
+			}
+			else
+			{
+				idea.ExpansionStatus = IdeaExpansionStatus.Failed;
+				idea.ExpansionError = validationError;
+			}
 		}
 		else
 		{
@@ -1059,11 +1078,13 @@ Return only the plan/specification. Do not implement the feature and do not incl
 		// Use edited description if provided, otherwise keep the AI-generated one
 		if (!string.IsNullOrWhiteSpace(editedDescription))
 		{
+			EnsureLengthWithinLimit("Expanded specification", editedDescription.Trim(), ValidationLimits.IdeaExpandedDescriptionMaxLength);
 			idea.ExpandedDescription = editedDescription.Trim();
 		}
 
 		idea.ExpansionStatus = IdeaExpansionStatus.Approved;
 		idea.ExpandedAt = DateTime.UtcNow;
+		ValidateIdea(idea);
 		await _dbContext.SaveChangesAsync(cancellationToken);
 
 		_logger.LogInformation("Approved expansion for idea {IdeaId}", ideaId);
@@ -1117,7 +1138,34 @@ Expand this idea into a detailed implementation specification. Include:
 6. Acceptance Criteria: How to verify the feature works correctly
 
 Keep the specification concise but complete. Focus on actionable implementation details.
-Do not include code samples - just describe what needs to be built.";
+		Do not include code samples - just describe what needs to be built.";
+	}
+
+	private static void ValidateIdea(Idea idea)
+	{
+		ValidationHelper.ValidateObject(idea);
+	}
+
+	private static bool TryApplyExpandedDescription(Idea idea, string expandedDescription, out string validationError)
+	{
+		var trimmedDescription = expandedDescription.Trim();
+		if (trimmedDescription.Length > ValidationLimits.IdeaExpandedDescriptionMaxLength)
+		{
+			validationError = $"The generated specification exceeded the {ValidationLimits.IdeaExpandedDescriptionMaxLength:N0}-character limit. Shorten the idea or regenerate with a more concise prompt.";
+			return false;
+		}
+
+		idea.ExpandedDescription = trimmedDescription;
+		validationError = string.Empty;
+		return true;
+	}
+
+	private static void EnsureLengthWithinLimit(string fieldName, string? value, int maxLength)
+	{
+		if (!string.IsNullOrEmpty(value) && value.Length > maxLength)
+		{
+			throw new ValidationException($"{fieldName} must be {maxLength:N0} characters or fewer.");
+		}
 	}
 
 	public async Task<SuggestIdeasResult> SuggestIdeasFromCodebaseAsync(Guid projectId, SuggestIdeasRequest? request = null, CancellationToken cancellationToken = default)

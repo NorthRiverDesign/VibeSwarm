@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using VibeSwarm.Shared.Data;
+using VibeSwarm.Shared.Validation;
 
 namespace VibeSwarm.Shared.Models;
 
@@ -12,10 +13,10 @@ public enum ProjectCreationMode
 
 public sealed class GitHubRepositoryOptions
 {
-	[StringLength(200)]
+	[StringLength(ValidationLimits.ProjectGitHubRepositoryMaxLength)]
 	public string? Repository { get; set; }
 
-	[StringLength(500)]
+	[StringLength(ValidationLimits.ProjectGitHubDescriptionMaxLength)]
 	public string? Description { get; set; }
 
 	public bool IsPrivate { get; set; }

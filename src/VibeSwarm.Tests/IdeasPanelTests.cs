@@ -10,6 +10,7 @@ using VibeSwarm.Shared.LocalInference;
 using VibeSwarm.Shared.Models;
 using VibeSwarm.Shared.Providers;
 using VibeSwarm.Shared.Services;
+using VibeSwarm.Shared.Validation;
 
 namespace VibeSwarm.Tests;
 
@@ -59,6 +60,8 @@ public sealed class IdeasPanelTests
 		Assert.Contains("Set a default provider to enable idea processing", html);
 		Assert.DoesNotContain("Short description of a feature or update.", html);
 		Assert.DoesNotContain("card-header", html);
+		Assert.Contains($"maxlength=\"{ValidationLimits.IdeaDescriptionMaxLength}\"", html);
+		Assert.Contains($"0/{ValidationLimits.IdeaDescriptionMaxLength} characters", html);
 	}
 
 	[Fact]

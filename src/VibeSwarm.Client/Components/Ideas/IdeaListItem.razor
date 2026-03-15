@@ -1,17 +1,29 @@
 @* Individual idea list item component *@
 
+@using VibeSwarm.Shared.Validation
+
 <li class="list-group-item p-3">
 	@if (IsEditing)
 	{
 		@* Edit Mode *@
 		<div class="d-flex flex-column flex-sm-row align-items-stretch align-items-sm-end gap-3">
 			<div class="flex-grow-1">
-				<textarea class="form-control form-control-sm" rows="4" @bind="EditDescription" @bind:event="oninput">
+				<textarea class="form-control form-control-sm" rows="4" @bind="EditDescription" @bind:event="oninput"
+						  maxlength="@ValidationLimits.IdeaDescriptionMaxLength">
 				</textarea>
+				<div class="d-flex justify-content-between mt-2 small text-body-secondary">
+					<span>@GetEditLengthSummary()</span>
+				</div>
+				@if (!string.IsNullOrWhiteSpace(EditValidationMessage))
+				{
+					<div class="text-danger small mt-2">
+						<i class="bi bi-exclamation-circle me-1"></i>@EditValidationMessage
+					</div>
+				}
 			</div>
 			<div class="d-flex justify-content-end gap-2">
 				<button type="button" class="btn btn-sm btn-success" @onclick="SaveEdit"
-						disabled="@(string.IsNullOrWhiteSpace(EditDescription))">
+						disabled="@(!CanSaveEdit)">
 					<i class="bi bi-check-lg"></i>
 				</button>
 				<button type="button" class="btn btn-sm btn-secondary" @onclick="CancelEdit">
@@ -207,6 +219,11 @@
 
 	private bool IsEditing { get; set; }
 	private string EditDescription { get; set; } = string.Empty;
+	private string? EditValidationMessage => !string.IsNullOrEmpty(EditDescription) &&
+		EditDescription.Length > ValidationLimits.IdeaDescriptionMaxLength
+			? $"Idea text must be {ValidationLimits.IdeaDescriptionMaxLength:N0} characters or fewer."
+			: null;
+	private bool CanSaveEdit => !string.IsNullOrWhiteSpace(EditDescription) && string.IsNullOrWhiteSpace(EditValidationMessage);
 
 	private void StartEdit()
 	{
@@ -222,7 +239,10 @@
 
 	private async Task SaveEdit()
 	{
-		if (string.IsNullOrWhiteSpace(EditDescription)) return;
+		if (!CanSaveEdit)
+		{
+			return;
+		}
 
 		await OnSaveEdit.InvokeAsync((Idea.Id, EditDescription.Trim()));
 		IsEditing = false;
@@ -255,5 +275,10 @@
 			IdeaExpansionStatus.Expanding => "Expanding...",
 			_ => "Expand with AI"
 		};
+	}
+
+	private string GetEditLengthSummary()
+	{
+		return $"{EditDescription.Length}/{ValidationLimits.IdeaDescriptionMaxLength} characters";
 	}
 }

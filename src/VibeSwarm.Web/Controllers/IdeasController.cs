@@ -1,8 +1,10 @@
+using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Models;
 using VibeSwarm.Shared.Services;
+using VibeSwarm.Shared.Validation;
 
 namespace VibeSwarm.Web.Controllers;
 
@@ -155,5 +157,9 @@ public class IdeasController : ControllerBase
     }
 
     public record TransferRequest(Guid TargetProjectId);
-    public record ApproveRequest(string? EditedDescription);
+    public sealed class ApproveRequest
+    {
+        [StringLength(ValidationLimits.IdeaExpandedDescriptionMaxLength)]
+        public string? EditedDescription { get; init; }
+    }
 }

@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Models;
 using VibeSwarm.Shared.Services;
+using VibeSwarm.Shared.Validation;
 using VibeSwarm.Shared.VersionControl;
 using VibeSwarm.Shared.VersionControl.Models;
 using VibeSwarm.Web.Services;
@@ -125,6 +126,23 @@ public sealed class ProjectProvisioningServiceTests : IDisposable
 		Assert.Contains("owner/repo", error.Message);
 		Assert.Null(versionControl.CloneWithGitHubCliOwnerRepo);
 		Assert.Null(versionControl.CloneRepositoryUrl);
+	}
+
+	[Fact]
+	public async Task CreateAsync_RejectsPromptContextThatExceedsLimit()
+	{
+		await using var dbContext = CreateDbContext();
+		var versionControl = new RecordingVersionControlService();
+		var service = CreateProjectService(dbContext, versionControl);
+
+		var error = await Assert.ThrowsAsync<System.ComponentModel.DataAnnotations.ValidationException>(() => service.CreateAsync(new Project
+		{
+			Name = "Prompt Heavy Project",
+			WorkingPath = "/tmp/prompt-heavy-project",
+			PromptContext = new string('p', ValidationLimits.ProjectPromptContextMaxLength + 1)
+		}));
+
+		Assert.Contains(nameof(Project.PromptContext), error.Message);
 	}
 
 	private VibeSwarmDbContext CreateDbContext() => new(_dbOptions);

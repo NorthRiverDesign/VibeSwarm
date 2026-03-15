@@ -6,6 +6,7 @@
 @using VibeSwarm.Shared.LocalInference
 @using VibeSwarm.Shared.Models
 @using VibeSwarm.Shared.Providers
+@using VibeSwarm.Shared.Validation
 
 <div class="d-grid gap-3">
 	<div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
@@ -108,10 +109,11 @@
 			<div class="flex-grow-1">
 				<textarea class="form-control" id="newIdeaDescription" rows="3" placeholder="Describe a feature or improvement..."
 						  @bind="NewIdeaDescription" @bind:event="oninput" @onkeypress="HandleKeyPress"
+						  maxlength="@ValidationLimits.IdeaDescriptionMaxLength"
 						  title="Describe a feature or improvement. Press Ctrl+Enter to submit."></textarea>
 			</div>
 			<button type="button" class="btn btn-primary align-self-stretch px-3" @onclick="AddIdea"
-					disabled="@(string.IsNullOrWhiteSpace(NewIdeaDescription) || IsAddingIdea || _isSubmitting)"
+					disabled="@(!CanAddIdea)"
 					title="@GetAddIdeaTooltip()">
 				@if (IsAddingIdea)
 				{
@@ -125,6 +127,7 @@
 			</button>
 		</div>
 		<div class="d-flex flex-wrap align-items-center gap-2 mt-2 small text-body-secondary">
+			<span>@GetIdeaLengthSummary(NewIdeaDescription)</span>
 			<span class="badge bg-body-secondary text-body">
 				@(CurrentAutoExpandIdeas ? "Expands before running" : "Runs directly")
 			</span>
@@ -137,6 +140,12 @@
 				</a>
 			}
 		</div>
+		@if (!string.IsNullOrWhiteSpace(AddIdeaValidationMessage))
+		{
+			<div class="text-danger small mt-2">
+				<i class="bi bi-exclamation-circle me-1"></i>@AddIdeaValidationMessage
+			</div>
+		}
 	</div>
 
 	@if (!Ideas.Any())
@@ -363,10 +372,28 @@
 	}
 
 	private bool _isSubmitting;
+	private string? AddIdeaValidationMessage => ValidateIdeaDescription(NewIdeaDescription);
+	private bool CanAddIdea => string.IsNullOrWhiteSpace(AddIdeaValidationMessage) &&
+		!string.IsNullOrWhiteSpace(NewIdeaDescription) &&
+		!IsAddingIdea &&
+		!_isSubmitting;
 
 	private async Task AddIdea()
 	{
-		if (string.IsNullOrWhiteSpace(NewIdeaDescription) || _isSubmitting) return;
+		if (_isSubmitting)
+		{
+			return;
+		}
+
+		if (!CanAddIdea)
+		{
+			if (!string.IsNullOrWhiteSpace(AddIdeaValidationMessage))
+			{
+				NotificationService.ShowWarning(AddIdeaValidationMessage, "Idea Validation");
+			}
+			return;
+		}
+
 		_isSubmitting = true;
 		try
 		{
@@ -610,9 +637,29 @@
 			return "Adding idea";
 		}
 
+		if (!string.IsNullOrWhiteSpace(AddIdeaValidationMessage))
+		{
+			return AddIdeaValidationMessage;
+		}
+
 		return string.IsNullOrWhiteSpace(NewIdeaDescription)
 			? "Enter an idea to add it to the queue"
 			: "Add this idea to the project queue";
+	}
+
+	private static string GetIdeaLengthSummary(string? value)
+	{
+		return $"{value?.Length ?? 0}/{ValidationLimits.IdeaDescriptionMaxLength} characters";
+	}
+
+	private static string? ValidateIdeaDescription(string? value)
+	{
+		if (!string.IsNullOrEmpty(value) && value.Length > ValidationLimits.IdeaDescriptionMaxLength)
+		{
+			return $"Idea text must be {ValidationLimits.IdeaDescriptionMaxLength:N0} characters or fewer.";
+		}
+
+		return null;
 	}
 
 	private string GetSuggestResultContainerClass() => _suggestResult?.Success == true

@@ -23,14 +23,14 @@ public class HttpIdeaService : IIdeaService
     public async Task<Idea> CreateAsync(Idea idea, CancellationToken ct = default)
     {
         var response = await _http.PostAsJsonAsync("/api/ideas", idea, ct);
-        response.EnsureSuccessStatusCode();
+        await HttpResponseErrorHelper.EnsureSuccessAsync(response, ct);
         return await response.Content.ReadFromJsonAsync<Idea>(ct) ?? idea;
     }
 
     public async Task<Idea> UpdateAsync(Idea idea, CancellationToken ct = default)
     {
         var response = await _http.PutAsJsonAsync($"/api/ideas/{idea.Id}", idea, ct);
-        response.EnsureSuccessStatusCode();
+        await HttpResponseErrorHelper.EnsureSuccessAsync(response, ct, "Idea not found.");
         return await response.Content.ReadFromJsonAsync<Idea>(ct) ?? idea;
     }
 
@@ -83,14 +83,14 @@ public class HttpIdeaService : IIdeaService
     public async Task<Idea> CopyToProjectAsync(Guid ideaId, Guid targetProjectId, CancellationToken ct = default)
     {
         var response = await _http.PostAsJsonAsync($"/api/ideas/{ideaId}/copy", new { TargetProjectId = targetProjectId }, ct);
-        response.EnsureSuccessStatusCode();
+        await HttpResponseErrorHelper.EnsureSuccessAsync(response, ct);
         return await response.Content.ReadFromJsonAsync<Idea>(ct) ?? new Idea();
     }
 
     public async Task<Idea> MoveToProjectAsync(Guid ideaId, Guid targetProjectId, CancellationToken ct = default)
     {
         var response = await _http.PostAsJsonAsync($"/api/ideas/{ideaId}/move", new { TargetProjectId = targetProjectId }, ct);
-        response.EnsureSuccessStatusCode();
+        await HttpResponseErrorHelper.EnsureSuccessAsync(response, ct);
         return await response.Content.ReadFromJsonAsync<Idea>(ct) ?? new Idea();
     }
 

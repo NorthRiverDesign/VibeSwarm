@@ -2,6 +2,7 @@
 @using VibeSwarm.Shared.LocalInference
 @using VibeSwarm.Shared.Models
 @using VibeSwarm.Shared.Providers
+@using VibeSwarm.Shared.Validation
 
 <ModalDialog IsVisible="IsVisible" IsVisibleChanged="HandleVisibilityChanged" Title="Expand Idea" Icon="magic"
 			 Size="ModalDialog.ModalSize.Large" OnClose="HandleClose">
@@ -85,10 +86,18 @@
 					@if (IsEditMode)
 					{
 						<textarea class="form-control font-monospace" rows="15" @bind="EditedDescription" @bind:event="oninput"
+								  maxlength="@ValidationLimits.IdeaExpandedDescriptionMaxLength"
 								  placeholder="Edit the expanded specification..."></textarea>
 						<div class="form-text">
 							Edit the specification to better match your requirements before approving.
+							<span class="ms-2">@GetExpandedLengthSummary()</span>
 						</div>
+						@if (!string.IsNullOrWhiteSpace(EditedDescriptionValidationMessage))
+						{
+							<div class="text-danger small mt-2">
+								<i class="bi bi-exclamation-circle me-1"></i>@EditedDescriptionValidationMessage
+							</div>
+						}
 					}
 					else
 					{
@@ -101,7 +110,8 @@
 				<div class="d-flex flex-wrap gap-2">
 					@if (Idea.ExpansionStatus != IdeaExpansionStatus.Approved)
 					{
-						<button type="button" class="btn btn-success" @onclick="ApproveExpansion" disabled="@IsProcessing">
+						<button type="button" class="btn btn-success" @onclick="ApproveExpansion"
+								disabled="@(IsProcessing || !CanApproveExpansion)">
 							@if (IsProcessing)
 							{
 								<span class="spinner-border spinner-border-sm me-1" role="status"></span>
@@ -255,7 +265,7 @@
 
 	private async Task ApproveExpansion()
 	{
-		if (Idea != null)
+		if (Idea != null && CanApproveExpansion)
 		{
 			// Pass edited description if it was changed
 			var edited = IsEditMode && EditedDescription != Idea.ExpandedDescription
@@ -283,5 +293,17 @@
 		{
 			EditedDescription = Idea?.ExpandedDescription;
 		}
+	}
+
+	private string? EditedDescriptionValidationMessage => !string.IsNullOrEmpty(EditedDescription) &&
+		EditedDescription.Length > ValidationLimits.IdeaExpandedDescriptionMaxLength
+			? $"Expanded specification must be {ValidationLimits.IdeaExpandedDescriptionMaxLength:N0} characters or fewer."
+			: null;
+
+	private bool CanApproveExpansion => string.IsNullOrWhiteSpace(EditedDescriptionValidationMessage);
+
+	private string GetExpandedLengthSummary()
+	{
+		return $"{EditedDescription?.Length ?? 0}/{ValidationLimits.IdeaExpandedDescriptionMaxLength} characters";
 	}
 }

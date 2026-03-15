@@ -1,10 +1,12 @@
 using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using VibeSwarm.Shared.Data;
+using VibeSwarm.Shared.Models;
 using VibeSwarm.Shared.Services;
 using VibeSwarm.Web.Endpoints;
 using VibeSwarm.Web.Hubs;
@@ -111,6 +113,35 @@ builder.Services.AddControllers()
         options.JsonSerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
         options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
     });
+builder.Services.Configure<ApiBehaviorOptions>(options =>
+{
+	options.InvalidModelStateResponseFactory = context =>
+	{
+		var validationErrors = context.ModelState
+			.Where(entry => entry.Value?.Errors.Count > 0)
+			.SelectMany(entry => entry.Value!.Errors.Select(error =>
+			{
+				var prefix = string.IsNullOrWhiteSpace(entry.Key)
+					? string.Empty
+					: $"{entry.Key.Split('.').Last()}: ";
+				return prefix + error.ErrorMessage;
+			}))
+			.Distinct(StringComparer.Ordinal)
+			.ToList();
+
+		var message = validationErrors.Count > 0
+			? string.Join(" ", validationErrors)
+			: "One or more validation errors occurred.";
+
+		return new BadRequestObjectResult(new ApiErrorResponse
+		{
+			ErrorCode = "VALIDATION_ERROR",
+			Message = message,
+			Details = string.Join(Environment.NewLine, validationErrors),
+			TraceId = context.HttpContext.TraceIdentifier
+		});
+	};
+});
 
 // Configure SignalR with iOS-optimized timeouts and stateful reconnect support
 builder.Services.AddSignalR(options =>

@@ -1,5 +1,6 @@
 using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Models;
+using VibeSwarm.Shared.Validation;
 
 namespace VibeSwarm.Client.Models;
 
@@ -12,6 +13,8 @@ public sealed class ProjectModalState
 	public string GitHubRepositoryInput { get; private set; } = string.Empty;
 
 	public string? GitHubRepositoryError { get; private set; }
+
+	public string? GitHubRepositoryDescriptionError { get; private set; }
 
 	public string NewGitHubRepositoryDescription { get; set; } = string.Empty;
 
@@ -37,6 +40,7 @@ public sealed class ProjectModalState
 		CreationMode = ProjectCreationMode.ExistingDirectory;
 		GitHubRepositoryInput = string.Empty;
 		GitHubRepositoryError = null;
+		GitHubRepositoryDescriptionError = null;
 		NewGitHubRepositoryDescription = string.Empty;
 		NewGitHubRepositoryPrivate = false;
 		NewGitHubGitignoreTemplate = string.Empty;
@@ -48,12 +52,14 @@ public sealed class ProjectModalState
 	{
 		GitHubRepositoryInput = project.GitHubRepository ?? string.Empty;
 		GitHubRepositoryError = null;
+		GitHubRepositoryDescriptionError = null;
 	}
 
 	public void SelectSourceMode(Project project, ProjectCreationMode mode)
 	{
 		CreationMode = mode;
 		GitHubRepositoryError = null;
+		GitHubRepositoryDescriptionError = null;
 
 		if (CreationMode == ProjectCreationMode.CreateGitHubRepository &&
 			string.IsNullOrWhiteSpace(GitHubRepositoryInput) &&
@@ -69,12 +75,14 @@ public sealed class ProjectModalState
 	{
 		GitHubRepositoryInput = repositoryInput?.Trim() ?? string.Empty;
 		GitHubRepositoryError = null;
+		GitHubRepositoryDescriptionError = null;
 		ApplyRepositorySuggestions(project);
 	}
 
 	public bool Validate(Project project)
 	{
 		GitHubRepositoryError = null;
+		GitHubRepositoryDescriptionError = null;
 
 		if (CreationMode == ProjectCreationMode.ExistingDirectory)
 		{
@@ -84,6 +92,13 @@ public sealed class ProjectModalState
 		var allowOwnerOnly = CreationMode == ProjectCreationMode.CreateGitHubRepository;
 		if (TryNormalizeGitHubRepository(GitHubRepositoryInput, allowOwnerOnly, out _))
 		{
+			if (!string.IsNullOrWhiteSpace(NewGitHubRepositoryDescription) &&
+				NewGitHubRepositoryDescription.Trim().Length > ValidationLimits.ProjectGitHubDescriptionMaxLength)
+			{
+				GitHubRepositoryDescriptionError = $"Repository description must be {ValidationLimits.ProjectGitHubDescriptionMaxLength:N0} characters or fewer.";
+				return false;
+			}
+
 			return true;
 		}
 

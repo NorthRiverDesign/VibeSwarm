@@ -4,6 +4,7 @@
 @using VibeSwarm.Shared.Models
 @using VibeSwarm.Shared.Providers
 @using VibeSwarm.Shared.Services
+@using VibeSwarm.Shared.Validation
 @inject IProjectService ProjectService
 @inject IProviderService ProviderService
 @inject ISettingsService SettingsService
@@ -19,14 +20,17 @@
 
 			<div class="mb-3">
 				<label for="modal-name" class="form-label">Name</label>
-				<InputText id="modal-name" @bind-Value="Project.Name" class="form-control" placeholder="My Project" />
+				<InputText id="modal-name" @bind-Value="Project.Name" class="form-control" placeholder="My Project"
+						   maxlength="@ValidationLimits.ProjectNameMaxLength" />
 				<ValidationMessage For="@(() => Project.Name)" class="text-danger small" />
 			</div>
 
 			<div class="mb-3">
 				<label for="modal-description" class="form-label">Description</label>
 				<InputTextArea id="modal-description" @bind-Value="Project.Description" class="form-control" rows="2"
-							   placeholder="Brief description..." />
+							   placeholder="Brief description..." maxlength="@ValidationLimits.ProjectDescriptionMaxLength" />
+				<ValidationMessage For="@(() => Project.Description)" class="text-danger small" />
+				<div class="form-text">@GetCharacterCount(Project.Description, ValidationLimits.ProjectDescriptionMaxLength)</div>
 			</div>
 
 			@if (!IsEdit)
@@ -65,7 +69,7 @@
 										<span class="input-group-text">github.com/</span>
 										<input id="modal-githubRepo" type="text" class="form-control"
 											   value="@_formState.GitHubRepositoryInput" @oninput="OnGitHubRepositoryChanged"
-											   placeholder="owner/repo" />
+											   placeholder="owner/repo" maxlength="@ValidationLimits.ProjectGitHubRepositoryMaxLength" />
 								</div>
 								@if (!string.IsNullOrWhiteSpace(_formState.GitHubRepositoryError))
 								{
@@ -87,7 +91,7 @@
 									</label>
 									<input id="modal-newGithubRepo" type="text" class="form-control"
 										   value="@_formState.GitHubRepositoryInput" @oninput="OnGitHubRepositoryChanged"
-										   placeholder="my-project or owner/my-project" />
+										   placeholder="my-project or owner/my-project" maxlength="@ValidationLimits.ProjectGitHubRepositoryMaxLength" />
 									@if (!string.IsNullOrWhiteSpace(_formState.GitHubRepositoryError))
 									{
 										<div class="text-danger small mt-1">
@@ -105,7 +109,15 @@
 									</label>
 									<input id="modal-newGithubRepoDescription" type="text" class="form-control"
 										   @bind="_formState.NewGitHubRepositoryDescription" @bind:event="oninput"
-										   placeholder="A brief description of your project" />
+										   placeholder="A brief description of your project"
+										   maxlength="@ValidationLimits.ProjectGitHubDescriptionMaxLength" />
+									@if (!string.IsNullOrWhiteSpace(_formState.GitHubRepositoryDescriptionError))
+									{
+										<div class="text-danger small mt-1">
+											<i class="bi bi-exclamation-circle me-1"></i>@_formState.GitHubRepositoryDescriptionError
+										</div>
+									}
+									<div class="form-text">@GetCharacterCount(_formState.NewGitHubRepositoryDescription, ValidationLimits.ProjectGitHubDescriptionMaxLength)</div>
 								</div>
 
 								<div class="mb-3">
@@ -180,7 +192,7 @@
 				<label for="modal-workingPath" class="form-label">Working Path</label>
 				<div class="input-group">
 					<InputText id="modal-workingPath" @bind-Value="Project.WorkingPath" class="form-control"
-							   placeholder="@_formState.WorkingPathPlaceholder" />
+							   placeholder="@_formState.WorkingPathPlaceholder" maxlength="@ValidationLimits.ProjectWorkingPathMaxLength" />
 					<button type="button" class="btn btn-secondary" @onclick="OpenDirectoryBrowser"
 							title="Browse directories">
 						<i class="bi bi-folder2-open"></i>
@@ -223,7 +235,8 @@
 						<i class="bi bi-signpost-split me-1"></i>Default Target Branch
 					</label>
 					<InputText id="modal-defaultTargetBranch" @bind-Value="Project.DefaultTargetBranch" class="form-control"
-							   placeholder="develop" />
+							   placeholder="develop" maxlength="@ValidationLimits.ProjectDefaultTargetBranchMaxLength" />
+					<ValidationMessage For="@(() => Project.DefaultTargetBranch)" class="text-danger small" />
 					<div class="form-text">
 						New jobs will target this branch when creating pull requests or merging completed work.
 					</div>
@@ -409,9 +422,11 @@
 						</label>
 						<InputTextArea id="modal-promptContext" @bind-Value="Project.PromptContext" class="form-control"
 									   rows="3"
+									   maxlength="@ValidationLimits.ProjectPromptContextMaxLength"
 									   placeholder="Optional instructions injected into every job prompt for this project (e.g., coding conventions, framework preferences)" />
+						<ValidationMessage For="@(() => Project.PromptContext)" class="text-danger small" />
 						<div class="form-text">These instructions are automatically included in every job prompt for this
-							project to guide AI agents.</div>
+							project to guide AI agents. <span class="ms-2">@GetCharacterCount(Project.PromptContext, ValidationLimits.ProjectPromptContextMaxLength)</span></div>
 						</div>
 						@if (IsEdit)
 						{
@@ -919,5 +934,10 @@
 				})
 				.ToList()
 		};
+	}
+
+	private static string GetCharacterCount(string? value, int maxLength)
+	{
+		return $"{value?.Length ?? 0}/{maxLength} characters";
 	}
 }

@@ -3,6 +3,7 @@ using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Models;
 using VibeSwarm.Shared.Providers;
 using VibeSwarm.Shared.Services;
+using VibeSwarm.Shared.Validation;
 using VibeSwarm.Shared.VersionControl;
 
 namespace VibeSwarm.Web.Services;
@@ -64,6 +65,7 @@ public class ProjectService : IProjectService
 		project.Id = Guid.NewGuid();
 		project.CreatedAt = DateTime.UtcNow;
 
+		ValidateProject(project);
 		NormalizePlanningSettings(project);
 		project.DefaultTargetBranch = string.IsNullOrWhiteSpace(project.DefaultTargetBranch) ? null : project.DefaultTargetBranch.Trim();
 		NormalizeProviderSelections(project);
@@ -83,6 +85,7 @@ public class ProjectService : IProjectService
 	{
 		ArgumentNullException.ThrowIfNull(request);
 		ArgumentNullException.ThrowIfNull(request.Project);
+		ValidateProjectCreationRequest(request);
 
 		switch (request.Mode)
 		{
@@ -112,6 +115,7 @@ public class ProjectService : IProjectService
 			throw new InvalidOperationException($"Project with ID {project.Id} not found.");
 		}
 
+		ValidateProject(project);
 		NormalizePlanningSettings(project);
 		existing.Name = project.Name;
 		existing.Description = project.Description;
@@ -302,6 +306,20 @@ public class ProjectService : IProjectService
 			.Include(p => p.Environments.OrderBy(environment => environment.SortOrder))
 			.Include(p => p.ProviderSelections.OrderBy(pp => pp.Priority))
 				.ThenInclude(pp => pp.Provider);
+	}
+
+	private static void ValidateProject(Project project)
+	{
+		ValidationHelper.ValidateObject(project);
+	}
+
+	private static void ValidateProjectCreationRequest(ProjectCreationRequest request)
+	{
+		ValidationHelper.ValidateObject(request.Project);
+		if (request.GitHub != null)
+		{
+			ValidationHelper.ValidateObject(request.GitHub);
+		}
 	}
 
 	private async Task CloneGitHubRepositoryAsync(ProjectCreationRequest request, CancellationToken cancellationToken)
