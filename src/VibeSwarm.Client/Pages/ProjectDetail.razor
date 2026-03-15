@@ -1350,6 +1350,8 @@ TimeSpan.FromSeconds(10) })
         // Reset the form for a new job
         NewJob = new Job();
         NewJob.Branch = CurrentBranch;
+        NewJob.GitChangeDeliveryMode = Project?.GitChangeDeliveryMode ?? GitChangeDeliveryMode.CommitToBranch;
+        NewJob.TargetBranch = Project?.DefaultTargetBranch ?? CurrentBranch;
         SelectedModelId = string.Empty;
         AvailableModels.Clear();
 
@@ -1507,6 +1509,27 @@ TimeSpan.FromSeconds(10) })
         {
             ErrorMessage = "The selected provider is not allowed for this project.";
             return;
+        }
+
+        if (NewJob.GitChangeDeliveryMode == GitChangeDeliveryMode.PullRequest)
+        {
+            if (string.IsNullOrWhiteSpace(NewJob.TargetBranch))
+            {
+                ErrorMessage = "Please choose a target branch for the pull request.";
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(NewJob.Branch))
+            {
+                ErrorMessage = "Please choose a source branch for the pull request.";
+                return;
+            }
+
+            if (string.Equals(NewJob.Branch, NewJob.TargetBranch, StringComparison.Ordinal))
+            {
+                ErrorMessage = "Pull requests need a source branch that differs from the target branch.";
+                return;
+            }
         }
 
         IsSaving = true;

@@ -115,6 +115,26 @@ public class HttpJobService : IJobService
         return response.IsSuccessStatusCode;
     }
 
+    public async Task<bool> UpdateGitDeliveryAsync(
+        Guid id,
+        string? commitHash = null,
+        int? pullRequestNumber = null,
+        string? pullRequestUrl = null,
+        DateTime? pullRequestCreatedAt = null,
+        DateTime? mergedAt = null,
+        CancellationToken ct = default)
+    {
+        var response = await _http.PutAsJsonAsync($"/api/jobs/{id}/git-delivery", new
+        {
+            CommitHash = commitHash,
+            PullRequestNumber = pullRequestNumber,
+            PullRequestUrl = pullRequestUrl,
+            PullRequestCreatedAt = pullRequestCreatedAt,
+            MergedAt = mergedAt
+        }, ct);
+        return response.IsSuccessStatusCode;
+    }
+
     public async Task<bool> PauseForInteractionAsync(Guid id, string interactionPrompt, string interactionType, string? choices = null, CancellationToken ct = default)
     {
         var response = await _http.PostAsJsonAsync($"/api/jobs/{id}/pause-interaction", new { InteractionPrompt = interactionPrompt, InteractionType = interactionType, Choices = choices }, ct);

@@ -47,7 +47,9 @@ public static class PromptBuilder
 
 		var hasConstraints = !string.IsNullOrWhiteSpace(job.Project.PromptContext)
 			|| job.MaxCostUsd.HasValue
-			|| !string.IsNullOrWhiteSpace(job.Branch);
+			|| !string.IsNullOrWhiteSpace(job.Branch)
+			|| !string.IsNullOrWhiteSpace(job.TargetBranch)
+			|| job.GitChangeDeliveryMode == GitChangeDeliveryMode.PullRequest;
 
 		if (hasConstraints)
 		{
@@ -71,7 +73,17 @@ public static class PromptBuilder
 
 			if (!string.IsNullOrWhiteSpace(job.Branch))
 			{
-				sb.AppendLine($"  Target branch: {job.Branch}");
+				sb.AppendLine($"  Working branch: {job.Branch}");
+			}
+
+			if (!string.IsNullOrWhiteSpace(job.TargetBranch))
+			{
+				sb.AppendLine($"  Delivery target branch: {job.TargetBranch}");
+			}
+
+			if (job.GitChangeDeliveryMode == GitChangeDeliveryMode.PullRequest)
+			{
+				sb.AppendLine("  Deliver changes through a pull request instead of leaving them only on the working branch.");
 			}
 
 			sb.AppendLine("  Only modify files directly related to the task.");

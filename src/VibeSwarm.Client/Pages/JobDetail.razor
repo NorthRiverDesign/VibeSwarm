@@ -7,6 +7,7 @@
 @inject NotificationService NotificationService
 @implements IAsyncDisposable
 @using System.Threading
+@using VibeSwarm.Shared.Data
 @using VibeSwarm.Shared.Utilities
 @using VibeSwarm.Shared.VersionControl
 @using VibeSwarm.Shared.VersionControl.Models
@@ -98,13 +99,18 @@ else
 
                 @* Commit Section - shown when there are git changes *@
                 <CommitSection CommitMessage="@_commitMessage" CommitMessageChanged="@((msg) => _commitMessage = msg)"
-                               BranchName="@_branchName" IsLoadingSummary="@_isLoadingSummary"
-                               HasAISummary="@(!string.IsNullOrWhiteSpace(Job.SessionSummary))" SummaryError="@_summaryError"
-                               PushError="@_pushError" IsPushing="@_isPushing" PushStatus="@_pushStatus" IsPushed="@_changesPushed"
-                               PushedCommitHash="@_pushedCommitHash" CanPush="@CanPush"
-                               IsAutoCommitted="@(!string.IsNullOrEmpty(Job.GitCommitHash) && !_changesPushed)"
-                               CommitMessageUsed="@(Job.SessionSummary ?? _commitMessage)" OnCommitAndPush="CommitAndPushChanges"
-                               OnRefreshSummary="RefreshSummary" />
+                                BranchName="@_branchName" IsLoadingSummary="@_isLoadingSummary"
+                                HasAISummary="@(!string.IsNullOrWhiteSpace(Job.SessionSummary))" SummaryError="@_summaryError"
+                                PushError="@_pushError" IsPushing="@_isPushing" PushStatus="@_pushStatus" IsPushed="@_changesPushed"
+                                PushedCommitHash="@_pushedCommitHash" CanPush="@CanPush" TargetBranch="@EffectiveTargetBranch"
+                                DeliveryMode="@Job.GitChangeDeliveryMode" CanCreatePullRequest="@CanCreatePullRequest"
+                                IsCreatingPullRequest="@_isCreatingPullRequest" PullRequestUrl="@Job.PullRequestUrl"
+                                PullRequestNumber="@Job.PullRequestNumber" CanMergeBranch="@CanMergeBranch"
+                                IsMergingBranch="@_isMergingBranch"
+                                IsAutoCommitted="@(!string.IsNullOrEmpty(Job.GitCommitHash) && !_changesPushed)"
+                                CommitMessageUsed="@(Job.SessionSummary ?? _commitMessage)" OnCommitAndPush="CommitAndPushChanges"
+                                OnCreatePullRequest="CreatePullRequest" OnMergeBranch="MergeBranchIntoTarget"
+                                OnRefreshSummary="RefreshSummary" />
             }
             else if (_isGitRepository && !IsJobActive && Job.Status == JobStatus.Completed &&
             string.IsNullOrEmpty(Job.GitDiff))
@@ -209,6 +215,8 @@ else
     private string? _pushError = null;
     private bool _changesPushed = false;
     private string? _pushedCommitHash = null;
+    private bool _isCreatingPullRequest = false;
+    private bool _isMergingBranch = false;
 
     // Uncommitted changes state
     private bool _isCheckingUncommittedChanges = false;
@@ -287,6 +295,29 @@ new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
     !string.IsNullOrWhiteSpace(_commitMessage) &&
     !_changesPushed &&
     Job?.Project?.WorkingPath != null;
+
+    private string? EffectiveTargetBranch => string.IsNullOrWhiteSpace(Job?.TargetBranch)
+        ? Job?.Project?.DefaultTargetBranch
+        : Job?.TargetBranch;
+
+    private bool CanCreatePullRequest => Job?.Project?.WorkingPath != null &&
+        !_isPushing &&
+        !_isCreatingPullRequest &&
+        !_isMergingBranch &&
+        !string.IsNullOrWhiteSpace(_commitMessage) &&
+        string.IsNullOrWhiteSpace(Job?.PullRequestUrl) &&
+        !string.IsNullOrWhiteSpace(_branchName) &&
+        !string.IsNullOrWhiteSpace(EffectiveTargetBranch) &&
+        !string.Equals(_branchName, EffectiveTargetBranch, StringComparison.Ordinal);
+
+    private bool CanMergeBranch => Job?.Project?.WorkingPath != null &&
+        !_isPushing &&
+        !_isCreatingPullRequest &&
+        !_isMergingBranch &&
+        Job?.MergedAt == null &&
+        !string.IsNullOrWhiteSpace(_branchName) &&
+        !string.IsNullOrWhiteSpace(EffectiveTargetBranch) &&
+        !string.Equals(_branchName, EffectiveTargetBranch, StringComparison.Ordinal);
 
     protected override async Task OnInitializedAsync()
     {
@@ -705,8 +736,11 @@ TimeSpan.FromSeconds(10) })
 
             if (Job != null && !string.IsNullOrEmpty(Job.GitCommitHash))
             {
-                _changesPushed = true;
                 _pushedCommitHash = Job.GitCommitHash;
+                _changesPushed = !string.IsNullOrWhiteSpace(Job.PullRequestUrl)
+                    || Job.MergedAt.HasValue
+                    || Job.Project?.AutoCommitMode == AutoCommitMode.CommitAndPush
+                    || Job.GitChangeDeliveryMode == GitChangeDeliveryMode.PullRequest;
             }
 
             // Populate live output buffer from persisted console output so refreshes can still
@@ -924,6 +958,8 @@ TimeSpan.FromSeconds(10) })
                 GoalPrompt = contextPrompt,
                 Title = $"Follow-up: {trimmedFollowUp}",
                 Branch = Job.Branch,
+                GitChangeDeliveryMode = Job.GitChangeDeliveryMode,
+                TargetBranch = Job.TargetBranch ?? Job.Project?.DefaultTargetBranch,
                 Status = JobStatus.New,
                 ParentJobId = Job.Id
             };
@@ -1459,6 +1495,163 @@ TimeSpan.FromSeconds(10) })
             _pushStatus = "Pushing...";
             StateHasChanged();
         }
+    }
+
+    private async Task CreatePullRequest()
+    {
+        if (Job?.Project?.WorkingPath == null || !CanCreatePullRequest || string.IsNullOrWhiteSpace(EffectiveTargetBranch) || string.IsNullOrWhiteSpace(_branchName))
+        {
+            return;
+        }
+
+        _isCreatingPullRequest = true;
+        _pushError = null;
+        StateHasChanged();
+
+        try
+        {
+            if (!_changesPushed)
+            {
+                await CommitAndPushChanges();
+                if (!_changesPushed || Job == null)
+                {
+                    return;
+                }
+            }
+
+            var prTitle = Job.SessionSummary ?? _commitMessage;
+            var prBody = BuildPullRequestBody();
+            var result = await VersionControlService.CreatePullRequestAsync(
+                Job.Project.WorkingPath,
+                _branchName,
+                EffectiveTargetBranch,
+                prTitle,
+                prBody);
+
+            if (!result.Success)
+            {
+                _pushError = result.Error ?? "Failed to create pull request.";
+                NotificationService.ShowError(_pushError);
+                return;
+            }
+
+            Job.PullRequestNumber = result.PullRequestNumber;
+            Job.PullRequestUrl = result.PullRequestUrl;
+            Job.PullRequestCreatedAt = DateTime.UtcNow;
+            _changesPushed = true;
+
+            await JobService.UpdateGitDeliveryAsync(
+                Job.Id,
+                commitHash: Job.GitCommitHash,
+                pullRequestNumber: result.PullRequestNumber,
+                pullRequestUrl: result.PullRequestUrl,
+                pullRequestCreatedAt: Job.PullRequestCreatedAt);
+
+            NotificationService.ShowSuccess(result.PullRequestUrl is null
+                ? "Pull request created successfully."
+                : $"Pull request created: {result.PullRequestUrl}");
+        }
+        catch (Exception ex)
+        {
+            _pushError = $"Error creating pull request: {ex.Message}";
+            NotificationService.ShowError(_pushError);
+        }
+        finally
+        {
+            _isCreatingPullRequest = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task MergeBranchIntoTarget()
+    {
+        if (Job?.Project?.WorkingPath == null || !CanMergeBranch || string.IsNullOrWhiteSpace(EffectiveTargetBranch) || string.IsNullOrWhiteSpace(_branchName))
+        {
+            return;
+        }
+
+        _isMergingBranch = true;
+        _pushError = null;
+        StateHasChanged();
+
+        try
+        {
+            var result = await VersionControlService.MergeBranchAsync(
+                Job.Project.WorkingPath,
+                _branchName,
+                EffectiveTargetBranch,
+                "origin",
+                progress =>
+                {
+                    _pushStatus = progress;
+                    InvokeAsync(StateHasChanged);
+                });
+
+            if (!result.Success)
+            {
+                _pushError = result.Error ?? "Failed to merge branch.";
+                NotificationService.ShowError(_pushError);
+                return;
+            }
+
+            Job.MergedAt = DateTime.UtcNow;
+            Job.GitCommitHash = result.CommitHash ?? Job.GitCommitHash;
+            _pushedCommitHash = Job.GitCommitHash;
+            _changesPushed = true;
+            _branchName = result.BranchName ?? EffectiveTargetBranch;
+
+            await JobService.UpdateGitDeliveryAsync(
+                Job.Id,
+                commitHash: result.CommitHash,
+                mergedAt: Job.MergedAt);
+
+            NotificationService.ShowSuccess($"Merged '{Job.Branch ?? _branchName}' into '{EffectiveTargetBranch}'.");
+            await LoadBranchName();
+        }
+        catch (Exception ex)
+        {
+            _pushError = $"Error merging branch: {ex.Message}";
+            NotificationService.ShowError(_pushError);
+        }
+        finally
+        {
+            _isMergingBranch = false;
+            _pushStatus = "Pushing...";
+            StateHasChanged();
+        }
+    }
+
+    private string BuildPullRequestBody()
+    {
+        if (Job == null || string.IsNullOrWhiteSpace(_branchName) || string.IsNullOrWhiteSpace(EffectiveTargetBranch))
+        {
+            return string.Empty;
+        }
+
+        var lines = new List<string>
+        {
+            "## VibeSwarm Job",
+            string.Empty,
+            $"- Source branch: `{_branchName}`",
+            $"- Target branch: `{EffectiveTargetBranch}`",
+            string.Empty,
+            "### Goal",
+            Job.GoalPrompt.Trim()
+        };
+
+        if (!string.IsNullOrWhiteSpace(Job.Title))
+        {
+            lines.Insert(4, $"- Job: `{Job.Title}`");
+        }
+
+        if (!string.IsNullOrWhiteSpace(Job.SessionSummary))
+        {
+            lines.Add(string.Empty);
+            lines.Add("### Session Summary");
+            lines.Add(Job.SessionSummary.Trim());
+        }
+
+        return string.Join("\n", lines);
     }
 
     #endregion

@@ -531,7 +531,7 @@ public class JobProcessingService : BackgroundService
             await UpdateHeartbeatAsync(job.Id, initialActivity, dbContext, cancellationToken);
             await NotifyJobActivityAsync(job.Id, initialActivity, DateTime.UtcNow);
 
-            // Sync with origin before starting work (if this is a git repository)
+            // Prepare the configured working branch before starting work (if this is a git repository)
             var workingDirectory = job.Project?.WorkingPath;
             if (!string.IsNullOrEmpty(workingDirectory) && Directory.Exists(workingDirectory))
             {
@@ -540,37 +540,18 @@ public class JobProcessingService : BackgroundService
                     var isGitRepo = await _versionControlService.IsGitRepositoryAsync(workingDirectory, cancellationToken);
                     if (isGitRepo)
                     {
-                        _logger.LogInformation("Syncing with origin before job {JobId} execution", job.Id);
+                        var branchActivity = string.IsNullOrWhiteSpace(job.Branch)
+                            ? "Syncing working branch..."
+                            : $"Preparing branch '{job.Branch}'...";
+                        await UpdateHeartbeatAsync(job.Id, branchActivity, dbContext, cancellationToken);
+                        await NotifyJobActivityAsync(job.Id, branchActivity, DateTime.UtcNow);
 
-                        var syncActivity = "Syncing with remote repository...";
-                        await UpdateHeartbeatAsync(job.Id, syncActivity, dbContext, cancellationToken);
-                        await NotifyJobActivityAsync(job.Id, syncActivity, DateTime.UtcNow);
-
-                        var syncResult = await _versionControlService.SyncWithOriginAsync(
-                            workingDirectory,
-                            remoteName: "origin",
-                            progressCallback: progress =>
-                            {
-                                _logger.LogDebug("Git sync progress for job {JobId}: {Progress}", job.Id, progress);
-                            },
-                            cancellationToken: cancellationToken);
-
-                        if (syncResult.Success)
-                        {
-                            _logger.LogInformation("Successfully synced with origin for job {JobId}. Branch: {Branch}, Commit: {Commit}",
-                                job.Id, syncResult.BranchName, syncResult.CommitHash?[..Math.Min(8, syncResult.CommitHash?.Length ?? 0)]);
-                        }
-                        else
-                        {
-                            // Log warning but don't fail the job - the sync might fail if there's no remote
-                            _logger.LogWarning("Failed to sync with origin for job {JobId}: {Error}. Continuing with local state.",
-                                job.Id, syncResult.Error);
-                        }
+                        await PrepareWorkingBranchAsync(job, workingDirectory, cancellationToken);
                     }
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "Error during git sync for job {JobId}. Continuing with local state.", job.Id);
+                    _logger.LogWarning(ex, "Error preparing git branch for job {JobId}. Continuing with local state.", job.Id);
                 }
             }
 
@@ -1388,10 +1369,10 @@ public class JobProcessingService : BackgroundService
 
                 // Perform auto-commit if configured and job completed successfully
                 // Also auto-commit when IdeasAutoCommit is true (even if project-level AutoCommitMode is Off)
-                if (status == JobStatus.Completed &&
-                    (job.Project?.AutoCommitMode != AutoCommitMode.Off || job.Project?.IdeasAutoCommit == true))
+                if (status == JobStatus.Completed && ShouldProcessGitDelivery(job))
                 {
                     await PerformAutoCommitAsync(job, workingDirectory, cancellationToken);
+                    await CreatePullRequestIfConfiguredAsync(job, workingDirectory, cancellationToken);
                 }
             }
 
@@ -1530,6 +1511,8 @@ public class JobProcessingService : BackgroundService
     {
         try
         {
+            var shouldCreatePullRequest = ShouldCreatePullRequest(job);
+
             // Check if there are uncommitted changes
             var hasChanges = await _versionControlService.HasUncommittedChangesAsync(workingDirectory, cancellationToken);
             if (!hasChanges)
@@ -1549,7 +1532,9 @@ public class JobProcessingService : BackgroundService
                             job.Id, currentHash[..Math.Min(8, currentHash.Length)]);
 
                         // Determine effective commit mode: use project setting, or default to CommitOnly for IdeasAutoCommit
-                        var effectiveMode = job.Project!.AutoCommitMode != AutoCommitMode.Off
+                        var effectiveMode = shouldCreatePullRequest
+                            ? AutoCommitMode.CommitAndPush
+                            : job.Project!.AutoCommitMode != AutoCommitMode.Off
                             ? job.Project.AutoCommitMode
                             : AutoCommitMode.CommitOnly;
 
@@ -1581,7 +1566,9 @@ public class JobProcessingService : BackgroundService
             }
 
             // Determine effective commit mode: use project setting, or default to CommitOnly for IdeasAutoCommit
-            var effectiveCommitMode = job.Project!.AutoCommitMode != AutoCommitMode.Off
+            var effectiveCommitMode = shouldCreatePullRequest
+                ? AutoCommitMode.CommitAndPush
+                : job.Project!.AutoCommitMode != AutoCommitMode.Off
                 ? job.Project.AutoCommitMode
                 : AutoCommitMode.CommitOnly;
 
@@ -1627,6 +1614,168 @@ public class JobProcessingService : BackgroundService
             // Auto-commit failures should not fail the job
             _logger.LogWarning(ex, "Error during auto-commit for job {JobId}", job.Id);
         }
+    }
+
+    private async Task PrepareWorkingBranchAsync(Job job, string workingDirectory, CancellationToken cancellationToken)
+    {
+        var sourceBranch = string.IsNullOrWhiteSpace(job.Branch) ? null : job.Branch.Trim();
+        var targetBranch = GetEffectiveTargetBranch(job);
+
+        if (string.IsNullOrWhiteSpace(sourceBranch))
+        {
+            _logger.LogInformation("Syncing current branch before job {JobId} execution", job.Id);
+            var syncResult = await _versionControlService.SyncWithOriginAsync(workingDirectory, cancellationToken: cancellationToken);
+            if (!syncResult.Success)
+            {
+                _logger.LogWarning("Failed to sync current branch before job {JobId}: {Error}", job.Id, syncResult.Error);
+            }
+            return;
+        }
+
+        var branches = await _versionControlService.GetBranchesAsync(workingDirectory, includeRemote: true, cancellationToken);
+        var sourceExists = BranchExists(branches, sourceBranch);
+
+        if (sourceExists)
+        {
+            _logger.LogInformation("Checking out configured branch '{Branch}' for job {JobId}", sourceBranch, job.Id);
+            var checkoutResult = await _versionControlService.HardCheckoutBranchAsync(workingDirectory, sourceBranch, cancellationToken: cancellationToken);
+            if (!checkoutResult.Success)
+            {
+                _logger.LogWarning("Failed to checkout branch '{Branch}' for job {JobId}: {Error}", sourceBranch, job.Id, checkoutResult.Error);
+            }
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(targetBranch) &&
+            !string.Equals(targetBranch, sourceBranch, StringComparison.Ordinal) &&
+            BranchExists(branches, targetBranch))
+        {
+            _logger.LogInformation("Using target branch '{TargetBranch}' as the base for new branch '{SourceBranch}' on job {JobId}", targetBranch, sourceBranch, job.Id);
+            var baseCheckoutResult = await _versionControlService.HardCheckoutBranchAsync(workingDirectory, targetBranch, cancellationToken: cancellationToken);
+            if (!baseCheckoutResult.Success)
+            {
+                _logger.LogWarning("Failed to checkout target branch '{Branch}' for job {JobId}: {Error}", targetBranch, job.Id, baseCheckoutResult.Error);
+            }
+        }
+        else
+        {
+            var syncResult = await _versionControlService.SyncWithOriginAsync(workingDirectory, cancellationToken: cancellationToken);
+            if (!syncResult.Success)
+            {
+                _logger.LogWarning("Failed to sync current branch before creating new branch '{Branch}' for job {JobId}: {Error}", sourceBranch, job.Id, syncResult.Error);
+            }
+        }
+
+        var createResult = await _versionControlService.CreateBranchAsync(
+            workingDirectory,
+            sourceBranch,
+            switchToBranch: true,
+            cancellationToken: cancellationToken);
+        if (!createResult.Success)
+        {
+            _logger.LogWarning("Failed to create job branch '{Branch}' for job {JobId}: {Error}", sourceBranch, job.Id, createResult.Error);
+        }
+    }
+
+    private async Task CreatePullRequestIfConfiguredAsync(Job job, string workingDirectory, CancellationToken cancellationToken)
+    {
+        if (!ShouldCreatePullRequest(job) || !string.IsNullOrWhiteSpace(job.PullRequestUrl))
+        {
+            return;
+        }
+
+        var targetBranch = GetEffectiveTargetBranch(job);
+        if (string.IsNullOrWhiteSpace(targetBranch))
+        {
+            _logger.LogWarning("Job {JobId} requested pull-request delivery but no target branch was configured.", job.Id);
+            return;
+        }
+
+        var sourceBranch = string.IsNullOrWhiteSpace(job.Branch)
+            ? await _versionControlService.GetCurrentBranchAsync(workingDirectory, cancellationToken)
+            : job.Branch;
+
+        if (string.IsNullOrWhiteSpace(sourceBranch))
+        {
+            _logger.LogWarning("Job {JobId} requested pull-request delivery but the current branch could not be determined.", job.Id);
+            return;
+        }
+
+        if (string.Equals(sourceBranch, targetBranch, StringComparison.Ordinal))
+        {
+            _logger.LogWarning("Job {JobId} requested pull-request delivery but source and target branches are both '{Branch}'.", job.Id, sourceBranch);
+            return;
+        }
+
+        var pullRequestTitle = job.SessionSummary ?? $"VibeSwarm: {job.Title ?? "Job completed"}";
+        var pullRequestBody = BuildPullRequestBody(job, sourceBranch, targetBranch);
+        var pullRequestResult = await _versionControlService.CreatePullRequestAsync(
+            workingDirectory,
+            sourceBranch,
+            targetBranch,
+            pullRequestTitle,
+            pullRequestBody,
+            cancellationToken);
+
+        if (!pullRequestResult.Success)
+        {
+            _logger.LogWarning("Failed to create pull request for job {JobId}: {Error}", job.Id, pullRequestResult.Error);
+            return;
+        }
+
+        job.PullRequestNumber = pullRequestResult.PullRequestNumber;
+        job.PullRequestUrl = pullRequestResult.PullRequestUrl;
+        job.PullRequestCreatedAt = DateTime.UtcNow;
+        _logger.LogInformation("Created pull request for job {JobId}: {PullRequestUrl}", job.Id, job.PullRequestUrl);
+    }
+
+    private static bool BranchExists(IReadOnlyList<GitBranchInfo> branches, string branchName)
+    {
+        return branches.Any(branch =>
+            string.Equals(branch.Name, branchName, StringComparison.Ordinal) ||
+            string.Equals(branch.ShortName, branchName, StringComparison.Ordinal));
+    }
+
+    private static bool ShouldProcessGitDelivery(Job job)
+    {
+        return job.Project?.AutoCommitMode != AutoCommitMode.Off
+            || job.Project?.IdeasAutoCommit == true
+            || ShouldCreatePullRequest(job);
+    }
+
+    private static bool ShouldCreatePullRequest(Job job)
+    {
+        return job.GitChangeDeliveryMode == GitChangeDeliveryMode.PullRequest
+            && !string.IsNullOrWhiteSpace(GetEffectiveTargetBranch(job));
+    }
+
+    private static string? GetEffectiveTargetBranch(Job job)
+    {
+        return string.IsNullOrWhiteSpace(job.TargetBranch)
+            ? string.IsNullOrWhiteSpace(job.Project?.DefaultTargetBranch) ? null : job.Project.DefaultTargetBranch.Trim()
+            : job.TargetBranch.Trim();
+    }
+
+    private static string BuildPullRequestBody(Job job, string sourceBranch, string targetBranch)
+    {
+        var body = new StringBuilder();
+        body.AppendLine("## VibeSwarm Job");
+        body.AppendLine();
+        body.AppendLine($"- Source branch: `{sourceBranch}`");
+        body.AppendLine($"- Target branch: `{targetBranch}`");
+        body.AppendLine($"- Job: `{job.Title ?? job.GoalPrompt}`");
+        body.AppendLine();
+        body.AppendLine("### Goal");
+        body.AppendLine(job.GoalPrompt.Trim());
+
+        if (!string.IsNullOrWhiteSpace(job.SessionSummary))
+        {
+            body.AppendLine();
+            body.AppendLine("### Session Summary");
+            body.AppendLine(job.SessionSummary.Trim());
+        }
+
+        return body.ToString().Trim();
     }
 
     /// <summary>

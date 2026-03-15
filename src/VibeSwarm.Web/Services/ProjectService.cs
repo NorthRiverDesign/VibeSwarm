@@ -65,6 +65,7 @@ public class ProjectService : IProjectService
 		project.CreatedAt = DateTime.UtcNow;
 
 		NormalizePlanningSettings(project);
+		project.DefaultTargetBranch = string.IsNullOrWhiteSpace(project.DefaultTargetBranch) ? null : project.DefaultTargetBranch.Trim();
 		NormalizeProviderSelections(project);
 		NormalizeEnvironments(project);
 		await ValidateProviderSelectionsAsync(project.ProviderSelections, cancellationToken);
@@ -117,6 +118,8 @@ public class ProjectService : IProjectService
 		existing.WorkingPath = project.WorkingPath;
 		existing.GitHubRepository = project.GitHubRepository;
 		existing.AutoCommitMode = project.AutoCommitMode;
+		existing.GitChangeDeliveryMode = project.GitChangeDeliveryMode;
+		existing.DefaultTargetBranch = string.IsNullOrWhiteSpace(project.DefaultTargetBranch) ? null : project.DefaultTargetBranch.Trim();
 		existing.PlanningEnabled = project.PlanningEnabled;
 		existing.PlanningProviderId = project.PlanningProviderId;
 		existing.PlanningModelId = project.PlanningModelId;

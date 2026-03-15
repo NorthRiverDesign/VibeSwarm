@@ -97,6 +97,7 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 			entity.Property(e => e.Description).HasMaxLength(500);
 			entity.Property(e => e.WorkingPath).IsRequired().HasMaxLength(500);
 			entity.Property(e => e.GitHubRepository).HasMaxLength(200);
+			entity.Property(e => e.DefaultTargetBranch).HasMaxLength(250);
 			entity.Property(e => e.PlanningModelId).HasMaxLength(200);
 			entity.Property(e => e.PromptContext).HasMaxLength(1000);
 			entity.Property(e => e.IdeasAutoExpand).HasDefaultValue(true);
@@ -145,6 +146,7 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 			entity.Property(e => e.ModelUsed).HasMaxLength(200);
 			entity.Property(e => e.LastSwitchReason).HasMaxLength(200);
 			entity.Property(e => e.Branch).HasMaxLength(250);
+			entity.Property(e => e.TargetBranch).HasMaxLength(250);
 			entity.Property(e => e.SessionId).HasMaxLength(200);
 			entity.Property(e => e.CommandUsed).HasMaxLength(4000);
 			entity.HasOne(e => e.Project)

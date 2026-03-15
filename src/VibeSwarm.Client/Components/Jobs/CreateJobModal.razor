@@ -80,6 +80,38 @@
 				</div>
 			}
 
+			<div class="mb-3">
+				<label for="gitChangeDeliveryMode" class="form-label">Result Delivery</label>
+				<InputSelect id="gitChangeDeliveryMode" @bind-Value="JobModel.GitChangeDeliveryMode" class="form-select">
+					<option value="@GitChangeDeliveryMode.CommitToBranch">Commit to the selected branch</option>
+					<option value="@GitChangeDeliveryMode.PullRequest">Create a pull request</option>
+				</InputSelect>
+				<div class="form-text">Control where the job's final changes should land after successful execution.</div>
+			</div>
+
+			@if (JobModel.GitChangeDeliveryMode == GitChangeDeliveryMode.PullRequest)
+			{
+				<div class="mb-3">
+					<label for="targetBranch" class="form-label">Target Branch</label>
+					@if (Branches.Any(b => !b.IsRemote))
+					{
+						<InputSelect id="targetBranch" @bind-Value="JobModel.TargetBranch" class="form-select">
+							@foreach (var branch in Branches.Where(b => !b.IsRemote).OrderByDescending(b => b.Name == CurrentBranch))
+							{
+								<option value="@branch.Name">
+									@branch.Name @(branch.Name == CurrentBranch ? "(current)" : "")
+								</option>
+							}
+						</InputSelect>
+					}
+					else
+					{
+						<InputText id="targetBranch" @bind-Value="JobModel.TargetBranch" class="form-control" placeholder="develop" />
+					}
+					<div class="form-text">Completed work will be proposed from the source branch into this branch.</div>
+				</div>
+			}
+
 			@* Multi-Cycle Options (Collapsible) *@
 			<div class="mb-3">
 				<button type="button" class="btn btn-link p-0 text-decoration-none" @onclick="ToggleAdvancedOptions">

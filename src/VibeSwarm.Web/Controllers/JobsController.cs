@@ -131,6 +131,12 @@ public class JobsController : ControllerBase
     public async Task<IActionResult> UpdateGitDiff(Guid id, [FromBody] UpdateGitDiffRequest req, CancellationToken ct)
         => await _jobService.UpdateGitDiffAsync(id, req.GitDiff, ct) ? Ok() : BadRequest();
 
+    [HttpPut("{id:guid}/git-delivery")]
+    public async Task<IActionResult> UpdateGitDelivery(Guid id, [FromBody] UpdateGitDeliveryRequest req, CancellationToken ct)
+        => await _jobService.UpdateGitDeliveryAsync(id, req.CommitHash, req.PullRequestNumber, req.PullRequestUrl, req.PullRequestCreatedAt, req.MergedAt, ct)
+            ? Ok()
+            : BadRequest();
+
     [HttpPost("{id:guid}/pause-interaction")]
     public async Task<IActionResult> PauseForInteraction(Guid id, [FromBody] PauseInteractionRequest req, CancellationToken ct)
         => await _jobService.PauseForInteractionAsync(id, req.InteractionPrompt, req.InteractionType, req.Choices, ct) ? Ok() : BadRequest();
@@ -189,6 +195,7 @@ public class JobsController : ControllerBase
     public record UpdateProgressRequest(string? CurrentActivity);
     public record UpdateGitCommitRequest(string CommitHash);
     public record UpdateGitDiffRequest(string? GitDiff);
+    public record UpdateGitDeliveryRequest(string? CommitHash, int? PullRequestNumber, string? PullRequestUrl, DateTime? PullRequestCreatedAt, DateTime? MergedAt);
     public record PauseInteractionRequest(string InteractionPrompt, string InteractionType, string? Choices);
     public record RetryRequest(Guid? ProviderId, string? ModelId);
     public record UpdatePromptRequest(string Prompt);

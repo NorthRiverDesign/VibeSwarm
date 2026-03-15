@@ -36,13 +36,31 @@ public sealed class GitOperationResult
 	public string? RemoteName { get; init; }
 
 	/// <summary>
+	/// Target branch involved in the operation.
+	/// </summary>
+	public string? TargetBranch { get; init; }
+
+	/// <summary>
+	/// Created pull request URL, if applicable.
+	/// </summary>
+	public string? PullRequestUrl { get; init; }
+
+	/// <summary>
+	/// Created pull request number, if applicable.
+	/// </summary>
+	public int? PullRequestNumber { get; init; }
+
+	/// <summary>
 	/// Creates a successful result.
 	/// </summary>
 	public static GitOperationResult Succeeded(
 		string? output = null,
 		string? commitHash = null,
 		string? branchName = null,
-		string? remoteName = null)
+		string? remoteName = null,
+		string? targetBranch = null,
+		string? pullRequestUrl = null,
+		int? pullRequestNumber = null)
 	{
 		return new GitOperationResult
 		{
@@ -50,7 +68,10 @@ public sealed class GitOperationResult
 			Output = output,
 			CommitHash = commitHash,
 			BranchName = branchName,
-			RemoteName = remoteName
+			RemoteName = remoteName,
+			TargetBranch = targetBranch,
+			PullRequestUrl = pullRequestUrl,
+			PullRequestNumber = pullRequestNumber
 		};
 	}
 

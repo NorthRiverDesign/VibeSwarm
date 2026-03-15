@@ -55,6 +55,14 @@ public class GitController : ControllerBase
     [HttpPost("commit-and-push")]
     public async Task<IActionResult> CommitAndPush([FromBody] CommitAndPushRequest req, CancellationToken ct) => Ok(await _gitService.CommitAndPushAsync(req.Path, req.Message, req.Remote ?? "origin", null, ct));
 
+    [HttpPost("create-pull-request")]
+    public async Task<IActionResult> CreatePullRequest([FromBody] CreatePullRequestRequest req, CancellationToken ct)
+        => Ok(await _gitService.CreatePullRequestAsync(req.Path, req.SourceBranch, req.TargetBranch, req.Title, req.Body, ct));
+
+    [HttpPost("merge-branch")]
+    public async Task<IActionResult> MergeBranch([FromBody] MergeBranchRequest req, CancellationToken ct)
+        => Ok(await _gitService.MergeBranchAsync(req.Path, req.SourceBranch, req.TargetBranch, req.Remote ?? "origin", null, ct));
+
     [HttpPost("fetch")]
     public async Task<IActionResult> Fetch([FromBody] FetchRequest req, CancellationToken ct) => Ok(await _gitService.FetchAsync(req.Path, req.Remote ?? "origin", req.Prune, ct));
 
@@ -119,6 +127,8 @@ public class GitController : ControllerBase
     public record CommitRequest(string Path, string Message);
     public record PushRequest(string Path, string? Remote, string? Branch);
     public record CommitAndPushRequest(string Path, string Message, string? Remote);
+    public record CreatePullRequestRequest(string Path, string SourceBranch, string TargetBranch, string Title, string? Body);
+    public record MergeBranchRequest(string Path, string SourceBranch, string TargetBranch, string? Remote);
     public record FetchRequest(string Path, string? Remote, bool Prune = true);
     public record CheckoutRequest(string Path, string Branch, string? Remote);
     public record SyncRequest(string Path, string? Remote);

@@ -104,6 +104,17 @@ public class Job
     [StringLength(250)]
     public string? Branch { get; set; }
 
+	/// <summary>
+	/// Controls how this job's changes should be delivered after completion.
+	/// </summary>
+	public GitChangeDeliveryMode GitChangeDeliveryMode { get; set; } = GitChangeDeliveryMode.CommitToBranch;
+
+	/// <summary>
+	/// Optional target branch used when creating a pull request or merging changes.
+	/// </summary>
+	[StringLength(250)]
+	public string? TargetBranch { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     public DateTime? StartedAt { get; set; }
@@ -308,6 +319,26 @@ public class Job
     /// When set, indicates the results have been committed to git.
     /// </summary>
     public string? GitCommitHash { get; set; }
+
+	/// <summary>
+	/// GitHub pull request number created for this job, if any.
+	/// </summary>
+	public int? PullRequestNumber { get; set; }
+
+	/// <summary>
+	/// GitHub pull request URL created for this job, if any.
+	/// </summary>
+	public string? PullRequestUrl { get; set; }
+
+	/// <summary>
+	/// When a pull request was created for this job.
+	/// </summary>
+	public DateTime? PullRequestCreatedAt { get; set; }
+
+	/// <summary>
+	/// When this job's branch changes were merged into the target branch.
+	/// </summary>
+	public DateTime? MergedAt { get; set; }
 
     /// <summary>
     /// Number of files changed during job execution.

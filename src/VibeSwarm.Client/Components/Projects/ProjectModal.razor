@@ -192,6 +192,33 @@
 			</div>
 
 			<div class="mb-3">
+				<label for="modal-gitChangeDeliveryMode" class="form-label">
+					<i class="bi bi-box-arrow-up-right me-1"></i>Result Delivery
+				</label>
+				<InputSelect id="modal-gitChangeDeliveryMode" @bind-Value="Project.GitChangeDeliveryMode" class="form-select">
+					<option value="@GitChangeDeliveryMode.CommitToBranch">Commit to branch</option>
+					<option value="@GitChangeDeliveryMode.PullRequest">Create pull request</option>
+				</InputSelect>
+				<div class="form-text">
+					Choose whether successful jobs should stay on their working branch or be delivered through a pull request.
+				</div>
+			</div>
+
+			@if (Project.GitChangeDeliveryMode == GitChangeDeliveryMode.PullRequest)
+			{
+				<div class="mb-3">
+					<label for="modal-defaultTargetBranch" class="form-label">
+						<i class="bi bi-signpost-split me-1"></i>Default Target Branch
+					</label>
+					<InputText id="modal-defaultTargetBranch" @bind-Value="Project.DefaultTargetBranch" class="form-control"
+							   placeholder="develop" />
+					<div class="form-text">
+						New jobs will target this branch when creating pull requests or merging completed work.
+					</div>
+				</div>
+			}
+
+			<div class="mb-3">
 				<div class="form-check form-switch">
 					<InputCheckbox id="modal-ideasAutoExpand" @bind-Value="Project.IdeasAutoExpand" class="form-check-input" />
 					<label class="form-check-label" for="modal-ideasAutoExpand">
@@ -982,6 +1009,8 @@
 			WorkingPath = source.WorkingPath,
 			GitHubRepository = source.GitHubRepository,
 			AutoCommitMode = source.AutoCommitMode,
+			GitChangeDeliveryMode = source.GitChangeDeliveryMode,
+			DefaultTargetBranch = source.DefaultTargetBranch,
 			PlanningEnabled = source.PlanningEnabled,
 			PlanningProviderId = source.PlanningProviderId,
 			PlanningModelId = source.PlanningModelId,

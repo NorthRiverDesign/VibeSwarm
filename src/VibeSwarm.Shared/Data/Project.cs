@@ -51,6 +51,17 @@ public class Project
 	public AutoCommitMode AutoCommitMode { get; set; } = AutoCommitMode.Off;
 
 	/// <summary>
+	/// Controls whether job results stay on a branch or should be delivered through a pull request.
+	/// </summary>
+	public GitChangeDeliveryMode GitChangeDeliveryMode { get; set; } = GitChangeDeliveryMode.CommitToBranch;
+
+	/// <summary>
+	/// Optional default target branch used when jobs create pull requests or merge changes.
+	/// </summary>
+	[StringLength(250)]
+	public string? DefaultTargetBranch { get; set; }
+
+	/// <summary>
 	/// Whether idea expansion should use provider-native planning mode.
 	/// When enabled, idea expansion uses the configured planning provider/model to generate
 	/// a reviewed implementation plan before the idea is converted into a job.

@@ -633,6 +633,52 @@ public class JobService : IJobService
         return true;
     }
 
+    public async Task<bool> UpdateGitDeliveryAsync(
+        Guid id,
+        string? commitHash = null,
+        int? pullRequestNumber = null,
+        string? pullRequestUrl = null,
+        DateTime? pullRequestCreatedAt = null,
+        DateTime? mergedAt = null,
+        CancellationToken cancellationToken = default)
+    {
+        var job = await _dbContext.Jobs
+            .FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
+
+        if (job == null)
+        {
+            return false;
+        }
+
+        if (!string.IsNullOrWhiteSpace(commitHash))
+        {
+            job.GitCommitHash = commitHash.Trim();
+        }
+
+        if (pullRequestNumber.HasValue)
+        {
+            job.PullRequestNumber = pullRequestNumber;
+        }
+
+        if (!string.IsNullOrWhiteSpace(pullRequestUrl))
+        {
+            job.PullRequestUrl = pullRequestUrl.Trim();
+        }
+
+        if (pullRequestCreatedAt.HasValue)
+        {
+            job.PullRequestCreatedAt = pullRequestCreatedAt;
+        }
+
+        if (mergedAt.HasValue)
+        {
+            job.MergedAt = mergedAt;
+        }
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
     public async Task<bool> PauseForInteractionAsync(Guid id, string interactionPrompt, string interactionType,
         string? choices = null, CancellationToken cancellationToken = default)
     {
@@ -807,6 +853,10 @@ public class JobService : IJobService
         job.GitDiff = null;
         job.GitCommitBefore = null;
         job.GitCommitHash = null;
+        job.PullRequestNumber = null;
+        job.PullRequestUrl = null;
+        job.PullRequestCreatedAt = null;
+        job.MergedAt = null;
         job.SessionId = null; // Clear session for fresh start with potentially new provider
         job.ModelUsed = modelId; // Set the requested model (null means use provider default)
         job.RetryCount++; // Increment retry count to track attempts
@@ -1179,6 +1229,7 @@ public class JobService : IJobService
         job.Title = BuildSafeJobTitle(job.Title, job.GoalPrompt);
         job.ModelUsed = string.IsNullOrWhiteSpace(job.ModelUsed) ? null : job.ModelUsed.Trim();
         job.Branch = string.IsNullOrWhiteSpace(job.Branch) ? null : job.Branch.Trim();
+        job.TargetBranch = string.IsNullOrWhiteSpace(job.TargetBranch) ? null : job.TargetBranch.Trim();
     }
 
     private static string? BuildSafeJobTitle(string? title, string goalPrompt)

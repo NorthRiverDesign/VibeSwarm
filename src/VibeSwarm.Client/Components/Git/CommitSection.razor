@@ -1,26 +1,31 @@
-@* Commit and push section component *@
+@using VibeSwarm.Shared.Data
 
 <div class="card mb-3 mb-lg-4">
 	<div class="card-header bg-body-secondary d-flex justify-content-between align-items-center flex-wrap gap-2">
 		<div class="d-flex align-items-center">
 			<i class="bi bi-cloud-upload me-2 opacity-75"></i>
-			<strong>Commit</strong>
+			<strong>Delivery</strong>
 		</div>
-		@if (!string.IsNullOrEmpty(BranchName) && !IsPushed && !IsAutoCommitted)
-		{
-			<span class="branch-info d-inline-flex align-items-center gap-1 py-1 px-2 rounded-1 small text-truncate">
-				<i class="bi bi-diagram-2 me-1"></i>
-				@BranchName
+		<div class="d-flex flex-wrap gap-2">
+			@if (!string.IsNullOrEmpty(BranchName))
+			{
+				<span class="badge bg-body-tertiary text-body font-monospace">
+					<i class="bi bi-diagram-2 me-1"></i>@BranchName
+				</span>
+			}
+			@if (!string.IsNullOrEmpty(TargetBranch))
+			{
+				<span class="badge bg-body-tertiary text-body font-monospace">
+					<i class="bi bi-signpost-split me-1"></i>@TargetBranch
+				</span>
+			}
+			<span class="badge @(DeliveryMode == GitChangeDeliveryMode.PullRequest ? "bg-primary" : "bg-secondary")">
+				<i class="bi @(DeliveryMode == GitChangeDeliveryMode.PullRequest ? "bi-github" : "bi-git") me-1"></i>
+				@(DeliveryMode == GitChangeDeliveryMode.PullRequest ? "Pull Request" : "Branch")
 			</span>
-		}
-		@if (IsAutoCommitted)
-		{
-			<span class="badge bg-success d-inline-flex align-items-center gap-1">
-				<i class="bi bi-robot"></i>
-				<span>Auto-committed</span>
-			</span>
-		}
+		</div>
 	</div>
+
 	@if (!IsPushed && !IsAutoCommitted)
 	{
 		<div class="card-body">
@@ -29,8 +34,7 @@
 				@if (IsLoadingSummary)
 				{
 					<span class="badge bg-secondary">
-						<span class="spinner-border spinner-border-sm me-1" role="status"
-							  style="width: 0.75rem; height: 0.75rem;"></span>
+						<span class="spinner-border spinner-border-sm me-1" role="status" style="width: 0.75rem; height: 0.75rem;"></span>
 						Generating...
 					</span>
 				}
@@ -41,9 +45,10 @@
 					</span>
 				}
 			</label>
+
 			<textarea id="commitMessage" class="form-control w-100" @bind="CommitMessage" @bind:event="oninput"
 					  placeholder="@(IsLoadingSummary ? "Generating commit message..." : "Enter a descriptive commit message...")"
-					  rows="3" disabled="@IsPushing"></textarea>
+					  rows="3" disabled="@(IsPushing || IsCreatingPullRequest || IsMergingBranch)"></textarea>
 
 			@if (!string.IsNullOrEmpty(SummaryError))
 			{
@@ -61,9 +66,17 @@
 					@PushError
 				</Alert>
 			}
+
+			@if (!string.IsNullOrEmpty(PullRequestUrl))
+			{
+				<Alert Type="Alert.AlertType.Success" Class="mt-3 mb-0 py-2 px-3 small">
+					<i class="bi bi-github me-1"></i>
+					<a href="@PullRequestUrl" target="_blank" rel="noreferrer">Pull request ready@(PullRequestNumber.HasValue ? $" #{PullRequestNumber.Value}" : string.Empty)</a>
+				</Alert>
+			}
 		</div>
-		<div class="card-footer bg-body-secondary">
-			<button class="btn btn-primary" @onclick="OnCommitAndPush" disabled="@(!CanPush || IsPushing)">
+		<div class="card-footer bg-body-secondary d-flex flex-wrap gap-2">
+			<button class="btn btn-primary" @onclick="OnCommitAndPush" disabled="@(!CanPush || IsBusy)">
 				@if (IsPushing)
 				{
 					<span class="spinner-border spinner-border-sm me-1" role="status"></span>
@@ -76,15 +89,48 @@
 					<span>Commit & Push</span>
 				}
 			</button>
+
+			@if (CanCreatePullRequest)
+			{
+				<button class="btn btn-secondary" @onclick="OnCreatePullRequest" disabled="@IsBusy">
+					@if (IsCreatingPullRequest)
+					{
+						<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+						<span>Creating PR...</span>
+					}
+					else
+					{
+						<i class="bi bi-github me-1"></i>
+						<span>Create Pull Request</span>
+					}
+				</button>
+			}
+
+			@if (CanMergeBranch)
+			{
+				<button class="btn btn-success" @onclick="OnMergeBranch" disabled="@IsBusy">
+					@if (IsMergingBranch)
+					{
+						<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+						<span>Merging...</span>
+					}
+					else
+					{
+						<i class="bi bi-arrow-left-right me-1"></i>
+						<span>Merge into @TargetBranch</span>
+					}
+				</button>
+			}
 		</div>
 	}
-	else if (IsAutoCommitted)
+	else
 	{
 		<div class="card-body p-3">
 			<div class="d-flex align-items-center gap-2 mb-2">
 				<i class="bi bi-check-circle-fill text-success"></i>
-				<strong>Changes auto-committed!</strong>
+				<strong>@GetStatusHeading()</strong>
 			</div>
+
 			<div class="d-flex flex-wrap gap-2 mb-2">
 				@if (!string.IsNullOrEmpty(PushedCommitHash))
 				{
@@ -92,49 +138,72 @@
 						<i class="bi bi-git me-1"></i>@PushedCommitHash[..Math.Min(7, PushedCommitHash.Length)]
 					</span>
 				}
-				@if (!string.IsNullOrEmpty(BranchName))
+				@if (!string.IsNullOrEmpty(PullRequestUrl))
 				{
-					<span class="badge bg-body-tertiary text-body font-monospace">
-						<i class="bi bi-diagram-2 me-1"></i>@BranchName
-					</span>
+					<a class="btn btn-sm btn-secondary" href="@PullRequestUrl" target="_blank" rel="noreferrer">
+						<i class="bi bi-github me-1"></i>
+						<span>Open PR@(PullRequestNumber.HasValue ? $" #{PullRequestNumber.Value}" : string.Empty)</span>
+					</a>
 				}
 			</div>
+
 			@if (!string.IsNullOrEmpty(CommitMessageUsed))
 			{
-				<div class="bg-body-tertiary rounded p-2 small text-body-secondary" style="white-space: pre-wrap;">
-					@CommitMessageUsed</div>
-				}
-			</div>
-		}
-	else
-		{
-			<div class="card-body p-3">
-				<div class="d-flex align-items-center gap-2 mb-2">
-					<i class="bi bi-check-circle-fill text-success"></i>
-					<strong>Changes pushed successfully!</strong>
-				</div>
-				<div class="d-flex flex-wrap gap-2 mb-2">
-					@if (!string.IsNullOrEmpty(PushedCommitHash))
+				<div class="bg-body-tertiary rounded p-2 small text-body-secondary" style="white-space: pre-wrap;">@CommitMessageUsed</div>
+			}
+
+			@if (CanMergeBranch)
+			{
+				<div class="mt-3 d-flex flex-wrap gap-2">
+					@if (CanCreatePullRequest)
 					{
-						<span class="badge bg-body-tertiary text-body font-monospace">
-							<i class="bi bi-git me-1"></i>@PushedCommitHash[..Math.Min(7, PushedCommitHash.Length)]
-						</span>
+						<button class="btn btn-secondary" @onclick="OnCreatePullRequest" disabled="@IsBusy">
+							@if (IsCreatingPullRequest)
+							{
+								<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+								<span>Creating PR...</span>
+							}
+							else
+							{
+								<i class="bi bi-github me-1"></i>
+								<span>Create Pull Request</span>
+							}
+						</button>
 					}
-					@if (!string.IsNullOrEmpty(BranchName))
-					{
-						<span class="badge bg-body-tertiary text-body font-monospace">
-							<i class="bi bi-diagram-2 me-1"></i>@BranchName
-						</span>
-					}
+					<button class="btn btn-success" @onclick="OnMergeBranch" disabled="@IsBusy">
+						@if (IsMergingBranch)
+						{
+							<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+							<span>Merging...</span>
+						}
+						else
+						{
+							<i class="bi bi-arrow-left-right me-1"></i>
+							<span>Merge into @TargetBranch</span>
+						}
+					</button>
 				</div>
-				@if (!string.IsNullOrEmpty(CommitMessageUsed))
-				{
-					<div class="bg-body-tertiary rounded p-2 small text-body-secondary" style="white-space: pre-wrap;">
-						@CommitMessageUsed</div>
-					}
+			}
+			else if (CanCreatePullRequest)
+			{
+				<div class="mt-3">
+					<button class="btn btn-secondary" @onclick="OnCreatePullRequest" disabled="@IsBusy">
+						@if (IsCreatingPullRequest)
+						{
+							<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+							<span>Creating PR...</span>
+						}
+						else
+						{
+							<i class="bi bi-github me-1"></i>
+							<span>Create Pull Request</span>
+						}
+					</button>
 				</div>
 			}
 		</div>
+	}
+</div>
 
 @code {
 	[Parameter]
@@ -145,6 +214,12 @@
 
 	[Parameter]
 	public string? BranchName { get; set; }
+
+	[Parameter]
+	public string? TargetBranch { get; set; }
+
+	[Parameter]
+	public GitChangeDeliveryMode DeliveryMode { get; set; } = GitChangeDeliveryMode.CommitToBranch;
 
 	[Parameter]
 	public bool IsLoadingSummary { get; set; }
@@ -180,8 +255,46 @@
 	public string? CommitMessageUsed { get; set; }
 
 	[Parameter]
+	public bool CanCreatePullRequest { get; set; }
+
+	[Parameter]
+	public bool IsCreatingPullRequest { get; set; }
+
+	[Parameter]
+	public string? PullRequestUrl { get; set; }
+
+	[Parameter]
+	public int? PullRequestNumber { get; set; }
+
+	[Parameter]
+	public bool CanMergeBranch { get; set; }
+
+	[Parameter]
+	public bool IsMergingBranch { get; set; }
+
+	[Parameter]
 	public EventCallback OnCommitAndPush { get; set; }
 
 	[Parameter]
+	public EventCallback OnCreatePullRequest { get; set; }
+
+	[Parameter]
+	public EventCallback OnMergeBranch { get; set; }
+
+	[Parameter]
 	public EventCallback OnRefreshSummary { get; set; }
+
+	private bool IsBusy => IsPushing || IsCreatingPullRequest || IsMergingBranch;
+
+	private string GetStatusHeading()
+	{
+		if (!string.IsNullOrEmpty(PullRequestUrl))
+		{
+			return "Changes delivered with a pull request!";
+		}
+
+		return IsAutoCommitted
+			? "Changes auto-committed!"
+			: "Changes pushed successfully!";
+	}
 }

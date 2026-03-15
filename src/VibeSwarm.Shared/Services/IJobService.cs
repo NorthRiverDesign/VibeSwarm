@@ -26,6 +26,14 @@ public interface IJobService
     Task DeleteAsync(Guid id, CancellationToken cancellationToken = default);
     Task<bool> UpdateGitCommitHashAsync(Guid id, string commitHash, CancellationToken cancellationToken = default);
     Task<bool> UpdateGitDiffAsync(Guid id, string? gitDiff, CancellationToken cancellationToken = default);
+    Task<bool> UpdateGitDeliveryAsync(
+        Guid id,
+        string? commitHash = null,
+        int? pullRequestNumber = null,
+        string? pullRequestUrl = null,
+        DateTime? pullRequestCreatedAt = null,
+        DateTime? mergedAt = null,
+        CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Pauses a job to wait for user interaction

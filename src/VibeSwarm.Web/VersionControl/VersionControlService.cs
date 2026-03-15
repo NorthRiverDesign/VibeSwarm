@@ -538,6 +538,204 @@ public sealed class VersionControlService : IVersionControlService
 		}
 	}
 
+	/// <inheritdoc />
+	public async Task<GitOperationResult> CreatePullRequestAsync(
+		string workingDirectory,
+		string sourceBranch,
+		string targetBranch,
+		string title,
+		string? body = null,
+		CancellationToken cancellationToken = default)
+	{
+		try
+		{
+			if (string.IsNullOrWhiteSpace(sourceBranch))
+			{
+				return GitOperationResult.Failed("Source branch cannot be empty.");
+			}
+
+			if (string.IsNullOrWhiteSpace(targetBranch))
+			{
+				return GitOperationResult.Failed("Target branch cannot be empty.");
+			}
+
+			if (string.Equals(sourceBranch, targetBranch, StringComparison.Ordinal))
+			{
+				return GitOperationResult.Failed("Source and target branches must be different.");
+			}
+
+			if (string.IsNullOrWhiteSpace(title))
+			{
+				return GitOperationResult.Failed("Pull request title cannot be empty.");
+			}
+
+			var isRepo = await IsGitRepositoryAsync(workingDirectory, cancellationToken);
+			if (!isRepo)
+			{
+				return GitOperationResult.Failed("The specified directory is not a git repository.");
+			}
+
+			var ghAvailable = await IsGitHubCliAvailableAsync(cancellationToken);
+			if (!ghAvailable)
+			{
+				return GitOperationResult.Failed("GitHub CLI (gh) is not installed. Please install it from https://cli.github.com/");
+			}
+
+			var ghAuthenticated = await IsGitHubCliAuthenticatedAsync(cancellationToken);
+			if (!ghAuthenticated)
+			{
+				return GitOperationResult.Failed("Not authenticated with GitHub CLI. Please run 'gh auth login' to authenticate.");
+			}
+
+			var pushResult = await PushAsync(workingDirectory, "origin", sourceBranch, cancellationToken);
+			if (!pushResult.Success)
+			{
+				return GitOperationResult.Failed($"Failed to push source branch before creating pull request: {pushResult.Error}");
+			}
+
+			var ghArgs = new StringBuilder("pr create");
+			ghArgs.Append($" --base \"{EscapeCommandArgument(targetBranch)}\"");
+			ghArgs.Append($" --head \"{EscapeCommandArgument(sourceBranch)}\"");
+			ghArgs.Append($" --title \"{EscapeCommandArgument(title)}\"");
+			ghArgs.Append($" --body \"{EscapeCommandArgument(body ?? string.Empty)}\"");
+
+			var result = await _commandExecutor.ExecuteRawAsync(
+				"gh",
+				ghArgs.ToString(),
+				workingDirectory,
+				cancellationToken,
+				timeoutSeconds: 120);
+
+			if (!result.Success)
+			{
+				var error = BuildCommandError(result, "Failed to create pull request.");
+				if (error.Contains("already exists", StringComparison.OrdinalIgnoreCase))
+				{
+					return GitOperationResult.Failed("A pull request already exists for these branches.");
+				}
+
+				return GitOperationResult.Failed(error);
+			}
+
+			var output = string.Join('\n', new[] { result.Output, result.Error }
+				.Where(value => !string.IsNullOrWhiteSpace(value)))
+				.Trim();
+			var pullRequestUrl = ExtractPullRequestUrl(output);
+			var pullRequestNumber = ExtractPullRequestNumber(pullRequestUrl);
+
+			return GitOperationResult.Succeeded(
+				output: string.IsNullOrWhiteSpace(output) ? "Pull request created successfully." : output,
+				branchName: sourceBranch,
+				targetBranch: targetBranch,
+				pullRequestUrl: pullRequestUrl,
+				pullRequestNumber: pullRequestNumber);
+		}
+		catch (OperationCanceledException)
+		{
+			return GitOperationResult.Failed("Create pull request operation was cancelled or timed out.");
+		}
+		catch (Exception ex)
+		{
+			return GitOperationResult.Failed($"Unexpected error creating pull request: {ex.Message}");
+		}
+	}
+
+	/// <inheritdoc />
+	public async Task<GitOperationResult> MergeBranchAsync(
+		string workingDirectory,
+		string sourceBranch,
+		string targetBranch,
+		string remoteName = "origin",
+		Action<string>? progressCallback = null,
+		CancellationToken cancellationToken = default)
+	{
+		try
+		{
+			if (string.IsNullOrWhiteSpace(sourceBranch))
+			{
+				return GitOperationResult.Failed("Source branch cannot be empty.");
+			}
+
+			if (string.IsNullOrWhiteSpace(targetBranch))
+			{
+				return GitOperationResult.Failed("Target branch cannot be empty.");
+			}
+
+			if (string.Equals(sourceBranch, targetBranch, StringComparison.Ordinal))
+			{
+				return GitOperationResult.Failed("Source and target branches must be different.");
+			}
+
+			var isRepo = await IsGitRepositoryAsync(workingDirectory, cancellationToken);
+			if (!isRepo)
+			{
+				return GitOperationResult.Failed("The specified directory is not a git repository.");
+			}
+
+			progressCallback?.Invoke($"Fetching latest from {remoteName}...");
+			var fetchResult = await FetchAsync(workingDirectory, remoteName, prune: true, cancellationToken);
+			if (!fetchResult.Success)
+			{
+				return GitOperationResult.Failed(fetchResult.Error ?? "Failed to fetch remote branches.");
+			}
+
+			progressCallback?.Invoke($"Checking out {targetBranch}...");
+			var checkoutResult = await HardCheckoutBranchAsync(workingDirectory, targetBranch, remoteName, null, cancellationToken);
+			if (!checkoutResult.Success)
+			{
+				return GitOperationResult.Failed(checkoutResult.Error ?? $"Failed to checkout target branch '{targetBranch}'.");
+			}
+
+			var sourceRef = await ResolveMergeSourceRefAsync(workingDirectory, sourceBranch, remoteName, cancellationToken);
+			if (sourceRef == null)
+			{
+				return GitOperationResult.Failed($"Source branch '{sourceBranch}' was not found locally or on remote '{remoteName}'.");
+			}
+
+			progressCallback?.Invoke($"Merging {sourceBranch} into {targetBranch}...");
+			var mergeResult = await _commandExecutor.ExecuteAsync(
+				$"merge --no-ff --no-edit \"{EscapeCommandArgument(sourceRef)}\"",
+				workingDirectory,
+				cancellationToken,
+				timeoutSeconds: 120);
+
+			if (!mergeResult.Success)
+			{
+				var mergeError = BuildCommandError(mergeResult, "Merge failed.");
+				if (mergeError.Contains("CONFLICT", StringComparison.OrdinalIgnoreCase) ||
+					mergeError.Contains("Automatic merge failed", StringComparison.OrdinalIgnoreCase))
+				{
+					return GitOperationResult.Failed("Merge failed because of conflicts. Resolve them manually before retrying.");
+				}
+
+				return GitOperationResult.Failed(mergeError);
+			}
+
+			progressCallback?.Invoke($"Pushing {targetBranch} to {remoteName}...");
+			var pushResult = await PushAsync(workingDirectory, remoteName, targetBranch, cancellationToken);
+			if (!pushResult.Success)
+			{
+				return GitOperationResult.Failed($"Merge succeeded locally, but pushing '{targetBranch}' failed: {pushResult.Error}");
+			}
+
+			var commitHash = await GetCurrentCommitHashAsync(workingDirectory, cancellationToken);
+			return GitOperationResult.Succeeded(
+				output: $"Merged '{sourceBranch}' into '{targetBranch}' and pushed to {remoteName}.",
+				commitHash: commitHash,
+				branchName: targetBranch,
+				remoteName: remoteName,
+				targetBranch: targetBranch);
+		}
+		catch (OperationCanceledException)
+		{
+			return GitOperationResult.Failed("Merge operation was cancelled or timed out.");
+		}
+		catch (Exception ex)
+		{
+			return GitOperationResult.Failed($"Unexpected error merging branches: {ex.Message}");
+		}
+	}
+
 	private static string TruncateDiff(string diff, int maxBytes)
 	{
 		var encoding = Encoding.UTF8;
@@ -1921,5 +2119,83 @@ public sealed class VersionControlService : IVersionControlService
 		{
 			return GitOperationResult.Failed($"Unexpected error: {ex.Message}");
 		}
+	}
+
+	private async Task<string?> ResolveMergeSourceRefAsync(
+		string workingDirectory,
+		string sourceBranch,
+		string remoteName,
+		CancellationToken cancellationToken)
+	{
+		var localRef = await _commandExecutor.ExecuteAsync(
+			$"rev-parse --verify refs/heads/{sourceBranch}",
+			workingDirectory,
+			cancellationToken,
+			timeoutSeconds: 10);
+		if (localRef.Success)
+		{
+			return sourceBranch;
+		}
+
+		var remoteRef = await _commandExecutor.ExecuteAsync(
+			$"rev-parse --verify refs/remotes/{remoteName}/{sourceBranch}",
+			workingDirectory,
+			cancellationToken,
+			timeoutSeconds: 10);
+		return remoteRef.Success ? $"{remoteName}/{sourceBranch}" : null;
+	}
+
+	private static string BuildCommandError(GitCommandResult result, string fallbackMessage)
+	{
+		var parts = new[] { result.Error, result.Output }
+			.Where(value => !string.IsNullOrWhiteSpace(value))
+			.Select(value => value.Trim())
+			.ToArray();
+		return parts.Length > 0 ? string.Join(Environment.NewLine, parts) : fallbackMessage;
+	}
+
+	private static string EscapeCommandArgument(string value)
+		=> value.Replace("\\", "\\\\").Replace("\"", "\\\"");
+
+	private static string? ExtractPullRequestUrl(string output)
+	{
+		if (string.IsNullOrWhiteSpace(output))
+		{
+			return null;
+		}
+
+		foreach (var token in output.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries))
+		{
+			if (Uri.TryCreate(token.Trim(), UriKind.Absolute, out var uri) &&
+				uri.Host.Contains("github.com", StringComparison.OrdinalIgnoreCase) &&
+				uri.AbsolutePath.Contains("/pull/", StringComparison.Ordinal))
+			{
+				return uri.ToString();
+			}
+		}
+
+		return null;
+	}
+
+	private static int? ExtractPullRequestNumber(string? pullRequestUrl)
+	{
+		if (string.IsNullOrWhiteSpace(pullRequestUrl))
+		{
+			return null;
+		}
+
+		if (!Uri.TryCreate(pullRequestUrl, UriKind.Absolute, out var uri))
+		{
+			return null;
+		}
+
+		var segments = uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+		var pullSegmentIndex = Array.IndexOf(segments, "pull");
+		if (pullSegmentIndex < 0 || pullSegmentIndex + 1 >= segments.Length)
+		{
+			return null;
+		}
+
+		return int.TryParse(segments[pullSegmentIndex + 1], out var number) ? number : null;
 	}
 }

@@ -144,6 +144,43 @@ public class HttpVersionControlService : IVersionControlService
         return await response.Content.ReadFromJsonAsync<GitOperationResult>(ct) ?? new GitOperationResult { Success = false, Error = "Failed to parse response" };
     }
 
+    public async Task<GitOperationResult> CreatePullRequestAsync(
+        string workingDirectory,
+        string sourceBranch,
+        string targetBranch,
+        string title,
+        string? body = null,
+        CancellationToken ct = default)
+    {
+        var response = await _http.PostAsJsonAsync("/api/git/create-pull-request", new
+        {
+            Path = workingDirectory,
+            SourceBranch = sourceBranch,
+            TargetBranch = targetBranch,
+            Title = title,
+            Body = body
+        }, ct);
+        return await response.Content.ReadFromJsonAsync<GitOperationResult>(ct) ?? new GitOperationResult { Success = false, Error = "Failed to parse response" };
+    }
+
+    public async Task<GitOperationResult> MergeBranchAsync(
+        string workingDirectory,
+        string sourceBranch,
+        string targetBranch,
+        string remoteName = "origin",
+        Action<string>? progressCallback = null,
+        CancellationToken ct = default)
+    {
+        var response = await _http.PostAsJsonAsync("/api/git/merge-branch", new
+        {
+            Path = workingDirectory,
+            SourceBranch = sourceBranch,
+            TargetBranch = targetBranch,
+            Remote = remoteName
+        }, ct);
+        return await response.Content.ReadFromJsonAsync<GitOperationResult>(ct) ?? new GitOperationResult { Success = false, Error = "Failed to parse response" };
+    }
+
     public async Task<IReadOnlyList<GitBranchInfo>> GetBranchesAsync(string workingDirectory, bool includeRemote = true, CancellationToken ct = default)
         => await _http.GetFromJsonAsync<List<GitBranchInfo>>($"/api/git/branches?path={Enc(workingDirectory)}&includeRemote={includeRemote}", ct) ?? [];
 
