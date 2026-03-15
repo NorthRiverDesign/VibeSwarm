@@ -111,6 +111,7 @@ else
                             OnExpandIdea="ExpandIdea" OnCancelExpansion="CancelIdeaExpansion" OnApproveExpansion="ApproveIdeaExpansion"
                             OnRejectExpansion="RejectIdeaExpansion" AvailableLocalModels="@_availableLocalModels"
                             HasLocalInference="@_hasLocalInference" AvailableProviders="@Providers.Where(p => p.IsEnabled).ToList()"
+                            AvailableInferenceProviders="@_availableInferenceProviders"
                             OnSuggestIdeas="SuggestIdeasFromCodebase" OnPreviousPage="LoadPreviousIdeasPage"
                             OnNextPage="LoadNextIdeasPage" />
             </div>
@@ -550,6 +551,7 @@ else
 
     // Local inference state for idea expansion
     private List<DiscoveredModel> _availableLocalModels { get; set; } = new();
+    private List<InferenceProvider> _availableInferenceProviders { get; set; } = new();
     private bool _hasLocalInference { get; set; }
 
     private bool HasActiveJobs => ProjectActiveJobsCount > 0;
@@ -924,8 +926,8 @@ TimeSpan.FromSeconds(10) })
     {
         try
         {
-            var inferenceProviders = (await InferenceProviderService.GetEnabledAsync()).ToList();
-            _hasLocalInference = inferenceProviders.Any();
+            _availableInferenceProviders = (await InferenceProviderService.GetEnabledAsync()).ToList();
+            _hasLocalInference = _availableInferenceProviders.Any();
 
             if (_hasLocalInference)
             {
@@ -940,6 +942,7 @@ TimeSpan.FromSeconds(10) })
         {
             // Non-critical - local inference is optional
             _hasLocalInference = false;
+            _availableInferenceProviders = new();
             _availableLocalModels = new();
         }
     }

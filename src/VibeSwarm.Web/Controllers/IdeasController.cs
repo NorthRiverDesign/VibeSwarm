@@ -124,18 +124,18 @@ public class IdeasController : ControllerBase
     {
         var result = await _ideaService.RejectExpansionAsync(id, ct);
         return result == null ? BadRequest() : Ok(result);
-    }
+	}
 
-    [HttpPost("project/{projectId:guid}/suggest")]
-    public async Task<IActionResult> SuggestIdeas(Guid projectId, CancellationToken ct)
-    {
-        // Always return 200 so the client can read the diagnostic stage and message.
-        // Success/failure is communicated via SuggestIdeasResult.Success.
-        try
-        {
-            var result = await _ideaService.SuggestIdeasFromCodebaseAsync(projectId, ct);
-            return Ok(result);
-        }
+	[HttpPost("project/{projectId:guid}/suggest")]
+	public async Task<IActionResult> SuggestIdeas(Guid projectId, [FromBody] SuggestIdeasRequest? request, CancellationToken ct)
+	{
+		// Always return 200 so the client can read the diagnostic stage and message.
+		// Success/failure is communicated via SuggestIdeasResult.Success.
+		try
+		{
+			var result = await _ideaService.SuggestIdeasFromCodebaseAsync(projectId, request, ct);
+			return Ok(result);
+		}
         catch (OperationCanceledException)
         {
             return Ok(new SuggestIdeasResult

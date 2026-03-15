@@ -1,0 +1,156 @@
+@using VibeSwarm.Shared.Data
+@using VibeSwarm.Shared.Models
+
+<ModalDialog IsVisible="IsVisible" IsVisibleChanged="HandleVisibilityChanged" Title="Suggest Ideas" Icon="stars"
+			 Size="ModalDialog.ModalSize.Small" OnClose="HandleCancel">
+	<ChildContent>
+		<p class="text-body-secondary mb-3">
+			Choose which local inference provider to use and how many ideas to generate from the current codebase.
+		</p>
+
+		@if (!AvailableProviders.Any())
+		{
+			<Alert Type="Alert.AlertType.Warning"
+				   Message="No enabled inference providers are available. Add one under Settings → Local Inference before suggesting ideas." />
+		}
+		else
+		{
+			<div class="mb-3">
+				<label for="suggestIdeasProvider" class="form-label fw-medium">Inference Provider</label>
+				<select id="suggestIdeasProvider" class="form-select" @bind="SelectedProviderIdValue">
+					@foreach (var provider in AvailableProviders.OrderBy(provider => provider.Name))
+					{
+						<option value="@provider.Id">@provider.Name</option>
+					}
+				</select>
+			</div>
+
+			<div>
+				<label for="suggestIdeasCount" class="form-label fw-medium">Ideas to Generate</label>
+				<select id="suggestIdeasCount" class="form-select" @bind="IdeaCountValue">
+					@for (var count = SuggestIdeasRequest.MinIdeaCount; count <= SuggestIdeasRequest.MaxIdeaCount; count++)
+					{
+						<option value="@count">@count</option>
+					}
+				</select>
+				<div class="form-text">
+					The selected provider's <code>suggest</code> model is used first, then its <code>default</code> model as a fallback.
+				</div>
+			</div>
+		}
+	</ChildContent>
+
+	<FooterContent>
+		<button type="button" class="btn btn-secondary" @onclick="HandleCancel">Cancel</button>
+		<button type="button" class="btn btn-primary" @onclick="HandleConfirm" disabled="@(IsProcessing || !CanConfirm)">
+			@if (IsProcessing)
+			{
+				<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+			}
+			<i class="bi bi-stars me-1"></i>Generate Ideas
+		</button>
+	</FooterContent>
+</ModalDialog>
+
+@code {
+	[Parameter]
+	public bool IsVisible { get; set; }
+
+	[Parameter]
+	public EventCallback<bool> IsVisibleChanged { get; set; }
+
+	[Parameter]
+	public List<InferenceProvider> AvailableProviders { get; set; } = new();
+
+	[Parameter]
+	public Guid? SelectedProviderId { get; set; }
+
+	[Parameter]
+	public EventCallback<Guid?> SelectedProviderIdChanged { get; set; }
+
+	[Parameter]
+	public int IdeaCount { get; set; } = SuggestIdeasRequest.DefaultIdeaCount;
+
+	[Parameter]
+	public EventCallback<int> IdeaCountChanged { get; set; }
+
+	[Parameter]
+	public bool IsProcessing { get; set; }
+
+	[Parameter]
+	public EventCallback OnConfirm { get; set; }
+
+	[Parameter]
+	public EventCallback OnCancel { get; set; }
+
+	private bool CanConfirm => AvailableProviders.Any() && SelectedProviderId.HasValue;
+
+	private string SelectedProviderIdValue
+	{
+		get => SelectedProviderId?.ToString() ?? string.Empty;
+		set
+		{
+			Guid? providerId = Guid.TryParse(value, out var parsed) ? parsed : null;
+			if (SelectedProviderId != providerId)
+			{
+				SelectedProviderId = providerId;
+				_ = SelectedProviderIdChanged.InvokeAsync(providerId);
+			}
+		}
+	}
+
+	private int IdeaCountValue
+	{
+		get => IdeaCount;
+		set
+		{
+			var normalizedCount = Math.Clamp(value, SuggestIdeasRequest.MinIdeaCount, SuggestIdeasRequest.MaxIdeaCount);
+			if (IdeaCount != normalizedCount)
+			{
+				IdeaCount = normalizedCount;
+				_ = IdeaCountChanged.InvokeAsync(normalizedCount);
+			}
+		}
+	}
+
+	protected override async Task OnParametersSetAsync()
+	{
+		var normalizedCount = Math.Clamp(IdeaCount, SuggestIdeasRequest.MinIdeaCount, SuggestIdeasRequest.MaxIdeaCount);
+		if (normalizedCount != IdeaCount)
+		{
+			IdeaCount = normalizedCount;
+			await IdeaCountChanged.InvokeAsync(IdeaCount);
+		}
+
+		if (AvailableProviders.Any() && (!SelectedProviderId.HasValue || AvailableProviders.All(provider => provider.Id != SelectedProviderId.Value)))
+		{
+			SelectedProviderId = AvailableProviders
+				.OrderBy(provider => provider.Name)
+				.Select(provider => (Guid?)provider.Id)
+				.FirstOrDefault();
+			await SelectedProviderIdChanged.InvokeAsync(SelectedProviderId);
+		}
+	}
+
+	private async Task HandleVisibilityChanged(bool visible)
+	{
+		IsVisible = visible;
+		await IsVisibleChanged.InvokeAsync(visible);
+	}
+
+	private async Task HandleConfirm()
+	{
+		if (!CanConfirm)
+		{
+			return;
+		}
+
+		await OnConfirm.InvokeAsync();
+	}
+
+	private async Task HandleCancel()
+	{
+		await IsVisibleChanged.InvokeAsync(false);
+		await OnCancel.InvokeAsync();
+	}
+}

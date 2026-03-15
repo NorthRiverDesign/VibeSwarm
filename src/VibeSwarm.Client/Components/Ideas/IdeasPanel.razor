@@ -16,7 +16,7 @@
 			<span class="badge bg-secondary">@TotalIdeasCount</span>
 			@if (HasLocalInference)
 			{
-				<button type="button" class="btn btn-sm btn-outline-secondary" @onclick="SuggestIdeas"
+				<button type="button" class="btn btn-sm btn-outline-secondary" @onclick="OpenSuggestIdeasModal"
 						disabled="@(IsSuggestingIdeas || IsProcessingActive)"
 						title="Use local AI to scan the codebase and suggest ideas">
 					@if (IsSuggestingIdeas)
@@ -215,6 +215,16 @@
 			</FooterContent>
 		</ModalDialog>
 
+	<SuggestIdeasModal @bind-IsVisible="_showSuggestIdeasModal"
+					   AvailableProviders="@AvailableInferenceProviders"
+					   SelectedProviderId="@_selectedInferenceProviderId"
+					   SelectedProviderIdChanged="OnSelectedInferenceProviderChanged"
+					   IdeaCount="@_suggestIdeaCount"
+					   IdeaCountChanged="OnSuggestIdeaCountChanged"
+					   IsProcessing="@IsSuggestingIdeas"
+					   OnConfirm="SuggestIdeas"
+					   OnCancel="CloseSuggestIdeasModal" />
+
 @code {
 	[Parameter]
 	public List<Idea> Ideas { get; set; } = new();
@@ -318,10 +328,16 @@
 	[Parameter]
 	public List<Provider> AvailableProviders { get; set; } = new();
 
+	[Parameter]
+	public List<InferenceProvider> AvailableInferenceProviders { get; set; } = new();
+
 	private string NewIdeaDescription { get; set; } = string.Empty;
 	private Guid? StartingIdeaId { get; set; }
 	private bool IsSuggestingIdeas { get; set; }
 	private SuggestIdeasResult? _suggestResult;
+	private bool _showSuggestIdeasModal;
+	private Guid? _selectedInferenceProviderId;
+	private int _suggestIdeaCount = SuggestIdeasRequest.DefaultIdeaCount;
 
 	// Start All confirmation modal state
 	private bool _showStartAllModal { get; set; }
@@ -550,15 +566,61 @@
 		? "Ideas will be expanded into fuller specs and converted to jobs automatically. Only one job runs per project at a time, so extra jobs stay queued until the current run finishes."
 		: "Ideas will be converted directly to jobs unless they already have an approved expansion. Only one job runs per project at a time, so extra jobs stay queued until the current run finishes.";
 
+	private void OpenSuggestIdeasModal()
+	{
+		if (!AvailableInferenceProviders.Any())
+		{
+			NotificationService.ShowWarning(
+				"No enabled inference providers are available. Add one under Settings → Local Inference before suggesting ideas.",
+				"Inference Provider Required");
+			return;
+		}
+
+		_selectedInferenceProviderId ??= AvailableInferenceProviders
+			.OrderBy(provider => provider.Name)
+			.Select(provider => (Guid?)provider.Id)
+			.FirstOrDefault();
+		_suggestIdeaCount = Math.Clamp(_suggestIdeaCount, SuggestIdeasRequest.MinIdeaCount, SuggestIdeasRequest.MaxIdeaCount);
+		_showSuggestIdeasModal = true;
+	}
+
+	private void CloseSuggestIdeasModal()
+	{
+		_showSuggestIdeasModal = false;
+	}
+
+	private Task OnSelectedInferenceProviderChanged(Guid? providerId)
+	{
+		_selectedInferenceProviderId = providerId;
+		return Task.CompletedTask;
+	}
+
+	private Task OnSuggestIdeaCountChanged(int ideaCount)
+	{
+		_suggestIdeaCount = Math.Clamp(ideaCount, SuggestIdeasRequest.MinIdeaCount, SuggestIdeasRequest.MaxIdeaCount);
+		return Task.CompletedTask;
+	}
+
 	private async Task SuggestIdeas()
 	{
+		if (!_selectedInferenceProviderId.HasValue)
+		{
+			NotificationService.ShowWarning("Choose an inference provider before generating ideas.", "Inference Provider Required");
+			return;
+		}
+
 		IsSuggestingIdeas = true;
+		_showSuggestIdeasModal = false;
 		_suggestResult = null;
 		StateHasChanged();
 
 		try
 		{
-			var result = await IdeaService.SuggestIdeasFromCodebaseAsync(CurrentProjectId);
+			var result = await IdeaService.SuggestIdeasFromCodebaseAsync(CurrentProjectId, new SuggestIdeasRequest
+			{
+				ProviderId = _selectedInferenceProviderId,
+				IdeaCount = _suggestIdeaCount
+			});
 			_suggestResult = result;
 
 			if (result.Success)
@@ -581,6 +643,7 @@
 				var title = result.Stage switch
 				{
 					SuggestIdeasStage.NotConfigured => "Inference Not Configured",
+					SuggestIdeasStage.ProviderNotFound => "Provider Unavailable",
 					SuggestIdeasStage.ProviderUnreachable => "Provider Unreachable",
 					SuggestIdeasStage.NoModel => "No Model Assigned",
 					SuggestIdeasStage.RepoMapFailed => "Directory Scan Failed",

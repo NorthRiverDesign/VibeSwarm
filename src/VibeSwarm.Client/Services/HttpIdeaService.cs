@@ -122,7 +122,7 @@ public class HttpIdeaService : IIdeaService
         return await response.Content.ReadFromJsonAsync<Idea>(ct);
     }
 
-    public async Task<SuggestIdeasResult> SuggestIdeasFromCodebaseAsync(Guid projectId, CancellationToken ct = default)
+    public async Task<SuggestIdeasResult> SuggestIdeasFromCodebaseAsync(Guid projectId, SuggestIdeasRequest? request = null, CancellationToken ct = default)
     {
         // Local model generation can take well over 100 s (the old HttpClient default).
         // The HttpClient registered in DI uses Timeout.InfiniteTimeSpan, so this
@@ -132,7 +132,7 @@ public class HttpIdeaService : IIdeaService
 
         try
         {
-            var response = await _http.PostAsync($"/api/ideas/project/{projectId}/suggest", null, linkedCts.Token);
+            var response = await _http.PostAsJsonAsync($"/api/ideas/project/{projectId}/suggest", request ?? new SuggestIdeasRequest(), linkedCts.Token);
 
             if (!response.IsSuccessStatusCode)
             {

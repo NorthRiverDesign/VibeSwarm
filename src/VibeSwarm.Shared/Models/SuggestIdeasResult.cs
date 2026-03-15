@@ -14,6 +14,9 @@ public static class SuggestIdeasStage
 	/// <summary>The inference provider endpoint could not be reached.</summary>
 	public const string ProviderUnreachable = "provider_unreachable";
 
+	/// <summary>The selected inference provider no longer exists or is disabled.</summary>
+	public const string ProviderNotFound = "provider_not_found";
+
 	/// <summary>The inference provider is reachable but has no model assigned to the "suggest" or "default" task.</summary>
 	public const string NoModel = "no_model";
 

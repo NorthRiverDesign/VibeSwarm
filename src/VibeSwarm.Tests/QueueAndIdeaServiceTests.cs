@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using VibeSwarm.Shared.Data;
+using VibeSwarm.Shared.LocalInference;
 using VibeSwarm.Shared.Models;
 using VibeSwarm.Shared.Providers;
 using VibeSwarm.Shared.Services;
@@ -149,6 +150,104 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		Assert.Equal(2, pendingJobs.Select(job => job.ProjectId).Distinct().Count());
 		Assert.Contains(pendingJobs, job => job.ProjectId == firstProject.Id && job.Title == "First project, first queued job");
 		Assert.DoesNotContain(pendingJobs, job => job.ProjectId == firstProject.Id && job.Title == "First project, second queued job");
+	}
+
+	[Fact]
+	public async Task SuggestIdeasFromCodebaseAsync_UsesRequestedProviderAndIdeaCount()
+	{
+		await using var dbContext = CreateDbContext();
+		var workingPath = Path.Combine(Path.GetTempPath(), $"vibeswarm-suggestion-{Guid.NewGuid():N}");
+		Directory.CreateDirectory(workingPath);
+		File.WriteAllText(Path.Combine(workingPath, "Program.cs"), "Console.WriteLine(\"Hello from VibeSwarm\");");
+		try
+		{
+			var project = new Project
+			{
+				Id = Guid.NewGuid(),
+				Name = "Suggestion Project",
+				WorkingPath = workingPath
+			};
+			var selectedProvider = new InferenceProvider
+			{
+				Id = Guid.NewGuid(),
+				Name = "Preferred Ollama",
+				Endpoint = "http://preferred-ollama:11434",
+				IsEnabled = true,
+				Models =
+				[
+					new InferenceModel
+					{
+						Id = Guid.NewGuid(),
+						ModelId = "qwen2.5-coder:7b",
+						TaskType = "suggest",
+						IsDefault = true,
+						IsAvailable = true
+					}
+				]
+			};
+			var otherProvider = new InferenceProvider
+			{
+				Id = Guid.NewGuid(),
+				Name = "Fallback Ollama",
+				Endpoint = "http://fallback-ollama:11434",
+				IsEnabled = true,
+				Models =
+				[
+					new InferenceModel
+					{
+						Id = Guid.NewGuid(),
+						ModelId = "llama3.2",
+						TaskType = "default",
+						IsDefault = true,
+						IsAvailable = true
+					}
+				]
+			};
+
+			selectedProvider.Models.First().InferenceProviderId = selectedProvider.Id;
+			otherProvider.Models.First().InferenceProviderId = otherProvider.Id;
+
+			dbContext.Projects.Add(project);
+			dbContext.InferenceProviders.AddRange(selectedProvider, otherProvider);
+			await dbContext.SaveChangesAsync();
+
+			var inferenceService = new FakeInferenceService
+			{
+				Response = new InferenceResponse
+				{
+					Success = true,
+					ModelUsed = "qwen2.5-coder:7b",
+					Response = """
+					- Add a project summary card to the detail page
+					- Add a recent inference activity feed
+					- Add idea filtering by status and age
+					- Add smarter empty states across project pages
+					""",
+					DurationMs = 1500
+				}
+			};
+
+			var ideaService = CreateIdeaService(dbContext, new Provider(), inferenceService: inferenceService);
+			var result = await ideaService.SuggestIdeasFromCodebaseAsync(project.Id, new SuggestIdeasRequest
+			{
+				ProviderId = selectedProvider.Id,
+				IdeaCount = 2
+			});
+
+			Assert.True(result.Success);
+			Assert.Equal(2, result.Ideas.Count);
+			Assert.Equal(selectedProvider.Endpoint, inferenceService.LastRequest?.Endpoint);
+			Assert.Equal("qwen2.5-coder:7b", inferenceService.LastRequest?.Model);
+			Assert.Contains("Return exactly 2 concrete, actionable ideas.", inferenceService.LastRequest?.Prompt);
+			Assert.Equal(2, await dbContext.Ideas.CountAsync(idea => idea.ProjectId == project.Id));
+		}
+		finally
+		{
+			if (Directory.Exists(workingPath))
+			{
+				Directory.Delete(workingPath, recursive: true);
+			}
+		}
 	}
 
 	[Fact]
@@ -1063,7 +1162,8 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		VibeSwarmDbContext dbContext,
 		Provider provider,
 		IProvider? providerInstance = null,
-		IEnumerable<ProviderModel>? models = null)
+		IEnumerable<ProviderModel>? models = null,
+		IInferenceService? inferenceService = null)
 	{
 		var serviceProvider = new ServiceCollection().BuildServiceProvider();
 		var jobService = new JobService(dbContext, serviceProvider);
@@ -1075,7 +1175,8 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 			jobService,
 			providerService,
 			versionControlService,
-			NullLogger<IdeaService>.Instance);
+			NullLogger<IdeaService>.Instance,
+			inferenceService);
 	}
 
 	public void Dispose()
@@ -1198,5 +1299,43 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		public void PrepareForStorage(Project project, IReadOnlyCollection<ProjectEnvironment>? existingEnvironments = null) { }
 		public void PopulateForEditing(Project? project) { }
 		public void PopulateForExecution(Project? project) { }
+	}
+
+	private sealed class FakeInferenceService : IInferenceService
+	{
+		public InferenceHealthResult Health { get; set; } = new() { IsAvailable = true };
+		public InferenceResponse Response { get; set; } = new() { Success = true };
+		public InferenceRequest? LastRequest { get; private set; }
+
+		public Task<InferenceHealthResult> CheckHealthAsync(string? endpoint = null, CancellationToken ct = default)
+		{
+			return Task.FromResult(new InferenceHealthResult
+			{
+				IsAvailable = Health.IsAvailable,
+				Version = Health.Version,
+				Error = Health.Error,
+				DiscoveredModels = Health.DiscoveredModels
+			});
+		}
+
+		public Task<List<DiscoveredModel>> GetAvailableModelsAsync(string? endpoint = null, CancellationToken ct = default)
+			=> Task.FromResult(new List<DiscoveredModel>());
+
+		public Task<InferenceResponse> GenerateAsync(InferenceRequest request, CancellationToken ct = default)
+		{
+			LastRequest = request;
+			return Task.FromResult(Response);
+		}
+
+		public Task<InferenceResponse> GenerateForTaskAsync(string taskType, string prompt, string? systemPrompt = null, CancellationToken ct = default)
+		{
+			LastRequest = new InferenceRequest
+			{
+				TaskType = taskType,
+				Prompt = prompt,
+				SystemPrompt = systemPrompt
+			};
+			return Task.FromResult(Response);
+		}
 	}
 }

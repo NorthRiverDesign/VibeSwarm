@@ -169,6 +169,7 @@ public interface IIdeaService
 	/// even on failure, so the caller can surface precise feedback to the user.
 	/// </summary>
 	/// <param name="projectId">The project to analyze</param>
+	/// <param name="request">Optional provider/count overrides for the suggestion request</param>
 	/// <param name="cancellationToken">Cancellation token</param>
-	Task<SuggestIdeasResult> SuggestIdeasFromCodebaseAsync(Guid projectId, CancellationToken cancellationToken = default);
+	Task<SuggestIdeasResult> SuggestIdeasFromCodebaseAsync(Guid projectId, SuggestIdeasRequest? request = null, CancellationToken cancellationToken = default);
 }

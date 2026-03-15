@@ -1120,8 +1120,10 @@ Keep the specification concise but complete. Focus on actionable implementation 
 Do not include code samples - just describe what needs to be built.";
 	}
 
-	public async Task<SuggestIdeasResult> SuggestIdeasFromCodebaseAsync(Guid projectId, CancellationToken cancellationToken = default)
+	public async Task<SuggestIdeasResult> SuggestIdeasFromCodebaseAsync(Guid projectId, SuggestIdeasRequest? request = null, CancellationToken cancellationToken = default)
 	{
+		var normalizedRequest = NormalizeSuggestIdeasRequest(request);
+
 		if (_inferenceService == null)
 		{
 			_logger.LogWarning("Local inference service is not configured for project {ProjectId}", projectId);
@@ -1134,7 +1136,7 @@ Do not include code samples - just describe what needs to be built.";
 
 		try
 		{
-			return await SuggestIdeasInternalAsync(projectId, cancellationToken);
+			return await SuggestIdeasInternalAsync(projectId, normalizedRequest, cancellationToken);
 		}
 		catch (OperationCanceledException)
 		{
@@ -1161,7 +1163,7 @@ Do not include code samples - just describe what needs to be built.";
 	/// Internal implementation of SuggestIdeasFromCodebaseAsync with all per-stage error handling.
 	/// The public method wraps this with a top-level safety net.
 	/// </summary>
-	private async Task<SuggestIdeasResult> SuggestIdeasInternalAsync(Guid projectId, CancellationToken cancellationToken)
+	private async Task<SuggestIdeasResult> SuggestIdeasInternalAsync(Guid projectId, SuggestIdeasRequest request, CancellationToken cancellationToken)
 	{
 		var project = await _dbContext.Projects
 			.FirstOrDefaultAsync(p => p.Id == projectId, cancellationToken);
@@ -1176,20 +1178,41 @@ Do not include code samples - just describe what needs to be built.";
 			};
 		}
 
+		InferenceProvider? selectedProvider = null;
+		if (request.ProviderId.HasValue)
+		{
+			selectedProvider = await _dbContext.InferenceProviders
+				.Include(provider => provider.Models)
+				.FirstOrDefaultAsync(provider => provider.Id == request.ProviderId.Value && provider.IsEnabled, cancellationToken);
+
+			if (selectedProvider == null)
+			{
+				_logger.LogWarning("Requested inference provider {ProviderId} was not found for project {ProjectId}", request.ProviderId.Value, projectId);
+				return new SuggestIdeasResult
+				{
+					Stage = SuggestIdeasStage.ProviderNotFound,
+					Message = "The selected inference provider is no longer available. Choose another provider and try again."
+				};
+			}
+		}
+
+		var providerDisplayName = selectedProvider?.Name ?? "Local inference provider";
+		var providerEndpoint = selectedProvider?.Endpoint;
+
 		// Verify the provider is reachable and discover any assigned model
 		InferenceHealthResult health;
 		try
 		{
 			// _inferenceService is guaranteed non-null by the caller (SuggestIdeasFromCodebaseAsync checks it)
-			health = await _inferenceService!.CheckHealthAsync(ct: cancellationToken);
+			health = await _inferenceService!.CheckHealthAsync(providerEndpoint, cancellationToken);
 		}
 		catch (Exception ex)
 		{
-			_logger.LogWarning(ex, "Health check failed for project {ProjectId} suggestion", projectId);
+			_logger.LogWarning(ex, "Health check failed for project {ProjectId} suggestion using provider {Provider}", projectId, providerDisplayName);
 			return new SuggestIdeasResult
 			{
 				Stage = SuggestIdeasStage.ProviderUnreachable,
-				Message = $"Could not reach the local inference provider: {ex.Message}",
+				Message = $"Could not reach {providerDisplayName}: {ex.Message}",
 				InferenceError = ex.Message
 			};
 		}
@@ -1197,11 +1220,11 @@ Do not include code samples - just describe what needs to be built.";
 		if (!health.IsAvailable)
 		{
 			var detail = string.IsNullOrEmpty(health.Error) ? "No error detail returned." : health.Error;
-			_logger.LogWarning("Local inference unavailable for project {ProjectId}: {Error}", projectId, detail);
+			_logger.LogWarning("{Provider} unavailable for project {ProjectId}: {Error}", providerDisplayName, projectId, detail);
 			return new SuggestIdeasResult
 			{
 				Stage = SuggestIdeasStage.ProviderUnreachable,
-				Message = $"Local inference provider is not responding. {detail}",
+				Message = $"{providerDisplayName} is not responding. {detail}",
 				InferenceError = detail
 			};
 		}
@@ -1218,14 +1241,43 @@ Do not include code samples - just describe what needs to be built.";
 			};
 		}
 
-		var prompt = BuildCodebaseSuggestionPrompt(repoMap, project.Name, project.Description, project.PromptContext);
+		var prompt = BuildCodebaseSuggestionPrompt(repoMap, project.Name, project.Description, project.PromptContext, request.IdeaCount);
 		const string systemPrompt = "You are a senior software engineer performing a codebase review. Identify concrete, actionable improvements. Return only a plain list of ideas, one per line starting with \"- \". No explanations or headers.";
 
 		InferenceResponse inferenceResponse;
 		try
 		{
-			_logger.LogInformation("Sending codebase suggestion request to local inference for project {ProjectId}", projectId);
-			inferenceResponse = await _inferenceService!.GenerateForTaskAsync("suggest", prompt, systemPrompt, cancellationToken);
+			_logger.LogInformation(
+				"Sending codebase suggestion request to local inference for project {ProjectId} using provider {Provider} requesting {Count} ideas",
+				projectId,
+				providerDisplayName,
+				request.IdeaCount);
+
+			if (selectedProvider != null)
+			{
+				var selectedModel = ResolveSuggestionModel(selectedProvider);
+				if (selectedModel == null)
+				{
+					return new SuggestIdeasResult
+					{
+						Stage = SuggestIdeasStage.NoModel,
+						Message = $"No model is assigned to the \"suggest\" or \"default\" task for {selectedProvider.Name}. Assign one under Settings → Local Inference."
+					};
+				}
+
+				inferenceResponse = await _inferenceService!.GenerateAsync(new InferenceRequest
+				{
+					TaskType = "suggest",
+					Prompt = prompt,
+					SystemPrompt = systemPrompt,
+					Endpoint = selectedProvider.Endpoint,
+					Model = selectedModel.ModelId
+				}, cancellationToken);
+			}
+			else
+			{
+				inferenceResponse = await _inferenceService!.GenerateForTaskAsync("suggest", prompt, systemPrompt, cancellationToken);
+			}
 		}
 		catch (OperationCanceledException)
 		{
@@ -1268,7 +1320,7 @@ Do not include code samples - just describe what needs to be built.";
 			};
 		}
 
-		var suggestions = ParseCodebaseSuggestions(inferenceResponse.Response);
+		var suggestions = ParseCodebaseSuggestions(inferenceResponse.Response, request.IdeaCount);
 		if (suggestions.Count == 0)
 		{
 			_logger.LogWarning("No parseable suggestions in inference response for project {ProjectId}. Raw response length: {Len}",
@@ -1301,21 +1353,36 @@ Do not include code samples - just describe what needs to be built.";
 			}
 		}
 
+		if (createdIdeas.Count == 0)
+		{
+			return new SuggestIdeasResult
+			{
+				Stage = SuggestIdeasStage.GenerateFailed,
+				Message = "Ideas were generated, but none could be saved. Check the logs and try again.",
+				ModelUsed = inferenceResponse.ModelUsed,
+				InferenceDurationMs = inferenceResponse.DurationMs
+			};
+		}
+
 		_logger.LogInformation("Created {Count} suggested ideas for project {ProjectId} using model {Model}",
 			createdIdeas.Count, projectId, inferenceResponse.ModelUsed ?? "unknown");
+
+		var message = createdIdeas.Count == request.IdeaCount
+			? $"{createdIdeas.Count} idea{(createdIdeas.Count == 1 ? "" : "s")} added from codebase analysis."
+			: $"{createdIdeas.Count} of {request.IdeaCount} requested idea{(request.IdeaCount == 1 ? "" : "s")} added from codebase analysis.";
 
 		return new SuggestIdeasResult
 		{
 			Success = true,
 			Stage = SuggestIdeasStage.Success,
 			Ideas = createdIdeas,
-			Message = $"{createdIdeas.Count} idea{(createdIdeas.Count == 1 ? "" : "s")} added from codebase analysis.",
+			Message = message,
 			ModelUsed = inferenceResponse.ModelUsed,
 			InferenceDurationMs = inferenceResponse.DurationMs
 		};
 	}
 
-	private static string BuildCodebaseSuggestionPrompt(string repoMap, string projectName, string? description, string? promptContext)
+	private static string BuildCodebaseSuggestionPrompt(string repoMap, string projectName, string? description, string? promptContext, int ideaCount)
 	{
 		var sb = new StringBuilder();
 
@@ -1351,7 +1418,7 @@ Do not include code samples - just describe what needs to be built.";
 		sb.AppendLine("</objective>");
 
 		sb.AppendLine("<goal>");
-		sb.AppendLine("Return a list of 3 to 7 concrete, actionable ideas. Each idea must be a short description (1-2 sentences).");
+		sb.AppendLine($"Return exactly {ideaCount} concrete, actionable idea{(ideaCount == 1 ? "" : "s")}. Each idea must be a short description (1-2 sentences).");
 		sb.AppendLine("Format: one idea per line, each starting with \"- \". No headers, no explanations outside the list.");
 		sb.AppendLine("Example:");
 		sb.AppendLine("- Add input validation to the registration form to prevent invalid email addresses");
@@ -1365,7 +1432,7 @@ Do not include code samples - just describe what needs to be built.";
 	/// Parses a list of suggestions from an LLM response.
 	/// Handles common formats: "- item", "• item", and "1. item".
 	/// </summary>
-	private static List<string> ParseCodebaseSuggestions(string response)
+	private static List<string> ParseCodebaseSuggestions(string response, int maxSuggestions)
 	{
 		var suggestions = new List<string>();
 
@@ -1388,8 +1455,31 @@ Do not include code samples - just describe what needs to be built.";
 				suggestions.Add(extracted);
 		}
 
-		// Cap at 7 ideas as instructed in the prompt
-		return suggestions.Take(7).ToList();
+		return suggestions
+			.Distinct(StringComparer.OrdinalIgnoreCase)
+			.Take(maxSuggestions)
+			.ToList();
+	}
+
+	private static SuggestIdeasRequest NormalizeSuggestIdeasRequest(SuggestIdeasRequest? request)
+	{
+		return new SuggestIdeasRequest
+		{
+			ProviderId = request?.ProviderId,
+			IdeaCount = Math.Clamp(request?.IdeaCount ?? SuggestIdeasRequest.DefaultIdeaCount, SuggestIdeasRequest.MinIdeaCount, SuggestIdeasRequest.MaxIdeaCount)
+		};
+	}
+
+	private static InferenceModel? ResolveSuggestionModel(InferenceProvider provider)
+	{
+		return provider.Models
+			.Where(model => model.IsAvailable && model.IsDefault && string.Equals(model.TaskType, "suggest", StringComparison.OrdinalIgnoreCase))
+			.OrderBy(model => model.ModelId)
+			.FirstOrDefault()
+			?? provider.Models
+				.Where(model => model.IsAvailable && model.IsDefault && string.Equals(model.TaskType, "default", StringComparison.OrdinalIgnoreCase))
+				.OrderBy(model => model.ModelId)
+				.FirstOrDefault();
 	}
 
 	private static int NormalizePageSize(int pageSize, int defaultPageSize)
