@@ -889,6 +889,24 @@ body.vs-modal-open {
 	padding-right: var(--vs-safe-area-right);
 }
 
+.app-header .dropdown.d-lg-none > .btn,
+.app-header .dropdown.d-lg-none > .btn-link {
+	width: 44px;
+	height: 44px;
+	min-width: 44px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 0.125rem;
+	border-radius: 999px;
+	flex-shrink: 0;
+}
+
+.app-header .dropdown.d-lg-none > .btn .bi-person-circle,
+.app-header .dropdown.d-lg-none > .btn-link .bi-person-circle {
+	margin-right: 0 !important;
+}
+
 .login-content {
 	max-height: calc(
 		100vh - var(--vs-safe-area-top) - var(--vs-safe-area-bottom)
@@ -925,6 +943,13 @@ body.vs-modal-open {
 
 	body {
 		overscroll-behavior-y: contain;
+	}
+}
+
+@media (max-width: 575.98px) {
+	.login-layout {
+		background-attachment: scroll !important;
+		background-position: center top !important;
 	}
 }
 
