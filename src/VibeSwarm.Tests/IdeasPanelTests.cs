@@ -61,6 +61,37 @@ public sealed class IdeasPanelTests
 		Assert.DoesNotContain("card-header", html);
 	}
 
+	[Fact]
+	public async Task IdeaListItem_UsesComfortableMobileSpacingAndJustifiedActions()
+	{
+		var services = new ServiceCollection();
+		services.AddLogging();
+
+		await using var renderer = new HtmlRenderer(services.BuildServiceProvider(), NullLoggerFactory.Instance);
+
+		var idea = new Idea
+		{
+			Id = Guid.NewGuid(),
+			Description = "Tighten mobile spacing for idea actions",
+			ProjectId = Guid.NewGuid()
+		};
+
+		var html = await renderer.Dispatcher.InvokeAsync(async () =>
+		{
+			var parameters = ParameterView.FromDictionary(new Dictionary<string, object?>
+			{
+				[nameof(IdeaListItem.Idea)] = idea,
+				[nameof(IdeaListItem.HasDefaultProvider)] = true
+			});
+			var output = await renderer.RenderComponentAsync<IdeaListItem>(parameters);
+			return output.ToHtmlString();
+		});
+
+		Assert.Contains("list-group-item p-3", html);
+		Assert.Contains("justify-content-between align-items-stretch align-items-sm-start gap-3", html);
+		Assert.Contains("align-self-stretch align-self-sm-start gap-2", html);
+	}
+
 	private sealed class FakeProjectService : IProjectService
 	{
 		public Task<IEnumerable<Project>> GetAllAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Project>>([]);
