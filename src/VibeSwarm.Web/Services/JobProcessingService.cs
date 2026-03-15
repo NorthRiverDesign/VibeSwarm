@@ -9,6 +9,7 @@ using VibeSwarm.Shared.Providers;
 using VibeSwarm.Shared.Services;
 using VibeSwarm.Shared.Utilities;
 using VibeSwarm.Shared.VersionControl;
+using VibeSwarm.Shared.VersionControl.Models;
 
 namespace VibeSwarm.Web.Services;
 
