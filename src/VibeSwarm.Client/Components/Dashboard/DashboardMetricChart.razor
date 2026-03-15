@@ -25,30 +25,18 @@
 		{
 			<div class="overflow-auto pb-2">
 				<div style="min-width: @(ChartWidth)px;">
-					<svg width="@ChartWidth"
-						 height="@ChartHeight"
-						 viewBox="0 0 @ChartWidth @ChartHeight"
-						 role="img"
+					<svg width="@ChartWidth" height="@ChartHeight" viewBox="0 0 @ChartWidth @ChartHeight" role="img"
 						 aria-label="@Title">
 						<title>@Title</title>
 
 						@foreach (var gridLineY in GridLineYs)
 						{
-							<line x1="@ChartPaddingX"
-								  y1="@gridLineY"
-								  x2="@(ChartWidth - ChartPaddingX)"
-								  y2="@gridLineY"
-								  stroke="var(--bs-border-color)"
-								  stroke-width="1"
-								  opacity="0.5" />
+							<line x1="@ChartPaddingX"  y1="@gridLineY"  x2="@(ChartWidth - ChartPaddingX)"  y2="@gridLineY"
+								  stroke="var(--bs-border-color)"  stroke-width="1"  opacity="0.5" />
 						}
 
-						<line x1="@ChartPaddingX"
-							  y1="@BaselineY"
-							  x2="@(ChartWidth - ChartPaddingX)"
-							  y2="@BaselineY"
-							  stroke="var(--bs-border-color)"
-							  stroke-width="1.25" />
+						<line x1="@ChartPaddingX"  y1="@BaselineY"  x2="@(ChartWidth - ChartPaddingX)"  y2="@BaselineY"
+							  stroke="var(--bs-border-color)"  stroke-width="1.25" />
 
 						@for (var index = 0; index < Points.Count; index++)
 						{
@@ -57,24 +45,19 @@
 							var x = GetBarX(index);
 							var y = BaselineY - barHeight;
 
-							<rect x="@x"
-								  y="@y"
-								  width="@BarWidth"
-								  height="@Math.Max(barHeight, 2)"
-								  rx="6"
-								  fill="@BarColor"
+							<rect x="@x" y="@y" width="@BarWidth" height="@Math.Max(barHeight, 2)" rx="6" fill="@BarColor"
 								  fill-opacity="0.85">
 								<title>@point.Label: @point.ValueLabel</title>
 							</rect>
 						}
 					</svg>
 
-					<div class="d-flex align-items-start pt-2">
+					<div class="d-flex align-items-start pt-2" style="padding-left:@(ChartPaddingX)px;">
 						@for (var index = 0; index < Points.Count; index++)
 						{
 							var point = Points[index];
 							<div class="small text-body-secondary text-center"
-								 style="width:@(BarWidth + BarGap)px; min-width:@(BarWidth + BarGap)px;">
+								 style="width:@(BarWidth + BarGap)px; min-width:@(BarWidth + BarGap)px; padding-right:@(BarGap)px;">
 								@if (ShouldRenderLabel(index))
 								{
 									<span>@point.Label</span>
@@ -135,7 +118,8 @@
 	private double BaselineY => ChartHeight - ChartPaddingBottom;
 	private double PlotHeight => ChartHeight - ChartPaddingTop - ChartPaddingBottom;
 	private double MaxValue => Math.Max(Points.Count == 0 ? 0 : Points.Max(point => point.Value), 1);
-	private IReadOnlyList<double> GridLineYs => [ChartPaddingTop, ChartPaddingTop + (PlotHeight / 3.0), ChartPaddingTop + ((PlotHeight * 2.0) / 3.0), BaselineY];
+	private IReadOnlyList<double> GridLineYs => [ChartPaddingTop, ChartPaddingTop + (PlotHeight / 3.0), ChartPaddingTop +
+((PlotHeight * 2.0) / 3.0), BaselineY];
 
 	private double GetBarHeight(double value)
 	{

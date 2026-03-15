@@ -6,17 +6,16 @@
 			<h5 class="mb-1 fw-semibold text-truncate">
 				<i class="bi bi-graph-up-arrow me-2 opacity-75"></i>Job Analytics
 			</h5>
-			<p class="small text-body-secondary mb-0">Track completed jobs and average duration across recent activity.</p>
+			<p class="small text-body-secondary mb-0">Track completed jobs and average duration across recent activity.
+			</p>
 		</div>
 
 		<div class="d-flex flex-wrap gap-2">
 			@foreach (var rangeDays in RangeOptions)
 			{
-				<button type="button"
-						class="btn btn-sm @(SelectedRangeDays == rangeDays ? "btn-primary" : "btn-secondary")"
-						disabled="@IsRefreshing"
-						aria-pressed="@(SelectedRangeDays == rangeDays)"
-						@click="() => ChangeRangeAsync(rangeDays)">
+				<button type="button" class="btn btn-sm @(SelectedRangeDays == rangeDays ? "btn-primary" : "btn-secondary")"
+						disabled="@IsRefreshing" aria-pressed="@(SelectedRangeDays == rangeDays)"
+						@onclick="() => ChangeRangeAsync(rangeDays)">
 					@if (SelectedRangeDays == rangeDays && IsRefreshing)
 					{
 						<span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
@@ -33,9 +32,7 @@
 	}
 	else if (!string.IsNullOrWhiteSpace(LoadError))
 	{
-		<EmptyState Icon="exclamation-triangle"
-					Title="Unable to load analytics"
-					Message="@LoadError">
+		<EmptyState Icon="exclamation-triangle" Title="Unable to load analytics" Message="@LoadError">
 			<button type="button" class="btn btn-sm btn-primary" @onclick="RetryAsync">
 				<i class="bi bi-arrow-clockwise me-1"></i>Try Again
 			</button>
@@ -45,27 +42,17 @@
 	{
 		<div class="row g-3">
 			<div class="col-12 col-xl-6">
-				<DashboardMetricChart Title="Completed Jobs"
-									  Subtitle="@GetChartSubtitle()"
-									  Icon="check2-circle"
-									  Summary="@GetCompletedSummary()"
-									  EmptyIcon="check2-circle"
-									  EmptyTitle="No completed jobs yet"
+				<DashboardMetricChart Title="Completed Jobs"  Subtitle="@GetChartSubtitle()"  Icon="check2-circle"
+									  Summary="@GetCompletedSummary()"  EmptyIcon="check2-circle"  EmptyTitle="No completed jobs yet"
 									  EmptyMessage="Completed jobs from the selected time range will show up here."
-									  Points="@GetCompletedChartPoints()"
-									  BarColor="var(--bs-success)" />
+									  Points="@GetCompletedChartPoints()"  BarColor="var(--bs-success)" />
 			</div>
 
 			<div class="col-12 col-xl-6">
-				<DashboardMetricChart Title="Average Job Duration"
-									  Subtitle="@GetChartSubtitle()"
-									  Icon="stopwatch"
-									  Summary="@GetDurationSummary()"
-									  EmptyIcon="stopwatch"
-									  EmptyTitle="No duration data yet"
+				<DashboardMetricChart Title="Average Job Duration"  Subtitle="@GetChartSubtitle()"  Icon="stopwatch"
+									  Summary="@GetDurationSummary()"  EmptyIcon="stopwatch"  EmptyTitle="No duration data yet"
 									  EmptyMessage="Average duration appears after jobs complete with timing information."
-									  Points="@GetDurationChartPoints()"
-									  BarColor="var(--bs-info)" />
+									  Points="@GetDurationChartPoints()" BarColor="var(--bs-info)" />
 			</div>
 		</div>
 	}

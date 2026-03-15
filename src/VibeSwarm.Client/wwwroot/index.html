@@ -68,8 +68,9 @@
                     <p class="text-muted mb-4">This may be due to a network issue or cached data. Try reloading or
                         clearing the cache.</p>
                     <div class="d-flex flex-column gap-2">
-                        <a href="javascript:location.reload(true)" class="btn btn-primary">Reload App</a>
-                        <a href="javascript:clearCacheAndReload()" class="btn btn-secondary">Clear Cache & Reload</a>
+                        <button type="button" onclick="location.reload()" class="btn btn-primary">Reload App</button>
+                        <button type="button" onclick="clearCacheAndReload()" class="btn btn-secondary">Clear Cache
+                            &amp; Reload</button>
                     </div>
                 </div>
             </div>
@@ -94,20 +95,34 @@
             }, 30000);
 
             // Function to clear cache and reload for stuck situations
+            // Unregisters the service worker, clears all caches and localStorage,
+            // then performs a clean navigation to bypass stale resources.
             function clearCacheAndReload() {
-                if ('caches' in window) {
-                    caches.keys().then(function (names) {
-                        for (var name of names) {
-                            caches.delete(name);
-                        }
-                    }).then(function () {
-                        // Also clear localStorage in case of stale tokens
-                        try { localStorage.clear(); } catch (e) { }
-                        location.reload(true);
-                    });
-                } else {
-                    location.reload(true);
+                var tasks = [];
+
+                // Unregister all service workers so stale workers don't re-cache old assets
+                if ('serviceWorker' in navigator) {
+                    tasks.push(
+                        navigator.serviceWorker.getRegistrations().then(function (registrations) {
+                            return Promise.all(registrations.map(function (r) { return r.unregister(); }));
+                        })
+                    );
                 }
+
+                // Delete all Cache Storage entries
+                if ('caches' in window) {
+                    tasks.push(
+                        caches.keys().then(function (names) {
+                            return Promise.all(names.map(function (n) { return caches.delete(n); }));
+                        })
+                    );
+                }
+
+                Promise.all(tasks).finally(function () {
+                    try { localStorage.clear(); } catch (e) { }
+                    // Navigate with a cache-bust param; Blazor router ignores unknown query params
+                    window.location.href = window.location.pathname + '?_cb=' + Date.now();
+                });
             }
         </script>
 
@@ -158,26 +173,20 @@
                     navigator.serviceWorker.register('/service-worker.js')
                         .then((registration) => {
                             console.log('ServiceWorker registered:', registration.scope);
+                            // Check for updates on first load and hourly thereafter
                             registration.update();
                             setInterval(() => registration.update(), 60 * 60 * 1000);
-
-                            registration.addEventListener('updatefound', () => {
-                                const newWorker = registration.installing;
-                                newWorker.addEventListener('statechange', () => {
-                                    if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                                        console.log('New version available, refreshing...');
-                                        window.location.reload();
-                                    }
-                                });
-                            });
                         })
                         .catch((error) => {
                             console.log('ServiceWorker registration failed:', error);
                         });
 
-                    navigator.serviceWorker.addEventListener('controllerchange', () => {
-                        window.location.reload();
-                    });
+                    // NOTE: intentionally no controllerchange / updatefound auto-reload.
+                    // Auto-reloading on service worker activation interrupts Blazor WASM
+                    // initialization on iOS standalone PWA and causes "Unable to Load
+                    // Application" errors. The new service worker takes effect via
+                    // skipWaiting() + clients.claim() without a reload, and users get
+                    // fresh assets on their next natural navigation.
                 });
             }
         </script>
