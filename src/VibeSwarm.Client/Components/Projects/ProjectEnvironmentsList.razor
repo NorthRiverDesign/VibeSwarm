@@ -16,6 +16,7 @@ else
 						<div class="d-flex align-items-center gap-2 flex-wrap">
 							<span class="fw-semibold">@environment.Name</span>
 							<span class="badge bg-secondary-subtle text-secondary-emphasis">@environment.Type</span>
+							<span class="@GetStageBadgeClass(environment.Stage)">@environment.Stage</span>
 							@if (environment.IsPrimary)
 							{
 								<span class="badge bg-success-subtle text-success-emphasis">Primary</span>
@@ -34,6 +35,7 @@ else
 						{
 							<div class="small text-body-secondary mt-2">@environment.Description</div>
 						}
+						<div class="small text-body-secondary mt-2">@GetStageSummary(environment.Stage)</div>
 					</div>
 					@if (environment.Type == EnvironmentType.Web && !string.IsNullOrWhiteSpace(environment.Username))
 					{
@@ -55,4 +57,20 @@ else
 @code {
 	[Parameter, EditorRequired]
 	public ICollection<ProjectEnvironment> Environments { get; set; } = new List<ProjectEnvironment>();
+
+	private static string GetStageBadgeClass(EnvironmentStage stage) => stage switch
+	{
+		EnvironmentStage.Production => "badge bg-danger-subtle text-danger-emphasis",
+		EnvironmentStage.Development => "badge bg-warning-subtle text-warning-emphasis",
+		EnvironmentStage.Local => "badge bg-info-subtle text-info-emphasis",
+		_ => "badge bg-secondary-subtle text-secondary-emphasis"
+	};
+
+	private static string GetStageSummary(EnvironmentStage stage) => stage switch
+	{
+		EnvironmentStage.Production => "Production: keep changes conservative and expect slower deployment feedback.",
+		EnvironmentStage.Development => "Development: iterative changes are fine, but deploy or restart steps may still be needed.",
+		EnvironmentStage.Local => "Local: rebuilds, restarts, redeploys, and local database resets are fair game when useful.",
+		_ => string.Empty
+	};
 }

@@ -11,7 +11,7 @@ public static class PromptBuilder
 {
 	private const int MaxPromptLength = 2000;
 	private const int XmlOverhead = 200;
-	private const int MaxEnvironmentSectionLength = 700;
+	private const int MaxEnvironmentSectionLength = 950;
 
 	public static string BuildStructuredPrompt(Job job, bool enableStructuring = true)
 	{
@@ -102,7 +102,11 @@ public static class PromptBuilder
 			sb.AppendLine("- If you encounter issues unrelated to the task, note them but do not fix them.");
 		}
 
-		if (project.Environments.Any(environment => environment.IsEnabled && environment.Type == EnvironmentType.Web))
+		var enabledEnvironments = project.Environments
+			.Where(environment => environment.IsEnabled)
+			.ToList();
+
+		if (enabledEnvironments.Any(environment => environment.Type == EnvironmentType.Web))
 		{
 			if (sb.Length > 0)
 			{
@@ -112,7 +116,25 @@ public static class PromptBuilder
 			sb.AppendLine("DEPLOYED ENVIRONMENTS:");
 			sb.AppendLine("- Use Playwright MCP when browser interaction is needed against configured web environments.");
 			sb.AppendLine("- Do not assume localhost when a project environment URL is available.");
-			sb.AppendLine("- Deployed environments may lag behind current repository changes until a deployment occurs.");
+			sb.AppendLine("- Web environments may lag behind repository changes until a deployment or restart occurs.");
+		}
+
+		if (enabledEnvironments.Count > 0)
+		{
+			var environmentStageRules = BuildEnvironmentStageRules(enabledEnvironments);
+			if (environmentStageRules.Count > 0)
+			{
+				if (sb.Length > 0)
+				{
+					sb.AppendLine();
+				}
+
+				sb.AppendLine("ENVIRONMENT SAFETY:");
+				foreach (var rule in environmentStageRules)
+				{
+					sb.AppendLine($"- {rule}");
+				}
+			}
 		}
 
 		if (injectRepoMap && !string.IsNullOrWhiteSpace(project.RepoMap))
@@ -151,8 +173,16 @@ public static class PromptBuilder
 		sb.AppendLine("<environments>");
 		sb.AppendLine("  Configured deployment targets for this project:");
 		sb.AppendLine("  Prefer these URLs instead of assuming localhost.");
-		sb.AppendLine("  Deployed web environments may not reflect the latest local code until a deployment has happened.");
-		sb.AppendLine("  Use Playwright MCP for browser interaction with web environments.");
+		sb.AppendLine("  Use the stage on each environment to decide what kinds of changes, deploys, and resets are appropriate.");
+		foreach (var rule in BuildEnvironmentStageRules(environments))
+		{
+			sb.Append("  - ");
+			sb.AppendLine(EscapeXml(rule));
+		}
+		if (environments.Any(environment => environment.Type == EnvironmentType.Web))
+		{
+			sb.AppendLine("  - Use Playwright MCP for browser interaction with web environments.");
+		}
 
 		var includedCount = 0;
 		foreach (var environment in environments)
@@ -164,6 +194,9 @@ public static class PromptBuilder
 				lineBuilder.Append("Primary ");
 			}
 			lineBuilder.Append(environment.Type);
+			lineBuilder.Append(" [");
+			lineBuilder.Append(environment.Stage);
+			lineBuilder.Append(']');
 			lineBuilder.Append(": ");
 			lineBuilder.Append(environment.Name);
 			lineBuilder.Append(" | URL: ");
@@ -203,6 +236,29 @@ public static class PromptBuilder
 
 		sb.AppendLine("</environments>");
 		return sb.ToString();
+	}
+
+	private static List<string> BuildEnvironmentStageRules(IEnumerable<ProjectEnvironment> environments)
+	{
+		var enabledStages = new HashSet<EnvironmentStage>(environments.Select(environment => environment.Stage));
+		var rules = new List<string>();
+
+		if (enabledStages.Contains(EnvironmentStage.Production))
+		{
+			rules.Add("Production environments are live/stable targets. Only make direct environment changes or redeploy them when the task explicitly asks for it, and expect slower deployments that may lag behind current code.");
+		}
+
+		if (enabledStages.Contains(EnvironmentStage.Development))
+		{
+			rules.Add("Development environments allow normal testing, iterative changes, and redeploys, but they may still need a deploy or restart before new code appears.");
+		}
+
+		if (enabledStages.Contains(EnvironmentStage.Local))
+		{
+			rules.Add("Local environments assume immediate feedback. It is acceptable to rebuild, restart services, redeploy, reseed data, or wipe the local database when the task benefits from it.");
+		}
+
+		return rules;
 	}
 
 	private static string EscapeXml(string value)

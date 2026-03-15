@@ -363,6 +363,7 @@ public class ProjectService : IProjectService
 					Name = requested.Name,
 					Description = requested.Description,
 					Type = requested.Type,
+					Stage = requested.Stage,
 					Url = requested.Url,
 					IsPrimary = requested.IsPrimary,
 					IsEnabled = requested.IsEnabled,
@@ -378,6 +379,7 @@ public class ProjectService : IProjectService
 			current.Name = requested.Name;
 			current.Description = requested.Description;
 			current.Type = requested.Type;
+			current.Stage = requested.Stage;
 			current.Url = requested.Url;
 			current.IsPrimary = requested.IsPrimary;
 			current.IsEnabled = requested.IsEnabled;

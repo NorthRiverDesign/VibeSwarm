@@ -25,6 +25,7 @@ public sealed class ProjectEnvironmentsEditorTests
 					Id = Guid.NewGuid(),
 					Name = "Staging",
 					Type = EnvironmentType.Web,
+					Stage = EnvironmentStage.Development,
 					Url = "https://staging.example.com",
 					IsEnabled = true,
 					IsPrimary = true
@@ -49,6 +50,8 @@ public sealed class ProjectEnvironmentsEditorTests
 
 		Assert.Contains("Project Environments", html);
 		Assert.Contains("Primary environment", html);
+		Assert.Contains("Environment Type", html);
+		Assert.Contains("Development", html);
 		Assert.Contains("Staging", html);
 	}
 

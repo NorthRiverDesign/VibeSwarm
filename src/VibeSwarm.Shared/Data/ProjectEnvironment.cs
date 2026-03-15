@@ -11,6 +11,13 @@ public enum EnvironmentType
 	Other = 2
 }
 
+public enum EnvironmentStage
+{
+	Production = 0,
+	Development = 1,
+	Local = 2
+}
+
 public class ProjectEnvironment
 {
 	public Guid Id { get; set; }
@@ -33,6 +40,8 @@ public class ProjectEnvironment
 	public string Url { get; set; } = string.Empty;
 
 	public EnvironmentType Type { get; set; } = EnvironmentType.Web;
+
+	public EnvironmentStage Stage { get; set; } = EnvironmentStage.Production;
 
 	public bool IsPrimary { get; set; }
 

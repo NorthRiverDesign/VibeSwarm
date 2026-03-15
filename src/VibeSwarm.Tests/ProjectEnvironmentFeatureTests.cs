@@ -124,6 +124,7 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 					{
 						Name = "Staging",
 						Type = EnvironmentType.Web,
+						Stage = EnvironmentStage.Development,
 						Url = "https://staging.example.com",
 						Description = "Use the seeded admin account.",
 						IsPrimary = true,
@@ -135,7 +136,16 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 					{
 						Name = "Releases",
 						Type = EnvironmentType.Release,
+						Stage = EnvironmentStage.Production,
 						Url = "https://github.com/octo/repo/releases",
+						IsEnabled = true
+					},
+					new ProjectEnvironment
+					{
+						Name = "Local App",
+						Type = EnvironmentType.Web,
+						Stage = EnvironmentStage.Local,
+						Url = "http://localhost:5000",
 						IsEnabled = true
 					}
 				]
@@ -146,9 +156,49 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 
 		Assert.Contains("<environments>", prompt);
 		Assert.Contains("Prefer these URLs instead of assuming localhost.", prompt);
+		Assert.Contains("Production environments are live/stable targets.", prompt);
+		Assert.Contains("Development environments allow normal testing, iterative changes, and redeploys", prompt);
+		Assert.Contains("Local environments assume immediate feedback.", prompt);
+		Assert.Contains("Primary Web [Development]: Staging", prompt);
 		Assert.Contains("https://staging.example.com", prompt);
 		Assert.Contains("admin@example.com / StagingPassword!", prompt);
+		Assert.Contains("Web [Local]: Local App", prompt);
+		Assert.Contains("http://localhost:5000", prompt);
 		Assert.Contains("https://github.com/octo/repo/releases", prompt);
+	}
+
+	[Fact]
+	public void BuildSystemPromptRules_IncludesEnvironmentStageGuidance()
+	{
+		var rules = PromptBuilder.BuildSystemPromptRules(new Project
+		{
+			Name = "Web App",
+			WorkingPath = "/tmp/web-app",
+			Environments =
+			[
+				new ProjectEnvironment
+				{
+					Name = "Production",
+					Type = EnvironmentType.Web,
+					Stage = EnvironmentStage.Production,
+					Url = "https://app.example.com",
+					IsEnabled = true
+				},
+				new ProjectEnvironment
+				{
+					Name = "Local",
+					Type = EnvironmentType.Web,
+					Stage = EnvironmentStage.Local,
+					Url = "http://localhost:5000",
+					IsEnabled = true
+				}
+			]
+		});
+
+		Assert.NotNull(rules);
+		Assert.Contains("ENVIRONMENT SAFETY:", rules);
+		Assert.Contains("Only make direct environment changes or redeploy them when the task explicitly asks for it", rules);
+		Assert.Contains("rebuild, restart services, redeploy, reseed data, or wipe the local database", rules);
 	}
 
 	[Fact]
@@ -227,6 +277,7 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 				{
 					Name = "Production",
 					Type = EnvironmentType.Web,
+					Stage = EnvironmentStage.Production,
 					Url = "https://prod.example.com",
 					IsPrimary = true,
 					IsEnabled = true
@@ -235,6 +286,7 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 				{
 					Name = "Staging",
 					Type = EnvironmentType.Web,
+					Stage = EnvironmentStage.Development,
 					Url = "https://staging.example.com",
 					IsPrimary = false,
 					IsEnabled = true
@@ -250,6 +302,8 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 		Assert.Equal(2, environments.Count);
 		Assert.True(environments[0].IsPrimary);
 		Assert.False(environments[1].IsPrimary);
+		Assert.Equal(EnvironmentStage.Production, environments[0].Stage);
+		Assert.Equal(EnvironmentStage.Development, environments[1].Stage);
 	}
 
 	[Fact]
@@ -270,6 +324,7 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 				{
 					Name = "Production",
 					Type = EnvironmentType.Web,
+					Stage = EnvironmentStage.Production,
 					Url = "https://prod.example.com",
 					IsPrimary = true,
 					IsEnabled = true
@@ -285,6 +340,7 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 			{
 				Name = "Staging",
 				Type = EnvironmentType.Web,
+				Stage = EnvironmentStage.Local,
 				Url = "https://staging.example.com",
 				IsPrimary = false,
 				IsEnabled = true
@@ -296,6 +352,7 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 		Assert.Equal(2, updated.Environments.Count);
 		Assert.Single(updated.Environments, e => e.IsPrimary);
 		Assert.Single(updated.Environments, e => !e.IsPrimary);
+		Assert.Contains(updated.Environments, e => e.Stage == EnvironmentStage.Local);
 	}
 
 	[Fact]
@@ -354,6 +411,7 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 						Id = Guid.NewGuid(),
 						Name = "Staging",
 						Type = EnvironmentType.Web,
+						Stage = EnvironmentStage.Development,
 						Url = "https://staging.example.com",
 						IsEnabled = true,
 						IsPrimary = true
@@ -366,6 +424,7 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 			var env = Assert.Single(updated.Environments);
 			Assert.Equal("Staging", env.Name);
 			Assert.True(env.IsPrimary);
+			Assert.Equal(EnvironmentStage.Development, env.Stage);
 		}
 
 		// Verify the environment is persisted

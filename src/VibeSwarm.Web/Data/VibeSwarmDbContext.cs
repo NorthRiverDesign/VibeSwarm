@@ -124,12 +124,13 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 			entity.HasKey(e => e.Id);
 			entity.HasOne(e => e.Project)
 	.WithMany(p => p.Environments)
-	.HasForeignKey(e => e.ProjectId)
-	.OnDelete(DeleteBehavior.Cascade);
+			.HasForeignKey(e => e.ProjectId)
+			.OnDelete(DeleteBehavior.Cascade);
 			entity.Property(e => e.Name).IsRequired().HasMaxLength(100);
 			entity.Property(e => e.Description).HasMaxLength(1000);
 			entity.Property(e => e.Url).IsRequired().HasMaxLength(1000);
 			entity.Property(e => e.Type).HasConversion<string>();
+			entity.Property(e => e.Stage).HasConversion<string>();
 			entity.Property(e => e.UsernameCiphertext).HasMaxLength(4000);
 			entity.Property(e => e.PasswordCiphertext).HasMaxLength(4000);
 			entity.HasIndex(e => new { e.ProjectId, e.Name }).IsUnique();

@@ -45,6 +45,7 @@ else
 					<div class="d-flex align-items-center gap-2 flex-wrap">
 						<span class="badge text-bg-primary">#@(environment.index + 1)</span>
 						<span class="badge bg-secondary-subtle text-secondary-emphasis">@item.Type</span>
+						<span class="@GetStageBadgeClass(item.Stage)">@item.Stage</span>
 						@if (item.IsPrimary)
 						{
 							<span class="badge bg-success-subtle text-success-emphasis">Primary</span>
@@ -71,19 +72,28 @@ else
 				</div>
 
 				<div class="row g-3">
-					<div class="col-12 col-lg-4">
+					<div class="col-12 col-xl-3">
 						<label class="form-label">Name</label>
 						<InputText @bind-Value="item.Name" class="form-control" placeholder="Staging" />
 					</div>
-					<div class="col-12 col-lg-4">
-						<label class="form-label">Type</label>
+					<div class="col-12 col-md-6 col-xl-3">
+						<label class="form-label">Kind</label>
 						<InputSelect @bind-Value="item.Type" @bind-Value:after="() => OnEnvironmentTypeChanged(item)" class="form-select">
 							<option value="@EnvironmentType.Web">Web</option>
 							<option value="@EnvironmentType.Release">GitHub Releases</option>
 							<option value="@EnvironmentType.Other">Generic</option>
 						</InputSelect>
 					</div>
-					<div class="col-12 col-lg-4">
+					<div class="col-12 col-md-6 col-xl-3">
+						<label class="form-label">Environment Type</label>
+						<InputSelect @bind-Value="item.Stage" class="form-select">
+							<option value="@EnvironmentStage.Production">Production</option>
+							<option value="@EnvironmentStage.Development">Development</option>
+							<option value="@EnvironmentStage.Local">Local</option>
+						</InputSelect>
+						<div class="form-text">@GetStageDescription(item.Stage)</div>
+					</div>
+					<div class="col-12 col-xl-3">
 						<label class="form-label">URL</label>
 						<InputText @bind-Value="item.Url" class="form-control" placeholder="https://staging.example.com" />
 					</div>
@@ -165,6 +175,7 @@ else
 			Id = Guid.NewGuid(),
 			Name = $"Environment {Environments.Count + 1}",
 			Type = EnvironmentType.Web,
+			Stage = EnvironmentStage.Production,
 			IsEnabled = true,
 			IsPrimary = Environments.Count == 0,
 			SortOrder = Environments.Count
@@ -261,4 +272,20 @@ else
 			environment.IsPrimary = primaryEnvironment != null && environment.Id == primaryEnvironment.Id;
 		}
 	}
+
+	private static string GetStageBadgeClass(EnvironmentStage stage) => stage switch
+	{
+		EnvironmentStage.Production => "badge bg-danger-subtle text-danger-emphasis",
+		EnvironmentStage.Development => "badge bg-warning-subtle text-warning-emphasis",
+		EnvironmentStage.Local => "badge bg-info-subtle text-info-emphasis",
+		_ => "badge bg-secondary-subtle text-secondary-emphasis"
+	};
+
+	private static string GetStageDescription(EnvironmentStage stage) => stage switch
+	{
+		EnvironmentStage.Production => "Only change or redeploy this target when the task explicitly calls for it.",
+		EnvironmentStage.Development => "Normal iterative changes are allowed, but deploy or restart steps may still be required.",
+		EnvironmentStage.Local => "Assume you can rebuild, redeploy, restart services, and reset local data for fast feedback.",
+		_ => string.Empty
+	};
 }
