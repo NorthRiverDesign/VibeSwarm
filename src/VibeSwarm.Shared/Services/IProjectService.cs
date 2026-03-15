@@ -45,6 +45,29 @@ public class DashboardProjectInfo
     public Job? LatestJob { get; set; }
 }
 
+/// <summary>
+/// Aggregated dashboard metrics for completed jobs within a selected time window.
+/// </summary>
+public class DashboardJobMetrics
+{
+    public int RangeDays { get; set; }
+    public DateTime StartUtc { get; set; }
+    public DateTime EndUtc { get; set; }
+    public int TotalCompletedJobs { get; set; }
+    public double? AverageDurationSeconds { get; set; }
+    public List<DashboardJobMetricsBucket> Buckets { get; set; } = [];
+}
+
+/// <summary>
+/// One chart bucket for dashboard job metrics.
+/// </summary>
+public class DashboardJobMetricsBucket
+{
+    public DateTime BucketStartUtc { get; set; }
+    public int CompletedJobs { get; set; }
+    public double? AverageDurationSeconds { get; set; }
+}
+
 public interface IProjectService
 {
     Task<IEnumerable<Project>> GetAllAsync(CancellationToken cancellationToken = default);
@@ -65,4 +88,9 @@ public interface IProjectService
     /// Get recent projects with their latest job and current git branch info for dashboard display
     /// </summary>
     Task<IEnumerable<DashboardProjectInfo>> GetRecentWithLatestJobAsync(int count, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Get dashboard-ready aggregates for completed jobs and duration trends.
+    /// </summary>
+    Task<DashboardJobMetrics> GetDashboardJobMetricsAsync(int rangeDays, CancellationToken cancellationToken = default);
 }

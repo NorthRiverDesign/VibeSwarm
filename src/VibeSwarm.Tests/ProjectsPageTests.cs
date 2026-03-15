@@ -72,6 +72,12 @@ public sealed class ProjectsPageTests
 			]);
 		public Task<IEnumerable<DashboardProjectInfo>> GetRecentWithLatestJobAsync(int count, CancellationToken cancellationToken = default)
 			=> Task.FromResult<IEnumerable<DashboardProjectInfo>>([]);
+		public Task<DashboardJobMetrics> GetDashboardJobMetricsAsync(int rangeDays, CancellationToken cancellationToken = default)
+			=> Task.FromResult(new DashboardJobMetrics
+			{
+				RangeDays = rangeDays,
+				Buckets = []
+			});
 	}
 
 	private sealed class FakeJobService : IJobService

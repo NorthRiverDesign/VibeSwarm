@@ -1,0 +1,189 @@
+@inject IProjectService ProjectService
+
+<section>
+	<div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3 mb-3">
+		<div>
+			<h5 class="mb-1 fw-semibold text-truncate">
+				<i class="bi bi-graph-up-arrow me-2 opacity-75"></i>Job Analytics
+			</h5>
+			<p class="small text-body-secondary mb-0">Track completed jobs and average duration across recent activity.</p>
+		</div>
+
+		<div class="d-flex flex-wrap gap-2">
+			@foreach (var rangeDays in RangeOptions)
+			{
+				<button type="button"
+						class="btn btn-sm @(SelectedRangeDays == rangeDays ? "btn-primary" : "btn-secondary")"
+						disabled="@IsRefreshing"
+						aria-pressed="@(SelectedRangeDays == rangeDays)"
+						@click="() => ChangeRangeAsync(rangeDays)">
+					@if (SelectedRangeDays == rangeDays && IsRefreshing)
+					{
+						<span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
+					}
+					@FormatRangeOption(rangeDays)
+				</button>
+			}
+		</div>
+	</div>
+
+	@if (IsLoading)
+	{
+		<LoadingSpinner />
+	}
+	else if (!string.IsNullOrWhiteSpace(LoadError))
+	{
+		<EmptyState Icon="exclamation-triangle"
+					Title="Unable to load analytics"
+					Message="@LoadError">
+			<button type="button" class="btn btn-sm btn-primary" @onclick="RetryAsync">
+				<i class="bi bi-arrow-clockwise me-1"></i>Try Again
+			</button>
+		</EmptyState>
+	}
+	else
+	{
+		<div class="row g-3">
+			<div class="col-12 col-xl-6">
+				<DashboardMetricChart Title="Completed Jobs"
+									  Subtitle="@GetChartSubtitle()"
+									  Icon="check2-circle"
+									  Summary="@GetCompletedSummary()"
+									  EmptyIcon="check2-circle"
+									  EmptyTitle="No completed jobs yet"
+									  EmptyMessage="Completed jobs from the selected time range will show up here."
+									  Points="@GetCompletedChartPoints()"
+									  BarColor="var(--bs-success)" />
+			</div>
+
+			<div class="col-12 col-xl-6">
+				<DashboardMetricChart Title="Average Job Duration"
+									  Subtitle="@GetChartSubtitle()"
+									  Icon="stopwatch"
+									  Summary="@GetDurationSummary()"
+									  EmptyIcon="stopwatch"
+									  EmptyTitle="No duration data yet"
+									  EmptyMessage="Average duration appears after jobs complete with timing information."
+									  Points="@GetDurationChartPoints()"
+									  BarColor="var(--bs-info)" />
+			</div>
+		</div>
+	}
+</section>
+
+@code {
+	private static readonly int[] RangeOptions = [1, 7, 30, 90];
+
+	private DashboardJobMetrics Metrics { get; set; } = new();
+	private int SelectedRangeDays { get; set; } = 7;
+	private bool IsLoading { get; set; } = true;
+	private bool IsRefreshing { get; set; }
+	private string? LoadError { get; set; }
+
+	protected override async Task OnInitializedAsync()
+	{
+		await LoadMetricsAsync(initialLoad: true);
+	}
+
+	private async Task ChangeRangeAsync(int rangeDays)
+	{
+		if (SelectedRangeDays == rangeDays)
+		{
+			return;
+		}
+
+		SelectedRangeDays = rangeDays;
+		await LoadMetricsAsync(initialLoad: false);
+	}
+
+	private async Task RetryAsync()
+	{
+		await LoadMetricsAsync(initialLoad: false);
+	}
+
+	private async Task LoadMetricsAsync(bool initialLoad)
+	{
+		LoadError = null;
+		IsLoading = initialLoad;
+		IsRefreshing = !initialLoad;
+
+		try
+		{
+			Metrics = await ProjectService.GetDashboardJobMetricsAsync(SelectedRangeDays);
+		}
+		catch (Exception ex)
+		{
+			LoadError = ex.Message;
+			Metrics = new DashboardJobMetrics
+			{
+				RangeDays = SelectedRangeDays
+			};
+		}
+		finally
+		{
+			IsLoading = false;
+			IsRefreshing = false;
+		}
+	}
+
+	private string GetChartSubtitle() => Metrics.RangeDays switch
+	{
+		1 => "Last 24 hours",
+		7 => "Last 7 days",
+		30 => "Last 30 days",
+		90 => "Last 90 days",
+		_ => $"Last {Metrics.RangeDays} days"
+	};
+
+	private string GetCompletedSummary() => Metrics.TotalCompletedJobs == 1
+		? "1 job completed"
+		: $"{Metrics.TotalCompletedJobs} jobs completed";
+
+	private string GetDurationSummary() => Metrics.AverageDurationSeconds.HasValue
+		? $"Avg {TokenHelper.FormatDuration(Metrics.AverageDurationSeconds)}"
+		: "No completed jobs";
+
+	private IReadOnlyList<DashboardChartPoint> GetCompletedChartPoints()
+	{
+		return Metrics.Buckets
+			.Select(bucket => new DashboardChartPoint
+			{
+				Label = FormatBucketLabel(bucket.BucketStartUtc),
+				Value = bucket.CompletedJobs,
+				ValueLabel = bucket.CompletedJobs == 1 ? "1 completed job" : $"{bucket.CompletedJobs} completed jobs"
+			})
+			.ToList();
+	}
+
+	private IReadOnlyList<DashboardChartPoint> GetDurationChartPoints()
+	{
+		return Metrics.Buckets
+			.Select(bucket => new DashboardChartPoint
+			{
+				Label = FormatBucketLabel(bucket.BucketStartUtc),
+				Value = bucket.AverageDurationSeconds ?? 0,
+				ValueLabel = bucket.AverageDurationSeconds.HasValue
+					? TokenHelper.FormatDuration(bucket.AverageDurationSeconds)
+					: "No completed jobs"
+			})
+			.ToList();
+	}
+
+	private string FormatBucketLabel(DateTime bucketStartUtc)
+	{
+		var localTime = DateTime.SpecifyKind(bucketStartUtc, DateTimeKind.Utc).ToLocalTime();
+
+		return Metrics.RangeDays switch
+		{
+			1 => localTime.ToString("ha").ToLowerInvariant(),
+			90 => localTime.ToString("MMM d"),
+			_ => localTime.ToString("MMM d")
+		};
+	}
+
+	private static string FormatRangeOption(int rangeDays) => rangeDays switch
+	{
+		1 => "1 Day",
+		_ => $"{rangeDays} Days"
+	};
+}

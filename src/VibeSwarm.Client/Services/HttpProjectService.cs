@@ -53,6 +53,9 @@ public class HttpProjectService : IProjectService
     public async Task<IEnumerable<DashboardProjectInfo>> GetRecentWithLatestJobAsync(int count, CancellationToken ct = default)
         => await _http.GetFromJsonAsync<List<DashboardProjectInfo>>("/api/projects/recent-dashboard?count=" + count, ct) ?? [];
 
+    public async Task<DashboardJobMetrics> GetDashboardJobMetricsAsync(int rangeDays, CancellationToken ct = default)
+        => await _http.GetFromJsonAsync<DashboardJobMetrics>($"/api/projects/dashboard-metrics?rangeDays={rangeDays}", ct) ?? new DashboardJobMetrics { RangeDays = rangeDays };
+
     private async Task EnsureSuccessAsync(HttpResponseMessage response, CancellationToken cancellationToken)
     {
         if (response.IsSuccessStatusCode)

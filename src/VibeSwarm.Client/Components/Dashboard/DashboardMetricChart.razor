@@ -1,0 +1,162 @@
+@using VibeSwarm.Client.Models
+
+<div class="card h-100">
+	<div class="card-body d-flex flex-column">
+		<div class="d-flex justify-content-between align-items-start gap-3 mb-3">
+			<div>
+				<h6 class="card-title fw-semibold mb-1">
+					<i class="bi bi-@Icon me-2 opacity-75"></i>@Title
+				</h6>
+				<p class="small text-body-secondary mb-0">@Subtitle</p>
+			</div>
+			@if (!string.IsNullOrWhiteSpace(Summary))
+			{
+				<span class="badge bg-body-tertiary text-body text-wrap text-end">@Summary</span>
+			}
+		</div>
+
+		@if (!HasData)
+		{
+			<div class="flex-grow-1 d-flex align-items-center">
+				<EmptyState Icon="@EmptyIcon" Title="@EmptyTitle" Message="@EmptyMessage" />
+			</div>
+		}
+		else
+		{
+			<div class="overflow-auto pb-2">
+				<div style="min-width: @(ChartWidth)px;">
+					<svg width="@ChartWidth"
+						 height="@ChartHeight"
+						 viewBox="0 0 @ChartWidth @ChartHeight"
+						 role="img"
+						 aria-label="@Title">
+						<title>@Title</title>
+
+						@foreach (var gridLineY in GridLineYs)
+						{
+							<line x1="@ChartPaddingX"
+								  y1="@gridLineY"
+								  x2="@(ChartWidth - ChartPaddingX)"
+								  y2="@gridLineY"
+								  stroke="var(--bs-border-color)"
+								  stroke-width="1"
+								  opacity="0.5" />
+						}
+
+						<line x1="@ChartPaddingX"
+							  y1="@BaselineY"
+							  x2="@(ChartWidth - ChartPaddingX)"
+							  y2="@BaselineY"
+							  stroke="var(--bs-border-color)"
+							  stroke-width="1.25" />
+
+						@for (var index = 0; index < Points.Count; index++)
+						{
+							var point = Points[index];
+							var barHeight = GetBarHeight(point.Value);
+							var x = GetBarX(index);
+							var y = BaselineY - barHeight;
+
+							<rect x="@x"
+								  y="@y"
+								  width="@BarWidth"
+								  height="@Math.Max(barHeight, 2)"
+								  rx="6"
+								  fill="@BarColor"
+								  fill-opacity="0.85">
+								<title>@point.Label: @point.ValueLabel</title>
+							</rect>
+						}
+					</svg>
+
+					<div class="d-flex align-items-start pt-2">
+						@for (var index = 0; index < Points.Count; index++)
+						{
+							var point = Points[index];
+							<div class="small text-body-secondary text-center"
+								 style="width:@(BarWidth + BarGap)px; min-width:@(BarWidth + BarGap)px;">
+								@if (ShouldRenderLabel(index))
+								{
+									<span>@point.Label</span>
+								}
+							</div>
+						}
+					</div>
+				</div>
+			</div>
+
+			@if (Points.Count > 12)
+			{
+				<p class="small text-body-secondary mb-0 mt-2">
+					<i class="bi bi-arrows-move me-1"></i>Scroll to view the full time range.
+				</p>
+			}
+		}
+	</div>
+</div>
+
+@code {
+	private const int ChartHeight = 220;
+	private const int ChartPaddingX = 16;
+	private const int ChartPaddingTop = 16;
+	private const int ChartPaddingBottom = 40;
+	private const int BarWidth = 20;
+	private const int BarGap = 12;
+
+	[Parameter]
+	public string Title { get; set; } = string.Empty;
+
+	[Parameter]
+	public string Subtitle { get; set; } = string.Empty;
+
+	[Parameter]
+	public string Icon { get; set; } = "bar-chart";
+
+	[Parameter]
+	public string Summary { get; set; } = string.Empty;
+
+	[Parameter]
+	public string EmptyTitle { get; set; } = "No data yet";
+
+	[Parameter]
+	public string EmptyMessage { get; set; } = "Completed jobs will appear here once work starts finishing.";
+
+	[Parameter]
+	public string EmptyIcon { get; set; } = "bar-chart";
+
+	[Parameter]
+	public string BarColor { get; set; } = "var(--bs-primary)";
+
+	[Parameter]
+	public IReadOnlyList<DashboardChartPoint> Points { get; set; } = [];
+
+	private bool HasData => Points.Any(point => point.Value > 0);
+	private int ChartWidth => Math.Max((ChartPaddingX * 2) + (Points.Count * (BarWidth + BarGap)), 320);
+	private double BaselineY => ChartHeight - ChartPaddingBottom;
+	private double PlotHeight => ChartHeight - ChartPaddingTop - ChartPaddingBottom;
+	private double MaxValue => Math.Max(Points.Count == 0 ? 0 : Points.Max(point => point.Value), 1);
+	private IReadOnlyList<double> GridLineYs => [ChartPaddingTop, ChartPaddingTop + (PlotHeight / 3.0), ChartPaddingTop + ((PlotHeight * 2.0) / 3.0), BaselineY];
+
+	private double GetBarHeight(double value)
+	{
+		return value <= 0 ? 0 : Math.Max((value / MaxValue) * PlotHeight, 2);
+	}
+
+	private double GetBarX(int index)
+	{
+		return ChartPaddingX + (index * (BarWidth + BarGap));
+	}
+
+	private bool ShouldRenderLabel(int index)
+	{
+		var labelStep = Points.Count switch
+		{
+			<= 12 => 1,
+			<= 24 => 2,
+			<= 45 => 4,
+			_ => 6
+		};
+
+		return index % labelStep == 0 || index == Points.Count - 1;
+	}
+}

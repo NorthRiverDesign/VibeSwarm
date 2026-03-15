@@ -9,6 +9,7 @@ namespace VibeSwarm.Web.Services;
 
 public class ProjectService : IProjectService
 {
+	private static readonly HashSet<int> ValidDashboardRanges = [1, 7, 30, 90];
 	private readonly VibeSwarmDbContext _dbContext;
 	private readonly IProjectEnvironmentCredentialService _credentialService;
 	private readonly IVersionControlService _versionControlService;
@@ -217,6 +218,79 @@ public class ProjectService : IProjectService
 			Project = p,
 			LatestJob = latestJobsByProject.TryGetValue(p.Id, out var job) ? job : null
 		});
+	}
+
+	public async Task<DashboardJobMetrics> GetDashboardJobMetricsAsync(int rangeDays, CancellationToken cancellationToken = default)
+	{
+		var normalizedRangeDays = NormalizeDashboardRange(rangeDays);
+		var nowUtc = DateTime.UtcNow;
+		var bucketConfig = CreateDashboardBucketConfig(normalizedRangeDays, nowUtc);
+
+		var jobRows = await _dbContext.Jobs
+			.AsNoTracking()
+			.Where(job => job.Status == JobStatus.Completed &&
+				job.CompletedAt.HasValue &&
+				job.CompletedAt.Value >= bucketConfig.StartUtc &&
+				job.CompletedAt.Value < bucketConfig.EndUtc)
+			.Select(job => new DashboardJobMetricsRow
+			{
+				CompletedAt = job.CompletedAt!.Value,
+				StartedAt = job.StartedAt,
+				ExecutionDurationSeconds = job.ExecutionDurationSeconds
+			})
+			.ToListAsync(cancellationToken);
+
+		var buckets = Enumerable.Range(0, bucketConfig.BucketCount)
+			.Select(index => new DashboardBucketAccumulator
+			{
+				BucketStartUtc = bucketConfig.StartUtc.AddTicks(bucketConfig.BucketSpan.Ticks * index)
+			})
+			.ToList();
+
+		double durationTotalSeconds = 0;
+		var durationSamples = 0;
+
+		foreach (var row in jobRows)
+		{
+			var bucketIndex = (int)((row.CompletedAt - bucketConfig.StartUtc).Ticks / bucketConfig.BucketSpan.Ticks);
+			if (bucketIndex < 0 || bucketIndex >= buckets.Count)
+			{
+				continue;
+			}
+
+			var bucket = buckets[bucketIndex];
+			bucket.CompletedJobs++;
+
+			var durationSeconds = ResolveDurationSeconds(row);
+			if (!durationSeconds.HasValue)
+			{
+				continue;
+			}
+
+			bucket.DurationTotalSeconds += durationSeconds.Value;
+			bucket.DurationSamples++;
+			durationTotalSeconds += durationSeconds.Value;
+			durationSamples++;
+		}
+
+		return new DashboardJobMetrics
+		{
+			RangeDays = normalizedRangeDays,
+			StartUtc = bucketConfig.StartUtc,
+			EndUtc = bucketConfig.EndUtc,
+			TotalCompletedJobs = jobRows.Count,
+			AverageDurationSeconds = durationSamples > 0 ? durationTotalSeconds / durationSamples : null,
+			Buckets = buckets
+				.Select(bucket => new DashboardJobMetricsBucket
+				{
+					BucketStartUtc = bucket.BucketStartUtc,
+					CompletedJobs = bucket.CompletedJobs,
+					AverageDurationSeconds = bucket.DurationSamples > 0
+						? bucket.DurationTotalSeconds / bucket.DurationSamples
+						: null
+				})
+				.ToList()
+		};
 	}
 
 	private IQueryable<Project> BuildProjectQuery()
@@ -627,5 +701,84 @@ public class ProjectService : IProjectService
 				throw new InvalidOperationException($"Web environment '{environment.Name}' requires both a username and password.");
 			}
 		}
+	}
+
+	private static int NormalizeDashboardRange(int rangeDays)
+	{
+		return ValidDashboardRanges.Contains(rangeDays) ? rangeDays : 7;
+	}
+
+	private static DashboardBucketConfig CreateDashboardBucketConfig(int rangeDays, DateTime nowUtc)
+	{
+		if (rangeDays == 1)
+		{
+			var endUtc = new DateTime(nowUtc.Year, nowUtc.Month, nowUtc.Day, nowUtc.Hour, 0, 0, DateTimeKind.Utc).AddHours(1);
+			return new DashboardBucketConfig
+			{
+				StartUtc = endUtc.AddHours(-24),
+				EndUtc = endUtc,
+				BucketCount = 24,
+				BucketSpan = TimeSpan.FromHours(1)
+			};
+		}
+
+		if (rangeDays == 90)
+		{
+			var endUtc = nowUtc.Date.AddDays(1);
+			return new DashboardBucketConfig
+			{
+				StartUtc = endUtc.AddDays(-90),
+				EndUtc = endUtc,
+				BucketCount = 13,
+				BucketSpan = TimeSpan.FromDays(7)
+			};
+		}
+
+		return new DashboardBucketConfig
+		{
+			StartUtc = nowUtc.Date.AddDays(-(rangeDays - 1)),
+			EndUtc = nowUtc.Date.AddDays(1),
+			BucketCount = rangeDays,
+			BucketSpan = TimeSpan.FromDays(1)
+		};
+	}
+
+	private static double? ResolveDurationSeconds(DashboardJobMetricsRow row)
+	{
+		if (row.ExecutionDurationSeconds.HasValue && row.ExecutionDurationSeconds.Value >= 0)
+		{
+			return row.ExecutionDurationSeconds.Value;
+		}
+
+		if (row.StartedAt.HasValue)
+		{
+			var computedSeconds = (row.CompletedAt - row.StartedAt.Value).TotalSeconds;
+			return computedSeconds >= 0 ? computedSeconds : null;
+		}
+
+		return null;
+	}
+
+	private sealed class DashboardBucketAccumulator
+	{
+		public required DateTime BucketStartUtc { get; init; }
+		public int CompletedJobs { get; set; }
+		public double DurationTotalSeconds { get; set; }
+		public int DurationSamples { get; set; }
+	}
+
+	private sealed class DashboardJobMetricsRow
+	{
+		public required DateTime CompletedAt { get; init; }
+		public DateTime? StartedAt { get; init; }
+		public double? ExecutionDurationSeconds { get; init; }
+	}
+
+	private sealed class DashboardBucketConfig
+	{
+		public required DateTime StartUtc { get; init; }
+		public required DateTime EndUtc { get; init; }
+		public required int BucketCount { get; init; }
+		public required TimeSpan BucketSpan { get; init; }
 	}
 }
