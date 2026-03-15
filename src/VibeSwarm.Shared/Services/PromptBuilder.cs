@@ -11,7 +11,7 @@ public static class PromptBuilder
 {
 	private const int MaxPromptLength = 2000;
 	private const int XmlOverhead = 200;
-	private const int MaxEnvironmentSectionLength = 950;
+	private const int MaxEnvironmentSectionLength = 1200;
 
 	public static string BuildStructuredPrompt(Job job, bool enableStructuring = true)
 	{

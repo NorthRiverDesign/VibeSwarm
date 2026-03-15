@@ -127,7 +127,7 @@
 								<div class="flex-grow-1 min-width-0">
 									<a href="/jobs/view/@job.Id"
 										   class="d-block text-decoration-none fw-medium text-truncate-lines-2"
-										   title="@job.GoalPrompt">
+										   title="@job.DisplayTitle">
 										@GetJobDisplayTitle(job)
 									</a>
 									<div class="d-flex flex-wrap gap-2 mt-1 small text-body-secondary">
@@ -274,10 +274,7 @@
 
 	private static string GetJobDisplayTitle(Job job)
 	{
-		// Use Title if available, otherwise truncate GoalPrompt
-		if (!string.IsNullOrEmpty(job.Title))
-			return TruncateText(job.Title, 100);
-		return TruncateText(job.GoalPrompt, 100);
+		return TruncateText(job.DisplayTitle, 100);
 	}
 
 	private static string TruncateText(string text, int maxLength)

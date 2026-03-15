@@ -153,7 +153,7 @@ else
                                     <div class="d-flex align-items-center gap-2 small min-width-0">
                                         <a href="/jobs/view/@latestJob.Id"
                                                class="d-flex align-items-center gap-2 text-decoration-none min-width-0"
-                                               title="@latestJob.GoalPrompt">
+                                               title="@latestJob.DisplayTitle">
                                             @switch (latestJob.Status)
                                             {
                                                 case JobStatus.Completed:
@@ -177,8 +177,8 @@ else
                                                     <i class="bi bi-clock text-secondary flex-shrink-0" title="Pending"></i>
                                                     break;
                                             }
-                                            <span class="text-truncate text-body-secondary">@TruncateText(latestJob.GoalPrompt,
-                                                                                                                                                                                                                                                                                                                    60)</span>
+                                            <span class="text-truncate text-body-secondary">@TruncateText(latestJob.DisplayTitle,
+                                                                                                                                                                                                                                                                                                                     60)</span>
                                             </a>
                                         </div>
                                     </div>
@@ -192,8 +192,8 @@ else
                                             <div class="bg-body-tertiary rounded-2 p-2 mb-1 small">
                                                 <a href="/jobs/view/@job.Id" class="d-flex align-items-center gap-2 text-decoration-none small">
                                                     <StatusBadge Status="@job.Status.ToString()" />
-                                                    <span class="text-truncate" style="max-width: min(200px, 40vw);">@TruncateText(job.GoalPrompt,
-                                                                                                                                                                                                                                                                                                                                                                50)</span>
+                                                    <span class="text-truncate" style="max-width: min(200px, 40vw);">@TruncateText(job.DisplayTitle,
+                                                                                                                                                                                                                                                                                                                                                                 50)</span>
                                                         @if (!string.IsNullOrEmpty(job.CurrentActivity))
                                                         {
                                                             <span class="text-info fst-italic small d-none d-md-inline">@job.CurrentActivity</span>

@@ -84,95 +84,61 @@
     <div class="card-body p-0 flex-grow-1 overflow-hidden d-flex flex-column" style="min-height: 300px;">
         @if (_activeTab == "session")
         {
-            @if (IsJobActive)
-            {
-                @* Live Output *@
-                @if (LiveOutputLines.Any())
+            <div class="flex-grow-1 overflow-auto p-2 p-sm-3">
+                @if (DisplayedMessages.Any())
                 {
-                    <div class="terminal-output flex-grow-1 p-3 overflow-auto rounded-bottom small" style="max-height: 300px;">
-                        @foreach (var line in LiveOutputLines.TakeLast(MaxOutputLines))
+                    <div class="d-flex justify-content-end mb-2">
+                        <span class="badge bg-secondary">@DisplayedMessages.Count messages</span>
+                    </div>
+                }
+                @if (!DisplayedMessages.Any())
+                {
+                    <div class="empty-state text-center py-5">
+                        @if (IsJobActive)
                         {
-                            @if (line.IsThinking)
-                            {
-                                <div class="output-line d-flex gap-2 py-0 output-thinking">
-                                    <span class="output-time flex-shrink-0 small d-none d-sm-inline">[@line.Timestamp.FormatTime()]</span>
-                                    <span class="output-icon flex-shrink-0" title="Thinking">&#128161;</span>
-                                    <span class="output-text text-break fst-italic text-body-secondary">@line.Content</span>
-                                </div>
-                            }
-                            else
-                            {
-                                <div class="output-line d-flex gap-2 py-0 @(line.IsError ? "output-error" : "output-stdout")">
-                                    <span class="output-time flex-shrink-0 small d-none d-sm-inline">[@line.Timestamp.FormatTime()]</span>
-                                    <span class="output-text text-break">@line.Content</span>
-                                </div>
-                            }
+                            <div class="spinner-border text-info mb-3" role="status">
+                                <span class="visually-hidden">Waiting for output...</span>
+                            </div>
+                            <span class="text-body-secondary">Waiting for agent output...</span>
+                        }
+                        else if (Status == JobStatus.Completed)
+                        {
+                            <i class="bi bi-check-circle opacity-50 d-block mb-2" style="font-size: 2.5rem;"></i>
+                            <span class="text-body-secondary">Job completed but no conversation was recorded.</span>
+                        }
+                        else if (Status == JobStatus.Failed)
+                        {
+                            <i class="bi bi-exclamation-circle opacity-50 d-block mb-2" style="font-size: 2.5rem;"></i>
+                            <span class="text-body-secondary">Job failed. Check the error message above for details.</span>
+                        }
+                        else if (Status == JobStatus.Cancelled)
+                        {
+                            <i class="bi bi-x-circle opacity-50 d-block mb-2" style="font-size: 2.5rem;"></i>
+                            <span class="text-body-secondary">Job was cancelled. No conversation recorded.</span>
+                        }
+                        else if (Status == JobStatus.New || Status == JobStatus.Pending)
+                        {
+                            <i class="bi bi-hourglass opacity-50 d-block mb-2" style="font-size: 2.5rem;"></i>
+                            <span class="text-body-secondary">Conversation will appear after the job runs.</span>
+                        }
+                        else
+                        {
+                            <i class="bi bi-chat-left-text opacity-50 d-block mb-2" style="font-size: 2.5rem;"></i>
+                            <span class="text-body-secondary">No conversation recorded for this job.</span>
                         }
                     </div>
                 }
                 else
                 {
-                    @* Waiting for output placeholder *@
-                    <div class="d-flex flex-column justify-content-center align-items-center flex-grow-1 py-5">
-                        <div class="spinner-border text-info mb-3" role="status">
-                            <span class="visually-hidden">Waiting for output...</span>
-                        </div>
-                        <p class="text-body-secondary mb-0">Waiting for agent output...</p>
+                    <div class="d-flex flex-column gap-3 overflow-auto p-2" style="max-height: 600px;">
+                        @foreach (var message in DisplayedMessages)
+                        {
+                            <ChatMessage Role="@message.Role" Content="@message.Content" ToolName="@message.ToolName"
+                                         ToolInput="@message.ToolInput" ToolOutput="@message.ToolOutput" Timestamp="@message.CreatedAt" />
+                        }
                     </div>
                 }
-            }
-            else
-            {
-                @* Session Log / Conversation *@
-                <div class="flex-grow-1 overflow-auto p-2 p-sm-3">
-                    @if (Messages.Any())
-                    {
-                        <div class="d-flex justify-content-end mb-2">
-                            <span class="badge bg-secondary">@Messages.Count messages</span>
-                        </div>
-                    }
-                    @if (!Messages.Any())
-                    {
-                        <div class="empty-state text-center py-5">
-                            @if (Status == JobStatus.Completed)
-                            {
-                                <i class="bi bi-check-circle opacity-50 d-block mb-2" style="font-size: 2.5rem;"></i>
-                                <span class="text-body-secondary">Job completed but no conversation was recorded.</span>
-                            }
-                            else if (Status == JobStatus.Failed)
-                            {
-                                <i class="bi bi-exclamation-circle opacity-50 d-block mb-2" style="font-size: 2.5rem;"></i>
-                                <span class="text-body-secondary">Job failed. Check the error message above for details.</span>
-                            }
-                            else if (Status == JobStatus.Cancelled)
-                            {
-                                <i class="bi bi-x-circle opacity-50 d-block mb-2" style="font-size: 2.5rem;"></i>
-                                <span class="text-body-secondary">Job was cancelled. No conversation recorded.</span>
-                            }
-                            else if (Status == JobStatus.New || Status == JobStatus.Pending)
-                            {
-                                <i class="bi bi-hourglass opacity-50 d-block mb-2" style="font-size: 2.5rem;"></i>
-                                <span class="text-body-secondary">Conversation will appear after the job runs.</span>
-                            }
-                            else
-                            {
-                                <i class="bi bi-chat-left-text opacity-50 d-block mb-2" style="font-size: 2.5rem;"></i>
-                                <span class="text-body-secondary">No conversation recorded for this job.</span>
-                            }
-                        </div>
-                    }
-                    else
-                    {
-                        <div class="d-flex flex-column gap-3 overflow-auto p-2" style="max-height: 600px;">
-                            @foreach (var message in Messages)
-                            {
-                                <ChatMessage Role="@message.Role" Content="@message.Content" ToolName="@message.ToolName"
-                                             ToolInput="@message.ToolInput" ToolOutput="@message.ToolOutput" Timestamp="@message.CreatedAt" />
-                            }
-                        </div>
-                    }
-                </div>
-            }
+            </div>
         }
         else if (_activeTab == "console")
         {
@@ -264,6 +230,9 @@
     private bool _isSendingFollowUp = false;
 
     private bool CanSendFollowUp => Status == JobStatus.Completed && OnSendFollowUp.HasDelegate;
+
+    private IReadOnlyList<JobMessage> DisplayedMessages
+        => JobSessionDisplayBuilder.BuildDisplayedMessages(Messages, LiveOutputLines, IsJobActive);
 
     private async Task SendFollowUp()
     {

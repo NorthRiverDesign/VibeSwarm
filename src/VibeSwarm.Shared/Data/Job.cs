@@ -51,6 +51,12 @@ public class Job
     [StringLength(200)]
     public string? Title { get; set; }
 
+    /// <summary>
+    /// Short display text for previews and compact lists.
+    /// Uses the original idea text when available, otherwise falls back to the goal prompt.
+    /// </summary>
+    public string DisplayTitle => string.IsNullOrWhiteSpace(Title) ? GoalPrompt : Title;
+
     [Required]
     [StringLength(2000, MinimumLength = 1)]
     public string GoalPrompt { get; set; } = string.Empty;

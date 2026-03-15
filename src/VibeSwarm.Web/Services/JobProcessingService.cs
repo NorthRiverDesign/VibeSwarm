@@ -1737,8 +1737,13 @@ public class JobProcessingService : BackgroundService
             "user" => MessageRole.User,
             "assistant" => MessageRole.Assistant,
             "system" => MessageRole.System,
+            "thinking" => MessageRole.System,
+            "reasoning" => MessageRole.System,
+            "reasoning_summary" => MessageRole.System,
+            "plan" => MessageRole.System,
             "tool_use" => MessageRole.ToolUse,
             "tool_result" => MessageRole.ToolResult,
+            "tool_error" => MessageRole.ToolResult,
             _ => MessageRole.Assistant
         };
     }

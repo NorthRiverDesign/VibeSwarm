@@ -75,11 +75,11 @@
 
 	private string GetBubbleClasses() => Role switch
 	{
-		MessageRole.User => "text-white",
+		MessageRole.User => "bg-primary text-white",
 		MessageRole.Assistant => "bg-body-tertiary border",
-		MessageRole.System => "small",
-		MessageRole.ToolUse => "small",
-		MessageRole.ToolResult => "small",
+		MessageRole.System => "bg-secondary-subtle text-secondary-emphasis border",
+		MessageRole.ToolUse => "bg-info-subtle text-info-emphasis border",
+		MessageRole.ToolResult => "bg-success-subtle text-success-emphasis border",
 		_ => ""
 	};
 }

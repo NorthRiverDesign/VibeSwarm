@@ -538,18 +538,9 @@ TimeSpan.FromSeconds(10) })
     {
         lock (_liveOutput)
         {
-            var isThinking = line.StartsWith("[Reasoning]") || line.StartsWith("[Thinking]");
-            var category = isThinking ? "thinking"
-                : line.StartsWith("[Tool]") || line.StartsWith("[Tool Result]") ? "tool"
-                : "text";
-            _liveOutput.Add(new OutputLine
-            {
-                Content = line,
-                IsError = isError,
-                Timestamp = timestamp,
-                IsThinking = isThinking,
-                ContentCategory = category
-            });
+            _liveOutput.Add(JobSessionDisplayBuilder.CreateOutputLine(
+                isError ? $"[ERR] {line}" : line,
+                timestamp));
             while (_liveOutput.Count > MaxOutputLines)
             {
                 _liveOutput.RemoveAt(0);
@@ -718,9 +709,9 @@ TimeSpan.FromSeconds(10) })
                 _pushedCommitHash = Job.GitCommitHash;
             }
 
-            // Populate live output buffer from persisted console output when job is active
-            // This ensures page refresh shows accumulated output instead of "Waiting for output..."
-            if (Job != null && IsJobActive && !string.IsNullOrEmpty(Job.ConsoleOutput))
+            // Populate live output buffer from persisted console output so refreshes can still
+            // reconstruct the chat-style transcript even after the job has completed.
+            if (Job != null && !string.IsNullOrEmpty(Job.ConsoleOutput))
             {
                 lock (_liveOutput)
                 {
@@ -729,14 +720,7 @@ TimeSpan.FromSeconds(10) })
                         var lines = Job.ConsoleOutput.Split('\n', StringSplitOptions.RemoveEmptyEntries);
                         foreach (var line in lines.TakeLast(MaxOutputLines))
                         {
-                            var isError = line.StartsWith("[ERR] ");
-                            var content = isError ? line[6..] : line;
-                            _liveOutput.Add(new OutputLine
-                            {
-                                Content = content,
-                                IsError = isError,
-                                Timestamp = DateTime.UtcNow
-                            });
+                            _liveOutput.Add(JobSessionDisplayBuilder.CreateOutputLine(line, DateTime.UtcNow));
                         }
                     }
                 }

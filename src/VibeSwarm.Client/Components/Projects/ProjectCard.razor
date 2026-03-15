@@ -48,8 +48,8 @@
 					</span>
 					<small class="text-body-tertiary">@FormatTimeAgo(LatestJob.CreatedAt)</small>
 				</div>
-				<p class="card-text small text-body-secondary mb-0 text-truncate" title="@LatestJob.GoalPrompt">
-					@TruncateText(LatestJob.GoalPrompt, 55)
+				<p class="card-text small text-body-secondary mb-0 text-truncate" title="@LatestJob.DisplayTitle">
+					@TruncateText(LatestJob.DisplayTitle, 55)
 				</p>
 			</div>
 		}
