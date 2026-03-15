@@ -10,7 +10,7 @@ namespace VibeSwarm.Tests;
 public sealed class ProjectJobsListTests
 {
 	[Fact]
-	public async Task RenderedJobsList_ShowsMoreMenuWithBulkActions()
+	public async Task RenderedJobsList_ShowsMoreMenuWithBulkActions_WithoutNestedCardHeader()
 	{
 		var services = new ServiceCollection();
 		services.AddLogging();
@@ -43,5 +43,7 @@ public sealed class ProjectJobsListTests
 		Assert.Contains("More job actions", html);
 		Assert.Contains("Cancel All", html);
 		Assert.Contains("Delete Completed Jobs", html);
+		Assert.Contains("Queue active", html);
+		Assert.DoesNotContain("card-header", html);
 	}
 }

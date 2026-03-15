@@ -94,7 +94,7 @@ else
         </li>
     </ul>
 
-    <div class="tab-content border-start border-end border-bottom rounded-bottom-2 p-3">
+    <div class="tab-content pt-3">
         @if (_activeTab == "ideas")
         {
             <div class="tab-pane fade show active">
@@ -134,18 +134,21 @@ else
                 {
                     <Alert Type="Alert.AlertType.Danger" Message="@_environmentError" Class="mb-3" />
                 }
-                <EditForm Model="@Project" OnValidSubmit="SaveEnvironments">
-                    <ProjectEnvironmentsEditor Project="@Project" />
-                    <div class="d-flex justify-content-end mt-3">
-                        <button type="submit" class="btn btn-primary" disabled="@_isSavingEnvironments">
-                            @if (_isSavingEnvironments)
-                            {
-                                <span class="spinner-border spinner-border-sm me-1" role="status"></span>
-                            }
-                            <i class="bi bi-check-lg me-1"></i>Save Environments
-                        </button>
-                    </div>
-                </EditForm>
+                <div class="border rounded-3 bg-body-tertiary p-3 p-lg-4">
+                    <EditForm Model="@Project" OnValidSubmit="SaveEnvironments">
+                        <ProjectEnvironmentsEditor Project="@Project" />
+                        <div class="d-flex justify-content-end mt-3 pt-3 border-top">
+                            <button type="submit" class="btn btn-primary" disabled="@_isSavingEnvironments"
+                                    title="@(_isSavingEnvironments ? "Saving environments" : "Save environment changes")">
+                                @if (_isSavingEnvironments)
+                                {
+                                    <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                                }
+                                <i class="bi bi-check-lg me-1"></i>Save Environments
+                            </button>
+                        </div>
+                    </EditForm>
+                </div>
             </div>
         }
         @if (_activeTab == "changes")

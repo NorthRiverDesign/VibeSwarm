@@ -1,9 +1,24 @@
 @* Project jobs list component *@
 @using VibeSwarm.Shared.Utilities
 
-<div class="card">
-	<div class="card-header bg-body-secondary d-flex flex-wrap justify-content-between align-items-center gap-2">
-		<h5 class="mb-0 fw-semibold">Jobs</h5>
+<div class="d-grid gap-3">
+	<div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+		<div class="d-flex flex-wrap align-items-center gap-2 small text-body-secondary">
+			@if (IsPageLoading)
+			{
+				<span class="d-inline-flex align-items-center gap-2">
+					<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+					<span>Refreshing jobs</span>
+				</span>
+			}
+			else if (HasActiveJobs)
+			{
+				<span class="badge text-bg-info d-inline-flex align-items-center gap-1">
+					<i class="bi bi-activity"></i>
+					<span>Queue active</span>
+				</span>
+			}
+		</div>
 		<div class="d-flex align-items-center gap-2">
 			<span class="badge bg-secondary">@TotalJobsCount</span>
 			@if (HasBulkActions)
@@ -61,16 +76,14 @@
 			</button>
 		</div>
 	</div>
-	<div class="card-body p-0">
-		@if (!Jobs.Any())
-		{
-			<div class="p-3">
-				<EmptyState Icon="list-check" Title="No jobs yet"
-							Message="Create a job to start working on this project." />
-			</div>
-		}
-		else
-		{
+	@if (!Jobs.Any())
+	{
+		<EmptyState Icon="list-check" Title="No jobs yet"
+					Message="Create a job to start working on this project." />
+	}
+	else
+	{
+		<div class="border rounded-3 overflow-hidden">
 			<ul class="list-group list-group-flush">
 				@foreach (var job in Jobs)
 				{
@@ -168,7 +181,7 @@
 							@* Actions Dropdown *@
 							<div class="dropdown flex-shrink-0">
 								<button class="btn btn-sm btn-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown"
-										aria-expanded="false">
+										aria-expanded="false" title="Job actions">
 									<i class="bi bi-three-dots-vertical"></i>
 								</button>
 								<ul class="dropdown-menu dropdown-menu-end">
@@ -192,8 +205,8 @@
 					</li>
 				}
 			</ul>
-		}
-	</div>
+		</div>
+	}
 
 	<PaginationControls PageNumber="@CurrentPage" PageSize="@PageSize" TotalCount="@TotalJobsCount"
 						IsLoading="@IsPageLoading" OnPreviousPage="OnPreviousPage" OnNextPage="OnNextPage" />

@@ -7,18 +7,35 @@
 @using VibeSwarm.Shared.Models
 @using VibeSwarm.Shared.Providers
 
-<div class="card">
-	<div class="card-header bg-body-secondary d-flex flex-wrap justify-content-between align-items-center gap-2">
-		<h5 class="mb-0 fw-semibold">
-			<i class="bi bi-lightbulb me-2"></i>Ideas
-		</h5>
+<div class="d-grid gap-3">
+	<div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+		<div class="d-flex flex-wrap align-items-center gap-2 small text-body-secondary">
+			@if (IsPageLoading)
+			{
+				<span class="d-inline-flex align-items-center gap-2">
+					<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+					<span>Refreshing ideas</span>
+				</span>
+			}
+			@if (UnprocessedIdeasCount > 0)
+			{
+				<span class="badge bg-body-secondary text-body">@UnprocessedIdeasCount pending</span>
+			}
+			@if (IsProcessingActive)
+			{
+				<span class="badge text-bg-info d-inline-flex align-items-center gap-1" title="@ActiveProcessingMessage">
+					<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+					<span>Auto-running</span>
+				</span>
+			}
+		</div>
 		<div class="d-flex align-items-center gap-2">
 			<span class="badge bg-secondary">@TotalIdeasCount</span>
 			@if (HasLocalInference)
 			{
-				<button type="button" class="btn btn-sm btn-outline-secondary" @onclick="OpenSuggestIdeasModal"
+				<button type="button" class="btn btn-sm btn-secondary" @onclick="OpenSuggestIdeasModal"
 						disabled="@(IsSuggestingIdeas || IsProcessingActive)"
-						title="Use local AI to scan the codebase and suggest ideas">
+						title="@GetSuggestIdeasTooltip()">
 					@if (IsSuggestingIdeas)
 					{
 						<span class="spinner-border spinner-border-sm me-1" role="status"></span>
@@ -35,7 +52,7 @@
 				@if (IsProcessingActive)
 				{
 					<button type="button" class="btn btn-sm btn-danger" @onclick="OnStopProcessing"
-							disabled="@IsTogglingProcessing">
+							disabled="@IsTogglingProcessing" title="Stop automatic idea processing">
 						@if (IsTogglingProcessing)
 						{
 							<span class="spinner-border spinner-border-sm me-1" role="status"></span>
@@ -51,7 +68,7 @@
 				{
 					<button type="button" class="btn btn-sm btn-success" @onclick="OpenStartAllModal"
 							disabled="@(IsTogglingProcessing || !HasDefaultProvider || UnprocessedIdeasCount == 0)"
-							title="@(UnprocessedIdeasCount == 0 ? "All ideas have already been processed" : HasActiveJobs ? "Queue all ideas behind the current job" : "Start all ideas processing")">
+							title="@GetStartAllTooltip()">
 						@if (IsTogglingProcessing)
 						{
 							<span class="spinner-border spinner-border-sm me-1" role="status"></span>
@@ -66,105 +83,88 @@
 			}
 		</div>
 	</div>
-	<div class="card-body">
-		@* Suggestion feedback — shown when a suggest attempt finishes, success or failure *@
-		@if (_suggestResult != null)
-		{
-			<div
-				class="alert @(_suggestResult.Success ? "alert-success" : "alert-warning") alert-dismissible py-2 mb-3 d-flex align-items-start gap-2">
-				<i class="bi @(_suggestResult.Success ? "bi-stars" : "bi-exclamation-triangle") flex-shrink-0 mt-1"></i>
-				<div class="flex-grow-1">
-					<span>@_suggestResult.Message</span>
-					@if (!string.IsNullOrEmpty(_suggestResult.InferenceError) && !_suggestResult.Success)
-					{
-						<div class="mt-1">
-							<small class="text-body-secondary font-monospace">@_suggestResult.InferenceError[..Math.Min(200,
-														_suggestResult.InferenceError.Length)]</small>
-							</div>
-						}
-					</div>
-					<button type="button" class="btn-close" @onclick="() => _suggestResult = null" aria-label="Close"></button>
-				</div>
-			}
 
-			@* Add New Idea Form *@
-			<div class="mb-3">
-				<div class="d-flex gap-2 align-items-end">
-					<div class="flex-grow-1">
-						<textarea class="form-control" rows="4" placeholder="Enter a feature idea..."
-								  @bind="NewIdeaDescription" @bind:event="oninput" @onkeypress="HandleKeyPress"></textarea>
+	@if (_suggestResult != null)
+	{
+		<div class="d-flex align-items-start gap-2 rounded-3 border px-3 py-2 @GetSuggestResultContainerClass()">
+			<i class="bi @(_suggestResult.Success ? "bi-stars" : "bi-exclamation-triangle") mt-1"></i>
+			<div class="flex-grow-1 min-width-0">
+				<div class="small fw-medium">@_suggestResult.Message</div>
+				@if (!string.IsNullOrEmpty(_suggestResult.InferenceError) && !_suggestResult.Success)
+				{
+					<div class="small text-body-secondary font-monospace mt-1">
+						@_suggestResult.InferenceError[..Math.Min(200, _suggestResult.InferenceError.Length)]
 					</div>
-					<button type="button" class="btn btn-primary" @onclick="AddIdea"
-							disabled="@(string.IsNullOrWhiteSpace(NewIdeaDescription) || IsAddingIdea || _isSubmitting)" style="height: 58px;">
-						@if (IsAddingIdea)
-						{
-							<span class="spinner-border spinner-border-sm" role="status"></span>
-						}
-						else
-						{
-							<i class="bi bi-plus-lg"></i>
-						}
-					</button>
-				</div>
-				<div class="form-text">
-					Short description of a feature or update.
-					@if (CurrentAutoExpandIdeas)
-					{
-						<span> Ideas will be expanded into full specs when processed.</span>
-					}
-					else
-					{
-						<span> Ideas will be sent directly to implementation unless they already have an approved expansion.</span>
-					}
-					<span> Press Ctrl+Enter to submit.</span>
-				</div>
+				}
 			</div>
+			<button type="button" class="btn-close btn-close-sm" @onclick="() => _suggestResult = null"
+					aria-label="Dismiss suggestion status"></button>
+		</div>
+	}
 
-			@if (IsProcessingActive)
-			{
-				<div class="alert alert-info py-2 mb-3 d-flex align-items-center gap-2">
+	<div class="border rounded-3 bg-body-tertiary p-3">
+		<label class="form-label fw-medium mb-2" for="newIdeaDescription">Add idea</label>
+		<div class="d-flex gap-2 align-items-end">
+			<div class="flex-grow-1">
+				<textarea class="form-control" id="newIdeaDescription" rows="3" placeholder="Describe a feature or improvement..."
+						  @bind="NewIdeaDescription" @bind:event="oninput" @onkeypress="HandleKeyPress"
+						  title="Describe a feature or improvement. Press Ctrl+Enter to submit."></textarea>
+			</div>
+			<button type="button" class="btn btn-primary align-self-stretch px-3" @onclick="AddIdea"
+					disabled="@(string.IsNullOrWhiteSpace(NewIdeaDescription) || IsAddingIdea || _isSubmitting)"
+					title="@GetAddIdeaTooltip()">
+				@if (IsAddingIdea)
+				{
 					<span class="spinner-border spinner-border-sm" role="status"></span>
-					<span>@ActiveProcessingMessage</span>
-				</div>
-			}
-
-			@* Ideas List *@
-			@if (!Ideas.Any())
+				}
+				else
+				{
+					<i class="bi bi-plus-lg"></i>
+				}
+				<span class="d-none d-sm-inline ms-1">Add</span>
+			</button>
+		</div>
+		<div class="d-flex flex-wrap align-items-center gap-2 mt-2 small text-body-secondary">
+			<span class="badge bg-body-secondary text-body">
+				@(CurrentAutoExpandIdeas ? "Expands before running" : "Runs directly")
+			</span>
+			<span><kbd>Ctrl</kbd>+<kbd>Enter</kbd> to add</span>
+			@if (!HasDefaultProvider)
 			{
-				<div class="text-body-secondary text-center py-3">
-					<i class="bi bi-lightbulb fs-1 opacity-50 mb-2 d-block"></i>
-					<p class="mb-0">No ideas yet. Add some feature ideas above!</p>
-				</div>
-			}
-			else
-			{
-				<ul class="list-group list-group-flush">
-					@foreach (var idea in Ideas)
-					{
-						<IdeaListItem @key="idea.Id" Idea="idea" IsProcessing="@IsIdeaProcessing(idea.Id)"
-									  IsStarting="@(StartingIdeaId == idea.Id)" HasActiveJobs="@HasActiveJobs"
-									  HasDefaultProvider="@HasDefaultProvider"
-									  IsQueuedForProcessing="@(IsProcessingActive && !idea.IsProcessing && !IsIdeaProcessing(idea.Id) && !idea.JobId.HasValue)"
-									  OnExpand="@(() => OpenExpandModal(idea))" OnStart="@(() => StartSingleIdea(idea))"
-									  OnCopy="@(() => OpenCopyModal(idea))" OnMove="@(() => OpenMoveModal(idea))"
-									  OnDelete="@(() => OnDeleteIdea.InvokeAsync(idea.Id))" OnSaveEdit="HandleIdeaEdit" />
-					}
-				</ul>
-			}
-
-			@if (!HasDefaultProvider && TotalIdeasCount > 0)
-			{
-				<div class="alert alert-warning py-2 mt-3 mb-0">
-					<i class="bi bi-exclamation-triangle me-1"></i>
-					<a href="/providers">Set a default provider</a> to enable Ideas auto-processing.
-				</div>
+				<a class="btn btn-sm btn-warning ms-auto" href="/providers"
+				   title="Set a default provider to enable one-tap idea processing">
+					<i class="bi bi-plug me-1"></i>Set default provider
+				</a>
 			}
 		</div>
-
-		<PaginationControls PageNumber="@CurrentPage" PageSize="@PageSize" TotalCount="@TotalIdeasCount"
-							IsLoading="@IsPageLoading" OnPreviousPage="OnPreviousPage" OnNextPage="OnNextPage" />
 	</div>
 
+	@if (!Ideas.Any())
+	{
+		<EmptyState Icon="lightbulb" Title="No ideas yet"
+					Message="Add an idea to build up the project queue." />
+	}
+	else
+	{
+		<div class="border rounded-3 overflow-hidden">
+			<ul class="list-group list-group-flush">
+				@foreach (var idea in Ideas)
+				{
+					<IdeaListItem @key="idea.Id" Idea="idea" IsProcessing="@IsIdeaProcessing(idea.Id)"
+							  IsStarting="@(StartingIdeaId == idea.Id)" HasActiveJobs="@HasActiveJobs"
+							  HasDefaultProvider="@HasDefaultProvider"
+							  IsQueuedForProcessing="@(IsProcessingActive && !idea.IsProcessing && !IsIdeaProcessing(idea.Id) && !idea.JobId.HasValue)"
+							  OnExpand="@(() => OpenExpandModal(idea))" OnStart="@(() => StartSingleIdea(idea))"
+							  OnCopy="@(() => OpenCopyModal(idea))" OnMove="@(() => OpenMoveModal(idea))"
+							  OnDelete="@(() => OnDeleteIdea.InvokeAsync(idea.Id))" OnSaveEdit="HandleIdeaEdit" />
+				}
+			</ul>
+		</div>
+	}
+
+	<PaginationControls PageNumber="@CurrentPage" PageSize="@PageSize" TotalCount="@TotalIdeasCount"
+						IsLoading="@IsPageLoading" OnPreviousPage="OnPreviousPage" OnNextPage="OnNextPage" />
+</div>
 	@* Copy Idea Modal *@
 	<ProjectTransferModal @bind-IsVisible="ShowCopyModal" IdeaDescription="@(SelectedIdea?.Description ?? "")"
 						  ExcludeProjectId="@CurrentProjectId" AvailableProjects="@AvailableProjects" IsMove="false"
@@ -559,12 +559,65 @@
 	public int UnprocessedIdeasCount { get; set; }
 
 	private string ActiveProcessingMessage => CurrentAutoExpandIdeas
-		? "Auto-processing active. Ideas will be expanded, queued, and converted to jobs automatically."
-		: "Auto-processing active. Ideas will be queued and converted directly to jobs unless they already have an approved expansion.";
+		? "Ideas expand and queue automatically."
+		: "Ideas queue automatically from their current text.";
 
 	private string StartAllDescription => CurrentAutoExpandIdeas
-		? "Ideas will be expanded into fuller specs and converted to jobs automatically. Only one job runs per project at a time, so extra jobs stay queued until the current run finishes."
-		: "Ideas will be converted directly to jobs unless they already have an approved expansion. Only one job runs per project at a time, so extra jobs stay queued until the current run finishes.";
+		? "Ideas will expand first, then queue one job at a time for this project."
+		: "Ideas will queue from their current text, one job at a time for this project.";
+
+	private string GetSuggestIdeasTooltip()
+	{
+		if (IsSuggestingIdeas)
+		{
+			return "Generating ideas from the codebase";
+		}
+
+		if (IsProcessingActive)
+		{
+			return "Stop auto-processing before generating new suggestions";
+		}
+
+		return "Use local AI to scan the codebase and suggest ideas";
+	}
+
+	private string GetStartAllTooltip()
+	{
+		if (IsTogglingProcessing)
+		{
+			return "Updating idea processing";
+		}
+
+		if (!HasDefaultProvider)
+		{
+			return "Set a default provider to enable idea processing";
+		}
+
+		if (UnprocessedIdeasCount == 0)
+		{
+			return "All ideas have already been processed";
+		}
+
+		return HasActiveJobs
+			? "Queue all ideas behind the current job"
+			: "Start processing all pending ideas";
+	}
+
+	private string GetAddIdeaTooltip()
+	{
+		if (IsAddingIdea || _isSubmitting)
+		{
+			return "Adding idea";
+		}
+
+		return string.IsNullOrWhiteSpace(NewIdeaDescription)
+			? "Enter an idea to add it to the queue"
+			: "Add this idea to the project queue";
+	}
+
+	private string GetSuggestResultContainerClass() => _suggestResult?.Success == true
+		? "border-success-subtle bg-success-subtle text-success-emphasis"
+		: "border-warning-subtle bg-warning-subtle text-warning-emphasis";
 
 	private void OpenSuggestIdeasModal()
 	{
