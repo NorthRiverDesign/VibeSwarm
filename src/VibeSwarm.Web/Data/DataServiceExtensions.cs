@@ -50,9 +50,10 @@ public static class DataServiceExtensions
         services.AddScoped<ISkillService, SkillService>();
         services.AddScoped<IMcpConfigService, McpConfigService>();
         services.AddScoped<IIdeaService, IdeaService>();
-        services.AddScoped<IUserService, UserService>();
-        services.AddScoped<IProviderUsageService, ProviderUsageService>();
-        services.AddSingleton<IFileSystemService, FileSystemService>();
+		services.AddScoped<IUserService, UserService>();
+		services.AddScoped<IProviderUsageService, ProviderUsageService>();
+		services.AddScoped<ICommonProviderSetupService, CommonProviderSetupService>();
+		services.AddSingleton<IFileSystemService, FileSystemService>();
         services.AddHttpClient("LocalInference");
         services.AddScoped<IInferenceProviderService, InferenceProviderService>();
         services.AddScoped<IInferenceService, OllamaInferenceService>();

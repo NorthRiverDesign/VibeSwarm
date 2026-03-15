@@ -1,0 +1,183 @@
+@using VibeSwarm.Shared.Data
+@using VibeSwarm.Shared.Providers
+
+<div class="card h-100">
+	<div class="card-body d-flex flex-column gap-3">
+		<div class="d-flex align-items-start justify-content-between gap-2">
+			<div>
+				<h5 class="card-title fw-semibold mb-1">@Status.DisplayName</h5>
+				<p class="card-text text-body-secondary small mb-0">@Status.Description</p>
+			</div>
+			<span class="badge bg-info-subtle text-info-emphasis">
+				<i class="bi bi-terminal me-1"></i>CLI
+			</span>
+		</div>
+
+		<div class="d-flex flex-wrap gap-2">
+			<span class="badge @(Status.IsInstalled ? "bg-success-subtle text-success-emphasis" : "bg-warning-subtle text-warning-emphasis")">
+				<i class="bi bi-@(Status.IsInstalled ? "check-circle" : "download") me-1"></i>
+				@(Status.IsInstalled ? "Installed" : "Not Installed")
+			</span>
+			<span class="badge @(Status.IsAuthenticated ? "bg-success-subtle text-success-emphasis" : "bg-warning-subtle text-warning-emphasis")">
+				<i class="bi bi-@(Status.IsAuthenticated ? "shield-check" : "shield-exclamation") me-1"></i>
+				@(Status.IsAuthenticated ? "Auth Ready" : "Auth Needed")
+			</span>
+			<span class="badge @(Status.HasConfiguredProvider ? "bg-primary-subtle text-primary-emphasis" : "bg-secondary-subtle text-secondary-emphasis")">
+				<i class="bi bi-@(Status.HasConfiguredProvider ? "plug" : "plus-circle") me-1"></i>
+				@(Status.HasConfiguredProvider ? "Provider Configured" : "Provider Not Added")
+			</span>
+		</div>
+
+		<div class="small text-body-secondary d-flex flex-column gap-2">
+			<div>
+				<div class="fw-semibold text-body mb-1">Install command</div>
+				<code class="text-break">@Status.InstallCommand</code>
+				<div class="mt-1">@Status.InstallMethodLabel</div>
+			</div>
+
+			@if (!string.IsNullOrWhiteSpace(Status.InstalledVersion))
+			{
+				<div>
+					<div class="fw-semibold text-body mb-1">Detected version</div>
+					<div>@Status.InstalledVersion</div>
+				</div>
+			}
+
+			@if (!string.IsNullOrWhiteSpace(Status.AuthenticationStatus))
+			{
+				<div>
+					<div class="fw-semibold text-body mb-1">Authentication</div>
+					<div>@Status.AuthenticationStatus</div>
+				</div>
+			}
+
+			@if (Status.HasConfiguredProvider && !string.IsNullOrWhiteSpace(Status.ProviderName))
+			{
+				<div>
+					<div class="fw-semibold text-body mb-1">VibeSwarm provider</div>
+					<div>@Status.ProviderName</div>
+				</div>
+			}
+		</div>
+
+		@if (_showAuthenticationForm)
+		{
+			<EditForm Model="@_request" OnValidSubmit="HandleSaveAuthentication" class="border-top pt-3">
+				<DataAnnotationsValidator />
+
+				<div class="mb-2">
+					<label class="form-label small fw-semibold">@Status.ApiKeyLabel</label>
+					<InputText @bind-Value="_request.ApiKey" class="form-control" type="password"
+							   placeholder="@Status.ApiKeyPlaceholder" />
+					<ValidationMessage For="@(() => _request.ApiKey)" class="text-danger small" />
+					<div class="form-text">@Status.ApiKeyHelpText</div>
+				</div>
+
+				@if (!string.IsNullOrWhiteSpace(_errorMessage))
+				{
+					<div class="text-danger small mb-2">
+						<i class="bi bi-exclamation-circle me-1"></i>@_errorMessage
+					</div>
+				}
+
+				<div class="d-flex flex-wrap gap-2">
+					<button type="submit" class="btn btn-primary btn-sm" disabled="@IsSavingAuthentication">
+						@if (IsSavingAuthentication)
+						{
+							<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+						}
+						@(Status.HasConfiguredProvider ? "Update Authentication" : "Save & Create Provider")
+					</button>
+					<button type="button" class="btn btn-secondary btn-sm" @onclick="HideAuthenticationForm" disabled="@IsSavingAuthentication">
+						Cancel
+					</button>
+				</div>
+			</EditForm>
+		}
+		else
+		{
+			<div class="mt-auto d-flex flex-wrap gap-2">
+				<button type="button" class="btn btn-primary btn-sm" @onclick="InstallProvider" disabled="@IsInstalling">
+					@if (IsInstalling)
+					{
+						<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+					}
+					@(Status.IsInstalled ? "Install / Repair" : "Install")
+				</button>
+				<button type="button" class="btn btn-secondary btn-sm" @onclick="ShowAuthenticationForm" disabled="@IsSavingAuthentication">
+					<i class="bi bi-key me-1"></i>
+					@(Status.IsAuthenticated ? "Update Auth" : "Configure Auth")
+				</button>
+				<a class="btn btn-secondary btn-sm" href="@Status.DocumentationUrl" target="_blank" rel="noopener noreferrer">
+					<i class="bi bi-box-arrow-up-right me-1"></i>Docs
+				</a>
+			</div>
+		}
+	</div>
+</div>
+
+@code {
+	[Parameter, EditorRequired]
+	public CommonProviderSetupStatus Status { get; set; } = new();
+
+	[Parameter]
+	public bool IsInstalling { get; set; }
+
+	[Parameter]
+	public bool IsSavingAuthentication { get; set; }
+
+	[Parameter]
+	public EventCallback<ProviderType> OnInstall { get; set; }
+
+	[Parameter]
+	public EventCallback<CommonProviderSetupRequest> OnSaveAuthentication { get; set; }
+
+	private bool _showAuthenticationForm;
+	private string? _errorMessage;
+	private CommonProviderSetupRequest _request = new();
+
+	protected override void OnParametersSet()
+	{
+		if (_request.ProviderType != Status.ProviderType)
+		{
+			_request = new CommonProviderSetupRequest
+			{
+				ProviderType = Status.ProviderType
+			};
+		}
+	}
+
+	private Task InstallProvider()
+	{
+		return OnInstall.InvokeAsync(Status.ProviderType);
+	}
+
+	private void ShowAuthenticationForm()
+	{
+		_errorMessage = null;
+		_showAuthenticationForm = true;
+	}
+
+	private void HideAuthenticationForm()
+	{
+		_errorMessage = null;
+		_showAuthenticationForm = false;
+		_request = new CommonProviderSetupRequest
+		{
+			ProviderType = Status.ProviderType
+		};
+	}
+
+	private async Task HandleSaveAuthentication()
+	{
+		if (string.IsNullOrWhiteSpace(_request.ApiKey))
+		{
+			_errorMessage = $"{Status.ApiKeyLabel} is required.";
+			return;
+		}
+
+		_errorMessage = null;
+		await OnSaveAuthentication.InvokeAsync(_request);
+		HideAuthenticationForm();
+	}
+}

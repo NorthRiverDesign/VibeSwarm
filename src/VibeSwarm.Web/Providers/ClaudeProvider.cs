@@ -26,6 +26,13 @@ public class ClaudeProvider : CliProviderBase
     public ClaudeProvider(Provider config)
         : base(config.Id, config.Name, config.ConnectionMode, config.ExecutablePath, config.WorkingDirectory)
     {
+        if (!string.IsNullOrWhiteSpace(config.ApiKey))
+        {
+            BaseEnvironmentVariables = new Dictionary<string, string>
+            {
+                ["ANTHROPIC_API_KEY"] = config.ApiKey
+            };
+        }
     }
 
     private string GetExecutablePath() => ResolveExecutablePath(DefaultExecutable);

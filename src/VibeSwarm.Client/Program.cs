@@ -37,6 +37,7 @@ builder.Services.AddScoped<IJobService, HttpJobService>();
 builder.Services.AddScoped<IProjectService, HttpProjectService>();
 builder.Services.AddScoped<HttpProviderService>();
 builder.Services.AddScoped<IProviderService>(sp => sp.GetRequiredService<HttpProviderService>());
+builder.Services.AddScoped<ICommonProviderSetupService, HttpCommonProviderSetupService>();
 builder.Services.AddScoped<ISkillService, HttpSkillService>();
 builder.Services.AddScoped<ISettingsService, HttpSettingsService>();
 builder.Services.AddScoped<IIdeaService, HttpIdeaService>();

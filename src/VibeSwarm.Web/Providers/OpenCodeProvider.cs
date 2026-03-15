@@ -59,6 +59,7 @@ public class OpenCodeProvider : CliProviderBase
         {
             if (ConnectionMode == ProviderConnectionMode.CLI)
             {
+                await EnsureCliAuthenticationReadyAsync(cancellationToken);
                 return await TestCliConnectionAsync(GetExecutablePath(), "OpenCode", cancellationToken: cancellationToken);
             }
             else
@@ -265,6 +266,8 @@ public class OpenCodeProvider : CliProviderBase
         IProgress<ExecutionProgress>? progress,
         CancellationToken cancellationToken)
     {
+        await EnsureCliAuthenticationReadyAsync(cancellationToken);
+
         var execPath = GetExecutablePath();
         if (string.IsNullOrEmpty(execPath))
         {
@@ -948,6 +951,11 @@ public class OpenCodeProvider : CliProviderBase
 
     public override async Task<ProviderInfo> GetProviderInfoAsync(CancellationToken cancellationToken = default)
     {
+        if (ConnectionMode == ProviderConnectionMode.CLI)
+        {
+            await EnsureCliAuthenticationReadyAsync(cancellationToken);
+        }
+
         var defaultModels = new List<string>
         {
             "anthropic/claude-opus-4-6-20260101",
@@ -1074,6 +1082,8 @@ public class OpenCodeProvider : CliProviderBase
         {
             try
             {
+                await EnsureCliAuthenticationReadyAsync(cancellationToken);
+
                 var execPath = GetExecutablePath();
                 var effectiveWorkingDir = workingDirectory ?? WorkingDirectory ?? Environment.CurrentDirectory;
 
@@ -1144,6 +1154,8 @@ public class OpenCodeProvider : CliProviderBase
     {
         if (ConnectionMode == ProviderConnectionMode.CLI)
         {
+            await EnsureCliAuthenticationReadyAsync(cancellationToken);
+
             var execPath = GetExecutablePath();
             if (string.IsNullOrEmpty(execPath))
             {
@@ -1209,5 +1221,58 @@ public class OpenCodeProvider : CliProviderBase
                 return PromptResponse.Fail($"Error calling OpenCode API: {ex.Message}");
             }
         }
+    }
+
+    private async Task EnsureCliAuthenticationReadyAsync(CancellationToken cancellationToken)
+    {
+        if (ConnectionMode != ProviderConnectionMode.CLI || string.IsNullOrWhiteSpace(_apiKey))
+        {
+            return;
+        }
+
+        var authPath = GetOpenCodeAuthPath();
+        var authDirectory = Path.GetDirectoryName(authPath);
+        if (!string.IsNullOrWhiteSpace(authDirectory))
+        {
+            Directory.CreateDirectory(authDirectory);
+        }
+
+        Dictionary<string, JsonElement> existingEntries = [];
+        if (File.Exists(authPath))
+        {
+            try
+            {
+                await using var existingStream = File.OpenRead(authPath);
+                existingEntries = await JsonSerializer.DeserializeAsync<Dictionary<string, JsonElement>>(existingStream, cancellationToken: cancellationToken) ?? [];
+            }
+            catch
+            {
+                existingEntries = [];
+            }
+        }
+
+        var updatedEntries = new Dictionary<string, object?>();
+        foreach (var (key, value) in existingEntries)
+        {
+            updatedEntries[key] = value;
+        }
+
+        updatedEntries["opencode"] = new
+        {
+            type = "api",
+            key = _apiKey
+        };
+
+        await using var outputStream = File.Create(authPath);
+        await JsonSerializer.SerializeAsync(outputStream, updatedEntries, new JsonSerializerOptions
+        {
+            WriteIndented = true
+        }, cancellationToken);
+    }
+
+    private static string GetOpenCodeAuthPath()
+    {
+        var dataDirectory = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        return Path.Combine(dataDirectory, "opencode", "auth.json");
     }
 }

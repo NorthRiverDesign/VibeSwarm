@@ -83,6 +83,11 @@ public abstract class ProviderBase : IProvider
     }
 
     /// <summary>
+    /// Environment variables that should always be applied for this provider instance.
+    /// </summary>
+    protected Dictionary<string, string>? BaseEnvironmentVariables { get; set; }
+
+    /// <summary>
     /// Current MCP config path for the execution (set by ExecuteWithOptionsAsync)
     /// </summary>
     protected string? CurrentMcpConfigPath { get; private set; }
@@ -272,6 +277,38 @@ public abstract class ProviderBase : IProvider
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Merges provider-level environment variables with per-execution overrides.
+    /// Per-execution values win when the same key is present in both dictionaries.
+    /// </summary>
+    protected Dictionary<string, string>? GetEffectiveEnvironmentVariables()
+    {
+        if ((BaseEnvironmentVariables == null || BaseEnvironmentVariables.Count == 0) &&
+            (CurrentEnvironmentVariables == null || CurrentEnvironmentVariables.Count == 0))
+        {
+            return null;
+        }
+
+        var merged = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (BaseEnvironmentVariables != null)
+        {
+            foreach (var kvp in BaseEnvironmentVariables)
+            {
+                merged[kvp.Key] = kvp.Value;
+            }
+        }
+
+        if (CurrentEnvironmentVariables != null)
+        {
+            foreach (var kvp in CurrentEnvironmentVariables)
+            {
+                merged[kvp.Key] = kvp.Value;
+            }
+        }
+
+        return merged;
     }
 
     public abstract Task<ProviderInfo> GetProviderInfoAsync(CancellationToken cancellationToken = default);

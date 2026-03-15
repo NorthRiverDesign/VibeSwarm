@@ -93,6 +93,14 @@ public abstract class CliProviderBase : ProviderBase
 
 			PlatformHelper.ConfigureForCrossPlatform(startInfo);
 
+			if (GetEffectiveEnvironmentVariables() is { Count: > 0 } environmentVariables)
+			{
+				foreach (var kvp in environmentVariables)
+				{
+					startInfo.Environment[kvp.Key] = kvp.Value;
+				}
+			}
+
 			if (!string.IsNullOrEmpty(WorkingDirectory))
 			{
 				startInfo.WorkingDirectory = WorkingDirectory;
@@ -216,6 +224,14 @@ public abstract class CliProviderBase : ProviderBase
 			};
 
 			PlatformHelper.ConfigureForCrossPlatform(startInfo);
+
+			if (GetEffectiveEnvironmentVariables() is { Count: > 0 } environmentVariables)
+			{
+				foreach (var kvp in environmentVariables)
+				{
+					startInfo.Environment[kvp.Key] = kvp.Value;
+				}
+			}
 
 			using var process = new Process { StartInfo = startInfo };
 			process.Start();
@@ -477,9 +493,9 @@ public abstract class CliProviderBase : ProviderBase
 
 		PlatformHelper.ConfigureForCrossPlatform(startInfo);
 
-		if (CurrentEnvironmentVariables != null)
+		if (GetEffectiveEnvironmentVariables() is { Count: > 0 } environmentVariables)
 		{
-			foreach (var kvp in CurrentEnvironmentVariables)
+			foreach (var kvp in environmentVariables)
 			{
 				startInfo.Environment[kvp.Key] = kvp.Value;
 			}
@@ -508,9 +524,9 @@ public abstract class CliProviderBase : ProviderBase
 			startInfo.ArgumentList.Add(arg);
 		}
 
-		if (CurrentEnvironmentVariables != null)
+		if (GetEffectiveEnvironmentVariables() is { Count: > 0 } environmentVariables)
 		{
-			foreach (var kvp in CurrentEnvironmentVariables)
+			foreach (var kvp in environmentVariables)
 			{
 				startInfo.Environment[kvp.Key] = kvp.Value;
 			}

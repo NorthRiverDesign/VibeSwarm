@@ -28,6 +28,15 @@ public class CopilotProvider : CliProviderBase
     {
         // Copilot CLI only supports CLI mode (no REST API)
         ConnectionMode = ProviderConnectionMode.CLI;
+
+        if (!string.IsNullOrWhiteSpace(config.ApiKey))
+        {
+            BaseEnvironmentVariables = new Dictionary<string, string>
+            {
+                ["GH_TOKEN"] = config.ApiKey,
+                ["GITHUB_TOKEN"] = config.ApiKey
+            };
+        }
     }
 
     private string GetExecutablePath() => ResolveExecutablePath(DefaultExecutable);

@@ -13,11 +13,16 @@ public class ProvidersController : ControllerBase
 {
     private readonly IProviderService _providerService;
     private readonly IProviderUsageService _usageService;
+    private readonly ICommonProviderSetupService _commonProviderSetupService;
 
-    public ProvidersController(IProviderService providerService, IProviderUsageService usageService)
+    public ProvidersController(
+        IProviderService providerService,
+        IProviderUsageService usageService,
+        ICommonProviderSetupService commonProviderSetupService)
     {
         _providerService = providerService;
         _usageService = usageService;
+        _commonProviderSetupService = commonProviderSetupService;
     }
 
     [HttpGet]
@@ -112,6 +117,28 @@ public class ProvidersController : ControllerBase
     {
         await _usageService.ResetPeriodAsync(id, ct);
         return Ok();
+    }
+
+    [HttpGet("common-setup")]
+    public async Task<IActionResult> GetCommonProviderSetupStatuses(CancellationToken ct)
+        => Ok(await _commonProviderSetupService.GetStatusesAsync(ct));
+
+    [HttpPost("common-setup/{providerType}/install")]
+    public async Task<IActionResult> InstallCommonProvider(ProviderType providerType, CancellationToken ct)
+    {
+        var result = await _commonProviderSetupService.InstallAsync(providerType, ct);
+        return result.Success ? Ok(result) : BadRequest(result);
+    }
+
+    [HttpPost("common-setup/{providerType}/authenticate")]
+    public async Task<IActionResult> SaveCommonProviderAuthentication(
+        ProviderType providerType,
+        [FromBody] CommonProviderSetupRequest request,
+        CancellationToken ct)
+    {
+        request.ProviderType = providerType;
+        var result = await _commonProviderSetupService.SaveAuthenticationAsync(request, ct);
+        return result.Success ? Ok(result) : BadRequest(result);
     }
 
     public record SetDefaultModelRequest(Guid ModelId);

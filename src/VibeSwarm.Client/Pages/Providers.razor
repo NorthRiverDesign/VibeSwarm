@@ -4,6 +4,7 @@
 @using VibeSwarm.Shared.Data
 @using VibeSwarm.Shared.Utilities
 @inject IProviderService ProviderService
+@inject ICommonProviderSetupService CommonProviderSetupService
 @inject HttpProviderService HttpProviderService
 @inject NotificationService NotificationService
 
@@ -17,174 +18,196 @@
 {
     <LoadingSpinner />
 }
-else if (!ProvidersList.Any())
-{
-    <EmptyState Icon="cpu" Title="No providers configured"
-                Message="Add a provider to connect to AI coding agents like Claude Code CLI." />
-}
 else
 {
-    <div class="list-group">
-        @foreach (var provider in ProvidersList)
-        {
-            <div class="list-group-item p-3 hover-bg-tertiary @(provider.IsDefault ? "bg-success bg-opacity-10" : "")">
-                <div class="d-flex align-items-start gap-2 gap-md-3">
-                    @* Enable toggle on left side *@
-                    <div class="flex-shrink-0 pt-1">
-                        <label class="toggle-switch" title="@(provider.IsEnabled ? "Disable" : "Enable")">
-                            <input type="checkbox" checked="@provider.IsEnabled" @onchange="() => ToggleEnabled(provider)" />
-                            <span class="toggle-slider"></span>
-                        </label>
-                    </div>
-                    <div class="flex-grow-1 min-width-0">
-                        <div class="d-flex align-items-center gap-2 flex-wrap">
-                            <span class="fw-semibold">@provider.Name</span>
-                            @if (provider.IsDefault)
-                            {
-                                <span class="badge text-bg-success text-uppercase" style="font-size: 0.7rem;">Default</span>
-                            }
-                            <StatusBadge Status="@(provider.IsEnabled ? "Active" : "Off")" ShowSpinner="false" />
-                        </div>
-                        <div class="d-flex flex-wrap gap-2 gap-md-3 mt-2">
-                            <span class="badge bg-primary-subtle text-primary-emphasis">
-                                <i class="bi bi-@GetProviderTypeIcon(provider.Type) me-1"></i>@provider.Type
-                            </span>
-                            <span class="badge bg-info-subtle text-info-emphasis">
-                                <i
-                                class="bi bi-@GetConnectionModeIcon(provider.ConnectionMode) me-1"></i>@provider.ConnectionMode
-                            </span>
-                            @if (GetCliVersion(provider.Id) is string version && !string.IsNullOrEmpty(version))
-                            {
-                                <span class="badge bg-secondary-subtle text-secondary-emphasis text-truncate"
-                                      style="max-width: min(200px, 50vw);" title="@version">
-                                    <i class="bi bi-tag me-1"></i>@TruncateVersion(version)
-                                </span>
-                            }
-                        </div>
-                        @if (GetUsageSummary(provider.Id) is ProviderUsageSummary summary && summary.EffectiveMaxUsage > 0)
-                        {
-                            <div class="mt-2" style="max-width: min(300px, 100%);">
-                                <UsageMeter UsageSummary="summary" ShowResetTime="true" />
-                            </div>
-                        }
-                        @if (TestResults.TryGetValue(provider.Id, out var result))
-                        {
-                            <div
-                                class="mt-2 p-2 rounded-2 @(result.IsConnected ? "text-success bg-success bg-opacity-10" : "text-danger bg-danger bg-opacity-10")">
-                                <strong>@(result.IsConnected ? "Connected" : "Connection Failed")</strong>
-                                @if (!result.IsConnected && !string.IsNullOrEmpty(result.ErrorMessage))
-                                {
-                                    <div class="mt-1">
-                                        <pre class="mb-0 small text-break overflow-auto">@result.ErrorMessage</pre>
-                                    </div>
-                                }
-                            </div>
-                        }
-                        @if (RefreshModelsErrors.TryGetValue(provider.Id, out var refreshError) &&
-                                        !string.IsNullOrEmpty(refreshError))
-                        {
-                            <Alert Type="Alert.AlertType.Warning" Message="@refreshError" Class="mt-2 mb-0 py-2 px-3 small" />
-                        }
-                    </div>
-                    <div class="d-flex align-items-center gap-2 flex-shrink-0">
-                        @* Test connection button *@
-                        <ActionButton Icon="lightning" Text="Test" Size="ActionButton.ButtonSize.Small" HideTextOnMobile="true"
-                                      IsLoading="@(TestingId == provider.Id)" OnClick="@(() => TestConnection(provider))" />
+	<div class="d-flex flex-column gap-4">
+		<div>
+			<div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+				<div>
+					<h5 class="fw-semibold mb-1">Quick Setup</h5>
+					<p class="text-body-secondary mb-0">Install the primary provider CLIs on this host and save the credentials VibeSwarm needs to run them.</p>
+				</div>
+			</div>
+			<div class="row g-3">
+				@foreach (var status in CommonProviderStatuses)
+				{
+					<div class="col-12 col-xl-4">
+						<CommonProviderSetupCard Status="status"
+												 IsInstalling="@(InstallingProviderType == status.ProviderType)"
+												 IsSavingAuthentication="@(SavingAuthenticationProviderType == status.ProviderType)"
+												 OnInstall="InstallCommonProviderAsync"
+												 OnSaveAuthentication="SaveCommonProviderAuthenticationAsync" />
+					</div>
+				}
+			</div>
+		</div>
 
-                        @* Gear dropdown menu *@
-                        <div class="dropdown">
-                            <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
-                                    id="provider-menu-@provider.Id" data-bs-toggle="dropdown" aria-expanded="false"
-                                    title="Provider actions">
-                                <i class="bi bi-gear"></i>
-                            </button>
-                            <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="provider-menu-@provider.Id">
-                                <li>
-                                    <button class="dropdown-item" @onclick="@(() => RefreshModels(provider))"
-                                            @onclick:stopPropagation="true" disabled="@(RefreshingModelsId == provider.Id)">
-                                        <i
-                                        class="bi bi-arrow-repeat me-2 @(RefreshingModelsId == provider.Id ? "spin" : "")"></i>
-                                        Refresh Models
-                                    </button>
-                                </li>
-                                <li>
-                                    <button class="dropdown-item" @onclick="@(() => UpdateCli(provider))"
-                                            @onclick:stopPropagation="true"
-                                            disabled="@(UpdatingCliId == provider.Id || provider.ConnectionMode == ProviderConnectionMode.SDK)">
-                                        <i class="bi bi-download me-2 @(UpdatingCliId == provider.Id ? "spin" : "")"></i>
-                                        @(provider.ConnectionMode == ProviderConnectionMode.SDK ? "Update via NuGet" : "Update CLI")
-                                    </button>
-                                </li>
-                                <li>
-                                    <button class="dropdown-item" @onclick="@(() => ShowSelectDefaultModelModal(provider))"
-                                            @onclick:stopPropagation="true">
-                                        <i class="bi bi-star me-2"></i>
-                                        Select Default Model
-                                    </button>
-                                </li>
-                                @if (!provider.IsDefault)
-                                {
-                                    <li>
-                                        <button class="dropdown-item" @onclick="@(() => MakeDefault(provider))"
-                                                @onclick:stopPropagation="true">
-                                            <i class="bi bi-check2-circle me-2"></i>
-                                            Set as Default
-                                        </button>
-                                    </li>
-                                }
-                                <li>
-                                    <button class="dropdown-item" @onclick="@(() => EditProvider(provider))"
-                                            @onclick:stopPropagation="true">
-                                        <i class="bi bi-pencil me-2"></i>
-                                        Edit
-                                    </button>
-                                </li>
-                                <li>
-                                    <hr class="dropdown-divider">
-                                </li>
-                                <li>
-                                    <button class="dropdown-item text-danger"
-                                            @onclick="@(() => ShowDeleteConfirmation(provider))" @onclick:stopPropagation="true">
-                                        <i class="bi bi-trash me-2"></i>
-                                        Delete
-                                    </button>
-                                </li>
-                            </ul>
-                        </div>
-                    </div>
-                </div>
-                @* Models section below main flex row *@
-                @if (ProviderModels.TryGetValue(provider.Id, out var models) && models.Any())
-                {
-                    <div class="mt-2 pt-2 border-top ms-3 ms-md-5 ps-2">
-                        <span class="fw-medium small text-body-secondary">Models:</span>
-                        <div class="d-flex flex-wrap gap-1 mt-1">
-                            @foreach (var model in models.Where(m => m.IsAvailable).Take(5))
-                            {
-                                <span
-                                    class="badge @(model.IsDefault ? "bg-primary bg-opacity-75" : "bg-secondary-subtle text-secondary-emphasis")"
-                                    title="@model.ModelId">
-                                    @(model.DisplayName ?? model.ModelId)
-                                </span>
-                            }
-                            @if (models.Count(m => m.IsAvailable) > 5)
-                            {
-                                <span class="badge bg-secondary bg-opacity-50">+@(models.Count(m => m.IsAvailable) - 5)
-                                    more</span>
-                                }
-                            </div>
-                            @if (provider.LastModelsRefreshAt.HasValue)
-                            {
-                                <small class="text-body-tertiary d-block mt-1">
-                                    Updated @provider.LastModelsRefreshAt.Value.FormatDateTimeShort()
-                                </small>
-                            }
-                        </div>
-                    }
-                </div>
-            }
-        </div>
-    }
+		<div>
+			@if (!ProvidersList.Any())
+			{
+				<EmptyState Icon="cpu" Title="No providers configured"
+							Message="Use Quick Setup above or add a custom provider manually." />
+			}
+			else
+			{
+				<div class="list-group">
+					@foreach (var provider in ProvidersList)
+					{
+						<div class="list-group-item p-3 hover-bg-tertiary @(provider.IsDefault ? "bg-success bg-opacity-10" : "")">
+							<div class="d-flex align-items-start gap-2 gap-md-3">
+								@* Enable toggle on left side *@
+								<div class="flex-shrink-0 pt-1">
+									<label class="toggle-switch" title="@(provider.IsEnabled ? "Disable" : "Enable")">
+										<input type="checkbox" checked="@provider.IsEnabled" @onchange="() => ToggleEnabled(provider)" />
+										<span class="toggle-slider"></span>
+									</label>
+								</div>
+								<div class="flex-grow-1 min-width-0">
+									<div class="d-flex align-items-center gap-2 flex-wrap">
+										<span class="fw-semibold">@provider.Name</span>
+										@if (provider.IsDefault)
+										{
+											<span class="badge text-bg-success text-uppercase" style="font-size: 0.7rem;">Default</span>
+										}
+										<StatusBadge Status="@(provider.IsEnabled ? "Active" : "Off")" ShowSpinner="false" />
+									</div>
+									<div class="d-flex flex-wrap gap-2 gap-md-3 mt-2">
+										<span class="badge bg-primary-subtle text-primary-emphasis">
+											<i class="bi bi-@GetProviderTypeIcon(provider.Type) me-1"></i>@provider.Type
+										</span>
+										<span class="badge bg-info-subtle text-info-emphasis">
+											<i class="bi bi-@GetConnectionModeIcon(provider.ConnectionMode) me-1"></i>@provider.ConnectionMode
+										</span>
+										@if (GetCliVersion(provider.Id) is string version && !string.IsNullOrEmpty(version))
+										{
+											<span class="badge bg-secondary-subtle text-secondary-emphasis text-truncate"
+												  style="max-width: min(200px, 50vw);" title="@version">
+												<i class="bi bi-tag me-1"></i>@TruncateVersion(version)
+											</span>
+										}
+									</div>
+									@if (GetUsageSummary(provider.Id) is ProviderUsageSummary summary && summary.EffectiveMaxUsage > 0)
+									{
+										<div class="mt-2" style="max-width: min(300px, 100%);">
+											<UsageMeter UsageSummary="summary" ShowResetTime="true" />
+										</div>
+									}
+									@if (TestResults.TryGetValue(provider.Id, out var result))
+									{
+										<div class="mt-2 p-2 rounded-2 @(result.IsConnected ? "text-success bg-success bg-opacity-10" : "text-danger bg-danger bg-opacity-10")">
+											<strong>@(result.IsConnected ? "Connected" : "Connection Failed")</strong>
+											@if (!result.IsConnected && !string.IsNullOrEmpty(result.ErrorMessage))
+											{
+												<div class="mt-1">
+													<pre class="mb-0 small text-break overflow-auto">@result.ErrorMessage</pre>
+												</div>
+											}
+										</div>
+									}
+									@if (RefreshModelsErrors.TryGetValue(provider.Id, out var refreshError) &&
+												!string.IsNullOrEmpty(refreshError))
+									{
+										<Alert Type="Alert.AlertType.Warning" Message="@refreshError" Class="mt-2 mb-0 py-2 px-3 small" />
+									}
+								</div>
+								<div class="d-flex align-items-center gap-2 flex-shrink-0">
+									@* Test connection button *@
+									<ActionButton Icon="lightning" Text="Test" Size="ActionButton.ButtonSize.Small" HideTextOnMobile="true"
+												  IsLoading="@(TestingId == provider.Id)" OnClick="@(() => TestConnection(provider))" />
+
+									@* Gear dropdown menu *@
+									<div class="dropdown">
+										<button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
+												id="provider-menu-@provider.Id" data-bs-toggle="dropdown" aria-expanded="false"
+												title="Provider actions">
+											<i class="bi bi-gear"></i>
+										</button>
+										<ul class="dropdown-menu dropdown-menu-end" aria-labelledby="provider-menu-@provider.Id">
+											<li>
+												<button class="dropdown-item" @onclick="@(() => RefreshModels(provider))"
+														@onclick:stopPropagation="true" disabled="@(RefreshingModelsId == provider.Id)">
+													<i class="bi bi-arrow-repeat me-2 @(RefreshingModelsId == provider.Id ? "spin" : "")"></i>
+													Refresh Models
+												</button>
+											</li>
+											<li>
+												<button class="dropdown-item" @onclick="@(() => UpdateCli(provider))"
+														@onclick:stopPropagation="true"
+														disabled="@(UpdatingCliId == provider.Id || provider.ConnectionMode == ProviderConnectionMode.SDK)">
+													<i class="bi bi-download me-2 @(UpdatingCliId == provider.Id ? "spin" : "")"></i>
+													@(provider.ConnectionMode == ProviderConnectionMode.SDK ? "Update via NuGet" : "Update CLI")
+												</button>
+											</li>
+											<li>
+												<button class="dropdown-item" @onclick="@(() => ShowSelectDefaultModelModal(provider))"
+														@onclick:stopPropagation="true">
+													<i class="bi bi-star me-2"></i>
+													Select Default Model
+												</button>
+											</li>
+											@if (!provider.IsDefault)
+											{
+												<li>
+													<button class="dropdown-item" @onclick="@(() => MakeDefault(provider))"
+															@onclick:stopPropagation="true">
+														<i class="bi bi-check2-circle me-2"></i>
+														Set as Default
+													</button>
+												</li>
+											}
+											<li>
+												<button class="dropdown-item" @onclick="@(() => EditProvider(provider))"
+														@onclick:stopPropagation="true">
+													<i class="bi bi-pencil me-2"></i>
+													Edit
+												</button>
+											</li>
+											<li>
+												<hr class="dropdown-divider">
+											</li>
+											<li>
+												<button class="dropdown-item text-danger"
+														@onclick="@(() => ShowDeleteConfirmation(provider))" @onclick:stopPropagation="true">
+													<i class="bi bi-trash me-2"></i>
+													Delete
+												</button>
+											</li>
+										</ul>
+									</div>
+								</div>
+							</div>
+							@if (ProviderModels.TryGetValue(provider.Id, out var models) && models.Any())
+							{
+								<div class="mt-2 pt-2 border-top ms-3 ms-md-5 ps-2">
+									<span class="fw-medium small text-body-secondary">Models:</span>
+									<div class="d-flex flex-wrap gap-1 mt-1">
+										@foreach (var model in models.Where(m => m.IsAvailable).Take(5))
+										{
+											<span class="badge @(model.IsDefault ? "bg-primary bg-opacity-75" : "bg-secondary-subtle text-secondary-emphasis")"
+												  title="@model.ModelId">
+												@(model.DisplayName ?? model.ModelId)
+											</span>
+										}
+										@if (models.Count(m => m.IsAvailable) > 5)
+										{
+											<span class="badge bg-secondary bg-opacity-50">+@(models.Count(m => m.IsAvailable) - 5) more</span>
+										}
+									</div>
+									@if (provider.LastModelsRefreshAt.HasValue)
+									{
+										<small class="text-body-tertiary d-block mt-1">
+											Updated @provider.LastModelsRefreshAt.Value.FormatDateTimeShort()
+										</small>
+									}
+								</div>
+							}
+						</div>
+					}
+				</div>
+			}
+		</div>
+	</div>
+}
 
 @* Provider Modal for Add/Edit *@
 <ProviderModal @bind-IsVisible="ShowProviderModal" EditProvider="@EditingProvider" OnSaved="HandleProviderSaved"
@@ -212,6 +235,9 @@ else
     private Dictionary<Guid, ConnectionTestResult> TestResults { get; set; } = new();
     private Dictionary<Guid, List<ProviderModel>> ProviderModels { get; set; } = new();
     private Dictionary<Guid, ProviderUsageSummary> UsageSummaries { get; set; } = new();
+    private List<CommonProviderSetupStatus> CommonProviderStatuses { get; set; } = new();
+    private ProviderType? InstallingProviderType { get; set; }
+    private ProviderType? SavingAuthenticationProviderType { get; set; }
 
     // Delete confirmation state
     private bool ShowDeleteModal { get; set; }
@@ -227,10 +253,10 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        await LoadProviders();
+        await LoadPageData();
     }
 
-    private async Task LoadProviders()
+    private async Task LoadPageData()
     {
         IsLoading = true;
         try
@@ -247,6 +273,7 @@ else
 
             // Load usage summaries
             UsageSummaries = await HttpProviderService.GetAllUsageSummariesAsync();
+            CommonProviderStatuses = (await CommonProviderSetupService.GetStatusesAsync()).ToList();
         }
         finally
         {
@@ -315,7 +342,7 @@ else
     {
         ShowProviderModal = false;
         EditingProvider = null;
-        await LoadProviders();
+        await LoadPageData();
 
         // If a new provider was created, test connection and refresh models if successful
         if (newProviderId.HasValue)
@@ -376,7 +403,7 @@ else
             await ProviderService.DeleteAsync(ProviderToDelete.Id);
             ShowDeleteModal = false;
             ProviderToDelete = null;
-            await LoadProviders();
+            await LoadPageData();
         }
         finally
         {
@@ -389,7 +416,7 @@ else
         try
         {
             await ProviderService.SetEnabledAsync(provider.Id, !provider.IsEnabled);
-            await LoadProviders();
+            await LoadPageData();
         }
         catch (Exception ex)
         {
@@ -402,7 +429,7 @@ else
         try
         {
             await ProviderService.SetDefaultAsync(provider.Id);
-            await LoadProviders();
+            await LoadPageData();
         }
         catch (Exception ex)
         {
@@ -447,7 +474,7 @@ else
             ProviderModels[provider.Id] = models.ToList();
 
             // Reload the provider to get updated LastModelsRefreshAt
-            await LoadProviders();
+            await LoadPageData();
         }
         catch (TimeoutException ex)
         {
@@ -496,6 +523,73 @@ else
         finally
         {
             UpdatingCliId = null;
+            StateHasChanged();
+        }
+    }
+
+    private async Task InstallCommonProviderAsync(ProviderType providerType)
+    {
+        InstallingProviderType = providerType;
+        try
+        {
+            var result = await CommonProviderSetupService.InstallAsync(providerType);
+            if (result.Success)
+            {
+                NotificationService.ShowSuccess(result.Message, "Provider Installed");
+            }
+            else
+            {
+                NotificationService.ShowError(result.ErrorMessage ?? $"Failed to install {providerType}.", "Install Failed");
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.ShowError($"Error installing {providerType}: {ex.Message}", "Install Failed");
+        }
+        finally
+        {
+            InstallingProviderType = null;
+            await LoadPageData();
+            StateHasChanged();
+        }
+    }
+
+    private async Task SaveCommonProviderAuthenticationAsync(CommonProviderSetupRequest request)
+    {
+        SavingAuthenticationProviderType = request.ProviderType;
+        try
+        {
+            var result = await CommonProviderSetupService.SaveAuthenticationAsync(request);
+            if (result.Success)
+            {
+                NotificationService.ShowSuccess(result.Message, "Authentication Saved");
+                await LoadPageData();
+
+                if (result.Status?.ProviderId is Guid providerId)
+                {
+                    var provider = ProvidersList.FirstOrDefault(item => item.Id == providerId);
+                    if (provider != null)
+                    {
+                        await TestConnection(provider);
+                        if (TestResults.TryGetValue(provider.Id, out var connectionResult) && connectionResult.IsConnected)
+                        {
+                            await RefreshModels(provider);
+                        }
+                    }
+                }
+            }
+            else
+            {
+                NotificationService.ShowError(result.ErrorMessage ?? $"Failed to save authentication for {request.ProviderType}.", "Authentication Failed");
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.ShowError($"Error saving authentication for {request.ProviderType}: {ex.Message}", "Authentication Failed");
+        }
+        finally
+        {
+            SavingAuthenticationProviderType = null;
             StateHasChanged();
         }
     }
