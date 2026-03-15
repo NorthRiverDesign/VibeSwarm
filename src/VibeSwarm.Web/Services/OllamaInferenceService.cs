@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using VibeSwarm.Shared.Data;
@@ -15,6 +16,7 @@ public class OllamaInferenceService : IInferenceService
 {
 	private readonly IHttpClientFactory _httpClientFactory;
 	private readonly IInferenceProviderService _providerService;
+	private readonly RuntimeOptions _runtimeOptions;
 
 	private static readonly JsonSerializerOptions JsonOptions = new()
 	{
@@ -22,10 +24,14 @@ public class OllamaInferenceService : IInferenceService
 		DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
 	};
 
-	public OllamaInferenceService(IHttpClientFactory httpClientFactory, IInferenceProviderService providerService)
+	public OllamaInferenceService(
+		IHttpClientFactory httpClientFactory,
+		IInferenceProviderService providerService,
+		RuntimeOptions? runtimeOptions = null)
 	{
 		_httpClientFactory = httpClientFactory;
 		_providerService = providerService;
+		_runtimeOptions = runtimeOptions ?? new RuntimeOptions();
 	}
 
 	public async Task<InferenceHealthResult> CheckHealthAsync(string? endpoint = null, CancellationToken ct = default)
@@ -35,7 +41,7 @@ public class OllamaInferenceService : IInferenceService
 
 		try
 		{
-			using var client = CreateClient(TimeSpan.FromSeconds(5));
+			using var client = CreateClient(_runtimeOptions.HealthCheckTimeout);
 
 			// Check if Ollama is responding
 			var response = await client.GetAsync(endpoint, ct);
@@ -68,7 +74,7 @@ public class OllamaInferenceService : IInferenceService
 
 		try
 		{
-			using var client = CreateClient(TimeSpan.FromSeconds(10));
+			using var client = CreateClient(_runtimeOptions.ModelDiscoveryTimeout);
 			var response = await client.GetAsync($"{endpoint}/api/tags", ct);
 			response.EnsureSuccessStatusCode();
 
@@ -120,14 +126,12 @@ public class OllamaInferenceService : IInferenceService
 
 		try
 		{
-			using var client = CreateClient(TimeSpan.FromMinutes(10));
-
 			var ollamaRequest = new OllamaGenerateRequest
 			{
 				Model = model,
 				Prompt = request.Prompt,
 				System = request.SystemPrompt,
-				Stream = false,
+				Stream = true,
 				Options = (request.Temperature.HasValue || request.MaxTokens.HasValue)
 					? new OllamaOptions
 					{
@@ -137,22 +141,11 @@ public class OllamaInferenceService : IInferenceService
 					: null
 			};
 
-			var response = await client.PostAsJsonAsync($"{endpoint}/api/generate", ollamaRequest, JsonOptions, ct);
-			response.EnsureSuccessStatusCode();
-
-			var ollamaResponse = await response.Content.ReadFromJsonAsync<OllamaGenerateResponse>(JsonOptions, ct);
-
-			return new InferenceResponse
-			{
-				Success = true,
-				Response = ollamaResponse?.Response,
-				ModelUsed = model,
-				DurationMs = ollamaResponse?.TotalDuration.HasValue == true
-					? ollamaResponse.TotalDuration.Value / 1_000_000 // nanoseconds to ms
-					: null,
-				PromptTokens = ollamaResponse?.PromptEvalCount,
-				CompletionTokens = ollamaResponse?.EvalCount
-			};
+			return await GenerateStreamingAsync(endpoint, model, ollamaRequest, ct);
+		}
+		catch (OperationCanceledException) when (ct.IsCancellationRequested)
+		{
+			throw;
 		}
 		catch (Exception ex)
 		{
@@ -183,6 +176,231 @@ public class OllamaInferenceService : IInferenceService
 		client.Timeout = timeout;
 		return client;
 	}
+
+	private async Task<InferenceResponse> GenerateStreamingAsync(
+		string endpoint,
+		string model,
+		OllamaGenerateRequest ollamaRequest,
+		CancellationToken ct)
+	{
+		using var client = CreateClient(Timeout.InfiniteTimeSpan);
+		using var generationCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+		generationCts.CancelAfter(_runtimeOptions.GenerationTimeout);
+
+		using var request = new HttpRequestMessage(HttpMethod.Post, $"{endpoint}/api/generate")
+		{
+			Content = new StringContent(
+				JsonSerializer.Serialize(ollamaRequest, JsonOptions),
+				Encoding.UTF8,
+				"application/json")
+		};
+
+		try
+		{
+			using var response = await client.SendAsync(
+				request,
+				HttpCompletionOption.ResponseHeadersRead,
+				generationCts.Token);
+
+			if (!response.IsSuccessStatusCode)
+			{
+				return new InferenceResponse
+				{
+					Success = false,
+					Error = await BuildHttpFailureMessageAsync(response, generationCts.Token),
+					ModelUsed = model
+				};
+			}
+
+			await using var responseStream = await response.Content.ReadAsStreamAsync(generationCts.Token);
+			using var reader = new StreamReader(responseStream);
+			var combinedResponse = new StringBuilder();
+			var receivedAnyChunk = false;
+			OllamaGenerateResponse? finalChunk = null;
+
+			while (true)
+			{
+				string? line;
+				try
+				{
+					var waitTimeout = receivedAnyChunk
+						? _runtimeOptions.StreamInactivityTimeout
+						: _runtimeOptions.InitialResponseTimeout;
+					line = await ReadLineWithTimeoutAsync(reader, waitTimeout, generationCts.Token);
+				}
+				catch (TimeoutException ex)
+				{
+					return new InferenceResponse
+					{
+						Success = false,
+						Error = ex.Message,
+						ModelUsed = model
+					};
+				}
+
+				if (line == null)
+				{
+					break;
+				}
+
+				if (string.IsNullOrWhiteSpace(line))
+				{
+					continue;
+				}
+
+				OllamaGenerateResponse? chunk;
+				try
+				{
+					chunk = JsonSerializer.Deserialize<OllamaGenerateResponse>(line, JsonOptions);
+				}
+				catch (JsonException ex)
+				{
+					return new InferenceResponse
+					{
+						Success = false,
+						Error = $"Received an invalid streaming response from Ollama: {ex.Message}",
+						ModelUsed = model
+					};
+				}
+
+				if (chunk == null)
+				{
+					continue;
+				}
+
+				receivedAnyChunk = true;
+				finalChunk = chunk;
+
+				if (!string.IsNullOrEmpty(chunk.Error))
+				{
+					return new InferenceResponse
+					{
+						Success = false,
+						Error = chunk.Error,
+						ModelUsed = chunk.Model ?? model
+					};
+				}
+
+				if (!string.IsNullOrEmpty(chunk.Response))
+				{
+					combinedResponse.Append(chunk.Response);
+				}
+
+				if (chunk.Done)
+				{
+					break;
+				}
+			}
+
+			if (!receivedAnyChunk)
+			{
+				return new InferenceResponse
+				{
+					Success = false,
+					Error = BuildNoResponseMessage(model),
+					ModelUsed = model
+				};
+			}
+
+			if (finalChunk?.Done != true)
+			{
+				return new InferenceResponse
+				{
+					Success = false,
+					Error = BuildIncompleteStreamMessage(model),
+					ModelUsed = finalChunk?.Model ?? model
+				};
+			}
+
+			var responseText = combinedResponse.ToString();
+			if (string.IsNullOrWhiteSpace(responseText))
+			{
+				return new InferenceResponse
+				{
+					Success = false,
+					Error = $"Model '{finalChunk.Model ?? model}' finished without returning any text.",
+					ModelUsed = finalChunk.Model ?? model
+				};
+			}
+
+			return new InferenceResponse
+			{
+				Success = true,
+				Response = responseText,
+				ModelUsed = finalChunk.Model ?? model,
+				DurationMs = finalChunk.TotalDuration.HasValue
+					? finalChunk.TotalDuration.Value / 1_000_000
+					: null,
+				PromptTokens = finalChunk.PromptEvalCount,
+				CompletionTokens = finalChunk.EvalCount
+			};
+		}
+		catch (OperationCanceledException) when (ct.IsCancellationRequested)
+		{
+			throw;
+		}
+		catch (OperationCanceledException) when (generationCts.IsCancellationRequested)
+		{
+			return new InferenceResponse
+			{
+				Success = false,
+				Error = $"Timed out waiting for local inference after {_runtimeOptions.GenerationTimeout.TotalMinutes:F0} minutes. Slow devices may need a smaller model or more available memory.",
+				ModelUsed = model
+			};
+		}
+	}
+
+	private static async Task<string?> ReadLineWithTimeoutAsync(StreamReader reader, TimeSpan timeout, CancellationToken ct)
+	{
+		using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+		timeoutCts.CancelAfter(timeout);
+
+		try
+		{
+			return await reader.ReadLineAsync().WaitAsync(timeoutCts.Token);
+		}
+		catch (OperationCanceledException) when (!ct.IsCancellationRequested && timeoutCts.IsCancellationRequested)
+		{
+			throw new TimeoutException($"Timed out waiting {timeout.TotalMinutes:F0} minute(s) for local inference to respond.");
+		}
+	}
+
+	private static async Task<string> BuildHttpFailureMessageAsync(HttpResponseMessage response, CancellationToken ct)
+	{
+		try
+		{
+			var body = (await response.Content.ReadAsStringAsync(ct)).Trim();
+			if (!string.IsNullOrEmpty(body))
+			{
+				try
+				{
+					var errorResponse = JsonSerializer.Deserialize<OllamaGenerateResponse>(body, JsonOptions);
+					if (!string.IsNullOrWhiteSpace(errorResponse?.Error))
+					{
+						return errorResponse.Error;
+					}
+				}
+				catch (JsonException)
+				{
+					// Fall back to the raw response body below.
+				}
+
+				return $"Ollama returned {(int)response.StatusCode} ({response.ReasonPhrase}): {body}";
+			}
+		}
+		catch
+		{
+			// Fall back to status-only error.
+		}
+
+		return $"Ollama returned {(int)response.StatusCode} ({response.ReasonPhrase}).";
+	}
+
+	private string BuildNoResponseMessage(string model)
+		=> $"Model '{model}' did not return any response data before the connection closed. The inference server may have crashed or restarted while loading the model.";
+
+	private string BuildIncompleteStreamMessage(string model)
+		=> $"Model '{model}' stopped before finishing its response. This often means local inference crashed, the device ran out of memory, or the Ollama process was restarted.";
 
 	private async Task<string> ResolveEndpointAsync(CancellationToken ct)
 	{
@@ -233,9 +451,22 @@ public class OllamaInferenceService : IInferenceService
 
 	private class OllamaGenerateResponse
 	{
+		public string? Model { get; set; }
 		public string? Response { get; set; }
+		public bool Done { get; set; }
+		public string? DoneReason { get; set; }
+		public string? Error { get; set; }
 		public long? TotalDuration { get; set; }
 		public int? PromptEvalCount { get; set; }
 		public int? EvalCount { get; set; }
+	}
+
+	public sealed class RuntimeOptions
+	{
+		public TimeSpan HealthCheckTimeout { get; init; } = TimeSpan.FromSeconds(5);
+		public TimeSpan ModelDiscoveryTimeout { get; init; } = TimeSpan.FromSeconds(10);
+		public TimeSpan InitialResponseTimeout { get; init; } = TimeSpan.FromMinutes(15);
+		public TimeSpan StreamInactivityTimeout { get; init; } = TimeSpan.FromMinutes(5);
+		public TimeSpan GenerationTimeout { get; init; } = TimeSpan.FromMinutes(30);
 	}
 }
