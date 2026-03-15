@@ -220,12 +220,6 @@
     {
         _changePasswordError = null;
 
-        if (_changePasswordModel.NewPassword != _changePasswordModel.ConfirmPassword)
-        {
-            _changePasswordError = "New password and confirmation do not match.";
-            return;
-        }
-
         _isChangingPassword = true;
 
         try
@@ -672,23 +666,4 @@ return true;
         }
     }
 
-    public class ChangePasswordModel
-    {
-        [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "Current password is required.")]
-        public string CurrentPassword { get; set; } = string.Empty;
-
-        [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "New password is required.")]
-        [System.ComponentModel.DataAnnotations.MinLength(8, ErrorMessage = "Password must be at least 8 characters.")]
-        public string NewPassword { get; set; } = string.Empty;
-
-        [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "Please confirm your new password.")]
-        [System.ComponentModel.DataAnnotations.Compare(nameof(NewPassword), ErrorMessage = "Passwords do not match.")]
-        public string ConfirmPassword { get; set; } = string.Empty;
-    }
-
-    public class ChangePasswordResult
-    {
-        public bool Success { get; set; }
-        public string? Message { get; set; }
-    }
 }
