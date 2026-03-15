@@ -1467,11 +1467,6 @@ public sealed class VersionControlService : IVersionControlService
 	{
 		try
 		{
-			if (!Directory.Exists(workingDirectory))
-			{
-				return GitOperationResult.Failed($"Directory does not exist: {workingDirectory}");
-			}
-
 			// Check if gh CLI is available
 			var ghAvailable = await IsGitHubCliAvailableAsync(cancellationToken);
 			if (!ghAvailable)
@@ -1486,14 +1481,29 @@ public sealed class VersionControlService : IVersionControlService
 				return GitOperationResult.Failed("Not authenticated with GitHub CLI. Please run 'gh auth login' to authenticate.");
 			}
 
+			var fullWorkingDirectory = Path.GetFullPath(workingDirectory);
+			if (!Directory.Exists(fullWorkingDirectory) || !Directory.EnumerateFileSystemEntries(fullWorkingDirectory).Any())
+			{
+				return await CreateAndCloneGitHubRepositoryAsync(
+					fullWorkingDirectory,
+					repositoryName,
+					description,
+					isPrivate,
+					progressCallback,
+					cancellationToken,
+					gitignoreTemplate,
+					licenseTemplate,
+					initializeReadme);
+			}
+
 			progressCallback?.Invoke("Checking git repository status...");
 
 			// Check if it's a git repository, if not initialize it
-			var isRepo = await IsGitRepositoryAsync(workingDirectory, cancellationToken);
+			var isRepo = await IsGitRepositoryAsync(fullWorkingDirectory, cancellationToken);
 			if (!isRepo)
 			{
 				progressCallback?.Invoke("Initializing git repository...");
-				var initResult = await InitializeRepositoryAsync(workingDirectory, cancellationToken);
+				var initResult = await InitializeRepositoryAsync(fullWorkingDirectory, cancellationToken);
 				if (!initResult.Success)
 				{
 					return GitOperationResult.Failed($"Failed to initialize git repository: {initResult.Error}");
@@ -1501,7 +1511,7 @@ public sealed class VersionControlService : IVersionControlService
 			}
 
 			// Check if remote already exists
-			var existingRemote = await GetRemoteUrlAsync(workingDirectory, "origin", cancellationToken);
+			var existingRemote = await GetRemoteUrlAsync(fullWorkingDirectory, "origin", cancellationToken);
 			if (!string.IsNullOrEmpty(existingRemote))
 			{
 				return GitOperationResult.Failed($"Remote 'origin' already exists: {existingRemote}");
@@ -1529,14 +1539,14 @@ public sealed class VersionControlService : IVersionControlService
 			var result = await _commandExecutor.ExecuteRawAsync(
 				"gh",
 				ghArgs,
-				workingDirectory,
+				fullWorkingDirectory,
 				cancellationToken,
 				timeoutSeconds: 120);
 
 			if (result.Success)
 			{
 				// Try to get the new remote URL
-				var newRemoteUrl = await GetRemoteUrlAsync(workingDirectory, "origin", cancellationToken);
+				var newRemoteUrl = await GetRemoteUrlAsync(fullWorkingDirectory, "origin", cancellationToken);
 
 				progressCallback?.Invoke("Repository created successfully!");
 
@@ -1564,6 +1574,117 @@ public sealed class VersionControlService : IVersionControlService
 		{
 			return GitOperationResult.Failed($"Unexpected error creating GitHub repository: {ex.Message}");
 		}
+	}
+
+	private async Task<GitOperationResult> CreateAndCloneGitHubRepositoryAsync(
+		string workingDirectory,
+		string repositoryName,
+		string? description,
+		bool isPrivate,
+		Action<string>? progressCallback,
+		CancellationToken cancellationToken,
+		string? gitignoreTemplate,
+		string? licenseTemplate,
+		bool initializeReadme)
+	{
+		var parentDirectory = Path.GetDirectoryName(workingDirectory);
+		if (string.IsNullOrWhiteSpace(parentDirectory))
+		{
+			return GitOperationResult.Failed($"Unable to determine a parent directory for '{workingDirectory}'.");
+		}
+
+		Directory.CreateDirectory(parentDirectory);
+
+		var targetDirectoryExists = Directory.Exists(workingDirectory);
+		if (targetDirectoryExists && Directory.EnumerateFileSystemEntries(workingDirectory).Any())
+		{
+			return GitOperationResult.Failed($"Target directory must be empty before creating and cloning a new repository: {workingDirectory}");
+		}
+
+		if (targetDirectoryExists)
+		{
+			Directory.Delete(workingDirectory);
+		}
+
+		var cloneDirectoryName = GetRepositoryDirectoryName(repositoryName);
+		var cloneDirectory = Path.Combine(parentDirectory, cloneDirectoryName);
+		if (!PathsEqual(cloneDirectory, workingDirectory) && Directory.Exists(cloneDirectory))
+		{
+			return GitOperationResult.Failed($"A directory already exists for the new repository clone: {cloneDirectory}");
+		}
+
+		progressCallback?.Invoke("Creating GitHub repository and cloning workspace...");
+
+		var visibility = isPrivate ? "--private" : "--public";
+		var descArg = !string.IsNullOrWhiteSpace(description)
+			? $"--description \"{description.Replace("\"", "\\\"")}\""
+			: "";
+		var gitignoreArg = !string.IsNullOrEmpty(gitignoreTemplate)
+			? $"--gitignore \"{gitignoreTemplate}\""
+			: "";
+		var licenseArg = !string.IsNullOrEmpty(licenseTemplate)
+			? $"--license \"{licenseTemplate}\""
+			: "";
+		var readmeArg = initializeReadme ? "--add-readme" : "";
+		var ghArgs = $"repo create \"{repositoryName}\" {visibility} {descArg} {gitignoreArg} {licenseArg} {readmeArg} --clone".Trim();
+
+		var result = await _commandExecutor.ExecuteRawAsync(
+			"gh",
+			ghArgs,
+			parentDirectory,
+			cancellationToken,
+			timeoutSeconds: 120);
+
+		if (!result.Success)
+		{
+			if (targetDirectoryExists)
+			{
+				Directory.CreateDirectory(workingDirectory);
+			}
+
+			return ParseCreateRepositoryFailure(result, repositoryName);
+		}
+
+		if (!Directory.Exists(cloneDirectory))
+		{
+			return GitOperationResult.Failed($"GitHub repository was created, but the local clone directory was not found: {cloneDirectory}");
+		}
+
+		if (!PathsEqual(cloneDirectory, workingDirectory))
+		{
+			Directory.Move(cloneDirectory, workingDirectory);
+		}
+
+		progressCallback?.Invoke("Repository created successfully!");
+		return GitOperationResult.Succeeded(output: result.Output?.Trim(), remoteName: "origin");
+	}
+
+	private static GitOperationResult ParseCreateRepositoryFailure(GitCommandResult result, string repositoryName)
+	{
+		var errorMessage = result.Error ?? result.Output ?? "Failed to create GitHub repository.";
+		if (errorMessage.Contains("already exists", StringComparison.OrdinalIgnoreCase))
+		{
+			return GitOperationResult.Failed($"Repository '{repositoryName}' already exists on GitHub. Please choose a different name.");
+		}
+
+		return GitOperationResult.Failed(errorMessage.Trim());
+	}
+
+	private static string GetRepositoryDirectoryName(string repositoryName)
+	{
+		var segments = repositoryName
+			.Replace('\\', '/')
+			.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+		return segments.LastOrDefault() ?? repositoryName;
+	}
+
+	private static bool PathsEqual(string left, string right)
+	{
+		var comparison = OperatingSystem.IsWindows()
+			? StringComparison.OrdinalIgnoreCase
+			: StringComparison.Ordinal;
+		return string.Equals(Path.GetFullPath(left), Path.GetFullPath(right), comparison);
 	}
 
 	/// <inheritdoc />

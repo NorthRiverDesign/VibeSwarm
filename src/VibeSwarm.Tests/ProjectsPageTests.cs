@@ -58,6 +58,7 @@ public sealed class ProjectsPageTests
 		public Task<Project?> GetByIdWithJobsAsync(Guid id, CancellationToken cancellationToken = default)
 			=> Task.FromResult<Project?>(id == _project.Id ? new Project { Id = _project.Id, Name = _project.Name, WorkingPath = _project.WorkingPath, IsActive = _project.IsActive, Jobs = [] } : null);
 		public Task<Project> CreateAsync(Project project, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<Project> CreateProjectAsync(ProjectCreationRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<Project> UpdateAsync(Project project, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task DeleteAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<IEnumerable<ProjectWithStats>> GetAllWithStatsAsync(CancellationToken cancellationToken = default)

@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using VibeSwarm.Shared.Data;
+using VibeSwarm.Shared.Models;
 using VibeSwarm.Shared.Services;
 
 namespace VibeSwarm.Client.Services;
@@ -27,6 +28,13 @@ public class HttpProjectService : IProjectService
         var response = await _http.PostAsJsonAsync("/api/projects", project, ct);
         await EnsureSuccessAsync(response, ct);
         return await response.Content.ReadFromJsonAsync<Project>(ct) ?? project;
+    }
+
+    public async Task<Project> CreateProjectAsync(ProjectCreationRequest request, CancellationToken ct = default)
+    {
+        var response = await _http.PostAsJsonAsync("/api/projects/provision", request, ct);
+        await EnsureSuccessAsync(response, ct);
+        return await response.Content.ReadFromJsonAsync<Project>(ct) ?? request.Project;
     }
 
     public async Task<Project> UpdateAsync(Project project, CancellationToken ct = default)

@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using VibeSwarm.Shared.Data;
+using VibeSwarm.Shared.Models;
 using VibeSwarm.Shared.Services;
 
 namespace VibeSwarm.Web.Controllers;
@@ -41,6 +42,35 @@ public class ProjectsController : ControllerBase
         try
         {
             return Ok(await _projectService.CreateAsync(project, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return ex.Message.Contains("not found", StringComparison.OrdinalIgnoreCase)
+                ? NotFound(new { error = ex.Message })
+                : BadRequest(new { error = ex.Message });
+        }
+        catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("FOREIGN KEY") == true ||
+                                           ex.InnerException?.Message.Contains("foreign key") == true)
+        {
+            return BadRequest(new { error = "One or more selected providers do not exist." });
+        }
+        catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("UNIQUE") == true ||
+                                           ex.InnerException?.Message.Contains("unique") == true)
+        {
+            return BadRequest(new { error = "Duplicate provider or environment name selected for this project." });
+        }
+        catch (DbUpdateException ex)
+        {
+            return BadRequest(new { error = ex.InnerException?.Message ?? ex.Message });
+        }
+    }
+
+    [HttpPost("provision")]
+    public async Task<IActionResult> CreateProject([FromBody] ProjectCreationRequest request, CancellationToken ct)
+    {
+        try
+        {
+            return Ok(await _projectService.CreateProjectAsync(request, ct));
         }
         catch (InvalidOperationException ex)
         {

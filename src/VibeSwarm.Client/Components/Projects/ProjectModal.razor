@@ -1,14 +1,12 @@
 @* Modal component for adding and editing projects *@
 @using VibeSwarm.Client.Components.Projects
 @using VibeSwarm.Shared.Data
+@using VibeSwarm.Shared.Models
 @using VibeSwarm.Shared.Providers
 @using VibeSwarm.Shared.Services
-@using VibeSwarm.Shared.VersionControl
-@using VibeSwarm.Shared.VersionControl.Models
 @inject IProjectService ProjectService
 @inject IProviderService ProviderService
 @inject ISettingsService SettingsService
-@inject IVersionControlService VersionControlService
 @inject NotificationService NotificationService
 
 <ModalDialog IsVisible="IsVisible" IsVisibleChanged="HandleModalVisibilityChanged"
@@ -34,18 +32,134 @@
 			@if (!IsEdit)
 			{
 				<div class="mb-3">
-					<label for="modal-githubRepo" class="form-label">
-						<i class="bi bi-github me-1"></i>GitHub Repository
-						<span class="text-body-secondary fw-normal">(optional)</span>
+					<label class="form-label d-flex align-items-center gap-2 mb-2">
+						<i class="bi bi-box-arrow-in-down-right"></i>
+						<span>Project Source</span>
 					</label>
-					<div class="input-group">
-						<span class="input-group-text">github.com/</span>
-						<InputText id="modal-githubRepo" @bind-Value="Project.GitHubRepository" class="form-control"
-								   placeholder="owner/repo" @oninput="OnGitHubRepoChanged" />
-					</div>
-					<div class="form-text">
-						Enter a GitHub repository to clone (e.g., <code>microsoft/vscode</code>).
-						The repository will be cloned to the working path when creating the project.
+					<div class="border rounded p-3 bg-body-tertiary">
+						<div class="d-grid gap-2">
+							<button type="button" class="btn @(GetSourceModeButtonClass(ProjectCreationMode.ExistingDirectory)) text-start"
+									@onclick="() => SelectSourceMode(ProjectCreationMode.ExistingDirectory)">
+								<div class="fw-semibold"><i class="bi bi-folder2-open me-2"></i>Use Existing Local Directory</div>
+								<div class="small text-body-secondary mt-1">Point the project at a local working path without cloning or creating a GitHub repo.</div>
+							</button>
+							<button type="button" class="btn @(GetSourceModeButtonClass(ProjectCreationMode.CloneGitHubRepository)) text-start"
+									@onclick="() => SelectSourceMode(ProjectCreationMode.CloneGitHubRepository)">
+								<div class="fw-semibold"><i class="bi bi-github me-2"></i>Clone Existing GitHub Repository</div>
+								<div class="small text-body-secondary mt-1">Clone an existing GitHub repository into a new local project workspace.</div>
+							</button>
+							<button type="button" class="btn @(GetSourceModeButtonClass(ProjectCreationMode.CreateGitHubRepository)) text-start"
+									@onclick="() => SelectSourceMode(ProjectCreationMode.CreateGitHubRepository)">
+								<div class="fw-semibold"><i class="bi bi-cloud-plus me-2"></i>Create New GitHub Repository</div>
+								<div class="small text-body-secondary mt-1">Create a repository on GitHub and set up this project around it.</div>
+							</button>
+						</div>
+
+						@if (_creationMode == ProjectCreationMode.CloneGitHubRepository)
+						{
+							<div class="mt-3 pt-3 border-top">
+								<label for="modal-githubRepo" class="form-label">
+									<i class="bi bi-github me-1"></i>GitHub Repository
+								</label>
+								<div class="input-group">
+									<span class="input-group-text">github.com/</span>
+									<input id="modal-githubRepo" type="text" class="form-control"
+										   value="@_gitHubRepositoryInput" @oninput="OnGitHubRepositoryChanged"
+										   placeholder="owner/repo" />
+								</div>
+								<div class="form-text">
+									Enter a GitHub repository to clone (for example, <code>microsoft/vscode</code>).
+								</div>
+							</div>
+						}
+						else if (_creationMode == ProjectCreationMode.CreateGitHubRepository)
+						{
+							<div class="mt-3 pt-3 border-top">
+								<div class="mb-3">
+									<label for="modal-newGithubRepo" class="form-label">
+										<i class="bi bi-github me-1"></i>Repository Name
+									</label>
+									<input id="modal-newGithubRepo" type="text" class="form-control"
+										   value="@_gitHubRepositoryInput" @oninput="OnGitHubRepositoryChanged"
+										   placeholder="my-project or owner/my-project" />
+									<div class="form-text">
+										Enter either <code>repo-name</code> to create under your authenticated account, or <code>owner/repo-name</code> for an organization or explicit owner.
+									</div>
+								</div>
+
+								<div class="mb-3">
+									<label for="modal-newGithubRepoDescription" class="form-label">
+										Repository Description <span class="text-body-secondary fw-normal">(optional)</span>
+									</label>
+									<input id="modal-newGithubRepoDescription" type="text" class="form-control"
+										   @bind="_newGitHubRepositoryDescription" @bind:event="oninput"
+										   placeholder="A brief description of your project" />
+								</div>
+
+								<div class="mb-3">
+									<label class="form-label">Visibility</label>
+									<div class="d-flex gap-3">
+										<div class="form-check">
+											<input class="form-check-input" type="radio" name="projectVisibility" id="projectVisibilityPublic"
+												   checked="@(!_newGitHubRepositoryPrivate)" @onchange="() => _newGitHubRepositoryPrivate = false">
+											<label class="form-check-label" for="projectVisibilityPublic">
+												<i class="bi bi-globe me-1"></i>Public
+											</label>
+										</div>
+										<div class="form-check">
+											<input class="form-check-input" type="radio" name="projectVisibility" id="projectVisibilityPrivate"
+												   checked="@_newGitHubRepositoryPrivate" @onchange="() => _newGitHubRepositoryPrivate = true">
+											<label class="form-check-label" for="projectVisibilityPrivate">
+												<i class="bi bi-lock me-1"></i>Private
+											</label>
+										</div>
+									</div>
+								</div>
+
+								<div class="mb-3">
+									<label for="modal-newGithubRepoGitignore" class="form-label">
+										.gitignore Template <span class="text-body-secondary fw-normal">(optional)</span>
+									</label>
+									<select id="modal-newGithubRepoGitignore" class="form-select" @bind="_newGitHubGitignoreTemplate">
+										<option value="">None</option>
+										<option value="Node">Node</option>
+										<option value="Python">Python</option>
+										<option value="CSharp">C#</option>
+										<option value="Java">Java</option>
+										<option value="Go">Go</option>
+										<option value="Rust">Rust</option>
+										<option value="VisualStudio">Visual Studio</option>
+										<option value="Unity">Unity</option>
+									</select>
+								</div>
+
+								<div class="mb-3">
+									<label for="modal-newGithubRepoLicense" class="form-label">
+										License <span class="text-body-secondary fw-normal">(optional)</span>
+									</label>
+									<select id="modal-newGithubRepoLicense" class="form-select" @bind="_newGitHubLicenseTemplate">
+										<option value="">None</option>
+										<option value="mit">MIT</option>
+										<option value="apache-2.0">Apache 2.0</option>
+										<option value="gpl-3.0">GPL 3.0</option>
+										<option value="bsd-2-clause">BSD 2-Clause</option>
+										<option value="mpl-2.0">MPL 2.0</option>
+										<option value="unlicense">Unlicense</option>
+									</select>
+								</div>
+
+								<div class="form-check">
+									<input class="form-check-input" type="checkbox" id="modal-newGithubRepoReadme" @bind="_newGitHubInitializeReadme">
+									<label class="form-check-label" for="modal-newGithubRepoReadme">
+										Initialize with README
+									</label>
+								</div>
+
+								<Alert Type="Alert.AlertType.Info" Class="py-2 px-3 small mt-3 mb-0">
+									<span><i class="bi bi-lightbulb me-1"></i>Creating a GitHub repository requires <code>gh auth login</code> on the host machine.</span>
+								</Alert>
+							</div>
+						}
 					</div>
 				</div>
 			}
@@ -61,7 +175,7 @@
 					</button>
 				</div>
 				<ValidationMessage For="@(() => Project.WorkingPath)" class="text-danger small" />
-				<div class="form-text">Directory where CLI providers execute commands.</div>
+				<div class="form-text">@GetWorkingPathHelpText()</div>
 			</div>
 
 			<div class="mb-3">
@@ -294,14 +408,13 @@
 									{
 										<span class="spinner-border spinner-border-sm me-1" role="status"></span>
 									}
-									@if (IsSaving && _isCloning)
+									@if (IsSaving && !string.IsNullOrEmpty(_cloneProgressMessage))
 									{
-										@:Cloning...
+										@_cloneProgressMessage
 									}
 									else
 									{
-										@(IsSaving ? "Saving..." : (IsEdit ? "Update Project" :
-										(!string.IsNullOrWhiteSpace(Project.GitHubRepository) ? "Clone & Create" : "Create Project")))
+										@GetSubmitButtonText()
 									}
 								</button>
 							</div>
@@ -339,13 +452,19 @@
 	private bool IsSaving { get; set; }
 	private string? ErrorMessage { get; set; }
 	private bool _previousIsVisible;
-	private bool _isCloning;
+	private ProjectCreationMode _creationMode = ProjectCreationMode.ExistingDirectory;
 	private string? _cloneProgressMessage;
 	private bool _showDirectoryBrowser;
 	private DirectoryBrowser? _directoryBrowser;
 	private string? _defaultProjectsDirectory;
 	private List<Provider> _availableProviders = [];
 	private List<ProviderModel> _planningModels = [];
+	private string _gitHubRepositoryInput = string.Empty;
+	private string _newGitHubRepositoryDescription = string.Empty;
+	private bool _newGitHubRepositoryPrivate;
+	private string _newGitHubGitignoreTemplate = string.Empty;
+	private string _newGitHubLicenseTemplate = string.Empty;
+	private bool _newGitHubInitializeReadme;
 
 	private string _workingPathPlaceholder => !string.IsNullOrEmpty(_defaultProjectsDirectory)
 	? Path.Combine(_defaultProjectsDirectory, "project-name")
@@ -374,6 +493,7 @@
 			else
 			{
 				Project = new Project();
+				_creationMode = ProjectCreationMode.ExistingDirectory;
 				SeedDefaultProviderSelection();
 				EnsurePlanningProviderSelection();
 			}
@@ -394,40 +514,160 @@
 		}
 	}
 
-	private void OnGitHubRepoChanged(ChangeEventArgs e)
+	private void OnGitHubRepositoryChanged(ChangeEventArgs e)
 	{
-		var repoValue = e.Value?.ToString() ?? string.Empty;
-		Project.GitHubRepository = repoValue;
+		_gitHubRepositoryInput = e.Value?.ToString() ?? string.Empty;
+		ApplyRepositorySuggestions(_gitHubRepositoryInput);
+	}
 
-		// Auto-populate working path if it's empty or was auto-populated before
-		if (!string.IsNullOrWhiteSpace(repoValue))
+	private void SelectSourceMode(ProjectCreationMode mode)
+	{
+		_creationMode = mode;
+		ErrorMessage = null;
+
+		if (_creationMode == ProjectCreationMode.CreateGitHubRepository && string.IsNullOrWhiteSpace(_gitHubRepositoryInput) && !string.IsNullOrWhiteSpace(Project.Name))
 		{
-			// Extract repo name from "owner/repo" format
-			var parts = repoValue.Trim().Trim('/').Split('/');
-			if (parts.Length >= 2 && !string.IsNullOrWhiteSpace(parts[1]))
-			{
-				var repoName = parts[1];
-
-				// Auto-populate working path using default projects directory
-				if (!string.IsNullOrEmpty(_defaultProjectsDirectory))
-				{
-					var suggestedPath = Path.Combine(_defaultProjectsDirectory, repoName);
-
-					// Only auto-populate if working path is empty or matches a previously auto-populated value
-					if (string.IsNullOrWhiteSpace(Project.WorkingPath) ||
-					Project.WorkingPath.StartsWith(_defaultProjectsDirectory))
-					{
-						Project.WorkingPath = suggestedPath;
-					}
-				}
-
-				// Also auto-populate the name if it's empty
-				if (string.IsNullOrWhiteSpace(Project.Name))
-				{
-					Project.Name = repoName;
-				}
-			}
+			_gitHubRepositoryInput = SanitizeRepositoryName(Project.Name);
 		}
+
+		ApplyRepositorySuggestions(_gitHubRepositoryInput);
+	}
+
+	private void ApplyRepositorySuggestions(string? repositoryInput)
+	{
+		var repositoryName = ExtractRepositoryName(repositoryInput);
+		if (string.IsNullOrWhiteSpace(repositoryName))
+		{
+			return;
+		}
+
+		if (!string.IsNullOrEmpty(_defaultProjectsDirectory) &&
+			(string.IsNullOrWhiteSpace(Project.WorkingPath) || Project.WorkingPath.StartsWith(_defaultProjectsDirectory, StringComparison.Ordinal)))
+		{
+			Project.WorkingPath = Path.Combine(_defaultProjectsDirectory, repositoryName);
+		}
+
+		if (string.IsNullOrWhiteSpace(Project.Name))
+		{
+			Project.Name = repositoryName;
+		}
+	}
+
+	private ProjectCreationRequest BuildProjectCreationRequest()
+	{
+		var request = new ProjectCreationRequest
+		{
+			Project = Project,
+			Mode = _creationMode
+		};
+
+		if (_creationMode == ProjectCreationMode.CloneGitHubRepository)
+		{
+			request.GitHub = new GitHubRepositoryOptions
+			{
+				Repository = _gitHubRepositoryInput.Trim()
+			};
+		}
+		else if (_creationMode == ProjectCreationMode.CreateGitHubRepository)
+		{
+			request.GitHub = new GitHubRepositoryOptions
+			{
+				Repository = _gitHubRepositoryInput.Trim(),
+				Description = string.IsNullOrWhiteSpace(_newGitHubRepositoryDescription) ? null : _newGitHubRepositoryDescription.Trim(),
+				IsPrivate = _newGitHubRepositoryPrivate,
+				GitignoreTemplate = string.IsNullOrWhiteSpace(_newGitHubGitignoreTemplate) ? null : _newGitHubGitignoreTemplate,
+				LicenseTemplate = string.IsNullOrWhiteSpace(_newGitHubLicenseTemplate) ? null : _newGitHubLicenseTemplate,
+				InitializeReadme = _newGitHubInitializeReadme
+			};
+		}
+
+		return request;
+	}
+
+	private string GetSourceModeButtonClass(ProjectCreationMode mode)
+	{
+		return _creationMode == mode ? "btn-primary" : "btn-secondary";
+	}
+
+	private string GetWorkingPathHelpText()
+	{
+		return _creationMode switch
+		{
+			ProjectCreationMode.CloneGitHubRepository => "Repository contents will be cloned into this directory when the project is created.",
+			ProjectCreationMode.CreateGitHubRepository => "This directory will become the local workspace for the new GitHub repository.",
+			_ => "Directory where CLI providers execute commands."
+		};
+	}
+
+	private string GetProgressMessage()
+	{
+		return _creationMode switch
+		{
+			ProjectCreationMode.CloneGitHubRepository => "Cloning GitHub repository...",
+			ProjectCreationMode.CreateGitHubRepository => "Creating GitHub repository...",
+			_ => "Creating project..."
+		};
+	}
+
+	private string GetSuccessMessage()
+	{
+		return _creationMode switch
+		{
+			ProjectCreationMode.CloneGitHubRepository => "Project created and GitHub repository cloned successfully.",
+			ProjectCreationMode.CreateGitHubRepository => "Project created and GitHub repository linked successfully.",
+			_ => "Project created successfully."
+		};
+	}
+
+	private string GetSubmitButtonText()
+	{
+		if (IsSaving)
+		{
+			return "Saving...";
+		}
+
+		if (IsEdit)
+		{
+			return "Update Project";
+		}
+
+		return _creationMode switch
+		{
+			ProjectCreationMode.CloneGitHubRepository => "Clone & Create",
+			ProjectCreationMode.CreateGitHubRepository => "Create Repo & Project",
+			_ => "Create Project"
+		};
+	}
+
+	private static string ExtractRepositoryName(string? value)
+	{
+		if (string.IsNullOrWhiteSpace(value))
+		{
+			return string.Empty;
+		}
+
+		var sanitized = value.Trim();
+		if (sanitized.EndsWith(".git", StringComparison.OrdinalIgnoreCase))
+		{
+			sanitized = sanitized[..^4];
+		}
+
+		sanitized = sanitized.Trim('/').Replace('\\', '/');
+		var segments = sanitized.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+		return segments.LastOrDefault() ?? string.Empty;
+	}
+
+	private static string SanitizeRepositoryName(string name)
+	{
+		var sanitized = string.Join(string.Empty, name.Select(c =>
+			char.IsLetterOrDigit(c) || c == '-' || c == '_' || c == '.' ? c : '-'));
+
+		while (sanitized.Contains("--", StringComparison.Ordinal))
+		{
+			sanitized = sanitized.Replace("--", "-", StringComparison.Ordinal);
+		}
+
+		return sanitized.Trim('-').ToLowerInvariant();
 	}
 
 	private async Task HandleValidSubmit()
@@ -447,70 +687,12 @@
 			}
 			else
 			{
-				// If a GitHub repository is specified, clone it first
-				if (!string.IsNullOrWhiteSpace(Project.GitHubRepository))
-				{
-					_isCloning = true;
-					StateHasChanged();
+				_cloneProgressMessage = GetProgressMessage();
+				StateHasChanged();
 
-					try
-					{
-						GitOperationResult cloneResult;
-
-						// Try gh clone first (supports private repos via GitHub CLI auth)
-						var ghAvailable = await VersionControlService.IsGitHubCliAvailableAsync();
-						var ghAuthenticated = ghAvailable && await VersionControlService.IsGitHubCliAuthenticatedAsync();
-
-						if (ghAuthenticated)
-						{
-							_cloneProgressMessage = "Cloning with GitHub CLI...";
-							StateHasChanged();
-							cloneResult = await VersionControlService.CloneWithGitHubCliAsync(
-								Project.GitHubRepository,
-								Project.WorkingPath,
-								progressCallback: async (message) =>
-								{
-									_cloneProgressMessage = message;
-									await InvokeAsync(StateHasChanged);
-								});
-						}
-						else
-						{
-							// Fall back to git clone
-							var cloneUrl = VersionControlService.GetGitHubCloneUrl(Project.GitHubRepository);
-							cloneResult = await VersionControlService.CloneRepositoryAsync(
-								cloneUrl,
-								Project.WorkingPath,
-								progressCallback: async (message) =>
-								{
-									_cloneProgressMessage = message;
-									await InvokeAsync(StateHasChanged);
-								});
-						}
-
-						if (!cloneResult.Success)
-						{
-							ErrorMessage = cloneResult.Error ?? "Failed to clone repository.";
-							return;
-						}
-					}
-					catch (ArgumentException ex)
-					{
-						ErrorMessage = $"Invalid GitHub repository format: {ex.Message}";
-						return;
-					}
-					finally
-					{
-						_isCloning = false;
-						_cloneProgressMessage = null;
-					}
-				}
-
-				var created = await ProjectService.CreateAsync(Project);
+				var created = await ProjectService.CreateProjectAsync(BuildProjectCreationRequest());
 				newProjectId = created.Id;
-				NotificationService.ShowSuccess(!string.IsNullOrWhiteSpace(Project.GitHubRepository)
-				? "Project created and repository cloned successfully."
-									: "Project created successfully.");
+				NotificationService.ShowSuccess(GetSuccessMessage());
 			}
 
 			await OnSaved.InvokeAsync(newProjectId);
@@ -523,7 +705,6 @@
 		finally
 		{
 			IsSaving = false;
-			_isCloning = false;
 			_cloneProgressMessage = null;
 		}
 	}
@@ -561,9 +742,15 @@
 		Project = new Project();
 		ErrorMessage = null;
 		IsSaving = false;
-		_isCloning = false;
+		_creationMode = ProjectCreationMode.ExistingDirectory;
 		_cloneProgressMessage = null;
 		_planningModels = [];
+		_gitHubRepositoryInput = string.Empty;
+		_newGitHubRepositoryDescription = string.Empty;
+		_newGitHubRepositoryPrivate = false;
+		_newGitHubGitignoreTemplate = string.Empty;
+		_newGitHubLicenseTemplate = string.Empty;
+		_newGitHubInitializeReadme = false;
 	}
 
 	private async Task OpenDirectoryBrowser()

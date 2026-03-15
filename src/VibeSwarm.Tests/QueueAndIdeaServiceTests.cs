@@ -888,7 +888,7 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		dbContext.Projects.Add(project);
 		await dbContext.SaveChangesAsync();
 
-		var projectService = new ProjectService(dbContext, new NoOpProjectEnvironmentCredentialService());
+		var projectService = new ProjectService(dbContext, new NoOpProjectEnvironmentCredentialService(), new FakeVersionControlService());
 		var updated = await projectService.UpdateAsync(new Project
 		{
 			Id = project.Id,
@@ -936,7 +936,7 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		dbContext.Projects.Add(project);
 		await dbContext.SaveChangesAsync();
 
-		var projectService = new ProjectService(dbContext, new NoOpProjectEnvironmentCredentialService());
+		var projectService = new ProjectService(dbContext, new NoOpProjectEnvironmentCredentialService(), new FakeVersionControlService());
 		var updated = await projectService.UpdateAsync(new Project
 		{
 			Id = project.Id,
@@ -972,7 +972,7 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		dbContext.Providers.Add(provider);
 		await dbContext.SaveChangesAsync();
 
-		var projectService = new ProjectService(dbContext, new NoOpProjectEnvironmentCredentialService());
+		var projectService = new ProjectService(dbContext, new NoOpProjectEnvironmentCredentialService(), new FakeVersionControlService());
 
 		var error = await Assert.ThrowsAsync<InvalidOperationException>(() => projectService.CreateAsync(new Project
 		{

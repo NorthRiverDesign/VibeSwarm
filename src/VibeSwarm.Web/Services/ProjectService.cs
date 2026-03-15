@@ -1,7 +1,9 @@
 using Microsoft.EntityFrameworkCore;
 using VibeSwarm.Shared.Data;
+using VibeSwarm.Shared.Models;
 using VibeSwarm.Shared.Providers;
 using VibeSwarm.Shared.Services;
+using VibeSwarm.Shared.VersionControl;
 
 namespace VibeSwarm.Web.Services;
 
@@ -9,13 +11,16 @@ public class ProjectService : IProjectService
 {
 	private readonly VibeSwarmDbContext _dbContext;
 	private readonly IProjectEnvironmentCredentialService _credentialService;
+	private readonly IVersionControlService _versionControlService;
 
 	public ProjectService(
-		VibeSwarmDbContext dbContext,
-		IProjectEnvironmentCredentialService credentialService)
+ 		VibeSwarmDbContext dbContext,
+		IProjectEnvironmentCredentialService credentialService,
+		IVersionControlService versionControlService)
 	{
 		_dbContext = dbContext;
 		_credentialService = credentialService;
+		_versionControlService = versionControlService;
 	}
 
 	public async Task<IEnumerable<Project>> GetAllAsync(CancellationToken cancellationToken = default)
@@ -70,6 +75,29 @@ public class ProjectService : IProjectService
 		await _dbContext.SaveChangesAsync(cancellationToken);
 
 		return await GetByIdAsync(project.Id, cancellationToken) ?? project;
+	}
+
+	public async Task<Project> CreateProjectAsync(ProjectCreationRequest request, CancellationToken cancellationToken = default)
+	{
+		ArgumentNullException.ThrowIfNull(request);
+		ArgumentNullException.ThrowIfNull(request.Project);
+
+		switch (request.Mode)
+		{
+			case ProjectCreationMode.ExistingDirectory:
+				return await CreateAsync(request.Project, cancellationToken);
+
+			case ProjectCreationMode.CloneGitHubRepository:
+				await CloneGitHubRepositoryAsync(request, cancellationToken);
+				return await CreateAsync(request.Project, cancellationToken);
+
+			case ProjectCreationMode.CreateGitHubRepository:
+				await CreateGitHubRepositoryAsync(request, cancellationToken);
+				return await CreateAsync(request.Project, cancellationToken);
+
+			default:
+				throw new InvalidOperationException("Unsupported project creation mode.");
+		}
 	}
 
 	public async Task<Project> UpdateAsync(Project project, CancellationToken cancellationToken = default)
@@ -197,6 +225,105 @@ public class ProjectService : IProjectService
 			.Include(p => p.Environments.OrderBy(environment => environment.SortOrder))
 			.Include(p => p.ProviderSelections.OrderBy(pp => pp.Priority))
 				.ThenInclude(pp => pp.Provider);
+	}
+
+	private async Task CloneGitHubRepositoryAsync(ProjectCreationRequest request, CancellationToken cancellationToken)
+	{
+		if (string.IsNullOrWhiteSpace(request.Project.WorkingPath))
+		{
+			throw new InvalidOperationException("A working path is required when cloning a GitHub repository.");
+		}
+
+		var repository = NormalizeGitHubRepository(request.GitHub?.Repository ?? request.Project.GitHubRepository, allowOwnerOnly: false);
+		request.Project.GitHubRepository = repository;
+
+		var ghAvailable = await _versionControlService.IsGitHubCliAvailableAsync(cancellationToken);
+		var ghAuthenticated = ghAvailable && await _versionControlService.IsGitHubCliAuthenticatedAsync(cancellationToken);
+
+		var cloneResult = ghAuthenticated
+			? await _versionControlService.CloneWithGitHubCliAsync(repository, request.Project.WorkingPath, cancellationToken: cancellationToken)
+			: await _versionControlService.CloneRepositoryAsync(
+				_versionControlService.GetGitHubCloneUrl(repository, useSsh: false),
+				request.Project.WorkingPath,
+				cancellationToken: cancellationToken);
+
+		if (!cloneResult.Success)
+		{
+			throw new InvalidOperationException(cloneResult.Error ?? "Failed to clone GitHub repository.");
+		}
+	}
+
+	private async Task CreateGitHubRepositoryAsync(ProjectCreationRequest request, CancellationToken cancellationToken)
+	{
+		if (string.IsNullOrWhiteSpace(request.Project.WorkingPath))
+		{
+			throw new InvalidOperationException("A working path is required when creating a GitHub repository.");
+		}
+
+		var repository = NormalizeGitHubRepository(request.GitHub?.Repository, allowOwnerOnly: true);
+		var result = await _versionControlService.CreateGitHubRepositoryAsync(
+			request.Project.WorkingPath,
+			repository,
+			request.GitHub?.Description,
+			request.GitHub?.IsPrivate ?? false,
+			cancellationToken: cancellationToken,
+			gitignoreTemplate: request.GitHub?.GitignoreTemplate,
+			licenseTemplate: request.GitHub?.LicenseTemplate,
+			initializeReadme: request.GitHub?.InitializeReadme ?? false);
+
+		if (!result.Success)
+		{
+			throw new InvalidOperationException(result.Error ?? "Failed to create GitHub repository.");
+		}
+
+		var remoteUrl = await _versionControlService.GetRemoteUrlAsync(request.Project.WorkingPath, cancellationToken: cancellationToken);
+		request.Project.GitHubRepository = _versionControlService.ExtractGitHubRepository(remoteUrl);
+		if (string.IsNullOrWhiteSpace(request.Project.GitHubRepository))
+		{
+			throw new InvalidOperationException("GitHub repository was created, but the linked remote could not be determined.");
+		}
+	}
+
+	private string NormalizeGitHubRepository(string? value, bool allowOwnerOnly)
+	{
+		if (string.IsNullOrWhiteSpace(value))
+		{
+			throw new InvalidOperationException("A GitHub repository is required for this project creation mode.");
+		}
+
+		var trimmed = value.Trim();
+		var extracted = _versionControlService.ExtractGitHubRepository(trimmed);
+		if (!string.IsNullOrWhiteSpace(extracted))
+		{
+			trimmed = extracted;
+		}
+
+		trimmed = trimmed.Trim().Trim('/');
+		if (trimmed.EndsWith(".git", StringComparison.OrdinalIgnoreCase))
+		{
+			trimmed = trimmed[..^4];
+		}
+
+		var slashCount = trimmed.Count(character => character == '/');
+		if (slashCount == 1)
+		{
+			var parts = trimmed.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+			if (parts.Length == 2 &&
+				!string.IsNullOrWhiteSpace(parts[0]) &&
+				!string.IsNullOrWhiteSpace(parts[1]))
+			{
+				return $"{parts[0]}/{parts[1]}";
+			}
+		}
+
+		if (allowOwnerOnly && slashCount == 0 && !string.IsNullOrWhiteSpace(trimmed))
+		{
+			return trimmed;
+		}
+
+		throw new InvalidOperationException(allowOwnerOnly
+			? "GitHub repositories must use the format 'repo' or 'owner/repo'."
+			: "GitHub repositories must use the format 'owner/repo'.");
 	}
 
 	private static void NormalizeProviderSelections(Project project)

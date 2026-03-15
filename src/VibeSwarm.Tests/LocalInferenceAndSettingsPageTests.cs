@@ -7,6 +7,7 @@ using VibeSwarm.Client.Pages;
 using VibeSwarm.Client.Services;
 using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.LocalInference;
+using VibeSwarm.Shared.Models;
 using VibeSwarm.Shared.Services;
 
 namespace VibeSwarm.Tests;
@@ -109,6 +110,7 @@ public Task<string?> GetDefaultProjectsDirectoryAsync(CancellationToken cancella
 		public Task<Project?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult<Project?>(null);
 		public Task<Project?> GetByIdWithJobsAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult<Project?>(null);
 		public Task<Project> CreateAsync(Project project, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<Project> CreateProjectAsync(ProjectCreationRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<Project> UpdateAsync(Project project, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task DeleteAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<IEnumerable<ProjectWithStats>> GetAllWithStatsAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<ProjectWithStats>>([]);

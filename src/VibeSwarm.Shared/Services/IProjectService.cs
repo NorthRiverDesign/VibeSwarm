@@ -1,4 +1,5 @@
 using VibeSwarm.Shared.Data;
+using VibeSwarm.Shared.Models;
 
 namespace VibeSwarm.Shared.Services;
 
@@ -49,10 +50,11 @@ public interface IProjectService
     Task<IEnumerable<Project>> GetAllAsync(CancellationToken cancellationToken = default);
     Task<IEnumerable<Project>> GetRecentAsync(int count, CancellationToken cancellationToken = default);
     Task<Project?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
-    Task<Project?> GetByIdWithJobsAsync(Guid id, CancellationToken cancellationToken = default);
-    Task<Project> CreateAsync(Project project, CancellationToken cancellationToken = default);
-    Task<Project> UpdateAsync(Project project, CancellationToken cancellationToken = default);
-    Task DeleteAsync(Guid id, CancellationToken cancellationToken = default);
+	Task<Project?> GetByIdWithJobsAsync(Guid id, CancellationToken cancellationToken = default);
+	Task<Project> CreateAsync(Project project, CancellationToken cancellationToken = default);
+	Task<Project> CreateProjectAsync(ProjectCreationRequest request, CancellationToken cancellationToken = default);
+	Task<Project> UpdateAsync(Project project, CancellationToken cancellationToken = default);
+	Task DeleteAsync(Guid id, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Get all projects with their aggregated job statistics
