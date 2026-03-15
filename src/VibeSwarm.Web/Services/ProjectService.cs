@@ -696,13 +696,6 @@ public class ProjectService : IProjectService
 			{
 				continue;
 			}
-
-			var hasUsername = !string.IsNullOrWhiteSpace(environment.Username);
-			var hasPassword = !string.IsNullOrEmpty(environment.Password);
-			if (hasUsername != hasPassword && !environment.HasPassword)
-			{
-				throw new InvalidOperationException($"Web environment '{environment.Name}' requires both a username and password.");
-			}
 		}
 	}
 

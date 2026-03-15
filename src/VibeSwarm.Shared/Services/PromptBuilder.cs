@@ -220,14 +220,25 @@ public static class PromptBuilder
 				lineBuilder.Append(environment.Description);
 			}
 
-			if (environment.Type == EnvironmentType.Web
-				&& !string.IsNullOrWhiteSpace(environment.Username)
-				&& !string.IsNullOrWhiteSpace(environment.Password))
+			var hasUsername = !string.IsNullOrWhiteSpace(environment.Username);
+			var hasPassword = !string.IsNullOrWhiteSpace(environment.Password);
+			if (environment.Type == EnvironmentType.Web && (hasUsername || hasPassword))
 			{
 				lineBuilder.Append(" | Login: ");
-				lineBuilder.Append(environment.Username);
-				lineBuilder.Append(" / ");
-				lineBuilder.Append(environment.Password);
+				if (hasUsername)
+				{
+					lineBuilder.Append("Username=");
+					lineBuilder.Append(environment.Username);
+				}
+				if (hasUsername && hasPassword)
+				{
+					lineBuilder.Append(", ");
+				}
+				if (hasPassword)
+				{
+					lineBuilder.Append("Password=");
+					lineBuilder.Append(environment.Password);
+				}
 			}
 
 			var escapedLine = EscapeXml(lineBuilder.ToString());

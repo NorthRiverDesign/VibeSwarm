@@ -42,7 +42,7 @@ else
 			var item = environment.value;
 			<div class="border rounded p-3 bg-body-tertiary">
 				<div class="d-flex align-items-start justify-content-between gap-2 flex-wrap mb-3">
-					<div class="d-flex align-items-center gap-2 flex-wrap">
+					<div class="d-flex align-items-center gap-2 flex-wrap min-width-0">
 						<span class="badge text-bg-primary">#@(environment.index + 1)</span>
 						<span class="badge bg-secondary-subtle text-secondary-emphasis">@item.Type</span>
 						<span class="@GetStageBadgeClass(item.Stage)">@item.Stage</span>
@@ -55,16 +55,16 @@ else
 							<span class="badge bg-secondary-subtle text-secondary-emphasis">Disabled</span>
 						}
 					</div>
-					<div class="btn-group btn-group-sm" role="group">
-						<button type="button" class="btn btn-secondary" title="Move up"
+					<div class="d-flex flex-wrap justify-content-end gap-2">
+						<button type="button" class="btn btn-sm btn-secondary" title="Move up"
 							@onclick="() => MoveEnvironmentUp(item.Id)" disabled="@(environment.index == 0)">
 							<i class="bi bi-arrow-up"></i>
 						</button>
-						<button type="button" class="btn btn-secondary" title="Move down"
+						<button type="button" class="btn btn-sm btn-secondary" title="Move down"
 							@onclick="() => MoveEnvironmentDown(item.Id)" disabled="@(environment.index >= _environments.Count - 1)">
 							<i class="bi bi-arrow-down"></i>
 						</button>
-						<button type="button" class="btn btn-danger" title="Remove environment"
+						<button type="button" class="btn btn-sm btn-danger" title="Remove environment"
 							@onclick="() => RemoveEnvironment(item.Id)">
 							<i class="bi bi-x-lg"></i>
 						</button>
@@ -125,20 +125,24 @@ else
 							<span>Web Login</span>
 						</div>
 						<div class="small text-body-secondary mb-3">
-							Credentials are encrypted at rest and only decrypted for job execution.
+							Username and password are optional. Any values you save are encrypted at rest and only decrypted for job execution.
 						</div>
 						<div class="row g-3">
 							<div class="col-12 col-lg-6">
-								<label class="form-label">Username</label>
+								<label class="form-label">
+									Username <span class="text-body-secondary fw-normal">(optional)</span>
+								</label>
 								<InputText @bind-Value="item.Username" class="form-control" placeholder="tester@example.com" />
 							</div>
 							<div class="col-12 col-lg-6">
-								<label class="form-label">Password</label>
+								<label class="form-label">
+									Password <span class="text-body-secondary fw-normal">(optional)</span>
+								</label>
 								<InputText @bind-Value="item.Password" class="form-control" type="password"
-									placeholder="Leave blank to keep the saved password" />
+									placeholder="@(item.HasPassword ? "Leave blank to keep the saved password" : "Optional password")" />
 								@if (item.HasPassword)
 								{
-									<div class="form-text d-flex align-items-center justify-content-between gap-2 flex-wrap">
+									<div class="form-text d-flex flex-column flex-sm-row align-items-start align-items-sm-center justify-content-between gap-2">
 										<span>Saved password is already stored securely.</span>
 										<div class="form-check m-0">
 											<InputCheckbox id="@($"env-clear-password-{item.Id}")" @bind-Value="item.ClearPassword" class="form-check-input" />

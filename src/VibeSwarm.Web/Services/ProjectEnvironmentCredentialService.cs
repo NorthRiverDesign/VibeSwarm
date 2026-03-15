@@ -89,31 +89,9 @@ public class ProjectEnvironmentCredentialService : IProjectEnvironmentCredential
 		var hasUsername = !string.IsNullOrWhiteSpace(environment.Username);
 		var hasPassword = !string.IsNullOrEmpty(environment.Password);
 
-		if (environment.ClearPassword && !hasPassword)
-		{
-			ClearCredentials(environment);
-			return;
-		}
-
-		if (!hasUsername && !hasPassword)
-		{
-			if (environment.ClearPassword || existingEnvironment == null)
-			{
-				ClearCredentials(environment);
-				return;
-			}
-
-			environment.UsernameCiphertext = existingEnvironment.UsernameCiphertext;
-			environment.PasswordCiphertext = existingEnvironment.PasswordCiphertext;
-			return;
-		}
-
-		if (!hasUsername)
-		{
-			throw new InvalidOperationException($"Web environment '{environment.Name}' requires a username when a password is provided.");
-		}
-
-		environment.UsernameCiphertext = _protector.Protect(environment.Username!);
+		environment.UsernameCiphertext = hasUsername
+			? _protector.Protect(environment.Username!)
+			: null;
 
 		if (hasPassword)
 		{
@@ -122,13 +100,14 @@ public class ProjectEnvironmentCredentialService : IProjectEnvironmentCredential
 			return;
 		}
 
-		if (!string.IsNullOrEmpty(existingEnvironment?.PasswordCiphertext) && !environment.ClearPassword)
+		if (!environment.ClearPassword && !string.IsNullOrEmpty(existingEnvironment?.PasswordCiphertext))
 		{
 			environment.PasswordCiphertext = existingEnvironment.PasswordCiphertext;
 			return;
 		}
 
-		throw new InvalidOperationException($"Web environment '{environment.Name}' requires both a username and password when credentials are provided.");
+		environment.PasswordCiphertext = null;
+		environment.Password = null;
 	}
 
 	private static void ClearCredentials(ProjectEnvironment environment)

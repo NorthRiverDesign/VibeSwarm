@@ -111,6 +111,73 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 	}
 
 	[Fact]
+	public async Task UpdateAsync_UsernameCanBeClearedWhileKeepingSavedPassword()
+	{
+		await using var dbContext = CreateDbContext();
+		var service = CreateProjectService(dbContext);
+
+		var created = await service.CreateAsync(new Project
+		{
+			Name = "Environment Project",
+			WorkingPath = "/tmp/environment-project",
+			Environments =
+			[
+				new ProjectEnvironment
+				{
+					Name = "Preview",
+					Type = EnvironmentType.Web,
+					Url = "https://preview.example.com",
+					Username = "preview-user",
+					Password = "InitialPassword!"
+				}
+			]
+		});
+
+		var environment = Assert.Single(created.Environments);
+		environment.Username = null;
+		environment.Password = null;
+		environment.ClearPassword = false;
+		created.Environments = [environment];
+
+		var updated = await service.UpdateAsync(created);
+		var stored = await dbContext.ProjectEnvironments.AsNoTracking().SingleAsync();
+
+		Assert.Null(stored.UsernameCiphertext);
+		Assert.NotNull(stored.PasswordCiphertext);
+		Assert.Null(Assert.Single(updated.Environments).Username);
+		Assert.True(Assert.Single(updated.Environments).HasPassword);
+	}
+
+	[Fact]
+	public async Task CreateAsync_WebEnvironment_AllowsPasswordWithoutUsername()
+	{
+		await using var dbContext = CreateDbContext();
+		var service = CreateProjectService(dbContext);
+
+		var created = await service.CreateAsync(new Project
+		{
+			Name = "Environment Project",
+			WorkingPath = "/tmp/environment-project",
+			Environments =
+			[
+				new ProjectEnvironment
+				{
+					Name = "Preview",
+					Type = EnvironmentType.Web,
+					Url = "https://preview.example.com",
+					Password = "InitialPassword!"
+				}
+			]
+		});
+
+		var stored = await dbContext.ProjectEnvironments.AsNoTracking().SingleAsync();
+
+		Assert.Null(stored.UsernameCiphertext);
+		Assert.NotNull(stored.PasswordCiphertext);
+		Assert.True(Assert.Single(created.Environments).HasPassword);
+	}
+
+	[Fact]
 	public void BuildStructuredPrompt_IncludesEnvironmentContextAndCredentials()
 	{
 		var job = new Job
@@ -163,10 +230,49 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 		Assert.Contains("Local environments assume immediate feedback.", prompt);
 		Assert.Contains("Primary Web [Development]: Staging", prompt);
 		Assert.Contains("https://staging.example.com", prompt);
-		Assert.Contains("admin@example.com / StagingPassword!", prompt);
+		Assert.Contains("Login: Username=admin@example.com, Password=StagingPassword!", prompt);
 		Assert.Contains("Web [Local]: Local App", prompt);
 		Assert.Contains("http://localhost:5000", prompt);
 		Assert.Contains("https://github.com/octo/repo/releases", prompt);
+	}
+
+	[Fact]
+	public void BuildStructuredPrompt_IncludesPartialEnvironmentCredentials()
+	{
+		var job = new Job
+		{
+			GoalPrompt = "Verify the deployed app works.",
+			Project = new Project
+			{
+				Name = "Web App",
+				Environments =
+				[
+					new ProjectEnvironment
+					{
+						Name = "Username Only",
+						Type = EnvironmentType.Web,
+						Stage = EnvironmentStage.Development,
+						Url = "https://username-only.example.com",
+						IsEnabled = true,
+						Username = "admin@example.com"
+					},
+					new ProjectEnvironment
+					{
+						Name = "Password Only",
+						Type = EnvironmentType.Web,
+						Stage = EnvironmentStage.Development,
+						Url = "https://password-only.example.com",
+						IsEnabled = true,
+						Password = "StagingPassword!"
+					}
+				]
+			}
+		};
+
+		var prompt = PromptBuilder.BuildStructuredPrompt(job, true);
+
+		Assert.Contains("Login: Username=admin@example.com", prompt);
+		Assert.Contains("Login: Password=StagingPassword!", prompt);
 	}
 
 	[Fact]

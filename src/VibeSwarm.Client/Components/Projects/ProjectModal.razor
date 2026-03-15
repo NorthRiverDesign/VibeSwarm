@@ -57,15 +57,15 @@
 
 						@if (_formState.CreationMode == ProjectCreationMode.CloneGitHubRepository)
 						{
-							<div class="mt-3 pt-3 border-top">
-								<label for="modal-githubRepo" class="form-label">
-									<i class="bi bi-github me-1"></i>GitHub Repository
-								</label>
-								<div class="input-group">
-									<span class="input-group-text">github.com/</span>
-									<input id="modal-githubRepo" type="text" class="form-control"
-										   value="@_formState.GitHubRepositoryInput" @oninput="OnGitHubRepositoryChanged"
-										   placeholder="owner/repo" />
+								<div class="mt-3 pt-3 border-top">
+									<label for="modal-githubRepo" class="form-label">
+										<i class="bi bi-github me-1"></i>GitHub Repository
+									</label>
+									<div class="input-group">
+										<span class="input-group-text">github.com/</span>
+										<input id="modal-githubRepo" type="text" class="form-control"
+											   value="@_formState.GitHubRepositoryInput" @oninput="OnGitHubRepositoryChanged"
+											   placeholder="owner/repo" />
 								</div>
 								@if (!string.IsNullOrWhiteSpace(_formState.GitHubRepositoryError))
 								{
@@ -110,7 +110,7 @@
 
 								<div class="mb-3">
 									<label class="form-label">Visibility</label>
-									<div class="d-flex gap-3">
+									<div class="d-flex flex-column flex-sm-row gap-2 gap-sm-3">
 										<div class="form-check">
 											<input class="form-check-input" type="radio" name="projectVisibility" id="projectVisibilityPublic"
 												   checked="@(!_formState.NewGitHubRepositoryPrivate)" @onchange="() => _formState.NewGitHubRepositoryPrivate = false">
@@ -168,7 +168,7 @@
 								</div>
 
 								<Alert Type="Alert.AlertType.Info" Class="py-2 px-3 small mt-3 mb-0">
-									<span><i class="bi bi-lightbulb me-1"></i>Creating a GitHub repository requires <code>gh auth login</code> on the host machine.</span>
+									<span class="text-break"><i class="bi bi-lightbulb me-1"></i>Creating a GitHub repository requires <code class="text-break">gh auth login</code> on the host machine.</span>
 								</Alert>
 							</div>
 						}
@@ -343,8 +343,8 @@
 								@foreach (var selection in Project.ProviderSelections.OrderBy(pp => pp.Priority).ToList())
 								{
 									var provider = ResolveProvider(selection.ProviderId);
-									<div class="d-flex align-items-center justify-content-between gap-2 rounded border bg-body p-2">
-										<div class="min-width-0">
+									<div class="d-flex align-items-start justify-content-between gap-2 flex-wrap rounded border bg-body p-2">
+										<div class="min-width-0 flex-grow-1">
 											<div class="d-flex align-items-center gap-2 flex-wrap">
 												<span class="badge text-bg-primary">#@(selection.Priority + 1)</span>
 												<span class="fw-semibold">@(provider?.Name ?? "Unknown Provider")</span>
@@ -354,16 +354,16 @@
 												}
 											</div>
 										</div>
-										<div class="btn-group btn-group-sm" role="group">
-											<button type="button" class="btn btn-secondary" @onclick="() => MoveProviderSelectionUp(selection.ProviderId)"
+										<div class="d-flex flex-wrap justify-content-end gap-2">
+											<button type="button" class="btn btn-sm btn-secondary" @onclick="() => MoveProviderSelectionUp(selection.ProviderId)"
 												disabled="@(selection.Priority == 0)" title="Move up">
 												<i class="bi bi-arrow-up"></i>
 											</button>
-											<button type="button" class="btn btn-secondary" @onclick="() => MoveProviderSelectionDown(selection.ProviderId)"
+											<button type="button" class="btn btn-sm btn-secondary" @onclick="() => MoveProviderSelectionDown(selection.ProviderId)"
 												disabled="@(selection.Priority >= Project.ProviderSelections.Count - 1)" title="Move down">
 												<i class="bi bi-arrow-down"></i>
 											</button>
-											<button type="button" class="btn btn-danger" @onclick="() => RemoveProviderSelection(selection.ProviderId)" title="Remove provider">
+											<button type="button" class="btn btn-sm btn-danger" @onclick="() => RemoveProviderSelection(selection.ProviderId)" title="Remove provider">
 												<i class="bi bi-x-lg"></i>
 											</button>
 										</div>
@@ -381,11 +381,11 @@
 							@foreach (var provider in _availableProviders)
 							{
 								var isSelected = IsProviderSelected(provider.Id);
-								<button type="button" class="btn @(isSelected ? "btn-secondary" : "btn-outline-secondary") d-flex align-items-center justify-content-between"
+								<button type="button" class="btn @(isSelected ? "btn-secondary" : "btn-outline-secondary") d-flex align-items-center justify-content-between gap-2 text-start flex-wrap"
 										@onclick="() => AddProviderSelection(provider)" disabled="@isSelected">
-									<span class="text-start">
+									<span class="text-start min-width-0">
 										<span class="fw-semibold">@provider.Name</span>
-										<span class="text-body-secondary ms-2">@provider.Type</span>
+										<span class="text-body-secondary ms-sm-2 d-block d-sm-inline">@provider.Type</span>
 									</span>
 									@if (isSelected)
 									{
@@ -440,7 +440,7 @@
 								</div>
 							}
 
-							<div class="d-flex gap-2 justify-content-end">
+							<div class="d-flex flex-column-reverse flex-sm-row gap-2 justify-content-end">
 								<button type="button" class="btn btn-secondary" @onclick="HandleCancel">Cancel</button>
 								<button type="submit" class="btn btn-primary" disabled="@IsSaving">
 									@if (IsSaving)
