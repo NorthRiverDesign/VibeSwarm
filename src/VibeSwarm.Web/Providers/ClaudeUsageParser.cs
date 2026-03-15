@@ -42,6 +42,15 @@ public static partial class ClaudeUsageParser
 	[GeneratedRegex(@"(\d+)\s*%\s*(?:of\s+)?(?:limit\s+)?(?:used|consumed|remaining)", RegexOptions.IgnoreCase)]
 	private static partial Regex UsagePercentPattern();
 
+	[GeneratedRegex(@"(session|weekly|daily|monthly)\s+limit[^\r\n]*?(\d+)\s*/\s*(\d+)", RegexOptions.IgnoreCase)]
+	private static partial Regex LimitFractionPattern();
+
+	[GeneratedRegex(@"(\d+)\s*/\s*(\d+)[^\r\n]*?(session|weekly|daily|monthly)\s+limit", RegexOptions.IgnoreCase)]
+	private static partial Regex ReverseLimitFractionPattern();
+
+	[GeneratedRegex(@"(\d+)\s*%\s+of\s+(?:your\s+)?(session|weekly|daily|monthly)\s+limit\s+(used|consumed|remaining)", RegexOptions.IgnoreCase)]
+	private static partial Regex TypedUsagePercentPattern();
+
 	/// <summary>
 	/// Parses Claude CLI stderr for usage limit signals.
 	/// </summary>
@@ -91,7 +100,7 @@ public static partial class ClaudeUsageParser
 
 		var limits = new UsageLimits
 		{
-			LimitType = UsageLimitType.SessionLimit,
+			LimitType = DetectLimitType(stderrLower),
 			IsLimitReached = isLimitReached,
 			Message = limitMessage ?? "Usage limit signal detected"
 		};
@@ -112,13 +121,46 @@ public static partial class ClaudeUsageParser
 			limits.ResetTime = resetTime;
 		}
 
+		var fractionMatch = LimitFractionPattern().Match(stderr);
+		if (fractionMatch.Success &&
+			int.TryParse(fractionMatch.Groups[2].Value, out var typedCurrentUsage) &&
+			int.TryParse(fractionMatch.Groups[3].Value, out var typedMaxUsage))
+		{
+			limits.CurrentUsage = typedCurrentUsage;
+			limits.MaxUsage = typedMaxUsage;
+			limits.LimitType = ParseLimitTypeLabel(fractionMatch.Groups[1].Value);
+			return limits;
+		}
+
+		var reverseFractionMatch = ReverseLimitFractionPattern().Match(stderr);
+		if (reverseFractionMatch.Success &&
+			int.TryParse(reverseFractionMatch.Groups[1].Value, out typedCurrentUsage) &&
+			int.TryParse(reverseFractionMatch.Groups[2].Value, out typedMaxUsage))
+		{
+			limits.CurrentUsage = typedCurrentUsage;
+			limits.MaxUsage = typedMaxUsage;
+			limits.LimitType = ParseLimitTypeLabel(reverseFractionMatch.Groups[3].Value);
+			return limits;
+		}
+
+		var typedPercentMatch = TypedUsagePercentPattern().Match(stderr);
+		if (typedPercentMatch.Success && int.TryParse(typedPercentMatch.Groups[1].Value, out var typedPercent))
+		{
+			var qualifier = typedPercentMatch.Groups[3].Value.ToLowerInvariant();
+			limits.CurrentUsage = qualifier == "remaining" ? 100 - typedPercent : typedPercent;
+			limits.MaxUsage = 100;
+			limits.LimitType = ParseLimitTypeLabel(typedPercentMatch.Groups[2].Value);
+			return limits;
+		}
+
 		// Try to extract usage percentage
 		var percentMatch = UsagePercentPattern().Match(stderr);
 		if (percentMatch.Success && int.TryParse(percentMatch.Groups[1].Value, out var percent))
 		{
-			// Estimate current/max based on percentage
-			// We don't know the actual max, so use 100 as a base
-			limits.CurrentUsage = percent;
+			var qualifier = percentMatch.Groups[0].Value.Contains("remaining", StringComparison.OrdinalIgnoreCase)
+				? "remaining"
+				: "used";
+			limits.CurrentUsage = qualifier == "remaining" ? 100 - percent : percent;
 			limits.MaxUsage = 100;
 		}
 
@@ -136,5 +178,29 @@ public static partial class ClaudeUsageParser
 
 		var stderrLower = stderr.ToLowerInvariant();
 		return LimitPatterns.Any(pattern => stderrLower.Contains(pattern));
+	}
+
+	private static UsageLimitType DetectLimitType(string stderrLower)
+	{
+		if (stderrLower.Contains("weekly limit") ||
+			stderrLower.Contains("daily limit") ||
+			stderrLower.Contains("monthly limit") ||
+			stderrLower.Contains("rate limit") ||
+			stderrLower.Contains("rate limited"))
+		{
+			return UsageLimitType.RateLimit;
+		}
+
+		return UsageLimitType.SessionLimit;
+	}
+
+	private static UsageLimitType ParseLimitTypeLabel(string label)
+	{
+		var normalized = label.ToLowerInvariant();
+		return normalized switch
+		{
+			"weekly" or "daily" or "monthly" => UsageLimitType.RateLimit,
+			_ => UsageLimitType.SessionLimit
+		};
 	}
 }

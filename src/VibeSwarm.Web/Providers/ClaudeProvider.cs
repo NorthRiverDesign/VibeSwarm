@@ -13,6 +13,7 @@ namespace VibeSwarm.Shared.Providers;
 public class ClaudeProvider : CliProviderBase
 {
     private const string DefaultExecutable = "claude";
+    private UsageLimits? _lastObservedUsageLimits;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -362,6 +363,7 @@ public class ClaudeProvider : CliProviderBase
             if (usageLimits != null)
             {
                 result.DetectedUsageLimits = usageLimits;
+                _lastObservedUsageLimits = usageLimits;
             }
         }
 
@@ -648,6 +650,11 @@ public class ClaudeProvider : CliProviderBase
 
     public override Task<UsageLimits> GetUsageLimitsAsync(CancellationToken cancellationToken = default)
     {
+        if (_lastObservedUsageLimits != null)
+        {
+            return Task.FromResult(_lastObservedUsageLimits);
+        }
+
         var limits = new UsageLimits
         {
             LimitType = UsageLimitType.SessionLimit,

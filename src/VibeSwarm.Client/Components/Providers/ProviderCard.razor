@@ -28,10 +28,10 @@
 				</span>
 			}
 		</div>
-		@if (UsageSummary != null && UsageSummary.EffectiveMaxUsage > 0)
+		@if (ShouldShowUsageSection())
 		{
 			<div class="mt-2 pt-2 border-top">
-				<UsageMeter UsageSummary="UsageSummary" Compact="true" ShowResetTime="false" />
+				<UsageMeter UsageSummary="UsageSummary" Compact="true" ShowResetTime="true" ShowEmptyState="true" />
 			</div>
 		}
 	</div>
@@ -55,6 +55,16 @@
 
 	[Parameter]
 	public ProviderUsageSummary? UsageSummary { get; set; }
+
+	private bool ShouldShowUsageSection()
+	{
+		return UsageSummary != null && (
+			UsageSummary.EffectiveMaxUsage > 0 ||
+			UsageSummary.CurrentUsage.HasValue ||
+			UsageSummary.TotalPremiumRequestsConsumed > 0 ||
+			UsageSummary.IsLimitReached ||
+			!string.IsNullOrWhiteSpace(UsageSummary.LimitMessage));
+	}
 
 	private static string GetProviderTypeIcon(string type) => type switch
 	{

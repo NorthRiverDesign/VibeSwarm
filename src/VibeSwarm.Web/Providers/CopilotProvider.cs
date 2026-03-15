@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using GitHub.Copilot.SDK;
 using VibeSwarm.Shared.Providers.Copilot;
 using VibeSwarm.Shared.Services;
@@ -14,6 +13,7 @@ namespace VibeSwarm.Shared.Providers;
 public class CopilotProvider : CliProviderBase
 {
     private const string DefaultExecutable = "copilot";
+    private UsageLimits? _lastObservedUsageLimits;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -339,59 +339,10 @@ public class CopilotProvider : CliProviderBase
     /// Example format:
     /// [ERR]  claude-opus-4.5         49.0k in, 301 out, 32.0k cached (Est. 3 Premium requests)
     /// </summary>
-    private static void ParseCopilotUsageFromStderr(string stderr, ExecutionResult result)
+    private void ParseCopilotUsageFromStderr(string stderr, ExecutionResult result)
     {
-        if (string.IsNullOrWhiteSpace(stderr))
-            return;
-
-        var usagePattern = new Regex(
-            @"(\d+(?:\.\d+)?)\s*k?\s*in\s*,\s*(\d+(?:\.\d+)?)\s*k?\s*out",
-            RegexOptions.IgnoreCase);
-
-        var match = usagePattern.Match(stderr);
-        if (match.Success)
-        {
-            if (double.TryParse(match.Groups[1].Value, out var inputValue))
-            {
-                var inputStr = match.Groups[0].Value;
-                if (inputStr.Contains("k in", StringComparison.OrdinalIgnoreCase))
-                {
-                    result.InputTokens = (int)(inputValue * 1000);
-                }
-                else
-                {
-                    result.InputTokens = (int)inputValue;
-                }
-            }
-
-            if (double.TryParse(match.Groups[2].Value, out var outputValue))
-            {
-                var outputStr = match.Groups[0].Value;
-                if (outputStr.Contains("k out", StringComparison.OrdinalIgnoreCase))
-                {
-                    result.OutputTokens = (int)(outputValue * 1000);
-                }
-                else
-                {
-                    result.OutputTokens = (int)outputValue;
-                }
-            }
-        }
-
-        var modelPattern = new Regex(@"^\s*(?:\[ERR\])?\s*(claude-[\w.-]+|gpt-[\w.-]+|gemini-[\w.-]+)", RegexOptions.IgnoreCase | RegexOptions.Multiline);
-        var modelMatch = modelPattern.Match(stderr);
-        if (modelMatch.Success && string.IsNullOrEmpty(result.ModelUsed))
-        {
-            result.ModelUsed = modelMatch.Groups[1].Value.Trim();
-        }
-
-        // Parse premium requests consumed (Copilot-specific)
-        var premiumPattern = new Regex(@"Est\.\s*(\d+)\s*Premium\s*requests?", RegexOptions.IgnoreCase);
-        var premiumMatch = premiumPattern.Match(stderr);
-        if (premiumMatch.Success && int.TryParse(premiumMatch.Groups[1].Value, out var premiumRequests))
-        {
-            result.PremiumRequestsConsumed = premiumRequests;
-        }
+        CopilotUsageParser.ApplyToExecutionResult(stderr, result);
+        _lastObservedUsageLimits = result.DetectedUsageLimits ?? _lastObservedUsageLimits;
     }
 
     private void ProcessStreamEvent(
@@ -466,6 +417,13 @@ public class CopilotProvider : CliProviderBase
             case "limit":
             case "rate_limit":
                 result.ErrorMessage = evt.Message ?? "Premium request limit reached";
+                result.DetectedUsageLimits = new UsageLimits
+                {
+                    LimitType = UsageLimitType.PremiumRequests,
+                    IsLimitReached = true,
+                    Message = evt.Message ?? "Premium request limit reached"
+                };
+                _lastObservedUsageLimits = result.DetectedUsageLimits;
                 progress?.Report(new ExecutionProgress
                 {
                     CurrentMessage = "Premium request limit reached",
@@ -789,6 +747,11 @@ public class CopilotProvider : CliProviderBase
 
     public override Task<UsageLimits> GetUsageLimitsAsync(CancellationToken cancellationToken = default)
     {
+        if (_lastObservedUsageLimits != null)
+        {
+            return Task.FromResult(_lastObservedUsageLimits);
+        }
+
         // Copilot CLI is a standalone binary and doesn't have an API to query usage limits.
         // Usage tracking is done by parsing stderr output during job execution.
         // The user can configure their plan's limit (e.g., 300 premium requests/month for Copilot Pro)

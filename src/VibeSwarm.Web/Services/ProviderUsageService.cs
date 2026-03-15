@@ -26,6 +26,10 @@ public class ProviderUsageService : IProviderUsageService
 		ExecutionResult executionResult,
 		CancellationToken cancellationToken = default)
 	{
+		var provider = await _context.Providers
+			.AsNoTracking()
+			.FirstOrDefaultAsync(p => p.Id == providerId, cancellationToken);
+
 		// Create the usage record
 		var record = new ProviderUsageRecord
 		{
@@ -67,6 +71,8 @@ public class ProviderUsageService : IProviderUsageService
 			_context.ProviderUsageSummaries.Add(summary);
 		}
 
+		summary.ConfiguredMaxUsage = provider?.ConfiguredUsageLimit;
+
 		// Update cumulative totals
 		summary.TotalInputTokens += executionResult.InputTokens ?? 0;
 		summary.TotalOutputTokens += executionResult.OutputTokens ?? 0;
@@ -76,6 +82,12 @@ public class ProviderUsageService : IProviderUsageService
 		if (jobId.HasValue)
 		{
 			summary.TotalJobsCompleted++;
+		}
+
+		var configuredLimitType = provider?.ConfiguredLimitType ?? UsageLimitType.None;
+		if (summary.LimitType == UsageLimitType.None && configuredLimitType != UsageLimitType.None)
+		{
+			summary.LimitType = configuredLimitType;
 		}
 
 		// Update limit state from detected limits
@@ -90,10 +102,12 @@ public class ProviderUsageService : IProviderUsageService
 			summary.LimitMessage = limits.Message;
 		}
 
-		// For Copilot, track premium requests as current usage if no other limit detected
-		if (executionResult.PremiumRequestsConsumed.HasValue && summary.LimitType == UsageLimitType.PremiumRequests)
+		// For premium request budgets, cumulative consumption is the best available current usage
+		// unless the provider supplied a fresher snapshot with an explicit current usage value.
+		if (summary.LimitType == UsageLimitType.PremiumRequests &&
+			!(executionResult.DetectedUsageLimits?.CurrentUsage.HasValue ?? false))
 		{
-			summary.CurrentUsage = (summary.CurrentUsage ?? 0) + executionResult.PremiumRequestsConsumed.Value;
+			summary.CurrentUsage = summary.TotalPremiumRequestsConsumed;
 		}
 
 		summary.LastUpdatedAt = DateTime.UtcNow;

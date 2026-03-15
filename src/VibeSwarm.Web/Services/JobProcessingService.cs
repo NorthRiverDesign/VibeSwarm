@@ -1008,7 +1008,7 @@ public class JobProcessingService : BackgroundService
                     executionContext, workingDirectory, dbContext, CancellationToken.None);
 
                 // Record usage even for cancelled jobs
-                await RecordUsageAndCheckExhaustionAsync(job.ProviderId, providerDisplayName, job.Id, finalResult, CancellationToken.None);
+                await RecordUsageAndCheckExhaustionAsync(job.ProviderId, providerDisplayName, job.Id, finalResult, provider!, CancellationToken.None);
 
                 await NotifyJobCompletedAsync(job.Id, false, "Job was cancelled by user");
 
@@ -1047,7 +1047,7 @@ public class JobProcessingService : BackgroundService
                 }
 
                 // Record usage after successful completion
-                await RecordUsageAndCheckExhaustionAsync(job.ProviderId, providerDisplayName, job.Id, finalResult, CancellationToken.None);
+                await RecordUsageAndCheckExhaustionAsync(job.ProviderId, providerDisplayName, job.Id, finalResult, provider!, CancellationToken.None);
 
                 _logger.LogInformation("Job {JobId} completed successfully. Session: {SessionId}, InputTokens: {InputTokens}, OutputTokens: {OutputTokens}, Cost: {CostUsd}",
                     job.Id, finalResult.SessionId, finalResult.InputTokens, finalResult.OutputTokens, finalResult.CostUsd);
@@ -1064,7 +1064,7 @@ public class JobProcessingService : BackgroundService
                     executionContext, workingDirectory, dbContext, CancellationToken.None);
 
                 // Record usage even for failed jobs
-                await RecordUsageAndCheckExhaustionAsync(job.ProviderId, providerDisplayName, job.Id, finalResult, CancellationToken.None);
+                await RecordUsageAndCheckExhaustionAsync(job.ProviderId, providerDisplayName, job.Id, finalResult, provider!, CancellationToken.None);
 
                 _logger.LogWarning("Job {JobId} failed: {Error}. InputTokens: {InputTokens}, OutputTokens: {OutputTokens}, Cost: {CostUsd}",
                     job.Id, finalResult.ErrorMessage, finalResult.InputTokens, finalResult.OutputTokens, finalResult.CostUsd);
@@ -1160,6 +1160,7 @@ public class JobProcessingService : BackgroundService
         string providerName,
         Guid jobId,
         ExecutionResult result,
+        IProvider provider,
         CancellationToken cancellationToken)
     {
         try
@@ -1169,8 +1170,10 @@ public class JobProcessingService : BackgroundService
             if (providerUsageService == null)
                 return;
 
+            var usageResult = await RefreshProviderUsageAsync(provider, result, cancellationToken);
+
             // Record the usage
-            await providerUsageService.RecordUsageAsync(providerId, jobId, result, cancellationToken);
+            await providerUsageService.RecordUsageAsync(providerId, jobId, usageResult, cancellationToken);
 
             // Check for exhaustion warning and broadcast via SignalR
             var warning = await providerUsageService.CheckExhaustionAsync(providerId, cancellationToken: cancellationToken);
@@ -1200,6 +1203,52 @@ public class JobProcessingService : BackgroundService
             // Don't fail job processing due to usage tracking errors
             _logger.LogWarning(ex, "Failed to record usage for job {JobId}", jobId);
         }
+    }
+
+    private async Task<ExecutionResult> RefreshProviderUsageAsync(
+        IProvider provider,
+        ExecutionResult result,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var latestLimits = await provider.GetUsageLimitsAsync(cancellationToken);
+            if (ShouldApplyProviderUsage(latestLimits))
+            {
+                result.DetectedUsageLimits = MergeUsageLimits(result.DetectedUsageLimits, latestLimits);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Unable to refresh provider usage snapshot for provider {ProviderId}", provider.Id);
+        }
+
+        return result;
+    }
+
+    private static bool ShouldApplyProviderUsage(UsageLimits? limits)
+    {
+        return limits != null && (
+            limits.IsLimitReached ||
+            limits.CurrentUsage.HasValue ||
+            limits.MaxUsage.HasValue ||
+            limits.ResetTime.HasValue);
+    }
+
+    private static UsageLimits MergeUsageLimits(UsageLimits? existing, UsageLimits latest)
+    {
+        if (existing == null)
+            return latest;
+
+        return new UsageLimits
+        {
+            LimitType = latest.LimitType != UsageLimitType.None ? latest.LimitType : existing.LimitType,
+            IsLimitReached = latest.IsLimitReached || existing.IsLimitReached,
+            CurrentUsage = latest.CurrentUsage ?? existing.CurrentUsage,
+            MaxUsage = latest.MaxUsage ?? existing.MaxUsage,
+            ResetTime = latest.ResetTime ?? existing.ResetTime,
+            Message = string.IsNullOrWhiteSpace(latest.Message) ? existing.Message : latest.Message
+        };
     }
 
     /// <summary>

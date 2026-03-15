@@ -29,12 +29,31 @@
 		}
 	</div>
 }
-else if (ShowEmptyState)
+else if (UsageSummary != null && ShowEmptyState)
 {
 	<div class="usage-meter @Class">
-		<div class="small text-body-tertiary">
-			<i class="bi bi-graph-up me-1"></i>No usage data
-		</div>
+		@if (GetFallbackUsageLabel() is { } fallbackLabel)
+		{
+			<div class="small text-body-secondary">
+				<i class="bi bi-graph-up me-1"></i>@fallbackLabel
+			</div>
+			@if (!string.IsNullOrWhiteSpace(UsageSummary.LimitMessage))
+			{
+				<div class="small text-body-tertiary mt-1">@UsageSummary.LimitMessage</div>
+			}
+			@if (ShowResetTime && UsageSummary.LimitResetTime.HasValue)
+			{
+				<div class="small text-body-tertiary mt-1">
+					<i class="bi bi-clock me-1"></i>Resets @FormatResetTime(UsageSummary.LimitResetTime.Value)
+				</div>
+			}
+		}
+		else
+		{
+			<div class="small text-body-tertiary">
+				<i class="bi bi-graph-up me-1"></i>No usage data
+			</div>
+		}
 	</div>
 }
 
@@ -60,7 +79,7 @@ else if (ShowEmptyState)
 
 		long current = UsageSummary.LimitType switch
 		{
-			UsageLimitType.PremiumRequests => UsageSummary.TotalPremiumRequestsConsumed,
+			UsageLimitType.PremiumRequests => UsageSummary.CurrentUsage ?? UsageSummary.TotalPremiumRequestsConsumed,
 			UsageLimitType.TokenLimit => UsageSummary.TotalInputTokens + UsageSummary.TotalOutputTokens,
 			UsageLimitType.SessionLimit => (long)(UsageSummary.CurrentUsage ?? 0),
 			_ => (long)(UsageSummary.CurrentUsage ?? 0)
@@ -83,6 +102,34 @@ else if (ShowEmptyState)
 			? $"{current}/{max}"
 			: $"{current:N0} / {max:N0}"
 		};
+	}
+
+	private string? GetFallbackUsageLabel()
+	{
+		if (UsageSummary == null)
+			return null;
+
+		if (UsageSummary.LimitType == UsageLimitType.PremiumRequests && UsageSummary.TotalPremiumRequestsConsumed > 0)
+		{
+			return Compact
+				? $"{UsageSummary.TotalPremiumRequestsConsumed:N0} premium used"
+				: $"{UsageSummary.TotalPremiumRequestsConsumed:N0} Premium Requests Used";
+		}
+
+		if (UsageSummary.CurrentUsage.HasValue)
+		{
+			return UsageSummary.LimitType switch
+			{
+				UsageLimitType.SessionLimit => $"Session usage: {UsageSummary.CurrentUsage:N0}",
+				UsageLimitType.RateLimit => $"Latest limit usage: {UsageSummary.CurrentUsage:N0}",
+				UsageLimitType.TokenLimit => $"Latest token usage: {FormatTokens(UsageSummary.CurrentUsage.Value)}",
+				_ => $"Latest usage: {UsageSummary.CurrentUsage:N0}"
+			};
+		}
+
+		return !string.IsNullOrWhiteSpace(UsageSummary.LimitMessage)
+			? "Latest limit update"
+			: null;
 	}
 
 	private string FormatTokens(long tokens)

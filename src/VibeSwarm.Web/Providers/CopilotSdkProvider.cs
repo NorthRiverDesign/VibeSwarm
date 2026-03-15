@@ -14,6 +14,7 @@ public class CopilotSdkProvider : SdkProviderBase
 {
 	private CopilotClient? _client;
 	private const string DefaultModel = "gpt-4o";
+	private UsageLimits? _lastObservedUsageLimits;
 
 	public override ProviderType Type => ProviderType.Copilot;
 
@@ -443,7 +444,7 @@ public class CopilotSdkProvider : SdkProviderBase
 	/// Processes a typed SDK session event, populating the result
 	/// and streaming progress to the UI.
 	/// </summary>
-	private static void ProcessSessionEvent(
+	private void ProcessSessionEvent(
 		SessionEvent evt,
 		ExecutionResult result,
 		StringBuilder contentBuilder,
@@ -611,6 +612,11 @@ public class CopilotSdkProvider : SdkProviderBase
 					if (shutdown.Data.TotalPremiumRequests > 0)
 					{
 						result.PremiumRequestsConsumed = (int)shutdown.Data.TotalPremiumRequests;
+						_lastObservedUsageLimits = new UsageLimits
+						{
+							LimitType = UsageLimitType.PremiumRequests,
+							Message = $"Latest session consumed {shutdown.Data.TotalPremiumRequests} premium requests"
+						};
 					}
 					break;
 				}
@@ -723,6 +729,11 @@ public class CopilotSdkProvider : SdkProviderBase
 
 	public override Task<UsageLimits> GetUsageLimitsAsync(CancellationToken cancellationToken = default)
 	{
+		if (_lastObservedUsageLimits != null)
+		{
+			return Task.FromResult(_lastObservedUsageLimits);
+		}
+
 		return Task.FromResult(new UsageLimits
 		{
 			LimitType = UsageLimitType.PremiumRequests,

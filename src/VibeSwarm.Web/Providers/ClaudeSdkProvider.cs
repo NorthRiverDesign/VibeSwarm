@@ -16,6 +16,7 @@ public class ClaudeSdkProvider : SdkProviderBase
 	private AnthropicClient? _client;
 	private const string DefaultModel = "claude-sonnet-4-6-20260201";
 	private const string ConnectionTestFallbackModel = "claude-sonnet-4-5-20250929";
+	private UsageLimits? _lastObservedUsageLimits;
 
 	private static readonly string[] AvailableModels =
 	[
@@ -286,6 +287,7 @@ public class ClaudeSdkProvider : SdkProviderBase
 				IsLimitReached = true,
 				Message = ex.Message
 			};
+			_lastObservedUsageLimits = result.DetectedUsageLimits;
 		}
 		catch (AnthropicApiException ex)
 		{
@@ -354,6 +356,11 @@ public class ClaudeSdkProvider : SdkProviderBase
 
 	public override Task<UsageLimits> GetUsageLimitsAsync(CancellationToken cancellationToken = default)
 	{
+		if (_lastObservedUsageLimits != null)
+		{
+			return Task.FromResult(_lastObservedUsageLimits);
+		}
+
 		return Task.FromResult(new UsageLimits
 		{
 			LimitType = UsageLimitType.RateLimit,
