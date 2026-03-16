@@ -2439,21 +2439,28 @@ TimeSpan.FromSeconds(10) })
         if (_isLoadingChangesTab) return;
         if (Project == null || string.IsNullOrEmpty(Project.WorkingPath)) return;
 
+        var previousDiffFiles = _changesTabDiffFiles;
+        var previousExpandedItems = _changesTabExpandedItems;
+        var shouldShowLoadingState = !_changesTabDiffFiles.Any() && string.IsNullOrEmpty(_changesTabLoadError);
+
         _isLoadingChangesTab = true;
-        _changesTabDiffFiles = new List<DiffFile>();
-        _changesTabPendingJobs = new List<Job>();
-        _changesTabCommittedJobs = new List<Job>();
-        _changesTabShowingCommittedDiff = false;
-        _changesTabShowingPersistedDiff = false;
-        _changesTabCommittedHash = null;
-        _changesTabEmptyStateMessage = null;
         _changesTabCommitError = null;
         _changesTabLoadError = null;
-        _changesTabExpandedItems.Clear();
-        StateHasChanged();
+        if (shouldShowLoadingState)
+        {
+            StateHasChanged();
+        }
 
         try
         {
+            var nextDiffFiles = new List<DiffFile>();
+            var nextPendingJobs = new List<Job>();
+            var nextCommittedJobs = new List<Job>();
+            var nextShowingCommittedDiff = false;
+            var nextShowingPersistedDiff = false;
+            string? nextCommittedHash = null;
+            string? nextEmptyStateMessage = null;
+
             await RefreshUncommittedChangesStatus();
             var changeSelection = GetProjectChangesSelection();
             string? diffOutput = null;
@@ -2468,42 +2475,54 @@ TimeSpan.FromSeconds(10) })
                 }
 
                 diffOutput = await VersionControlService.GetWorkingDirectoryDiffAsync(Project.WorkingPath);
-                _changesTabPendingJobs = changeSelection.LinkedJobs.ToList();
-                _changesTabEmptyStateMessage = "No uncommitted changes. Your working directory is clean.";
+                nextPendingJobs = changeSelection.LinkedJobs.ToList();
+                nextEmptyStateMessage = "No uncommitted changes. Your working directory is clean.";
             }
             else if (changeSelection.SourceType == ProjectChangesSourceType.Commit)
             {
-                _changesTabShowingCommittedDiff = true;
-                _changesTabCommittedHash = changeSelection.CommitHash;
-                _changesTabCommittedJobs = changeSelection.LinkedJobs.ToList();
+                nextShowingCommittedDiff = true;
+                nextCommittedHash = changeSelection.CommitHash;
+                nextCommittedJobs = changeSelection.LinkedJobs.ToList();
                 diffOutput = await LoadCommittedChangesDiffAsync(changeSelection);
                 if (string.IsNullOrWhiteSpace(diffOutput))
                 {
                     diffOutput = GetPersistedDiffFallback(changeSelection);
                 }
-                _changesTabEmptyStateMessage = $"No diff is available for commit {ShortCommitHash(changeSelection.CommitHash)}.";
+                nextEmptyStateMessage = $"No diff is available for commit {ShortCommitHash(changeSelection.CommitHash)}.";
             }
             else if (changeSelection.SourceType == ProjectChangesSourceType.PersistedJobDiff)
             {
-                _changesTabShowingPersistedDiff = true;
-                _changesTabPendingJobs = changeSelection.LinkedJobs.ToList();
+                nextShowingPersistedDiff = true;
+                nextPendingJobs = changeSelection.LinkedJobs.ToList();
                 diffOutput = changeSelection.PersistedDiff;
-                _changesTabEmptyStateMessage = "No captured diff is available on the latest job.";
+                nextEmptyStateMessage = "No captured diff is available on the latest job.";
             }
             else
             {
-                _changesTabEmptyStateMessage = "No project changes are available to show.";
+                nextEmptyStateMessage = "No project changes are available to show.";
             }
 
             if (!string.IsNullOrEmpty(diffOutput))
             {
-                _changesTabDiffFiles = ParseGitDiff(diffOutput);
+                nextDiffFiles = ParseGitDiff(diffOutput);
             }
 
-            if (_changesTabDiffFiles.Count == 0 && changedFiles.Count > 0)
+            if (nextDiffFiles.Count == 0 && changedFiles.Count > 0)
             {
-                _changesTabDiffFiles = BuildPlaceholderDiffFiles(changedFiles);
+                nextDiffFiles = BuildPlaceholderDiffFiles(changedFiles);
             }
+
+            _changesTabDiffFiles = nextDiffFiles;
+            _changesTabPendingJobs = nextPendingJobs;
+            _changesTabCommittedJobs = nextCommittedJobs;
+            _changesTabShowingCommittedDiff = nextShowingCommittedDiff;
+            _changesTabShowingPersistedDiff = nextShowingPersistedDiff;
+            _changesTabCommittedHash = nextCommittedHash;
+            _changesTabEmptyStateMessage = nextEmptyStateMessage;
+            _changesTabExpandedItems = ProjectChangesTabState.PreserveExpandedItems(
+                previousDiffFiles,
+                previousExpandedItems,
+                nextDiffFiles);
         }
         catch (Exception ex)
         {
