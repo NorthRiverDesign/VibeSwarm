@@ -480,6 +480,7 @@ public class JobProcessingService : BackgroundService
         // Store provider ID for later cleanup
         executionContext.ProviderId = job.ProviderId;
 
+        string? workingDirectory = null;
         try
         {
             // Check if job was cancelled before we even started
@@ -593,7 +594,7 @@ public class JobProcessingService : BackgroundService
             await NotifyJobActivityAsync(job.Id, initialActivity, DateTime.UtcNow);
 
             // Prepare the configured working branch before starting work (if this is a git repository)
-            var workingDirectory = job.Project?.WorkingPath;
+            workingDirectory = job.Project?.WorkingPath;
             if (!string.IsNullOrEmpty(workingDirectory) && Directory.Exists(workingDirectory))
             {
                 try
