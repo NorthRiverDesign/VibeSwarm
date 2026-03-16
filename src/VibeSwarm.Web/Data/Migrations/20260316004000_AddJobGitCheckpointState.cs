@@ -1,11 +1,15 @@
 using System;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
+using VibeSwarm.Shared.Data;
 
 #nullable disable
 
 namespace VibeSwarm.Web.Data.Migrations
 {
     /// <inheritdoc />
+    [DbContext(typeof(VibeSwarmDbContext))]
+    [Migration("20260316004000_AddJobGitCheckpointState")]
     public partial class AddJobGitCheckpointState : Migration
     {
         /// <inheritdoc />
