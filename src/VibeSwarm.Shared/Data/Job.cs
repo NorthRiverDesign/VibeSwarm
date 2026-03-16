@@ -392,6 +392,19 @@ public class Job
     public int? ChangedFilesCount { get; set; }
 
     /// <summary>
+    /// Whether the project's build verification passed after job completion.
+    /// null = not checked (verification not enabled), true = passed, false = failed.
+    /// When false, auto-commit and push are skipped to prevent broken code from being committed.
+    /// </summary>
+    public bool? BuildVerified { get; set; }
+
+    /// <summary>
+    /// Output from the build/test verification commands, captured for debugging.
+    /// Only populated when BuildVerificationEnabled is true on the project.
+    /// </summary>
+    public string? BuildOutput { get; set; }
+
+    /// <summary>
     /// Accumulated console output from the CLI process during execution.
     /// This is the full output log, separate from Output which contains the result summary.
     /// </summary>

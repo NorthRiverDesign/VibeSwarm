@@ -133,4 +133,25 @@ public class Project
 	/// When disabled, ideas are sent directly to implementation unless an approved expansion exists.
 	/// </summary>
 	public bool IdeasAutoExpand { get; set; } = true;
+
+	/// <summary>
+	/// Whether to verify the build succeeds before auto-committing or pushing job results.
+	/// When enabled, the configured BuildCommand is executed after job completion.
+	/// If the build fails, changes are not auto-committed or pushed.
+	/// </summary>
+	public bool BuildVerificationEnabled { get; set; }
+
+	/// <summary>
+	/// Shell command to verify the project builds successfully (e.g., "dotnet build", "npm run build", "cargo build").
+	/// Executed in the project's working directory after a job completes and before auto-commit.
+	/// </summary>
+	[StringLength(500)]
+	public string? BuildCommand { get; set; }
+
+	/// <summary>
+	/// Optional shell command to verify tests pass (e.g., "dotnet test", "npm test", "cargo test").
+	/// Executed after the build command succeeds. If tests fail, changes are not auto-committed.
+	/// </summary>
+	[StringLength(500)]
+	public string? TestCommand { get; set; }
 }

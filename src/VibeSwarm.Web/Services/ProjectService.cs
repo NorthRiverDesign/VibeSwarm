@@ -68,6 +68,8 @@ public class ProjectService : IProjectService
 		ValidateProject(project);
 		NormalizePlanningSettings(project);
 		project.DefaultTargetBranch = string.IsNullOrWhiteSpace(project.DefaultTargetBranch) ? null : project.DefaultTargetBranch.Trim();
+		project.BuildCommand = string.IsNullOrWhiteSpace(project.BuildCommand) ? null : project.BuildCommand.Trim();
+		project.TestCommand = string.IsNullOrWhiteSpace(project.TestCommand) ? null : project.TestCommand.Trim();
 		NormalizeProviderSelections(project);
 		NormalizeEnvironments(project);
 		await ValidateProviderSelectionsAsync(project.ProviderSelections, cancellationToken);
@@ -128,6 +130,9 @@ public class ProjectService : IProjectService
 		existing.PlanningProviderId = project.PlanningProviderId;
 		existing.PlanningModelId = project.PlanningModelId;
 		existing.PromptContext = project.PromptContext;
+		existing.BuildVerificationEnabled = project.BuildVerificationEnabled;
+		existing.BuildCommand = string.IsNullOrWhiteSpace(project.BuildCommand) ? null : project.BuildCommand.Trim();
+		existing.TestCommand = string.IsNullOrWhiteSpace(project.TestCommand) ? null : project.TestCommand.Trim();
 		existing.IsActive = project.IsActive;
 		existing.IdeasAutoExpand = project.IdeasAutoExpand;
 		existing.UpdatedAt = DateTime.UtcNow;

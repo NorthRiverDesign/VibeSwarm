@@ -110,8 +110,27 @@ public static class PromptBuilder
 			sb.AppendLine("- Only perform the requested task. Do not modify unrelated files.");
 			sb.AppendLine("- Do not add comments, docstrings, or type annotations to code you did not change.");
 			sb.AppendLine("- Do not refactor or \"improve\" code beyond what was requested.");
-			sb.AppendLine("- Verify your changes compile/build before finishing.");
 			sb.AppendLine("- If you encounter issues unrelated to the task, note them but do not fix them.");
+			sb.AppendLine();
+			sb.AppendLine("BUILD VERIFICATION (CRITICAL):");
+			sb.AppendLine("- You MUST verify that your changes compile and build successfully before finishing.");
+
+			if (!string.IsNullOrWhiteSpace(project.BuildCommand))
+			{
+				sb.AppendLine($"- Run the project build command: {project.BuildCommand.Trim()}");
+			}
+			else
+			{
+				sb.AppendLine("- Run the appropriate build command for this project (e.g., dotnet build, npm run build, cargo build).");
+			}
+
+			if (!string.IsNullOrWhiteSpace(project.TestCommand))
+			{
+				sb.AppendLine($"- Run the project test command: {project.TestCommand.Trim()}");
+			}
+
+			sb.AppendLine("- If the build or tests fail, fix the issues before completing your work.");
+			sb.AppendLine("- Never leave the project in a broken state. A failing build is unacceptable.");
 		}
 
 		var enabledEnvironments = project.Environments

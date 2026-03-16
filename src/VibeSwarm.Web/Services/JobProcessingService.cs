@@ -1482,8 +1482,20 @@ public class JobProcessingService : BackgroundService
                 // Also auto-commit when IdeasAutoCommit is true (even if project-level AutoCommitMode is Off)
                 if (status == JobStatus.Completed && ShouldProcessGitDelivery(job))
                 {
-                    await PerformAutoCommitAsync(job, workingDirectory, cancellationToken);
-                    await CreatePullRequestIfConfiguredAsync(job, workingDirectory, cancellationToken);
+                    // Run build/test verification before committing if enabled
+                    var buildPassed = await VerifyBuildAsync(job, workingDirectory, cancellationToken);
+                    if (buildPassed)
+                    {
+                        await PerformAutoCommitAsync(job, workingDirectory, cancellationToken);
+                        await CreatePullRequestIfConfiguredAsync(job, workingDirectory, cancellationToken);
+                    }
+                    else
+                    {
+                        _logger.LogWarning(
+                            "Skipping auto-commit and push for job {JobId} because build verification failed. " +
+                            "Changes remain uncommitted in {WorkingDirectory} for manual review.",
+                            job.Id, workingDirectory);
+                    }
                 }
             }
 
@@ -1725,6 +1737,148 @@ public class JobProcessingService : BackgroundService
             // Auto-commit failures should not fail the job
             _logger.LogWarning(ex, "Error during auto-commit for job {JobId}", job.Id);
         }
+    }
+
+    /// <summary>
+    /// Runs the project's configured build and test commands to verify the agent's changes compile and pass tests.
+    /// Returns true if verification passed (or was not enabled), false if the build/tests failed.
+    /// </summary>
+    private async Task<bool> VerifyBuildAsync(Job job, string workingDirectory, CancellationToken cancellationToken)
+    {
+        var project = job.Project;
+        if (project == null || !project.BuildVerificationEnabled || string.IsNullOrWhiteSpace(project.BuildCommand))
+        {
+            return true;
+        }
+
+        var outputBuilder = new StringBuilder();
+
+        try
+        {
+            _logger.LogInformation("Running build verification for job {JobId} in {WorkingDirectory}", job.Id, workingDirectory);
+
+            // Run build command
+            var buildResult = await RunShellCommandAsync(project.BuildCommand.Trim(), workingDirectory, cancellationToken);
+            outputBuilder.AppendLine($"=== Build Command: {project.BuildCommand.Trim()} ===");
+            outputBuilder.AppendLine($"Exit Code: {buildResult.ExitCode}");
+            if (!string.IsNullOrWhiteSpace(buildResult.Output))
+            {
+                outputBuilder.AppendLine(buildResult.Output);
+            }
+            if (!string.IsNullOrWhiteSpace(buildResult.Error))
+            {
+                outputBuilder.AppendLine(buildResult.Error);
+            }
+
+            if (buildResult.ExitCode != 0)
+            {
+                _logger.LogWarning("Build verification FAILED for job {JobId}. Build command exited with code {ExitCode}",
+                    job.Id, buildResult.ExitCode);
+                job.BuildVerified = false;
+                job.BuildOutput = TruncateBuildOutput(outputBuilder.ToString());
+                return false;
+            }
+
+            _logger.LogInformation("Build command succeeded for job {JobId}", job.Id);
+
+            // Run test command if configured
+            if (!string.IsNullOrWhiteSpace(project.TestCommand))
+            {
+                var testResult = await RunShellCommandAsync(project.TestCommand.Trim(), workingDirectory, cancellationToken);
+                outputBuilder.AppendLine();
+                outputBuilder.AppendLine($"=== Test Command: {project.TestCommand.Trim()} ===");
+                outputBuilder.AppendLine($"Exit Code: {testResult.ExitCode}");
+                if (!string.IsNullOrWhiteSpace(testResult.Output))
+                {
+                    outputBuilder.AppendLine(testResult.Output);
+                }
+                if (!string.IsNullOrWhiteSpace(testResult.Error))
+                {
+                    outputBuilder.AppendLine(testResult.Error);
+                }
+
+                if (testResult.ExitCode != 0)
+                {
+                    _logger.LogWarning("Test verification FAILED for job {JobId}. Test command exited with code {ExitCode}",
+                        job.Id, testResult.ExitCode);
+                    job.BuildVerified = false;
+                    job.BuildOutput = TruncateBuildOutput(outputBuilder.ToString());
+                    return false;
+                }
+
+                _logger.LogInformation("Test command succeeded for job {JobId}", job.Id);
+            }
+
+            job.BuildVerified = true;
+            job.BuildOutput = TruncateBuildOutput(outputBuilder.ToString());
+            return true;
+        }
+        catch (OperationCanceledException)
+        {
+            outputBuilder.AppendLine("Build verification was cancelled.");
+            job.BuildVerified = false;
+            job.BuildOutput = TruncateBuildOutput(outputBuilder.ToString());
+            return false;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Build verification encountered an error for job {JobId}", job.Id);
+            outputBuilder.AppendLine($"Build verification error: {ex.Message}");
+            job.BuildVerified = false;
+            job.BuildOutput = TruncateBuildOutput(outputBuilder.ToString());
+            return false;
+        }
+    }
+
+    private static async Task<(int ExitCode, string Output, string Error)> RunShellCommandAsync(
+        string command, string workingDirectory, CancellationToken cancellationToken)
+    {
+        using var process = new System.Diagnostics.Process();
+        process.StartInfo = new System.Diagnostics.ProcessStartInfo
+        {
+            FileName = "/bin/bash",
+            Arguments = $"-c {EscapeShellArgument(command)}",
+            WorkingDirectory = workingDirectory,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+
+        process.Start();
+
+        var outputTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
+        var errorTask = process.StandardError.ReadToEndAsync(cancellationToken);
+
+        // 5 minute timeout for build/test commands
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(TimeSpan.FromMinutes(5));
+
+        try
+        {
+            await process.WaitForExitAsync(timeoutCts.Token);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            // Timeout — kill process
+            try { process.Kill(entireProcessTree: true); } catch { /* best effort */ }
+            return (-1, await outputTask, "Build verification timed out after 5 minutes.");
+        }
+
+        return (process.ExitCode, await outputTask, await errorTask);
+    }
+
+    private static string EscapeShellArgument(string argument)
+    {
+        // Wrap in single quotes, escaping any embedded single quotes
+        return "'" + argument.Replace("'", "'\\''") + "'";
+    }
+
+    private static string TruncateBuildOutput(string output)
+    {
+        const int maxLength = 50_000;
+        if (output.Length <= maxLength) return output;
+        return output[..(maxLength - 100)] + "\n\n... [output truncated] ...";
     }
 
     private async Task PrepareWorkingBranchAsync(Job job, string workingDirectory, string? checkpointBaseBranch, CancellationToken cancellationToken)

@@ -38,6 +38,8 @@ public sealed class VersionControlServiceBranchDeliveryTests
 		executor.AddGitResult("rev-parse --is-inside-work-tree", new GitCommandResult { ExitCode = 0, Output = "true\n" });
 		executor.AddGitResult("fetch origin --prune", new GitCommandResult { ExitCode = 0, Output = "fetch ok" });
 		executor.AddGitResult("fetch origin --prune", new GitCommandResult { ExitCode = 0, Output = "fetch ok" });
+		executor.AddGitResult("rev-parse --is-inside-work-tree", new GitCommandResult { ExitCode = 0, Output = "true\n" });
+		executor.AddGitResult("status --porcelain=v1 --untracked-files=all", new GitCommandResult { ExitCode = 0, Output = "" });
 		executor.AddGitResult("clean -fd", new GitCommandResult { ExitCode = 0 });
 		executor.AddGitResult("reset --hard HEAD", new GitCommandResult { ExitCode = 0 });
 		executor.AddGitResult("rev-parse --verify refs/heads/main", new GitCommandResult { ExitCode = 0, Output = "main" });

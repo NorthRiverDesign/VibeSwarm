@@ -33,6 +33,7 @@ public sealed class VersionControlServiceWorkingTreeTests
 	{
 		var executor = new RecordingGitCommandExecutor();
 		executor.AddGitResult("fetch origin --prune", new GitCommandResult { ExitCode = 0, Output = "fetch ok" });
+		executor.AddGitResult("rev-parse --is-inside-work-tree", new GitCommandResult { ExitCode = 0, Output = "true\n" });
 		executor.AddGitResult("status --porcelain=v1 --untracked-files=all", new GitCommandResult { ExitCode = 0, Output = " M src/App.cs\n" });
 		executor.AddGitResult("status --porcelain=v1 --untracked-files=all", new GitCommandResult { ExitCode = 0, Output = " M src/App.cs\n" });
 		executor.AddGitResult("stash push --include-untracked --message \"VibeSwarm auto-preserve before checkout to main\"", new GitCommandResult { ExitCode = 0, Output = "Saved working directory" });
@@ -62,6 +63,7 @@ public sealed class VersionControlServiceWorkingTreeTests
 		executor.AddGitResult("rev-parse --abbrev-ref HEAD", new GitCommandResult { ExitCode = 0, Output = "main\n" });
 		executor.AddGitResult("fetch origin --prune", new GitCommandResult { ExitCode = 0, Output = "fetch ok" });
 		executor.AddGitResult("rev-parse --verify refs/remotes/origin/main", new GitCommandResult { ExitCode = 0, Output = "origin/main\n" });
+		executor.AddGitResult("rev-parse --is-inside-work-tree", new GitCommandResult { ExitCode = 0, Output = "true\n" });
 		executor.AddGitResult("status --porcelain=v1 --untracked-files=all", new GitCommandResult { ExitCode = 0, Output = "?? src/NewFile.cs\n" });
 		executor.AddGitResult("status --porcelain=v1 --untracked-files=all", new GitCommandResult { ExitCode = 0, Output = "?? src/NewFile.cs\n" });
 		executor.AddGitResult("stash push --include-untracked --message \"VibeSwarm auto-preserve before sync to origin/main\"", new GitCommandResult { ExitCode = 0, Output = "Saved working directory" });
