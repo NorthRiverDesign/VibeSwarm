@@ -86,9 +86,9 @@ else
                     disabled="@(!IsGitRepository)">
                 <i class="bi bi-file-diff me-1"></i>
                 <span>Changes</span>
-                @if (HasChangesTabContent && _uncommittedFilesCount > 0)
+                @if (HasChangesTabContent && _workingTreeStatus.ChangedFilesCount > 0)
                 {
-                    <span class="badge bg-warning text-dark ms-1">@_uncommittedFilesCount</span>
+                    <span class="badge bg-warning text-dark ms-1">@_workingTreeStatus.ChangedFilesCount</span>
                 }
             </button>
         </li>
@@ -1134,18 +1134,7 @@ TimeSpan.FromSeconds(10) })
         {
             _workingTreeStatus = await VersionControlService.GetWorkingTreeStatusAsync(Project.WorkingPath);
             _hasUncommittedChangesHeader = _workingTreeStatus.HasUncommittedChanges;
-            if (_hasUncommittedChangesHeader)
-            {
-                _uncommittedFilesCount = _workingTreeStatus.ChangedFilesCount;
-            }
-            else
-            {
-                var selection = ProjectChangesSectionResolver.Resolve(Jobs, hasUncommittedChanges: false);
-                _uncommittedFilesCount = selection.LinkedJobs
-                    .Select(job => job.ChangedFilesCount ?? 0)
-                    .DefaultIfEmpty(0)
-                    .Max();
-            }
+            _uncommittedFilesCount = _workingTreeStatus.ChangedFilesCount;
         }
         catch
         {
@@ -1776,10 +1765,7 @@ TimeSpan.FromSeconds(10) })
             }
 
             // Load completed jobs without a commit hash (pending attribution)
-            _pendingCommitJobs = Jobs
-            .Where(j => j.Status == JobStatus.Completed && string.IsNullOrEmpty(j.GitCommitHash))
-            .OrderByDescending(j => j.CompletedAt ?? j.StartedAt)
-            .ToList();
+            _pendingCommitJobs = GetPendingCommitAttributionJobs();
         }
         catch (Exception ex)
         {
@@ -1819,20 +1805,7 @@ TimeSpan.FromSeconds(10) })
 
             _lastSuccessfulCommitHash = commitResult.CommitHash;
 
-            // Update pending jobs with the commit hash
-            if (!string.IsNullOrEmpty(commitResult.CommitHash) && _pendingCommitJobs.Any())
-            {
-                foreach (var job in _pendingCommitJobs)
-                {
-                    await JobService.UpdateGitCommitHashAsync(job.Id, commitResult.CommitHash);
-                    // Update local cache
-                    var localJob = Jobs.FirstOrDefault(j => j.Id == job.Id);
-                    if (localJob != null)
-                    {
-                        localJob.GitCommitHash = commitResult.CommitHash;
-                    }
-                }
-            }
+            await LinkJobsToCommitAsync(_pendingCommitJobs, commitResult.CommitHash);
 
             _commitPushStep = "Pushing to remote...";
             StateHasChanged();
@@ -1848,13 +1821,14 @@ TimeSpan.FromSeconds(10) })
                 GitOperationSuccess = true;
                 CurrentCommitHash = commitResult.CommitHash;
                 _showUncommittedChangesModal = false;
-                await RefreshUncommittedChangesStatus();
+                await SynchronizeProjectRepositoryStateAsync();
             }
             else
             {
                 var shortHash = commitResult.CommitHash?[..Math.Min(7, commitResult.CommitHash?.Length ?? 0)] ?? "unknown";
                 _uncommittedCommitError = $"Commit succeeded ({shortHash}) but push failed: {pushResult.Error}";
                 _pushRetryAvailable = true;
+                await SynchronizeProjectRepositoryStateAsync();
             }
         }
         catch (Exception ex)
@@ -1892,11 +1866,12 @@ TimeSpan.FromSeconds(10) })
 
             if (result.Success)
             {
+                await ClearPendingChangeAttributionAsync(GetPendingCommitAttributionJobs());
                 GitOperationMessage = "Successfully discarded all uncommitted changes";
                 GitOperationSuccess = true;
                 _showDiscardConfirmation = false;
                 _showUncommittedChangesModal = false;
-                await RefreshUncommittedChangesStatus();
+                await SynchronizeProjectRepositoryStateAsync();
             }
             else
             {
@@ -2001,6 +1976,74 @@ TimeSpan.FromSeconds(10) })
     private List<DiffFile> ParseGitDiff(string diffOutput)
     {
         return GitDiffParser.ParseDiff(diffOutput);
+    }
+
+    private List<Job> GetPendingCommitAttributionJobs()
+    {
+        return Jobs
+            .Where(job => job.Status == JobStatus.Completed && string.IsNullOrWhiteSpace(job.GitCommitHash))
+            .OrderByDescending(job => job.CompletedAt ?? job.StartedAt ?? job.CreatedAt)
+            .ToList();
+    }
+
+    private async Task LinkJobsToCommitAsync(IEnumerable<Job> jobs, string? commitHash)
+    {
+        if (string.IsNullOrWhiteSpace(commitHash))
+        {
+            return;
+        }
+
+        foreach (var job in jobs
+            .Where(job => job.Id != Guid.Empty)
+            .DistinctBy(job => job.Id))
+        {
+            if (!await JobService.UpdateGitCommitHashAsync(job.Id, commitHash))
+            {
+                continue;
+            }
+
+            var localJob = Jobs.FirstOrDefault(existingJob => existingJob.Id == job.Id);
+            if (localJob != null)
+            {
+                localJob.GitCommitHash = commitHash;
+            }
+        }
+    }
+
+    private async Task ClearPendingChangeAttributionAsync(IEnumerable<Job> jobs)
+    {
+        foreach (var job in jobs
+            .Where(job => job.Status == JobStatus.Completed && string.IsNullOrWhiteSpace(job.GitCommitHash))
+            .DistinctBy(job => job.Id))
+        {
+            if (!await JobService.UpdateGitDiffAsync(job.Id, null))
+            {
+                continue;
+            }
+
+            var localJob = Jobs.FirstOrDefault(existingJob => existingJob.Id == job.Id);
+            if (localJob != null)
+            {
+                localJob.GitDiff = null;
+                localJob.ChangedFilesCount = 0;
+            }
+        }
+    }
+
+    private async Task SynchronizeProjectRepositoryStateAsync(bool reloadChangesTab = false)
+    {
+        await RefreshJobs();
+        await RefreshUncommittedChangesStatus();
+
+        if (Project != null && !string.IsNullOrEmpty(Project.WorkingPath) && IsGitRepository)
+        {
+            CurrentCommitHash = await VersionControlService.GetCurrentCommitHashAsync(Project.WorkingPath);
+        }
+
+        if (reloadChangesTab || _activeTab == "changes")
+        {
+            await LoadChangesTabData();
+        }
     }
 
     // Ideas management methods
@@ -2362,19 +2405,7 @@ TimeSpan.FromSeconds(10) })
                 return;
             }
 
-            // Update pending jobs with the commit hash
-            if (!string.IsNullOrEmpty(commitResult.CommitHash) && _pendingCommitJobs.Any())
-            {
-                foreach (var job in _pendingCommitJobs)
-                {
-                    await JobService.UpdateGitCommitHashAsync(job.Id, commitResult.CommitHash);
-                    var localJob = Jobs.FirstOrDefault(j => j.Id == job.Id);
-                    if (localJob != null)
-                    {
-                        localJob.GitCommitHash = commitResult.CommitHash;
-                    }
-                }
-            }
+            await LinkJobsToCommitAsync(_pendingCommitJobs, commitResult.CommitHash);
 
             var jobCount = _pendingCommitJobs.Count;
             GitOperationMessage = jobCount > 0
@@ -2383,7 +2414,7 @@ TimeSpan.FromSeconds(10) })
             GitOperationSuccess = true;
             CurrentCommitHash = commitResult.CommitHash;
             _showUncommittedChangesModal = false;
-            await RefreshUncommittedChangesStatus();
+            await SynchronizeProjectRepositoryStateAsync();
         }
         catch (Exception ex)
         {
@@ -2435,6 +2466,10 @@ TimeSpan.FromSeconds(10) })
                 _changesTabCommittedHash = changeSelection.CommitHash;
                 _changesTabCommittedJobs = changeSelection.LinkedJobs.ToList();
                 diffOutput = await LoadCommittedChangesDiffAsync(changeSelection);
+                if (string.IsNullOrWhiteSpace(diffOutput))
+                {
+                    diffOutput = GetPersistedDiffFallback(changeSelection);
+                }
                 _changesTabEmptyStateMessage = $"No diff is available for commit {ShortCommitHash(changeSelection.CommitHash)}.";
             }
             else if (changeSelection.SourceType == ProjectChangesSourceType.PersistedJobDiff)
@@ -2485,6 +2520,13 @@ TimeSpan.FromSeconds(10) })
                 Deletions = 0
             })
             .ToList();
+    }
+
+    private static string? GetPersistedDiffFallback(ProjectChangesSelection changeSelection)
+    {
+        return changeSelection.LinkedJobs
+            .Select(job => job.GitDiff)
+            .FirstOrDefault(diff => !string.IsNullOrWhiteSpace(diff));
     }
 
     private async Task<string?> LoadCommittedChangesDiffAsync(ProjectChangesSelection changeSelection)
@@ -2592,21 +2634,13 @@ TimeSpan.FromSeconds(10) })
                 return;
             }
 
-            if (!string.IsNullOrEmpty(commitResult.CommitHash) && _changesTabPendingJobs.Any())
-            {
-                foreach (var job in _changesTabPendingJobs)
-                {
-                    await JobService.UpdateGitCommitHashAsync(job.Id, commitResult.CommitHash);
-                    var localJob = Jobs.FirstOrDefault(j => j.Id == job.Id);
-                    if (localJob != null) localJob.GitCommitHash = commitResult.CommitHash;
-                }
-            }
+            await LinkJobsToCommitAsync(_changesTabPendingJobs, commitResult.CommitHash);
 
             GitOperationMessage = "Successfully committed changes";
             GitOperationSuccess = true;
             CurrentCommitHash = commitResult.CommitHash;
             _changesTabCommitMessage = string.Empty;
-            await RefreshUncommittedChangesStatus();
+            await SynchronizeProjectRepositoryStateAsync();
             _activeTab = "jobs"; // Switch away from empty changes tab
         }
         catch (Exception ex)
@@ -2643,15 +2677,7 @@ TimeSpan.FromSeconds(10) })
                 return;
             }
 
-            if (!string.IsNullOrEmpty(commitResult.CommitHash) && _changesTabPendingJobs.Any())
-            {
-                foreach (var job in _changesTabPendingJobs)
-                {
-                    await JobService.UpdateGitCommitHashAsync(job.Id, commitResult.CommitHash);
-                    var localJob = Jobs.FirstOrDefault(j => j.Id == job.Id);
-                    if (localJob != null) localJob.GitCommitHash = commitResult.CommitHash;
-                }
-            }
+            await LinkJobsToCommitAsync(_changesTabPendingJobs, commitResult.CommitHash);
 
             var pushResult = await VersionControlService.PushAsync(Project.WorkingPath);
             if (pushResult.Success)
@@ -2660,12 +2686,14 @@ TimeSpan.FromSeconds(10) })
                 GitOperationSuccess = true;
                 CurrentCommitHash = commitResult.CommitHash;
                 _changesTabCommitMessage = string.Empty;
-                await RefreshUncommittedChangesStatus();
+                await SynchronizeProjectRepositoryStateAsync(reloadChangesTab: true);
                 _activeTab = "jobs";
             }
             else
             {
                 _changesTabCommitError = $"Commit succeeded but push failed: {pushResult.Error}";
+                _changesTabCommitMessage = string.Empty;
+                await SynchronizeProjectRepositoryStateAsync(reloadChangesTab: true);
             }
         }
         catch (Exception ex)
@@ -2691,10 +2719,11 @@ TimeSpan.FromSeconds(10) })
             var result = await VersionControlService.DiscardAllChangesAsync(Project.WorkingPath);
             if (result.Success)
             {
+                await ClearPendingChangeAttributionAsync(_changesTabPendingJobs);
                 GitOperationMessage = "Successfully discarded all uncommitted changes";
                 GitOperationSuccess = true;
                 _changesTabShowDiscardConfirm = false;
-                await RefreshUncommittedChangesStatus();
+                await SynchronizeProjectRepositoryStateAsync();
                 _activeTab = "jobs";
             }
             else
