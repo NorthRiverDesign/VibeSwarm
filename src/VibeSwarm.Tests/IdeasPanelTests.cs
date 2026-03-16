@@ -62,6 +62,8 @@ public sealed class IdeasPanelTests
 		Assert.DoesNotContain("card-header", html);
 		Assert.Contains($"maxlength=\"{ValidationLimits.IdeaDescriptionMaxLength}\"", html);
 		Assert.Contains($"0/{ValidationLimits.IdeaDescriptionMaxLength} characters", html);
+		Assert.Contains("border rounded-3", html);
+		Assert.DoesNotContain("border rounded-3 overflow-hidden", html);
 	}
 
 	[Fact]

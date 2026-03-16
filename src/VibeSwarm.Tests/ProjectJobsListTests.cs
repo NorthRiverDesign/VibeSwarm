@@ -45,5 +45,7 @@ public sealed class ProjectJobsListTests
 		Assert.Contains("Delete Completed Jobs", html);
 		Assert.Contains("Queue active", html);
 		Assert.DoesNotContain("card-header", html);
+		Assert.Contains("border rounded-3", html);
+		Assert.DoesNotContain("border rounded-3 overflow-hidden", html);
 	}
 }
