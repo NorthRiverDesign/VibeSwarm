@@ -74,9 +74,9 @@ else
                     @onclick="@(() => _activeTab = "environments")" role="tab">
                 <i class="bi bi-globe2 me-1"></i>
                 <span>Environments</span>
-                @if (Project.Environments?.Any(environment => environment.IsEnabled) == true)
+                @if (Project!.Environments.Any(environment => environment.IsEnabled))
                 {
-                    <span class="badge bg-secondary ms-1">@((Project.Environments?.Count(environment => environment.IsEnabled)).GetValueOrDefault())</span>
+                    <span class="badge bg-secondary ms-1">@(Project.Environments.Count(environment => environment.IsEnabled))</span>
                 }
             </button>
         </li>
@@ -577,7 +577,6 @@ else
 
     // SignalR connection
     private HubConnection? _hubConnection;
-    private bool _signalRConnected;
     private CancellationTokenSource? _signalRCts;
     private HashSet<Guid> _localIdeaUpdateIds = new();
 
@@ -655,14 +654,14 @@ TimeSpan.FromSeconds(10) })
         // Handle connection state changes
         _hubConnection.Closed += async (error) =>
         {
-            _signalRConnected = false;
+
             Console.WriteLine($"SignalR connection closed: {error?.Message ?? "No error"}");
             await Task.CompletedTask;
         };
 
         _hubConnection.Reconnected += async (connectionId) =>
         {
-            _signalRConnected = true;
+
             Console.WriteLine($"SignalR reconnected: {connectionId}");
             // Re-subscribe after reconnection
             await SubscribeToSignalRGroups();
@@ -671,14 +670,14 @@ TimeSpan.FromSeconds(10) })
         try
         {
             await _hubConnection.StartAsync(cancellationToken);
-            _signalRConnected = true;
+
             Console.WriteLine("SignalR connected successfully");
             await SubscribeToSignalRGroups();
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             Console.WriteLine($"SignalR connection failed: {ex.Message}");
-            _signalRConnected = false;
+
         }
     }
 

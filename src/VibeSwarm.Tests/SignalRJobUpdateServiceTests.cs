@@ -51,7 +51,7 @@ public sealed class SignalRJobUpdateServiceTests
 		string method,
 		params object?[] expectedArgs)
 	{
-		var invocation = Assert.Single(hubContext.Invocations.Where(i => i.Target == target && i.Method == method));
+		var invocation = Assert.Single(hubContext.Invocations, i => i.Target == target && i.Method == method);
 		Assert.Equal(expectedArgs, invocation.Args);
 	}
 

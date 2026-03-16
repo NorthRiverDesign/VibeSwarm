@@ -617,12 +617,28 @@ TimeSpan.FromSeconds(10) })
 
     private async Task ForceReloadPage()
     {
-        await JSRuntime.InvokeVoidAsync("location.reload", true);
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("location.reload", true);
+        }
+        catch
+        {
+            // JSInterop can fail after iOS app suspension - fall back to NavigationManager
+            try { NavigationManager.NavigateTo(NavigationManager.Uri, forceLoad: true); } catch { }
+        }
     }
 
     private async Task ForceNavigateToDashboard()
     {
-        await JSRuntime.InvokeVoidAsync("eval", "window.location.href = '/'");
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("eval", "window.location.href = '/'");
+        }
+        catch
+        {
+            // JSInterop can fail after iOS app suspension - fall back to NavigationManager
+            try { NavigationManager.NavigateTo("/", forceLoad: true); } catch { }
+        }
     }
 
     private void NavigateToDashboard()

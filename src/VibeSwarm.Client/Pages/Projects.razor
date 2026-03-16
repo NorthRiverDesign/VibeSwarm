@@ -334,18 +334,23 @@ else
         StartAutoRefresh();
     }
 
+    private bool _disposed;
+
     private void StartAutoRefresh()
     {
         _refreshTimer = new System.Threading.Timer(async _ =>
         {
-            if (ActiveJobs.Any())
+            if (_disposed || !ActiveJobs.Any()) return;
+            try
             {
                 await InvokeAsync(async () =>
-        {
-            await LoadActiveJobs();
-            StateHasChanged();
-        });
+                {
+                    if (_disposed) return;
+                    await LoadActiveJobs();
+                    StateHasChanged();
+                });
             }
+            catch (ObjectDisposedException) { }
         }, null, TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(3));
     }
 
@@ -568,6 +573,7 @@ else
 
     public void Dispose()
     {
+        _disposed = true;
         _refreshTimer?.Dispose();
     }
 

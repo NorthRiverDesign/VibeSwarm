@@ -161,7 +161,7 @@ else
 
         @* Right Column - Session Panel (Live Output, Console, Command, Conversation) *@
         <div class="col-12 col-xl-7 order-1 order-xl-2 d-flex flex-column">
-            <JobSessionPanel Messages="@(Job.Messages?.ToList() ?? new())" Status="@Job.Status" IsJobActive="@IsJobActive"
+            <JobSessionPanel Messages="@(Job!.Messages.ToList())" Status="@Job.Status" IsJobActive="@IsJobActive"
                              ErrorMessage="@Job.ErrorMessage" ConsoleOutput="@Job.ConsoleOutput" CommandUsed="@Job.CommandUsed"
                              SessionId="@Job.SessionId" LiveOutputLines="@_liveOutput.ToList()" MaxOutputLines="@MaxOutputLines"
                              OnClearLiveOutput="ClearLiveOutput" OnSendFollowUp="CreateFollowUpJob" />
