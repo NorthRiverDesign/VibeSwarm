@@ -264,7 +264,7 @@ public class JobProcessingService : BackgroundService
 
             // Find jobs that were being processed by any worker but appear orphaned
             // (Started/Processing with old heartbeats, excluding already-completed jobs)
-            var cutoffTime = DateTime.UtcNow - TimeSpan.FromMinutes(5);
+			var cutoffTime = DateTime.UtcNow - TimeSpan.FromMinutes(10);
             var orphanedJobs = await dbContext.Jobs
                 .Include(j => j.Project)
                 .Where(j => (j.Status == JobStatus.Started || j.Status == JobStatus.Processing))
@@ -492,9 +492,21 @@ public class JobProcessingService : BackgroundService
                 return;
             }
 
-            // Mark job as started and claim ownership
-            await ClaimJobAsync(job.Id, dbContext, cancellationToken);
-            await NotifyStatusChangedAsync(job.Id, JobStatus.Started);
+			// Claim ownership before any provider work starts so duplicate schedulers cannot
+			// launch the same CLI agent twice for a single job.
+			var claimed = await ClaimJobAsync(job.Id, dbContext, cancellationToken);
+			if (!claimed)
+			{
+				_logger.LogInformation("Skipping provider execution for job {JobId} because another worker already claimed it.", job.Id);
+				return;
+			}
+
+			job.Status = JobStatus.Started;
+			job.StartedAt ??= DateTime.UtcNow;
+			job.LastActivityAt = DateTime.UtcNow;
+			job.WorkerInstanceId = _workerInstanceId;
+			job.LastHeartbeatAt = DateTime.UtcNow;
+			await NotifyStatusChangedAsync(job.Id, JobStatus.Started);
 
             // Check again after status update - double-check for race conditions
             if (await jobService.IsCancellationRequestedAsync(job.Id, cancellationToken))
@@ -1214,23 +1226,47 @@ public class JobProcessingService : BackgroundService
     /// <summary>
     /// Claims ownership of a job by this worker instance
     /// </summary>
-    private async Task ClaimJobAsync(Guid jobId, VibeSwarmDbContext dbContext, CancellationToken cancellationToken)
-    {
-        var job = await dbContext.Jobs.FindAsync(new object[] { jobId }, cancellationToken);
-        if (job != null)
-        {
-            var transitioned = JobStateMachine.TryTransition(job, JobStatus.Started, "Claimed by worker.");
-            if (!transitioned.Success)
-            {
-                _logger.LogWarning("Failed to claim job {JobId}: {Error}", jobId, transitioned.ErrorMessage);
-                return;
-            }
+	private async Task<bool> ClaimJobAsync(Guid jobId, VibeSwarmDbContext dbContext, CancellationToken cancellationToken)
+	{
+		var claimTime = DateTime.UtcNow;
+		var updatedRows = await dbContext.Jobs
+			.Where(j => j.Id == jobId)
+			.Where(j => (j.Status == JobStatus.New || j.Status == JobStatus.Pending) && !j.CancellationRequested)
+			.Where(j => j.WorkerInstanceId == null)
+			.ExecuteUpdateAsync(setters => setters
+				.SetProperty(j => j.Status, JobStatus.Started)
+				.SetProperty(j => j.WorkerInstanceId, _workerInstanceId)
+				.SetProperty(j => j.StartedAt, j => j.StartedAt ?? claimTime)
+				.SetProperty(j => j.LastActivityAt, claimTime)
+				.SetProperty(j => j.LastHeartbeatAt, claimTime),
+				cancellationToken);
 
-            job.WorkerInstanceId = _workerInstanceId;
-            job.LastHeartbeatAt = DateTime.UtcNow;
-            await dbContext.SaveChangesAsync(cancellationToken);
-        }
-    }
+		if (updatedRows == 1)
+		{
+			return true;
+		}
+
+		var existingJob = await dbContext.Jobs
+			.AsNoTracking()
+			.Where(j => j.Id == jobId)
+			.Select(j => new { j.Status, j.WorkerInstanceId, j.CancellationRequested })
+			.FirstOrDefaultAsync(cancellationToken);
+
+		if (existingJob == null)
+		{
+			_logger.LogWarning("Failed to claim job {JobId}: job no longer exists.", jobId);
+			return false;
+		}
+
+		_logger.LogWarning(
+			"Failed to claim job {JobId}: status {Status}, worker {WorkerId}, cancellation requested {CancellationRequested}.",
+			jobId,
+			existingJob.Status,
+			existingJob.WorkerInstanceId ?? "(none)",
+			existingJob.CancellationRequested);
+
+		return false;
+	}
 
     /// <summary>
     /// Records usage from an execution result and checks for exhaustion warnings.

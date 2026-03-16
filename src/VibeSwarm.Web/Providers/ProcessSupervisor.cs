@@ -29,7 +29,7 @@ public class ProcessSupervisor : IDisposable
 	/// <summary>
 	/// Time without output before a process is considered stalled
 	/// </summary>
-	public TimeSpan StallThreshold { get; set; } = TimeSpan.FromMinutes(5);
+	public TimeSpan StallThreshold { get; set; } = TimeSpan.FromMinutes(10);
 
 	/// <summary>
 	/// Event fired when a process becomes unhealthy

@@ -30,7 +30,7 @@ public class JobWatchdogService : BackgroundService
 	/// <summary>
 	/// Default stall threshold for CLI providers (model loading on low-powered hardware)
 	/// </summary>
-	private readonly TimeSpan _cliStallThreshold = TimeSpan.FromMinutes(5);
+	private readonly TimeSpan _cliStallThreshold = TimeSpan.FromMinutes(10);
 
 	/// <summary>
 	/// How long a job can be in cancellation requested state before force cancellation
@@ -282,7 +282,7 @@ public class JobWatchdogService : BackgroundService
 		var dbContext = scope.ServiceProvider.GetRequiredService<VibeSwarmDbContext>();
 
 		// Get all active workers by checking recent heartbeats from jobs
-		var activeWorkerCutoff = DateTime.UtcNow - TimeSpan.FromMinutes(5);
+		var activeWorkerCutoff = DateTime.UtcNow - TimeSpan.FromMinutes(10);
 
 		// Find jobs that are running but assigned to workers that haven't sent heartbeats recently
 		// AND are not our worker (we handle our own jobs in CheckForStalledJobsAsync)

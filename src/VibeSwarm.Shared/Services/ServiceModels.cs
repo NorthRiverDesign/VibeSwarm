@@ -25,7 +25,7 @@ public class JobCompletionCriteria
 	/// <summary>
 	/// Time without activity before job is considered stalled
 	/// </summary>
-	public TimeSpan? StallTimeout { get; set; } = TimeSpan.FromMinutes(5);
+	public TimeSpan? StallTimeout { get; set; } = TimeSpan.FromMinutes(10);
 
 	/// <summary>
 	/// Regex pattern that indicates success when found in output
@@ -43,7 +43,7 @@ public class JobCompletionCriteria
 	public static JobCompletionCriteria Default => new()
 	{
 		MaxExecutionTime = TimeSpan.FromHours(1),
-		StallTimeout = TimeSpan.FromMinutes(5)
+		StallTimeout = TimeSpan.FromMinutes(10)
 	};
 
 	/// <summary>

@@ -64,8 +64,8 @@ public class Provider
 
     /// <summary>
     /// Override for stall detection timeout in seconds.
-    /// When null, the system uses provider-aware defaults:
-    /// SDK providers with streaming = 180s, CLI providers = 300s.
+	/// When null, the system uses provider-aware defaults:
+	/// SDK providers with streaming = 180s, CLI providers = 600s.
     /// </summary>
     [Range(30, 1800)]
     public int? StallTimeoutSeconds { get; set; }

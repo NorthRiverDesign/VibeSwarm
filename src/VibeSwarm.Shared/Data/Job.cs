@@ -462,9 +462,11 @@ public class Job
             MaxExecutionTime = maxExecutionTime,
             MaxCostUsd = MaxCostUsd,
             MaxTokens = MaxTokens,
-            StallTimeout = StallTimeoutSeconds.HasValue
-                ? TimeSpan.FromSeconds(StallTimeoutSeconds.Value)
-                : TimeSpan.FromMinutes(5),
+			StallTimeout = StallTimeoutSeconds.HasValue
+				? TimeSpan.FromSeconds(StallTimeoutSeconds.Value)
+				: Provider?.StallTimeoutSeconds is > 0
+					? TimeSpan.FromSeconds(Provider.StallTimeoutSeconds.Value)
+					: TimeSpan.FromMinutes(10),
             SuccessPattern = SuccessPattern,
             FailurePattern = FailurePattern
         };
