@@ -161,6 +161,10 @@ else
                         <span>Loading changes...</span>
                     </div>
                 }
+                else if (!string.IsNullOrEmpty(_changesTabLoadError))
+                {
+                    <Alert Type="Alert.AlertType.Danger" Message="@_changesTabLoadError" />
+                }
                 else if (_changesTabDiffFiles != null && _changesTabDiffFiles.Any())
                 {
                     @if (_changesTabShowingCommittedDiff && _changesTabCommittedJobs.Any())
@@ -539,6 +543,7 @@ else
     private string? _changesTabEmptyStateMessage;
     private string _changesTabCommitMessage = string.Empty;
     private string? _changesTabCommitError;
+    private string? _changesTabLoadError;
     private bool _isChangesTabCommitting;
     private bool _isChangesTabCommitOnly;
     private bool _isChangesTabDiscarding;
@@ -2443,6 +2448,7 @@ TimeSpan.FromSeconds(10) })
         _changesTabCommittedHash = null;
         _changesTabEmptyStateMessage = null;
         _changesTabCommitError = null;
+        _changesTabLoadError = null;
         _changesTabExpandedItems.Clear();
         StateHasChanged();
 
@@ -2456,6 +2462,11 @@ TimeSpan.FromSeconds(10) })
             if (changeSelection.SourceType == ProjectChangesSourceType.WorkingDirectory)
             {
                 changedFiles = _workingTreeStatus.ChangedFiles;
+                if (changedFiles.Count == 0 && Math.Max(_workingTreeStatus.ChangedFilesCount, _uncommittedFilesCount) > 0)
+                {
+                    changedFiles = await VersionControlService.GetChangedFilesAsync(Project.WorkingPath);
+                }
+
                 diffOutput = await VersionControlService.GetWorkingDirectoryDiffAsync(Project.WorkingPath);
                 _changesTabPendingJobs = changeSelection.LinkedJobs.ToList();
                 _changesTabEmptyStateMessage = "No uncommitted changes. Your working directory is clean.";
@@ -2496,7 +2507,7 @@ TimeSpan.FromSeconds(10) })
         }
         catch (Exception ex)
         {
-            _changesTabCommitError = $"Failed to load changes: {ex.Message}";
+            _changesTabLoadError = $"Failed to load changes: {ex.Message}";
         }
         finally
         {
@@ -2506,7 +2517,10 @@ TimeSpan.FromSeconds(10) })
     }
 
     private ProjectChangesSelection GetProjectChangesSelection()
-        => ProjectChangesSectionResolver.Resolve(Jobs, _workingTreeStatus.HasUncommittedChanges || _hasUncommittedChangesHeader);
+        => ProjectChangesSectionResolver.Resolve(
+            Jobs,
+            _workingTreeStatus.HasUncommittedChanges || _hasUncommittedChangesHeader,
+            Math.Max(_workingTreeStatus.ChangedFilesCount, _uncommittedFilesCount));
 
     private static List<DiffFile> BuildPlaceholderDiffFiles(IReadOnlyList<string> changedFiles)
     {

@@ -27,6 +27,24 @@ public sealed class ProjectChangesSectionResolverTests
 	}
 
 	[Fact]
+	public void Resolve_PrefersWorkingDirectoryChanges_WhenChangedFileCountIsPositive()
+	{
+		var jobs = new[]
+		{
+			CreateCompletedJob("Pending commit", completedAt: new DateTime(2026, 3, 14, 1, 0, 0, DateTimeKind.Utc))
+		};
+
+		var selection = ProjectChangesSectionResolver.Resolve(
+			jobs,
+			hasUncommittedChanges: false,
+			changedFilesCount: 2);
+
+		Assert.Equal(ProjectChangesSourceType.WorkingDirectory, selection.SourceType);
+		Assert.Single(selection.LinkedJobs);
+		Assert.Equal("Pending commit", selection.LinkedJobs[0].Title);
+	}
+
+	[Fact]
 	public void Resolve_UsesLatestCommittedChangeSet_WhenWorkingDirectoryIsClean()
 	{
 		var jobs = new[]
@@ -164,6 +182,44 @@ public sealed class ProjectChangesSectionResolverTests
 		Assert.Null(selection.CommitHash);
 		Assert.Single(selection.LinkedJobs);
 		Assert.Equal("Recovered job", selection.LinkedJobs[0].Title);
+	}
+
+	[Fact]
+	public void Resolve_PrefersLatestCommittedDiff_OverOlderPersistedJobDiff()
+	{
+		var jobs = new[]
+		{
+			new Job
+			{
+				Title = "Older recovered job",
+				GoalPrompt = "Older recovered job",
+				Status = JobStatus.Stalled,
+				GitDiff = """
+					diff --git a/src/Recovered.cs b/src/Recovered.cs
+					--- a/src/Recovered.cs
+					+++ b/src/Recovered.cs
+					@@ -1 +1 @@
+					-old
+					+new
+					""",
+				ChangedFilesCount = 1,
+				CreatedAt = new DateTime(2026, 3, 15, 11, 0, 0, DateTimeKind.Utc),
+				StartedAt = new DateTime(2026, 3, 15, 11, 1, 0, DateTimeKind.Utc),
+				CompletedAt = new DateTime(2026, 3, 15, 11, 5, 0, DateTimeKind.Utc)
+			},
+			CreateCompletedJob(
+				"Latest commit",
+				commitBefore: "1111111",
+				commitHash: "2222222",
+				completedAt: new DateTime(2026, 3, 15, 12, 0, 0, DateTimeKind.Utc))
+		};
+
+		var selection = ProjectChangesSectionResolver.Resolve(jobs, hasUncommittedChanges: false);
+
+		Assert.Equal(ProjectChangesSourceType.Commit, selection.SourceType);
+		Assert.Equal("2222222", selection.CommitHash);
+		Assert.Single(selection.LinkedJobs);
+		Assert.Equal("Latest commit", selection.LinkedJobs[0].Title);
 	}
 
 	private static Job CreateCompletedJob(string title, string? commitBefore = null, string? commitHash = null, DateTime? completedAt = null, string? gitDiff = null)

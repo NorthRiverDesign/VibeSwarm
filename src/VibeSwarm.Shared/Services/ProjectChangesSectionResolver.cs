@@ -22,11 +22,11 @@ public sealed record ProjectChangesSelection(
 
 public static class ProjectChangesSectionResolver
 {
-	public static ProjectChangesSelection Resolve(IReadOnlyList<Job>? jobs, bool hasUncommittedChanges)
+	public static ProjectChangesSelection Resolve(IReadOnlyList<Job>? jobs, bool hasUncommittedChanges, int changedFilesCount = 0)
 	{
 		jobs ??= [];
 
-		if (hasUncommittedChanges)
+		if (hasUncommittedChanges || changedFilesCount > 0)
 		{
 			var pendingJobs = jobs
 				.Where(IsPendingCommitAttribution)
@@ -41,12 +41,18 @@ public static class ProjectChangesSectionResolver
 				PersistedDiff: null);
 		}
 
+		var latestCommittedJob = jobs
+			.Where(IsCommitted)
+			.OrderByDescending(GetSortTimestamp)
+			.FirstOrDefault();
+
 		var latestPersistedDiffJob = jobs
 			.Where(HasPersistedDiff)
 			.OrderByDescending(GetSortTimestamp)
 			.FirstOrDefault();
 
-		if (latestPersistedDiffJob != null)
+		if (latestPersistedDiffJob != null &&
+			(latestCommittedJob == null || GetSortTimestamp(latestPersistedDiffJob) > GetSortTimestamp(latestCommittedJob)))
 		{
 			return new ProjectChangesSelection(
 				ProjectChangesSourceType.PersistedJobDiff,
@@ -55,11 +61,6 @@ public static class ProjectChangesSectionResolver
 				LinkedJobs: [latestPersistedDiffJob],
 				PersistedDiff: latestPersistedDiffJob.GitDiff);
 		}
-
-		var latestCommittedJob = jobs
-			.Where(IsCommitted)
-			.OrderByDescending(GetSortTimestamp)
-			.FirstOrDefault();
 
 		if (latestCommittedJob != null)
 		{
