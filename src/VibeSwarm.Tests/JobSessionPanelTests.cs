@@ -69,6 +69,47 @@ public sealed class JobSessionPanelTests
 		Assert.DoesNotContain("Final summary only", html);
 	}
 
+	[Fact]
+	public async Task RenderedJobSessionPanel_ShowsCliWaitStateAsInlineStatus()
+	{
+		var services = new ServiceCollection();
+		services.AddLogging();
+		services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
+
+		await using var renderer = new HtmlRenderer(services.BuildServiceProvider(), NullLoggerFactory.Instance);
+
+		var html = await renderer.Dispatcher.InvokeAsync(async () =>
+		{
+			var parameters = ParameterView.FromDictionary(new Dictionary<string, object?>
+			{
+				[nameof(JobSessionPanel.Status)] = JobStatus.Processing,
+				[nameof(JobSessionPanel.IsJobActive)] = true,
+				[nameof(JobSessionPanel.CurrentActivity)] = "Waiting for CLI response (12s)...",
+				[nameof(JobSessionPanel.LiveOutputLines)] = new List<OutputLine>
+				{
+					new()
+					{
+						Content = "[Assistant] First response chunk",
+						Timestamp = DateTime.UtcNow.AddSeconds(-10)
+					},
+					new()
+					{
+						Content = "[VibeSwarm] Still waiting for response... (waited 12s).",
+						Timestamp = DateTime.UtcNow.AddSeconds(-5)
+					}
+				}
+			});
+
+			var output = await renderer.RenderComponentAsync<JobSessionPanel>(parameters);
+			return output.ToHtmlString();
+		});
+
+		Assert.Contains("1 messages", html);
+		Assert.Contains("First response chunk", html);
+		Assert.Contains("Waiting for CLI response (12s)...", html);
+		Assert.DoesNotContain("[VibeSwarm] Still waiting for response", html);
+	}
+
 	private sealed class NoOpJsRuntime : IJSRuntime
 	{
 		public ValueTask<TValue> InvokeAsync<TValue>(string identifier, object?[]? args)

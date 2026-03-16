@@ -119,6 +119,11 @@ internal static class JobSessionDisplayBuilder
 			return null;
 		}
 
+		if (IsCliWaitStatus(content))
+		{
+			return null;
+		}
+
 		if (TryParseToolUse(content, out var toolName, out var toolInput))
 		{
 			return new JobMessage
@@ -248,4 +253,9 @@ internal static class JobSessionDisplayBuilder
 
 		return content;
 	}
+
+	private static bool IsCliWaitStatus(string content)
+		=> content.StartsWith("[VibeSwarm] Still initializing...", StringComparison.OrdinalIgnoreCase)
+			|| content.StartsWith("[VibeSwarm] Still waiting for response...", StringComparison.OrdinalIgnoreCase)
+			|| content.StartsWith("[VibeSwarm] Still waiting (", StringComparison.OrdinalIgnoreCase);
 }

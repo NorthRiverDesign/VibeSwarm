@@ -128,18 +128,27 @@
                         }
                     </div>
                 }
-                else
-                {
-                    <div class="d-flex flex-column gap-3 overflow-auto p-2" style="max-height: 600px;">
-                        @foreach (var message in DisplayedMessages)
-                        {
-                            <ChatMessage Role="@message.Role" Content="@message.Content" ToolName="@message.ToolName"
-                                         ToolInput="@message.ToolInput" ToolOutput="@message.ToolOutput" Timestamp="@message.CreatedAt" />
-                        }
-                    </div>
-                }
-            </div>
-        }
+				else
+				{
+					<div class="d-flex flex-column gap-3 overflow-auto p-2" style="max-height: 600px;">
+						@foreach (var message in DisplayedMessages)
+						{
+							<ChatMessage Role="@message.Role" Content="@message.Content" ToolName="@message.ToolName"
+										 ToolInput="@message.ToolInput" ToolOutput="@message.ToolOutput" Timestamp="@message.CreatedAt" />
+						}
+
+						@if (ShowInlineWaitingActivity)
+						{
+							<div class="d-flex align-items-center justify-content-center gap-2 px-2 small text-body-secondary"
+								 role="status" aria-live="polite">
+								<span class="spinner-border spinner-border-sm text-info flex-shrink-0" aria-hidden="true"></span>
+								<span class="text-truncate d-inline-block" style="max-width: min(100%, 24rem);">@CurrentActivity</span>
+							</div>
+						}
+					</div>
+				}
+			</div>
+		}
         else if (_activeTab == "console")
         {
             <pre class="terminal-output flex-grow-1 m-0 p-3 overflow-auto rounded-bottom small text-break"
@@ -220,6 +229,9 @@
     public int MaxOutputLines { get; set; } = 500;
 
     [Parameter]
+    public string? CurrentActivity { get; set; }
+
+    [Parameter]
     public EventCallback OnClearLiveOutput { get; set; }
 
     [Parameter]
@@ -233,6 +245,12 @@
 
     private IReadOnlyList<JobMessage> DisplayedMessages
         => JobSessionDisplayBuilder.BuildDisplayedMessages(Messages, LiveOutputLines, IsJobActive);
+
+    private bool ShowInlineWaitingActivity
+        => IsJobActive
+            && DisplayedMessages.Any()
+            && !string.IsNullOrWhiteSpace(CurrentActivity)
+            && CurrentActivity.StartsWith("Waiting for CLI response", StringComparison.OrdinalIgnoreCase);
 
     private async Task SendFollowUp()
     {

@@ -186,6 +186,7 @@ else
             <JobSessionPanel Messages="@(Job!.Messages.ToList())" Status="@Job.Status" IsJobActive="@IsJobActive"
                              ErrorMessage="@Job.ErrorMessage" ConsoleOutput="@Job.ConsoleOutput" CommandUsed="@Job.CommandUsed"
                              SessionId="@Job.SessionId" LiveOutputLines="@_liveOutput.ToList()" MaxOutputLines="@MaxOutputLines"
+                             CurrentActivity="@Job.CurrentActivity"
                              OnClearLiveOutput="ClearLiveOutput" OnSendFollowUp="CreateFollowUpJob" />
         </div>
     </div>
