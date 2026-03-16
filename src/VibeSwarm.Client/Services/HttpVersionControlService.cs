@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using System.Text.Json;
 using VibeSwarm.Shared.VersionControl;
 using VibeSwarm.Shared.VersionControl.Models;
 
@@ -81,7 +82,7 @@ public class HttpVersionControlService : IVersionControlService
     }
 
     public async Task<string?> GetRemoteUrlAsync(string workingDirectory, string remoteName = "origin", CancellationToken ct = default)
-        => await _http.GetFromJsonAsync<string?>($"/api/git/remote-url?path={Enc(workingDirectory)}&remote={Uri.EscapeDataString(remoteName)}", ct);
+        => await GetStringResponseAsync($"/api/git/remote-url?path={Enc(workingDirectory)}&remote={Uri.EscapeDataString(remoteName)}", ct);
 
 	public async Task<bool> HasUncommittedChangesAsync(string workingDirectory, CancellationToken ct = default)
 	{
@@ -122,14 +123,14 @@ public class HttpVersionControlService : IVersionControlService
     {
         var url = $"/api/git/diff?path={Enc(workingDirectory)}";
         if (baseCommit != null) url += $"&baseCommit={Uri.EscapeDataString(baseCommit)}";
-        return await _http.GetFromJsonAsync<string?>(url, ct);
+        return await GetStringResponseAsync(url, ct);
     }
 
     public async Task<string?> GetCommitRangeDiffAsync(string workingDirectory, string fromCommit, string? toCommit = null, CancellationToken ct = default)
     {
         var url = $"/api/git/diff-range?path={Enc(workingDirectory)}&from={Uri.EscapeDataString(fromCommit)}";
         if (toCommit != null) url += $"&to={Uri.EscapeDataString(toCommit)}";
-        return await _http.GetFromJsonAsync<string?>(url, ct);
+        return await GetStringResponseAsync(url, ct);
     }
 
     public async Task<GitDiffSummary?> GetDiffSummaryAsync(string workingDirectory, string? baseCommit = null, CancellationToken ct = default)
@@ -367,6 +368,42 @@ public class HttpVersionControlService : IVersionControlService
     {
         var response = await _http.PostAsJsonAsync("/api/git/prune", new { Path = workingDirectory, Remote = remoteName }, ct);
         return await response.Content.ReadFromJsonAsync<GitOperationResult>(ct) ?? new GitOperationResult { Success = false, Error = "Failed to parse response" };
+    }
+
+    private async Task<string?> GetStringResponseAsync(string requestUri, CancellationToken ct = default)
+    {
+        try
+        {
+            var response = await _http.GetAsync(requestUri, ct);
+            if (!response.IsSuccessStatusCode)
+            {
+                return null;
+            }
+
+            var content = await response.Content.ReadAsStringAsync(ct);
+            if (string.IsNullOrWhiteSpace(content))
+            {
+                return null;
+            }
+
+            if (string.Equals(response.Content.Headers.ContentType?.MediaType, "application/json", StringComparison.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    return JsonSerializer.Deserialize<string?>(content);
+                }
+                catch (JsonException)
+                {
+                    // Fall back to the raw body in case the server returned plain text with the wrong content type.
+                }
+            }
+
+            return content;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private static string Enc(string value) => Uri.EscapeDataString(value);
