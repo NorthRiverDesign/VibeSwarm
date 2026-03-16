@@ -40,8 +40,8 @@ public sealed class IdeasPanelTests
 			var parameters = ParameterView.FromDictionary(new Dictionary<string, object?>
 			{
 				[nameof(IdeasPanel.Ideas)] = new List<Idea> { idea },
-				[nameof(IdeasPanel.TotalIdeasCount)] = 1,
-				[nameof(IdeasPanel.UnprocessedIdeasCount)] = 1,
+				[nameof(IdeasPanel.TotalIdeasCount)] = 7,
+				[nameof(IdeasPanel.UnprocessedIdeasCount)] = 3,
 				[nameof(IdeasPanel.IsPageLoading)] = true,
 				[nameof(IdeasPanel.HasDefaultProvider)] = false,
 				[nameof(IdeasPanel.HasLocalInference)] = true,
@@ -54,10 +54,12 @@ public sealed class IdeasPanelTests
 		});
 
 		Assert.Contains("Refreshing ideas", html);
+		Assert.Contains("3 pending", html);
 		Assert.Contains("Set default provider", html);
 		Assert.Contains("Add idea", html);
 		Assert.Contains("Expands before running", html);
 		Assert.Contains("Set a default provider to enable idea processing", html);
+		Assert.DoesNotContain("class=\"badge bg-secondary\">7</span>", html);
 		Assert.DoesNotContain("Short description of a feature or update.", html);
 		Assert.DoesNotContain("card-header", html);
 		Assert.Contains($"maxlength=\"{ValidationLimits.IdeaDescriptionMaxLength}\"", html);

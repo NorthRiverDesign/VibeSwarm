@@ -190,6 +190,7 @@
     private bool _hubInitialized = false;
     private HubConnection? _globalHubConnection;
     private bool _mobileMenuOpen = false;
+    private readonly IdeaToastCoordinator _ideaToastCoordinator = new();
 
     // Change Password Modal
     private bool _showChangePasswordModal;
@@ -438,12 +439,17 @@ TimeSpan.FromSeconds(10) })
 
     private async Task OnGlobalIdeaUpdated(string ideaId)
     {
-        if (!TryBeginToastEvent($"idea-updated:{ideaId}"))
+        if (string.IsNullOrWhiteSpace(ideaId) || !Guid.TryParse(ideaId, out var parsedIdeaId))
         {
             return;
         }
 
-        if (!Guid.TryParse(ideaId, out var parsedIdeaId))
+        if (!await _ideaToastCoordinator.ShouldShowIdeaUpdatedAsync(ideaId))
+        {
+            return;
+        }
+
+        if (!TryBeginToastEvent($"idea-updated:{ideaId}"))
         {
             return;
         }
@@ -476,6 +482,13 @@ TimeSpan.FromSeconds(10) })
 
     private async Task OnGlobalIdeaStarted(string ideaId, string jobId)
     {
+        if (string.IsNullOrWhiteSpace(ideaId))
+        {
+            return;
+        }
+
+        _ideaToastCoordinator.RegisterIdeaStarted(ideaId);
+
         if (!TryBeginToastEvent($"idea-started:{ideaId}:{jobId}"))
         {
             return;
