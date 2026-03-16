@@ -615,14 +615,20 @@ textarea.form-control {
 body.vs-modal-open {
 	overflow: hidden !important;
 	width: 100%;
+	overscroll-behavior: contain;
 }
 
 .vs-modal-container {
 	position: fixed !important;
 	inset: 0 !important;
+	display: flex;
+	align-items: center;
+	justify-content: center;
 	padding: var(--vs-safe-area-top) var(--vs-safe-area-right)
 		var(--vs-safe-area-bottom) var(--vs-safe-area-left) !important;
 	z-index: 1055 !important;
+	overflow-x: hidden;
+	overflow-y: auto;
 }
 
 .vs-modal-backdrop {
@@ -636,10 +642,56 @@ body.vs-modal-open {
 
 .vs-modal-dialog {
 	pointer-events: none;
+	width: min(100%, calc(100vw - var(--vs-safe-area-left) - var(--vs-safe-area-right)));
+	margin: auto;
+	min-width: 0;
 }
 
 .vs-modal-content {
 	pointer-events: auto;
+	max-width: 100%;
+	min-width: 0;
+	overflow-x: clip;
+}
+
+.vs-modal-header,
+.vs-modal-body,
+.vs-modal-footer,
+.vs-modal-form,
+.vs-modal-form > *,
+.vs-modal-body > * {
+	min-width: 0;
+}
+
+.vs-modal-body {
+	overflow-x: hidden;
+	overscroll-behavior: contain;
+}
+
+.vs-modal-body .form-control,
+.vs-modal-body .form-select,
+.vs-modal-body .input-group,
+.vs-modal-body .btn-group,
+.vs-modal-body .dropdown-menu,
+.vs-modal-body pre,
+.vs-modal-body code {
+	max-width: 100%;
+}
+
+.vs-modal-body .input-group > .form-control,
+.vs-modal-body .input-group > .form-select {
+	min-width: 0;
+}
+
+.vs-modal-body .text-break,
+.vs-modal-body code,
+.vs-modal-body pre {
+	overflow-wrap: anywhere;
+	word-break: break-word;
+}
+
+.vs-project-modal-body .btn.text-start {
+	white-space: normal;
 }
 
 /* Directory list max-height for modal (no Bootstrap utility) */
@@ -723,6 +775,7 @@ body.vs-modal-open {
 	.vs-modal-container {
 		padding: 0 !important;
 		align-items: stretch !important;
+		justify-content: stretch !important;
 	}
 	.vs-modal-dialog {
 		margin: 0 !important;
@@ -741,6 +794,9 @@ body.vs-modal-open {
 	}
 	.vs-modal-dialog .modal-body {
 		padding-bottom: calc(1rem + var(--vs-safe-area-bottom));
+	}
+	.vs-project-modal-body .input-group {
+		flex-wrap: nowrap;
 	}
 	.vs-modal-dialog .modal-footer {
 		padding-bottom: calc(0.75rem + var(--vs-safe-area-bottom));

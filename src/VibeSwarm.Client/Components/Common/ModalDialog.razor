@@ -4,11 +4,11 @@
 @if (IsVisible)
 {
 	<div class="modal-backdrop fade show vs-modal-backdrop"></div>
-	<div class="modal fade show d-block vs-modal-container" tabindex="-1" role="dialog"
+	<div class="modal fade show d-block vs-modal-container @ContainerClass" tabindex="-1" role="dialog"
 		@onmousedown="HandleBackdropMouseDown" @onclick="HandleBackdropClick">
-		<div class="modal-dialog vs-modal-dialog @SizeClass @(IsCentered ? "modal-dialog-centered" : "") @(IsScrollable ? "modal-dialog-scrollable" : "")"
+		<div class="modal-dialog vs-modal-dialog @SizeClass @(IsCentered ? "modal-dialog-centered" : "") @(IsScrollable ? "modal-dialog-scrollable" : "") @DialogClass"
 			@onmousedown:stopPropagation="true" @onclick:stopPropagation="true">
-			<div class="modal-content vs-modal-content">
+			<div class="modal-content vs-modal-content @ContentClass">
 				<div class="modal-header">
 					<h5 class="modal-title">
 						@if (!string.IsNullOrEmpty(Icon))
@@ -22,7 +22,7 @@
 						<button type="button" class="btn-close" @onclick="Close" aria-label="Close"></button>
 					}
 				</div>
-				<div class="modal-body">
+				<div class="modal-body @BodyClass">
 					@ChildContent
 				</div>
 				@if (FooterContent != null)
@@ -80,6 +80,18 @@
 
 	[Parameter]
 	public EventCallback OnClose { get; set; }
+
+	[Parameter]
+	public string? ContainerClass { get; set; }
+
+	[Parameter]
+	public string? DialogClass { get; set; }
+
+	[Parameter]
+	public string? ContentClass { get; set; }
+
+	[Parameter]
+	public string? BodyClass { get; set; }
 
 	private string SizeClass => Size switch
 	{

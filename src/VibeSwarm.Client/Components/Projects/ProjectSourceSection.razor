@@ -1,0 +1,181 @@
+@using VibeSwarm.Shared.Models
+@using VibeSwarm.Shared.Validation
+
+@if (!IsEdit)
+{
+	<div class="mb-3">
+		<label class="form-label d-flex align-items-center gap-2 mb-2">
+			<i class="bi bi-box-arrow-in-down-right"></i>
+			<span>Project Source</span>
+		</label>
+		<div class="border rounded p-3 bg-body-tertiary">
+			<div class="d-grid gap-2">
+				<button type="button" class="btn @(FormState.GetSourceModeButtonClass(ProjectCreationMode.ExistingDirectory)) text-start"
+						@onclick="() => SelectSourceMode(ProjectCreationMode.ExistingDirectory)">
+					<div class="fw-semibold"><i class="bi bi-folder2-open me-2"></i>Use Existing Local Directory</div>
+					<div class="small text-body-secondary mt-1">Point the project at a local working path without cloning or creating a GitHub repo.</div>
+				</button>
+				<button type="button" class="btn @(FormState.GetSourceModeButtonClass(ProjectCreationMode.CloneGitHubRepository)) text-start"
+						@onclick="() => SelectSourceMode(ProjectCreationMode.CloneGitHubRepository)">
+					<div class="fw-semibold"><i class="bi bi-github me-2"></i>Clone Existing GitHub Repository</div>
+					<div class="small text-body-secondary mt-1">Clone an existing GitHub repository into a new local project workspace.</div>
+				</button>
+				<button type="button" class="btn @(FormState.GetSourceModeButtonClass(ProjectCreationMode.CreateGitHubRepository)) text-start"
+						@onclick="() => SelectSourceMode(ProjectCreationMode.CreateGitHubRepository)">
+					<div class="fw-semibold"><i class="bi bi-cloud-plus me-2"></i>Create New GitHub Repository</div>
+					<div class="small text-body-secondary mt-1">Create a repository on GitHub and set up this project around it.</div>
+				</button>
+			</div>
+
+			@if (FormState.CreationMode == ProjectCreationMode.CloneGitHubRepository)
+			{
+				<div class="mt-3 pt-3 border-top">
+					<label for="modal-githubRepo" class="form-label">
+						<i class="bi bi-github me-1"></i>GitHub Repository
+					</label>
+					<div class="input-group">
+						<span class="input-group-text">github.com/</span>
+						<input id="modal-githubRepo" type="text" class="form-control"
+							   value="@FormState.GitHubRepositoryInput" @oninput="OnGitHubRepositoryChanged"
+							   placeholder="owner/repo" maxlength="@ValidationLimits.ProjectGitHubRepositoryMaxLength" />
+					</div>
+					@if (!string.IsNullOrWhiteSpace(FormState.GitHubRepositoryError))
+					{
+						<div class="text-danger small mt-1">
+							<i class="bi bi-exclamation-circle me-1"></i>@FormState.GitHubRepositoryError
+						</div>
+					}
+					<div class="form-text">
+						Enter a GitHub repository to clone (for example, <code>microsoft/vscode</code>).
+					</div>
+				</div>
+			}
+			else if (FormState.CreationMode == ProjectCreationMode.CreateGitHubRepository)
+			{
+				<div class="mt-3 pt-3 border-top">
+					<div class="mb-3">
+						<label for="modal-newGithubRepo" class="form-label">
+							<i class="bi bi-github me-1"></i>Repository Name
+						</label>
+						<input id="modal-newGithubRepo" type="text" class="form-control"
+							   value="@FormState.GitHubRepositoryInput" @oninput="OnGitHubRepositoryChanged"
+							   placeholder="my-project or owner/my-project" maxlength="@ValidationLimits.ProjectGitHubRepositoryMaxLength" />
+						@if (!string.IsNullOrWhiteSpace(FormState.GitHubRepositoryError))
+						{
+							<div class="text-danger small mt-1">
+								<i class="bi bi-exclamation-circle me-1"></i>@FormState.GitHubRepositoryError
+							</div>
+						}
+						<div class="form-text">
+							Enter either <code>repo-name</code> to create under your authenticated account, or <code>owner/repo-name</code> for an organization or explicit owner.
+						</div>
+					</div>
+
+					<div class="mb-3">
+						<label for="modal-newGithubRepoDescription" class="form-label">
+							Repository Description <span class="text-body-secondary fw-normal">(optional)</span>
+						</label>
+						<input id="modal-newGithubRepoDescription" type="text" class="form-control"
+							   @bind="FormState.NewGitHubRepositoryDescription" @bind:event="oninput"
+							   placeholder="A brief description of your project"
+							   maxlength="@ValidationLimits.ProjectGitHubDescriptionMaxLength" />
+						@if (!string.IsNullOrWhiteSpace(FormState.GitHubRepositoryDescriptionError))
+						{
+							<div class="text-danger small mt-1">
+								<i class="bi bi-exclamation-circle me-1"></i>@FormState.GitHubRepositoryDescriptionError
+							</div>
+						}
+						<div class="form-text">@GetCharacterCount(FormState.NewGitHubRepositoryDescription, ValidationLimits.ProjectGitHubDescriptionMaxLength)</div>
+					</div>
+
+					<div class="mb-3">
+						<label class="form-label">Visibility</label>
+						<div class="d-flex flex-column flex-sm-row gap-2 gap-sm-3">
+							<div class="form-check">
+								<input class="form-check-input" type="radio" name="projectVisibility" id="projectVisibilityPublic"
+									   checked="@(!FormState.NewGitHubRepositoryPrivate)" @onchange="() => FormState.NewGitHubRepositoryPrivate = false">
+								<label class="form-check-label" for="projectVisibilityPublic">
+									<i class="bi bi-globe me-1"></i>Public
+								</label>
+							</div>
+							<div class="form-check">
+								<input class="form-check-input" type="radio" name="projectVisibility" id="projectVisibilityPrivate"
+									   checked="@FormState.NewGitHubRepositoryPrivate" @onchange="() => FormState.NewGitHubRepositoryPrivate = true">
+								<label class="form-check-label" for="projectVisibilityPrivate">
+									<i class="bi bi-lock me-1"></i>Private
+								</label>
+							</div>
+						</div>
+					</div>
+
+					<div class="mb-3">
+						<label for="modal-newGithubRepoGitignore" class="form-label">
+							.gitignore Template <span class="text-body-secondary fw-normal">(optional)</span>
+						</label>
+						<select id="modal-newGithubRepoGitignore" class="form-select" @bind="FormState.NewGitHubGitignoreTemplate">
+							<option value="">None</option>
+							<option value="Node">Node</option>
+							<option value="Python">Python</option>
+							<option value="CSharp">C#</option>
+							<option value="Java">Java</option>
+							<option value="Go">Go</option>
+							<option value="Rust">Rust</option>
+							<option value="VisualStudio">Visual Studio</option>
+							<option value="Unity">Unity</option>
+						</select>
+					</div>
+
+					<div class="mb-3">
+						<label for="modal-newGithubRepoLicense" class="form-label">
+							License <span class="text-body-secondary fw-normal">(optional)</span>
+						</label>
+						<select id="modal-newGithubRepoLicense" class="form-select" @bind="FormState.NewGitHubLicenseTemplate">
+							<option value="">None</option>
+							<option value="mit">MIT</option>
+							<option value="apache-2.0">Apache 2.0</option>
+							<option value="gpl-3.0">GPL 3.0</option>
+							<option value="bsd-2-clause">BSD 2-Clause</option>
+							<option value="mpl-2.0">MPL 2.0</option>
+							<option value="unlicense">Unlicense</option>
+						</select>
+					</div>
+
+					<div class="form-check">
+						<input class="form-check-input" type="checkbox" id="modal-newGithubRepoReadme" @bind="FormState.NewGitHubInitializeReadme">
+						<label class="form-check-label" for="modal-newGithubRepoReadme">
+							Initialize with README
+						</label>
+					</div>
+
+					<Alert Type="Alert.AlertType.Info" Class="py-2 px-3 small mt-3 mb-0">
+						<span class="text-break"><i class="bi bi-lightbulb me-1"></i>Creating a GitHub repository requires <code class="text-break">gh auth login</code> on the host machine.</span>
+					</Alert>
+				</div>
+			}
+		</div>
+	</div>
+}
+
+@code {
+	[Parameter, EditorRequired]
+	public Project Project { get; set; } = default!;
+
+	[Parameter, EditorRequired]
+	public ProjectModalState FormState { get; set; } = default!;
+
+	[Parameter]
+	public bool IsEdit { get; set; }
+
+	[Parameter]
+	public EventCallback<ProjectCreationMode> OnSourceModeSelected { get; set; }
+
+	[Parameter]
+	public EventCallback<ChangeEventArgs> OnGitHubRepositoryChanged { get; set; }
+
+	private Task SelectSourceMode(ProjectCreationMode mode) => OnSourceModeSelected.InvokeAsync(mode);
+
+	private static string GetCharacterCount(string? value, int maxLength)
+	{
+		return $"{value?.Length ?? 0}/{maxLength} characters";
+	}
+}

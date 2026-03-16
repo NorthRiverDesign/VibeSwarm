@@ -1,0 +1,93 @@
+@if (Project != null)
+{
+	<div class="mb-3">
+		<label class="form-label d-flex align-items-center gap-2 mb-2">
+			<i class="bi bi-map"></i>
+			<span>Planning</span>
+		</label>
+
+		<Alert Type="Alert.AlertType.Info" Class="py-2 px-3 small">
+			<span>Planning runs idea expansion through Claude Code or Copilot plan mode so users can review a structured implementation plan before a job is created.</span>
+		</Alert>
+
+		<div class="form-check form-switch mt-2">
+			<InputCheckbox id="modal-planningEnabled" @bind-Value="Project.PlanningEnabled" @bind-Value:after="HandlePlanningEnabledChanged" class="form-check-input" />
+			<label class="form-check-label" for="modal-planningEnabled">
+				<i class="bi bi-lightbulb me-1"></i>Enable Planning
+			</label>
+		</div>
+		<div class="form-text">When enabled, manual and automatic idea expansion use the selected provider and optional model to generate a reviewed feature plan.</div>
+
+		@if (Project.PlanningEnabled)
+		{
+			@if (!AvailableProviders.Any())
+			{
+				<div class="text-warning small mt-2">
+					<i class="bi bi-exclamation-triangle me-1"></i>Planning needs an enabled Claude or Copilot provider. Configure one under Providers first.
+				</div>
+			}
+			else
+			{
+				<div class="border rounded p-3 bg-body-tertiary mt-3">
+					<div class="mb-3">
+						<label for="modal-planningProvider" class="form-label">
+							<i class="bi bi-cpu me-1"></i>Planning Provider
+						</label>
+						<InputSelect TValue="Guid?" id="modal-planningProvider" @bind-Value="Project.PlanningProviderId" @bind-Value:after="HandlePlanningProviderChanged" class="form-select">
+							@foreach (var provider in AvailableProviders)
+							{
+								<option value="@provider.Id">@provider.Name (@provider.Type)</option>
+							}
+						</InputSelect>
+						<div class="form-text">Only GitHub Copilot and Claude providers currently support project planning.</div>
+					</div>
+
+					<div>
+						<label for="modal-planningModel" class="form-label">
+							<i class="bi bi-sliders me-1"></i>Planning Model
+							<span class="text-body-secondary fw-normal">(optional)</span>
+						</label>
+						<InputSelect id="modal-planningModel" @bind-Value="Project.PlanningModelId" class="form-select" disabled="@(!Project.PlanningProviderId.HasValue || !PlanningModels.Any())">
+							<option value="">Use provider default model</option>
+							@foreach (var model in PlanningModels)
+							{
+								<option value="@model.ModelId">@(model.DisplayName ?? model.ModelId)@((model.IsDefault ? " (Default)" : string.Empty))</option>
+							}
+						</InputSelect>
+						<div class="form-text">
+							@if (Project.PlanningProviderId.HasValue && !PlanningModels.Any())
+							{
+								<span>No cached models found for this provider yet. The provider default will be used until models are refreshed.</span>
+							}
+							else
+							{
+								<span>Leave this blank to use the provider's default planning model.</span>
+							}
+						</div>
+					</div>
+				</div>
+			}
+		}
+	</div>
+}
+
+@code {
+	[Parameter, EditorRequired]
+	public Project Project { get; set; } = default!;
+
+	[Parameter]
+	public IReadOnlyList<Provider> AvailableProviders { get; set; } = [];
+
+	[Parameter]
+	public IReadOnlyList<ProviderModel> PlanningModels { get; set; } = [];
+
+	[Parameter]
+	public EventCallback OnPlanningEnabledChanged { get; set; }
+
+	[Parameter]
+	public EventCallback OnPlanningProviderChanged { get; set; }
+
+	private Task HandlePlanningEnabledChanged() => OnPlanningEnabledChanged.InvokeAsync();
+
+	private Task HandlePlanningProviderChanged() => OnPlanningProviderChanged.InvokeAsync();
+}

@@ -11,10 +11,10 @@
 @inject NotificationService NotificationService
 
 <ModalDialog IsVisible="IsVisible" IsVisibleChanged="HandleModalVisibilityChanged"
-			 Title="@(IsEdit ? "Edit Project" : "New Project")" Icon="@(IsEdit ? "pencil" : "folder-plus")"
-			 Size="ModalDialog.ModalSize.Default" OnClose="HandleClose">
+ 			 Title="@(IsEdit ? "Edit Project" : "New Project")" Icon="@(IsEdit ? "pencil" : "folder-plus")"
+			 Size="ModalDialog.ModalSize.Default" OnClose="HandleClose" BodyClass="vs-project-modal-body">
 	<ChildContent>
-		<EditForm Model="@Project" OnValidSubmit="HandleValidSubmit">
+		<EditForm Model="@Project" OnValidSubmit="HandleValidSubmit" class="vs-modal-form vs-project-modal-form">
 			<DataAnnotationsValidator />
 			<ValidationSummary class="text-danger mb-3" />
 
@@ -33,160 +33,9 @@
 				<div class="form-text">@GetCharacterCount(Project.Description, ValidationLimits.ProjectDescriptionMaxLength)</div>
 			</div>
 
-			@if (!IsEdit)
-			{
-				<div class="mb-3">
-					<label class="form-label d-flex align-items-center gap-2 mb-2">
-						<i class="bi bi-box-arrow-in-down-right"></i>
-						<span>Project Source</span>
-					</label>
-					<div class="border rounded p-3 bg-body-tertiary">
-						<div class="d-grid gap-2">
-							<button type="button" class="btn @(_formState.GetSourceModeButtonClass(ProjectCreationMode.ExistingDirectory)) text-start"
-									@onclick="() => SelectSourceMode(ProjectCreationMode.ExistingDirectory)">
-								<div class="fw-semibold"><i class="bi bi-folder2-open me-2"></i>Use Existing Local Directory</div>
-								<div class="small text-body-secondary mt-1">Point the project at a local working path without cloning or creating a GitHub repo.</div>
-							</button>
-							<button type="button" class="btn @(_formState.GetSourceModeButtonClass(ProjectCreationMode.CloneGitHubRepository)) text-start"
-									@onclick="() => SelectSourceMode(ProjectCreationMode.CloneGitHubRepository)">
-								<div class="fw-semibold"><i class="bi bi-github me-2"></i>Clone Existing GitHub Repository</div>
-								<div class="small text-body-secondary mt-1">Clone an existing GitHub repository into a new local project workspace.</div>
-							</button>
-							<button type="button" class="btn @(_formState.GetSourceModeButtonClass(ProjectCreationMode.CreateGitHubRepository)) text-start"
-									@onclick="() => SelectSourceMode(ProjectCreationMode.CreateGitHubRepository)">
-								<div class="fw-semibold"><i class="bi bi-cloud-plus me-2"></i>Create New GitHub Repository</div>
-								<div class="small text-body-secondary mt-1">Create a repository on GitHub and set up this project around it.</div>
-							</button>
-						</div>
-
-						@if (_formState.CreationMode == ProjectCreationMode.CloneGitHubRepository)
-						{
-								<div class="mt-3 pt-3 border-top">
-									<label for="modal-githubRepo" class="form-label">
-										<i class="bi bi-github me-1"></i>GitHub Repository
-									</label>
-									<div class="input-group">
-										<span class="input-group-text">github.com/</span>
-										<input id="modal-githubRepo" type="text" class="form-control"
-											   value="@_formState.GitHubRepositoryInput" @oninput="OnGitHubRepositoryChanged"
-											   placeholder="owner/repo" maxlength="@ValidationLimits.ProjectGitHubRepositoryMaxLength" />
-								</div>
-								@if (!string.IsNullOrWhiteSpace(_formState.GitHubRepositoryError))
-								{
-									<div class="text-danger small mt-1">
-										<i class="bi bi-exclamation-circle me-1"></i>@_formState.GitHubRepositoryError
-									</div>
-								}
-								<div class="form-text">
-									Enter a GitHub repository to clone (for example, <code>microsoft/vscode</code>).
-								</div>
-							</div>
-						}
-						else if (_formState.CreationMode == ProjectCreationMode.CreateGitHubRepository)
-						{
-							<div class="mt-3 pt-3 border-top">
-								<div class="mb-3">
-									<label for="modal-newGithubRepo" class="form-label">
-										<i class="bi bi-github me-1"></i>Repository Name
-									</label>
-									<input id="modal-newGithubRepo" type="text" class="form-control"
-										   value="@_formState.GitHubRepositoryInput" @oninput="OnGitHubRepositoryChanged"
-										   placeholder="my-project or owner/my-project" maxlength="@ValidationLimits.ProjectGitHubRepositoryMaxLength" />
-									@if (!string.IsNullOrWhiteSpace(_formState.GitHubRepositoryError))
-									{
-										<div class="text-danger small mt-1">
-											<i class="bi bi-exclamation-circle me-1"></i>@_formState.GitHubRepositoryError
-										</div>
-									}
-									<div class="form-text">
-										Enter either <code>repo-name</code> to create under your authenticated account, or <code>owner/repo-name</code> for an organization or explicit owner.
-									</div>
-								</div>
-
-								<div class="mb-3">
-									<label for="modal-newGithubRepoDescription" class="form-label">
-										Repository Description <span class="text-body-secondary fw-normal">(optional)</span>
-									</label>
-									<input id="modal-newGithubRepoDescription" type="text" class="form-control"
-										   @bind="_formState.NewGitHubRepositoryDescription" @bind:event="oninput"
-										   placeholder="A brief description of your project"
-										   maxlength="@ValidationLimits.ProjectGitHubDescriptionMaxLength" />
-									@if (!string.IsNullOrWhiteSpace(_formState.GitHubRepositoryDescriptionError))
-									{
-										<div class="text-danger small mt-1">
-											<i class="bi bi-exclamation-circle me-1"></i>@_formState.GitHubRepositoryDescriptionError
-										</div>
-									}
-									<div class="form-text">@GetCharacterCount(_formState.NewGitHubRepositoryDescription, ValidationLimits.ProjectGitHubDescriptionMaxLength)</div>
-								</div>
-
-								<div class="mb-3">
-									<label class="form-label">Visibility</label>
-									<div class="d-flex flex-column flex-sm-row gap-2 gap-sm-3">
-										<div class="form-check">
-											<input class="form-check-input" type="radio" name="projectVisibility" id="projectVisibilityPublic"
-												   checked="@(!_formState.NewGitHubRepositoryPrivate)" @onchange="() => _formState.NewGitHubRepositoryPrivate = false">
-											<label class="form-check-label" for="projectVisibilityPublic">
-												<i class="bi bi-globe me-1"></i>Public
-											</label>
-										</div>
-										<div class="form-check">
-											<input class="form-check-input" type="radio" name="projectVisibility" id="projectVisibilityPrivate"
-												   checked="@_formState.NewGitHubRepositoryPrivate" @onchange="() => _formState.NewGitHubRepositoryPrivate = true">
-											<label class="form-check-label" for="projectVisibilityPrivate">
-												<i class="bi bi-lock me-1"></i>Private
-											</label>
-										</div>
-									</div>
-								</div>
-
-								<div class="mb-3">
-									<label for="modal-newGithubRepoGitignore" class="form-label">
-										.gitignore Template <span class="text-body-secondary fw-normal">(optional)</span>
-									</label>
-									<select id="modal-newGithubRepoGitignore" class="form-select" @bind="_formState.NewGitHubGitignoreTemplate">
-										<option value="">None</option>
-										<option value="Node">Node</option>
-										<option value="Python">Python</option>
-										<option value="CSharp">C#</option>
-										<option value="Java">Java</option>
-										<option value="Go">Go</option>
-										<option value="Rust">Rust</option>
-										<option value="VisualStudio">Visual Studio</option>
-										<option value="Unity">Unity</option>
-									</select>
-								</div>
-
-								<div class="mb-3">
-									<label for="modal-newGithubRepoLicense" class="form-label">
-										License <span class="text-body-secondary fw-normal">(optional)</span>
-									</label>
-									<select id="modal-newGithubRepoLicense" class="form-select" @bind="_formState.NewGitHubLicenseTemplate">
-										<option value="">None</option>
-										<option value="mit">MIT</option>
-										<option value="apache-2.0">Apache 2.0</option>
-										<option value="gpl-3.0">GPL 3.0</option>
-										<option value="bsd-2-clause">BSD 2-Clause</option>
-										<option value="mpl-2.0">MPL 2.0</option>
-										<option value="unlicense">Unlicense</option>
-									</select>
-								</div>
-
-								<div class="form-check">
-									<input class="form-check-input" type="checkbox" id="modal-newGithubRepoReadme" @bind="_formState.NewGitHubInitializeReadme">
-									<label class="form-check-label" for="modal-newGithubRepoReadme">
-										Initialize with README
-									</label>
-								</div>
-
-								<Alert Type="Alert.AlertType.Info" Class="py-2 px-3 small mt-3 mb-0">
-									<span class="text-break"><i class="bi bi-lightbulb me-1"></i>Creating a GitHub repository requires <code class="text-break">gh auth login</code> on the host machine.</span>
-								</Alert>
-							</div>
-						}
-					</div>
-				</div>
-			}
+			<ProjectSourceSection Project="@Project" FormState="@_formState" IsEdit="@IsEdit"
+								  OnSourceModeSelected="SelectSourceMode"
+								  OnGitHubRepositoryChanged="OnGitHubRepositoryChanged" />
 
 			<div class="mb-3">
 				<label for="modal-workingPath" class="form-label">Working Path</label>
@@ -253,167 +102,15 @@
 				<div class="form-text">When enabled, ideas without an approved expansion are first turned into a fuller specification before a job is created.</div>
 			</div>
 
-			<div class="mb-3">
-				<label class="form-label d-flex align-items-center gap-2 mb-2">
-					<i class="bi bi-map"></i>
-					<span>Planning</span>
-				</label>
+			<ProjectPlanningSection Project="@Project" AvailableProviders="@GetPlanningProviders().ToList()"
+									PlanningModels="@_planningModels"
+									OnPlanningEnabledChanged="HandlePlanningEnabledChanged"
+									OnPlanningProviderChanged="HandlePlanningProviderChanged" />
 
-				<Alert Type="Alert.AlertType.Info" Class="py-2 px-3 small">
-					<span>Planning runs idea expansion through Claude Code or Copilot plan mode so users can review a structured implementation plan before a job is created.</span>
-				</Alert>
-
-				<div class="form-check form-switch mt-2">
-					<InputCheckbox id="modal-planningEnabled" @bind-Value="Project.PlanningEnabled" @bind-Value:after="HandlePlanningEnabledChanged" class="form-check-input" />
-					<label class="form-check-label" for="modal-planningEnabled">
-						<i class="bi bi-lightbulb me-1"></i>Enable Planning
-					</label>
-				</div>
-				<div class="form-text">When enabled, manual and automatic idea expansion use the selected provider and optional model to generate a reviewed feature plan.</div>
-
-				@if (Project.PlanningEnabled)
-				{
-					@if (!GetPlanningProviders().Any())
-					{
-						<div class="text-warning small mt-2">
-							<i class="bi bi-exclamation-triangle me-1"></i>Planning needs an enabled Claude or Copilot provider. Configure one under Providers first.
-						</div>
-					}
-					else
-					{
-						<div class="border rounded p-3 bg-body-tertiary mt-3">
-							<div class="mb-3">
-								<label for="modal-planningProvider" class="form-label">
-									<i class="bi bi-cpu me-1"></i>Planning Provider
-								</label>
-								<InputSelect TValue="Guid?" id="modal-planningProvider" @bind-Value="Project.PlanningProviderId" @bind-Value:after="HandlePlanningProviderChanged" class="form-select">
-									@foreach (var provider in GetPlanningProviders())
-									{
-										<option value="@provider.Id">@provider.Name (@provider.Type)</option>
-									}
-								</InputSelect>
-								<div class="form-text">Only GitHub Copilot and Claude providers currently support project planning.</div>
-							</div>
-
-							<div>
-								<label for="modal-planningModel" class="form-label">
-									<i class="bi bi-sliders me-1"></i>Planning Model
-									<span class="text-body-secondary fw-normal">(optional)</span>
-								</label>
-								<InputSelect id="modal-planningModel" @bind-Value="Project.PlanningModelId" class="form-select" disabled="@(!Project.PlanningProviderId.HasValue || !_planningModels.Any())">
-									<option value="">Use provider default model</option>
-									@foreach (var model in _planningModels)
-									{
-										<option value="@model.ModelId">@(model.DisplayName ?? model.ModelId)@((model.IsDefault ? " (Default)" : string.Empty))</option>
-									}
-								</InputSelect>
-								<div class="form-text">
-									@if (Project.PlanningProviderId.HasValue && !_planningModels.Any())
-									{
-										<span>No cached models found for this provider yet. The provider default will be used until models are refreshed.</span>
-									}
-									else
-									{
-										<span>Leave this blank to use the provider's default planning model.</span>
-									}
-								</div>
-							</div>
-						</div>
-					}
-				}
-			</div>
-
-			<div class="mb-3">
-				<label class="form-label d-flex align-items-center gap-2 mb-2">
-					<i class="bi bi-diagram-3"></i>
-					<span>Provider Priority</span>
-				</label>
-
-				<Alert Type="Alert.AlertType.Info" Class="py-2 px-3 small">
-					@if (Project.ProviderSelections.Any())
-					{
-						<span>This project will prefer providers in the order shown below. Jobs can fall back to the next provider when one is unavailable or at limit.</span>
-					}
-					else
-					{
-						<span>No providers selected yet. If you save without a provider list, the project can use any enabled provider system-wide.</span>
-					}
-				</Alert>
-
-				@if (!_availableProviders.Any())
-				{
-					<div class="text-warning small mt-2">
-						<i class="bi bi-exclamation-triangle me-1"></i>No enabled providers available. Configure a provider first.
-					</div>
-				}
-				else
-				{
-					<div class="border rounded p-2 bg-body-tertiary">
-						<div class="small text-body-secondary fw-semibold mb-2">Priority Order</div>
-						@if (Project.ProviderSelections.Any())
-						{
-							<div class="d-grid gap-2 mb-3">
-								@foreach (var selection in Project.ProviderSelections.OrderBy(pp => pp.Priority).ToList())
-								{
-									var provider = ResolveProvider(selection.ProviderId);
-									<div class="d-flex align-items-start justify-content-between gap-2 flex-wrap rounded border bg-body p-2">
-										<div class="min-width-0 flex-grow-1">
-											<div class="d-flex align-items-center gap-2 flex-wrap">
-												<span class="badge text-bg-primary">#@(selection.Priority + 1)</span>
-												<span class="fw-semibold">@(provider?.Name ?? "Unknown Provider")</span>
-												@if (provider != null)
-												{
-													<span class="badge bg-secondary-subtle text-secondary-emphasis">@provider.Type</span>
-												}
-											</div>
-										</div>
-										<div class="d-flex flex-wrap justify-content-end gap-2">
-											<button type="button" class="btn btn-sm btn-secondary" @onclick="() => MoveProviderSelectionUp(selection.ProviderId)"
-												disabled="@(selection.Priority == 0)" title="Move up">
-												<i class="bi bi-arrow-up"></i>
-											</button>
-											<button type="button" class="btn btn-sm btn-secondary" @onclick="() => MoveProviderSelectionDown(selection.ProviderId)"
-												disabled="@(selection.Priority >= Project.ProviderSelections.Count - 1)" title="Move down">
-												<i class="bi bi-arrow-down"></i>
-											</button>
-											<button type="button" class="btn btn-sm btn-danger" @onclick="() => RemoveProviderSelection(selection.ProviderId)" title="Remove provider">
-												<i class="bi bi-x-lg"></i>
-											</button>
-										</div>
-									</div>
-								}
-							</div>
-						}
-						else
-						{
-							<div class="small text-body-secondary fst-italic mb-3">No project-specific provider priority configured.</div>
-						}
-
-						<div class="small text-body-secondary fw-semibold mb-2">Add Provider</div>
-						<div class="d-grid gap-2">
-							@foreach (var provider in _availableProviders)
-							{
-								var isSelected = IsProviderSelected(provider.Id);
-								<button type="button" class="btn @(isSelected ? "btn-secondary" : "btn-outline-secondary") d-flex align-items-center justify-content-between gap-2 text-start flex-wrap"
-										@onclick="() => AddProviderSelection(provider)" disabled="@isSelected">
-									<span class="text-start min-width-0">
-										<span class="fw-semibold">@provider.Name</span>
-										<span class="text-body-secondary ms-sm-2 d-block d-sm-inline">@provider.Type</span>
-									</span>
-									@if (isSelected)
-									{
-										<i class="bi bi-check-lg"></i>
-									}
-									else
-									{
-										<i class="bi bi-plus-lg"></i>
-									}
-								</button>
-							}
-						</div>
-					</div>
-				}
-			</div>
+			<ProjectProviderPrioritySection Project="@Project" AvailableProviders="@_availableProviders"
+										   ResolveProvider="ResolveProvider" IsProviderSelected="IsProviderSelected"
+										   OnMoveUp="MoveProviderSelectionUp" OnMoveDown="MoveProviderSelectionDown"
+										   OnRemove="RemoveProviderSelection" OnAdd="AddProviderSelection" />
 
 					<div class="mb-3">
 						<label for="modal-promptContext" class="form-label">
@@ -429,33 +126,7 @@
 							project to guide AI agents. <span class="ms-2">@GetCharacterCount(Project.PromptContext, ValidationLimits.ProjectPromptContextMaxLength)</span></div>
 						</div>
 
-						<div class="mb-3">
-							<label class="form-label d-flex align-items-center gap-2 mb-2">
-								<i class="bi bi-shield-check"></i>
-								<span>Build Verification</span>
-							</label>
-							<div class="form-check form-switch mb-2">
-								<InputCheckbox id="modal-buildVerificationEnabled" @bind-Value="Project.BuildVerificationEnabled" class="form-check-input" />
-								<label class="form-check-label" for="modal-buildVerificationEnabled">
-									Enable Build Verification
-								</label>
-							</div>
-							<div class="form-text mb-2">When enabled, VibeSwarm runs the build and test commands after job completion. Changes are only committed if verification passes.</div>
-
-							<label for="modal-buildCommand" class="form-label small">
-								Build Command <span class="text-body-secondary fw-normal">(required when enabled)</span>
-							</label>
-							<InputText id="modal-buildCommand" @bind-Value="Project.BuildCommand" class="form-control form-control-sm"
-									   placeholder="e.g., dotnet build, npm run build, cargo build" maxlength="500" />
-							<div class="form-text mb-2">Shell command to verify the project compiles successfully.</div>
-
-							<label for="modal-testCommand" class="form-label small">
-								Test Command <span class="text-body-secondary fw-normal">(optional)</span>
-							</label>
-							<InputText id="modal-testCommand" @bind-Value="Project.TestCommand" class="form-control form-control-sm"
-									   placeholder="e.g., dotnet test, npm test, cargo test" maxlength="500" />
-							<div class="form-text">Shell command to verify tests pass. Runs after the build command succeeds.</div>
-						</div>
+						<ProjectBuildVerificationSection Project="@Project" />
 
 						@if (IsEdit)
 						{

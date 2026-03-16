@@ -1,0 +1,117 @@
+<div class="mb-3">
+	<label class="form-label d-flex align-items-center gap-2 mb-2">
+		<i class="bi bi-diagram-3"></i>
+		<span>Provider Priority</span>
+	</label>
+
+	<Alert Type="Alert.AlertType.Info" Class="py-2 px-3 small">
+		@if (Project.ProviderSelections.Any())
+		{
+			<span>This project will prefer providers in the order shown below. Jobs can fall back to the next provider when one is unavailable or at limit.</span>
+		}
+		else
+		{
+			<span>No providers selected yet. If you save without a provider list, the project can use any enabled provider system-wide.</span>
+		}
+	</Alert>
+
+	@if (!AvailableProviders.Any())
+	{
+		<div class="text-warning small mt-2">
+			<i class="bi bi-exclamation-triangle me-1"></i>No enabled providers available. Configure a provider first.
+		</div>
+	}
+	else
+	{
+		<div class="border rounded p-2 bg-body-tertiary">
+			<div class="small text-body-secondary fw-semibold mb-2">Priority Order</div>
+			@if (Project.ProviderSelections.Any())
+			{
+				<div class="d-grid gap-2 mb-3">
+					@foreach (var selection in Project.ProviderSelections.OrderBy(pp => pp.Priority).ToList())
+					{
+						var provider = ResolveProvider(selection.ProviderId);
+						<div class="d-flex align-items-start justify-content-between gap-2 flex-wrap rounded border bg-body p-2">
+							<div class="min-width-0 flex-grow-1">
+								<div class="d-flex align-items-center gap-2 flex-wrap">
+									<span class="badge text-bg-primary">#@(selection.Priority + 1)</span>
+									<span class="fw-semibold">@(provider?.Name ?? "Unknown Provider")</span>
+									@if (provider != null)
+									{
+										<span class="badge bg-secondary-subtle text-secondary-emphasis">@provider.Type</span>
+									}
+								</div>
+							</div>
+							<div class="d-flex flex-wrap justify-content-end gap-2">
+								<button type="button" class="btn btn-sm btn-secondary" @onclick="() => OnMoveUp.InvokeAsync(selection.ProviderId)"
+										disabled="@(selection.Priority == 0)" title="Move up">
+									<i class="bi bi-arrow-up"></i>
+								</button>
+								<button type="button" class="btn btn-sm btn-secondary" @onclick="() => OnMoveDown.InvokeAsync(selection.ProviderId)"
+										disabled="@(selection.Priority >= Project.ProviderSelections.Count - 1)" title="Move down">
+									<i class="bi bi-arrow-down"></i>
+								</button>
+								<button type="button" class="btn btn-sm btn-danger" @onclick="() => OnRemove.InvokeAsync(selection.ProviderId)" title="Remove provider">
+									<i class="bi bi-x-lg"></i>
+								</button>
+							</div>
+						</div>
+					}
+				</div>
+			}
+			else
+			{
+				<div class="small text-body-secondary fst-italic mb-3">No project-specific provider priority configured.</div>
+			}
+
+			<div class="small text-body-secondary fw-semibold mb-2">Add Provider</div>
+			<div class="d-grid gap-2">
+				@foreach (var provider in AvailableProviders)
+				{
+					var isSelected = IsProviderSelected(provider.Id);
+					<button type="button" class="btn @(isSelected ? "btn-secondary" : "btn-outline-secondary") d-flex align-items-center justify-content-between gap-2 text-start flex-wrap"
+							@onclick="() => OnAdd.InvokeAsync(provider)" disabled="@isSelected">
+						<span class="text-start min-width-0">
+							<span class="fw-semibold">@provider.Name</span>
+							<span class="text-body-secondary ms-sm-2 d-block d-sm-inline">@provider.Type</span>
+						</span>
+						@if (isSelected)
+						{
+							<i class="bi bi-check-lg"></i>
+						}
+						else
+						{
+							<i class="bi bi-plus-lg"></i>
+						}
+					</button>
+				}
+			</div>
+		</div>
+	}
+</div>
+
+@code {
+	[Parameter, EditorRequired]
+	public Project Project { get; set; } = default!;
+
+	[Parameter]
+	public IReadOnlyList<Provider> AvailableProviders { get; set; } = [];
+
+	[Parameter, EditorRequired]
+	public Func<Guid, Provider?> ResolveProvider { get; set; } = _ => null;
+
+	[Parameter, EditorRequired]
+	public Func<Guid, bool> IsProviderSelected { get; set; } = _ => false;
+
+	[Parameter]
+	public EventCallback<Guid> OnMoveUp { get; set; }
+
+	[Parameter]
+	public EventCallback<Guid> OnMoveDown { get; set; }
+
+	[Parameter]
+	public EventCallback<Guid> OnRemove { get; set; }
+
+	[Parameter]
+	public EventCallback<Provider> OnAdd { get; set; }
+}
