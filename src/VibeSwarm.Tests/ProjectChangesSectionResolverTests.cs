@@ -102,7 +102,33 @@ public sealed class ProjectChangesSectionResolverTests
 		Assert.False(selection.HasChanges);
 	}
 
-	private static Job CreateCompletedJob(string title, string? commitBefore = null, string? commitHash = null, DateTime? completedAt = null)
+
+	[Fact]
+	public void Resolve_FallsBackToPersistedJobDiff_WhenWorkingDirectoryIsClean()
+	{
+		var jobs = new[]
+		{
+			CreateCompletedJob(
+				"Captured diff",
+				completedAt: new DateTime(2026, 3, 15, 12, 0, 0, DateTimeKind.Utc),
+				gitDiff: """
+					diff --git a/src/App.cs b/src/App.cs
+					--- a/src/App.cs
+					+++ b/src/App.cs
+					@@ -1 +1 @@
+					-old
+					+new
+					""")
+		};
+
+		var selection = ProjectChangesSectionResolver.Resolve(jobs, hasUncommittedChanges: false);
+
+		Assert.Equal(ProjectChangesSourceType.PersistedJobDiff, selection.SourceType);
+		Assert.Single(selection.LinkedJobs);
+		Assert.Equal(jobs[0].GitDiff, selection.PersistedDiff);
+	}
+
+	private static Job CreateCompletedJob(string title, string? commitBefore = null, string? commitHash = null, DateTime? completedAt = null, string? gitDiff = null)
 	{
 		var createdAt = completedAt?.AddMinutes(-10) ?? new DateTime(2026, 3, 14, 0, 0, 0, DateTimeKind.Utc);
 
@@ -113,6 +139,8 @@ public sealed class ProjectChangesSectionResolverTests
 			Status = JobStatus.Completed,
 			GitCommitBefore = commitBefore,
 			GitCommitHash = commitHash,
+			GitDiff = gitDiff,
+			ChangedFilesCount = string.IsNullOrWhiteSpace(gitDiff) ? null : 1,
 			CreatedAt = createdAt,
 			StartedAt = createdAt.AddMinutes(1),
 			CompletedAt = completedAt ?? createdAt.AddMinutes(2)

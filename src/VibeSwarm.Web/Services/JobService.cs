@@ -544,6 +544,12 @@ public class JobService : IJobService
         job.GitDiff = null;        // Clear git diff
         job.GitCommitBefore = null; // Clear git commit reference
         job.GitCommitHash = null;  // Clear committed results hash
+        job.GitCheckpointStatus = GitCheckpointStatus.None;
+        job.GitCheckpointBranch = null;
+        job.GitCheckpointBaseBranch = null;
+        job.GitCheckpointCommitHash = null;
+        job.GitCheckpointReason = null;
+        job.GitCheckpointCapturedAt = null;
         // Keep SessionId for potential session continuation
         // Keep InputTokens, OutputTokens, TotalCostUsd for historical tracking
         // Keep Messages for audit trail and context
@@ -599,6 +605,7 @@ public class JobService : IJobService
         }
 
         job.GitCommitHash = commitHash;
+        JobCheckpointStateMachine.TryTransition(job, GitCheckpointStatus.Cleared);
         await _dbContext.SaveChangesAsync(cancellationToken);
 
         return true;
@@ -653,6 +660,7 @@ public class JobService : IJobService
         if (!string.IsNullOrWhiteSpace(commitHash))
         {
             job.GitCommitHash = commitHash.Trim();
+            JobCheckpointStateMachine.TryTransition(job, GitCheckpointStatus.Cleared);
         }
 
         if (pullRequestNumber.HasValue)
@@ -853,6 +861,12 @@ public class JobService : IJobService
         job.GitDiff = null;
         job.GitCommitBefore = null;
         job.GitCommitHash = null;
+        job.GitCheckpointStatus = GitCheckpointStatus.None;
+        job.GitCheckpointBranch = null;
+        job.GitCheckpointBaseBranch = null;
+        job.GitCheckpointCommitHash = null;
+        job.GitCheckpointReason = null;
+        job.GitCheckpointCapturedAt = null;
         job.PullRequestNumber = null;
         job.PullRequestUrl = null;
         job.PullRequestCreatedAt = null;

@@ -148,6 +148,10 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 			entity.Property(e => e.LastSwitchReason).HasMaxLength(200);
 			entity.Property(e => e.Branch).HasMaxLength(250);
 			entity.Property(e => e.TargetBranch).HasMaxLength(250);
+			entity.Property(e => e.GitCheckpointBranch).HasMaxLength(250);
+			entity.Property(e => e.GitCheckpointBaseBranch).HasMaxLength(250);
+			entity.Property(e => e.GitCheckpointCommitHash).HasMaxLength(100);
+			entity.Property(e => e.GitCheckpointReason).HasMaxLength(500);
 			entity.Property(e => e.SessionId).HasMaxLength(200);
 			entity.Property(e => e.CommandUsed).HasMaxLength(4000);
 			entity.HasOne(e => e.Project)

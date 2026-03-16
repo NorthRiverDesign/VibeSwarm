@@ -86,7 +86,7 @@ else
                     disabled="@(!IsGitRepository || !HasChangesTabContent)">
                 <i class="bi bi-file-diff me-1"></i>
                 <span>Changes</span>
-                @if (_hasUncommittedChangesHeader && _uncommittedFilesCount > 0)
+                @if (HasChangesTabContent && _uncommittedFilesCount > 0)
                 {
                     <span class="badge bg-warning text-dark ms-1">@_uncommittedFilesCount</span>
                 }
@@ -190,8 +190,21 @@ else
                         </div>
                     }
 
+                    @if (_changesTabShowingPersistedDiff && _changesTabPendingJobs.Any())
+                    {
+                        <div class="alert alert-info py-2 mb-3">
+                            <div class="d-flex align-items-center gap-2 mb-2">
+                                <i class="bi bi-shield-check"></i>
+                                <strong>Showing the last captured diff for @_changesTabPendingJobs[0].DisplayTitle</strong>
+                            </div>
+                            <div class="small text-body-secondary">
+                                <i class="bi bi-info-circle me-1"></i>This project is currently clean, so VibeSwarm is showing the diff captured on the job record instead.
+                            </div>
+                        </div>
+                    }
+
                     @* Pending Jobs Section *@
-                    @if (!_changesTabShowingCommittedDiff && _changesTabPendingJobs != null && _changesTabPendingJobs.Any())
+                    @if (!_changesTabShowingCommittedDiff && !_changesTabShowingPersistedDiff && _changesTabPendingJobs != null && _changesTabPendingJobs.Any())
                     {
                         <div class="alert alert-info py-2 mb-3">
                             <div class="d-flex align-items-center gap-2 mb-2">
@@ -298,7 +311,7 @@ else
                         </div>
                     </div>
 
-                    @if (!_changesTabShowingCommittedDiff)
+                    @if (!_changesTabShowingCommittedDiff && !_changesTabShowingPersistedDiff)
                     {
                         <hr class="my-3" />
 
@@ -520,6 +533,7 @@ else
     private List<Job> _changesTabPendingJobs = new();
     private List<Job> _changesTabCommittedJobs = new();
     private bool _changesTabShowingCommittedDiff;
+    private bool _changesTabShowingPersistedDiff;
     private string? _changesTabCommittedHash;
     private string? _changesTabEmptyStateMessage;
     private string _changesTabCommitMessage = string.Empty;
@@ -1114,7 +1128,11 @@ TimeSpan.FromSeconds(10) })
             }
             else
             {
-                _uncommittedFilesCount = 0;
+                var selection = ProjectChangesSectionResolver.Resolve(Jobs, hasUncommittedChanges: false);
+                _uncommittedFilesCount = selection.LinkedJobs
+                    .Select(job => job.ChangedFilesCount ?? 0)
+                    .DefaultIfEmpty(0)
+                    .Max();
             }
         }
         catch
@@ -2358,6 +2376,7 @@ TimeSpan.FromSeconds(10) })
         _changesTabPendingJobs = new List<Job>();
         _changesTabCommittedJobs = new List<Job>();
         _changesTabShowingCommittedDiff = false;
+        _changesTabShowingPersistedDiff = false;
         _changesTabCommittedHash = null;
         _changesTabEmptyStateMessage = null;
         _changesTabCommitError = null;
@@ -2382,6 +2401,13 @@ TimeSpan.FromSeconds(10) })
                 _changesTabCommittedJobs = changeSelection.LinkedJobs.ToList();
                 diffOutput = await LoadCommittedChangesDiffAsync(changeSelection);
                 _changesTabEmptyStateMessage = $"No diff is available for commit {ShortCommitHash(changeSelection.CommitHash)}.";
+            }
+            else if (changeSelection.SourceType == ProjectChangesSourceType.PersistedJobDiff)
+            {
+                _changesTabShowingPersistedDiff = true;
+                _changesTabPendingJobs = changeSelection.LinkedJobs.ToList();
+                diffOutput = changeSelection.PersistedDiff;
+                _changesTabEmptyStateMessage = "No captured diff is available on the latest job.";
             }
             else
             {

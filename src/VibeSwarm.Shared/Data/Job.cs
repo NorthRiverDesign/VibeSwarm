@@ -40,6 +40,17 @@ public enum CycleSessionMode
     FreshSession = 1
 }
 
+/// <summary>
+/// Tracks whether VibeSwarm preserved local git changes before a destructive operation.
+/// </summary>
+public enum GitCheckpointStatus
+{
+    None = 0,
+    Protecting = 1,
+    Preserved = 2,
+    Cleared = 3
+}
+
 public class Job
 {
     public Guid Id { get; set; }
@@ -320,6 +331,40 @@ public class Job
     /// </summary>
     public string? GitCommitHash { get; set; }
 
+
+    /// <summary>
+    /// State machine for preserved local git changes captured before destructive branch operations.
+    /// </summary>
+    public GitCheckpointStatus GitCheckpointStatus { get; set; } = GitCheckpointStatus.None;
+
+    /// <summary>
+    /// Recovery branch that stores preserved local changes for this job, if one was created.
+    /// </summary>
+    [StringLength(250)]
+    public string? GitCheckpointBranch { get; set; }
+
+    /// <summary>
+    /// Original branch that was active before the recovery checkpoint was created.
+    /// </summary>
+    [StringLength(250)]
+    public string? GitCheckpointBaseBranch { get; set; }
+
+    /// <summary>
+    /// Commit hash of the preserved recovery checkpoint.
+    /// </summary>
+    [StringLength(100)]
+    public string? GitCheckpointCommitHash { get; set; }
+
+    /// <summary>
+    /// Why the recovery checkpoint was created.
+    /// </summary>
+    [StringLength(500)]
+    public string? GitCheckpointReason { get; set; }
+
+    /// <summary>
+    /// When the recovery checkpoint was created.
+    /// </summary>
+    public DateTime? GitCheckpointCapturedAt { get; set; }
 	/// <summary>
 	/// GitHub pull request number created for this job, if any.
 	/// </summary>

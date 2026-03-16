@@ -472,6 +472,28 @@ namespace VibeSwarm.Shared.Data.Migrations
                     b.Property<string>("GitCommitHash")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("GitCheckpointBaseBranch")
+                        .HasMaxLength(250)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("GitCheckpointBranch")
+                        .HasMaxLength(250)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("GitCheckpointCapturedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("GitCheckpointCommitHash")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("GitCheckpointReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("GitCheckpointStatus")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("GitDiff")
                         .HasColumnType("TEXT");
 

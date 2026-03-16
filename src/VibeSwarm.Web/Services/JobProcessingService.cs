@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using System.Text.RegularExpressions;
 using System.Text;
 using System.Text.Json;
 using VibeSwarm.Shared.Data;
@@ -15,6 +16,14 @@ namespace VibeSwarm.Web.Services;
 
 public class JobProcessingService : BackgroundService
 {
+    private sealed class GitCheckpointRequiredException : InvalidOperationException
+    {
+        public GitCheckpointRequiredException(string message)
+            : base(message)
+        {
+        }
+    }
+
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<JobProcessingService> _logger;
     private readonly IJobUpdateService? _jobUpdateService;
@@ -541,14 +550,26 @@ public class JobProcessingService : BackgroundService
                     var isGitRepo = await _versionControlService.IsGitRepositoryAsync(workingDirectory, cancellationToken);
                     if (isGitRepo)
                     {
+                        var checkpointBaseBranch = await PreserveWorkingTreeBeforeBranchPreparationAsync(
+                            job,
+                            workingDirectory,
+                            dbContext,
+                            captureJobDiff: false,
+                            reason: "Protected local changes before preparing the job branch.",
+                            cancellationToken: cancellationToken);
+
                         var branchActivity = string.IsNullOrWhiteSpace(job.Branch)
                             ? "Syncing working branch..."
                             : $"Preparing branch '{job.Branch}'...";
                         await UpdateHeartbeatAsync(job.Id, branchActivity, dbContext, cancellationToken);
                         await NotifyJobActivityAsync(job.Id, branchActivity, DateTime.UtcNow);
 
-                        await PrepareWorkingBranchAsync(job, workingDirectory, cancellationToken);
+                        await PrepareWorkingBranchAsync(job, workingDirectory, checkpointBaseBranch, cancellationToken);
                     }
+                }
+                catch (GitCheckpointRequiredException)
+                {
+                    throw;
                 }
                 catch (Exception ex)
                 {
@@ -1063,19 +1084,39 @@ public class JobProcessingService : BackgroundService
                 var jobEntity = await resetDbContext.Jobs.FindAsync(job.Id);
                 if (jobEntity != null)
                 {
+                    if (!string.IsNullOrEmpty(workingDirectory) && Directory.Exists(workingDirectory))
+                    {
+                        try
+                        {
+                            await PreserveWorkingTreeBeforeBranchPreparationAsync(
+                                jobEntity,
+                                workingDirectory,
+                                resetDbContext,
+                                captureJobDiff: true,
+                                reason: jobEntity.CancellationRequested
+                                    ? "Preserved local changes after the job was cancelled."
+                                    : "Preserved local changes after the worker shut down during execution.",
+                                cancellationToken: CancellationToken.None);
+                        }
+                        catch (Exception checkpointEx)
+                        {
+                            _logger.LogWarning(checkpointEx, "Failed to preserve local changes for cancelled job {JobId}", job.Id);
+                        }
+                    }
+
                     if (jobEntity.CancellationRequested)
                     {
                         // User requested cancellation
-                        jobEntity.Status = JobStatus.Cancelled;
-                        jobEntity.CompletedAt = DateTime.UtcNow;
+                        JobStateMachine.TryTransition(jobEntity, JobStatus.Cancelled, "Job was cancelled by user.");
                         jobEntity.ErrorMessage = "Job was cancelled by user";
                     }
                     else
                     {
                         // Service shutdown or timeout - reset for retry
-                        jobEntity.Status = JobStatus.New;
-                        jobEntity.StartedAt = null;
-                        jobEntity.ErrorMessage = "Service shutdown during execution. Queued for retry.";
+                        JobStateMachine.TryTransition(jobEntity, JobStatus.New, "Service shutdown during execution. Queued for retry.");
+                        jobEntity.ErrorMessage = jobEntity.GitCheckpointStatus == GitCheckpointStatus.Preserved
+                            ? "Service shutdown during execution. Queued for retry after preserving local changes."
+                            : "Service shutdown during execution. Queued for retry.";
                     }
                     jobEntity.WorkerInstanceId = null;
                     jobEntity.LastHeartbeatAt = null;
@@ -1126,8 +1167,13 @@ public class JobProcessingService : BackgroundService
         var job = await dbContext.Jobs.FindAsync(new object[] { jobId }, cancellationToken);
         if (job != null)
         {
-            job.Status = JobStatus.Started;
-            job.StartedAt = DateTime.UtcNow;
+            var transitioned = JobStateMachine.TryTransition(job, JobStatus.Started, "Claimed by worker.");
+            if (!transitioned.Success)
+            {
+                _logger.LogWarning("Failed to claim job {JobId}: {Error}", jobId, transitioned.ErrorMessage);
+                return;
+            }
+
             job.WorkerInstanceId = _workerInstanceId;
             job.LastHeartbeatAt = DateTime.UtcNow;
             await dbContext.SaveChangesAsync(cancellationToken);
@@ -1241,8 +1287,7 @@ public class JobProcessingService : BackgroundService
         var job = await dbContext.Jobs.FindAsync(new object[] { jobId }, cancellationToken);
         if (job != null)
         {
-            job.Status = status;
-            job.CompletedAt = DateTime.UtcNow;
+            JobStateMachine.TryTransition(job, status, errorMessage);
             job.WorkerInstanceId = null;
             job.LastHeartbeatAt = null;
             job.ProcessId = null;
@@ -1260,7 +1305,13 @@ public class JobProcessingService : BackgroundService
         var job = await dbContext.Jobs.FindAsync(new object[] { jobId }, cancellationToken);
         if (job != null)
         {
-            job.Status = status;
+            var transitioned = JobStateMachine.TryTransition(job, status, $"Internal transition to {status}.");
+            if (!transitioned.Success)
+            {
+                _logger.LogWarning("Failed to update job {JobId} to {Status}: {Error}", jobId, status, transitioned.ErrorMessage);
+                return;
+            }
+
             job.LastHeartbeatAt = DateTime.UtcNow;
             await dbContext.SaveChangesAsync(cancellationToken);
         }
@@ -1296,8 +1347,13 @@ public class JobProcessingService : BackgroundService
             .FirstOrDefaultAsync(j => j.Id == jobId, cancellationToken);
         if (job != null)
         {
-            job.Status = status;
-            job.CompletedAt = DateTime.UtcNow;
+            var transition = JobStateMachine.TryTransition(job, status, errorMessage);
+            if (!transition.Success)
+            {
+                _logger.LogWarning("Failed to complete job {JobId}: {Error}", jobId, transition.ErrorMessage);
+                return false;
+            }
+
             job.SessionId = sessionId ?? job.SessionId;
             job.Output = output ?? job.Output;
             job.ErrorMessage = errorMessage;
@@ -1362,6 +1418,8 @@ public class JobProcessingService : BackgroundService
                         job.ChangedFilesCount = 0;
                         _logger.LogDebug("No git changes detected for job {JobId}", jobId);
                     }
+
+                    await TryRecordAgentCommitAsync(job, workingDirectory, cancellationToken);
                 }
                 catch (Exception ex)
                 {
@@ -1617,9 +1675,11 @@ public class JobProcessingService : BackgroundService
         }
     }
 
-    private async Task PrepareWorkingBranchAsync(Job job, string workingDirectory, CancellationToken cancellationToken)
+    private async Task PrepareWorkingBranchAsync(Job job, string workingDirectory, string? checkpointBaseBranch, CancellationToken cancellationToken)
     {
-        var sourceBranch = string.IsNullOrWhiteSpace(job.Branch) ? null : job.Branch.Trim();
+        var sourceBranch = string.IsNullOrWhiteSpace(job.Branch)
+            ? (string.IsNullOrWhiteSpace(checkpointBaseBranch) ? null : checkpointBaseBranch.Trim())
+            : job.Branch.Trim();
         var targetBranch = GetEffectiveTargetBranch(job);
 
         if (string.IsNullOrWhiteSpace(sourceBranch))
@@ -1676,6 +1736,114 @@ public class JobProcessingService : BackgroundService
         {
             _logger.LogWarning("Failed to create job branch '{Branch}' for job {JobId}: {Error}", sourceBranch, job.Id, createResult.Error);
         }
+    }
+
+    private async Task<string?> PreserveWorkingTreeBeforeBranchPreparationAsync(
+        Job job,
+        string workingDirectory,
+        VibeSwarmDbContext dbContext,
+        bool captureJobDiff,
+        string reason,
+        CancellationToken cancellationToken)
+    {
+        var hasUncommittedChanges = await _versionControlService.HasUncommittedChangesAsync(workingDirectory, cancellationToken);
+        if (!hasUncommittedChanges)
+        {
+            return null;
+        }
+
+        JobCheckpointStateMachine.TryTransition(job, GitCheckpointStatus.Protecting);
+
+        var originalBranch = await _versionControlService.GetCurrentBranchAsync(workingDirectory, cancellationToken);
+        if (captureJobDiff)
+        {
+            job.GitDiff = await _versionControlService.GetWorkingDirectoryDiffAsync(workingDirectory, null, cancellationToken);
+            var changedFiles = await _versionControlService.GetChangedFilesAsync(workingDirectory, null, cancellationToken);
+            job.ChangedFilesCount = changedFiles.Count;
+        }
+
+        var recoveryBranch = BuildRecoveryBranchName(job.Id, originalBranch);
+        var createBranchResult = await _versionControlService.CreateBranchAsync(
+            workingDirectory,
+            recoveryBranch,
+            switchToBranch: true,
+            cancellationToken: cancellationToken);
+
+        if (!createBranchResult.Success)
+        {
+            job.GitCheckpointStatus = GitCheckpointStatus.None;
+            throw new GitCheckpointRequiredException($"Unable to preserve local git changes before branch preparation: {createBranchResult.Error}");
+        }
+
+        var checkpointMessage = $"VibeSwarm checkpoint before job {job.Id.ToString("N")[..8]}";
+        var commitMessage = string.IsNullOrWhiteSpace(originalBranch)
+            ? checkpointMessage
+            : $"{checkpointMessage} on {originalBranch}";
+        var commitResult = await _versionControlService.CommitAllChangesAsync(workingDirectory, commitMessage, cancellationToken);
+        if (!commitResult.Success)
+        {
+            job.GitCheckpointStatus = GitCheckpointStatus.None;
+            throw new GitCheckpointRequiredException($"Unable to commit preserved local git changes before branch preparation: {commitResult.Error}");
+        }
+
+        job.GitCheckpointBranch = recoveryBranch;
+        job.GitCheckpointBaseBranch = originalBranch;
+        job.GitCheckpointCommitHash = commitResult.CommitHash;
+        job.GitCheckpointReason = reason;
+        job.GitCheckpointCapturedAt = DateTime.UtcNow;
+        JobCheckpointStateMachine.TryTransition(job, GitCheckpointStatus.Preserved);
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        _logger.LogWarning(
+            "Preserved local git changes for job {JobId} on recovery branch {RecoveryBranch} ({CommitHash}) before branch preparation",
+            job.Id,
+            recoveryBranch,
+            commitResult.CommitHash?[..Math.Min(8, commitResult.CommitHash?.Length ?? 0)]);
+
+        return originalBranch;
+    }
+
+    private async Task TryRecordAgentCommitAsync(Job job, string workingDirectory, CancellationToken cancellationToken)
+    {
+        if (!string.IsNullOrWhiteSpace(job.GitCommitHash))
+        {
+            return;
+        }
+
+        var hasChanges = await _versionControlService.HasUncommittedChangesAsync(workingDirectory, cancellationToken);
+        if (hasChanges)
+        {
+            return;
+        }
+
+        var currentHash = await _versionControlService.GetCurrentCommitHashAsync(workingDirectory, cancellationToken);
+        if (string.IsNullOrWhiteSpace(currentHash) ||
+            string.Equals(currentHash, job.GitCommitBefore, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        job.GitCommitHash = currentHash;
+        JobCheckpointStateMachine.TryTransition(job, GitCheckpointStatus.Cleared);
+        _logger.LogInformation(
+            "Recorded self-committed agent output for job {JobId} at {CommitHash}",
+            job.Id,
+            currentHash[..Math.Min(8, currentHash.Length)]);
+    }
+
+    private static string BuildRecoveryBranchName(Guid jobId, string? originalBranch)
+    {
+        var branchSlug = string.IsNullOrWhiteSpace(originalBranch) ? "detached" : SanitizeBranchSegment(originalBranch);
+        var timestamp = DateTime.UtcNow.ToString("yyyyMMdd-HHmmss");
+        return $"vibeswarm/recovery/{branchSlug}-{timestamp}-{jobId.ToString("N")[..8]}";
+    }
+
+    private static string SanitizeBranchSegment(string branchName)
+    {
+        var sanitized = Regex.Replace(branchName.Trim().ToLowerInvariant(), @"[^a-z0-9/_-]+", "-");
+        sanitized = sanitized.Replace("//", "/").Trim('-', '/');
+        return string.IsNullOrWhiteSpace(sanitized) ? "branch" : sanitized;
     }
 
     private async Task CreatePullRequestIfConfiguredAsync(Job job, string workingDirectory, CancellationToken cancellationToken)
