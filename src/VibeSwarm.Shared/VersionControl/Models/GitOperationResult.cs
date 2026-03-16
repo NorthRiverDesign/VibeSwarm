@@ -51,6 +51,16 @@ public sealed class GitOperationResult
 	public int? PullRequestNumber { get; init; }
 
 	/// <summary>
+	/// Saved reference for preserved changes, such as a stash reference.
+	/// </summary>
+	public string? SavedReference { get; init; }
+
+	/// <summary>
+	/// Number of changed files involved in the operation, when known.
+	/// </summary>
+	public int? ChangedFilesCount { get; init; }
+
+	/// <summary>
 	/// Creates a successful result.
 	/// </summary>
 	public static GitOperationResult Succeeded(
@@ -60,7 +70,9 @@ public sealed class GitOperationResult
 		string? remoteName = null,
 		string? targetBranch = null,
 		string? pullRequestUrl = null,
-		int? pullRequestNumber = null)
+		int? pullRequestNumber = null,
+		string? savedReference = null,
+		int? changedFilesCount = null)
 	{
 		return new GitOperationResult
 		{
@@ -71,7 +83,9 @@ public sealed class GitOperationResult
 			RemoteName = remoteName,
 			TargetBranch = targetBranch,
 			PullRequestUrl = pullRequestUrl,
-			PullRequestNumber = pullRequestNumber
+			PullRequestNumber = pullRequestNumber,
+			SavedReference = savedReference,
+			ChangedFilesCount = changedFilesCount
 		};
 	}
 

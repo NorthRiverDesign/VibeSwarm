@@ -137,18 +137,49 @@ public sealed class VersionControlService : IVersionControlService
 	{
 		try
 		{
-			var result = await _commandExecutor.ExecuteAsync(
-				"status --porcelain",
-				workingDirectory,
-				cancellationToken,
-				timeoutSeconds: 10);
-
-			return result.Success && !string.IsNullOrWhiteSpace(result.Output);
+			var status = await GetWorkingTreeStatusAsync(workingDirectory, cancellationToken);
+			return status.HasUncommittedChanges;
 		}
 		catch (Exception ex)
 		{
 			_logger.LogWarning(ex, "Failed to check uncommitted changes for {Directory}", workingDirectory);
 			return false;
+		}
+	}
+
+	/// <inheritdoc />
+	public async Task<GitWorkingTreeStatus> GetWorkingTreeStatusAsync(string workingDirectory, CancellationToken cancellationToken = default)
+	{
+		try
+		{
+			var result = await _commandExecutor.ExecuteAsync(
+				"status --porcelain=v1 --untracked-files=all",
+				workingDirectory,
+				cancellationToken,
+				timeoutSeconds: 10);
+
+			if (!result.Success)
+			{
+				return new GitWorkingTreeStatus();
+			}
+
+			var changedFiles = ParseWorkingTreeStatus(result.Output);
+			if (changedFiles.Count == 0 && !string.IsNullOrWhiteSpace(result.Output))
+			{
+				changedFiles = (await GetChangedFilesAsync(workingDirectory, cancellationToken: cancellationToken)).ToList();
+			}
+
+			return new GitWorkingTreeStatus
+			{
+				HasUncommittedChanges = !string.IsNullOrWhiteSpace(result.Output),
+				ChangedFiles = changedFiles,
+				ChangedFilesCount = changedFiles.Count
+			};
+		}
+		catch (Exception ex)
+		{
+			_logger.LogWarning(ex, "Failed to get working tree status for {Directory}", workingDirectory);
+			return new GitWorkingTreeStatus();
 		}
 	}
 
@@ -961,6 +992,16 @@ public sealed class VersionControlService : IVersionControlService
 
 			progressCallback?.Invoke("Discarding local changes...");
 
+			var preserveResult = await PreserveChangesAsync(
+				workingDirectory,
+				$"VibeSwarm auto-preserve before checkout to {branchName}",
+				cancellationToken);
+
+			if (!preserveResult.Success)
+			{
+				return GitOperationResult.Failed($"Failed to preserve local changes before checkout: {preserveResult.Error}");
+			}
+
 			// Clean untracked files and directories
 			var cleanResult = await _commandExecutor.ExecuteAsync(
 				"clean -fd",
@@ -1050,12 +1091,19 @@ public sealed class VersionControlService : IVersionControlService
 			}
 
 			var commitHash = await GetCurrentCommitHashAsync(workingDirectory, cancellationToken);
+			var output = $"Successfully checked out and reset {branchName} to {remoteName}/{branchName}";
+			if (preserveResult.ChangedFilesCount > 0)
+			{
+				output += BuildPreserveSummary(preserveResult);
+			}
 
 			return GitOperationResult.Succeeded(
-				output: $"Successfully checked out and reset {branchName} to {remoteName}/{branchName}",
+				output: output,
 				branchName: branchName,
 				remoteName: remoteName,
-				commitHash: commitHash);
+				commitHash: commitHash,
+				savedReference: preserveResult.SavedReference,
+				changedFilesCount: preserveResult.ChangedFilesCount);
 		}
 		catch (OperationCanceledException)
 		{
@@ -1106,6 +1154,16 @@ public sealed class VersionControlService : IVersionControlService
 
 			progressCallback?.Invoke("Discarding local changes...");
 
+			var preserveResult = await PreserveChangesAsync(
+				workingDirectory,
+				$"VibeSwarm auto-preserve before sync to {remoteName}/{currentBranch}",
+				cancellationToken);
+
+			if (!preserveResult.Success)
+			{
+				return GitOperationResult.Failed($"Failed to preserve local changes before sync: {preserveResult.Error}");
+			}
+
 			// Clean untracked files and directories
 			await _commandExecutor.ExecuteAsync(
 				"clean -fd",
@@ -1128,12 +1186,19 @@ public sealed class VersionControlService : IVersionControlService
 			}
 
 			var commitHash = await GetCurrentCommitHashAsync(workingDirectory, cancellationToken);
+			var output = $"Successfully synced {currentBranch} with {remoteName}/{currentBranch}";
+			if (preserveResult.ChangedFilesCount > 0)
+			{
+				output += BuildPreserveSummary(preserveResult);
+			}
 
 			return GitOperationResult.Succeeded(
-				output: $"Successfully synced {currentBranch} with {remoteName}/{currentBranch}",
+				output: output,
 				branchName: currentBranch,
 				remoteName: remoteName,
-				commitHash: commitHash);
+				commitHash: commitHash,
+				savedReference: preserveResult.SavedReference,
+				changedFilesCount: preserveResult.ChangedFilesCount);
 		}
 		catch (OperationCanceledException)
 		{
@@ -1516,6 +1581,73 @@ public sealed class VersionControlService : IVersionControlService
 		catch (Exception ex)
 		{
 			return GitOperationResult.Failed($"Unexpected error discarding changes: {ex.Message}");
+		}
+	}
+
+	/// <inheritdoc />
+	public async Task<GitOperationResult> PreserveChangesAsync(
+		string workingDirectory,
+		string message,
+		CancellationToken cancellationToken = default)
+	{
+		try
+		{
+			var isRepo = await IsGitRepositoryAsync(workingDirectory, cancellationToken);
+			if (!isRepo)
+			{
+				return GitOperationResult.Failed("The specified directory is not a git repository.");
+			}
+
+			var workingTreeStatus = await GetWorkingTreeStatusAsync(workingDirectory, cancellationToken);
+			if (!workingTreeStatus.HasUncommittedChanges)
+			{
+				return GitOperationResult.Succeeded(
+					output: "No local changes to preserve.",
+					changedFilesCount: 0);
+			}
+
+			var escapedMessage = EscapeCommandArgument(message);
+			var stashResult = await _commandExecutor.ExecuteAsync(
+				$"stash push --include-untracked --message \"{escapedMessage}\"",
+				workingDirectory,
+				cancellationToken,
+				timeoutSeconds: 30);
+
+			if (!stashResult.Success)
+			{
+				var errorMessage = BuildCommandError(stashResult, "Failed to preserve local changes.");
+				return GitOperationResult.Failed(errorMessage);
+			}
+
+			if (stashResult.Output.Contains("No local changes to save", StringComparison.OrdinalIgnoreCase))
+			{
+				return GitOperationResult.Succeeded(
+					output: "No local changes to preserve.",
+					changedFilesCount: 0);
+			}
+
+			var savedReferenceResult = await _commandExecutor.ExecuteAsync(
+				"rev-parse --verify stash@{0}",
+				workingDirectory,
+				cancellationToken,
+				timeoutSeconds: 10);
+
+			var savedReference = savedReferenceResult.Success && !string.IsNullOrWhiteSpace(savedReferenceResult.Output)
+				? savedReferenceResult.Output.Trim()
+				: "stash@{0}";
+
+			return GitOperationResult.Succeeded(
+				output: $"Preserved {workingTreeStatus.ChangedFilesCount} changed file(s) in {savedReference}.",
+				savedReference: savedReference,
+				changedFilesCount: workingTreeStatus.ChangedFilesCount);
+		}
+		catch (OperationCanceledException)
+		{
+			return GitOperationResult.Failed("Preserve changes operation was cancelled.");
+		}
+		catch (Exception ex)
+		{
+			return GitOperationResult.Failed($"Unexpected error preserving changes: {ex.Message}");
 		}
 	}
 
@@ -2156,6 +2288,52 @@ public sealed class VersionControlService : IVersionControlService
 
 	private static string EscapeCommandArgument(string value)
 		=> value.Replace("\\", "\\\\").Replace("\"", "\\\"");
+
+	private static string BuildPreserveSummary(GitOperationResult result)
+	{
+		var savedReference = result.SavedReference ?? "stash@{0}";
+		var changedFilesCount = result.ChangedFilesCount ?? 0;
+		return $" Preserved {changedFilesCount} changed file(s) in {savedReference} before continuing.";
+	}
+
+	private static List<string> ParseWorkingTreeStatus(string output)
+	{
+		if (string.IsNullOrWhiteSpace(output))
+		{
+			return [];
+		}
+
+		var changedFiles = new List<string>();
+		foreach (var rawLine in output.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+		{
+			var line = rawLine.TrimEnd('\r');
+			if (line.Length < 4)
+			{
+				continue;
+			}
+
+			var path = line[3..].Trim();
+			var renameSeparatorIndex = path.LastIndexOf(" -> ", StringComparison.Ordinal);
+			if (renameSeparatorIndex >= 0)
+			{
+				path = path[(renameSeparatorIndex + 4)..].Trim();
+			}
+
+			if (path.Length >= 2 && path[0] == '"' && path[^1] == '"')
+			{
+				path = path[1..^1];
+			}
+
+			if (!string.IsNullOrWhiteSpace(path))
+			{
+				changedFiles.Add(path);
+			}
+		}
+
+		return changedFiles
+			.Distinct(StringComparer.Ordinal)
+			.ToList();
+	}
 
 	private static string? ExtractPullRequestUrl(string output)
 	{

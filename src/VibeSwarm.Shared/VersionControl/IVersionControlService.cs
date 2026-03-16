@@ -57,6 +57,14 @@ public interface IVersionControlService
 	Task<bool> HasUncommittedChangesAsync(string workingDirectory, CancellationToken cancellationToken = default);
 
 	/// <summary>
+	/// Gets structured working tree status information including changed file paths.
+	/// </summary>
+	/// <param name="workingDirectory">The repository working directory.</param>
+	/// <param name="cancellationToken">Cancellation token.</param>
+	/// <returns>Structured working tree status.</returns>
+	Task<GitWorkingTreeStatus> GetWorkingTreeStatusAsync(string workingDirectory, CancellationToken cancellationToken = default);
+
+	/// <summary>
 	/// Gets a list of files that have been changed.
 	/// </summary>
 	/// <param name="workingDirectory">The repository working directory.</param>
@@ -273,6 +281,18 @@ public interface IVersionControlService
 	Task<GitOperationResult> DiscardAllChangesAsync(
 		string workingDirectory,
 		bool includeUntracked = true,
+		CancellationToken cancellationToken = default);
+
+	/// <summary>
+	/// Preserves the current working tree changes so destructive operations can safely continue.
+	/// </summary>
+	/// <param name="workingDirectory">The repository working directory.</param>
+	/// <param name="message">Message describing why the preservation was created.</param>
+	/// <param name="cancellationToken">Cancellation token.</param>
+	/// <returns>Result containing the saved reference and changed file count.</returns>
+	Task<GitOperationResult> PreserveChangesAsync(
+		string workingDirectory,
+		string message,
 		CancellationToken cancellationToken = default);
 
 	/// <summary>
