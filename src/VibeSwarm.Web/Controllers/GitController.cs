@@ -31,6 +31,9 @@ public class GitController : ControllerBase
     [HttpGet("has-changes")]
     public async Task<IActionResult> HasChanges([FromQuery] string path, CancellationToken ct) => Ok(await _gitService.HasUncommittedChangesAsync(path, ct));
 
+    [HttpGet("working-tree-status")]
+    public async Task<IActionResult> GetWorkingTreeStatus([FromQuery] string path, CancellationToken ct) => Ok(await _gitService.GetWorkingTreeStatusAsync(path, ct));
+
     [HttpGet("changed-files")]
     public async Task<IActionResult> GetChangedFiles([FromQuery] string path, [FromQuery] string? baseCommit = null, CancellationToken ct = default) => Ok(await _gitService.GetChangedFilesAsync(path, baseCommit, ct));
 
@@ -80,6 +83,9 @@ public class GitController : ControllerBase
 
     [HttpPost("discard")]
     public async Task<IActionResult> Discard([FromBody] DiscardRequest req, CancellationToken ct) => Ok(await _gitService.DiscardAllChangesAsync(req.Path, req.IncludeUntracked, ct));
+
+    [HttpPost("preserve")]
+    public async Task<IActionResult> Preserve([FromBody] PreserveRequest req, CancellationToken ct) => Ok(await _gitService.PreserveChangesAsync(req.Path, req.Message, ct));
 
     [HttpGet("commit-log")]
     public async Task<IActionResult> GetCommitLog([FromQuery] string path, [FromQuery] string from, [FromQuery] string? to = null, CancellationToken ct = default) => Ok(await _gitService.GetCommitLogAsync(path, from, to, ct));
@@ -135,6 +141,7 @@ public class GitController : ControllerBase
     public record CloneRequest(string Url, string Path, string? Branch);
     public record CreateBranchRequest(string Path, string Branch, bool SwitchToBranch = true);
     public record DiscardRequest(string Path, bool IncludeUntracked = true);
+    public record PreserveRequest(string Path, string Message);
     public record InitRequest(string Path);
     public record CreateGitHubRepoRequest(string Path, string Name, string? Description, bool IsPrivate = false, string? GitignoreTemplate = null, string? LicenseTemplate = null, bool InitializeReadme = false);
     public record AddRemoteRequest(string Path, string RemoteName, string RemoteUrl);

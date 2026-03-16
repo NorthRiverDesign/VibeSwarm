@@ -83,10 +83,10 @@ public class HttpVersionControlService : IVersionControlService
     public async Task<string?> GetRemoteUrlAsync(string workingDirectory, string remoteName = "origin", CancellationToken ct = default)
         => await _http.GetFromJsonAsync<string?>($"/api/git/remote-url?path={Enc(workingDirectory)}&remote={Uri.EscapeDataString(remoteName)}", ct);
 
-    public async Task<bool> HasUncommittedChangesAsync(string workingDirectory, CancellationToken ct = default)
-    {
-        try
-        {
+	public async Task<bool> HasUncommittedChangesAsync(string workingDirectory, CancellationToken ct = default)
+	{
+		try
+		{
             var response = await _http.GetAsync($"/api/git/has-changes?path={Enc(workingDirectory)}", ct);
             if (!response.IsSuccessStatusCode) return false;
             var content = await response.Content.ReadAsStringAsync(ct);
@@ -95,8 +95,21 @@ public class HttpVersionControlService : IVersionControlService
         catch
         {
             return false;
-        }
-    }
+		}
+	}
+
+	public async Task<GitWorkingTreeStatus> GetWorkingTreeStatusAsync(string workingDirectory, CancellationToken ct = default)
+	{
+		try
+		{
+			return await _http.GetFromJsonAsync<GitWorkingTreeStatus>($"/api/git/working-tree-status?path={Enc(workingDirectory)}", ct)
+				?? new GitWorkingTreeStatus();
+		}
+		catch
+		{
+			return new GitWorkingTreeStatus();
+		}
+	}
 
     public async Task<IReadOnlyList<string>> GetChangedFilesAsync(string workingDirectory, string? baseCommit = null, CancellationToken ct = default)
     {
@@ -238,11 +251,17 @@ public class HttpVersionControlService : IVersionControlService
         return await response.Content.ReadFromJsonAsync<GitOperationResult>(ct) ?? new GitOperationResult { Success = false };
     }
 
-    public async Task<GitOperationResult> DiscardAllChangesAsync(string workingDirectory, bool includeUntracked = true, CancellationToken ct = default)
-    {
-        var response = await _http.PostAsJsonAsync("/api/git/discard", new { Path = workingDirectory, IncludeUntracked = includeUntracked }, ct);
-        return await response.Content.ReadFromJsonAsync<GitOperationResult>(ct) ?? new GitOperationResult { Success = false };
-    }
+	public async Task<GitOperationResult> DiscardAllChangesAsync(string workingDirectory, bool includeUntracked = true, CancellationToken ct = default)
+	{
+		var response = await _http.PostAsJsonAsync("/api/git/discard", new { Path = workingDirectory, IncludeUntracked = includeUntracked }, ct);
+		return await response.Content.ReadFromJsonAsync<GitOperationResult>(ct) ?? new GitOperationResult { Success = false };
+	}
+
+	public async Task<GitOperationResult> PreserveChangesAsync(string workingDirectory, string message, CancellationToken ct = default)
+	{
+		var response = await _http.PostAsJsonAsync("/api/git/preserve", new { Path = workingDirectory, Message = message }, ct);
+		return await response.Content.ReadFromJsonAsync<GitOperationResult>(ct) ?? new GitOperationResult { Success = false, Error = "Failed to parse response" };
+	}
 
     public async Task<IReadOnlyList<string>> GetCommitLogAsync(string workingDirectory, string fromCommit, string? toCommit = null, CancellationToken ct = default)
     {

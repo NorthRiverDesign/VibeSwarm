@@ -266,6 +266,7 @@ public class JobProcessingService : BackgroundService
             // (Started/Processing with old heartbeats, excluding already-completed jobs)
             var cutoffTime = DateTime.UtcNow - TimeSpan.FromMinutes(5);
             var orphanedJobs = await dbContext.Jobs
+                .Include(j => j.Project)
                 .Where(j => (j.Status == JobStatus.Started || j.Status == JobStatus.Processing))
                 .Where(j => !j.CompletedAt.HasValue)
                 .Where(j => !j.LastHeartbeatAt.HasValue || j.LastHeartbeatAt.Value < cutoffTime)
@@ -276,24 +277,23 @@ public class JobProcessingService : BackgroundService
                 _logger.LogWarning("Found orphaned job {JobId} from worker {WorkerId}, resetting for retry",
                     job.Id, job.WorkerInstanceId ?? "unknown");
 
+                if (await TryPreserveChangesForRecoveryAsync(
+                    job,
+                    "Worker crashed or became unresponsive before job changes were finalized.",
+                    cancellationToken))
+                {
+                    continue;
+                }
+
                 if (job.MaxRetries == 0 || job.RetryCount < job.MaxRetries)
                 {
-                    job.Status = JobStatus.New;
+                    JobStateMachine.TryTransition(job, JobStatus.New, "Automatic orphan recovery");
                     job.RetryCount++;
-                    job.StartedAt = null;
-                    job.WorkerInstanceId = null;
-                    job.LastHeartbeatAt = null;
-                    job.ProcessId = null;
-                    job.CurrentActivity = null;
                     job.ErrorMessage = "Worker crashed or became unresponsive. Automatic recovery.";
                 }
                 else
                 {
-                    job.Status = JobStatus.Failed;
-                    job.CompletedAt = DateTime.UtcNow;
-                    job.WorkerInstanceId = null;
-                    job.ProcessId = null;
-                    job.CurrentActivity = null;
+                    JobStateMachine.TryTransition(job, JobStatus.Failed, "Automatic orphan recovery exhausted retries");
                     job.ErrorMessage = $"Job failed after {job.RetryCount} retry attempts (worker crash).";
                 }
             }
@@ -323,6 +323,57 @@ public class JobProcessingService : BackgroundService
         {
             // Ignore if semaphore is already signaled
         }
+    }
+
+    private async Task<bool> TryPreserveChangesForRecoveryAsync(Job job, string reason, CancellationToken cancellationToken)
+    {
+        var workingDirectory = job.Project?.WorkingPath;
+        if (string.IsNullOrWhiteSpace(workingDirectory) || !Directory.Exists(workingDirectory))
+        {
+            return false;
+        }
+
+        if (!await _versionControlService.IsGitRepositoryAsync(workingDirectory, cancellationToken))
+        {
+            return false;
+        }
+
+        var workingTreeStatus = await _versionControlService.GetWorkingTreeStatusAsync(workingDirectory, cancellationToken);
+        if (!workingTreeStatus.HasUncommittedChanges)
+        {
+            return false;
+        }
+
+        var diff = await _versionControlService.GetWorkingDirectoryDiffAsync(workingDirectory, job.GitCommitBefore, cancellationToken)
+            ?? await _versionControlService.GetWorkingDirectoryDiffAsync(workingDirectory, cancellationToken: cancellationToken);
+
+        var preserveResult = await _versionControlService.PreserveChangesAsync(
+            workingDirectory,
+            $"VibeSwarm job {job.Id}: {reason}",
+            cancellationToken);
+
+        if (!preserveResult.Success)
+        {
+            _logger.LogWarning("Failed to preserve workspace changes for recovered job {JobId}: {Error}", job.Id, preserveResult.Error);
+            return false;
+        }
+
+        var transition = JobStateMachine.TryTransition(job, JobStatus.Stalled, reason);
+        if (!transition.Success)
+        {
+            _logger.LogWarning("Failed to move recovered job {JobId} into stalled state: {Error}", job.Id, transition.ErrorMessage);
+            return false;
+        }
+
+        job.GitDiff = !string.IsNullOrWhiteSpace(diff) ? diff : job.GitDiff;
+        job.ChangedFilesCount = workingTreeStatus.ChangedFilesCount;
+        job.WorkerInstanceId = null;
+        job.LastHeartbeatAt = null;
+        job.ProcessId = null;
+        job.CurrentActivity = null;
+        job.ErrorMessage = $"{reason} Preserved {workingTreeStatus.ChangedFilesCount} changed file(s) in {preserveResult.SavedReference ?? "stash@{0}"} for recovery.";
+
+        return true;
     }
 
     private async Task ProcessPendingJobsAsync(CancellationToken stoppingToken)

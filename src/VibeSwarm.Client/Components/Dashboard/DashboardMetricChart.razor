@@ -23,10 +23,10 @@
 		}
 		else
 		{
-			<div class="overflow-auto pb-2">
-				<div style="min-width: @(ChartWidth)px;">
-					<svg width="@ChartWidth" height="@ChartHeight" viewBox="0 0 @ChartWidth @ChartHeight" role="img"
-						 aria-label="@Title">
+			<div class="w-100 pb-2">
+				<div class="w-100">
+					<svg class="d-block w-100" height="@ChartHeight" viewBox="0 0 @ChartWidth @ChartHeight"
+						 preserveAspectRatio="none" role="img" aria-label="@Title">
 						<title>@Title</title>
 
 						@foreach (var gridLineY in GridLineYs)
@@ -52,12 +52,12 @@
 						}
 					</svg>
 
-					<div class="d-flex align-items-start pt-2" style="padding-left:@(ChartPaddingX)px;">
+					<div class="d-grid align-items-start pt-2"
+						 style="padding-inline:@(ChartPaddingX)px; grid-template-columns: repeat(@Points.Count, minmax(0, 1fr));">
 						@for (var index = 0; index < Points.Count; index++)
 						{
 							var point = Points[index];
-							<div class="small text-body-secondary text-center"
-								 style="width:@(BarWidth + BarGap)px; min-width:@(BarWidth + BarGap)px; padding-right:@(BarGap)px;">
+							<div class="small text-body-secondary text-center" style="min-width:0;">
 								@if (ShouldRenderLabel(index))
 								{
 									<span>@point.Label</span>
@@ -67,24 +67,16 @@
 					</div>
 				</div>
 			</div>
-
-			@if (Points.Count > 12)
-			{
-				<p class="small text-body-secondary mb-0 mt-2">
-					<i class="bi bi-arrows-move me-1"></i>Scroll to view the full time range.
-				</p>
-			}
 		}
 	</div>
 </div>
 
 @code {
 	private const int ChartHeight = 220;
+	private const int ChartWidth = 1000;
 	private const int ChartPaddingX = 16;
 	private const int ChartPaddingTop = 16;
 	private const int ChartPaddingBottom = 40;
-	private const int BarWidth = 20;
-	private const int BarGap = 12;
 
 	[Parameter]
 	public string Title { get; set; } = string.Empty;
@@ -114,9 +106,11 @@
 	public IReadOnlyList<DashboardChartPoint> Points { get; set; } = [];
 
 	private bool HasData => Points.Any(point => point.Value > 0);
-	private int ChartWidth => Math.Max((ChartPaddingX * 2) + (Points.Count * (BarWidth + BarGap)), 320);
 	private double BaselineY => ChartHeight - ChartPaddingBottom;
 	private double PlotHeight => ChartHeight - ChartPaddingTop - ChartPaddingBottom;
+	private double PlotWidth => ChartWidth - (ChartPaddingX * 2);
+	private double SlotWidth => Points.Count == 0 ? PlotWidth : PlotWidth / Points.Count;
+	private double BarWidth => Math.Clamp(SlotWidth * 0.6, 8, 28);
 	private double MaxValue => Math.Max(Points.Count == 0 ? 0 : Points.Max(point => point.Value), 1);
 	private IReadOnlyList<double> GridLineYs => [ChartPaddingTop, ChartPaddingTop + (PlotHeight / 3.0), ChartPaddingTop +
 ((PlotHeight * 2.0) / 3.0), BaselineY];
@@ -128,7 +122,8 @@
 
 	private double GetBarX(int index)
 	{
-		return ChartPaddingX + (index * (BarWidth + BarGap));
+		var slotStartX = ChartPaddingX + (index * SlotWidth);
+		return slotStartX + ((SlotWidth - BarWidth) / 2);
 	}
 
 	private bool ShouldRenderLabel(int index)

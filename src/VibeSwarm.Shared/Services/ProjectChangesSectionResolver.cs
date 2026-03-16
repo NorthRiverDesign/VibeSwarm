@@ -95,7 +95,7 @@ public static class ProjectChangesSectionResolver
 		=> job.Status == JobStatus.Completed && !string.IsNullOrWhiteSpace(job.GitCommitHash);
 
 	private static bool HasPersistedDiff(Job job)
-		=> job.Status is JobStatus.New or JobStatus.Completed or JobStatus.Failed or JobStatus.Cancelled or JobStatus.Stalled
+		=> (job.Status is JobStatus.New or JobStatus.Completed or JobStatus.Failed or JobStatus.Cancelled or JobStatus.Stalled)
 			&& string.IsNullOrWhiteSpace(job.GitCommitHash)
 			&& !string.IsNullOrWhiteSpace(job.GitDiff);
 

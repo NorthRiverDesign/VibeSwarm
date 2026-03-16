@@ -6,6 +6,7 @@ using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Providers;
 using VibeSwarm.Shared.Services;
 using VibeSwarm.Shared.Utilities;
+using VibeSwarm.Shared.VersionControl;
 
 namespace VibeSwarm.Web.Services;
 
@@ -18,6 +19,7 @@ public class JobWatchdogService : BackgroundService
 	private readonly IServiceScopeFactory _scopeFactory;
 	private readonly ILogger<JobWatchdogService> _logger;
 	private readonly IJobUpdateService? _jobUpdateService;
+	private readonly IVersionControlService _versionControlService;
 	private readonly string _workerInstanceId;
 
 	/// <summary>
@@ -43,10 +45,12 @@ public class JobWatchdogService : BackgroundService
 	public JobWatchdogService(
 		IServiceScopeFactory scopeFactory,
 		ILogger<JobWatchdogService> logger,
+		IVersionControlService versionControlService,
 		IJobUpdateService? jobUpdateService = null)
 	{
 		_scopeFactory = scopeFactory;
 		_logger = logger;
+		_versionControlService = versionControlService;
 		_jobUpdateService = jobUpdateService;
 		_workerInstanceId = JobProcessingService.GetWorkerInstanceId();
 	}
@@ -123,7 +127,6 @@ public class JobWatchdogService : BackgroundService
 	{
 		using var scope = _scopeFactory.CreateScope();
 		var dbContext = scope.ServiceProvider.GetRequiredService<VibeSwarmDbContext>();
-		var jobService = scope.ServiceProvider.GetRequiredService<IJobService>();
 
 		// Use the most conservative (longest) threshold to fetch candidates,
 		// then apply per-provider thresholds in memory
@@ -133,6 +136,7 @@ public class JobWatchdogService : BackgroundService
 		// Only consider jobs owned by THIS worker instance
 		var candidateJobs = await dbContext.Jobs
 			.Include(j => j.Provider)
+			.Include(j => j.Project)
 			.Where(j => (j.Status == JobStatus.Started || j.Status == JobStatus.Processing))
 			.Where(j => j.WorkerInstanceId == _workerInstanceId)
 			.Where(j => j.LastHeartbeatAt.HasValue && j.LastHeartbeatAt.Value < maxCutoffTime)
@@ -179,6 +183,15 @@ public class JobWatchdogService : BackgroundService
 			else
 			{
 				_logger.LogWarning("Job {JobId} stalled but no process ID was captured. The CLI process may have failed to start.", job.Id);
+			}
+
+			if (await TryPreserveChangesForRecoveryAsync(job,
+				$"Job stalled after {threshold.TotalMinutes:F0} minutes without activity.",
+				cancellationToken))
+			{
+				await dbContext.SaveChangesAsync(cancellationToken);
+				await NotifyJobStatusChangedAsync(job.Id, job.Status);
+				continue;
 			}
 
 			// Check if we should retry or fail
@@ -274,6 +287,7 @@ public class JobWatchdogService : BackgroundService
 		// Find jobs that are running but assigned to workers that haven't sent heartbeats recently
 		// AND are not our worker (we handle our own jobs in CheckForStalledJobsAsync)
 		var orphanedJobs = await dbContext.Jobs
+			.Include(j => j.Project)
 			.Where(j => (j.Status == JobStatus.Started || j.Status == JobStatus.Processing))
 			.Where(j => !string.IsNullOrEmpty(j.WorkerInstanceId))
 			.Where(j => j.WorkerInstanceId != _workerInstanceId)
@@ -285,6 +299,15 @@ public class JobWatchdogService : BackgroundService
 			_logger.LogWarning(
 				"Job {JobId} appears orphaned (worker {WorkerId} not responding). Recovering...",
 				job.Id, job.WorkerInstanceId);
+
+			if (await TryPreserveChangesForRecoveryAsync(job,
+				"Worker crashed or became unresponsive before job changes were finalized.",
+				cancellationToken))
+			{
+				await dbContext.SaveChangesAsync(cancellationToken);
+				await NotifyJobStatusChangedAsync(job.Id, job.Status);
+				continue;
+			}
 
 			// Check if we should retry or fail
 			if (job.MaxRetries == 0 || job.RetryCount < job.MaxRetries)
@@ -337,6 +360,61 @@ public class JobWatchdogService : BackgroundService
 
 		// Small delay to ensure process cleanup
 		await Task.Delay(100);
+	}
+
+	private async Task<bool> TryPreserveChangesForRecoveryAsync(Job job, string reason, CancellationToken cancellationToken)
+	{
+		var workingDirectory = job.Project?.WorkingPath;
+		if (string.IsNullOrWhiteSpace(workingDirectory) || !Directory.Exists(workingDirectory))
+		{
+			return false;
+		}
+
+		if (!await _versionControlService.IsGitRepositoryAsync(workingDirectory, cancellationToken))
+		{
+			return false;
+		}
+
+		var workingTreeStatus = await _versionControlService.GetWorkingTreeStatusAsync(workingDirectory, cancellationToken);
+		if (!workingTreeStatus.HasUncommittedChanges)
+		{
+			return false;
+		}
+
+		var diff = await _versionControlService.GetWorkingDirectoryDiffAsync(workingDirectory, job.GitCommitBefore, cancellationToken)
+			?? await _versionControlService.GetWorkingDirectoryDiffAsync(workingDirectory, cancellationToken: cancellationToken);
+
+		var preserveResult = await _versionControlService.PreserveChangesAsync(
+			workingDirectory,
+			$"VibeSwarm job {job.Id}: {reason}",
+			cancellationToken);
+
+		if (!preserveResult.Success)
+		{
+			_logger.LogWarning("Failed to preserve workspace changes for job {JobId}: {Error}", job.Id, preserveResult.Error);
+			return false;
+		}
+
+		var transition = JobStateMachine.TryTransition(job, JobStatus.Stalled, reason);
+		if (!transition.Success)
+		{
+			_logger.LogWarning("Failed to transition job {JobId} to stalled recovery state: {Error}", job.Id, transition.ErrorMessage);
+			return false;
+		}
+
+		job.GitDiff = !string.IsNullOrWhiteSpace(diff) ? diff : job.GitDiff;
+		job.ChangedFilesCount = workingTreeStatus.ChangedFilesCount;
+		job.WorkerInstanceId = null;
+		job.LastHeartbeatAt = null;
+		job.ProcessId = null;
+		job.CurrentActivity = null;
+		job.CancellationRequested = false;
+		job.ErrorMessage = $"{reason} Preserved {workingTreeStatus.ChangedFilesCount} changed file(s) in {preserveResult.SavedReference ?? "stash@{0}"} for recovery.";
+
+		_logger.LogWarning("Preserved {Count} changed file(s) for job {JobId} in {Reference}",
+			workingTreeStatus.ChangedFilesCount, job.Id, preserveResult.SavedReference ?? "stash@{0}");
+
+		return true;
 	}
 
 	private async Task NotifyJobStatusChangedAsync(Guid jobId, JobStatus status)

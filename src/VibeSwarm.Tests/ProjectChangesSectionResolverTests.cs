@@ -128,6 +128,44 @@ public sealed class ProjectChangesSectionResolverTests
 		Assert.Equal(jobs[0].GitDiff, selection.PersistedDiff);
 	}
 
+	[Fact]
+	public void Resolve_PrefersPersistedJobDiff_OverOlderCommittedDiff()
+	{
+		var jobs = new[]
+		{
+			CreateCompletedJob(
+				"Committed change",
+				commitBefore: "1111111",
+				commitHash: "2222222",
+				completedAt: new DateTime(2026, 3, 15, 11, 0, 0, DateTimeKind.Utc)),
+			new Job
+			{
+				Title = "Recovered job",
+				GoalPrompt = "Recovered job",
+				Status = JobStatus.Stalled,
+				GitDiff = """
+					diff --git a/src/Recovered.cs b/src/Recovered.cs
+					--- a/src/Recovered.cs
+					+++ b/src/Recovered.cs
+					@@ -1 +1 @@
+					-old
+					+new
+					""",
+				ChangedFilesCount = 1,
+				CreatedAt = new DateTime(2026, 3, 15, 11, 30, 0, DateTimeKind.Utc),
+				StartedAt = new DateTime(2026, 3, 15, 11, 31, 0, DateTimeKind.Utc),
+				CompletedAt = new DateTime(2026, 3, 15, 12, 0, 0, DateTimeKind.Utc)
+			}
+		};
+
+		var selection = ProjectChangesSectionResolver.Resolve(jobs, hasUncommittedChanges: false);
+
+		Assert.Equal(ProjectChangesSourceType.PersistedJobDiff, selection.SourceType);
+		Assert.Null(selection.CommitHash);
+		Assert.Single(selection.LinkedJobs);
+		Assert.Equal("Recovered job", selection.LinkedJobs[0].Title);
+	}
+
 	private static Job CreateCompletedJob(string title, string? commitBefore = null, string? commitHash = null, DateTime? completedAt = null, string? gitDiff = null)
 	{
 		var createdAt = completedAt?.AddMinutes(-10) ?? new DateTime(2026, 3, 14, 0, 0, 0, DateTimeKind.Utc);

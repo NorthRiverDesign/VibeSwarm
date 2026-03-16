@@ -81,9 +81,9 @@ else
             </button>
         </li>
         <li class="nav-item" role="presentation">
-            <button type="button" class="nav-link @(_activeTab == "changes" ? "active" : "") @(!IsGitRepository || !HasChangesTabContent ? "disabled" : "")"
-                    @onclick="@(() => { if (IsGitRepository && HasChangesTabContent) { _activeTab = "changes"; _ = LoadChangesTabData(); } })" role="tab"
-                    disabled="@(!IsGitRepository || !HasChangesTabContent)">
+            <button type="button" class="nav-link @(_activeTab == "changes" ? "active" : "") @(!IsGitRepository ? "disabled" : "")"
+                    @onclick="OpenChangesTabAsync" role="tab"
+                    disabled="@(!IsGitRepository)">
                 <i class="bi bi-file-diff me-1"></i>
                 <span>Changes</span>
                 @if (HasChangesTabContent && _uncommittedFilesCount > 0)
@@ -507,6 +507,7 @@ else
     // Uncommitted changes modal state
     private bool _hasUncommittedChangesHeader { get; set; }
     private int _uncommittedFilesCount { get; set; }
+    private GitWorkingTreeStatus _workingTreeStatus = new();
     private bool _showUncommittedChangesModal { get; set; }
     private bool _isLoadingUncommittedDiff { get; set; }
     private string? _uncommittedDiffError { get; set; }
@@ -544,7 +545,7 @@ else
     private bool _changesTabShowDiscardConfirm;
     private HashSet<int> _changesTabExpandedItems = new();
     private bool _changesTabAllExpanded => _changesTabDiffFiles.Count > 0 && _changesTabExpandedItems.Count == _changesTabDiffFiles.Count;
-    private bool HasChangesTabContent => IsGitRepository && GetProjectChangesSelection().HasChanges;
+    private bool HasChangesTabContent => IsGitRepository;
 
     // Prune state
     private bool _isPruningBranches { get; set; }
@@ -876,12 +877,20 @@ TimeSpan.FromSeconds(10) })
     {
         _refreshTimer = new System.Threading.Timer(async _ =>
         {
-            if (HasActiveJobs || IsIdeasProcessingActive)
+            if (HasActiveJobs || IsIdeasProcessingActive || (_activeTab == "changes" && IsGitRepository))
             {
                 await InvokeAsync(async () =>
         {
             await RefreshJobs();
             await LoadIdeas();
+            if (IsGitRepository)
+            {
+                await RefreshUncommittedChangesStatus();
+                if (_activeTab == "changes")
+                {
+                    await LoadChangesTabData();
+                }
+            }
             StateHasChanged();
         });
             }
@@ -898,7 +907,8 @@ TimeSpan.FromSeconds(10) })
                 job.Status == JobStatus.Pending ||
                 job.Status == JobStatus.Started ||
                 job.Status == JobStatus.Processing ||
-                job.Status == JobStatus.Paused);
+                job.Status == JobStatus.Paused ||
+                job.Status == JobStatus.Stalled);
 
             var result = await JobService.GetPagedByProjectIdAsync(ProjectId, _jobsPageNumber, ProjectJobsPageSize);
             _jobsPageNumber = result.PageNumber;
@@ -1099,11 +1109,16 @@ TimeSpan.FromSeconds(10) })
                 Console.WriteLine($"Loaded {Branches.Count} branches");
                 await RefreshUncommittedChangesStatus();
             }
+            else
+            {
+                _workingTreeStatus = new GitWorkingTreeStatus();
+            }
         }
         catch (Exception ex)
         {
             Console.WriteLine($"LoadGitInfo error: {ex.Message}");
             IsGitRepository = false;
+            _workingTreeStatus = new GitWorkingTreeStatus();
         }
         finally
         {
@@ -1118,13 +1133,11 @@ TimeSpan.FromSeconds(10) })
 
         try
         {
-            _hasUncommittedChangesHeader = await VersionControlService.HasUncommittedChangesAsync(Project.WorkingPath);
+            _workingTreeStatus = await VersionControlService.GetWorkingTreeStatusAsync(Project.WorkingPath);
+            _hasUncommittedChangesHeader = _workingTreeStatus.HasUncommittedChanges;
             if (_hasUncommittedChangesHeader)
             {
-                // Use GetChangedFilesAsync which returns a proper list of changed files
-                var changedFiles = await VersionControlService.GetChangedFilesAsync(Project.WorkingPath);
-                _uncommittedFilesCount = changedFiles.Count;
-                if (_uncommittedFilesCount == 0) _uncommittedFilesCount = 1; // At least 1 if HasUncommittedChanges is true
+                _uncommittedFilesCount = _workingTreeStatus.ChangedFilesCount;
             }
             else
             {
@@ -1137,6 +1150,7 @@ TimeSpan.FromSeconds(10) })
         }
         catch
         {
+            _workingTreeStatus = new GitWorkingTreeStatus();
             _hasUncommittedChangesHeader = false;
             _uncommittedFilesCount = 0;
         }
@@ -1223,6 +1237,18 @@ TimeSpan.FromSeconds(10) })
         _branchSwitchError = null;
     }
 
+    private async Task OpenChangesTabAsync()
+    {
+        if (!IsGitRepository)
+        {
+            return;
+        }
+
+        _activeTab = "changes";
+        await RefreshUncommittedChangesStatus();
+        await LoadChangesTabData();
+    }
+
     private async Task ConfirmBranchSwitch((bool commitFirst, string? commitMessage) args)
     {
         if (string.IsNullOrEmpty(_targetBranch) || _targetBranch == CurrentBranch)
@@ -1263,11 +1289,12 @@ TimeSpan.FromSeconds(10) })
 
             if (result.Success)
             {
-                GitOperationMessage = $"Successfully switched to branch '{_targetBranch}'";
+                GitOperationMessage = result.Output ?? $"Successfully switched to branch '{_targetBranch}'";
                 GitOperationSuccess = true;
                 CurrentBranch = _targetBranch;
                 CurrentCommitHash = result.CommitHash;
                 await LoadBranches();
+                await RefreshUncommittedChangesStatus();
                 CloseBranchSwitchModal();
             }
             else
@@ -1308,9 +1335,10 @@ TimeSpan.FromSeconds(10) })
 
             if (result.Success)
             {
-                GitOperationMessage = $"Successfully synced with origin/{CurrentBranch}";
+                GitOperationMessage = result.Output ?? $"Successfully synced with origin/{CurrentBranch}";
                 GitOperationSuccess = true;
                 CurrentCommitHash = result.CommitHash;
+                await RefreshUncommittedChangesStatus();
                 await PopulateGitHubRepositoryIfMissing();
             }
             else
@@ -1733,10 +1761,15 @@ TimeSpan.FromSeconds(10) })
 
         try
         {
+            await RefreshUncommittedChangesStatus();
             var diffOutput = await VersionControlService.GetWorkingDirectoryDiffAsync(Project.WorkingPath);
             if (!string.IsNullOrEmpty(diffOutput))
             {
                 _uncommittedDiffFiles = ParseGitDiff(diffOutput);
+            }
+            else if (_workingTreeStatus.ChangedFilesCount > 0)
+            {
+                _uncommittedDiffFiles = BuildPlaceholderDiffFiles(_workingTreeStatus.ChangedFiles);
             }
             else
             {
@@ -2385,11 +2418,14 @@ TimeSpan.FromSeconds(10) })
 
         try
         {
+            await RefreshUncommittedChangesStatus();
             var changeSelection = GetProjectChangesSelection();
             string? diffOutput = null;
+            IReadOnlyList<string> changedFiles = [];
 
             if (changeSelection.SourceType == ProjectChangesSourceType.WorkingDirectory)
             {
+                changedFiles = _workingTreeStatus.ChangedFiles;
                 diffOutput = await VersionControlService.GetWorkingDirectoryDiffAsync(Project.WorkingPath);
                 _changesTabPendingJobs = changeSelection.LinkedJobs.ToList();
                 _changesTabEmptyStateMessage = "No uncommitted changes. Your working directory is clean.";
@@ -2418,6 +2454,11 @@ TimeSpan.FromSeconds(10) })
             {
                 _changesTabDiffFiles = ParseGitDiff(diffOutput);
             }
+
+            if (_changesTabDiffFiles.Count == 0 && changedFiles.Count > 0)
+            {
+                _changesTabDiffFiles = BuildPlaceholderDiffFiles(changedFiles);
+            }
         }
         catch (Exception ex)
         {
@@ -2431,7 +2472,21 @@ TimeSpan.FromSeconds(10) })
     }
 
     private ProjectChangesSelection GetProjectChangesSelection()
-        => ProjectChangesSectionResolver.Resolve(Jobs, _hasUncommittedChangesHeader);
+        => ProjectChangesSectionResolver.Resolve(Jobs, _workingTreeStatus.HasUncommittedChanges || _hasUncommittedChangesHeader);
+
+    private static List<DiffFile> BuildPlaceholderDiffFiles(IReadOnlyList<string> changedFiles)
+    {
+        return changedFiles
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .Select(path => new DiffFile
+            {
+                FileName = path,
+                DiffContent = "Diff content is unavailable, but Git reported this file as changed.",
+                Additions = 0,
+                Deletions = 0
+            })
+            .ToList();
+    }
 
     private async Task<string?> LoadCommittedChangesDiffAsync(ProjectChangesSelection changeSelection)
     {
