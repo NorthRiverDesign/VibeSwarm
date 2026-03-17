@@ -1,5 +1,6 @@
 @* Modal component for adding and editing projects *@
 @using VibeSwarm.Client.Components.Projects
+@using VibeSwarm.Client.Models
 @using VibeSwarm.Shared.Data
 @using VibeSwarm.Shared.Models
 @using VibeSwarm.Shared.Providers
@@ -11,652 +12,599 @@
 @inject NotificationService NotificationService
 
 <ModalDialog IsVisible="IsVisible" IsVisibleChanged="HandleModalVisibilityChanged"
- 			 Title="@(IsEdit ? "Edit Project" : "New Project")" Icon="@(IsEdit ? "pencil" : "folder-plus")"
-			 Size="ModalDialog.ModalSize.Default" OnClose="HandleClose" BodyClass="vs-project-modal-body">
-	<ChildContent>
-		<EditForm Model="@Project" OnValidSubmit="HandleValidSubmit" class="vs-modal-form vs-project-modal-form">
-			<DataAnnotationsValidator />
-			<ValidationSummary class="text-danger mb-3" />
+ Title="@(IsEdit ? "Edit Project" : "New Project")" Icon="@(IsEdit ? "pencil" : "folder-plus")"
+ Size="ModalDialog.ModalSize.Large" OnClose="HandleClose" BodyClass="vs-project-modal-body">
+<ChildContent>
+<EditForm Model="@Project" OnValidSubmit="HandleValidSubmit" class="vs-modal-form vs-project-modal-form">
+<DataAnnotationsValidator />
+<ValidationSummary class="text-danger mb-3" />
 
-			<div class="mb-3">
-				<label for="modal-name" class="form-label">Name</label>
-				<InputText id="modal-name" @bind-Value="Project.Name" class="form-control" placeholder="My Project"
-						   maxlength="@ValidationLimits.ProjectNameMaxLength" />
-				<ValidationMessage For="@(() => Project.Name)" class="text-danger small" />
-			</div>
+<ProjectBasicsSection Project="@Project"
+  WorkingPathPlaceholder="@_formState.WorkingPathPlaceholder"
+  WorkingPathHelpText="@_formState.GetWorkingPathHelpText()"
+  OnBrowseWorkingPath="OpenDirectoryBrowser" />
 
-			<div class="mb-3">
-				<label for="modal-description" class="form-label">Description</label>
-				<InputTextArea id="modal-description" @bind-Value="Project.Description" class="form-control" rows="2"
-							   placeholder="Brief description..." maxlength="@ValidationLimits.ProjectDescriptionMaxLength" />
-				<ValidationMessage For="@(() => Project.Description)" class="text-danger small" />
-				<div class="form-text">@GetCharacterCount(Project.Description, ValidationLimits.ProjectDescriptionMaxLength)</div>
-			</div>
+<ProjectSourceSection Project="@Project" FormState="@_formState" IsEdit="@IsEdit"
+  OnSourceModeSelected="SelectSourceMode"
+  OnGitHubRepositoryChanged="OnGitHubRepositoryChanged" />
 
-			<ProjectSourceSection Project="@Project" FormState="@_formState" IsEdit="@IsEdit"
-								  OnSourceModeSelected="SelectSourceMode"
-								  OnGitHubRepositoryChanged="OnGitHubRepositoryChanged" />
+<ProjectAutomationSection Project="@Project" IsEdit="@IsEdit" />
 
-			<div class="mb-3">
-				<label for="modal-workingPath" class="form-label">Working Path</label>
-				<div class="input-group">
-					<InputText id="modal-workingPath" @bind-Value="Project.WorkingPath" class="form-control"
-							   placeholder="@_formState.WorkingPathPlaceholder" maxlength="@ValidationLimits.ProjectWorkingPathMaxLength" />
-					<button type="button" class="btn btn-secondary" @onclick="OpenDirectoryBrowser"
-							title="Browse directories">
-						<i class="bi bi-folder2-open"></i>
-					</button>
-				</div>
-				<ValidationMessage For="@(() => Project.WorkingPath)" class="text-danger small" />
-				<div class="form-text">@_formState.GetWorkingPathHelpText()</div>
-			</div>
+<ProjectPlanningSection Project="@Project" AvailableProviders="@GetPlanningProviders().ToList()"
+PlanningModels="@_planningModels"
+OnPlanningEnabledChanged="HandlePlanningEnabledChanged"
+OnPlanningProviderChanged="HandlePlanningProviderChanged" />
 
-			<div class="mb-3">
-				<label for="modal-autoCommitMode" class="form-label">
-					<i class="bi bi-git me-1"></i>Auto-Commit
-				</label>
-				<InputSelect id="modal-autoCommitMode" @bind-Value="Project.AutoCommitMode" class="form-select">
-					<option value="@AutoCommitMode.Off">Off - Manual commit required</option>
-					<option value="@AutoCommitMode.CommitOnly">Commit Only - Auto-commit after job completion</option>
-					<option value="@AutoCommitMode.CommitAndPush">Commit & Push - Auto-commit and push after job
-						completion</option>
-				</InputSelect>
-				<div class="form-text">Automatically commit (and optionally push) changes after successful job completion.</div>
-			</div>
+<ProjectProviderPrioritySection Project="@Project" AvailableProviders="@_availableProviders"
+   ResolveProvider="ResolveProvider" IsProviderSelected="IsProviderSelected"
+   ResolveProviderModels="GetProviderModels"
+   OnMoveUp="MoveProviderSelectionUp" OnMoveDown="MoveProviderSelectionDown"
+   OnRemove="RemoveProviderSelection" OnAdd="AddProviderSelection"
+   OnPreferredModelChanged="HandlePreferredModelChanged" />
 
-			<div class="mb-3">
-				<label for="modal-gitChangeDeliveryMode" class="form-label">
-					<i class="bi bi-box-arrow-up-right me-1"></i>Result Delivery
-				</label>
-				<InputSelect id="modal-gitChangeDeliveryMode" @bind-Value="Project.GitChangeDeliveryMode" class="form-select">
-					<option value="@GitChangeDeliveryMode.CommitToBranch">Commit to branch</option>
-					<option value="@GitChangeDeliveryMode.PullRequest">Create pull request</option>
-				</InputSelect>
-				<div class="form-text">
-					Choose whether successful jobs should stay on their working branch or be delivered through a pull request.
-				</div>
-			</div>
+<ProjectInstructionsSection Project="@Project" />
 
-			@if (Project.GitChangeDeliveryMode == GitChangeDeliveryMode.PullRequest)
-			{
-				<div class="mb-3">
-					<label for="modal-defaultTargetBranch" class="form-label">
-						<i class="bi bi-signpost-split me-1"></i>Default Target Branch
-					</label>
-					<InputText id="modal-defaultTargetBranch" @bind-Value="Project.DefaultTargetBranch" class="form-control"
-							   placeholder="develop" maxlength="@ValidationLimits.ProjectDefaultTargetBranchMaxLength" />
-					<ValidationMessage For="@(() => Project.DefaultTargetBranch)" class="text-danger small" />
-					<div class="form-text">
-						New jobs will target this branch when creating pull requests or merging completed work.
-					</div>
-				</div>
-			}
+<ProjectBuildVerificationSection Project="@Project" />
 
-			<div class="mb-3">
-				<div class="form-check form-switch">
-					<InputCheckbox id="modal-ideasAutoExpand" @bind-Value="Project.IdeasAutoExpand" class="form-check-input" />
-					<label class="form-check-label" for="modal-ideasAutoExpand">
-						<i class="bi bi-stars me-1"></i>Auto-Expand Ideas
-					</label>
-				</div>
-				<div class="form-text">When enabled, ideas without an approved expansion are first turned into a fuller specification before a job is created.</div>
-			</div>
+@if (!string.IsNullOrEmpty(_cloneProgressMessage))
+{
+<Alert Type="Alert.AlertType.Info" Message="@_cloneProgressMessage" Class="mb-3" />
+}
 
-			<ProjectPlanningSection Project="@Project" AvailableProviders="@GetPlanningProviders().ToList()"
-									PlanningModels="@_planningModels"
-									OnPlanningEnabledChanged="HandlePlanningEnabledChanged"
-									OnPlanningProviderChanged="HandlePlanningProviderChanged" />
+@if (!string.IsNullOrEmpty(ErrorMessage))
+{
+<div class="text-danger small mb-3">
+<i class="bi bi-exclamation-circle me-1"></i>@ErrorMessage
+</div>
+}
 
-			<ProjectProviderPrioritySection Project="@Project" AvailableProviders="@_availableProviders"
-										   ResolveProvider="ResolveProvider" IsProviderSelected="IsProviderSelected"
-										   OnMoveUp="MoveProviderSelectionUp" OnMoveDown="MoveProviderSelectionDown"
-										   OnRemove="RemoveProviderSelection" OnAdd="AddProviderSelection" />
+<div class="d-flex flex-column-reverse flex-sm-row gap-2 justify-content-end">
+<button type="button" class="btn btn-secondary" @onclick="HandleCancel">Cancel</button>
+<button type="submit" class="btn btn-primary" disabled="@IsSaving">
+@if (IsSaving)
+{
+<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+}
+@if (IsSaving && !string.IsNullOrEmpty(_cloneProgressMessage))
+{
+@_cloneProgressMessage
+}
+else
+{
+@_formState.GetSubmitButtonText(IsSaving, IsEdit)
+}
+</button>
+</div>
+</EditForm>
+</ChildContent>
+</ModalDialog>
 
-					<div class="mb-3">
-						<label for="modal-promptContext" class="form-label">
-							<i class="bi bi-chat-left-text me-1"></i>Prompt Context
-							<span class="text-body-secondary fw-normal">(optional)</span>
-						</label>
-						<InputTextArea id="modal-promptContext" @bind-Value="Project.PromptContext" class="form-control"
-									   rows="3"
-									   maxlength="@ValidationLimits.ProjectPromptContextMaxLength"
-									   placeholder="Optional instructions injected into every job prompt for this project (e.g., coding conventions, framework preferences)" />
-						<ValidationMessage For="@(() => Project.PromptContext)" class="text-danger small" />
-						<div class="form-text">These instructions are automatically included in every job prompt for this
-							project to guide AI agents. <span class="ms-2">@GetCharacterCount(Project.PromptContext, ValidationLimits.ProjectPromptContextMaxLength)</span></div>
-						</div>
-
-						<div class="mb-3">
-							<label for="modal-projectMemory" class="form-label">
-								<i class="bi bi-journal-text me-1"></i>Project Memory
-								<span class="text-body-secondary fw-normal">(optional)</span>
-							</label>
-							<InputTextArea id="modal-projectMemory" @bind-Value="Project.Memory" class="form-control"
-										   rows="6"
-										   maxlength="@ValidationLimits.ProjectMemoryMaxLength"
-										   placeholder="Persistent notes that help fresh agent sessions avoid repeating past mistakes, remember workflows, and keep important project-specific context." />
-							<ValidationMessage For="@(() => Project.Memory)" class="text-danger small" />
-							<div class="form-text">
-								VibeSwarm exposes this as persistent memory for every job on this project. Agents are instructed to read it first and update it whenever they learn durable context or correct a mistake. <span class="ms-2">@GetCharacterCount(Project.Memory, ValidationLimits.ProjectMemoryMaxLength)</span>
-							</div>
-						</div>
-
-						<ProjectBuildVerificationSection Project="@Project" />
-
-						@if (IsEdit)
-						{
-							<div class="mb-3">
-								<div class="form-check form-switch">
-									<InputCheckbox id="modal-isActive" @bind-Value="Project.IsActive" class="form-check-input" />
-									<label class="form-check-label" for="modal-isActive">
-										<i
-										class="bi bi-@(Project.IsActive ? "check-circle text-success" : "pause-circle text-secondary") me-1"></i>
-										@(Project.IsActive ? "Active" : "Inactive")
-									</label>
-								</div>
-								<div class="form-text">Inactive projects are hidden from the dashboard and shown with reduced emphasis
-									elsewhere.</div>
-								</div>
-							}
-							@if (!string.IsNullOrEmpty(_cloneProgressMessage))
-							{
-								<Alert Type="Alert.AlertType.Info" Message="@_cloneProgressMessage" Class="mb-3" />
-							}
-
-							@if (!string.IsNullOrEmpty(ErrorMessage))
-							{
-								<div class="text-danger small mb-3">
-									<i class="bi bi-exclamation-circle me-1"></i>@ErrorMessage
-								</div>
-							}
-
-							<div class="d-flex flex-column-reverse flex-sm-row gap-2 justify-content-end">
-								<button type="button" class="btn btn-secondary" @onclick="HandleCancel">Cancel</button>
-								<button type="submit" class="btn btn-primary" disabled="@IsSaving">
-									@if (IsSaving)
-									{
-										<span class="spinner-border spinner-border-sm me-1" role="status"></span>
-									}
-									@if (IsSaving && !string.IsNullOrEmpty(_cloneProgressMessage))
-									{
-										@_cloneProgressMessage
-									}
-									else
-									{
-										@_formState.GetSubmitButtonText(IsSaving, IsEdit)
-									}
-								</button>
-							</div>
-						</EditForm>
-					</ChildContent>
-				</ModalDialog>
-
-				@if (_showDirectoryBrowser)
-				{
-					<DirectoryBrowser @ref="_directoryBrowser" InitialPath="@_defaultProjectsDirectory"
-									  OnDirectorySelected="OnDirectorySelected" OnClosed="CloseDirectoryBrowser" />
-				}
+@if (_showDirectoryBrowser)
+{
+<DirectoryBrowser @ref="_directoryBrowser" InitialPath="@_defaultProjectsDirectory"
+  OnDirectorySelected="OnDirectorySelected" OnClosed="CloseDirectoryBrowser" />
+}
 
 @code {
-	[Parameter]
-	public bool IsVisible { get; set; }
+[Parameter]
+public bool IsVisible { get; set; }
 
-	[Parameter]
-	public EventCallback<bool> IsVisibleChanged { get; set; }
+[Parameter]
+public EventCallback<bool> IsVisibleChanged { get; set; }
 
-	[Parameter]
-	public Project? EditProject { get; set; }
+[Parameter]
+public Project? EditProject { get; set; }
 
-	[Parameter]
-	public EventCallback<Guid?> OnSaved { get; set; }
+[Parameter]
+public EventCallback<Guid?> OnSaved { get; set; }
 
-	[Parameter]
-	public EventCallback OnCancelled { get; set; }
+[Parameter]
+public EventCallback OnCancelled { get; set; }
 
-	[Parameter]
-	public EventCallback OnClosed { get; set; }
+[Parameter]
+public EventCallback OnClosed { get; set; }
 
-	private Project Project { get; set; } = new();
-	private bool IsEdit => EditProject != null;
-	private bool IsSaving { get; set; }
-	private string? ErrorMessage { get; set; }
-	private bool _previousIsVisible;
-	private string? _cloneProgressMessage;
-	private bool _showDirectoryBrowser;
-	private DirectoryBrowser? _directoryBrowser;
-	private string? _defaultProjectsDirectory;
-	private List<Provider> _availableProviders = [];
-	private List<ProviderModel> _planningModels = [];
-	private readonly ProjectModalState _formState = new();
+private Project Project { get; set; } = new();
+private bool IsEdit => EditProject != null;
+private bool IsSaving { get; set; }
+private string? ErrorMessage { get; set; }
+private bool _previousIsVisible;
+private string? _cloneProgressMessage;
+private bool _showDirectoryBrowser;
+private DirectoryBrowser? _directoryBrowser;
+private string? _defaultProjectsDirectory;
+private List<Provider> _availableProviders = [];
+private List<ProviderModel> _planningModels = [];
+private readonly Dictionary<Guid, List<ProviderModel>> _providerModelsByProviderId = [];
+private readonly ProjectModalState _formState = new();
 
-	protected override async Task OnInitializedAsync()
-	{
-		await LoadDefaultProjectsDirectory();
-		await LoadProvidersAsync();
-	}
+protected override async Task OnInitializedAsync()
+{
+await LoadDefaultProjectsDirectory();
+await LoadProvidersAsync();
+}
 
-	protected override async Task OnParametersSetAsync()
-	{
-		if (IsVisible && !_previousIsVisible)
-		{
-			await LoadProvidersAsync();
-			ResetState();
+protected override async Task OnParametersSetAsync()
+{
+if (IsVisible && !_previousIsVisible)
+{
+await LoadProvidersAsync();
+ResetState();
 
-			if (EditProject != null)
-			{
-				var editableProject = await ProjectService.GetByIdAsync(EditProject.Id) ?? EditProject;
-				Project = CloneProjectForEditing(editableProject);
-				_formState.LoadFromProject(Project);
-				EnsurePlanningProviderSelection();
-				await LoadPlanningModelsAsync();
-			}
-			else
-			{
-				Project = new Project();
-				_formState.SelectSourceMode(Project, ProjectCreationMode.ExistingDirectory);
-				SeedDefaultProviderSelection();
-				EnsurePlanningProviderSelection();
-			}
-		}
+if (EditProject != null)
+{
+var editableProject = await ProjectService.GetByIdAsync(EditProject.Id) ?? EditProject;
+Project = CloneProjectForEditing(editableProject);
+_formState.LoadFromProject(Project);
+EnsurePlanningProviderSelection();
+await LoadPlanningModelsAsync();
+await LoadProviderSelectionModelsAsync();
+}
+else
+{
+Project = new Project();
+_formState.SelectSourceMode(Project, ProjectCreationMode.ExistingDirectory);
+await SeedDefaultProviderSelectionAsync();
+EnsurePlanningProviderSelection();
+await LoadProviderSelectionModelsAsync();
+}
+}
 
-		_previousIsVisible = IsVisible;
-	}
+_previousIsVisible = IsVisible;
+}
 
-	private async Task LoadDefaultProjectsDirectory()
-	{
-		try
-		{
-			_defaultProjectsDirectory = await SettingsService.GetDefaultProjectsDirectoryAsync();
-			_formState.SetDefaultProjectsDirectory(_defaultProjectsDirectory);
-		}
-		catch
-		{
-			// Ignore errors loading default directory
-		}
-	}
+private async Task LoadDefaultProjectsDirectory()
+{
+try
+{
+_defaultProjectsDirectory = await SettingsService.GetDefaultProjectsDirectoryAsync();
+_formState.SetDefaultProjectsDirectory(_defaultProjectsDirectory);
+}
+catch
+{
+// Ignore errors loading default directory
+}
+}
 
-	private void OnGitHubRepositoryChanged(ChangeEventArgs e)
-	{
-		_formState.UpdateGitHubRepositoryInput(Project, e.Value?.ToString());
-	}
+private void OnGitHubRepositoryChanged(ChangeEventArgs e)
+{
+_formState.UpdateGitHubRepositoryInput(Project, e.Value?.ToString());
+}
 
-	private void SelectSourceMode(ProjectCreationMode mode)
-	{
-		ErrorMessage = null;
-		_formState.SelectSourceMode(Project, mode);
-	}
+private void SelectSourceMode(ProjectCreationMode mode)
+{
+ErrorMessage = null;
+_formState.SelectSourceMode(Project, mode);
+}
 
-	private async Task HandleValidSubmit()
-	{
-		if (!_formState.Validate(Project))
-		{
-			return;
-		}
+private async Task HandleValidSubmit()
+{
+if (!_formState.Validate(Project))
+{
+return;
+}
 
-		IsSaving = true;
-		ErrorMessage = null;
-		_cloneProgressMessage = null;
+IsSaving = true;
+ErrorMessage = null;
+_cloneProgressMessage = null;
 
-		try
-		{
-			Guid? newProjectId = null;
+try
+{
+Guid? newProjectId = null;
 
-			if (IsEdit)
-			{
-				await ProjectService.UpdateAsync(Project);
-				NotificationService.ShowSuccess("Project updated successfully.");
-			}
-			else
-			{
-				_cloneProgressMessage = _formState.GetProgressMessage();
-				StateHasChanged();
+if (IsEdit)
+{
+await ProjectService.UpdateAsync(Project);
+NotificationService.ShowSuccess("Project updated successfully.");
+}
+else
+{
+_cloneProgressMessage = _formState.GetProgressMessage();
+StateHasChanged();
 
-				var created = await ProjectService.CreateProjectAsync(_formState.BuildProjectCreationRequest(Project));
-				newProjectId = created.Id;
-				NotificationService.ShowSuccess(_formState.GetSuccessMessage());
-			}
+var created = await ProjectService.CreateProjectAsync(_formState.BuildProjectCreationRequest(Project));
+newProjectId = created.Id;
+NotificationService.ShowSuccess(_formState.GetSuccessMessage());
+}
 
-			await OnSaved.InvokeAsync(newProjectId);
-			await CloseModal();
-		}
-		catch (Exception ex)
-		{
-			if (!_formState.TryMapSubmissionError(ex.Message))
-			{
-				ErrorMessage = $"Error saving project: {ex.Message}";
-			}
-		}
-		finally
-		{
-			IsSaving = false;
-			_cloneProgressMessage = null;
-		}
-	}
+await OnSaved.InvokeAsync(newProjectId);
+await CloseModal();
+}
+catch (Exception ex)
+{
+if (!_formState.TryMapSubmissionError(ex.Message))
+{
+ErrorMessage = $"Error saving project: {ex.Message}";
+}
+}
+finally
+{
+IsSaving = false;
+_cloneProgressMessage = null;
+}
+}
 
-	private async Task HandleCancel()
-	{
-		await OnCancelled.InvokeAsync();
-		await CloseModal();
-	}
+private async Task HandleCancel()
+{
+await OnCancelled.InvokeAsync();
+await CloseModal();
+}
 
-	private async Task HandleClose()
-	{
-		ResetState();
-		await OnClosed.InvokeAsync();
-	}
+private async Task HandleClose()
+{
+ResetState();
+await OnClosed.InvokeAsync();
+}
 
-	private async Task HandleModalVisibilityChanged(bool visible)
-	{
-		if (!visible)
-		{
-			ResetState();
-			await IsVisibleChanged.InvokeAsync(false);
-		}
-	}
+private async Task HandleModalVisibilityChanged(bool visible)
+{
+if (!visible)
+{
+ResetState();
+await IsVisibleChanged.InvokeAsync(false);
+}
+}
 
-	private async Task CloseModal()
-	{
-		IsVisible = false;
-		await IsVisibleChanged.InvokeAsync(false);
-		ResetState();
-	}
+private async Task CloseModal()
+{
+IsVisible = false;
+await IsVisibleChanged.InvokeAsync(false);
+ResetState();
+}
 
-	private void ResetState()
-	{
-		Project = new Project();
-		ErrorMessage = null;
-		IsSaving = false;
-		_cloneProgressMessage = null;
-		_planningModels = [];
-		_formState.Reset();
-	}
+private void ResetState()
+{
+Project = new Project();
+ErrorMessage = null;
+IsSaving = false;
+_cloneProgressMessage = null;
+_planningModels = [];
+_providerModelsByProviderId.Clear();
+_formState.Reset();
+}
 
-	private async Task OpenDirectoryBrowser()
-	{
-		_showDirectoryBrowser = true;
-		StateHasChanged();
+private async Task OpenDirectoryBrowser()
+{
+_showDirectoryBrowser = true;
+StateHasChanged();
 
-		// Wait for the component to render
-		await Task.Delay(50);
+await Task.Delay(50);
 
-		if (_directoryBrowser != null)
-		{
-			var initialPath = !string.IsNullOrEmpty(Project.WorkingPath)
-			? Project.WorkingPath
-			: _defaultProjectsDirectory;
-			await _directoryBrowser.ShowAsync(initialPath);
-		}
-	}
+if (_directoryBrowser != null)
+{
+var initialPath = !string.IsNullOrEmpty(Project.WorkingPath)
+? Project.WorkingPath
+: _defaultProjectsDirectory;
+await _directoryBrowser.ShowAsync(initialPath);
+}
+}
 
-	private void OnDirectorySelected(string path)
-	{
-		Project.WorkingPath = path;
-		_showDirectoryBrowser = false;
-		StateHasChanged();
-	}
+private void OnDirectorySelected(string path)
+{
+Project.WorkingPath = path;
+_showDirectoryBrowser = false;
+StateHasChanged();
+}
 
-	private void CloseDirectoryBrowser()
-	{
-		_showDirectoryBrowser = false;
-	}
+private void CloseDirectoryBrowser()
+{
+_showDirectoryBrowser = false;
+}
 
-	private async Task LoadProvidersAsync()
-	{
-		_availableProviders = (await ProviderService.GetAllAsync())
-			.Where(p => p.IsEnabled)
-			.OrderBy(p => p.Name)
-			.ToList();
-	}
+private async Task LoadProvidersAsync()
+{
+_availableProviders = (await ProviderService.GetAllAsync())
+.Where(provider => provider.IsEnabled)
+.OrderByDescending(provider => provider.IsDefault)
+.ThenBy(provider => provider.Name)
+.ToList();
+}
 
-	private Provider? ResolveProvider(Guid providerId)
-	{
-		return _availableProviders.FirstOrDefault(p => p.Id == providerId)
-			?? EditProject?.ProviderSelections.FirstOrDefault(pp => pp.ProviderId == providerId)?.Provider;
-	}
+private Provider? ResolveProvider(Guid providerId)
+{
+return _availableProviders.FirstOrDefault(provider => provider.Id == providerId)
+?? EditProject?.ProviderSelections.FirstOrDefault(selection => selection.ProviderId == providerId)?.Provider;
+}
 
-	private bool IsProviderSelected(Guid providerId)
-	{
-		return Project.ProviderSelections.Any(pp => pp.ProviderId == providerId);
-	}
+private bool IsProviderSelected(Guid providerId)
+{
+return Project.ProviderSelections.Any(selection => selection.ProviderId == providerId);
+}
 
-	private void AddProviderSelection(Provider provider)
-	{
-		if (IsProviderSelected(provider.Id))
-		{
-			return;
-		}
+private async Task AddProviderSelection(Provider provider)
+{
+if (IsProviderSelected(provider.Id))
+{
+return;
+}
 
-		Project.ProviderSelections.Add(new ProjectProvider
-		{
-			ProviderId = provider.Id,
-			Provider = provider,
-			Priority = Project.ProviderSelections.Count,
-			IsEnabled = true,
-			CreatedAt = DateTime.UtcNow,
-			UpdatedAt = DateTime.UtcNow
-		});
+Project.ProviderSelections.Add(new ProjectProvider
+{
+ProviderId = provider.Id,
+Provider = provider,
+Priority = Project.ProviderSelections.Count,
+IsEnabled = true,
+CreatedAt = DateTime.UtcNow,
+UpdatedAt = DateTime.UtcNow
+});
 
-		NormalizeProviderSelectionOrder();
-		EnsurePlanningProviderSelection();
-	}
+NormalizeProviderSelectionOrder();
+EnsurePlanningProviderSelection();
+await LoadProviderModelsAsync(provider.Id);
+}
 
-	private void RemoveProviderSelection(Guid providerId)
-	{
-		var selection = Project.ProviderSelections.FirstOrDefault(pp => pp.ProviderId == providerId);
-		if (selection == null)
-		{
-			return;
-		}
+private void RemoveProviderSelection(Guid providerId)
+{
+var selection = Project.ProviderSelections.FirstOrDefault(projectProvider => projectProvider.ProviderId == providerId);
+if (selection == null)
+{
+return;
+}
 
-		Project.ProviderSelections.Remove(selection);
-		NormalizeProviderSelectionOrder();
-		EnsurePlanningProviderSelection();
-	}
+Project.ProviderSelections.Remove(selection);
+_providerModelsByProviderId.Remove(providerId);
+NormalizeProviderSelectionOrder();
+EnsurePlanningProviderSelection();
+}
 
-	private void MoveProviderSelectionUp(Guid providerId)
-	{
-		var ordered = Project.ProviderSelections.OrderBy(pp => pp.Priority).ToList();
-		var index = ordered.FindIndex(pp => pp.ProviderId == providerId);
-		if (index <= 0)
-		{
-			return;
-		}
+private void MoveProviderSelectionUp(Guid providerId)
+{
+var ordered = Project.ProviderSelections.OrderBy(projectProvider => projectProvider.Priority).ToList();
+var index = ordered.FindIndex(projectProvider => projectProvider.ProviderId == providerId);
+if (index <= 0)
+{
+return;
+}
 
-		(ordered[index - 1], ordered[index]) = (ordered[index], ordered[index - 1]);
-		Project.ProviderSelections = ordered;
-		NormalizeProviderSelectionOrder();
-		EnsurePlanningProviderSelection();
-	}
+(ordered[index - 1], ordered[index]) = (ordered[index], ordered[index - 1]);
+Project.ProviderSelections = ordered;
+NormalizeProviderSelectionOrder();
+EnsurePlanningProviderSelection();
+}
 
-	private void MoveProviderSelectionDown(Guid providerId)
-	{
-		var ordered = Project.ProviderSelections.OrderBy(pp => pp.Priority).ToList();
-		var index = ordered.FindIndex(pp => pp.ProviderId == providerId);
-		if (index < 0 || index >= ordered.Count - 1)
-		{
-			return;
-		}
+private void MoveProviderSelectionDown(Guid providerId)
+{
+var ordered = Project.ProviderSelections.OrderBy(projectProvider => projectProvider.Priority).ToList();
+var index = ordered.FindIndex(projectProvider => projectProvider.ProviderId == providerId);
+if (index < 0 || index >= ordered.Count - 1)
+{
+return;
+}
 
-		(ordered[index + 1], ordered[index]) = (ordered[index], ordered[index + 1]);
-		Project.ProviderSelections = ordered;
-		NormalizeProviderSelectionOrder();
-		EnsurePlanningProviderSelection();
-	}
+(ordered[index + 1], ordered[index]) = (ordered[index], ordered[index + 1]);
+Project.ProviderSelections = ordered;
+NormalizeProviderSelectionOrder();
+EnsurePlanningProviderSelection();
+}
 
-	private void NormalizeProviderSelectionOrder()
-	{
-		Project.ProviderSelections = Project.ProviderSelections
-			.OrderBy(pp => pp.Priority)
-			.Select((selection, index) =>
-			{
-				selection.Priority = index;
-				selection.ProjectId = Project.Id;
-				selection.Provider ??= ResolveProvider(selection.ProviderId);
-				selection.UpdatedAt = DateTime.UtcNow;
-				return selection;
-			})
-			.ToList();
-	}
+private async Task HandlePreferredModelChanged(ProjectProviderModelSelectionChange change)
+{
+var selection = Project.ProviderSelections.FirstOrDefault(projectProvider => projectProvider.ProviderId == change.ProviderId);
+if (selection == null)
+{
+return;
+}
 
-	private void SeedDefaultProviderSelection()
-	{
-		if (Project.ProviderSelections.Any())
-		{
-			return;
-		}
+if (!_providerModelsByProviderId.ContainsKey(change.ProviderId))
+{
+await LoadProviderModelsAsync(change.ProviderId);
+}
 
-		var defaultProvider = _availableProviders.FirstOrDefault(p => p.IsDefault);
-		if (defaultProvider != null)
-		{
-			AddProviderSelection(defaultProvider);
-		}
-	}
+selection.PreferredModelId = string.IsNullOrWhiteSpace(change.PreferredModelId)
+? null
+: change.PreferredModelId.Trim();
+selection.UpdatedAt = DateTime.UtcNow;
+}
 
-	private IEnumerable<Provider> GetPlanningProviders()
-	{
-		return _availableProviders
-			.Where(IsPlanningCapableProvider)
-			.OrderBy(provider => provider.Name)
-			.ToList();
-	}
+private void NormalizeProviderSelectionOrder()
+{
+Project.ProviderSelections = Project.ProviderSelections
+.OrderBy(projectProvider => projectProvider.Priority)
+.Select((selection, index) =>
+{
+selection.Priority = index;
+selection.ProjectId = Project.Id;
+selection.Provider ??= ResolveProvider(selection.ProviderId);
+selection.UpdatedAt = DateTime.UtcNow;
+return selection;
+})
+.ToList();
+}
 
-	private static bool IsPlanningCapableProvider(Provider provider)
-	{
-		return provider.Type is ProviderType.Claude or ProviderType.Copilot;
-	}
+private async Task SeedDefaultProviderSelectionAsync()
+{
+if (Project.ProviderSelections.Any())
+{
+return;
+}
 
-	private async Task HandlePlanningEnabledChanged()
-	{
-		EnsurePlanningProviderSelection();
-		await LoadPlanningModelsAsync();
-	}
+var defaultProvider = _availableProviders.FirstOrDefault(provider => provider.IsDefault) ?? _availableProviders.FirstOrDefault();
+if (defaultProvider != null)
+{
+await AddProviderSelection(defaultProvider);
+}
+}
 
-	private async Task HandlePlanningProviderChanged()
-	{
-		Project.PlanningModelId = null;
-		EnsurePlanningProviderSelection();
-		await LoadPlanningModelsAsync();
-	}
+private IEnumerable<Provider> GetPlanningProviders()
+{
+return _availableProviders
+.Where(IsPlanningCapableProvider)
+.OrderBy(provider => provider.Name)
+.ToList();
+}
 
-	private void EnsurePlanningProviderSelection()
-	{
-		if (!Project.PlanningEnabled)
-		{
-			return;
-		}
+private static bool IsPlanningCapableProvider(Provider provider)
+{
+return provider.Type is ProviderType.Claude or ProviderType.Copilot;
+}
 
-		var planningProviders = GetPlanningProviders().ToList();
-		if (planningProviders.Count == 0)
-		{
-			Project.PlanningProviderId = null;
-			Project.PlanningModelId = null;
-			_planningModels = [];
-			return;
-		}
+private async Task HandlePlanningEnabledChanged()
+{
+EnsurePlanningProviderSelection();
+await LoadPlanningModelsAsync();
+}
 
-		if (!Project.PlanningProviderId.HasValue || !planningProviders.Any(provider => provider.Id == Project.PlanningProviderId.Value))
-		{
-			Project.PlanningProviderId = planningProviders[0].Id;
-			Project.PlanningModelId = null;
-			_planningModels = [];
-		}
-	}
+private async Task HandlePlanningProviderChanged()
+{
+Project.PlanningModelId = null;
+EnsurePlanningProviderSelection();
+await LoadPlanningModelsAsync();
+}
 
-	private async Task LoadPlanningModelsAsync()
-	{
-		_planningModels = [];
-		if (!Project.PlanningEnabled || !Project.PlanningProviderId.HasValue)
-		{
-			return;
-		}
+private void EnsurePlanningProviderSelection()
+{
+if (!Project.PlanningEnabled)
+{
+return;
+}
 
-		try
-		{
-			_planningModels = (await ProviderService.GetModelsAsync(Project.PlanningProviderId.Value))
-				.Where(model => model.IsAvailable)
-				.OrderByDescending(model => model.IsDefault)
-				.ThenBy(model => model.DisplayName ?? model.ModelId)
-				.ToList();
-		}
-		catch
-		{
-			_planningModels = [];
-		}
+var planningProviders = GetPlanningProviders().ToList();
+if (planningProviders.Count == 0)
+{
+Project.PlanningProviderId = null;
+Project.PlanningModelId = null;
+_planningModels = [];
+return;
+}
 
-		if (!string.IsNullOrWhiteSpace(Project.PlanningModelId) &&
-			!_planningModels.Any(model => string.Equals(model.ModelId, Project.PlanningModelId, StringComparison.Ordinal)))
-		{
-			Project.PlanningModelId = null;
-		}
-	}
+if (!Project.PlanningProviderId.HasValue || !planningProviders.Any(provider => provider.Id == Project.PlanningProviderId.Value))
+{
+Project.PlanningProviderId = planningProviders[0].Id;
+Project.PlanningModelId = null;
+_planningModels = [];
+}
+}
 
-	private Project CloneProjectForEditing(Project source)
-	{
-		return new Project
-		{
-			Id = source.Id,
-			Name = source.Name,
-			Description = source.Description,
-			WorkingPath = source.WorkingPath,
-			GitHubRepository = source.GitHubRepository,
-			AutoCommitMode = source.AutoCommitMode,
-			GitChangeDeliveryMode = source.GitChangeDeliveryMode,
-			DefaultTargetBranch = source.DefaultTargetBranch,
-			PlanningEnabled = source.PlanningEnabled,
-			PlanningProviderId = source.PlanningProviderId,
-			PlanningModelId = source.PlanningModelId,
-			IdeasAutoExpand = source.IdeasAutoExpand,
-			PromptContext = source.PromptContext,
-			Memory = source.Memory,
-			BuildVerificationEnabled = source.BuildVerificationEnabled,
-			BuildCommand = source.BuildCommand,
-			TestCommand = source.TestCommand,
-			IsActive = source.IsActive,
-			CreatedAt = source.CreatedAt,
-			UpdatedAt = source.UpdatedAt,
-			ProviderSelections = source.ProviderSelections
-				.OrderBy(pp => pp.Priority)
-				.Select(pp => new ProjectProvider
-				{
-					Id = pp.Id,
-					ProjectId = pp.ProjectId,
-					ProviderId = pp.ProviderId,
-					Priority = pp.Priority,
-					IsEnabled = pp.IsEnabled,
-					PreferredModelId = pp.PreferredModelId,
-					CreatedAt = pp.CreatedAt,
-					UpdatedAt = pp.UpdatedAt,
-					Provider = ResolveProvider(pp.ProviderId)
-				})
-				.ToList(),
-			Environments = (source.Environments ?? [])
-				.OrderBy(environment => environment.SortOrder)
-				.Select(environment => new ProjectEnvironment
-				{
-					Id = environment.Id,
-					ProjectId = environment.ProjectId,
-					Name = environment.Name,
-					Description = environment.Description,
-					Type = environment.Type,
-					Stage = environment.Stage,
-					Url = environment.Url,
-					IsPrimary = environment.IsPrimary,
-					IsEnabled = environment.IsEnabled,
-					SortOrder = environment.SortOrder,
-					Username = environment.Username,
-					Password = environment.Password,
-					ClearPassword = false,
-					UsernameCiphertext = environment.UsernameCiphertext,
-					PasswordCiphertext = environment.PasswordCiphertext,
-					CreatedAt = environment.CreatedAt,
-					UpdatedAt = environment.UpdatedAt
-				})
-				.ToList()
-		};
-	}
+private async Task LoadPlanningModelsAsync()
+{
+_planningModels = [];
+if (!Project.PlanningEnabled || !Project.PlanningProviderId.HasValue)
+{
+return;
+}
 
-	private static string GetCharacterCount(string? value, int maxLength)
-	{
-		return $"{value?.Length ?? 0}/{maxLength} characters";
-	}
+try
+{
+_planningModels = (await ProviderService.GetModelsAsync(Project.PlanningProviderId.Value))
+.Where(model => model.IsAvailable)
+.OrderByDescending(model => model.IsDefault)
+.ThenBy(model => model.DisplayName ?? model.ModelId)
+.ToList();
+}
+catch
+{
+_planningModels = [];
+}
+
+if (!string.IsNullOrWhiteSpace(Project.PlanningModelId) &&
+!_planningModels.Any(model => string.Equals(model.ModelId, Project.PlanningModelId, StringComparison.Ordinal)))
+{
+Project.PlanningModelId = null;
+}
+}
+
+private IReadOnlyList<ProviderModel> GetProviderModels(Guid providerId)
+{
+return _providerModelsByProviderId.TryGetValue(providerId, out var models)
+? models
+: [];
+}
+
+private async Task LoadProviderSelectionModelsAsync()
+{
+foreach (var selection in Project.ProviderSelections.OrderBy(projectProvider => projectProvider.Priority))
+{
+await LoadProviderModelsAsync(selection.ProviderId);
+}
+}
+
+private async Task LoadProviderModelsAsync(Guid providerId)
+{
+try
+{
+var models = (await ProviderService.GetModelsAsync(providerId))
+.Where(model => model.IsAvailable)
+.OrderByDescending(model => model.IsDefault)
+.ThenBy(model => model.DisplayName ?? model.ModelId)
+.ToList();
+_providerModelsByProviderId[providerId] = models;
+}
+catch
+{
+_providerModelsByProviderId[providerId] = [];
+}
+
+var selection = Project.ProviderSelections.FirstOrDefault(projectProvider => projectProvider.ProviderId == providerId);
+if (selection != null &&
+!string.IsNullOrWhiteSpace(selection.PreferredModelId) &&
+!_providerModelsByProviderId[providerId].Any(model => string.Equals(model.ModelId, selection.PreferredModelId, StringComparison.Ordinal)))
+{
+selection.PreferredModelId = null;
+}
+}
+
+private Project CloneProjectForEditing(Project source)
+{
+return new Project
+{
+Id = source.Id,
+Name = source.Name,
+Description = source.Description,
+WorkingPath = source.WorkingPath,
+GitHubRepository = source.GitHubRepository,
+AutoCommitMode = source.AutoCommitMode,
+GitChangeDeliveryMode = source.GitChangeDeliveryMode,
+DefaultTargetBranch = source.DefaultTargetBranch,
+PlanningEnabled = source.PlanningEnabled,
+PlanningProviderId = source.PlanningProviderId,
+PlanningModelId = source.PlanningModelId,
+IdeasAutoExpand = source.IdeasAutoExpand,
+PromptContext = source.PromptContext,
+Memory = source.Memory,
+BuildVerificationEnabled = source.BuildVerificationEnabled,
+BuildCommand = source.BuildCommand,
+TestCommand = source.TestCommand,
+IsActive = source.IsActive,
+CreatedAt = source.CreatedAt,
+UpdatedAt = source.UpdatedAt,
+ProviderSelections = source.ProviderSelections
+.OrderBy(projectProvider => projectProvider.Priority)
+.Select(projectProvider => new ProjectProvider
+{
+Id = projectProvider.Id,
+ProjectId = projectProvider.ProjectId,
+ProviderId = projectProvider.ProviderId,
+Priority = projectProvider.Priority,
+IsEnabled = projectProvider.IsEnabled,
+PreferredModelId = projectProvider.PreferredModelId,
+CreatedAt = projectProvider.CreatedAt,
+UpdatedAt = projectProvider.UpdatedAt,
+Provider = ResolveProvider(projectProvider.ProviderId)
+})
+.ToList(),
+Environments = (source.Environments ?? [])
+.OrderBy(environment => environment.SortOrder)
+.Select(environment => new ProjectEnvironment
+{
+Id = environment.Id,
+ProjectId = environment.ProjectId,
+Name = environment.Name,
+Description = environment.Description,
+Type = environment.Type,
+Stage = environment.Stage,
+Url = environment.Url,
+IsPrimary = environment.IsPrimary,
+IsEnabled = environment.IsEnabled,
+SortOrder = environment.SortOrder,
+Username = environment.Username,
+Password = environment.Password,
+ClearPassword = false,
+UsernameCiphertext = environment.UsernameCiphertext,
+PasswordCiphertext = environment.PasswordCiphertext,
+CreatedAt = environment.CreatedAt,
+UpdatedAt = environment.UpdatedAt
+})
+.ToList()
+};
+}
 }

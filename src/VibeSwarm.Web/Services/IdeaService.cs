@@ -230,8 +230,7 @@ public class IdeaService : IIdeaService
 			idea.IsProcessing = true;
 			await _dbContext.SaveChangesAsync(cancellationToken);
 
-			// Get the default provider
-			var defaultProvider = await _providerService.GetDefaultAsync(cancellationToken);
+			var defaultProvider = await ResolveJobProviderAsync(idea.ProjectId, cancellationToken);
 			if (defaultProvider == null)
 			{
 				_logger.LogWarning("No default provider configured. Cannot convert idea to job.");
@@ -240,10 +239,6 @@ public class IdeaService : IIdeaService
 				await _dbContext.SaveChangesAsync(cancellationToken);
 				return null;
 			}
-
-			// Get the default model for the provider
-			var models = await _providerService.GetModelsAsync(defaultProvider.Id, cancellationToken);
-			var defaultModel = models.FirstOrDefault(m => m.IsDefault && m.IsAvailable)?.ModelId;
 
 			// Get the current branch if it's a git repository
 			string? currentBranch = null;
@@ -274,7 +269,6 @@ public class IdeaService : IIdeaService
 				ProviderId = defaultProvider.Id,
 				Title = idea.Description,  // Use the original idea text as the title
 				GoalPrompt = goalPrompt,
-				ModelUsed = defaultModel,
 				Branch = currentBranch,
 				Status = JobStatus.New
 			};
@@ -303,6 +297,22 @@ public class IdeaService : IIdeaService
 		{
 			_ideaConversionLock.Release();
 		}
+	}
+
+	private async Task<Provider?> ResolveJobProviderAsync(Guid projectId, CancellationToken cancellationToken)
+	{
+		var projectProvider = await _dbContext.ProjectProviders
+			.AsNoTracking()
+			.Where(selection => selection.ProjectId == projectId && selection.IsEnabled)
+			.OrderBy(selection => selection.Priority)
+			.Join(
+				_dbContext.Providers.AsNoTracking().Where(provider => provider.IsEnabled),
+				selection => selection.ProviderId,
+				provider => provider.Id,
+				(_, provider) => provider)
+			.FirstOrDefaultAsync(cancellationToken);
+
+		return projectProvider ?? await _providerService.GetDefaultAsync(cancellationToken);
 	}
 
 	private static string BuildPromptFromExpanded(string originalIdea, string expandedDescription)

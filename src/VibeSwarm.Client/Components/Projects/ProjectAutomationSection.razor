@@ -1,0 +1,79 @@
+@using VibeSwarm.Shared.Data
+@using VibeSwarm.Shared.Validation
+
+<div class="mb-3">
+<label class="form-label d-flex align-items-center gap-2 mb-2">
+<i class="bi bi-sliders"></i>
+<span>Job Behavior</span>
+</label>
+
+<div class="border rounded p-3 bg-body-tertiary">
+<div class="mb-3">
+<label for="modal-autoCommitMode" class="form-label">
+<i class="bi bi-git me-1"></i>Auto-Commit
+</label>
+<InputSelect id="modal-autoCommitMode" @bind-Value="Project.AutoCommitMode" class="form-select">
+<option value="@AutoCommitMode.Off">Off - Manual commit required</option>
+<option value="@AutoCommitMode.CommitOnly">Commit Only - Auto-commit after job completion</option>
+<option value="@AutoCommitMode.CommitAndPush">Commit &amp; Push - Auto-commit and push after job completion</option>
+</InputSelect>
+<div class="form-text">Automatically commit (and optionally push) changes after successful job completion.</div>
+</div>
+
+<div class="mb-3">
+<label for="modal-gitChangeDeliveryMode" class="form-label">
+<i class="bi bi-box-arrow-up-right me-1"></i>Result Delivery
+</label>
+<InputSelect id="modal-gitChangeDeliveryMode" @bind-Value="Project.GitChangeDeliveryMode" class="form-select">
+<option value="@GitChangeDeliveryMode.CommitToBranch">Commit to branch</option>
+<option value="@GitChangeDeliveryMode.PullRequest">Create pull request</option>
+</InputSelect>
+<div class="form-text">
+Choose whether successful jobs should stay on their working branch or be delivered through a pull request.
+</div>
+</div>
+
+@if (Project.GitChangeDeliveryMode == GitChangeDeliveryMode.PullRequest)
+{
+<div class="mb-3">
+<label for="modal-defaultTargetBranch" class="form-label">
+<i class="bi bi-signpost-split me-1"></i>Default Target Branch
+</label>
+<InputText id="modal-defaultTargetBranch" @bind-Value="Project.DefaultTargetBranch" class="form-control"
+   placeholder="develop" maxlength="@ValidationLimits.ProjectDefaultTargetBranchMaxLength" />
+<ValidationMessage For="@(() => Project.DefaultTargetBranch)" class="text-danger small" />
+<div class="form-text">
+New jobs will target this branch when creating pull requests or merging completed work.
+</div>
+</div>
+}
+
+<div class="form-check form-switch @(IsEdit ? "mb-3" : string.Empty)">
+<InputCheckbox id="modal-ideasAutoExpand" @bind-Value="Project.IdeasAutoExpand" class="form-check-input" />
+<label class="form-check-label" for="modal-ideasAutoExpand">
+<i class="bi bi-stars me-1"></i>Auto-Expand Ideas
+</label>
+</div>
+<div class="form-text @(IsEdit ? "mb-3" : string.Empty)">When enabled, ideas without an approved expansion are first turned into a fuller specification before a job is created.</div>
+
+@if (IsEdit)
+{
+<div class="form-check form-switch">
+<InputCheckbox id="modal-isActive" @bind-Value="Project.IsActive" class="form-check-input" />
+<label class="form-check-label" for="modal-isActive">
+<i class="bi bi-@(Project.IsActive ? "check-circle text-success" : "pause-circle text-secondary") me-1"></i>
+@(Project.IsActive ? "Active" : "Inactive")
+</label>
+</div>
+<div class="form-text">Inactive projects are hidden from the dashboard and shown with reduced emphasis elsewhere.</div>
+}
+</div>
+</div>
+
+@code {
+[Parameter, EditorRequired]
+public Project Project { get; set; } = default!;
+
+[Parameter]
+public bool IsEdit { get; set; }
+}

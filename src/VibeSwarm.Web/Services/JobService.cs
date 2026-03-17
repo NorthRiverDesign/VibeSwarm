@@ -197,6 +197,7 @@ public class JobService : IJobService
     public async Task<Job> CreateAsync(Job job, CancellationToken cancellationToken = default)
     {
         NormalizeJobForPersistence(job);
+        await ValidateRequestedExecutionAsync(job, cancellationToken);
 
         job.Id = Guid.NewGuid();
         job.CreatedAt = DateTime.UtcNow;
@@ -207,6 +208,10 @@ public class JobService : IJobService
         job.ProviderAttempts.Clear();
 
         await InitializeExecutionPlanAsync(job, cancellationToken);
+        if (job.ProviderId == Guid.Empty)
+        {
+            throw new InvalidOperationException("No enabled providers are available for this job.");
+        }
 
         _dbContext.Jobs.Add(job);
         await _dbContext.SaveChangesAsync(cancellationToken);
@@ -1077,6 +1082,11 @@ public class JobService : IJobService
         {
             job.ProviderId = targets[0].ProviderId;
         }
+
+        if (string.IsNullOrWhiteSpace(job.ModelUsed) && targets.Count > 0)
+        {
+            job.ModelUsed = targets[0].ModelId;
+        }
     }
 
     private async Task<List<JobExecutionTarget>> BuildExecutionPlanAsync(Job job, CancellationToken cancellationToken)
@@ -1122,7 +1132,14 @@ public class JobService : IJobService
             var plannedModels = new List<(string? ModelId, string Source)>();
             if (provider.Id == job.ProviderId)
             {
-                plannedModels.Add((job.ModelUsed, string.IsNullOrWhiteSpace(job.ModelUsed) ? "job-provider-default" : "job-selected-model"));
+                if (!string.IsNullOrWhiteSpace(job.ModelUsed))
+                {
+                    plannedModels.Add((job.ModelUsed, "job-selected-model"));
+                }
+                else if (!string.IsNullOrWhiteSpace(selection?.PreferredModelId))
+                {
+                    plannedModels.Add((selection.PreferredModelId, "project-preferred-model"));
+                }
             }
             else if (!string.IsNullOrWhiteSpace(selection?.PreferredModelId))
             {
@@ -1164,6 +1181,42 @@ public class JobService : IJobService
         }
 
         return targets;
+    }
+
+    private async Task ValidateRequestedExecutionAsync(Job job, CancellationToken cancellationToken)
+    {
+        if (job.ProviderId == Guid.Empty)
+        {
+            if (!string.IsNullOrWhiteSpace(job.ModelUsed))
+            {
+                throw new InvalidOperationException("Selecting a model requires selecting a provider.");
+            }
+
+            return;
+        }
+
+        var providerExists = await _dbContext.Providers
+            .AnyAsync(provider => provider.Id == job.ProviderId && provider.IsEnabled, cancellationToken);
+        if (!providerExists)
+        {
+            throw new InvalidOperationException("The selected provider is not enabled.");
+        }
+
+        if (string.IsNullOrWhiteSpace(job.ModelUsed))
+        {
+            return;
+        }
+
+        var modelExists = await _dbContext.ProviderModels
+            .AnyAsync(model =>
+                model.ProviderId == job.ProviderId &&
+                model.IsAvailable &&
+                model.ModelId == job.ModelUsed,
+                cancellationToken);
+        if (!modelExists)
+        {
+            throw new InvalidOperationException("The selected model is not available for the chosen provider.");
+        }
     }
 
     private static List<Provider> BuildProviderOrder(Guid selectedProviderId, List<Provider> enabledProviders, List<ProjectProvider> projectSelections)

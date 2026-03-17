@@ -594,6 +594,83 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 	}
 
 	[Fact]
+	public async Task ConvertToJobAsync_UsesProjectProviderPriorityAndPreferredModelDefaults()
+	{
+		await using var dbContext = CreateDbContext();
+		var globalDefaultProvider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Global Default",
+			Type = ProviderType.Copilot,
+			IsEnabled = true,
+			IsDefault = true
+		};
+		var projectProvider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Project Preferred",
+			Type = ProviderType.Claude,
+			IsEnabled = true,
+			IsDefault = false
+		};
+		var project = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Project Priority Defaults",
+			WorkingPath = "/tmp/project-priority-defaults",
+			IdeasAutoExpand = false,
+			ProviderSelections =
+			[
+				new ProjectProvider
+				{
+					ProviderId = projectProvider.Id,
+					Priority = 0,
+					IsEnabled = true,
+					PreferredModelId = "claude-opus-4.6"
+				}
+			]
+		};
+		var idea = new Idea
+		{
+			Id = Guid.NewGuid(),
+			ProjectId = project.Id,
+			Description = "Use project defaults when converting ideas",
+			SortOrder = 0
+		};
+
+		dbContext.Projects.Add(project);
+		dbContext.Providers.AddRange(globalDefaultProvider, projectProvider);
+		dbContext.ProviderModels.AddRange(
+			new ProviderModel
+			{
+				Id = Guid.NewGuid(),
+				ProviderId = projectProvider.Id,
+				ModelId = "claude-sonnet-4.6",
+				DisplayName = "Claude Sonnet 4.6",
+				IsAvailable = true,
+				IsDefault = true
+			},
+			new ProviderModel
+			{
+				Id = Guid.NewGuid(),
+				ProviderId = projectProvider.Id,
+				ModelId = "claude-opus-4.6",
+				DisplayName = "Claude Opus 4.6",
+				IsAvailable = true,
+				IsDefault = false
+			});
+		dbContext.Ideas.Add(idea);
+		await dbContext.SaveChangesAsync();
+
+		var ideaService = CreateIdeaService(dbContext, globalDefaultProvider);
+		var job = await ideaService.ConvertToJobAsync(idea.Id);
+
+		Assert.NotNull(job);
+		Assert.Equal(projectProvider.Id, job!.ProviderId);
+		Assert.Equal("claude-opus-4.6", job.ModelUsed);
+	}
+
+	[Fact]
 	public async Task ProcessNextIdeaIfReadyAsync_WaitsForExistingProjectJobToFinish()
 	{
 		await using var dbContext = CreateDbContext();
@@ -795,6 +872,60 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		Assert.Equal(3, page.ActiveCount);
 		Assert.Equal(1, page.CompletedCount);
 		Assert.Equal(new[] { "Job 3", "Job 2" }, page.Items.Select(job => job.Title).ToArray());
+	}
+
+	[Fact]
+	public async Task CreateAsync_UsesProviderDefaultModel_WhenProjectHasNoPreferredModel()
+	{
+		await using var dbContext = CreateDbContext();
+		var project = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Provider Default Models",
+			WorkingPath = "/tmp/provider-default-models"
+		};
+		var provider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Copilot",
+			Type = ProviderType.Copilot,
+			IsEnabled = true,
+			IsDefault = true
+		};
+
+		dbContext.Projects.Add(project);
+		dbContext.Providers.Add(provider);
+		dbContext.ProviderModels.AddRange(
+			new ProviderModel
+			{
+				Id = Guid.NewGuid(),
+				ProviderId = provider.Id,
+				ModelId = "gpt-5.4",
+				DisplayName = "GPT-5.4",
+				IsAvailable = true,
+				IsDefault = true
+			},
+			new ProviderModel
+			{
+				Id = Guid.NewGuid(),
+				ProviderId = provider.Id,
+				ModelId = "gpt-5-mini",
+				DisplayName = "GPT-5 mini",
+				IsAvailable = true,
+				IsDefault = false
+			});
+		await dbContext.SaveChangesAsync();
+
+		var serviceProvider = new ServiceCollection().BuildServiceProvider();
+		var jobService = new JobService(dbContext, serviceProvider);
+		var job = await jobService.CreateAsync(new Job
+		{
+			ProjectId = project.Id,
+			ProviderId = provider.Id,
+			GoalPrompt = "Use the provider default model"
+		});
+
+		Assert.Equal("gpt-5.4", job.ModelUsed);
 	}
 
 	[Fact]

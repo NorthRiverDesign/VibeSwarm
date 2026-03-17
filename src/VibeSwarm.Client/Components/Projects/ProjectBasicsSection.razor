@@ -1,0 +1,68 @@
+@using VibeSwarm.Shared.Data
+@using VibeSwarm.Shared.Validation
+
+<div class="mb-3">
+<label class="form-label d-flex align-items-center gap-2 mb-2">
+<i class="bi bi-card-text"></i>
+<span>Project Details</span>
+</label>
+
+<div class="border rounded p-3 bg-body-tertiary">
+<div class="mb-3">
+<label for="modal-name" class="form-label">Name</label>
+<InputText id="modal-name" @bind-Value="Project.Name" class="form-control" placeholder="My Project"
+   maxlength="@ValidationLimits.ProjectNameMaxLength" />
+<ValidationMessage For="@(() => Project.Name)" class="text-danger small" />
+</div>
+
+<div>
+<label for="modal-description" class="form-label">Description</label>
+<InputTextArea id="modal-description" @bind-Value="Project.Description" class="form-control" rows="2"
+   placeholder="Brief description..." maxlength="@ValidationLimits.ProjectDescriptionMaxLength" />
+<ValidationMessage For="@(() => Project.Description)" class="text-danger small" />
+<div class="form-text">@GetCharacterCount(Project.Description, ValidationLimits.ProjectDescriptionMaxLength)</div>
+</div>
+</div>
+</div>
+
+<div class="mb-3">
+<label class="form-label d-flex align-items-center gap-2 mb-2">
+<i class="bi bi-folder2-open"></i>
+<span>Workspace</span>
+</label>
+
+<div class="border rounded p-3 bg-body-tertiary">
+<label for="modal-workingPath" class="form-label">Working Path</label>
+<div class="input-group">
+<InputText id="modal-workingPath" @bind-Value="Project.WorkingPath" class="form-control"
+   placeholder="@WorkingPathPlaceholder" maxlength="@ValidationLimits.ProjectWorkingPathMaxLength" />
+<button type="button" class="btn btn-secondary" @onclick="HandleBrowseWorkingPath"
+title="Browse directories">
+<i class="bi bi-folder2-open"></i>
+</button>
+</div>
+<ValidationMessage For="@(() => Project.WorkingPath)" class="text-danger small" />
+<div class="form-text">@WorkingPathHelpText</div>
+</div>
+</div>
+
+@code {
+[Parameter, EditorRequired]
+public Project Project { get; set; } = default!;
+
+[Parameter]
+public string WorkingPathPlaceholder { get; set; } = string.Empty;
+
+[Parameter]
+public string WorkingPathHelpText { get; set; } = string.Empty;
+
+[Parameter]
+public EventCallback OnBrowseWorkingPath { get; set; }
+
+private Task HandleBrowseWorkingPath() => OnBrowseWorkingPath.InvokeAsync();
+
+private static string GetCharacterCount(string? value, int maxLength)
+{
+return $"{value?.Length ?? 0}/{maxLength} characters";
+}
+}

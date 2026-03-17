@@ -47,10 +47,15 @@ public sealed class ProjectModalTests
 		});
 
 		Assert.Contains("vs-project-modal-body", html);
+		Assert.Contains("modal-lg", html);
+		Assert.Contains("Project Details", html);
+		Assert.Contains("Workspace", html);
 		Assert.Contains("Project Source", html);
+		Assert.Contains("Job Behavior", html);
 		Assert.Contains("Planning", html);
-		Assert.Contains("Provider Priority", html);
-		Assert.Contains("Project Memory", html);
+		Assert.Contains("Job Execution", html);
+		Assert.Contains("Instructions &amp; Memory", html);
+		Assert.Contains("Default Job Model", html);
 		Assert.Contains("Build Verification", html);
 		Assert.Contains("Create Project", html);
 	}

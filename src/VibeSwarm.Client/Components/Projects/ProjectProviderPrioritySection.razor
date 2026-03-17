@@ -1,117 +1,172 @@
+@using VibeSwarm.Client.Models
+@using VibeSwarm.Shared.Data
+@using VibeSwarm.Shared.Providers
+
 <div class="mb-3">
-	<label class="form-label d-flex align-items-center gap-2 mb-2">
-		<i class="bi bi-diagram-3"></i>
-		<span>Provider Priority</span>
-	</label>
+<label class="form-label d-flex align-items-center gap-2 mb-2">
+<i class="bi bi-diagram-3"></i>
+<span>Job Execution</span>
+</label>
 
-	<Alert Type="Alert.AlertType.Info" Class="py-2 px-3 small">
-		@if (Project.ProviderSelections.Any())
-		{
-			<span>This project will prefer providers in the order shown below. Jobs can fall back to the next provider when one is unavailable or at limit.</span>
-		}
-		else
-		{
-			<span>No providers selected yet. If you save without a provider list, the project can use any enabled provider system-wide.</span>
-		}
-	</Alert>
+<Alert Type="Alert.AlertType.Info" Class="py-2 px-3 small">
+@if (Project.ProviderSelections.Any())
+{
+<span>This project will prefer providers in the order shown below. Each provider can also carry a project-specific default model for new jobs.</span>
+}
+else
+{
+<span>No providers selected yet. If you save without a provider list, the project can use any enabled provider system-wide.</span>
+}
+</Alert>
 
-	@if (!AvailableProviders.Any())
-	{
-		<div class="text-warning small mt-2">
-			<i class="bi bi-exclamation-triangle me-1"></i>No enabled providers available. Configure a provider first.
-		</div>
-	}
-	else
-	{
-		<div class="border rounded p-2 bg-body-tertiary">
-			<div class="small text-body-secondary fw-semibold mb-2">Priority Order</div>
-			@if (Project.ProviderSelections.Any())
-			{
-				<div class="d-grid gap-2 mb-3">
-					@foreach (var selection in Project.ProviderSelections.OrderBy(pp => pp.Priority).ToList())
-					{
-						var provider = ResolveProvider(selection.ProviderId);
-						<div class="d-flex align-items-start justify-content-between gap-2 flex-wrap rounded border bg-body p-2">
-							<div class="min-width-0 flex-grow-1">
-								<div class="d-flex align-items-center gap-2 flex-wrap">
-									<span class="badge text-bg-primary">#@(selection.Priority + 1)</span>
-									<span class="fw-semibold">@(provider?.Name ?? "Unknown Provider")</span>
-									@if (provider != null)
-									{
-										<span class="badge bg-secondary-subtle text-secondary-emphasis">@provider.Type</span>
-									}
-								</div>
-							</div>
-							<div class="d-flex flex-wrap justify-content-end gap-2">
-								<button type="button" class="btn btn-sm btn-secondary" @onclick="() => OnMoveUp.InvokeAsync(selection.ProviderId)"
-										disabled="@(selection.Priority == 0)" title="Move up">
-									<i class="bi bi-arrow-up"></i>
-								</button>
-								<button type="button" class="btn btn-sm btn-secondary" @onclick="() => OnMoveDown.InvokeAsync(selection.ProviderId)"
-										disabled="@(selection.Priority >= Project.ProviderSelections.Count - 1)" title="Move down">
-									<i class="bi bi-arrow-down"></i>
-								</button>
-								<button type="button" class="btn btn-sm btn-danger" @onclick="() => OnRemove.InvokeAsync(selection.ProviderId)" title="Remove provider">
-									<i class="bi bi-x-lg"></i>
-								</button>
-							</div>
-						</div>
-					}
-				</div>
-			}
-			else
-			{
-				<div class="small text-body-secondary fst-italic mb-3">No project-specific provider priority configured.</div>
-			}
+@if (!AvailableProviders.Any())
+{
+<div class="text-warning small mt-2">
+<i class="bi bi-exclamation-triangle me-1"></i>No enabled providers available. Configure a provider first.
+</div>
+}
+else
+{
+<div class="border rounded p-3 bg-body-tertiary">
+<div class="small text-body-secondary fw-semibold mb-2">Priority Order</div>
+@if (Project.ProviderSelections.Any())
+{
+<div class="d-grid gap-3 mb-3">
+@foreach (var selection in Project.ProviderSelections.OrderBy(pp => pp.Priority).ToList())
+{
+var provider = ResolveProvider(selection.ProviderId);
+var models = ResolveProviderModels(selection.ProviderId)
+.Where(model => model.IsAvailable)
+.OrderByDescending(model => model.IsDefault)
+.ThenBy(model => model.DisplayName ?? model.ModelId)
+.ToList();
 
-			<div class="small text-body-secondary fw-semibold mb-2">Add Provider</div>
-			<div class="d-grid gap-2">
-				@foreach (var provider in AvailableProviders)
-				{
-					var isSelected = IsProviderSelected(provider.Id);
-					<button type="button" class="btn @(isSelected ? "btn-secondary" : "btn-outline-secondary") d-flex align-items-center justify-content-between gap-2 text-start flex-wrap"
-							@onclick="() => OnAdd.InvokeAsync(provider)" disabled="@isSelected">
-						<span class="text-start min-width-0">
-							<span class="fw-semibold">@provider.Name</span>
-							<span class="text-body-secondary ms-sm-2 d-block d-sm-inline">@provider.Type</span>
-						</span>
-						@if (isSelected)
-						{
-							<i class="bi bi-check-lg"></i>
-						}
-						else
-						{
-							<i class="bi bi-plus-lg"></i>
-						}
-					</button>
-				}
-			</div>
-		</div>
-	}
+<div class="rounded border bg-body p-3">
+<div class="d-flex align-items-start justify-content-between gap-2 flex-wrap">
+<div class="min-width-0 flex-grow-1">
+<div class="d-flex align-items-center gap-2 flex-wrap">
+<span class="badge text-bg-primary">#@(selection.Priority + 1)</span>
+<span class="fw-semibold">@(provider?.Name ?? "Unknown Provider")</span>
+@if (provider != null)
+{
+<span class="badge bg-secondary-subtle text-secondary-emphasis">@provider.Type</span>
+}
+</div>
+</div>
+<div class="d-flex flex-wrap justify-content-end gap-2">
+<button type="button" class="btn btn-sm btn-secondary" @onclick="() => OnMoveUp.InvokeAsync(selection.ProviderId)"
+disabled="@(selection.Priority == 0)" title="Move up">
+<i class="bi bi-arrow-up"></i>
+</button>
+<button type="button" class="btn btn-sm btn-secondary" @onclick="() => OnMoveDown.InvokeAsync(selection.ProviderId)"
+disabled="@(selection.Priority >= Project.ProviderSelections.Count - 1)" title="Move down">
+<i class="bi bi-arrow-down"></i>
+</button>
+<button type="button" class="btn btn-sm btn-danger" @onclick="() => OnRemove.InvokeAsync(selection.ProviderId)" title="Remove provider">
+<i class="bi bi-x-lg"></i>
+</button>
+</div>
+</div>
+
+<div class="mt-3">
+								<label for="@($"provider-model-{selection.ProviderId}")" class="form-label small mb-1">
+									<i class="bi bi-cpu me-1"></i>Default Job Model
+								</label>
+								<InputSelect TValue="string" id="@($"provider-model-{selection.ProviderId}")"
+										 Value="selection.PreferredModelId"
+										 ValueChanged="@((string value) => HandlePreferredModelChanged(selection.ProviderId, value))"
+										 ValueExpression="@(() => selection.PreferredModelId)"
+										 class="form-select form-select-sm"
+										 disabled="@(!models.Any())">
+<option value="">Use provider default model</option>
+@foreach (var model in models)
+{
+<option value="@model.ModelId">@(model.DisplayName ?? model.ModelId)@((model.IsDefault ? " (Default)" : string.Empty))</option>
+}
+</InputSelect>
+<div class="form-text">
+@if (!models.Any())
+{
+<span>No cached models found for this provider yet. The provider default will be used until models are refreshed.</span>
+}
+else
+{
+<span>New jobs start with this project default before any job-specific model override.</span>
+}
+</div>
+</div>
+</div>
+}
+</div>
+}
+else
+{
+<div class="small text-body-secondary fst-italic mb-3">No project-specific provider priority configured.</div>
+}
+
+<div class="small text-body-secondary fw-semibold mb-2">Add Provider</div>
+<div class="d-grid gap-2">
+@foreach (var provider in AvailableProviders)
+{
+var isSelected = IsProviderSelected(provider.Id);
+<button type="button" class="btn @(isSelected ? "btn-secondary" : "btn-outline-secondary") d-flex align-items-center justify-content-between gap-2 text-start flex-wrap"
+@onclick="() => OnAdd.InvokeAsync(provider)" disabled="@isSelected">
+<span class="text-start min-width-0">
+<span class="fw-semibold">@provider.Name</span>
+<span class="text-body-secondary ms-sm-2 d-block d-sm-inline">@provider.Type</span>
+</span>
+@if (isSelected)
+{
+<i class="bi bi-check-lg"></i>
+}
+else
+{
+<i class="bi bi-plus-lg"></i>
+}
+</button>
+}
+</div>
+</div>
+}
 </div>
 
 @code {
-	[Parameter, EditorRequired]
-	public Project Project { get; set; } = default!;
+[Parameter, EditorRequired]
+public Project Project { get; set; } = default!;
 
-	[Parameter]
-	public IReadOnlyList<Provider> AvailableProviders { get; set; } = [];
+[Parameter]
+public IReadOnlyList<Provider> AvailableProviders { get; set; } = [];
 
-	[Parameter, EditorRequired]
-	public Func<Guid, Provider?> ResolveProvider { get; set; } = _ => null;
+[Parameter, EditorRequired]
+public Func<Guid, Provider?> ResolveProvider { get; set; } = _ => null;
 
-	[Parameter, EditorRequired]
-	public Func<Guid, bool> IsProviderSelected { get; set; } = _ => false;
+[Parameter, EditorRequired]
+public Func<Guid, bool> IsProviderSelected { get; set; } = _ => false;
 
-	[Parameter]
-	public EventCallback<Guid> OnMoveUp { get; set; }
+[Parameter, EditorRequired]
+public Func<Guid, IReadOnlyList<ProviderModel>> ResolveProviderModels { get; set; } = _ => [];
 
-	[Parameter]
-	public EventCallback<Guid> OnMoveDown { get; set; }
+[Parameter]
+public EventCallback<Guid> OnMoveUp { get; set; }
 
-	[Parameter]
-	public EventCallback<Guid> OnRemove { get; set; }
+[Parameter]
+public EventCallback<Guid> OnMoveDown { get; set; }
 
-	[Parameter]
-	public EventCallback<Provider> OnAdd { get; set; }
+[Parameter]
+public EventCallback<Guid> OnRemove { get; set; }
+
+[Parameter]
+public EventCallback<Provider> OnAdd { get; set; }
+
+[Parameter]
+public EventCallback<ProjectProviderModelSelectionChange> OnPreferredModelChanged { get; set; }
+
+private Task HandlePreferredModelChanged(Guid providerId, string? preferredModelId)
+{
+return OnPreferredModelChanged.InvokeAsync(new ProjectProviderModelSelectionChange
+{
+ProviderId = providerId,
+PreferredModelId = preferredModelId
+});
+}
 }

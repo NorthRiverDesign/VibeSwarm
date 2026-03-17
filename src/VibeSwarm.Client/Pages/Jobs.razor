@@ -11,6 +11,7 @@
 @implements IAsyncDisposable
 @using System.Threading
 @using Microsoft.AspNetCore.SignalR.Client
+@using VibeSwarm.Client.Models
 @using VibeSwarm.Shared.Models
 @using VibeSwarm.Shared.VersionControl.Models
 
@@ -217,7 +218,7 @@
 </div>
 
 @* Create Job Modal *@
-<CreateJobModal @bind-IsVisible="_showCreateJobModal" JobModel="@_newJob" Providers="@_providers"
+<CreateJobModal @bind-IsVisible="_showCreateJobModal" JobModel="@_newJob" Providers="@GetAllowedCreateJobProviders()"
 				AvailableModels="@_availableModels" Branches="@_branches" CurrentBranch="@_currentBranch"
 				ShowBranchSelector="@(_branches.Any())" IsLoadingModels="@_isLoadingModels" IsSaving="@_isSaving"
 				ErrorMessage="@_createJobError" SelectedModelId="@_selectedModelId" OnProviderChanged="OnCreateJobProviderChanged"
@@ -720,8 +721,7 @@ TimeSpan.FromSeconds(10) })
                 }
             }
 
-            // Set default provider and load its models
-            var defaultProvider = _providers.FirstOrDefault(p => p.IsDefault && p.IsEnabled);
+            var defaultProvider = GetPreferredCreateJobProvider();
             if (defaultProvider != null)
             {
                 _newJob.ProviderId = defaultProvider.Id;
@@ -738,9 +738,16 @@ TimeSpan.FromSeconds(10) })
 
     private async Task OnCreateJobProviderChanged(Guid providerId)
     {
+        if (providerId != Guid.Empty && !GetAllowedCreateJobProviders().Any(provider => provider.Id == providerId))
+        {
+            _createJobError = "This provider is not enabled for the selected project.";
+            return;
+        }
+
         _newJob.ProviderId = providerId;
         _selectedModelId = string.Empty;
         _availableModels.Clear();
+        _createJobError = null;
 
         if (providerId != Guid.Empty)
         {
@@ -753,26 +760,38 @@ TimeSpan.FromSeconds(10) })
         _isLoadingModels = true;
         try
         {
-            _availableModels = (await ProviderService.GetModelsAsync(providerId)).ToList();
+            _availableModels = (await ProviderService.GetModelsAsync(providerId))
+                .Where(model => model.IsAvailable)
+                .OrderByDescending(model => model.IsDefault)
+                .ThenBy(model => model.DisplayName ?? model.ModelId)
+                .ToList();
 
             if (_selectedProjectId.HasValue)
             {
-                var lastUsedModel = await JobService.GetLastUsedModelAsync(_selectedProjectId.Value, providerId);
-                if (!string.IsNullOrEmpty(lastUsedModel) && _availableModels.Any(m => m.ModelId == lastUsedModel))
-                {
-                    _selectedModelId = lastUsedModel;
-                }
-                else
-                {
-                    var defaultModel = _availableModels.FirstOrDefault(m => m.IsDefault && m.IsAvailable);
-                    _selectedModelId = defaultModel?.ModelId ?? string.Empty;
-                }
+                _selectedModelId = ProjectExecutionDefaults.ResolveModelId(GetSelectedProject(), providerId, _availableModels);
             }
         }
         finally
         {
             _isLoadingModels = false;
         }
+    }
+
+    private Project? GetSelectedProject()
+    {
+        return _selectedProjectId.HasValue
+            ? _projects.FirstOrDefault(project => project.Id == _selectedProjectId.Value)
+            : null;
+    }
+
+    private List<Provider> GetAllowedCreateJobProviders()
+    {
+        return ProjectExecutionDefaults.GetAllowedProviders(GetSelectedProject(), _providers);
+    }
+
+    private Provider? GetPreferredCreateJobProvider()
+    {
+        return ProjectExecutionDefaults.GetPreferredProvider(GetSelectedProject(), _providers);
     }
 
     private async Task HandleCreateJob()

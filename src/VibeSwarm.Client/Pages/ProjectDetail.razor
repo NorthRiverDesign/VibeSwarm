@@ -10,6 +10,7 @@
 @inject NavigationManager NavigationManager
 @inject NotificationService NotificationService
 @implements IAsyncDisposable
+@using VibeSwarm.Client.Models
 @using VibeSwarm.Shared.LocalInference
 @using VibeSwarm.Shared.Models
 @using VibeSwarm.Shared.Services
@@ -1704,18 +1705,13 @@ TimeSpan.FromSeconds(10) })
         IsLoadingModels = true;
         try
         {
-            AvailableModels = (await ProviderService.GetModelsAsync(providerId)).ToList();
+            AvailableModels = (await ProviderService.GetModelsAsync(providerId))
+                .Where(model => model.IsAvailable)
+                .OrderByDescending(model => model.IsDefault)
+                .ThenBy(model => model.DisplayName ?? model.ModelId)
+                .ToList();
 
-            var lastUsedModel = await JobService.GetLastUsedModelAsync(ProjectId, providerId);
-            if (!string.IsNullOrEmpty(lastUsedModel) && AvailableModels.Any(m => m.ModelId == lastUsedModel))
-            {
-                SelectedModelId = lastUsedModel;
-            }
-            else
-            {
-                var defaultModel = AvailableModels.FirstOrDefault(m => m.IsDefault && m.IsAvailable);
-                SelectedModelId = defaultModel?.ModelId ?? string.Empty;
-            }
+            SelectedModelId = ProjectExecutionDefaults.ResolveModelId(Project, providerId, AvailableModels);
         }
         finally
         {
@@ -1777,34 +1773,12 @@ TimeSpan.FromSeconds(10) })
 
     private List<Provider> GetAllowedJobProviders()
     {
-        var enabledProviders = Providers.Where(p => p.IsEnabled).ToList();
-        var projectSelections = Project?.ProviderSelections?
-            .Where(pp => pp.IsEnabled)
-            .OrderBy(pp => pp.Priority)
-            .ToList();
-
-        if (projectSelections == null || projectSelections.Count == 0)
-        {
-            return enabledProviders;
-        }
-
-        return projectSelections
-            .Select(selection => enabledProviders.FirstOrDefault(provider => provider.Id == selection.ProviderId))
-            .Where(provider => provider != null)
-            .Cast<Provider>()
-            .ToList();
+        return ProjectExecutionDefaults.GetAllowedProviders(Project, Providers);
     }
 
     private Provider? GetPreferredJobProvider()
     {
-        var allowedProviders = GetAllowedJobProviders();
-        if (allowedProviders.Count == 0)
-        {
-            return null;
-        }
-
-        var preferredAllowedDefault = allowedProviders.FirstOrDefault(p => p.IsDefault);
-        return preferredAllowedDefault ?? allowedProviders.First();
+        return ProjectExecutionDefaults.GetPreferredProvider(Project, Providers);
     }
 
     private string? GetProviderHint()

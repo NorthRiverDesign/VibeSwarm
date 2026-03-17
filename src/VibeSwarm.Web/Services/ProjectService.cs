@@ -519,6 +519,9 @@ public class ProjectService : IProjectService
 			selection.Id = selection.Id == Guid.Empty ? Guid.NewGuid() : selection.Id;
 			selection.ProjectId = project.Id;
 			selection.Priority = index;
+			selection.PreferredModelId = string.IsNullOrWhiteSpace(selection.PreferredModelId)
+				? null
+				: selection.PreferredModelId.Trim();
 			selection.UpdatedAt = DateTime.UtcNow;
 			if (selection.CreatedAt == default)
 			{
@@ -726,6 +729,35 @@ public class ProjectService : IProjectService
 		if (invalidIds.Any())
 		{
 			throw new InvalidOperationException($"One or more provider IDs do not exist: {string.Join(", ", invalidIds)}");
+		}
+
+		var preferredModels = selections
+			.Where(selection => !string.IsNullOrWhiteSpace(selection.PreferredModelId))
+			.Select(selection => new
+			{
+				selection.ProviderId,
+				ModelId = selection.PreferredModelId!.Trim()
+			})
+			.ToList();
+		if (!preferredModels.Any())
+		{
+			return;
+		}
+
+		var providerModels = await _dbContext.ProviderModels
+			.AsNoTracking()
+			.Where(model => model.IsAvailable && providerIds.Contains(model.ProviderId))
+			.Select(model => new { model.ProviderId, model.ModelId })
+			.ToListAsync(cancellationToken);
+
+		var availableModels = providerModels.ToHashSet();
+		var invalidPreferredModels = preferredModels
+			.Where(selection => !availableModels.Contains(new { selection.ProviderId, selection.ModelId }))
+			.Select(selection => $"{selection.ProviderId}:{selection.ModelId}")
+			.ToList();
+		if (invalidPreferredModels.Any())
+		{
+			throw new InvalidOperationException($"One or more preferred project models are not available for their provider: {string.Join(", ", invalidPreferredModels)}");
 		}
 	}
 
