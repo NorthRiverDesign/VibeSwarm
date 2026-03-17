@@ -93,6 +93,8 @@ public class ClaudeProvider : CliProviderBase
         _accumulatedInputTokens = 0;
         _accumulatedOutputTokens = 0;
         _hasAccumulatedTokens = false;
+        _systemErrorDetected = false;
+        _systemErrorMessage = null;
 
         // Build arguments for non-interactive execution with JSON streaming output
         var args = new List<string>
@@ -357,6 +359,15 @@ public class ClaudeProvider : CliProviderBase
         result.Success = process.ExitCode == 0;
         result.Output = string.Join("\n", outputBuilder);
 
+        // Override success if a system-level error was detected during stream parsing
+        // (CLI may exit with code 0 even when the upstream provider is unavailable)
+        if (_systemErrorDetected)
+        {
+            result.Success = false;
+            result.IsSystemError = true;
+            result.ErrorMessage ??= _systemErrorMessage;
+        }
+
         var error = errorBuilder.ToString();
         if (!result.Success && !string.IsNullOrEmpty(error))
         {
@@ -392,6 +403,10 @@ public class ClaudeProvider : CliProviderBase
     private int _accumulatedOutputTokens = 0;
     private bool _hasAccumulatedTokens = false;
 
+    // System error detection during stream parsing
+    private bool _systemErrorDetected = false;
+    private string? _systemErrorMessage = null;
+
     private void ProcessStreamEvent(
         ClaudeStreamEvent evt,
         ExecutionResult result,
@@ -413,6 +428,23 @@ public class ClaudeProvider : CliProviderBase
                 break;
 
             case "assistant":
+                // Check for root-level error on assistant events (e.g., model unavailable)
+                if (!string.IsNullOrEmpty(evt.Error))
+                {
+                    _systemErrorDetected = true;
+                    var errorText = evt.Message?.Content?.FirstOrDefault(c => c.Type == "text")?.Text;
+                    _systemErrorMessage = errorText ?? $"System error: {evt.Error}";
+                    result.Success = false;
+                    result.ErrorMessage = _systemErrorMessage;
+                    result.IsSystemError = true;
+                    progress?.Report(new ExecutionProgress
+                    {
+                        CurrentMessage = $"System error: {_systemErrorMessage}",
+                        IsStreaming = false
+                    });
+                    break;
+                }
+
                 // Accumulate token usage from each assistant message event
                 if (evt.Message?.Usage != null)
                 {
@@ -518,6 +550,21 @@ public class ClaudeProvider : CliProviderBase
                 break;
 
             case "result":
+                // Check for system-level errors (is_error: true with zero tokens)
+                if (evt.IsError == true)
+                {
+                    _systemErrorDetected = true;
+                    _systemErrorMessage ??= evt.Result ?? "Provider returned a system error";
+                    result.Success = false;
+                    result.ErrorMessage = _systemErrorMessage;
+                    result.IsSystemError = true;
+                    progress?.Report(new ExecutionProgress
+                    {
+                        CurrentMessage = $"System error: {_systemErrorMessage}",
+                        IsStreaming = false
+                    });
+                }
+
                 if (evt.TotalCostUsd.HasValue)
                 {
                     result.CostUsd = evt.TotalCostUsd;

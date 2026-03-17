@@ -29,6 +29,12 @@ public class ProviderHealthTracker : IProviderHealthTracker
 	public TimeSpan CircuitResetTimeout { get; set; } = TimeSpan.FromMinutes(2);
 
 	/// <summary>
+	/// How long to wait before testing a circuit tripped by a system-level failure
+	/// (upstream outage, model unavailable). Longer than normal to avoid hammering a down provider.
+	/// </summary>
+	public TimeSpan SystemFailureResetTimeout { get; set; } = TimeSpan.FromMinutes(5);
+
+	/// <summary>
 	/// Number of successes needed to close a half-open circuit
 	/// </summary>
 	public int SuccessThreshold { get; set; } = 2;
@@ -99,6 +105,7 @@ public class ProviderHealthTracker : IProviderHealthTracker
 				state.ConsecutiveSuccesses >= SuccessThreshold)
 			{
 				state.CircuitState = CircuitState.Closed;
+				state.IsSystemFailure = false;
 				_logger?.LogInformation("Circuit breaker closed for provider {ProviderId} after {Successes} consecutive successes",
 					providerId, state.ConsecutiveSuccesses);
 			}
@@ -144,6 +151,37 @@ public class ProviderHealthTracker : IProviderHealthTracker
 				_logger?.LogWarning("Circuit breaker re-opened for provider {ProviderId} after test failure: {Error}",
 					providerId, errorMessage);
 			}
+		}
+	}
+
+	/// <summary>
+	/// Records a system-level failure (model unavailable, upstream outage, auth failure).
+	/// Immediately opens the circuit breaker regardless of failure threshold, since
+	/// system errors indicate the provider is globally unavailable.
+	/// </summary>
+	public void RecordSystemFailure(Guid providerId, string? errorMessage = null)
+	{
+		var state = _healthStates.GetOrAdd(providerId, _ => new ProviderHealthState());
+		var now = DateTime.UtcNow;
+
+		lock (state.Lock)
+		{
+			state.TotalFailures++;
+			state.RecentFailures.Add(now);
+			state.LastFailure = now;
+			state.LastError = errorMessage;
+			state.ConsecutiveFailures++;
+			state.ConsecutiveSuccesses = 0;
+
+			// Immediately open the circuit regardless of threshold
+			state.CircuitState = CircuitState.Open;
+			state.CircuitOpenedAt = now;
+			state.IsSystemFailure = true;
+
+			_logger?.LogWarning(
+				"Circuit breaker immediately opened for provider {ProviderId} due to system error: {Error}. " +
+				"Provider will be retested after {ResetTimeout}",
+				providerId, errorMessage, SystemFailureResetTimeout);
 		}
 	}
 
@@ -209,9 +247,12 @@ public class ProviderHealthTracker : IProviderHealthTracker
 	{
 		if (state.CircuitState == CircuitState.Open)
 		{
+			// Use longer timeout for system-level failures
+			var resetTimeout = state.IsSystemFailure ? SystemFailureResetTimeout : CircuitResetTimeout;
+
 			// Check if we should move to half-open
 			if (state.CircuitOpenedAt.HasValue &&
-				DateTime.UtcNow - state.CircuitOpenedAt.Value >= CircuitResetTimeout)
+				DateTime.UtcNow - state.CircuitOpenedAt.Value >= resetTimeout)
 			{
 				state.CircuitState = CircuitState.HalfOpen;
 				_logger?.LogInformation("Circuit breaker moved to half-open state after timeout");
@@ -256,6 +297,7 @@ public class ProviderHealthTracker : IProviderHealthTracker
 		public string? LastError;
 		public CircuitState CircuitState = CircuitState.Closed;
 		public DateTime? CircuitOpenedAt;
+		public bool IsSystemFailure;
 	}
 
 	private class ResponseTimeEntry
@@ -316,6 +358,7 @@ public interface IProviderHealthTracker
 	ProviderHealth GetProviderHealth(Guid providerId);
 	void RecordSuccess(Guid providerId, TimeSpan? responseTime = null);
 	void RecordFailure(Guid providerId, string? errorMessage = null, TimeSpan? responseTime = null);
+	void RecordSystemFailure(Guid providerId, string? errorMessage = null);
 	void IncrementProviderLoad(Guid providerId);
 	void DecrementProviderLoad(Guid providerId);
 	void ResetProvider(Guid providerId);

@@ -48,6 +48,17 @@ public class ClaudeStreamEvent
 
 	[JsonPropertyName("duration_api_ms")]
 	public double? DurationApiMs { get; set; }
+
+	// Error fields - present when the CLI encounters system-level errors
+	// (e.g., model unavailable, upstream outages, authentication failures)
+	[JsonPropertyName("error")]
+	public string? Error { get; set; }
+
+	[JsonPropertyName("is_error")]
+	public bool? IsError { get; set; }
+
+	[JsonPropertyName("stop_reason")]
+	public string? StopReason { get; set; }
 }
 
 /// <summary>
@@ -72,6 +83,9 @@ public class ClaudeMessage
 
 	[JsonPropertyName("usage")]
 	public ClaudeUsageInfo? Usage { get; set; }
+
+	[JsonPropertyName("stop_reason")]
+	public string? StopReason { get; set; }
 }
 
 /// <summary>

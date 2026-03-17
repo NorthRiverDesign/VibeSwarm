@@ -264,7 +264,7 @@ public class JobProcessingService : BackgroundService
 
             // Find jobs that were being processed by any worker but appear orphaned
             // (Started/Processing with old heartbeats, excluding already-completed jobs)
-			var cutoffTime = DateTime.UtcNow - TimeSpan.FromMinutes(10);
+            var cutoffTime = DateTime.UtcNow - TimeSpan.FromMinutes(10);
             var orphanedJobs = await dbContext.Jobs
                 .Include(j => j.Project)
                 .Where(j => (j.Status == JobStatus.Started || j.Status == JobStatus.Processing))
@@ -481,7 +481,7 @@ public class JobProcessingService : BackgroundService
         executionContext.ProviderId = job.ProviderId;
 
         string? workingDirectory = null;
-		string? projectMemoryFilePath = null;
+        string? projectMemoryFilePath = null;
         try
         {
             // Check if job was cancelled before we even started
@@ -493,21 +493,21 @@ public class JobProcessingService : BackgroundService
                 return;
             }
 
-			// Claim ownership before any provider work starts so duplicate schedulers cannot
-			// launch the same CLI agent twice for a single job.
-			var claimed = await ClaimJobAsync(job.Id, dbContext, cancellationToken);
-			if (!claimed)
-			{
-				_logger.LogInformation("Skipping provider execution for job {JobId} because another worker already claimed it.", job.Id);
-				return;
-			}
+            // Claim ownership before any provider work starts so duplicate schedulers cannot
+            // launch the same CLI agent twice for a single job.
+            var claimed = await ClaimJobAsync(job.Id, dbContext, cancellationToken);
+            if (!claimed)
+            {
+                _logger.LogInformation("Skipping provider execution for job {JobId} because another worker already claimed it.", job.Id);
+                return;
+            }
 
-			job.Status = JobStatus.Started;
-			job.StartedAt ??= DateTime.UtcNow;
-			job.LastActivityAt = DateTime.UtcNow;
-			job.WorkerInstanceId = _workerInstanceId;
-			job.LastHeartbeatAt = DateTime.UtcNow;
-			await NotifyStatusChangedAsync(job.Id, JobStatus.Started);
+            job.Status = JobStatus.Started;
+            job.StartedAt ??= DateTime.UtcNow;
+            job.LastActivityAt = DateTime.UtcNow;
+            job.WorkerInstanceId = _workerInstanceId;
+            job.LastHeartbeatAt = DateTime.UtcNow;
+            await NotifyStatusChangedAsync(job.Id, JobStatus.Started);
 
             // Check again after status update - double-check for race conditions
             if (await jobService.IsCancellationRequestedAsync(job.Id, cancellationToken))
@@ -932,14 +932,14 @@ public class JobProcessingService : BackgroundService
             var injectEfficiencyRules = appSettings?.InjectEfficiencyRules ?? true;
             var injectRepoMap = appSettings?.InjectRepoMap ?? true;
             var systemPromptRules = PromptBuilder.BuildSystemPromptRules(job.Project, injectEfficiencyRules, injectRepoMap);
-			projectMemoryFilePath = await PrepareProjectMemoryFileAsync(job.Project, cancellationToken);
-			var projectMemoryRules = PromptBuilder.BuildProjectMemoryRules(job.Project, projectMemoryFilePath);
-			if (!string.IsNullOrWhiteSpace(projectMemoryRules))
-			{
-				systemPromptRules = string.IsNullOrWhiteSpace(systemPromptRules)
-					? projectMemoryRules
-					: $"{systemPromptRules}{Environment.NewLine}{Environment.NewLine}{projectMemoryRules}";
-			}
+            projectMemoryFilePath = await PrepareProjectMemoryFileAsync(job.Project, cancellationToken);
+            var projectMemoryRules = PromptBuilder.BuildProjectMemoryRules(job.Project, projectMemoryFilePath);
+            if (!string.IsNullOrWhiteSpace(projectMemoryRules))
+            {
+                systemPromptRules = string.IsNullOrWhiteSpace(systemPromptRules)
+                    ? projectMemoryRules
+                    : $"{systemPromptRules}{Environment.NewLine}{Environment.NewLine}{projectMemoryRules}";
+            }
 
             while (currentCycle <= effectiveMaxCycles && !cycleComplete && !cancellationToken.IsCancellationRequested)
             {
@@ -1142,6 +1142,15 @@ public class JobProcessingService : BackgroundService
                 // Record usage even for failed jobs
                 await RecordUsageAndCheckExhaustionAsync(job.ProviderId, providerDisplayName, job.Id, finalResult, provider!, CancellationToken.None);
 
+                // System-level errors (model unavailable, upstream outages) should immediately
+                // trip the circuit breaker to prevent cascading failures on queued jobs
+                if (finalResult.IsSystemError && _healthTracker != null)
+                {
+                    _healthTracker.RecordSystemFailure(job.ProviderId, finalResult.ErrorMessage);
+                    _logger.LogWarning("Job {JobId} failed with system error, circuit breaker tripped for provider {ProviderId}: {Error}",
+                        job.Id, job.ProviderId, finalResult.ErrorMessage);
+                }
+
                 _logger.LogWarning("Job {JobId} failed: {Error}. InputTokens: {InputTokens}, OutputTokens: {OutputTokens}, Cost: {CostUsd}",
                     job.Id, finalResult.ErrorMessage, finalResult.InputTokens, finalResult.OutputTokens, finalResult.CostUsd);
                 await NotifyJobCompletedAsync(job.Id, false, finalResult.ErrorMessage);
@@ -1217,17 +1226,17 @@ public class JobProcessingService : BackgroundService
         }
         finally
         {
-			if (!string.IsNullOrWhiteSpace(projectMemoryFilePath))
-			{
-				try
-				{
-					await PersistProjectMemoryAsync(job.Project?.Id, projectMemoryFilePath, CancellationToken.None);
-				}
-				catch (Exception memoryEx)
-				{
-					_logger.LogWarning(memoryEx, "Failed to persist project memory for job {JobId}", job.Id);
-				}
-			}
+            if (!string.IsNullOrWhiteSpace(projectMemoryFilePath))
+            {
+                try
+                {
+                    await PersistProjectMemoryAsync(job.Project?.Id, projectMemoryFilePath, CancellationToken.None);
+                }
+                catch (Exception memoryEx)
+                {
+                    _logger.LogWarning(memoryEx, "Failed to persist project memory for job {JobId}", job.Id);
+                }
+            }
 
             // Dispose SDK providers that implement IAsyncDisposable
             if (executionContext.ProviderInstance is IAsyncDisposable disposable)
@@ -1248,46 +1257,46 @@ public class JobProcessingService : BackgroundService
     /// Claims ownership of a job by this worker instance
     /// </summary>
 	private async Task<bool> ClaimJobAsync(Guid jobId, VibeSwarmDbContext dbContext, CancellationToken cancellationToken)
-	{
-		var claimTime = DateTime.UtcNow;
-		var updatedRows = await dbContext.Jobs
-			.Where(j => j.Id == jobId)
-			.Where(j => (j.Status == JobStatus.New || j.Status == JobStatus.Pending) && !j.CancellationRequested)
-			.Where(j => j.WorkerInstanceId == null)
-			.ExecuteUpdateAsync(setters => setters
-				.SetProperty(j => j.Status, JobStatus.Started)
-				.SetProperty(j => j.WorkerInstanceId, _workerInstanceId)
-				.SetProperty(j => j.StartedAt, j => j.StartedAt ?? claimTime)
-				.SetProperty(j => j.LastActivityAt, claimTime)
-				.SetProperty(j => j.LastHeartbeatAt, claimTime),
-				cancellationToken);
+    {
+        var claimTime = DateTime.UtcNow;
+        var updatedRows = await dbContext.Jobs
+            .Where(j => j.Id == jobId)
+            .Where(j => (j.Status == JobStatus.New || j.Status == JobStatus.Pending) && !j.CancellationRequested)
+            .Where(j => j.WorkerInstanceId == null)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(j => j.Status, JobStatus.Started)
+                .SetProperty(j => j.WorkerInstanceId, _workerInstanceId)
+                .SetProperty(j => j.StartedAt, j => j.StartedAt ?? claimTime)
+                .SetProperty(j => j.LastActivityAt, claimTime)
+                .SetProperty(j => j.LastHeartbeatAt, claimTime),
+                cancellationToken);
 
-		if (updatedRows == 1)
-		{
-			return true;
-		}
+        if (updatedRows == 1)
+        {
+            return true;
+        }
 
-		var existingJob = await dbContext.Jobs
-			.AsNoTracking()
-			.Where(j => j.Id == jobId)
-			.Select(j => new { j.Status, j.WorkerInstanceId, j.CancellationRequested })
-			.FirstOrDefaultAsync(cancellationToken);
+        var existingJob = await dbContext.Jobs
+            .AsNoTracking()
+            .Where(j => j.Id == jobId)
+            .Select(j => new { j.Status, j.WorkerInstanceId, j.CancellationRequested })
+            .FirstOrDefaultAsync(cancellationToken);
 
-		if (existingJob == null)
-		{
-			_logger.LogWarning("Failed to claim job {JobId}: job no longer exists.", jobId);
-			return false;
-		}
+        if (existingJob == null)
+        {
+            _logger.LogWarning("Failed to claim job {JobId}: job no longer exists.", jobId);
+            return false;
+        }
 
-		_logger.LogWarning(
-			"Failed to claim job {JobId}: status {Status}, worker {WorkerId}, cancellation requested {CancellationRequested}.",
-			jobId,
-			existingJob.Status,
-			existingJob.WorkerInstanceId ?? "(none)",
-			existingJob.CancellationRequested);
+        _logger.LogWarning(
+            "Failed to claim job {JobId}: status {Status}, worker {WorkerId}, cancellation requested {CancellationRequested}.",
+            jobId,
+            existingJob.Status,
+            existingJob.WorkerInstanceId ?? "(none)",
+            existingJob.CancellationRequested);
 
-		return false;
-	}
+        return false;
+    }
 
     /// <summary>
     /// Records usage from an execution result and checks for exhaustion warnings.
@@ -1363,20 +1372,20 @@ public class JobProcessingService : BackgroundService
         return result;
     }
 
-	private static bool ShouldApplyProviderUsage(UsageLimits? limits)
-	{
-		return limits != null && (
-			limits.IsLimitReached ||
-			limits.CurrentUsage.HasValue ||
-			limits.MaxUsage.HasValue ||
-			limits.ResetTime.HasValue ||
-			limits.Windows.Count > 0);
-	}
+    private static bool ShouldApplyProviderUsage(UsageLimits? limits)
+    {
+        return limits != null && (
+            limits.IsLimitReached ||
+            limits.CurrentUsage.HasValue ||
+            limits.MaxUsage.HasValue ||
+            limits.ResetTime.HasValue ||
+            limits.Windows.Count > 0);
+    }
 
-	private static UsageLimits MergeUsageLimits(UsageLimits? existing, UsageLimits latest)
-	{
-		return UsageLimitWindowHelper.Merge(existing, latest);
-	}
+    private static UsageLimits MergeUsageLimits(UsageLimits? existing, UsageLimits latest)
+    {
+        return UsageLimitWindowHelper.Merge(existing, latest);
+    }
 
     /// <summary>
     /// Releases ownership of a job and sets final status
@@ -2436,29 +2445,29 @@ public class JobProcessingService : BackgroundService
         }
     }
 
-	private async Task<string?> PrepareProjectMemoryFileAsync(Project? project, CancellationToken cancellationToken)
-	{
-		if (project == null)
-		{
-			return null;
-		}
+    private async Task<string?> PrepareProjectMemoryFileAsync(Project? project, CancellationToken cancellationToken)
+    {
+        if (project == null)
+        {
+            return null;
+        }
 
-		using var scope = _scopeFactory.CreateScope();
-		var projectMemoryService = scope.ServiceProvider.GetRequiredService<IProjectMemoryService>();
-		return await projectMemoryService.PrepareMemoryFileAsync(project, cancellationToken);
-	}
+        using var scope = _scopeFactory.CreateScope();
+        var projectMemoryService = scope.ServiceProvider.GetRequiredService<IProjectMemoryService>();
+        return await projectMemoryService.PrepareMemoryFileAsync(project, cancellationToken);
+    }
 
-	private async Task PersistProjectMemoryAsync(Guid? projectId, string? projectMemoryFilePath, CancellationToken cancellationToken)
-	{
-		if (!projectId.HasValue || string.IsNullOrWhiteSpace(projectMemoryFilePath))
-		{
-			return;
-		}
+    private async Task PersistProjectMemoryAsync(Guid? projectId, string? projectMemoryFilePath, CancellationToken cancellationToken)
+    {
+        if (!projectId.HasValue || string.IsNullOrWhiteSpace(projectMemoryFilePath))
+        {
+            return;
+        }
 
-		using var scope = _scopeFactory.CreateScope();
-		var projectMemoryService = scope.ServiceProvider.GetRequiredService<IProjectMemoryService>();
-		await projectMemoryService.SyncMemoryFromFileAsync(projectId.Value, projectMemoryFilePath, cancellationToken);
-	}
+        using var scope = _scopeFactory.CreateScope();
+        var projectMemoryService = scope.ServiceProvider.GetRequiredService<IProjectMemoryService>();
+        await projectMemoryService.SyncMemoryFromFileAsync(projectId.Value, projectMemoryFilePath, cancellationToken);
+    }
 
     private async Task NotifyJobGitDiffUpdatedAsync(Guid jobId, bool hasChanges)
     {

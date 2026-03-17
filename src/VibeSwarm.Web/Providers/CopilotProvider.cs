@@ -415,6 +415,11 @@ public class CopilotProvider : CliProviderBase
                 if (!string.IsNullOrEmpty(evt.Error))
                 {
                     result.ErrorMessage = evt.Error;
+                    // Classify system-level errors (model unavailable, auth, upstream outages)
+                    if (IsSystemLevelError(evt.Error))
+                    {
+                        result.IsSystemError = true;
+                    }
                     progress?.Report(new ExecutionProgress
                     {
                         CurrentMessage = $"Error: {evt.Error}",
@@ -426,6 +431,7 @@ public class CopilotProvider : CliProviderBase
             case "limit":
             case "rate_limit":
                 result.ErrorMessage = evt.Message ?? "Premium request limit reached";
+                result.IsSystemError = true;
                 result.DetectedUsageLimits = new UsageLimits
                 {
                     LimitType = UsageLimitType.PremiumRequests,
@@ -440,35 +446,9 @@ public class CopilotProvider : CliProviderBase
                 });
                 break;
 
-			case "usage":
-			case "metrics":
-			case "stats":
-				if (evt.InputTokens.HasValue)
-				{
-                    result.InputTokens = evt.InputTokens;
-                }
-                if (evt.OutputTokens.HasValue)
-                {
-                    result.OutputTokens = evt.OutputTokens;
-                }
-				if (evt.CostUsd.HasValue)
-				{
-					result.CostUsd = evt.CostUsd;
-				}
-				else if (evt.TotalCostUsd.HasValue)
-				{
-					result.CostUsd = evt.TotalCostUsd;
-				}
-				if (evt.Usage != null)
-				{
-					result.InputTokens = evt.Usage.InputTokens ?? result.InputTokens;
-					result.OutputTokens = evt.Usage.OutputTokens ?? result.OutputTokens;
-				}
-                break;
-
-			case "done":
-			case "complete":
-			case "result":
+            case "usage":
+            case "metrics":
+            case "stats":
                 if (evt.InputTokens.HasValue)
                 {
                     result.InputTokens = evt.InputTokens;
@@ -477,19 +457,45 @@ public class CopilotProvider : CliProviderBase
                 {
                     result.OutputTokens = evt.OutputTokens;
                 }
-				if (evt.CostUsd.HasValue)
-				{
-					result.CostUsd = evt.CostUsd;
-				}
-				else if (evt.TotalCostUsd.HasValue)
-				{
-					result.CostUsd = evt.TotalCostUsd;
-				}
-				if (evt.Usage != null)
-				{
-					result.InputTokens = evt.Usage.InputTokens ?? result.InputTokens;
-					result.OutputTokens = evt.Usage.OutputTokens ?? result.OutputTokens;
-				}
+                if (evt.CostUsd.HasValue)
+                {
+                    result.CostUsd = evt.CostUsd;
+                }
+                else if (evt.TotalCostUsd.HasValue)
+                {
+                    result.CostUsd = evt.TotalCostUsd;
+                }
+                if (evt.Usage != null)
+                {
+                    result.InputTokens = evt.Usage.InputTokens ?? result.InputTokens;
+                    result.OutputTokens = evt.Usage.OutputTokens ?? result.OutputTokens;
+                }
+                break;
+
+            case "done":
+            case "complete":
+            case "result":
+                if (evt.InputTokens.HasValue)
+                {
+                    result.InputTokens = evt.InputTokens;
+                }
+                if (evt.OutputTokens.HasValue)
+                {
+                    result.OutputTokens = evt.OutputTokens;
+                }
+                if (evt.CostUsd.HasValue)
+                {
+                    result.CostUsd = evt.CostUsd;
+                }
+                else if (evt.TotalCostUsd.HasValue)
+                {
+                    result.CostUsd = evt.TotalCostUsd;
+                }
+                if (evt.Usage != null)
+                {
+                    result.InputTokens = evt.Usage.InputTokens ?? result.InputTokens;
+                    result.OutputTokens = evt.Usage.OutputTokens ?? result.OutputTokens;
+                }
                 break;
         }
     }
@@ -520,6 +526,25 @@ public class CopilotProvider : CliProviderBase
             IsThinkingContent = isThinking,
             ContentCategory = isThinking ? "reasoning" : role
         });
+    }
+
+    /// <summary>
+    /// Determines if an error message indicates a system-level issue (model unavailable,
+    /// upstream outage, auth failure) rather than a task-level error.
+    /// </summary>
+    private static bool IsSystemLevelError(string error)
+    {
+        return error.Contains("model", StringComparison.OrdinalIgnoreCase) &&
+                   (error.Contains("not exist", StringComparison.OrdinalIgnoreCase) ||
+                    error.Contains("not available", StringComparison.OrdinalIgnoreCase) ||
+                    error.Contains("not have access", StringComparison.OrdinalIgnoreCase) ||
+                    error.Contains("unavailable", StringComparison.OrdinalIgnoreCase)) ||
+               error.Contains("authentication", StringComparison.OrdinalIgnoreCase) ||
+               error.Contains("unauthorized", StringComparison.OrdinalIgnoreCase) ||
+               error.Contains("upstream", StringComparison.OrdinalIgnoreCase) ||
+               error.Contains("service unavailable", StringComparison.OrdinalIgnoreCase) ||
+               error.Contains("internal server error", StringComparison.OrdinalIgnoreCase) ||
+               error.Contains("invalid_request", StringComparison.OrdinalIgnoreCase);
     }
 
     private CopilotClientOptions BuildMetadataClientOptions()
