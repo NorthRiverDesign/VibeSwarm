@@ -2,6 +2,8 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using VibeSwarm.Shared.Data;
+using VibeSwarm.Shared.Models;
+using VibeSwarm.Web.Services;
 
 namespace VibeSwarm.Web.Controllers;
 
@@ -23,17 +25,66 @@ public class AuthController : ControllerBase
         var user = await _userManager.GetUserAsync(User);
         if (user == null) return Unauthorized();
         var roles = await _userManager.GetRolesAsync(user);
+        ThemePreferenceCookieHelper.Append(Response, Request, user.ThemePreference);
         return Ok(new
         {
             UserId = user.Id.ToString(),
             UserName = user.UserName,
             Email = user.Email,
-            Roles = roles
+            Roles = roles,
+            ThemePreference = user.ThemePreference.ToValue()
         });
     }
 
     [HttpGet("status")]
     public IActionResult GetStatus() => Ok(new { IsAuthenticated = true });
+
+    [HttpGet("theme-preference")]
+    public async Task<IActionResult> GetThemePreference()
+    {
+        var user = await _userManager.GetUserAsync(User);
+        if (user == null)
+        {
+            return Unauthorized();
+        }
+
+        ThemePreferenceCookieHelper.Append(Response, Request, user.ThemePreference);
+
+        return Ok(new ThemePreferenceDto
+        {
+            Theme = user.ThemePreference.ToValue()
+        });
+    }
+
+    [HttpPut("theme-preference")]
+    public async Task<IActionResult> UpdateThemePreference([FromBody] UpdateThemePreferenceRequest request)
+    {
+        if (!ThemePreferenceExtensions.TryParse(request.Theme, out var themePreference))
+        {
+            return BadRequest(new { Message = "Theme must be one of: system, light, dark." });
+        }
+
+        var user = await _userManager.GetUserAsync(User);
+        if (user == null)
+        {
+            return Unauthorized();
+        }
+
+        user.ThemePreference = themePreference;
+        var result = await _userManager.UpdateAsync(user);
+        if (!result.Succeeded)
+        {
+            var errors = string.Join(" ", result.Errors.Select(e => e.Description));
+            return BadRequest(new { Message = errors });
+        }
+
+        ThemePreferenceCookieHelper.Append(Response, Request, user.ThemePreference);
+
+        return Ok(new ThemePreferenceDto
+        {
+            Theme = user.ThemePreference.ToValue()
+        });
+    }
 
     [HttpPost("change-password")]
     public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest request)

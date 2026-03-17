@@ -33,6 +33,14 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 	{
 		base.OnModelCreating(modelBuilder);
 
+		modelBuilder.Entity<ApplicationUser>(entity =>
+		{
+			entity.Property(e => e.ThemePreference)
+				.HasConversion<string>()
+				.HasMaxLength(20)
+				.HasDefaultValue(ThemePreference.System);
+		});
+
 		modelBuilder.Entity<Provider>(entity =>
 		{
 			entity.HasKey(e => e.Id);

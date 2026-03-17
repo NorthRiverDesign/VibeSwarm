@@ -1,0 +1,50 @@
+@using VibeSwarm.Shared.Data
+
+<div class="px-3 py-2">
+	<div class="small text-uppercase text-secondary fw-semibold mb-2">Theme</div>
+	<div class="btn-group btn-group-sm d-flex" role="group" aria-label="Theme selector">
+		<button type="button"
+				class="@GetButtonClass(ThemePreference.Light)"
+				aria-pressed="@(SelectedTheme == ThemePreference.Light)"
+				disabled="@IsLoading"
+				@onclick="() => SelectThemeAsync(ThemePreference.Light)">
+			<i class="bi bi-sun-fill"></i>
+			<span>Light</span>
+		</button>
+		<button type="button"
+				class="@GetButtonClass(ThemePreference.Dark)"
+				aria-pressed="@(SelectedTheme == ThemePreference.Dark)"
+				disabled="@IsLoading"
+				@onclick="() => SelectThemeAsync(ThemePreference.Dark)">
+			<i class="bi bi-moon-stars-fill"></i>
+			<span>Dark</span>
+		</button>
+		<button type="button"
+				class="@GetButtonClass(ThemePreference.System)"
+				aria-pressed="@(SelectedTheme == ThemePreference.System)"
+				disabled="@IsLoading"
+				@onclick="() => SelectThemeAsync(ThemePreference.System)">
+			<i class="bi bi-circle-half"></i>
+			<span>System</span>
+		</button>
+	</div>
+</div>
+
+@code {
+	[Parameter]
+	public ThemePreference SelectedTheme { get; set; } = ThemePreference.System;
+
+	[Parameter]
+	public bool IsLoading { get; set; }
+
+	[Parameter]
+	public EventCallback<ThemePreference> OnThemeSelected { get; set; }
+
+	private string GetButtonClass(ThemePreference theme)
+	{
+		var isSelected = SelectedTheme == theme;
+		return $"btn {(isSelected ? "btn-primary" : "btn-secondary")} flex-fill d-inline-flex align-items-center justify-content-center gap-1";
+	}
+
+	private Task SelectThemeAsync(ThemePreference theme) => OnThemeSelected.InvokeAsync(theme);
+}

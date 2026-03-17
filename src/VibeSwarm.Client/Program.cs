@@ -51,6 +51,7 @@ builder.Services.AddScoped<IInferenceService, HttpInferenceService>();
 // UI services
 builder.Services.AddScoped<NotificationService>();
 builder.Services.AddScoped<ChangePasswordModalService>();
+builder.Services.AddScoped<ThemeService>();
 
 // Auth
 builder.Services.AddAuthorizationCore();

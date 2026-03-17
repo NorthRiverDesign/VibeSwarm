@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Identity;
 using VibeSwarm.Shared.Data;
+using VibeSwarm.Web.Services;
 
 namespace VibeSwarm.Web.Endpoints;
 
@@ -13,9 +14,11 @@ public static class AuthEndpoints
 
     private static async Task<IResult> HandleLogoutAsync(
         SignInManager<ApplicationUser> signInManager,
+        HttpContext httpContext,
         ILogger<Program> logger)
     {
         await signInManager.SignOutAsync();
+        ThemePreferenceCookieHelper.Delete(httpContext.Response, httpContext.Request);
         logger.LogInformation("User logged out");
         return Results.Redirect("/login");
     }

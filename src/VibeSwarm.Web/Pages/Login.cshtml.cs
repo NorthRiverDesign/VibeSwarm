@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using VibeSwarm.Shared.Data;
+using VibeSwarm.Web.Services;
 
 namespace VibeSwarm.Web.Pages;
 
@@ -100,6 +101,7 @@ public class LoginModel : PageModel
                 {
                     user.LastLoginAt = DateTime.UtcNow;
                     await _userManager.UpdateAsync(user);
+                    ThemePreferenceCookieHelper.Append(Response, Request, user.ThemePreference);
                 }
 
                 return LocalRedirect(returnUrl);

@@ -1,5 +1,7 @@
 @using Microsoft.AspNetCore.Components.Authorization
 @inject ChangePasswordModalService ChangePasswordModalService
+@inject NotificationService NotificationService
+@inject ThemeService ThemeService
 
 <AuthorizeView>
     <Authorized>
@@ -15,7 +17,13 @@
                         aria-expanded="false" title="User options">
                         <i class="bi bi-gear"></i>
                     </button>
-                    <ul class="dropdown-menu dropdown-menu-end shadow">
+                    <ul class="dropdown-menu dropdown-menu-end shadow" style="min-width: 16rem;">
+                        <li>
+                            <ThemeSelector SelectedTheme="_selectedTheme" IsLoading="_isUpdatingTheme" OnThemeSelected="HandleThemeSelected" />
+                        </li>
+                        <li>
+                            <hr class="dropdown-divider">
+                        </li>
                         <li>
                             <button class="dropdown-item" type="button" @onclick="ShowChangePasswordModal">
                                 <i class="bi bi-key me-2"></i>Change Password
@@ -40,9 +48,15 @@
                     <i class="bi bi-person-circle me-1"></i>
                     <i class="bi bi-chevron-down small" style="font-size: 0.65rem; margin-left: 0.125rem;"></i>
                 </button>
-                <ul class="dropdown-menu dropdown-menu-end shadow" style="min-width: 10rem;">
+                <ul class="dropdown-menu dropdown-menu-end shadow" style="min-width: 16rem;">
                     <li class="dropdown-header">
                         <span class="fw-semibold">@context.User.Identity?.Name</span>
+                    </li>
+                    <li>
+                        <hr class="dropdown-divider">
+                    </li>
+                    <li>
+                        <ThemeSelector SelectedTheme="_selectedTheme" IsLoading="_isUpdatingTheme" OnThemeSelected="HandleThemeSelected" />
                     </li>
                     <li>
                         <hr class="dropdown-divider">
@@ -70,8 +84,51 @@
 </AuthorizeView>
 
 @code {
+    private ThemePreference _selectedTheme = ThemePreference.System;
+    private bool _hasLoadedThemePreference;
+    private bool _isUpdatingTheme;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _hasLoadedThemePreference)
+        {
+            return;
+        }
+
+        _hasLoadedThemePreference = true;
+        _selectedTheme = await ThemeService.GetThemePreferenceAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
     private void ShowChangePasswordModal()
     {
         ChangePasswordModalService.Show();
+    }
+
+    private async Task HandleThemeSelected(ThemePreference themePreference)
+    {
+        if (_isUpdatingTheme || _selectedTheme == themePreference)
+        {
+            return;
+        }
+
+        var previousTheme = _selectedTheme;
+        _selectedTheme = themePreference;
+        _isUpdatingTheme = true;
+
+        try
+        {
+            await ThemeService.UpdateThemePreferenceAsync(themePreference);
+        }
+        catch (Exception ex)
+        {
+            _selectedTheme = previousTheme;
+            NotificationService.ShowError(ex.Message, "Theme update failed");
+        }
+        finally
+        {
+            _isUpdatingTheme = false;
+            await InvokeAsync(StateHasChanged);
+        }
     }
 }
