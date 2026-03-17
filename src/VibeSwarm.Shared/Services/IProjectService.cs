@@ -85,7 +85,7 @@ public interface IProjectService
     Task<IEnumerable<ProjectWithStats>> GetAllWithStatsAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Get recent projects with their latest job and current git branch info for dashboard display
+    /// Get active dashboard projects with their latest job, ordered for dashboard display.
     /// </summary>
     Task<IEnumerable<DashboardProjectInfo>> GetRecentWithLatestJobAsync(int count, CancellationToken cancellationToken = default);
 

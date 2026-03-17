@@ -207,10 +207,14 @@ public class ProjectService : IProjectService
 
 	public async Task<IEnumerable<DashboardProjectInfo>> GetRecentWithLatestJobAsync(int count, CancellationToken cancellationToken = default)
 	{
+		if (count <= 0)
+		{
+			return Enumerable.Empty<DashboardProjectInfo>();
+		}
+
 		var projects = await BuildProjectQuery()
+			.AsNoTracking()
 			.Where(p => p.IsActive)
-			.OrderByDescending(p => p.CreatedAt)
-			.Take(count)
 			.ToListAsync(cancellationToken);
 
 		if (!projects.Any())
@@ -220,6 +224,7 @@ public class ProjectService : IProjectService
 
 		var projectIds = projects.Select(p => p.Id).ToList();
 		var latestJobs = await _dbContext.Jobs
+			.AsNoTracking()
 			.Where(j => projectIds.Contains(j.ProjectId))
 			.GroupBy(j => j.ProjectId)
 			.Select(g => g.OrderByDescending(j => j.CreatedAt).First())
@@ -227,11 +232,17 @@ public class ProjectService : IProjectService
 
 		var latestJobsByProject = latestJobs.ToDictionary(j => j.ProjectId);
 
-		return projects.Select(p => new DashboardProjectInfo
-		{
-			Project = p,
-			LatestJob = latestJobsByProject.TryGetValue(p.Id, out var job) ? job : null
-		});
+		return projects
+			.Select(p => new DashboardProjectInfo
+			{
+				Project = p,
+				LatestJob = latestJobsByProject.TryGetValue(p.Id, out var job) ? job : null
+			})
+			.OrderByDescending(project => project.LatestJob is not null)
+			.ThenByDescending(project => project.LatestJob?.CreatedAt ?? DateTime.MinValue)
+			.ThenBy(project => project.Project.Name)
+			.Take(count)
+			.ToList();
 	}
 
 	public async Task<DashboardJobMetrics> GetDashboardJobMetricsAsync(int rangeDays, CancellationToken cancellationToken = default)

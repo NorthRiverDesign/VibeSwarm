@@ -156,6 +156,89 @@ public sealed class DashboardMetricsTests : IDisposable
 		Assert.Equal(13, ninetyDayMetrics.Buckets.Count);
 	}
 
+	[Fact]
+	public async Task GetRecentWithLatestJobAsync_SortsActiveProjectsByLatestRun_AndFallsBackToName()
+	{
+		await using var dbContext = CreateDbContext();
+		var service = CreateProjectService(dbContext);
+		var providerId = Guid.NewGuid();
+		var nowUtc = DateTime.UtcNow;
+
+		dbContext.Providers.Add(new Provider
+		{
+			Id = providerId,
+			Name = "Copilot",
+			Type = ProviderType.Copilot,
+			ConnectionMode = ProviderConnectionMode.CLI
+		});
+
+		var alphaProject = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Alpha",
+			WorkingPath = "/tmp/alpha",
+			IsActive = true
+		};
+		var bravoProject = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Bravo",
+			WorkingPath = "/tmp/bravo",
+			IsActive = true
+		};
+		var charlieProject = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Charlie",
+			WorkingPath = "/tmp/charlie",
+			IsActive = true
+		};
+		var hiddenProject = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Hidden",
+			WorkingPath = "/tmp/hidden",
+			IsActive = false
+		};
+
+		dbContext.Projects.AddRange(alphaProject, bravoProject, charlieProject, hiddenProject);
+		dbContext.Jobs.AddRange(
+			new Job
+			{
+				Id = Guid.NewGuid(),
+				ProjectId = alphaProject.Id,
+				ProviderId = providerId,
+				GoalPrompt = "Older job",
+				Status = JobStatus.Completed,
+				CreatedAt = nowUtc.AddHours(-8)
+			},
+			new Job
+			{
+				Id = Guid.NewGuid(),
+				ProjectId = bravoProject.Id,
+				ProviderId = providerId,
+				GoalPrompt = "Newest job",
+				Status = JobStatus.Completed,
+				CreatedAt = nowUtc.AddHours(-1)
+			},
+			new Job
+			{
+				Id = Guid.NewGuid(),
+				ProjectId = hiddenProject.Id,
+				ProviderId = providerId,
+				GoalPrompt = "Hidden job",
+				Status = JobStatus.Completed,
+				CreatedAt = nowUtc
+			});
+
+		await dbContext.SaveChangesAsync();
+
+		var dashboardProjects = (await service.GetRecentWithLatestJobAsync(10)).ToList();
+
+		Assert.Equal(["Bravo", "Alpha", "Charlie"], dashboardProjects.Select(project => project.Project.Name));
+		Assert.All(dashboardProjects, project => Assert.True(project.Project.IsActive));
+	}
+
 	private VibeSwarmDbContext CreateDbContext() => new(_dbOptions);
 
 	private static ProjectService CreateProjectService(VibeSwarmDbContext dbContext)
