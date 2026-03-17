@@ -10,9 +10,25 @@
 	</Actions>
 </PageHeader>
 
+@* Active / Inactive filter tabs *@
+<ul class="nav nav-tabs">
+	<li class="nav-item">
+		<button class="nav-link @(_activeFilter == "active" ? "active" : "")" @onclick='() => SetFilter("active")'>
+			<i class="bi bi-check-circle me-1"></i>Active
+			<span class="badge bg-primary-subtle text-primary-emphasis ms-1">@GetActiveCount()</span>
+		</button>
+	</li>
+	<li class="nav-item">
+		<button class="nav-link @(_activeFilter == "inactive" ? "active" : "")" @onclick='() => SetFilter("inactive")'>
+			<i class="bi bi-pause-circle me-1"></i>Inactive
+			<span class="badge bg-secondary-subtle text-secondary-emphasis ms-1">@GetInactiveCount()</span>
+		</button>
+	</li>
+</ul>
+
 @if (_isLoading)
 {
-	<LoadingSpinner />
+	<LoadingSpinner Text="Loading users..." />
 }
 else if (!_users.Any())
 {
@@ -20,22 +36,6 @@ else if (!_users.Any())
 }
 else
 {
-	@* Active / Inactive filter tabs *@
-	<ul class="nav nav-tabs">
-		<li class="nav-item">
-			<button class="nav-link @(_activeFilter == "active" ? "active" : "")" @onclick='() => SetFilter("active")'>
-				<i class="bi bi-check-circle me-1"></i>Active
-				<span class="badge bg-primary-subtle text-primary-emphasis ms-1">@GetActiveCount()</span>
-			</button>
-		</li>
-		<li class="nav-item">
-			<button class="nav-link @(_activeFilter == "inactive" ? "active" : "")" @onclick='() => SetFilter("inactive")'>
-				<i class="bi bi-pause-circle me-1"></i>Inactive
-				<span class="badge bg-secondary-subtle text-secondary-emphasis ms-1">@GetInactiveCount()</span>
-			</button>
-		</li>
-	</ul>
-
 	@if (!GetFilteredUsers().Any())
 	{
 		<EmptyState Icon="@(_activeFilter == "active" ? "people" : "pause-circle")"

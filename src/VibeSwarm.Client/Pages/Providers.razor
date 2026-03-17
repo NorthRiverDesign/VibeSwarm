@@ -14,37 +14,39 @@
     </Actions>
 </PageHeader>
 
-@if (IsLoading)
-{
-    <LoadingSpinner />
-}
-else
-{
-	<div class="d-flex flex-column gap-4">
-		<div>
-			<div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
-				<div>
-					<h5 class="fw-semibold mb-1">Host Setup</h5>
-					<p class="text-body-secondary mb-0">See what the host can run, finish authentication, and keep each provider's VibeSwarm configuration close to its install state.</p>
-				</div>
-				<ActionButton Icon="arrow-repeat" Text="Re-scan Host" OnClick="RefreshCommonProviderStatusesAsync"
-							  IsLoading="@IsRefreshingCommonProviders" />
+<div class="d-flex flex-column gap-4">
+	<div>
+		<div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+			<div>
+				<h5 class="fw-semibold mb-1">Host Setup</h5>
+				<p class="text-body-secondary mb-0">See what the host can run, finish authentication, and keep each provider's VibeSwarm configuration close to its install state.</p>
 			</div>
-			<div class="row g-2 mb-3">
-				<div class="col-6 col-xl-3">
-					<StatItem Label="Primary CLIs" Value="@CommonProviderStatuses.Count.ToString()" />
-				</div>
-				<div class="col-6 col-xl-3">
-					<StatItem Label="Installed" Value="@CommonProviderStatuses.Count(status => status.IsInstalled).ToString()" />
-				</div>
-				<div class="col-6 col-xl-3">
-					<StatItem Label="Auth Ready" Value="@CommonProviderStatuses.Count(status => status.IsAuthenticated).ToString()" />
-				</div>
-				<div class="col-6 col-xl-3">
-					<StatItem Label="Configured" Value="@CommonProviderStatuses.Sum(status => status.ConfiguredProviders.Count).ToString()" />
-				</div>
+			<ActionButton Icon="arrow-repeat" Text="Re-scan Host" OnClick="RefreshCommonProviderStatusesAsync"
+						  IsLoading="@IsRefreshingCommonProviders" />
+		</div>
+		<div class="row g-2 mb-3">
+			<div class="col-6 col-xl-3">
+				<StatItem Label="Primary CLIs" Value="@CommonProviderStatuses.Count.ToString()" />
 			</div>
-			<div class="row g-3">
+			<div class="col-6 col-xl-3">
+				<StatItem Label="Installed" Value="@CommonProviderStatuses.Count(status => status.IsInstalled).ToString()" />
+			</div>
+			<div class="col-6 col-xl-3">
+				<StatItem Label="Auth Ready" Value="@CommonProviderStatuses.Count(status => status.IsAuthenticated).ToString()" />
+			</div>
+			<div class="col-6 col-xl-3">
+				<StatItem Label="Configured" Value="@CommonProviderStatuses.Sum(status => status.ConfiguredProviders.Count).ToString()" />
+			</div>
+		</div>
+		<div class="row g-3">
+			@if (IsLoading)
+			{
+				<div class="col-12">
+					<LoadingSpinner Text="Loading host setup..." />
+				</div>
+			}
+			else
+			{
 				@foreach (var status in CommonProviderStatuses)
 				{
 					<div class="col-12 col-xl-4">
@@ -55,22 +57,27 @@ else
 												 OnSaveAuthentication="SaveCommonProviderAuthenticationAsync" />
 					</div>
 				}
-			</div>
-		</div>
-
-		<div>
-			@if (!ProvidersList.Any())
-			{
-				<EmptyState Icon="cpu" Title="No providers configured"
-							Message="Use Quick Setup above or add a custom provider manually." />
 			}
-			else
-			{
-				<div class="mb-3">
-					<h5 class="fw-semibold mb-1">Configured Providers</h5>
-					<p class="text-body-secondary mb-0">Manage connection details, test provider health, and refresh models for every provider VibeSwarm can use.</p>
-				</div>
-				<div class="list-group">
+		</div>
+	</div>
+
+	<div>
+		<div class="mb-3">
+			<h5 class="fw-semibold mb-1">Configured Providers</h5>
+			<p class="text-body-secondary mb-0">Manage connection details, test provider health, and refresh models for every provider VibeSwarm can use.</p>
+		</div>
+		@if (IsLoading)
+		{
+			<LoadingSpinner Text="Loading providers..." />
+		}
+		else if (!ProvidersList.Any())
+		{
+			<EmptyState Icon="cpu" Title="No providers configured"
+						Message="Use Quick Setup above or add a custom provider manually." />
+		}
+		else
+		{
+			<div class="list-group">
 					@foreach (var provider in ProvidersList)
 					{
 						<div class="list-group-item p-3 hover-bg-tertiary @(provider.IsDefault ? "bg-success bg-opacity-10" : "")">
@@ -223,11 +230,10 @@ else
 							}
 						</div>
 					}
-				</div>
-			}
-		</div>
+			</div>
+		}
 	</div>
-}
+</div>
 
 @* Provider Modal for Add/Edit *@
 <ProviderModal @bind-IsVisible="ShowProviderModal" EditProvider="@EditingProvider" OnSaved="HandleProviderSaved"

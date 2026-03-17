@@ -14,202 +14,214 @@
 @using VibeSwarm.Shared.Models
 @using VibeSwarm.Shared.VersionControl.Models
 
-@if (_isLoading)
-{
-    <LoadingSpinner />
-}
-else
-{
-    @* Mobile: Project filter dropdown *@
-    <div class="d-lg-none mb-3 jobs-mobile-filters">
-        <div class="d-flex flex-column gap-2">
-            <select class="form-select form-select-sm w-100" @onchange="OnProjectFilterChanged">
-                <option value="" selected="@(_selectedProjectId == null)">All Projects</option>
-                @foreach (var project in _projects)
-                {
-                    <option value="@project.Id" selected="@(_selectedProjectId == project.Id)">
-                        @(project.IsActive ? "" : "[Inactive] ")@project.Name (@GetJobCountForProject(project.Id))
-                    </option>
-                }
-            </select>
-            <div class="btn-group w-100" role="group" aria-label="Status filter">
-                <button type="button" class="btn btn-sm @(_statusFilter == "all" ? "btn-primary" : "btn-secondary")"
-                        @onclick='() => SetStatusFilter("all")' title="All">
-                    <i class="bi bi-inbox me-1"></i><span class="d-none d-sm-inline">All</span>
-                </button>
-                <button type="button" class="btn btn-sm @(_statusFilter == "active" ? "btn-info" : "btn-secondary")"
-                        @onclick='() => SetStatusFilter("active")' title="Active">
-                    <i class="bi bi-play-circle me-1"></i><span class="d-none d-sm-inline">Active</span>
-                </button>
-                <button type="button" class="btn btn-sm @(_statusFilter == "completed" ? "btn-success" : "btn-secondary")"
-                        @onclick='() => SetStatusFilter("completed")' title="Completed">
-                    <i class="bi bi-check-circle me-1"></i><span class="d-none d-sm-inline">Done</span>
-                </button>
-                <button type="button" class="btn btn-sm @(_statusFilter == "failed" ? "btn-danger" : "btn-secondary")"
-                        @onclick='() => SetStatusFilter("failed")' title="Failed">
-                    <i class="bi bi-x-circle me-1"></i><span class="d-none d-sm-inline">Failed</span>
-                </button>
-            </div>
-        </div>
-        @if (_selectedProjectId.HasValue)
-        {
-            <button type="button" class="btn btn-sm btn-primary w-100 mt-2" @onclick="ShowCreateJobModal">
-                <i class="bi bi-plus-lg me-1"></i>Create Job
-            </button>
-        }
-    </div>
+@* Mobile: Project filter dropdown *@
+<div class="d-lg-none mb-3 jobs-mobile-filters">
+	<div class="d-flex flex-column gap-2">
+		<select class="form-select form-select-sm w-100" @onchange="OnProjectFilterChanged" disabled="@_isLoadingProjects">
+			@if (_isLoadingProjects)
+			{
+				<option value="">Loading projects...</option>
+			}
+			else
+			{
+				<option value="" selected="@(_selectedProjectId == null)">All Projects</option>
+				@foreach (var project in _projects)
+				{
+					<option value="@project.Id" selected="@(_selectedProjectId == project.Id)">
+						@(project.IsActive ? "" : "[Inactive] ")@project.Name (@GetJobCountForProject(project.Id))
+					</option>
+				}
+			}
+		</select>
+		<div class="btn-group w-100" role="group" aria-label="Status filter">
+			<button type="button" class="btn btn-sm @(_statusFilter == "all" ? "btn-primary" : "btn-secondary")"
+					@onclick='() => SetStatusFilter("all")' title="All">
+				<i class="bi bi-inbox me-1"></i><span class="d-none d-sm-inline">All</span>
+			</button>
+			<button type="button" class="btn btn-sm @(_statusFilter == "active" ? "btn-info" : "btn-secondary")"
+					@onclick='() => SetStatusFilter("active")' title="Active">
+				<i class="bi bi-play-circle me-1"></i><span class="d-none d-sm-inline">Active</span>
+			</button>
+			<button type="button" class="btn btn-sm @(_statusFilter == "completed" ? "btn-success" : "btn-secondary")"
+					@onclick='() => SetStatusFilter("completed")' title="Completed">
+				<i class="bi bi-check-circle me-1"></i><span class="d-none d-sm-inline">Done</span>
+			</button>
+			<button type="button" class="btn btn-sm @(_statusFilter == "failed" ? "btn-danger" : "btn-secondary")"
+					@onclick='() => SetStatusFilter("failed")' title="Failed">
+				<i class="bi bi-x-circle me-1"></i><span class="d-none d-sm-inline">Failed</span>
+			</button>
+		</div>
+	</div>
+	@if (_selectedProjectId.HasValue)
+	{
+		<button type="button" class="btn btn-sm btn-primary w-100 mt-2" @onclick="ShowCreateJobModal"
+				disabled="@_isLoadingProjects">
+			<i class="bi bi-plus-lg me-1"></i>Create Job
+		</button>
+	}
+</div>
 
-    @* Desktop: Inbox-style split layout *@
-    <div class="jobs-inbox-layout d-flex flex-column flex-lg-row">
-        @* Project Sidebar (desktop only) *@
-        <aside class="jobs-project-sidebar d-none d-lg-flex flex-column border-end bg-body flex-shrink-0">
-            <div class="p-3 border-bottom">
-                <h5 class="mb-0 fw-semibold d-flex align-items-center gap-2">
-                    <i class="bi bi-inbox"></i> Jobs
-                    @if (_selectedProjectId.HasValue)
-                    {
-                        <button type="button" class="btn btn-sm btn-primary ms-auto" @onclick="ShowCreateJobModal"
-                                title="Create Job">
-                            <i class="bi bi-plus-lg me-1"></i><span class="d-none d-xl-inline">Create Job</span>
-                        </button>
-                    }
-                </h5>
-            </div>
-            <div class="flex-grow-1 overflow-auto">
-                @* All Projects option *@
-                <button type="button"
-                        class="project-filter-item w-100 text-start border-0 bg-transparent d-flex align-items-center gap-2 p-3 cursor-pointer @(_selectedProjectId == null ? "active" : "")"
-                        @onclick="() => SelectProject(null)">
-                    <i class="bi bi-collection"></i>
-                    <span class="flex-grow-1">All Projects</span>
-                    <span class="badge bg-secondary-subtle text-secondary-emphasis rounded-pill">@GetOverallJobCount()</span>
-                </button>
+@* Desktop: Inbox-style split layout *@
+<div class="jobs-inbox-layout d-flex flex-column flex-lg-row">
+	@* Project Sidebar (desktop only) *@
+	<aside class="jobs-project-sidebar d-none d-lg-flex flex-column border-end bg-body flex-shrink-0">
+		<div class="p-3 border-bottom">
+			<h5 class="mb-0 fw-semibold d-flex align-items-center gap-2">
+				<i class="bi bi-inbox"></i> Jobs
+				@if (_selectedProjectId.HasValue)
+				{
+					<button type="button" class="btn btn-sm btn-primary ms-auto" @onclick="ShowCreateJobModal"
+							title="Create Job" disabled="@_isLoadingProjects">
+						<i class="bi bi-plus-lg me-1"></i><span class="d-none d-xl-inline">Create Job</span>
+					</button>
+				}
+			</h5>
+		</div>
+		<div class="flex-grow-1 overflow-auto">
+			@* All Projects option *@
+			<button type="button"
+					class="project-filter-item w-100 text-start border-0 bg-transparent d-flex align-items-center gap-2 p-3 cursor-pointer @(_selectedProjectId == null ? "active" : "")"
+					@onclick="() => SelectProject(null)">
+				<i class="bi bi-collection"></i>
+				<span class="flex-grow-1">All Projects</span>
+				<span class="badge bg-secondary-subtle text-secondary-emphasis rounded-pill">@GetOverallJobCount()</span>
+			</button>
 
-                <div class="border-top"></div>
+			<div class="border-top"></div>
 
-                @* Project list *@
-                @foreach (var project in _projects)
-                {
-                    var jobCount = GetJobCountForProject(project.Id);
-                    var activeCount = GetActiveCountForProject(project.Id);
-                    <button type="button"
-                            class="project-filter-item w-100 text-start border-0 bg-transparent d-flex align-items-center gap-2 p-3 cursor-pointer @(_selectedProjectId == project.Id ? "active" : "") @(!project.IsActive ? "opacity-50" : "")"
-                            @onclick="() => SelectProject(project.Id)">
-                        <i class="bi bi-folder"></i>
-                        <span class="flex-grow-1 text-truncate">@project.Name</span>
-                        @if (!project.IsActive)
-                        {
-                            <i class="bi bi-pause-circle text-secondary" title="Inactive"></i>
-                        }
-                        @if (activeCount > 0)
-                        {
-                            <span class="badge bg-info rounded-pill">@activeCount</span>
-                        }
-                        <span class="badge bg-secondary-subtle text-secondary-emphasis rounded-pill">@jobCount</span>
-                    </button>
-                }
-            </div>
+			@if (_isLoadingProjects)
+			{
+				<LoadingSpinner Text="Loading projects..." />
+			}
+			else
+			{
+				@* Project list *@
+				@foreach (var project in _projects)
+				{
+					var jobCount = GetJobCountForProject(project.Id);
+					var activeCount = GetActiveCountForProject(project.Id);
+					<button type="button"
+							class="project-filter-item w-100 text-start border-0 bg-transparent d-flex align-items-center gap-2 p-3 cursor-pointer @(_selectedProjectId == project.Id ? "active" : "") @(!project.IsActive ? "opacity-50" : "")"
+							@onclick="() => SelectProject(project.Id)">
+						<i class="bi bi-folder"></i>
+						<span class="flex-grow-1 text-truncate">@project.Name</span>
+						@if (!project.IsActive)
+						{
+							<i class="bi bi-pause-circle text-secondary" title="Inactive"></i>
+						}
+						@if (activeCount > 0)
+						{
+							<span class="badge bg-info rounded-pill">@activeCount</span>
+						}
+						<span class="badge bg-secondary-subtle text-secondary-emphasis rounded-pill">@jobCount</span>
+					</button>
+				}
+			}
+		</div>
 
-            @* Status filter buttons in sidebar footer *@
-            <div class="p-3 border-top">
-                <div class="btn-group w-100" role="group">
-                    <button type="button" class="btn btn-sm @(_statusFilter == "all" ? "btn-primary" : "btn-secondary")"
-                            @onclick='() => SetStatusFilter("all")'>All</button>
-                    <button type="button" class="btn btn-sm @(_statusFilter == "active" ? "btn-info" : "btn-secondary")"
-                            @onclick='() => SetStatusFilter("active")'>Active</button>
-                    <button type="button"
-                            class="btn btn-sm @(_statusFilter == "completed" ? "btn-success" : "btn-secondary")"
-                            @onclick='() => SetStatusFilter("completed")'>Done</button>
-                    <button type="button" class="btn btn-sm @(_statusFilter == "failed" ? "btn-danger" : "btn-secondary")"
-                            @onclick='() => SetStatusFilter("failed")'>Failed</button>
-                </div>
-            </div>
-        </aside>
+		@* Status filter buttons in sidebar footer *@
+		<div class="p-3 border-top">
+			<div class="btn-group w-100" role="group">
+				<button type="button" class="btn btn-sm @(_statusFilter == "all" ? "btn-primary" : "btn-secondary")"
+						@onclick='() => SetStatusFilter("all")'>All</button>
+				<button type="button" class="btn btn-sm @(_statusFilter == "active" ? "btn-info" : "btn-secondary")"
+						@onclick='() => SetStatusFilter("active")'>Active</button>
+				<button type="button"
+						class="btn btn-sm @(_statusFilter == "completed" ? "btn-success" : "btn-secondary")"
+						@onclick='() => SetStatusFilter("completed")'>Done</button>
+				<button type="button" class="btn btn-sm @(_statusFilter == "failed" ? "btn-danger" : "btn-secondary")"
+						@onclick='() => SetStatusFilter("failed")'>Failed</button>
+			</div>
+		</div>
+	</aside>
 
-        @* Job List Panel *@
-        <div class="jobs-list-panel flex-grow-1 d-flex flex-column min-width-0 bg-body">
-            @* Stats header *@
-            @if (HasTokenData())
-            {
-                <div class="d-flex flex-wrap align-items-center gap-2 p-2 px-3 border-bottom bg-body-secondary small">
-                    @if (GetTotalInputTokens() > 0 || GetTotalOutputTokens() > 0)
-                    {
-                        <span class="d-flex align-items-center gap-1">
-                            <i class="bi bi-arrow-left-right opacity-75"></i>
-                            @TokenHelper.FormatTokenCount(GetTotalInputTokens() + GetTotalOutputTokens()) tokens
-                        </span>
-                    }
-                    @if (GetTotalCost() > 0)
-                    {
-                        <span class="d-flex align-items-center gap-1 text-success fw-medium">
-                            <i class="bi bi-currency-dollar opacity-75"></i>
-                            @TokenHelper.FormatCost(GetTotalCost())
-                        </span>
-                    }
-                    <span class="ms-auto text-body-secondary">
-                        @_jobsResult.TotalCount jobs
-                    </span>
-                </div>
-            }
+	@* Job List Panel *@
+	<div class="jobs-list-panel flex-grow-1 d-flex flex-column min-width-0 bg-body">
+		@* Stats header *@
+		@if (!_isLoadingJobs && HasTokenData())
+		{
+			<div class="d-flex flex-wrap align-items-center gap-2 p-2 px-3 border-bottom bg-body-secondary small">
+				@if (GetTotalInputTokens() > 0 || GetTotalOutputTokens() > 0)
+				{
+					<span class="d-flex align-items-center gap-1">
+						<i class="bi bi-arrow-left-right opacity-75"></i>
+						@TokenHelper.FormatTokenCount(GetTotalInputTokens() + GetTotalOutputTokens()) tokens
+					</span>
+				}
+				@if (GetTotalCost() > 0)
+				{
+					<span class="d-flex align-items-center gap-1 text-success fw-medium">
+						<i class="bi bi-currency-dollar opacity-75"></i>
+						@TokenHelper.FormatCost(GetTotalCost())
+					</span>
+				}
+				<span class="ms-auto text-body-secondary">
+					@_jobsResult.TotalCount jobs
+				</span>
+			</div>
+		}
 
-            @* Job list *@
-            <div class="flex-grow-1 overflow-auto">
-                @if (GetOverallJobCount() == 0)
-                {
-                    <EmptyState Icon="list-check" Title="No jobs yet"
-                                Message="Jobs are created when you run AI agent tasks on your projects.">
-                        @if (_selectedProjectId.HasValue)
-                        {
-                            <button type="button" class="btn btn-sm btn-primary" @onclick="ShowCreateJobModal">
-                                <i class="bi bi-plus-lg me-1"></i>Create Job
-                            </button>
-                        }
-                        else
-                        {
-                            <a href="/projects" class="btn btn-sm btn-primary">
-                                <i class="bi bi-folder me-1"></i>Go to Projects
-                            </a>
-                        }
-                    </EmptyState>
-                }
-                else if (!_jobsResult.Items.Any())
-                {
-                    <EmptyState Icon="@GetFilterEmptyIcon()" Title="@GetFilterEmptyTitle()" Message="@GetFilterEmptyMessage()">
-                        @if (_selectedProjectId.HasValue)
-                        {
-                            <button type="button" class="btn btn-sm btn-primary" @onclick="ShowCreateJobModal">
-                                <i class="bi bi-plus-lg me-1"></i>Create Job
-                            </button>
-                        }
-                    </EmptyState>
-                }
-                else
-                {
-                    @foreach (var job in _jobsResult.Items)
-                    {
-                        <JobListItem Status="@job.Status.ToString()" Prompt="@GetJobDisplayTitle(job)"
-                                     ProjectName="@(job.Project?.Name ?? "Unknown")" ShowProjectName="@(_selectedProjectId == null)"
-                                     ProviderName="@job.Provider?.Name" ModelUsed="@job.ModelUsed"
-                                     Activity="@((job.Status == JobStatus.Started || job.Status == JobStatus.Processing) ? (job.CurrentActivity ?? "Working...") : null)"
-                                     TimeDisplay="@GetTimeDisplay(job)" Cost="@job.TotalCostUsd" InputTokens="@job.InputTokens"
-                                     OutputTokens="@job.OutputTokens" CurrentCycle="@job.CurrentCycle" MaxCycles="@job.MaxCycles"
-                                     CycleMode="@job.CycleMode" OnClick="@(() => NavigateToJob(job.Id))" />
-                    }
-                }
-            </div>
+		@* Job list *@
+		<div class="flex-grow-1 overflow-auto">
+			@if (_isLoadingJobs)
+			{
+				<LoadingSpinner Text="Loading jobs..." />
+			}
+			else if (GetOverallJobCount() == 0)
+			{
+				<EmptyState Icon="list-check" Title="No jobs yet"
+							Message="Jobs are created when you run AI agent tasks on your projects.">
+					@if (_selectedProjectId.HasValue)
+					{
+						<button type="button" class="btn btn-sm btn-primary" @onclick="ShowCreateJobModal">
+							<i class="bi bi-plus-lg me-1"></i>Create Job
+						</button>
+					}
+					else
+					{
+						<a href="/projects" class="btn btn-sm btn-primary">
+							<i class="bi bi-folder me-1"></i>Go to Projects
+						</a>
+					}
+				</EmptyState>
+			}
+			else if (!_jobsResult.Items.Any())
+			{
+				<EmptyState Icon="@GetFilterEmptyIcon()" Title="@GetFilterEmptyTitle()" Message="@GetFilterEmptyMessage()">
+					@if (_selectedProjectId.HasValue)
+					{
+						<button type="button" class="btn btn-sm btn-primary" @onclick="ShowCreateJobModal">
+							<i class="bi bi-plus-lg me-1"></i>Create Job
+						</button>
+					}
+				</EmptyState>
+			}
+			else
+			{
+				@foreach (var job in _jobsResult.Items)
+				{
+					<JobListItem Status="@job.Status.ToString()" Prompt="@GetJobDisplayTitle(job)"
+								 ProjectName="@(job.Project?.Name ?? "Unknown")" ShowProjectName="@(_selectedProjectId == null)"
+								 ProviderName="@job.Provider?.Name" ModelUsed="@job.ModelUsed"
+								 Activity="@((job.Status == JobStatus.Started || job.Status == JobStatus.Processing) ? (job.CurrentActivity ?? "Working...") : null)"
+								 TimeDisplay="@GetTimeDisplay(job)" Cost="@job.TotalCostUsd" InputTokens="@job.InputTokens"
+								 OutputTokens="@job.OutputTokens" CurrentCycle="@job.CurrentCycle" MaxCycles="@job.MaxCycles"
+								 CycleMode="@job.CycleMode" OnClick="@(() => NavigateToJob(job.Id))" />
+				}
+			}
+		</div>
 
-            <PaginationControls PageNumber="@_pageNumber" PageSize="@JobsPageSize" TotalCount="@_jobsResult.TotalCount"
-                                IsLoading="@_isRefreshing" OnPreviousPage="LoadPreviousPage" OnNextPage="LoadNextPage" />
-        </div>
-    </div>
+		<PaginationControls PageNumber="@_pageNumber" PageSize="@JobsPageSize" TotalCount="@_jobsResult.TotalCount"
+							IsLoading="@(_isRefreshing || _isLoadingJobs)" OnPreviousPage="LoadPreviousPage" OnNextPage="LoadNextPage" />
+	</div>
+</div>
 
-    @* Create Job Modal *@
-    <CreateJobModal @bind-IsVisible="_showCreateJobModal" JobModel="@_newJob" Providers="@_providers"
-                    AvailableModels="@_availableModels" Branches="@_branches" CurrentBranch="@_currentBranch"
-                    ShowBranchSelector="@(_branches.Any())" IsLoadingModels="@_isLoadingModels" IsSaving="@_isSaving"
-                    ErrorMessage="@_createJobError" SelectedModelId="@_selectedModelId" OnProviderChanged="OnCreateJobProviderChanged"
-                    OnSubmit="HandleCreateJob" />
-}
+@* Create Job Modal *@
+<CreateJobModal @bind-IsVisible="_showCreateJobModal" JobModel="@_newJob" Providers="@_providers"
+				AvailableModels="@_availableModels" Branches="@_branches" CurrentBranch="@_currentBranch"
+				ShowBranchSelector="@(_branches.Any())" IsLoadingModels="@_isLoadingModels" IsSaving="@_isSaving"
+				ErrorMessage="@_createJobError" SelectedModelId="@_selectedModelId" OnProviderChanged="OnCreateJobProviderChanged"
+				OnSubmit="HandleCreateJob" />
 
 @code {
     [Parameter]
@@ -219,7 +231,8 @@ else
 
     private JobsListResult _jobsResult = new();
     private IEnumerable<Project> _projects = Enumerable.Empty<Project>();
-    private bool _isLoading = true;
+    private bool _isLoadingProjects = true;
+    private bool _isLoadingJobs = true;
     private string _statusFilter = "all";
     private Guid? _selectedProjectId;
     private int _pageNumber = 1;
@@ -253,7 +266,7 @@ else
         {
             _selectedProjectId = ProjectFilter;
             _pageNumber = 1;
-            if (!_isLoading)
+            if (!_isLoadingJobs)
             {
                 _ = RefreshJobsSafely();
             }
@@ -319,7 +332,7 @@ else
         try
         {
             _isRefreshing = true;
-            await LoadData();
+            await LoadJobsAsync();
             StateHasChanged();
         }
         finally
@@ -499,20 +512,36 @@ TimeSpan.FromSeconds(10) })
 
     private async Task LoadData()
     {
+        var jobsTask = LoadJobsAsync();
+        var projectsTask = LoadProjectsAsync();
+
+        await Task.WhenAll(jobsTask, projectsTask);
+    }
+
+    private async Task LoadProjectsAsync()
+    {
+        _isLoadingProjects = true;
         try
         {
-            var jobsTask = JobService.GetPagedAsync(_selectedProjectId, _statusFilter, _pageNumber, JobsPageSize);
-            var projectsTask = ProjectService.GetAllAsync();
-
-            await Task.WhenAll(jobsTask, projectsTask);
-
-            _jobsResult = await jobsTask;
-            _pageNumber = _jobsResult.PageNumber;
-            _projects = await projectsTask;
+            _projects = await ProjectService.GetAllAsync();
         }
         finally
         {
-            _isLoading = false;
+            _isLoadingProjects = false;
+        }
+    }
+
+    private async Task LoadJobsAsync()
+    {
+        _isLoadingJobs = true;
+        try
+        {
+            _jobsResult = await JobService.GetPagedAsync(_selectedProjectId, _statusFilter, _pageNumber, JobsPageSize);
+            _pageNumber = _jobsResult.PageNumber;
+        }
+        finally
+        {
+            _isLoadingJobs = false;
         }
     }
 

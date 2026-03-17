@@ -14,251 +14,243 @@
     </Actions>
 </PageHeader>
 
+@* Active / Inactive filter tabs *@
+<ul class="nav nav-tabs">
+	<li class="nav-item">
+		<button class="nav-link @(ActiveFilter == "active" ? "active" : "")" @onclick='() => SetFilter("active")'>
+			<i class="bi bi-check-circle me-1"></i>Active
+			<span class="badge bg-primary-subtle text-primary-emphasis ms-1">@GetActiveCount()</span>
+		</button>
+	</li>
+	<li class="nav-item">
+		<button class="nav-link @(ActiveFilter == "inactive" ? "active" : "")" @onclick='() => SetFilter("inactive")'>
+			<i class="bi bi-pause-circle me-1"></i>Inactive
+			<span class="badge bg-secondary-subtle text-secondary-emphasis ms-1">@GetInactiveCount()</span>
+		</button>
+	</li>
+</ul>
+
 @if (IsLoading)
 {
-    <LoadingSpinner />
+	<LoadingSpinner Text="Loading projects..." />
 }
 else if (!ProjectsWithInfo.Any())
 {
-    <EmptyState Icon="folder" Title="No projects yet" Message="Create your first project to start running AI agent jobs." />
+	<EmptyState Icon="folder" Title="No projects yet" Message="Create your first project to start running AI agent jobs." />
+}
+else if (!GetFilteredProjects().Any())
+{
+	<EmptyState Icon="@(ActiveFilter == "active" ? "folder" : "pause-circle")"
+				Title="@(ActiveFilter == "active" ? "No active projects" : "No inactive projects")"
+				Message="@(ActiveFilter == "active" ? "All your projects are currently inactive." : "All your projects are currently active.")" />
 }
 else
 {
-    @* Active / Inactive filter tabs *@
-    <ul class="nav nav-tabs">
-        <li class="nav-item">
-            <button class="nav-link @(ActiveFilter == "active" ? "active" : "")" @onclick='() => SetFilter("active")'>
-                <i class="bi bi-check-circle me-1"></i>Active
-                <span class="badge bg-primary-subtle text-primary-emphasis ms-1">@GetActiveCount()</span>
-            </button>
-        </li>
-        <li class="nav-item">
-            <button class="nav-link @(ActiveFilter == "inactive" ? "active" : "")" @onclick='() => SetFilter("inactive")'>
-                <i class="bi bi-pause-circle me-1"></i>Inactive
-                <span class="badge bg-secondary-subtle text-secondary-emphasis ms-1">@GetInactiveCount()</span>
-            </button>
-        </li>
-    </ul>
+	<div class="list-group list-group-flush border border-top-0 rounded-top-0">
+		@foreach (var projectInfo in GetFilteredProjects())
+		{
+			var project = projectInfo.Project;
+			var stats = projectInfo.Stats;
+			var latestJob = projectInfo.LatestJob;
+			var currentBranch = projectInfo.CurrentBranch;
+			var projectActiveJobs = ActiveJobs.Where(j => j.ProjectId == project.Id).ToList();
+			<div class="list-group-item p-3 hover-bg-tertiary">
+				<div class="d-flex align-items-start gap-3">
+					<div class="flex-grow-1 min-width-0">
+						<div class="d-flex align-items-center gap-2 flex-wrap">
+							<a href="/projects/@project.Id" class="fw-semibold text-decoration-none">@project.Name</a>
+							@if (project.AutoCommitMode != AutoCommitMode.Off)
+							{
+								<i class="bi bi-arrow-repeat text-info opacity-75" title="Auto-commit: @project.AutoCommitMode"></i>
+							}
+							@if (!project.IsActive)
+							{
+								<span class="small text-body-tertiary">Inactive</span>
+							}
+							@if (project.Environments.Any(environment => environment.IsEnabled))
+							{
+								<span class="small text-body-secondary d-inline-flex align-items-center gap-1">
+									<i class="bi bi-globe2 opacity-75"></i>@project.Environments.Count(environment => environment.IsEnabled)
+								</span>
+							}
+							@if (stats.ActiveJobs > 0)
+							{
+								<span class="small text-body-secondary d-inline-flex align-items-center gap-1">
+									<i class="bi bi-activity opacity-75"></i>@stats.ActiveJobs running
+								</span>
+							}
+						</div>
+						@if (!string.IsNullOrEmpty(project.Description))
+						{
+							<div class="small text-body-secondary mt-1">@TruncateText(project.Description, 100)</div>
+						}
+						<div class="d-flex flex-wrap gap-2 gap-md-3 mt-2 small text-body-secondary">
+							@if (!string.IsNullOrEmpty(project.GitHubRepository))
+							{
+								<span class="d-flex align-items-center gap-1" title="GitHub Repository">
+									<i class="bi bi-github opacity-75"></i>
+									<a href="https://github.com/@project.GitHubRepository" target="_blank"
+										   class="text-body-secondary text-decoration-none hover-underline">
+										@project.GitHubRepository
+									</a>
+								</span>
+							}
+							else
+							{
+								<span class="font-monospace bg-body-tertiary px-2 py-1 rounded-1 text-truncate"
+									  style="max-width: min(280px, 50vw);" title="@project.WorkingPath">
+									@project.WorkingPath
+								</span>
+							}
+							@if (!string.IsNullOrEmpty(currentBranch))
+							{
+								<span class="d-flex align-items-center gap-1" title="Current branch">
+									<i class="bi bi-git opacity-75"></i>
+									@currentBranch
+								</span>
+							}
+						</div>
+						@if (project.ProviderSelections.Any(pp => pp.IsEnabled))
+						{
+							<div class="d-flex flex-wrap align-items-center gap-2 mt-2 small text-body-secondary">
+								<span class="d-flex align-items-center gap-1">
+									<i class="bi bi-diagram-3 opacity-75"></i>
+									Providers
+								</span>
+								<span>@string.Join("  •  ", project.ProviderSelections.Where(pp => pp.IsEnabled).OrderBy(pp => pp.Priority).Select(selection => $"#{selection.Priority + 1} {selection.Provider?.Name ?? "Unknown"}"))</span>
+							</div>
+						}
+						@if (stats.TotalJobs > 0)
+						{
+							<div class="d-flex flex-wrap gap-2 gap-md-3 mt-2 small">
+								<span class="d-flex align-items-center gap-1 text-body-secondary" title="Total jobs">
+									<i class="bi bi-list-check opacity-75"></i>
+									@stats.TotalJobs jobs
+								</span>
+								@if (stats.TotalInputTokens > 0 || stats.TotalOutputTokens > 0)
+								{
+									<span class="d-flex align-items-center gap-1 text-body-secondary"
+										  title="Total tokens (input / output)">
+										<i class="bi bi-braces opacity-75"></i>
+										@TokenHelper.FormatTokenCount(stats.TotalInputTokens) /
+										@TokenHelper.FormatTokenCount(stats.TotalOutputTokens)
+									</span>
+								}
+								@if (stats.TotalCostUsd > 0)
+								{
+									<span class="d-flex align-items-center gap-1 text-success fw-medium" title="Total cost">
+										<i class="bi bi-currency-dollar opacity-75"></i>
+										@TokenHelper.FormatCost(stats.TotalCostUsd)
+									</span>
+								}
+							</div>
+						}
+						@if (latestJob != null)
+						{
+							<div class="border-top pt-2 mt-2">
+								<div class="d-flex align-items-center gap-2 small min-width-0">
+									<a href="/jobs/view/@latestJob.Id"
+										   class="d-flex align-items-center gap-2 text-decoration-none min-width-0"
+										   title="@latestJob.DisplayTitle">
+										@switch (latestJob.Status)
+										{
+											case JobStatus.Completed:
+												<i class="bi bi-check-circle-fill text-success flex-shrink-0" title="Completed"></i>
+												break;
+											case JobStatus.Failed:
+												<i class="bi bi-x-circle-fill text-danger flex-shrink-0" title="Failed"></i>
+												break;
+											case JobStatus.Started:
+											case JobStatus.Processing:
+												<span class="spinner-border spinner-border-sm text-info flex-shrink-0" role="status"
+													  title="Running"></span>
+												break;
+											case JobStatus.Cancelled:
+												<i class="bi bi-slash-circle text-secondary flex-shrink-0" title="Cancelled"></i>
+												break;
+											case JobStatus.Stalled:
+												<i class="bi bi-exclamation-triangle-fill text-warning flex-shrink-0" title="Stalled"></i>
+												break;
+											default:
+												<i class="bi bi-clock text-secondary flex-shrink-0" title="Pending"></i>
+												break;
+										}
+										<span class="text-truncate text-body-secondary">@TruncateText(latestJob.DisplayTitle, 60)</span>
+									</a>
+								</div>
+							</div>
+						}
+						@if (projectActiveJobs.Any())
+						{
+							<div class="@(latestJob == null ? "border-top pt-2 mt-2" : "mt-1")">
+								@foreach (var job in projectActiveJobs)
+								{
+									<div class="bg-body-tertiary rounded-2 p-2 mb-1 small">
+										<a href="/jobs/view/@job.Id" class="d-flex align-items-center gap-2 text-decoration-none small">
+											<StatusBadge Status="@job.Status.ToString()" />
+											<span class="text-truncate" style="max-width: min(200px, 40vw);">@TruncateText(job.DisplayTitle, 50)</span>
+											@if (!string.IsNullOrEmpty(job.CurrentActivity))
+											{
+												<span class="text-info fst-italic small d-none d-md-inline">@job.CurrentActivity</span>
+											}
+										</a>
+									</div>
+								}
+							</div>
+						}
+					</div>
+					<div class="d-flex align-items-center gap-2 flex-shrink-0">
+						<ProjectActionsDropdown DetailsHref="@($"/projects/{project.Id}")" OnEdit="@(() => EditProject(project.Id))"
+												IsActive="@project.IsActive" OnToggleActive="@(() => ToggleActive(project))"
+												ShowSyncAction="@(!string.IsNullOrEmpty(projectInfo.CurrentBranch))"
+												SyncLabel="Resync with Git" OnSync="@(() => ResyncWithGit(project))"
+												ShowDeleteAction="true" OnDelete="@(() => ShowDeleteConfirmation(project))" />
+					</div>
+				</div>
+			</div>
+		}
+	</div>
+}
 
-    @if (!GetFilteredProjects().Any())
-    {
-        <EmptyState Icon="@(ActiveFilter == "active" ? "folder" : "pause-circle")"
-                    Title="@(ActiveFilter == "active" ? "No active projects" : "No inactive projects")"
-                    Message="@(ActiveFilter == "active" ? "All your projects are currently inactive." : "All your projects are currently active.")" />
-    }
-    else
-    {
-        <div class="list-group list-group-flush border border-top-0 rounded-top-0">
-            @foreach (var projectInfo in GetFilteredProjects())
-            {
-                var project = projectInfo.Project;
-                var stats = projectInfo.Stats;
-                var latestJob = projectInfo.LatestJob;
-                var currentBranch = projectInfo.CurrentBranch;
-                var projectActiveJobs = ActiveJobs.Where(j => j.ProjectId == project.Id).ToList();
-                <div class="list-group-item p-3 hover-bg-tertiary">
-                    <div class="d-flex align-items-start gap-3">
-                        <div class="flex-grow-1 min-width-0">
-                            <div class="d-flex align-items-center gap-2 flex-wrap">
-                                <a href="/projects/@project.Id" class="fw-semibold text-decoration-none">@project.Name</a>
-                                @if (project.AutoCommitMode != AutoCommitMode.Off)
-                                {
-                                    <i class="bi bi-arrow-repeat text-info opacity-75" title="Auto-commit: @project.AutoCommitMode"></i>
-                                }
-                                @if (!project.IsActive)
-                                {
-                                    <span class="small text-body-tertiary">Inactive</span>
-                                }
-                                @if (project.Environments.Any(environment => environment.IsEnabled))
-                                {
-                                    <span class="small text-body-secondary d-inline-flex align-items-center gap-1">
-                                        <i class="bi bi-globe2 opacity-75"></i>@project.Environments.Count(environment => environment.IsEnabled)
-                                    </span>
-                                }
-                                @if (stats.ActiveJobs > 0)
-                                {
-                                    <span class="small text-body-secondary d-inline-flex align-items-center gap-1">
-                                        <i class="bi bi-activity opacity-75"></i>@stats.ActiveJobs running
-                                    </span>
-                                }
-                            </div>
-                            @if (!string.IsNullOrEmpty(project.Description))
-                            {
-                                <div class="small text-body-secondary mt-1">@TruncateText(project.Description, 100)</div>
-                            }
-                            <div class="d-flex flex-wrap gap-2 gap-md-3 mt-2 small text-body-secondary">
-                                @if (!string.IsNullOrEmpty(project.GitHubRepository))
-                                {
-                                    <span class="d-flex align-items-center gap-1" title="GitHub Repository">
-                                        <i class="bi bi-github opacity-75"></i>
-                                        <a href="https://github.com/@project.GitHubRepository" target="_blank"
-                                               class="text-body-secondary text-decoration-none hover-underline">
-                                            @project.GitHubRepository
-                                        </a>
-                                    </span>
-                                }
-                                else
-                                {
-                                    <span class="font-monospace bg-body-tertiary px-2 py-1 rounded-1 text-truncate"
-                                          style="max-width: min(280px, 50vw);" title="@project.WorkingPath">
-                                        @project.WorkingPath
-                                    </span>
-                                }
-                                @if (!string.IsNullOrEmpty(currentBranch))
-                                {
-                                    <span class="d-flex align-items-center gap-1" title="Current branch">
-                                        <i class="bi bi-git opacity-75"></i>
-                                        @currentBranch
-                                    </span>
-                                }
-                            </div>
-                            @if (project.ProviderSelections.Any(pp => pp.IsEnabled))
-                            {
-                                <div class="d-flex flex-wrap align-items-center gap-2 mt-2 small text-body-secondary">
-                                    <span class="d-flex align-items-center gap-1">
-                                        <i class="bi bi-diagram-3 opacity-75"></i>
-                                        Providers
-                                    </span>
-                                    <span>@string.Join("  •  ", project.ProviderSelections.Where(pp => pp.IsEnabled).OrderBy(pp => pp.Priority).Select(selection => $"#{selection.Priority + 1} {selection.Provider?.Name ?? "Unknown"}"))</span>
-                                </div>
-                            }
-                            @* Job Statistics Row *@
-                            @if (stats.TotalJobs > 0)
-                            {
-                                <div class="d-flex flex-wrap gap-2 gap-md-3 mt-2 small">
-                                    <span class="d-flex align-items-center gap-1 text-body-secondary" title="Total jobs">
-                                        <i class="bi bi-list-check opacity-75"></i>
-                                        @stats.TotalJobs jobs
-                                    </span>
-                                    @if (stats.TotalInputTokens > 0 || stats.TotalOutputTokens > 0)
-                                    {
-                                        <span class="d-flex align-items-center gap-1 text-body-secondary"
-                                              title="Total tokens (input / output)">
-                                            <i class="bi bi-braces opacity-75"></i>
-                                            @TokenHelper.FormatTokenCount(stats.TotalInputTokens) /
-                                            @TokenHelper.FormatTokenCount(stats.TotalOutputTokens)
-                                        </span>
-                                    }
-                                    @if (stats.TotalCostUsd > 0)
-                                    {
-                                        <span class="d-flex align-items-center gap-1 text-success fw-medium" title="Total cost">
-                                            <i class="bi bi-currency-dollar opacity-75"></i>
-                                            @TokenHelper.FormatCost(stats.TotalCostUsd)
-                                        </span>
-                                    }
-                                </div>
-                            }
-                            @* Latest Job Display *@
-                            @if (latestJob != null)
-                            {
-                                <div class="border-top pt-2 mt-2">
-                                    <div class="d-flex align-items-center gap-2 small min-width-0">
-                                        <a href="/jobs/view/@latestJob.Id"
-                                               class="d-flex align-items-center gap-2 text-decoration-none min-width-0"
-                                               title="@latestJob.DisplayTitle">
-                                            @switch (latestJob.Status)
-                                            {
-                                                case JobStatus.Completed:
-                                                    <i class="bi bi-check-circle-fill text-success flex-shrink-0" title="Completed"></i>
-                                                    break;
-                                                case JobStatus.Failed:
-                                                    <i class="bi bi-x-circle-fill text-danger flex-shrink-0" title="Failed"></i>
-                                                    break;
-                                                case JobStatus.Started:
-                                                case JobStatus.Processing:
-                                                    <span class="spinner-border spinner-border-sm text-info flex-shrink-0" role="status"
-                                                          title="Running"></span>
-                                                    break;
-                                                case JobStatus.Cancelled:
-                                                    <i class="bi bi-slash-circle text-secondary flex-shrink-0" title="Cancelled"></i>
-                                                    break;
-                                                case JobStatus.Stalled:
-                                                    <i class="bi bi-exclamation-triangle-fill text-warning flex-shrink-0" title="Stalled"></i>
-                                                    break;
-                                                default:
-                                                    <i class="bi bi-clock text-secondary flex-shrink-0" title="Pending"></i>
-                                                    break;
-                                            }
-                                            <span class="text-truncate text-body-secondary">@TruncateText(latestJob.DisplayTitle,
-                                                                                                                                                                                                                                                                                                                     60)</span>
-                                            </a>
-                                        </div>
-                                    </div>
-                                }
-                                @* Active Jobs Display *@
-                                @if (projectActiveJobs.Any())
-                                {
-                                    <div class="@(latestJob == null ? "border-top pt-2 mt-2" : "mt-1")">
-                                        @foreach (var job in projectActiveJobs)
-                                        {
-                                            <div class="bg-body-tertiary rounded-2 p-2 mb-1 small">
-                                                <a href="/jobs/view/@job.Id" class="d-flex align-items-center gap-2 text-decoration-none small">
-                                                    <StatusBadge Status="@job.Status.ToString()" />
-                                                    <span class="text-truncate" style="max-width: min(200px, 40vw);">@TruncateText(job.DisplayTitle,
-                                                                                                                                                                                                                                                                                                                                                                 50)</span>
-                                                        @if (!string.IsNullOrEmpty(job.CurrentActivity))
-                                                        {
-                                                            <span class="text-info fst-italic small d-none d-md-inline">@job.CurrentActivity</span>
-                                                        }
-                                                    </a>
-                                                </div>
-                                            }
-                                        </div>
-                                    }
-                                </div>
-                                <div class="d-flex align-items-center gap-2 flex-shrink-0">
-                                    <ProjectActionsDropdown DetailsHref="@($"/projects/{project.Id}")" OnEdit="@(() => EditProject(project.Id))"
-                                                            IsActive="@project.IsActive" OnToggleActive="@(() => ToggleActive(project))"
-                                                            ShowSyncAction="@(!string.IsNullOrEmpty(projectInfo.CurrentBranch))"
-                                                            SyncLabel="Resync with Git" OnSync="@(() => ResyncWithGit(project))"
-                                                            ShowDeleteAction="true" OnDelete="@(() => ShowDeleteConfirmation(project))" />
-                                </div>
-                            </div>
-                        </div>
-                    }
-                </div>
-            }
-        }
+@* Project Modal for Add/Edit *@
+<ProjectModal @bind-IsVisible="ShowProjectModal" EditProject="@EditingProject" OnSaved="HandleProjectSaved"
+			  OnCancelled="HandleModalCancelled" OnClosed="HandleProjectModalClosed" />
 
-        @* Project Modal for Add/Edit *@
-        <ProjectModal @bind-IsVisible="ShowProjectModal" EditProject="@EditingProject" OnSaved="HandleProjectSaved"
-                      OnCancelled="HandleModalCancelled" OnClosed="HandleProjectModalClosed" />
+@* Delete Confirmation Modal *@
+<ModalDialog @bind-IsVisible="ShowDeleteModal" Title="Delete Project" Icon="exclamation-triangle"
+			 Size="ModalDialog.ModalSize.Small" OnClose="HandleDeleteModalClosed">
+	<ChildContent>
+		<p>Are you sure you want to delete <strong>@ProjectToDelete?.Name</strong>?</p>
+		<p class="text-body-secondary small">This will remove the project from VibeSwarm and delete all associated jobs.
+		</p>
 
-        @* Delete Confirmation Modal *@
-        <ModalDialog @bind-IsVisible="ShowDeleteModal" Title="Delete Project" Icon="exclamation-triangle"
-                     Size="ModalDialog.ModalSize.Small" OnClose="HandleDeleteModalClosed">
-            <ChildContent>
-                <p>Are you sure you want to delete <strong>@ProjectToDelete?.Name</strong>?</p>
-                <p class="text-body-secondary small">This will remove the project from VibeSwarm and delete all associated jobs.
-                </p>
-
-                <div class="form-check mt-3">
-                    <input class="form-check-input" type="checkbox" id="deleteDirectory" @bind="DeleteDirectoryConfirmed">
-                        <label class="form-check-label text-danger" for="deleteDirectory">
-                            <i class="bi bi-exclamation-triangle me-1"></i>
-                            Also delete the project directory from disk
-                        </label>
-                    </div>
-                    @if (DeleteDirectoryConfirmed)
-                    {
-                        <Alert Type="Alert.AlertType.Danger" Class="mt-2 py-2 px-3 small mb-0">
-                            <strong>Warning:</strong> This will permanently delete
-                            <code class="text-break">@ProjectToDelete?.WorkingPath</code>
-                            and all its contents!
-                        </Alert>
-                    }
-                </ChildContent>
-                <FooterContent>
-                    <button type="button" class="btn btn-secondary" @onclick="CancelDelete">Cancel</button>
-                    <button type="button" class="btn btn-danger" @onclick="ConfirmDelete" disabled="@IsDeleting">
-                        @if (IsDeleting)
-                        {
-                            <span class="spinner-border spinner-border-sm me-1" role="status"></span>
-                        }
-                        Delete@(DeleteDirectoryConfirmed ? " & Remove Files" : "")
-                    </button>
-                </FooterContent>
-            </ModalDialog>
+		<div class="form-check mt-3">
+			<input class="form-check-input" type="checkbox" id="deleteDirectory" @bind="DeleteDirectoryConfirmed">
+				<label class="form-check-label text-danger" for="deleteDirectory">
+					<i class="bi bi-exclamation-triangle me-1"></i>
+					Also delete the project directory from disk
+				</label>
+			</div>
+			@if (DeleteDirectoryConfirmed)
+			{
+				<Alert Type="Alert.AlertType.Danger" Class="mt-2 py-2 px-3 small mb-0">
+					<strong>Warning:</strong> This will permanently delete
+					<code class="text-break">@ProjectToDelete?.WorkingPath</code>
+					and all its contents!
+				</Alert>
+			}
+		</ChildContent>
+		<FooterContent>
+			<button type="button" class="btn btn-secondary" @onclick="CancelDelete">Cancel</button>
+			<button type="button" class="btn btn-danger" @onclick="ConfirmDelete" disabled="@IsDeleting">
+				@if (IsDeleting)
+				{
+					<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+				}
+				Delete@(DeleteDirectoryConfirmed ? " & Remove Files" : "")
+			</button>
+		</FooterContent>
+	</ModalDialog>
 
 @code {
     private List<ProjectInfoWithStats> ProjectsWithInfo { get; set; } = new();

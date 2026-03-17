@@ -28,7 +28,7 @@ public sealed class ProjectsPageTests
 
 		var services = new ServiceCollection();
 		services.AddLogging();
-		services.AddSingleton<IProjectService>(new FakeProjectService(project));
+		services.AddSingleton<IProjectService>(new FakeProjectService([project]));
 		services.AddSingleton<IJobService>(new FakeJobService());
 		services.AddSingleton<IVersionControlService>(new FakeVersionControlService());
 		services.AddSingleton<IProviderService>(new FakeProviderService());
@@ -50,28 +50,53 @@ public sealed class ProjectsPageTests
 		Assert.DoesNotContain("project-danger-menu", html);
 	}
 
-	private sealed class FakeProjectService(Project project) : IProjectService
+	[Fact]
+	public async Task RenderedProjectsPage_ShowsFilterTabs_WhenNoProjectsExist()
 	{
-		private readonly Project _project = project;
+		var services = new ServiceCollection();
+		services.AddLogging();
+		services.AddSingleton<IProjectService>(new FakeProjectService([]));
+		services.AddSingleton<IJobService>(new FakeJobService());
+		services.AddSingleton<IVersionControlService>(new FakeVersionControlService());
+		services.AddSingleton<IProviderService>(new FakeProviderService());
+		services.AddSingleton<ISettingsService>(new FakeSettingsService());
+		services.AddSingleton<NotificationService>();
+		services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
 
-		public Task<IEnumerable<Project>> GetAllAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Project>>([_project]);
-		public Task<IEnumerable<Project>> GetRecentAsync(int count, CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Project>>([_project]);
-		public Task<Project?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult<Project?>(id == _project.Id ? _project : null);
+		await using var renderer = new HtmlRenderer(services.BuildServiceProvider(), NullLoggerFactory.Instance);
+
+		var html = await renderer.Dispatcher.InvokeAsync(async () =>
+		{
+			var output = await renderer.RenderComponentAsync<Projects>();
+			return output.ToHtmlString();
+		});
+
+		Assert.Contains("Active", html);
+		Assert.Contains("Inactive", html);
+		Assert.Contains("No projects yet", html);
+	}
+
+	private sealed class FakeProjectService(IReadOnlyList<Project> projects) : IProjectService
+	{
+		private readonly IReadOnlyList<Project> _projects = projects;
+
+		public Task<IEnumerable<Project>> GetAllAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Project>>(_projects);
+		public Task<IEnumerable<Project>> GetRecentAsync(int count, CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Project>>(_projects.Take(count));
+		public Task<Project?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult(_projects.FirstOrDefault(project => project.Id == id));
 		public Task<Project?> GetByIdWithJobsAsync(Guid id, CancellationToken cancellationToken = default)
-			=> Task.FromResult<Project?>(id == _project.Id ? new Project { Id = _project.Id, Name = _project.Name, WorkingPath = _project.WorkingPath, IsActive = _project.IsActive, Jobs = [] } : null);
+			=> Task.FromResult(_projects.FirstOrDefault(project => project.Id == id) is Project project
+				? new Project { Id = project.Id, Name = project.Name, WorkingPath = project.WorkingPath, IsActive = project.IsActive, Jobs = [] }
+				: null);
 		public Task<Project> CreateAsync(Project project, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<Project> CreateProjectAsync(ProjectCreationRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<Project> UpdateAsync(Project project, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task DeleteAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<IEnumerable<ProjectWithStats>> GetAllWithStatsAsync(CancellationToken cancellationToken = default)
-			=> Task.FromResult<IEnumerable<ProjectWithStats>>(
-			[
-				new ProjectWithStats
+			=> Task.FromResult<IEnumerable<ProjectWithStats>>(_projects.Select(project => new ProjectWithStats
 				{
-					Project = _project,
+					Project = project,
 					Stats = new ProjectJobStats()
-				}
-			]);
+				}));
 		public Task<IEnumerable<DashboardProjectInfo>> GetRecentWithLatestJobAsync(int count, CancellationToken cancellationToken = default)
 			=> Task.FromResult<IEnumerable<DashboardProjectInfo>>([]);
 		public Task<DashboardJobMetrics> GetDashboardJobMetricsAsync(int rangeDays, CancellationToken cancellationToken = default)
