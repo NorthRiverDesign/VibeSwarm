@@ -67,17 +67,19 @@ else
                                 }
                                 @if (!project.IsActive)
                                 {
-                                    <span class="badge bg-secondary-subtle text-secondary-emphasis">Inactive</span>
+                                    <span class="small text-body-tertiary">Inactive</span>
                                 }
                                 @if (project.Environments.Any(environment => environment.IsEnabled))
                                 {
-                                    <span class="badge bg-info-subtle text-info-emphasis">
-                                        <i class="bi bi-globe2 me-1"></i>@project.Environments.Count(environment => environment.IsEnabled)
+                                    <span class="small text-body-secondary d-inline-flex align-items-center gap-1">
+                                        <i class="bi bi-globe2 opacity-75"></i>@project.Environments.Count(environment => environment.IsEnabled)
                                     </span>
                                 }
                                 @if (stats.ActiveJobs > 0)
                                 {
-                                    <span class="badge bg-primary bg-opacity-75">@stats.ActiveJobs active</span>
+                                    <span class="small text-body-secondary d-inline-flex align-items-center gap-1">
+                                        <i class="bi bi-activity opacity-75"></i>@stats.ActiveJobs running
+                                    </span>
                                 }
                             </div>
                             @if (!string.IsNullOrEmpty(project.Description))
@@ -85,10 +87,6 @@ else
                                 <div class="small text-body-secondary mt-1">@TruncateText(project.Description, 100)</div>
                             }
                             <div class="d-flex flex-wrap gap-2 gap-md-3 mt-2 small text-body-secondary">
-                                <span class="font-monospace bg-body-tertiary px-2 py-1 rounded-1 text-truncate"
-                                      style="max-width: min(280px, 50vw);" title="@project.WorkingPath">
-                                    @project.WorkingPath
-                                </span>
                                 @if (!string.IsNullOrEmpty(project.GitHubRepository))
                                 {
                                     <span class="d-flex align-items-center gap-1" title="GitHub Repository">
@@ -99,6 +97,13 @@ else
                                         </a>
                                     </span>
                                 }
+                                else
+                                {
+                                    <span class="font-monospace bg-body-tertiary px-2 py-1 rounded-1 text-truncate"
+                                          style="max-width: min(280px, 50vw);" title="@project.WorkingPath">
+                                        @project.WorkingPath
+                                    </span>
+                                }
                                 @if (!string.IsNullOrEmpty(currentBranch))
                                 {
                                     <span class="d-flex align-items-center gap-1" title="Current branch">
@@ -107,19 +112,16 @@ else
                                     </span>
                                 }
                             </div>
-                                @if (project.ProviderSelections.Any(pp => pp.IsEnabled))
-                                {
-                                    <div class="d-flex flex-wrap align-items-center gap-2 mt-2 small">
-                                        <span class="text-body-secondary d-flex align-items-center gap-1">
-                                            <i class="bi bi-diagram-3 opacity-75"></i>
-                                            Providers
-                                        </span>
-                                        @foreach (var selection in project.ProviderSelections.Where(pp => pp.IsEnabled).OrderBy(pp => pp.Priority))
-                                        {
-                                            <span class="badge bg-secondary-subtle text-secondary-emphasis">#@(selection.Priority + 1) @(selection.Provider?.Name ?? "Unknown")</span>
-                                        }
-                                    </div>
-                                }
+                            @if (project.ProviderSelections.Any(pp => pp.IsEnabled))
+                            {
+                                <div class="d-flex flex-wrap align-items-center gap-2 mt-2 small text-body-secondary">
+                                    <span class="d-flex align-items-center gap-1">
+                                        <i class="bi bi-diagram-3 opacity-75"></i>
+                                        Providers
+                                    </span>
+                                    <span>@string.Join("  •  ", project.ProviderSelections.Where(pp => pp.IsEnabled).OrderBy(pp => pp.Priority).Select(selection => $"#{selection.Priority + 1} {selection.Provider?.Name ?? "Unknown"}"))</span>
+                                </div>
+                            }
                             @* Job Statistics Row *@
                             @if (stats.TotalJobs > 0)
                             {
@@ -205,63 +207,11 @@ else
                                     }
                                 </div>
                                 <div class="d-flex align-items-center gap-2 flex-shrink-0">
-                                    @* Gear dropdown menu *@
-                                    <div class="dropdown">
-                                        <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"                                       id="project-menu-@project.Id"
-                                                data-bs-toggle="dropdown" aria-expanded="false" title="Project actions">
-                                            <i class="bi bi-gear"></i>
-                                        </button>
-                                        <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="project-menu-@project.Id">
-                                            <li>
-                                                <a class="dropdown-item" href="/projects/@project.Id">
-                                                    <i class="bi bi-eye me-2"></i>
-                                                    View Details
-                                                </a>
-                                            </li>
-                                            <li>
-                                                <button class="dropdown-item" @onclick="@(() => EditProject(project.Id))"
-                                                        @onclick:stopPropagation="true">
-                                                    <i class="bi bi-pencil me-2"></i>
-                                                    Edit
-                                                </button>
-                                            </li>
-                                            <li>
-                                                <button class="dropdown-item" @onclick="@(() => ToggleActive(project))"
-                                                        @onclick:stopPropagation="true">
-                                                    @if (project.IsActive)
-                                                    {
-                                                        <i class="bi bi-pause-circle me-2"></i>
-                                                        @:Deactivate
-                                                    }
-                                                    else
-                                                    {
-                                                        <i class="bi bi-play-circle me-2"></i>
-                                                        @:Activate
-                                                    }
-                                                </button>
-                                            </li>
-                                            @if (!string.IsNullOrEmpty(projectInfo.CurrentBranch))
-                                            {
-                                                <li>
-                                                    <button class="dropdown-item" @onclick="@(() => ResyncWithGit(project))"
-                                                            @onclick:stopPropagation="true">
-                                                        <i class="bi bi-arrow-repeat me-2"></i>
-                                                        Resync with Git
-                                                    </button>
-                                                </li>
-                                            }
-                                            <li>
-                                                <hr class="dropdown-divider">
-                                            </li>
-                                            <li>
-                                                <button class="dropdown-item text-danger"
-                                                        @onclick="@(() => ShowDeleteConfirmation(project))" @onclick:stopPropagation="true">
-                                                    <i class="bi bi-trash me-2"></i>
-                                                    Delete
-                                                </button>
-                                            </li>
-                                        </ul>
-                                    </div>
+                                    <ProjectActionsDropdown DetailsHref="@($"/projects/{project.Id}")" OnEdit="@(() => EditProject(project.Id))"
+                                                            IsActive="@project.IsActive" OnToggleActive="@(() => ToggleActive(project))"
+                                                            ShowSyncAction="@(!string.IsNullOrEmpty(projectInfo.CurrentBranch))"
+                                                            SyncLabel="Resync with Git" OnSync="@(() => ResyncWithGit(project))"
+                                                            ShowDeleteAction="true" OnDelete="@(() => ShowDeleteConfirmation(project))" />
                                 </div>
                             </div>
                         </div>

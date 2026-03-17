@@ -8,17 +8,9 @@
 	<div class="card-body bg-body-secondary p-3">
 		@* Row 1: Title and Git controls *@
 		<div class="d-flex flex-wrap align-items-center gap-2 gap-md-3">
-			@* Title Section with GitHub link *@
+			@* Title Section *@
 			<div class="d-flex align-items-center gap-2 flex-shrink-0">
 				<h3 class="mb-0 fs-5 fw-semibold">@Name</h3>
-				@if (!string.IsNullOrEmpty(GitHubRepository))
-				{
-					<a href="https://github.com/@GitHubRepository" target="_blank"
-						   class="d-flex align-items-center gap-1 text-body-secondary text-decoration-none"
-						   title="View on GitHub: @GitHubRepository">
-						<i class="bi bi-github"></i>
-					</a>
-				}
 			</div>
 
 			@* Spacer *@
@@ -49,17 +41,12 @@
 							</span>
 						}
 
-						@if (HasUncommittedChanges)
-						{
-							<UncommittedChangesButton FilesCount="@UncommittedFilesCount" OnClick="OnUncommittedChangesClick" />
-						}
-
-						<GitActionsDropdown IsDisabled="@IsGitOperationInProgress" IsSyncing="@(_currentGitOperation == "sync")"
-											IsRefreshing="@(_currentGitOperation == "refresh")" IsPruning="@(_currentGitOperation == "prune")"
-											OnCreateBranch="OnCreateBranch" OnSync="OnSync" OnRefresh="OnRefresh"
-											OnPruneBranches="OnPruneBranches" />
-					</div>
-				}
+					@if (HasUncommittedChanges)
+					{
+						<UncommittedChangesButton FilesCount="@UncommittedFilesCount" OnClick="OnUncommittedChangesClick" />
+					}
+				</div>
+			}
 			else if (IsLoadingGitInfo)
 				{
 					@* Loading indicator while checking Git status *@
@@ -71,7 +58,13 @@
 				}
 
 				@* Project Actions Dropdown *@
-				<ProjectActionsDropdown OnEdit="OnEdit" IsActive="IsActive" OnToggleActive="OnToggleActive" />
+				<ProjectActionsDropdown OnEdit="OnEdit" IsActive="IsActive"
+										OnToggleActive="OnToggleActive" ShowSyncAction="@IsGitRepository"
+										ShowCreateBranchAction="@IsGitRepository" ShowRefreshAction="@IsGitRepository"
+										ShowPruneBranchesAction="@IsGitRepository" IsSyncing="@(_currentGitOperation == "sync")"
+										IsRefreshing="@(_currentGitOperation == "refresh")" IsPruning="@(_currentGitOperation == "prune")"
+										OnCreateBranch="OnCreateBranch" OnSync="OnSync" OnRefresh="OnRefresh"
+										OnPruneBranches="OnPruneBranches" />
 			</div>
 
 			@* Mobile-only Git controls row *@
@@ -98,31 +91,25 @@
 						<UncommittedChangesButton FilesCount="@UncommittedFilesCount" OnClick="OnUncommittedChangesClick" />
 					}
 
-					<GitActionsDropdown IsDisabled="@IsGitOperationInProgress" IsSyncing="@(_currentGitOperation == "sync")"
-										IsRefreshing="@(_currentGitOperation == "refresh")" IsPruning="@(_currentGitOperation == "prune")"
-										OnCreateBranch="OnCreateBranch" OnSync="OnSync" OnRefresh="OnRefresh"
-										OnPruneBranches="OnPruneBranches" />
 				</div>
 			}
 
 			@* Row 2: Working path, stats *@
 			<div class="d-flex flex-wrap align-items-center gap-2 gap-md-3 mt-2 pt-2 border-top border-body-tertiary small">
-				@* Working Path *@
+				@* Source details *@
+				@if (!string.IsNullOrEmpty(GitHubRepository))
+				{
+					<a href="https://github.com/@GitHubRepository" target="_blank"
+						   class="d-flex align-items-center gap-1 text-body-secondary text-decoration-none hover-underline">
+						<i class="bi bi-github opacity-75"></i>
+						<span class="font-monospace text-truncate" style="max-width: min(220px, 45vw);">@GitHubRepository</span>
+					</a>
+				}
 				<div class="d-flex align-items-center gap-1 text-body-secondary">
 					<i class="bi bi-folder opacity-75"></i>
 					<code class="bg-body-tertiary px-2 py-1 rounded-1 text-truncate d-inline-block"
 						  style="max-width: min(280px, 50vw);" title="@WorkingPath">@WorkingPath</code>
 				</div>
-
-				@* GitHub Repository (mobile-friendly text version) *@
-				@if (!string.IsNullOrEmpty(GitHubRepository))
-				{
-					<a href="https://github.com/@GitHubRepository" target="_blank"
-						   class="d-flex d-md-none align-items-center gap-1 text-body-secondary text-decoration-none hover-underline">
-						<i class="bi bi-github opacity-75"></i>
-						<span class="text-truncate" style="max-width: 150px;">@GitHubRepository</span>
-					</a>
-				}
 
 				@* Spacer *@
 				<div class="flex-grow-1"></div>

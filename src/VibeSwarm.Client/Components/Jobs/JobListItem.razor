@@ -49,17 +49,21 @@
             <div class="d-flex flex-wrap align-items-center gap-2 small text-body-secondary">
                 @if (!string.IsNullOrEmpty(ProjectName) && ShowProjectName)
                 {
-                    <span class="badge bg-secondary-subtle text-secondary-emphasis">@ProjectName</span>
+                    <span class="fw-medium">@ProjectName</span>
+                }
+                @if (!string.IsNullOrEmpty(ProviderModelDisplay))
+                {
+                    <span class="d-inline-flex align-items-center gap-1 px-2 py-1 bg-body-tertiary rounded-pill text-body-secondary"
+                          title="Provider and model">
+                        <i class="bi bi-cpu opacity-75"></i>
+                        <span>@ProviderModelDisplay</span>
+                    </span>
                 }
                 @if (MaxCycles > 1)
                 {
-                    <span class="badge bg-info-subtle text-info-emphasis" title="@GetCycleModeTitle()">
-                        <i class="bi bi-arrow-repeat me-1"></i>@CurrentCycle/@MaxCycles
+                    <span title="@GetCycleModeTitle()">
+                        <i class="bi bi-arrow-repeat me-1 opacity-75"></i>@CurrentCycle/@MaxCycles
                     </span>
-                }
-                @if (!string.IsNullOrEmpty(ModelUsed))
-                {
-                    <span class="text-body-tertiary">@FormatModelName(ModelUsed)</span>
                 }
                 @if (!string.IsNullOrEmpty(Activity) && IsActiveStatus())
                 {
@@ -123,6 +127,9 @@
     public string? ModelUsed { get; set; }
 
     [Parameter]
+    public string? ProviderName { get; set; }
+
+    [Parameter]
     public string? Activity { get; set; }
 
     [Parameter]
@@ -153,6 +160,8 @@
     public CycleMode CycleMode { get; set; } = CycleMode.SingleCycle;
 
     private bool _isSelected => IsSelected;
+
+    private string? ProviderModelDisplay => BuildProviderModelDisplay(ProviderName, ModelUsed);
 
     private bool IsActiveStatus()
     {
@@ -196,5 +205,22 @@
         }
 
         return model.Length > 20 ? model[..20] + "..." : model;
+    }
+
+    private static string? BuildProviderModelDisplay(string? providerName, string? modelName)
+    {
+        var parts = new List<string>();
+
+        if (!string.IsNullOrWhiteSpace(providerName))
+        {
+            parts.Add(providerName);
+        }
+
+        if (!string.IsNullOrWhiteSpace(modelName))
+        {
+            parts.Add(FormatModelName(modelName));
+        }
+
+        return parts.Count == 0 ? null : string.Join(" / ", parts);
     }
 }

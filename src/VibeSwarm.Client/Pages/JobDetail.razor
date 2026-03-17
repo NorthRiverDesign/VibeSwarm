@@ -31,7 +31,7 @@ else
     @* Page Header Section *@
     <JobHeaderSection Status="@Job.Status" JobTitle="@Job.Title" CancellationRequested="@Job.CancellationRequested"
                       GitHubRepository="@Job.Project?.GitHubRepository" BranchName="@_branchName" ProjectId="@Job.ProjectId"
-                      ProjectName="@(Job.Project?.Name ?? "Unknown")" ProviderName="@(Job.Provider?.Name ?? "Unknown")"
+                      ProjectName="@(Job.Project?.Name ?? "Unknown")" ProviderName="@Job.Provider?.Name"
                       ProcessId="@Job.ProcessId" CreatedAt="@Job.CreatedAt" StartedAt="@Job.StartedAt" CompletedAt="@Job.CompletedAt"
 					   ExecutionDuration="@Job.ExecutionDuration" ModelUsed="@Job.ModelUsed" RetryCount="@Job.RetryCount"
 					   InputTokens="@Job.InputTokens" OutputTokens="@Job.OutputTokens" TotalCostUsd="@Job.TotalCostUsd"

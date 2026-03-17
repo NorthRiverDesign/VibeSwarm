@@ -16,7 +16,7 @@ namespace VibeSwarm.Tests;
 public sealed class ProjectsPageTests
 {
 	[Fact]
-	public async Task RenderedProjectsPage_ShowsResyncAction_InsteadOfPruneBranches()
+	public async Task RenderedProjectsPage_GroupsGitActionsUnderProjectOptions()
 	{
 		var project = new Project
 		{
@@ -44,8 +44,10 @@ public sealed class ProjectsPageTests
 			return output.ToHtmlString();
 		});
 
+		Assert.Contains("View Details", html);
+		Assert.Contains("Git", html);
 		Assert.Contains("Resync with Git", html);
-		Assert.DoesNotContain("Prune Branches", html);
+		Assert.DoesNotContain("project-danger-menu", html);
 	}
 
 	private sealed class FakeProjectService(Project project) : IProjectService

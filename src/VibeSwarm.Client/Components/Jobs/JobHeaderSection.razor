@@ -131,63 +131,42 @@
 			</div>
 		</div>
 
-		@* Activity indicator when job is running *@
-		@if (IsRunning && !string.IsNullOrEmpty(CurrentActivity))
-		{
-			<div
-				class="d-flex align-items-center gap-2 mb-2 p-2 bg-info bg-opacity-10 rounded border border-info border-opacity-25">
-				<span class="spinner-border spinner-border-sm text-info" role="status"></span>
-				<span class="text-body small fw-medium">@CurrentActivity</span>
-				@if (LastActivityAt.HasValue)
-				{
-					<span class="text-body-secondary small ms-auto">@LastActivityAt.Value.FormatTime()</span>
-				}
-			</div>
-		}
-
-		@* Metadata chips row - Status badge moved here with provider *@
+		@* Metadata row - keep the most important state visible without extra noise *@
 		<div class="d-flex flex-wrap align-items-center gap-2 mb-2">
 			<StatusBadge Status="@Status.ToString()" />
 			@if (CancellationRequested && IsRunning)
 			{
 				<StatusBadge Status="Cancelling" />
 			}
-			@if (!string.IsNullOrEmpty(ProviderName))
+			@if (!string.IsNullOrEmpty(ProviderModelDisplay))
 			{
-				<span class="badge bg-primary bg-opacity-75 d-inline-flex align-items-center gap-1 fw-normal"
-					  title="Provider">
-					<i class="bi bi-robot"></i>
-					<span>@ProviderName</span>
-				</span>
-			}
-			@if (!string.IsNullOrEmpty(GitHubRepository))
-			{
-				<span class="badge bg-dark bg-opacity-75 d-inline-flex align-items-center gap-1 fw-normal">
-					<i class="bi bi-github"></i>
-					<span>@GitHubRepository</span>
+				<span class="d-inline-flex align-items-center gap-2 px-2 py-1 bg-body-tertiary rounded-pill small text-body-secondary"
+					  title="Provider and model">
+					<i class="bi bi-cpu opacity-75"></i>
+					<span>@ProviderModelDisplay</span>
 				</span>
 			}
 			@if (!string.IsNullOrEmpty(BranchName))
 			{
-				<span class="badge bg-secondary bg-opacity-75 d-inline-flex align-items-center gap-1 fw-normal">
-					<i class="bi bi-diagram-2"></i>
+				<span class="d-inline-flex align-items-center gap-1 px-2 py-1 bg-body-tertiary rounded-pill small text-body-secondary">
+					<i class="bi bi-diagram-2 opacity-75"></i>
 					<span>@BranchName</span>
 				</span>
 			}
 			@if (ProcessId.HasValue)
 			{
 				<span
-					class="badge bg-secondary bg-opacity-50 d-inline-flex align-items-center gap-1 fw-normal d-none d-sm-inline-flex"
+					class="d-none d-sm-inline-flex align-items-center gap-1 px-2 py-1 bg-body-tertiary rounded-pill small text-body-tertiary"
 					title="Process ID">
-					<i class="bi bi-cpu"></i>
+					<i class="bi bi-cpu opacity-75"></i>
 					<span>PID: @ProcessId</span>
 				</span>
 			}
 			@if (MaxCycles > 1)
 			{
-				<span class="badge bg-info bg-opacity-75 d-inline-flex align-items-center gap-1 fw-normal"
+				<span class="d-inline-flex align-items-center gap-1 px-2 py-1 bg-body-tertiary rounded-pill small text-body-secondary"
 					  title="@GetCycleModeTitle()">
-					<i class="bi bi-arrow-repeat"></i>
+					<i class="bi bi-arrow-repeat opacity-75"></i>
 					<span>Cycle @CurrentCycle/@MaxCycles</span>
 				</span>
 			}
@@ -226,15 +205,8 @@
 							@if (ShowStats)
 							{
 								<div class="d-flex flex-wrap gap-2 gap-sm-3 mt-2 pt-2 border-top border-secondary border-opacity-25 small">
-									@if (!string.IsNullOrEmpty(ModelUsed))
-									{
-										<span class="d-inline-flex align-items-center px-2 py-1 bg-body-tertiary rounded-pill text-nowrap"
-											  title="Model">
-											<i class="bi bi-cpu me-1 opacity-75"></i>@ModelUsed
-										</span>
-									}
-									@if (RetryCount > 0)
-									{
+							@if (RetryCount > 0)
+							{
 										<span class="d-inline-flex align-items-center px-2 py-1 bg-body-tertiary rounded-pill text-nowrap"
 											  title="Attempt Number">
 											<i class="bi bi-arrow-repeat me-1 opacity-75"></i>Attempt @(RetryCount + 1)
@@ -419,7 +391,9 @@
 
 	private bool IsRunning => Status == JobStatus.Started || Status == JobStatus.Processing;
 
-	private bool ShowStats => !string.IsNullOrEmpty(ModelUsed) ||
+	private string? ProviderModelDisplay => BuildProviderModelDisplay();
+
+	private bool ShowStats =>
 	(InputTokens.HasValue && InputTokens.Value > 0) ||
 	(OutputTokens.HasValue && OutputTokens.Value > 0) ||
 	(TotalCostUsd.HasValue && TotalCostUsd.Value > 0) ||
@@ -433,5 +407,22 @@
 			CycleMode.Autonomous => $"Autonomous Mode: {CurrentCycle} of {MaxCycles} max cycles",
 			_ => $"Cycle {CurrentCycle} of {MaxCycles}"
 		};
+	}
+
+	private string? BuildProviderModelDisplay()
+	{
+		var parts = new List<string>();
+
+		if (!string.IsNullOrWhiteSpace(ProviderName))
+		{
+			parts.Add(ProviderName);
+		}
+
+		if (!string.IsNullOrWhiteSpace(ModelUsed))
+		{
+			parts.Add(ModelUsed);
+		}
+
+		return parts.Count == 0 ? null : string.Join(" / ", parts);
 	}
 }

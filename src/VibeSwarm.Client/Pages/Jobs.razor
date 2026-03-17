@@ -189,7 +189,7 @@ else
                     {
                         <JobListItem Status="@job.Status.ToString()" Prompt="@GetJobDisplayTitle(job)"
                                      ProjectName="@(job.Project?.Name ?? "Unknown")" ShowProjectName="@(_selectedProjectId == null)"
-                                     ModelUsed="@job.ModelUsed"
+                                     ProviderName="@job.Provider?.Name" ModelUsed="@job.ModelUsed"
                                      Activity="@((job.Status == JobStatus.Started || job.Status == JobStatus.Processing) ? (job.CurrentActivity ?? "Working...") : null)"
                                      TimeDisplay="@GetTimeDisplay(job)" Cost="@job.TotalCostUsd" InputTokens="@job.InputTokens"
                                      OutputTokens="@job.OutputTokens" CurrentCycle="@job.CurrentCycle" MaxCycles="@job.MaxCycles"

@@ -11,29 +11,29 @@
 		}
 
 		@* Repository or Working Path *@
-		<div class="mb-2">
+		<div class="mb-2 small text-body-secondary">
 			@if (!string.IsNullOrEmpty(GitHubRepository))
 			{
-				<div class="d-flex align-items-center gap-2 small">
+				<div class="d-flex align-items-center gap-2 min-width-0">
 					<i class="bi bi-github opacity-75"></i>
-					<span class="text-body-secondary font-monospace text-truncate" style="max-width: min(150px, 40vw);"
+					<span class="font-monospace text-truncate" style="max-width: min(180px, 50vw);"
 						title="@GitHubRepository">
 						@GitHubRepository
 					</span>
 					@if (!string.IsNullOrEmpty(CurrentBranch))
 					{
-						<span class="badge bg-secondary-subtle text-secondary-emphasis">
-							<i class="bi bi-git me-1"></i>@TruncateText(CurrentBranch, 15)
+						<span class="text-body-tertiary">/</span>
+						<span class="text-truncate" title="@CurrentBranch">
+							<i class="bi bi-git me-1 opacity-75"></i>@TruncateText(CurrentBranch, 18)
 						</span>
 					}
 				</div>
 			}
 			else
 			{
-			<small class="text-body-secondary font-monospace text-truncate d-block" style="max-width: min(220px, 60vw);"
-					title="@WorkingPath">
+				<div class="font-monospace text-truncate d-block" style="max-width: min(220px, 60vw);" title="@WorkingPath">
 					<i class="bi bi-folder2 me-1 opacity-75"></i>@TruncateText(WorkingPath, 30)
-				</small>
+				</div>
 			}
 		</div>
 

@@ -3,34 +3,113 @@
 <div class="dropdown flex-shrink-0">
 	<button class="btn btn-sm btn-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown"
 			aria-expanded="false" title="Project actions">
-		<i class="bi bi-gear"></i>
+		<i class="bi bi-gear me-sm-1"></i>
+		<span class="d-none d-sm-inline">Options</span>
 	</button>
 	<ul class="dropdown-menu dropdown-menu-end">
-		<li>
-			<button class="dropdown-item" @onclick="OnEdit">
-				<i class="bi bi-pencil me-2 text-primary"></i>Edit Project
-			</button>
-		</li>
-		<li>
-			<button class="dropdown-item" @onclick="OnToggleActive">
-				@if (IsActive)
-				{
-					<i class="bi bi-pause-circle me-2 text-secondary"></i>
-
-					@:Deactivate
-				}
-				else
-				{
-					<i class="bi bi-play-circle me-2 text-success"></i>
-
-					@:Activate
-				}
-			</button>
-		</li>
+		@if (!string.IsNullOrEmpty(DetailsHref))
+		{
+			<li>
+				<a class="dropdown-item" href="@DetailsHref">
+					<i class="bi bi-eye me-2"></i>View Details
+				</a>
+			</li>
+		}
+		@if (OnEdit.HasDelegate)
+		{
+			<li>
+				<button class="dropdown-item" @onclick="OnEdit">
+					<i class="bi bi-pencil me-2 text-primary"></i>Edit Project
+				</button>
+			</li>
+		}
+		@if (OnToggleActive.HasDelegate)
+		{
+			<li>
+				<button class="dropdown-item" @onclick="OnToggleActive">
+					@if (IsActive)
+					{
+						<i class="bi bi-pause-circle me-2 text-secondary"></i>
+						@:Deactivate
+					}
+					else
+					{
+						<i class="bi bi-play-circle me-2 text-success"></i>
+						@:Activate
+					}
+				</button>
+			</li>
+		}
+		@if (HasGitActions)
+		{
+			<li><hr class="dropdown-divider"></li>
+			<li><h6 class="dropdown-header">Git</h6></li>
+			@if (ShowSyncAction)
+			{
+				<li>
+					<button class="dropdown-item" @onclick="OnSync" disabled="@AreGitActionsBusy">
+						@if (IsSyncing)
+						{
+							<span class="spinner-border spinner-border-sm me-2" role="status"></span>
+						}
+						else
+						{
+							<i class="bi bi-arrow-repeat me-2 text-success"></i>
+						}
+						@SyncLabel
+					</button>
+				</li>
+			}
+			@if (ShowCreateBranchAction)
+			{
+				<li>
+					<button class="dropdown-item" @onclick="OnCreateBranch" disabled="@AreGitActionsBusy">
+						<i class="bi bi-plus-lg me-2 text-primary"></i>New Branch
+					</button>
+				</li>
+			}
+			@if (ShowPruneBranchesAction)
+			{
+				<li>
+					<button class="dropdown-item" @onclick="OnPruneBranches" disabled="@AreGitActionsBusy">
+						@if (IsPruning)
+						{
+							<span class="spinner-border spinner-border-sm me-2" role="status"></span>
+						}
+						else
+						{
+							<i class="bi bi-scissors me-2 text-warning"></i>
+						}
+						Prune Stale Branches
+					</button>
+				</li>
+			}
+			@if (ShowRefreshAction)
+			{
+				<li>
+					<button class="dropdown-item" @onclick="OnRefresh" disabled="@AreGitActionsBusy">
+						<i class="bi bi-arrow-clockwise me-2 @(IsRefreshing ? "spin" : string.Empty)"></i>
+						Refresh Branches
+					</button>
+				</li>
+			}
+		}
+		@if (ShowDeleteAction)
+		{
+			<li><hr class="dropdown-divider"></li>
+			<li>
+				<button class="dropdown-item text-danger" @onclick="OnDelete">
+					<i class="bi bi-trash me-2"></i>@DeleteLabel
+				</button>
+			</li>
+		}
 	</ul>
 </div>
 
 @code {
+	[Parameter]
+	public string? DetailsHref { get; set; }
+
 	[Parameter]
 	public EventCallback OnEdit { get; set; }
 
@@ -39,4 +118,53 @@
 
 	[Parameter]
 	public EventCallback OnToggleActive { get; set; }
+
+	[Parameter]
+	public bool ShowSyncAction { get; set; }
+
+	[Parameter]
+	public string SyncLabel { get; set; } = "Sync with Origin";
+
+	[Parameter]
+	public bool ShowCreateBranchAction { get; set; }
+
+	[Parameter]
+	public bool ShowRefreshAction { get; set; }
+
+	[Parameter]
+	public bool ShowPruneBranchesAction { get; set; }
+
+	[Parameter]
+	public bool IsSyncing { get; set; }
+
+	[Parameter]
+	public bool IsRefreshing { get; set; }
+
+	[Parameter]
+	public bool IsPruning { get; set; }
+
+	[Parameter]
+	public EventCallback OnSync { get; set; }
+
+	[Parameter]
+	public EventCallback OnCreateBranch { get; set; }
+
+	[Parameter]
+	public EventCallback OnRefresh { get; set; }
+
+	[Parameter]
+	public EventCallback OnPruneBranches { get; set; }
+
+	[Parameter]
+	public bool ShowDeleteAction { get; set; }
+
+	[Parameter]
+	public string DeleteLabel { get; set; } = "Delete";
+
+	[Parameter]
+	public EventCallback OnDelete { get; set; }
+
+	private bool HasGitActions => ShowSyncAction || ShowCreateBranchAction || ShowRefreshAction || ShowPruneBranchesAction;
+
+	private bool AreGitActionsBusy => IsSyncing || IsRefreshing || IsPruning;
 }
