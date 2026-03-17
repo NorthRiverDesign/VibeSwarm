@@ -230,16 +230,6 @@ public class IdeaService : IIdeaService
 			idea.IsProcessing = true;
 			await _dbContext.SaveChangesAsync(cancellationToken);
 
-			// Notify clients immediately that this idea is now being processed
-			if (_jobUpdateService != null)
-			{
-				try
-				{
-					await _jobUpdateService.NotifyIdeaUpdated(idea.Id, idea.ProjectId);
-				}
-				catch { /* Don't fail if notification fails */ }
-			}
-
 			// Get the default provider
 			var defaultProvider = await _providerService.GetDefaultAsync(cancellationToken);
 			if (defaultProvider == null)

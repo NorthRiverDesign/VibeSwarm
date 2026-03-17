@@ -549,6 +549,51 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 	}
 
 	[Fact]
+	public async Task ConvertToJobAsync_NotifiesIdeaStartedWithoutIdeaUpdated()
+	{
+		await using var dbContext = CreateDbContext();
+		var project = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Idea Notification Project",
+			WorkingPath = "/tmp/idea-notification-project",
+			IdeasAutoExpand = false
+		};
+		var provider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Copilot",
+			Type = ProviderType.Copilot,
+			IsEnabled = true,
+			IsDefault = true
+		};
+		var idea = new Idea
+		{
+			Id = Guid.NewGuid(),
+			ProjectId = project.Id,
+			Description = "Start this idea once",
+			SortOrder = 0
+		};
+
+		dbContext.Projects.Add(project);
+		dbContext.Providers.Add(provider);
+		dbContext.Ideas.Add(idea);
+		await dbContext.SaveChangesAsync();
+
+		var jobUpdateService = new FakeJobUpdateService();
+		var ideaService = CreateIdeaService(dbContext, provider, jobUpdateService: jobUpdateService);
+		var job = await ideaService.ConvertToJobAsync(idea.Id);
+
+		Assert.NotNull(job);
+		Assert.Empty(jobUpdateService.IdeaUpdatedNotifications);
+
+		var startedNotification = Assert.Single(jobUpdateService.IdeaStartedNotifications);
+		Assert.Equal(idea.Id, startedNotification.IdeaId);
+		Assert.Equal(project.Id, startedNotification.ProjectId);
+		Assert.Equal(job!.Id, startedNotification.JobId);
+	}
+
+	[Fact]
 	public async Task ProcessNextIdeaIfReadyAsync_WaitsForExistingProjectJobToFinish()
 	{
 		await using var dbContext = CreateDbContext();
@@ -1194,7 +1239,8 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		Provider provider,
 		IProvider? providerInstance = null,
 		IEnumerable<ProviderModel>? models = null,
-		IInferenceService? inferenceService = null)
+		IInferenceService? inferenceService = null,
+		IJobUpdateService? jobUpdateService = null)
 	{
 		var serviceProvider = new ServiceCollection().BuildServiceProvider();
 		var jobService = new JobService(dbContext, serviceProvider);
@@ -1207,7 +1253,8 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 			providerService,
 			versionControlService,
 			NullLogger<IdeaService>.Instance,
-			inferenceService);
+			inferenceService,
+			jobUpdateService);
 	}
 
 	public void Dispose()
@@ -1372,6 +1419,44 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 				SystemPrompt = systemPrompt
 			};
 			return Task.FromResult(Response);
+		}
+	}
+
+	private sealed class FakeJobUpdateService : IJobUpdateService
+	{
+		public List<(Guid IdeaId, Guid ProjectId)> IdeaUpdatedNotifications { get; } = [];
+		public List<(Guid IdeaId, Guid ProjectId, Guid JobId)> IdeaStartedNotifications { get; } = [];
+
+		public Task NotifyJobStatusChanged(Guid jobId, string status) => Task.CompletedTask;
+		public Task NotifyJobActivity(Guid jobId, string activity, DateTime timestamp) => Task.CompletedTask;
+		public Task NotifyJobMessageAdded(Guid jobId) => Task.CompletedTask;
+		public Task NotifyJobCompleted(Guid jobId, bool success, string? errorMessage = null) => Task.CompletedTask;
+		public Task NotifyJobListChanged() => Task.CompletedTask;
+		public Task NotifyJobCreated(Guid jobId, Guid projectId) => Task.CompletedTask;
+		public Task NotifyJobDeleted(Guid jobId, Guid projectId) => Task.CompletedTask;
+		public Task NotifyJobHeartbeat(Guid jobId, DateTime timestamp) => Task.CompletedTask;
+		public Task NotifyJobOutput(Guid jobId, string line, bool isError, DateTime timestamp) => Task.CompletedTask;
+		public Task NotifyProcessStarted(Guid jobId, int processId, string command) => Task.CompletedTask;
+		public Task NotifyProcessExited(Guid jobId, int processId, int exitCode, TimeSpan duration) => Task.CompletedTask;
+		public Task NotifyJobGitDiffUpdated(Guid jobId, bool hasChanges) => Task.CompletedTask;
+		public Task NotifyJobInteractionRequired(Guid jobId, string prompt, string interactionType, List<string>? choices = null, string? defaultResponse = null) => Task.CompletedTask;
+		public Task NotifyJobResumed(Guid jobId) => Task.CompletedTask;
+		public Task NotifyJobCycleProgress(Guid jobId, int currentCycle, int maxCycles) => Task.CompletedTask;
+		public Task NotifyIdeasProcessingStateChanged(Guid projectId, bool isActive) => Task.CompletedTask;
+		public Task NotifyIdeaCreated(Guid ideaId, Guid projectId) => Task.CompletedTask;
+		public Task NotifyIdeaDeleted(Guid ideaId, Guid projectId) => Task.CompletedTask;
+		public Task NotifyProviderUsageWarning(Guid providerId, string providerName, int percentUsed, string message, bool isExhausted, DateTime? resetTime) => Task.CompletedTask;
+
+		public Task NotifyIdeaStarted(Guid ideaId, Guid projectId, Guid jobId)
+		{
+			IdeaStartedNotifications.Add((ideaId, projectId, jobId));
+			return Task.CompletedTask;
+		}
+
+		public Task NotifyIdeaUpdated(Guid ideaId, Guid projectId)
+		{
+			IdeaUpdatedNotifications.Add((ideaId, projectId));
+			return Task.CompletedTask;
 		}
 	}
 }
