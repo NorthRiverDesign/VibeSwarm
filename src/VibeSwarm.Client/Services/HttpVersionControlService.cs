@@ -177,20 +177,39 @@ public class HttpVersionControlService : IVersionControlService
         return await response.Content.ReadFromJsonAsync<GitOperationResult>(ct) ?? new GitOperationResult { Success = false, Error = "Failed to parse response" };
     }
 
+    public async Task<GitOperationResult> PreviewMergeBranchAsync(
+        string workingDirectory,
+        string sourceBranch,
+        string targetBranch,
+        string remoteName = "origin",
+        CancellationToken ct = default)
+    {
+        var response = await _http.PostAsJsonAsync("/api/git/preview-merge-branch", new
+        {
+            Path = workingDirectory,
+            SourceBranch = sourceBranch,
+            TargetBranch = targetBranch,
+            Remote = remoteName
+        }, ct);
+        return await response.Content.ReadFromJsonAsync<GitOperationResult>(ct) ?? new GitOperationResult { Success = false, Error = "Failed to parse response" };
+    }
+
     public async Task<GitOperationResult> MergeBranchAsync(
         string workingDirectory,
         string sourceBranch,
         string targetBranch,
         string remoteName = "origin",
         Action<string>? progressCallback = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        bool pushAfterMerge = true)
     {
         var response = await _http.PostAsJsonAsync("/api/git/merge-branch", new
         {
             Path = workingDirectory,
             SourceBranch = sourceBranch,
             TargetBranch = targetBranch,
-            Remote = remoteName
+            Remote = remoteName,
+            PushAfterMerge = pushAfterMerge
         }, ct);
         return await response.Content.ReadFromJsonAsync<GitOperationResult>(ct) ?? new GitOperationResult { Success = false, Error = "Failed to parse response" };
     }

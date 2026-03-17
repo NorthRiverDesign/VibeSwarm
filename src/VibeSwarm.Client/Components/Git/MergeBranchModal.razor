@@ -1,0 +1,181 @@
+@* Merge current branch into another branch modal *@
+
+<ModalDialog IsVisible="IsVisible" IsVisibleChanged="HandleModalVisibilityChanged" Title="Merge Branch"
+	Icon="arrow-left-right" Size="ModalDialog.ModalSize.Default">
+	<ChildContent>
+		@if (string.IsNullOrWhiteSpace(CurrentBranch))
+		{
+			<div class="alert alert-warning py-2 mb-0 d-flex align-items-center gap-2">
+				<i class="bi bi-exclamation-triangle-fill"></i>
+				<span>A current branch is required before merging.</span>
+			</div>
+		}
+		else if (TargetBranches.Count == 0)
+		{
+			<div class="alert alert-warning py-2 mb-0 d-flex align-items-center gap-2">
+				<i class="bi bi-signpost-split-fill"></i>
+				<span>No other local branches are available to merge into.</span>
+			</div>
+		}
+		else
+		{
+			<p class="mb-3">
+				Merge the current working branch <strong class="text-primary">@CurrentBranch</strong>
+				into another branch.
+			</p>
+
+			<div class="mb-3">
+				<label for="mergeTargetBranch" class="form-label small fw-medium">Target Branch</label>
+				<select id="mergeTargetBranch" class="form-select" value="@SelectedTargetBranch"
+					@onchange="HandleTargetBranchChanged" disabled="@(IsCheckingPreview || IsMerging)">
+					@foreach (var branch in TargetBranches)
+					{
+						<option value="@branch">@branch</option>
+					}
+				</select>
+				<div class="form-text">
+					VibeSwarm checks for merge conflicts before applying any changes to the repository.
+				</div>
+			</div>
+
+			<div class="form-check mb-3">
+				<input id="pushAfterMerge" class="form-check-input" type="checkbox" checked="@PushAfterMerge"
+					@onchange="HandlePushAfterMergeChanged" disabled="@IsMerging" />
+				<label class="form-check-label" for="pushAfterMerge">
+					Push target branch after merging
+				</label>
+			</div>
+
+			@if (IsCheckingPreview)
+			{
+				<div class="alert alert-info py-2 mb-0 d-flex align-items-center gap-2">
+					<span class="spinner-border spinner-border-sm" role="status"></span>
+					<span>Checking whether the merge can be applied cleanly...</span>
+				</div>
+			}
+			else if (!string.IsNullOrWhiteSpace(PreviewError))
+			{
+				<div class="alert alert-danger py-2 mb-0 d-flex align-items-start gap-2">
+					<i class="bi bi-exclamation-triangle-fill mt-1 flex-shrink-0"></i>
+					<div>@PreviewError</div>
+				</div>
+			}
+			else if (!string.IsNullOrWhiteSpace(PreviewMessage))
+			{
+				<div class="alert alert-success py-2 mb-0 d-flex align-items-start gap-2">
+					<i class="bi bi-check-circle-fill mt-1 flex-shrink-0"></i>
+					<div>@PreviewMessage</div>
+				</div>
+			}
+		}
+	</ChildContent>
+	<FooterContent>
+		<button type="button" class="btn btn-secondary" @onclick="HandleCancel" disabled="@IsMerging">
+			Cancel
+		</button>
+		<button type="button" class="btn btn-primary" @onclick="HandleMerge"
+			disabled="@(IsMerging || IsCheckingPreview || string.IsNullOrWhiteSpace(CurrentBranch) || TargetBranches.Count == 0 || string.IsNullOrWhiteSpace(SelectedTargetBranch) || !string.IsNullOrWhiteSpace(PreviewError))">
+			@if (IsMerging)
+			{
+				<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+				<span>Merging...</span>
+			}
+			else if (PushAfterMerge)
+			{
+				<i class="bi bi-cloud-arrow-up me-1"></i>
+				<span>Merge & Push</span>
+			}
+			else
+			{
+				<i class="bi bi-arrow-left-right me-1"></i>
+				<span>Merge Locally</span>
+			}
+		</button>
+	</FooterContent>
+</ModalDialog>
+
+@code {
+	[Parameter]
+	public bool IsVisible { get; set; }
+
+	[Parameter]
+	public EventCallback<bool> IsVisibleChanged { get; set; }
+
+	[Parameter]
+	public string? CurrentBranch { get; set; }
+
+	[Parameter]
+	public IReadOnlyList<string> TargetBranches { get; set; } = [];
+
+	[Parameter]
+	public string? SelectedTargetBranch { get; set; }
+
+	[Parameter]
+	public bool PushAfterMerge { get; set; }
+
+	[Parameter]
+	public bool IsCheckingPreview { get; set; }
+
+	[Parameter]
+	public bool IsMerging { get; set; }
+
+	[Parameter]
+	public string? PreviewMessage { get; set; }
+
+	[Parameter]
+	public string? PreviewError { get; set; }
+
+	[Parameter]
+	public EventCallback<string> OnTargetBranchChanged { get; set; }
+
+	[Parameter]
+	public EventCallback<bool> OnPushAfterMergeChanged { get; set; }
+
+	[Parameter]
+	public EventCallback<(string targetBranch, bool pushAfterMerge)> OnMerge { get; set; }
+
+	[Parameter]
+	public EventCallback OnCancel { get; set; }
+
+	private async Task HandleModalVisibilityChanged(bool visible)
+	{
+		if (!visible)
+		{
+			await OnCancel.InvokeAsync();
+			await IsVisibleChanged.InvokeAsync(false);
+		}
+	}
+
+	private async Task HandleCancel()
+	{
+		await OnCancel.InvokeAsync();
+	}
+
+	private async Task HandleTargetBranchChanged(ChangeEventArgs args)
+	{
+		var value = args.Value?.ToString() ?? string.Empty;
+		await OnTargetBranchChanged.InvokeAsync(value);
+	}
+
+	private async Task HandlePushAfterMergeChanged(ChangeEventArgs args)
+	{
+		var pushAfterMerge = args.Value switch
+		{
+			bool value => value,
+			string text when bool.TryParse(text, out var parsed) => parsed,
+			_ => PushAfterMerge
+		};
+
+		await OnPushAfterMergeChanged.InvokeAsync(pushAfterMerge);
+	}
+
+	private async Task HandleMerge()
+	{
+		if (string.IsNullOrWhiteSpace(SelectedTargetBranch))
+		{
+			return;
+		}
+
+		await OnMerge.InvokeAsync((SelectedTargetBranch, PushAfterMerge));
+	}
+}

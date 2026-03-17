@@ -155,6 +155,23 @@ public interface IVersionControlService
 		CancellationToken cancellationToken = default);
 
 	/// <summary>
+	/// Previews whether a source branch can be merged into a target branch without conflicts.
+	/// The repository working tree must remain unchanged after the preview completes.
+	/// </summary>
+	/// <param name="workingDirectory">The repository working directory.</param>
+	/// <param name="sourceBranch">The branch containing changes to merge.</param>
+	/// <param name="targetBranch">The branch that would receive the changes.</param>
+	/// <param name="remoteName">The remote name (defaults to 'origin').</param>
+	/// <param name="cancellationToken">Cancellation token.</param>
+	/// <returns>Result containing success status and preview details.</returns>
+	Task<GitOperationResult> PreviewMergeBranchAsync(
+		string workingDirectory,
+		string sourceBranch,
+		string targetBranch,
+		string remoteName = "origin",
+		CancellationToken cancellationToken = default);
+
+	/// <summary>
 	/// Merges a source branch into a target branch and pushes the target branch to the remote.
 	/// </summary>
 	/// <param name="workingDirectory">The repository working directory.</param>
@@ -163,6 +180,7 @@ public interface IVersionControlService
 	/// <param name="remoteName">The remote name (defaults to 'origin').</param>
 	/// <param name="progressCallback">Optional callback for progress updates.</param>
 	/// <param name="cancellationToken">Cancellation token.</param>
+	/// <param name="pushAfterMerge">If true, pushes the merged target branch after a successful merge.</param>
 	/// <returns>Result containing success status and merge details.</returns>
 	Task<GitOperationResult> MergeBranchAsync(
 		string workingDirectory,
@@ -170,7 +188,8 @@ public interface IVersionControlService
 		string targetBranch,
 		string remoteName = "origin",
 		Action<string>? progressCallback = null,
-		CancellationToken cancellationToken = default);
+		CancellationToken cancellationToken = default,
+		bool pushAfterMerge = true);
 
 	/// <summary>
 	/// Gets all branches (local and remote) for a repository.

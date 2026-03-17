@@ -2,6 +2,7 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using VibeSwarm.Client.Services;
+using VibeSwarm.Shared.VersionControl.Models;
 
 namespace VibeSwarm.Tests;
 
@@ -99,9 +100,70 @@ index 3333333..4444444 100644
 		Assert.Equal(remoteUrl, result);
 	}
 
-	private static HttpVersionControlService CreateService(Func<HttpRequestMessage, HttpResponseMessage> handler)
+	[Fact]
+	public async Task PreviewMergeBranchAsync_PostsPreviewRequestToExpectedEndpoint()
 	{
-		var httpClient = new HttpClient(new StubHttpMessageHandler((request, _) => Task.FromResult(handler(request))))
+		var service = CreateService(async request =>
+		{
+			Assert.Equal(HttpMethod.Post, request.Method);
+			Assert.Equal("/api/git/preview-merge-branch", request.RequestUri?.AbsolutePath);
+
+			var payload = await request.Content!.ReadAsStringAsync();
+			Assert.Contains("\"path\":\"/repo\"", payload);
+			Assert.Contains("\"sourceBranch\":\"feature/test\"", payload);
+			Assert.Contains("\"targetBranch\":\"main\"", payload);
+			Assert.Contains("\"remote\":\"origin\"", payload);
+
+			return new HttpResponseMessage(HttpStatusCode.OK)
+			{
+				Content = new StringContent(
+					JsonSerializer.Serialize(GitOperationResult.Succeeded(output: "Preview ok")),
+					Encoding.UTF8,
+					"application/json")
+			};
+		});
+
+		var result = await service.PreviewMergeBranchAsync("/repo", "feature/test", "main");
+
+		Assert.True(result.Success);
+		Assert.Equal("Preview ok", result.Output);
+	}
+
+	[Fact]
+	public async Task MergeBranchAsync_SendsPushAfterMergeFlag()
+	{
+		var service = CreateService(async request =>
+		{
+			Assert.Equal(HttpMethod.Post, request.Method);
+			Assert.Equal("/api/git/merge-branch", request.RequestUri?.AbsolutePath);
+
+			var payload = await request.Content!.ReadAsStringAsync();
+			Assert.Contains("\"path\":\"/repo\"", payload);
+			Assert.Contains("\"sourceBranch\":\"feature/test\"", payload);
+			Assert.Contains("\"targetBranch\":\"main\"", payload);
+			Assert.Contains("\"pushAfterMerge\":false", payload);
+
+			return new HttpResponseMessage(HttpStatusCode.OK)
+			{
+				Content = new StringContent(
+					JsonSerializer.Serialize(GitOperationResult.Succeeded(output: "Merged locally")),
+					Encoding.UTF8,
+					"application/json")
+			};
+		});
+
+		var result = await service.MergeBranchAsync("/repo", "feature/test", "main", pushAfterMerge: false);
+
+		Assert.True(result.Success);
+		Assert.Equal("Merged locally", result.Output);
+	}
+
+	private static HttpVersionControlService CreateService(Func<HttpRequestMessage, HttpResponseMessage> handler)
+		=> CreateService(request => Task.FromResult(handler(request)));
+
+	private static HttpVersionControlService CreateService(Func<HttpRequestMessage, Task<HttpResponseMessage>> handler)
+	{
+		var httpClient = new HttpClient(new StubHttpMessageHandler((request, _) => handler(request)))
 		{
 			BaseAddress = new Uri("http://localhost")
 		};

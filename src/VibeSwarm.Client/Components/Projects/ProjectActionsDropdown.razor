@@ -60,18 +60,34 @@
 					</button>
 				</li>
 			}
-			@if (ShowCreateBranchAction)
-			{
-				<li>
-					<button class="dropdown-item" @onclick="OnCreateBranch" disabled="@AreGitActionsBusy">
-						<i class="bi bi-plus-lg me-2 text-primary"></i>New Branch
-					</button>
-				</li>
-			}
-			@if (ShowPruneBranchesAction)
-			{
-				<li>
-					<button class="dropdown-item" @onclick="OnPruneBranches" disabled="@AreGitActionsBusy">
+		@if (ShowCreateBranchAction)
+		{
+			<li>
+				<button class="dropdown-item" @onclick="OnCreateBranch" disabled="@AreGitActionsBusy">
+					<i class="bi bi-plus-lg me-2 text-primary"></i>New Branch
+				</button>
+			</li>
+		}
+		@if (ShowMergeBranchAction)
+		{
+			<li>
+				<button class="dropdown-item" @onclick="OnMergeBranch" disabled="@AreGitActionsBusy">
+					@if (IsMerging)
+					{
+						<span class="spinner-border spinner-border-sm me-2" role="status"></span>
+					}
+					else
+					{
+						<i class="bi bi-arrow-left-right me-2 text-success"></i>
+					}
+					Merge Branch...
+				</button>
+			</li>
+		}
+		@if (ShowPruneBranchesAction)
+		{
+			<li>
+				<button class="dropdown-item" @onclick="OnPruneBranches" disabled="@AreGitActionsBusy">
 						@if (IsPruning)
 						{
 							<span class="spinner-border spinner-border-sm me-2" role="status"></span>
@@ -129,6 +145,9 @@
 	public bool ShowCreateBranchAction { get; set; }
 
 	[Parameter]
+	public bool ShowMergeBranchAction { get; set; }
+
+	[Parameter]
 	public bool ShowRefreshAction { get; set; }
 
 	[Parameter]
@@ -144,10 +163,16 @@
 	public bool IsPruning { get; set; }
 
 	[Parameter]
+	public bool IsMerging { get; set; }
+
+	[Parameter]
 	public EventCallback OnSync { get; set; }
 
 	[Parameter]
 	public EventCallback OnCreateBranch { get; set; }
+
+	[Parameter]
+	public EventCallback OnMergeBranch { get; set; }
 
 	[Parameter]
 	public EventCallback OnRefresh { get; set; }
@@ -164,7 +189,7 @@
 	[Parameter]
 	public EventCallback OnDelete { get; set; }
 
-	private bool HasGitActions => ShowSyncAction || ShowCreateBranchAction || ShowRefreshAction || ShowPruneBranchesAction;
+	private bool HasGitActions => ShowSyncAction || ShowCreateBranchAction || ShowMergeBranchAction || ShowRefreshAction || ShowPruneBranchesAction;
 
-	private bool AreGitActionsBusy => IsSyncing || IsRefreshing || IsPruning;
+	private bool AreGitActionsBusy => IsSyncing || IsRefreshing || IsPruning || IsMerging;
 }

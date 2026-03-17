@@ -42,7 +42,9 @@ else
                                 TotalCost="@GetProjectTotalCost()" OnCreateBranch="ShowCreateBranchModal" OnSync="SyncWithOrigin"
                                 OnRefresh="RefreshBranches" OnBranchSelected="RequestBranchSwitch"
                                 OnUncommittedChangesClick="ShowUncommittedChangesModal" OnClearGitMessage="ClearGitMessage"
-                                OnEdit="ShowEditProjectModal" OnPruneBranches="PruneRemoteBranches"                                IsActive="@(Project?.IsActive ?? true)"
+                                OnEdit="ShowEditProjectModal" OnPruneBranches="PruneRemoteBranches"
+                                ShowMergeBranchAction="@HasMergeBranchTargets" IsMerging="@_isMergingBranch"
+                                OnMergeBranch="ShowMergeBranchModal" IsActive="@(Project?.IsActive ?? true)"
                                 OnToggleActive="ToggleProjectActive" />
 
     @* Tabbed Content Area *@
@@ -432,6 +434,15 @@ else
                        HasUncommittedChanges="@_hasUncommittedChanges" ErrorMessage="@_branchSwitchError" OnSwitch="ConfirmBranchSwitch"
                        OnCancel="CloseBranchSwitchModal" />
 
+    @* Merge Branch Modal *@
+    <MergeBranchModal @bind-IsVisible="_showMergeBranchModal" CurrentBranch="@CurrentBranch"
+                      TargetBranches="@MergeTargetBranches" SelectedTargetBranch="@_mergeTargetBranch"
+                      PushAfterMerge="@_mergePushAfterMerge" IsCheckingPreview="@_isCheckingMergePreview"
+                      IsMerging="@_isMergingBranch" PreviewMessage="@_mergePreviewMessage"
+                      PreviewError="@_mergePreviewError" OnTargetBranchChanged="HandleMergeTargetBranchChanged"
+                      OnPushAfterMergeChanged="HandleMergePushAfterMergeChanged" OnMerge="MergeCurrentBranchAsync"
+                      OnCancel="CloseMergeBranchModal" />
+
     @* Uncommitted Changes Modal *@
     <UncommittedChangesModal @bind-IsVisible="_showUncommittedChangesModal" IsLoading="@_isLoadingUncommittedDiff"
                              ErrorMessage="@_uncommittedDiffError" DiffFiles="@_uncommittedDiffFiles" PendingJobs="@_pendingCommitJobs"
@@ -508,6 +519,15 @@ else
     private bool _isSwitchingBranch { get; set; }
     private string? _branchSwitchError { get; set; }
 
+    // Merge branch modal state
+    private bool _showMergeBranchModal { get; set; }
+    private string? _mergeTargetBranch { get; set; }
+    private bool _mergePushAfterMerge { get; set; } = true;
+    private bool _isCheckingMergePreview { get; set; }
+    private bool _isMergingBranch { get; set; }
+    private string? _mergePreviewMessage { get; set; }
+    private string? _mergePreviewError { get; set; }
+
     // Uncommitted changes modal state
     private bool _hasUncommittedChangesHeader { get; set; }
     private int _uncommittedFilesCount { get; set; }
@@ -551,6 +571,13 @@ else
     private HashSet<int> _changesTabExpandedItems = new();
     private bool _changesTabAllExpanded => _changesTabDiffFiles.Count > 0 && _changesTabExpandedItems.Count == _changesTabDiffFiles.Count;
     private bool HasChangesTabContent => IsGitRepository;
+    private List<string> MergeTargetBranches => Branches
+        .Where(branch => !branch.IsRemote && !string.Equals(branch.Name, CurrentBranch, StringComparison.Ordinal))
+        .Select(branch => branch.Name)
+        .Distinct(StringComparer.Ordinal)
+        .OrderBy(branch => branch, StringComparer.OrdinalIgnoreCase)
+        .ToList();
+    private bool HasMergeBranchTargets => !string.IsNullOrWhiteSpace(CurrentBranch) && MergeTargetBranches.Count > 0;
 
     // Prune state
     private bool _isPruningBranches { get; set; }
@@ -1228,6 +1255,166 @@ TimeSpan.FromSeconds(10) })
         _showBranchSwitchModal = false;
         _targetBranch = null;
         _branchSwitchError = null;
+    }
+
+    private async Task ShowMergeBranchModal()
+    {
+        if (IsGitOperationInProgress || Project == null || string.IsNullOrWhiteSpace(Project.WorkingPath) || !HasMergeBranchTargets)
+        {
+            return;
+        }
+
+        _mergePushAfterMerge = true;
+        _mergePreviewError = null;
+        _mergePreviewMessage = null;
+        _mergeTargetBranch = SelectDefaultMergeTargetBranch();
+        _showMergeBranchModal = true;
+        StateHasChanged();
+
+        await PreviewMergeBranchAsync();
+    }
+
+    private void CloseMergeBranchModal()
+    {
+        _showMergeBranchModal = false;
+        _mergeTargetBranch = null;
+        _mergePushAfterMerge = true;
+        _mergePreviewMessage = null;
+        _mergePreviewError = null;
+    }
+
+    private async Task HandleMergeTargetBranchChanged(string targetBranch)
+    {
+        _mergeTargetBranch = targetBranch;
+        await PreviewMergeBranchAsync();
+    }
+
+    private Task HandleMergePushAfterMergeChanged(bool pushAfterMerge)
+    {
+        _mergePushAfterMerge = pushAfterMerge;
+        return Task.CompletedTask;
+    }
+
+    private string? SelectDefaultMergeTargetBranch()
+    {
+        var preferredBranch = Project?.DefaultTargetBranch;
+        if (!string.IsNullOrWhiteSpace(preferredBranch) &&
+            MergeTargetBranches.Contains(preferredBranch, StringComparer.Ordinal))
+        {
+            return preferredBranch;
+        }
+
+        return MergeTargetBranches.FirstOrDefault();
+    }
+
+    private async Task PreviewMergeBranchAsync()
+    {
+        if (!_showMergeBranchModal || _isMergingBranch || Project == null || string.IsNullOrWhiteSpace(Project.WorkingPath) ||
+            string.IsNullOrWhiteSpace(CurrentBranch) || string.IsNullOrWhiteSpace(_mergeTargetBranch))
+        {
+            return;
+        }
+
+        _isCheckingMergePreview = true;
+        _mergePreviewMessage = null;
+        _mergePreviewError = null;
+        StateHasChanged();
+
+        try
+        {
+            var result = await VersionControlService.PreviewMergeBranchAsync(
+                Project.WorkingPath,
+                CurrentBranch,
+                _mergeTargetBranch);
+
+            if (result.Success)
+            {
+                _mergePreviewMessage = result.Output ?? $"'{CurrentBranch}' can be merged into '{_mergeTargetBranch}' without conflicts.";
+            }
+            else
+            {
+                _mergePreviewError = result.Error ?? "VibeSwarm could not verify the merge preview.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _mergePreviewError = $"Error checking merge preview: {ex.Message}";
+        }
+        finally
+        {
+            _isCheckingMergePreview = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task MergeCurrentBranchAsync((string targetBranch, bool pushAfterMerge) args)
+    {
+        if (IsGitOperationInProgress || Project == null || string.IsNullOrWhiteSpace(Project.WorkingPath) ||
+            string.IsNullOrWhiteSpace(CurrentBranch) || string.IsNullOrWhiteSpace(args.targetBranch))
+        {
+            return;
+        }
+
+        IsGitOperationInProgress = true;
+        _isMergingBranch = true;
+        _mergeTargetBranch = args.targetBranch;
+        _mergePushAfterMerge = args.pushAfterMerge;
+        _mergePreviewError = null;
+        _mergePreviewMessage = null;
+        GitOperationMessage = null;
+        GitProgressMessage = $"Preparing to merge '{CurrentBranch}' into '{args.targetBranch}'...";
+        StateHasChanged();
+
+        try
+        {
+            var previewResult = await VersionControlService.PreviewMergeBranchAsync(
+                Project.WorkingPath,
+                CurrentBranch,
+                args.targetBranch);
+
+            if (!previewResult.Success)
+            {
+                _mergePreviewError = previewResult.Error ?? "VibeSwarm could not verify the merge preview.";
+                return;
+            }
+
+            _mergePreviewMessage = previewResult.Output ?? $"'{CurrentBranch}' can be merged into '{args.targetBranch}' without conflicts.";
+
+            var result = await VersionControlService.MergeBranchAsync(
+                Project.WorkingPath,
+                CurrentBranch,
+                args.targetBranch,
+                progressCallback: progress =>
+                {
+                    GitProgressMessage = progress;
+                    InvokeAsync(StateHasChanged);
+                },
+                pushAfterMerge: args.pushAfterMerge);
+
+            if (!result.Success)
+            {
+                _mergePreviewError = result.Error ?? "Failed to merge branches.";
+                return;
+            }
+
+            GitOperationMessage = result.Output ?? $"Merged '{CurrentBranch}' into '{args.targetBranch}'.";
+            GitOperationSuccess = true;
+            await LoadBranches();
+            CloseMergeBranchModal();
+
+            NotificationService.ShowSuccess(result.Output ?? $"Merged '{CurrentBranch}' into '{args.targetBranch}'.");
+        }
+        catch (Exception ex)
+        {
+            _mergePreviewError = $"Error merging branches: {ex.Message}";
+        }
+        finally
+        {
+            _isMergingBranch = false;
+            IsGitOperationInProgress = false;
+            GitProgressMessage = null;
+            StateHasChanged();
+        }
     }
 
     private async Task OpenChangesTabAsync()

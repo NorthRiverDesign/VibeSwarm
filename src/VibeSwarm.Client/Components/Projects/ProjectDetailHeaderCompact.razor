@@ -60,10 +60,12 @@
 				@* Project Actions Dropdown *@
 				<ProjectActionsDropdown OnEdit="OnEdit" IsActive="IsActive"
 										OnToggleActive="OnToggleActive" ShowSyncAction="@IsGitRepository"
-										ShowCreateBranchAction="@IsGitRepository" ShowRefreshAction="@IsGitRepository"
+										ShowCreateBranchAction="@IsGitRepository" ShowMergeBranchAction="@ShowMergeBranchAction"
+										ShowRefreshAction="@IsGitRepository"
 										ShowPruneBranchesAction="@IsGitRepository" IsSyncing="@(_currentGitOperation == "sync")"
 										IsRefreshing="@(_currentGitOperation == "refresh")" IsPruning="@(_currentGitOperation == "prune")"
-										OnCreateBranch="OnCreateBranch" OnSync="OnSync" OnRefresh="OnRefresh"
+										IsMerging="@IsMerging" OnCreateBranch="OnCreateBranch" OnMergeBranch="OnMergeBranch"
+										OnSync="OnSync" OnRefresh="OnRefresh"
 										OnPruneBranches="OnPruneBranches" />
 			</div>
 
@@ -206,6 +208,15 @@ new Breadcrumb.BreadcrumbItem(Name)
 
 	[Parameter]
 	public EventCallback OnCreateBranch { get; set; }
+
+	[Parameter]
+	public bool ShowMergeBranchAction { get; set; }
+
+	[Parameter]
+	public bool IsMerging { get; set; }
+
+	[Parameter]
+	public EventCallback OnMergeBranch { get; set; }
 
 	[Parameter]
 	public EventCallback OnSync { get; set; }

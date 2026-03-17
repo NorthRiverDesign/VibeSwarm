@@ -62,9 +62,13 @@ public class GitController : ControllerBase
     public async Task<IActionResult> CreatePullRequest([FromBody] CreatePullRequestRequest req, CancellationToken ct)
         => Ok(await _gitService.CreatePullRequestAsync(req.Path, req.SourceBranch, req.TargetBranch, req.Title, req.Body, ct));
 
+    [HttpPost("preview-merge-branch")]
+    public async Task<IActionResult> PreviewMergeBranch([FromBody] MergeBranchRequest req, CancellationToken ct)
+        => Ok(await _gitService.PreviewMergeBranchAsync(req.Path, req.SourceBranch, req.TargetBranch, req.Remote ?? "origin", ct));
+
     [HttpPost("merge-branch")]
     public async Task<IActionResult> MergeBranch([FromBody] MergeBranchRequest req, CancellationToken ct)
-        => Ok(await _gitService.MergeBranchAsync(req.Path, req.SourceBranch, req.TargetBranch, req.Remote ?? "origin", null, ct));
+        => Ok(await _gitService.MergeBranchAsync(req.Path, req.SourceBranch, req.TargetBranch, req.Remote ?? "origin", null, ct, req.PushAfterMerge));
 
     [HttpPost("fetch")]
     public async Task<IActionResult> Fetch([FromBody] FetchRequest req, CancellationToken ct) => Ok(await _gitService.FetchAsync(req.Path, req.Remote ?? "origin", req.Prune, ct));
@@ -134,7 +138,7 @@ public class GitController : ControllerBase
     public record PushRequest(string Path, string? Remote, string? Branch);
     public record CommitAndPushRequest(string Path, string Message, string? Remote);
     public record CreatePullRequestRequest(string Path, string SourceBranch, string TargetBranch, string Title, string? Body);
-    public record MergeBranchRequest(string Path, string SourceBranch, string TargetBranch, string? Remote);
+    public record MergeBranchRequest(string Path, string SourceBranch, string TargetBranch, string? Remote, bool PushAfterMerge = true);
     public record FetchRequest(string Path, string? Remote, bool Prune = true);
     public record CheckoutRequest(string Path, string Branch, string? Remote);
     public record SyncRequest(string Path, string? Remote);
