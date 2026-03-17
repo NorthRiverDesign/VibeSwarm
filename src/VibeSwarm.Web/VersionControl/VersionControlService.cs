@@ -759,7 +759,7 @@ public sealed class VersionControlService : IVersionControlService
 				? $"Preparing merge preview for {targetBranch}..."
 				: $"Preparing temporary merge worktree for {targetBranch}...");
 
-			var worktreeAddArguments = BuildTemporaryWorktreeAddArguments(tempWorktreePath, targetBranch, targetRef, previewOnly);
+			var worktreeAddArguments = BuildTemporaryWorktreeAddArguments(tempWorktreePath, targetRef, previewOnly);
 			var addWorktreeResult = await _commandExecutor.ExecuteAsync(
 				worktreeAddArguments,
 				workingDirectory,
@@ -2380,6 +2380,16 @@ public sealed class VersionControlService : IVersionControlService
 		string remoteName,
 		CancellationToken cancellationToken)
 	{
+		var remoteRef = await _commandExecutor.ExecuteAsync(
+			$"rev-parse --verify refs/remotes/{remoteName}/{targetBranch}",
+			workingDirectory,
+			cancellationToken,
+			timeoutSeconds: 10);
+		if (remoteRef.Success)
+		{
+			return new MergeTargetResolution($"{remoteName}/{targetBranch}", targetBranch, true);
+		}
+
 		var localRef = await _commandExecutor.ExecuteAsync(
 			$"rev-parse --verify refs/heads/{targetBranch}",
 			workingDirectory,
@@ -2387,17 +2397,10 @@ public sealed class VersionControlService : IVersionControlService
 			timeoutSeconds: 10);
 		if (localRef.Success)
 		{
-			return new MergeTargetResolution(targetBranch, false);
+			return new MergeTargetResolution(targetBranch, targetBranch, false);
 		}
 
-		var remoteRef = await _commandExecutor.ExecuteAsync(
-			$"rev-parse --verify refs/remotes/{remoteName}/{targetBranch}",
-			workingDirectory,
-			cancellationToken,
-			timeoutSeconds: 10);
-		return remoteRef.Success
-			? new MergeTargetResolution($"{remoteName}/{targetBranch}", true)
-			: null;
+		return null;
 	}
 
 	private async Task<GitOperationResult?> ValidateMergeRequestAsync(
@@ -2438,12 +2441,11 @@ public sealed class VersionControlService : IVersionControlService
 
 	private string BuildTemporaryWorktreeAddArguments(
 		string tempWorktreePath,
-		string targetBranch,
 		MergeTargetResolution targetRef,
 		bool previewOnly)
 	{
 		var escapedPath = EscapeCommandArgument(tempWorktreePath);
-		var escapedTargetBranch = EscapeCommandArgument(targetBranch);
+		var escapedTargetBranch = EscapeCommandArgument(targetRef.LocalBranchName);
 		var escapedTargetRef = EscapeCommandArgument(targetRef.Reference);
 
 		if (previewOnly)
@@ -2451,8 +2453,8 @@ public sealed class VersionControlService : IVersionControlService
 			return $"worktree add --force --detach \"{escapedPath}\" \"{escapedTargetRef}\"";
 		}
 
-		return targetRef.CreateLocalBranch
-			? $"worktree add --force -b \"{escapedTargetBranch}\" \"{escapedPath}\" \"{escapedTargetRef}\""
+		return targetRef.CreateOrResetLocalBranch
+			? $"worktree add --force -B \"{escapedTargetBranch}\" \"{escapedPath}\" \"{escapedTargetRef}\""
 			: $"worktree add --force \"{escapedPath}\" \"{escapedTargetRef}\"";
 	}
 
@@ -2522,7 +2524,7 @@ public sealed class VersionControlService : IVersionControlService
 		return $" Preserved {changedFilesCount} changed file(s) in {savedReference} before continuing.";
 	}
 
-	private sealed record MergeTargetResolution(string Reference, bool CreateLocalBranch);
+	private sealed record MergeTargetResolution(string Reference, string LocalBranchName, bool CreateOrResetLocalBranch);
 
 	private static List<string> ParseWorkingTreeStatus(string output)
 	{

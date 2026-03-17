@@ -39,6 +39,7 @@ public sealed class MergeBranchModalTests
 		Assert.Contains("Push target branch after merging", html);
 		Assert.Contains("main", html);
 		Assert.Contains("release", html);
+		Assert.Contains("refreshes the target branch from origin", html);
 		Assert.Contains("without conflicts", html);
 		Assert.Contains("Merge & Push", html);
 	}
