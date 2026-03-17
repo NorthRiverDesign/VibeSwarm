@@ -154,7 +154,7 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 	}
 
 	[Fact]
-	public async Task SuggestIdeasFromCodebaseAsync_UsesRequestedProviderAndIdeaCount()
+	public async Task SuggestIdeasFromCodebaseAsync_UsesRequestedProviderModelAndIdeaCount()
 	{
 		await using var dbContext = CreateDbContext();
 		var workingPath = Path.Combine(Path.GetTempPath(), $"vibeswarm-suggestion-{Guid.NewGuid():N}");
@@ -183,6 +183,14 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 						TaskType = "suggest",
 						IsDefault = true,
 						IsAvailable = true
+					},
+					new InferenceModel
+					{
+						Id = Guid.NewGuid(),
+						ModelId = "deepseek-coder:14b",
+						TaskType = "default",
+						IsDefault = false,
+						IsAvailable = true
 					}
 				]
 			};
@@ -205,8 +213,15 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 				]
 			};
 
-			selectedProvider.Models.First().InferenceProviderId = selectedProvider.Id;
-			otherProvider.Models.First().InferenceProviderId = otherProvider.Id;
+			foreach (var model in selectedProvider.Models)
+			{
+				model.InferenceProviderId = selectedProvider.Id;
+			}
+
+			foreach (var model in otherProvider.Models)
+			{
+				model.InferenceProviderId = otherProvider.Id;
+			}
 
 			dbContext.Projects.Add(project);
 			dbContext.InferenceProviders.AddRange(selectedProvider, otherProvider);
@@ -217,7 +232,7 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 				Response = new InferenceResponse
 				{
 					Success = true,
-					ModelUsed = "qwen2.5-coder:7b",
+					ModelUsed = "deepseek-coder:14b",
 					Response = """
 					- Add a project summary card to the detail page
 					- Add a recent inference activity feed
@@ -232,15 +247,78 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 			var result = await ideaService.SuggestIdeasFromCodebaseAsync(project.Id, new SuggestIdeasRequest
 			{
 				ProviderId = selectedProvider.Id,
+				ModelId = "deepseek-coder:14b",
 				IdeaCount = 2
 			});
 
 			Assert.True(result.Success);
 			Assert.Equal(2, result.Ideas.Count);
 			Assert.Equal(selectedProvider.Endpoint, inferenceService.LastRequest?.Endpoint);
-			Assert.Equal("qwen2.5-coder:7b", inferenceService.LastRequest?.Model);
+			Assert.Equal("deepseek-coder:14b", inferenceService.LastRequest?.Model);
 			Assert.Contains("Return exactly 2 concrete, actionable ideas.", inferenceService.LastRequest?.Prompt);
 			Assert.Equal(2, await dbContext.Ideas.CountAsync(idea => idea.ProjectId == project.Id));
+		}
+		finally
+		{
+			if (Directory.Exists(workingPath))
+			{
+				Directory.Delete(workingPath, recursive: true);
+			}
+		}
+	}
+
+	[Fact]
+	public async Task SuggestIdeasFromCodebaseAsync_ReturnsModelNotFound_WhenRequestedModelIsUnavailable()
+	{
+		await using var dbContext = CreateDbContext();
+		var workingPath = Path.Combine(Path.GetTempPath(), $"vibeswarm-suggestion-{Guid.NewGuid():N}");
+		Directory.CreateDirectory(workingPath);
+		File.WriteAllText(Path.Combine(workingPath, "Program.cs"), "Console.WriteLine(\"Hello from VibeSwarm\");");
+		try
+		{
+			var project = new Project
+			{
+				Id = Guid.NewGuid(),
+				Name = "Suggestion Project",
+				WorkingPath = workingPath
+			};
+			var provider = new InferenceProvider
+			{
+				Id = Guid.NewGuid(),
+				Name = "Preferred Ollama",
+				Endpoint = "http://preferred-ollama:11434",
+				IsEnabled = true,
+				Models =
+				[
+					new InferenceModel
+					{
+						Id = Guid.NewGuid(),
+						ModelId = "qwen2.5-coder:7b",
+						TaskType = "suggest",
+						IsDefault = true,
+						IsAvailable = true
+					}
+				]
+			};
+
+			provider.Models.First().InferenceProviderId = provider.Id;
+			dbContext.Projects.Add(project);
+			dbContext.InferenceProviders.Add(provider);
+			await dbContext.SaveChangesAsync();
+
+			var inferenceService = new FakeInferenceService();
+			var ideaService = CreateIdeaService(dbContext, new Provider(), inferenceService: inferenceService);
+			var result = await ideaService.SuggestIdeasFromCodebaseAsync(project.Id, new SuggestIdeasRequest
+			{
+				ProviderId = provider.Id,
+				ModelId = "missing-model",
+				IdeaCount = 2
+			});
+
+			Assert.False(result.Success);
+			Assert.Equal(SuggestIdeasStage.ModelNotFound, result.Stage);
+			Assert.Contains("selected model", result.Message, StringComparison.OrdinalIgnoreCase);
+			Assert.Null(inferenceService.LastRequest);
 		}
 		finally
 		{

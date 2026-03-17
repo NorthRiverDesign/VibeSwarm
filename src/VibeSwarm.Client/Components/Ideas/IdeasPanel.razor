@@ -227,6 +227,8 @@
 					   AvailableProviders="@AvailableInferenceProviders"
 					   SelectedProviderId="@_selectedInferenceProviderId"
 					   SelectedProviderIdChanged="OnSelectedInferenceProviderChanged"
+					   SelectedModelId="@_selectedInferenceModelId"
+					   SelectedModelIdChanged="OnSelectedInferenceModelChanged"
 					   IdeaCount="@_suggestIdeaCount"
 					   IdeaCountChanged="OnSuggestIdeaCountChanged"
 					   IsProcessing="@IsSuggestingIdeas"
@@ -345,6 +347,7 @@
 	private SuggestIdeasResult? _suggestResult;
 	private bool _showSuggestIdeasModal;
 	private Guid? _selectedInferenceProviderId;
+	private string? _selectedInferenceModelId;
 	private int _suggestIdeaCount = SuggestIdeasRequest.DefaultIdeaCount;
 
 	// Start All confirmation modal state
@@ -694,6 +697,14 @@
 		return Task.CompletedTask;
 	}
 
+	private Task OnSelectedInferenceModelChanged(string? modelId)
+	{
+		_selectedInferenceModelId = string.IsNullOrWhiteSpace(modelId)
+			? null
+			: modelId.Trim();
+		return Task.CompletedTask;
+	}
+
 	private Task OnSuggestIdeaCountChanged(int ideaCount)
 	{
 		_suggestIdeaCount = Math.Clamp(ideaCount, SuggestIdeasRequest.MinIdeaCount, SuggestIdeasRequest.MaxIdeaCount);
@@ -718,6 +729,7 @@
 			var result = await IdeaService.SuggestIdeasFromCodebaseAsync(CurrentProjectId, new SuggestIdeasRequest
 			{
 				ProviderId = _selectedInferenceProviderId,
+				ModelId = _selectedInferenceModelId,
 				IdeaCount = _suggestIdeaCount
 			});
 			_suggestResult = result;
@@ -743,6 +755,7 @@
 				{
 					SuggestIdeasStage.NotConfigured => "Inference Not Configured",
 					SuggestIdeasStage.ProviderNotFound => "Provider Unavailable",
+					SuggestIdeasStage.ModelNotFound => "Model Unavailable",
 					SuggestIdeasStage.ProviderUnreachable => "Provider Unreachable",
 					SuggestIdeasStage.NoModel => "No Model Assigned",
 					SuggestIdeasStage.RepoMapFailed => "Directory Scan Failed",

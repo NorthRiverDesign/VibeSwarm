@@ -17,6 +17,9 @@ public static class SuggestIdeasStage
 	/// <summary>The selected inference provider no longer exists or is disabled.</summary>
 	public const string ProviderNotFound = "provider_not_found";
 
+	/// <summary>The selected model is unavailable for the chosen inference provider.</summary>
+	public const string ModelNotFound = "model_not_found";
+
 	/// <summary>The inference provider is reachable but has no model assigned to the "suggest" or "default" task.</summary>
 	public const string NoModel = "no_model";
 

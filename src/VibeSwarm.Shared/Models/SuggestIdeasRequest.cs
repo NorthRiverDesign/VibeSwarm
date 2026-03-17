@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using VibeSwarm.Shared.Validation;
 
 namespace VibeSwarm.Shared.Models;
 
@@ -16,6 +17,13 @@ public class SuggestIdeasRequest
 	/// When omitted, the default enabled provider/model resolution is used.
 	/// </summary>
 	public Guid? ProviderId { get; set; }
+
+	/// <summary>
+	/// Optional explicit model override for the selected inference provider.
+	/// Leave empty to use the provider's configured suggest/default model.
+	/// </summary>
+	[StringLength(ValidationLimits.ProjectPlanningModelIdMaxLength)]
+	public string? ModelId { get; set; }
 
 	/// <summary>
 	/// How many ideas to ask the model to generate.

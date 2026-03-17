@@ -1213,6 +1213,15 @@ Keep the specification concise but complete. Focus on actionable implementation 
 	/// </summary>
 	private async Task<SuggestIdeasResult> SuggestIdeasInternalAsync(Guid projectId, SuggestIdeasRequest request, CancellationToken cancellationToken)
 	{
+		if (!request.ProviderId.HasValue && !string.IsNullOrWhiteSpace(request.ModelId))
+		{
+			return new SuggestIdeasResult
+			{
+				Stage = SuggestIdeasStage.ModelNotFound,
+				Message = "Choose an inference provider before selecting a specific model."
+			};
+		}
+
 		var project = await _dbContext.Projects
 			.FirstOrDefaultAsync(p => p.Id == projectId, cancellationToken);
 
@@ -1246,6 +1255,38 @@ Keep the specification concise but complete. Focus on actionable implementation 
 
 		var providerDisplayName = selectedProvider?.Name ?? "Local inference provider";
 		var providerEndpoint = selectedProvider?.Endpoint;
+		InferenceModel? selectedModel = null;
+
+		if (selectedProvider != null)
+		{
+			if (!string.IsNullOrWhiteSpace(request.ModelId))
+			{
+				selectedModel = selectedProvider.Models
+					.Where(model => model.IsAvailable)
+					.FirstOrDefault(model => string.Equals(model.ModelId, request.ModelId, StringComparison.Ordinal));
+
+				if (selectedModel == null)
+				{
+					return new SuggestIdeasResult
+					{
+						Stage = SuggestIdeasStage.ModelNotFound,
+						Message = $"The selected model is no longer available for {selectedProvider.Name}. Choose another model and try again."
+					};
+				}
+			}
+			else
+			{
+				selectedModel = ResolveSuggestionModel(selectedProvider);
+				if (selectedModel == null)
+				{
+					return new SuggestIdeasResult
+					{
+						Stage = SuggestIdeasStage.NoModel,
+						Message = $"No model is assigned to the \"suggest\" or \"default\" task for {selectedProvider.Name}. Assign one under Settings → Local Inference."
+					};
+				}
+			}
+		}
 
 		// Verify the provider is reachable and discover any assigned model
 		InferenceHealthResult health;
@@ -1303,23 +1344,13 @@ Keep the specification concise but complete. Focus on actionable implementation 
 
 			if (selectedProvider != null)
 			{
-				var selectedModel = ResolveSuggestionModel(selectedProvider);
-				if (selectedModel == null)
-				{
-					return new SuggestIdeasResult
-					{
-						Stage = SuggestIdeasStage.NoModel,
-						Message = $"No model is assigned to the \"suggest\" or \"default\" task for {selectedProvider.Name}. Assign one under Settings → Local Inference."
-					};
-				}
-
 				inferenceResponse = await _inferenceService!.GenerateAsync(new InferenceRequest
 				{
 					TaskType = "suggest",
 					Prompt = prompt,
 					SystemPrompt = systemPrompt,
 					Endpoint = selectedProvider.Endpoint,
-					Model = selectedModel.ModelId
+					Model = selectedModel!.ModelId
 				}, cancellationToken);
 			}
 			else
@@ -1514,6 +1545,7 @@ Keep the specification concise but complete. Focus on actionable implementation 
 		return new SuggestIdeasRequest
 		{
 			ProviderId = request?.ProviderId,
+			ModelId = string.IsNullOrWhiteSpace(request?.ModelId) ? null : request.ModelId.Trim(),
 			IdeaCount = Math.Clamp(request?.IdeaCount ?? SuggestIdeasRequest.DefaultIdeaCount, SuggestIdeasRequest.MinIdeaCount, SuggestIdeasRequest.MaxIdeaCount)
 		};
 	}

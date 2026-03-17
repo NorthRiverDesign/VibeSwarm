@@ -25,6 +25,31 @@
 				</select>
 			</div>
 
+			<div class="mb-3">
+				<label for="suggestIdeasModel" class="form-label fw-medium">
+					Model
+					<span class="text-body-secondary fw-normal">(optional)</span>
+				</label>
+				<select id="suggestIdeasModel" class="form-select" @bind="SelectedModelIdValue"
+						disabled="@(!SelectedProviderId.HasValue || !SelectedProviderModels.Any())">
+					<option value="">Use provider default model</option>
+					@foreach (var model in SelectedProviderModels)
+					{
+						<option value="@model.ModelId">@GetModelDisplayName(model)</option>
+					}
+				</select>
+				<div class="form-text">
+					@if (SelectedProviderId.HasValue && !SelectedProviderModels.Any())
+					{
+						<span>No cached models were found for this provider yet. Its configured <code>suggest</code> or <code>default</code> model will be used.</span>
+					}
+					else
+					{
+						<span>Leave this blank to use the provider's configured <code>suggest</code> model first, then its <code>default</code> model.</span>
+					}
+				</div>
+			</div>
+
 			<div>
 				<label for="suggestIdeasCount" class="form-label fw-medium">Ideas to Generate</label>
 				<select id="suggestIdeasCount" class="form-select" @bind="IdeaCountValue">
@@ -33,9 +58,6 @@
 						<option value="@count">@count</option>
 					}
 				</select>
-				<div class="form-text">
-					The selected provider's <code>suggest</code> model is used first, then its <code>default</code> model as a fallback.
-				</div>
 			</div>
 		}
 	</ChildContent>
@@ -69,6 +91,12 @@
 	public EventCallback<Guid?> SelectedProviderIdChanged { get; set; }
 
 	[Parameter]
+	public string? SelectedModelId { get; set; }
+
+	[Parameter]
+	public EventCallback<string?> SelectedModelIdChanged { get; set; }
+
+	[Parameter]
 	public int IdeaCount { get; set; } = SuggestIdeasRequest.DefaultIdeaCount;
 
 	[Parameter]
@@ -85,6 +113,8 @@
 
 	private bool CanConfirm => AvailableProviders.Any() && SelectedProviderId.HasValue;
 
+	private IReadOnlyList<InferenceModel> SelectedProviderModels => GetProviderModels(SelectedProviderId);
+
 	private string SelectedProviderIdValue
 	{
 		get => SelectedProviderId?.ToString() ?? string.Empty;
@@ -95,6 +125,30 @@
 			{
 				SelectedProviderId = providerId;
 				_ = SelectedProviderIdChanged.InvokeAsync(providerId);
+			}
+
+			var validModelIds = GetProviderModels(providerId)
+				.Select(model => model.ModelId)
+				.ToHashSet(StringComparer.Ordinal);
+
+			if (!string.IsNullOrWhiteSpace(SelectedModelId) && !validModelIds.Contains(SelectedModelId))
+			{
+				SelectedModelId = null;
+				_ = SelectedModelIdChanged.InvokeAsync(null);
+			}
+		}
+	}
+
+	private string SelectedModelIdValue
+	{
+		get => SelectedModelId ?? string.Empty;
+		set
+		{
+			var normalizedModelId = string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+			if (!string.Equals(SelectedModelId, normalizedModelId, StringComparison.Ordinal))
+			{
+				SelectedModelId = normalizedModelId;
+				_ = SelectedModelIdChanged.InvokeAsync(normalizedModelId);
 			}
 		}
 	}
@@ -130,6 +184,15 @@
 				.FirstOrDefault();
 			await SelectedProviderIdChanged.InvokeAsync(SelectedProviderId);
 		}
+
+		var validModelIds = GetProviderModels(SelectedProviderId)
+			.Select(model => model.ModelId)
+			.ToHashSet(StringComparer.Ordinal);
+		if (!string.IsNullOrWhiteSpace(SelectedModelId) && !validModelIds.Contains(SelectedModelId))
+		{
+			SelectedModelId = null;
+			await SelectedModelIdChanged.InvokeAsync(null);
+		}
 	}
 
 	private async Task HandleVisibilityChanged(bool visible)
@@ -152,5 +215,30 @@
 	{
 		await IsVisibleChanged.InvokeAsync(false);
 		await OnCancel.InvokeAsync();
+	}
+
+	private IReadOnlyList<InferenceModel> GetProviderModels(Guid? providerId)
+	{
+		if (!providerId.HasValue)
+		{
+			return [];
+		}
+
+		return AvailableProviders
+			.FirstOrDefault(provider => provider.Id == providerId.Value)?
+			.Models
+			.Where(model => model.IsAvailable)
+			.OrderByDescending(model => string.Equals(model.TaskType, "suggest", StringComparison.OrdinalIgnoreCase))
+			.ThenByDescending(model => model.IsDefault)
+			.ThenBy(model => model.DisplayName ?? model.ModelId)
+			.ToList() ?? [];
+	}
+
+	private static string GetModelDisplayName(InferenceModel model)
+	{
+		var label = model.DisplayName ?? model.ModelId;
+		return model.IsDefault
+			? $"{label} (Default)"
+			: label;
 	}
 }
