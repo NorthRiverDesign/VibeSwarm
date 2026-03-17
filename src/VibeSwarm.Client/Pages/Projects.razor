@@ -2,11 +2,13 @@
 @attribute [Authorize]
 @inject IProjectService ProjectService
 @inject IJobService JobService
+@inject IIdeaService IdeaService
+@inject IProviderService ProviderService
 @inject IVersionControlService VersionControlService
 @inject NotificationService NotificationService
 @implements IDisposable
+@using VibeSwarm.Shared.Data
 @using VibeSwarm.Shared.Utilities
-@using VibeSwarm.Shared.VersionControl
 
 <PageHeader Title="Projects" Subtitle="Manage your AI agent project workspaces">
     <Actions>
@@ -79,6 +81,12 @@ else
 									<i class="bi bi-activity opacity-75"></i>@stats.ActiveJobs running
 								</span>
 							}
+							@if (project.IdeasProcessingActive)
+							{
+								<span class="small text-info-emphasis d-inline-flex align-items-center gap-1" title="Idea queue is running">
+									<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>Queue running
+								</span>
+							}
 						</div>
 						@if (!string.IsNullOrEmpty(project.Description))
 						{
@@ -120,9 +128,20 @@ else
 								<span>@string.Join("  •  ", project.ProviderSelections.Where(pp => pp.IsEnabled).OrderBy(pp => pp.Priority).Select(selection => $"#{selection.Priority + 1} {selection.Provider?.Name ?? "Unknown"}"))</span>
 							</div>
 						}
-						@if (stats.TotalJobs > 0)
-						{
-							<div class="d-flex flex-wrap gap-2 gap-md-3 mt-2 small">
+						<div class="d-flex flex-wrap gap-2 gap-md-3 mt-2 small">
+							<span class="d-flex align-items-center gap-1 text-body-secondary" title="Total ideas">
+								<i class="bi bi-lightbulb opacity-75"></i>
+								@stats.TotalIdeas idea@(stats.TotalIdeas == 1 ? string.Empty : "s")
+							</span>
+							@if (stats.UnprocessedIdeas > 0)
+							{
+								<span class="d-flex align-items-center gap-1 text-body-secondary" title="Ideas waiting to run">
+									<i class="bi bi-hourglass-split opacity-75"></i>
+									@stats.UnprocessedIdeas pending
+								</span>
+							}
+							@if (stats.TotalJobs > 0)
+							{
 								<span class="d-flex align-items-center gap-1 text-body-secondary" title="Total jobs">
 									<i class="bi bi-list-check opacity-75"></i>
 									@stats.TotalJobs jobs
@@ -143,8 +162,8 @@ else
 										@TokenHelper.FormatCost(stats.TotalCostUsd)
 									</span>
 								}
-							</div>
-						}
+							}
+						</div>
 						@if (latestJob != null)
 						{
 							<div class="border-top pt-2 mt-2">
@@ -202,6 +221,11 @@ else
 					<div class="d-flex align-items-center gap-2 flex-shrink-0">
 						<ProjectActionsDropdown DetailsHref="@($"/projects/{project.Id}")" OnEdit="@(() => EditProject(project.Id))"
 												IsActive="@project.IsActive" OnToggleActive="@(() => ToggleActive(project))"
+												ShowStartIdeaQueueAction="@(stats.TotalIdeas > 0 && !project.IdeasProcessingActive)"
+												StartIdeaQueueEnabled="@CanStartIdeaQueue(projectInfo)"
+												IsStartingIdeaQueue="@(StartingIdeaQueueProjectId == project.Id)"
+												StartIdeaQueueTooltip="@GetStartIdeaQueueTooltip(projectInfo)"
+												OnStartIdeaQueue="@(() => StartIdeaQueue(projectInfo))"
 												ShowSyncAction="@(!string.IsNullOrEmpty(projectInfo.CurrentBranch))"
 												SyncLabel="Resync with Git" OnSync="@(() => ResyncWithGit(project))"
 												ShowDeleteAction="true" OnDelete="@(() => ShowDeleteConfirmation(project))" />
@@ -258,6 +282,9 @@ else
     private bool IsLoading { get; set; } = true;
     private System.Threading.Timer? _refreshTimer;
     private string ActiveFilter { get; set; } = "active";
+    private bool HasDefaultProvider { get; set; }
+    private Guid? StartingIdeaQueueProjectId { get; set; }
+    private bool _isAutoRefreshing;
 
     // Modal state
     private bool ShowProjectModal { get; set; }
@@ -271,6 +298,7 @@ else
 
     protected override async Task OnInitializedAsync()
     {
+        await LoadProviderAvailability();
         await LoadProjects();
         await LoadActiveJobs();
         StartAutoRefresh();
@@ -282,17 +310,27 @@ else
     {
         _refreshTimer = new System.Threading.Timer(async _ =>
         {
-            if (_disposed || !ActiveJobs.Any()) return;
+            if (_disposed || _isAutoRefreshing || (!ActiveJobs.Any() && !ProjectsWithInfo.Any(info => info.Project.IdeasProcessingActive)))
+            {
+                return;
+            }
+
+            _isAutoRefreshing = true;
             try
             {
                 await InvokeAsync(async () =>
                 {
                     if (_disposed) return;
+                    await LoadProjects();
                     await LoadActiveJobs();
                     StateHasChanged();
                 });
             }
             catch (ObjectDisposedException) { }
+            finally
+            {
+                _isAutoRefreshing = false;
+            }
         }, null, TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(3));
     }
 
@@ -352,51 +390,89 @@ else
         try
         {
             var projectsWithStats = (await ProjectService.GetAllWithStatsAsync()).ToList();
-
-            // Build combined info with branch info
-            ProjectsWithInfo = new List<ProjectInfoWithStats>();
-            foreach (var pws in projectsWithStats)
-            {
-                var info = new ProjectInfoWithStats
+            ProjectsWithInfo = projectsWithStats
+                .Select(projectWithStats => new ProjectInfoWithStats
                 {
-                    Project = pws.Project,
-                    Stats = pws.Stats,
-                    LatestJob = null,
-                    CurrentBranch = null
-                };
-
-                // Try to get current branch
-                try
-                {
-                    if (await VersionControlService.IsGitRepositoryAsync(pws.Project.WorkingPath))
-                    {
-                        info.CurrentBranch = await VersionControlService.GetCurrentBranchAsync(pws.Project.WorkingPath);
-                    }
-                }
-                catch
-                {
-                    // Ignore errors getting branch info
-                }
-
-                // Try to get latest job
-                try
-                {
-                    var projectWithJobs = await ProjectService.GetByIdWithJobsAsync(pws.Project.Id);
-                    info.LatestJob = projectWithJobs?.Jobs
-                    .OrderByDescending(j => j.CreatedAt)
-                    .FirstOrDefault();
-                }
-                catch
-                {
-                    // Ignore errors getting latest job
-                }
-
-                ProjectsWithInfo.Add(info);
-            }
+                    Project = projectWithStats.Project,
+                    Stats = projectWithStats.Stats,
+                    LatestJob = projectWithStats.LatestJob,
+                    CurrentBranch = projectWithStats.CurrentBranch
+                })
+                .ToList();
         }
         finally
         {
             IsLoading = false;
+        }
+    }
+
+    private async Task LoadProviderAvailability()
+    {
+        try
+        {
+            HasDefaultProvider = (await ProviderService.GetDefaultAsync())?.IsEnabled == true;
+        }
+        catch
+        {
+            HasDefaultProvider = false;
+        }
+    }
+
+    private bool CanStartIdeaQueue(ProjectInfoWithStats projectInfo)
+        => HasDefaultProvider
+            && projectInfo.Stats.UnprocessedIdeas > 0
+            && !projectInfo.Project.IdeasProcessingActive;
+
+    private string GetStartIdeaQueueTooltip(ProjectInfoWithStats projectInfo)
+    {
+        if (!HasDefaultProvider)
+        {
+            return "Set a default provider to enable idea processing.";
+        }
+
+        if (projectInfo.Stats.UnprocessedIdeas == 0)
+        {
+            return "No pending ideas to process.";
+        }
+
+        return "Start automatically converting pending ideas into jobs.";
+    }
+
+    private async Task StartIdeaQueue(ProjectInfoWithStats projectInfo)
+    {
+        if (!CanStartIdeaQueue(projectInfo))
+        {
+            return;
+        }
+
+        StartingIdeaQueueProjectId = projectInfo.Project.Id;
+        StateHasChanged();
+
+        try
+        {
+            var autoCommitEnabled = projectInfo.Project.AutoCommitMode != AutoCommitMode.Off;
+            var hasActiveJobs = projectInfo.Stats.ActiveJobs > 0 || ActiveJobs.Any(job => job.ProjectId == projectInfo.Project.Id);
+
+            await IdeaService.StartProcessingAsync(projectInfo.Project.Id, autoCommitEnabled);
+            projectInfo.Project.IdeasProcessingActive = true;
+
+            var queueMessage = hasActiveJobs ? " New ideas will queue behind the current job." : string.Empty;
+            var commitMessage = autoCommitEnabled ? " Auto-commit is enabled." : string.Empty;
+            NotificationService.ShowInfo(
+                $"Ideas will be converted to jobs automatically.{queueMessage}{commitMessage}",
+                "Idea Queue Started");
+
+            await LoadProjects();
+            await LoadActiveJobs();
+        }
+        catch (Exception ex)
+        {
+            NotificationService.ShowError($"Error starting idea queue: {ex.Message}");
+        }
+        finally
+        {
+            StartingIdeaQueueProjectId = null;
+            StateHasChanged();
         }
     }
 

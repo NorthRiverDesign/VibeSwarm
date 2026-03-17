@@ -40,6 +40,24 @@
 				</button>
 			</li>
 		}
+		@if (ShowStartIdeaQueueAction)
+		{
+			<li>
+				<button class="dropdown-item" @onclick="OnStartIdeaQueue"
+						disabled="@(!StartIdeaQueueEnabled || IsStartingIdeaQueue)"
+						title="@StartIdeaQueueTooltip">
+					@if (IsStartingIdeaQueue)
+					{
+						<span class="spinner-border spinner-border-sm me-2" role="status"></span>
+					}
+					else
+					{
+						<i class="bi bi-play-fill me-2 text-success"></i>
+					}
+					@StartIdeaQueueLabel
+				</button>
+			</li>
+		}
 		@if (HasGitActions)
 		{
 			<li><hr class="dropdown-divider"></li>
@@ -134,6 +152,24 @@
 
 	[Parameter]
 	public EventCallback OnToggleActive { get; set; }
+
+	[Parameter]
+	public bool ShowStartIdeaQueueAction { get; set; }
+
+	[Parameter]
+	public bool StartIdeaQueueEnabled { get; set; } = true;
+
+	[Parameter]
+	public bool IsStartingIdeaQueue { get; set; }
+
+	[Parameter]
+	public string StartIdeaQueueLabel { get; set; } = "Start Idea Queue";
+
+	[Parameter]
+	public string? StartIdeaQueueTooltip { get; set; }
+
+	[Parameter]
+	public EventCallback OnStartIdeaQueue { get; set; }
 
 	[Parameter]
 	public bool ShowSyncAction { get; set; }

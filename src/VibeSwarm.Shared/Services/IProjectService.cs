@@ -13,6 +13,8 @@ public class ProjectJobStats
     public int CompletedJobs { get; set; }
     public int FailedJobs { get; set; }
     public int ActiveJobs { get; set; }
+    public int TotalIdeas { get; set; }
+    public int UnprocessedIdeas { get; set; }
     public int TotalInputTokens { get; set; }
     public int TotalOutputTokens { get; set; }
     public decimal TotalCostUsd { get; set; }
@@ -25,6 +27,8 @@ public class ProjectWithStats
 {
     public required Project Project { get; set; }
     public ProjectJobStats Stats { get; set; } = new();
+    public string? CurrentBranch { get; set; }
+    public Job? LatestJob { get; set; }
 }
 
 /// <summary>

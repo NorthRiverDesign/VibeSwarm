@@ -18,18 +18,24 @@ public sealed class ProjectsPageTests
 	[Fact]
 	public async Task RenderedProjectsPage_GroupsGitActionsUnderProjectOptions()
 	{
-		var project = new Project
+		var project = new ProjectWithStats
 		{
-			Id = Guid.NewGuid(),
-			Name = "Repo Project",
-			WorkingPath = "/tmp/repo-project",
-			IsActive = true
+			Project = new Project
+			{
+				Id = Guid.NewGuid(),
+				Name = "Repo Project",
+				WorkingPath = "/tmp/repo-project",
+				IsActive = true
+			},
+			Stats = new ProjectJobStats(),
+			CurrentBranch = "main"
 		};
 
 		var services = new ServiceCollection();
 		services.AddLogging();
 		services.AddSingleton<IProjectService>(new FakeProjectService([project]));
 		services.AddSingleton<IJobService>(new FakeJobService());
+		services.AddSingleton<IIdeaService>(new FakeIdeaService());
 		services.AddSingleton<IVersionControlService>(new FakeVersionControlService());
 		services.AddSingleton<IProviderService>(new FakeProviderService());
 		services.AddSingleton<ISettingsService>(new FakeSettingsService());
@@ -51,12 +57,56 @@ public sealed class ProjectsPageTests
 	}
 
 	[Fact]
+	public async Task RenderedProjectsPage_ShowsIdeaCountsAndQueueAction()
+	{
+		var project = new ProjectWithStats
+		{
+			Project = new Project
+			{
+				Id = Guid.NewGuid(),
+				Name = "Ideas Project",
+				WorkingPath = "/tmp/ideas-project",
+				IsActive = true
+			},
+			Stats = new ProjectJobStats
+			{
+				TotalIdeas = 4,
+				UnprocessedIdeas = 2
+			}
+		};
+
+		var services = new ServiceCollection();
+		services.AddLogging();
+		services.AddSingleton<IProjectService>(new FakeProjectService([project]));
+		services.AddSingleton<IJobService>(new FakeJobService());
+		services.AddSingleton<IIdeaService>(new FakeIdeaService());
+		services.AddSingleton<IVersionControlService>(new FakeVersionControlService());
+		services.AddSingleton<IProviderService>(new FakeProviderService());
+		services.AddSingleton<ISettingsService>(new FakeSettingsService());
+		services.AddSingleton<NotificationService>();
+		services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
+
+		await using var renderer = new HtmlRenderer(services.BuildServiceProvider(), NullLoggerFactory.Instance);
+
+		var html = await renderer.Dispatcher.InvokeAsync(async () =>
+		{
+			var output = await renderer.RenderComponentAsync<Projects>();
+			return output.ToHtmlString();
+		});
+
+		Assert.Contains("4 ideas", html);
+		Assert.Contains("2 pending", html);
+		Assert.Contains("Start Idea Queue", html);
+	}
+
+	[Fact]
 	public async Task RenderedProjectsPage_ShowsFilterTabs_WhenNoProjectsExist()
 	{
 		var services = new ServiceCollection();
 		services.AddLogging();
 		services.AddSingleton<IProjectService>(new FakeProjectService([]));
 		services.AddSingleton<IJobService>(new FakeJobService());
+		services.AddSingleton<IIdeaService>(new FakeIdeaService());
 		services.AddSingleton<IVersionControlService>(new FakeVersionControlService());
 		services.AddSingleton<IProviderService>(new FakeProviderService());
 		services.AddSingleton<ISettingsService>(new FakeSettingsService());
@@ -76,15 +126,15 @@ public sealed class ProjectsPageTests
 		Assert.Contains("No projects yet", html);
 	}
 
-	private sealed class FakeProjectService(IReadOnlyList<Project> projects) : IProjectService
+	private sealed class FakeProjectService(IReadOnlyList<ProjectWithStats> projectSummaries) : IProjectService
 	{
-		private readonly IReadOnlyList<Project> _projects = projects;
+		private readonly IReadOnlyList<ProjectWithStats> _projectSummaries = projectSummaries;
 
-		public Task<IEnumerable<Project>> GetAllAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Project>>(_projects);
-		public Task<IEnumerable<Project>> GetRecentAsync(int count, CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Project>>(_projects.Take(count));
-		public Task<Project?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult(_projects.FirstOrDefault(project => project.Id == id));
+		public Task<IEnumerable<Project>> GetAllAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Project>>(_projectSummaries.Select(summary => summary.Project));
+		public Task<IEnumerable<Project>> GetRecentAsync(int count, CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Project>>(_projectSummaries.Take(count).Select(summary => summary.Project));
+		public Task<Project?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult(_projectSummaries.Select(summary => summary.Project).FirstOrDefault(project => project.Id == id));
 		public Task<Project?> GetByIdWithJobsAsync(Guid id, CancellationToken cancellationToken = default)
-			=> Task.FromResult(_projects.FirstOrDefault(project => project.Id == id) is Project project
+			=> Task.FromResult(_projectSummaries.Select(summary => summary.Project).FirstOrDefault(project => project.Id == id) is Project project
 				? new Project { Id = project.Id, Name = project.Name, WorkingPath = project.WorkingPath, IsActive = project.IsActive, Jobs = [] }
 				: null);
 		public Task<Project> CreateAsync(Project project, CancellationToken cancellationToken = default) => throw new NotSupportedException();
@@ -92,11 +142,7 @@ public sealed class ProjectsPageTests
 		public Task<Project> UpdateAsync(Project project, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task DeleteAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<IEnumerable<ProjectWithStats>> GetAllWithStatsAsync(CancellationToken cancellationToken = default)
-			=> Task.FromResult<IEnumerable<ProjectWithStats>>(_projects.Select(project => new ProjectWithStats
-				{
-					Project = project,
-					Stats = new ProjectJobStats()
-				}));
+			=> Task.FromResult<IEnumerable<ProjectWithStats>>(_projectSummaries);
 		public Task<IEnumerable<DashboardProjectInfo>> GetRecentWithLatestJobAsync(int count, CancellationToken cancellationToken = default)
 			=> Task.FromResult<IEnumerable<DashboardProjectInfo>>([]);
 		public Task<DashboardJobMetrics> GetDashboardJobMetricsAsync(int rangeDays, CancellationToken cancellationToken = default)
@@ -105,6 +151,36 @@ public sealed class ProjectsPageTests
 				RangeDays = rangeDays,
 				Buckets = []
 			});
+	}
+
+	private sealed class FakeIdeaService : IIdeaService
+	{
+		public Task<IEnumerable<Idea>> GetByProjectIdAsync(Guid projectId, CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Idea>>([]);
+		public Task<ProjectIdeasListResult> GetPagedByProjectIdAsync(Guid projectId, int page = 1, int pageSize = 10, CancellationToken cancellationToken = default)
+			=> Task.FromResult(new ProjectIdeasListResult());
+		public Task<Idea?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult<Idea?>(null);
+		public Task<Idea> CreateAsync(Idea idea, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<Idea> UpdateAsync(Idea idea, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task DeleteAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<Idea?> GetNextUnprocessedAsync(Guid projectId, CancellationToken cancellationToken = default) => Task.FromResult<Idea?>(null);
+		public Task<Job?> ConvertToJobAsync(Guid ideaId, CancellationToken cancellationToken = default) => Task.FromResult<Job?>(null);
+		public Task<bool> CompleteIdeaFromJobAsync(Guid jobId, CancellationToken cancellationToken = default) => Task.FromResult(false);
+		public Task<bool> HandleJobCompletionAsync(Guid jobId, bool success, CancellationToken cancellationToken = default) => Task.FromResult(false);
+		public Task<Idea?> GetByJobIdAsync(Guid jobId, CancellationToken cancellationToken = default) => Task.FromResult<Idea?>(null);
+		public Task StartProcessingAsync(Guid projectId, bool autoCommit = false, CancellationToken cancellationToken = default) => Task.CompletedTask;
+		public Task StopProcessingAsync(Guid projectId, CancellationToken cancellationToken = default) => Task.CompletedTask;
+		public Task<bool> IsProcessingActiveAsync(Guid projectId, CancellationToken cancellationToken = default) => Task.FromResult(false);
+		public Task<bool> ProcessNextIdeaIfReadyAsync(Guid projectId, CancellationToken cancellationToken = default) => Task.FromResult(false);
+		public Task<IEnumerable<Guid>> GetActiveProcessingProjectsAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Guid>>([]);
+		public Task ReorderIdeasAsync(Guid projectId, IEnumerable<Guid> ideaIdsInOrder, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<Idea> CopyToProjectAsync(Guid ideaId, Guid targetProjectId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<Idea> MoveToProjectAsync(Guid ideaId, Guid targetProjectId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<Idea?> ExpandIdeaAsync(Guid ideaId, IdeaExpansionRequest? request = null, CancellationToken cancellationToken = default) => Task.FromResult<Idea?>(null);
+		public Task<Idea?> CancelExpansionAsync(Guid ideaId, CancellationToken cancellationToken = default) => Task.FromResult<Idea?>(null);
+		public Task<Idea?> ApproveExpansionAsync(Guid ideaId, string? editedDescription = null, CancellationToken cancellationToken = default) => Task.FromResult<Idea?>(null);
+		public Task<Idea?> RejectExpansionAsync(Guid ideaId, CancellationToken cancellationToken = default) => Task.FromResult<Idea?>(null);
+		public Task<SuggestIdeasResult> SuggestIdeasFromCodebaseAsync(Guid projectId, SuggestIdeasRequest? request = null, CancellationToken cancellationToken = default)
+			=> Task.FromResult(new SuggestIdeasResult());
 	}
 
 	private sealed class FakeJobService : IJobService

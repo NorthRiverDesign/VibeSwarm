@@ -176,11 +176,13 @@ public class ProjectService : IProjectService
 	public async Task<IEnumerable<ProjectWithStats>> GetAllWithStatsAsync(CancellationToken cancellationToken = default)
 	{
 		var projects = await BuildProjectQuery()
+			.AsNoTracking()
 			.OrderByDescending(p => p.CreatedAt)
 			.ToListAsync(cancellationToken);
 
 		var projectIds = projects.Select(p => p.Id).ToList();
 		var stats = await _dbContext.Jobs
+			.AsNoTracking()
 			.Where(j => projectIds.Contains(j.ProjectId))
 			.GroupBy(j => j.ProjectId)
 			.Select(g => new ProjectJobStats
@@ -196,13 +198,71 @@ public class ProjectService : IProjectService
 			})
 			.ToListAsync(cancellationToken);
 
+		var ideaStats = await _dbContext.Ideas
+			.AsNoTracking()
+			.Where(idea => projectIds.Contains(idea.ProjectId))
+			.GroupBy(idea => idea.ProjectId)
+			.Select(group => new
+			{
+				ProjectId = group.Key,
+				TotalIdeas = group.Count(),
+				UnprocessedIdeas = group.Count(idea => !idea.IsProcessing && idea.JobId == null)
+			})
+			.ToListAsync(cancellationToken);
+
+		var latestJobs = await _dbContext.Jobs
+			.AsNoTracking()
+			.Where(job => projectIds.Contains(job.ProjectId))
+			.GroupBy(job => job.ProjectId)
+			.Select(group => group
+				.OrderByDescending(job => job.CreatedAt)
+				.First())
+			.ToListAsync(cancellationToken);
+
 		var statsByProject = stats.ToDictionary(s => s.ProjectId);
+		var ideaStatsByProject = ideaStats.ToDictionary(
+			stat => stat.ProjectId,
+			stat => (stat.TotalIdeas, stat.UnprocessedIdeas));
+		var latestJobsByProject = latestJobs.ToDictionary(job => job.ProjectId);
+		var branchesByProject = new Dictionary<Guid, string?>();
+
+		foreach (var project in projects)
+		{
+			try
+			{
+				if (await _versionControlService.IsGitRepositoryAsync(project.WorkingPath, cancellationToken))
+				{
+					branchesByProject[project.Id] = await _versionControlService.GetCurrentBranchAsync(project.WorkingPath, cancellationToken);
+				}
+			}
+			catch
+			{
+				// Ignore branch lookup failures and continue returning the rest of the summary data.
+			}
+		}
 
 		return projects.Select(p => new ProjectWithStats
 		{
 			Project = p,
-			Stats = statsByProject.TryGetValue(p.Id, out var s) ? s : new ProjectJobStats { ProjectId = p.Id }
+			Stats = BuildProjectStats(p.Id),
+			CurrentBranch = branchesByProject.GetValueOrDefault(p.Id),
+			LatestJob = latestJobsByProject.GetValueOrDefault(p.Id)
 		});
+
+		ProjectJobStats BuildProjectStats(Guid projectId)
+		{
+			var projectStats = statsByProject.TryGetValue(projectId, out var existingStats)
+				? existingStats
+				: new ProjectJobStats { ProjectId = projectId };
+
+			if (ideaStatsByProject.TryGetValue(projectId, out var projectIdeaStats))
+			{
+				projectStats.TotalIdeas = projectIdeaStats.TotalIdeas;
+				projectStats.UnprocessedIdeas = projectIdeaStats.UnprocessedIdeas;
+			}
+
+			return projectStats;
+		}
 	}
 
 	public async Task<IEnumerable<DashboardProjectInfo>> GetRecentWithLatestJobAsync(int count, CancellationToken cancellationToken = default)
