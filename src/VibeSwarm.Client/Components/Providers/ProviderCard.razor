@@ -59,6 +59,7 @@
 	private bool ShouldShowUsageSection()
 	{
 		return UsageSummary != null && (
+			UsageSummary.LimitWindows.Count > 0 ||
 			UsageSummary.EffectiveMaxUsage > 0 ||
 			UsageSummary.CurrentUsage.HasValue ||
 			UsageSummary.TotalPremiumRequestsConsumed > 0 ||

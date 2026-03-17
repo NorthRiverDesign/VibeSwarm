@@ -1,4 +1,7 @@
 using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using VibeSwarm.Shared.Providers;
 
 namespace VibeSwarm.Shared.Data;
@@ -89,7 +92,53 @@ public class ProviderUsageRecord
 	public string? RawLimitMessage { get; set; }
 
 	/// <summary>
+	/// Persisted JSON payload of detailed limit windows observed for this execution.
+	/// </summary>
+	[StringLength(4000)]
+	[JsonIgnore]
+	public string? DetectedLimitWindowsJson
+	{
+		get => _detectedLimitWindowsJson;
+		set
+		{
+			_detectedLimitWindowsJson = value;
+			_detectedLimitWindows = null;
+		}
+	}
+
+	/// <summary>
+	/// Detailed limit windows observed for this execution.
+	/// </summary>
+	[NotMapped]
+	public List<UsageLimitWindow> DetectedLimitWindows
+	{
+		get
+		{
+			if (_detectedLimitWindows != null)
+			{
+				return _detectedLimitWindows;
+			}
+
+			_detectedLimitWindows = string.IsNullOrWhiteSpace(_detectedLimitWindowsJson)
+				? []
+				: JsonSerializer.Deserialize<List<UsageLimitWindow>>(_detectedLimitWindowsJson) ?? [];
+
+			return _detectedLimitWindows;
+		}
+		set
+		{
+			_detectedLimitWindows = value ?? [];
+			_detectedLimitWindowsJson = _detectedLimitWindows.Count == 0
+				? null
+				: JsonSerializer.Serialize(_detectedLimitWindows);
+		}
+	}
+
+	/// <summary>
 	/// When this usage record was created
 	/// </summary>
 	public DateTime RecordedAt { get; set; } = DateTime.UtcNow;
+
+	private string? _detectedLimitWindowsJson;
+	private List<UsageLimitWindow>? _detectedLimitWindows;
 }

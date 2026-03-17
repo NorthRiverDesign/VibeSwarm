@@ -1,30 +1,55 @@
-@* Usage meter component showing provider usage as a progress bar *@
+@* Usage meter component showing provider usage as one or more progress bars *@
+@using VibeSwarm.Shared.Providers
 
-@if (UsageSummary != null && UsageSummary.EffectiveMaxUsage > 0)
+@{
+	var displayWindows = GetDisplayWindows();
+}
+
+@if (displayWindows.Count > 0)
 {
 	<div class="usage-meter @Class">
-		<div class="d-flex justify-content-between align-items-center small mb-1">
-			<span class="text-body-secondary">
-				@GetUsageLabel()
-			</span>
-			<span class="fw-medium @GetTextColorClass()">
-				@UsageSummary.PercentUsed%
-			</span>
-		</div>
-		<div class="progress" style="height: 6px;" role="progressbar" aria-valuenow="@UsageSummary.PercentUsed"
-			aria-valuemin="0" aria-valuemax="100">
-			<div class="progress-bar @GetProgressBarClass()" style="width: @UsageSummary.PercentUsed%"></div>
-		</div>
-		@if (ShowResetTime && UsageSummary.LimitResetTime.HasValue)
+		@foreach (var window in displayWindows)
 		{
-			<div class="small text-body-tertiary mt-1">
-				<i class="bi bi-clock me-1"></i>Resets @FormatResetTime(UsageSummary.LimitResetTime.Value)
-			</div>
-		}
-		@if (UsageSummary.IsLimitReached)
-		{
-			<div class="small text-danger mt-1">
-				<i class="bi bi-exclamation-triangle-fill me-1"></i>Limit reached
+			var percentUsed = GetPercentUsed(window);
+			<div class="@(window != displayWindows[0] ? "mt-2 pt-2 border-top border-secondary-subtle" : string.Empty)">
+				@if (window.MaxUsage.HasValue && window.MaxUsage > 0)
+				{
+					<div class="d-flex justify-content-between align-items-center small mb-1">
+						<span class="text-body-secondary">@GetUsageLabel(window)</span>
+						<span class="fw-medium @GetTextColorClass(percentUsed)">
+							@percentUsed%
+						</span>
+					</div>
+					<div class="progress" style="height: 6px;" role="progressbar" aria-valuenow="@percentUsed"
+						 aria-valuemin="0" aria-valuemax="100">
+						<div class="progress-bar @GetProgressBarClass(percentUsed)" style="width: @percentUsed%"></div>
+					</div>
+				}
+				else
+				{
+					<div class="small text-body-secondary">
+						<i class="bi bi-graph-up me-1"></i>@GetFallbackUsageLabel(window)
+					</div>
+				}
+
+				@if (ShowResetTime && window.ResetTime.HasValue)
+				{
+					<div class="small text-body-tertiary mt-1">
+						<i class="bi bi-clock me-1"></i>Resets @FormatResetTime(window.ResetTime.Value)
+					</div>
+				}
+
+				@if (window.IsLimitReached)
+				{
+					<div class="small text-danger mt-1">
+						<i class="bi bi-exclamation-triangle-fill me-1"></i>Limit reached
+					</div>
+				}
+
+				@if (!string.IsNullOrWhiteSpace(window.Message) && ShouldShowMessage(window, displayWindows.Count))
+				{
+					<div class="small text-body-tertiary mt-1">@window.Message</div>
+				}
 			</div>
 		}
 	</div>
@@ -73,41 +98,66 @@ else if (UsageSummary != null && ShowEmptyState)
 	[Parameter]
 	public bool Compact { get; set; } = false;
 
-	private string GetUsageLabel()
+	private List<UsageLimitWindow> GetDisplayWindows()
 	{
-		if (UsageSummary == null) return "";
-
-		long current = UsageSummary.LimitType switch
+		if (UsageSummary == null)
 		{
-			UsageLimitType.PremiumRequests => UsageSummary.CurrentUsage ?? UsageSummary.TotalPremiumRequestsConsumed,
-			UsageLimitType.TokenLimit => UsageSummary.TotalInputTokens + UsageSummary.TotalOutputTokens,
-			UsageLimitType.SessionLimit => (long)(UsageSummary.CurrentUsage ?? 0),
-			_ => (long)(UsageSummary.CurrentUsage ?? 0)
-		};
+			return [];
+		}
 
-		long max = (long)(UsageSummary.EffectiveMaxUsage ?? 0);
+		if (UsageSummary.LimitWindows.Count > 0)
+		{
+			return UsageSummary.LimitWindows
+				.OrderBy(window => GetDisplayOrder(window.Scope))
+				.ToList();
+		}
 
-		return UsageSummary.LimitType switch
+		if (UsageSummary.CurrentUsage.HasValue || UsageSummary.EffectiveMaxUsage.HasValue || UsageSummary.LimitResetTime.HasValue)
+		{
+			return
+			[
+				new UsageLimitWindow
+				{
+					Scope = InferScope(UsageSummary.LimitType),
+					LimitType = UsageSummary.LimitType,
+					CurrentUsage = UsageSummary.CurrentUsage,
+					MaxUsage = UsageSummary.EffectiveMaxUsage,
+					ResetTime = UsageSummary.LimitResetTime,
+					IsLimitReached = UsageSummary.IsLimitReached,
+					Message = UsageSummary.LimitMessage
+				}
+			];
+		}
+
+		return [];
+	}
+
+	private string GetUsageLabel(UsageLimitWindow window)
+	{
+		long current = window.CurrentUsage ?? 0;
+		long max = window.MaxUsage ?? 0;
+		var label = GetScopeLabel(window.Scope);
+
+		return window.LimitType switch
 		{
 			UsageLimitType.PremiumRequests => Compact
-			? $"{current}/{max}"
-			: $"{current:N0} / {max:N0} Premium Requests",
+				? $"{label}: {current}/{max}"
+				: $"{label}: {current:N0} / {max:N0} Premium Requests",
 			UsageLimitType.TokenLimit => Compact
-			? $"{FormatTokens(current)}/{FormatTokens(max)}"
-			: $"{FormatTokens(current)} / {FormatTokens(max)} Tokens",
-			UsageLimitType.SessionLimit => Compact
-			? $"{current}/{max}"
-			: $"{current:N0} / {max:N0} (Session)",
+				? $"{label}: {FormatTokens(current)}/{FormatTokens(max)}"
+				: $"{label}: {FormatTokens(current)} / {FormatTokens(max)} Tokens",
 			_ => Compact
-			? $"{current}/{max}"
-			: $"{current:N0} / {max:N0}"
+				? $"{label}: {current}/{max}"
+				: $"{label}: {current:N0} / {max:N0}"
 		};
 	}
 
 	private string? GetFallbackUsageLabel()
 	{
 		if (UsageSummary == null)
+		{
 			return null;
+		}
 
 		if (UsageSummary.LimitType == UsageLimitType.PremiumRequests && UsageSummary.TotalPremiumRequestsConsumed > 0)
 		{
@@ -132,6 +182,37 @@ else if (UsageSummary != null && ShowEmptyState)
 			: null;
 	}
 
+	private string GetFallbackUsageLabel(UsageLimitWindow window)
+	{
+		if (window.CurrentUsage.HasValue)
+		{
+			return window.LimitType switch
+			{
+				UsageLimitType.SessionLimit => $"Session usage: {window.CurrentUsage:N0}",
+				UsageLimitType.RateLimit => $"Latest limit usage: {window.CurrentUsage:N0}",
+				UsageLimitType.TokenLimit => $"Latest token usage: {FormatTokens(window.CurrentUsage.Value)}",
+				UsageLimitType.PremiumRequests => Compact
+					? $"{window.CurrentUsage:N0} premium used"
+					: $"{window.CurrentUsage:N0} Premium Requests Used",
+				_ => $"{GetScopeLabel(window.Scope)}: {window.CurrentUsage:N0}"
+			};
+		}
+
+		return window.Message ?? "Usage update available";
+	}
+
+	private static bool ShouldShowMessage(UsageLimitWindow window, int totalWindows)
+	{
+		if (string.IsNullOrWhiteSpace(window.Message))
+		{
+			return false;
+		}
+
+		return totalWindows == 1 || !window.MaxUsage.HasValue;
+	}
+
+	private static int GetPercentUsed(UsageLimitWindow window) => window.PercentUsed ?? 0;
+
 	private string FormatTokens(long tokens)
 	{
 		if (tokens >= 1_000_000) return $"{tokens / 1_000_000.0:F1}M";
@@ -139,28 +220,20 @@ else if (UsageSummary != null && ShowEmptyState)
 		return tokens.ToString("N0");
 	}
 
-	private string GetProgressBarClass()
+	private static string GetProgressBarClass(int percent) => percent switch
 	{
-		var percent = UsageSummary?.PercentUsed ?? 0;
-		return percent switch
-		{
-			>= 95 => "bg-danger",
-			>= 80 => "bg-warning",
-			>= 60 => "bg-info",
-			_ => "bg-success"
-		};
-	}
+		>= 95 => "bg-danger",
+		>= 80 => "bg-warning",
+		>= 60 => "bg-info",
+		_ => "bg-success"
+	};
 
-	private string GetTextColorClass()
+	private static string GetTextColorClass(int percent) => percent switch
 	{
-		var percent = UsageSummary?.PercentUsed ?? 0;
-		return percent switch
-		{
-			>= 95 => "text-danger",
-			>= 80 => "text-warning",
-			_ => ""
-		};
-	}
+		>= 95 => "text-danger",
+		>= 80 => "text-warning",
+		_ => ""
+	};
 
 	private string FormatResetTime(DateTime resetTime)
 	{
@@ -178,4 +251,29 @@ else if (UsageSummary != null && ShowEmptyState)
 
 		return resetTime.ToString("MMM d");
 	}
+
+	private static UsageLimitWindowScope InferScope(UsageLimitType limitType) => limitType switch
+	{
+		UsageLimitType.SessionLimit => UsageLimitWindowScope.Session,
+		UsageLimitType.PremiumRequests => UsageLimitWindowScope.Monthly,
+		_ => UsageLimitWindowScope.Unknown
+	};
+
+	private static int GetDisplayOrder(UsageLimitWindowScope scope) => scope switch
+	{
+		UsageLimitWindowScope.Session => 0,
+		UsageLimitWindowScope.Daily => 1,
+		UsageLimitWindowScope.Weekly => 2,
+		UsageLimitWindowScope.Monthly => 3,
+		_ => 4
+	};
+
+	private static string GetScopeLabel(UsageLimitWindowScope scope) => scope switch
+	{
+		UsageLimitWindowScope.Session => "Session",
+		UsageLimitWindowScope.Daily => "Daily",
+		UsageLimitWindowScope.Weekly => "Weekly",
+		UsageLimitWindowScope.Monthly => "Monthly",
+		_ => "Usage"
+	};
 }

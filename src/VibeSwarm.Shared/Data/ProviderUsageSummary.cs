@@ -1,4 +1,7 @@
 using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using VibeSwarm.Shared.Providers;
 
 namespace VibeSwarm.Shared.Data;
@@ -83,6 +86,49 @@ public class ProviderUsageSummary
 	[StringLength(500)]
 	public string? LimitMessage { get; set; }
 
+	/// <summary>
+	/// Persisted JSON payload of detailed concurrent limit windows.
+	/// </summary>
+	[StringLength(4000)]
+	[JsonIgnore]
+	public string? LimitWindowsJson
+	{
+		get => _limitWindowsJson;
+		set
+		{
+			_limitWindowsJson = value;
+			_limitWindows = null;
+		}
+	}
+
+	/// <summary>
+	/// Detailed limit windows such as session, weekly, and monthly snapshots.
+	/// </summary>
+	[NotMapped]
+	public List<UsageLimitWindow> LimitWindows
+	{
+		get
+		{
+			if (_limitWindows != null)
+			{
+				return _limitWindows;
+			}
+
+			_limitWindows = string.IsNullOrWhiteSpace(_limitWindowsJson)
+				? []
+				: JsonSerializer.Deserialize<List<UsageLimitWindow>>(_limitWindowsJson) ?? [];
+
+			return _limitWindows;
+		}
+		set
+		{
+			_limitWindows = value ?? [];
+			_limitWindowsJson = _limitWindows.Count == 0
+				? null
+				: JsonSerializer.Serialize(_limitWindows);
+		}
+	}
+
 	#endregion
 
 	#region User-Configurable Limit
@@ -148,4 +194,7 @@ public class ProviderUsageSummary
 	}
 
 	#endregion
+
+	private string? _limitWindowsJson;
+	private List<UsageLimitWindow>? _limitWindows;
 }

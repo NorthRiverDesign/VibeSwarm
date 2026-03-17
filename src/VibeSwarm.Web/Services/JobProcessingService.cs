@@ -1342,30 +1342,20 @@ public class JobProcessingService : BackgroundService
         return result;
     }
 
-    private static bool ShouldApplyProviderUsage(UsageLimits? limits)
-    {
-        return limits != null && (
-            limits.IsLimitReached ||
-            limits.CurrentUsage.HasValue ||
-            limits.MaxUsage.HasValue ||
-            limits.ResetTime.HasValue);
-    }
+	private static bool ShouldApplyProviderUsage(UsageLimits? limits)
+	{
+		return limits != null && (
+			limits.IsLimitReached ||
+			limits.CurrentUsage.HasValue ||
+			limits.MaxUsage.HasValue ||
+			limits.ResetTime.HasValue ||
+			limits.Windows.Count > 0);
+	}
 
-    private static UsageLimits MergeUsageLimits(UsageLimits? existing, UsageLimits latest)
-    {
-        if (existing == null)
-            return latest;
-
-        return new UsageLimits
-        {
-            LimitType = latest.LimitType != UsageLimitType.None ? latest.LimitType : existing.LimitType,
-            IsLimitReached = latest.IsLimitReached || existing.IsLimitReached,
-            CurrentUsage = latest.CurrentUsage ?? existing.CurrentUsage,
-            MaxUsage = latest.MaxUsage ?? existing.MaxUsage,
-            ResetTime = latest.ResetTime ?? existing.ResetTime,
-            Message = string.IsNullOrWhiteSpace(latest.Message) ? existing.Message : latest.Message
-        };
-    }
+	private static UsageLimits MergeUsageLimits(UsageLimits? existing, UsageLimits latest)
+	{
+		return UsageLimitWindowHelper.Merge(existing, latest);
+	}
 
     /// <summary>
     /// Releases ownership of a job and sets final status

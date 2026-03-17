@@ -440,31 +440,35 @@ public class CopilotProvider : CliProviderBase
                 });
                 break;
 
-            case "usage":
-            case "metrics":
-            case "stats":
-                if (evt.InputTokens.HasValue)
-                {
+			case "usage":
+			case "metrics":
+			case "stats":
+				if (evt.InputTokens.HasValue)
+				{
                     result.InputTokens = evt.InputTokens;
                 }
                 if (evt.OutputTokens.HasValue)
                 {
                     result.OutputTokens = evt.OutputTokens;
                 }
-                if (evt.CostUsd.HasValue)
-                {
-                    result.CostUsd = evt.CostUsd;
-                }
-                if (evt.Usage != null)
-                {
-                    result.InputTokens = evt.Usage.InputTokens ?? result.InputTokens;
-                    result.OutputTokens = evt.Usage.OutputTokens ?? result.OutputTokens;
-                }
+				if (evt.CostUsd.HasValue)
+				{
+					result.CostUsd = evt.CostUsd;
+				}
+				else if (evt.TotalCostUsd.HasValue)
+				{
+					result.CostUsd = evt.TotalCostUsd;
+				}
+				if (evt.Usage != null)
+				{
+					result.InputTokens = evt.Usage.InputTokens ?? result.InputTokens;
+					result.OutputTokens = evt.Usage.OutputTokens ?? result.OutputTokens;
+				}
                 break;
 
-            case "done":
-            case "complete":
-            case "result":
+			case "done":
+			case "complete":
+			case "result":
                 if (evt.InputTokens.HasValue)
                 {
                     result.InputTokens = evt.InputTokens;
@@ -473,15 +477,19 @@ public class CopilotProvider : CliProviderBase
                 {
                     result.OutputTokens = evt.OutputTokens;
                 }
-                if (evt.CostUsd.HasValue)
-                {
-                    result.CostUsd = evt.CostUsd;
-                }
-                if (evt.Usage != null)
-                {
-                    result.InputTokens = evt.Usage.InputTokens ?? result.InputTokens;
-                    result.OutputTokens = evt.Usage.OutputTokens ?? result.OutputTokens;
-                }
+				if (evt.CostUsd.HasValue)
+				{
+					result.CostUsd = evt.CostUsd;
+				}
+				else if (evt.TotalCostUsd.HasValue)
+				{
+					result.CostUsd = evt.TotalCostUsd;
+				}
+				if (evt.Usage != null)
+				{
+					result.InputTokens = evt.Usage.InputTokens ?? result.InputTokens;
+					result.OutputTokens = evt.Usage.OutputTokens ?? result.OutputTokens;
+				}
                 break;
         }
     }

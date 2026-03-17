@@ -47,12 +47,14 @@ public class ProviderUsageService : IProviderUsageService
 		if (executionResult.DetectedUsageLimits != null)
 		{
 			var limits = executionResult.DetectedUsageLimits;
+			var detectedWindows = BuildWindowsFromSnapshot(limits);
 			record.DetectedLimitType = limits.LimitType;
 			record.DetectedCurrentUsage = limits.CurrentUsage;
 			record.DetectedMaxUsage = limits.MaxUsage;
 			record.DetectedResetTime = limits.ResetTime;
 			record.DetectedLimitReached = limits.IsLimitReached;
 			record.RawLimitMessage = limits.Message;
+			record.DetectedLimitWindows = detectedWindows;
 		}
 
 		_context.ProviderUsageRecords.Add(record);
@@ -94,21 +96,11 @@ public class ProviderUsageService : IProviderUsageService
 		if (executionResult.DetectedUsageLimits != null)
 		{
 			var limits = executionResult.DetectedUsageLimits;
-			summary.LimitType = limits.LimitType;
-			summary.CurrentUsage = limits.CurrentUsage;
-			summary.MaxUsage = limits.MaxUsage;
-			summary.LimitResetTime = limits.ResetTime;
-			summary.IsLimitReached = limits.IsLimitReached;
-			summary.LimitMessage = limits.Message;
+			summary.LimitWindows = BuildWindowsFromSnapshot(limits);
+			ApplyLimitSnapshot(summary, limits);
 		}
 
-		// For premium request budgets, cumulative consumption is the best available current usage
-		// unless the provider supplied a fresher snapshot with an explicit current usage value.
-		if (summary.LimitType == UsageLimitType.PremiumRequests &&
-			!(executionResult.DetectedUsageLimits?.CurrentUsage.HasValue ?? false))
-		{
-			summary.CurrentUsage = summary.TotalPremiumRequestsConsumed;
-		}
+		await ApplyTrackedUsageWindowsAsync(summary, provider, executionResult, cancellationToken);
 
 		summary.LastUpdatedAt = DateTime.UtcNow;
 
@@ -249,6 +241,7 @@ public class ProviderUsageService : IProviderUsageService
 		summary.IsLimitReached = false;
 		summary.LimitMessage = null;
 		summary.LimitResetTime = null;
+		summary.LimitWindows = [];
 
 		// Update period tracking
 		summary.PeriodStart = DateTime.UtcNow;
@@ -257,5 +250,118 @@ public class ProviderUsageService : IProviderUsageService
 		await _context.SaveChangesAsync(cancellationToken);
 
 		_logger.LogInformation("Reset usage period for provider {ProviderId}", providerId);
+	}
+
+	private void ApplyLimitSnapshot(ProviderUsageSummary summary, UsageLimits limits)
+	{
+		var primaryWindow = UsageLimitWindowHelper.SelectPrimaryWindow(limits.Windows);
+		summary.LimitType = primaryWindow?.LimitType ?? limits.LimitType;
+		summary.CurrentUsage = primaryWindow?.CurrentUsage ?? limits.CurrentUsage;
+		summary.MaxUsage = primaryWindow?.MaxUsage ?? limits.MaxUsage;
+		summary.LimitResetTime = primaryWindow?.ResetTime ?? limits.ResetTime;
+		summary.IsLimitReached = limits.IsLimitReached || (primaryWindow?.IsLimitReached ?? false);
+		summary.LimitMessage = primaryWindow?.Message ?? limits.Message;
+	}
+
+	private async Task ApplyTrackedUsageWindowsAsync(
+		ProviderUsageSummary summary,
+		Provider? provider,
+		ExecutionResult executionResult,
+		CancellationToken cancellationToken)
+	{
+		var currentWindows = UsageLimitWindowHelper.NormalizeWindows(summary.LimitWindows);
+		var hasProviderCurrentUsage = currentWindows.Any(window => window.CurrentUsage.HasValue && !IsTrackedMonthlyPremiumWindow(window));
+
+		if ((summary.LimitType == UsageLimitType.PremiumRequests
+				|| provider?.ConfiguredLimitType == UsageLimitType.PremiumRequests)
+			&& !hasProviderCurrentUsage)
+		{
+			var monthStart = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+			var nextMonth = monthStart.AddMonths(1);
+			var recordedThisMonth = await _context.ProviderUsageRecords
+				.Where(record => record.ProviderId == summary.ProviderId && record.RecordedAt >= monthStart)
+				.SumAsync(record => record.PremiumRequestsConsumed ?? 0, cancellationToken);
+
+			recordedThisMonth += executionResult.PremiumRequestsConsumed ?? 0;
+
+			var trackedWindow = new UsageLimitWindow
+			{
+				Scope = UsageLimitWindowScope.Monthly,
+				LimitType = UsageLimitType.PremiumRequests,
+				CurrentUsage = recordedThisMonth,
+				MaxUsage = provider?.ConfiguredUsageLimit,
+				ResetTime = nextMonth,
+				IsLimitReached = provider?.ConfiguredUsageLimit is int configuredMax && configuredMax > 0 && recordedThisMonth >= configuredMax,
+				Message = provider?.ConfiguredUsageLimit is int configuredLimit && configuredLimit > 0
+					? $"Tracked monthly premium requests in VibeSwarm: {recordedThisMonth}/{configuredLimit}"
+					: $"Tracked monthly premium requests in VibeSwarm: {recordedThisMonth}"
+			};
+
+			currentWindows.RemoveAll(IsTrackedMonthlyPremiumWindow);
+			currentWindows.Add(trackedWindow);
+			summary.LimitWindows = UsageLimitWindowHelper.NormalizeWindows(currentWindows);
+			ApplyLimitSnapshot(summary, UsageLimitWindowHelper.CreateUsageLimits(
+				summary.LimitType == UsageLimitType.None ? UsageLimitType.PremiumRequests : summary.LimitType,
+				trackedWindow.Message,
+				summary.LimitWindows,
+				trackedWindow.IsLimitReached));
+			summary.PeriodStart = monthStart;
+			return;
+		}
+
+		summary.LimitWindows = currentWindows;
+		if (currentWindows.Count > 0)
+		{
+			ApplyLimitSnapshot(summary, UsageLimitWindowHelper.CreateUsageLimits(summary.LimitType, summary.LimitMessage, currentWindows, summary.IsLimitReached));
+		}
+	}
+
+	private static List<UsageLimitWindow> BuildWindowsFromSnapshot(UsageLimits limits)
+	{
+		var windows = UsageLimitWindowHelper.NormalizeWindows(limits.Windows);
+		if (windows.Count > 0)
+		{
+			return windows;
+		}
+
+		if (!limits.CurrentUsage.HasValue
+			&& !limits.MaxUsage.HasValue
+			&& !limits.ResetTime.HasValue
+			&& string.IsNullOrWhiteSpace(limits.Message)
+			&& !limits.IsLimitReached)
+		{
+			return [];
+		}
+
+		return
+		[
+			new UsageLimitWindow
+			{
+				Scope = InferScope(limits.LimitType),
+				LimitType = limits.LimitType,
+				CurrentUsage = limits.CurrentUsage,
+				MaxUsage = limits.MaxUsage,
+				ResetTime = limits.ResetTime,
+				IsLimitReached = limits.IsLimitReached,
+				Message = limits.Message
+			}
+		];
+	}
+
+	private static bool IsTrackedMonthlyPremiumWindow(UsageLimitWindow window)
+	{
+		return window.Scope == UsageLimitWindowScope.Monthly
+			&& window.LimitType == UsageLimitType.PremiumRequests
+			&& window.Message?.StartsWith("Tracked monthly premium requests in VibeSwarm:", StringComparison.Ordinal) == true;
+	}
+
+	private static UsageLimitWindowScope InferScope(UsageLimitType limitType)
+	{
+		return limitType switch
+		{
+			UsageLimitType.SessionLimit => UsageLimitWindowScope.Session,
+			UsageLimitType.PremiumRequests => UsageLimitWindowScope.Monthly,
+			_ => UsageLimitWindowScope.Unknown
+		};
 	}
 }

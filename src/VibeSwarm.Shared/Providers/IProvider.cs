@@ -319,6 +319,54 @@ public class PricingInfo
 }
 
 /// <summary>
+/// A usage limit window for a specific time horizon such as a session, week, or month.
+/// </summary>
+public class UsageLimitWindow
+{
+	/// <summary>
+	/// The provider limit type represented by this window.
+	/// </summary>
+	public UsageLimitType LimitType { get; set; } = UsageLimitType.None;
+
+	/// <summary>
+	/// The time horizon this window applies to.
+	/// </summary>
+	public UsageLimitWindowScope Scope { get; set; } = UsageLimitWindowScope.Unknown;
+
+	/// <summary>
+	/// Whether the limit has been reached for this window.
+	/// </summary>
+	public bool IsLimitReached { get; set; }
+
+	/// <summary>
+	/// Current usage count for this window.
+	/// </summary>
+	public int? CurrentUsage { get; set; }
+
+	/// <summary>
+	/// Maximum allowed usage for this window.
+	/// </summary>
+	public int? MaxUsage { get; set; }
+
+	/// <summary>
+	/// When this window resets, if known.
+	/// </summary>
+	public DateTime? ResetTime { get; set; }
+
+	/// <summary>
+	/// Human-readable message about this window.
+	/// </summary>
+	public string? Message { get; set; }
+
+	/// <summary>
+	/// Percentage of limit used (0-100, null if unknown).
+	/// </summary>
+	public int? PercentUsed => (CurrentUsage.HasValue && MaxUsage.HasValue && MaxUsage > 0)
+		? (int)((CurrentUsage.Value / (double)MaxUsage.Value) * 100)
+		: null;
+}
+
+/// <summary>
 /// Information about provider usage limits
 /// </summary>
 public class UsageLimits
@@ -348,17 +396,34 @@ public class UsageLimits
     /// </summary>
     public DateTime? ResetTime { get; set; }
 
-    /// <summary>
-    /// Human-readable message about the limit status
-    /// </summary>
-    public string? Message { get; set; }
+	/// <summary>
+	/// Human-readable message about the limit status
+	/// </summary>
+	public string? Message { get; set; }
 
-    /// <summary>
-    /// Percentage of limit used (0-100, null if unknown)
-    /// </summary>
-    public int? PercentUsed => (CurrentUsage.HasValue && MaxUsage.HasValue && MaxUsage > 0)
-        ? (int)((CurrentUsage.Value / (double)MaxUsage.Value) * 100)
-        : null;
+	/// <summary>
+	/// Detailed windows for providers that report multiple concurrent limits.
+	/// </summary>
+	public List<UsageLimitWindow> Windows { get; set; } = [];
+
+	/// <summary>
+	/// Percentage of limit used (0-100, null if unknown)
+	/// </summary>
+	public int? PercentUsed => (CurrentUsage.HasValue && MaxUsage.HasValue && MaxUsage > 0)
+		? (int)((CurrentUsage.Value / (double)MaxUsage.Value) * 100)
+		: null;
+}
+
+/// <summary>
+/// Time horizons for provider usage windows.
+/// </summary>
+public enum UsageLimitWindowScope
+{
+	Unknown,
+	Session,
+	Daily,
+	Weekly,
+	Monthly
 }
 
 /// <summary>

@@ -4,13 +4,10 @@ namespace VibeSwarm.Shared.Providers;
 
 /// <summary>
 /// Parses Claude CLI stderr output for usage limit signals.
-/// Claude CLI may output limit-related messages when approaching or reaching limits.
+/// Claude CLI may report concurrent session, weekly, and monthly windows.
 /// </summary>
 public static partial class ClaudeUsageParser
 {
-	/// <summary>
-	/// Known limit signal patterns in Claude CLI output
-	/// </summary>
 	private static readonly string[] LimitPatterns =
 	[
 		"you've reached your usage limit",
@@ -28,17 +25,9 @@ public static partial class ClaudeUsageParser
 		"monthly limit"
 	];
 
-	/// <summary>
-	/// Regex to extract time-based reset information
-	/// Examples: "try again in 2 hours", "resets at 3:00 PM", "wait 30 minutes"
-	/// </summary>
 	[GeneratedRegex(@"(?:try again in|wait|resets? (?:at|in))\s*(\d+)\s*(hour|minute|second|day)s?", RegexOptions.IgnoreCase)]
-	private static partial Regex ResetTimePattern();
+	private static partial Regex RelativeResetTimePattern();
 
-	/// <summary>
-	/// Regex to extract usage percentage
-	/// Examples: "80% of limit used", "used 90%"
-	/// </summary>
 	[GeneratedRegex(@"(\d+)\s*%\s*(?:of\s+)?(?:limit\s+)?(?:used|consumed|remaining)", RegexOptions.IgnoreCase)]
 	private static partial Regex UsagePercentPattern();
 
@@ -51,142 +40,256 @@ public static partial class ClaudeUsageParser
 	[GeneratedRegex(@"(\d+)\s*%\s+of\s+(?:your\s+)?(session|weekly|daily|monthly)\s+limit\s+(used|consumed|remaining)", RegexOptions.IgnoreCase)]
 	private static partial Regex TypedUsagePercentPattern();
 
-	/// <summary>
-	/// Parses Claude CLI stderr for usage limit signals.
-	/// </summary>
-	/// <param name="stderr">The stderr output from Claude CLI</param>
-	/// <returns>UsageLimits if limit signals were detected, null otherwise</returns>
+	[GeneratedRegex(@"(?:resets?|reset)\s+(session|weekly|daily|monthly)\s+(?:limit\s+)?(?:at|on|in)\s*([^\r\n.]+)", RegexOptions.IgnoreCase)]
+	private static partial Regex ScopedResetPattern();
+
+	[GeneratedRegex(@"(?:limit\s+)?(reached|exceeded)[^\r\n]*?(session|weekly|daily|monthly)", RegexOptions.IgnoreCase)]
+	private static partial Regex ScopedReachedPattern();
+
+	[GeneratedRegex(@"(session|weekly|daily|monthly)[^\r\n]*?(reached|exceeded)", RegexOptions.IgnoreCase)]
+	private static partial Regex ReverseScopedReachedPattern();
+
 	public static UsageLimits? ParseLimitSignals(string? stderr)
 	{
 		if (string.IsNullOrWhiteSpace(stderr))
+		{
 			return null;
+		}
 
 		var stderrLower = stderr.ToLowerInvariant();
-
-		// Check if any limit patterns are present
-		var hasLimitSignal = false;
-		var isLimitReached = false;
-		string? limitMessage = null;
-
-		foreach (var pattern in LimitPatterns)
+		if (!LimitPatterns.Any(pattern => stderrLower.Contains(pattern)))
 		{
-			if (stderrLower.Contains(pattern))
+			return null;
+		}
+
+		var limitMessage = ExtractRelevantMessage(stderr);
+		var windows = ExtractWindows(stderr);
+		var genericResetTime = TryParseRelativeResetTime(stderr);
+		if (genericResetTime.HasValue)
+		{
+			ApplyGenericResetTime(windows, genericResetTime.Value);
+		}
+
+		var isLimitReached = windows.Any(window => window.IsLimitReached)
+			|| stderrLower.Contains("limit reached")
+			|| stderrLower.Contains("quota exceeded")
+			|| stderrLower.Contains("you've reached your usage limit");
+
+		if (windows.Count == 0)
+		{
+			var percentMatch = UsagePercentPattern().Match(stderr);
+			if (percentMatch.Success && int.TryParse(percentMatch.Groups[1].Value, out var percent))
 			{
-				hasLimitSignal = true;
-
-				// Determine if this is an actual limit reached vs approaching
-				if (pattern.Contains("reached") || pattern.Contains("exceeded") || pattern.Contains("limit reached"))
+				var qualifier = percentMatch.Groups[0].Value.Contains("remaining", StringComparison.OrdinalIgnoreCase)
+					? "remaining"
+					: "used";
+				windows.Add(new UsageLimitWindow
 				{
-					isLimitReached = true;
-				}
-
-				// Extract the relevant line as the message
-				var lines = stderr.Split('\n');
-				foreach (var line in lines)
-				{
-					if (line.Contains(pattern, StringComparison.OrdinalIgnoreCase))
-					{
-						limitMessage = line.Trim();
-						break;
-					}
-				}
-
-				break;
+					Scope = DetectScope(stderrLower),
+					LimitType = DetectLimitType(stderrLower),
+					CurrentUsage = qualifier == "remaining" ? 100 - percent : percent,
+					MaxUsage = 100,
+					ResetTime = genericResetTime,
+					IsLimitReached = isLimitReached,
+					Message = limitMessage
+				});
 			}
 		}
 
-		if (!hasLimitSignal)
-			return null;
-
-		var limits = new UsageLimits
+		if (windows.Count == 0)
 		{
-			LimitType = DetectLimitType(stderrLower),
-			IsLimitReached = isLimitReached,
-			Message = limitMessage ?? "Usage limit signal detected"
-		};
-
-		// Try to extract reset time
-		var resetMatch = ResetTimePattern().Match(stderr);
-		if (resetMatch.Success && int.TryParse(resetMatch.Groups[1].Value, out var amount))
-		{
-			var unit = resetMatch.Groups[2].Value.ToLowerInvariant();
-			var resetTime = unit switch
+			windows.Add(new UsageLimitWindow
 			{
-				"second" or "seconds" => DateTime.UtcNow.AddSeconds(amount),
-				"minute" or "minutes" => DateTime.UtcNow.AddMinutes(amount),
-				"hour" or "hours" => DateTime.UtcNow.AddHours(amount),
-				"day" or "days" => DateTime.UtcNow.AddDays(amount),
-				_ => (DateTime?)null
-			};
-			limits.ResetTime = resetTime;
+				Scope = DetectScope(stderrLower),
+				LimitType = DetectLimitType(stderrLower),
+				ResetTime = genericResetTime,
+				IsLimitReached = isLimitReached,
+				Message = limitMessage
+			});
 		}
 
-		var fractionMatch = LimitFractionPattern().Match(stderr);
-		if (fractionMatch.Success &&
-			int.TryParse(fractionMatch.Groups[2].Value, out var typedCurrentUsage) &&
-			int.TryParse(fractionMatch.Groups[3].Value, out var typedMaxUsage))
-		{
-			limits.CurrentUsage = typedCurrentUsage;
-			limits.MaxUsage = typedMaxUsage;
-			limits.LimitType = ParseLimitTypeLabel(fractionMatch.Groups[1].Value);
-			return limits;
-		}
-
-		var reverseFractionMatch = ReverseLimitFractionPattern().Match(stderr);
-		if (reverseFractionMatch.Success &&
-			int.TryParse(reverseFractionMatch.Groups[1].Value, out typedCurrentUsage) &&
-			int.TryParse(reverseFractionMatch.Groups[2].Value, out typedMaxUsage))
-		{
-			limits.CurrentUsage = typedCurrentUsage;
-			limits.MaxUsage = typedMaxUsage;
-			limits.LimitType = ParseLimitTypeLabel(reverseFractionMatch.Groups[3].Value);
-			return limits;
-		}
-
-		var typedPercentMatch = TypedUsagePercentPattern().Match(stderr);
-		if (typedPercentMatch.Success && int.TryParse(typedPercentMatch.Groups[1].Value, out var typedPercent))
-		{
-			var qualifier = typedPercentMatch.Groups[3].Value.ToLowerInvariant();
-			limits.CurrentUsage = qualifier == "remaining" ? 100 - typedPercent : typedPercent;
-			limits.MaxUsage = 100;
-			limits.LimitType = ParseLimitTypeLabel(typedPercentMatch.Groups[2].Value);
-			return limits;
-		}
-
-		// Try to extract usage percentage
-		var percentMatch = UsagePercentPattern().Match(stderr);
-		if (percentMatch.Success && int.TryParse(percentMatch.Groups[1].Value, out var percent))
-		{
-			var qualifier = percentMatch.Groups[0].Value.Contains("remaining", StringComparison.OrdinalIgnoreCase)
-				? "remaining"
-				: "used";
-			limits.CurrentUsage = qualifier == "remaining" ? 100 - percent : percent;
-			limits.MaxUsage = 100;
-		}
-
-		return limits;
+		return UsageLimitWindowHelper.CreateUsageLimits(
+			DetectLimitType(stderrLower),
+			limitMessage,
+			windows,
+			isLimitReached);
 	}
 
-	/// <summary>
-	/// Checks if stderr contains any limit-related signals without full parsing.
-	/// Useful for quick checks before doing full parsing.
-	/// </summary>
 	public static bool ContainsLimitSignals(string? stderr)
 	{
 		if (string.IsNullOrWhiteSpace(stderr))
+		{
 			return false;
+		}
 
 		var stderrLower = stderr.ToLowerInvariant();
 		return LimitPatterns.Any(pattern => stderrLower.Contains(pattern));
 	}
 
+	private static List<UsageLimitWindow> ExtractWindows(string stderr)
+	{
+		var windows = new List<UsageLimitWindow>();
+		var scopedResetTimes = ExtractScopedResetTimes(stderr);
+		var reachedScopes = ExtractReachedScopes(stderr);
+
+		foreach (Match match in LimitFractionPattern().Matches(stderr))
+		{
+			if (!TryParseUsagePair(match.Groups[2].Value, match.Groups[3].Value, out var currentUsage, out var maxUsage))
+			{
+				continue;
+			}
+
+			var scope = ParseScope(match.Groups[1].Value);
+			windows.Add(new UsageLimitWindow
+			{
+				Scope = scope,
+				LimitType = ScopeToLimitType(scope),
+				CurrentUsage = currentUsage,
+				MaxUsage = maxUsage,
+				ResetTime = scopedResetTimes.GetValueOrDefault(scope),
+				IsLimitReached = reachedScopes.Contains(scope) || currentUsage >= maxUsage,
+				Message = match.Value.Trim()
+			});
+		}
+
+		foreach (Match match in ReverseLimitFractionPattern().Matches(stderr))
+		{
+			if (!TryParseUsagePair(match.Groups[1].Value, match.Groups[2].Value, out var currentUsage, out var maxUsage))
+			{
+				continue;
+			}
+
+			var scope = ParseScope(match.Groups[3].Value);
+			windows.Add(new UsageLimitWindow
+			{
+				Scope = scope,
+				LimitType = ScopeToLimitType(scope),
+				CurrentUsage = currentUsage,
+				MaxUsage = maxUsage,
+				ResetTime = scopedResetTimes.GetValueOrDefault(scope),
+				IsLimitReached = reachedScopes.Contains(scope) || currentUsage >= maxUsage,
+				Message = match.Value.Trim()
+			});
+		}
+
+		foreach (Match match in TypedUsagePercentPattern().Matches(stderr))
+		{
+			if (!int.TryParse(match.Groups[1].Value, out var percent))
+			{
+				continue;
+			}
+
+			var qualifier = match.Groups[3].Value.ToLowerInvariant();
+			var scope = ParseScope(match.Groups[2].Value);
+			windows.Add(new UsageLimitWindow
+			{
+				Scope = scope,
+				LimitType = ScopeToLimitType(scope),
+				CurrentUsage = qualifier == "remaining" ? 100 - percent : percent,
+				MaxUsage = 100,
+				ResetTime = scopedResetTimes.GetValueOrDefault(scope),
+				IsLimitReached = reachedScopes.Contains(scope) || qualifier != "remaining" && percent >= 100,
+				Message = match.Value.Trim()
+			});
+		}
+
+		return UsageLimitWindowHelper.NormalizeWindows(windows);
+	}
+
+	private static Dictionary<UsageLimitWindowScope, DateTime?> ExtractScopedResetTimes(string stderr)
+	{
+		var scopedResetTimes = new Dictionary<UsageLimitWindowScope, DateTime?>();
+		foreach (Match match in ScopedResetPattern().Matches(stderr))
+		{
+			var scope = ParseScope(match.Groups[1].Value);
+			var parsed = TryParseResetValue(match.Groups[2].Value);
+			if (parsed.HasValue)
+			{
+				scopedResetTimes[scope] = parsed;
+			}
+		}
+
+		return scopedResetTimes;
+	}
+
+	private static HashSet<UsageLimitWindowScope> ExtractReachedScopes(string stderr)
+	{
+		var scopes = new HashSet<UsageLimitWindowScope>();
+
+		foreach (Match match in ScopedReachedPattern().Matches(stderr))
+		{
+			scopes.Add(ParseScope(match.Groups[2].Value));
+		}
+
+		foreach (Match match in ReverseScopedReachedPattern().Matches(stderr))
+		{
+			scopes.Add(ParseScope(match.Groups[1].Value));
+		}
+
+		return scopes;
+	}
+
+	private static string ExtractRelevantMessage(string stderr)
+	{
+		return stderr
+			.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+			.FirstOrDefault(line => LimitPatterns.Any(pattern => line.Contains(pattern, StringComparison.OrdinalIgnoreCase)))
+			?? "Usage limit signal detected";
+	}
+
+	private static DateTime? TryParseRelativeResetTime(string stderr)
+	{
+		var resetMatch = RelativeResetTimePattern().Match(stderr);
+		if (!resetMatch.Success || !int.TryParse(resetMatch.Groups[1].Value, out var amount))
+		{
+			return null;
+		}
+
+		var unit = resetMatch.Groups[2].Value.ToLowerInvariant();
+		return unit switch
+		{
+			"second" or "seconds" => DateTime.UtcNow.AddSeconds(amount),
+			"minute" or "minutes" => DateTime.UtcNow.AddMinutes(amount),
+			"hour" or "hours" => DateTime.UtcNow.AddHours(amount),
+			"day" or "days" => DateTime.UtcNow.AddDays(amount),
+			_ => null
+		};
+	}
+
+	private static DateTime? TryParseResetValue(string value)
+	{
+		var relativeValue = $"resets in {value.Trim()}";
+		return TryParseRelativeResetTime(relativeValue);
+	}
+
+	private static void ApplyGenericResetTime(List<UsageLimitWindow> windows, DateTime genericResetTime)
+	{
+		if (windows.Count == 0)
+		{
+			return;
+		}
+
+		foreach (var window in windows.Where(window => !window.ResetTime.HasValue))
+		{
+			window.ResetTime = genericResetTime;
+		}
+	}
+
+	private static bool TryParseUsagePair(string currentValue, string maxValue, out int currentUsage, out int maxUsage)
+	{
+		currentUsage = 0;
+		maxUsage = 0;
+		return int.TryParse(currentValue, out currentUsage)
+			&& int.TryParse(maxValue, out maxUsage);
+	}
+
 	private static UsageLimitType DetectLimitType(string stderrLower)
 	{
-		if (stderrLower.Contains("weekly limit") ||
-			stderrLower.Contains("daily limit") ||
-			stderrLower.Contains("monthly limit") ||
-			stderrLower.Contains("rate limit") ||
-			stderrLower.Contains("rate limited"))
+		if (stderrLower.Contains("weekly limit")
+			|| stderrLower.Contains("daily limit")
+			|| stderrLower.Contains("monthly limit")
+			|| stderrLower.Contains("rate limit")
+			|| stderrLower.Contains("rate limited"))
 		{
 			return UsageLimitType.RateLimit;
 		}
@@ -194,12 +297,46 @@ public static partial class ClaudeUsageParser
 		return UsageLimitType.SessionLimit;
 	}
 
-	private static UsageLimitType ParseLimitTypeLabel(string label)
+	private static UsageLimitWindowScope DetectScope(string stderrLower)
 	{
-		var normalized = label.ToLowerInvariant();
-		return normalized switch
+		if (stderrLower.Contains("monthly limit"))
 		{
-			"weekly" or "daily" or "monthly" => UsageLimitType.RateLimit,
+			return UsageLimitWindowScope.Monthly;
+		}
+		if (stderrLower.Contains("weekly limit"))
+		{
+			return UsageLimitWindowScope.Weekly;
+		}
+		if (stderrLower.Contains("daily limit"))
+		{
+			return UsageLimitWindowScope.Daily;
+		}
+		if (stderrLower.Contains("session limit"))
+		{
+			return UsageLimitWindowScope.Session;
+		}
+
+		return UsageLimitWindowScope.Unknown;
+	}
+
+	private static UsageLimitWindowScope ParseScope(string label)
+	{
+		return label.ToLowerInvariant() switch
+		{
+			"session" => UsageLimitWindowScope.Session,
+			"daily" => UsageLimitWindowScope.Daily,
+			"weekly" => UsageLimitWindowScope.Weekly,
+			"monthly" => UsageLimitWindowScope.Monthly,
+			_ => UsageLimitWindowScope.Unknown
+		};
+	}
+
+	private static UsageLimitType ScopeToLimitType(UsageLimitWindowScope scope)
+	{
+		return scope switch
+		{
+			UsageLimitWindowScope.Session => UsageLimitType.SessionLimit,
+			UsageLimitWindowScope.Daily or UsageLimitWindowScope.Weekly or UsageLimitWindowScope.Monthly => UsageLimitType.RateLimit,
 			_ => UsageLimitType.SessionLimit
 		};
 	}
