@@ -45,14 +45,16 @@
 				<DashboardMetricChart Title="Completed Jobs"  Subtitle="@GetChartSubtitle()"  Icon="check2-circle"
 									  Summary="@GetCompletedSummary()"  EmptyIcon="check2-circle"  EmptyTitle="No completed jobs yet"
 									  EmptyMessage="Completed jobs from the selected time range will show up here."
-									  Points="@GetCompletedChartPoints()"  BarColor="var(--bs-success)" />
+									  Points="@GetCompletedChartPoints()"  BarColor="var(--bs-success)"
+									  UseIntegerYAxisTicks="true"  YAxisLabelFormatter="FormatCompletedAxisLabel" />
 			</div>
 
 			<div class="col-12 col-xl-6">
 				<DashboardMetricChart Title="Average Job Duration"  Subtitle="@GetChartSubtitle()"  Icon="stopwatch"
 									  Summary="@GetDurationSummary()"  EmptyIcon="stopwatch"  EmptyTitle="No duration data yet"
 									  EmptyMessage="Average duration appears after jobs complete with timing information."
-									  Points="@GetDurationChartPoints()" BarColor="var(--bs-info)" />
+									  Points="@GetDurationChartPoints()" BarColor="var(--bs-info)"
+									  YAxisLabelFormatter="FormatDurationAxisLabel" />
 			</div>
 		</div>
 	}
@@ -173,4 +175,10 @@
 		1 => "1 Day",
 		_ => $"{rangeDays} Days"
 	};
+
+	private static string FormatCompletedAxisLabel(double value) => Math.Round(value).ToString("0");
+
+	private static string FormatDurationAxisLabel(double value) => value <= 0
+		? "0s"
+		: TokenHelper.FormatDuration(value);
 }

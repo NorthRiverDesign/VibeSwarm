@@ -77,4 +77,44 @@ public sealed class DashboardMetricChartTests
 		Assert.Contains("No completed jobs yet", html);
 		Assert.DoesNotContain("<svg", html);
 	}
+
+	[Fact]
+	public async Task DashboardMetricChart_RendersYAxisLabels_AndExpandedTooltipTargets()
+	{
+		var services = new ServiceCollection();
+		services.AddLogging();
+
+		await using var renderer = new HtmlRenderer(services.BuildServiceProvider(), NullLoggerFactory.Instance);
+
+		var points = new[]
+		{
+			new DashboardChartPoint { Label = "Day 1", Value = 3, ValueLabel = "3 completed jobs" },
+			new DashboardChartPoint { Label = "Day 2", Value = 6, ValueLabel = "6 completed jobs" },
+			new DashboardChartPoint { Label = "Day 3", Value = 9, ValueLabel = "9 completed jobs" }
+		};
+
+		var html = await renderer.Dispatcher.InvokeAsync(async () =>
+		{
+			var parameters = ParameterView.FromDictionary(new Dictionary<string, object?>
+			{
+				[nameof(DashboardMetricChart.Title)] = "Completed Jobs",
+				[nameof(DashboardMetricChart.Points)] = points,
+				[nameof(DashboardMetricChart.UseIntegerYAxisTicks)] = true,
+				[nameof(DashboardMetricChart.YAxisLabelFormatter)] = (Func<double, string>)(value => value.ToString("0"))
+			});
+
+			var output = await renderer.RenderComponentAsync<DashboardMetricChart>(parameters);
+			return output.ToHtmlString();
+		});
+
+		Assert.Contains("fill=\"transparent\"", html);
+		Assert.Contains("text-anchor=\"end\"", html);
+		Assert.Contains(">9</text>", html);
+		Assert.Contains(">6</text>", html);
+		Assert.Contains(">3</text>", html);
+		Assert.Contains(">0</text>", html);
+		Assert.Contains("font-size:0.72rem", html);
+		Assert.Contains("title=\"Day 1\"", html);
+		Assert.Contains("Day 1: 3 completed jobs", html);
+	}
 }

@@ -29,13 +29,18 @@
 						 preserveAspectRatio="none" role="img" aria-label="@Title">
 						<title>@Title</title>
 
-						@foreach (var gridLineY in GridLineYs)
+						@foreach (var axisTick in YAxisTicks)
 						{
-							<line x1="@ChartPaddingX"  y1="@gridLineY"  x2="@(ChartWidth - ChartPaddingX)"  y2="@gridLineY"
+							@RenderYAxisLabel(axisTick)
+
+							<line x1="@ChartPaddingLeft"  y1="@axisTick.Y"  x2="@(ChartWidth - ChartPaddingRight)"  y2="@axisTick.Y"
 								  stroke="var(--bs-border-color)"  stroke-width="1"  opacity="0.5" />
 						}
 
-						<line x1="@ChartPaddingX"  y1="@BaselineY"  x2="@(ChartWidth - ChartPaddingX)"  y2="@BaselineY"
+						<line x1="@ChartPaddingLeft"  y1="@ChartPaddingTop"  x2="@ChartPaddingLeft"  y2="@BaselineY"
+							  stroke="var(--bs-border-color)"  stroke-width="1.25" />
+
+						<line x1="@ChartPaddingLeft"  y1="@BaselineY"  x2="@(ChartWidth - ChartPaddingRight)"  y2="@BaselineY"
 							  stroke="var(--bs-border-color)"  stroke-width="1.25" />
 
 						@for (var index = 0; index < Points.Count; index++)
@@ -44,23 +49,29 @@
 							var barHeight = GetBarHeight(point.Value);
 							var x = GetBarX(index);
 							var y = BaselineY - barHeight;
+							var slotStartX = GetSlotStartX(index);
+							var tooltip = GetPointTooltip(point);
+
+							<rect x="@slotStartX" y="@ChartPaddingTop" width="@SlotWidth" height="@PlotHeight" fill="transparent">
+								<title>@tooltip</title>
+							</rect>
 
 							<rect x="@x" y="@y" width="@BarWidth" height="@Math.Max(barHeight, 2)" rx="6" fill="@BarColor"
-								  fill-opacity="0.85">
-								<title>@point.Label: @point.ValueLabel</title>
+								  fill-opacity="0.85" aria-label="@tooltip">
+								<title>@tooltip</title>
 							</rect>
 						}
 					</svg>
 
 					<div class="d-grid align-items-start pt-2"
-						 style="padding-inline:@(ChartPaddingX)px; grid-template-columns: repeat(@Points.Count, minmax(0, 1fr));">
+						 style="padding-left:@(ChartPaddingLeft)px; padding-right:@(ChartPaddingRight)px; grid-template-columns: repeat(@Points.Count, minmax(0, 1fr));">
 						@for (var index = 0; index < Points.Count; index++)
 						{
 							var point = Points[index];
-							<div class="small text-body-secondary text-center" style="min-width:0;">
+							<div class="text-body-secondary text-center" style="min-width:0; font-size:0.72rem; line-height:1.2;">
 								@if (ShouldRenderLabel(index))
 								{
-									<span>@point.Label</span>
+									<span class="d-block text-truncate" title="@point.Label">@point.Label</span>
 								}
 							</div>
 						}
@@ -74,9 +85,11 @@
 @code {
 	private const int ChartHeight = 220;
 	private const int ChartWidth = 1000;
-	private const int ChartPaddingX = 16;
+	private const int ChartPaddingLeft = 56;
+	private const int ChartPaddingRight = 16;
 	private const int ChartPaddingTop = 16;
 	private const int ChartPaddingBottom = 40;
+	private const int AxisTickCount = 4;
 
 	[Parameter]
 	public string Title { get; set; } = string.Empty;
@@ -105,25 +118,54 @@
 	[Parameter]
 	public IReadOnlyList<DashboardChartPoint> Points { get; set; } = [];
 
+	[Parameter]
+	public Func<double, string>? YAxisLabelFormatter { get; set; }
+
+	[Parameter]
+	public bool UseIntegerYAxisTicks { get; set; }
+
 	private bool HasData => Points.Any(point => point.Value > 0);
 	private double BaselineY => ChartHeight - ChartPaddingBottom;
 	private double PlotHeight => ChartHeight - ChartPaddingTop - ChartPaddingBottom;
-	private double PlotWidth => ChartWidth - (ChartPaddingX * 2);
+	private double PlotWidth => ChartWidth - ChartPaddingLeft - ChartPaddingRight;
 	private double SlotWidth => Points.Count == 0 ? PlotWidth : PlotWidth / Points.Count;
 	private double BarWidth => Math.Clamp(SlotWidth * 0.6, 8, 28);
-	private double MaxValue => Math.Max(Points.Count == 0 ? 0 : Points.Max(point => point.Value), 1);
-	private IReadOnlyList<double> GridLineYs => [ChartPaddingTop, ChartPaddingTop + (PlotHeight / 3.0), ChartPaddingTop +
-((PlotHeight * 2.0) / 3.0), BaselineY];
+	private double MaxValue => Points.Count == 0 ? 0 : Points.Max(point => point.Value);
+	private double ChartMaxValue => ResolveChartMaxValue(MaxValue);
+	private double AxisStepValue => ChartMaxValue / (AxisTickCount - 1);
+	private IReadOnlyList<AxisTick> YAxisTicks => Enumerable.Range(0, AxisTickCount)
+		.Select(index =>
+		{
+			var tickValue = ChartMaxValue - (AxisStepValue * index);
+			var tickY = ChartPaddingTop + ((PlotHeight / (AxisTickCount - 1)) * index);
+
+			return new AxisTick(tickValue, tickY, FormatAxisLabel(tickValue));
+		})
+		.ToList();
 
 	private double GetBarHeight(double value)
 	{
-		return value <= 0 ? 0 : Math.Max((value / MaxValue) * PlotHeight, 2);
+		return value <= 0 ? 0 : Math.Max((value / ChartMaxValue) * PlotHeight, 2);
+	}
+
+	private double GetSlotStartX(int index)
+	{
+		return ChartPaddingLeft + (index * SlotWidth);
 	}
 
 	private double GetBarX(int index)
 	{
-		var slotStartX = ChartPaddingX + (index * SlotWidth);
+		var slotStartX = GetSlotStartX(index);
 		return slotStartX + ((SlotWidth - BarWidth) / 2);
+	}
+
+	private string GetPointTooltip(DashboardChartPoint point)
+	{
+		var pointValueLabel = string.IsNullOrWhiteSpace(point.ValueLabel)
+			? point.Value.ToString("0.##")
+			: point.ValueLabel;
+
+		return $"{point.Label}: {pointValueLabel}";
 	}
 
 	private bool ShouldRenderLabel(int index)
@@ -138,4 +180,66 @@
 
 		return index % labelStep == 0 || index == Points.Count - 1;
 	}
+
+	private string FormatAxisLabel(double value)
+	{
+		if (YAxisLabelFormatter is not null)
+		{
+			return YAxisLabelFormatter(value);
+		}
+
+		return value.ToString("0.##");
+	}
+
+	private double ResolveChartMaxValue(double maxValue)
+	{
+		if (maxValue <= 0)
+		{
+			return 1;
+		}
+
+		if (UseIntegerYAxisTicks)
+		{
+			var integerStep = Math.Max(1, (int)Math.Ceiling(maxValue / (AxisTickCount - 1)));
+			return integerStep * (AxisTickCount - 1);
+		}
+
+		var rawStep = maxValue / (AxisTickCount - 1);
+		var niceStep = ResolveNiceStep(rawStep);
+
+		return Math.Max(niceStep * (AxisTickCount - 1), 1);
+	}
+
+	private static double ResolveNiceStep(double rawStep)
+	{
+		if (rawStep <= 0)
+		{
+			return 1;
+		}
+
+		var exponent = Math.Floor(Math.Log10(rawStep));
+		var magnitude = Math.Pow(10, exponent);
+		var normalizedStep = rawStep / magnitude;
+
+		var roundedStep = normalizedStep switch
+		{
+			<= 1 => 1,
+			<= 2 => 2,
+			<= 5 => 5,
+			_ => 10
+		};
+
+		return roundedStep * magnitude;
+	}
+
+	private MarkupString RenderYAxisLabel(AxisTick axisTick)
+	{
+		var encodedLabel = System.Text.Encodings.Web.HtmlEncoder.Default.Encode(axisTick.Label);
+		var x = (ChartPaddingLeft - 8).ToString(System.Globalization.CultureInfo.InvariantCulture);
+		var y = axisTick.Y.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+		return new MarkupString($"<text x=\"{x}\" y=\"{y}\" fill=\"var(--bs-secondary-color)\" font-size=\"11\" text-anchor=\"end\" dominant-baseline=\"middle\">{encodedLabel}</text>");
+	}
+
+	private readonly record struct AxisTick(double Value, double Y, string Label);
 }
