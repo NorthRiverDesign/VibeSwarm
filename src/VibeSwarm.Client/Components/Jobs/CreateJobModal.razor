@@ -52,7 +52,7 @@
 					}
 					else
 					{
-						<option value="">Use provider default</option>
+						<option value="">Use project/provider default</option>
 						@foreach (var model in AvailableModels.Where(m => m.IsAvailable))
 						{
 							<option value="@model.ModelId">@(model.DisplayName ?? model.ModelId)@(model.IsDefault ?

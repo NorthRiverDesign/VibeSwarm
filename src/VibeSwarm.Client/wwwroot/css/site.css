@@ -694,6 +694,12 @@ body.vs-modal-open {
 	white-space: normal;
 }
 
+@media (min-width: 992px) {
+	.vs-modal-dialog-wide-lg {
+		max-width: min(960px, calc(100vw - var(--vs-safe-area-left) - var(--vs-safe-area-right) - 3rem));
+	}
+}
+
 /* Directory list max-height for modal (no Bootstrap utility) */
 .directory-list {
 	max-height: 50vh;

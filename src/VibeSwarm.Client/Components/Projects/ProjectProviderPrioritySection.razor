@@ -40,6 +40,7 @@ var models = ResolveProviderModels(selection.ProviderId)
 .OrderByDescending(model => model.IsDefault)
 .ThenBy(model => model.DisplayName ?? model.ModelId)
 .ToList();
+var modelInputId = $"provider-model-{selection.ProviderId}";
 
 <div class="rounded border bg-body p-3">
 <div class="d-flex align-items-start justify-content-between gap-2 flex-wrap">
@@ -69,15 +70,15 @@ disabled="@(selection.Priority >= Project.ProviderSelections.Count - 1)" title="
 </div>
 
 <div class="mt-3">
-								<label for="@($"provider-model-{selection.ProviderId}")" class="form-label small mb-1">
-									<i class="bi bi-cpu me-1"></i>Default Job Model
-								</label>
-								<InputSelect TValue="string" id="@($"provider-model-{selection.ProviderId}")"
-										 Value="selection.PreferredModelId"
-										 ValueChanged="@((string value) => HandlePreferredModelChanged(selection.ProviderId, value))"
-										 ValueExpression="@(() => selection.PreferredModelId)"
-										 class="form-select form-select-sm"
-										 disabled="@(!models.Any())">
+<label for="@modelInputId" class="form-label small mb-1">
+<i class="bi bi-cpu me-1"></i>Default Job Model
+</label>
+<InputSelect TValue="string" id="@modelInputId"
+ Value="@(selection.PreferredModelId ?? string.Empty)"
+ ValueChanged="@(async (string? value) => await HandlePreferredModelChanged(selection.ProviderId, value))"
+ ValueExpression="@(() => selection.PreferredModelId)"
+ class="form-select form-select-sm"
+ disabled="@(!models.Any())">
 <option value="">Use provider default model</option>
 @foreach (var model in models)
 {
@@ -166,7 +167,7 @@ private Task HandlePreferredModelChanged(Guid providerId, string? preferredModel
 return OnPreferredModelChanged.InvokeAsync(new ProjectProviderModelSelectionChange
 {
 ProviderId = providerId,
-PreferredModelId = preferredModelId
+PreferredModelId = string.IsNullOrWhiteSpace(preferredModelId) ? null : preferredModelId
 });
 }
 }

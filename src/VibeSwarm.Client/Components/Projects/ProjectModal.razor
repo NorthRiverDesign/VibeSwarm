@@ -13,7 +13,8 @@
 
 <ModalDialog IsVisible="IsVisible" IsVisibleChanged="HandleModalVisibilityChanged"
  Title="@(IsEdit ? "Edit Project" : "New Project")" Icon="@(IsEdit ? "pencil" : "folder-plus")"
- Size="ModalDialog.ModalSize.Large" OnClose="HandleClose" BodyClass="vs-project-modal-body">
+ Size="ModalDialog.ModalSize.Large" DialogClass="vs-modal-dialog-wide-lg" OnClose="HandleClose"
+ BodyClass="vs-project-modal-body">
 <ChildContent>
 <EditForm Model="@Project" OnValidSubmit="HandleValidSubmit" class="vs-modal-form vs-project-modal-form">
 <DataAnnotationsValidator />

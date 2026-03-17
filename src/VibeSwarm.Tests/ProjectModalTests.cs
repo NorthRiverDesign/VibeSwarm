@@ -47,6 +47,7 @@ public sealed class ProjectModalTests
 		});
 
 		Assert.Contains("vs-project-modal-body", html);
+		Assert.Contains("vs-modal-dialog-wide-lg", html);
 		Assert.Contains("modal-lg", html);
 		Assert.Contains("Project Details", html);
 		Assert.Contains("Workspace", html);
