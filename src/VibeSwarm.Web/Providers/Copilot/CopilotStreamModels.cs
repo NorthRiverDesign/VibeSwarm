@@ -1,14 +1,21 @@
+using System.Text.Json;
 using System.Text.Json.Serialization;
+using VibeSwarm.Shared.Providers.Claude;
 
 namespace VibeSwarm.Shared.Providers.Copilot;
 
 /// <summary>
 /// Represents a streaming event from the GitHub Copilot CLI.
+/// Supports both native Copilot format and Claude Code format (used when
+/// Copilot CLI operates with Claude models under the hood).
 /// </summary>
 public class CopilotStreamEvent
 {
 	[JsonPropertyName("type")]
 	public string? Type { get; set; }
+
+	[JsonPropertyName("subtype")]
+	public string? Subtype { get; set; }
 
 	[JsonPropertyName("content")]
 	public string? Content { get; set; }
@@ -19,8 +26,25 @@ public class CopilotStreamEvent
 	[JsonPropertyName("error")]
 	public string? Error { get; set; }
 
+	/// <summary>
+	/// Message field - can be a string (native Copilot format) or a JSON object (Claude Code format).
+	/// Use <see cref="MessageText"/> to get a string value or <see cref="ParseClaudeMessage"/> to extract
+	/// a <see cref="ClaudeMessage"/> when the Copilot CLI outputs Claude-format JSON.
+	/// </summary>
 	[JsonPropertyName("message")]
-	public string? Message { get; set; }
+	public JsonElement? Message { get; set; }
+
+	/// <summary>
+	/// Indicates whether the result event represents an error (Claude Code format).
+	/// </summary>
+	[JsonPropertyName("is_error")]
+	public bool? IsError { get; set; }
+
+	/// <summary>
+	/// Result text from a result event (Claude Code format).
+	/// </summary>
+	[JsonPropertyName("result")]
+	public string? Result { get; set; }
 
 	// Session tracking (v0.0.372+)
 	[JsonPropertyName("session_id")]
@@ -69,6 +93,43 @@ public class CopilotStreamEvent
 	// Plan mode events (v0.0.412+)
 	[JsonPropertyName("plan")]
 	public string? Plan { get; set; }
+
+	// Additional Claude Code format fields
+	[JsonPropertyName("num_turns")]
+	public int? NumTurns { get; set; }
+
+	[JsonPropertyName("duration_ms")]
+	public double? DurationMs { get; set; }
+
+	[JsonPropertyName("duration_api_ms")]
+	public double? DurationApiMs { get; set; }
+
+	/// <summary>
+	/// Extracts the message as a plain string when it is a JSON string value.
+	/// Returns null if the message is an object or missing.
+	/// </summary>
+	public string? MessageText =>
+		Message?.ValueKind == JsonValueKind.String ? Message.Value.GetString() : null;
+
+	/// <summary>
+	/// Attempts to parse the message field as a <see cref="ClaudeMessage"/> object.
+	/// This is needed when the Copilot CLI outputs Claude Code format where the
+	/// message field is a complex object containing content, usage, and model info.
+	/// </summary>
+	public ClaudeMessage? ParseClaudeMessage()
+	{
+		if (Message?.ValueKind != JsonValueKind.Object)
+			return null;
+
+		try
+		{
+			return Message.Value.Deserialize<ClaudeMessage>();
+		}
+		catch
+		{
+			return null;
+		}
+	}
 }
 
 /// <summary>

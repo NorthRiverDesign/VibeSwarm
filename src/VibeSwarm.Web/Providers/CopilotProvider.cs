@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text.Json;
 using GitHub.Copilot.SDK;
+using VibeSwarm.Shared.Providers.Claude;
 using VibeSwarm.Shared.Providers.Copilot;
 using VibeSwarm.Shared.Services;
 using VibeSwarm.Shared.Utilities;
@@ -14,6 +15,15 @@ public class CopilotProvider : CliProviderBase
 {
     private const string DefaultExecutable = "copilot";
     private UsageLimits? _lastObservedUsageLimits;
+
+    // System error detection during stream parsing (mirrors ClaudeProvider pattern)
+    private bool _systemErrorDetected;
+    private string? _systemErrorMessage;
+
+    // Accumulated token usage from Claude-format assistant message events
+    private int _accumulatedInputTokens;
+    private int _accumulatedOutputTokens;
+    private bool _hasAccumulatedTokens;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -92,6 +102,13 @@ public class CopilotProvider : CliProviderBase
 
         var result = new ExecutionResult { Messages = new List<ExecutionMessage>() };
         var effectiveWorkingDir = workingDirectory ?? WorkingDirectory ?? Environment.CurrentDirectory;
+
+        // Reset system error and token accumulation state for this execution
+        _systemErrorDetected = false;
+        _systemErrorMessage = null;
+        _accumulatedInputTokens = 0;
+        _accumulatedOutputTokens = 0;
+        _hasAccumulatedTokens = false;
 
         // Build arguments for non-interactive execution
         // Reference: https://github.com/github/copilot-cli/blob/main/changelog.md
@@ -328,6 +345,15 @@ public class CopilotProvider : CliProviderBase
         result.Success = process.ExitCode == 0;
         result.Output = string.Join("\n", outputBuilder);
 
+        // Override success if a system-level error was detected during stream parsing
+        // (CLI may exit with code 0 even when the upstream provider is unavailable)
+        if (_systemErrorDetected)
+        {
+            result.Success = false;
+            result.IsSystemError = true;
+            result.ErrorMessage ??= _systemErrorMessage;
+        }
+
         var error = errorBuilder.ToString();
         if (!result.Success && !string.IsNullOrEmpty(error))
         {
@@ -338,6 +364,16 @@ public class CopilotProvider : CliProviderBase
         if (!string.IsNullOrEmpty(error))
         {
             ParseCopilotUsageFromStderr(error, result);
+        }
+
+        // Final fallback: if no result event provided tokens, use accumulated from assistant messages
+        if (!result.InputTokens.HasValue && _hasAccumulatedTokens && _accumulatedInputTokens > 0)
+        {
+            result.InputTokens = _accumulatedInputTokens;
+        }
+        if (!result.OutputTokens.HasValue && _hasAccumulatedTokens && _accumulatedOutputTokens > 0)
+        {
+            result.OutputTokens = _accumulatedOutputTokens;
         }
 
         return result;
@@ -383,11 +419,121 @@ public class CopilotProvider : CliProviderBase
 
         switch (evt.Type?.ToLowerInvariant())
         {
+            case "system":
+                // Claude Code format init event - session ID already captured above
+                progress?.Report(new ExecutionProgress
+                {
+                    CurrentMessage = "Initializing...",
+                    IsStreaming = false
+                });
+                break;
+
             case "message":
             case "response":
             case "assistant":
-                if (!string.IsNullOrEmpty(evt.Content))
+                // Check for root-level error on assistant events (Claude Code format:
+                // model unavailable, upstream outages produce error: "invalid_request")
+                if (!string.IsNullOrEmpty(evt.Error))
                 {
+                    _systemErrorDetected = true;
+                    _systemErrorMessage = $"System error: {evt.Error}";
+
+                    // Try to extract a more descriptive error from the Claude message content
+                    var claudeMsg = evt.ParseClaudeMessage();
+                    if (claudeMsg?.Content != null)
+                    {
+                        var errorText = claudeMsg.Content
+                            .Where(c => c.Type == "text" && !string.IsNullOrEmpty(c.Text))
+                            .Select(c => c.Text)
+                            .FirstOrDefault();
+                        if (errorText != null)
+                            _systemErrorMessage = errorText;
+                    }
+
+                    result.Success = false;
+                    result.ErrorMessage = _systemErrorMessage;
+                    result.IsSystemError = true;
+                    progress?.Report(new ExecutionProgress
+                    {
+                        CurrentMessage = _systemErrorMessage,
+                        IsStreaming = false
+                    });
+                    break;
+                }
+
+                // Extract usage and content from Claude-format message object
+                var parsedMessage = evt.ParseClaudeMessage();
+                if (parsedMessage != null)
+                {
+                    // Accumulate token usage from Claude-format assistant messages
+                    if (parsedMessage.Usage != null)
+                    {
+                        if (parsedMessage.Usage.InputTokens.HasValue)
+                        {
+                            _accumulatedInputTokens += parsedMessage.Usage.InputTokens.Value;
+                            _hasAccumulatedTokens = true;
+                        }
+                        if (parsedMessage.Usage.OutputTokens.HasValue)
+                        {
+                            _accumulatedOutputTokens += parsedMessage.Usage.OutputTokens.Value;
+                            _hasAccumulatedTokens = true;
+                        }
+                    }
+
+                    if (!string.IsNullOrEmpty(parsedMessage.Model))
+                    {
+                        result.ModelUsed = parsedMessage.Model;
+                    }
+
+                    // Extract text content from Claude-format message
+                    if (parsedMessage.Content != null)
+                    {
+                        foreach (var content in parsedMessage.Content)
+                        {
+                            if (content.Type == "text" && !string.IsNullOrEmpty(content.Text))
+                            {
+                                currentMessage.Append(content.Text);
+                                progress?.Report(new ExecutionProgress
+                                {
+                                    CurrentMessage = content.Text.Length > 100
+                                        ? content.Text[..100] + "..."
+                                        : content.Text,
+                                    IsStreaming = true
+                                });
+                            }
+                            else if (content.Type == "tool_use")
+                            {
+                                if (currentMessage.Length > 0)
+                                {
+                                    result.Messages.Add(new ExecutionMessage
+                                    {
+                                        Role = "assistant",
+                                        Content = currentMessage.ToString(),
+                                        Timestamp = DateTime.UtcNow
+                                    });
+                                    currentMessage.Clear();
+                                }
+
+                                result.Messages.Add(new ExecutionMessage
+                                {
+                                    Role = "tool_use",
+                                    Content = content.Name ?? "unknown",
+                                    ToolName = content.Name,
+                                    ToolInput = content.Input?.ToString(),
+                                    Timestamp = DateTime.UtcNow
+                                });
+                                progress?.Report(new ExecutionProgress
+                                {
+                                    ToolName = content.Name,
+                                    IsStreaming = false
+                                });
+                            }
+                        }
+                    }
+                }
+                else if (!string.IsNullOrEmpty(evt.Content))
+                {
+                    // Native Copilot format - content is a direct string
                     currentMessage.Append(evt.Content);
                     progress?.Report(new ExecutionProgress
                     {
@@ -396,6 +542,28 @@ public class CopilotProvider : CliProviderBase
                             : evt.Content,
                         IsStreaming = true
                     });
+                }
+                break;
+
+            case "user":
+                // Claude Code format user events (tool results)
+                var userMsg = evt.ParseClaudeMessage();
+                if (userMsg?.Content != null)
+                {
+                    foreach (var content in userMsg.Content)
+                    {
+                        if (content.Type == "tool_result")
+                        {
+                            result.Messages.Add(new ExecutionMessage
+                            {
+                                Role = content.IsError == true ? "tool_error" : "tool_result",
+                                Content = content.Content ?? "",
+                                ToolName = content.ToolUseId,
+                                ToolOutput = content.Content,
+                                Timestamp = DateTime.UtcNow
+                            });
+                        }
+                    }
                 }
                 break;
 
@@ -418,6 +586,8 @@ public class CopilotProvider : CliProviderBase
                     // Classify system-level errors (model unavailable, auth, upstream outages)
                     if (IsSystemLevelError(evt.Error))
                     {
+                        _systemErrorDetected = true;
+                        _systemErrorMessage = evt.Error;
                         result.IsSystemError = true;
                     }
                     progress?.Report(new ExecutionProgress
@@ -430,13 +600,16 @@ public class CopilotProvider : CliProviderBase
 
             case "limit":
             case "rate_limit":
-                result.ErrorMessage = evt.Message ?? "Premium request limit reached";
+                var limitMessage = evt.MessageText ?? "Premium request limit reached";
+                result.ErrorMessage = limitMessage;
                 result.IsSystemError = true;
+                _systemErrorDetected = true;
+                _systemErrorMessage = limitMessage;
                 result.DetectedUsageLimits = new UsageLimits
                 {
                     LimitType = UsageLimitType.PremiumRequests,
                     IsLimitReached = true,
-                    Message = evt.Message ?? "Premium request limit reached"
+                    Message = limitMessage
                 };
                 _lastObservedUsageLimits = result.DetectedUsageLimits;
                 progress?.Report(new ExecutionProgress
@@ -475,26 +648,56 @@ public class CopilotProvider : CliProviderBase
             case "done":
             case "complete":
             case "result":
-                if (evt.InputTokens.HasValue)
+                // Check for system-level errors (Claude Code format: is_error with zero tokens)
+                if (evt.IsError == true)
                 {
-                    result.InputTokens = evt.InputTokens;
+                    _systemErrorDetected = true;
+                    _systemErrorMessage ??= evt.Result ?? "Provider returned a system error";
+                    result.Success = false;
+                    result.ErrorMessage = _systemErrorMessage;
+                    result.IsSystemError = true;
+                    progress?.Report(new ExecutionProgress
+                    {
+                        CurrentMessage = $"System error: {_systemErrorMessage}",
+                        IsStreaming = false
+                    });
                 }
-                if (evt.OutputTokens.HasValue)
-                {
-                    result.OutputTokens = evt.OutputTokens;
-                }
-                if (evt.CostUsd.HasValue)
-                {
-                    result.CostUsd = evt.CostUsd;
-                }
-                else if (evt.TotalCostUsd.HasValue)
+
+                if (evt.TotalCostUsd.HasValue)
                 {
                     result.CostUsd = evt.TotalCostUsd;
                 }
+                else if (evt.CostUsd.HasValue)
+                {
+                    result.CostUsd = evt.CostUsd;
+                }
+                // Try nested usage object first
                 if (evt.Usage != null)
                 {
                     result.InputTokens = evt.Usage.InputTokens ?? result.InputTokens;
                     result.OutputTokens = evt.Usage.OutputTokens ?? result.OutputTokens;
+                }
+                // Fall back to flat token fields
+                if (!result.InputTokens.HasValue && evt.InputTokens.HasValue)
+                {
+                    result.InputTokens = evt.InputTokens;
+                }
+                if (!result.OutputTokens.HasValue && evt.OutputTokens.HasValue)
+                {
+                    result.OutputTokens = evt.OutputTokens;
+                }
+                // Fall back to accumulated tokens from Claude-format assistant messages
+                if (!result.InputTokens.HasValue && _hasAccumulatedTokens)
+                {
+                    result.InputTokens = _accumulatedInputTokens;
+                }
+                if (!result.OutputTokens.HasValue && _hasAccumulatedTokens)
+                {
+                    result.OutputTokens = _accumulatedOutputTokens;
+                }
+                if (!string.IsNullOrEmpty(evt.Result))
+                {
+                    result.Output = evt.Result;
                 }
                 break;
         }
@@ -582,7 +785,19 @@ public class CopilotProvider : CliProviderBase
     {
         var normalized = modelId.ToLowerInvariant();
 
-        if (normalized.Contains("opus") || normalized.Contains("o1") || normalized.Contains("o3") || normalized.Contains("max"))
+        // Fast variants are cheaper than their base models
+        if (normalized.Contains("fast"))
+        {
+            return normalized.Contains("opus") ? 3.0m : 1.0m;
+        }
+
+        // Codex-max variants are premium but below full premium models (check before "opus"/"max")
+        if (normalized.Contains("codex-max"))
+        {
+            return 2.0m;
+        }
+
+        if (normalized.Contains("opus") || normalized.Contains("o1-") || normalized.Contains("o3-"))
         {
             return 5.0m;
         }
