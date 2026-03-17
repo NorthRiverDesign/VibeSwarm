@@ -87,7 +87,7 @@ internal static class JobSessionDisplayBuilder
 				continue;
 			}
 
-			var isTextMessage = parsedMessage.Role is MessageRole.Assistant or MessageRole.System
+			var isTextMessage = parsedMessage.Role is MessageRole.Assistant
 				&& string.IsNullOrEmpty(parsedMessage.ToolName)
 				&& string.IsNullOrEmpty(parsedMessage.ToolInput)
 				&& string.IsNullOrEmpty(parsedMessage.ToolOutput);
@@ -154,6 +154,16 @@ internal static class JobSessionDisplayBuilder
 			{
 				Role = MessageRole.System,
 				Content = StripKnownPrefix(content, "[Reasoning]", "[Thinking]"),
+				CreatedAt = line.Timestamp
+			};
+		}
+
+		if (IsSystemStatusMessage(content))
+		{
+			return new JobMessage
+			{
+				Role = MessageRole.System,
+				Content = content,
 				CreatedAt = line.Timestamp
 			};
 		}
@@ -258,4 +268,11 @@ internal static class JobSessionDisplayBuilder
 		=> content.StartsWith("[VibeSwarm] Still initializing...", StringComparison.OrdinalIgnoreCase)
 			|| content.StartsWith("[VibeSwarm] Still waiting for response...", StringComparison.OrdinalIgnoreCase)
 			|| content.StartsWith("[VibeSwarm] Still waiting (", StringComparison.OrdinalIgnoreCase);
+
+	private static bool IsSystemStatusMessage(string content)
+		=> content.StartsWith("[VibeSwarm]", StringComparison.OrdinalIgnoreCase)
+			|| content.StartsWith("[Connection]", StringComparison.OrdinalIgnoreCase)
+			|| content.StartsWith("[Retry]", StringComparison.OrdinalIgnoreCase)
+			|| content.StartsWith("[Session]", StringComparison.OrdinalIgnoreCase)
+			|| content.StartsWith("[Error]", StringComparison.OrdinalIgnoreCase);
 }

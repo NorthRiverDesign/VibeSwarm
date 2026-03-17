@@ -110,6 +110,65 @@ public sealed class JobSessionPanelTests
 		Assert.DoesNotContain("[VibeSwarm] Still waiting for response", html);
 	}
 
+	[Fact]
+	public async Task RenderedJobSessionPanel_KeepsSystemMessagesSeparateAndStyled()
+	{
+		var services = new ServiceCollection();
+		services.AddLogging();
+		services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
+
+		await using var renderer = new HtmlRenderer(services.BuildServiceProvider(), NullLoggerFactory.Instance);
+
+		var html = await renderer.Dispatcher.InvokeAsync(async () =>
+		{
+			var parameters = ParameterView.FromDictionary(new Dictionary<string, object?>
+			{
+				[nameof(JobSessionPanel.Status)] = JobStatus.Processing,
+				[nameof(JobSessionPanel.IsJobActive)] = true,
+				[nameof(JobSessionPanel.LiveOutputLines)] = new List<OutputLine>
+				{
+					new()
+					{
+						Content = "[VibeSwarm] Process started (PID: 123). Waiting for CLI to initialize...",
+						Timestamp = DateTime.UtcNow.AddSeconds(-12)
+					},
+					new()
+					{
+						Content = "[Connection] Connected to provider stream",
+						Timestamp = DateTime.UtcNow.AddSeconds(-11)
+					},
+					new()
+					{
+						Content = "[Assistant] Gathering repository context",
+						Timestamp = DateTime.UtcNow.AddSeconds(-10)
+					},
+					new()
+					{
+						Content = "[Retry] Transient error (attempt 1/3): provider timeout",
+						Timestamp = DateTime.UtcNow.AddSeconds(-9)
+					},
+					new()
+					{
+						Content = "[Session] Complete",
+						Timestamp = DateTime.UtcNow.AddSeconds(-8)
+					}
+				}
+			});
+
+			var output = await renderer.RenderComponentAsync<JobSessionPanel>(parameters);
+			return output.ToHtmlString();
+		});
+
+		Assert.Contains("5 messages", html);
+		Assert.Contains("VibeSwarm", html);
+		Assert.Contains("Provider", html);
+		Assert.Contains("bg-primary-subtle", html);
+		Assert.Contains("bg-success-subtle", html);
+		Assert.Contains("bg-warning-subtle", html);
+		Assert.Contains("Process started (PID: 123)", html);
+		Assert.Contains("[Connection] Connected to provider stream", html);
+	}
+
 	private sealed class NoOpJsRuntime : IJSRuntime
 	{
 		public ValueTask<TValue> InvokeAsync<TValue>(string identifier, object?[]? args)
