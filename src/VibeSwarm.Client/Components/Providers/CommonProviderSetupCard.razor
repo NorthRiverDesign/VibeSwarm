@@ -28,36 +28,78 @@
 			</span>
 		</div>
 
-		<div class="small text-body-secondary d-flex flex-column gap-2">
-			<div>
-				<div class="fw-semibold text-body mb-1">Install command</div>
+		<div class="row g-2">
+			<div class="col-sm-6">
+				<StatItem Label="Install" Value="@(Status.IsInstalled ? "Ready" : "Needed")" />
+			</div>
+			<div class="col-sm-6">
+				<StatItem Label="Configured" Value="@GetConfiguredSummary()" />
+			</div>
+		</div>
+
+		<div class="small text-body-secondary d-flex flex-column gap-3">
+			<div class="rounded-3 bg-body-tertiary p-3">
+				<div class="fw-semibold text-body mb-2">Install command</div>
 				<code class="text-break">@Status.InstallCommand</code>
-				<div class="mt-1">@Status.InstallMethodLabel</div>
+				<div class="mt-2">@Status.InstallMethodLabel</div>
 			</div>
 
-			@if (!string.IsNullOrWhiteSpace(Status.InstalledVersion))
-			{
+			<div class="rounded-3 bg-body-tertiary p-3 d-flex flex-column gap-2">
 				<div>
-					<div class="fw-semibold text-body mb-1">Detected version</div>
-					<div>@Status.InstalledVersion</div>
+					<div class="fw-semibold text-body mb-1">Host detection</div>
+					<div>@(Status.InstallationStatus ?? (Status.IsInstalled ? "Detected on host." : "Not detected yet."))</div>
 				</div>
-			}
 
-			@if (!string.IsNullOrWhiteSpace(Status.AuthenticationStatus))
-			{
-				<div>
-					<div class="fw-semibold text-body mb-1">Authentication</div>
-					<div>@Status.AuthenticationStatus</div>
-				</div>
-			}
+				@if (!string.IsNullOrWhiteSpace(Status.ResolvedExecutablePath))
+				{
+					<div>
+						<div class="fw-semibold text-body mb-1">Executable path</div>
+						<code class="text-break">@Status.ResolvedExecutablePath</code>
+					</div>
+				}
 
-			@if (Status.HasConfiguredProvider && !string.IsNullOrWhiteSpace(Status.ProviderName))
-			{
+				@if (!string.IsNullOrWhiteSpace(Status.InstalledVersion))
+				{
+					<div>
+						<div class="fw-semibold text-body mb-1">Detected version</div>
+						<div>@Status.InstalledVersion</div>
+					</div>
+				}
+			</div>
+
+			<div class="rounded-3 bg-body-tertiary p-3 d-flex flex-column gap-2">
+				@if (!string.IsNullOrWhiteSpace(Status.AuthenticationStatus))
+				{
+					<div>
+						<div class="fw-semibold text-body mb-1">Authentication</div>
+						<div>@Status.AuthenticationStatus</div>
+					</div>
+				}
+
 				<div>
-					<div class="fw-semibold text-body mb-1">VibeSwarm provider</div>
-					<div>@Status.ProviderName</div>
+					<div class="fw-semibold text-body mb-1">Configured providers</div>
+					@if (Status.ConfiguredProviders.Count == 0)
+					{
+						<div>No provider saved in VibeSwarm yet.</div>
+					}
+					else
+					{
+						<div class="d-flex flex-wrap gap-2">
+							@foreach (var provider in Status.ConfiguredProviders)
+							{
+								<span class="badge bg-secondary-subtle text-secondary-emphasis">
+									@provider.Name
+									<span class="ms-1 text-uppercase">@provider.ConnectionMode</span>
+									@if (provider.IsDefault)
+									{
+										<span class="ms-1">Default</span>
+									}
+								</span>
+							}
+						</div>
+					}
 				</div>
-			}
+			</div>
 		</div>
 
 		@if (_showAuthenticationForm)
@@ -179,5 +221,15 @@
 		_errorMessage = null;
 		await OnSaveAuthentication.InvokeAsync(_request);
 		HideAuthenticationForm();
+	}
+
+	private string GetConfiguredSummary()
+	{
+		return Status.ConfiguredProviders.Count switch
+		{
+			0 => "None",
+			1 => "1 provider",
+			_ => $"{Status.ConfiguredProviders.Count} providers"
+		};
 	}
 }

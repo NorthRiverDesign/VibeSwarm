@@ -17,11 +17,22 @@ public class CommonProviderSetupStatus
 	public string ApiKeyHelpText { get; set; } = string.Empty;
 	public bool IsInstalled { get; set; }
 	public string? InstalledVersion { get; set; }
+	public string? ResolvedExecutablePath { get; set; }
+	public string? InstallationStatus { get; set; }
 	public bool HasConfiguredProvider { get; set; }
 	public Guid? ProviderId { get; set; }
 	public string? ProviderName { get; set; }
 	public bool IsAuthenticated { get; set; }
 	public string? AuthenticationStatus { get; set; }
+	public List<CommonProviderSetupConfiguredProvider> ConfiguredProviders { get; set; } = [];
+}
+
+public class CommonProviderSetupConfiguredProvider
+{
+	public Guid Id { get; set; }
+	public string Name { get; set; } = string.Empty;
+	public ProviderConnectionMode ConnectionMode { get; set; }
+	public bool IsDefault { get; set; }
 }
 
 public class CommonProviderSetupRequest

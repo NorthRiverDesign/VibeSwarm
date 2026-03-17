@@ -24,8 +24,24 @@ else
 		<div>
 			<div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
 				<div>
-					<h5 class="fw-semibold mb-1">Quick Setup</h5>
-					<p class="text-body-secondary mb-0">Install the primary provider CLIs on this host and save the credentials VibeSwarm needs to run them.</p>
+					<h5 class="fw-semibold mb-1">Host Setup</h5>
+					<p class="text-body-secondary mb-0">See what the host can run, finish authentication, and keep each provider's VibeSwarm configuration close to its install state.</p>
+				</div>
+				<ActionButton Icon="arrow-repeat" Text="Re-scan Host" OnClick="RefreshCommonProviderStatusesAsync"
+							  IsLoading="@IsRefreshingCommonProviders" />
+			</div>
+			<div class="row g-2 mb-3">
+				<div class="col-6 col-xl-3">
+					<StatItem Label="Primary CLIs" Value="@CommonProviderStatuses.Count.ToString()" />
+				</div>
+				<div class="col-6 col-xl-3">
+					<StatItem Label="Installed" Value="@CommonProviderStatuses.Count(status => status.IsInstalled).ToString()" />
+				</div>
+				<div class="col-6 col-xl-3">
+					<StatItem Label="Auth Ready" Value="@CommonProviderStatuses.Count(status => status.IsAuthenticated).ToString()" />
+				</div>
+				<div class="col-6 col-xl-3">
+					<StatItem Label="Configured" Value="@CommonProviderStatuses.Sum(status => status.ConfiguredProviders.Count).ToString()" />
 				</div>
 			</div>
 			<div class="row g-3">
@@ -50,6 +66,10 @@ else
 			}
 			else
 			{
+				<div class="mb-3">
+					<h5 class="fw-semibold mb-1">Configured Providers</h5>
+					<p class="text-body-secondary mb-0">Manage connection details, test provider health, and refresh models for every provider VibeSwarm can use.</p>
+				</div>
 				<div class="list-group">
 					@foreach (var provider in ProvidersList)
 					{
@@ -238,6 +258,7 @@ else
     private List<CommonProviderSetupStatus> CommonProviderStatuses { get; set; } = new();
     private ProviderType? InstallingProviderType { get; set; }
     private ProviderType? SavingAuthenticationProviderType { get; set; }
+    private bool IsRefreshingCommonProviders { get; set; }
 
     // Delete confirmation state
     private bool ShowDeleteModal { get; set; }
@@ -359,6 +380,34 @@ else
                     await RefreshModels(provider);
                 }
             }
+        }
+    }
+
+    private async Task RefreshCommonProviderStatusesAsync()
+    {
+        IsRefreshingCommonProviders = true;
+        try
+        {
+            CommonProviderStatuses = (await CommonProviderSetupService.RefreshAsync()).ToList();
+            ProvidersList = (await ProviderService.GetAllAsync()).ToList();
+
+            ProviderModels.Clear();
+            foreach (var provider in ProvidersList)
+            {
+                var models = await ProviderService.GetModelsAsync(provider.Id);
+                ProviderModels[provider.Id] = models.ToList();
+            }
+
+            UsageSummaries = await HttpProviderService.GetAllUsageSummariesAsync();
+            NotificationService.ShowSuccess("Provider scan completed.");
+        }
+        catch (Exception ex)
+        {
+            NotificationService.ShowError($"Provider scan failed: {ex.Message}");
+        }
+        finally
+        {
+            IsRefreshingCommonProviders = false;
         }
     }
 

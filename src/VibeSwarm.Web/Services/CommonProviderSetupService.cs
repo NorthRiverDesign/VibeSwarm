@@ -4,30 +4,47 @@ using Microsoft.EntityFrameworkCore;
 using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Providers;
 using VibeSwarm.Shared.Services;
+using VibeSwarm.Shared.Utilities;
 
 namespace VibeSwarm.Web.Services;
 
-public class CommonProviderSetupService(VibeSwarmDbContext dbContext) : ICommonProviderSetupService
+public class CommonProviderSetupService(
+	VibeSwarmDbContext dbContext,
+	ProviderCliDetectionService providerCliDetectionService,
+	AgentDetectionService agentDetectionService) : ICommonProviderSetupService
 {
 	private readonly VibeSwarmDbContext _dbContext = dbContext;
+	private readonly ProviderCliDetectionService _providerCliDetectionService = providerCliDetectionService;
+	private readonly AgentDetectionService _agentDetectionService = agentDetectionService;
 
 	public async Task<IReadOnlyList<CommonProviderSetupStatus>> GetStatusesAsync(CancellationToken cancellationToken = default)
 	{
+		var supportedProviderTypes = GetSupportedProviderTypes();
 		var configuredProviders = await _dbContext.Providers
-			.Where(provider => provider.ConnectionMode == ProviderConnectionMode.CLI)
+			.Where(provider => supportedProviderTypes.Contains(provider.Type))
 			.ToListAsync(cancellationToken);
 
 		var statuses = new List<CommonProviderSetupStatus>();
-		foreach (var providerType in GetSupportedProviderTypes())
+		foreach (var providerType in supportedProviderTypes)
 		{
-			var preferredProvider = configuredProviders
+			var providersForType = configuredProviders
 				.Where(provider => provider.Type == providerType)
-				.OrderBy(provider => provider.Name)
+				.OrderByDescending(provider => provider.IsDefault)
+				.ThenBy(provider => provider.Name)
+				.ToList();
+
+			var preferredCliProvider = providersForType
+				.Where(provider => provider.ConnectionMode == ProviderConnectionMode.CLI)
 				.FirstOrDefault();
 
 			var installSpec = GetInstallSpec(providerType);
-			var installStatus = await DetectInstallationAsync(providerType, cancellationToken);
-			var authStatus = DetectAuthentication(providerType, preferredProvider);
+			var installStatus = await _providerCliDetectionService.DetectAsync(
+				providerType,
+				installSpec.ExecutableName,
+				installSpec.VersionArguments,
+				preferredCliProvider?.ExecutablePath,
+				cancellationToken: cancellationToken);
+			var authStatus = DetectAuthentication(providerType, preferredCliProvider);
 
 			statuses.Add(new CommonProviderSetupStatus
 			{
@@ -43,15 +60,32 @@ public class CommonProviderSetupService(VibeSwarmDbContext dbContext) : ICommonP
 				ApiKeyHelpText = GetApiKeyHelpText(providerType),
 				IsInstalled = installStatus.IsInstalled,
 				InstalledVersion = installStatus.Version,
-				HasConfiguredProvider = preferredProvider != null,
-				ProviderId = preferredProvider?.Id,
-				ProviderName = preferredProvider?.Name,
+				ResolvedExecutablePath = installStatus.ResolvedExecutablePath,
+				InstallationStatus = installStatus.Message,
+				HasConfiguredProvider = preferredCliProvider != null,
+				ProviderId = preferredCliProvider?.Id,
+				ProviderName = preferredCliProvider?.Name,
 				IsAuthenticated = authStatus.IsAuthenticated,
-				AuthenticationStatus = authStatus.Message
+				AuthenticationStatus = authStatus.Message,
+				ConfiguredProviders = providersForType
+					.Select(provider => new CommonProviderSetupConfiguredProvider
+					{
+						Id = provider.Id,
+						Name = provider.Name,
+						ConnectionMode = provider.ConnectionMode,
+						IsDefault = provider.IsDefault
+					})
+					.ToList()
 			});
 		}
 
 		return statuses;
+	}
+
+	public async Task<IReadOnlyList<CommonProviderSetupStatus>> RefreshAsync(CancellationToken cancellationToken = default)
+	{
+		await _agentDetectionService.DetectAndRegisterAsync(cancellationToken);
+		return await GetStatusesAsync(cancellationToken);
 	}
 
 	public async Task<CommonProviderActionResult> InstallAsync(ProviderType providerType, CancellationToken cancellationToken = default)
@@ -67,6 +101,7 @@ public class CommonProviderSetupService(VibeSwarmDbContext dbContext) : ICommonP
 			};
 		}
 
+		await _agentDetectionService.DetectAndRegisterAsync(cancellationToken);
 		var status = await GetStatusAsync(providerType, cancellationToken);
 		return new CommonProviderActionResult
 		{
@@ -286,18 +321,6 @@ public class CommonProviderSetupService(VibeSwarmDbContext dbContext) : ICommonP
 		}
 	}
 
-	private async Task<InstallStatus> DetectInstallationAsync(ProviderType providerType, CancellationToken cancellationToken)
-	{
-		var installSpec = GetInstallSpec(providerType);
-		var result = await RunExecutableAsync(installSpec.ExecutableName, installSpec.VersionArguments, cancellationToken);
-		if (!result.Success)
-		{
-			return new InstallStatus(false, null);
-		}
-
-		return new InstallStatus(true, NormalizeVersion(result.Output));
-	}
-
 	private static string? NormalizeVersion(string? output)
 	{
 		if (string.IsNullOrWhiteSpace(output))
@@ -322,12 +345,10 @@ public class CommonProviderSetupService(VibeSwarmDbContext dbContext) : ICommonP
 			var startInfo = new ProcessStartInfo
 			{
 				FileName = fileName,
-				Arguments = arguments,
-				RedirectStandardOutput = true,
-				RedirectStandardError = true,
-				UseShellExecute = false,
-				CreateNoWindow = true
+				Arguments = arguments
 			};
+
+			PlatformHelper.ConfigureForCrossPlatform(startInfo);
 
 			using var process = new Process { StartInfo = startInfo };
 			process.Start();
@@ -374,16 +395,14 @@ public class CommonProviderSetupService(VibeSwarmDbContext dbContext) : ICommonP
 			var startInfo = new ProcessStartInfo
 			{
 				FileName = shell.FileName,
-				RedirectStandardOutput = true,
-				RedirectStandardError = true,
-				UseShellExecute = false,
-				CreateNoWindow = true
 			};
 
 			foreach (var argument in shell.Arguments)
 			{
 				startInfo.ArgumentList.Add(argument);
 			}
+
+			PlatformHelper.ConfigureForCrossPlatform(startInfo);
 
 			using var process = new Process { StartInfo = startInfo };
 			using var timeoutCts = new CancellationTokenSource(timeout);
@@ -484,7 +503,6 @@ public class CommonProviderSetupService(VibeSwarmDbContext dbContext) : ICommonP
 
 	private sealed record InstallSpec(string ExecutableName, string Label, string Command, string VersionArguments);
 	private sealed record AuthenticationState(bool IsAuthenticated, string? Message);
-	private sealed record InstallStatus(bool IsInstalled, string? Version);
 	private sealed record ProcessResult(bool Success, string? Output, string? ErrorMessage);
 	private sealed record ShellCommand(string FileName, IReadOnlyList<string> Arguments);
 }

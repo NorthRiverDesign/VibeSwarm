@@ -45,7 +45,7 @@ public static class PlatformHelper
 	/// <param name="executableName">The name of the executable (without extension)</param>
 	/// <param name="customPath">Optional custom path to the executable</param>
 	/// <returns>The resolved executable path, or the original name if not found</returns>
-	public static string ResolveExecutablePath(string executableName, string? customPath = null)
+	public static string ResolveExecutablePath(string executableName, string? customPath = null, string? searchPath = null)
 	{
 		// If custom path is provided and exists, use it
 		if (!string.IsNullOrEmpty(customPath))
@@ -63,7 +63,7 @@ public static class PlatformHelper
 		}
 
 		// Try to find in PATH
-		var pathDirs = Environment.GetEnvironmentVariable("PATH")?.Split(Path.PathSeparator) ?? Array.Empty<string>();
+		var pathDirs = (searchPath ?? Environment.GetEnvironmentVariable("PATH"))?.Split(Path.PathSeparator) ?? Array.Empty<string>();
 
 		foreach (var dir in pathDirs)
 		{
@@ -249,7 +249,7 @@ public static class PlatformHelper
 	/// </summary>
 	/// <param name="startInfo">The ProcessStartInfo to configure</param>
 	/// <param name="homeDir">Optional user home directory to use for path resolution</param>
-	public static void ConfigureForCrossPlatform(ProcessStartInfo startInfo, string? homeDir = null)
+	public static void ConfigureForCrossPlatform(ProcessStartInfo startInfo, string? homeDir = null, string? pathOverride = null)
 	{
 		startInfo.UseShellExecute = false;
 		startInfo.CreateNoWindow = true;
@@ -260,7 +260,7 @@ public static class PlatformHelper
 		// On Linux/macOS, ensure we have comprehensive PATH for CLI tools
 		if (!IsWindows)
 		{
-			startInfo.Environment["PATH"] = GetEnhancedPath(homeDir);
+			startInfo.Environment["PATH"] = pathOverride ?? GetEnhancedPath(homeDir);
 
 			// Also ensure HOME is set (may be missing in systemd services)
 			if (!string.IsNullOrEmpty(homeDir) && string.IsNullOrEmpty(startInfo.Environment["HOME"]))

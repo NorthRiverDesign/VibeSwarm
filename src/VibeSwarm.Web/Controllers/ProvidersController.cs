@@ -123,6 +123,10 @@ public class ProvidersController : ControllerBase
     public async Task<IActionResult> GetCommonProviderSetupStatuses(CancellationToken ct)
         => Ok(await _commonProviderSetupService.GetStatusesAsync(ct));
 
+    [HttpPost("common-setup/refresh")]
+    public async Task<IActionResult> RefreshCommonProviderSetup(CancellationToken ct)
+        => Ok(await _commonProviderSetupService.RefreshAsync(ct));
+
     [HttpPost("common-setup/{providerType}/install")]
     public async Task<IActionResult> InstallCommonProvider(ProviderType providerType, CancellationToken ct)
     {

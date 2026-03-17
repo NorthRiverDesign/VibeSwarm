@@ -12,6 +12,12 @@ public class HttpCommonProviderSetupService(HttpClient http) : ICommonProviderSe
 	public async Task<IReadOnlyList<CommonProviderSetupStatus>> GetStatusesAsync(CancellationToken cancellationToken = default)
 		=> await _http.GetFromJsonAsync<List<CommonProviderSetupStatus>>("/api/providers/common-setup", cancellationToken) ?? [];
 
+	public async Task<IReadOnlyList<CommonProviderSetupStatus>> RefreshAsync(CancellationToken cancellationToken = default)
+	{
+		var response = await _http.PostAsync("/api/providers/common-setup/refresh", null, cancellationToken);
+		return await response.Content.ReadFromJsonAsync<List<CommonProviderSetupStatus>>(cancellationToken) ?? [];
+	}
+
 	public async Task<CommonProviderActionResult> InstallAsync(ProviderType providerType, CancellationToken cancellationToken = default)
 	{
 		var response = await _http.PostAsync($"/api/providers/common-setup/{providerType}/install", null, cancellationToken);

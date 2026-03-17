@@ -32,6 +32,7 @@ public sealed class CommonProviderSetupCardTests
 				IsInstalled = false,
 				IsAuthenticated = false,
 				HasConfiguredProvider = false,
+				InstallationStatus = "VibeSwarm could not find 'copilot' on the host PATH. It also checked common user install locations.",
 				AuthenticationStatus = "Save a GitHub token to let VibeSwarm authenticate the Copilot CLI."
 			}
 		});
@@ -47,6 +48,8 @@ public sealed class CommonProviderSetupCardTests
 		Assert.Contains("Auth Needed", html);
 		Assert.Contains("Provider Not Added", html);
 		Assert.Contains("curl -fsSL https://gh.io/copilot-install | bash", html);
+		Assert.Contains("Host detection", html);
+		Assert.Contains("No provider saved in VibeSwarm yet.", html);
 	}
 
 	[Fact]
@@ -70,10 +73,22 @@ public sealed class CommonProviderSetupCardTests
 				ApiKeyHelpText = "Save an Anthropic key.",
 				IsInstalled = true,
 				InstalledVersion = "1.0.58",
+				ResolvedExecutablePath = "/usr/local/bin/claude",
+				InstallationStatus = "Detected on host.",
 				IsAuthenticated = true,
 				HasConfiguredProvider = true,
 				ProviderName = "Claude Code CLI",
-				AuthenticationStatus = "Saved in VibeSwarm."
+				AuthenticationStatus = "Saved in VibeSwarm.",
+				ConfiguredProviders =
+				[
+					new CommonProviderSetupConfiguredProvider
+					{
+						Id = Guid.NewGuid(),
+						Name = "Claude Code CLI",
+						ConnectionMode = ProviderConnectionMode.CLI,
+						IsDefault = true
+					}
+				]
 			}
 		});
 
@@ -88,5 +103,7 @@ public sealed class CommonProviderSetupCardTests
 		Assert.Contains("Provider Configured", html);
 		Assert.Contains("Claude Code CLI", html);
 		Assert.Contains("1.0.58", html);
+		Assert.Contains("/usr/local/bin/claude", html);
+		Assert.Contains("1 provider", html);
 	}
 }

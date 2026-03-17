@@ -53,6 +53,7 @@ public static class DataServiceExtensions
 		services.AddScoped<IUserService, UserService>();
 		services.AddScoped<IProviderUsageService, ProviderUsageService>();
 		services.AddScoped<ICommonProviderSetupService, CommonProviderSetupService>();
+		services.AddScoped<ProviderCliDetectionService>();
 		services.AddSingleton<IFileSystemService, FileSystemService>();
         services.AddHttpClient("LocalInference");
         services.AddScoped<IInferenceProviderService, InferenceProviderService>();
