@@ -5,13 +5,14 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.JSInterop;
 using VibeSwarm.Client.Components.Ideas;
 using VibeSwarm.Shared.Data;
+using VibeSwarm.Shared.Providers;
 
 namespace VibeSwarm.Tests;
 
 public sealed class SuggestIdeasModalTests
 {
 	[Fact]
-	public async Task RenderedSuggestIdeasModal_ShowsProviderModelAndCountInputs_WhenVisible()
+	public async Task RenderedSuggestIdeasModal_ShowsSourceToggleAndProviderInputs_WhenVisible()
 	{
 		var services = new ServiceCollection();
 		services.AddLogging();
@@ -19,7 +20,7 @@ public sealed class SuggestIdeasModalTests
 
 		await using var renderer = new HtmlRenderer(services.BuildServiceProvider(), NullLoggerFactory.Instance);
 
-		var providers = new List<InferenceProvider>
+		var inferenceProviders = new List<InferenceProvider>
 		{
 			new()
 			{
@@ -35,14 +36,31 @@ public sealed class SuggestIdeasModalTests
 			},
 			new() { Id = Guid.NewGuid(), Name = "Local Ollama B", Endpoint = "http://ollama-b:11434", IsEnabled = true }
 		};
+		var providers = new List<Provider>
+		{
+			new()
+			{
+				Id = Guid.NewGuid(),
+				Name = "Claude CLI",
+				Type = ProviderType.Claude,
+				IsEnabled = true,
+				AvailableModels =
+				[
+					new ProviderModel { Id = Guid.NewGuid(), ProviderId = Guid.NewGuid(), ModelId = "claude-sonnet-4.6", DisplayName = "Claude Sonnet 4.6", IsAvailable = true, IsDefault = true }
+				]
+			}
+		};
 
 		var html = await renderer.Dispatcher.InvokeAsync(async () =>
 		{
 			var parameters = ParameterView.FromDictionary(new Dictionary<string, object?>
 			{
 				[nameof(SuggestIdeasModal.IsVisible)] = true,
+				[nameof(SuggestIdeasModal.UseLocalInference)] = true,
+				[nameof(SuggestIdeasModal.HasLocalInference)] = true,
+				[nameof(SuggestIdeasModal.AvailableInferenceProviders)] = inferenceProviders,
 				[nameof(SuggestIdeasModal.AvailableProviders)] = providers,
-				[nameof(SuggestIdeasModal.SelectedProviderId)] = providers[0].Id,
+				[nameof(SuggestIdeasModal.SelectedProviderId)] = inferenceProviders[0].Id,
 				[nameof(SuggestIdeasModal.SelectedModelId)] = "qwen2.5-coder:7b",
 				[nameof(SuggestIdeasModal.IdeaCount)] = 4
 			});
@@ -52,11 +70,12 @@ public sealed class SuggestIdeasModalTests
 		});
 
 		Assert.Contains("Suggest Ideas", html);
+		Assert.Contains("Use local inference", html);
 		Assert.Contains("Inference Provider", html);
 		Assert.Contains("Model", html);
 		Assert.Contains("Ideas to Generate", html);
-		Assert.Contains("Local Ollama A", html);
-		Assert.Contains("Local Ollama B", html);
+		Assert.Contains("Local Ollama A", html, StringComparison.Ordinal);
+		Assert.Contains("Local Ollama B", html, StringComparison.Ordinal);
 		Assert.Contains("Use provider default model", html);
 		Assert.Contains("Qwen 2.5 Coder 7B (Default)", html);
 		Assert.Contains("Llama 3.2", html);

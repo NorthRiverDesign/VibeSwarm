@@ -69,6 +69,34 @@ public sealed class IdeasPanelTests
 	}
 
 	[Fact]
+	public async Task RenderedIdeasPanel_ShowsSuggestButton_WhenConfiguredProvidersExistWithoutLocalInference()
+	{
+		var services = new ServiceCollection();
+		services.AddLogging();
+		services.AddSingleton<IProjectService>(new FakeProjectService());
+		services.AddSingleton<IIdeaService>(new FakeIdeaService());
+		services.AddSingleton<NotificationService>();
+		services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
+
+		await using var renderer = new HtmlRenderer(services.BuildServiceProvider(), NullLoggerFactory.Instance);
+
+		var html = await renderer.Dispatcher.InvokeAsync(async () =>
+		{
+			var parameters = ParameterView.FromDictionary(new Dictionary<string, object?>
+			{
+				[nameof(IdeasPanel.HasLocalInference)] = false,
+				[nameof(IdeasPanel.AvailableInferenceProviders)] = new List<InferenceProvider>(),
+				[nameof(IdeasPanel.AvailableProviders)] =
+					new List<Provider> { new() { Id = Guid.NewGuid(), Name = "Copilot", Type = ProviderType.Copilot, IsEnabled = true } }
+			});
+			var output = await renderer.RenderComponentAsync<IdeasPanel>(parameters);
+			return output.ToHtmlString();
+		});
+
+		Assert.Contains("Suggest", html);
+	}
+
+	[Fact]
 	public async Task IdeaListItem_UsesComfortableMobileSpacingAndJustifiedActions()
 	{
 		var services = new ServiceCollection();

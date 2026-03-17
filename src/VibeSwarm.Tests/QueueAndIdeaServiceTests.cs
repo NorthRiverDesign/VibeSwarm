@@ -330,6 +330,82 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 	}
 
 	[Fact]
+	public async Task SuggestIdeasFromCodebaseAsync_UsesConfiguredProviderWhenLocalInferenceIsNotSelected()
+	{
+		await using var dbContext = CreateDbContext();
+		var workingPath = Path.Combine(Path.GetTempPath(), $"vibeswarm-provider-suggestion-{Guid.NewGuid():N}");
+		Directory.CreateDirectory(workingPath);
+		File.WriteAllText(Path.Combine(workingPath, "Program.cs"), "Console.WriteLine(\"Hello from VibeSwarm\");");
+		try
+		{
+			var project = new Project
+			{
+				Id = Guid.NewGuid(),
+				Name = "Provider Suggestion Project",
+				WorkingPath = workingPath
+			};
+			var provider = new Provider
+			{
+				Id = Guid.NewGuid(),
+				Name = "Claude",
+				Type = ProviderType.Claude,
+				IsEnabled = true,
+				IsDefault = true
+			};
+			var providerModel = new ProviderModel
+			{
+				Id = Guid.NewGuid(),
+				ProviderId = provider.Id,
+				ModelId = "claude-sonnet-4.6",
+				DisplayName = "Claude Sonnet 4.6",
+				IsAvailable = true,
+				IsDefault = true
+			};
+			var providerInstance = new FakeProviderInstance
+			{
+				ExecutionResult = new ExecutionResult
+				{
+					Success = true,
+					ModelUsed = "claude-sonnet-4.6",
+					Output = """
+					- Add a provider-backed suggestion source selector to the ideas modal
+					- Show cached provider models when suggesting ideas from configured providers
+					- Add tests that cover provider-based idea suggestions
+					"""
+				}
+			};
+
+			dbContext.Projects.Add(project);
+			dbContext.Providers.Add(provider);
+			dbContext.ProviderModels.Add(providerModel);
+			await dbContext.SaveChangesAsync();
+
+			var ideaService = CreateIdeaService(dbContext, provider, providerInstance);
+			var result = await ideaService.SuggestIdeasFromCodebaseAsync(project.Id, new SuggestIdeasRequest
+			{
+				UseLocalInference = false,
+				ProviderId = provider.Id,
+				ModelId = providerModel.ModelId,
+				IdeaCount = 2
+			});
+
+			Assert.True(result.Success);
+			Assert.Equal(2, result.Ideas.Count);
+			Assert.NotNull(providerInstance.LastExecutePrompt);
+			Assert.Contains("Return exactly 2 concrete, actionable ideas.", providerInstance.LastExecutePrompt);
+			Assert.Equal(providerModel.ModelId, providerInstance.LastExecutionOptions?.Model);
+			Assert.Equal(2, await dbContext.Ideas.CountAsync(idea => idea.ProjectId == project.Id));
+		}
+		finally
+		{
+			if (Directory.Exists(workingPath))
+			{
+				Directory.Delete(workingPath, recursive: true);
+			}
+		}
+	}
+
+	[Fact]
 	public async Task UpdateAsync_UpdatesExistingIdeaWithoutCreatingDuplicate()
 	{
 		await using var dbContext = CreateDbContext();

@@ -13,14 +13,22 @@ public class SuggestIdeasRequest
 	public const int MaxIdeaCount = 7;
 
 	/// <summary>
-	/// Optional inference provider to use for suggestion generation.
-	/// When omitted, the default enabled provider/model resolution is used.
+	/// When true, uses a local inference provider (for example, Ollama) for suggestion generation.
+	/// When false, uses a configured coding provider (for example, Claude, Copilot, or OpenCode).
+	/// </summary>
+	public bool UseLocalInference { get; set; } = true;
+
+	/// <summary>
+	/// Optional provider to use for suggestion generation.
+	/// For local inference, this is an inference provider ID.
+	/// For configured providers, this is a coding provider ID.
+	/// When omitted, the server resolves the default source/provider for the selected mode.
 	/// </summary>
 	public Guid? ProviderId { get; set; }
 
 	/// <summary>
-	/// Optional explicit model override for the selected inference provider.
-	/// Leave empty to use the provider's configured suggest/default model.
+	/// Optional explicit model override for the selected provider.
+	/// Leave empty to use the provider's configured default model or built-in fallback behavior.
 	/// </summary>
 	[StringLength(ValidationLimits.ProjectPlanningModelIdMaxLength)]
 	public string? ModelId { get; set; }

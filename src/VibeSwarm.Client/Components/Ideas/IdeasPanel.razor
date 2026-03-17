@@ -31,7 +31,7 @@
 			}
 		</div>
 		<div class="d-flex align-items-center gap-2">
-			@if (HasLocalInference)
+			@if (CanSuggestIdeas)
 			{
 				<button type="button" class="btn btn-sm btn-secondary" @onclick="OpenSuggestIdeasModal"
 						disabled="@(IsSuggestingIdeas || IsProcessingActive)"
@@ -224,11 +224,15 @@
 		</ModalDialog>
 
 	<SuggestIdeasModal @bind-IsVisible="_showSuggestIdeasModal"
-					   AvailableProviders="@AvailableInferenceProviders"
-					   SelectedProviderId="@_selectedInferenceProviderId"
-					   SelectedProviderIdChanged="OnSelectedInferenceProviderChanged"
-					   SelectedModelId="@_selectedInferenceModelId"
-					   SelectedModelIdChanged="OnSelectedInferenceModelChanged"
+					   UseLocalInference="@_suggestUseLocalInference"
+					   UseLocalInferenceChanged="OnSuggestUseLocalInferenceChanged"
+					   HasLocalInference="@HasLocalInference"
+					   AvailableInferenceProviders="@AvailableInferenceProviders"
+					   AvailableProviders="@AvailableProviders"
+					   SelectedProviderId="@SelectedSuggestProviderId"
+					   SelectedProviderIdChanged="OnSelectedSuggestProviderChanged"
+					   SelectedModelId="@SelectedSuggestModelId"
+					   SelectedModelIdChanged="OnSelectedSuggestModelChanged"
 					   IdeaCount="@_suggestIdeaCount"
 					   IdeaCountChanged="OnSuggestIdeaCountChanged"
 					   IsProcessing="@IsSuggestingIdeas"
@@ -346,8 +350,11 @@
 	private bool IsSuggestingIdeas { get; set; }
 	private SuggestIdeasResult? _suggestResult;
 	private bool _showSuggestIdeasModal;
+	private bool _suggestUseLocalInference = true;
 	private Guid? _selectedInferenceProviderId;
 	private string? _selectedInferenceModelId;
+	private Guid? _selectedConfiguredProviderId;
+	private string? _selectedConfiguredModelId;
 	private int _suggestIdeaCount = SuggestIdeasRequest.DefaultIdeaCount;
 
 	// Start All confirmation modal state
@@ -591,6 +598,16 @@
 		? "Ideas expand and queue automatically."
 		: "Ideas queue automatically from their current text.";
 
+	private bool CanSuggestIdeas => HasLocalInference || AvailableProviders.Any();
+
+	private Guid? SelectedSuggestProviderId => _suggestUseLocalInference
+		? _selectedInferenceProviderId
+		: _selectedConfiguredProviderId;
+
+	private string? SelectedSuggestModelId => _suggestUseLocalInference
+		? _selectedInferenceModelId
+		: _selectedConfiguredModelId;
+
 	private string StartAllDescription => CurrentAutoExpandIdeas
 		? "Ideas will expand first, then queue one job at a time for this project."
 		: "Ideas will queue from their current text, one job at a time for this project.";
@@ -607,7 +624,7 @@
 			return "Stop auto-processing before generating new suggestions";
 		}
 
-		return "Use local AI to scan the codebase and suggest ideas";
+		return "Use AI to scan the codebase and suggest ideas";
 	}
 
 	private string GetStartAllTooltip()
@@ -670,18 +687,24 @@
 
 	private void OpenSuggestIdeasModal()
 	{
-		if (!AvailableInferenceProviders.Any())
+		if (!CanSuggestIdeas)
 		{
 			NotificationService.ShowWarning(
-				"No enabled inference providers are available. Add one under Settings → Local Inference before suggesting ideas.",
-				"Inference Provider Required");
+				"No enabled suggestion sources are available. Add one under Settings → Providers or Settings → Local Inference before suggesting ideas.",
+				"Suggestion Source Required");
 			return;
 		}
 
-		_selectedInferenceProviderId ??= AvailableInferenceProviders
-			.OrderBy(provider => provider.Name)
-			.Select(provider => (Guid?)provider.Id)
-			.FirstOrDefault();
+		if (_suggestUseLocalInference && !HasLocalInference && AvailableProviders.Any())
+		{
+			_suggestUseLocalInference = false;
+		}
+		else if (!_suggestUseLocalInference && !AvailableProviders.Any() && HasLocalInference)
+		{
+			_suggestUseLocalInference = true;
+		}
+
+		EnsureSuggestProviderSelection();
 		_suggestIdeaCount = Math.Clamp(_suggestIdeaCount, SuggestIdeasRequest.MinIdeaCount, SuggestIdeasRequest.MaxIdeaCount);
 		_showSuggestIdeasModal = true;
 	}
@@ -691,17 +714,42 @@
 		_showSuggestIdeasModal = false;
 	}
 
-	private Task OnSelectedInferenceProviderChanged(Guid? providerId)
+	private Task OnSuggestUseLocalInferenceChanged(bool useLocalInference)
 	{
-		_selectedInferenceProviderId = providerId;
+		_suggestUseLocalInference = useLocalInference;
+		EnsureSuggestProviderSelection();
 		return Task.CompletedTask;
 	}
 
-	private Task OnSelectedInferenceModelChanged(string? modelId)
+	private Task OnSelectedSuggestProviderChanged(Guid? providerId)
 	{
-		_selectedInferenceModelId = string.IsNullOrWhiteSpace(modelId)
+		if (_suggestUseLocalInference)
+		{
+			_selectedInferenceProviderId = providerId;
+		}
+		else
+		{
+			_selectedConfiguredProviderId = providerId;
+		}
+
+		return OnSelectedSuggestModelChanged(null);
+	}
+
+	private Task OnSelectedSuggestModelChanged(string? modelId)
+	{
+		var normalizedModelId = string.IsNullOrWhiteSpace(modelId)
 			? null
 			: modelId.Trim();
+
+		if (_suggestUseLocalInference)
+		{
+			_selectedInferenceModelId = normalizedModelId;
+		}
+		else
+		{
+			_selectedConfiguredModelId = normalizedModelId;
+		}
+
 		return Task.CompletedTask;
 	}
 
@@ -713,9 +761,13 @@
 
 	private async Task SuggestIdeas()
 	{
-		if (!_selectedInferenceProviderId.HasValue)
+		if (!SelectedSuggestProviderId.HasValue)
 		{
-			NotificationService.ShowWarning("Choose an inference provider before generating ideas.", "Inference Provider Required");
+			NotificationService.ShowWarning(
+				_suggestUseLocalInference
+					? "Choose an inference provider before generating ideas."
+					: "Choose a provider before generating ideas.",
+				"Provider Required");
 			return;
 		}
 
@@ -728,8 +780,9 @@
 		{
 			var result = await IdeaService.SuggestIdeasFromCodebaseAsync(CurrentProjectId, new SuggestIdeasRequest
 			{
-				ProviderId = _selectedInferenceProviderId,
-				ModelId = _selectedInferenceModelId,
+				UseLocalInference = _suggestUseLocalInference,
+				ProviderId = SelectedSuggestProviderId,
+				ModelId = SelectedSuggestModelId,
 				IdeaCount = _suggestIdeaCount
 			});
 			_suggestResult = result;
@@ -753,13 +806,13 @@
 			{
 				var title = result.Stage switch
 				{
-					SuggestIdeasStage.NotConfigured => "Inference Not Configured",
+					SuggestIdeasStage.NotConfigured => _suggestUseLocalInference ? "Inference Not Configured" : "Provider Not Configured",
 					SuggestIdeasStage.ProviderNotFound => "Provider Unavailable",
 					SuggestIdeasStage.ModelNotFound => "Model Unavailable",
 					SuggestIdeasStage.ProviderUnreachable => "Provider Unreachable",
 					SuggestIdeasStage.NoModel => "No Model Assigned",
 					SuggestIdeasStage.RepoMapFailed => "Directory Scan Failed",
-					SuggestIdeasStage.GenerateFailed => "Inference Failed",
+					SuggestIdeasStage.GenerateFailed => _suggestUseLocalInference ? "Inference Failed" : "Provider Failed",
 					SuggestIdeasStage.ParseFailed => "Unexpected Response",
 					_ => "Suggestion Failed"
 				};
@@ -802,5 +855,22 @@
 	{
 		_showStartAllModal = false;
 		await OnStartProcessingWithOptions.InvokeAsync(_startAllAutoCommitMode);
+	}
+
+	private void EnsureSuggestProviderSelection()
+	{
+		if (_suggestUseLocalInference)
+		{
+			_selectedInferenceProviderId ??= AvailableInferenceProviders
+				.OrderBy(provider => provider.Name)
+				.Select(provider => (Guid?)provider.Id)
+				.FirstOrDefault();
+			return;
+		}
+
+		_selectedConfiguredProviderId ??= AvailableProviders
+			.OrderBy(provider => provider.Name)
+			.Select(provider => (Guid?)provider.Id)
+			.FirstOrDefault();
 	}
 }

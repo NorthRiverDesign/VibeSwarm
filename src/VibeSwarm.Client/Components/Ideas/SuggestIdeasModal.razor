@@ -1,28 +1,50 @@
 @using VibeSwarm.Shared.Data
 @using VibeSwarm.Shared.Models
+@using VibeSwarm.Shared.Providers
 
 <ModalDialog IsVisible="IsVisible" IsVisibleChanged="HandleVisibilityChanged" Title="Suggest Ideas" Icon="stars"
 			 Size="ModalDialog.ModalSize.Small" OnClose="HandleCancel">
 	<ChildContent>
 		<p class="text-body-secondary mb-3">
-			Choose which local inference provider to use and how many ideas to generate from the current codebase.
+			Choose how to analyze the current codebase, then generate a short list of actionable ideas.
 		</p>
 
-		@if (!AvailableProviders.Any())
+		@if (!HasAnySuggestionSource)
 		{
 			<Alert Type="Alert.AlertType.Warning"
-				   Message="No enabled inference providers are available. Add one under Settings → Local Inference before suggesting ideas." />
+				   Message="No enabled suggestion sources are available. Configure a provider under Settings → Providers or Settings → Local Inference before suggesting ideas." />
 		}
 		else
 		{
+			@if (HasLocalInference && HasConfiguredProviders)
+			{
+				<div class="form-check form-switch mb-3">
+					<input class="form-check-input" type="checkbox" id="useLocalInferenceForSuggestions" checked="@UseLocalInference"
+						   @onchange="HandleToggleLocalInference">
+					<label class="form-check-label" for="useLocalInferenceForSuggestions">
+						<i class="bi @(UseLocalInference ? "bi-pc-display" : "bi-cloud") me-1"></i>
+						@(UseLocalInference ? "Use local inference" : "Use configured provider")
+					</label>
+				</div>
+			}
+
 			<div class="mb-3">
-				<label for="suggestIdeasProvider" class="form-label fw-medium">Inference Provider</label>
-				<select id="suggestIdeasProvider" class="form-select" @bind="SelectedProviderIdValue">
-					@foreach (var provider in AvailableProviders.OrderBy(provider => provider.Name))
+				<label for="suggestIdeasProvider" class="form-label fw-medium">@GetProviderLabel()</label>
+				<select id="suggestIdeasProvider" class="form-select" @bind="SelectedProviderIdValue"
+						disabled="@(!CurrentProviders.Any())">
+					@foreach (var provider in CurrentProviders.OrderBy(provider => provider.Name))
 					{
 						<option value="@provider.Id">@provider.Name</option>
 					}
 				</select>
+				@if (!CurrentProviders.Any())
+				{
+					<div class="form-text">
+						@(UseLocalInference
+							? "Add an enabled local inference provider under Settings → Local Inference."
+							: "Add an enabled provider under Settings → Providers.")
+					</div>
+				}
 			</div>
 
 			<div class="mb-3">
@@ -35,19 +57,10 @@
 					<option value="">Use provider default model</option>
 					@foreach (var model in SelectedProviderModels)
 					{
-						<option value="@model.ModelId">@GetModelDisplayName(model)</option>
+						<option value="@model.ModelId">@model.DisplayName</option>
 					}
 				</select>
-				<div class="form-text">
-					@if (SelectedProviderId.HasValue && !SelectedProviderModels.Any())
-					{
-						<span>No cached models were found for this provider yet. Its configured <code>suggest</code> or <code>default</code> model will be used.</span>
-					}
-					else
-					{
-						<span>Leave this blank to use the provider's configured <code>suggest</code> model first, then its <code>default</code> model.</span>
-					}
-				</div>
+				<div class="form-text">@GetModelHelpText()</div>
 			</div>
 
 			<div>
@@ -82,7 +95,19 @@
 	public EventCallback<bool> IsVisibleChanged { get; set; }
 
 	[Parameter]
-	public List<InferenceProvider> AvailableProviders { get; set; } = new();
+	public bool UseLocalInference { get; set; } = true;
+
+	[Parameter]
+	public EventCallback<bool> UseLocalInferenceChanged { get; set; }
+
+	[Parameter]
+	public bool HasLocalInference { get; set; }
+
+	[Parameter]
+	public List<InferenceProvider> AvailableInferenceProviders { get; set; } = new();
+
+	[Parameter]
+	public List<Provider> AvailableProviders { get; set; } = new();
 
 	[Parameter]
 	public Guid? SelectedProviderId { get; set; }
@@ -111,9 +136,45 @@
 	[Parameter]
 	public EventCallback OnCancel { get; set; }
 
-	private bool CanConfirm => AvailableProviders.Any() && SelectedProviderId.HasValue;
+	private bool HasConfiguredProviders => AvailableProviders.Any();
+	private bool HasAnySuggestionSource => HasLocalInference || HasConfiguredProviders;
+	private bool CanConfirm => CurrentProviders.Any() && SelectedProviderId.HasValue;
 
-	private IReadOnlyList<InferenceModel> SelectedProviderModels => GetProviderModels(SelectedProviderId);
+	private IReadOnlyList<SuggestionProviderOption> CurrentProviders => UseLocalInference
+		? AvailableInferenceProviders
+			.OrderBy(provider => provider.Name)
+			.Select(provider => new SuggestionProviderOption(
+				provider.Id,
+				provider.Name,
+				provider.Models
+					.Where(model => model.IsAvailable)
+					.Select(model => new SuggestionModelOption(
+						model.ModelId,
+						GetInferenceModelDisplayName(model),
+						model.IsDefault))
+					.OrderByDescending(model => model.IsDefault)
+					.ThenBy(model => model.DisplayName)
+					.ToList()))
+			.ToList()
+		: AvailableProviders
+			.OrderBy(provider => provider.Name)
+			.Select(provider => new SuggestionProviderOption(
+				provider.Id,
+				provider.Name,
+				provider.AvailableModels
+					.Where(model => model.IsAvailable)
+					.Select(model => new SuggestionModelOption(
+						model.ModelId,
+						GetProviderModelDisplayName(model),
+						model.IsDefault))
+					.OrderByDescending(model => model.IsDefault)
+					.ThenBy(model => model.DisplayName)
+					.ToList()))
+			.ToList();
+
+	private IReadOnlyList<SuggestionModelOption> SelectedProviderModels => CurrentProviders
+		.FirstOrDefault(provider => provider.Id == SelectedProviderId)?
+		.Models ?? [];
 
 	private string SelectedProviderIdValue
 	{
@@ -127,15 +188,7 @@
 				_ = SelectedProviderIdChanged.InvokeAsync(providerId);
 			}
 
-			var validModelIds = GetProviderModels(providerId)
-				.Select(model => model.ModelId)
-				.ToHashSet(StringComparer.Ordinal);
-
-			if (!string.IsNullOrWhiteSpace(SelectedModelId) && !validModelIds.Contains(SelectedModelId))
-			{
-				SelectedModelId = null;
-				_ = SelectedModelIdChanged.InvokeAsync(null);
-			}
+			ResetSelectedModelIfUnavailable();
 		}
 	}
 
@@ -176,23 +229,19 @@
 			await IdeaCountChanged.InvokeAsync(IdeaCount);
 		}
 
-		if (AvailableProviders.Any() && (!SelectedProviderId.HasValue || AvailableProviders.All(provider => provider.Id != SelectedProviderId.Value)))
+		if (UseLocalInference && !HasLocalInference && HasConfiguredProviders)
 		{
-			SelectedProviderId = AvailableProviders
-				.OrderBy(provider => provider.Name)
-				.Select(provider => (Guid?)provider.Id)
-				.FirstOrDefault();
-			await SelectedProviderIdChanged.InvokeAsync(SelectedProviderId);
+			UseLocalInference = false;
+			await UseLocalInferenceChanged.InvokeAsync(false);
+		}
+		else if (!UseLocalInference && !HasConfiguredProviders && HasLocalInference)
+		{
+			UseLocalInference = true;
+			await UseLocalInferenceChanged.InvokeAsync(true);
 		}
 
-		var validModelIds = GetProviderModels(SelectedProviderId)
-			.Select(model => model.ModelId)
-			.ToHashSet(StringComparer.Ordinal);
-		if (!string.IsNullOrWhiteSpace(SelectedModelId) && !validModelIds.Contains(SelectedModelId))
-		{
-			SelectedModelId = null;
-			await SelectedModelIdChanged.InvokeAsync(null);
-		}
+		await EnsureValidProviderSelectionAsync();
+		await ResetSelectedModelIfUnavailableAsync();
 	}
 
 	private async Task HandleVisibilityChanged(bool visible)
@@ -217,28 +266,101 @@
 		await OnCancel.InvokeAsync();
 	}
 
-	private IReadOnlyList<InferenceModel> GetProviderModels(Guid? providerId)
+	private async Task HandleToggleLocalInference(ChangeEventArgs e)
 	{
-		if (!providerId.HasValue)
+		var useLocalInference = e.Value is bool value && value;
+		if (UseLocalInference == useLocalInference)
 		{
-			return [];
+			return;
 		}
 
-		return AvailableProviders
-			.FirstOrDefault(provider => provider.Id == providerId.Value)?
-			.Models
-			.Where(model => model.IsAvailable)
-			.OrderByDescending(model => string.Equals(model.TaskType, "suggest", StringComparison.OrdinalIgnoreCase))
-			.ThenByDescending(model => model.IsDefault)
-			.ThenBy(model => model.DisplayName ?? model.ModelId)
-			.ToList() ?? [];
+		UseLocalInference = useLocalInference;
+		SelectedProviderId = null;
+		SelectedModelId = null;
+
+		await UseLocalInferenceChanged.InvokeAsync(useLocalInference);
+		await SelectedProviderIdChanged.InvokeAsync(null);
+		await SelectedModelIdChanged.InvokeAsync(null);
+		await EnsureValidProviderSelectionAsync();
 	}
 
-	private static string GetModelDisplayName(InferenceModel model)
+	private async Task EnsureValidProviderSelectionAsync()
+	{
+		if (CurrentProviders.Any() && (!SelectedProviderId.HasValue || CurrentProviders.All(provider => provider.Id != SelectedProviderId.Value)))
+		{
+			SelectedProviderId = CurrentProviders
+				.Select(provider => (Guid?)provider.Id)
+				.FirstOrDefault();
+			await SelectedProviderIdChanged.InvokeAsync(SelectedProviderId);
+		}
+	}
+
+	private void ResetSelectedModelIfUnavailable()
+	{
+		var validModelIds = SelectedProviderModels
+			.Select(model => model.ModelId)
+			.ToHashSet(StringComparer.Ordinal);
+
+		if (!string.IsNullOrWhiteSpace(SelectedModelId) && !validModelIds.Contains(SelectedModelId))
+		{
+			SelectedModelId = null;
+			_ = SelectedModelIdChanged.InvokeAsync(null);
+		}
+	}
+
+	private async Task ResetSelectedModelIfUnavailableAsync()
+	{
+		var validModelIds = SelectedProviderModels
+			.Select(model => model.ModelId)
+			.ToHashSet(StringComparer.Ordinal);
+
+		if (!string.IsNullOrWhiteSpace(SelectedModelId) && !validModelIds.Contains(SelectedModelId))
+		{
+			SelectedModelId = null;
+			await SelectedModelIdChanged.InvokeAsync(null);
+		}
+	}
+
+	private string GetProviderLabel() => UseLocalInference ? "Inference Provider" : "Configured Provider";
+
+	private string GetModelHelpText()
+	{
+		if (!SelectedProviderId.HasValue)
+		{
+			return UseLocalInference
+				? "Choose an inference provider to browse any cached models."
+				: "Choose a configured provider to browse any cached models.";
+		}
+
+		if (!SelectedProviderModels.Any())
+		{
+			return UseLocalInference
+				? "No cached models were found for this inference provider yet. Its configured suggest/default model will be used if available."
+				: "No cached models were found for this provider yet. Its default CLI model will be used.";
+		}
+
+		return UseLocalInference
+			? "Leave this blank to use the provider's configured suggest model first, then its default model."
+			: "Leave this blank to use the provider's default model selection.";
+	}
+
+	private static string GetInferenceModelDisplayName(InferenceModel model)
 	{
 		var label = model.DisplayName ?? model.ModelId;
 		return model.IsDefault
 			? $"{label} (Default)"
 			: label;
 	}
+
+	private static string GetProviderModelDisplayName(ProviderModel model)
+	{
+		var label = model.DisplayName ?? model.ModelId;
+		return model.IsDefault
+			? $"{label} (Default)"
+			: label;
+	}
+
+	private sealed record SuggestionProviderOption(Guid Id, string Name, IReadOnlyList<SuggestionModelOption> Models);
+
+	private sealed record SuggestionModelOption(string ModelId, string DisplayName, bool IsDefault);
 }

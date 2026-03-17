@@ -124,7 +124,7 @@ public class HttpIdeaService : IIdeaService
 
     public async Task<SuggestIdeasResult> SuggestIdeasFromCodebaseAsync(Guid projectId, SuggestIdeasRequest? request = null, CancellationToken ct = default)
     {
-        // Local model generation can take well over 100 s (the old HttpClient default).
+        // Suggestion generation can take well over 100 s depending on the selected source.
         // The HttpClient registered in DI uses Timeout.InfiniteTimeSpan, so this
         // CancellationTokenSource is now the sole timeout for the suggestion request.
         using var timeoutCts = new CancellationTokenSource(TimeSpan.FromMinutes(5));

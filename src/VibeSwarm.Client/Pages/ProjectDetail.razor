@@ -964,6 +964,7 @@ TimeSpan.FromSeconds(10) })
                 await LoadIdeas();
             }
             Providers = (await ProviderService.GetAllAsync()).ToList();
+            await LoadSuggestionProviderModels();
 
             var defaultProvider = await ProviderService.GetDefaultAsync();
             if (defaultProvider != null)
@@ -1003,6 +1004,18 @@ TimeSpan.FromSeconds(10) })
             _hasLocalInference = false;
             _availableInferenceProviders = new();
             _availableLocalModels = new();
+        }
+    }
+
+    private async Task LoadSuggestionProviderModels()
+    {
+        foreach (var provider in Providers.Where(provider => provider.IsEnabled))
+        {
+            provider.AvailableModels = (await ProviderService.GetModelsAsync(provider.Id))
+                .Where(model => model.IsAvailable)
+                .OrderByDescending(model => model.IsDefault)
+                .ThenBy(model => model.DisplayName ?? model.ModelId)
+                .ToList();
         }
     }
 

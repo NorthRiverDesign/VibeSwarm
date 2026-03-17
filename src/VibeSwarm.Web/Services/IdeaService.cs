@@ -1172,7 +1172,7 @@ Keep the specification concise but complete. Focus on actionable implementation 
 	{
 		var normalizedRequest = NormalizeSuggestIdeasRequest(request);
 
-		if (_inferenceService == null)
+		if (normalizedRequest.UseLocalInference && _inferenceService == null)
 		{
 			_logger.LogWarning("Local inference service is not configured for project {ProjectId}", projectId);
 			return new SuggestIdeasResult
@@ -1218,7 +1218,9 @@ Keep the specification concise but complete. Focus on actionable implementation 
 			return new SuggestIdeasResult
 			{
 				Stage = SuggestIdeasStage.ModelNotFound,
-				Message = "Choose an inference provider before selecting a specific model."
+				Message = request.UseLocalInference
+					? "Choose an inference provider before selecting a specific model."
+					: "Choose a provider before selecting a specific model."
 			};
 		}
 
@@ -1235,6 +1237,99 @@ Keep the specification concise but complete. Focus on actionable implementation 
 			};
 		}
 
+		var repoMap = RepoMapGenerator.GenerateRepoMap(project.WorkingPath);
+		if (string.IsNullOrEmpty(repoMap))
+		{
+			_logger.LogWarning("Repo map generation failed for project {ProjectId} at path {Path}", projectId, project.WorkingPath);
+			return new SuggestIdeasResult
+			{
+				Stage = SuggestIdeasStage.RepoMapFailed,
+				Message = $"Could not scan the project directory at \"{project.WorkingPath}\". Verify the path exists and is readable."
+			};
+		}
+
+		var prompt = BuildCodebaseSuggestionPrompt(repoMap, project.Name, project.Description, project.PromptContext, request.IdeaCount);
+		const string systemPrompt = "You are a senior software engineer performing a codebase review. Identify concrete, actionable improvements. Return only a plain list of ideas, one per line starting with \"- \". No explanations or headers.";
+
+		var generationResult = request.UseLocalInference
+			? await SuggestIdeasWithLocalInferenceAsync(projectId, request, prompt, systemPrompt, cancellationToken)
+			: await SuggestIdeasWithProviderAsync(projectId, project, request, prompt, cancellationToken);
+
+		if (!generationResult.Result.Success)
+		{
+			return generationResult.Result;
+		}
+
+		var responseText = generationResult.ResponseText ?? string.Empty;
+		var suggestions = ParseCodebaseSuggestions(responseText, request.IdeaCount);
+		if (suggestions.Count == 0)
+		{
+			_logger.LogWarning("No parseable suggestions in inference response for project {ProjectId}. Raw response length: {Len}",
+				projectId, responseText.Length);
+			return new SuggestIdeasResult
+			{
+				Stage = SuggestIdeasStage.ParseFailed,
+				Message = "The model responded but did not produce ideas in the expected format. Try a different model or re-run.",
+				ModelUsed = generationResult.ModelUsed,
+				InferenceDurationMs = generationResult.DurationMs,
+				InferenceError = $"Raw response ({responseText.Length} chars): {responseText[..Math.Min(200, responseText.Length)]}…"
+			};
+		}
+
+		var createdIdeas = new List<Idea>();
+		foreach (var suggestion in suggestions)
+		{
+			try
+			{
+				var idea = await CreateAsync(new Idea
+				{
+					ProjectId = projectId,
+					Description = suggestion
+				}, cancellationToken);
+				createdIdeas.Add(idea);
+			}
+			catch (Exception ex)
+			{
+				_logger.LogWarning(ex, "Failed to save suggested idea for project {ProjectId}", projectId);
+			}
+		}
+
+		if (createdIdeas.Count == 0)
+		{
+			return new SuggestIdeasResult
+			{
+				Stage = SuggestIdeasStage.GenerateFailed,
+				Message = "Ideas were generated, but none could be saved. Check the logs and try again.",
+				ModelUsed = generationResult.ModelUsed,
+				InferenceDurationMs = generationResult.DurationMs
+			};
+		}
+
+		_logger.LogInformation("Created {Count} suggested ideas for project {ProjectId} using model {Model}",
+			createdIdeas.Count, projectId, generationResult.ModelUsed ?? "unknown");
+
+		var message = createdIdeas.Count == request.IdeaCount
+			? $"{createdIdeas.Count} idea{(createdIdeas.Count == 1 ? "" : "s")} added from codebase analysis."
+			: $"{createdIdeas.Count} of {request.IdeaCount} requested idea{(request.IdeaCount == 1 ? "" : "s")} added from codebase analysis.";
+
+		return new SuggestIdeasResult
+		{
+			Success = true,
+			Stage = SuggestIdeasStage.Success,
+			Ideas = createdIdeas,
+			Message = message,
+			ModelUsed = generationResult.ModelUsed,
+			InferenceDurationMs = generationResult.DurationMs
+		};
+	}
+
+	private async Task<SuggestionGenerationResult> SuggestIdeasWithLocalInferenceAsync(
+		Guid projectId,
+		SuggestIdeasRequest request,
+		string prompt,
+		string systemPrompt,
+		CancellationToken cancellationToken)
+	{
 		InferenceProvider? selectedProvider = null;
 		if (request.ProviderId.HasValue)
 		{
@@ -1245,11 +1340,11 @@ Keep the specification concise but complete. Focus on actionable implementation 
 			if (selectedProvider == null)
 			{
 				_logger.LogWarning("Requested inference provider {ProviderId} was not found for project {ProjectId}", request.ProviderId.Value, projectId);
-				return new SuggestIdeasResult
+				return SuggestionGenerationResult.Fail(new SuggestIdeasResult
 				{
 					Stage = SuggestIdeasStage.ProviderNotFound,
 					Message = "The selected inference provider is no longer available. Choose another provider and try again."
-				};
+				});
 			}
 		}
 
@@ -1267,11 +1362,11 @@ Keep the specification concise but complete. Focus on actionable implementation 
 
 				if (selectedModel == null)
 				{
-					return new SuggestIdeasResult
+					return SuggestionGenerationResult.Fail(new SuggestIdeasResult
 					{
 						Stage = SuggestIdeasStage.ModelNotFound,
 						Message = $"The selected model is no longer available for {selectedProvider.Name}. Choose another model and try again."
-					};
+					});
 				}
 			}
 			else
@@ -1279,59 +1374,42 @@ Keep the specification concise but complete. Focus on actionable implementation 
 				selectedModel = ResolveSuggestionModel(selectedProvider);
 				if (selectedModel == null)
 				{
-					return new SuggestIdeasResult
+					return SuggestionGenerationResult.Fail(new SuggestIdeasResult
 					{
 						Stage = SuggestIdeasStage.NoModel,
 						Message = $"No model is assigned to the \"suggest\" or \"default\" task for {selectedProvider.Name}. Assign one under Settings → Local Inference."
-					};
+					});
 				}
 			}
 		}
 
-		// Verify the provider is reachable and discover any assigned model
 		InferenceHealthResult health;
 		try
 		{
-			// _inferenceService is guaranteed non-null by the caller (SuggestIdeasFromCodebaseAsync checks it)
 			health = await _inferenceService!.CheckHealthAsync(providerEndpoint, cancellationToken);
 		}
 		catch (Exception ex)
 		{
 			_logger.LogWarning(ex, "Health check failed for project {ProjectId} suggestion using provider {Provider}", projectId, providerDisplayName);
-			return new SuggestIdeasResult
+			return SuggestionGenerationResult.Fail(new SuggestIdeasResult
 			{
 				Stage = SuggestIdeasStage.ProviderUnreachable,
 				Message = $"Could not reach {providerDisplayName}: {ex.Message}",
 				InferenceError = ex.Message
-			};
+			});
 		}
 
 		if (!health.IsAvailable)
 		{
 			var detail = string.IsNullOrEmpty(health.Error) ? "No error detail returned." : health.Error;
 			_logger.LogWarning("{Provider} unavailable for project {ProjectId}: {Error}", providerDisplayName, projectId, detail);
-			return new SuggestIdeasResult
+			return SuggestionGenerationResult.Fail(new SuggestIdeasResult
 			{
 				Stage = SuggestIdeasStage.ProviderUnreachable,
 				Message = $"{providerDisplayName} is not responding. {detail}",
 				InferenceError = detail
-			};
+			});
 		}
-
-		// Build the repo map — gives the model a compact view of the codebase
-		var repoMap = RepoMapGenerator.GenerateRepoMap(project.WorkingPath);
-		if (string.IsNullOrEmpty(repoMap))
-		{
-			_logger.LogWarning("Repo map generation failed for project {ProjectId} at path {Path}", projectId, project.WorkingPath);
-			return new SuggestIdeasResult
-			{
-				Stage = SuggestIdeasStage.RepoMapFailed,
-				Message = $"Could not scan the project directory at \"{project.WorkingPath}\". Verify the path exists and is readable."
-			};
-		}
-
-		var prompt = BuildCodebaseSuggestionPrompt(repoMap, project.Name, project.Description, project.PromptContext, request.IdeaCount);
-		const string systemPrompt = "You are a senior software engineer performing a codebase review. Identify concrete, actionable improvements. Return only a plain list of ideas, one per line starting with \"- \". No explanations or headers.";
 
 		InferenceResponse inferenceResponse;
 		try
@@ -1361,21 +1439,21 @@ Keep the specification concise but complete. Focus on actionable implementation 
 		catch (OperationCanceledException)
 		{
 			_logger.LogWarning("Codebase suggestion request timed out for project {ProjectId}", projectId);
-			return new SuggestIdeasResult
+			return SuggestionGenerationResult.Fail(new SuggestIdeasResult
 			{
 				Stage = SuggestIdeasStage.GenerateFailed,
 				Message = "The inference request timed out. Try a smaller or faster model, or increase the client timeout."
-			};
+			});
 		}
 		catch (Exception ex)
 		{
 			_logger.LogWarning(ex, "Inference request failed for project {ProjectId} suggestion", projectId);
-			return new SuggestIdeasResult
+			return SuggestionGenerationResult.Fail(new SuggestIdeasResult
 			{
 				Stage = SuggestIdeasStage.GenerateFailed,
 				Message = $"Inference request failed: {ex.Message}",
 				InferenceError = ex.Message
-			};
+			});
 		}
 
 		if (!inferenceResponse.Success || string.IsNullOrWhiteSpace(inferenceResponse.Response))
@@ -1383,11 +1461,10 @@ Keep the specification concise but complete. Focus on actionable implementation 
 			var error = inferenceResponse.Error ?? "The model returned an empty response.";
 			_logger.LogWarning("Inference returned no usable response for project {ProjectId}: {Error}", projectId, error);
 
-			// Distinguish between "no model configured" and a genuine generation failure
 			var isNoModel = error.Contains("No model configured", StringComparison.OrdinalIgnoreCase)
 				|| error.Contains("model", StringComparison.OrdinalIgnoreCase) && error.Contains("configure", StringComparison.OrdinalIgnoreCase);
 
-			return new SuggestIdeasResult
+			return SuggestionGenerationResult.Fail(new SuggestIdeasResult
 			{
 				Stage = isNoModel ? SuggestIdeasStage.NoModel : SuggestIdeasStage.GenerateFailed,
 				Message = isNoModel
@@ -1396,69 +1473,181 @@ Keep the specification concise but complete. Focus on actionable implementation 
 				ModelUsed = inferenceResponse.ModelUsed,
 				InferenceDurationMs = inferenceResponse.DurationMs,
 				InferenceError = error
-			};
+			});
 		}
 
-		var suggestions = ParseCodebaseSuggestions(inferenceResponse.Response, request.IdeaCount);
-		if (suggestions.Count == 0)
-		{
-			_logger.LogWarning("No parseable suggestions in inference response for project {ProjectId}. Raw response length: {Len}",
-				projectId, inferenceResponse.Response.Length);
-			return new SuggestIdeasResult
-			{
-				Stage = SuggestIdeasStage.ParseFailed,
-				Message = "The model responded but did not produce ideas in the expected format. Try a different model or re-run.",
-				ModelUsed = inferenceResponse.ModelUsed,
-				InferenceDurationMs = inferenceResponse.DurationMs,
-				InferenceError = $"Raw response ({inferenceResponse.Response.Length} chars): {inferenceResponse.Response[..Math.Min(200, inferenceResponse.Response.Length)]}…"
-			};
-		}
+		return SuggestionGenerationResult.Success(
+			inferenceResponse.Response.Trim(),
+			inferenceResponse.ModelUsed,
+			inferenceResponse.DurationMs);
+	}
 
-		var createdIdeas = new List<Idea>();
-		foreach (var suggestion in suggestions)
+	private async Task<SuggestionGenerationResult> SuggestIdeasWithProviderAsync(
+		Guid projectId,
+		Project project,
+		SuggestIdeasRequest request,
+		string prompt,
+		CancellationToken cancellationToken)
+	{
+		Provider? provider;
+		if (request.ProviderId.HasValue)
 		{
-			try
+			provider = await _providerService.GetByIdAsync(request.ProviderId.Value, cancellationToken);
+			if (provider == null || !provider.IsEnabled)
 			{
-				var idea = await CreateAsync(new Idea
+				_logger.LogWarning("Requested provider {ProviderId} was not found for project {ProjectId}", request.ProviderId.Value, projectId);
+				return SuggestionGenerationResult.Fail(new SuggestIdeasResult
 				{
-					ProjectId = projectId,
-					Description = suggestion
-				}, cancellationToken);
-				createdIdeas.Add(idea);
-			}
-			catch (Exception ex)
-			{
-				_logger.LogWarning(ex, "Failed to save suggested idea for project {ProjectId}", projectId);
+					Stage = SuggestIdeasStage.ProviderNotFound,
+					Message = "The selected provider is no longer available. Choose another provider and try again."
+				});
 			}
 		}
-
-		if (createdIdeas.Count == 0)
+		else
 		{
-			return new SuggestIdeasResult
+			provider = await _providerService.GetDefaultAsync(cancellationToken);
+		}
+
+		if (provider == null)
+		{
+			return SuggestionGenerationResult.Fail(new SuggestIdeasResult
+			{
+				Stage = SuggestIdeasStage.NotConfigured,
+				Message = "No enabled provider is configured. Add one under Settings → Providers."
+			});
+		}
+
+		if (!provider.IsEnabled)
+		{
+			return SuggestionGenerationResult.Fail(new SuggestIdeasResult
+			{
+				Stage = SuggestIdeasStage.ProviderNotFound,
+				Message = $"The selected provider ({provider.Name}) is disabled. Enable it or choose another provider."
+			});
+		}
+
+		var selectedModelId = string.IsNullOrWhiteSpace(request.ModelId) ? null : request.ModelId.Trim();
+		if (selectedModelId != null)
+		{
+			var availableModelIds = await _dbContext.ProviderModels
+				.Where(model => model.ProviderId == provider.Id && model.IsAvailable)
+				.Select(model => model.ModelId)
+				.ToListAsync(cancellationToken);
+
+			if (!availableModelIds.Contains(selectedModelId, StringComparer.Ordinal))
+			{
+				return SuggestionGenerationResult.Fail(new SuggestIdeasResult
+				{
+					Stage = SuggestIdeasStage.ModelNotFound,
+					Message = $"The selected model is no longer available for {provider.Name}. Choose another model and try again."
+				});
+			}
+		}
+		else
+		{
+			selectedModelId = await _dbContext.ProviderModels
+				.Where(model => model.ProviderId == provider.Id && model.IsAvailable && model.IsDefault)
+				.OrderBy(model => model.DisplayName ?? model.ModelId)
+				.Select(model => model.ModelId)
+				.FirstOrDefaultAsync(cancellationToken);
+		}
+
+		var providerInstance = _providerService.CreateInstance(provider);
+		if (providerInstance == null)
+		{
+			return SuggestionGenerationResult.Fail(new SuggestIdeasResult
+			{
+				Stage = SuggestIdeasStage.NotConfigured,
+				Message = $"Could not create the configured provider instance for {provider.Name}."
+			});
+		}
+
+		PromptResponse response;
+		try
+		{
+			_logger.LogInformation(
+				"Sending codebase suggestion request to provider {Provider} for project {ProjectId} requesting {Count} ideas",
+				provider.Name,
+				projectId,
+				request.IdeaCount);
+			response = await ExecuteProviderSuggestionAsync(
+				providerInstance,
+				provider,
+				project.WorkingPath,
+				prompt,
+				selectedModelId,
+				cancellationToken);
+		}
+		catch (OperationCanceledException)
+		{
+			_logger.LogWarning("Codebase suggestion request timed out for project {ProjectId} using provider {Provider}", projectId, provider.Name);
+			return SuggestionGenerationResult.Fail(new SuggestIdeasResult
 			{
 				Stage = SuggestIdeasStage.GenerateFailed,
-				Message = "Ideas were generated, but none could be saved. Check the logs and try again.",
-				ModelUsed = inferenceResponse.ModelUsed,
-				InferenceDurationMs = inferenceResponse.DurationMs
-			};
+				Message = "The provider request timed out. Try again with a smaller or faster model."
+			});
+		}
+		catch (Exception ex)
+		{
+			_logger.LogWarning(ex, "Provider request failed for project {ProjectId} suggestion", projectId);
+			return SuggestionGenerationResult.Fail(new SuggestIdeasResult
+			{
+				Stage = SuggestIdeasStage.ProviderUnreachable,
+				Message = $"Could not run {provider.Name}: {ex.Message}",
+				InferenceError = ex.Message
+			});
 		}
 
-		_logger.LogInformation("Created {Count} suggested ideas for project {ProjectId} using model {Model}",
-			createdIdeas.Count, projectId, inferenceResponse.ModelUsed ?? "unknown");
-
-		var message = createdIdeas.Count == request.IdeaCount
-			? $"{createdIdeas.Count} idea{(createdIdeas.Count == 1 ? "" : "s")} added from codebase analysis."
-			: $"{createdIdeas.Count} of {request.IdeaCount} requested idea{(request.IdeaCount == 1 ? "" : "s")} added from codebase analysis.";
-
-		return new SuggestIdeasResult
+		if (!response.Success || string.IsNullOrWhiteSpace(response.Response))
 		{
-			Success = true,
-			Stage = SuggestIdeasStage.Success,
-			Ideas = createdIdeas,
-			Message = message,
-			ModelUsed = inferenceResponse.ModelUsed,
-			InferenceDurationMs = inferenceResponse.DurationMs
-		};
+			var error = response.ErrorMessage ?? $"{provider.Name} returned an empty response.";
+			return SuggestionGenerationResult.Fail(new SuggestIdeasResult
+			{
+				Stage = SuggestIdeasStage.GenerateFailed,
+				Message = $"The provider did not return a usable response: {error}",
+				ModelUsed = response.ModelUsed ?? selectedModelId,
+				InferenceDurationMs = response.ElapsedMilliseconds,
+				InferenceError = error
+			});
+		}
+
+		return SuggestionGenerationResult.Success(
+			response.Response.Trim(),
+			response.ModelUsed ?? selectedModelId,
+			response.ElapsedMilliseconds);
+	}
+
+	private async Task<PromptResponse> ExecuteProviderSuggestionAsync(
+		IProvider providerInstance,
+		Provider provider,
+		string workingDirectory,
+		string prompt,
+		string? modelName,
+		CancellationToken cancellationToken)
+	{
+		if (string.IsNullOrWhiteSpace(modelName))
+		{
+			return await providerInstance.GetPromptResponseAsync(prompt, workingDirectory, cancellationToken);
+		}
+
+		var result = await providerInstance.ExecuteWithOptionsAsync(
+			prompt,
+			new ExecutionOptions
+			{
+				WorkingDirectory = workingDirectory,
+				Model = modelName
+			},
+			cancellationToken: cancellationToken);
+		var responseText = ExtractExecutionText(result);
+		if (result.Success && !string.IsNullOrWhiteSpace(responseText))
+		{
+			return PromptResponse.Ok(responseText.Trim(), model: result.ModelUsed ?? modelName);
+		}
+
+		var errorMessage = string.IsNullOrWhiteSpace(result.ErrorMessage)
+			? $"{provider.Name} did not return a response"
+			: result.ErrorMessage;
+		return PromptResponse.Fail(errorMessage);
 	}
 
 	private static string BuildCodebaseSuggestionPrompt(string repoMap, string projectName, string? description, string? promptContext, int ideaCount)
@@ -1544,6 +1733,7 @@ Keep the specification concise but complete. Focus on actionable implementation 
 	{
 		return new SuggestIdeasRequest
 		{
+			UseLocalInference = request?.UseLocalInference ?? true,
 			ProviderId = request?.ProviderId,
 			ModelId = string.IsNullOrWhiteSpace(request?.ModelId) ? null : request.ModelId.Trim(),
 			IdeaCount = Math.Clamp(request?.IdeaCount ?? SuggestIdeasRequest.DefaultIdeaCount, SuggestIdeasRequest.MinIdeaCount, SuggestIdeasRequest.MaxIdeaCount)
@@ -1581,5 +1771,26 @@ Keep the specification concise but complete. Focus on actionable implementation 
 
 		var totalPages = (int)Math.Ceiling(totalCount / (double)pageSize);
 		return Math.Min(Math.Max(pageNumber, 1), totalPages);
+	}
+
+	private sealed record SuggestionGenerationResult(
+		SuggestIdeasResult Result,
+		string? ResponseText,
+		string? ModelUsed,
+		long? DurationMs)
+	{
+		public static SuggestionGenerationResult Success(string responseText, string? modelUsed, long? durationMs)
+			=> new(
+				new SuggestIdeasResult
+				{
+					Success = true,
+					Stage = SuggestIdeasStage.Success
+				},
+				responseText,
+				modelUsed,
+				durationMs);
+
+		public static SuggestionGenerationResult Fail(SuggestIdeasResult result)
+			=> new(result, null, result.ModelUsed, result.InferenceDurationMs);
 	}
 }
