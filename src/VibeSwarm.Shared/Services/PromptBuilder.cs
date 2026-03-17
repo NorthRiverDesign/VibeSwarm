@@ -1,5 +1,6 @@
 using System.Text;
 using VibeSwarm.Shared.Data;
+using VibeSwarm.Shared.Validation;
 
 namespace VibeSwarm.Shared.Services;
 
@@ -180,6 +181,31 @@ public static class PromptBuilder
 		}
 
 		return sb.Length > 0 ? sb.ToString().TrimEnd() : null;
+	}
+
+	public static string? BuildProjectMemoryRules(Project? project, string? memoryFilePath)
+	{
+		if (project == null || string.IsNullOrWhiteSpace(memoryFilePath))
+		{
+			return null;
+		}
+
+		var sb = new StringBuilder();
+		sb.AppendLine("PROJECT MEMORY:");
+		sb.AppendLine($"- Read the project memory file before making changes: {memoryFilePath}");
+		sb.AppendLine("- This file stores durable context from previous runs so fresh sessions can avoid repeating mistakes.");
+		sb.AppendLine("- Update this file whenever you discover stable project-specific guidance, workflow gotchas, or after you make and correct a mistake.");
+		sb.AppendLine("- Keep entries factual, concise, and actionable for future agent runs.");
+		sb.AppendLine("- Do not store secrets, credentials, tokens, or personal data in project memory.");
+		sb.AppendLine($"- Keep the file under {ValidationLimits.ProjectMemoryMaxLength} characters.");
+		sb.AppendLine("- VibeSwarm will sync changes from this file back into the project's stored memory after the job finishes.");
+
+		if (string.IsNullOrWhiteSpace(project.Memory))
+		{
+			sb.AppendLine("- If the file is empty, create an initial memory entry once you learn something worth preserving.");
+		}
+
+		return sb.ToString().TrimEnd();
 	}
 
 	private static string BuildEnvironmentSection(Project project)

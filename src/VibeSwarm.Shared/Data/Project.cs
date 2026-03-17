@@ -102,6 +102,14 @@ public class Project
     public string? PromptContext { get; set; }
 
     /// <summary>
+    /// Persistent per-project memory captured across agent runs.
+    /// Agents should read this before starting work and update it when they discover durable
+    /// project context or correct a mistake so future runs do not repeat it.
+    /// </summary>
+    [StringLength(ValidationLimits.ProjectMemoryMaxLength)]
+    public string? Memory { get; set; }
+
+    /// <summary>
     /// Cached repo map (compact file tree) generated from the project directory.
     /// Injected into the system prompt to give agents a head start on project structure.
     /// </summary>

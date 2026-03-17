@@ -70,6 +70,7 @@ public class ProjectService : IProjectService
 		project.DefaultTargetBranch = string.IsNullOrWhiteSpace(project.DefaultTargetBranch) ? null : project.DefaultTargetBranch.Trim();
 		project.BuildCommand = string.IsNullOrWhiteSpace(project.BuildCommand) ? null : project.BuildCommand.Trim();
 		project.TestCommand = string.IsNullOrWhiteSpace(project.TestCommand) ? null : project.TestCommand.Trim();
+		project.Memory = NormalizeProjectMemory(project.Memory);
 		NormalizeProviderSelections(project);
 		NormalizeEnvironments(project);
 		await ValidateProviderSelectionsAsync(project.ProviderSelections, cancellationToken);
@@ -130,6 +131,7 @@ public class ProjectService : IProjectService
 		existing.PlanningProviderId = project.PlanningProviderId;
 		existing.PlanningModelId = project.PlanningModelId;
 		existing.PromptContext = project.PromptContext;
+		existing.Memory = NormalizeProjectMemory(project.Memory);
 		existing.BuildVerificationEnabled = project.BuildVerificationEnabled;
 		existing.BuildCommand = string.IsNullOrWhiteSpace(project.BuildCommand) ? null : project.BuildCommand.Trim();
 		existing.TestCommand = string.IsNullOrWhiteSpace(project.TestCommand) ? null : project.TestCommand.Trim();
@@ -461,6 +463,19 @@ public class ProjectService : IProjectService
 		project.PlanningModelId = string.IsNullOrWhiteSpace(project.PlanningModelId)
 			? null
 			: project.PlanningModelId.Trim();
+	}
+
+	private static string? NormalizeProjectMemory(string? memory)
+	{
+		if (string.IsNullOrWhiteSpace(memory))
+		{
+			return null;
+		}
+
+		return memory
+			.Replace("\r\n", "\n", StringComparison.Ordinal)
+			.Replace("\r", "\n", StringComparison.Ordinal)
+			.Trim();
 	}
 
 	private static void NormalizeEnvironments(Project project)

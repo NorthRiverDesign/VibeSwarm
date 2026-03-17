@@ -46,10 +46,11 @@ public static class DataServiceExtensions
         services.AddSingleton<IProjectEnvironmentCredentialService, ProjectEnvironmentCredentialService>();
         services.AddScoped<IProjectService, ProjectService>();
         services.AddScoped<IJobService, JobService>();
-        services.AddScoped<ISettingsService, SettingsService>();
-        services.AddScoped<ISkillService, SkillService>();
-        services.AddScoped<IMcpConfigService, McpConfigService>();
-        services.AddScoped<IIdeaService, IdeaService>();
+		services.AddScoped<ISettingsService, SettingsService>();
+		services.AddScoped<ISkillService, SkillService>();
+		services.AddScoped<IMcpConfigService, McpConfigService>();
+		services.AddScoped<IProjectMemoryService, ProjectMemoryService>();
+		services.AddScoped<IIdeaService, IdeaService>();
 		services.AddScoped<IUserService, UserService>();
 		services.AddScoped<IProviderUsageService, ProviderUsageService>();
 		services.AddScoped<ICommonProviderSetupService, CommonProviderSetupService>();

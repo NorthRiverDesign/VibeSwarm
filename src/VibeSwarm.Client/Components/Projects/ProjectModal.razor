@@ -126,6 +126,21 @@
 							project to guide AI agents. <span class="ms-2">@GetCharacterCount(Project.PromptContext, ValidationLimits.ProjectPromptContextMaxLength)</span></div>
 						</div>
 
+						<div class="mb-3">
+							<label for="modal-projectMemory" class="form-label">
+								<i class="bi bi-journal-text me-1"></i>Project Memory
+								<span class="text-body-secondary fw-normal">(optional)</span>
+							</label>
+							<InputTextArea id="modal-projectMemory" @bind-Value="Project.Memory" class="form-control"
+										   rows="6"
+										   maxlength="@ValidationLimits.ProjectMemoryMaxLength"
+										   placeholder="Persistent notes that help fresh agent sessions avoid repeating past mistakes, remember workflows, and keep important project-specific context." />
+							<ValidationMessage For="@(() => Project.Memory)" class="text-danger small" />
+							<div class="form-text">
+								VibeSwarm exposes this as persistent memory for every job on this project. Agents are instructed to read it first and update it whenever they learn durable context or correct a mistake. <span class="ms-2">@GetCharacterCount(Project.Memory, ValidationLimits.ProjectMemoryMaxLength)</span>
+							</div>
+						</div>
+
 						<ProjectBuildVerificationSection Project="@Project" />
 
 						@if (IsEdit)
@@ -592,6 +607,7 @@
 			PlanningModelId = source.PlanningModelId,
 			IdeasAutoExpand = source.IdeasAutoExpand,
 			PromptContext = source.PromptContext,
+			Memory = source.Memory,
 			BuildVerificationEnabled = source.BuildVerificationEnabled,
 			BuildCommand = source.BuildCommand,
 			TestCommand = source.TestCommand,

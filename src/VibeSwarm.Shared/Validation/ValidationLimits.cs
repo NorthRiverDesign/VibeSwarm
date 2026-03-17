@@ -10,6 +10,7 @@ public static class ValidationLimits
 	public const int ProjectDefaultTargetBranchMaxLength = 250;
 	public const int ProjectPlanningModelIdMaxLength = 200;
 	public const int ProjectPromptContextMaxLength = 4000;
+	public const int ProjectMemoryMaxLength = 20000;
 
 	public const int IdeaDescriptionMaxLength = 8000;
 	public const int IdeaExpandedDescriptionMaxLength = 20000;

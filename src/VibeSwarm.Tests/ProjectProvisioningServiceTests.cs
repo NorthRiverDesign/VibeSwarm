@@ -145,6 +145,23 @@ public sealed class ProjectProvisioningServiceTests : IDisposable
 		Assert.Contains(nameof(Project.PromptContext), error.Message);
 	}
 
+	[Fact]
+	public async Task CreateAsync_RejectsMemoryThatExceedsLimit()
+	{
+		await using var dbContext = CreateDbContext();
+		var versionControl = new RecordingVersionControlService();
+		var service = CreateProjectService(dbContext, versionControl);
+
+		var error = await Assert.ThrowsAsync<System.ComponentModel.DataAnnotations.ValidationException>(() => service.CreateAsync(new Project
+		{
+			Name = "Memory Heavy Project",
+			WorkingPath = "/tmp/memory-heavy-project",
+			Memory = new string('m', ValidationLimits.ProjectMemoryMaxLength + 1)
+		}));
+
+		Assert.Contains(nameof(Project.Memory), error.Message);
+	}
+
 	private VibeSwarmDbContext CreateDbContext() => new(_dbOptions);
 
 	private static ProjectService CreateProjectService(VibeSwarmDbContext dbContext, RecordingVersionControlService versionControl)

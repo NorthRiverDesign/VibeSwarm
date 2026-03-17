@@ -481,6 +481,7 @@ public class JobProcessingService : BackgroundService
         executionContext.ProviderId = job.ProviderId;
 
         string? workingDirectory = null;
+		string? projectMemoryFilePath = null;
         try
         {
             // Check if job was cancelled before we even started
@@ -931,6 +932,14 @@ public class JobProcessingService : BackgroundService
             var injectEfficiencyRules = appSettings?.InjectEfficiencyRules ?? true;
             var injectRepoMap = appSettings?.InjectRepoMap ?? true;
             var systemPromptRules = PromptBuilder.BuildSystemPromptRules(job.Project, injectEfficiencyRules, injectRepoMap);
+			projectMemoryFilePath = await PrepareProjectMemoryFileAsync(job.Project, cancellationToken);
+			var projectMemoryRules = PromptBuilder.BuildProjectMemoryRules(job.Project, projectMemoryFilePath);
+			if (!string.IsNullOrWhiteSpace(projectMemoryRules))
+			{
+				systemPromptRules = string.IsNullOrWhiteSpace(systemPromptRules)
+					? projectMemoryRules
+					: $"{systemPromptRules}{Environment.NewLine}{Environment.NewLine}{projectMemoryRules}";
+			}
 
             while (currentCycle <= effectiveMaxCycles && !cycleComplete && !cancellationToken.IsCancellationRequested)
             {
@@ -1208,6 +1217,18 @@ public class JobProcessingService : BackgroundService
         }
         finally
         {
+			if (!string.IsNullOrWhiteSpace(projectMemoryFilePath))
+			{
+				try
+				{
+					await PersistProjectMemoryAsync(job.Project?.Id, projectMemoryFilePath, CancellationToken.None);
+				}
+				catch (Exception memoryEx)
+				{
+					_logger.LogWarning(memoryEx, "Failed to persist project memory for job {JobId}", job.Id);
+				}
+			}
+
             // Dispose SDK providers that implement IAsyncDisposable
             if (executionContext.ProviderInstance is IAsyncDisposable disposable)
             {
@@ -2414,6 +2435,30 @@ public class JobProcessingService : BackgroundService
             return (null, null);
         }
     }
+
+	private async Task<string?> PrepareProjectMemoryFileAsync(Project? project, CancellationToken cancellationToken)
+	{
+		if (project == null)
+		{
+			return null;
+		}
+
+		using var scope = _scopeFactory.CreateScope();
+		var projectMemoryService = scope.ServiceProvider.GetRequiredService<IProjectMemoryService>();
+		return await projectMemoryService.PrepareMemoryFileAsync(project, cancellationToken);
+	}
+
+	private async Task PersistProjectMemoryAsync(Guid? projectId, string? projectMemoryFilePath, CancellationToken cancellationToken)
+	{
+		if (!projectId.HasValue || string.IsNullOrWhiteSpace(projectMemoryFilePath))
+		{
+			return;
+		}
+
+		using var scope = _scopeFactory.CreateScope();
+		var projectMemoryService = scope.ServiceProvider.GetRequiredService<IProjectMemoryService>();
+		await projectMemoryService.SyncMemoryFromFileAsync(projectId.Value, projectMemoryFilePath, cancellationToken);
+	}
 
     private async Task NotifyJobGitDiffUpdatedAsync(Guid jobId, bool hasChanges)
     {

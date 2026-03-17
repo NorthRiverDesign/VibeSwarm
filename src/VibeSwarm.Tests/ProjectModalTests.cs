@@ -50,6 +50,7 @@ public sealed class ProjectModalTests
 		Assert.Contains("Project Source", html);
 		Assert.Contains("Planning", html);
 		Assert.Contains("Provider Priority", html);
+		Assert.Contains("Project Memory", html);
 		Assert.Contains("Build Verification", html);
 		Assert.Contains("Create Project", html);
 	}
