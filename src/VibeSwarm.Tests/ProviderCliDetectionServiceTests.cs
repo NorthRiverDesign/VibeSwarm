@@ -26,27 +26,47 @@ public sealed class ProviderCliDetectionServiceTests : IDisposable
 	[Fact]
 	public async Task DetectAsync_CopilotUsesBinaryVersionAndEnhancedUserPath()
 	{
-		var localBinDirectory = Path.Combine(_homeDirectory, ".local", "bin");
-		Directory.CreateDirectory(localBinDirectory);
+		string executablePath;
+		string searchPath;
 
-		var executablePath = Path.Combine(localBinDirectory, "copilot");
-		await File.WriteAllTextAsync(executablePath, """
-			#!/bin/sh
-			if [ "$1" = "--binary-version" ]; then
-				echo "copilot 1.2.3"
-				exit 0
-			fi
-			echo "wrong args: $1" >&2
-			exit 1
-			""");
-		MakeExecutable(executablePath);
+		if (OperatingSystem.IsWindows())
+		{
+			executablePath = Path.Combine(_binDirectory, "copilot.bat");
+			await File.WriteAllTextAsync(executablePath, """
+				@echo off
+				if "%1"=="--binary-version" (
+					echo copilot 1.2.3
+					exit /b 0
+				)
+				echo wrong args: %1 1>&2
+				exit /b 1
+				""");
+			searchPath = _binDirectory;
+		}
+		else
+		{
+			var localBinDirectory = Path.Combine(_homeDirectory, ".local", "bin");
+			Directory.CreateDirectory(localBinDirectory);
+			executablePath = Path.Combine(localBinDirectory, "copilot");
+			await File.WriteAllTextAsync(executablePath, """
+				#!/bin/sh
+				if [ "$1" = "--binary-version" ]; then
+					echo "copilot 1.2.3"
+					exit 0
+				fi
+				echo "wrong args: $1" >&2
+				exit 1
+				""");
+			MakeExecutable(executablePath);
+			searchPath = PlatformHelper.GetEnhancedPath(_homeDirectory);
+		}
 
 		var result = await _service.DetectAsync(
 			ProviderType.Copilot,
 			"copilot",
 			"--binary-version",
 			homeDirectory: _homeDirectory,
-			searchPath: PlatformHelper.GetEnhancedPath(_homeDirectory));
+			searchPath: searchPath);
 
 		Assert.True(result.IsInstalled);
 		Assert.Equal("copilot 1.2.3", result.Version);
@@ -56,13 +76,27 @@ public sealed class ProviderCliDetectionServiceTests : IDisposable
 	[Fact]
 	public async Task DetectAsync_UsesStderrVersionOutputWhenAvailable()
 	{
-		var executablePath = Path.Combine(_binDirectory, "claude");
-		await File.WriteAllTextAsync(executablePath, """
-			#!/bin/sh
-			echo "claude 9.9.9" >&2
-			exit 0
-			""");
-		MakeExecutable(executablePath);
+		string executablePath;
+
+		if (OperatingSystem.IsWindows())
+		{
+			executablePath = Path.Combine(_binDirectory, "claude.bat");
+			await File.WriteAllTextAsync(executablePath, """
+				@echo off
+				echo claude 9.9.9 1>&2
+				exit /b 0
+				""");
+		}
+		else
+		{
+			executablePath = Path.Combine(_binDirectory, "claude");
+			await File.WriteAllTextAsync(executablePath, """
+				#!/bin/sh
+				echo "claude 9.9.9" >&2
+				exit 0
+				""");
+			MakeExecutable(executablePath);
+		}
 
 		var searchPath = string.Join(Path.PathSeparator, new[]
 		{

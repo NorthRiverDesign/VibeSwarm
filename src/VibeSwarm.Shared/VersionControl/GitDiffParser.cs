@@ -20,7 +20,7 @@ public static class GitDiffParser
 		if (string.IsNullOrEmpty(diff))
 			return files;
 
-		var lines = diff.Split('\n');
+		var lines = diff.ReplaceLineEndings("\n").Split('\n');
 		DiffFile? currentFile = null;
 		var currentContent = new StringBuilder();
 
@@ -91,7 +91,7 @@ public static class GitDiffParser
 		if (string.IsNullOrEmpty(diff))
 			return string.Empty;
 
-		var lines = diff.Split('\n');
+		var lines = diff.ReplaceLineEndings("\n").Split('\n');
 		var result = new StringBuilder();
 		result.Append("<div class=\"diff-content font-monospace small\">");
 
