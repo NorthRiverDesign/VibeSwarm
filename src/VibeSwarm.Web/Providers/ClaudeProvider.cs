@@ -437,6 +437,12 @@ public class ClaudeProvider : CliProviderBase
                     result.Success = false;
                     result.ErrorMessage = _systemErrorMessage;
                     result.IsSystemError = true;
+                    result.Messages.Add(new ExecutionMessage
+                    {
+                        Role = "system",
+                        Content = $"[Error] {_systemErrorMessage}",
+                        Timestamp = DateTime.UtcNow
+                    });
                     progress?.Report(new ExecutionProgress
                     {
                         CurrentMessage = $"System error: {_systemErrorMessage}",
@@ -558,6 +564,12 @@ public class ClaudeProvider : CliProviderBase
                     result.Success = false;
                     result.ErrorMessage = _systemErrorMessage;
                     result.IsSystemError = true;
+                    result.Messages.Add(new ExecutionMessage
+                    {
+                        Role = "system",
+                        Content = $"[Error] {_systemErrorMessage}",
+                        Timestamp = DateTime.UtcNow
+                    });
                     progress?.Report(new ExecutionProgress
                     {
                         CurrentMessage = $"System error: {_systemErrorMessage}",

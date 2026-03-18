@@ -453,6 +453,12 @@ public class CopilotProvider : CliProviderBase
                     result.Success = false;
                     result.ErrorMessage = _systemErrorMessage;
                     result.IsSystemError = true;
+                    result.Messages.Add(new ExecutionMessage
+                    {
+                        Role = "system",
+                        Content = $"[Error] {_systemErrorMessage}",
+                        Timestamp = DateTime.UtcNow
+                    });
                     progress?.Report(new ExecutionProgress
                     {
                         CurrentMessage = _systemErrorMessage,
@@ -590,6 +596,12 @@ public class CopilotProvider : CliProviderBase
                         _systemErrorMessage = evt.Error;
                         result.IsSystemError = true;
                     }
+                    result.Messages.Add(new ExecutionMessage
+                    {
+                        Role = "system",
+                        Content = $"[Error] {evt.Error}",
+                        Timestamp = DateTime.UtcNow
+                    });
                     progress?.Report(new ExecutionProgress
                     {
                         CurrentMessage = $"Error: {evt.Error}",
@@ -656,6 +668,12 @@ public class CopilotProvider : CliProviderBase
                     result.Success = false;
                     result.ErrorMessage = _systemErrorMessage;
                     result.IsSystemError = true;
+                    result.Messages.Add(new ExecutionMessage
+                    {
+                        Role = "system",
+                        Content = $"[Error] {_systemErrorMessage}",
+                        Timestamp = DateTime.UtcNow
+                    });
                     progress?.Report(new ExecutionProgress
                     {
                         CurrentMessage = $"System error: {_systemErrorMessage}",
@@ -781,43 +799,88 @@ public class CopilotProvider : CliProviderBase
         return options;
     }
 
-    private static decimal GetDefaultModelMultiplier(string modelId)
+    /// <summary>
+    /// Heuristic fallback for model multipliers when CLI detection is unavailable.
+    /// Values are best-effort estimates; prefer CLI-discovered values when possible.
+    /// </summary>
+    internal static decimal GetDefaultModelMultiplier(string modelId)
     {
         var normalized = modelId.ToLowerInvariant();
 
-        // Fast variants are cheaper than their base models
-        if (normalized.Contains("fast"))
+        // Fast/preview variants of premium models (e.g., claude-opus-4.6-fast = 30x)
+        if (normalized.Contains("fast") && normalized.Contains("opus"))
         {
-            return normalized.Contains("opus") ? 3.0m : 1.0m;
+            return 30.0m;
         }
 
-        // Codex-max variants are premium but below full premium models (check before "opus"/"max")
+        // Codex-max variants (e.g., gpt-5.1-codex-max = 1x)
         if (normalized.Contains("codex-max"))
         {
-            return 2.0m;
+            return 1.0m;
         }
 
-        if (normalized.Contains("opus") || normalized.Contains("o1-") || normalized.Contains("o3-"))
+        // Opus models (3x premium requests)
+        if (normalized.Contains("opus"))
         {
-            return 5.0m;
+            return 3.0m;
         }
 
-        if (normalized.Contains("haiku") || normalized.Contains("mini"))
+        // Free-tier models (0x - no premium request cost)
+        if (normalized.Contains("gpt-4.1") || normalized.Contains("gpt-5-mini"))
         {
-            return 0.3m;
+            return 0m;
         }
 
-        if (normalized.Contains("gpt-4.1"))
+        // Mini/Haiku models (0.33x premium requests)
+        // Use "-mini" to avoid matching "gemini" model family
+        if (normalized.Contains("haiku") || normalized.Contains("-mini"))
         {
-            return 0.5m;
+            return 0.33m;
         }
 
-        if (normalized.Contains("gpt-5.4") || normalized.Contains("gpt-5.2"))
-        {
-            return 1.5m;
-        }
-
+        // Default: 1x for standard models (sonnet, gpt-5.x, codex, gemini-pro, etc.)
         return 1.0m;
+    }
+
+    /// <summary>
+    /// Discovers available models by triggering the CLI's --model validation error,
+    /// which lists all valid model choices in the error message.
+    /// </summary>
+    private async Task<List<string>?> TryGetAvailableModelsFromCliAsync(CancellationToken cancellationToken)
+    {
+        var execPath = GetExecutablePath();
+        if (string.IsNullOrEmpty(execPath))
+            return null;
+
+        try
+        {
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            cts.CancelAfter(TimeSpan.FromSeconds(10));
+
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = execPath,
+                Arguments = "--model __invalid_model_probe__"
+            };
+
+            PlatformHelper.ConfigureForCrossPlatform(startInfo);
+
+            using var process = new Process { StartInfo = startInfo };
+            process.Start();
+
+            // The error message with valid choices comes on stderr
+            var stderr = await process.StandardError.ReadToEndAsync(cts.Token);
+            await process.StandardOutput.ReadToEndAsync(cts.Token);
+
+            try { await process.WaitForExitAsync(cts.Token); }
+            catch (OperationCanceledException) { try { process.Kill(true); } catch { } }
+
+            return CopilotModelParser.ParseModelChoicesFromError(stderr);
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private async Task<List<string>?> TryGetAvailableModelsAsync(CancellationToken cancellationToken)
@@ -893,25 +956,7 @@ public class CopilotProvider : CliProviderBase
     {
         var info = new ProviderInfo
         {
-            AvailableModels = new List<string>
-            {
-                "gpt-5.4",
-                "claude-opus-4.6",
-                "claude-opus-4.6-fast",
-                "claude-sonnet-4.6",
-                "claude-sonnet-4.5",
-                "claude-haiku-4.5",
-                "claude-opus-4.5",
-                "claude-sonnet-4",
-                "gpt-5.2-codex",
-                "gpt-5.2",
-                "gpt-5.1-codex-max",
-                "gpt-5.1-codex",
-                "gpt-5.1",
-                "gpt-5.1-codex-mini",
-                "gpt-5-mini",
-                "gpt-4.1"
-            },
+            AvailableModels = new List<string>(),
             AvailableAgents = new List<AgentInfo>
             {
                 new() { Name = "default", Description = "Default coding agent with full capabilities", IsDefault = true }
@@ -919,25 +964,7 @@ public class CopilotProvider : CliProviderBase
             Pricing = new PricingInfo
             {
                 Currency = "USD",
-                ModelMultipliers = new Dictionary<string, decimal>
-                {
-                    ["gpt-5.4"] = 1.5m,
-                    ["claude-opus-4.6"] = 5.0m,
-                    ["claude-opus-4.6-fast"] = 3.0m,
-                    ["claude-sonnet-4.6"] = 1.0m,
-                    ["claude-sonnet-4.5"] = 1.0m,
-                    ["claude-haiku-4.5"] = 0.2m,
-                    ["claude-opus-4.5"] = 5.0m,
-                    ["claude-sonnet-4"] = 1.0m,
-                    ["gpt-5.2-codex"] = 1.5m,
-                    ["gpt-5.2"] = 1.5m,
-                    ["gpt-5.1-codex-max"] = 2.0m,
-                    ["gpt-5.1-codex"] = 1.0m,
-                    ["gpt-5.1"] = 1.0m,
-                    ["gpt-5.1-codex-mini"] = 0.3m,
-                    ["gpt-5-mini"] = 0.3m,
-                    ["gpt-4.1"] = 0.5m
-                }
+                ModelMultipliers = new Dictionary<string, decimal>()
             },
             AdditionalInfo = new Dictionary<string, object>
             {
@@ -950,22 +977,30 @@ public class CopilotProvider : CliProviderBase
         {
             info.Version = await GetCliVersionAsync(GetExecutablePath(), "--binary-version", cancellationToken);
 
-            var discoveredModels = await TryGetAvailableModelsAsync(cancellationToken);
-            if (discoveredModels is { Count: > 0 })
+            // Prefer CLI-based model discovery (includes all models the CLI actually supports)
+            var cliModels = await TryGetAvailableModelsFromCliAsync(cancellationToken);
+            if (cliModels is { Count: > 0 })
             {
-                info.AvailableModels = discoveredModels;
-
-                foreach (var modelId in discoveredModels)
-                {
-                    if (!info.Pricing!.ModelMultipliers!.ContainsKey(modelId))
-                    {
-                        info.Pricing.ModelMultipliers[modelId] = GetDefaultModelMultiplier(modelId);
-                    }
-                }
+                info.AvailableModels = cliModels;
             }
             else
             {
-                info.AdditionalInfo["modelsWarning"] = "Unable to query Copilot for live model metadata, using fallback model list.";
+                // Fall back to SDK-based discovery
+                var sdkModels = await TryGetAvailableModelsAsync(cancellationToken);
+                if (sdkModels is { Count: > 0 })
+                {
+                    info.AvailableModels = sdkModels;
+                }
+                else
+                {
+                    info.AdditionalInfo["modelsWarning"] = "Unable to query Copilot CLI for model metadata.";
+                }
+            }
+
+            // Apply heuristic multipliers for discovered models
+            foreach (var modelId in info.AvailableModels)
+            {
+                info.Pricing!.ModelMultipliers![modelId] = GetDefaultModelMultiplier(modelId);
             }
 
             var limits = await GetUsageLimitsAsync(cancellationToken);

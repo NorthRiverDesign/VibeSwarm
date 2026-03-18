@@ -255,31 +255,81 @@ public sealed class CopilotClaudeFormatTests
 
 	#endregion
 
-	#region GetDefaultModelMultiplier edge cases
+	#region GetDefaultModelMultiplier — matches CLI /models output
 
 	[Theory]
-	[InlineData("claude-opus-4.5", 5.0)]
-	[InlineData("claude-opus-4.6", 5.0)]
-	[InlineData("claude-opus-4.6-fast", 3.0)]
+	[InlineData("claude-opus-4.5", 3.0)]
+	[InlineData("claude-opus-4.6", 3.0)]
+	[InlineData("claude-opus-4.6-fast", 30.0)]
 	[InlineData("claude-sonnet-4.5", 1.0)]
-	[InlineData("claude-haiku-4.5", 0.3)]
-	[InlineData("gpt-5.1-codex-max", 2.0)]
+	[InlineData("claude-sonnet-4.6", 1.0)]
+	[InlineData("claude-sonnet-4", 1.0)]
+	[InlineData("claude-haiku-4.5", 0.33)]
+	[InlineData("gpt-5.1-codex-max", 1.0)]
 	[InlineData("gpt-5.1-codex", 1.0)]
-	[InlineData("gpt-5-mini", 0.3)]
-	[InlineData("gpt-4.1", 0.5)]
-	[InlineData("gpt-5.2", 1.5)]
-	[InlineData("gpt-5.4", 1.5)]
+	[InlineData("gpt-5-mini", 0)]
+	[InlineData("gpt-5.1-codex-mini", 0.33)]
+	[InlineData("gpt-4.1", 0)]
+	[InlineData("gpt-5.2", 1.0)]
+	[InlineData("gpt-5.4", 1.0)]
+	[InlineData("gpt-5.3-codex", 1.0)]
+	[InlineData("gemini-3-pro-preview", 1.0)]
 	[InlineData("unknown-model", 1.0)]
 	public void GetDefaultModelMultiplier_ReturnsExpectedValues(string modelId, double expectedMultiplier)
 	{
-		// Use reflection to test the private static method
-		var method = typeof(CopilotProvider).GetMethod(
-			"GetDefaultModelMultiplier",
-			System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
-		Assert.NotNull(method);
-
-		var result = (decimal)method!.Invoke(null, new object[] { modelId })!;
+		var result = CopilotProvider.GetDefaultModelMultiplier(modelId);
 		Assert.Equal((decimal)expectedMultiplier, result);
+	}
+
+	#endregion
+
+	#region CopilotModelParser — CLI model discovery
+
+	[Fact]
+	public void ParseModelChoicesFromError_ExtractsModels()
+	{
+		var stderr = """
+		error: option '--model <model>' argument '__invalid__' is invalid. Allowed choices are claude-sonnet-4.6, claude-sonnet-4.5, claude-haiku-4.5, claude-opus-4.6, claude-opus-4.6-fast, claude-opus-4.5, claude-sonnet-4, gemini-3-pro-preview, gpt-5.4, gpt-5.3-codex, gpt-5.2-codex, gpt-5.2, gpt-5.1-codex-max, gpt-5.1-codex, gpt-5.1, gpt-5.1-codex-mini, gpt-5-mini, gpt-4.1.
+		""";
+
+		var models = CopilotModelParser.ParseModelChoicesFromError(stderr);
+
+		Assert.NotNull(models);
+		Assert.Equal(18, models!.Count);
+		Assert.Contains("claude-sonnet-4.6", models);
+		Assert.Contains("claude-opus-4.6-fast", models);
+		Assert.Contains("gpt-5.4", models);
+		Assert.Contains("gpt-4.1", models);
+		Assert.Contains("gemini-3-pro-preview", models);
+	}
+
+	[Fact]
+	public void ParseModelChoicesFromError_ReturnsNull_ForEmptyInput()
+	{
+		Assert.Null(CopilotModelParser.ParseModelChoicesFromError(null));
+		Assert.Null(CopilotModelParser.ParseModelChoicesFromError(""));
+		Assert.Null(CopilotModelParser.ParseModelChoicesFromError("some random error"));
+	}
+
+	[Fact]
+	public void ParseModelChoicesFromError_HandlesMultilineStderr()
+	{
+		// Real-world stderr includes Node.js error wrapper text
+		var stderr = """
+		node.exe : error: option '--model <model>' argument '__invalid_model_probe__' is invalid. Allowed choices are claude-sonnet-4.6, gpt-5.4, gpt-4.1.
+		At C:\Users\someone\AppData\Roaming\npm\copilot.ps1:24 char:5
+		+     & "node$exe"  "$basedir/node_modules/@github/copilot/npm-loader.j ...
+		+     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+		    + CategoryInfo          : NotSpecified
+		""";
+
+		var models = CopilotModelParser.ParseModelChoicesFromError(stderr);
+
+		Assert.NotNull(models);
+		Assert.Equal(3, models!.Count);
+		Assert.Contains("claude-sonnet-4.6", models);
+		Assert.Contains("gpt-5.4", models);
+		Assert.Contains("gpt-4.1", models);
 	}
 
 	#endregion
