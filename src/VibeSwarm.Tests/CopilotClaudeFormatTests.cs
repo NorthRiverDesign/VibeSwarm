@@ -255,6 +255,76 @@ public sealed class CopilotClaudeFormatTests
 
 	#endregion
 
+	#region Content field polymorphism (string vs array)
+
+	[Fact]
+	public void Content_AsString_ProvidesContentText()
+	{
+		var json = """{"type":"assistant","content":"Hello world"}""";
+		var evt = JsonSerializer.Deserialize<CopilotStreamEvent>(json, JsonOptions);
+
+		Assert.Equal("Hello world", evt!.ContentText);
+		Assert.Null(evt.ParseContentBlocks());
+	}
+
+	[Fact]
+	public void Content_AsArray_ProvidesParseContentBlocks()
+	{
+		var json = """{"type":"message","content":[{"type":"text","text":"Error occurred"}],"error":"invalid_request"}""";
+		var evt = JsonSerializer.Deserialize<CopilotStreamEvent>(json, JsonOptions);
+
+		Assert.Null(evt!.ContentText);
+		var blocks = evt.ParseContentBlocks();
+		Assert.NotNull(blocks);
+		Assert.Single(blocks!);
+		Assert.Equal("text", blocks[0].Type);
+		Assert.Equal("Error occurred", blocks[0].Text);
+	}
+
+	[Fact]
+	public void Content_WhenMissing_BothHelpersReturnNull()
+	{
+		var json = """{"type":"system","session_id":"abc"}""";
+		var evt = JsonSerializer.Deserialize<CopilotStreamEvent>(json, JsonOptions);
+
+		Assert.Null(evt!.ContentText);
+		Assert.Null(evt.ParseContentBlocks());
+	}
+
+	[Fact]
+	public void RootContentArray_WithError_DeserializesSuccessfully()
+	{
+		// This is the exact format from the Copilot CLI when a model is unavailable:
+		// content array at root level (not inside message), with error field
+		var json = """
+		{
+			"type": "message",
+			"subtype": "success",
+			"content": [{"type": "text", "text": "There's an issue with the selected model. It may not exist or you may not have access to it."}],
+			"error": "invalid_request",
+			"session_id": "test-session"
+		}
+		""";
+
+		var evt = JsonSerializer.Deserialize<CopilotStreamEvent>(json, JsonOptions);
+
+		Assert.NotNull(evt);
+		Assert.Equal("message", evt!.Type);
+		Assert.Equal("invalid_request", evt.Error);
+		Assert.Equal("test-session", evt.SessionId);
+
+		// ContentText should be null (it's an array, not a string)
+		Assert.Null(evt.ContentText);
+
+		// ParseContentBlocks should extract the error text
+		var blocks = evt.ParseContentBlocks();
+		Assert.NotNull(blocks);
+		Assert.Single(blocks!);
+		Assert.Equal("There's an issue with the selected model. It may not exist or you may not have access to it.", blocks[0].Text);
+	}
+
+	#endregion
+
 	#region GetDefaultModelMultiplier — matches CLI /models output
 
 	[Theory]

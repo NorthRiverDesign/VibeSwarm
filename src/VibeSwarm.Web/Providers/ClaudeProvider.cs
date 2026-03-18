@@ -313,7 +313,19 @@ public class ClaudeProvider : CliProviderBase
             }
             catch
             {
-                currentAssistantMessage.Append(e.Data);
+                // Only append non-JSON lines as assistant content.
+                // JSON lines that failed deserialization are already captured in
+                // outputBuilder for Console Output — don't duplicate as chat messages.
+                if (!e.Data.TrimStart().StartsWith('{'))
+                {
+                    currentAssistantMessage.Append(e.Data);
+                    currentAssistantMessage.AppendLine();
+                    progress?.Report(new ExecutionProgress
+                    {
+                        CurrentMessage = e.Data.Length > 100 ? e.Data[..100] + "..." : e.Data,
+                        IsStreaming = true
+                    });
+                }
             }
         };
 

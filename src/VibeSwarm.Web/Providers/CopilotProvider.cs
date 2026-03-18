@@ -286,13 +286,19 @@ public class CopilotProvider : CliProviderBase
             }
             catch
             {
-                currentAssistantMessage.Append(e.Data);
-                currentAssistantMessage.AppendLine();
-                progress?.Report(new ExecutionProgress
+                // Only append non-JSON lines as assistant content.
+                // JSON lines that failed deserialization are already captured in
+                // outputBuilder for Console Output — don't duplicate as chat messages.
+                if (!e.Data.TrimStart().StartsWith('{'))
                 {
-                    CurrentMessage = e.Data.Length > 100 ? e.Data[..100] + "..." : e.Data,
-                    IsStreaming = true
-                });
+                    currentAssistantMessage.Append(e.Data);
+                    currentAssistantMessage.AppendLine();
+                    progress?.Report(new ExecutionProgress
+                    {
+                        CurrentMessage = e.Data.Length > 100 ? e.Data[..100] + "..." : e.Data,
+                        IsStreaming = true
+                    });
+                }
             }
         };
 
@@ -438,11 +444,15 @@ public class CopilotProvider : CliProviderBase
                     _systemErrorDetected = true;
                     _systemErrorMessage = $"System error: {evt.Error}";
 
-                    // Try to extract a more descriptive error from the Claude message content
-                    var claudeMsg = evt.ParseClaudeMessage();
-                    if (claudeMsg?.Content != null)
+                    // Try to extract a more descriptive error from content blocks.
+                    // Content can be at root level (evt.ParseContentBlocks) or inside
+                    // the message object (evt.ParseClaudeMessage).
+                    var rootContent = evt.ParseContentBlocks();
+                    var msgContent = evt.ParseClaudeMessage()?.Content;
+                    var contentBlocks = rootContent ?? msgContent;
+                    if (contentBlocks != null)
                     {
-                        var errorText = claudeMsg.Content
+                        var errorText = contentBlocks
                             .Where(c => c.Type == "text" && !string.IsNullOrEmpty(c.Text))
                             .Select(c => c.Text)
                             .FirstOrDefault();
@@ -537,15 +547,15 @@ public class CopilotProvider : CliProviderBase
                         }
                     }
                 }
-                else if (!string.IsNullOrEmpty(evt.Content))
+                else if (!string.IsNullOrEmpty(evt.ContentText))
                 {
                     // Native Copilot format - content is a direct string
-                    currentMessage.Append(evt.Content);
+                    currentMessage.Append(evt.ContentText);
                     progress?.Report(new ExecutionProgress
                     {
-                        CurrentMessage = evt.Content.Length > 100
-                            ? evt.Content[..100] + "..."
-                            : evt.Content,
+                        CurrentMessage = evt.ContentText.Length > 100
+                            ? evt.ContentText[..100] + "..."
+                            : evt.ContentText,
                         IsStreaming = true
                     });
                 }

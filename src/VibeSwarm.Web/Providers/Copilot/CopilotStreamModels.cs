@@ -17,8 +17,13 @@ public class CopilotStreamEvent
 	[JsonPropertyName("subtype")]
 	public string? Subtype { get; set; }
 
+	/// <summary>
+	/// Content field - can be a string (native Copilot format) or an array of content blocks (Claude Code format).
+	/// Use <see cref="ContentText"/> to get a string value or <see cref="ParseContentBlocks"/> to extract
+	/// Claude-format content blocks when the content is an array.
+	/// </summary>
 	[JsonPropertyName("content")]
-	public string? Content { get; set; }
+	public JsonElement? Content { get; set; }
 
 	[JsonPropertyName("suggestion")]
 	public string? Suggestion { get; set; }
@@ -103,6 +108,33 @@ public class CopilotStreamEvent
 
 	[JsonPropertyName("duration_api_ms")]
 	public double? DurationApiMs { get; set; }
+
+	/// <summary>
+	/// Extracts the content as a plain string when it is a JSON string value.
+	/// Returns null if the content is an array/object or missing.
+	/// </summary>
+	public string? ContentText =>
+		Content?.ValueKind == JsonValueKind.String ? Content.Value.GetString() : null;
+
+	/// <summary>
+	/// Attempts to parse the content field as Claude-format content blocks.
+	/// This handles the case where the CLI outputs content as an array of objects
+	/// at the root level (e.g., [{"type":"text","text":"..."}]).
+	/// </summary>
+	public ClaudeContentBlock[]? ParseContentBlocks()
+	{
+		if (Content?.ValueKind != JsonValueKind.Array)
+			return null;
+
+		try
+		{
+			return Content.Value.Deserialize<ClaudeContentBlock[]>();
+		}
+		catch
+		{
+			return null;
+		}
+	}
 
 	/// <summary>
 	/// Extracts the message as a plain string when it is a JSON string value.
