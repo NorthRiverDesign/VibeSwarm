@@ -309,19 +309,25 @@ internal static class JobSessionDisplayBuilder
 
 				case "assistant":
 				{
+					// Skip error responses — the "result" event contains the same text
+					// and is the authoritative final message. Showing both would duplicate.
+					if (root.TryGetProperty("error", out _))
+					{
+						return true;
+					}
+
 					var text = ExtractAssistantText(root);
 					if (string.IsNullOrWhiteSpace(text))
 					{
 						return true;
 					}
 
-					var hasError = root.TryGetProperty("error", out _);
 					message = new JobMessage
 					{
-						Role = hasError ? MessageRole.System : MessageRole.Assistant,
+						Role = MessageRole.Assistant,
 						Content = text,
 						Source = MessageSource.Provider,
-						Level = hasError ? MessageLevel.Error : MessageLevel.Normal,
+						Level = MessageLevel.Normal,
 						CreatedAt = timestamp
 					};
 					return true;

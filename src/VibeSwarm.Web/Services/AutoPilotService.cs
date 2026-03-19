@@ -18,6 +18,11 @@ public class AutoPilotService : IAutoPilotService
 	private readonly ILogger<AutoPilotService> _logger;
 
 	/// <summary>
+	/// Per-loop lock to prevent overlapping tick processing when ticks take longer than the poll interval.
+	/// </summary>
+	private static readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, SemaphoreSlim> _loopLocks = new();
+
+	/// <summary>
 	/// Terminal statuses for iteration loops — the loop is done and won't iterate again.
 	/// </summary>
 	private static readonly IterationLoopStatus[] TerminalStatuses =
@@ -211,6 +216,14 @@ public class AutoPilotService : IAutoPilotService
 	/// </summary>
 	public async Task ProcessTickAsync(Guid loopId, CancellationToken cancellationToken)
 	{
+		var loopLock = _loopLocks.GetOrAdd(loopId, _ => new SemaphoreSlim(1, 1));
+		if (!await loopLock.WaitAsync(0, cancellationToken))
+		{
+			return; // Previous tick still processing — skip this one
+		}
+
+		try
+		{
 		var loop = await _dbContext.IterationLoops.FindAsync([loopId], cancellationToken);
 		if (loop == null) return;
 
@@ -239,7 +252,11 @@ public class AutoPilotService : IAutoPilotService
 				if (await IsJobTerminalAsync(loop.CurrentJobId.Value, cancellationToken))
 				{
 					await EvaluateJobResultAsync(loop, cancellationToken);
-					// Fall through to guardrails + next iteration
+					await NotifyStateChanged(loop);
+					// Respect cooldown — let the next tick handle the new iteration.
+					// EvaluateJobResultAsync sets NextIterationAt, so returning here
+					// prevents the same tick from immediately generating another idea.
+					return;
 				}
 				else
 				{
@@ -324,6 +341,11 @@ public class AutoPilotService : IAutoPilotService
 		catch (Exception ex)
 		{
 			_logger.LogError(ex, "Error processing auto-pilot tick for loop {LoopId}", loopId);
+		}
+		}
+		finally
+		{
+			loopLock.Release();
 		}
 	}
 

@@ -389,7 +389,8 @@ new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
         _refreshTimer = new Timer(async _ =>
         {
             var secondsSincePageLoad = (DateTime.UtcNow - _pageLoadTime).TotalSeconds;
-            var shouldPoll = secondsSincePageLoad < 10 || IsJobActive;
+            var isTerminal = Job?.Status is JobStatus.Completed or JobStatus.Failed or JobStatus.Cancelled;
+            var shouldPoll = (secondsSincePageLoad < 10 && !isTerminal) || IsJobActive;
 
             if (shouldPoll && !_isRefreshing)
             {

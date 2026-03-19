@@ -686,11 +686,9 @@ public class ClaudeProvider : CliProviderBase
                 "sonnet",
                 "opus",
                 "haiku",
-                "claude-sonnet-4-6-20260201",
-                "claude-sonnet-4-5-20250929",
-                "claude-opus-4-6-20260101",
-                "claude-opus-4-20250514",
-                "claude-haiku-4-5-20251001"
+                "claude-sonnet-4-6",
+                "claude-opus-4-6",
+                "claude-haiku-4-5",
             },
             AvailableAgents = new List<AgentInfo>
             {
@@ -706,11 +704,9 @@ public class ClaudeProvider : CliProviderBase
                     ["sonnet"] = 1.0m,
                     ["opus"] = 5.0m,
                     ["haiku"] = 0.27m,
-                    ["claude-sonnet-4-6-20260201"] = 1.0m,
-                    ["claude-sonnet-4-5-20250929"] = 1.0m,
-                    ["claude-opus-4-6-20260101"] = 5.0m,
-                    ["claude-opus-4-20250514"] = 5.0m,
-                    ["claude-haiku-4-5-20251001"] = 0.27m
+                    ["claude-sonnet-4-6"] = 1.0m,
+                    ["claude-opus-4-6"] = 5.0m,
+                    ["claude-haiku-4-5"] = 0.27m,
                 }
             },
             AdditionalInfo = new Dictionary<string, object>
