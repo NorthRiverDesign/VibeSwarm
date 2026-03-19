@@ -28,6 +28,7 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 	public DbSet<AppSettings> AppSettings { get; set; }
 	public DbSet<InferenceProvider> InferenceProviders { get; set; }
 	public DbSet<InferenceModel> InferenceModels { get; set; }
+	public DbSet<IterationLoop> IterationLoops { get; set; }
 
 	protected override void OnModelCreating(ModelBuilder modelBuilder)
 	{
@@ -269,6 +270,24 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 	.HasForeignKey(e => e.InferenceProviderId)
 	.OnDelete(DeleteBehavior.Cascade);
 			entity.HasIndex(e => new { e.InferenceProviderId, e.ModelId, e.TaskType }).IsUnique();
+		});
+
+		modelBuilder.Entity<IterationLoop>(entity =>
+		{
+			entity.HasKey(e => e.Id);
+			entity.Property(e => e.Status).HasConversion<string>();
+			entity.Property(e => e.ModelId).HasMaxLength(200);
+			entity.Property(e => e.LastStopReason).HasMaxLength(500);
+			entity.HasOne(e => e.Project)
+	.WithMany()
+	.HasForeignKey(e => e.ProjectId)
+	.OnDelete(DeleteBehavior.Cascade);
+			entity.HasOne(e => e.CurrentJob)
+	.WithMany()
+	.HasForeignKey(e => e.CurrentJobId)
+	.OnDelete(DeleteBehavior.SetNull);
+			entity.HasIndex(e => e.ProjectId);
+			entity.HasIndex(e => e.Status);
 		});
 	}
 }

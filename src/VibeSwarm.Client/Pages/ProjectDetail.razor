@@ -7,6 +7,7 @@
 @inject IIdeaService IdeaService
 @inject IInferenceService InferenceService
 @inject IInferenceProviderService InferenceProviderService
+@inject IAutoPilotService AutoPilotService
 @inject NavigationManager NavigationManager
 @inject NotificationService NotificationService
 @implements IAsyncDisposable
@@ -92,6 +93,19 @@ else
                 @if (HasChangesTabContent && _workingTreeStatus.ChangedFilesCount > 0)
                 {
                     <span class="badge bg-warning text-dark ms-1">@_workingTreeStatus.ChangedFilesCount</span>
+                }
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button type="button" class="nav-link @(_activeTab == "autopilot" ? "active" : "")"
+                    @onclick="@(() => _activeTab = "autopilot")" role="tab">
+                <i class="bi bi-robot me-1"></i>
+                <span>Auto-Pilot</span>
+                @if (_autoPilotStatus != null && !AutoPilotPanel.IsTerminal(_autoPilotStatus.Status))
+                {
+                    <span class="badge @AutoPilotPanel.GetStatusBadgeClass(_autoPilotStatus.Status) ms-1">
+                        @_autoPilotStatus.Status.ToString()
+                    </span>
                 }
             </button>
         </li>
@@ -423,6 +437,13 @@ else
                 }
             </div>
         }
+        @if (_activeTab == "autopilot")
+        {
+            <div class="tab-pane fade show active">
+                <AutoPilotPanel @ref="_autoPilotPanel" ProjectId="@ProjectId"
+                                AvailableProviders="@Providers.Where(p => p.IsEnabled).ToList()" />
+            </div>
+        }
     </div>
 
     @* Create Branch Modal *@
@@ -548,6 +569,10 @@ else
 
     // Tab state
     private string _activeTab = "ideas";
+
+    // Auto-pilot state
+    private AutoPilotPanel? _autoPilotPanel;
+    private IterationLoop? _autoPilotStatus;
 
     // Environment editing state
     private bool _isSavingEnvironments;
@@ -887,6 +912,22 @@ TimeSpan.FromSeconds(10) })
         }
     });
         });
+
+        _hubConnection.On<string, string, int, int>(
+            "AutoPilotStateChanged", async (projectId, status, completedIterations, maxIterations) =>
+        {
+            await InvokeAsync(async () =>
+            {
+                if (projectId == ProjectId.ToString())
+                {
+                    // Refresh the full status from the API for up-to-date data
+                    try { _autoPilotStatus = await AutoPilotService.GetStatusAsync(ProjectId); } catch { }
+                    if (_autoPilotPanel != null)
+                        await _autoPilotPanel.RefreshAsync();
+                    StateHasChanged();
+                }
+            });
+        });
     }
 
     private async Task SubscribeToSignalRGroups()
@@ -975,6 +1016,9 @@ TimeSpan.FromSeconds(10) })
 
             // Load local inference models for idea expansion
             await LoadLocalInferenceModels();
+
+            // Load auto-pilot status for the tab badge
+            try { _autoPilotStatus = await AutoPilotService.GetStatusAsync(ProjectId); } catch { /* non-critical */ }
         }
         finally
         {

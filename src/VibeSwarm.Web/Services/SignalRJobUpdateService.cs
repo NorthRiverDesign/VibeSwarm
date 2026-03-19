@@ -470,4 +470,35 @@ public class SignalRJobUpdateService : IJobUpdateService
             _logger.LogError(ex, "Error sending ProviderUsageWarning notification for provider {ProviderId}", providerId);
         }
     }
+
+    public async Task NotifyAutoPilotStateChanged(Guid projectId, Shared.Data.IterationLoop loop)
+    {
+        try
+        {
+            // Notify project-specific subscribers (they fetch full status via API)
+            await _hubContext.Clients
+                .Group($"project-{projectId}")
+                .SendAsync("AutoPilotStateChanged",
+                    projectId.ToString(),
+                    loop.Status.ToString(),
+                    loop.CompletedIterations,
+                    loop.MaxIterations);
+
+            // Also notify global event subscribers
+            await _hubContext.Clients
+                .Group("global-events")
+                .SendAsync("AutoPilotStateChanged",
+                    projectId.ToString(),
+                    loop.Status.ToString(),
+                    loop.CompletedIterations,
+                    loop.MaxIterations);
+
+            _logger.LogDebug("Sent AutoPilotStateChanged for project {ProjectId}: {Status}, iteration {Iteration}/{Max}",
+                projectId, loop.Status, loop.CompletedIterations, loop.MaxIterations);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error sending AutoPilotStateChanged notification for project {ProjectId}", projectId);
+        }
+    }
 }

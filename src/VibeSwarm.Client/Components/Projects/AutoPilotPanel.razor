@@ -1,0 +1,394 @@
+@* Auto-Pilot panel for autonomous project iteration *@
+@inject IAutoPilotService AutoPilotService
+@inject NavigationManager NavigationManager
+@inject NotificationService NotificationService
+@using VibeSwarm.Shared.Data
+@using VibeSwarm.Shared.Providers
+@using VibeSwarm.Shared.Services
+
+<div class="d-grid gap-3">
+	@if (_isLoading)
+	{
+		<div class="d-flex align-items-center gap-2 text-body-secondary">
+			<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+			<span>Loading auto-pilot status...</span>
+		</div>
+	}
+	else if (_loop == null || IsTerminal(_loop.Status))
+	{
+		@* IDLE / STOPPED STATE — show start form *@
+		@if (_loop != null && IsTerminal(_loop.Status))
+		{
+			<div class="alert @GetStatusAlertClass(_loop.Status) d-flex align-items-start gap-2 mb-3" role="alert">
+				<i class="bi @GetStatusIcon(_loop.Status) mt-1"></i>
+				<div>
+					<strong>Last run:</strong> @_loop.Status.ToString()
+					@if (!string.IsNullOrEmpty(_loop.LastStopReason))
+					{
+						<span class="text-body-secondary"> — @_loop.LastStopReason</span>
+					}
+					<div class="small text-body-secondary mt-1">
+						@_loop.CompletedIterations iteration@(_loop.CompletedIterations == 1 ? "" : "s"),
+						$@_loop.TotalCostUsd.ToString("F2") total cost
+					</div>
+				</div>
+			</div>
+		}
+
+		@if (!string.IsNullOrEmpty(_error))
+		{
+			<div class="alert alert-danger mb-3">@_error</div>
+		}
+
+		<div class="card">
+			<div class="card-body">
+				<h6 class="card-title d-flex align-items-center gap-2">
+					<i class="bi bi-robot"></i> Auto-Pilot Configuration
+				</h6>
+
+				<div class="row g-3 mt-1">
+					<div class="col-md-6">
+						<label class="form-label small">Provider</label>
+						<select class="form-select form-select-sm" @bind="_config.ProviderId">
+							<option value="">Project default</option>
+							@foreach (var provider in AvailableProviders)
+							{
+								<option value="@provider.Id">@provider.Name</option>
+							}
+						</select>
+					</div>
+					<div class="col-md-6">
+						<label class="form-label small">Model</label>
+						<select class="form-select form-select-sm" @bind="_config.ModelId">
+							<option value="">Provider default</option>
+							@foreach (var model in GetModelsForSelectedProvider())
+							{
+								<option value="@model.ModelId">@(model.DisplayName ?? model.ModelId)</option>
+							}
+						</select>
+					</div>
+					<div class="col-md-3">
+						<label class="form-label small">Max Iterations</label>
+						<input type="number" class="form-control form-control-sm" @bind="_config.MaxIterations" min="0" max="1000" />
+						<div class="form-text">0 = unlimited</div>
+					</div>
+					<div class="col-md-3">
+						<label class="form-label small">Max Cost ($)</label>
+						<input type="number" class="form-control form-control-sm" @bind="_config.MaxTotalCostUsd" min="0" step="1" />
+					</div>
+					<div class="col-md-3">
+						<label class="form-label small">Max Failures</label>
+						<input type="number" class="form-control form-control-sm" @bind="_config.MaxConsecutiveFailures" min="1" max="20" />
+					</div>
+					<div class="col-md-3">
+						<label class="form-label small">Cooldown (sec)</label>
+						<input type="number" class="form-control form-control-sm" @bind="_config.CooldownSeconds" min="10" max="3600" />
+					</div>
+					<div class="col-12">
+						<div class="form-check form-check-inline">
+							<input type="checkbox" class="form-check-input" id="ap-autocommit" @bind="_config.AutoCommit" />
+							<label class="form-check-label small" for="ap-autocommit">Auto-commit</label>
+						</div>
+						<div class="form-check form-check-inline">
+							<input type="checkbox" class="form-check-input" id="ap-autopush" @bind="_config.AutoPush" />
+							<label class="form-check-label small" for="ap-autopush">Auto-push</label>
+						</div>
+					</div>
+				</div>
+
+				<div class="mt-3">
+					<button type="button" class="btn btn-primary" @onclick="StartAutoPilot" disabled="@_isStarting">
+						@if (_isStarting)
+						{
+							<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+						}
+						<i class="bi bi-play-fill me-1"></i> Start Auto-Pilot
+					</button>
+				</div>
+			</div>
+		</div>
+	}
+	else
+	{
+		@* RUNNING / PAUSED / STOPPING STATE *@
+		<div class="card border-@GetStatusBorderColor(_loop.Status)">
+			<div class="card-body">
+				<div class="d-flex justify-content-between align-items-start mb-3">
+					<div>
+						<h6 class="card-title d-flex align-items-center gap-2 mb-1">
+							<i class="bi bi-robot"></i> Auto-Pilot
+							<span class="badge @GetStatusBadgeClass(_loop.Status)">
+								@if (_loop.Status == IterationLoopStatus.Running)
+								{
+									<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+								}
+								@_loop.Status.ToString()
+							</span>
+						</h6>
+					</div>
+					<div class="d-flex gap-2">
+						@if (_loop.Status == IterationLoopStatus.Running)
+						{
+							<button type="button" class="btn btn-sm btn-outline-warning" @onclick="PauseAutoPilot" disabled="@_isToggling">
+								<i class="bi bi-pause-fill"></i> Pause
+							</button>
+							<button type="button" class="btn btn-sm btn-outline-danger" @onclick="StopAutoPilot" disabled="@_isToggling">
+								<i class="bi bi-stop-fill"></i> Stop
+							</button>
+						}
+						else if (_loop.Status == IterationLoopStatus.Paused)
+						{
+							<button type="button" class="btn btn-sm btn-outline-success" @onclick="ResumeAutoPilot" disabled="@_isToggling">
+								<i class="bi bi-play-fill"></i> Resume
+							</button>
+							<button type="button" class="btn btn-sm btn-outline-danger" @onclick="StopAutoPilot" disabled="@_isToggling">
+								<i class="bi bi-stop-fill"></i> Stop
+							</button>
+						}
+						else if (_loop.Status == IterationLoopStatus.Stopping)
+						{
+							<span class="badge text-bg-warning d-flex align-items-center gap-1">
+								<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+								Stopping...
+							</span>
+						}
+					</div>
+				</div>
+
+				@if (!string.IsNullOrEmpty(_error))
+				{
+					<div class="alert alert-danger mb-3">@_error</div>
+				}
+
+				@* Progress metrics *@
+				<div class="row g-3 mb-3">
+					<div class="col-md-3">
+						<div class="small text-body-secondary">Iterations</div>
+						<div class="fw-semibold">
+							@_loop.CompletedIterations
+							@if (_loop.MaxIterations > 0)
+							{
+								<span class="text-body-secondary">/ @_loop.MaxIterations</span>
+							}
+						</div>
+						@if (_loop.MaxIterations > 0)
+						{
+							<div class="progress mt-1" style="height: 4px;">
+								<div class="progress-bar" role="progressbar"
+									 style="width: @(Math.Min(100, _loop.CompletedIterations * 100 / _loop.MaxIterations))%"></div>
+							</div>
+						}
+					</div>
+					<div class="col-md-3">
+						<div class="small text-body-secondary">Cost</div>
+						<div class="fw-semibold">
+							$@_loop.TotalCostUsd.ToString("F2")
+							@if (_loop.MaxTotalCostUsd.HasValue)
+							{
+								<span class="text-body-secondary">/ $@_loop.MaxTotalCostUsd.Value.ToString("F2")</span>
+							}
+						</div>
+					</div>
+					<div class="col-md-3">
+						<div class="small text-body-secondary">Consecutive Failures</div>
+						<div class="fw-semibold @(_loop.ConsecutiveFailures > 0 ? "text-warning" : "")">
+							@_loop.ConsecutiveFailures / @_loop.MaxConsecutiveFailures
+						</div>
+					</div>
+					<div class="col-md-3">
+						<div class="small text-body-secondary">Current Job</div>
+						@if (_loop.CurrentJobId.HasValue)
+						{
+							<a href="/jobs/view/@_loop.CurrentJobId" class="fw-semibold text-decoration-none">
+								<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+								View Job
+							</a>
+						}
+						else if (_loop.Status == IterationLoopStatus.Running && _loop.NextIterationAt.HasValue)
+						{
+							<span class="text-body-secondary small">Next iteration in cooldown</span>
+						}
+						else
+						{
+							<span class="text-body-secondary">—</span>
+						}
+					</div>
+				</div>
+
+				@if (_loop.LastStopReason != null && IsTerminal(_loop.Status))
+				{
+					<div class="alert alert-info small mb-0">
+						<i class="bi bi-info-circle me-1"></i> @_loop.LastStopReason
+					</div>
+				}
+			</div>
+		</div>
+	}
+</div>
+
+@code {
+	[Parameter, EditorRequired]
+	public Guid ProjectId { get; set; }
+
+	[Parameter]
+	public List<Provider> AvailableProviders { get; set; } = [];
+
+	private IterationLoop? _loop;
+	private AutoPilotConfig _config = new();
+	private bool _isLoading = true;
+	private bool _isStarting;
+	private bool _isToggling;
+	private string? _error;
+
+	protected override async Task OnInitializedAsync()
+	{
+		await LoadStatusAsync();
+	}
+
+	private async Task LoadStatusAsync()
+	{
+		try
+		{
+			_isLoading = true;
+			_loop = await AutoPilotService.GetStatusAsync(ProjectId);
+		}
+		catch (Exception ex)
+		{
+			_error = $"Failed to load auto-pilot status: {ex.Message}";
+		}
+		finally
+		{
+			_isLoading = false;
+		}
+	}
+
+	private async Task StartAutoPilot()
+	{
+		try
+		{
+			_isStarting = true;
+			_error = null;
+			_loop = await AutoPilotService.StartAsync(ProjectId, _config);
+		}
+		catch (Exception ex)
+		{
+			_error = ex.Message;
+		}
+		finally
+		{
+			_isStarting = false;
+		}
+	}
+
+	private async Task StopAutoPilot()
+	{
+		try
+		{
+			_isToggling = true;
+			_error = null;
+			await AutoPilotService.StopAsync(ProjectId);
+			await LoadStatusAsync();
+		}
+		catch (Exception ex)
+		{
+			_error = ex.Message;
+		}
+		finally
+		{
+			_isToggling = false;
+		}
+	}
+
+	private async Task PauseAutoPilot()
+	{
+		try
+		{
+			_isToggling = true;
+			_error = null;
+			await AutoPilotService.PauseAsync(ProjectId);
+			await LoadStatusAsync();
+		}
+		catch (Exception ex)
+		{
+			_error = ex.Message;
+		}
+		finally
+		{
+			_isToggling = false;
+		}
+	}
+
+	private async Task ResumeAutoPilot()
+	{
+		try
+		{
+			_isToggling = true;
+			_error = null;
+			await AutoPilotService.ResumeAsync(ProjectId);
+			await LoadStatusAsync();
+		}
+		catch (Exception ex)
+		{
+			_error = ex.Message;
+		}
+		finally
+		{
+			_isToggling = false;
+		}
+	}
+
+	/// <summary>
+	/// Called by the parent page when a SignalR AutoPilotStateChanged event is received.
+	/// </summary>
+	public async Task RefreshAsync()
+	{
+		await LoadStatusAsync();
+		StateHasChanged();
+	}
+
+	private List<ProviderModel> GetModelsForSelectedProvider()
+	{
+		if (_config.ProviderId == null) return [];
+		var provider = AvailableProviders.FirstOrDefault(p => p.Id == _config.ProviderId);
+		return provider?.AvailableModels?.Where(m => m.IsAvailable).ToList() ?? [];
+	}
+
+	public static bool IsTerminal(IterationLoopStatus status) =>
+		status is IterationLoopStatus.Stopped or IterationLoopStatus.Exhausted
+			or IterationLoopStatus.Failed or IterationLoopStatus.Idle;
+
+	public static string GetStatusBadgeClass(IterationLoopStatus status) => status switch
+	{
+		IterationLoopStatus.Running => "text-bg-success",
+		IterationLoopStatus.Paused => "text-bg-warning",
+		IterationLoopStatus.Stopping => "text-bg-warning",
+		IterationLoopStatus.Stopped => "text-bg-secondary",
+		IterationLoopStatus.Exhausted => "text-bg-info",
+		IterationLoopStatus.Failed => "text-bg-danger",
+		_ => "text-bg-secondary"
+	};
+
+	private static string GetStatusBorderColor(IterationLoopStatus status) => status switch
+	{
+		IterationLoopStatus.Running => "success",
+		IterationLoopStatus.Paused => "warning",
+		IterationLoopStatus.Stopping => "warning",
+		_ => "secondary"
+	};
+
+	private static string GetStatusAlertClass(IterationLoopStatus status) => status switch
+	{
+		IterationLoopStatus.Stopped => "alert-secondary",
+		IterationLoopStatus.Exhausted => "alert-info",
+		IterationLoopStatus.Failed => "alert-danger",
+		_ => "alert-secondary"
+	};
+
+	private static string GetStatusIcon(IterationLoopStatus status) => status switch
+	{
+		IterationLoopStatus.Stopped => "bi-stop-circle",
+		IterationLoopStatus.Exhausted => "bi-exclamation-triangle",
+		IterationLoopStatus.Failed => "bi-x-circle",
+		_ => "bi-circle"
+	};
+}

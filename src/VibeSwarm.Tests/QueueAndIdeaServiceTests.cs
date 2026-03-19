@@ -1731,6 +1731,7 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		public Task NotifyIdeaCreated(Guid ideaId, Guid projectId) => Task.CompletedTask;
 		public Task NotifyIdeaDeleted(Guid ideaId, Guid projectId) => Task.CompletedTask;
 		public Task NotifyProviderUsageWarning(Guid providerId, string providerName, int percentUsed, string message, bool isExhausted, DateTime? resetTime) => Task.CompletedTask;
+		public Task NotifyAutoPilotStateChanged(Guid projectId, VibeSwarm.Shared.Data.IterationLoop loop) => Task.CompletedTask;
 
 		public Task NotifyIdeaStarted(Guid ideaId, Guid projectId, Guid jobId)
 		{

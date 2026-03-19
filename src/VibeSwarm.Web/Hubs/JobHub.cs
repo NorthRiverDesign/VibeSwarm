@@ -87,6 +87,22 @@ public class JobHub : Hub
     }
 
     /// <summary>
+    /// Subscribe to auto-pilot updates for a specific project
+    /// </summary>
+    public async Task SubscribeToAutoPilot(string projectId)
+    {
+        await Groups.AddToGroupAsync(Context.ConnectionId, $"project-{projectId}");
+    }
+
+    /// <summary>
+    /// Unsubscribe from auto-pilot updates for a specific project
+    /// </summary>
+    public async Task UnsubscribeFromAutoPilot(string projectId)
+    {
+        await Groups.RemoveFromGroupAsync(Context.ConnectionId, $"project-{projectId}");
+    }
+
+    /// <summary>
     /// Submit a response to a paused job that is waiting for user interaction
     /// </summary>
     /// <param name="jobId">The job ID</param>

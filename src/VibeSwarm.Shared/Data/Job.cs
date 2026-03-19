@@ -432,6 +432,12 @@ public class Job
     /// </summary>
     public DateTime? InteractionRequestedAt { get; set; }
 
+    /// <summary>
+    /// The auto-pilot iteration loop that created this job, if any.
+    /// Null for manually created jobs.
+    /// </summary>
+    public Guid? IterationLoopId { get; set; }
+
     public ICollection<JobMessage> Messages { get; set; } = new List<JobMessage>();
 
     public ICollection<JobProviderAttempt> ProviderAttempts { get; set; } = new List<JobProviderAttempt>();

@@ -150,4 +150,11 @@ public interface IJobUpdateService
     /// <param name="resetTime">When the limit resets (if known)</param>
     Task NotifyProviderUsageWarning(Guid providerId, string providerName, int percentUsed,
         string message, bool isExhausted, DateTime? resetTime);
+
+    /// <summary>
+    /// Notifies clients that an auto-pilot loop's state has changed
+    /// </summary>
+    /// <param name="projectId">The project ID</param>
+    /// <param name="loop">The current iteration loop state</param>
+    Task NotifyAutoPilotStateChanged(Guid projectId, Data.IterationLoop loop);
 }
