@@ -1,6 +1,7 @@
 using System.Text;
 using Microsoft.Extensions.Logging;
 using VibeSwarm.Shared.VersionControl.Models;
+using VibeSwarm.Shared;
 
 namespace VibeSwarm.Shared.VersionControl;
 
@@ -1091,7 +1092,7 @@ public sealed class VersionControlService : IVersionControlService
 
 			var preserveResult = await PreserveChangesAsync(
 				workingDirectory,
-				$"VibeSwarm auto-preserve before checkout to {branchName}",
+				$"{AppConstants.AppName} auto-preserve before checkout to {branchName}",
 				cancellationToken);
 
 			if (!preserveResult.Success)
@@ -1253,7 +1254,7 @@ public sealed class VersionControlService : IVersionControlService
 
 			var preserveResult = await PreserveChangesAsync(
 				workingDirectory,
-				$"VibeSwarm auto-preserve before sync to {remoteName}/{currentBranch}",
+				$"{AppConstants.AppName} auto-preserve before sync to {remoteName}/{currentBranch}",
 				cancellationToken);
 
 			if (!preserveResult.Success)

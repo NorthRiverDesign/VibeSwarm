@@ -135,8 +135,8 @@
 						{
 							<ChatMessage Role="@message.Role" Content="@message.Content" ToolName="@message.ToolName"
 										 ToolInput="@message.ToolInput" ToolOutput="@message.ToolOutput" Timestamp="@message.CreatedAt"
-										 LabelOverride="@GetMessageLabel(message)" BubbleClassOverride="@GetMessageBubbleClasses(message)"
-										 IconOverride="@GetMessageIcon(message)" />
+										 Source="@message.Source" Level="@message.Level"
+										/>
 						}
 
 						@if (ShowInlineWaitingActivity)
@@ -254,78 +254,6 @@
             && !string.IsNullOrWhiteSpace(CurrentActivity)
             && CurrentActivity.StartsWith("Waiting for CLI response", StringComparison.OrdinalIgnoreCase);
 
-	private static string? GetMessageLabel(JobMessage message)
-		=> message.Role switch
-		{
-			MessageRole.Assistant => "Provider",
-			MessageRole.System when IsVibeSwarmMessage(message) => "VibeSwarm",
-			_ => null
-		};
-
-	private static string? GetMessageBubbleClasses(JobMessage message)
-	{
-		if (message.Role != MessageRole.System)
-		{
-			return null;
-		}
-
-		return GetSystemMessageTone(message) switch
-		{
-			"success" => "bg-success-subtle text-success-emphasis border border-success-subtle",
-			"warning" => "bg-warning-subtle text-warning-emphasis border border-warning-subtle",
-			_ => "bg-primary-subtle text-primary-emphasis border border-primary-subtle"
-		};
-	}
-
-	private static string? GetMessageIcon(JobMessage message)
-	{
-		if (message.Role == MessageRole.Assistant)
-		{
-			return "bi bi-stars";
-		}
-
-		if (message.Role != MessageRole.System)
-		{
-			return null;
-		}
-
-		return GetSystemMessageTone(message) switch
-		{
-			"success" => "bi bi-check-circle",
-			"warning" => "bi bi-exclamation-triangle",
-			_ => "bi bi-info-circle"
-		};
-	}
-
-	private static bool IsVibeSwarmMessage(JobMessage message)
-		=> message.Role == MessageRole.System
-			&& !string.IsNullOrWhiteSpace(message.Content)
-			&& (message.Content.StartsWith("[VibeSwarm]", StringComparison.OrdinalIgnoreCase)
-				|| message.Content.StartsWith("[Connection]", StringComparison.OrdinalIgnoreCase)
-				|| message.Content.StartsWith("[Retry]", StringComparison.OrdinalIgnoreCase)
-				|| message.Content.StartsWith("[Session]", StringComparison.OrdinalIgnoreCase)
-				|| message.Content.StartsWith("[Error]", StringComparison.OrdinalIgnoreCase));
-
-	private static string GetSystemMessageTone(JobMessage message)
-	{
-		var content = message.Content ?? string.Empty;
-		if (content.StartsWith("[Session] Complete", StringComparison.OrdinalIgnoreCase)
-			|| content.Contains("completed successfully", StringComparison.OrdinalIgnoreCase))
-		{
-			return "success";
-		}
-
-		if (content.StartsWith("[Retry]", StringComparison.OrdinalIgnoreCase)
-			|| content.StartsWith("[Error]", StringComparison.OrdinalIgnoreCase)
-			|| content.Contains("waiting", StringComparison.OrdinalIgnoreCase)
-			|| content.Contains("initializing", StringComparison.OrdinalIgnoreCase)
-			|| content.Contains("limit", StringComparison.OrdinalIgnoreCase))
-		{
-			return "warning";
-		}
-
-		return "primary";
-	}
 
     private async Task SendFollowUp()
     {

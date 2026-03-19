@@ -1,3 +1,4 @@
+using System.Text.Json;
 using VibeSwarm.Client.Models;
 using VibeSwarm.Shared.Data;
 
@@ -124,6 +125,12 @@ internal static class JobSessionDisplayBuilder
 			return null;
 		}
 
+		// Detect raw JSON stream events and extract human-readable content
+		if (content.StartsWith('{') && TryExtractFromStreamJson(content, line.Timestamp, out var jsonMessage))
+		{
+			return jsonMessage;
+		}
+
 		if (TryParseToolUse(content, out var toolName, out var toolInput))
 		{
 			return new JobMessage
@@ -154,16 +161,20 @@ internal static class JobSessionDisplayBuilder
 			{
 				Role = MessageRole.System,
 				Content = StripKnownPrefix(content, "[Reasoning]", "[Thinking]"),
+				Source = MessageSource.Provider,
+				Level = MessageLevel.Normal,
 				CreatedAt = line.Timestamp
 			};
 		}
 
-		if (IsSystemStatusMessage(content))
+		if (TryParseSystemMessage(content, out var systemContent, out var source, out var level))
 		{
 			return new JobMessage
 			{
 				Role = MessageRole.System,
-				Content = content,
+				Content = systemContent,
+				Source = source,
+				Level = level,
 				CreatedAt = line.Timestamp
 			};
 		}
@@ -179,6 +190,8 @@ internal static class JobSessionDisplayBuilder
 			{
 				Role = MessageRole.System,
 				Content = StripKnownPrefix(content, "[Plan]"),
+				Source = MessageSource.Provider,
+				Level = MessageLevel.Normal,
 				CreatedAt = line.Timestamp
 			};
 		}
@@ -189,6 +202,8 @@ internal static class JobSessionDisplayBuilder
 			{
 				Role = MessageRole.System,
 				Content = content,
+				Source = MessageSource.System,
+				Level = MessageLevel.Error,
 				CreatedAt = line.Timestamp
 			};
 		}
@@ -197,6 +212,8 @@ internal static class JobSessionDisplayBuilder
 		{
 			Role = MessageRole.Assistant,
 			Content = content,
+			Source = MessageSource.Provider,
+			Level = MessageLevel.Normal,
 			CreatedAt = line.Timestamp
 		};
 	}
@@ -264,15 +281,177 @@ internal static class JobSessionDisplayBuilder
 		return content;
 	}
 
-	private static bool IsCliWaitStatus(string content)
-		=> content.StartsWith("[VibeSwarm] Still initializing...", StringComparison.OrdinalIgnoreCase)
-			|| content.StartsWith("[VibeSwarm] Still waiting for response...", StringComparison.OrdinalIgnoreCase)
-			|| content.StartsWith("[VibeSwarm] Still waiting (", StringComparison.OrdinalIgnoreCase);
+	/// <summary>
+	/// Attempts to extract a human-readable message from a raw JSON stream event.
+	/// Returns null for events that should be hidden from the Session Log (e.g., init events).
+	/// </summary>
+	private static bool TryExtractFromStreamJson(string json, DateTime timestamp, out JobMessage? message)
+	{
+		message = null;
 
-	private static bool IsSystemStatusMessage(string content)
-		=> content.StartsWith("[VibeSwarm]", StringComparison.OrdinalIgnoreCase)
-			|| content.StartsWith("[Connection]", StringComparison.OrdinalIgnoreCase)
-			|| content.StartsWith("[Retry]", StringComparison.OrdinalIgnoreCase)
-			|| content.StartsWith("[Session]", StringComparison.OrdinalIgnoreCase)
-			|| content.StartsWith("[Error]", StringComparison.OrdinalIgnoreCase);
+		try
+		{
+			using var doc = JsonDocument.Parse(json);
+			var root = doc.RootElement;
+
+			if (!root.TryGetProperty("type", out var typeProp))
+			{
+				return false;
+			}
+
+			var type = typeProp.GetString();
+
+			switch (type)
+			{
+				case "system":
+					// Init events are noise for the Session Log — skip them
+					return true;
+
+				case "assistant":
+				{
+					var text = ExtractAssistantText(root);
+					if (string.IsNullOrWhiteSpace(text))
+					{
+						return true;
+					}
+
+					var hasError = root.TryGetProperty("error", out _);
+					message = new JobMessage
+					{
+						Role = hasError ? MessageRole.System : MessageRole.Assistant,
+						Content = text,
+						Source = MessageSource.Provider,
+						Level = hasError ? MessageLevel.Error : MessageLevel.Normal,
+						CreatedAt = timestamp
+					};
+					return true;
+				}
+
+				case "result":
+				{
+					var resultText = root.TryGetProperty("result", out var resultProp)
+						? resultProp.GetString()
+						: null;
+
+					if (string.IsNullOrWhiteSpace(resultText))
+					{
+						return true;
+					}
+
+					var isError = root.TryGetProperty("is_error", out var isErrorProp)
+						&& isErrorProp.GetBoolean();
+
+					message = new JobMessage
+					{
+						Role = isError ? MessageRole.System : MessageRole.Assistant,
+						Content = resultText,
+						Source = MessageSource.Provider,
+						Level = isError ? MessageLevel.Error : MessageLevel.Normal,
+						CreatedAt = timestamp
+					};
+					return true;
+				}
+
+				default:
+					// Unknown JSON event type — skip to avoid showing raw JSON
+					return true;
+			}
+		}
+		catch (JsonException)
+		{
+			// Not valid JSON — fall through to normal text parsing
+			return false;
+		}
+	}
+
+	private static string? ExtractAssistantText(JsonElement root)
+	{
+		if (!root.TryGetProperty("message", out var messageProp))
+		{
+			return null;
+		}
+
+		if (!messageProp.TryGetProperty("content", out var contentProp)
+			|| contentProp.ValueKind != JsonValueKind.Array)
+		{
+			return null;
+		}
+
+		foreach (var block in contentProp.EnumerateArray())
+		{
+			if (block.TryGetProperty("type", out var blockType)
+				&& blockType.GetString() == "text"
+				&& block.TryGetProperty("text", out var textProp))
+			{
+				var text = textProp.GetString();
+				if (!string.IsNullOrWhiteSpace(text))
+				{
+					return text;
+				}
+			}
+		}
+
+		return null;
+	}
+
+	private static bool IsCliWaitStatus(string content)
+		=> content.StartsWith("[System] Still initializing...", StringComparison.OrdinalIgnoreCase)
+			|| content.StartsWith("[System] Still waiting for response...", StringComparison.OrdinalIgnoreCase)
+			|| content.StartsWith("[System] Still waiting (", StringComparison.OrdinalIgnoreCase);
+
+	/// <summary>
+	/// Matches bracketed prefix messages, strips the prefix, and assigns Source/Level.
+	/// </summary>
+	private static bool TryParseSystemMessage(string content, out string displayContent, out MessageSource source, out MessageLevel level)
+	{
+		displayContent = content;
+		source = MessageSource.System;
+		level = MessageLevel.Normal;
+
+		// Map prefixes to Source + Level
+		if (content.StartsWith("[System]", StringComparison.OrdinalIgnoreCase))
+		{
+			displayContent = content[8..].Trim();
+			source = MessageSource.System;
+			level = MessageLevel.Normal;
+			return true;
+		}
+
+		if (content.StartsWith("[Connection]", StringComparison.OrdinalIgnoreCase))
+		{
+			displayContent = content[12..].Trim();
+			source = MessageSource.System;
+			level = MessageLevel.Warning;
+			return true;
+		}
+
+		if (content.StartsWith("[Retry]", StringComparison.OrdinalIgnoreCase))
+		{
+			displayContent = content[7..].Trim();
+			source = MessageSource.Provider;
+			level = MessageLevel.Warning;
+			return true;
+		}
+
+		if (content.StartsWith("[Session]", StringComparison.OrdinalIgnoreCase))
+		{
+			var body = content[9..].Trim();
+			displayContent = body;
+			source = MessageSource.Provider;
+			level = body.StartsWith("Complete", StringComparison.OrdinalIgnoreCase)
+				? MessageLevel.Success
+				: MessageLevel.Normal;
+			return true;
+		}
+
+		if (content.StartsWith("[Error]", StringComparison.OrdinalIgnoreCase))
+		{
+			displayContent = content[7..].Trim();
+			source = MessageSource.Provider;
+			level = MessageLevel.Error;
+			return true;
+		}
+
+		return false;
+	}
 }

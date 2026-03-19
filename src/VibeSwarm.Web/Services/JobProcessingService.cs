@@ -11,6 +11,7 @@ using VibeSwarm.Shared.Services;
 using VibeSwarm.Shared.Utilities;
 using VibeSwarm.Shared.VersionControl;
 using VibeSwarm.Shared.VersionControl.Models;
+using VibeSwarm.Shared;
 
 namespace VibeSwarm.Web.Services;
 
@@ -349,7 +350,7 @@ public class JobProcessingService : BackgroundService
 
         var preserveResult = await _versionControlService.PreserveChangesAsync(
             workingDirectory,
-            $"VibeSwarm job {job.Id}: {reason}",
+            $"{AppConstants.AppName} job {job.Id}: {reason}",
             cancellationToken);
 
         if (!preserveResult.Success)
@@ -1751,7 +1752,7 @@ public class JobProcessingService : BackgroundService
                 ? job.Project.AutoCommitMode
                 : AutoCommitMode.CommitOnly;
 
-            var commitMessage = job.SessionSummary ?? $"VibeSwarm: {job.Title ?? "Job completed"}";
+            var commitMessage = job.SessionSummary ?? $"{AppConstants.AppName}: {job.Title ?? "Job completed"}";
 
             _logger.LogInformation("Auto-committing changes for job {JobId} with mode {Mode}",
                 job.Id, effectiveCommitMode);
@@ -2037,7 +2038,7 @@ public class JobProcessingService : BackgroundService
             throw new GitCheckpointRequiredException($"Unable to preserve local git changes before branch preparation: {createBranchResult.Error}");
         }
 
-        var checkpointMessage = $"VibeSwarm checkpoint before job {job.Id.ToString("N")[..8]}";
+        var checkpointMessage = $"{AppConstants.AppName} checkpoint before job {job.Id.ToString("N")[..8]}";
         var commitMessage = string.IsNullOrWhiteSpace(originalBranch)
             ? checkpointMessage
             : $"{checkpointMessage} on {originalBranch}";
@@ -2138,7 +2139,7 @@ public class JobProcessingService : BackgroundService
             return;
         }
 
-        var pullRequestTitle = job.SessionSummary ?? $"VibeSwarm: {job.Title ?? "Job completed"}";
+        var pullRequestTitle = job.SessionSummary ?? $"{AppConstants.AppName}: {job.Title ?? "Job completed"}";
         var pullRequestBody = BuildPullRequestBody(job, sourceBranch, targetBranch);
         var pullRequestResult = await _versionControlService.CreatePullRequestAsync(
             workingDirectory,

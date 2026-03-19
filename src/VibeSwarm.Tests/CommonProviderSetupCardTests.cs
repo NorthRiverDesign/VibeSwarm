@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using VibeSwarm.Client.Components.Providers;
 using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Providers;
+using VibeSwarm.Shared;
 
 namespace VibeSwarm.Tests;
 
@@ -32,8 +33,8 @@ public sealed class CommonProviderSetupCardTests
 				IsInstalled = false,
 				IsAuthenticated = false,
 				HasConfiguredProvider = false,
-				InstallationStatus = "VibeSwarm could not find 'copilot' on the host PATH. It also checked common user install locations.",
-				AuthenticationStatus = "Save a GitHub token to let VibeSwarm authenticate the Copilot CLI."
+				InstallationStatus = $"{AppConstants.AppName} could not find 'copilot' on the host PATH. It also checked common user install locations.",
+				AuthenticationStatus = $"Save a GitHub token to let {AppConstants.AppName} authenticate the Copilot CLI."
 			}
 		});
 

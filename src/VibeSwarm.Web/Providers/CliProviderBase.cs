@@ -550,7 +550,7 @@ public abstract class CliProviderBase : ProviderBase
 
 		progress?.Report(new ExecutionProgress
 		{
-			OutputLine = $"[VibeSwarm] Process started (PID: {processId}). Waiting for CLI to initialize...",
+			OutputLine = $"[System] Process started (PID: {processId}). Waiting for CLI to initialize...",
 			IsStreaming = true
 		});
 	}
@@ -584,9 +584,9 @@ public abstract class CliProviderBase : ProviderBase
 
 					var waitMessage = warningsSent switch
 					{
-						1 => $"[VibeSwarm] Still initializing... (waited {waitTime.TotalSeconds:F0}s).",
-						2 => $"[VibeSwarm] Still waiting for response... (waited {waitTime.TotalSeconds:F0}s).",
-						_ => $"[VibeSwarm] Still waiting ({waitTime.TotalSeconds:F0}s)... Process is running."
+						1 => $"[System] Still initializing... (waited {waitTime.TotalSeconds:F0}s).",
+						2 => $"[System] Still waiting for response... (waited {waitTime.TotalSeconds:F0}s).",
+						_ => $"[System] Still waiting ({waitTime.TotalSeconds:F0}s)... Process is running."
 					};
 
 					progress?.Report(new ExecutionProgress

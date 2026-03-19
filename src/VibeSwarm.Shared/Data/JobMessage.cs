@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace VibeSwarm.Shared.Data;
 
@@ -36,6 +37,18 @@ public class JobMessage
     /// Token count for this message (if available)
     /// </summary>
     public int? TokenCount { get; set; }
+
+    /// <summary>
+    /// Where this message originated from. Not persisted — assigned at display time.
+    /// </summary>
+    [NotMapped]
+    public MessageSource Source { get; set; } = MessageSource.System;
+
+    /// <summary>
+    /// Severity level for styling. Not persisted — assigned at display time.
+    /// </summary>
+    [NotMapped]
+    public MessageLevel Level { get; set; } = MessageLevel.Normal;
 }
 
 public enum MessageRole
@@ -45,4 +58,28 @@ public enum MessageRole
     System,
     ToolUse,
     ToolResult
+}
+
+/// <summary>
+/// Where a system message originated from.
+/// </summary>
+public enum MessageSource
+{
+    /// <summary>The host application (orchestration, status updates).</summary>
+    System,
+    /// <summary>A CLI coding provider (Claude, Copilot, etc.).</summary>
+    Provider,
+    /// <summary>User-initiated action.</summary>
+    User
+}
+
+/// <summary>
+/// Severity level for a system message.
+/// </summary>
+public enum MessageLevel
+{
+    Normal,
+    Warning,
+    Error,
+    Success
 }

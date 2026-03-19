@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using VibeSwarm.Shared.Providers;
 using VibeSwarm.Shared.Utilities;
+using VibeSwarm.Shared;
 
 namespace VibeSwarm.Web.Services;
 
@@ -52,14 +53,14 @@ public sealed class ProviderCliDetectionService(ILogger<ProviderCliDetectionServ
 				IsInstalled: false,
 				Version: null,
 				ResolvedExecutablePath: null,
-				Message: $"Configured path '{configuredPath}' was not runnable. VibeSwarm also could not find '{executableName}' on the host PATH.");
+				Message: $"Configured path '{configuredPath}' was not runnable. {AppConstants.AppName} also could not find '{executableName}' on the host PATH.");
 		}
 
 		return new ProviderCliDetectionResult(
 			IsInstalled: false,
 			Version: null,
 			ResolvedExecutablePath: null,
-			Message: $"VibeSwarm could not find '{executableName}' on the host PATH. It also checked common user install locations.");
+			Message: $"{AppConstants.AppName} could not find '{executableName}' on the host PATH. It also checked common user install locations.");
 	}
 
 	private async Task<ProviderCliDetectionResult> ProbeCandidateAsync(

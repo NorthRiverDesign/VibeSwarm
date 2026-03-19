@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using VibeSwarm.Shared.VersionControl;
 using VibeSwarm.Shared.VersionControl.Models;
+using VibeSwarm.Shared;
 
 namespace VibeSwarm.Tests;
 
@@ -36,7 +37,7 @@ public sealed class VersionControlServiceWorkingTreeTests
 		executor.AddGitResult("rev-parse --is-inside-work-tree", new GitCommandResult { ExitCode = 0, Output = "true\n" });
 		executor.AddGitResult("status --porcelain=v1 --untracked-files=all", new GitCommandResult { ExitCode = 0, Output = " M src/App.cs\n" });
 		executor.AddGitResult("status --porcelain=v1 --untracked-files=all", new GitCommandResult { ExitCode = 0, Output = " M src/App.cs\n" });
-		executor.AddGitResult("stash push --include-untracked --message \"VibeSwarm auto-preserve before checkout to main\"", new GitCommandResult { ExitCode = 0, Output = "Saved working directory" });
+		executor.AddGitResult($"stash push --include-untracked --message \"{AppConstants.AppName} auto-preserve before checkout to main\"", new GitCommandResult { ExitCode = 0, Output = "Saved working directory" });
 		executor.AddGitResult("rev-parse --verify stash@{0}", new GitCommandResult { ExitCode = 0, Output = "stashref123\n" });
 		executor.AddGitResult("clean -fd", new GitCommandResult { ExitCode = 0 });
 		executor.AddGitResult("reset --hard HEAD", new GitCommandResult { ExitCode = 0 });
@@ -66,7 +67,7 @@ public sealed class VersionControlServiceWorkingTreeTests
 		executor.AddGitResult("rev-parse --is-inside-work-tree", new GitCommandResult { ExitCode = 0, Output = "true\n" });
 		executor.AddGitResult("status --porcelain=v1 --untracked-files=all", new GitCommandResult { ExitCode = 0, Output = "?? src/NewFile.cs\n" });
 		executor.AddGitResult("status --porcelain=v1 --untracked-files=all", new GitCommandResult { ExitCode = 0, Output = "?? src/NewFile.cs\n" });
-		executor.AddGitResult("stash push --include-untracked --message \"VibeSwarm auto-preserve before sync to origin/main\"", new GitCommandResult { ExitCode = 0, Output = "Saved working directory" });
+		executor.AddGitResult($"stash push --include-untracked --message \"{AppConstants.AppName} auto-preserve before sync to origin/main\"", new GitCommandResult { ExitCode = 0, Output = "Saved working directory" });
 		executor.AddGitResult("rev-parse --verify stash@{0}", new GitCommandResult { ExitCode = 0, Output = "stashref456\n" });
 		executor.AddGitResult("clean -fd", new GitCommandResult { ExitCode = 0 });
 		executor.AddGitResult("reset --hard origin/main", new GitCommandResult { ExitCode = 0 });

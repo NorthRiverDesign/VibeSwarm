@@ -1393,7 +1393,7 @@ TimeSpan.FromSeconds(10) })
             }
             else
             {
-                _mergePreviewError = result.Error ?? "VibeSwarm could not verify the merge preview.";
+                _mergePreviewError = result.Error ?? $"{AppConstants.AppName} could not verify the merge preview.";
             }
         }
         catch (Exception ex)
@@ -1434,7 +1434,7 @@ TimeSpan.FromSeconds(10) })
 
             if (!previewResult.Success)
             {
-                _mergePreviewError = previewResult.Error ?? "VibeSwarm could not verify the merge preview.";
+                _mergePreviewError = previewResult.Error ?? $"{AppConstants.AppName} could not verify the merge preview.";
                 return;
             }
 

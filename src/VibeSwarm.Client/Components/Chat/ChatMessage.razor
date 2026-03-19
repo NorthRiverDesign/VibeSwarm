@@ -32,7 +32,7 @@
 		}
 	</div>
 	<div class="d-flex gap-2 mt-1 px-2 small text-secondary">
-		<span class="fw-medium"><i class="@GetLabelIcon() me-1"></i>@GetRoleDisplayName(Role)</span>
+		<span class="fw-medium"><i class="@GetLabelIcon() me-1"></i>@GetLabel()</span>
 		<span class="chat-time">@Timestamp.FormatTime()</span>
 	</div>
 </div>
@@ -57,6 +57,12 @@
 	public DateTime Timestamp { get; set; }
 
 	[Parameter]
+	public MessageSource Source { get; set; } = MessageSource.System;
+
+	[Parameter]
+	public MessageLevel Level { get; set; } = MessageLevel.Normal;
+
+	[Parameter]
 	public string? LabelOverride { get; set; }
 
 	[Parameter]
@@ -72,42 +78,76 @@
 		return text[..maxLength] + "\n... (truncated)";
 	}
 
-	private string GetRoleDisplayName(MessageRole role)
-		=> !string.IsNullOrWhiteSpace(LabelOverride)
-			? LabelOverride
-			: role switch
+	private string GetLabel()
+	{
+		if (!string.IsNullOrWhiteSpace(LabelOverride))
+			return LabelOverride;
+
+		return Role switch
+		{
+			MessageRole.User => "User",
+			MessageRole.Assistant => "Provider",
+			MessageRole.ToolUse => "Tool Call",
+			MessageRole.ToolResult => "Tool Result",
+			MessageRole.System => Source switch
 			{
-				MessageRole.User => "User",
-				MessageRole.Assistant => "Assistant",
-				MessageRole.System => "System",
-				MessageRole.ToolUse => "Tool Call",
-				MessageRole.ToolResult => "Tool Result",
-				_ => role.ToString()
-			};
+				MessageSource.Provider => "Provider",
+				MessageSource.User => "User",
+				_ => "System"
+			},
+			_ => Role.ToString()
+		};
+	}
 
 	private string GetBubbleClasses()
-		=> !string.IsNullOrWhiteSpace(BubbleClassOverride)
-			? BubbleClassOverride
-			: Role switch
+	{
+		if (!string.IsNullOrWhiteSpace(BubbleClassOverride))
+			return BubbleClassOverride;
+
+		if (Role == MessageRole.System)
+		{
+			return Level switch
 			{
-				MessageRole.User => "bg-primary text-white",
-				MessageRole.Assistant => "bg-body-tertiary border",
-				MessageRole.System => "bg-secondary-subtle text-secondary-emphasis border",
-				MessageRole.ToolUse => "bg-info-subtle text-info-emphasis border",
-				MessageRole.ToolResult => "bg-success-subtle text-success-emphasis border",
-				_ => ""
+				MessageLevel.Success => "bg-success-subtle text-success-emphasis border border-success-subtle",
+				MessageLevel.Warning => "bg-warning-subtle text-warning-emphasis border border-warning-subtle",
+				MessageLevel.Error => "bg-danger-subtle text-danger-emphasis border border-danger-subtle",
+				_ => "bg-primary-subtle text-primary-emphasis border border-primary-subtle"
 			};
+		}
+
+		return Role switch
+		{
+			MessageRole.User => "bg-primary text-white",
+			MessageRole.Assistant => "bg-body-tertiary border",
+			MessageRole.ToolUse => "bg-info-subtle text-info-emphasis border",
+			MessageRole.ToolResult => "bg-success-subtle text-success-emphasis border",
+			_ => ""
+		};
+	}
 
 	private string GetLabelIcon()
-		=> !string.IsNullOrWhiteSpace(IconOverride)
-			? IconOverride
-			: Role switch
+	{
+		if (!string.IsNullOrWhiteSpace(IconOverride))
+			return IconOverride;
+
+		if (Role == MessageRole.System)
+		{
+			return Level switch
 			{
-				MessageRole.User => "bi bi-person-circle",
-				MessageRole.Assistant => "bi bi-stars",
-				MessageRole.System => "bi bi-info-circle",
-				MessageRole.ToolUse => "bi bi-tools",
-				MessageRole.ToolResult => "bi bi-arrow-return-right",
-				_ => "bi bi-chat-left-text"
+				MessageLevel.Success => "bi bi-check-circle",
+				MessageLevel.Warning => "bi bi-exclamation-triangle",
+				MessageLevel.Error => "bi bi-x-circle",
+				_ => "bi bi-info-circle"
 			};
+		}
+
+		return Role switch
+		{
+			MessageRole.User => "bi bi-person-circle",
+			MessageRole.Assistant => "bi bi-stars",
+			MessageRole.ToolUse => "bi bi-tools",
+			MessageRole.ToolResult => "bi bi-arrow-return-right",
+			_ => "bi bi-chat-left-text"
+		};
+	}
 }

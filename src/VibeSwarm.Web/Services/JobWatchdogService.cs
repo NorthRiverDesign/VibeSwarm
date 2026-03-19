@@ -7,6 +7,7 @@ using VibeSwarm.Shared.Providers;
 using VibeSwarm.Shared.Services;
 using VibeSwarm.Shared.Utilities;
 using VibeSwarm.Shared.VersionControl;
+using VibeSwarm.Shared;
 
 namespace VibeSwarm.Web.Services;
 
@@ -386,7 +387,7 @@ public class JobWatchdogService : BackgroundService
 
 		var preserveResult = await _versionControlService.PreserveChangesAsync(
 			workingDirectory,
-			$"VibeSwarm job {job.Id}: {reason}",
+			$"{AppConstants.AppName} job {job.Id}: {reason}",
 			cancellationToken);
 
 		if (!preserveResult.Success)

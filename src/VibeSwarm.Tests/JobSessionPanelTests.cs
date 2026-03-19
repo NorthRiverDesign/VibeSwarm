@@ -94,7 +94,7 @@ public sealed class JobSessionPanelTests
 					},
 					new()
 					{
-						Content = "[VibeSwarm] Still waiting for response... (waited 12s).",
+						Content = "[System] Still waiting for response... (waited 12s).",
 						Timestamp = DateTime.UtcNow.AddSeconds(-5)
 					}
 				}
@@ -107,7 +107,7 @@ public sealed class JobSessionPanelTests
 		Assert.Contains("1 messages", html);
 		Assert.Contains("First response chunk", html);
 		Assert.Contains("Waiting for CLI response (12s)...", html);
-		Assert.DoesNotContain("[VibeSwarm] Still waiting for response", html);
+		Assert.DoesNotContain("[System] Still waiting for response", html);
 	}
 
 	[Fact]
@@ -129,7 +129,7 @@ public sealed class JobSessionPanelTests
 				{
 					new()
 					{
-						Content = "[VibeSwarm] Process started (PID: 123). Waiting for CLI to initialize...",
+						Content = "[System] Process started (PID: 123). Waiting for CLI to initialize...",
 						Timestamp = DateTime.UtcNow.AddSeconds(-12)
 					},
 					new()
@@ -160,13 +160,13 @@ public sealed class JobSessionPanelTests
 		});
 
 		Assert.Contains("5 messages", html);
-		Assert.Contains("VibeSwarm", html);
+		Assert.Contains("System", html);
 		Assert.Contains("Provider", html);
 		Assert.Contains("bg-primary-subtle", html);
 		Assert.Contains("bg-success-subtle", html);
 		Assert.Contains("bg-warning-subtle", html);
 		Assert.Contains("Process started (PID: 123)", html);
-		Assert.Contains("[Connection] Connected to provider stream", html);
+		Assert.Contains("Connected to provider stream", html);
 	}
 
 	private sealed class NoOpJsRuntime : IJSRuntime
