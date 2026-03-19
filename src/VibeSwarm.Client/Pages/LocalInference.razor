@@ -1,15 +1,15 @@
-@page "/local-inference"
+@page "/inference"
 @attribute [Authorize]
 @inject IInferenceProviderService InferenceProviderService
 @inject IInferenceService InferenceService
 @inject NotificationService NotificationService
 
-<PageHeader Title="Local Inference" Subtitle="Manage your on-device inference provider and models" />
+<PageHeader Title="Inference" Subtitle="Manage your inference providers and models" />
 
 <div class="card">
 <div class="card-header bg-body-secondary d-flex align-items-center justify-content-between flex-wrap gap-2">
 <h5 class="mb-0 fw-semibold">
-<i class="bi bi-cpu me-2"></i>Local Inference
+<i class="bi bi-cpu me-2"></i>Inference
 </h5>
 @if (_inferenceProvider != null)
 {
@@ -39,12 +39,12 @@ else if (_inferenceProvider == null)
 <div class="text-center py-4">
 <i class="bi bi-cpu display-4 text-body-secondary mb-3 d-block"></i>
 <p class="text-body-secondary mb-3">
-No local inference provider configured. Set up Ollama or another local
-inference provider for lightweight AI tasks like generating commit messages
-and summarization.
+No inference provider configured. Set up Ollama, Grok, or another
+inference provider for AI tasks like idea generation, summarization,
+and commit messages.
 </p>
 <button class="btn btn-primary" @onclick="SetupInferenceProvider">
-<i class="bi bi-plus-lg me-1"></i>Set Up Local Inference
+<i class="bi bi-plus-lg me-1"></i>Set Up Inference
 </button>
 </div>
 }
@@ -58,18 +58,37 @@ else
 </div>
 <div class="col-12 col-md-6">
 <label for="inferenceProviderType" class="form-label">Provider Type</label>
-<select id="inferenceProviderType" class="form-select" @bind="_inferenceProvider.ProviderType">
+<select id="inferenceProviderType" class="form-select"
+   value="@_inferenceProvider.ProviderType"
+   @onchange="OnProviderTypeChanged">
 @foreach (var type in Enum.GetValues<InferenceProviderType>())
 {
 <option value="@type">@type</option>
 }
 </select>
 </div>
+<div class="col-12 col-md-6">
+<label for="inferenceApiKey" class="form-label">
+API Key
+@if (_inferenceProvider.ProviderType == InferenceProviderType.Grok)
+{
+<span class="text-danger">*</span>
+}
+</label>
+<input type="password" id="inferenceApiKey" class="form-control font-monospace"
+   @bind="_inferenceProvider.ApiKey"
+   placeholder="@(_inferenceProvider.ProviderType == InferenceProviderType.Grok ? "xai-..." : "(optional)")" />
+@if (_inferenceProvider.ProviderType == InferenceProviderType.Grok)
+{
+<div class="form-text">Required for Grok. Get your key from the X.AI console.</div>
+}
+</div>
 <div class="col-12">
 <label for="inferenceEndpoint" class="form-label">Endpoint URL</label>
 <div class="input-group">
 <input type="url" id="inferenceEndpoint" class="form-control font-monospace"
-   @bind="_inferenceProvider.Endpoint" placeholder="http://localhost:11434" />
+   @bind="_inferenceProvider.Endpoint"
+   placeholder="@(_inferenceProvider.ProviderType == InferenceProviderType.Grok ? "https://api.x.ai/v1" : "http://localhost:11434")" />
 <button type="button" class="btn btn-secondary" @onclick="TestInferenceConnection"
 disabled="@_isTestingInference" title="Test Connection">
 @if (_isTestingInference)
@@ -245,11 +264,35 @@ _ = CheckInferenceHealth();
 }
 catch (Exception ex)
 {
-NotificationService.ShowError($"Failed to load local inference: {ex.Message}");
+NotificationService.ShowError($"Failed to load inference: {ex.Message}");
 }
 finally
 {
 _isLoadingInference = false;
+}
+}
+
+private void OnProviderTypeChanged(ChangeEventArgs e)
+{
+if (_inferenceProvider == null) return;
+if (Enum.TryParse<InferenceProviderType>(e.Value?.ToString(), out var newType))
+{
+_inferenceProvider.ProviderType = newType;
+// Auto-set default endpoint when switching provider type
+_inferenceProvider.Endpoint = newType switch
+{
+InferenceProviderType.Grok => "https://api.x.ai/v1",
+_ => "http://localhost:11434"
+};
+// Auto-set default name
+if (string.IsNullOrWhiteSpace(_inferenceProvider.Name) || _inferenceProvider.Name == "Local Ollama" || _inferenceProvider.Name == "Grok (X.AI)")
+{
+_inferenceProvider.Name = newType switch
+{
+InferenceProviderType.Grok => "Grok (X.AI)",
+_ => "Local Ollama"
+};
+}
 }
 }
 

@@ -3,7 +3,7 @@
 @inject IIdeaService IdeaService
 @inject NotificationService NotificationService
 @using VibeSwarm.Shared.Data
-@using VibeSwarm.Shared.LocalInference
+@using VibeSwarm.Shared.Inference
 @using VibeSwarm.Shared.Models
 @using VibeSwarm.Shared.Providers
 @using VibeSwarm.Shared.Validation
@@ -187,7 +187,7 @@
 	<IdeaExpansionModal @bind-IsVisible="ShowExpansionModal" Idea="SelectedIdeaForExpansion" IsExpanding="IsExpandingIdea"
 						IsProcessing="IsProcessingExpansion" OnExpand="HandleExpandIdea" OnCancel="HandleCancelExpansion"
 						OnApprove="HandleApproveExpansion" OnReject="HandleRejectExpansion" AvailableModels="@AvailableLocalModels"
-						HasLocalInference="@HasLocalInference" AvailableProviders="@AvailableProviders" />
+						HasInference="@HasInference" AvailableProviders="@AvailableProviders" />
 
 	@* Start All Confirmation Modal *@
 	<ModalDialog @bind-IsVisible="_showStartAllModal" Title="Start All Ideas" Icon="play-fill"
@@ -224,9 +224,9 @@
 		</ModalDialog>
 
 	<SuggestIdeasModal @bind-IsVisible="_showSuggestIdeasModal"
-					   UseLocalInference="@_suggestUseLocalInference"
-					   UseLocalInferenceChanged="OnSuggestUseLocalInferenceChanged"
-					   HasLocalInference="@HasLocalInference"
+					   UseInference="@_suggestUseInference"
+					   UseInferenceChanged="OnSuggestUseInferenceChanged"
+					   HasInference="@HasInference"
 					   AvailableInferenceProviders="@AvailableInferenceProviders"
 					   AvailableProviders="@AvailableProviders"
 					   SelectedProviderId="@SelectedSuggestProviderId"
@@ -337,7 +337,7 @@
 	public List<DiscoveredModel> AvailableLocalModels { get; set; } = new();
 
 	[Parameter]
-	public bool HasLocalInference { get; set; }
+	public bool HasInference { get; set; }
 
 	[Parameter]
 	public List<Provider> AvailableProviders { get; set; } = new();
@@ -350,7 +350,7 @@
 	private bool IsSuggestingIdeas { get; set; }
 	private SuggestIdeasResult? _suggestResult;
 	private bool _showSuggestIdeasModal;
-	private bool _suggestUseLocalInference = true;
+	private bool _suggestUseInference = true;
 	private Guid? _selectedInferenceProviderId;
 	private string? _selectedInferenceModelId;
 	private Guid? _selectedConfiguredProviderId;
@@ -598,13 +598,13 @@
 		? "Ideas expand and queue automatically."
 		: "Ideas queue automatically from their current text.";
 
-	private bool CanSuggestIdeas => HasLocalInference || AvailableProviders.Any();
+	private bool CanSuggestIdeas => HasInference || AvailableProviders.Any();
 
-	private Guid? SelectedSuggestProviderId => _suggestUseLocalInference
+	private Guid? SelectedSuggestProviderId => _suggestUseInference
 		? _selectedInferenceProviderId
 		: _selectedConfiguredProviderId;
 
-	private string? SelectedSuggestModelId => _suggestUseLocalInference
+	private string? SelectedSuggestModelId => _suggestUseInference
 		? _selectedInferenceModelId
 		: _selectedConfiguredModelId;
 
@@ -690,18 +690,18 @@
 		if (!CanSuggestIdeas)
 		{
 			NotificationService.ShowWarning(
-				"No enabled suggestion sources are available. Add one under Settings → Providers or Settings → Local Inference before suggesting ideas.",
+				"No enabled suggestion sources are available. Add one under Settings → Providers or Settings → Inference before suggesting ideas.",
 				"Suggestion Source Required");
 			return;
 		}
 
-		if (_suggestUseLocalInference && !HasLocalInference && AvailableProviders.Any())
+		if (_suggestUseInference && !HasInference && AvailableProviders.Any())
 		{
-			_suggestUseLocalInference = false;
+			_suggestUseInference = false;
 		}
-		else if (!_suggestUseLocalInference && !AvailableProviders.Any() && HasLocalInference)
+		else if (!_suggestUseInference && !AvailableProviders.Any() && HasInference)
 		{
-			_suggestUseLocalInference = true;
+			_suggestUseInference = true;
 		}
 
 		EnsureSuggestProviderSelection();
@@ -714,16 +714,16 @@
 		_showSuggestIdeasModal = false;
 	}
 
-	private Task OnSuggestUseLocalInferenceChanged(bool useLocalInference)
+	private Task OnSuggestUseInferenceChanged(bool useInference)
 	{
-		_suggestUseLocalInference = useLocalInference;
+		_suggestUseInference = useInference;
 		EnsureSuggestProviderSelection();
 		return Task.CompletedTask;
 	}
 
 	private Task OnSelectedSuggestProviderChanged(Guid? providerId)
 	{
-		if (_suggestUseLocalInference)
+		if (_suggestUseInference)
 		{
 			_selectedInferenceProviderId = providerId;
 		}
@@ -741,7 +741,7 @@
 			? null
 			: modelId.Trim();
 
-		if (_suggestUseLocalInference)
+		if (_suggestUseInference)
 		{
 			_selectedInferenceModelId = normalizedModelId;
 		}
@@ -764,7 +764,7 @@
 		if (!SelectedSuggestProviderId.HasValue)
 		{
 			NotificationService.ShowWarning(
-				_suggestUseLocalInference
+				_suggestUseInference
 					? "Choose an inference provider before generating ideas."
 					: "Choose a provider before generating ideas.",
 				"Provider Required");
@@ -780,7 +780,7 @@
 		{
 			var result = await IdeaService.SuggestIdeasFromCodebaseAsync(CurrentProjectId, new SuggestIdeasRequest
 			{
-				UseLocalInference = _suggestUseLocalInference,
+				UseInference = _suggestUseInference,
 				ProviderId = SelectedSuggestProviderId,
 				ModelId = SelectedSuggestModelId,
 				IdeaCount = _suggestIdeaCount
@@ -806,13 +806,13 @@
 			{
 				var title = result.Stage switch
 				{
-					SuggestIdeasStage.NotConfigured => _suggestUseLocalInference ? "Inference Not Configured" : "Provider Not Configured",
+					SuggestIdeasStage.NotConfigured => _suggestUseInference ? "Inference Not Configured" : "Provider Not Configured",
 					SuggestIdeasStage.ProviderNotFound => "Provider Unavailable",
 					SuggestIdeasStage.ModelNotFound => "Model Unavailable",
 					SuggestIdeasStage.ProviderUnreachable => "Provider Unreachable",
 					SuggestIdeasStage.NoModel => "No Model Assigned",
 					SuggestIdeasStage.RepoMapFailed => "Directory Scan Failed",
-					SuggestIdeasStage.GenerateFailed => _suggestUseLocalInference ? "Inference Failed" : "Provider Failed",
+					SuggestIdeasStage.GenerateFailed => _suggestUseInference ? "Inference Failed" : "Provider Failed",
 					SuggestIdeasStage.ParseFailed => "Unexpected Response",
 					_ => "Suggestion Failed"
 				};
@@ -859,7 +859,7 @@
 
 	private void EnsureSuggestProviderSelection()
 	{
-		if (_suggestUseLocalInference)
+		if (_suggestUseInference)
 		{
 			_selectedInferenceProviderId ??= AvailableInferenceProviders
 				.OrderBy(provider => provider.Name)

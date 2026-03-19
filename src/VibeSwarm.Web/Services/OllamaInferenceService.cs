@@ -3,7 +3,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using VibeSwarm.Shared.Data;
-using VibeSwarm.Shared.LocalInference;
+using VibeSwarm.Shared.Inference;
 using VibeSwarm.Shared.Services;
 
 namespace VibeSwarm.Web.Services;
@@ -172,7 +172,7 @@ public class OllamaInferenceService : IInferenceService
 
 	private HttpClient CreateClient(TimeSpan timeout)
 	{
-		var client = _httpClientFactory.CreateClient("LocalInference");
+		var client = _httpClientFactory.CreateClient("Inference");
 		client.Timeout = timeout;
 		return client;
 	}
@@ -344,7 +344,7 @@ public class OllamaInferenceService : IInferenceService
 			return new InferenceResponse
 			{
 				Success = false,
-				Error = $"Timed out waiting for local inference after {_runtimeOptions.GenerationTimeout.TotalMinutes:F0} minutes. Slow devices may need a smaller model or more available memory.",
+				Error = $"Timed out waiting for inference after {_runtimeOptions.GenerationTimeout.TotalMinutes:F0} minutes. Slow devices may need a smaller model or more available memory.",
 				ModelUsed = model
 			};
 		}
@@ -361,7 +361,7 @@ public class OllamaInferenceService : IInferenceService
 		}
 		catch (OperationCanceledException) when (!ct.IsCancellationRequested && timeoutCts.IsCancellationRequested)
 		{
-			throw new TimeoutException($"Timed out waiting {timeout.TotalMinutes:F0} minute(s) for local inference to respond.");
+			throw new TimeoutException($"Timed out waiting {timeout.TotalMinutes:F0} minute(s) for inference provider to respond.");
 		}
 	}
 
@@ -400,7 +400,7 @@ public class OllamaInferenceService : IInferenceService
 		=> $"Model '{model}' did not return any response data before the connection closed. The inference server may have crashed or restarted while loading the model.";
 
 	private string BuildIncompleteStreamMessage(string model)
-		=> $"Model '{model}' stopped before finishing its response. This often means local inference crashed, the device ran out of memory, or the Ollama process was restarted.";
+		=> $"Model '{model}' stopped before finishing its response. This often means inference server crashed, the device ran out of memory, or the Ollama process was restarted.";
 
 	private async Task<string> ResolveEndpointAsync(CancellationToken ct)
 	{

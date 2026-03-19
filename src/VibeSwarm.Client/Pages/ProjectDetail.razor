@@ -12,7 +12,7 @@
 @inject NotificationService NotificationService
 @implements IAsyncDisposable
 @using VibeSwarm.Client.Models
-@using VibeSwarm.Shared.LocalInference
+@using VibeSwarm.Shared.Inference
 @using VibeSwarm.Shared.Models
 @using VibeSwarm.Shared.Services
 @using VibeSwarm.Shared.Utilities
@@ -127,7 +127,7 @@ else
                             OnDeleteIdea="DeleteIdea" OnCopyIdea="CopyIdea" OnMoveIdea="MoveIdea" OnStartSingleIdea="StartSingleIdea"
                             OnExpandIdea="ExpandIdea" OnCancelExpansion="CancelIdeaExpansion" OnApproveExpansion="ApproveIdeaExpansion"
                             OnRejectExpansion="RejectIdeaExpansion" AvailableLocalModels="@_availableLocalModels"
-                            HasLocalInference="@_hasLocalInference" AvailableProviders="@Providers.Where(p => p.IsEnabled).ToList()"
+                            HasInference="@_hasInference" AvailableProviders="@Providers.Where(p => p.IsEnabled).ToList()"
                             AvailableInferenceProviders="@_availableInferenceProviders"
                             OnSuggestIdeas="SuggestIdeasFromCodebase" OnPreviousPage="LoadPreviousIdeasPage"
                             OnNextPage="LoadNextIdeasPage" />
@@ -625,10 +625,10 @@ else
     private CancellationTokenSource? _expandCts;
     private Guid? _expandingIdeaId;
 
-    // Local inference state for idea expansion
+    // Inference state for idea expansion
     private List<DiscoveredModel> _availableLocalModels { get; set; } = new();
     private List<InferenceProvider> _availableInferenceProviders { get; set; } = new();
-    private bool _hasLocalInference { get; set; }
+    private bool _hasInference { get; set; }
 
     private bool HasActiveJobs => ProjectActiveJobsCount > 0;
     private bool HasCompletedJobs => ProjectCompletedJobsCount > 0;
@@ -1014,8 +1014,8 @@ TimeSpan.FromSeconds(10) })
                 await LoadModelsForProvider(defaultProvider.Id);
             }
 
-            // Load local inference models for idea expansion
-            await LoadLocalInferenceModels();
+            // Load inference models for idea expansion
+            await LoadInferenceModels();
 
             // Load auto-pilot status for the tab badge
             try { _autoPilotStatus = await AutoPilotService.GetStatusAsync(ProjectId); } catch { /* non-critical */ }
@@ -1026,14 +1026,14 @@ TimeSpan.FromSeconds(10) })
         }
     }
 
-    private async Task LoadLocalInferenceModels()
+    private async Task LoadInferenceModels()
     {
         try
         {
             _availableInferenceProviders = (await InferenceProviderService.GetEnabledAsync()).ToList();
-            _hasLocalInference = _availableInferenceProviders.Any();
+            _hasInference = _availableInferenceProviders.Any();
 
-            if (_hasLocalInference)
+            if (_hasInference)
             {
                 var health = await InferenceService.CheckHealthAsync();
                 if (health.IsAvailable)
@@ -1044,8 +1044,8 @@ TimeSpan.FromSeconds(10) })
         }
         catch
         {
-            // Non-critical - local inference is optional
-            _hasLocalInference = false;
+            // Non-critical - inference is optional
+            _hasInference = false;
             _availableInferenceProviders = new();
             _availableLocalModels = new();
         }

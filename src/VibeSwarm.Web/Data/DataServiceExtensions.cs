@@ -58,9 +58,11 @@ public static class DataServiceExtensions
 		services.AddScoped<ICommonProviderSetupService, CommonProviderSetupService>();
 		services.AddScoped<ProviderCliDetectionService>();
 		services.AddSingleton<IFileSystemService, FileSystemService>();
-        services.AddHttpClient("LocalInference");
+        services.AddHttpClient("Inference");
         services.AddScoped<IInferenceProviderService, InferenceProviderService>();
-        services.AddScoped<IInferenceService, OllamaInferenceService>();
+        services.AddScoped<OllamaInferenceService>();
+        services.AddScoped<GrokInferenceService>();
+        services.AddScoped<IInferenceService, InferenceServiceDispatcher>();
         services.AddScoped<AgentDetectionService>();
 
         return services;

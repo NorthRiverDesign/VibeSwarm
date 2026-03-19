@@ -381,7 +381,7 @@ public class AutoPilotService : IAutoPilotService
 	{
 		var request = new SuggestIdeasRequest
 		{
-			UseLocalInference = !loop.ProviderId.HasValue, // Use local inference if no provider specified
+			UseInference = !loop.ProviderId.HasValue, // Use inference if no provider specified
 			ProviderId = loop.ProviderId,
 			ModelId = loop.ModelId,
 			IdeaCount = 1

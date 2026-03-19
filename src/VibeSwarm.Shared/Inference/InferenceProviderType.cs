@@ -1,10 +1,11 @@
-namespace VibeSwarm.Shared.LocalInference;
+namespace VibeSwarm.Shared.Inference;
 
 /// <summary>
-/// Supported local inference provider types.
+/// Supported inference provider types.
 /// </summary>
 public enum InferenceProviderType
 {
 	Ollama,
+	Grok,
 	// Future: LMStudio, LocalAI, vLLM
 }

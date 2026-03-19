@@ -1,7 +1,7 @@
 using System.Net;
 using System.Text;
 using VibeSwarm.Shared.Data;
-using VibeSwarm.Shared.LocalInference;
+using VibeSwarm.Shared.Inference;
 using VibeSwarm.Shared.Services;
 using VibeSwarm.Web.Services;
 
@@ -81,7 +81,7 @@ public sealed class OllamaInferenceServiceTests
 
 		Assert.False(response.Success);
 		Assert.Equal("tinyllama", response.ModelUsed);
-		Assert.Contains("Timed out waiting for local inference", response.Error, StringComparison.OrdinalIgnoreCase);
+		Assert.Contains("Timed out waiting for inference", response.Error, StringComparison.OrdinalIgnoreCase);
 	}
 
 	private static OllamaInferenceService CreateService(

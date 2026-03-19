@@ -1,11 +1,11 @@
 using System.ComponentModel.DataAnnotations;
-using VibeSwarm.Shared.LocalInference;
+using VibeSwarm.Shared.Inference;
 
 namespace VibeSwarm.Shared.Data;
 
 /// <summary>
-/// Represents a local inference provider (e.g., Ollama) used for lightweight AI tasks
-/// such as generating commit messages, summarization, etc.
+/// Represents an inference provider (e.g., Ollama, Grok) used for AI tasks
+/// such as idea generation, summarization, etc.
 /// Separate from the main coding Provider system.
 /// </summary>
 public class InferenceProvider

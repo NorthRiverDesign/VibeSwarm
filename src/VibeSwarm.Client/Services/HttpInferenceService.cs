@@ -1,5 +1,5 @@
 using System.Net.Http.Json;
-using VibeSwarm.Shared.LocalInference;
+using VibeSwarm.Shared.Inference;
 using VibeSwarm.Shared.Services;
 
 namespace VibeSwarm.Client.Services;

@@ -3,7 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using VibeSwarm.Shared.Data;
-using VibeSwarm.Shared.LocalInference;
+using VibeSwarm.Shared.Inference;
 using VibeSwarm.Shared.Models;
 using VibeSwarm.Shared.Providers;
 using VibeSwarm.Shared.Services;
@@ -330,7 +330,7 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 	}
 
 	[Fact]
-	public async Task SuggestIdeasFromCodebaseAsync_UsesConfiguredProviderWhenLocalInferenceIsNotSelected()
+	public async Task SuggestIdeasFromCodebaseAsync_UsesConfiguredProviderWhenInferenceIsNotSelected()
 	{
 		await using var dbContext = CreateDbContext();
 		var workingPath = Path.Combine(Path.GetTempPath(), $"vibeswarm-provider-suggestion-{Guid.NewGuid():N}");
@@ -383,7 +383,7 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 			var ideaService = CreateIdeaService(dbContext, provider, providerInstance);
 			var result = await ideaService.SuggestIdeasFromCodebaseAsync(project.Id, new SuggestIdeasRequest
 			{
-				UseLocalInference = false,
+				UseInference = false,
 				ProviderId = provider.Id,
 				ModelId = providerModel.ModelId,
 				IdeaCount = 2

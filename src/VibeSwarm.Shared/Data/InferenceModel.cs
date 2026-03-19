@@ -3,7 +3,7 @@ using System.ComponentModel.DataAnnotations;
 namespace VibeSwarm.Shared.Data;
 
 /// <summary>
-/// Represents an AI model available from a local inference provider.
+/// Represents an AI model available from a inference provider.
 /// Models can be assigned to specific task types (e.g., commit messages, summarization).
 /// </summary>
 public class InferenceModel

@@ -6,7 +6,7 @@ using Microsoft.JSInterop;
 using VibeSwarm.Client.Pages;
 using VibeSwarm.Client.Services;
 using VibeSwarm.Shared.Data;
-using VibeSwarm.Shared.LocalInference;
+using VibeSwarm.Shared.Inference;
 using VibeSwarm.Shared.Models;
 using VibeSwarm.Shared.Services;
 
@@ -34,8 +34,8 @@ services.AddSingleton<NotificationService>();
 			return output.ToHtmlString();
 		});
 
-Assert.Contains("Local Inference", html);
-Assert.Contains("Set Up Local Inference", html);
+Assert.Contains("Inference", html);
+Assert.Contains("Set Up Inference", html);
 Assert.DoesNotContain("App Settings", html);
 }
 
@@ -60,8 +60,8 @@ return output.ToHtmlString();
 });
 
 Assert.Contains("App Settings", html);
-Assert.DoesNotContain("Set Up Local Inference", html);
-Assert.DoesNotContain("Local Inference", html);
+Assert.DoesNotContain("Set Up Inference", html);
+Assert.DoesNotContain("inference provider", html);
 }
 
 	private sealed class FakeInferenceProviderService : IInferenceProviderService

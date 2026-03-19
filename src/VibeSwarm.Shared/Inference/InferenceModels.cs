@@ -1,4 +1,4 @@
-namespace VibeSwarm.Shared.LocalInference;
+namespace VibeSwarm.Shared.Inference;
 
 /// <summary>
 /// A model discovered from an inference provider's API.
@@ -45,6 +45,11 @@ public class InferenceRequest
 	/// Optional: explicitly specify the endpoint. If null, the service resolves from provider config.
 	/// </summary>
 	public string? Endpoint { get; set; }
+
+	/// <summary>
+	/// Optional: explicitly specify the provider type for routing to the correct backend.
+	/// </summary>
+	public InferenceProviderType? ProviderType { get; set; }
 }
 
 /// <summary>

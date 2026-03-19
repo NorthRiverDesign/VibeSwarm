@@ -56,8 +56,8 @@ public sealed class SuggestIdeasModalTests
 			var parameters = ParameterView.FromDictionary(new Dictionary<string, object?>
 			{
 				[nameof(SuggestIdeasModal.IsVisible)] = true,
-				[nameof(SuggestIdeasModal.UseLocalInference)] = true,
-				[nameof(SuggestIdeasModal.HasLocalInference)] = true,
+				[nameof(SuggestIdeasModal.UseInference)] = true,
+				[nameof(SuggestIdeasModal.HasInference)] = true,
 				[nameof(SuggestIdeasModal.AvailableInferenceProviders)] = inferenceProviders,
 				[nameof(SuggestIdeasModal.AvailableProviders)] = providers,
 				[nameof(SuggestIdeasModal.SelectedProviderId)] = inferenceProviders[0].Id,
@@ -70,7 +70,7 @@ public sealed class SuggestIdeasModalTests
 		});
 
 		Assert.Contains("Suggest Ideas", html);
-		Assert.Contains("Use local inference", html);
+		Assert.Contains("Use inference", html);
 		Assert.Contains("Inference Provider", html);
 		Assert.Contains("Model", html);
 		Assert.Contains("Ideas to Generate", html);

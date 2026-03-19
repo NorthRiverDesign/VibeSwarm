@@ -1,5 +1,5 @@
 @* Modal for reviewing and editing AI-expanded idea specifications *@
-@using VibeSwarm.Shared.LocalInference
+@using VibeSwarm.Shared.Inference
 @using VibeSwarm.Shared.Models
 @using VibeSwarm.Shared.Providers
 @using VibeSwarm.Shared.Validation
@@ -45,10 +45,10 @@
 				</div>
 
 				@* Show model selection for retry *@
-				<ExpansionModelSelector UseLocalInference="@_useLocalInference"
-										UseLocalInferenceChanged="@((v) => _useLocalInference = v)" SelectedModelName="@_selectedModelName"
+				<ExpansionModelSelector UseInference="@_useInference"
+										UseInferenceChanged="@((v) => _useInference = v)" SelectedModelName="@_selectedModelName"
 										SelectedModelNameChanged="@((v) => _selectedModelName = v)" AvailableModels="@AvailableModels"
-										HasLocalInference="@HasLocalInference" AvailableProviders="@AvailableProviders"
+										HasInference="@HasInference" AvailableProviders="@AvailableProviders"
 										SelectedProviderId="@_selectedProviderId" SelectedProviderIdChanged="@((v) => _selectedProviderId = v)" />
 
 				<div class="d-flex gap-2 mt-3">
@@ -145,10 +145,10 @@
 					</p>
 
 					@* Model selection *@
-					<ExpansionModelSelector UseLocalInference="@_useLocalInference"
-											UseLocalInferenceChanged="@((v) => _useLocalInference = v)" SelectedModelName="@_selectedModelName"
+					<ExpansionModelSelector UseInference="@_useInference"
+											UseInferenceChanged="@((v) => _useInference = v)" SelectedModelName="@_selectedModelName"
 											SelectedModelNameChanged="@((v) => _selectedModelName = v)" AvailableModels="@AvailableModels"
-											HasLocalInference="@HasLocalInference" AvailableProviders="@AvailableProviders"
+											HasInference="@HasInference" AvailableProviders="@AvailableProviders"
 											SelectedProviderId="@_selectedProviderId"
 											SelectedProviderIdChanged="@((v) => _selectedProviderId = v)" />
 
@@ -202,14 +202,14 @@
 	public List<DiscoveredModel> AvailableModels { get; set; } = new();
 
 	[Parameter]
-	public bool HasLocalInference { get; set; }
+	public bool HasInference { get; set; }
 
 	[Parameter]
 	public List<Provider> AvailableProviders { get; set; } = new();
 
 	private bool IsEditMode { get; set; }
 	private string? EditedDescription { get; set; }
-	private bool _useLocalInference;
+	private bool _useInference;
 	private string? _selectedModelName;
 	private string? _selectedProviderId;
 
@@ -243,15 +243,15 @@
 		if (Idea != null)
 		{
 			Guid? providerId = null;
-			if (!_useLocalInference && Guid.TryParse(_selectedProviderId, out var parsed))
+			if (!_useInference && Guid.TryParse(_selectedProviderId, out var parsed))
 			{
 				providerId = parsed;
 			}
 
 			var request = new IdeaExpansionRequest
 			{
-				UseLocalInference = _useLocalInference,
-				ModelName = _useLocalInference ? _selectedModelName : null,
+				UseInference = _useInference,
+				ModelName = _useInference ? _selectedModelName : null,
 				ProviderId = providerId
 			};
 			await OnExpand.InvokeAsync(request);

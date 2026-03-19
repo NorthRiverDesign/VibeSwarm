@@ -6,7 +6,7 @@ using Microsoft.JSInterop;
 using VibeSwarm.Client.Components.Ideas;
 using VibeSwarm.Client.Services;
 using VibeSwarm.Shared.Data;
-using VibeSwarm.Shared.LocalInference;
+using VibeSwarm.Shared.Inference;
 using VibeSwarm.Shared.Models;
 using VibeSwarm.Shared.Providers;
 using VibeSwarm.Shared.Services;
@@ -44,7 +44,7 @@ public sealed class IdeasPanelTests
 				[nameof(IdeasPanel.UnprocessedIdeasCount)] = 3,
 				[nameof(IdeasPanel.IsPageLoading)] = true,
 				[nameof(IdeasPanel.HasDefaultProvider)] = false,
-				[nameof(IdeasPanel.HasLocalInference)] = true,
+				[nameof(IdeasPanel.HasInference)] = true,
 				[nameof(IdeasPanel.CurrentAutoExpandIdeas)] = true,
 				[nameof(IdeasPanel.AvailableInferenceProviders)] = new List<InferenceProvider>(),
 				[nameof(IdeasPanel.AvailableProviders)] = new List<Provider>()
@@ -69,7 +69,7 @@ public sealed class IdeasPanelTests
 	}
 
 	[Fact]
-	public async Task RenderedIdeasPanel_ShowsSuggestButton_WhenConfiguredProvidersExistWithoutLocalInference()
+	public async Task RenderedIdeasPanel_ShowsSuggestButton_WhenConfiguredProvidersExistWithoutInference()
 	{
 		var services = new ServiceCollection();
 		services.AddLogging();
@@ -84,7 +84,7 @@ public sealed class IdeasPanelTests
 		{
 			var parameters = ParameterView.FromDictionary(new Dictionary<string, object?>
 			{
-				[nameof(IdeasPanel.HasLocalInference)] = false,
+				[nameof(IdeasPanel.HasInference)] = false,
 				[nameof(IdeasPanel.AvailableInferenceProviders)] = new List<InferenceProvider>(),
 				[nameof(IdeasPanel.AvailableProviders)] =
 					new List<Provider> { new() { Id = Guid.NewGuid(), Name = "Copilot", Type = ProviderType.Copilot, IsEnabled = true } }

@@ -3,7 +3,7 @@ using System.ComponentModel.DataAnnotations;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using VibeSwarm.Shared.Data;
-using VibeSwarm.Shared.LocalInference;
+using VibeSwarm.Shared.Inference;
 using VibeSwarm.Shared.Models;
 using VibeSwarm.Shared.Providers;
 using VibeSwarm.Shared.Validation;
@@ -730,12 +730,12 @@ A concise one-line description of what was implemented (max 72 chars)
 
 		try
 		{
-			var useLocalInference = request?.UseLocalInference ?? false;
+			var useInference = request?.UseInference ?? false;
 			var (providerId, modelName, usePlanningMode) = ResolveProviderExpansionRequest(idea.Project, request);
 
-			if (useLocalInference)
+			if (useInference)
 			{
-				await ExpandWithLocalInferenceAsync(idea, modelName, expandToken);
+				await ExpandWithInferenceAsync(idea, modelName, expandToken);
 			}
 			else
 			{
@@ -906,7 +906,7 @@ A concise one-line description of what was implemented (max 72 chars)
 		var requestedModelName = string.IsNullOrWhiteSpace(request?.ModelName)
 			? null
 			: request.ModelName.Trim();
-		if (request?.UseLocalInference == true)
+		if (request?.UseInference == true)
 		{
 			return (request.ProviderId, requestedModelName, false);
 		}
@@ -973,14 +973,14 @@ Return only the plan/specification. Do not implement the feature and do not incl
 	}
 
 	/// <summary>
-	/// Expands an idea using a local inference provider (e.g., Ollama)
+	/// Expands an idea using a inference provider (e.g., Ollama)
 	/// </summary>
-	private async Task ExpandWithLocalInferenceAsync(Idea idea, string? modelName, CancellationToken cancellationToken)
+	private async Task ExpandWithInferenceAsync(Idea idea, string? modelName, CancellationToken cancellationToken)
 	{
 		if (_inferenceService == null)
 		{
 			idea.ExpansionStatus = IdeaExpansionStatus.Failed;
-			idea.ExpansionError = "Local inference service is not available";
+			idea.ExpansionError = "Inference service is not available";
 			return;
 		}
 
@@ -1002,7 +1002,7 @@ Return only the plan/specification. Do not implement the feature and do not incl
 			{
 				idea.ExpansionStatus = IdeaExpansionStatus.PendingReview;
 				idea.ExpandedAt = DateTime.UtcNow;
-				_logger.LogInformation("Successfully expanded idea {IdeaId} using local inference (model: {Model})",
+				_logger.LogInformation("Successfully expanded idea {IdeaId} using inference (model: {Model})",
 					idea.Id, response.ModelUsed ?? modelName ?? "default");
 			}
 			else
@@ -1014,8 +1014,8 @@ Return only the plan/specification. Do not implement the feature and do not incl
 		else
 		{
 			idea.ExpansionStatus = IdeaExpansionStatus.Failed;
-			idea.ExpansionError = response.Error ?? "No response from local inference";
-			_logger.LogWarning("Failed to expand idea {IdeaId} with local inference: {Error}", idea.Id, idea.ExpansionError);
+			idea.ExpansionError = response.Error ?? "No response from inference";
+			_logger.LogWarning("Failed to expand idea {IdeaId} with inference: {Error}", idea.Id, idea.ExpansionError);
 		}
 	}
 
@@ -1172,13 +1172,13 @@ Keep the specification concise but complete. Focus on actionable implementation 
 	{
 		var normalizedRequest = NormalizeSuggestIdeasRequest(request);
 
-		if (normalizedRequest.UseLocalInference && _inferenceService == null)
+		if (normalizedRequest.UseInference && _inferenceService == null)
 		{
-			_logger.LogWarning("Local inference service is not configured for project {ProjectId}", projectId);
+			_logger.LogWarning("Inference service is not configured for project {ProjectId}", projectId);
 			return new SuggestIdeasResult
 			{
 				Stage = SuggestIdeasStage.NotConfigured,
-				Message = "No local inference service is configured. Add a provider under Settings → Local Inference."
+				Message = "No inference service is configured. Add a provider under Settings → Inference."
 			};
 		}
 
@@ -1218,7 +1218,7 @@ Keep the specification concise but complete. Focus on actionable implementation 
 			return new SuggestIdeasResult
 			{
 				Stage = SuggestIdeasStage.ModelNotFound,
-				Message = request.UseLocalInference
+				Message = request.UseInference
 					? "Choose an inference provider before selecting a specific model."
 					: "Choose a provider before selecting a specific model."
 			};
@@ -1251,8 +1251,8 @@ Keep the specification concise but complete. Focus on actionable implementation 
 		var prompt = BuildCodebaseSuggestionPrompt(repoMap, project.Name, project.Description, project.PromptContext, request.IdeaCount);
 		const string systemPrompt = "You are a senior software engineer performing a codebase review. Identify concrete, actionable improvements. Return only a plain list of ideas, one per line starting with \"- \". No explanations or headers.";
 
-		var generationResult = request.UseLocalInference
-			? await SuggestIdeasWithLocalInferenceAsync(projectId, request, prompt, systemPrompt, cancellationToken)
+		var generationResult = request.UseInference
+			? await SuggestIdeasWithInferenceAsync(projectId, request, prompt, systemPrompt, cancellationToken)
 			: await SuggestIdeasWithProviderAsync(projectId, project, request, prompt, cancellationToken);
 
 		if (!generationResult.Result.Success)
@@ -1323,7 +1323,7 @@ Keep the specification concise but complete. Focus on actionable implementation 
 		};
 	}
 
-	private async Task<SuggestionGenerationResult> SuggestIdeasWithLocalInferenceAsync(
+	private async Task<SuggestionGenerationResult> SuggestIdeasWithInferenceAsync(
 		Guid projectId,
 		SuggestIdeasRequest request,
 		string prompt,
@@ -1348,7 +1348,7 @@ Keep the specification concise but complete. Focus on actionable implementation 
 			}
 		}
 
-		var providerDisplayName = selectedProvider?.Name ?? "Local inference provider";
+		var providerDisplayName = selectedProvider?.Name ?? "Inference provider";
 		var providerEndpoint = selectedProvider?.Endpoint;
 		InferenceModel? selectedModel = null;
 
@@ -1377,7 +1377,7 @@ Keep the specification concise but complete. Focus on actionable implementation 
 					return SuggestionGenerationResult.Fail(new SuggestIdeasResult
 					{
 						Stage = SuggestIdeasStage.NoModel,
-						Message = $"No model is assigned to the \"suggest\" or \"default\" task for {selectedProvider.Name}. Assign one under Settings → Local Inference."
+						Message = $"No model is assigned to the \"suggest\" or \"default\" task for {selectedProvider.Name}. Assign one under Settings → Inference."
 					});
 				}
 			}
@@ -1415,7 +1415,7 @@ Keep the specification concise but complete. Focus on actionable implementation 
 		try
 		{
 			_logger.LogInformation(
-				"Sending codebase suggestion request to local inference for project {ProjectId} using provider {Provider} requesting {Count} ideas",
+				"Sending codebase suggestion request to inference for project {ProjectId} using provider {Provider} requesting {Count} ideas",
 				projectId,
 				providerDisplayName,
 				request.IdeaCount);
@@ -1428,7 +1428,8 @@ Keep the specification concise but complete. Focus on actionable implementation 
 					Prompt = prompt,
 					SystemPrompt = systemPrompt,
 					Endpoint = selectedProvider.Endpoint,
-					Model = selectedModel!.ModelId
+					Model = selectedModel!.ModelId,
+					ProviderType = selectedProvider.ProviderType
 				}, cancellationToken);
 			}
 			else
@@ -1468,7 +1469,7 @@ Keep the specification concise but complete. Focus on actionable implementation 
 			{
 				Stage = isNoModel ? SuggestIdeasStage.NoModel : SuggestIdeasStage.GenerateFailed,
 				Message = isNoModel
-					? "No model is assigned to the \"suggest\" or \"default\" task. Go to Settings → Local Inference to assign a model."
+					? "No model is assigned to the \"suggest\" or \"default\" task. Go to Settings → Inference to assign a model."
 					: $"The model did not return a usable response: {error}",
 				ModelUsed = inferenceResponse.ModelUsed,
 				InferenceDurationMs = inferenceResponse.DurationMs,
@@ -1733,7 +1734,7 @@ Keep the specification concise but complete. Focus on actionable implementation 
 	{
 		return new SuggestIdeasRequest
 		{
-			UseLocalInference = request?.UseLocalInference ?? true,
+			UseInference = request?.UseInference ?? true,
 			ProviderId = request?.ProviderId,
 			ModelId = string.IsNullOrWhiteSpace(request?.ModelId) ? null : request.ModelId.Trim(),
 			IdeaCount = Math.Clamp(request?.IdeaCount ?? SuggestIdeasRequest.DefaultIdeaCount, SuggestIdeasRequest.MinIdeaCount, SuggestIdeasRequest.MaxIdeaCount)

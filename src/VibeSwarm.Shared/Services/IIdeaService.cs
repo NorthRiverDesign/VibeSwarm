@@ -128,10 +128,10 @@ public interface IIdeaService
 	/// <summary>
 	/// Uses AI to expand a brief idea into a detailed specification.
 	/// The expanded spec is stored for user review before converting to a job.
-	/// Supports both CLI coding providers and local inference providers.
+	/// Supports both CLI coding providers and inference providers.
 	/// </summary>
 	/// <param name="ideaId">The idea to expand</param>
-	/// <param name="request">Optional expansion options (local inference, model selection)</param>
+	/// <param name="request">Optional expansion options (inference, model selection)</param>
 	/// <param name="cancellationToken">Cancellation token</param>
 	/// <returns>The updated idea with expansion status</returns>
 	Task<Idea?> ExpandIdeaAsync(Guid ideaId, IdeaExpansionRequest? request = null, CancellationToken cancellationToken = default);
@@ -164,7 +164,7 @@ public interface IIdeaService
 
 	/// <summary>
 	/// Uses local AI inference to scan the project directory and suggest feature ideas or improvements.
-	/// Requires a configured and available local inference provider.
+	/// Requires a configured and available inference provider.
 	/// Returns a <see cref="SuggestIdeasResult"/> that always carries a diagnostic stage and message,
 	/// even on failure, so the caller can surface precise feedback to the user.
 	/// </summary>

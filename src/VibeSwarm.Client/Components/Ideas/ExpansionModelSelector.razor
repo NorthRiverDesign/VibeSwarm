@@ -1,20 +1,20 @@
 @* Reusable model selection component for idea expansion *@
-@using VibeSwarm.Shared.LocalInference
+@using VibeSwarm.Shared.Inference
 @using VibeSwarm.Shared.Providers
 
 <div class="text-start mb-2">
-	@if (HasLocalInference)
+	@if (HasInference)
 	{
 		<div class="form-check form-switch mb-2">
-			<input class="form-check-input" type="checkbox" id="useLocalInference" checked="@UseLocalInference"
-				   @onchange="HandleToggleLocalInference">
-				<label class="form-check-label" for="useLocalInference">
-					<i class="bi bi-pc-display me-1"></i>Use local inference
+			<input class="form-check-input" type="checkbox" id="useInference" checked="@UseInference"
+				   @onchange="HandleToggleInference">
+				<label class="form-check-label" for="useInference">
+					<i class="bi bi-pc-display me-1"></i>Use inference
 				</label>
 			</div>
 		}
 
-		@if (UseLocalInference)
+		@if (UseInference)
 		{
 			@if (AvailableModels.Any())
 			{
@@ -85,10 +85,10 @@
 
 @code {
 	[Parameter]
-	public bool UseLocalInference { get; set; }
+	public bool UseInference { get; set; }
 
 	[Parameter]
-	public EventCallback<bool> UseLocalInferenceChanged { get; set; }
+	public EventCallback<bool> UseInferenceChanged { get; set; }
 
 	[Parameter]
 	public string? SelectedModelName { get; set; }
@@ -100,7 +100,7 @@
 	public List<DiscoveredModel> AvailableModels { get; set; } = new();
 
 	[Parameter]
-	public bool HasLocalInference { get; set; }
+	public bool HasInference { get; set; }
 
 	[Parameter]
 	public List<Provider> AvailableProviders { get; set; } = new();
@@ -111,11 +111,11 @@
 	[Parameter]
 	public EventCallback<string?> SelectedProviderIdChanged { get; set; }
 
-	private async Task HandleToggleLocalInference(ChangeEventArgs e)
+	private async Task HandleToggleInference(ChangeEventArgs e)
 	{
 		var value = (bool)(e.Value ?? false);
-		UseLocalInference = value;
-		await UseLocalInferenceChanged.InvokeAsync(value);
+		UseInference = value;
+		await UseInferenceChanged.InvokeAsync(value);
 
 		// Reset model selection when toggling
 		if (!value)

@@ -20,7 +20,7 @@ public static class SuggestIdeasStage
 	/// <summary>The selected model is unavailable for the chosen provider.</summary>
 	public const string ModelNotFound = "model_not_found";
 
-	/// <summary>The selected local inference provider is reachable but has no usable model configured.</summary>
+	/// <summary>The selected inference provider is reachable but has no usable model configured.</summary>
 	public const string NoModel = "no_model";
 
 	/// <summary>The project working directory could not be scanned to build a repo map.</summary>

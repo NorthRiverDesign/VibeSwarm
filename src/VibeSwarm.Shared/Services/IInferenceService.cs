@@ -1,4 +1,4 @@
-using VibeSwarm.Shared.LocalInference;
+using VibeSwarm.Shared.Inference;
 
 namespace VibeSwarm.Shared.Services;
 

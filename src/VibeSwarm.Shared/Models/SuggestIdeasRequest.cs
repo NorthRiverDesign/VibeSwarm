@@ -13,14 +13,14 @@ public class SuggestIdeasRequest
 	public const int MaxIdeaCount = 7;
 
 	/// <summary>
-	/// When true, uses a local inference provider (for example, Ollama) for suggestion generation.
+	/// When true, uses a inference provider (for example, Ollama) for suggestion generation.
 	/// When false, uses a configured coding provider (for example, Claude, Copilot, or OpenCode).
 	/// </summary>
-	public bool UseLocalInference { get; set; } = true;
+	public bool UseInference { get; set; } = true;
 
 	/// <summary>
 	/// Optional provider to use for suggestion generation.
-	/// For local inference, this is an inference provider ID.
+	/// For inference, this is an inference provider ID.
 	/// For configured providers, this is a coding provider ID.
 	/// When omitted, the server resolves the default source/provider for the selected mode.
 	/// </summary>
