@@ -190,6 +190,15 @@
 											<i class="bi bi-eye me-2"></i>View Details
 										</a>
 									</li>
+									@if (job.Status is JobStatus.Failed or JobStatus.Cancelled)
+									{
+										<li>
+											<button class="dropdown-item"
+													@onclick="() => OnRetryJob.InvokeAsync(job.Id)">
+												<i class="bi bi-arrow-clockwise me-2"></i>Retry
+											</button>
+										</li>
+									}
 									<li>
 										<hr class="dropdown-divider">
 									</li>
@@ -236,6 +245,9 @@
 
 	[Parameter]
 	public EventCallback<Guid> OnDeleteJob { get; set; }
+
+	[Parameter]
+	public EventCallback<Guid> OnRetryJob { get; set; }
 
 	[Parameter]
 	public EventCallback OnCreateJob { get; set; }

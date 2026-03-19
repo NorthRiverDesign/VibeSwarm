@@ -139,7 +139,7 @@ else
                 <ProjectJobsList Jobs="@PagedJobs" TotalJobsCount="@JobsTotalCount" CurrentPage="@_jobsPageNumber"
                                   PageSize="@ProjectJobsPageSize" IsPageLoading="@_isLoadingJobsPage" HasActiveJobs="@HasActiveJobs"
                                   HasCompletedJobs="@HasCompletedJobs"
-                                  OnDeleteJob="DeleteJob" OnCreateJob="ShowCreateJobModal" OnPreviousPage="LoadPreviousJobsPage"
+                                  OnDeleteJob="DeleteJob" OnRetryJob="RetryJob" OnCreateJob="ShowCreateJobModal" OnPreviousPage="LoadPreviousJobsPage"
                                   OnNextPage="LoadNextJobsPage" OnCancelAll="CancelAllJobs"
                                   OnDeleteCompleted="DeleteCompletedJobs" />
             </div>
@@ -1870,6 +1870,27 @@ TimeSpan.FromSeconds(10) })
         catch (Exception ex)
         {
             NotificationService.ShowError($"Error deleting job: {ex.Message}");
+        }
+    }
+
+    private async Task RetryJob(Guid jobId)
+    {
+        try
+        {
+            var success = await JobService.ResetJobWithOptionsAsync(jobId);
+            if (success)
+            {
+                await RefreshJobs();
+                NotificationService.ShowSuccess("Job queued for retry.");
+            }
+            else
+            {
+                NotificationService.ShowError("Could not retry this job. It may no longer be in a retryable state.");
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.ShowError($"Error retrying job: {ex.Message}");
         }
     }
 
