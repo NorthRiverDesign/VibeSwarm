@@ -621,6 +621,12 @@ public class ExecutionOptions
     public bool UseAltScreen { get; set; }
 
     /// <summary>
+    /// Permission mode for automated execution (Claude: --permission-mode, v2.1.79+).
+    /// Common values: "bypassPermissions", "dontAsk". When null, provider uses its default.
+    /// </summary>
+    public string? PermissionMode { get; set; }
+
+    /// <summary>
     /// Creates ExecutionOptions from the legacy parameters
     /// </summary>
     public static ExecutionOptions FromLegacy(string? sessionId = null, string? workingDirectory = null)

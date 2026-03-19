@@ -66,6 +66,7 @@ public abstract class ProviderBase : IProvider
         CurrentReasoningEffort = options.ReasoningEffort;
         CurrentDisableLargeContext = options.DisableLargeContext;
         CurrentBashEnvPath = options.BashEnvPath;
+        CurrentPermissionMode = options.PermissionMode;
 
         try
         {
@@ -223,6 +224,11 @@ public abstract class ProviderBase : IProvider
     protected string? CurrentBashEnvPath { get; private set; }
 
     /// <summary>
+    /// Permission mode for automated execution (Claude --permission-mode, set by ExecuteWithOptionsAsync)
+    /// </summary>
+    protected string? CurrentPermissionMode { get; private set; }
+
+    /// <summary>
     /// Clears the execution context after a run completes
     /// </summary>
     protected void ClearExecutionContext()
@@ -254,6 +260,7 @@ public abstract class ProviderBase : IProvider
         CurrentReasoningEffort = null;
         CurrentDisableLargeContext = false;
         CurrentBashEnvPath = null;
+        CurrentPermissionMode = null;
     }
 
     /// <summary>

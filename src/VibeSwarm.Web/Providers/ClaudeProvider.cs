@@ -104,7 +104,8 @@ public class ClaudeProvider : CliProviderBase
             "--output-format",
             "stream-json",
             "--verbose",
-            "--dangerously-skip-permissions"
+            "--permission-mode",
+            CurrentPermissionMode ?? "bypassPermissions"
         };
 
         if (!string.IsNullOrEmpty(sessionId))

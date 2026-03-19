@@ -153,6 +153,28 @@ public class CopilotProvider : CliProviderBase
             args.Add(CurrentSystemPrompt);
         }
 
+        // Append to system prompt (GA v0.0.411+)
+        if (!string.IsNullOrEmpty(CurrentAppendSystemPrompt))
+        {
+            args.Add("--append-system-prompt");
+            args.Add(CurrentAppendSystemPrompt);
+        }
+
+        // Max turns limit (GA v0.0.411+)
+        if (CurrentMaxTurns.HasValue)
+        {
+            args.Add("--max-turns");
+            args.Add(CurrentMaxTurns.Value.ToString());
+        }
+
+        // Reasoning effort level (GA v0.0.411+)
+        var reasoningEffort = NormalizeReasoningEffort(CurrentReasoningEffort, "low", "medium", "high");
+        if (!string.IsNullOrEmpty(reasoningEffort))
+        {
+            args.Add("--reasoning-effort");
+            args.Add(reasoningEffort);
+        }
+
         // Alt-screen buffer mode (v0.0.407+, experimental)
         if (CurrentUseAltScreen)
         {
@@ -186,6 +208,22 @@ public class CopilotProvider : CliProviderBase
                 args.Add("--excluded-tools");
                 args.Add(tool);
             }
+        }
+
+        // Disallowed tools (GA v0.0.411+)
+        if (CurrentDisallowedTools != null && CurrentDisallowedTools.Count > 0)
+        {
+            foreach (var tool in CurrentDisallowedTools)
+            {
+                args.Add("--disallowed-tools");
+                args.Add(tool);
+            }
+        }
+
+        // Isolated git worktree mode (GA v0.0.411+)
+        if (CurrentUseWorktree)
+        {
+            args.Add("--worktree");
         }
 
         if (!string.IsNullOrEmpty(CurrentMcpConfigPath))
@@ -825,6 +863,12 @@ public class CopilotProvider : CliProviderBase
 
         // Codex-max variants (e.g., gpt-5.1-codex-max = 1x)
         if (normalized.Contains("codex-max"))
+        {
+            return 1.0m;
+        }
+
+        // Codex LTS variants (e.g., gpt-5.3-codex-lts = 1x)
+        if (normalized.Contains("codex-lts"))
         {
             return 1.0m;
         }

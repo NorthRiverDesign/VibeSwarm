@@ -60,6 +60,11 @@ public class ProviderModel
 	public int? MaxContextTokens { get; set; }
 
 	/// <summary>
+	/// Maximum output tokens per response (if known, e.g. 128k for Opus 4.6 / Sonnet 4.6)
+	/// </summary>
+	public int? MaxOutputTokens { get; set; }
+
+	/// <summary>
 	/// When this model record was last updated
 	/// </summary>
 	public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
