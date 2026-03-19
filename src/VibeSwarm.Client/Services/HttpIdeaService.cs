@@ -11,40 +11,39 @@ public class HttpIdeaService : IIdeaService
     public HttpIdeaService(HttpClient http) => _http = http;
 
     public async Task<IEnumerable<Idea>> GetByProjectIdAsync(Guid projectId, CancellationToken ct = default)
-        => await _http.GetFromJsonAsync<List<Idea>>($"/api/ideas/project/{projectId}", ct) ?? [];
+        => await _http.GetJsonAsync($"/api/ideas/project/{projectId}", new List<Idea>(), ct);
 
     public async Task<ProjectIdeasListResult> GetPagedByProjectIdAsync(Guid projectId, int page = 1, int pageSize = 10, CancellationToken ct = default)
-        => await _http.GetFromJsonAsync<ProjectIdeasListResult>($"/api/ideas/project/{projectId}/paged?page={page}&pageSize={pageSize}", ct)
-            ?? new ProjectIdeasListResult();
+        => await _http.GetJsonAsync($"/api/ideas/project/{projectId}/paged?page={page}&pageSize={pageSize}", new ProjectIdeasListResult(), ct);
 
     public async Task<Idea?> GetByIdAsync(Guid id, CancellationToken ct = default)
-        => await _http.GetFromJsonAsync<Idea>($"/api/ideas/{id}", ct);
+        => await _http.GetJsonOrNullAsync<Idea>($"/api/ideas/{id}", ct);
 
     public async Task<Idea> CreateAsync(Idea idea, CancellationToken ct = default)
     {
         var response = await _http.PostAsJsonAsync("/api/ideas", idea, ct);
         await HttpResponseErrorHelper.EnsureSuccessAsync(response, ct);
-        return await response.Content.ReadFromJsonAsync<Idea>(ct) ?? idea;
+        return await response.ReadJsonAsync(idea, ct);
     }
 
     public async Task<Idea> UpdateAsync(Idea idea, CancellationToken ct = default)
     {
         var response = await _http.PutAsJsonAsync($"/api/ideas/{idea.Id}", idea, ct);
         await HttpResponseErrorHelper.EnsureSuccessAsync(response, ct, "Idea not found.");
-        return await response.Content.ReadFromJsonAsync<Idea>(ct) ?? idea;
+        return await response.ReadJsonAsync(idea, ct);
     }
 
     public async Task DeleteAsync(Guid id, CancellationToken ct = default)
         => await _http.DeleteAsync($"/api/ideas/{id}", ct);
 
     public async Task<Idea?> GetNextUnprocessedAsync(Guid projectId, CancellationToken ct = default)
-        => await _http.GetFromJsonAsync<Idea?>($"/api/ideas/project/{projectId}/next-unprocessed", ct);
+        => await _http.GetJsonOrNullAsync<Idea>($"/api/ideas/project/{projectId}/next-unprocessed", ct);
 
     public async Task<Job?> ConvertToJobAsync(Guid ideaId, CancellationToken ct = default)
     {
         var response = await _http.PostAsync($"/api/ideas/{ideaId}/convert-to-job", null, ct);
         if (!response.IsSuccessStatusCode) return null;
-        return await response.Content.ReadFromJsonAsync<Job>(ct);
+        return await response.ReadJsonOrNullAsync<Job>(ct);
     }
 
     public async Task<bool> CompleteIdeaFromJobAsync(Guid jobId, CancellationToken ct = default)
@@ -60,7 +59,7 @@ public class HttpIdeaService : IIdeaService
     }
 
     public async Task<Idea?> GetByJobIdAsync(Guid jobId, CancellationToken ct = default)
-        => await _http.GetFromJsonAsync<Idea?>($"/api/ideas/by-job/{jobId}", ct);
+        => await _http.GetJsonOrNullAsync<Idea>($"/api/ideas/by-job/{jobId}", ct);
 
     public async Task StartProcessingAsync(Guid projectId, bool autoCommit = false, CancellationToken ct = default)
         => await _http.PostAsync($"/api/ideas/project/{projectId}/start-processing?autoCommit={autoCommit}", null, ct);
@@ -69,7 +68,7 @@ public class HttpIdeaService : IIdeaService
         => await _http.PostAsync($"/api/ideas/project/{projectId}/stop-processing", null, ct);
 
     public async Task<bool> IsProcessingActiveAsync(Guid projectId, CancellationToken ct = default)
-        => await _http.GetFromJsonAsync<bool>($"/api/ideas/project/{projectId}/processing-active", ct);
+        => await _http.GetJsonValueAsync($"/api/ideas/project/{projectId}/processing-active", false, ct);
 
     public async Task<bool> ProcessNextIdeaIfReadyAsync(Guid projectId, CancellationToken ct = default)
         => throw new NotSupportedException("ProcessNextIdeaIfReadyAsync is server-only");
@@ -84,42 +83,42 @@ public class HttpIdeaService : IIdeaService
     {
         var response = await _http.PostAsJsonAsync($"/api/ideas/{ideaId}/copy", new { TargetProjectId = targetProjectId }, ct);
         await HttpResponseErrorHelper.EnsureSuccessAsync(response, ct);
-        return await response.Content.ReadFromJsonAsync<Idea>(ct) ?? new Idea();
+        return await response.ReadJsonAsync(new Idea(), ct);
     }
 
     public async Task<Idea> MoveToProjectAsync(Guid ideaId, Guid targetProjectId, CancellationToken ct = default)
     {
         var response = await _http.PostAsJsonAsync($"/api/ideas/{ideaId}/move", new { TargetProjectId = targetProjectId }, ct);
         await HttpResponseErrorHelper.EnsureSuccessAsync(response, ct);
-        return await response.Content.ReadFromJsonAsync<Idea>(ct) ?? new Idea();
+        return await response.ReadJsonAsync(new Idea(), ct);
     }
 
     public async Task<Idea?> ExpandIdeaAsync(Guid ideaId, IdeaExpansionRequest? request = null, CancellationToken ct = default)
     {
         var response = await _http.PostAsJsonAsync($"/api/ideas/{ideaId}/expand", request ?? new IdeaExpansionRequest(), ct);
         if (!response.IsSuccessStatusCode) return null;
-        return await response.Content.ReadFromJsonAsync<Idea>(ct);
+        return await response.ReadJsonOrNullAsync<Idea>(ct);
     }
 
     public async Task<Idea?> CancelExpansionAsync(Guid ideaId, CancellationToken ct = default)
     {
         var response = await _http.PostAsync($"/api/ideas/{ideaId}/cancel-expansion", null, ct);
         if (!response.IsSuccessStatusCode) return null;
-        return await response.Content.ReadFromJsonAsync<Idea>(ct);
+        return await response.ReadJsonOrNullAsync<Idea>(ct);
     }
 
     public async Task<Idea?> ApproveExpansionAsync(Guid ideaId, string? editedDescription = null, CancellationToken ct = default)
     {
         var response = await _http.PostAsJsonAsync($"/api/ideas/{ideaId}/approve", new { EditedDescription = editedDescription }, ct);
         if (!response.IsSuccessStatusCode) return null;
-        return await response.Content.ReadFromJsonAsync<Idea>(ct);
+        return await response.ReadJsonOrNullAsync<Idea>(ct);
     }
 
     public async Task<Idea?> RejectExpansionAsync(Guid ideaId, CancellationToken ct = default)
     {
         var response = await _http.PostAsync($"/api/ideas/{ideaId}/reject", null, ct);
         if (!response.IsSuccessStatusCode) return null;
-        return await response.Content.ReadFromJsonAsync<Idea>(ct);
+        return await response.ReadJsonOrNullAsync<Idea>(ct);
     }
 
     public async Task<SuggestIdeasResult> SuggestIdeasFromCodebaseAsync(Guid projectId, SuggestIdeasRequest? request = null, CancellationToken ct = default)
@@ -145,7 +144,7 @@ public class HttpIdeaService : IIdeaService
                 };
             }
 
-            var result = await response.Content.ReadFromJsonAsync<SuggestIdeasResult>(CancellationToken.None);
+            var result = await response.ReadJsonOrNullAsync<SuggestIdeasResult>(CancellationToken.None);
             if (result == null)
             {
                 Console.Error.WriteLine("[Suggest] Response body deserialized to null.");

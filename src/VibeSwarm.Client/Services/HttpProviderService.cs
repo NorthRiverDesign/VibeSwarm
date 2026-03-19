@@ -14,32 +14,26 @@ public class HttpProviderService : IProviderService
         => throw new NotSupportedException("CreateInstance is a server-only operation");
 
     public async Task<IEnumerable<Provider>> GetAllAsync(CancellationToken ct = default)
-        => await _http.GetFromJsonAsync<List<Provider>>("/api/providers", ct) ?? [];
+        => await _http.GetJsonAsync("/api/providers", new List<Provider>(), ct);
 
     public async Task<Provider?> GetByIdAsync(Guid id, CancellationToken ct = default)
-        => await _http.GetFromJsonAsync<Provider>($"/api/providers/{id}", ct);
+        => await _http.GetJsonOrNullAsync<Provider>($"/api/providers/{id}", ct);
 
     public async Task<Provider?> GetDefaultAsync(CancellationToken ct = default)
-    {
-        var response = await _http.GetAsync("/api/providers/default", ct);
-        if (response.StatusCode == System.Net.HttpStatusCode.NoContent)
-            return null;
-        response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<Provider?>(ct);
-    }
+        => await _http.GetJsonOrNullAsync<Provider>("/api/providers/default", ct);
 
     public async Task<Provider> CreateAsync(Provider provider, CancellationToken ct = default)
     {
         var response = await _http.PostAsJsonAsync("/api/providers", provider, ct);
         response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<Provider>(ct) ?? provider;
+        return await response.ReadJsonAsync(provider, ct);
     }
 
     public async Task<Provider> UpdateAsync(Provider provider, CancellationToken ct = default)
     {
         var response = await _http.PutAsJsonAsync($"/api/providers/{provider.Id}", provider, ct);
         response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<Provider>(ct) ?? provider;
+        return await response.ReadJsonAsync(provider, ct);
     }
 
     public async Task DeleteAsync(Guid id, CancellationToken ct = default)
@@ -52,7 +46,7 @@ public class HttpProviderService : IProviderService
     }
 
     public async Task<ConnectionTestResult> TestConnectionWithDetailsAsync(Guid id, CancellationToken ct = default)
-        => await _http.GetFromJsonAsync<ConnectionTestResult>($"/api/providers/{id}/test-details", ct) ?? new ConnectionTestResult();
+        => await _http.GetJsonAsync($"/api/providers/{id}/test-details", new ConnectionTestResult(), ct);
 
     public async Task SetEnabledAsync(Guid id, bool isEnabled, CancellationToken ct = default)
     {
@@ -71,13 +65,13 @@ public class HttpProviderService : IProviderService
     }
 
     public async Task<IEnumerable<ProviderModel>> GetModelsAsync(Guid providerId, CancellationToken ct = default)
-        => await _http.GetFromJsonAsync<List<ProviderModel>>($"/api/providers/{providerId}/models", ct) ?? [];
+        => await _http.GetJsonAsync($"/api/providers/{providerId}/models", new List<ProviderModel>(), ct);
 
     public async Task<IEnumerable<ProviderModel>> RefreshModelsAsync(Guid providerId, CancellationToken ct = default)
     {
         var response = await _http.PostAsync($"/api/providers/{providerId}/refresh-models", null, ct);
         response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<List<ProviderModel>>(ct) ?? [];
+        return await response.ReadJsonAsync(new List<ProviderModel>(), ct);
     }
 
     public async Task SetDefaultModelAsync(Guid providerId, Guid modelId, CancellationToken ct = default)
@@ -86,11 +80,11 @@ public class HttpProviderService : IProviderService
     public async Task<CliUpdateResult> UpdateCliAsync(Guid id, CancellationToken ct = default)
     {
         var response = await _http.PostAsync($"/api/providers/{id}/update-cli", null, ct);
-        return await response.Content.ReadFromJsonAsync<CliUpdateResult>(ct) ?? new CliUpdateResult
+        return await response.ReadJsonAsync(new CliUpdateResult
         {
             Success = false,
             ErrorMessage = response.IsSuccessStatusCode ? null : "Update failed"
-        };
+        }, ct);
     }
 
     // Usage-specific methods (not part of IProviderService but useful for client)
@@ -101,14 +95,14 @@ public class HttpProviderService : IProviderService
         if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
             return null;
         response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<ProviderUsageSummary>(ct);
+        return await response.ReadJsonOrNullAsync<ProviderUsageSummary>(ct);
     }
 
     public async Task<Dictionary<Guid, ProviderUsageSummary>> GetAllUsageSummariesAsync(CancellationToken ct = default)
-        => await _http.GetFromJsonAsync<Dictionary<Guid, ProviderUsageSummary>>("/api/providers/usage-summaries", ct) ?? [];
+        => await _http.GetJsonAsync("/api/providers/usage-summaries", new Dictionary<Guid, ProviderUsageSummary>(), ct);
 
     public async Task<UsageExhaustionWarning?> CheckExhaustionAsync(Guid id, int threshold = 80, CancellationToken ct = default)
-        => await _http.GetFromJsonAsync<UsageExhaustionWarning?>($"/api/providers/{id}/check-exhaustion?threshold={threshold}", ct);
+        => await _http.GetJsonOrNullAsync<UsageExhaustionWarning>($"/api/providers/{id}/check-exhaustion?threshold={threshold}", ct);
 
     public async Task ResetUsageAsync(Guid id, CancellationToken ct = default)
         => await _http.PostAsync($"/api/providers/{id}/reset-usage", null, ct);

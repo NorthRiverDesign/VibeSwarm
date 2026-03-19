@@ -14,10 +14,10 @@ public class HttpInferenceProviderService : IInferenceProviderService
 	public HttpInferenceProviderService(HttpClient http) => _http = http;
 
 	public async Task<IEnumerable<InferenceProvider>> GetAllAsync(CancellationToken ct = default)
-		=> await _http.GetFromJsonAsync<List<InferenceProvider>>("/api/inference/providers", ct) ?? [];
+		=> await _http.GetJsonAsync("/api/inference/providers", new List<InferenceProvider>(), ct);
 
 	public async Task<InferenceProvider?> GetByIdAsync(Guid id, CancellationToken ct = default)
-		=> await _http.GetFromJsonAsync<InferenceProvider>($"/api/inference/providers/{id}", ct);
+		=> await _http.GetJsonOrNullAsync<InferenceProvider>($"/api/inference/providers/{id}", ct);
 
 	public async Task<IEnumerable<InferenceProvider>> GetEnabledAsync(CancellationToken ct = default)
 	{
@@ -29,21 +29,21 @@ public class HttpInferenceProviderService : IInferenceProviderService
 	{
 		var response = await _http.PostAsJsonAsync("/api/inference/providers", provider, ct);
 		response.EnsureSuccessStatusCode();
-		return await response.Content.ReadFromJsonAsync<InferenceProvider>(ct) ?? provider;
+		return await response.ReadJsonAsync(provider, ct);
 	}
 
 	public async Task<InferenceProvider> UpdateAsync(InferenceProvider provider, CancellationToken ct = default)
 	{
 		var response = await _http.PutAsJsonAsync($"/api/inference/providers/{provider.Id}", provider, ct);
 		response.EnsureSuccessStatusCode();
-		return await response.Content.ReadFromJsonAsync<InferenceProvider>(ct) ?? provider;
+		return await response.ReadJsonAsync(provider, ct);
 	}
 
 	public async Task DeleteAsync(Guid id, CancellationToken ct = default)
 		=> await _http.DeleteAsync($"/api/inference/providers/{id}", ct);
 
 	public async Task<IEnumerable<InferenceModel>> GetModelsAsync(Guid providerId, CancellationToken ct = default)
-		=> await _http.GetFromJsonAsync<List<InferenceModel>>($"/api/inference/providers/{providerId}/models", ct) ?? [];
+		=> await _http.GetJsonAsync($"/api/inference/providers/{providerId}/models", new List<InferenceModel>(), ct);
 
 	public async Task SetModelForTaskAsync(Guid providerId, string modelId, string taskType, CancellationToken ct = default)
 	{
@@ -68,6 +68,6 @@ public class HttpInferenceProviderService : IInferenceProviderService
 	{
 		var response = await _http.PostAsync($"/api/inference/providers/{providerId}/models/refresh", null, ct);
 		response.EnsureSuccessStatusCode();
-		return await response.Content.ReadFromJsonAsync<List<InferenceModel>>(ct) ?? [];
+		return await response.ReadJsonAsync(new List<InferenceModel>(), ct);
 	}
 }

@@ -9,17 +9,17 @@ public class HttpUserService : IUserService
     public HttpUserService(HttpClient http) => _http = http;
 
     public async Task<IEnumerable<UserDto>> GetAllUsersAsync()
-        => await _http.GetFromJsonAsync<List<UserDto>>("/api/users") ?? [];
+        => await _http.GetJsonAsync("/api/users", new List<UserDto>());
 
     public async Task<UserDto?> GetUserByIdAsync(Guid id)
-        => await _http.GetFromJsonAsync<UserDto>($"/api/users/{id}");
+        => await _http.GetJsonOrNullAsync<UserDto>($"/api/users/{id}");
 
     public async Task<(bool Success, string? Error, UserDto? User)> CreateUserAsync(CreateUserModel model)
     {
         var response = await _http.PostAsJsonAsync("/api/users", model);
         if (response.IsSuccessStatusCode)
         {
-            var user = await response.Content.ReadFromJsonAsync<UserDto>();
+            var user = await response.ReadJsonOrNullAsync<UserDto>();
             return (true, null, user);
         }
         var error = await response.Content.ReadAsStringAsync();
@@ -59,5 +59,5 @@ public class HttpUserService : IUserService
     }
 
     public async Task<IEnumerable<string>> GetUserRolesAsync(Guid id)
-        => await _http.GetFromJsonAsync<List<string>>($"/api/users/{id}/roles") ?? [];
+        => await _http.GetJsonAsync($"/api/users/{id}/roles", new List<string>());
 }

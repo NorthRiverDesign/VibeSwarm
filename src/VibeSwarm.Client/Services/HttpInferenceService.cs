@@ -19,7 +19,7 @@ public class HttpInferenceService : IInferenceService
 			? "/api/inference/health"
 			: $"/api/inference/health?endpoint={Uri.EscapeDataString(endpoint)}";
 
-		return await _http.GetFromJsonAsync<InferenceHealthResult>(url, ct) ?? new InferenceHealthResult();
+		return await _http.GetJsonAsync(url, new InferenceHealthResult(), ct);
 	}
 
 	public async Task<List<DiscoveredModel>> GetAvailableModelsAsync(string? endpoint = null, CancellationToken ct = default)
@@ -44,8 +44,7 @@ public class HttpInferenceService : IInferenceService
 				};
 			}
 
-			return await response.Content.ReadFromJsonAsync<InferenceResponse>(ct)
-				?? new InferenceResponse { Success = false, Error = "Empty response from server" };
+			return await response.ReadJsonAsync(new InferenceResponse { Success = false, Error = "Empty response from server" }, ct);
 		}
 		catch (OperationCanceledException)
 		{

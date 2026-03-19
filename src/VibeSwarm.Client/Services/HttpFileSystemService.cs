@@ -1,4 +1,3 @@
-using System.Net.Http.Json;
 using VibeSwarm.Shared.Services;
 
 namespace VibeSwarm.Client.Services;
@@ -15,12 +14,12 @@ public class HttpFileSystemService : IFileSystemService
         if (path != null) queryParams.Add($"path={Uri.EscapeDataString(path)}");
         if (directoriesOnly) queryParams.Add("directoriesOnly=true");
         if (queryParams.Any()) url += "?" + string.Join("&", queryParams);
-        return await _http.GetFromJsonAsync<DirectoryListResult>(url) ?? new DirectoryListResult();
+        return await _http.GetJsonAsync(url, new DirectoryListResult());
     }
 
     public async Task<bool> DirectoryExistsAsync(string path)
-        => await _http.GetFromJsonAsync<bool>($"/api/filesystem/exists?path={Uri.EscapeDataString(path)}");
+        => await _http.GetJsonValueAsync($"/api/filesystem/exists?path={Uri.EscapeDataString(path)}", false);
 
     public async Task<List<DriveEntry>> GetDrivesAsync()
-        => await _http.GetFromJsonAsync<List<DriveEntry>>("/api/filesystem/drives") ?? [];
+        => await _http.GetJsonAsync("/api/filesystem/drives", new List<DriveEntry>());
 }

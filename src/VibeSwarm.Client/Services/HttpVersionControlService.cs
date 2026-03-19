@@ -103,8 +103,7 @@ public class HttpVersionControlService : IVersionControlService
 	{
 		try
 		{
-			return await _http.GetFromJsonAsync<GitWorkingTreeStatus>($"/api/git/working-tree-status?path={Enc(workingDirectory)}", ct)
-				?? new GitWorkingTreeStatus();
+			return await _http.GetJsonAsync($"/api/git/working-tree-status?path={Enc(workingDirectory)}", new GitWorkingTreeStatus(), ct);
 		}
 		catch
 		{
@@ -116,7 +115,7 @@ public class HttpVersionControlService : IVersionControlService
     {
         var url = $"/api/git/changed-files?path={Enc(workingDirectory)}";
         if (baseCommit != null) url += $"&baseCommit={Uri.EscapeDataString(baseCommit)}";
-        return await _http.GetFromJsonAsync<List<string>>(url, ct) ?? [];
+        return await _http.GetJsonAsync(url, new List<string>(), ct);
     }
 
     public async Task<string?> GetWorkingDirectoryDiffAsync(string workingDirectory, string? baseCommit = null, CancellationToken ct = default)
@@ -137,25 +136,25 @@ public class HttpVersionControlService : IVersionControlService
     {
         var url = $"/api/git/diff-summary?path={Enc(workingDirectory)}";
         if (baseCommit != null) url += $"&baseCommit={Uri.EscapeDataString(baseCommit)}";
-        return await _http.GetFromJsonAsync<GitDiffSummary?>(url, ct);
+        return await _http.GetJsonOrNullAsync<GitDiffSummary>(url, ct);
     }
 
     public async Task<GitOperationResult> CommitAllChangesAsync(string workingDirectory, string commitMessage, CancellationToken ct = default)
     {
         var response = await _http.PostAsJsonAsync("/api/git/commit", new { Path = workingDirectory, Message = commitMessage }, ct);
-        return await response.Content.ReadFromJsonAsync<GitOperationResult>(ct) ?? new GitOperationResult { Success = false, Error = "Failed to parse response" };
+        return await response.ReadJsonAsync(new GitOperationResult { Success = false, Error = "Failed to parse response" }, ct);
     }
 
     public async Task<GitOperationResult> PushAsync(string workingDirectory, string remoteName = "origin", string? branchName = null, CancellationToken ct = default)
     {
         var response = await _http.PostAsJsonAsync("/api/git/push", new { Path = workingDirectory, Remote = remoteName, Branch = branchName }, ct);
-        return await response.Content.ReadFromJsonAsync<GitOperationResult>(ct) ?? new GitOperationResult { Success = false, Error = "Failed to parse response" };
+        return await response.ReadJsonAsync(new GitOperationResult { Success = false, Error = "Failed to parse response" }, ct);
     }
 
     public async Task<GitOperationResult> CommitAndPushAsync(string workingDirectory, string commitMessage, string remoteName = "origin", Action<string>? progressCallback = null, CancellationToken ct = default)
     {
         var response = await _http.PostAsJsonAsync("/api/git/commit-and-push", new { Path = workingDirectory, Message = commitMessage, Remote = remoteName }, ct);
-        return await response.Content.ReadFromJsonAsync<GitOperationResult>(ct) ?? new GitOperationResult { Success = false, Error = "Failed to parse response" };
+        return await response.ReadJsonAsync(new GitOperationResult { Success = false, Error = "Failed to parse response" }, ct);
     }
 
     public async Task<GitOperationResult> CreatePullRequestAsync(
@@ -174,7 +173,7 @@ public class HttpVersionControlService : IVersionControlService
             Title = title,
             Body = body
         }, ct);
-        return await response.Content.ReadFromJsonAsync<GitOperationResult>(ct) ?? new GitOperationResult { Success = false, Error = "Failed to parse response" };
+        return await response.ReadJsonAsync(new GitOperationResult { Success = false, Error = "Failed to parse response" }, ct);
     }
 
     public async Task<GitOperationResult> PreviewMergeBranchAsync(
@@ -191,7 +190,7 @@ public class HttpVersionControlService : IVersionControlService
             TargetBranch = targetBranch,
             Remote = remoteName
         }, ct);
-        return await response.Content.ReadFromJsonAsync<GitOperationResult>(ct) ?? new GitOperationResult { Success = false, Error = "Failed to parse response" };
+        return await response.ReadJsonAsync(new GitOperationResult { Success = false, Error = "Failed to parse response" }, ct);
     }
 
     public async Task<GitOperationResult> MergeBranchAsync(
@@ -211,34 +210,34 @@ public class HttpVersionControlService : IVersionControlService
             Remote = remoteName,
             PushAfterMerge = pushAfterMerge
         }, ct);
-        return await response.Content.ReadFromJsonAsync<GitOperationResult>(ct) ?? new GitOperationResult { Success = false, Error = "Failed to parse response" };
+        return await response.ReadJsonAsync(new GitOperationResult { Success = false, Error = "Failed to parse response" }, ct);
     }
 
     public async Task<IReadOnlyList<GitBranchInfo>> GetBranchesAsync(string workingDirectory, bool includeRemote = true, CancellationToken ct = default)
-        => await _http.GetFromJsonAsync<List<GitBranchInfo>>($"/api/git/branches?path={Enc(workingDirectory)}&includeRemote={includeRemote}", ct) ?? [];
+        => await _http.GetJsonAsync($"/api/git/branches?path={Enc(workingDirectory)}&includeRemote={includeRemote}", new List<GitBranchInfo>(), ct);
 
     public async Task<GitOperationResult> FetchAsync(string workingDirectory, string remoteName = "origin", bool prune = true, CancellationToken ct = default)
     {
         var response = await _http.PostAsJsonAsync("/api/git/fetch", new { Path = workingDirectory, Remote = remoteName, Prune = prune }, ct);
-        return await response.Content.ReadFromJsonAsync<GitOperationResult>(ct) ?? new GitOperationResult { Success = false };
+        return await response.ReadJsonAsync(new GitOperationResult { Success = false }, ct);
     }
 
     public async Task<GitOperationResult> HardCheckoutBranchAsync(string workingDirectory, string branchName, string remoteName = "origin", Action<string>? progressCallback = null, CancellationToken ct = default)
     {
         var response = await _http.PostAsJsonAsync("/api/git/checkout", new { Path = workingDirectory, Branch = branchName, Remote = remoteName }, ct);
-        return await response.Content.ReadFromJsonAsync<GitOperationResult>(ct) ?? new GitOperationResult { Success = false };
+        return await response.ReadJsonAsync(new GitOperationResult { Success = false }, ct);
     }
 
     public async Task<GitOperationResult> SyncWithOriginAsync(string workingDirectory, string remoteName = "origin", Action<string>? progressCallback = null, CancellationToken ct = default)
     {
         var response = await _http.PostAsJsonAsync("/api/git/sync", new { Path = workingDirectory, Remote = remoteName }, ct);
-        return await response.Content.ReadFromJsonAsync<GitOperationResult>(ct) ?? new GitOperationResult { Success = false };
+        return await response.ReadJsonAsync(new GitOperationResult { Success = false }, ct);
     }
 
     public async Task<GitOperationResult> CloneRepositoryAsync(string repositoryUrl, string targetDirectory, string? branch = null, Action<string>? progressCallback = null, CancellationToken ct = default)
     {
         var response = await _http.PostAsJsonAsync("/api/git/clone", new { Url = repositoryUrl, Path = targetDirectory, Branch = branch }, ct);
-        return await response.Content.ReadFromJsonAsync<GitOperationResult>(ct) ?? new GitOperationResult { Success = false };
+        return await response.ReadJsonAsync(new GitOperationResult { Success = false }, ct);
     }
 
     public string GetGitHubCloneUrl(string ownerAndRepo, bool useSsh = true)
@@ -268,32 +267,32 @@ public class HttpVersionControlService : IVersionControlService
     public async Task<GitOperationResult> CreateBranchAsync(string workingDirectory, string branchName, bool switchToBranch = true, CancellationToken ct = default)
     {
         var response = await _http.PostAsJsonAsync("/api/git/create-branch", new { Path = workingDirectory, Branch = branchName, SwitchToBranch = switchToBranch }, ct);
-        return await response.Content.ReadFromJsonAsync<GitOperationResult>(ct) ?? new GitOperationResult { Success = false };
+        return await response.ReadJsonAsync(new GitOperationResult { Success = false }, ct);
     }
 
 	public async Task<GitOperationResult> DiscardAllChangesAsync(string workingDirectory, bool includeUntracked = true, CancellationToken ct = default)
 	{
 		var response = await _http.PostAsJsonAsync("/api/git/discard", new { Path = workingDirectory, IncludeUntracked = includeUntracked }, ct);
-		return await response.Content.ReadFromJsonAsync<GitOperationResult>(ct) ?? new GitOperationResult { Success = false };
+		return await response.ReadJsonAsync(new GitOperationResult { Success = false }, ct);
 	}
 
 	public async Task<GitOperationResult> PreserveChangesAsync(string workingDirectory, string message, CancellationToken ct = default)
 	{
 		var response = await _http.PostAsJsonAsync("/api/git/preserve", new { Path = workingDirectory, Message = message }, ct);
-		return await response.Content.ReadFromJsonAsync<GitOperationResult>(ct) ?? new GitOperationResult { Success = false, Error = "Failed to parse response" };
+		return await response.ReadJsonAsync(new GitOperationResult { Success = false, Error = "Failed to parse response" }, ct);
 	}
 
     public async Task<IReadOnlyList<string>> GetCommitLogAsync(string workingDirectory, string fromCommit, string? toCommit = null, CancellationToken ct = default)
     {
         var url = $"/api/git/commit-log?path={Enc(workingDirectory)}&from={Uri.EscapeDataString(fromCommit)}";
         if (toCommit != null) url += $"&to={Uri.EscapeDataString(toCommit)}";
-        return await _http.GetFromJsonAsync<List<string>>(url, ct) ?? [];
+        return await _http.GetJsonAsync(url, new List<string>(), ct);
     }
 
     public async Task<GitOperationResult> InitializeRepositoryAsync(string workingDirectory, CancellationToken ct = default)
     {
         var response = await _http.PostAsJsonAsync("/api/git/init", new { Path = workingDirectory }, ct);
-        return await response.Content.ReadFromJsonAsync<GitOperationResult>(ct) ?? new GitOperationResult { Success = false, Error = "Failed to parse response" };
+        return await response.ReadJsonAsync(new GitOperationResult { Success = false, Error = "Failed to parse response" }, ct);
     }
 
     public async Task<bool> IsGitHubCliAvailableAsync(CancellationToken ct = default)
@@ -347,7 +346,7 @@ public class HttpVersionControlService : IVersionControlService
             LicenseTemplate = licenseTemplate,
             InitializeReadme = initializeReadme
         }, ct);
-        return await response.Content.ReadFromJsonAsync<GitOperationResult>(ct) ?? new GitOperationResult { Success = false, Error = "Failed to parse response" };
+        return await response.ReadJsonAsync(new GitOperationResult { Success = false, Error = "Failed to parse response" }, ct);
     }
 
     public async Task<GitOperationResult> AddRemoteAsync(
@@ -362,14 +361,14 @@ public class HttpVersionControlService : IVersionControlService
             RemoteName = remoteName,
             RemoteUrl = remoteUrl
         }, ct);
-        return await response.Content.ReadFromJsonAsync<GitOperationResult>(ct) ?? new GitOperationResult { Success = false, Error = "Failed to parse response" };
+        return await response.ReadJsonAsync(new GitOperationResult { Success = false, Error = "Failed to parse response" }, ct);
     }
 
     public async Task<IReadOnlyDictionary<string, string>> GetRemotesAsync(string workingDirectory, CancellationToken ct = default)
     {
         try
         {
-            return await _http.GetFromJsonAsync<Dictionary<string, string>>($"/api/git/remotes?path={Enc(workingDirectory)}", ct) ?? new Dictionary<string, string>();
+            return await _http.GetJsonAsync($"/api/git/remotes?path={Enc(workingDirectory)}", new Dictionary<string, string>(), ct);
         }
         catch
         {
@@ -380,13 +379,13 @@ public class HttpVersionControlService : IVersionControlService
     public async Task<GitOperationResult> CloneWithGitHubCliAsync(string ownerRepo, string targetDirectory, Action<string>? progressCallback = null, CancellationToken ct = default)
     {
         var response = await _http.PostAsJsonAsync("/api/git/gh-clone", new { OwnerRepo = ownerRepo, Path = targetDirectory }, ct);
-        return await response.Content.ReadFromJsonAsync<GitOperationResult>(ct) ?? new GitOperationResult { Success = false, Error = "Failed to parse response" };
+        return await response.ReadJsonAsync(new GitOperationResult { Success = false, Error = "Failed to parse response" }, ct);
     }
 
     public async Task<GitOperationResult> PruneRemoteBranchesAsync(string workingDirectory, string remoteName = "origin", CancellationToken ct = default)
     {
         var response = await _http.PostAsJsonAsync("/api/git/prune", new { Path = workingDirectory, Remote = remoteName }, ct);
-        return await response.Content.ReadFromJsonAsync<GitOperationResult>(ct) ?? new GitOperationResult { Success = false, Error = "Failed to parse response" };
+        return await response.ReadJsonAsync(new GitOperationResult { Success = false, Error = "Failed to parse response" }, ct);
     }
 
     private async Task<string?> GetStringResponseAsync(string requestUri, CancellationToken ct = default)

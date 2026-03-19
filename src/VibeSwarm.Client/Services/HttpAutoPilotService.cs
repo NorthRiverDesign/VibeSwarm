@@ -18,7 +18,7 @@ public class HttpAutoPilotService : IAutoPilotService
 	{
 		var response = await _http.PostAsJsonAsync($"{Base(projectId)}/start", config, ct);
 		await HttpResponseErrorHelper.EnsureSuccessAsync(response, ct);
-		return await response.Content.ReadFromJsonAsync<IterationLoop>(ct)
+		return await response.ReadJsonAsync<IterationLoop>(null!, ct)
 			?? throw new InvalidOperationException("Failed to deserialize auto-pilot loop");
 	}
 
@@ -41,16 +41,16 @@ public class HttpAutoPilotService : IAutoPilotService
 	}
 
 	public async Task<IterationLoop?> GetStatusAsync(Guid projectId, CancellationToken ct = default)
-		=> await _http.GetFromJsonAsync<IterationLoop?>($"{Base(projectId)}/status", ct);
+		=> await _http.GetJsonOrNullAsync<IterationLoop>($"{Base(projectId)}/status", ct);
 
 	public async Task<List<IterationLoop>> GetHistoryAsync(Guid projectId, CancellationToken ct = default)
-		=> await _http.GetFromJsonAsync<List<IterationLoop>>($"{Base(projectId)}/history", ct) ?? [];
+		=> await _http.GetJsonAsync($"{Base(projectId)}/history", new List<IterationLoop>(), ct);
 
 	public async Task<IterationLoop> UpdateConfigAsync(Guid projectId, AutoPilotConfig config, CancellationToken ct = default)
 	{
 		var response = await _http.PutAsJsonAsync($"{Base(projectId)}/config", config, ct);
 		await HttpResponseErrorHelper.EnsureSuccessAsync(response, ct);
-		return await response.Content.ReadFromJsonAsync<IterationLoop>(ct)
+		return await response.ReadJsonAsync<IterationLoop>(null!, ct)
 			?? throw new InvalidOperationException("Failed to deserialize auto-pilot loop");
 	}
 }

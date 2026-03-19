@@ -10,13 +10,13 @@ public class HttpSettingsService : ISettingsService
     public HttpSettingsService(HttpClient http) => _http = http;
 
     public async Task<AppSettings> GetSettingsAsync(CancellationToken ct = default)
-        => await _http.GetFromJsonAsync<AppSettings>("/api/settings", ct) ?? new AppSettings();
+        => await _http.GetJsonAsync("/api/settings", new AppSettings(), ct);
 
     public async Task<AppSettings> UpdateSettingsAsync(AppSettings settings, CancellationToken ct = default)
     {
         var response = await _http.PutAsJsonAsync("/api/settings", settings, ct);
         response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<AppSettings>(ct) ?? settings;
+        return await response.ReadJsonAsync(settings, ct);
     }
 
     public async Task<string?> GetDefaultProjectsDirectoryAsync(CancellationToken ct = default)

@@ -11,53 +11,51 @@ public class HttpJobService : IJobService
     public HttpJobService(HttpClient http) => _http = http;
 
     public async Task<IEnumerable<Job>> GetAllAsync(CancellationToken ct = default)
-        => await _http.GetFromJsonAsync<List<Job>>("/api/jobs", ct) ?? [];
+        => await _http.GetJsonAsync("/api/jobs", new List<Job>(), ct);
 
     public async Task<JobsListResult> GetPagedAsync(Guid? projectId = null, string statusFilter = "all", int page = 1, int pageSize = 25, CancellationToken ct = default)
     {
         var projectQuery = projectId.HasValue ? $"&projectId={projectId.Value}" : string.Empty;
-        return await _http.GetFromJsonAsync<JobsListResult>($"/api/jobs/paged?status={Uri.EscapeDataString(statusFilter)}&page={page}&pageSize={pageSize}{projectQuery}", ct)
-            ?? new JobsListResult();
+        return await _http.GetJsonAsync($"/api/jobs/paged?status={Uri.EscapeDataString(statusFilter)}&page={page}&pageSize={pageSize}{projectQuery}", new JobsListResult(), ct);
     }
 
     public async Task<IEnumerable<Job>> GetByProjectIdAsync(Guid projectId, CancellationToken ct = default)
-        => await _http.GetFromJsonAsync<List<Job>>($"/api/jobs/project/{projectId}", ct) ?? [];
+        => await _http.GetJsonAsync($"/api/jobs/project/{projectId}", new List<Job>(), ct);
 
     public async Task<ProjectJobsListResult> GetPagedByProjectIdAsync(Guid projectId, int page = 1, int pageSize = 10, CancellationToken ct = default)
-        => await _http.GetFromJsonAsync<ProjectJobsListResult>($"/api/jobs/project/{projectId}/paged?page={page}&pageSize={pageSize}", ct)
-            ?? new ProjectJobsListResult();
+        => await _http.GetJsonAsync($"/api/jobs/project/{projectId}/paged?page={page}&pageSize={pageSize}", new ProjectJobsListResult(), ct);
 
     public async Task<IEnumerable<Job>> GetPendingJobsAsync(CancellationToken ct = default)
-        => await _http.GetFromJsonAsync<List<Job>>("/api/jobs/pending", ct) ?? [];
+        => await _http.GetJsonAsync("/api/jobs/pending", new List<Job>(), ct);
 
     public async Task<IEnumerable<Job>> GetActiveJobsAsync(CancellationToken ct = default)
-        => await _http.GetFromJsonAsync<List<Job>>("/api/jobs/active", ct) ?? [];
+        => await _http.GetJsonAsync("/api/jobs/active", new List<Job>(), ct);
 
     public async Task<Job?> GetByIdAsync(Guid id, CancellationToken ct = default)
-        => await _http.GetFromJsonAsync<Job>($"/api/jobs/{id}", ct);
+        => await _http.GetJsonOrNullAsync<Job>($"/api/jobs/{id}", ct);
 
     public async Task<Job?> GetByIdWithMessagesAsync(Guid id, CancellationToken ct = default)
-        => await _http.GetFromJsonAsync<Job>($"/api/jobs/{id}/with-messages", ct);
+        => await _http.GetJsonOrNullAsync<Job>($"/api/jobs/{id}/with-messages", ct);
 
     public async Task<Job> CreateAsync(Job job, CancellationToken ct = default)
     {
         var response = await _http.PostAsJsonAsync("/api/jobs", job, ct);
         response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<Job>(ct) ?? job;
+        return await response.ReadJsonAsync(job, ct);
     }
 
     public async Task<Job> UpdateStatusAsync(Guid id, JobStatus status, string? output = null, string? errorMessage = null, CancellationToken ct = default)
     {
         var response = await _http.PutAsJsonAsync($"/api/jobs/{id}/status", new { Status = status.ToString(), Output = output, ErrorMessage = errorMessage }, ct);
         response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<Job>(ct) ?? new Job();
+        return await response.ReadJsonAsync(new Job(), ct);
     }
 
     public async Task<Job> UpdateJobResultAsync(Guid id, JobStatus status, string? sessionId, string? output, string? errorMessage, int? inputTokens, int? outputTokens, decimal? costUsd, CancellationToken ct = default)
     {
         var response = await _http.PutAsJsonAsync($"/api/jobs/{id}/result", new { Status = status.ToString(), SessionId = sessionId, Output = output, ErrorMessage = errorMessage, InputTokens = inputTokens, OutputTokens = outputTokens, CostUsd = costUsd }, ct);
         response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<Job>(ct) ?? new Job();
+        return await response.ReadJsonAsync(new Job(), ct);
     }
 
     public async Task AddMessageAsync(Guid jobId, JobMessage message, CancellationToken ct = default)
@@ -85,7 +83,7 @@ public class HttpJobService : IJobService
     }
 
     public async Task<bool> IsCancellationRequestedAsync(Guid id, CancellationToken ct = default)
-        => await _http.GetFromJsonAsync<bool>($"/api/jobs/{id}/cancellation-requested", ct);
+        => await _http.GetJsonValueAsync($"/api/jobs/{id}/cancellation-requested", false, ct);
 
     public async Task UpdateProgressAsync(Guid id, string? currentActivity, CancellationToken ct = default)
     {
@@ -143,7 +141,7 @@ public class HttpJobService : IJobService
 
     public async Task<(string? Prompt, string? Type, string? Choices)?> GetPendingInteractionAsync(Guid id, CancellationToken ct = default)
     {
-        var result = await _http.GetFromJsonAsync<InteractionInfo>($"/api/jobs/{id}/interaction", ct);
+        var result = await _http.GetJsonOrNullAsync<InteractionInfo>($"/api/jobs/{id}/interaction", ct);
         if (result == null) return null;
         return (result.Prompt, result.Type, result.Choices);
     }
@@ -155,7 +153,7 @@ public class HttpJobService : IJobService
     }
 
     public async Task<IEnumerable<Job>> GetPausedJobsAsync(CancellationToken ct = default)
-        => await _http.GetFromJsonAsync<List<Job>>("/api/jobs/paused", ct) ?? [];
+        => await _http.GetJsonAsync("/api/jobs/paused", new List<Job>(), ct);
 
     public async Task<string?> GetLastUsedModelAsync(Guid projectId, Guid providerId, CancellationToken ct = default)
     {
