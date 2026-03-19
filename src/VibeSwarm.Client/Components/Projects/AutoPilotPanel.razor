@@ -47,8 +47,42 @@
 				</h6>
 
 				<div class="row g-3 mt-1">
+					@* Idea Generation *@
+					<div class="col-12">
+						<div class="small fw-semibold text-body-secondary mb-1">
+							<i class="bi bi-lightbulb me-1"></i>Idea Generation
+						</div>
+					</div>
 					<div class="col-md-6">
-						<label class="form-label small">Provider</label>
+						<label class="form-label small">Inference Provider</label>
+						<select class="form-select form-select-sm" @bind="_config.InferenceProviderId">
+							<option value="">None (use coding provider)</option>
+							@foreach (var provider in AvailableInferenceProviders)
+							{
+								<option value="@provider.Id">@provider.Name (@provider.ProviderType)</option>
+							}
+						</select>
+						<div class="form-text">Generates improvement ideas from codebase analysis</div>
+					</div>
+					<div class="col-md-6">
+						<label class="form-label small">Inference Model</label>
+						<select class="form-select form-select-sm" @bind="_config.InferenceModelId">
+							<option value="">Provider default</option>
+							@foreach (var model in GetInferenceModelsForSelectedProvider())
+							{
+								<option value="@model.ModelId">@(model.DisplayName ?? model.ModelId)</option>
+							}
+						</select>
+					</div>
+
+					@* Job Execution *@
+					<div class="col-12 mt-3">
+						<div class="small fw-semibold text-body-secondary mb-1">
+							<i class="bi bi-code-slash me-1"></i>Job Execution
+						</div>
+					</div>
+					<div class="col-md-6">
+						<label class="form-label small">Coding Provider</label>
 						<select class="form-select form-select-sm" @bind="_config.ProviderId">
 							<option value="">Project default</option>
 							@foreach (var provider in AvailableProviders)
@@ -56,16 +90,24 @@
 								<option value="@provider.Id">@provider.Name</option>
 							}
 						</select>
+						<div class="form-text">Executes ideas as coding tasks</div>
 					</div>
 					<div class="col-md-6">
-						<label class="form-label small">Model</label>
+						<label class="form-label small">Coding Model</label>
 						<select class="form-select form-select-sm" @bind="_config.ModelId">
 							<option value="">Provider default</option>
-							@foreach (var model in GetModelsForSelectedProvider())
+							@foreach (var model in GetCodingModelsForSelectedProvider())
 							{
 								<option value="@model.ModelId">@(model.DisplayName ?? model.ModelId)</option>
 							}
 						</select>
+					</div>
+
+					@* Guardrails *@
+					<div class="col-12 mt-3">
+						<div class="small fw-semibold text-body-secondary mb-1">
+							<i class="bi bi-shield-check me-1"></i>Guardrails
+						</div>
 					</div>
 					<div class="col-md-3">
 						<label class="form-label small">Max Iterations</label>
@@ -233,16 +275,34 @@
 	[Parameter]
 	public List<Provider> AvailableProviders { get; set; } = [];
 
+	[Parameter]
+	public List<InferenceProvider> AvailableInferenceProviders { get; set; } = [];
+
+	[Parameter]
+	public Project? Project { get; set; }
+
 	private IterationLoop? _loop;
 	private AutoPilotConfig _config = new();
 	private bool _isLoading = true;
 	private bool _isStarting;
 	private bool _isToggling;
 	private string? _error;
+	private bool _defaultsApplied;
 
 	protected override async Task OnInitializedAsync()
 	{
 		await LoadStatusAsync();
+	}
+
+	protected override void OnParametersSet()
+	{
+		if (!_defaultsApplied && Project != null)
+		{
+			_defaultsApplied = true;
+			// Pre-fill auto-commit/auto-push from project settings
+			_config.AutoCommit = Project.AutoCommitMode != AutoCommitMode.Off;
+			_config.AutoPush = Project.AutoCommitMode == AutoCommitMode.CommitAndPush;
+		}
 	}
 
 	private async Task LoadStatusAsync()
@@ -346,7 +406,14 @@
 		StateHasChanged();
 	}
 
-	private List<ProviderModel> GetModelsForSelectedProvider()
+	private List<InferenceModel> GetInferenceModelsForSelectedProvider()
+	{
+		if (_config.InferenceProviderId == null) return [];
+		var provider = AvailableInferenceProviders.FirstOrDefault(p => p.Id == _config.InferenceProviderId);
+		return provider?.Models?.Where(m => m.IsAvailable).ToList() ?? [];
+	}
+
+	private List<ProviderModel> GetCodingModelsForSelectedProvider()
 	{
 		if (_config.ProviderId == null) return [];
 		var provider = AvailableProviders.FirstOrDefault(p => p.Id == _config.ProviderId);

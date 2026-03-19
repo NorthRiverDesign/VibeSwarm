@@ -441,7 +441,9 @@ else
         {
             <div class="tab-pane fade show active">
                 <AutoPilotPanel @ref="_autoPilotPanel" ProjectId="@ProjectId"
-                                AvailableProviders="@Providers.Where(p => p.IsEnabled).ToList()" />
+                                AvailableProviders="@Providers.Where(p => p.IsEnabled).ToList()"
+                                AvailableInferenceProviders="@_availableInferenceProviders"
+                                Project="@Project" />
             </div>
         }
     </div>

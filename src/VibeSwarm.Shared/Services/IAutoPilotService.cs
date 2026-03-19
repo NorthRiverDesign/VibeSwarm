@@ -8,12 +8,24 @@ namespace VibeSwarm.Shared.Services;
 public class AutoPilotConfig
 {
 	/// <summary>
-	/// Provider to use. Null = use the project's default provider selection.
+	/// Inference provider for idea generation (e.g., Grok, Ollama).
+	/// Null = fall back to coding provider or project default.
+	/// </summary>
+	public Guid? InferenceProviderId { get; set; }
+
+	/// <summary>
+	/// Model for inference-based idea generation.
+	/// </summary>
+	public string? InferenceModelId { get; set; }
+
+	/// <summary>
+	/// CLI coding provider for job execution (e.g., Claude, Copilot).
+	/// Null = use the project's default provider selection.
 	/// </summary>
 	public Guid? ProviderId { get; set; }
 
 	/// <summary>
-	/// Optional model override.
+	/// Optional model override for the coding provider.
 	/// </summary>
 	public string? ModelId { get; set; }
 

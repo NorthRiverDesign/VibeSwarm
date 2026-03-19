@@ -71,6 +71,8 @@ public class AutoPilotService : IAutoPilotService
 			Id = Guid.NewGuid(),
 			ProjectId = projectId,
 			Status = IterationLoopStatus.Running,
+			InferenceProviderId = config.InferenceProviderId,
+			InferenceModelId = config.InferenceModelId,
 			ProviderId = config.ProviderId,
 			ModelId = config.ModelId,
 			MaxIterations = config.MaxIterations,
@@ -172,6 +174,8 @@ public class AutoPilotService : IAutoPilotService
 		if (loop.Status != IterationLoopStatus.Paused)
 			throw new InvalidOperationException($"Can only update config on a paused loop (current: {loop.Status}).");
 
+		loop.InferenceProviderId = config.InferenceProviderId;
+		loop.InferenceModelId = config.InferenceModelId;
 		loop.ProviderId = config.ProviderId;
 		loop.ModelId = config.ModelId;
 		loop.MaxIterations = config.MaxIterations;
@@ -379,11 +383,14 @@ public class AutoPilotService : IAutoPilotService
 
 	private async Task<Idea?> GenerateIdeaAsync(IterationLoop loop, CancellationToken cancellationToken)
 	{
+		// Use inference provider for idea generation when configured;
+		// otherwise fall back to the coding provider.
+		var useInference = loop.InferenceProviderId.HasValue || !loop.ProviderId.HasValue;
 		var request = new SuggestIdeasRequest
 		{
-			UseInference = !loop.ProviderId.HasValue, // Use inference if no provider specified
-			ProviderId = loop.ProviderId,
-			ModelId = loop.ModelId,
+			UseInference = useInference,
+			ProviderId = useInference ? loop.InferenceProviderId : loop.ProviderId,
+			ModelId = useInference ? loop.InferenceModelId : loop.ModelId,
 			IdeaCount = 1
 		};
 

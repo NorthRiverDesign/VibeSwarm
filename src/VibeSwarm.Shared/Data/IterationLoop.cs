@@ -63,13 +63,25 @@ public class IterationLoop
 	#region Configuration
 
 	/// <summary>
-	/// Provider to use for idea generation and job execution.
+	/// Inference provider (e.g., Grok, Ollama) used for idea generation.
+	/// If null, falls back to the coding provider or project default.
+	/// </summary>
+	public Guid? InferenceProviderId { get; set; }
+
+	/// <summary>
+	/// Model to use for inference-based idea generation.
+	/// </summary>
+	[StringLength(200)]
+	public string? InferenceModelId { get; set; }
+
+	/// <summary>
+	/// CLI coding provider (e.g., Claude, Copilot) used for job execution.
 	/// If null, uses the project's default provider selection.
 	/// </summary>
 	public Guid? ProviderId { get; set; }
 
 	/// <summary>
-	/// Optional model override. When null, uses the provider or project default.
+	/// Optional model override for the coding provider.
 	/// </summary>
 	[StringLength(200)]
 	public string? ModelId { get; set; }
