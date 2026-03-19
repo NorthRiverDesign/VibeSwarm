@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using VibeSwarm.Shared.Data;
+using VibeSwarm.Shared.Inference;
 using VibeSwarm.Shared.Services;
 
 namespace VibeSwarm.Web.Services;
@@ -88,7 +89,7 @@ public class InferenceProviderService : IInferenceProviderService
 		// Resolve lazily to break circular dependency:
 		// InferenceProviderService -> IInferenceService -> OllamaInferenceService -> IInferenceProviderService
 		var inferenceService = _serviceProvider.GetRequiredService<IInferenceService>();
-		var discovered = await inferenceService.GetAvailableModelsAsync(provider.Endpoint, ct);
+		var discovered = await inferenceService.GetAvailableModelsAsync(provider.Endpoint, provider.ProviderType, ct);
 
 		var existingModels = await _db.InferenceModels
 			.Where(m => m.InferenceProviderId == providerId)

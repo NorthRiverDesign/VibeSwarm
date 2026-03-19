@@ -13,18 +13,24 @@ public class HttpInferenceService : IInferenceService
 
 	public HttpInferenceService(HttpClient http) => _http = http;
 
-	public async Task<InferenceHealthResult> CheckHealthAsync(string? endpoint = null, CancellationToken ct = default)
+	public async Task<InferenceHealthResult> CheckHealthAsync(string? endpoint = null, InferenceProviderType? providerType = null, CancellationToken ct = default)
 	{
-		var url = string.IsNullOrEmpty(endpoint)
-			? "/api/inference/health"
-			: $"/api/inference/health?endpoint={Uri.EscapeDataString(endpoint)}";
+		var queryParts = new List<string>();
+		if (!string.IsNullOrEmpty(endpoint))
+			queryParts.Add($"endpoint={Uri.EscapeDataString(endpoint)}");
+		if (providerType.HasValue)
+			queryParts.Add($"providerType={providerType.Value}");
+
+		var url = queryParts.Count > 0
+			? $"/api/inference/health?{string.Join("&", queryParts)}"
+			: "/api/inference/health";
 
 		return await _http.GetJsonAsync(url, new InferenceHealthResult(), ct);
 	}
 
-	public async Task<List<DiscoveredModel>> GetAvailableModelsAsync(string? endpoint = null, CancellationToken ct = default)
+	public async Task<List<DiscoveredModel>> GetAvailableModelsAsync(string? endpoint = null, InferenceProviderType? providerType = null, CancellationToken ct = default)
 	{
-		var health = await CheckHealthAsync(endpoint, ct);
+		var health = await CheckHealthAsync(endpoint, providerType, ct);
 		return health.DiscoveredModels;
 	}
 

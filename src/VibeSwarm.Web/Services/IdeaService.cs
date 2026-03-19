@@ -1386,7 +1386,7 @@ Keep the specification concise but complete. Focus on actionable implementation 
 		InferenceHealthResult health;
 		try
 		{
-			health = await _inferenceService!.CheckHealthAsync(providerEndpoint, cancellationToken);
+			health = await _inferenceService!.CheckHealthAsync(providerEndpoint, selectedProvider?.ProviderType, cancellationToken);
 		}
 		catch (Exception ex)
 		{

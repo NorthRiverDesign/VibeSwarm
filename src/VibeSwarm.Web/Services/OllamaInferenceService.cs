@@ -34,7 +34,7 @@ public class OllamaInferenceService : IInferenceService
 		_runtimeOptions = runtimeOptions ?? new RuntimeOptions();
 	}
 
-	public async Task<InferenceHealthResult> CheckHealthAsync(string? endpoint = null, CancellationToken ct = default)
+	public async Task<InferenceHealthResult> CheckHealthAsync(string? endpoint = null, InferenceProviderType? providerType = null, CancellationToken ct = default)
 	{
 		var result = new InferenceHealthResult();
 		endpoint = NormalizeEndpoint(endpoint ?? await ResolveEndpointAsync(ct));
@@ -55,7 +55,7 @@ public class OllamaInferenceService : IInferenceService
 			// Discover models
 			if (result.IsAvailable)
 			{
-				result.DiscoveredModels = await GetAvailableModelsAsync(endpoint, ct);
+				result.DiscoveredModels = await GetAvailableModelsAsync(endpoint, ct: ct);
 			}
 		}
 		catch (Exception ex)
@@ -67,7 +67,7 @@ public class OllamaInferenceService : IInferenceService
 		return result;
 	}
 
-	public async Task<List<DiscoveredModel>> GetAvailableModelsAsync(string? endpoint = null, CancellationToken ct = default)
+	public async Task<List<DiscoveredModel>> GetAvailableModelsAsync(string? endpoint = null, InferenceProviderType? providerType = null, CancellationToken ct = default)
 	{
 		endpoint = NormalizeEndpoint(endpoint ?? await ResolveEndpointAsync(ct));
 		var models = new List<DiscoveredModel>();

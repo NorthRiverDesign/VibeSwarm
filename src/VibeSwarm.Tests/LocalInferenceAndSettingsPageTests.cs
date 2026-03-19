@@ -35,7 +35,7 @@ services.AddSingleton<NotificationService>();
 		});
 
 Assert.Contains("Inference", html);
-Assert.Contains("Set Up Inference", html);
+Assert.Contains("Add Provider", html);
 Assert.DoesNotContain("App Settings", html);
 }
 
@@ -60,7 +60,7 @@ return output.ToHtmlString();
 });
 
 Assert.Contains("App Settings", html);
-Assert.DoesNotContain("Set Up Inference", html);
+Assert.DoesNotContain("Add Provider", html);
 Assert.DoesNotContain("inference provider", html);
 }
 
@@ -80,8 +80,8 @@ Assert.DoesNotContain("inference provider", html);
 
 private sealed class FakeInferenceService : IInferenceService
 {
-public Task<InferenceHealthResult> CheckHealthAsync(string? endpoint = null, CancellationToken ct = default) => Task.FromResult(new InferenceHealthResult());
-public Task<List<DiscoveredModel>> GetAvailableModelsAsync(string? endpoint = null, CancellationToken ct = default) => Task.FromResult(new List<DiscoveredModel>());
+public Task<InferenceHealthResult> CheckHealthAsync(string? endpoint = null, InferenceProviderType? providerType = null, CancellationToken ct = default) => Task.FromResult(new InferenceHealthResult());
+public Task<List<DiscoveredModel>> GetAvailableModelsAsync(string? endpoint = null, InferenceProviderType? providerType = null, CancellationToken ct = default) => Task.FromResult(new List<DiscoveredModel>());
 public Task<InferenceResponse> GenerateAsync(InferenceRequest request, CancellationToken ct = default) => throw new NotSupportedException();
 public Task<InferenceResponse> GenerateForTaskAsync(string taskType, string prompt, string? systemPrompt = null, CancellationToken ct = default) => throw new NotSupportedException();
 }

@@ -10,12 +10,12 @@ public interface IInferenceService
 	/// <summary>
 	/// Tests connectivity to an inference provider endpoint.
 	/// </summary>
-	Task<InferenceHealthResult> CheckHealthAsync(string? endpoint = null, CancellationToken ct = default);
+	Task<InferenceHealthResult> CheckHealthAsync(string? endpoint = null, InferenceProviderType? providerType = null, CancellationToken ct = default);
 
 	/// <summary>
 	/// Discovers available models from an inference provider.
 	/// </summary>
-	Task<List<DiscoveredModel>> GetAvailableModelsAsync(string? endpoint = null, CancellationToken ct = default);
+	Task<List<DiscoveredModel>> GetAvailableModelsAsync(string? endpoint = null, InferenceProviderType? providerType = null, CancellationToken ct = default);
 
 	/// <summary>
 	/// Generates a completion using the specified request parameters.

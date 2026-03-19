@@ -24,16 +24,16 @@ public class InferenceServiceDispatcher : IInferenceService
 		_providerService = providerService;
 	}
 
-	public async Task<InferenceHealthResult> CheckHealthAsync(string? endpoint = null, CancellationToken ct = default)
+	public async Task<InferenceHealthResult> CheckHealthAsync(string? endpoint = null, InferenceProviderType? providerType = null, CancellationToken ct = default)
 	{
-		var providerType = await ResolveProviderTypeByEndpointAsync(endpoint, ct);
-		return await GetService(providerType).CheckHealthAsync(endpoint, ct);
+		var resolved = providerType ?? await ResolveProviderTypeByEndpointAsync(endpoint, ct);
+		return await GetService(resolved).CheckHealthAsync(endpoint, resolved, ct);
 	}
 
-	public async Task<List<DiscoveredModel>> GetAvailableModelsAsync(string? endpoint = null, CancellationToken ct = default)
+	public async Task<List<DiscoveredModel>> GetAvailableModelsAsync(string? endpoint = null, InferenceProviderType? providerType = null, CancellationToken ct = default)
 	{
-		var providerType = await ResolveProviderTypeByEndpointAsync(endpoint, ct);
-		return await GetService(providerType).GetAvailableModelsAsync(endpoint, ct);
+		var resolved = providerType ?? await ResolveProviderTypeByEndpointAsync(endpoint, ct);
+		return await GetService(resolved).GetAvailableModelsAsync(endpoint, resolved, ct);
 	}
 
 	public async Task<InferenceResponse> GenerateAsync(InferenceRequest request, CancellationToken ct = default)

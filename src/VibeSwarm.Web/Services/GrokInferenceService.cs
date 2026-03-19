@@ -34,7 +34,7 @@ public class GrokInferenceService : IInferenceService
 		_providerService = providerService;
 	}
 
-	public async Task<InferenceHealthResult> CheckHealthAsync(string? endpoint = null, CancellationToken ct = default)
+	public async Task<InferenceHealthResult> CheckHealthAsync(string? endpoint = null, InferenceProviderType? providerType = null, CancellationToken ct = default)
 	{
 		var result = new InferenceHealthResult();
 		endpoint = NormalizeEndpoint(endpoint ?? await ResolveEndpointAsync(ct));
@@ -67,7 +67,7 @@ public class GrokInferenceService : IInferenceService
 		return result;
 	}
 
-	public async Task<List<DiscoveredModel>> GetAvailableModelsAsync(string? endpoint = null, CancellationToken ct = default)
+	public async Task<List<DiscoveredModel>> GetAvailableModelsAsync(string? endpoint = null, InferenceProviderType? providerType = null, CancellationToken ct = default)
 	{
 		endpoint = NormalizeEndpoint(endpoint ?? await ResolveEndpointAsync(ct));
 		var apiKey = await ResolveApiKeyAsync(ct);

@@ -6,61 +6,82 @@
 
 <PageHeader Title="Inference" Subtitle="Manage your inference providers and models" />
 
-<div class="card">
-<div class="card-header bg-body-secondary d-flex align-items-center justify-content-between flex-wrap gap-2">
+<div class="d-flex align-items-center justify-content-between mb-3">
 <h5 class="mb-0 fw-semibold">
-<i class="bi bi-cpu me-2"></i>Inference
+<i class="bi bi-cpu me-2"></i>Providers
 </h5>
-@if (_inferenceProvider != null)
-{
-<div class="d-flex align-items-center gap-2">
-@if (_inferenceHealthy)
-{
-<span class="badge bg-success-subtle text-success-emphasis">
-<i class="bi bi-check-circle me-1"></i>Connected
-</span>
-}
-else
-{
-<span class="badge bg-danger-subtle text-danger-emphasis">
-<i class="bi bi-x-circle me-1"></i>Disconnected
-</span>
-}
+<button class="btn btn-primary btn-sm" @onclick="AddProvider">
+<i class="bi bi-plus-lg me-1"></i>Add Provider
+</button>
 </div>
-}
-</div>
-<div class="card-body">
-@if (_isLoadingInference)
+
+@if (_isLoading)
 {
 <LoadingSpinner />
 }
-else if (_inferenceProvider == null)
+else if (!_providers.Any())
 {
-<div class="text-center py-4">
+<div class="card">
+<div class="card-body text-center py-4">
 <i class="bi bi-cpu display-4 text-body-secondary mb-3 d-block"></i>
 <p class="text-body-secondary mb-3">
 No inference provider configured. Set up Ollama, Grok, or another
 inference provider for AI tasks like idea generation, summarization,
 and commit messages.
 </p>
-<button class="btn btn-primary" @onclick="SetupInferenceProvider">
-<i class="bi bi-plus-lg me-1"></i>Set Up Inference
+<button class="btn btn-primary" @onclick="AddProvider">
+<i class="bi bi-plus-lg me-1"></i>Add Provider
 </button>
+</div>
 </div>
 }
 else
 {
+@foreach (var provider in _providers)
+{
+var isSelected = _selectedProvider?.Id == provider.Id;
+var isHealthy = _healthStatus.GetValueOrDefault(provider.Id);
+<div class="card mb-3 @(isSelected ? "border-primary" : "")">
+<div class="card-header bg-body-secondary d-flex align-items-center justify-content-between flex-wrap gap-2 cursor-pointer"
+ @onclick="() => SelectProvider(provider)">
+<div class="d-flex align-items-center gap-2">
+<h6 class="mb-0 fw-semibold">
+<i class="bi @GetProviderIcon(provider.ProviderType) me-1"></i>@provider.Name
+</h6>
+<span class="badge bg-body-tertiary text-body-secondary">@provider.ProviderType</span>
+@if (isHealthy)
+{
+<span class="badge bg-success-subtle text-success-emphasis">
+<i class="bi bi-check-circle me-1"></i>Connected
+</span>
+}
+else if (_healthChecked.Contains(provider.Id))
+{
+<span class="badge bg-danger-subtle text-danger-emphasis">
+<i class="bi bi-x-circle me-1"></i>Disconnected
+</span>
+}
+@if (!provider.IsEnabled)
+{
+<span class="badge bg-warning-subtle text-warning-emphasis">Disabled</span>
+}
+</div>
+<i class="bi @(isSelected ? "bi-chevron-up" : "bi-chevron-down")"></i>
+</div>
+
+@if (isSelected)
+{
+<div class="card-body">
 <div class="row g-3">
 <div class="col-12 col-md-6">
-<label for="inferenceProviderName" class="form-label">Provider Name</label>
-<input type="text" id="inferenceProviderName" class="form-control"
-   @bind="_inferenceProvider.Name" />
+<label class="form-label">Provider Name</label>
+<input type="text" class="form-control" @bind="provider.Name" />
 </div>
 <div class="col-12 col-md-6">
-<label for="inferenceProviderType" class="form-label">Provider Type</label>
-<select id="inferenceProviderType" class="form-select"
-   value="@_inferenceProvider.ProviderType"
-   @onchange="OnProviderTypeChanged">
+<label class="form-label">Provider Type</label>
+<select class="form-select"
+    value="@provider.ProviderType"
+    @onchange="e => OnProviderTypeChanged(provider, e)">
 @foreach (var type in Enum.GetValues<InferenceProviderType>())
 {
 <option value="@type">@type</option>
@@ -68,30 +89,32 @@ else
 </select>
 </div>
 <div class="col-12 col-md-6">
-<label for="inferenceApiKey" class="form-label">
+<label class="form-label">
 API Key
-@if (_inferenceProvider.ProviderType == InferenceProviderType.Grok)
+@if (provider.ProviderType == InferenceProviderType.Grok)
 {
 <span class="text-danger">*</span>
 }
 </label>
-<input type="password" id="inferenceApiKey" class="form-control font-monospace"
-   @bind="_inferenceProvider.ApiKey"
-   placeholder="@(_inferenceProvider.ProviderType == InferenceProviderType.Grok ? "xai-..." : "(optional)")" />
-@if (_inferenceProvider.ProviderType == InferenceProviderType.Grok)
+<input type="password" class="form-control font-monospace"
+    @bind="provider.ApiKey"
+    placeholder="@(provider.ProviderType == InferenceProviderType.Grok ? "xai-..." : "(optional)")" />
+@if (provider.ProviderType == InferenceProviderType.Grok)
 {
 <div class="form-text">Required for Grok. Get your key from the X.AI console.</div>
 }
 </div>
-<div class="col-12">
-<label for="inferenceEndpoint" class="form-label">Endpoint URL</label>
+<div class="col-12 col-md-6">
+<label class="form-label">Endpoint URL</label>
 <div class="input-group">
-<input type="url" id="inferenceEndpoint" class="form-control font-monospace"
-   @bind="_inferenceProvider.Endpoint"
-   placeholder="@(_inferenceProvider.ProviderType == InferenceProviderType.Grok ? "https://api.x.ai/v1" : "http://localhost:11434")" />
-<button type="button" class="btn btn-secondary" @onclick="TestInferenceConnection"
-disabled="@_isTestingInference" title="Test Connection">
-@if (_isTestingInference)
+<input type="url" class="form-control font-monospace"
+    @bind="provider.Endpoint"
+    placeholder="@GetEndpointPlaceholder(provider.ProviderType)" />
+<button type="button" class="btn btn-secondary"
+    @onclick="() => TestConnection(provider)"
+    disabled="@IsOperationActive(provider.Id)"
+    title="Test Connection">
+@if (_activeOperation == provider.Id && _operationType == "test")
 {
 <span class="spinner-border spinner-border-sm" role="status"></span>
 }
@@ -103,11 +126,11 @@ else
 </div>
 </div>
 <div class="col-12 col-md-8">
-<label for="inferenceDefaultModel" class="form-label">Default Model</label>
+<label class="form-label">Default Model</label>
 <div class="input-group">
-<select id="inferenceDefaultModel" class="form-select" @bind="_selectedModelId">
+<select class="form-select" @bind="_selectedModelIds[provider.Id]">
 <option value="">-- Select a model --</option>
-@foreach (var model in _inferenceModels.Where(m => m.IsAvailable))
+@foreach (var model in GetModelsForProvider(provider.Id).Where(m => m.IsAvailable))
 {
 <option value="@model.ModelId">
 @(model.DisplayName ?? model.ModelId)
@@ -118,9 +141,11 @@ else
 </option>
 }
 </select>
-<button type="button" class="btn btn-secondary" @onclick="RefreshInferenceModels"
-disabled="@_isRefreshingModels" title="Refresh models from provider">
-@if (_isRefreshingModels)
+<button type="button" class="btn btn-secondary"
+    @onclick="() => RefreshModels(provider)"
+    disabled="@IsOperationActive(provider.Id)"
+    title="Refresh models from provider">
+@if (_activeOperation == provider.Id && _operationType == "refresh")
 {
 <span class="spinner-border spinner-border-sm" role="status"></span>
 }
@@ -130,7 +155,7 @@ else
 }
 </button>
 </div>
-@if (!_inferenceModels.Any())
+@if (!GetModelsForProvider(provider.Id).Any())
 {
 <div class="form-text text-warning">
 No models found. Click refresh to discover models from the provider.
@@ -139,9 +164,9 @@ No models found. Click refresh to discover models from the provider.
 </div>
 <div class="col-12 col-md-4 d-flex align-items-end">
 <div class="form-check form-switch">
-<input class="form-check-input" type="checkbox" id="inferenceEnabled"
-   @bind="_inferenceProvider.IsEnabled" />
-<label class="form-check-label" for="inferenceEnabled">Enabled</label>
+<input class="form-check-input" type="checkbox" id="@($"enabled-{provider.Id}")"
+    @bind="provider.IsEnabled" />
+<label class="form-check-label" for="@($"enabled-{provider.Id}")">Enabled</label>
 </div>
 </div>
 </div>
@@ -149,9 +174,10 @@ No models found. Click refresh to discover models from the provider.
 <hr />
 
 <div class="d-flex flex-column flex-sm-row gap-2">
-<button type="button" class="btn btn-primary" @onclick="SaveInferenceProvider"
-disabled="@_isSavingInference">
-@if (_isSavingInference)
+<button type="button" class="btn btn-primary"
+    @onclick="() => SaveProvider(provider)"
+    disabled="@IsOperationActive(provider.Id)">
+@if (_activeOperation == provider.Id && _operationType == "save")
 {
 <span class="spinner-border spinner-border-sm me-1" role="status"></span>
 <span>Saving...</span>
@@ -162,20 +188,23 @@ else
 <span>Save</span>
 }
 </button>
-<button type="button" class="btn btn-danger" @onclick="DeleteInferenceProvider">
+<button type="button" class="btn btn-danger" @onclick="() => DeleteProvider(provider)">
 <i class="bi bi-trash me-1"></i>Remove
 </button>
 </div>
+</div>
 }
 </div>
-</div>
+}
+}
 
-@if (_inferenceProvider != null)
+@if (_selectedProvider != null)
 {
 <div class="card mt-3">
 <div class="card-header bg-body-secondary">
 <h5 class="mb-0 fw-semibold">
 <i class="bi bi-chat-square-dots me-2"></i>Test Inference
+<span class="text-body-secondary fw-normal ms-2 small">(@_selectedProvider.Name)</span>
 </h5>
 </div>
 <div class="card-body">
@@ -185,7 +214,7 @@ else
   @bind="_testPrompt" placeholder="Enter a test prompt..."></textarea>
 </div>
 <button type="button" class="btn btn-primary"
-@onclick="TestInferenceGeneration"
+@onclick="TestGeneration"
 disabled="@(_isTesting || string.IsNullOrWhiteSpace(_testPrompt))">
 @if (_isTesting)
 {
@@ -229,165 +258,189 @@ else
 }
 
 @code {
-private InferenceProvider? _inferenceProvider;
-private List<InferenceModel> _inferenceModels = [];
-private string _selectedModelId = string.Empty;
-private bool _isLoadingInference = true;
-private bool _isSavingInference = false;
-private bool _isTestingInference = false;
-private bool _isRefreshingModels = false;
-private bool _inferenceHealthy = false;
+private List<InferenceProvider> _providers = [];
+private InferenceProvider? _selectedProvider;
+private Dictionary<Guid, List<InferenceModel>> _providerModels = new();
+private Dictionary<Guid, string> _selectedModelIds = new();
+private Dictionary<Guid, bool> _healthStatus = new();
+private HashSet<Guid> _healthChecked = new();
+private bool _isLoading = true;
+
+// Operation tracking per provider
+private Guid? _activeOperation;
+private string? _operationType;
+
+// Test inference state
 private string _testPrompt = "Say hello in one sentence.";
 private bool _isTesting = false;
 private InferenceResponse? _testResponse = null;
 
 protected override async Task OnInitializedAsync()
 {
-await LoadInferenceProvider();
+await LoadProviders();
 }
 
-private async Task LoadInferenceProvider()
+private async Task LoadProviders()
 {
-_isLoadingInference = true;
+_isLoading = true;
 
 try
 {
 var providers = await InferenceProviderService.GetAllAsync();
-_inferenceProvider = providers.FirstOrDefault();
+_providers = providers.ToList();
 
-if (_inferenceProvider != null)
+foreach (var provider in _providers)
 {
-_inferenceModels = (await InferenceProviderService.GetModelsAsync(_inferenceProvider.Id)).ToList();
-_selectedModelId = _inferenceModels.FirstOrDefault(m => m.IsDefault)?.ModelId ?? string.Empty;
-_ = CheckInferenceHealth();
+var models = (await InferenceProviderService.GetModelsAsync(provider.Id)).ToList();
+_providerModels[provider.Id] = models;
+_selectedModelIds[provider.Id] = models.FirstOrDefault(m => m.IsDefault)?.ModelId ?? string.Empty;
+}
+
+// Select the first provider by default
+_selectedProvider = _providers.FirstOrDefault();
+
+// Check health for all providers in the background
+foreach (var provider in _providers)
+{
+_ = CheckHealth(provider);
 }
 }
 catch (Exception ex)
 {
-NotificationService.ShowError($"Failed to load inference: {ex.Message}");
+NotificationService.ShowError($"Failed to load inference providers: {ex.Message}");
 }
 finally
 {
-_isLoadingInference = false;
+_isLoading = false;
 }
 }
 
-private void OnProviderTypeChanged(ChangeEventArgs e)
+private void SelectProvider(InferenceProvider provider)
 {
-if (_inferenceProvider == null) return;
-if (Enum.TryParse<InferenceProviderType>(e.Value?.ToString(), out var newType))
-{
-_inferenceProvider.ProviderType = newType;
-// Auto-set default endpoint when switching provider type
-_inferenceProvider.Endpoint = newType switch
-{
-InferenceProviderType.Grok => "https://api.x.ai/v1",
-_ => "http://localhost:11434"
-};
-// Auto-set default name
-if (string.IsNullOrWhiteSpace(_inferenceProvider.Name) || _inferenceProvider.Name == "Local Ollama" || _inferenceProvider.Name == "Grok (X.AI)")
-{
-_inferenceProvider.Name = newType switch
-{
-InferenceProviderType.Grok => "Grok (X.AI)",
-_ => "Local Ollama"
-};
-}
-}
+_selectedProvider = _selectedProvider?.Id == provider.Id ? null : provider;
+_testResponse = null;
 }
 
-private async Task SetupInferenceProvider()
+private async Task AddProvider()
 {
-_inferenceProvider = new InferenceProvider
+var provider = new InferenceProvider
 {
-Name = "Local Ollama",
+Name = "New Provider",
 ProviderType = InferenceProviderType.Ollama,
 Endpoint = "http://localhost:11434"
 };
 
 try
 {
-_inferenceProvider = await InferenceProviderService.CreateAsync(_inferenceProvider);
-NotificationService.ShowSuccess("Inference provider created. Test the connection and refresh models.");
-_ = CheckInferenceHealth();
+provider = await InferenceProviderService.CreateAsync(provider);
+_providers.Add(provider);
+_providerModels[provider.Id] = [];
+_selectedModelIds[provider.Id] = string.Empty;
+_selectedProvider = provider;
+NotificationService.ShowSuccess("Provider created. Configure it and test the connection.");
 }
 catch (Exception ex)
 {
-NotificationService.ShowError($"Failed to create inference provider: {ex.Message}");
-_inferenceProvider = null;
+NotificationService.ShowError($"Failed to create provider: {ex.Message}");
 }
 }
 
-private async Task SaveInferenceProvider()
+private void OnProviderTypeChanged(InferenceProvider provider, ChangeEventArgs e)
 {
-if (_inferenceProvider == null)
+if (Enum.TryParse<InferenceProviderType>(e.Value?.ToString(), out var newType))
 {
-return;
+var oldType = provider.ProviderType;
+provider.ProviderType = newType;
+
+// Auto-set endpoint when switching type (only if it still has the old default)
+var oldDefault = GetDefaultEndpoint(oldType);
+if (string.IsNullOrWhiteSpace(provider.Endpoint) ||
+    string.Equals(provider.Endpoint.TrimEnd('/'), oldDefault.TrimEnd('/'), StringComparison.OrdinalIgnoreCase))
+{
+provider.Endpoint = GetDefaultEndpoint(newType);
 }
 
-_isSavingInference = true;
+// Auto-set name if it's still a default name
+var defaultNames = new[] { "New Provider", "Local Ollama", "Grok (X.AI)" };
+if (defaultNames.Contains(provider.Name, StringComparer.OrdinalIgnoreCase))
+{
+provider.Name = GetDefaultName(newType);
+}
+}
+}
+
+private async Task SaveProvider(InferenceProvider provider)
+{
+_activeOperation = provider.Id;
+_operationType = "save";
 
 try
 {
-_inferenceProvider = await InferenceProviderService.UpdateAsync(_inferenceProvider);
+var updated = await InferenceProviderService.UpdateAsync(provider);
 
-if (!string.IsNullOrEmpty(_selectedModelId))
+// Update in list
+var idx = _providers.FindIndex(p => p.Id == updated.Id);
+if (idx >= 0) _providers[idx] = updated;
+if (_selectedProvider?.Id == updated.Id) _selectedProvider = updated;
+
+var selectedModel = _selectedModelIds.GetValueOrDefault(provider.Id);
+if (!string.IsNullOrEmpty(selectedModel))
 {
-await InferenceProviderService.SetModelForTaskAsync(_inferenceProvider.Id, _selectedModelId, "default");
+await InferenceProviderService.SetModelForTaskAsync(provider.Id, selectedModel, "default");
 }
 
-NotificationService.ShowSuccess("Inference provider saved successfully!");
+NotificationService.ShowSuccess($"Provider \"{updated.Name}\" saved.");
 }
 catch (Exception ex)
 {
-NotificationService.ShowError($"Failed to save inference provider: {ex.Message}");
+NotificationService.ShowError($"Failed to save provider: {ex.Message}");
 }
 finally
 {
-_isSavingInference = false;
+_activeOperation = null;
+_operationType = null;
 }
 }
 
-private async Task DeleteInferenceProvider()
+private async Task DeleteProvider(InferenceProvider provider)
 {
-if (_inferenceProvider == null)
-{
-return;
-}
-
 try
 {
-await InferenceProviderService.DeleteAsync(_inferenceProvider.Id);
-_inferenceProvider = null;
-_inferenceModels.Clear();
-_selectedModelId = string.Empty;
-_inferenceHealthy = false;
+await InferenceProviderService.DeleteAsync(provider.Id);
+_providers.Remove(provider);
+_providerModels.Remove(provider.Id);
+_selectedModelIds.Remove(provider.Id);
+_healthStatus.Remove(provider.Id);
+_healthChecked.Remove(provider.Id);
+
+if (_selectedProvider?.Id == provider.Id)
+{
+_selectedProvider = _providers.FirstOrDefault();
 _testResponse = null;
-NotificationService.ShowSuccess("Inference provider removed.");
+}
+
+NotificationService.ShowSuccess($"Provider \"{provider.Name}\" removed.");
 }
 catch (Exception ex)
 {
-NotificationService.ShowError($"Failed to delete inference provider: {ex.Message}");
+NotificationService.ShowError($"Failed to delete provider: {ex.Message}");
 }
 }
 
-private async Task TestInferenceConnection()
+private async Task TestConnection(InferenceProvider provider)
 {
-if (_inferenceProvider == null)
-{
-return;
-}
-
-_isTestingInference = true;
+_activeOperation = provider.Id;
+_operationType = "test";
 
 try
 {
-var result = await InferenceService.CheckHealthAsync(_inferenceProvider.Endpoint);
-_inferenceHealthy = result.IsAvailable;
+var result = await InferenceService.CheckHealthAsync(provider.Endpoint, provider.ProviderType);
+_healthStatus[provider.Id] = result.IsAvailable;
+_healthChecked.Add(provider.Id);
 
 if (result.IsAvailable)
 {
-NotificationService.ShowSuccess($"Connected to {_inferenceProvider.ProviderType}! {result.DiscoveredModels.Count} model(s) available.");
+NotificationService.ShowSuccess($"Connected to {provider.Name}! {result.DiscoveredModels.Count} model(s) available.");
 }
 else
 {
@@ -396,34 +449,34 @@ NotificationService.ShowError($"Connection failed: {result.Error ?? "Unable to r
 }
 catch (Exception ex)
 {
-_inferenceHealthy = false;
+_healthStatus[provider.Id] = false;
+_healthChecked.Add(provider.Id);
 NotificationService.ShowError($"Connection test failed: {ex.Message}");
 }
 finally
 {
-_isTestingInference = false;
+_activeOperation = null;
+_operationType = null;
 }
 }
 
-private async Task RefreshInferenceModels()
+private async Task RefreshModels(InferenceProvider provider)
 {
-if (_inferenceProvider == null)
-{
-return;
-}
-
-_isRefreshingModels = true;
+_activeOperation = provider.Id;
+_operationType = "refresh";
 
 try
 {
-_inferenceModels = (await InferenceProviderService.RefreshModelsAsync(_inferenceProvider.Id)).ToList();
+var models = (await InferenceProviderService.RefreshModelsAsync(provider.Id)).ToList();
+_providerModels[provider.Id] = models;
 
-if (!_inferenceModels.Any(m => m.ModelId == _selectedModelId))
+var currentSelection = _selectedModelIds.GetValueOrDefault(provider.Id);
+if (!models.Any(m => m.ModelId == currentSelection))
 {
-_selectedModelId = _inferenceModels.FirstOrDefault(m => m.IsDefault)?.ModelId ?? string.Empty;
+_selectedModelIds[provider.Id] = models.FirstOrDefault(m => m.IsDefault)?.ModelId ?? string.Empty;
 }
 
-NotificationService.ShowSuccess($"Found {_inferenceModels.Count(m => m.IsAvailable)} model(s).");
+NotificationService.ShowSuccess($"Found {models.Count(m => m.IsAvailable)} model(s) for {provider.Name}.");
 }
 catch (Exception ex)
 {
@@ -431,46 +484,43 @@ NotificationService.ShowError($"Failed to refresh models: {ex.Message}");
 }
 finally
 {
-_isRefreshingModels = false;
+_activeOperation = null;
+_operationType = null;
 }
 }
 
-private async Task CheckInferenceHealth()
+private async Task CheckHealth(InferenceProvider provider)
 {
-if (_inferenceProvider == null)
-{
-return;
-}
-
 try
 {
-var result = await InferenceService.CheckHealthAsync(_inferenceProvider.Endpoint);
-_inferenceHealthy = result.IsAvailable;
+var result = await InferenceService.CheckHealthAsync(provider.Endpoint, provider.ProviderType);
+_healthStatus[provider.Id] = result.IsAvailable;
+_healthChecked.Add(provider.Id);
 await InvokeAsync(StateHasChanged);
 }
-catch (Exception)
+catch
 {
-_inferenceHealthy = false;
+_healthStatus[provider.Id] = false;
+_healthChecked.Add(provider.Id);
 }
 }
 
-private async Task TestInferenceGeneration()
+private async Task TestGeneration()
 {
-if (string.IsNullOrWhiteSpace(_testPrompt))
-{
-return;
-}
+if (_selectedProvider == null || string.IsNullOrWhiteSpace(_testPrompt)) return;
 
 _isTesting = true;
 _testResponse = null;
 
 try
 {
-var model = string.IsNullOrEmpty(_selectedModelId) ? null : _selectedModelId;
+var modelId = _selectedModelIds.GetValueOrDefault(_selectedProvider.Id);
 _testResponse = await InferenceService.GenerateAsync(new InferenceRequest
 {
 Prompt = _testPrompt.Trim(),
-Model = model
+Model = string.IsNullOrEmpty(modelId) ? null : modelId,
+Endpoint = _selectedProvider.Endpoint,
+ProviderType = _selectedProvider.ProviderType
 });
 }
 catch (Exception ex)
@@ -482,4 +532,34 @@ finally
 _isTesting = false;
 }
 }
+
+private List<InferenceModel> GetModelsForProvider(Guid providerId)
+=> _providerModels.GetValueOrDefault(providerId) ?? [];
+
+private bool IsOperationActive(Guid providerId)
+=> _activeOperation == providerId;
+
+private static string GetProviderIcon(InferenceProviderType type) => type switch
+{
+InferenceProviderType.Grok => "bi-cloud",
+_ => "bi-hdd-network"
+};
+
+private static string GetEndpointPlaceholder(InferenceProviderType type) => type switch
+{
+InferenceProviderType.Grok => "https://api.x.ai/v1",
+_ => "http://localhost:11434"
+};
+
+private static string GetDefaultEndpoint(InferenceProviderType type) => type switch
+{
+InferenceProviderType.Grok => "https://api.x.ai/v1",
+_ => "http://localhost:11434"
+};
+
+private static string GetDefaultName(InferenceProviderType type) => type switch
+{
+InferenceProviderType.Grok => "Grok (X.AI)",
+_ => "Local Ollama"
+};
 }

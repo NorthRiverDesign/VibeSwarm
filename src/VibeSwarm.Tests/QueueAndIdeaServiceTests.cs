@@ -1675,7 +1675,7 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		public InferenceResponse Response { get; set; } = new() { Success = true };
 		public InferenceRequest? LastRequest { get; private set; }
 
-		public Task<InferenceHealthResult> CheckHealthAsync(string? endpoint = null, CancellationToken ct = default)
+		public Task<InferenceHealthResult> CheckHealthAsync(string? endpoint = null, InferenceProviderType? providerType = null, CancellationToken ct = default)
 		{
 			return Task.FromResult(new InferenceHealthResult
 			{
@@ -1686,7 +1686,7 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 			});
 		}
 
-		public Task<List<DiscoveredModel>> GetAvailableModelsAsync(string? endpoint = null, CancellationToken ct = default)
+		public Task<List<DiscoveredModel>> GetAvailableModelsAsync(string? endpoint = null, InferenceProviderType? providerType = null, CancellationToken ct = default)
 			=> Task.FromResult(new List<DiscoveredModel>());
 
 		public Task<InferenceResponse> GenerateAsync(InferenceRequest request, CancellationToken ct = default)

@@ -81,8 +81,8 @@ public class InferenceController : ControllerBase
 	// ---- Health & Generation ----
 
 	[HttpGet("health")]
-	public async Task<IActionResult> CheckHealth([FromQuery] string? endpoint, CancellationToken ct)
-		=> Ok(await _inferenceService.CheckHealthAsync(endpoint, ct));
+	public async Task<IActionResult> CheckHealth([FromQuery] string? endpoint, [FromQuery] InferenceProviderType? providerType, CancellationToken ct)
+		=> Ok(await _inferenceService.CheckHealthAsync(endpoint, providerType, ct));
 
 	[HttpPost("generate")]
 	public async Task<IActionResult> Generate([FromBody] InferenceRequest request, CancellationToken ct)
