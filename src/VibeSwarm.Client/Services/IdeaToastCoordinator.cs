@@ -39,7 +39,17 @@ public sealed class IdeaToastCoordinator
 		}
 	}
 
+	public Task<bool> ShouldShowIdeaCreatedAsync(string ideaId, CancellationToken cancellationToken = default)
+	{
+		return ShouldShowIdeaToastAsync(ideaId, cancellationToken);
+	}
+
 	public async Task<bool> ShouldShowIdeaUpdatedAsync(string ideaId, CancellationToken cancellationToken = default)
+	{
+		return await ShouldShowIdeaToastAsync(ideaId, cancellationToken);
+	}
+
+	private async Task<bool> ShouldShowIdeaToastAsync(string ideaId, CancellationToken cancellationToken)
 	{
 		ArgumentException.ThrowIfNullOrWhiteSpace(ideaId);
 

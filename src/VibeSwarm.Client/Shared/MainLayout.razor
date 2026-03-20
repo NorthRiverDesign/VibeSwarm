@@ -401,12 +401,17 @@ TimeSpan.FromSeconds(10) })
 
     private async Task OnGlobalIdeaCreated(string ideaId)
     {
-        if (!TryBeginToastEvent($"idea-created:{ideaId}"))
+        if (string.IsNullOrWhiteSpace(ideaId) || !Guid.TryParse(ideaId, out var parsedIdeaId))
         {
             return;
         }
 
-        if (!Guid.TryParse(ideaId, out var parsedIdeaId))
+        if (!await _ideaToastCoordinator.ShouldShowIdeaCreatedAsync(ideaId))
+        {
+            return;
+        }
+
+        if (!TryBeginToastEvent($"idea-created:{ideaId}"))
         {
             return;
         }
