@@ -345,6 +345,12 @@
 	[Parameter]
 	public List<InferenceProvider> AvailableInferenceProviders { get; set; } = new();
 
+	[Parameter]
+	public Guid? DefaultInferenceProviderId { get; set; }
+
+	[Parameter]
+	public string? DefaultInferenceModelId { get; set; }
+
 	private string NewIdeaDescription { get; set; } = string.Empty;
 	private Guid? StartingIdeaId { get; set; }
 	private bool IsSuggestingIdeas { get; set; }
@@ -861,10 +867,22 @@
 	{
 		if (_suggestUseInference)
 		{
-			_selectedInferenceProviderId ??= AvailableInferenceProviders
-				.OrderBy(provider => provider.Name)
-				.Select(provider => (Guid?)provider.Id)
-				.FirstOrDefault();
+			// Prefer the project's configured inference provider, then fall back to the first available
+			_selectedInferenceProviderId ??= (DefaultInferenceProviderId.HasValue
+				&& AvailableInferenceProviders.Any(p => p.Id == DefaultInferenceProviderId.Value))
+				? DefaultInferenceProviderId
+				: AvailableInferenceProviders
+					.OrderBy(provider => provider.Name)
+					.Select(provider => (Guid?)provider.Id)
+					.FirstOrDefault();
+
+			// Apply the project's default model when the project's provider was selected
+			if (_selectedInferenceProviderId == DefaultInferenceProviderId
+				&& _selectedInferenceModelId == null
+				&& !string.IsNullOrWhiteSpace(DefaultInferenceModelId))
+			{
+				_selectedInferenceModelId = DefaultInferenceModelId;
+			}
 			return;
 		}
 

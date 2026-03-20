@@ -690,6 +690,11 @@ body.vs-modal-open {
 	word-break: break-word;
 }
 
+.vs-project-modal-form {
+	overflow-x: hidden;
+	max-width: 100%;
+}
+
 .vs-project-modal-body .btn.text-start {
 	white-space: normal;
 }
@@ -803,6 +808,18 @@ body.vs-modal-open {
 	}
 	.vs-project-modal-body .input-group {
 		flex-wrap: nowrap;
+	}
+	.vs-project-modal-body .border {
+		overflow-x: hidden;
+		min-width: 0;
+	}
+	.vs-project-modal-body .form-text {
+		overflow-wrap: anywhere;
+		word-break: break-word;
+	}
+	.vs-project-modal-body .form-select option {
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 	.vs-modal-dialog .modal-footer {
 		padding-bottom: calc(0.75rem + var(--vs-safe-area-bottom));

@@ -129,6 +129,8 @@ else
                             OnRejectExpansion="RejectIdeaExpansion" AvailableLocalModels="@_availableLocalModels"
                             HasInference="@_hasInference" AvailableProviders="@Providers.Where(p => p.IsEnabled).ToList()"
                             AvailableInferenceProviders="@_availableInferenceProviders"
+                            DefaultInferenceProviderId="@(Project?.IdeaInferenceProviderId)"
+                            DefaultInferenceModelId="@(Project?.IdeaInferenceModelId)"
                             OnSuggestIdeas="SuggestIdeasFromCodebase" OnPreviousPage="LoadPreviousIdeasPage"
                             OnNextPage="LoadNextIdeasPage" />
             </div>

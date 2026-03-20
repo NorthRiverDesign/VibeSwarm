@@ -149,6 +149,7 @@ _formState.LoadFromProject(Project);
 EnsurePlanningProviderSelection();
 await LoadPlanningModelsAsync();
 await LoadProviderSelectionModelsAsync();
+await LoadIdeaInferenceModelsAsync();
 }
 else
 {
@@ -618,6 +619,8 @@ Memory = source.Memory,
 BuildVerificationEnabled = source.BuildVerificationEnabled,
 BuildCommand = source.BuildCommand,
 TestCommand = source.TestCommand,
+IdeaInferenceProviderId = source.IdeaInferenceProviderId,
+IdeaInferenceModelId = source.IdeaInferenceModelId,
 IsActive = source.IsActive,
 CreatedAt = source.CreatedAt,
 UpdatedAt = source.UpdatedAt,
