@@ -34,6 +34,11 @@ public class JobWatchdogService : BackgroundService
 	private readonly TimeSpan _cliStallThreshold = TimeSpan.FromMinutes(10);
 
 	/// <summary>
+	/// Give long-running Claude CLI tool executions more time before considering them stalled.
+	/// </summary>
+	private readonly TimeSpan _claudeToolExecutionThreshold = TimeSpan.FromMinutes(30);
+
+	/// <summary>
 	/// How long a job can be in cancellation requested state before force cancellation
 	/// </summary>
 	private readonly TimeSpan _forceCancelThreshold = TimeSpan.FromSeconds(30);
@@ -124,6 +129,21 @@ public class JobWatchdogService : BackgroundService
 		};
 	}
 
+	private TimeSpan GetEffectiveStallThreshold(Job job)
+	{
+		var threshold = GetStallThreshold(job);
+		if (job.Provider?.Type == ProviderType.Claude
+			&& !string.IsNullOrWhiteSpace(job.CurrentActivity)
+			&& job.CurrentActivity.StartsWith("Running tool:", StringComparison.OrdinalIgnoreCase))
+		{
+			return threshold < _claudeToolExecutionThreshold
+				? _claudeToolExecutionThreshold
+				: threshold;
+		}
+
+		return threshold;
+	}
+
 	private async Task CheckForStalledJobsAsync(CancellationToken cancellationToken)
 	{
 		using var scope = _scopeFactory.CreateScope();
@@ -145,12 +165,12 @@ public class JobWatchdogService : BackgroundService
 
 		// Apply per-provider stall thresholds
 		var stalledJobs = candidateJobs
-			.Where(j => j.LastHeartbeatAt!.Value < DateTime.UtcNow - GetStallThreshold(j))
+			.Where(j => j.LastHeartbeatAt!.Value < DateTime.UtcNow - GetEffectiveStallThreshold(j))
 			.ToList();
 
 		foreach (var job in stalledJobs)
 		{
-			var threshold = GetStallThreshold(job);
+			var threshold = GetEffectiveStallThreshold(job);
 			var providerInfo = job.Provider != null ? $"{job.Provider.Name} ({job.Provider.ConnectionMode})" : "unknown";
 
 			_logger.LogWarning(

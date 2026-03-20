@@ -34,9 +34,7 @@ internal static class JobSessionDisplayBuilder
 		IEnumerable<OutputLine>? outputLines,
 		bool isJobActive)
 	{
-		var persisted = persistedMessages?
-			.OrderBy(message => message.CreatedAt)
-			.ToList() ?? [];
+		var persisted = NormalizePersistedMessages(persistedMessages);
 		var liveTranscript = BuildMessagesFromOutput(outputLines);
 
 		if (isJobActive)
@@ -63,6 +61,85 @@ internal static class JobSessionDisplayBuilder
 		}
 
 		return persisted;
+	}
+
+	private static List<JobMessage> NormalizePersistedMessages(IEnumerable<JobMessage>? persistedMessages)
+	{
+		if (persistedMessages == null)
+		{
+			return [];
+		}
+
+		return persistedMessages
+			.OrderBy(message => message.CreatedAt)
+			.Select(NormalizePersistedMessage)
+			.ToList();
+	}
+
+	private static JobMessage NormalizePersistedMessage(JobMessage message)
+	{
+		var normalized = new JobMessage
+		{
+			Id = message.Id,
+			JobId = message.JobId,
+			Job = message.Job,
+			Role = message.Role,
+			Content = message.Content,
+			CreatedAt = message.CreatedAt,
+			ToolName = message.ToolName,
+			ToolInput = message.ToolInput,
+			ToolOutput = message.ToolOutput,
+			TokenCount = message.TokenCount
+		};
+
+		switch (message.Role)
+		{
+			case MessageRole.User:
+				normalized.Source = MessageSource.User;
+				break;
+
+			case MessageRole.Assistant:
+			case MessageRole.ToolUse:
+			case MessageRole.ToolResult:
+				normalized.Source = MessageSource.Provider;
+				break;
+
+			case MessageRole.System:
+				ApplySystemDisplayMetadata(normalized, message.Content);
+				break;
+		}
+
+		return normalized;
+	}
+
+	private static void ApplySystemDisplayMetadata(JobMessage message, string? content)
+	{
+		if (string.IsNullOrWhiteSpace(content))
+		{
+			message.Source = MessageSource.Provider;
+			message.Level = MessageLevel.Normal;
+			return;
+		}
+
+		var trimmedContent = content.Trim();
+		if (TryParseSystemMessage(trimmedContent, out _, out var source, out var level))
+		{
+			message.Source = source;
+			message.Level = level;
+			return;
+		}
+
+		if (trimmedContent.StartsWith("[Plan]", StringComparison.OrdinalIgnoreCase)
+			|| trimmedContent.StartsWith("[Reasoning]", StringComparison.OrdinalIgnoreCase)
+			|| trimmedContent.StartsWith("[Thinking]", StringComparison.OrdinalIgnoreCase))
+		{
+			message.Source = MessageSource.Provider;
+			message.Level = MessageLevel.Normal;
+			return;
+		}
+
+		message.Source = MessageSource.Provider;
+		message.Level = MessageLevel.Normal;
 	}
 
 	private static List<JobMessage> BuildMessagesFromOutput(IEnumerable<OutputLine>? outputLines)

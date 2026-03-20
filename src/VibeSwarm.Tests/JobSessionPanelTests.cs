@@ -169,6 +169,51 @@ public sealed class JobSessionPanelTests
 		Assert.Contains("Connected to provider stream", html);
 	}
 
+	[Fact]
+	public async Task RenderedJobSessionPanel_NormalizesPersistedClaudeMessagesAsProviderEntries()
+	{
+		var services = new ServiceCollection();
+		services.AddLogging();
+		services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
+
+		await using var renderer = new HtmlRenderer(services.BuildServiceProvider(), NullLoggerFactory.Instance);
+
+		var html = await renderer.Dispatcher.InvokeAsync(async () =>
+		{
+			var parameters = ParameterView.FromDictionary(new Dictionary<string, object?>
+			{
+				[nameof(JobSessionPanel.Status)] = JobStatus.Completed,
+				[nameof(JobSessionPanel.Messages)] = new List<JobMessage>
+				{
+					new()
+					{
+						Id = Guid.NewGuid(),
+						JobId = Guid.NewGuid(),
+						Role = MessageRole.System,
+						Content = "Installing dependencies with npm",
+						CreatedAt = DateTime.UtcNow.AddSeconds(-5)
+					},
+					new()
+					{
+						Id = Guid.NewGuid(),
+						JobId = Guid.NewGuid(),
+						Role = MessageRole.System,
+						Content = "[System] Process started (PID: 123). Waiting for CLI to initialize...",
+						CreatedAt = DateTime.UtcNow.AddSeconds(-4)
+					}
+				}
+			});
+
+			var output = await renderer.RenderComponentAsync<JobSessionPanel>(parameters);
+			return output.ToHtmlString();
+		});
+
+		Assert.Contains("Installing dependencies with npm", html);
+		Assert.Contains("Process started (PID: 123)", html);
+		Assert.Contains("Provider", html);
+		Assert.Contains("System", html);
+	}
+
 	private sealed class NoOpJsRuntime : IJSRuntime
 	{
 		public ValueTask<TValue> InvokeAsync<TValue>(string identifier, object?[]? args)

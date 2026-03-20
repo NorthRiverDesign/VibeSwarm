@@ -121,6 +121,41 @@ public sealed class JobExecutionSafetyTests : IDisposable
 		Assert.NotNull(job.LastHeartbeatAt);
 	}
 
+	[Fact]
+	public void ClaudeToolExecution_UsesExtendedWatchdogThreshold()
+	{
+		var serviceProvider = new ServiceCollection().BuildServiceProvider();
+		var scopeFactory = serviceProvider.GetRequiredService<IServiceScopeFactory>();
+		var watchdogService = new JobWatchdogService(
+			scopeFactory,
+			NullLogger<JobWatchdogService>.Instance,
+			new NoOpVersionControlService());
+
+		var standardClaudeJob = new Job
+		{
+			GoalPrompt = "Standard Claude job",
+			Provider = new Provider
+			{
+				Type = ProviderType.Claude,
+				ConnectionMode = ProviderConnectionMode.CLI
+			}
+		};
+
+		var longRunningToolJob = new Job
+		{
+			GoalPrompt = "Install dependencies",
+			CurrentActivity = "Running tool: bash",
+			Provider = new Provider
+			{
+				Type = ProviderType.Claude,
+				ConnectionMode = ProviderConnectionMode.CLI
+			}
+		};
+
+		Assert.Equal(TimeSpan.FromMinutes(10), InvokeEffectiveStallThreshold(watchdogService, standardClaudeJob));
+		Assert.Equal(TimeSpan.FromMinutes(30), InvokeEffectiveStallThreshold(watchdogService, longRunningToolJob));
+	}
+
 	private VibeSwarmDbContext CreateDbContext() => new(_dbOptions);
 
 	private static async Task<bool> InvokeClaimJobAsync(JobProcessingService service, Guid jobId, VibeSwarmDbContext dbContext)
@@ -130,6 +165,14 @@ public sealed class JobExecutionSafetyTests : IDisposable
 
 		var task = (Task<bool>)method.Invoke(service, [jobId, dbContext, CancellationToken.None])!;
 		return await task;
+	}
+
+	private static TimeSpan InvokeEffectiveStallThreshold(JobWatchdogService service, Job job)
+	{
+		var method = typeof(JobWatchdogService).GetMethod("GetEffectiveStallThreshold", BindingFlags.Instance | BindingFlags.NonPublic);
+		Assert.NotNull(method);
+
+		return (TimeSpan)method.Invoke(service, [job])!;
 	}
 
 	public void Dispose()
