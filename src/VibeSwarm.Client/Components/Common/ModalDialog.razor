@@ -3,13 +3,13 @@
 
 @if (IsVisible)
 {
-	<div class="modal-backdrop fade show vs-modal-backdrop"></div>
-	<div class="modal fade show d-block vs-modal-container @ContainerClass" tabindex="-1" role="dialog"
+	<div class="modal-backdrop fade show vs-modal-backdrop position-fixed inset-0"></div>
+	<div class="modal fade show d-block vs-modal-container position-fixed inset-0 d-flex align-items-center justify-content-center overflow-x-hidden overflow-y-auto @ContainerClass" tabindex="-1" role="dialog"
 		@onmousedown="HandleBackdropMouseDown" @onclick="HandleBackdropClick">
-		<div class="modal-dialog vs-modal-dialog @SizeClass @(IsCentered ? "modal-dialog-centered" : "") @(IsScrollable ? "modal-dialog-scrollable" : "") @DialogClass"
+		<div class="modal-dialog vs-modal-dialog pe-none m-auto @SizeClass @(IsCentered ? "modal-dialog-centered" : "") @(IsScrollable ? "modal-dialog-scrollable" : "") @DialogClass"
 			@onmousedown:stopPropagation="true" @onclick:stopPropagation="true">
-			<div class="modal-content vs-modal-content @ContentClass">
-				<div class="modal-header">
+			<div class="modal-content vs-modal-content pe-auto mw-100 @ContentClass">
+				<div class="modal-header min-width-0">
 					<h5 class="modal-title">
 						@if (!string.IsNullOrEmpty(Icon))
 						{
@@ -22,12 +22,12 @@
 						<button type="button" class="btn-close" @onclick="Close" aria-label="Close"></button>
 					}
 				</div>
-				<div class="modal-body @BodyClass">
+				<div class="modal-body overflow-x-hidden overscroll-contain min-width-0 @BodyClass">
 					@ChildContent
 				</div>
 				@if (FooterContent != null)
 				{
-					<div class="modal-footer">
+					<div class="modal-footer min-width-0">
 						@FooterContent
 					</div>
 				}

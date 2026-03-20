@@ -4,7 +4,7 @@
 <div class="job-list-item p-3 border-bottom cursor-pointer @(_isSelected ? "job-selected" : "")" @onclick="HandleClick">
     <div class="d-flex align-items-start gap-3">
         @* Status Icon Column *@
-        <div class="job-status-icon d-flex align-items-center justify-content-center flex-shrink-0">
+        <div class="d-flex align-items-center justify-content-center flex-shrink-0" style="width: 24px; min-width: 24px;">
             @switch (Status.ToLowerInvariant())
             {
                 case "new":

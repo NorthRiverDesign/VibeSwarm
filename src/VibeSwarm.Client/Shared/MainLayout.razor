@@ -10,15 +10,15 @@
 @implements IDisposable
 @using Microsoft.AspNetCore.SignalR.Client
 
-<div class="app-layout">
+<div class="app-layout d-flex flex-column min-vh-100">
     @* Mobile Header *@
-    <header class="app-header d-lg-none">
-        <button id="mobile-menu-toggle" class="btn btn-link nav-toggle" @onclick="ToggleMobileMenu"
+    <header class="app-header d-lg-none sticky-top d-flex align-items-center gap-3 flex-shrink-0 bg-body-secondary border-bottom">
+        <button id="mobile-menu-toggle" class="btn btn-link nav-toggle d-flex align-items-center justify-content-center p-0 bg-transparent border-0 rounded fs-4" @onclick="ToggleMobileMenu"
                 aria-label="Toggle navigation">
             <i class="bi bi-list"></i>
         </button>
-        <a class="app-brand" href="/">
-            <img src="img/logo_icon.png" alt="VibeSwarm" class="brand-icon" />
+        <a class="app-brand d-flex align-items-center gap-2 text-decoration-none fw-semibold" href="/">
+            <img src="img/logo_icon.png" alt="VibeSwarm" class="object-fit-contain" style="width: 24px; height: 24px;" />
             <span class="brand-text">VibeSwarm</span>
         </a>
         <div class="ms-auto">
@@ -27,48 +27,48 @@
     </header>
 
     @* Sidebar Navigation *@
-    <nav id="app-sidebar" class="app-sidebar @(_mobileMenuOpen ? "open" : "")">
+    <nav id="app-sidebar" class="app-sidebar position-fixed d-flex flex-column overflow-y-auto @(_mobileMenuOpen ? "open" : "")">
         <div class="p-4 border-bottom d-none d-lg-flex">
-            <a class="app-brand" href="/">
-                <img src="img/logo_icon.png" alt="VibeSwarm" class="brand-icon" />
+            <a class="app-brand d-flex align-items-center gap-2 text-decoration-none fw-semibold" href="/">
+                <img src="img/logo_icon.png" alt="VibeSwarm" class="object-fit-contain" style="width: 24px; height: 24px;" />
                 <span class="brand-text">VibeSwarm</span>
             </a>
         </div>
 
         <div class="flex-grow-1 p-3 d-flex flex-column gap-1">
-            <NavLink class="nav-item" href="/" Match="NavLinkMatch.All" @onclick="CloseMobileMenu">
+            <NavLink class="nav-item d-flex align-items-center gap-3 rounded fw-medium text-decoration-none" href="/" Match="NavLinkMatch.All" @onclick="CloseMobileMenu">
                 <i class="bi bi-house-door"></i>
                 <span>Dashboard</span>
             </NavLink>
-            <NavLink class="nav-item" href="/projects" @onclick="CloseMobileMenu">
+            <NavLink class="nav-item d-flex align-items-center gap-3 rounded fw-medium text-decoration-none" href="/projects" @onclick="CloseMobileMenu">
                 <i class="bi bi-folder"></i>
                 <span>Projects</span>
             </NavLink>
-            <NavLink class="nav-item" href="/jobs" @onclick="CloseMobileMenu">
+            <NavLink class="nav-item d-flex align-items-center gap-3 rounded fw-medium text-decoration-none" href="/jobs" @onclick="CloseMobileMenu">
                 <i class="bi bi-list-check"></i>
                 <span>Jobs</span>
             </NavLink>
-            <NavLink class="nav-item" href="/providers" @onclick="CloseMobileMenu">
+            <NavLink class="nav-item d-flex align-items-center gap-3 rounded fw-medium text-decoration-none" href="/providers" @onclick="CloseMobileMenu">
                 <i class="bi bi-cpu"></i>
                 <span>Providers</span>
             </NavLink>
-            <NavLink class="nav-item" href="/inference" @onclick="CloseMobileMenu">
+            <NavLink class="nav-item d-flex align-items-center gap-3 rounded fw-medium text-decoration-none" href="/inference" @onclick="CloseMobileMenu">
                 <i class="bi bi-hdd-network"></i>
                 <span>Inference</span>
             </NavLink>
-            <NavLink class="nav-item" href="/skills" @onclick="CloseMobileMenu">
+            <NavLink class="nav-item d-flex align-items-center gap-3 rounded fw-medium text-decoration-none" href="/skills" @onclick="CloseMobileMenu">
                 <i class="bi bi-lightbulb"></i>
                 <span>Skills</span>
             </NavLink>
             <AuthorizeView Roles="Admin">
                 <Authorized>
-                    <NavLink class="nav-item" href="/users" @onclick="CloseMobileMenu">
+                    <NavLink class="nav-item d-flex align-items-center gap-3 rounded fw-medium text-decoration-none" href="/users" @onclick="CloseMobileMenu">
                         <i class="bi bi-people"></i>
                         <span>Users</span>
                     </NavLink>
                 </Authorized>
             </AuthorizeView>
-            <NavLink class="nav-item" href="/settings" @onclick="CloseMobileMenu">
+            <NavLink class="nav-item d-flex align-items-center gap-3 rounded fw-medium text-decoration-none" href="/settings" @onclick="CloseMobileMenu">
                 <i class="bi bi-sliders"></i>
                 <span>Settings</span>
             </NavLink>
@@ -82,12 +82,12 @@
     @* Mobile Menu Overlay *@
     @if (_mobileMenuOpen)
     {
-        <div id="sidebar-overlay" class="sidebar-overlay d-lg-none" @onclick="CloseMobileMenu"></div>
+        <div id="sidebar-overlay" class="sidebar-overlay position-fixed d-lg-none" @onclick="CloseMobileMenu"></div>
     }
 
     @* Main Content *@
-    <main class="app-main">
-        <div class="main-content">
+    <main class="app-main flex-grow-1">
+        <div class="main-content mw-100">
             <ErrorBoundary @ref="_errorBoundary">
                 <ChildContent>
                     @Body

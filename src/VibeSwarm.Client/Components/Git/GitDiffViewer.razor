@@ -152,7 +152,7 @@
 						</h2>
 						<div id="@collapseId" class="accordion-collapse @(isExpanded ? "show" : "collapse")">
 							<div class="accordion-body p-0">
-								<div class="terminal-output overflow-auto p-2 small" style="max-height: 350px;">
+								<div class="terminal-output overscroll-contain white-space-pre-wrap overflow-auto p-2 small" style="max-height: 350px;">
 									@((MarkupString)FormatDiff(file.DiffContent))
 								</div>
 							</div>

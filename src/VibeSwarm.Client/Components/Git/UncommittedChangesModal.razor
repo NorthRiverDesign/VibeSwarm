@@ -106,7 +106,7 @@
                                 <div class="accordion-body p-0">
                                     @if (!file.IsDeleted)
                                     {
-                                        <div class="terminal-output overflow-auto p-2 small" style="max-height: 300px;">
+                                        <div class="terminal-output overscroll-contain white-space-pre-wrap overflow-auto p-2 small" style="max-height: 300px;">
                                             @((MarkupString)FormatDiff(file.DiffContent))
                                         </div>
                                     }
