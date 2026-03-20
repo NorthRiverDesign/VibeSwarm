@@ -532,6 +532,7 @@ public class ProjectService : IProjectService
 			var selection = orderedSelections[index];
 			selection.Id = selection.Id == Guid.Empty ? Guid.NewGuid() : selection.Id;
 			selection.ProjectId = project.Id;
+			selection.Provider = null;
 			selection.Priority = index;
 			selection.PreferredModelId = string.IsNullOrWhiteSpace(selection.PreferredModelId)
 				? null
