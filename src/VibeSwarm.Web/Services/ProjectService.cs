@@ -66,6 +66,12 @@ public class ProjectService : IProjectService
 		project.CreatedAt = DateTime.UtcNow;
 
 		ValidateProject(project);
+		var nameExists = await _dbContext.Projects
+			.AnyAsync(p => p.Name == project.Name, cancellationToken);
+		if (nameExists)
+		{
+			throw new InvalidOperationException($"A project named '{project.Name}' already exists.");
+		}
 		NormalizePlanningSettings(project);
 		project.DefaultTargetBranch = string.IsNullOrWhiteSpace(project.DefaultTargetBranch) ? null : project.DefaultTargetBranch.Trim();
 		project.BuildCommand = string.IsNullOrWhiteSpace(project.BuildCommand) ? null : project.BuildCommand.Trim();
@@ -119,6 +125,12 @@ public class ProjectService : IProjectService
 		}
 
 		ValidateProject(project);
+		var nameExists = await _dbContext.Projects
+			.AnyAsync(p => p.Name == project.Name && p.Id != project.Id, cancellationToken);
+		if (nameExists)
+		{
+			throw new InvalidOperationException($"A project named '{project.Name}' already exists.");
+		}
 		NormalizePlanningSettings(project);
 		existing.Name = project.Name;
 		existing.Description = project.Description;

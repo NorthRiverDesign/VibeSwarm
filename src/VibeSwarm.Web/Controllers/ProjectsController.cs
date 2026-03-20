@@ -54,10 +54,14 @@ public class ProjectsController : ControllerBase
         {
             return BadRequest(new { error = "One or more selected providers do not exist." });
         }
-        catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("UNIQUE") == true ||
-                                           ex.InnerException?.Message.Contains("unique") == true)
+        catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("UNIQUE", StringComparison.OrdinalIgnoreCase) == true)
         {
-            return BadRequest(new { error = "Duplicate provider or environment name selected for this project." });
+            var inner = ex.InnerException?.Message ?? string.Empty;
+            var error = inner.Contains("Projects", StringComparison.OrdinalIgnoreCase) &&
+                        inner.Contains("Name", StringComparison.OrdinalIgnoreCase)
+                ? "A project with this name already exists."
+                : "A duplicate value was detected. Check for duplicate provider selections or environment names.";
+            return BadRequest(new { error });
         }
         catch (DbUpdateException ex)
         {
@@ -83,10 +87,14 @@ public class ProjectsController : ControllerBase
         {
             return BadRequest(new { error = "One or more selected providers do not exist." });
         }
-        catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("UNIQUE") == true ||
-                                           ex.InnerException?.Message.Contains("unique") == true)
+        catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("UNIQUE", StringComparison.OrdinalIgnoreCase) == true)
         {
-            return BadRequest(new { error = "Duplicate provider or environment name selected for this project." });
+            var inner = ex.InnerException?.Message ?? string.Empty;
+            var error = inner.Contains("Projects", StringComparison.OrdinalIgnoreCase) &&
+                        inner.Contains("Name", StringComparison.OrdinalIgnoreCase)
+                ? "A project with this name already exists."
+                : "A duplicate value was detected. Check for duplicate provider selections or environment names.";
+            return BadRequest(new { error });
         }
         catch (DbUpdateException ex)
         {
@@ -113,10 +121,14 @@ public class ProjectsController : ControllerBase
         {
             return BadRequest(new { error = "One or more selected providers do not exist." });
         }
-        catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("UNIQUE") == true ||
-                                           ex.InnerException?.Message.Contains("unique") == true)
+        catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("UNIQUE", StringComparison.OrdinalIgnoreCase) == true)
         {
-            return BadRequest(new { error = "Duplicate provider or environment name selected for this project." });
+            var inner = ex.InnerException?.Message ?? string.Empty;
+            var error = inner.Contains("Projects", StringComparison.OrdinalIgnoreCase) &&
+                        inner.Contains("Name", StringComparison.OrdinalIgnoreCase)
+                ? "A project with this name already exists."
+                : "A duplicate value was detected. Check for duplicate provider selections or environment names.";
+            return BadRequest(new { error });
         }
         catch (DbUpdateException ex)
         {
