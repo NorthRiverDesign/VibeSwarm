@@ -130,6 +130,8 @@ public class ProjectService : IProjectService
 		existing.PlanningEnabled = project.PlanningEnabled;
 		existing.PlanningProviderId = project.PlanningProviderId;
 		existing.PlanningModelId = project.PlanningModelId;
+		existing.IdeaInferenceProviderId = project.IdeaInferenceProviderId;
+		existing.IdeaInferenceModelId = string.IsNullOrWhiteSpace(project.IdeaInferenceModelId) ? null : project.IdeaInferenceModelId.Trim();
 		existing.PromptContext = project.PromptContext;
 		existing.Memory = NormalizeProjectMemory(project.Memory);
 		existing.BuildVerificationEnabled = project.BuildVerificationEnabled;

@@ -299,9 +299,11 @@
 		if (!_defaultsApplied && Project != null)
 		{
 			_defaultsApplied = true;
-			// Pre-fill auto-commit/auto-push from project settings
+			// Pre-fill from project settings
 			_config.AutoCommit = Project.AutoCommitMode != AutoCommitMode.Off;
 			_config.AutoPush = Project.AutoCommitMode == AutoCommitMode.CommitAndPush;
+			_config.InferenceProviderId = Project.IdeaInferenceProviderId;
+			_config.InferenceModelId = Project.IdeaInferenceModelId;
 		}
 	}
 

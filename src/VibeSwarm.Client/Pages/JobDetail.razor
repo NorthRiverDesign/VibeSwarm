@@ -614,6 +614,15 @@ TimeSpan.FromSeconds(10) })
             {
                 Job.CommandUsed = command;
             }
+
+            // Add a visible system message so the transcript shows process startup
+            lock (_liveOutput)
+            {
+                _liveOutput.Add(JobSessionDisplayBuilder.CreateOutputLine(
+                    $"[System] Process started (PID: {processId}). Waiting for CLI to initialize...",
+                    DateTime.UtcNow));
+            }
+
             await InvokeAsync(StateHasChanged);
         }
     }

@@ -8,6 +8,7 @@
 @using VibeSwarm.Shared.Validation
 @inject IProjectService ProjectService
 @inject IProviderService ProviderService
+@inject IInferenceProviderService InferenceProviderService
 @inject ISettingsService SettingsService
 @inject NotificationService NotificationService
 
@@ -30,6 +31,11 @@
   OnGitHubRepositoryChanged="OnGitHubRepositoryChanged" />
 
 <ProjectAutomationSection Project="@Project" IsEdit="@IsEdit" />
+
+<ProjectIdeaGenerationSection Project="@Project"
+AvailableInferenceProviders="@_availableInferenceProviders"
+InferenceModels="@_ideaInferenceModels"
+OnProviderChanged="HandleIdeaInferenceProviderChanged" />
 
 <ProjectPlanningSection Project="@Project" AvailableProviders="@GetPlanningProviders().ToList()"
 PlanningModels="@_planningModels"
@@ -116,6 +122,8 @@ private DirectoryBrowser? _directoryBrowser;
 private string? _defaultProjectsDirectory;
 private List<Provider> _availableProviders = [];
 private List<ProviderModel> _planningModels = [];
+private List<InferenceProvider> _availableInferenceProviders = [];
+private List<InferenceModel> _ideaInferenceModels = [];
 private readonly Dictionary<Guid, List<ProviderModel>> _providerModelsByProviderId = [];
 private readonly ProjectModalState _formState = new();
 
@@ -123,6 +131,7 @@ protected override async Task OnInitializedAsync()
 {
 await LoadDefaultProjectsDirectory();
 await LoadProvidersAsync();
+await LoadInferenceProvidersAsync();
 }
 
 protected override async Task OnParametersSetAsync()
@@ -501,6 +510,50 @@ if (!string.IsNullOrWhiteSpace(Project.PlanningModelId) &&
 !_planningModels.Any(model => string.Equals(model.ModelId, Project.PlanningModelId, StringComparison.Ordinal)))
 {
 Project.PlanningModelId = null;
+}
+}
+
+private async Task LoadInferenceProvidersAsync()
+{
+try
+{
+_availableInferenceProviders = (await InferenceProviderService.GetEnabledAsync()).ToList();
+await LoadIdeaInferenceModelsAsync();
+}
+catch
+{
+_availableInferenceProviders = [];
+}
+}
+
+private async Task HandleIdeaInferenceProviderChanged()
+{
+Project.IdeaInferenceModelId = null;
+await LoadIdeaInferenceModelsAsync();
+}
+
+private async Task LoadIdeaInferenceModelsAsync()
+{
+_ideaInferenceModels = [];
+if (!Project.IdeaInferenceProviderId.HasValue) return;
+
+try
+{
+_ideaInferenceModels = (await InferenceProviderService.GetModelsAsync(Project.IdeaInferenceProviderId.Value))
+.Where(model => model.IsAvailable)
+.OrderByDescending(model => model.IsDefault)
+.ThenBy(model => model.DisplayName ?? model.ModelId)
+.ToList();
+}
+catch
+{
+_ideaInferenceModels = [];
+}
+
+if (!string.IsNullOrWhiteSpace(Project.IdeaInferenceModelId) &&
+!_ideaInferenceModels.Any(model => string.Equals(model.ModelId, Project.IdeaInferenceModelId, StringComparison.Ordinal)))
+{
+Project.IdeaInferenceModelId = null;
 }
 }
 

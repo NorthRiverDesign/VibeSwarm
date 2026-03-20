@@ -1,0 +1,72 @@
+@if (Project != null)
+{
+	<div class="mb-3">
+		<label class="form-label d-flex align-items-center gap-2 mb-2">
+			<i class="bi bi-lightbulb"></i>
+			<span>Idea Generation</span>
+		</label>
+
+		<Alert Type="Alert.AlertType.Info" Class="py-2 px-3 small">
+			<span>Set a default inference provider for generating improvement ideas via Auto-Pilot and the Suggest button. This uses providers configured under Inference (e.g., Grok, Ollama).</span>
+		</Alert>
+
+		<div class="border rounded p-3 bg-body-tertiary mt-3">
+			<div class="mb-3">
+				<label for="modal-ideaInferenceProvider" class="form-label">
+					<i class="bi bi-cpu me-1"></i>Inference Provider
+				</label>
+				<InputSelect TValue="Guid?" id="modal-ideaInferenceProvider" @bind-Value="Project.IdeaInferenceProviderId" @bind-Value:after="HandleProviderChanged" class="form-select">
+					<option value="">None (use coding provider for ideas)</option>
+					@foreach (var provider in AvailableInferenceProviders)
+					{
+						<option value="@provider.Id">@provider.Name (@provider.ProviderType)</option>
+					}
+				</InputSelect>
+				<div class="form-text">Generates improvement ideas from codebase analysis. Used as the default for Auto-Pilot and Suggest.</div>
+			</div>
+
+			@if (Project.IdeaInferenceProviderId.HasValue)
+			{
+				<div>
+					<label for="modal-ideaInferenceModel" class="form-label">
+						<i class="bi bi-sliders me-1"></i>Inference Model
+						<span class="text-body-secondary fw-normal">(optional)</span>
+					</label>
+					<InputSelect id="modal-ideaInferenceModel" @bind-Value="Project.IdeaInferenceModelId" class="form-select" disabled="@(!InferenceModels.Any())">
+						<option value="">Use provider default model</option>
+						@foreach (var model in InferenceModels)
+						{
+							<option value="@model.ModelId">@(model.DisplayName ?? model.ModelId)</option>
+						}
+					</InputSelect>
+					<div class="form-text">
+						@if (!InferenceModels.Any())
+						{
+							<span>No models found. Refresh models on the Inference page first.</span>
+						}
+						else
+						{
+							<span>Leave blank to use the provider's default model.</span>
+						}
+					</div>
+				</div>
+			}
+		</div>
+	</div>
+}
+
+@code {
+	[Parameter, EditorRequired]
+	public Project Project { get; set; } = default!;
+
+	[Parameter]
+	public IReadOnlyList<InferenceProvider> AvailableInferenceProviders { get; set; } = [];
+
+	[Parameter]
+	public IReadOnlyList<InferenceModel> InferenceModels { get; set; } = [];
+
+	[Parameter]
+	public EventCallback OnProviderChanged { get; set; }
+
+	private Task HandleProviderChanged() => OnProviderChanged.InvokeAsync();
+}

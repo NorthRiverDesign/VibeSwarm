@@ -96,10 +96,10 @@
                     <div class="empty-state text-center py-5">
                         @if (IsJobActive)
                         {
-                            <div class="spinner-border text-info mb-3" role="status">
+                            <div class="spinner-border text-info mb-3 d-block mx-auto" role="status">
                                 <span class="visually-hidden">Waiting for output...</span>
                             </div>
-                            <span class="text-body-secondary">Waiting for agent output...</span>
+                            <span class="text-body-secondary d-block">Waiting for agent output...</span>
                         }
                         else if (Status == JobStatus.Completed)
                         {

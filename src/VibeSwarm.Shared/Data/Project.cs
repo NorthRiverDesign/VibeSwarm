@@ -82,6 +82,18 @@ public class Project
 	[StringLength(ValidationLimits.ProjectPlanningModelIdMaxLength)]
 	public string? PlanningModelId { get; set; }
 
+	/// <summary>
+	/// Default inference provider for idea generation (e.g., Grok, Ollama).
+	/// Used as the default in Auto-Pilot and suggestion workflows.
+	/// </summary>
+	public Guid? IdeaInferenceProviderId { get; set; }
+
+	/// <summary>
+	/// Default inference model for idea generation. When null, uses the provider's default.
+	/// </summary>
+	[StringLength(200)]
+	public string? IdeaInferenceModelId { get; set; }
+
 	public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     public DateTime? UpdatedAt { get; set; }

@@ -111,6 +111,7 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 			entity.Property(e => e.GitHubRepository).HasMaxLength(ValidationLimits.ProjectGitHubRepositoryMaxLength);
 			entity.Property(e => e.DefaultTargetBranch).HasMaxLength(ValidationLimits.ProjectDefaultTargetBranchMaxLength);
 			entity.Property(e => e.PlanningModelId).HasMaxLength(ValidationLimits.ProjectPlanningModelIdMaxLength);
+			entity.Property(e => e.IdeaInferenceModelId).HasMaxLength(200);
 			entity.Property(e => e.PromptContext).HasMaxLength(ValidationLimits.ProjectPromptContextMaxLength);
 			entity.Property(e => e.Memory).HasMaxLength(ValidationLimits.ProjectMemoryMaxLength);
 			entity.Property(e => e.IdeasAutoExpand).HasDefaultValue(true);

@@ -30,6 +30,7 @@ public sealed class ProjectModalTests
 		services.AddSingleton<IProjectService>(new FakeProjectService());
 		services.AddSingleton<IProviderService>(new FakeProviderService(provider));
 		services.AddSingleton<ISettingsService>(new FakeSettingsService());
+		services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService());
 		services.AddSingleton<NotificationService>();
 		services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
 
@@ -123,5 +124,19 @@ public sealed class ProjectModalTests
 
 		public ValueTask<TValue> InvokeAsync<TValue>(string identifier, CancellationToken cancellationToken, object?[]? args)
 			=> ValueTask.FromResult(default(TValue)!);
+	}
+
+	private sealed class FakeInferenceProviderService : IInferenceProviderService
+	{
+		public Task<IEnumerable<InferenceProvider>> GetAllAsync(CancellationToken ct = default) => Task.FromResult<IEnumerable<InferenceProvider>>([]);
+		public Task<InferenceProvider?> GetByIdAsync(Guid id, CancellationToken ct = default) => Task.FromResult<InferenceProvider?>(null);
+		public Task<IEnumerable<InferenceProvider>> GetEnabledAsync(CancellationToken ct = default) => Task.FromResult<IEnumerable<InferenceProvider>>([]);
+		public Task<InferenceProvider> CreateAsync(InferenceProvider provider, CancellationToken ct = default) => throw new NotSupportedException();
+		public Task<InferenceProvider> UpdateAsync(InferenceProvider provider, CancellationToken ct = default) => throw new NotSupportedException();
+		public Task DeleteAsync(Guid id, CancellationToken ct = default) => throw new NotSupportedException();
+		public Task<IEnumerable<InferenceModel>> GetModelsAsync(Guid providerId, CancellationToken ct = default) => Task.FromResult<IEnumerable<InferenceModel>>([]);
+		public Task<IEnumerable<InferenceModel>> RefreshModelsAsync(Guid providerId, CancellationToken ct = default) => Task.FromResult<IEnumerable<InferenceModel>>([]);
+		public Task SetModelForTaskAsync(Guid providerId, string modelId, string taskType, CancellationToken ct = default) => throw new NotSupportedException();
+		public Task<InferenceModel?> GetModelForTaskAsync(string taskType, CancellationToken ct = default) => Task.FromResult<InferenceModel?>(null);
 	}
 }
