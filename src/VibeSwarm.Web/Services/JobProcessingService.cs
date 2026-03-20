@@ -243,7 +243,7 @@ public class JobProcessingService : BackgroundService
 
             // Fix jobs that completed (CompletedAt set) but crashed before persisting terminal status
             var completedWrongStatus = await dbContext.Jobs
-                .Where(j => j.Status == JobStatus.Started || j.Status == JobStatus.Processing)
+                .Where(j => j.Status == JobStatus.Started || j.Status == JobStatus.Planning || j.Status == JobStatus.Processing)
                 .Where(j => j.CompletedAt.HasValue)
                 .ToListAsync(cancellationToken);
 
@@ -264,11 +264,11 @@ public class JobProcessingService : BackgroundService
             }
 
             // Find jobs that were being processed by any worker but appear orphaned
-            // (Started/Processing with old heartbeats, excluding already-completed jobs)
+            // (Started/Planning/Processing with old heartbeats, excluding already-completed jobs)
             var cutoffTime = DateTime.UtcNow - TimeSpan.FromMinutes(10);
             var orphanedJobs = await dbContext.Jobs
                 .Include(j => j.Project)
-                .Where(j => (j.Status == JobStatus.Started || j.Status == JobStatus.Processing))
+                .Where(j => (j.Status == JobStatus.Started || j.Status == JobStatus.Planning || j.Status == JobStatus.Processing))
                 .Where(j => !j.CompletedAt.HasValue)
                 .Where(j => !j.LastHeartbeatAt.HasValue || j.LastHeartbeatAt.Value < cutoffTime)
                 .ToListAsync(cancellationToken);
@@ -526,84 +526,29 @@ public class JobProcessingService : BackgroundService
                 return;
             }
 
-            if (!job.Provider.IsEnabled)
-            {
-                await ReleaseJobAsync(job.Id, JobStatus.Failed, "Provider is disabled", dbContext, cancellationToken);
-                await NotifyJobCompletedAsync(job.Id, false, "Provider is disabled");
-                return;
-            }
-
             // Create provider instance
             var provider = CreateProviderInstance(job.Provider);
             executionContext.ProviderInstance = provider;
 
-            // Preflight health check: Test connection and validate CLI accessibility
-            _logger.LogInformation("Running preflight health checks for job {JobId}", job.Id);
-            var isConnected = await provider.TestConnectionAsync(cancellationToken);
-            if (!isConnected)
+            var providerValidationError = await ValidateProviderAvailabilityAsync(job.Id, job.Provider, provider, cancellationToken);
+            if (!string.IsNullOrWhiteSpace(providerValidationError))
             {
-                var errorMsg = "Preflight check failed: Could not connect to provider. ";
-                if (!string.IsNullOrEmpty(provider.LastConnectionError))
-                {
-                    errorMsg += provider.LastConnectionError;
-                    _logger.LogWarning("Provider connection test failed for job {JobId}: {Error}", job.Id, provider.LastConnectionError);
-                }
-                else
-                {
-                    errorMsg += "Ensure the CLI is installed and accessible from the host system.";
-                    _logger.LogWarning("Provider connection test failed for job {JobId} with no error details", job.Id);
-                }
-                await ReleaseJobAsync(job.Id, JobStatus.Failed, errorMsg, dbContext, cancellationToken);
-                await NotifyJobCompletedAsync(job.Id, false, errorMsg);
+                await ReleaseJobAsync(job.Id, JobStatus.Failed, providerValidationError, dbContext, cancellationToken);
+                await NotifyJobCompletedAsync(job.Id, false, providerValidationError);
                 return;
-            }
-
-            // Check provider availability (usage limits, etc.)
-            var providerInfo = await provider.GetProviderInfoAsync(cancellationToken);
-            if (providerInfo.AdditionalInfo.TryGetValue("isAvailable", out var isAvailableObj) && isAvailableObj is bool isAvailable && !isAvailable)
-            {
-                var reason = providerInfo.AdditionalInfo.TryGetValue("unavailableReason", out var reasonObj)
-                    ? reasonObj?.ToString() ?? "Provider not available"
-                    : "Provider not available";
-                await ReleaseJobAsync(job.Id, JobStatus.Failed, reason, dbContext, cancellationToken);
-                await NotifyJobCompletedAsync(job.Id, false, reason);
-                return;
-            }
-
-            // Check usage exhaustion before execution
-            using var usageScope = _scopeFactory.CreateScope();
-            var providerUsageService = usageScope.ServiceProvider.GetService<IProviderUsageService>();
-            if (providerUsageService != null)
-            {
-                var exhaustionWarning = await providerUsageService.CheckExhaustionAsync(job.ProviderId, cancellationToken: cancellationToken);
-                if (exhaustionWarning?.IsExhausted == true)
-                {
-                    var reason = $"Provider usage limit exhausted: {exhaustionWarning.Message}";
-                    _logger.LogWarning("Job {JobId} blocked due to provider usage exhaustion: {Message}", job.Id, exhaustionWarning.Message);
-                    await ReleaseJobAsync(job.Id, JobStatus.Failed, reason, dbContext, cancellationToken);
-                    await NotifyJobCompletedAsync(job.Id, false, reason);
-
-                    // Also broadcast the warning via SignalR
-                    if (_jobUpdateService != null)
-                    {
-                        await _jobUpdateService.NotifyProviderUsageWarning(
-                            job.ProviderId,
-                            job.Provider.Name,
-                            exhaustionWarning.PercentUsed,
-                            exhaustionWarning.Message,
-                            exhaustionWarning.IsExhausted,
-                            exhaustionWarning.ResetTime);
-                    }
-                    return;
-                }
             }
 
             // Update status to processing
-            await UpdateJobStatusAsync(job.Id, JobStatus.Processing, dbContext, cancellationToken);
-            await NotifyStatusChangedAsync(job.Id, JobStatus.Processing);
+            var initialStatus = ShouldUsePlanningStage(job.Project) && string.IsNullOrWhiteSpace(job.PlanningOutput)
+                ? JobStatus.Planning
+                : JobStatus.Processing;
+            await UpdateJobStatusAsync(job.Id, initialStatus, dbContext, cancellationToken);
+            await NotifyStatusChangedAsync(job.Id, initialStatus);
 
             // Send initial activity notification
-            var initialActivity = "Initializing coding agent...";
+            var initialActivity = initialStatus == JobStatus.Planning
+                ? "Preparing planning stage..."
+                : "Initializing coding agent...";
             await UpdateHeartbeatAsync(job.Id, initialActivity, dbContext, cancellationToken);
             await NotifyJobActivityAsync(job.Id, initialActivity, DateTime.UtcNow);
 
@@ -707,6 +652,14 @@ public class JobProcessingService : BackgroundService
             // Note: This task manages its own DbContext scopes to avoid disposal issues
             var cancellationMonitorTask = MonitorCancellationAndHeartbeatAsync(job.Id, executionContext, cancellationToken);
 
+            async Task FailDuringPlanningAsync(string errorMessage)
+            {
+                executionContext.CancellationTokenSource?.Cancel();
+                try { await cancellationMonitorTask; } catch { }
+                await ReleaseJobAsync(job.Id, JobStatus.Failed, errorMessage, dbContext, cancellationToken);
+                await NotifyJobCompletedAsync(job.Id, false, errorMessage);
+            }
+
             // Execute the job with session support
             _logger.LogInformation("Starting provider execution for job {JobId} in directory {WorkingDir}",
                 job.Id, workingDirectory ?? "(default)");
@@ -730,7 +683,7 @@ public class JobProcessingService : BackgroundService
             var progress = new Progress<ExecutionProgress>(p =>
             {
                 // Capture and store process ID and command as soon as they're reported
-                if (p.ProcessId.HasValue && !executionContext.ProcessId.HasValue)
+                if (p.ProcessId.HasValue && executionContext.ProcessId != p.ProcessId.Value)
                 {
                     executionContext.ProcessId = p.ProcessId.Value;
                     executionContext.CommandUsed = p.CommandUsed;
@@ -926,8 +879,6 @@ public class JobProcessingService : BackgroundService
             }
 
             var enableStructuring = appSettings?.EnablePromptStructuring ?? true;
-            var currentPrompt = PromptBuilder.BuildStructuredPrompt(job, enableStructuring);
-            var cycleComplete = false;
 
             // Build system prompt rules for agent efficiency
             var injectEfficiencyRules = appSettings?.InjectEfficiencyRules ?? true;
@@ -941,6 +892,83 @@ public class JobProcessingService : BackgroundService
                     ? projectMemoryRules
                     : $"{systemPromptRules}{Environment.NewLine}{Environment.NewLine}{projectMemoryRules}";
             }
+
+            var planningOutput = job.PlanningOutput;
+            if (ShouldUsePlanningStage(job.Project) && string.IsNullOrWhiteSpace(planningOutput))
+            {
+                await UpdateJobStatusAsync(job.Id, JobStatus.Planning, dbContext, cancellationToken);
+                await NotifyStatusChangedAsync(job.Id, JobStatus.Planning);
+
+                const string planningActivity = "Generating implementation plan...";
+                await UpdateHeartbeatAsync(job.Id, planningActivity, dbContext, cancellationToken);
+                await NotifyJobActivityAsync(job.Id, planningActivity, DateTime.UtcNow);
+
+                var planningProviderId = job.Project!.PlanningProviderId!.Value;
+                var planningProviderConfig = await providerService.GetByIdAsync(planningProviderId, cancellationToken);
+                if (planningProviderConfig == null)
+                {
+                    await FailDuringPlanningAsync("Planning provider not found.");
+                    return;
+                }
+
+                if (!ProviderPlanningHelper.SupportsPlanningMode(planningProviderConfig.Type))
+                {
+                    await FailDuringPlanningAsync("Planning currently supports only Claude and GitHub Copilot providers.");
+                    return;
+                }
+
+                var planningProvider = CreateProviderInstance(planningProviderConfig);
+                var planningValidationError = await ValidateProviderAvailabilityAsync(job.Id, planningProviderConfig, planningProvider, cancellationToken);
+                if (!string.IsNullOrWhiteSpace(planningValidationError))
+                {
+                    await FailDuringPlanningAsync(planningValidationError);
+                    return;
+                }
+
+                var planningMcpOptions = await GetMcpExecutionOptionsAsync(planningProviderId, job.Project, workingDirectory, cancellationToken);
+                var planningResult = await planningProvider.ExecuteWithOptionsAsync(
+                    ProviderPlanningHelper.BuildPlanningPrompt(job.GoalPrompt),
+                    new ExecutionOptions
+                    {
+                        WorkingDirectory = workingDirectory,
+                        McpConfigPath = planningMcpOptions.McpConfigPath,
+                        AdditionalArgs = planningMcpOptions.AdditionalArgs,
+                        Model = job.Project.PlanningModelId,
+                        Title = job.Title,
+                        AppendSystemPrompt = systemPromptRules
+                    },
+                    progress,
+                    cancellationToken);
+
+                await RecordUsageAndCheckExhaustionAsync(
+                    planningProviderConfig.Id,
+                    planningProviderConfig.Name,
+                    job.Id,
+                    planningResult,
+                    planningProvider,
+                    CancellationToken.None);
+
+                planningOutput = ProviderPlanningHelper.ExtractExecutionText(planningResult);
+                if (!planningResult.Success || string.IsNullOrWhiteSpace(planningOutput))
+                {
+                    var planningError = string.IsNullOrWhiteSpace(planningResult.ErrorMessage)
+                        ? $"{planningProviderConfig.Name} did not return a plan."
+                        : planningResult.ErrorMessage;
+                    await FailDuringPlanningAsync(planningError);
+                    return;
+                }
+
+                job.PlanningOutput = planningOutput.Trim();
+                job.PlanningProviderId = planningProviderConfig.Id;
+                job.PlanningModelUsed = planningResult.ModelUsed ?? job.Project.PlanningModelId;
+                job.PlanningGeneratedAt = DateTime.UtcNow;
+                await dbContext.SaveChangesAsync(cancellationToken);
+            }
+
+            var currentPrompt = PromptBuilder.BuildExecutionPrompt(job, planningOutput, enableStructuring);
+            var cycleComplete = false;
+            await UpdateJobStatusAsync(job.Id, JobStatus.Processing, dbContext, cancellationToken);
+            await NotifyStatusChangedAsync(job.Id, JobStatus.Processing);
 
             while (currentCycle <= effectiveMaxCycles && !cycleComplete && !cancellationToken.IsCancellationRequested)
             {
@@ -1373,6 +1401,76 @@ public class JobProcessingService : BackgroundService
         return result;
     }
 
+    private async Task<string?> ValidateProviderAvailabilityAsync(
+        Guid jobId,
+        Provider providerConfig,
+        IProvider provider,
+        CancellationToken cancellationToken)
+    {
+        if (!providerConfig.IsEnabled)
+        {
+            return "Provider is disabled";
+        }
+
+        _logger.LogInformation("Running preflight health checks for job {JobId} against provider {ProviderName}",
+            jobId, providerConfig.Name);
+
+        var isConnected = await provider.TestConnectionAsync(cancellationToken);
+        if (!isConnected)
+        {
+            var errorMessage = "Preflight check failed: Could not connect to provider. ";
+            if (!string.IsNullOrEmpty(provider.LastConnectionError))
+            {
+                errorMessage += provider.LastConnectionError;
+                _logger.LogWarning("Provider connection test failed for job {JobId}: {Error}", jobId, provider.LastConnectionError);
+            }
+            else
+            {
+                errorMessage += "Ensure the CLI is installed and accessible from the host system.";
+                _logger.LogWarning("Provider connection test failed for job {JobId} with no error details", jobId);
+            }
+
+            return errorMessage;
+        }
+
+        var providerInfo = await provider.GetProviderInfoAsync(cancellationToken);
+        if (providerInfo.AdditionalInfo.TryGetValue("isAvailable", out var isAvailableObj) &&
+            isAvailableObj is bool isAvailable &&
+            !isAvailable)
+        {
+            return providerInfo.AdditionalInfo.TryGetValue("unavailableReason", out var reasonObj)
+                ? reasonObj?.ToString() ?? "Provider not available"
+                : "Provider not available";
+        }
+
+        using var usageScope = _scopeFactory.CreateScope();
+        var providerUsageService = usageScope.ServiceProvider.GetService<IProviderUsageService>();
+        if (providerUsageService != null)
+        {
+            var exhaustionWarning = await providerUsageService.CheckExhaustionAsync(providerConfig.Id, cancellationToken: cancellationToken);
+            if (exhaustionWarning?.IsExhausted == true)
+            {
+                var reason = $"Provider usage limit exhausted: {exhaustionWarning.Message}";
+                _logger.LogWarning("Job {JobId} blocked due to provider usage exhaustion: {Message}", jobId, exhaustionWarning.Message);
+
+                if (_jobUpdateService != null)
+                {
+                    await _jobUpdateService.NotifyProviderUsageWarning(
+                        providerConfig.Id,
+                        providerConfig.Name,
+                        exhaustionWarning.PercentUsed,
+                        exhaustionWarning.Message,
+                        exhaustionWarning.IsExhausted,
+                        exhaustionWarning.ResetTime);
+                }
+
+                return reason;
+            }
+        }
+
+        return null;
+    }
+
     private static bool ShouldApplyProviderUsage(UsageLimits? limits)
     {
         return limits != null && (
@@ -1386,6 +1484,11 @@ public class JobProcessingService : BackgroundService
     private static UsageLimits MergeUsageLimits(UsageLimits? existing, UsageLimits latest)
     {
         return UsageLimitWindowHelper.Merge(existing, latest);
+    }
+
+    private static bool ShouldUsePlanningStage(Project? project)
+    {
+        return project?.PlanningEnabled == true && project.PlanningProviderId.HasValue;
     }
 
     /// <summary>

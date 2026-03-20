@@ -160,6 +160,7 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 			entity.Property(e => e.Title).HasMaxLength(200);
 			entity.Property(e => e.GoalPrompt).IsRequired().HasMaxLength(2000);
 			entity.Property(e => e.ModelUsed).HasMaxLength(200);
+			entity.Property(e => e.PlanningModelUsed).HasMaxLength(200);
 			entity.Property(e => e.LastSwitchReason).HasMaxLength(200);
 			entity.Property(e => e.Branch).HasMaxLength(250);
 			entity.Property(e => e.TargetBranch).HasMaxLength(250);

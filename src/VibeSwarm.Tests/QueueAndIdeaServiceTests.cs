@@ -154,6 +154,110 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 	}
 
 	[Fact]
+	public async Task UpdateJobPromptAsync_ClearsPersistedPlanningOutput()
+	{
+		await using var dbContext = CreateDbContext();
+		var project = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Planning Project",
+			WorkingPath = "/tmp/planning-project",
+			PlanningEnabled = true,
+			PlanningProviderId = Guid.NewGuid(),
+			PlanningModelId = "claude-sonnet-4"
+		};
+		var provider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Claude",
+			Type = ProviderType.Claude,
+			IsEnabled = true,
+			IsDefault = true
+		};
+		var job = new Job
+		{
+			Id = Guid.NewGuid(),
+			ProjectId = project.Id,
+			ProviderId = provider.Id,
+			GoalPrompt = "Original prompt",
+			Status = JobStatus.Failed,
+			PlanningOutput = "Existing saved plan",
+			PlanningProviderId = provider.Id,
+			PlanningModelUsed = "claude-sonnet-4",
+			PlanningGeneratedAt = DateTime.UtcNow.AddMinutes(-5)
+		};
+
+		dbContext.Projects.Add(project);
+		dbContext.Providers.Add(provider);
+		dbContext.Jobs.Add(job);
+		await dbContext.SaveChangesAsync();
+
+		var serviceProvider = new ServiceCollection().BuildServiceProvider();
+		var jobService = new JobService(dbContext, serviceProvider);
+
+		var updated = await jobService.UpdateJobPromptAsync(job.Id, "Updated prompt");
+
+		Assert.True(updated);
+		var savedJob = await dbContext.Jobs.SingleAsync(j => j.Id == job.Id);
+		Assert.Equal("Updated prompt", savedJob.GoalPrompt);
+		Assert.Null(savedJob.PlanningOutput);
+		Assert.Null(savedJob.PlanningProviderId);
+		Assert.Null(savedJob.PlanningModelUsed);
+		Assert.Null(savedJob.PlanningGeneratedAt);
+	}
+
+	[Fact]
+	public async Task ResumeJobAsync_ReturnsPlanningStatus_WhenPlanIsStillPending()
+	{
+		await using var dbContext = CreateDbContext();
+		var planningProviderId = Guid.NewGuid();
+		var project = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Planning Resume Project",
+			WorkingPath = "/tmp/planning-resume-project",
+			PlanningEnabled = true,
+			PlanningProviderId = planningProviderId,
+			PlanningModelId = "claude-sonnet-4"
+		};
+		var provider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Claude",
+			Type = ProviderType.Claude,
+			IsEnabled = true,
+			IsDefault = true
+		};
+		var job = new Job
+		{
+			Id = Guid.NewGuid(),
+			ProjectId = project.Id,
+			Project = project,
+			ProviderId = provider.Id,
+			GoalPrompt = "Implement the feature",
+			Status = JobStatus.Paused,
+			PendingInteractionPrompt = "Continue?",
+			InteractionType = "confirmation"
+		};
+
+		dbContext.Projects.Add(project);
+		dbContext.Providers.Add(provider);
+		dbContext.Jobs.Add(job);
+		await dbContext.SaveChangesAsync();
+
+		var serviceProvider = new ServiceCollection().BuildServiceProvider();
+		var jobService = new JobService(dbContext, serviceProvider);
+
+		var resumed = await jobService.ResumeJobAsync(job.Id);
+
+		Assert.True(resumed);
+		var savedJob = await dbContext.Jobs.SingleAsync(j => j.Id == job.Id);
+		Assert.Equal(JobStatus.Planning, savedJob.Status);
+		Assert.Null(savedJob.PendingInteractionPrompt);
+		Assert.Null(savedJob.InteractionType);
+	}
+
+	[Fact]
 	public async Task SuggestIdeasFromCodebaseAsync_UsesRequestedProviderModelAndIdeaCount()
 	{
 		await using var dbContext = CreateDbContext();

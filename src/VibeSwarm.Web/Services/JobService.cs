@@ -75,11 +75,12 @@ public class JobService : IJobService
                 {
                     ProjectId = group.Key,
                     TotalCount = group.Count(),
-                    ActiveCount = group.Count(job =>
-                        job.Status == JobStatus.New ||
-                        job.Status == JobStatus.Started ||
-                        job.Status == JobStatus.Processing)
-                })
+                     ActiveCount = group.Count(job =>
+                         job.Status == JobStatus.New ||
+                         job.Status == JobStatus.Started ||
+                         job.Status == JobStatus.Planning ||
+                         job.Status == JobStatus.Processing)
+                 })
                 .ToListAsync(cancellationToken),
             Items = await filteredQuery
                 .Include(j => j.Project)
@@ -118,6 +119,7 @@ public class JobService : IJobService
                 j.Status == JobStatus.New ||
                 j.Status == JobStatus.Pending ||
                 j.Status == JobStatus.Started ||
+                j.Status == JobStatus.Planning ||
                 j.Status == JobStatus.Processing ||
                 j.Status == JobStatus.Paused, cancellationToken),
             CompletedCount = await baseQuery.CountAsync(j => j.Status == JobStatus.Completed, cancellationToken),
@@ -137,6 +139,7 @@ public class JobService : IJobService
         var projectsWithRunningJobs = await _dbContext.Jobs
             .Where(j => j.Status == JobStatus.Pending
                 || j.Status == JobStatus.Started
+                || j.Status == JobStatus.Planning
                 || j.Status == JobStatus.Processing
                 || j.Status == JobStatus.Paused
                 || j.Status == JobStatus.Stalled)
@@ -168,7 +171,7 @@ public class JobService : IJobService
             .Include(j => j.Project)
                 .ThenInclude(p => p!.Environments)
             .Include(j => j.Provider)
-            .Where(j => j.Status == JobStatus.Started || j.Status == JobStatus.Processing || j.Status == JobStatus.New)
+            .Where(j => j.Status == JobStatus.Started || j.Status == JobStatus.Planning || j.Status == JobStatus.Processing || j.Status == JobStatus.New)
             .OrderByDescending(j => j.StartedAt ?? j.CreatedAt)
             .ToListAsync(cancellationToken);
     }
@@ -434,7 +437,7 @@ public class JobService : IJobService
         }
 
         // Only force cancel jobs that are actively running
-        if (job.Status != JobStatus.Started && job.Status != JobStatus.Processing)
+        if (job.Status != JobStatus.Started && job.Status != JobStatus.Planning && job.Status != JobStatus.Processing)
         {
             return false;
         }
@@ -549,6 +552,10 @@ public class JobService : IJobService
         job.GitDiff = null;        // Clear git diff
         job.GitCommitBefore = null; // Clear git commit reference
         job.GitCommitHash = null;  // Clear committed results hash
+        job.PlanningOutput = null;
+        job.PlanningProviderId = null;
+        job.PlanningModelUsed = null;
+        job.PlanningGeneratedAt = null;
         job.GitCheckpointStatus = GitCheckpointStatus.None;
         job.GitCheckpointBranch = null;
         job.GitCheckpointBaseBranch = null;
@@ -704,7 +711,7 @@ public class JobService : IJobService
         }
 
         // Only allow pausing jobs that are currently processing
-        if (job.Status != JobStatus.Processing && job.Status != JobStatus.Started)
+        if (job.Status != JobStatus.Processing && job.Status != JobStatus.Planning && job.Status != JobStatus.Started)
         {
             return false;
         }
@@ -765,6 +772,7 @@ public class JobService : IJobService
     public async Task<bool> ResumeJobAsync(Guid id, CancellationToken cancellationToken = default)
     {
         var job = await _dbContext.Jobs
+            .Include(j => j.Project)
             .FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
 
         if (job == null)
@@ -778,7 +786,11 @@ public class JobService : IJobService
             return false;
         }
 
-        job.Status = JobStatus.Processing;
+        job.Status = job.Project?.PlanningEnabled == true &&
+            job.Project.PlanningProviderId.HasValue &&
+            string.IsNullOrWhiteSpace(job.PlanningOutput)
+            ? JobStatus.Planning
+            : JobStatus.Processing;
         job.PendingInteractionPrompt = null;
         job.InteractionType = null;
         job.InteractionChoices = null;
@@ -876,6 +888,10 @@ public class JobService : IJobService
         job.PullRequestUrl = null;
         job.PullRequestCreatedAt = null;
         job.MergedAt = null;
+        job.PlanningOutput = null;
+        job.PlanningProviderId = null;
+        job.PlanningModelUsed = null;
+        job.PlanningGeneratedAt = null;
         job.SessionId = null; // Clear session for fresh start with potentially new provider
         job.ModelUsed = modelId; // Set the requested model (null means use provider default)
         job.RetryCount++; // Increment retry count to track attempts
@@ -971,6 +987,10 @@ public class JobService : IJobService
 
         job.GoalPrompt = newPrompt?.Trim() ?? string.Empty;
         job.Title = BuildSafeJobTitle(job.Title, job.GoalPrompt);
+        job.PlanningOutput = null;
+        job.PlanningProviderId = null;
+        job.PlanningModelUsed = null;
+        job.PlanningGeneratedAt = null;
 
         await _dbContext.SaveChangesAsync(cancellationToken);
 
@@ -981,7 +1001,7 @@ public class JobService : IJobService
     {
         var activeStatuses = new[]
         {
-            JobStatus.New, JobStatus.Pending, JobStatus.Started,
+            JobStatus.New, JobStatus.Pending, JobStatus.Started, JobStatus.Planning,
             JobStatus.Processing, JobStatus.Paused, JobStatus.Stalled
         };
 
@@ -998,7 +1018,7 @@ public class JobService : IJobService
         foreach (var job in jobs)
         {
             // Kill running processes
-            if (job.ProcessId.HasValue && (job.Status == JobStatus.Started || job.Status == JobStatus.Processing))
+            if (job.ProcessId.HasValue && (job.Status == JobStatus.Started || job.Status == JobStatus.Planning || job.Status == JobStatus.Processing))
             {
                 try
                 {
@@ -1265,6 +1285,7 @@ public class JobService : IJobService
             "active" => query.Where(job =>
                 job.Status == JobStatus.New ||
                 job.Status == JobStatus.Started ||
+                job.Status == JobStatus.Planning ||
                 job.Status == JobStatus.Processing),
             "completed" => query.Where(job => job.Status == JobStatus.Completed),
             "failed" => query.Where(job =>
@@ -1295,6 +1316,8 @@ public class JobService : IJobService
         job.GoalPrompt = job.GoalPrompt?.Trim() ?? string.Empty;
         job.Title = BuildSafeJobTitle(job.Title, job.GoalPrompt);
         job.ModelUsed = string.IsNullOrWhiteSpace(job.ModelUsed) ? null : job.ModelUsed.Trim();
+        job.PlanningOutput = string.IsNullOrWhiteSpace(job.PlanningOutput) ? null : job.PlanningOutput.Trim();
+        job.PlanningModelUsed = string.IsNullOrWhiteSpace(job.PlanningModelUsed) ? null : job.PlanningModelUsed.Trim();
         job.Branch = string.IsNullOrWhiteSpace(job.Branch) ? null : job.Branch.Trim();
         job.TargetBranch = string.IsNullOrWhiteSpace(job.TargetBranch) ? null : job.TargetBranch.Trim();
     }

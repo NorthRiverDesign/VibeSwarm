@@ -95,7 +95,7 @@
 		{
 			JobStatus.Completed => "border-success",
 			JobStatus.Failed => "border-danger",
-			JobStatus.Processing or JobStatus.Started => "border-primary",
+			JobStatus.Processing or JobStatus.Planning or JobStatus.Started => "border-primary",
 			JobStatus.Paused => "border-warning",
 			JobStatus.Stalled => "border-warning",
 			JobStatus.Cancelled => "border-secondary",
@@ -109,7 +109,7 @@
 		{
 			JobStatus.Completed => "bg-success-subtle text-success-emphasis",
 			JobStatus.Failed => "bg-danger-subtle text-danger-emphasis",
-			JobStatus.Processing or JobStatus.Started => "bg-primary-subtle text-primary-emphasis",
+			JobStatus.Processing or JobStatus.Planning or JobStatus.Started => "bg-primary-subtle text-primary-emphasis",
 			JobStatus.Paused => "bg-warning-subtle text-warning-emphasis",
 			JobStatus.Stalled => "bg-warning-subtle text-warning-emphasis",
 			JobStatus.Cancelled => "bg-secondary-subtle text-secondary-emphasis",
@@ -124,7 +124,7 @@
 		{
 			JobStatus.Completed => "bi-check-circle-fill",
 			JobStatus.Failed => "bi-x-circle-fill",
-			JobStatus.Processing or JobStatus.Started => "bi-arrow-repeat",
+			JobStatus.Processing or JobStatus.Planning or JobStatus.Started => "bi-arrow-repeat",
 			JobStatus.Paused => "bi-pause-circle-fill",
 			JobStatus.Stalled => "bi-exclamation-triangle-fill",
 			JobStatus.Cancelled => "bi-dash-circle-fill",

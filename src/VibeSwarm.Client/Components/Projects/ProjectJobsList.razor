@@ -102,6 +102,7 @@
 											<i class="bi bi-x-circle-fill text-danger fs-5" title="@job.Status.ToString()"></i>
 											break;
 										case JobStatus.Started:
+										case JobStatus.Planning:
 										case JobStatus.Processing:
 											<div class="spinner-border spinner-border-sm text-primary" role="status"
 												 title="@job.Status.ToString()">
@@ -160,7 +161,7 @@
 											}
 										</div>
 									}
-									@if ((job.Status == JobStatus.Started || job.Status == JobStatus.Processing) &&
+									@if ((job.Status == JobStatus.Started || job.Status == JobStatus.Planning || job.Status == JobStatus.Processing) &&
 																!string.IsNullOrEmpty(job.CurrentActivity))
 									{
 										<div class="text-info fst-italic small mt-1">@TruncateText(job.CurrentActivity, 80)</div>

@@ -291,11 +291,12 @@ new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
     (Job.Status == JobStatus.New ||
     Job.Status == JobStatus.Pending ||
     Job.Status == JobStatus.Started ||
+    Job.Status == JobStatus.Planning ||
     Job.Status == JobStatus.Processing) &&
     !Job.CancellationRequested;
 
 	private bool CanForceCancel => Job != null &&
-	(Job.Status == JobStatus.Started || Job.Status == JobStatus.Processing) &&
+	(Job.Status == JobStatus.Started || Job.Status == JobStatus.Planning || Job.Status == JobStatus.Processing) &&
 	Job.CancellationRequested;
 
 	private bool CanRetry => Job != null && Job.Status != JobStatus.Completed;
@@ -309,6 +310,7 @@ new Breadcrumb.BreadcrumbItem(GetJobDisplayTitle())
 	(Job.Status == JobStatus.New ||
 	Job.Status == JobStatus.Pending ||
 	Job.Status == JobStatus.Started ||
+	Job.Status == JobStatus.Planning ||
 	Job.Status == JobStatus.Processing ||
 	Job.Status == JobStatus.Paused);
 

@@ -983,6 +983,7 @@ TimeSpan.FromSeconds(10) })
                 job.Status == JobStatus.New ||
                 job.Status == JobStatus.Pending ||
                 job.Status == JobStatus.Started ||
+                job.Status == JobStatus.Planning ||
                 job.Status == JobStatus.Processing ||
                 job.Status == JobStatus.Paused ||
                 job.Status == JobStatus.Stalled);

@@ -813,7 +813,7 @@ A concise one-line description of what was implemented (max 72 chars)
 			return;
 		}
 
-		if (usePlanningMode && !SupportsPlanningMode(provider.Type))
+		if (usePlanningMode && !ProviderPlanningHelper.SupportsPlanningMode(provider.Type))
 		{
 			idea.ExpansionStatus = IdeaExpansionStatus.Failed;
 			idea.ExpansionError = "Planning currently supports only Claude and GitHub Copilot providers";
@@ -877,14 +877,14 @@ A concise one-line description of what was implemented (max 72 chars)
 		}
 
 		var result = await providerInstance.ExecuteWithOptionsAsync(
-			usePlanningMode ? BuildProviderPlanningPrompt(ideaDescription) : expansionPrompt,
+			usePlanningMode ? ProviderPlanningHelper.BuildPlanningPrompt(ideaDescription) : expansionPrompt,
 			new ExecutionOptions
 			{
 				WorkingDirectory = workingDirectory,
 				Model = modelName
 			},
 			cancellationToken: cancellationToken);
-		var responseText = ExtractExecutionText(result);
+		var responseText = ProviderPlanningHelper.ExtractExecutionText(result);
 		if (result.Success && !string.IsNullOrWhiteSpace(responseText))
 		{
 			return PromptResponse.Ok(responseText.Trim(), model: result.ModelUsed ?? modelName);
@@ -925,51 +925,6 @@ A concise one-line description of what was implemented (max 72 chars)
 		}
 
 		return (project.PlanningProviderId, project.PlanningModelId, project.PlanningProviderId.HasValue);
-	}
-
-	private static bool SupportsPlanningMode(ProviderType providerType)
-	{
-		return providerType is ProviderType.Claude or ProviderType.Copilot;
-	}
-
-	private static string BuildProviderPlanningPrompt(string ideaDescription)
-	{
-		return $@"/plan Expand the feature idea below into a detailed, implementation-ready specification that can be reviewed before coding.
-
-## Feature Idea
-{ideaDescription}
-
-## Planning Requirements
-1. Overview: Summarize the feature and intended outcome
-2. User Experience: Describe the primary user interactions and flows
-3. Components: Identify the pages, components, services, data models, or infrastructure involved
-4. Implementation Steps: Outline a sensible build order
-5. Edge Cases: Call out important validation, error, and empty-state scenarios
-6. Acceptance Criteria: List the observable behaviors that confirm completion
-
-Return only the plan/specification. Do not implement the feature and do not include code samples.";
-	}
-
-	private static string? ExtractExecutionText(ExecutionResult result)
-	{
-		var preferredRoles = new[] { "plan", "assistant", "response", "message", "suggestion" };
-		foreach (var role in preferredRoles)
-		{
-			var content = result.Messages
-				.Where(message =>
-					string.Equals(message.Role, role, StringComparison.OrdinalIgnoreCase) &&
-					!string.IsNullOrWhiteSpace(message.Content))
-				.Select(message => message.Content.Trim())
-				.ToList();
-			if (content.Count > 0)
-			{
-				return string.Join(Environment.NewLine + Environment.NewLine, content);
-			}
-		}
-
-		return string.IsNullOrWhiteSpace(result.Output)
-			? null
-			: result.Output.Trim();
 	}
 
 	/// <summary>
@@ -1639,7 +1594,7 @@ Keep the specification concise but complete. Focus on actionable implementation 
 				Model = modelName
 			},
 			cancellationToken: cancellationToken);
-		var responseText = ExtractExecutionText(result);
+		var responseText = ProviderPlanningHelper.ExtractExecutionText(result);
 		if (result.Success && !string.IsNullOrWhiteSpace(responseText))
 		{
 			return PromptResponse.Ok(responseText.Trim(), model: result.ModelUsed ?? modelName);

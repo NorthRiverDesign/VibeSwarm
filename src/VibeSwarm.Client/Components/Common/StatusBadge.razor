@@ -23,7 +23,7 @@
 	private bool IsActiveStatus()
 	{
 		var status = Status.ToLowerInvariant();
-		return status is "started" or "processing" or "cancelling";
+		return status is "started" or "planning" or "processing" or "cancelling";
 	}
 
 	private string GetStatusClass()
@@ -33,7 +33,7 @@
 		{
 			"new" => "bg-secondary",
 			"pending" => "bg-warning text-dark",
-			"started" or "processing" => "bg-info",
+			"started" or "planning" or "processing" => "bg-info",
 			"completed" => "bg-success",
 			"failed" => "bg-danger",
 			"cancelled" => "bg-secondary",

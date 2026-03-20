@@ -389,7 +389,7 @@
 
 	private bool AreGitActionsBusy => IsGitSyncing || IsGitRefreshing || IsGitPruning;
 
-	private bool IsRunning => Status == JobStatus.Started || Status == JobStatus.Processing;
+	private bool IsRunning => Status == JobStatus.Started || Status == JobStatus.Planning || Status == JobStatus.Processing;
 
 	private string? ProviderModelDisplay => BuildProviderModelDisplay();
 

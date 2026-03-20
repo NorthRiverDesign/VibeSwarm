@@ -91,7 +91,7 @@ public class JobCompletionMonitorService : BackgroundService
 		var runningJobs = await dbContext.Jobs
 			.Include(j => j.Project)
 			.Include(j => j.Provider)
-			.Where(j => j.Status == JobStatus.Started || j.Status == JobStatus.Processing)
+			.Where(j => j.Status == JobStatus.Started || j.Status == JobStatus.Planning || j.Status == JobStatus.Processing)
 			.ToListAsync(cancellationToken);
 
 		foreach (var job in runningJobs)

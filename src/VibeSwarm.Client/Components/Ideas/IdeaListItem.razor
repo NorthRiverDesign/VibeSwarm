@@ -256,7 +256,7 @@
 
 	private bool IsRunningIdea()
 	{
-		return IsProcessing || Idea.Job?.Status == JobStatus.Started || Idea.Job?.Status == JobStatus.Processing ||
+		return IsProcessing || Idea.Job?.Status == JobStatus.Started || Idea.Job?.Status == JobStatus.Planning || Idea.Job?.Status == JobStatus.Processing ||
 			Idea.Job?.Status == JobStatus.Paused;
 	}
 

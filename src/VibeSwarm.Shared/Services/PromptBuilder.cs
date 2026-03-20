@@ -96,6 +96,26 @@ public static class PromptBuilder
 		return result.Length > MaxPromptLength ? job.GoalPrompt : result;
 	}
 
+	public static string BuildExecutionPrompt(Job job, string? planningOutput, bool enableStructuring = true)
+	{
+		var basePrompt = BuildStructuredPrompt(job, enableStructuring);
+		if (string.IsNullOrWhiteSpace(planningOutput))
+		{
+			return basePrompt;
+		}
+
+		var sb = new StringBuilder();
+		sb.AppendLine(basePrompt);
+		sb.AppendLine();
+		sb.AppendLine("<implementation_plan>");
+		sb.AppendLine(planningOutput.Trim());
+		sb.AppendLine("</implementation_plan>");
+		sb.AppendLine();
+		sb.AppendLine("Use the implementation plan above as the approved plan for this task.");
+		sb.AppendLine("Execute the work now. Do not spend time generating another plan unless the task reveals missing information.");
+		return sb.ToString().TrimEnd();
+	}
+
 	public static string? BuildSystemPromptRules(Project? project, bool injectEfficiencyRules = true, bool injectRepoMap = true)
 	{
 		if (project == null)

@@ -158,7 +158,7 @@ public class JobWatchdogService : BackgroundService
 		var candidateJobs = await dbContext.Jobs
 			.Include(j => j.Provider)
 			.Include(j => j.Project)
-			.Where(j => (j.Status == JobStatus.Started || j.Status == JobStatus.Processing))
+			.Where(j => (j.Status == JobStatus.Started || j.Status == JobStatus.Planning || j.Status == JobStatus.Processing))
 			.Where(j => j.WorkerInstanceId == _workerInstanceId)
 			.Where(j => j.LastHeartbeatAt.HasValue && j.LastHeartbeatAt.Value < maxCutoffTime)
 			.ToListAsync(cancellationToken);
@@ -265,7 +265,7 @@ public class JobWatchdogService : BackgroundService
 
 		// Find jobs that have been in cancellation requested state too long
 		var hangingCancelJobs = await dbContext.Jobs
-			.Where(j => (j.Status == JobStatus.Started || j.Status == JobStatus.Processing))
+			.Where(j => (j.Status == JobStatus.Started || j.Status == JobStatus.Planning || j.Status == JobStatus.Processing))
 			.Where(j => j.CancellationRequested)
 			.Where(j => j.WorkerInstanceId == _workerInstanceId)
 			.Where(j => j.LastActivityAt.HasValue && j.LastActivityAt.Value < cutoffTime)
@@ -309,7 +309,7 @@ public class JobWatchdogService : BackgroundService
 		// AND are not our worker (we handle our own jobs in CheckForStalledJobsAsync)
 		var orphanedJobs = await dbContext.Jobs
 			.Include(j => j.Project)
-			.Where(j => (j.Status == JobStatus.Started || j.Status == JobStatus.Processing))
+			.Where(j => (j.Status == JobStatus.Started || j.Status == JobStatus.Planning || j.Status == JobStatus.Processing))
 			.Where(j => !string.IsNullOrEmpty(j.WorkerInstanceId))
 			.Where(j => j.WorkerInstanceId != _workerInstanceId)
 			.Where(j => !j.LastHeartbeatAt.HasValue || j.LastHeartbeatAt.Value < activeWorkerCutoff)

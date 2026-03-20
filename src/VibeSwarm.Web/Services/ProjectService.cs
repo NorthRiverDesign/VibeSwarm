@@ -205,7 +205,7 @@ public class ProjectService : IProjectService
 				TotalJobs = g.Count(),
 				CompletedJobs = g.Count(j => j.Status == JobStatus.Completed),
 				FailedJobs = g.Count(j => j.Status == JobStatus.Failed || j.Status == JobStatus.Cancelled),
-				ActiveJobs = g.Count(j => j.Status == JobStatus.New || j.Status == JobStatus.Started || j.Status == JobStatus.Processing),
+				ActiveJobs = g.Count(j => j.Status == JobStatus.New || j.Status == JobStatus.Started || j.Status == JobStatus.Planning || j.Status == JobStatus.Processing),
 				TotalInputTokens = g.Sum(j => j.InputTokens ?? 0),
 				TotalOutputTokens = g.Sum(j => j.OutputTokens ?? 0),
 				TotalCostUsd = g.Sum(j => j.TotalCostUsd ?? 0)

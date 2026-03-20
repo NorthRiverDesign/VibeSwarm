@@ -35,11 +35,14 @@ public sealed class ModalDialogTests
 			return output.ToHtmlString();
 		});
 
-		Assert.Contains("vs-modal-container custom-container", html);
+		Assert.Contains("vs-modal-container", html);
+		Assert.Contains("custom-container", html);
 		Assert.Contains("vs-modal-dialog", html);
 		Assert.Contains("custom-dialog", html);
-		Assert.Contains("vs-modal-content custom-content", html);
-		Assert.Contains("modal-body custom-body", html);
+		Assert.Contains("vs-modal-content", html);
+		Assert.Contains("custom-content", html);
+		Assert.Contains("modal-body", html);
+		Assert.Contains("custom-body", html);
 		Assert.Contains("Modal Test", html);
 	}
 

@@ -87,6 +87,28 @@ public class Job
     public string? ModelUsed { get; set; }
 
     /// <summary>
+    /// Planning output generated before execution when project planning is enabled.
+    /// Persisted so execution and retries can reuse the reviewed plan without regenerating it.
+    /// </summary>
+    public string? PlanningOutput { get; set; }
+
+    /// <summary>
+    /// Provider that generated the persisted planning output, if any.
+    /// </summary>
+    public Guid? PlanningProviderId { get; set; }
+
+    /// <summary>
+    /// Model that generated the persisted planning output, if any.
+    /// </summary>
+    [StringLength(200)]
+    public string? PlanningModelUsed { get; set; }
+
+    /// <summary>
+    /// When the persisted planning output was last generated.
+    /// </summary>
+    public DateTime? PlanningGeneratedAt { get; set; }
+
+    /// <summary>
     /// Ordered provider-model execution plan captured when the job is scheduled or reset.
     /// Stored as JSON so retries can resume deterministic fallback.
     /// </summary>
@@ -150,7 +172,7 @@ public class Job
                 return TimeSpan.FromSeconds(ExecutionDurationSeconds.Value);
             if (StartedAt.HasValue && CompletedAt.HasValue)
                 return CompletedAt.Value - StartedAt.Value;
-            if (StartedAt.HasValue && (Status == JobStatus.Started || Status == JobStatus.Processing))
+            if (StartedAt.HasValue && (Status == JobStatus.Started || Status == JobStatus.Planning || Status == JobStatus.Processing))
                 return DateTime.UtcNow - StartedAt.Value;
             return null;
         }
@@ -495,5 +517,9 @@ public enum JobStatus
     /// <summary>
     /// Job is paused waiting for user input/interaction
     /// </summary>
-    Paused
+    Paused,
+    /// <summary>
+    /// Job is generating an implementation plan before execution.
+    /// </summary>
+    Planning
 }

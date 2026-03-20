@@ -12,6 +12,7 @@
                     <i class="bi bi-clock text-secondary fs-5" title="Pending"></i>
                     break;
                 case "started":
+                case "planning":
                 case "processing":
                     <div class="spinner-border spinner-border-sm text-info" role="status" title="Running">
                         <span class="visually-hidden">Running...</span>
@@ -166,7 +167,7 @@
     private bool IsActiveStatus()
     {
         var status = Status.ToLowerInvariant();
-        return status is "started" or "processing" or "new" or "pending";
+        return status is "started" or "planning" or "processing" or "new" or "pending";
     }
 
     private async Task HandleClick()

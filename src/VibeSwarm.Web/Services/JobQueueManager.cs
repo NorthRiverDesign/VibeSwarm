@@ -52,6 +52,7 @@ public class JobQueueManager
 			var projectsWithRunningJobs = await dbContext.Jobs
 				.Where(j => j.Status == JobStatus.Pending
 					|| j.Status == JobStatus.Started
+					|| j.Status == JobStatus.Planning
 					|| j.Status == JobStatus.Processing
 					|| j.Status == JobStatus.Paused
 					|| j.Status == JobStatus.Stalled)
@@ -143,7 +144,7 @@ public class JobQueueManager
 		{
 			TotalJobs = jobs.Count,
 			PendingJobs = jobs.Count(j => j.Status == JobStatus.New),
-			RunningJobs = jobs.Count(j => j.Status == JobStatus.Started || j.Status == JobStatus.Processing),
+			RunningJobs = jobs.Count(j => j.Status == JobStatus.Started || j.Status == JobStatus.Planning || j.Status == JobStatus.Processing),
 			CompletedJobs = jobs.Count(j => j.Status == JobStatus.Completed),
 			FailedJobs = jobs.Count(j => j.Status == JobStatus.Failed),
 			CancelledJobs = jobs.Count(j => j.Status == JobStatus.Cancelled),

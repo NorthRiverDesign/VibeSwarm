@@ -14,16 +14,19 @@ public class JobStateMachine
 		{
 			JobStatus.Pending,
 			JobStatus.Started,
+			JobStatus.Planning,
 			JobStatus.Cancelled
 		},
 		[JobStatus.Pending] = new HashSet<JobStatus>
 		{
 			JobStatus.Started,
+			JobStatus.Planning,
 			JobStatus.Cancelled,
 			JobStatus.New // Allow reset
         },
 		[JobStatus.Started] = new HashSet<JobStatus>
 		{
+			JobStatus.Planning,
 			JobStatus.Processing,
 			JobStatus.Completed,
 			JobStatus.Failed,
@@ -32,6 +35,16 @@ public class JobStateMachine
 			JobStatus.Paused,
 			JobStatus.New // Allow reset for retry
         },
+		[JobStatus.Planning] = new HashSet<JobStatus>
+		{
+			JobStatus.Processing,
+			JobStatus.Paused,
+			JobStatus.Completed,
+			JobStatus.Failed,
+			JobStatus.Cancelled,
+			JobStatus.Stalled,
+			JobStatus.New
+		},
 		[JobStatus.Processing] = new HashSet<JobStatus>
 		{
 			JobStatus.Completed,
@@ -103,7 +116,7 @@ public class JobStateMachine
 	/// </summary>
 	public static bool IsActiveState(JobStatus status)
 	{
-		return status is JobStatus.Started or JobStatus.Processing or JobStatus.Paused;
+		return status is JobStatus.Started or JobStatus.Planning or JobStatus.Processing or JobStatus.Paused;
 	}
 
 	/// <summary>
@@ -153,12 +166,13 @@ public class JobStateMachine
 
 		// Set timestamps based on transition
 		var now = DateTime.UtcNow;
-		switch (newStatus)
-		{
-			case JobStatus.Started:
-				job.StartedAt ??= now;
-				job.LastActivityAt = now;
-				job.LastHeartbeatAt = now;
+			switch (newStatus)
+			{
+				case JobStatus.Started:
+				case JobStatus.Planning:
+					job.StartedAt ??= now;
+					job.LastActivityAt = now;
+					job.LastHeartbeatAt = now;
 				break;
 
 			case JobStatus.Processing:
