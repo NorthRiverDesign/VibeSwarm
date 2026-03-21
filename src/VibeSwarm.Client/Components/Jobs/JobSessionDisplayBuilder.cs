@@ -151,8 +151,9 @@ internal static class JobSessionDisplayBuilder
 		}
 
 		var trimmedContent = content.Trim();
-		if (TryParseSystemMessage(trimmedContent, out _, out var source, out var level))
+		if (TryParseSystemMessage(trimmedContent, out var systemContent, out var source, out var level))
 		{
+			message.Content = systemContent;
 			message.Role = MessageRole.System;
 			message.Source = source;
 			message.Level = level;
@@ -397,18 +398,35 @@ internal static class JobSessionDisplayBuilder
 	{
 		if (supplementalMessages.Count == 0)
 		{
-			return [.. primaryMessages];
+			return DeduplicateProcessStartedMessages(primaryMessages);
 		}
 
 		if (primaryMessages.Count == 0)
 		{
-			return [.. supplementalMessages];
+			return DeduplicateProcessStartedMessages(supplementalMessages);
 		}
 
-		return primaryMessages
+		return DeduplicateProcessStartedMessages(primaryMessages
 			.Concat(supplementalMessages)
 			.OrderBy(message => message.CreatedAt)
-			.ToList();
+			.ToList());
+	}
+
+	private static IReadOnlyList<JobMessage> DeduplicateProcessStartedMessages(IEnumerable<JobMessage> messages)
+	{
+		var deduplicatedMessages = new List<JobMessage>();
+
+		foreach (var message in messages)
+		{
+			if (IsDuplicateProcessStartedMessage(deduplicatedMessages.LastOrDefault(), message))
+			{
+				continue;
+			}
+
+			deduplicatedMessages.Add(message);
+		}
+
+		return deduplicatedMessages;
 	}
 
 	private static bool TryParseToolUse(string content, out string toolName, out string? toolInput)

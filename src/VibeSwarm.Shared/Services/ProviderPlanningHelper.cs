@@ -17,14 +17,7 @@ public static class ProviderPlanningHelper
 			: requestDescription.Trim();
 
 		var sb = new StringBuilder();
-		if (providerType == ProviderType.Claude)
-		{
-			sb.AppendLine("/plan Create an implementation-ready plan for the request below before any coding begins.");
-		}
-		else
-		{
-			sb.AppendLine("Create an implementation-ready plan for the request below before any coding begins.");
-		}
+		sb.AppendLine("Create an implementation-ready plan for the request below before any coding begins.");
 		sb.AppendLine();
 		sb.AppendLine("## Request");
 		sb.AppendLine(description);

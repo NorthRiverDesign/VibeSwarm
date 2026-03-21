@@ -1865,7 +1865,8 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		Assert.Equal(IdeaExpansionStatus.PendingReview, result!.ExpansionStatus);
 		Assert.Contains("Overview: Add project planning controls.", result.ExpandedDescription);
 		Assert.NotNull(providerInstance.LastExecutePrompt);
-		Assert.StartsWith("/plan", providerInstance.LastExecutePrompt!);
+		Assert.DoesNotContain("/plan", providerInstance.LastExecutePrompt!, StringComparison.Ordinal);
+		Assert.StartsWith("Create an implementation-ready plan", providerInstance.LastExecutePrompt!, StringComparison.Ordinal);
 		Assert.Equal(project.PlanningModelId, providerInstance.LastExecutionOptions?.Model);
 	}
 

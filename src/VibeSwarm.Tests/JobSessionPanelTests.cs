@@ -265,9 +265,60 @@ public sealed class JobSessionPanelTests
 		});
 
 		Assert.Contains("2 messages", html);
-		Assert.Equal(
-			1,
-			Regex.Matches(html, Regex.Escape("Process started (PID: 456). Waiting for CLI to initialize...")).Count);
+		Assert.Single(Regex.Matches(html, Regex.Escape("Process started (PID: 456). Waiting for CLI to initialize...")).Cast<Match>());
+	}
+
+	[Fact]
+	public async Task RenderedJobSessionPanel_DeduplicatesMergedProcessStartedMessages()
+	{
+		var services = new ServiceCollection();
+		services.AddLogging();
+		services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
+
+		await using var renderer = new HtmlRenderer(services.BuildServiceProvider(), NullLoggerFactory.Instance);
+
+		var timestamp = DateTime.UtcNow;
+		var html = await renderer.Dispatcher.InvokeAsync(async () =>
+		{
+			var parameters = ParameterView.FromDictionary(new Dictionary<string, object?>
+			{
+				[nameof(JobSessionPanel.Status)] = JobStatus.Processing,
+				[nameof(JobSessionPanel.IsJobActive)] = true,
+				[nameof(JobSessionPanel.LiveOutputLines)] = new List<OutputLine>
+				{
+					new()
+					{
+						Content = "[System] Process started (PID: 789). Waiting for CLI to initialize...",
+						Timestamp = timestamp.AddSeconds(-12)
+					}
+				},
+				[nameof(JobSessionPanel.LiveMessages)] = new List<JobMessage>
+				{
+					new()
+					{
+						Id = Guid.NewGuid(),
+						JobId = Guid.NewGuid(),
+						Role = MessageRole.System,
+						Content = "[System] Process started (PID: 789). Waiting for CLI to initialize...",
+						CreatedAt = timestamp.AddSeconds(-11)
+					},
+					new()
+					{
+						Id = Guid.NewGuid(),
+						JobId = Guid.NewGuid(),
+						Role = MessageRole.Assistant,
+						Content = "Retrying after startup failure.",
+						CreatedAt = timestamp.AddSeconds(-10)
+					}
+				}
+			});
+
+			var output = await renderer.RenderComponentAsync<JobSessionPanel>(parameters);
+			return output.ToHtmlString();
+		});
+
+		Assert.Single(Regex.Matches(html, Regex.Escape("Process started (PID: 789). Waiting for CLI to initialize...")).Cast<Match>());
+		Assert.Contains("Retrying after startup failure.", html);
 	}
 
 	[Fact]
