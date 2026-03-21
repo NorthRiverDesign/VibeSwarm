@@ -146,14 +146,20 @@ public class HttpJobService : IJobService
         return (result.Prompt, result.Type, result.Choices);
     }
 
-    public async Task<bool> ResumeJobAsync(Guid id, CancellationToken ct = default)
-    {
-        var response = await _http.PostAsync($"/api/jobs/{id}/resume", null, ct);
-        return response.IsSuccessStatusCode;
-    }
+	public async Task<bool> ResumeJobAsync(Guid id, CancellationToken ct = default)
+	{
+		var response = await _http.PostAsync($"/api/jobs/{id}/resume", null, ct);
+		return response.IsSuccessStatusCode;
+	}
 
-    public async Task<IEnumerable<Job>> GetPausedJobsAsync(CancellationToken ct = default)
-        => await _http.GetJsonAsync("/api/jobs/paused", new List<Job>(), ct);
+	public async Task<bool> ContinueJobAsync(Guid id, string followUpPrompt, CancellationToken ct = default)
+	{
+		var response = await _http.PostAsJsonAsync($"/api/jobs/{id}/continue", new { FollowUpPrompt = followUpPrompt }, ct);
+		return response.IsSuccessStatusCode;
+	}
+
+	public async Task<IEnumerable<Job>> GetPausedJobsAsync(CancellationToken ct = default)
+		=> await _http.GetJsonAsync("/api/jobs/paused", new List<Job>(), ct);
 
     public async Task<string?> GetLastUsedModelAsync(Guid projectId, Guid providerId, CancellationToken ct = default)
     {

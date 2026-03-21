@@ -188,7 +188,7 @@ else
                              SessionId="@Job.SessionId" LiveOutputLines="@_liveOutput.ToList()"
                              LiveMessages="@_pendingSessionMessages.ToList()" MaxOutputLines="@MaxOutputLines"
                              CurrentActivity="@Job.CurrentActivity"
-                             OnClearLiveOutput="ClearLiveOutput" OnSendFollowUp="CreateFollowUpJob" />
+                             OnClearLiveOutput="ClearLiveOutput" OnSendFollowUp="ContinueJobWithFollowUp" />
         </div>
     </div>
 
@@ -948,62 +948,43 @@ TimeSpan.FromSeconds(10) })
         }
     }
 
-    private async Task CreateFollowUpJob(string followUpPrompt)
+    private async Task ContinueJobWithFollowUp(string followUpPrompt)
     {
         if (Job == null || string.IsNullOrWhiteSpace(followUpPrompt)) return;
 
         try
         {
-            const int maxPromptLength = 2000;
             var trimmedFollowUp = followUpPrompt.Trim();
-            var templatePrefix = "Continue the previous job for this project.\nPrevious goal: ";
-            var templateMiddle = "\n\nFollow-up instructions:\n";
-            var maxFollowUpLength = Math.Max(0, maxPromptLength - templatePrefix.Length - templateMiddle.Length);
-            if (trimmedFollowUp.Length > maxFollowUpLength)
+            var submittedAt = DateTime.UtcNow;
+            var result = await JobService.ContinueJobAsync(Job.Id, trimmedFollowUp);
+            if (!result)
             {
-                trimmedFollowUp = maxFollowUpLength <= 3
-                    ? trimmedFollowUp[..maxFollowUpLength]
-                    : trimmedFollowUp[..(maxFollowUpLength - 3)] + "...";
+                NotificationService.ShowError("Could not continue the job. It may no longer be completed.");
+                return;
             }
 
-            var reservedLength = templatePrefix.Length + templateMiddle.Length + trimmedFollowUp.Length;
-            var availableForPreviousGoal = Math.Max(0, maxPromptLength - reservedLength);
-            var previousGoalSnippet = Job.GoalPrompt;
-
-            if (previousGoalSnippet.Length > availableForPreviousGoal)
+            _pendingSessionMessages.Add(new JobMessage
             {
-                previousGoalSnippet = availableForPreviousGoal switch
-                {
-                    <= 0 => string.Empty,
-                    <= 3 => previousGoalSnippet[..availableForPreviousGoal],
-                    _ => previousGoalSnippet[..(availableForPreviousGoal - 3)] + "..."
-                };
-            }
+                Id = Guid.NewGuid(),
+                JobId = Job.Id,
+                Role = MessageRole.User,
+                Content = trimmedFollowUp,
+                CreatedAt = submittedAt,
+                Source = MessageSource.User,
+                Level = MessageLevel.Normal
+            });
 
-            var contextPrompt = $"{templatePrefix}{previousGoalSnippet}{templateMiddle}{trimmedFollowUp}";
+            Job.Status = JobStatus.New;
+            Job.CompletedAt = null;
+            Job.CurrentActivity = "Queued follow-up instructions...";
+            Job.LastActivityAt = submittedAt;
 
-            var newJob = new Job
-            {
-                ProjectId = Job.ProjectId,
-                ProviderId = Job.ProviderId,
-                GoalPrompt = contextPrompt,
-                Title = $"Follow-up: {trimmedFollowUp}",
-                Branch = Job.Branch,
-                GitChangeDeliveryMode = Job.GitChangeDeliveryMode,
-                TargetBranch = Job.TargetBranch ?? Job.Project?.DefaultTargetBranch,
-                Status = JobStatus.New,
-                ParentJobId = Job.Id
-            };
-
-            var createdJob = await JobService.CreateAsync(newJob);
-            NotificationService.ShowSuccess("Follow-up job created and queued.", "Job Created");
-
-            // Navigate to the new job
-            NavigationManager.NavigateTo($"/jobs/view/{createdJob.Id}");
+            NotificationService.ShowSuccess("Follow-up instructions queued. The job will continue shortly.", "Job Continued");
+            await LoadJob();
         }
         catch (Exception ex)
         {
-            NotificationService.ShowError($"Failed to create follow-up job: {ex.Message}", "Error");
+            NotificationService.ShowError($"Failed to continue job: {ex.Message}", "Error");
         }
     }
 

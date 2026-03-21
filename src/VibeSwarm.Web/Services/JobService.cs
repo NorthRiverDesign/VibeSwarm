@@ -816,6 +816,54 @@ public class JobService : IJobService
         return true;
     }
 
+    public async Task<bool> ContinueJobAsync(Guid id, string followUpPrompt, CancellationToken cancellationToken = default)
+    {
+        var trimmedFollowUp = followUpPrompt?.Trim();
+        if (string.IsNullOrWhiteSpace(trimmedFollowUp))
+        {
+            return false;
+        }
+
+        var job = await _dbContext.Jobs
+            .FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
+
+        if (job == null || job.Status != JobStatus.Completed)
+        {
+            return false;
+        }
+
+        var submittedAt = DateTime.UtcNow;
+        var message = new JobMessage
+        {
+            Id = Guid.NewGuid(),
+            JobId = job.Id,
+            Role = MessageRole.User,
+            Content = trimmedFollowUp,
+            CreatedAt = submittedAt
+        };
+
+        _dbContext.JobMessages.Add(message);
+
+        job.GoalPrompt = BuildContinuationPrompt(job.GoalPrompt, trimmedFollowUp);
+        await ResetJobForFollowUp(job, submittedAt, cancellationToken);
+        await InitializeExecutionPlanAsync(job, cancellationToken);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        if (_jobUpdateService != null)
+        {
+            try
+            {
+                await _jobUpdateService.NotifyJobStatusChanged(job.Id, job.Status.ToString());
+                await _jobUpdateService.NotifyJobListChanged();
+            }
+            catch { }
+        }
+
+        _jobProcessingService?.TriggerProcessing();
+
+        return true;
+    }
+
     public async Task<IEnumerable<Job>> GetPausedJobsAsync(CancellationToken cancellationToken = default)
     {
         return await _dbContext.Jobs
@@ -1110,6 +1158,89 @@ public class JobService : IJobService
         if (string.IsNullOrWhiteSpace(job.ModelUsed) && targets.Count > 0)
         {
             job.ModelUsed = targets[0].ModelId;
+        }
+    }
+
+    private static string BuildContinuationPrompt(string previousGoalPrompt, string followUpPrompt)
+    {
+        const int maxPromptLength = 2000;
+        const string templatePrefix = "Continue the previous job for this project.\nPrevious goal: ";
+        const string templateMiddle = "\n\nFollow-up instructions:\n";
+
+        var trimmedFollowUp = followUpPrompt.Trim();
+        var maxFollowUpLength = Math.Max(0, maxPromptLength - templatePrefix.Length - templateMiddle.Length);
+        if (trimmedFollowUp.Length > maxFollowUpLength)
+        {
+            trimmedFollowUp = maxFollowUpLength <= 3
+                ? trimmedFollowUp[..maxFollowUpLength]
+                : trimmedFollowUp[..(maxFollowUpLength - 3)] + "...";
+        }
+
+        var reservedLength = templatePrefix.Length + templateMiddle.Length + trimmedFollowUp.Length;
+        var availableForPreviousGoal = Math.Max(0, maxPromptLength - reservedLength);
+        var previousGoalSnippet = previousGoalPrompt;
+
+        if (previousGoalSnippet.Length > availableForPreviousGoal)
+        {
+            previousGoalSnippet = availableForPreviousGoal switch
+            {
+                <= 0 => string.Empty,
+                <= 3 => previousGoalSnippet[..availableForPreviousGoal],
+                _ => previousGoalSnippet[..(availableForPreviousGoal - 3)] + "..."
+            };
+        }
+
+        return $"{templatePrefix}{previousGoalSnippet}{templateMiddle}{trimmedFollowUp}";
+    }
+
+    private async Task ResetJobForFollowUp(Job job, DateTime submittedAt, CancellationToken cancellationToken)
+    {
+        job.Status = JobStatus.New;
+        job.CancellationRequested = false;
+        job.StartedAt = null;
+        job.CompletedAt = null;
+        job.Output = null;
+        job.ErrorMessage = null;
+        job.CurrentActivity = "Queued follow-up instructions...";
+        job.LastActivityAt = submittedAt;
+        job.WorkerInstanceId = null;
+        job.LastHeartbeatAt = null;
+        job.ProcessId = null;
+        job.CommandUsed = null;
+        job.ConsoleOutput = null;
+        job.GitDiff = null;
+        job.GitCommitBefore = null;
+        job.GitCommitHash = null;
+        job.PullRequestNumber = null;
+        job.PullRequestUrl = null;
+        job.PullRequestCreatedAt = null;
+        job.MergedAt = null;
+        job.SessionSummary = null;
+        job.ChangedFilesCount = null;
+        job.BuildVerified = null;
+        job.BuildOutput = null;
+        job.PendingInteractionPrompt = null;
+        job.InteractionType = null;
+        job.InteractionChoices = null;
+        job.InteractionRequestedAt = null;
+        job.PlanningOutput = null;
+        job.PlanningProviderId = null;
+        job.PlanningModelUsed = null;
+        job.PlanningGeneratedAt = null;
+        job.CurrentCycle = 1;
+        job.ActiveExecutionIndex = 0;
+        job.LastSwitchAt = null;
+        job.LastSwitchReason = null;
+        job.InputTokens = null;
+        job.OutputTokens = null;
+        job.TotalCostUsd = null;
+
+        var attempts = await _dbContext.JobProviderAttempts
+            .Where(a => a.JobId == job.Id)
+            .ToListAsync(cancellationToken);
+        if (attempts.Count > 0)
+        {
+            _dbContext.JobProviderAttempts.RemoveRange(attempts);
         }
     }
 

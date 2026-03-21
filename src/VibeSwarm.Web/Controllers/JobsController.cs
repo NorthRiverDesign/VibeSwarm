@@ -153,6 +153,10 @@ public class JobsController : ControllerBase
     public async Task<IActionResult> Resume(Guid id, CancellationToken ct)
         => await _jobService.ResumeJobAsync(id, ct) ? Ok() : BadRequest();
 
+    [HttpPost("{id:guid}/continue")]
+    public async Task<IActionResult> ContinueJob(Guid id, [FromBody] ContinueJobRequest req, CancellationToken ct)
+        => await _jobService.ContinueJobAsync(id, req.FollowUpPrompt, ct) ? Ok() : BadRequest();
+
     [HttpGet("last-model")]
     public async Task<IActionResult> GetLastUsedModel([FromQuery] Guid projectId, [FromQuery] Guid providerId, CancellationToken ct)
     {
@@ -197,6 +201,7 @@ public class JobsController : ControllerBase
     public record UpdateGitDiffRequest(string? GitDiff);
     public record UpdateGitDeliveryRequest(string? CommitHash, int? PullRequestNumber, string? PullRequestUrl, DateTime? PullRequestCreatedAt, DateTime? MergedAt);
     public record PauseInteractionRequest(string InteractionPrompt, string InteractionType, string? Choices);
+    public record ContinueJobRequest(string FollowUpPrompt);
     public record RetryRequest(Guid? ProviderId, string? ModelId);
     public record UpdatePromptRequest(string Prompt);
 }

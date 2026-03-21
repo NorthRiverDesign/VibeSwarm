@@ -167,6 +167,54 @@ public sealed class JobSessionPanelTests
 	}
 
 	[Fact]
+	public async Task RenderedJobSessionPanel_ShowsPersistedUserMessagesAsUserEntries()
+	{
+		var services = new ServiceCollection();
+		services.AddLogging();
+		services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
+
+		await using var renderer = new HtmlRenderer(services.BuildServiceProvider(), NullLoggerFactory.Instance);
+
+		var html = await renderer.Dispatcher.InvokeAsync(async () =>
+		{
+			var parameters = ParameterView.FromDictionary(new Dictionary<string, object?>
+			{
+				[nameof(JobSessionPanel.Status)] = JobStatus.Completed,
+				[nameof(JobSessionPanel.Messages)] = new List<JobMessage>
+				{
+					new()
+					{
+						Id = Guid.NewGuid(),
+						JobId = Guid.NewGuid(),
+						Role = MessageRole.Assistant,
+						Content = "Initial implementation is complete.",
+						CreatedAt = DateTime.UtcNow.AddSeconds(-10)
+					},
+					new()
+					{
+						Id = Guid.NewGuid(),
+						JobId = Guid.NewGuid(),
+						Role = MessageRole.User,
+						Content = "Please also cover the remaining edge case.",
+						CreatedAt = DateTime.UtcNow.AddSeconds(-5)
+					}
+				}
+			});
+
+			var output = await renderer.RenderComponentAsync<JobSessionPanel>(parameters);
+			return output.ToHtmlString();
+		});
+
+		Assert.Contains("2 messages", html);
+		Assert.Contains("Initial implementation is complete.", html);
+		Assert.Contains("Please also cover the remaining edge case.", html);
+		Assert.Contains("chat-message-user", html);
+		Assert.True(
+			html.IndexOf("Initial implementation is complete.", StringComparison.Ordinal)
+				< html.IndexOf("Please also cover the remaining edge case.", StringComparison.Ordinal));
+	}
+
+	[Fact]
 	public async Task RenderedJobSessionPanel_KeepsSystemMessagesSeparateAndStyled()
 	{
 		var services = new ServiceCollection();

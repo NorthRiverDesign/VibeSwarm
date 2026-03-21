@@ -347,6 +347,137 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 	}
 
 	[Fact]
+	public async Task ContinueJobAsync_PersistsUserFollowUpAndResetsCompletedJob()
+	{
+		await using var dbContext = CreateDbContext();
+		var project = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Follow-Up Project",
+			WorkingPath = "/tmp/follow-up-project"
+		};
+		var provider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Copilot",
+			Type = ProviderType.Copilot,
+			IsEnabled = true,
+			IsDefault = true
+		};
+		var job = new Job
+		{
+			Id = Guid.NewGuid(),
+			ProjectId = project.Id,
+			ProviderId = provider.Id,
+			GoalPrompt = "Implement the initial feature",
+			Status = JobStatus.Completed,
+			SessionId = "session-123",
+			CompletedAt = DateTime.UtcNow,
+			Output = "Done",
+			ConsoleOutput = "console output",
+			CommandUsed = "copilot run",
+			GitDiff = "diff --git",
+			BuildVerified = true,
+			BuildOutput = "build ok",
+			SessionSummary = "Previous summary",
+			CurrentCycle = 3,
+			InputTokens = 120,
+			OutputTokens = 80,
+			TotalCostUsd = 1.23m
+		};
+
+		dbContext.Projects.Add(project);
+		dbContext.Providers.Add(provider);
+		dbContext.Jobs.Add(job);
+		dbContext.JobProviderAttempts.Add(new JobProviderAttempt
+		{
+			Id = Guid.NewGuid(),
+			JobId = job.Id,
+			ProviderId = provider.Id,
+			ProviderName = provider.Name,
+			AttemptOrder = 0,
+			Reason = "initial-execution",
+			AttemptedAt = DateTime.UtcNow.AddMinutes(-5)
+		});
+		await dbContext.SaveChangesAsync();
+
+		var serviceProvider = new ServiceCollection().BuildServiceProvider();
+		var jobService = new JobService(dbContext, serviceProvider);
+
+		var continued = await jobService.ContinueJobAsync(job.Id, "Address the remaining failing tests.");
+
+		Assert.True(continued);
+
+		var savedJob = await dbContext.Jobs.SingleAsync(j => j.Id == job.Id);
+		Assert.Equal(JobStatus.New, savedJob.Status);
+		Assert.Equal("session-123", savedJob.SessionId);
+		Assert.Contains("Previous goal: Implement the initial feature", savedJob.GoalPrompt);
+		Assert.Contains("Follow-up instructions:\nAddress the remaining failing tests.", savedJob.GoalPrompt);
+		Assert.Null(savedJob.CompletedAt);
+		Assert.Null(savedJob.Output);
+		Assert.Null(savedJob.ConsoleOutput);
+		Assert.Null(savedJob.CommandUsed);
+		Assert.Null(savedJob.GitDiff);
+		Assert.Null(savedJob.BuildVerified);
+		Assert.Null(savedJob.BuildOutput);
+		Assert.Null(savedJob.SessionSummary);
+		Assert.Equal(1, savedJob.CurrentCycle);
+		Assert.Null(savedJob.InputTokens);
+		Assert.Null(savedJob.OutputTokens);
+		Assert.Null(savedJob.TotalCostUsd);
+
+		var savedMessages = await dbContext.JobMessages
+			.Where(message => message.JobId == job.Id)
+			.OrderBy(message => message.CreatedAt)
+			.ToListAsync();
+		var followUpMessage = Assert.Single(savedMessages);
+		Assert.Equal(MessageRole.User, followUpMessage.Role);
+		Assert.Equal("Address the remaining failing tests.", followUpMessage.Content);
+		Assert.Empty(await dbContext.JobProviderAttempts.Where(attempt => attempt.JobId == job.Id).ToListAsync());
+	}
+
+	[Fact]
+	public async Task ContinueJobAsync_RejectsJobsThatAreNotCompleted()
+	{
+		await using var dbContext = CreateDbContext();
+		var project = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Processing Project",
+			WorkingPath = "/tmp/processing-project"
+		};
+		var provider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Claude",
+			Type = ProviderType.Claude,
+			IsEnabled = true,
+			IsDefault = true
+		};
+		var job = new Job
+		{
+			Id = Guid.NewGuid(),
+			ProjectId = project.Id,
+			ProviderId = provider.Id,
+			GoalPrompt = "Still running",
+			Status = JobStatus.Processing
+		};
+
+		dbContext.Projects.Add(project);
+		dbContext.Providers.Add(provider);
+		dbContext.Jobs.Add(job);
+		await dbContext.SaveChangesAsync();
+
+		var serviceProvider = new ServiceCollection().BuildServiceProvider();
+		var jobService = new JobService(dbContext, serviceProvider);
+
+		var continued = await jobService.ContinueJobAsync(job.Id, "Keep going.");
+
+		Assert.False(continued);
+		Assert.Empty(await dbContext.JobMessages.Where(message => message.JobId == job.Id).ToListAsync());
+	}
+
+	[Fact]
 	public async Task SuggestIdeasFromCodebaseAsync_UsesRequestedProviderModelAndIdeaCount()
 	{
 		await using var dbContext = CreateDbContext();

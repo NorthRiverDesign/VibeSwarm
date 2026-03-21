@@ -55,12 +55,20 @@ public interface IJobService
     Task<(string? Prompt, string? Type, string? Choices)?> GetPendingInteractionAsync(Guid id,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Resumes a paused job after user provides input
-    /// </summary>
-    /// <param name="id">The job ID</param>
-    /// <param name="cancellationToken">Cancellation token</param>
-    Task<bool> ResumeJobAsync(Guid id, CancellationToken cancellationToken = default);
+	/// <summary>
+	/// Resumes a paused job after user provides input
+	/// </summary>
+	/// <param name="id">The job ID</param>
+	/// <param name="cancellationToken">Cancellation token</param>
+	Task<bool> ResumeJobAsync(Guid id, CancellationToken cancellationToken = default);
+
+	/// <summary>
+	/// Continues a completed job with follow-up instructions while preserving the existing session context.
+	/// </summary>
+	/// <param name="id">The job ID</param>
+	/// <param name="followUpPrompt">The follow-up instructions to send</param>
+	/// <param name="cancellationToken">Cancellation token</param>
+	Task<bool> ContinueJobAsync(Guid id, string followUpPrompt, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Gets all paused jobs waiting for user interaction
