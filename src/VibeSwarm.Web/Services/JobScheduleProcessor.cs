@@ -49,7 +49,8 @@ public class JobScheduleProcessor
 	private async Task<bool> TryQueueScheduledJobAsync(JobSchedule schedule, DateTime now, CancellationToken cancellationToken)
 	{
 		var scheduledForUtc = schedule.NextRunAtUtc;
-		schedule.NextRunAtUtc = JobScheduleCalculator.CalculateNextRunUtc(schedule, scheduledForUtc);
+		var schedulerTimeZone = await GetSchedulerTimeZoneAsync(cancellationToken);
+		schedule.NextRunAtUtc = JobScheduleCalculator.CalculateNextRunUtc(schedule, scheduledForUtc, schedulerTimeZone);
 		schedule.UpdatedAt = now;
 
 		var alreadyQueued = await _dbContext.Jobs
@@ -102,5 +103,15 @@ public class JobScheduleProcessor
 		var message = exception.InnerException?.Message ?? exception.Message;
 		return message.Contains("IX_Jobs_JobScheduleId_ScheduledForUtc", StringComparison.OrdinalIgnoreCase)
 			|| message.Contains("UNIQUE constraint failed: Jobs.JobScheduleId, Jobs.ScheduledForUtc", StringComparison.OrdinalIgnoreCase);
+	}
+
+	private async Task<TimeZoneInfo> GetSchedulerTimeZoneAsync(CancellationToken cancellationToken)
+	{
+		var timeZoneId = await _dbContext.AppSettings
+			.OrderBy(settings => settings.Id)
+			.Select(settings => settings.TimeZoneId)
+			.FirstOrDefaultAsync(cancellationToken);
+
+		return DateTimeHelper.ResolveTimeZone(timeZoneId);
 	}
 }

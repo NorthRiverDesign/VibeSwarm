@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using VibeSwarm.Shared.Providers;
+using VibeSwarm.Shared.Utilities;
 using VibeSwarm.Shared.Validation;
 
 namespace VibeSwarm.Shared.Data;
@@ -318,6 +319,7 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 		{
 			entity.HasKey(e => e.Id);
 			entity.Property(e => e.DefaultProjectsDirectory).HasMaxLength(1000);
+			entity.Property(e => e.TimeZoneId).IsRequired().HasMaxLength(100).HasDefaultValue(DateTimeHelper.UtcTimeZoneId);
 			entity.Property(e => e.EnablePromptStructuring).HasDefaultValue(true);
 			entity.Property(e => e.InjectRepoMap).HasDefaultValue(true);
 			entity.Property(e => e.InjectEfficiencyRules).HasDefaultValue(true);

@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using VibeSwarm.Shared.Data;
+using VibeSwarm.Shared.Utilities;
 
 namespace VibeSwarm.Shared.Services;
 
@@ -23,10 +24,17 @@ public class SettingsService : ISettingsService
 			{
 				Id = Guid.NewGuid(),
 				DefaultProjectsDirectory = null,
+				TimeZoneId = DateTimeHelper.UtcTimeZoneId,
 				UpdatedAt = DateTime.UtcNow
 			};
 
 			_dbContext.AppSettings.Add(settings);
+			await _dbContext.SaveChangesAsync(cancellationToken);
+		}
+		else if (string.IsNullOrWhiteSpace(settings.TimeZoneId))
+		{
+			settings.TimeZoneId = DateTimeHelper.UtcTimeZoneId;
+			settings.UpdatedAt ??= DateTime.UtcNow;
 			await _dbContext.SaveChangesAsync(cancellationToken);
 		}
 
@@ -41,6 +49,7 @@ public class SettingsService : ISettingsService
 		{
 			// Create new settings
 			settings.Id = Guid.NewGuid();
+			settings.TimeZoneId = NormalizeTimeZoneId(settings.TimeZoneId);
 			settings.UpdatedAt = DateTime.UtcNow;
 			_dbContext.AppSettings.Add(settings);
 		}
@@ -48,6 +57,10 @@ public class SettingsService : ISettingsService
 		{
 			// Update existing settings
 			existing.DefaultProjectsDirectory = settings.DefaultProjectsDirectory;
+			existing.TimeZoneId = NormalizeTimeZoneId(settings.TimeZoneId);
+			existing.EnablePromptStructuring = settings.EnablePromptStructuring;
+			existing.InjectRepoMap = settings.InjectRepoMap;
+			existing.InjectEfficiencyRules = settings.InjectEfficiencyRules;
 			existing.UpdatedAt = DateTime.UtcNow;
 		}
 
@@ -61,4 +74,7 @@ public class SettingsService : ISettingsService
 		var settings = await _dbContext.AppSettings.OrderBy(s => s.Id).FirstOrDefaultAsync(cancellationToken);
 		return settings?.DefaultProjectsDirectory;
 	}
+
+	private static string NormalizeTimeZoneId(string? timeZoneId)
+		=> DateTimeHelper.ResolveTimeZone(timeZoneId).Id;
 }

@@ -88,6 +88,41 @@ public sealed class JobScheduleServiceTests : IDisposable
 	}
 
 	[Fact]
+	public async Task CreateAsync_UsesConfiguredTimezoneForDailySchedule()
+	{
+		await using var dbContext = CreateDbContext();
+		var project = CreateProject();
+		var provider = CreateProvider();
+		var timeZoneId = DateTimeHelper.ResolveTimeZone("America/New_York").Id;
+		dbContext.Projects.Add(project);
+		dbContext.Providers.Add(provider);
+		dbContext.AppSettings.Add(new AppSettings
+		{
+			Id = Guid.NewGuid(),
+			TimeZoneId = timeZoneId,
+			UpdatedAt = DateTime.UtcNow
+		});
+		await dbContext.SaveChangesAsync();
+
+		var service = new JobScheduleService(dbContext);
+		var beforeCreate = DateTime.UtcNow;
+		var timeZone = DateTimeHelper.ResolveTimeZone(timeZoneId);
+
+		var created = await service.CreateAsync(new JobSchedule
+		{
+			ProjectId = project.Id,
+			ProviderId = provider.Id,
+			Prompt = "run daily review",
+			Frequency = JobScheduleFrequency.Daily,
+			HourUtc = 9,
+			MinuteUtc = 15
+		});
+
+		var expected = JobScheduleCalculator.CalculateNextRunUtc(created, beforeCreate, timeZone);
+		Assert.Equal(expected, created.NextRunAtUtc);
+	}
+
+	[Fact]
 	public async Task ProcessDueSchedulesAsync_CreatesOnlyOneJobPerScheduledRun()
 	{
 		await using var dbContext = CreateDbContext();

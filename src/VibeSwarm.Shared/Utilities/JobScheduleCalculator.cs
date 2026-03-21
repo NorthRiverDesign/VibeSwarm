@@ -5,73 +5,113 @@ namespace VibeSwarm.Shared.Utilities;
 public static class JobScheduleCalculator
 {
 	public static DateTime CalculateNextRunUtc(JobSchedule schedule, DateTime afterUtc)
+		=> CalculateNextRunUtc(schedule, afterUtc, TimeZoneInfo.Utc);
+
+	public static DateTime CalculateNextRunUtc(JobSchedule schedule, DateTime afterUtc, TimeZoneInfo timeZone)
 	{
 		afterUtc = NormalizeUtc(afterUtc);
+		var localAfter = TimeZoneInfo.ConvertTimeFromUtc(afterUtc, timeZone);
 
 		return schedule.Frequency switch
 		{
-			JobScheduleFrequency.Hourly => CalculateNextHourlyRun(schedule, afterUtc),
-			JobScheduleFrequency.Weekly => CalculateNextWeeklyRun(schedule, afterUtc),
-			JobScheduleFrequency.Monthly => CalculateNextMonthlyRun(schedule, afterUtc),
-			_ => CalculateNextDailyRun(schedule, afterUtc)
+			JobScheduleFrequency.Hourly => CalculateNextHourlyRun(schedule, afterUtc, localAfter, timeZone),
+			JobScheduleFrequency.Weekly => CalculateNextWeeklyRun(schedule, afterUtc, localAfter, timeZone),
+			JobScheduleFrequency.Monthly => CalculateNextMonthlyRun(schedule, afterUtc, localAfter, timeZone),
+			_ => CalculateNextDailyRun(schedule, afterUtc, localAfter, timeZone)
 		};
 	}
 
-	private static DateTime CalculateNextHourlyRun(JobSchedule schedule, DateTime afterUtc)
+	private static DateTime CalculateNextHourlyRun(JobSchedule schedule, DateTime afterUtc, DateTime localAfter, TimeZoneInfo timeZone)
 	{
-		var candidate = new DateTime(afterUtc.Year, afterUtc.Month, afterUtc.Day, afterUtc.Hour, schedule.MinuteUtc, 0, DateTimeKind.Utc);
-		if (candidate <= afterUtc)
+		var candidateLocal = BuildLocal(localAfter.Year, localAfter.Month, localAfter.Day, localAfter.Hour, schedule.MinuteUtc);
+		var candidateUtc = GetNextUtcCandidate(candidateLocal, timeZone, afterUtc);
+		if (candidateUtc > afterUtc)
 		{
-			candidate = candidate.AddHours(1);
+			return candidateUtc;
 		}
 
-		return candidate;
+		return GetFirstUtcCandidate(candidateLocal.AddHours(1), timeZone);
 	}
 
-	private static DateTime CalculateNextDailyRun(JobSchedule schedule, DateTime afterUtc)
+	private static DateTime CalculateNextDailyRun(JobSchedule schedule, DateTime afterUtc, DateTime localAfter, TimeZoneInfo timeZone)
 	{
-		var candidate = BuildUtc(afterUtc.Year, afterUtc.Month, afterUtc.Day, schedule.HourUtc, schedule.MinuteUtc);
-		if (candidate <= afterUtc)
+		var candidateLocal = BuildLocal(localAfter.Year, localAfter.Month, localAfter.Day, schedule.HourUtc, schedule.MinuteUtc);
+		var candidateUtc = GetNextUtcCandidate(candidateLocal, timeZone, afterUtc);
+		if (candidateUtc > afterUtc)
 		{
-			candidate = candidate.AddDays(1);
+			return candidateUtc;
 		}
 
-		return candidate;
+		return GetFirstUtcCandidate(candidateLocal.AddDays(1), timeZone);
 	}
 
-	private static DateTime CalculateNextWeeklyRun(JobSchedule schedule, DateTime afterUtc)
+	private static DateTime CalculateNextWeeklyRun(JobSchedule schedule, DateTime afterUtc, DateTime localAfter, TimeZoneInfo timeZone)
 	{
-		var dayDifference = ((int)schedule.WeeklyDay - (int)afterUtc.DayOfWeek + 7) % 7;
-		var candidateDate = afterUtc.Date.AddDays(dayDifference);
-		var candidate = BuildUtc(candidateDate.Year, candidateDate.Month, candidateDate.Day, schedule.HourUtc, schedule.MinuteUtc);
-		if (candidate <= afterUtc)
+		var dayDifference = ((int)schedule.WeeklyDay - (int)localAfter.DayOfWeek + 7) % 7;
+		var candidateDate = localAfter.Date.AddDays(dayDifference);
+		var candidateLocal = BuildLocal(candidateDate.Year, candidateDate.Month, candidateDate.Day, schedule.HourUtc, schedule.MinuteUtc);
+		var candidateUtc = GetNextUtcCandidate(candidateLocal, timeZone, afterUtc);
+		if (candidateUtc > afterUtc)
 		{
-			candidate = candidate.AddDays(7);
+			return candidateUtc;
 		}
 
-		return candidate;
+		return GetFirstUtcCandidate(candidateLocal.AddDays(7), timeZone);
 	}
 
-	private static DateTime CalculateNextMonthlyRun(JobSchedule schedule, DateTime afterUtc)
+	private static DateTime CalculateNextMonthlyRun(JobSchedule schedule, DateTime afterUtc, DateTime localAfter, TimeZoneInfo timeZone)
 	{
-		var candidate = BuildMonthlyCandidate(afterUtc.Year, afterUtc.Month, schedule);
-		if (candidate <= afterUtc)
+		var candidateLocal = BuildMonthlyCandidate(localAfter.Year, localAfter.Month, schedule);
+		var candidateUtc = GetNextUtcCandidate(candidateLocal, timeZone, afterUtc);
+		if (candidateUtc > afterUtc)
 		{
-			var nextMonth = new DateTime(afterUtc.Year, afterUtc.Month, 1, 0, 0, 0, DateTimeKind.Utc).AddMonths(1);
-			candidate = BuildMonthlyCandidate(nextMonth.Year, nextMonth.Month, schedule);
+			return candidateUtc;
 		}
 
-		return candidate;
+		var nextMonth = new DateTime(localAfter.Year, localAfter.Month, 1).AddMonths(1);
+		return GetFirstUtcCandidate(BuildMonthlyCandidate(nextMonth.Year, nextMonth.Month, schedule), timeZone);
 	}
 
 	private static DateTime BuildMonthlyCandidate(int year, int month, JobSchedule schedule)
 	{
 		var day = Math.Min(schedule.DayOfMonth, DateTime.DaysInMonth(year, month));
-		return BuildUtc(year, month, day, schedule.HourUtc, schedule.MinuteUtc);
+		return BuildLocal(year, month, day, schedule.HourUtc, schedule.MinuteUtc);
 	}
 
-	private static DateTime BuildUtc(int year, int month, int day, int hour, int minute)
-		=> new(year, month, day, hour, minute, 0, DateTimeKind.Utc);
+	private static DateTime BuildLocal(int year, int month, int day, int hour, int minute)
+		=> new(year, month, day, hour, minute, 0, DateTimeKind.Unspecified);
+
+	private static DateTime GetNextUtcCandidate(DateTime localCandidate, TimeZoneInfo timeZone, DateTime afterUtc)
+		=> GetUtcCandidates(localCandidate, timeZone).FirstOrDefault(candidate => candidate > afterUtc);
+
+	private static DateTime GetFirstUtcCandidate(DateTime localCandidate, TimeZoneInfo timeZone)
+		=> GetUtcCandidates(localCandidate, timeZone)[0];
+
+	private static IReadOnlyList<DateTime> GetUtcCandidates(DateTime localCandidate, TimeZoneInfo timeZone)
+	{
+		localCandidate = DateTime.SpecifyKind(localCandidate, DateTimeKind.Unspecified);
+
+		if (timeZone.IsInvalidTime(localCandidate))
+		{
+			var adjustedLocalCandidate = localCandidate;
+			for (var minute = 0; minute < 180 && timeZone.IsInvalidTime(adjustedLocalCandidate); minute++)
+			{
+				adjustedLocalCandidate = adjustedLocalCandidate.AddMinutes(1);
+			}
+
+			return [TimeZoneInfo.ConvertTimeToUtc(adjustedLocalCandidate, timeZone)];
+		}
+
+		if (timeZone.IsAmbiguousTime(localCandidate))
+		{
+			return timeZone.GetAmbiguousTimeOffsets(localCandidate)
+				.Select(offset => new DateTimeOffset(localCandidate, offset).UtcDateTime)
+				.OrderBy(candidate => candidate)
+				.ToArray();
+		}
+
+		return [TimeZoneInfo.ConvertTimeToUtc(localCandidate, timeZone)];
+	}
 
 	private static DateTime NormalizeUtc(DateTime value)
 	{

@@ -1,4 +1,5 @@
 @inject IProjectService ProjectService
+@using VibeSwarm.Shared.Utilities
 
 <section>
 	<div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-2 gap-lg-3 mb-2 mb-lg-3">
@@ -160,7 +161,7 @@
 
 	private string FormatBucketLabel(DateTime bucketStartUtc)
 	{
-		var localTime = DateTime.SpecifyKind(bucketStartUtc, DateTimeKind.Utc).ToLocalTime();
+		var localTime = DateTime.SpecifyKind(bucketStartUtc, DateTimeKind.Utc).ToConfiguredTime();
 
 		return Metrics.RangeDays switch
 		{

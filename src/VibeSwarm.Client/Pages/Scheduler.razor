@@ -1,9 +1,11 @@
 @page "/scheduler"
 @attribute [Authorize]
 @inject IJobScheduleService JobScheduleService
+@inject AppTimeZoneService AppTimeZoneService
 @inject NotificationService NotificationService
+@using VibeSwarm.Shared.Utilities
 
-<PageHeader Title="Scheduler" Subtitle="Create recurring prompts that automatically create jobs. Times run in UTC.">
+<PageHeader Title="Scheduler" Subtitle="@GetSubtitle()">
 	<Actions>
 		<ActionButton Icon="plus" Text="Add" Style="ActionButton.ButtonStyle.Primary" OnClick="ShowAddModal" />
 	</Actions>
@@ -103,6 +105,7 @@ else
 
 	protected override async Task OnInitializedAsync()
 	{
+		await AppTimeZoneService.EnsureInitializedAsync();
 		await LoadSchedules();
 	}
 
@@ -212,19 +215,22 @@ else
 		}
 	}
 
-	private static string DescribeSchedule(JobSchedule schedule)
+	private string DescribeSchedule(JobSchedule schedule)
 	{
-		var time = $"{schedule.HourUtc:D2}:{schedule.MinuteUtc:D2} UTC";
+		var time = $"{schedule.HourUtc:D2}:{schedule.MinuteUtc:D2} {AppTimeZoneService.CurrentTimeZoneId}";
 		return schedule.Frequency switch
 		{
-			JobScheduleFrequency.Hourly => $"Hourly at minute {schedule.MinuteUtc:D2} past the hour",
+			JobScheduleFrequency.Hourly => $"Hourly at minute {schedule.MinuteUtc:D2} past the hour ({AppTimeZoneService.CurrentTimeZoneId})",
 			JobScheduleFrequency.Weekly => $"Weekly on {schedule.WeeklyDay} at {time}",
 			JobScheduleFrequency.Monthly => $"Monthly on day {schedule.DayOfMonth} at {time}",
 			_ => $"Daily at {time}"
 		};
 	}
 
-	private static string FormatUtc(DateTime value) => value.ToString("yyyy-MM-dd HH:mm 'UTC'");
+	private static string FormatUtc(DateTime value) => value.FormatDateTimeWithZone();
+
+	private string GetSubtitle()
+		=> $"Create recurring prompts that automatically create jobs. Times run in {AppTimeZoneService.CurrentTimeZoneId}.";
 
 	private static string TruncateText(string text, int maxLength)
 	{

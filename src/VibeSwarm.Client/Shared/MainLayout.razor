@@ -1,6 +1,7 @@
 @inherits LayoutComponentBase
 @inject IJSRuntime JSRuntime
 @inject NotificationService NotificationService
+@inject AppTimeZoneService AppTimeZoneService
 @inject IJobService JobService
 @inject IIdeaService IdeaService
 @inject ChangePasswordModalService ChangePasswordModalService
@@ -206,10 +207,16 @@
     private bool _isChangingPassword;
     private string? _changePasswordError;
     private ChangePasswordModel _changePasswordModel = new();
+
     protected override void OnInitialized()
     {
         ChangePasswordModalService.OnShowModal += ShowChangePasswordModal;
         ChangePasswordModalService.OnHideModal += CloseChangePasswordModal;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await AppTimeZoneService.EnsureInitializedAsync();
     }
 
     private void ShowChangePasswordModal()

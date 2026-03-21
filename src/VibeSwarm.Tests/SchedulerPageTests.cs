@@ -7,6 +7,7 @@ using VibeSwarm.Client.Services;
 using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Providers;
 using VibeSwarm.Shared.Services;
+using VibeSwarm.Shared.Utilities;
 
 namespace VibeSwarm.Tests;
 
@@ -15,6 +16,7 @@ public sealed class SchedulerPageTests
 	[Fact]
 	public async Task RenderedSchedulerPage_ShowsSchedulesAndActions()
 	{
+		var timeZoneId = DateTimeHelper.ResolveTimeZone("America/New_York").Id;
 		var schedule = new JobSchedule
 		{
 			Id = Guid.NewGuid(),
@@ -28,28 +30,37 @@ public sealed class SchedulerPageTests
 			Provider = new Provider { Id = Guid.NewGuid(), Name = "Copilot", Type = ProviderType.Copilot, IsEnabled = true }
 		};
 
-		var services = BuildServices(new FakeJobScheduleService([schedule]));
-		await using var renderer = new HtmlRenderer(services.BuildServiceProvider(), NullLoggerFactory.Instance);
-
-		var html = await renderer.Dispatcher.InvokeAsync(async () =>
+		try
 		{
-			var output = await renderer.RenderComponentAsync<Scheduler>();
-			return output.ToHtmlString();
-		});
+			var services = BuildServices(new FakeJobScheduleService([schedule]), timeZoneId);
+			await using var renderer = new HtmlRenderer(services.BuildServiceProvider(), NullLoggerFactory.Instance);
 
-		Assert.Contains("Scheduler", html);
-		Assert.Contains("update dependencies, check security issues", html);
-		Assert.Contains("Pause", html);
-		Assert.Contains("Edit", html);
-		Assert.Contains("Delete", html);
-		Assert.Contains("Repo", html);
-		Assert.Contains("Copilot", html);
+			var html = await renderer.Dispatcher.InvokeAsync(async () =>
+			{
+				var output = await renderer.RenderComponentAsync<Scheduler>();
+				return output.ToHtmlString();
+			});
+
+			Assert.Contains("Scheduler", html);
+			Assert.Contains("update dependencies, check security issues", html);
+			Assert.Contains("Pause", html);
+			Assert.Contains("Edit", html);
+			Assert.Contains("Delete", html);
+			Assert.Contains("Repo", html);
+			Assert.Contains("Copilot", html);
+			Assert.Contains(timeZoneId, html);
+			Assert.Contains(schedule.NextRunAtUtc.FormatDateTimeWithZone(), html);
+		}
+		finally
+		{
+			DateTimeHelper.ConfigureTimeZone(DateTimeHelper.UtcTimeZoneId);
+		}
 	}
 
 	[Fact]
 	public async Task RenderedSchedulerPage_ShowsEmptyStateWhenNoSchedulesExist()
 	{
-		var services = BuildServices(new FakeJobScheduleService([]));
+		var services = BuildServices(new FakeJobScheduleService([]), DateTimeHelper.UtcTimeZoneId);
 		await using var renderer = new HtmlRenderer(services.BuildServiceProvider(), NullLoggerFactory.Instance);
 
 		var html = await renderer.Dispatcher.InvokeAsync(async () =>
@@ -62,16 +73,30 @@ public sealed class SchedulerPageTests
 		Assert.Contains("Create a recurring prompt", html);
 	}
 
-	private static ServiceCollection BuildServices(IJobScheduleService jobScheduleService)
+	private static ServiceCollection BuildServices(IJobScheduleService jobScheduleService, string timeZoneId)
 	{
 		var services = new ServiceCollection();
 		services.AddLogging();
 		services.AddSingleton(jobScheduleService);
+		services.AddSingleton<ISettingsService>(new FakeSettingsService(timeZoneId));
+		services.AddSingleton<AppTimeZoneService>();
 		services.AddSingleton<IProjectService>(new FakeProjectService());
 		services.AddSingleton<IProviderService>(new FakeProviderService());
 		services.AddSingleton<NotificationService>();
 		services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
 		return services;
+	}
+
+	private sealed class FakeSettingsService(string timeZoneId) : ISettingsService
+	{
+		public Task<AppSettings> GetSettingsAsync(CancellationToken cancellationToken = default) => Task.FromResult(new AppSettings
+		{
+			TimeZoneId = timeZoneId
+		});
+
+		public Task<AppSettings> UpdateSettingsAsync(AppSettings settings, CancellationToken cancellationToken = default) => Task.FromResult(settings);
+
+		public Task<string?> GetDefaultProjectsDirectoryAsync(CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
 	}
 
 	private sealed class FakeJobScheduleService(IReadOnlyList<JobSchedule> schedules) : IJobScheduleService

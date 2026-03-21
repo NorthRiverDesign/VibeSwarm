@@ -1,6 +1,7 @@
 @page "/settings"
 @attribute [Authorize]
 @inject ISettingsService SettingsService
+@inject AppTimeZoneService AppTimeZoneService
 @inject IFileSystemService FileSystemService
 @inject NotificationService NotificationService
 @using VibeSwarm.Shared.Utilities
@@ -80,6 +81,20 @@ else
 }
 </div>
 }
+</div>
+
+<div class="mb-3">
+<label for="timeZoneId" class="form-label">Timezone</label>
+<select id="timeZoneId" class="form-select" @bind="_settings.TimeZoneId">
+	@foreach (var timeZone in _timeZones)
+	{
+		<option value="@timeZone.Id">@DateTimeHelper.GetTimeZoneOptionLabel(timeZone)</option>
+	}
+</select>
+<div class="form-text">
+Recurring schedules and timestamp displays use this timezone. Existing schedules keep the same local
+clock time when you change it.
+</div>
 </div>
 
 <div class="d-flex flex-column flex-sm-row gap-2 mt-4">
@@ -235,6 +250,7 @@ private bool _directoryExists = false;
 private DirectoryBrowser? _directoryBrowser;
 private ScanProjectsModal? _scanProjectsModal;
 private string _activeTab = "app";
+private IReadOnlyList<TimeZoneInfo> _timeZones = [];
 
 private string _placeholder => OperatingSystem.IsWindows() ? @"C:\Projects" : "/home/user/projects";
 private string _examplePath => OperatingSystem.IsWindows() ? @"C:\Projects" : "/home/user/projects";
@@ -246,6 +262,8 @@ _activeTab = tab;
 
 protected override async Task OnInitializedAsync()
 {
+_timeZones = AppTimeZoneService.GetAvailableTimeZones();
+await AppTimeZoneService.EnsureInitializedAsync();
 await LoadSettings();
 }
 
@@ -256,6 +274,8 @@ _isLoading = true;
 try
 {
 _settings = await SettingsService.GetSettingsAsync();
+_settings.TimeZoneId = DateTimeHelper.ResolveTimeZone(_settings.TimeZoneId).Id;
+AppTimeZoneService.ApplyTimeZone(_settings.TimeZoneId);
 await CheckDirectoryExists();
 }
 catch (Exception ex)
@@ -283,9 +303,11 @@ else
 _settings.DefaultProjectsDirectory = null;
 }
 
-await SettingsService.UpdateSettingsAsync(_settings);
-await CheckDirectoryExists();
-NotificationService.ShowSuccess("Settings saved successfully!");
+	_settings.TimeZoneId = DateTimeHelper.ResolveTimeZone(_settings.TimeZoneId).Id;
+	_settings = await SettingsService.UpdateSettingsAsync(_settings);
+	AppTimeZoneService.ApplyTimeZone(_settings.TimeZoneId);
+	await CheckDirectoryExists();
+	NotificationService.ShowSuccess("Settings saved successfully!");
 }
 catch (Exception ex)
 {

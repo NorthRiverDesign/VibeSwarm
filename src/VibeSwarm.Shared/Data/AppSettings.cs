@@ -17,6 +17,10 @@ public class AppSettings
 	[StringLength(1000)]
 	public string? DefaultProjectsDirectory { get; set; }
 
+	[Required]
+	[StringLength(100)]
+	public string TimeZoneId { get; set; } = "UTC";
+
 	/// <summary>
 	/// When the settings were last updated.
 	/// </summary>

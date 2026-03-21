@@ -1,8 +1,10 @@
 @using VibeSwarm.Shared.Data
 @using VibeSwarm.Shared.Services
+@using VibeSwarm.Shared.Utilities
 @inject IJobScheduleService JobScheduleService
 @inject IProjectService ProjectService
 @inject IProviderService ProviderService
+@inject AppTimeZoneService AppTimeZoneService
 @inject NotificationService NotificationService
 
 <ModalDialog IsVisible="IsVisible" IsVisibleChanged="HandleModalVisibilityChanged"
@@ -71,14 +73,14 @@
 				@if (Schedule.Frequency == JobScheduleFrequency.Hourly)
 				{
 					<div class="col-12 col-lg-4">
-						<label for="schedule-minute" class="form-label">Minute past the hour (UTC)</label>
+						<label for="schedule-minute" class="form-label">Minute past the hour (@AppTimeZoneService.CurrentTimeZoneId)</label>
 						<InputNumber id="schedule-minute" @bind-Value="Schedule.MinuteUtc" class="form-control" min="0" max="59" />
 					</div>
 				}
 				else
 				{
 					<div class="col-12 col-lg-4">
-						<label for="schedule-time" class="form-label">Run time (UTC)</label>
+						<label for="schedule-time" class="form-label">Run time (@AppTimeZoneService.CurrentTimeZoneId)</label>
 						<input id="schedule-time" type="time" class="form-control" value="@_timeValue" @onchange="OnTimeChanged" />
 					</div>
 				}
@@ -109,7 +111,7 @@
 				<InputCheckbox id="schedule-enabled" @bind-Value="Schedule.IsEnabled" class="form-check-input" />
 				<label class="form-check-label" for="schedule-enabled">Active</label>
 			</div>
-			<div class="form-text">Times are stored in UTC so the schedule runs consistently across hosts.</div>
+			<div class="form-text">Times use the configured timezone and are converted to UTC when the scheduler runs.</div>
 
 			@if (!string.IsNullOrEmpty(ErrorMessage))
 			{
@@ -166,6 +168,7 @@
 
 	protected override async Task OnInitializedAsync()
 	{
+		await AppTimeZoneService.EnsureInitializedAsync();
 		await LoadLookupDataAsync();
 	}
 
@@ -350,7 +353,7 @@
 		{
 			if (!TimeOnly.TryParse(_timeValue, out var time))
 			{
-				ErrorMessage = "Please provide a valid UTC run time.";
+				ErrorMessage = "Please provide a valid run time.";
 				return;
 			}
 

@@ -45,6 +45,7 @@ public async Task RenderedSettingsPage_DoesNotShowLocalInferenceTab()
 var services = new ServiceCollection();
 	services.AddLogging();
 	services.AddSingleton<ISettingsService>(new FakeSettingsService());
+	services.AddSingleton<AppTimeZoneService>();
 	services.AddSingleton<IFileSystemService>(new FakeFileSystemService());
 	services.AddSingleton<IProjectService>(new FakeProjectService());
 	services.AddSingleton<NavigationManager>(new TestNavigationManager());
@@ -60,6 +61,7 @@ return output.ToHtmlString();
 });
 
 Assert.Contains("App Settings", html);
+Assert.Contains("Timezone", html);
 Assert.DoesNotContain("Add Provider", html);
 Assert.DoesNotContain("inference provider", html);
 }
@@ -88,7 +90,10 @@ public Task<InferenceResponse> GenerateForTaskAsync(string taskType, string prom
 
 private sealed class FakeSettingsService : ISettingsService
 {
-public Task<AppSettings> GetSettingsAsync(CancellationToken cancellationToken = default) => Task.FromResult(new AppSettings());
+public Task<AppSettings> GetSettingsAsync(CancellationToken cancellationToken = default) => Task.FromResult(new AppSettings
+{
+	TimeZoneId = "UTC"
+});
 public Task<AppSettings> UpdateSettingsAsync(AppSettings settings, CancellationToken cancellationToken = default) => Task.FromResult(settings);
 public Task<string?> GetDefaultProjectsDirectoryAsync(CancellationToken cancellationToken = default) => Task.FromResult<string?>("/tmp/projects");
 }

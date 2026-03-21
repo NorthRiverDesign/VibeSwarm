@@ -36,11 +36,12 @@ public class JobScheduleService : IJobScheduleService
 		NormalizeSchedule(schedule);
 		ValidationHelper.ValidateObject(schedule);
 		await ValidateReferencesAsync(schedule, cancellationToken);
+		var schedulerTimeZone = await GetSchedulerTimeZoneAsync(cancellationToken);
 
 		schedule.Id = Guid.NewGuid();
 		schedule.CreatedAt = DateTime.UtcNow;
 		schedule.UpdatedAt = null;
-		schedule.NextRunAtUtc = JobScheduleCalculator.CalculateNextRunUtc(schedule, DateTime.UtcNow);
+		schedule.NextRunAtUtc = JobScheduleCalculator.CalculateNextRunUtc(schedule, DateTime.UtcNow, schedulerTimeZone);
 		schedule.LastError = null;
 
 		_dbContext.JobSchedules.Add(schedule);
@@ -75,8 +76,9 @@ public class JobScheduleService : IJobScheduleService
 		NormalizeSchedule(existing);
 		ValidationHelper.ValidateObject(existing);
 		await ValidateReferencesAsync(existing, cancellationToken);
+		var schedulerTimeZone = await GetSchedulerTimeZoneAsync(cancellationToken);
 
-		existing.NextRunAtUtc = JobScheduleCalculator.CalculateNextRunUtc(existing, DateTime.UtcNow);
+		existing.NextRunAtUtc = JobScheduleCalculator.CalculateNextRunUtc(existing, DateTime.UtcNow, schedulerTimeZone);
 		if (existing.IsEnabled)
 		{
 			existing.LastError = null;
@@ -97,7 +99,8 @@ public class JobScheduleService : IJobScheduleService
 
 		schedule.IsEnabled = isEnabled;
 		schedule.UpdatedAt = DateTime.UtcNow;
-		schedule.NextRunAtUtc = JobScheduleCalculator.CalculateNextRunUtc(schedule, DateTime.UtcNow);
+		var schedulerTimeZone = await GetSchedulerTimeZoneAsync(cancellationToken);
+		schedule.NextRunAtUtc = JobScheduleCalculator.CalculateNextRunUtc(schedule, DateTime.UtcNow, schedulerTimeZone);
 		if (isEnabled)
 		{
 			schedule.LastError = null;
@@ -164,5 +167,15 @@ public class JobScheduleService : IJobScheduleService
 		schedule.Prompt = schedule.Prompt?.Trim() ?? string.Empty;
 		schedule.ModelId = string.IsNullOrWhiteSpace(schedule.ModelId) ? null : schedule.ModelId.Trim();
 		schedule.LastError = string.IsNullOrWhiteSpace(schedule.LastError) ? null : schedule.LastError.Trim();
+	}
+
+	private async Task<TimeZoneInfo> GetSchedulerTimeZoneAsync(CancellationToken cancellationToken)
+	{
+		var timeZoneId = await _dbContext.AppSettings
+			.OrderBy(settings => settings.Id)
+			.Select(settings => settings.TimeZoneId)
+			.FirstOrDefaultAsync(cancellationToken);
+
+		return DateTimeHelper.ResolveTimeZone(timeZoneId);
 	}
 }

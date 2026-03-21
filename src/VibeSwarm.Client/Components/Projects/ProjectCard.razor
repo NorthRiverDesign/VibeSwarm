@@ -1,5 +1,6 @@
 @* Reusable project card component for project listings *@
 @using VibeSwarm.Shared.Data
+@using VibeSwarm.Shared.Utilities
 
 <a href="/projects/@ProjectId"
 	class="card h-100 text-decoration-none border-start border-3 project-card-hover @GetBorderColorClass()">
@@ -153,6 +154,6 @@
 		if (timeSpan.TotalDays < 7)
 			return $"{(int)timeSpan.TotalDays}d ago";
 
-		return dateTime.ToLocalTime().ToString("MMM d");
+		return dateTime.ToConfiguredTime().ToString("MMM d");
 	}
 }

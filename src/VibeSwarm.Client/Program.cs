@@ -55,6 +55,7 @@ builder.Services.AddScoped<IAutoPilotService, HttpAutoPilotService>();
 builder.Services.AddScoped<NotificationService>();
 builder.Services.AddScoped<ChangePasswordModalService>();
 builder.Services.AddScoped<ThemeService>();
+builder.Services.AddScoped<AppTimeZoneService>();
 
 // Auth
 builder.Services.AddAuthorizationCore();
