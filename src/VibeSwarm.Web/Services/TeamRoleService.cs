@@ -48,20 +48,33 @@ public class TeamRoleService : ITeamRoleService
 		await ValidateSkillsAsync(teamRole.SkillLinks, cancellationToken);
 		await ValidateDefaultProviderAsync(teamRole, cancellationToken);
 
-		teamRole.Id = Guid.NewGuid();
-		teamRole.CreatedAt = DateTime.UtcNow;
-		teamRole.UpdatedAt = null;
-		foreach (var link in teamRole.SkillLinks)
+		var persistedTeamRole = new TeamRole
 		{
-			link.TeamRoleId = teamRole.Id;
-			link.TeamRole = null;
-			link.Skill = null;
+			Id = Guid.NewGuid(),
+			Name = teamRole.Name,
+			Description = teamRole.Description,
+			Responsibilities = teamRole.Responsibilities,
+			DefaultProviderId = teamRole.DefaultProviderId,
+			DefaultModelId = teamRole.DefaultModelId,
+			IsEnabled = teamRole.IsEnabled,
+			CreatedAt = DateTime.UtcNow,
+			UpdatedAt = null,
+			SkillLinks = teamRole.SkillLinks
+				.Select(link => new TeamRoleSkill
+				{
+					SkillId = link.SkillId
+				})
+				.ToList()
+		};
+		foreach (var link in persistedTeamRole.SkillLinks)
+		{
+			link.TeamRoleId = persistedTeamRole.Id;
 		}
 
-		_dbContext.TeamRoles.Add(teamRole);
+		_dbContext.TeamRoles.Add(persistedTeamRole);
 		await _dbContext.SaveChangesAsync(cancellationToken);
 
-		return await GetByIdAsync(teamRole.Id, cancellationToken) ?? teamRole;
+		return await GetByIdAsync(persistedTeamRole.Id, cancellationToken) ?? persistedTeamRole;
 	}
 
 	public async Task<TeamRole> UpdateAsync(TeamRole teamRole, CancellationToken cancellationToken = default)
