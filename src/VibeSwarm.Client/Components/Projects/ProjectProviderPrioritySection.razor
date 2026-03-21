@@ -109,7 +109,7 @@ else
 @foreach (var provider in AvailableProviders)
 {
 var isSelected = IsProviderSelected(provider.Id);
-<button type="button" class="btn @(isSelected ? "btn-secondary" : "btn-outline-secondary") d-flex align-items-center justify-content-between gap-2 text-start flex-wrap"
+<button type="button" class="btn @(isSelected ? "btn-secondary" : "btn-primary") d-flex align-items-center justify-content-between gap-2 text-start flex-wrap"
 @onclick="() => OnAdd.InvokeAsync(provider)" disabled="@isSelected">
 <span class="text-start min-width-0">
 <span class="fw-semibold">@provider.Name</span>

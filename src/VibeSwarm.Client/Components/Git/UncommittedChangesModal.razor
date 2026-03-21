@@ -212,7 +212,7 @@
                             disabled="@(IsCommitting || IsDiscarding)">
                         Close
                     </button>
-                    <button type="button" class="btn btn-outline-primary" @onclick="HandleCommitOnly"
+                    <button type="button" class="btn btn-secondary" @onclick="HandleCommitOnly"
                             disabled="@(IsCommitting || IsDiscarding || string.IsNullOrWhiteSpace(_commitMessage))">
                         @if (IsCommitting && _isCommitOnly)
                         {

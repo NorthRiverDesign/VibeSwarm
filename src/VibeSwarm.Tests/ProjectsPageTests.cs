@@ -58,6 +58,33 @@ public sealed class ProjectsPageTests
 	}
 
 	[Fact]
+	public async Task RenderedProjectsPage_ShowsPrimaryAddActionInHeader()
+	{
+		var services = new ServiceCollection();
+		services.AddLogging();
+		services.AddSingleton<IProjectService>(new FakeProjectService([]));
+		services.AddSingleton<IJobService>(new FakeJobService());
+		services.AddSingleton<IIdeaService>(new FakeIdeaService());
+		services.AddSingleton<IVersionControlService>(new FakeVersionControlService());
+		services.AddSingleton<IProviderService>(new FakeProviderService());
+		services.AddSingleton<ISettingsService>(new FakeSettingsService());
+		services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService());
+		services.AddSingleton<NotificationService>();
+		services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
+
+		await using var renderer = new HtmlRenderer(services.BuildServiceProvider(), NullLoggerFactory.Instance);
+
+		var html = await renderer.Dispatcher.InvokeAsync(async () =>
+		{
+			var output = await renderer.RenderComponentAsync<Projects>();
+			return output.ToHtmlString();
+		});
+
+		Assert.Contains("btn btn-primary", html);
+		Assert.Contains(">Add<", html);
+	}
+
+	[Fact]
 	public async Task RenderedProjectsPage_ShowsIdeaCountsAndQueueAction()
 	{
 		var project = new ProjectWithStats

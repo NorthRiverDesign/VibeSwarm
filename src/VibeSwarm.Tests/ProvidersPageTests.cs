@@ -87,6 +87,15 @@ public sealed class ProvidersPageTests
 		Assert.Contains("Add REST", html);
 	}
 
+	[Fact]
+	public async Task RenderedProvidersPage_ShowsPrimaryAddActionInHeader()
+	{
+		var html = await RenderProvidersPageAsync([], []);
+
+		Assert.Contains("btn btn-primary", html);
+		Assert.Contains(">Add<", html);
+	}
+
 	private static CommonProviderSetupStatus CreateStatus(ProviderType type, string displayName, Provider? provider = null)
 	{
 		return new CommonProviderSetupStatus
