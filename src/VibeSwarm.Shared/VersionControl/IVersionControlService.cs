@@ -354,6 +354,17 @@ public interface IVersionControlService
 	Task<bool> IsGitHubCliAuthenticatedAsync(CancellationToken cancellationToken = default);
 
 	/// <summary>
+	/// Browses repositories available to the authenticated GitHub CLI account.
+	/// </summary>
+	/// <param name="cancellationToken">Cancellation token.</param>
+	/// <returns>Repository browser result including any availability or authentication errors.</returns>
+	Task<GitHubRepositoryBrowserResult> BrowseGitHubRepositoriesAsync(CancellationToken cancellationToken = default)
+		=> Task.FromResult(new GitHubRepositoryBrowserResult
+		{
+			ErrorMessage = "GitHub repository browsing is not available."
+		});
+
+	/// <summary>
 	/// Creates a new GitHub repository and links it to the local repository.
 	/// Uses the GitHub CLI (gh) to create the repository.
 	/// </summary>

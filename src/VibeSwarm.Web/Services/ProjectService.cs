@@ -5,6 +5,7 @@ using VibeSwarm.Shared.Providers;
 using VibeSwarm.Shared.Services;
 using VibeSwarm.Shared.Validation;
 using VibeSwarm.Shared.VersionControl;
+using VibeSwarm.Shared.VersionControl.Models;
 
 namespace VibeSwarm.Web.Services;
 
@@ -58,6 +59,11 @@ public class ProjectService : IProjectService
 
 		_credentialService.PopulateForEditing(project);
 		return project;
+	}
+
+	public Task<GitHubRepositoryBrowserResult> BrowseGitHubRepositoriesAsync(CancellationToken cancellationToken = default)
+	{
+		return _versionControlService.BrowseGitHubRepositoriesAsync(cancellationToken);
 	}
 
 	public async Task<Project> CreateAsync(Project project, CancellationToken cancellationToken = default)

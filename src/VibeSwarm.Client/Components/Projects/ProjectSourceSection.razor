@@ -39,10 +39,14 @@
 						<input id="modal-githubRepo" type="text" class="form-control"
 							   value="@FormModel.GitHubRepositoryInput" @oninput="HandleGitHubRepositoryChanged"
 							   placeholder="owner/repo" maxlength="@ValidationLimits.ProjectGitHubRepositoryMaxLength" />
+						<button id="modal-githubRepoBrowse" type="button" class="btn btn-secondary"
+								@onclick="BrowseGitHubRepositories">
+							<i class="bi bi-search me-1"></i>Browse
+						</button>
 					</div>
 					<ValidationMessage For="@(() => FormModel.GitHubRepositoryInput)" class="text-danger small mt-1" />
 					<div class="form-text">
-						Enter a GitHub repository to clone (for example, <code>microsoft/vscode</code>).
+						Enter a GitHub repository to clone (for example, <code>microsoft/vscode</code>) or browse repositories from the authenticated GitHub CLI account.
 					</div>
 				</div>
 			}
@@ -157,7 +161,12 @@
 	[Parameter]
 	public EventCallback<string?> OnGitHubRepositoryChanged { get; set; }
 
+	[Parameter]
+	public EventCallback OnBrowseGitHubRepositories { get; set; }
+
 	private Task SelectSourceMode(ProjectCreationMode mode) => OnSourceModeSelected.InvokeAsync(mode);
+
+	private Task BrowseGitHubRepositories() => OnBrowseGitHubRepositories.InvokeAsync();
 
 	private async Task HandleGitHubRepositoryChanged(ChangeEventArgs e)
 	{

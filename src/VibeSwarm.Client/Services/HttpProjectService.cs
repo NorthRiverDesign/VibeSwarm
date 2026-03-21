@@ -2,6 +2,7 @@ using System.Net.Http.Json;
 using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Models;
 using VibeSwarm.Shared.Services;
+using VibeSwarm.Shared.VersionControl.Models;
 
 namespace VibeSwarm.Client.Services;
 
@@ -35,6 +36,9 @@ public class HttpProjectService : IProjectService
         await HttpResponseErrorHelper.EnsureSuccessAsync(response, ct, "Project not found.");
         return await response.ReadJsonAsync(request.Project, ct);
     }
+
+    public async Task<GitHubRepositoryBrowserResult> BrowseGitHubRepositoriesAsync(CancellationToken ct = default)
+        => await _http.GetJsonAsync("/api/projects/github-repositories", new GitHubRepositoryBrowserResult(), ct);
 
     public async Task<Project> UpdateAsync(Project project, CancellationToken ct = default)
     {

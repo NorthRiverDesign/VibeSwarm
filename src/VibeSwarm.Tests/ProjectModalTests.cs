@@ -10,6 +10,7 @@ using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Models;
 using VibeSwarm.Shared.Providers;
 using VibeSwarm.Shared.Services;
+using VibeSwarm.Shared.VersionControl.Models;
 
 namespace VibeSwarm.Tests;
 
@@ -66,7 +67,7 @@ Assert.Contains("Create Project", html);
 [Fact]
 public void SubmitCloneModeWithoutOwnerRepository_ShowsValidationMessage()
 {
-using var context = CreateBunitContext();
+	using var context = CreateBunitContext();
 
 var cut = context.Render<ProjectModal>(parameters => parameters
 .Add(component => component.IsVisible, true));
@@ -77,18 +78,56 @@ cut.FindAll("button")
 cut.Find("#modal-githubRepo").Input("sample-project");
 cut.Find("form").Submit();
 
-Assert.Contains("GitHub repositories must use the format 'owner/repo'.", cut.Markup);
+	Assert.Contains("GitHub repositories must use the format 'owner/repo'.", cut.Markup);
 }
 
-private static BunitContext CreateBunitContext()
+[Fact]
+public void BrowseGitHubRepositories_SelectingRepositoryPopulatesCloneInput()
 {
-var context = new BunitContext();
-context.JSInterop.SetupVoid("eval", "document.body.classList.add('vs-modal-open')");
-context.Services.AddLogging();
-context.Services.AddSingleton<IProjectService>(new FakeProjectService());
-context.Services.AddSingleton<IProviderService>(new FakeProviderService(new Provider
+	using var context = CreateBunitContext(new FakeProjectService
+	{
+		RepositoryBrowserResult = new GitHubRepositoryBrowserResult
+		{
+			IsGitHubCliAvailable = true,
+			IsAuthenticated = true,
+			Repositories =
+			[
+				new GitHubRepositoryBrowserItem
+				{
+					NameWithOwner = "octocat/hello-world",
+					Description = "Sample repository"
+				}
+			]
+		}
+	});
+
+	var cut = context.Render<ProjectModal>(parameters => parameters
+		.Add(component => component.IsVisible, true));
+
+	cut.FindAll("button")
+		.Single(button => button.TextContent.Contains("Clone Existing GitHub Repository", StringComparison.Ordinal))
+		.Click();
+	cut.Find("#modal-githubRepoBrowse").Click();
+	cut.FindAll("button")
+		.Single(button => button.TextContent.Contains("octocat/hello-world", StringComparison.Ordinal))
+		.Click();
+	cut.FindAll("button")
+		.Single(button => button.TextContent.Contains("Use Repository", StringComparison.Ordinal))
+		.Click();
+
+	Assert.Equal("octocat/hello-world", cut.Find("#modal-githubRepo").GetAttribute("value"));
+}
+
+private static BunitContext CreateBunitContext(FakeProjectService? projectService = null)
 {
-Id = Guid.NewGuid(),
+	var context = new BunitContext();
+	context.JSInterop.SetupVoid("eval", "document.body.classList.add('vs-modal-open')");
+	context.JSInterop.SetupVoid("eval", "document.body.classList.remove('vs-modal-open')");
+	context.Services.AddLogging();
+	context.Services.AddSingleton<IProjectService>(projectService ?? new FakeProjectService());
+	context.Services.AddSingleton<IProviderService>(new FakeProviderService(new Provider
+	{
+	Id = Guid.NewGuid(),
 Name = "GitHub Copilot",
 Type = ProviderType.Copilot,
 IsEnabled = true
@@ -101,12 +140,14 @@ return context;
 
 private sealed class FakeProjectService : IProjectService
 {
+public GitHubRepositoryBrowserResult RepositoryBrowserResult { get; set; } = new();
 public Task<IEnumerable<Project>> GetAllAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Project>>([]);
 public Task<IEnumerable<Project>> GetRecentAsync(int count, CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Project>>([]);
 public Task<Project?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult<Project?>(null);
 public Task<Project?> GetByIdWithJobsAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult<Project?>(null);
 public Task<Project> CreateAsync(Project project, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 public Task<Project> CreateProjectAsync(ProjectCreationRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+public Task<GitHubRepositoryBrowserResult> BrowseGitHubRepositoriesAsync(CancellationToken cancellationToken = default) => Task.FromResult(RepositoryBrowserResult);
 public Task<Project> UpdateAsync(Project project, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 public Task DeleteAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 public Task<IEnumerable<ProjectWithStats>> GetAllWithStatsAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<ProjectWithStats>>([]);

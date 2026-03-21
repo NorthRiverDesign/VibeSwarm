@@ -36,6 +36,10 @@ public class ProjectsController : ControllerBase
         return project == null ? NotFound() : Ok(project);
     }
 
+    [HttpGet("github-repositories")]
+    public async Task<IActionResult> BrowseGitHubRepositories(CancellationToken ct)
+        => Ok(await _projectService.BrowseGitHubRepositoriesAsync(ct));
+
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] Project project, CancellationToken ct)
     {

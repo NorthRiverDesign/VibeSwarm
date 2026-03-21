@@ -28,7 +28,8 @@ OnBrowseWorkingPath="OpenDirectoryBrowser" />
 
 <ProjectSourceSection FormModel="@FormModel" FormState="@_formState" IsEdit="@IsEdit"
 OnSourceModeSelected="SelectSourceMode"
-OnGitHubRepositoryChanged="OnGitHubRepositoryChanged" />
+OnGitHubRepositoryChanged="OnGitHubRepositoryChanged"
+OnBrowseGitHubRepositories="OpenGitHubRepositoryBrowser" />
 
 <ProjectAutomationSection Project="@FormModel" IsEdit="@IsEdit" />
 
@@ -92,6 +93,14 @@ else
 OnDirectorySelected="OnDirectorySelected" OnClosed="CloseDirectoryBrowser" />
 }
 
+@if (_showGitHubRepositoryBrowser)
+{
+<GitHubRepositoryBrowserModal IsVisible="@_showGitHubRepositoryBrowser"
+IsVisibleChanged="HandleGitHubRepositoryBrowserVisibilityChanged"
+SelectedRepository="@FormModel.GetNormalizedGitHubRepository()"
+OnRepositorySelected="HandleGitHubRepositorySelected" />
+}
+
 @code {
 [Parameter]
 public bool IsVisible { get; set; }
@@ -117,6 +126,7 @@ private string? ErrorMessage { get; set; }
 private bool _previousIsVisible;
 private string? _cloneProgressMessage;
 private bool _showDirectoryBrowser;
+private bool _showGitHubRepositoryBrowser;
 private DirectoryBrowser? _directoryBrowser;
 private string? _defaultProjectsDirectory;
 private List<Provider> _availableProviders = [];
@@ -254,15 +264,16 @@ await IsVisibleChanged.InvokeAsync(false);
 ResetState();
 }
 
-private void ResetState()
-{
-FormModel = new ProjectModalFormModel();
-ErrorMessage = null;
-IsSaving = false;
-_cloneProgressMessage = null;
-_planningModels = [];
-_providerModelsByProviderId.Clear();
-}
+	private void ResetState()
+	{
+		FormModel = new ProjectModalFormModel();
+		ErrorMessage = null;
+		IsSaving = false;
+		_cloneProgressMessage = null;
+		_showGitHubRepositoryBrowser = false;
+		_planningModels = [];
+		_providerModelsByProviderId.Clear();
+	}
 
 private async Task OpenDirectoryBrowser()
 {
@@ -287,13 +298,32 @@ _showDirectoryBrowser = false;
 StateHasChanged();
 }
 
-private void CloseDirectoryBrowser()
-{
-_showDirectoryBrowser = false;
-}
+	private void CloseDirectoryBrowser()
+	{
+		_showDirectoryBrowser = false;
+	}
 
-private async Task LoadProvidersAsync()
-{
+	private Task OpenGitHubRepositoryBrowser()
+	{
+		_showGitHubRepositoryBrowser = true;
+		return Task.CompletedTask;
+	}
+
+	private Task HandleGitHubRepositoryBrowserVisibilityChanged(bool visible)
+	{
+		_showGitHubRepositoryBrowser = visible;
+		return Task.CompletedTask;
+	}
+
+	private Task HandleGitHubRepositorySelected(string repository)
+	{
+		OnGitHubRepositoryChanged(repository);
+		_showGitHubRepositoryBrowser = false;
+		return Task.CompletedTask;
+	}
+
+	private async Task LoadProvidersAsync()
+	{
 _availableProviders = (await ProviderService.GetAllAsync())
 .Where(provider => provider.IsEnabled)
 .OrderByDescending(provider => provider.IsDefault)

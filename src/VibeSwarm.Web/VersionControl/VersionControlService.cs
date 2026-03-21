@@ -1,4 +1,6 @@
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.Extensions.Logging;
 using VibeSwarm.Shared.VersionControl.Models;
 using VibeSwarm.Shared;
@@ -1882,6 +1884,76 @@ public sealed class VersionControlService : IVersionControlService
 	}
 
 	/// <inheritdoc />
+	public async Task<GitHubRepositoryBrowserResult> BrowseGitHubRepositoriesAsync(CancellationToken cancellationToken = default)
+	{
+		var browserResult = new GitHubRepositoryBrowserResult();
+
+		try
+		{
+			browserResult.IsGitHubCliAvailable = await IsGitHubCliAvailableAsync(cancellationToken);
+			if (!browserResult.IsGitHubCliAvailable)
+			{
+				browserResult.ErrorMessage = "GitHub CLI (gh) is not installed. Install it on the host to browse repositories.";
+				return browserResult;
+			}
+
+			browserResult.IsAuthenticated = await IsGitHubCliAuthenticatedAsync(cancellationToken);
+			if (!browserResult.IsAuthenticated)
+			{
+				browserResult.ErrorMessage = "Sign in with 'gh auth login' on the host to browse repositories.";
+				return browserResult;
+			}
+
+			var userResult = await _commandExecutor.ExecuteRawAsync(
+				"gh",
+				"api user",
+				Directory.GetCurrentDirectory(),
+				cancellationToken,
+				timeoutSeconds: 15);
+
+			if (!userResult.Success)
+			{
+				browserResult.ErrorMessage = BuildCommandError(userResult, "Unable to determine the authenticated GitHub account.");
+				return browserResult;
+			}
+
+			var user = JsonSerializer.Deserialize<GitHubViewerResponse>(userResult.Output, GitHubJsonSerializerOptions);
+			if (string.IsNullOrWhiteSpace(user?.Login))
+			{
+				browserResult.ErrorMessage = "Unable to determine the authenticated GitHub account.";
+				return browserResult;
+			}
+
+			var listResult = await _commandExecutor.ExecuteRawAsync(
+				"gh",
+				$"repo list \"{EscapeCommandArgument(user.Login)}\" --limit 100 --json nameWithOwner,description,isPrivate,updatedAt,url",
+				Directory.GetCurrentDirectory(),
+				cancellationToken,
+				timeoutSeconds: 30);
+
+			if (!listResult.Success)
+			{
+				browserResult.ErrorMessage = BuildCommandError(listResult, "Unable to load GitHub repositories.");
+				return browserResult;
+			}
+
+			browserResult.Repositories = JsonSerializer.Deserialize<List<GitHubRepositoryBrowserItem>>(listResult.Output, GitHubJsonSerializerOptions)?
+				.OrderByDescending(repository => repository.UpdatedAt ?? DateTimeOffset.MinValue)
+				.ThenBy(repository => repository.NameWithOwner, StringComparer.OrdinalIgnoreCase)
+				.ToList()
+				?? [];
+
+			return browserResult;
+		}
+		catch (Exception ex)
+		{
+			_logger.LogWarning(ex, "Failed to browse GitHub repositories");
+			browserResult.ErrorMessage = $"Unable to load GitHub repositories: {ex.Message}";
+			return browserResult;
+		}
+	}
+
+	/// <inheritdoc />
 	public async Task<GitOperationResult> CreateGitHubRepositoryAsync(
 		string workingDirectory,
 		string repositoryName,
@@ -2606,5 +2678,16 @@ public sealed class VersionControlService : IVersionControlService
 		}
 
 		return int.TryParse(segments[pullSegmentIndex + 1], out var number) ? number : null;
+	}
+
+	private static readonly JsonSerializerOptions GitHubJsonSerializerOptions = new()
+	{
+		PropertyNameCaseInsensitive = true
+	};
+
+	private sealed class GitHubViewerResponse
+	{
+		[JsonPropertyName("login")]
+		public string? Login { get; set; }
 	}
 }

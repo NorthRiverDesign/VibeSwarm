@@ -1,0 +1,181 @@
+@using VibeSwarm.Shared.Services
+@using VibeSwarm.Shared.VersionControl.Models
+@inject IProjectService ProjectService
+
+<ModalDialog IsVisible="IsVisible" IsVisibleChanged="HandleVisibilityChanged"
+			 Title="Browse GitHub Repositories" Icon="github"
+			 Size="ModalDialog.ModalSize.Large" OnClose="HandleClose">
+	<ChildContent>
+		<div class="d-flex flex-column gap-3">
+			<div class="small text-body-secondary">
+				Browse repositories available to the authenticated GitHub CLI account on this host. You can still paste any <code>owner/repo</code> manually.
+			</div>
+
+			<div>
+				<label for="githubRepositoryBrowserSearch" class="form-label mb-1">Filter repositories</label>
+				<InputText id="githubRepositoryBrowserSearch" @bind-Value="_searchText" @bind-Value:event="oninput"
+						   class="form-control" placeholder="Search by owner, name, or description" />
+			</div>
+
+			@if (_isLoading)
+			{
+				<div class="py-4">
+					<LoadingSpinner Message="Loading GitHub repositories..." />
+				</div>
+			}
+			else if (!string.IsNullOrWhiteSpace(_errorMessage))
+			{
+				<Alert Type="Alert.AlertType.Warning" Class="mb-0">
+					<span class="text-break">@_errorMessage</span>
+				</Alert>
+			}
+			else if (FilteredRepositories.Count == 0)
+			{
+				<Alert Type="Alert.AlertType.Info" Class="mb-0">
+					<span>No repositories matched the current filter.</span>
+				</Alert>
+			}
+			else
+			{
+				<div class="small text-body-secondary">
+					Showing @FilteredRepositories.Count of @_repositories.Count repositories from GitHub.
+				</div>
+
+				<div class="list-group overflow-auto" style="max-height: 24rem;">
+					@foreach (var repository in FilteredRepositories)
+					{
+						var isSelected = string.Equals(_selectedRepository, repository.NameWithOwner, StringComparison.OrdinalIgnoreCase);
+
+						<button type="button"
+								class="list-group-item list-group-item-action text-start @(isSelected ? "active" : string.Empty)"
+								@onclick="() => SelectRepository(repository)">
+							<div class="d-flex flex-column flex-md-row gap-2 justify-content-between align-items-md-start">
+								<div class="min-width-0">
+									<div class="fw-semibold text-break">@repository.NameWithOwner</div>
+									@if (!string.IsNullOrWhiteSpace(repository.Description))
+									{
+										<div class="small text-break @(isSelected ? "text-white-50" : "text-body-secondary")">
+											@repository.Description
+										</div>
+									}
+								</div>
+								<div class="d-flex flex-wrap gap-2 small">
+									<span class="badge @(repository.IsPrivate ? "text-bg-dark" : "text-bg-secondary")">
+										@(repository.IsPrivate ? "Private" : "Public")
+									</span>
+									@if (repository.UpdatedAt.HasValue)
+									{
+										<span class="@(isSelected ? "text-white-50" : "text-body-secondary")">
+											Updated @repository.UpdatedAt.Value.LocalDateTime.ToString("MMM d, yyyy")
+										</span>
+									}
+								</div>
+							</div>
+						</button>
+					}
+				</div>
+			}
+		</div>
+	</ChildContent>
+	<FooterContent>
+		<button type="button" class="btn btn-secondary" @onclick="HandleClose">Cancel</button>
+		<button type="button" class="btn btn-primary" disabled="@string.IsNullOrWhiteSpace(_selectedRepository)" @onclick="UseSelectedRepository">
+			Use Repository
+		</button>
+	</FooterContent>
+</ModalDialog>
+
+@code {
+	[Parameter]
+	public bool IsVisible { get; set; }
+
+	[Parameter]
+	public EventCallback<bool> IsVisibleChanged { get; set; }
+
+	[Parameter]
+	public string? SelectedRepository { get; set; }
+
+	[Parameter]
+	public EventCallback<string> OnRepositorySelected { get; set; }
+
+	private bool _isLoading;
+	private bool _wasVisible;
+	private string? _errorMessage;
+	private string _searchText = string.Empty;
+	private string? _selectedRepository;
+	private List<GitHubRepositoryBrowserItem> _repositories = [];
+
+	private List<GitHubRepositoryBrowserItem> FilteredRepositories =>
+		_repositories
+			.Where(repository =>
+				string.IsNullOrWhiteSpace(_searchText) ||
+				repository.NameWithOwner.Contains(_searchText, StringComparison.OrdinalIgnoreCase) ||
+				(repository.Description?.Contains(_searchText, StringComparison.OrdinalIgnoreCase) ?? false))
+			.ToList();
+
+	protected override async Task OnParametersSetAsync()
+	{
+		if (IsVisible && !_wasVisible)
+		{
+			_searchText = string.Empty;
+			_selectedRepository = SelectedRepository;
+			await LoadRepositoriesAsync();
+		}
+		else if (IsVisible)
+		{
+			_selectedRepository = SelectedRepository;
+		}
+
+		_wasVisible = IsVisible;
+	}
+
+	private async Task LoadRepositoriesAsync()
+	{
+		_isLoading = true;
+		_errorMessage = null;
+		_repositories = [];
+
+		try
+		{
+			var result = await ProjectService.BrowseGitHubRepositoriesAsync();
+			_errorMessage = result.ErrorMessage;
+			_repositories = result.Repositories;
+		}
+		catch (Exception ex)
+		{
+			_errorMessage = $"Unable to load GitHub repositories: {ex.Message}";
+		}
+		finally
+		{
+			_isLoading = false;
+		}
+	}
+
+	private Task HandleVisibilityChanged(bool visible)
+	{
+		IsVisible = visible;
+		return IsVisibleChanged.InvokeAsync(visible);
+	}
+
+	private async Task HandleClose()
+	{
+		_selectedRepository = SelectedRepository;
+		await HandleVisibilityChanged(false);
+	}
+
+	private void SelectRepository(GitHubRepositoryBrowserItem repository)
+	{
+		_selectedRepository = repository.NameWithOwner;
+	}
+
+	private async Task UseSelectedRepository()
+	{
+		if (string.IsNullOrWhiteSpace(_selectedRepository))
+		{
+			return;
+		}
+
+		await OnRepositorySelected.InvokeAsync(_selectedRepository);
+		await HandleVisibilityChanged(false);
+	}
+}

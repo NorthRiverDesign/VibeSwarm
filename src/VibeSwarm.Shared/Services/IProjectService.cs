@@ -1,5 +1,6 @@
 using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Models;
+using VibeSwarm.Shared.VersionControl.Models;
 
 namespace VibeSwarm.Shared.Services;
 
@@ -82,6 +83,11 @@ public interface IProjectService
 	Task<Project> CreateProjectAsync(ProjectCreationRequest request, CancellationToken cancellationToken = default);
 	Task<Project> UpdateAsync(Project project, CancellationToken cancellationToken = default);
 	Task DeleteAsync(Guid id, CancellationToken cancellationToken = default);
+	Task<GitHubRepositoryBrowserResult> BrowseGitHubRepositoriesAsync(CancellationToken cancellationToken = default)
+		=> Task.FromResult(new GitHubRepositoryBrowserResult
+		{
+			ErrorMessage = "GitHub repository browsing is not available."
+		});
 
     /// <summary>
     /// Get all projects with their aggregated job statistics
