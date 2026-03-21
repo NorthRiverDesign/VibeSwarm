@@ -235,6 +235,11 @@ internal static class JobSessionDisplayBuilder
 				continue;
 			}
 
+			if (IsDuplicateProcessStartedMessage(messages.LastOrDefault(), parsedMessage))
+			{
+				continue;
+			}
+
 			var isTextMessage = parsedMessage.Role is MessageRole.Assistant
 				&& string.IsNullOrEmpty(parsedMessage.ToolName)
 				&& string.IsNullOrEmpty(parsedMessage.ToolInput)
@@ -368,6 +373,23 @@ internal static class JobSessionDisplayBuilder
 	private static bool HasStructuredMessages(IReadOnlyCollection<JobMessage> messages)
 		=> messages.Any(message => message.Role is MessageRole.ToolUse or MessageRole.ToolResult or MessageRole.System)
 			|| messages.Count > 1;
+
+	private static bool IsDuplicateProcessStartedMessage(JobMessage? previousMessage, JobMessage currentMessage)
+	{
+		if (previousMessage == null
+			|| previousMessage.Role != MessageRole.System
+			|| currentMessage.Role != MessageRole.System)
+		{
+			return false;
+		}
+
+		if (!string.Equals(previousMessage.Content, currentMessage.Content, StringComparison.Ordinal))
+		{
+			return false;
+		}
+
+		return currentMessage.Content.StartsWith("Process started (PID:", StringComparison.Ordinal);
+	}
 
 	private static IReadOnlyList<JobMessage> MergeMessages(
 		IReadOnlyCollection<JobMessage> primaryMessages,

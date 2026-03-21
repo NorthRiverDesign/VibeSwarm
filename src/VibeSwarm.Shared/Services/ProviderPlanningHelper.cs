@@ -10,14 +10,21 @@ public static class ProviderPlanningHelper
 		return providerType is ProviderType.Claude or ProviderType.Copilot;
 	}
 
-	public static string BuildPlanningPrompt(string requestDescription)
+	public static string BuildPlanningPrompt(ProviderType providerType, string requestDescription)
 	{
 		var description = string.IsNullOrWhiteSpace(requestDescription)
 			? "No task description was provided."
 			: requestDescription.Trim();
 
 		var sb = new StringBuilder();
-		sb.AppendLine("/plan Create an implementation-ready plan for the request below before any coding begins.");
+		if (providerType == ProviderType.Claude)
+		{
+			sb.AppendLine("/plan Create an implementation-ready plan for the request below before any coding begins.");
+		}
+		else
+		{
+			sb.AppendLine("Create an implementation-ready plan for the request below before any coding begins.");
+		}
 		sb.AppendLine();
 		sb.AppendLine("## Request");
 		sb.AppendLine(description);

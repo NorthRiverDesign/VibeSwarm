@@ -940,7 +940,7 @@ A concise one-line description of what was implemented (max 72 chars)
 		}
 
 		var result = await providerInstance.ExecuteWithOptionsAsync(
-			usePlanningMode ? ProviderPlanningHelper.BuildPlanningPrompt(ideaDescription) : expansionPrompt,
+			usePlanningMode ? ProviderPlanningHelper.BuildPlanningPrompt(provider.Type, ideaDescription) : expansionPrompt,
 			new ExecutionOptions
 			{
 				WorkingDirectory = workingDirectory,

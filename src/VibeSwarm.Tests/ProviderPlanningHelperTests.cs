@@ -23,6 +23,23 @@ public sealed class ProviderPlanningHelperTests
 		Assert.Equal("step 1\nstep 2", extracted);
 	}
 
+	[Fact]
+	public void BuildPlanningPrompt_UsesSlashCommandForClaude()
+	{
+		var prompt = ProviderPlanningHelper.BuildPlanningPrompt(ProviderType.Claude, "Implement a dashboard");
+
+		Assert.StartsWith("/plan ", prompt, StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public void BuildPlanningPrompt_DoesNotUseSlashCommandForCopilot()
+	{
+		var prompt = ProviderPlanningHelper.BuildPlanningPrompt(ProviderType.Copilot, "Implement a dashboard");
+
+		Assert.DoesNotContain("/plan", prompt, StringComparison.Ordinal);
+		Assert.StartsWith("Create an implementation-ready plan", prompt, StringComparison.Ordinal);
+	}
+
 	[Theory]
 	[InlineData(ProviderType.Claude, true)]
 	[InlineData(ProviderType.Copilot, true)]

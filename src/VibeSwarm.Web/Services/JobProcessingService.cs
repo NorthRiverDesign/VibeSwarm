@@ -930,7 +930,7 @@ public class JobProcessingService : BackgroundService
 				try
 				{
 					planningResult = await planningProvider.ExecuteWithOptionsAsync(
-						ProviderPlanningHelper.BuildPlanningPrompt(job.GoalPrompt),
+						ProviderPlanningHelper.BuildPlanningPrompt(planningProviderConfig.Type, job.GoalPrompt),
 						new ExecutionOptions
 						{
 							WorkingDirectory = workingDirectory,

@@ -1,4 +1,5 @@
 using Bunit;
+using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.Extensions.DependencyInjection;
@@ -222,6 +223,51 @@ public sealed class JobSessionPanelTests
 		Assert.Contains("bg-warning-subtle", html);
 		Assert.Contains("Process started (PID: 123)", html);
 		Assert.Contains("Connected to provider stream", html);
+	}
+
+	[Fact]
+	public async Task RenderedJobSessionPanel_DeduplicatesAdjacentProcessStartedMessages()
+	{
+		var services = new ServiceCollection();
+		services.AddLogging();
+		services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
+
+		await using var renderer = new HtmlRenderer(services.BuildServiceProvider(), NullLoggerFactory.Instance);
+
+		var html = await renderer.Dispatcher.InvokeAsync(async () =>
+		{
+			var parameters = ParameterView.FromDictionary(new Dictionary<string, object?>
+			{
+				[nameof(JobSessionPanel.Status)] = JobStatus.Processing,
+				[nameof(JobSessionPanel.IsJobActive)] = true,
+				[nameof(JobSessionPanel.LiveOutputLines)] = new List<OutputLine>
+				{
+					new()
+					{
+						Content = "[System] Process started (PID: 456). Waiting for CLI to initialize...",
+						Timestamp = DateTime.UtcNow.AddSeconds(-12)
+					},
+					new()
+					{
+						Content = "[System] Process started (PID: 456). Waiting for CLI to initialize...",
+						Timestamp = DateTime.UtcNow.AddSeconds(-11)
+					},
+					new()
+					{
+						Content = "[Assistant] Gathering repository context",
+						Timestamp = DateTime.UtcNow.AddSeconds(-10)
+					}
+				}
+			});
+
+			var output = await renderer.RenderComponentAsync<JobSessionPanel>(parameters);
+			return output.ToHtmlString();
+		});
+
+		Assert.Contains("2 messages", html);
+		Assert.Equal(
+			1,
+			Regex.Matches(html, Regex.Escape("Process started (PID: 456). Waiting for CLI to initialize...")).Count);
 	}
 
 	[Fact]
