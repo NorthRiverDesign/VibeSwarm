@@ -1,5 +1,5 @@
+using System.ComponentModel.DataAnnotations;
 using VibeSwarm.Client.Models;
-using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Models;
 using VibeSwarm.Shared.Validation;
 
@@ -7,83 +7,83 @@ namespace VibeSwarm.Tests;
 
 public sealed class ProjectModalStateTests
 {
-	[Fact]
-	public void Validate_CloneModeWithOwnerOnlyRepository_ShowsRepositoryFieldError()
-	{
-		var project = new Project
-		{
-			Name = "Sample Project",
-			WorkingPath = "/tmp/sample-project"
-		};
-		var state = new ProjectModalState();
+[Fact]
+public void ProjectModalFormModel_CloneModeWithOwnerOnlyRepository_FailsValidation()
+{
+var project = new ProjectModalFormModel
+{
+Name = "Sample Project",
+WorkingPath = "/tmp/sample-project",
+CreationMode = ProjectCreationMode.CloneGitHubRepository,
+GitHubRepositoryInput = "sample-project"
+};
+var validationResults = new List<ValidationResult>();
+var isValid = Validator.TryValidateObject(project, new ValidationContext(project), validationResults, validateAllProperties: true);
 
-		state.SelectSourceMode(project, ProjectCreationMode.CloneGitHubRepository);
-		state.UpdateGitHubRepositoryInput(project, "sample-project");
+Assert.False(isValid);
+Assert.Contains(validationResults, result => result.ErrorMessage == "GitHub repositories must use the format 'owner/repo'.");
+}
 
-		var isValid = state.Validate(project);
+[Fact]
+public void BuildProjectCreationRequest_CreateModePreservesGitHubOptions()
+{
+var project = new ProjectModalFormModel
+{
+Name = "Sample Project",
+WorkingPath = "/tmp/sample-project",
+CreationMode = ProjectCreationMode.CreateGitHubRepository,
+GitHubRepositoryInput = "owner/sample-project",
+NewGitHubRepositoryDescription = "Managed by VibeSwarm",
+NewGitHubRepositoryPrivate = true,
+NewGitHubGitignoreTemplate = "CSharp",
+NewGitHubLicenseTemplate = "mit",
+NewGitHubInitializeReadme = true
+};
+var state = new ProjectModalState();
 
-		Assert.False(isValid);
-		Assert.Equal("GitHub repositories must use the format 'owner/repo'.", state.GitHubRepositoryError);
-	}
+var request = state.BuildProjectCreationRequest(project);
 
-	[Fact]
-	public void BuildProjectCreationRequest_CreateModePreservesGitHubOptions()
-	{
-		var project = new Project
-		{
-			Name = "Sample Project",
-			WorkingPath = "/tmp/sample-project"
-		};
-		var state = new ProjectModalState();
+Assert.Equal(ProjectCreationMode.CreateGitHubRepository, request.Mode);
+Assert.NotNull(request.GitHub);
+Assert.Equal("owner/sample-project", request.GitHub!.Repository);
+Assert.Equal("Managed by VibeSwarm", request.GitHub.Description);
+Assert.True(request.GitHub.IsPrivate);
+Assert.Equal("CSharp", request.GitHub.GitignoreTemplate);
+Assert.Equal("mit", request.GitHub.LicenseTemplate);
+Assert.True(request.GitHub.InitializeReadme);
+}
 
-		state.SelectSourceMode(project, ProjectCreationMode.CreateGitHubRepository);
-		state.UpdateGitHubRepositoryInput(project, "owner/sample-project");
-		state.NewGitHubRepositoryDescription = "Managed by VibeSwarm";
-		state.NewGitHubRepositoryPrivate = true;
-		state.NewGitHubGitignoreTemplate = "CSharp";
-		state.NewGitHubLicenseTemplate = "mit";
-		state.NewGitHubInitializeReadme = true;
+[Fact]
+public void ProjectModalFormModel_CreateModeWithTooLongRepositoryDescription_FailsValidation()
+{
+var project = new ProjectModalFormModel
+{
+Name = "Sample Project",
+WorkingPath = "/tmp/sample-project",
+CreationMode = ProjectCreationMode.CreateGitHubRepository,
+GitHubRepositoryInput = "owner/sample-project",
+NewGitHubRepositoryDescription = new string('d', ValidationLimits.ProjectGitHubDescriptionMaxLength + 1)
+};
+var validationResults = new List<ValidationResult>();
+var isValid = Validator.TryValidateObject(project, new ValidationContext(project), validationResults, validateAllProperties: true);
 
-		var request = state.BuildProjectCreationRequest(project);
+Assert.False(isValid);
+Assert.Contains(validationResults, result => result.MemberNames.Contains(nameof(ProjectModalFormModel.NewGitHubRepositoryDescription)));
+}
 
-		Assert.Equal(ProjectCreationMode.CreateGitHubRepository, request.Mode);
-		Assert.NotNull(request.GitHub);
-		Assert.Equal("owner/sample-project", request.GitHub!.Repository);
-		Assert.Equal("Managed by VibeSwarm", request.GitHub.Description);
-		Assert.True(request.GitHub.IsPrivate);
-		Assert.Equal("CSharp", request.GitHub.GitignoreTemplate);
-		Assert.Equal("mit", request.GitHub.LicenseTemplate);
-		Assert.True(request.GitHub.InitializeReadme);
-	}
+[Fact]
+public void ProjectModalFormModel_BuildVerificationWithoutBuildCommand_FailsValidation()
+{
+var project = new ProjectModalFormModel
+{
+Name = "Sample Project",
+WorkingPath = "/tmp/sample-project",
+BuildVerificationEnabled = true
+};
+var validationResults = new List<ValidationResult>();
+var isValid = Validator.TryValidateObject(project, new ValidationContext(project), validationResults, validateAllProperties: true);
 
-	[Fact]
-	public void TryMapSubmissionError_GitHubRepositoryMessage_AssignsFieldError()
-	{
-		var state = new ProjectModalState();
-
-		var mapped = state.TryMapSubmissionError("GitHub repositories must use the format 'owner/repo'.");
-
-		Assert.True(mapped);
-		Assert.Equal("GitHub repositories must use the format 'owner/repo'.", state.GitHubRepositoryError);
-	}
-
-	[Fact]
-	public void Validate_CreateModeWithTooLongRepositoryDescription_ShowsDescriptionFieldError()
-	{
-		var project = new Project
-		{
-			Name = "Sample Project",
-			WorkingPath = "/tmp/sample-project"
-		};
-		var state = new ProjectModalState();
-
-		state.SelectSourceMode(project, ProjectCreationMode.CreateGitHubRepository);
-		state.UpdateGitHubRepositoryInput(project, "owner/sample-project");
-		state.NewGitHubRepositoryDescription = new string('d', ValidationLimits.ProjectGitHubDescriptionMaxLength + 1);
-
-		var isValid = state.Validate(project);
-
-		Assert.False(isValid);
-		Assert.Equal($"Repository description must be {ValidationLimits.ProjectGitHubDescriptionMaxLength:N0} characters or fewer.", state.GitHubRepositoryDescriptionError);
-	}
+Assert.False(isValid);
+Assert.Contains(validationResults, result => result.ErrorMessage == "Build command is required when build verification is enabled.");
+}
 }

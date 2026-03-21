@@ -1,3 +1,4 @@
+@using VibeSwarm.Client.Models
 @using VibeSwarm.Shared.Data
 @using VibeSwarm.Shared.Validation
 
@@ -44,7 +45,7 @@ VibeSwarm exposes this as persistent memory for every job on this project. Agent
 
 @code {
 [Parameter, EditorRequired]
-public Project Project { get; set; } = default!;
+public ProjectModalFormModel Project { get; set; } = default!;
 
 private static string GetCharacterCount(string? value, int maxLength)
 {

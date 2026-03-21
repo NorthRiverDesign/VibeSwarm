@@ -1,3 +1,4 @@
+@using VibeSwarm.Client.Models
 @using VibeSwarm.Shared.Data
 @using VibeSwarm.Shared.Validation
 
@@ -72,7 +73,7 @@ New jobs will target this branch when creating pull requests or merging complete
 
 @code {
 [Parameter, EditorRequired]
-public Project Project { get; set; } = default!;
+public ProjectModalFormModel Project { get; set; } = default!;
 
 [Parameter]
 public bool IsEdit { get; set; }

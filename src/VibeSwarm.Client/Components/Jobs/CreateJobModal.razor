@@ -1,289 +1,299 @@
 @* Modal component for creating new jobs *@
+@using VibeSwarm.Client.Models
 @using VibeSwarm.Shared.VersionControl.Models
 
 <ModalDialog IsVisible="IsVisible" IsVisibleChanged="IsVisibleChanged" Title="Create Job" Icon="plus-circle"
-	Size="ModalDialog.ModalSize.Large" OnClose="Close">
-	<ChildContent>
-		<EditForm id="@_formId" Model="@JobModel" OnValidSubmit="HandleSubmit">
-			<DataAnnotationsValidator />
-			<ValidationSummary class="text-danger mb-3" />
+Size="ModalDialog.ModalSize.Large" OnClose="Close">
+<ChildContent>
+<EditForm id="@_formId" Model="@FormModel" OnValidSubmit="HandleSubmit">
+<DataAnnotationsValidator />
+<ValidationSummary class="text-danger mb-3" />
 
-			<div class="mb-3">
-				<label for="goalPrompt" class="form-label">Goal Prompt</label>
-				<InputTextArea id="goalPrompt" @bind-Value="JobModel.GoalPrompt" class="form-control" rows="4"
-					placeholder="Describe what you want the AI agent to accomplish..." />
-				<ValidationMessage For="@(() => JobModel.GoalPrompt)" class="text-danger small" />
-			</div>
+<div class="mb-3">
+<label for="goalPrompt" class="form-label">Goal Prompt</label>
+<InputTextArea id="goalPrompt" @bind-Value="FormModel.GoalPrompt" class="form-control" rows="4"
+placeholder="Describe what you want the AI agent to accomplish..." />
+<ValidationMessage For="@(() => FormModel.GoalPrompt)" class="text-danger small" />
+</div>
 
-			<div class="mb-3">
-				<label for="provider" class="form-label">Provider</label>
-				@if (!string.IsNullOrEmpty(ProviderHint))
-				{
-					<div class="form-text mb-2">@ProviderHint</div>
-				}
-				<InputSelect id="provider" Value="JobModel.ProviderId" ValueExpression="@(() => JobModel.ProviderId)"
-					ValueChanged="@((Guid value) => HandleProviderChanged(value))" class="form-select">
-					<option value="@Guid.Empty">Select a provider...</option>
-					@foreach (var provider in Providers.Where(p => p.IsEnabled))
-					{
-						<option value="@provider.Id">@GetProviderDisplayText(provider)</option>
-					}
-				</InputSelect>
-				@if (!Providers.Any(p => p.IsEnabled))
-				{
-					<div class="form-text text-warning">
-						No enabled providers. <a href="/providers">Configure one</a> first.
-					</div>
-				}
-			</div>
+<div class="mb-3">
+<label for="provider" class="form-label">Provider</label>
+@if (!string.IsNullOrEmpty(ProviderHint))
+{
+<div class="form-text mb-2">@ProviderHint</div>
+}
+<InputSelect TValue="Guid?" id="provider" @bind-Value="FormModel.ProviderId"
+@bind-Value:after="HandleProviderChanged" class="form-select">
+<option value="">Select a provider...</option>
+@foreach (var provider in Providers.Where(p => p.IsEnabled))
+{
+<option value="@provider.Id">@GetProviderDisplayText(provider)</option>
+}
+</InputSelect>
+<ValidationMessage For="@(() => FormModel.ProviderId)" class="text-danger small" />
+@if (!Providers.Any(p => p.IsEnabled))
+{
+<div class="form-text text-warning">
+No enabled providers. <a href="/providers">Configure one</a> first.
+</div>
+}
+</div>
 
-			<div class="mb-3">
-				<label for="model" class="form-label">Model</label>
-				<InputSelect id="model" @bind-Value="SelectedModelId" class="form-select"
-					disabled="@(JobModel.ProviderId == Guid.Empty || IsLoadingModels)">
-					@if (IsLoadingModels)
-					{
-						<option value="">Loading models...</option>
-					}
-					else if (!AvailableModels.Any())
-					{
-						<option value="">@(JobModel.ProviderId == Guid.Empty ? "Select a provider first..." :
-													"No models available")</option>
-					}
-					else
-					{
-						<option value="">Use project/provider default</option>
-						@foreach (var model in AvailableModels.Where(m => m.IsAvailable))
-						{
-							<option value="@model.ModelId">@(model.DisplayName ?? model.ModelId)@(model.IsDefault ?
-														" (default)" : "")</option>
-						}
-					}
-				</InputSelect>
-				<div class="form-text">Leave empty to use the project's default model, or the provider default when no project override is set.</div>
-			</div>
+<div class="mb-3">
+<label for="model" class="form-label">Model</label>
+<InputSelect id="model" @bind-Value="SelectedModelId" class="form-select"
+disabled="@(!FormModel.ProviderId.HasValue || IsLoadingModels)">
+@if (IsLoadingModels)
+{
+<option value="">Loading models...</option>
+}
+else if (!AvailableModels.Any())
+{
+<option value="">@(!FormModel.ProviderId.HasValue ? "Select a provider first..." : "No models available")</option>
+}
+else
+{
+<option value="">Use project/provider default</option>
+@foreach (var model in AvailableModels.Where(m => m.IsAvailable))
+{
+<option value="@model.ModelId">@(model.DisplayName ?? model.ModelId)@(model.IsDefault ? " (default)" : "")</option>
+}
+}
+</InputSelect>
+<div class="form-text">Leave empty to use the project's default model, or the provider default when no project override is set.</div>
+</div>
 
-			@if (ShowBranchSelector && Branches.Any())
-			{
-				<div class="mb-3">
-					<label for="branch" class="form-label">Branch</label>
-					<InputSelect id="branch" @bind-Value="JobModel.Branch" class="form-select">
-						@foreach (var branch in Branches.Where(b => !b.IsRemote).OrderByDescending(b => b.Name ==
-											CurrentBranch))
-						{
-							<option value="@branch.Name">
-								@branch.Name @(branch.Name == CurrentBranch ? "(current)" : "")
-							</option>
-						}
-					</InputSelect>
-					<div class="form-text">The branch where the AI agent will operate.</div>
-				</div>
-			}
+@if (ShowBranchSelector && Branches.Any())
+{
+<div class="mb-3">
+<label for="branch" class="form-label">Branch</label>
+<InputSelect id="branch" @bind-Value="FormModel.Branch" class="form-select">
+@foreach (var branch in Branches.Where(b => !b.IsRemote).OrderByDescending(b => b.Name == CurrentBranch))
+{
+<option value="@branch.Name">
+@branch.Name @(branch.Name == CurrentBranch ? "(current)" : "")
+</option>
+}
+</InputSelect>
+<div class="form-text">The branch where the AI agent will operate.</div>
+</div>
+}
 
-			<div class="mb-3">
-				<label for="gitChangeDeliveryMode" class="form-label">Result Delivery</label>
-				<InputSelect id="gitChangeDeliveryMode" @bind-Value="JobModel.GitChangeDeliveryMode" class="form-select">
-					<option value="@GitChangeDeliveryMode.CommitToBranch">Commit to the selected branch</option>
-					<option value="@GitChangeDeliveryMode.PullRequest">Create a pull request</option>
-				</InputSelect>
-				<div class="form-text">Control where the job's final changes should land after successful execution.</div>
-			</div>
+<div class="mb-3">
+<label for="gitChangeDeliveryMode" class="form-label">Result Delivery</label>
+<InputSelect id="gitChangeDeliveryMode" @bind-Value="FormModel.GitChangeDeliveryMode" class="form-select">
+<option value="@GitChangeDeliveryMode.CommitToBranch">Commit to the selected branch</option>
+<option value="@GitChangeDeliveryMode.PullRequest">Create a pull request</option>
+</InputSelect>
+<div class="form-text">Control where the job's final changes should land after successful execution.</div>
+</div>
 
-			@if (JobModel.GitChangeDeliveryMode == GitChangeDeliveryMode.PullRequest)
-			{
-				<div class="mb-3">
-					<label for="targetBranch" class="form-label">Target Branch</label>
-					@if (Branches.Any(b => !b.IsRemote))
-					{
-						<InputSelect id="targetBranch" @bind-Value="JobModel.TargetBranch" class="form-select">
-							@foreach (var branch in Branches.Where(b => !b.IsRemote).OrderByDescending(b => b.Name == CurrentBranch))
-							{
-								<option value="@branch.Name">
-									@branch.Name @(branch.Name == CurrentBranch ? "(current)" : "")
-								</option>
-							}
-						</InputSelect>
-					}
-					else
-					{
-						<InputText id="targetBranch" @bind-Value="JobModel.TargetBranch" class="form-control" placeholder="develop" />
-					}
-					<div class="form-text">Completed work will be proposed from the source branch into this branch.</div>
-				</div>
-			}
+@if (FormModel.GitChangeDeliveryMode == GitChangeDeliveryMode.PullRequest)
+{
+<div class="mb-3">
+<label for="targetBranch" class="form-label">Target Branch</label>
+@if (Branches.Any(b => !b.IsRemote))
+{
+<InputSelect id="targetBranch" @bind-Value="FormModel.TargetBranch" class="form-select">
+@foreach (var branch in Branches.Where(b => !b.IsRemote).OrderByDescending(b => b.Name == CurrentBranch))
+{
+<option value="@branch.Name">
+@branch.Name @(branch.Name == CurrentBranch ? "(current)" : "")
+</option>
+}
+</InputSelect>
+}
+else
+{
+<InputText id="targetBranch" @bind-Value="FormModel.TargetBranch" class="form-control" placeholder="develop" />
+}
+<ValidationMessage For="@(() => FormModel.TargetBranch)" class="text-danger small" />
+<div class="form-text">Completed work will be proposed from the source branch into this branch.</div>
+</div>
+}
 
-			@* Multi-Cycle Options (Collapsible) *@
-			<div class="mb-3">
-				<button type="button" class="btn btn-link p-0 text-decoration-none" @onclick="ToggleAdvancedOptions">
-					<i class="bi @(ShowAdvancedOptions ? "bi-chevron-down" : "bi-chevron-right") me-1"></i>
-					Advanced Options
-				</button>
-			</div>
+<div class="mb-3">
+<button type="button" class="btn btn-link p-0 text-decoration-none" @onclick="ToggleAdvancedOptions">
+<i class="bi @(ShowAdvancedOptions ? "bi-chevron-down" : "bi-chevron-right") me-1"></i>
+Advanced Options
+</button>
+</div>
 
-			@if (ShowAdvancedOptions)
-			{
-				<div class="border rounded p-3 mb-3 bg-body-tertiary">
-					<div class="mb-3">
-						<label for="cycleMode" class="form-label">Cycle Mode</label>
-						<InputSelect id="cycleMode" @bind-Value="JobModel.CycleMode" class="form-select">
-							<option value="@CycleMode.SingleCycle">Single Cycle (default)</option>
-							<option value="@CycleMode.FixedCount">Fixed Count</option>
-							<option value="@CycleMode.Autonomous">Autonomous</option>
-						</InputSelect>
-						<div class="form-text">
-							@switch (JobModel.CycleMode)
-							{
-								case CycleMode.SingleCycle:
-									<span>Agent runs once and completes.</span>
-									break;
-								case CycleMode.FixedCount:
-									<span>Agent runs for a fixed number of cycles.</span>
-									break;
-								case CycleMode.Autonomous:
-									<span>Agent decides when the task is complete (max cycles as safety limit).</span>
-									break;
-							}
-						</div>
-					</div>
+@if (ShowAdvancedOptions)
+{
+<div class="border rounded p-3 mb-3 bg-body-tertiary">
+<div class="mb-3">
+<label for="cycleMode" class="form-label">Cycle Mode</label>
+<InputSelect id="cycleMode" @bind-Value="FormModel.CycleMode" class="form-select">
+<option value="@CycleMode.SingleCycle">Single Cycle (default)</option>
+<option value="@CycleMode.FixedCount">Fixed Count</option>
+<option value="@CycleMode.Autonomous">Autonomous</option>
+</InputSelect>
+<div class="form-text">
+@switch (FormModel.CycleMode)
+{
+case CycleMode.SingleCycle:
+<span>Agent runs once and completes.</span>
+break;
+case CycleMode.FixedCount:
+<span>Agent runs for a fixed number of cycles.</span>
+break;
+case CycleMode.Autonomous:
+<span>Agent decides when the task is complete (max cycles as safety limit).</span>
+break;
+}
+</div>
+</div>
 
-					@if (JobModel.CycleMode != CycleMode.SingleCycle)
-					{
-						<div class="mb-3">
-							<label for="maxCycles" class="form-label">Max Cycles</label>
-							<InputNumber id="maxCycles" @bind-Value="JobModel.MaxCycles" class="form-control" min="1"
-								max="100" />
-							<div class="form-text">Maximum number of execution cycles (1-100).</div>
-						</div>
+@if (FormModel.CycleMode != CycleMode.SingleCycle)
+{
+<div class="mb-3">
+<label for="maxCycles" class="form-label">Max Cycles</label>
+<InputNumber id="maxCycles" @bind-Value="FormModel.MaxCycles" class="form-control" min="1" max="100" />
+<ValidationMessage For="@(() => FormModel.MaxCycles)" class="text-danger small" />
+<div class="form-text">Maximum number of execution cycles (1-100).</div>
+</div>
 
-						<div class="mb-3">
-							<label for="cycleSessionMode" class="form-label">Session Mode</label>
-							<InputSelect id="cycleSessionMode" @bind-Value="JobModel.CycleSessionMode" class="form-select">
-								<option value="@CycleSessionMode.ContinueSession">Continue Session</option>
-								<option value="@CycleSessionMode.FreshSession">Fresh Session</option>
-							</InputSelect>
-							<div class="form-text">
-								@if (JobModel.CycleSessionMode == CycleSessionMode.ContinueSession)
-								{
-									<span>Maintain context between cycles (recommended for iterative work).</span>
-								}
-								else
-								{
-									<span>Start fresh context each cycle (useful for independent tasks).</span>
-								}
-							</div>
-						</div>
+<div class="mb-3">
+<label for="cycleSessionMode" class="form-label">Session Mode</label>
+<InputSelect id="cycleSessionMode" @bind-Value="FormModel.CycleSessionMode" class="form-select">
+<option value="@CycleSessionMode.ContinueSession">Continue Session</option>
+<option value="@CycleSessionMode.FreshSession">Fresh Session</option>
+</InputSelect>
+<div class="form-text">
+@if (FormModel.CycleSessionMode == CycleSessionMode.ContinueSession)
+{
+<span>Maintain context between cycles (recommended for iterative work).</span>
+}
+else
+{
+<span>Start fresh context each cycle (useful for independent tasks).</span>
+}
+</div>
+</div>
 
-						<div class="mb-3">
-							<label for="cycleReviewPrompt" class="form-label">Cycle Review Prompt (Optional)</label>
-							<InputTextArea id="cycleReviewPrompt" @bind-Value="JobModel.CycleReviewPrompt" class="form-control"
-								rows="2" placeholder="Instructions for reviewing progress between cycles..." />
-							<div class="form-text">Additional context provided at the start of each subsequent cycle.
-							</div>
-						</div>
-					}
-				</div>
-			}
+<div class="mb-3">
+<label for="cycleReviewPrompt" class="form-label">Cycle Review Prompt (Optional)</label>
+<InputTextArea id="cycleReviewPrompt" @bind-Value="FormModel.CycleReviewPrompt" class="form-control"
+rows="2" placeholder="Instructions for reviewing progress between cycles..." />
+<div class="form-text">Additional context provided at the start of each subsequent cycle.</div>
+</div>
+}
+</div>
+}
 
-			@if (!string.IsNullOrEmpty(ErrorMessage))
-			{
-				<Alert Type="Alert.AlertType.Danger" Message="@ErrorMessage" Class="mb-0" />
-			}
-		</EditForm>
-	</ChildContent>
-	<FooterContent>
-		<button type="button" class="btn btn-secondary" @onclick="Close" disabled="@IsSaving">Cancel</button>
-		<button type="submit" form="@_formId" class="btn btn-primary"
-			disabled="@(IsSaving || JobModel.ProviderId == Guid.Empty)">
-			@if (IsSaving)
-			{
-				<span class="spinner-border spinner-border-sm me-1" role="status"></span>
-				<span>Creating...</span>
-			}
-			else
-			{
-				<i class="bi bi-plus-lg me-1"></i>
-				<span>Create Job</span>
-			}
-		</button>
-	</FooterContent>
+@if (!string.IsNullOrEmpty(ErrorMessage))
+{
+<Alert Type="Alert.AlertType.Danger" Message="@ErrorMessage" Class="mb-0" />
+}
+</EditForm>
+</ChildContent>
+<FooterContent>
+<button type="button" class="btn btn-secondary" @onclick="Close" disabled="@IsSaving">Cancel</button>
+<button type="submit" form="@_formId" class="btn btn-primary" disabled="@IsSaving">
+@if (IsSaving)
+{
+<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+<span>Creating...</span>
+}
+else
+{
+<i class="bi bi-plus-lg me-1"></i>
+<span>Create Job</span>
+}
+</button>
+</FooterContent>
 </ModalDialog>
 
 @code {
-	[Parameter]
-	public bool IsVisible { get; set; }
+[Parameter]
+public bool IsVisible { get; set; }
 
-	[Parameter]
-	public EventCallback<bool> IsVisibleChanged { get; set; }
+[Parameter]
+public EventCallback<bool> IsVisibleChanged { get; set; }
 
-	[Parameter, EditorRequired]
-	public Job JobModel { get; set; } = new();
+[Parameter, EditorRequired]
+public Job JobModel { get; set; } = new();
 
-	[Parameter]
-	public List<Provider> Providers { get; set; } = new();
+[Parameter]
+public List<Provider> Providers { get; set; } = new();
 
-	[Parameter]
-	public List<ProviderModel> AvailableModels { get; set; } = new();
+[Parameter]
+public List<ProviderModel> AvailableModels { get; set; } = new();
 
-	[Parameter]
-	public List<GitBranchInfo> Branches { get; set; } = new();
+[Parameter]
+public List<GitBranchInfo> Branches { get; set; } = new();
 
-	[Parameter]
-	public string? CurrentBranch { get; set; }
+[Parameter]
+public string? CurrentBranch { get; set; }
 
-	[Parameter]
-	public bool ShowBranchSelector { get; set; }
+[Parameter]
+public bool ShowBranchSelector { get; set; }
 
-	[Parameter]
-	public bool IsLoadingModels { get; set; }
+[Parameter]
+public bool IsLoadingModels { get; set; }
 
-	[Parameter]
-	public bool IsSaving { get; set; }
+[Parameter]
+public bool IsSaving { get; set; }
 
-	[Parameter]
-	public string? ErrorMessage { get; set; }
+[Parameter]
+public string? ErrorMessage { get; set; }
 
-	[Parameter]
-	public string SelectedModelId { get; set; } = string.Empty;
+[Parameter]
+public string SelectedModelId { get; set; } = string.Empty;
 
-	[Parameter]
-	public EventCallback<Guid> OnProviderChanged { get; set; }
+[Parameter]
+public EventCallback<Guid> OnProviderChanged { get; set; }
 
-	[Parameter]
-	public EventCallback OnSubmit { get; set; }
+[Parameter]
+public EventCallback OnSubmit { get; set; }
 
-	[Parameter]
-	public string? ProviderHint { get; set; }
+[Parameter]
+public string? ProviderHint { get; set; }
 
-	private readonly string _formId = $"create-job-form-{Guid.NewGuid():N}";
-	private bool ShowAdvancedOptions { get; set; } = false;
+private readonly string _formId = $"create-job-form-{Guid.NewGuid():N}";
+private bool ShowAdvancedOptions { get; set; }
+private bool _previousIsVisible;
+private CreateJobFormModel FormModel { get; set; } = new();
 
-	private void ToggleAdvancedOptions()
-	{
-		ShowAdvancedOptions = !ShowAdvancedOptions;
-	}
+protected override void OnParametersSet()
+{
+if (IsVisible && !_previousIsVisible)
+{
+FormModel = CreateJobFormModel.FromJob(JobModel);
+ShowAdvancedOptions = FormModel.CycleMode != CycleMode.SingleCycle;
+}
 
-	private async Task HandleProviderChanged(Guid providerId)
-	{
-		JobModel.ProviderId = providerId;
-		await OnProviderChanged.InvokeAsync(providerId);
-	}
+_previousIsVisible = IsVisible;
+}
 
-	private async Task HandleSubmit()
-	{
-		JobModel.ModelUsed = string.IsNullOrEmpty(SelectedModelId) ? null : SelectedModelId;
-		await OnSubmit.InvokeAsync();
-	}
+private void ToggleAdvancedOptions()
+{
+ShowAdvancedOptions = !ShowAdvancedOptions;
+}
 
-	private async Task Close()
-	{
-		await IsVisibleChanged.InvokeAsync(false);
-	}
+private async Task HandleProviderChanged()
+{
+await OnProviderChanged.InvokeAsync(FormModel.ProviderId ?? Guid.Empty);
+}
 
-	private string GetProviderDisplayText(Provider provider)
-	{
-		var index = Providers.FindIndex(p => p.Id == provider.Id);
-		return index >= 0
-			? $"#{index + 1} {provider.Name} ({provider.Type})"
-			: $"{provider.Name} ({provider.Type})";
-	}
+private async Task HandleSubmit()
+{
+FormModel.ApplyTo(JobModel);
+JobModel.ModelUsed = string.IsNullOrEmpty(SelectedModelId) ? null : SelectedModelId;
+await OnSubmit.InvokeAsync();
+}
+
+private async Task Close()
+{
+await IsVisibleChanged.InvokeAsync(false);
+}
+
+private string GetProviderDisplayText(Provider provider)
+{
+var index = Providers.FindIndex(p => p.Id == provider.Id);
+return index >= 0
+? $"#{index + 1} {provider.Name} ({provider.Type})"
+: $"{provider.Name} ({provider.Type})";
+}
 }

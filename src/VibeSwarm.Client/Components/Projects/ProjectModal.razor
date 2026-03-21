@@ -13,45 +13,45 @@
 @inject NotificationService NotificationService
 
 <ModalDialog IsVisible="IsVisible" IsVisibleChanged="HandleModalVisibilityChanged"
- Title="@(IsEdit ? "Edit Project" : "New Project")" Icon="@(IsEdit ? "pencil" : "folder-plus")"
- Size="ModalDialog.ModalSize.Large" DialogClass="vs-modal-dialog-wide-lg" OnClose="HandleClose"
- BodyClass="vs-project-modal-body">
+Title="@(IsEdit ? "Edit Project" : "New Project")" Icon="@(IsEdit ? "pencil" : "folder-plus")"
+Size="ModalDialog.ModalSize.Large" DialogClass="vs-modal-dialog-wide-lg" OnClose="HandleClose"
+BodyClass="vs-project-modal-body">
 <ChildContent>
-<EditForm Model="@Project" OnValidSubmit="HandleValidSubmit" class="overflow-x-hidden mw-100">
+<EditForm Model="@FormModel" OnValidSubmit="HandleValidSubmit" class="overflow-x-hidden mw-100">
 <DataAnnotationsValidator />
 <ValidationSummary class="text-danger mb-3" />
 
-<ProjectBasicsSection Project="@Project"
-  WorkingPathPlaceholder="@_formState.WorkingPathPlaceholder"
-  WorkingPathHelpText="@_formState.GetWorkingPathHelpText()"
-  OnBrowseWorkingPath="OpenDirectoryBrowser" />
+<ProjectBasicsSection Project="@FormModel"
+WorkingPathPlaceholder="@_formState.WorkingPathPlaceholder"
+WorkingPathHelpText="@_formState.GetWorkingPathHelpText(FormModel)"
+OnBrowseWorkingPath="OpenDirectoryBrowser" />
 
-<ProjectSourceSection Project="@Project" FormState="@_formState" IsEdit="@IsEdit"
-  OnSourceModeSelected="SelectSourceMode"
-  OnGitHubRepositoryChanged="OnGitHubRepositoryChanged" />
+<ProjectSourceSection FormModel="@FormModel" FormState="@_formState" IsEdit="@IsEdit"
+OnSourceModeSelected="SelectSourceMode"
+OnGitHubRepositoryChanged="OnGitHubRepositoryChanged" />
 
-<ProjectAutomationSection Project="@Project" IsEdit="@IsEdit" />
+<ProjectAutomationSection Project="@FormModel" IsEdit="@IsEdit" />
 
-<ProjectIdeaGenerationSection Project="@Project"
+<ProjectIdeaGenerationSection Project="@FormModel"
 AvailableInferenceProviders="@_availableInferenceProviders"
 InferenceModels="@_ideaInferenceModels"
 OnProviderChanged="HandleIdeaInferenceProviderChanged" />
 
-<ProjectPlanningSection Project="@Project" AvailableProviders="@GetPlanningProviders().ToList()"
+<ProjectPlanningSection Project="@FormModel" AvailableProviders="@GetPlanningProviders().ToList()"
 PlanningModels="@_planningModels"
 OnPlanningEnabledChanged="HandlePlanningEnabledChanged"
 OnPlanningProviderChanged="HandlePlanningProviderChanged" />
 
-<ProjectProviderPrioritySection Project="@Project" AvailableProviders="@_availableProviders"
-   ResolveProvider="ResolveProvider" IsProviderSelected="IsProviderSelected"
-   ResolveProviderModels="GetProviderModels"
-   OnMoveUp="MoveProviderSelectionUp" OnMoveDown="MoveProviderSelectionDown"
-   OnRemove="RemoveProviderSelection" OnAdd="AddProviderSelection"
-   OnPreferredModelChanged="HandlePreferredModelChanged" />
+<ProjectProviderPrioritySection Project="@FormModel" AvailableProviders="@_availableProviders"
+ResolveProvider="ResolveProvider" IsProviderSelected="IsProviderSelected"
+ResolveProviderModels="GetProviderModels"
+OnMoveUp="MoveProviderSelectionUp" OnMoveDown="MoveProviderSelectionDown"
+OnRemove="RemoveProviderSelection" OnAdd="AddProviderSelection"
+OnPreferredModelChanged="HandlePreferredModelChanged" />
 
-<ProjectInstructionsSection Project="@Project" />
+<ProjectInstructionsSection Project="@FormModel" />
 
-<ProjectBuildVerificationSection Project="@Project" />
+<ProjectBuildVerificationSection Project="@FormModel" />
 
 @if (!string.IsNullOrEmpty(_cloneProgressMessage))
 {
@@ -78,7 +78,7 @@ OnPlanningProviderChanged="HandlePlanningProviderChanged" />
 }
 else
 {
-@_formState.GetSubmitButtonText(IsSaving, IsEdit)
+@_formState.GetSubmitButtonText(FormModel, IsSaving, IsEdit)
 }
 </button>
 </div>
@@ -89,7 +89,7 @@ else
 @if (_showDirectoryBrowser)
 {
 <DirectoryBrowser @ref="_directoryBrowser" InitialPath="@_defaultProjectsDirectory"
-  OnDirectorySelected="OnDirectorySelected" OnClosed="CloseDirectoryBrowser" />
+OnDirectorySelected="OnDirectorySelected" OnClosed="CloseDirectoryBrowser" />
 }
 
 @code {
@@ -111,7 +111,6 @@ public EventCallback OnCancelled { get; set; }
 [Parameter]
 public EventCallback OnClosed { get; set; }
 
-private Project Project { get; set; } = new();
 private bool IsEdit => EditProject != null;
 private bool IsSaving { get; set; }
 private string? ErrorMessage { get; set; }
@@ -126,6 +125,7 @@ private List<InferenceProvider> _availableInferenceProviders = [];
 private List<InferenceModel> _ideaInferenceModels = [];
 private readonly Dictionary<Guid, List<ProviderModel>> _providerModelsByProviderId = [];
 private readonly ProjectModalState _formState = new();
+private ProjectModalFormModel FormModel { get; set; } = new();
 
 protected override async Task OnInitializedAsync()
 {
@@ -144,8 +144,8 @@ ResetState();
 if (EditProject != null)
 {
 var editableProject = await ProjectService.GetByIdAsync(EditProject.Id) ?? EditProject;
-Project = CloneProjectForEditing(editableProject);
-_formState.LoadFromProject(Project);
+FormModel = ProjectModalFormModel.FromProject(CloneProjectForEditing(editableProject));
+_formState.LoadFromProject(FormModel);
 EnsurePlanningProviderSelection();
 await LoadPlanningModelsAsync();
 await LoadProviderSelectionModelsAsync();
@@ -153,8 +153,8 @@ await LoadIdeaInferenceModelsAsync();
 }
 else
 {
-Project = new Project();
-_formState.SelectSourceMode(Project, ProjectCreationMode.ExistingDirectory);
+FormModel = new ProjectModalFormModel();
+_formState.SelectSourceMode(FormModel, ProjectCreationMode.ExistingDirectory);
 await SeedDefaultProviderSelectionAsync();
 EnsurePlanningProviderSelection();
 await LoadProviderSelectionModelsAsync();
@@ -173,28 +173,22 @@ _formState.SetDefaultProjectsDirectory(_defaultProjectsDirectory);
 }
 catch
 {
-// Ignore errors loading default directory
 }
 }
 
-private void OnGitHubRepositoryChanged(ChangeEventArgs e)
+private void OnGitHubRepositoryChanged(string? repositoryInput)
 {
-_formState.UpdateGitHubRepositoryInput(Project, e.Value?.ToString());
+_formState.UpdateGitHubRepositoryInput(FormModel, repositoryInput);
 }
 
 private void SelectSourceMode(ProjectCreationMode mode)
 {
 ErrorMessage = null;
-_formState.SelectSourceMode(Project, mode);
+_formState.SelectSourceMode(FormModel, mode);
 }
 
 private async Task HandleValidSubmit()
 {
-if (!_formState.Validate(Project))
-{
-return;
-}
-
 IsSaving = true;
 ErrorMessage = null;
 _cloneProgressMessage = null;
@@ -205,17 +199,17 @@ Guid? newProjectId = null;
 
 if (IsEdit)
 {
-await ProjectService.UpdateAsync(Project);
+await ProjectService.UpdateAsync(FormModel.ToProject());
 NotificationService.ShowSuccess("Project updated successfully.");
 }
 else
 {
-_cloneProgressMessage = _formState.GetProgressMessage();
+_cloneProgressMessage = _formState.GetProgressMessage(FormModel);
 StateHasChanged();
 
-var created = await ProjectService.CreateProjectAsync(_formState.BuildProjectCreationRequest(Project));
+var created = await ProjectService.CreateProjectAsync(_formState.BuildProjectCreationRequest(FormModel));
 newProjectId = created.Id;
-NotificationService.ShowSuccess(_formState.GetSuccessMessage());
+NotificationService.ShowSuccess(_formState.GetSuccessMessage(FormModel));
 }
 
 await OnSaved.InvokeAsync(newProjectId);
@@ -223,10 +217,7 @@ await CloseModal();
 }
 catch (Exception ex)
 {
-if (!_formState.TryMapSubmissionError(ex.Message))
-{
 ErrorMessage = $"Error saving project: {ex.Message}";
-}
 }
 finally
 {
@@ -265,13 +256,12 @@ ResetState();
 
 private void ResetState()
 {
-Project = new Project();
+FormModel = new ProjectModalFormModel();
 ErrorMessage = null;
 IsSaving = false;
 _cloneProgressMessage = null;
 _planningModels = [];
 _providerModelsByProviderId.Clear();
-_formState.Reset();
 }
 
 private async Task OpenDirectoryBrowser()
@@ -283,8 +273,8 @@ await Task.Delay(50);
 
 if (_directoryBrowser != null)
 {
-var initialPath = !string.IsNullOrEmpty(Project.WorkingPath)
-? Project.WorkingPath
+var initialPath = !string.IsNullOrEmpty(FormModel.WorkingPath)
+? FormModel.WorkingPath
 : _defaultProjectsDirectory;
 await _directoryBrowser.ShowAsync(initialPath);
 }
@@ -292,7 +282,7 @@ await _directoryBrowser.ShowAsync(initialPath);
 
 private void OnDirectorySelected(string path)
 {
-Project.WorkingPath = path;
+FormModel.WorkingPath = path;
 _showDirectoryBrowser = false;
 StateHasChanged();
 }
@@ -319,7 +309,7 @@ return _availableProviders.FirstOrDefault(provider => provider.Id == providerId)
 
 private bool IsProviderSelected(Guid providerId)
 {
-return Project.ProviderSelections.Any(selection => selection.ProviderId == providerId);
+return FormModel.ProviderSelections.Any(selection => selection.ProviderId == providerId);
 }
 
 private async Task AddProviderSelection(Provider provider)
@@ -329,11 +319,11 @@ if (IsProviderSelected(provider.Id))
 return;
 }
 
-Project.ProviderSelections.Add(new ProjectProvider
+FormModel.ProviderSelections.Add(new ProjectProvider
 {
 ProviderId = provider.Id,
 Provider = provider,
-Priority = Project.ProviderSelections.Count,
+Priority = FormModel.ProviderSelections.Count,
 IsEnabled = true,
 CreatedAt = DateTime.UtcNow,
 UpdatedAt = DateTime.UtcNow
@@ -346,13 +336,13 @@ await LoadProviderModelsAsync(provider.Id);
 
 private void RemoveProviderSelection(Guid providerId)
 {
-var selection = Project.ProviderSelections.FirstOrDefault(projectProvider => projectProvider.ProviderId == providerId);
+var selection = FormModel.ProviderSelections.FirstOrDefault(projectProvider => projectProvider.ProviderId == providerId);
 if (selection == null)
 {
 return;
 }
 
-Project.ProviderSelections.Remove(selection);
+FormModel.ProviderSelections.Remove(selection);
 _providerModelsByProviderId.Remove(providerId);
 NormalizeProviderSelectionOrder();
 EnsurePlanningProviderSelection();
@@ -360,7 +350,7 @@ EnsurePlanningProviderSelection();
 
 private void MoveProviderSelectionUp(Guid providerId)
 {
-var ordered = Project.ProviderSelections.OrderBy(projectProvider => projectProvider.Priority).ToList();
+var ordered = FormModel.ProviderSelections.OrderBy(projectProvider => projectProvider.Priority).ToList();
 var index = ordered.FindIndex(projectProvider => projectProvider.ProviderId == providerId);
 if (index <= 0)
 {
@@ -368,14 +358,14 @@ return;
 }
 
 (ordered[index - 1], ordered[index]) = (ordered[index], ordered[index - 1]);
-Project.ProviderSelections = ordered;
+FormModel.ProviderSelections = ordered;
 NormalizeProviderSelectionOrder();
 EnsurePlanningProviderSelection();
 }
 
 private void MoveProviderSelectionDown(Guid providerId)
 {
-var ordered = Project.ProviderSelections.OrderBy(projectProvider => projectProvider.Priority).ToList();
+var ordered = FormModel.ProviderSelections.OrderBy(projectProvider => projectProvider.Priority).ToList();
 var index = ordered.FindIndex(projectProvider => projectProvider.ProviderId == providerId);
 if (index < 0 || index >= ordered.Count - 1)
 {
@@ -383,14 +373,14 @@ return;
 }
 
 (ordered[index + 1], ordered[index]) = (ordered[index], ordered[index + 1]);
-Project.ProviderSelections = ordered;
+FormModel.ProviderSelections = ordered;
 NormalizeProviderSelectionOrder();
 EnsurePlanningProviderSelection();
 }
 
 private async Task HandlePreferredModelChanged(ProjectProviderModelSelectionChange change)
 {
-var selection = Project.ProviderSelections.FirstOrDefault(projectProvider => projectProvider.ProviderId == change.ProviderId);
+var selection = FormModel.ProviderSelections.FirstOrDefault(projectProvider => projectProvider.ProviderId == change.ProviderId);
 if (selection == null)
 {
 return;
@@ -409,12 +399,12 @@ selection.UpdatedAt = DateTime.UtcNow;
 
 private void NormalizeProviderSelectionOrder()
 {
-Project.ProviderSelections = Project.ProviderSelections
+FormModel.ProviderSelections = FormModel.ProviderSelections
 .OrderBy(projectProvider => projectProvider.Priority)
 .Select((selection, index) =>
 {
 selection.Priority = index;
-selection.ProjectId = Project.Id;
+selection.ProjectId = FormModel.Id;
 selection.Provider ??= ResolveProvider(selection.ProviderId);
 selection.UpdatedAt = DateTime.UtcNow;
 return selection;
@@ -424,7 +414,7 @@ return selection;
 
 private async Task SeedDefaultProviderSelectionAsync()
 {
-if (Project.ProviderSelections.Any())
+if (FormModel.ProviderSelections.Any())
 {
 return;
 }
@@ -457,14 +447,14 @@ await LoadPlanningModelsAsync();
 
 private async Task HandlePlanningProviderChanged()
 {
-Project.PlanningModelId = null;
+FormModel.PlanningModelId = null;
 EnsurePlanningProviderSelection();
 await LoadPlanningModelsAsync();
 }
 
 private void EnsurePlanningProviderSelection()
 {
-if (!Project.PlanningEnabled)
+if (!FormModel.PlanningEnabled)
 {
 return;
 }
@@ -472,16 +462,16 @@ return;
 var planningProviders = GetPlanningProviders().ToList();
 if (planningProviders.Count == 0)
 {
-Project.PlanningProviderId = null;
-Project.PlanningModelId = null;
+FormModel.PlanningProviderId = null;
+FormModel.PlanningModelId = null;
 _planningModels = [];
 return;
 }
 
-if (!Project.PlanningProviderId.HasValue || !planningProviders.Any(provider => provider.Id == Project.PlanningProviderId.Value))
+if (!FormModel.PlanningProviderId.HasValue || !planningProviders.Any(provider => provider.Id == FormModel.PlanningProviderId.Value))
 {
-Project.PlanningProviderId = planningProviders[0].Id;
-Project.PlanningModelId = null;
+FormModel.PlanningProviderId = planningProviders[0].Id;
+FormModel.PlanningModelId = null;
 _planningModels = [];
 }
 }
@@ -489,14 +479,14 @@ _planningModels = [];
 private async Task LoadPlanningModelsAsync()
 {
 _planningModels = [];
-if (!Project.PlanningEnabled || !Project.PlanningProviderId.HasValue)
+if (!FormModel.PlanningEnabled || !FormModel.PlanningProviderId.HasValue)
 {
 return;
 }
 
 try
 {
-_planningModels = (await ProviderService.GetModelsAsync(Project.PlanningProviderId.Value))
+_planningModels = (await ProviderService.GetModelsAsync(FormModel.PlanningProviderId.Value))
 .Where(model => model.IsAvailable)
 .OrderByDescending(model => model.IsDefault)
 .ThenBy(model => model.DisplayName ?? model.ModelId)
@@ -507,10 +497,10 @@ catch
 _planningModels = [];
 }
 
-if (!string.IsNullOrWhiteSpace(Project.PlanningModelId) &&
-!_planningModels.Any(model => string.Equals(model.ModelId, Project.PlanningModelId, StringComparison.Ordinal)))
+if (!string.IsNullOrWhiteSpace(FormModel.PlanningModelId) &&
+!_planningModels.Any(model => string.Equals(model.ModelId, FormModel.PlanningModelId, StringComparison.Ordinal)))
 {
-Project.PlanningModelId = null;
+FormModel.PlanningModelId = null;
 }
 }
 
@@ -529,18 +519,21 @@ _availableInferenceProviders = [];
 
 private async Task HandleIdeaInferenceProviderChanged()
 {
-Project.IdeaInferenceModelId = null;
+FormModel.IdeaInferenceModelId = null;
 await LoadIdeaInferenceModelsAsync();
 }
 
 private async Task LoadIdeaInferenceModelsAsync()
 {
 _ideaInferenceModels = [];
-if (!Project.IdeaInferenceProviderId.HasValue) return;
+if (!FormModel.IdeaInferenceProviderId.HasValue)
+{
+return;
+}
 
 try
 {
-_ideaInferenceModels = (await InferenceProviderService.GetModelsAsync(Project.IdeaInferenceProviderId.Value))
+_ideaInferenceModels = (await InferenceProviderService.GetModelsAsync(FormModel.IdeaInferenceProviderId.Value))
 .Where(model => model.IsAvailable)
 .OrderByDescending(model => model.IsDefault)
 .ThenBy(model => model.DisplayName ?? model.ModelId)
@@ -551,10 +544,10 @@ catch
 _ideaInferenceModels = [];
 }
 
-if (!string.IsNullOrWhiteSpace(Project.IdeaInferenceModelId) &&
-!_ideaInferenceModels.Any(model => string.Equals(model.ModelId, Project.IdeaInferenceModelId, StringComparison.Ordinal)))
+if (!string.IsNullOrWhiteSpace(FormModel.IdeaInferenceModelId) &&
+!_ideaInferenceModels.Any(model => string.Equals(model.ModelId, FormModel.IdeaInferenceModelId, StringComparison.Ordinal)))
 {
-Project.IdeaInferenceModelId = null;
+FormModel.IdeaInferenceModelId = null;
 }
 }
 
@@ -567,7 +560,7 @@ return _providerModelsByProviderId.TryGetValue(providerId, out var models)
 
 private async Task LoadProviderSelectionModelsAsync()
 {
-foreach (var selection in Project.ProviderSelections.OrderBy(projectProvider => projectProvider.Priority))
+foreach (var selection in FormModel.ProviderSelections.OrderBy(projectProvider => projectProvider.Priority))
 {
 await LoadProviderModelsAsync(selection.ProviderId);
 }
@@ -589,7 +582,7 @@ catch
 _providerModelsByProviderId[providerId] = [];
 }
 
-var selection = Project.ProviderSelections.FirstOrDefault(projectProvider => projectProvider.ProviderId == providerId);
+var selection = FormModel.ProviderSelections.FirstOrDefault(projectProvider => projectProvider.ProviderId == providerId);
 if (selection != null &&
 !string.IsNullOrWhiteSpace(selection.PreferredModelId) &&
 !_providerModelsByProviderId[providerId].Any(model => string.Equals(model.ModelId, selection.PreferredModelId, StringComparison.Ordinal)))

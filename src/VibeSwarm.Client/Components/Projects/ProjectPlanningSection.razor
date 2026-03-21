@@ -1,3 +1,4 @@
+@using VibeSwarm.Client.Models
 @if (Project != null)
 {
 	<div class="mb-3">
@@ -73,7 +74,7 @@
 
 @code {
 	[Parameter, EditorRequired]
-	public Project Project { get; set; } = default!;
+public ProjectModalFormModel Project { get; set; } = default!;
 
 	[Parameter]
 	public IReadOnlyList<Provider> AvailableProviders { get; set; } = [];

@@ -1,3 +1,4 @@
+@using VibeSwarm.Client.Models
 @using VibeSwarm.Shared.Models
 @using VibeSwarm.Shared.Validation
 
@@ -10,24 +11,24 @@
 		</label>
 		<div class="border rounded p-3 bg-body-tertiary">
 			<div class="d-grid gap-2">
-				<button type="button" class="btn @(FormState.GetSourceModeButtonClass(ProjectCreationMode.ExistingDirectory)) text-start"
+				<button type="button" class="btn @(FormState.GetSourceModeButtonClass(FormModel, ProjectCreationMode.ExistingDirectory)) text-start"
 						@onclick="() => SelectSourceMode(ProjectCreationMode.ExistingDirectory)">
 					<div class="fw-semibold"><i class="bi bi-folder2-open me-2"></i>Use Existing Local Directory</div>
 					<div class="small text-body-secondary mt-1">Point the project at a local working path without cloning or creating a GitHub repo.</div>
 				</button>
-				<button type="button" class="btn @(FormState.GetSourceModeButtonClass(ProjectCreationMode.CloneGitHubRepository)) text-start"
+				<button type="button" class="btn @(FormState.GetSourceModeButtonClass(FormModel, ProjectCreationMode.CloneGitHubRepository)) text-start"
 						@onclick="() => SelectSourceMode(ProjectCreationMode.CloneGitHubRepository)">
 					<div class="fw-semibold"><i class="bi bi-github me-2"></i>Clone Existing GitHub Repository</div>
 					<div class="small text-body-secondary mt-1">Clone an existing GitHub repository into a new local project workspace.</div>
 				</button>
-				<button type="button" class="btn @(FormState.GetSourceModeButtonClass(ProjectCreationMode.CreateGitHubRepository)) text-start"
+				<button type="button" class="btn @(FormState.GetSourceModeButtonClass(FormModel, ProjectCreationMode.CreateGitHubRepository)) text-start"
 						@onclick="() => SelectSourceMode(ProjectCreationMode.CreateGitHubRepository)">
 					<div class="fw-semibold"><i class="bi bi-cloud-plus me-2"></i>Create New GitHub Repository</div>
 					<div class="small text-body-secondary mt-1">Create a repository on GitHub and set up this project around it.</div>
 				</button>
 			</div>
 
-			@if (FormState.CreationMode == ProjectCreationMode.CloneGitHubRepository)
+			@if (FormModel.CreationMode == ProjectCreationMode.CloneGitHubRepository)
 			{
 				<div class="mt-3 pt-3 border-top">
 					<label for="modal-githubRepo" class="form-label">
@@ -36,21 +37,16 @@
 					<div class="input-group">
 						<span class="input-group-text">github.com/</span>
 						<input id="modal-githubRepo" type="text" class="form-control"
-							   value="@FormState.GitHubRepositoryInput" @oninput="OnGitHubRepositoryChanged"
+							   value="@FormModel.GitHubRepositoryInput" @oninput="HandleGitHubRepositoryChanged"
 							   placeholder="owner/repo" maxlength="@ValidationLimits.ProjectGitHubRepositoryMaxLength" />
 					</div>
-					@if (!string.IsNullOrWhiteSpace(FormState.GitHubRepositoryError))
-					{
-						<div class="text-danger small mt-1">
-							<i class="bi bi-exclamation-circle me-1"></i>@FormState.GitHubRepositoryError
-						</div>
-					}
+					<ValidationMessage For="@(() => FormModel.GitHubRepositoryInput)" class="text-danger small mt-1" />
 					<div class="form-text">
 						Enter a GitHub repository to clone (for example, <code>microsoft/vscode</code>).
 					</div>
 				</div>
 			}
-			else if (FormState.CreationMode == ProjectCreationMode.CreateGitHubRepository)
+			else if (FormModel.CreationMode == ProjectCreationMode.CreateGitHubRepository)
 			{
 				<div class="mt-3 pt-3 border-top">
 					<div class="mb-3">
@@ -58,14 +54,9 @@
 							<i class="bi bi-github me-1"></i>Repository Name
 						</label>
 						<input id="modal-newGithubRepo" type="text" class="form-control"
-							   value="@FormState.GitHubRepositoryInput" @oninput="OnGitHubRepositoryChanged"
+							   value="@FormModel.GitHubRepositoryInput" @oninput="HandleGitHubRepositoryChanged"
 							   placeholder="my-project or owner/my-project" maxlength="@ValidationLimits.ProjectGitHubRepositoryMaxLength" />
-						@if (!string.IsNullOrWhiteSpace(FormState.GitHubRepositoryError))
-						{
-							<div class="text-danger small mt-1">
-								<i class="bi bi-exclamation-circle me-1"></i>@FormState.GitHubRepositoryError
-							</div>
-						}
+						<ValidationMessage For="@(() => FormModel.GitHubRepositoryInput)" class="text-danger small mt-1" />
 						<div class="form-text">
 							Enter either <code>repo-name</code> to create under your authenticated account, or <code>owner/repo-name</code> for an organization or explicit owner.
 						</div>
@@ -75,17 +66,11 @@
 						<label for="modal-newGithubRepoDescription" class="form-label">
 							Repository Description <span class="text-body-secondary fw-normal">(optional)</span>
 						</label>
-						<input id="modal-newGithubRepoDescription" type="text" class="form-control"
-							   @bind="FormState.NewGitHubRepositoryDescription" @bind:event="oninput"
+						<InputText id="modal-newGithubRepoDescription" @bind-Value="FormModel.NewGitHubRepositoryDescription" @bind-Value:event="oninput" class="form-control"
 							   placeholder="A brief description of your project"
 							   maxlength="@ValidationLimits.ProjectGitHubDescriptionMaxLength" />
-						@if (!string.IsNullOrWhiteSpace(FormState.GitHubRepositoryDescriptionError))
-						{
-							<div class="text-danger small mt-1">
-								<i class="bi bi-exclamation-circle me-1"></i>@FormState.GitHubRepositoryDescriptionError
-							</div>
-						}
-						<div class="form-text">@GetCharacterCount(FormState.NewGitHubRepositoryDescription, ValidationLimits.ProjectGitHubDescriptionMaxLength)</div>
+						<ValidationMessage For="@(() => FormModel.NewGitHubRepositoryDescription)" class="text-danger small mt-1" />
+						<div class="form-text">@GetCharacterCount(FormModel.NewGitHubRepositoryDescription, ValidationLimits.ProjectGitHubDescriptionMaxLength)</div>
 					</div>
 
 					<div class="mb-3">
@@ -93,14 +78,14 @@
 						<div class="d-flex flex-column flex-sm-row gap-2 gap-sm-3">
 							<div class="form-check">
 								<input class="form-check-input" type="radio" name="projectVisibility" id="projectVisibilityPublic"
-									   checked="@(!FormState.NewGitHubRepositoryPrivate)" @onchange="() => FormState.NewGitHubRepositoryPrivate = false">
+									   checked="@(!FormModel.NewGitHubRepositoryPrivate)" @onchange="() => FormModel.NewGitHubRepositoryPrivate = false">
 								<label class="form-check-label" for="projectVisibilityPublic">
 									<i class="bi bi-globe me-1"></i>Public
 								</label>
 							</div>
 							<div class="form-check">
 								<input class="form-check-input" type="radio" name="projectVisibility" id="projectVisibilityPrivate"
-									   checked="@FormState.NewGitHubRepositoryPrivate" @onchange="() => FormState.NewGitHubRepositoryPrivate = true">
+									   checked="@FormModel.NewGitHubRepositoryPrivate" @onchange="() => FormModel.NewGitHubRepositoryPrivate = true">
 								<label class="form-check-label" for="projectVisibilityPrivate">
 									<i class="bi bi-lock me-1"></i>Private
 								</label>
@@ -112,7 +97,7 @@
 						<label for="modal-newGithubRepoGitignore" class="form-label">
 							.gitignore Template <span class="text-body-secondary fw-normal">(optional)</span>
 						</label>
-						<select id="modal-newGithubRepoGitignore" class="form-select" @bind="FormState.NewGitHubGitignoreTemplate">
+						<select id="modal-newGithubRepoGitignore" class="form-select" @bind="FormModel.NewGitHubGitignoreTemplate">
 							<option value="">None</option>
 							<option value="Node">Node</option>
 							<option value="Python">Python</option>
@@ -129,7 +114,7 @@
 						<label for="modal-newGithubRepoLicense" class="form-label">
 							License <span class="text-body-secondary fw-normal">(optional)</span>
 						</label>
-						<select id="modal-newGithubRepoLicense" class="form-select" @bind="FormState.NewGitHubLicenseTemplate">
+						<select id="modal-newGithubRepoLicense" class="form-select" @bind="FormModel.NewGitHubLicenseTemplate">
 							<option value="">None</option>
 							<option value="mit">MIT</option>
 							<option value="apache-2.0">Apache 2.0</option>
@@ -141,7 +126,7 @@
 					</div>
 
 					<div class="form-check">
-						<input class="form-check-input" type="checkbox" id="modal-newGithubRepoReadme" @bind="FormState.NewGitHubInitializeReadme">
+						<input class="form-check-input" type="checkbox" id="modal-newGithubRepoReadme" @bind="FormModel.NewGitHubInitializeReadme">
 						<label class="form-check-label" for="modal-newGithubRepoReadme">
 							Initialize with README
 						</label>
@@ -158,7 +143,7 @@
 
 @code {
 	[Parameter, EditorRequired]
-	public Project Project { get; set; } = default!;
+	public ProjectModalFormModel FormModel { get; set; } = default!;
 
 	[Parameter, EditorRequired]
 	public ProjectModalState FormState { get; set; } = default!;
@@ -170,9 +155,16 @@
 	public EventCallback<ProjectCreationMode> OnSourceModeSelected { get; set; }
 
 	[Parameter]
-	public EventCallback<ChangeEventArgs> OnGitHubRepositoryChanged { get; set; }
+	public EventCallback<string?> OnGitHubRepositoryChanged { get; set; }
 
 	private Task SelectSourceMode(ProjectCreationMode mode) => OnSourceModeSelected.InvokeAsync(mode);
+
+	private async Task HandleGitHubRepositoryChanged(ChangeEventArgs e)
+	{
+		var repositoryInput = e.Value?.ToString();
+		FormModel.GitHubRepositoryInput = repositoryInput ?? string.Empty;
+		await OnGitHubRepositoryChanged.InvokeAsync(repositoryInput);
+	}
 
 	private static string GetCharacterCount(string? value, int maxLength)
 	{
