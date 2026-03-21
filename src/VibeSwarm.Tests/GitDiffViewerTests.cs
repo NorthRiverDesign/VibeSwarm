@@ -90,6 +90,39 @@ public sealed class GitDiffViewerTests
 		Assert.True(rechecked);
 	}
 
+	[Fact]
+	public void GitDiffViewer_Bunit_HidesCommandNoise_FromRenderedDiff()
+	{
+		using var context = new BunitContext();
+
+		var cut = context.Render<GitDiffViewer>(parameters => parameters
+			.Add(viewer => viewer.DiffFiles, new List<DiffFile>
+			{
+				new()
+				{
+					FileName = "src/Noisy.cs",
+					Additions = 1,
+					Deletions = 1,
+					DiffContent = """
+						diff --git a/src/Noisy.cs b/src/Noisy.cs
+						index 1111111..2222222 100644
+						--- a/src/Noisy.cs
+						+++ b/src/Noisy.cs
+						@@ -1 +1 @@
+						-old value
+						+new value
+						$ git status --short
+						 M src/Noisy.cs
+						"""
+				}
+			}));
+
+		Assert.Contains("old value", cut.Markup);
+		Assert.Contains("new value", cut.Markup);
+		Assert.DoesNotContain("$ git status --short", cut.Markup, StringComparison.Ordinal);
+		Assert.DoesNotContain("M src/Noisy.cs", cut.Markup, StringComparison.Ordinal);
+	}
+
 	private static List<DiffFile> CreateDiffFiles()
 	{
 		return new List<DiffFile>

@@ -3026,38 +3026,7 @@ TimeSpan.FromSeconds(10) })
         if (string.IsNullOrWhiteSpace(diffContent))
             return "<span class=\"text-muted\">No changes</span>";
 
-        var lines = diffContent.Split('\n');
-        var sb = new System.Text.StringBuilder();
-        sb.Append("<div class=\"diff-content font-monospace small\">");
-
-        foreach (var line in lines)
-        {
-            var escapedLine = System.Net.WebUtility.HtmlEncode(line);
-
-            if (line.StartsWith("@@"))
-            {
-                sb.Append($"<div class=\"diff-hunk text-info bg-dark bg-opacity-50 px-2\">{escapedLine}</div>");
-            }
-            else if (line.StartsWith("+") && !line.StartsWith("+++"))
-            {
-                sb.Append($"<div class=\"diff-add text-success bg-success bg-opacity-10 px-2\">{escapedLine}</div>");
-            }
-            else if (line.StartsWith("-") && !line.StartsWith("---"))
-            {
-                sb.Append($"<div class=\"diff-del text-danger bg-danger bg-opacity-10 px-2\">{escapedLine}</div>");
-            }
-            else if (line.StartsWith("index ") || line.StartsWith("--- ") || line.StartsWith("+++ "))
-            {
-                sb.Append($"<div class=\"diff-meta text-secondary px-2\">{escapedLine}</div>");
-            }
-            else
-            {
-                sb.Append($"<div class=\"diff-context px-2\">{escapedLine}</div>");
-            }
-        }
-
-        sb.Append("</div>");
-        return sb.ToString();
+        return GitDiffParser.FormatDiffHtml(diffContent);
     }
 
     public async ValueTask DisposeAsync()

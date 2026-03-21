@@ -65,4 +65,59 @@ deleted file mode 100644
 		Assert.Equal(0, file.Additions);
 		Assert.Equal(2, file.Deletions);
 	}
+
+	[Fact]
+	public void ParseDiff_IgnoresCommandNoise_AndKeepsOnlyDiffLines()
+	{
+		const string diff = """
+git diff HEAD --stat --patch --find-renames --find-copies
+ src/Noisy.cs | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+diff --git a/src/Noisy.cs b/src/Noisy.cs
+index 1111111..2222222 100644
+--- a/src/Noisy.cs
++++ b/src/Noisy.cs
+@@ -1,2 +1,2 @@
+-old value
++new value
+$ git status --short
+ M src/Noisy.cs
+""";
+
+		var files = GitDiffParser.ParseDiff(diff);
+
+		var file = Assert.Single(files);
+		Assert.Equal("src/Noisy.cs", file.FileName);
+		Assert.Equal(1, file.Additions);
+		Assert.Equal(1, file.Deletions);
+		Assert.DoesNotContain("git diff HEAD", file.DiffContent, StringComparison.Ordinal);
+		Assert.DoesNotContain("$ git status --short", file.DiffContent, StringComparison.Ordinal);
+		Assert.DoesNotContain("1 file changed", file.DiffContent, StringComparison.Ordinal);
+		Assert.Contains("@@ -1,2 +1,2 @@", file.DiffContent);
+		Assert.Contains("+new value", file.DiffContent);
+	}
+
+	[Fact]
+	public void FormatDiffHtml_IgnoresCommandNoise_AndOnlyRendersRelevantChanges()
+	{
+		const string diff = """
+git diff HEAD --stat --patch
+diff --git a/src/Noisy.cs b/src/Noisy.cs
+index 1111111..2222222 100644
+--- a/src/Noisy.cs
++++ b/src/Noisy.cs
+@@ -1 +1 @@
+-old value
++new value
+Command completed successfully.
+""";
+
+		var html = GitDiffParser.FormatDiffHtml(diff);
+
+		Assert.DoesNotContain("git diff HEAD", html, StringComparison.Ordinal);
+		Assert.DoesNotContain("Command completed successfully.", html, StringComparison.Ordinal);
+		Assert.Contains("old value", html);
+		Assert.Contains("new value", html);
+		Assert.Contains("diff-hunk", html);
+	}
 }

@@ -23,6 +23,7 @@ public static class GitDiffParser
 		var lines = diff.ReplaceLineEndings("\n").Split('\n');
 		DiffFile? currentFile = null;
 		var currentContent = new StringBuilder();
+		var isInHunk = false;
 
 		foreach (var line in lines)
 		{
@@ -31,7 +32,7 @@ public static class GitDiffParser
 				// Save previous file
 				if (currentFile != null)
 				{
-					currentFile.DiffContent = currentContent.ToString();
+					currentFile.DiffContent = NormalizeDiffContent(currentContent.ToString());
 					files.Add(currentFile);
 				}
 
@@ -46,12 +47,17 @@ public static class GitDiffParser
 				};
 				currentContent.Clear();
 				currentContent.AppendLine(line);
+				isInHunk = false;
 			}
 			else if (currentFile != null)
 			{
 				currentContent.AppendLine(line);
 
-				if (line.StartsWith("new file"))
+				if (line.StartsWith("@@"))
+				{
+					isInHunk = true;
+				}
+				else if (line.StartsWith("new file"))
 				{
 					currentFile.IsNew = true;
 				}
@@ -59,13 +65,17 @@ public static class GitDiffParser
 				{
 					currentFile.IsDeleted = true;
 				}
-				else if (line.StartsWith("+") && !line.StartsWith("+++"))
+				else if (isInHunk && IsAdditionLine(line))
 				{
 					currentFile.Additions++;
 				}
-				else if (line.StartsWith("-") && !line.StartsWith("---"))
+				else if (isInHunk && IsDeletionLine(line))
 				{
 					currentFile.Deletions++;
+				}
+				else if (isInHunk && !IsHunkBodyLine(line))
+				{
+					isInHunk = false;
 				}
 			}
 		}
@@ -73,7 +83,7 @@ public static class GitDiffParser
 		// Save the last file
 		if (currentFile != null)
 		{
-			currentFile.DiffContent = currentContent.ToString();
+			currentFile.DiffContent = NormalizeDiffContent(currentContent.ToString());
 			files.Add(currentFile);
 		}
 
@@ -88,10 +98,11 @@ public static class GitDiffParser
 	/// <returns>HTML formatted diff content</returns>
 	public static string FormatDiffHtml(string diff)
 	{
-		if (string.IsNullOrEmpty(diff))
-			return string.Empty;
+		var normalizedDiff = NormalizeDiffContent(diff);
+		if (string.IsNullOrWhiteSpace(normalizedDiff))
+			return "<span class=\"text-muted\">No changes</span>";
 
-		var lines = diff.ReplaceLineEndings("\n").Split('\n');
+		var lines = normalizedDiff.Split('\n');
 		var result = new StringBuilder();
 		result.Append("<div class=\"diff-content font-monospace small\">");
 
@@ -131,6 +142,10 @@ public static class GitDiffParser
 				// Show hunk header spanning both line number columns
 				result.Append($"<div class=\"diff-hunk d-flex text-info bg-dark bg-opacity-50\"><span class=\"diff-line-nums text-end pe-2 opacity-50 flex-shrink-0\">...</span><span class=\"px-2 flex-grow-1\">{escapedLine}</span></div>");
 			}
+			else if (line.StartsWith("\\ No newline at end of file", StringComparison.Ordinal))
+			{
+				result.Append($"<div class=\"diff-note d-flex text-body-secondary\"><span class=\"diff-line-nums text-end pe-2 opacity-50 flex-shrink-0\"></span><span class=\"px-2 flex-grow-1 fst-italic\">{escapedLine}</span></div>");
+			}
 			else if (line.StartsWith("+") && !line.StartsWith("+++"))
 			{
 				result.Append($"<div class=\"diff-add d-flex text-success bg-success bg-opacity-10\"><span class=\"diff-line-nums text-end pe-2 opacity-75 flex-shrink-0\">{newLine}</span><span class=\"px-2 flex-grow-1\">{escapedLine}</span></div>");
@@ -154,6 +169,88 @@ public static class GitDiffParser
 		result.Append("</div>");
 		return result.ToString();
 	}
+
+	private static string NormalizeDiffContent(string diff)
+	{
+		if (string.IsNullOrWhiteSpace(diff))
+			return string.Empty;
+
+		var normalizedLines = new List<string>();
+		var lines = diff.ReplaceLineEndings("\n").Split('\n');
+		var hasStartedFile = false;
+		var isInHunk = false;
+
+		foreach (var line in lines)
+		{
+			if (line.StartsWith("diff --git"))
+			{
+				hasStartedFile = true;
+				isInHunk = false;
+				normalizedLines.Add(line);
+				continue;
+			}
+
+			if (!hasStartedFile)
+				continue;
+
+			if (IsFileMetadataLine(line))
+			{
+				isInHunk = false;
+				normalizedLines.Add(line);
+				continue;
+			}
+
+			if (line.StartsWith("@@"))
+			{
+				isInHunk = true;
+				normalizedLines.Add(line);
+				continue;
+			}
+
+			if (isInHunk && IsHunkBodyLine(line))
+			{
+				normalizedLines.Add(line);
+				continue;
+			}
+
+			if (isInHunk)
+			{
+				isInHunk = false;
+			}
+		}
+
+		return string.Join("\n", normalizedLines);
+	}
+
+	private static bool IsAdditionLine(string line)
+		=> line.StartsWith("+") && !line.StartsWith("+++");
+
+	private static bool IsDeletionLine(string line)
+		=> line.StartsWith("-") && !line.StartsWith("---");
+
+	private static bool IsHunkBodyLine(string line)
+	{
+		if (line.StartsWith("\\ No newline at end of file", StringComparison.Ordinal))
+			return true;
+
+		if (string.IsNullOrEmpty(line))
+			return false;
+
+		return line[0] is ' ' or '+' or '-';
+	}
+
+	private static bool IsFileMetadataLine(string line)
+		=> line.StartsWith("index ")
+			|| line.StartsWith("--- ")
+			|| line.StartsWith("+++ ")
+			|| line.StartsWith("new file ")
+			|| line.StartsWith("deleted file ")
+			|| line.StartsWith("old mode ")
+			|| line.StartsWith("new mode ")
+			|| line.StartsWith("similarity index ")
+			|| line.StartsWith("rename from ")
+			|| line.StartsWith("rename to ")
+			|| line.StartsWith("Binary files ");
 
 	/// <summary>
 	/// Compares two parsed diffs and returns the differences
