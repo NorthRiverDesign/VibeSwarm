@@ -21,6 +21,7 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 	public DbSet<ProjectProvider> ProjectProviders { get; set; }
 	public DbSet<ProjectTeamRole> ProjectTeamRoles { get; set; }
 	public DbSet<ProjectEnvironment> ProjectEnvironments { get; set; }
+	public DbSet<JobSchedule> JobSchedules { get; set; }
 	public DbSet<Job> Jobs { get; set; }
 	public DbSet<JobMessage> JobMessages { get; set; }
 	public DbSet<JobProviderAttempt> JobProviderAttempts { get; set; }
@@ -176,6 +177,26 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 			entity.HasIndex(e => new { e.ProjectId, e.SortOrder });
 		});
 
+		modelBuilder.Entity<JobSchedule>(entity =>
+		{
+			entity.HasKey(e => e.Id);
+			entity.Property(e => e.Prompt).IsRequired().HasMaxLength(ValidationLimits.JobSchedulePromptMaxLength);
+			entity.Property(e => e.ModelId).HasMaxLength(ValidationLimits.JobScheduleModelIdMaxLength);
+			entity.Property(e => e.Frequency).HasConversion<string>();
+			entity.Property(e => e.WeeklyDay).HasConversion<string>();
+			entity.Property(e => e.LastError).HasMaxLength(ValidationLimits.JobScheduleLastErrorMaxLength);
+			entity.HasOne(e => e.Project)
+				.WithMany()
+				.HasForeignKey(e => e.ProjectId)
+				.OnDelete(DeleteBehavior.Cascade);
+			entity.HasOne(e => e.Provider)
+				.WithMany()
+				.HasForeignKey(e => e.ProviderId)
+				.OnDelete(DeleteBehavior.Cascade);
+			entity.HasIndex(e => new { e.IsEnabled, e.NextRunAtUtc });
+			entity.HasIndex(e => new { e.ProjectId, e.IsEnabled });
+		});
+
 		modelBuilder.Entity<Job>(entity =>
 		{
 			entity.HasKey(e => e.Id);
@@ -192,6 +213,10 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 			entity.Property(e => e.GitCheckpointReason).HasMaxLength(500);
 			entity.Property(e => e.SessionId).HasMaxLength(200);
 			entity.Property(e => e.CommandUsed).HasMaxLength(4000);
+			entity.HasOne(e => e.JobSchedule)
+				.WithMany(schedule => schedule.Jobs)
+				.HasForeignKey(e => e.JobScheduleId)
+				.OnDelete(DeleteBehavior.SetNull);
 			entity.HasOne(e => e.Project)
 	.WithMany(p => p.Jobs)
 	.HasForeignKey(e => e.ProjectId)
@@ -202,6 +227,7 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 	.OnDelete(DeleteBehavior.Restrict);
 			entity.HasIndex(e => e.Status);
 			entity.HasIndex(e => e.CreatedAt);
+			entity.HasIndex(e => new { e.JobScheduleId, e.ScheduledForUtc }).IsUnique();
 		});
 
 		modelBuilder.Entity<JobMessage>(entity =>

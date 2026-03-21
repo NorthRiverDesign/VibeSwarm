@@ -34,6 +34,7 @@ builder.Services.AddScoped(sp =>
 
 // HTTP service implementations
 builder.Services.AddScoped<IJobService, HttpJobService>();
+builder.Services.AddScoped<IJobScheduleService, HttpJobScheduleService>();
 builder.Services.AddScoped<IProjectService, HttpProjectService>();
 builder.Services.AddScoped<HttpProviderService>();
 builder.Services.AddScoped<IProviderService>(sp => sp.GetRequiredService<HttpProviderService>());

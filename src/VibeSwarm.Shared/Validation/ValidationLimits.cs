@@ -11,6 +11,9 @@ public static class ValidationLimits
 	public const int ProjectPlanningModelIdMaxLength = 200;
 	public const int ProjectPromptContextMaxLength = 4000;
 	public const int ProjectMemoryMaxLength = 20000;
+	public const int JobSchedulePromptMaxLength = 2000;
+	public const int JobScheduleModelIdMaxLength = 200;
+	public const int JobScheduleLastErrorMaxLength = 1000;
 	public const int TeamRoleDescriptionMaxLength = 500;
 	public const int TeamRoleResponsibilitiesMaxLength = 4000;
 

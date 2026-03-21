@@ -1,0 +1,411 @@
+@using VibeSwarm.Shared.Data
+@using VibeSwarm.Shared.Services
+@inject IJobScheduleService JobScheduleService
+@inject IProjectService ProjectService
+@inject IProviderService ProviderService
+@inject NotificationService NotificationService
+
+<ModalDialog IsVisible="IsVisible" IsVisibleChanged="HandleModalVisibilityChanged"
+			 Title="@(IsEdit ? "Edit Schedule" : "Add Schedule")" Icon="calendar-event"
+			 Size="ModalDialog.ModalSize.Large" OnClose="HandleClose">
+	<ChildContent>
+		<EditForm Model="@Schedule" OnValidSubmit="HandleValidSubmit">
+			<DataAnnotationsValidator />
+			<ValidationSummary class="text-danger mb-3" />
+
+			<div class="mb-3">
+				<label for="schedule-project" class="form-label">Project</label>
+				<select id="schedule-project" class="form-select" value="@GetProjectValue()" @onchange="OnProjectChanged">
+					<option value="">Select project...</option>
+					@foreach (var project in _projects)
+					{
+						<option value="@project.Id">@project.Name</option>
+					}
+				</select>
+			</div>
+
+			<div class="mb-3">
+				<label for="schedule-prompt" class="form-label">Prompt</label>
+				<InputTextArea id="schedule-prompt" @bind-Value="Schedule.Prompt" class="form-control" rows="4"
+							   placeholder="update dependencies, check for security issues" />
+				<ValidationMessage For="@(() => Schedule.Prompt)" class="text-danger small" />
+				<div class="form-text">Each time this schedule runs, VibeSwarm will create a new job with this prompt.</div>
+			</div>
+
+			<div class="row g-3">
+				<div class="col-12 col-lg-6">
+					<label for="schedule-provider" class="form-label">Provider</label>
+					<select id="schedule-provider" class="form-select" value="@GetProviderValue()" @onchange="OnProviderChanged"
+							disabled="@(!_allowedProviders.Any())">
+						<option value="">@(_allowedProviders.Any() ? "Select provider..." : "No enabled providers")</option>
+						@foreach (var provider in _allowedProviders)
+						{
+							<option value="@provider.Id">@provider.Name</option>
+						}
+					</select>
+				</div>
+				<div class="col-12 col-lg-6">
+					<label for="schedule-model" class="form-label">Model</label>
+					<select id="schedule-model" class="form-select" @bind="_selectedModelId" @bind:after="OnModelChanged"
+							disabled="@(_isLoadingModels || !_models.Any())">
+						<option value="">@(_isLoadingModels ? "Loading..." : "Provider default")</option>
+						@foreach (var model in _models)
+						{
+							<option value="@model.ModelId">@(model.DisplayName ?? model.ModelId)</option>
+						}
+					</select>
+				</div>
+			</div>
+
+			<div class="row g-3 mt-1">
+				<div class="col-12 col-lg-4">
+					<label for="schedule-frequency" class="form-label">Schedule</label>
+					<InputSelect id="schedule-frequency" @bind-Value="Schedule.Frequency" class="form-select">
+						@foreach (var frequency in Enum.GetValues<JobScheduleFrequency>())
+						{
+							<option value="@frequency">@frequency</option>
+						}
+					</InputSelect>
+				</div>
+
+				@if (Schedule.Frequency == JobScheduleFrequency.Hourly)
+				{
+					<div class="col-12 col-lg-4">
+						<label for="schedule-minute" class="form-label">Minute past the hour (UTC)</label>
+						<InputNumber id="schedule-minute" @bind-Value="Schedule.MinuteUtc" class="form-control" min="0" max="59" />
+					</div>
+				}
+				else
+				{
+					<div class="col-12 col-lg-4">
+						<label for="schedule-time" class="form-label">Run time (UTC)</label>
+						<input id="schedule-time" type="time" class="form-control" value="@_timeValue" @onchange="OnTimeChanged" />
+					</div>
+				}
+
+				@if (Schedule.Frequency == JobScheduleFrequency.Weekly)
+				{
+					<div class="col-12 col-lg-4">
+						<label for="schedule-weekday" class="form-label">Day of week</label>
+						<InputSelect id="schedule-weekday" @bind-Value="Schedule.WeeklyDay" class="form-select">
+							@foreach (var day in Enum.GetValues<DayOfWeek>())
+							{
+								<option value="@day">@day</option>
+							}
+						</InputSelect>
+					</div>
+				}
+				else if (Schedule.Frequency == JobScheduleFrequency.Monthly)
+				{
+					<div class="col-12 col-lg-4">
+						<label for="schedule-day-of-month" class="form-label">Day of month</label>
+						<InputNumber id="schedule-day-of-month" @bind-Value="Schedule.DayOfMonth" class="form-control" min="1" max="31" />
+						<div class="form-text">Shorter months run on their final day.</div>
+					</div>
+				}
+			</div>
+
+			<div class="form-check form-switch mt-3">
+				<InputCheckbox id="schedule-enabled" @bind-Value="Schedule.IsEnabled" class="form-check-input" />
+				<label class="form-check-label" for="schedule-enabled">Active</label>
+			</div>
+			<div class="form-text">Times are stored in UTC so the schedule runs consistently across hosts.</div>
+
+			@if (!string.IsNullOrEmpty(ErrorMessage))
+			{
+				<div class="text-danger small mt-3">
+					<i class="bi bi-exclamation-circle me-1"></i>@ErrorMessage
+				</div>
+			}
+
+			<div class="d-flex gap-2 justify-content-end mt-4">
+				<button type="button" class="btn btn-secondary" @onclick="HandleCancel">Cancel</button>
+				<button type="submit" class="btn btn-primary" disabled="@IsSaving">
+					@if (IsSaving)
+					{
+						<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+					}
+					@(IsSaving ? "Saving..." : (IsEdit ? "Update Schedule" : "Add Schedule"))
+				</button>
+			</div>
+		</EditForm>
+	</ChildContent>
+</ModalDialog>
+
+@code {
+	[Parameter]
+	public bool IsVisible { get; set; }
+
+	[Parameter]
+	public EventCallback<bool> IsVisibleChanged { get; set; }
+
+	[Parameter]
+	public JobSchedule? EditSchedule { get; set; }
+
+	[Parameter]
+	public EventCallback<Guid?> OnSaved { get; set; }
+
+	[Parameter]
+	public EventCallback OnCancelled { get; set; }
+
+	[Parameter]
+	public EventCallback OnClosed { get; set; }
+
+	private JobSchedule Schedule { get; set; } = new();
+	private bool IsEdit => EditSchedule != null;
+	private bool IsSaving { get; set; }
+	private string? ErrorMessage { get; set; }
+	private bool _previousIsVisible;
+	private List<Project> _projects = [];
+	private List<Provider> _providers = [];
+	private List<Provider> _allowedProviders = [];
+	private List<ProviderModel> _models = [];
+	private bool _isLoadingModels;
+	private string _selectedModelId = string.Empty;
+	private string _timeValue = "09:00";
+
+	protected override async Task OnInitializedAsync()
+	{
+		await LoadLookupDataAsync();
+	}
+
+	protected override async Task OnParametersSetAsync()
+	{
+		if (!_projects.Any() || !_providers.Any())
+		{
+			await LoadLookupDataAsync();
+		}
+
+		if (IsVisible && !_previousIsVisible)
+		{
+			await ResetStateAsync();
+		}
+
+		_previousIsVisible = IsVisible;
+	}
+
+	private async Task LoadLookupDataAsync()
+	{
+		_projects = (await ProjectService.GetAllAsync())
+			.OrderBy(project => project.Name)
+			.ToList();
+		_providers = (await ProviderService.GetAllAsync())
+			.Where(provider => provider.IsEnabled)
+			.OrderByDescending(provider => provider.IsDefault)
+			.ThenBy(provider => provider.Name)
+			.ToList();
+	}
+
+	private async Task ResetStateAsync()
+	{
+		ErrorMessage = null;
+		IsSaving = false;
+		_models = [];
+
+		if (EditSchedule != null)
+		{
+			Schedule = new JobSchedule
+			{
+				Id = EditSchedule.Id,
+				ProjectId = EditSchedule.ProjectId,
+				ProviderId = EditSchedule.ProviderId,
+				Prompt = EditSchedule.Prompt,
+				ModelId = EditSchedule.ModelId,
+				Frequency = EditSchedule.Frequency,
+				HourUtc = EditSchedule.HourUtc,
+				MinuteUtc = EditSchedule.MinuteUtc,
+				WeeklyDay = EditSchedule.WeeklyDay,
+				DayOfMonth = EditSchedule.DayOfMonth,
+				IsEnabled = EditSchedule.IsEnabled,
+				CreatedAt = EditSchedule.CreatedAt,
+				UpdatedAt = EditSchedule.UpdatedAt,
+				NextRunAtUtc = EditSchedule.NextRunAtUtc,
+				LastRunAtUtc = EditSchedule.LastRunAtUtc,
+				LastError = EditSchedule.LastError
+			};
+		}
+		else
+		{
+			var project = _projects.FirstOrDefault();
+			Schedule = new JobSchedule
+			{
+				ProjectId = project?.Id ?? Guid.Empty,
+				Frequency = JobScheduleFrequency.Daily,
+				HourUtc = 9,
+				MinuteUtc = 0,
+				WeeklyDay = DayOfWeek.Monday,
+				DayOfMonth = 1,
+				IsEnabled = true
+			};
+		}
+
+		_timeValue = $"{Schedule.HourUtc:D2}:{Schedule.MinuteUtc:D2}";
+		await SyncProvidersForProjectAsync(preserveCurrentProvider: IsEdit);
+	}
+
+	private Project? GetSelectedProject()
+		=> _projects.FirstOrDefault(project => project.Id == Schedule.ProjectId);
+
+	private async Task SyncProvidersForProjectAsync(bool preserveCurrentProvider)
+	{
+		_allowedProviders = ProjectExecutionDefaults.GetAllowedProviders(GetSelectedProject(), _providers);
+
+		if (!preserveCurrentProvider || !_allowedProviders.Any(provider => provider.Id == Schedule.ProviderId))
+		{
+			Schedule.ProviderId = ProjectExecutionDefaults.GetPreferredProvider(GetSelectedProject(), _providers)?.Id
+				?? _allowedProviders.FirstOrDefault()?.Id
+				?? Guid.Empty;
+		}
+
+		await LoadModelsAsync();
+	}
+
+	private async Task LoadModelsAsync()
+	{
+		_models = [];
+		_selectedModelId = string.Empty;
+
+		if (Schedule.ProviderId == Guid.Empty)
+		{
+			Schedule.ModelId = null;
+			return;
+		}
+
+		_isLoadingModels = true;
+		StateHasChanged();
+
+		try
+		{
+			_models = (await ProviderService.GetModelsAsync(Schedule.ProviderId))
+				.Where(model => model.IsAvailable)
+				.OrderByDescending(model => model.IsDefault)
+				.ThenBy(model => model.DisplayName ?? model.ModelId)
+				.ToList();
+
+			if (!string.IsNullOrWhiteSpace(Schedule.ModelId) && _models.Any(model => model.ModelId == Schedule.ModelId))
+			{
+				_selectedModelId = Schedule.ModelId;
+			}
+			else
+			{
+				_selectedModelId = ProjectExecutionDefaults.ResolveModelId(GetSelectedProject(), Schedule.ProviderId, _models);
+				Schedule.ModelId = string.IsNullOrWhiteSpace(_selectedModelId) ? null : _selectedModelId;
+			}
+		}
+		catch
+		{
+			_models = [];
+			_selectedModelId = string.Empty;
+			Schedule.ModelId = null;
+		}
+		finally
+		{
+			_isLoadingModels = false;
+		}
+	}
+
+	private async Task OnProjectChanged(ChangeEventArgs args)
+	{
+		Schedule.ProjectId = TryParseGuid(args.Value);
+		ErrorMessage = null;
+		await SyncProvidersForProjectAsync(preserveCurrentProvider: false);
+	}
+
+	private async Task OnProviderChanged(ChangeEventArgs args)
+	{
+		Schedule.ProviderId = TryParseGuid(args.Value);
+		ErrorMessage = null;
+		await LoadModelsAsync();
+	}
+
+	private Task OnModelChanged()
+	{
+		Schedule.ModelId = string.IsNullOrWhiteSpace(_selectedModelId) ? null : _selectedModelId;
+		return Task.CompletedTask;
+	}
+
+	private Task OnTimeChanged(ChangeEventArgs args)
+	{
+		_timeValue = args.Value?.ToString() ?? string.Empty;
+		return Task.CompletedTask;
+	}
+
+	private async Task HandleValidSubmit()
+	{
+		ErrorMessage = null;
+
+		if (Schedule.ProjectId == Guid.Empty)
+		{
+			ErrorMessage = "Please select a project.";
+			return;
+		}
+
+		if (Schedule.ProviderId == Guid.Empty)
+		{
+			ErrorMessage = "Please select a provider.";
+			return;
+		}
+
+		if (Schedule.Frequency != JobScheduleFrequency.Hourly)
+		{
+			if (!TimeOnly.TryParse(_timeValue, out var time))
+			{
+				ErrorMessage = "Please provide a valid UTC run time.";
+				return;
+			}
+
+			Schedule.HourUtc = time.Hour;
+			Schedule.MinuteUtc = time.Minute;
+		}
+		else
+		{
+			Schedule.HourUtc = 0;
+		}
+
+		Schedule.ModelId = string.IsNullOrWhiteSpace(_selectedModelId) ? null : _selectedModelId;
+
+		IsSaving = true;
+		try
+		{
+			var saved = IsEdit
+				? await JobScheduleService.UpdateAsync(Schedule)
+				: await JobScheduleService.CreateAsync(Schedule);
+
+			NotificationService.ShowSuccess(IsEdit ? "Schedule updated successfully." : "Schedule created successfully.");
+			await IsVisibleChanged.InvokeAsync(false);
+			await OnSaved.InvokeAsync(saved.Id);
+		}
+		catch (Exception ex)
+		{
+			ErrorMessage = ex.Message;
+		}
+		finally
+		{
+			IsSaving = false;
+		}
+	}
+
+	private async Task HandleCancel()
+	{
+		await IsVisibleChanged.InvokeAsync(false);
+		await OnCancelled.InvokeAsync();
+	}
+
+	private async Task HandleClose()
+	{
+		await IsVisibleChanged.InvokeAsync(false);
+		await OnClosed.InvokeAsync();
+	}
+
+	private async Task HandleModalVisibilityChanged(bool isVisible)
+	{
+		IsVisible = isVisible;
+		await IsVisibleChanged.InvokeAsync(isVisible);
+	}
+
+	private string GetProjectValue() => Schedule.ProjectId == Guid.Empty ? string.Empty : Schedule.ProjectId.ToString();
+	private string GetProviderValue() => Schedule.ProviderId == Guid.Empty ? string.Empty : Schedule.ProviderId.ToString();
+
+	private static Guid TryParseGuid(object? value)
+		=> Guid.TryParse(value?.ToString(), out var id) ? id : Guid.Empty;
+}

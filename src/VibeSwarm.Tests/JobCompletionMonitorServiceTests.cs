@@ -34,6 +34,7 @@ public sealed class JobCompletionMonitorServiceTests : IDisposable
 	public async Task CheckRunningJobsAsync_CompletesProcessingJobWhenSessionOutputAlreadyFinished()
 	{
 		var projectId = Guid.NewGuid();
+		var providerId = Guid.NewGuid();
 		var jobId = Guid.NewGuid();
 		var now = DateTime.UtcNow;
 
@@ -48,17 +49,19 @@ public sealed class JobCompletionMonitorServiceTests : IDisposable
 
 			setupContext.Providers.Add(new Provider
 			{
-				Id = Guid.Empty,
+				Id = providerId,
 				Name = "Recovery Provider",
 				Type = ProviderType.Copilot,
 				IsEnabled = true
 			});
 
+			await setupContext.SaveChangesAsync();
+
 			setupContext.Jobs.Add(new Job
 			{
 				Id = jobId,
 				ProjectId = projectId,
-				ProviderId = Guid.Empty,
+				ProviderId = providerId,
 				GoalPrompt = "Follow up on the previous change",
 				Status = JobStatus.Processing,
 				StartedAt = now.AddMinutes(-2),

@@ -1,0 +1,238 @@
+@page "/scheduler"
+@attribute [Authorize]
+@inject IJobScheduleService JobScheduleService
+@inject NotificationService NotificationService
+
+<PageHeader Title="Scheduler" Subtitle="Create recurring prompts that automatically create jobs. Times run in UTC.">
+	<Actions>
+		<ActionButton Icon="plus" Text="Add" Style="ActionButton.ButtonStyle.Primary" OnClick="ShowAddModal" />
+	</Actions>
+</PageHeader>
+
+@if (_isLoading)
+{
+	<LoadingSpinner Text="Loading schedules..." />
+}
+else if (!_schedules.Any())
+{
+	<EmptyState Icon="calendar-event" Title="No schedules yet"
+				Message="Create a recurring prompt to automatically queue jobs for one of your projects." />
+}
+else
+{
+	<div class="list-group">
+		@foreach (var schedule in _schedules)
+		{
+			<div class="list-group-item d-flex flex-column flex-md-row align-items-md-start gap-3 p-3 hover-bg-tertiary">
+				<div class="flex-grow-1 min-width-0">
+					<div class="d-flex align-items-center gap-2 flex-wrap">
+						<span class="fw-semibold">@TruncateText(schedule.Prompt, 110)</span>
+						<span class="badge @(schedule.IsEnabled ? "bg-success-subtle text-success-emphasis" : "bg-secondary-subtle text-secondary-emphasis")">
+							@(schedule.IsEnabled ? "Active" : "Paused")
+						</span>
+						<span class="small text-body-secondary d-inline-flex align-items-center gap-1">
+							<i class="bi bi-folder opacity-75"></i>
+							@(schedule.Project?.Name ?? "Unknown project")
+						</span>
+						<span class="small text-body-secondary d-inline-flex align-items-center gap-1">
+							<i class="bi bi-cpu opacity-75"></i>
+							@(schedule.Provider?.Name ?? "Unknown provider")
+						</span>
+						@if (!string.IsNullOrWhiteSpace(schedule.ModelId))
+						{
+							<span class="small text-body-secondary d-inline-flex align-items-center gap-1">
+								<i class="bi bi-diagram-3 opacity-75"></i>
+								@schedule.ModelId
+							</span>
+						}
+					</div>
+					<div class="small text-body-secondary mt-1">@DescribeSchedule(schedule)</div>
+					<div class="d-flex flex-wrap gap-2 gap-md-3 mt-2 small text-body-secondary">
+						<span class="d-inline-flex align-items-center gap-1">
+							<i class="bi bi-calendar-event opacity-75"></i>
+							Next @FormatUtc(schedule.NextRunAtUtc)
+						</span>
+						@if (schedule.LastRunAtUtc.HasValue)
+						{
+							<span class="d-inline-flex align-items-center gap-1">
+								<i class="bi bi-clock-history opacity-75"></i>
+								Last @FormatUtc(schedule.LastRunAtUtc.Value)
+							</span>
+						}
+					</div>
+					@if (!string.IsNullOrWhiteSpace(schedule.LastError))
+					{
+						<div class="small text-danger mt-2">
+							<i class="bi bi-exclamation-triangle me-1"></i>@TruncateText(schedule.LastError, 180)
+						</div>
+					}
+				</div>
+				<div class="d-flex flex-wrap gap-2 flex-shrink-0 align-items-center">
+					<ActionButton Icon="@(schedule.IsEnabled ? "pause-fill" : "play-fill")"
+								  Text="@(schedule.IsEnabled ? "Pause" : "Resume")"
+								  Size="ActionButton.ButtonSize.Small"
+								  OnClick="@(() => ToggleScheduleAsync(schedule))" />
+					<ActionButton Icon="pencil" Text="Edit" Size="ActionButton.ButtonSize.Small"
+								  HideTextOnMobile="true" OnClick="@(() => EditSchedule(schedule))" />
+					<ActionButton Icon="trash" Text="Delete" Size="ActionButton.ButtonSize.Small"
+								  Style="ActionButton.ButtonStyle.Danger" HideTextOnMobile="true"
+								  OnClick="@(() => ShowDeleteConfirmation(schedule))" />
+				</div>
+			</div>
+		}
+	</div>
+}
+
+<JobScheduleModal @bind-IsVisible="_showScheduleModal" EditSchedule="_editingSchedule" OnSaved="HandleScheduleSaved"
+				  OnCancelled="HandleModalCancelled" OnClosed="HandleScheduleModalClosed" />
+
+<ConfirmationModal @bind-IsVisible="_showDeleteModal" Title="Delete Schedule"
+				   Message="@($"Are you sure you want to delete this schedule? {TruncateText(_scheduleToDelete?.Prompt ?? string.Empty, 90)}")"
+				   SubMessage="This will stop future automatic jobs for this prompt. Existing jobs will remain."
+				   ConfirmText="Delete" ButtonClass="btn-danger" IsProcessing="_isDeleting"
+				   OnConfirm="ConfirmDelete" OnCancel="CancelDelete" />
+
+@code {
+	private List<JobSchedule> _schedules = [];
+	private bool _isLoading = true;
+	private bool _showScheduleModal;
+	private JobSchedule? _editingSchedule;
+	private bool _showDeleteModal;
+	private JobSchedule? _scheduleToDelete;
+	private bool _isDeleting;
+
+	protected override async Task OnInitializedAsync()
+	{
+		await LoadSchedules();
+	}
+
+	private async Task LoadSchedules()
+	{
+		_isLoading = true;
+		try
+		{
+			_schedules = (await JobScheduleService.GetAllAsync()).ToList();
+		}
+		finally
+		{
+			_isLoading = false;
+		}
+	}
+
+	private void ShowAddModal()
+	{
+		_showDeleteModal = false;
+		_scheduleToDelete = null;
+		_editingSchedule = null;
+		_showScheduleModal = true;
+		StateHasChanged();
+	}
+
+	private void EditSchedule(JobSchedule schedule)
+	{
+		_showDeleteModal = false;
+		_scheduleToDelete = null;
+		_editingSchedule = schedule;
+		_showScheduleModal = true;
+		StateHasChanged();
+	}
+
+	private async Task HandleScheduleSaved(Guid? scheduleId)
+	{
+		_showScheduleModal = false;
+		_editingSchedule = null;
+		await LoadSchedules();
+	}
+
+	private void HandleModalCancelled()
+	{
+		_showScheduleModal = false;
+		_editingSchedule = null;
+	}
+
+	private void HandleScheduleModalClosed()
+	{
+		_showScheduleModal = false;
+		_editingSchedule = null;
+		StateHasChanged();
+	}
+
+	private async Task ToggleScheduleAsync(JobSchedule schedule)
+	{
+		try
+		{
+			await JobScheduleService.SetEnabledAsync(schedule.Id, !schedule.IsEnabled);
+			NotificationService.ShowSuccess(schedule.IsEnabled ? "Schedule paused." : "Schedule resumed.");
+			await LoadSchedules();
+		}
+		catch (Exception ex)
+		{
+			NotificationService.ShowError($"Error updating schedule: {ex.Message}");
+		}
+	}
+
+	private void ShowDeleteConfirmation(JobSchedule schedule)
+	{
+		_showScheduleModal = false;
+		_editingSchedule = null;
+		_scheduleToDelete = schedule;
+		_showDeleteModal = true;
+		StateHasChanged();
+	}
+
+	private void CancelDelete()
+	{
+		_showDeleteModal = false;
+		_scheduleToDelete = null;
+	}
+
+	private async Task ConfirmDelete()
+	{
+		if (_scheduleToDelete == null)
+		{
+			return;
+		}
+
+		_isDeleting = true;
+		try
+		{
+			await JobScheduleService.DeleteAsync(_scheduleToDelete.Id);
+			NotificationService.ShowSuccess("Schedule deleted.");
+			_showDeleteModal = false;
+			_scheduleToDelete = null;
+			await LoadSchedules();
+		}
+		catch (Exception ex)
+		{
+			NotificationService.ShowError($"Error deleting schedule: {ex.Message}");
+		}
+		finally
+		{
+			_isDeleting = false;
+		}
+	}
+
+	private static string DescribeSchedule(JobSchedule schedule)
+	{
+		var time = $"{schedule.HourUtc:D2}:{schedule.MinuteUtc:D2} UTC";
+		return schedule.Frequency switch
+		{
+			JobScheduleFrequency.Hourly => $"Hourly at minute {schedule.MinuteUtc:D2} past the hour",
+			JobScheduleFrequency.Weekly => $"Weekly on {schedule.WeeklyDay} at {time}",
+			JobScheduleFrequency.Monthly => $"Monthly on day {schedule.DayOfMonth} at {time}",
+			_ => $"Daily at {time}"
+		};
+	}
+
+	private static string FormatUtc(DateTime value) => value.ToString("yyyy-MM-dd HH:mm 'UTC'");
+
+	private static string TruncateText(string text, int maxLength)
+	{
+		if (string.IsNullOrEmpty(text) || text.Length <= maxLength)
+		{
+			return text;
+		}
+
+		return text[..maxLength] + "...";
+	}
+}

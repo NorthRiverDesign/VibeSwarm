@@ -18,9 +18,11 @@ public static class WorkerServiceExtensions
 		services.AddSingleton<IJobCoordinatorService, JobCoordinatorService>();
 		services.AddSingleton<ProcessSupervisor>();
 		services.AddSingleton<JobProcessingService>();
+		services.AddScoped<JobScheduleProcessor>();
 
 		// Background services
 		services.AddHostedService(sp => sp.GetRequiredService<JobProcessingService>());
+		services.AddHostedService<JobScheduleBackgroundService>();
 		services.AddHostedService<JobWatchdogService>();
 		services.AddHostedService<JobCompletionMonitorService>();
 		services.AddHostedService<IdeasProcessingService>();
