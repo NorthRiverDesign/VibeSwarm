@@ -1,7 +1,5 @@
-using Microsoft.AspNetCore.Components;
+using Bunit;
 using Microsoft.AspNetCore.Components.Web;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging.Abstractions;
 using VibeSwarm.Client.Components.Dashboard;
 using VibeSwarm.Client.Models;
 
@@ -10,12 +8,9 @@ namespace VibeSwarm.Tests;
 public sealed class DashboardMetricChartTests
 {
 	[Fact]
-	public async Task DashboardMetricChart_RendersFluidWidthChartLayout()
+	public void DashboardMetricChart_RendersFluidWidthChartLayout()
 	{
-		var services = new ServiceCollection();
-		services.AddLogging();
-
-		await using var renderer = new HtmlRenderer(services.BuildServiceProvider(), NullLoggerFactory.Instance);
+		using var context = new BunitContext();
 
 		var points = Enumerable.Range(1, 30)
 			.Select(index => new DashboardChartPoint
@@ -26,33 +21,23 @@ public sealed class DashboardMetricChartTests
 			})
 			.ToList();
 
-		var html = await renderer.Dispatcher.InvokeAsync(async () =>
-		{
-			var parameters = ParameterView.FromDictionary(new Dictionary<string, object?>
-			{
-				[nameof(DashboardMetricChart.Title)] = "Completed Jobs",
-				[nameof(DashboardMetricChart.Subtitle)] = "Last 30 days",
-				[nameof(DashboardMetricChart.Points)] = points
-			});
+		var cut = context.Render<DashboardMetricChart>(parameters => parameters
+			.Add(component => component.Title, "Completed Jobs")
+			.Add(component => component.Subtitle, "Last 30 days")
+			.Add(component => component.Points, points));
 
-			var output = await renderer.RenderComponentAsync<DashboardMetricChart>(parameters);
-			return output.ToHtmlString();
-		});
-
-		Assert.Contains("class=\"d-block w-100\"", html);
-		Assert.Contains("preserveAspectRatio=\"none\"", html);
-		Assert.Contains("grid-template-columns: repeat(30, minmax(0, 1fr));", html);
-		Assert.DoesNotContain("overflow-auto", html);
-		Assert.DoesNotContain("Scroll to view the full time range.", html);
+		Assert.Contains("class=\"d-block\"", cut.Markup);
+		Assert.Contains("preserveAspectRatio=\"xMinYMin meet\"", cut.Markup);
+		Assert.Contains("overflow-auto", cut.Markup);
+		Assert.Contains("grid-template-columns:repeat(30, minmax(48px, 1fr));", cut.Markup);
+		Assert.Contains("width:max(100%, 1440px);", cut.Markup);
+		Assert.Contains("Tap or click a bar to view its value.", cut.Markup);
 	}
 
 	[Fact]
-	public async Task DashboardMetricChart_RendersEmptyStateWhenAllPointsAreZero()
+	public void DashboardMetricChart_RendersEmptyStateWhenAllPointsAreZero()
 	{
-		var services = new ServiceCollection();
-		services.AddLogging();
-
-		await using var renderer = new HtmlRenderer(services.BuildServiceProvider(), NullLoggerFactory.Instance);
+		using var context = new BunitContext();
 
 		var points = new[]
 		{
@@ -60,31 +45,20 @@ public sealed class DashboardMetricChartTests
 			new DashboardChartPoint { Label = "Tue", Value = 0, ValueLabel = "No completed jobs" }
 		};
 
-		var html = await renderer.Dispatcher.InvokeAsync(async () =>
-		{
-			var parameters = ParameterView.FromDictionary(new Dictionary<string, object?>
-			{
-				[nameof(DashboardMetricChart.Title)] = "Completed Jobs",
-				[nameof(DashboardMetricChart.EmptyTitle)] = "No completed jobs yet",
-				[nameof(DashboardMetricChart.EmptyMessage)] = "Completed jobs from the selected time range will show up here.",
-				[nameof(DashboardMetricChart.Points)] = points
-			});
+		var cut = context.Render<DashboardMetricChart>(parameters => parameters
+			.Add(component => component.Title, "Completed Jobs")
+			.Add(component => component.EmptyTitle, "No completed jobs yet")
+			.Add(component => component.EmptyMessage, "Completed jobs from the selected time range will show up here.")
+			.Add(component => component.Points, points));
 
-			var output = await renderer.RenderComponentAsync<DashboardMetricChart>(parameters);
-			return output.ToHtmlString();
-		});
-
-		Assert.Contains("No completed jobs yet", html);
-		Assert.DoesNotContain("<svg", html);
+		Assert.Contains("No completed jobs yet", cut.Markup);
+		Assert.DoesNotContain("<svg", cut.Markup);
 	}
 
 	[Fact]
-	public async Task DashboardMetricChart_RendersYAxisLabels_AndExpandedTooltipTargets()
+	public void DashboardMetricChart_SelectingBarShowsPointValue()
 	{
-		var services = new ServiceCollection();
-		services.AddLogging();
-
-		await using var renderer = new HtmlRenderer(services.BuildServiceProvider(), NullLoggerFactory.Instance);
+		using var context = new BunitContext();
 
 		var points = new[]
 		{
@@ -93,28 +67,30 @@ public sealed class DashboardMetricChartTests
 			new DashboardChartPoint { Label = "Day 3", Value = 9, ValueLabel = "9 completed jobs" }
 		};
 
-		var html = await renderer.Dispatcher.InvokeAsync(async () =>
+		var cut = context.Render<DashboardMetricChart>(parameters => parameters
+			.Add(component => component.Title, "Completed Jobs")
+			.Add(component => component.Points, points)
+			.Add(component => component.UseIntegerYAxisTicks, true)
+			.Add(component => component.YAxisLabelFormatter, value => value.ToString("0")));
+
+		Assert.Contains("Tap or click a bar to view its value.", cut.Markup);
+		Assert.Contains(">9</div>", cut.Markup);
+		Assert.Contains(">6</div>", cut.Markup);
+		Assert.Contains(">3</div>", cut.Markup);
+		Assert.Contains(">0</div>", cut.Markup);
+		Assert.Contains("Day 1: 3 completed jobs", cut.Markup);
+
+		var buttons = cut.FindAll("button[aria-label]");
+		Assert.Equal(3, buttons.Count);
+
+		buttons[1].TriggerEvent("onclick", new MouseEventArgs());
+
+		cut.WaitForAssertion(() =>
 		{
-			var parameters = ParameterView.FromDictionary(new Dictionary<string, object?>
-			{
-				[nameof(DashboardMetricChart.Title)] = "Completed Jobs",
-				[nameof(DashboardMetricChart.Points)] = points,
-				[nameof(DashboardMetricChart.UseIntegerYAxisTicks)] = true,
-				[nameof(DashboardMetricChart.YAxisLabelFormatter)] = (Func<double, string>)(value => value.ToString("0"))
-			});
-
-			var output = await renderer.RenderComponentAsync<DashboardMetricChart>(parameters);
-			return output.ToHtmlString();
+			Assert.DoesNotContain("Tap or click a bar to view its value.", cut.Markup);
+			Assert.Contains("<span class=\"badge bg-body-tertiary text-body\">Day 2</span>", cut.Markup);
+			Assert.Contains("<span class=\"fw-semibold\">6 completed jobs</span>", cut.Markup);
+			Assert.Contains("aria-pressed=\"true\"", cut.Markup);
 		});
-
-		Assert.Contains("fill=\"transparent\"", html);
-		Assert.Contains("text-anchor=\"end\"", html);
-		Assert.Contains(">9</text>", html);
-		Assert.Contains(">6</text>", html);
-		Assert.Contains(">3</text>", html);
-		Assert.Contains(">0</text>", html);
-		Assert.Contains("font-size:0.72rem", html);
-		Assert.Contains("title=\"Day 1\"", html);
-		Assert.Contains("Day 1: 3 completed jobs", html);
 	}
 }

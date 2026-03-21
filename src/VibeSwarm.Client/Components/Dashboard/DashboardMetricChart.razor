@@ -23,58 +23,95 @@
 		}
 		else
 		{
-			<div class="w-100 pb-2">
-				<div class="w-100">
-					<svg class="d-block w-100" height="@ChartHeight" viewBox="0 0 @ChartWidth @ChartHeight"
-						 preserveAspectRatio="none" role="img" aria-label="@Title">
-						<title>@Title</title>
+			<div class="w-100">
+				@if (SelectedPoint is not null)
+				{
+					<div class="d-flex flex-wrap align-items-center gap-2 mb-3 small">
+						<span class="badge bg-body-tertiary text-body">@SelectedPoint.Label</span>
+						<span class="fw-semibold">@GetPointValueLabel(SelectedPoint)</span>
+					</div>
+				}
+				else
+				{
+					<p class="small text-body-secondary mb-3">Tap or click a bar to view its value.</p>
+				}
 
+				<div class="d-flex align-items-start gap-2">
+					<div class="position-relative flex-shrink-0 pe-1" style="width:@FormatPixels(YAxisLabelWidth); height:@FormatPixels(ChartHeight);">
 						@foreach (var axisTick in YAxisTicks)
 						{
-							@RenderYAxisLabel(axisTick)
-
-							<line x1="@ChartPaddingLeft"  y1="@axisTick.Y"  x2="@(ChartWidth - ChartPaddingRight)"  y2="@axisTick.Y"
-								  stroke="var(--bs-border-color)"  stroke-width="1"  opacity="0.5" />
-						}
-
-						<line x1="@ChartPaddingLeft"  y1="@ChartPaddingTop"  x2="@ChartPaddingLeft"  y2="@BaselineY"
-							  stroke="var(--bs-border-color)"  stroke-width="1.25" />
-
-						<line x1="@ChartPaddingLeft"  y1="@BaselineY"  x2="@(ChartWidth - ChartPaddingRight)"  y2="@BaselineY"
-							  stroke="var(--bs-border-color)"  stroke-width="1.25" />
-
-						@for (var index = 0; index < Points.Count; index++)
-						{
-							var point = Points[index];
-							var barHeight = GetBarHeight(point.Value);
-							var x = GetBarX(index);
-							var y = BaselineY - barHeight;
-							var slotStartX = GetSlotStartX(index);
-							var tooltip = GetPointTooltip(point);
-
-							<rect x="@slotStartX" y="@ChartPaddingTop" width="@SlotWidth" height="@PlotHeight" fill="transparent">
-								<title>@tooltip</title>
-							</rect>
-
-							<rect x="@x" y="@y" width="@BarWidth" height="@Math.Max(barHeight, 2)" rx="6" fill="@BarColor"
-								  fill-opacity="0.85" aria-label="@tooltip">
-								<title>@tooltip</title>
-							</rect>
-						}
-					</svg>
-
-					<div class="d-grid align-items-start pt-2"
-						 style="padding-left:@(ChartPaddingLeft)px; padding-right:@(ChartPaddingRight)px; grid-template-columns: repeat(@Points.Count, minmax(0, 1fr));">
-						@for (var index = 0; index < Points.Count; index++)
-						{
-							var point = Points[index];
-							<div class="text-body-secondary text-center" style="min-width:0; font-size:0.72rem; line-height:1.2;">
-								@if (ShouldRenderLabel(index))
-								{
-									<span class="d-block text-truncate" title="@point.Label">@point.Label</span>
-								}
+							<div class="position-absolute top-0 end-0 translate-middle-y text-body-secondary text-end"
+								 style="top:@FormatPixels(axisTick.Y); font-size:0.72rem; line-height:1;">
+								@axisTick.Label
 							</div>
 						}
+					</div>
+
+					<div class="flex-grow-1 overflow-auto overscroll-contain pb-2 touch-manipulation">
+						<div class="d-flex flex-column" style="width:@ScrollContentWidth;">
+							<div class="position-relative" style="width:@FormatPixels(ChartWidth); height:@FormatPixels(ChartHeight);">
+								<svg class="d-block" width="@ChartWidth" height="@ChartHeight" viewBox="0 0 @ChartWidth @ChartHeight"
+									 preserveAspectRatio="xMinYMin meet" role="img" aria-label="@Title">
+									<title>@Title</title>
+
+									@foreach (var axisTick in YAxisTicks)
+									{
+										<line x1="0" y1="@axisTick.Y" x2="@ChartWidth" y2="@axisTick.Y"
+											  stroke="var(--bs-border-color)" stroke-width="1" opacity="0.5" />
+									}
+
+									<line x1="0" y1="@ChartPaddingTop" x2="0" y2="@BaselineY"
+										  stroke="var(--bs-border-color)" stroke-width="1.25" />
+
+									<line x1="0" y1="@BaselineY" x2="@ChartWidth" y2="@BaselineY"
+										  stroke="var(--bs-border-color)" stroke-width="1.25" />
+
+									@for (var index = 0; index < Points.Count; index++)
+									{
+										var point = Points[index];
+										var isSelected = SelectedPointIndex == index;
+										var barHeight = GetBarHeight(point.Value);
+										var x = GetBarX(index);
+										var y = BaselineY - barHeight;
+										var tooltip = GetPointTooltip(point);
+
+										<rect x="@x" y="@y" width="@BarWidth" height="@Math.Max(barHeight, 2)" rx="6" fill="@BarColor"
+											  fill-opacity="@(isSelected ? "1" : "0.85")" stroke="@(isSelected ? "var(--bs-emphasis-color)" : "none")"
+											  stroke-width="2" aria-label="@tooltip">
+											<title>@tooltip</title>
+										</rect>
+									}
+								</svg>
+
+								@for (var index = 0; index < Points.Count; index++)
+								{
+									var pointIndex = index;
+									var point = Points[index];
+									var isSelected = SelectedPointIndex == pointIndex;
+									var slotStartX = GetSlotStartX(pointIndex);
+									var tooltip = GetPointTooltip(point);
+
+									<button type="button" class="position-absolute p-0 border-0 bg-transparent cursor-pointer touch-manipulation"
+											style="left:@FormatPixels(slotStartX); top:@FormatPixels(ChartPaddingTop); width:@FormatPixels(SlotWidth); height:@FormatPixels(PlotHeight);"
+											title="@tooltip" aria-label="@tooltip" aria-pressed="@(isSelected ? "true" : "false")"
+											@onclick="() => TogglePointSelection(pointIndex)"></button>
+								}
+							</div>
+
+							<div class="d-grid align-items-start pt-2"
+								 style="grid-template-columns:@XAxisGridColumns;">
+								@for (var index = 0; index < Points.Count; index++)
+								{
+									var point = Points[index];
+									<div class="text-body-secondary text-center px-1" style="min-width:0; font-size:0.72rem; line-height:1.15;">
+										@foreach (var segment in GetLabelSegments(point.Label))
+										{
+											<span class="d-block text-truncate" title="@point.Label">@segment</span>
+										}
+									</div>
+								}
+							</div>
+						</div>
 					</div>
 				</div>
 			</div>
@@ -84,11 +121,11 @@
 
 @code {
 	private const int ChartHeight = 220;
-	private const int ChartWidth = 1000;
-	private const int ChartPaddingLeft = 56;
-	private const int ChartPaddingRight = 16;
+	private const int MinimumChartWidth = 320;
+	private const int MinimumSlotWidth = 48;
+	private const int YAxisLabelWidth = 64;
 	private const int ChartPaddingTop = 16;
-	private const int ChartPaddingBottom = 40;
+	private const int ChartPaddingBottom = 16;
 	private const int AxisTickCount = 4;
 
 	[Parameter]
@@ -125,14 +162,20 @@
 	public bool UseIntegerYAxisTicks { get; set; }
 
 	private bool HasData => Points.Any(point => point.Value > 0);
+	private DashboardChartPoint? SelectedPoint => SelectedPointIndex.HasValue && SelectedPointIndex.Value < Points.Count
+		? Points[SelectedPointIndex.Value]
+		: null;
 	private double BaselineY => ChartHeight - ChartPaddingBottom;
 	private double PlotHeight => ChartHeight - ChartPaddingTop - ChartPaddingBottom;
-	private double PlotWidth => ChartWidth - ChartPaddingLeft - ChartPaddingRight;
-	private double SlotWidth => Points.Count == 0 ? PlotWidth : PlotWidth / Points.Count;
-	private double BarWidth => Math.Clamp(SlotWidth * 0.6, 8, 28);
+	private double ChartWidth => Math.Max(Points.Count * MinimumSlotWidth, MinimumChartWidth);
+	private string ScrollContentWidth => $"max(100%, {FormatPixels(ChartWidth)})";
+	private string XAxisGridColumns => $"repeat({Points.Count}, minmax({MinimumSlotWidth}px, 1fr))";
+	private double SlotWidth => Points.Count == 0 ? ChartWidth : ChartWidth / Points.Count;
+	private double BarWidth => Math.Clamp(SlotWidth * 0.58, 12, 32);
 	private double MaxValue => Points.Count == 0 ? 0 : Points.Max(point => point.Value);
 	private double ChartMaxValue => ResolveChartMaxValue(MaxValue);
 	private double AxisStepValue => ChartMaxValue / (AxisTickCount - 1);
+	private int? SelectedPointIndex { get; set; }
 	private IReadOnlyList<AxisTick> YAxisTicks => Enumerable.Range(0, AxisTickCount)
 		.Select(index =>
 		{
@@ -150,7 +193,7 @@
 
 	private double GetSlotStartX(int index)
 	{
-		return ChartPaddingLeft + (index * SlotWidth);
+		return index * SlotWidth;
 	}
 
 	private double GetBarX(int index)
@@ -161,24 +204,34 @@
 
 	private string GetPointTooltip(DashboardChartPoint point)
 	{
-		var pointValueLabel = string.IsNullOrWhiteSpace(point.ValueLabel)
-			? point.Value.ToString("0.##")
-			: point.ValueLabel;
-
-		return $"{point.Label}: {pointValueLabel}";
+		return $"{point.Label}: {GetPointValueLabel(point)}";
 	}
 
-	private bool ShouldRenderLabel(int index)
+	private string GetPointValueLabel(DashboardChartPoint point)
 	{
-		var labelStep = Points.Count switch
-		{
-			<= 12 => 1,
-			<= 24 => 2,
-			<= 45 => 4,
-			_ => 6
-		};
+		return string.IsNullOrWhiteSpace(point.ValueLabel)
+			? point.Value.ToString("0.##")
+			: point.ValueLabel;
+	}
 
-		return index % labelStep == 0 || index == Points.Count - 1;
+	private static IReadOnlyList<string> GetLabelSegments(string label)
+	{
+		if (string.IsNullOrWhiteSpace(label))
+		{
+			return [string.Empty];
+		}
+
+		var lastSpaceIndex = label.LastIndexOf(' ');
+		if (lastSpaceIndex <= 0 || lastSpaceIndex >= label.Length - 1)
+		{
+			return [label];
+		}
+
+		return
+		[
+			label[..lastSpaceIndex],
+			label[(lastSpaceIndex + 1)..]
+		];
 	}
 
 	private string FormatAxisLabel(double value)
@@ -232,14 +285,12 @@
 		return roundedStep * magnitude;
 	}
 
-	private MarkupString RenderYAxisLabel(AxisTick axisTick)
+	private void TogglePointSelection(int index)
 	{
-		var encodedLabel = System.Text.Encodings.Web.HtmlEncoder.Default.Encode(axisTick.Label);
-		var x = (ChartPaddingLeft - 8).ToString(System.Globalization.CultureInfo.InvariantCulture);
-		var y = axisTick.Y.ToString(System.Globalization.CultureInfo.InvariantCulture);
-
-		return new MarkupString($"<text x=\"{x}\" y=\"{y}\" fill=\"var(--bs-secondary-color)\" font-size=\"11\" text-anchor=\"end\" dominant-baseline=\"middle\">{encodedLabel}</text>");
+		SelectedPointIndex = SelectedPointIndex == index ? null : index;
 	}
+
+	private static string FormatPixels(double value) => $"{value.ToString(System.Globalization.CultureInfo.InvariantCulture)}px";
 
 	private readonly record struct AxisTick(double Value, double Y, string Label);
 }
