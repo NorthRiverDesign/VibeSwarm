@@ -254,6 +254,12 @@
 	public Provider? EditProvider { get; set; }
 
 	[Parameter]
+	public ProviderType? SuggestedProviderType { get; set; }
+
+	[Parameter]
+	public ProviderConnectionMode? SuggestedConnectionMode { get; set; }
+
+	[Parameter]
 	public EventCallback<Guid?> OnSaved { get; set; }
 
 	[Parameter]
@@ -305,10 +311,19 @@
 			}
 			else
 			{
+				var providerType = SuggestedProviderType ?? ProviderType.OpenCode;
+				var connectionMode = SuggestedConnectionMode.HasValue && ProviderCapabilities.SupportsMode(providerType, SuggestedConnectionMode.Value)
+					? SuggestedConnectionMode.Value
+					: ProviderCapabilities.GetDefaultMode(providerType);
+
 				// Reset for new provider with default settings
 				Provider = new Provider
 				{
-					ConnectionMode = ProviderCapabilities.GetDefaultMode(ProviderType.OpenCode)
+					Type = providerType,
+					ConnectionMode = connectionMode,
+					ConfiguredLimitType = providerType == ProviderType.Copilot
+						? UsageLimitType.PremiumRequests
+						: UsageLimitType.None
 				};
 			}
 		}
