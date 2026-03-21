@@ -39,6 +39,69 @@ public class IdeaService : IIdeaService
 	/// Lock for toggling ideas processing state
 	/// </summary>
 	private static readonly SemaphoreSlim _processingStateLock = new(1, 1);
+	private static readonly string[] UserImpactSuggestionKeywords =
+	[
+		"user",
+		"users",
+		"customer",
+		"customers",
+		"ux",
+		"page",
+		"screen",
+		"dashboard",
+		"form",
+		"workflow",
+		"onboarding",
+		"search",
+		"filter",
+		"notification",
+		"mobile",
+		"accessibility",
+		"empty state",
+		"validation",
+		"security",
+		"performance",
+		"reliability",
+		"error handling",
+		"retry",
+		"auth",
+		"permission",
+		"export",
+		"import"
+	];
+	private static readonly string[] DevelopmentOnlySuggestionKeywords =
+	[
+		"test",
+		"testing",
+		"coverage",
+		"developer experience",
+		"documentation",
+		"docs",
+		"comment",
+		"comments",
+		"refactor",
+		"code cleanup",
+		"lint",
+		"formatting",
+		"ci/cd",
+		"continuous integration",
+		"pipeline",
+		"build script"
+	];
+	private static readonly string[] DevelopmentOnlySuggestionPrefixes =
+	[
+		"add tests",
+		"write tests",
+		"expand test coverage",
+		"increase test coverage",
+		"improve test coverage",
+		"add unit tests",
+		"add integration tests",
+		"refactor",
+		"improve developer experience",
+		"update documentation",
+		"add documentation"
+	];
 
 	public IdeaService(
 		VibeSwarmDbContext dbContext,
@@ -1633,12 +1696,12 @@ Keep the specification concise but complete. Focus on actionable implementation 
 		sb.AppendLine("</repository_structure>");
 
 		sb.AppendLine("<objective>");
-		sb.AppendLine("Analyze the repository structure and identify areas for improvement. Consider:");
-		sb.AppendLine("- Missing features that would benefit users");
-		sb.AppendLine("- Error handling, logging, or validation gaps");
-		sb.AppendLine("- Performance or security improvements");
-		sb.AppendLine("- Testing gaps or developer experience improvements");
-		sb.AppendLine("- UX improvements for any UI components");
+		sb.AppendLine("Analyze the repository structure and identify areas for improvement.");
+		sb.AppendLine("Return the highest-impact user-facing ideas first. Prioritize:");
+		sb.AppendLine("- Missing features or UX improvements that would directly benefit users");
+		sb.AppendLine("- Reliability, validation, performance, or security improvements users would notice");
+		sb.AppendLine("- Fixes for workflows that are confusing, fragile, or error-prone in real usage");
+		sb.AppendLine("De-prioritize development-only work such as adding tests, refactoring internals, or documentation updates unless it clearly unlocks a user-facing improvement.");
 		sb.AppendLine("</objective>");
 
 		sb.AppendLine("<goal>");
@@ -1681,8 +1744,66 @@ Keep the specification concise but complete. Focus on actionable implementation 
 
 		return suggestions
 			.Distinct(StringComparer.OrdinalIgnoreCase)
+			.Select((suggestion, index) => new
+			{
+				Suggestion = suggestion,
+				Index = index,
+				Score = ScoreCodebaseSuggestion(suggestion)
+			})
+			.OrderByDescending(entry => entry.Score)
+			.ThenBy(entry => entry.Index)
 			.Take(maxSuggestions)
+			.Select(entry => entry.Suggestion)
 			.ToList();
+	}
+
+	private static int ScoreCodebaseSuggestion(string suggestion)
+	{
+		var normalizedSuggestion = suggestion.Trim().ToLowerInvariant();
+		var score = 0;
+
+		if (ContainsAny(normalizedSuggestion, UserImpactSuggestionKeywords))
+		{
+			score += 3;
+		}
+
+		if (ContainsAny(normalizedSuggestion, DevelopmentOnlySuggestionKeywords))
+		{
+			score -= 3;
+		}
+
+		if (StartsWithAny(normalizedSuggestion, DevelopmentOnlySuggestionPrefixes))
+		{
+			score -= 2;
+		}
+
+		return score;
+	}
+
+	private static bool ContainsAny(string text, IEnumerable<string> keywords)
+	{
+		foreach (var keyword in keywords)
+		{
+			if (text.Contains(keyword, StringComparison.Ordinal))
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	private static bool StartsWithAny(string text, IEnumerable<string> prefixes)
+	{
+		foreach (var prefix in prefixes)
+		{
+			if (text.StartsWith(prefix, StringComparison.Ordinal))
+			{
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	private static SuggestIdeasRequest NormalizeSuggestIdeasRequest(SuggestIdeasRequest? request)
