@@ -1,49 +1,51 @@
 @* Live output panel for job execution output *@
 
-<div class="card mb-3 mb-lg-4 h-100 d-flex flex-column">
-	<div class="card-header bg-body-secondary d-flex justify-content-between align-items-center flex-wrap gap-2">
-		<div class="d-flex align-items-center">
-			<span class="live-indicator me-2"></span>
-			<strong>Live Output</strong>
-			<span class="text-body-secondary ms-2 small">(@FilteredLines.Count() lines)</span>
+<SectionErrorBoundary SectionTitle="live output">
+	<div class="card mb-3 mb-lg-4 h-100 d-flex flex-column">
+		<div class="card-header bg-body-secondary d-flex justify-content-between align-items-center flex-wrap gap-2">
+			<div class="d-flex align-items-center">
+				<span class="live-indicator me-2"></span>
+				<strong>Live Output</strong>
+				<span class="text-body-secondary ms-2 small">(@FilteredLines.Count() lines)</span>
+			</div>
+			<div class="d-flex align-items-center gap-2">
+				<select class="form-select form-select-sm" style="width: auto;" @bind="_categoryFilter">
+					<option value="all">All</option>
+					<option value="text">Text</option>
+					<option value="thinking">Thinking</option>
+					<option value="tool">Tools</option>
+				</select>
+				<ActionButton Icon="trash" Text="Clear" Size="ActionButton.ButtonSize.Small" HideTextOnMobile="true"
+							  OnClick="OnClear" />
+			</div>
 		</div>
-		<div class="d-flex align-items-center gap-2">
-			<select class="form-select form-select-sm" style="width: auto;" @bind="_categoryFilter">
-				<option value="all">All</option>
-				<option value="text">Text</option>
-				<option value="thinking">Thinking</option>
-				<option value="tool">Tools</option>
-			</select>
-			<ActionButton Icon="trash" Text="Clear" Size="ActionButton.ButtonSize.Small" HideTextOnMobile="true"
-						  OnClick="OnClear" />
-		</div>
-	</div>
-	<div class="card-body p-0 flex-grow-1 overflow-hidden">
-		<div class="terminal-output overscroll-contain white-space-pre-wrap h-100 p-3 overflow-auto small" @ref="_outputContainer" style="min-height: 300px;">
-			@foreach (var line in FilteredLines.TakeLast(MaxLines))
-			{
-				@if (line.IsThinking)
+		<div class="card-body p-0 flex-grow-1 overflow-hidden">
+			<div class="terminal-output overscroll-contain white-space-pre-wrap h-100 p-3 overflow-auto small" @ref="_outputContainer" style="min-height: 300px;">
+				@foreach (var line in FilteredLines.TakeLast(MaxLines))
 				{
-					@if (!line.IsCollapsed)
+					@if (line.IsThinking)
 					{
-						<div class="output-line d-flex gap-2 py-0 output-thinking">
+						@if (!line.IsCollapsed)
+						{
+							<div class="output-line d-flex gap-2 py-0 output-thinking">
+								<span class="output-time flex-shrink-0 small d-none d-sm-inline">[@line.Timestamp.FormatTime()]</span>
+								<span class="output-icon flex-shrink-0" title="Thinking">&#128161;</span>
+								<span class="output-text text-break fst-italic text-body-secondary">@line.Content</span>
+							</div>
+						}
+					}
+					else
+					{
+						<div class="output-line d-flex gap-2 py-0 @(line.IsError ? "output-error" : "output-stdout")">
 							<span class="output-time flex-shrink-0 small d-none d-sm-inline">[@line.Timestamp.FormatTime()]</span>
-							<span class="output-icon flex-shrink-0" title="Thinking">&#128161;</span>
-							<span class="output-text text-break fst-italic text-body-secondary">@line.Content</span>
+							<span class="output-text text-break">@line.Content</span>
 						</div>
 					}
 				}
-				else
-				{
-					<div class="output-line d-flex gap-2 py-0 @(line.IsError ? "output-error" : "output-stdout")">
-						<span class="output-time flex-shrink-0 small d-none d-sm-inline">[@line.Timestamp.FormatTime()]</span>
-						<span class="output-text text-break">@line.Content</span>
-					</div>
-				}
-			}
+			</div>
 		</div>
 	</div>
-</div>
+</SectionErrorBoundary>
 
 @code {
 	[Parameter]

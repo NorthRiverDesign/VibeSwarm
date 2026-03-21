@@ -1,226 +1,228 @@
 @* Project jobs list component *@
 @using VibeSwarm.Shared.Utilities
 
-<div class="d-grid gap-3">
-	<div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
-		<div class="d-flex flex-wrap align-items-center gap-2 small text-body-secondary">
-			@if (IsPageLoading)
-			{
-				<span class="d-inline-flex align-items-center gap-2">
-					<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
-					<span>Refreshing jobs</span>
-				</span>
-			}
-			else if (HasActiveJobs)
-			{
-				<span class="badge text-bg-info d-inline-flex align-items-center gap-1">
-					<i class="bi bi-activity"></i>
-					<span>Queue active</span>
-				</span>
-			}
-		</div>
-		<div class="d-flex align-items-center gap-2">
-			<span class="badge bg-secondary">@TotalJobsCount</span>
-			@if (HasBulkActions)
-			{
-				<div class="dropdown">
-					<button type="button" class="btn btn-sm btn-secondary dropdown-toggle" data-bs-toggle="dropdown"
-							aria-expanded="false" title="More job actions">
-						<i class="bi bi-three-dots me-1"></i>More
-					</button>
-					<ul class="dropdown-menu dropdown-menu-end">
-						@if (HasActiveJobs)
-						{
-							<li>
-								<button type="button" class="dropdown-item text-danger" @onclick="HandleCancelAll"
-										disabled="@IsBulkActionInProgress" title="Cancel all queued and active jobs">
-									@if (_isCancellingAll)
-									{
-										<span class="spinner-border spinner-border-sm me-2" role="status"></span>
-									}
-									else
-									{
-										<i class="bi bi-x-octagon me-2"></i>
-									}
-									Cancel All
-								</button>
-							</li>
-						}
-						@if (HasActiveJobs && HasCompletedJobs)
-						{
-							<li><hr class="dropdown-divider"></li>
-						}
-						@if (HasCompletedJobs)
-						{
-							<li>
-								<button type="button" class="dropdown-item text-danger" @onclick="HandleDeleteCompleted"
-										disabled="@IsBulkActionInProgress" title="Delete completed jobs for this project">
-									@if (_isDeletingCompleted)
-									{
-										<span class="spinner-border spinner-border-sm me-2" role="status"></span>
-									}
-									else
-									{
-										<i class="bi bi-trash me-2"></i>
-									}
-									Delete Completed Jobs
-								</button>
-							</li>
-						}
-					</ul>
-				</div>
-			}
-			<button type="button" class="btn btn-sm btn-primary" @onclick="() => OnCreateJob.InvokeAsync()"
-					title="@(HasActiveJobs ? "Create a new job. It will be queued behind the current run." : "Create a new job")">
-				<i class="bi bi-plus-lg me-1"></i>Create Job
-			</button>
-		</div>
-	</div>
-	@if (!Jobs.Any())
-	{
-		<EmptyState Icon="list-check" Title="No jobs yet"
-					Message="Create a job to start working on this project." />
-	}
-	else
-	{
-		<div class="border rounded-3">
-			<ul class="list-group list-group-flush">
-				@foreach (var job in Jobs)
+<SectionErrorBoundary SectionTitle="job list">
+	<div class="d-grid gap-3">
+		<div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+			<div class="d-flex flex-wrap align-items-center gap-2 small text-body-secondary">
+				@if (IsPageLoading)
 				{
-					<li class="list-group-item">
-						<div class="d-flex justify-content-between align-items-start gap-2">
-							<div class="d-flex align-items-start gap-2 flex-grow-1 min-width-0">
-								@* Status Icon *@
-								<div class="flex-shrink-0 pt-1">
-									@switch (job.Status)
-									{
-										case JobStatus.Completed:
-											<i class="bi bi-check-circle-fill text-success fs-5" title="Completed"></i>
-											break;
-										case JobStatus.Failed:
-										case JobStatus.Cancelled:
-											<i class="bi bi-x-circle-fill text-danger fs-5" title="@job.Status.ToString()"></i>
-											break;
-										case JobStatus.Started:
-										case JobStatus.Planning:
-										case JobStatus.Processing:
-											<div class="spinner-border spinner-border-sm text-primary" role="status"
-												 title="@job.Status.ToString()">
-												<span class="visually-hidden">Processing...</span>
-											</div>
-											break;
-										case JobStatus.New:
-										case JobStatus.Pending:
-											<i class="bi bi-hourglass-split text-warning fs-5" title="Queued"></i>
-											break;
-										case JobStatus.Paused:
-											<i class="bi bi-pause-circle-fill text-warning fs-5" title="Paused - Waiting for input"></i>
-											break;
-										case JobStatus.Stalled:
-											<i class="bi bi-exclamation-triangle-fill text-warning fs-5" title="Stalled"></i>
-											break;
-										default:
-											<i class="bi bi-circle text-secondary fs-5" title="@job.Status.ToString()"></i>
-											break;
-									}
-								</div>
-								@* Job Content *@
-								<div class="flex-grow-1 min-width-0">
-									<a href="/jobs/view/@job.Id"
-										   class="d-block text-decoration-none fw-medium text-truncate-lines-2"
-										   title="@job.DisplayTitle">
-										@GetJobDisplayTitle(job)
-									</a>
-									<div class="d-flex flex-wrap gap-2 mt-1 small text-body-secondary">
-										<span>@(job.Provider?.Name ?? "Unknown")</span>
-										@if (!string.IsNullOrEmpty(job.ModelUsed))
+					<span class="d-inline-flex align-items-center gap-2">
+						<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+						<span>Refreshing jobs</span>
+					</span>
+				}
+				else if (HasActiveJobs)
+				{
+					<span class="badge text-bg-info d-inline-flex align-items-center gap-1">
+						<i class="bi bi-activity"></i>
+						<span>Queue active</span>
+					</span>
+				}
+			</div>
+			<div class="d-flex align-items-center gap-2">
+				<span class="badge bg-secondary">@TotalJobsCount</span>
+				@if (HasBulkActions)
+				{
+					<div class="dropdown">
+						<button type="button" class="btn btn-sm btn-secondary dropdown-toggle" data-bs-toggle="dropdown"
+								aria-expanded="false" title="More job actions">
+							<i class="bi bi-three-dots me-1"></i>More
+						</button>
+						<ul class="dropdown-menu dropdown-menu-end">
+							@if (HasActiveJobs)
+							{
+								<li>
+									<button type="button" class="dropdown-item text-danger" @onclick="HandleCancelAll"
+											disabled="@IsBulkActionInProgress" title="Cancel all queued and active jobs">
+										@if (_isCancellingAll)
 										{
-											<span class="text-body-tertiary">•</span>
-											<span class="text-body-tertiary" title="Model">@FormatModelName(job.ModelUsed)</span>
+											<span class="spinner-border spinner-border-sm me-2" role="status"></span>
 										}
-										<span class="text-body-tertiary">•</span>
-										<span>@job.CreatedAt.FormatDateTimeShort()</span>
+										else
+										{
+											<i class="bi bi-x-octagon me-2"></i>
+										}
+										Cancel All
+									</button>
+								</li>
+							}
+							@if (HasActiveJobs && HasCompletedJobs)
+							{
+								<li><hr class="dropdown-divider"></li>
+							}
+							@if (HasCompletedJobs)
+							{
+								<li>
+									<button type="button" class="dropdown-item text-danger" @onclick="HandleDeleteCompleted"
+											disabled="@IsBulkActionInProgress" title="Delete completed jobs for this project">
+										@if (_isDeletingCompleted)
+										{
+											<span class="spinner-border spinner-border-sm me-2" role="status"></span>
+										}
+										else
+										{
+											<i class="bi bi-trash me-2"></i>
+										}
+										Delete Completed Jobs
+									</button>
+								</li>
+							}
+						</ul>
+					</div>
+				}
+				<button type="button" class="btn btn-sm btn-primary" @onclick="() => OnCreateJob.InvokeAsync()"
+						title="@(HasActiveJobs ? "Create a new job. It will be queued behind the current run." : "Create a new job")">
+					<i class="bi bi-plus-lg me-1"></i>Create Job
+				</button>
+			</div>
+		</div>
+		@if (!Jobs.Any())
+		{
+			<EmptyState Icon="list-check" Title="No jobs yet"
+						Message="Create a job to start working on this project." />
+		}
+		else
+		{
+			<div class="border rounded-3">
+				<ul class="list-group list-group-flush">
+					@foreach (var job in Jobs)
+					{
+						<li class="list-group-item">
+							<div class="d-flex justify-content-between align-items-start gap-2">
+								<div class="d-flex align-items-start gap-2 flex-grow-1 min-width-0">
+									@* Status Icon *@
+									<div class="flex-shrink-0 pt-1">
+										@switch (job.Status)
+										{
+											case JobStatus.Completed:
+												<i class="bi bi-check-circle-fill text-success fs-5" title="Completed"></i>
+												break;
+											case JobStatus.Failed:
+											case JobStatus.Cancelled:
+												<i class="bi bi-x-circle-fill text-danger fs-5" title="@job.Status.ToString()"></i>
+												break;
+											case JobStatus.Started:
+											case JobStatus.Planning:
+											case JobStatus.Processing:
+												<div class="spinner-border spinner-border-sm text-primary" role="status"
+													 title="@job.Status.ToString()">
+													<span class="visually-hidden">Processing...</span>
+												</div>
+												break;
+											case JobStatus.New:
+											case JobStatus.Pending:
+												<i class="bi bi-hourglass-split text-warning fs-5" title="Queued"></i>
+												break;
+											case JobStatus.Paused:
+												<i class="bi bi-pause-circle-fill text-warning fs-5" title="Paused - Waiting for input"></i>
+												break;
+											case JobStatus.Stalled:
+												<i class="bi bi-exclamation-triangle-fill text-warning fs-5" title="Stalled"></i>
+												break;
+											default:
+												<i class="bi bi-circle text-secondary fs-5" title="@job.Status.ToString()"></i>
+												break;
+										}
 									</div>
-									@* Token and cost stats row *@
-									@if (job.InputTokens.HasValue || job.OutputTokens.HasValue || job.TotalCostUsd.HasValue)
-									{
-										<div class="d-flex flex-wrap gap-2 mt-1 small">
-											@if (job.InputTokens.HasValue || job.OutputTokens.HasValue)
-											{
-												<span class="font-monospace text-body-secondary" title="Input / Output tokens">
-													<i
-													class="bi bi-arrow-left-right me-1 opacity-75"></i>@TokenHelper.FormatTokenCount(job.InputTokens
-																						?? 0) / @TokenHelper.FormatTokenCount(job.OutputTokens ?? 0)
-												</span>
-											}
-											@if (job.TotalCostUsd.HasValue && job.TotalCostUsd.Value > 0)
-											{
-												<span class="font-monospace fw-medium text-success" title="Cost">
-													@TokenHelper.FormatCost(job.TotalCostUsd.Value)
-												</span>
-											}
-										</div>
-									}
-									@if ((job.Status == JobStatus.Started || job.Status == JobStatus.Planning || job.Status == JobStatus.Processing) &&
-																!string.IsNullOrEmpty(job.CurrentActivity))
-									{
-										<div class="text-info fst-italic small mt-1">@TruncateText(job.CurrentActivity, 80)</div>
-									}
-									@if (job.Status == JobStatus.Paused)
-									{
-										<div class="text-warning fst-italic small mt-1">
-											<i class="bi bi-chat-dots me-1"></i>Waiting for user input
-										</div>
-									}
-									@if (!string.IsNullOrEmpty(job.ErrorMessage))
-									{
-										<div class="text-danger small font-monospace mt-2">@TruncateText(job.ErrorMessage, 100)
-										</div>
-									}
-								</div>
-							</div>
-							@* Actions Dropdown *@
-							<div class="dropdown flex-shrink-0">
-								<button class="btn btn-sm btn-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown"
-										aria-expanded="false" title="Job actions">
-									<i class="bi bi-three-dots-vertical"></i>
-								</button>
-								<ul class="dropdown-menu dropdown-menu-end">
-									<li>
-										<a class="dropdown-item" href="/jobs/view/@job.Id">
-											<i class="bi bi-eye me-2"></i>View Details
+									@* Job Content *@
+									<div class="flex-grow-1 min-width-0">
+										<a href="/jobs/view/@job.Id"
+											   class="d-block text-decoration-none fw-medium text-truncate-lines-2"
+											   title="@job.DisplayTitle">
+											@GetJobDisplayTitle(job)
 										</a>
-									</li>
-									@if (job.Status is JobStatus.Failed or JobStatus.Cancelled)
-									{
+										<div class="d-flex flex-wrap gap-2 mt-1 small text-body-secondary">
+											<span>@(job.Provider?.Name ?? "Unknown")</span>
+											@if (!string.IsNullOrEmpty(job.ModelUsed))
+											{
+												<span class="text-body-tertiary">•</span>
+												<span class="text-body-tertiary" title="Model">@FormatModelName(job.ModelUsed)</span>
+											}
+											<span class="text-body-tertiary">•</span>
+											<span>@job.CreatedAt.FormatDateTimeShort()</span>
+										</div>
+										@* Token and cost stats row *@
+										@if (job.InputTokens.HasValue || job.OutputTokens.HasValue || job.TotalCostUsd.HasValue)
+										{
+											<div class="d-flex flex-wrap gap-2 mt-1 small">
+												@if (job.InputTokens.HasValue || job.OutputTokens.HasValue)
+												{
+													<span class="font-monospace text-body-secondary" title="Input / Output tokens">
+														<i
+														class="bi bi-arrow-left-right me-1 opacity-75"></i>@TokenHelper.FormatTokenCount(job.InputTokens
+																							?? 0) / @TokenHelper.FormatTokenCount(job.OutputTokens ?? 0)
+													</span>
+												}
+												@if (job.TotalCostUsd.HasValue && job.TotalCostUsd.Value > 0)
+												{
+													<span class="font-monospace fw-medium text-success" title="Cost">
+														@TokenHelper.FormatCost(job.TotalCostUsd.Value)
+													</span>
+												}
+											</div>
+										}
+										@if ((job.Status == JobStatus.Started || job.Status == JobStatus.Planning || job.Status == JobStatus.Processing) &&
+																	!string.IsNullOrEmpty(job.CurrentActivity))
+										{
+											<div class="text-info fst-italic small mt-1">@TruncateText(job.CurrentActivity, 80)</div>
+										}
+										@if (job.Status == JobStatus.Paused)
+										{
+											<div class="text-warning fst-italic small mt-1">
+												<i class="bi bi-chat-dots me-1"></i>Waiting for user input
+											</div>
+										}
+										@if (!string.IsNullOrEmpty(job.ErrorMessage))
+										{
+											<div class="text-danger small font-monospace mt-2">@TruncateText(job.ErrorMessage, 100)
+											</div>
+										}
+									</div>
+								</div>
+								@* Actions Dropdown *@
+								<div class="dropdown flex-shrink-0">
+									<button class="btn btn-sm btn-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown"
+											aria-expanded="false" title="Job actions">
+										<i class="bi bi-three-dots-vertical"></i>
+									</button>
+									<ul class="dropdown-menu dropdown-menu-end">
 										<li>
-											<button class="dropdown-item"
-													@onclick="() => OnRetryJob.InvokeAsync(job.Id)">
-												<i class="bi bi-arrow-clockwise me-2"></i>Retry
+											<a class="dropdown-item" href="/jobs/view/@job.Id">
+												<i class="bi bi-eye me-2"></i>View Details
+											</a>
+										</li>
+										@if (job.Status is JobStatus.Failed or JobStatus.Cancelled)
+										{
+											<li>
+												<button class="dropdown-item"
+														@onclick="() => OnRetryJob.InvokeAsync(job.Id)">
+													<i class="bi bi-arrow-clockwise me-2"></i>Retry
+												</button>
+											</li>
+										}
+										<li>
+											<hr class="dropdown-divider">
+										</li>
+										<li>
+											<button class="dropdown-item text-danger"
+													@onclick="() => OnDeleteJob.InvokeAsync(job.Id)">
+												<i class="bi bi-trash me-2"></i>Delete
 											</button>
 										</li>
-									}
-									<li>
-										<hr class="dropdown-divider">
-									</li>
-									<li>
-										<button class="dropdown-item text-danger"
-												@onclick="() => OnDeleteJob.InvokeAsync(job.Id)">
-											<i class="bi bi-trash me-2"></i>Delete
-										</button>
-									</li>
-								</ul>
+									</ul>
+								</div>
 							</div>
-						</div>
-					</li>
-				}
-			</ul>
-		</div>
-	}
+						</li>
+					}
+				</ul>
+			</div>
+		}
 
-	<PaginationControls PageNumber="@CurrentPage" PageSize="@PageSize" TotalCount="@TotalJobsCount"
-						IsLoading="@IsPageLoading" OnPreviousPage="OnPreviousPage" OnNextPage="OnNextPage" />
-</div>
+		<PaginationControls PageNumber="@CurrentPage" PageSize="@PageSize" TotalCount="@TotalJobsCount"
+							IsLoading="@IsPageLoading" OnPreviousPage="OnPreviousPage" OnNextPage="OnNextPage" />
+	</div>
+</SectionErrorBoundary>
 
 @code {
 	[Parameter]

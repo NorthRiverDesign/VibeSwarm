@@ -1,0 +1,53 @@
+<ErrorBoundary @ref="_errorBoundary">
+	<ChildContent>
+		<div @key="_contentVersion">
+			@ChildContent
+		</div>
+	</ChildContent>
+	<ErrorContent Context="exception">
+		<Alert Type="Alert.AlertType.Danger">
+			<div class="d-flex flex-column gap-3">
+				<div class="d-flex flex-column flex-sm-row align-items-sm-start justify-content-between gap-3">
+					<div class="min-width-0">
+						<div class="fw-semibold">Couldn't load @SectionTitle.</div>
+						<div class="small text-body-secondary">
+							An unexpected error interrupted this section. Try rendering it again.
+						</div>
+					</div>
+					<button type="button" class="btn btn-sm btn-secondary flex-shrink-0" @onclick="RecoverAsync">
+						<i class="bi bi-arrow-clockwise me-1"></i>Try Again
+					</button>
+				</div>
+				<details class="small">
+					<summary class="cursor-pointer">Show error details</summary>
+					<pre class="mb-0 mt-2 p-2 bg-body-tertiary rounded small font-monospace white-space-pre-wrap">@FormatException(exception)</pre>
+				</details>
+			</div>
+		</Alert>
+	</ErrorContent>
+</ErrorBoundary>
+
+@code {
+	[Parameter, EditorRequired]
+	public string SectionTitle { get; set; } = string.Empty;
+
+	[Parameter, EditorRequired]
+	public RenderFragment? ChildContent { get; set; }
+
+	private ErrorBoundary? _errorBoundary;
+	private int _contentVersion;
+
+	private Task RecoverAsync()
+	{
+		_contentVersion++;
+		_errorBoundary?.Recover();
+		return Task.CompletedTask;
+	}
+
+	private static string FormatException(Exception exception)
+	{
+		return string.IsNullOrWhiteSpace(exception.Message)
+			? exception.GetType().Name
+			: $"{exception.GetType().Name}: {exception.Message}";
+	}
+}

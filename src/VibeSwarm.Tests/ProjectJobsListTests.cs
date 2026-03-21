@@ -14,6 +14,7 @@ public sealed class ProjectJobsListTests
 	{
 		var services = new ServiceCollection();
 		services.AddLogging();
+		services.AddSingleton<IErrorBoundaryLogger, NoOpErrorBoundaryLogger>();
 
 		await using var renderer = new HtmlRenderer(services.BuildServiceProvider(), NullLoggerFactory.Instance);
 
@@ -47,5 +48,11 @@ public sealed class ProjectJobsListTests
 		Assert.DoesNotContain("card-header", html);
 		Assert.Contains("border rounded-3", html);
 		Assert.DoesNotContain("border rounded-3 overflow-hidden", html);
+	}
+
+	private sealed class NoOpErrorBoundaryLogger : IErrorBoundaryLogger
+	{
+		public ValueTask LogErrorAsync(Exception exception)
+			=> ValueTask.CompletedTask;
 	}
 }
