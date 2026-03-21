@@ -1,3 +1,4 @@
+using Bunit;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.Extensions.DependencyInjection;
@@ -263,6 +264,116 @@ public sealed class JobSessionPanelTests
 
 		Assert.Contains("bash", html);
 		Assert.DoesNotContain("toolu_01A2B3C4", html);
+	}
+
+	[Fact]
+	public void JobSessionPanel_Bunit_SwitchesTabsAndCopiesCommand()
+	{
+		using var context = new BunitContext();
+		context.JSInterop.SetupVoid("copyToClipboard", "dotnet test");
+
+		var cut = context.Render<JobSessionPanel>(parameters => parameters
+			.Add(panel => panel.Status, JobStatus.Completed)
+			.Add(panel => panel.Messages, new List<JobMessage>
+			{
+				new()
+				{
+					Id = Guid.NewGuid(),
+					JobId = Guid.NewGuid(),
+					Role = MessageRole.Assistant,
+					Content = "Completed successfully.",
+					CreatedAt = DateTime.UtcNow
+				}
+			})
+			.Add(panel => panel.ConsoleOutput, "Build verified")
+			.Add(panel => panel.CommandUsed, "dotnet test")
+			.Add(panel => panel.SessionId, "session-123"));
+
+		cut.FindAll("button[role='tab']")
+			.Single(button => button.TextContent.Contains("Console", StringComparison.Ordinal))
+			.Click();
+
+		Assert.Contains("Build verified", cut.Markup);
+
+		cut.FindAll("button[role='tab']")
+			.Single(button => button.TextContent.Contains("Command", StringComparison.Ordinal))
+			.Click();
+
+		cut.Find("button[title='Copy command to clipboard']").Click();
+
+		var invocation = Assert.Single(context.JSInterop.Invocations);
+		Assert.Equal("copyToClipboard", invocation.Identifier);
+		Assert.Equal("dotnet test", invocation.Arguments[0]?.ToString());
+		Assert.Contains("session-123", cut.Markup);
+	}
+
+	[Fact]
+	public void JobSessionPanel_Bunit_CallsClearLiveOutputCallback()
+	{
+		using var context = new BunitContext();
+		var cleared = false;
+
+		var cut = context.Render<JobSessionPanel>(parameters => parameters
+			.Add(panel => panel.Status, JobStatus.Processing)
+			.Add(panel => panel.IsJobActive, true)
+			.Add(panel => panel.LiveOutputLines, new List<OutputLine>
+			{
+				new()
+				{
+					Content = "[Assistant] Reviewing repository changes",
+					Timestamp = DateTime.UtcNow
+				}
+			})
+			.Add(panel => panel.OnClearLiveOutput, async () =>
+			{
+				cleared = true;
+				await Task.CompletedTask;
+			}));
+
+		cut.FindAll("button")
+			.Single(button => button.TextContent.Contains("Clear", StringComparison.Ordinal))
+			.Click();
+
+		Assert.True(cleared);
+	}
+
+	[Fact]
+	public void JobSessionPanel_Bunit_SendsFollowUpAndClearsDraft()
+	{
+		using var context = new BunitContext();
+		string? followUpPrompt = null;
+
+		var cut = context.Render<JobSessionPanel>(parameters => parameters
+			.Add(panel => panel.Status, JobStatus.Completed)
+			.Add(panel => panel.Messages, new List<JobMessage>
+			{
+				new()
+				{
+					Id = Guid.NewGuid(),
+					JobId = Guid.NewGuid(),
+					Role = MessageRole.Assistant,
+					Content = "Ready for the next instruction.",
+					CreatedAt = DateTime.UtcNow
+				}
+			})
+			.Add(panel => panel.OnSendFollowUp, async (string prompt) =>
+			{
+				followUpPrompt = prompt;
+				await Task.CompletedTask;
+			}));
+
+		var sendButton = cut.Find("button[title='Send follow-up']");
+		Assert.True(sendButton.HasAttribute("disabled"));
+
+		cut.Find("textarea").Input("Please add one more assertion.");
+
+		sendButton = cut.Find("button[title='Send follow-up']");
+		Assert.False(sendButton.HasAttribute("disabled"));
+
+		sendButton.Click();
+
+		Assert.Equal("Please add one more assertion.", followUpPrompt);
+		Assert.True(cut.Find("button[title='Send follow-up']").HasAttribute("disabled"));
 	}
 
 	private sealed class NoOpJsRuntime : IJSRuntime
