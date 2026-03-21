@@ -22,6 +22,7 @@ public class CommonProviderSetupStatus
 	public bool HasConfiguredProvider { get; set; }
 	public Guid? ProviderId { get; set; }
 	public string? ProviderName { get; set; }
+	public ProviderConnectionMode AuthenticationConnectionMode { get; set; } = ProviderConnectionMode.CLI;
 	public bool IsAuthenticated { get; set; }
 	public string? AuthenticationStatus { get; set; }
 	public List<CommonProviderSetupConfiguredProvider> ConfiguredProviders { get; set; } = [];

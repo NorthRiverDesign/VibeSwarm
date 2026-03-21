@@ -31,10 +31,11 @@ public sealed class CommonProviderSetupCardTests
 				ApiKeyLabel = "GitHub Token",
 				ApiKeyHelpText = "Use a fine-grained PAT.",
 				IsInstalled = false,
+				AuthenticationConnectionMode = ProviderConnectionMode.CLI,
 				IsAuthenticated = false,
 				HasConfiguredProvider = false,
 				InstallationStatus = $"{AppConstants.AppName} could not find 'copilot' on the host PATH. It also checked common user install locations.",
-				AuthenticationStatus = $"Save a GitHub token to let {AppConstants.AppName} authenticate the Copilot CLI."
+				AuthenticationStatus = "Sign in with 'copilot login' or save a GitHub token for this CLI connection."
 			}
 		});
 
@@ -46,7 +47,7 @@ public sealed class CommonProviderSetupCardTests
 
 		Assert.Contains("GitHub Copilot", html);
 		Assert.Contains("Not Installed", html);
-		Assert.Contains("Auth Needed", html);
+		Assert.Contains("CLI Auth Needed", html);
 		Assert.Contains("Provider Not Added", html);
 		Assert.Contains("curl -fsSL https://gh.io/copilot-install | bash", html);
 		Assert.Contains("Host detection", html);
@@ -76,10 +77,11 @@ public sealed class CommonProviderSetupCardTests
 				InstalledVersion = "1.0.58",
 				ResolvedExecutablePath = "/usr/local/bin/claude",
 				InstallationStatus = "Detected on host.",
+				AuthenticationConnectionMode = ProviderConnectionMode.SDK,
 				IsAuthenticated = true,
 				HasConfiguredProvider = true,
 				ProviderName = "Claude Code CLI",
-				AuthenticationStatus = "Saved in VibeSwarm.",
+				AuthenticationStatus = "Saved in VibeSwarm for this SDK connection.",
 				ConfiguredProviders =
 				[
 					new CommonProviderSetupConfiguredProvider
@@ -100,7 +102,7 @@ public sealed class CommonProviderSetupCardTests
 		});
 
 		Assert.Contains("Installed", html);
-		Assert.Contains("Auth Ready", html);
+		Assert.Contains("SDK Auth Ready", html);
 		Assert.Contains("Provider Configured", html);
 		Assert.Contains("Claude Code CLI", html);
 		Assert.Contains("1.0.58", html);

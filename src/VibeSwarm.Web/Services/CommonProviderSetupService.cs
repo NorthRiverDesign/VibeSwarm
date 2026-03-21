@@ -34,8 +34,8 @@ public class CommonProviderSetupService(
 				.ToList();
 
 			var preferredCliProvider = providersForType
-				.Where(provider => provider.ConnectionMode == ProviderConnectionMode.CLI)
-				.FirstOrDefault();
+				.FirstOrDefault(provider => provider.ConnectionMode == ProviderConnectionMode.CLI);
+			var preferredAuthProvider = providersForType.FirstOrDefault();
 
 			var installSpec = GetInstallSpec(providerType);
 			var installStatus = await _providerCliDetectionService.DetectAsync(
@@ -44,7 +44,8 @@ public class CommonProviderSetupService(
 				installSpec.VersionArguments,
 				preferredCliProvider?.ExecutablePath,
 				cancellationToken: cancellationToken);
-			var authStatus = DetectAuthentication(providerType, preferredCliProvider);
+			var authStatus = DetectAuthentication(providerType, preferredAuthProvider);
+			var authConnectionMode = preferredAuthProvider?.ConnectionMode ?? ProviderCapabilities.GetDefaultMode(providerType);
 
 			statuses.Add(new CommonProviderSetupStatus
 			{
@@ -62,9 +63,10 @@ public class CommonProviderSetupService(
 				InstalledVersion = installStatus.Version,
 				ResolvedExecutablePath = installStatus.ResolvedExecutablePath,
 				InstallationStatus = installStatus.Message,
-				HasConfiguredProvider = preferredCliProvider != null,
-				ProviderId = preferredCliProvider?.Id,
-				ProviderName = preferredCliProvider?.Name,
+				HasConfiguredProvider = providersForType.Count > 0,
+				ProviderId = preferredAuthProvider?.Id,
+				ProviderName = preferredAuthProvider?.Name,
+				AuthenticationConnectionMode = authConnectionMode,
 				IsAuthenticated = authStatus.IsAuthenticated,
 				AuthenticationStatus = authStatus.Message,
 				ConfiguredProviders = providersForType
@@ -279,25 +281,101 @@ public class CommonProviderSetupService(
 
 	private static AuthenticationState DetectAuthentication(ProviderType providerType, Provider? provider)
 	{
+		var connectionMode = provider?.ConnectionMode ?? ProviderCapabilities.GetDefaultMode(providerType);
 		if (!string.IsNullOrWhiteSpace(provider?.ApiKey))
 		{
-			return new AuthenticationState(true, "Saved in VibeSwarm.");
+			return new AuthenticationState(true, $"Saved in VibeSwarm for this {connectionMode} connection.");
 		}
 
-		return providerType switch
+		return (providerType, connectionMode) switch
 		{
-			ProviderType.Claude when File.Exists(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claude.json"))
-				=> new AuthenticationState(true, "Claude Code browser login detected on host."),
-			ProviderType.Copilot when !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("GH_TOKEN")) ||
-				!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("GITHUB_TOKEN"))
-				=> new AuthenticationState(true, "Using host GitHub token environment variables."),
-			ProviderType.OpenCode when TryReadOpenCodeAuthStatus()
-				=> new AuthenticationState(true, "OpenCode auth.json detected on host."),
-			ProviderType.Claude => new AuthenticationState(false, "Save an Anthropic API key or complete Claude's browser login on the host."),
-			ProviderType.Copilot => new AuthenticationState(false, "Save a GitHub token to let VibeSwarm authenticate the Copilot CLI."),
-			ProviderType.OpenCode => new AuthenticationState(false, "Save an OpenCode API key to populate the host auth.json."),
+			(ProviderType.Claude, ProviderConnectionMode.CLI) when File.Exists(Path.Combine(GetUserHomeDirectory(), ".claude.json"))
+				=> new AuthenticationState(true, "Claude Code browser login detected on host for this CLI connection."),
+			(ProviderType.Copilot, ProviderConnectionMode.CLI or ProviderConnectionMode.SDK) when HasCopilotEnvironmentToken()
+				=> new AuthenticationState(true, $"Using host GitHub token environment variables for this {connectionMode} connection."),
+			(ProviderType.Copilot, ProviderConnectionMode.CLI or ProviderConnectionMode.SDK) when TryReadCopilotAuthStatus()
+				=> new AuthenticationState(true, $"Copilot CLI login detected on host for this {connectionMode} connection."),
+			(ProviderType.OpenCode, ProviderConnectionMode.CLI) when TryReadOpenCodeAuthStatus()
+				=> new AuthenticationState(true, "OpenCode auth.json detected on host for this CLI connection."),
+			(ProviderType.Claude, ProviderConnectionMode.CLI)
+				=> new AuthenticationState(false, "Save an Anthropic API key or complete Claude's browser login on the host for this CLI connection."),
+			(ProviderType.Claude, ProviderConnectionMode.SDK)
+				=> new AuthenticationState(false, "Save an Anthropic API key for this SDK connection."),
+			(ProviderType.Copilot, ProviderConnectionMode.CLI)
+				=> new AuthenticationState(false, "Sign in with 'copilot login' or save a GitHub token for this CLI connection."),
+			(ProviderType.Copilot, ProviderConnectionMode.SDK)
+				=> new AuthenticationState(false, "Save a GitHub token or sign in with 'copilot login' so this SDK connection can use the Copilot CLI session."),
+			(ProviderType.OpenCode, ProviderConnectionMode.CLI)
+				=> new AuthenticationState(false, "Save an OpenCode API key to populate the host auth.json for this CLI connection."),
+			(ProviderType.OpenCode, ProviderConnectionMode.REST)
+				=> new AuthenticationState(false, "Save an OpenCode API key for this REST connection."),
 			_ => new AuthenticationState(false, null)
 		};
+	}
+
+	private static bool HasCopilotEnvironmentToken()
+	{
+		return !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("COPILOT_GITHUB_TOKEN")) ||
+			!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("GH_TOKEN")) ||
+			!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("GITHUB_TOKEN"));
+	}
+
+	internal static bool TryReadCopilotAuthStatus()
+	{
+		var configPath = Path.Combine(GetUserHomeDirectory(), ".copilot", "config.json");
+		if (!File.Exists(configPath))
+		{
+			return false;
+		}
+
+		try
+		{
+			using var stream = File.OpenRead(configPath);
+			using var document = JsonDocument.Parse(stream);
+			if (document.RootElement.ValueKind != JsonValueKind.Object)
+			{
+				return false;
+			}
+
+			return HasNonEmptyObjectOrArray(document.RootElement, "last_logged_in_user") ||
+				HasNonEmptyObjectOrArray(document.RootElement, "logged_in_users") ||
+				HasNonEmptyObjectOrArray(document.RootElement, "copilot_tokens");
+		}
+		catch
+		{
+			return false;
+		}
+	}
+
+	private static bool HasNonEmptyObjectOrArray(JsonElement root, string propertyName)
+	{
+		if (!root.TryGetProperty(propertyName, out var property))
+		{
+			return false;
+		}
+
+		return property.ValueKind switch
+		{
+			JsonValueKind.Array => property.GetArrayLength() > 0,
+			JsonValueKind.Object => property.EnumerateObject().Any(),
+			JsonValueKind.String => !string.IsNullOrWhiteSpace(property.GetString()),
+			JsonValueKind.True => true,
+			JsonValueKind.False => false,
+			JsonValueKind.Null => false,
+			JsonValueKind.Undefined => false,
+			_ => true
+		};
+	}
+
+	private static string GetUserHomeDirectory()
+	{
+		var homeDirectory = Environment.GetEnvironmentVariable("HOME");
+		if (!string.IsNullOrWhiteSpace(homeDirectory))
+		{
+			return homeDirectory;
+		}
+
+		return Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
 	}
 
 	private static bool TryReadOpenCodeAuthStatus()

@@ -20,7 +20,7 @@
 			</span>
 			<span class="badge @(Status.IsAuthenticated ? "bg-success-subtle text-success-emphasis" : "bg-warning-subtle text-warning-emphasis")">
 				<i class="bi bi-@(Status.IsAuthenticated ? "shield-check" : "shield-exclamation") me-1"></i>
-				@(Status.IsAuthenticated ? "Auth Ready" : "Auth Needed")
+				@($"{Status.AuthenticationConnectionMode} {(Status.IsAuthenticated ? "Auth Ready" : "Auth Needed")}")
 			</span>
 			<span class="badge @(Status.HasConfiguredProvider ? "bg-primary-subtle text-primary-emphasis" : "bg-secondary-subtle text-secondary-emphasis")">
 				<i class="bi bi-@(Status.HasConfiguredProvider ? "plug" : "plus-circle") me-1"></i>
@@ -71,7 +71,7 @@
 				@if (!string.IsNullOrWhiteSpace(Status.AuthenticationStatus))
 				{
 					<div>
-						<div class="fw-semibold text-body mb-1">Authentication</div>
+						<div class="fw-semibold text-body mb-1">Authentication (@Status.AuthenticationConnectionMode)</div>
 						<div>@Status.AuthenticationStatus</div>
 					</div>
 				}
