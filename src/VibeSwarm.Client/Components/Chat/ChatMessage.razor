@@ -5,26 +5,26 @@
 	<div class="chat-bubble py-2 px-3 text-break @GetBubbleClasses()">
 		@if (Role == MessageRole.ToolUse)
 		{
-			<div class="d-flex flex-column gap-2">
-				<div class="fw-semibold small opacity-75">
+			<details>
+				<summary class="fw-semibold small opacity-75">
 					<i class="bi bi-tools me-1"></i>@ToolName
-				</div>
+				</summary>
 				@if (!string.IsNullOrEmpty(ToolInput))
 				{
-					<pre class="chat-tool-code white-space-pre-wrap m-0 p-2 rounded small text-break overflow-auto"
+					<pre class="chat-tool-code white-space-pre-wrap m-0 mt-2 p-2 rounded small text-break overflow-auto"
 						style="max-height: 150px;">@ToolInput</pre>
 				}
-			</div>
+			</details>
 		}
 		else if (Role == MessageRole.ToolResult)
 		{
-			<div class="d-flex flex-column gap-2">
-				<div class="fw-semibold small opacity-75">
+			<details>
+				<summary class="fw-semibold small opacity-75">
 					<i class="bi bi-arrow-return-right me-1"></i>@ToolName
-				</div>
-				<pre class="chat-tool-code white-space-pre-wrap m-0 p-2 rounded small text-break overflow-auto"
+				</summary>
+				<pre class="chat-tool-code white-space-pre-wrap m-0 mt-2 p-2 rounded small text-break overflow-auto"
 					style="max-height: 150px;">@TruncateOutput(ToolOutput ?? Content ?? "", 500)</pre>
-			</div>
+			</details>
 		}
 		else
 		{

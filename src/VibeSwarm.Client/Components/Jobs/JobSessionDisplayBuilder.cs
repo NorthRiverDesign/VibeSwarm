@@ -70,13 +70,18 @@ internal static class JobSessionDisplayBuilder
 			return [];
 		}
 
-		return persistedMessages
-			.OrderBy(message => message.CreatedAt)
-			.Select(NormalizePersistedMessage)
-			.ToList();
+		var normalizedMessages = new List<JobMessage>();
+		var pendingToolNames = new Queue<string>();
+
+		foreach (var message in persistedMessages.OrderBy(message => message.CreatedAt))
+		{
+			normalizedMessages.Add(NormalizePersistedMessage(message, pendingToolNames));
+		}
+
+		return normalizedMessages;
 	}
 
-	private static JobMessage NormalizePersistedMessage(JobMessage message)
+	private static JobMessage NormalizePersistedMessage(JobMessage message, Queue<string> pendingToolNames)
 	{
 		var normalized = new JobMessage
 		{
@@ -99,9 +104,20 @@ internal static class JobSessionDisplayBuilder
 				break;
 
 			case MessageRole.Assistant:
+				normalized.Source = MessageSource.Provider;
+				break;
+
 			case MessageRole.ToolUse:
+				normalized.Source = MessageSource.Provider;
+				if (!string.IsNullOrWhiteSpace(normalized.ToolName))
+				{
+					pendingToolNames.Enqueue(normalized.ToolName);
+				}
+				break;
+
 			case MessageRole.ToolResult:
 				normalized.Source = MessageSource.Provider;
+				NormalizeToolResultName(normalized, pendingToolNames);
 				break;
 
 			case MessageRole.System:
@@ -116,6 +132,7 @@ internal static class JobSessionDisplayBuilder
 	{
 		if (string.IsNullOrWhiteSpace(content))
 		{
+			message.Role = MessageRole.Assistant;
 			message.Source = MessageSource.Provider;
 			message.Level = MessageLevel.Normal;
 			return;
@@ -124,6 +141,7 @@ internal static class JobSessionDisplayBuilder
 		var trimmedContent = content.Trim();
 		if (TryParseSystemMessage(trimmedContent, out _, out var source, out var level))
 		{
+			message.Role = MessageRole.System;
 			message.Source = source;
 			message.Level = level;
 			return;
@@ -133,13 +151,53 @@ internal static class JobSessionDisplayBuilder
 			|| trimmedContent.StartsWith("[Reasoning]", StringComparison.OrdinalIgnoreCase)
 			|| trimmedContent.StartsWith("[Thinking]", StringComparison.OrdinalIgnoreCase))
 		{
+			message.Role = MessageRole.System;
 			message.Source = MessageSource.Provider;
 			message.Level = MessageLevel.Normal;
 			return;
 		}
 
+		if (trimmedContent.StartsWith("[Assistant]", StringComparison.OrdinalIgnoreCase))
+		{
+			message.Content = StripKnownPrefix(trimmedContent, "[Assistant]");
+		}
+
+		message.Role = MessageRole.Assistant;
 		message.Source = MessageSource.Provider;
 		message.Level = MessageLevel.Normal;
+	}
+
+	private static void NormalizeToolResultName(JobMessage message, Queue<string> pendingToolNames)
+	{
+		if (pendingToolNames.Count == 0)
+		{
+			return;
+		}
+
+		var pendingToolName = pendingToolNames.Peek();
+		if (string.IsNullOrWhiteSpace(message.ToolName) || LooksLikeGeneratedToolIdentifier(message.ToolName))
+		{
+			message.ToolName = pendingToolName;
+			pendingToolNames.Dequeue();
+			return;
+		}
+
+		if (string.Equals(message.ToolName, pendingToolName, StringComparison.OrdinalIgnoreCase))
+		{
+			pendingToolNames.Dequeue();
+		}
+	}
+
+	private static bool LooksLikeGeneratedToolIdentifier(string value)
+	{
+		if (Guid.TryParse(value, out _))
+		{
+			return true;
+		}
+
+		return value.StartsWith("toolu_", StringComparison.OrdinalIgnoreCase)
+			|| value.StartsWith("call_", StringComparison.OrdinalIgnoreCase)
+			|| value.StartsWith("tool_", StringComparison.OrdinalIgnoreCase);
 	}
 
 	private static List<JobMessage> BuildMessagesFromOutput(IEnumerable<OutputLine>? outputLines)

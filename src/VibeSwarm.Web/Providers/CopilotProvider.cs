@@ -19,6 +19,7 @@ public class CopilotProvider : CliProviderBase
     // System error detection during stream parsing (mirrors ClaudeProvider pattern)
     private bool _systemErrorDetected;
     private string? _systemErrorMessage;
+    private readonly Dictionary<string, string> _toolNamesById = new(StringComparer.Ordinal);
 
     // Accumulated token usage from Claude-format assistant message events
     private int _accumulatedInputTokens;
@@ -109,6 +110,7 @@ public class CopilotProvider : CliProviderBase
         _accumulatedInputTokens = 0;
         _accumulatedOutputTokens = 0;
         _hasAccumulatedTokens = false;
+        _toolNamesById.Clear();
 
         // Copilot CLI does not support --system-prompt or --append-system-prompt flags.
         // Prepend any system prompt content into the main prompt using XML tags so the
@@ -304,7 +306,7 @@ public class CopilotProvider : CliProviderBase
                 var jsonEvent = JsonSerializer.Deserialize<CopilotStreamEvent>(e.Data, JsonOptions);
                 if (jsonEvent != null)
                 {
-                    ProcessStreamEvent(jsonEvent, result, currentAssistantMessage, progress);
+                    ProcessStreamEvent(jsonEvent, result, currentAssistantMessage, progress, _toolNamesById);
                 }
             }
             catch
@@ -463,7 +465,8 @@ public class CopilotProvider : CliProviderBase
         CopilotStreamEvent evt,
         ExecutionResult result,
         System.Text.StringBuilder currentMessage,
-        IProgress<ExecutionProgress>? progress)
+        IProgress<ExecutionProgress>? progress,
+        Dictionary<string, string> toolNamesById)
     {
         // Capture session ID from any event that includes it (v0.0.372+)
         if (!string.IsNullOrEmpty(evt.SessionId) && string.IsNullOrEmpty(result.SessionId))
@@ -601,6 +604,10 @@ public class CopilotProvider : CliProviderBase
                                     ToolInput = content.Input?.ToString(),
                                     Timestamp = DateTime.UtcNow
                                 });
+                                if (!string.IsNullOrWhiteSpace(content.Id) && !string.IsNullOrWhiteSpace(content.Name))
+                                {
+                                    toolNamesById[content.Id] = content.Name;
+                                }
                                 progress?.Report(new ExecutionProgress
                                 {
                                     ToolName = content.Name,
@@ -633,11 +640,15 @@ public class CopilotProvider : CliProviderBase
                     {
                         if (content.Type == "tool_result")
                         {
+                            var resolvedToolName = !string.IsNullOrWhiteSpace(content.ToolUseId)
+                                && toolNamesById.TryGetValue(content.ToolUseId, out var toolName)
+                                ? toolName
+                                : content.ToolUseId;
                             result.Messages.Add(new ExecutionMessage
                             {
                                 Role = content.IsError == true ? "tool_error" : "tool_result",
                                 Content = content.Content ?? "",
-                                ToolName = content.ToolUseId,
+                                ToolName = resolvedToolName,
                                 ToolOutput = content.Content,
                                 Timestamp = DateTime.UtcNow
                             });

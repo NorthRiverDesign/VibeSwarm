@@ -95,6 +95,7 @@ public class ClaudeProvider : CliProviderBase
         _hasAccumulatedTokens = false;
         _systemErrorDetected = false;
         _systemErrorMessage = null;
+        toolNamesById.Clear();
 
         // Build arguments for non-interactive execution with JSON streaming output
         var args = new List<string>
@@ -309,7 +310,7 @@ public class ClaudeProvider : CliProviderBase
                 var jsonEvent = JsonSerializer.Deserialize<ClaudeStreamEvent>(e.Data, JsonOptions);
                 if (jsonEvent != null)
                 {
-                    ProcessStreamEvent(jsonEvent, result, currentAssistantMessage, progress);
+                    ProcessStreamEvent(jsonEvent, result, currentAssistantMessage, progress, toolNamesById);
                 }
             }
             catch
@@ -419,12 +420,14 @@ public class ClaudeProvider : CliProviderBase
     // System error detection during stream parsing
     private bool _systemErrorDetected = false;
     private string? _systemErrorMessage = null;
+    private readonly Dictionary<string, string> toolNamesById = new(StringComparer.Ordinal);
 
     private void ProcessStreamEvent(
         ClaudeStreamEvent evt,
         ExecutionResult result,
         System.Text.StringBuilder currentMessage,
-        IProgress<ExecutionProgress>? progress)
+        IProgress<ExecutionProgress>? progress,
+        Dictionary<string, string> toolNamesById)
     {
         switch (evt.Type)
         {
@@ -534,6 +537,10 @@ public class ClaudeProvider : CliProviderBase
                                 ToolInput = content.Input?.ToString(),
                                 Timestamp = DateTime.UtcNow
                             });
+                            if (!string.IsNullOrWhiteSpace(content.Id) && !string.IsNullOrWhiteSpace(content.Name))
+                            {
+                                toolNamesById[content.Id] = content.Name;
+                            }
                             progress?.Report(new ExecutionProgress
                             {
                                 ToolName = content.Name,
@@ -555,11 +562,15 @@ public class ClaudeProvider : CliProviderBase
                     {
                         if (content.Type == "tool_result")
                         {
+                            var resolvedToolName = !string.IsNullOrWhiteSpace(content.ToolUseId)
+                                && toolNamesById.TryGetValue(content.ToolUseId, out var toolName)
+                                ? toolName
+                                : content.ToolUseId;
                             result.Messages.Add(new ExecutionMessage
                             {
                                 Role = content.IsError == true ? "tool_error" : "tool_result",
                                 Content = content.Content ?? "",
-                                ToolName = content.ToolUseId,
+                                ToolName = resolvedToolName,
                                 ToolOutput = content.Content,
                                 Timestamp = DateTime.UtcNow
                             });

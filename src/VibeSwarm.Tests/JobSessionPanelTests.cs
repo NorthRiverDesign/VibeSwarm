@@ -66,6 +66,8 @@ public sealed class JobSessionPanelTests
 		Assert.Contains("Tool Call", html);
 		Assert.Contains("Tool Result", html);
 		Assert.Contains("git status --short", html);
+		Assert.Contains("<details>", html);
+		Assert.DoesNotContain("<details open", html);
 		Assert.DoesNotContain("Final summary only", html);
 	}
 
@@ -212,6 +214,55 @@ public sealed class JobSessionPanelTests
 		Assert.Contains("Process started (PID: 123)", html);
 		Assert.Contains("Provider", html);
 		Assert.Contains("System", html);
+		Assert.Contains("chat-message-assistant", html);
+		Assert.Contains("chat-message-system", html);
+	}
+
+	[Fact]
+	public async Task RenderedJobSessionPanel_ReplacesGeneratedToolResultIdsWithToolNames()
+	{
+		var services = new ServiceCollection();
+		services.AddLogging();
+		services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
+
+		await using var renderer = new HtmlRenderer(services.BuildServiceProvider(), NullLoggerFactory.Instance);
+
+		var html = await renderer.Dispatcher.InvokeAsync(async () =>
+		{
+			var parameters = ParameterView.FromDictionary(new Dictionary<string, object?>
+			{
+				[nameof(JobSessionPanel.Status)] = JobStatus.Completed,
+				[nameof(JobSessionPanel.Messages)] = new List<JobMessage>
+				{
+					new()
+					{
+						Id = Guid.NewGuid(),
+						JobId = Guid.NewGuid(),
+						Role = MessageRole.ToolUse,
+						Content = "bash",
+						ToolName = "bash",
+						ToolInput = "git status --short",
+						CreatedAt = DateTime.UtcNow.AddSeconds(-2)
+					},
+					new()
+					{
+						Id = Guid.NewGuid(),
+						JobId = Guid.NewGuid(),
+						Role = MessageRole.ToolResult,
+						Content = "M src/VibeSwarm.Client/Components/Jobs/JobSessionPanel.razor",
+						ToolName = "toolu_01A2B3C4",
+						ToolOutput = "M src/VibeSwarm.Client/Components/Jobs/JobSessionPanel.razor",
+						CreatedAt = DateTime.UtcNow.AddSeconds(-1)
+					}
+				}
+			});
+
+			var output = await renderer.RenderComponentAsync<JobSessionPanel>(parameters);
+			return output.ToHtmlString();
+		});
+
+		Assert.Contains("bash", html);
+		Assert.DoesNotContain("toolu_01A2B3C4", html);
 	}
 
 	private sealed class NoOpJsRuntime : IJSRuntime
