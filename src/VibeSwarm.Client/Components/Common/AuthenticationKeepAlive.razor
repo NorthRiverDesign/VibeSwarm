@@ -1,0 +1,69 @@
+@implements IAsyncDisposable
+@inject VibeSwarm.Client.Auth.CookieAuthenticationStateProvider AuthStateProvider
+
+@code {
+	[Parameter]
+	public TimeSpan Interval { get; set; } = TimeSpan.FromMinutes(5);
+
+	private CancellationTokenSource? _keepAliveCancellationTokenSource;
+	private Task? _keepAliveTask;
+	private bool _started;
+
+	protected override void OnAfterRender(bool firstRender)
+	{
+		if (!firstRender || _started)
+		{
+			return;
+		}
+
+		_started = true;
+		_keepAliveCancellationTokenSource = new CancellationTokenSource();
+		_keepAliveTask = RunKeepAliveLoopAsync(_keepAliveCancellationTokenSource.Token);
+	}
+
+	private async Task RunKeepAliveLoopAsync(CancellationToken cancellationToken)
+	{
+		using var timer = new PeriodicTimer(Interval);
+
+		try
+		{
+			while (await timer.WaitForNextTickAsync(cancellationToken))
+			{
+				var authenticationState = await AuthStateProvider.GetAuthenticationStateAsync();
+				if (authenticationState.User.Identity?.IsAuthenticated == true)
+				{
+					continue;
+				}
+
+				await AuthStateProvider.RefreshAuthenticationStateAsync();
+				return;
+			}
+		}
+		catch (OperationCanceledException)
+		{
+		}
+	}
+
+	public async ValueTask DisposeAsync()
+	{
+		if (_keepAliveCancellationTokenSource is null)
+		{
+			return;
+		}
+
+		await _keepAliveCancellationTokenSource.CancelAsync();
+		if (_keepAliveTask is not null)
+		{
+			try
+			{
+				await _keepAliveTask;
+			}
+			catch (OperationCanceledException)
+			{
+			}
+		}
+
+		_keepAliveCancellationTokenSource.Dispose();
+		_keepAliveCancellationTokenSource = null;
+	}
+}
