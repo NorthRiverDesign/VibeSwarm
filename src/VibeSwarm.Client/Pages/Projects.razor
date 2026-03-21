@@ -32,7 +32,7 @@
 	</li>
 </ul>
 
-@if (IsLoading)
+@if (ShowInitialLoadingSpinner)
 {
 	<LoadingSpinner Text="Loading projects..." />
 }
@@ -291,11 +291,13 @@ else
     private List<ProjectInfoWithStats> ProjectsWithInfo { get; set; } = new();
     private List<Job> ActiveJobs { get; set; } = new();
     private bool IsLoading { get; set; } = true;
+    private bool HasLoadedProjectsInitially { get; set; }
     private System.Threading.Timer? _refreshTimer;
     private string ActiveFilter { get; set; } = "active";
     private bool HasDefaultProvider { get; set; }
     private Guid? StartingIdeaQueueProjectId { get; set; }
     private bool _isAutoRefreshing;
+    private bool ShowInitialLoadingSpinner => IsLoading && !HasLoadedProjectsInitially;
 
     // Modal state
     private bool ShowProjectModal { get; set; }
@@ -410,6 +412,7 @@ else
                     CurrentBranch = projectWithStats.CurrentBranch
                 })
                 .ToList();
+            HasLoadedProjectsInitially = true;
         }
         finally
         {

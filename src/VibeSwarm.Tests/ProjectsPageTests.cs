@@ -1,3 +1,5 @@
+using System.Reflection;
+using Bunit;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -158,6 +160,53 @@ public sealed class ProjectsPageTests
 		Assert.Contains("Active", html);
 		Assert.Contains("Inactive", html);
 		Assert.Contains("No projects yet", html);
+	}
+
+	[Fact]
+	public void ProjectsPage_KeepsExistingContentVisible_DuringBackgroundRefresh()
+	{
+		using var context = new BunitContext();
+
+		var project = new ProjectWithStats
+		{
+			Project = new Project
+			{
+				Id = Guid.NewGuid(),
+				Name = "Refresh Project",
+				WorkingPath = "/tmp/refresh-project",
+				IsActive = true
+			},
+			Stats = new ProjectJobStats()
+		};
+
+		context.Services.AddLogging();
+		context.Services.AddSingleton<IProjectService>(new FakeProjectService([project]));
+		context.Services.AddSingleton<IJobService>(new FakeJobService());
+		context.Services.AddSingleton<IIdeaService>(new FakeIdeaService());
+		context.Services.AddSingleton<IVersionControlService>(new FakeVersionControlService());
+		context.Services.AddSingleton<IProviderService>(new FakeProviderService());
+		context.Services.AddSingleton<ITeamRoleService>(new FakeTeamRoleService());
+		context.Services.AddSingleton<ISettingsService>(new FakeSettingsService());
+		context.Services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService());
+		context.Services.AddSingleton<NotificationService>();
+		context.Services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
+
+		var cut = context.Render<Projects>();
+
+		SetPrivateProperty(cut.Instance, "HasLoadedProjectsInitially", true);
+		SetPrivateProperty(cut.Instance, "IsLoading", true);
+		cut.Render();
+
+		Assert.DoesNotContain("Loading projects...", cut.Markup);
+		Assert.Contains("Refresh Project", cut.Markup);
+	}
+
+	private static void SetPrivateProperty(object instance, string propertyName, object? value)
+	{
+		var property = instance.GetType().GetProperty(propertyName, BindingFlags.Instance | BindingFlags.NonPublic);
+
+		Assert.NotNull(property);
+		property.SetValue(instance, value);
 	}
 
 	private sealed class FakeProjectService(IReadOnlyList<ProjectWithStats> projectSummaries) : IProjectService

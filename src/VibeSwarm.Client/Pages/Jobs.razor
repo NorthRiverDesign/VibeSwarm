@@ -139,7 +139,7 @@
 	@* Job List Panel *@
 	<div class="jobs-list-panel flex-grow-1 d-flex flex-column min-width-0 bg-body">
 		@* Stats header *@
-		@if (!_isLoadingJobs && HasTokenData())
+		@if (!ShowJobsLoadingSpinner && HasTokenData())
 		{
 			<div class="d-flex flex-wrap align-items-center gap-2 p-2 px-3 border-bottom bg-body-secondary small">
 				@if (GetTotalInputTokens() > 0 || GetTotalOutputTokens() > 0)
@@ -164,7 +164,7 @@
 
 		@* Job list *@
 		<div class="flex-grow-1 overflow-auto">
-			@if (_isLoadingJobs)
+			@if (ShowJobsLoadingSpinner)
 			{
 				<LoadingSpinner Text="Loading jobs..." />
 			}
@@ -234,6 +234,7 @@
     private IEnumerable<Project> _projects = Enumerable.Empty<Project>();
     private bool _isLoadingProjects = true;
     private bool _isLoadingJobs = true;
+    private bool _hasLoadedJobsInitially;
     private string _statusFilter = "all";
     private Guid? _selectedProjectId;
     private int _pageNumber = 1;
@@ -241,6 +242,7 @@
     private Timer? _refreshTimer;
     private bool _isRefreshing = false;
     private CancellationTokenSource? _signalRCts;
+    private bool ShowJobsLoadingSpinner => _isLoadingJobs && !_hasLoadedJobsInitially;
 
     // Create Job modal state
     private bool _showCreateJobModal;
@@ -539,6 +541,7 @@ TimeSpan.FromSeconds(10) })
         {
             _jobsResult = await JobService.GetPagedAsync(_selectedProjectId, _statusFilter, _pageNumber, JobsPageSize);
             _pageNumber = _jobsResult.PageNumber;
+            _hasLoadedJobsInitially = true;
         }
         finally
         {
