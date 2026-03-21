@@ -453,6 +453,184 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 	}
 
 	[Fact]
+	public async Task SuggestIdeasFromCodebaseAsync_SkipsExistingIdeasUsingNormalizedDescriptions()
+	{
+		await using var dbContext = CreateDbContext();
+		var workingPath = Path.Combine(Path.GetTempPath(), $"vibeswarm-duplicate-suggestion-{Guid.NewGuid():N}");
+		Directory.CreateDirectory(workingPath);
+		File.WriteAllText(Path.Combine(workingPath, "Program.cs"), "Console.WriteLine(\"Hello from VibeSwarm\");");
+		try
+		{
+			var project = new Project
+			{
+				Id = Guid.NewGuid(),
+				Name = "Duplicate Suggestion Project",
+				WorkingPath = workingPath
+			};
+			var provider = new InferenceProvider
+			{
+				Id = Guid.NewGuid(),
+				Name = "Preferred Ollama",
+				Endpoint = "http://preferred-ollama:11434",
+				IsEnabled = true,
+				Models =
+				[
+					new InferenceModel
+					{
+						Id = Guid.NewGuid(),
+						ModelId = "qwen2.5-coder:7b",
+						TaskType = "suggest",
+						IsDefault = true,
+						IsAvailable = true
+					}
+				]
+			};
+			var existingIdea = new Idea
+			{
+				Id = Guid.NewGuid(),
+				ProjectId = project.Id,
+				Description = "Add a project summary card to the detail page",
+				SortOrder = 0,
+				CreatedAt = DateTime.UtcNow.AddMinutes(-10)
+			};
+
+			provider.Models.First().InferenceProviderId = provider.Id;
+
+			dbContext.Projects.Add(project);
+			dbContext.InferenceProviders.Add(provider);
+			dbContext.Ideas.Add(existingIdea);
+			await dbContext.SaveChangesAsync();
+
+			var inferenceService = new FakeInferenceService
+			{
+				Response = new InferenceResponse
+				{
+					Success = true,
+					ModelUsed = "qwen2.5-coder:7b",
+					Response = """
+					-   add a project summary card to the detail page
+					- Add a recent inference activity feed
+					""",
+					DurationMs = 900
+				}
+			};
+
+			var ideaService = CreateIdeaService(dbContext, new Provider(), inferenceService: inferenceService);
+			var result = await ideaService.SuggestIdeasFromCodebaseAsync(project.Id, new SuggestIdeasRequest
+			{
+				ProviderId = provider.Id,
+				IdeaCount = 2
+			});
+
+			Assert.True(result.Success);
+			Assert.Single(result.Ideas);
+			Assert.Equal("Add a recent inference activity feed", result.Ideas[0].Description);
+			Assert.Contains("Skipped 1 duplicate existing idea.", result.Message, StringComparison.Ordinal);
+			Assert.Equal(2, await dbContext.Ideas.CountAsync(idea => idea.ProjectId == project.Id));
+		}
+		finally
+		{
+			if (Directory.Exists(workingPath))
+			{
+				Directory.Delete(workingPath, recursive: true);
+			}
+		}
+	}
+
+	[Fact]
+	public async Task SuggestIdeasFromCodebaseAsync_ReturnsSuccessWhenAllSuggestionsAlreadyExist()
+	{
+		await using var dbContext = CreateDbContext();
+		var workingPath = Path.Combine(Path.GetTempPath(), $"vibeswarm-all-duplicates-{Guid.NewGuid():N}");
+		Directory.CreateDirectory(workingPath);
+		File.WriteAllText(Path.Combine(workingPath, "Program.cs"), "Console.WriteLine(\"Hello from VibeSwarm\");");
+		try
+		{
+			var project = new Project
+			{
+				Id = Guid.NewGuid(),
+				Name = "All Duplicate Suggestions Project",
+				WorkingPath = workingPath
+			};
+			var provider = new InferenceProvider
+			{
+				Id = Guid.NewGuid(),
+				Name = "Preferred Ollama",
+				Endpoint = "http://preferred-ollama:11434",
+				IsEnabled = true,
+				Models =
+				[
+					new InferenceModel
+					{
+						Id = Guid.NewGuid(),
+						ModelId = "qwen2.5-coder:7b",
+						TaskType = "suggest",
+						IsDefault = true,
+						IsAvailable = true
+					}
+				]
+			};
+
+			provider.Models.First().InferenceProviderId = provider.Id;
+
+			dbContext.Projects.Add(project);
+			dbContext.InferenceProviders.Add(provider);
+			dbContext.Ideas.AddRange(
+				new Idea
+				{
+					Id = Guid.NewGuid(),
+					ProjectId = project.Id,
+					Description = "Add a project summary card to the detail page",
+					SortOrder = 0,
+					CreatedAt = DateTime.UtcNow.AddMinutes(-10)
+				},
+				new Idea
+				{
+					Id = Guid.NewGuid(),
+					ProjectId = project.Id,
+					Description = "Add a recent inference activity feed",
+					SortOrder = 1,
+					CreatedAt = DateTime.UtcNow.AddMinutes(-9)
+				});
+			await dbContext.SaveChangesAsync();
+
+			var inferenceService = new FakeInferenceService
+			{
+				Response = new InferenceResponse
+				{
+					Success = true,
+					ModelUsed = "qwen2.5-coder:7b",
+					Response = """
+					- Add a project summary card to the detail page
+					- add a recent   inference activity feed
+					""",
+					DurationMs = 950
+				}
+			};
+
+			var ideaService = CreateIdeaService(dbContext, new Provider(), inferenceService: inferenceService);
+			var result = await ideaService.SuggestIdeasFromCodebaseAsync(project.Id, new SuggestIdeasRequest
+			{
+				ProviderId = provider.Id,
+				IdeaCount = 2
+			});
+
+			Assert.True(result.Success);
+			Assert.Equal(SuggestIdeasStage.Success, result.Stage);
+			Assert.Empty(result.Ideas);
+			Assert.Contains("already exist for this project", result.Message, StringComparison.Ordinal);
+			Assert.Equal(2, await dbContext.Ideas.CountAsync(idea => idea.ProjectId == project.Id));
+		}
+		finally
+		{
+			if (Directory.Exists(workingPath))
+			{
+				Directory.Delete(workingPath, recursive: true);
+			}
+		}
+	}
+
+	[Fact]
 	public async Task SuggestIdeasFromCodebaseAsync_ReturnsModelNotFound_WhenRequestedModelIsUnavailable()
 	{
 		await using var dbContext = CreateDbContext();

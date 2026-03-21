@@ -1294,9 +1294,26 @@ Keep the specification concise but complete. Focus on actionable implementation 
 			};
 		}
 
+		var knownSuggestionKeys = new HashSet<string>(
+			(await _dbContext.Ideas
+				.Where(idea => idea.ProjectId == projectId)
+				.Select(idea => idea.Description)
+				.ToListAsync(cancellationToken))
+			.Select(NormalizeIdeaDescriptionForDuplicateCheck)
+			.Where(description => !string.IsNullOrEmpty(description)),
+			StringComparer.OrdinalIgnoreCase);
+
 		var createdIdeas = new List<Idea>();
+		var skippedDuplicateCount = 0;
 		foreach (var suggestion in suggestions)
 		{
+			var normalizedSuggestion = NormalizeIdeaDescriptionForDuplicateCheck(suggestion);
+			if (string.IsNullOrEmpty(normalizedSuggestion) || !knownSuggestionKeys.Add(normalizedSuggestion))
+			{
+				skippedDuplicateCount++;
+				continue;
+			}
+
 			try
 			{
 				var idea = await CreateAsync(new Idea
@@ -1310,6 +1327,18 @@ Keep the specification concise but complete. Focus on actionable implementation 
 			{
 				_logger.LogWarning(ex, "Failed to save suggested idea for project {ProjectId}", projectId);
 			}
+		}
+
+		if (createdIdeas.Count == 0 && skippedDuplicateCount > 0)
+		{
+			return new SuggestIdeasResult
+			{
+				Success = true,
+				Stage = SuggestIdeasStage.Success,
+				Message = $"All {FormatIdeaCount(skippedDuplicateCount)} already exist for this project.",
+				ModelUsed = generationResult.ModelUsed,
+				InferenceDurationMs = generationResult.DurationMs
+			};
 		}
 
 		if (createdIdeas.Count == 0)
@@ -1326,9 +1355,12 @@ Keep the specification concise but complete. Focus on actionable implementation 
 		_logger.LogInformation("Created {Count} suggested ideas for project {ProjectId} using model {Model}",
 			createdIdeas.Count, projectId, generationResult.ModelUsed ?? "unknown");
 
+		var duplicateMessageSuffix = skippedDuplicateCount == 0
+			? "."
+			: $" Skipped {skippedDuplicateCount} duplicate existing idea{(skippedDuplicateCount == 1 ? "" : "s")}.";
 		var message = createdIdeas.Count == request.IdeaCount
-			? $"{createdIdeas.Count} idea{(createdIdeas.Count == 1 ? "" : "s")} added from codebase analysis."
-			: $"{createdIdeas.Count} of {request.IdeaCount} requested idea{(request.IdeaCount == 1 ? "" : "s")} added from codebase analysis.";
+			? $"{FormatIdeaCount(createdIdeas.Count)} added from codebase analysis{duplicateMessageSuffix}"
+			: $"{createdIdeas.Count} of {request.IdeaCount} requested idea{(request.IdeaCount == 1 ? "" : "s")} added from codebase analysis{duplicateMessageSuffix}";
 
 		return new SuggestIdeasResult
 		{
@@ -1756,6 +1788,19 @@ Keep the specification concise but complete. Focus on actionable implementation 
 			.Select(entry => entry.Suggestion)
 			.ToList();
 	}
+
+	private static string NormalizeIdeaDescriptionForDuplicateCheck(string? description)
+	{
+		if (string.IsNullOrWhiteSpace(description))
+		{
+			return string.Empty;
+		}
+
+		return string.Join(' ', description.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+	}
+
+	private static string FormatIdeaCount(int count)
+		=> $"{count} idea{(count == 1 ? "" : "s")}";
 
 	private static int ScoreCodebaseSuggestion(string suggestion)
 	{
