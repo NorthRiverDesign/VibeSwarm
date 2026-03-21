@@ -32,19 +32,31 @@ internal static class JobSessionDisplayBuilder
 	public static IReadOnlyList<JobMessage> BuildDisplayedMessages(
 		IEnumerable<JobMessage>? persistedMessages,
 		IEnumerable<OutputLine>? outputLines,
-		bool isJobActive)
+		bool isJobActive,
+		IEnumerable<JobMessage>? liveMessages = null)
 	{
 		var persisted = NormalizePersistedMessages(persistedMessages);
 		var liveTranscript = BuildMessagesFromOutput(outputLines);
+		var supplementalMessages = NormalizePersistedMessages(liveMessages);
 
 		if (isJobActive)
 		{
-			return liveTranscript.Count > 0 ? liveTranscript : persisted;
+			if (liveTranscript.Count > 0)
+			{
+				return MergeMessages(liveTranscript, supplementalMessages);
+			}
+
+			if (persisted.Count > 0)
+			{
+				return MergeMessages(persisted, supplementalMessages);
+			}
+
+			return supplementalMessages;
 		}
 
 		if (persisted.Count == 0)
 		{
-			return liveTranscript;
+			return MergeMessages(liveTranscript, supplementalMessages);
 		}
 
 		var persistedHasStructuredMessages = HasStructuredMessages(persisted);
@@ -52,15 +64,15 @@ internal static class JobSessionDisplayBuilder
 
 		if (!persistedHasStructuredMessages && liveTranscript.Count > persisted.Count)
 		{
-			return liveTranscript;
+			return MergeMessages(liveTranscript, supplementalMessages);
 		}
 
 		if (!persistedHasStructuredMessages && liveHasStructuredMessages && liveTranscript.Count >= persisted.Count)
 		{
-			return liveTranscript;
+			return MergeMessages(liveTranscript, supplementalMessages);
 		}
 
-		return persisted;
+		return MergeMessages(persisted, supplementalMessages);
 	}
 
 	private static List<JobMessage> NormalizePersistedMessages(IEnumerable<JobMessage>? persistedMessages)
@@ -356,6 +368,26 @@ internal static class JobSessionDisplayBuilder
 	private static bool HasStructuredMessages(IReadOnlyCollection<JobMessage> messages)
 		=> messages.Any(message => message.Role is MessageRole.ToolUse or MessageRole.ToolResult or MessageRole.System)
 			|| messages.Count > 1;
+
+	private static IReadOnlyList<JobMessage> MergeMessages(
+		IReadOnlyCollection<JobMessage> primaryMessages,
+		IReadOnlyCollection<JobMessage> supplementalMessages)
+	{
+		if (supplementalMessages.Count == 0)
+		{
+			return [.. primaryMessages];
+		}
+
+		if (primaryMessages.Count == 0)
+		{
+			return [.. supplementalMessages];
+		}
+
+		return primaryMessages
+			.Concat(supplementalMessages)
+			.OrderBy(message => message.CreatedAt)
+			.ToList();
+	}
 
 	private static bool TryParseToolUse(string content, out string toolName, out string? toolInput)
 	{

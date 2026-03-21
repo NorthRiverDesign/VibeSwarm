@@ -228,6 +228,9 @@
     public List<OutputLine> LiveOutputLines { get; set; } = new();
 
     [Parameter]
+    public List<JobMessage> LiveMessages { get; set; } = new();
+
+    [Parameter]
     public int MaxOutputLines { get; set; } = 500;
 
     [Parameter]
@@ -246,7 +249,7 @@
     private bool CanSendFollowUp => Status == JobStatus.Completed && OnSendFollowUp.HasDelegate;
 
     private IReadOnlyList<JobMessage> DisplayedMessages
-        => JobSessionDisplayBuilder.BuildDisplayedMessages(Messages, LiveOutputLines, IsJobActive);
+        => JobSessionDisplayBuilder.BuildDisplayedMessages(Messages, LiveOutputLines, IsJobActive, LiveMessages);
 
     private bool ShowInlineWaitingActivity
         => IsJobActive

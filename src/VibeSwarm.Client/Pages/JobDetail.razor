@@ -185,7 +185,8 @@ else
         <div class="col-12 col-xl-7 order-1 order-xl-2 d-flex flex-column">
             <JobSessionPanel Messages="@(Job!.Messages.ToList())" Status="@Job.Status" IsJobActive="@IsJobActive"
                              ErrorMessage="@Job.ErrorMessage" ConsoleOutput="@Job.ConsoleOutput" CommandUsed="@Job.CommandUsed"
-                             SessionId="@Job.SessionId" LiveOutputLines="@_liveOutput.ToList()" MaxOutputLines="@MaxOutputLines"
+                             SessionId="@Job.SessionId" LiveOutputLines="@_liveOutput.ToList()"
+                             LiveMessages="@_pendingSessionMessages.ToList()" MaxOutputLines="@MaxOutputLines"
                              CurrentActivity="@Job.CurrentActivity"
                              OnClearLiveOutput="ClearLiveOutput" OnSendFollowUp="CreateFollowUpJob" />
         </div>
@@ -226,6 +227,7 @@ else
     // Live output buffer
     private const int MaxOutputLines = 500;
     private readonly List<OutputLine> _liveOutput = new();
+    private readonly List<JobMessage> _pendingSessionMessages = new();
 
     // Commit and push state
     private string _commitMessage = string.Empty;
@@ -816,6 +818,8 @@ TimeSpan.FromSeconds(10) })
                 }
             }
 
+            ReconcilePendingSessionMessages();
+
             if (Job != null && (Job.Status == JobStatus.Failed || Job.Status == JobStatus.Cancelled) &&
             Job.Project?.WorkingPath != null && !_hasCheckedUncommittedChanges)
             {
@@ -1057,12 +1061,35 @@ TimeSpan.FromSeconds(10) })
 
         try
         {
+            var trimmedResponse = response.Trim();
             if (_hubConnection != null && _hubConnection.State == HubConnectionState.Connected)
             {
-                var success = await _hubConnection.InvokeAsync<bool>("SubmitInteractionResponse", JobId.ToString(), response);
+                var success = await _hubConnection.InvokeAsync<bool>("SubmitInteractionResponse", JobId.ToString(), trimmedResponse);
                 if (!success)
                 {
                     _interactionError = "Failed to deliver response. The job may have already completed or been cancelled.";
+                }
+                else if (Job != null)
+                {
+                    var submittedAt = DateTime.UtcNow;
+                    _pendingSessionMessages.Add(new JobMessage
+                    {
+                        Id = Guid.NewGuid(),
+                        JobId = Job.Id,
+                        Role = MessageRole.User,
+                        Content = trimmedResponse,
+                        CreatedAt = submittedAt,
+                        Source = MessageSource.User,
+                        Level = MessageLevel.Normal
+                    });
+
+                    Job.Status = JobStatus.Processing;
+                    Job.PendingInteractionPrompt = null;
+                    Job.InteractionType = null;
+                    Job.InteractionRequestedAt = null;
+                    Job.CurrentActivity = "Waiting for CLI response...";
+                    Job.LastActivityAt = submittedAt;
+                    _interactionChoices = null;
                 }
             }
             else
@@ -1080,6 +1107,19 @@ TimeSpan.FromSeconds(10) })
             _isSubmittingResponse = false;
             StateHasChanged();
         }
+    }
+
+    private void ReconcilePendingSessionMessages()
+    {
+        if (Job == null || _pendingSessionMessages.Count == 0)
+        {
+            return;
+        }
+
+        _pendingSessionMessages.RemoveAll(pendingMessage => Job.Messages.Any(existingMessage =>
+            existingMessage.Role == pendingMessage.Role
+            && string.Equals(existingMessage.Content, pendingMessage.Content, StringComparison.Ordinal)
+            && Math.Abs((existingMessage.CreatedAt - pendingMessage.CreatedAt).TotalMinutes) <= 30));
     }
 
     #endregion

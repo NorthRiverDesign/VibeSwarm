@@ -114,6 +114,58 @@ public sealed class JobSessionPanelTests
 	}
 
 	[Fact]
+	public async Task RenderedJobSessionPanel_MergesLiveUserMessagesIntoActiveTranscript()
+	{
+		var services = new ServiceCollection();
+		services.AddLogging();
+		services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
+
+		await using var renderer = new HtmlRenderer(services.BuildServiceProvider(), NullLoggerFactory.Instance);
+
+		var providerTimestamp = DateTime.UtcNow.AddSeconds(-10);
+		var userTimestamp = providerTimestamp.AddSeconds(5);
+
+		var html = await renderer.Dispatcher.InvokeAsync(async () =>
+		{
+			var parameters = ParameterView.FromDictionary(new Dictionary<string, object?>
+			{
+				[nameof(JobSessionPanel.Status)] = JobStatus.Processing,
+				[nameof(JobSessionPanel.IsJobActive)] = true,
+				[nameof(JobSessionPanel.LiveOutputLines)] = new List<OutputLine>
+				{
+					new()
+					{
+						Content = "[Assistant] Please confirm which failing test to rerun.",
+						Timestamp = providerTimestamp
+					}
+				},
+				[nameof(JobSessionPanel.LiveMessages)] = new List<JobMessage>
+				{
+					new()
+					{
+						Id = Guid.NewGuid(),
+						JobId = Guid.NewGuid(),
+						Role = MessageRole.User,
+						Content = "Rerun the failing provider tests first.",
+						CreatedAt = userTimestamp
+					}
+				}
+			});
+
+			var output = await renderer.RenderComponentAsync<JobSessionPanel>(parameters);
+			return output.ToHtmlString();
+		});
+
+		Assert.Contains("2 messages", html);
+		Assert.Contains("Please confirm which failing test to rerun.", html);
+		Assert.Contains("Rerun the failing provider tests first.", html);
+		Assert.Contains("chat-message-user", html);
+		Assert.True(
+			html.IndexOf("Please confirm which failing test to rerun.", StringComparison.Ordinal)
+				< html.IndexOf("Rerun the failing provider tests first.", StringComparison.Ordinal));
+	}
+
+	[Fact]
 	public async Task RenderedJobSessionPanel_KeepsSystemMessagesSeparateAndStyled()
 	{
 		var services = new ServiceCollection();
