@@ -15,6 +15,7 @@ namespace VibeSwarm.Web.Services;
 /// </summary>
 public class JobCompletionMonitorService : BackgroundService
 {
+	private static readonly TimeSpan SessionCompletionRecoveryDelay = TimeSpan.FromSeconds(15);
 	private readonly IServiceScopeFactory _scopeFactory;
 	private readonly ILogger<JobCompletionMonitorService> _logger;
 	private readonly IProviderHealthTracker _healthTracker;
@@ -98,6 +99,17 @@ public class JobCompletionMonitorService : BackgroundService
 		{
 			try
 			{
+				if (TryEvaluateObservedSessionCompletion(job, out var observedCompletion))
+				{
+					_logger.LogWarning(
+						"Job {JobId} appears complete from provider session output but is still {Status}. Recovering completion.",
+						job.Id,
+						job.Status);
+
+					await HandleJobCompletionAsync(job, observedCompletion, dbContext, cancellationToken);
+					continue;
+				}
+
 				var criteria = job.GetCompletionCriteria();
 				var evaluation = JobStateMachine.EvaluateCompletion(job, criteria);
 
@@ -114,6 +126,37 @@ public class JobCompletionMonitorService : BackgroundService
 				_logger.LogError(ex, "Error evaluating completion criteria for job {JobId}", job.Id);
 			}
 		}
+	}
+
+	private static bool TryEvaluateObservedSessionCompletion(Job job, out CompletionEvaluation evaluation)
+	{
+		evaluation = new CompletionEvaluation
+		{
+			JobId = job.Id,
+			EvaluatedAt = DateTime.UtcNow,
+			Criteria = job.GetCompletionCriteria()
+		};
+
+		if (job.Status != JobStatus.Processing)
+		{
+			return false;
+		}
+
+		if (string.IsNullOrWhiteSpace(job.ConsoleOutput)
+			|| job.ConsoleOutput.IndexOf("[Session] Complete", StringComparison.OrdinalIgnoreCase) < 0)
+		{
+			return false;
+		}
+
+		var completionObservedAt = job.LastHeartbeatAt ?? job.LastActivityAt ?? job.StartedAt;
+		if (completionObservedAt.HasValue && DateTime.UtcNow - completionObservedAt.Value < SessionCompletionRecoveryDelay)
+		{
+			return false;
+		}
+
+		evaluation.IsComplete = true;
+		evaluation.CompletionReason = "Recovered completion after provider session output reported completion.";
+		return true;
 	}
 
 	/// <summary>
