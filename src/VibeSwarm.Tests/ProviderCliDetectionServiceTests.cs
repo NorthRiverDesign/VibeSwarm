@@ -115,6 +115,50 @@ public sealed class ProviderCliDetectionServiceTests : IDisposable
 		Assert.Equal(executablePath, result.ResolvedExecutablePath);
 	}
 
+	[Fact]
+	public async Task DetectAnyAsync_UsesFirstAvailableAlternateExecutable()
+	{
+		string executablePath;
+		string searchPath;
+
+		if (OperatingSystem.IsWindows())
+		{
+			executablePath = Path.Combine(_binDirectory, "fdfind.bat");
+			await File.WriteAllTextAsync(executablePath, """
+				@echo off
+				if "%1"=="--version" (
+					echo fdfind 10.2.0
+					exit /b 0
+				)
+				exit /b 1
+				""");
+			searchPath = _binDirectory;
+		}
+		else
+		{
+			executablePath = Path.Combine(_binDirectory, "fdfind");
+			await File.WriteAllTextAsync(executablePath, """
+				#!/bin/sh
+				if [ "$1" = "--version" ]; then
+					echo "fdfind 10.2.0"
+					exit 0
+				fi
+				exit 1
+				""");
+			MakeExecutable(executablePath);
+			searchPath = _binDirectory;
+		}
+
+		var result = await _service.DetectAnyAsync(
+			["fd", "fdfind"],
+			"--version",
+			searchPath: searchPath);
+
+		Assert.True(result.IsInstalled);
+		Assert.Equal("fdfind 10.2.0", result.Version);
+		Assert.Equal(executablePath, result.ResolvedExecutablePath);
+	}
+
 	public void Dispose()
 	{
 		if (Directory.Exists(_tempDirectory))

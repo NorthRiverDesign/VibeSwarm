@@ -35,7 +35,27 @@ public sealed class CommonProviderSetupCardTests
 				IsAuthenticated = false,
 				HasConfiguredProvider = false,
 				InstallationStatus = $"{AppConstants.AppName} could not find 'copilot' on the host PATH. It also checked common user install locations.",
-				AuthenticationStatus = "Sign in with 'copilot login' or save a GitHub token for this CLI connection."
+				AuthenticationStatus = "Sign in with 'copilot login' or save a GitHub token for this CLI connection.",
+				HostTools =
+				[
+					new CommonProviderHostToolStatus
+					{
+						Name = "ripgrep",
+						Command = "rg",
+						Purpose = "Fast content search for autonomous CLI work.",
+						IsInstalled = true,
+						ResolvedExecutablePath = "/usr/bin/rg",
+						Status = "Detected on host."
+					},
+					new CommonProviderHostToolStatus
+					{
+						Name = "fd",
+						Command = "fd / fdfind",
+						Purpose = "Fast file-name search. Debian and Ubuntu often install this command as fdfind.",
+						IsInstalled = false,
+						Status = "VibeSwarm could not find any of 'fd', 'fdfind' on the host PATH."
+					}
+				]
 			}
 		});
 
@@ -51,6 +71,9 @@ public sealed class CommonProviderSetupCardTests
 		Assert.Contains("Provider Not Added", html);
 		Assert.Contains("curl -fsSL https://gh.io/copilot-install | bash", html);
 		Assert.Contains("Host detection", html);
+		Assert.Contains("Supporting host tools", html);
+		Assert.Contains("ripgrep", html);
+		Assert.Contains("fd / fdfind", html);
 		Assert.Contains("No provider saved in VibeSwarm yet.", html);
 	}
 

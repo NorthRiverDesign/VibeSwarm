@@ -26,6 +26,7 @@ public class CommonProviderSetupStatus
 	public bool IsAuthenticated { get; set; }
 	public string? AuthenticationStatus { get; set; }
 	public List<CommonProviderSetupConfiguredProvider> ConfiguredProviders { get; set; } = [];
+	public List<CommonProviderHostToolStatus> HostTools { get; set; } = [];
 }
 
 public class CommonProviderSetupConfiguredProvider
@@ -34,6 +35,16 @@ public class CommonProviderSetupConfiguredProvider
 	public string Name { get; set; } = string.Empty;
 	public ProviderConnectionMode ConnectionMode { get; set; }
 	public bool IsDefault { get; set; }
+}
+
+public class CommonProviderHostToolStatus
+{
+	public string Name { get; set; } = string.Empty;
+	public string Command { get; set; } = string.Empty;
+	public string Purpose { get; set; } = string.Empty;
+	public bool IsInstalled { get; set; }
+	public string? ResolvedExecutablePath { get; set; }
+	public string? Status { get; set; }
 }
 
 public class CommonProviderSetupRequest

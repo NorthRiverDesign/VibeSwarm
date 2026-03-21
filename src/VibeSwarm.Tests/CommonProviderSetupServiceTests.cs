@@ -112,6 +112,76 @@ public sealed class CommonProviderSetupServiceTests : IDisposable
 		Assert.Equal("Copilot CLI login detected on host for this SDK connection.", status.AuthenticationStatus);
 	}
 
+	[Fact]
+	public async Task GetStatusesAsync_ReportsCopilotHostSearchTools()
+	{
+		await using var dbContext = CreateDbContext();
+
+		var homeDirectory = Path.Combine(_tempDirectory, "tool-home");
+		Directory.CreateDirectory(homeDirectory);
+
+		var toolDirectory = OperatingSystem.IsWindows()
+			? Path.Combine(_tempDirectory, "bin")
+			: Path.Combine(homeDirectory, ".local", "bin");
+		Directory.CreateDirectory(toolDirectory);
+
+		if (OperatingSystem.IsWindows())
+		{
+			await File.WriteAllTextAsync(Path.Combine(toolDirectory, "rg.bat"), """
+				@echo off
+				echo ripgrep 14.1.1
+				""");
+			await File.WriteAllTextAsync(Path.Combine(toolDirectory, "fdfind.bat"), """
+				@echo off
+				echo fdfind 10.2.0
+				""");
+		}
+		else
+		{
+			var rgPath = Path.Combine(toolDirectory, "rg");
+			await File.WriteAllTextAsync(rgPath, """
+				#!/bin/sh
+				echo "ripgrep 14.1.1"
+				""");
+			File.SetUnixFileMode(rgPath, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+
+			var fdPath = Path.Combine(toolDirectory, "fdfind");
+			await File.WriteAllTextAsync(fdPath, """
+				#!/bin/sh
+				echo "fdfind 10.2.0"
+				""");
+			File.SetUnixFileMode(fdPath, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+		}
+
+		using var homeScope = new EnvironmentVariableScope("HOME", homeDirectory);
+		using var pathScope = new EnvironmentVariableScope("PATH", string.Join(Path.PathSeparator, new[]
+		{
+			toolDirectory,
+			Environment.GetEnvironmentVariable("PATH") ?? string.Empty
+		}));
+
+		var service = CreateService(dbContext);
+		var statuses = await service.GetStatusesAsync();
+		var status = Assert.Single(statuses, item => item.ProviderType == ProviderType.Copilot);
+
+		Assert.Collection(status.HostTools,
+			ripgrep =>
+			{
+				Assert.Equal("ripgrep", ripgrep.Name);
+				Assert.True(ripgrep.IsInstalled);
+				Assert.NotNull(ripgrep.ResolvedExecutablePath);
+			},
+			fd =>
+			{
+				Assert.Equal("fd", fd.Name);
+				Assert.True(fd.IsInstalled);
+				Assert.NotNull(fd.ResolvedExecutablePath);
+				Assert.True(
+					fd.ResolvedExecutablePath!.Contains("fd", StringComparison.OrdinalIgnoreCase) ||
+					fd.ResolvedExecutablePath.Contains("fdfind", StringComparison.OrdinalIgnoreCase));
+			});
+	}
+
 	public void Dispose()
 	{
 		_connection.Dispose();

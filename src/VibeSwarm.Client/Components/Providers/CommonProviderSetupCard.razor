@@ -100,6 +100,40 @@
 					}
 				</div>
 			</div>
+
+			@if (Status.HostTools.Count > 0)
+			{
+				<div class="rounded-3 bg-body-tertiary p-3 d-flex flex-column gap-2">
+					<div class="fw-semibold text-body">Supporting host tools</div>
+					@foreach (var tool in Status.HostTools)
+					{
+						<div class="border rounded-3 p-2 bg-body">
+							<div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+								<div>
+									<div class="fw-semibold text-body">@tool.Name <span class="text-body-secondary">(@tool.Command)</span></div>
+									<div class="small">@tool.Purpose</div>
+								</div>
+								<span class="badge @(tool.IsInstalled ? "bg-success-subtle text-success-emphasis" : "bg-warning-subtle text-warning-emphasis")">
+									<i class="bi bi-@(tool.IsInstalled ? "check-circle" : "exclamation-triangle") me-1"></i>
+									@(tool.IsInstalled ? "Detected" : "Recommended")
+								</span>
+							</div>
+
+							@if (!string.IsNullOrWhiteSpace(tool.Status))
+							{
+								<div class="small text-body-secondary mt-2">@tool.Status</div>
+							}
+
+							@if (!string.IsNullOrWhiteSpace(tool.ResolvedExecutablePath))
+							{
+								<div class="small mt-2">
+									<code class="text-break">@tool.ResolvedExecutablePath</code>
+								</div>
+							}
+						</div>
+					}
+				</div>
+			}
 		</div>
 
 		@if (_showAuthenticationForm)

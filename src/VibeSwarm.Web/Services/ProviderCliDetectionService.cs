@@ -63,6 +63,59 @@ public sealed class ProviderCliDetectionService(ILogger<ProviderCliDetectionServ
 			Message: $"{AppConstants.AppName} could not find '{executableName}' on the host PATH. It also checked common user install locations.");
 	}
 
+	public async Task<ProviderCliDetectionResult> DetectAnyAsync(
+		IReadOnlyList<string> executableNames,
+		string versionArguments,
+		string? configuredExecutablePath = null,
+		string? homeDirectory = null,
+		string? searchPath = null,
+		CancellationToken cancellationToken = default)
+	{
+		if (executableNames == null || executableNames.Count == 0)
+		{
+			throw new ArgumentException("At least one executable name is required.", nameof(executableNames));
+		}
+
+		homeDirectory ??= GetHomeDirectory();
+		searchPath ??= PlatformHelper.GetEnhancedPath(homeDirectory);
+		var candidates = BuildCandidates(executableNames, configuredExecutablePath, searchPath);
+
+		foreach (var candidate in candidates)
+		{
+			var result = await ProbeCandidateAsync(candidate.Path, versionArguments, homeDirectory, searchPath, cancellationToken);
+			if (result.IsInstalled)
+			{
+				return result;
+			}
+
+			if (!candidate.Required)
+			{
+				continue;
+			}
+
+			_logger.LogDebug(
+				"Configured executable path {ExecutablePath} failed detection: {Message}",
+				candidate.Path,
+				result.Message);
+		}
+
+		var configuredPath = configuredExecutablePath?.Trim();
+		if (!string.IsNullOrWhiteSpace(configuredPath))
+		{
+			return new ProviderCliDetectionResult(
+				IsInstalled: false,
+				Version: null,
+				ResolvedExecutablePath: null,
+				Message: $"Configured path '{configuredPath}' was not runnable. {AppConstants.AppName} also could not find any of '{string.Join("', '", executableNames)}' on the host PATH.");
+		}
+
+		return new ProviderCliDetectionResult(
+			IsInstalled: false,
+			Version: null,
+			ResolvedExecutablePath: null,
+			Message: $"{AppConstants.AppName} could not find any of '{string.Join("', '", executableNames)}' on the host PATH. It also checked common user install locations.");
+	}
+
 	private async Task<ProviderCliDetectionResult> ProbeCandidateAsync(
 		string executablePath,
 		string versionArguments,
@@ -156,7 +209,13 @@ public sealed class ProviderCliDetectionService(ILogger<ProviderCliDetectionServ
 
 	private static List<DetectionCandidate> BuildCandidates(string executableName, string? configuredExecutablePath, string searchPath)
 	{
+		return BuildCandidates([executableName], configuredExecutablePath, searchPath);
+	}
+
+	private static List<DetectionCandidate> BuildCandidates(IReadOnlyList<string> executableNames, string? configuredExecutablePath, string searchPath)
+	{
 		var candidates = new List<DetectionCandidate>();
+		var comparer = PlatformHelper.IsWindows ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
 
 		var resolvedConfiguredPath = ResolveConfiguredExecutablePath(configuredExecutablePath, searchPath);
 		if (!string.IsNullOrWhiteSpace(resolvedConfiguredPath))
@@ -164,10 +223,14 @@ public sealed class ProviderCliDetectionService(ILogger<ProviderCliDetectionServ
 			candidates.Add(new DetectionCandidate(resolvedConfiguredPath, Required: true));
 		}
 
-		var resolvedDefaultPath = PlatformHelper.ResolveExecutablePath(executableName, searchPath: searchPath);
-		if (resolvedDefaultPath != executableName || File.Exists(resolvedDefaultPath))
+		foreach (var executableName in executableNames)
 		{
-			var comparer = PlatformHelper.IsWindows ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
+			var resolvedDefaultPath = PlatformHelper.ResolveExecutablePath(executableName, searchPath: searchPath);
+			if (resolvedDefaultPath == executableName && !File.Exists(resolvedDefaultPath))
+			{
+				continue;
+			}
+
 			if (!candidates.Any(candidate => comparer.Equals(candidate.Path, resolvedDefaultPath)))
 			{
 				candidates.Add(new DetectionCandidate(resolvedDefaultPath, Required: false));

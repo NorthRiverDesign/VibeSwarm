@@ -44,6 +44,7 @@ public class CommonProviderSetupService(
 				installSpec.VersionArguments,
 				preferredCliProvider?.ExecutablePath,
 				cancellationToken: cancellationToken);
+			var hostTools = await GetHostToolsAsync(providerType, cancellationToken);
 			var authStatus = DetectAuthentication(providerType, preferredAuthProvider);
 			var authConnectionMode = preferredAuthProvider?.ConnectionMode ?? ProviderCapabilities.GetDefaultMode(providerType);
 
@@ -69,6 +70,7 @@ public class CommonProviderSetupService(
 				AuthenticationConnectionMode = authConnectionMode,
 				IsAuthenticated = authStatus.IsAuthenticated,
 				AuthenticationStatus = authStatus.Message,
+				HostTools = hostTools,
 				ConfiguredProviders = providersForType
 					.Select(provider => new CommonProviderSetupConfiguredProvider
 					{
@@ -204,7 +206,7 @@ public class CommonProviderSetupService(
 	private static string GetDescription(ProviderType providerType) => providerType switch
 	{
 		ProviderType.Claude => "Install Claude Code on this host and save an Anthropic key for VibeSwarm-managed CLI runs.",
-		ProviderType.Copilot => "Install the GitHub Copilot CLI and save a fine-grained PAT with Copilot Requests permission.",
+		ProviderType.Copilot => "Install the GitHub Copilot CLI and save a fine-grained PAT with Copilot Requests permission. Install ripgrep and fd/fdfind on the host for faster autonomous file discovery.",
 		ProviderType.OpenCode => "Install OpenCode and store an OpenCode API key so the host can launch jobs immediately.",
 		_ => string.Empty
 	};
@@ -236,10 +238,49 @@ public class CommonProviderSetupService(
 	private static string GetApiKeyHelpText(ProviderType providerType) => providerType switch
 	{
 		ProviderType.Claude => "Claude Code normally supports browser login, but VibeSwarm can fully automate it by using an Anthropic API key instead.",
-		ProviderType.Copilot => "Use a fine-grained PAT with the Copilot Requests permission. VibeSwarm injects it as GH_TOKEN/GITHUB_TOKEN when launching the CLI.",
+		ProviderType.Copilot => "Use a fine-grained PAT with the Copilot Requests permission. VibeSwarm injects it as GH_TOKEN/GITHUB_TOKEN when launching the CLI and prepares a bash environment so Copilot can find host search tools like rg and fd/fdfind.",
 		ProviderType.OpenCode => "Create an API key at opencode.ai/auth. VibeSwarm also writes it to OpenCode's auth.json so the host stays configured.",
 		_ => string.Empty
 	};
+
+	private async Task<List<CommonProviderHostToolStatus>> GetHostToolsAsync(ProviderType providerType, CancellationToken cancellationToken)
+	{
+		if (providerType != ProviderType.Copilot)
+		{
+			return [];
+		}
+
+		var ripgrepStatus = await _providerCliDetectionService.DetectAnyAsync(
+			["rg"],
+			"--version",
+			cancellationToken: cancellationToken);
+		var fileSearchStatus = await _providerCliDetectionService.DetectAnyAsync(
+			["fd", "fdfind"],
+			"--version",
+			cancellationToken: cancellationToken);
+
+		return
+		[
+			new CommonProviderHostToolStatus
+			{
+				Name = "ripgrep",
+				Command = "rg",
+				Purpose = "Fast content search for autonomous CLI work.",
+				IsInstalled = ripgrepStatus.IsInstalled,
+				ResolvedExecutablePath = ripgrepStatus.ResolvedExecutablePath,
+				Status = ripgrepStatus.Message
+			},
+			new CommonProviderHostToolStatus
+			{
+				Name = "fd",
+				Command = "fd / fdfind",
+				Purpose = "Fast file-name search. Debian and Ubuntu often install this command as fdfind.",
+				IsInstalled = fileSearchStatus.IsInstalled,
+				ResolvedExecutablePath = fileSearchStatus.ResolvedExecutablePath,
+				Status = fileSearchStatus.Message
+			}
+		];
+	}
 
 	private static string GetDefaultProviderName(ProviderType providerType) => providerType switch
 	{

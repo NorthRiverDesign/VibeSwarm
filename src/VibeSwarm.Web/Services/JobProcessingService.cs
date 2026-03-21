@@ -935,6 +935,7 @@ public class JobProcessingService : BackgroundService
 						{
 							WorkingDirectory = workingDirectory,
 							McpConfigPath = planningMcpOptions.McpConfigPath,
+							BashEnvPath = planningMcpOptions.BashEnvPath,
 							AdditionalArgs = planningMcpOptions.AdditionalArgs,
 							Model = job.Project.PlanningModelId,
 							Title = job.Title,
@@ -1030,6 +1031,7 @@ public class JobProcessingService : BackgroundService
 							SessionId = cycleSessionId,
 							WorkingDirectory = workingDirectory,
 							McpConfigPath = mcpOptions.McpConfigPath,
+							BashEnvPath = mcpOptions.BashEnvPath,
 							AdditionalArgs = mcpOptions.AdditionalArgs,
 							Model = job.ModelUsed,
 							Title = job.Title,
@@ -2523,10 +2525,9 @@ public class JobProcessingService : BackgroundService
     }
 
     /// <summary>
-    /// Gets the MCP config file path for the given provider.
-    /// Generates a temporary MCP config file containing all enabled skills.
+    /// Gets temporary execution resources for the given provider, including MCP config and bash env files when needed.
     /// </summary>
-	private async Task<(string? McpConfigPath, List<string>? AdditionalArgs, McpExecutionResources? Resources)> GetMcpExecutionOptionsAsync(
+	private async Task<(string? McpConfigPath, string? BashEnvPath, List<string>? AdditionalArgs, McpExecutionResources? Resources)> GetMcpExecutionOptionsAsync(
 		Guid providerId,
 		Project? project,
 		string? workingDirectory,
@@ -2543,7 +2544,7 @@ public class JobProcessingService : BackgroundService
 			if (provider == null)
 			{
 				_logger.LogWarning("Could not find provider {ProviderId} to generate MCP config", providerId);
-				return (null, null, null);
+				return (null, null, null, null);
 			}
 
 			var resources = await mcpConfigService.GenerateExecutionResourcesAsync(
@@ -2556,12 +2557,12 @@ public class JobProcessingService : BackgroundService
 				_logger.LogDebug("Generated MCP config at {ConfigPath} for provider {ProviderId}", resources.ConfigFilePath, providerId);
 			}
 
-			return (resources?.ConfigFilePath, null, resources);
+			return (resources?.ConfigFilePath, resources?.BashEnvFilePath, null, resources);
 		}
 		catch (Exception ex)
 		{
 			_logger.LogWarning(ex, "Failed to generate MCP config for provider {ProviderId}", providerId);
-			return (null, null, null);
+			return (null, null, null, null);
 		}
 	}
 

@@ -434,6 +434,36 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 	}
 
 	[Fact]
+	public async Task GenerateExecutionResourcesAsync_ForCopilot_CreatesBashEnvFile_AndCleansItUp()
+	{
+		var service = new McpConfigService(new FakeSkillService());
+
+		var resources = await service.GenerateExecutionResourcesAsync(ProviderType.Copilot);
+
+		Assert.NotNull(resources);
+		Assert.Null(resources!.ConfigFilePath);
+		Assert.Null(resources.BrowserArtifactsDirectory);
+
+		if (OperatingSystem.IsWindows())
+		{
+			Assert.Null(resources.BashEnvFilePath);
+			return;
+		}
+
+		Assert.NotNull(resources.BashEnvFilePath);
+		Assert.True(File.Exists(resources.BashEnvFilePath));
+
+		var content = await File.ReadAllTextAsync(resources.BashEnvFilePath!);
+		Assert.Contains("export PATH='", content);
+		Assert.Contains("command -v fdfind", content);
+		Assert.Contains("fd() { command fdfind \"$@\"; }", content);
+
+		service.CleanupExecutionResources(resources);
+
+		Assert.False(File.Exists(resources.BashEnvFilePath));
+	}
+
+	[Fact]
 	public async Task CreateAsync_MultipleEnvironments_NonPrimaryIsPrimary_False_Inserts()
 	{
 		// Regression: HasDefaultValue(false) on IsPrimary caused EF Core to omit

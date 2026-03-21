@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Providers;
+using VibeSwarm.Shared.Utilities;
 
 namespace VibeSwarm.Shared.Services;
 
@@ -27,8 +28,9 @@ Task<string?> GenerateMcpConfigJsonAsync(Project? project = null, CancellationTo
 		CancellationToken cancellationToken = default);
 
 	/// <summary>
-	/// Generates provider-specific MCP execution resources, including any temporary browser artifact directories.
-	/// Returns null when no MCP servers are required.
+	/// Generates provider-specific execution resources, including any temporary MCP files, browser artifact directories,
+	/// and shell environment files needed by the target provider.
+	/// Returns null when no provider-specific execution resources are required.
 	/// </summary>
 	Task<McpExecutionResources?> GenerateExecutionResourcesAsync(
 		ProviderType providerType,
@@ -62,10 +64,13 @@ public sealed class McpExecutionResources
 	public string? ConfigFilePath { get; init; }
 
 	public string? BrowserArtifactsDirectory { get; init; }
+
+	public string? BashEnvFilePath { get; init; }
 }
 
 /// <summary>
-/// Implementation of MCP configuration service that generates config for skills and Playwright MCP.
+/// Implementation of MCP configuration service that generates config for skills, Playwright MCP,
+/// and provider-specific execution resources such as Copilot bash environment files.
 /// </summary>
 /// <remarks>
 /// Note: This service does NOT implement IDisposable because MCP config files must persist
@@ -124,22 +129,31 @@ return JsonSerializer.Serialize(config, JsonOptions);
 		CancellationToken cancellationToken = default)
 	{
 		var skills = await _skillService.GetEnabledAsync(cancellationToken);
-		if (!RequiresMcp(skills, project))
+		var requiresMcp = RequiresMcp(skills, project);
+		var bashEnvFilePath = providerType == ProviderType.Copilot
+			? await CreateCopilotBashEnvFileAsync(cancellationToken)
+			: null;
+		if (!requiresMcp && string.IsNullOrWhiteSpace(bashEnvFilePath))
 		{
 			return null;
 		}
 
-		var browserArtifactsDirectory = HasEnabledWebEnvironment(project)
+		var browserArtifactsDirectory = requiresMcp && HasEnabledWebEnvironment(project)
 			? CreateBrowserArtifactsDirectory()
 			: null;
-		var filePath = CreateConfigFilePath(providerType, workingDirectory);
-		var playwrightEnvironment = CreatePlaywrightEnvironmentVariables(browserArtifactsDirectory);
-		var json = providerType == ProviderType.OpenCode
-		? JsonSerializer.Serialize(BuildOpenCodeConfig(skills, project, playwrightEnvironment), JsonOptions)
-		: JsonSerializer.Serialize(BuildStandardMcpConfig(skills, project, playwrightEnvironment), JsonOptions);
+		string? filePath = null;
+		if (requiresMcp)
+		{
+			filePath = CreateConfigFilePath(providerType, workingDirectory);
+			var playwrightEnvironment = CreatePlaywrightEnvironmentVariables(browserArtifactsDirectory);
+			var json = providerType == ProviderType.OpenCode
+				? JsonSerializer.Serialize(BuildOpenCodeConfig(skills, project, playwrightEnvironment), JsonOptions)
+				: JsonSerializer.Serialize(BuildStandardMcpConfig(skills, project, playwrightEnvironment), JsonOptions);
 
-		await File.WriteAllTextAsync(filePath, json, cancellationToken);
-		TrackTempFile(filePath);
+			await File.WriteAllTextAsync(filePath, json, cancellationToken);
+			TrackTempFile(filePath);
+		}
+
 		if (!string.IsNullOrWhiteSpace(browserArtifactsDirectory))
 		{
 			TrackTempDirectory(browserArtifactsDirectory);
@@ -148,7 +162,8 @@ return JsonSerializer.Serialize(config, JsonOptions);
 		return new McpExecutionResources
 		{
 			ConfigFilePath = filePath,
-			BrowserArtifactsDirectory = browserArtifactsDirectory
+			BrowserArtifactsDirectory = browserArtifactsDirectory,
+			BashEnvFilePath = bashEnvFilePath
 		};
 	}
 
@@ -234,6 +249,22 @@ foreach (var filePath in filesToClean)
 			RemoveTrackedDirectory(resources.BrowserArtifactsDirectory);
 			TryDeleteDirectory(resources.BrowserArtifactsDirectory);
 		}
+
+		if (!string.IsNullOrWhiteSpace(resources.BashEnvFilePath))
+		{
+			RemoveTrackedFile(resources.BashEnvFilePath);
+			try
+			{
+				if (File.Exists(resources.BashEnvFilePath))
+				{
+					File.Delete(resources.BashEnvFilePath);
+				}
+			}
+			catch
+			{
+				// Ignore cleanup errors
+			}
+		}
 	}
 
 private static bool RequiresMcp(IEnumerable<Skill> skills, Project? project)
@@ -285,9 +316,51 @@ var fileName = $"opencode-mcp-{Guid.NewGuid():N}.json";
 	return Path.Combine(tempDir, fileName);
 }
 
-var standardFileName = $"mcp-config-{Guid.NewGuid():N}.json";
-return Path.Combine(tempDir, standardFileName);
-}
+	var standardFileName = $"mcp-config-{Guid.NewGuid():N}.json";
+	return Path.Combine(tempDir, standardFileName);
+	}
+
+	private static async Task<string?> CreateCopilotBashEnvFileAsync(CancellationToken cancellationToken)
+	{
+		if (OperatingSystem.IsWindows())
+		{
+			return null;
+		}
+
+		var tempDir = Path.Combine(Path.GetTempPath(), "vibeswarm", "copilot");
+		Directory.CreateDirectory(tempDir);
+
+		var filePath = Path.Combine(tempDir, $"copilot-bash-env-{Guid.NewGuid():N}.sh");
+		var homeDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+		if (string.IsNullOrWhiteSpace(homeDirectory))
+		{
+			homeDirectory = Environment.GetEnvironmentVariable("HOME");
+		}
+
+		var enhancedPath = PlatformHelper.GetEnhancedPath(homeDirectory);
+		var lines = new List<string>
+		{
+			$"export PATH={QuoteForBash(enhancedPath)}"
+		};
+
+		if (!string.IsNullOrWhiteSpace(homeDirectory))
+		{
+			lines.Add($"export HOME={QuoteForBash(homeDirectory)}");
+		}
+
+		lines.Add("if ! command -v fd >/dev/null 2>&1 && command -v fdfind >/dev/null 2>&1; then");
+		lines.Add("	fd() { command fdfind \"$@\"; }");
+		lines.Add("fi");
+
+		await File.WriteAllTextAsync(filePath, string.Join(Environment.NewLine, lines) + Environment.NewLine, cancellationToken);
+		TrackTempFile(filePath);
+		return filePath;
+	}
+
+	private static string QuoteForBash(string value)
+	{
+		return $"'{value.Replace("'", "'\\''", StringComparison.Ordinal)}'";
+	}
 
 	private static void TrackTempFile(string filePath)
 	{
