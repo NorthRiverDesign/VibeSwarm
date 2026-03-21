@@ -31,7 +31,12 @@ public sealed class DashboardMetricChartTests
 		Assert.Contains("overflow-auto", cut.Markup);
 		Assert.Contains("grid-template-columns:repeat(30, minmax(48px, 1fr));", cut.Markup);
 		Assert.Contains("width:max(100%, 1440px);", cut.Markup);
-		Assert.Contains("Tap or click a bar to view its value.", cut.Markup);
+		Assert.DoesNotContain("Tap or click a bar to view its value.", cut.Markup);
+		Assert.Contains("<span class=\"text-body-secondary\">Latest</span>", cut.Markup);
+		Assert.Contains("<span class=\"badge bg-body text-body\">Day 30</span>", cut.Markup);
+		Assert.Contains("<span class=\"fw-semibold text-break\">30 completed jobs</span>", cut.Markup);
+		Assert.DoesNotContain("top-0 end-0 translate-middle-y", cut.Markup);
+		Assert.Contains("width:24px; min-width:24px; height:196px;", cut.Markup);
 	}
 
 	[Fact]
@@ -73,7 +78,10 @@ public sealed class DashboardMetricChartTests
 			.Add(component => component.UseIntegerYAxisTicks, true)
 			.Add(component => component.YAxisLabelFormatter, value => value.ToString("0")));
 
-		Assert.Contains("Tap or click a bar to view its value.", cut.Markup);
+		Assert.DoesNotContain("Tap or click a bar to view its value.", cut.Markup);
+		Assert.Contains("<span class=\"text-body-secondary\">Latest</span>", cut.Markup);
+		Assert.Contains("<span class=\"badge bg-body text-body\">Day 3</span>", cut.Markup);
+		Assert.Contains("<span class=\"fw-semibold text-break\">9 completed jobs</span>", cut.Markup);
 		Assert.Contains(">9</div>", cut.Markup);
 		Assert.Contains(">6</div>", cut.Markup);
 		Assert.Contains(">3</div>", cut.Markup);
@@ -88,8 +96,9 @@ public sealed class DashboardMetricChartTests
 		cut.WaitForAssertion(() =>
 		{
 			Assert.DoesNotContain("Tap or click a bar to view its value.", cut.Markup);
-			Assert.Contains("<span class=\"badge bg-body-tertiary text-body\">Day 2</span>", cut.Markup);
-			Assert.Contains("<span class=\"fw-semibold\">6 completed jobs</span>", cut.Markup);
+			Assert.Contains("<span class=\"badge bg-body text-body\">Day 2</span>", cut.Markup);
+			Assert.Contains("<span class=\"fw-semibold text-break\">6 completed jobs</span>", cut.Markup);
+			Assert.Contains("<span class=\"text-body-secondary\">Selected</span>", cut.Markup);
 			Assert.Contains("aria-pressed=\"true\"", cut.Markup);
 		});
 	}
@@ -116,5 +125,7 @@ public sealed class DashboardMetricChartTests
 		Assert.Contains(">25</div>", cut.Markup);
 		Assert.Contains(">0</div>", cut.Markup);
 		Assert.DoesNotContain(">150</div>", cut.Markup);
+		Assert.Contains("width:24px; min-width:24px; height:196px;", cut.Markup);
+		Assert.DoesNotContain("width:56px;", cut.Markup);
 	}
 }

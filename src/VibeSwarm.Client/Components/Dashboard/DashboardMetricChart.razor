@@ -24,23 +24,29 @@
 		else
 		{
 			<div class="w-100">
-				@if (SelectedPoint is not null)
+				@if (HighlightedPoint is not null)
 				{
-					<div class="d-flex flex-wrap align-items-center gap-2 mb-2 small">
-						<span class="badge bg-body-tertiary text-body">@SelectedPoint.Label</span>
-						<span class="fw-semibold">@GetPointValueLabel(SelectedPoint)</span>
+					<div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2 mb-sm-3 px-2 py-2 rounded bg-body-tertiary small">
+						<div class="d-flex flex-wrap align-items-center gap-2 min-width-0">
+							<span class="badge bg-body text-body">@HighlightedPoint.Label</span>
+							<span class="fw-semibold text-break">@GetPointValueLabel(HighlightedPoint)</span>
+						</div>
+						@if (SelectedPoint is not null)
+						{
+							<span class="text-body-secondary">Selected</span>
+						}
+						else
+						{
+							<span class="text-body-secondary">Latest</span>
+						}
 					</div>
-				}
-				else
-				{
-					<p class="small text-body-secondary mb-2">Tap or click a bar to view its value.</p>
 				}
 
 				<div class="d-flex align-items-start gap-1 gap-sm-2">
-					<div class="position-relative flex-shrink-0 pe-1" style="width:@FormatPixels(YAxisLabelWidth); height:@FormatPixels(ChartHeight);">
+					<div class="position-relative flex-shrink-0 pe-1" style="width:@FormatPixels(YAxisLabelWidth); min-width:@FormatPixels(YAxisLabelWidth); height:@FormatPixels(ChartHeight);">
 						@foreach (var axisTick in YAxisTicks)
 						{
-							<div class="position-absolute top-0 end-0 translate-middle-y text-body-secondary text-end"
+							<div class="position-absolute end-0 translate-middle-y text-body-secondary text-end"
 								 style="top:@FormatPixels(axisTick.Y); font-size:0.72rem; line-height:1;">
 								@axisTick.Label
 							</div>
@@ -123,7 +129,8 @@
 	private const int ChartHeight = 196;
 	private const int MinimumChartWidth = 320;
 	private const int MinimumSlotWidth = 48;
-	private const int YAxisLabelWidth = 56;
+	private const int MinimumYAxisLabelWidth = 24;
+	private const int MaximumYAxisLabelWidth = 48;
 	private const int ChartPaddingTop = 12;
 	private const int ChartPaddingBottom = 12;
 	private const int AxisTickCount = 4;
@@ -165,6 +172,7 @@
 	private DashboardChartPoint? SelectedPoint => SelectedPointIndex.HasValue && SelectedPointIndex.Value < Points.Count
 		? Points[SelectedPointIndex.Value]
 		: null;
+	private DashboardChartPoint? HighlightedPoint => ResolveHighlightedPoint();
 	private double BaselineY => ChartHeight - ChartPaddingBottom;
 	private double PlotHeight => ChartHeight - ChartPaddingTop - ChartPaddingBottom;
 	private double ChartWidth => Math.Max(Points.Count * MinimumSlotWidth, MinimumChartWidth);
@@ -175,6 +183,7 @@
 	private double MaxValue => Points.Count == 0 ? 0 : Points.Max(point => point.Value);
 	private double ChartMaxValue => ResolveChartMaxValue(MaxValue);
 	private double AxisStepValue => ChartMaxValue / (AxisTickCount - 1);
+	private double YAxisLabelWidth => ResolveYAxisLabelWidth();
 	private int? SelectedPointIndex { get; set; }
 	private IReadOnlyList<AxisTick> YAxisTicks => Enumerable.Range(0, AxisTickCount)
 		.Select(index =>
@@ -214,6 +223,17 @@
 			: point.ValueLabel;
 	}
 
+	private DashboardChartPoint? ResolveHighlightedPoint()
+	{
+		if (SelectedPoint is not null)
+		{
+			return SelectedPoint;
+		}
+
+		var latestPoint = Points.LastOrDefault(point => point.Value > 0) ?? Points.LastOrDefault();
+		return latestPoint;
+	}
+
 	private static IReadOnlyList<string> GetLabelSegments(string label)
 	{
 		if (string.IsNullOrWhiteSpace(label))
@@ -242,6 +262,27 @@
 		}
 
 		return value.ToString("0.##");
+	}
+
+	private double ResolveYAxisLabelWidth()
+	{
+		if (YAxisTicks.Count == 0)
+		{
+			return MinimumYAxisLabelWidth;
+		}
+
+		var widestLabel = YAxisTicks.Max(axisTick => EstimateAxisLabelWidth(axisTick.Label));
+		return Math.Clamp(widestLabel, MinimumYAxisLabelWidth, MaximumYAxisLabelWidth);
+	}
+
+	private static double EstimateAxisLabelWidth(string label)
+	{
+		if (string.IsNullOrWhiteSpace(label))
+		{
+			return MinimumYAxisLabelWidth;
+		}
+
+		return (label.Length * 6.2) + 10;
 	}
 
 	private double ResolveChartMaxValue(double maxValue)
