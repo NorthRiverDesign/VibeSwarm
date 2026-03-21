@@ -53,7 +53,7 @@ else
         <div class="col-12 col-xl-5 order-2 order-xl-1">
 
             @* Goal Prompt Card *@
-            <JobGoalPromptCard GoalPrompt="@Job.GoalPrompt" IdeaText="@Job.Title" Status="@Job.Status" CanRetry="@CanRetry"
+            <JobGoalPromptCard GoalPrompt="@Job.GoalPrompt" IdeaText="@GetGoalPromptIdeaText()" Status="@Job.Status" CanRetry="@CanRetry"
                                HasConsoleOutput="@(!string.IsNullOrEmpty(Job.ConsoleOutput))" OnCopyToClipboard="CopyPromptToClipboard"
                                OnPromptChanged="UpdateJobPrompt" />
 
@@ -1155,10 +1155,16 @@ TimeSpan.FromSeconds(10) })
 
         try
         {
+            var shouldSyncTitle = JobTitleHelper.ShouldSyncTitleWithGoalPrompt(Job.Title, Job.GoalPrompt);
             var success = await JobService.UpdateJobPromptAsync(Job.Id, newPrompt);
             if (success)
             {
                 Job.GoalPrompt = newPrompt;
+                if (shouldSyncTitle)
+                {
+                    Job.Title = JobTitleHelper.BuildSafeJobTitle(null, newPrompt);
+                }
+
                 NotificationService.ShowSuccess("Prompt updated successfully!", "Saved");
                 StateHasChanged();
             }
@@ -1171,6 +1177,18 @@ TimeSpan.FromSeconds(10) })
         {
             NotificationService.ShowError($"Failed to update prompt: {ex.Message}", "Update Failed");
         }
+    }
+
+    private string? GetGoalPromptIdeaText()
+    {
+        if (Job == null)
+        {
+            return null;
+        }
+
+        return JobTitleHelper.ShouldSyncTitleWithGoalPrompt(Job.Title, Job.GoalPrompt)
+            ? null
+            : Job.Title;
     }
 
     #endregion

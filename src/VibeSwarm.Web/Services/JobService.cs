@@ -4,6 +4,7 @@ using System.Text.Json;
 using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Models;
 using VibeSwarm.Shared.Providers;
+using VibeSwarm.Shared.Utilities;
 using VibeSwarm.Shared.VersionControl;
 using VibeSwarm.Web.Services;
 
@@ -985,8 +986,11 @@ public class JobService : IJobService
             return false;
         }
 
+        var shouldSyncTitle = JobTitleHelper.ShouldSyncTitleWithGoalPrompt(job.Title, job.GoalPrompt);
         job.GoalPrompt = newPrompt?.Trim() ?? string.Empty;
-        job.Title = BuildSafeJobTitle(job.Title, job.GoalPrompt);
+        job.Title = shouldSyncTitle
+            ? JobTitleHelper.BuildSafeJobTitle(null, job.GoalPrompt)
+            : JobTitleHelper.BuildSafeJobTitle(job.Title, job.GoalPrompt);
         job.PlanningOutput = null;
         job.PlanningProviderId = null;
         job.PlanningModelUsed = null;
@@ -1314,24 +1318,12 @@ public class JobService : IJobService
     private static void NormalizeJobForPersistence(Job job)
     {
         job.GoalPrompt = job.GoalPrompt?.Trim() ?? string.Empty;
-        job.Title = BuildSafeJobTitle(job.Title, job.GoalPrompt);
+        job.Title = JobTitleHelper.BuildSafeJobTitle(job.Title, job.GoalPrompt);
         job.ModelUsed = string.IsNullOrWhiteSpace(job.ModelUsed) ? null : job.ModelUsed.Trim();
         job.PlanningOutput = string.IsNullOrWhiteSpace(job.PlanningOutput) ? null : job.PlanningOutput.Trim();
         job.PlanningModelUsed = string.IsNullOrWhiteSpace(job.PlanningModelUsed) ? null : job.PlanningModelUsed.Trim();
         job.Branch = string.IsNullOrWhiteSpace(job.Branch) ? null : job.Branch.Trim();
         job.TargetBranch = string.IsNullOrWhiteSpace(job.TargetBranch) ? null : job.TargetBranch.Trim();
-    }
-
-    private static string? BuildSafeJobTitle(string? title, string goalPrompt)
-    {
-        var source = string.IsNullOrWhiteSpace(title) ? goalPrompt : title;
-        var normalized = source?.Trim();
-        if (string.IsNullOrWhiteSpace(normalized))
-        {
-            return null;
-        }
-
-        return normalized.Length > 200 ? normalized[..197] + "..." : normalized;
     }
 
     private static int NormalizePageSize(int pageSize, int defaultPageSize)

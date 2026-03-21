@@ -207,6 +207,95 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 	}
 
 	[Fact]
+	public async Task UpdateJobPromptAsync_UpdatesPromptDerivedTitle()
+	{
+		await using var dbContext = CreateDbContext();
+		var project = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Manual Job Project",
+			WorkingPath = "/tmp/manual-job-project"
+		};
+		var provider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Copilot",
+			Type = ProviderType.Copilot,
+			IsEnabled = true,
+			IsDefault = true
+		};
+		var originalPrompt = "Fix the prompt wording";
+		var job = new Job
+		{
+			Id = Guid.NewGuid(),
+			ProjectId = project.Id,
+			ProviderId = provider.Id,
+			Title = originalPrompt,
+			GoalPrompt = originalPrompt,
+			Status = JobStatus.New
+		};
+
+		dbContext.Projects.Add(project);
+		dbContext.Providers.Add(provider);
+		dbContext.Jobs.Add(job);
+		await dbContext.SaveChangesAsync();
+
+		var serviceProvider = new ServiceCollection().BuildServiceProvider();
+		var jobService = new JobService(dbContext, serviceProvider);
+
+		var updated = await jobService.UpdateJobPromptAsync(job.Id, "Fix the goal prompt wording");
+
+		Assert.True(updated);
+		var savedJob = await dbContext.Jobs.SingleAsync(j => j.Id == job.Id);
+		Assert.Equal("Fix the goal prompt wording", savedJob.GoalPrompt);
+		Assert.Equal("Fix the goal prompt wording", savedJob.Title);
+	}
+
+	[Fact]
+	public async Task UpdateJobPromptAsync_PreservesIdeaTitle()
+	{
+		await using var dbContext = CreateDbContext();
+		var project = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Idea Job Project",
+			WorkingPath = "/tmp/idea-job-project"
+		};
+		var provider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Claude",
+			Type = ProviderType.Claude,
+			IsEnabled = true,
+			IsDefault = true
+		};
+		var job = new Job
+		{
+			Id = Guid.NewGuid(),
+			ProjectId = project.Id,
+			ProviderId = provider.Id,
+			Title = "Use the original idea text",
+			GoalPrompt = "Expanded implementation prompt with more detail",
+			Status = JobStatus.Failed
+		};
+
+		dbContext.Projects.Add(project);
+		dbContext.Providers.Add(provider);
+		dbContext.Jobs.Add(job);
+		await dbContext.SaveChangesAsync();
+
+		var serviceProvider = new ServiceCollection().BuildServiceProvider();
+		var jobService = new JobService(dbContext, serviceProvider);
+
+		var updated = await jobService.UpdateJobPromptAsync(job.Id, "Updated expanded implementation prompt");
+
+		Assert.True(updated);
+		var savedJob = await dbContext.Jobs.SingleAsync(j => j.Id == job.Id);
+		Assert.Equal("Updated expanded implementation prompt", savedJob.GoalPrompt);
+		Assert.Equal("Use the original idea text", savedJob.Title);
+	}
+
+	[Fact]
 	public async Task ResumeJobAsync_ReturnsPlanningStatus_WhenPlanIsStillPending()
 	{
 		await using var dbContext = CreateDbContext();
