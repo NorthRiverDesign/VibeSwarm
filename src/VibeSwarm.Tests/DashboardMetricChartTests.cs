@@ -93,4 +93,28 @@ public sealed class DashboardMetricChartTests
 			Assert.Contains("aria-pressed=\"true\"", cut.Markup);
 		});
 	}
+
+	[Fact]
+	public void DashboardMetricChart_UsesTighterNiceScaleForFractionalYAxisValues()
+	{
+		using var context = new BunitContext();
+
+		var points = new[]
+		{
+			new DashboardChartPoint { Label = "Day 1", Value = 61, ValueLabel = "61 minutes" },
+			new DashboardChartPoint { Label = "Day 2", Value = 47, ValueLabel = "47 minutes" },
+			new DashboardChartPoint { Label = "Day 3", Value = 22, ValueLabel = "22 minutes" }
+		};
+
+		var cut = context.Render<DashboardMetricChart>(parameters => parameters
+			.Add(component => component.Title, "Average Job Duration")
+			.Add(component => component.Points, points)
+			.Add(component => component.YAxisLabelFormatter, value => value.ToString("0")));
+
+		Assert.Contains(">75</div>", cut.Markup);
+		Assert.Contains(">50</div>", cut.Markup);
+		Assert.Contains(">25</div>", cut.Markup);
+		Assert.Contains(">0</div>", cut.Markup);
+		Assert.DoesNotContain(">150</div>", cut.Markup);
+	}
 }

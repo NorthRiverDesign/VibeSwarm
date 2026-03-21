@@ -1,8 +1,8 @@
 @using VibeSwarm.Client.Models
 
 <div class="card h-100">
-	<div class="card-body d-flex flex-column">
-		<div class="d-flex justify-content-between align-items-start gap-3 mb-3">
+	<div class="card-body d-flex flex-column p-3">
+		<div class="d-flex justify-content-between align-items-start gap-3 mb-2 mb-sm-3">
 			<div>
 				<h6 class="card-title fw-semibold mb-1">
 					<i class="bi bi-@Icon me-2 opacity-75"></i>@Title
@@ -26,17 +26,17 @@
 			<div class="w-100">
 				@if (SelectedPoint is not null)
 				{
-					<div class="d-flex flex-wrap align-items-center gap-2 mb-3 small">
+					<div class="d-flex flex-wrap align-items-center gap-2 mb-2 small">
 						<span class="badge bg-body-tertiary text-body">@SelectedPoint.Label</span>
 						<span class="fw-semibold">@GetPointValueLabel(SelectedPoint)</span>
 					</div>
 				}
 				else
 				{
-					<p class="small text-body-secondary mb-3">Tap or click a bar to view its value.</p>
+					<p class="small text-body-secondary mb-2">Tap or click a bar to view its value.</p>
 				}
 
-				<div class="d-flex align-items-start gap-2">
+				<div class="d-flex align-items-start gap-1 gap-sm-2">
 					<div class="position-relative flex-shrink-0 pe-1" style="width:@FormatPixels(YAxisLabelWidth); height:@FormatPixels(ChartHeight);">
 						@foreach (var axisTick in YAxisTicks)
 						{
@@ -47,7 +47,7 @@
 						}
 					</div>
 
-					<div class="flex-grow-1 overflow-auto overscroll-contain pb-2 touch-manipulation">
+					<div class="flex-grow-1 overflow-auto overscroll-contain pb-1 touch-manipulation">
 						<div class="d-flex flex-column" style="width:@ScrollContentWidth;">
 							<div class="position-relative" style="width:@FormatPixels(ChartWidth); height:@FormatPixels(ChartHeight);">
 								<svg class="d-block" width="@ChartWidth" height="@ChartHeight" viewBox="0 0 @ChartWidth @ChartHeight"
@@ -98,7 +98,7 @@
 								}
 							</div>
 
-							<div class="d-grid align-items-start pt-2"
+							<div class="d-grid align-items-start pt-1"
 								 style="grid-template-columns:@XAxisGridColumns;">
 								@for (var index = 0; index < Points.Count; index++)
 								{
@@ -120,12 +120,12 @@
 </div>
 
 @code {
-	private const int ChartHeight = 220;
+	private const int ChartHeight = 196;
 	private const int MinimumChartWidth = 320;
 	private const int MinimumSlotWidth = 48;
-	private const int YAxisLabelWidth = 64;
-	private const int ChartPaddingTop = 16;
-	private const int ChartPaddingBottom = 16;
+	private const int YAxisLabelWidth = 56;
+	private const int ChartPaddingTop = 12;
+	private const int ChartPaddingBottom = 12;
 	private const int AxisTickCount = 4;
 
 	[Parameter]
@@ -274,15 +274,10 @@
 		var magnitude = Math.Pow(10, exponent);
 		var normalizedStep = rawStep / magnitude;
 
-		var roundedStep = normalizedStep switch
-		{
-			<= 1 => 1,
-			<= 2 => 2,
-			<= 5 => 5,
-			_ => 10
-		};
+		double[] stepCandidates = [1, 1.5, 2, 2.5, 3, 4, 5, 6, 7.5, 8, 10];
+		var roundedStep = stepCandidates.FirstOrDefault(step => normalizedStep <= step);
 
-		return roundedStep * magnitude;
+		return (roundedStep == 0 ? 10 : roundedStep) * magnitude;
 	}
 
 	private void TogglePointSelection(int index)

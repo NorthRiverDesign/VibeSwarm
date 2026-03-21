@@ -503,7 +503,23 @@ body.vs-modal-open {
 
 /* Extra Small (< 576px) */
 @media (max-width: 575.98px) {
+	:root { --vs-header-height: 52px; }
 	.form-control, .form-select { font-size: 16px; }
+
+	.app-header {
+		padding-left: calc(0.75rem + var(--vs-safe-area-left));
+		padding-right: calc(0.75rem + var(--vs-safe-area-right));
+	}
+
+	.main-content {
+		padding: 0.75rem;
+		padding-left: calc(0.75rem + var(--vs-safe-area-left));
+		padding-right: calc(0.75rem + var(--vs-safe-area-right));
+	}
+
+	.app-sidebar .nav-item {
+		padding: 0.625rem 0.875rem;
+	}
 
 	.toast-container {
 		left: 0 !important;

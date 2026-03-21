@@ -52,6 +52,8 @@ public sealed class DashboardPageTests
 		Assert.Contains("Name", html);
 		Assert.Contains("Claude", html);
 		Assert.DoesNotContain("Copilot", html);
+		Assert.Contains("row g-2 g-lg-4", html);
+		Assert.Contains("row row-cols-1 row-cols-md-2 row-cols-xl-3 g-2 g-lg-3", html);
 		Assert.True(html.IndexOf("Beta", StringComparison.Ordinal) < html.IndexOf("Alpha", StringComparison.Ordinal));
 		Assert.True(html.IndexOf("Alpha", StringComparison.Ordinal) < html.IndexOf("Gamma", StringComparison.Ordinal));
 	}
