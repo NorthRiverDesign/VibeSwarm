@@ -24,14 +24,14 @@ public class HttpTeamRoleService : ITeamRoleService
 
 	public async Task<TeamRole> CreateAsync(TeamRole teamRole, CancellationToken ct = default)
 	{
-		var response = await _http.PostAsJsonAsync("/api/team-roles", teamRole, ct);
+		var response = await _http.PostAsJsonAsync("/api/team-roles", CreateRequestPayload(teamRole), ct);
 		await HttpResponseErrorHelper.EnsureSuccessAsync(response, ct, "Team role not found.");
 		return await response.ReadJsonAsync(teamRole, ct);
 	}
 
 	public async Task<TeamRole> UpdateAsync(TeamRole teamRole, CancellationToken ct = default)
 	{
-		var response = await _http.PutAsJsonAsync($"/api/team-roles/{teamRole.Id}", teamRole, ct);
+		var response = await _http.PutAsJsonAsync($"/api/team-roles/{teamRole.Id}", CreateRequestPayload(teamRole), ct);
 		await HttpResponseErrorHelper.EnsureSuccessAsync(response, ct, "Team role not found.");
 		return await response.ReadJsonAsync(teamRole, ct);
 	}
@@ -48,5 +48,27 @@ public class HttpTeamRoleService : ITeamRoleService
 		}
 
 		return await _http.GetJsonValueAsync(url, false, ct);
+	}
+
+	private static TeamRole CreateRequestPayload(TeamRole teamRole)
+	{
+		return new TeamRole
+		{
+			Id = teamRole.Id,
+			Name = teamRole.Name,
+			Description = teamRole.Description,
+			Responsibilities = teamRole.Responsibilities,
+			DefaultProviderId = teamRole.DefaultProviderId,
+			DefaultModelId = teamRole.DefaultModelId,
+			IsEnabled = teamRole.IsEnabled,
+			SkillLinks = (teamRole.SkillLinks ?? [])
+				.GroupBy(link => link.SkillId)
+				.Select(group => new TeamRoleSkill
+				{
+					TeamRoleId = teamRole.Id,
+					SkillId = group.Key
+				})
+				.ToList()
+		};
 	}
 }
