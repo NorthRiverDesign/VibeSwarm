@@ -1,4 +1,5 @@
 using System.IO;
+using System.Text.Json;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
@@ -364,6 +365,72 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 		var json = await File.ReadAllTextAsync(filePath!);
 		Assert.Contains("\"mcp\"", json);
 		Assert.Contains("@playwright/mcp@latest", json);
+		Assert.Contains("\"PLAYWRIGHT_BROWSERS_PATH\"", json);
+		service.CleanupMcpConfigFiles();
+	}
+
+	[Fact]
+	public async Task GenerateExecutionResourcesAsync_StoresPlaywrightArtifactsOutsideWorkingDirectory_AndCleansThemUp()
+	{
+		var service = new McpConfigService(new FakeSkillService());
+		var workingDirectory = Path.Combine(Path.GetTempPath(), $"vibeswarm-browser-test-{Guid.NewGuid():N}");
+		Directory.CreateDirectory(workingDirectory);
+
+		try
+		{
+			var resources = await service.GenerateExecutionResourcesAsync(
+				ProviderType.Claude,
+				new Project
+				{
+					Name = "Web App",
+					WorkingPath = workingDirectory,
+					Environments =
+					[
+						new ProjectEnvironment
+						{
+							Name = "Production",
+							Type = EnvironmentType.Web,
+							Url = "https://app.example.com",
+							IsEnabled = true
+						}
+					]
+				},
+				workingDirectory);
+
+			Assert.NotNull(resources);
+			Assert.NotNull(resources!.ConfigFilePath);
+			Assert.NotNull(resources.BrowserArtifactsDirectory);
+			Assert.True(File.Exists(resources.ConfigFilePath));
+			Assert.True(Directory.Exists(resources.BrowserArtifactsDirectory));
+
+			var fullWorkingDirectory = Path.GetFullPath(workingDirectory);
+			var fullArtifactsDirectory = Path.GetFullPath(resources.BrowserArtifactsDirectory!);
+			Assert.False(fullArtifactsDirectory.StartsWith(fullWorkingDirectory, StringComparison.OrdinalIgnoreCase));
+
+			using var document = JsonDocument.Parse(await File.ReadAllTextAsync(resources.ConfigFilePath));
+			var playwrightServer = document.RootElement
+				.GetProperty("mcpServers")
+				.GetProperty("playwright");
+			var environment = playwrightServer.GetProperty("env");
+
+			Assert.Equal(Path.Combine(resources.BrowserArtifactsDirectory!, "ms-playwright"), environment.GetProperty("PLAYWRIGHT_BROWSERS_PATH").GetString());
+			Assert.Equal(Path.Combine(resources.BrowserArtifactsDirectory!, "tmp"), environment.GetProperty("TMPDIR").GetString());
+			Assert.Equal(Path.Combine(resources.BrowserArtifactsDirectory!, "tmp"), environment.GetProperty("TMP").GetString());
+			Assert.Equal(Path.Combine(resources.BrowserArtifactsDirectory!, "tmp"), environment.GetProperty("TEMP").GetString());
+			Assert.Equal(Path.Combine(resources.BrowserArtifactsDirectory!, "cache"), environment.GetProperty("XDG_CACHE_HOME").GetString());
+
+			service.CleanupExecutionResources(resources);
+
+			Assert.False(File.Exists(resources.ConfigFilePath));
+			Assert.False(Directory.Exists(resources.BrowserArtifactsDirectory));
+		}
+		finally
+		{
+			if (Directory.Exists(workingDirectory))
+			{
+				Directory.Delete(workingDirectory, recursive: true);
+			}
+		}
 	}
 
 	[Fact]

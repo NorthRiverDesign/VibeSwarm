@@ -925,20 +925,28 @@ public class JobProcessingService : BackgroundService
                     return;
                 }
 
-                var planningMcpOptions = await GetMcpExecutionOptionsAsync(planningProviderId, job.Project, workingDirectory, cancellationToken);
-                var planningResult = await planningProvider.ExecuteWithOptionsAsync(
-                    ProviderPlanningHelper.BuildPlanningPrompt(job.GoalPrompt),
-                    new ExecutionOptions
-                    {
-                        WorkingDirectory = workingDirectory,
-                        McpConfigPath = planningMcpOptions.McpConfigPath,
-                        AdditionalArgs = planningMcpOptions.AdditionalArgs,
-                        Model = job.Project.PlanningModelId,
-                        Title = job.Title,
-                        AppendSystemPrompt = systemPromptRules
-                    },
-                    progress,
-                    cancellationToken);
+				var planningMcpOptions = await GetMcpExecutionOptionsAsync(planningProviderId, job.Project, workingDirectory, cancellationToken);
+				ExecutionResult planningResult;
+				try
+				{
+					planningResult = await planningProvider.ExecuteWithOptionsAsync(
+						ProviderPlanningHelper.BuildPlanningPrompt(job.GoalPrompt),
+						new ExecutionOptions
+						{
+							WorkingDirectory = workingDirectory,
+							McpConfigPath = planningMcpOptions.McpConfigPath,
+							AdditionalArgs = planningMcpOptions.AdditionalArgs,
+							Model = job.Project.PlanningModelId,
+							Title = job.Title,
+							AppendSystemPrompt = systemPromptRules
+						},
+						progress,
+						cancellationToken);
+				}
+				finally
+				{
+					CleanupMcpExecutionResources(planningMcpOptions.Resources);
+				}
 
                 await RecordUsageAndCheckExhaustionAsync(
                     planningProviderConfig.Id,
@@ -1010,22 +1018,30 @@ public class JobProcessingService : BackgroundService
                         cancellationToken);
                 }
 
-                var mcpOptions = await GetMcpExecutionOptionsAsync(job.ProviderId, job.Project, workingDirectory, cancellationToken);
+				var mcpOptions = await GetMcpExecutionOptionsAsync(job.ProviderId, job.Project, workingDirectory, cancellationToken);
 
-                var result = await provider.ExecuteWithOptionsAsync(
-                    currentPrompt,
-                    new ExecutionOptions
-                    {
-                        SessionId = cycleSessionId,
-                        WorkingDirectory = workingDirectory,
-                        McpConfigPath = mcpOptions.McpConfigPath,
-                        AdditionalArgs = mcpOptions.AdditionalArgs,
-                        Model = job.ModelUsed,
-                        Title = job.Title,
-                        AppendSystemPrompt = systemPromptRules
-                    },
-                    progress,
-                    cancellationToken);
+				ExecutionResult result;
+				try
+				{
+					result = await provider.ExecuteWithOptionsAsync(
+						currentPrompt,
+						new ExecutionOptions
+						{
+							SessionId = cycleSessionId,
+							WorkingDirectory = workingDirectory,
+							McpConfigPath = mcpOptions.McpConfigPath,
+							AdditionalArgs = mcpOptions.AdditionalArgs,
+							Model = job.ModelUsed,
+							Title = job.Title,
+							AppendSystemPrompt = systemPromptRules
+						},
+						progress,
+						cancellationToken);
+				}
+				finally
+				{
+					CleanupMcpExecutionResources(mcpOptions.Resources);
+				}
 
                 // Store last result and accumulate tokens/cost
                 lastResult = result;
@@ -2510,10 +2526,10 @@ public class JobProcessingService : BackgroundService
     /// Gets the MCP config file path for the given provider.
     /// Generates a temporary MCP config file containing all enabled skills.
     /// </summary>
-    private async Task<(string? McpConfigPath, List<string>? AdditionalArgs)> GetMcpExecutionOptionsAsync(
-        Guid providerId,
-        Project? project,
-        string? workingDirectory,
+	private async Task<(string? McpConfigPath, List<string>? AdditionalArgs, McpExecutionResources? Resources)> GetMcpExecutionOptionsAsync(
+		Guid providerId,
+		Project? project,
+		string? workingDirectory,
         CancellationToken cancellationToken)
     {
         try
@@ -2523,31 +2539,50 @@ public class JobProcessingService : BackgroundService
             var providerService = scope.ServiceProvider.GetRequiredService<IProviderService>();
 
             // Get the provider to determine its type
-            var provider = await providerService.GetByIdAsync(providerId);
-            if (provider == null)
-            {
-                _logger.LogWarning("Could not find provider {ProviderId} to generate MCP config", providerId);
-                return (null, null);
-            }
+			var provider = await providerService.GetByIdAsync(providerId);
+			if (provider == null)
+			{
+				_logger.LogWarning("Could not find provider {ProviderId} to generate MCP config", providerId);
+				return (null, null, null);
+			}
 
-            var mcpConfigPath = await mcpConfigService.GenerateMcpConfigFileAsync(
-                provider.Type,
-                project,
-                workingDirectory,
-                cancellationToken);
-            if (!string.IsNullOrEmpty(mcpConfigPath))
-            {
-                _logger.LogDebug("Generated MCP config at {ConfigPath} for provider {ProviderId}", mcpConfigPath, providerId);
-            }
+			var resources = await mcpConfigService.GenerateExecutionResourcesAsync(
+				provider.Type,
+				project,
+				workingDirectory,
+				cancellationToken);
+			if (!string.IsNullOrEmpty(resources?.ConfigFilePath))
+			{
+				_logger.LogDebug("Generated MCP config at {ConfigPath} for provider {ProviderId}", resources.ConfigFilePath, providerId);
+			}
 
-            return (mcpConfigPath, null);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to generate MCP config for provider {ProviderId}", providerId);
-            return (null, null);
-        }
-    }
+			return (resources?.ConfigFilePath, null, resources);
+		}
+		catch (Exception ex)
+		{
+			_logger.LogWarning(ex, "Failed to generate MCP config for provider {ProviderId}", providerId);
+			return (null, null, null);
+		}
+	}
+
+	private void CleanupMcpExecutionResources(McpExecutionResources? resources)
+	{
+		if (resources == null)
+		{
+			return;
+		}
+
+		try
+		{
+			using var scope = _scopeFactory.CreateScope();
+			var mcpConfigService = scope.ServiceProvider.GetRequiredService<IMcpConfigService>();
+			mcpConfigService.CleanupExecutionResources(resources);
+		}
+		catch (Exception ex)
+		{
+			_logger.LogWarning(ex, "Failed to clean up MCP execution resources");
+		}
+	}
 
     private async Task<string?> PrepareProjectMemoryFileAsync(Project? project, CancellationToken cancellationToken)
     {

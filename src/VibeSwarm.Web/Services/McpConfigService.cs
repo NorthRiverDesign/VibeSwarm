@@ -20,11 +20,21 @@ Task<string?> GenerateMcpConfigJsonAsync(Project? project = null, CancellationTo
 /// Generates a provider-specific MCP configuration file and returns the file path.
 /// Returns null when no MCP servers are required.
 /// </summary>
-Task<string?> GenerateMcpConfigFileAsync(
-ProviderType providerType,
-Project? project = null,
-string? workingDirectory = null,
-CancellationToken cancellationToken = default);
+	Task<string?> GenerateMcpConfigFileAsync(
+		ProviderType providerType,
+		Project? project = null,
+		string? workingDirectory = null,
+		CancellationToken cancellationToken = default);
+
+	/// <summary>
+	/// Generates provider-specific MCP execution resources, including any temporary browser artifact directories.
+	/// Returns null when no MCP servers are required.
+	/// </summary>
+	Task<McpExecutionResources?> GenerateExecutionResourcesAsync(
+		ProviderType providerType,
+		Project? project = null,
+		string? workingDirectory = null,
+		CancellationToken cancellationToken = default);
 
 /// <summary>
 /// Gets the CLI argument for injecting MCP config based on provider type.
@@ -36,10 +46,22 @@ Project? project = null,
 string? workingDirectory = null,
 CancellationToken cancellationToken = default);
 
-/// <summary>
-/// Cleans up temporary MCP config files that are no longer needed.
-/// </summary>
-void CleanupMcpConfigFiles();
+	/// <summary>
+	/// Cleans up temporary MCP config files that are no longer needed.
+	/// </summary>
+	void CleanupMcpConfigFiles();
+
+	/// <summary>
+	/// Cleans up temporary resources created for a specific MCP execution.
+	/// </summary>
+	void CleanupExecutionResources(McpExecutionResources? resources);
+}
+
+public sealed class McpExecutionResources
+{
+	public string? ConfigFilePath { get; init; }
+
+	public string? BrowserArtifactsDirectory { get; init; }
 }
 
 /// <summary>
@@ -57,9 +79,10 @@ public class McpConfigService : IMcpConfigService
 private const string PlaywrightServerName = "playwright";
 private static readonly string[] PlaywrightCommandArgs = ["-y", "@playwright/mcp@latest"];
 
-private readonly ISkillService _skillService;
-private static readonly List<string> _tempConfigFiles = new();
-private static readonly object _tempFilesLock = new();
+	private readonly ISkillService _skillService;
+	private static readonly List<string> _tempConfigFiles = new();
+	private static readonly List<string> _tempArtifactDirectories = new();
+	private static readonly object _tempFilesLock = new();
 private static readonly JsonSerializerOptions JsonOptions = new()
 {
 WriteIndented = true,
@@ -80,31 +103,54 @@ if (!RequiresMcp(skills, project))
 return null;
 }
 
-var config = BuildStandardMcpConfig(skills, project);
+	var config = BuildStandardMcpConfig(skills, project, playwrightEnvironment: null);
 return JsonSerializer.Serialize(config, JsonOptions);
 }
 
-public async Task<string?> GenerateMcpConfigFileAsync(
-ProviderType providerType,
-Project? project = null,
-string? workingDirectory = null,
-CancellationToken cancellationToken = default)
-{
-var skills = await _skillService.GetEnabledAsync(cancellationToken);
-if (!RequiresMcp(skills, project))
-{
-return null;
-}
+	public async Task<string?> GenerateMcpConfigFileAsync(
+		ProviderType providerType,
+		Project? project = null,
+		string? workingDirectory = null,
+		CancellationToken cancellationToken = default)
+	{
+		var resources = await GenerateExecutionResourcesAsync(providerType, project, workingDirectory, cancellationToken);
+		return resources?.ConfigFilePath;
+	}
 
-var filePath = CreateConfigFilePath(providerType, workingDirectory);
-var json = providerType == ProviderType.OpenCode
-? JsonSerializer.Serialize(BuildOpenCodeConfig(skills, project), JsonOptions)
-: JsonSerializer.Serialize(BuildStandardMcpConfig(skills, project), JsonOptions);
+	public async Task<McpExecutionResources?> GenerateExecutionResourcesAsync(
+		ProviderType providerType,
+		Project? project = null,
+		string? workingDirectory = null,
+		CancellationToken cancellationToken = default)
+	{
+		var skills = await _skillService.GetEnabledAsync(cancellationToken);
+		if (!RequiresMcp(skills, project))
+		{
+			return null;
+		}
 
-await File.WriteAllTextAsync(filePath, json, cancellationToken);
-TrackTempFile(filePath);
-return filePath;
-}
+		var browserArtifactsDirectory = HasEnabledWebEnvironment(project)
+			? CreateBrowserArtifactsDirectory()
+			: null;
+		var filePath = CreateConfigFilePath(providerType, workingDirectory);
+		var playwrightEnvironment = CreatePlaywrightEnvironmentVariables(browserArtifactsDirectory);
+		var json = providerType == ProviderType.OpenCode
+		? JsonSerializer.Serialize(BuildOpenCodeConfig(skills, project, playwrightEnvironment), JsonOptions)
+		: JsonSerializer.Serialize(BuildStandardMcpConfig(skills, project, playwrightEnvironment), JsonOptions);
+
+		await File.WriteAllTextAsync(filePath, json, cancellationToken);
+		TrackTempFile(filePath);
+		if (!string.IsNullOrWhiteSpace(browserArtifactsDirectory))
+		{
+			TrackTempDirectory(browserArtifactsDirectory);
+		}
+
+		return new McpExecutionResources
+		{
+			ConfigFilePath = filePath,
+			BrowserArtifactsDirectory = browserArtifactsDirectory
+		};
+	}
 
 public async Task<string?> GetMcpCliArgumentAsync(
 ProviderType providerType,
@@ -127,45 +173,111 @@ _ => null
 };
 }
 
-public void CleanupMcpConfigFiles()
-{
-List<string> filesToClean;
-lock (_tempFilesLock)
-{
-filesToClean = new List<string>(_tempConfigFiles);
-_tempConfigFiles.Clear();
-}
+	public void CleanupMcpConfigFiles()
+	{
+		List<string> filesToClean;
+		List<string> directoriesToClean;
+		lock (_tempFilesLock)
+		{
+			filesToClean = new List<string>(_tempConfigFiles);
+			_tempConfigFiles.Clear();
+			directoriesToClean = new List<string>(_tempArtifactDirectories);
+			_tempArtifactDirectories.Clear();
+		}
 
 foreach (var filePath in filesToClean)
-{
-try
-{
-if (File.Exists(filePath))
-{
-File.Delete(filePath);
-}
-}
-catch
-{
-// Ignore cleanup errors
-}
-}
-}
+		{
+			try
+			{
+				if (File.Exists(filePath))
+				{
+					File.Delete(filePath);
+				}
+			}
+			catch
+			{
+				// Ignore cleanup errors
+			}
+		}
+
+		foreach (var directoryPath in directoriesToClean)
+		{
+			TryDeleteDirectory(directoryPath);
+		}
+	}
+
+	public void CleanupExecutionResources(McpExecutionResources? resources)
+	{
+		if (resources == null)
+		{
+			return;
+		}
+
+		if (!string.IsNullOrWhiteSpace(resources.ConfigFilePath))
+		{
+			RemoveTrackedFile(resources.ConfigFilePath);
+			try
+			{
+				if (File.Exists(resources.ConfigFilePath))
+				{
+					File.Delete(resources.ConfigFilePath);
+				}
+			}
+			catch
+			{
+				// Ignore cleanup errors
+			}
+		}
+
+		if (!string.IsNullOrWhiteSpace(resources.BrowserArtifactsDirectory))
+		{
+			RemoveTrackedDirectory(resources.BrowserArtifactsDirectory);
+			TryDeleteDirectory(resources.BrowserArtifactsDirectory);
+		}
+	}
 
 private static bool RequiresMcp(IEnumerable<Skill> skills, Project? project)
 {
 return skills.Any() || HasEnabledWebEnvironment(project);
 }
 
-private static bool HasEnabledWebEnvironment(Project? project)
-{
-return project?.Environments.Any(environment => environment.IsEnabled && environment.Type == EnvironmentType.Web) == true;
-}
+	private static bool HasEnabledWebEnvironment(Project? project)
+	{
+		return project?.Environments.Any(environment => environment.IsEnabled && environment.Type == EnvironmentType.Web) == true;
+	}
 
-private static string CreateConfigFilePath(ProviderType providerType, string? workingDirectory)
-{
-var tempDir = Path.Combine(Path.GetTempPath(), "vibeswarm", "mcp");
-Directory.CreateDirectory(tempDir);
+	private static string CreateBrowserArtifactsDirectory()
+	{
+		var directoryPath = Path.Combine(Path.GetTempPath(), "vibeswarm", "browser-artifacts", Guid.NewGuid().ToString("N"));
+		Directory.CreateDirectory(directoryPath);
+		Directory.CreateDirectory(Path.Combine(directoryPath, "tmp"));
+		Directory.CreateDirectory(Path.Combine(directoryPath, "ms-playwright"));
+		Directory.CreateDirectory(Path.Combine(directoryPath, "cache"));
+		return directoryPath;
+	}
+
+	private static Dictionary<string, string>? CreatePlaywrightEnvironmentVariables(string? browserArtifactsDirectory)
+	{
+		if (string.IsNullOrWhiteSpace(browserArtifactsDirectory))
+		{
+			return null;
+		}
+
+		var temporaryDirectory = Path.Combine(browserArtifactsDirectory, "tmp");
+		return new Dictionary<string, string>(StringComparer.Ordinal)
+		{
+			["PLAYWRIGHT_BROWSERS_PATH"] = Path.Combine(browserArtifactsDirectory, "ms-playwright"),
+			["TMPDIR"] = temporaryDirectory,
+			["TMP"] = temporaryDirectory,
+			["TEMP"] = temporaryDirectory,
+			["XDG_CACHE_HOME"] = Path.Combine(browserArtifactsDirectory, "cache")
+		};
+	}
+
+	private static string CreateConfigFilePath(ProviderType providerType, string? workingDirectory)
+	{
+		var tempDir = Path.Combine(Path.GetTempPath(), "vibeswarm", "mcp");
+		Directory.CreateDirectory(tempDir);
 
 if (providerType == ProviderType.OpenCode)
 {
@@ -177,19 +289,61 @@ var standardFileName = $"mcp-config-{Guid.NewGuid():N}.json";
 return Path.Combine(tempDir, standardFileName);
 }
 
-private static void TrackTempFile(string filePath)
-{
-lock (_tempFilesLock)
-{
-_tempConfigFiles.Add(filePath);
-}
-}
+	private static void TrackTempFile(string filePath)
+	{
+		lock (_tempFilesLock)
+		{
+			_tempConfigFiles.Add(filePath);
+		}
+	}
 
-private static McpConfig BuildStandardMcpConfig(IEnumerable<Skill> skills, Project? project)
-{
-var config = new McpConfig
-{
-McpServers = new Dictionary<string, McpServer>()
+	private static void TrackTempDirectory(string directoryPath)
+	{
+		lock (_tempFilesLock)
+		{
+			_tempArtifactDirectories.Add(directoryPath);
+		}
+	}
+
+	private static void RemoveTrackedFile(string filePath)
+	{
+		lock (_tempFilesLock)
+		{
+			_tempConfigFiles.Remove(filePath);
+		}
+	}
+
+	private static void RemoveTrackedDirectory(string directoryPath)
+	{
+		lock (_tempFilesLock)
+		{
+			_tempArtifactDirectories.Remove(directoryPath);
+		}
+	}
+
+	private static void TryDeleteDirectory(string directoryPath)
+	{
+		try
+		{
+			if (Directory.Exists(directoryPath))
+			{
+				Directory.Delete(directoryPath, recursive: true);
+			}
+		}
+		catch
+		{
+			// Ignore cleanup errors
+		}
+	}
+
+	private static McpConfig BuildStandardMcpConfig(
+		IEnumerable<Skill> skills,
+		Project? project,
+		Dictionary<string, string>? playwrightEnvironment)
+	{
+		var config = new McpConfig
+		{
+			McpServers = new Dictionary<string, McpServer>()
 };
 
 foreach (var skill in skills)
@@ -209,19 +363,23 @@ Env = new Dictionary<string, string>
 if (HasEnabledWebEnvironment(project))
 {
 var serverName = GetUniqueServerName(config.McpServers.Keys, PlaywrightServerName);
-config.McpServers[serverName] = new McpServer
-{
-Command = "npx",
-Args = PlaywrightCommandArgs
-};
-}
+		config.McpServers[serverName] = new McpServer
+		{
+			Command = "npx",
+			Args = PlaywrightCommandArgs,
+			Env = playwrightEnvironment
+		};
+	}
 
 return config;
 }
 
-private static OpenCodeMcpConfig BuildOpenCodeConfig(IEnumerable<Skill> skills, Project? project)
-{
-var config = new OpenCodeMcpConfig();
+	private static OpenCodeMcpConfig BuildOpenCodeConfig(
+		IEnumerable<Skill> skills,
+		Project? project,
+		Dictionary<string, string>? playwrightEnvironment)
+	{
+		var config = new OpenCodeMcpConfig();
 
 foreach (var skill in skills)
 {
@@ -241,13 +399,14 @@ Environment = new Dictionary<string, string>
 if (HasEnabledWebEnvironment(project))
 {
 var serverName = GetUniqueServerName(config.Mcp.Keys, PlaywrightServerName);
-config.Mcp[serverName] = new OpenCodeMcpServer
-{
-Type = "local",
-Command = ["npx", ..PlaywrightCommandArgs],
-Enabled = true
-};
-}
+		config.Mcp[serverName] = new OpenCodeMcpServer
+		{
+			Type = "local",
+			Command = ["npx", ..PlaywrightCommandArgs],
+			Enabled = true,
+			Environment = playwrightEnvironment
+		};
+	}
 
 return config;
 }
