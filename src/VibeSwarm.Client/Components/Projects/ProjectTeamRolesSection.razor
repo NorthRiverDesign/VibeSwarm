@@ -1,0 +1,215 @@
+@using VibeSwarm.Client.Models
+@using VibeSwarm.Shared.Data
+@using VibeSwarm.Shared.Providers
+
+<div class="mb-3">
+<label class="form-label d-flex align-items-center gap-2 mb-2">
+<i class="bi bi-people"></i>
+<span>Team Roles</span>
+</label>
+
+<Alert Type="Alert.AlertType.Info" Class="py-2 px-3 small">
+@if (Project.TeamAssignments.Any())
+{
+<span>Assign reusable team roles to this project so jobs can reference consistent responsibilities, provider choices, and model defaults.</span>
+}
+else
+{
+<span>No project-specific team roles configured yet. Add roles to define the specialists available to this repository.</span>
+}
+</Alert>
+
+@if (!AvailableTeamRoles.Any())
+{
+<div class="text-warning small mt-2">
+<i class="bi bi-exclamation-triangle me-1"></i>No team roles available yet. Create roles from the Teams page first.
+</div>
+}
+else if (!AvailableProviders.Any())
+{
+<div class="text-warning small mt-2">
+<i class="bi bi-exclamation-triangle me-1"></i>No enabled providers are available to assign to team roles yet.
+</div>
+}
+else
+{
+<div class="border rounded p-3 bg-body-tertiary">
+<div class="small text-body-secondary fw-semibold mb-2">Assigned Roles</div>
+@if (Project.TeamAssignments.Any())
+{
+<div class="d-grid gap-3 mb-3">
+@foreach (var assignment in Project.TeamAssignments.OrderBy(assignment => ResolveTeamRole(assignment.TeamRoleId)?.Name ?? string.Empty).ToList())
+{
+var teamRole = ResolveTeamRole(assignment.TeamRoleId);
+var providerSelectId = $"team-provider-{assignment.TeamRoleId}";
+var modelSelectId = $"team-model-{assignment.TeamRoleId}";
+var models = ResolveProviderModels(assignment.ProviderId)
+.Where(model => model.IsAvailable)
+.OrderByDescending(model => model.IsDefault)
+.ThenBy(model => model.DisplayName ?? model.ModelId)
+.ToList();
+
+<div class="rounded border bg-body p-3">
+<div class="d-flex align-items-start justify-content-between gap-2 flex-wrap">
+<div class="min-width-0 flex-grow-1">
+<div class="d-flex align-items-center gap-2 flex-wrap">
+<span class="fw-semibold">@(teamRole?.Name ?? "Unknown Team Role")</span>
+@if (teamRole != null && !teamRole.IsEnabled)
+{
+<span class="badge bg-secondary-subtle text-secondary-emphasis">Disabled</span>
+}
+</div>
+@if (!string.IsNullOrWhiteSpace(teamRole?.Description))
+{
+<div class="small text-body-secondary mt-1">@teamRole.Description</div>
+}
+@if (teamRole?.SkillLinks.Any(link => link.Skill != null) == true)
+{
+<div class="d-flex flex-wrap gap-1 mt-2">
+@foreach (var skillLink in teamRole.SkillLinks.Where(link => link.Skill != null).Take(4))
+{
+<span class="badge bg-primary-subtle text-primary-emphasis">@skillLink.Skill!.Name</span>
+}
+@if (teamRole.SkillLinks.Count > 4)
+{
+<span class="badge bg-secondary-subtle text-secondary-emphasis">+@(teamRole.SkillLinks.Count - 4)</span>
+}
+</div>
+}
+</div>
+<button type="button" class="btn btn-sm btn-danger" @onclick="() => OnRemove.InvokeAsync(assignment.TeamRoleId)" title="Remove role">
+<i class="bi bi-x-lg"></i>
+</button>
+</div>
+
+<div class="row g-3 mt-1">
+<div class="col-12 col-lg-6">
+<label for="@providerSelectId" class="form-label small mb-1">
+<i class="bi bi-cpu me-1"></i>Assigned Provider
+</label>
+<InputSelect TValue="Guid" id="@providerSelectId"
+ Value="assignment.ProviderId"
+ ValueChanged="@(async (Guid value) => await HandleProviderChanged(assignment.TeamRoleId, value))"
+ ValueExpression="@(() => assignment.ProviderId)"
+ class="form-select form-select-sm">
+@foreach (var provider in AvailableProviders)
+{
+<option value="@provider.Id">@provider.Name</option>
+}
+</InputSelect>
+</div>
+<div class="col-12 col-lg-6">
+<label for="@modelSelectId" class="form-label small mb-1">
+<i class="bi bi-diagram-3 me-1"></i>Default Model
+</label>
+<InputSelect TValue="string" id="@modelSelectId"
+ Value="@(assignment.PreferredModelId ?? string.Empty)"
+ ValueChanged="@(async (string? value) => await HandlePreferredModelChanged(assignment.TeamRoleId, value))"
+ ValueExpression="@(() => assignment.PreferredModelId)"
+ class="form-select form-select-sm"
+ disabled="@(!models.Any())">
+<option value="">Use provider default model</option>
+@foreach (var model in models)
+{
+<option value="@model.ModelId">@(model.DisplayName ?? model.ModelId)@((model.IsDefault ? " (Default)" : string.Empty))</option>
+}
+</InputSelect>
+<div class="form-text">
+@if (!models.Any())
+{
+<span>No cached models found for this provider yet. The provider default will be used.</span>
+}
+else
+{
+<span>New multi-agent work can start with this model unless a workflow overrides it.</span>
+}
+</div>
+</div>
+</div>
+</div>
+}
+</div>
+}
+else
+{
+<div class="small text-body-secondary fst-italic mb-3">No team roles assigned to this project yet.</div>
+}
+
+<div class="small text-body-secondary fw-semibold mb-2">Add Role</div>
+<div class="d-grid gap-2">
+@foreach (var teamRole in AvailableTeamRoles.OrderByDescending(role => role.IsEnabled).ThenBy(role => role.Name))
+{
+var isAssigned = IsTeamRoleAssigned(teamRole.Id);
+<button type="button" class="btn @(isAssigned ? "btn-secondary" : "btn-primary") d-flex align-items-center justify-content-between gap-2 text-start flex-wrap"
+@onclick="() => OnAdd.InvokeAsync(teamRole)" disabled="@isAssigned">
+<span class="text-start min-width-0">
+<span class="fw-semibold">@teamRole.Name</span>
+@if (!string.IsNullOrWhiteSpace(teamRole.Description))
+{
+<span class="text-body-secondary ms-sm-2 d-block d-sm-inline">@teamRole.Description</span>
+}
+</span>
+@if (isAssigned)
+{
+<i class="bi bi-check-lg"></i>
+}
+else
+{
+<i class="bi bi-plus-lg"></i>
+}
+</button>
+}
+</div>
+</div>
+}
+</div>
+
+@code {
+[Parameter, EditorRequired]
+public ProjectModalFormModel Project { get; set; } = default!;
+
+[Parameter]
+public IReadOnlyList<TeamRole> AvailableTeamRoles { get; set; } = [];
+
+[Parameter]
+public IReadOnlyList<Provider> AvailableProviders { get; set; } = [];
+
+[Parameter, EditorRequired]
+public Func<Guid, TeamRole?> ResolveTeamRole { get; set; } = _ => null;
+
+[Parameter, EditorRequired]
+public Func<Guid, bool> IsTeamRoleAssigned { get; set; } = _ => false;
+
+[Parameter, EditorRequired]
+public Func<Guid, IReadOnlyList<ProviderModel>> ResolveProviderModels { get; set; } = _ => [];
+
+[Parameter]
+public EventCallback<Guid> OnRemove { get; set; }
+
+[Parameter]
+public EventCallback<TeamRole> OnAdd { get; set; }
+
+[Parameter]
+public EventCallback<ProjectTeamRoleProviderChange> OnProviderChanged { get; set; }
+
+[Parameter]
+public EventCallback<ProjectTeamRoleModelSelectionChange> OnPreferredModelChanged { get; set; }
+
+private Task HandleProviderChanged(Guid teamRoleId, Guid providerId)
+{
+return OnProviderChanged.InvokeAsync(new ProjectTeamRoleProviderChange
+{
+TeamRoleId = teamRoleId,
+ProviderId = providerId
+});
+}
+
+private Task HandlePreferredModelChanged(Guid teamRoleId, string? preferredModelId)
+{
+return OnPreferredModelChanged.InvokeAsync(new ProjectTeamRoleModelSelectionChange
+{
+TeamRoleId = teamRoleId,
+PreferredModelId = string.IsNullOrWhiteSpace(preferredModelId) ? null : preferredModelId
+});
+}
+}

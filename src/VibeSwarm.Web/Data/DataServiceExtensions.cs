@@ -45,9 +45,10 @@ public static class DataServiceExtensions
         services.AddScoped<IProviderService, ProviderService>();
         services.AddSingleton<IProjectEnvironmentCredentialService, ProjectEnvironmentCredentialService>();
         services.AddScoped<IProjectService, ProjectService>();
-        services.AddScoped<IJobService, JobService>();
+		services.AddScoped<IJobService, JobService>();
 		services.AddScoped<ISettingsService, SettingsService>();
 		services.AddScoped<ISkillService, SkillService>();
+		services.AddScoped<ITeamRoleService, TeamRoleService>();
 		services.AddScoped<IMcpConfigService, McpConfigService>();
 		services.AddScoped<IProjectMemoryService, ProjectMemoryService>();
 		services.AddScoped<IIdeaService, IdeaService>();

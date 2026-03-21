@@ -1,0 +1,205 @@
+@page "/teams"
+@attribute [Authorize]
+@inject ITeamRoleService TeamRoleService
+@using VibeSwarm.Shared.Data
+@using VibeSwarm.Shared.Utilities
+
+<PageHeader Title="Teams" Subtitle="Define reusable multi-agent roles that projects can assign to providers and models">
+	<Actions>
+		<ActionButton Icon="plus" Text="Add" Style="ActionButton.ButtonStyle.Primary" OnClick="ShowAddModal" />
+	</Actions>
+</PageHeader>
+
+@if (_isLoading)
+{
+	<LoadingSpinner Text="Loading team roles..." />
+}
+else if (!_teamRoles.Any())
+{
+	<EmptyState Icon="people" Title="No team roles yet"
+				Message="Create team roles like Security Reviewer, Front End Designer, or Deployment Engineer to reuse across projects." />
+}
+else
+{
+	<div class="list-group">
+		@foreach (var teamRole in _teamRoles)
+		{
+			<div class="list-group-item d-flex flex-column flex-md-row align-items-md-start gap-2 gap-md-3 p-3 hover-bg-tertiary">
+				<div class="flex-grow-1 min-width-0">
+					<div class="d-flex align-items-center gap-2 flex-wrap">
+						<span class="fw-semibold">@teamRole.Name</span>
+						<StatusBadge Status="@(teamRole.IsEnabled ? "Active" : "Off")" ShowSpinner="false" />
+						@if (teamRole.SkillLinks.Any(link => link.Skill != null))
+						{
+							<span class="small text-body-secondary d-inline-flex align-items-center gap-1">
+								<i class="bi bi-lightbulb opacity-75"></i>@teamRole.SkillLinks.Count linked skill@(teamRole.SkillLinks.Count == 1 ? string.Empty : "s")
+							</span>
+						}
+					</div>
+					@if (!string.IsNullOrWhiteSpace(teamRole.Description))
+					{
+						<div class="small text-body-secondary mt-1">@teamRole.Description</div>
+					}
+					@if (!string.IsNullOrWhiteSpace(teamRole.Responsibilities))
+					{
+						<div class="small mt-2 white-space-pre-wrap">@TruncateText(teamRole.Responsibilities, 240)</div>
+					}
+					@if (teamRole.SkillLinks.Any(link => link.Skill != null))
+					{
+						<div class="d-flex flex-wrap gap-1 mt-2">
+							@foreach (var skillLink in teamRole.SkillLinks.Where(link => link.Skill != null))
+							{
+								<span class="badge bg-primary-subtle text-primary-emphasis">@skillLink.Skill!.Name</span>
+							}
+						</div>
+					}
+				</div>
+				<div class="d-flex flex-wrap gap-2 flex-shrink-0 align-items-center">
+					<label class="toggle-switch me-1" title="@(teamRole.IsEnabled ? "Disable" : "Enable")">
+						<input type="checkbox" checked="@teamRole.IsEnabled" @onchange="() => ToggleEnabled(teamRole)" />
+						<span class="toggle-slider"></span>
+					</label>
+					<ActionButton Icon="pencil" Text="Edit" Size="ActionButton.ButtonSize.Small" HideTextOnMobile="true"
+								  OnClick="@(() => EditTeamRole(teamRole))" />
+					<ActionButton Icon="trash" Text="Delete" Size="ActionButton.ButtonSize.Small"
+								  Style="ActionButton.ButtonStyle.Danger" HideTextOnMobile="true"
+								  OnClick="@(() => ShowDeleteConfirmation(teamRole))" />
+				</div>
+			</div>
+		}
+	</div>
+}
+
+<TeamRoleModal @bind-IsVisible="_showTeamRoleModal" EditTeamRole="@_editingTeamRole" OnSaved="HandleTeamRoleSaved"
+			   OnCancelled="HandleModalCancelled" OnClosed="HandleTeamRoleModalClosed" />
+
+<ConfirmationModal @bind-IsVisible="_showDeleteModal" Title="Delete Team Role"
+				   Message="@($"Are you sure you want to delete {_teamRoleToDelete?.Name}?")" SubMessage="This action cannot be undone."
+				   ConfirmText="Delete" ButtonClass="btn-danger" IsProcessing="_isDeleting" OnConfirm="ConfirmDelete"
+				   OnCancel="CancelDelete" />
+
+@code {
+	private List<TeamRole> _teamRoles = [];
+	private bool _isLoading = true;
+	private bool _showTeamRoleModal;
+	private TeamRole? _editingTeamRole;
+	private bool _showDeleteModal;
+	private TeamRole? _teamRoleToDelete;
+	private bool _isDeleting;
+
+	protected override async Task OnInitializedAsync()
+	{
+		await LoadTeamRoles();
+	}
+
+	private async Task LoadTeamRoles()
+	{
+		_isLoading = true;
+		try
+		{
+			_teamRoles = (await TeamRoleService.GetAllAsync()).ToList();
+		}
+		finally
+		{
+			_isLoading = false;
+		}
+	}
+
+	private static string TruncateText(string text, int maxLength)
+	{
+		if (string.IsNullOrEmpty(text) || text.Length <= maxLength)
+		{
+			return text;
+		}
+
+		return text[..maxLength] + "...";
+	}
+
+	private void ShowAddModal()
+	{
+		_showDeleteModal = false;
+		_teamRoleToDelete = null;
+		_editingTeamRole = null;
+		_showTeamRoleModal = true;
+		StateHasChanged();
+	}
+
+	private void EditTeamRole(TeamRole teamRole)
+	{
+		_showDeleteModal = false;
+		_teamRoleToDelete = null;
+		_editingTeamRole = teamRole;
+		_showTeamRoleModal = true;
+		StateHasChanged();
+	}
+
+	private async Task HandleTeamRoleSaved(Guid? newTeamRoleId)
+	{
+		_showTeamRoleModal = false;
+		_editingTeamRole = null;
+		await LoadTeamRoles();
+	}
+
+	private void HandleModalCancelled()
+	{
+		_showTeamRoleModal = false;
+		_editingTeamRole = null;
+	}
+
+	private void HandleTeamRoleModalClosed()
+	{
+		_showTeamRoleModal = false;
+		_editingTeamRole = null;
+		StateHasChanged();
+	}
+
+	private void ShowDeleteConfirmation(TeamRole teamRole)
+	{
+		_showTeamRoleModal = false;
+		_editingTeamRole = null;
+		_teamRoleToDelete = teamRole;
+		_showDeleteModal = true;
+		StateHasChanged();
+	}
+
+	private void CancelDelete()
+	{
+		_showDeleteModal = false;
+		_teamRoleToDelete = null;
+	}
+
+	private async Task ConfirmDelete()
+	{
+		if (_teamRoleToDelete == null)
+		{
+			return;
+		}
+
+		_isDeleting = true;
+		try
+		{
+			await TeamRoleService.DeleteAsync(_teamRoleToDelete.Id);
+			_showDeleteModal = false;
+			_teamRoleToDelete = null;
+			await LoadTeamRoles();
+		}
+		finally
+		{
+			_isDeleting = false;
+		}
+	}
+
+	private async Task ToggleEnabled(TeamRole teamRole)
+	{
+		try
+		{
+			teamRole.IsEnabled = !teamRole.IsEnabled;
+			await TeamRoleService.UpdateAsync(teamRole);
+			await LoadTeamRoles();
+		}
+		catch (Exception ex)
+		{
+			Console.WriteLine($"Error updating team role: {ex.Message}");
+		}
+	}
+}

@@ -60,6 +60,10 @@
                 <i class="bi bi-lightbulb"></i>
                 <span>Skills</span>
             </NavLink>
+            <NavLink class="nav-item d-flex align-items-center gap-3 rounded fw-medium text-decoration-none" href="/teams" @onclick="CloseMobileMenu">
+                <i class="bi bi-people"></i>
+                <span>Teams</span>
+            </NavLink>
             <AuthorizeView Roles="Admin">
                 <Authorized>
                     <NavLink class="nav-item d-flex align-items-center gap-3 rounded fw-medium text-decoration-none" href="/users" @onclick="CloseMobileMenu">

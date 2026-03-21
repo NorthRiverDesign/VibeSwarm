@@ -48,6 +48,8 @@ public sealed class ProjectModalFormModel : IValidatableObject
 
 	public ICollection<ProjectProvider> ProviderSelections { get; set; } = new List<ProjectProvider>();
 
+	public ICollection<ProjectTeamRole> TeamAssignments { get; set; } = new List<ProjectTeamRole>();
+
 	public ICollection<ProjectEnvironment> Environments { get; set; } = new List<ProjectEnvironment>();
 
 	[StringLength(ValidationLimits.ProjectPromptContextMaxLength)]
@@ -104,6 +106,7 @@ public sealed class ProjectModalFormModel : IValidatableObject
 			CreatedAt = source.CreatedAt,
 			UpdatedAt = source.UpdatedAt,
 			ProviderSelections = source.ProviderSelections.ToList(),
+			TeamAssignments = source.TeamAssignments.ToList(),
 			Environments = source.Environments.ToList(),
 			PromptContext = source.PromptContext,
 			Memory = source.Memory,
@@ -136,6 +139,7 @@ public sealed class ProjectModalFormModel : IValidatableObject
 			CreatedAt = CreatedAt,
 			UpdatedAt = UpdatedAt,
 			ProviderSelections = ProviderSelections.ToList(),
+			TeamAssignments = TeamAssignments.ToList(),
 			Environments = Environments.ToList(),
 			PromptContext = string.IsNullOrWhiteSpace(PromptContext) ? null : PromptContext.Trim(),
 			Memory = string.IsNullOrWhiteSpace(Memory) ? null : Memory.Trim(),
@@ -161,6 +165,25 @@ public sealed class ProjectModalFormModel : IValidatableObject
 			yield return new ValidationResult(
 				"Build command is required when build verification is enabled.",
 				[nameof(BuildCommand)]);
+		}
+
+		var duplicateTeamRoleIds = TeamAssignments
+			.GroupBy(assignment => assignment.TeamRoleId)
+			.Where(group => group.Key != Guid.Empty && group.Count() > 1)
+			.Select(group => group.Key)
+			.ToList();
+		if (duplicateTeamRoleIds.Any())
+		{
+			yield return new ValidationResult(
+				"Each team role can only be assigned once per project.",
+				[nameof(TeamAssignments)]);
+		}
+
+		if (TeamAssignments.Any(assignment => assignment.ProviderId == Guid.Empty))
+		{
+			yield return new ValidationResult(
+				"Each assigned team role must have a provider.",
+				[nameof(TeamAssignments)]);
 		}
 
 		if (CreationMode == ProjectCreationMode.ExistingDirectory)

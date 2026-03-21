@@ -85,8 +85,10 @@ public class ProjectService : IProjectService
 		project.TestCommand = string.IsNullOrWhiteSpace(project.TestCommand) ? null : project.TestCommand.Trim();
 		project.Memory = NormalizeProjectMemory(project.Memory);
 		NormalizeProviderSelections(project);
+		NormalizeTeamAssignments(project);
 		NormalizeEnvironments(project);
 		await ValidateProviderSelectionsAsync(project.ProviderSelections, cancellationToken);
+		await ValidateTeamAssignmentsAsync(project.TeamAssignments, cancellationToken);
 		await ValidatePlanningAsync(project, cancellationToken);
 		ValidateEnvironments(project.Environments);
 		_credentialService.PrepareForStorage(project);
@@ -164,17 +166,23 @@ public class ProjectService : IProjectService
 			.Collection(p => p.ProviderSelections)
 			.LoadAsync(cancellationToken);
 		await _dbContext.Entry(existing)
+			.Collection(p => p.TeamAssignments)
+			.LoadAsync(cancellationToken);
+		await _dbContext.Entry(existing)
 			.Collection(p => p.Environments)
 			.LoadAsync(cancellationToken);
 
 		NormalizeProviderSelections(project);
+		NormalizeTeamAssignments(project);
 		NormalizeEnvironments(project);
 		await ValidateProviderSelectionsAsync(project.ProviderSelections, cancellationToken);
+		await ValidateTeamAssignmentsAsync(project.TeamAssignments, cancellationToken);
 		await ValidatePlanningAsync(project, cancellationToken);
 		ValidateEnvironments(project.Environments);
 		_credentialService.PrepareForStorage(project, existing.Environments.ToList());
 
 		SynchronizeProviderSelections(existing, project.ProviderSelections);
+		SynchronizeTeamAssignments(existing, project.TeamAssignments);
 		SynchronizeEnvironments(existing, project.Environments);
 
 		await _dbContext.SaveChangesAsync(cancellationToken);
@@ -446,7 +454,13 @@ public class ProjectService : IProjectService
 		return _dbContext.Projects
 			.Include(p => p.Environments.OrderBy(environment => environment.SortOrder))
 			.Include(p => p.ProviderSelections.OrderBy(pp => pp.Priority))
-				.ThenInclude(pp => pp.Provider);
+				.ThenInclude(pp => pp.Provider)
+			.Include(p => p.TeamAssignments)
+				.ThenInclude(assignment => assignment.Provider)
+			.Include(p => p.TeamAssignments)
+				.ThenInclude(assignment => assignment.TeamRole)
+					.ThenInclude(teamRole => teamRole!.SkillLinks)
+						.ThenInclude(link => link.Skill);
 	}
 
 	private static void ValidateProject(Project project)
@@ -596,6 +610,38 @@ public class ProjectService : IProjectService
 		project.ProviderSelections = orderedSelections;
 	}
 
+	private static void NormalizeTeamAssignments(Project project)
+	{
+		if (project.TeamAssignments == null || project.TeamAssignments.Count == 0)
+		{
+			project.TeamAssignments = [];
+			return;
+		}
+
+		var normalizedAssignments = project.TeamAssignments
+			.GroupBy(assignment => assignment.TeamRoleId)
+			.Select(group => group.First())
+			.ToList();
+
+		foreach (var assignment in normalizedAssignments)
+		{
+			assignment.Id = assignment.Id == Guid.Empty ? Guid.NewGuid() : assignment.Id;
+			assignment.ProjectId = project.Id;
+			assignment.TeamRole = null;
+			assignment.Provider = null;
+			assignment.PreferredModelId = string.IsNullOrWhiteSpace(assignment.PreferredModelId)
+				? null
+				: assignment.PreferredModelId.Trim();
+			assignment.UpdatedAt = DateTime.UtcNow;
+			if (assignment.CreatedAt == default)
+			{
+				assignment.CreatedAt = DateTime.UtcNow;
+			}
+		}
+
+		project.TeamAssignments = normalizedAssignments;
+	}
+
 	private static void NormalizePlanningSettings(Project project)
 	{
 		project.PlanningModelId = string.IsNullOrWhiteSpace(project.PlanningModelId)
@@ -704,6 +750,51 @@ public class ProjectService : IProjectService
 			current.Priority = requested.Priority;
 			current.IsEnabled = requested.IsEnabled;
 			current.PreferredModelId = requested.PreferredModelId;
+			current.UpdatedAt = DateTime.UtcNow;
+		}
+	}
+
+	private void SynchronizeTeamAssignments(Project existing, ICollection<ProjectTeamRole> requestedAssignments)
+	{
+		var requestedProject = new Project
+		{
+			Id = existing.Id,
+			TeamAssignments = requestedAssignments ?? []
+		};
+
+		NormalizeTeamAssignments(requestedProject);
+		var requestedByTeamRole = requestedProject.TeamAssignments.ToDictionary(assignment => assignment.TeamRoleId);
+
+		var assignmentsToRemove = existing.TeamAssignments
+			.Where(current => !requestedByTeamRole.ContainsKey(current.TeamRoleId))
+			.ToList();
+		foreach (var assignment in assignmentsToRemove)
+		{
+			_dbContext.ProjectTeamRoles.Remove(assignment);
+		}
+
+		foreach (var requested in requestedProject.TeamAssignments)
+		{
+			var current = existing.TeamAssignments.FirstOrDefault(assignment => assignment.TeamRoleId == requested.TeamRoleId);
+			if (current == null)
+			{
+				_dbContext.ProjectTeamRoles.Add(new ProjectTeamRole
+				{
+					Id = requested.Id,
+					ProjectId = existing.Id,
+					TeamRoleId = requested.TeamRoleId,
+					ProviderId = requested.ProviderId,
+					PreferredModelId = requested.PreferredModelId,
+					IsEnabled = requested.IsEnabled,
+					CreatedAt = requested.CreatedAt,
+					UpdatedAt = requested.UpdatedAt
+				});
+				continue;
+			}
+
+			current.ProviderId = requested.ProviderId;
+			current.PreferredModelId = requested.PreferredModelId;
+			current.IsEnabled = requested.IsEnabled;
 			current.UpdatedAt = DateTime.UtcNow;
 		}
 	}
@@ -822,6 +913,75 @@ public class ProjectService : IProjectService
 		if (invalidPreferredModels.Any())
 		{
 			throw new InvalidOperationException($"One or more preferred project models are not available for their provider: {string.Join(", ", invalidPreferredModels)}");
+		}
+	}
+
+	private async Task ValidateTeamAssignmentsAsync(ICollection<ProjectTeamRole> assignments, CancellationToken cancellationToken)
+	{
+		if (assignments == null || !assignments.Any())
+		{
+			return;
+		}
+
+		var teamRoleIds = assignments.Select(assignment => assignment.TeamRoleId).ToList();
+		var duplicates = teamRoleIds.GroupBy(id => id).Where(group => group.Count() > 1).Select(group => group.Key).ToList();
+		if (duplicates.Any())
+		{
+			throw new InvalidOperationException("Duplicate team role assignment detected. Team roles cannot be repeated.");
+		}
+
+		if (assignments.Any(assignment => assignment.ProviderId == Guid.Empty))
+		{
+			throw new InvalidOperationException("Each team role assignment must select a provider.");
+		}
+
+		var existingTeamRoleIds = await _dbContext.TeamRoles
+			.Where(teamRole => teamRoleIds.Contains(teamRole.Id))
+			.Select(teamRole => teamRole.Id)
+			.ToListAsync(cancellationToken);
+		var invalidTeamRoleIds = teamRoleIds.Except(existingTeamRoleIds).ToList();
+		if (invalidTeamRoleIds.Any())
+		{
+			throw new InvalidOperationException($"One or more team role IDs do not exist: {string.Join(", ", invalidTeamRoleIds)}");
+		}
+
+		var providerIds = assignments.Select(assignment => assignment.ProviderId).Distinct().ToList();
+		var existingProviderIds = await _dbContext.Providers
+			.Where(provider => providerIds.Contains(provider.Id))
+			.Select(provider => provider.Id)
+			.ToListAsync(cancellationToken);
+		var invalidProviderIds = providerIds.Except(existingProviderIds).ToList();
+		if (invalidProviderIds.Any())
+		{
+			throw new InvalidOperationException($"One or more provider IDs do not exist for team assignments: {string.Join(", ", invalidProviderIds)}");
+		}
+
+		var preferredModels = assignments
+			.Where(assignment => !string.IsNullOrWhiteSpace(assignment.PreferredModelId))
+			.Select(assignment => new
+			{
+				assignment.ProviderId,
+				ModelId = assignment.PreferredModelId!.Trim()
+			})
+			.ToList();
+		if (!preferredModels.Any())
+		{
+			return;
+		}
+
+		var providerModels = await _dbContext.ProviderModels
+			.AsNoTracking()
+			.Where(model => model.IsAvailable && providerIds.Contains(model.ProviderId))
+			.Select(model => new { model.ProviderId, model.ModelId })
+			.ToListAsync(cancellationToken);
+		var availableModels = providerModels.ToHashSet();
+		var invalidPreferredModels = preferredModels
+			.Where(selection => !availableModels.Contains(new { selection.ProviderId, selection.ModelId }))
+			.Select(selection => $"{selection.ProviderId}:{selection.ModelId}")
+			.ToList();
+		if (invalidPreferredModels.Any())
+		{
+			throw new InvalidOperationException($"One or more team role models are not available for their provider: {string.Join(", ", invalidPreferredModels)}");
 		}
 	}
 

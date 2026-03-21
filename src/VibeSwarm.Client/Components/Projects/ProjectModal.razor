@@ -8,6 +8,7 @@
 @using VibeSwarm.Shared.Validation
 @inject IProjectService ProjectService
 @inject IProviderService ProviderService
+@inject ITeamRoleService TeamRoleService
 @inject IInferenceProviderService InferenceProviderService
 @inject ISettingsService SettingsService
 @inject NotificationService NotificationService
@@ -49,6 +50,13 @@ ResolveProviderModels="GetProviderModels"
 OnMoveUp="MoveProviderSelectionUp" OnMoveDown="MoveProviderSelectionDown"
 OnRemove="RemoveProviderSelection" OnAdd="AddProviderSelection"
 OnPreferredModelChanged="HandlePreferredModelChanged" />
+
+<ProjectTeamRolesSection Project="@FormModel" AvailableTeamRoles="@_availableTeamRoles"
+AvailableProviders="@_availableProviders" ResolveTeamRole="ResolveTeamRole"
+IsTeamRoleAssigned="IsTeamRoleAssigned" ResolveProviderModels="GetProviderModels"
+OnRemove="RemoveTeamAssignment" OnAdd="AddTeamAssignment"
+OnProviderChanged="HandleTeamAssignmentProviderChanged"
+OnPreferredModelChanged="HandleTeamAssignmentPreferredModelChanged" />
 
 <ProjectInstructionsSection Project="@FormModel" />
 
@@ -130,6 +138,7 @@ private bool _showGitHubRepositoryBrowser;
 private DirectoryBrowser? _directoryBrowser;
 private string? _defaultProjectsDirectory;
 private List<Provider> _availableProviders = [];
+private List<TeamRole> _availableTeamRoles = [];
 private List<ProviderModel> _planningModels = [];
 private List<InferenceProvider> _availableInferenceProviders = [];
 private List<InferenceModel> _ideaInferenceModels = [];
@@ -141,6 +150,7 @@ protected override async Task OnInitializedAsync()
 {
 await LoadDefaultProjectsDirectory();
 await LoadProvidersAsync();
+await LoadTeamRolesAsync();
 await LoadInferenceProvidersAsync();
 }
 
@@ -149,6 +159,7 @@ protected override async Task OnParametersSetAsync()
 if (IsVisible && !_previousIsVisible)
 {
 await LoadProvidersAsync();
+await LoadTeamRolesAsync();
 ResetState();
 
 if (EditProject != null)
@@ -329,7 +340,15 @@ _availableProviders = (await ProviderService.GetAllAsync())
 .OrderByDescending(provider => provider.IsDefault)
 .ThenBy(provider => provider.Name)
 .ToList();
-}
+	}
+
+	private async Task LoadTeamRolesAsync()
+	{
+		_availableTeamRoles = (await TeamRoleService.GetAllAsync())
+			.OrderByDescending(teamRole => teamRole.IsEnabled)
+			.ThenBy(teamRole => teamRole.Name)
+			.ToList();
+	}
 
 private Provider? ResolveProvider(Guid providerId)
 {
@@ -340,6 +359,17 @@ return _availableProviders.FirstOrDefault(provider => provider.Id == providerId)
 private bool IsProviderSelected(Guid providerId)
 {
 return FormModel.ProviderSelections.Any(selection => selection.ProviderId == providerId);
+}
+
+private TeamRole? ResolveTeamRole(Guid teamRoleId)
+{
+return _availableTeamRoles.FirstOrDefault(teamRole => teamRole.Id == teamRoleId)
+?? EditProject?.TeamAssignments.FirstOrDefault(assignment => assignment.TeamRoleId == teamRoleId)?.TeamRole;
+}
+
+private bool IsTeamRoleAssigned(Guid teamRoleId)
+{
+return FormModel.TeamAssignments.Any(assignment => assignment.TeamRoleId == teamRoleId);
 }
 
 private async Task AddProviderSelection(Provider provider)
@@ -364,6 +394,37 @@ EnsurePlanningProviderSelection();
 await LoadProviderModelsAsync(provider.Id);
 }
 
+private async Task AddTeamAssignment(TeamRole teamRole)
+{
+if (IsTeamRoleAssigned(teamRole.Id))
+{
+return;
+}
+
+var defaultProvider = FormModel.ProviderSelections
+	.OrderBy(selection => selection.Priority)
+	.Select(selection => ResolveProvider(selection.ProviderId))
+	.FirstOrDefault(provider => provider != null)
+	?? _availableProviders.FirstOrDefault();
+if (defaultProvider == null)
+{
+	return;
+}
+
+FormModel.TeamAssignments.Add(new ProjectTeamRole
+{
+	TeamRoleId = teamRole.Id,
+	TeamRole = teamRole,
+	ProviderId = defaultProvider.Id,
+	Provider = defaultProvider,
+	IsEnabled = true,
+	CreatedAt = DateTime.UtcNow,
+	UpdatedAt = DateTime.UtcNow
+});
+
+await LoadProviderModelsAsync(defaultProvider.Id);
+}
+
 private void RemoveProviderSelection(Guid providerId)
 {
 var selection = FormModel.ProviderSelections.FirstOrDefault(projectProvider => projectProvider.ProviderId == providerId);
@@ -376,6 +437,17 @@ FormModel.ProviderSelections.Remove(selection);
 _providerModelsByProviderId.Remove(providerId);
 NormalizeProviderSelectionOrder();
 EnsurePlanningProviderSelection();
+}
+
+private void RemoveTeamAssignment(Guid teamRoleId)
+{
+var assignment = FormModel.TeamAssignments.FirstOrDefault(projectTeamRole => projectTeamRole.TeamRoleId == teamRoleId);
+if (assignment == null)
+{
+	return;
+}
+
+FormModel.TeamAssignments.Remove(assignment);
 }
 
 private void MoveProviderSelectionUp(Guid providerId)
@@ -425,6 +497,40 @@ selection.PreferredModelId = string.IsNullOrWhiteSpace(change.PreferredModelId)
 ? null
 : change.PreferredModelId.Trim();
 selection.UpdatedAt = DateTime.UtcNow;
+}
+
+private async Task HandleTeamAssignmentProviderChanged(ProjectTeamRoleProviderChange change)
+{
+var assignment = FormModel.TeamAssignments.FirstOrDefault(projectTeamRole => projectTeamRole.TeamRoleId == change.TeamRoleId);
+if (assignment == null)
+{
+	return;
+}
+
+assignment.ProviderId = change.ProviderId;
+assignment.Provider = ResolveProvider(change.ProviderId);
+assignment.PreferredModelId = null;
+assignment.UpdatedAt = DateTime.UtcNow;
+await LoadProviderModelsAsync(change.ProviderId);
+}
+
+private async Task HandleTeamAssignmentPreferredModelChanged(ProjectTeamRoleModelSelectionChange change)
+{
+var assignment = FormModel.TeamAssignments.FirstOrDefault(projectTeamRole => projectTeamRole.TeamRoleId == change.TeamRoleId);
+if (assignment == null)
+{
+	return;
+}
+
+if (!_providerModelsByProviderId.ContainsKey(assignment.ProviderId))
+{
+	await LoadProviderModelsAsync(assignment.ProviderId);
+}
+
+assignment.PreferredModelId = string.IsNullOrWhiteSpace(change.PreferredModelId)
+	? null
+	: change.PreferredModelId.Trim();
+assignment.UpdatedAt = DateTime.UtcNow;
 }
 
 private void NormalizeProviderSelectionOrder()
@@ -590,9 +696,12 @@ return _providerModelsByProviderId.TryGetValue(providerId, out var models)
 
 private async Task LoadProviderSelectionModelsAsync()
 {
-foreach (var selection in FormModel.ProviderSelections.OrderBy(projectProvider => projectProvider.Priority))
+foreach (var providerId in FormModel.ProviderSelections
+	.Select(projectProvider => projectProvider.ProviderId)
+	.Concat(FormModel.TeamAssignments.Select(projectTeamRole => projectTeamRole.ProviderId))
+	.Distinct())
 {
-await LoadProviderModelsAsync(selection.ProviderId);
+await LoadProviderModelsAsync(providerId);
 }
 }
 
@@ -646,8 +755,8 @@ IdeaInferenceProviderId = source.IdeaInferenceProviderId,
 IdeaInferenceModelId = source.IdeaInferenceModelId,
 IsActive = source.IsActive,
 CreatedAt = source.CreatedAt,
-UpdatedAt = source.UpdatedAt,
-ProviderSelections = source.ProviderSelections
+	UpdatedAt = source.UpdatedAt,
+	ProviderSelections = source.ProviderSelections
 .OrderBy(projectProvider => projectProvider.Priority)
 .Select(projectProvider => new ProjectProvider
 {
@@ -660,9 +769,24 @@ PreferredModelId = projectProvider.PreferredModelId,
 CreatedAt = projectProvider.CreatedAt,
 UpdatedAt = projectProvider.UpdatedAt,
 Provider = ResolveProvider(projectProvider.ProviderId)
-})
-.ToList(),
-Environments = (source.Environments ?? [])
+	})
+	.ToList(),
+	TeamAssignments = source.TeamAssignments
+	.Select(projectTeamRole => new ProjectTeamRole
+	{
+		Id = projectTeamRole.Id,
+		ProjectId = projectTeamRole.ProjectId,
+		TeamRoleId = projectTeamRole.TeamRoleId,
+		ProviderId = projectTeamRole.ProviderId,
+		PreferredModelId = projectTeamRole.PreferredModelId,
+		IsEnabled = projectTeamRole.IsEnabled,
+		CreatedAt = projectTeamRole.CreatedAt,
+		UpdatedAt = projectTeamRole.UpdatedAt,
+		TeamRole = ResolveTeamRole(projectTeamRole.TeamRoleId),
+		Provider = ResolveProvider(projectTeamRole.ProviderId)
+	})
+	.ToList(),
+	Environments = (source.Environments ?? [])
 .OrderBy(environment => environment.SortOrder)
 .Select(environment => new ProjectEnvironment
 {

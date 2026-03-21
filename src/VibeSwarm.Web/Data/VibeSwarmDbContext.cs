@@ -19,11 +19,14 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 	public DbSet<ProviderUsageSummary> ProviderUsageSummaries { get; set; }
 	public DbSet<Project> Projects { get; set; }
 	public DbSet<ProjectProvider> ProjectProviders { get; set; }
+	public DbSet<ProjectTeamRole> ProjectTeamRoles { get; set; }
 	public DbSet<ProjectEnvironment> ProjectEnvironments { get; set; }
 	public DbSet<Job> Jobs { get; set; }
 	public DbSet<JobMessage> JobMessages { get; set; }
 	public DbSet<JobProviderAttempt> JobProviderAttempts { get; set; }
 	public DbSet<Skill> Skills { get; set; }
+	public DbSet<TeamRole> TeamRoles { get; set; }
+	public DbSet<TeamRoleSkill> TeamRoleSkills { get; set; }
 	public DbSet<Idea> Ideas { get; set; }
 	public DbSet<AppSettings> AppSettings { get; set; }
 	public DbSet<InferenceProvider> InferenceProviders { get; set; }
@@ -136,6 +139,25 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 			entity.HasIndex(e => new { e.ProjectId, e.Priority });
 		});
 
+		modelBuilder.Entity<ProjectTeamRole>(entity =>
+		{
+			entity.HasKey(e => e.Id);
+			entity.HasOne(e => e.Project)
+	.WithMany(project => project.TeamAssignments)
+	.HasForeignKey(e => e.ProjectId)
+	.OnDelete(DeleteBehavior.Cascade);
+			entity.HasOne(e => e.TeamRole)
+	.WithMany(role => role.ProjectAssignments)
+	.HasForeignKey(e => e.TeamRoleId)
+	.OnDelete(DeleteBehavior.Cascade);
+			entity.HasOne(e => e.Provider)
+	.WithMany()
+	.HasForeignKey(e => e.ProviderId)
+	.OnDelete(DeleteBehavior.Restrict);
+			entity.Property(e => e.PreferredModelId).HasMaxLength(200);
+			entity.HasIndex(e => new { e.ProjectId, e.TeamRoleId }).IsUnique();
+		});
+
 		modelBuilder.Entity<ProjectEnvironment>(entity =>
 		{
 			entity.HasKey(e => e.Id);
@@ -217,6 +239,28 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 			entity.Property(e => e.Description).HasMaxLength(500);
 			entity.Property(e => e.Content).IsRequired();
 			entity.HasIndex(e => e.Name).IsUnique();
+		});
+
+		modelBuilder.Entity<TeamRole>(entity =>
+		{
+			entity.HasKey(e => e.Id);
+			entity.Property(e => e.Name).IsRequired().HasMaxLength(100);
+			entity.Property(e => e.Description).HasMaxLength(ValidationLimits.TeamRoleDescriptionMaxLength);
+			entity.Property(e => e.Responsibilities).HasMaxLength(ValidationLimits.TeamRoleResponsibilitiesMaxLength);
+			entity.HasIndex(e => e.Name).IsUnique();
+		});
+
+		modelBuilder.Entity<TeamRoleSkill>(entity =>
+		{
+			entity.HasKey(e => new { e.TeamRoleId, e.SkillId });
+			entity.HasOne(e => e.TeamRole)
+	.WithMany(role => role.SkillLinks)
+	.HasForeignKey(e => e.TeamRoleId)
+	.OnDelete(DeleteBehavior.Cascade);
+			entity.HasOne(e => e.Skill)
+	.WithMany()
+	.HasForeignKey(e => e.SkillId)
+	.OnDelete(DeleteBehavior.Cascade);
 		});
 
 		modelBuilder.Entity<Idea>(entity =>

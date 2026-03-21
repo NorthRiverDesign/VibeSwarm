@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using VibeSwarm.Client.Models;
+using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Models;
 using VibeSwarm.Shared.Validation;
 
@@ -71,9 +72,9 @@ Assert.False(isValid);
 Assert.Contains(validationResults, result => result.MemberNames.Contains(nameof(ProjectModalFormModel.NewGitHubRepositoryDescription)));
 }
 
-[Fact]
-public void ProjectModalFormModel_BuildVerificationWithoutBuildCommand_FailsValidation()
-{
+	[Fact]
+	public void ProjectModalFormModel_BuildVerificationWithoutBuildCommand_FailsValidation()
+	{
 var project = new ProjectModalFormModel
 {
 Name = "Sample Project",
@@ -83,7 +84,30 @@ BuildVerificationEnabled = true
 var validationResults = new List<ValidationResult>();
 var isValid = Validator.TryValidateObject(project, new ValidationContext(project), validationResults, validateAllProperties: true);
 
-Assert.False(isValid);
-Assert.Contains(validationResults, result => result.ErrorMessage == "Build command is required when build verification is enabled.");
-}
+		Assert.False(isValid);
+		Assert.Contains(validationResults, result => result.ErrorMessage == "Build command is required when build verification is enabled.");
+	}
+
+	[Fact]
+	public void ProjectModalFormModel_TeamAssignmentWithoutProvider_FailsValidation()
+	{
+		var project = new ProjectModalFormModel
+		{
+			Name = "Sample Project",
+			WorkingPath = "/tmp/sample-project",
+			TeamAssignments =
+			[
+				new ProjectTeamRole
+				{
+					TeamRoleId = Guid.NewGuid(),
+					ProviderId = Guid.Empty
+				}
+			]
+		};
+		var validationResults = new List<ValidationResult>();
+		var isValid = Validator.TryValidateObject(project, new ValidationContext(project), validationResults, validateAllProperties: true);
+
+		Assert.False(isValid);
+		Assert.Contains(validationResults, result => result.ErrorMessage == "Each assigned team role must have a provider.");
+	}
 }

@@ -31,6 +31,7 @@ var services = new ServiceCollection();
 services.AddLogging();
 services.AddSingleton<IProjectService>(new FakeProjectService());
 services.AddSingleton<IProviderService>(new FakeProviderService(provider));
+services.AddSingleton<ITeamRoleService>(new FakeTeamRoleService());
 services.AddSingleton<ISettingsService>(new FakeSettingsService());
 services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService());
 services.AddSingleton<NotificationService>();
@@ -60,6 +61,7 @@ Assert.Contains("Planning", html);
 Assert.Contains("Job Execution", html);
 Assert.Contains("Instructions &amp; Memory", html);
 Assert.Contains("Default Job Model", html);
+Assert.Contains("Team Roles", html);
 Assert.Contains("Build Verification", html);
 Assert.Contains("Create Project", html);
 }
@@ -151,12 +153,13 @@ private static BunitContext CreateBunitContext(FakeProjectService? projectServic
 	context.Services.AddSingleton<IProjectService>(projectService ?? new FakeProjectService());
 	context.Services.AddSingleton<IProviderService>(new FakeProviderService(new Provider
 	{
-	Id = Guid.NewGuid(),
+		Id = Guid.NewGuid(),
 Name = "GitHub Copilot",
 Type = ProviderType.Copilot,
 IsEnabled = true
 }));
-context.Services.AddSingleton<ISettingsService>(new FakeSettingsService());
+	context.Services.AddSingleton<ITeamRoleService>(new FakeTeamRoleService());
+	context.Services.AddSingleton<ISettingsService>(new FakeSettingsService());
 context.Services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService());
 context.Services.AddSingleton<NotificationService>();
 return context;
@@ -218,6 +221,17 @@ private sealed class FakeSettingsService : ISettingsService
 public Task<AppSettings> GetSettingsAsync(CancellationToken cancellationToken = default) => Task.FromResult(new AppSettings());
 public Task<AppSettings> UpdateSettingsAsync(AppSettings settings, CancellationToken cancellationToken = default) => Task.FromResult(settings);
 public Task<string?> GetDefaultProjectsDirectoryAsync(CancellationToken cancellationToken = default) => Task.FromResult<string?>("/tmp/projects");
+}
+
+private sealed class FakeTeamRoleService : ITeamRoleService
+{
+public Task<IEnumerable<TeamRole>> GetAllAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<TeamRole>>([]);
+public Task<IEnumerable<TeamRole>> GetEnabledAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<TeamRole>>([]);
+public Task<TeamRole?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult<TeamRole?>(null);
+public Task<TeamRole> CreateAsync(TeamRole teamRole, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+public Task<TeamRole> UpdateAsync(TeamRole teamRole, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+public Task DeleteAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+public Task<bool> NameExistsAsync(string name, Guid? excludeId = null, CancellationToken cancellationToken = default) => Task.FromResult(false);
 }
 
 private sealed class NoOpJsRuntime : IJSRuntime

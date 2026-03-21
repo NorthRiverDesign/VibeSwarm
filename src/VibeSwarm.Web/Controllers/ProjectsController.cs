@@ -64,7 +64,7 @@ public class ProjectsController : ControllerBase
             var error = inner.Contains("Projects", StringComparison.OrdinalIgnoreCase) &&
                         inner.Contains("Name", StringComparison.OrdinalIgnoreCase)
                 ? "A project with this name already exists."
-                : "A duplicate value was detected. Check for duplicate provider selections or environment names.";
+                : "A duplicate value was detected. Check for duplicate provider selections, team role assignments, or environment names.";
             return BadRequest(new { error });
         }
         catch (DbUpdateException ex)
@@ -97,7 +97,7 @@ public class ProjectsController : ControllerBase
             var error = inner.Contains("Projects", StringComparison.OrdinalIgnoreCase) &&
                         inner.Contains("Name", StringComparison.OrdinalIgnoreCase)
                 ? "A project with this name already exists."
-                : "A duplicate value was detected. Check for duplicate provider selections or environment names.";
+                : "A duplicate value was detected. Check for duplicate provider selections, team role assignments, or environment names.";
             return BadRequest(new { error });
         }
         catch (DbUpdateException ex)
@@ -131,7 +131,7 @@ public class ProjectsController : ControllerBase
             var error = inner.Contains("Projects", StringComparison.OrdinalIgnoreCase) &&
                         inner.Contains("Name", StringComparison.OrdinalIgnoreCase)
                 ? "A project with this name already exists."
-                : "A duplicate value was detected. Check for duplicate provider selections or environment names.";
+                : "A duplicate value was detected. Check for duplicate provider selections, team role assignments, or environment names.";
             return BadRequest(new { error });
         }
         catch (DbUpdateException ex)

@@ -39,6 +39,7 @@ builder.Services.AddScoped<HttpProviderService>();
 builder.Services.AddScoped<IProviderService>(sp => sp.GetRequiredService<HttpProviderService>());
 builder.Services.AddScoped<ICommonProviderSetupService, HttpCommonProviderSetupService>();
 builder.Services.AddScoped<ISkillService, HttpSkillService>();
+builder.Services.AddScoped<ITeamRoleService, HttpTeamRoleService>();
 builder.Services.AddScoped<ISettingsService, HttpSettingsService>();
 builder.Services.AddScoped<IIdeaService, HttpIdeaService>();
 builder.Services.AddScoped<IUserService, HttpUserService>();

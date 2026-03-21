@@ -1,0 +1,281 @@
+@using VibeSwarm.Shared.Data
+@using VibeSwarm.Shared.Services
+@inject ITeamRoleService TeamRoleService
+@inject ISkillService SkillService
+@inject NotificationService NotificationService
+
+<ModalDialog IsVisible="IsVisible" IsVisibleChanged="HandleModalVisibilityChanged"
+			 Title="@(IsEdit ? "Edit Team Role" : "Add Team Role")" Icon="@(IsEdit ? "pencil" : "people")"
+			 Size="ModalDialog.ModalSize.Large" OnClose="HandleClose">
+	<ChildContent>
+		<EditForm Model="@TeamRole" OnValidSubmit="HandleValidSubmit">
+			<DataAnnotationsValidator />
+			<ValidationSummary class="text-danger mb-3" />
+
+			<div class="mb-3">
+				<label for="team-role-name" class="form-label">Name</label>
+				<InputText id="team-role-name" @bind-Value="TeamRole.Name" class="form-control"
+						   placeholder="Security Reviewer" />
+				<ValidationMessage For="@(() => TeamRole.Name)" class="text-danger small" />
+			</div>
+
+			<div class="mb-3">
+				<label for="team-role-description" class="form-label">Description</label>
+				<InputTextArea id="team-role-description" @bind-Value="TeamRole.Description" class="form-control"
+							   rows="2" placeholder="Short summary of this role's purpose..." />
+				<div class="form-text">Shown in project team assignment pickers and role summaries.</div>
+			</div>
+
+			<div class="mb-3">
+				<label for="team-role-responsibilities" class="form-label">Responsibilities</label>
+				<InputTextArea id="team-role-responsibilities" @bind-Value="TeamRole.Responsibilities" class="form-control"
+							   rows="6" placeholder="Describe what this role owns, reviews, or specializes in..." />
+				<ValidationMessage For="@(() => TeamRole.Responsibilities)" class="text-danger small" />
+				<div class="form-text">Use this to capture the role's responsibilities, review focus, and collaboration expectations.</div>
+			</div>
+
+			<div class="mb-3">
+				<label class="form-label">Skills</label>
+				@if (!_skills.Any())
+				{
+					<div class="text-body-secondary small">No skills available yet. Skills can be added later from the Skills page.</div>
+				}
+				else
+				{
+					<div class="border rounded bg-body-tertiary p-3">
+						<div class="row g-2">
+							@foreach (var skill in _skills)
+							{
+								var inputId = $"team-role-skill-{skill.Id}";
+								<div class="col-12 col-md-6">
+									<div class="form-check">
+										<input id="@inputId" class="form-check-input" type="checkbox"
+											   checked="@IsSkillSelected(skill.Id)"
+											   @onchange="(args) => ToggleSkill(skill, args.Value is true)" />
+										<label class="form-check-label" for="@inputId">
+											<span class="fw-semibold">@skill.Name</span>
+											@if (!skill.IsEnabled)
+											{
+												<span class="text-body-secondary small ms-1">(Disabled)</span>
+											}
+											@if (!string.IsNullOrWhiteSpace(skill.Description))
+											{
+												<span class="d-block text-body-secondary small">@skill.Description</span>
+											}
+										</label>
+									</div>
+								</div>
+							}
+						</div>
+					</div>
+				}
+			</div>
+
+			<div class="mb-3">
+				<div class="form-check form-switch">
+					<InputCheckbox id="team-role-enabled" @bind-Value="TeamRole.IsEnabled" class="form-check-input" />
+					<label class="form-check-label" for="team-role-enabled">
+						Enabled
+					</label>
+				</div>
+				<div class="form-text">Disabled roles stay saved but should not be assigned to new projects.</div>
+			</div>
+
+			@if (!string.IsNullOrEmpty(ErrorMessage))
+			{
+				<div class="text-danger small mb-3">
+					<i class="bi bi-exclamation-circle me-1"></i>@ErrorMessage
+				</div>
+			}
+
+			<div class="d-flex gap-2 justify-content-end">
+				<button type="button" class="btn btn-secondary" @onclick="HandleCancel">Cancel</button>
+				<button type="submit" class="btn btn-primary" disabled="@IsSaving">
+					@if (IsSaving)
+					{
+						<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+					}
+					@(IsSaving ? "Saving..." : (IsEdit ? "Update Team Role" : "Add Team Role"))
+				</button>
+			</div>
+		</EditForm>
+	</ChildContent>
+</ModalDialog>
+
+@code {
+	[Parameter]
+	public bool IsVisible { get; set; }
+
+	[Parameter]
+	public EventCallback<bool> IsVisibleChanged { get; set; }
+
+	[Parameter]
+	public TeamRole? EditTeamRole { get; set; }
+
+	[Parameter]
+	public EventCallback<Guid?> OnSaved { get; set; }
+
+	[Parameter]
+	public EventCallback OnCancelled { get; set; }
+
+	[Parameter]
+	public EventCallback OnClosed { get; set; }
+
+	private TeamRole TeamRole { get; set; } = new();
+	private List<Skill> _skills = [];
+	private bool IsEdit => EditTeamRole != null;
+	private bool IsSaving { get; set; }
+	private string? ErrorMessage { get; set; }
+	private bool _previousIsVisible;
+
+	protected override async Task OnInitializedAsync()
+	{
+		await LoadSkillsAsync();
+	}
+
+	protected override void OnParametersSet()
+	{
+		if (IsVisible && !_previousIsVisible)
+		{
+			ResetState();
+
+			if (EditTeamRole != null)
+			{
+				TeamRole = new TeamRole
+				{
+					Id = EditTeamRole.Id,
+					Name = EditTeamRole.Name,
+					Description = EditTeamRole.Description,
+					Responsibilities = EditTeamRole.Responsibilities,
+					IsEnabled = EditTeamRole.IsEnabled,
+					CreatedAt = EditTeamRole.CreatedAt,
+					UpdatedAt = EditTeamRole.UpdatedAt,
+					SkillLinks = EditTeamRole.SkillLinks
+						.Select(link => new TeamRoleSkill
+						{
+							TeamRoleId = EditTeamRole.Id,
+							SkillId = link.SkillId,
+							Skill = link.Skill
+						})
+						.ToList()
+				};
+			}
+		}
+
+		_previousIsVisible = IsVisible;
+	}
+
+	private async Task LoadSkillsAsync()
+	{
+		try
+		{
+			_skills = (await SkillService.GetAllAsync())
+				.OrderByDescending(skill => skill.IsEnabled)
+				.ThenBy(skill => skill.Name)
+				.ToList();
+		}
+		catch
+		{
+			_skills = [];
+		}
+	}
+
+	private bool IsSkillSelected(Guid skillId)
+	{
+		return TeamRole.SkillLinks.Any(link => link.SkillId == skillId);
+	}
+
+	private void ToggleSkill(Skill skill, bool isSelected)
+	{
+		var existing = TeamRole.SkillLinks.FirstOrDefault(link => link.SkillId == skill.Id);
+		if (isSelected && existing == null)
+		{
+			TeamRole.SkillLinks.Add(new TeamRoleSkill
+			{
+				TeamRoleId = TeamRole.Id,
+				SkillId = skill.Id,
+				Skill = skill
+			});
+		}
+		else if (!isSelected && existing != null)
+		{
+			TeamRole.SkillLinks.Remove(existing);
+		}
+	}
+
+	private async Task HandleValidSubmit()
+	{
+		IsSaving = true;
+		ErrorMessage = null;
+
+		try
+		{
+			var nameExists = await TeamRoleService.NameExistsAsync(TeamRole.Name, IsEdit ? TeamRole.Id : null);
+			if (nameExists)
+			{
+				ErrorMessage = "A team role with this name already exists.";
+				IsSaving = false;
+				return;
+			}
+
+			Guid? newTeamRoleId = null;
+			if (IsEdit)
+			{
+				await TeamRoleService.UpdateAsync(TeamRole);
+				NotificationService.ShowSuccess("Team role updated successfully.");
+			}
+			else
+			{
+				var created = await TeamRoleService.CreateAsync(TeamRole);
+				newTeamRoleId = created.Id;
+				NotificationService.ShowSuccess("Team role added successfully.");
+			}
+
+			await OnSaved.InvokeAsync(newTeamRoleId);
+			await CloseModal();
+		}
+		catch (Exception ex)
+		{
+			ErrorMessage = $"Error saving team role: {ex.Message}";
+		}
+		finally
+		{
+			IsSaving = false;
+		}
+	}
+
+	private async Task HandleCancel()
+	{
+		await OnCancelled.InvokeAsync();
+		await CloseModal();
+	}
+
+	private async Task HandleClose()
+	{
+		ResetState();
+		await OnClosed.InvokeAsync();
+	}
+
+	private async Task HandleModalVisibilityChanged(bool visible)
+	{
+		if (!visible)
+		{
+			ResetState();
+			await IsVisibleChanged.InvokeAsync(false);
+		}
+	}
+
+	private async Task CloseModal()
+	{
+		IsVisible = false;
+		await IsVisibleChanged.InvokeAsync(false);
+		ResetState();
+	}
+
+	private void ResetState()
+	{
+		TeamRole = new TeamRole();
+		ErrorMessage = null;
+		IsSaving = false;
+	}
+}

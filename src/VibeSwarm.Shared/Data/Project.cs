@@ -104,6 +104,8 @@ public class Project
 
     public ICollection<ProjectProvider> ProviderSelections { get; set; } = new List<ProjectProvider>();
 
+    public ICollection<ProjectTeamRole> TeamAssignments { get; set; } = new List<ProjectTeamRole>();
+
     public ICollection<ProjectEnvironment> Environments { get; set; } = new List<ProjectEnvironment>();
 
     /// <summary>

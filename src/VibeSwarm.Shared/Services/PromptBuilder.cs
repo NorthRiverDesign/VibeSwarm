@@ -27,6 +27,7 @@ public static class PromptBuilder
 		}
 
 		var environmentSection = BuildEnvironmentSection(job.Project);
+		var teamSection = BuildTeamSection(job.Project);
 		var sb = new StringBuilder();
 
 		sb.AppendLine("<task>");
@@ -46,6 +47,11 @@ public static class PromptBuilder
 			sb.Append(environmentSection);
 		}
 
+		if (!string.IsNullOrWhiteSpace(teamSection))
+		{
+			sb.Append(teamSection);
+		}
+
 		var hasConstraints = !string.IsNullOrWhiteSpace(job.Project.PromptContext)
 			|| job.MaxCostUsd.HasValue
 			|| !string.IsNullOrWhiteSpace(job.Branch)
@@ -59,7 +65,7 @@ public static class PromptBuilder
 			if (!string.IsNullOrWhiteSpace(job.Project.PromptContext))
 			{
 				var context = job.Project.PromptContext.Trim();
-				var availableSpace = MaxPromptLength - XmlOverhead - job.GoalPrompt.Length - environmentSection.Length - 100;
+				var availableSpace = MaxPromptLength - XmlOverhead - job.GoalPrompt.Length - environmentSection.Length - teamSection.Length - 100;
 				if (availableSpace > 0 && context.Length > availableSpace)
 				{
 					context = context[..availableSpace] + "...";
@@ -323,6 +329,72 @@ public static class PromptBuilder
 		}
 
 		sb.AppendLine("</environments>");
+		return sb.ToString();
+	}
+
+	private static string BuildTeamSection(Project project)
+	{
+		if (project.TeamAssignments == null || project.TeamAssignments.Count == 0)
+		{
+			return string.Empty;
+		}
+
+		var assignments = project.TeamAssignments
+			.Where(assignment => assignment.IsEnabled && assignment.TeamRole != null)
+			.OrderBy(assignment => assignment.TeamRole!.Name, StringComparer.OrdinalIgnoreCase)
+			.ToList();
+		if (assignments.Count == 0)
+		{
+			return string.Empty;
+		}
+
+		var sb = new StringBuilder();
+		sb.AppendLine("<team_roles>");
+		sb.AppendLine("  Configured collaborator roles available for this repository:");
+		foreach (var assignment in assignments)
+		{
+			var lineBuilder = new StringBuilder();
+			lineBuilder.Append("  - ");
+			lineBuilder.Append(assignment.TeamRole!.Name);
+
+			if (!string.IsNullOrWhiteSpace(assignment.TeamRole.Description))
+			{
+				lineBuilder.Append(" | Summary: ");
+				lineBuilder.Append(assignment.TeamRole.Description);
+			}
+
+			if (!string.IsNullOrWhiteSpace(assignment.TeamRole.Responsibilities))
+			{
+				lineBuilder.Append(" | Responsibilities: ");
+				lineBuilder.Append(assignment.TeamRole.Responsibilities);
+			}
+
+			if (assignment.Provider != null)
+			{
+				lineBuilder.Append(" | Provider: ");
+				lineBuilder.Append(assignment.Provider.Name);
+			}
+
+			if (!string.IsNullOrWhiteSpace(assignment.PreferredModelId))
+			{
+				lineBuilder.Append(" | Model: ");
+				lineBuilder.Append(assignment.PreferredModelId);
+			}
+
+			var skills = assignment.TeamRole.SkillLinks
+				.Where(link => link.Skill != null)
+				.Select(link => link.Skill!.Name)
+				.ToList();
+			if (skills.Count > 0)
+			{
+				lineBuilder.Append(" | Skills: ");
+				lineBuilder.Append(string.Join(", ", skills));
+			}
+
+			sb.AppendLine(EscapeXml(lineBuilder.ToString()));
+		}
+
+		sb.AppendLine("</team_roles>");
 		return sb.ToString();
 	}
 
