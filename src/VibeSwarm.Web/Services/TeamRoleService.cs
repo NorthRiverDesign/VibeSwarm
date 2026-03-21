@@ -46,6 +46,7 @@ public class TeamRoleService : ITeamRoleService
 		}
 
 		await ValidateSkillsAsync(teamRole.SkillLinks, cancellationToken);
+		await ValidateDefaultProviderAsync(teamRole, cancellationToken);
 
 		teamRole.Id = Guid.NewGuid();
 		teamRole.CreatedAt = DateTime.UtcNow;
@@ -82,10 +83,13 @@ public class TeamRoleService : ITeamRoleService
 		}
 
 		await ValidateSkillsAsync(teamRole.SkillLinks, cancellationToken);
+		await ValidateDefaultProviderAsync(teamRole, cancellationToken);
 
 		existing.Name = teamRole.Name;
 		existing.Description = teamRole.Description;
 		existing.Responsibilities = teamRole.Responsibilities;
+		existing.DefaultProviderId = teamRole.DefaultProviderId;
+		existing.DefaultModelId = teamRole.DefaultModelId;
 		existing.IsEnabled = teamRole.IsEnabled;
 		existing.UpdatedAt = DateTime.UtcNow;
 
@@ -120,6 +124,7 @@ public class TeamRoleService : ITeamRoleService
 	private IQueryable<TeamRole> BuildTeamRoleQuery()
 	{
 		return _dbContext.TeamRoles
+			.Include(role => role.DefaultProvider)
 			.Include(role => role.SkillLinks)
 				.ThenInclude(link => link.Skill);
 	}
@@ -129,6 +134,11 @@ public class TeamRoleService : ITeamRoleService
 		teamRole.Name = teamRole.Name.Trim();
 		teamRole.Description = string.IsNullOrWhiteSpace(teamRole.Description) ? null : teamRole.Description.Trim();
 		teamRole.Responsibilities = string.IsNullOrWhiteSpace(teamRole.Responsibilities) ? null : teamRole.Responsibilities.Trim();
+		teamRole.DefaultModelId = string.IsNullOrWhiteSpace(teamRole.DefaultModelId) ? null : teamRole.DefaultModelId.Trim();
+		if (!teamRole.DefaultProviderId.HasValue)
+		{
+			teamRole.DefaultModelId = null;
+		}
 		teamRole.SkillLinks = (teamRole.SkillLinks ?? [])
 			.GroupBy(link => link.SkillId)
 			.Select(group => new TeamRoleSkill
@@ -185,6 +195,44 @@ public class TeamRoleService : ITeamRoleService
 				TeamRoleId = existing.Id,
 				SkillId = skillId
 			});
+		}
+	}
+
+	private async Task ValidateDefaultProviderAsync(TeamRole teamRole, CancellationToken cancellationToken)
+	{
+		if (!teamRole.DefaultProviderId.HasValue)
+		{
+			if (!string.IsNullOrWhiteSpace(teamRole.DefaultModelId))
+			{
+				throw new InvalidOperationException("A default model requires selecting a default provider.");
+			}
+
+			return;
+		}
+
+		var providerExists = await _dbContext.Providers
+			.AsNoTracking()
+			.AnyAsync(provider => provider.Id == teamRole.DefaultProviderId.Value, cancellationToken);
+		if (!providerExists)
+		{
+			throw new InvalidOperationException("The selected default provider does not exist.");
+		}
+
+		if (string.IsNullOrWhiteSpace(teamRole.DefaultModelId))
+		{
+			return;
+		}
+
+		var modelExists = await _dbContext.ProviderModels
+			.AsNoTracking()
+			.AnyAsync(model =>
+				model.ProviderId == teamRole.DefaultProviderId.Value &&
+				model.IsAvailable &&
+				model.ModelId == teamRole.DefaultModelId,
+				cancellationToken);
+		if (!modelExists)
+		{
+			throw new InvalidOperationException("The selected default model is not available for the chosen provider.");
 		}
 	}
 }

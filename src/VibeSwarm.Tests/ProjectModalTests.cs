@@ -31,7 +31,7 @@ var services = new ServiceCollection();
 services.AddLogging();
 services.AddSingleton<IProjectService>(new FakeProjectService());
 services.AddSingleton<IProviderService>(new FakeProviderService(provider));
-services.AddSingleton<ITeamRoleService>(new FakeTeamRoleService());
+	services.AddSingleton<ITeamRoleService>(new FakeTeamRoleService([]));
 services.AddSingleton<ISettingsService>(new FakeSettingsService());
 services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService());
 services.AddSingleton<NotificationService>();
@@ -144,21 +144,58 @@ public void BrowseGitHubRepositories_NullRepositoryListShowsEmptyState()
 	Assert.Contains("No repositories matched the current filter.", cut.Markup);
 }
 
-private static BunitContext CreateBunitContext(FakeProjectService? projectService = null)
+[Fact]
+public void AddTeamRole_AssignmentSeedsDefaultProviderAndModel()
+{
+	var provider = new Provider
+	{
+		Id = Guid.NewGuid(),
+		Name = "GitHub Copilot",
+		Type = ProviderType.Copilot,
+		IsEnabled = true
+	};
+	var teamRole = new TeamRole
+	{
+		Id = Guid.NewGuid(),
+		Name = "Backend Engineer",
+		DefaultProviderId = provider.Id,
+		DefaultProvider = provider,
+		DefaultModelId = "gpt-5.4",
+		IsEnabled = true
+	};
+
+	using var context = CreateBunitContext(teamRoles: [teamRole], provider: provider);
+
+	var cut = context.Render<ProjectModal>(parameters => parameters
+		.Add(component => component.IsVisible, true));
+
+	cut.FindAll("button")
+		.Single(button => button.TextContent.Contains("Backend Engineer", StringComparison.Ordinal))
+		.Click();
+
+	Assert.Equal(provider.Id.ToString(), cut.Find($"#team-provider-{teamRole.Id}").GetAttribute("value"));
+	Assert.Equal("gpt-5.4", cut.Find($"#team-model-{teamRole.Id}").GetAttribute("value"));
+}
+
+private static BunitContext CreateBunitContext(
+	FakeProjectService? projectService = null,
+	IReadOnlyList<TeamRole>? teamRoles = null,
+	Provider? provider = null)
 {
 	var context = new BunitContext();
 	context.JSInterop.SetupVoid("eval", "document.body.classList.add('vs-modal-open')");
 	context.JSInterop.SetupVoid("eval", "document.body.classList.remove('vs-modal-open')");
 	context.Services.AddLogging();
-	context.Services.AddSingleton<IProjectService>(projectService ?? new FakeProjectService());
-	context.Services.AddSingleton<IProviderService>(new FakeProviderService(new Provider
+	var resolvedProvider = provider ?? new Provider
 	{
 		Id = Guid.NewGuid(),
-Name = "GitHub Copilot",
-Type = ProviderType.Copilot,
-IsEnabled = true
-}));
-	context.Services.AddSingleton<ITeamRoleService>(new FakeTeamRoleService());
+		Name = "GitHub Copilot",
+		Type = ProviderType.Copilot,
+		IsEnabled = true
+	};
+	context.Services.AddSingleton<IProjectService>(projectService ?? new FakeProjectService());
+	context.Services.AddSingleton<IProviderService>(new FakeProviderService(resolvedProvider));
+	context.Services.AddSingleton<ITeamRoleService>(new FakeTeamRoleService(teamRoles ?? []));
 	context.Services.AddSingleton<ISettingsService>(new FakeSettingsService());
 context.Services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService());
 context.Services.AddSingleton<NotificationService>();
@@ -223,14 +260,16 @@ public Task<AppSettings> UpdateSettingsAsync(AppSettings settings, CancellationT
 public Task<string?> GetDefaultProjectsDirectoryAsync(CancellationToken cancellationToken = default) => Task.FromResult<string?>("/tmp/projects");
 }
 
-private sealed class FakeTeamRoleService : ITeamRoleService
+private sealed class FakeTeamRoleService(IReadOnlyList<TeamRole> teamRoles) : ITeamRoleService
 {
-public Task<IEnumerable<TeamRole>> GetAllAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<TeamRole>>([]);
-public Task<IEnumerable<TeamRole>> GetEnabledAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<TeamRole>>([]);
-public Task<TeamRole?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult<TeamRole?>(null);
-public Task<TeamRole> CreateAsync(TeamRole teamRole, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-public Task<TeamRole> UpdateAsync(TeamRole teamRole, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-public Task DeleteAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+	private readonly IReadOnlyList<TeamRole> _teamRoles = teamRoles;
+
+	public Task<IEnumerable<TeamRole>> GetAllAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<TeamRole>>(_teamRoles);
+	public Task<IEnumerable<TeamRole>> GetEnabledAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<TeamRole>>(_teamRoles.Where(teamRole => teamRole.IsEnabled));
+	public Task<TeamRole?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult(_teamRoles.FirstOrDefault(teamRole => teamRole.Id == id));
+	public Task<TeamRole> CreateAsync(TeamRole teamRole, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+	public Task<TeamRole> UpdateAsync(TeamRole teamRole, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+	public Task DeleteAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 public Task<bool> NameExistsAsync(string name, Guid? excludeId = null, CancellationToken cancellationToken = default) => Task.FromResult(false);
 }
 

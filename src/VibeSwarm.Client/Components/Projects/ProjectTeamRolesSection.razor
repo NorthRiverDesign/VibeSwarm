@@ -143,14 +143,27 @@ var isAssigned = IsTeamRoleAssigned(teamRole.Id);
 <button type="button" class="btn @(isAssigned ? "btn-secondary" : "btn-primary") d-flex align-items-center justify-content-between gap-2 text-start flex-wrap"
 @onclick="() => OnAdd.InvokeAsync(teamRole)" disabled="@isAssigned">
 <span class="text-start min-width-0">
-<span class="fw-semibold">@teamRole.Name</span>
-@if (!string.IsNullOrWhiteSpace(teamRole.Description))
-{
-<span class="text-body-secondary ms-sm-2 d-block d-sm-inline">@teamRole.Description</span>
-}
-</span>
-@if (isAssigned)
-{
+										<span class="fw-semibold">@teamRole.Name</span>
+										@if (!string.IsNullOrWhiteSpace(teamRole.Description))
+										{
+											<span class="text-body-secondary ms-sm-2 d-block d-sm-inline">@teamRole.Description</span>
+										}
+										@if (teamRole.DefaultProvider != null || !string.IsNullOrWhiteSpace(teamRole.DefaultModelId))
+										{
+											<span class="d-block small text-body-secondary mt-1">
+												@if (teamRole.DefaultProvider != null)
+												{
+													<span><i class="bi bi-cpu me-1"></i>@teamRole.DefaultProvider.Name</span>
+												}
+												@if (!string.IsNullOrWhiteSpace(teamRole.DefaultModelId))
+												{
+													<span class="ms-sm-2 d-block d-sm-inline"><i class="bi bi-diagram-3 me-1"></i>@teamRole.DefaultModelId</span>
+												}
+											</span>
+										}
+									</span>
+									@if (isAssigned)
+									{
 <i class="bi bi-check-lg"></i>
 }
 else

@@ -401,7 +401,12 @@ if (IsTeamRoleAssigned(teamRole.Id))
 return;
 }
 
-var defaultProvider = FormModel.ProviderSelections
+	var defaultProvider = FormModel.ProviderSelections
+		.OrderBy(selection => selection.Priority)
+		.Select(selection => ResolveProvider(selection.ProviderId))
+		.FirstOrDefault(provider => provider != null && teamRole.DefaultProviderId.HasValue && provider.Id == teamRole.DefaultProviderId.Value)
+		?? ResolveProvider(teamRole.DefaultProviderId ?? Guid.Empty)
+		?? FormModel.ProviderSelections
 	.OrderBy(selection => selection.Priority)
 	.Select(selection => ResolveProvider(selection.ProviderId))
 	.FirstOrDefault(provider => provider != null)
@@ -417,6 +422,9 @@ FormModel.TeamAssignments.Add(new ProjectTeamRole
 	TeamRole = teamRole,
 	ProviderId = defaultProvider.Id,
 	Provider = defaultProvider,
+	PreferredModelId = teamRole.DefaultProviderId == defaultProvider.Id
+		? teamRole.DefaultModelId
+		: null,
 	IsEnabled = true,
 	CreatedAt = DateTime.UtcNow,
 	UpdatedAt = DateTime.UtcNow
@@ -722,12 +730,21 @@ _providerModelsByProviderId[providerId] = [];
 }
 
 var selection = FormModel.ProviderSelections.FirstOrDefault(projectProvider => projectProvider.ProviderId == providerId);
-if (selection != null &&
-!string.IsNullOrWhiteSpace(selection.PreferredModelId) &&
-!_providerModelsByProviderId[providerId].Any(model => string.Equals(model.ModelId, selection.PreferredModelId, StringComparison.Ordinal)))
-{
-selection.PreferredModelId = null;
-}
+	if (selection != null &&
+	!string.IsNullOrWhiteSpace(selection.PreferredModelId) &&
+	!_providerModelsByProviderId[providerId].Any(model => string.Equals(model.ModelId, selection.PreferredModelId, StringComparison.Ordinal)))
+	{
+	selection.PreferredModelId = null;
+	}
+
+	foreach (var assignment in FormModel.TeamAssignments.Where(projectTeamRole => projectTeamRole.ProviderId == providerId))
+	{
+		if (!string.IsNullOrWhiteSpace(assignment.PreferredModelId) &&
+			!_providerModelsByProviderId[providerId].Any(model => string.Equals(model.ModelId, assignment.PreferredModelId, StringComparison.Ordinal)))
+		{
+			assignment.PreferredModelId = null;
+		}
+	}
 }
 
 private Project CloneProjectForEditing(Project source)

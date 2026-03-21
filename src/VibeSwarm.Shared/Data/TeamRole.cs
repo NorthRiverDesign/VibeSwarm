@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using VibeSwarm.Shared.Providers;
 
 namespace VibeSwarm.Shared.Data;
 
@@ -15,6 +16,13 @@ public class TeamRole
 
 	[StringLength(Validation.ValidationLimits.TeamRoleResponsibilitiesMaxLength)]
 	public string? Responsibilities { get; set; }
+
+	public Guid? DefaultProviderId { get; set; }
+
+	public Provider? DefaultProvider { get; set; }
+
+	[StringLength(200)]
+	public string? DefaultModelId { get; set; }
 
 	public bool IsEnabled { get; set; } = true;
 

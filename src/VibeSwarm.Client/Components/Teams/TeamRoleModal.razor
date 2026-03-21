@@ -1,7 +1,9 @@
 @using VibeSwarm.Shared.Data
+@using VibeSwarm.Shared.Providers
 @using VibeSwarm.Shared.Services
 @inject ITeamRoleService TeamRoleService
 @inject ISkillService SkillService
+@inject IProviderService ProviderService
 @inject NotificationService NotificationService
 
 <ModalDialog IsVisible="IsVisible" IsVisibleChanged="HandleModalVisibilityChanged"
@@ -32,6 +34,62 @@
 							   rows="6" placeholder="Describe what this role owns, reviews, or specializes in..." />
 				<ValidationMessage For="@(() => TeamRole.Responsibilities)" class="text-danger small" />
 				<div class="form-text">Use this to capture the role's responsibilities, review focus, and collaboration expectations.</div>
+			</div>
+
+			<div class="row g-3 mb-3">
+				<div class="col-12 col-lg-6">
+					<label for="team-role-provider" class="form-label">Default Provider</label>
+					@if (!_providers.Any())
+					{
+						<div class="rounded border bg-body-tertiary p-3 small text-body-secondary">
+							No enabled providers are available yet. You can still save this role and choose a provider when assigning it to a project.
+						</div>
+					}
+					else
+					{
+						<InputSelect TValue="Guid?" id="team-role-provider"
+									 Value="TeamRole.DefaultProviderId"
+									 ValueChanged="HandleDefaultProviderChanged"
+									 ValueExpression="@(() => TeamRole.DefaultProviderId)"
+									 class="form-select">
+							<option value="">Choose when assigned to a project</option>
+							@foreach (var provider in _providers)
+							{
+								<option value="@provider.Id">@provider.Name</option>
+							}
+						</InputSelect>
+						<div class="form-text">Used as the default provider when this role is added to a project.</div>
+					}
+				</div>
+				<div class="col-12 col-lg-6">
+					<label for="team-role-model" class="form-label">Default Model</label>
+					<InputSelect TValue="string" id="team-role-model"
+								 Value="@(TeamRole.DefaultModelId ?? string.Empty)"
+								 ValueChanged="HandleDefaultModelChanged"
+								 ValueExpression="@(() => TeamRole.DefaultModelId)"
+								 class="form-select"
+								 disabled="@(!TeamRole.DefaultProviderId.HasValue || !CurrentProviderModels.Any())">
+						<option value="">Use provider default model</option>
+						@foreach (var model in CurrentProviderModels)
+						{
+							<option value="@model.ModelId">@(model.DisplayName ?? model.ModelId)@((model.IsDefault ? " (Default)" : string.Empty))</option>
+						}
+					</InputSelect>
+					<div class="form-text">
+						@if (!TeamRole.DefaultProviderId.HasValue)
+						{
+							<span>Select a default provider first.</span>
+						}
+						else if (!CurrentProviderModels.Any())
+						{
+							<span>No cached models found for this provider yet. The provider default will be used.</span>
+						}
+						else
+						{
+							<span>Projects can keep this default or override it per assignment.</span>
+						}
+					</div>
+				</div>
 			</div>
 
 			<div class="mb-3">
@@ -123,20 +181,27 @@
 
 	private TeamRole TeamRole { get; set; } = new();
 	private List<Skill> _skills = [];
+	private List<Provider> _providers = [];
+	private readonly Dictionary<Guid, List<ProviderModel>> _providerModelsByProviderId = [];
 	private bool IsEdit => EditTeamRole != null;
 	private bool IsSaving { get; set; }
 	private string? ErrorMessage { get; set; }
 	private bool _previousIsVisible;
+	private IReadOnlyList<ProviderModel> CurrentProviderModels => TeamRole.DefaultProviderId.HasValue && _providerModelsByProviderId.TryGetValue(TeamRole.DefaultProviderId.Value, out var models)
+		? models
+		: [];
 
 	protected override async Task OnInitializedAsync()
 	{
 		await LoadSkillsAsync();
+		await LoadProvidersAsync();
 	}
 
-	protected override void OnParametersSet()
+	protected override async Task OnParametersSetAsync()
 	{
 		if (IsVisible && !_previousIsVisible)
 		{
+			await LoadProvidersAsync();
 			ResetState();
 
 			if (EditTeamRole != null)
@@ -147,6 +212,9 @@
 					Name = EditTeamRole.Name,
 					Description = EditTeamRole.Description,
 					Responsibilities = EditTeamRole.Responsibilities,
+					DefaultProviderId = EditTeamRole.DefaultProviderId,
+					DefaultProvider = EditTeamRole.DefaultProvider,
+					DefaultModelId = EditTeamRole.DefaultModelId,
 					IsEnabled = EditTeamRole.IsEnabled,
 					CreatedAt = EditTeamRole.CreatedAt,
 					UpdatedAt = EditTeamRole.UpdatedAt,
@@ -159,6 +227,20 @@
 						})
 						.ToList()
 				};
+			}
+
+			if (TeamRole.DefaultProviderId.HasValue)
+			{
+				if (!_providers.Any(provider => provider.Id == TeamRole.DefaultProviderId.Value) && TeamRole.DefaultProvider != null)
+				{
+					_providers.Add(TeamRole.DefaultProvider);
+					_providers = _providers
+						.OrderByDescending(provider => provider.IsDefault)
+						.ThenBy(provider => provider.Name)
+						.ToList();
+				}
+
+				await LoadProviderModelsAsync(TeamRole.DefaultProviderId.Value);
 			}
 		}
 
@@ -177,6 +259,58 @@
 		catch
 		{
 			_skills = [];
+		}
+	}
+
+	private async Task LoadProvidersAsync()
+	{
+		_providers = (await ProviderService.GetAllAsync())
+			.Where(provider => provider.IsEnabled)
+			.OrderByDescending(provider => provider.IsDefault)
+			.ThenBy(provider => provider.Name)
+			.ToList();
+	}
+
+	private async Task HandleDefaultProviderChanged(Guid? providerId)
+	{
+		TeamRole.DefaultProviderId = providerId;
+		TeamRole.DefaultProvider = providerId.HasValue
+			? _providers.FirstOrDefault(provider => provider.Id == providerId.Value)
+			: null;
+		TeamRole.DefaultModelId = null;
+
+		if (providerId.HasValue)
+		{
+			await LoadProviderModelsAsync(providerId.Value);
+		}
+	}
+
+	private Task HandleDefaultModelChanged(string? modelId)
+	{
+		TeamRole.DefaultModelId = string.IsNullOrWhiteSpace(modelId) ? null : modelId.Trim();
+		return Task.CompletedTask;
+	}
+
+	private async Task LoadProviderModelsAsync(Guid providerId)
+	{
+		try
+		{
+			_providerModelsByProviderId[providerId] = (await ProviderService.GetModelsAsync(providerId))
+				.Where(model => model.IsAvailable)
+				.OrderByDescending(model => model.IsDefault)
+				.ThenBy(model => model.DisplayName ?? model.ModelId)
+				.ToList();
+		}
+		catch
+		{
+			_providerModelsByProviderId[providerId] = [];
+		}
+
+		if (!string.IsNullOrWhiteSpace(TeamRole.DefaultModelId) &&
+			(!_providerModelsByProviderId.TryGetValue(providerId, out var models) ||
+			 !models.Any(model => string.Equals(model.ModelId, TeamRole.DefaultModelId, StringComparison.Ordinal))))
+		{
+			TeamRole.DefaultModelId = null;
 		}
 	}
 
@@ -277,5 +411,6 @@
 		TeamRole = new TeamRole();
 		ErrorMessage = null;
 		IsSaving = false;
+		_providerModelsByProviderId.Clear();
 	}
 }

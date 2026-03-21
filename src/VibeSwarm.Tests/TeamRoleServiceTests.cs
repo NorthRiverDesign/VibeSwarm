@@ -1,6 +1,7 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using VibeSwarm.Shared.Data;
+using VibeSwarm.Shared.Providers;
 using VibeSwarm.Web.Services;
 
 namespace VibeSwarm.Tests;
@@ -100,6 +101,69 @@ public sealed class TeamRoleServiceTests : IDisposable
 		Assert.Single(updated.SkillLinks);
 		Assert.Equal(secondSkill.Id, updated.SkillLinks.Single().SkillId);
 		Assert.Equal("deployment", updated.SkillLinks.Single().Skill?.Name);
+	}
+
+	[Fact]
+	public async Task CreateAsync_PersistsDefaultProviderAndModel()
+	{
+		await using var dbContext = CreateDbContext();
+		var provider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "GitHub Copilot",
+			Type = ProviderType.Copilot,
+			ConnectionMode = ProviderConnectionMode.CLI,
+			IsEnabled = true
+		};
+		dbContext.Providers.Add(provider);
+		dbContext.ProviderModels.Add(new ProviderModel
+		{
+			ProviderId = provider.Id,
+			ModelId = "gpt-5.4",
+			DisplayName = "GPT-5.4",
+			IsAvailable = true,
+			IsDefault = true
+		});
+		await dbContext.SaveChangesAsync();
+
+		var service = new TeamRoleService(dbContext);
+		var created = await service.CreateAsync(new TeamRole
+		{
+			Name = "Backend Engineer",
+			DefaultProviderId = provider.Id,
+			DefaultModelId = "gpt-5.4"
+		});
+
+		Assert.Equal(provider.Id, created.DefaultProviderId);
+		Assert.Equal("gpt-5.4", created.DefaultModelId);
+		Assert.Equal("GitHub Copilot", created.DefaultProvider?.Name);
+	}
+
+	[Fact]
+	public async Task CreateAsync_DefaultModelWithoutMatchingProvider_Throws()
+	{
+		await using var dbContext = CreateDbContext();
+		var provider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "GitHub Copilot",
+			Type = ProviderType.Copilot,
+			ConnectionMode = ProviderConnectionMode.CLI,
+			IsEnabled = true
+		};
+		dbContext.Providers.Add(provider);
+		await dbContext.SaveChangesAsync();
+
+		var service = new TeamRoleService(dbContext);
+
+		var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => service.CreateAsync(new TeamRole
+		{
+			Name = "Backend Engineer",
+			DefaultProviderId = provider.Id,
+			DefaultModelId = "gpt-5.4"
+		}));
+
+		Assert.Equal("The selected default model is not available for the chosen provider.", exception.Message);
 	}
 
 	private VibeSwarmDbContext CreateDbContext()

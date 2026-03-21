@@ -247,6 +247,11 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 			entity.Property(e => e.Name).IsRequired().HasMaxLength(100);
 			entity.Property(e => e.Description).HasMaxLength(ValidationLimits.TeamRoleDescriptionMaxLength);
 			entity.Property(e => e.Responsibilities).HasMaxLength(ValidationLimits.TeamRoleResponsibilitiesMaxLength);
+			entity.Property(e => e.DefaultModelId).HasMaxLength(200);
+			entity.HasOne(e => e.DefaultProvider)
+				.WithMany()
+				.HasForeignKey(e => e.DefaultProviderId)
+				.OnDelete(DeleteBehavior.SetNull);
 			entity.HasIndex(e => e.Name).IsUnique();
 		});
 
