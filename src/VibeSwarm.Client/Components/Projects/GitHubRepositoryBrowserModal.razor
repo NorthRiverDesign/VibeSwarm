@@ -139,7 +139,7 @@
 		{
 			var result = await ProjectService.BrowseGitHubRepositoriesAsync();
 			_errorMessage = result.ErrorMessage;
-			_repositories = result.Repositories;
+			_repositories = result.Repositories ?? [];
 		}
 		catch (Exception ex)
 		{

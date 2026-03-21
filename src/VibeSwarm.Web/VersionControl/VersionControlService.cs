@@ -1917,7 +1917,7 @@ public sealed class VersionControlService : IVersionControlService
 				return browserResult;
 			}
 
-			var user = JsonSerializer.Deserialize<GitHubViewerResponse>(userResult.Output, GitHubJsonSerializerOptions);
+			var user = DeserializeCommandJson<GitHubViewerResponse>(userResult.Output, '{', '}');
 			if (string.IsNullOrWhiteSpace(user?.Login))
 			{
 				browserResult.ErrorMessage = "Unable to determine the authenticated GitHub account.";
@@ -1937,11 +1937,16 @@ public sealed class VersionControlService : IVersionControlService
 				return browserResult;
 			}
 
-			browserResult.Repositories = JsonSerializer.Deserialize<List<GitHubRepositoryBrowserItem>>(listResult.Output, GitHubJsonSerializerOptions)?
+			browserResult.Repositories = DeserializeCommandJson<List<GitHubRepositoryBrowserItem>>(listResult.Output, '[', ']')?
 				.OrderByDescending(repository => repository.UpdatedAt ?? DateTimeOffset.MinValue)
 				.ThenBy(repository => repository.NameWithOwner, StringComparer.OrdinalIgnoreCase)
 				.ToList()
 				?? [];
+
+			if (browserResult.Repositories.Count == 0 && !string.IsNullOrWhiteSpace(listResult.Output) && listResult.Output.IndexOf('[', StringComparison.Ordinal) < 0)
+			{
+				browserResult.ErrorMessage = "Unable to parse the GitHub repository list returned by GitHub CLI.";
+			}
 
 			return browserResult;
 		}
@@ -2589,6 +2594,40 @@ public sealed class VersionControlService : IVersionControlService
 
 	private static string EscapeCommandArgument(string value)
 		=> value.Replace("\\", "\\\\").Replace("\"", "\\\"");
+
+	private static T? DeserializeCommandJson<T>(string output, char startToken, char endToken)
+	{
+		var json = ExtractJsonPayload(output, startToken, endToken);
+		if (string.IsNullOrWhiteSpace(json))
+		{
+			return default;
+		}
+
+		return JsonSerializer.Deserialize<T>(json, GitHubJsonSerializerOptions);
+	}
+
+	private static string? ExtractJsonPayload(string? output, char startToken, char endToken)
+	{
+		if (string.IsNullOrWhiteSpace(output))
+		{
+			return null;
+		}
+
+		var trimmedOutput = output.Trim();
+		if (trimmedOutput[0] == startToken && trimmedOutput[^1] == endToken)
+		{
+			return trimmedOutput;
+		}
+
+		var startIndex = trimmedOutput.IndexOf(startToken, StringComparison.Ordinal);
+		var endIndex = trimmedOutput.LastIndexOf(endToken);
+		if (startIndex < 0 || endIndex <= startIndex)
+		{
+			return null;
+		}
+
+		return trimmedOutput.Substring(startIndex, endIndex - startIndex + 1);
+	}
 
 	private static string BuildPreserveSummary(GitOperationResult result)
 	{

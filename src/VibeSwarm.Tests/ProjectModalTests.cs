@@ -118,6 +118,30 @@ public void BrowseGitHubRepositories_SelectingRepositoryPopulatesCloneInput()
 	Assert.Equal("octocat/hello-world", cut.Find("#modal-githubRepo").GetAttribute("value"));
 }
 
+[Fact]
+public void BrowseGitHubRepositories_NullRepositoryListShowsEmptyState()
+{
+	using var context = CreateBunitContext(new FakeProjectService
+	{
+		RepositoryBrowserResult = new GitHubRepositoryBrowserResult
+		{
+			IsGitHubCliAvailable = true,
+			IsAuthenticated = true,
+			Repositories = null!
+		}
+	});
+
+	var cut = context.Render<ProjectModal>(parameters => parameters
+		.Add(component => component.IsVisible, true));
+
+	cut.FindAll("button")
+		.Single(button => button.TextContent.Contains("Clone Existing GitHub Repository", StringComparison.Ordinal))
+		.Click();
+	cut.Find("#modal-githubRepoBrowse").Click();
+
+	Assert.Contains("No repositories matched the current filter.", cut.Markup);
+}
+
 private static BunitContext CreateBunitContext(FakeProjectService? projectService = null)
 {
 	var context = new BunitContext();
