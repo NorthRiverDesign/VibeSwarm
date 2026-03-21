@@ -1,78 +1,149 @@
+using System.Net;
 using System.Net.Http.Json;
 using System.Security.Claims;
+using System.Text.Json;
 using Microsoft.AspNetCore.Components.Authorization;
-using Microsoft.AspNetCore.Components.WebAssembly.Http;
 
 namespace VibeSwarm.Client.Auth;
 
 public class CookieAuthenticationStateProvider : AuthenticationStateProvider
 {
-    private readonly HttpClient _httpClient;
-    private readonly ILogger<CookieAuthenticationStateProvider> _logger;
+	private static readonly AuthenticationState AnonymousAuthenticationState = new(new ClaimsPrincipal(new ClaimsIdentity()));
 
-    public CookieAuthenticationStateProvider(HttpClient httpClient, ILogger<CookieAuthenticationStateProvider> logger)
-    {
-        _httpClient = httpClient;
-        _logger = logger;
-    }
+	private readonly HttpClient _httpClient;
+	private readonly ILogger<CookieAuthenticationStateProvider> _logger;
+	private readonly SemaphoreSlim _authenticationStateLock = new(1, 1);
 
-    public override async Task<AuthenticationState> GetAuthenticationStateAsync()
-    {
-        try
-        {
-            _logger.LogDebug("Fetching authentication state from /api/auth/user");
+	private AuthenticationState _cachedAuthenticationState = AnonymousAuthenticationState;
+	private bool _hasCachedAuthenticationState;
 
-            // Use the HttpClient which is configured with CookieHandler for credentials
-            var response = await _httpClient.GetAsync("/api/auth/user");
+	public CookieAuthenticationStateProvider(HttpClient httpClient, ILogger<CookieAuthenticationStateProvider> logger)
+	{
+		_httpClient = httpClient;
+		_logger = logger;
+	}
 
-            _logger.LogDebug("Auth response status: {StatusCode}", response.StatusCode);
+	public override async Task<AuthenticationState> GetAuthenticationStateAsync()
+	{
+		await _authenticationStateLock.WaitAsync();
 
-            if (response.IsSuccessStatusCode)
-            {
-                var userInfo = await response.Content.ReadFromJsonAsync<UserInfo>();
-                if (userInfo != null)
-                {
-                    _logger.LogInformation("User authenticated: {UserName}", userInfo.UserName);
+		try
+		{
+			return await GetAuthenticationStateCoreAsync();
+		}
+		finally
+		{
+			_authenticationStateLock.Release();
+		}
+	}
 
-                    var claims = new List<Claim>
-                    {
-                        new(ClaimTypes.Name, userInfo.UserName ?? string.Empty),
-                        new(ClaimTypes.NameIdentifier, userInfo.UserId ?? string.Empty),
-                    };
+	public async Task<AuthenticationState> RefreshAuthenticationStateAsync()
+	{
+		var authenticationStateTask = GetAuthenticationStateAsync();
+		NotifyAuthenticationStateChanged(authenticationStateTask);
+		return await authenticationStateTask;
+	}
 
-                    if (userInfo.Email != null)
-                        claims.Add(new Claim(ClaimTypes.Email, userInfo.Email));
+	public void NotifyAuthenticationStateChanged()
+	{
+		NotifyAuthenticationStateChanged(GetAuthenticationStateAsync());
+	}
 
-                    foreach (var role in userInfo.Roles ?? [])
-                    {
-                        claims.Add(new Claim(ClaimTypes.Role, role));
-                    }
+	private async Task<AuthenticationState> GetAuthenticationStateCoreAsync()
+	{
+		_logger.LogDebug("Fetching authentication state from /api/auth/user");
 
-                    var identity = new ClaimsIdentity(claims, "cookie");
-                    return new AuthenticationState(new ClaimsPrincipal(identity));
-                }
-            }
-            else if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
-            {
-                _logger.LogDebug("User is not authenticated (401 Unauthorized)");
-            }
-            else
-            {
-                _logger.LogWarning("Unexpected auth response: {StatusCode}", response.StatusCode);
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to get authentication state");
-        }
+		HttpResponseMessage response;
 
-        return new AuthenticationState(new ClaimsPrincipal(new ClaimsIdentity()));
-    }
+		try
+		{
+			response = await _httpClient.GetAsync("/api/auth/user");
+		}
+		catch (HttpRequestException ex)
+		{
+			return GetFallbackAuthenticationState("Failed to fetch authentication state", ex);
+		}
+		catch (TaskCanceledException ex)
+		{
+			return GetFallbackAuthenticationState("Authentication state request timed out", ex);
+		}
 
-    public void NotifyAuthenticationStateChanged()
-    {
-        NotifyAuthenticationStateChanged(GetAuthenticationStateAsync());
-    }
+		_logger.LogDebug("Auth response status: {StatusCode}", response.StatusCode);
+
+		if (response.IsSuccessStatusCode)
+		{
+			try
+			{
+				var userInfo = await response.Content.ReadFromJsonAsync<UserInfo>();
+				if (userInfo != null)
+				{
+					var authenticationState = CreateAuthenticatedState(userInfo);
+					_cachedAuthenticationState = authenticationState;
+					_hasCachedAuthenticationState = true;
+
+					_logger.LogInformation("User authenticated: {UserName}", userInfo.UserName);
+					return authenticationState;
+				}
+
+				return GetFallbackAuthenticationState("Auth endpoint returned an empty user payload");
+			}
+			catch (JsonException ex)
+			{
+				return GetFallbackAuthenticationState("Failed to parse authentication state response", ex);
+			}
+			catch (NotSupportedException ex)
+			{
+				return GetFallbackAuthenticationState("Authentication state response content type was not supported", ex);
+			}
+		}
+
+		if (response.StatusCode == HttpStatusCode.Unauthorized || response.StatusCode == HttpStatusCode.Forbidden)
+		{
+			_logger.LogDebug("User is not authenticated ({StatusCode})", response.StatusCode);
+			_cachedAuthenticationState = AnonymousAuthenticationState;
+			_hasCachedAuthenticationState = true;
+			return _cachedAuthenticationState;
+		}
+
+		return GetFallbackAuthenticationState($"Unexpected auth response: {response.StatusCode}");
+	}
+
+	private AuthenticationState CreateAuthenticatedState(UserInfo userInfo)
+	{
+		var claims = new List<Claim>
+		{
+			new(ClaimTypes.Name, userInfo.UserName ?? string.Empty),
+			new(ClaimTypes.NameIdentifier, userInfo.UserId ?? string.Empty),
+		};
+
+		if (userInfo.Email != null)
+		{
+			claims.Add(new Claim(ClaimTypes.Email, userInfo.Email));
+		}
+
+		foreach (var role in userInfo.Roles ?? [])
+		{
+			claims.Add(new Claim(ClaimTypes.Role, role));
+		}
+
+		var identity = new ClaimsIdentity(claims, "cookie");
+		return new AuthenticationState(new ClaimsPrincipal(identity));
+	}
+
+	private AuthenticationState GetFallbackAuthenticationState(string reason, Exception? exception = null)
+	{
+		var cachedUser = _cachedAuthenticationState.User;
+		if (_hasCachedAuthenticationState && cachedUser.Identity?.IsAuthenticated == true)
+		{
+			_logger.LogWarning(exception, "{Reason}. Preserving cached authentication state for {UserName}.", reason, cachedUser.Identity.Name);
+			return _cachedAuthenticationState;
+		}
+
+		_logger.LogWarning(exception, "{Reason}. Returning anonymous authentication state.", reason);
+		_cachedAuthenticationState = AnonymousAuthenticationState;
+		_hasCachedAuthenticationState = true;
+		return _cachedAuthenticationState;
+	}
 }
 
 public class UserInfo

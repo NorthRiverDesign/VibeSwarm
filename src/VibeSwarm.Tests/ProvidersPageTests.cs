@@ -4,6 +4,7 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.JSInterop;
 using VibeSwarm.Client.Pages;
 using VibeSwarm.Client.Services;
 using VibeSwarm.Shared.Data;
@@ -129,6 +130,7 @@ public sealed class ProvidersPageTests
 			BaseAddress = new Uri("http://localhost")
 		}));
 		services.AddSingleton<NotificationService>();
+		services.AddSingleton<IJSRuntime, NoOpJsRuntime>();
 
 		await using var renderer = new HtmlRenderer(services.BuildServiceProvider(), NullLoggerFactory.Instance);
 
@@ -190,5 +192,14 @@ public sealed class ProvidersPageTests
 				Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json")
 			};
 		}
+	}
+
+	private sealed class NoOpJsRuntime : IJSRuntime
+	{
+		public ValueTask<TValue> InvokeAsync<TValue>(string identifier, object?[]? args)
+			=> ValueTask.FromResult(default(TValue)!);
+
+		public ValueTask<TValue> InvokeAsync<TValue>(string identifier, CancellationToken cancellationToken, object?[]? args)
+			=> ValueTask.FromResult(default(TValue)!);
 	}
 }

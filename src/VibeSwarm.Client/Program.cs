@@ -56,6 +56,7 @@ builder.Services.AddScoped<ThemeService>();
 
 // Auth
 builder.Services.AddAuthorizationCore();
-builder.Services.AddScoped<AuthenticationStateProvider, CookieAuthenticationStateProvider>();
+builder.Services.AddScoped<CookieAuthenticationStateProvider>();
+builder.Services.AddScoped<AuthenticationStateProvider>(sp => sp.GetRequiredService<CookieAuthenticationStateProvider>());
 
 await builder.Build().RunAsync();
