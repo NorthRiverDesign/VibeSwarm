@@ -59,4 +59,7 @@ public class HttpProjectService : IProjectService
     public async Task<DashboardJobMetrics> GetDashboardJobMetricsAsync(int rangeDays, CancellationToken ct = default)
         => await _http.GetJsonAsync($"/api/projects/dashboard-metrics?rangeDays={rangeDays}", new DashboardJobMetrics { RangeDays = rangeDays }, ct);
 
+	public async Task<IEnumerable<DashboardRunningJobInfo>> GetDashboardRunningJobsAsync(CancellationToken ct = default)
+		=> await _http.GetJsonAsync("/api/projects/dashboard-running-jobs", new List<DashboardRunningJobInfo>(), ct);
+
 }

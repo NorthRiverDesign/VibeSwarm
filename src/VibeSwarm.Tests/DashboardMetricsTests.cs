@@ -239,6 +239,116 @@ public sealed class DashboardMetricsTests : IDisposable
 		Assert.All(dashboardProjects, project => Assert.True(project.Project.IsActive));
 	}
 
+	[Fact]
+	public async Task GetDashboardRunningJobsAsync_ReturnsOneRunningJobPerActiveProject()
+	{
+		await using var dbContext = CreateDbContext();
+		var service = CreateProjectService(dbContext);
+		var providerId = Guid.NewGuid();
+		var nowUtc = DateTime.UtcNow;
+
+		dbContext.Providers.Add(new Provider
+		{
+			Id = providerId,
+			Name = "Claude",
+			Type = ProviderType.Claude,
+			ConnectionMode = ProviderConnectionMode.CLI
+		});
+
+		var alphaProject = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Alpha",
+			WorkingPath = "/tmp/alpha",
+			IsActive = true
+		};
+		var betaProject = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Beta",
+			WorkingPath = "/tmp/beta",
+			IsActive = true
+		};
+		var gammaProject = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Gamma",
+			WorkingPath = "/tmp/gamma",
+			IsActive = true
+		};
+		var hiddenProject = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Hidden",
+			WorkingPath = "/tmp/hidden",
+			IsActive = false
+		};
+
+		dbContext.Projects.AddRange(alphaProject, betaProject, gammaProject, hiddenProject);
+		dbContext.Jobs.AddRange(
+			new Job
+			{
+				Id = Guid.NewGuid(),
+				ProjectId = alphaProject.Id,
+				ProviderId = providerId,
+				GoalPrompt = "Older alpha job",
+				Status = JobStatus.Processing,
+				CreatedAt = nowUtc.AddMinutes(-50),
+				StartedAt = nowUtc.AddMinutes(-45)
+			},
+			new Job
+			{
+				Id = Guid.NewGuid(),
+				ProjectId = alphaProject.Id,
+				ProviderId = providerId,
+				Title = "Newest alpha job",
+				GoalPrompt = "Newest alpha job",
+				Status = JobStatus.Started,
+				CreatedAt = nowUtc.AddMinutes(-12),
+				StartedAt = nowUtc.AddMinutes(-10),
+				CurrentActivity = "Applying changes"
+			},
+			new Job
+			{
+				Id = Guid.NewGuid(),
+				ProjectId = betaProject.Id,
+				ProviderId = providerId,
+				Title = "Beta planning job",
+				GoalPrompt = "Beta planning job",
+				Status = JobStatus.Planning,
+				CreatedAt = nowUtc.AddMinutes(-8),
+				StartedAt = nowUtc.AddMinutes(-7)
+			},
+			new Job
+			{
+				Id = Guid.NewGuid(),
+				ProjectId = gammaProject.Id,
+				ProviderId = providerId,
+				GoalPrompt = "Queued gamma job",
+				Status = JobStatus.New,
+				CreatedAt = nowUtc.AddMinutes(-5)
+			},
+			new Job
+			{
+				Id = Guid.NewGuid(),
+				ProjectId = hiddenProject.Id,
+				ProviderId = providerId,
+				GoalPrompt = "Hidden running job",
+				Status = JobStatus.Processing,
+				CreatedAt = nowUtc.AddMinutes(-3),
+				StartedAt = nowUtc.AddMinutes(-2)
+			});
+
+		await dbContext.SaveChangesAsync();
+
+		var runningJobs = (await service.GetDashboardRunningJobsAsync()).ToList();
+
+		Assert.Equal(["Beta", "Alpha"], runningJobs.Select(item => item.Project.Name));
+		Assert.Equal("Beta planning job", runningJobs[0].Job.DisplayTitle);
+		Assert.Equal("Newest alpha job", runningJobs[1].Job.DisplayTitle);
+		Assert.All(runningJobs, item => Assert.True(item.Job.Status is JobStatus.Started or JobStatus.Planning or JobStatus.Processing));
+	}
+
 	private VibeSwarmDbContext CreateDbContext() => new(_dbOptions);
 
 	private static ProjectService CreateProjectService(VibeSwarmDbContext dbContext)

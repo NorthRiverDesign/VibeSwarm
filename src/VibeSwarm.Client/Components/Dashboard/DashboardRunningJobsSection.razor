@@ -1,0 +1,55 @@
+@using VibeSwarm.Shared.Utilities
+
+<section>
+	<div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3 mb-3">
+		<div>
+			<h5 class="mb-1 fw-semibold text-truncate">
+				<i class="bi bi-play-circle me-2 opacity-75"></i>Running Jobs
+			</h5>
+			<p class="small text-body-secondary mb-0">Currently active work across your projects.</p>
+		</div>
+
+		<a href="/jobs" class="btn btn-sm btn-secondary flex-shrink-0">View All Jobs</a>
+	</div>
+
+	<div class="list-group">
+		@foreach (var item in Items)
+		{
+			<a href="/jobs/view/@item.Job.Id" class="list-group-item list-group-item-action py-3">
+				<div class="d-flex align-items-start gap-3">
+					<div class="flex-shrink-0 pt-1">
+						<StatusBadge Status="@item.Job.Status.ToString()" />
+					</div>
+
+					<div class="flex-grow-1 min-width-0">
+						<div class="d-flex flex-wrap align-items-center gap-2 mb-1">
+							<span class="fw-semibold text-body">@item.Project.Name</span>
+							<span class="small text-body-tertiary">@GetStartedDisplay(item.Job)</span>
+						</div>
+
+						<p class="mb-1 text-body text-break">@item.Job.DisplayTitle</p>
+
+						@if (!string.IsNullOrWhiteSpace(item.Job.CurrentActivity))
+						{
+							<p class="mb-0 small text-info fst-italic text-break">@item.Job.CurrentActivity</p>
+						}
+					</div>
+
+					<i class="bi bi-chevron-right text-body-tertiary flex-shrink-0 pt-1"></i>
+				</div>
+			</a>
+		}
+	</div>
+</section>
+
+@code {
+	[Parameter]
+	public IReadOnlyList<DashboardRunningJobInfo> Items { get; set; } = [];
+
+	private static string GetStartedDisplay(Job job)
+	{
+		var startedAt = job.StartedAt ?? job.CreatedAt;
+		var elapsed = DateTime.UtcNow - startedAt;
+		return $"Running for {TokenHelper.FormatDuration(elapsed)}";
+	}
+}

@@ -50,6 +50,12 @@ public class DashboardProjectInfo
     public Job? LatestJob { get; set; }
 }
 
+public class DashboardRunningJobInfo
+{
+	public required Project Project { get; set; }
+	public required Job Job { get; set; }
+}
+
 /// <summary>
 /// Aggregated dashboard metrics for completed jobs within a selected time window.
 /// </summary>
@@ -103,4 +109,9 @@ public interface IProjectService
     /// Get dashboard-ready aggregates for completed jobs and duration trends.
     /// </summary>
     Task<DashboardJobMetrics> GetDashboardJobMetricsAsync(int rangeDays, CancellationToken cancellationToken = default);
+
+	/// <summary>
+	/// Get one currently running job per active project for the dashboard.
+	/// </summary>
+	Task<IEnumerable<DashboardRunningJobInfo>> GetDashboardRunningJobsAsync(CancellationToken cancellationToken = default);
 }

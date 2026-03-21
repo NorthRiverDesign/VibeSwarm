@@ -43,23 +43,9 @@ public sealed class DashboardPageTests
 			CreateProjectInfo("Beta", nowUtc.AddHours(-1))
 		};
 
-		var services = new ServiceCollection();
-		services.AddLogging();
-		services.AddSingleton<IProviderService>(new FakeProviderService([activeProvider, disabledProvider]));
-		services.AddSingleton<IProjectService>(new FakeProjectService(dashboardProjects));
-		services.AddSingleton<IVersionControlService>(new FakeVersionControlService());
-		services.AddSingleton(new HttpProviderService(new HttpClient(new StaticJsonHandler())
-		{
-			BaseAddress = new Uri("http://localhost")
-		}));
-
-		await using var renderer = new HtmlRenderer(services.BuildServiceProvider(), NullLoggerFactory.Instance);
-
-		var html = await renderer.Dispatcher.InvokeAsync(async () =>
-		{
-			var output = await renderer.RenderComponentAsync<VibeSwarm.Client.Pages.Index>();
-			return output.ToHtmlString();
-		});
+		var html = await RenderDashboardPageAsync(
+			new FakeProjectService(dashboardProjects),
+			new FakeProviderService([activeProvider, disabledProvider]));
 
 		Assert.Contains("Sort by", html);
 		Assert.Contains("Last ran", html);
@@ -68,6 +54,69 @@ public sealed class DashboardPageTests
 		Assert.DoesNotContain("Copilot", html);
 		Assert.True(html.IndexOf("Beta", StringComparison.Ordinal) < html.IndexOf("Alpha", StringComparison.Ordinal));
 		Assert.True(html.IndexOf("Alpha", StringComparison.Ordinal) < html.IndexOf("Gamma", StringComparison.Ordinal));
+	}
+
+	[Fact]
+	public async Task Dashboard_ShowsRunningJobsSection_WhenProjectsHaveRunningJobs()
+	{
+		var nowUtc = DateTime.UtcNow;
+		var dashboardProjects = new[]
+		{
+			CreateProjectInfo("Alpha", nowUtc.AddHours(-4)),
+			CreateProjectInfo("Beta", nowUtc.AddHours(-2))
+		};
+		var runningJobs = new[]
+		{
+			CreateRunningJobInfo("Beta", "Beta active job", JobStatus.Processing, nowUtc.AddMinutes(-10), "Updating files"),
+			CreateRunningJobInfo("Alpha", "Alpha active job", JobStatus.Started, nowUtc.AddMinutes(-25))
+		};
+
+		var html = await RenderDashboardPageAsync(
+			new FakeProjectService(dashboardProjects, runningJobs),
+			new FakeProviderService([]));
+
+		Assert.Contains("Running Jobs", html);
+		Assert.Contains("Beta active job", html);
+		Assert.Contains("Alpha active job", html);
+		Assert.Contains("Updating files", html);
+		Assert.True(html.IndexOf("Beta active job", StringComparison.Ordinal) < html.IndexOf("Alpha active job", StringComparison.Ordinal));
+	}
+
+	[Fact]
+	public async Task Dashboard_HidesRunningJobsSection_WhenNoProjectsHaveRunningJobs()
+	{
+		var dashboardProjects = new[]
+		{
+			CreateProjectInfo("Alpha", DateTime.UtcNow.AddHours(-1))
+		};
+
+		var html = await RenderDashboardPageAsync(
+			new FakeProjectService(dashboardProjects, []),
+			new FakeProviderService([]));
+
+		Assert.DoesNotContain("Running Jobs", html);
+	}
+
+	private static async Task<string> RenderDashboardPageAsync(IProjectService projectService, IProviderService providerService)
+	{
+		var services = new ServiceCollection();
+		services.AddLogging();
+		services.AddSingleton(providerService);
+		services.AddSingleton(projectService);
+		services.AddSingleton<IVersionControlService>(new FakeVersionControlService());
+		services.AddSingleton<NavigationManager>(new TestNavigationManager());
+		services.AddSingleton(new HttpProviderService(new HttpClient(new StaticJsonHandler())
+		{
+			BaseAddress = new Uri("http://localhost")
+		}));
+
+		await using var renderer = new HtmlRenderer(services.BuildServiceProvider(), NullLoggerFactory.Instance);
+
+		return await renderer.Dispatcher.InvokeAsync(async () =>
+		{
+			var output = await renderer.RenderComponentAsync<VibeSwarm.Client.Pages.Index>();
+			return output.ToHtmlString();
+		});
 	}
 
 	private static DashboardProjectInfo CreateProjectInfo(string name, DateTime? latestJobCreatedAt = null)
@@ -97,6 +146,39 @@ public sealed class DashboardPageTests
 		};
 	}
 
+	private static DashboardRunningJobInfo CreateRunningJobInfo(
+		string projectName,
+		string title,
+		JobStatus status,
+		DateTime startedAt,
+		string? currentActivity = null)
+	{
+		var projectId = Guid.NewGuid();
+
+		return new DashboardRunningJobInfo
+		{
+			Project = new Project
+			{
+				Id = projectId,
+				Name = projectName,
+				WorkingPath = $"/tmp/{projectName.ToLowerInvariant()}",
+				CreatedAt = DateTime.UtcNow.AddDays(-7)
+			},
+			Job = new Job
+			{
+				Id = Guid.NewGuid(),
+				ProjectId = projectId,
+				ProviderId = Guid.NewGuid(),
+				Title = title,
+				GoalPrompt = title,
+				Status = status,
+				CreatedAt = startedAt.AddMinutes(-1),
+				StartedAt = startedAt,
+				CurrentActivity = currentActivity
+			}
+		};
+	}
+
 	private sealed class FakeProviderService(IReadOnlyList<Provider> providers) : IProviderService
 	{
 		private readonly IReadOnlyList<Provider> _providers = providers;
@@ -119,9 +201,12 @@ public sealed class DashboardPageTests
 		public Task<CliUpdateResult> UpdateCliAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	}
 
-	private sealed class FakeProjectService(IReadOnlyList<DashboardProjectInfo> dashboardProjects) : IProjectService
+	private sealed class FakeProjectService(
+		IReadOnlyList<DashboardProjectInfo> dashboardProjects,
+		IReadOnlyList<DashboardRunningJobInfo>? runningJobs = null) : IProjectService
 	{
 		private readonly IReadOnlyList<DashboardProjectInfo> _dashboardProjects = dashboardProjects;
+		private readonly IReadOnlyList<DashboardRunningJobInfo> _runningJobs = runningJobs ?? [];
 
 		public Task<IEnumerable<Project>> GetAllAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Project>>(_dashboardProjects.Select(project => project.Project));
 		public Task<IEnumerable<Project>> GetRecentAsync(int count, CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Project>>(_dashboardProjects.Select(project => project.Project).Take(count));
@@ -140,6 +225,8 @@ public sealed class DashboardPageTests
 				RangeDays = rangeDays,
 				Buckets = []
 			});
+		public Task<IEnumerable<DashboardRunningJobInfo>> GetDashboardRunningJobsAsync(CancellationToken cancellationToken = default)
+			=> Task.FromResult<IEnumerable<DashboardRunningJobInfo>>(_runningJobs);
 	}
 
 	private sealed class FakeVersionControlService : IVersionControlService
@@ -195,6 +282,19 @@ public sealed class DashboardPageTests
 			}
 
 			return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
+		}
+	}
+
+	private sealed class TestNavigationManager : NavigationManager
+	{
+		public TestNavigationManager()
+		{
+			Initialize("http://localhost/", "http://localhost/");
+		}
+
+		protected override void NavigateToCore(string uri, bool forceLoad)
+		{
+			Uri = ToAbsoluteUri(uri).ToString();
 		}
 	}
 }

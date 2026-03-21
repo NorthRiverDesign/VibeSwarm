@@ -154,6 +154,8 @@ public sealed class ProjectsPageTests
 				RangeDays = rangeDays,
 				Buckets = []
 			});
+		public Task<IEnumerable<DashboardRunningJobInfo>> GetDashboardRunningJobsAsync(CancellationToken cancellationToken = default)
+			=> Task.FromResult<IEnumerable<DashboardRunningJobInfo>>([]);
 	}
 
 	private sealed class FakeIdeaService : IIdeaService

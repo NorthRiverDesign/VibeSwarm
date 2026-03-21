@@ -152,4 +152,8 @@ public class ProjectsController : ControllerBase
     [HttpGet("dashboard-metrics")]
     public async Task<IActionResult> GetDashboardMetrics([FromQuery] int rangeDays = 7, CancellationToken ct = default)
         => Ok(await _projectService.GetDashboardJobMetricsAsync(rangeDays, ct));
+
+	[HttpGet("dashboard-running-jobs")]
+	public async Task<IActionResult> GetDashboardRunningJobs(CancellationToken ct = default)
+		=> Ok(await _projectService.GetDashboardRunningJobsAsync(ct));
 }

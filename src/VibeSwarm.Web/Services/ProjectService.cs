@@ -12,6 +12,7 @@ namespace VibeSwarm.Web.Services;
 public class ProjectService : IProjectService
 {
 	private static readonly HashSet<int> ValidDashboardRanges = [1, 7, 30, 90];
+	private static readonly JobStatus[] DashboardRunningStatuses = [JobStatus.Started, JobStatus.Planning, JobStatus.Processing];
 	private readonly VibeSwarmDbContext _dbContext;
 	private readonly IProjectEnvironmentCredentialService _credentialService;
 	private readonly IVersionControlService _versionControlService;
@@ -396,6 +397,48 @@ public class ProjectService : IProjectService
 				})
 				.ToList()
 		};
+	}
+
+	public async Task<IEnumerable<DashboardRunningJobInfo>> GetDashboardRunningJobsAsync(CancellationToken cancellationToken = default)
+	{
+		var activeProjects = await BuildProjectQuery()
+			.AsNoTracking()
+			.Where(project => project.IsActive)
+			.ToListAsync(cancellationToken);
+
+		if (!activeProjects.Any())
+		{
+			return Enumerable.Empty<DashboardRunningJobInfo>();
+		}
+
+		var projectIds = activeProjects.Select(project => project.Id).ToList();
+		var runningJobs = await _dbContext.Jobs
+			.AsNoTracking()
+			.Include(job => job.Provider)
+			.Where(job => projectIds.Contains(job.ProjectId) && DashboardRunningStatuses.Contains(job.Status))
+			.OrderByDescending(job => job.StartedAt ?? job.CreatedAt)
+			.ThenByDescending(job => job.CreatedAt)
+			.ToListAsync(cancellationToken);
+
+		if (!runningJobs.Any())
+		{
+			return Enumerable.Empty<DashboardRunningJobInfo>();
+		}
+
+		var runningJobsByProject = runningJobs
+			.GroupBy(job => job.ProjectId)
+			.ToDictionary(group => group.Key, group => group.First());
+
+		return activeProjects
+			.Where(project => runningJobsByProject.ContainsKey(project.Id))
+			.Select(project => new DashboardRunningJobInfo
+			{
+				Project = project,
+				Job = runningJobsByProject[project.Id]
+			})
+			.OrderByDescending(item => item.Job.StartedAt ?? item.Job.CreatedAt)
+			.ThenBy(item => item.Project.Name)
+			.ToList();
 	}
 
 	private IQueryable<Project> BuildProjectQuery()

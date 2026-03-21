@@ -4,6 +4,10 @@
 @inject IProjectService ProjectService
 @inject IVersionControlService VersionControlService
 @inject HttpProviderService HttpProviderService
+@inject NavigationManager NavigationManager
+@implements IAsyncDisposable
+@using System.Threading
+@using Microsoft.AspNetCore.SignalR.Client
 
 <PageHeader Title="Dashboard" Subtitle="Your distributed agent job management system" />
 
@@ -11,6 +15,13 @@
     <div class="col-12">
         <DashboardJobAnalyticsSection />
     </div>
+
+    @if (RunningDashboardJobs.Any())
+    {
+        <div class="col-12">
+            <DashboardRunningJobsSection Items="@RunningDashboardJobs" />
+        </div>
+    }
 
     <div class="col-12">
         <section>
@@ -101,9 +112,14 @@
 @code {
     private List<Provider> AllProviders { get; set; } = new();
     private List<DashboardProjectInfo> DashboardProjects { get; set; } = new();
+    private List<DashboardRunningJobInfo> RunningDashboardJobs { get; set; } = new();
     private Dictionary<Guid, ProviderUsageSummary> UsageSummaries { get; set; } = new();
     private DashboardProjectSortOption SelectedProjectSort { get; set; } = DashboardProjectSortOption.LastRan;
     private bool IsLoading { get; set; } = true;
+    private bool IsRefreshingDashboardData { get; set; }
+    private bool PendingDashboardRefresh { get; set; }
+    private HubConnection? HubConnection { get; set; }
+    private CancellationTokenSource? SignalRCts { get; set; }
     private bool HasConfiguredProviders => AllProviders.Any();
     private IReadOnlyList<Provider> VisibleProviders => AllProviders
         .Where(provider => provider.IsEnabled)
@@ -116,22 +132,28 @@
         try
         {
             var providersTask = ProviderService.GetAllAsync();
-            var projectsTask = ProjectService.GetRecentWithLatestJobAsync(10);
             var usageTask = HttpProviderService.GetAllUsageSummariesAsync();
+            var dashboardDataTask = LoadDashboardProjectsAsync();
 
-            await Task.WhenAll(providersTask, projectsTask, usageTask);
+            await Task.WhenAll(providersTask, usageTask, dashboardDataTask);
 
             AllProviders = (await providersTask).ToList();
-            DashboardProjects = (await projectsTask).ToList();
             UsageSummaries = await usageTask;
-
-            // Fetch current branch for each project in parallel
-            await FetchBranchInfoAsync();
         }
         finally
         {
             IsLoading = false;
         }
+    }
+
+    protected override Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _ = InitializeSignalRSafeAsync();
+        }
+
+        return Task.CompletedTask;
     }
 
     private string? GetCliVersion(Guid providerId)
@@ -163,5 +185,145 @@
         });
 
         await Task.WhenAll(branchTasks);
+    }
+
+    private async Task LoadDashboardProjectsAsync()
+    {
+        var projectsTask = ProjectService.GetRecentWithLatestJobAsync(10);
+        var runningJobsTask = ProjectService.GetDashboardRunningJobsAsync();
+
+        await Task.WhenAll(projectsTask, runningJobsTask);
+
+        DashboardProjects = (await projectsTask).ToList();
+        RunningDashboardJobs = (await runningJobsTask).ToList();
+
+        await FetchBranchInfoAsync();
+    }
+
+    private async Task InitializeSignalRSafeAsync()
+    {
+        try
+        {
+            SignalRCts = new CancellationTokenSource();
+            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(SignalRCts.Token, timeoutCts.Token);
+
+            await InitializeSignalRAsync(linkedCts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            Console.WriteLine("Dashboard SignalR connection timed out.");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Dashboard SignalR initialization failed: {ex.Message}");
+        }
+    }
+
+    private async Task InitializeSignalRAsync(CancellationToken cancellationToken)
+    {
+        HubConnection = new HubConnectionBuilder()
+            .WithUrl(NavigationManager.ToAbsoluteUri("/hubs/job"))
+            .WithAutomaticReconnect([TimeSpan.Zero, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(10)])
+            .Build();
+
+        HubConnection.On<string, string>("JobStatusChanged", async (_, _) =>
+        {
+            await QueueDashboardRefreshAsync();
+        });
+
+        HubConnection.On<string, string>("JobCreated", async (_, _) =>
+        {
+            await QueueDashboardRefreshAsync();
+        });
+
+        HubConnection.On<string, string>("JobDeleted", async (_, _) =>
+        {
+            await QueueDashboardRefreshAsync();
+        });
+
+        HubConnection.On<string, bool, string?>("JobCompleted", async (_, _, _) =>
+        {
+            await QueueDashboardRefreshAsync();
+        });
+
+        HubConnection.On("JobListChanged", async () =>
+        {
+            await QueueDashboardRefreshAsync();
+        });
+
+        HubConnection.On<string, string, DateTime>("JobActivityUpdated", async (jobId, activity, timestamp) =>
+        {
+            if (!Guid.TryParse(jobId, out var parsedJobId))
+            {
+                return;
+            }
+
+            var runningJob = RunningDashboardJobs.FirstOrDefault(item => item.Job.Id == parsedJobId);
+            if (runningJob is null)
+            {
+                return;
+            }
+
+            runningJob.Job.CurrentActivity = activity;
+            runningJob.Job.LastActivityAt = timestamp;
+            await InvokeAsync(StateHasChanged);
+        });
+
+        HubConnection.Reconnected += async _ =>
+        {
+            if (HubConnection is null)
+            {
+                return;
+            }
+
+            await HubConnection.InvokeAsync("SubscribeToJobList");
+            await QueueDashboardRefreshAsync();
+        };
+
+        await HubConnection.StartAsync(cancellationToken);
+        await HubConnection.InvokeAsync("SubscribeToJobList");
+    }
+
+    private async Task QueueDashboardRefreshAsync()
+    {
+        await InvokeAsync(RefreshDashboardProjectsSafelyAsync);
+    }
+
+    private async Task RefreshDashboardProjectsSafelyAsync()
+    {
+        if (IsRefreshingDashboardData)
+        {
+            PendingDashboardRefresh = true;
+            return;
+        }
+
+        do
+        {
+            PendingDashboardRefresh = false;
+            IsRefreshingDashboardData = true;
+
+            try
+            {
+                await LoadDashboardProjectsAsync();
+                await InvokeAsync(StateHasChanged);
+            }
+            finally
+            {
+                IsRefreshingDashboardData = false;
+            }
+        }
+        while (PendingDashboardRefresh);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        SignalRCts?.Cancel();
+        SignalRCts?.Dispose();
+
+        if (HubConnection is not null)
+        {
+            await HubConnection.DisposeAsync();
+        }
     }
 }
