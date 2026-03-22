@@ -126,6 +126,14 @@
         <script src="_framework/blazor.webassembly.js" autostart="false"></script>
 
         <script>
+            window.scrollToEnd = function (element) {
+                if (element) {
+                    element.scrollLeft = element.scrollWidth;
+                }
+            };
+        </script>
+
+        <script>
             // Clipboard helper with fallback for older browsers and non-HTTPS contexts
             window.copyToClipboard = function (text) {
                 if (navigator.clipboard && navigator.clipboard.writeText) {

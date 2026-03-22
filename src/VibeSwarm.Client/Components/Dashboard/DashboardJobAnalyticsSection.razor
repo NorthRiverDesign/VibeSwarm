@@ -2,14 +2,10 @@
 @using VibeSwarm.Shared.Utilities
 
 <section>
-	<div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-2 gap-lg-3 mb-2 mb-lg-3">
-		<div>
-			<h5 class="mb-1 fw-semibold text-truncate">
-				<i class="bi bi-graph-up-arrow me-2 opacity-75"></i>Job Analytics
-			</h5>
-			<p class="small text-body-secondary mb-0">Track completed jobs and average duration across recent activity.
-			</p>
-		</div>
+	<div class="d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-2 mb-3">
+		<h5 class="mb-0 fw-semibold text-truncate">
+			<i class="bi bi-graph-up-arrow me-2 opacity-75"></i>Job Analytics
+		</h5>
 
 		<div class="d-flex flex-wrap gap-1 gap-sm-2">
 			@foreach (var rangeDays in RangeOptions)
@@ -41,18 +37,18 @@
 	}
 	else
 	{
-		<div class="row g-2 g-lg-3">
-			<div class="col-12 col-xl-6">
-				<DashboardMetricChart Title="Completed Jobs"  Subtitle="@GetChartSubtitle()"  Icon="check2-circle"
-									  Summary="@GetCompletedSummary()"  EmptyIcon="check2-circle"  EmptyTitle="No completed jobs yet"
+		<div class="row g-3">
+			<div class="col-12 col-lg-6">
+				<DashboardMetricChart Title="Completed Jobs" Subtitle="@GetChartSubtitle()" Icon="check2-circle"
+									  Summary="@GetCompletedSummary()" EmptyIcon="check2-circle" EmptyTitle="No completed jobs yet"
 									  EmptyMessage="Completed jobs from the selected time range will show up here."
-									  Points="@GetCompletedChartPoints()"  BarColor="var(--bs-success)"
-									  UseIntegerYAxisTicks="true"  YAxisLabelFormatter="FormatCompletedAxisLabel" />
+									  Points="@GetCompletedChartPoints()" BarColor="var(--bs-success)"  UseIntegerYAxisTicks="true"
+									  YAxisLabelFormatter="FormatCompletedAxisLabel" />
 			</div>
 
-			<div class="col-12 col-xl-6">
-				<DashboardMetricChart Title="Average Job Duration"  Subtitle="@GetChartSubtitle()"  Icon="stopwatch"
-									  Summary="@GetDurationSummary()"  EmptyIcon="stopwatch"  EmptyTitle="No duration data yet"
+			<div class="col-12 col-lg-6">
+				<DashboardMetricChart Title="Average Job Duration" Subtitle="@GetChartSubtitle()" Icon="stopwatch"
+									  Summary="@GetDurationSummary()" EmptyIcon="stopwatch" EmptyTitle="No duration data yet"
 									  EmptyMessage="Average duration appears after jobs complete with timing information."
 									  Points="@GetDurationChartPoints()" BarColor="var(--bs-info)"
 									  YAxisLabelFormatter="FormatDurationAxisLabel" />
