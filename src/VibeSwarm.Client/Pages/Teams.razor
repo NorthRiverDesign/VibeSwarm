@@ -1,6 +1,7 @@
 @page "/teams"
 @attribute [Authorize]
 @inject ITeamRoleService TeamRoleService
+@inject NotificationService NotificationService
 @using VibeSwarm.Shared.Data
 @using VibeSwarm.Shared.Utilities
 
@@ -117,6 +118,10 @@ else
 		try
 		{
 			_teamRoles = (await TeamRoleService.GetAllAsync()).ToList();
+		}
+		catch (Exception ex)
+		{
+			NotificationService.ShowError($"Failed to load team roles: {ex.Message}");
 		}
 		finally
 		{

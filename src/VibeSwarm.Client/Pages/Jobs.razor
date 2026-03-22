@@ -316,10 +316,18 @@
         {
             if (HasActiveJobs() && !_isRefreshing)
             {
-                await InvokeAsync(async () =>
-        {
-            await RefreshJobsSafely();
-        });
+                try
+                {
+                    await InvokeAsync(async () =>
+                    {
+                        await RefreshJobsSafely();
+                    });
+                }
+                catch (ObjectDisposedException) { }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[Jobs] Auto-refresh error: {ex.Message}");
+                }
             }
         }, null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
     }
@@ -338,6 +346,10 @@
             _isRefreshing = true;
             await LoadJobsAsync();
             StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Jobs] Refresh error: {ex.Message}");
         }
         finally
         {
@@ -529,6 +541,10 @@ TimeSpan.FromSeconds(10) })
         {
             _projects = await ProjectService.GetAllAsync();
         }
+        catch (Exception ex)
+        {
+            NotificationService.ShowError($"Failed to load projects: {ex.Message}");
+        }
         finally
         {
             _isLoadingProjects = false;
@@ -543,6 +559,10 @@ TimeSpan.FromSeconds(10) })
             _jobsResult = await JobService.GetPagedAsync(_selectedProjectId, _statusFilter, _pageNumber, JobsPageSize);
             _pageNumber = _jobsResult.PageNumber;
             _hasLoadedJobsInitially = true;
+        }
+        catch (Exception ex)
+        {
+            NotificationService.ShowError($"Failed to load jobs: {ex.Message}");
         }
         finally
         {

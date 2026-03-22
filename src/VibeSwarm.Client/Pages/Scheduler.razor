@@ -116,6 +116,10 @@ else
 		{
 			_schedules = (await JobScheduleService.GetAllAsync()).ToList();
 		}
+		catch (Exception ex)
+		{
+			NotificationService.ShowError($"Failed to load schedules: {ex.Message}");
+		}
 		finally
 		{
 			_isLoading = false;

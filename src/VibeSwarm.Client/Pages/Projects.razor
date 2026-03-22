@@ -340,6 +340,10 @@ else
                 });
             }
             catch (ObjectDisposedException) { }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Projects] Auto-refresh error: {ex.Message}");
+            }
             finally
             {
                 _isAutoRefreshing = false;
@@ -413,6 +417,10 @@ else
                 })
                 .ToList();
             HasLoadedProjectsInitially = true;
+        }
+        catch (Exception ex)
+        {
+            NotificationService.ShowError($"Failed to load projects: {ex.Message}");
         }
         finally
         {

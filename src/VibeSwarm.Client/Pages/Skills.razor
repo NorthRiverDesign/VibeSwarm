@@ -1,6 +1,7 @@
 @page "/skills"
 @attribute [Authorize]
 @inject ISkillService SkillService
+@inject NotificationService NotificationService
 @using VibeSwarm.Shared.Utilities
 
 <PageHeader Title="Skills" Subtitle="Define agent skills that can be exposed via MCP to AI providers">
@@ -100,6 +101,10 @@ else
 		try
 		{
 			_skillsList = (await SkillService.GetAllAsync()).ToList();
+		}
+		catch (Exception ex)
+		{
+			NotificationService.ShowError($"Failed to load skills: {ex.Message}");
 		}
 		finally
 		{

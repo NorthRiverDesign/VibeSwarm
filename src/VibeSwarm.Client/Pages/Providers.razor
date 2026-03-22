@@ -320,6 +320,10 @@
             UsageSummaries = await HttpProviderService.GetAllUsageSummariesAsync();
             CommonProviderStatuses = (await CommonProviderSetupService.GetStatusesAsync()).ToList();
         }
+        catch (Exception ex)
+        {
+            NotificationService.ShowError($"Failed to load providers: {ex.Message}");
+        }
         finally
         {
             IsLoading = false;

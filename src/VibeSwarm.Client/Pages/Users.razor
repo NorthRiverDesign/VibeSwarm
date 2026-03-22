@@ -324,6 +324,10 @@ else
 		{
 			_users = (await UserService.GetAllUsersAsync()).ToList();
 		}
+		catch (Exception ex)
+		{
+			NotificationService.ShowError($"Failed to load users: {ex.Message}");
+		}
 		finally
 		{
 			_isLoading = false;
