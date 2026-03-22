@@ -50,6 +50,7 @@ builder.Services.AddScoped<HttpInferenceProviderService>();
 builder.Services.AddScoped<IInferenceProviderService>(sp => sp.GetRequiredService<HttpInferenceProviderService>());
 builder.Services.AddScoped<IInferenceService, HttpInferenceService>();
 builder.Services.AddScoped<IAutoPilotService, HttpAutoPilotService>();
+builder.Services.AddScoped<IDatabaseService, HttpDatabaseService>();
 
 // UI services
 builder.Services.AddScoped<NotificationService>();

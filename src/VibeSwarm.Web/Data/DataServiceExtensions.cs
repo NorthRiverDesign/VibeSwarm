@@ -57,6 +57,7 @@ public static class DataServiceExtensions
 		services.AddScoped<IProviderUsageService, ProviderUsageService>();
 		services.AddScoped<IAutoPilotService, AutoPilotService>();
 		services.AddScoped<AutoPilotService>();
+		services.AddScoped<IDatabaseService, DatabaseService>();
 		services.AddScoped<ICommonProviderSetupService, CommonProviderSetupService>();
 		services.AddScoped<ProviderCliDetectionService>();
 		services.AddSingleton<IFileSystemService, FileSystemService>();

@@ -4,6 +4,10 @@
 @inject AppTimeZoneService AppTimeZoneService
 @inject IFileSystemService FileSystemService
 @inject NotificationService NotificationService
+@inject IDatabaseService DatabaseService
+@using System.Text.Json
+@using System.Text.Json.Serialization
+@using VibeSwarm.Shared.Models
 @using VibeSwarm.Shared.Utilities
 
 <PageHeader Title="Settings" />
@@ -12,6 +16,11 @@
 <li class="nav-item" role="presentation">
 <button class="nav-link @(_activeTab == "app" ? "active" : "")" @onclick='() => SetTab("app")' type="button">
 <i class="bi bi-gear me-2 d-none d-sm-inline"></i>App Settings
+</button>
+</li>
+<li class="nav-item" role="presentation">
+<button class="nav-link @(_activeTab == "database" ? "active" : "")" @onclick='() => SetTab("database")' type="button">
+<i class="bi bi-database me-2 d-none d-sm-inline"></i>Database
 </button>
 </li>
 <li class="nav-item" role="presentation">
@@ -173,6 +182,166 @@ refactoring beyond the task.
 </div>
 </div>
 }
+else if (_activeTab == "database")
+{
+<div class="card mb-3">
+<div class="card-header bg-body-secondary">
+<h5 class="mb-0 fw-semibold">
+<i class="bi bi-box-arrow-up me-2"></i>Export
+</h5>
+</div>
+<div class="card-body">
+<p class="text-body-secondary small mb-3">
+Download a JSON backup of your configuration including projects, ideas, skills, team roles,
+and schedules. Provider credentials and job history are not included.
+</p>
+<a href="/api/database/export" class="btn btn-primary">
+<i class="bi bi-download me-2"></i>Download Export
+</a>
+</div>
+</div>
+
+<div class="card">
+<div class="card-header bg-body-secondary">
+<h5 class="mb-0 fw-semibold">
+<i class="bi bi-box-arrow-in-down me-2"></i>Import
+</h5>
+</div>
+<div class="card-body">
+<p class="text-body-secondary small mb-3">
+Import a previously exported JSON file. Existing records with the same name will be skipped
+to avoid duplicates. New ideas will be added to existing projects.
+</p>
+
+@if (_importResult == null && !_isImporting)
+{
+<div class="mb-3">
+<label class="form-label">Select export file</label>
+<InputFile OnChange="OnImportFileSelected" accept=".json" class="form-control" />
+</div>
+
+@if (_importParseError != null)
+{
+<div class="alert alert-danger d-flex align-items-start gap-2 mb-3">
+<i class="bi bi-exclamation-triangle-fill flex-shrink-0 mt-1"></i>
+<div>@_importParseError</div>
+</div>
+}
+
+@if (_importPreview != null)
+{
+<div class="border rounded p-3 mb-3 bg-body-secondary">
+<h6 class="fw-semibold mb-2">Preview</h6>
+<div class="d-flex flex-wrap gap-3 small">
+<div class="d-flex align-items-center gap-1">
+<i class="bi bi-folder text-primary"></i>
+<span>@_importPreview.Projects.Count project(s)</span>
+</div>
+<div class="d-flex align-items-center gap-1">
+<i class="bi bi-lightbulb text-warning"></i>
+<span>@_importPreview.Projects.Sum(p => p.Ideas.Count) idea(s)</span>
+</div>
+<div class="d-flex align-items-center gap-1">
+<i class="bi bi-tools text-success"></i>
+<span>@_importPreview.Skills.Count skill(s)</span>
+</div>
+<div class="d-flex align-items-center gap-1">
+<i class="bi bi-people text-info"></i>
+<span>@_importPreview.TeamRoles.Count team role(s)</span>
+</div>
+<div class="d-flex align-items-center gap-1">
+<i class="bi bi-clock text-secondary"></i>
+<span>@_importPreview.Schedules.Count schedule(s)</span>
+</div>
+</div>
+@if (_importPreview.ExportedAt != default)
+{
+<div class="text-body-secondary small mt-2">
+Exported @_importPreview.ExportedAt.ToString("g") UTC
+</div>
+}
+</div>
+
+<button class="btn btn-primary" @onclick="ConfirmImport">
+<i class="bi bi-check-lg me-1"></i>Import
+</button>
+}
+}
+else if (_isImporting)
+{
+<div class="d-flex align-items-center gap-2 text-body-secondary">
+<span class="spinner-border spinner-border-sm" role="status"></span>
+<span>Importing...</span>
+</div>
+}
+else if (_importResult != null)
+{
+@if (_importResult.Imported.Count > 0)
+{
+<div class="mb-3">
+<h6 class="text-success fw-semibold mb-2">
+<i class="bi bi-check-circle me-1"></i>Imported (@_importResult.Imported.Count)
+</h6>
+<ul class="list-unstyled small mb-0">
+@foreach (var item in _importResult.Imported)
+{
+<li class="d-flex align-items-start gap-1 mb-1">
+<i class="bi bi-check text-success flex-shrink-0 mt-1"></i>
+<span>@item</span>
+</li>
+}
+</ul>
+</div>
+}
+
+@if (_importResult.Skipped.Count > 0)
+{
+<div class="mb-3">
+<h6 class="text-warning fw-semibold mb-2">
+<i class="bi bi-skip-forward me-1"></i>Skipped — already exists (@_importResult.Skipped.Count)
+</h6>
+<ul class="list-unstyled small mb-0">
+@foreach (var item in _importResult.Skipped)
+{
+<li class="d-flex align-items-start gap-1 mb-1">
+<i class="bi bi-dash text-warning flex-shrink-0 mt-1"></i>
+<span>@item</span>
+</li>
+}
+</ul>
+</div>
+}
+
+@if (_importResult.Errors.Count > 0)
+{
+<div class="mb-3">
+<h6 class="text-danger fw-semibold mb-2">
+<i class="bi bi-exclamation-triangle me-1"></i>Errors (@_importResult.Errors.Count)
+</h6>
+<ul class="list-unstyled small mb-0">
+@foreach (var item in _importResult.Errors)
+{
+<li class="d-flex align-items-start gap-1 mb-1">
+<i class="bi bi-x text-danger flex-shrink-0 mt-1"></i>
+<span>@item</span>
+</li>
+}
+</ul>
+</div>
+}
+
+@if (_importResult.Imported.Count == 0 && _importResult.Skipped.Count == 0 && _importResult.Errors.Count == 0)
+{
+<p class="text-body-secondary small">Nothing to import.</p>
+}
+
+<button class="btn btn-secondary btn-sm" @onclick="ResetImport">
+<i class="bi bi-arrow-counterclockwise me-1"></i>Import another file
+</button>
+}
+</div>
+</div>
+}
 else
 {
 <div class="card">
@@ -247,6 +416,12 @@ VibeSwarm can work with any directory that the host process has access to.
 <ScanProjectsModal @ref="_scanProjectsModal" OnProjectsImported="OnProjectsImported" />
 
 @code {
+private static readonly JsonSerializerOptions ImportJsonOptions = new()
+{
+	PropertyNameCaseInsensitive = true,
+	Converters = { new JsonStringEnumConverter() },
+};
+
 private AppSettings _settings = new();
 private bool _isLoading = true;
 private bool _isSaving = false;
@@ -256,6 +431,12 @@ private DirectoryBrowser? _directoryBrowser;
 private ScanProjectsModal? _scanProjectsModal;
 private string _activeTab = "app";
 private IReadOnlyList<TimeZoneInfo> _timeZones = [];
+
+// Database tab state
+private DatabaseExportDto? _importPreview;
+private DatabaseImportResult? _importResult;
+private string? _importParseError;
+private bool _isImporting;
 
 private IOrderedEnumerable<IGrouping<string, TimeZoneInfo>> GetGroupedTimeZones()
 {
@@ -387,5 +568,65 @@ private void OnProjectsImported()
 {
 NotificationService.ShowSuccess("Projects imported successfully!");
 StateHasChanged();
+}
+
+private async Task OnImportFileSelected(InputFileChangeEventArgs e)
+{
+_importPreview = null;
+_importParseError = null;
+
+var file = e.File;
+if (file == null)
+	return;
+
+try
+{
+	using var stream = file.OpenReadStream(maxAllowedSize: 50 * 1024 * 1024); // 50 MB limit
+	var export = await JsonSerializer.DeserializeAsync<DatabaseExportDto>(stream, ImportJsonOptions);
+	if (export == null)
+	{
+		_importParseError = "The file could not be parsed as a valid VibeSwarm export.";
+		return;
+	}
+	_importPreview = export;
+}
+catch (JsonException ex)
+{
+	_importParseError = $"Invalid JSON: {ex.Message}";
+}
+catch (Exception ex)
+{
+	_importParseError = $"Failed to read file: {ex.Message}";
+}
+}
+
+private async Task ConfirmImport()
+{
+if (_importPreview == null)
+	return;
+
+_isImporting = true;
+
+try
+{
+	_importResult = await DatabaseService.ImportAsync(_importPreview);
+	NotificationService.ShowSuccess("Import complete!");
+}
+catch (Exception ex)
+{
+	NotificationService.ShowError($"Import failed: {ex.Message}");
+	_isImporting = false;
+	return;
+}
+
+_isImporting = false;
+_importPreview = null;
+}
+
+private void ResetImport()
+{
+_importResult = null;
+_importPreview = null;
+_importParseError = null;
 }
 }
