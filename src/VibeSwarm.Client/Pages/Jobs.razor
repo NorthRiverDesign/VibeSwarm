@@ -207,7 +207,8 @@
 								 Activity="@((job.Status == JobStatus.Started || job.Status == JobStatus.Planning || job.Status == JobStatus.Processing) ? (job.CurrentActivity ?? "Working...") : null)"
 								 TimeDisplay="@GetTimeDisplay(job)" Cost="@job.TotalCostUsd" InputTokens="@job.InputTokens"
 								 OutputTokens="@job.OutputTokens" CurrentCycle="@job.CurrentCycle" MaxCycles="@job.MaxCycles"
-								 CycleMode="@job.CycleMode" OnClick="@(() => NavigateToJob(job.Id))" />
+								 CycleMode="@job.CycleMode" TeamRoleName="@job.TeamRole?.Name"
+								 OnClick="@(() => NavigateToJob(job.Id))" />
 				}
 			}
 		</div>

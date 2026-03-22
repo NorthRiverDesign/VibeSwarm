@@ -45,7 +45,7 @@ else
 					   OnCancel="CancelJob" OnForceCancel="ForceCancelJob"
 					   CanForceReset="@CanForceReset" IsForceResetting="@IsForceResetting" OnForceReset="ForceResetJob"
 					   CurrentActivity="@Job.CurrentActivity" LastActivityAt="@Job.LastActivityAt" CurrentCycle="@Job.CurrentCycle"
-					   MaxCycles="@Job.MaxCycles" CycleMode="@Job.CycleMode" />
+					   MaxCycles="@Job.MaxCycles" CycleMode="@Job.CycleMode" TeamRoleName="@Job.TeamRole?.Name" />
 
     @* Main Content - Column Layout *@
     <div class="row g-3 g-lg-4">
