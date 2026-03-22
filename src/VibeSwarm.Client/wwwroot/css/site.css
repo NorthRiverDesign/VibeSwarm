@@ -647,6 +647,20 @@ body.vs-modal-open {
 		max-height: calc(100vh - var(--vs-safe-area-top) - var(--vs-safe-area-bottom) - 3.5rem);
 		max-height: calc(100dvh - var(--vs-safe-area-top) - var(--vs-safe-area-bottom) - 3.5rem);
 	}
+	/* Expand small modals to standard width on desktop */
+	.vs-modal-dialog.modal-sm {
+		max-width: 520px;
+	}
+	/* Expand default-size modals to slightly wider on desktop */
+	.vs-modal-dialog:not(.modal-sm):not(.modal-lg):not(.modal-xl) {
+		max-width: 640px;
+	}
+	/* Frosted-glass backdrop on desktop — lower opacity lets the blur be visible */
+	.vs-modal-backdrop {
+		background: rgba(0, 0, 0, 0.5) !important;
+		backdrop-filter: blur(24px);
+		-webkit-backdrop-filter: blur(24px);
+	}
 	.directory-list { max-height: 400px; }
 
 	.main-content:has(.jobs-inbox-layout) {
