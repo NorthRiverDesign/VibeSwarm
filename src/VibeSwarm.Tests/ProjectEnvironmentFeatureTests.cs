@@ -440,16 +440,16 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 
 		var resources = await service.GenerateExecutionResourcesAsync(ProviderType.Copilot);
 
-		Assert.NotNull(resources);
-		Assert.Null(resources!.ConfigFilePath);
-		Assert.Null(resources.BrowserArtifactsDirectory);
-
 		if (OperatingSystem.IsWindows())
 		{
-			Assert.Null(resources.BashEnvFilePath);
+			// On Windows no bash env file is created; with no MCP needs the service returns null.
+			Assert.Null(resources);
 			return;
 		}
 
+		Assert.NotNull(resources);
+		Assert.Null(resources!.ConfigFilePath);
+		Assert.Null(resources.BrowserArtifactsDirectory);
 		Assert.NotNull(resources.BashEnvFilePath);
 		Assert.True(File.Exists(resources.BashEnvFilePath));
 

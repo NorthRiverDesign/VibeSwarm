@@ -310,9 +310,10 @@ public sealed class ProviderCliArgsTests
     }
 
     [Fact]
-    public void Copilot_WithBashEnvPath_AddsBashEnvFlag()
+    public void Copilot_WithBashEnvPath_AndSupportedVersion_AddsBashEnvFlag()
     {
         var provider = new CopilotProvider(CreateConfig(ProviderType.Copilot));
+        provider.CachedCliVersion = new Version(0, 0, 418);
         provider.ApplyOptions(new ExecutionOptions { BashEnvPath = "/tmp/bash-env.sh" });
 
         var args = provider.BuildCliArgs("test", null);
@@ -320,6 +321,33 @@ public sealed class ProviderCliArgsTests
         var idx = args.IndexOf("--bash-env");
         Assert.True(idx >= 0);
         Assert.Equal("/tmp/bash-env.sh", args[idx + 1]);
+    }
+
+    [Fact]
+    public void Copilot_WithBashEnvPath_AndOldVersion_OmitsBashEnvFlag()
+    {
+        // Versions before 0.0.418 only accept "on"/"off", not a file path.
+        // VibeSwarm must not pass the file path to avoid crashing the job on older installs.
+        var provider = new CopilotProvider(CreateConfig(ProviderType.Copilot));
+        provider.CachedCliVersion = new Version(0, 0, 417);
+        provider.ApplyOptions(new ExecutionOptions { BashEnvPath = "/tmp/bash-env.sh" });
+
+        var args = provider.BuildCliArgs("test", null);
+
+        Assert.DoesNotContain("--bash-env", args);
+    }
+
+    [Fact]
+    public void Copilot_WithBashEnvPath_AndUnknownVersion_OmitsBashEnvFlag()
+    {
+        // When the CLI version is unknown (null), skip --bash-env to be safe on older installs.
+        var provider = new CopilotProvider(CreateConfig(ProviderType.Copilot));
+        // CachedCliVersion left as null (default)
+        provider.ApplyOptions(new ExecutionOptions { BashEnvPath = "/tmp/bash-env.sh" });
+
+        var args = provider.BuildCliArgs("test", null);
+
+        Assert.DoesNotContain("--bash-env", args);
     }
 
     [Fact]
@@ -400,16 +428,43 @@ public sealed class ProviderCliArgsTests
     }
 
     [Fact]
-    public void Copilot_WithReasoningEffort_AddsReasoningEffortFlag()
+    public void Copilot_WithReasoningEffort_AndSupportedVersion_AddsReasoningEffortFlag()
     {
         var provider = new CopilotProvider(CreateConfig(ProviderType.Copilot));
+        provider.CachedCliVersion = new Version(1, 0, 4);
         provider.ApplyOptions(new ExecutionOptions { ReasoningEffort = "medium" });
 
         var args = provider.BuildCliArgs("test", null);
 
         var idx = args.IndexOf("--reasoning-effort");
-        Assert.True(idx >= 0);
+        Assert.True(idx >= 0, "--reasoning-effort should be present on v1.0.4+");
         Assert.Equal("medium", args[idx + 1]);
+        Assert.DoesNotContain("--effort", args);
+    }
+
+    [Fact]
+    public void Copilot_WithReasoningEffort_AndOldVersion_OmitsReasoningEffortFlag()
+    {
+        var provider = new CopilotProvider(CreateConfig(ProviderType.Copilot));
+        provider.CachedCliVersion = new Version(0, 0, 418); // pre-1.0.4
+        provider.ApplyOptions(new ExecutionOptions { ReasoningEffort = "medium" });
+
+        var args = provider.BuildCliArgs("test", null);
+
+        Assert.DoesNotContain("--reasoning-effort", args);
+        Assert.DoesNotContain("--effort", args);
+    }
+
+    [Fact]
+    public void Copilot_WithReasoningEffort_AndUnknownVersion_OmitsReasoningEffortFlag()
+    {
+        var provider = new CopilotProvider(CreateConfig(ProviderType.Copilot));
+        // CachedCliVersion left null (no TestConnectionAsync called)
+        provider.ApplyOptions(new ExecutionOptions { ReasoningEffort = "medium" });
+
+        var args = provider.BuildCliArgs("test", null);
+
+        Assert.DoesNotContain("--reasoning-effort", args);
         Assert.DoesNotContain("--effort", args);
     }
 

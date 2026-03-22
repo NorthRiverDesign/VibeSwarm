@@ -16,6 +16,9 @@ public class CopilotProvider : CliProviderBase
     private const string DefaultExecutable = "copilot";
     private UsageLimits? _lastObservedUsageLimits;
 
+    // Cached CLI version for feature gating (populated on TestConnectionAsync)
+    private Version? _cachedCliVersion;
+
     // System error detection during stream parsing (mirrors ClaudeProvider pattern)
     private bool _systemErrorDetected;
     private string? _systemErrorMessage;
@@ -60,13 +63,41 @@ public class CopilotProvider : CliProviderBase
     {
         try
         {
-            return await TestCliConnectionAsync(GetExecutablePath(), "GitHub Copilot", "--binary-version", cancellationToken);
+            var connected = await TestCliConnectionAsync(GetExecutablePath(), "GitHub Copilot", "--binary-version", cancellationToken);
+            if (connected && _cachedCliVersion == null)
+            {
+                var versionString = await GetCliVersionAsync(GetExecutablePath(), "--binary-version", cancellationToken);
+                _cachedCliVersion = ParseCliVersion(versionString);
+            }
+            return connected;
         }
         catch
         {
             IsConnected = false;
             return false;
         }
+    }
+
+    /// <summary>
+    /// Parses a Copilot CLI version string (e.g. "0.0.418" or "v0.0.418") into a <see cref="Version"/>.
+    /// Returns null if the string cannot be parsed.
+    /// </summary>
+    private static Version? ParseCliVersion(string? versionString)
+    {
+        if (string.IsNullOrWhiteSpace(versionString))
+            return null;
+        // Strip leading 'v' and any pre-release suffix (e.g. "-beta.1" or "+build")
+        var cleaned = versionString.TrimStart('v').Split('-')[0].Split('+')[0].Trim();
+        return Version.TryParse(cleaned, out var version) ? version : null;
+    }
+
+    /// <summary>
+    /// Exposes the cached CLI version for unit testing.
+    /// </summary>
+    internal Version? CachedCliVersion
+    {
+        get => _cachedCliVersion;
+        set => _cachedCliVersion = value;
     }
 
     public override async Task<string> ExecuteAsync(string prompt, CancellationToken cancellationToken = default)
@@ -354,23 +385,31 @@ public class CopilotProvider : CliProviderBase
             args.Add(CurrentMaxTurns.Value.ToString());
         }
 
-        // Reasoning effort level (GA v0.0.411+)
+        // Reasoning effort level (v1.0.4+)
+        // --reasoning-effort was added in v1.0.4; skip on older CLIs to prevent startup errors.
         var reasoningEffort = NormalizeReasoningEffort(CurrentReasoningEffort, "low", "medium", "high");
-        if (!string.IsNullOrEmpty(reasoningEffort))
+        if (!string.IsNullOrEmpty(reasoningEffort)
+            && _cachedCliVersion != null
+            && _cachedCliVersion >= new Version(1, 0, 4))
         {
             args.Add("--reasoning-effort");
             args.Add(reasoningEffort);
         }
 
-        // Alt-screen buffer mode (v0.0.407+, experimental)
+        // Alt-screen buffer mode (v0.0.407+, on by default since v1.0.8)
         if (CurrentUseAltScreen)
         {
             args.Add("--alt-screen");
             args.Add("on");
         }
 
-        // Bash environment file (v0.0.418+)
-        if (!string.IsNullOrEmpty(CurrentBashEnvPath))
+        // Bash environment file path (v0.0.418+).
+        // Versions prior to 0.0.418 only accept "on" or "off" for --bash-env, not a file path.
+        // Skip the flag entirely when the version is unknown or below 0.0.418 to prevent job failures
+        // on older installations (e.g. Raspberry Pi running an older release).
+        if (!string.IsNullOrEmpty(CurrentBashEnvPath)
+            && _cachedCliVersion != null
+            && _cachedCliVersion >= new Version(0, 0, 418))
         {
             args.Add("--bash-env");
             args.Add(CurrentBashEnvPath);

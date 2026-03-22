@@ -181,7 +181,7 @@ public class CopilotSdkProvider : SdkProviderBase
 				// Provide specific hints based on the error
 				var hint = ex.Message.Contains("JSON-RPC", StringComparison.OrdinalIgnoreCase) ||
 						   ex.Message.Contains("RPC", StringComparison.OrdinalIgnoreCase)
-					? " The CLI may not support SDK mode or version is incompatible. Verify 'copilot --version' shows 0.0.400+ and GitHub.Copilot.SDK is compatible."
+					? " The CLI may not support SDK mode or version is incompatible. Verify 'copilot --version' shows 1.0.0+ and GitHub.Copilot.SDK is compatible."
 					: ex.Message.Contains("not found", StringComparison.OrdinalIgnoreCase) ||
 					  ex.Message.Contains("cannot find", StringComparison.OrdinalIgnoreCase)
 					? " CLI executable not found in PATH. Install the GitHub Copilot CLI or specify the full path."
