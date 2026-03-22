@@ -13,17 +13,15 @@
 		{
 			<a href="/jobs/view/@item.Job.Id" class="list-group-item list-group-item-action py-2 py-sm-3">
 				<div class="d-flex align-items-start gap-3">
-					<div class="flex-shrink-0 pt-1">
-						<StatusBadge Status="@item.Job.Status.ToString()" />
-					</div>
-
 					<div class="flex-grow-1 min-width-0">
-						<div class="d-flex flex-wrap align-items-center gap-2 mb-1">
-							<span class="fw-semibold text-body">@item.Project.Name</span>
-							<span class="small text-body-tertiary">@GetStartedDisplay(item.Job)</span>
-						</div>
+						<p class="mb-1 fw-semibold text-body">@item.Project.Name</p>
 
 						<p class="mb-1 text-body text-break">@item.Job.DisplayTitle</p>
+
+						<div class="d-flex flex-wrap align-items-center gap-2 mb-1">
+							<StatusBadge Status="@item.Job.Status.ToString()" />
+							<span class="small text-body-tertiary">@GetStartedDisplay(item.Job)</span>
+						</div>
 
 						@if (!string.IsNullOrWhiteSpace(item.Job.CurrentActivity))
 						{
