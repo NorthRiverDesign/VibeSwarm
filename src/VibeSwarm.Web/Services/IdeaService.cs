@@ -281,11 +281,6 @@ public partial class IdeaService : IIdeaService
 			.FirstOrDefaultAsync(i => i.JobId == jobId, cancellationToken);
 	}
 
-	private static void ValidateIdea(Idea idea)
-	{
-		ValidationHelper.ValidateObject(idea);
-	}
-
 	private static void EnsureLengthWithinLimit(string fieldName, string? value, int maxLength)
 	{
 		if (!string.IsNullOrEmpty(value) && value.Length > maxLength)

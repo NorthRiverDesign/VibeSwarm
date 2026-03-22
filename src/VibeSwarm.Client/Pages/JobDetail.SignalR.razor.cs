@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.SignalR.Client;
+using VibeSwarm.Client.Components.Jobs;
 using VibeSwarm.Shared.Data;
 
 namespace VibeSwarm.Client.Pages;

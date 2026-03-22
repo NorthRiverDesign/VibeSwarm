@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Inference;
 using VibeSwarm.Shared.Models;
 using VibeSwarm.Shared.Providers;
@@ -235,6 +236,7 @@ public partial class IdeaService
 		}
 
 		return (project.PlanningProviderId, project.PlanningModelId, project.PlanningProviderId.HasValue);
+	}
 
 	private async Task ExpandWithInferenceAsync(Idea idea, string? modelName, CancellationToken cancellationToken)
 	{

@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Models;
 
 namespace VibeSwarm.Shared.Services;
@@ -254,5 +255,34 @@ public partial class IdeaService
 		await _dbContext.SaveChangesAsync(cancellationToken);
 
 		return idea;
+	}
+
+	public async Task RecoverStuckIdeasAsync(CancellationToken cancellationToken = default)
+	{
+		var stuckIdeas = await _dbContext.Ideas
+			.Include(i => i.Job)
+			.Where(i => i.IsProcessing)
+			.ToListAsync(cancellationToken);
+
+		var recovered = 0;
+		foreach (var idea in stuckIdeas)
+		{
+			var jobIsTerminal = idea.Job == null ||
+				idea.Job.Status == JobStatus.Completed ||
+				idea.Job.Status == JobStatus.Failed ||
+				idea.Job.Status == JobStatus.Cancelled;
+
+			if (jobIsTerminal)
+			{
+				idea.IsProcessing = false;
+				recovered++;
+			}
+		}
+
+		if (recovered > 0)
+		{
+			await _dbContext.SaveChangesAsync(cancellationToken);
+			_logger.LogInformation("Recovered {Count} stuck ideas", recovered);
+		}
 	}
 }

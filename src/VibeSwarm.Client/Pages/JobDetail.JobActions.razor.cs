@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Components;
 using VibeSwarm.Client.Components.Jobs;
 using VibeSwarm.Shared.Data;
+using VibeSwarm.Shared.VersionControl;
 
 namespace VibeSwarm.Client.Pages;
 
@@ -190,7 +191,7 @@ public partial class JobDetail : ComponentBase
         if (Job == null) return;
 
         var confirmed = await JSRuntime.InvokeAsync<bool>("confirm",
-            "Are you sure you want to mark this job as Failed? This cannot be undone, but you can retry afterward.");
+            new object[] { "Are you sure you want to mark this job as Failed? This cannot be undone, but you can retry afterward." });
         if (!confirmed) return;
 
         IsForceResetting = true;

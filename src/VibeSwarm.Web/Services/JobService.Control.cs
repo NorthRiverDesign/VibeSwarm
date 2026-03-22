@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Models;
+using VibeSwarm.Shared.Utilities;
 using VibeSwarm.Shared.VersionControl;
 
 namespace VibeSwarm.Shared.Services;
@@ -130,8 +132,6 @@ public partial class JobService
 
         return job?.CancellationRequested ?? false;
     }
-
-    public async Task UpdateProgressAsync(Guid id, string? currentActivity, CancellationToken cancellationToken = default)
 
     public async Task<bool> ResetJobAsync(Guid id, CancellationToken cancellationToken = default)
     {

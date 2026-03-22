@@ -1,3 +1,4 @@
+using VibeSwarm.Shared.VersionControl.Models;
 namespace VibeSwarm.Shared.VersionControl;
 
 public sealed partial class VersionControlService

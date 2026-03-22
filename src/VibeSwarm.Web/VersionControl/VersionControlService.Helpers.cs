@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using VibeSwarm.Shared.VersionControl.Models;
 
 namespace VibeSwarm.Shared.VersionControl;
 

@@ -1,4 +1,5 @@
 using VibeSwarm.Shared;
+using VibeSwarm.Shared.VersionControl.Models;
 
 namespace VibeSwarm.Shared.VersionControl;
 

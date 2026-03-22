@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Models;
 using VibeSwarm.Shared.Utilities;
 using VibeSwarm.Shared.VersionControl;

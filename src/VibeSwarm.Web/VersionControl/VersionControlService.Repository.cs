@@ -1,4 +1,5 @@
 using System.Text;
+using VibeSwarm.Shared.VersionControl.Models;
 
 namespace VibeSwarm.Shared.VersionControl;
 

@@ -325,57 +325,6 @@ public partial class JobProcessingService : BackgroundService
         }
     }
 
-    private async Task<bool> TryPreserveChangesForRecoveryAsync(Job job, string reason, CancellationToken cancellationToken)
-    {
-        var workingDirectory = job.Project?.WorkingPath;
-        if (string.IsNullOrWhiteSpace(workingDirectory) || !Directory.Exists(workingDirectory))
-        {
-            return false;
-        }
-
-        if (!await _versionControlService.IsGitRepositoryAsync(workingDirectory, cancellationToken))
-        {
-            return false;
-        }
-
-        var workingTreeStatus = await _versionControlService.GetWorkingTreeStatusAsync(workingDirectory, cancellationToken);
-        if (!workingTreeStatus.HasUncommittedChanges)
-        {
-            return false;
-        }
-
-        var diff = await _versionControlService.GetWorkingDirectoryDiffAsync(workingDirectory, job.GitCommitBefore, cancellationToken)
-            ?? await _versionControlService.GetWorkingDirectoryDiffAsync(workingDirectory, cancellationToken: cancellationToken);
-
-        var preserveResult = await _versionControlService.PreserveChangesAsync(
-            workingDirectory,
-            $"{AppConstants.AppName} job {job.Id}: {reason}",
-            cancellationToken);
-
-        if (!preserveResult.Success)
-        {
-            _logger.LogWarning("Failed to preserve workspace changes for recovered job {JobId}: {Error}", job.Id, preserveResult.Error);
-            return false;
-        }
-
-        var transition = JobStateMachine.TryTransition(job, JobStatus.Stalled, reason);
-        if (!transition.Success)
-        {
-            _logger.LogWarning("Failed to move recovered job {JobId} into stalled state: {Error}", job.Id, transition.ErrorMessage);
-            return false;
-        }
-
-        job.GitDiff = !string.IsNullOrWhiteSpace(diff) ? diff : job.GitDiff;
-        job.ChangedFilesCount = workingTreeStatus.ChangedFilesCount;
-        job.WorkerInstanceId = null;
-        job.LastHeartbeatAt = null;
-        job.ProcessId = null;
-        job.CurrentActivity = null;
-        job.ErrorMessage = $"{reason} Preserved {workingTreeStatus.ChangedFilesCount} changed file(s) in {preserveResult.SavedReference ?? "stash@{0}"} for recovery.";
-
-        return true;
-    }
-
     private async Task ProcessPendingJobsAsync(CancellationToken stoppingToken)
     {
         await _jobsLock.WaitAsync(stoppingToken);
@@ -509,36 +458,5 @@ public partial class JobProcessingService : BackgroundService
             existingJob.CancellationRequested);
 
         return false;
-    }
-
-    private static IProvider CreateProviderInstance(Provider config)
-    {
-        return (config.Type, config.ConnectionMode) switch
-        {
-            (ProviderType.Claude, ProviderConnectionMode.SDK) => new ClaudeSdkProvider(config),
-            (ProviderType.Copilot, ProviderConnectionMode.SDK) => new CopilotSdkProvider(config),
-            (ProviderType.OpenCode, _) => new OpenCodeProvider(config),
-            (ProviderType.Claude, _) => new ClaudeProvider(config),
-            (ProviderType.Copilot, _) => new CopilotProvider(config),
-            _ => throw new NotSupportedException($"Provider type {config.Type} with mode {config.ConnectionMode} is not supported.")
-        };
-    }
-
-    private static MessageRole ParseMessageRole(string role)
-    {
-        return role.ToLowerInvariant() switch
-        {
-            "user" => MessageRole.User,
-            "assistant" => MessageRole.Assistant,
-            "system" => MessageRole.System,
-            "thinking" => MessageRole.System,
-            "reasoning" => MessageRole.System,
-            "reasoning_summary" => MessageRole.System,
-            "plan" => MessageRole.System,
-            "tool_use" => MessageRole.ToolUse,
-            "tool_result" => MessageRole.ToolResult,
-            "tool_error" => MessageRole.ToolResult,
-            _ => MessageRole.Assistant
-        };
     }
 }
