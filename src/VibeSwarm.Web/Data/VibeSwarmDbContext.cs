@@ -226,8 +226,13 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 	.WithMany()
 	.HasForeignKey(e => e.ProviderId)
 	.OnDelete(DeleteBehavior.Restrict);
+			entity.HasOne(e => e.TeamRole)
+				.WithMany()
+				.HasForeignKey(e => e.TeamRoleId)
+				.OnDelete(DeleteBehavior.SetNull);
 			entity.HasIndex(e => e.Status);
 			entity.HasIndex(e => e.CreatedAt);
+			entity.HasIndex(e => e.SwarmId);
 			entity.HasIndex(e => new { e.JobScheduleId, e.ScheduledForUtc }).IsUnique();
 		});
 

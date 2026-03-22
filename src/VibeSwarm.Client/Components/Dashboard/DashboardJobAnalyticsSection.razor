@@ -53,6 +53,22 @@
 									  Points="@GetDurationChartPoints()" BarColor="var(--bs-info)"
 									  YAxisLabelFormatter="FormatDurationAxisLabel" />
 			</div>
+
+			<div class="col-12 col-lg-6">
+				<DashboardMetricChart Title="Input Tokens" Subtitle="@GetChartSubtitle()" Icon="arrow-down-circle"
+									  Summary="@GetInputTokensSummary()" EmptyIcon="arrow-down-circle" EmptyTitle="No token data yet"
+									  EmptyMessage="Input token usage will appear once jobs with token tracking complete."
+									  Points="@GetInputTokensChartPoints()" BarColor="var(--bs-warning)"
+									  YAxisLabelFormatter="FormatTokenAxisLabel" />
+			</div>
+
+			<div class="col-12 col-lg-6">
+				<DashboardMetricChart Title="Output Tokens" Subtitle="@GetChartSubtitle()" Icon="arrow-up-circle"
+									  Summary="@GetOutputTokensSummary()" EmptyIcon="arrow-up-circle" EmptyTitle="No token data yet"
+									  EmptyMessage="Output token usage will appear once jobs with token tracking complete."
+									  Points="@GetOutputTokensChartPoints()" BarColor="var(--bs-purple)"
+									  YAxisLabelFormatter="FormatTokenAxisLabel" />
+			</div>
 		</div>
 	}
 </section>
@@ -172,6 +188,42 @@
 		1 => "1 Day",
 		_ => $"{rangeDays} Days"
 	};
+
+	private IReadOnlyList<DashboardChartPoint> GetInputTokensChartPoints()
+	{
+		return Metrics.Buckets
+			.Select(bucket => new DashboardChartPoint
+			{
+				Label = FormatBucketLabel(bucket.BucketStartUtc),
+				Value = bucket.TotalInputTokens,
+				ValueLabel = TokenHelper.FormatTokenCount((int)Math.Min(bucket.TotalInputTokens, int.MaxValue)) + " input tokens"
+			})
+			.ToList();
+	}
+
+	private IReadOnlyList<DashboardChartPoint> GetOutputTokensChartPoints()
+	{
+		return Metrics.Buckets
+			.Select(bucket => new DashboardChartPoint
+			{
+				Label = FormatBucketLabel(bucket.BucketStartUtc),
+				Value = bucket.TotalOutputTokens,
+				ValueLabel = TokenHelper.FormatTokenCount((int)Math.Min(bucket.TotalOutputTokens, int.MaxValue)) + " output tokens"
+			})
+			.ToList();
+	}
+
+	private string GetInputTokensSummary() => Metrics.TotalInputTokens > 0
+		? TokenHelper.FormatTokenCount((int)Math.Min(Metrics.TotalInputTokens, int.MaxValue)) + " total"
+		: "No token data";
+
+	private string GetOutputTokensSummary() => Metrics.TotalOutputTokens > 0
+		? TokenHelper.FormatTokenCount((int)Math.Min(Metrics.TotalOutputTokens, int.MaxValue)) + " total"
+		: "No token data";
+
+	private static string FormatTokenAxisLabel(double value) => value <= 0
+		? "0"
+		: TokenHelper.FormatTokenCount((int)Math.Min(value, int.MaxValue));
 
 	private static string FormatCompletedAxisLabel(double value) => Math.Round(value).ToString("0");
 

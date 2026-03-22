@@ -350,7 +350,9 @@ public class ProjectService : IProjectService
 			{
 				CompletedAt = job.CompletedAt!.Value,
 				StartedAt = job.StartedAt,
-				ExecutionDurationSeconds = job.ExecutionDurationSeconds
+				ExecutionDurationSeconds = job.ExecutionDurationSeconds,
+				InputTokens = job.InputTokens,
+				OutputTokens = job.OutputTokens
 			})
 			.ToListAsync(cancellationToken);
 
@@ -363,6 +365,8 @@ public class ProjectService : IProjectService
 
 		double durationTotalSeconds = 0;
 		var durationSamples = 0;
+		long totalInputTokens = 0;
+		long totalOutputTokens = 0;
 
 		foreach (var row in jobRows)
 		{
@@ -374,6 +378,13 @@ public class ProjectService : IProjectService
 
 			var bucket = buckets[bucketIndex];
 			bucket.CompletedJobs++;
+
+			var inputTokens = row.InputTokens ?? 0;
+			var outputTokens = row.OutputTokens ?? 0;
+			bucket.TotalInputTokens += inputTokens;
+			bucket.TotalOutputTokens += outputTokens;
+			totalInputTokens += inputTokens;
+			totalOutputTokens += outputTokens;
 
 			var durationSeconds = ResolveDurationSeconds(row);
 			if (!durationSeconds.HasValue)
@@ -394,6 +405,8 @@ public class ProjectService : IProjectService
 			EndUtc = bucketConfig.EndUtc,
 			TotalCompletedJobs = jobRows.Count,
 			AverageDurationSeconds = durationSamples > 0 ? durationTotalSeconds / durationSamples : null,
+			TotalInputTokens = totalInputTokens,
+			TotalOutputTokens = totalOutputTokens,
 			Buckets = buckets
 				.Select(bucket => new DashboardJobMetricsBucket
 				{
@@ -401,7 +414,9 @@ public class ProjectService : IProjectService
 					CompletedJobs = bucket.CompletedJobs,
 					AverageDurationSeconds = bucket.DurationSamples > 0
 						? bucket.DurationTotalSeconds / bucket.DurationSamples
-						: null
+						: null,
+					TotalInputTokens = bucket.TotalInputTokens,
+					TotalOutputTokens = bucket.TotalOutputTokens
 				})
 				.ToList()
 		};
@@ -1126,6 +1141,8 @@ public class ProjectService : IProjectService
 		public int CompletedJobs { get; set; }
 		public double DurationTotalSeconds { get; set; }
 		public int DurationSamples { get; set; }
+		public long TotalInputTokens { get; set; }
+		public long TotalOutputTokens { get; set; }
 	}
 
 	private sealed class DashboardJobMetricsRow
@@ -1133,6 +1150,8 @@ public class ProjectService : IProjectService
 		public required DateTime CompletedAt { get; init; }
 		public DateTime? StartedAt { get; init; }
 		public double? ExecutionDurationSeconds { get; init; }
+		public int? InputTokens { get; init; }
+		public int? OutputTokens { get; init; }
 	}
 
 	private sealed class DashboardBucketConfig

@@ -157,6 +157,13 @@ public class Project
 	public bool IdeasAutoExpand { get; set; } = true;
 
 	/// <summary>
+	/// When enabled and at least two team roles are configured, creating a job automatically
+	/// fans out into parallel role-based jobs — one per enabled team role assignment.
+	/// Each role job runs its assigned provider with a role-specific system prompt.
+	/// </summary>
+	public bool EnableTeamSwarm { get; set; }
+
+	/// <summary>
 	/// Whether to verify the build succeeds before auto-committing or pushing job results.
 	/// When enabled, the configured BuildCommand is executed after job completion.
 	/// If the build fails, changes are not auto-committed or pushed.

@@ -465,6 +465,20 @@ public class Job
     /// </summary>
     public Guid? IterationLoopId { get; set; }
 
+    /// <summary>
+    /// Groups all jobs in the same team swarm batch. All swarm members share the same SwarmId.
+    /// Null for regular (non-swarm) jobs.
+    /// </summary>
+    public Guid? SwarmId { get; set; }
+
+    /// <summary>
+    /// The team role this job is executing as. Set when the job is part of a team swarm.
+    /// Null for regular jobs or when no specific role is assigned.
+    /// </summary>
+    public Guid? TeamRoleId { get; set; }
+
+    public TeamRole? TeamRole { get; set; }
+
     public ICollection<JobMessage> Messages { get; set; } = new List<JobMessage>();
 
     public ICollection<JobProviderAttempt> ProviderAttempts { get; set; } = new List<JobProviderAttempt>();
