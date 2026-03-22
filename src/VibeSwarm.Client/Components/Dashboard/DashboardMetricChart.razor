@@ -59,11 +59,9 @@
 					<div @ref="_scrollContainer"
 						 class="flex-grow-1 overflow-auto overscroll-contain pb-1 touch-manipulation">
 						<div class="d-flex flex-column" style="width:@ScrollContentWidth;">
-							<div class="position-relative"
-								 style="width:@FormatPixels(ChartWidth); height:@FormatPixels(ChartHeight);">
-								<svg class="d-block" width="@ChartWidth" height="@ChartHeight"
-									 viewBox="0 0 @ChartWidth @ChartHeight" preserveAspectRatio="xMinYMin meet" role="img"
-									 aria-label="@Title">
+							<div class="position-relative w-100" style="height:@FormatPixels(ChartHeight);">
+								<svg class="d-block w-100" height="@ChartHeight" viewBox="0 0 @ChartWidth @ChartHeight"
+									 preserveAspectRatio="none" role="img" aria-label="@Title">
 									<title>@Title</title>
 
 									@foreach (var axisTick in YAxisTicks)
@@ -88,7 +86,7 @@
 										var tooltip = GetPointTooltip(point);
 
 										<rect x="@x" y="@y" width="@BarWidth" height="@Math.Max(barHeight, 2)" rx="6"
-											  fill="@BarColor"  fill-opacity="@(isSelected ? "1" : "0.85")"
+											  fill="@BarColor" fill-opacity="@(isSelected ? "1" : "0.85")"
 											  stroke="@(isSelected ? "var(--bs-emphasis-color)" : "none")" stroke-width="2"
 											  aria-label="@tooltip">
 											<title>@tooltip</title>
@@ -106,7 +104,7 @@
 
 									<button type="button"
 											class="position-absolute p-0 border-0 bg-transparent cursor-pointer touch-manipulation"
-											style="left:@FormatPixels(slotStartX); top:@FormatPixels(ChartPaddingTop); width:@FormatPixels(SlotWidth); height:@FormatPixels(PlotHeight);"
+											style="left:@FormatPercent(slotStartX / ChartWidth); top:@FormatPixels(ChartPaddingTop); width:@FormatPercent(SlotWidth / ChartWidth); height:@FormatPixels(PlotHeight);"
 											title="@tooltip" aria-label="@tooltip" aria-pressed="@(isSelected ? "true" : "false")"
 											@onclick="() => TogglePointSelection(pointIndex)"></button>
 								}
@@ -353,7 +351,10 @@
 	}
 
 	private static string FormatPixels(double value) =>
-$"{value.ToString(System.Globalization.CultureInfo.InvariantCulture)}px";
+		$"{value.ToString(System.Globalization.CultureInfo.InvariantCulture)}px";
+
+	private static string FormatPercent(double value) =>
+		$"{(value * 100.0).ToString("F4", System.Globalization.CultureInfo.InvariantCulture)}%";
 
 	private readonly record struct AxisTick(double Value, double Y, string Label);
 }
