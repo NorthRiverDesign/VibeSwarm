@@ -141,10 +141,18 @@
 
 						@if (ShowInlineWaitingActivity)
 						{
-							<div class="d-flex align-items-center justify-content-center gap-2 px-2 small text-body-secondary"
-								 role="status" aria-live="polite">
-								<span class="spinner-border spinner-border-sm text-info flex-shrink-0" aria-hidden="true"></span>
-								<span class="text-truncate d-inline-block" style="max-width: min(100%, 24rem);">@CurrentActivity</span>
+							<div class="chat-message chat-message-assistant d-flex flex-column" role="status" aria-live="polite">
+								<div class="chat-bubble py-2 px-3 bg-body-tertiary border d-flex gap-2 align-items-center">
+									<span class="typing-dot"></span>
+									<span class="typing-dot"></span>
+									<span class="typing-dot"></span>
+								</div>
+								@if (!string.IsNullOrWhiteSpace(CurrentActivity))
+								{
+									<div class="d-flex mt-1 px-2 small text-secondary">
+										<span class="opacity-75 text-truncate" style="max-width: min(100%, 24rem);">@CurrentActivity</span>
+									</div>
+								}
 							</div>
 						}
 					</div>
@@ -252,10 +260,7 @@
         => JobSessionDisplayBuilder.BuildDisplayedMessages(Messages, LiveOutputLines, IsJobActive, LiveMessages);
 
     private bool ShowInlineWaitingActivity
-        => IsJobActive
-            && DisplayedMessages.Any()
-            && !string.IsNullOrWhiteSpace(CurrentActivity)
-            && CurrentActivity.StartsWith("Waiting for CLI response", StringComparison.OrdinalIgnoreCase);
+        => IsJobActive && DisplayedMessages.Any();
 
 
     private async Task SendFollowUp()

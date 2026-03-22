@@ -153,11 +153,14 @@ public class JobService : IJobService
 
         // For each project, determine if the running jobs all belong to the same swarm.
         // If so, pending jobs from that same swarm can proceed.
-        var swarmActiveProjects = runningJobInfo
+        // Collect the swarm IDs that are actively running (one per swarm-active project).
+        // Using a List<Guid> so EF Core can translate Contains() to SQL IN (...).
+        var activeSwarmIds = runningJobInfo
             .GroupBy(j => j.ProjectId)
             .Where(g => g.All(j => j.SwarmId.HasValue)
                 && g.Select(j => j.SwarmId).Distinct().Count() == 1)
-            .ToDictionary(g => g.Key, g => g.First().SwarmId!.Value);
+            .Select(g => g.First().SwarmId!.Value)
+            .ToList();
 
         var pendingJobs = await _dbContext.Jobs
             .Include(j => j.Project)
@@ -165,9 +168,7 @@ public class JobService : IJobService
             .Include(j => j.Provider)
             .Where(j => j.Status == JobStatus.New && !j.CancellationRequested)
             .Where(j => !projectsWithRunningJobs.Contains(j.ProjectId)
-                || (j.SwarmId != null
-                    && swarmActiveProjects.ContainsKey(j.ProjectId)
-                    && swarmActiveProjects[j.ProjectId] == j.SwarmId))
+                || (j.SwarmId != null && activeSwarmIds.Contains(j.SwarmId.Value)))
             .OrderByDescending(j => j.Priority)
             .ThenBy(j => j.CreatedAt)
             .ToListAsync(cancellationToken);

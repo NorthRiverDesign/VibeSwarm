@@ -63,11 +63,13 @@ public class JobQueueManager
 
 			// If all running jobs for a project share the same SwarmId, pending jobs from
 			// that same swarm are still eligible to be dispatched.
-			var swarmActiveProjects = runningJobInfo
+			// Using a List<Guid> so EF Core can translate Contains() to SQL IN (...).
+			var activeSwarmIds = runningJobInfo
 				.GroupBy(j => j.ProjectId)
 				.Where(g => g.All(j => j.SwarmId.HasValue)
 					&& g.Select(j => j.SwarmId).Distinct().Count() == 1)
-				.ToDictionary(g => g.Key, g => g.First().SwarmId!.Value);
+				.Select(g => g.First().SwarmId!.Value)
+				.ToList();
 
 			// Get all pending jobs that aren't blocked
 			var pendingJobs = await dbContext.Jobs
@@ -75,9 +77,7 @@ public class JobQueueManager
 				.Include(j => j.Provider)
 				.Where(j => j.Status == JobStatus.New && !j.CancellationRequested)
 				.Where(j => !projectsWithRunningJobs.Contains(j.ProjectId)
-					|| (j.SwarmId != null
-						&& swarmActiveProjects.ContainsKey(j.ProjectId)
-						&& swarmActiveProjects[j.ProjectId] == j.SwarmId))
+					|| (j.SwarmId != null && activeSwarmIds.Contains(j.SwarmId.Value)))
 				.OrderByDescending(j => j.Priority)
 				.ThenBy(j => j.CreatedAt)
 				.ToListAsync(cancellationToken);
