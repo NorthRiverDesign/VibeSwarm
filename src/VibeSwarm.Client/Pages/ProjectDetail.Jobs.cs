@@ -1,6 +1,8 @@
+using VibeSwarm.Client.Components.Projects;
 using VibeSwarm.Client.Models;
 using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Models;
+using VibeSwarm.Shared.Providers;
 using VibeSwarm.Shared.Services;
 
 namespace VibeSwarm.Client.Pages;

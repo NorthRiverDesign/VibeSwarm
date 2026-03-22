@@ -17,8 +17,19 @@ public sealed class ProjectMemoryService(
 {
 	private const string MemoryDirectoryName = ".vibeswarm";
 	private const string MemoryFileName = "project-memory.md";
-	private const string GitExcludePattern = ".vibeswarm/";
 	private static readonly UTF8Encoding Utf8NoBom = new(false);
+
+	/// <summary>
+	/// Tooling artifact directories written by VibeSwarm or its CLI agents that should never be
+	/// committed to user repositories. Entries are added to .git/info/exclude (local, non-shared)
+	/// so the user's .gitignore is never modified.
+	/// </summary>
+	private static readonly string[] ToolingExcludePatterns =
+	[
+		".vibeswarm/",  // VibeSwarm project memory and job prompt files
+		".claude/",     // Claude Code project-level settings and session data
+		".opencode/",   // OpenCode project-level config and session data
+	];
 
 	public async Task<string?> PrepareMemoryFileAsync(Project? project, CancellationToken cancellationToken = default)
 	{
@@ -91,22 +102,30 @@ public sealed class ProjectMemoryService(
 
 	private static async Task EnsureGitExcludeEntryAsync(string workingPath, CancellationToken cancellationToken)
 	{
-		var gitInfoDirectory = Path.Combine(workingPath, ".git", "info");
-		if (!Directory.Exists(gitInfoDirectory))
+		var gitDirectory = Path.Combine(workingPath, ".git");
+		if (!Directory.Exists(gitDirectory))
 		{
 			return;
 		}
+
+		var gitInfoDirectory = Path.Combine(gitDirectory, "info");
+		Directory.CreateDirectory(gitInfoDirectory);
 
 		var excludeFilePath = Path.Combine(gitInfoDirectory, "exclude");
-		if (!File.Exists(excludeFilePath))
-		{
-			return;
-		}
 
-		var existingContent = await File.ReadAllTextAsync(excludeFilePath, cancellationToken);
-		var lines = existingContent
-			.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
-		if (lines.Contains(GitExcludePattern, StringComparer.Ordinal))
+		var existingContent = File.Exists(excludeFilePath)
+			? await File.ReadAllTextAsync(excludeFilePath, cancellationToken)
+			: string.Empty;
+
+		var existingLines = new HashSet<string>(
+			existingContent.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries),
+			StringComparer.Ordinal);
+
+		var missingPatterns = ToolingExcludePatterns
+			.Where(p => !existingLines.Contains(p))
+			.ToList();
+
+		if (missingPatterns.Count == 0)
 		{
 			return;
 		}
@@ -117,7 +136,11 @@ public sealed class ProjectMemoryService(
 			builder.AppendLine();
 		}
 
-		builder.AppendLine(GitExcludePattern);
+		foreach (var pattern in missingPatterns)
+		{
+			builder.AppendLine(pattern);
+		}
+
 		await File.WriteAllTextAsync(excludeFilePath, builder.ToString(), Utf8NoBom, cancellationToken);
 	}
 }
