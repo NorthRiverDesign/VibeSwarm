@@ -60,6 +60,14 @@
                         <span>@ProviderModelDisplay</span>
                     </span>
                 }
+                @if (!string.IsNullOrEmpty(TeamRoleName))
+                {
+                    <span class="d-inline-flex align-items-center gap-1 px-2 py-1 bg-primary-subtle text-primary-emphasis rounded-pill"
+                          title="Team swarm role">
+                        <i class="bi bi-diagram-3 opacity-75"></i>
+                        <span>@TeamRoleName</span>
+                    </span>
+                }
                 @if (MaxCycles > 1)
                 {
                     <span title="@GetCycleModeTitle()">
@@ -159,6 +167,9 @@
 
     [Parameter]
     public CycleMode CycleMode { get; set; } = CycleMode.SingleCycle;
+
+    [Parameter]
+    public string? TeamRoleName { get; set; }
 
     private bool _isSelected => IsSelected;
 

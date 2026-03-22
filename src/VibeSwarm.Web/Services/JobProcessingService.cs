@@ -916,6 +916,33 @@ public class JobProcessingService : BackgroundService
                     : $"{systemPromptRules}{Environment.NewLine}{Environment.NewLine}{projectMemoryRules}";
             }
 
+            // Inject role-specific system prompt context for team swarm jobs
+            if (job.TeamRoleId.HasValue)
+            {
+                try
+                {
+                    var teamRole = await dbContext.TeamRoles
+                        .FirstOrDefaultAsync(r => r.Id == job.TeamRoleId.Value, cancellationToken);
+                    if (teamRole != null)
+                    {
+                        var swarmSize = job.SwarmId.HasValue
+                            ? await dbContext.Jobs.CountAsync(j => j.SwarmId == job.SwarmId, cancellationToken)
+                            : 1;
+                        var roleContext = PromptBuilder.BuildRoleSystemPromptContext(teamRole, swarmSize);
+                        if (!string.IsNullOrWhiteSpace(roleContext))
+                        {
+                            systemPromptRules = string.IsNullOrWhiteSpace(systemPromptRules)
+                                ? roleContext
+                                : $"{roleContext}{Environment.NewLine}{Environment.NewLine}{systemPromptRules}";
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to load team role context for job {JobId}, continuing without it", job.Id);
+                }
+            }
+
             var planningOutput = job.PlanningOutput;
             if (ShouldUsePlanningStage(job.Project) && string.IsNullOrWhiteSpace(planningOutput))
             {

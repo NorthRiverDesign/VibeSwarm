@@ -135,6 +135,19 @@ else
 <div class="small text-body-secondary fst-italic mb-3">No team roles assigned to this project yet.</div>
 }
 
+@if (Project.TeamAssignments.Count(a => a.IsEnabled) >= 2)
+{
+<div class="border-top pt-3 mt-3">
+<div class="form-check form-switch">
+<InputCheckbox id="modal-enableTeamSwarm" @bind-Value="Project.EnableTeamSwarm" class="form-check-input" />
+<label class="form-check-label" for="modal-enableTeamSwarm">
+<i class="bi bi-diagram-3 me-1"></i>Enable Team Swarm
+</label>
+</div>
+<div class="form-text">When enabled, creating a job automatically fans out into parallel role-based jobs — one per assigned team role. Each agent works in the same repository with a role-specific system prompt.</div>
+</div>
+}
+
 <div class="small text-body-secondary fw-semibold mb-2">Add Role</div>
 <div class="d-grid gap-2">
 @foreach (var teamRole in AvailableTeamRoles.OrderByDescending(role => role.IsEnabled).ThenBy(role => role.Name))

@@ -60,6 +60,8 @@ public sealed class ProjectModalFormModel : IValidatableObject
 
 	public bool IsActive { get; set; } = true;
 
+	public bool EnableTeamSwarm { get; set; }
+
 	public bool IdeasAutoExpand { get; set; } = true;
 
 	public bool BuildVerificationEnabled { get; set; }
@@ -111,6 +113,7 @@ public sealed class ProjectModalFormModel : IValidatableObject
 			PromptContext = source.PromptContext,
 			Memory = source.Memory,
 			IsActive = source.IsActive,
+			EnableTeamSwarm = source.EnableTeamSwarm,
 			IdeasAutoExpand = source.IdeasAutoExpand,
 			BuildVerificationEnabled = source.BuildVerificationEnabled,
 			BuildCommand = source.BuildCommand,
@@ -143,6 +146,7 @@ public sealed class ProjectModalFormModel : IValidatableObject
 			Environments = Environments.ToList(),
 			PromptContext = string.IsNullOrWhiteSpace(PromptContext) ? null : PromptContext.Trim(),
 			Memory = string.IsNullOrWhiteSpace(Memory) ? null : Memory.Trim(),
+			EnableTeamSwarm = EnableTeamSwarm,
 			BuildVerificationEnabled = BuildVerificationEnabled,
 			BuildCommand = string.IsNullOrWhiteSpace(BuildCommand) ? null : BuildCommand.Trim(),
 			TestCommand = string.IsNullOrWhiteSpace(TestCommand) ? null : TestCommand.Trim(),

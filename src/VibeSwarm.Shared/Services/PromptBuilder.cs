@@ -421,6 +421,39 @@ public static class PromptBuilder
 		return rules;
 	}
 
+	/// <summary>
+	/// Builds a role-specific system prompt context block that is prepended to the agent's
+	/// append-system-prompt when the job is part of a team swarm. This establishes the agent's
+	/// persona, responsibilities, and coordination guidelines for parallel execution.
+	/// </summary>
+	public static string BuildRoleSystemPromptContext(TeamRole role, int totalSwarmSize)
+	{
+		var sb = new StringBuilder();
+
+		sb.AppendLine($"You are acting as the {role.Name} for this project.");
+
+		if (!string.IsNullOrWhiteSpace(role.Description))
+		{
+			sb.AppendLine($"Role summary: {role.Description.Trim()}");
+		}
+
+		if (!string.IsNullOrWhiteSpace(role.Responsibilities))
+		{
+			sb.AppendLine($"Your responsibilities: {role.Responsibilities.Trim()}");
+		}
+
+		if (totalSwarmSize > 1)
+		{
+			sb.AppendLine();
+			sb.AppendLine($"You are one of {totalSwarmSize} specialized agents working in parallel on the same repository.");
+			sb.AppendLine("Each agent focuses exclusively on their designated area of responsibility.");
+			sb.AppendLine("Limit your changes to your area of expertise and avoid modifying files clearly owned by other roles.");
+			sb.AppendLine("Make small, focused, atomic commits so that parallel work integrates cleanly.");
+		}
+
+		return sb.ToString().TrimEnd();
+	}
+
 	private static string EscapeXml(string value)
 	{
 		return value

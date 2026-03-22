@@ -47,7 +47,7 @@ OnPlanningProviderChanged="HandlePlanningProviderChanged" />
 <ProjectProviderPrioritySection Project="@FormModel" AvailableProviders="@_availableProviders"
 ResolveProvider="ResolveProvider" IsProviderSelected="IsProviderSelected"
 ResolveProviderModels="GetProviderModels"
-OnMoveUp="MoveProviderSelectionUp" OnMoveDown="MoveProviderSelectionDown"
+OnReorder="ReorderProviderSelection"
 OnRemove="RemoveProviderSelection" OnAdd="AddProviderSelection"
 OnPreferredModelChanged="HandlePreferredModelChanged" />
 
@@ -458,31 +458,17 @@ if (assignment == null)
 FormModel.TeamAssignments.Remove(assignment);
 }
 
-private void MoveProviderSelectionUp(Guid providerId)
+private void ReorderProviderSelection(DragDropReorderArgs args)
 {
 var ordered = FormModel.ProviderSelections.OrderBy(projectProvider => projectProvider.Priority).ToList();
-var index = ordered.FindIndex(projectProvider => projectProvider.ProviderId == providerId);
-if (index <= 0)
+if (args.OldIndex < 0 || args.OldIndex >= ordered.Count || args.NewIndex < 0 || args.NewIndex >= ordered.Count)
 {
 return;
 }
 
-(ordered[index - 1], ordered[index]) = (ordered[index], ordered[index - 1]);
-FormModel.ProviderSelections = ordered;
-NormalizeProviderSelectionOrder();
-EnsurePlanningProviderSelection();
-}
-
-private void MoveProviderSelectionDown(Guid providerId)
-{
-var ordered = FormModel.ProviderSelections.OrderBy(projectProvider => projectProvider.Priority).ToList();
-var index = ordered.FindIndex(projectProvider => projectProvider.ProviderId == providerId);
-if (index < 0 || index >= ordered.Count - 1)
-{
-return;
-}
-
-(ordered[index + 1], ordered[index]) = (ordered[index], ordered[index + 1]);
+var item = ordered[args.OldIndex];
+ordered.RemoveAt(args.OldIndex);
+ordered.Insert(args.NewIndex, item);
 FormModel.ProviderSelections = ordered;
 NormalizeProviderSelectionOrder();
 EnsurePlanningProviderSelection();

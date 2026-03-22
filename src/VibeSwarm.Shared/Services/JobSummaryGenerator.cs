@@ -109,16 +109,39 @@ public static partial class JobSummaryGenerator
 		var match = CommitSummaryTagRegex().Match(consoleOutput);
 		if (match.Success)
 		{
-			var summary = match.Groups[1].Value.Trim();
-			// Enforce max length for commit subject line
-			if (summary.Length > 72)
-			{
-				summary = summary[..72];
-			}
-			return summary;
+			var raw = match.Groups[1].Value;
+			// Normalize literal escape sequences that may appear when output is stored as escaped text
+			var normalized = raw
+				.Replace("\\n", "\n")
+				.Replace("\\r", "\r")
+				.Replace("\\t", " ");
+
+			// Take only the first non-empty line as the commit subject
+			var subject = normalized
+				.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
+				.Select(l => l.Trim())
+				.FirstOrDefault(l => l.Length > 0);
+
+			if (string.IsNullOrWhiteSpace(subject))
+				return null;
+
+			// Enforce max length at a word boundary
+			return TruncateAtWordBoundary(subject, 72);
 		}
 
 		return null;
+	}
+
+	/// <summary>
+	/// Truncates a string at a word boundary up to the specified max length.
+	/// </summary>
+	private static string TruncateAtWordBoundary(string text, int maxLength)
+	{
+		if (text.Length <= maxLength)
+			return text;
+
+		var breakAt = text.LastIndexOf(' ', maxLength - 1);
+		return breakAt > maxLength / 2 ? text[..breakAt] : text[..maxLength];
 	}
 
 	[GeneratedRegex(@"<commit-summary>\s*(.+?)\s*</commit-summary>", RegexOptions.Singleline | RegexOptions.IgnoreCase)]
@@ -255,8 +278,11 @@ public static partial class JobSummaryGenerator
 		if (string.IsNullOrWhiteSpace(goalPrompt))
 			return "code changes";
 
-		// Clean up the prompt
-		var subject = goalPrompt.Trim();
+		// Clean up the prompt, normalizing literal escape sequences first
+		var subject = goalPrompt
+			.Replace("\\n", "\n")
+			.Replace("\\r", "\r")
+			.Trim();
 
 		// Remove common prefixes
 		var prefixesToRemove = new[]
@@ -316,8 +342,20 @@ public static partial class JobSummaryGenerator
 		// Build the title line - prefer explicit title over parsing goalPrompt
 		if (!string.IsNullOrWhiteSpace(title))
 		{
-			// Use the title directly as the headline, capitalizing the first letter
-			var cleanTitle = title.Trim();
+			// Normalize literal escape sequences and take only the first line of the title
+			var normalizedTitle = title
+				.Replace("\\n", "\n")
+				.Replace("\\r", "\r");
+			var firstLine = normalizedTitle
+				.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
+				.Select(l => l.Trim())
+				.FirstOrDefault(l => l.Length > 0)
+				?? normalizedTitle.Trim();
+
+			var cleanTitle = TruncateAtWordBoundary(firstLine, 72);
+			if (cleanTitle.Length == 0)
+				cleanTitle = firstLine;
+
 			sb.Append(char.ToUpper(cleanTitle[0]));
 			sb.Append(cleanTitle[1..]);
 		}

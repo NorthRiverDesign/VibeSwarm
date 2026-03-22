@@ -87,6 +87,7 @@ public class JobService : IJobService
                 .Include(j => j.Project)
                     .ThenInclude(p => p!.Environments)
                 .Include(j => j.Provider)
+                .Include(j => j.TeamRole)
                 .OrderByDescending(j => j.CreatedAt)
                 .Skip((normalizedPage - 1) * normalizedPageSize)
                 .Take(normalizedPageSize)
@@ -135,35 +136,58 @@ public class JobService : IJobService
 
     public async Task<IEnumerable<Job>> GetPendingJobsAsync(CancellationToken cancellationToken = default)
     {
-        // Get projects that already have an in-flight job. Queued "New" jobs are handled below
-        // so only the next eligible job per project is returned.
-        var projectsWithRunningJobs = await _dbContext.Jobs
+        // Get the SwarmId (if any) of currently running jobs, grouped by project.
+        // If ALL running jobs for a project share the same SwarmId, that swarm's remaining
+        // members are allowed to start concurrently (swarm-aware scheduling).
+        var runningJobInfo = await _dbContext.Jobs
             .Where(j => j.Status == JobStatus.Pending
                 || j.Status == JobStatus.Started
                 || j.Status == JobStatus.Planning
                 || j.Status == JobStatus.Processing
                 || j.Status == JobStatus.Paused
                 || j.Status == JobStatus.Stalled)
-            .Select(j => j.ProjectId)
-            .Distinct()
+            .Select(j => new { j.ProjectId, j.SwarmId })
             .ToListAsync(cancellationToken);
+
+        var projectsWithRunningJobs = runningJobInfo.Select(j => j.ProjectId).Distinct().ToList();
+
+        // For each project, determine if the running jobs all belong to the same swarm.
+        // If so, pending jobs from that same swarm can proceed.
+        var swarmActiveProjects = runningJobInfo
+            .GroupBy(j => j.ProjectId)
+            .Where(g => g.All(j => j.SwarmId.HasValue)
+                && g.Select(j => j.SwarmId).Distinct().Count() == 1)
+            .ToDictionary(g => g.Key, g => g.First().SwarmId!.Value);
 
         var pendingJobs = await _dbContext.Jobs
             .Include(j => j.Project)
                 .ThenInclude(p => p!.Environments)
             .Include(j => j.Provider)
             .Where(j => j.Status == JobStatus.New && !j.CancellationRequested)
-            .Where(j => !projectsWithRunningJobs.Contains(j.ProjectId))
+            .Where(j => !projectsWithRunningJobs.Contains(j.ProjectId)
+                || (j.SwarmId != null
+                    && swarmActiveProjects.ContainsKey(j.ProjectId)
+                    && swarmActiveProjects[j.ProjectId] == j.SwarmId))
             .OrderByDescending(j => j.Priority)
             .ThenBy(j => j.CreatedAt)
             .ToListAsync(cancellationToken);
 
-        // Return only the next queued job per project so dispatchers cannot start multiple
-        // jobs for the same repository in the same scheduling pass.
-        return pendingJobs
-            .GroupBy(j => j.ProjectId)
-            .Select(group => group.First())
-            .ToList();
+        // Return all swarm member jobs that are eligible, but only one non-swarm job per project.
+        var seen = new HashSet<Guid>();
+        var result = new List<Job>();
+        foreach (var job in pendingJobs)
+        {
+            if (job.SwarmId.HasValue)
+            {
+                result.Add(job); // All swarm members can be dispatched together
+            }
+            else if (seen.Add(job.ProjectId))
+            {
+                result.Add(job); // One non-swarm job per project
+            }
+        }
+
+        return result;
     }
 
     public async Task<IEnumerable<Job>> GetActiveJobsAsync(CancellationToken cancellationToken = default)
@@ -220,6 +244,9 @@ public class JobService : IJobService
         _dbContext.Jobs.Add(job);
         await _dbContext.SaveChangesAsync(cancellationToken);
 
+        // Fan out to team swarm jobs if the project has team swarm enabled
+        var swarmJobs = await TryCreateTeamSwarmJobsAsync(job, cancellationToken);
+
         // Notify that a new job was created (so processing can start immediately)
         if (_jobUpdateService != null)
         {
@@ -227,6 +254,12 @@ public class JobService : IJobService
             {
                 await _jobUpdateService.NotifyJobCreated(job.Id, job.ProjectId);
                 await _jobUpdateService.NotifyJobStatusChanged(job.Id, job.Status.ToString());
+
+                foreach (var swarmJob in swarmJobs)
+                {
+                    await _jobUpdateService.NotifyJobCreated(swarmJob.Id, swarmJob.ProjectId);
+                    await _jobUpdateService.NotifyJobStatusChanged(swarmJob.Id, swarmJob.Status.ToString());
+                }
             }
             catch
             {
@@ -237,6 +270,96 @@ public class JobService : IJobService
         _jobProcessingService?.TriggerProcessing();
 
         return job;
+    }
+
+    /// <summary>
+    /// When the project has EnableTeamSwarm=true and at least two enabled team role assignments,
+    /// fans out the primary job into a parallel swarm: assigns a role to the primary job and
+    /// creates additional sibling jobs for each remaining role.
+    /// </summary>
+    private async Task<List<Job>> TryCreateTeamSwarmJobsAsync(Job primaryJob, CancellationToken cancellationToken)
+    {
+        var project = await _dbContext.Projects
+            .Include(p => p.TeamAssignments)
+                .ThenInclude(a => a.TeamRole)
+            .Include(p => p.TeamAssignments)
+                .ThenInclude(a => a.Provider)
+            .FirstOrDefaultAsync(p => p.Id == primaryJob.ProjectId, cancellationToken);
+
+        if (project == null || !project.EnableTeamSwarm)
+            return [];
+
+        var enabledAssignments = project.TeamAssignments
+            .Where(a => a.IsEnabled
+                && a.TeamRole != null
+                && a.TeamRole.IsEnabled
+                && a.ProviderId != Guid.Empty)
+            .OrderBy(a => a.TeamRole!.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (enabledAssignments.Count < 2)
+            return [];
+
+        var swarmId = Guid.NewGuid();
+        var createdJobs = new List<Job>();
+
+        // Assign the first role to the primary job
+        var primaryJobDb = await _dbContext.Jobs.FindAsync(new object[] { primaryJob.Id }, cancellationToken);
+        if (primaryJobDb != null)
+        {
+            var firstAssignment = enabledAssignments[0];
+            primaryJobDb.SwarmId = swarmId;
+            primaryJobDb.TeamRoleId = firstAssignment.TeamRoleId;
+            primaryJobDb.ProviderId = firstAssignment.ProviderId;
+            if (!string.IsNullOrWhiteSpace(firstAssignment.PreferredModelId))
+            {
+                primaryJobDb.ModelUsed = firstAssignment.PreferredModelId;
+            }
+            // Update the in-memory job so callers see the changes
+            primaryJob.SwarmId = swarmId;
+            primaryJob.TeamRoleId = firstAssignment.TeamRoleId;
+        }
+
+        // Create sibling jobs for each remaining role
+        for (var i = 1; i < enabledAssignments.Count; i++)
+        {
+            var assignment = enabledAssignments[i];
+            var roleJob = new Job
+            {
+                Id = Guid.NewGuid(),
+                Title = primaryJob.Title,
+                GoalPrompt = primaryJob.GoalPrompt,
+                Status = JobStatus.New,
+                ProjectId = primaryJob.ProjectId,
+                ProviderId = assignment.ProviderId,
+                ModelUsed = string.IsNullOrWhiteSpace(assignment.PreferredModelId) ? null : assignment.PreferredModelId,
+                Branch = primaryJob.Branch,
+                TargetBranch = primaryJob.TargetBranch,
+                GitChangeDeliveryMode = primaryJob.GitChangeDeliveryMode,
+                Priority = primaryJob.Priority,
+                CreatedAt = DateTime.UtcNow,
+                MaxCostUsd = primaryJob.MaxCostUsd,
+                MaxExecutionMinutes = primaryJob.MaxExecutionMinutes,
+                MaxTokens = primaryJob.MaxTokens,
+                SwarmId = swarmId,
+                TeamRoleId = assignment.TeamRoleId,
+            };
+
+            await InitializeExecutionPlanAsync(roleJob, cancellationToken);
+            // Ensure the role's provider is used even if execution plan defaulted to another
+            if (roleJob.ProviderId == Guid.Empty || roleJob.ProviderId != assignment.ProviderId)
+            {
+                roleJob.ProviderId = assignment.ProviderId;
+                if (!string.IsNullOrWhiteSpace(assignment.PreferredModelId))
+                    roleJob.ModelUsed = assignment.PreferredModelId;
+            }
+
+            _dbContext.Jobs.Add(roleJob);
+            createdJobs.Add(roleJob);
+        }
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        return createdJobs;
     }
 
     public async Task<Job> UpdateStatusAsync(Guid id, JobStatus status, string? output = null, string? errorMessage = null, CancellationToken cancellationToken = default)

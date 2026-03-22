@@ -59,11 +59,13 @@
    Use these in markup like Bootstrap utilities.
 ============================================ */
 .cursor-pointer { cursor: pointer; }
+.cursor-grab { cursor: grab; }
 .min-width-0 { min-width: 0; }
 .overscroll-contain { overscroll-behavior: contain; }
 .white-space-pre-wrap { white-space: pre-wrap; }
 .inset-0 { inset: 0; }
 .touch-manipulation { touch-action: manipulation; }
+.drag-drop-item.drag-drop-over { box-shadow: 0 -2px 0 0 var(--bs-primary); }
 .text-truncate-lines-2 {
 	display: -webkit-box;
 	-webkit-line-clamp: 2;
