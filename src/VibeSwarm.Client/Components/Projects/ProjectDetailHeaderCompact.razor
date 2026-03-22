@@ -96,7 +96,91 @@
 				</div>
 			}
 
-			@* Row 2: Working path, stats *@
+			@* Row 1b: Activity status (auto-pilot / ideas queue / running job) *@
+		@{
+			var autoPilotActive = AutoPilotStatus != null && !AutoPilotPanel.IsTerminal(AutoPilotStatus.Status);
+		}
+		@if (autoPilotActive || IsIdeasProcessingActive || ActiveJob != null)
+		{
+			<div class="d-flex flex-wrap align-items-center gap-2 mt-2 pt-2 border-top border-body-tertiary small">
+				@* Auto-Pilot badge *@
+				@if (autoPilotActive)
+				{
+					<span class="badge @AutoPilotPanel.GetStatusBadgeClass(AutoPilotStatus!.Status) d-inline-flex align-items-center gap-1 flex-shrink-0"
+						  title="Auto-Pilot: @AutoPilotStatus.Status — @AutoPilotStatus.CompletedIterations iteration(s) completed">
+						@if (AutoPilotStatus.Status == IterationLoopStatus.Running)
+						{
+							<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+						}
+						<i class="bi bi-robot"></i>
+						Auto-Pilot
+						@if (AutoPilotStatus.CompletedIterations > 0)
+						{
+							<span class="opacity-75">(@AutoPilotStatus.CompletedIterations)</span>
+						}
+					</span>
+				}
+
+				@* Ideas queue badge *@
+				@if (IsIdeasProcessingActive)
+				{
+					<span class="badge text-bg-info d-inline-flex align-items-center gap-1 flex-shrink-0"
+						  title="Ideas are being queued and run automatically">
+						<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+						<i class="bi bi-lightbulb"></i>
+						Ideas
+						@if (IdeasUnprocessedCount > 0)
+						{
+							<span class="opacity-75">(@IdeasUnprocessedCount pending)</span>
+						}
+					</span>
+				}
+
+				@* Active job indicator *@
+				@if (ActiveJob != null)
+				{
+					<div class="d-flex align-items-center gap-1 text-body-secondary min-width-0 flex-shrink-1">
+						<i class="bi bi-gear-fill spin flex-shrink-0 opacity-75" style="font-size: 0.75rem;"></i>
+						<span class="text-truncate" style="max-width: min(240px, 40vw);" title="@ActiveJob.DisplayTitle">@ActiveJob.DisplayTitle</span>
+						@if (!string.IsNullOrEmpty(ActiveJob.CurrentActivity))
+						{
+							<span class="text-body-secondary text-truncate flex-shrink-1" style="max-width: min(180px, 28vw);">
+								— @ActiveJob.CurrentActivity
+							</span>
+						}
+					</div>
+				}
+
+				@* Spacer *@
+				<div class="flex-grow-1"></div>
+
+				@* Suggest button *@
+				@if (CanSuggestIdeas && !IsIdeasProcessingActive)
+				{
+					<button type="button" class="btn btn-sm btn-secondary" @onclick="OnSuggestIdeas"
+							title="Suggest ideas from codebase analysis">
+						<i class="bi bi-stars me-1"></i>
+						<span class="d-none d-sm-inline">Suggest</span>
+					</button>
+				}
+
+				@* Unified Stop button *@
+				<button type="button" class="btn btn-sm btn-danger" @onclick="OnStop"
+						disabled="@IsStoppingAll" title="Stop all running processes">
+					@if (IsStoppingAll)
+					{
+						<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+					}
+					else
+					{
+						<i class="bi bi-stop-fill me-1"></i>
+					}
+					Stop
+				</button>
+			</div>
+		}
+
+		@* Row 2: Working path, stats *@
 			<div class="d-flex flex-wrap align-items-center gap-2 gap-md-3 mt-2 pt-2 border-top border-body-tertiary small">
 				@* Source details *@
 				@if (!string.IsNullOrEmpty(GitHubRepository))
@@ -244,6 +328,30 @@ new Breadcrumb.BreadcrumbItem(Name)
 
 	[Parameter]
 	public EventCallback OnToggleActive { get; set; }
+
+	[Parameter]
+	public IterationLoop? AutoPilotStatus { get; set; }
+
+	[Parameter]
+	public bool IsIdeasProcessingActive { get; set; }
+
+	[Parameter]
+	public int IdeasUnprocessedCount { get; set; }
+
+	[Parameter]
+	public Job? ActiveJob { get; set; }
+
+	[Parameter]
+	public bool IsStoppingAll { get; set; }
+
+	[Parameter]
+	public bool CanSuggestIdeas { get; set; }
+
+	[Parameter]
+	public EventCallback OnStop { get; set; }
+
+	[Parameter]
+	public EventCallback OnSuggestIdeas { get; set; }
 
 	private string? _currentGitOperation => IsGitOperationInProgress
 		? GitProgressMessage?.Contains("Pruning") == true ? "prune"

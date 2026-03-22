@@ -47,7 +47,15 @@ else
                                 OnEdit="ShowEditProjectModal" OnPruneBranches="PruneRemoteBranches"
                                 ShowMergeBranchAction="@HasMergeBranchTargets" IsMerging="@_isMergingBranch"
                                 OnMergeBranch="ShowMergeBranchModal" IsActive="@(Project?.IsActive ?? true)"
-                                OnToggleActive="ToggleProjectActive" />
+                                OnToggleActive="ToggleProjectActive"
+                                AutoPilotStatus="@_autoPilotStatus"
+                                IsIdeasProcessingActive="@IsIdeasProcessingActive"
+                                IdeasUnprocessedCount="@IdeasUnprocessedCount"
+                                ActiveJob="@ActiveJob"
+                                IsStoppingAll="@_isStoppingAll"
+                                CanSuggestIdeas="@CanSuggestIdeas"
+                                OnStop="StopAllActive"
+                                OnSuggestIdeas="SuggestIdeasFromCodebase" />
 
     @* Tabbed Content Area *@
     <ul class="nav nav-tabs mt-3" role="tablist">
@@ -636,6 +644,36 @@ else
 
     private bool HasActiveJobs => ProjectActiveJobsCount > 0;
     private bool HasCompletedJobs => ProjectCompletedJobsCount > 0;
+
+    private Job? ActiveJob => Jobs.FirstOrDefault(j =>
+        j.Status == JobStatus.Started ||
+        j.Status == JobStatus.Planning ||
+        j.Status == JobStatus.Processing);
+
+    private bool CanSuggestIdeas => _hasInference || Providers.Any(p => p.IsEnabled);
+
+    private bool _isStoppingAll;
+
+    private async Task StopAllActive()
+    {
+        _isStoppingAll = true;
+        try
+        {
+            if (IsIdeasProcessingActive)
+                await StopIdeasProcessing();
+            if (_autoPilotStatus != null && !AutoPilotPanel.IsTerminal(_autoPilotStatus.Status))
+            {
+                try { await AutoPilotService.StopAsync(ProjectId); } catch { }
+                try { _autoPilotStatus = await AutoPilotService.GetStatusAsync(ProjectId); } catch { }
+                if (_autoPilotPanel != null)
+                    await _autoPilotPanel.RefreshAsync();
+            }
+        }
+        finally
+        {
+            _isStoppingAll = false;
+        }
+    }
 
     // SignalR connection
     private HubConnection? _hubConnection;
