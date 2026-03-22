@@ -11,7 +11,7 @@ Size="ModalDialog.ModalSize.Large" OnClose="Close">
 
 <div class="mb-3">
 <label for="goalPrompt" class="form-label">Goal Prompt</label>
-<InputTextArea id="goalPrompt" @bind-Value="FormModel.GoalPrompt" class="form-control" rows="4"
+<InputTextArea id="goalPrompt" @bind-Value="FormModel.GoalPrompt" class="form-control" rows="5"
 placeholder="Describe what you want the AI agent to accomplish..." />
 <ValidationMessage For="@(() => FormModel.GoalPrompt)" class="text-danger small" />
 </div>
@@ -175,7 +175,7 @@ else
 <div class="mb-3">
 <label for="cycleReviewPrompt" class="form-label">Cycle Review Prompt (Optional)</label>
 <InputTextArea id="cycleReviewPrompt" @bind-Value="FormModel.CycleReviewPrompt" class="form-control"
-rows="2" placeholder="Instructions for reviewing progress between cycles..." />
+rows="4" placeholder="Instructions for reviewing progress between cycles..." />
 <div class="form-text">Additional context provided at the start of each subsequent cycle.</div>
 </div>
 }

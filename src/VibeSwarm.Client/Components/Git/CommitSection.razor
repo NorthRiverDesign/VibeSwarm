@@ -48,7 +48,7 @@
 
 			<textarea id="commitMessage" class="form-control w-100" @bind="CommitMessage" @bind:event="oninput"
 					  placeholder="@(IsLoadingSummary ? "Generating commit message..." : "Enter a descriptive commit message...")"
-					  rows="3" disabled="@(IsPushing || IsCreatingPullRequest || IsMergingBranch)"></textarea>
+					  rows="5" disabled="@(IsPushing || IsCreatingPullRequest || IsMergingBranch)"></textarea>
 
 			@if (!string.IsNullOrEmpty(SummaryError))
 			{

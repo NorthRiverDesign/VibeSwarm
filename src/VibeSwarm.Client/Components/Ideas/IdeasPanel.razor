@@ -106,7 +106,7 @@
 		<label class="form-label fw-medium mb-2" for="newIdeaDescription">Add idea</label>
 		<div class="d-flex gap-2 align-items-end">
 			<div class="flex-grow-1">
-				<textarea class="form-control" id="newIdeaDescription" rows="3" placeholder="Describe a feature or improvement..."
+				<textarea class="form-control" id="newIdeaDescription" rows="5" placeholder="Describe a feature or improvement..."
 						  @bind="NewIdeaDescription" @bind:event="oninput" @onkeypress="HandleKeyPress"
 						  maxlength="@ValidationLimits.IdeaDescriptionMaxLength"
 						  title="Describe a feature or improvement. Press Ctrl+Enter to submit."></textarea>

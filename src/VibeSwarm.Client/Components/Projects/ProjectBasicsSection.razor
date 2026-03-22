@@ -18,7 +18,7 @@
 
 <div>
 <label for="modal-description" class="form-label">Description</label>
-<InputTextArea id="modal-description" @bind-Value="Project.Description" class="form-control" rows="2"
+<InputTextArea id="modal-description" @bind-Value="Project.Description" class="form-control" rows="4"
    placeholder="Brief description..." maxlength="@ValidationLimits.ProjectDescriptionMaxLength" />
 <ValidationMessage For="@(() => Project.Description)" class="text-danger small" />
 <div class="form-text">@GetCharacterCount(Project.Description, ValidationLimits.ProjectDescriptionMaxLength)</div>

@@ -184,7 +184,7 @@
     {
         <div class="card-footer bg-body-tertiary border-top">
             <div class="d-flex gap-2">
-                <textarea class="form-control" rows="2" placeholder="Add follow-up instructions..." @bind="_followUpPrompt"
+                <textarea class="form-control" rows="4" placeholder="Add follow-up instructions..." @bind="_followUpPrompt"
                           @bind:event="oninput" disabled="@_isSendingFollowUp"></textarea>
                 <button class="btn btn-primary align-self-end flex-shrink-0" @onclick="SendFollowUp"
                         disabled="@(string.IsNullOrWhiteSpace(_followUpPrompt) || _isSendingFollowUp)" title="Send follow-up">

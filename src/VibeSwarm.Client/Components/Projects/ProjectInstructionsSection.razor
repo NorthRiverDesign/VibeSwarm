@@ -15,7 +15,7 @@
 <span class="text-body-secondary fw-normal">(optional)</span>
 </label>
 <InputTextArea id="modal-promptContext" @bind-Value="Project.PromptContext" class="form-control"
-   rows="3"
+   rows="5"
    maxlength="@ValidationLimits.ProjectPromptContextMaxLength"
    placeholder="Optional instructions injected into every job prompt for this project (e.g., coding conventions, framework preferences)" />
 <ValidationMessage For="@(() => Project.PromptContext)" class="text-danger small" />

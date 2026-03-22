@@ -71,8 +71,8 @@
 	overflow: hidden;
 }
 
-/* Prevent textareas from expanding too large */
-textarea.form-control { max-height: 40rem; }
+/* Prevent textareas from expanding too large (50-row max ~75rem) */
+textarea.form-control { max-height: calc(50 * 1.5rem + 0.75rem); }
 
 /* Loading spinner animation */
 .spin { animation: spin 1s linear infinite; }

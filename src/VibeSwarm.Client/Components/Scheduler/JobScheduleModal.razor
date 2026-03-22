@@ -28,7 +28,7 @@
 
 			<div class="mb-3">
 				<label for="schedule-prompt" class="form-label">Prompt</label>
-				<InputTextArea id="schedule-prompt" @bind-Value="Schedule.Prompt" class="form-control" rows="4"
+				<InputTextArea id="schedule-prompt" @bind-Value="Schedule.Prompt" class="form-control" rows="5"
 							   placeholder="update dependencies, check for security issues" />
 				<ValidationMessage For="@(() => Schedule.Prompt)" class="text-danger small" />
 				<div class="form-text">Each time this schedule runs, VibeSwarm will create a new job with this prompt.</div>
