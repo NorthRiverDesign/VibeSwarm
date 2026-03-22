@@ -240,6 +240,17 @@ public class IdeaService : IIdeaService
 		if (idea != null)
 		{
 			var projectId = idea.ProjectId;
+
+			// Cancel the associated job if it is still queued (not yet running)
+			if (idea.JobId.HasValue)
+			{
+				try
+				{
+					await _jobService.RequestCancellationAsync(idea.JobId.Value, cancellationToken);
+				}
+				catch { /* Don't fail deletion if job cancellation fails */ }
+			}
+
 			_dbContext.Ideas.Remove(idea);
 			await _dbContext.SaveChangesAsync(cancellationToken);
 

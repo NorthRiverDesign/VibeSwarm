@@ -130,11 +130,22 @@
 				@* Dropdown menu *@
 				<div class="dropdown flex-shrink-0">
 					<button class="btn btn-sm btn-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown"
-							aria-expanded="false" disabled="@(IsRunningIdea() || IsQueuedIdea() || Idea.JobId.HasValue)">
+							aria-expanded="false">
 						<i class="bi bi-three-dots-vertical"></i>
 						<span class="d-inline d-sm-none ms-1">Options</span>
 					</button>
 					<ul class="dropdown-menu dropdown-menu-end">
+						@if (IsRunningIdea() && Idea.JobId.HasValue)
+						{
+							<li>
+								<button class="dropdown-item text-warning" @onclick="HandleStopJob">
+									<i class="bi bi-stop-fill me-2"></i>Stop Job
+								</button>
+							</li>
+							<li>
+								<hr class="dropdown-divider">
+							</li>
+						}
 						<li>
 							<button class="dropdown-item" @onclick="HandleExpand"
 									disabled="@(Idea.JobId.HasValue || Idea.ExpansionStatus == IdeaExpansionStatus.Expanding)">
@@ -145,8 +156,7 @@
 							<hr class="dropdown-divider">
 						</li>
 						<li>
-							<button class="dropdown-item" @onclick="StartEdit"
-									disabled="@(IsRunningIdea() || IsQueuedIdea() || Idea.JobId.HasValue)">
+							<button class="dropdown-item" @onclick="StartEdit">
 								<i class="bi bi-pencil me-2"></i>Edit
 							</button>
 						</li>
@@ -166,7 +176,7 @@
 						</li>
 						<li>
 							<button class="dropdown-item text-danger" @onclick="HandleDelete"
-									disabled="@(IsRunningIdea() || IsQueuedIdea() || Idea.JobId.HasValue)">
+									disabled="@IsRunningIdea()">
 								<i class="bi bi-trash me-2"></i>Delete
 							</button>
 						</li>
@@ -213,6 +223,9 @@
 
 	[Parameter]
 	public EventCallback OnDelete { get; set; }
+
+	[Parameter]
+	public EventCallback OnStopJob { get; set; }
 
 	[Parameter]
 	public EventCallback<(Guid IdeaId, string Description)> OnSaveEdit { get; set; }
@@ -265,6 +278,7 @@
 	private async Task HandleCopy() => await OnCopy.InvokeAsync();
 	private async Task HandleMove() => await OnMove.InvokeAsync();
 	private async Task HandleDelete() => await OnDelete.InvokeAsync();
+	private async Task HandleStopJob() => await OnStopJob.InvokeAsync();
 
 	private string GetExpandButtonTooltip()
 	{

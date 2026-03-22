@@ -1,6 +1,7 @@
 @* Ideas panel component for managing project feature ideas *@
 @inject IProjectService ProjectService
 @inject IIdeaService IdeaService
+@inject IJobService JobService
 @inject NotificationService NotificationService
 @using VibeSwarm.Shared.Data
 @using VibeSwarm.Shared.Inference
@@ -164,7 +165,8 @@
 							  IsQueuedForProcessing="@(IsProcessingActive && !idea.IsProcessing && !IsIdeaProcessing(idea.Id) && !idea.JobId.HasValue)"
 							  OnExpand="@(() => OpenExpandModal(idea))" OnStart="@(() => StartSingleIdea(idea))"
 							  OnCopy="@(() => OpenCopyModal(idea))" OnMove="@(() => OpenMoveModal(idea))"
-							  OnDelete="@(() => OnDeleteIdea.InvokeAsync(idea.Id))" OnSaveEdit="HandleIdeaEdit" />
+							  OnDelete="@(() => OnDeleteIdea.InvokeAsync(idea.Id))" OnSaveEdit="HandleIdeaEdit"
+							  OnStopJob="@(() => HandleStopJob(idea))" />
 				}
 			</ul>
 		</div>
@@ -416,6 +418,19 @@
 			NewIdeaDescription = string.Empty;
 		}
 		finally { _isSubmitting = false; }
+	}
+
+	private async Task HandleStopJob(Idea idea)
+	{
+		if (!idea.JobId.HasValue) return;
+		try
+		{
+			await JobService.RequestCancellationAsync(idea.JobId.Value);
+		}
+		catch (Exception ex)
+		{
+			NotificationService.ShowError($"Error stopping job: {ex.Message}");
+		}
 	}
 
 	private async Task HandleIdeaEdit((Guid IdeaId, string Description) update)
