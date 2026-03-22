@@ -16,6 +16,8 @@ public class IdeasProcessingService : BackgroundService
 	private readonly IServiceScopeFactory _scopeFactory;
 	private readonly ILogger<IdeasProcessingService> _logger;
 	private readonly TimeSpan _checkInterval = TimeSpan.FromSeconds(10);
+	private const int RecoveryIntervalCycles = 6; // run recovery every ~60 seconds
+	private int _cycleCount;
 
 	public IdeasProcessingService(
 		IServiceScopeFactory scopeFactory,
@@ -33,6 +35,14 @@ public class IdeasProcessingService : BackgroundService
 		{
 			try
 			{
+				// Periodically scan for ideas stuck in IsProcessing=true with a terminal or missing job
+				_cycleCount++;
+				if (_cycleCount >= RecoveryIntervalCycles)
+				{
+					_cycleCount = 0;
+					await RecoverStuckIdeasAsync(stoppingToken);
+				}
+
 				await ProcessActiveProjectsAsync(stoppingToken);
 			}
 			catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -55,6 +65,20 @@ public class IdeasProcessingService : BackgroundService
 		}
 
 		_logger.LogInformation("Ideas Processing Service stopped");
+	}
+
+	private async Task RecoverStuckIdeasAsync(CancellationToken cancellationToken)
+	{
+		try
+		{
+			using var scope = _scopeFactory.CreateScope();
+			var ideaService = scope.ServiceProvider.GetRequiredService<IIdeaService>();
+			await ideaService.RecoverStuckIdeasAsync(cancellationToken);
+		}
+		catch (Exception ex)
+		{
+			_logger.LogError(ex, "Error recovering stuck ideas");
+		}
 	}
 
 	private async Task ProcessActiveProjectsAsync(CancellationToken cancellationToken)

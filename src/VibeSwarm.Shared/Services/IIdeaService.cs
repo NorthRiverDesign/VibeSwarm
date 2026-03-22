@@ -103,6 +103,14 @@ public interface IIdeaService
 	Task<IEnumerable<Guid>> GetActiveProcessingProjectsAsync(CancellationToken cancellationToken = default);
 
 	/// <summary>
+	/// Scans all ideas with IsProcessing=true and resets any that are orphaned —
+	/// either because their linked job is in a terminal state or the job no longer exists.
+	/// Also resets ideas stuck with IsProcessing=true but no JobId (partial conversion failure).
+	/// Called periodically by the background service as a safety net.
+	/// </summary>
+	Task RecoverStuckIdeasAsync(CancellationToken cancellationToken = default);
+
+	/// <summary>
 	/// Reorders ideas for a project
 	/// </summary>
 	Task ReorderIdeasAsync(Guid projectId, IEnumerable<Guid> ideaIdsInOrder, CancellationToken cancellationToken = default);

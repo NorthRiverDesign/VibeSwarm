@@ -101,6 +101,19 @@ public class JobCompletionMonitorService : BackgroundService
 			{
 				if (TryEvaluateObservedSessionCompletion(job, out var observedCompletion))
 				{
+					// Verify no active process is still running before recovering via text match.
+					// CLI-based providers (Claude, OpenCode, Copilot) track an OS process; if it's
+					// still running, the [Session] Complete line in output is a false positive (e.g.,
+					// agent output or source code read by the agent that contains the marker text).
+					var supervisedProcess = _processSupervisor.GetProcess(job.Id);
+					if (supervisedProcess?.Process != null && !supervisedProcess.Process.HasExited)
+					{
+						_logger.LogDebug(
+							"Job {JobId} has active process {ProcessId}, skipping session-complete text recovery",
+							job.Id, supervisedProcess.ProcessId);
+						continue;
+					}
+
 					_logger.LogWarning(
 						"Job {JobId} appears complete from provider session output but is still {Status}. Recovering completion.",
 						job.Id,
@@ -142,8 +155,7 @@ public class JobCompletionMonitorService : BackgroundService
 			return false;
 		}
 
-		if (string.IsNullOrWhiteSpace(job.ConsoleOutput)
-			|| job.ConsoleOutput.IndexOf("[Session] Complete", StringComparison.OrdinalIgnoreCase) < 0)
+		if (!HasSessionCompleteMarker(job.ConsoleOutput))
 		{
 			return false;
 		}
@@ -157,6 +169,24 @@ public class JobCompletionMonitorService : BackgroundService
 		evaluation.IsComplete = true;
 		evaluation.CompletionReason = "Recovered completion after provider session output reported completion.";
 		return true;
+	}
+
+	/// <summary>
+	/// Returns true only when the console output contains "[Session] Complete" as a complete
+	/// trimmed line. A substring/IndexOf check would produce false positives when an agent reads
+	/// or outputs source code that happens to contain the marker text (e.g., reading this file).
+	/// </summary>
+	private static bool HasSessionCompleteMarker(string? consoleOutput)
+	{
+		if (string.IsNullOrWhiteSpace(consoleOutput)) return false;
+
+		foreach (var rawLine in consoleOutput.Split('\n'))
+		{
+			if (rawLine.TrimEnd('\r').Trim().Equals("[Session] Complete", StringComparison.OrdinalIgnoreCase))
+				return true;
+		}
+
+		return false;
 	}
 
 	/// <summary>
@@ -236,6 +266,21 @@ public class JobCompletionMonitorService : BackgroundService
 		}
 
 		await dbContext.SaveChangesAsync(cancellationToken);
+
+		// Notify idea service so it can reset/remove the linked idea
+		if (JobStateMachine.IsTerminalState(newStatus))
+		{
+			try
+			{
+				using var ideaScope = _scopeFactory.CreateScope();
+				var ideaService = ideaScope.ServiceProvider.GetRequiredService<IIdeaService>();
+				await ideaService.HandleJobCompletionAsync(job.Id, newStatus == JobStatus.Completed, cancellationToken);
+			}
+			catch (Exception ex)
+			{
+				_logger.LogWarning(ex, "Failed to handle idea completion for recovered job {JobId}", job.Id);
+			}
+		}
 
 		// Notify UI
 		await NotifyJobStatusChangedAsync(job.Id, newStatus.ToString());
@@ -526,6 +571,17 @@ public class JobCompletionMonitorService : BackgroundService
 					if (JobStateMachine.IsTerminalState(job.Status))
 					{
 						await NotifyJobCompletedAsync(job.Id, job.Status == JobStatus.Completed, job.ErrorMessage);
+
+						try
+						{
+							using var ideaScope = _scopeFactory.CreateScope();
+							var ideaService = ideaScope.ServiceProvider.GetRequiredService<IIdeaService>();
+							await ideaService.HandleJobCompletionAsync(job.Id, job.Status == JobStatus.Completed);
+						}
+						catch (Exception ideaEx)
+						{
+							_logger.LogWarning(ideaEx, "Failed to handle idea completion for unexpectedly-exited job {JobId}", jobId);
+						}
 					}
 
 					if (job.Status == JobStatus.New || JobStateMachine.IsTerminalState(job.Status))
@@ -633,6 +689,18 @@ public class JobCompletionMonitorService : BackgroundService
 						}
 
 						await dbContext.SaveChangesAsync();
+
+						// Notify idea service so it can remove the linked idea on success
+						try
+						{
+							using var ideaScope = _scopeFactory.CreateScope();
+							var ideaService = ideaScope.ServiceProvider.GetRequiredService<IIdeaService>();
+							await ideaService.HandleJobCompletionAsync(job.Id, true);
+						}
+						catch (Exception ideaEx)
+						{
+							_logger.LogWarning(ideaEx, "Failed to handle idea completion for exited job {JobId}", jobId);
+						}
 
 						// Notify UI immediately
 						await NotifyJobStatusChangedAsync(job.Id, job.Status.ToString());

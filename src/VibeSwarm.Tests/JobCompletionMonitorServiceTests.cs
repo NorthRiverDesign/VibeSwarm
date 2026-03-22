@@ -106,6 +106,88 @@ public sealed class JobCompletionMonitorServiceTests : IDisposable
 		Assert.Equal(0, job.ChangedFilesCount);
 	}
 
+	/// <summary>
+	/// An agent reading source code that contains "[Session] Complete" as part of a longer line
+	/// (e.g., OutputLine = "[Session] Complete") must NOT trigger the recovery path.
+	/// </summary>
+	[Fact]
+	public async Task CheckRunningJobsAsync_DoesNotCompleteJobWhenMarkerIsSubstringOfLongerLine()
+	{
+		var projectId = Guid.NewGuid();
+		var providerId = Guid.NewGuid();
+		var jobId = Guid.NewGuid();
+		var now = DateTime.UtcNow;
+
+		await using (var setupContext = CreateDbContext())
+		{
+			setupContext.Projects.Add(new Project
+			{
+				Id = projectId,
+				Name = "Refactoring Project",
+				WorkingPath = "/tmp/refactoring"
+			});
+
+			setupContext.Providers.Add(new Provider
+			{
+				Id = providerId,
+				Name = "Claude Provider",
+				Type = ProviderType.Claude,
+				IsEnabled = true
+			});
+
+			await setupContext.SaveChangesAsync();
+
+			// Simulates an agent that read source code containing the marker as a substring:
+			// OutputLine = "[Session] Complete"   ← not a standalone marker line
+			setupContext.Jobs.Add(new Job
+			{
+				Id = jobId,
+				ProjectId = projectId,
+				ProviderId = providerId,
+				GoalPrompt = "Major refactoring of the authentication module",
+				Status = JobStatus.Processing,
+				StartedAt = now.AddMinutes(-2),
+				LastActivityAt = now.AddMinutes(-1),
+				LastHeartbeatAt = now.AddSeconds(-30),
+				CurrentActivity = "Starting major refactoring...",
+				ConsoleOutput = """
+					[Assistant] I will start a major refactoring.
+					[Tool] read_file: CopilotSdkProvider.cs
+					OutputLine = "[Session] Complete",
+					[Assistant] I have read the file and will now proceed.
+					"""
+			});
+
+			await setupContext.SaveChangesAsync();
+		}
+
+		var services = BuildServices();
+		var scopeFactory = services.GetRequiredService<IServiceScopeFactory>();
+		var versionControlService = services.GetRequiredService<IVersionControlService>();
+		var processingService = new JobProcessingService(
+			scopeFactory,
+			NullLogger<JobProcessingService>.Instance,
+			versionControlService,
+			projectEnvironmentCredentialService: new NoOpProjectEnvironmentCredentialService());
+
+		var monitor = new JobCompletionMonitorService(
+			scopeFactory,
+			NullLogger<JobCompletionMonitorService>.Instance,
+			new ProviderHealthTracker(),
+			processingService,
+			versionControlService,
+			new ProcessSupervisor());
+
+		await InvokeCheckRunningJobsAsync(monitor);
+
+		await using var verificationContext = CreateDbContext();
+		var job = await verificationContext.Jobs.SingleAsync(j => j.Id == jobId);
+
+		// Job should remain Processing — the marker was a substring inside a code line, not a standalone marker
+		Assert.Equal(JobStatus.Processing, job.Status);
+		Assert.Null(job.CompletedAt);
+	}
+
 	private ServiceProvider BuildServices()
 	{
 		var services = new ServiceCollection();

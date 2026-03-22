@@ -1,0 +1,360 @@
+using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.SignalR.Client;
+using VibeSwarm.Shared.Data;
+
+namespace VibeSwarm.Client.Pages;
+
+public partial class JobDetail : ComponentBase, IAsyncDisposable
+{
+    private HubConnection? _hubConnection;
+    private CancellationTokenSource? _signalRCts;
+
+    private async Task InitializeSignalRSafe()
+    {
+        try
+        {
+            _signalRCts = new CancellationTokenSource();
+            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
+                _signalRCts.Token, timeoutCts.Token);
+
+            await InitializeSignalR(linkedCts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            Console.WriteLine("SignalR connection timed out - falling back to polling");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"SignalR initialization failed (non-critical): {ex.Message}");
+        }
+    }
+
+    private async Task InitializeSignalR(CancellationToken cancellationToken)
+    {
+        try
+        {
+            _hubConnection = new HubConnectionBuilder()
+                .WithUrl(NavigationManager.ToAbsoluteUri("/hubs/job"))
+                .WithAutomaticReconnect(new[] { TimeSpan.Zero, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(5),
+                    TimeSpan.FromSeconds(10) })
+                .Build();
+
+            _hubConnection.On<string, string>("JobStatusChanged", async (jobId, status) =>
+            {
+                await OnJobStatusChanged(jobId, status);
+            });
+
+            _hubConnection.On<string, string, DateTime>("JobActivityUpdated", async (jobId, activity, timestamp) =>
+            {
+                await OnJobActivityUpdated(jobId, activity, timestamp);
+            });
+
+            _hubConnection.On<string, string, bool, DateTime>("JobOutput", async (jobId, line, isError, timestamp) =>
+            {
+                await OnJobOutputReceived(jobId, line, isError, timestamp);
+            });
+
+            _hubConnection.On<string, int, string>("ProcessStarted", async (jobId, processId, command) =>
+            {
+                await OnProcessStarted(jobId, processId, command);
+            });
+
+            _hubConnection.On<string, int, int, double>("ProcessExited", async (jobId, processId, exitCode, durationSeconds) =>
+            {
+                await InvokeAsync(StateHasChanged);
+            });
+
+            _hubConnection.On<string, string, string, List<string>?, string?>("JobInteractionRequired",
+                async (jobId, prompt, interactionType, choices, defaultResponse) =>
+                {
+                    await OnJobInteractionRequested(jobId, prompt, choices);
+                });
+
+            _hubConnection.On<string>("JobResumed", async (jobId) =>
+            {
+                await OnJobInteractionCompleted(jobId);
+            });
+
+            _hubConnection.On<string, bool, string?>("JobCompleted", async (jobId, success, errorMessage) =>
+            {
+                await OnJobCompleted(jobId, success, errorMessage);
+            });
+
+            _hubConnection.On<string, int, int>("JobCycleProgress", async (jobId, currentCycle, maxCycles) =>
+            {
+                await OnJobCycleProgress(jobId, currentCycle, maxCycles);
+            });
+
+            _hubConnection.On<string, bool>("JobGitDiffUpdated", async (jobId, hasChanges) =>
+            {
+                if (hasChanges)
+                {
+                    await InvokeAsync(async () => await RefreshJobSafely());
+                }
+            });
+
+            _hubConnection.Reconnected += async (connectionId) =>
+            {
+                Console.WriteLine($"SignalR reconnected: {connectionId}");
+                await SubscribeToSignalRGroups();
+            };
+
+            await _hubConnection.StartAsync(cancellationToken);
+            Console.WriteLine("SignalR connected successfully");
+
+            await SubscribeToSignalRGroups();
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            Console.WriteLine($"Error initializing SignalR: {ex.Message}");
+        }
+    }
+
+    private async Task SubscribeToSignalRGroups()
+    {
+        if (_hubConnection?.State != HubConnectionState.Connected) return;
+
+        try
+        {
+            await _hubConnection.InvokeAsync("SubscribeToJob", JobId.ToString());
+            await _hubConnection.InvokeAsync("SubscribeToJobList");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"SignalR subscription failed: {ex.Message}");
+        }
+    }
+
+    #region SignalR Handlers
+
+    private async Task OnJobStatusChanged(string jobId, string status)
+    {
+        if (Job != null && Enum.TryParse<JobStatus>(status, out var newStatus))
+        {
+            Job.Status = newStatus;
+            if (newStatus == JobStatus.Started)
+            {
+                Job.StartedAt = DateTime.UtcNow;
+            }
+            else if (newStatus == JobStatus.Completed || newStatus == JobStatus.Failed || newStatus == JobStatus.Cancelled)
+            {
+                Job.CompletedAt = DateTime.UtcNow;
+                if (newStatus == JobStatus.Failed || newStatus == JobStatus.Cancelled)
+                {
+                    _ = Task.Run(async () =>
+                    {
+                        await Task.Delay(1000);
+                        await InvokeAsync(async () => await CheckUncommittedChangesAsync());
+                    });
+                }
+            }
+            await InvokeAsync(StateHasChanged);
+        }
+
+        if (!_isRefreshing)
+        {
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(500);
+                await InvokeAsync(async () => await RefreshJobSafely());
+            });
+        }
+    }
+
+    private async Task OnJobActivityUpdated(string jobId, string activity, DateTime timestamp)
+    {
+        if (Job != null)
+        {
+            Job.CurrentActivity = activity;
+            Job.LastActivityAt = timestamp;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task OnJobMessageAdded(string jobId)
+    {
+        if (!_isRefreshing)
+        {
+            await InvokeAsync(async () => await RefreshJobSafely());
+        }
+    }
+
+    private async Task OnJobOutputReceived(string jobId, string line, bool isError, DateTime timestamp)
+    {
+        lock (_liveOutput)
+        {
+            _liveOutput.Add(JobSessionDisplayBuilder.CreateOutputLine(
+                isError ? $"[ERR] {line}" : line,
+                timestamp));
+            while (_liveOutput.Count > MaxOutputLines)
+            {
+                _liveOutput.RemoveAt(0);
+            }
+        }
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OnProcessStarted(string jobId, int processId, string command)
+    {
+        if (Job != null)
+        {
+            _liveCommand = command;
+            Job.ProcessId = processId;
+            if (string.IsNullOrEmpty(Job.CommandUsed))
+            {
+                Job.CommandUsed = command;
+            }
+
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task OnJobInteractionRequested(string jobId, string prompt, List<string>? choices)
+    {
+        if (Job != null)
+        {
+            Job.Status = JobStatus.Paused;
+            Job.PendingInteractionPrompt = prompt;
+            Job.InteractionRequestedAt = DateTime.UtcNow;
+            _interactionChoices = choices;
+            _interactionError = null;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task OnJobInteractionCompleted(string jobId)
+    {
+        if (Job != null)
+        {
+            Job.Status = JobStatus.Processing;
+            Job.PendingInteractionPrompt = null;
+            Job.InteractionType = null;
+            Job.InteractionRequestedAt = null;
+            _interactionChoices = null;
+            _interactionError = null;
+            _isSubmittingResponse = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task OnJobCycleProgress(string jobId, int currentCycle, int maxCycles)
+    {
+        if (Job != null && Job.Id.ToString() == jobId)
+        {
+            Job.CurrentCycle = currentCycle;
+            Job.MaxCycles = maxCycles;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task OnJobCompleted(string jobId, bool success, string? errorMessage)
+    {
+        if (Job != null)
+        {
+            Job.Status = success ? JobStatus.Completed : JobStatus.Failed;
+            Job.CompletedAt = DateTime.UtcNow;
+            if (!string.IsNullOrEmpty(errorMessage))
+            {
+                Job.ErrorMessage = errorMessage;
+            }
+
+            if (success)
+            {
+                _isLoadingGitDiff = true;
+                _isLoadingSummary = true;
+            }
+            else
+            {
+                _ = Task.Run(async () =>
+                {
+                    await Task.Delay(1000);
+                    await InvokeAsync(async () => await CheckUncommittedChangesAsync());
+                });
+            }
+            await InvokeAsync(StateHasChanged);
+        }
+
+        await Task.Delay(500);
+        await InvokeAsync(async () =>
+        {
+            await RefreshJobSafely();
+            await HandlePostCompletionDataLoading(success);
+        });
+    }
+
+    private async Task HandlePostCompletionDataLoading(bool success)
+    {
+        var hasGitDiff = Job != null && !string.IsNullOrEmpty(Job.GitDiff);
+        var hasSummary = Job != null && !string.IsNullOrWhiteSpace(Job.SessionSummary);
+
+        if (hasGitDiff && hasSummary)
+        {
+            _isLoadingGitDiff = false;
+            _isLoadingSummary = false;
+            StateHasChanged();
+            return;
+        }
+
+        var retryDelays = new[] { 1000, 2000, 3000 };
+        foreach (var delay in retryDelays)
+        {
+            await Task.Delay(delay);
+            await RefreshJobSafely();
+
+            hasGitDiff = Job != null && !string.IsNullOrEmpty(Job.GitDiff);
+            hasSummary = Job != null && !string.IsNullOrWhiteSpace(Job.SessionSummary);
+
+            if (hasGitDiff && hasSummary) break;
+
+            if (hasGitDiff) _isLoadingGitDiff = false;
+            if (hasSummary) _isLoadingSummary = false;
+            StateHasChanged();
+        }
+
+        if (!hasGitDiff && success && Job?.Project?.WorkingPath != null)
+        {
+            try
+            {
+                await CheckGitDiffAsync();
+                await RefreshJobSafely();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error auto-checking git diff: {ex.Message}");
+            }
+        }
+
+        _isLoadingGitDiff = false;
+        _isLoadingSummary = false;
+        StateHasChanged();
+    }
+
+    #endregion
+
+    public async ValueTask DisposeAsync()
+    {
+        _signalRCts?.Cancel();
+        _signalRCts?.Dispose();
+        _refreshTimer?.Dispose();
+        _pushCancellationTokenSource?.Cancel();
+        _pushCancellationTokenSource?.Dispose();
+
+        if (_hubConnection != null)
+        {
+            try
+            {
+                if (_hubConnection.State == HubConnectionState.Connected)
+                {
+                    await _hubConnection.InvokeAsync("UnsubscribeFromJob", JobId.ToString());
+                    await _hubConnection.InvokeAsync("UnsubscribeFromJobList");
+                }
+                await _hubConnection.DisposeAsync();
+            }
+            catch
+            {
+                // Ignore disposal errors
+            }
+        }
+    }
+}

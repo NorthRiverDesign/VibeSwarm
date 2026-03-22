@@ -76,6 +76,9 @@ public class HttpIdeaService : IIdeaService
     public async Task<IEnumerable<Guid>> GetActiveProcessingProjectsAsync(CancellationToken ct = default)
         => throw new NotSupportedException("GetActiveProcessingProjectsAsync is server-only");
 
+    public Task RecoverStuckIdeasAsync(CancellationToken ct = default)
+        => throw new NotSupportedException("RecoverStuckIdeasAsync is server-only");
+
     public async Task ReorderIdeasAsync(Guid projectId, IEnumerable<Guid> ideaIdsInOrder, CancellationToken ct = default)
         => await _http.PutAsJsonAsync($"/api/ideas/project/{projectId}/reorder", ideaIdsInOrder, ct);
 

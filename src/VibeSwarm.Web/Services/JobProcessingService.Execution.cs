@@ -1,0 +1,1186 @@
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using System.Text.Json;
+using VibeSwarm.Shared.Data;
+using VibeSwarm.Shared.Providers;
+using VibeSwarm.Shared.Services;
+using VibeSwarm.Shared.Utilities;
+
+namespace VibeSwarm.Web.Services;
+
+public partial class JobProcessingService
+{
+    private async Task ProcessJobAsync(
+        Job job,
+        IJobService jobService,
+        IProviderService providerService,
+        VibeSwarmDbContext dbContext,
+        JobExecutionContext executionContext,
+        CancellationToken cancellationToken)
+    {
+        _logger.LogInformation("Processing job {JobId} for project {ProjectName} (Worker: {WorkerId})",
+            job.Id, job.Project?.Name, _workerInstanceId);
+
+        // Store provider ID for later cleanup
+        executionContext.ProviderId = job.ProviderId;
+
+        string? workingDirectory = null;
+        string? projectMemoryFilePath = null;
+        try
+        {
+            // Check if job was cancelled before we even started
+            if (await jobService.IsCancellationRequestedAsync(job.Id, cancellationToken))
+            {
+                var transition = JobStateMachine.TryTransition(job, JobStatus.Cancelled, "Cancelled before start");
+                await dbContext.SaveChangesAsync(cancellationToken);
+                await NotifyJobCompletedAsync(job.Id, false, "Job was cancelled before processing started");
+                return;
+            }
+
+            // Claim ownership before any provider work starts so duplicate schedulers cannot
+            // launch the same CLI agent twice for a single job.
+            var claimed = await ClaimJobAsync(job.Id, dbContext, cancellationToken);
+            if (!claimed)
+            {
+                _logger.LogInformation("Skipping provider execution for job {JobId} because another worker already claimed it.", job.Id);
+                return;
+            }
+
+            // Refresh execution plan from current project settings so queued jobs
+            // pick up provider/model changes made after creation.
+            try
+            {
+                await jobService.RefreshExecutionPlanAsync(job.Id, cancellationToken);
+                await dbContext.Entry(job).ReloadAsync(cancellationToken);
+                if (job.Provider == null)
+                {
+                    await dbContext.Entry(job).Reference(j => j.Provider).LoadAsync(cancellationToken);
+                }
+                if (job.Project == null)
+                {
+                    await dbContext.Entry(job).Reference(j => j.Project).LoadAsync(cancellationToken);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to refresh execution plan for job {JobId}, continuing with existing plan", job.Id);
+            }
+
+            // Store provider ID for cleanup (may have changed after refresh)
+            executionContext.ProviderId = job.ProviderId;
+
+            job.Status = JobStatus.Started;
+            job.StartedAt ??= DateTime.UtcNow;
+            job.LastActivityAt = DateTime.UtcNow;
+            job.WorkerInstanceId = _workerInstanceId;
+            job.LastHeartbeatAt = DateTime.UtcNow;
+            await NotifyStatusChangedAsync(job.Id, JobStatus.Started);
+
+            // Check again after status update - double-check for race conditions
+            if (await jobService.IsCancellationRequestedAsync(job.Id, cancellationToken))
+            {
+                await ReleaseJobAsync(job.Id, JobStatus.Cancelled, "Job was cancelled", dbContext, cancellationToken);
+                await NotifyJobCompletedAsync(job.Id, false, "Job was cancelled");
+                return;
+            }
+
+            // Check if provider is available
+            if (job.Provider == null)
+            {
+                await ReleaseJobAsync(job.Id, JobStatus.Failed, "Provider not found", dbContext, cancellationToken);
+                await NotifyJobCompletedAsync(job.Id, false, "Provider not found");
+                return;
+            }
+
+            // Create provider instance
+            var provider = CreateProviderInstance(job.Provider);
+            executionContext.ProviderInstance = provider;
+
+            var providerValidationError = await ValidateProviderAvailabilityAsync(job.Id, job.Provider, provider, cancellationToken);
+            if (!string.IsNullOrWhiteSpace(providerValidationError))
+            {
+                await ReleaseJobAsync(job.Id, JobStatus.Failed, providerValidationError, dbContext, cancellationToken);
+                await NotifyJobCompletedAsync(job.Id, false, providerValidationError);
+                return;
+            }
+
+            // Update status to processing
+            var initialStatus = ShouldUsePlanningStage(job.Project) && string.IsNullOrWhiteSpace(job.PlanningOutput)
+                ? JobStatus.Planning
+                : JobStatus.Processing;
+            await UpdateJobStatusAsync(job.Id, initialStatus, dbContext, cancellationToken);
+            await NotifyStatusChangedAsync(job.Id, initialStatus);
+
+            // Send initial activity notification
+            var initialActivity = initialStatus == JobStatus.Planning
+                ? "Preparing planning stage..."
+                : "Initializing coding agent...";
+            await UpdateHeartbeatAsync(job.Id, initialActivity, dbContext, cancellationToken);
+            await NotifyJobActivityAsync(job.Id, initialActivity, DateTime.UtcNow);
+
+            // Prepare the configured working branch before starting work (if this is a git repository)
+            workingDirectory = job.Project?.WorkingPath;
+            if (!string.IsNullOrEmpty(workingDirectory) && Directory.Exists(workingDirectory))
+            {
+                try
+                {
+                    var isGitRepo = await _versionControlService.IsGitRepositoryAsync(workingDirectory, cancellationToken);
+                    if (isGitRepo)
+                    {
+                        var checkpointBaseBranch = await PreserveWorkingTreeBeforeBranchPreparationAsync(
+                            job,
+                            workingDirectory,
+                            dbContext,
+                            captureJobDiff: false,
+                            reason: "Protected local changes before preparing the job branch.",
+                            cancellationToken: cancellationToken);
+
+                        var branchActivity = string.IsNullOrWhiteSpace(job.Branch)
+                            ? "Syncing working branch..."
+                            : $"Preparing branch '{job.Branch}'...";
+                        await UpdateHeartbeatAsync(job.Id, branchActivity, dbContext, cancellationToken);
+                        await NotifyJobActivityAsync(job.Id, branchActivity, DateTime.UtcNow);
+
+                        await PrepareWorkingBranchAsync(job, workingDirectory, checkpointBaseBranch, cancellationToken);
+                    }
+                }
+                catch (GitCheckpointRequiredException)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Error preparing git branch for job {JobId}. Continuing with local state.", job.Id);
+                }
+            }
+
+            // Capture git commit hash before execution for diff comparison later
+            if (!string.IsNullOrEmpty(workingDirectory) && Directory.Exists(workingDirectory))
+            {
+                try
+                {
+                    executionContext.GitCommitBefore = await _versionControlService.GetCurrentCommitHashAsync(workingDirectory, cancellationToken);
+                    if (!string.IsNullOrEmpty(executionContext.GitCommitBefore))
+                    {
+                        _logger.LogInformation("Captured git commit {Commit} before job {JobId} execution",
+                            executionContext.GitCommitBefore[..Math.Min(8, executionContext.GitCommitBefore.Length)], job.Id);
+
+                        // Store commit hash in database
+                        var jobForGit = await dbContext.Jobs.FindAsync(new object[] { job.Id }, cancellationToken);
+                        if (jobForGit != null)
+                        {
+                            jobForGit.GitCommitBefore = executionContext.GitCommitBefore;
+                            await dbContext.SaveChangesAsync(cancellationToken);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to capture git commit hash for job {JobId}", job.Id);
+                }
+            }
+
+            // Auto-generate or refresh repo map if stale (>24 hours) or missing
+            if (!string.IsNullOrEmpty(workingDirectory) && Directory.Exists(workingDirectory) && job.Project != null)
+            {
+                try
+                {
+                    if (job.Project.RepoMap == null || job.Project.RepoMapGeneratedAt == null ||
+                        job.Project.RepoMapGeneratedAt < DateTime.UtcNow.AddHours(-24))
+                    {
+                        _logger.LogInformation("Generating repo map for project {ProjectName} (job {JobId})", job.Project.Name, job.Id);
+                        var repoMap = RepoMapGenerator.GenerateRepoMap(workingDirectory);
+                        if (repoMap != null)
+                        {
+                            var projectForMap = await dbContext.Projects.FindAsync(new object[] { job.Project.Id }, cancellationToken);
+                            if (projectForMap != null)
+                            {
+                                projectForMap.RepoMap = repoMap;
+                                projectForMap.RepoMapGeneratedAt = DateTime.UtcNow;
+                                await dbContext.SaveChangesAsync(cancellationToken);
+                                // Update the in-memory project reference
+                                job.Project.RepoMap = repoMap;
+                                job.Project.RepoMapGeneratedAt = projectForMap.RepoMapGeneratedAt;
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to generate repo map for job {JobId}", job.Id);
+                }
+            }
+
+            // Load app settings for prompt structuring and efficiency rules
+            var appSettings = await dbContext.AppSettings.FirstOrDefaultAsync(cancellationToken);
+
+            // Start a background task to monitor for cancellation requests and send heartbeats
+            // Note: This task manages its own DbContext scopes to avoid disposal issues
+            var cancellationMonitorTask = MonitorCancellationAndHeartbeatAsync(job.Id, executionContext, cancellationToken);
+
+            async Task FailDuringPlanningAsync(string errorMessage)
+            {
+                executionContext.CancellationTokenSource?.Cancel();
+                try { await cancellationMonitorTask; } catch { }
+                await ReleaseJobAsync(job.Id, JobStatus.Failed, errorMessage, dbContext, cancellationToken);
+                await NotifyJobCompletedAsync(job.Id, false, errorMessage);
+            }
+
+            // Execute the job with session support
+            _logger.LogInformation("Starting provider execution for job {JobId} in directory {WorkingDir}",
+                job.Id, workingDirectory ?? "(default)");
+
+            // Multi-cycle execution support
+            var effectiveMaxCycles = job.CycleMode == CycleMode.SingleCycle ? 1 : job.MaxCycles;
+            var currentCycle = job.CurrentCycle;
+            var sessionId = job.SessionId;
+            ExecutionResult? lastResult = null;
+            int? totalInputTokens = null;
+            int? totalOutputTokens = null;
+            decimal? totalCostUsd = null;
+
+            // Track last progress update time to avoid excessive database writes
+            var lastProgressUpdate = DateTime.MinValue;
+            var progressUpdateInterval = TimeSpan.FromSeconds(2); // Update every 2 seconds to reduce database load
+            var progressLock = new object();
+
+            // Progress<T> doesn't properly handle async callbacks, so we use a synchronous handler
+            // that fires updates in the background with proper scoping to avoid DbContext disposal issues
+            var progress = new Progress<ExecutionProgress>(p =>
+            {
+                // Capture and store process ID and command as soon as they're reported
+                if (p.ProcessId.HasValue && executionContext.ProcessId != p.ProcessId.Value)
+                {
+                    executionContext.ProcessId = p.ProcessId.Value;
+                    executionContext.CommandUsed = p.CommandUsed;
+                    _logger.LogInformation("Captured process ID {ProcessId} for job {JobId}. Command: {Command}",
+                        p.ProcessId.Value, job.Id, p.CommandUsed ?? "(unknown)");
+
+                    // Notify UI about process start with full command
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            if (_jobUpdateService != null)
+                            {
+                                await _jobUpdateService.NotifyProcessStarted(job.Id, p.ProcessId.Value,
+                                    p.CommandUsed ?? $"{job.Provider?.Type} CLI");
+                            }
+                        }
+                        catch { }
+                    });
+
+                    // Store process ID and command in database immediately
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            using var pidScope = _scopeFactory.CreateScope();
+                            var pidDbContext = pidScope.ServiceProvider.GetRequiredService<VibeSwarmDbContext>();
+                            var jobForPid = await pidDbContext.Jobs.FindAsync(new object[] { job.Id });
+                            if (jobForPid != null)
+                            {
+                                jobForPid.ProcessId = p.ProcessId.Value;
+                                jobForPid.CommandUsed = p.CommandUsed;
+                                await pidDbContext.SaveChangesAsync(CancellationToken.None);
+                                _logger.LogDebug("Stored process ID {ProcessId} and command in database for job {JobId}",
+                                    p.ProcessId.Value, job.Id);
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "Failed to store process ID/command for job {JobId}", job.Id);
+                        }
+                    });
+                }
+
+                // Log provider connection state changes
+                if (!string.IsNullOrEmpty(p.OutputLine) && p.OutputLine.StartsWith("[Connection]"))
+                {
+                    _logger.LogInformation("Job {JobId} provider connection state: {State}", job.Id, p.OutputLine);
+                }
+
+                // Stream output lines to UI in real-time AND accumulate in buffer for storage
+                if (!string.IsNullOrEmpty(p.OutputLine))
+                {
+                    // Accumulate output for database storage
+                    executionContext.AppendOutput(p.OutputLine, p.IsErrorOutput);
+
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            if (_jobUpdateService != null)
+                            {
+                                await _jobUpdateService.NotifyJobOutput(job.Id, p.OutputLine, p.IsErrorOutput, DateTime.UtcNow);
+                            }
+                        }
+                        catch { }
+                    });
+
+                    // Detect if the CLI is requesting user interaction
+                    if (!executionContext.IsPausedForInteraction)
+                    {
+                        var interactionRequest = InteractionDetector.DetectInteraction(
+                            p.OutputLine,
+                            executionContext.GetRecentOutputLines());
+
+                        if (interactionRequest != null && interactionRequest.IsInteractionRequested && interactionRequest.Confidence >= 0.70)
+                        {
+                            _logger.LogInformation(
+                                "Interaction detected for job {JobId}: Type={Type}, Confidence={Confidence:P0}, Prompt={Prompt}",
+                                job.Id, interactionRequest.Type, interactionRequest.Confidence, interactionRequest.Prompt);
+
+                            // Mark context as paused
+                            executionContext.IsPausedForInteraction = true;
+                            executionContext.CurrentInteractionRequest = interactionRequest;
+
+                            // Update database and notify UI in background
+                            _ = Task.Run(async () =>
+                            {
+                                try
+                                {
+                                    using var interactionScope = _scopeFactory.CreateScope();
+                                    var interactionJobService = interactionScope.ServiceProvider.GetRequiredService<IJobService>();
+                                    var interactionDbContext = interactionScope.ServiceProvider.GetRequiredService<VibeSwarmDbContext>();
+
+                                    // Serialize choices if available
+                                    string? choicesJson = interactionRequest.Choices != null && interactionRequest.Choices.Count > 0
+                                        ? JsonSerializer.Serialize(interactionRequest.Choices)
+                                        : null;
+
+                                    // Update job status in database
+                                    await interactionJobService.PauseForInteractionAsync(
+                                        job.Id,
+                                        interactionRequest.Prompt ?? interactionRequest.RawOutput ?? "Interaction required",
+                                        interactionRequest.Type.ToString(),
+                                        choicesJson,
+                                        CancellationToken.None);
+
+                                    // Notify UI
+                                    if (_jobUpdateService != null)
+                                    {
+                                        await _jobUpdateService.NotifyJobInteractionRequired(
+                                            job.Id,
+                                            interactionRequest.Prompt ?? interactionRequest.RawOutput ?? "Interaction required",
+                                            interactionRequest.Type.ToString(),
+                                            interactionRequest.Choices,
+                                            interactionRequest.DefaultResponse);
+                                    }
+
+                                    await NotifyStatusChangedAsync(job.Id, JobStatus.Paused);
+                                }
+                                catch (Exception ex)
+                                {
+                                    _logger.LogError(ex, "Failed to pause job {JobId} for interaction", job.Id);
+                                    executionContext.IsPausedForInteraction = false;
+                                    executionContext.CurrentInteractionRequest = null;
+                                }
+                            });
+                        }
+                    }
+
+                    return; // Don't process output lines as activity updates
+                }
+
+                var activity = !string.IsNullOrEmpty(p.ToolName)
+                    ? $"Running tool: {p.ToolName}"
+                    : (p.IsStreaming ? "Processing..." : p.CurrentMessage ?? "Working...");
+
+                _logger.LogDebug("Job {JobId} progress: {Activity}", job.Id, activity);
+
+                // Throttle progress updates to avoid database overload
+                var now = DateTime.UtcNow;
+                bool shouldUpdate;
+                lock (progressLock)
+                {
+                    shouldUpdate = now - lastProgressUpdate >= progressUpdateInterval;
+                    if (shouldUpdate)
+                    {
+                        lastProgressUpdate = now;
+                    }
+                }
+
+                if (shouldUpdate)
+                {
+                    // Fire async updates in the background with a NEW scope to avoid DbContext disposal
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            // Create a new scope for this background operation
+                            using var progressScope = _scopeFactory.CreateScope();
+                            var scopedDbContext = progressScope.ServiceProvider.GetRequiredService<VibeSwarmDbContext>();
+
+                            await UpdateHeartbeatAsync(job.Id, activity, scopedDbContext, CancellationToken.None);
+                            await NotifyJobActivityAsync(job.Id, activity, now);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "Failed to update progress for job {JobId}", job.Id);
+                        }
+                    });
+                }
+                else
+                {
+                    // Still send SignalR notification for real-time UI updates, just skip database
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            await NotifyJobActivityAsync(job.Id, activity, now);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "Failed to send activity notification for job {JobId}", job.Id);
+                        }
+                    });
+                }
+            });
+
+            // ===== Multi-Cycle Execution Loop =====
+            if (job.Project != null)
+            {
+                _projectEnvironmentCredentialService.PopulateForExecution(job.Project);
+            }
+
+            var enableStructuring = appSettings?.EnablePromptStructuring ?? true;
+
+            // Build system prompt rules for agent efficiency
+            var injectEfficiencyRules = appSettings?.InjectEfficiencyRules ?? true;
+            var injectRepoMap = appSettings?.InjectRepoMap ?? true;
+            var systemPromptRules = PromptBuilder.BuildSystemPromptRules(job.Project, injectEfficiencyRules, injectRepoMap);
+            projectMemoryFilePath = await PrepareProjectMemoryFileAsync(job.Project, cancellationToken);
+            var projectMemoryRules = PromptBuilder.BuildProjectMemoryRules(job.Project, projectMemoryFilePath);
+            if (!string.IsNullOrWhiteSpace(projectMemoryRules))
+            {
+                systemPromptRules = string.IsNullOrWhiteSpace(systemPromptRules)
+                    ? projectMemoryRules
+                    : $"{systemPromptRules}{Environment.NewLine}{Environment.NewLine}{projectMemoryRules}";
+            }
+
+            // Inject role-specific system prompt context for team swarm jobs
+            if (job.TeamRoleId.HasValue)
+            {
+                try
+                {
+                    var teamRole = await dbContext.TeamRoles
+                        .FirstOrDefaultAsync(r => r.Id == job.TeamRoleId.Value, cancellationToken);
+                    if (teamRole != null)
+                    {
+                        var swarmSize = job.SwarmId.HasValue
+                            ? await dbContext.Jobs.CountAsync(j => j.SwarmId == job.SwarmId, cancellationToken)
+                            : 1;
+                        var roleContext = PromptBuilder.BuildRoleSystemPromptContext(teamRole, swarmSize);
+                        if (!string.IsNullOrWhiteSpace(roleContext))
+                        {
+                            systemPromptRules = string.IsNullOrWhiteSpace(systemPromptRules)
+                                ? roleContext
+                                : $"{roleContext}{Environment.NewLine}{Environment.NewLine}{systemPromptRules}";
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to load team role context for job {JobId}, continuing without it", job.Id);
+                }
+            }
+
+            var planningOutput = job.PlanningOutput;
+            if (ShouldUsePlanningStage(job.Project) && string.IsNullOrWhiteSpace(planningOutput))
+            {
+                await UpdateJobStatusAsync(job.Id, JobStatus.Planning, dbContext, cancellationToken);
+                await NotifyStatusChangedAsync(job.Id, JobStatus.Planning);
+
+                const string planningActivity = "Generating implementation plan...";
+                await UpdateHeartbeatAsync(job.Id, planningActivity, dbContext, cancellationToken);
+                await NotifyJobActivityAsync(job.Id, planningActivity, DateTime.UtcNow);
+
+                var planningProviderId = job.Project!.PlanningProviderId!.Value;
+                var planningProviderConfig = await providerService.GetByIdAsync(planningProviderId, cancellationToken);
+                if (planningProviderConfig == null)
+                {
+                    await FailDuringPlanningAsync("Planning provider not found.");
+                    return;
+                }
+
+                if (!ProviderPlanningHelper.SupportsPlanningMode(planningProviderConfig.Type))
+                {
+                    await FailDuringPlanningAsync("Planning currently supports only Claude and GitHub Copilot providers.");
+                    return;
+                }
+
+                var planningProvider = CreateProviderInstance(planningProviderConfig);
+                var planningValidationError = await ValidateProviderAvailabilityAsync(job.Id, planningProviderConfig, planningProvider, cancellationToken);
+                if (!string.IsNullOrWhiteSpace(planningValidationError))
+                {
+                    await FailDuringPlanningAsync(planningValidationError);
+                    return;
+                }
+
+				var planningMcpOptions = await GetMcpExecutionOptionsAsync(planningProviderId, job.Project, workingDirectory, cancellationToken);
+				ExecutionResult planningResult;
+				try
+				{
+					planningResult = await planningProvider.ExecuteWithOptionsAsync(
+						ProviderPlanningHelper.BuildPlanningPrompt(planningProviderConfig.Type, job.GoalPrompt),
+						new ExecutionOptions
+						{
+							WorkingDirectory = workingDirectory,
+							McpConfigPath = planningMcpOptions.McpConfigPath,
+							BashEnvPath = planningMcpOptions.BashEnvPath,
+							AdditionalArgs = planningMcpOptions.AdditionalArgs,
+							Model = job.Project.PlanningModelId,
+							Title = job.Title,
+							AppendSystemPrompt = systemPromptRules
+						},
+						progress,
+						cancellationToken);
+				}
+				finally
+				{
+					CleanupMcpExecutionResources(planningMcpOptions.Resources);
+				}
+
+                await RecordUsageAndCheckExhaustionAsync(
+                    planningProviderConfig.Id,
+                    planningProviderConfig.Name,
+                    job.Id,
+                    planningResult,
+                    planningProvider,
+                    CancellationToken.None);
+
+                planningOutput = ProviderPlanningHelper.ExtractExecutionText(planningResult);
+                if (!planningResult.Success || string.IsNullOrWhiteSpace(planningOutput))
+                {
+                    var planningError = string.IsNullOrWhiteSpace(planningResult.ErrorMessage)
+                        ? $"{planningProviderConfig.Name} did not return a plan."
+                        : planningResult.ErrorMessage;
+                    await FailDuringPlanningAsync(planningError);
+                    return;
+                }
+
+                job.PlanningOutput = planningOutput.Trim();
+                job.PlanningProviderId = planningProviderConfig.Id;
+                job.PlanningModelUsed = planningResult.ModelUsed ?? job.Project.PlanningModelId;
+                job.PlanningGeneratedAt = DateTime.UtcNow;
+                await dbContext.SaveChangesAsync(cancellationToken);
+            }
+
+            var currentPrompt = PromptBuilder.BuildExecutionPrompt(job, planningOutput, enableStructuring);
+            var cycleComplete = false;
+            await UpdateJobStatusAsync(job.Id, JobStatus.Processing, dbContext, cancellationToken);
+            await NotifyStatusChangedAsync(job.Id, JobStatus.Processing);
+
+            while (currentCycle <= effectiveMaxCycles && !cycleComplete && !cancellationToken.IsCancellationRequested)
+            {
+                if (effectiveMaxCycles > 1)
+                {
+                    _logger.LogInformation("Starting cycle {Current}/{Max} for job {JobId}",
+                        currentCycle, effectiveMaxCycles, job.Id);
+
+                    // Notify UI about cycle progress
+                    if (_jobUpdateService != null)
+                    {
+                        await _jobUpdateService.NotifyJobCycleProgress(job.Id, currentCycle, effectiveMaxCycles);
+                    }
+
+                    // Update current cycle in database
+                    using var cycleScope = _scopeFactory.CreateScope();
+                    var cycleDbContext = cycleScope.ServiceProvider.GetRequiredService<VibeSwarmDbContext>();
+                    var jobForCycle = await cycleDbContext.Jobs.FindAsync(new object[] { job.Id }, cancellationToken);
+                    if (jobForCycle != null)
+                    {
+                        jobForCycle.CurrentCycle = currentCycle;
+                        await cycleDbContext.SaveChangesAsync(cancellationToken);
+                    }
+                }
+
+                // Determine session ID for this cycle
+                var cycleSessionId = job.CycleSessionMode == CycleSessionMode.ContinueSession ? sessionId : null;
+
+                if (currentCycle == job.CurrentCycle)
+                {
+                    await RecordProviderAttemptAsync(
+                        job.Id,
+                        job.ProviderId,
+                        job.Provider?.Name ?? provider.Name,
+                        job.ModelUsed,
+                        job.ActiveExecutionIndex,
+                        "initial-execution",
+                        dbContext,
+                        cancellationToken);
+                }
+
+				var mcpOptions = await GetMcpExecutionOptionsAsync(job.ProviderId, job.Project, workingDirectory, cancellationToken);
+
+				ExecutionResult result;
+				try
+				{
+					result = await provider.ExecuteWithOptionsAsync(
+						currentPrompt,
+						new ExecutionOptions
+						{
+							SessionId = cycleSessionId,
+							WorkingDirectory = workingDirectory,
+							McpConfigPath = mcpOptions.McpConfigPath,
+							BashEnvPath = mcpOptions.BashEnvPath,
+							AdditionalArgs = mcpOptions.AdditionalArgs,
+							Model = job.ModelUsed,
+							Title = job.Title,
+							AppendSystemPrompt = systemPromptRules
+						},
+						progress,
+						cancellationToken);
+				}
+				finally
+				{
+					CleanupMcpExecutionResources(mcpOptions.Resources);
+				}
+
+                // Store last result and accumulate tokens/cost
+                lastResult = result;
+                sessionId = result.SessionId ?? sessionId;
+                if (result.InputTokens.HasValue)
+                    totalInputTokens = (totalInputTokens ?? 0) + result.InputTokens.Value;
+                if (result.OutputTokens.HasValue)
+                    totalOutputTokens = (totalOutputTokens ?? 0) + result.OutputTokens.Value;
+                if (result.CostUsd.HasValue)
+                    totalCostUsd = (totalCostUsd ?? 0) + result.CostUsd.Value;
+
+                // Check for cycle completion conditions
+                if (!result.Success)
+                {
+                    _logger.LogWarning("Cycle {Current} failed for job {JobId}: {Error}",
+                        currentCycle, job.Id, result.ErrorMessage);
+                    cycleComplete = true;
+                    break;
+                }
+
+                // Check cancellation between cycles
+                using var cancelCheckScope = _scopeFactory.CreateScope();
+                var cancelCheckService = cancelCheckScope.ServiceProvider.GetRequiredService<IJobService>();
+                if (await cancelCheckService.IsCancellationRequestedAsync(job.Id, CancellationToken.None))
+                {
+                    _logger.LogInformation("Job {JobId} cancelled between cycles", job.Id);
+                    cycleComplete = true;
+                    break;
+                }
+
+                // Determine if we should continue cycling
+                if (job.CycleMode == CycleMode.SingleCycle || currentCycle >= effectiveMaxCycles)
+                {
+                    cycleComplete = true;
+                }
+                else if (job.CycleMode == CycleMode.Autonomous)
+                {
+                    // Check if output contains CYCLE_COMPLETE marker
+                    if (result.Output?.Contains("CYCLE_COMPLETE", StringComparison.OrdinalIgnoreCase) == true)
+                    {
+                        _logger.LogInformation("Job {JobId} completed autonomously at cycle {Current}",
+                            job.Id, currentCycle);
+                        cycleComplete = true;
+                    }
+                    else
+                    {
+                        // Build next cycle prompt for autonomous mode
+                        currentPrompt = string.IsNullOrWhiteSpace(job.CycleReviewPrompt)
+                            ? "Review all changes made so far. Verify the code compiles and tests pass. If the task is complete and working correctly, respond with CYCLE_COMPLETE. Otherwise, continue implementing the remaining work."
+                            : job.CycleReviewPrompt;
+                        currentCycle++;
+                    }
+                }
+                else if (job.CycleMode == CycleMode.FixedCount)
+                {
+                    // Build next cycle prompt for fixed count mode
+                    currentPrompt = $"Continue implementing the task. This is cycle {currentCycle + 1} of {effectiveMaxCycles}. Review the current state and continue where you left off.";
+                    currentCycle++;
+                }
+            }
+
+            // Use accumulated results
+            var finalResult = lastResult ?? new ExecutionResult { Success = false, ErrorMessage = "No execution result" };
+            finalResult.InputTokens = totalInputTokens;
+            finalResult.OutputTokens = totalOutputTokens;
+            finalResult.CostUsd = totalCostUsd;
+
+            // Stop monitoring cancellation
+            executionContext.CancellationTokenSource?.Cancel();
+            try { await cancellationMonitorTask; } catch { }
+
+            // Re-fetch job state from database to check cancellation
+            using var checkScope = _scopeFactory.CreateScope();
+            var checkJobService = checkScope.ServiceProvider.GetRequiredService<IJobService>();
+            var wasCancelled = await checkJobService.IsCancellationRequestedAsync(job.Id, CancellationToken.None);
+
+            if (wasCancelled)
+            {
+                await UpdateProviderAttemptOutcomeAsync(job.Id, job.ActiveExecutionIndex, false, finalResult.ModelUsed ?? job.ModelUsed, dbContext, CancellationToken.None);
+                var providerDisplayName = job.Provider?.Name;
+                providerDisplayName ??= provider?.Name;
+                providerDisplayName ??= "Unknown Provider";
+                await CompleteJobAsync(job.Id, JobStatus.Cancelled, finalResult.SessionId, finalResult.Output,
+                    "Job was cancelled by user", finalResult.InputTokens, finalResult.OutputTokens, finalResult.CostUsd, finalResult.ModelUsed,
+                    executionContext, workingDirectory, dbContext, CancellationToken.None);
+
+                // Record usage even for cancelled jobs
+                await RecordUsageAndCheckExhaustionAsync(job.ProviderId, providerDisplayName, job.Id, finalResult, provider!, CancellationToken.None);
+
+                await NotifyJobCompletedAsync(job.Id, false, "Job was cancelled by user");
+
+                _logger.LogInformation("Job {JobId} was cancelled during execution", job.Id);
+            }
+            else if (finalResult.Success)
+            {
+                await UpdateProviderAttemptOutcomeAsync(job.Id, job.ActiveExecutionIndex, true, finalResult.ModelUsed ?? job.ModelUsed, dbContext, CancellationToken.None);
+                var providerDisplayName = job.Provider?.Name;
+                providerDisplayName ??= provider?.Name;
+                providerDisplayName ??= "Unknown Provider";
+                // Save messages
+                if (finalResult.Messages.Count > 0)
+                {
+                    var messages = finalResult.Messages.Select(m => new JobMessage
+                    {
+                        Role = ParseMessageRole(m.Role),
+                        Content = m.Content,
+                        ToolName = m.ToolName,
+                        ToolInput = m.ToolInput,
+                        ToolOutput = m.ToolOutput,
+                        CreatedAt = m.Timestamp
+                    });
+
+                    await checkJobService.AddMessagesAsync(job.Id, messages, CancellationToken.None);
+                    await NotifyJobMessageAddedAsync(job.Id);
+                }
+
+                var hasGitChanges = await CompleteJobAsync(job.Id, JobStatus.Completed, finalResult.SessionId, finalResult.Output,
+                    null, finalResult.InputTokens, finalResult.OutputTokens, finalResult.CostUsd, finalResult.ModelUsed,
+                    executionContext, workingDirectory, dbContext, CancellationToken.None);
+
+                if (hasGitChanges)
+                {
+                    await NotifyJobGitDiffUpdatedAsync(job.Id, true);
+                }
+
+                // Record usage after successful completion
+                await RecordUsageAndCheckExhaustionAsync(job.ProviderId, providerDisplayName, job.Id, finalResult, provider!, CancellationToken.None);
+
+                _logger.LogInformation("Job {JobId} completed successfully. Session: {SessionId}, InputTokens: {InputTokens}, OutputTokens: {OutputTokens}, Cost: {CostUsd}",
+                    job.Id, finalResult.SessionId, finalResult.InputTokens, finalResult.OutputTokens, finalResult.CostUsd);
+                await NotifyJobCompletedAsync(job.Id, true);
+            }
+            else
+            {
+                await UpdateProviderAttemptOutcomeAsync(job.Id, job.ActiveExecutionIndex, false, finalResult.ModelUsed ?? job.ModelUsed, dbContext, CancellationToken.None);
+                var providerDisplayName = job.Provider?.Name;
+                providerDisplayName ??= provider?.Name;
+                providerDisplayName ??= "Unknown Provider";
+                await CompleteJobAsync(job.Id, JobStatus.Failed, finalResult.SessionId, finalResult.Output,
+                    finalResult.ErrorMessage, finalResult.InputTokens, finalResult.OutputTokens, finalResult.CostUsd, finalResult.ModelUsed,
+                    executionContext, workingDirectory, dbContext, CancellationToken.None);
+
+                // Record usage even for failed jobs
+                await RecordUsageAndCheckExhaustionAsync(job.ProviderId, providerDisplayName, job.Id, finalResult, provider!, CancellationToken.None);
+
+                // System-level errors (model unavailable, upstream outages) should immediately
+                // trip the circuit breaker to prevent cascading failures on queued jobs
+                if (finalResult.IsSystemError && _healthTracker != null)
+                {
+                    _healthTracker.RecordSystemFailure(job.ProviderId, finalResult.ErrorMessage);
+                    _logger.LogWarning("Job {JobId} failed with system error, circuit breaker tripped for provider {ProviderId}: {Error}",
+                        job.Id, job.ProviderId, finalResult.ErrorMessage);
+                }
+
+                _logger.LogWarning("Job {JobId} failed: {Error}. InputTokens: {InputTokens}, OutputTokens: {OutputTokens}, Cost: {CostUsd}",
+                    job.Id, finalResult.ErrorMessage, finalResult.InputTokens, finalResult.OutputTokens, finalResult.CostUsd);
+                await NotifyJobCompletedAsync(job.Id, false, finalResult.ErrorMessage);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.LogInformation("Job {JobId} was cancelled, resetting for potential retry", job.Id);
+            try
+            {
+                using var resetScope = _scopeFactory.CreateScope();
+                var resetDbContext = resetScope.ServiceProvider.GetRequiredService<VibeSwarmDbContext>();
+                var jobEntity = await resetDbContext.Jobs.FindAsync(job.Id);
+                if (jobEntity != null)
+                {
+                    if (!string.IsNullOrEmpty(workingDirectory) && Directory.Exists(workingDirectory))
+                    {
+                        try
+                        {
+                            await PreserveWorkingTreeBeforeBranchPreparationAsync(
+                                jobEntity,
+                                workingDirectory,
+                                resetDbContext,
+                                captureJobDiff: true,
+                                reason: jobEntity.CancellationRequested
+                                    ? "Preserved local changes after the job was cancelled."
+                                    : "Preserved local changes after the worker shut down during execution.",
+                                cancellationToken: CancellationToken.None);
+                        }
+                        catch (Exception checkpointEx)
+                        {
+                            _logger.LogWarning(checkpointEx, "Failed to preserve local changes for cancelled job {JobId}", job.Id);
+                        }
+                    }
+
+                    if (jobEntity.CancellationRequested)
+                    {
+                        // User requested cancellation
+                        JobStateMachine.TryTransition(jobEntity, JobStatus.Cancelled, "Job was cancelled by user.");
+                        jobEntity.ErrorMessage = "Job was cancelled by user";
+                    }
+                    else
+                    {
+                        // Service shutdown or timeout - reset for retry
+                        JobStateMachine.TryTransition(jobEntity, JobStatus.New, "Service shutdown during execution. Queued for retry.");
+                        jobEntity.ErrorMessage = jobEntity.GitCheckpointStatus == GitCheckpointStatus.Preserved
+                            ? "Service shutdown during execution. Queued for retry after preserving local changes."
+                            : "Service shutdown during execution. Queued for retry.";
+                    }
+                    jobEntity.WorkerInstanceId = null;
+                    jobEntity.LastHeartbeatAt = null;
+                    jobEntity.ProcessId = null;
+                    jobEntity.CurrentActivity = null;
+                    await resetDbContext.SaveChangesAsync(CancellationToken.None);
+                }
+            }
+            catch (Exception resetEx)
+            {
+                _logger.LogError(resetEx, "Failed to reset job {JobId} after cancellation", job.Id);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error processing job {JobId}", job.Id);
+            try
+            {
+                using var errorScope = _scopeFactory.CreateScope();
+                var errorDbContext = errorScope.ServiceProvider.GetRequiredService<VibeSwarmDbContext>();
+                await ReleaseJobAsync(job.Id, JobStatus.Failed, ex.Message, errorDbContext, CancellationToken.None);
+            }
+            catch { }
+            await NotifyJobCompletedAsync(job.Id, false, ex.Message);
+        }
+        finally
+        {
+            if (!string.IsNullOrWhiteSpace(projectMemoryFilePath))
+            {
+                try
+                {
+                    await PersistProjectMemoryAsync(job.Project?.Id, projectMemoryFilePath, CancellationToken.None);
+                }
+                catch (Exception memoryEx)
+                {
+                    _logger.LogWarning(memoryEx, "Failed to persist project memory for job {JobId}", job.Id);
+                }
+            }
+
+            // Dispose SDK providers that implement IAsyncDisposable
+            if (executionContext.ProviderInstance is IAsyncDisposable disposable)
+            {
+                try
+                {
+                    await disposable.DisposeAsync();
+                }
+                catch (Exception disposeEx)
+                {
+                    _logger.LogWarning(disposeEx, "Error disposing provider for job {JobId}", job.Id);
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Monitors for cancellation requests and sends regular heartbeats.
+    /// Does NOT use the passed dbContext - creates its own scopes to avoid disposal issues.
+    /// </summary>
+    private async Task MonitorCancellationAndHeartbeatAsync(
+        Guid jobId,
+        JobExecutionContext executionContext,
+        CancellationToken cancellationToken)
+    {
+        var heartbeatInterval = TimeSpan.FromSeconds(30); // Reduced frequency to avoid database contention
+        var cancellationCheckInterval = TimeSpan.FromSeconds(5); // Check cancellation less frequently
+        var lastHeartbeat = DateTime.UtcNow;
+
+        try
+        {
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                try
+                {
+                    // Check for cancellation request with a fresh scope
+                    using (var checkScope = _scopeFactory.CreateScope())
+                    {
+                        var checkDbContext = checkScope.ServiceProvider.GetRequiredService<VibeSwarmDbContext>();
+                        var job = await checkDbContext.Jobs.AsNoTracking().FirstOrDefaultAsync(j => j.Id == jobId, cancellationToken);
+
+                        if (job?.CancellationRequested == true)
+                        {
+                            _logger.LogInformation("Cancellation requested for job {JobId}", jobId);
+                            executionContext.CancellationTokenSource?.Cancel();
+                            break;
+                        }
+                    }
+
+                    // Send heartbeat periodically with a fresh scope
+                    var now = DateTime.UtcNow;
+                    if (now - lastHeartbeat >= heartbeatInterval)
+                    {
+                        lastHeartbeat = now;
+                        using (var heartbeatScope = _scopeFactory.CreateScope())
+                        {
+                            var heartbeatDbContext = heartbeatScope.ServiceProvider.GetRequiredService<VibeSwarmDbContext>();
+                            var heartbeatJob = await heartbeatDbContext.Jobs.FindAsync(new object[] { jobId }, cancellationToken);
+                            if (heartbeatJob != null)
+                            {
+                                heartbeatJob.LastHeartbeatAt = now;
+
+                                // Persist console output buffer periodically so page refreshes show accumulated output
+                                var currentOutput = executionContext.GetConsoleOutput();
+                                if (!string.IsNullOrEmpty(currentOutput))
+                                {
+                                    heartbeatJob.ConsoleOutput = currentOutput;
+                                }
+
+                                await heartbeatDbContext.SaveChangesAsync(cancellationToken);
+                            }
+                        }
+                        _logger.LogDebug("Sent heartbeat for job {JobId}", jobId);
+
+                        // Send SignalR heartbeat notification
+                        if (_jobUpdateService != null)
+                        {
+                            try
+                            {
+                                await _jobUpdateService.NotifyJobHeartbeat(jobId, now);
+                            }
+                            catch { }
+                        }
+                    }
+                }
+                catch (ObjectDisposedException)
+                {
+                    // Scope was disposed, create a new one on next iteration
+                    _logger.LogWarning("DbContext was disposed in heartbeat monitor for job {JobId}, will retry", jobId);
+                }
+
+                await Task.Delay(cancellationCheckInterval, cancellationToken);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected when cancelled
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error in cancellation/heartbeat monitor for job {JobId}", jobId);
+        }
+    }
+
+    /// <summary>
+    /// Releases ownership of a job and sets final status
+    /// </summary>
+    private async Task ReleaseJobAsync(Guid jobId, JobStatus status, string? errorMessage, VibeSwarmDbContext dbContext, CancellationToken cancellationToken)
+    {
+        var job = await dbContext.Jobs.FindAsync(new object[] { jobId }, cancellationToken);
+        if (job != null)
+        {
+            JobStateMachine.TryTransition(job, status, errorMessage);
+            job.WorkerInstanceId = null;
+            job.LastHeartbeatAt = null;
+            job.ProcessId = null;
+            job.CurrentActivity = null;
+            job.ErrorMessage = errorMessage;
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+    }
+
+    /// <summary>
+    /// Updates job status
+    /// </summary>
+    private async Task UpdateJobStatusAsync(Guid jobId, JobStatus status, VibeSwarmDbContext dbContext, CancellationToken cancellationToken)
+    {
+        var job = await dbContext.Jobs.FindAsync(new object[] { jobId }, cancellationToken);
+        if (job != null)
+        {
+            var transitioned = JobStateMachine.TryTransition(job, status, $"Internal transition to {status}.");
+            if (!transitioned.Success)
+            {
+                _logger.LogWarning("Failed to update job {JobId} to {Status}: {Error}", jobId, status, transitioned.ErrorMessage);
+                return;
+            }
+
+            job.LastHeartbeatAt = DateTime.UtcNow;
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+    }
+
+    /// <summary>
+    /// Updates heartbeat and current activity
+    /// </summary>
+    private async Task UpdateHeartbeatAsync(Guid jobId, string? activity, VibeSwarmDbContext dbContext, CancellationToken cancellationToken)
+    {
+        var job = await dbContext.Jobs.FindAsync(new object[] { jobId }, cancellationToken);
+        if (job != null)
+        {
+            job.LastHeartbeatAt = DateTime.UtcNow;
+            job.LastActivityAt = DateTime.UtcNow;
+            job.CurrentActivity = activity;
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+    }
+
+    private static async Task RecordProviderAttemptAsync(
+        Guid jobId,
+        Guid providerId,
+        string providerName,
+        string? modelId,
+        int attemptOrder,
+        string reason,
+        VibeSwarmDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        var attempt = await dbContext.JobProviderAttempts
+            .FirstOrDefaultAsync(a => a.JobId == jobId && a.AttemptOrder == attemptOrder, cancellationToken);
+
+        if (attempt != null)
+        {
+            attempt.ProviderId = providerId;
+            attempt.ProviderName = providerName;
+            attempt.ModelId = modelId;
+            attempt.Reason = reason;
+            attempt.AttemptedAt = DateTime.UtcNow;
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return;
+        }
+
+        dbContext.JobProviderAttempts.Add(new JobProviderAttempt
+        {
+            JobId = jobId,
+            ProviderId = providerId,
+            ProviderName = providerName,
+            ModelId = modelId,
+            AttemptOrder = attemptOrder,
+            Reason = reason,
+            WasSuccessful = false,
+            AttemptedAt = DateTime.UtcNow
+        });
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    private static async Task UpdateProviderAttemptOutcomeAsync(
+        Guid jobId,
+        int attemptOrder,
+        bool wasSuccessful,
+        string? modelId,
+        VibeSwarmDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        var attempt = await dbContext.JobProviderAttempts
+            .FirstOrDefaultAsync(a => a.JobId == jobId && a.AttemptOrder == attemptOrder, cancellationToken);
+
+        if (attempt == null)
+        {
+            return;
+        }
+
+        attempt.WasSuccessful = wasSuccessful;
+        attempt.ModelId = modelId ?? attempt.ModelId;
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    private static bool ShouldUsePlanningStage(Project? project)
+    {
+        return project?.PlanningEnabled == true && project.PlanningProviderId.HasValue;
+    }
+
+    /// <summary>
+    /// Gets temporary execution resources for the given provider, including MCP config and bash env files when needed.
+    /// </summary>
+	private async Task<(string? McpConfigPath, string? BashEnvPath, List<string>? AdditionalArgs, McpExecutionResources? Resources)> GetMcpExecutionOptionsAsync(
+		Guid providerId,
+		Project? project,
+		string? workingDirectory,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var mcpConfigService = scope.ServiceProvider.GetRequiredService<IMcpConfigService>();
+            var providerService = scope.ServiceProvider.GetRequiredService<IProviderService>();
+
+            // Get the provider to determine its type
+			var provider = await providerService.GetByIdAsync(providerId);
+			if (provider == null)
+			{
+				_logger.LogWarning("Could not find provider {ProviderId} to generate MCP config", providerId);
+				return (null, null, null, null);
+			}
+
+			var resources = await mcpConfigService.GenerateExecutionResourcesAsync(
+				provider.Type,
+				project,
+				workingDirectory,
+				cancellationToken);
+			if (!string.IsNullOrEmpty(resources?.ConfigFilePath))
+			{
+				_logger.LogDebug("Generated MCP config at {ConfigPath} for provider {ProviderId}", resources.ConfigFilePath, providerId);
+			}
+
+			return (resources?.ConfigFilePath, resources?.BashEnvFilePath, null, resources);
+		}
+		catch (Exception ex)
+		{
+			_logger.LogWarning(ex, "Failed to generate MCP config for provider {ProviderId}", providerId);
+			return (null, null, null, null);
+		}
+	}
+
+	private void CleanupMcpExecutionResources(McpExecutionResources? resources)
+	{
+		if (resources == null)
+		{
+			return;
+		}
+
+		try
+		{
+			using var scope = _scopeFactory.CreateScope();
+			var mcpConfigService = scope.ServiceProvider.GetRequiredService<IMcpConfigService>();
+			mcpConfigService.CleanupExecutionResources(resources);
+		}
+		catch (Exception ex)
+		{
+			_logger.LogWarning(ex, "Failed to clean up MCP execution resources");
+		}
+	}
+
+    private async Task<string?> PrepareProjectMemoryFileAsync(Project? project, CancellationToken cancellationToken)
+    {
+        if (project == null)
+        {
+            return null;
+        }
+
+        using var scope = _scopeFactory.CreateScope();
+        var projectMemoryService = scope.ServiceProvider.GetRequiredService<IProjectMemoryService>();
+        return await projectMemoryService.PrepareMemoryFileAsync(project, cancellationToken);
+    }
+
+    private async Task PersistProjectMemoryAsync(Guid? projectId, string? projectMemoryFilePath, CancellationToken cancellationToken)
+    {
+        if (!projectId.HasValue || string.IsNullOrWhiteSpace(projectMemoryFilePath))
+        {
+            return;
+        }
+
+        using var scope = _scopeFactory.CreateScope();
+        var projectMemoryService = scope.ServiceProvider.GetRequiredService<IProjectMemoryService>();
+        await projectMemoryService.SyncMemoryFromFileAsync(projectId.Value, projectMemoryFilePath, cancellationToken);
+    }
+}
