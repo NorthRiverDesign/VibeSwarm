@@ -193,21 +193,10 @@ else
 </button>
 </div>
 </div>
-}
-</div>
-}
-}
-
-@if (_selectedProvider != null)
-{
-<div class="card mt-3">
-<div class="card-header bg-body-secondary">
-<h5 class="mb-0 fw-semibold">
+<div class="card-body border-top">
+<h6 class="fw-semibold mb-3">
 <i class="bi bi-chat-square-dots me-2"></i>Test Inference
-<span class="text-body-secondary fw-normal ms-2 small">(@_selectedProvider.Name)</span>
-</h5>
-</div>
-<div class="card-body">
+</h6>
 <div class="mb-3">
 <label for="testPrompt" class="form-label">Prompt</label>
 <textarea id="testPrompt" class="form-control font-monospace" rows="3"
@@ -254,7 +243,9 @@ else
 }
 }
 </div>
+}
 </div>
+}
 }
 
 @code {
