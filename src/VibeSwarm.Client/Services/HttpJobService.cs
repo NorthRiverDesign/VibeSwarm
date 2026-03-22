@@ -185,6 +185,9 @@ public class HttpJobService : IJobService
     public async Task<bool> ForceFailJobAsync(Guid id, CancellationToken ct = default)
         => (await _http.PostAsync($"/api/jobs/{id}/force-failed", null, ct)).IsSuccessStatusCode;
 
+    public Task RefreshExecutionPlanAsync(Guid id, CancellationToken ct = default)
+        => Task.CompletedTask; // Execution plan refresh is server-side only
+
     public async Task<int> CancelAllByProjectIdAsync(Guid projectId, CancellationToken ct = default)
     {
         var response = await _http.PostAsync($"/api/jobs/project/{projectId}/cancel-all", null, ct);

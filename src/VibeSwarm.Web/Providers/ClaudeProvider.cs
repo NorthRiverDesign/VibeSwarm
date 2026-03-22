@@ -97,141 +97,7 @@ public class ClaudeProvider : CliProviderBase
         _systemErrorMessage = null;
         toolNamesById.Clear();
 
-        // Build arguments for non-interactive execution with JSON streaming output
-        var args = new List<string>
-        {
-            "-p",
-            prompt,
-            "--output-format",
-            "stream-json",
-            "--verbose",
-            "--permission-mode",
-            CurrentPermissionMode ?? "bypassPermissions"
-        };
-
-        if (!string.IsNullOrEmpty(sessionId))
-        {
-            args.Add("--resume");
-            args.Add(sessionId);
-        }
-        else if (CurrentContinueLastSession)
-        {
-            args.Add("--continue");
-        }
-
-        // Model selection (e.g., --model opus, --model sonnet)
-        if (!string.IsNullOrEmpty(CurrentModel))
-        {
-            args.Add("--model");
-            args.Add(CurrentModel);
-        }
-
-        // Agent selection (e.g., --agent my-agent)
-        if (!string.IsNullOrEmpty(CurrentAgent))
-        {
-            args.Add("--agent");
-            args.Add(CurrentAgent);
-        }
-
-        // System prompt override
-        if (!string.IsNullOrEmpty(CurrentSystemPrompt))
-        {
-            args.Add("--system-prompt");
-            args.Add(CurrentSystemPrompt);
-        }
-
-        // Append to system prompt (used for injecting skills/instructions)
-        if (!string.IsNullOrEmpty(CurrentAppendSystemPrompt))
-        {
-            args.Add("--append-system-prompt");
-            args.Add(CurrentAppendSystemPrompt);
-        }
-
-        // Max turns limit
-        if (CurrentMaxTurns.HasValue)
-        {
-            args.Add("--max-turns");
-            args.Add(CurrentMaxTurns.Value.ToString());
-        }
-
-        // Additional working directories
-        if (CurrentAdditionalDirectories != null)
-        {
-            foreach (var dir in CurrentAdditionalDirectories)
-            {
-                args.Add("--add-dir");
-                args.Add(dir);
-            }
-        }
-
-        // Tool restrictions
-        if (CurrentAllowedTools != null && CurrentAllowedTools.Count > 0)
-        {
-            foreach (var tool in CurrentAllowedTools)
-            {
-                args.Add("--tools");
-                args.Add(tool);
-            }
-        }
-
-        // Disallowed tools (v2.1.0+)
-        if (CurrentDisallowedTools != null && CurrentDisallowedTools.Count > 0)
-        {
-            foreach (var tool in CurrentDisallowedTools)
-            {
-                args.Add("--disallowed-tools");
-                args.Add(tool);
-            }
-        }
-
-        // Maximum budget in USD for cost control (v2.0.28+)
-        if (CurrentMaxBudgetUsd.HasValue)
-        {
-            args.Add("--max-budget-usd");
-            args.Add(CurrentMaxBudgetUsd.Value.ToString(System.Globalization.CultureInfo.InvariantCulture));
-        }
-
-        // Isolated git worktree mode (v2.1.49+)
-        if (CurrentUseWorktree)
-        {
-            args.Add("--worktree");
-        }
-
-        // Resume from PR (v2.1.27+)
-        if (!string.IsNullOrEmpty(CurrentFromPullRequest))
-        {
-            args.Add("--from-pr");
-            args.Add(CurrentFromPullRequest);
-        }
-
-        // Initialization mode for setup hooks (v2.1.10+)
-        if (!string.IsNullOrEmpty(CurrentInitMode))
-        {
-            args.Add($"--{CurrentInitMode}");
-        }
-
-        // Reasoning effort level (v2.1.63+)
-        var reasoningEffort = NormalizeReasoningEffort(CurrentReasoningEffort, "low", "medium", "high");
-        if (!string.IsNullOrEmpty(reasoningEffort))
-        {
-            args.Add("--effort");
-            args.Add(reasoningEffort);
-        }
-
-        // File attachments (via @-mention syntax isn't available in -p mode,
-        // but files can be referenced in the prompt)
-        // Note: Claude CLI doesn't have a --file flag; files are @-mentioned in the prompt.
-
-        if (!string.IsNullOrEmpty(CurrentMcpConfigPath))
-        {
-            args.Add("--mcp-config");
-            args.Add(CurrentMcpConfigPath);
-        }
-
-        if (CurrentAdditionalArgs != null)
-        {
-            args.AddRange(CurrentAdditionalArgs);
-        }
+        var args = BuildCliArgs(prompt, sessionId);
 
         // Inject env var to disable 1M context window when requested
         if (CurrentDisableLargeContext)
@@ -410,6 +276,146 @@ public class ClaudeProvider : CliProviderBase
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// Builds the CLI argument list for Claude Code execution.
+    /// Internal for unit testing — validates only supported flags are emitted.
+    /// </summary>
+    internal List<string> BuildCliArgs(string prompt, string? sessionId)
+    {
+        var args = new List<string>
+        {
+            "-p",
+            prompt,
+            "--output-format",
+            "stream-json",
+            "--verbose",
+            "--permission-mode",
+            CurrentPermissionMode ?? "bypassPermissions"
+        };
+
+        if (!string.IsNullOrEmpty(sessionId))
+        {
+            args.Add("--resume");
+            args.Add(sessionId);
+        }
+        else if (CurrentContinueLastSession)
+        {
+            args.Add("--continue");
+        }
+
+        // Model selection (e.g., --model opus, --model sonnet)
+        if (!string.IsNullOrEmpty(CurrentModel))
+        {
+            args.Add("--model");
+            args.Add(CurrentModel);
+        }
+
+        // Agent selection (e.g., --agent my-agent)
+        if (!string.IsNullOrEmpty(CurrentAgent))
+        {
+            args.Add("--agent");
+            args.Add(CurrentAgent);
+        }
+
+        // System prompt override
+        if (!string.IsNullOrEmpty(CurrentSystemPrompt))
+        {
+            args.Add("--system-prompt");
+            args.Add(CurrentSystemPrompt);
+        }
+
+        // Append to system prompt (used for injecting skills/instructions)
+        if (!string.IsNullOrEmpty(CurrentAppendSystemPrompt))
+        {
+            args.Add("--append-system-prompt");
+            args.Add(CurrentAppendSystemPrompt);
+        }
+
+        // Max turns limit
+        if (CurrentMaxTurns.HasValue)
+        {
+            args.Add("--max-turns");
+            args.Add(CurrentMaxTurns.Value.ToString());
+        }
+
+        // Additional working directories
+        if (CurrentAdditionalDirectories != null)
+        {
+            foreach (var dir in CurrentAdditionalDirectories)
+            {
+                args.Add("--add-dir");
+                args.Add(dir);
+            }
+        }
+
+        // Tool restrictions
+        if (CurrentAllowedTools != null && CurrentAllowedTools.Count > 0)
+        {
+            foreach (var tool in CurrentAllowedTools)
+            {
+                args.Add("--tools");
+                args.Add(tool);
+            }
+        }
+
+        // Disallowed tools (v2.1.0+)
+        if (CurrentDisallowedTools != null && CurrentDisallowedTools.Count > 0)
+        {
+            foreach (var tool in CurrentDisallowedTools)
+            {
+                args.Add("--disallowed-tools");
+                args.Add(tool);
+            }
+        }
+
+        // Maximum budget in USD for cost control (v2.0.28+)
+        if (CurrentMaxBudgetUsd.HasValue)
+        {
+            args.Add("--max-budget-usd");
+            args.Add(CurrentMaxBudgetUsd.Value.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        }
+
+        // Isolated git worktree mode (v2.1.49+)
+        if (CurrentUseWorktree)
+        {
+            args.Add("--worktree");
+        }
+
+        // Resume from PR (v2.1.27+)
+        if (!string.IsNullOrEmpty(CurrentFromPullRequest))
+        {
+            args.Add("--from-pr");
+            args.Add(CurrentFromPullRequest);
+        }
+
+        // Initialization mode for setup hooks (v2.1.10+)
+        if (!string.IsNullOrEmpty(CurrentInitMode))
+        {
+            args.Add($"--{CurrentInitMode}");
+        }
+
+        // Reasoning effort level (v2.1.63+)
+        var reasoningEffort = NormalizeReasoningEffort(CurrentReasoningEffort, "low", "medium", "high");
+        if (!string.IsNullOrEmpty(reasoningEffort))
+        {
+            args.Add("--effort");
+            args.Add(reasoningEffort);
+        }
+
+        if (!string.IsNullOrEmpty(CurrentMcpConfigPath))
+        {
+            args.Add("--mcp-config");
+            args.Add(CurrentMcpConfigPath);
+        }
+
+        if (CurrentAdditionalArgs != null)
+        {
+            args.AddRange(CurrentAdditionalArgs);
+        }
+
+        return args;
     }
 
     // Accumulated token usage across all assistant message events

@@ -163,7 +163,7 @@ public class OpenCodeProvider : CliProviderBase
     /// --dir           Working directory for the session (v1.2.0+)
     /// --timeout       Timeout in seconds for the execution (v1.2.0+)
     /// </summary>
-    private List<string> BuildRunCommandArgs(string prompt, string? sessionId)
+    internal List<string> BuildRunCommandArgs(string prompt, string? sessionId)
     {
         var args = new List<string> { "run" };
 

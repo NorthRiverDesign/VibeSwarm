@@ -129,4 +129,13 @@ public interface IJobService
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>True if successful; false if job is already in a terminal state or not found</returns>
     Task<bool> ForceFailJobAsync(Guid id, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Refreshes the execution plan for a pending job using current project settings.
+    /// This ensures queued jobs pick up provider/model changes made after creation.
+    /// No-op if the job has already started processing.
+    /// </summary>
+    /// <param name="id">The job ID</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    Task RefreshExecutionPlanAsync(Guid id, CancellationToken cancellationToken = default);
 }

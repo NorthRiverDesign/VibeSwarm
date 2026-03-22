@@ -112,117 +112,7 @@ public class CopilotProvider : CliProviderBase
         _hasAccumulatedTokens = false;
         _toolNamesById.Clear();
 
-        // Copilot CLI does not support --system-prompt or --append-system-prompt flags.
-        // Prepend any system prompt content into the main prompt using XML tags so the
-        // agent still receives efficiency rules, build verification, and project memory.
-        var effectivePrompt = BuildEffectivePrompt(prompt, CurrentSystemPrompt, CurrentAppendSystemPrompt);
-
-        // Build arguments for non-interactive execution
-        // Reference: https://github.com/github/copilot-cli/blob/main/changelog.md
-        var args = new List<string>
-        {
-            "-p",
-            effectivePrompt,
-            "--yolo",       // Auto-approve all tool permissions (v0.0.381+)
-            "--silent",     // Suppress stats output for cleaner capture (v0.0.365+)
-            "--autopilot"   // Autonomous task completion mode (v0.0.400+, GA v0.0.411+)
-        };
-
-        // Session resume support (v0.0.372+)
-        if (!string.IsNullOrEmpty(sessionId))
-        {
-            args.Add("--resume");
-            args.Add(sessionId);
-        }
-        else if (CurrentContinueLastSession)
-        {
-            args.Add("--continue");
-        }
-
-        // Model selection (v0.0.329+)
-        if (!string.IsNullOrEmpty(CurrentModel))
-        {
-            args.Add("--model");
-            args.Add(CurrentModel);
-        }
-
-        // Agent selection (v0.0.353+ for custom agents, v0.0.380+ in interactive)
-        if (!string.IsNullOrEmpty(CurrentAgent))
-        {
-            args.Add("--agent");
-            args.Add(CurrentAgent);
-        }
-
-        // Max autopilot continues limit
-        if (CurrentMaxTurns.HasValue)
-        {
-            args.Add("--max-autopilot-continues");
-            args.Add(CurrentMaxTurns.Value.ToString());
-        }
-
-        // Reasoning effort level (GA v0.0.411+)
-        var reasoningEffort = NormalizeReasoningEffort(CurrentReasoningEffort, "low", "medium", "high");
-        if (!string.IsNullOrEmpty(reasoningEffort))
-        {
-            args.Add("--reasoning-effort");
-            args.Add(reasoningEffort);
-        }
-
-        // Alt-screen buffer mode (v0.0.407+, experimental)
-        if (CurrentUseAltScreen)
-        {
-            args.Add("--alt-screen");
-            args.Add("on");
-        }
-
-        // Bash environment file (v0.0.418+)
-        if (!string.IsNullOrEmpty(CurrentBashEnvPath))
-        {
-            args.Add("--bash-env");
-            args.Add(CurrentBashEnvPath);
-        }
-
-        // Disable mouse input for headless/non-interactive jobs
-        args.Add("--no-mouse");
-
-        // Tool filtering (v0.0.370+)
-        if (CurrentAllowedTools != null && CurrentAllowedTools.Count > 0)
-        {
-            foreach (var tool in CurrentAllowedTools)
-            {
-                args.Add("--available-tools");
-                args.Add(tool);
-            }
-        }
-        if (CurrentExcludedTools != null && CurrentExcludedTools.Count > 0)
-        {
-            foreach (var tool in CurrentExcludedTools)
-            {
-                args.Add("--excluded-tools");
-                args.Add(tool);
-            }
-        }
-
-        // Denied tools
-        if (CurrentDisallowedTools != null && CurrentDisallowedTools.Count > 0)
-        {
-            foreach (var tool in CurrentDisallowedTools)
-            {
-                args.Add("--deny-tool");
-                args.Add(tool);
-            }
-        }
-
-        if (!string.IsNullOrEmpty(CurrentMcpConfigPath))
-        {
-            args.Add("--additional-mcp-config");
-            args.Add($"@{CurrentMcpConfigPath}");
-        }
-
-        if (CurrentAdditionalArgs != null)
-        {
-            args.AddRange(CurrentAdditionalArgs);
-        }
+        var args = BuildCliArgs(prompt, sessionId);
 
         var fullCommand = FormatCommandForDisplay(execPath, args);
 
@@ -408,6 +298,127 @@ public class CopilotProvider : CliProviderBase
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// Builds the CLI argument list for GitHub Copilot execution.
+    /// Internal for unit testing — validates only supported flags are emitted.
+    /// </summary>
+    internal List<string> BuildCliArgs(string prompt, string? sessionId)
+    {
+        // Copilot CLI does not support --system-prompt or --append-system-prompt flags.
+        // Prepend any system prompt content into the main prompt using XML tags so the
+        // agent still receives efficiency rules, build verification, and project memory.
+        var effectivePrompt = BuildEffectivePrompt(prompt, CurrentSystemPrompt, CurrentAppendSystemPrompt);
+
+        // Build arguments for non-interactive execution
+        // Reference: https://github.com/github/copilot-cli/blob/main/changelog.md
+        var args = new List<string>
+        {
+            "-p",
+            effectivePrompt,
+            "--yolo",       // Auto-approve all tool permissions (v0.0.381+)
+            "--silent",     // Suppress stats output for cleaner capture (v0.0.365+)
+            "--autopilot"   // Autonomous task completion mode (v0.0.400+, GA v0.0.411+)
+        };
+
+        // Session resume support (v0.0.372+)
+        if (!string.IsNullOrEmpty(sessionId))
+        {
+            args.Add("--resume");
+            args.Add(sessionId);
+        }
+        else if (CurrentContinueLastSession)
+        {
+            args.Add("--continue");
+        }
+
+        // Model selection (v0.0.329+)
+        if (!string.IsNullOrEmpty(CurrentModel))
+        {
+            args.Add("--model");
+            args.Add(CurrentModel);
+        }
+
+        // Agent selection (v0.0.353+ for custom agents, v0.0.380+ in interactive)
+        if (!string.IsNullOrEmpty(CurrentAgent))
+        {
+            args.Add("--agent");
+            args.Add(CurrentAgent);
+        }
+
+        // Max autopilot continues limit
+        if (CurrentMaxTurns.HasValue)
+        {
+            args.Add("--max-autopilot-continues");
+            args.Add(CurrentMaxTurns.Value.ToString());
+        }
+
+        // Reasoning effort level (GA v0.0.411+)
+        var reasoningEffort = NormalizeReasoningEffort(CurrentReasoningEffort, "low", "medium", "high");
+        if (!string.IsNullOrEmpty(reasoningEffort))
+        {
+            args.Add("--reasoning-effort");
+            args.Add(reasoningEffort);
+        }
+
+        // Alt-screen buffer mode (v0.0.407+, experimental)
+        if (CurrentUseAltScreen)
+        {
+            args.Add("--alt-screen");
+            args.Add("on");
+        }
+
+        // Bash environment file (v0.0.418+)
+        if (!string.IsNullOrEmpty(CurrentBashEnvPath))
+        {
+            args.Add("--bash-env");
+            args.Add(CurrentBashEnvPath);
+        }
+
+        // Disable mouse input for headless/non-interactive jobs
+        args.Add("--no-mouse");
+
+        // Tool filtering (v0.0.370+)
+        if (CurrentAllowedTools != null && CurrentAllowedTools.Count > 0)
+        {
+            foreach (var tool in CurrentAllowedTools)
+            {
+                args.Add("--available-tools");
+                args.Add(tool);
+            }
+        }
+        if (CurrentExcludedTools != null && CurrentExcludedTools.Count > 0)
+        {
+            foreach (var tool in CurrentExcludedTools)
+            {
+                args.Add("--excluded-tools");
+                args.Add(tool);
+            }
+        }
+
+        // Denied tools
+        if (CurrentDisallowedTools != null && CurrentDisallowedTools.Count > 0)
+        {
+            foreach (var tool in CurrentDisallowedTools)
+            {
+                args.Add("--deny-tool");
+                args.Add(tool);
+            }
+        }
+
+        if (!string.IsNullOrEmpty(CurrentMcpConfigPath))
+        {
+            args.Add("--additional-mcp-config");
+            args.Add($"@{CurrentMcpConfigPath}");
+        }
+
+        if (CurrentAdditionalArgs != null)
+        {
+            args.AddRange(CurrentAdditionalArgs);
+        }
+
+        return args;
     }
 
     /// <summary>

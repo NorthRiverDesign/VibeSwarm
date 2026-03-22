@@ -503,6 +503,29 @@ public class JobProcessingService : BackgroundService
                 return;
             }
 
+            // Refresh execution plan from current project settings so queued jobs
+            // pick up provider/model changes made after creation.
+            try
+            {
+                await jobService.RefreshExecutionPlanAsync(job.Id, cancellationToken);
+                await dbContext.Entry(job).ReloadAsync(cancellationToken);
+                if (job.Provider == null)
+                {
+                    await dbContext.Entry(job).Reference(j => j.Provider).LoadAsync(cancellationToken);
+                }
+                if (job.Project == null)
+                {
+                    await dbContext.Entry(job).Reference(j => j.Project).LoadAsync(cancellationToken);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to refresh execution plan for job {JobId}, continuing with existing plan", job.Id);
+            }
+
+            // Store provider ID for cleanup (may have changed after refresh)
+            executionContext.ProviderId = job.ProviderId;
+
             job.Status = JobStatus.Started;
             job.StartedAt ??= DateTime.UtcNow;
             job.LastActivityAt = DateTime.UtcNow;

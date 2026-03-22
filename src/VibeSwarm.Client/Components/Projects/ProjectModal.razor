@@ -544,7 +544,6 @@ assignment.UpdatedAt = DateTime.UtcNow;
 private void NormalizeProviderSelectionOrder()
 {
 FormModel.ProviderSelections = FormModel.ProviderSelections
-.OrderBy(projectProvider => projectProvider.Priority)
 .Select((selection, index) =>
 {
 selection.Priority = index;

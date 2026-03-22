@@ -1142,6 +1142,30 @@ public class JobService : IJobService
         return deletedJobs.Count;
     }
 
+    public async Task RefreshExecutionPlanAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        var job = await _dbContext.Jobs
+            .Include(j => j.Project)
+                .ThenInclude(p => p!.ProviderSelections)
+            .Include(j => j.Provider)
+            .FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
+
+        if (job == null)
+        {
+            return;
+        }
+
+        // Only refresh for jobs that haven't started processing yet
+        if (job.Status != JobStatus.New)
+        {
+            return;
+        }
+
+        job.ExecutionPlan = null;
+        await InitializeExecutionPlanAsync(job, cancellationToken);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+    }
+
     private async Task InitializeExecutionPlanAsync(Job job, CancellationToken cancellationToken)
     {
         var targets = await BuildExecutionPlanAsync(job, cancellationToken);

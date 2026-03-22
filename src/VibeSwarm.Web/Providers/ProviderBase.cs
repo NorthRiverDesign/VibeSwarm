@@ -39,34 +39,7 @@ public abstract class ProviderBase : IProvider
         CancellationToken cancellationToken = default)
     {
         // Store execution options for use by child implementations
-        CurrentMcpConfigPath = options.McpConfigPath;
-        CurrentAdditionalArgs = options.AdditionalArgs;
-        CurrentEnvironmentVariables = options.EnvironmentVariables;
-        CurrentModel = options.Model;
-        CurrentTitle = options.Title;
-        CurrentAgent = options.Agent;
-        CurrentAttachedFiles = options.AttachedFiles;
-        CurrentOutputFormat = options.OutputFormat;
-        CurrentContinueLastSession = options.ContinueLastSession;
-        CurrentSystemPrompt = options.SystemPrompt;
-        CurrentAppendSystemPrompt = options.AppendSystemPrompt;
-        CurrentMaxTurns = options.MaxTurns;
-        CurrentMaxBudgetUsd = options.MaxBudgetUsd;
-        CurrentAdditionalDirectories = options.AdditionalDirectories;
-        CurrentTimeoutSeconds = options.TimeoutSeconds;
-        CurrentAllowedTools = options.AllowedTools;
-        CurrentExcludedTools = options.ExcludedTools;
-        CurrentDisallowedTools = options.DisallowedTools;
-        CurrentUseWorktree = options.UseWorktree;
-        CurrentUseAutopilot = options.UseAutopilot;
-        CurrentFromPullRequest = options.FromPullRequest;
-        CurrentInitMode = options.InitMode;
-        CurrentForkSession = options.ForkSession;
-        CurrentUseAltScreen = options.UseAltScreen;
-        CurrentReasoningEffort = options.ReasoningEffort;
-        CurrentDisableLargeContext = options.DisableLargeContext;
-        CurrentBashEnvPath = options.BashEnvPath;
-        CurrentPermissionMode = options.PermissionMode;
+        ApplyOptions(options);
 
         try
         {
@@ -227,6 +200,42 @@ public abstract class ProviderBase : IProvider
     /// Permission mode for automated execution (Claude --permission-mode, set by ExecuteWithOptionsAsync)
     /// </summary>
     protected string? CurrentPermissionMode { get; private set; }
+
+    /// <summary>
+    /// Applies execution options to the current context so that BuildCliArgs can read them.
+    /// Exposed as internal for unit testing.
+    /// </summary>
+    internal void ApplyOptions(ExecutionOptions options)
+    {
+        CurrentMcpConfigPath = options.McpConfigPath;
+        CurrentAdditionalArgs = options.AdditionalArgs;
+        CurrentEnvironmentVariables = options.EnvironmentVariables;
+        CurrentModel = options.Model;
+        CurrentTitle = options.Title;
+        CurrentAgent = options.Agent;
+        CurrentAttachedFiles = options.AttachedFiles;
+        CurrentOutputFormat = options.OutputFormat;
+        CurrentContinueLastSession = options.ContinueLastSession;
+        CurrentSystemPrompt = options.SystemPrompt;
+        CurrentAppendSystemPrompt = options.AppendSystemPrompt;
+        CurrentMaxTurns = options.MaxTurns;
+        CurrentMaxBudgetUsd = options.MaxBudgetUsd;
+        CurrentAdditionalDirectories = options.AdditionalDirectories;
+        CurrentTimeoutSeconds = options.TimeoutSeconds;
+        CurrentAllowedTools = options.AllowedTools;
+        CurrentExcludedTools = options.ExcludedTools;
+        CurrentDisallowedTools = options.DisallowedTools;
+        CurrentUseWorktree = options.UseWorktree;
+        CurrentUseAutopilot = options.UseAutopilot;
+        CurrentFromPullRequest = options.FromPullRequest;
+        CurrentInitMode = options.InitMode;
+        CurrentForkSession = options.ForkSession;
+        CurrentUseAltScreen = options.UseAltScreen;
+        CurrentReasoningEffort = options.ReasoningEffort;
+        CurrentDisableLargeContext = options.DisableLargeContext;
+        CurrentBashEnvPath = options.BashEnvPath;
+        CurrentPermissionMode = options.PermissionMode;
+    }
 
     /// <summary>
     /// Clears the execution context after a run completes
