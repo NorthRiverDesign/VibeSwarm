@@ -508,7 +508,7 @@ else
 
     private Project? Project { get; set; }
     private List<Job> Jobs { get; set; } = new();
-    private List<Job> PagedJobs { get; set; } = new();
+    private List<JobSummary> PagedJobs { get; set; } = new();
     private List<Provider> Providers { get; set; } = new();
     private Job NewJob { get; set; } = new();
     private bool IsLoading { get; set; } = true;

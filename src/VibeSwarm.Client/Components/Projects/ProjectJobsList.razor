@@ -1,4 +1,5 @@
 @* Project jobs list component *@
+@using VibeSwarm.Shared.Models
 @using VibeSwarm.Shared.Utilities
 
 <SectionErrorBoundary SectionTitle="job list">
@@ -133,7 +134,7 @@
 											@GetJobDisplayTitle(job)
 										</a>
 										<div class="d-flex flex-wrap gap-2 mt-1 small text-body-secondary">
-											<span>@(job.Provider?.Name ?? "Unknown")</span>
+											<span>@(job.ProviderName ?? "Unknown")</span>
 											@if (!string.IsNullOrEmpty(job.ModelUsed))
 											{
 												<span class="text-body-tertiary">•</span>
@@ -226,7 +227,7 @@
 
 @code {
 	[Parameter]
-	public List<Job> Jobs { get; set; } = new();
+	public List<JobSummary> Jobs { get; set; } = new();
 
 	[Parameter]
 	public int TotalJobsCount { get; set; }
@@ -287,7 +288,7 @@
 		_isDeletingCompleted = false;
 	}
 
-	private static string GetJobDisplayTitle(Job job)
+	private static string GetJobDisplayTitle(JobSummary job)
 	{
 		return TruncateText(job.DisplayTitle, 100);
 	}

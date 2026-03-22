@@ -1,8 +1,6 @@
-using VibeSwarm.Shared.Data;
-
 namespace VibeSwarm.Shared.Models;
 
-public sealed class JobsListResult : PagedResult<Job>
+public sealed class JobsListResult : PagedResult<JobSummary>
 {
 	public int TotalInputTokens { get; set; }
 

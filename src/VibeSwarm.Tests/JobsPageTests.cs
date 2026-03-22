@@ -26,7 +26,7 @@ public sealed class JobsPageTests
 		{
 			Items =
 			[
-				new Job
+				new JobSummary
 				{
 					Id = Guid.NewGuid(),
 					ProjectId = projectId,
@@ -80,13 +80,13 @@ public sealed class JobsPageTests
 	{
 		private readonly JobsListResult _jobsResult = jobsResult;
 
-		public Task<IEnumerable<Job>> GetAllAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Job>>(_jobsResult.Items);
+		public Task<IEnumerable<Job>> GetAllAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Job>>([]);
 		public Task<JobsListResult> GetPagedAsync(Guid? projectId = null, string statusFilter = "all", int page = 1, int pageSize = 25, CancellationToken cancellationToken = default) => Task.FromResult(_jobsResult);
-		public Task<IEnumerable<Job>> GetByProjectIdAsync(Guid projectId, CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Job>>(_jobsResult.Items.Where(job => job.ProjectId == projectId));
+		public Task<IEnumerable<Job>> GetByProjectIdAsync(Guid projectId, CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Job>>([]);
 		public Task<ProjectJobsListResult> GetPagedByProjectIdAsync(Guid projectId, int page = 1, int pageSize = 10, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<IEnumerable<Job>> GetPendingJobsAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Job>>([]);
-		public Task<IEnumerable<Job>> GetActiveJobsAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Job>>(_jobsResult.Items.Where(job => job.Status is JobStatus.New or JobStatus.Pending or JobStatus.Started or JobStatus.Planning or JobStatus.Processing or JobStatus.Paused or JobStatus.Stalled));
-		public Task<Job?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult(_jobsResult.Items.FirstOrDefault(job => job.Id == id));
+		public Task<IEnumerable<JobSummary>> GetActiveJobsAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<JobSummary>>([]);
+		public Task<Job?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult<Job?>(null);
 		public Task<Job?> GetByIdWithMessagesAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<Job> CreateAsync(Job job, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<Job> UpdateStatusAsync(Guid id, JobStatus status, string? output = null, string? errorMessage = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();

@@ -1,5 +1,6 @@
 @* Reusable project card component for project listings *@
 @using VibeSwarm.Shared.Data
+@using VibeSwarm.Shared.Models
 @using VibeSwarm.Shared.Utilities
 
 <a href="/projects/@ProjectId"
@@ -83,7 +84,7 @@
 	public string? CurrentBranch { get; set; }
 
 	[Parameter]
-	public Job? LatestJob { get; set; }
+	public JobSummary? LatestJob { get; set; }
 
 	[Parameter]
 	public DateTime CreatedAt { get; set; }

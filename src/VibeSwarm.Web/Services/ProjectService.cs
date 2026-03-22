@@ -239,14 +239,20 @@ public class ProjectService : IProjectService
 			})
 			.ToListAsync(cancellationToken);
 
-		var latestJobs = await _dbContext.Jobs
+		// Get latest job IDs per project first, then project to summaries.
+		// EF Core cannot compose Select on top of GroupBy/First.
+		var latestJobIds = await _dbContext.Jobs
 			.AsNoTracking()
 			.Where(job => projectIds.Contains(job.ProjectId))
 			.GroupBy(job => job.ProjectId)
-			.Select(group => group
-				.OrderByDescending(job => job.CreatedAt)
-				.First())
+			.Select(group => group.OrderByDescending(job => job.CreatedAt).First().Id)
 			.ToListAsync(cancellationToken);
+
+		var latestJobs = latestJobIds.Count == 0
+			? []
+			: await JobService.ProjectToSummary(
+					_dbContext.Jobs.AsNoTracking().Where(job => latestJobIds.Contains(job.Id)))
+				.ToListAsync(cancellationToken);
 
 		var statsByProject = stats.ToDictionary(s => s.ProjectId);
 		var ideaStatsByProject = ideaStats.ToDictionary(
@@ -312,12 +318,18 @@ public class ProjectService : IProjectService
 		}
 
 		var projectIds = projects.Select(p => p.Id).ToList();
-		var latestJobs = await _dbContext.Jobs
+		var latestJobIds = await _dbContext.Jobs
 			.AsNoTracking()
 			.Where(j => projectIds.Contains(j.ProjectId))
 			.GroupBy(j => j.ProjectId)
-			.Select(g => g.OrderByDescending(j => j.CreatedAt).First())
+			.Select(g => g.OrderByDescending(j => j.CreatedAt).First().Id)
 			.ToListAsync(cancellationToken);
+
+		var latestJobs = latestJobIds.Count == 0
+			? []
+			: await JobService.ProjectToSummary(
+					_dbContext.Jobs.AsNoTracking().Where(j => latestJobIds.Contains(j.Id)))
+				.ToListAsync(cancellationToken);
 
 		var latestJobsByProject = latestJobs.ToDictionary(j => j.ProjectId);
 
@@ -435,12 +447,12 @@ public class ProjectService : IProjectService
 		}
 
 		var projectIds = activeProjects.Select(project => project.Id).ToList();
-		var runningJobs = await _dbContext.Jobs
-			.AsNoTracking()
-			.Include(job => job.Provider)
-			.Where(job => projectIds.Contains(job.ProjectId) && DashboardRunningStatuses.Contains(job.Status))
-			.OrderByDescending(job => job.StartedAt ?? job.CreatedAt)
-			.ThenByDescending(job => job.CreatedAt)
+		var runningJobs = await JobService.ProjectToSummary(
+				_dbContext.Jobs
+					.AsNoTracking()
+					.Where(job => projectIds.Contains(job.ProjectId) && DashboardRunningStatuses.Contains(job.Status))
+					.OrderByDescending(job => job.StartedAt ?? job.CreatedAt)
+					.ThenByDescending(job => job.CreatedAt))
 			.ToListAsync(cancellationToken);
 
 		if (!runningJobs.Any())

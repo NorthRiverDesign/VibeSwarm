@@ -266,7 +266,6 @@
             }
 
             runningJob.Job.CurrentActivity = activity;
-            runningJob.Job.LastActivityAt = timestamp;
             await InvokeAsync(StateHasChanged);
         });
 

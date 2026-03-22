@@ -1,4 +1,5 @@
 using VibeSwarm.Shared.Data;
+using VibeSwarm.Shared.Models;
 using VibeSwarm.Shared.Services;
 
 namespace VibeSwarm.Client.Models;
@@ -11,5 +12,5 @@ public class ProjectInfoWithStats
 	public required Project Project { get; set; }
 	public ProjectJobStats Stats { get; set; } = new();
 	public string? CurrentBranch { get; set; }
-	public Job? LatestJob { get; set; }
+	public JobSummary? LatestJob { get; set; }
 }

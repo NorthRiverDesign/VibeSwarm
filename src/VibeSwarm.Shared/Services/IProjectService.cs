@@ -29,7 +29,7 @@ public class ProjectWithStats
     public required Project Project { get; set; }
     public ProjectJobStats Stats { get; set; } = new();
     public string? CurrentBranch { get; set; }
-    public Job? LatestJob { get; set; }
+    public JobSummary? LatestJob { get; set; }
 }
 
 /// <summary>
@@ -47,13 +47,13 @@ public class DashboardProjectInfo
     /// <summary>
     /// Latest job for the project (if any)
     /// </summary>
-    public Job? LatestJob { get; set; }
+    public JobSummary? LatestJob { get; set; }
 }
 
 public class DashboardRunningJobInfo
 {
 	public required Project Project { get; set; }
-	public required Job Job { get; set; }
+	public required JobSummary Job { get; set; }
 }
 
 /// <summary>

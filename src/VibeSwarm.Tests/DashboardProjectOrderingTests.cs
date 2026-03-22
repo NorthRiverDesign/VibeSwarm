@@ -1,5 +1,6 @@
 using VibeSwarm.Client.Models;
 using VibeSwarm.Shared.Data;
+using VibeSwarm.Shared.Models;
 using VibeSwarm.Shared.Services;
 
 namespace VibeSwarm.Tests;
@@ -55,7 +56,7 @@ public sealed class DashboardProjectOrderingTests
 				WorkingPath = $"/tmp/{name.ToLowerInvariant()}"
 			},
 			LatestJob = lastRanAt.HasValue
-				? new Job
+				? new JobSummary
 				{
 					Id = Guid.NewGuid(),
 					ProjectId = Guid.NewGuid(),

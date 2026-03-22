@@ -8,6 +8,7 @@
 @inject NotificationService NotificationService
 @implements IDisposable
 @using VibeSwarm.Shared.Data
+@using VibeSwarm.Shared.Models
 @using VibeSwarm.Shared.Utilities
 
 <PageHeader Title="Projects" Subtitle="Manage your AI agent project workspaces">
@@ -289,7 +290,7 @@ else
 
 @code {
     private List<ProjectInfoWithStats> ProjectsWithInfo { get; set; } = new();
-    private List<Job> ActiveJobs { get; set; } = new();
+    private List<JobSummary> ActiveJobs { get; set; } = new();
     private bool IsLoading { get; set; } = true;
     private bool HasLoadedProjectsInitially { get; set; }
     private System.Threading.Timer? _refreshTimer;

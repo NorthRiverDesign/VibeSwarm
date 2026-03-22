@@ -135,7 +135,7 @@ public sealed class DashboardPageTests
 				CreatedAt = DateTime.UtcNow.AddDays(-7)
 			},
 			LatestJob = latestJobCreatedAt.HasValue
-				? new Job
+				? new JobSummary
 				{
 					Id = Guid.NewGuid(),
 					ProjectId = projectId,
@@ -166,7 +166,7 @@ public sealed class DashboardPageTests
 				WorkingPath = $"/tmp/{projectName.ToLowerInvariant()}",
 				CreatedAt = DateTime.UtcNow.AddDays(-7)
 			},
-			Job = new Job
+			Job = new JobSummary
 			{
 				Id = Guid.NewGuid(),
 				ProjectId = projectId,

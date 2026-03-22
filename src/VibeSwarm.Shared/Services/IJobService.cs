@@ -10,7 +10,7 @@ public interface IJobService
     Task<IEnumerable<Job>> GetByProjectIdAsync(Guid projectId, CancellationToken cancellationToken = default);
     Task<ProjectJobsListResult> GetPagedByProjectIdAsync(Guid projectId, int page = 1, int pageSize = 10, CancellationToken cancellationToken = default);
     Task<IEnumerable<Job>> GetPendingJobsAsync(CancellationToken cancellationToken = default);
-    Task<IEnumerable<Job>> GetActiveJobsAsync(CancellationToken cancellationToken = default);
+    Task<IEnumerable<JobSummary>> GetActiveJobsAsync(CancellationToken cancellationToken = default);
     Task<Job?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
     Task<Job?> GetByIdWithMessagesAsync(Guid id, CancellationToken cancellationToken = default);
     Task<Job> CreateAsync(Job job, CancellationToken cancellationToken = default);

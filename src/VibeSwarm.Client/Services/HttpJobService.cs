@@ -28,8 +28,8 @@ public class HttpJobService : IJobService
     public async Task<IEnumerable<Job>> GetPendingJobsAsync(CancellationToken ct = default)
         => await _http.GetJsonAsync("/api/jobs/pending", new List<Job>(), ct);
 
-    public async Task<IEnumerable<Job>> GetActiveJobsAsync(CancellationToken ct = default)
-        => await _http.GetJsonAsync("/api/jobs/active", new List<Job>(), ct);
+    public async Task<IEnumerable<JobSummary>> GetActiveJobsAsync(CancellationToken ct = default)
+        => await _http.GetJsonAsync("/api/jobs/active", new List<JobSummary>(), ct);
 
     public async Task<Job?> GetByIdAsync(Guid id, CancellationToken ct = default)
         => await _http.GetJsonOrNullAsync<Job>($"/api/jobs/{id}", ct);

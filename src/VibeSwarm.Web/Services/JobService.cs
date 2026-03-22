@@ -33,6 +33,45 @@ public partial class JobService : IJobService
         _jobProcessingService = jobProcessingService;
     }
 
+    /// <summary>
+    /// Projects a Job query into lightweight JobSummary DTOs, excluding heavy text fields.
+    /// </summary>
+    internal static IQueryable<JobSummary> ProjectToSummary(IQueryable<Job> query)
+    {
+        return query.Select(j => new JobSummary
+        {
+            Id = j.Id,
+            Title = j.Title,
+            GoalPrompt = j.GoalPrompt,
+            Status = j.Status,
+            ProjectId = j.ProjectId,
+            ProjectName = j.Project != null ? j.Project.Name : null,
+            ProviderId = j.ProviderId,
+            ProviderName = j.Provider != null ? j.Provider.Name : null,
+            ModelUsed = j.ModelUsed,
+            CurrentActivity = j.CurrentActivity,
+            ErrorMessage = j.ErrorMessage,
+            CreatedAt = j.CreatedAt,
+            StartedAt = j.StartedAt,
+            CompletedAt = j.CompletedAt,
+            ExecutionDurationSeconds = j.ExecutionDurationSeconds,
+            TotalCostUsd = j.TotalCostUsd,
+            InputTokens = j.InputTokens,
+            OutputTokens = j.OutputTokens,
+            CurrentCycle = j.CurrentCycle,
+            MaxCycles = j.MaxCycles,
+            CycleMode = j.CycleMode,
+            TeamRoleName = j.TeamRole != null ? j.TeamRole.Name : null,
+            Branch = j.Branch,
+            ChangedFilesCount = j.ChangedFilesCount,
+            BuildVerified = j.BuildVerified,
+            GitCommitHash = j.GitCommitHash,
+            PullRequestNumber = j.PullRequestNumber,
+            PullRequestUrl = j.PullRequestUrl,
+            IsScheduled = j.IsScheduled,
+        });
+    }
+
     public async Task<IEnumerable<Job>> GetAllAsync(CancellationToken cancellationToken = default)
     {
         return await _dbContext.Jobs
@@ -83,14 +122,11 @@ public partial class JobService : IJobService
                          job.Status == JobStatus.Processing)
                  })
                 .ToListAsync(cancellationToken),
-            Items = await filteredQuery
-                .Include(j => j.Project)
-                    .ThenInclude(p => p!.Environments)
-                .Include(j => j.Provider)
-                .Include(j => j.TeamRole)
-                .OrderByDescending(j => j.CreatedAt)
-                .Skip((normalizedPage - 1) * normalizedPageSize)
-                .Take(normalizedPageSize)
+            Items = await ProjectToSummary(
+                    filteredQuery
+                        .OrderByDescending(j => j.CreatedAt)
+                        .Skip((normalizedPage - 1) * normalizedPageSize)
+                        .Take(normalizedPageSize))
                 .ToListAsync(cancellationToken)
         };
     }
@@ -125,11 +161,11 @@ public partial class JobService : IJobService
                 j.Status == JobStatus.Processing ||
                 j.Status == JobStatus.Paused, cancellationToken),
             CompletedCount = await baseQuery.CountAsync(j => j.Status == JobStatus.Completed, cancellationToken),
-            Items = await baseQuery
-                .Include(j => j.Provider)
-                .OrderByDescending(j => j.CreatedAt)
-                .Skip((normalizedPage - 1) * normalizedPageSize)
-                .Take(normalizedPageSize)
+            Items = await ProjectToSummary(
+                    baseQuery
+                        .OrderByDescending(j => j.CreatedAt)
+                        .Skip((normalizedPage - 1) * normalizedPageSize)
+                        .Take(normalizedPageSize))
                 .ToListAsync(cancellationToken)
         };
     }
@@ -191,14 +227,12 @@ public partial class JobService : IJobService
         return result;
     }
 
-    public async Task<IEnumerable<Job>> GetActiveJobsAsync(CancellationToken cancellationToken = default)
+    public async Task<IEnumerable<JobSummary>> GetActiveJobsAsync(CancellationToken cancellationToken = default)
     {
-        return await _dbContext.Jobs
-            .Include(j => j.Project)
-                .ThenInclude(p => p!.Environments)
-            .Include(j => j.Provider)
-            .Where(j => j.Status == JobStatus.Started || j.Status == JobStatus.Planning || j.Status == JobStatus.Processing || j.Status == JobStatus.New)
-            .OrderByDescending(j => j.StartedAt ?? j.CreatedAt)
+        return await ProjectToSummary(
+                _dbContext.Jobs
+                    .Where(j => j.Status == JobStatus.Started || j.Status == JobStatus.Planning || j.Status == JobStatus.Processing || j.Status == JobStatus.New)
+                    .OrderByDescending(j => j.StartedAt ?? j.CreatedAt))
             .ToListAsync(cancellationToken);
     }
 

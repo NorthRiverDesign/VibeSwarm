@@ -202,12 +202,12 @@
 				@foreach (var job in _jobsResult.Items)
 				{
 					<JobListItem Status="@job.Status.ToString()" Prompt="@GetJobDisplayTitle(job)"
-								 ProjectName="@(job.Project?.Name ?? "Unknown")" ShowProjectName="@(_selectedProjectId == null)"
-								 ProviderName="@job.Provider?.Name" ModelUsed="@job.ModelUsed"
+								 ProjectName="@(job.ProjectName ?? "Unknown")" ShowProjectName="@(_selectedProjectId == null)"
+								 ProviderName="@job.ProviderName" ModelUsed="@job.ModelUsed"
 								 Activity="@((job.Status == JobStatus.Started || job.Status == JobStatus.Planning || job.Status == JobStatus.Processing) ? (job.CurrentActivity ?? "Working...") : null)"
 								 TimeDisplay="@GetTimeDisplay(job)" Cost="@job.TotalCostUsd" InputTokens="@job.InputTokens"
 								 OutputTokens="@job.OutputTokens" CurrentCycle="@job.CurrentCycle" MaxCycles="@job.MaxCycles"
-								 CycleMode="@job.CycleMode" TeamRoleName="@job.TeamRole?.Name"
+								 CycleMode="@job.CycleMode" TeamRoleName="@job.TeamRoleName"
 								 OnClick="@(() => NavigateToJob(job.Id))" />
 				}
 			}
@@ -468,7 +468,6 @@ TimeSpan.FromSeconds(10) })
             if (job != null)
             {
                 job.CurrentActivity = activity;
-                job.LastActivityAt = timestamp;
                 await InvokeAsync(StateHasChanged);
             }
         }
@@ -647,7 +646,7 @@ TimeSpan.FromSeconds(10) })
         return prompt[..maxLength] + "...";
     }
 
-    private static string GetTimeDisplay(Job job)
+    private static string GetTimeDisplay(JobSummary job)
     {
         if (job.CompletedAt.HasValue)
         {
@@ -678,7 +677,7 @@ TimeSpan.FromSeconds(10) })
         return $"{(int)elapsed.TotalDays}d ago";
     }
 
-    private static string GetJobDisplayTitle(Job job)
+    private static string GetJobDisplayTitle(JobSummary job)
     {
         // Use Title if available, otherwise use GoalPrompt
         return !string.IsNullOrEmpty(job.Title) ? job.Title : job.GoalPrompt;

@@ -1,3 +1,4 @@
+@using VibeSwarm.Shared.Models
 @using VibeSwarm.Shared.Utilities
 
 <section>
@@ -40,7 +41,7 @@
 	[Parameter]
 	public IReadOnlyList<DashboardRunningJobInfo> Items { get; set; } = [];
 
-	private static string GetStartedDisplay(Job job)
+	private static string GetStartedDisplay(JobSummary job)
 	{
 		var startedAt = job.StartedAt ?? job.CreatedAt;
 		var elapsed = DateTime.UtcNow - startedAt;
