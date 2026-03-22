@@ -171,8 +171,41 @@
             });
         </script>
 
-        <!-- Service Worker Registration -->
+        <!-- Service Worker Registration & App Update Detection -->
         <script>
+            // Set to true when the app detects a pending SW update.
+            // AppUpdateBanner.razor polls this flag and shows an update notification.
+            window.vibeSwarmUpdateAvailable = false;
+
+            // Called by AppUpdateBanner.razor to check for pending updates
+            window.checkForAppUpdate = function () {
+                return window.vibeSwarmUpdateAvailable;
+            };
+
+            // Called by AppUpdateBanner.razor when the user approves the reload.
+            // Tells the waiting SW to activate, then reloads after it takes control.
+            window.applyAppUpdate = function () {
+                if (!navigator.serviceWorker || !navigator.serviceWorker.controller) {
+                    window.location.reload();
+                    return;
+                }
+
+                // When the controller changes (new SW took over), reload the page
+                navigator.serviceWorker.addEventListener('controllerchange', function () {
+                    window.location.reload();
+                }, { once: true });
+
+                // Tell the waiting service worker to skip waiting and activate
+                navigator.serviceWorker.ready.then(function (registration) {
+                    if (registration.waiting) {
+                        registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+                    } else {
+                        // No waiting SW; just reload to pick up any server-side changes
+                        window.location.reload();
+                    }
+                });
+            };
+
             if ('serviceWorker' in navigator && window.location.protocol === 'https:') {
                 window.addEventListener('load', () => {
                     navigator.serviceWorker.register('/service-worker.js')
@@ -181,17 +214,37 @@
                             // Check for updates on first load and hourly thereafter
                             registration.update();
                             setInterval(() => registration.update(), 60 * 60 * 1000);
+
+                            // If a SW is already waiting when the page loads, surface the banner
+                            if (registration.waiting) {
+                                window.vibeSwarmUpdateAvailable = true;
+                            }
+
+                            // When a new SW finishes installing and enters the waiting state,
+                            // flag the update so the Blazor banner can show.
+                            registration.addEventListener('updatefound', () => {
+                                const newWorker = registration.installing;
+                                if (!newWorker) return;
+
+                                newWorker.addEventListener('statechange', () => {
+                                    if (newWorker.state === 'installed' && registration.active) {
+                                        // New SW installed and waiting — show update banner
+                                        console.log('[ServiceWorker] Update available');
+                                        window.vibeSwarmUpdateAvailable = true;
+                                    }
+                                });
+                            });
                         })
                         .catch((error) => {
                             console.log('ServiceWorker registration failed:', error);
                         });
 
-                    // NOTE: intentionally no controllerchange / updatefound auto-reload.
-                    // Auto-reloading on service worker activation interrupts Blazor WASM
-                    // initialization on iOS standalone PWA and causes "Unable to Load
-                    // Application" errors. The new service worker takes effect via
-                    // skipWaiting() + clients.claim() without a reload, and users get
-                    // fresh assets on their next natural navigation.
+                    // Handle messages from the service worker
+                    navigator.serviceWorker.addEventListener('message', (event) => {
+                        if (event.data && event.data.type === 'SW_UPDATE_WAITING') {
+                            window.vibeSwarmUpdateAvailable = true;
+                        }
+                    });
                 });
             }
         </script>

@@ -25,6 +25,9 @@ const STATIC_ASSETS = [
 ];
 
 // Install event - cache static assets
+// NOTE: skipWaiting() is intentionally NOT called here. The new service worker
+// waits in the "installed" state until the page sends a SKIP_WAITING message.
+// This prevents mid-session takeovers that can disrupt running jobs.
 self.addEventListener("install", (event) => {
 	event.waitUntil(
 		caches
@@ -34,10 +37,21 @@ self.addEventListener("install", (event) => {
 				return cache.addAll(STATIC_ASSETS);
 			})
 			.then(() => {
-				// Force the waiting service worker to become active
-				return self.skipWaiting();
+				// Notify all open clients that an update is waiting
+				return self.clients.matchAll({ type: "window" }).then((clients) => {
+					clients.forEach((client) =>
+						client.postMessage({ type: "SW_UPDATE_WAITING" }),
+					);
+				});
 			}),
 	);
+});
+
+// Listen for SKIP_WAITING message from the page (sent when user approves reload)
+self.addEventListener("message", (event) => {
+	if (event.data && event.data.type === "SKIP_WAITING") {
+		self.skipWaiting();
+	}
 });
 
 // Activate event - clean up old caches
@@ -53,8 +67,12 @@ self.addEventListener("activate", (event) => {
 				);
 			})
 			.then(() => {
-				// Take control of all pages immediately
-				return self.clients.claim();
+				// Notify all clients the update has been applied
+				return self.clients.matchAll({ type: "window" }).then((clients) => {
+					clients.forEach((client) =>
+						client.postMessage({ type: "SW_ACTIVATED" }),
+					);
+				});
 			}),
 	);
 });

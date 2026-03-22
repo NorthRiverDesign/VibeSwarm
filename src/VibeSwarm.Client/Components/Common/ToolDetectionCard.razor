@@ -1,4 +1,4 @@
-@* Tool Detection Card - Shows status of detected CLI tools *@
+@* Tool Detection Card - Shows status of detected CLI tools with install support *@
 @inject HttpClient Http
 
 <div class="card mt-3">
@@ -6,7 +6,7 @@
 		<h5 class="mb-0 fw-semibold">
 			<i class="bi bi-tools me-2"></i>Detected Tools
 		</h5>
-		<button type="button" class="btn btn-sm btn-secondary" @onclick="DetectTools" disabled="@_isLoading"
+		<button type="button" class="btn btn-sm btn-secondary" @onclick="DetectTools" disabled="@(_isLoading || _isInstalling != null)"
 				title="Re-detect tools">
 			<i class="bi bi-arrow-clockwise @(_isLoading ? "spin" : "")"></i>
 		</button>
@@ -34,9 +34,23 @@
 					}
 					else
 					{
-						<span class="badge bg-danger-subtle text-danger-emphasis">
+						<span class="badge bg-danger-subtle text-danger-emphasis me-1">
 							<i class="bi bi-x-circle me-1"></i>Not Found
 						</span>
+						<button type="button" class="btn btn-sm btn-outline-primary"
+								@onclick='() => InstallTool("git")'
+								disabled="@(_isInstalling != null)">
+							@if (_isInstalling == "git")
+							{
+								<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+								<span>Installing...</span>
+							}
+							else
+							{
+								<i class="bi bi-download me-1"></i>
+								<span>Install</span>
+							}
+						</button>
 					}
 				</li>
 
@@ -52,9 +66,23 @@
 					}
 					else
 					{
-						<span class="badge bg-danger-subtle text-danger-emphasis">
+						<span class="badge bg-danger-subtle text-danger-emphasis me-1">
 							<i class="bi bi-x-circle me-1"></i>Not Found
 						</span>
+						<button type="button" class="btn btn-sm btn-outline-primary"
+								@onclick='() => InstallTool("gh")'
+								disabled="@(_isInstalling != null)">
+							@if (_isInstalling == "gh")
+							{
+								<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+								<span>Installing...</span>
+							}
+							else
+							{
+								<i class="bi bi-download me-1"></i>
+								<span>Install</span>
+							}
+						</button>
 					}
 				</li>
 
@@ -80,6 +108,33 @@
 				}
 			</ul>
 
+			@if (_installResult != null)
+			{
+				<div class="mt-3 border rounded p-2 @(_installResult.Success ? "border-success-subtle bg-success-subtle" : "border-danger-subtle bg-danger-subtle")">
+					<div class="d-flex align-items-center gap-2 mb-1">
+						@if (_installResult.Success)
+						{
+							<i class="bi bi-check-circle text-success"></i>
+							<span class="small fw-semibold text-success-emphasis">Installation complete</span>
+						}
+						else
+						{
+							<i class="bi bi-x-circle text-danger"></i>
+							<span class="small fw-semibold text-danger-emphasis">Installation failed</span>
+						}
+						<button type="button" class="btn-close btn-close-sm ms-auto" @onclick="() => _installResult = null" style="font-size: 0.65rem;"></button>
+					</div>
+					@if (!string.IsNullOrWhiteSpace(_installResult.Output))
+					{
+						<pre class="small mb-0 text-body @(_installResult.Success ? "text-success-emphasis" : "text-danger-emphasis")" style="white-space: pre-wrap; max-height: 200px; overflow-y: auto; font-size: 0.75rem;">@_installResult.Output</pre>
+					}
+					@if (!_installResult.Success && !string.IsNullOrWhiteSpace(_installResult.Error))
+					{
+						<pre class="small mb-0 text-danger-emphasis" style="white-space: pre-wrap; max-height: 200px; overflow-y: auto; font-size: 0.75rem;">@_installResult.Error</pre>
+					}
+				</div>
+			}
+
 			@if (_error != null)
 			{
 				<div class="text-danger small mt-2">
@@ -96,6 +151,8 @@
 	private bool _ghAvailable;
 	private bool _ghAuthenticated;
 	private string? _error;
+	private string? _isInstalling;
+	private InstallResult? _installResult;
 
 	protected override async Task OnInitializedAsync()
 	{
@@ -137,10 +194,53 @@
 		}
 	}
 
+	private async Task InstallTool(string tool)
+	{
+		_isInstalling = tool;
+		_installResult = null;
+		StateHasChanged();
+
+		try
+		{
+			var response = await Http.PostAsync($"/api/system-tools/install/{tool}", null);
+			var result = await response.Content.ReadFromJsonAsync<InstallResponse>();
+			if (result != null)
+			{
+				_installResult = new InstallResult(result.Success, result.Output, result.Error);
+				if (result.Success)
+				{
+					await DetectTools();
+				}
+			}
+			else
+			{
+				_installResult = new InstallResult(false, null, "Unexpected response from server.");
+			}
+		}
+		catch (Exception ex)
+		{
+			_installResult = new InstallResult(false, null, $"Error: {ex.Message}");
+		}
+		finally
+		{
+			_isInstalling = null;
+			StateHasChanged();
+		}
+	}
+
 	private sealed class DetectedToolsResult
 	{
 		public bool GitAvailable { get; set; }
 		public bool GitHubCliAvailable { get; set; }
 		public bool GitHubCliAuthenticated { get; set; }
 	}
+
+	private sealed class InstallResponse
+	{
+		public bool Success { get; set; }
+		public string? Output { get; set; }
+		public string? Error { get; set; }
+	}
+
+	private sealed record InstallResult(bool Success, string? Output, string? Error);
 }
