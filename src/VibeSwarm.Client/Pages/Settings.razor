@@ -86,9 +86,14 @@ else
 <div class="mb-3">
 <label for="timeZoneId" class="form-label">Timezone</label>
 <select id="timeZoneId" class="form-select" @bind="_settings.TimeZoneId">
-	@foreach (var timeZone in _timeZones)
+	@foreach (var group in GetGroupedTimeZones())
 	{
-		<option value="@timeZone.Id">@DateTimeHelper.GetTimeZoneOptionLabel(timeZone)</option>
+		<optgroup label="@group.Key">
+			@foreach (var timeZone in group)
+			{
+				<option value="@timeZone.Id">@DateTimeHelper.GetTimeZoneOptionLabel(timeZone)</option>
+			}
+		</optgroup>
 	}
 </select>
 <div class="form-text">
@@ -251,6 +256,14 @@ private DirectoryBrowser? _directoryBrowser;
 private ScanProjectsModal? _scanProjectsModal;
 private string _activeTab = "app";
 private IReadOnlyList<TimeZoneInfo> _timeZones = [];
+
+private IOrderedEnumerable<IGrouping<string, TimeZoneInfo>> GetGroupedTimeZones()
+{
+	return _timeZones
+		.GroupBy(tz => tz.Id.Contains('/') ? tz.Id.Split('/')[0] : "Other")
+		.OrderBy(g => g.Key == "Other" ? 1 : 0)
+		.ThenBy(g => g.Key, StringComparer.Ordinal);
+}
 
 private string _placeholder => OperatingSystem.IsWindows() ? @"C:\Projects" : "/home/user/projects";
 private string _examplePath => OperatingSystem.IsWindows() ? @"C:\Projects" : "/home/user/projects";
