@@ -499,47 +499,9 @@ TimeSpan.FromSeconds(10) })
         }
     }
 
-    private async Task OnGlobalIdeaUpdated(string ideaId)
+    private Task OnGlobalIdeaUpdated(string ideaId)
     {
-        if (string.IsNullOrWhiteSpace(ideaId) || !Guid.TryParse(ideaId, out var parsedIdeaId))
-        {
-            return;
-        }
-
-        if (!await _ideaToastCoordinator.ShouldShowIdeaUpdatedAsync(ideaId))
-        {
-            return;
-        }
-
-        if (!TryBeginToastEvent($"idea-updated:{ideaId}"))
-        {
-            return;
-        }
-
-        try
-        {
-            var idea = await IdeaService.GetByIdAsync(parsedIdeaId);
-
-            await InvokeAsync(() =>
-            {
-                var ideaText = TruncateForToast(idea?.Description, 80, "Idea");
-                var projectName = idea?.Project?.Name;
-                var message = projectName is null
-                    ? $"{ideaText} was updated."
-                    : $"{ideaText} was updated in '{projectName}'.";
-
-                NotificationService.ShowInfo(message, "Idea Updated");
-                StateHasChanged();
-            });
-        }
-        catch
-        {
-            await InvokeAsync(() =>
-            {
-                NotificationService.ShowInfo("An idea was updated.", "Idea Updated");
-                StateHasChanged();
-            });
-        }
+        return Task.CompletedTask;
     }
 
     private async Task OnGlobalIdeaStarted(string ideaId, string jobId)

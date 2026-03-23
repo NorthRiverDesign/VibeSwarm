@@ -2,7 +2,7 @@
 @inject IJSRuntime JSRuntime
 @implements IDisposable
 
-<div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index: 1100;">
+<div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 1100;">
 	@foreach (var notification in NotificationService.Notifications)
 	{
 		<div class="toast show fade @GetToastClass(notification.Type)" role="alert" aria-live="assertive"
