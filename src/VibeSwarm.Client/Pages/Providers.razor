@@ -39,24 +39,44 @@
 				<StatItem Label="Configured" Value="@CommonProviderStatuses.Sum(status => status.ConfiguredProviders.Count).ToString()" />
 			</div>
 		</div>
-		<div class="row g-3">
-			@if (IsLoading)
-			{
-				<div class="col-12">
-					<LoadingSpinner Text="Loading host setup..." />
-				</div>
-			}
-			else
-			{
+
+		@if (IsLoading)
+		{
+			<LoadingSpinner Text="Loading host setup..." />
+		}
+		else if (CommonProviderStatuses.Count > 0)
+		{
+			<ul class="nav nav-tabs mb-3" role="tablist">
 				@foreach (var status in CommonProviderStatuses)
 				{
-					<div class="col-12 col-xl-4">
-						<div class="d-flex flex-column gap-3 h-100">
+					<li class="nav-item" role="presentation">
+						<button type="button" role="tab"
+								class="nav-link @(_activeProviderTab == status.ProviderType.ToString() ? "active" : "")"
+								@onclick="@(() => _activeProviderTab = status.ProviderType.ToString())">
+							<i class="bi bi-@GetProviderTypeIcon(status.ProviderType) me-1"></i>
+							@status.DisplayName
+							@if (status.IsInstalled)
+							{
+								<span class="badge bg-success ms-2" style="font-size: 0.65rem;">Installed</span>
+							}
+						</button>
+					</li>
+				}
+			</ul>
+
+			@foreach (var status in CommonProviderStatuses)
+			{
+				@if (_activeProviderTab == status.ProviderType.ToString())
+				{
+					<div class="row g-3">
+						<div class="col-12 col-lg-4">
 							<CommonProviderSetupCard Status="status"
 													 IsInstalling="@(InstallingProviderType == status.ProviderType)"
 													 IsSavingAuthentication="@(SavingAuthenticationProviderType == status.ProviderType)"
 													 OnInstall="InstallCommonProviderAsync"
 													 OnSaveAuthentication="SaveCommonProviderAuthenticationAsync" />
+						</div>
+						<div class="col-12 col-lg-8">
 							<div class="card h-100">
 								<div class="card-body d-flex flex-column gap-3">
 									<div class="d-flex align-items-start justify-content-between flex-wrap gap-2">
@@ -243,9 +263,8 @@
 						</div>
 					</div>
 				}
-
 			}
-		</div>
+		}
 	</div>
 </div>
 
@@ -268,6 +287,7 @@
 @code {
     private List<Provider> ProvidersList { get; set; } = new();
     private bool IsLoading { get; set; } = true;
+    private string _activeProviderTab = "";
     private bool ShowProviderModal { get; set; }
     private Provider? EditingProvider { get; set; }
     private ProviderType? SuggestedProviderType { get; set; }
@@ -319,6 +339,8 @@
             // Load usage summaries
             UsageSummaries = await HttpProviderService.GetAllUsageSummariesAsync();
             CommonProviderStatuses = (await CommonProviderSetupService.GetStatusesAsync()).ToList();
+            if (string.IsNullOrEmpty(_activeProviderTab) && CommonProviderStatuses.Count > 0)
+                _activeProviderTab = CommonProviderStatuses[0].ProviderType.ToString();
         }
         catch (Exception ex)
         {

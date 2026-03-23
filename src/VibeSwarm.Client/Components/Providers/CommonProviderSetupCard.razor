@@ -38,12 +38,6 @@
 		</div>
 
 		<div class="small text-body-secondary d-flex flex-column gap-3">
-			<div class="rounded-3 bg-body-tertiary p-3">
-				<div class="fw-semibold text-body mb-2">Install command</div>
-				<code class="text-break">@Status.InstallCommand</code>
-				<div class="mt-2">@Status.InstallMethodLabel</div>
-			</div>
-
 			<div class="rounded-3 bg-body-tertiary p-3 d-flex flex-column gap-2">
 				<div>
 					<div class="fw-semibold text-body mb-1">Host detection</div>
@@ -178,7 +172,7 @@
 					{
 						<span class="spinner-border spinner-border-sm me-1" role="status"></span>
 					}
-					@(Status.IsInstalled ? "Install / Repair" : "Install")
+					@(Status.IsInstalled ? "Update" : "Install")
 				</button>
 				<button type="button" class="btn btn-secondary btn-sm" @onclick="ShowAuthenticationForm" disabled="@IsSavingAuthentication">
 					<i class="bi bi-key me-1"></i>
