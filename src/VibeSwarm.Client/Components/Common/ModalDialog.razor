@@ -1,5 +1,6 @@
 @* Reusable modal dialog component *@
 @inject IJSRuntime JSRuntime
+@implements IAsyncDisposable
 
 @if (IsVisible)
 {
@@ -149,5 +150,14 @@
 	{
 		IsVisible = true;
 		StateHasChanged();
+	}
+
+	public async ValueTask DisposeAsync()
+	{
+		if (_wasVisible)
+		{
+			try { await JSRuntime.InvokeVoidAsync("eval", "document.body.classList.remove('vs-modal-open')"); } catch { }
+			_wasVisible = false;
+		}
 	}
 }

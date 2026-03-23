@@ -1,6 +1,7 @@
 @inject HttpSearchService SearchService
 @inject NavigationManager NavigationManager
 @inject IJSRuntime JSRuntime
+@implements IAsyncDisposable
 
 @if (IsVisible)
 {
@@ -184,8 +185,21 @@
         }
     }
 
+    private bool _wasVisible;
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (IsVisible && !_wasVisible)
+        {
+            await JSRuntime.InvokeVoidAsync("eval", "document.body.classList.add('vs-modal-open')");
+            _wasVisible = true;
+        }
+        else if (!IsVisible && _wasVisible)
+        {
+            await JSRuntime.InvokeVoidAsync("eval", "document.body.classList.remove('vs-modal-open')");
+            _wasVisible = false;
+        }
+
         if (IsVisible && string.IsNullOrEmpty(_query))
         {
             try { await _inputRef.FocusAsync(); } catch { }
@@ -291,5 +305,14 @@
     {
         if (string.IsNullOrEmpty(title)) return title;
         return title.Length <= maxLength ? title : title[..(maxLength - 3)] + "...";
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_wasVisible)
+        {
+            try { await JSRuntime.InvokeVoidAsync("eval", "document.body.classList.remove('vs-modal-open')"); } catch { }
+            _wasVisible = false;
+        }
     }
 }
