@@ -138,6 +138,7 @@ public partial class IdeaService
 2. Handle edge cases and error scenarios as described
 3. Follow the existing code patterns and style in the project
 4. Ensure the implementation is complete and functional
+5. Use subagents for research, codebase exploration, and parallel analysis to keep your context window efficient
 
 Implement this feature now.
 
@@ -160,6 +161,7 @@ A concise one-line description of what was implemented (max 72 chars)
 3. Think about the user experience and how users will interact with this feature
 4. Implement the feature completely, including any necessary tests
 5. Make sure the implementation follows the existing code patterns and style in the project
+6. Use subagents for research, codebase exploration, and parallel analysis to keep your context window efficient
 
 Begin by expanding this idea into a detailed specification, then implement it.
 
@@ -182,6 +184,7 @@ A concise one-line description of what was implemented (max 72 chars)
 3. Consider edge cases and error handling
 4. Make sure the implementation follows the existing code patterns and style in the project
 5. Add or update tests when needed to cover the change
+6. Use subagents for research, codebase exploration, and parallel analysis to keep your context window efficient
 
 Begin implementing this feature now without first expanding it into a detailed specification.
 
