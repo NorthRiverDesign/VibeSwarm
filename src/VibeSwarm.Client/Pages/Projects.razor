@@ -17,6 +17,16 @@
     </Actions>
 </PageHeader>
 
+@* Search bar *@
+<div class="mb-3">
+	<div class="input-group">
+		<span class="input-group-text"><i class="bi bi-search"></i></span>
+		<input type="search" class="form-control" placeholder="Search by name or repository…"
+			   @bind="_projectSearchQuery" @bind:event="oninput"
+			   title="Filter projects by name or repository" />
+	</div>
+</div>
+
 @* Active / Inactive filter tabs *@
 <ul class="nav nav-tabs">
 	<li class="nav-item">
@@ -43,9 +53,17 @@ else if (!ProjectsWithInfo.Any())
 }
 else if (!GetFilteredProjects().Any())
 {
-	<EmptyState Icon="@(ActiveFilter == "active" ? "folder" : "pause-circle")"
-				Title="@(ActiveFilter == "active" ? "No active projects" : "No inactive projects")"
-				Message="@(ActiveFilter == "active" ? "All your projects are currently inactive." : "All your projects are currently active.")" />
+	@if (!string.IsNullOrWhiteSpace(_projectSearchQuery))
+	{
+		<EmptyState Icon="search" Title="No matching projects"
+					Message="No projects match your search. Try a different name or repository." />
+	}
+	else
+	{
+		<EmptyState Icon="@(ActiveFilter == "active" ? "folder" : "pause-circle")"
+					Title="@(ActiveFilter == "active" ? "No active projects" : "No inactive projects")"
+					Message="@(ActiveFilter == "active" ? "All your projects are currently inactive." : "All your projects are currently active.")" />
+	}
 }
 else
 {
@@ -295,6 +313,7 @@ else
     private bool HasLoadedProjectsInitially { get; set; }
     private System.Threading.Timer? _refreshTimer;
     private string ActiveFilter { get; set; } = "active";
+    private string _projectSearchQuery = string.Empty;
     private bool HasDefaultProvider { get; set; }
     private Guid? StartingIdeaQueueProjectId { get; set; }
     private bool _isAutoRefreshing;
@@ -381,9 +400,20 @@ else
 
     private IEnumerable<ProjectInfoWithStats> GetFilteredProjects()
     {
-        return ActiveFilter == "active"
+        var byActive = ActiveFilter == "active"
             ? ProjectsWithInfo.Where(p => p.Project.IsActive)
             : ProjectsWithInfo.Where(p => !p.Project.IsActive);
+
+        if (string.IsNullOrWhiteSpace(_projectSearchQuery))
+            return byActive;
+
+        var term = _projectSearchQuery.Trim();
+        return byActive.Where(p =>
+            p.Project.Name.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+            (!string.IsNullOrEmpty(p.Project.GitHubRepository) &&
+             p.Project.GitHubRepository.Contains(term, StringComparison.OrdinalIgnoreCase)) ||
+            (!string.IsNullOrEmpty(p.Project.WorkingPath) &&
+             p.Project.WorkingPath.Contains(term, StringComparison.OrdinalIgnoreCase)));
     }
 
     private async Task ToggleActive(Project project)

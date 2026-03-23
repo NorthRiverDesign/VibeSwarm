@@ -27,8 +27,8 @@ public class JobsController : ControllerBase
         => Ok(await _jobService.GetByProjectIdAsync(projectId, ct));
 
     [HttpGet("project/{projectId:guid}/paged")]
-    public async Task<IActionResult> GetPagedByProject(Guid projectId, [FromQuery] int page = 1, [FromQuery] int pageSize = 10, CancellationToken ct = default)
-        => Ok(await _jobService.GetPagedByProjectIdAsync(projectId, page, pageSize, ct));
+    public async Task<IActionResult> GetPagedByProject(Guid projectId, [FromQuery] int page = 1, [FromQuery] int pageSize = 10, [FromQuery] string? search = null, [FromQuery] string statusFilter = "all", CancellationToken ct = default)
+        => Ok(await _jobService.GetPagedByProjectIdAsync(projectId, page, pageSize, search, statusFilter, ct));
 
     [HttpGet("pending")]
     public async Task<IActionResult> GetPending(CancellationToken ct)

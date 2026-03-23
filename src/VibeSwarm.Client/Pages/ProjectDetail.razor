@@ -148,10 +148,11 @@ else
             <div class="tab-pane fade show active">
                 <ProjectJobsList Jobs="@PagedJobs" TotalJobsCount="@JobsTotalCount" CurrentPage="@_jobsPageNumber"
                                   PageSize="@ProjectJobsPageSize" IsPageLoading="@_isLoadingJobsPage" HasActiveJobs="@HasActiveJobs"
-                                  HasCompletedJobs="@HasCompletedJobs"
+                                  HasCompletedJobs="@HasCompletedJobs" SearchQuery="@_jobSearchQuery" StatusFilter="@_jobStatusFilter"
                                   OnDeleteJob="DeleteJob" OnRetryJob="RetryJob" OnCreateJob="ShowCreateJobModal" OnPreviousPage="LoadPreviousJobsPage"
                                   OnNextPage="LoadNextJobsPage" OnCancelAll="CancelAllJobs"
-                                  OnDeleteCompleted="DeleteCompletedJobs" />
+                                  OnDeleteCompleted="DeleteCompletedJobs" OnSearchChanged="HandleJobSearchChanged"
+                                  OnStatusFilterChanged="HandleJobStatusFilterChanged" />
             </div>
         }
         @if (_activeTab == "environments")

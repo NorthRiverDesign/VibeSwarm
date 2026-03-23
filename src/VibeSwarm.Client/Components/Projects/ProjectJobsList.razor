@@ -4,6 +4,28 @@
 
 <SectionErrorBoundary SectionTitle="job list">
 	<div class="d-grid gap-3">
+		@* Search and filter row *@
+		<div class="d-flex flex-wrap gap-2 align-items-center">
+			<div class="flex-grow-1" style="min-width: 160px; max-width: 320px;">
+				<div class="input-group input-group-sm">
+					<span class="input-group-text"><i class="bi bi-search"></i></span>
+					<input type="search" class="form-control" placeholder="Search jobs…"
+						   value="@SearchQuery"
+						   @oninput="HandleSearchInput"
+						   title="Filter jobs by name" />
+				</div>
+			</div>
+			<select class="form-select form-select-sm" style="max-width: 140px;"
+					value="@StatusFilter"
+					@onchange="HandleStatusFilterChange"
+					title="Filter by status">
+				<option value="all">All statuses</option>
+				<option value="active">Active</option>
+				<option value="completed">Completed</option>
+				<option value="failed">Failed</option>
+				<option value="cancelled">Cancelled</option>
+			</select>
+		</div>
 		<div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
 			<div class="d-flex flex-wrap align-items-center gap-2 small text-body-secondary">
 				@if (IsPageLoading)
@@ -80,8 +102,16 @@
 		</div>
 		@if (!Jobs.Any())
 		{
-			<EmptyState Icon="list-check" Title="No jobs yet"
-						Message="Create a job to start working on this project." />
+			@if (HasActiveFilters)
+			{
+				<EmptyState Icon="search" Title="No matching jobs"
+							Message="No jobs match the current search or filter. Try clearing the filters." />
+			}
+			else
+			{
+				<EmptyState Icon="list-check" Title="No jobs yet"
+							Message="Create a job to start working on this project." />
+			}
 		}
 		else
 		{
@@ -268,8 +298,32 @@
 	[Parameter]
 	public EventCallback OnDeleteCompleted { get; set; }
 
+	[Parameter]
+	public string SearchQuery { get; set; } = string.Empty;
+
+	[Parameter]
+	public string StatusFilter { get; set; } = "all";
+
+	[Parameter]
+	public EventCallback<string> OnSearchChanged { get; set; }
+
+	[Parameter]
+	public EventCallback<string> OnStatusFilterChanged { get; set; }
+
 	private bool _isCancellingAll;
 	private bool _isDeletingCompleted;
+
+	private bool HasActiveFilters => !string.IsNullOrWhiteSpace(SearchQuery) || StatusFilter != "all";
+
+	private async Task HandleSearchInput(ChangeEventArgs e)
+	{
+		await OnSearchChanged.InvokeAsync(e.Value?.ToString() ?? string.Empty);
+	}
+
+	private async Task HandleStatusFilterChange(ChangeEventArgs e)
+	{
+		await OnStatusFilterChanged.InvokeAsync(e.Value?.ToString() ?? "all");
+	}
 
 	private bool HasBulkActions => HasActiveJobs || HasCompletedJobs;
 	private bool IsBulkActionInProgress => _isCancellingAll || _isDeletingCompleted;

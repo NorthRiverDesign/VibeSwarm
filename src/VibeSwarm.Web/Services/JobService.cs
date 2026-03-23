@@ -140,11 +140,51 @@ public partial class JobService : IJobService
             .ToListAsync(cancellationToken);
     }
 
-    public async Task<ProjectJobsListResult> GetPagedByProjectIdAsync(Guid projectId, int page = 1, int pageSize = DefaultProjectJobsPageSize, CancellationToken cancellationToken = default)
+    public async Task<ProjectJobsListResult> GetPagedByProjectIdAsync(Guid projectId, int page = 1, int pageSize = DefaultProjectJobsPageSize, string? search = null, string statusFilter = "all", CancellationToken cancellationToken = default)
     {
         var normalizedPageSize = NormalizePageSize(pageSize, DefaultProjectJobsPageSize);
-        var baseQuery = _dbContext.Jobs
+        var projectQuery = _dbContext.Jobs
             .Where(j => j.ProjectId == projectId);
+
+        // Aggregate counts always reflect the full project, not the filtered view
+        var activeCount = await projectQuery.CountAsync(j =>
+            j.Status == JobStatus.New ||
+            j.Status == JobStatus.Pending ||
+            j.Status == JobStatus.Started ||
+            j.Status == JobStatus.Planning ||
+            j.Status == JobStatus.Processing ||
+            j.Status == JobStatus.Paused, cancellationToken);
+        var completedCount = await projectQuery.CountAsync(j => j.Status == JobStatus.Completed, cancellationToken);
+
+        var baseQuery = projectQuery.AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var term = search.Trim().ToLower();
+            baseQuery = baseQuery.Where(j =>
+                (j.Title != null && j.Title.ToLower().Contains(term)) ||
+                j.GoalPrompt.ToLower().Contains(term));
+        }
+
+        if (statusFilter != "all")
+        {
+            baseQuery = statusFilter switch
+            {
+                "active" => baseQuery.Where(j =>
+                    j.Status == JobStatus.New ||
+                    j.Status == JobStatus.Pending ||
+                    j.Status == JobStatus.Started ||
+                    j.Status == JobStatus.Planning ||
+                    j.Status == JobStatus.Processing ||
+                    j.Status == JobStatus.Paused ||
+                    j.Status == JobStatus.Stalled),
+                "completed" => baseQuery.Where(j => j.Status == JobStatus.Completed),
+                "failed" => baseQuery.Where(j => j.Status == JobStatus.Failed),
+                "cancelled" => baseQuery.Where(j => j.Status == JobStatus.Cancelled),
+                _ => baseQuery
+            };
+        }
+
         var totalCount = await baseQuery.CountAsync(cancellationToken);
         var normalizedPage = NormalizePageNumber(page, normalizedPageSize, totalCount);
 
@@ -153,14 +193,8 @@ public partial class JobService : IJobService
             PageNumber = normalizedPage,
             PageSize = normalizedPageSize,
             TotalCount = totalCount,
-            ActiveCount = await baseQuery.CountAsync(j =>
-                j.Status == JobStatus.New ||
-                j.Status == JobStatus.Pending ||
-                j.Status == JobStatus.Started ||
-                j.Status == JobStatus.Planning ||
-                j.Status == JobStatus.Processing ||
-                j.Status == JobStatus.Paused, cancellationToken),
-            CompletedCount = await baseQuery.CountAsync(j => j.Status == JobStatus.Completed, cancellationToken),
+            ActiveCount = activeCount,
+            CompletedCount = completedCount,
             Items = await ProjectToSummary(
                     baseQuery
                         .OrderByDescending(j => j.CreatedAt)

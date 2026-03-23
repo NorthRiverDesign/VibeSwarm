@@ -22,8 +22,13 @@ public class HttpJobService : IJobService
     public async Task<IEnumerable<Job>> GetByProjectIdAsync(Guid projectId, CancellationToken ct = default)
         => await _http.GetJsonAsync($"/api/jobs/project/{projectId}", new List<Job>(), ct);
 
-    public async Task<ProjectJobsListResult> GetPagedByProjectIdAsync(Guid projectId, int page = 1, int pageSize = 10, CancellationToken ct = default)
-        => await _http.GetJsonAsync($"/api/jobs/project/{projectId}/paged?page={page}&pageSize={pageSize}", new ProjectJobsListResult(), ct);
+    public async Task<ProjectJobsListResult> GetPagedByProjectIdAsync(Guid projectId, int page = 1, int pageSize = 10, string? search = null, string statusFilter = "all", CancellationToken ct = default)
+    {
+        var url = $"/api/jobs/project/{projectId}/paged?page={page}&pageSize={pageSize}&statusFilter={Uri.EscapeDataString(statusFilter)}";
+        if (!string.IsNullOrWhiteSpace(search))
+            url += $"&search={Uri.EscapeDataString(search)}";
+        return await _http.GetJsonAsync(url, new ProjectJobsListResult(), ct);
+    }
 
     public async Task<IEnumerable<Job>> GetPendingJobsAsync(CancellationToken ct = default)
         => await _http.GetJsonAsync("/api/jobs/pending", new List<Job>(), ct);

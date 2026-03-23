@@ -8,7 +8,7 @@ public interface IJobService
     Task<IEnumerable<Job>> GetAllAsync(CancellationToken cancellationToken = default);
     Task<JobsListResult> GetPagedAsync(Guid? projectId = null, string statusFilter = "all", int page = 1, int pageSize = 25, CancellationToken cancellationToken = default);
     Task<IEnumerable<Job>> GetByProjectIdAsync(Guid projectId, CancellationToken cancellationToken = default);
-    Task<ProjectJobsListResult> GetPagedByProjectIdAsync(Guid projectId, int page = 1, int pageSize = 10, CancellationToken cancellationToken = default);
+    Task<ProjectJobsListResult> GetPagedByProjectIdAsync(Guid projectId, int page = 1, int pageSize = 10, string? search = null, string statusFilter = "all", CancellationToken cancellationToken = default);
     Task<IEnumerable<Job>> GetPendingJobsAsync(CancellationToken cancellationToken = default);
     Task<IEnumerable<JobSummary>> GetActiveJobsAsync(CancellationToken cancellationToken = default);
     Task<Job?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);

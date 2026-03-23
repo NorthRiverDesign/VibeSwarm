@@ -9,6 +9,9 @@ namespace VibeSwarm.Client.Pages;
 
 public partial class ProjectDetail
 {
+    private string _jobSearchQuery = string.Empty;
+    private string _jobStatusFilter = "all";
+
     private async Task RefreshJobs()
     {
         if (Project != null)
@@ -23,12 +26,26 @@ public partial class ProjectDetail
                 job.Status == JobStatus.Paused ||
                 job.Status == JobStatus.Stalled);
 
-            var result = await JobService.GetPagedByProjectIdAsync(ProjectId, _jobsPageNumber, ProjectJobsPageSize);
+            var result = await JobService.GetPagedByProjectIdAsync(ProjectId, _jobsPageNumber, ProjectJobsPageSize, _jobSearchQuery, _jobStatusFilter);
             _jobsPageNumber = result.PageNumber;
             PagedJobs = result.Items;
             JobsTotalCount = result.TotalCount;
             ProjectCompletedJobsCount = result.CompletedCount;
         }
+    }
+
+    private async Task HandleJobSearchChanged(string search)
+    {
+        _jobSearchQuery = search;
+        _jobsPageNumber = 1;
+        await RefreshProjectJobsPage();
+    }
+
+    private async Task HandleJobStatusFilterChanged(string statusFilter)
+    {
+        _jobStatusFilter = statusFilter;
+        _jobsPageNumber = 1;
+        await RefreshProjectJobsPage();
     }
 
     private async Task ShowCreateJobModal()
