@@ -734,6 +734,119 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 		}
 	}
 
+	[Fact]
+	public void BuildJobEnvironmentVariables_ReturnsNullForProjectWithNoEnvironments()
+	{
+		var service = CreateCredentialService();
+		var result = service.BuildJobEnvironmentVariables(new Project { Name = "Empty", WorkingPath = "/tmp" });
+		Assert.Null(result);
+	}
+
+	[Fact]
+	public void BuildJobEnvironmentVariables_SkipsDisabledEnvironments()
+	{
+		var service = CreateCredentialService();
+		var project = new Project
+		{
+			Name = "Test",
+			WorkingPath = "/tmp",
+			Environments =
+			[
+				new ProjectEnvironment
+				{
+					Name = "Production",
+					Url = "https://prod.example.com",
+					IsEnabled = false,
+					IsPrimary = true
+				}
+			]
+		};
+
+		var result = service.BuildJobEnvironmentVariables(project);
+		Assert.Null(result);
+	}
+
+	[Fact]
+	public void BuildJobEnvironmentVariables_ExposesPrimaryShortcutsAndNamedVars()
+	{
+		var service = CreateCredentialService();
+		var project = new Project
+		{
+			Name = "Test",
+			WorkingPath = "/tmp",
+			Environments =
+			[
+				new ProjectEnvironment
+				{
+					Name = "Production",
+					Type = EnvironmentType.Web,
+					Url = "https://prod.example.com",
+					Username = "admin",
+					Password = "secret",
+					IsEnabled = true,
+					IsPrimary = true
+				},
+				new ProjectEnvironment
+				{
+					Name = "Local Dev",
+					Type = EnvironmentType.Web,
+					Url = "http://localhost:3000",
+					IsEnabled = true,
+					IsPrimary = false
+				}
+			]
+		};
+
+		var result = service.BuildJobEnvironmentVariables(project);
+
+		Assert.NotNull(result);
+		// Primary shortcuts
+		Assert.Equal("https://prod.example.com", result["APP_URL"]);
+		Assert.Equal("admin", result["APP_USERNAME"]);
+		Assert.Equal("secret", result["APP_PASSWORD"]);
+		// Named vars for primary environment
+		Assert.Equal("https://prod.example.com", result["APP_PRODUCTION_URL"]);
+		Assert.Equal("admin", result["APP_PRODUCTION_USERNAME"]);
+		Assert.Equal("secret", result["APP_PRODUCTION_PASSWORD"]);
+		// Named vars for secondary environment (name sanitized: "Local Dev" -> "LOCAL_DEV")
+		Assert.Equal("http://localhost:3000", result["APP_LOCAL_DEV_URL"]);
+		Assert.False(result.ContainsKey("APP_LOCAL_DEV_USERNAME"));
+		Assert.False(result.ContainsKey("APP_LOCAL_DEV_PASSWORD"));
+	}
+
+	[Fact]
+	public void BuildJobEnvironmentVariables_FirstEnvironmentBecomesShortcutWhenNoPrimary()
+	{
+		var service = CreateCredentialService();
+		var project = new Project
+		{
+			Name = "Test",
+			WorkingPath = "/tmp",
+			Environments =
+			[
+				new ProjectEnvironment
+				{
+					Name = "Staging",
+					Url = "https://staging.example.com",
+					IsEnabled = true,
+					IsPrimary = false
+				}
+			]
+		};
+
+		var result = service.BuildJobEnvironmentVariables(project);
+
+		Assert.NotNull(result);
+		Assert.Equal("https://staging.example.com", result["APP_URL"]);
+		Assert.Equal("https://staging.example.com", result["APP_STAGING_URL"]);
+	}
+
+	private ProjectEnvironmentCredentialService CreateCredentialService()
+	{
+		var dataProtectionProvider = DataProtectionProvider.Create(new DirectoryInfo(_dataProtectionDirectory));
+		return new ProjectEnvironmentCredentialService(dataProtectionProvider);
+	}
+
 	private VibeSwarmDbContext CreateDbContext() => new(_dbOptions);
 
 	private ProjectService CreateProjectService(VibeSwarmDbContext dbContext)

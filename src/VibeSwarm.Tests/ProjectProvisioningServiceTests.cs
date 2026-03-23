@@ -179,6 +179,7 @@ public sealed class ProjectProvisioningServiceTests : IDisposable
 		public void PrepareForStorage(Project project, IReadOnlyCollection<ProjectEnvironment>? existingEnvironments = null) { }
 		public void PopulateForEditing(Project? project) { }
 		public void PopulateForExecution(Project? project) { }
+		public Dictionary<string, string>? BuildJobEnvironmentVariables(Project? project) => null;
 	}
 
 	private sealed class RecordingVersionControlService : IVersionControlService

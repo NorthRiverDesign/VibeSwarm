@@ -444,6 +444,8 @@ public partial class JobProcessingService
                 _projectEnvironmentCredentialService.PopulateForExecution(job.Project);
             }
 
+            var jobEnvironmentVariables = _projectEnvironmentCredentialService.BuildJobEnvironmentVariables(job.Project);
+
             var enableStructuring = appSettings?.EnablePromptStructuring ?? true;
 
             // Build system prompt rules for agent efficiency
@@ -532,7 +534,8 @@ public partial class JobProcessingService
 							AdditionalArgs = planningMcpOptions.AdditionalArgs,
 							Model = job.Project.PlanningModelId,
 							Title = job.Title,
-							AppendSystemPrompt = systemPromptRules
+							AppendSystemPrompt = systemPromptRules,
+							EnvironmentVariables = jobEnvironmentVariables
 						},
 						progress,
 						cancellationToken);
@@ -628,7 +631,8 @@ public partial class JobProcessingService
 							AdditionalArgs = mcpOptions.AdditionalArgs,
 							Model = job.ModelUsed,
 							Title = job.Title,
-							AppendSystemPrompt = systemPromptRules
+							AppendSystemPrompt = systemPromptRules,
+							EnvironmentVariables = jobEnvironmentVariables
 						},
 						progress,
 						cancellationToken);
