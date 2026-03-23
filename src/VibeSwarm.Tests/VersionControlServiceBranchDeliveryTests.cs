@@ -133,6 +133,28 @@ public sealed class VersionControlServiceBranchDeliveryTests
 		Assert.Contains(executor.GitCommands, command => command.StartsWith("worktree add --force ", StringComparison.Ordinal) && !command.Contains(" -B ", StringComparison.Ordinal) && command.EndsWith("\"main\"", StringComparison.Ordinal));
 	}
 
+	[Theory]
+	[InlineData("\nAdd a feature")]
+	[InlineData("\r\nAdd a feature")]
+	[InlineData("\n\nAdd a feature")]
+	public async Task CommitAllChangesAsync_StripsLeadingNewlinesFromCommitMessage(string rawMessage)
+	{
+		var executor = new RecordingGitCommandExecutor();
+		executor.AddGitResult("add -A", new GitCommandResult { ExitCode = 0 });
+		executor.AddGitResult(
+			command => command.StartsWith("commit -m \"Add a feature", StringComparison.Ordinal),
+			new GitCommandResult { ExitCode = 0, Output = "[main abc1234] Add a feature" });
+		executor.AddGitResult("rev-parse HEAD", new GitCommandResult { ExitCode = 0, Output = "abc1234\n" });
+
+		var service = new VersionControlService(executor, NullLogger<VersionControlService>.Instance);
+
+		var result = await service.CommitAllChangesAsync("/repo", rawMessage);
+
+		Assert.True(result.Success);
+		Assert.DoesNotContain(executor.GitCommands, command => command.Contains("\\n") || command.StartsWith("commit -m \"\n") || command.StartsWith("commit -m \"\r"));
+		Assert.Contains(executor.GitCommands, command => command.StartsWith("commit -m \"Add a feature", StringComparison.Ordinal));
+	}
+
 	private sealed class RecordingGitCommandExecutor : IGitCommandExecutor
 	{
 		private readonly List<(Func<string, bool> Match, Queue<GitCommandResult> Results)> _gitResults = [];

@@ -22,6 +22,9 @@ public sealed partial class VersionControlService
 				return GitOperationResult.Failed($"Failed to stage changes: {addResult.Error}");
 			}
 
+			// Strip leading newlines/whitespace that agents sometimes prepend (e.g. "\nAdd a feature")
+			commitMessage = commitMessage.TrimStart('\n', '\r');
+
 			// Escape the commit message for command line
 			var escapedMessage = commitMessage
 				.Replace("\\", "\\\\")
