@@ -535,7 +535,8 @@ public partial class JobProcessingService
 							Model = job.Project.PlanningModelId,
 							Title = job.Title,
 							AppendSystemPrompt = systemPromptRules,
-							EnvironmentVariables = jobEnvironmentVariables
+							EnvironmentVariables = jobEnvironmentVariables,
+							DisallowedTools = ProviderPlanningHelper.PlanningDisallowedTools
 						},
 						progress,
 						cancellationToken);

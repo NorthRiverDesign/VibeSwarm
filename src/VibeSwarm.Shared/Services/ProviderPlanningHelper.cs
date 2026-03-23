@@ -5,6 +5,22 @@ namespace VibeSwarm.Shared.Services;
 
 public static class ProviderPlanningHelper
 {
+	/// <summary>
+	/// Tools that must not run during the planning stage.
+	/// Planning is a read-only exploration phase — the agent must not edit files,
+	/// run shell commands, or make git commits. Those actions belong to the
+	/// execution stage that follows.
+	/// </summary>
+	public static readonly List<string> PlanningDisallowedTools =
+	[
+		"Bash",
+		"Edit",
+		"Write",
+		"MultiEdit",
+		"NotebookEdit",
+		"TodoWrite"
+	];
+
 	public static bool SupportsPlanningMode(ProviderType providerType)
 	{
 		return providerType is ProviderType.Claude or ProviderType.Copilot;
@@ -17,7 +33,9 @@ public static class ProviderPlanningHelper
 			: requestDescription.Trim();
 
 		var sb = new StringBuilder();
-		sb.AppendLine("Create an implementation-ready plan for the request below before any coding begins.");
+		sb.AppendLine("Explore the codebase and create an implementation-ready plan for the request below.");
+		sb.AppendLine("This is a read-only planning phase. Do not edit files, run shell commands, or make commits.");
+		sb.AppendLine("A separate execution agent will implement the plan once it is complete.");
 		sb.AppendLine();
 		sb.AppendLine("## Request");
 		sb.AppendLine(description);

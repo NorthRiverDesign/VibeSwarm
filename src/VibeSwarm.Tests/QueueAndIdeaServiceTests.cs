@@ -2086,8 +2086,12 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		Assert.Contains("Overview: Add project planning controls.", result.ExpandedDescription);
 		Assert.NotNull(providerInstance.LastExecutePrompt);
 		Assert.DoesNotContain("/plan", providerInstance.LastExecutePrompt!, StringComparison.Ordinal);
-		Assert.StartsWith("Create an implementation-ready plan", providerInstance.LastExecutePrompt!, StringComparison.Ordinal);
+		Assert.StartsWith("Explore the codebase and create an implementation-ready plan", providerInstance.LastExecutePrompt!, StringComparison.Ordinal);
 		Assert.Equal(project.PlanningModelId, providerInstance.LastExecutionOptions?.Model);
+		Assert.NotNull(providerInstance.LastExecutionOptions?.DisallowedTools);
+		Assert.Contains("Bash", providerInstance.LastExecutionOptions!.DisallowedTools!);
+		Assert.Contains("Edit", providerInstance.LastExecutionOptions.DisallowedTools!);
+		Assert.Contains("Write", providerInstance.LastExecutionOptions.DisallowedTools!);
 	}
 
 	private VibeSwarmDbContext CreateDbContext()

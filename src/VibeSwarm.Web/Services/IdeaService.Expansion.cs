@@ -192,7 +192,8 @@ public partial class IdeaService
 			new ExecutionOptions
 			{
 				WorkingDirectory = workingDirectory,
-				Model = modelName
+				Model = modelName,
+				DisallowedTools = usePlanningMode ? ProviderPlanningHelper.PlanningDisallowedTools : null
 			},
 			cancellationToken: cancellationToken);
 		var responseText = ProviderPlanningHelper.ExtractExecutionText(result);

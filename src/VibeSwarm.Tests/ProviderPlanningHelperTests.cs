@@ -31,7 +31,7 @@ public sealed class ProviderPlanningHelperTests
 		var prompt = ProviderPlanningHelper.BuildPlanningPrompt(providerType, "Implement a dashboard");
 
 		Assert.DoesNotContain("/plan", prompt, StringComparison.Ordinal);
-		Assert.StartsWith("Create an implementation-ready plan", prompt, StringComparison.Ordinal);
+		Assert.StartsWith("Explore the codebase and create an implementation-ready plan", prompt, StringComparison.Ordinal);
 	}
 
 	[Theory]
@@ -41,5 +41,19 @@ public sealed class ProviderPlanningHelperTests
 	public void SupportsPlanningMode_ReturnsExpectedValue(ProviderType providerType, bool expected)
 	{
 		Assert.Equal(expected, ProviderPlanningHelper.SupportsPlanningMode(providerType));
+	}
+
+	[Fact]
+	public void PlanningDisallowedTools_BlocksWriteAndShellTools()
+	{
+		var tools = ProviderPlanningHelper.PlanningDisallowedTools;
+
+		Assert.Contains("Bash", tools);
+		Assert.Contains("Edit", tools);
+		Assert.Contains("Write", tools);
+		Assert.Contains("MultiEdit", tools);
+		Assert.DoesNotContain("Read", tools);
+		Assert.DoesNotContain("Glob", tools);
+		Assert.DoesNotContain("Grep", tools);
 	}
 }
