@@ -37,6 +37,11 @@
         </div>
 
         <div class="flex-grow-1 p-3 d-flex flex-column gap-1">
+            <button class="nav-item d-flex align-items-center gap-3 rounded fw-medium text-decoration-none border-0 bg-transparent w-100 text-start cursor-pointer search-nav-btn" @onclick="OpenSearch" title="Search (Ctrl+K)">
+                <i class="bi bi-search"></i>
+                <span class="flex-grow-1">Search</span>
+                <kbd class="border rounded px-1 text-secondary d-none d-lg-inline" style="font-size: 0.65rem; background: transparent;">⌃K</kbd>
+            </button>
             <NavLink class="nav-item d-flex align-items-center gap-3 rounded fw-medium text-decoration-none" href="/" Match="NavLinkMatch.All" @onclick="CloseMobileMenu">
                 <i class="bi bi-house-door"></i>
                 <span>Dashboard</span>
@@ -141,6 +146,9 @@
     <AppUpdateBanner />
     <ToastContainer />
 
+    @* Global Search Modal *@
+    <GlobalSearchModal @bind-IsVisible="_showSearchModal" />
+
     @* Change Password Modal - rendered outside sidebar to avoid stacking context issues *@
     <ModalDialog @bind-IsVisible="_showChangePasswordModal" Title="Change Password" Icon="key"
                  Size="ModalDialog.ModalSize.Default">
@@ -202,6 +210,9 @@
     private HubConnection? _globalHubConnection;
     private bool _mobileMenuOpen = false;
     private readonly IdeaToastCoordinator _ideaToastCoordinator = new();
+
+    // Search Modal
+    private bool _showSearchModal;
 
     // Change Password Modal
     private bool _showChangePasswordModal;
@@ -272,6 +283,12 @@
         }
     }
 
+    private void OpenSearch()
+    {
+        CloseMobileMenu();
+        _showSearchModal = true;
+    }
+
     private void ToggleMobileMenu()
     {
         _mobileMenuOpen = !_mobileMenuOpen;
@@ -287,7 +304,30 @@
         if (firstRender)
         {
             await InitializeGlobalHub();
+            await RegisterSearchShortcut();
         }
+    }
+
+    private DotNetObjectReference<MainLayout>? _dotNetRef;
+
+    private async Task RegisterSearchShortcut()
+    {
+        try
+        {
+            _dotNetRef = DotNetObjectReference.Create(this);
+            await JSRuntime.InvokeVoidAsync("vibeSwarmRegisterSearchShortcut", _dotNetRef);
+        }
+        catch
+        {
+            // Non-critical - keyboard shortcut is a convenience feature
+        }
+    }
+
+    [JSInvokable]
+    public void OpenSearchFromShortcut()
+    {
+        _showSearchModal = true;
+        InvokeAsync(StateHasChanged);
     }
 
     private async Task InitializeGlobalHub()
@@ -700,6 +740,7 @@ return true;
     public async ValueTask DisposeAsync()
     {
         Dispose();
+        _dotNetRef?.Dispose();
         if (_globalHubConnection != null)
         {
             try

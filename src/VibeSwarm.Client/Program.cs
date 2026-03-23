@@ -52,6 +52,9 @@ builder.Services.AddScoped<IInferenceService, HttpInferenceService>();
 builder.Services.AddScoped<IAutoPilotService, HttpAutoPilotService>();
 builder.Services.AddScoped<IDatabaseService, HttpDatabaseService>();
 
+// Search service
+builder.Services.AddScoped<HttpSearchService>();
+
 // UI services
 builder.Services.AddScoped<NotificationService>();
 builder.Services.AddScoped<ChangePasswordModalService>();

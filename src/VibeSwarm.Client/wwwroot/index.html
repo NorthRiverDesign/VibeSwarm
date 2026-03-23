@@ -134,6 +134,24 @@
         </script>
 
         <script>
+            window.vibeSwarmRegisterSearchShortcut = function (dotNetRef) {
+                if (window.__vibeSearchHandler) {
+                    document.removeEventListener('keydown', window.__vibeSearchHandler);
+                }
+                window.__vibeSearchDotNet = dotNetRef;
+                window.__vibeSearchHandler = function (e) {
+                    if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+                        e.preventDefault();
+                        if (window.__vibeSearchDotNet) {
+                            window.__vibeSearchDotNet.invokeMethodAsync('OpenSearchFromShortcut');
+                        }
+                    }
+                };
+                document.addEventListener('keydown', window.__vibeSearchHandler);
+            };
+        </script>
+
+        <script>
             // Clipboard helper with fallback for older browsers and non-HTTPS contexts
             window.copyToClipboard = function (text) {
                 if (navigator.clipboard && navigator.clipboard.writeText) {
