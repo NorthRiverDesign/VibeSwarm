@@ -478,15 +478,28 @@ public sealed partial class VersionControlService
 				return GitOperationResult.Failed("The specified directory is not a git repository.");
 			}
 
+			// Use fetch --prune instead of remote prune to ensure fresh remote data is
+			// retrieved before pruning. git remote prune can skip stale branches when the
+			// locally-cached remote state does not reflect what was deleted on the actual remote.
 			var result = await _commandExecutor.ExecuteAsync(
-				$"remote prune {remoteName}",
+				$"fetch {remoteName} --prune",
 				workingDirectory,
 				cancellationToken,
-				timeoutSeconds: 60);
+				timeoutSeconds: 120);
 
 			if (!result.Success)
 			{
 				var errorMessage = result.Error;
+
+				if (errorMessage.Contains("Could not resolve host") || errorMessage.Contains("unable to access"))
+				{
+					return GitOperationResult.Failed("Network error: Could not reach the remote repository.");
+				}
+
+				if (errorMessage.Contains("Permission denied") || errorMessage.Contains("authentication"))
+				{
+					return GitOperationResult.Failed("Authentication failed. Please check your credentials.");
+				}
 
 				if (errorMessage.Contains("does not appear to be a git repository"))
 				{
@@ -496,11 +509,11 @@ public sealed partial class VersionControlService
 				return GitOperationResult.Failed($"Prune failed: {errorMessage}");
 			}
 
-			// Count pruned branches from output (lines containing "[pruned]")
-			var output = result.Output + result.Error; // Git may write to stderr
+			// git fetch --prune emits "[deleted]" for pruned remote-tracking refs
+			var output = result.Output + result.Error; // Git writes fetch progress to stderr
 			var prunedCount = output
 				.Split('\n', StringSplitOptions.RemoveEmptyEntries)
-				.Count(line => line.Contains("[pruned]", StringComparison.OrdinalIgnoreCase));
+				.Count(line => line.Contains("[deleted]", StringComparison.OrdinalIgnoreCase));
 
 			var message = prunedCount > 0
 				? $"Pruned {prunedCount} stale remote-tracking branch(es) from {remoteName}."
