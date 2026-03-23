@@ -109,7 +109,7 @@
 		_repositories
 			.Where(repository =>
 				string.IsNullOrWhiteSpace(_searchText) ||
-				repository.NameWithOwner.Contains(_searchText, StringComparison.OrdinalIgnoreCase) ||
+				(repository.NameWithOwner?.Contains(_searchText, StringComparison.OrdinalIgnoreCase) ?? false) ||
 				(repository.Description?.Contains(_searchText, StringComparison.OrdinalIgnoreCase) ?? false))
 			.ToList();
 
@@ -117,6 +117,7 @@
 	{
 		if (IsVisible && !_wasVisible)
 		{
+			_wasVisible = true;
 			_searchText = string.Empty;
 			_selectedRepository = SelectedRepository;
 			await LoadRepositoriesAsync();
