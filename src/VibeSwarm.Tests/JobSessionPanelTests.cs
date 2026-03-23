@@ -370,6 +370,90 @@ public sealed class JobSessionPanelTests
 	}
 
 	[Fact]
+	public async Task RenderedJobSessionPanel_DeduplicatesDifferentPidProcessStartedMessages()
+	{
+		var services = new ServiceCollection();
+		services.AddLogging();
+		services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
+
+		await using var renderer = new HtmlRenderer(services.BuildServiceProvider(), NullLoggerFactory.Instance);
+
+		var html = await renderer.Dispatcher.InvokeAsync(async () =>
+		{
+			var parameters = ParameterView.FromDictionary(new Dictionary<string, object?>
+			{
+				[nameof(JobSessionPanel.Status)] = JobStatus.Processing,
+				[nameof(JobSessionPanel.IsJobActive)] = true,
+				[nameof(JobSessionPanel.LiveOutputLines)] = new List<OutputLine>
+				{
+					new()
+					{
+						Content = "[System] Process started (PID: 100). Waiting for CLI to initialize...",
+						Timestamp = DateTime.UtcNow.AddSeconds(-12)
+					},
+					new()
+					{
+						Content = "[Assistant] Gathering repository context",
+						Timestamp = DateTime.UtcNow.AddSeconds(-11)
+					},
+					new()
+					{
+						Content = "[System] Process started (PID: 200). Waiting for CLI to initialize...",
+						Timestamp = DateTime.UtcNow.AddSeconds(-10)
+					}
+				}
+			});
+
+			var output = await renderer.RenderComponentAsync<JobSessionPanel>(parameters);
+			return output.ToHtmlString();
+		});
+
+		Assert.Single(Regex.Matches(html, "Process started \\(PID: \\d+\\)").Cast<Match>());
+	}
+
+	[Fact]
+	public async Task RenderedJobSessionPanel_AllowsSecondProcessStartedAfterRetry()
+	{
+		var services = new ServiceCollection();
+		services.AddLogging();
+		services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
+
+		await using var renderer = new HtmlRenderer(services.BuildServiceProvider(), NullLoggerFactory.Instance);
+
+		var html = await renderer.Dispatcher.InvokeAsync(async () =>
+		{
+			var parameters = ParameterView.FromDictionary(new Dictionary<string, object?>
+			{
+				[nameof(JobSessionPanel.Status)] = JobStatus.Processing,
+				[nameof(JobSessionPanel.IsJobActive)] = true,
+				[nameof(JobSessionPanel.LiveOutputLines)] = new List<OutputLine>
+				{
+					new()
+					{
+						Content = "[System] Process started (PID: 100). Waiting for CLI to initialize...",
+						Timestamp = DateTime.UtcNow.AddSeconds(-12)
+					},
+					new()
+					{
+						Content = "[Retry] Restarting after failure",
+						Timestamp = DateTime.UtcNow.AddSeconds(-11)
+					},
+					new()
+					{
+						Content = "[System] Process started (PID: 200). Waiting for CLI to initialize...",
+						Timestamp = DateTime.UtcNow.AddSeconds(-10)
+					}
+				}
+			});
+
+			var output = await renderer.RenderComponentAsync<JobSessionPanel>(parameters);
+			return output.ToHtmlString();
+		});
+
+		Assert.Equal(2, Regex.Matches(html, "Process started \\(PID: \\d+\\)").Count);
+	}
+
+	[Fact]
 	public async Task RenderedJobSessionPanel_NormalizesPersistedClaudeMessagesAsProviderEntries()
 	{
 		var services = new ServiceCollection();

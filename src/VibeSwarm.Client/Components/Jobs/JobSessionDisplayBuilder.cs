@@ -377,20 +377,21 @@ internal static class JobSessionDisplayBuilder
 
 	private static bool IsDuplicateProcessStartedMessage(JobMessage? previousMessage, JobMessage currentMessage)
 	{
-		if (previousMessage == null
-			|| previousMessage.Role != MessageRole.System
-			|| currentMessage.Role != MessageRole.System)
+		if (previousMessage == null)
 		{
 			return false;
 		}
 
-		if (!string.Equals(previousMessage.Content, currentMessage.Content, StringComparison.Ordinal))
-		{
-			return false;
-		}
-
-		return currentMessage.Content.StartsWith("Process started (PID:", StringComparison.Ordinal);
+		return IsProcessStartedMessage(previousMessage) && IsProcessStartedMessage(currentMessage);
 	}
+
+	private static bool IsProcessStartedMessage(JobMessage message)
+		=> message.Role == MessageRole.System
+			&& (message.Content?.StartsWith("Process started (PID:", StringComparison.Ordinal) == true);
+
+	private static bool IsRetryOrErrorMessage(JobMessage message)
+		=> message.Role == MessageRole.System
+			&& (message.Level == MessageLevel.Error || message.Level == MessageLevel.Warning);
 
 	private static IReadOnlyList<JobMessage> MergeMessages(
 		IReadOnlyCollection<JobMessage> primaryMessages,
@@ -415,12 +416,24 @@ internal static class JobSessionDisplayBuilder
 	private static IReadOnlyList<JobMessage> DeduplicateProcessStartedMessages(IEnumerable<JobMessage> messages)
 	{
 		var deduplicatedMessages = new List<JobMessage>();
+		var hasSeenProcessStart = false;
+		var retryOrErrorSinceLastProcessStart = false;
 
 		foreach (var message in messages)
 		{
-			if (IsDuplicateProcessStartedMessage(deduplicatedMessages.LastOrDefault(), message))
+			if (IsProcessStartedMessage(message))
 			{
-				continue;
+				if (hasSeenProcessStart && !retryOrErrorSinceLastProcessStart)
+				{
+					continue;
+				}
+
+				hasSeenProcessStart = true;
+				retryOrErrorSinceLastProcessStart = false;
+			}
+			else if (hasSeenProcessStart && IsRetryOrErrorMessage(message))
+			{
+				retryOrErrorSinceLastProcessStart = true;
 			}
 
 			deduplicatedMessages.Add(message);
