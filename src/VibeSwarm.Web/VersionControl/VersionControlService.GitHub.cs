@@ -87,28 +87,103 @@ public sealed partial class VersionControlService
 				return browserResult;
 			}
 
-			var listResult = await _commandExecutor.ExecuteRawAsync(
+			browserResult.AuthenticatedUser = user.Login;
+
+			// Build the list of owners: authenticated user + any accessible organizations
+			var owners = new List<string> { user.Login };
+
+			try
+			{
+				var orgsResult = await _commandExecutor.ExecuteRawAsync(
+					"gh",
+					"api user/orgs --jq \".[].login\"",
+					Directory.GetCurrentDirectory(),
+					cancellationToken,
+					timeoutSeconds: 15);
+
+				if (orgsResult.Success && !string.IsNullOrWhiteSpace(orgsResult.Output))
+				{
+					var orgLogins = orgsResult.Output
+						.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+						.Where(login => !string.IsNullOrWhiteSpace(login) &&
+							!string.Equals(login, user.Login, StringComparison.OrdinalIgnoreCase))
+						.OrderBy(login => login, StringComparer.OrdinalIgnoreCase)
+						.ToList();
+					owners.AddRange(orgLogins);
+				}
+			}
+			catch (Exception ex)
+			{
+				_logger.LogWarning(ex, "Failed to fetch GitHub organizations, continuing with user repos only");
+			}
+
+			// Fetch repos for all owners in parallel
+			var repoJsonFields = "--json nameWithOwner,description,isPrivate,updatedAt,url";
+			var fetchTasks = owners.Select(owner => _commandExecutor.ExecuteRawAsync(
 				"gh",
-				$"repo list \"{EscapeCommandArgument(user.Login)}\" --limit 100 --json nameWithOwner,description,isPrivate,updatedAt,url",
+				$"repo list \"{EscapeCommandArgument(owner)}\" --limit 100 {repoJsonFields}",
 				Directory.GetCurrentDirectory(),
 				cancellationToken,
-				timeoutSeconds: 30);
+				timeoutSeconds: 60)).ToArray();
 
-			if (!listResult.Success)
+			var fetchResults = await Task.WhenAll(fetchTasks);
+
+			// Merge repos from all owners, tracking which owners returned results
+			var allRepositories = new List<GitHubRepositoryBrowserItem>();
+			var ownersWithRepos = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+			var anyOwnerSucceeded = false;
+
+			for (var i = 0; i < owners.Count; i++)
 			{
-				browserResult.ErrorMessage = BuildCommandError(listResult, "Unable to load GitHub repositories.");
+				var result = fetchResults[i];
+				if (!result.Success)
+				{
+					_logger.LogWarning("Failed to fetch repos for owner {Owner}: {Error}", owners[i], result.Error);
+					continue;
+				}
+
+				anyOwnerSucceeded = true;
+				var repos = DeserializeCommandJson<List<GitHubRepositoryBrowserItem>>(result.Output, '[', ']') ?? [];
+				if (repos.Count > 0)
+				{
+					ownersWithRepos.Add(owners[i]);
+					allRepositories.AddRange(repos);
+				}
+				else if (!string.IsNullOrWhiteSpace(result.Output) && result.Output.IndexOf('[', StringComparison.Ordinal) < 0)
+				{
+					_logger.LogWarning("Unable to parse repository list for owner {Owner}", owners[i]);
+				}
+			}
+
+			if (!anyOwnerSucceeded)
+			{
+				browserResult.ErrorMessage = "Unable to load GitHub repositories.";
 				return browserResult;
 			}
 
-			browserResult.Repositories = DeserializeCommandJson<List<GitHubRepositoryBrowserItem>>(listResult.Output, '[', ']')?
-				.OrderByDescending(repository => repository.UpdatedAt ?? DateTimeOffset.MinValue)
-				.ThenBy(repository => repository.NameWithOwner, StringComparer.OrdinalIgnoreCase)
-				.ToList()
-				?? [];
+			// Deduplicate by NameWithOwner, sort by UpdatedAt desc then name asc
+			browserResult.Repositories = allRepositories
+				.GroupBy(repo => repo.NameWithOwner, StringComparer.OrdinalIgnoreCase)
+				.Select(group => group.First())
+				.OrderByDescending(repo => repo.UpdatedAt ?? DateTimeOffset.MinValue)
+				.ThenBy(repo => repo.NameWithOwner, StringComparer.OrdinalIgnoreCase)
+				.ToList();
 
-			if (browserResult.Repositories.Count == 0 && !string.IsNullOrWhiteSpace(listResult.Output) && listResult.Output.IndexOf('[', StringComparison.Ordinal) < 0)
+			// Only include owners that have repos in the filter list
+			browserResult.Owners = owners
+				.Where(owner => ownersWithRepos.Contains(owner))
+				.ToList();
+
+			if (browserResult.Repositories.Count == 0 && anyOwnerSucceeded)
 			{
-				browserResult.ErrorMessage = "Unable to parse the GitHub repository list returned by GitHub CLI.";
+				// Check if any successful fetch had non-JSON output (parse failure)
+				var hasUnparsedOutput = fetchResults
+					.Where((result, index) => result.Success && !string.IsNullOrWhiteSpace(result.Output) && result.Output.IndexOf('[', StringComparison.Ordinal) < 0)
+					.Any();
+				if (hasUnparsedOutput)
+				{
+					browserResult.ErrorMessage = "Unable to parse the GitHub repository list returned by GitHub CLI.";
+				}
 			}
 
 			return browserResult;

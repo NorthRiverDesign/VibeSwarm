@@ -26,7 +26,11 @@ public sealed class GitHubRepositoryBrowserResult
 
 	public bool IsAuthenticated { get; set; }
 
+	public string? AuthenticatedUser { get; set; }
+
 	public string? ErrorMessage { get; set; }
+
+	public List<string> Owners { get; set; } = [];
 
 	public List<GitHubRepositoryBrowserItem> Repositories { get; set; } = [];
 }

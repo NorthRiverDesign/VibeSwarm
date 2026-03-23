@@ -11,10 +11,19 @@
 				Browse repositories available to the authenticated GitHub CLI account on this host. You can still paste any <code>owner/repo</code> manually.
 			</div>
 
-			<div>
-				<label for="githubRepositoryBrowserSearch" class="form-label mb-1">Filter repositories</label>
-				<InputText id="githubRepositoryBrowserSearch" @bind-Value="_searchText" @bind-Value:event="oninput"
-						   class="form-control" placeholder="Search by owner, name, or description" />
+			<div class="d-flex flex-column flex-sm-row gap-2">
+				@if (_owners.Count > 1)
+				{
+					<select class="form-select flex-shrink-0" style="max-width: 14rem;" @bind="_selectedOwner">
+						<option value="">All Repositories</option>
+						@foreach (var owner in _owners)
+						{
+							<option value="@owner">@(owner == _authenticatedUser ? $"{owner} (me)" : owner)</option>
+						}
+					</select>
+				}
+				<input id="githubRepositoryBrowserSearch" @bind="_searchText" @bind:event="oninput"
+					   class="form-control" placeholder="Search by name or description" />
 			</div>
 
 			@if (_isLoading)
@@ -102,11 +111,17 @@
 	private bool _wasVisible;
 	private string? _errorMessage;
 	private string _searchText = string.Empty;
+	private string _selectedOwner = string.Empty;
+	private string? _authenticatedUser;
 	private string? _selectedRepository;
+	private List<string> _owners = [];
 	private List<GitHubRepositoryBrowserItem> _repositories = [];
 
 	private List<GitHubRepositoryBrowserItem> FilteredRepositories =>
 		_repositories
+			.Where(repository =>
+				string.IsNullOrWhiteSpace(_selectedOwner) ||
+				(repository.NameWithOwner?.StartsWith(_selectedOwner + "/", StringComparison.OrdinalIgnoreCase) ?? false))
 			.Where(repository =>
 				string.IsNullOrWhiteSpace(_searchText) ||
 				(repository.NameWithOwner?.Contains(_searchText, StringComparison.OrdinalIgnoreCase) ?? false) ||
@@ -119,6 +134,7 @@
 		{
 			_wasVisible = true;
 			_searchText = string.Empty;
+			_selectedOwner = string.Empty;
 			_selectedRepository = SelectedRepository;
 			await LoadRepositoriesAsync();
 		}
@@ -140,6 +156,8 @@
 		{
 			var result = await ProjectService.BrowseGitHubRepositoriesAsync();
 			_errorMessage = result.ErrorMessage;
+			_authenticatedUser = result.AuthenticatedUser;
+			_owners = result.Owners ?? [];
 			_repositories = result.Repositories ?? [];
 		}
 		catch (Exception ex)

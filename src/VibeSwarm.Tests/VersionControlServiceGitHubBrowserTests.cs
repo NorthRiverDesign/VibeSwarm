@@ -91,7 +91,9 @@ public sealed class VersionControlServiceGitHubBrowserTests
 			var key = $"{command}::{arguments}";
 			if (!_rawResults.TryGetValue(key, out var queue) || queue.Count == 0)
 			{
-				throw new InvalidOperationException($"No recorded result for command: {key}");
+				// Return a failure result for unregistered commands (e.g. org listing)
+				// so the service can gracefully degrade
+				return Task.FromResult(new GitCommandResult { ExitCode = 1, Error = $"No recorded result for: {key}" });
 			}
 
 			return Task.FromResult(queue.Dequeue());
