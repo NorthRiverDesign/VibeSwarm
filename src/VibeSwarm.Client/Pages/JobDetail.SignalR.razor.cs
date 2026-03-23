@@ -9,6 +9,12 @@ public partial class JobDetail : ComponentBase, IAsyncDisposable
 {
     private HubConnection? _hubConnection;
     private CancellationTokenSource? _signalRCts;
+    private bool _signalRConnected = false;
+
+    // Batches output-line re-renders to avoid calling StateHasChanged on every line,
+    // which causes severe lag (100+ re-renders/sec) during verbose job output.
+    private Timer? _outputRenderTimer;
+    private volatile bool _pendingOutputUpdate = false;
 
     private async Task InitializeSignalRSafe()
     {
@@ -95,14 +101,41 @@ public partial class JobDetail : ComponentBase, IAsyncDisposable
                 }
             });
 
+            _hubConnection.Reconnecting += _ =>
+            {
+                _signalRConnected = false;
+                Console.WriteLine("SignalR reconnecting...");
+                return Task.CompletedTask;
+            };
+
             _hubConnection.Reconnected += async (connectionId) =>
             {
+                _signalRConnected = true;
                 Console.WriteLine($"SignalR reconnected: {connectionId}");
                 await SubscribeToSignalRGroups();
             };
 
+            _hubConnection.Closed += _ =>
+            {
+                _signalRConnected = false;
+                Console.WriteLine("SignalR connection closed");
+                return Task.CompletedTask;
+            };
+
             await _hubConnection.StartAsync(cancellationToken);
+            _signalRConnected = true;
             Console.WriteLine("SignalR connected successfully");
+
+            // Start batch render timer: flush pending output updates at most every 150ms
+            // to avoid calling StateHasChanged on every individual output line.
+            _outputRenderTimer = new Timer(async _ =>
+            {
+                if (_pendingOutputUpdate)
+                {
+                    _pendingOutputUpdate = false;
+                    await InvokeAsync(StateHasChanged);
+                }
+            }, null, TimeSpan.FromMilliseconds(150), TimeSpan.FromMilliseconds(150));
 
             await SubscribeToSignalRGroups();
         }
@@ -181,19 +214,23 @@ public partial class JobDetail : ComponentBase, IAsyncDisposable
         }
     }
 
-    private async Task OnJobOutputReceived(string jobId, string line, bool isError, DateTime timestamp)
+    private Task OnJobOutputReceived(string jobId, string line, bool isError, DateTime timestamp)
     {
         lock (_liveOutput)
         {
             _liveOutput.Add(JobSessionDisplayBuilder.CreateOutputLine(
                 isError ? $"[ERR] {line}" : line,
                 timestamp));
-            while (_liveOutput.Count > MaxOutputLines)
+            // Trim from the front in one pass to avoid repeated O(n) RemoveAt(0) calls.
+            if (_liveOutput.Count > MaxOutputLines)
             {
-                _liveOutput.RemoveAt(0);
+                var excess = _liveOutput.Count - MaxOutputLines;
+                _liveOutput.RemoveRange(0, excess);
             }
         }
-        await InvokeAsync(StateHasChanged);
+        // Signal the batch timer rather than calling StateHasChanged on every line.
+        _pendingOutputUpdate = true;
+        return Task.CompletedTask;
     }
 
     private async Task OnProcessStarted(string jobId, int processId, string command)
@@ -335,8 +372,10 @@ public partial class JobDetail : ComponentBase, IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        _signalRConnected = false;
         _signalRCts?.Cancel();
         _signalRCts?.Dispose();
+        _outputRenderTimer?.Dispose();
         _refreshTimer?.Dispose();
         _pushCancellationTokenSource?.Cancel();
         _pushCancellationTokenSource?.Dispose();

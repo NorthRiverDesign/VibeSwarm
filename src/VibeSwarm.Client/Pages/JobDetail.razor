@@ -314,6 +314,12 @@ else
             var isTerminal = Job?.Status is JobStatus.Completed or JobStatus.Failed or JobStatus.Cancelled;
             var shouldPoll = (secondsSincePageLoad < 10 && !isTerminal) || IsJobActive;
 
+            // When SignalR is actively connected and the job is running, skip the poll —
+            // SignalR already pushes all status changes, so polling only wastes CPU/battery.
+            // Keep polling as a fallback when SignalR is disconnected or during early page load.
+            if (_signalRConnected && IsJobActive)
+                shouldPoll = false;
+
             if (shouldPoll && !_isRefreshing)
             {
                 await InvokeAsync(async () => await RefreshJobSafely());
