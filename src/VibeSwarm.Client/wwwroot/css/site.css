@@ -531,10 +531,11 @@ body.vs-modal-open {
 
 /* Mobile: panel appears below the header, right-aligned */
 .notifications-panel {
-	top: calc(var(--vs-header-height) + var(--vs-safe-area-top) + 4px);
-	right: 4px;
-	width: min(320px, calc(100vw - 16px));
-	max-height: calc(70vh - var(--vs-safe-area-top));
+	top: calc(var(--vs-header-height) + env(safe-area-inset-top, 0px) + 4px);
+	right: max(4px, env(safe-area-inset-right, 0px));
+	left: auto;
+	width: min(320px, calc(100vw - 8px - max(4px, env(safe-area-inset-right, 0px))));
+	max-height: calc(100dvh - var(--vs-header-height) - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 12px);
 }
 
 .notification-history-item:last-child {
