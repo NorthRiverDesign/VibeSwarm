@@ -26,8 +26,8 @@ public sealed class DashboardMetricChartTests
 			.Add(component => component.Subtitle, "Last 30 days")
 			.Add(component => component.Points, points));
 
-		Assert.Contains("class=\"d-block\"", cut.Markup);
-		Assert.Contains("preserveAspectRatio=\"xMinYMin meet\"", cut.Markup);
+		Assert.Contains("class=\"d-block w-100\"", cut.Markup);
+		Assert.Contains("preserveAspectRatio=\"none\"", cut.Markup);
 		Assert.Contains("overflow-auto", cut.Markup);
 		Assert.Contains("grid-template-columns:repeat(30, minmax(48px, 1fr));", cut.Markup);
 		Assert.Contains("width:max(100%, 1440px);", cut.Markup);

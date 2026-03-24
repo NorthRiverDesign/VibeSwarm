@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.JSInterop;
 using VibeSwarm.Client.Services;
 using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Models;
@@ -107,6 +108,7 @@ public sealed class DashboardPageTests
 		services.AddSingleton(projectService);
 		services.AddSingleton<IVersionControlService>(new FakeVersionControlService());
 		services.AddSingleton<NavigationManager>(new TestNavigationManager());
+		services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
 		services.AddSingleton(new HttpProviderService(new HttpClient(new StaticJsonHandler())
 		{
 			BaseAddress = new Uri("http://localhost")
@@ -298,5 +300,14 @@ public sealed class DashboardPageTests
 		{
 			Uri = ToAbsoluteUri(uri).ToString();
 		}
+	}
+
+	private sealed class NoOpJsRuntime : IJSRuntime
+	{
+		public ValueTask<TValue> InvokeAsync<TValue>(string identifier, object?[]? args)
+			=> ValueTask.FromResult(default(TValue)!);
+
+		public ValueTask<TValue> InvokeAsync<TValue>(string identifier, CancellationToken cancellationToken, object?[]? args)
+			=> ValueTask.FromResult(default(TValue)!);
 	}
 }

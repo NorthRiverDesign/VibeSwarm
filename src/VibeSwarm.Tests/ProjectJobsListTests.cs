@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using VibeSwarm.Client.Components.Projects;
 using VibeSwarm.Shared.Data;
+using VibeSwarm.Shared.Models;
 
 namespace VibeSwarm.Tests;
 
@@ -22,7 +23,7 @@ public sealed class ProjectJobsListTests
 		{
 			var parameters = ParameterView.FromDictionary(new Dictionary<string, object?>
 			{
-				[nameof(ProjectJobsList.Jobs)] = new List<Job>
+				[nameof(ProjectJobsList.Jobs)] = new List<JobSummary>
 				{
 					new()
 					{

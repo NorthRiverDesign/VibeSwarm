@@ -48,6 +48,7 @@ var services = new ServiceCollection();
 	services.AddSingleton<AppTimeZoneService>();
 	services.AddSingleton<IFileSystemService>(new FakeFileSystemService());
 	services.AddSingleton<IProjectService>(new FakeProjectService());
+	services.AddSingleton<IDatabaseService>(new FakeDatabaseService());
 	services.AddSingleton<NavigationManager>(new TestNavigationManager());
 	services.AddSingleton<NotificationService>();
 	services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
@@ -127,6 +128,12 @@ public Task<string?> GetDefaultProjectsDirectoryAsync(CancellationToken cancella
 				Buckets = []
 			});
 		public Task<IEnumerable<DashboardRunningJobInfo>> GetDashboardRunningJobsAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<DashboardRunningJobInfo>>([]);
+	}
+
+	private sealed class FakeDatabaseService : IDatabaseService
+	{
+		public Task<DatabaseExportDto> ExportAsync(CancellationToken ct = default) => Task.FromResult(new DatabaseExportDto());
+		public Task<DatabaseImportResult> ImportAsync(DatabaseExportDto export, CancellationToken ct = default) => throw new NotSupportedException();
 	}
 
 	private sealed class NoOpJsRuntime : IJSRuntime

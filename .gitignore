@@ -13,6 +13,9 @@ vibeswarm.pfx
 vibeswarm.Db
 vibeswarm.Db-shm
 vibeswarm.Db-wal
+vibeswarm.db
+vibeswarm.db-shm
+vibeswarm.db-wal
 
 # Ignore Visual Studio temporary files, build results, and
 # user-specific files.

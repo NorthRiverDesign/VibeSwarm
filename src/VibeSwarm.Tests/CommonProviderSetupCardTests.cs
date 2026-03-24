@@ -69,7 +69,6 @@ public sealed class CommonProviderSetupCardTests
 		Assert.Contains("Not Installed", html);
 		Assert.Contains("CLI Auth Needed", html);
 		Assert.Contains("Provider Not Added", html);
-		Assert.Contains("curl -fsSL https://gh.io/copilot-install | bash", html);
 		Assert.Contains("Host detection", html);
 		Assert.Contains("Supporting host tools", html);
 		Assert.Contains("ripgrep", html);
