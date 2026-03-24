@@ -209,8 +209,6 @@
     private bool _hubInitialized = false;
     private HubConnection? _globalHubConnection;
     private bool _mobileMenuOpen = false;
-    private readonly IdeaToastCoordinator _ideaToastCoordinator = new();
-
     // Search Modal
     private bool _showSearchModal;
 
@@ -456,47 +454,9 @@ TimeSpan.FromSeconds(10) })
         }
     }
 
-    private async Task OnGlobalIdeaCreated(string ideaId)
+    private Task OnGlobalIdeaCreated(string ideaId)
     {
-        if (string.IsNullOrWhiteSpace(ideaId) || !Guid.TryParse(ideaId, out var parsedIdeaId))
-        {
-            return;
-        }
-
-        if (!await _ideaToastCoordinator.ShouldShowIdeaCreatedAsync(ideaId))
-        {
-            return;
-        }
-
-        if (!TryBeginToastEvent($"idea-created:{ideaId}"))
-        {
-            return;
-        }
-
-        try
-        {
-            var idea = await IdeaService.GetByIdAsync(parsedIdeaId);
-
-            await InvokeAsync(() =>
-            {
-                var ideaText = TruncateForToast(idea?.Description, 80, "New idea");
-                var projectName = idea?.Project?.Name;
-                var message = projectName is null
-                    ? $"{ideaText} was added."
-                    : $"{ideaText} was added to '{projectName}'.";
-
-                NotificationService.ShowSuccess(message, "Idea Created");
-                StateHasChanged();
-            });
-        }
-        catch
-        {
-            await InvokeAsync(() =>
-            {
-                NotificationService.ShowSuccess("A new idea was added.", "Idea Created");
-                StateHasChanged();
-            });
-        }
+        return Task.CompletedTask;
     }
 
     private Task OnGlobalIdeaUpdated(string ideaId)
@@ -504,49 +464,9 @@ TimeSpan.FromSeconds(10) })
         return Task.CompletedTask;
     }
 
-    private async Task OnGlobalIdeaStarted(string ideaId, string jobId)
+    private Task OnGlobalIdeaStarted(string ideaId, string jobId)
     {
-        if (string.IsNullOrWhiteSpace(ideaId))
-        {
-            return;
-        }
-
-        _ideaToastCoordinator.RegisterIdeaStarted(ideaId);
-
-        if (!TryBeginToastEvent($"idea-started:{ideaId}:{jobId}"))
-        {
-            return;
-        }
-
-        if (!Guid.TryParse(jobId, out var parsedJobId))
-        {
-            return;
-        }
-
-        try
-        {
-            var job = await JobService.GetByIdAsync(parsedJobId);
-
-            await InvokeAsync(() =>
-            {
-                var title = TruncateForToast(job?.Title, 80, "Idea");
-                var projectName = job?.Project?.Name;
-                var message = projectName is null
-                    ? $"{title} started as a job."
-                    : $"{title} started in '{projectName}'.";
-
-                NotificationService.ShowSuccess(message, "Idea Started");
-                StateHasChanged();
-            });
-        }
-        catch
-        {
-            await InvokeAsync(() =>
-            {
-                NotificationService.ShowSuccess("An idea started as a job.", "Idea Started");
-                StateHasChanged();
-            });
-        }
+        return Task.CompletedTask;
     }
 
     private Task OnGlobalJobListChanged()
