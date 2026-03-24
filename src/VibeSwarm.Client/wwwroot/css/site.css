@@ -30,9 +30,10 @@
    10. Jobs Inbox (hover/active states, calc)
    11. Modal System (z-index, safe areas, pointer-events)
    12. Toast Container (safe area calc)
-   13. Responsive Overrides (media queries)
-   14. PWA Standalone Mode
-   15. Blazor Reconnection Modal
+   13. Notifications Panel
+   14. Responsive Overrides (media queries)
+   15. PWA Standalone Mode
+   16. Blazor Reconnection Modal
 
 ============================================ */
 
@@ -516,7 +517,44 @@ body.vs-modal-open {
 }
 
 /* ============================================
-   13. RESPONSIVE OVERRIDES
+   13. NOTIFICATIONS PANEL
+============================================ */
+.notification-bell-badge {
+	font-size: 0.55rem;
+	top: -2px;
+	left: 100%;
+	transform: translateX(-50%);
+	min-width: 1.1em;
+	line-height: 1.4;
+	padding: 0.1em 0.3em;
+}
+
+/* Mobile: panel appears below the header, right-aligned */
+.notifications-panel {
+	top: calc(var(--vs-header-height) + var(--vs-safe-area-top) + 4px);
+	right: 4px;
+	width: min(320px, calc(100vw - 16px));
+	max-height: calc(70vh - var(--vs-safe-area-top));
+}
+
+.notification-history-item:last-child {
+	border-bottom: none !important;
+}
+
+/* Desktop: panel appears to the right of the sidebar, anchored near the bottom */
+@media (min-width: 992px) {
+	.notifications-panel {
+		top: auto;
+		bottom: 60px;
+		left: calc(var(--vs-sidebar-width) + 8px);
+		right: auto;
+		width: 320px;
+		max-height: 60vh;
+	}
+}
+
+/* ============================================
+   14. RESPONSIVE OVERRIDES
 ============================================ */
 
 /* Extra Small (< 576px) */
@@ -715,7 +753,7 @@ body.vs-modal-open {
 }
 
 /* ============================================
-   14. PWA STANDALONE MODE
+   15. PWA STANDALONE MODE
 ============================================ */
 .main-content { overscroll-behavior-x: none; }
 
@@ -772,7 +810,7 @@ body.vs-modal-open {
 }
 
 /* ============================================
-   15. BLAZOR RECONNECTION MODAL (PWA)
+   16. BLAZOR RECONNECTION MODAL (PWA)
 ============================================ */
 .reconnect-toast {
 	position: fixed;

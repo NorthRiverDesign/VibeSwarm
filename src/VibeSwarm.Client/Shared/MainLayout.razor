@@ -22,7 +22,8 @@
             <img src="img/logo_icon.png" alt="VibeSwarm" class="object-fit-contain" style="width: 24px; height: 24px;" />
             <span class="brand-text">VibeSwarm</span>
         </a>
-        <div class="ms-auto">
+        <div class="ms-auto d-flex align-items-center gap-2">
+            <NotificationsPanel />
             <LoginDisplay />
         </div>
     </header>
@@ -88,7 +89,10 @@
             </NavLink>
         </div>
 
-        <div class="p-3 border-top d-none d-lg-block">
+        <div class="p-3 border-top d-none d-lg-flex flex-column gap-2">
+            <div class="d-flex justify-content-end">
+                <NotificationsPanel />
+            </div>
             <LoginDisplay />
         </div>
     </nav>

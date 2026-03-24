@@ -7,7 +7,9 @@ namespace VibeSwarm.Web.Services;
 public class NotificationService
 {
 	private readonly List<ToastNotification> _notifications = new();
+	private readonly List<ToastNotification> _history = new();
 	private readonly object _lock = new();
+	private int _unreadCount = 0;
 
 	/// <summary>
 	/// Event raised when notifications change
@@ -26,6 +28,53 @@ public class NotificationService
 				return _notifications.ToList().AsReadOnly();
 			}
 		}
+	}
+
+	/// <summary>
+	/// Get notification history (newest-first, max 50 entries)
+	/// </summary>
+	public IReadOnlyList<ToastNotification> NotificationHistory
+	{
+		get
+		{
+			lock (_lock)
+			{
+				return _history.AsEnumerable().Reverse().ToList().AsReadOnly();
+			}
+		}
+	}
+
+	/// <summary>
+	/// Number of unread notifications since last MarkAllRead()
+	/// </summary>
+	public int UnreadCount
+	{
+		get { lock (_lock) return _unreadCount; }
+	}
+
+	/// <summary>
+	/// Mark all notifications as read (resets unread count)
+	/// </summary>
+	public void MarkAllRead()
+	{
+		lock (_lock)
+		{
+			_unreadCount = 0;
+		}
+		OnChange?.Invoke();
+	}
+
+	/// <summary>
+	/// Clear the notification history
+	/// </summary>
+	public void ClearHistory()
+	{
+		lock (_lock)
+		{
+			_history.Clear();
+			_unreadCount = 0;
+		}
+		OnChange?.Invoke();
 	}
 
 	/// <summary>
@@ -161,12 +210,20 @@ public class NotificationService
 	{
 		lock (_lock)
 		{
-			// Limit max notifications to prevent memory issues
+			// Limit active toast notifications
 			while (_notifications.Count >= 10)
 			{
 				_notifications.RemoveAt(0);
 			}
 			_notifications.Add(notification);
+
+			// Maintain history with max 50 entries
+			while (_history.Count >= 50)
+			{
+				_history.RemoveAt(0);
+			}
+			_history.Add(notification);
+			_unreadCount++;
 		}
 		OnChange?.Invoke();
 	}
