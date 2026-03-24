@@ -53,6 +53,38 @@ public class NotificationService
 	}
 
 	/// <summary>
+	/// Whether the notifications panel is currently open
+	/// </summary>
+	public bool IsPanelOpen { get; private set; }
+
+	/// <summary>
+	/// Open the notifications panel
+	/// </summary>
+	public void OpenPanel()
+	{
+		IsPanelOpen = true;
+		MarkAllRead();
+	}
+
+	/// <summary>
+	/// Close the notifications panel
+	/// </summary>
+	public void ClosePanel()
+	{
+		IsPanelOpen = false;
+		OnChange?.Invoke();
+	}
+
+	/// <summary>
+	/// Toggle the notifications panel open/closed
+	/// </summary>
+	public void TogglePanel()
+	{
+		if (IsPanelOpen) ClosePanel();
+		else OpenPanel();
+	}
+
+	/// <summary>
 	/// Mark all notifications as read (resets unread count)
 	/// </summary>
 	public void MarkAllRead()
