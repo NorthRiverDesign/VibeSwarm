@@ -59,14 +59,30 @@
    2. SINGLE-PROPERTY UTILITIES (Bootstrap gaps)
    Use these in markup like Bootstrap utilities.
 ============================================ */
-.cursor-pointer { cursor: pointer; }
-.cursor-grab { cursor: grab; }
-.min-width-0 { min-width: 0; }
-.overscroll-contain { overscroll-behavior: contain; }
-.white-space-pre-wrap { white-space: pre-wrap; }
-.inset-0 { inset: 0; }
-.touch-manipulation { touch-action: manipulation; }
-.drag-drop-item.drag-drop-over { box-shadow: 0 -2px 0 0 var(--bs-primary); }
+.cursor-pointer {
+	cursor: pointer;
+}
+.cursor-grab {
+	cursor: grab;
+}
+.min-width-0 {
+	min-width: 0;
+}
+.overscroll-contain {
+	overscroll-behavior: contain;
+}
+.white-space-pre-wrap {
+	white-space: pre-wrap;
+}
+.inset-0 {
+	inset: 0;
+}
+.touch-manipulation {
+	touch-action: manipulation;
+}
+.drag-drop-item.drag-drop-over {
+	box-shadow: 0 -2px 0 0 var(--bs-primary);
+}
 .text-truncate-lines-2 {
 	display: -webkit-box;
 	-webkit-line-clamp: 2;
@@ -75,13 +91,21 @@
 }
 
 /* Prevent textareas from expanding too large (50-row max ~75rem) */
-textarea.form-control { max-height: calc(50 * 1.5rem + 0.75rem); }
+textarea.form-control {
+	max-height: calc(50 * 1.5rem + 0.75rem);
+}
 
 /* Loading spinner animation */
-.spin { animation: spin 1s linear infinite; }
+.spin {
+	animation: spin 1s linear infinite;
+}
 @keyframes spin {
-	0% { transform: rotate(0deg); }
-	100% { transform: rotate(360deg); }
+	0% {
+		transform: rotate(0deg);
+	}
+	100% {
+		transform: rotate(360deg);
+	}
 }
 
 /* Live indicator pulse */
@@ -94,15 +118,30 @@ textarea.form-control { max-height: calc(50 * 1.5rem + 0.75rem); }
 	animation: pulse-live 1.5s ease-in-out infinite;
 }
 @keyframes pulse-live {
-	0%, 100% { opacity: 1; transform: scale(1); }
-	50% { opacity: 0.5; transform: scale(0.9); }
+	0%,
+	100% {
+		opacity: 1;
+		transform: scale(1);
+	}
+	50% {
+		opacity: 0.5;
+		transform: scale(0.9);
+	}
 }
 
 /* Alert accent borders */
-.alert-danger { border-left: 3px solid var(--vs-accent-red); }
-.alert-success { border-left: 3px solid var(--vs-accent-green); }
-.alert-warning { border-left: 3px solid var(--vs-accent-orange); }
-.alert-info { border-left: 3px solid var(--vs-accent-blue); }
+.alert-danger {
+	border-left: 3px solid var(--vs-accent-red);
+}
+.alert-success {
+	border-left: 3px solid var(--vs-accent-green);
+}
+.alert-warning {
+	border-left: 3px solid var(--vs-accent-orange);
+}
+.alert-info {
+	border-left: 3px solid var(--vs-accent-blue);
+}
 
 /* ============================================
    3. APP LAYOUT SHELL
@@ -117,7 +156,9 @@ html {
 }
 
 body {
-	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
+	font-family:
+		-apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica,
+		Arial, sans-serif;
 	padding-left: var(--vs-safe-area-left);
 	padding-right: var(--vs-safe-area-right);
 	min-height: 100%;
@@ -125,7 +166,9 @@ body {
 }
 
 /* dvh fallback — markup uses d-flex flex-column min-vh-100 */
-.app-layout { min-height: 100dvh; }
+.app-layout {
+	min-height: 100dvh;
+}
 
 /* Safe area calc — markup uses sticky-top d-flex align-items-center gap-3 flex-shrink-0 bg-body-secondary border-bottom */
 .app-header {
@@ -170,7 +213,9 @@ body {
 	padding-bottom: var(--vs-safe-area-bottom);
 	padding-left: var(--vs-safe-area-left);
 }
-.app-sidebar.open { transform: translateX(0); }
+.app-sidebar.open {
+	transform: translateX(0);
+}
 
 /* Overlay — markup uses position-fixed */
 .sidebar-overlay {
@@ -241,13 +286,19 @@ body {
 /* ============================================
    5. INTERACTIVE UTILITIES (hover states, transitions)
 ============================================ */
-.project-card-hover { transition: all var(--vs-transition); }
+.project-card-hover {
+	transition: all var(--vs-transition);
+}
 .project-card-hover:hover {
 	transform: translateY(-2px);
 	box-shadow: var(--bs-box-shadow);
 }
-.hover-bg-tertiary:hover { background: var(--bs-tertiary-bg); }
-.hover-underline:hover { text-decoration: underline !important; }
+.hover-bg-tertiary:hover {
+	background: var(--bs-tertiary-bg);
+}
+.hover-underline:hover {
+	text-decoration: underline !important;
+}
 
 /* ============================================
    6. CONSOLE/TERMINAL OUTPUT
@@ -259,9 +310,15 @@ body {
 	color: #e6edf3;
 	font-family: "SF Mono", "Monaco", "Consolas", monospace;
 }
-.output-line:hover { background: rgba(255, 255, 255, 0.05); }
-.output-time { color: #8b949e; }
-.output-error .output-text { color: var(--vs-accent-red); }
+.output-line:hover {
+	background: rgba(255, 255, 255, 0.05);
+}
+.output-time {
+	color: #8b949e;
+}
+.output-error .output-text {
+	color: var(--vs-accent-red);
+}
 
 /* ============================================
    7. GIT DIFF VIEWER (syntax highlighting colors)
@@ -270,8 +327,12 @@ body {
 	padding: 0.1rem 0.5rem;
 	white-space: pre;
 }
-.diff-header { color: var(--vs-accent-blue); }
-.diff-file-header { color: var(--vs-accent-green); }
+.diff-header {
+	color: var(--vs-accent-blue);
+}
+.diff-file-header {
+	color: var(--vs-accent-green);
+}
 .diff-hunk-header {
 	color: var(--vs-accent-purple);
 	background: rgba(163, 113, 247, 0.1);
@@ -284,10 +345,19 @@ body {
 	background: rgba(248, 81, 73, 0.2);
 	color: #ffa198;
 }
-.diff-context { color: #8b949e; }
-.diff-meta { color: #8b949e; font-style: italic; }
-.diff-file-name { font-family: "SF Mono", monospace; }
-.diff-stats { font-family: "SF Mono", monospace; }
+.diff-context {
+	color: #8b949e;
+}
+.diff-meta {
+	color: #8b949e;
+	font-style: italic;
+}
+.diff-file-name {
+	font-family: "SF Mono", monospace;
+}
+.diff-stats {
+	font-family: "SF Mono", monospace;
+}
 .diff-line-nums {
 	width: 3.5rem;
 	min-width: 3.5rem;
@@ -299,19 +369,38 @@ body {
    8. CHAT/MESSAGE BUBBLES (specialized radii/colors)
    Markup uses d-flex flex-column + alignment utilities.
 ============================================ */
-.chat-message { max-width: 85%; }
-.chat-message-user { align-self: flex-end; align-items: flex-end; }
-.chat-message-assistant { align-self: flex-start; align-items: flex-start; }
-.chat-message-system { align-self: center; align-items: center; max-width: 90%; }
+.chat-message {
+	max-width: 85%;
+}
+.chat-message-user {
+	align-self: flex-end;
+	align-items: flex-end;
+}
+.chat-message-assistant {
+	align-self: flex-start;
+	align-items: flex-start;
+}
+.chat-message-system {
+	align-self: center;
+	align-items: center;
+	max-width: 90%;
+}
 .chat-message-tooluse,
-.chat-message-toolresult { align-self: flex-start; align-items: flex-start; }
+.chat-message-toolresult {
+	align-self: flex-start;
+	align-items: flex-start;
+}
 
-.chat-bubble { border-radius: 1.25rem; }
+.chat-bubble {
+	border-radius: 1.25rem;
+}
 .chat-message-user .chat-bubble {
 	background: var(--vs-accent-blue);
 	border-bottom-right-radius: 0.25rem;
 }
-.chat-message-assistant .chat-bubble { border-bottom-left-radius: 0.25rem; }
+.chat-message-assistant .chat-bubble {
+	border-bottom-left-radius: 0.25rem;
+}
 .chat-message-system .chat-bubble {
 	background: rgba(210, 153, 34, 0.15);
 	border: 1px solid rgba(210, 153, 34, 0.3);
@@ -339,11 +428,23 @@ body {
 	border-radius: 50%;
 	animation: typing-bounce 1.4s ease-in-out infinite;
 }
-.typing-dot:nth-child(2) { animation-delay: 0.2s; }
-.typing-dot:nth-child(3) { animation-delay: 0.4s; }
+.typing-dot:nth-child(2) {
+	animation-delay: 0.2s;
+}
+.typing-dot:nth-child(3) {
+	animation-delay: 0.4s;
+}
 @keyframes typing-bounce {
-	0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
-	30% { transform: translateY(-5px); opacity: 1; }
+	0%,
+	60%,
+	100% {
+		transform: translateY(0);
+		opacity: 0.4;
+	}
+	30% {
+		transform: translateY(-5px);
+		opacity: 1;
+	}
 }
 
 /* ============================================
@@ -356,7 +457,11 @@ body {
 	height: 24px;
 	cursor: pointer;
 }
-.toggle-switch input { opacity: 0; width: 0; height: 0; }
+.toggle-switch input {
+	opacity: 0;
+	width: 0;
+	height: 0;
+}
 .toggle-slider {
 	position: absolute;
 	cursor: pointer;
@@ -376,14 +481,20 @@ body {
 	border-radius: 50%;
 	transition: var(--vs-transition);
 }
-.toggle-switch input:checked + .toggle-slider { background: var(--vs-accent-green); }
-.toggle-switch input:checked + .toggle-slider::before { transform: translateX(20px); }
+.toggle-switch input:checked + .toggle-slider {
+	background: var(--vs-accent-green);
+}
+.toggle-switch input:checked + .toggle-slider::before {
+	transform: translateX(20px);
+}
 
 /* ============================================
    10. JOBS INBOX (hover/active states, fixed widths)
    Markup uses flex-grow-1 d-flex flex-column + Bootstrap utilities.
 ============================================ */
-.jobs-inbox-layout { min-height: 0; }
+.jobs-inbox-layout {
+	min-height: 0;
+}
 .jobs-project-sidebar {
 	width: 280px;
 	min-width: 280px;
@@ -394,7 +505,9 @@ body {
 	border-left: 3px solid transparent;
 	transition: all var(--vs-transition);
 }
-.project-filter-item:hover { background: var(--bs-tertiary-bg); }
+.project-filter-item:hover {
+	background: var(--bs-tertiary-bg);
+}
 .project-filter-item.active {
 	background: rgba(88, 166, 255, 0.1);
 	border-left-color: var(--vs-accent-blue);
@@ -405,7 +518,9 @@ body {
 	border-left: 3px solid transparent;
 	transition: background-color var(--vs-transition);
 }
-.job-list-item:hover { background: var(--bs-tertiary-bg); }
+.job-list-item:hover {
+	background: var(--bs-tertiary-bg);
+}
 .job-list-item.job-selected {
 	background: rgba(88, 166, 255, 0.1);
 	border-left-color: var(--vs-accent-blue);
@@ -415,9 +530,13 @@ body {
 	border: none;
 	border-bottom: 2px solid transparent;
 	opacity: 0.7;
-	transition: opacity var(--vs-transition), border-color var(--vs-transition);
+	transition:
+		opacity var(--vs-transition),
+		border-color var(--vs-transition);
 }
-.nav-tabs-card .nav-link:hover { opacity: 1; }
+.nav-tabs-card .nav-link:hover {
+	opacity: 1;
+}
 .nav-tabs-card .nav-link.active {
 	border-bottom-color: var(--bs-primary);
 	opacity: 1;
@@ -453,7 +572,10 @@ body.vs-modal-open {
 }
 
 .vs-modal-dialog {
-	width: min(100%, calc(100vw - var(--vs-safe-area-left) - var(--vs-safe-area-right)));
+	width: min(
+		100%,
+		calc(100vw - var(--vs-safe-area-left) - var(--vs-safe-area-right))
+	);
 	min-width: 0;
 }
 
@@ -485,15 +607,26 @@ body.vs-modal-open {
 
 @media (min-width: 992px) {
 	.vs-modal-dialog-wide-lg {
-		max-width: min(960px, calc(100vw - var(--vs-safe-area-left) - var(--vs-safe-area-right) - 3rem));
+		max-width: min(
+			960px,
+			calc(100vw - var(--vs-safe-area-left) - var(--vs-safe-area-right) - 3rem)
+		);
 	}
 }
 
-.directory-list { max-height: 50vh; }
+.directory-list {
+	max-height: 50vh;
+}
 
 @keyframes modalFadeIn {
-	from { opacity: 0; transform: scale(0.95) translateY(-10px); }
-	to { opacity: 1; transform: scale(1) translateY(0); }
+	from {
+		opacity: 0;
+		transform: scale(0.95) translateY(-10px);
+	}
+	to {
+		opacity: 1;
+		transform: scale(1) translateY(0);
+	}
 }
 
 /* ============================================
@@ -512,8 +645,14 @@ body.vs-modal-open {
 	animation: slideInRight 0.3s ease-out;
 }
 @keyframes slideInRight {
-	from { transform: translateX(100%); opacity: 0; }
-	to { transform: translateX(0); opacity: 1; }
+	from {
+		transform: translateX(100%);
+		opacity: 0;
+	}
+	to {
+		transform: translateX(0);
+		opacity: 1;
+	}
 }
 
 /* ============================================
@@ -529,17 +668,50 @@ body.vs-modal-open {
 	padding: 0.1em 0.3em;
 }
 
+/* Backdrop — subtle overlay so the panel feels modal-like on mobile */
+.notifications-backdrop {
+	background: rgba(0, 0, 0, 0.15);
+}
+@media (min-width: 992px) {
+	.notifications-backdrop {
+		background: transparent;
+	}
+}
+
 /* Mobile: panel appears below the header, right-aligned */
 .notifications-panel {
 	top: calc(var(--vs-header-height) + env(safe-area-inset-top, 0px) + 4px);
-	right: max(4px, env(safe-area-inset-right, 0px));
+	right: max(8px, env(safe-area-inset-right, 0px));
 	left: auto;
-	width: min(320px, calc(100vw - 8px - max(4px, env(safe-area-inset-right, 0px))));
-	max-height: calc(100dvh - var(--vs-header-height) - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 12px);
+	width: min(
+		340px,
+		calc(
+			100vw - 16px - env(safe-area-inset-left, 0px) -
+				env(safe-area-inset-right, 0px)
+		)
+	);
+	max-height: calc(
+		100dvh - var(--vs-header-height) - env(safe-area-inset-top, 0px) -
+			env(safe-area-inset-bottom, 0px) - 16px
+	);
+	animation: notificationSlideIn 0.2s ease-out;
+}
+@keyframes notificationSlideIn {
+	from {
+		opacity: 0;
+		transform: translateY(-8px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
 }
 
 .notification-history-item:last-child {
 	border-bottom: none !important;
+}
+.notification-history-item:hover {
+	background: var(--bs-tertiary-bg);
 }
 
 /* Desktop: panel appears to the right of the sidebar, anchored near the bottom */
@@ -549,7 +721,7 @@ body.vs-modal-open {
 		bottom: 60px;
 		left: calc(var(--vs-sidebar-width) + 8px);
 		right: auto;
-		width: 320px;
+		width: 340px;
 		max-height: 60vh;
 	}
 }
@@ -560,8 +732,13 @@ body.vs-modal-open {
 
 /* Extra Small (< 576px) */
 @media (max-width: 575.98px) {
-	:root { --vs-header-height: 52px; }
-	.form-control, .form-select { font-size: 16px; }
+	:root {
+		--vs-header-height: 52px;
+	}
+	.form-control,
+	.form-select {
+		font-size: 16px;
+	}
 
 	.app-header {
 		padding-left: calc(0.75rem + var(--vs-safe-area-left));
@@ -589,9 +766,15 @@ body.vs-modal-open {
 		width: 100%;
 	}
 
-	.chat-message { max-width: 95%; }
-	.chat-bubble { padding: 0.5rem 0.75rem; }
-	.chat-tool-code { max-height: 100px; }
+	.chat-message {
+		max-width: 95%;
+	}
+	.chat-bubble {
+		padding: 0.5rem 0.75rem;
+	}
+	.chat-tool-code {
+		max-height: 100px;
+	}
 
 	/* Fullscreen modal on mobile */
 	.vs-modal-container {
@@ -617,7 +800,9 @@ body.vs-modal-open {
 	.vs-modal-dialog .modal-body {
 		padding-bottom: calc(1rem + var(--vs-safe-area-bottom));
 	}
-	.vs-project-modal-body .input-group { flex-wrap: nowrap; }
+	.vs-project-modal-body .input-group {
+		flex-wrap: nowrap;
+	}
 	.vs-project-modal-body .input-group > .input-group-text {
 		overflow: hidden;
 		text-overflow: ellipsis;
@@ -640,11 +825,22 @@ body.vs-modal-open {
 	.vs-modal-dialog .modal-footer {
 		padding-bottom: calc(0.75rem + var(--vs-safe-area-bottom));
 	}
-	.vs-modal-dialog.modal-sm { max-width: 100% !important; }
+	.vs-modal-dialog.modal-sm {
+		max-width: 100% !important;
+	}
 
 	.git-branch-dropdown .dropdown-menu {
 		width: calc(100vw - 2rem);
 		max-width: none;
+	}
+
+	/* Mobile dropdown safe area margins */
+	.app-header .dropdown-menu {
+		margin-right: env(safe-area-inset-right, 0px);
+		max-width: calc(
+			100vw - 1rem - env(safe-area-inset-left, 0px) -
+				env(safe-area-inset-right, 0px)
+		);
 	}
 }
 
@@ -656,20 +852,33 @@ body.vs-modal-open {
 		padding-bottom: calc(1rem + var(--vs-safe-area-bottom)) !important;
 	}
 	.vs-modal-dialog {
-		max-height: calc(100vh - var(--vs-safe-area-top) - var(--vs-safe-area-bottom) - 2rem);
-		max-height: calc(100dvh - var(--vs-safe-area-top) - var(--vs-safe-area-bottom) - 2rem);
+		max-height: calc(
+			100vh - var(--vs-safe-area-top) - var(--vs-safe-area-bottom) - 2rem
+		);
+		max-height: calc(
+			100dvh - var(--vs-safe-area-top) - var(--vs-safe-area-bottom) - 2rem
+		);
 	}
 	.vs-modal-dialog .modal-content {
-		max-height: calc(100vh - var(--vs-safe-area-top) - var(--vs-safe-area-bottom) - 2rem);
-		max-height: calc(100dvh - var(--vs-safe-area-top) - var(--vs-safe-area-bottom) - 2rem);
+		max-height: calc(
+			100vh - var(--vs-safe-area-top) - var(--vs-safe-area-bottom) - 2rem
+		);
+		max-height: calc(
+			100dvh - var(--vs-safe-area-top) - var(--vs-safe-area-bottom) - 2rem
+		);
 	}
-	.vs-modal-dialog .modal-body { overflow-y: auto; }
+	.vs-modal-dialog .modal-body {
+		overflow-y: auto;
+	}
 }
 
 /* Medium (< 768px) */
 @media (max-width: 767.98px) {
 	.directory-list {
-		max-height: calc(100vh - var(--vs-header-height) - var(--vs-safe-area-top) - var(--vs-safe-area-bottom) - 280px);
+		max-height: calc(
+			100vh - var(--vs-header-height) - var(--vs-safe-area-top) -
+				var(--vs-safe-area-bottom) - 280px
+		);
 		min-height: 200px;
 	}
 }
@@ -677,13 +886,18 @@ body.vs-modal-open {
 /* Medium to Large (768px - 991px) */
 @media (min-width: 768px) and (max-width: 991.98px) {
 	.directory-list {
-		max-height: calc(100vh - var(--vs-header-height) - var(--vs-safe-area-top) - var(--vs-safe-area-bottom) - 250px);
+		max-height: calc(
+			100vh - var(--vs-header-height) - var(--vs-safe-area-top) -
+				var(--vs-safe-area-bottom) - 250px
+		);
 	}
 }
 
 /* Medium screens */
 @media (max-width: 991.98px) {
-	.jobs-inbox-layout { min-height: auto; }
+	.jobs-inbox-layout {
+		min-height: auto;
+	}
 	.jobs-list-panel {
 		border: 1px solid var(--bs-border-color);
 		border-radius: var(--bs-border-radius);
@@ -697,12 +911,20 @@ body.vs-modal-open {
 		padding-top: calc(var(--vs-safe-area-top) + 1.75rem) !important;
 	}
 	.vs-modal-dialog {
-		max-height: calc(100vh - var(--vs-safe-area-top) - var(--vs-safe-area-bottom) - 3.5rem);
-		max-height: calc(100dvh - var(--vs-safe-area-top) - var(--vs-safe-area-bottom) - 3.5rem);
+		max-height: calc(
+			100vh - var(--vs-safe-area-top) - var(--vs-safe-area-bottom) - 3.5rem
+		);
+		max-height: calc(
+			100dvh - var(--vs-safe-area-top) - var(--vs-safe-area-bottom) - 3.5rem
+		);
 	}
 	.vs-modal-dialog .modal-content {
-		max-height: calc(100vh - var(--vs-safe-area-top) - var(--vs-safe-area-bottom) - 3.5rem);
-		max-height: calc(100dvh - var(--vs-safe-area-top) - var(--vs-safe-area-bottom) - 3.5rem);
+		max-height: calc(
+			100vh - var(--vs-safe-area-top) - var(--vs-safe-area-bottom) - 3.5rem
+		);
+		max-height: calc(
+			100dvh - var(--vs-safe-area-top) - var(--vs-safe-area-bottom) - 3.5rem
+		);
 	}
 	/* Expand small modals to standard width on desktop */
 	.vs-modal-dialog.modal-sm {
@@ -718,7 +940,9 @@ body.vs-modal-open {
 		backdrop-filter: blur(24px);
 		-webkit-backdrop-filter: blur(24px);
 	}
-	.directory-list { max-height: 400px; }
+	.directory-list {
+		max-height: 400px;
+	}
 
 	.main-content:has(.jobs-inbox-layout) {
 		padding: 0;
@@ -741,7 +965,9 @@ body.vs-modal-open {
 
 /* Landscape Mobile */
 @media (max-height: 500px) and (orientation: landscape) {
-	:root { --vs-header-height: 44px; }
+	:root {
+		--vs-header-height: 44px;
+	}
 	.vs-modal-dialog .modal-body {
 		max-height: calc(100vh - 120px);
 		max-height: calc(100dvh - 120px);
@@ -756,7 +982,9 @@ body.vs-modal-open {
 /* ============================================
    15. PWA STANDALONE MODE
 ============================================ */
-.main-content { overscroll-behavior-x: none; }
+.main-content {
+	overscroll-behavior-x: none;
+}
 
 .login-layout {
 	padding-top: var(--vs-safe-area-top);
@@ -778,15 +1006,24 @@ body.vs-modal-open {
 }
 
 .login-content {
-	max-height: calc(100vh - var(--vs-safe-area-top) - var(--vs-safe-area-bottom));
+	max-height: calc(
+		100vh - var(--vs-safe-area-top) - var(--vs-safe-area-bottom)
+	);
 	overflow-y: auto;
 }
 
-.jobs-mobile-filters .btn-group .btn { flex: 1; }
+.jobs-mobile-filters .btn-group .btn {
+	flex: 1;
+}
 
 @media all and (display-mode: standalone) {
-	html { background: var(--bs-body-bg, #1a1d21); }
-	.app-header, .app-sidebar, .nav-item, .btn {
+	html {
+		background: var(--bs-body-bg, #1a1d21);
+	}
+	.app-header,
+	.app-sidebar,
+	.nav-item,
+	.btn {
 		-webkit-user-select: none;
 		user-select: none;
 	}
@@ -800,7 +1037,9 @@ body.vs-modal-open {
 		background: var(--bs-secondary-bg);
 		z-index: 1001;
 	}
-	body { overscroll-behavior-y: contain; }
+	body {
+		overscroll-behavior-y: contain;
+	}
 }
 
 @media (max-width: 575.98px) {
@@ -826,7 +1065,9 @@ body.vs-modal-open {
 	border-radius: 1rem;
 	box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
 	opacity: 0;
-	transition: transform 0.3s ease-out, opacity 0.3s ease-out;
+	transition:
+		transform 0.3s ease-out,
+		opacity 0.3s ease-out;
 	overflow: hidden;
 }
 .reconnect-toast-show {
@@ -839,7 +1080,9 @@ body.vs-modal-open {
 	gap: 0.75rem;
 	padding: 0.75rem 1rem;
 }
-.reconnect-toast-icon { flex-shrink: 0; }
+.reconnect-toast-icon {
+	flex-shrink: 0;
+}
 .reconnect-toast-spinner {
 	width: 20px;
 	height: 20px;
@@ -869,8 +1112,12 @@ body.vs-modal-open {
 	transform-origin: left;
 }
 @keyframes reconnect-progress {
-	from { transform: scaleX(1); }
-	to { transform: scaleX(0); }
+	from {
+		transform: scaleX(1);
+	}
+	to {
+		transform: scaleX(0);
+	}
 }
 
 #components-reconnect-modal {
@@ -886,7 +1133,9 @@ body.vs-modal-open {
 	padding: var(--vs-safe-area-top) var(--vs-safe-area-right)
 		var(--vs-safe-area-bottom) var(--vs-safe-area-left);
 }
-#components-reconnect-modal.components-reconnect-show { display: flex; }
+#components-reconnect-modal.components-reconnect-show {
+	display: flex;
+}
 .reconnect-content {
 	text-align: center;
 	padding: 2rem;
@@ -910,5 +1159,9 @@ body.vs-modal-open {
 	font-size: 1rem;
 	margin-bottom: 0.5rem;
 }
-.reconnect-submessage { margin-bottom: 1rem; }
-#reconnect-reload-btn { min-width: 140px; }
+.reconnect-submessage {
+	margin-bottom: 1rem;
+}
+#reconnect-reload-btn {
+	min-width: 140px;
+}
