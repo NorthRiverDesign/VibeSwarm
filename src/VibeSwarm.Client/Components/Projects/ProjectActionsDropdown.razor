@@ -62,6 +62,15 @@
 		{
 			<li><hr class="dropdown-divider"></li>
 			<li><h6 class="dropdown-header">Git</h6></li>
+			@if (!string.IsNullOrEmpty(GitHubRepository))
+			{
+				<li>
+					<a class="dropdown-item" href="https://github.com/@GitHubRepository" target="_blank">
+						<i class="bi bi-github me-2"></i>View Repository
+						<div class="small text-body-secondary font-monospace text-truncate" style="max-width: 200px;">@GitHubRepository</div>
+					</a>
+				</li>
+			}
 			@if (ShowSyncAction)
 			{
 				<li>
@@ -172,6 +181,9 @@
 	public EventCallback OnStartIdeaQueue { get; set; }
 
 	[Parameter]
+	public string? GitHubRepository { get; set; }
+
+	[Parameter]
 	public bool ShowSyncAction { get; set; }
 
 	[Parameter]
@@ -225,7 +237,7 @@
 	[Parameter]
 	public EventCallback OnDelete { get; set; }
 
-	private bool HasGitActions => ShowSyncAction || ShowCreateBranchAction || ShowMergeBranchAction || ShowRefreshAction || ShowPruneBranchesAction;
+	private bool HasGitActions => !string.IsNullOrEmpty(GitHubRepository) || ShowSyncAction || ShowCreateBranchAction || ShowMergeBranchAction || ShowRefreshAction || ShowPruneBranchesAction;
 
 	private bool AreGitActionsBusy => IsSyncing || IsRefreshing || IsPruning || IsMerging;
 }

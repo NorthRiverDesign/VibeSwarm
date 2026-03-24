@@ -5,7 +5,7 @@
 			Showing @StartItem-@EndItem of @TotalCount
 		</div>
 		<div class="d-flex align-items-center gap-2">
-			<span class="small text-body-secondary">Page @PageNumber of @TotalPages</span>
+			<span class="small text-body-secondary d-none d-sm-inline">Page @PageNumber of @TotalPages</span>
 			<div class="btn-group btn-group-sm" role="group" aria-label="Pagination">
 				<button type="button" class="btn btn-secondary" @onclick="OnPreviousPage"
 						disabled="@(!HasPreviousPage || IsLoading)">
