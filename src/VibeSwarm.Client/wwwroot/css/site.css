@@ -500,6 +500,7 @@ body.vs-modal-open {
 ============================================ */
 .toast-container {
 	z-index: 1100;
+	padding-top: calc(1rem + var(--vs-safe-area-top)) !important;
 	padding-bottom: calc(1rem + var(--vs-safe-area-bottom)) !important;
 	padding-right: calc(1rem + var(--vs-safe-area-right)) !important;
 }
