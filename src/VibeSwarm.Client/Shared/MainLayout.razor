@@ -29,15 +29,15 @@
     </header>
 
     @* Sidebar Navigation *@
-    <nav id="app-sidebar" class="app-sidebar position-fixed d-flex flex-column overflow-y-auto @(_mobileMenuOpen ? "open" : "")">
-        <div class="p-4 border-bottom d-none d-lg-flex">
+    <nav id="app-sidebar" class="app-sidebar position-fixed d-flex flex-column @(_mobileMenuOpen ? "open" : "")">
+        <div class="p-4 border-bottom d-none d-lg-flex flex-shrink-0">
             <a class="app-brand d-flex align-items-center gap-2 text-decoration-none fw-semibold" href="/">
                 <img src="img/logo_icon.png" alt="VibeSwarm" class="object-fit-contain" style="width: 24px; height: 24px;" />
                 <span class="brand-text">VibeSwarm</span>
             </a>
         </div>
 
-        <div class="flex-grow-1 p-3 d-flex flex-column gap-1">
+        <div class="flex-grow-1 p-3 d-flex flex-column gap-1 overflow-y-auto" style="min-height: 0;">
             <button class="nav-item d-flex align-items-center gap-3 rounded fw-medium text-decoration-none border-0 bg-transparent w-100 text-start cursor-pointer search-nav-btn" @onclick="OpenSearch" title="Search (Ctrl+K)">
                 <i class="bi bi-search"></i>
                 <span class="flex-grow-1">Search</span>
