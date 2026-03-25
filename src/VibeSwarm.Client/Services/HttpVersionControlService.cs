@@ -30,21 +30,13 @@ public class HttpVersionControlService : IVersionControlService
         try
         {
             var url = $"/api/git/is-repo?path={Enc(workingDirectory)}";
-            Console.WriteLine($"[Git] IsGitRepositoryAsync: Calling {url}");
             var response = await _http.GetAsync(url, ct);
-            Console.WriteLine($"[Git] IsGitRepositoryAsync: Status={response.StatusCode}");
-            if (!response.IsSuccessStatusCode)
-            {
-                Console.WriteLine($"[Git] IsGitRepositoryAsync: Failed with {response.StatusCode}");
-                return false;
-            }
+            if (!response.IsSuccessStatusCode) return false;
             var content = await response.Content.ReadAsStringAsync(ct);
-            Console.WriteLine($"[Git] IsGitRepositoryAsync: Response content='{content}'");
             return bool.TryParse(content, out var result) && result;
         }
-        catch (Exception ex)
+        catch
         {
-            Console.WriteLine($"[Git] IsGitRepositoryAsync exception: {ex.Message}");
             return false;
         }
     }

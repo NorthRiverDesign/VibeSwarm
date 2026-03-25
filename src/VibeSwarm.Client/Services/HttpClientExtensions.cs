@@ -35,7 +35,6 @@ public static class HttpClientExtensions
 
 			if (!response.IsSuccessStatusCode)
 			{
-				await LogApiError(response, requestUri);
 				return defaultValue;
 			}
 
@@ -50,20 +49,17 @@ public static class HttpClientExtensions
 			if (IsErrorResponse(content))
 			{
 				var errorResponse = JsonSerializer.Deserialize<ApiErrorResponse>(content, JsonOptions);
-				Console.WriteLine($"[API Error] {requestUri}: {errorResponse?.Message} (Code: {errorResponse?.ErrorCode})");
 				return defaultValue;
 			}
 
 			return JsonSerializer.Deserialize<T>(content, JsonOptions);
 		}
-		catch (JsonException ex)
+		catch (JsonException)
 		{
-			Console.WriteLine($"[JSON Parse Error] {requestUri}: {ex.Message}");
 			return defaultValue;
 		}
-		catch (HttpRequestException ex)
+		catch (HttpRequestException)
 		{
-			Console.WriteLine($"[HTTP Error] {requestUri}: {ex.Message}");
 			return defaultValue;
 		}
 		catch (TaskCanceledException)
@@ -71,9 +67,8 @@ public static class HttpClientExtensions
 			// Request was cancelled, don't log as error
 			return defaultValue;
 		}
-		catch (Exception ex)
+		catch (Exception)
 		{
-			Console.WriteLine($"[Unexpected Error] {requestUri}: {ex.Message}");
 			return defaultValue;
 		}
 	}
@@ -225,20 +220,6 @@ public static class HttpClientExtensions
 		}
 	}
 
-	private static async Task LogApiError(HttpResponseMessage response, string requestUri)
-	{
-		var content = await response.Content.ReadAsStringAsync();
-		var errorResponse = TryParseErrorResponse(content);
-
-		if (errorResponse != null)
-		{
-			Console.WriteLine($"[API Error] {requestUri}: {errorResponse.Message} (Code: {errorResponse.ErrorCode}, Status: {response.StatusCode})");
-		}
-		else
-		{
-			Console.WriteLine($"[API Error] {requestUri}: Status {response.StatusCode}");
-		}
-	}
 }
 
 /// <summary>

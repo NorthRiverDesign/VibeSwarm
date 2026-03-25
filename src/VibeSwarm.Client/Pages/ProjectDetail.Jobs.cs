@@ -283,9 +283,8 @@ public partial class ProjectDetail
             ProcessingIdeaIds.RemoveWhere(id => ideaIdsWithJobs.Contains(id) || Ideas.All(i => i.Id != id));
             IsIdeasProcessingActive = await IdeaService.IsProcessingActiveAsync(ProjectId);
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            Console.WriteLine($"Failed to load ideas: {ex.Message}");
             Ideas = new List<Idea>();
             IdeasTotalCount = 0;
             IdeasUnprocessedCount = 0;

@@ -205,9 +205,8 @@ else
 			await SkillService.UpdateAsync(skill);
 			await LoadSkills();
 		}
-		catch (Exception ex)
+		catch (Exception)
 		{
-			Console.WriteLine($"Error updating skill: {ex.Message}");
 		}
 	}
 }

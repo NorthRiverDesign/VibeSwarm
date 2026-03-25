@@ -23,16 +23,13 @@ public partial class ProjectDetail
         try
         {
             IsGitRepository = await VersionControlService.IsGitRepositoryAsync(Project.WorkingPath);
-            Console.WriteLine($"IsGitRepositoryAsync returned: {IsGitRepository} for path: {Project.WorkingPath}");
 
             if (IsGitRepository)
             {
                 CurrentBranch = await VersionControlService.GetCurrentBranchAsync(Project.WorkingPath);
                 CurrentCommitHash = await VersionControlService.GetCurrentCommitHashAsync(Project.WorkingPath);
-                Console.WriteLine($"Git info: Branch={CurrentBranch}, Commit={CurrentCommitHash}");
                 NewJob.Branch = CurrentBranch;
                 await LoadBranches();
-                Console.WriteLine($"Loaded {Branches.Count} branches");
                 await RefreshUncommittedChangesStatus();
             }
             else
@@ -40,9 +37,8 @@ public partial class ProjectDetail
                 _workingTreeStatus = new GitWorkingTreeStatus();
             }
         }
-        catch (Exception ex)
+        catch
         {
-            Console.WriteLine($"LoadGitInfo error: {ex.Message}");
             IsGitRepository = false;
             _workingTreeStatus = new GitWorkingTreeStatus();
         }

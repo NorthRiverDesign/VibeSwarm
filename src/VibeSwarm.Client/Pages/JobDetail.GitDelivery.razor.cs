@@ -234,10 +234,9 @@ public partial class JobDetail : ComponentBase
                 }
             }
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             _summaryError = "Failed to refresh summary. Please try again or write your own commit message.";
-            Console.WriteLine($"Error refreshing summary: {ex.Message}");
         }
         finally
         {
@@ -273,7 +272,6 @@ public partial class JobDetail : ComponentBase
         catch (Exception ex)
         {
             NotificationService.ShowError($"Error checking git changes: {ex.Message}");
-            Console.WriteLine($"Error checking git diff: {ex.Message}");
         }
         finally
         {
@@ -314,9 +312,8 @@ public partial class JobDetail : ComponentBase
             _workingCopyMatches = !missing.Any() && !extra.Any() && !modified.Any();
             _workingCopyComparisonDone = true;
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            Console.WriteLine($"Error comparing working copy: {ex.Message}");
             _workingCopyComparisonDone = true;
             _workingCopyMatches = false;
         }

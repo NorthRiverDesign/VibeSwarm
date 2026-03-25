@@ -545,9 +545,8 @@
             await ProviderService.SetEnabledAsync(provider.Id, !provider.IsEnabled);
             await LoadPageData();
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            Console.WriteLine($"Error toggling provider: {ex.Message}");
         }
     }
 
@@ -558,9 +557,8 @@
             await ProviderService.SetDefaultAsync(provider.Id);
             await LoadPageData();
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            Console.WriteLine($"Error setting default provider: {ex.Message}");
         }
     }
 
@@ -606,12 +604,10 @@
         catch (TimeoutException ex)
         {
             RefreshModelsErrors[provider.Id] = ex.Message;
-            Console.WriteLine($"Timeout refreshing models: {ex.Message}");
         }
         catch (Exception ex)
         {
             RefreshModelsErrors[provider.Id] = $"Error refreshing models: {ex.Message}";
-            Console.WriteLine($"Error refreshing models: {ex.Message}");
         }
         finally
         {
@@ -744,9 +740,8 @@
             // Create a separate copy for the modal to prevent shared reference issues
             DefaultModelList = modelsList.ToList();
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            Console.WriteLine($"Error loading models: {ex.Message}");
             // Fall back to cached models if refresh fails
             if (ProviderModels.TryGetValue(provider.Id, out var cachedModels))
             {
@@ -787,9 +782,8 @@
                 }
             }
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            Console.WriteLine($"Error setting default model: {ex.Message}");
         }
         finally
         {

@@ -681,9 +681,8 @@ else
         {
             await LoadGitInfo();
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            Console.WriteLine($"Git info load failed (non-critical): {ex.Message}");
             _isLoadingGitInfo = false;
             IsGitRepository = false;
         }
@@ -712,11 +711,9 @@ else
         }
         catch (OperationCanceledException)
         {
-            Console.WriteLine("SignalR connection timed out - falling back to polling");
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            Console.WriteLine($"SignalR initialization failed (non-critical): {ex.Message}");
         }
     }
 
@@ -734,15 +731,11 @@ TimeSpan.FromSeconds(10) })
         // Handle connection state changes
         _hubConnection.Closed += async (error) =>
         {
-
-            Console.WriteLine($"SignalR connection closed: {error?.Message ?? "No error"}");
             await Task.CompletedTask;
         };
 
         _hubConnection.Reconnected += async (connectionId) =>
         {
-
-            Console.WriteLine($"SignalR reconnected: {connectionId}");
             // Re-subscribe after reconnection
             await SubscribeToSignalRGroups();
         };
@@ -750,14 +743,10 @@ TimeSpan.FromSeconds(10) })
         try
         {
             await _hubConnection.StartAsync(cancellationToken);
-
-            Console.WriteLine("SignalR connected successfully");
             await SubscribeToSignalRGroups();
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            Console.WriteLine($"SignalR connection failed: {ex.Message}");
-
         }
     }
 
@@ -962,9 +951,8 @@ TimeSpan.FromSeconds(10) })
             await _hubConnection.InvokeAsync("SubscribeToProject", ProjectId.ToString());
             await _hubConnection.InvokeAsync("SubscribeToJobList");
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            Console.WriteLine($"SignalR subscription failed: {ex.Message}");
         }
     }
 
@@ -972,24 +960,25 @@ TimeSpan.FromSeconds(10) })
     {
         _refreshTimer = new System.Threading.Timer(async _ =>
         {
-            if (HasActiveJobs || IsIdeasProcessingActive || (_activeTab == "changes" && IsGitRepository))
+            if (HasActiveJobs || IsIdeasProcessingActive)
             {
                 await InvokeAsync(async () =>
-        {
-            await RefreshJobs();
-            await LoadIdeas();
-            if (IsGitRepository)
-            {
-                await RefreshUncommittedChangesStatus();
-                if (_activeTab == "changes")
                 {
+                    await RefreshJobs();
+                    await LoadIdeas();
+                    StateHasChanged();
+                });
+            }
+            else if (_activeTab == "changes" && IsGitRepository)
+            {
+                await InvokeAsync(async () =>
+                {
+                    await RefreshUncommittedChangesStatus();
                     await LoadChangesTabData();
-                }
+                    StateHasChanged();
+                });
             }
-            StateHasChanged();
-        });
-            }
-        }, null, TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(3));
+        }, null, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
     }
 
     private async Task LoadData()

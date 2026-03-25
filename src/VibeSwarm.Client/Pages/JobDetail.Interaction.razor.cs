@@ -59,10 +59,9 @@ public partial class JobDetail : ComponentBase
                 _interactionError = "Connection to server not available. Please refresh the page.";
             }
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             _interactionError = "Failed to send response. Please try again.";
-            Console.WriteLine($"Error submitting interaction response: {ex.Message}");
         }
         finally
         {

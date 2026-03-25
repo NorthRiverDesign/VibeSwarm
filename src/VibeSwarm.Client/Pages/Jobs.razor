@@ -302,11 +302,9 @@
         }
         catch (OperationCanceledException)
         {
-            Console.WriteLine("SignalR connection timed out - falling back to polling");
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            Console.WriteLine($"SignalR initialization failed (non-critical): {ex.Message}");
         }
     }
 
@@ -324,12 +322,11 @@
                     });
                 }
                 catch (ObjectDisposedException) { }
-                catch (Exception ex)
+                catch (Exception)
                 {
-                    Console.WriteLine($"[Jobs] Auto-refresh error: {ex.Message}");
                 }
             }
-        }, null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
+        }, null, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
     }
 
     private bool HasActiveJobs()
@@ -347,9 +344,8 @@
             await LoadJobsAsync();
             StateHasChanged();
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            Console.WriteLine($"[Jobs] Refresh error: {ex.Message}");
         }
         finally
         {
@@ -414,24 +410,19 @@ TimeSpan.FromSeconds(10) })
             // Handle reconnection - re-subscribe to groups
             _hubConnection.Reconnected += async (connectionId) =>
             {
-                Console.WriteLine($"SignalR reconnected: {connectionId}");
                 try { await _hubConnection.InvokeAsync("SubscribeToJobList"); } catch { }
             };
 
             await _hubConnection.StartAsync(cancellationToken);
             await _hubConnection.InvokeAsync("SubscribeToJobList");
-            Console.WriteLine("SignalR connected successfully");
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            Console.WriteLine($"Error initializing SignalR: {ex.Message}");
         }
     }
 
     private async Task OnJobStatusChanged(string jobId, string status)
     {
-        Console.WriteLine($"[Jobs] OnJobStatusChanged: {jobId} -> {status}");
-
         if (Guid.TryParse(jobId, out var id) && Enum.TryParse<JobStatus>(status, out var newStatus))
         {
             var job = _jobsResult.Items.FirstOrDefault(j => j.Id == id);
@@ -475,7 +466,6 @@ TimeSpan.FromSeconds(10) })
 
     private async Task OnJobCreated(string jobId, string projectId)
     {
-        Console.WriteLine($"[Jobs] OnJobCreated: {jobId}");
         if (!_isRefreshing)
         {
             await InvokeAsync(async () => await RefreshJobsSafely());
@@ -484,7 +474,6 @@ TimeSpan.FromSeconds(10) })
 
     public async Task OnJobDeleted(string jobId, string projectId)
     {
-        Console.WriteLine($"[Jobs] OnJobDeleted: {jobId}");
         if (!_isRefreshing)
         {
             await InvokeAsync(async () => await RefreshJobsSafely());
@@ -493,8 +482,6 @@ TimeSpan.FromSeconds(10) })
 
     public async Task OnJobCompleted(string jobId, bool success, string? errorMessage)
     {
-        Console.WriteLine($"[Jobs] OnJobCompleted: {jobId}, success: {success}");
-
         if (Guid.TryParse(jobId, out var id))
         {
             var job = _jobsResult.Items.FirstOrDefault(j => j.Id == id);
@@ -518,7 +505,6 @@ TimeSpan.FromSeconds(10) })
 
     public async Task OnJobListChanged()
     {
-        Console.WriteLine($"[Jobs] OnJobListChanged");
         if (!_isRefreshing)
         {
             await InvokeAsync(async () => await RefreshJobsSafely());

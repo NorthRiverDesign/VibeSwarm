@@ -158,7 +158,6 @@ public class HttpIdeaService : IIdeaService
                 };
             }
 
-            Console.WriteLine($"[Suggest] Stage={result.Stage} Success={result.Success} Message={result.Message}");
             return result;
         }
         catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested)
@@ -170,10 +169,9 @@ public class HttpIdeaService : IIdeaService
                 Message = "The request timed out after 5 minutes. Try a smaller or faster model."
             };
         }
-        catch (OperationCanceledException ex)
+        catch (OperationCanceledException)
         {
             // Cancelled by the caller (e.g. user navigated away) — not an error worth surfacing.
-            Console.WriteLine($"[Suggest] Request cancelled by caller: {ex.Message}");
             throw;
         }
         catch (Exception ex)

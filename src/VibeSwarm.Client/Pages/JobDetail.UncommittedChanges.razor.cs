@@ -53,7 +53,6 @@ public partial class JobDetail : ComponentBase
         catch (Exception ex)
         {
             _uncommittedChangesError = $"Failed to check for uncommitted changes: {ex.Message}";
-            Console.WriteLine($"Error checking uncommitted changes: {ex.Message}");
         }
         finally
         {
@@ -93,7 +92,6 @@ public partial class JobDetail : ComponentBase
         catch (Exception ex)
         {
             _uncommittedChangesError = $"Failed to commit changes: {ex.Message}";
-            Console.WriteLine($"Error committing uncommitted changes: {ex.Message}");
         }
         finally
         {
@@ -130,7 +128,6 @@ public partial class JobDetail : ComponentBase
         catch (Exception ex)
         {
             _uncommittedChangesError = $"Failed to discard changes: {ex.Message}";
-            Console.WriteLine($"Error discarding uncommitted changes: {ex.Message}");
         }
         finally
         {

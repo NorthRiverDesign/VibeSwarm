@@ -378,7 +378,6 @@ TimeSpan.FromSeconds(10) })
 
             _globalHubConnection.Reconnected += async (connectionId) =>
             {
-                Console.WriteLine($"[MainLayout] Global hub reconnected: {connectionId}");
                 try { await _globalHubConnection.InvokeAsync("SubscribeToGlobalEvents"); } catch { }
             };
 
@@ -386,16 +385,13 @@ TimeSpan.FromSeconds(10) })
             await _globalHubConnection.StartAsync(timeoutCts.Token);
             await _globalHubConnection.InvokeAsync("SubscribeToGlobalEvents");
             _hubInitialized = true;
-            Console.WriteLine("[MainLayout] Global hub connected successfully");
         }
         catch (OperationCanceledException)
         {
-            Console.WriteLine("[MainLayout] Global hub connection timed out - non-critical");
             _hubInitialized = true;
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            Console.WriteLine($"[MainLayout] Error initializing global hub: {ex.Message}");
             _hubInitialized = true;
         }
     }
@@ -403,13 +399,11 @@ TimeSpan.FromSeconds(10) })
     // Global SignalR event handlers for cross-page notifications
     private void OnConnectionStateChanged(string state)
     {
-        Console.WriteLine($"[MainLayout] Connection state: {state}");
     }
 
-    private async Task OnGlobalJobStatusChanged(string jobId, string status)
+    private Task OnGlobalJobStatusChanged(string jobId, string status)
     {
-        Console.WriteLine($"[MainLayout] Job {jobId} status changed to {status}");
-        await Task.CompletedTask;
+        return Task.CompletedTask;
     }
 
     private Task OnGlobalJobActivityUpdated(string jobId, string activity, DateTime timestamp)
@@ -419,13 +413,11 @@ TimeSpan.FromSeconds(10) })
 
     private Task OnGlobalJobCreated(string jobId, string projectId)
     {
-        Console.WriteLine($"[MainLayout] New job created: {jobId}");
         return Task.CompletedTask;
     }
 
     private Task OnGlobalJobDeleted(string jobId, string projectId)
     {
-        Console.WriteLine($"[MainLayout] Job deleted: {jobId}");
         return Task.CompletedTask;
     }
 
