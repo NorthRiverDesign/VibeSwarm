@@ -566,8 +566,8 @@ body.vs-modal-open {
 
 .vs-modal-backdrop {
 	background: rgba(0, 0, 0, 0.75) !important;
-	backdrop-filter: blur(16px);
-	-webkit-backdrop-filter: blur(16px);
+	backdrop-filter: blur(32px);
+	-webkit-backdrop-filter: blur(32px);
 	z-index: 1050 !important;
 }
 
@@ -937,8 +937,8 @@ body.vs-modal-open {
 	/* Frosted-glass backdrop on desktop — lower opacity lets the blur be visible */
 	.vs-modal-backdrop {
 		background: rgba(0, 0, 0, 0.5) !important;
-		backdrop-filter: blur(24px);
-		-webkit-backdrop-filter: blur(24px);
+		backdrop-filter: blur(48px);
+		-webkit-backdrop-filter: blur(48px);
 	}
 	.directory-list {
 		max-height: 400px;
