@@ -1,8 +1,11 @@
 @page "/scheduler"
 @attribute [Authorize]
 @inject IJobScheduleService JobScheduleService
+@inject IJobService JobService
 @inject AppTimeZoneService AppTimeZoneService
 @inject NotificationService NotificationService
+@inject NavigationManager NavigationManager
+@using VibeSwarm.Shared.Models
 @using VibeSwarm.Shared.Utilities
 
 <PageHeader Title="Scheduler" Subtitle="@GetSubtitle()">
@@ -68,6 +71,24 @@ else
 							<i class="bi bi-exclamation-triangle me-1"></i>@TruncateText(schedule.LastError, 180)
 						</div>
 					}
+				@{
+					var activeJob = GetActiveJobForSchedule(schedule.Id);
+				}
+				@if (activeJob != null)
+				{
+					<div class="d-flex align-items-center gap-2 mt-2 px-2 py-1 bg-info-subtle rounded small cursor-pointer"
+						 @onclick="() => NavigateToJob(activeJob.Id)" @onclick:stopPropagation="true">
+						<div class="spinner-border spinner-border-sm text-info flex-shrink-0" role="status" style="width: 14px; height: 14px; border-width: 2px;">
+							<span class="visually-hidden">Running...</span>
+						</div>
+						<span class="text-info-emphasis fw-medium">Job running</span>
+						@if (!string.IsNullOrEmpty(activeJob.CurrentActivity))
+						{
+							<span class="text-body-secondary fst-italic text-truncate" style="max-width: min(250px, 40vw);">@activeJob.CurrentActivity</span>
+						}
+						<i class="bi bi-arrow-right-short text-info-emphasis ms-auto flex-shrink-0"></i>
+					</div>
+				}
 				</div>
 				<div class="d-flex flex-wrap gap-2 flex-shrink-0 align-items-center">
 					<ActionButton Icon="@(schedule.IsEnabled ? "pause-fill" : "play-fill")"
@@ -96,6 +117,7 @@ else
 
 @code {
 	private List<JobSchedule> _schedules = [];
+	private List<JobSummary> _activeJobs = [];
 	private bool _isLoading = true;
 	private bool _showScheduleModal;
 	private JobSchedule? _editingSchedule;
@@ -114,7 +136,11 @@ else
 		_isLoading = true;
 		try
 		{
-			_schedules = (await JobScheduleService.GetAllAsync()).ToList();
+			var schedulesTask = JobScheduleService.GetAllAsync();
+			var activeJobsTask = JobService.GetActiveJobsAsync();
+			await Task.WhenAll(schedulesTask, activeJobsTask);
+			_schedules = schedulesTask.Result.ToList();
+			_activeJobs = activeJobsTask.Result.Where(j => j.JobScheduleId.HasValue).ToList();
 		}
 		catch (Exception ex)
 		{
@@ -235,6 +261,12 @@ else
 
 	private string GetSubtitle()
 		=> $"Create recurring prompts that automatically create jobs. Times run in {AppTimeZoneService.CurrentTimeZoneId}.";
+
+	private JobSummary? GetActiveJobForSchedule(Guid scheduleId)
+		=> _activeJobs.FirstOrDefault(j => j.JobScheduleId == scheduleId);
+
+	private void NavigateToJob(Guid jobId)
+		=> NavigationManager.NavigateTo($"/jobs/view/{jobId}");
 
 	private static string TruncateText(string text, int maxLength)
 	{

@@ -69,6 +69,7 @@ public partial class JobService : IJobService
             PullRequestNumber = j.PullRequestNumber,
             PullRequestUrl = j.PullRequestUrl,
             IsScheduled = j.IsScheduled,
+            JobScheduleId = j.JobScheduleId,
         });
     }
 

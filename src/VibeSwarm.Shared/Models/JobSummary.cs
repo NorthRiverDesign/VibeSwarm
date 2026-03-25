@@ -39,6 +39,7 @@ public class JobSummary
 	public int? PullRequestNumber { get; set; }
 	public string? PullRequestUrl { get; set; }
 	public bool IsScheduled { get; set; }
+	public Guid? JobScheduleId { get; set; }
 
 	public TimeSpan? ExecutionDuration
 	{
