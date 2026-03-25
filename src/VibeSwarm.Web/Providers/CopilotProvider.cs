@@ -344,18 +344,26 @@ public class CopilotProvider : CliProviderBase
 
         // Build arguments for non-interactive execution
         // Reference: https://github.com/github/copilot-cli/blob/main/changelog.md
-        var args = new List<string>
-        {
-            "-p",
-            effectivePrompt,
-            "--yolo",       // Auto-approve all tool permissions (v0.0.381+)
-            "--silent",     // Suppress stats output for cleaner capture (v0.0.365+)
-            "--autopilot"   // Autonomous task completion mode (v0.0.400+, GA v0.0.411+)
-        };
+		var args = new List<string>
+		{
+			"-p",
+			effectivePrompt,
+			"--yolo",       // Auto-approve all tool permissions (v0.0.381+)
+			"--silent",     // Suppress stats output for cleaner capture (v0.0.365+)
+			"--autopilot"   // Autonomous task completion mode (v0.0.400+, GA v0.0.411+)
+		};
 
-        // Session resume support (v0.0.372+)
-        if (!string.IsNullOrEmpty(sessionId))
-        {
+		// Structured JSON output in prompt mode (v0.0.422+).
+		// Skip on older or unknown versions to avoid passing an unsupported flag.
+		if (_cachedCliVersion != null && _cachedCliVersion >= new Version(0, 0, 422))
+		{
+			args.Add("--output-format");
+			args.Add("json");
+		}
+
+		// Session resume support (v0.0.372+)
+		if (!string.IsNullOrEmpty(sessionId))
+		{
             args.Add("--resume");
             args.Add(sessionId);
         }
