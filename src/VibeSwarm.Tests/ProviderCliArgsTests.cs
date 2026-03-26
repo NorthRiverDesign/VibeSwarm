@@ -596,6 +596,7 @@ public sealed class ProviderCliArgsTests
     public void OpenCode_WithTimeout_AddsTimeoutFlag()
     {
         var provider = new OpenCodeProvider(CreateConfig(ProviderType.OpenCode));
+        provider.CachedCliVersion = new Version(1, 2, 0);
         provider.ApplyOptions(new ExecutionOptions { TimeoutSeconds = 300 });
 
         var args = provider.BuildRunCommandArgs("test", null);
@@ -606,9 +607,21 @@ public sealed class ProviderCliArgsTests
     }
 
     [Fact]
+    public void OpenCode_WithTimeout_AndUnknownVersion_OmitsTimeoutFlag()
+    {
+        var provider = new OpenCodeProvider(CreateConfig(ProviderType.OpenCode));
+        provider.ApplyOptions(new ExecutionOptions { TimeoutSeconds = 300 });
+
+        var args = provider.BuildRunCommandArgs("test", null);
+
+        Assert.DoesNotContain("--timeout", args);
+    }
+
+    [Fact]
     public void OpenCode_WithReasoningEffort_AddsReasoningFlag()
     {
         var provider = new OpenCodeProvider(CreateConfig(ProviderType.OpenCode));
+        provider.CachedCliVersion = new Version(1, 2, 0);
         provider.ApplyOptions(new ExecutionOptions { ReasoningEffort = "xhigh" });
 
         var args = provider.BuildRunCommandArgs("test", null);
@@ -616,6 +629,19 @@ public sealed class ProviderCliArgsTests
         var idx = args.IndexOf("--reasoning");
         Assert.True(idx >= 0);
         Assert.Equal("xhigh", args[idx + 1]);
+        Assert.DoesNotContain("--effort", args);
+        Assert.DoesNotContain("--reasoning-effort", args);
+    }
+
+    [Fact]
+    public void OpenCode_WithReasoningEffort_AndUnknownVersion_OmitsReasoningFlag()
+    {
+        var provider = new OpenCodeProvider(CreateConfig(ProviderType.OpenCode));
+        provider.ApplyOptions(new ExecutionOptions { ReasoningEffort = "xhigh" });
+
+        var args = provider.BuildRunCommandArgs("test", null);
+
+        Assert.DoesNotContain("--reasoning", args);
         Assert.DoesNotContain("--effort", args);
         Assert.DoesNotContain("--reasoning-effort", args);
     }
@@ -646,6 +672,64 @@ public sealed class ProviderCliArgsTests
         Assert.Equal("/tmp/config.json", args[idx + 1]);
         Assert.DoesNotContain("--mcp-config", args);
         Assert.DoesNotContain("--additional-mcp-config", args);
+    }
+
+    [Fact]
+    public void OpenCode_WithAdditionalDirectory_AndSupportedVersion_AddsDirFlag()
+    {
+        var provider = new OpenCodeProvider(CreateConfig(ProviderType.OpenCode));
+        provider.CachedCliVersion = new Version(1, 2, 0);
+        provider.ApplyOptions(new ExecutionOptions { AdditionalDirectories = ["/tmp/worktree"] });
+
+        var args = provider.BuildRunCommandArgs("test", null);
+
+        var idx = args.IndexOf("--dir");
+        Assert.True(idx >= 0);
+        Assert.Equal("/tmp/worktree", args[idx + 1]);
+    }
+
+    [Fact]
+    public void OpenCode_WithAdditionalDirectory_AndUnknownVersion_OmitsDirFlag()
+    {
+        var provider = new OpenCodeProvider(CreateConfig(ProviderType.OpenCode));
+        provider.ApplyOptions(new ExecutionOptions { AdditionalDirectories = ["/tmp/worktree"] });
+
+        var args = provider.BuildRunCommandArgs("test", null);
+
+        Assert.DoesNotContain("--dir", args);
+    }
+
+    [Fact]
+    public void OpenCode_WithForkSession_AndSupportedVersion_AddsForkFlag()
+    {
+        var provider = new OpenCodeProvider(CreateConfig(ProviderType.OpenCode));
+        provider.CachedCliVersion = new Version(1, 2, 6);
+        provider.ApplyOptions(new ExecutionOptions { ForkSession = true });
+
+        var args = provider.BuildRunCommandArgs("test", "sess-xyz");
+
+        Assert.Contains("--fork", args);
+    }
+
+    [Fact]
+    public void OpenCode_WithForkSession_AndOldVersion_OmitsForkFlag()
+    {
+        var provider = new OpenCodeProvider(CreateConfig(ProviderType.OpenCode));
+        provider.CachedCliVersion = new Version(1, 2, 5);
+        provider.ApplyOptions(new ExecutionOptions { ForkSession = true });
+
+        var args = provider.BuildRunCommandArgs("test", "sess-xyz");
+
+        Assert.DoesNotContain("--fork", args);
+    }
+
+    [Fact]
+    public void OpenCode_BuildUpdatePlan_ForUserLocalInstall_UsesNpmMethodAndPrefix()
+    {
+        var plan = OpenCodeProvider.BuildUpdatePlan("/home/test/.local/bin/opencode", "/home/test");
+
+        Assert.Equal("upgrade --method npm", plan.Arguments);
+        Assert.Equal("/home/test/.local", plan.NpmConfigPrefix);
     }
 
     [Fact]
