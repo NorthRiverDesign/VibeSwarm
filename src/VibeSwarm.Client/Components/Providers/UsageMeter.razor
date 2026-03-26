@@ -249,7 +249,7 @@ else if (UsageSummary != null && ShowEmptyState)
 		if (diff.TotalSeconds > 0)
 			return "soon";
 
-		return resetTime.ToString("MMM d");
+		return resetTime.ToString("M/d");
 	}
 
 	private static UsageLimitWindowScope InferScope(UsageLimitType limitType) => limitType switch

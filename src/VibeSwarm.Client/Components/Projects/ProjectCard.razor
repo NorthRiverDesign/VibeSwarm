@@ -155,6 +155,6 @@
 		if (timeSpan.TotalDays < 7)
 			return $"{(int)timeSpan.TotalDays}d ago";
 
-		return dateTime.ToConfiguredTime().ToString("MMM d");
+		return dateTime.FormatDateShort();
 	}
 }

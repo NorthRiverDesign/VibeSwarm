@@ -178,8 +178,8 @@
 		return Metrics.RangeDays switch
 		{
 			1 => localTime.ToString("ha").ToLowerInvariant(),
-			90 => localTime.ToString("MMM d"),
-			_ => localTime.ToString("MMM d")
+			90 => localTime.ToString("M/d"),
+			_ => localTime.ToString("M/d")
 		};
 	}
 

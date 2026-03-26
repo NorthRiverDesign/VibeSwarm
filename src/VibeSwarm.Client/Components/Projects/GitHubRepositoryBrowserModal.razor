@@ -75,7 +75,7 @@
 									@if (repository.UpdatedAt.HasValue)
 									{
 										<span class="@(isSelected ? "text-white-50" : "text-body-secondary")">
-											Updated @repository.UpdatedAt.Value.LocalDateTime.ToString("MMM d, yyyy")
+											Updated @repository.UpdatedAt.Value.UtcDateTime.FormatDate()
 										</span>
 									}
 								</div>
