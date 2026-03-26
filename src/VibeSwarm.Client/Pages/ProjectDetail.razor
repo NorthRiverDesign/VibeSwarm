@@ -474,8 +474,14 @@ else
                       TargetBranches="@MergeTargetBranches" SelectedTargetBranch="@_mergeTargetBranch"
                       PushAfterMerge="@_mergePushAfterMerge" IsCheckingPreview="@_isCheckingMergePreview"
                       IsMerging="@_isMergingBranch" PreviewMessage="@_mergePreviewMessage"
-                      PreviewError="@_mergePreviewError" OnTargetBranchChanged="HandleMergeTargetBranchChanged"
-                      OnPushAfterMergeChanged="HandleMergePushAfterMergeChanged" OnMerge="MergeCurrentBranchAsync"
+                      PreviewError="@_mergePreviewError" CreatePullRequest="@_mergeCreatePullRequest"
+                      PullRequestTitle="@_mergePrTitle" IsCreatingPullRequest="@_isCreatingPullRequest"
+                      IsGitHubCliAvailable="@_isGitHubCliAvailable"
+                      OnTargetBranchChanged="HandleMergeTargetBranchChanged"
+                      OnPushAfterMergeChanged="HandleMergePushAfterMergeChanged"
+                      OnCreatePullRequestChanged="HandleMergeCreatePullRequestChanged"
+                      OnPullRequestTitleChanged="HandleMergePrTitleChanged"
+                      OnMerge="MergeCurrentBranchAsync" OnCreatePullRequestSubmit="CreatePullRequestAsync"
                       OnCancel="CloseMergeBranchModal" />
 
     @* Uncommitted Changes Modal *@
@@ -558,6 +564,10 @@ else
     private bool _showMergeBranchModal { get; set; }
     private string? _mergeTargetBranch { get; set; }
     private bool _mergePushAfterMerge { get; set; } = true;
+    private bool _mergeCreatePullRequest { get; set; }
+    private string? _mergePrTitle { get; set; }
+    private bool _isCreatingPullRequest { get; set; }
+    private bool _isGitHubCliAvailable { get; set; }
     private bool _isCheckingMergePreview { get; set; }
     private bool _isMergingBranch { get; set; }
     private string? _mergePreviewMessage { get; set; }

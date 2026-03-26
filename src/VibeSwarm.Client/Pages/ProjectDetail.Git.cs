@@ -156,12 +156,16 @@ public partial class ProjectDetail
         }
 
         _mergePushAfterMerge = true;
+        _mergeCreatePullRequest = false;
+        _mergePrTitle = null;
+        _isCreatingPullRequest = false;
         _mergePreviewError = null;
         _mergePreviewMessage = null;
         _mergeTargetBranch = SelectDefaultMergeTargetBranch();
         _showMergeBranchModal = true;
         StateHasChanged();
 
+        _ = CheckGitHubCliAvailabilityAsync();
         await PreviewMergeBranchAsync();
     }
 
@@ -170,6 +174,9 @@ public partial class ProjectDetail
         _showMergeBranchModal = false;
         _mergeTargetBranch = null;
         _mergePushAfterMerge = true;
+        _mergeCreatePullRequest = false;
+        _mergePrTitle = null;
+        _isCreatingPullRequest = false;
         _mergePreviewMessage = null;
         _mergePreviewError = null;
     }
@@ -184,6 +191,39 @@ public partial class ProjectDetail
     {
         _mergePushAfterMerge = pushAfterMerge;
         return Task.CompletedTask;
+    }
+
+    private Task HandleMergeCreatePullRequestChanged(bool createPr)
+    {
+        _mergeCreatePullRequest = createPr;
+        if (createPr)
+        {
+            _mergePushAfterMerge = true;
+        }
+        return Task.CompletedTask;
+    }
+
+    private Task HandleMergePrTitleChanged(string? title)
+    {
+        _mergePrTitle = title;
+        return Task.CompletedTask;
+    }
+
+    private async Task CheckGitHubCliAvailabilityAsync()
+    {
+        try
+        {
+            _isGitHubCliAvailable = await VersionControlService.IsGitHubCliAvailableAsync();
+            if (_isGitHubCliAvailable)
+            {
+                _isGitHubCliAvailable = await VersionControlService.IsGitHubCliAuthenticatedAsync();
+            }
+            StateHasChanged();
+        }
+        catch
+        {
+            _isGitHubCliAvailable = false;
+        }
     }
 
     private string? SelectDefaultMergeTargetBranch()
@@ -302,6 +342,63 @@ public partial class ProjectDetail
         finally
         {
             _isMergingBranch = false;
+            IsGitOperationInProgress = false;
+            GitProgressMessage = null;
+            StateHasChanged();
+        }
+    }
+
+    private async Task CreatePullRequestAsync((string targetBranch, string? title) args)
+    {
+        if (IsGitOperationInProgress || Project == null || string.IsNullOrWhiteSpace(Project.WorkingPath) ||
+            string.IsNullOrWhiteSpace(CurrentBranch) || string.IsNullOrWhiteSpace(args.targetBranch))
+        {
+            return;
+        }
+
+        IsGitOperationInProgress = true;
+        _isCreatingPullRequest = true;
+        _mergePreviewError = null;
+        _mergePreviewMessage = null;
+        GitOperationMessage = null;
+        GitProgressMessage = $"Creating pull request from '{CurrentBranch}' to '{args.targetBranch}'...";
+        StateHasChanged();
+
+        try
+        {
+            var prTitle = !string.IsNullOrWhiteSpace(args.title)
+                ? args.title
+                : $"Merge {CurrentBranch} into {args.targetBranch}";
+
+            var result = await VersionControlService.CreatePullRequestAsync(
+                Project.WorkingPath,
+                CurrentBranch,
+                args.targetBranch,
+                prTitle);
+
+            if (!result.Success)
+            {
+                _mergePreviewError = result.Error ?? "Failed to create pull request.";
+                return;
+            }
+
+            var message = !string.IsNullOrWhiteSpace(result.PullRequestUrl)
+                ? $"Pull request created: {result.PullRequestUrl}"
+                : result.Output ?? $"Pull request created from '{CurrentBranch}' to '{args.targetBranch}'.";
+
+            GitOperationMessage = message;
+            GitOperationSuccess = true;
+            CloseMergeBranchModal();
+
+            NotificationService.ShowSuccess(message);
+        }
+        catch (Exception ex)
+        {
+            _mergePreviewError = $"Error creating pull request: {ex.Message}";
+        }
+        finally
+        {
+            _isCreatingPullRequest = false;
             IsGitOperationInProgress = false;
             GitProgressMessage = null;
             StateHasChanged();
