@@ -87,8 +87,76 @@
             <div class="flex-grow-1 overflow-auto p-2 p-sm-3">
                 @if (DisplayedMessages.Any())
                 {
-                    <div class="d-flex justify-content-end mb-2">
-                        <span class="badge bg-secondary">@DisplayedMessages.Count messages</span>
+                    <div class="d-flex justify-content-end align-items-center gap-2 mb-2">
+                        @if (!IsJobActive)
+                        {
+                            <div class="dropdown">
+                                <button class="btn btn-sm btn-secondary d-inline-flex align-items-center gap-1"
+                                        type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside"
+                                        aria-expanded="false">
+                                    <i class="bi bi-funnel"></i>
+                                    <span class="d-none d-sm-inline">Filter</span>
+                                    @if (_hiddenRoles.Any())
+                                    {
+                                        <span class="badge bg-light text-dark rounded-pill ms-1">@_hiddenRoles.Count</span>
+                                    }
+                                </button>
+                                <ul class="dropdown-menu dropdown-menu-end shadow-sm">
+                                    <li>
+                                        <button class="dropdown-item d-flex align-items-center gap-2" type="button"
+                                                @onclick="@(() => ToggleRoleFilter(MessageRole.Assistant))">
+                                            <i class="bi @(_hiddenRoles.Contains(MessageRole.Assistant) ? "bi-square" : "bi-check-square-fill text-primary")"></i>
+                                            <i class="bi bi-stars opacity-75"></i>
+                                            Responses
+                                        </button>
+                                    </li>
+                                    <li>
+                                        <button class="dropdown-item d-flex align-items-center gap-2" type="button"
+                                                @onclick="@(() => ToggleRoleFilter(MessageRole.ToolUse))">
+                                            <i class="bi @(_hiddenRoles.Contains(MessageRole.ToolUse) ? "bi-square" : "bi-check-square-fill text-primary")"></i>
+                                            <i class="bi bi-tools opacity-75"></i>
+                                            Tool Calls
+                                        </button>
+                                    </li>
+                                    <li>
+                                        <button class="dropdown-item d-flex align-items-center gap-2" type="button"
+                                                @onclick="@(() => ToggleRoleFilter(MessageRole.ToolResult))">
+                                            <i class="bi @(_hiddenRoles.Contains(MessageRole.ToolResult) ? "bi-square" : "bi-check-square-fill text-primary")"></i>
+                                            <i class="bi bi-reply opacity-75"></i>
+                                            Tool Results
+                                        </button>
+                                    </li>
+                                    <li>
+                                        <button class="dropdown-item d-flex align-items-center gap-2" type="button"
+                                                @onclick="@(() => ToggleRoleFilter(MessageRole.System))">
+                                            <i class="bi @(_hiddenRoles.Contains(MessageRole.System) ? "bi-square" : "bi-check-square-fill text-primary")"></i>
+                                            <i class="bi bi-gear opacity-75"></i>
+                                            System
+                                        </button>
+                                    </li>
+                                    <li>
+                                        <button class="dropdown-item d-flex align-items-center gap-2" type="button"
+                                                @onclick="@(() => ToggleRoleFilter(MessageRole.User))">
+                                            <i class="bi @(_hiddenRoles.Contains(MessageRole.User) ? "bi-square" : "bi-check-square-fill text-primary")"></i>
+                                            <i class="bi bi-person opacity-75"></i>
+                                            User
+                                        </button>
+                                    </li>
+                                    @if (_hiddenRoles.Any())
+                                    {
+                                        <li><hr class="dropdown-divider"></li>
+                                        <li>
+                                            <button class="dropdown-item d-flex align-items-center gap-2 text-primary" type="button"
+                                                    @onclick="ClearFilters">
+                                                <i class="bi bi-arrow-counterclockwise"></i>
+                                                Show All
+                                            </button>
+                                        </li>
+                                    }
+                                </ul>
+                            </div>
+                        }
+                        <span class="badge bg-secondary">@FilteredMessages.Count messages</span>
                     </div>
                 }
                 @if (!DisplayedMessages.Any())
@@ -131,7 +199,7 @@
 				else
 				{
 					<div class="d-flex flex-column gap-3 overflow-auto p-2" style="max-height: 600px;">
-						@foreach (var message in DisplayedMessages)
+						@foreach (var message in FilteredMessages)
 						{
 							<ChatMessage Role="@message.Role" Content="@message.Content" ToolName="@message.ToolName"
 										 ToolInput="@message.ToolInput" ToolOutput="@message.ToolOutput" Timestamp="@message.CreatedAt"
@@ -253,11 +321,30 @@
     private string _activeTab = "session";
     private string _followUpPrompt = string.Empty;
     private bool _isSendingFollowUp = false;
+    private HashSet<MessageRole> _hiddenRoles = new();
 
     private bool CanSendFollowUp => Status == JobStatus.Completed && OnSendFollowUp.HasDelegate;
 
     private IReadOnlyList<JobMessage> DisplayedMessages
         => JobSessionDisplayBuilder.BuildDisplayedMessages(Messages, LiveOutputLines, IsJobActive, LiveMessages);
+
+    private IReadOnlyList<JobMessage> FilteredMessages
+    {
+        get
+        {
+            var messages = DisplayedMessages;
+            if (!_hiddenRoles.Any()) return messages;
+            return messages.Where(m => !_hiddenRoles.Contains(m.Role)).ToList();
+        }
+    }
+
+    private void ToggleRoleFilter(MessageRole role)
+    {
+        if (!_hiddenRoles.Remove(role))
+            _hiddenRoles.Add(role);
+    }
+
+    private void ClearFilters() => _hiddenRoles.Clear();
 
     private bool ShowInlineWaitingActivity
         => IsJobActive && DisplayedMessages.Any();
