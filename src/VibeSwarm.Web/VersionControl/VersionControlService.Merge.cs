@@ -189,6 +189,17 @@ public sealed partial class VersionControlService
 				return GitOperationResult.Failed($"Target branch '{targetBranch}' was not found locally or on remote '{remoteName}'.");
 			}
 
+			var alreadyUpToDate = await IsBranchAlreadyMergedAsync(workingDirectory, sourceRef, targetRef.Reference, cancellationToken);
+			if (alreadyUpToDate)
+			{
+				return GitOperationResult.Succeeded(
+					output: $"Already up to date — '{sourceBranch}' has no unmerged changes for '{targetBranch}'.",
+					branchName: sourceBranch,
+					targetBranch: targetBranch,
+					remoteName: remoteName,
+					changedFilesCount: 0);
+			}
+
 			progressCallback?.Invoke(previewOnly
 				? $"Preparing merge preview for {targetBranch}..."
 				: $"Preparing temporary merge worktree for {targetBranch}...");
@@ -447,6 +458,20 @@ public sealed partial class VersionControlService
 		}
 
 		return null;
+	}
+
+	private async Task<bool> IsBranchAlreadyMergedAsync(
+		string workingDirectory,
+		string sourceRef,
+		string targetRef,
+		CancellationToken cancellationToken)
+	{
+		var result = await _commandExecutor.ExecuteAsync(
+			$"merge-base --is-ancestor \"{EscapeCommandArgument(sourceRef)}\" \"{EscapeCommandArgument(targetRef)}\"",
+			workingDirectory,
+			cancellationToken,
+			timeoutSeconds: 10);
+		return result.Success;
 	}
 
 	private static bool IsMergeConflictError(string error)

@@ -474,7 +474,8 @@ else
                       TargetBranches="@MergeTargetBranches" SelectedTargetBranch="@_mergeTargetBranch"
                       PushAfterMerge="@_mergePushAfterMerge" IsCheckingPreview="@_isCheckingMergePreview"
                       IsMerging="@_isMergingBranch" PreviewMessage="@_mergePreviewMessage"
-                      PreviewError="@_mergePreviewError" CreatePullRequest="@_mergeCreatePullRequest"
+                      PreviewError="@_mergePreviewError" IsAlreadyUpToDate="@_isMergeAlreadyUpToDate"
+                      CreatePullRequest="@_mergeCreatePullRequest"
                       PullRequestTitle="@_mergePrTitle" IsCreatingPullRequest="@_isCreatingPullRequest"
                       IsGitHubCliAvailable="@_isGitHubCliAvailable"
                       OnTargetBranchChanged="HandleMergeTargetBranchChanged"
@@ -572,6 +573,7 @@ else
     private bool _isMergingBranch { get; set; }
     private string? _mergePreviewMessage { get; set; }
     private string? _mergePreviewError { get; set; }
+    private bool _isMergeAlreadyUpToDate { get; set; }
 
     // Uncommitted changes modal state
     private bool _hasUncommittedChangesHeader { get; set; }

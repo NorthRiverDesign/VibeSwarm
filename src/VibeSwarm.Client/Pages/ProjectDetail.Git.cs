@@ -161,6 +161,7 @@ public partial class ProjectDetail
         _isCreatingPullRequest = false;
         _mergePreviewError = null;
         _mergePreviewMessage = null;
+        _isMergeAlreadyUpToDate = false;
         _mergeTargetBranch = SelectDefaultMergeTargetBranch();
         _showMergeBranchModal = true;
         StateHasChanged();
@@ -179,6 +180,7 @@ public partial class ProjectDetail
         _isCreatingPullRequest = false;
         _mergePreviewMessage = null;
         _mergePreviewError = null;
+        _isMergeAlreadyUpToDate = false;
     }
 
     private async Task HandleMergeTargetBranchChanged(string targetBranch)
@@ -249,6 +251,7 @@ public partial class ProjectDetail
         _isCheckingMergePreview = true;
         _mergePreviewMessage = null;
         _mergePreviewError = null;
+        _isMergeAlreadyUpToDate = false;
         StateHasChanged();
 
         try
@@ -260,6 +263,7 @@ public partial class ProjectDetail
 
             if (result.Success)
             {
+                _isMergeAlreadyUpToDate = result.ChangedFilesCount == 0;
                 _mergePreviewMessage = result.Output ?? $"'{CurrentBranch}' can be merged into '{_mergeTargetBranch}' without conflicts.";
             }
             else
