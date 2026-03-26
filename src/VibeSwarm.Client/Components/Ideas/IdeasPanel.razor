@@ -155,8 +155,8 @@
 	}
 	else
 	{
-		<div class="border rounded-3 overflow-hidden">
-			<ul class="list-group list-group-flush">
+		<div class="border rounded-3">
+			<ul class="list-group list-group-flush rounded-3">
 				@foreach (var idea in Ideas)
 				{
 					<IdeaListItem @key="idea.Id" Idea="idea" IsProcessing="@IsIdeaProcessing(idea.Id)"
