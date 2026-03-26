@@ -671,6 +671,7 @@ else
     private HubConnection? _hubConnection;
     private CancellationTokenSource? _signalRCts;
     private HashSet<Guid> _localIdeaUpdateIds = new();
+    private bool _disposed;
 
     protected override async Task OnInitializedAsync()
     {
@@ -769,187 +770,271 @@ TimeSpan.FromSeconds(10) })
         // Listen for job updates (status changes sent as jobId, status)
         _hubConnection.On<string, string>("JobStatusChanged", async (jobId, status) =>
         {
-            await InvokeAsync(async () =>
-    {
-        await RefreshJobs();
-        await LoadIdeas();
-        StateHasChanged();
-    });
+            if (_disposed) return;
+            try
+            {
+                await InvokeAsync(async () =>
+                {
+                    if (_disposed) return;
+                    await RefreshJobs();
+                    await LoadIdeas();
+                    StateHasChanged();
+                });
+            }
+            catch (ObjectDisposedException) { }
+            catch (Exception) { }
         });
 
         // Job created events include jobId and projectId
         _hubConnection.On<string, string>("JobCreated", async (jobId, projectId) =>
         {
-            await InvokeAsync(async () =>
-    {
-        await RefreshJobs();
-        await LoadIdeas();
-        StateHasChanged();
-    });
+            if (_disposed) return;
+            try
+            {
+                await InvokeAsync(async () =>
+                {
+                    if (_disposed) return;
+                    await RefreshJobs();
+                    await LoadIdeas();
+                    StateHasChanged();
+                });
+            }
+            catch (ObjectDisposedException) { }
+            catch (Exception) { }
         });
 
         // Job deleted events include jobId and projectId
         _hubConnection.On<string, string>("JobDeleted", async (jobId, projectId) =>
         {
-            await InvokeAsync(async () =>
-    {
-        await RefreshJobs();
-        StateHasChanged();
-    });
+            if (_disposed) return;
+            try
+            {
+                await InvokeAsync(async () =>
+                {
+                    if (_disposed) return;
+                    await RefreshJobs();
+                    StateHasChanged();
+                });
+            }
+            catch (ObjectDisposedException) { }
+            catch (Exception) { }
         });
 
         // Activity updates include jobId, activity, and timestamp
         _hubConnection.On<string, string, DateTime>("JobActivityUpdated", async (jobId, activity, timestamp) =>
         {
-            await InvokeAsync(() =>
-    {
-        var job = Jobs.FirstOrDefault(j => j.Id.ToString() == jobId);
-        if (job != null)
-        {
-            job.CurrentActivity = activity;
-            StateHasChanged();
-        }
-        return Task.CompletedTask;
-    });
+            if (_disposed) return;
+            try
+            {
+                await InvokeAsync(() =>
+                {
+                    if (_disposed) return Task.CompletedTask;
+                    var job = Jobs.FirstOrDefault(j => j.Id.ToString() == jobId);
+                    if (job != null)
+                    {
+                        job.CurrentActivity = activity;
+                        StateHasChanged();
+                    }
+                    return Task.CompletedTask;
+                });
+            }
+            catch (ObjectDisposedException) { }
+            catch (Exception) { }
         });
 
         // Job completed events
         _hubConnection.On<string, bool, string?>("JobCompleted", async (jobId, success, errorMessage) =>
         {
-            await InvokeAsync(async () =>
-    {
-        await RefreshJobs();
-        await LoadIdeas();
-        await RefreshUncommittedChangesStatus();
-        ProcessingIdeaIds.Clear(); // Clear any stale processing states
+            if (_disposed) return;
+            try
+            {
+                await InvokeAsync(async () =>
+                {
+                    if (_disposed) return;
+                    await RefreshJobs();
+                    await LoadIdeas();
+                    await RefreshUncommittedChangesStatus();
+                    ProcessingIdeaIds.Clear(); // Clear any stale processing states
 
-        if (success && (_activeTab == "changes" || _hasUncommittedChangesHeader))
-        {
-            await LoadChangesTabData();
-        }
+                    if (success && (_activeTab == "changes" || _hasUncommittedChangesHeader))
+                    {
+                        await LoadChangesTabData();
+                    }
 
-        StateHasChanged();
-    });
+                    StateHasChanged();
+                });
+            }
+            catch (ObjectDisposedException) { }
+            catch (Exception) { }
         });
 
         _hubConnection.On<string, bool>("JobGitDiffUpdated", async (jobId, hasChanges) =>
         {
-            await InvokeAsync(async () =>
-    {
-        if (!Jobs.Any(j => j.Id.ToString() == jobId))
-        {
-            return;
-        }
+            if (_disposed) return;
+            try
+            {
+                await InvokeAsync(async () =>
+                {
+                    if (_disposed) return;
+                    if (!Jobs.Any(j => j.Id.ToString() == jobId))
+                    {
+                        return;
+                    }
 
-        await RefreshJobs();
-        await RefreshUncommittedChangesStatus();
+                    await RefreshJobs();
+                    await RefreshUncommittedChangesStatus();
 
-        if (hasChanges || _activeTab == "changes")
-        {
-            await LoadChangesTabData();
-        }
+                    if (hasChanges || _activeTab == "changes")
+                    {
+                        await LoadChangesTabData();
+                    }
 
-        StateHasChanged();
-    });
+                    StateHasChanged();
+                });
+            }
+            catch (ObjectDisposedException) { }
+            catch (Exception) { }
         });
 
         // Idea started processing (converted to job) - another user clicked Start
         _hubConnection.On<string, string, string>("IdeaStarted", async (ideaId, projectId, jobId) =>
         {
-            await InvokeAsync(async () =>
-    {
-        // Only refresh if this is for our project
-        if (projectId == ProjectId.ToString())
-        {
-            await RefreshJobs();
-            await LoadIdeas();
-            StateHasChanged();
-        }
-    });
+            if (_disposed) return;
+            try
+            {
+                await InvokeAsync(async () =>
+                {
+                    if (_disposed) return;
+                    // Only refresh if this is for our project
+                    if (projectId == ProjectId.ToString())
+                    {
+                        await RefreshJobs();
+                        await LoadIdeas();
+                        StateHasChanged();
+                    }
+                });
+            }
+            catch (ObjectDisposedException) { }
+            catch (Exception) { }
         });
 
         // Ideas auto-processing state changed
         _hubConnection.On<string, bool>("IdeasProcessingStateChanged", async (projectId, isActive) =>
         {
-            await InvokeAsync(async () =>
-    {
-        // Only update if this is for our project
-        if (projectId == ProjectId.ToString())
-        {
-            IsIdeasProcessingActive = isActive;
-            if (!isActive)
+            if (_disposed) return;
+            try
             {
-                ProcessingIdeaIds.Clear();
+                await InvokeAsync(async () =>
+                {
+                    if (_disposed) return;
+                    // Only update if this is for our project
+                    if (projectId == ProjectId.ToString())
+                    {
+                        IsIdeasProcessingActive = isActive;
+                        if (!isActive)
+                        {
+                            ProcessingIdeaIds.Clear();
+                        }
+                        await LoadIdeas();
+                        StateHasChanged();
+                    }
+                });
             }
-            await LoadIdeas();
-            StateHasChanged();
-        }
-    });
+            catch (ObjectDisposedException) { }
+            catch (Exception) { }
         });
 
         // Idea created - another user added an idea
         _hubConnection.On<string, string>("IdeaCreated", async (ideaId, projectId) =>
         {
-            await InvokeAsync(async () =>
-    {
-        if (projectId == ProjectId.ToString())
-        {
-            await LoadIdeas();
-            StateHasChanged();
-        }
-    });
+            if (_disposed) return;
+            try
+            {
+                await InvokeAsync(async () =>
+                {
+                    if (_disposed) return;
+                    if (projectId == ProjectId.ToString())
+                    {
+                        await LoadIdeas();
+                        StateHasChanged();
+                    }
+                });
+            }
+            catch (ObjectDisposedException) { }
+            catch (Exception) { }
         });
 
         // Idea deleted - another user deleted an idea
         _hubConnection.On<string, string>("IdeaDeleted", async (ideaId, projectId) =>
         {
-            await InvokeAsync(async () =>
-    {
-        if (projectId == ProjectId.ToString())
-        {
-            // Remove from local processing set if present
-            if (Guid.TryParse(ideaId, out var ideaGuid))
+            if (_disposed) return;
+            try
             {
-                ProcessingIdeaIds.Remove(ideaGuid);
+                await InvokeAsync(async () =>
+                {
+                    if (_disposed) return;
+                    if (projectId == ProjectId.ToString())
+                    {
+                        // Remove from local processing set if present
+                        if (Guid.TryParse(ideaId, out var ideaGuid))
+                        {
+                            ProcessingIdeaIds.Remove(ideaGuid);
+                        }
+                        await LoadIdeas();
+                        StateHasChanged();
+                    }
+                });
             }
-            await LoadIdeas();
-            StateHasChanged();
-        }
-    });
+            catch (ObjectDisposedException) { }
+            catch (Exception) { }
         });
 
         // Idea updated - another user edited/expanded an idea
         _hubConnection.On<string, string>("IdeaUpdated", async (ideaId, projectId) =>
         {
-            await InvokeAsync(async () =>
-    {
-        if (projectId == ProjectId.ToString())
-        {
-            if (Guid.TryParse(ideaId, out var updatedIdeaId) && _localIdeaUpdateIds.Remove(updatedIdeaId))
+            if (_disposed) return;
+            try
             {
-                StateHasChanged();
-                return;
+                await InvokeAsync(async () =>
+                {
+                    if (_disposed) return;
+                    if (projectId == ProjectId.ToString())
+                    {
+                        if (Guid.TryParse(ideaId, out var updatedIdeaId) && _localIdeaUpdateIds.Remove(updatedIdeaId))
+                        {
+                            StateHasChanged();
+                            return;
+                        }
+                        await LoadIdeas();
+                        StateHasChanged();
+                    }
+                });
             }
-            await LoadIdeas();
-            StateHasChanged();
-        }
-    });
+            catch (ObjectDisposedException) { }
+            catch (Exception) { }
         });
 
         _hubConnection.On<string, string, int, int>(
             "AutoPilotStateChanged", async (projectId, status, completedIterations, maxIterations) =>
         {
-            await InvokeAsync(async () =>
+            if (_disposed) return;
+            try
             {
-                if (projectId == ProjectId.ToString())
+                await InvokeAsync(async () =>
                 {
-                    // Refresh the full status from the API for up-to-date data
-                    try { _autoPilotStatus = await AutoPilotService.GetStatusAsync(ProjectId); } catch { }
-                    if (_autoPilotPanel != null)
-                        await _autoPilotPanel.RefreshAsync();
-                    StateHasChanged();
-                }
-            });
+                    if (_disposed) return;
+                    if (projectId == ProjectId.ToString())
+                    {
+                        // Refresh the full status from the API for up-to-date data
+                        try { _autoPilotStatus = await AutoPilotService.GetStatusAsync(ProjectId); } catch { }
+                        if (_autoPilotPanel != null)
+                            await _autoPilotPanel.RefreshAsync();
+                        StateHasChanged();
+                    }
+                });
+            }
+            catch (ObjectDisposedException) { }
+            catch (Exception) { }
         });
     }
 
@@ -972,24 +1057,32 @@ TimeSpan.FromSeconds(10) })
     {
         _refreshTimer = new System.Threading.Timer(async _ =>
         {
-            if (HasActiveJobs || IsIdeasProcessingActive)
+            if (_disposed) return;
+            try
             {
-                await InvokeAsync(async () =>
+                if (HasActiveJobs || IsIdeasProcessingActive)
                 {
-                    await RefreshJobs();
-                    await LoadIdeas();
-                    StateHasChanged();
-                });
-            }
-            else if (_activeTab == "changes" && IsGitRepository)
-            {
-                await InvokeAsync(async () =>
+                    await InvokeAsync(async () =>
+                    {
+                        if (_disposed) return;
+                        await RefreshJobs();
+                        await LoadIdeas();
+                        StateHasChanged();
+                    });
+                }
+                else if (_activeTab == "changes" && IsGitRepository)
                 {
-                    await RefreshUncommittedChangesStatus();
-                    await LoadChangesTabData();
-                    StateHasChanged();
-                });
+                    await InvokeAsync(async () =>
+                    {
+                        if (_disposed) return;
+                        await RefreshUncommittedChangesStatus();
+                        await LoadChangesTabData();
+                        StateHasChanged();
+                    });
+                }
             }
+            catch (ObjectDisposedException) { }
+            catch (Exception) { }
         }, null, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
     }
 
@@ -1030,6 +1123,8 @@ TimeSpan.FromSeconds(10) })
 
     public async ValueTask DisposeAsync()
     {
+        _disposed = true;
+
         // Cancel any pending expansion
         _expandCts?.Cancel();
         _expandCts?.Dispose();

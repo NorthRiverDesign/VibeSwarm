@@ -14,7 +14,9 @@ public partial class ProjectDetail
 
     private async Task RefreshJobs()
     {
-        if (Project != null)
+        if (Project == null) return;
+
+        try
         {
             Jobs = (await JobService.GetByProjectIdAsync(ProjectId)).ToList();
             ProjectActiveJobsCount = Jobs.Count(job =>
@@ -31,6 +33,11 @@ public partial class ProjectDetail
             PagedJobs = result.Items;
             JobsTotalCount = result.TotalCount;
             ProjectCompletedJobsCount = result.CompletedCount;
+        }
+        catch (Exception)
+        {
+            // Swallow transient API errors during background refresh to prevent
+            // unhandled exceptions from crashing the Blazor WASM runtime
         }
     }
 
