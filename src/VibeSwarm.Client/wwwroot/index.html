@@ -126,6 +126,73 @@
         <script src="_framework/blazor.webassembly.js" autostart="false"></script>
 
         <script>
+            // Touch-based drag-and-drop reorder for iOS/mobile.
+            // Called by DragDropList.razor to enable touch reordering on drag handles.
+            window.vibeSwarmInitTouchDrag = function (containerElement, dotNetRef) {
+                if (!containerElement) return;
+
+                var handles = containerElement.querySelectorAll('[data-drag-handle]');
+                handles.forEach(function (handle) {
+                    // Skip if already initialized (prevents duplicate listeners)
+                    if (handle.__vsTouchInit) return;
+                    handle.__vsTouchInit = true;
+
+                    // Prevent scrolling when touching the drag handle
+                    handle.style.touchAction = 'none';
+
+                    handle.addEventListener('touchstart', function (e) {
+                        var item = handle.closest('[data-drag-index]');
+                        if (!item) return;
+
+                        var dragIndex = parseInt(item.getAttribute('data-drag-index'));
+                        var startY = e.touches[0].clientY;
+                        var currentOverIndex = -1;
+                        var items = containerElement.querySelectorAll('[data-drag-index]');
+
+                        // Apply dragging visual
+                        item.style.opacity = '0.5';
+
+                        function onTouchMove(ev) {
+                            ev.preventDefault();
+                            var touch = ev.touches[0];
+                            var elementBelow = document.elementFromPoint(touch.clientX, touch.clientY);
+                            if (!elementBelow) return;
+
+                            var targetItem = elementBelow.closest('[data-drag-index]');
+                            var newOverIndex = targetItem ? parseInt(targetItem.getAttribute('data-drag-index')) : -1;
+
+                            if (newOverIndex !== currentOverIndex) {
+                                // Remove previous over indicator
+                                items.forEach(function (el) { el.classList.remove('drag-drop-over'); });
+                                // Add indicator to new target
+                                if (targetItem && newOverIndex !== dragIndex) {
+                                    targetItem.classList.add('drag-drop-over');
+                                }
+                                currentOverIndex = newOverIndex;
+                            }
+                        }
+
+                        function onTouchEnd(ev) {
+                            document.removeEventListener('touchmove', onTouchMove);
+                            document.removeEventListener('touchend', onTouchEnd);
+
+                            // Clean up visuals
+                            item.style.opacity = '';
+                            items.forEach(function (el) { el.classList.remove('drag-drop-over'); });
+
+                            if (currentOverIndex >= 0 && currentOverIndex !== dragIndex) {
+                                dotNetRef.invokeMethodAsync('OnTouchReorder', dragIndex, currentOverIndex);
+                            }
+                        }
+
+                        document.addEventListener('touchmove', onTouchMove, { passive: false });
+                        document.addEventListener('touchend', onTouchEnd, { once: true });
+                    }, { passive: true });
+                });
+            };
+        </script>
+
+        <script>
             window.scrollToEnd = function (element) {
                 if (element) {
                     element.scrollLeft = element.scrollWidth;
