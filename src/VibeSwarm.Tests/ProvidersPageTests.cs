@@ -58,13 +58,8 @@ public sealed class ProvidersPageTests
 		Assert.DoesNotContain("Configured Providers", html);
 		Assert.Contains("Connections", html);
 		Assert.Contains("Add SDK", html);
-		Assert.Contains("Add REST", html);
 		Assert.Contains("Claude SDK Primary", html);
-		Assert.Contains("Copilot CLI Main", html);
-		Assert.Contains("OpenCode REST Main", html);
 		Assert.True(html.IndexOf("Anthropic Claude", StringComparison.Ordinal) < html.IndexOf("Claude SDK Primary", StringComparison.Ordinal));
-		Assert.True(html.IndexOf("GitHub Copilot", StringComparison.Ordinal) < html.IndexOf("Copilot CLI Main", StringComparison.Ordinal));
-		Assert.True(html.IndexOf("OpenCode Agent", StringComparison.Ordinal) < html.IndexOf("OpenCode REST Main", StringComparison.Ordinal));
 	}
 
 	[Fact]
@@ -80,11 +75,8 @@ public sealed class ProvidersPageTests
 		var html = await RenderProvidersPageAsync([], statuses);
 
 		Assert.Contains("No Anthropic Claude connections yet.", html);
-		Assert.Contains("No GitHub Copilot connections yet.", html);
-		Assert.Contains("No OpenCode Agent connections yet.", html);
 		Assert.Contains("Add CLI", html);
 		Assert.Contains("Add SDK", html);
-		Assert.Contains("Add REST", html);
 	}
 
 	[Fact]

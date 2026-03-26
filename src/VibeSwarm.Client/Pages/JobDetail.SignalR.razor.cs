@@ -27,14 +27,8 @@ public partial class JobDetail : ComponentBase, IAsyncDisposable
 
             await InitializeSignalR(linkedCts.Token);
         }
-        catch (OperationCanceledException)
-        {
-            Console.WriteLine("SignalR connection timed out - falling back to polling");
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"SignalR initialization failed (non-critical): {ex.Message}");
-        }
+        catch (OperationCanceledException) { }
+        catch { }
     }
 
     private async Task InitializeSignalR(CancellationToken cancellationToken)
@@ -104,27 +98,23 @@ public partial class JobDetail : ComponentBase, IAsyncDisposable
             _hubConnection.Reconnecting += _ =>
             {
                 _signalRConnected = false;
-                Console.WriteLine("SignalR reconnecting...");
                 return Task.CompletedTask;
             };
 
             _hubConnection.Reconnected += async (connectionId) =>
             {
                 _signalRConnected = true;
-                Console.WriteLine($"SignalR reconnected: {connectionId}");
                 await SubscribeToSignalRGroups();
             };
 
             _hubConnection.Closed += _ =>
             {
                 _signalRConnected = false;
-                Console.WriteLine("SignalR connection closed");
                 return Task.CompletedTask;
             };
 
             await _hubConnection.StartAsync(cancellationToken);
             _signalRConnected = true;
-            Console.WriteLine("SignalR connected successfully");
 
             // Start batch render timer: flush pending output updates at most every 150ms
             // to avoid calling StateHasChanged on every individual output line.
@@ -139,10 +129,8 @@ public partial class JobDetail : ComponentBase, IAsyncDisposable
 
             await SubscribeToSignalRGroups();
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            Console.WriteLine($"Error initializing SignalR: {ex.Message}");
-        }
+        catch (OperationCanceledException) { }
+        catch { }
     }
 
     private async Task SubscribeToSignalRGroups()
@@ -154,10 +142,7 @@ public partial class JobDetail : ComponentBase, IAsyncDisposable
             await _hubConnection.InvokeAsync("SubscribeToJob", JobId.ToString());
             await _hubConnection.InvokeAsync("SubscribeToJobList");
         }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"SignalR subscription failed: {ex.Message}");
-        }
+        catch { }
     }
 
     #region SignalR Handlers
@@ -357,9 +342,8 @@ public partial class JobDetail : ComponentBase, IAsyncDisposable
                 await CheckGitDiffAsync();
                 await RefreshJobSafely();
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                Console.WriteLine($"Error auto-checking git diff: {ex.Message}");
             }
         }
 

@@ -19,7 +19,9 @@
 		@if (!HasData)
 		{
 			<div class="flex-grow-1 d-flex align-items-center">
-				<EmptyState Icon="@EmptyIcon" Title="@EmptyTitle" Message="@EmptyMessage" />
+				<div class="w-100">
+					<EmptyState Icon="@EmptyIcon" Title="@EmptyTitle" Message="@EmptyMessage" />
+				</div>
 			</div>
 		}
 		else

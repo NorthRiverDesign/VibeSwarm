@@ -106,6 +106,94 @@
 						}
 					</li>
 				}
+
+				@* Separator *@
+				<li><hr class="my-2"></li>
+
+				@* Section header for optional browser tools *@
+				<li class="mb-2">
+					<span class="small fw-semibold text-body-secondary text-uppercase">Browser Tools</span>
+					<span class="small text-body-secondary ms-1">(optional)</span>
+				</li>
+
+				@* Node.js *@
+				<li class="d-flex align-items-center gap-2 mb-2">
+					<i class="bi bi-node-plus text-success"></i>
+					<span class="flex-grow-1">Node.js</span>
+					@if (_nodeAvailable)
+					{
+						<span class="badge bg-success-subtle text-success-emphasis">
+							<i class="bi bi-check-circle me-1"></i>@(_nodeVersion ?? "Available")
+						</span>
+					}
+					else
+					{
+						<span class="badge bg-secondary-subtle text-secondary-emphasis me-1">
+							<i class="bi bi-dash-circle me-1"></i>Not Found
+						</span>
+						<button type="button" class="btn btn-sm btn-outline-secondary"
+								@onclick='() => InstallTool("nodejs")'
+								disabled="@(_isInstalling != null)">
+							@if (_isInstalling == "nodejs")
+							{
+								<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+								<span>Installing...</span>
+							}
+							else
+							{
+								<i class="bi bi-download me-1"></i>
+								<span>Install</span>
+							}
+						</button>
+					}
+				</li>
+
+				@* Playwright Chromium *@
+				<li class="d-flex align-items-center gap-2 mb-2">
+					<i class="bi bi-browser-chrome text-primary"></i>
+					<span class="flex-grow-1">Playwright Chromium</span>
+					@if (_playwrightInstalled)
+					{
+						<span class="badge bg-success-subtle text-success-emphasis">
+							<i class="bi bi-check-circle me-1"></i>Installed
+						</span>
+					}
+					else if (!_nodeAvailable)
+					{
+						<span class="badge bg-secondary-subtle text-secondary-emphasis">
+							<i class="bi bi-dash-circle me-1"></i>Requires Node.js
+						</span>
+					}
+					else
+					{
+						<span class="badge bg-secondary-subtle text-secondary-emphasis me-1">
+							<i class="bi bi-dash-circle me-1"></i>Not Installed
+						</span>
+						<button type="button" class="btn btn-sm btn-outline-secondary"
+								@onclick='() => InstallTool("playwright")'
+								disabled="@(_isInstalling != null)">
+							@if (_isInstalling == "playwright")
+							{
+								<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+								<span>Installing...</span>
+							}
+							else
+							{
+								<i class="bi bi-download me-1"></i>
+								<span>Install</span>
+							}
+						</button>
+					}
+				</li>
+
+				@* Playwright status detail *@
+				@if (_playwrightStatus != null && !_playwrightInstalled)
+				{
+					<li class="d-flex align-items-center gap-2 ps-4">
+						<i class="bi bi-info-circle opacity-50"></i>
+						<span class="small text-body-secondary">@_playwrightStatus</span>
+					</li>
+				}
 			</ul>
 
 			@if (_installResult != null)
@@ -150,6 +238,10 @@
 	private bool _gitAvailable;
 	private bool _ghAvailable;
 	private bool _ghAuthenticated;
+	private bool _nodeAvailable;
+	private string? _nodeVersion;
+	private bool _playwrightInstalled;
+	private string? _playwrightStatus;
 	private string? _error;
 	private string? _isInstalling;
 	private InstallResult? _installResult;
@@ -167,10 +259,14 @@
 
 		try
 		{
-			var response = await Http.GetAsync("/api/git/detected-tools");
-			if (response.IsSuccessStatusCode)
+			var gitTask = Http.GetAsync("/api/git/detected-tools");
+			var systemTask = Http.GetAsync("/api/system-tools/detected");
+			await Task.WhenAll(gitTask, systemTask);
+
+			var gitResponse = gitTask.Result;
+			if (gitResponse.IsSuccessStatusCode)
 			{
-				var result = await response.Content.ReadFromJsonAsync<DetectedToolsResult>();
+				var result = await gitResponse.Content.ReadFromJsonAsync<DetectedToolsResult>();
 				if (result != null)
 				{
 					_gitAvailable = result.GitAvailable;
@@ -180,7 +276,20 @@
 			}
 			else
 			{
-				_error = "Failed to detect tools";
+				_error = "Failed to detect git tools";
+			}
+
+			var systemResponse = systemTask.Result;
+			if (systemResponse.IsSuccessStatusCode)
+			{
+				var result = await systemResponse.Content.ReadFromJsonAsync<SystemToolsResult>();
+				if (result != null)
+				{
+					_nodeAvailable = result.NodeAvailable;
+					_nodeVersion = result.NodeVersion;
+					_playwrightInstalled = result.PlaywrightBrowsersInstalled;
+					_playwrightStatus = result.PlaywrightStatus;
+				}
 			}
 		}
 		catch (Exception ex)
@@ -233,6 +342,15 @@
 		public bool GitAvailable { get; set; }
 		public bool GitHubCliAvailable { get; set; }
 		public bool GitHubCliAuthenticated { get; set; }
+	}
+
+	private sealed class SystemToolsResult
+	{
+		public bool NodeAvailable { get; set; }
+		public string? NodeVersion { get; set; }
+		public bool NpxAvailable { get; set; }
+		public bool PlaywrightBrowsersInstalled { get; set; }
+		public string? PlaywrightStatus { get; set; }
 	}
 
 	private sealed class InstallResponse

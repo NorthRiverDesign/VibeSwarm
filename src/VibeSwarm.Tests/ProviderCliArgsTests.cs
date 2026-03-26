@@ -254,20 +254,45 @@ public sealed class ProviderCliArgsTests
 
     // ─── Copilot Provider ──────────────────────────────────────────────
 
-    [Fact]
-    public void Copilot_MinimalOptions_ContainsRequiredFlags()
-    {
-        var provider = new CopilotProvider(CreateConfig(ProviderType.Copilot));
-        provider.ApplyOptions(new ExecutionOptions());
+	[Fact]
+	public void Copilot_MinimalOptions_ContainsRequiredFlags()
+	{
+		var provider = new CopilotProvider(CreateConfig(ProviderType.Copilot));
+		provider.ApplyOptions(new ExecutionOptions());
 
         var args = provider.BuildCliArgs("do something", null);
 
         Assert.Contains("-p", args);
         Assert.Contains("--yolo", args);
         Assert.Contains("--silent", args);
-        Assert.Contains("--autopilot", args);
-        Assert.Contains("--no-mouse", args);
-    }
+		Assert.Contains("--autopilot", args);
+		Assert.Contains("--no-mouse", args);
+	}
+
+	[Fact]
+	public void Copilot_WithJsonOutputSupportedVersion_AddsOutputFormatJson()
+	{
+		var provider = new CopilotProvider(CreateConfig(ProviderType.Copilot));
+		provider.CachedCliVersion = new Version(0, 0, 422);
+		provider.ApplyOptions(new ExecutionOptions());
+
+		var args = provider.BuildCliArgs("test", null);
+
+		var idx = args.IndexOf("--output-format");
+		Assert.True(idx >= 0);
+		Assert.Equal("json", args[idx + 1]);
+	}
+
+	[Fact]
+	public void Copilot_WithUnknownVersion_OmitsOutputFormatJson()
+	{
+		var provider = new CopilotProvider(CreateConfig(ProviderType.Copilot));
+		provider.ApplyOptions(new ExecutionOptions());
+
+		var args = provider.BuildCliArgs("test", null);
+
+		Assert.DoesNotContain("--output-format", args);
+	}
 
     [Fact]
     public void Copilot_WithModel_AddsModelFlag()

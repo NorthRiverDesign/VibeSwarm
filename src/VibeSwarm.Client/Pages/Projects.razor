@@ -360,15 +360,14 @@ else
                 });
             }
             catch (ObjectDisposedException) { }
-            catch (Exception ex)
+            catch (Exception)
             {
-                Console.WriteLine($"[Projects] Auto-refresh error: {ex.Message}");
             }
             finally
             {
                 _isAutoRefreshing = false;
             }
-        }, null, TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(3));
+        }, null, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
     }
 
     private async Task LoadActiveJobs()
@@ -623,9 +622,8 @@ else
                         Directory.Delete(ProjectToDelete.WorkingPath, recursive: true);
                     }
                 }
-                catch (Exception ex)
+                catch (Exception)
                 {
-                    Console.WriteLine($"Error deleting directory: {ex.Message}");
                     // Continue with project deletion even if directory deletion fails
                 }
             }

@@ -212,11 +212,9 @@
         }
         catch (OperationCanceledException)
         {
-            Console.WriteLine("Dashboard SignalR connection timed out.");
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            Console.WriteLine($"Dashboard SignalR initialization failed: {ex.Message}");
         }
     }
 

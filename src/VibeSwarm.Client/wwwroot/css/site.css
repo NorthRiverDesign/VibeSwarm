@@ -260,6 +260,28 @@ body {
 	}
 }
 
+/* Sticky tab bar on mobile — pins below the app-header when scrolling past the project header */
+@media (max-width: 991.98px) {
+	.project-detail-tabs {
+		position: sticky;
+		top: calc(var(--vs-header-height) + var(--vs-safe-area-top));
+		z-index: 100;
+		background: var(--bs-body-bg);
+		margin-left: -1rem;
+		margin-right: -1rem;
+		padding-left: 1rem;
+		padding-right: 1rem;
+	}
+}
+@media (max-width: 575.98px) {
+	.project-detail-tabs {
+		margin-left: -0.75rem;
+		margin-right: -0.75rem;
+		padding-left: 0.75rem;
+		padding-right: 0.75rem;
+	}
+}
+
 /* ============================================
    4. NAVIGATION (hover/active states only)
    Markup uses d-flex align-items-center gap-3 rounded fw-medium text-decoration-none
@@ -566,8 +588,8 @@ body.vs-modal-open {
 
 .vs-modal-backdrop {
 	background: rgba(0, 0, 0, 0.75) !important;
-	backdrop-filter: blur(16px);
-	-webkit-backdrop-filter: blur(16px);
+	backdrop-filter: blur(32px);
+	-webkit-backdrop-filter: blur(32px);
 	z-index: 1050 !important;
 }
 
@@ -937,8 +959,8 @@ body.vs-modal-open {
 	/* Frosted-glass backdrop on desktop — lower opacity lets the blur be visible */
 	.vs-modal-backdrop {
 		background: rgba(0, 0, 0, 0.5) !important;
-		backdrop-filter: blur(24px);
-		-webkit-backdrop-filter: blur(24px);
+		backdrop-filter: blur(48px);
+		-webkit-backdrop-filter: blur(48px);
 	}
 	.directory-list {
 		max-height: 400px;

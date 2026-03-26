@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using VibeSwarm.Client.Components.Projects;
 using VibeSwarm.Shared.Data;
+using VibeSwarm.Shared.Models;
 
 namespace VibeSwarm.Tests;
 
@@ -17,7 +18,7 @@ public sealed class ProjectCardTests
 
 		await using var renderer = new HtmlRenderer(services.BuildServiceProvider(), NullLoggerFactory.Instance);
 
-		var latestJob = new Job
+		var latestJob = new JobSummary
 		{
 			Id = Guid.NewGuid(),
 			Title = "Use the idea text for previews",

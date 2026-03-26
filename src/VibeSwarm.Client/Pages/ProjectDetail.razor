@@ -58,7 +58,7 @@ else
                                 OnSuggestIdeas="SuggestIdeasFromCodebase" />
 
     @* Tabbed Content Area *@
-    <ul class="nav nav-tabs mt-3" role="tablist">
+    <ul class="nav nav-tabs mt-3 project-detail-tabs" role="tablist">
         <li class="nav-item" role="presentation">
             <button type="button" class="nav-link @(_activeTab == "ideas" ? "active" : "")"
                     @onclick="@(() => _activeTab = "ideas")" role="tab">
@@ -474,8 +474,14 @@ else
                       TargetBranches="@MergeTargetBranches" SelectedTargetBranch="@_mergeTargetBranch"
                       PushAfterMerge="@_mergePushAfterMerge" IsCheckingPreview="@_isCheckingMergePreview"
                       IsMerging="@_isMergingBranch" PreviewMessage="@_mergePreviewMessage"
-                      PreviewError="@_mergePreviewError" OnTargetBranchChanged="HandleMergeTargetBranchChanged"
-                      OnPushAfterMergeChanged="HandleMergePushAfterMergeChanged" OnMerge="MergeCurrentBranchAsync"
+                      PreviewError="@_mergePreviewError" CreatePullRequest="@_mergeCreatePullRequest"
+                      PullRequestTitle="@_mergePrTitle" IsCreatingPullRequest="@_isCreatingPullRequest"
+                      IsGitHubCliAvailable="@_isGitHubCliAvailable"
+                      OnTargetBranchChanged="HandleMergeTargetBranchChanged"
+                      OnPushAfterMergeChanged="HandleMergePushAfterMergeChanged"
+                      OnCreatePullRequestChanged="HandleMergeCreatePullRequestChanged"
+                      OnPullRequestTitleChanged="HandleMergePrTitleChanged"
+                      OnMerge="MergeCurrentBranchAsync" OnCreatePullRequestSubmit="CreatePullRequestAsync"
                       OnCancel="CloseMergeBranchModal" />
 
     @* Uncommitted Changes Modal *@
@@ -558,6 +564,10 @@ else
     private bool _showMergeBranchModal { get; set; }
     private string? _mergeTargetBranch { get; set; }
     private bool _mergePushAfterMerge { get; set; } = true;
+    private bool _mergeCreatePullRequest { get; set; }
+    private string? _mergePrTitle { get; set; }
+    private bool _isCreatingPullRequest { get; set; }
+    private bool _isGitHubCliAvailable { get; set; }
     private bool _isCheckingMergePreview { get; set; }
     private bool _isMergingBranch { get; set; }
     private string? _mergePreviewMessage { get; set; }
@@ -681,9 +691,8 @@ else
         {
             await LoadGitInfo();
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            Console.WriteLine($"Git info load failed (non-critical): {ex.Message}");
             _isLoadingGitInfo = false;
             IsGitRepository = false;
         }
@@ -712,11 +721,9 @@ else
         }
         catch (OperationCanceledException)
         {
-            Console.WriteLine("SignalR connection timed out - falling back to polling");
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            Console.WriteLine($"SignalR initialization failed (non-critical): {ex.Message}");
         }
     }
 
@@ -734,15 +741,11 @@ TimeSpan.FromSeconds(10) })
         // Handle connection state changes
         _hubConnection.Closed += async (error) =>
         {
-
-            Console.WriteLine($"SignalR connection closed: {error?.Message ?? "No error"}");
             await Task.CompletedTask;
         };
 
         _hubConnection.Reconnected += async (connectionId) =>
         {
-
-            Console.WriteLine($"SignalR reconnected: {connectionId}");
             // Re-subscribe after reconnection
             await SubscribeToSignalRGroups();
         };
@@ -750,14 +753,10 @@ TimeSpan.FromSeconds(10) })
         try
         {
             await _hubConnection.StartAsync(cancellationToken);
-
-            Console.WriteLine("SignalR connected successfully");
             await SubscribeToSignalRGroups();
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            Console.WriteLine($"SignalR connection failed: {ex.Message}");
-
         }
     }
 
@@ -962,9 +961,8 @@ TimeSpan.FromSeconds(10) })
             await _hubConnection.InvokeAsync("SubscribeToProject", ProjectId.ToString());
             await _hubConnection.InvokeAsync("SubscribeToJobList");
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            Console.WriteLine($"SignalR subscription failed: {ex.Message}");
         }
     }
 
@@ -972,24 +970,25 @@ TimeSpan.FromSeconds(10) })
     {
         _refreshTimer = new System.Threading.Timer(async _ =>
         {
-            if (HasActiveJobs || IsIdeasProcessingActive || (_activeTab == "changes" && IsGitRepository))
+            if (HasActiveJobs || IsIdeasProcessingActive)
             {
                 await InvokeAsync(async () =>
-        {
-            await RefreshJobs();
-            await LoadIdeas();
-            if (IsGitRepository)
-            {
-                await RefreshUncommittedChangesStatus();
-                if (_activeTab == "changes")
                 {
+                    await RefreshJobs();
+                    await LoadIdeas();
+                    StateHasChanged();
+                });
+            }
+            else if (_activeTab == "changes" && IsGitRepository)
+            {
+                await InvokeAsync(async () =>
+                {
+                    await RefreshUncommittedChangesStatus();
                     await LoadChangesTabData();
-                }
+                    StateHasChanged();
+                });
             }
-            StateHasChanged();
-        });
-            }
-        }, null, TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(3));
+        }, null, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
     }
 
     private async Task LoadData()

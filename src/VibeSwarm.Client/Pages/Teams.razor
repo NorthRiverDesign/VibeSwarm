@@ -221,9 +221,8 @@ else
 			await TeamRoleService.UpdateAsync(teamRole);
 			await LoadTeamRoles();
 		}
-		catch (Exception ex)
+		catch (Exception)
 		{
-			Console.WriteLine($"Error updating team role: {ex.Message}");
 		}
 	}
 }
