@@ -129,7 +129,7 @@ else
                             IsTogglingProcessing="@_isTogglingIdeasProcessing" HasDefaultProvider="@HasDefaultProvider"
                             HasActiveJobs="@HasActiveJobs" IsAddingIdea="@_isAddingIdea" ProcessingIdeaIds="@ProcessingIdeaIds"
                             CurrentAutoCommitMode="@(Project?.AutoCommitMode ?? AutoCommitMode.Off)"
-                            CurrentAutoExpandIdeas="@(Project?.IdeasAutoExpand ?? true)" IsGitRepository="@IsGitRepository"
+                            IsGitRepository="@IsGitRepository"
                             OnStartProcessing="StartIdeasProcessing" OnStartProcessingWithOptions="StartIdeasProcessingWithOptions"
                             OnStopProcessing="StopIdeasProcessing" OnAddIdea="AddIdea" OnUpdateIdea="UpdateIdea"
                             OnDeleteIdea="DeleteIdea" OnCopyIdea="CopyIdea" OnMoveIdea="MoveIdea" OnStartSingleIdea="StartSingleIdea"

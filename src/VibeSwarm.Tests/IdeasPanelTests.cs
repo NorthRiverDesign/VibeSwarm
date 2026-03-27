@@ -46,7 +46,6 @@ public sealed class IdeasPanelTests
 				[nameof(IdeasPanel.IsPageLoading)] = true,
 				[nameof(IdeasPanel.HasDefaultProvider)] = false,
 				[nameof(IdeasPanel.HasInference)] = true,
-				[nameof(IdeasPanel.CurrentAutoExpandIdeas)] = true,
 				[nameof(IdeasPanel.AvailableInferenceProviders)] = new List<InferenceProvider>(),
 				[nameof(IdeasPanel.AvailableProviders)] = new List<Provider>()
 			});
@@ -58,7 +57,6 @@ public sealed class IdeasPanelTests
 		Assert.Contains("3 pending", html);
 		Assert.Contains("Set default provider", html);
 		Assert.Contains("Add idea", html);
-		Assert.Contains("Expands before running", html);
 		Assert.Contains("Set a default provider to enable idea processing", html);
 		Assert.DoesNotContain("class=\"badge bg-secondary\">7</span>", html);
 		Assert.DoesNotContain("Short description of a feature or update.", html);

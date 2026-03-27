@@ -151,12 +151,6 @@ public class Project
 	public bool IdeasAutoCommit { get; set; }
 
 	/// <summary>
-	/// Whether ideas should be automatically expanded into detailed specs before creating jobs.
-	/// When disabled, ideas are sent directly to implementation unless an approved expansion exists.
-	/// </summary>
-	public bool IdeasAutoExpand { get; set; } = true;
-
-	/// <summary>
 	/// When enabled and at least two team roles are configured, creating a job automatically
 	/// fans out into parallel role-based jobs — one per enabled team role assignment.
 	/// Each role job runs its assigned provider with a role-specific system prompt.

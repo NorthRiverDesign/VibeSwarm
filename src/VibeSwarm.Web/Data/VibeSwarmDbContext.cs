@@ -119,7 +119,6 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 			entity.Property(e => e.IdeaInferenceModelId).HasMaxLength(200);
 			entity.Property(e => e.PromptContext).HasMaxLength(ValidationLimits.ProjectPromptContextMaxLength);
 			entity.Property(e => e.Memory).HasMaxLength(ValidationLimits.ProjectMemoryMaxLength);
-			entity.Property(e => e.IdeasAutoExpand).HasDefaultValue(true);
 			entity.Property(e => e.BuildCommand).HasMaxLength(500);
 			entity.Property(e => e.TestCommand).HasMaxLength(500);
 			entity.HasIndex(e => e.Name).IsUnique();

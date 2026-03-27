@@ -33,7 +33,6 @@ public class ProjectExportDto
 	public string? DefaultTargetBranch { get; set; }
 	public bool PlanningEnabled { get; set; }
 	public string? PromptContext { get; set; }
-	public bool IdeasAutoExpand { get; set; }
 	public bool IdeasAutoCommit { get; set; }
 	public bool EnableTeamSwarm { get; set; }
 	public bool BuildVerificationEnabled { get; set; }

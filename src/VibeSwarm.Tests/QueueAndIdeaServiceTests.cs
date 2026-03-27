@@ -1164,15 +1164,14 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 	}
 
 	[Fact]
-	public async Task ConvertToJobAsync_UsesDirectImplementationPrompt_WhenProjectAutoExpandDisabled()
+	public async Task ConvertToJobAsync_UsesDirectImplementationPrompt_WhenNoApprovedExpansion()
 	{
 		await using var dbContext = CreateDbContext();
 		var project = new Project
 		{
 			Id = Guid.NewGuid(),
 			Name = "Direct Ideas Project",
-			WorkingPath = "/tmp/direct-ideas",
-			IdeasAutoExpand = false
+			WorkingPath = "/tmp/direct-ideas"
 		};
 		var provider = new Provider
 		{
@@ -1204,54 +1203,14 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 	}
 
 	[Fact]
-	public async Task ConvertToJobAsync_UsesExpansionPrompt_WhenProjectAutoExpandEnabled()
-	{
-		await using var dbContext = CreateDbContext();
-		var project = new Project
-		{
-			Id = Guid.NewGuid(),
-			Name = "Expanded Ideas Project",
-			WorkingPath = "/tmp/expanded-ideas",
-			IdeasAutoExpand = true
-		};
-		var provider = new Provider
-		{
-			Id = Guid.NewGuid(),
-			Name = "Claude",
-			Type = ProviderType.Claude,
-			IsEnabled = true,
-			IsDefault = true
-		};
-		var idea = new Idea
-		{
-			Id = Guid.NewGuid(),
-			ProjectId = project.Id,
-			Description = "Add project usage charts",
-			SortOrder = 0
-		};
-
-		dbContext.Projects.Add(project);
-		dbContext.Providers.Add(provider);
-		dbContext.Ideas.Add(idea);
-		await dbContext.SaveChangesAsync();
-
-		var ideaService = CreateIdeaService(dbContext, provider);
-		var job = await ideaService.ConvertToJobAsync(idea.Id);
-
-		Assert.NotNull(job);
-		Assert.Contains("Begin by expanding this idea into a detailed specification, then implement it.", job!.GoalPrompt);
-	}
-
-	[Fact]
-	public async Task ConvertToJobAsync_PrefersApprovedExpansion_WhenProjectAutoExpandDisabled()
+	public async Task ConvertToJobAsync_PrefersApprovedExpansion_OverDirectPrompt()
 	{
 		await using var dbContext = CreateDbContext();
 		var project = new Project
 		{
 			Id = Guid.NewGuid(),
 			Name = "Approved Expansion Project",
-			WorkingPath = "/tmp/approved-expansion",
-			IdeasAutoExpand = false
+			WorkingPath = "/tmp/approved-expansion"
 		};
 		var provider = new Provider
 		{
@@ -1293,8 +1252,7 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		{
 			Id = Guid.NewGuid(),
 			Name = "Idea Notification Project",
-			WorkingPath = "/tmp/idea-notification-project",
-			IdeasAutoExpand = false
+			WorkingPath = "/tmp/idea-notification-project"
 		};
 		var provider = new Provider
 		{
@@ -1355,7 +1313,6 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 			Id = Guid.NewGuid(),
 			Name = "Project Priority Defaults",
 			WorkingPath = "/tmp/project-priority-defaults",
-			IdeasAutoExpand = false,
 			ProviderSelections =
 			[
 				new ProjectProvider
@@ -1416,8 +1373,7 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 			Id = Guid.NewGuid(),
 			Name = "Ideas Queue Project",
 			WorkingPath = "/tmp/ideas-queue-project",
-			IdeasProcessingActive = true,
-			IdeasAutoExpand = false
+			IdeasProcessingActive = true
 		};
 		var provider = new Provider
 		{
@@ -1914,37 +1870,6 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		var storedJob = await dbContext.Jobs.SingleAsync(j => j.Id == job.Id);
 		Assert.Equal(2, storedJob.ChangedFilesCount);
 		Assert.Equal(gitDiff, storedJob.GitDiff);
-	}
-
-	[Fact]
-	public async Task ProjectService_UpdateAsync_PersistsIdeasAutoExpandSetting()
-	{
-		await using var dbContext = CreateDbContext();
-		var project = new Project
-		{
-			Id = Guid.NewGuid(),
-			Name = "Project Service Project",
-			WorkingPath = "/tmp/project-service",
-			IdeasAutoExpand = true
-		};
-
-		dbContext.Projects.Add(project);
-		await dbContext.SaveChangesAsync();
-
-		var projectService = new ProjectService(dbContext, new NoOpProjectEnvironmentCredentialService(), new FakeVersionControlService());
-		var updated = await projectService.UpdateAsync(new Project
-		{
-			Id = project.Id,
-			Name = project.Name,
-			WorkingPath = project.WorkingPath,
-			IdeasAutoExpand = false
-		});
-
-		Assert.False(updated.IdeasAutoExpand);
-		Assert.False(await dbContext.Projects
-			.Where(p => p.Id == project.Id)
-			.Select(p => p.IdeasAutoExpand)
-			.SingleAsync());
 	}
 
 	[Fact]

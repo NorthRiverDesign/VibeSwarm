@@ -49,14 +49,6 @@ New jobs will target this branch when creating pull requests or merging complete
 </div>
 }
 
-<div class="form-check form-switch @(IsEdit ? "mb-3" : string.Empty)">
-<InputCheckbox id="modal-ideasAutoExpand" @bind-Value="Project.IdeasAutoExpand" class="form-check-input" />
-<label class="form-check-label" for="modal-ideasAutoExpand">
-<i class="bi bi-stars me-1"></i>Auto-Expand Ideas
-</label>
-</div>
-<div class="form-text @(IsEdit ? "mb-3" : string.Empty)">When enabled, ideas without an approved expansion are first turned into a fuller specification before a job is created.</div>
-
 @if (IsEdit)
 {
 <div class="form-check form-switch">

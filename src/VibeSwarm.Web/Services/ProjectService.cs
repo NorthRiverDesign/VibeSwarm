@@ -159,7 +159,6 @@ public class ProjectService : IProjectService
 		existing.BuildCommand = string.IsNullOrWhiteSpace(project.BuildCommand) ? null : project.BuildCommand.Trim();
 		existing.TestCommand = string.IsNullOrWhiteSpace(project.TestCommand) ? null : project.TestCommand.Trim();
 		existing.IsActive = project.IsActive;
-		existing.IdeasAutoExpand = project.IdeasAutoExpand;
 		existing.UpdatedAt = DateTime.UtcNow;
 
 		await _dbContext.Entry(existing)

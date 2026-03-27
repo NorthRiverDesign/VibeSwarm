@@ -62,8 +62,6 @@ public sealed class ProjectModalFormModel : IValidatableObject
 
 	public bool EnableTeamSwarm { get; set; }
 
-	public bool IdeasAutoExpand { get; set; } = true;
-
 	public bool BuildVerificationEnabled { get; set; }
 
 	[StringLength(500)]
@@ -114,7 +112,6 @@ public sealed class ProjectModalFormModel : IValidatableObject
 			Memory = source.Memory,
 			IsActive = source.IsActive,
 			EnableTeamSwarm = source.EnableTeamSwarm,
-			IdeasAutoExpand = source.IdeasAutoExpand,
 			BuildVerificationEnabled = source.BuildVerificationEnabled,
 			BuildCommand = source.BuildCommand,
 			TestCommand = source.TestCommand,
@@ -150,8 +147,7 @@ public sealed class ProjectModalFormModel : IValidatableObject
 			BuildVerificationEnabled = BuildVerificationEnabled,
 			BuildCommand = string.IsNullOrWhiteSpace(BuildCommand) ? null : BuildCommand.Trim(),
 			TestCommand = string.IsNullOrWhiteSpace(TestCommand) ? null : TestCommand.Trim(),
-			IsActive = IsActive,
-			IdeasAutoExpand = IdeasAutoExpand
+			IsActive = IsActive
 		};
 	}
 

@@ -596,7 +596,6 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 				Description = project.Description,
 				WorkingPath = project.WorkingPath,
 				IsActive = project.IsActive,
-				IdeasAutoExpand = project.IdeasAutoExpand,
 				ProviderSelections = project.ProviderSelections
 					.Select(ps => new ProjectProvider
 					{
@@ -700,7 +699,6 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 				Description = project.Description,
 				WorkingPath = project.WorkingPath,
 				IsActive = project.IsActive,
-				IdeasAutoExpand = project.IdeasAutoExpand,
 				ProviderSelections = project.ProviderSelections
 					.Select(ps => new ProjectProvider
 					{

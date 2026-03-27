@@ -63,12 +63,10 @@ public partial class IdeaService
 				_logger.LogWarning(ex, "Could not get current branch for project {ProjectId}", idea.ProjectId);
 			}
 
-			// Use an approved expansion when available; otherwise honor the project's auto-expand setting.
+			// Use an approved expansion when available; otherwise send directly to implementation.
 			var goalPrompt = idea.HasExpandedDescription
 				? BuildPromptFromExpanded(idea.Description, idea.ExpandedDescription!)
-				: idea.Project.IdeasAutoExpand
-					? BuildExpandedPrompt(idea.Description)
-					: BuildImplementationPrompt(idea.Description);
+				: BuildImplementationPrompt(idea.Description);
 
 			// Create the job with the original idea as the title
 			var job = new Job
@@ -141,29 +139,6 @@ public partial class IdeaService
 5. Use subagents for research, codebase exploration, and parallel analysis to keep your context window efficient
 
 Implement this feature now.
-
-When you are finished, end your response with a short summary in this exact format:
-<commit-summary>
-A concise one-line description of what was implemented (max 72 chars)
-</commit-summary>";
-	}
-
-	private static string BuildExpandedPrompt(string ideaDescription)
-	{
-		return $@"You are implementing a feature based on the following idea. First, take a moment to understand the idea and expand it into a complete feature specification. Consider edge cases, user experience, and implementation details. Then implement the feature.
-
-## Feature Idea
-{ideaDescription}
-
-## Instructions
-1. Analyze the idea and identify all the components needed
-2. Consider edge cases and error handling
-3. Think about the user experience and how users will interact with this feature
-4. Implement the feature completely, including any necessary tests
-5. Make sure the implementation follows the existing code patterns and style in the project
-6. Use subagents for research, codebase exploration, and parallel analysis to keep your context window efficient
-
-Begin by expanding this idea into a detailed specification, then implement it.
 
 When you are finished, end your response with a short summary in this exact format:
 <commit-summary>
