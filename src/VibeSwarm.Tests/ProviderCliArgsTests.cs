@@ -390,6 +390,7 @@ public sealed class ProviderCliArgsTests
     public void Copilot_WithAltScreen_AddsAltScreenFlag()
     {
         var provider = new CopilotProvider(CreateConfig(ProviderType.Copilot));
+        provider.CachedCliVersion = new Version(1, 0, 11);
         provider.ApplyOptions(new ExecutionOptions { UseAltScreen = true });
 
         var args = provider.BuildCliArgs("test", null);
@@ -397,6 +398,29 @@ public sealed class ProviderCliArgsTests
         var idx = args.IndexOf("--alt-screen");
         Assert.True(idx >= 0);
         Assert.Equal("on", args[idx + 1]);
+    }
+
+    [Fact]
+    public void Copilot_WithAltScreen_AndRemovedVersion_OmitsAltScreenFlag()
+    {
+        var provider = new CopilotProvider(CreateConfig(ProviderType.Copilot));
+        provider.CachedCliVersion = new Version(1, 0, 12);
+        provider.ApplyOptions(new ExecutionOptions { UseAltScreen = true });
+
+        var args = provider.BuildCliArgs("test", null);
+
+        Assert.DoesNotContain("--alt-screen", args);
+    }
+
+    [Fact]
+    public void Copilot_WithAltScreen_AndUnknownVersion_OmitsAltScreenFlag()
+    {
+        var provider = new CopilotProvider(CreateConfig(ProviderType.Copilot));
+        provider.ApplyOptions(new ExecutionOptions { UseAltScreen = true });
+
+        var args = provider.BuildCliArgs("test", null);
+
+        Assert.DoesNotContain("--alt-screen", args);
     }
 
     [Fact]

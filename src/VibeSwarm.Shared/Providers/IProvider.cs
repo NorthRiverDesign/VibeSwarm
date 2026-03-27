@@ -615,7 +615,7 @@ public class ExecutionOptions
     public string? BashEnvPath { get; set; }
 
     /// <summary>
-    /// Enable alternate screen buffer mode (Copilot: --alt-screen, v0.0.407+).
+    /// Enable alternate screen buffer mode (Copilot: --alt-screen, v0.0.407-v1.0.11).
     /// Experimental feature for improved display.
     /// </summary>
     public bool UseAltScreen { get; set; }

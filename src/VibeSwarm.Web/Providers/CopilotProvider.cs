@@ -14,6 +14,11 @@ namespace VibeSwarm.Shared.Providers;
 public class CopilotProvider : CliProviderBase
 {
     private const string DefaultExecutable = "copilot";
+    private static readonly Version JsonOutputVersion = new(0, 0, 422);
+    private static readonly Version BashEnvFileVersion = new(0, 0, 418);
+    private static readonly Version ReasoningEffortVersion = new(1, 0, 4);
+    private static readonly Version AltScreenVersion = new(0, 0, 407);
+    private static readonly Version AltScreenRemovedVersion = new(1, 0, 12);
     private UsageLimits? _lastObservedUsageLimits;
 
     // Cached CLI version for feature gating (populated on TestConnectionAsync)
@@ -355,7 +360,7 @@ public class CopilotProvider : CliProviderBase
 
 		// Structured JSON output in prompt mode (v0.0.422+).
 		// Skip on older or unknown versions to avoid passing an unsupported flag.
-		if (_cachedCliVersion != null && _cachedCliVersion >= new Version(0, 0, 422))
+		if (_cachedCliVersion != null && _cachedCliVersion >= JsonOutputVersion)
 		{
 			args.Add("--output-format");
 			args.Add("json");
@@ -398,14 +403,17 @@ public class CopilotProvider : CliProviderBase
         var reasoningEffort = NormalizeReasoningEffort(CurrentReasoningEffort, "low", "medium", "high");
         if (!string.IsNullOrEmpty(reasoningEffort)
             && _cachedCliVersion != null
-            && _cachedCliVersion >= new Version(1, 0, 4))
+            && _cachedCliVersion >= ReasoningEffortVersion)
         {
             args.Add("--reasoning-effort");
             args.Add(reasoningEffort);
         }
 
-        // Alt-screen buffer mode (v0.0.407+, on by default since v1.0.8)
-        if (CurrentUseAltScreen)
+        // Alt-screen buffer mode existed from v0.0.407 through v1.0.11 and was removed in v1.0.12.
+        if (CurrentUseAltScreen
+            && _cachedCliVersion != null
+            && _cachedCliVersion >= AltScreenVersion
+            && _cachedCliVersion < AltScreenRemovedVersion)
         {
             args.Add("--alt-screen");
             args.Add("on");
@@ -417,7 +425,7 @@ public class CopilotProvider : CliProviderBase
         // on older installations (e.g. Raspberry Pi running an older release).
         if (!string.IsNullOrEmpty(CurrentBashEnvPath)
             && _cachedCliVersion != null
-            && _cachedCliVersion >= new Version(0, 0, 418))
+            && _cachedCliVersion >= BashEnvFileVersion)
         {
             args.Add("--bash-env");
             args.Add(CurrentBashEnvPath);
