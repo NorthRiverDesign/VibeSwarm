@@ -118,9 +118,17 @@
 						<span class="d-inline d-sm-none ms-1">Queued</span>
 					</button>
 				}
+				else if (Idea.JobId.HasValue)
+				{
+					@* Show spinner with link to view the running job *@
+					<a href="/jobs/view/@Idea.JobId" class="btn btn-sm btn-secondary flex-grow-1 flex-sm-grow-0">
+						<span class="spinner-border spinner-border-sm" role="status"></span>
+						<span class="ms-1">View Job</span>
+					</a>
+				}
 				else
 				{
-					@* Show spinner when idea is processing *@
+					@* Show spinner when idea is processing but no job yet *@
 					<button type="button" class="btn btn-sm btn-secondary flex-grow-1 flex-sm-grow-0" disabled>
 						<span class="spinner-border spinner-border-sm" role="status"></span>
 						<span class="d-inline d-sm-none ms-1">Processing</span>
