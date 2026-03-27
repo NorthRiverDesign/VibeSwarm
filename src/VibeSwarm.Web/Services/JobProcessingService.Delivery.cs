@@ -16,6 +16,9 @@ public partial class JobProcessingService
     {
         try
         {
+            // Remove agent artifacts (task files, screenshots, etc.) before staging
+            CleanupAgentArtifacts(job.Id, workingDirectory);
+
             var shouldCreatePullRequest = ShouldCreatePullRequest(job);
 
             // Check if there are uncommitted changes
@@ -362,5 +365,45 @@ public partial class JobProcessingService
         }
 
         return body.ToString().Trim();
+    }
+
+    /// <summary>
+    /// Deletes known agent artifact files from the working directory so they are not
+    /// included in auto-commits. Artifacts are non-code files that CLI agents create
+    /// for their own internal tracking (task lists, screenshots, etc.).
+    /// </summary>
+    private void CleanupAgentArtifacts(Guid jobId, string workingDirectory)
+    {
+        foreach (var pattern in ProjectMemoryService.ArtifactCleanupPatterns)
+        {
+            try
+            {
+                var fullPath = Path.Combine(workingDirectory, pattern);
+                if (File.Exists(fullPath))
+                {
+                    File.Delete(fullPath);
+                    _logger.LogInformation("Cleaned up agent artifact {Artifact} for job {JobId}", pattern, jobId);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Failed to clean up agent artifact {Artifact} for job {JobId}", pattern, jobId);
+            }
+        }
+
+        // Remove empty tasks/ directory if all artifact files were deleted
+        try
+        {
+            var tasksDir = Path.Combine(workingDirectory, "tasks");
+            if (Directory.Exists(tasksDir) && !Directory.EnumerateFileSystemEntries(tasksDir).Any())
+            {
+                Directory.Delete(tasksDir);
+                _logger.LogDebug("Removed empty tasks/ directory for job {JobId}", jobId);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Failed to remove empty tasks/ directory for job {JobId}", jobId);
+        }
     }
 }
