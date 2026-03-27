@@ -671,6 +671,8 @@ else
     private HubConnection? _hubConnection;
     private CancellationTokenSource? _signalRCts;
     private HashSet<Guid> _localIdeaUpdateIds = new();
+    private HashSet<Guid> _localIdeaCreateIds = new();
+    private DateTime _lastIdeasLoadTime = DateTime.MinValue;
     private bool _disposed;
 
     protected override async Task OnInitializedAsync()
@@ -777,6 +779,7 @@ TimeSpan.FromSeconds(10) })
                 {
                     if (_disposed) return;
                     await RefreshJobs();
+                    // LoadIdeas is debounced to avoid redundant loads during rapid status changes
                     await LoadIdeas();
                     StateHasChanged();
                 });
@@ -955,6 +958,11 @@ TimeSpan.FromSeconds(10) })
                     if (_disposed) return;
                     if (projectId == ProjectId.ToString())
                     {
+                        // Skip reload for ideas we just created locally
+                        if (Guid.TryParse(ideaId, out var createdIdeaId) && _localIdeaCreateIds.Remove(createdIdeaId))
+                        {
+                            return;
+                        }
                         await LoadIdeas();
                         StateHasChanged();
                     }
@@ -1097,7 +1105,7 @@ TimeSpan.FromSeconds(10) })
                 _jobsPageNumber = 1;
                 _ideasPageNumber = 1;
                 await RefreshJobs();
-                await LoadIdeas();
+                await LoadIdeas(force: true);
             }
             Providers = (await ProviderService.GetAllAsync()).ToList();
             await LoadSuggestionProviderModels();

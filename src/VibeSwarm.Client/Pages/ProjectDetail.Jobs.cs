@@ -274,8 +274,15 @@ public partial class ProjectDetail
     }
 
     // Ideas management methods
-    private async Task LoadIdeas()
+    private static readonly TimeSpan IdeasLoadDebounceInterval = TimeSpan.FromSeconds(2);
+
+    private async Task<bool> LoadIdeas(bool force = false)
     {
+        if (!force && (DateTime.UtcNow - _lastIdeasLoadTime) < IdeasLoadDebounceInterval)
+        {
+            return false;
+        }
+
         try
         {
             var result = await IdeaService.GetPagedByProjectIdAsync(ProjectId, _ideasPageNumber, IdeasPageSize);
@@ -289,12 +296,15 @@ public partial class ProjectDetail
                 .ToHashSet();
             ProcessingIdeaIds.RemoveWhere(id => ideaIdsWithJobs.Contains(id) || Ideas.All(i => i.Id != id));
             IsIdeasProcessingActive = await IdeaService.IsProcessingActiveAsync(ProjectId);
+            _lastIdeasLoadTime = DateTime.UtcNow;
+            return true;
         }
         catch (Exception)
         {
             Ideas = new List<Idea>();
             IdeasTotalCount = 0;
             IdeasUnprocessedCount = 0;
+            return true;
         }
     }
 
@@ -313,9 +323,13 @@ public partial class ProjectDetail
                 Description = description.Trim()
             };
 
-            await IdeaService.CreateAsync(idea);
+            var created = await IdeaService.CreateAsync(idea);
+            if (created != null)
+            {
+                _localIdeaCreateIds.Add(created.Id);
+            }
             _ideasPageNumber = Math.Max(1, ((IdeasTotalCount + 1) + IdeasPageSize - 1) / IdeasPageSize);
-            await LoadIdeas();
+            await LoadIdeas(force: true);
         }
         catch (Exception ex)
         {
@@ -377,7 +391,7 @@ public partial class ProjectDetail
         try
         {
             await IdeaService.DeleteAsync(ideaId);
-            await LoadIdeas();
+            await LoadIdeas(force: true);
         }
         catch (Exception ex)
         {
@@ -405,7 +419,7 @@ public partial class ProjectDetail
         {
             var targetProject = await ProjectService.GetByIdAsync(args.targetProjectId);
             await IdeaService.MoveToProjectAsync(args.ideaId, args.targetProjectId);
-            await LoadIdeas();
+            await LoadIdeas(force: true);
             NotificationService.ShowSuccess($"Idea moved to {targetProject?.Name ?? "project"} successfully.");
         }
         catch (Exception ex)
@@ -500,7 +514,7 @@ public partial class ProjectDetail
             if (job != null)
             {
                 await RefreshJobs();
-                await LoadIdeas();
+                await LoadIdeas(force: true);
             }
             else
             {
@@ -532,7 +546,7 @@ public partial class ProjectDetail
             var result = await IdeaService.ExpandIdeaAsync(ideaId, request, ct);
             if (result != null)
             {
-                await LoadIdeas();
+                await LoadIdeas(force: true);
                 if (result.ExpansionStatus == IdeaExpansionStatus.PendingReview)
                 {
                     NotificationService.ShowSuccess("Idea expanded successfully. Review the specification.", "AI Expansion Complete");
@@ -549,7 +563,7 @@ public partial class ProjectDetail
             try
             {
                 await IdeaService.CancelExpansionAsync(ideaId);
-                await LoadIdeas();
+                await LoadIdeas(force: true);
             }
             catch { /* Best effort */ }
             NotificationService.ShowInfo("Expansion cancelled.", "Cancelled");
@@ -560,7 +574,7 @@ public partial class ProjectDetail
             try
             {
                 await IdeaService.CancelExpansionAsync(ideaId);
-                await LoadIdeas();
+                await LoadIdeas(force: true);
             }
             catch { /* Best effort */ }
             NotificationService.ShowError($"Error expanding idea: {ex.Message}");
@@ -578,7 +592,7 @@ public partial class ProjectDetail
         try
         {
             await IdeaService.CancelExpansionAsync(ideaId);
-            await LoadIdeas();
+            await LoadIdeas(force: true);
             NotificationService.ShowInfo("Expansion cancelled.", "Cancelled");
         }
         catch (Exception ex)
@@ -598,7 +612,7 @@ public partial class ProjectDetail
             var result = await IdeaService.ApproveExpansionAsync(args.ideaId, args.editedDescription);
             if (result != null)
             {
-                await LoadIdeas();
+                await LoadIdeas(force: true);
                 NotificationService.ShowSuccess("Specification approved. The idea is ready to run.", "Expansion Approved");
             }
         }
@@ -613,7 +627,7 @@ public partial class ProjectDetail
         try
         {
             await IdeaService.RejectExpansionAsync(ideaId);
-            await LoadIdeas();
+            await LoadIdeas(force: true);
             NotificationService.ShowInfo("Expansion discarded. You can try again or edit manually.", "Expansion Discarded");
         }
         catch (Exception ex)
@@ -628,7 +642,7 @@ public partial class ProjectDetail
         // This callback is invoked only on success so we reload the ideas list.
         var expectedTotalIdeas = Math.Max(IdeasTotalCount, 1);
         _ideasPageNumber = Math.Max(1, (expectedTotalIdeas + IdeasPageSize - 1) / IdeasPageSize);
-        await LoadIdeas();
+        await LoadIdeas(force: true);
         StateHasChanged();
     }
 
@@ -733,7 +747,7 @@ public partial class ProjectDetail
 
         try
         {
-            await LoadIdeas();
+            await LoadIdeas(force: true);
         }
         finally
         {
