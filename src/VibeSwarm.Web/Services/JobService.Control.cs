@@ -50,6 +50,20 @@ public partial class JobService
             catch { }
         }
 
+        // Handle idea state when job is immediately cancelled (New/Pending)
+        if (job.Status == JobStatus.Cancelled)
+        {
+            try
+            {
+                var ideaService = _serviceProvider.GetService<IIdeaService>();
+                if (ideaService != null)
+                {
+                    await ideaService.HandleJobCompletionAsync(job.Id, false, cancellationToken);
+                }
+            }
+            catch { /* Ignore errors handling idea state */ }
+        }
+
         _jobProcessingService?.TriggerProcessing();
 
         return true;

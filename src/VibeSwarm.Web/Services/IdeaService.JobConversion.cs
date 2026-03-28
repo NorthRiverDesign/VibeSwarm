@@ -197,6 +197,8 @@ A concise one-line description of what was implemented (max 72 chars)
 			return false;
 		}
 
+		var stoppedProcessing = false;
+
 		if (success)
 		{
 			// Job completed successfully - remove the idea
@@ -209,6 +211,23 @@ A concise one-line description of what was implemented (max 72 chars)
 			_logger.LogInformation("Resetting Idea {IdeaId} after Job {JobId} failed/cancelled", idea.Id, jobId);
 			idea.IsProcessing = false;
 			idea.JobId = null;
+
+			// If the job was cancelled, stop ideas auto-processing to avoid repeat failures
+			// (e.g. provider maintenance or rate limits causing the user to cancel)
+			var job = await _dbContext.Jobs
+				.AsNoTracking()
+				.FirstOrDefaultAsync(j => j.Id == jobId, cancellationToken);
+
+			if (job?.Status == JobStatus.Cancelled)
+			{
+				var project = await _dbContext.Projects.FindAsync(new object[] { idea.ProjectId }, cancellationToken);
+				if (project?.IdeasProcessingActive == true)
+				{
+					project.IdeasProcessingActive = false;
+					stoppedProcessing = true;
+					_logger.LogInformation("Stopped Ideas auto-processing for project {ProjectId} because Job {JobId} was cancelled", idea.ProjectId, jobId);
+				}
+			}
 		}
 
 		await _dbContext.SaveChangesAsync(cancellationToken);
@@ -219,6 +238,11 @@ A concise one-line description of what was implemented (max 72 chars)
 			try
 			{
 				await _jobUpdateService.NotifyIdeaUpdated(idea.Id, idea.ProjectId);
+
+				if (stoppedProcessing)
+				{
+					await _jobUpdateService.NotifyIdeasProcessingStateChanged(idea.ProjectId, false);
+				}
 			}
 			catch { /* Don't fail if notification fails */ }
 		}

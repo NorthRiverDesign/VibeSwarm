@@ -136,6 +136,14 @@ public partial class IdeaService
 				processingIdea.JobId = null;
 				await _dbContext.SaveChangesAsync(cancellationToken);
 				_logger.LogInformation("Reset failed Idea {IdeaId} for retry", processingIdea.Id);
+
+				// If the job was cancelled, stop auto-processing to avoid repeat failures
+				if (processingIdea.Job?.Status == JobStatus.Cancelled)
+				{
+					await StopProcessingAsync(projectId, cancellationToken);
+					_logger.LogInformation("Stopped Ideas auto-processing for project {ProjectId} because Idea job was cancelled", projectId);
+					return false;
+				}
 			}
 		}
 
