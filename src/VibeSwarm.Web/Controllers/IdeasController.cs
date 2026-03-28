@@ -91,6 +91,15 @@ public class IdeasController : ControllerBase
     [HttpGet("project/{projectId:guid}/processing-active")]
     public async Task<IActionResult> IsProcessingActive(Guid projectId, CancellationToken ct) => Ok(await _ideaService.IsProcessingActiveAsync(projectId, ct));
 
+    [HttpGet("global-processing-status")]
+    public async Task<IActionResult> GetGlobalProcessingStatus(CancellationToken ct) => Ok(await _ideaService.GetGlobalProcessingStatusAsync(ct));
+
+    [HttpPost("start-all-processing")]
+    public async Task<IActionResult> StartAllProcessing([FromQuery] bool autoCommit = false, CancellationToken ct = default) { await _ideaService.StartAllProcessingAsync(autoCommit, ct); return Ok(); }
+
+    [HttpPost("stop-all-processing")]
+    public async Task<IActionResult> StopAllProcessing(CancellationToken ct = default) { await _ideaService.StopAllProcessingAsync(ct); return Ok(); }
+
     [HttpPut("project/{projectId:guid}/reorder")]
     public async Task<IActionResult> Reorder(Guid projectId, [FromBody] List<Guid> ideaIds, CancellationToken ct) { await _ideaService.ReorderIdeasAsync(projectId, ideaIds, ct); return Ok(); }
 

@@ -70,6 +70,15 @@ public class HttpIdeaService : IIdeaService
     public async Task<bool> IsProcessingActiveAsync(Guid projectId, CancellationToken ct = default)
         => await _http.GetJsonValueAsync($"/api/ideas/project/{projectId}/processing-active", false, ct);
 
+    public async Task<GlobalIdeasProcessingStatus> GetGlobalProcessingStatusAsync(CancellationToken ct = default)
+        => await _http.GetJsonAsync("/api/ideas/global-processing-status", new GlobalIdeasProcessingStatus(), ct);
+
+    public async Task StartAllProcessingAsync(bool autoCommit = false, CancellationToken ct = default)
+        => await _http.PostAsync($"/api/ideas/start-all-processing?autoCommit={autoCommit}", null, ct);
+
+    public async Task StopAllProcessingAsync(CancellationToken ct = default)
+        => await _http.PostAsync("/api/ideas/stop-all-processing", null, ct);
+
     public async Task<bool> ProcessNextIdeaIfReadyAsync(Guid projectId, CancellationToken ct = default)
         => throw new NotSupportedException("ProcessNextIdeaIfReadyAsync is server-only");
 

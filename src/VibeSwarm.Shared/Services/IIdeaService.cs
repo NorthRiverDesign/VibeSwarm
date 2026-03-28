@@ -171,6 +171,21 @@ public interface IIdeaService
 	Task<Idea?> RejectExpansionAsync(Guid ideaId, CancellationToken cancellationToken = default);
 
 	/// <summary>
+	/// Gets a summary of ideas processing status across all projects
+	/// </summary>
+	Task<GlobalIdeasProcessingStatus> GetGlobalProcessingStatusAsync(CancellationToken cancellationToken = default);
+
+	/// <summary>
+	/// Starts auto-processing of ideas for all projects that have unprocessed ideas
+	/// </summary>
+	Task StartAllProcessingAsync(bool autoCommit = false, CancellationToken cancellationToken = default);
+
+	/// <summary>
+	/// Stops auto-processing of ideas for all currently processing projects
+	/// </summary>
+	Task StopAllProcessingAsync(CancellationToken cancellationToken = default);
+
+	/// <summary>
 	/// Uses local AI inference to scan the project directory and suggest feature ideas or improvements.
 	/// Requires a configured and available inference provider.
 	/// Returns a <see cref="SuggestIdeasResult"/> that always carries a diagnostic stage and message,

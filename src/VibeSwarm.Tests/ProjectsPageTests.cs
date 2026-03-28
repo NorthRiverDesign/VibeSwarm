@@ -267,6 +267,10 @@ public sealed class ProjectsPageTests
 		public Task<Idea?> RejectExpansionAsync(Guid ideaId, CancellationToken cancellationToken = default) => Task.FromResult<Idea?>(null);
 		public Task<SuggestIdeasResult> SuggestIdeasFromCodebaseAsync(Guid projectId, SuggestIdeasRequest? request = null, CancellationToken cancellationToken = default)
 			=> Task.FromResult(new SuggestIdeasResult());
+		public Task<GlobalIdeasProcessingStatus> GetGlobalProcessingStatusAsync(CancellationToken cancellationToken = default)
+			=> Task.FromResult(new GlobalIdeasProcessingStatus());
+		public Task StartAllProcessingAsync(bool autoCommit = false, CancellationToken cancellationToken = default) => Task.CompletedTask;
+		public Task StopAllProcessingAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 	}
 
 	private sealed class FakeTeamRoleService : ITeamRoleService

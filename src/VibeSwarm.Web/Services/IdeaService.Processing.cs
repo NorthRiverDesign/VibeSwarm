@@ -265,6 +265,63 @@ public partial class IdeaService
 		return idea;
 	}
 
+	public async Task<GlobalIdeasProcessingStatus> GetGlobalProcessingStatusAsync(CancellationToken cancellationToken = default)
+	{
+		var projectsWithIdeas = await _dbContext.Projects
+			.AsNoTracking()
+			.Where(p => p.IsActive && p.Ideas.Any())
+			.Select(p => new ProjectIdeasSummary
+			{
+				ProjectId = p.Id,
+				ProjectName = p.Name,
+				UnprocessedIdeas = p.Ideas.Count(i => !i.IsProcessing && !i.JobId.HasValue),
+				IsProcessing = p.IdeasProcessingActive
+			})
+			.ToListAsync(cancellationToken);
+
+		return new GlobalIdeasProcessingStatus
+		{
+			TotalProjectsWithIdeas = projectsWithIdeas.Count,
+			TotalUnprocessedIdeas = projectsWithIdeas.Sum(p => p.UnprocessedIdeas),
+			ProjectsCurrentlyProcessing = projectsWithIdeas.Count(p => p.IsProcessing),
+			Projects = projectsWithIdeas
+		};
+	}
+
+	public async Task StartAllProcessingAsync(bool autoCommit = false, CancellationToken cancellationToken = default)
+	{
+		// Get all active projects that have unprocessed ideas and are not already processing
+		var projectIds = await _dbContext.Projects
+			.AsNoTracking()
+			.Where(p => p.IsActive && !p.IdeasProcessingActive &&
+				p.Ideas.Any(i => !i.IsProcessing && !i.JobId.HasValue))
+			.Select(p => p.Id)
+			.ToListAsync(cancellationToken);
+
+		_logger.LogInformation("Starting Ideas auto-processing for {Count} projects (AutoCommit: {AutoCommit})", projectIds.Count, autoCommit);
+
+		foreach (var projectId in projectIds)
+		{
+			await StartProcessingAsync(projectId, autoCommit, cancellationToken);
+		}
+	}
+
+	public async Task StopAllProcessingAsync(CancellationToken cancellationToken = default)
+	{
+		var projectIds = await _dbContext.Projects
+			.AsNoTracking()
+			.Where(p => p.IdeasProcessingActive)
+			.Select(p => p.Id)
+			.ToListAsync(cancellationToken);
+
+		_logger.LogInformation("Stopping Ideas auto-processing for {Count} projects", projectIds.Count);
+
+		foreach (var projectId in projectIds)
+		{
+			await StopProcessingAsync(projectId, cancellationToken);
+		}
+	}
+
 	public async Task RecoverStuckIdeasAsync(CancellationToken cancellationToken = default)
 	{
 		var stuckIdeas = await _dbContext.Ideas
