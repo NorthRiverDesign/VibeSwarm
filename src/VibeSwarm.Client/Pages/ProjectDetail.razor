@@ -123,6 +123,14 @@ else
         @if (_activeTab == "ideas")
         {
             <div class="tab-pane fade show active">
+                @if (_isLoadingIdeas)
+                {
+                    <div class="border rounded-3 bg-body-tertiary p-3 p-lg-4">
+                        <SkeletonLoader Lines="4" LineHeight="20" />
+                    </div>
+                }
+                else
+                {
                 <IdeasPanel Ideas="@Ideas" TotalIdeasCount="@IdeasTotalCount" CurrentPage="@_ideasPageNumber"
                             PageSize="@IdeasPageSize" IsPageLoading="@_isLoadingIdeasPage" UnprocessedIdeasCount="@IdeasUnprocessedCount"
                             CurrentProjectId="@ProjectId" IsProcessingActive="@IsIdeasProcessingActive"
@@ -141,11 +149,20 @@ else
                             DefaultInferenceModelId="@(Project?.IdeaInferenceModelId)"
                             OnSuggestIdeas="SuggestIdeasFromCodebase" OnPreviousPage="LoadPreviousIdeasPage"
                             OnNextPage="LoadNextIdeasPage" />
+                }
             </div>
         }
         @if (_activeTab == "jobs")
         {
             <div class="tab-pane fade show active">
+                @if (_isLoadingJobs)
+                {
+                    <div class="border rounded-3 bg-body-tertiary p-3 p-lg-4">
+                        <SkeletonLoader Lines="5" LineHeight="20" />
+                    </div>
+                }
+                else
+                {
                 <ProjectJobsList Jobs="@PagedJobs" TotalJobsCount="@JobsTotalCount" CurrentPage="@_jobsPageNumber"
                                   PageSize="@ProjectJobsPageSize" IsPageLoading="@_isLoadingJobsPage" HasActiveJobs="@HasActiveJobs"
                                   HasCompletedJobs="@HasCompletedJobs" SearchQuery="@_jobSearchQuery" StatusFilter="@_jobStatusFilter"
@@ -153,6 +170,7 @@ else
                                   OnNextPage="LoadNextJobsPage" OnCancelAll="CancelAllJobs"
                                   OnDeleteCompleted="DeleteCompletedJobs" OnSearchChanged="HandleJobSearchChanged"
                                   OnStatusFilterChanged="HandleJobStatusFilterChanged" />
+                }
             </div>
         }
         @if (_activeTab == "environments")
@@ -1061,6 +1079,11 @@ TimeSpan.FromSeconds(10) })
         }
     }
 
+    private bool IsSignalRConnected => _hubConnection?.State == HubConnectionState.Connected;
+
+    private static readonly TimeSpan PollingIntervalActive = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan PollingIntervalSignalRFallback = TimeSpan.FromSeconds(30);
+
     private void StartAutoRefresh()
     {
         _refreshTimer = new System.Threading.Timer(async _ =>
@@ -1070,6 +1093,14 @@ TimeSpan.FromSeconds(10) })
             {
                 if (HasActiveJobs || IsIdeasProcessingActive)
                 {
+                    // When SignalR is connected, use relaxed interval as a safety net only
+                    if (IsSignalRConnected)
+                    {
+                        var timeSinceLastRefresh = DateTime.UtcNow - _lastJobsRefreshTime;
+                        if (timeSinceLastRefresh < PollingIntervalSignalRFallback)
+                            return;
+                    }
+
                     await InvokeAsync(async () =>
                     {
                         if (_disposed) return;
@@ -1091,8 +1122,11 @@ TimeSpan.FromSeconds(10) })
             }
             catch (ObjectDisposedException) { }
             catch (Exception) { }
-        }, null, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
+        }, null, PollingIntervalActive, PollingIntervalActive);
     }
+
+    private bool _isLoadingJobs;
+    private bool _isLoadingIdeas;
 
     private async Task LoadData()
     {
@@ -1100,32 +1134,77 @@ TimeSpan.FromSeconds(10) })
         try
         {
             Project = await ProjectService.GetByIdAsync(ProjectId);
-            if (Project != null)
+            if (Project == null) return;
+
+            // Show the page shell immediately with the project header
+            IsLoading = false;
+            _isLoadingJobs = true;
+            _isLoadingIdeas = true;
+            StateHasChanged();
+
+            _jobsPageNumber = 1;
+            _ideasPageNumber = 1;
+
+            // Load jobs, ideas, and providers in parallel
+            var jobsTask = RefreshJobs(force: true).ContinueWith(_ =>
             {
-                _jobsPageNumber = 1;
-                _ideasPageNumber = 1;
-                await RefreshJobs();
-                await LoadIdeas(force: true);
-            }
-            Providers = (await ProviderService.GetAllAsync()).ToList();
-            await LoadSuggestionProviderModels();
+                _isLoadingJobs = false;
+            }, TaskScheduler.Default);
 
-            var defaultProvider = await ProviderService.GetDefaultAsync();
-            if (defaultProvider != null)
+            var ideasTask = LoadIdeas(force: true).ContinueWith(_ =>
             {
-                NewJob.ProviderId = defaultProvider.Id;
-                await LoadModelsForProvider(defaultProvider.Id);
-            }
+                _isLoadingIdeas = false;
+            }, TaskScheduler.Default);
 
-            // Load inference models for idea expansion
-            await LoadInferenceModels();
+            var providersTask = LoadProvidersAndModels();
 
-            // Load auto-pilot status for the tab badge
-            try { _autoPilotStatus = await AutoPilotService.GetStatusAsync(ProjectId); } catch { /* non-critical */ }
+            var autoPilotTask = Task.Run(async () =>
+            {
+                try { _autoPilotStatus = await AutoPilotService.GetStatusAsync(ProjectId); } catch { /* non-critical */ }
+            });
+
+            await Task.WhenAll(jobsTask, ideasTask, providersTask, autoPilotTask);
+
+            await InvokeAsync(StateHasChanged);
+        }
+        catch
+        {
+            // Ensure loading state is cleared on error
         }
         finally
         {
             IsLoading = false;
+            _isLoadingJobs = false;
+            _isLoadingIdeas = false;
+        }
+    }
+
+    private async Task LoadProvidersAndModels()
+    {
+        try
+        {
+            Providers = (await ProviderService.GetAllAsync()).ToList();
+
+            // These depend on Providers being loaded, but can run in parallel with each other
+            var suggestionTask = LoadSuggestionProviderModels();
+            var defaultProviderTask = LoadDefaultProvider();
+            var inferenceTask = LoadInferenceModels();
+
+            await Task.WhenAll(suggestionTask, defaultProviderTask, inferenceTask);
+        }
+        catch
+        {
+            Providers = new List<Provider>();
+        }
+    }
+
+    private async Task LoadDefaultProvider()
+    {
+        var defaultProvider = await ProviderService.GetDefaultAsync();
+        if (defaultProvider != null)
+        {
+            NewJob.ProviderId = defaultProvider.Id;
+            await LoadModelsForProvider(defaultProvider.Id);
         }
     }
 

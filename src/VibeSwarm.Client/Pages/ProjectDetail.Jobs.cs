@@ -12,13 +12,27 @@ public partial class ProjectDetail
     private string _jobSearchQuery = string.Empty;
     private string _jobStatusFilter = "all";
 
-    private async Task RefreshJobs()
+    private static readonly TimeSpan JobsRefreshDebounceInterval = TimeSpan.FromSeconds(2);
+    private DateTime _lastJobsRefreshTime = DateTime.MinValue;
+    private bool _isRefreshingJobs;
+
+    private async Task RefreshJobs(bool force = false)
     {
         if (Project == null) return;
 
+        if (!force && _isRefreshingJobs) return;
+
+        if (!force && (DateTime.UtcNow - _lastJobsRefreshTime) < JobsRefreshDebounceInterval)
+            return;
+
+        _isRefreshingJobs = true;
         try
         {
-            Jobs = (await JobService.GetByProjectIdAsync(ProjectId)).ToList();
+            var allJobsTask = JobService.GetByProjectIdAsync(ProjectId);
+            var pagedJobsTask = JobService.GetPagedByProjectIdAsync(ProjectId, _jobsPageNumber, ProjectJobsPageSize, _jobSearchQuery, _jobStatusFilter);
+            await Task.WhenAll(allJobsTask, pagedJobsTask);
+
+            Jobs = allJobsTask.Result.ToList();
             ProjectActiveJobsCount = Jobs.Count(job =>
                 job.Status == JobStatus.New ||
                 job.Status == JobStatus.Pending ||
@@ -28,16 +42,21 @@ public partial class ProjectDetail
                 job.Status == JobStatus.Paused ||
                 job.Status == JobStatus.Stalled);
 
-            var result = await JobService.GetPagedByProjectIdAsync(ProjectId, _jobsPageNumber, ProjectJobsPageSize, _jobSearchQuery, _jobStatusFilter);
+            var result = pagedJobsTask.Result;
             _jobsPageNumber = result.PageNumber;
             PagedJobs = result.Items;
             JobsTotalCount = result.TotalCount;
             ProjectCompletedJobsCount = result.CompletedCount;
+            _lastJobsRefreshTime = DateTime.UtcNow;
         }
         catch (Exception)
         {
             // Swallow transient API errors during background refresh to prevent
             // unhandled exceptions from crashing the Blazor WASM runtime
+        }
+        finally
+        {
+            _isRefreshingJobs = false;
         }
     }
 
@@ -709,7 +728,7 @@ public partial class ProjectDetail
 
         try
         {
-            await RefreshJobs();
+            await RefreshJobs(force: true);
         }
         finally
         {
@@ -783,14 +802,16 @@ public partial class ProjectDetail
 
     private async Task LoadSuggestionProviderModels()
     {
-        foreach (var provider in Providers.Where(provider => provider.IsEnabled))
+        var enabledProviders = Providers.Where(provider => provider.IsEnabled).ToList();
+        var tasks = enabledProviders.Select(async provider =>
         {
             provider.AvailableModels = (await ProviderService.GetModelsAsync(provider.Id))
                 .Where(model => model.IsAvailable)
                 .OrderByDescending(model => model.IsDefault)
                 .ThenBy(model => model.DisplayName ?? model.ModelId)
                 .ToList();
-        }
+        });
+        await Task.WhenAll(tasks);
     }
 
     private int GetProjectTotalInputTokens() => Jobs.Sum(j => j.InputTokens ?? 0);
