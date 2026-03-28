@@ -163,6 +163,27 @@ public partial class IdeaService
 			return false;
 		}
 
+		// Resolve the provider this project would use and ensure it has no active jobs.
+		// This limits each provider to one idea job at a time, preventing rate-limit overload
+		// when multiple projects target the same provider.
+		var targetProvider = await ResolveJobProviderAsync(projectId, cancellationToken);
+		if (targetProvider != null)
+		{
+			var providerHasActiveJob = await _dbContext.Jobs
+				.AsNoTracking()
+				.AnyAsync(j => j.ProviderId == targetProvider.Id
+					&& j.Status != JobStatus.Completed
+					&& j.Status != JobStatus.Failed
+					&& j.Status != JobStatus.Cancelled,
+					cancellationToken);
+
+			if (providerHasActiveJob)
+			{
+				_logger.LogDebug("Provider {ProviderId} already has an active job, deferring ideas for project {ProjectId}", targetProvider.Id, projectId);
+				return false;
+			}
+		}
+
 		// Get the next unprocessed idea
 		var nextIdea = await GetNextUnprocessedAsync(projectId, cancellationToken);
 		if (nextIdea == null)
