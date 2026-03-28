@@ -140,6 +140,7 @@ public sealed class ProviderCliArgsTests
     public void Claude_WithDisallowedTools_AddsDisallowedToolsFlags()
     {
         var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+        provider.CachedCliVersion = new Version(2, 1, 0);
         provider.ApplyOptions(new ExecutionOptions { DisallowedTools = ["Bash"] });
 
         var args = provider.BuildCliArgs("test", null);
@@ -153,6 +154,7 @@ public sealed class ProviderCliArgsTests
     public void Claude_WithWorktree_AddsWorktreeFlag()
     {
         var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+        provider.CachedCliVersion = new Version(2, 1, 49);
         provider.ApplyOptions(new ExecutionOptions { UseWorktree = true });
 
         var args = provider.BuildCliArgs("test", null);
@@ -177,6 +179,7 @@ public sealed class ProviderCliArgsTests
     public void Claude_WithReasoningEffort_AddsEffortFlag()
     {
         var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+        provider.CachedCliVersion = new Version(2, 1, 63);
         provider.ApplyOptions(new ExecutionOptions { ReasoningEffort = "high" });
 
         var args = provider.BuildCliArgs("test", null);
@@ -190,6 +193,7 @@ public sealed class ProviderCliArgsTests
     public void Claude_WithMaxBudget_AddsMaxBudgetFlag()
     {
         var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+        provider.CachedCliVersion = new Version(2, 0, 28);
         provider.ApplyOptions(new ExecutionOptions { MaxBudgetUsd = 5.00m });
 
         var args = provider.BuildCliArgs("test", null);
@@ -203,6 +207,7 @@ public sealed class ProviderCliArgsTests
     public void Claude_WithFromPr_AddsFromPrFlag()
     {
         var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+        provider.CachedCliVersion = new Version(2, 1, 27);
         provider.ApplyOptions(new ExecutionOptions { FromPullRequest = "42" });
 
         var args = provider.BuildCliArgs("test", null);
@@ -210,6 +215,90 @@ public sealed class ProviderCliArgsTests
         var idx = args.IndexOf("--from-pr");
         Assert.True(idx >= 0);
         Assert.Equal("42", args[idx + 1]);
+    }
+
+    [Fact]
+    public void Claude_WithDisallowedTools_AndOldVersion_OmitsDisallowedToolsFlag()
+    {
+        var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+        provider.CachedCliVersion = new Version(2, 0, 99);
+        provider.ApplyOptions(new ExecutionOptions { DisallowedTools = ["Bash"] });
+
+        var args = provider.BuildCliArgs("test", null);
+
+        Assert.DoesNotContain("--disallowed-tools", args);
+    }
+
+    [Fact]
+    public void Claude_WithWorktree_AndOldVersion_OmitsWorktreeFlag()
+    {
+        var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+        provider.CachedCliVersion = new Version(2, 1, 48);
+        provider.ApplyOptions(new ExecutionOptions { UseWorktree = true });
+
+        var args = provider.BuildCliArgs("test", null);
+
+        Assert.DoesNotContain("--worktree", args);
+    }
+
+    [Fact]
+    public void Claude_WithReasoningEffort_AndOldVersion_OmitsEffortFlag()
+    {
+        var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+        provider.CachedCliVersion = new Version(2, 1, 62);
+        provider.ApplyOptions(new ExecutionOptions { ReasoningEffort = "high" });
+
+        var args = provider.BuildCliArgs("test", null);
+
+        Assert.DoesNotContain("--effort", args);
+    }
+
+    [Fact]
+    public void Claude_WithMaxBudget_AndOldVersion_OmitsMaxBudgetFlag()
+    {
+        var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+        provider.CachedCliVersion = new Version(2, 0, 27);
+        provider.ApplyOptions(new ExecutionOptions { MaxBudgetUsd = 5.00m });
+
+        var args = provider.BuildCliArgs("test", null);
+
+        Assert.DoesNotContain("--max-budget-usd", args);
+    }
+
+    [Fact]
+    public void Claude_WithFromPr_AndOldVersion_OmitsFromPrFlag()
+    {
+        var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+        provider.CachedCliVersion = new Version(2, 1, 26);
+        provider.ApplyOptions(new ExecutionOptions { FromPullRequest = "42" });
+
+        var args = provider.BuildCliArgs("test", null);
+
+        Assert.DoesNotContain("--from-pr", args);
+    }
+
+    [Fact]
+    public void Claude_WithInitMode_AndSupportedVersion_AddsInitFlag()
+    {
+        var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+        provider.CachedCliVersion = new Version(2, 1, 10);
+        provider.ApplyOptions(new ExecutionOptions { InitMode = "ide" });
+
+        var args = provider.BuildCliArgs("test", null);
+
+        Assert.Contains("--ide", args);
+    }
+
+    [Fact]
+    public void Claude_WithInitMode_AndOldVersion_OmitsInitFlag()
+    {
+        var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+        provider.CachedCliVersion = new Version(2, 1, 9);
+        provider.ApplyOptions(new ExecutionOptions { InitMode = "ide" });
+
+        var args = provider.BuildCliArgs("test", null);
+
+        Assert.DoesNotContain("--ide", args);
     }
 
     [Fact]
