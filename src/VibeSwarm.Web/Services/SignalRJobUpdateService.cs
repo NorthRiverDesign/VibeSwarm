@@ -471,6 +471,26 @@ public class SignalRJobUpdateService : IJobUpdateService
         }
     }
 
+    public async Task NotifyProviderRateLimited(Guid providerId, string providerName, string message, DateTime? resetTime)
+    {
+        try
+        {
+            await _hubContext.Clients
+                .Group("global-events")
+                .SendAsync("ProviderRateLimited",
+                    providerId.ToString(),
+                    providerName,
+                    message,
+                    resetTime?.ToString("o"));
+
+            _logger.LogWarning("Sent ProviderRateLimited for {ProviderName}: {Message}", providerName, message);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error sending ProviderRateLimited notification for provider {ProviderId}", providerId);
+        }
+    }
+
     public async Task NotifyAutoPilotStateChanged(Guid projectId, Shared.Data.IterationLoop loop)
     {
         try

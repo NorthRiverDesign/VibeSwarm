@@ -780,25 +780,59 @@ public partial class JobProcessingService
                 var providerDisplayName = job.Provider?.Name;
                 providerDisplayName ??= provider?.Name;
                 providerDisplayName ??= "Unknown Provider";
-                await CompleteJobAsync(job.Id, JobStatus.Failed, finalResult.SessionId, finalResult.Output,
-                    finalResult.ErrorMessage, finalResult.InputTokens, finalResult.OutputTokens, finalResult.CostUsd, finalResult.ModelUsed,
-                    executionContext, workingDirectory, dbContext, CancellationToken.None);
 
                 // Record usage even for failed jobs
                 await RecordUsageAndCheckExhaustionAsync(job.ProviderId, providerDisplayName, job.Id, finalResult, provider!, CancellationToken.None);
 
-                // System-level errors (model unavailable, upstream outages) should immediately
-                // trip the circuit breaker to prevent cascading failures on queued jobs
-                if (finalResult.IsSystemError && _healthTracker != null)
-                {
-                    _healthTracker.RecordSystemFailure(job.ProviderId, finalResult.ErrorMessage);
-                    _logger.LogWarning("Job {JobId} failed with system error, circuit breaker tripped for provider {ProviderId}: {Error}",
-                        job.Id, job.ProviderId, finalResult.ErrorMessage);
-                }
+                // Rate limit detection: if the provider reported a rate limit, re-queue the job
+                // instead of marking it as failed. The circuit breaker cooldown respects the
+                // provider's reset time (can be hours for GitHub Copilot).
+                var isRateLimited = finalResult.IsSystemError &&
+                    finalResult.DetectedUsageLimits is { IsLimitReached: true } &&
+                    (finalResult.DetectedUsageLimits.LimitType is UsageLimitType.RateLimit or UsageLimitType.PremiumRequests);
 
-                _logger.LogWarning("Job {JobId} failed: {Error}. InputTokens: {InputTokens}, OutputTokens: {OutputTokens}, Cost: {CostUsd}",
-                    job.Id, finalResult.ErrorMessage, finalResult.InputTokens, finalResult.OutputTokens, finalResult.CostUsd);
-                await NotifyJobCompletedAsync(job.Id, false, finalResult.ErrorMessage);
+                if (isRateLimited && _healthTracker != null)
+                {
+                    var limits = finalResult.DetectedUsageLimits!;
+                    _healthTracker.RecordRateLimitFailure(job.ProviderId, finalResult.ErrorMessage, limits.ResetTime);
+
+                    var resetDescription = limits.ResetTime.HasValue
+                        ? $"Resets at {limits.ResetTime.Value:u}"
+                        : "Reset time unknown";
+
+                    // Re-queue the job instead of failing it — don't consume a retry attempt
+                    await RequeueJobForRateLimitAsync(job.Id, job.ProviderId, providerDisplayName, resetDescription,
+                        finalResult, executionContext, workingDirectory, dbContext, CancellationToken.None);
+
+                    _logger.LogWarning("Job {JobId} hit rate limit on provider {ProviderId}. {ResetDesc}. Re-queued for later execution",
+                        job.Id, job.ProviderId, resetDescription);
+
+                    if (_jobUpdateService != null)
+                    {
+                        await _jobUpdateService.NotifyProviderRateLimited(job.ProviderId, providerDisplayName,
+                            $"Rate limited. {resetDescription}. Jobs will resume when the provider allows.", limits.ResetTime);
+                    }
+                    await NotifyStatusChangedAsync(job.Id, JobStatus.New);
+                }
+                else
+                {
+                    await CompleteJobAsync(job.Id, JobStatus.Failed, finalResult.SessionId, finalResult.Output,
+                        finalResult.ErrorMessage, finalResult.InputTokens, finalResult.OutputTokens, finalResult.CostUsd, finalResult.ModelUsed,
+                        executionContext, workingDirectory, dbContext, CancellationToken.None);
+
+                    // System-level errors (model unavailable, upstream outages) should immediately
+                    // trip the circuit breaker to prevent cascading failures on queued jobs
+                    if (finalResult.IsSystemError && _healthTracker != null)
+                    {
+                        _healthTracker.RecordSystemFailure(job.ProviderId, finalResult.ErrorMessage);
+                        _logger.LogWarning("Job {JobId} failed with system error, circuit breaker tripped for provider {ProviderId}: {Error}",
+                            job.Id, job.ProviderId, finalResult.ErrorMessage);
+                    }
+
+                    _logger.LogWarning("Job {JobId} failed: {Error}. InputTokens: {InputTokens}, OutputTokens: {OutputTokens}, Cost: {CostUsd}",
+                        job.Id, finalResult.ErrorMessage, finalResult.InputTokens, finalResult.OutputTokens, finalResult.CostUsd);
+                    await NotifyJobCompletedAsync(job.Id, false, finalResult.ErrorMessage);
+                }
             }
         }
         catch (OperationCanceledException)

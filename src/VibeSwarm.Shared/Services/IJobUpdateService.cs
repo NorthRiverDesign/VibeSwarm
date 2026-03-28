@@ -152,6 +152,15 @@ public interface IJobUpdateService
         string message, bool isExhausted, DateTime? resetTime);
 
     /// <summary>
+    /// Notifies all clients that a provider has been rate limited
+    /// </summary>
+    /// <param name="providerId">The provider ID</param>
+    /// <param name="providerName">The provider name for display</param>
+    /// <param name="message">Human-readable description of the rate limit</param>
+    /// <param name="resetTime">When the rate limit is expected to lift (if known)</param>
+    Task NotifyProviderRateLimited(Guid providerId, string providerName, string message, DateTime? resetTime);
+
+    /// <summary>
     /// Notifies clients that an auto-pilot loop's state has changed
     /// </summary>
     /// <param name="projectId">The project ID</param>

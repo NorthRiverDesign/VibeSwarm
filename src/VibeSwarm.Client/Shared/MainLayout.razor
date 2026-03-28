@@ -376,6 +376,28 @@ TimeSpan.FromSeconds(10) })
             });
             });
 
+            _globalHubConnection.On<string, string, string, string?>("ProviderRateLimited",
+            async (providerId, providerName, message, resetTimeStr) =>
+            {
+                await InvokeAsync(() =>
+                {
+                    var resetInfo = "";
+                    if (DateTime.TryParse(resetTimeStr, null, System.Globalization.DateTimeStyles.RoundtripKind, out var resetTime))
+                    {
+                        var remaining = resetTime - DateTime.UtcNow;
+                        if (remaining.TotalMinutes > 0)
+                        {
+                            resetInfo = remaining.TotalHours >= 1
+                                ? $" Resets in ~{remaining.TotalHours:F0}h {remaining.Minutes}m."
+                                : $" Resets in ~{remaining.TotalMinutes:F0}m.";
+                        }
+                    }
+                    NotificationService.ShowWarning($"{providerName} rate limited.{resetInfo} Jobs will resume automatically.",
+                        "Provider Rate Limited");
+                    StateHasChanged();
+                });
+            });
+
             _globalHubConnection.Reconnected += async (connectionId) =>
             {
                 try { await _globalHubConnection.InvokeAsync("SubscribeToGlobalEvents"); } catch { }

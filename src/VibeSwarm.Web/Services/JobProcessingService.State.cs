@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using VibeSwarm.Shared.Data;
+using VibeSwarm.Shared.Providers;
 using VibeSwarm.Shared.Services;
 using VibeSwarm.Shared.Utilities;
 
@@ -59,6 +60,52 @@ public partial class JobProcessingService
             job.CurrentActivity = activity;
             await dbContext.SaveChangesAsync(cancellationToken);
         }
+    }
+
+    /// <summary>
+    /// Re-queues a job that was rate-limited instead of marking it as failed.
+    /// Does not consume a retry attempt since this is a provider-side throttle, not a job failure.
+    /// </summary>
+    private async Task RequeueJobForRateLimitAsync(
+        Guid jobId, Guid providerId, string providerName, string resetDescription,
+        ExecutionResult result, JobExecutionContext executionContext,
+        string? workingDirectory, VibeSwarmDbContext dbContext, CancellationToken cancellationToken)
+    {
+        var job = await dbContext.Jobs.FindAsync(new object[] { jobId }, cancellationToken);
+        if (job == null) return;
+
+        // Store any partial console output
+        var consoleOutput = executionContext.GetConsoleOutput();
+        if (!string.IsNullOrEmpty(consoleOutput))
+        {
+            job.ConsoleOutput = consoleOutput;
+        }
+
+        // Transition back to New so the job queue will pick it up again once the provider recovers.
+        // This does NOT consume a retry attempt since rate limiting is a provider-side throttle.
+        var transition = JobStateMachine.TryTransition(job, JobStatus.New,
+            $"Rate limited by {providerName}. {resetDescription}");
+        if (!transition.Success)
+        {
+            _logger.LogWarning("Failed to re-queue rate-limited job {JobId}: {Error}", jobId, transition.ErrorMessage);
+            return;
+        }
+
+        job.ErrorMessage = $"Rate limited by {providerName}. {resetDescription}. Waiting for provider to become available.";
+        job.LastActivityAt = DateTime.UtcNow;
+
+        // Accumulate partial token usage if any
+        if (result.InputTokens.HasValue)
+            job.InputTokens = (job.InputTokens ?? 0) + result.InputTokens.Value;
+        if (result.OutputTokens.HasValue)
+            job.OutputTokens = (job.OutputTokens ?? 0) + result.OutputTokens.Value;
+        if (result.CostUsd.HasValue)
+            job.TotalCostUsd = (job.TotalCostUsd ?? 0) + result.CostUsd.Value;
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation("Job {JobId} re-queued after rate limit from {ProviderName}. {ResetDesc}",
+            jobId, providerName, resetDescription);
     }
 
     /// <summary>

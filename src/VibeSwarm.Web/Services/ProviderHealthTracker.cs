@@ -35,6 +35,11 @@ public class ProviderHealthTracker : IProviderHealthTracker
 	public TimeSpan SystemFailureResetTimeout { get; set; } = TimeSpan.FromMinutes(5);
 
 	/// <summary>
+	/// Default cooldown when a rate limit is detected but no reset time is provided.
+	/// </summary>
+	public TimeSpan DefaultRateLimitCooldown { get; set; } = TimeSpan.FromMinutes(30);
+
+	/// <summary>
 	/// Number of successes needed to close a half-open circuit
 	/// </summary>
 	public int SuccessThreshold { get; set; } = 2;
@@ -74,7 +79,9 @@ public class ProviderHealthTracker : IProviderHealthTracker
 				AverageResponseTime = CalculateAverageResponseTime(state),
 				LastSuccess = state.LastSuccess,
 				LastFailure = state.LastFailure,
-				LastError = state.LastError
+				LastError = state.LastError,
+				IsRateLimited = state.IsRateLimited,
+				RateLimitResetTime = state.RateLimitResetTime
 			};
 		}
 	}
@@ -106,6 +113,8 @@ public class ProviderHealthTracker : IProviderHealthTracker
 			{
 				state.CircuitState = CircuitState.Closed;
 				state.IsSystemFailure = false;
+				state.IsRateLimited = false;
+				state.RateLimitResetTime = null;
 				_logger?.LogInformation("Circuit breaker closed for provider {ProviderId} after {Successes} consecutive successes",
 					providerId, state.ConsecutiveSuccesses);
 			}
@@ -186,6 +195,37 @@ public class ProviderHealthTracker : IProviderHealthTracker
 	}
 
 	/// <summary>
+	/// Records a rate limit failure with an optional reset time.
+	/// Opens the circuit until the reset time (which may be hours away for providers like GitHub Copilot).
+	/// </summary>
+	public void RecordRateLimitFailure(Guid providerId, string? errorMessage = null, DateTime? resetTime = null)
+	{
+		var state = _healthStates.GetOrAdd(providerId, _ => new ProviderHealthState());
+		var now = DateTime.UtcNow;
+
+		lock (state.Lock)
+		{
+			state.TotalFailures++;
+			state.RecentFailures.Add(now);
+			state.LastFailure = now;
+			state.LastError = errorMessage;
+			state.ConsecutiveFailures++;
+			state.ConsecutiveSuccesses = 0;
+
+			state.CircuitState = CircuitState.Open;
+			state.CircuitOpenedAt = now;
+			state.IsSystemFailure = true;
+			state.IsRateLimited = true;
+			state.RateLimitResetTime = resetTime ?? now + DefaultRateLimitCooldown;
+
+			_logger?.LogWarning(
+				"Circuit breaker opened for provider {ProviderId} due to rate limit: {Error}. " +
+				"Provider will be retested after {ResetTime:u}",
+				providerId, errorMessage, state.RateLimitResetTime);
+		}
+	}
+
+	/// <summary>
 	/// Increments the current load for a provider
 	/// </summary>
 	public void IncrementProviderLoad(Guid providerId)
@@ -231,6 +271,11 @@ public class ProviderHealthTracker : IProviderHealthTracker
 			{
 				healthState.CircuitOpenedAt = DateTime.UtcNow;
 			}
+			if (state == CircuitState.Closed)
+			{
+				healthState.IsRateLimited = false;
+				healthState.RateLimitResetTime = null;
+			}
 		}
 		_logger?.LogInformation("Forced circuit state to {State} for provider {ProviderId}", state, providerId);
 	}
@@ -247,15 +292,29 @@ public class ProviderHealthTracker : IProviderHealthTracker
 	{
 		if (state.CircuitState == CircuitState.Open)
 		{
-			// Use longer timeout for system-level failures
-			var resetTimeout = state.IsSystemFailure ? SystemFailureResetTimeout : CircuitResetTimeout;
-
-			// Check if we should move to half-open
-			if (state.CircuitOpenedAt.HasValue &&
-				DateTime.UtcNow - state.CircuitOpenedAt.Value >= resetTimeout)
+			if (state.IsRateLimited && state.RateLimitResetTime.HasValue)
 			{
-				state.CircuitState = CircuitState.HalfOpen;
-				_logger?.LogInformation("Circuit breaker moved to half-open state after timeout");
+				// Rate-limited: wait until the provider's reset time
+				if (DateTime.UtcNow >= state.RateLimitResetTime.Value)
+				{
+					state.CircuitState = CircuitState.HalfOpen;
+					state.IsRateLimited = false;
+					state.RateLimitResetTime = null;
+					_logger?.LogInformation("Circuit breaker moved to half-open after rate limit cooldown expired");
+				}
+			}
+			else
+			{
+				// Use longer timeout for system-level failures
+				var resetTimeout = state.IsSystemFailure ? SystemFailureResetTimeout : CircuitResetTimeout;
+
+				// Check if we should move to half-open
+				if (state.CircuitOpenedAt.HasValue &&
+					DateTime.UtcNow - state.CircuitOpenedAt.Value >= resetTimeout)
+				{
+					state.CircuitState = CircuitState.HalfOpen;
+					_logger?.LogInformation("Circuit breaker moved to half-open state after timeout");
+				}
 			}
 		}
 
@@ -298,6 +357,8 @@ public class ProviderHealthTracker : IProviderHealthTracker
 		public CircuitState CircuitState = CircuitState.Closed;
 		public DateTime? CircuitOpenedAt;
 		public bool IsSystemFailure;
+		public bool IsRateLimited;
+		public DateTime? RateLimitResetTime;
 	}
 
 	private class ResponseTimeEntry
@@ -323,6 +384,8 @@ public class ProviderHealth
 	public DateTime? LastSuccess { get; set; }
 	public DateTime? LastFailure { get; set; }
 	public string? LastError { get; set; }
+	public bool IsRateLimited { get; set; }
+	public DateTime? RateLimitResetTime { get; set; }
 }
 
 /// <summary>
@@ -359,6 +422,7 @@ public interface IProviderHealthTracker
 	void RecordSuccess(Guid providerId, TimeSpan? responseTime = null);
 	void RecordFailure(Guid providerId, string? errorMessage = null, TimeSpan? responseTime = null);
 	void RecordSystemFailure(Guid providerId, string? errorMessage = null);
+	void RecordRateLimitFailure(Guid providerId, string? errorMessage = null, DateTime? resetTime = null);
 	void IncrementProviderLoad(Guid providerId);
 	void DecrementProviderLoad(Guid providerId);
 	void ResetProvider(Guid providerId);
