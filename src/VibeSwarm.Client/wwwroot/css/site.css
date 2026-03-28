@@ -151,6 +151,7 @@ textarea.form-control {
 html {
 	font-size: 16px;
 	-webkit-text-size-adjust: 100%;
+	-webkit-tap-highlight-color: transparent;
 	height: 100%;
 	overflow-x: clip;
 }
@@ -1041,6 +1042,8 @@ body.vs-modal-open {
 @media all and (display-mode: standalone) {
 	html {
 		background: var(--bs-body-bg, #1a1d21);
+		/* Prevent overscroll bounce and back-swipe navigation */
+		overscroll-behavior: none;
 	}
 	.app-header,
 	.app-sidebar,
@@ -1048,6 +1051,14 @@ body.vs-modal-open {
 	.btn {
 		-webkit-user-select: none;
 		user-select: none;
+	}
+	/* Remove tap highlight for native app feel */
+	a,
+	button,
+	.nav-item,
+	.btn,
+	[role="button"] {
+		-webkit-tap-highlight-color: transparent;
 	}
 	body::before {
 		content: "";
@@ -1060,6 +1071,10 @@ body.vs-modal-open {
 		z-index: 1001;
 	}
 	body {
+		overscroll-behavior-y: contain;
+	}
+	/* Prevent pull-to-refresh gesture on main content when at top */
+	.app-main {
 		overscroll-behavior-y: contain;
 	}
 }

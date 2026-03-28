@@ -1,0 +1,96 @@
+@inject IJSRuntime JSRuntime
+@implements IAsyncDisposable
+
+@if (_showBanner)
+{
+    <div class="position-fixed bottom-0 start-50 translate-middle-x mb-3 z-3" style="max-width: 420px; width: calc(100% - 2rem);">
+        <div class="d-flex align-items-center gap-3 bg-body border rounded shadow-sm px-3 py-2">
+            <i class="bi bi-download text-primary flex-shrink-0"></i>
+            <span class="flex-grow-1 small">Install VibeSwarm for quick access.</span>
+            <button class="btn btn-sm btn-primary flex-shrink-0" @onclick="Install" disabled="@_installing">
+                @if (_installing)
+                {
+                    <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                }
+                Install
+            </button>
+            <button type="button" class="btn-close btn-sm flex-shrink-0" @onclick="Dismiss" aria-label="Dismiss"></button>
+        </div>
+    </div>
+}
+
+@code {
+    private bool _showBanner;
+    private bool _installing;
+    private bool _dismissed;
+    private Timer? _pollTimer;
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (!firstRender) return;
+
+        _pollTimer = new Timer(async _ =>
+        {
+            if (_dismissed || _showBanner) return;
+            var available = await CheckInstallAvailableAsync();
+            if (available)
+            {
+                await InvokeAsync(() =>
+                {
+                    _showBanner = true;
+                    StateHasChanged();
+                });
+            }
+        }, null, TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(10));
+    }
+
+    private async Task<bool> CheckInstallAvailableAsync()
+    {
+        try
+        {
+            return await JSRuntime.InvokeAsync<bool>("checkInstallAvailable");
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private async Task Install()
+    {
+        _installing = true;
+        StateHasChanged();
+        try
+        {
+            var accepted = await JSRuntime.InvokeAsync<bool>("promptInstall");
+            if (accepted)
+            {
+                _showBanner = false;
+            }
+        }
+        catch
+        {
+            // Browser may not support the prompt
+        }
+        finally
+        {
+            _installing = false;
+            StateHasChanged();
+        }
+    }
+
+    private void Dismiss()
+    {
+        _dismissed = true;
+        _showBanner = false;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_pollTimer != null)
+        {
+            await _pollTimer.DisposeAsync();
+            _pollTimer = null;
+        }
+    }
+}

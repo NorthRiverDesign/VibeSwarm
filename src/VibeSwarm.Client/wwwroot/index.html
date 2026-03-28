@@ -17,6 +17,40 @@
         <meta name="apple-mobile-web-app-title" content="VibeSwarm" />
         <meta name="format-detection" content="telephone=no" />
 
+        <!-- iOS Splash Screens (generated for common device sizes) -->
+        <!-- iPhone SE / 8 (750x1334) -->
+        <link rel="apple-touch-startup-image"
+              media="(device-width: 375px) and (device-height: 667px) and (-webkit-device-pixel-ratio: 2)"
+              href="/apple-touch-icon.png" />
+        <!-- iPhone X / XS / 11 Pro / 12 Mini / 13 Mini (1125x2436) -->
+        <link rel="apple-touch-startup-image"
+              media="(device-width: 375px) and (device-height: 812px) and (-webkit-device-pixel-ratio: 3)"
+              href="/web-app-manifest-512x512.png" />
+        <!-- iPhone XR / 11 / 12 / 13 / 14 (828x1792) -->
+        <link rel="apple-touch-startup-image"
+              media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 2)"
+              href="/web-app-manifest-512x512.png" />
+        <!-- iPhone 12 Pro / 13 Pro / 14 (1170x2532) -->
+        <link rel="apple-touch-startup-image"
+              media="(device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3)"
+              href="/web-app-manifest-512x512.png" />
+        <!-- iPhone 14 Pro / 15 / 15 Pro (1179x2556) -->
+        <link rel="apple-touch-startup-image"
+              media="(device-width: 393px) and (device-height: 852px) and (-webkit-device-pixel-ratio: 3)"
+              href="/web-app-manifest-512x512.png" />
+        <!-- iPhone 14 Pro Max / 15 Plus / 15 Pro Max (1290x2796) -->
+        <link rel="apple-touch-startup-image"
+              media="(device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3)"
+              href="/web-app-manifest-512x512.png" />
+        <!-- iPad 10.2" (1620x2160) -->
+        <link rel="apple-touch-startup-image"
+              media="(device-width: 810px) and (device-height: 1080px) and (-webkit-device-pixel-ratio: 2)"
+              href="/web-app-manifest-512x512.png" />
+        <!-- iPad Air / Pro 11" (1640x2360) -->
+        <link rel="apple-touch-startup-image"
+              media="(device-width: 820px) and (device-height: 1180px) and (-webkit-device-pixel-ratio: 2)"
+              href="/web-app-manifest-512x512.png" />
+
         <title>VibeSwarm</title>
         <base href="/" />
 
@@ -253,6 +287,49 @@
                 console.error('Blazor WebAssembly failed to start:', err);
                 document.getElementById('blazor-error-ui').style.display = 'block';
                 document.getElementById('app').style.display = 'none';
+            });
+        </script>
+
+        <!-- PWA Install Prompt -->
+        <script>
+            // Captures the beforeinstallprompt event so a custom install banner can trigger it later.
+            window.vibeSwarmInstallPrompt = null;
+            window.vibeSwarmInstallable = false;
+
+            window.addEventListener('beforeinstallprompt', function (e) {
+                e.preventDefault();
+                window.vibeSwarmInstallPrompt = e;
+                window.vibeSwarmInstallable = true;
+            });
+
+            // Returns true when the app is in standalone/installed mode
+            window.vibeSwarmIsStandalone = function () {
+                return window.matchMedia('(display-mode: standalone)').matches
+                    || window.navigator.standalone === true;
+            };
+
+            // Called by InstallPromptBanner.razor to check if install is available
+            window.checkInstallAvailable = function () {
+                // Don't show install prompt if already installed
+                if (window.vibeSwarmIsStandalone()) return false;
+                return window.vibeSwarmInstallable;
+            };
+
+            // Called by InstallPromptBanner.razor when the user taps Install
+            window.promptInstall = function () {
+                if (!window.vibeSwarmInstallPrompt) return Promise.resolve(false);
+                window.vibeSwarmInstallPrompt.prompt();
+                return window.vibeSwarmInstallPrompt.userChoice.then(function (result) {
+                    window.vibeSwarmInstallPrompt = null;
+                    window.vibeSwarmInstallable = false;
+                    return result.outcome === 'accepted';
+                });
+            };
+
+            // Listen for successful install
+            window.addEventListener('appinstalled', function () {
+                window.vibeSwarmInstallPrompt = null;
+                window.vibeSwarmInstallable = false;
             });
         </script>
 
