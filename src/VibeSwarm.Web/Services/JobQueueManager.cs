@@ -72,12 +72,14 @@ public class JobQueueManager
 				.ToList();
 
 			// Get all pending jobs that aren't blocked
+			var now = DateTime.UtcNow;
 			var pendingJobs = await dbContext.Jobs
 				.Include(j => j.Project)
 				.Include(j => j.Provider)
 				.Where(j => j.Status == JobStatus.New && !j.CancellationRequested)
 				.Where(j => !projectsWithRunningJobs.Contains(j.ProjectId)
 					|| (j.SwarmId != null && activeSwarmIds.Contains(j.SwarmId.Value)))
+				.Where(j => j.NotBeforeUtc == null || j.NotBeforeUtc <= now)
 				.OrderByDescending(j => j.Priority)
 				.ThenBy(j => j.CreatedAt)
 				.ToListAsync(cancellationToken);

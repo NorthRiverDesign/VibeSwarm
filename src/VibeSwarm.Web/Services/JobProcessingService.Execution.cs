@@ -74,6 +74,7 @@ public partial class JobProcessingService
             job.LastActivityAt = DateTime.UtcNow;
             job.WorkerInstanceId = _workerInstanceId;
             job.LastHeartbeatAt = DateTime.UtcNow;
+            job.NotBeforeUtc = null; // Clear any rate-limit backoff now that we're running
             await NotifyStatusChangedAsync(job.Id, JobStatus.Started);
 
             // Check again after status update - double-check for race conditions
@@ -800,17 +801,34 @@ public partial class JobProcessingService
                         ? $"Resets at {limits.ResetTime.Value:u}"
                         : "Reset time unknown";
 
+                    // Check whether any alternative provider can pick up this job.
+                    // If not, set a backoff time so the job doesn't spin in the queue.
+                    var hasAlternativeProvider = await HasAlternativeProviderAsync(
+                        job.ProjectId, job.ProviderId, dbContext, CancellationToken.None);
+
+                    DateTime? backoffUntil = null;
+                    if (!hasAlternativeProvider)
+                    {
+                        backoffUntil = limits.ResetTime ?? DateTime.UtcNow + TimeSpan.FromMinutes(30);
+                        _logger.LogInformation(
+                            "No alternative provider for job {JobId}. Backing off until {BackoffUntil:u}",
+                            job.Id, backoffUntil);
+                    }
+
                     // Re-queue the job instead of failing it — don't consume a retry attempt
                     await RequeueJobForRateLimitAsync(job.Id, job.ProviderId, providerDisplayName, resetDescription,
-                        finalResult, executionContext, workingDirectory, dbContext, CancellationToken.None);
+                        finalResult, executionContext, workingDirectory, backoffUntil, dbContext, CancellationToken.None);
 
                     _logger.LogWarning("Job {JobId} hit rate limit on provider {ProviderId}. {ResetDesc}. Re-queued for later execution",
                         job.Id, job.ProviderId, resetDescription);
 
                     if (_jobUpdateService != null)
                     {
+                        var backoffMessage = hasAlternativeProvider
+                            ? $"Rate limited. {resetDescription}. Jobs will try alternative providers."
+                            : $"Rate limited. {resetDescription}. No alternative provider configured — jobs will back off until reset.";
                         await _jobUpdateService.NotifyProviderRateLimited(job.ProviderId, providerDisplayName,
-                            $"Rate limited. {resetDescription}. Jobs will resume when the provider allows.", limits.ResetTime);
+                            backoffMessage, limits.ResetTime);
                     }
                     await NotifyStatusChangedAsync(job.Id, JobStatus.New);
                 }

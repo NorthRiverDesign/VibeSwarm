@@ -1509,6 +1509,79 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 	}
 
 	[Fact]
+	public async Task JobQueueManager_GetPendingJobsAsync_SkipsJobsWithFutureNotBeforeUtc()
+	{
+		await using var dbContext = CreateDbContext();
+		var project = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Backoff Project",
+			WorkingPath = "/tmp/backoff-project"
+		};
+		var provider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Claude",
+			Type = ProviderType.Claude,
+			IsEnabled = true,
+			IsDefault = true
+		};
+
+		var readyJobId = Guid.NewGuid();
+		var backedOffJobId = Guid.NewGuid();
+		var expiredBackoffJobId = Guid.NewGuid();
+
+		dbContext.Projects.Add(project);
+		dbContext.Providers.Add(provider);
+		dbContext.Jobs.AddRange(
+			new Job
+			{
+				Id = readyJobId,
+				ProjectId = project.Id,
+				ProviderId = provider.Id,
+				GoalPrompt = "Ready job",
+				Status = JobStatus.New,
+				CreatedAt = DateTime.UtcNow.AddMinutes(-3),
+				NotBeforeUtc = null
+			},
+			new Job
+			{
+				Id = backedOffJobId,
+				ProjectId = project.Id,
+				ProviderId = provider.Id,
+				GoalPrompt = "Backed off job",
+				Status = JobStatus.New,
+				CreatedAt = DateTime.UtcNow.AddMinutes(-2),
+				NotBeforeUtc = DateTime.UtcNow.AddHours(1) // still in backoff
+			},
+			new Job
+			{
+				Id = expiredBackoffJobId,
+				ProjectId = project.Id,
+				ProviderId = provider.Id,
+				GoalPrompt = "Expired backoff job",
+				Status = JobStatus.New,
+				CreatedAt = DateTime.UtcNow.AddMinutes(-1),
+				NotBeforeUtc = DateTime.UtcNow.AddMinutes(-5) // backoff expired
+			});
+		await dbContext.SaveChangesAsync();
+
+		using var serviceProvider = CreateScopedServiceProvider();
+		var queueManager = new JobQueueManager(
+			serviceProvider.GetRequiredService<IServiceScopeFactory>(),
+			NullLogger<JobQueueManager>.Instance);
+
+		// MaxJobsPerProject=1 means only the highest-priority eligible job per project is returned.
+		// Both readyJob and expiredBackoffJob are eligible; backedOffJob is not.
+		queueManager.MaxJobsPerProject = 10;
+		var pendingJobs = await queueManager.GetPendingJobsAsync(10);
+
+		Assert.DoesNotContain(pendingJobs, j => j.Id == backedOffJobId);
+		Assert.Contains(pendingJobs, j => j.Id == readyJobId);
+		Assert.Contains(pendingJobs, j => j.Id == expiredBackoffJobId);
+	}
+
+	[Fact]
 	public async Task GetPagedByProjectIdAsync_ReturnsRequestedJobPageAndActiveCount()
 	{
 		await using var dbContext = CreateDbContext();

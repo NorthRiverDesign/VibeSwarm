@@ -65,11 +65,14 @@ public partial class JobProcessingService
     /// <summary>
     /// Re-queues a job that was rate-limited instead of marking it as failed.
     /// Does not consume a retry attempt since this is a provider-side throttle, not a job failure.
+    /// When no alternative provider exists, <paramref name="backoffUntil"/> defers the job
+    /// so it doesn't spin in the queue until the rate limit resets.
     /// </summary>
     private async Task RequeueJobForRateLimitAsync(
         Guid jobId, Guid providerId, string providerName, string resetDescription,
         ExecutionResult result, JobExecutionContext executionContext,
-        string? workingDirectory, VibeSwarmDbContext dbContext, CancellationToken cancellationToken)
+        string? workingDirectory, DateTime? backoffUntil,
+        VibeSwarmDbContext dbContext, CancellationToken cancellationToken)
     {
         var job = await dbContext.Jobs.FindAsync(new object[] { jobId }, cancellationToken);
         if (job == null) return;
@@ -91,8 +94,11 @@ public partial class JobProcessingService
             return;
         }
 
-        job.ErrorMessage = $"Rate limited by {providerName}. {resetDescription}. Waiting for provider to become available.";
+        job.ErrorMessage = backoffUntil.HasValue
+            ? $"Rate limited by {providerName}. {resetDescription}. Backing off until {backoffUntil.Value:u}."
+            : $"Rate limited by {providerName}. {resetDescription}. Waiting for provider to become available.";
         job.LastActivityAt = DateTime.UtcNow;
+        job.NotBeforeUtc = backoffUntil;
 
         // Accumulate partial token usage if any
         if (result.InputTokens.HasValue)
@@ -104,8 +110,8 @@ public partial class JobProcessingService
 
         await dbContext.SaveChangesAsync(cancellationToken);
 
-        _logger.LogInformation("Job {JobId} re-queued after rate limit from {ProviderName}. {ResetDesc}",
-            jobId, providerName, resetDescription);
+        _logger.LogInformation("Job {JobId} re-queued after rate limit from {ProviderName}. {ResetDesc}. BackoffUntil={BackoffUntil}",
+            jobId, providerName, resetDescription, backoffUntil?.ToString("u") ?? "none");
     }
 
     /// <summary>
@@ -227,5 +233,43 @@ public partial class JobProcessingService
         }
 
         return hasGitChanges;
+    }
+
+    /// <summary>
+    /// Checks whether the project has at least one other healthy, enabled provider
+    /// besides the one that was just rate-limited.
+    /// </summary>
+    private async Task<bool> HasAlternativeProviderAsync(
+        Guid projectId, Guid rateLimitedProviderId,
+        VibeSwarmDbContext dbContext, CancellationToken cancellationToken)
+    {
+        // Get project-specific provider selections (if any)
+        var projectProviderIds = await dbContext.ProjectProviders
+            .Where(pp => pp.ProjectId == projectId && pp.IsEnabled && pp.ProviderId != rateLimitedProviderId)
+            .Select(pp => pp.ProviderId)
+            .ToListAsync(cancellationToken);
+
+        List<Guid> candidateIds;
+        if (projectProviderIds.Count > 0)
+        {
+            candidateIds = projectProviderIds;
+        }
+        else
+        {
+            // No project-specific providers — fall back to all enabled providers
+            candidateIds = await dbContext.Providers
+                .Where(p => p.IsEnabled && p.Id != rateLimitedProviderId)
+                .Select(p => p.Id)
+                .ToListAsync(cancellationToken);
+        }
+
+        if (candidateIds.Count == 0)
+            return false;
+
+        // At least one candidate exists; check if any are healthy
+        if (_healthTracker == null)
+            return candidateIds.Count > 0;
+
+        return candidateIds.Any(id => _healthTracker.GetProviderHealth(id).IsHealthy);
     }
 }

@@ -479,6 +479,12 @@ public class Job
 
     public TeamRole? TeamRole { get; set; }
 
+    /// <summary>
+    /// Earliest time this job may be dequeued. Set when a rate-limited provider has no
+    /// alternative and the job must back off until the rate limit resets.
+    /// </summary>
+    public DateTime? NotBeforeUtc { get; set; }
+
     public ICollection<JobMessage> Messages { get; set; } = new List<JobMessage>();
 
     public ICollection<JobProviderAttempt> ProviderAttempts { get; set; } = new List<JobProviderAttempt>();
