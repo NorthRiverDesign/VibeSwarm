@@ -846,6 +846,17 @@ public sealed class ProviderCliArgsTests
     }
 
     [Fact]
+    public void OpenCode_BuildUpdatePlan_ForNestedUserLocalInstall_UsesNpmMethodAndPrefix()
+    {
+        var plan = OpenCodeProvider.BuildUpdatePlan(
+            "/home/test/.local/lib/node_modules/opencode-ai/bin/.opencode",
+            "/home/test");
+
+        Assert.Equal("upgrade --method npm", plan.Arguments);
+        Assert.Equal("/home/test/.local", plan.NpmConfigPrefix);
+    }
+
+    [Fact]
     public void OpenCode_DoesNotContain_CopilotOrClaudeFlags()
     {
         var provider = new OpenCodeProvider(CreateConfig(ProviderType.OpenCode));
