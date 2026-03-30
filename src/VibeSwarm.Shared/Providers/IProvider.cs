@@ -550,7 +550,7 @@ public class ExecutionOptions
     public List<string>? AdditionalDirectories { get; set; }
 
     /// <summary>
-    /// Timeout in seconds for the execution (OpenCode: --timeout)
+    /// Timeout in seconds for the execution (OpenCode legacy run: --timeout on v1.2.x)
     /// </summary>
     public int? TimeoutSeconds { get; set; }
 
@@ -600,7 +600,8 @@ public class ExecutionOptions
 
     /// <summary>
     /// Reasoning effort level.
-    /// Common values are "low", "medium", and "high"; some providers support additional values such as "xhigh".
+    /// Common values are "low", "medium", and "high"; some providers support additional values such as
+    /// "xhigh", while current OpenCode CLI maps this concept through the run command's --variant flag.
     /// </summary>
     public string? ReasoningEffort { get; set; }
 

@@ -706,7 +706,7 @@ public sealed class ProviderCliArgsTests
     }
 
     [Fact]
-    public void OpenCode_WithTimeout_AddsTimeoutFlag()
+    public void OpenCode_WithTimeout_AndLegacyVersion_AddsTimeoutFlag()
     {
         var provider = new OpenCodeProvider(CreateConfig(ProviderType.OpenCode));
         provider.CachedCliVersion = new Version(1, 2, 0);
@@ -731,7 +731,19 @@ public sealed class ProviderCliArgsTests
     }
 
     [Fact]
-    public void OpenCode_WithReasoningEffort_AddsReasoningFlag()
+    public void OpenCode_WithTimeout_AndCurrentVersion_OmitsTimeoutFlag()
+    {
+        var provider = new OpenCodeProvider(CreateConfig(ProviderType.OpenCode));
+        provider.CachedCliVersion = new Version(1, 3, 7);
+        provider.ApplyOptions(new ExecutionOptions { TimeoutSeconds = 300 });
+
+        var args = provider.BuildRunCommandArgs("test", null);
+
+        Assert.DoesNotContain("--timeout", args);
+    }
+
+    [Fact]
+    public void OpenCode_WithReasoningEffort_AndLegacyVersion_AddsReasoningFlag()
     {
         var provider = new OpenCodeProvider(CreateConfig(ProviderType.OpenCode));
         provider.CachedCliVersion = new Version(1, 2, 0);
@@ -747,7 +759,24 @@ public sealed class ProviderCliArgsTests
     }
 
     [Fact]
-    public void OpenCode_WithReasoningEffort_AndUnknownVersion_OmitsReasoningFlag()
+    public void OpenCode_WithReasoningEffort_AndCurrentVersion_AddsVariantFlag()
+    {
+        var provider = new OpenCodeProvider(CreateConfig(ProviderType.OpenCode));
+        provider.CachedCliVersion = new Version(1, 3, 7);
+        provider.ApplyOptions(new ExecutionOptions { ReasoningEffort = "xhigh" });
+
+        var args = provider.BuildRunCommandArgs("test", null);
+
+        var idx = args.IndexOf("--variant");
+        Assert.True(idx >= 0);
+        Assert.Equal("xhigh", args[idx + 1]);
+        Assert.DoesNotContain("--reasoning", args);
+        Assert.DoesNotContain("--effort", args);
+        Assert.DoesNotContain("--reasoning-effort", args);
+    }
+
+    [Fact]
+    public void OpenCode_WithReasoningEffort_AndUnknownVersion_OmitsReasoningAndVariantFlags()
     {
         var provider = new OpenCodeProvider(CreateConfig(ProviderType.OpenCode));
         provider.ApplyOptions(new ExecutionOptions { ReasoningEffort = "xhigh" });
@@ -755,6 +784,7 @@ public sealed class ProviderCliArgsTests
         var args = provider.BuildRunCommandArgs("test", null);
 
         Assert.DoesNotContain("--reasoning", args);
+        Assert.DoesNotContain("--variant", args);
         Assert.DoesNotContain("--effort", args);
         Assert.DoesNotContain("--reasoning-effort", args);
     }
@@ -810,6 +840,20 @@ public sealed class ProviderCliArgsTests
         var args = provider.BuildRunCommandArgs("test", null);
 
         Assert.DoesNotContain("--dir", args);
+    }
+
+    [Fact]
+    public void OpenCode_WithAdditionalDirectory_AndCurrentVersion_AddsDirFlag()
+    {
+        var provider = new OpenCodeProvider(CreateConfig(ProviderType.OpenCode));
+        provider.CachedCliVersion = new Version(1, 3, 7);
+        provider.ApplyOptions(new ExecutionOptions { AdditionalDirectories = ["/tmp/worktree"] });
+
+        var args = provider.BuildRunCommandArgs("test", null);
+
+        var idx = args.IndexOf("--dir");
+        Assert.True(idx >= 0);
+        Assert.Equal("/tmp/worktree", args[idx + 1]);
     }
 
     [Fact]

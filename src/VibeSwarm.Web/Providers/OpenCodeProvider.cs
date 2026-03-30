@@ -12,7 +12,11 @@ namespace VibeSwarm.Shared.Providers;
 /// </summary>
 public class OpenCodeProvider : CliProviderBase
 {
-    private static readonly Version DirectoryAndTimeoutVersion = new(1, 2, 0);
+    private static readonly Version DirectoryVersion = new(1, 2, 0);
+    private static readonly Version TimeoutVersion = new(1, 2, 0);
+    private static readonly Version TimeoutRemovedVersion = new(1, 3, 0);
+    private static readonly Version LegacyReasoningVersion = new(1, 2, 0);
+    private static readonly Version VariantVersion = new(1, 3, 0);
     private static readonly Version ForkSessionVersion = new(1, 2, 6);
 
     private readonly string? _apiEndpoint;
@@ -178,12 +182,16 @@ public class OpenCodeProvider : CliProviderBase
     /// --attach        Attach to a running opencode server
     /// --port          Port for the local server
     /// --dir           Working directory for the session (v1.2.0+)
-    /// --timeout       Timeout in seconds for the execution (v1.2.0+)
+    /// --timeout       Timeout in seconds for the execution (legacy v1.2.x only)
+    /// --variant       Provider-specific model variant / reasoning preset (v1.3.0+)
     /// </summary>
     internal List<string> BuildRunCommandArgs(string prompt, string? sessionId)
     {
         var args = new List<string> { "run" };
-        var supportsDirectoryAndTimeout = SupportsCliVersion(DirectoryAndTimeoutVersion);
+        var supportsDirectory = SupportsCliVersion(DirectoryVersion);
+        var supportsLegacyTimeout = SupportsCliVersion(TimeoutVersion) && !SupportsCliVersion(TimeoutRemovedVersion);
+        var supportsLegacyReasoning = SupportsCliVersion(LegacyReasoningVersion) && !SupportsCliVersion(VariantVersion);
+        var supportsVariant = SupportsCliVersion(VariantVersion);
         var supportsForkSession = SupportsCliVersion(ForkSessionVersion);
 
         // Session continuation options (--session takes precedence over --continue)
@@ -221,7 +229,7 @@ public class OpenCodeProvider : CliProviderBase
         }
 
         // Working directory override (v1.2.0+)
-        if (supportsDirectoryAndTimeout
+        if (supportsDirectory
             && CurrentAdditionalDirectories != null
             && CurrentAdditionalDirectories.Count > 0)
         {
@@ -229,8 +237,8 @@ public class OpenCodeProvider : CliProviderBase
             args.AddRange(new[] { "--dir", CurrentAdditionalDirectories[0] });
         }
 
-        // Timeout in seconds (v1.2.0+)
-        if (supportsDirectoryAndTimeout && CurrentTimeoutSeconds.HasValue)
+        // Timeout in seconds was available in v1.2.x and removed from current 1.3.x run help/docs.
+        if (supportsLegacyTimeout && CurrentTimeoutSeconds.HasValue)
         {
             args.AddRange(new[] { "--timeout", CurrentTimeoutSeconds.Value.ToString() });
         }
@@ -256,11 +264,14 @@ public class OpenCodeProvider : CliProviderBase
             args.Add("--fork");
         }
 
-        // Adaptive reasoning effort level (v1.2.0+)
-        var reasoningEffort = NormalizeReasoningEffort(CurrentReasoningEffort, "low", "medium", "high", "xhigh");
-        if (supportsDirectoryAndTimeout && !string.IsNullOrEmpty(reasoningEffort))
+        var reasoningEffort = NormalizeReasoningEffort(CurrentReasoningEffort, "minimal", "low", "medium", "high", "xhigh", "max");
+        if (supportsLegacyReasoning && !string.IsNullOrEmpty(reasoningEffort))
         {
             args.AddRange(new[] { "--reasoning", reasoningEffort });
+        }
+        else if (supportsVariant && !string.IsNullOrEmpty(reasoningEffort))
+        {
+            args.AddRange(new[] { "--variant", reasoningEffort });
         }
 
         if (!string.IsNullOrEmpty(CurrentMcpConfigPath))
