@@ -1,5 +1,6 @@
 using System.Text;
 using VibeSwarm.Shared.Data;
+using VibeSwarm.Shared.Providers;
 using VibeSwarm.Shared.Validation;
 
 namespace VibeSwarm.Shared.Services;
@@ -122,7 +123,12 @@ public static class PromptBuilder
 		return sb.ToString().TrimEnd();
 	}
 
-	public static string? BuildSystemPromptRules(Project? project, bool injectEfficiencyRules = true, bool injectRepoMap = true)
+	public static string? BuildSystemPromptRules(
+		Project? project,
+		bool injectEfficiencyRules = true,
+		bool injectRepoMap = true,
+		ProviderType? providerType = null,
+		bool enableCommitAttribution = true)
 	{
 		if (project == null)
 		{
@@ -158,6 +164,17 @@ public static class PromptBuilder
 
 			sb.AppendLine("- If the build or tests fail, fix the issues before completing your work.");
 			sb.AppendLine("- Never leave the project in a broken state. A failing build is unacceptable.");
+
+			var commitAttributionRules = CommitAttributionHelper.BuildPromptRules(providerType, enableCommitAttribution);
+			if (commitAttributionRules.Count > 0)
+			{
+				sb.AppendLine();
+				sb.AppendLine("COMMIT ATTRIBUTION:");
+				foreach (var rule in commitAttributionRules)
+				{
+					sb.AppendLine($"- {rule}");
+				}
+			}
 		}
 
 		var enabledEnvironments = project.Environments

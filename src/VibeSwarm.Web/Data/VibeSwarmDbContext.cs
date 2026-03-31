@@ -357,6 +357,7 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 			entity.Property(e => e.EnablePromptStructuring).HasDefaultValue(true);
 			entity.Property(e => e.InjectRepoMap).HasDefaultValue(true);
 			entity.Property(e => e.InjectEfficiencyRules).HasDefaultValue(true);
+			entity.Property(e => e.EnableCommitAttribution).HasDefaultValue(true);
 			entity.Property(e => e.CriticalErrorLogRetentionDays).HasDefaultValue(global::VibeSwarm.Shared.Data.AppSettings.DefaultCriticalErrorLogRetentionDays);
 			entity.Property(e => e.CriticalErrorLogMaxEntries).HasDefaultValue(global::VibeSwarm.Shared.Data.AppSettings.DefaultCriticalErrorLogMaxEntries);
 		});

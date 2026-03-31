@@ -212,11 +212,17 @@ public partial class JobProcessingService
                 // Also auto-commit when IdeasAutoCommit is true (even if project-level AutoCommitMode is Off)
                 if (status == JobStatus.Completed && ShouldProcessGitDelivery(job))
                 {
+                    var enableCommitAttribution = await dbContext.AppSettings
+                        .OrderBy(settings => settings.Id)
+                        .Select(settings => (bool?)settings.EnableCommitAttribution)
+                        .FirstOrDefaultAsync(cancellationToken)
+                        ?? true;
+
                     // Run build/test verification before committing if enabled
                     var buildPassed = await VerifyBuildAsync(job, workingDirectory, cancellationToken);
                     if (buildPassed)
                     {
-                        await PerformAutoCommitAsync(job, workingDirectory, cancellationToken);
+                        await PerformAutoCommitAsync(job, workingDirectory, enableCommitAttribution, cancellationToken);
                         await CreatePullRequestIfConfiguredAsync(job, workingDirectory, cancellationToken);
                     }
                     else

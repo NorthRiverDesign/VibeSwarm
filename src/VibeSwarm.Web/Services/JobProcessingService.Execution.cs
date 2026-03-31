@@ -448,11 +448,17 @@ public partial class JobProcessingService
             var jobEnvironmentVariables = _projectEnvironmentCredentialService.BuildJobEnvironmentVariables(job.Project);
 
             var enableStructuring = appSettings?.EnablePromptStructuring ?? true;
+            var enableCommitAttribution = appSettings?.EnableCommitAttribution ?? true;
 
             // Build system prompt rules for agent efficiency
             var injectEfficiencyRules = appSettings?.InjectEfficiencyRules ?? true;
             var injectRepoMap = appSettings?.InjectRepoMap ?? true;
-            var systemPromptRules = PromptBuilder.BuildSystemPromptRules(job.Project, injectEfficiencyRules, injectRepoMap);
+            var systemPromptRules = PromptBuilder.BuildSystemPromptRules(
+                job.Project,
+                injectEfficiencyRules,
+                injectRepoMap,
+                provider.Type,
+                enableCommitAttribution);
             projectMemoryFilePath = await PrepareProjectMemoryFileAsync(job.Project, cancellationToken);
             var projectMemoryRules = PromptBuilder.BuildProjectMemoryRules(job.Project, projectMemoryFilePath);
             if (!string.IsNullOrWhiteSpace(projectMemoryRules))
@@ -525,6 +531,23 @@ public partial class JobProcessingService
 				ExecutionResult planningResult;
 				try
 				{
+					var planningSystemPromptRules = systemPromptRules;
+					if (provider.Type != planningProviderConfig.Type)
+					{
+						planningSystemPromptRules = PromptBuilder.BuildSystemPromptRules(
+							job.Project,
+							injectEfficiencyRules,
+							injectRepoMap,
+							planningProviderConfig.Type,
+							enableCommitAttribution);
+						if (!string.IsNullOrWhiteSpace(projectMemoryRules))
+						{
+							planningSystemPromptRules = string.IsNullOrWhiteSpace(planningSystemPromptRules)
+								? projectMemoryRules
+								: $"{planningSystemPromptRules}{Environment.NewLine}{Environment.NewLine}{projectMemoryRules}";
+						}
+					}
+
 					planningResult = await planningProvider.ExecuteWithOptionsAsync(
 						ProviderPlanningHelper.BuildPlanningPrompt(planningProviderConfig.Type, job.GoalPrompt),
 						new ExecutionOptions
@@ -538,7 +561,7 @@ public partial class JobProcessingService
 							Model = job.Project.PlanningModelId,
 							ReasoningEffort = job.Project.PlanningReasoningEffort,
 							Title = job.Title,
-							AppendSystemPrompt = systemPromptRules,
+							AppendSystemPrompt = planningSystemPromptRules,
 							EnvironmentVariables = jobEnvironmentVariables,
 							DisallowedTools = ProviderPlanningHelper.PlanningDisallowedTools
 						},

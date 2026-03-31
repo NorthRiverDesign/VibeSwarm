@@ -36,6 +36,7 @@ public sealed class SettingsServiceTests : IDisposable
 			EnablePromptStructuring = false,
 			InjectRepoMap = false,
 			InjectEfficiencyRules = false,
+			EnableCommitAttribution = false,
 			CriticalErrorLogRetentionDays = 45,
 			CriticalErrorLogMaxEntries = 350
 		});
@@ -47,9 +48,21 @@ public sealed class SettingsServiceTests : IDisposable
 		Assert.False(saved.EnablePromptStructuring);
 		Assert.False(saved.InjectRepoMap);
 		Assert.False(saved.InjectEfficiencyRules);
+		Assert.False(saved.EnableCommitAttribution);
 		Assert.Equal(45, saved.CriticalErrorLogRetentionDays);
 		Assert.Equal(350, saved.CriticalErrorLogMaxEntries);
 		Assert.NotNull(saved.UpdatedAt);
+	}
+
+	[Fact]
+	public async Task GetSettingsAsync_CreatesDefaultSettingsWithCommitAttributionEnabled()
+	{
+		await using var dbContext = CreateDbContext();
+		var service = new SettingsService(dbContext);
+
+		var settings = await service.GetSettingsAsync();
+
+		Assert.True(settings.EnableCommitAttribution);
 	}
 
 	[Fact]

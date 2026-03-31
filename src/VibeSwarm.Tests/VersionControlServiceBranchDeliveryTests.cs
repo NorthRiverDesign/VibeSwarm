@@ -159,6 +159,34 @@ public sealed class VersionControlServiceBranchDeliveryTests
 		Assert.Contains(executor.GitCommands, command => command.StartsWith("commit -m \"Add a feature", StringComparison.Ordinal));
 	}
 
+	[Fact]
+	public async Task CommitAllChangesAsync_AddsAuthorAndTrailersWhenConfigured()
+	{
+		var executor = new RecordingGitCommandExecutor();
+		executor.AddGitResult("add -A", new GitCommandResult { ExitCode = 0 });
+		executor.AddGitResult(
+			command => command.Contains("--author \"Claude <noreply@anthropic.com>\"", StringComparison.Ordinal)
+				&& command.Contains("-m \"Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>\"", StringComparison.Ordinal),
+			new GitCommandResult { ExitCode = 0, Output = "[main abc1234] Add a feature" });
+		executor.AddGitResult("rev-parse HEAD", new GitCommandResult { ExitCode = 0, Output = "abc1234\n" });
+
+		var service = new VersionControlService(executor, NullLogger<VersionControlService>.Instance);
+
+		var result = await service.CommitAllChangesAsync(
+			"/repo",
+			"Add a feature",
+			commitOptions: new GitCommitOptions
+			{
+				AuthorName = "Claude",
+				AuthorEmail = "noreply@anthropic.com",
+				MessageTrailers = ["Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"]
+			});
+
+		Assert.True(result.Success);
+		Assert.Contains(executor.GitCommands, command => command.Contains("--author \"Claude <noreply@anthropic.com>\"", StringComparison.Ordinal));
+		Assert.Contains(executor.GitCommands, command => command.Contains("-m \"Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>\"", StringComparison.Ordinal));
+	}
+
 	private sealed class RecordingGitCommandExecutor : IGitCommandExecutor
 	{
 		private readonly List<(Func<string, bool> Match, Queue<GitCommandResult> Results)> _gitResults = [];

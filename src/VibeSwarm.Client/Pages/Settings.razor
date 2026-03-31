@@ -179,6 +179,21 @@ Inject efficiency rules into system prompt
 	</div>
 	</div>
 
+	<div class="mb-3">
+	<div class="form-check form-switch">
+	<input class="form-check-input" type="checkbox" id="enableCommitAttribution"
+	   @bind="_settings.EnableCommitAttribution" />
+	<label class="form-check-label" for="enableCommitAttribution">
+	Enable provider commit attribution
+	</label>
+	</div>
+	<div class="form-text">
+	When enabled, provider-run jobs can add provider-specific commit attribution such as Copilot
+	co-author trailers or provider identity on auto-commits. When disabled, jobs should use the
+	repository's default git identity without provider attribution.
+	</div>
+	</div>
+
 	<hr class="my-4" />
 
 	<h6 class="text-body-secondary mb-3">

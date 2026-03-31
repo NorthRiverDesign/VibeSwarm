@@ -64,6 +64,7 @@ return output.ToHtmlString();
 
 	Assert.Contains("App Settings", html);
 	Assert.Contains("Timezone", html);
+	Assert.Contains("Enable provider commit attribution", html);
 	Assert.Contains("Critical Error Logs", html);
 	Assert.DoesNotContain("Add Provider", html);
 	Assert.DoesNotContain("inference provider", html);

@@ -99,6 +99,11 @@ public sealed class JobSummaryGeneratorTests
 			{
 				AutoCommitMode = AutoCommitMode.CommitOnly,
 				IdeasAutoCommit = false
+			},
+			Provider = new VibeSwarm.Shared.Providers.Provider
+			{
+				Name = "Copilot",
+				Type = VibeSwarm.Shared.Providers.ProviderType.Copilot
 			}
 		};
 
@@ -106,11 +111,13 @@ public sealed class JobSummaryGeneratorTests
 		var method = typeof(JobProcessingService).GetMethod("PerformAutoCommitAsync", BindingFlags.Instance | BindingFlags.NonPublic);
 		Assert.NotNull(method);
 
-		var task = (Task)method.Invoke(processor, [job, workingDirectory, CancellationToken.None])!;
+		var task = (Task)method.Invoke(processor, [job, workingDirectory, true, CancellationToken.None])!;
 		await task;
 
 		Assert.Equal("Fix scheduler auto-commit summaries", versionControl.LastCommitMessage);
 		Assert.Equal("abc1234", job.GitCommitHash);
+		Assert.NotNull(versionControl.LastCommitOptions);
+		Assert.Contains("Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>", versionControl.LastCommitOptions!.MessageTrailers);
 	}
 
 	private sealed class NoOpProjectEnvironmentCredentialService : IProjectEnvironmentCredentialService
@@ -126,6 +133,7 @@ public sealed class JobSummaryGeneratorTests
 		public bool HasUncommittedChangesResult { get; set; }
 		public GitOperationResult CommitResult { get; set; } = GitOperationResult.Succeeded();
 		public string? LastCommitMessage { get; private set; }
+		public GitCommitOptions? LastCommitOptions { get; private set; }
 
 		public Task<bool> IsGitAvailableAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<bool> IsGitRepositoryAsync(string workingDirectory, CancellationToken cancellationToken = default) => throw new NotSupportedException();
@@ -138,9 +146,14 @@ public sealed class JobSummaryGeneratorTests
 		public Task<string?> GetWorkingDirectoryDiffAsync(string workingDirectory, string? baseCommit = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<string?> GetCommitRangeDiffAsync(string workingDirectory, string fromCommit, string? toCommit = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<GitDiffSummary?> GetDiffSummaryAsync(string workingDirectory, string? baseCommit = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-		public Task<GitOperationResult> CommitAllChangesAsync(string workingDirectory, string commitMessage, CancellationToken cancellationToken = default)
+		public Task<GitOperationResult> CommitAllChangesAsync(
+			string workingDirectory,
+			string commitMessage,
+			CancellationToken cancellationToken = default,
+			GitCommitOptions? commitOptions = null)
 		{
 			LastCommitMessage = commitMessage;
+			LastCommitOptions = commitOptions;
 			return Task.FromResult(CommitResult);
 		}
 		public Task<GitOperationResult> PushAsync(string workingDirectory, string remoteName = "origin", string? branchName = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();

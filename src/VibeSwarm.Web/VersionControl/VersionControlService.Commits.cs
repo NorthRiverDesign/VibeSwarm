@@ -6,7 +6,11 @@ namespace VibeSwarm.Shared.VersionControl;
 public sealed partial class VersionControlService
 {
 	/// <inheritdoc />
-	public async Task<GitOperationResult> CommitAllChangesAsync(string workingDirectory, string commitMessage, CancellationToken cancellationToken = default)
+	public async Task<GitOperationResult> CommitAllChangesAsync(
+		string workingDirectory,
+		string commitMessage,
+		CancellationToken cancellationToken = default,
+		GitCommitOptions? commitOptions = null)
 	{
 		try
 		{
@@ -25,14 +29,28 @@ public sealed partial class VersionControlService
 			// Strip leading newlines/whitespace that agents sometimes prepend (e.g. "\nAdd a feature")
 			commitMessage = commitMessage.TrimStart('\n', '\r');
 
-			// Escape the commit message for command line
-			var escapedMessage = commitMessage
-				.Replace("\\", "\\\\")
-				.Replace("\"", "\\\"");
+			var commitArgs = new System.Text.StringBuilder("commit");
+			if (!string.IsNullOrWhiteSpace(commitOptions?.AuthorName) && !string.IsNullOrWhiteSpace(commitOptions.AuthorEmail))
+			{
+				var escapedAuthor = EscapeCommandArgument($"{commitOptions.AuthorName.Trim()} <{commitOptions.AuthorEmail.Trim()}>");
+				commitArgs.Append($" --author \"{escapedAuthor}\"");
+			}
+
+			commitArgs.Append($" -m \"{EscapeCommandArgument(commitMessage)}\"");
+
+			if (commitOptions?.MessageTrailers != null)
+			{
+				foreach (var trailer in commitOptions.MessageTrailers
+					.Where(static trailer => !string.IsNullOrWhiteSpace(trailer))
+					.Select(static trailer => trailer.Trim()))
+				{
+					commitArgs.Append($" -m \"{EscapeCommandArgument(trailer)}\"");
+				}
+			}
 
 			// Create the commit
 			var commitResult = await _commandExecutor.ExecuteAsync(
-				$"commit -m \"{escapedMessage}\"",
+				commitArgs.ToString(),
 				workingDirectory,
 				cancellationToken,
 				timeoutSeconds: 30);

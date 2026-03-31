@@ -48,6 +48,11 @@ public class AppSettings
 	/// </summary>
 	public bool InjectEfficiencyRules { get; set; } = true;
 
+	/// <summary>
+	/// Whether provider-attributed git commits should be used when jobs or providers create commits.
+	/// </summary>
+	public bool EnableCommitAttribution { get; set; } = true;
+
 	[Range(MinCriticalErrorLogRetentionDays, MaxCriticalErrorLogRetentionDays)]
 	public int CriticalErrorLogRetentionDays { get; set; } = DefaultCriticalErrorLogRetentionDays;
 

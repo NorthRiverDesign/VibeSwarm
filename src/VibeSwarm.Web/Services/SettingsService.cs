@@ -25,6 +25,7 @@ public class SettingsService : ISettingsService
 				Id = Guid.NewGuid(),
 				DefaultProjectsDirectory = null,
 				TimeZoneId = DateTimeHelper.UtcTimeZoneId,
+				EnableCommitAttribution = true,
 				CriticalErrorLogRetentionDays = AppSettings.DefaultCriticalErrorLogRetentionDays,
 				CriticalErrorLogMaxEntries = AppSettings.DefaultCriticalErrorLogMaxEntries,
 				UpdatedAt = DateTime.UtcNow
@@ -76,6 +77,7 @@ public class SettingsService : ISettingsService
 			existing.EnablePromptStructuring = settings.EnablePromptStructuring;
 			existing.InjectRepoMap = settings.InjectRepoMap;
 			existing.InjectEfficiencyRules = settings.InjectEfficiencyRules;
+			existing.EnableCommitAttribution = settings.EnableCommitAttribution;
 			existing.CriticalErrorLogRetentionDays = NormalizeCriticalErrorLogRetentionDays(settings.CriticalErrorLogRetentionDays);
 			existing.CriticalErrorLogMaxEntries = NormalizeCriticalErrorLogMaxEntries(settings.CriticalErrorLogMaxEntries);
 			existing.UpdatedAt = DateTime.UtcNow;

@@ -12,7 +12,11 @@ public partial class JobProcessingService
     /// <summary>
     /// Performs auto-commit (and optionally push) based on project settings.
     /// </summary>
-    private async Task PerformAutoCommitAsync(Job job, string workingDirectory, CancellationToken cancellationToken)
+    private async Task PerformAutoCommitAsync(
+        Job job,
+        string workingDirectory,
+        bool enableCommitAttribution,
+        CancellationToken cancellationToken)
     {
         try
         {
@@ -81,6 +85,7 @@ public partial class JobProcessingService
                 : AutoCommitMode.CommitOnly;
 
             var commitMessage = JobSummaryGenerator.BuildCommitSubject(job);
+            var commitOptions = CommitAttributionHelper.BuildGitCommitOptions(job.Provider?.Type, enableCommitAttribution);
 
             _logger.LogInformation("Auto-committing changes for job {JobId} with mode {Mode}",
                 job.Id, effectiveCommitMode);
@@ -88,7 +93,8 @@ public partial class JobProcessingService
             var commitResult = await _versionControlService.CommitAllChangesAsync(
                 workingDirectory,
                 commitMessage,
-                cancellationToken);
+                cancellationToken,
+                commitOptions);
 
             if (commitResult.Success)
             {

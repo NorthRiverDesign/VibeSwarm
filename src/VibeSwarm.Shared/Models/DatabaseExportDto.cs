@@ -20,6 +20,7 @@ public class AppSettingsExportDto
 	public bool EnablePromptStructuring { get; set; }
 	public bool InjectRepoMap { get; set; }
 	public bool InjectEfficiencyRules { get; set; }
+	public bool EnableCommitAttribution { get; set; } = true;
 	public int CriticalErrorLogRetentionDays { get; set; } = AppSettings.DefaultCriticalErrorLogRetentionDays;
 	public int CriticalErrorLogMaxEntries { get; set; } = AppSettings.DefaultCriticalErrorLogMaxEntries;
 }
