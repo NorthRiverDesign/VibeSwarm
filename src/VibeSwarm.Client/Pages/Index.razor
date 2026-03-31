@@ -33,29 +33,31 @@
                     <h5 class="mb-0 fw-semibold text-truncate">
                         <i class="bi bi-lightbulb me-2 opacity-75"></i>Ideas Processing
                     </h5>
-                    <div class="d-flex align-items-center gap-2">
+                    <div class="d-flex flex-column flex-sm-row align-items-stretch align-items-sm-center gap-2 align-self-stretch align-self-sm-auto">
                         @if (IdeasStatus.ProjectsCurrentlyProcessing > 0)
                         {
-                            <span class="badge bg-success-subtle text-success-emphasis d-flex align-items-center gap-1">
-                                <span class="spinner-border spinner-border-sm" style="width: 0.65rem; height: 0.65rem;" role="status"></span>
-                                @IdeasStatus.ProjectsCurrentlyProcessing project@(IdeasStatus.ProjectsCurrentlyProcessing != 1 ? "s" : "") processing
-                            </span>
-                            <button class="btn btn-sm btn-danger flex-shrink-0" @onclick="OnStopAllProcessing" disabled="@IsStoppingAll">
-                                @if (IsStoppingAll)
-                                {
-                                    <span class="spinner-border spinner-border-sm me-1" role="status"></span>
-                                    <span>Stopping...</span>
-                                }
-                                else
-                                {
-                                    <i class="bi bi-stop-fill me-1"></i>
-                                    <span>Stop All</span>
-                                }
-                            </button>
+                            <div class="d-flex flex-column flex-sm-row align-items-stretch align-items-sm-center gap-2">
+                                <span class="badge bg-success-subtle text-success-emphasis d-inline-flex align-items-center justify-content-center justify-content-sm-start gap-1 text-wrap align-self-start align-self-sm-auto">
+                                    <span class="spinner-border spinner-border-sm flex-shrink-0" style="width: 0.65rem; height: 0.65rem;" role="status"></span>
+                                    @IdeasStatus.ProjectsCurrentlyProcessing project@(IdeasStatus.ProjectsCurrentlyProcessing != 1 ? "s" : "") processing
+                                </span>
+                                <button class="btn btn-sm btn-danger" @onclick="OnStopAllProcessing" disabled="@IsStoppingAll">
+                                    @if (IsStoppingAll)
+                                    {
+                                        <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                                        <span>Stopping...</span>
+                                    }
+                                    else
+                                    {
+                                        <i class="bi bi-stop-fill me-1"></i>
+                                        <span>Stop All</span>
+                                    }
+                                </button>
+                            </div>
                         }
                         @if (IdeasStatus.TotalUnprocessedIdeas > 0 && !IsStartingAll)
                         {
-                            <button class="btn btn-sm btn-success flex-shrink-0" @onclick="() => ShowStartAllModal = true">
+                            <button class="btn btn-sm btn-success" @onclick="() => ShowStartAllModal = true">
                                 <i class="bi bi-play-fill me-1"></i>Start All Ideas
                                 <span class="badge bg-white text-success ms-1">@IdeasStatus.TotalUnprocessedIdeas</span>
                             </button>

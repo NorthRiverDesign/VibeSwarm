@@ -100,14 +100,55 @@ public sealed class DashboardPageTests
 		Assert.DoesNotContain("Running Jobs", html);
 	}
 
-	private static async Task<string> RenderDashboardPageAsync(IProjectService projectService, IProviderService providerService)
+	[Fact]
+	public async Task Dashboard_UsesMobileSafeIdeasProcessingLayout_WhenProcessingIsActive()
+	{
+		var html = await RenderDashboardPageAsync(
+			new FakeProjectService([CreateProjectInfo("Alpha", DateTime.UtcNow.AddHours(-1))]),
+			new FakeProviderService([]),
+			new FakeIdeaService(new GlobalIdeasProcessingStatus
+			{
+				TotalUnprocessedIdeas = 7,
+				ProjectsCurrentlyProcessing = 2,
+				Projects =
+				[
+					new ProjectIdeasSummary
+					{
+						ProjectId = Guid.NewGuid(),
+						ProjectName = "Alpha",
+						UnprocessedIdeas = 3,
+						IsProcessing = true
+					},
+					new ProjectIdeasSummary
+					{
+						ProjectId = Guid.NewGuid(),
+						ProjectName = "Beta",
+						UnprocessedIdeas = 4,
+						IsProcessing = false
+					}
+				]
+			}));
+
+		Assert.Contains("Ideas Processing", html);
+		Assert.Contains("2 projects processing", html);
+		Assert.Contains("Stop All", html);
+		Assert.Contains("Start All Ideas", html);
+		Assert.Contains("d-flex flex-column flex-sm-row align-items-stretch align-items-sm-center gap-2 align-self-stretch align-self-sm-auto", html);
+		Assert.Contains("d-flex flex-column flex-sm-row align-items-stretch align-items-sm-center gap-2", html);
+		Assert.Contains("badge bg-success-subtle text-success-emphasis d-inline-flex align-items-center justify-content-center justify-content-sm-start gap-1 text-wrap align-self-start align-self-sm-auto", html);
+	}
+
+	private static async Task<string> RenderDashboardPageAsync(
+		IProjectService projectService,
+		IProviderService providerService,
+		IIdeaService? ideaService = null)
 	{
 		var services = new ServiceCollection();
 		services.AddLogging();
 		services.AddSingleton(providerService);
 		services.AddSingleton(projectService);
 		services.AddSingleton<IVersionControlService>(new FakeVersionControlService());
-		services.AddSingleton<IIdeaService>(new FakeIdeaService());
+		services.AddSingleton(ideaService ?? new FakeIdeaService());
 		services.AddSingleton<NavigationManager>(new TestNavigationManager());
 		services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
 		services.AddSingleton(new HttpProviderService(new HttpClient(new StaticJsonHandler())
@@ -274,8 +315,10 @@ public sealed class DashboardPageTests
 		public Task<GitOperationResult> PruneRemoteBranchesAsync(string workingDirectory, string remoteName = "origin", CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	}
 
-	private sealed class FakeIdeaService : IIdeaService
+	private sealed class FakeIdeaService(GlobalIdeasProcessingStatus? globalProcessingStatus = null) : IIdeaService
 	{
+		private readonly GlobalIdeasProcessingStatus _globalProcessingStatus = globalProcessingStatus ?? new GlobalIdeasProcessingStatus();
+
 		public Task<IEnumerable<Idea>> GetByProjectIdAsync(Guid projectId, CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Idea>>([]);
 		public Task<ProjectIdeasListResult> GetPagedByProjectIdAsync(Guid projectId, int page = 1, int pageSize = 10, CancellationToken cancellationToken = default) => Task.FromResult(new ProjectIdeasListResult());
 		public Task<Idea?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult<Idea?>(null);
@@ -300,7 +343,7 @@ public sealed class DashboardPageTests
 		public Task<Idea?> CancelExpansionAsync(Guid ideaId, CancellationToken cancellationToken = default) => Task.FromResult<Idea?>(null);
 		public Task<Idea?> ApproveExpansionAsync(Guid ideaId, string? editedDescription = null, CancellationToken cancellationToken = default) => Task.FromResult<Idea?>(null);
 		public Task<Idea?> RejectExpansionAsync(Guid ideaId, CancellationToken cancellationToken = default) => Task.FromResult<Idea?>(null);
-		public Task<GlobalIdeasProcessingStatus> GetGlobalProcessingStatusAsync(CancellationToken cancellationToken = default) => Task.FromResult(new GlobalIdeasProcessingStatus());
+		public Task<GlobalIdeasProcessingStatus> GetGlobalProcessingStatusAsync(CancellationToken cancellationToken = default) => Task.FromResult(_globalProcessingStatus);
 		public Task StartAllProcessingAsync(IdeaProcessingOptions? options = null, CancellationToken cancellationToken = default) => Task.CompletedTask;
 		public Task StopAllProcessingAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 		public Task<SuggestIdeasResult> SuggestIdeasFromCodebaseAsync(Guid projectId, SuggestIdeasRequest? request = null, CancellationToken cancellationToken = default) => Task.FromResult(new SuggestIdeasResult());
