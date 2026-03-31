@@ -4,6 +4,7 @@
 @inject IJobService JobService
 @inject IJSRuntime JSRuntime
 @inject NotificationService NotificationService
+@using System.Diagnostics.CodeAnalysis
 @using VibeSwarm.Shared.Data
 @using VibeSwarm.Shared.Inference
 @using VibeSwarm.Shared.Models
@@ -106,14 +107,14 @@
 	}
 
 	<div class="border rounded-3 bg-body-tertiary p-3">
-		<label class="form-label fw-medium mb-2" for="newIdeaDescription">Add idea</label>
+		<label class="form-label fw-medium mb-2" for="@_textareaId">Add idea</label>
 		<div class="d-flex gap-2 align-items-end">
 			<div class="flex-grow-1">
-				<textarea class="form-control" id="newIdeaDescription" rows="5" placeholder="Describe a feature or improvement..."
+				<textarea class="form-control" id="@_textareaId" rows="5" placeholder="Describe a feature or improvement..."
 						  @bind="NewIdeaDescription" @bind:event="oninput" @onkeypress="HandleKeyPress"
 						  @ref="_newIdeaTextarea"
 						  maxlength="@ValidationLimits.IdeaDescriptionMaxLength"
-						  title="Describe a feature or improvement. Press Ctrl+Enter to submit."></textarea>
+						  title="Describe a feature or improvement. Press Ctrl+Enter to submit or paste an image into the box."></textarea>
 			</div>
 			<button type="button" class="btn btn-primary align-self-stretch px-3" @onclick="AddIdea"
 					disabled="@(!CanAddIdea)"
@@ -159,9 +160,19 @@
 					var attachmentIndex = attachment.index;
 					<div class="d-flex flex-wrap align-items-center justify-content-between gap-2 border rounded-3 px-2 py-2 bg-body">
 						<div class="d-flex align-items-center gap-2 min-width-0">
-							<i class="bi bi-paperclip text-body-secondary"></i>
-							<span class="text-truncate min-width-0">@attachment.item.FileName</span>
-							<span class="small text-body-secondary">@FormatAttachmentSize(attachment.item.Content.LongLength)</span>
+							@if (TryGetAttachmentPreviewDataUrl(attachment.item, out var previewDataUrl))
+							{
+								<img src="@previewDataUrl" alt="@attachment.item.FileName" class="rounded border flex-shrink-0"
+									 style="width: 3.5rem; height: 3.5rem; object-fit: cover;" />
+							}
+							else
+							{
+								<i class="bi bi-paperclip text-body-secondary"></i>
+							}
+							<div class="d-flex flex-column min-width-0">
+								<span class="text-truncate min-width-0">@attachment.item.FileName</span>
+								<span class="small text-body-secondary">@FormatAttachmentSize(attachment.item.Content.LongLength)</span>
+							</div>
 						</div>
 						<button type="button" class="btn btn-sm btn-secondary" @onclick="() => RemovePendingAttachment(attachmentIndex)">
 							<i class="bi bi-x-lg"></i>
@@ -431,9 +442,11 @@
 
 	private ElementReference _newIdeaTextarea;
 	private readonly string _fileInputId = $"idea-files-{Guid.NewGuid():N}";
+	private readonly string _textareaId = $"idea-textarea-{Guid.NewGuid():N}";
 	private string NewIdeaDescription { get; set; } = string.Empty;
 	private List<IdeaAttachmentUpload> _pendingAttachments = [];
 	private bool _isPastingAttachment;
+	private DotNetObjectReference<IdeasPanel>? _dotNetReference;
 	private Guid? StartingIdeaId { get; set; }
 	private bool IsSuggestingIdeas { get; set; }
 	private SuggestIdeasResult? _suggestResult;
@@ -881,14 +894,18 @@
 		_isPastingAttachment = true;
 		try
 		{
-			var upload = await JSRuntime.InvokeAsync<ClipboardAttachmentDto?>("vibeSwarmIdeas.readImageFromClipboard");
+			var upload = await JSRuntime.InvokeAsync<ClipboardAttachmentDto?>("vibeSwarmIdeas.readImageFromClipboard", _textareaId);
 			if (upload == null)
 			{
-				NotificationService.ShowWarning("Clipboard does not currently contain an image.", "Paste Image");
+				NotificationService.ShowWarning("Clipboard does not currently contain an image. You can also paste directly into the idea box.", "Paste Image");
 				return;
 			}
 
 			AddPendingAttachment(upload);
+		}
+		catch (JSException ex) when (ex.Message.Contains("not supported by this browser", StringComparison.OrdinalIgnoreCase))
+		{
+			NotificationService.ShowWarning("This browser blocks direct clipboard reads. Paste the image directly into the idea box instead.", "Paste Image");
 		}
 		catch (Exception ex)
 		{
@@ -913,6 +930,19 @@
 			ContentType = string.IsNullOrWhiteSpace(upload.ContentType) ? null : upload.ContentType.Trim(),
 			Content = Convert.FromBase64String(upload.Base64Content)
 		});
+	}
+
+	[JSInvokable]
+	public Task HandleClipboardImagePasted(ClipboardAttachmentDto? upload)
+	{
+		if (upload == null)
+		{
+			return Task.CompletedTask;
+		}
+
+		AddPendingAttachment(upload);
+		InvokeAsync(StateHasChanged);
+		return Task.CompletedTask;
 	}
 
 	private void RemovePendingAttachment(int index)
@@ -947,11 +977,35 @@
 		return $"{bytes} B";
 	}
 
-	private sealed class ClipboardAttachmentDto
+	private static bool TryGetAttachmentPreviewDataUrl(IdeaAttachmentUpload attachment, [NotNullWhen(true)] out string? previewDataUrl)
+	{
+		previewDataUrl = null;
+		if (attachment.Content.Length == 0 || string.IsNullOrWhiteSpace(attachment.ContentType) ||
+			!attachment.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+		{
+			return false;
+		}
+
+		previewDataUrl = $"data:{attachment.ContentType};base64,{Convert.ToBase64String(attachment.Content)}";
+		return true;
+	}
+
+	public sealed class ClipboardAttachmentDto
 	{
 		public string FileName { get; set; } = string.Empty;
 		public string? ContentType { get; set; }
 		public string Base64Content { get; set; } = string.Empty;
+	}
+
+	protected override async Task OnAfterRenderAsync(bool firstRender)
+	{
+		if (!firstRender)
+		{
+			return;
+		}
+
+		_dotNetReference = DotNetObjectReference.Create(this);
+		await JSRuntime.InvokeVoidAsync("vibeSwarmIdeas.registerPasteTarget", _textareaId, _newIdeaTextarea, _dotNetReference);
 	}
 
 	private string GetSuggestResultContainerClass() => _suggestResult?.Success == true
@@ -1193,6 +1247,8 @@
 
 	public ValueTask DisposeAsync()
 	{
+		_dotNetReference?.Dispose();
+		_dotNetReference = null;
 		return ValueTask.CompletedTask;
 	}
 }

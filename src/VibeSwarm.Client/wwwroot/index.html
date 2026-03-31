@@ -201,6 +201,27 @@
 
         <script>
             window.vibeSwarmIdeas = {
+                _pasteTargets: {},
+                readAttachmentAsDataUrl: function (file, fallbackFileName) {
+                    return new Promise(function (resolve, reject) {
+                        var reader = new FileReader();
+                        reader.onload = function () {
+                            var result = reader.result || '';
+                            var commaIndex = result.indexOf(',');
+                            resolve({
+                                fileName: (file && file.name) || fallbackFileName || 'attachment',
+                                contentType: (file && file.type) || null,
+                                base64Content: commaIndex >= 0 ? result.substring(commaIndex + 1) : result
+                            });
+                        };
+                        reader.onerror = function () { reject(new Error('Unable to read attachment.')); };
+                        reader.readAsDataURL(file);
+                    });
+                },
+                createPastedImageFileName: function (contentType) {
+                    var extension = (contentType || 'image/png').split('/')[1] || 'png';
+                    return 'pasted-image-' + new Date().toISOString().replace(/[:.]/g, '-') + '.' + extension;
+                },
                 consumeSelectedFiles: async function (inputId) {
                     var input = document.getElementById(inputId);
                     if (!input || !input.files || input.files.length === 0) {
@@ -209,26 +230,64 @@
 
                     var files = Array.from(input.files);
                     var uploads = await Promise.all(files.map(function (file) {
-                        return new Promise(function (resolve, reject) {
-                            var reader = new FileReader();
-                            reader.onload = function () {
-                                var result = reader.result || '';
-                                var commaIndex = result.indexOf(',');
-                                resolve({
-                                    fileName: file.name,
-                                    contentType: file.type || null,
-                                    base64Content: commaIndex >= 0 ? result.substring(commaIndex + 1) : result
-                                });
-                            };
-                            reader.onerror = function () { reject(new Error('Unable to read selected file.')); };
-                            reader.readAsDataURL(file);
-                        });
+                        return window.vibeSwarmIdeas.readAttachmentAsDataUrl(file, file.name);
                     }));
 
                     input.value = '';
                     return uploads;
                 },
-                readImageFromClipboard: async function () {
+                registerPasteTarget: function (targetId, element, dotNetRef) {
+                    if (!element || !dotNetRef) {
+                        return;
+                    }
+
+                    window.vibeSwarmIdeas.unregisterPasteTarget(targetId);
+
+                    var handler = async function (event) {
+                        var clipboardData = event.clipboardData;
+                        if (!clipboardData || !clipboardData.items) {
+                            return;
+                        }
+
+                        var items = Array.from(clipboardData.items);
+                        var imageItem = items.find(function (item) {
+                            return item.kind === 'file' && item.type && item.type.indexOf('image/') === 0;
+                        });
+
+                        if (!imageItem) {
+                            return;
+                        }
+
+                        var file = imageItem.getAsFile();
+                        if (!file) {
+                            return;
+                        }
+
+                        event.preventDefault();
+                        try {
+                            var upload = await window.vibeSwarmIdeas.readAttachmentAsDataUrl(
+                                file,
+                                window.vibeSwarmIdeas.createPastedImageFileName(file.type)
+                            );
+                            await dotNetRef.invokeMethodAsync('HandleClipboardImagePasted', upload);
+                        } catch (error) {
+                            console.error('Unable to handle pasted image.', error);
+                        }
+                    };
+
+                    element.addEventListener('paste', handler);
+                    window.vibeSwarmIdeas._pasteTargets[targetId] = { element: element, handler: handler };
+                },
+                unregisterPasteTarget: function (targetId) {
+                    var entry = window.vibeSwarmIdeas._pasteTargets[targetId];
+                    if (!entry) {
+                        return;
+                    }
+
+                    entry.element.removeEventListener('paste', entry.handler);
+                    delete window.vibeSwarmIdeas._pasteTargets[targetId];
+                },
+                readImageFromClipboard: async function (targetId) {
                     if (!navigator.clipboard || !navigator.clipboard.read) {
                         throw new Error('Clipboard image paste is not supported by this browser.');
                     }
@@ -242,23 +301,8 @@
                         }
 
                         var blob = await item.getType(imageType);
-                        var extension = imageType.split('/')[1] || 'png';
-                        var fileName = 'pasted-image-' + new Date().toISOString().replace(/[:.]/g, '-') + '.' + extension;
-
-                        return await new Promise(function (resolve, reject) {
-                            var reader = new FileReader();
-                            reader.onload = function () {
-                                var result = reader.result || '';
-                                var commaIndex = result.indexOf(',');
-                                resolve({
-                                    fileName: fileName,
-                                    contentType: imageType,
-                                    base64Content: commaIndex >= 0 ? result.substring(commaIndex + 1) : result
-                                });
-                            };
-                            reader.onerror = function () { reject(new Error('Unable to read pasted image.')); };
-                            reader.readAsDataURL(blob);
-                        });
+                        blob.name = window.vibeSwarmIdeas.createPastedImageFileName(imageType);
+                        return await window.vibeSwarmIdeas.readAttachmentAsDataUrl(blob, blob.name);
                     }
 
                     return null;

@@ -196,6 +196,72 @@ public sealed class IdeasPanelTests
 		Assert.Equal(AutoCommitMode.Off, submittedOptions.AutoCommitMode);
 	}
 
+	[Fact]
+	public async Task HandleClipboardImagePasted_ShowsImagePreviewAndIncludesAttachmentSummary()
+	{
+		using var context = new BunitContext();
+		context.Services.AddLogging();
+		context.Services.AddSingleton<IProjectService>(new FakeProjectService());
+		context.Services.AddSingleton<IIdeaService>(new FakeIdeaService());
+		context.Services.AddSingleton<IJobService>(new FakeJobService());
+		context.Services.AddSingleton<NotificationService>();
+		context.JSInterop.SetupVoid("vibeSwarmIdeas.registerPasteTarget", _ => true);
+
+		var cut = context.Render<IdeasPanel>(parameters => parameters
+			.Add(component => component.CurrentProjectId, Guid.NewGuid())
+			.Add(component => component.HasInference, true)
+			.Add(component => component.AvailableInferenceProviders, new List<InferenceProvider>())
+			.Add(component => component.AvailableProviders, new List<Provider>()));
+
+		await cut.InvokeAsync(async () =>
+		{
+			await cut.Instance.HandleClipboardImagePasted(new IdeasPanel.ClipboardAttachmentDto
+			{
+				FileName = "clipboard.png",
+				ContentType = "image/png",
+				Base64Content = Convert.ToBase64String([137, 80, 78, 71])
+			});
+		});
+
+		var html = cut.Markup;
+
+		Assert.Contains("clipboard.png", html);
+		Assert.Contains("1 attachment", html);
+		Assert.Contains("data:image/png;base64,", html);
+		Assert.Contains("clipboard.png\" class=\"rounded border", html);
+	}
+
+	[Fact]
+	public void PasteImageButton_ShowsFallbackWarning_WhenClipboardReadIsUnsupported()
+	{
+		using var context = new BunitContext();
+		context.Services.AddLogging();
+		context.Services.AddSingleton<IProjectService>(new FakeProjectService());
+		context.Services.AddSingleton<IIdeaService>(new FakeIdeaService());
+		context.Services.AddSingleton<IJobService>(new FakeJobService());
+		var notificationService = new NotificationService();
+		context.Services.AddSingleton(notificationService);
+
+		context.JSInterop
+			.SetupVoid("vibeSwarmIdeas.registerPasteTarget", _ => true);
+		context.JSInterop
+			.Setup<IdeasPanel.ClipboardAttachmentDto?>("vibeSwarmIdeas.readImageFromClipboard", _ => true)
+			.SetException(new JSException("Clipboard image paste is not supported by this browser."));
+
+		var cut = context.Render<IdeasPanel>(parameters => parameters
+			.Add(component => component.CurrentProjectId, Guid.NewGuid())
+			.Add(component => component.HasInference, true)
+			.Add(component => component.AvailableInferenceProviders, new List<InferenceProvider>())
+			.Add(component => component.AvailableProviders, new List<Provider>()));
+
+		cut.Find("button[title='Paste an image from the clipboard']").Click();
+
+		var warning = notificationService.Notifications.Single();
+		Assert.Equal(NotificationType.Warning, warning.Type);
+		Assert.Equal("Paste Image", warning.Title);
+		Assert.Contains("Paste the image directly into the idea box instead.", warning.Message);
+	}
+
 	private sealed class FakeProjectService : IProjectService
 	{
 		public Task<IEnumerable<Project>> GetAllAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Project>>([]);
