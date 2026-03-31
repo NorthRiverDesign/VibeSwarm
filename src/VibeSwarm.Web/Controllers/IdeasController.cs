@@ -31,8 +31,12 @@ public class IdeasController : ControllerBase
         return idea == null ? NotFound() : Ok(idea);
     }
 
-    [HttpPost]
-    public async Task<IActionResult> Create([FromBody] Idea idea, CancellationToken ct) => Ok(await _ideaService.CreateAsync(idea, ct));
+	[HttpPost]
+	public async Task<IActionResult> Create([FromBody] Idea idea, CancellationToken ct) => Ok(await _ideaService.CreateAsync(idea, ct));
+
+	[HttpPost("create-with-attachments")]
+	public async Task<IActionResult> CreateWithAttachments([FromBody] CreateIdeaRequest request, CancellationToken ct)
+		=> Ok(await _ideaService.CreateAsync(request, ct));
 
     [HttpPut("{id:guid}")]
     public async Task<IActionResult> Update(Guid id, [FromBody] Idea idea, CancellationToken ct)

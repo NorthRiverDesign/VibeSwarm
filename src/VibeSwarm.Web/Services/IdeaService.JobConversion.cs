@@ -1,3 +1,5 @@
+using System.Text;
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using VibeSwarm.Shared.Data;
@@ -18,6 +20,7 @@ public partial class IdeaService
 			// Re-fetch the idea inside the lock to ensure we have the latest state
 			var idea = await _dbContext.Ideas
 				.Include(i => i.Project)
+				.Include(i => i.Attachments)
 				.FirstOrDefaultAsync(i => i.Id == ideaId, cancellationToken);
 
 			if (idea?.Project == null)
@@ -67,6 +70,11 @@ public partial class IdeaService
 			var goalPrompt = idea.HasExpandedDescription
 				? BuildPromptFromExpanded(idea.Description, idea.ExpandedDescription!)
 				: BuildImplementationPrompt(idea.Description);
+			var attachmentPaths = ResolveAttachmentPaths(idea.Project.WorkingPath, idea.Attachments);
+			if (attachmentPaths.Count > 0)
+			{
+				goalPrompt = BuildPromptWithAttachments(goalPrompt, idea.Attachments, attachmentPaths);
+			}
 
 			// Create the job with the original idea as the title
 			var job = new Job
@@ -78,6 +86,7 @@ public partial class IdeaService
 				Branch = currentBranch,
 				ModelUsed = await ResolveJobModelAsync(idea.ProjectId, defaultProvider.Id, options, cancellationToken),
 				ReasoningEffort = await ResolveJobReasoningAsync(idea.ProjectId, defaultProvider.Id, cancellationToken),
+				AttachedFilesJson = attachmentPaths.Count > 0 ? JsonSerializer.Serialize(attachmentPaths) : null,
 				Status = JobStatus.New
 			};
 
@@ -223,6 +232,8 @@ A concise one-line description of what was implemented (max 72 chars)
 	public async Task<bool> CompleteIdeaFromJobAsync(Guid jobId, CancellationToken cancellationToken = default)
 	{
 		var idea = await _dbContext.Ideas
+			.Include(i => i.Project)
+			.Include(i => i.Attachments)
 			.FirstOrDefaultAsync(i => i.JobId == jobId, cancellationToken);
 
 		if (idea == null)
@@ -231,6 +242,7 @@ A concise one-line description of what was implemented (max 72 chars)
 		}
 
 		_logger.LogInformation("Removing completed Idea {IdeaId} after Job {JobId} completed", idea.Id, jobId);
+		await DeleteAttachmentFilesAsync(idea.Attachments, idea.Project?.WorkingPath);
 
 		_dbContext.Ideas.Remove(idea);
 		await _dbContext.SaveChangesAsync(cancellationToken);
@@ -241,6 +253,8 @@ A concise one-line description of what was implemented (max 72 chars)
 	public async Task<bool> HandleJobCompletionAsync(Guid jobId, bool success, CancellationToken cancellationToken = default)
 	{
 		var idea = await _dbContext.Ideas
+			.Include(i => i.Project)
+			.Include(i => i.Attachments)
 			.FirstOrDefaultAsync(i => i.JobId == jobId, cancellationToken);
 
 		if (idea == null)
@@ -254,6 +268,7 @@ A concise one-line description of what was implemented (max 72 chars)
 		{
 			// Job completed successfully - remove the idea
 			_logger.LogInformation("Removing completed Idea {IdeaId} after Job {JobId} completed successfully", idea.Id, jobId);
+			await DeleteAttachmentFilesAsync(idea.Attachments, idea.Project?.WorkingPath);
 			_dbContext.Ideas.Remove(idea);
 		}
 		else
@@ -299,5 +314,71 @@ A concise one-line description of what was implemented (max 72 chars)
 		}
 
 		return true;
+	}
+
+	private static List<string> ResolveAttachmentPaths(string? workingPath, IEnumerable<IdeaAttachment>? attachments)
+	{
+		var resolved = new List<string>();
+		if (string.IsNullOrWhiteSpace(workingPath) || attachments == null)
+		{
+			return resolved;
+		}
+
+		var normalizedRoot = Path.GetFullPath(workingPath);
+		foreach (var attachment in attachments)
+		{
+			if (string.IsNullOrWhiteSpace(attachment.RelativePath))
+			{
+				continue;
+			}
+
+			var fullPath = Path.GetFullPath(Path.Combine(normalizedRoot, attachment.RelativePath));
+			if (!fullPath.StartsWith(normalizedRoot, StringComparison.Ordinal))
+			{
+				continue;
+			}
+
+			if (File.Exists(fullPath))
+			{
+				resolved.Add(fullPath);
+			}
+		}
+
+		return resolved;
+	}
+
+	private static string BuildPromptWithAttachments(string prompt, IEnumerable<IdeaAttachment> attachments, IReadOnlyList<string> attachmentPaths)
+	{
+		var attachmentList = attachments.ToList();
+		if (attachmentList.Count == 0 || attachmentPaths.Count == 0)
+		{
+			return prompt;
+		}
+
+		var sb = new StringBuilder();
+		sb.AppendLine(prompt.TrimEnd());
+		sb.AppendLine();
+		sb.AppendLine("## Attached Context Files");
+		sb.AppendLine("The user attached the following files as additional context. Review them before implementing the change.");
+		sb.AppendLine();
+
+		for (var index = 0; index < attachmentList.Count && index < attachmentPaths.Count; index++)
+		{
+			var attachment = attachmentList[index];
+			sb.Append("- `");
+			sb.Append(attachment.FileName);
+			sb.Append("`");
+			if (!string.IsNullOrWhiteSpace(attachment.ContentType))
+			{
+				sb.Append(" (");
+				sb.Append(attachment.ContentType);
+				sb.Append(')');
+			}
+			sb.Append(" - path: `");
+			sb.Append(attachmentPaths[index]);
+			sb.AppendLine("`");
+		}
+
+		return sb.ToString();
 	}
 }

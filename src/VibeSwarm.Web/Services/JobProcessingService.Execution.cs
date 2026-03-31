@@ -577,6 +577,7 @@ public partial class JobProcessingService
             }
 
             var currentPrompt = PromptBuilder.BuildExecutionPrompt(job, planningOutput, enableStructuring);
+            var attachedFiles = DeserializeAttachedFiles(job.AttachedFilesJson);
             var cycleComplete = false;
             await UpdateJobStatusAsync(job.Id, JobStatus.Processing, dbContext, cancellationToken);
             await NotifyStatusChangedAsync(job.Id, JobStatus.Processing);
@@ -640,6 +641,7 @@ public partial class JobProcessingService
 							Model = job.ModelUsed,
 							ReasoningEffort = job.ReasoningEffort,
 							Title = job.Title,
+							AttachedFiles = attachedFiles,
 							AppendSystemPrompt = systemPromptRules,
 							EnvironmentVariables = jobEnvironmentVariables
 						},
@@ -954,6 +956,30 @@ public partial class JobProcessingService
                     _logger.LogWarning(disposeEx, "Error disposing provider for job {JobId}", job.Id);
                 }
             }
+        }
+    }
+
+    private static List<string>? DeserializeAttachedFiles(string? attachedFilesJson)
+    {
+        if (string.IsNullOrWhiteSpace(attachedFilesJson))
+        {
+            return null;
+        }
+
+        try
+        {
+            var parsed = JsonSerializer.Deserialize<List<string>>(attachedFilesJson);
+            var normalized = parsed?
+                .Where(path => !string.IsNullOrWhiteSpace(path))
+                .Select(path => path.Trim())
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+
+            return normalized is { Count: > 0 } ? normalized : null;
+        }
+        catch
+        {
+            return null;
         }
     }
 }

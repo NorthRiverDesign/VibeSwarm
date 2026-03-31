@@ -1071,6 +1071,7 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 			null!,
 			null!,
 			null!,
+			new FakeProjectMemoryService(),
 			NullLogger<IdeaService>.Instance);
 
 		var updatedIdea = await ideaService.UpdateAsync(new Idea
@@ -1107,6 +1108,7 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 			null!,
 			null!,
 			null!,
+			new FakeProjectMemoryService(),
 			NullLogger<IdeaService>.Instance);
 
 		var error = await Assert.ThrowsAsync<System.ComponentModel.DataAnnotations.ValidationException>(() => ideaService.CreateAsync(new Idea
@@ -1116,6 +1118,68 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		}));
 
 		Assert.Contains(nameof(Idea.Description), error.Message);
+	}
+
+	[Fact]
+	public async Task CreateAsync_WithAttachments_PersistsMetadataAndFiles()
+	{
+		await using var dbContext = CreateDbContext();
+		var workingPath = Path.Combine(Path.GetTempPath(), $"vibeswarm-idea-attachments-{Guid.NewGuid():N}");
+		Directory.CreateDirectory(workingPath);
+
+		try
+		{
+			var project = new Project
+			{
+				Id = Guid.NewGuid(),
+				Name = "Attachment Project",
+				WorkingPath = workingPath
+			};
+
+			dbContext.Projects.Add(project);
+			await dbContext.SaveChangesAsync();
+
+			var ideaService = new IdeaService(
+				dbContext,
+				null!,
+				null!,
+				null!,
+				new FakeProjectMemoryService(),
+				NullLogger<IdeaService>.Instance);
+
+			var created = await ideaService.CreateAsync(new CreateIdeaRequest
+			{
+				ProjectId = project.Id,
+				Description = "Add image context support",
+				Attachments =
+				[
+					new IdeaAttachmentUpload
+					{
+						FileName = "screenshot.png",
+						ContentType = "image/png",
+						Content = [1, 2, 3, 4]
+					}
+				]
+			});
+
+			var savedIdea = await dbContext.Ideas.Include(idea => idea.Attachments).SingleAsync(idea => idea.Id == created.Id);
+			var attachment = Assert.Single(savedIdea.Attachments);
+			Assert.Equal("screenshot.png", attachment.FileName);
+			Assert.Equal("image/png", attachment.ContentType);
+			Assert.Equal(4, attachment.SizeBytes);
+			Assert.Contains(Path.Combine(".vibeswarm", "idea-attachments"), attachment.RelativePath, StringComparison.Ordinal);
+
+			var storedPath = Path.Combine(workingPath, attachment.RelativePath);
+			Assert.True(File.Exists(storedPath));
+			Assert.Equal([1, 2, 3, 4], await File.ReadAllBytesAsync(storedPath));
+		}
+		finally
+		{
+			if (Directory.Exists(workingPath))
+			{
+				Directory.Delete(workingPath, recursive: true);
+			}
+		}
 	}
 
 	[Fact]
@@ -1165,6 +1229,7 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 			null!,
 			null!,
 			null!,
+			new FakeProjectMemoryService(),
 			NullLogger<IdeaService>.Instance);
 
 		var ideas = (await ideaService.GetByProjectIdAsync(project.Id)).ToList();
@@ -1207,6 +1272,7 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 			null!,
 			null!,
 			null!,
+			new FakeProjectMemoryService(),
 			NullLogger<IdeaService>.Instance);
 
 		var page = await ideaService.GetPagedByProjectIdAsync(projectId, page: 2, pageSize: 2);
@@ -1255,6 +1321,77 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		Assert.NotNull(job);
 		Assert.Contains("Work directly from the idea below instead of first expanding it into a separate detailed specification.", job!.GoalPrompt);
 		Assert.DoesNotContain("Begin by expanding this idea into a detailed specification, then implement it.", job.GoalPrompt);
+	}
+
+	[Fact]
+	public async Task ConvertToJobAsync_IncludesAttachmentManifestAndAttachedFilesJson()
+	{
+		await using var dbContext = CreateDbContext();
+		var workingPath = Path.Combine(Path.GetTempPath(), $"vibeswarm-job-attachments-{Guid.NewGuid():N}");
+		var attachmentDirectory = Path.Combine(workingPath, ".vibeswarm", "idea-attachments");
+		Directory.CreateDirectory(attachmentDirectory);
+
+		try
+		{
+			var project = new Project
+			{
+				Id = Guid.NewGuid(),
+				Name = "Idea Attachment Conversion",
+				WorkingPath = workingPath
+			};
+			var provider = new Provider
+			{
+				Id = Guid.NewGuid(),
+				Name = "OpenCode",
+				Type = ProviderType.OpenCode,
+				IsEnabled = true,
+				IsDefault = true
+			};
+			var idea = new Idea
+			{
+				Id = Guid.NewGuid(),
+				ProjectId = project.Id,
+				Description = "Use the attached screenshot while implementing this idea",
+				SortOrder = 0,
+				Attachments =
+				[
+					new IdeaAttachment
+					{
+						Id = Guid.NewGuid(),
+						FileName = "screenshot.png",
+						ContentType = "image/png",
+						RelativePath = Path.Combine(".vibeswarm", "idea-attachments", "screenshot.png"),
+						SizeBytes = 4
+					}
+				]
+			};
+
+			dbContext.Projects.Add(project);
+			dbContext.Providers.Add(provider);
+			dbContext.Ideas.Add(idea);
+			await dbContext.SaveChangesAsync();
+
+			var absoluteAttachmentPath = Path.Combine(workingPath, idea.Attachments.Single().RelativePath);
+			Directory.CreateDirectory(Path.GetDirectoryName(absoluteAttachmentPath)!);
+			await File.WriteAllBytesAsync(absoluteAttachmentPath, [1, 2, 3, 4]);
+
+			var ideaService = CreateIdeaService(dbContext, provider);
+			var job = await ideaService.ConvertToJobAsync(idea.Id);
+
+			Assert.NotNull(job);
+			Assert.Contains("## Attached Context Files", job!.GoalPrompt);
+			Assert.Contains("screenshot.png", job.GoalPrompt);
+			Assert.Contains(absoluteAttachmentPath, job.GoalPrompt);
+			Assert.NotNull(job.AttachedFilesJson);
+			Assert.Contains(absoluteAttachmentPath, job.AttachedFilesJson, StringComparison.Ordinal);
+		}
+		finally
+		{
+			if (Directory.Exists(workingPath))
+			{
+				Directory.Delete(workingPath, recursive: true);
+			}
+		}
 	}
 
 	[Fact]
@@ -1668,6 +1805,86 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		Assert.Equal(2, pendingJobs.Select(job => job.ProjectId).Distinct().Count());
 		Assert.Contains(pendingJobs, job => job.ProjectId == firstProject.Id && job.GoalPrompt == "First project first queued job");
 		Assert.DoesNotContain(pendingJobs, job => job.ProjectId == firstProject.Id && job.GoalPrompt == "First project second queued job");
+	}
+
+	[Fact]
+	public async Task HandleJobCompletionAsync_Success_DeletesIdeaAndAttachmentFiles()
+	{
+		await using var dbContext = CreateDbContext();
+		var workingPath = Path.Combine(Path.GetTempPath(), $"vibeswarm-job-cleanup-{Guid.NewGuid():N}");
+		Directory.CreateDirectory(workingPath);
+
+		try
+		{
+			var project = new Project
+			{
+				Id = Guid.NewGuid(),
+				Name = "Cleanup Project",
+				WorkingPath = workingPath
+			};
+			var provider = new Provider
+			{
+				Id = Guid.NewGuid(),
+				Name = "Copilot",
+				Type = ProviderType.Copilot,
+				IsEnabled = true,
+				IsDefault = true
+			};
+			var job = new Job
+			{
+				Id = Guid.NewGuid(),
+				ProjectId = project.Id,
+				ProviderId = provider.Id,
+				GoalPrompt = "Complete job with idea attachment cleanup",
+				Status = JobStatus.Completed
+			};
+			var relativeAttachmentPath = Path.Combine(".vibeswarm", "idea-attachments", "cleanup", "context.txt");
+			var idea = new Idea
+			{
+				Id = Guid.NewGuid(),
+				ProjectId = project.Id,
+				Description = "Cleanup attachments on success",
+				JobId = job.Id,
+				IsProcessing = true,
+				SortOrder = 0,
+				Attachments =
+				[
+					new IdeaAttachment
+					{
+						Id = Guid.NewGuid(),
+						FileName = "context.txt",
+						ContentType = "text/plain",
+						RelativePath = relativeAttachmentPath,
+						SizeBytes = 5
+					}
+				]
+			};
+
+			dbContext.Projects.Add(project);
+			dbContext.Providers.Add(provider);
+			dbContext.Jobs.Add(job);
+			dbContext.Ideas.Add(idea);
+			await dbContext.SaveChangesAsync();
+
+			var attachmentPath = Path.Combine(workingPath, relativeAttachmentPath);
+			Directory.CreateDirectory(Path.GetDirectoryName(attachmentPath)!);
+			await File.WriteAllTextAsync(attachmentPath, "hello");
+
+			var ideaService = CreateIdeaService(dbContext, provider);
+			var handled = await ideaService.HandleJobCompletionAsync(job.Id, success: true);
+
+			Assert.True(handled);
+			Assert.False(File.Exists(attachmentPath));
+			Assert.False(await dbContext.Ideas.AnyAsync(item => item.Id == idea.Id));
+			Assert.False(await dbContext.IdeaAttachments.AnyAsync(item => item.IdeaId == idea.Id));
+		}
+		finally
+		{
+			if (Directory.Exists(workingPath))
+			{
+				Directory.Delete(workingPath, recursive: true);
+			}
+		}
 	}
 
 	[Fact]
@@ -2281,12 +2498,14 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		var jobService = new JobService(dbContext, serviceProvider);
 		var providerService = new FakeProviderService(provider, providerInstance, models);
 		var versionControlService = new FakeVersionControlService();
+		var projectMemoryService = new FakeProjectMemoryService();
 
 		return new IdeaService(
 			dbContext,
 			jobService,
 			providerService,
 			versionControlService,
+			projectMemoryService,
 			NullLogger<IdeaService>.Instance,
 			inferenceService,
 			jobUpdateService);
@@ -2418,6 +2637,13 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		public void PopulateForEditing(Project? project) { }
 		public void PopulateForExecution(Project? project) { }
 		public Dictionary<string, string>? BuildJobEnvironmentVariables(Project? project) => null;
+	}
+
+	private sealed class FakeProjectMemoryService : IProjectMemoryService
+	{
+		public Task<string?> PrepareMemoryFileAsync(Project? project, CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
+		public Task SyncMemoryFromFileAsync(Guid projectId, string? memoryFilePath, CancellationToken cancellationToken = default) => Task.CompletedTask;
+		public Task EnsureGitExcludeAsync(string workingPath, CancellationToken cancellationToken = default) => Task.CompletedTask;
 	}
 
 	private sealed class FakeInferenceService : IInferenceService

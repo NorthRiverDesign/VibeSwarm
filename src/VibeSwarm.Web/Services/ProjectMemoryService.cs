@@ -9,6 +9,7 @@ public interface IProjectMemoryService
 {
 	Task<string?> PrepareMemoryFileAsync(Project? project, CancellationToken cancellationToken = default);
 	Task SyncMemoryFromFileAsync(Guid projectId, string? memoryFilePath, CancellationToken cancellationToken = default);
+	Task EnsureGitExcludeAsync(string workingPath, CancellationToken cancellationToken = default);
 }
 
 public sealed class ProjectMemoryService(
@@ -100,6 +101,11 @@ public sealed class ProjectMemoryService(
 		project.Memory = updatedMemory;
 		project.UpdatedAt = DateTime.UtcNow;
 		await dbContext.SaveChangesAsync(cancellationToken);
+	}
+
+	public Task EnsureGitExcludeAsync(string workingPath, CancellationToken cancellationToken = default)
+	{
+		return EnsureGitExcludeEntryAsync(workingPath, cancellationToken);
 	}
 
 	private static string? NormalizeMemory(string? memory)

@@ -2,12 +2,14 @@
 @inject IProjectService ProjectService
 @inject IIdeaService IdeaService
 @inject IJobService JobService
+@inject IJSRuntime JSRuntime
 @inject NotificationService NotificationService
 @using VibeSwarm.Shared.Data
 @using VibeSwarm.Shared.Inference
 @using VibeSwarm.Shared.Models
 @using VibeSwarm.Shared.Providers
 @using VibeSwarm.Shared.Validation
+@implements IAsyncDisposable
 
 <div class="d-grid gap-3">
 	<div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
@@ -109,6 +111,7 @@
 			<div class="flex-grow-1">
 				<textarea class="form-control" id="newIdeaDescription" rows="5" placeholder="Describe a feature or improvement..."
 						  @bind="NewIdeaDescription" @bind:event="oninput" @onkeypress="HandleKeyPress"
+						  @ref="_newIdeaTextarea"
 						  maxlength="@ValidationLimits.IdeaDescriptionMaxLength"
 						  title="Describe a feature or improvement. Press Ctrl+Enter to submit."></textarea>
 			</div>
@@ -126,6 +129,47 @@
 				<span class="d-none d-sm-inline ms-1">Add</span>
 			</button>
 		</div>
+		<div class="d-flex flex-wrap align-items-center gap-2 mt-2">
+			<label class="btn btn-sm btn-secondary mb-0" for="@_fileInputId" title="Attach files from the host filesystem">
+				<i class="bi bi-paperclip me-1"></i>Attach Files
+			</label>
+			<input id="@_fileInputId" class="d-none" type="file" multiple @onchange="HandleFileSelection" />
+			<button type="button" class="btn btn-sm btn-secondary" @onclick="PasteImageFromClipboardAsync"
+					disabled="@_isPastingAttachment" title="Paste an image from the clipboard">
+				@if (_isPastingAttachment)
+				{
+					<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+				}
+				else
+				{
+					<i class="bi bi-image me-1"></i>
+				}
+				<span>Paste Image</span>
+			</button>
+			@if (_pendingAttachments.Any())
+			{
+				<span class="small text-body-secondary">@GetAttachmentSummary()</span>
+			}
+		</div>
+		@if (_pendingAttachments.Any())
+		{
+			<div class="d-flex flex-column gap-2 mt-2">
+				@foreach (var attachment in _pendingAttachments.Select((item, index) => (item, index)))
+				{
+					var attachmentIndex = attachment.index;
+					<div class="d-flex flex-wrap align-items-center justify-content-between gap-2 border rounded-3 px-2 py-2 bg-body">
+						<div class="d-flex align-items-center gap-2 min-width-0">
+							<i class="bi bi-paperclip text-body-secondary"></i>
+							<span class="text-truncate min-width-0">@attachment.item.FileName</span>
+							<span class="small text-body-secondary">@FormatAttachmentSize(attachment.item.Content.LongLength)</span>
+						</div>
+						<button type="button" class="btn btn-sm btn-secondary" @onclick="() => RemovePendingAttachment(attachmentIndex)">
+							<i class="bi bi-x-lg"></i>
+						</button>
+					</div>
+				}
+			</div>
+		}
 		<div class="d-flex flex-wrap align-items-center gap-2 mt-2 small text-body-secondary">
 			<span>@GetIdeaLengthSummary(NewIdeaDescription)</span>
 			<span><kbd>Ctrl</kbd>+<kbd>Enter</kbd> to add</span>
@@ -314,7 +358,7 @@
 	public EventCallback OnStopProcessing { get; set; }
 
 	[Parameter]
-	public EventCallback<string> OnAddIdea { get; set; }
+	public EventCallback<CreateIdeaRequest> OnAddIdea { get; set; }
 
 	[Parameter]
 	public EventCallback<(Guid IdeaId, string Description)> OnUpdateIdea { get; set; }
@@ -385,7 +429,11 @@
 	[Parameter]
 	public string? DefaultInferenceModelId { get; set; }
 
+	private ElementReference _newIdeaTextarea;
+	private readonly string _fileInputId = $"idea-files-{Guid.NewGuid():N}";
 	private string NewIdeaDescription { get; set; } = string.Empty;
+	private List<IdeaAttachmentUpload> _pendingAttachments = [];
+	private bool _isPastingAttachment;
 	private Guid? StartingIdeaId { get; set; }
 	private bool IsSuggestingIdeas { get; set; }
 	private SuggestIdeasResult? _suggestResult;
@@ -423,7 +471,7 @@
 	}
 
 	private bool _isSubmitting;
-	private string? AddIdeaValidationMessage => ValidateIdeaDescription(NewIdeaDescription);
+	private string? AddIdeaValidationMessage => ValidateAddIdeaInput();
 	private bool CanAddIdea => string.IsNullOrWhiteSpace(AddIdeaValidationMessage) &&
 		!string.IsNullOrWhiteSpace(NewIdeaDescription) &&
 		!IsAddingIdea &&
@@ -448,8 +496,21 @@
 		_isSubmitting = true;
 		try
 		{
-			await OnAddIdea.InvokeAsync(NewIdeaDescription.Trim());
+			await OnAddIdea.InvokeAsync(new CreateIdeaRequest
+			{
+				ProjectId = CurrentProjectId,
+				Description = NewIdeaDescription.Trim(),
+				Attachments = _pendingAttachments
+					.Select(attachment => new IdeaAttachmentUpload
+					{
+						FileName = attachment.FileName,
+						ContentType = attachment.ContentType,
+						Content = attachment.Content
+					})
+					.ToList()
+			});
 			NewIdeaDescription = string.Empty;
+			_pendingAttachments.Clear();
 		}
 		finally { _isSubmitting = false; }
 	}
@@ -767,6 +828,132 @@
 		return null;
 	}
 
+	private string? ValidateAddIdeaInput()
+	{
+		var descriptionValidation = ValidateIdeaDescription(NewIdeaDescription);
+		if (!string.IsNullOrWhiteSpace(descriptionValidation))
+		{
+			return descriptionValidation;
+		}
+
+		if (_pendingAttachments.Count > ValidationLimits.IdeaAttachmentMaxCount)
+		{
+			return $"Ideas can include at most {ValidationLimits.IdeaAttachmentMaxCount} attachments.";
+		}
+
+		var totalBytes = _pendingAttachments.Sum(attachment => attachment.Content.LongLength);
+		if (_pendingAttachments.Any(attachment => attachment.Content.LongLength > ValidationLimits.IdeaAttachmentMaxFileBytes))
+		{
+			return $"Each attachment must be {ValidationLimits.IdeaAttachmentMaxFileBytes / (1024 * 1024)} MB or smaller.";
+		}
+
+		if (totalBytes > ValidationLimits.IdeaAttachmentMaxTotalBytes)
+		{
+			return $"Idea attachments exceed the total limit of {ValidationLimits.IdeaAttachmentMaxTotalBytes / (1024 * 1024)} MB.";
+		}
+
+		return null;
+	}
+
+	private async Task HandleFileSelection(ChangeEventArgs _)
+	{
+		try
+		{
+			var uploads = await JSRuntime.InvokeAsync<List<ClipboardAttachmentDto>>("vibeSwarmIdeas.consumeSelectedFiles", _fileInputId);
+			if (uploads == null)
+			{
+				return;
+			}
+
+			foreach (var upload in uploads)
+			{
+				AddPendingAttachment(upload);
+			}
+		}
+		catch (Exception ex)
+		{
+			NotificationService.ShowError($"Error attaching files: {ex.Message}");
+		}
+	}
+
+	private async Task PasteImageFromClipboardAsync()
+	{
+		_isPastingAttachment = true;
+		try
+		{
+			var upload = await JSRuntime.InvokeAsync<ClipboardAttachmentDto?>("vibeSwarmIdeas.readImageFromClipboard");
+			if (upload == null)
+			{
+				NotificationService.ShowWarning("Clipboard does not currently contain an image.", "Paste Image");
+				return;
+			}
+
+			AddPendingAttachment(upload);
+		}
+		catch (Exception ex)
+		{
+			NotificationService.ShowError($"Unable to read an image from the clipboard: {ex.Message}");
+		}
+		finally
+		{
+			_isPastingAttachment = false;
+		}
+	}
+
+	private void AddPendingAttachment(ClipboardAttachmentDto upload)
+	{
+		if (string.IsNullOrWhiteSpace(upload.FileName) || string.IsNullOrWhiteSpace(upload.Base64Content))
+		{
+			return;
+		}
+
+		_pendingAttachments.Add(new IdeaAttachmentUpload
+		{
+			FileName = upload.FileName.Trim(),
+			ContentType = string.IsNullOrWhiteSpace(upload.ContentType) ? null : upload.ContentType.Trim(),
+			Content = Convert.FromBase64String(upload.Base64Content)
+		});
+	}
+
+	private void RemovePendingAttachment(int index)
+	{
+		if (index >= 0 && index < _pendingAttachments.Count)
+		{
+			_pendingAttachments.RemoveAt(index);
+		}
+	}
+
+	private string GetAttachmentSummary()
+	{
+		var totalBytes = _pendingAttachments.Sum(attachment => attachment.Content.LongLength);
+		return $"{_pendingAttachments.Count} attachment{(_pendingAttachments.Count == 1 ? string.Empty : "s")} • {FormatAttachmentSize(totalBytes)}";
+	}
+
+	private static string FormatAttachmentSize(long bytes)
+	{
+		const long kilobyte = 1024;
+		const long megabyte = kilobyte * 1024;
+
+		if (bytes >= megabyte)
+		{
+			return $"{bytes / (double)megabyte:F1} MB";
+		}
+
+		if (bytes >= kilobyte)
+		{
+			return $"{bytes / (double)kilobyte:F1} KB";
+		}
+
+		return $"{bytes} B";
+	}
+
+	private sealed class ClipboardAttachmentDto
+	{
+		public string FileName { get; set; } = string.Empty;
+		public string? ContentType { get; set; }
+		public string Base64Content { get; set; } = string.Empty;
+	}
+
 	private string GetSuggestResultContainerClass() => _suggestResult?.Success == true
 		? "border-success-subtle bg-success-subtle text-success-emphasis"
 		: "border-warning-subtle bg-warning-subtle text-warning-emphasis";
@@ -1002,5 +1189,10 @@
 		return model.IsDefault
 			? $"{label} (Default)"
 			: label;
+	}
+
+	public ValueTask DisposeAsync()
+	{
+		return ValueTask.CompletedTask;
 	}
 }

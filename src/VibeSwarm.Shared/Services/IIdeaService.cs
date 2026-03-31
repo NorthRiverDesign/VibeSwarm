@@ -27,6 +27,11 @@ public interface IIdeaService
 	Task<Idea> CreateAsync(Idea idea, CancellationToken cancellationToken = default);
 
 	/// <summary>
+	/// Creates a new idea with optional uploaded attachments.
+	/// </summary>
+	Task<Idea> CreateAsync(CreateIdeaRequest request, CancellationToken cancellationToken = default);
+
+	/// <summary>
 	/// Updates an existing idea
 	/// </summary>
 	Task<Idea> UpdateAsync(Idea idea, CancellationToken cancellationToken = default);

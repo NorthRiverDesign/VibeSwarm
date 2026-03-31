@@ -30,6 +30,7 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 	public DbSet<TeamRole> TeamRoles { get; set; }
 	public DbSet<TeamRoleSkill> TeamRoleSkills { get; set; }
 	public DbSet<Idea> Ideas { get; set; }
+	public DbSet<IdeaAttachment> IdeaAttachments { get; set; }
 	public DbSet<AppSettings> AppSettings { get; set; }
 	public DbSet<CriticalErrorLogEntry> CriticalErrorLogs { get; set; }
 	public DbSet<InferenceProvider> InferenceProviders { get; set; }
@@ -214,6 +215,7 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 			entity.HasKey(e => e.Id);
 			entity.Property(e => e.Title).HasMaxLength(200);
 			entity.Property(e => e.GoalPrompt).IsRequired().HasMaxLength(2000);
+			entity.Property(e => e.AttachedFilesJson).HasMaxLength(4000);
 			entity.Property(e => e.ModelUsed).HasMaxLength(200);
 			entity.Property(e => e.ReasoningEffort).HasMaxLength(ValidationLimits.ReasoningEffortMaxLength);
 			entity.Property(e => e.PlanningModelUsed).HasMaxLength(200);
@@ -332,6 +334,19 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 			entity.HasIndex(e => e.ProjectId);
 			entity.HasIndex(e => e.SortOrder);
 			entity.HasIndex(e => e.CreatedAt);
+		});
+
+		modelBuilder.Entity<IdeaAttachment>(entity =>
+		{
+			entity.HasKey(e => e.Id);
+			entity.Property(e => e.FileName).IsRequired().HasMaxLength(ValidationLimits.IdeaAttachmentFileNameMaxLength);
+			entity.Property(e => e.ContentType).HasMaxLength(ValidationLimits.IdeaAttachmentContentTypeMaxLength);
+			entity.Property(e => e.RelativePath).IsRequired().HasMaxLength(ValidationLimits.IdeaAttachmentRelativePathMaxLength);
+			entity.HasOne(e => e.Idea)
+				.WithMany(idea => idea.Attachments)
+				.HasForeignKey(e => e.IdeaId)
+				.OnDelete(DeleteBehavior.Cascade);
+			entity.HasIndex(e => e.IdeaId);
 		});
 
 		modelBuilder.Entity<AppSettings>(entity =>

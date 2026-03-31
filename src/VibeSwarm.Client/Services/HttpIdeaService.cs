@@ -26,6 +26,13 @@ public class HttpIdeaService : IIdeaService
         return await response.ReadJsonAsync(idea, ct);
     }
 
+    public async Task<Idea> CreateAsync(CreateIdeaRequest request, CancellationToken ct = default)
+    {
+        var response = await _http.PostAsJsonAsync("/api/ideas/create-with-attachments", request, ct);
+        await HttpResponseErrorHelper.EnsureSuccessAsync(response, ct);
+        return await response.ReadJsonAsync(new Idea(), ct);
+    }
+
     public async Task<Idea> UpdateAsync(Idea idea, CancellationToken ct = default)
     {
         var response = await _http.PutAsJsonAsync($"/api/ideas/{idea.Id}", idea, ct);

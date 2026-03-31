@@ -72,6 +72,11 @@ public class Job
     [StringLength(2000, MinimumLength = 1)]
     public string GoalPrompt { get; set; } = string.Empty;
 
+    /// <summary>
+    /// JSON array of absolute attachment paths supplied with this job execution.
+    /// </summary>
+    public string? AttachedFilesJson { get; set; }
+
     public JobStatus Status { get; set; } = JobStatus.New;
 
     public Guid ProjectId { get; set; }

@@ -200,6 +200,71 @@
         <script src="_framework/blazor.webassembly.js" autostart="false"></script>
 
         <script>
+            window.vibeSwarmIdeas = {
+                consumeSelectedFiles: async function (inputId) {
+                    var input = document.getElementById(inputId);
+                    if (!input || !input.files || input.files.length === 0) {
+                        return [];
+                    }
+
+                    var files = Array.from(input.files);
+                    var uploads = await Promise.all(files.map(function (file) {
+                        return new Promise(function (resolve, reject) {
+                            var reader = new FileReader();
+                            reader.onload = function () {
+                                var result = reader.result || '';
+                                var commaIndex = result.indexOf(',');
+                                resolve({
+                                    fileName: file.name,
+                                    contentType: file.type || null,
+                                    base64Content: commaIndex >= 0 ? result.substring(commaIndex + 1) : result
+                                });
+                            };
+                            reader.onerror = function () { reject(new Error('Unable to read selected file.')); };
+                            reader.readAsDataURL(file);
+                        });
+                    }));
+
+                    input.value = '';
+                    return uploads;
+                },
+                readImageFromClipboard: async function () {
+                    if (!navigator.clipboard || !navigator.clipboard.read) {
+                        throw new Error('Clipboard image paste is not supported by this browser.');
+                    }
+
+                    var items = await navigator.clipboard.read();
+                    for (var i = 0; i < items.length; i++) {
+                        var item = items[i];
+                        var imageType = item.types.find(function (type) { return type.indexOf('image/') === 0; });
+                        if (!imageType) {
+                            continue;
+                        }
+
+                        var blob = await item.getType(imageType);
+                        var extension = imageType.split('/')[1] || 'png';
+                        var fileName = 'pasted-image-' + new Date().toISOString().replace(/[:.]/g, '-') + '.' + extension;
+
+                        return await new Promise(function (resolve, reject) {
+                            var reader = new FileReader();
+                            reader.onload = function () {
+                                var result = reader.result || '';
+                                var commaIndex = result.indexOf(',');
+                                resolve({
+                                    fileName: fileName,
+                                    contentType: imageType,
+                                    base64Content: commaIndex >= 0 ? result.substring(commaIndex + 1) : result
+                                });
+                            };
+                            reader.onerror = function () { reject(new Error('Unable to read pasted image.')); };
+                            reader.readAsDataURL(blob);
+                        });
+                    }
+
+                    return null;
+                }
+            };
+
             // Touch-based drag-and-drop reorder for iOS/mobile.
             // Called by DragDropList.razor to enable touch reordering on drag handles.
             window.vibeSwarmInitTouchDrag = function (containerElement, dotNetRef) {

@@ -355,22 +355,19 @@ public partial class ProjectDetail
         }
     }
 
-    private async Task AddIdea(string description)
+    private async Task AddIdea(CreateIdeaRequest request)
     {
-        if (string.IsNullOrWhiteSpace(description)) return;
+        if (request == null || string.IsNullOrWhiteSpace(request.Description)) return;
 
         _isAddingIdea = true;
         StateHasChanged();
 
         try
         {
-            var idea = new Idea
-            {
-                ProjectId = ProjectId,
-                Description = description.Trim()
-            };
+            request.ProjectId = ProjectId;
+            request.Description = request.Description.Trim();
 
-            var created = await IdeaService.CreateAsync(idea);
+            var created = await IdeaService.CreateAsync(request);
             if (created != null)
             {
                 _localIdeaCreateIds.Add(created.Id);
