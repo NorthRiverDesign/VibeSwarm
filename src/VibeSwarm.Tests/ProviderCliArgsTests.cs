@@ -57,6 +57,30 @@ public sealed class ProviderCliArgsTests
     }
 
     [Fact]
+    public void Claude_WithBareMode_AndSupportedVersion_AddsBareFlag()
+    {
+        var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+        provider.CachedCliVersion = new Version(2, 1, 81);
+        provider.ApplyOptions(new ExecutionOptions { UseBareMode = true });
+
+        var args = provider.BuildCliArgs("test", null);
+
+        Assert.Contains("--bare", args);
+    }
+
+    [Fact]
+    public void Claude_WithBareMode_AndOldVersion_OmitsBareFlag()
+    {
+        var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+        provider.CachedCliVersion = new Version(2, 1, 80);
+        provider.ApplyOptions(new ExecutionOptions { UseBareMode = true });
+
+        var args = provider.BuildCliArgs("test", null);
+
+        Assert.DoesNotContain("--bare", args);
+    }
+
+    [Fact]
     public void Claude_WithSessionId_AddsResumeFlag()
     {
         var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
@@ -80,6 +104,32 @@ public sealed class ProviderCliArgsTests
 
         Assert.Contains("--continue", args);
         Assert.DoesNotContain("--resume", args);
+    }
+
+    [Fact]
+    public void Claude_WithAgent_AndSupportedVersion_AddsAgentFlag()
+    {
+        var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+        provider.CachedCliVersion = new Version(2, 1, 64);
+        provider.ApplyOptions(new ExecutionOptions { Agent = " reviewer " });
+
+        var args = provider.BuildCliArgs("test", null);
+
+        var idx = args.IndexOf("--agent");
+        Assert.True(idx >= 0);
+        Assert.Equal("reviewer", args[idx + 1]);
+    }
+
+    [Fact]
+    public void Claude_WithAgent_AndOldVersion_OmitsAgentFlag()
+    {
+        var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+        provider.CachedCliVersion = new Version(2, 1, 63);
+        provider.ApplyOptions(new ExecutionOptions { Agent = "reviewer" });
+
+        var args = provider.BuildCliArgs("test", null);
+
+        Assert.DoesNotContain("--agent", args);
     }
 
     [Fact]
@@ -119,6 +169,23 @@ public sealed class ProviderCliArgsTests
         var idx = args.IndexOf("--append-system-prompt");
         Assert.True(idx >= 0);
         Assert.Equal("extra rules", args[idx + 1]);
+    }
+
+    [Fact]
+    public void Claude_WithAdditionalDirectories_AddsDistinctTrimmedAddDirFlags()
+    {
+        var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+        provider.ApplyOptions(new ExecutionOptions
+        {
+            AdditionalDirectories = [" /repo/shared ", "/repo/shared", "", "   ", "/repo/docs"]
+        });
+
+        var args = provider.BuildCliArgs("test", null);
+
+        var indices = args.Select((a, i) => (a, i)).Where(x => x.a == "--add-dir").Select(x => x.i).ToList();
+        Assert.Equal(2, indices.Count);
+        Assert.Equal("/repo/shared", args[indices[0] + 1]);
+        Assert.Equal("/repo/docs", args[indices[1] + 1]);
     }
 
     [Fact]

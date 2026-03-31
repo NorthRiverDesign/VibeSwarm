@@ -533,6 +533,8 @@ public partial class JobProcessingService
 							McpConfigPath = planningMcpOptions.McpConfigPath,
 							BashEnvPath = planningMcpOptions.BashEnvPath,
 							AdditionalArgs = planningMcpOptions.AdditionalArgs,
+							UseBareMode = planningProviderConfig.Type == ProviderType.Claude
+								&& planningProviderConfig.ConnectionMode == ProviderConnectionMode.CLI,
 							Model = job.Project.PlanningModelId,
 							Title = job.Title,
 							AppendSystemPrompt = systemPromptRules,
@@ -631,6 +633,8 @@ public partial class JobProcessingService
 							McpConfigPath = mcpOptions.McpConfigPath,
 							BashEnvPath = mcpOptions.BashEnvPath,
 							AdditionalArgs = mcpOptions.AdditionalArgs,
+							UseBareMode = provider.Type == ProviderType.Claude
+								&& provider.ConnectionMode == ProviderConnectionMode.CLI,
 							Model = job.ModelUsed,
 							Title = job.Title,
 							AppendSystemPrompt = systemPromptRules,

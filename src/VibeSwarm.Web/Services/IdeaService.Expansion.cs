@@ -192,6 +192,8 @@ public partial class IdeaService
 			new ExecutionOptions
 			{
 				WorkingDirectory = workingDirectory,
+				UseBareMode = provider.Type == ProviderType.Claude
+					&& provider.ConnectionMode == ProviderConnectionMode.CLI,
 				Model = modelName,
 				DisallowedTools = usePlanningMode ? ProviderPlanningHelper.PlanningDisallowedTools : null
 			},

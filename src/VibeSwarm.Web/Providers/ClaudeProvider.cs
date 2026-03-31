@@ -13,6 +13,8 @@ namespace VibeSwarm.Shared.Providers;
 public class ClaudeProvider : CliProviderBase
 {
     private const string DefaultExecutable = "claude";
+    private static readonly Version AgentVersion = new(2, 1, 64);
+    private static readonly Version BareModeVersion = new(2, 1, 81);
     private static readonly Version DisallowedToolsVersion = new(2, 1, 0);
     private static readonly Version MaxBudgetVersion = new(2, 0, 28);
     private static readonly Version FromPullRequestVersion = new(2, 1, 27);
@@ -334,11 +336,17 @@ public class ClaudeProvider : CliProviderBase
             args.Add(CurrentModel);
         }
 
-        // Agent selection (e.g., --agent my-agent)
-        if (!string.IsNullOrEmpty(CurrentAgent))
+        // Bare mode reduces Claude Code startup overhead and disables implicit local context loading.
+        if (SupportsCliVersion(BareModeVersion) && CurrentUseBareMode)
+        {
+            args.Add("--bare");
+        }
+
+        // Agent selection (v2.1.64+, e.g., --agent my-agent)
+        if (SupportsCliVersion(AgentVersion) && !string.IsNullOrWhiteSpace(CurrentAgent))
         {
             args.Add("--agent");
-            args.Add(CurrentAgent);
+            args.Add(CurrentAgent.Trim());
         }
 
         // System prompt override
@@ -365,7 +373,10 @@ public class ClaudeProvider : CliProviderBase
         // Additional working directories
         if (CurrentAdditionalDirectories != null)
         {
-            foreach (var dir in CurrentAdditionalDirectories)
+            foreach (var dir in CurrentAdditionalDirectories
+                .Where(static dir => !string.IsNullOrWhiteSpace(dir))
+                .Select(static dir => dir.Trim())
+                .Distinct(StringComparer.Ordinal))
             {
                 args.Add("--add-dir");
                 args.Add(dir);

@@ -126,10 +126,15 @@ public abstract class ProviderBase : IProvider
     /// </summary>
     protected decimal? CurrentMaxBudgetUsd { get; private set; }
 
-    /// <summary>
-    /// Additional working directories (set by ExecuteWithOptionsAsync)
-    /// </summary>
-    protected List<string>? CurrentAdditionalDirectories { get; private set; }
+	/// <summary>
+	/// Additional working directories (set by ExecuteWithOptionsAsync)
+	/// </summary>
+	protected List<string>? CurrentAdditionalDirectories { get; private set; }
+
+	/// <summary>
+	/// Whether to use Claude bare mode (set by ExecuteWithOptionsAsync)
+	/// </summary>
+	protected bool CurrentUseBareMode { get; private set; }
 
     /// <summary>
     /// Timeout in seconds (set by ExecuteWithOptionsAsync)
@@ -218,11 +223,12 @@ public abstract class ProviderBase : IProvider
         CurrentContinueLastSession = options.ContinueLastSession;
         CurrentSystemPrompt = options.SystemPrompt;
         CurrentAppendSystemPrompt = options.AppendSystemPrompt;
-        CurrentMaxTurns = options.MaxTurns;
-        CurrentMaxBudgetUsd = options.MaxBudgetUsd;
-        CurrentAdditionalDirectories = options.AdditionalDirectories;
-        CurrentTimeoutSeconds = options.TimeoutSeconds;
-        CurrentAllowedTools = options.AllowedTools;
+		CurrentMaxTurns = options.MaxTurns;
+		CurrentMaxBudgetUsd = options.MaxBudgetUsd;
+		CurrentAdditionalDirectories = options.AdditionalDirectories;
+		CurrentUseBareMode = options.UseBareMode;
+		CurrentTimeoutSeconds = options.TimeoutSeconds;
+		CurrentAllowedTools = options.AllowedTools;
         CurrentExcludedTools = options.ExcludedTools;
         CurrentDisallowedTools = options.DisallowedTools;
         CurrentUseWorktree = options.UseWorktree;
@@ -253,10 +259,11 @@ public abstract class ProviderBase : IProvider
         CurrentContinueLastSession = false;
         CurrentSystemPrompt = null;
         CurrentAppendSystemPrompt = null;
-        CurrentMaxTurns = null;
-        CurrentMaxBudgetUsd = null;
-        CurrentAdditionalDirectories = null;
-        CurrentTimeoutSeconds = null;
+		CurrentMaxTurns = null;
+		CurrentMaxBudgetUsd = null;
+		CurrentAdditionalDirectories = null;
+		CurrentUseBareMode = false;
+		CurrentTimeoutSeconds = null;
         CurrentAllowedTools = null;
         CurrentExcludedTools = null;
         CurrentDisallowedTools = null;
