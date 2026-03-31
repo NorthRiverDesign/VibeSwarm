@@ -77,7 +77,7 @@ public class Job
     public Guid ProjectId { get; set; }
     public Project? Project { get; set; }
 
-    public Guid ProviderId { get; set; }
+	public Guid ProviderId { get; set; }
     public Provider? Provider { get; set; }
 
     public bool IsScheduled { get; set; }

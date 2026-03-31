@@ -306,16 +306,18 @@ public partial class JobService : IJobService
         job.ProviderAttempts.Clear();
 
         await InitializeExecutionPlanAsync(job, cancellationToken);
-        if (job.ProviderId == Guid.Empty)
-        {
-            throw new InvalidOperationException("No enabled providers are available for this job.");
-        }
+		if (job.ProviderId == Guid.Empty)
+		{
+			throw new InvalidOperationException("No enabled providers are available for this job.");
+		}
 
         _dbContext.Jobs.Add(job);
         await _dbContext.SaveChangesAsync(cancellationToken);
 
         // Fan out to team swarm jobs if the project has team swarm enabled
-        var swarmJobs = await TryCreateTeamSwarmJobsAsync(job, cancellationToken);
+		var swarmJobs = job.TeamRoleId.HasValue
+			? []
+			: await TryCreateTeamSwarmJobsAsync(job, cancellationToken);
 
         // Notify that a new job was created (so processing can start immediately)
         if (_jobUpdateService != null)
@@ -375,7 +377,7 @@ public partial class JobService : IJobService
             var firstAssignment = enabledAssignments[0];
             primaryJobDb.SwarmId = swarmId;
             primaryJobDb.TeamRoleId = firstAssignment.TeamRoleId;
-            primaryJobDb.ProviderId = firstAssignment.ProviderId;
+			primaryJobDb.ProviderId = firstAssignment.ProviderId;
             if (!string.IsNullOrWhiteSpace(firstAssignment.PreferredModelId))
             {
                 primaryJobDb.ModelUsed = firstAssignment.PreferredModelId;
@@ -398,7 +400,7 @@ public partial class JobService : IJobService
                 GoalPrompt = primaryJob.GoalPrompt,
                 Status = JobStatus.New,
                 ProjectId = primaryJob.ProjectId,
-                ProviderId = assignment.ProviderId,
+				ProviderId = assignment.ProviderId,
                 ModelUsed = string.IsNullOrWhiteSpace(assignment.PreferredModelId) ? null : assignment.PreferredModelId,
                 ReasoningEffort = assignment.PreferredReasoningEffort,
                 Branch = primaryJob.Branch,

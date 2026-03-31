@@ -40,10 +40,10 @@ public partial class JobService
         job.LastSwitchAt = null;
         job.LastSwitchReason = null;
 
-        if (job.ProviderId == Guid.Empty && targets.Count > 0)
-        {
-            job.ProviderId = targets[0].ProviderId;
-        }
+		if (job.ProviderId == Guid.Empty && targets.Count > 0)
+		{
+			job.ProviderId = targets[0].ProviderId;
+		}
 
         if (string.IsNullOrWhiteSpace(job.ModelUsed) && targets.Count > 0)
         {
@@ -159,7 +159,7 @@ public partial class JobService
             .OrderBy(pp => pp.Priority)
             .ToListAsync(cancellationToken);
 
-        var providerOrder = BuildProviderOrder(job.ProviderId, enabledProviders, projectSelections);
+		var providerOrder = BuildProviderOrder(job.ProviderId, enabledProviders, projectSelections);
 
         var modelLookup = await _dbContext.ProviderModels
             .Where(m => providerIds.Contains(m.ProviderId) && m.IsAvailable)
@@ -243,11 +243,11 @@ public partial class JobService
 
     private async Task ValidateRequestedExecutionAsync(Job job, CancellationToken cancellationToken)
     {
-        if (job.ProviderId == Guid.Empty)
-        {
-            if (!string.IsNullOrWhiteSpace(job.ModelUsed))
-            {
-                throw new InvalidOperationException("Selecting a model requires selecting a provider.");
+		if (job.ProviderId == Guid.Empty)
+		{
+			if (!string.IsNullOrWhiteSpace(job.ModelUsed))
+			{
+				throw new InvalidOperationException("Selecting a model requires selecting a provider.");
             }
 
             if (!string.IsNullOrWhiteSpace(job.ReasoningEffort))
@@ -258,9 +258,9 @@ public partial class JobService
             return;
         }
 
-        var provider = await _dbContext.Providers
-            .AsNoTracking()
-            .FirstOrDefaultAsync(provider => provider.Id == job.ProviderId && provider.IsEnabled, cancellationToken);
+		var provider = await _dbContext.Providers
+			.AsNoTracking()
+			.FirstOrDefaultAsync(provider => provider.Id == job.ProviderId && provider.IsEnabled, cancellationToken);
         if (provider == null)
         {
             throw new InvalidOperationException("The selected provider is not enabled.");
@@ -278,17 +278,17 @@ public partial class JobService
 
         var modelExists = await _dbContext.ProviderModels
             .AnyAsync(model =>
-                model.ProviderId == job.ProviderId &&
-                model.IsAvailable &&
-                model.ModelId == job.ModelUsed,
-                cancellationToken);
+				model.ProviderId == job.ProviderId &&
+				model.IsAvailable &&
+				model.ModelId == job.ModelUsed,
+				cancellationToken);
         if (!modelExists)
         {
             throw new InvalidOperationException("The selected model is not available for the chosen provider.");
         }
     }
 
-    private static List<Provider> BuildProviderOrder(Guid selectedProviderId, List<Provider> enabledProviders, List<ProjectProvider> projectSelections)
+	private static List<Provider> BuildProviderOrder(Guid selectedProviderId, List<Provider> enabledProviders, List<ProjectProvider> projectSelections)
     {
         if (projectSelections.Count == 0)
         {
@@ -304,14 +304,14 @@ public partial class JobService
         return OrderProvidersWithSelectionFirst(selectedProviderId, orderedProviders);
     }
 
-    private static List<Provider> OrderProvidersWithSelectionFirst(Guid selectedProviderId, List<Provider> providers)
-    {
-        if (selectedProviderId == Guid.Empty)
-        {
-            return providers;
-        }
+	private static List<Provider> OrderProvidersWithSelectionFirst(Guid selectedProviderId, List<Provider> providers)
+	{
+		if (selectedProviderId == Guid.Empty)
+		{
+			return providers;
+		}
 
-        var selectedProvider = providers.FirstOrDefault(p => p.Id == selectedProviderId);
+		var selectedProvider = providers.FirstOrDefault(p => p.Id == selectedProviderId);
         if (selectedProvider == null)
         {
             return providers;

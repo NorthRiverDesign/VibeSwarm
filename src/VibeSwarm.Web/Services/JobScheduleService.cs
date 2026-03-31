@@ -62,7 +62,9 @@ public class JobScheduleService : IJobScheduleService
 		}
 
 		existing.ProjectId = schedule.ProjectId;
+		existing.ExecutionTarget = schedule.ExecutionTarget;
 		existing.ProviderId = schedule.ProviderId;
+		existing.TeamRoleId = schedule.TeamRoleId;
 		existing.Prompt = schedule.Prompt;
 		existing.ModelId = schedule.ModelId;
 		existing.Frequency = schedule.Frequency;
@@ -127,7 +129,8 @@ public class JobScheduleService : IJobScheduleService
 	{
 		return _dbContext.JobSchedules
 			.Include(schedule => schedule.Project)
-			.Include(schedule => schedule.Provider);
+			.Include(schedule => schedule.Provider)
+			.Include(schedule => schedule.TeamRole);
 	}
 
 	private async Task ValidateReferencesAsync(JobSchedule schedule, CancellationToken cancellationToken)
@@ -138,11 +141,45 @@ public class JobScheduleService : IJobScheduleService
 			throw new InvalidOperationException("The selected project was not found.");
 		}
 
-		var providerExists = await _dbContext.Providers
-			.AnyAsync(provider => provider.Id == schedule.ProviderId && provider.IsEnabled, cancellationToken);
-		if (!providerExists)
+		if (schedule.ExecutionTarget == JobScheduleExecutionTarget.Provider)
 		{
-			throw new InvalidOperationException("The selected provider is not enabled.");
+			if (!schedule.ProviderId.HasValue || schedule.ProviderId == Guid.Empty)
+			{
+				throw new InvalidOperationException("The selected provider is not enabled.");
+			}
+
+			var providerExists = await _dbContext.Providers
+				.AnyAsync(provider => provider.Id == schedule.ProviderId.Value && provider.IsEnabled, cancellationToken);
+			if (!providerExists)
+			{
+				throw new InvalidOperationException("The selected provider is not enabled.");
+			}
+		}
+		else
+		{
+			if (!schedule.TeamRoleId.HasValue || schedule.TeamRoleId == Guid.Empty)
+			{
+				throw new InvalidOperationException("The selected team member is not assigned to this project.");
+			}
+
+			var assignment = await _dbContext.ProjectTeamRoles
+				.Include(projectTeamRole => projectTeamRole.TeamRole)
+				.Include(projectTeamRole => projectTeamRole.Provider)
+				.FirstOrDefaultAsync(projectTeamRole =>
+					projectTeamRole.ProjectId == schedule.ProjectId &&
+					projectTeamRole.TeamRoleId == schedule.TeamRoleId.Value,
+					cancellationToken);
+			if (assignment == null || !assignment.IsEnabled || assignment.TeamRole == null || !assignment.TeamRole.IsEnabled)
+			{
+				throw new InvalidOperationException("The selected team member is not assigned to this project.");
+			}
+
+			if (assignment.Provider == null || !assignment.Provider.IsEnabled)
+			{
+				throw new InvalidOperationException("The selected team member does not have an enabled provider assignment.");
+			}
+
+			schedule.ProviderId = assignment.ProviderId;
 		}
 
 		if (string.IsNullOrWhiteSpace(schedule.ModelId))
@@ -150,9 +187,15 @@ public class JobScheduleService : IJobScheduleService
 			return;
 		}
 
+		var providerId = schedule.ProviderId;
+		if (!providerId.HasValue || providerId == Guid.Empty)
+		{
+			throw new InvalidOperationException("The selected provider is not enabled.");
+		}
+
 		var modelExists = await _dbContext.ProviderModels
 			.AnyAsync(model =>
-				model.ProviderId == schedule.ProviderId &&
+				model.ProviderId == providerId.Value &&
 				model.IsAvailable &&
 				model.ModelId == schedule.ModelId,
 				cancellationToken);
@@ -167,6 +210,16 @@ public class JobScheduleService : IJobScheduleService
 		schedule.Prompt = schedule.Prompt?.Trim() ?? string.Empty;
 		schedule.ModelId = string.IsNullOrWhiteSpace(schedule.ModelId) ? null : schedule.ModelId.Trim();
 		schedule.LastError = string.IsNullOrWhiteSpace(schedule.LastError) ? null : schedule.LastError.Trim();
+		schedule.ProviderId = schedule.ProviderId == Guid.Empty ? null : schedule.ProviderId;
+		schedule.TeamRoleId = schedule.TeamRoleId == Guid.Empty ? null : schedule.TeamRoleId;
+		if (schedule.ExecutionTarget == JobScheduleExecutionTarget.Provider)
+		{
+			schedule.TeamRoleId = null;
+		}
+		else
+		{
+			schedule.ProviderId = null;
+		}
 	}
 
 	private async Task<TimeZoneInfo> GetSchedulerTimeZoneAsync(CancellationToken cancellationToken)

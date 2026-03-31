@@ -161,6 +161,122 @@ public sealed class JobScheduleServiceTests : IDisposable
 		Assert.Equal(dueTime, savedJob.ScheduledForUtc);
 	}
 
+	[Fact]
+	public async Task CreateAsync_RejectsTeamRoleThatIsNotAssignedToProject()
+	{
+		await using var dbContext = CreateDbContext();
+		var project = CreateProject();
+		var provider = CreateProvider();
+		var teamRole = CreateTeamRole();
+		dbContext.Projects.Add(project);
+		dbContext.Providers.Add(provider);
+		dbContext.TeamRoles.Add(teamRole);
+		await dbContext.SaveChangesAsync();
+
+		var service = new JobScheduleService(dbContext);
+
+		var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => service.CreateAsync(new JobSchedule
+		{
+			ProjectId = project.Id,
+			ExecutionTarget = JobScheduleExecutionTarget.TeamRole,
+			TeamRoleId = teamRole.Id,
+			Prompt = "review security findings",
+			Frequency = JobScheduleFrequency.Daily,
+			HourUtc = 9,
+			MinuteUtc = 0
+		}));
+
+		Assert.Equal("The selected team member is not assigned to this project.", exception.Message);
+	}
+
+	[Fact]
+	public async Task ProcessDueSchedulesAsync_CreatesTeamRoleJobFromProjectAssignmentWithoutSwarmFanout()
+	{
+		await using var dbContext = CreateDbContext();
+		var project = CreateProject();
+		project.EnableTeamSwarm = true;
+		var primaryProvider = CreateProvider();
+		var secondaryProvider = CreateProvider();
+		var reviewerRole = CreateTeamRole("Security Reviewer");
+		var backupRole = CreateTeamRole("Dependency Reviewer");
+		dbContext.Projects.Add(project);
+		dbContext.Providers.AddRange(primaryProvider, secondaryProvider);
+		dbContext.TeamRoles.AddRange(reviewerRole, backupRole);
+		dbContext.ProjectTeamRoles.AddRange(
+			new ProjectTeamRole
+			{
+				ProjectId = project.Id,
+				TeamRoleId = reviewerRole.Id,
+				ProviderId = primaryProvider.Id,
+				PreferredModelId = "copilot-reviewer",
+				PreferredReasoningEffort = "high",
+				IsEnabled = true
+			},
+			new ProjectTeamRole
+			{
+				ProjectId = project.Id,
+				TeamRoleId = backupRole.Id,
+				ProviderId = secondaryProvider.Id,
+				PreferredModelId = "copilot-backup",
+				PreferredReasoningEffort = "medium",
+				IsEnabled = true
+			});
+
+		dbContext.ProviderModels.AddRange(
+			new ProviderModel
+			{
+				Id = Guid.NewGuid(),
+				ProviderId = primaryProvider.Id,
+				ModelId = "copilot-reviewer",
+				DisplayName = "Copilot Reviewer",
+				IsAvailable = true,
+				IsDefault = true,
+				UpdatedAt = DateTime.UtcNow
+			},
+			new ProviderModel
+			{
+				Id = Guid.NewGuid(),
+				ProviderId = secondaryProvider.Id,
+				ModelId = "copilot-backup",
+				DisplayName = "Copilot Backup",
+				IsAvailable = true,
+				IsDefault = true,
+				UpdatedAt = DateTime.UtcNow
+			});
+
+		var dueTime = DateTime.UtcNow.AddMinutes(-2);
+		dbContext.JobSchedules.Add(new JobSchedule
+		{
+			Id = Guid.NewGuid(),
+			ProjectId = project.Id,
+			ExecutionTarget = JobScheduleExecutionTarget.TeamRole,
+			TeamRoleId = reviewerRole.Id,
+			Prompt = "review for security issues",
+			Frequency = JobScheduleFrequency.Hourly,
+			MinuteUtc = dueTime.Minute,
+			NextRunAtUtc = dueTime,
+			IsEnabled = true
+		});
+		await dbContext.SaveChangesAsync();
+
+		var serviceProvider = new ServiceCollection().BuildServiceProvider();
+		var jobService = new JobService(dbContext, serviceProvider);
+		var processor = new JobScheduleProcessor(dbContext, jobService, NullLogger<JobScheduleProcessor>.Instance);
+
+		var createdCount = await processor.ProcessDueSchedulesAsync();
+
+		Assert.Equal(1, createdCount);
+		var jobs = await dbContext.Jobs.ToListAsync();
+		Assert.Single(jobs);
+		var job = jobs[0];
+		Assert.True(job.IsScheduled);
+		Assert.Equal(reviewerRole.Id, job.TeamRoleId);
+		Assert.Equal(primaryProvider.Id, job.ProviderId);
+		Assert.Equal("copilot-reviewer", job.ModelUsed);
+		Assert.Equal("high", job.ReasoningEffort);
+		Assert.Null(job.SwarmId);
+	}
+
 	private VibeSwarmDbContext CreateDbContext() => new(_dbOptions);
 
 	private static Project CreateProject() => new()
@@ -177,6 +293,13 @@ public sealed class JobScheduleServiceTests : IDisposable
 		Type = ProviderType.Copilot,
 		IsEnabled = true,
 		IsDefault = true
+	};
+
+	private static TeamRole CreateTeamRole(string? name = null) => new()
+	{
+		Id = Guid.NewGuid(),
+		Name = name ?? $"Role-{Guid.NewGuid():N}",
+		IsEnabled = true
 	};
 
 	public void Dispose()

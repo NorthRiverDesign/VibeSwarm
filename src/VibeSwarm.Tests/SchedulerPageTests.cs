@@ -75,6 +75,47 @@ public sealed class SchedulerPageTests
 		Assert.Contains("Create a recurring prompt", html);
 	}
 
+	[Fact]
+	public async Task RenderedSchedulerPage_ShowsTeamMemberSchedules()
+	{
+		var timeZoneId = DateTimeHelper.ResolveTimeZone("America/New_York").Id;
+		var schedule = new JobSchedule
+		{
+			Id = Guid.NewGuid(),
+			Prompt = "review for security issues",
+			ExecutionTarget = JobScheduleExecutionTarget.TeamRole,
+			TeamRoleId = Guid.NewGuid(),
+			TeamRole = new TeamRole { Id = Guid.NewGuid(), Name = "Security Reviewer", IsEnabled = true },
+			Frequency = JobScheduleFrequency.Weekly,
+			WeeklyDay = DayOfWeek.Friday,
+			HourUtc = 9,
+			MinuteUtc = 30,
+			IsEnabled = true,
+			NextRunAtUtc = new DateTime(2026, 3, 27, 9, 30, 0, DateTimeKind.Utc),
+			Project = new Project { Id = Guid.NewGuid(), Name = "Repo", WorkingPath = "/tmp/repo" }
+		};
+
+		try
+		{
+			var services = BuildServices(new FakeJobScheduleService([schedule]), timeZoneId);
+			await using var renderer = new HtmlRenderer(services.BuildServiceProvider(), NullLoggerFactory.Instance);
+
+			var html = await renderer.Dispatcher.InvokeAsync(async () =>
+			{
+				var output = await renderer.RenderComponentAsync<Scheduler>();
+				return output.ToHtmlString();
+			});
+
+			Assert.Contains("Security Reviewer", html);
+			Assert.DoesNotContain("Unknown team member", html);
+			Assert.Contains("review for security issues", html);
+		}
+		finally
+		{
+			DateTimeHelper.ConfigureTimeZone(DateTimeHelper.UtcTimeZoneId);
+		}
+	}
+
 	private static ServiceCollection BuildServices(IJobScheduleService jobScheduleService, string timeZoneId)
 	{
 		var services = new ServiceCollection();

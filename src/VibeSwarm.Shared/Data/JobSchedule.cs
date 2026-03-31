@@ -12,6 +12,12 @@ public enum JobScheduleFrequency
 	Monthly = 3
 }
 
+public enum JobScheduleExecutionTarget
+{
+	Provider = 0,
+	TeamRole = 1
+}
+
 public class JobSchedule : IValidatableObject
 {
 	public Guid Id { get; set; }
@@ -19,8 +25,13 @@ public class JobSchedule : IValidatableObject
 	public Guid ProjectId { get; set; }
 	public Project? Project { get; set; }
 
-	public Guid ProviderId { get; set; }
+	public JobScheduleExecutionTarget ExecutionTarget { get; set; } = JobScheduleExecutionTarget.Provider;
+
+	public Guid? ProviderId { get; set; }
 	public Provider? Provider { get; set; }
+
+	public Guid? TeamRoleId { get; set; }
+	public TeamRole? TeamRole { get; set; }
 
 	[Required]
 	[StringLength(ValidationLimits.JobSchedulePromptMaxLength, MinimumLength = 1)]
@@ -61,9 +72,14 @@ public class JobSchedule : IValidatableObject
 			yield return new ValidationResult("A project is required.", [nameof(ProjectId)]);
 		}
 
-		if (ProviderId == Guid.Empty)
+		if (ExecutionTarget == JobScheduleExecutionTarget.Provider && (!ProviderId.HasValue || ProviderId == Guid.Empty))
 		{
 			yield return new ValidationResult("A provider is required.", [nameof(ProviderId)]);
+		}
+
+		if (ExecutionTarget == JobScheduleExecutionTarget.TeamRole && (!TeamRoleId.HasValue || TeamRoleId == Guid.Empty))
+		{
+			yield return new ValidationResult("A team member is required.", [nameof(TeamRoleId)]);
 		}
 
 		if (string.IsNullOrWhiteSpace(Prompt))

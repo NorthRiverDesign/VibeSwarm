@@ -65,15 +65,18 @@ public class JobScheduleProcessor
 
 		try
 		{
+			var resolvedExecution = await ResolveScheduledExecutionAsync(schedule, cancellationToken);
 			await _jobService.CreateAsync(new Job
 			{
 				ProjectId = schedule.ProjectId,
-				ProviderId = schedule.ProviderId,
+				ProviderId = resolvedExecution.ProviderId,
 				GoalPrompt = schedule.Prompt,
-				ModelUsed = schedule.ModelId,
+				ModelUsed = resolvedExecution.ModelId,
+				ReasoningEffort = resolvedExecution.ReasoningEffort,
 				IsScheduled = true,
 				JobScheduleId = schedule.Id,
-				ScheduledForUtc = scheduledForUtc
+				ScheduledForUtc = scheduledForUtc,
+				TeamRoleId = resolvedExecution.TeamRoleId
 			}, cancellationToken);
 
 			schedule.LastRunAtUtc = scheduledForUtc;
@@ -98,6 +101,65 @@ public class JobScheduleProcessor
 		}
 	}
 
+	private async Task<ScheduledExecutionSelection> ResolveScheduledExecutionAsync(JobSchedule schedule, CancellationToken cancellationToken)
+	{
+		if (schedule.ExecutionTarget == JobScheduleExecutionTarget.Provider)
+		{
+			if (!schedule.ProviderId.HasValue || schedule.ProviderId == Guid.Empty)
+			{
+				throw new InvalidOperationException("The selected provider is not enabled.");
+			}
+
+			return new ScheduledExecutionSelection(
+				schedule.ProviderId.Value,
+				schedule.ModelId,
+				null,
+				null);
+		}
+
+		if (!schedule.TeamRoleId.HasValue || schedule.TeamRoleId == Guid.Empty)
+		{
+			throw new InvalidOperationException("The selected team member is not assigned to this project.");
+		}
+
+		var assignment = await _dbContext.ProjectTeamRoles
+			.Include(projectTeamRole => projectTeamRole.TeamRole)
+			.Include(projectTeamRole => projectTeamRole.Provider)
+			.FirstOrDefaultAsync(projectTeamRole =>
+				projectTeamRole.ProjectId == schedule.ProjectId &&
+				projectTeamRole.TeamRoleId == schedule.TeamRoleId.Value,
+				cancellationToken);
+		if (assignment == null || !assignment.IsEnabled || assignment.TeamRole == null || !assignment.TeamRole.IsEnabled)
+		{
+			throw new InvalidOperationException("The selected team member is not assigned to this project.");
+		}
+
+		if (assignment.Provider == null || !assignment.Provider.IsEnabled)
+		{
+			throw new InvalidOperationException("The selected team member does not have an enabled provider assignment.");
+		}
+
+		if (!string.IsNullOrWhiteSpace(schedule.ModelId))
+		{
+			var modelExists = await _dbContext.ProviderModels
+				.AnyAsync(model =>
+					model.ProviderId == assignment.ProviderId &&
+					model.IsAvailable &&
+					model.ModelId == schedule.ModelId,
+					cancellationToken);
+			if (!modelExists)
+			{
+				throw new InvalidOperationException("The selected model is not available for the chosen provider.");
+			}
+		}
+
+		return new ScheduledExecutionSelection(
+			assignment.ProviderId,
+			string.IsNullOrWhiteSpace(schedule.ModelId) ? assignment.PreferredModelId : schedule.ModelId,
+			assignment.PreferredReasoningEffort,
+			assignment.TeamRoleId);
+	}
+
 	private static bool IsDuplicateScheduledJobError(DbUpdateException exception)
 	{
 		var message = exception.InnerException?.Message ?? exception.Message;
@@ -114,4 +176,6 @@ public class JobScheduleProcessor
 
 		return DateTimeHelper.ResolveTimeZone(timeZoneId);
 	}
+
+	private sealed record ScheduledExecutionSelection(Guid ProviderId, string? ModelId, string? ReasoningEffort, Guid? TeamRoleId);
 }

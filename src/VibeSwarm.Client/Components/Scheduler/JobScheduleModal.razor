@@ -35,29 +35,82 @@
 			</div>
 
 			<div class="row g-3">
-				<div class="col-12 col-lg-6">
-					<label for="schedule-provider" class="form-label">Provider</label>
-					<select id="schedule-provider" class="form-select" value="@GetProviderValue()" @onchange="OnProviderChanged"
-							disabled="@(!_allowedProviders.Any())">
-						<option value="">@(_allowedProviders.Any() ? "Select provider..." : "No enabled providers")</option>
-						@foreach (var provider in _allowedProviders)
-						{
-							<option value="@provider.Id">@provider.Name</option>
-						}
-					</select>
+				<div class="col-12 col-lg-4">
+					<label for="schedule-target" class="form-label">Executor Type</label>
+					<InputSelect id="schedule-target" @bind-Value="Schedule.ExecutionTarget" @bind-Value:after="OnExecutionTargetChanged" class="form-select">
+						<option value="@JobScheduleExecutionTarget.Provider">Provider</option>
+						<option value="@JobScheduleExecutionTarget.TeamRole">Team Member</option>
+					</InputSelect>
+					<div class="form-text">Choose a direct provider or a project team member role that should run this task.</div>
 				</div>
-				<div class="col-12 col-lg-6">
+
+				@if (Schedule.ExecutionTarget == JobScheduleExecutionTarget.Provider)
+				{
+					<div class="col-12 col-lg-4">
+						<label for="schedule-provider" class="form-label">Provider</label>
+						<select id="schedule-provider" class="form-select" value="@GetProviderValue()" @onchange="OnProviderChanged"
+								disabled="@(!_allowedProviders.Any())">
+							<option value="">@(_allowedProviders.Any() ? "Select provider..." : "No enabled providers")</option>
+							@foreach (var provider in _allowedProviders)
+							{
+								<option value="@provider.Id">@provider.Name</option>
+							}
+						</select>
+					</div>
+				}
+				else
+				{
+					<div class="col-12 col-lg-4">
+						<label for="schedule-team-role" class="form-label">Team Member</label>
+						<select id="schedule-team-role" class="form-select" value="@GetTeamRoleValue()" @onchange="OnTeamRoleChanged"
+								disabled="@(!_availableTeamAssignments.Any())">
+							<option value="">@(_availableTeamAssignments.Any() ? "Select team member..." : "No enabled team members")</option>
+							@foreach (var assignment in _availableTeamAssignments)
+							{
+								<option value="@assignment.TeamRoleId">@GetTeamAssignmentDisplayText(assignment)</option>
+							}
+						</select>
+						@if (!_availableTeamAssignments.Any())
+						{
+							<div class="form-text text-warning">Assign an enabled team role with an enabled provider in the project settings first.</div>
+						}
+					</div>
+				}
+
+				<div class="col-12 col-lg-4">
 					<label for="schedule-model" class="form-label">Model</label>
 					<select id="schedule-model" class="form-select" @bind="_selectedModelId" @bind:after="OnModelChanged"
 							disabled="@(_isLoadingModels || !_models.Any())">
-						<option value="">@(_isLoadingModels ? "Loading..." : "Provider default")</option>
+						<option value="">@(_isLoadingModels ? "Loading..." : "Use assigned default")</option>
 						@foreach (var model in _models)
 						{
 							<option value="@model.ModelId">@(model.DisplayName ?? model.ModelId)</option>
 						}
 					</select>
+					<div class="form-text">@GetModelHelpText()</div>
 				</div>
 			</div>
+
+			@if (Schedule.ExecutionTarget == JobScheduleExecutionTarget.TeamRole)
+			{
+				var assignment = GetSelectedTeamAssignment();
+				@if (assignment != null)
+				{
+					<div class="small text-body-secondary mt-2 d-flex flex-wrap gap-3">
+						<span class="d-inline-flex align-items-center gap-1">
+							<i class="bi bi-cpu opacity-75"></i>
+							@(assignment.Provider?.Name ?? "Unknown provider")
+						</span>
+						@if (!string.IsNullOrWhiteSpace(assignment.PreferredReasoningEffort))
+						{
+							<span class="d-inline-flex align-items-center gap-1">
+								<i class="bi bi-lightning-charge opacity-75"></i>
+								@assignment.PreferredReasoningEffort
+							</span>
+						}
+					</div>
+				}
+			}
 
 			<div class="row g-3 mt-1">
 				<div class="col-12 col-lg-4">
@@ -161,6 +214,7 @@
 	private List<Project> _projects = [];
 	private List<Provider> _providers = [];
 	private List<Provider> _allowedProviders = [];
+	private List<ProjectTeamRole> _availableTeamAssignments = [];
 	private List<ProviderModel> _models = [];
 	private bool _isLoadingModels;
 	private string _selectedModelId = string.Empty;
@@ -211,7 +265,9 @@
 			{
 				Id = EditSchedule.Id,
 				ProjectId = EditSchedule.ProjectId,
+				ExecutionTarget = EditSchedule.ExecutionTarget,
 				ProviderId = EditSchedule.ProviderId,
+				TeamRoleId = EditSchedule.TeamRoleId,
 				Prompt = EditSchedule.Prompt,
 				ModelId = EditSchedule.ModelId,
 				Frequency = EditSchedule.Frequency,
@@ -233,6 +289,7 @@
 			Schedule = new JobSchedule
 			{
 				ProjectId = project?.Id ?? Guid.Empty,
+				ExecutionTarget = JobScheduleExecutionTarget.Provider,
 				Frequency = JobScheduleFrequency.Daily,
 				HourUtc = 9,
 				MinuteUtc = 0,
@@ -243,21 +300,44 @@
 		}
 
 		_timeValue = $"{Schedule.HourUtc:D2}:{Schedule.MinuteUtc:D2}";
-		await SyncProvidersForProjectAsync(preserveCurrentProvider: IsEdit);
+		await SyncExecutionTargetsAsync(preserveCurrentSelection: IsEdit);
 	}
 
 	private Project? GetSelectedProject()
 		=> _projects.FirstOrDefault(project => project.Id == Schedule.ProjectId);
 
-	private async Task SyncProvidersForProjectAsync(bool preserveCurrentProvider)
+	private async Task SyncExecutionTargetsAsync(bool preserveCurrentSelection)
 	{
-		_allowedProviders = ProjectExecutionDefaults.GetAllowedProviders(GetSelectedProject(), _providers);
+		var project = GetSelectedProject();
+		_allowedProviders = ProjectExecutionDefaults.GetAllowedProviders(project, _providers);
+		_availableTeamAssignments = project?.TeamAssignments?
+			.Where(assignment =>
+				assignment.IsEnabled &&
+				assignment.TeamRole != null &&
+				assignment.TeamRole.IsEnabled &&
+				assignment.Provider != null &&
+				assignment.Provider.IsEnabled)
+			.OrderBy(assignment => assignment.TeamRole!.Name, StringComparer.OrdinalIgnoreCase)
+			.ToList() ?? [];
 
-		if (!preserveCurrentProvider || !_allowedProviders.Any(provider => provider.Id == Schedule.ProviderId))
+		if (Schedule.ExecutionTarget == JobScheduleExecutionTarget.Provider)
 		{
-			Schedule.ProviderId = ProjectExecutionDefaults.GetPreferredProvider(GetSelectedProject(), _providers)?.Id
-				?? _allowedProviders.FirstOrDefault()?.Id
-				?? Guid.Empty;
+			if (!preserveCurrentSelection || !Schedule.ProviderId.HasValue || !_allowedProviders.Any(provider => provider.Id == Schedule.ProviderId.Value))
+			{
+				Schedule.ProviderId = ProjectExecutionDefaults.GetPreferredProvider(project, _providers)?.Id
+					?? _allowedProviders.FirstOrDefault()?.Id;
+			}
+
+			Schedule.TeamRoleId = null;
+		}
+		else
+		{
+			if (!preserveCurrentSelection || !Schedule.TeamRoleId.HasValue || !_availableTeamAssignments.Any(assignment => assignment.TeamRoleId == Schedule.TeamRoleId.Value))
+			{
+				Schedule.TeamRoleId = _availableTeamAssignments.FirstOrDefault()?.TeamRoleId;
+			}
+
+			Schedule.ProviderId = null;
 		}
 
 		await LoadModelsAsync();
@@ -268,7 +348,8 @@
 		_models = [];
 		_selectedModelId = string.Empty;
 
-		if (Schedule.ProviderId == Guid.Empty)
+		var resolvedProviderId = ResolveSelectedProviderId();
+		if (!resolvedProviderId.HasValue)
 		{
 			Schedule.ModelId = null;
 			return;
@@ -279,7 +360,7 @@
 
 		try
 		{
-			_models = (await ProviderService.GetModelsAsync(Schedule.ProviderId))
+			_models = (await ProviderService.GetModelsAsync(resolvedProviderId.Value))
 				.Where(model => model.IsAvailable)
 				.OrderByDescending(model => model.IsDefault)
 				.ThenBy(model => model.DisplayName ?? model.ModelId)
@@ -291,7 +372,7 @@
 			}
 			else
 			{
-				_selectedModelId = ProjectExecutionDefaults.ResolveModelId(GetSelectedProject(), Schedule.ProviderId, _models);
+				_selectedModelId = ResolveDefaultModel(resolvedProviderId.Value);
 				Schedule.ModelId = string.IsNullOrWhiteSpace(_selectedModelId) ? null : _selectedModelId;
 			}
 		}
@@ -311,12 +392,25 @@
 	{
 		Schedule.ProjectId = TryParseGuid(args.Value);
 		ErrorMessage = null;
-		await SyncProvidersForProjectAsync(preserveCurrentProvider: false);
+		await SyncExecutionTargetsAsync(preserveCurrentSelection: false);
+	}
+
+	private async Task OnExecutionTargetChanged()
+	{
+		ErrorMessage = null;
+		await SyncExecutionTargetsAsync(preserveCurrentSelection: false);
 	}
 
 	private async Task OnProviderChanged(ChangeEventArgs args)
 	{
-		Schedule.ProviderId = TryParseGuid(args.Value);
+		Schedule.ProviderId = TryParseNullableGuid(args.Value);
+		ErrorMessage = null;
+		await LoadModelsAsync();
+	}
+
+	private async Task OnTeamRoleChanged(ChangeEventArgs args)
+	{
+		Schedule.TeamRoleId = TryParseNullableGuid(args.Value);
 		ErrorMessage = null;
 		await LoadModelsAsync();
 	}
@@ -343,9 +437,15 @@
 			return;
 		}
 
-		if (Schedule.ProviderId == Guid.Empty)
+		if (Schedule.ExecutionTarget == JobScheduleExecutionTarget.Provider && !Schedule.ProviderId.HasValue)
 		{
 			ErrorMessage = "Please select a provider.";
+			return;
+		}
+
+		if (Schedule.ExecutionTarget == JobScheduleExecutionTarget.TeamRole && !Schedule.TeamRoleId.HasValue)
+		{
+			ErrorMessage = "Please select a team member.";
 			return;
 		}
 
@@ -363,6 +463,15 @@
 		else
 		{
 			Schedule.HourUtc = 0;
+		}
+
+		if (Schedule.ExecutionTarget == JobScheduleExecutionTarget.Provider)
+		{
+			Schedule.TeamRoleId = null;
+		}
+		else
+		{
+			Schedule.ProviderId = null;
 		}
 
 		Schedule.ModelId = string.IsNullOrWhiteSpace(_selectedModelId) ? null : _selectedModelId;
@@ -406,9 +515,72 @@
 		await IsVisibleChanged.InvokeAsync(isVisible);
 	}
 
+	private ProjectTeamRole? GetSelectedTeamAssignment()
+		=> Schedule.TeamRoleId.HasValue
+			? _availableTeamAssignments.FirstOrDefault(assignment => assignment.TeamRoleId == Schedule.TeamRoleId.Value)
+			: null;
+
+	private Guid? ResolveSelectedProviderId()
+	{
+		if (Schedule.ExecutionTarget == JobScheduleExecutionTarget.Provider)
+		{
+			return Schedule.ProviderId;
+		}
+
+		return GetSelectedTeamAssignment()?.ProviderId;
+	}
+
+	private string ResolveDefaultModel(Guid providerId)
+	{
+		if (Schedule.ExecutionTarget == JobScheduleExecutionTarget.Provider)
+		{
+			return ProjectExecutionDefaults.ResolveModelId(GetSelectedProject(), providerId, _models);
+		}
+
+		var teamAssignment = GetSelectedTeamAssignment();
+		if (!string.IsNullOrWhiteSpace(teamAssignment?.PreferredModelId) && _models.Any(model => model.ModelId == teamAssignment.PreferredModelId))
+		{
+			return teamAssignment.PreferredModelId!;
+		}
+
+		return _models.FirstOrDefault(model => model.IsDefault)?.ModelId ?? string.Empty;
+	}
+
+	private string GetModelHelpText()
+	{
+		if (Schedule.ExecutionTarget == JobScheduleExecutionTarget.Provider)
+		{
+			return "Leave empty to use the project's preferred provider model or the provider default.";
+		}
+
+		var assignment = GetSelectedTeamAssignment();
+		if (assignment == null)
+		{
+			return "Leave empty to use the selected team member's assigned default model.";
+		}
+
+		if (!string.IsNullOrWhiteSpace(assignment.PreferredModelId))
+		{
+			return $"Leave empty to use {assignment.TeamRole?.Name}'s assigned model ({assignment.PreferredModelId}).";
+		}
+
+		return "Leave empty to use the selected team member's provider default model.";
+	}
+
+	private static string GetTeamAssignmentDisplayText(ProjectTeamRole assignment)
+	{
+		var roleName = assignment.TeamRole?.Name ?? "Unknown team member";
+		var providerName = assignment.Provider?.Name ?? "Unknown provider";
+		return $"{roleName} ({providerName})";
+	}
+
 	private string GetProjectValue() => Schedule.ProjectId == Guid.Empty ? string.Empty : Schedule.ProjectId.ToString();
-	private string GetProviderValue() => Schedule.ProviderId == Guid.Empty ? string.Empty : Schedule.ProviderId.ToString();
+	private string GetProviderValue() => Schedule.ProviderId?.ToString() ?? string.Empty;
+	private string GetTeamRoleValue() => Schedule.TeamRoleId?.ToString() ?? string.Empty;
 
 	private static Guid TryParseGuid(object? value)
 		=> Guid.TryParse(value?.ToString(), out var id) ? id : Guid.Empty;
+
+	private static Guid? TryParseNullableGuid(object? value)
+		=> Guid.TryParse(value?.ToString(), out var id) ? id : null;
 }

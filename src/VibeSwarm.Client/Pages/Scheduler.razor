@@ -39,10 +39,20 @@ else
 							<i class="bi bi-folder opacity-75"></i>
 							@(schedule.Project?.Name ?? "Unknown project")
 						</span>
-						<span class="small text-body-secondary d-inline-flex align-items-center gap-1">
-							<i class="bi bi-cpu opacity-75"></i>
-							@(schedule.Provider?.Name ?? "Unknown provider")
-						</span>
+						@if (schedule.ExecutionTarget == JobScheduleExecutionTarget.TeamRole)
+						{
+							<span class="small text-body-secondary d-inline-flex align-items-center gap-1">
+								<i class="bi bi-person-badge opacity-75"></i>
+								@(schedule.TeamRole?.Name ?? "Unknown team member")
+							</span>
+						}
+						else
+						{
+							<span class="small text-body-secondary d-inline-flex align-items-center gap-1">
+								<i class="bi bi-cpu opacity-75"></i>
+								@(schedule.Provider?.Name ?? "Unknown provider")
+							</span>
+						}
 						@if (!string.IsNullOrWhiteSpace(schedule.ModelId))
 						{
 							<span class="small text-body-secondary d-inline-flex align-items-center gap-1">
@@ -248,12 +258,15 @@ else
 	private string DescribeSchedule(JobSchedule schedule)
 	{
 		var time = $"{schedule.HourUtc:D2}:{schedule.MinuteUtc:D2} {AppTimeZoneService.CurrentTimeZoneId}";
+		var executor = schedule.ExecutionTarget == JobScheduleExecutionTarget.TeamRole
+			? schedule.TeamRole?.Name ?? "Unknown team member"
+			: schedule.Provider?.Name ?? "Unknown provider";
 		return schedule.Frequency switch
 		{
-			JobScheduleFrequency.Hourly => $"Hourly at minute {schedule.MinuteUtc:D2} past the hour ({AppTimeZoneService.CurrentTimeZoneId})",
-			JobScheduleFrequency.Weekly => $"Weekly on {schedule.WeeklyDay} at {time}",
-			JobScheduleFrequency.Monthly => $"Monthly on day {schedule.DayOfMonth} at {time}",
-			_ => $"Daily at {time}"
+			JobScheduleFrequency.Hourly => $"{executor} hourly at minute {schedule.MinuteUtc:D2} past the hour ({AppTimeZoneService.CurrentTimeZoneId})",
+			JobScheduleFrequency.Weekly => $"{executor} weekly on {schedule.WeeklyDay} at {time}",
+			JobScheduleFrequency.Monthly => $"{executor} monthly on day {schedule.DayOfMonth} at {time}",
+			_ => $"{executor} daily at {time}"
 		};
 	}
 
