@@ -200,6 +200,29 @@ public partial class ProjectDetail
         return ProjectExecutionDefaults.GetPreferredProvider(Project, Providers);
     }
 
+    private Guid? GetDefaultIdeasProcessingProviderId()
+    {
+        return GetPreferredJobProvider()?.Id;
+    }
+
+    private string? GetDefaultIdeasProcessingModelId()
+    {
+        var provider = GetPreferredJobProvider();
+        if (provider == null)
+        {
+            return null;
+        }
+
+        var models = provider.AvailableModels
+            .Where(model => model.IsAvailable)
+            .OrderByDescending(model => model.IsDefault)
+            .ThenBy(model => model.DisplayName ?? model.ModelId)
+            .ToList();
+
+        var resolvedModelId = ProjectExecutionDefaults.ResolveModelId(Project, provider.Id, models);
+        return string.IsNullOrWhiteSpace(resolvedModelId) ? null : resolvedModelId;
+    }
+
     private string? GetProviderHint()
     {
         var allowedProviders = GetAllowedJobProviders();
@@ -454,10 +477,15 @@ public partial class ProjectDetail
 
     private async Task StartIdeasProcessing()
     {
-        await StartIdeasProcessingWithOptions(Project?.AutoCommitMode ?? AutoCommitMode.Off);
+        await StartIdeasProcessingWithOptions(new IdeaProcessingOptions
+        {
+            AutoCommitMode = Project?.AutoCommitMode ?? AutoCommitMode.Off,
+            ProviderId = GetDefaultIdeasProcessingProviderId(),
+            ModelId = GetDefaultIdeasProcessingModelId()
+        });
     }
 
-    private async Task StartIdeasProcessingWithOptions(AutoCommitMode autoCommitMode)
+    private async Task StartIdeasProcessingWithOptions(IdeaProcessingOptions options)
     {
         _isTogglingIdeasProcessing = true;
         StateHasChanged();
@@ -465,6 +493,7 @@ public partial class ProjectDetail
         try
         {
             var hasRunningJob = HasActiveJobs;
+            var autoCommitMode = options.AutoCommitMode;
 
             // Update auto-commit mode if changed
             if (Project != null && Project.AutoCommitMode != autoCommitMode)
@@ -473,13 +502,25 @@ public partial class ProjectDetail
                 await ProjectService.UpdateAsync(Project);
             }
 
-            var autoCommit = autoCommitMode != AutoCommitMode.Off;
-            await IdeaService.StartProcessingAsync(ProjectId, autoCommit);
+            await IdeaService.StartProcessingAsync(ProjectId, options);
             IsIdeasProcessingActive = true;
+            if (Project != null)
+            {
+                Project.IdeasProcessingProviderId = options.ProviderId;
+                Project.IdeasProcessingModelId = string.IsNullOrWhiteSpace(options.ModelId) ? null : options.ModelId.Trim();
+            }
+
+            var autoCommit = autoCommitMode != AutoCommitMode.Off;
             var commitMessage = autoCommit ? " Auto-commit is enabled." : "";
             var queueMessage = hasRunningJob ? " New ideas will queue behind the current job." : string.Empty;
+            var providerName = options.ProviderId.HasValue
+                ? GetAllowedJobProviders().FirstOrDefault(provider => provider.Id == options.ProviderId.Value)?.Name
+                : null;
+            var providerMessage = providerName == null
+                ? string.Empty
+                : $" Queued ideas will use {providerName}{(string.IsNullOrWhiteSpace(options.ModelId) ? string.Empty : $" ({options.ModelId})")}.";
             NotificationService.ShowInfo(
-                $"Ideas will be converted to jobs automatically.{queueMessage}{commitMessage}",
+                $"Ideas will be converted to jobs automatically.{queueMessage}{commitMessage}{providerMessage}",
                 "Auto-Processing Started");
         }
         catch (Exception ex)
@@ -505,6 +546,11 @@ public partial class ProjectDetail
             await IdeaService.StopProcessingAsync(ProjectId);
             IsIdeasProcessingActive = false;
             ProcessingIdeaIds.Clear();
+            if (Project != null)
+            {
+                Project.IdeasProcessingProviderId = null;
+                Project.IdeasProcessingModelId = null;
+            }
             NotificationService.ShowInfo("Ideas auto-processing stopped.", "Processing Stopped");
         }
         catch (Exception ex)

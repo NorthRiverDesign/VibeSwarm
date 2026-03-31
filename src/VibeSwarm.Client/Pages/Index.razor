@@ -459,12 +459,15 @@
     {
         IsStartingAll = true;
         StartAllError = null;
-        try
-        {
-            await IdeaService.StartAllProcessingAsync(StartAllAutoCommit);
-            ShowStartAllModal = false;
-            StartAllAutoCommit = false;
-            await LoadIdeasStatusAsync();
+		try
+		{
+			await IdeaService.StartAllProcessingAsync(new IdeaProcessingOptions
+			{
+				AutoCommitMode = StartAllAutoCommit ? AutoCommitMode.CommitOnly : AutoCommitMode.Off
+			});
+			ShowStartAllModal = false;
+			StartAllAutoCommit = false;
+			await LoadIdeasStatusAsync();
         }
         catch (Exception ex)
         {

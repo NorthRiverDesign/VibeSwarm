@@ -34,6 +34,8 @@ public class ProjectExportDto
 	public bool PlanningEnabled { get; set; }
 	public string? PromptContext { get; set; }
 	public bool IdeasAutoCommit { get; set; }
+	public Guid? IdeasProcessingProviderId { get; set; }
+	public string? IdeasProcessingModelId { get; set; }
 	public bool EnableTeamSwarm { get; set; }
 	public bool BuildVerificationEnabled { get; set; }
 	public string? BuildCommand { get; set; }

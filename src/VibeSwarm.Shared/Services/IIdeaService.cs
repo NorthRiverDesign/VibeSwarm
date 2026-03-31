@@ -48,7 +48,7 @@ public interface IIdeaService
 	/// <param name="ideaId">The idea to convert</param>
 	/// <param name="cancellationToken">Cancellation token</param>
 	/// <returns>The created job, or null if the idea doesn't exist</returns>
-	Task<Job?> ConvertToJobAsync(Guid ideaId, CancellationToken cancellationToken = default);
+	Task<Job?> ConvertToJobAsync(Guid ideaId, IdeaProcessingOptions? options = null, CancellationToken cancellationToken = default);
 
 	/// <summary>
 	/// Marks an idea as completed and removes it (called when the associated job completes)
@@ -76,7 +76,7 @@ public interface IIdeaService
 	/// <param name="projectId">The project to start processing</param>
 	/// <param name="autoCommit">Whether to auto-commit changes when jobs complete</param>
 	/// <param name="cancellationToken">Cancellation token</param>
-	Task StartProcessingAsync(Guid projectId, bool autoCommit = false, CancellationToken cancellationToken = default);
+	Task StartProcessingAsync(Guid projectId, IdeaProcessingOptions? options = null, CancellationToken cancellationToken = default);
 
 	/// <summary>
 	/// Stops auto-processing of ideas for a project
@@ -178,7 +178,7 @@ public interface IIdeaService
 	/// <summary>
 	/// Starts auto-processing of ideas for all projects that have unprocessed ideas
 	/// </summary>
-	Task StartAllProcessingAsync(bool autoCommit = false, CancellationToken cancellationToken = default);
+	Task StartAllProcessingAsync(IdeaProcessingOptions? options = null, CancellationToken cancellationToken = default);
 
 	/// <summary>
 	/// Stops auto-processing of ideas for all currently processing projects

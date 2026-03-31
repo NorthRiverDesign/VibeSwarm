@@ -48,7 +48,7 @@ public class IdeasController : ControllerBase
     public async Task<IActionResult> GetNextUnprocessed(Guid projectId, CancellationToken ct) => Ok(await _ideaService.GetNextUnprocessedAsync(projectId, ct));
 
     [HttpPost("{id:guid}/convert-to-job")]
-    public async Task<IActionResult> ConvertToJob(Guid id, CancellationToken ct)
+    public async Task<IActionResult> ConvertToJob(Guid id, [FromBody] IdeaProcessingOptions? options, CancellationToken ct)
     {
         // First check if the idea is already being processed (before acquiring lock)
         var idea = await _ideaService.GetByIdAsync(id, ct);
@@ -62,7 +62,7 @@ public class IdeasController : ControllerBase
             return Conflict(new { error = "This idea is already being processed", code = "ALREADY_PROCESSING", ideaId = id, jobId = idea.JobId });
         }
 
-        var job = await _ideaService.ConvertToJobAsync(id, ct);
+        var job = await _ideaService.ConvertToJobAsync(id, options, ct);
         if (job == null)
         {
             // The lock prevented double-start, or another error occurred
@@ -83,7 +83,7 @@ public class IdeasController : ControllerBase
     public async Task<IActionResult> GetByJobId(Guid jobId, CancellationToken ct) => Ok(await _ideaService.GetByJobIdAsync(jobId, ct));
 
     [HttpPost("project/{projectId:guid}/start-processing")]
-    public async Task<IActionResult> StartProcessing(Guid projectId, [FromQuery] bool autoCommit = false, CancellationToken ct = default) { await _ideaService.StartProcessingAsync(projectId, autoCommit, ct); return Ok(); }
+    public async Task<IActionResult> StartProcessing(Guid projectId, [FromBody] IdeaProcessingOptions? options, CancellationToken ct = default) { await _ideaService.StartProcessingAsync(projectId, options, ct); return Ok(); }
 
     [HttpPost("project/{projectId:guid}/stop-processing")]
     public async Task<IActionResult> StopProcessing(Guid projectId, CancellationToken ct) { await _ideaService.StopProcessingAsync(projectId, ct); return Ok(); }
@@ -95,7 +95,7 @@ public class IdeasController : ControllerBase
     public async Task<IActionResult> GetGlobalProcessingStatus(CancellationToken ct) => Ok(await _ideaService.GetGlobalProcessingStatusAsync(ct));
 
     [HttpPost("start-all-processing")]
-    public async Task<IActionResult> StartAllProcessing([FromQuery] bool autoCommit = false, CancellationToken ct = default) { await _ideaService.StartAllProcessingAsync(autoCommit, ct); return Ok(); }
+    public async Task<IActionResult> StartAllProcessing([FromBody] IdeaProcessingOptions? options, CancellationToken ct = default) { await _ideaService.StartAllProcessingAsync(options, ct); return Ok(); }
 
     [HttpPost("stop-all-processing")]
     public async Task<IActionResult> StopAllProcessing(CancellationToken ct = default) { await _ideaService.StopAllProcessingAsync(ct); return Ok(); }

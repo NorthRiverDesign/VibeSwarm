@@ -39,9 +39,9 @@ public class HttpIdeaService : IIdeaService
     public async Task<Idea?> GetNextUnprocessedAsync(Guid projectId, CancellationToken ct = default)
         => await _http.GetJsonOrNullAsync<Idea>($"/api/ideas/project/{projectId}/next-unprocessed", ct);
 
-    public async Task<Job?> ConvertToJobAsync(Guid ideaId, CancellationToken ct = default)
+    public async Task<Job?> ConvertToJobAsync(Guid ideaId, IdeaProcessingOptions? options = null, CancellationToken ct = default)
     {
-        var response = await _http.PostAsync($"/api/ideas/{ideaId}/convert-to-job", null, ct);
+        var response = await _http.PostAsJsonAsync($"/api/ideas/{ideaId}/convert-to-job", options ?? new IdeaProcessingOptions(), ct);
         if (!response.IsSuccessStatusCode) return null;
         return await response.ReadJsonOrNullAsync<Job>(ct);
     }
@@ -61,8 +61,8 @@ public class HttpIdeaService : IIdeaService
     public async Task<Idea?> GetByJobIdAsync(Guid jobId, CancellationToken ct = default)
         => await _http.GetJsonOrNullAsync<Idea>($"/api/ideas/by-job/{jobId}", ct);
 
-    public async Task StartProcessingAsync(Guid projectId, bool autoCommit = false, CancellationToken ct = default)
-        => await _http.PostAsync($"/api/ideas/project/{projectId}/start-processing?autoCommit={autoCommit}", null, ct);
+    public async Task StartProcessingAsync(Guid projectId, IdeaProcessingOptions? options = null, CancellationToken ct = default)
+        => await _http.PostAsJsonAsync($"/api/ideas/project/{projectId}/start-processing", options ?? new IdeaProcessingOptions(), ct);
 
     public async Task StopProcessingAsync(Guid projectId, CancellationToken ct = default)
         => await _http.PostAsync($"/api/ideas/project/{projectId}/stop-processing", null, ct);
@@ -73,8 +73,8 @@ public class HttpIdeaService : IIdeaService
     public async Task<GlobalIdeasProcessingStatus> GetGlobalProcessingStatusAsync(CancellationToken ct = default)
         => await _http.GetJsonAsync("/api/ideas/global-processing-status", new GlobalIdeasProcessingStatus(), ct);
 
-    public async Task StartAllProcessingAsync(bool autoCommit = false, CancellationToken ct = default)
-        => await _http.PostAsync($"/api/ideas/start-all-processing?autoCommit={autoCommit}", null, ct);
+    public async Task StartAllProcessingAsync(IdeaProcessingOptions? options = null, CancellationToken ct = default)
+        => await _http.PostAsJsonAsync("/api/ideas/start-all-processing", options ?? new IdeaProcessingOptions(), ct);
 
     public async Task StopAllProcessingAsync(CancellationToken ct = default)
         => await _http.PostAsync("/api/ideas/stop-all-processing", null, ct);

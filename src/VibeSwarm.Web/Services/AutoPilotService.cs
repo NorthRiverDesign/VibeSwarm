@@ -313,7 +313,7 @@ public class AutoPilotService : IAutoPilotService
 			}
 
 			// 7. CREATE JOB FROM IDEA
-			var job = await _ideaService.ConvertToJobAsync(idea.Id, cancellationToken);
+			var job = await _ideaService.ConvertToJobAsync(idea.Id, null, cancellationToken);
 			if (job == null)
 			{
 				_logger.LogWarning("Auto-pilot could not convert idea {IdeaId} to job", idea.Id);

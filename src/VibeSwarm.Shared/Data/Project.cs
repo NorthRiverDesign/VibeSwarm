@@ -158,6 +158,17 @@ public class Project
 	public bool IdeasAutoCommit { get; set; }
 
 	/// <summary>
+	/// Optional provider override used while Start All idea auto-processing is active.
+	/// </summary>
+	public Guid? IdeasProcessingProviderId { get; set; }
+
+	/// <summary>
+	/// Optional model override used while Start All idea auto-processing is active.
+	/// </summary>
+	[StringLength(ValidationLimits.JobScheduleModelIdMaxLength)]
+	public string? IdeasProcessingModelId { get; set; }
+
+	/// <summary>
 	/// When enabled and at least two team roles are configured, creating a job automatically
 	/// fans out into parallel role-based jobs — one per enabled team role assignment.
 	/// Each role job runs its assigned provider with a role-specific system prompt.

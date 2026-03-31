@@ -1421,6 +1421,111 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		Assert.Equal("high", job.ReasoningEffort);
 	}
 
+
+	[Fact]
+	public async Task StartProcessingAsync_PersistsQueueProviderAndModelOverrides()
+	{
+		await using var dbContext = CreateDbContext();
+		var project = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Persist Queue Overrides",
+			WorkingPath = "/tmp/persist-queue-overrides"
+		};
+		var provider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Claude",
+			Type = ProviderType.Claude,
+			IsEnabled = true,
+			IsDefault = true
+		};
+
+		dbContext.Projects.Add(project);
+		dbContext.Providers.Add(provider);
+		dbContext.ProviderModels.Add(new ProviderModel
+		{
+			Id = Guid.NewGuid(),
+			ProviderId = provider.Id,
+			ModelId = "claude-sonnet-4.6",
+			DisplayName = "Claude Sonnet 4.6",
+			IsAvailable = true,
+			IsDefault = true
+		});
+		await dbContext.SaveChangesAsync();
+
+		var ideaService = CreateIdeaService(dbContext, provider);
+		await ideaService.StartProcessingAsync(project.Id, new IdeaProcessingOptions
+		{
+			AutoCommitMode = AutoCommitMode.CommitOnly,
+			ProviderId = provider.Id,
+			ModelId = "claude-sonnet-4.6"
+		});
+
+		var updatedProject = await dbContext.Projects.SingleAsync(item => item.Id == project.Id);
+		Assert.True(updatedProject.IdeasProcessingActive);
+		Assert.True(updatedProject.IdeasAutoCommit);
+		Assert.Equal(provider.Id, updatedProject.IdeasProcessingProviderId);
+		Assert.Equal("claude-sonnet-4.6", updatedProject.IdeasProcessingModelId);
+	}
+
+	[Fact]
+	public async Task ProcessNextIdeaIfReadyAsync_UsesQueuedProviderAndModelOverrides()
+	{
+		await using var dbContext = CreateDbContext();
+		var defaultProvider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Default Provider",
+			Type = ProviderType.Copilot,
+			IsEnabled = true,
+			IsDefault = true
+		};
+		var overrideProvider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Override Provider",
+			Type = ProviderType.Claude,
+			IsEnabled = true
+		};
+		var project = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Queued Override Project",
+			WorkingPath = "/tmp/queued-override-project",
+			IdeasProcessingActive = true,
+			IdeasProcessingProviderId = overrideProvider.Id,
+			IdeasProcessingModelId = "claude-opus-4.6"
+		};
+		var idea = new Idea
+		{
+			Id = Guid.NewGuid(),
+			ProjectId = project.Id,
+			Description = "Use queued overrides",
+			SortOrder = 0
+		};
+
+		dbContext.Projects.Add(project);
+		dbContext.Providers.AddRange(defaultProvider, overrideProvider);
+		dbContext.ProviderModels.Add(new ProviderModel
+		{
+			Id = Guid.NewGuid(),
+			ProviderId = overrideProvider.Id,
+			ModelId = "claude-opus-4.6",
+			DisplayName = "Claude Opus 4.6",
+			IsAvailable = true
+		});
+		dbContext.Ideas.Add(idea);
+		await dbContext.SaveChangesAsync();
+
+		var ideaService = CreateIdeaService(dbContext, defaultProvider);
+		var processed = await ideaService.ProcessNextIdeaIfReadyAsync(project.Id);
+
+		Assert.True(processed);
+		var job = await dbContext.Jobs.SingleAsync(item => item.ProjectId == project.Id);
+		Assert.Equal(overrideProvider.Id, job.ProviderId);
+		Assert.Equal("claude-opus-4.6", job.ModelUsed);
+	}
 	[Fact]
 	public async Task ProcessNextIdeaIfReadyAsync_WaitsForExistingProjectJobToFinish()
 	{

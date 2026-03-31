@@ -138,6 +138,8 @@ else
                             HasActiveJobs="@HasActiveJobs" IsAddingIdea="@_isAddingIdea" ProcessingIdeaIds="@ProcessingIdeaIds"
                             CurrentAutoCommitMode="@(Project?.AutoCommitMode ?? AutoCommitMode.Off)"
                             IsGitRepository="@IsGitRepository"
+                            DefaultProcessingProviderId="@GetDefaultIdeasProcessingProviderId()"
+                            DefaultProcessingModelId="@GetDefaultIdeasProcessingModelId()"
                             OnStartProcessing="StartIdeasProcessing" OnStartProcessingWithOptions="StartIdeasProcessingWithOptions"
                             OnStopProcessing="StopIdeasProcessing" OnAddIdea="AddIdea" OnUpdateIdea="UpdateIdea"
                             OnDeleteIdea="DeleteIdea" OnCopyIdea="CopyIdea" OnMoveIdea="MoveIdea" OnStartSingleIdea="StartSingleIdea"
@@ -663,7 +665,7 @@ else
     private bool _isAddingIdea { get; set; }
     private bool IsIdeasProcessingActive { get; set; }
     private bool _isTogglingIdeasProcessing { get; set; }
-    private bool HasDefaultProvider => Providers.Any(p => p.IsDefault && p.IsEnabled);
+    private bool HasDefaultProvider => GetAllowedJobProviders().Any();
     private HashSet<Guid> ProcessingIdeaIds { get; set; } = new();
     private CancellationTokenSource? _expandCts;
     private Guid? _expandingIdeaId;

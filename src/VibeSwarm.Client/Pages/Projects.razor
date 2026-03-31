@@ -505,8 +505,11 @@ else
             var autoCommitEnabled = projectInfo.Project.AutoCommitMode != AutoCommitMode.Off;
             var hasActiveJobs = projectInfo.Stats.ActiveJobs > 0 || ActiveJobs.Any(job => job.ProjectId == projectInfo.Project.Id);
 
-            await IdeaService.StartProcessingAsync(projectInfo.Project.Id, autoCommitEnabled);
-            projectInfo.Project.IdeasProcessingActive = true;
+			await IdeaService.StartProcessingAsync(projectInfo.Project.Id, new IdeaProcessingOptions
+			{
+				AutoCommitMode = autoCommitEnabled ? AutoCommitMode.CommitOnly : AutoCommitMode.Off
+			});
+			projectInfo.Project.IdeasProcessingActive = true;
 
             var queueMessage = hasActiveJobs ? " New ideas will queue behind the current job." : string.Empty;
             var commitMessage = autoCommitEnabled ? " Auto-commit is enabled." : string.Empty;

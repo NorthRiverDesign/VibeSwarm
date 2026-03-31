@@ -9,7 +9,7 @@ namespace VibeSwarm.Shared.Services;
 
 public partial class IdeaService
 {
-	public async Task<Job?> ConvertToJobAsync(Guid ideaId, CancellationToken cancellationToken = default)
+	public async Task<Job?> ConvertToJobAsync(Guid ideaId, IdeaProcessingOptions? options = null, CancellationToken cancellationToken = default)
 	{
 		// Use a lock to prevent race conditions when multiple users click "Start" simultaneously
 		await _ideaConversionLock.WaitAsync(cancellationToken);
@@ -38,7 +38,7 @@ public partial class IdeaService
 			idea.IsProcessing = true;
 			await _dbContext.SaveChangesAsync(cancellationToken);
 
-			var defaultProvider = await ResolveJobProviderAsync(idea.ProjectId, cancellationToken);
+			var defaultProvider = await ResolveJobProviderAsync(idea.ProjectId, options, cancellationToken);
 			if (defaultProvider == null)
 			{
 				_logger.LogWarning("No default provider configured. Cannot convert idea to job.");
@@ -76,7 +76,7 @@ public partial class IdeaService
 				Title = idea.Description,  // Use the original idea text as the title
 				GoalPrompt = goalPrompt,
 				Branch = currentBranch,
-				ModelUsed = await ResolveJobModelAsync(idea.ProjectId, defaultProvider.Id, cancellationToken),
+				ModelUsed = await ResolveJobModelAsync(idea.ProjectId, defaultProvider.Id, options, cancellationToken),
 				ReasoningEffort = await ResolveJobReasoningAsync(idea.ProjectId, defaultProvider.Id, cancellationToken),
 				Status = JobStatus.New
 			};
@@ -107,8 +107,16 @@ public partial class IdeaService
 		}
 	}
 
-	private async Task<Provider?> ResolveJobProviderAsync(Guid projectId, CancellationToken cancellationToken)
+	private async Task<Provider?> ResolveJobProviderAsync(Guid projectId, IdeaProcessingOptions? options, CancellationToken cancellationToken)
 	{
+		if (options?.ProviderId is Guid providerOverrideId)
+		{
+			return await _dbContext.Providers
+				.AsNoTracking()
+				.Where(provider => provider.Id == providerOverrideId && provider.IsEnabled)
+				.FirstOrDefaultAsync(cancellationToken);
+		}
+
 		var projectProvider = await _dbContext.ProjectProviders
 			.AsNoTracking()
 			.Where(selection => selection.ProjectId == projectId && selection.IsEnabled)
@@ -123,8 +131,14 @@ public partial class IdeaService
 		return projectProvider ?? await _providerService.GetDefaultAsync(cancellationToken);
 	}
 
-	private async Task<string?> ResolveJobModelAsync(Guid projectId, Guid providerId, CancellationToken cancellationToken)
+	private async Task<string?> ResolveJobModelAsync(Guid projectId, Guid providerId, IdeaProcessingOptions? options, CancellationToken cancellationToken)
 	{
+		var modelOverride = string.IsNullOrWhiteSpace(options?.ModelId) ? null : options!.ModelId!.Trim();
+		if (modelOverride != null)
+		{
+			return modelOverride;
+		}
+
 		var projectSelection = await _dbContext.ProjectProviders
 			.AsNoTracking()
 			.Where(selection => selection.ProjectId == projectId && selection.IsEnabled && selection.ProviderId == providerId)

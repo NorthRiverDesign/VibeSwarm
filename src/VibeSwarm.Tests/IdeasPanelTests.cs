@@ -1,3 +1,4 @@
+using Bunit;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.Extensions.DependencyInjection;
@@ -127,6 +128,74 @@ public sealed class IdeasPanelTests
 		Assert.Contains("align-self-stretch align-self-sm-start gap-2", html);
 	}
 
+	[Fact]
+	public void StartAllModal_DefaultsProviderAndModelFromProjectSelection()
+	{
+		using var context = new BunitContext();
+		context.Services.AddLogging();
+		context.Services.AddSingleton<IProjectService>(new FakeProjectService());
+		context.Services.AddSingleton<IIdeaService>(new FakeIdeaService());
+		context.Services.AddSingleton<IJobService>(new FakeJobService());
+		context.Services.AddSingleton<NotificationService>();
+		context.Services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
+		context.JSInterop.SetupVoid("eval", _ => true);
+
+		var primaryProviderId = Guid.NewGuid();
+		var secondaryProviderId = Guid.NewGuid();
+		IdeaProcessingOptions? submittedOptions = null;
+
+		var cut = context.Render<IdeasPanel>(parameters => parameters
+			.Add(component => component.Ideas, new List<Idea> { new() { Id = Guid.NewGuid(), ProjectId = Guid.NewGuid(), Description = "Queue provider override" } })
+			.Add(component => component.TotalIdeasCount, 1)
+			.Add(component => component.UnprocessedIdeasCount, 1)
+			.Add(component => component.HasDefaultProvider, true)
+			.Add(component => component.IsGitRepository, true)
+			.Add(component => component.AvailableProviders, new List<Provider>
+			{
+				new()
+				{
+					Id = primaryProviderId,
+					Name = "Claude",
+					Type = ProviderType.Claude,
+					IsEnabled = true,
+					AvailableModels =
+					[
+						new ProviderModel { ProviderId = primaryProviderId, ModelId = "claude-sonnet-4.6", DisplayName = "Claude Sonnet 4.6", IsAvailable = true, IsDefault = true },
+						new ProviderModel { ProviderId = primaryProviderId, ModelId = "claude-opus-4.6", DisplayName = "Claude Opus 4.6", IsAvailable = true }
+					]
+				},
+				new()
+				{
+					Id = secondaryProviderId,
+					Name = "Copilot",
+					Type = ProviderType.Copilot,
+					IsEnabled = true,
+					AvailableModels =
+					[
+						new ProviderModel { ProviderId = secondaryProviderId, ModelId = "gpt-5.4", DisplayName = "GPT-5.4", IsAvailable = true, IsDefault = true }
+					]
+				}
+			})
+			.Add(component => component.DefaultProcessingProviderId, primaryProviderId)
+			.Add(component => component.DefaultProcessingModelId, "claude-opus-4.6")
+			.Add(component => component.OnStartProcessingWithOptions, EventCallback.Factory.Create<IdeaProcessingOptions>(this, options => submittedOptions = options)));
+
+		cut.Find("button[title='Start processing all pending ideas']").Click();
+
+		var providerSelect = cut.Find("#startAllProvider");
+		var modelSelect = cut.Find("#startAllModel");
+		Assert.Equal(primaryProviderId.ToString(), providerSelect.GetAttribute("value"));
+		Assert.Equal("claude-opus-4.6", modelSelect.GetAttribute("value"));
+
+		modelSelect.Change("claude-sonnet-4.6");
+		cut.FindAll("button.btn.btn-success").Last().Click();
+
+		Assert.NotNull(submittedOptions);
+		Assert.Equal(primaryProviderId, submittedOptions!.ProviderId);
+		Assert.Equal("claude-sonnet-4.6", submittedOptions.ModelId);
+		Assert.Equal(AutoCommitMode.Off, submittedOptions.AutoCommitMode);
+	}
+
 	private sealed class FakeProjectService : IProjectService
 	{
 		public Task<IEnumerable<Project>> GetAllAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Project>>([]);
@@ -158,11 +227,11 @@ public sealed class IdeasPanelTests
 		public Task<Idea> UpdateAsync(Idea idea, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task DeleteAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<Idea?> GetNextUnprocessedAsync(Guid projectId, CancellationToken cancellationToken = default) => Task.FromResult<Idea?>(null);
-		public Task<Job?> ConvertToJobAsync(Guid ideaId, CancellationToken cancellationToken = default) => Task.FromResult<Job?>(null);
+		public Task<Job?> ConvertToJobAsync(Guid ideaId, IdeaProcessingOptions? options = null, CancellationToken cancellationToken = default) => Task.FromResult<Job?>(null);
 		public Task<bool> CompleteIdeaFromJobAsync(Guid jobId, CancellationToken cancellationToken = default) => Task.FromResult(false);
 		public Task<bool> HandleJobCompletionAsync(Guid jobId, bool success, CancellationToken cancellationToken = default) => Task.FromResult(false);
 		public Task<Idea?> GetByJobIdAsync(Guid jobId, CancellationToken cancellationToken = default) => Task.FromResult<Idea?>(null);
-		public Task StartProcessingAsync(Guid projectId, bool autoCommit = false, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task StartProcessingAsync(Guid projectId, IdeaProcessingOptions? options = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task StopProcessingAsync(Guid projectId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<bool> IsProcessingActiveAsync(Guid projectId, CancellationToken cancellationToken = default) => Task.FromResult(false);
 		public Task<bool> ProcessNextIdeaIfReadyAsync(Guid projectId, CancellationToken cancellationToken = default) => Task.FromResult(false);
@@ -179,7 +248,7 @@ public sealed class IdeasPanelTests
 			=> Task.FromResult(new SuggestIdeasResult());
 		public Task<GlobalIdeasProcessingStatus> GetGlobalProcessingStatusAsync(CancellationToken cancellationToken = default)
 			=> Task.FromResult(new GlobalIdeasProcessingStatus());
-		public Task StartAllProcessingAsync(bool autoCommit = false, CancellationToken cancellationToken = default) => Task.CompletedTask;
+		public Task StartAllProcessingAsync(IdeaProcessingOptions? options = null, CancellationToken cancellationToken = default) => Task.CompletedTask;
 		public Task StopAllProcessingAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 	}
 
