@@ -80,7 +80,7 @@ public partial class JobProcessingService
                 ? job.Project.AutoCommitMode
                 : AutoCommitMode.CommitOnly;
 
-            var commitMessage = job.SessionSummary ?? $"{AppConstants.AppName}: {job.Title ?? "Job completed"}";
+            var commitMessage = JobSummaryGenerator.BuildCommitSubject(job);
 
             _logger.LogInformation("Auto-committing changes for job {JobId} with mode {Mode}",
                 job.Id, effectiveCommitMode);

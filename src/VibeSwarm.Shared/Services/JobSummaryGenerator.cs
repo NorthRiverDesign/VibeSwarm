@@ -12,6 +12,7 @@ namespace VibeSwarm.Shared.Services;
 public static partial class JobSummaryGenerator
 {
 	private const int MaxCommitLogEntries = 10;
+	private const int MaxCommitSubjectLength = 72;
 
 	private static readonly string[] ActionKeywords =
 	[
@@ -97,6 +98,50 @@ public static partial class JobSummaryGenerator
 		return BuildSummary(diffInfo, actionContext, goalPrompt, title, commitLog);
 	}
 
+	public static string BuildCommitSubject(Job job)
+	{
+		ArgumentNullException.ThrowIfNull(job);
+
+		return BuildCommitSubject(job.SessionSummary, job.Title, job.GoalPrompt, job.ConsoleOutput);
+	}
+
+	public static string BuildCommitSubject(
+		string? sessionSummary,
+		string? title,
+		string? goalPrompt,
+		string? consoleOutput = null)
+	{
+		var agentSummary = ExtractAgentCommitSummary(consoleOutput);
+		if (!string.IsNullOrWhiteSpace(agentSummary))
+		{
+			return agentSummary;
+		}
+
+		var summarySubject = ExtractCommitSubjectCandidate(sessionSummary);
+		if (!string.IsNullOrWhiteSpace(summarySubject))
+		{
+			return summarySubject;
+		}
+
+		var titleSubject = ExtractCommitSubjectCandidate(title);
+		if (!string.IsNullOrWhiteSpace(titleSubject))
+		{
+			return titleSubject;
+		}
+
+		if (!string.IsNullOrWhiteSpace(goalPrompt))
+		{
+			var promptSubject = BuildHeadline(ExtractActionContext(goalPrompt), null);
+			var normalizedPromptSubject = NormalizeCommitSubject(promptSubject);
+			if (!string.IsNullOrWhiteSpace(normalizedPromptSubject))
+			{
+				return normalizedPromptSubject;
+			}
+		}
+
+		return "Update code";
+	}
+
 	/// <summary>
 	/// Extracts the AI agent's commit summary from console output.
 	/// Looks for content between &lt;commit-summary&gt; tags.
@@ -125,8 +170,7 @@ public static partial class JobSummaryGenerator
 			if (string.IsNullOrWhiteSpace(subject))
 				return null;
 
-			// Enforce max length at a word boundary
-			return TruncateAtWordBoundary(subject, 72);
+			return NormalizeCommitSubject(subject);
 		}
 
 		return null;
@@ -146,6 +190,18 @@ public static partial class JobSummaryGenerator
 
 	[GeneratedRegex(@"<commit-summary>\s*(.+?)\s*</commit-summary>", RegexOptions.Singleline | RegexOptions.IgnoreCase)]
 	private static partial Regex CommitSummaryTagRegex();
+
+	[GeneratedRegex(@"^\s*(changes?|files?|summary|details?)\s*:\s*$", RegexOptions.IgnoreCase)]
+	private static partial Regex CommitArtifactHeadingRegex();
+
+	[GeneratedRegex(@"^\s*(?:[-*•]|\d+[.)])\s+")]
+	private static partial Regex ListPrefixRegex();
+
+	[GeneratedRegex(@"^\s*\d+\s+file\(s\)\s+changed(?:\s*\([^)]+\))?\s*$", RegexOptions.IgnoreCase)]
+	private static partial Regex FileChangeStatsRegex();
+
+	[GeneratedRegex(@"[<>`*_#\[\]\{\}|~]+")]
+	private static partial Regex CommitMarkupRegex();
 
 	/// <summary>
 	/// Parses a git diff string to extract file changes and statistics.
@@ -323,6 +379,111 @@ public static partial class JobSummaryGenerator
 		return subject.Trim();
 	}
 
+	private static string? ExtractCommitSubjectCandidate(string? text)
+	{
+		if (string.IsNullOrWhiteSpace(text))
+		{
+			return null;
+		}
+
+		var normalized = text
+			.Replace("\\n", "\n")
+			.Replace("\\r", "\r");
+
+		foreach (var rawLine in normalized.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries))
+		{
+			var line = rawLine.Trim();
+			if (line.Length == 0 || IsCommitArtifactLine(line))
+			{
+				continue;
+			}
+
+			var subject = NormalizeCommitSubject(line);
+			if (!string.IsNullOrWhiteSpace(subject))
+			{
+				return subject;
+			}
+		}
+
+		return null;
+	}
+
+	private static bool IsCommitArtifactLine(string line)
+	{
+		return CommitArtifactHeadingRegex().IsMatch(line)
+			|| ListPrefixRegex().IsMatch(line)
+			|| FileChangeStatsRegex().IsMatch(line)
+			|| line.StartsWith("Files:", StringComparison.OrdinalIgnoreCase)
+			|| line.StartsWith("Diff:", StringComparison.OrdinalIgnoreCase);
+	}
+
+	private static string? NormalizeCommitSubject(string? text)
+	{
+		if (string.IsNullOrWhiteSpace(text))
+		{
+			return null;
+		}
+
+		var normalized = text.Trim();
+		normalized = CommitSummaryTagRegex().Replace(normalized, "$1");
+		normalized = ListPrefixRegex().Replace(normalized, string.Empty);
+		normalized = CommitMarkupRegex().Replace(normalized, string.Empty);
+		normalized = normalized.Replace('"', ' ').Replace('\t', ' ');
+		normalized = string.Join(" ", normalized.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+		normalized = normalized.Trim(' ', '.', ',', ';', ':', '-', '–', '—');
+
+		if (normalized.Length == 0 || IsCommitArtifactLine(normalized))
+		{
+			return null;
+		}
+
+		if (normalized.Length == 1)
+		{
+			return normalized.ToUpperInvariant();
+		}
+
+		normalized = char.ToUpper(normalized[0]) + normalized[1..];
+		return TruncateAtWordBoundary(normalized, MaxCommitSubjectLength);
+	}
+
+	private static string BuildHeadline(ActionContext actionContext, string? title)
+	{
+		if (!string.IsNullOrWhiteSpace(title))
+		{
+			var normalizedTitle = title
+				.Replace("\\n", "\n")
+				.Replace("\\r", "\r");
+			var firstLine = normalizedTitle
+				.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
+				.Select(l => l.Trim())
+				.FirstOrDefault(l => l.Length > 0)
+				?? normalizedTitle.Trim();
+
+			var cleanTitle = TruncateAtWordBoundary(firstLine, MaxCommitSubjectLength);
+			if (cleanTitle.Length == 0)
+			{
+				cleanTitle = firstLine;
+			}
+
+			return char.ToUpper(cleanTitle[0]) + cleanTitle[1..];
+		}
+
+		if (!string.IsNullOrEmpty(actionContext.Subject))
+		{
+			var subjectLower = actionContext.Subject.ToLowerInvariant();
+			var startsWithVerb = ActionKeywords.Any(k => subjectLower.StartsWith(k));
+
+			if (startsWithVerb)
+			{
+				return char.ToUpper(actionContext.Subject[0]) + actionContext.Subject[1..];
+			}
+
+			return $"{actionContext.ActionVerb} {char.ToLower(actionContext.Subject[0])}{actionContext.Subject[1..]}";
+		}
+
+		return $"{actionContext.ActionVerb} code";
+	}
+
 	/// <summary>
 	/// Builds the final summary from parsed information.
 	/// </summary>
@@ -340,50 +501,7 @@ public static partial class JobSummaryGenerator
 			return null;
 
 		// Build the title line - prefer explicit title over parsing goalPrompt
-		if (!string.IsNullOrWhiteSpace(title))
-		{
-			// Normalize literal escape sequences and take only the first line of the title
-			var normalizedTitle = title
-				.Replace("\\n", "\n")
-				.Replace("\\r", "\r");
-			var firstLine = normalizedTitle
-				.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
-				.Select(l => l.Trim())
-				.FirstOrDefault(l => l.Length > 0)
-				?? normalizedTitle.Trim();
-
-			var cleanTitle = TruncateAtWordBoundary(firstLine, 72);
-			if (cleanTitle.Length == 0)
-				cleanTitle = firstLine;
-
-			sb.Append(char.ToUpper(cleanTitle[0]));
-			sb.Append(cleanTitle[1..]);
-		}
-		else if (!string.IsNullOrEmpty(actionContext.Subject))
-		{
-			// Fall back to parsing goalPrompt for action + subject
-			var subjectLower = actionContext.Subject.ToLowerInvariant();
-			var startsWithVerb = ActionKeywords.Any(k => subjectLower.StartsWith(k));
-
-			if (startsWithVerb)
-			{
-				// Capitalize first letter
-				sb.Append(char.ToUpper(actionContext.Subject[0]));
-				sb.Append(actionContext.Subject[1..]);
-			}
-			else
-			{
-				sb.Append(actionContext.ActionVerb);
-				sb.Append(' ');
-				sb.Append(char.ToLower(actionContext.Subject[0]));
-				sb.Append(actionContext.Subject[1..]);
-			}
-		}
-		else
-		{
-			sb.Append(actionContext.ActionVerb);
-			sb.Append(" code");
-		}
+		sb.Append(BuildHeadline(actionContext, title));
 
 		// If we have commit log entries, add them as bullet points
 		if (commitLog != null && commitLog.Count > 0)
