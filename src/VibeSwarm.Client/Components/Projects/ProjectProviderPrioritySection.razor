@@ -43,6 +43,8 @@ else
                 .ThenBy(model => model.DisplayName ?? model.ModelId)
                 .ToList();
             var modelInputId = $"provider-model-{selection.ProviderId}";
+            var reasoningInputId = $"provider-reasoning-{selection.ProviderId}";
+            var reasoningOptions = provider != null ? ProviderCapabilities.GetSupportedReasoningEfforts(provider) : [];
         }
         <div class="rounded border bg-body p-3">
         <div class="d-flex align-items-start justify-content-between gap-2 flex-wrap">
@@ -67,12 +69,12 @@ else
         <label for="@modelInputId" class="form-label small mb-1">
         <i class="bi bi-cpu me-1"></i>Default Job Model
         </label>
-        <InputSelect TValue="string" id="@modelInputId"
-                     Value="@(selection.PreferredModelId ?? string.Empty)"
-                     ValueChanged="@(async (string? value) => await HandlePreferredModelChanged(selection.ProviderId, value))"
-                     ValueExpression="@(() => selection.PreferredModelId)"
-                     class="form-select form-select-sm"
-                     disabled="@(!models.Any())">
+         <InputSelect TValue="string" id="@modelInputId"
+                      Value="@(selection.PreferredModelId ?? string.Empty)"
+                      ValueChanged="@(async (string? value) => await HandlePreferredSelectionChanged(selection.ProviderId, value, selection.PreferredReasoningEffort))"
+                      ValueExpression="@(() => selection.PreferredModelId)"
+                      class="form-select form-select-sm"
+                      disabled="@(!models.Any())">
         <option value="">Use provider default model</option>
         @foreach (var model in models)
         {
@@ -87,6 +89,34 @@ else
         else
         {
         <span>New jobs start with this project default before any job-specific model override.</span>
+        }
+        </div>
+        </div>
+
+        <div class="mt-3">
+        <label for="@reasoningInputId" class="form-label small mb-1">
+        <i class="bi bi-lightning-charge me-1"></i>Default Job Reasoning
+        </label>
+        <InputSelect TValue="string" id="@reasoningInputId"
+                     Value="@(selection.PreferredReasoningEffort ?? string.Empty)"
+                     ValueChanged="@(async (string? value) => await HandlePreferredSelectionChanged(selection.ProviderId, selection.PreferredModelId, value))"
+                     ValueExpression="@(() => selection.PreferredReasoningEffort)"
+                     class="form-select form-select-sm"
+                     disabled="@(!reasoningOptions.Any())">
+        <option value="">Use provider default reasoning</option>
+        @foreach (var reasoning in reasoningOptions)
+        {
+        <option value="@reasoning">@reasoning</option>
+        }
+        </InputSelect>
+        <div class="form-text">
+        @if (!reasoningOptions.Any())
+        {
+        <span>This provider does not expose configurable reasoning levels.</span>
+        }
+        else
+        {
+        <span>New jobs start with this reasoning level unless a job-specific override is chosen.</span>
         }
         </div>
         </div>
@@ -153,12 +183,13 @@ public EventCallback<Provider> OnAdd { get; set; }
 [Parameter]
 public EventCallback<ProjectProviderModelSelectionChange> OnPreferredModelChanged { get; set; }
 
-private Task HandlePreferredModelChanged(Guid providerId, string? preferredModelId)
+private Task HandlePreferredSelectionChanged(Guid providerId, string? preferredModelId, string? preferredReasoningEffort)
 {
 return OnPreferredModelChanged.InvokeAsync(new ProjectProviderModelSelectionChange
 {
 ProviderId = providerId,
-PreferredModelId = string.IsNullOrWhiteSpace(preferredModelId) ? null : preferredModelId
+PreferredModelId = string.IsNullOrWhiteSpace(preferredModelId) ? null : preferredModelId,
+PreferredReasoningEffort = string.IsNullOrWhiteSpace(preferredReasoningEffort) ? null : preferredReasoningEffort
 });
 }
 }

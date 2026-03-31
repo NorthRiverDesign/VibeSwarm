@@ -536,6 +536,7 @@ public partial class JobProcessingService
 							UseBareMode = planningProviderConfig.Type == ProviderType.Claude
 								&& planningProviderConfig.ConnectionMode == ProviderConnectionMode.CLI,
 							Model = job.Project.PlanningModelId,
+							ReasoningEffort = job.Project.PlanningReasoningEffort,
 							Title = job.Title,
 							AppendSystemPrompt = systemPromptRules,
 							EnvironmentVariables = jobEnvironmentVariables,
@@ -570,6 +571,7 @@ public partial class JobProcessingService
                 job.PlanningOutput = planningOutput.Trim();
                 job.PlanningProviderId = planningProviderConfig.Id;
                 job.PlanningModelUsed = planningResult.ModelUsed ?? job.Project.PlanningModelId;
+                job.PlanningReasoningEffortUsed = job.Project.PlanningReasoningEffort;
                 job.PlanningGeneratedAt = DateTime.UtcNow;
                 await dbContext.SaveChangesAsync(cancellationToken);
             }
@@ -636,6 +638,7 @@ public partial class JobProcessingService
 							UseBareMode = provider.Type == ProviderType.Claude
 								&& provider.ConnectionMode == ProviderConnectionMode.CLI,
 							Model = job.ModelUsed,
+							ReasoningEffort = job.ReasoningEffort,
 							Title = job.Title,
 							AppendSystemPrompt = systemPromptRules,
 							EnvironmentVariables = jobEnvironmentVariables

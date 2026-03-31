@@ -151,6 +151,7 @@ public class ProjectService : IProjectService
 		existing.PlanningEnabled = project.PlanningEnabled;
 		existing.PlanningProviderId = project.PlanningProviderId;
 		existing.PlanningModelId = project.PlanningModelId;
+		existing.PlanningReasoningEffort = project.PlanningReasoningEffort;
 		existing.IdeaInferenceProviderId = project.IdeaInferenceProviderId;
 		existing.IdeaInferenceModelId = string.IsNullOrWhiteSpace(project.IdeaInferenceModelId) ? null : project.IdeaInferenceModelId.Trim();
 		existing.PromptContext = project.PromptContext;
@@ -626,6 +627,7 @@ public class ProjectService : IProjectService
 			selection.PreferredModelId = string.IsNullOrWhiteSpace(selection.PreferredModelId)
 				? null
 				: selection.PreferredModelId.Trim();
+			selection.PreferredReasoningEffort = ProviderCapabilities.NormalizeReasoningEffort(selection.PreferredReasoningEffort);
 			selection.UpdatedAt = DateTime.UtcNow;
 			if (selection.CreatedAt == default)
 			{
@@ -658,6 +660,7 @@ public class ProjectService : IProjectService
 			assignment.PreferredModelId = string.IsNullOrWhiteSpace(assignment.PreferredModelId)
 				? null
 				: assignment.PreferredModelId.Trim();
+			assignment.PreferredReasoningEffort = ProviderCapabilities.NormalizeReasoningEffort(assignment.PreferredReasoningEffort);
 			assignment.UpdatedAt = DateTime.UtcNow;
 			if (assignment.CreatedAt == default)
 			{
@@ -673,6 +676,7 @@ public class ProjectService : IProjectService
 		project.PlanningModelId = string.IsNullOrWhiteSpace(project.PlanningModelId)
 			? null
 			: project.PlanningModelId.Trim();
+		project.PlanningReasoningEffort = ProviderCapabilities.NormalizeReasoningEffort(project.PlanningReasoningEffort);
 	}
 
 	private static string? NormalizeProjectMemory(string? memory)
@@ -767,6 +771,7 @@ public class ProjectService : IProjectService
 					Priority = requested.Priority,
 					IsEnabled = requested.IsEnabled,
 					PreferredModelId = requested.PreferredModelId,
+					PreferredReasoningEffort = requested.PreferredReasoningEffort,
 					CreatedAt = requested.CreatedAt,
 					UpdatedAt = requested.UpdatedAt
 				});
@@ -776,6 +781,7 @@ public class ProjectService : IProjectService
 			current.Priority = requested.Priority;
 			current.IsEnabled = requested.IsEnabled;
 			current.PreferredModelId = requested.PreferredModelId;
+			current.PreferredReasoningEffort = requested.PreferredReasoningEffort;
 			current.UpdatedAt = DateTime.UtcNow;
 		}
 	}
@@ -811,6 +817,7 @@ public class ProjectService : IProjectService
 					TeamRoleId = requested.TeamRoleId,
 					ProviderId = requested.ProviderId,
 					PreferredModelId = requested.PreferredModelId,
+					PreferredReasoningEffort = requested.PreferredReasoningEffort,
 					IsEnabled = requested.IsEnabled,
 					CreatedAt = requested.CreatedAt,
 					UpdatedAt = requested.UpdatedAt
@@ -820,6 +827,7 @@ public class ProjectService : IProjectService
 
 			current.ProviderId = requested.ProviderId;
 			current.PreferredModelId = requested.PreferredModelId;
+			current.PreferredReasoningEffort = requested.PreferredReasoningEffort;
 			current.IsEnabled = requested.IsEnabled;
 			current.UpdatedAt = DateTime.UtcNow;
 		}
@@ -901,10 +909,11 @@ public class ProjectService : IProjectService
 			throw new InvalidOperationException("Duplicate provider selection detected. Provider IDs cannot be repeated.");
 		}
 
-		var existingProviderIds = await _dbContext.Providers
+		var existingProviders = await _dbContext.Providers
 			.Where(provider => providerIds.Contains(provider.Id))
-			.Select(provider => provider.Id)
+			.Select(provider => new { provider.Id, provider.Type, provider.ConnectionMode })
 			.ToListAsync(cancellationToken);
+		var existingProviderIds = existingProviders.Select(provider => provider.Id).ToList();
 
 		var invalidIds = providerIds.Except(existingProviderIds).ToList();
 		if (invalidIds.Any())
@@ -940,6 +949,25 @@ public class ProjectService : IProjectService
 		{
 			throw new InvalidOperationException($"One or more preferred project models are not available for their provider: {string.Join(", ", invalidPreferredModels)}");
 		}
+
+		var providerLookup = existingProviders.ToDictionary(
+			provider => provider.Id,
+			provider => new Provider
+			{
+				Id = provider.Id,
+				Type = provider.Type,
+				ConnectionMode = provider.ConnectionMode
+			});
+		var invalidReasoningSelections = selections
+			.Where(selection => !ProviderCapabilities.SupportsReasoningEffort(
+				providerLookup[selection.ProviderId],
+				selection.PreferredReasoningEffort))
+			.Select(selection => selection.ProviderId)
+			.ToList();
+		if (invalidReasoningSelections.Any())
+		{
+			throw new InvalidOperationException($"One or more preferred project reasoning levels are not supported by their provider: {string.Join(", ", invalidReasoningSelections)}");
+		}
 	}
 
 	private async Task ValidateTeamAssignmentsAsync(ICollection<ProjectTeamRole> assignments, CancellationToken cancellationToken)
@@ -972,10 +1000,11 @@ public class ProjectService : IProjectService
 		}
 
 		var providerIds = assignments.Select(assignment => assignment.ProviderId).Distinct().ToList();
-		var existingProviderIds = await _dbContext.Providers
+		var existingProviders = await _dbContext.Providers
 			.Where(provider => providerIds.Contains(provider.Id))
-			.Select(provider => provider.Id)
+			.Select(provider => new { provider.Id, provider.Type, provider.ConnectionMode })
 			.ToListAsync(cancellationToken);
+		var existingProviderIds = existingProviders.Select(provider => provider.Id).ToList();
 		var invalidProviderIds = providerIds.Except(existingProviderIds).ToList();
 		if (invalidProviderIds.Any())
 		{
@@ -1009,6 +1038,25 @@ public class ProjectService : IProjectService
 		{
 			throw new InvalidOperationException($"One or more team role models are not available for their provider: {string.Join(", ", invalidPreferredModels)}");
 		}
+
+		var providerLookup = existingProviders.ToDictionary(
+			provider => provider.Id,
+			provider => new Provider
+			{
+				Id = provider.Id,
+				Type = provider.Type,
+				ConnectionMode = provider.ConnectionMode
+			});
+		var invalidReasoningSelections = assignments
+			.Where(assignment => !ProviderCapabilities.SupportsReasoningEffort(
+				providerLookup[assignment.ProviderId],
+				assignment.PreferredReasoningEffort))
+			.Select(assignment => assignment.TeamRoleId)
+			.ToList();
+		if (invalidReasoningSelections.Any())
+		{
+			throw new InvalidOperationException($"One or more team role reasoning levels are not supported by their provider: {string.Join(", ", invalidReasoningSelections)}");
+		}
 	}
 
 	private async Task ValidatePlanningAsync(Project project, CancellationToken cancellationToken)
@@ -1039,6 +1087,11 @@ public class ProjectService : IProjectService
 		if (provider.Type is not (ProviderType.Claude or ProviderType.Copilot))
 		{
 			throw new InvalidOperationException("Planning currently supports only Claude and GitHub Copilot providers.");
+		}
+
+		if (!ProviderCapabilities.SupportsReasoningEffort(provider, project.PlanningReasoningEffort))
+		{
+			throw new InvalidOperationException("The selected planning reasoning level is not supported by the chosen provider.");
 		}
 
 		if (string.IsNullOrWhiteSpace(project.PlanningModelId))

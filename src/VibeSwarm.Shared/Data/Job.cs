@@ -92,6 +92,12 @@ public class Job
     public string? ModelUsed { get; set; }
 
     /// <summary>
+    /// The requested reasoning effort for this job.
+    /// </summary>
+    [StringLength(VibeSwarm.Shared.Validation.ValidationLimits.ReasoningEffortMaxLength)]
+    public string? ReasoningEffort { get; set; }
+
+    /// <summary>
     /// Planning output generated before execution when project planning is enabled.
     /// Persisted so execution and retries can reuse the reviewed plan without regenerating it.
     /// </summary>
@@ -107,6 +113,12 @@ public class Job
     /// </summary>
     [StringLength(200)]
     public string? PlanningModelUsed { get; set; }
+
+    /// <summary>
+    /// Reasoning effort used to generate the persisted planning output, if any.
+    /// </summary>
+    [StringLength(VibeSwarm.Shared.Validation.ValidationLimits.ReasoningEffortMaxLength)]
+    public string? PlanningReasoningEffortUsed { get; set; }
 
     /// <summary>
     /// When the persisted planning output was last generated.

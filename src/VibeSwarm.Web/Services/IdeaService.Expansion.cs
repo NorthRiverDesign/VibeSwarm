@@ -143,6 +143,7 @@ public partial class IdeaService
 		var response = await ExecuteProviderExpansionAsync(
 			providerInstance,
 			provider,
+			idea.Project!,
 			idea.Project!.WorkingPath,
 			idea.Description,
 			expansionPrompt,
@@ -175,6 +176,7 @@ public partial class IdeaService
 	private async Task<PromptResponse> ExecuteProviderExpansionAsync(
 		IProvider providerInstance,
 		Provider provider,
+		Project project,
 		string workingDirectory,
 		string ideaDescription,
 		string expansionPrompt,
@@ -195,6 +197,7 @@ public partial class IdeaService
 				UseBareMode = provider.Type == ProviderType.Claude
 					&& provider.ConnectionMode == ProviderConnectionMode.CLI,
 				Model = modelName,
+				ReasoningEffort = usePlanningMode ? project.PlanningReasoningEffort : null,
 				DisallowedTools = usePlanningMode ? ProviderPlanningHelper.PlanningDisallowedTools : null
 			},
 			cancellationToken: cancellationToken);

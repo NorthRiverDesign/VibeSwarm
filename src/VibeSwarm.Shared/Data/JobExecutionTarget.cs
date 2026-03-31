@@ -8,6 +8,8 @@ public class JobExecutionTarget
 
 	public string? ModelId { get; set; }
 
+	public string? ReasoningEffort { get; set; }
+
 	public int Order { get; set; }
 
 	public string Source { get; set; } = string.Empty;

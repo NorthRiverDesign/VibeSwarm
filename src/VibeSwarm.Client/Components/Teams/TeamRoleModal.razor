@@ -90,6 +90,35 @@
 						}
 					</div>
 				</div>
+				<div class="col-12 col-lg-6">
+					<label for="team-role-reasoning" class="form-label">Default Reasoning</label>
+					<InputSelect TValue="string" id="team-role-reasoning"
+								 Value="@(TeamRole.DefaultReasoningEffort ?? string.Empty)"
+								 ValueChanged="HandleDefaultReasoningChanged"
+								 ValueExpression="@(() => TeamRole.DefaultReasoningEffort)"
+								 class="form-select"
+								 disabled="@(!TeamRole.DefaultProviderId.HasValue || !CurrentReasoningOptions.Any())">
+						<option value="">Use provider default reasoning</option>
+						@foreach (var reasoning in CurrentReasoningOptions)
+						{
+							<option value="@reasoning">@reasoning</option>
+						}
+					</InputSelect>
+					<div class="form-text">
+						@if (!TeamRole.DefaultProviderId.HasValue)
+						{
+							<span>Select a default provider first.</span>
+						}
+						else if (!CurrentReasoningOptions.Any())
+						{
+							<span>This provider does not expose configurable reasoning levels.</span>
+						}
+						else
+						{
+							<span>Projects can keep this reasoning default or override it per assignment.</span>
+						}
+					</div>
+				</div>
 			</div>
 
 			<div class="mb-3">
@@ -190,6 +219,13 @@
 	private IReadOnlyList<ProviderModel> CurrentProviderModels => TeamRole.DefaultProviderId.HasValue && _providerModelsByProviderId.TryGetValue(TeamRole.DefaultProviderId.Value, out var models)
 		? models
 		: [];
+	private IReadOnlyList<string> CurrentReasoningOptions => TeamRole.DefaultProviderId.HasValue
+		? _providers
+			.Where(provider => provider.Id == TeamRole.DefaultProviderId.Value)
+			.SelectMany(ProviderCapabilities.GetSupportedReasoningEfforts)
+			.Distinct(StringComparer.Ordinal)
+			.ToList()
+		: [];
 
 	protected override async Task OnInitializedAsync()
 	{
@@ -215,6 +251,7 @@
 					DefaultProviderId = EditTeamRole.DefaultProviderId,
 					DefaultProvider = EditTeamRole.DefaultProvider,
 					DefaultModelId = EditTeamRole.DefaultModelId,
+					DefaultReasoningEffort = EditTeamRole.DefaultReasoningEffort,
 					IsEnabled = EditTeamRole.IsEnabled,
 					CreatedAt = EditTeamRole.CreatedAt,
 					UpdatedAt = EditTeamRole.UpdatedAt,
@@ -278,6 +315,7 @@
 			? _providers.FirstOrDefault(provider => provider.Id == providerId.Value)
 			: null;
 		TeamRole.DefaultModelId = null;
+		TeamRole.DefaultReasoningEffort = null;
 
 		if (providerId.HasValue)
 		{
@@ -288,6 +326,14 @@
 	private Task HandleDefaultModelChanged(string? modelId)
 	{
 		TeamRole.DefaultModelId = string.IsNullOrWhiteSpace(modelId) ? null : modelId.Trim();
+		return Task.CompletedTask;
+	}
+
+	private Task HandleDefaultReasoningChanged(string? reasoningEffort)
+	{
+		TeamRole.DefaultReasoningEffort = string.IsNullOrWhiteSpace(reasoningEffort)
+			? null
+			: ProviderCapabilities.NormalizeReasoningEffort(reasoningEffort);
 		return Task.CompletedTask;
 	}
 

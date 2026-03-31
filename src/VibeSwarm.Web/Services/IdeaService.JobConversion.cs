@@ -76,6 +76,8 @@ public partial class IdeaService
 				Title = idea.Description,  // Use the original idea text as the title
 				GoalPrompt = goalPrompt,
 				Branch = currentBranch,
+				ModelUsed = await ResolveJobModelAsync(idea.ProjectId, defaultProvider.Id, cancellationToken),
+				ReasoningEffort = await ResolveJobReasoningAsync(idea.ProjectId, defaultProvider.Id, cancellationToken),
 				Status = JobStatus.New
 			};
 
@@ -119,6 +121,41 @@ public partial class IdeaService
 			.FirstOrDefaultAsync(cancellationToken);
 
 		return projectProvider ?? await _providerService.GetDefaultAsync(cancellationToken);
+	}
+
+	private async Task<string?> ResolveJobModelAsync(Guid projectId, Guid providerId, CancellationToken cancellationToken)
+	{
+		var projectSelection = await _dbContext.ProjectProviders
+			.AsNoTracking()
+			.Where(selection => selection.ProjectId == projectId && selection.IsEnabled && selection.ProviderId == providerId)
+			.OrderBy(selection => selection.Priority)
+			.Select(selection => selection.PreferredModelId)
+			.FirstOrDefaultAsync(cancellationToken);
+
+		return string.IsNullOrWhiteSpace(projectSelection) ? null : projectSelection.Trim();
+	}
+
+	private async Task<string?> ResolveJobReasoningAsync(Guid projectId, Guid providerId, CancellationToken cancellationToken)
+	{
+		var projectSelection = await _dbContext.ProjectProviders
+			.AsNoTracking()
+			.Where(selection => selection.ProjectId == projectId && selection.IsEnabled && selection.ProviderId == providerId)
+			.OrderBy(selection => selection.Priority)
+			.Select(selection => selection.PreferredReasoningEffort)
+			.FirstOrDefaultAsync(cancellationToken);
+
+		if (!string.IsNullOrWhiteSpace(projectSelection))
+		{
+			return ProviderCapabilities.NormalizeReasoningEffort(projectSelection);
+		}
+
+		var provider = await _dbContext.Providers
+			.AsNoTracking()
+			.Where(item => item.Id == providerId)
+			.Select(item => new { item.DefaultReasoningEffort })
+			.FirstOrDefaultAsync(cancellationToken);
+
+		return ProviderCapabilities.NormalizeReasoningEffort(provider?.DefaultReasoningEffort);
 	}
 
 	private static string BuildPromptFromExpanded(string originalIdea, string expandedDescription)

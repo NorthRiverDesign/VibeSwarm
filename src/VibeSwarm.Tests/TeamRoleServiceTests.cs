@@ -140,6 +140,41 @@ public sealed class TeamRoleServiceTests : IDisposable
 	}
 
 	[Fact]
+	public async Task CreateAsync_PersistsNormalizedDefaultReasoningEffort()
+	{
+		await using var dbContext = CreateDbContext();
+		var provider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "GitHub Copilot",
+			Type = ProviderType.Copilot,
+			ConnectionMode = ProviderConnectionMode.CLI,
+			IsEnabled = true
+		};
+		dbContext.Providers.Add(provider);
+		dbContext.ProviderModels.Add(new ProviderModel
+		{
+			ProviderId = provider.Id,
+			ModelId = "gpt-5.4",
+			DisplayName = "GPT-5.4",
+			IsAvailable = true,
+			IsDefault = true
+		});
+		await dbContext.SaveChangesAsync();
+
+		var service = new TeamRoleService(dbContext);
+		var created = await service.CreateAsync(new TeamRole
+		{
+			Name = "Reasoning Engineer",
+			DefaultProviderId = provider.Id,
+			DefaultModelId = "gpt-5.4",
+			DefaultReasoningEffort = " High "
+		});
+
+		Assert.Equal("high", created.DefaultReasoningEffort);
+	}
+
+	[Fact]
 	public async Task CreateAsync_WithDefaultProviderNavigation_DoesNotReinsertProvider()
 	{
 		await using var dbContext = CreateDbContext();
@@ -211,6 +246,33 @@ public sealed class TeamRoleServiceTests : IDisposable
 		}));
 
 		Assert.Equal("The selected default model is not available for the chosen provider.", exception.Message);
+	}
+
+	[Fact]
+	public async Task CreateAsync_DefaultReasoningWithoutSupportedProvider_Throws()
+	{
+		await using var dbContext = CreateDbContext();
+		var provider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Unsupported Copilot REST",
+			Type = ProviderType.Copilot,
+			ConnectionMode = ProviderConnectionMode.REST,
+			IsEnabled = true
+		};
+		dbContext.Providers.Add(provider);
+		await dbContext.SaveChangesAsync();
+
+		var service = new TeamRoleService(dbContext);
+
+		var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => service.CreateAsync(new TeamRole
+		{
+			Name = "Unsupported Reasoner",
+			DefaultProviderId = provider.Id,
+			DefaultReasoningEffort = "high"
+		}));
+
+		Assert.Equal("The selected default reasoning level is not supported by the chosen provider.", exception.Message);
 	}
 
 	private VibeSwarmDbContext CreateDbContext()

@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Models;
+using VibeSwarm.Shared.Providers;
 using VibeSwarm.Shared.VersionControl;
 
 namespace VibeSwarm.Shared.Services;
@@ -190,7 +191,7 @@ public partial class JobService
             .FirstOrDefaultAsync(cancellationToken);
     }
 
-    public async Task<bool> ResetJobWithOptionsAsync(Guid id, Guid? providerId = null, string? modelId = null, CancellationToken cancellationToken = default)
+    public async Task<bool> ResetJobWithOptionsAsync(Guid id, Guid? providerId = null, string? modelId = null, string? reasoningEffort = null, CancellationToken cancellationToken = default)
     {
         var job = await _dbContext.Jobs
             .FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
@@ -247,9 +248,11 @@ public partial class JobService
         job.PlanningOutput = null;
         job.PlanningProviderId = null;
         job.PlanningModelUsed = null;
+        job.PlanningReasoningEffortUsed = null;
         job.PlanningGeneratedAt = null;
         job.SessionId = null; // Clear session for fresh start with potentially new provider
         job.ModelUsed = modelId; // Set the requested model (null means use provider default)
+        job.ReasoningEffort = ProviderCapabilities.NormalizeReasoningEffort(reasoningEffort);
         job.RetryCount++; // Increment retry count to track attempts
         job.ActiveExecutionIndex = 0;
         job.ExecutionPlan = null;

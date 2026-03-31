@@ -83,6 +83,7 @@ public partial class ProjectDetail
         NewJob.TargetBranch = Project?.DefaultTargetBranch ?? CurrentBranch;
         SelectedModelId = string.Empty;
         AvailableModels.Clear();
+        NewJob.ReasoningEffort = null;
 
         var initialProvider = GetPreferredJobProvider();
         if (initialProvider != null)
@@ -178,6 +179,10 @@ public partial class ProjectDetail
                 .ToList();
 
             SelectedModelId = ProjectExecutionDefaults.ResolveModelId(Project, providerId, AvailableModels);
+            var provider = GetAllowedJobProviders().FirstOrDefault(item => item.Id == providerId);
+            NewJob.ReasoningEffort = provider != null
+                ? ProjectExecutionDefaults.ResolveReasoningEffort(Project, provider)
+                : null;
         }
         finally
         {

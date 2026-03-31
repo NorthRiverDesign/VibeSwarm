@@ -63,6 +63,28 @@ else
 <div class="form-text">Leave empty to use the project's default model, or the provider default when no project override is set.</div>
 </div>
 
+<div class="mb-3">
+<label for="reasoning" class="form-label">Reasoning</label>
+<InputSelect id="reasoning" @bind-Value="FormModel.ReasoningEffort" class="form-select"
+disabled="@(!FormModel.ProviderId.HasValue || !ReasoningOptions.Any())">
+<option value="">Use project/provider default</option>
+@foreach (var reasoning in ReasoningOptions)
+{
+<option value="@reasoning">@reasoning</option>
+}
+</InputSelect>
+<div class="form-text">
+@if (FormModel.ProviderId.HasValue && !ReasoningOptions.Any())
+{
+<span>This provider does not expose configurable reasoning levels.</span>
+}
+else
+{
+<span>Leave empty to use the project's default reasoning, or the provider default when no project override is set.</span>
+}
+</div>
+</div>
+
 @if (ShowBranchSelector && Branches.Any())
 {
 <div class="mb-3">
@@ -255,6 +277,12 @@ private readonly string _formId = $"create-job-form-{Guid.NewGuid():N}";
 private bool ShowAdvancedOptions { get; set; }
 private bool _previousIsVisible;
 private CreateJobFormModel FormModel { get; set; } = new();
+private IReadOnlyList<string> ReasoningOptions => FormModel.ProviderId.HasValue
+? Providers.Where(provider => provider.Id == FormModel.ProviderId.Value)
+	.SelectMany(ProviderCapabilities.GetSupportedReasoningEfforts)
+	.Distinct(StringComparer.Ordinal)
+	.ToList()
+: [];
 
 protected override void OnParametersSet()
 {

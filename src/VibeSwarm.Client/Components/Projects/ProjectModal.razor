@@ -425,6 +425,9 @@ FormModel.TeamAssignments.Add(new ProjectTeamRole
 	PreferredModelId = teamRole.DefaultProviderId == defaultProvider.Id
 		? teamRole.DefaultModelId
 		: null,
+	PreferredReasoningEffort = teamRole.DefaultProviderId == defaultProvider.Id
+		? teamRole.DefaultReasoningEffort
+		: null,
 	IsEnabled = true,
 	CreatedAt = DateTime.UtcNow,
 	UpdatedAt = DateTime.UtcNow
@@ -490,6 +493,9 @@ await LoadProviderModelsAsync(change.ProviderId);
 selection.PreferredModelId = string.IsNullOrWhiteSpace(change.PreferredModelId)
 ? null
 : change.PreferredModelId.Trim();
+selection.PreferredReasoningEffort = string.IsNullOrWhiteSpace(change.PreferredReasoningEffort)
+? null
+: ProviderCapabilities.NormalizeReasoningEffort(change.PreferredReasoningEffort);
 selection.UpdatedAt = DateTime.UtcNow;
 }
 
@@ -504,6 +510,7 @@ if (assignment == null)
 assignment.ProviderId = change.ProviderId;
 assignment.Provider = ResolveProvider(change.ProviderId);
 assignment.PreferredModelId = null;
+assignment.PreferredReasoningEffort = null;
 assignment.UpdatedAt = DateTime.UtcNow;
 await LoadProviderModelsAsync(change.ProviderId);
 }
@@ -524,6 +531,9 @@ if (!_providerModelsByProviderId.ContainsKey(assignment.ProviderId))
 assignment.PreferredModelId = string.IsNullOrWhiteSpace(change.PreferredModelId)
 	? null
 	: change.PreferredModelId.Trim();
+assignment.PreferredReasoningEffort = string.IsNullOrWhiteSpace(change.PreferredReasoningEffort)
+	? null
+	: ProviderCapabilities.NormalizeReasoningEffort(change.PreferredReasoningEffort);
 assignment.UpdatedAt = DateTime.UtcNow;
 }
 
@@ -577,6 +587,7 @@ await LoadPlanningModelsAsync();
 private async Task HandlePlanningProviderChanged()
 {
 FormModel.PlanningModelId = null;
+FormModel.PlanningReasoningEffort = null;
 EnsurePlanningProviderSelection();
 await LoadPlanningModelsAsync();
 }
@@ -593,6 +604,7 @@ if (planningProviders.Count == 0)
 {
 FormModel.PlanningProviderId = null;
 FormModel.PlanningModelId = null;
+FormModel.PlanningReasoningEffort = null;
 _planningModels = [];
 return;
 }
@@ -601,6 +613,7 @@ if (!FormModel.PlanningProviderId.HasValue || !planningProviders.Any(provider =>
 {
 FormModel.PlanningProviderId = planningProviders[0].Id;
 FormModel.PlanningModelId = null;
+FormModel.PlanningReasoningEffort = null;
 _planningModels = [];
 }
 }
@@ -721,6 +734,14 @@ var selection = FormModel.ProviderSelections.FirstOrDefault(projectProvider => p
 	{
 	selection.PreferredModelId = null;
 	}
+	if (selection != null)
+	{
+		var provider = ResolveProvider(providerId);
+		if (provider == null || !ProviderCapabilities.SupportsReasoningEffort(provider, selection.PreferredReasoningEffort))
+		{
+			selection.PreferredReasoningEffort = null;
+		}
+	}
 
 	foreach (var assignment in FormModel.TeamAssignments.Where(projectTeamRole => projectTeamRole.ProviderId == providerId))
 	{
@@ -728,6 +749,11 @@ var selection = FormModel.ProviderSelections.FirstOrDefault(projectProvider => p
 			!_providerModelsByProviderId[providerId].Any(model => string.Equals(model.ModelId, assignment.PreferredModelId, StringComparison.Ordinal)))
 		{
 			assignment.PreferredModelId = null;
+		}
+		var provider = ResolveProvider(providerId);
+		if (provider == null || !ProviderCapabilities.SupportsReasoningEffort(provider, assignment.PreferredReasoningEffort))
+		{
+			assignment.PreferredReasoningEffort = null;
 		}
 	}
 }
@@ -747,6 +773,7 @@ DefaultTargetBranch = source.DefaultTargetBranch,
 PlanningEnabled = source.PlanningEnabled,
 PlanningProviderId = source.PlanningProviderId,
 PlanningModelId = source.PlanningModelId,
+PlanningReasoningEffort = source.PlanningReasoningEffort,
 PromptContext = source.PromptContext,
 Memory = source.Memory,
 BuildVerificationEnabled = source.BuildVerificationEnabled,
@@ -764,10 +791,11 @@ CreatedAt = source.CreatedAt,
 Id = projectProvider.Id,
 ProjectId = projectProvider.ProjectId,
 ProviderId = projectProvider.ProviderId,
-Priority = projectProvider.Priority,
-IsEnabled = projectProvider.IsEnabled,
-PreferredModelId = projectProvider.PreferredModelId,
-CreatedAt = projectProvider.CreatedAt,
+	Priority = projectProvider.Priority,
+	IsEnabled = projectProvider.IsEnabled,
+	PreferredModelId = projectProvider.PreferredModelId,
+	PreferredReasoningEffort = projectProvider.PreferredReasoningEffort,
+	CreatedAt = projectProvider.CreatedAt,
 UpdatedAt = projectProvider.UpdatedAt,
 Provider = ResolveProvider(projectProvider.ProviderId)
 	})
@@ -780,6 +808,7 @@ Provider = ResolveProvider(projectProvider.ProviderId)
 		TeamRoleId = projectTeamRole.TeamRoleId,
 		ProviderId = projectTeamRole.ProviderId,
 		PreferredModelId = projectTeamRole.PreferredModelId,
+		PreferredReasoningEffort = projectTeamRole.PreferredReasoningEffort,
 		IsEnabled = projectTeamRole.IsEnabled,
 		CreatedAt = projectTeamRole.CreatedAt,
 		UpdatedAt = projectTeamRole.UpdatedAt,

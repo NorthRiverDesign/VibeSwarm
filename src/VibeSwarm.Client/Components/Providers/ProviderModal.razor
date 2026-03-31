@@ -149,6 +149,27 @@
 					empty for no limit.</div>
 				</div>
 
+				<div class="mb-3">
+					<label for="modal-defaultReasoning" class="form-label">Default Reasoning</label>
+					<InputSelect id="modal-defaultReasoning" @bind-Value="Provider.DefaultReasoningEffort" class="form-select" disabled="@(!ReasoningOptions.Any())">
+						<option value="">Use provider default behavior</option>
+						@foreach (var reasoning in ReasoningOptions)
+						{
+							<option value="@reasoning">@reasoning</option>
+						}
+					</InputSelect>
+					<div class="form-text">
+						@if (!ReasoningOptions.Any())
+						{
+							<span>This provider/mode does not expose configurable reasoning levels.</span>
+						}
+						else
+						{
+							<span>New jobs and project defaults can inherit this reasoning level unless they override it.</span>
+						}
+					</div>
+				</div>
+
 				@* Usage Limit Configuration *@
 				@if (Provider.Type == ProviderType.Copilot || Provider.Type == ProviderType.Claude)
 				{
@@ -275,6 +296,7 @@
 	private bool _previousIsVisible;
 
 	private IReadOnlyList<string> ValidationErrors => ProviderCapabilities.ValidateConfiguration(Provider);
+	private IReadOnlyList<string> ReasoningOptions => ProviderCapabilities.GetSupportedReasoningEfforts(Provider);
 
 	protected override void OnParametersSet()
 	{
@@ -295,6 +317,7 @@
 					ExecutablePath = EditProvider.ExecutablePath,
 					ApiEndpoint = EditProvider.ApiEndpoint,
 					ApiKey = EditProvider.ApiKey,
+					DefaultReasoningEffort = EditProvider.DefaultReasoningEffort,
 					IsEnabled = EditProvider.IsEnabled,
 					MaxExecutionMinutes = EditProvider.MaxExecutionMinutes,
 					ConfiguredUsageLimit = EditProvider.ConfiguredUsageLimit,

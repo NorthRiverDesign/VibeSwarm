@@ -66,6 +66,54 @@
 							}
 						</div>
 					</div>
+
+					<div class="mt-3">
+						<label for="modal-planningReasoning" class="form-label">
+							<i class="bi bi-lightning-charge me-1"></i>Planning Reasoning
+							<span class="text-body-secondary fw-normal">(optional)</span>
+						</label>
+						<InputSelect id="modal-planningReasoning" @bind-Value="Project.PlanningReasoningEffort" class="form-select" disabled="@(!Project.PlanningProviderId.HasValue || !PlanningReasoningOptions.Any())">
+							<option value="">Use provider default reasoning</option>
+							@foreach (var reasoning in PlanningReasoningOptions)
+							{
+								<option value="@reasoning">@reasoning</option>
+							}
+						</InputSelect>
+						<div class="form-text">
+							@if (Project.PlanningProviderId.HasValue && !PlanningReasoningOptions.Any())
+							{
+								<span>This provider does not expose configurable reasoning levels for planning.</span>
+							}
+							else
+							{
+								<span>Leave this blank to use the provider's default planning reasoning.</span>
+							}
+						</div>
+					</div>
+
+					<div class="mt-3">
+						<label for="modal-planningReasoning" class="form-label">
+							<i class="bi bi-lightning-charge me-1"></i>Planning Reasoning
+							<span class="text-body-secondary fw-normal">(optional)</span>
+						</label>
+						<InputSelect id="modal-planningReasoning" @bind-Value="Project.PlanningReasoningEffort" class="form-select" disabled="@(!Project.PlanningProviderId.HasValue || !PlanningReasoningOptions.Any())">
+							<option value="">Use provider default reasoning</option>
+							@foreach (var reasoning in PlanningReasoningOptions)
+							{
+								<option value="@reasoning">@reasoning</option>
+							}
+						</InputSelect>
+						<div class="form-text">
+							@if (Project.PlanningProviderId.HasValue && !PlanningReasoningOptions.Any())
+							{
+								<span>This provider does not expose configurable reasoning levels for planning.</span>
+							}
+							else
+							{
+								<span>Leave this blank to use the provider's default planning reasoning.</span>
+							}
+						</div>
+					</div>
 				</div>
 			}
 		}
@@ -81,6 +129,14 @@ public ProjectModalFormModel Project { get; set; } = default!;
 
 	[Parameter]
 	public IReadOnlyList<ProviderModel> PlanningModels { get; set; } = [];
+
+	private IReadOnlyList<string> PlanningReasoningOptions => Project.PlanningProviderId.HasValue
+		? AvailableProviders
+			.Where(provider => provider.Id == Project.PlanningProviderId.Value)
+			.SelectMany(ProviderCapabilities.GetSupportedReasoningEfforts)
+			.Distinct(StringComparer.Ordinal)
+			.ToList()
+		: [];
 
 	[Parameter]
 	public EventCallback OnPlanningEnabledChanged { get; set; }

@@ -40,6 +40,7 @@ public sealed class VersionControlServiceBranchDeliveryTests
 		executor.AddGitResult("rev-parse --verify refs/heads/feature/test", new GitCommandResult { ExitCode = 0, Output = "feature/test\n" });
 		executor.AddGitResult("rev-parse --verify refs/remotes/origin/main", new GitCommandResult { ExitCode = 0, Output = "origin/main\n" });
 		executor.AddGitResult("rev-parse --verify refs/heads/main", new GitCommandResult { ExitCode = 0, Output = "main\n" });
+		executor.AddGitResult("merge-base --is-ancestor \"feature/test\" \"origin/main\"", new GitCommandResult { ExitCode = 1 });
 		executor.AddGitResult(command => command.StartsWith("worktree add --force --detach ", StringComparison.Ordinal) && command.EndsWith("\"origin/main\"", StringComparison.Ordinal), new GitCommandResult { ExitCode = 0 });
 		executor.AddGitResult("merge --no-commit --no-ff \"feature/test\"", new GitCommandResult { ExitCode = 0, Output = "Automatic merge went well." });
 		executor.AddGitResult(command => command.StartsWith("worktree remove --force ", StringComparison.Ordinal), new GitCommandResult { ExitCode = 0 });
@@ -67,6 +68,7 @@ public sealed class VersionControlServiceBranchDeliveryTests
 		executor.AddGitResult("rev-parse --verify refs/heads/feature/test", new GitCommandResult { ExitCode = 0, Output = "feature/test\n" });
 		executor.AddGitResult("rev-parse --verify refs/remotes/origin/main", new GitCommandResult { ExitCode = 0, Output = "origin/main\n" });
 		executor.AddGitResult("rev-parse --verify refs/heads/main", new GitCommandResult { ExitCode = 0, Output = "main\n" });
+		executor.AddGitResult("merge-base --is-ancestor \"feature/test\" \"origin/main\"", new GitCommandResult { ExitCode = 1 });
 		executor.AddGitResult(command => command.StartsWith("worktree add --force --detach ", StringComparison.Ordinal) && command.EndsWith("\"origin/main\"", StringComparison.Ordinal), new GitCommandResult { ExitCode = 0 });
 		executor.AddGitResult("merge --no-commit --no-ff \"feature/test\"", new GitCommandResult { ExitCode = 1, Error = "CONFLICT (content): Merge conflict in README.md" });
 		executor.AddGitResult(command => command.StartsWith("worktree remove --force ", StringComparison.Ordinal), new GitCommandResult { ExitCode = 0 });
@@ -90,6 +92,7 @@ public sealed class VersionControlServiceBranchDeliveryTests
 		executor.AddGitResult("rev-parse --verify refs/heads/feature/test", new GitCommandResult { ExitCode = 0, Output = "feature/test\n" });
 		executor.AddGitResult("rev-parse --verify refs/remotes/origin/main", new GitCommandResult { ExitCode = 0, Output = "origin/main\n" });
 		executor.AddGitResult("rev-parse --verify refs/heads/main", new GitCommandResult { ExitCode = 0, Output = "main\n" });
+		executor.AddGitResult("merge-base --is-ancestor \"feature/test\" \"origin/main\"", new GitCommandResult { ExitCode = 1 });
 		executor.AddGitResult(command => command.StartsWith("worktree add --force -B \"main\" ", StringComparison.Ordinal) && command.EndsWith("\"origin/main\"", StringComparison.Ordinal), new GitCommandResult { ExitCode = 0 });
 		executor.AddGitResult("merge --no-ff --no-edit \"feature/test\"", new GitCommandResult { ExitCode = 0, Output = "Merge made by the 'ort' strategy." });
 		executor.AddGitResult("rev-parse HEAD", new GitCommandResult { ExitCode = 0, Output = "abc123def456\n" });
@@ -119,6 +122,7 @@ public sealed class VersionControlServiceBranchDeliveryTests
 		executor.AddGitResult("rev-parse --verify refs/heads/feature/test", new GitCommandResult { ExitCode = 0, Output = "feature/test\n" });
 		executor.AddGitResult("rev-parse --verify refs/remotes/origin/main", new GitCommandResult { ExitCode = 1, Error = "fatal: Needed a single revision" });
 		executor.AddGitResult("rev-parse --verify refs/heads/main", new GitCommandResult { ExitCode = 0, Output = "main\n" });
+		executor.AddGitResult("merge-base --is-ancestor \"feature/test\" \"main\"", new GitCommandResult { ExitCode = 1 });
 		executor.AddGitResult(command => command.StartsWith("worktree add --force ", StringComparison.Ordinal) && !command.Contains("--detach", StringComparison.Ordinal) && !command.Contains(" -B ", StringComparison.Ordinal) && command.EndsWith("\"main\"", StringComparison.Ordinal), new GitCommandResult { ExitCode = 0 });
 		executor.AddGitResult("merge --no-ff --no-edit \"feature/test\"", new GitCommandResult { ExitCode = 0, Output = "Merge made by the 'ort' strategy." });
 		executor.AddGitResult("rev-parse HEAD", new GitCommandResult { ExitCode = 0, Output = "abc123def456\n" });

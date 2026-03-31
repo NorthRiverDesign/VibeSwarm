@@ -49,6 +49,11 @@ public partial class JobService
         {
             job.ModelUsed = targets[0].ModelId;
         }
+
+        if (string.IsNullOrWhiteSpace(job.ReasoningEffort) && targets.Count > 0)
+        {
+            job.ReasoningEffort = targets[0].ReasoningEffort;
+        }
     }
 
     private static string BuildContinuationPrompt(string previousGoalPrompt, string followUpPrompt)
@@ -116,6 +121,7 @@ public partial class JobService
         job.PlanningOutput = null;
         job.PlanningProviderId = null;
         job.PlanningModelUsed = null;
+        job.PlanningReasoningEffortUsed = null;
         job.PlanningGeneratedAt = null;
         job.CurrentCycle = 1;
         job.ActiveExecutionIndex = 0;
@@ -174,42 +180,48 @@ public partial class JobService
             modelsByProvider.TryGetValue(provider.Id, out var providerModels);
             providerModels ??= [];
 
-            var plannedModels = new List<(string? ModelId, string Source)>();
+            var plannedTargets = new List<(string? ModelId, string? ReasoningEffort, string Source)>();
+            var selectedReasoning = provider.Id == job.ProviderId
+                ? job.ReasoningEffort
+                : selection?.PreferredReasoningEffort ?? provider.DefaultReasoningEffort;
             if (provider.Id == job.ProviderId)
             {
                 if (!string.IsNullOrWhiteSpace(job.ModelUsed))
                 {
-                    plannedModels.Add((job.ModelUsed, "job-selected-model"));
+                    plannedTargets.Add((job.ModelUsed, selectedReasoning, "job-selected-model"));
                 }
                 else if (!string.IsNullOrWhiteSpace(selection?.PreferredModelId))
                 {
-                    plannedModels.Add((selection.PreferredModelId, "project-preferred-model"));
+                    plannedTargets.Add((selection.PreferredModelId, selectedReasoning, "project-preferred-model"));
                 }
             }
             else if (!string.IsNullOrWhiteSpace(selection?.PreferredModelId))
             {
-                plannedModels.Add((selection.PreferredModelId, "project-preferred-model"));
+                plannedTargets.Add((selection.PreferredModelId, selectedReasoning, "project-preferred-model"));
             }
 
             var defaultModel = providerModels.FirstOrDefault(m => m.IsDefault);
             if (defaultModel != null)
             {
-                plannedModels.Add((defaultModel.ModelId, "provider-default-model"));
+                plannedTargets.Add((defaultModel.ModelId, selectedReasoning, "provider-default-model"));
             }
 
             foreach (var model in providerModels)
             {
-                plannedModels.Add((model.ModelId, "provider-available-model"));
+                plannedTargets.Add((model.ModelId, selectedReasoning, "provider-available-model"));
             }
 
-            if (plannedModels.Count == 0)
+            if (plannedTargets.Count == 0)
             {
-                plannedModels.Add((null, "provider-default-model"));
+                plannedTargets.Add((null, selectedReasoning, "provider-default-model"));
             }
 
-            foreach (var candidate in plannedModels)
+            foreach (var candidate in plannedTargets)
             {
-                if (targets.Any(existing => existing.ProviderId == provider.Id && existing.ModelId == candidate.ModelId))
+                if (targets.Any(existing =>
+                    existing.ProviderId == provider.Id &&
+                    existing.ModelId == candidate.ModelId &&
+                    existing.ReasoningEffort == candidate.ReasoningEffort))
                 {
                     continue;
                 }
@@ -219,6 +231,7 @@ public partial class JobService
                     ProviderId = provider.Id,
                     ProviderName = provider.Name,
                     ModelId = candidate.ModelId,
+                    ReasoningEffort = candidate.ReasoningEffort,
                     Order = order++,
                     Source = candidate.Source
                 });
@@ -237,14 +250,25 @@ public partial class JobService
                 throw new InvalidOperationException("Selecting a model requires selecting a provider.");
             }
 
+            if (!string.IsNullOrWhiteSpace(job.ReasoningEffort))
+            {
+                throw new InvalidOperationException("Selecting a reasoning level requires selecting a provider.");
+            }
+
             return;
         }
 
-        var providerExists = await _dbContext.Providers
-            .AnyAsync(provider => provider.Id == job.ProviderId && provider.IsEnabled, cancellationToken);
-        if (!providerExists)
+        var provider = await _dbContext.Providers
+            .AsNoTracking()
+            .FirstOrDefaultAsync(provider => provider.Id == job.ProviderId && provider.IsEnabled, cancellationToken);
+        if (provider == null)
         {
             throw new InvalidOperationException("The selected provider is not enabled.");
+        }
+
+        if (!ProviderCapabilities.SupportsReasoningEffort(provider, job.ReasoningEffort))
+        {
+            throw new InvalidOperationException("The selected reasoning level is not supported by the chosen provider.");
         }
 
         if (string.IsNullOrWhiteSpace(job.ModelUsed))

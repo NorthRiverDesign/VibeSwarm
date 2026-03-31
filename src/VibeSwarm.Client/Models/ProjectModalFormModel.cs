@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Models;
+using VibeSwarm.Shared.Providers;
 using VibeSwarm.Shared.Validation;
 
 namespace VibeSwarm.Client.Models;
@@ -36,6 +37,9 @@ public sealed class ProjectModalFormModel : IValidatableObject
 
 	[StringLength(ValidationLimits.ProjectPlanningModelIdMaxLength)]
 	public string? PlanningModelId { get; set; }
+
+	[StringLength(ValidationLimits.ReasoningEffortMaxLength)]
+	public string? PlanningReasoningEffort { get; set; }
 
 	public Guid? IdeaInferenceProviderId { get; set; }
 
@@ -101,6 +105,7 @@ public sealed class ProjectModalFormModel : IValidatableObject
 			PlanningEnabled = source.PlanningEnabled,
 			PlanningProviderId = source.PlanningProviderId,
 			PlanningModelId = source.PlanningModelId,
+			PlanningReasoningEffort = source.PlanningReasoningEffort,
 			IdeaInferenceProviderId = source.IdeaInferenceProviderId,
 			IdeaInferenceModelId = source.IdeaInferenceModelId,
 			CreatedAt = source.CreatedAt,
@@ -134,6 +139,7 @@ public sealed class ProjectModalFormModel : IValidatableObject
 			PlanningEnabled = PlanningEnabled,
 			PlanningProviderId = PlanningProviderId,
 			PlanningModelId = string.IsNullOrWhiteSpace(PlanningModelId) ? null : PlanningModelId.Trim(),
+			PlanningReasoningEffort = ProviderCapabilities.NormalizeReasoningEffort(PlanningReasoningEffort),
 			IdeaInferenceProviderId = IdeaInferenceProviderId,
 			IdeaInferenceModelId = string.IsNullOrWhiteSpace(IdeaInferenceModelId) ? null : IdeaInferenceModelId.Trim(),
 			CreatedAt = CreatedAt,

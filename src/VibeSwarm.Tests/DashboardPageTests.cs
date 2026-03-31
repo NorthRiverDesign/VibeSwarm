@@ -53,7 +53,7 @@ public sealed class DashboardPageTests
 		Assert.Contains("Name", html);
 		Assert.Contains("Claude", html);
 		Assert.DoesNotContain("Copilot", html);
-		Assert.Contains("row g-2 g-lg-4", html);
+		Assert.Contains("row g-3", html);
 		Assert.Contains("row row-cols-1 row-cols-md-2 row-cols-xl-3 g-2 g-lg-3", html);
 		Assert.True(html.IndexOf("Beta", StringComparison.Ordinal) < html.IndexOf("Alpha", StringComparison.Ordinal));
 		Assert.True(html.IndexOf("Alpha", StringComparison.Ordinal) < html.IndexOf("Gamma", StringComparison.Ordinal));
@@ -107,6 +107,7 @@ public sealed class DashboardPageTests
 		services.AddSingleton(providerService);
 		services.AddSingleton(projectService);
 		services.AddSingleton<IVersionControlService>(new FakeVersionControlService());
+		services.AddSingleton<IIdeaService>(new FakeIdeaService());
 		services.AddSingleton<NavigationManager>(new TestNavigationManager());
 		services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
 		services.AddSingleton(new HttpProviderService(new HttpClient(new StaticJsonHandler())
@@ -271,6 +272,38 @@ public sealed class DashboardPageTests
 		public Task<IReadOnlyDictionary<string, string>> GetRemotesAsync(string workingDirectory, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<GitOperationResult> CloneWithGitHubCliAsync(string ownerRepo, string targetDirectory, Action<string>? progressCallback = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<GitOperationResult> PruneRemoteBranchesAsync(string workingDirectory, string remoteName = "origin", CancellationToken cancellationToken = default) => throw new NotSupportedException();
+	}
+
+	private sealed class FakeIdeaService : IIdeaService
+	{
+		public Task<IEnumerable<Idea>> GetByProjectIdAsync(Guid projectId, CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Idea>>([]);
+		public Task<ProjectIdeasListResult> GetPagedByProjectIdAsync(Guid projectId, int page = 1, int pageSize = 10, CancellationToken cancellationToken = default) => Task.FromResult(new ProjectIdeasListResult());
+		public Task<Idea?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult<Idea?>(null);
+		public Task<Idea> CreateAsync(Idea idea, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<Idea> UpdateAsync(Idea idea, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task DeleteAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<Idea?> GetNextUnprocessedAsync(Guid projectId, CancellationToken cancellationToken = default) => Task.FromResult<Idea?>(null);
+		public Task<Job?> ConvertToJobAsync(Guid ideaId, CancellationToken cancellationToken = default) => Task.FromResult<Job?>(null);
+		public Task<bool> CompleteIdeaFromJobAsync(Guid jobId, CancellationToken cancellationToken = default) => Task.FromResult(false);
+		public Task<bool> HandleJobCompletionAsync(Guid jobId, bool success, CancellationToken cancellationToken = default) => Task.FromResult(false);
+		public Task<Idea?> GetByJobIdAsync(Guid jobId, CancellationToken cancellationToken = default) => Task.FromResult<Idea?>(null);
+		public Task StartProcessingAsync(Guid projectId, bool autoCommit = false, CancellationToken cancellationToken = default) => Task.CompletedTask;
+		public Task StopProcessingAsync(Guid projectId, CancellationToken cancellationToken = default) => Task.CompletedTask;
+		public Task<bool> IsProcessingActiveAsync(Guid projectId, CancellationToken cancellationToken = default) => Task.FromResult(false);
+		public Task<bool> ProcessNextIdeaIfReadyAsync(Guid projectId, CancellationToken cancellationToken = default) => Task.FromResult(false);
+		public Task<IEnumerable<Guid>> GetActiveProcessingProjectsAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Guid>>([]);
+		public Task RecoverStuckIdeasAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+		public Task ReorderIdeasAsync(Guid projectId, IEnumerable<Guid> ideaIdsInOrder, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<Idea> CopyToProjectAsync(Guid ideaId, Guid targetProjectId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<Idea> MoveToProjectAsync(Guid ideaId, Guid targetProjectId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<Idea?> ExpandIdeaAsync(Guid ideaId, IdeaExpansionRequest? request = null, CancellationToken cancellationToken = default) => Task.FromResult<Idea?>(null);
+		public Task<Idea?> CancelExpansionAsync(Guid ideaId, CancellationToken cancellationToken = default) => Task.FromResult<Idea?>(null);
+		public Task<Idea?> ApproveExpansionAsync(Guid ideaId, string? editedDescription = null, CancellationToken cancellationToken = default) => Task.FromResult<Idea?>(null);
+		public Task<Idea?> RejectExpansionAsync(Guid ideaId, CancellationToken cancellationToken = default) => Task.FromResult<Idea?>(null);
+		public Task<GlobalIdeasProcessingStatus> GetGlobalProcessingStatusAsync(CancellationToken cancellationToken = default) => Task.FromResult(new GlobalIdeasProcessingStatus());
+		public Task StartAllProcessingAsync(bool autoCommit = false, CancellationToken cancellationToken = default) => Task.CompletedTask;
+		public Task StopAllProcessingAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+		public Task<SuggestIdeasResult> SuggestIdeasFromCodebaseAsync(Guid projectId, SuggestIdeasRequest? request = null, CancellationToken cancellationToken = default) => Task.FromResult(new SuggestIdeasResult());
 	}
 
 	private sealed class StaticJsonHandler : HttpMessageHandler

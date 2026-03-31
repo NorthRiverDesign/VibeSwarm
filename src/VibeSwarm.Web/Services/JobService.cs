@@ -380,9 +380,11 @@ public partial class JobService : IJobService
             {
                 primaryJobDb.ModelUsed = firstAssignment.PreferredModelId;
             }
+            primaryJobDb.ReasoningEffort = firstAssignment.PreferredReasoningEffort;
             // Update the in-memory job so callers see the changes
             primaryJob.SwarmId = swarmId;
             primaryJob.TeamRoleId = firstAssignment.TeamRoleId;
+            primaryJob.ReasoningEffort = firstAssignment.PreferredReasoningEffort;
         }
 
         // Create sibling jobs for each remaining role
@@ -398,6 +400,7 @@ public partial class JobService : IJobService
                 ProjectId = primaryJob.ProjectId,
                 ProviderId = assignment.ProviderId,
                 ModelUsed = string.IsNullOrWhiteSpace(assignment.PreferredModelId) ? null : assignment.PreferredModelId,
+                ReasoningEffort = assignment.PreferredReasoningEffort,
                 Branch = primaryJob.Branch,
                 TargetBranch = primaryJob.TargetBranch,
                 GitChangeDeliveryMode = primaryJob.GitChangeDeliveryMode,
@@ -417,6 +420,7 @@ public partial class JobService : IJobService
                 roleJob.ProviderId = assignment.ProviderId;
                 if (!string.IsNullOrWhiteSpace(assignment.PreferredModelId))
                     roleJob.ModelUsed = assignment.PreferredModelId;
+                roleJob.ReasoningEffort = assignment.PreferredReasoningEffort;
             }
 
             _dbContext.Jobs.Add(roleJob);
@@ -472,8 +476,10 @@ public partial class JobService : IJobService
         job.GoalPrompt = job.GoalPrompt?.Trim() ?? string.Empty;
         job.Title = JobTitleHelper.BuildSafeJobTitle(job.Title, job.GoalPrompt);
         job.ModelUsed = string.IsNullOrWhiteSpace(job.ModelUsed) ? null : job.ModelUsed.Trim();
+        job.ReasoningEffort = ProviderCapabilities.NormalizeReasoningEffort(job.ReasoningEffort);
         job.PlanningOutput = string.IsNullOrWhiteSpace(job.PlanningOutput) ? null : job.PlanningOutput.Trim();
         job.PlanningModelUsed = string.IsNullOrWhiteSpace(job.PlanningModelUsed) ? null : job.PlanningModelUsed.Trim();
+        job.PlanningReasoningEffortUsed = ProviderCapabilities.NormalizeReasoningEffort(job.PlanningReasoningEffortUsed);
         job.Branch = string.IsNullOrWhiteSpace(job.Branch) ? null : job.Branch.Trim();
         job.TargetBranch = string.IsNullOrWhiteSpace(job.TargetBranch) ? null : job.TargetBranch.Trim();
     }

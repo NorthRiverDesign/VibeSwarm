@@ -704,6 +704,7 @@ TimeSpan.FromSeconds(10) })
         _selectedModelId = string.Empty;
         _availableModels.Clear();
         _branches.Clear();
+        _newJob.ReasoningEffort = null;
 
         try
         {
@@ -778,6 +779,10 @@ TimeSpan.FromSeconds(10) })
             if (_selectedProjectId.HasValue)
             {
                 _selectedModelId = ProjectExecutionDefaults.ResolveModelId(GetSelectedProject(), providerId, _availableModels);
+                var provider = GetAllowedCreateJobProviders().FirstOrDefault(item => item.Id == providerId);
+                _newJob.ReasoningEffort = provider != null
+                    ? ProjectExecutionDefaults.ResolveReasoningEffort(GetSelectedProject(), provider)
+                    : null;
             }
         }
         finally

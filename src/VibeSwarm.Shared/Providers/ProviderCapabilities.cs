@@ -70,6 +70,32 @@ public static class ProviderCapabilities
 		_ => $"{mode} mode for {providerType}."
 	};
 
+	public static IReadOnlyList<string> GetSupportedReasoningEfforts(ProviderType providerType, ProviderConnectionMode mode) => (providerType, mode) switch
+	{
+		(ProviderType.Claude, ProviderConnectionMode.CLI) => ["low", "medium", "high"],
+		(ProviderType.Copilot, ProviderConnectionMode.CLI) => ["low", "medium", "high"],
+		(ProviderType.Copilot, ProviderConnectionMode.SDK) => ["low", "medium", "high"],
+		(ProviderType.OpenCode, _) => ["low", "medium", "high", "max"],
+		_ => []
+	};
+
+	public static IReadOnlyList<string> GetSupportedReasoningEfforts(Provider provider)
+		=> GetSupportedReasoningEfforts(provider.Type, provider.ConnectionMode);
+
+	public static string? NormalizeReasoningEffort(string? reasoningEffort)
+		=> string.IsNullOrWhiteSpace(reasoningEffort) ? null : reasoningEffort.Trim().ToLowerInvariant();
+
+	public static bool SupportsReasoningEffort(Provider provider, string? reasoningEffort)
+	{
+		var normalized = NormalizeReasoningEffort(reasoningEffort);
+		if (normalized == null)
+		{
+			return true;
+		}
+
+		return GetSupportedReasoningEfforts(provider).Contains(normalized, StringComparer.Ordinal);
+	}
+
 	/// <summary>
 	/// Returns whether the "Update CLI" action is applicable for a given mode.
 	/// </summary>
@@ -109,6 +135,11 @@ public static class ProviderCapabilities
 			{
 				errors.Add("API Key is required for Claude SDK connection mode.");
 			}
+		}
+
+		if (!SupportsReasoningEffort(provider, provider.DefaultReasoningEffort))
+		{
+			errors.Add($"{provider.Type} {provider.ConnectionMode} does not support the selected reasoning effort.");
 		}
 
 		return errors;

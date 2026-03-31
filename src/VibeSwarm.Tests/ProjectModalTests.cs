@@ -185,6 +185,7 @@ private static BunitContext CreateBunitContext(
 	var context = new BunitContext();
 	context.JSInterop.SetupVoid("eval", "document.body.classList.add('vs-modal-open')");
 	context.JSInterop.SetupVoid("eval", "document.body.classList.remove('vs-modal-open')");
+	context.JSInterop.SetupVoid("vibeSwarmInitTouchDrag", _ => true);
 	context.Services.AddLogging();
 	var resolvedProvider = provider ?? new Provider
 	{

@@ -203,6 +203,61 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		Assert.Null(savedJob.PlanningOutput);
 		Assert.Null(savedJob.PlanningProviderId);
 		Assert.Null(savedJob.PlanningModelUsed);
+		Assert.Null(savedJob.PlanningReasoningEffortUsed);
+		Assert.Null(savedJob.PlanningGeneratedAt);
+	}
+
+	[Fact]
+	public async Task ResetJobWithOptionsAsync_PersistsNormalizedReasoningEffortAndClearsPlanningReasoning()
+	{
+		await using var dbContext = CreateDbContext();
+		var provider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "GitHub Copilot",
+			Type = ProviderType.Copilot,
+			ConnectionMode = ProviderConnectionMode.CLI,
+			IsEnabled = true,
+			IsDefault = true
+		};
+		var project = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Retry Project",
+			WorkingPath = "/tmp/retry-project"
+		};
+		var job = new Job
+		{
+			Id = Guid.NewGuid(),
+			ProjectId = project.Id,
+			ProviderId = provider.Id,
+			GoalPrompt = "Retry me",
+			Status = JobStatus.Failed,
+			PlanningOutput = "Existing plan",
+			PlanningProviderId = provider.Id,
+			PlanningModelUsed = "gpt-5.4",
+			PlanningReasoningEffortUsed = "medium",
+			PlanningGeneratedAt = DateTime.UtcNow.AddMinutes(-3)
+		};
+
+		dbContext.Projects.Add(project);
+		dbContext.Providers.Add(provider);
+		dbContext.Jobs.Add(job);
+		await dbContext.SaveChangesAsync();
+
+		var serviceProvider = new ServiceCollection().BuildServiceProvider();
+		var jobService = new JobService(dbContext, serviceProvider);
+
+		var reset = await jobService.ResetJobWithOptionsAsync(job.Id, reasoningEffort: " High ");
+
+		Assert.True(reset);
+		var savedJob = await dbContext.Jobs.SingleAsync(item => item.Id == job.Id);
+		Assert.Equal(JobStatus.New, savedJob.Status);
+		Assert.Equal("high", savedJob.ReasoningEffort);
+		Assert.Null(savedJob.PlanningOutput);
+		Assert.Null(savedJob.PlanningProviderId);
+		Assert.Null(savedJob.PlanningModelUsed);
+		Assert.Null(savedJob.PlanningReasoningEffortUsed);
 		Assert.Null(savedJob.PlanningGeneratedAt);
 	}
 
@@ -1320,7 +1375,8 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 					ProviderId = projectProvider.Id,
 					Priority = 0,
 					IsEnabled = true,
-					PreferredModelId = "claude-opus-4.6"
+					PreferredModelId = "claude-opus-4.6",
+					PreferredReasoningEffort = "high"
 				}
 			]
 		};
@@ -1362,6 +1418,7 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		Assert.NotNull(job);
 		Assert.Equal(projectProvider.Id, job!.ProviderId);
 		Assert.Equal("claude-opus-4.6", job.ModelUsed);
+		Assert.Equal("high", job.ReasoningEffort);
 	}
 
 	[Fact]
@@ -2045,7 +2102,8 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 			WorkingPath = "/tmp/planned-ideas",
 			PlanningEnabled = true,
 			PlanningProviderId = provider.Id,
-			PlanningModelId = "claude-sonnet-4.6"
+			PlanningModelId = "claude-sonnet-4.6",
+			PlanningReasoningEffort = "high"
 		};
 		var idea = new Idea
 		{
@@ -2086,6 +2144,7 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		Assert.DoesNotContain("/plan", providerInstance.LastExecutePrompt!, StringComparison.Ordinal);
 		Assert.StartsWith("Explore the codebase and create an implementation-ready plan", providerInstance.LastExecutePrompt!, StringComparison.Ordinal);
 		Assert.Equal(project.PlanningModelId, providerInstance.LastExecutionOptions?.Model);
+		Assert.Equal(project.PlanningReasoningEffort, providerInstance.LastExecutionOptions?.ReasoningEffort);
 		Assert.NotNull(providerInstance.LastExecutionOptions?.DisallowedTools);
 		Assert.Contains("Bash", providerInstance.LastExecutionOptions!.DisallowedTools!);
 		Assert.Contains("Edit", providerInstance.LastExecutionOptions.DisallowedTools!);
