@@ -4,6 +4,28 @@ namespace VibeSwarm.Tests;
 
 public sealed class ProviderCapabilitiesTests
 {
+	[Fact]
+	public void ClaudeCli_SupportedReasoningEfforts_IncludeMax()
+	{
+		var efforts = ProviderCapabilities.GetSupportedReasoningEfforts(ProviderType.Claude, ProviderConnectionMode.CLI);
+
+		Assert.Contains("max", efforts);
+	}
+
+	[Fact]
+	public void ClaudeCli_SupportsReasoningEffort_AcceptsMax()
+	{
+		var provider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Claude",
+			Type = ProviderType.Claude,
+			ConnectionMode = ProviderConnectionMode.CLI
+		};
+
+		Assert.True(ProviderCapabilities.SupportsReasoningEffort(provider, "max"));
+	}
+
 	[Theory]
 	[InlineData(ProviderConnectionMode.CLI)]
 	[InlineData(ProviderConnectionMode.SDK)]

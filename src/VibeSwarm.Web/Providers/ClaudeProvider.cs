@@ -431,8 +431,8 @@ public class ClaudeProvider : CliProviderBase
             args.Add($"--{CurrentInitMode}");
         }
 
-        // Reasoning effort level (v2.1.63+)
-        var reasoningEffort = NormalizeReasoningEffort(CurrentReasoningEffort, "low", "medium", "high");
+		// Reasoning effort level (v2.1.63+)
+		var reasoningEffort = NormalizeReasoningEffort(CurrentReasoningEffort, "low", "medium", "high", "max");
         if (SupportsCliVersion(ReasoningEffortVersion) && !string.IsNullOrEmpty(reasoningEffort))
         {
             args.Add("--effort");

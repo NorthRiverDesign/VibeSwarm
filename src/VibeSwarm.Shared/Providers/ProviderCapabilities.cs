@@ -72,7 +72,7 @@ public static class ProviderCapabilities
 
 	public static IReadOnlyList<string> GetSupportedReasoningEfforts(ProviderType providerType, ProviderConnectionMode mode) => (providerType, mode) switch
 	{
-		(ProviderType.Claude, ProviderConnectionMode.CLI) => ["low", "medium", "high"],
+		(ProviderType.Claude, ProviderConnectionMode.CLI) => ["low", "medium", "high", "max"],
 		(ProviderType.Copilot, ProviderConnectionMode.CLI) => ["low", "medium", "high", "xhigh"],
 		(ProviderType.Copilot, ProviderConnectionMode.SDK) => ["low", "medium", "high", "xhigh"],
 		(ProviderType.OpenCode, _) => ["low", "medium", "high", "max"],

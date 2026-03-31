@@ -257,6 +257,20 @@ public sealed class ProviderCliArgsTests
     }
 
     [Fact]
+    public void Claude_WithMaxReasoningEffort_AddsEffortFlag()
+    {
+        var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+        provider.CachedCliVersion = new Version(2, 1, 87);
+        provider.ApplyOptions(new ExecutionOptions { ReasoningEffort = "max" });
+
+        var args = provider.BuildCliArgs("test", null);
+
+        var idx = args.IndexOf("--effort");
+        Assert.True(idx >= 0);
+        Assert.Equal("max", args[idx + 1]);
+    }
+
+    [Fact]
     public void Claude_WithMaxBudget_AddsMaxBudgetFlag()
     {
         var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
