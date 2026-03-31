@@ -47,6 +47,8 @@ public class DatabaseService : IDatabaseService
 				EnablePromptStructuring = settings.EnablePromptStructuring,
 				InjectRepoMap = settings.InjectRepoMap,
 				InjectEfficiencyRules = settings.InjectEfficiencyRules,
+				CriticalErrorLogRetentionDays = settings.CriticalErrorLogRetentionDays,
+				CriticalErrorLogMaxEntries = settings.CriticalErrorLogMaxEntries,
 			},
 			Projects = projects.Select(p => new ProjectExportDto
 			{
@@ -386,6 +388,8 @@ public class DatabaseService : IDatabaseService
 					EnablePromptStructuring = export.Settings.EnablePromptStructuring,
 					InjectRepoMap = export.Settings.InjectRepoMap,
 					InjectEfficiencyRules = export.Settings.InjectEfficiencyRules,
+					CriticalErrorLogRetentionDays = export.Settings.CriticalErrorLogRetentionDays,
+					CriticalErrorLogMaxEntries = export.Settings.CriticalErrorLogMaxEntries,
 					UpdatedAt = DateTime.UtcNow,
 				});
 				await _db.SaveChangesAsync(ct);

@@ -4,12 +4,14 @@
 @inject AppTimeZoneService AppTimeZoneService
 @inject IJobService JobService
 @inject IIdeaService IdeaService
+@inject ICriticalErrorLogService CriticalErrorLogService
 @inject ChangePasswordModalService ChangePasswordModalService
 @inject HttpClient HttpClient
 @inject NavigationManager NavigationManager
 @implements IAsyncDisposable
 @implements IDisposable
 @using Microsoft.AspNetCore.SignalR.Client
+@using System.Text.Json
 
 <div class="app-layout d-flex flex-column min-vh-100">
     @* Mobile Header *@
@@ -111,6 +113,9 @@
                     @Body
                 </ChildContent>
                 <ErrorContent Context="exception">
+                    @{
+                        _ = ReportFatalUiErrorAsync(exception);
+                    }
                     <div class="d-flex align-items-center justify-content-center w-100" style="min-height: 50vh;">
                         <div class="text-center p-4 mx-auto" style="max-width: 500px;">
                             <div class="mb-4">
@@ -222,6 +227,7 @@
     private bool _isChangingPassword;
     private string? _changePasswordError;
     private ChangePasswordModel _changePasswordModel = new();
+    private string? _lastReportedFatalErrorSignature;
 
     protected override void OnInitialized()
     {
@@ -593,6 +599,8 @@ TimeSpan.FromSeconds(10) })
 
     private async Task ForceReloadPage()
     {
+        await LogRefreshActionAsync("page-reload");
+
         try
         {
             await JSRuntime.InvokeVoidAsync("location.reload", true);
@@ -606,6 +614,8 @@ TimeSpan.FromSeconds(10) })
 
     private async Task ForceNavigateToDashboard()
     {
+        await LogRefreshActionAsync("navigate-dashboard");
+
         try
         {
             await JSRuntime.InvokeVoidAsync("eval", "window.location.href = '/'");
@@ -630,6 +640,58 @@ return true;
 #else
         return false;
 #endif
+    }
+
+    private Task ReportFatalUiErrorAsync(Exception exception)
+    {
+        var signature = $"{exception.GetType().FullName}:{exception.Message}";
+        if (string.Equals(_lastReportedFatalErrorSignature, signature, StringComparison.Ordinal))
+        {
+            return Task.CompletedTask;
+        }
+
+        _lastReportedFatalErrorSignature = signature;
+        return LogCriticalErrorAsync(
+            category: "ui-error-boundary",
+            message: exception.Message,
+            details: exception.ToString(),
+            triggeredRefresh: false,
+            refreshAction: null);
+    }
+
+    private Task LogRefreshActionAsync(string refreshAction)
+    {
+        return LogCriticalErrorAsync(
+            category: "ui-recovery-action",
+            message: $"User initiated {refreshAction} after a fatal UI error.",
+            details: null,
+            triggeredRefresh: true,
+            refreshAction: refreshAction);
+    }
+
+    private async Task LogCriticalErrorAsync(string category, string message, string? details, bool triggeredRefresh, string? refreshAction)
+    {
+        try
+        {
+            await CriticalErrorLogService.LogAsync(new CriticalErrorLogEntry
+            {
+                Source = "client",
+                Category = category,
+                Severity = "critical",
+                Message = message,
+                Details = details,
+                Url = NavigationManager.Uri,
+                TriggeredRefresh = triggeredRefresh,
+                RefreshAction = refreshAction,
+                AdditionalDataJson = JsonSerializer.Serialize(new
+                {
+                    currentUri = NavigationManager.Uri
+                })
+            });
+        }
+        catch
+        {
+        }
     }
 
     public void Dispose()

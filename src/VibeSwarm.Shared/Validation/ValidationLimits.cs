@@ -21,4 +21,11 @@ public static class ValidationLimits
 	public const int IdeaDescriptionMaxLength = 8000;
 	public const int IdeaExpandedDescriptionMaxLength = 20000;
 	public const int IdeaExpansionErrorMaxLength = 1000;
+	public const int CriticalErrorLogFieldMaxLength = 100;
+	public const int CriticalErrorLogMessageMaxLength = 1000;
+	public const int CriticalErrorLogDetailsMaxLength = 8000;
+	public const int CriticalErrorLogTraceIdMaxLength = 200;
+	public const int CriticalErrorLogUrlMaxLength = 2000;
+	public const int CriticalErrorLogUserAgentMaxLength = 1000;
+	public const int CriticalErrorLogMetadataMaxLength = 4000;
 }

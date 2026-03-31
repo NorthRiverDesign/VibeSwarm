@@ -25,17 +25,30 @@ public class SettingsService : ISettingsService
 				Id = Guid.NewGuid(),
 				DefaultProjectsDirectory = null,
 				TimeZoneId = DateTimeHelper.UtcTimeZoneId,
+				CriticalErrorLogRetentionDays = AppSettings.DefaultCriticalErrorLogRetentionDays,
+				CriticalErrorLogMaxEntries = AppSettings.DefaultCriticalErrorLogMaxEntries,
 				UpdatedAt = DateTime.UtcNow
 			};
 
 			_dbContext.AppSettings.Add(settings);
 			await _dbContext.SaveChangesAsync(cancellationToken);
 		}
-		else if (string.IsNullOrWhiteSpace(settings.TimeZoneId))
+		else
 		{
-			settings.TimeZoneId = DateTimeHelper.UtcTimeZoneId;
-			settings.UpdatedAt ??= DateTime.UtcNow;
-			await _dbContext.SaveChangesAsync(cancellationToken);
+			var normalizedTimeZoneId = NormalizeTimeZoneId(settings.TimeZoneId);
+			var normalizedRetentionDays = NormalizeCriticalErrorLogRetentionDays(settings.CriticalErrorLogRetentionDays);
+			var normalizedMaxEntries = NormalizeCriticalErrorLogMaxEntries(settings.CriticalErrorLogMaxEntries);
+
+			if (!string.Equals(settings.TimeZoneId, normalizedTimeZoneId, StringComparison.Ordinal) ||
+				settings.CriticalErrorLogRetentionDays != normalizedRetentionDays ||
+				settings.CriticalErrorLogMaxEntries != normalizedMaxEntries)
+			{
+				settings.TimeZoneId = normalizedTimeZoneId;
+				settings.CriticalErrorLogRetentionDays = normalizedRetentionDays;
+				settings.CriticalErrorLogMaxEntries = normalizedMaxEntries;
+				settings.UpdatedAt ??= DateTime.UtcNow;
+				await _dbContext.SaveChangesAsync(cancellationToken);
+			}
 		}
 
 		return settings;
@@ -50,6 +63,8 @@ public class SettingsService : ISettingsService
 			// Create new settings
 			settings.Id = Guid.NewGuid();
 			settings.TimeZoneId = NormalizeTimeZoneId(settings.TimeZoneId);
+			settings.CriticalErrorLogRetentionDays = NormalizeCriticalErrorLogRetentionDays(settings.CriticalErrorLogRetentionDays);
+			settings.CriticalErrorLogMaxEntries = NormalizeCriticalErrorLogMaxEntries(settings.CriticalErrorLogMaxEntries);
 			settings.UpdatedAt = DateTime.UtcNow;
 			_dbContext.AppSettings.Add(settings);
 		}
@@ -61,6 +76,8 @@ public class SettingsService : ISettingsService
 			existing.EnablePromptStructuring = settings.EnablePromptStructuring;
 			existing.InjectRepoMap = settings.InjectRepoMap;
 			existing.InjectEfficiencyRules = settings.InjectEfficiencyRules;
+			existing.CriticalErrorLogRetentionDays = NormalizeCriticalErrorLogRetentionDays(settings.CriticalErrorLogRetentionDays);
+			existing.CriticalErrorLogMaxEntries = NormalizeCriticalErrorLogMaxEntries(settings.CriticalErrorLogMaxEntries);
 			existing.UpdatedAt = DateTime.UtcNow;
 		}
 
@@ -77,4 +94,16 @@ public class SettingsService : ISettingsService
 
 	private static string NormalizeTimeZoneId(string? timeZoneId)
 		=> DateTimeHelper.ResolveTimeZone(timeZoneId).Id;
+
+	private static int NormalizeCriticalErrorLogRetentionDays(int retentionDays)
+		=> Math.Clamp(
+			retentionDays,
+			AppSettings.MinCriticalErrorLogRetentionDays,
+			AppSettings.MaxCriticalErrorLogRetentionDays);
+
+	private static int NormalizeCriticalErrorLogMaxEntries(int maxEntries)
+		=> Math.Clamp(
+			maxEntries,
+			AppSettings.MinCriticalErrorLogMaxEntries,
+			AppSettings.MaxCriticalErrorLogMaxEntries);
 }

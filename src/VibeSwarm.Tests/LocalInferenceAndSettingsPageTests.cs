@@ -49,6 +49,7 @@ var services = new ServiceCollection();
 	services.AddSingleton<IFileSystemService>(new FakeFileSystemService());
 	services.AddSingleton<IProjectService>(new FakeProjectService());
 	services.AddSingleton<IDatabaseService>(new FakeDatabaseService());
+	services.AddSingleton<ICriticalErrorLogService>(new FakeCriticalErrorLogService());
 	services.AddSingleton<NavigationManager>(new TestNavigationManager());
 	services.AddSingleton<NotificationService>();
 	services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
@@ -61,10 +62,11 @@ var output = await renderer.RenderComponentAsync<Settings>();
 return output.ToHtmlString();
 });
 
-Assert.Contains("App Settings", html);
-Assert.Contains("Timezone", html);
-Assert.DoesNotContain("Add Provider", html);
-Assert.DoesNotContain("inference provider", html);
+	Assert.Contains("App Settings", html);
+	Assert.Contains("Timezone", html);
+	Assert.Contains("Critical Error Logs", html);
+	Assert.DoesNotContain("Add Provider", html);
+	Assert.DoesNotContain("inference provider", html);
 }
 
 	private sealed class FakeInferenceProviderService : IInferenceProviderService
@@ -93,11 +95,20 @@ private sealed class FakeSettingsService : ISettingsService
 {
 public Task<AppSettings> GetSettingsAsync(CancellationToken cancellationToken = default) => Task.FromResult(new AppSettings
 {
-	TimeZoneId = "UTC"
+	TimeZoneId = "UTC",
+	CriticalErrorLogRetentionDays = AppSettings.DefaultCriticalErrorLogRetentionDays,
+	CriticalErrorLogMaxEntries = AppSettings.DefaultCriticalErrorLogMaxEntries
 });
 public Task<AppSettings> UpdateSettingsAsync(AppSettings settings, CancellationToken cancellationToken = default) => Task.FromResult(settings);
 public Task<string?> GetDefaultProjectsDirectoryAsync(CancellationToken cancellationToken = default) => Task.FromResult<string?>("/tmp/projects");
 }
+
+	private sealed class FakeCriticalErrorLogService : ICriticalErrorLogService
+	{
+		public Task<CriticalErrorLogEntry> LogAsync(CriticalErrorLogEntry entry, CancellationToken cancellationToken = default) => Task.FromResult(entry);
+		public Task<IReadOnlyList<CriticalErrorLogEntry>> GetRecentAsync(int limit = 25, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<CriticalErrorLogEntry>>([]);
+		public Task ApplyRetentionPolicyAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+	}
 
 	private sealed class FakeFileSystemService : IFileSystemService
 	{

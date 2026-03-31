@@ -8,6 +8,13 @@ namespace VibeSwarm.Shared.Data;
 /// </summary>
 public class AppSettings
 {
+	public const int DefaultCriticalErrorLogRetentionDays = 30;
+	public const int DefaultCriticalErrorLogMaxEntries = 200;
+	public const int MinCriticalErrorLogRetentionDays = 1;
+	public const int MaxCriticalErrorLogRetentionDays = 365;
+	public const int MinCriticalErrorLogMaxEntries = 10;
+	public const int MaxCriticalErrorLogMaxEntries = 5000;
+
 	public Guid Id { get; set; }
 
 	/// <summary>
@@ -40,4 +47,10 @@ public class AppSettings
 	/// Whether to inject efficiency rules into the system prompt to reduce wasted tokens.
 	/// </summary>
 	public bool InjectEfficiencyRules { get; set; } = true;
+
+	[Range(MinCriticalErrorLogRetentionDays, MaxCriticalErrorLogRetentionDays)]
+	public int CriticalErrorLogRetentionDays { get; set; } = DefaultCriticalErrorLogRetentionDays;
+
+	[Range(MinCriticalErrorLogMaxEntries, MaxCriticalErrorLogMaxEntries)]
+	public int CriticalErrorLogMaxEntries { get; set; } = DefaultCriticalErrorLogMaxEntries;
 }

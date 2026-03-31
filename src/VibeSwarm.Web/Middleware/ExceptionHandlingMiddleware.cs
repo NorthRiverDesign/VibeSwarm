@@ -1,8 +1,11 @@
 using System.ComponentModel.DataAnnotations;
 using System.Net;
+using System.Security.Claims;
 using System.Text.Json;
+using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Exceptions;
 using VibeSwarm.Shared.Models;
+using VibeSwarm.Shared.Services;
 
 namespace VibeSwarm.Web.Middleware;
 
@@ -26,7 +29,7 @@ public class ExceptionHandlingMiddleware
 		_environment = environment;
 	}
 
-	public async Task InvokeAsync(HttpContext context)
+	public async Task InvokeAsync(HttpContext context, ICriticalErrorLogService criticalErrorLogService)
 	{
 		try
 		{
@@ -34,13 +37,30 @@ public class ExceptionHandlingMiddleware
 		}
 		catch (Exception ex)
 		{
-			await HandleExceptionAsync(context, ex);
+			await HandleExceptionAsync(context, ex, criticalErrorLogService);
 		}
 	}
 
-	private async Task HandleExceptionAsync(HttpContext context, Exception exception)
+	private async Task HandleExceptionAsync(HttpContext context, Exception exception, ICriticalErrorLogService criticalErrorLogService)
 	{
 		var traceId = context.TraceIdentifier;
+		var statusCode = GetStatusCode(exception);
+
+		if (statusCode >= (int)HttpStatusCode.InternalServerError)
+		{
+			await criticalErrorLogService.LogAsync(new CriticalErrorLogEntry
+			{
+				Source = "server",
+				Category = "unhandled-exception",
+				Severity = "critical",
+				Message = exception.Message,
+				Details = exception.ToString(),
+				TraceId = traceId,
+				Url = $"{context.Request.Method} {context.Request.Path}{context.Request.QueryString}",
+				UserAgent = context.Request.Headers.UserAgent.ToString(),
+				UserId = TryGetUserId(context.User)
+			}, context.RequestAborted);
+		}
 
 		// Log the exception with appropriate level
 		LogException(exception, traceId);
@@ -53,7 +73,6 @@ public class ExceptionHandlingMiddleware
 		}
 
 		// Determine status code and create response
-		var statusCode = GetStatusCode(exception);
 		var response = CreateErrorResponse(exception, traceId);
 
 		// Write the response
@@ -66,6 +85,12 @@ public class ExceptionHandlingMiddleware
 		};
 
 		await context.Response.WriteAsync(JsonSerializer.Serialize(response, options));
+	}
+
+	private static Guid? TryGetUserId(ClaimsPrincipal user)
+	{
+		var userId = user.FindFirstValue(ClaimTypes.NameIdentifier);
+		return Guid.TryParse(userId, out var parsedUserId) ? parsedUserId : null;
 	}
 
 	private void LogException(Exception exception, string traceId)

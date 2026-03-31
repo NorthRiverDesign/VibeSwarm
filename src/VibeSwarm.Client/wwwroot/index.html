@@ -111,6 +111,32 @@
 
         <!-- Error handling for iOS Safari and WebAssembly loading issues -->
         <script>
+            window.vibeSwarmDiagnostics = {
+                reportCriticalError: function (payload) {
+                    try {
+                        return fetch('/api/diagnostics/critical-errors', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            credentials: 'include',
+                            body: JSON.stringify({
+                                source: payload.source || 'client-startup',
+                                category: payload.category || 'startup-failure',
+                                severity: payload.severity || 'critical',
+                                message: payload.message || 'Critical startup error',
+                                details: payload.details || null,
+                                url: window.location.href,
+                                userAgent: navigator.userAgent,
+                                triggeredRefresh: !!payload.triggeredRefresh,
+                                refreshAction: payload.refreshAction || null,
+                                additionalDataJson: payload.additionalDataJson || null
+                            })
+                        }).catch(function () { });
+                    } catch (e) {
+                        return Promise.resolve();
+                    }
+                }
+            };
+
             // Set a timeout to show loading status if Blazor takes too long
             var loadTimeout = setTimeout(function () {
                 var loadingMsg = document.getElementById('loading-message');
@@ -121,6 +147,13 @@
 
             // Show error UI after extended timeout (30s)
             var errorTimeout = setTimeout(function () {
+                window.vibeSwarmDiagnostics.reportCriticalError({
+                    source: 'client-startup',
+                    category: 'startup-timeout',
+                    message: 'Blazor WebAssembly did not finish loading before the startup timeout.',
+                    triggeredRefresh: true,
+                    refreshAction: 'reload-app'
+                });
                 document.getElementById('blazor-error-ui').style.display = 'block';
                 document.getElementById('app').style.display = 'none';
             }, 30000);
@@ -151,6 +184,13 @@
 
                 Promise.all(tasks).finally(function () {
                     try { localStorage.clear(); } catch (e) { }
+                    window.vibeSwarmDiagnostics.reportCriticalError({
+                        source: 'client-startup',
+                        category: 'manual-cache-reset',
+                        message: 'User cleared cached app resources and triggered a reload.',
+                        triggeredRefresh: true,
+                        refreshAction: 'clear-cache-reload'
+                    });
                     // Navigate with a cache-bust param; Blazor router ignores unknown query params
                     window.location.href = window.location.pathname + '?_cb=' + Date.now();
                 });
@@ -285,8 +325,39 @@
                 clearTimeout(loadTimeout);
                 clearTimeout(errorTimeout);
                 console.error('Blazor WebAssembly failed to start:', err);
+                window.vibeSwarmDiagnostics.reportCriticalError({
+                    source: 'client-startup',
+                    category: 'blazor-start-failure',
+                    message: 'Blazor WebAssembly failed to start.',
+                    details: err && err.stack ? err.stack : String(err),
+                    triggeredRefresh: true,
+                    refreshAction: 'reload-app'
+                });
                 document.getElementById('blazor-error-ui').style.display = 'block';
                 document.getElementById('app').style.display = 'none';
+            });
+        </script>
+
+        <script>
+            window.addEventListener('error', function (event) {
+                if (!event) return;
+
+                window.vibeSwarmDiagnostics.reportCriticalError({
+                    source: 'client-startup',
+                    category: 'window-error',
+                    message: event.message || 'Unhandled browser error.',
+                    details: event.error && event.error.stack ? event.error.stack : (event.filename ? event.filename + ':' + event.lineno + ':' + event.colno : null)
+                });
+            });
+
+            window.addEventListener('unhandledrejection', function (event) {
+                var reason = event && event.reason ? event.reason : null;
+                window.vibeSwarmDiagnostics.reportCriticalError({
+                    source: 'client-startup',
+                    category: 'unhandled-rejection',
+                    message: 'Unhandled promise rejection during startup.',
+                    details: reason && reason.stack ? reason.stack : String(reason)
+                });
             });
         </script>
 

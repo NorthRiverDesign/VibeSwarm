@@ -31,6 +31,7 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 	public DbSet<TeamRoleSkill> TeamRoleSkills { get; set; }
 	public DbSet<Idea> Ideas { get; set; }
 	public DbSet<AppSettings> AppSettings { get; set; }
+	public DbSet<CriticalErrorLogEntry> CriticalErrorLogs { get; set; }
 	public DbSet<InferenceProvider> InferenceProviders { get; set; }
 	public DbSet<InferenceModel> InferenceModels { get; set; }
 	public DbSet<IterationLoop> IterationLoops { get; set; }
@@ -341,6 +342,25 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 			entity.Property(e => e.EnablePromptStructuring).HasDefaultValue(true);
 			entity.Property(e => e.InjectRepoMap).HasDefaultValue(true);
 			entity.Property(e => e.InjectEfficiencyRules).HasDefaultValue(true);
+			entity.Property(e => e.CriticalErrorLogRetentionDays).HasDefaultValue(global::VibeSwarm.Shared.Data.AppSettings.DefaultCriticalErrorLogRetentionDays);
+			entity.Property(e => e.CriticalErrorLogMaxEntries).HasDefaultValue(global::VibeSwarm.Shared.Data.AppSettings.DefaultCriticalErrorLogMaxEntries);
+		});
+
+		modelBuilder.Entity<CriticalErrorLogEntry>(entity =>
+		{
+			entity.HasKey(e => e.Id);
+			entity.Property(e => e.Source).IsRequired().HasMaxLength(ValidationLimits.CriticalErrorLogFieldMaxLength);
+			entity.Property(e => e.Category).IsRequired().HasMaxLength(ValidationLimits.CriticalErrorLogFieldMaxLength);
+			entity.Property(e => e.Severity).IsRequired().HasMaxLength(ValidationLimits.CriticalErrorLogFieldMaxLength);
+			entity.Property(e => e.Message).IsRequired().HasMaxLength(ValidationLimits.CriticalErrorLogMessageMaxLength);
+			entity.Property(e => e.Details).HasMaxLength(ValidationLimits.CriticalErrorLogDetailsMaxLength);
+			entity.Property(e => e.TraceId).HasMaxLength(ValidationLimits.CriticalErrorLogTraceIdMaxLength);
+			entity.Property(e => e.Url).HasMaxLength(ValidationLimits.CriticalErrorLogUrlMaxLength);
+			entity.Property(e => e.UserAgent).HasMaxLength(ValidationLimits.CriticalErrorLogUserAgentMaxLength);
+			entity.Property(e => e.RefreshAction).HasMaxLength(ValidationLimits.CriticalErrorLogFieldMaxLength);
+			entity.Property(e => e.AdditionalDataJson).HasMaxLength(ValidationLimits.CriticalErrorLogMetadataMaxLength);
+			entity.HasIndex(e => e.CreatedAt);
+			entity.HasIndex(e => new { e.Source, e.CreatedAt });
 		});
 
 		modelBuilder.Entity<InferenceProvider>(entity =>

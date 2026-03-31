@@ -42,6 +42,7 @@ builder.Services.AddScoped<ICommonProviderSetupService, HttpCommonProviderSetupS
 builder.Services.AddScoped<ISkillService, HttpSkillService>();
 builder.Services.AddScoped<ITeamRoleService, HttpTeamRoleService>();
 builder.Services.AddScoped<ISettingsService, HttpSettingsService>();
+builder.Services.AddScoped<ICriticalErrorLogService, HttpCriticalErrorLogService>();
 builder.Services.AddScoped<IIdeaService, HttpIdeaService>();
 builder.Services.AddScoped<IUserService, HttpUserService>();
 builder.Services.AddScoped<IFileSystemService, HttpFileSystemService>();
