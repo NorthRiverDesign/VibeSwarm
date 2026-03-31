@@ -637,13 +637,13 @@ public sealed class ProviderCliArgsTests
     {
         var provider = new CopilotProvider(CreateConfig(ProviderType.Copilot));
         provider.CachedCliVersion = new Version(1, 0, 4);
-        provider.ApplyOptions(new ExecutionOptions { ReasoningEffort = "medium" });
+        provider.ApplyOptions(new ExecutionOptions { ReasoningEffort = "xhigh" });
 
         var args = provider.BuildCliArgs("test", null);
 
         var idx = args.IndexOf("--reasoning-effort");
         Assert.True(idx >= 0, "--reasoning-effort should be present on v1.0.4+");
-        Assert.Equal("medium", args[idx + 1]);
+        Assert.Equal("xhigh", args[idx + 1]);
         Assert.DoesNotContain("--effort", args);
     }
 

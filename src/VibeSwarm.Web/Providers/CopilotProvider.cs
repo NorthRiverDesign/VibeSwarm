@@ -399,8 +399,8 @@ public class CopilotProvider : CliProviderBase
         }
 
         // Reasoning effort level (v1.0.4+)
-        // --reasoning-effort was added in v1.0.4; skip on older CLIs to prevent startup errors.
-        var reasoningEffort = NormalizeReasoningEffort(CurrentReasoningEffort, "low", "medium", "high");
+        // Current Copilot CLI supports low/medium/high/xhigh; skip on older CLIs to prevent startup errors.
+        var reasoningEffort = NormalizeReasoningEffort(CurrentReasoningEffort, "low", "medium", "high", "xhigh");
         if (!string.IsNullOrEmpty(reasoningEffort)
             && _cachedCliVersion != null
             && _cachedCliVersion >= ReasoningEffortVersion)
