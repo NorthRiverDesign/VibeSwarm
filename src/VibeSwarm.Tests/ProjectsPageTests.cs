@@ -56,8 +56,66 @@ public sealed class ProjectsPageTests
 
 		Assert.Contains("View Details", html);
 		Assert.Contains("Git", html);
-		Assert.Contains("Resync with Git", html);
+		Assert.Contains("Sync with Origin", html);
+		Assert.Contains("Merge Branch...", html);
 		Assert.DoesNotContain("project-danger-menu", html);
+	}
+
+	[Fact]
+	public async Task RenderedProjectsPage_ShowsProjectStatsToggleAndStatsByDefault()
+	{
+		var project = new ProjectWithStats
+		{
+			Project = new Project
+			{
+				Id = Guid.NewGuid(),
+				Name = "Stats Project",
+				WorkingPath = "/tmp/stats-project",
+				IsActive = true,
+				TeamAssignments =
+				[
+					new ProjectTeamRole
+					{
+						IsEnabled = true,
+						TeamRole = new TeamRole { Name = "Reviewer" }
+					}
+				]
+			},
+			Stats = new ProjectJobStats
+			{
+				TotalJobs = 3,
+				TotalInputTokens = 1200,
+				TotalOutputTokens = 800,
+				TotalCostUsd = 1.25m
+			}
+		};
+
+		var services = new ServiceCollection();
+		services.AddLogging();
+		services.AddSingleton<IProjectService>(new FakeProjectService([project]));
+		services.AddSingleton<IJobService>(new FakeJobService());
+		services.AddSingleton<IIdeaService>(new FakeIdeaService());
+		services.AddSingleton<IVersionControlService>(new FakeVersionControlService());
+		services.AddSingleton<IProviderService>(new FakeProviderService());
+		services.AddSingleton<ITeamRoleService>(new FakeTeamRoleService());
+		services.AddSingleton<ISettingsService>(new FakeSettingsService());
+		services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService());
+		services.AddSingleton<NotificationService>();
+		services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
+
+		await using var renderer = new HtmlRenderer(services.BuildServiceProvider(), NullLoggerFactory.Instance);
+
+		var html = await renderer.Dispatcher.InvokeAsync(async () =>
+		{
+			var output = await renderer.RenderComponentAsync<Projects>();
+			return output.ToHtmlString();
+		});
+
+		Assert.Contains("Hide stats", html);
+		Assert.Contains("Team", html);
+		Assert.Contains("Reviewer (Unassigned)", html);
+		Assert.Contains("1.2K /", html);
+		Assert.Contains("$1.25", html);
 	}
 
 	[Fact]
@@ -199,6 +257,61 @@ public sealed class ProjectsPageTests
 
 		Assert.DoesNotContain("Loading projects...", cut.Markup);
 		Assert.Contains("Refresh Project", cut.Markup);
+	}
+
+	[Fact]
+	public void ProjectsPage_ToggleProjectStats_HidesOptionalStats()
+	{
+		using var context = new BunitContext();
+
+		var project = new ProjectWithStats
+		{
+			Project = new Project
+			{
+				Id = Guid.NewGuid(),
+				Name = "Toggle Stats Project",
+				WorkingPath = "/tmp/toggle-stats-project",
+				IsActive = true,
+				TeamAssignments =
+				[
+					new ProjectTeamRole
+					{
+						IsEnabled = true,
+						TeamRole = new TeamRole { Name = "Architect" }
+					}
+				]
+			},
+			Stats = new ProjectJobStats
+			{
+				TotalJobs = 2,
+				TotalInputTokens = 1000,
+				TotalOutputTokens = 500,
+				TotalCostUsd = 2.5m
+			}
+		};
+
+		context.Services.AddLogging();
+		context.Services.AddSingleton<IProjectService>(new FakeProjectService([project]));
+		context.Services.AddSingleton<IJobService>(new FakeJobService());
+		context.Services.AddSingleton<IIdeaService>(new FakeIdeaService());
+		context.Services.AddSingleton<IVersionControlService>(new FakeVersionControlService());
+		context.Services.AddSingleton<IProviderService>(new FakeProviderService());
+		context.Services.AddSingleton<ITeamRoleService>(new FakeTeamRoleService());
+		context.Services.AddSingleton<ISettingsService>(new FakeSettingsService());
+		context.Services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService());
+		context.Services.AddSingleton<NotificationService>();
+		context.Services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
+
+		var cut = context.Render<Projects>();
+
+		Assert.Contains("Architect (Unassigned)", cut.Markup);
+		Assert.Contains("$2.50", cut.Markup);
+
+		cut.Find("button[title='Toggle project stats']").Click();
+
+		Assert.Contains("Show stats", cut.Markup);
+		Assert.DoesNotContain("Architect (Unassigned)", cut.Markup);
+		Assert.DoesNotContain("$2.50", cut.Markup);
 	}
 
 	private static void SetPrivateProperty(object instance, string propertyName, object? value)
