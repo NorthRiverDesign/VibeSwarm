@@ -86,6 +86,41 @@ public sealed class DashboardPageTests
 	}
 
 	[Fact]
+	public async Task Dashboard_ShowsRunningJobsBeforeIdeasAndAnalytics_WhenPresent()
+	{
+		var nowUtc = DateTime.UtcNow;
+
+		var html = await RenderDashboardPageAsync(
+			new FakeProjectService(
+				[CreateProjectInfo("Alpha", nowUtc.AddHours(-1))],
+				[CreateRunningJobInfo("Alpha", "Alpha active job", JobStatus.Processing, nowUtc.AddMinutes(-5))]),
+			new FakeProviderService([]),
+			new FakeIdeaService(new GlobalIdeasProcessingStatus
+			{
+				TotalUnprocessedIdeas = 2,
+				ProjectsCurrentlyProcessing = 1,
+				Projects =
+				[
+					new ProjectIdeasSummary
+					{
+						ProjectId = Guid.NewGuid(),
+						ProjectName = "Alpha",
+						UnprocessedIdeas = 2,
+						IsProcessing = true
+					}
+				]
+			}));
+
+		var runningJobsIndex = html.IndexOf("Running Jobs", StringComparison.Ordinal);
+		var ideasProcessingIndex = html.IndexOf("Ideas Processing", StringComparison.Ordinal);
+		var jobAnalyticsIndex = html.IndexOf("Job Analytics", StringComparison.Ordinal);
+
+		Assert.True(runningJobsIndex >= 0);
+		Assert.True(ideasProcessingIndex > runningJobsIndex);
+		Assert.True(jobAnalyticsIndex > ideasProcessingIndex);
+	}
+
+	[Fact]
 	public async Task Dashboard_HidesRunningJobsSection_WhenNoProjectsHaveRunningJobs()
 	{
 		var dashboardProjects = new[]
@@ -101,7 +136,7 @@ public sealed class DashboardPageTests
 	}
 
 	[Fact]
-	public async Task Dashboard_UsesMobileSafeIdeasProcessingLayout_WhenProcessingIsActive()
+	public async Task Dashboard_ShowsStopWithoutStartAll_WhenIdeasProcessingIsActive()
 	{
 		var html = await RenderDashboardPageAsync(
 			new FakeProjectService([CreateProjectInfo("Alpha", DateTime.UtcNow.AddHours(-1))]),
@@ -131,11 +166,37 @@ public sealed class DashboardPageTests
 
 		Assert.Contains("Ideas Processing", html);
 		Assert.Contains("2 projects processing", html);
-		Assert.Contains("Stop All", html);
-		Assert.Contains("Start All Ideas", html);
+		Assert.Contains(">Stop<", html);
+		Assert.DoesNotContain("Start All Ideas", html);
 		Assert.Contains("d-flex flex-column flex-sm-row align-items-stretch align-items-sm-center gap-2 align-self-stretch align-self-sm-auto", html);
 		Assert.Contains("d-flex flex-column flex-sm-row align-items-stretch align-items-sm-center gap-2", html);
 		Assert.Contains("badge bg-success-subtle text-success-emphasis d-inline-flex align-items-center justify-content-center justify-content-sm-start gap-1 text-wrap align-self-start align-self-sm-auto", html);
+	}
+
+	[Fact]
+	public async Task Dashboard_ShowsStartAllWithoutStop_WhenIdeasRemainQueued()
+	{
+		var html = await RenderDashboardPageAsync(
+			new FakeProjectService([CreateProjectInfo("Alpha", DateTime.UtcNow.AddHours(-1))]),
+			new FakeProviderService([]),
+			new FakeIdeaService(new GlobalIdeasProcessingStatus
+			{
+				TotalUnprocessedIdeas = 4,
+				ProjectsCurrentlyProcessing = 0,
+				Projects =
+				[
+					new ProjectIdeasSummary
+					{
+						ProjectId = Guid.NewGuid(),
+						ProjectName = "Alpha",
+						UnprocessedIdeas = 4,
+						IsProcessing = false
+					}
+				]
+			}));
+
+		Assert.Contains("Start All Ideas", html);
+		Assert.DoesNotContain(">Stop<", html);
 	}
 
 	private static async Task<string> RenderDashboardPageAsync(

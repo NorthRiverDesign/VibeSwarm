@@ -14,10 +14,6 @@
 <PageHeader Title="Dashboard" Subtitle="Your distributed agent job management system" />
 
 <div class="row g-3">
-    <div class="col-12">
-        <DashboardJobAnalyticsSection />
-    </div>
-
     @if (RunningDashboardJobs.Any())
     {
         <div class="col-12">
@@ -25,7 +21,8 @@
         </div>
     }
 
-    @if (IdeasStatus is not null && IdeasStatus.TotalUnprocessedIdeas > 0 || IdeasStatus is not null && IdeasStatus.ProjectsCurrentlyProcessing > 0)
+    @if (IdeasStatus is not null &&
+        (IdeasStatus.TotalUnprocessedIdeas > 0 || IdeasStatus.ProjectsCurrentlyProcessing > 0))
     {
         <div class="col-12">
             <section>
@@ -47,20 +44,20 @@
                                         <span class="spinner-border spinner-border-sm me-1" role="status"></span>
                                         <span>Stopping...</span>
                                     }
-                                    else
-                                    {
-                                        <i class="bi bi-stop-fill me-1"></i>
-                                        <span>Stop All</span>
-                                    }
-                                </button>
-                            </div>
-                        }
-                        @if (IdeasStatus.TotalUnprocessedIdeas > 0 && !IsStartingAll)
-                        {
-                            <button class="btn btn-sm btn-success" @onclick="() => ShowStartAllModal = true">
-                                <i class="bi bi-play-fill me-1"></i>Start All Ideas
-                                <span class="badge bg-white text-success ms-1">@IdeasStatus.TotalUnprocessedIdeas</span>
-                            </button>
+                                     else
+                                     {
+                                         <i class="bi bi-stop-fill me-1"></i>
+                                         <span>Stop</span>
+                                     }
+                                 </button>
+                             </div>
+                         }
+                         else if (IdeasStatus.TotalUnprocessedIdeas > 0 && !IsStartingAll)
+                         {
+                             <button class="btn btn-sm btn-success" @onclick="() => ShowStartAllModal = true">
+                                 <i class="bi bi-play-fill me-1"></i>Start All Ideas
+                                 <span class="badge bg-white text-success ms-1">@IdeasStatus.TotalUnprocessedIdeas</span>
+                             </button>
                         }
                     </div>
                 </div>
@@ -103,6 +100,10 @@
             </section>
         </div>
     }
+
+    <div class="col-12">
+        <DashboardJobAnalyticsSection />
+    </div>
 
     <div class="col-12">
         <section>
