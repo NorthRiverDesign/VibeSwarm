@@ -232,6 +232,39 @@ public sealed class IdeasPanelTests
 	}
 
 	[Fact]
+	public void Render_DoesNotCrash_WhenPasteInteropScriptIsUnavailable()
+	{
+		using var context = new BunitContext();
+		context.Services.AddLogging();
+		context.Services.AddSingleton<IProjectService>(new FakeProjectService());
+		context.Services.AddSingleton<IIdeaService>(new FakeIdeaService());
+		context.Services.AddSingleton<IJobService>(new FakeJobService());
+		var notificationService = new NotificationService();
+		context.Services.AddSingleton(notificationService);
+
+		context.JSInterop
+			.SetupVoid("vibeSwarmIdeas.registerPasteTarget", _ => true)
+			.SetException(new JSException("Could not find 'vibeSwarmIdeas.registerPasteTarget' ('vibeSwarmIdeas' was undefined)."));
+
+		var cut = context.Render<IdeasPanel>(parameters => parameters
+			.Add(component => component.CurrentProjectId, Guid.NewGuid())
+			.Add(component => component.HasInference, true)
+			.Add(component => component.AvailableInferenceProviders, new List<InferenceProvider>())
+			.Add(component => component.AvailableProviders, new List<Provider>()));
+
+		cut.WaitForAssertion(() =>
+		{
+			Assert.Contains("Attach Files", cut.Markup);
+			Assert.NotNull(cut.Find("button[title='Clipboard image paste is temporarily unavailable. Refresh the page to restore it.']"));
+		});
+
+		var warning = Assert.Single(notificationService.Notifications);
+		Assert.Equal(NotificationType.Warning, warning.Type);
+		Assert.Equal("Attachments unavailable", warning.Title);
+		Assert.Contains("temporarily unavailable", warning.Message);
+	}
+
+	[Fact]
 	public void PasteImageButton_ShowsFallbackWarning_WhenClipboardReadIsUnsupported()
 	{
 		using var context = new BunitContext();

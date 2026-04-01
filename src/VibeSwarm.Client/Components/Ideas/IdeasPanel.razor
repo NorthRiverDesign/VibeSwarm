@@ -131,12 +131,14 @@
 			</button>
 		</div>
 		<div class="d-flex flex-wrap align-items-center gap-2 mt-2">
-			<label class="btn btn-sm btn-secondary mb-0" for="@_fileInputId" title="Attach files from the host filesystem">
+			<label class="btn btn-sm btn-secondary mb-0 @(_attachmentInteropAvailable ? string.Empty : "disabled opacity-50 pe-none")"
+				   for="@_fileInputId" title="@GetAttachmentButtonTooltip()">
 				<i class="bi bi-paperclip me-1"></i>Attach Files
 			</label>
-			<input id="@_fileInputId" class="d-none" type="file" multiple @onchange="HandleFileSelection" />
+			<input id="@_fileInputId" class="d-none" type="file" multiple @onchange="HandleFileSelection"
+				   disabled="@(!_attachmentInteropAvailable)" />
 			<button type="button" class="btn btn-sm btn-secondary" @onclick="PasteImageFromClipboardAsync"
-					disabled="@_isPastingAttachment" title="Paste an image from the clipboard">
+					disabled="@(_isPastingAttachment || !_attachmentInteropAvailable)" title="@GetPasteImageTooltip()">
 				@if (_isPastingAttachment)
 				{
 					<span class="spinner-border spinner-border-sm me-1" role="status"></span>
@@ -446,6 +448,8 @@
 	private string NewIdeaDescription { get; set; } = string.Empty;
 	private List<IdeaAttachmentUpload> _pendingAttachments = [];
 	private bool _isPastingAttachment;
+	private bool _attachmentInteropAvailable = true;
+	private bool _pasteTargetRegistered;
 	private DotNetObjectReference<IdeasPanel>? _dotNetReference;
 	private Guid? StartingIdeaId { get; set; }
 	private bool IsSuggestingIdeas { get; set; }
@@ -870,6 +874,12 @@
 
 	private async Task HandleFileSelection(ChangeEventArgs _)
 	{
+		if (!_attachmentInteropAvailable)
+		{
+			ShowAttachmentInteropUnavailableWarning();
+			return;
+		}
+
 		try
 		{
 			var uploads = await JSRuntime.InvokeAsync<List<ClipboardAttachmentDto>>("vibeSwarmIdeas.consumeSelectedFiles", _fileInputId);
@@ -883,6 +893,10 @@
 				AddPendingAttachment(upload);
 			}
 		}
+		catch (JSException ex) when (IsMissingIdeasInteropException(ex))
+		{
+			DisableAttachmentInterop();
+		}
 		catch (Exception ex)
 		{
 			NotificationService.ShowError($"Error attaching files: {ex.Message}");
@@ -891,6 +905,12 @@
 
 	private async Task PasteImageFromClipboardAsync()
 	{
+		if (!_attachmentInteropAvailable)
+		{
+			ShowAttachmentInteropUnavailableWarning();
+			return;
+		}
+
 		_isPastingAttachment = true;
 		try
 		{
@@ -906,6 +926,10 @@
 		catch (JSException ex) when (ex.Message.Contains("not supported by this browser", StringComparison.OrdinalIgnoreCase))
 		{
 			NotificationService.ShowWarning("This browser blocks direct clipboard reads. Paste the image directly into the idea box instead.", "Paste Image");
+		}
+		catch (JSException ex) when (IsMissingIdeasInteropException(ex))
+		{
+			DisableAttachmentInterop();
 		}
 		catch (Exception ex)
 		{
@@ -1005,7 +1029,59 @@
 		}
 
 		_dotNetReference = DotNetObjectReference.Create(this);
-		await JSRuntime.InvokeVoidAsync("vibeSwarmIdeas.registerPasteTarget", _textareaId, _newIdeaTextarea, _dotNetReference);
+		try
+		{
+			await JSRuntime.InvokeVoidAsync("vibeSwarmIdeas.registerPasteTarget", _textareaId, _newIdeaTextarea, _dotNetReference);
+			_pasteTargetRegistered = true;
+		}
+		catch (JSException ex) when (IsMissingIdeasInteropException(ex))
+		{
+			DisableAttachmentInterop();
+		}
+	}
+
+	private string GetAttachmentButtonTooltip()
+	{
+		return _attachmentInteropAvailable
+			? "Attach files from the host filesystem"
+			: "Attachments are temporarily unavailable. Refresh the page to restore them.";
+	}
+
+	private string GetPasteImageTooltip()
+	{
+		return _attachmentInteropAvailable
+			? "Paste an image from the clipboard"
+			: "Clipboard image paste is temporarily unavailable. Refresh the page to restore it.";
+	}
+
+	private void DisableAttachmentInterop()
+	{
+		if (!_attachmentInteropAvailable)
+		{
+			return;
+		}
+
+		_attachmentInteropAvailable = false;
+		_pasteTargetRegistered = false;
+		_dotNetReference?.Dispose();
+		_dotNetReference = null;
+		ShowAttachmentInteropUnavailableWarning();
+		_ = InvokeAsync(StateHasChanged);
+	}
+
+	private void ShowAttachmentInteropUnavailableWarning()
+	{
+		NotificationService.ShowWarning(
+			"Idea attachments and clipboard image paste are temporarily unavailable on this page. Refresh the page to restore them.",
+			"Attachments unavailable");
+	}
+
+	private static bool IsMissingIdeasInteropException(JSException exception)
+	{
+		return exception.Message.Contains("vibeSwarmIdeas", StringComparison.OrdinalIgnoreCase) ||
+			exception.Message.Contains("registerPasteTarget", StringComparison.OrdinalIgnoreCase) ||
+			exception.Message.Contains("consumeSelectedFiles", StringComparison.OrdinalIgnoreCase) ||
+			exception.Message.Contains("readImageFromClipboard", StringComparison.OrdinalIgnoreCase);
 	}
 
 	private string GetSuggestResultContainerClass() => _suggestResult?.Success == true
@@ -1245,10 +1321,21 @@
 			: label;
 	}
 
-	public ValueTask DisposeAsync()
+	public async ValueTask DisposeAsync()
 	{
+		if (_pasteTargetRegistered)
+		{
+			try
+			{
+				await JSRuntime.InvokeVoidAsync("vibeSwarmIdeas.unregisterPasteTarget", _textareaId);
+			}
+			catch (JSException)
+			{
+			}
+		}
+
 		_dotNetReference?.Dispose();
 		_dotNetReference = null;
-		return ValueTask.CompletedTask;
+		_pasteTargetRegistered = false;
 	}
 }

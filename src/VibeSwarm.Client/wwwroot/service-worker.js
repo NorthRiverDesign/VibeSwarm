@@ -1,6 +1,6 @@
 // VibeSwarm Service Worker
 // Increment CACHE_VERSION when icons or critical assets change to force cache refresh
-const CACHE_VERSION = 8;
+const CACHE_VERSION = 9;
 const CACHE_NAME = `vibeswarm-v${CACHE_VERSION}`;
 const OFFLINE_URL = "/offline.html";
 
