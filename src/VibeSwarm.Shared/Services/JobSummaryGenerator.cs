@@ -200,6 +200,15 @@ public static partial class JobSummaryGenerator
 	[GeneratedRegex(@"^\s*\d+\s+file\(s\)\s+changed(?:\s*\([^)]+\))?\s*$", RegexOptions.IgnoreCase)]
 	private static partial Regex FileChangeStatsRegex();
 
+	[GeneratedRegex(@"\s*(?:[|]|[-–—:])\s*(?:files?|diff|changes?|details?)\s*:.*$", RegexOptions.IgnoreCase)]
+	private static partial Regex InlineArtifactHeadingSuffixRegex();
+
+	[GeneratedRegex(@"\s+(?:\d+\s+file(?:\(s\))?s?\s+changed(?:\s*\([^)]+\))?(?:,\s*\d+\s+insertions?\(\+\))?(?:,\s*\d+\s+deletions?\(-\))?|[+-]\d+(?:/[+-]\d+)+)\s*$", RegexOptions.IgnoreCase)]
+	private static partial Regex InlineStatSuffixRegex();
+
+	[GeneratedRegex(@"\s*(?:[|]|[-–—:])\s*(?:(?:[A-Za-z0-9._-]+[/\\])+[A-Za-z0-9._-]+(?:\s*,\s*(?:[A-Za-z0-9._-]+[/\\])+[A-Za-z0-9._-]+)*)\s*$", RegexOptions.IgnoreCase)]
+	private static partial Regex InlinePathListSuffixRegex();
+
 	[GeneratedRegex(@"[<>`*_#\[\]\{\}|~]+")]
 	private static partial Regex CommitMarkupRegex();
 
@@ -430,6 +439,7 @@ public static partial class JobSummaryGenerator
 		normalized = CommitMarkupRegex().Replace(normalized, string.Empty);
 		normalized = normalized.Replace('"', ' ').Replace('\t', ' ');
 		normalized = string.Join(" ", normalized.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+		normalized = StripInlineCommitArtifacts(normalized);
 		normalized = normalized.Trim(' ', '.', ',', ';', ':', '-', '–', '—');
 
 		if (normalized.Length == 0 || IsCommitArtifactLine(normalized))
@@ -444,6 +454,20 @@ public static partial class JobSummaryGenerator
 
 		normalized = char.ToUpper(normalized[0]) + normalized[1..];
 		return TruncateAtWordBoundary(normalized, MaxCommitSubjectLength);
+	}
+
+	private static string StripInlineCommitArtifacts(string text)
+	{
+		if (string.IsNullOrWhiteSpace(text))
+		{
+			return string.Empty;
+		}
+
+		var normalized = text;
+		normalized = InlineArtifactHeadingSuffixRegex().Replace(normalized, string.Empty);
+		normalized = InlineStatSuffixRegex().Replace(normalized, string.Empty);
+		normalized = InlinePathListSuffixRegex().Replace(normalized, string.Empty);
+		return normalized.Trim();
 	}
 
 	private static string BuildHeadline(ActionContext actionContext, string? title)

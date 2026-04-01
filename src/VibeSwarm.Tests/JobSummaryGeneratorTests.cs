@@ -67,6 +67,44 @@ public sealed class JobSummaryGeneratorTests
 	}
 
 	[Fact]
+	public void BuildCommitSubject_StripsInlineDiffStatsFromSessionSummaryLine()
+	{
+		var subject = JobSummaryGenerator.BuildCommitSubject(
+			"Fixed mobile UI issues - 3 files changed (+20/-4)",
+			title: null,
+			goalPrompt: "fix mobile UI issues");
+
+		Assert.Equal("Fixed mobile UI issues", subject);
+	}
+
+	[Fact]
+	public void BuildCommitSubject_StripsInlineFilePathNoiseFromSessionSummaryLine()
+	{
+		var subject = JobSummaryGenerator.BuildCommitSubject(
+			"Implemented CRUD pages for Posts: src/VibeSwarm.Client/Pages/Posts.razor, src/VibeSwarm.Web/Controllers/PostsController.cs",
+			title: null,
+			goalPrompt: "implement CRUD pages for Posts");
+
+		Assert.Equal("Implemented CRUD pages for Posts", subject);
+	}
+
+	[Fact]
+	public void BuildCommitSubject_StripsInlineArtifactsFromCommitSummaryTag()
+	{
+		var subject = JobSummaryGenerator.BuildCommitSubject(
+			sessionSummary: null,
+			title: null,
+			goalPrompt: "review middleware auth deficiencies",
+			consoleOutput: """
+				<commit-summary>
+				Improved security by reviewing middleware auth deficiencies | 2 files changed (+12/-3)
+				</commit-summary>
+				""");
+
+		Assert.Equal("Improved security by reviewing middleware auth deficiencies", subject);
+	}
+
+	[Fact]
 	public async Task PerformAutoCommitAsync_UsesSanitizedCommitSubject()
 	{
 		var versionControl = new RecordingVersionControlService
