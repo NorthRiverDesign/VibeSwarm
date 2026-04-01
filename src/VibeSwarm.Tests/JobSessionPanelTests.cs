@@ -592,6 +592,7 @@ public sealed class JobSessionPanelTests
 	public void JobSessionPanel_Bunit_CallsClearLiveOutputCallback()
 	{
 		using var context = new BunitContext();
+		context.JSInterop.SetupVoid("vibeSwarmLiveOutput.sync", _ => true);
 		var cleared = false;
 
 		var cut = context.Render<JobSessionPanel>(parameters => parameters
@@ -616,6 +617,79 @@ public sealed class JobSessionPanelTests
 			.Click();
 
 		Assert.True(cleared);
+	}
+
+	[Fact]
+	public void JobSessionPanel_Bunit_AutoScrollsActiveSessionWhenLiveOutputChanges()
+	{
+		using var context = new BunitContext();
+		context.JSInterop.SetupVoid("vibeSwarmLiveOutput.sync", _ => true);
+
+		var firstTimestamp = DateTime.UtcNow;
+		var cut = context.Render<JobSessionPanel>(parameters => parameters
+			.Add(panel => panel.Status, JobStatus.Processing)
+			.Add(panel => panel.IsJobActive, true)
+			.Add(panel => panel.LiveOutputLines, new List<OutputLine>
+			{
+				new()
+				{
+					Content = "[Assistant] Reviewing repository changes",
+					Timestamp = firstTimestamp
+				}
+			}));
+
+		Assert.Single(context.JSInterop.Invocations, invocation => invocation.Identifier == "vibeSwarmLiveOutput.sync");
+
+		context.Render<JobSessionPanel>(parameters => parameters
+			.Add(panel => panel.Status, JobStatus.Processing)
+			.Add(panel => panel.IsJobActive, true)
+			.Add(panel => panel.LiveOutputLines, new List<OutputLine>
+			{
+				new()
+				{
+					Content = "[Assistant] Reviewing repository changes",
+					Timestamp = firstTimestamp
+				},
+				new()
+				{
+					Content = "[Assistant] Applying the fix",
+					Timestamp = firstTimestamp.AddSeconds(1)
+				}
+			}));
+
+		Assert.Equal(2, context.JSInterop.Invocations.Count(invocation => invocation.Identifier == "vibeSwarmLiveOutput.sync"));
+	}
+
+	[Fact]
+	public void JobSessionPanel_Bunit_DoesNotAutoScrollInactiveOrHiddenSessionView()
+	{
+		using var context = new BunitContext();
+		context.JSInterop.SetupVoid("copyToClipboard", "dotnet test");
+		context.JSInterop.SetupVoid("vibeSwarmLiveOutput.sync", _ => true);
+
+		var cut = context.Render<JobSessionPanel>(parameters => parameters
+			.Add(panel => panel.Status, JobStatus.Completed)
+			.Add(panel => panel.Messages, new List<JobMessage>
+			{
+				new()
+				{
+					Id = Guid.NewGuid(),
+					JobId = Guid.NewGuid(),
+					Role = MessageRole.Assistant,
+					Content = "Completed successfully.",
+					CreatedAt = DateTime.UtcNow
+				}
+			})
+			.Add(panel => panel.ConsoleOutput, "Build verified")
+			.Add(panel => panel.CommandUsed, "dotnet test"));
+
+		Assert.DoesNotContain(context.JSInterop.Invocations, invocation => invocation.Identifier == "vibeSwarmLiveOutput.sync");
+
+		cut.FindAll("button[role='tab']")
+			.Single(button => button.TextContent.Contains("Command", StringComparison.Ordinal))
+			.Click();
+
+		Assert.DoesNotContain(context.JSInterop.Invocations, invocation => invocation.Identifier == "vibeSwarmLiveOutput.sync");
 	}
 
 	[Fact]

@@ -376,6 +376,44 @@
         </script>
 
         <script>
+            window.vibeSwarmLiveOutput = {
+                isNearBottom: function (element) {
+                    if (!element) {
+                        return false;
+                    }
+
+                    return element.scrollHeight - element.scrollTop - element.clientHeight <= 4;
+                },
+                sync: function (element) {
+                    if (!element) {
+                        return;
+                    }
+
+                    var shouldStick = element.dataset.vsAutoscroll !== 'false';
+                    if (shouldStick) {
+                        element.scrollTo({
+                            top: element.scrollHeight,
+                            behavior: 'smooth'
+                        });
+                    }
+
+                    var updateAutoscrollState = function () {
+                        element.dataset.vsAutoscroll = window.vibeSwarmLiveOutput.isNearBottom(element)
+                            ? 'true'
+                            : 'false';
+                    };
+
+                    if (!element.dataset.vsAutoscrollInitialized) {
+                        element.dataset.vsAutoscrollInitialized = 'true';
+                        element.addEventListener('scroll', updateAutoscrollState, { passive: true });
+                    }
+
+                    updateAutoscrollState();
+                }
+            };
+        </script>
+
+        <script>
             window.scrollToEnd = function (element) {
                 if (element) {
                     element.scrollLeft = element.scrollWidth;

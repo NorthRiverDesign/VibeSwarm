@@ -198,7 +198,7 @@
                 }
 				else
 				{
-					<div class="d-flex flex-column gap-3 overflow-auto p-2" style="max-height: 600px;">
+					<div class="d-flex flex-column gap-3 overflow-auto p-2" style="max-height: 600px;" @ref="_sessionOutputContainer">
 						@foreach (var message in FilteredMessages)
 						{
 							<ChatMessage Role="@message.Role" Content="@message.Content" ToolName="@message.ToolName"
@@ -322,6 +322,8 @@
     private string _followUpPrompt = string.Empty;
     private bool _isSendingFollowUp = false;
     private HashSet<MessageRole> _hiddenRoles = new();
+    private ElementReference _sessionOutputContainer;
+    private string? _lastAutoScrollStateKey;
 
     private bool CanSendFollowUp => Status == JobStatus.Completed && OnSendFollowUp.HasDelegate;
 
@@ -348,6 +350,59 @@
 
     private bool ShowInlineWaitingActivity
         => IsJobActive && DisplayedMessages.Any();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!ShouldAutoScrollSessionOutput())
+        {
+            _lastAutoScrollStateKey = null;
+            return;
+        }
+
+        var currentStateKey = BuildAutoScrollStateKey();
+        if (string.Equals(_lastAutoScrollStateKey, currentStateKey, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _lastAutoScrollStateKey = currentStateKey;
+
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("vibeSwarmLiveOutput.sync", _sessionOutputContainer);
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+        catch (InvalidOperationException)
+        {
+        }
+    }
+
+    private bool ShouldAutoScrollSessionOutput()
+        => _activeTab == "session"
+            && IsJobActive
+            && FilteredMessages.Any();
+
+    private string BuildAutoScrollStateKey()
+    {
+        var lastVisibleMessage = FilteredMessages.LastOrDefault();
+        var lastOutputLine = LiveOutputLines.LastOrDefault();
+        var lastLiveMessage = LiveMessages.LastOrDefault();
+
+        return string.Join("|",
+            FilteredMessages.Count,
+            lastVisibleMessage?.CreatedAt.Ticks ?? 0,
+            (int?)lastVisibleMessage?.Role ?? -1,
+            lastVisibleMessage?.Content ?? string.Empty,
+            LiveOutputLines.Count,
+            lastOutputLine?.Timestamp.Ticks ?? 0,
+            lastOutputLine?.Content ?? string.Empty,
+            LiveMessages.Count,
+            lastLiveMessage?.CreatedAt.Ticks ?? 0,
+            (int?)lastLiveMessage?.Role ?? -1,
+            lastLiveMessage?.Content ?? string.Empty);
+    }
 
 
     private async Task SendFollowUp()
