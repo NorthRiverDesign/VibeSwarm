@@ -15,7 +15,7 @@ public class CopilotProvider : CliProviderBase
 {
     private const string DefaultExecutable = "copilot";
     private static readonly Version JsonOutputVersion = new(0, 0, 422);
-    private static readonly Version BashEnvFileVersion = new(0, 0, 418);
+    private static readonly Version BashEnvFlagVersion = new(0, 0, 418);
     private static readonly Version ReasoningEffortVersion = new(1, 0, 4);
     private static readonly Version AltScreenVersion = new(0, 0, 407);
     private static readonly Version AltScreenRemovedVersion = new(1, 0, 12);
@@ -127,6 +127,8 @@ public class CopilotProvider : CliProviderBase
         IProgress<ExecutionProgress>? progress,
         CancellationToken cancellationToken)
     {
+        EnsureBashEnvEnvironmentVariable();
+
         var execPath = GetExecutablePath();
         if (string.IsNullOrEmpty(execPath))
         {
@@ -419,16 +421,15 @@ public class CopilotProvider : CliProviderBase
             args.Add("on");
         }
 
-        // Bash environment file path (v0.0.418+).
-        // Versions prior to 0.0.418 only accept "on" or "off" for --bash-env, not a file path.
-        // Skip the flag entirely when the version is unknown or below 0.0.418 to prevent job failures
-        // on older installations (e.g. Raspberry Pi running an older release).
+        // Copilot 1.0.15 accepts only "on"/"off" for --bash-env.
+        // Inject the generated file path through the standard BASH_ENV environment variable and
+        // enable loading with "--bash-env on" on versions where the flag is known to exist.
         if (!string.IsNullOrEmpty(CurrentBashEnvPath)
             && _cachedCliVersion != null
-            && _cachedCliVersion >= BashEnvFileVersion)
+            && _cachedCliVersion >= BashEnvFlagVersion)
         {
             args.Add("--bash-env");
-            args.Add(CurrentBashEnvPath);
+            args.Add("on");
         }
 
         // Disable mouse input for headless/non-interactive jobs
@@ -514,6 +515,20 @@ public class CopilotProvider : CliProviderBase
         sb.Append(prompt);
 
         return sb.ToString();
+    }
+
+    private void EnsureBashEnvEnvironmentVariable()
+    {
+        if (string.IsNullOrWhiteSpace(CurrentBashEnvPath))
+        {
+            return;
+        }
+
+        CurrentEnvironmentVariables = CurrentEnvironmentVariables != null
+            ? new Dictionary<string, string>(CurrentEnvironmentVariables, StringComparer.Ordinal)
+            : new Dictionary<string, string>(StringComparer.Ordinal);
+
+        CurrentEnvironmentVariables["BASH_ENV"] = CurrentBashEnvPath;
     }
 
     /// <summary>
@@ -1071,6 +1086,8 @@ public class CopilotProvider : CliProviderBase
 
     private async Task<string> ExecuteCliAsync(string prompt, CancellationToken cancellationToken)
     {
+        EnsureBashEnvEnvironmentVariable();
+
         var execPath = GetExecutablePath();
         if (string.IsNullOrEmpty(execPath))
         {
@@ -1086,6 +1103,14 @@ public class CopilotProvider : CliProviderBase
         };
 
         PlatformHelper.ConfigureForCrossPlatform(startInfo);
+
+        if (GetEffectiveEnvironmentVariables() is { Count: > 0 } environmentVariables)
+        {
+            foreach (var kvp in environmentVariables)
+            {
+                startInfo.Environment[kvp.Key] = kvp.Value;
+            }
+        }
 
         if (!string.IsNullOrEmpty(WorkingDirectory))
         {

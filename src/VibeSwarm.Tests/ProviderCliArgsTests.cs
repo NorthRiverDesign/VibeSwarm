@@ -505,7 +505,7 @@ public sealed class ProviderCliArgsTests
     }
 
     [Fact]
-    public void Copilot_WithBashEnvPath_AndSupportedVersion_AddsBashEnvFlag()
+    public void Copilot_WithBashEnvPath_AndSupportedVersion_AddsBashEnvOnFlag()
     {
         var provider = new CopilotProvider(CreateConfig(ProviderType.Copilot));
         provider.CachedCliVersion = new Version(0, 0, 418);
@@ -515,7 +515,7 @@ public sealed class ProviderCliArgsTests
 
         var idx = args.IndexOf("--bash-env");
         Assert.True(idx >= 0);
-        Assert.Equal("/tmp/bash-env.sh", args[idx + 1]);
+        Assert.Equal("on", args[idx + 1]);
     }
 
     [Fact]
