@@ -58,66 +58,146 @@ else
                                 OnSuggestIdeas="SuggestIdeasFromCodebase" />
 
     @* Tabbed Content Area *@
-    <ul class="nav nav-tabs mt-3 project-detail-tabs" role="tablist">
-        <li class="nav-item" role="presentation">
-            <button type="button" class="nav-link @(_activeTab == "ideas" ? "active" : "")"
-                    @onclick="@(() => _activeTab = "ideas")" role="tab">
-                <i class="bi bi-lightbulb me-1"></i>
-                <span>Ideas</span>
-                @if (IdeasTotalCount > 0)
-                {
-                    <span class="badge bg-secondary ms-1">@IdeasTotalCount</span>
-                }
-            </button>
-        </li>
-        <li class="nav-item" role="presentation">
-            <button type="button" class="nav-link @(_activeTab == "jobs" ? "active" : "")"
-                    @onclick="@(() => _activeTab = "jobs")" role="tab">
-                <i class="bi bi-list-task me-1"></i>
-                <span>Jobs</span>
-                @if (JobsTotalCount > 0)
-                {
-                    <span class="badge bg-secondary ms-1">@JobsTotalCount</span>
-                }
-            </button>
-        </li>
-        <li class="nav-item" role="presentation">
-            <button type="button" class="nav-link @(_activeTab == "environments" ? "active" : "")"
-                    @onclick="@(() => _activeTab = "environments")" role="tab">
-                <i class="bi bi-globe2 me-1"></i>
-                <span>Environments</span>
-                @if (Project!.Environments.Any(environment => environment.IsEnabled))
-                {
-                    <span class="badge bg-secondary ms-1">@(Project.Environments.Count(environment => environment.IsEnabled))</span>
-                }
-            </button>
-        </li>
-        <li class="nav-item" role="presentation">
-            <button type="button" class="nav-link @(_activeTab == "changes" ? "active" : "") @(!IsGitRepository ? "disabled" : "")"
-                    @onclick="OpenChangesTabAsync" role="tab"
-                    disabled="@(!IsGitRepository)">
-                <i class="bi bi-file-diff me-1"></i>
-                <span>Changes</span>
-                @if (HasChangesTabContent && _workingTreeStatus.ChangedFilesCount > 0)
-                {
-                    <span class="badge bg-warning text-dark ms-1">@_workingTreeStatus.ChangedFilesCount</span>
-                }
-            </button>
-        </li>
-        <li class="nav-item" role="presentation">
-            <button type="button" class="nav-link @(_activeTab == "autopilot" ? "active" : "")"
-                    @onclick="@(() => _activeTab = "autopilot")" role="tab">
-                <i class="bi bi-robot me-1"></i>
-                <span>Auto-Pilot</span>
-                @if (_autoPilotStatus != null && !AutoPilotPanel.IsTerminal(_autoPilotStatus.Status))
-                {
-                    <span class="badge @AutoPilotPanel.GetStatusBadgeClass(_autoPilotStatus.Status) ms-1">
-                        @_autoPilotStatus.Status.ToString()
-                    </span>
-                }
-            </button>
-        </li>
-    </ul>
+    <div class="project-detail-tabs mt-3">
+        <ul class="nav nav-tabs d-none d-sm-flex" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button type="button" class="nav-link @(IsActiveTab("ideas") ? "active" : string.Empty)"
+                        @onclick='@(() => SetActiveTab("ideas"))' role="tab">
+                    <i class="bi bi-lightbulb me-1"></i>
+                    <span>Ideas</span>
+                    @if (IdeasTotalCount > 0)
+                    {
+                        <span class="badge bg-secondary ms-1">@IdeasTotalCount</span>
+                    }
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button type="button" class="nav-link @(IsActiveTab("jobs") ? "active" : string.Empty)"
+                        @onclick='@(() => SetActiveTab("jobs"))' role="tab">
+                    <i class="bi bi-list-task me-1"></i>
+                    <span>Jobs</span>
+                    @if (JobsTotalCount > 0)
+                    {
+                        <span class="badge bg-secondary ms-1">@JobsTotalCount</span>
+                    }
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button type="button" class="nav-link @(IsActiveTab("environments") ? "active" : string.Empty)"
+                        @onclick='@(() => SetActiveTab("environments"))' role="tab">
+                    <i class="bi bi-globe2 me-1"></i>
+                    <span>Environments</span>
+                    @if (EnabledEnvironmentCount > 0)
+                    {
+                        <span class="badge bg-secondary ms-1">@EnabledEnvironmentCount</span>
+                    }
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button type="button" class="nav-link @(IsActiveTab("changes") ? "active" : string.Empty) @(!IsGitRepository ? "disabled" : string.Empty)"
+                        @onclick="OpenChangesTabAsync" role="tab"
+                        disabled="@(!IsGitRepository)">
+                    <i class="bi bi-file-diff me-1"></i>
+                    <span>Changes</span>
+                    @if (HasChangesTabContent && _workingTreeStatus.ChangedFilesCount > 0)
+                    {
+                        <span class="badge bg-warning text-dark ms-1">@_workingTreeStatus.ChangedFilesCount</span>
+                    }
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button type="button" class="nav-link @(IsActiveTab("autopilot") ? "active" : string.Empty)"
+                        @onclick='@(() => SetActiveTab("autopilot"))' role="tab">
+                    <i class="bi bi-robot me-1"></i>
+                    <span>Auto-Pilot</span>
+                    @if (_autoPilotStatus != null && !AutoPilotPanel.IsTerminal(_autoPilotStatus.Status))
+                    {
+                        <span class="badge @AutoPilotPanel.GetStatusBadgeClass(_autoPilotStatus.Status) ms-1">
+                            @_autoPilotStatus.Status.ToString()
+                        </span>
+                    }
+                </button>
+            </li>
+        </ul>
+
+        <ul class="nav nav-tabs d-flex d-sm-none flex-nowrap align-items-stretch" role="tablist">
+            <li class="nav-item flex-fill" role="presentation">
+                <button type="button" class="nav-link w-100 @(IsActiveTab("ideas") ? "active" : string.Empty)"
+                        @onclick='@(() => SetActiveTab("ideas"))' role="tab">
+                    <i class="bi bi-lightbulb me-1"></i>
+                    <span>Ideas</span>
+                    @if (IdeasTotalCount > 0)
+                    {
+                        <span class="badge bg-secondary ms-1">@IdeasTotalCount</span>
+                    }
+                </button>
+            </li>
+            <li class="nav-item flex-fill" role="presentation">
+                <button type="button" class="nav-link w-100 @(IsActiveTab("jobs") ? "active" : string.Empty)"
+                        @onclick='@(() => SetActiveTab("jobs"))' role="tab">
+                    <i class="bi bi-list-task me-1"></i>
+                    <span>Jobs</span>
+                    @if (JobsTotalCount > 0)
+                    {
+                        <span class="badge bg-secondary ms-1">@JobsTotalCount</span>
+                    }
+                </button>
+            </li>
+            <li class="nav-item flex-fill" role="presentation">
+                <div class="dropdown h-100">
+                    <button type="button" class="nav-link dropdown-toggle w-100 h-100 @(IsOverflowTabActive ? "active" : string.Empty)"
+                            data-bs-toggle="dropdown" aria-expanded="false" title="More project tabs">
+                        <i class="bi @GetOverflowToggleIcon() me-1"></i>
+                        <span>@GetOverflowTabLabel()</span>
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end w-100 shadow-sm">
+                        <li>
+                            <button type="button" class="dropdown-item d-flex align-items-center justify-content-between gap-2 @(IsActiveTab("environments") ? "active" : string.Empty)"
+                                    @onclick='@(() => SetActiveTab("environments"))'>
+                                <span class="d-flex align-items-center gap-2">
+                                    <i class="bi bi-globe2"></i>
+                                    <span>Environments</span>
+                                </span>
+                                @if (EnabledEnvironmentCount > 0)
+                                {
+                                    <span class="badge bg-secondary">@EnabledEnvironmentCount</span>
+                                }
+                            </button>
+                        </li>
+                        <li>
+                            <button type="button" class="dropdown-item d-flex align-items-center justify-content-between gap-2 @(IsActiveTab("changes") ? "active" : string.Empty)"
+                                    @onclick="OpenChangesTabAsync"
+                                    disabled="@(!IsGitRepository)">
+                                <span class="d-flex align-items-center gap-2">
+                                    <i class="bi bi-file-diff"></i>
+                                    <span>Changes</span>
+                                </span>
+                                @if (HasChangesTabContent && _workingTreeStatus.ChangedFilesCount > 0)
+                                {
+                                    <span class="badge bg-warning text-dark">@_workingTreeStatus.ChangedFilesCount</span>
+                                }
+                            </button>
+                        </li>
+                        <li>
+                            <button type="button" class="dropdown-item d-flex align-items-center justify-content-between gap-2 @(IsActiveTab("autopilot") ? "active" : string.Empty)"
+                                    @onclick='@(() => SetActiveTab("autopilot"))'>
+                                <span class="d-flex align-items-center gap-2">
+                                    <i class="bi bi-robot"></i>
+                                    <span>Auto-Pilot</span>
+                                </span>
+                                @if (_autoPilotStatus != null && !AutoPilotPanel.IsTerminal(_autoPilotStatus.Status))
+                                {
+                                    <span class="badge @AutoPilotPanel.GetStatusBadgeClass(_autoPilotStatus.Status)">
+                                        @_autoPilotStatus.Status.ToString()
+                                    </span>
+                                }
+                            </button>
+                        </li>
+                    </ul>
+                </div>
+            </li>
+        </ul>
+    </div>
 
     <div class="tab-content pt-3">
         @if (_activeTab == "ideas")
@@ -614,6 +694,8 @@ else
 
     // Tab state
     private string _activeTab = "ideas";
+    private int EnabledEnvironmentCount => Project?.Environments.Count(environment => environment.IsEnabled) ?? 0;
+    private bool IsOverflowTabActive => _activeTab is "environments" or "changes" or "autopilot";
 
     // Auto-pilot state
     private AutoPilotPanel? _autoPilotPanel;
@@ -694,6 +776,38 @@ else
     private HashSet<Guid> _localIdeaCreateIds = new();
     private DateTime _lastIdeasLoadTime = DateTime.MinValue;
     private bool _disposed;
+
+    private void SetActiveTab(string tab)
+    {
+        _activeTab = tab;
+    }
+
+    private bool IsActiveTab(string tab)
+    {
+        return string.Equals(_activeTab, tab, StringComparison.Ordinal);
+    }
+
+    private string GetOverflowTabLabel()
+    {
+        return _activeTab switch
+        {
+            "environments" => "Environments",
+            "changes" => "Changes",
+            "autopilot" => "Auto-Pilot",
+            _ => "More"
+        };
+    }
+
+    private string GetOverflowToggleIcon()
+    {
+        return _activeTab switch
+        {
+            "environments" => "bi-globe2",
+            "changes" => "bi-file-diff",
+            "autopilot" => "bi-robot",
+            _ => "bi-three-dots"
+        };
+    }
 
     protected override async Task OnInitializedAsync()
     {
