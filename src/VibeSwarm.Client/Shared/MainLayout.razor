@@ -528,13 +528,23 @@ TimeSpan.FromSeconds(10) })
                 _ => string.Empty
             };
 
-            NotificationService.ShowSuccess($"{jobTitle} completed successfully{scope}.{changeInfo}", "Job Completed");
+            NotificationService.Show(
+                $"{jobTitle} completed successfully{scope}.{changeInfo}",
+                "Job Completed",
+                NotificationType.Success,
+                5000,
+                "View Job",
+                job?.Id is Guid jobId ? $"/jobs/view/{jobId}" : null);
             return;
         }
 
-        NotificationService.ShowError(
+        NotificationService.Show(
             errorMessage ?? $"{TruncateForToast(job?.Title, 80, "Job")} failed.",
-            "Job Failed");
+            "Job Failed",
+            NotificationType.Error,
+            8000,
+            "View Job",
+            job?.Id is Guid failedJobId ? $"/jobs/view/{failedJobId}" : null);
     }
 
     private readonly Dictionary<string, DateTime> _recentToastEvents = new();

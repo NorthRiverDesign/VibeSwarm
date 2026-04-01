@@ -1,4 +1,5 @@
 @inject NotificationService NotificationService
+@inject NavigationManager NavigationManager
 @implements IDisposable
 
 @if (_isOpen)
@@ -37,7 +38,13 @@
             {
                 @foreach (var notification in _history)
                 {
-                    <div class="notification-history-item d-flex gap-2 px-3 py-2 border-bottom">
+                    var isClickable = notification.HasAction;
+
+                    <div class="notification-history-item d-flex gap-2 px-3 py-2 border-bottom @(isClickable ? "cursor-pointer" : string.Empty)"
+                         role="@(isClickable ? "button" : null)"
+                         tabindex="@(isClickable ? 0 : -1)"
+                         @onclick="() => OpenNotification(notification)"
+                         @onkeydown="(args) => HandleNotificationKeyDown(args, notification)">
                         <i class="@GetIconClass(notification.Type) flex-shrink-0 mt-1 small"></i>
                         <div class="flex-grow-1 min-width-0">
                             <div class="d-flex align-items-baseline justify-content-between gap-2">
@@ -45,6 +52,12 @@
                                 <span class="text-secondary flex-shrink-0" style="font-size: 0.7rem;">@GetTimeAgo(notification.CreatedAt)</span>
                             </div>
                             <div class="small text-secondary text-break">@notification.Message</div>
+                            @if (notification.HasAction)
+                            {
+                                <div class="small mt-1">
+                                    <span class="text-primary fw-medium">@notification.ActionLabel</span>
+                                </div>
+                            }
                         </div>
                     </div>
                 }
@@ -84,6 +97,30 @@
     {
         NotificationService.ClearHistory();
         RefreshState();
+    }
+
+    private void OpenNotification(ToastNotification notification)
+    {
+        if (!notification.HasAction || string.IsNullOrWhiteSpace(notification.ActionUrl))
+        {
+            return;
+        }
+
+        NotificationService.ClosePanel();
+        NavigationManager.NavigateTo(notification.ActionUrl);
+    }
+
+    private void HandleNotificationKeyDown(KeyboardEventArgs args, ToastNotification notification)
+    {
+        if (!notification.HasAction)
+        {
+            return;
+        }
+
+        if (args.Key is "Enter" or " ")
+        {
+            OpenNotification(notification);
+        }
     }
 
     private static string GetIconClass(NotificationType type) => type switch
