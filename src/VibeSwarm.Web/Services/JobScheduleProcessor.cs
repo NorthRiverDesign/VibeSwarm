@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using VibeSwarm.Shared.Data;
+using VibeSwarm.Shared.Models;
 using VibeSwarm.Shared.Services;
 using VibeSwarm.Shared.Utilities;
 
@@ -9,15 +10,18 @@ public class JobScheduleProcessor
 {
 	private readonly VibeSwarmDbContext _dbContext;
 	private readonly IJobService _jobService;
+	private readonly IIdeaService _ideaService;
 	private readonly ILogger<JobScheduleProcessor> _logger;
 
 	public JobScheduleProcessor(
 		VibeSwarmDbContext dbContext,
 		IJobService jobService,
+		IIdeaService ideaService,
 		ILogger<JobScheduleProcessor> logger)
 	{
 		_dbContext = dbContext;
 		_jobService = jobService;
+		_ideaService = ideaService;
 		_logger = logger;
 	}
 
@@ -65,24 +69,49 @@ public class JobScheduleProcessor
 
 		try
 		{
-			var resolvedExecution = await ResolveScheduledExecutionAsync(schedule, cancellationToken);
-			await _jobService.CreateAsync(new Job
+			if (schedule.ScheduleType == JobScheduleType.GenerateIdeas)
 			{
-				ProjectId = schedule.ProjectId,
-				ProviderId = resolvedExecution.ProviderId,
-				GoalPrompt = schedule.Prompt,
-				ModelUsed = resolvedExecution.ModelId,
-				ReasoningEffort = resolvedExecution.ReasoningEffort,
-				IsScheduled = true,
-				JobScheduleId = schedule.Id,
-				ScheduledForUtc = scheduledForUtc,
-				TeamRoleId = resolvedExecution.TeamRoleId
-			}, cancellationToken);
+				var result = await _ideaService.SuggestIdeasFromCodebaseAsync(
+					schedule.ProjectId,
+					new SuggestIdeasRequest
+					{
+						UseInference = true,
+						ProviderId = schedule.InferenceProviderId,
+						ModelId = schedule.ModelId,
+						IdeaCount = schedule.IdeaCount,
+						AdditionalContext = BuildScheduledIdeaContext(schedule, scheduledForUtc)
+					},
+					cancellationToken);
+				if (!result.Success)
+				{
+					throw new InvalidOperationException(result.Message);
+				}
+			}
+			else
+			{
+				var resolvedExecution = await ResolveScheduledExecutionAsync(schedule, cancellationToken);
+				await _jobService.CreateAsync(new Job
+				{
+					ProjectId = schedule.ProjectId,
+					ProviderId = resolvedExecution.ProviderId,
+					GoalPrompt = schedule.Prompt,
+					ModelUsed = resolvedExecution.ModelId,
+					ReasoningEffort = resolvedExecution.ReasoningEffort,
+					IsScheduled = true,
+					JobScheduleId = schedule.Id,
+					ScheduledForUtc = scheduledForUtc,
+					TeamRoleId = resolvedExecution.TeamRoleId
+				}, cancellationToken);
+			}
 
 			schedule.LastRunAtUtc = scheduledForUtc;
 			schedule.LastError = null;
 			await _dbContext.SaveChangesAsync(cancellationToken);
-			_logger.LogInformation("Queued scheduled job for schedule {ScheduleId} at {ScheduledForUtc}", schedule.Id, scheduledForUtc);
+			_logger.LogInformation(
+				"Processed scheduled {ScheduleType} for schedule {ScheduleId} at {ScheduledForUtc}",
+				schedule.ScheduleType,
+				schedule.Id,
+				scheduledForUtc);
 			return true;
 		}
 		catch (DbUpdateException ex) when (IsDuplicateScheduledJobError(ex))
@@ -158,6 +187,19 @@ public class JobScheduleProcessor
 			string.IsNullOrWhiteSpace(schedule.ModelId) ? assignment.PreferredModelId : schedule.ModelId,
 			assignment.PreferredReasoningEffort,
 			assignment.TeamRoleId);
+	}
+
+	private static string BuildScheduledIdeaContext(JobSchedule schedule, DateTime scheduledForUtc)
+	{
+		var scheduleDescriptor = schedule.Frequency switch
+		{
+			JobScheduleFrequency.Hourly => $"hourly at minute {schedule.MinuteUtc:D2}",
+			JobScheduleFrequency.Weekly => $"weekly on {schedule.WeeklyDay} at {schedule.HourUtc:D2}:{schedule.MinuteUtc:D2} UTC",
+			JobScheduleFrequency.Monthly => $"monthly on day {schedule.DayOfMonth} at {schedule.HourUtc:D2}:{schedule.MinuteUtc:D2} UTC",
+			_ => $"daily at {schedule.HourUtc:D2}:{schedule.MinuteUtc:D2} UTC"
+		};
+
+		return $"This idea-generation request comes from the scheduler. Schedule cadence: {scheduleDescriptor}. Scheduled run time: {scheduledForUtc:O}. Generate fresh ideas that are meaningfully different from what a recent run of this same recurring schedule would have already proposed.";
 	}
 
 	private static bool IsDuplicateScheduledJobError(DbUpdateException exception)

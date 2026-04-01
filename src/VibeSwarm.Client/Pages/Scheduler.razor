@@ -21,7 +21,7 @@
 else if (!_schedules.Any())
 {
 	<EmptyState Icon="calendar-event" Title="No schedules yet"
-				Message="Create a recurring prompt to automatically queue jobs for one of your projects." />
+				Message="Create a recurring schedule to automatically queue jobs or generate fresh ideas for one of your projects." />
 }
 else
 {
@@ -31,15 +31,25 @@ else
 			<div class="list-group-item d-flex flex-column flex-md-row align-items-md-start gap-3 p-3 hover-bg-tertiary">
 				<div class="flex-grow-1 min-width-0">
 					<div class="d-flex align-items-center gap-2 flex-wrap">
-						<span class="fw-semibold">@TruncateText(schedule.Prompt, 110)</span>
+						<span class="fw-semibold">@GetScheduleTitle(schedule)</span>
 						<span class="badge @(schedule.IsEnabled ? "bg-success-subtle text-success-emphasis" : "bg-secondary-subtle text-secondary-emphasis")">
 							@(schedule.IsEnabled ? "Active" : "Paused")
+						</span>
+						<span class="badge @(schedule.ScheduleType == JobScheduleType.GenerateIdeas ? "bg-warning-subtle text-warning-emphasis" : "bg-primary-subtle text-primary-emphasis")">
+							@(schedule.ScheduleType == JobScheduleType.GenerateIdeas ? "Idea Generation" : "Job Running")
 						</span>
 						<span class="small text-body-secondary d-inline-flex align-items-center gap-1">
 							<i class="bi bi-folder opacity-75"></i>
 							@(schedule.Project?.Name ?? "Unknown project")
 						</span>
-						@if (schedule.ExecutionTarget == JobScheduleExecutionTarget.TeamRole)
+						@if (schedule.ScheduleType == JobScheduleType.GenerateIdeas)
+						{
+							<span class="small text-body-secondary d-inline-flex align-items-center gap-1">
+								<i class="bi bi-stars opacity-75"></i>
+								@(schedule.InferenceProvider?.Name ?? "Unknown inference provider")
+							</span>
+						}
+						else if (schedule.ExecutionTarget == JobScheduleExecutionTarget.TeamRole)
 						{
 							<span class="small text-body-secondary d-inline-flex align-items-center gap-1">
 								<i class="bi bi-person-badge opacity-75"></i>
@@ -58,6 +68,13 @@ else
 							<span class="small text-body-secondary d-inline-flex align-items-center gap-1">
 								<i class="bi bi-diagram-3 opacity-75"></i>
 								@schedule.ModelId
+							</span>
+						}
+						@if (schedule.ScheduleType == JobScheduleType.GenerateIdeas)
+						{
+							<span class="small text-body-secondary d-inline-flex align-items-center gap-1">
+								<i class="bi bi-list-ol opacity-75"></i>
+								@($"{schedule.IdeaCount} idea{(schedule.IdeaCount == 1 ? string.Empty : "s")}")
 							</span>
 						}
 					</div>
@@ -120,8 +137,8 @@ else
 				  OnCancelled="HandleModalCancelled" OnClosed="HandleScheduleModalClosed" />
 
 <ConfirmationModal @bind-IsVisible="_showDeleteModal" Title="Delete Schedule"
-				   Message="@($"Are you sure you want to delete this schedule? {TruncateText(_scheduleToDelete?.Prompt ?? string.Empty, 90)}")"
-				   SubMessage="This will stop future automatic jobs for this prompt. Existing jobs will remain."
+				   Message="@GetDeleteConfirmationMessage()"
+				   SubMessage="@GetDeleteConfirmationSubMessage()"
 				   ConfirmText="Delete" ButtonClass="btn-danger" IsProcessing="_isDeleting"
 				   OnConfirm="ConfirmDelete" OnCancel="CancelDelete" />
 
@@ -258,22 +275,52 @@ else
 	private string DescribeSchedule(JobSchedule schedule)
 	{
 		var time = $"{schedule.HourUtc:D2}:{schedule.MinuteUtc:D2} {AppTimeZoneService.CurrentTimeZoneId}";
-		var executor = schedule.ExecutionTarget == JobScheduleExecutionTarget.TeamRole
-			? schedule.TeamRole?.Name ?? "Unknown team member"
-			: schedule.Provider?.Name ?? "Unknown provider";
+		var action = schedule.ScheduleType == JobScheduleType.GenerateIdeas
+			? $"generate {schedule.IdeaCount} idea{(schedule.IdeaCount == 1 ? string.Empty : "s")} with {schedule.InferenceProvider?.Name ?? "Unknown inference provider"}"
+			: schedule.ExecutionTarget == JobScheduleExecutionTarget.TeamRole
+				? schedule.TeamRole?.Name ?? "Unknown team member"
+				: schedule.Provider?.Name ?? "Unknown provider";
 		return schedule.Frequency switch
 		{
-			JobScheduleFrequency.Hourly => $"{executor} hourly at minute {schedule.MinuteUtc:D2} past the hour ({AppTimeZoneService.CurrentTimeZoneId})",
-			JobScheduleFrequency.Weekly => $"{executor} weekly on {schedule.WeeklyDay} at {time}",
-			JobScheduleFrequency.Monthly => $"{executor} monthly on day {schedule.DayOfMonth} at {time}",
-			_ => $"{executor} daily at {time}"
+			JobScheduleFrequency.Hourly => $"{action} hourly at minute {schedule.MinuteUtc:D2} past the hour ({AppTimeZoneService.CurrentTimeZoneId})",
+			JobScheduleFrequency.Weekly => $"{action} weekly on {schedule.WeeklyDay} at {time}",
+			JobScheduleFrequency.Monthly => $"{action} monthly on day {schedule.DayOfMonth} at {time}",
+			_ => $"{action} daily at {time}"
 		};
 	}
 
 	private static string FormatUtc(DateTime value) => value.FormatDateTimeWithZone();
 
 	private string GetSubtitle()
-		=> $"Create recurring prompts that automatically create jobs. Times run in {AppTimeZoneService.CurrentTimeZoneId}.";
+		=> $"Create recurring schedules that automatically create jobs or generate ideas. Times run in {AppTimeZoneService.CurrentTimeZoneId}.";
+
+	private static string GetScheduleTitle(JobSchedule schedule)
+	{
+		if (schedule.ScheduleType == JobScheduleType.GenerateIdeas)
+		{
+			return $"Generate {schedule.IdeaCount} idea{(schedule.IdeaCount == 1 ? string.Empty : "s")}";
+		}
+
+		return TruncateText(schedule.Prompt, 110);
+	}
+
+	private string GetDeleteConfirmationMessage()
+	{
+		if (_scheduleToDelete == null)
+		{
+			return "Are you sure you want to delete this schedule?";
+		}
+
+		var summary = _scheduleToDelete.ScheduleType == JobScheduleType.GenerateIdeas
+			? GetScheduleTitle(_scheduleToDelete)
+			: TruncateText(_scheduleToDelete.Prompt ?? string.Empty, 90);
+		return $"Are you sure you want to delete this schedule? {summary}";
+	}
+
+	private string GetDeleteConfirmationSubMessage()
+		=> _scheduleToDelete?.ScheduleType == JobScheduleType.GenerateIdeas
+			? "This will stop future automatic idea generation for this project."
+			: "This will stop future automatic jobs for this prompt. Existing jobs will remain.";
 
 	private JobSummary? GetActiveJobForSchedule(Guid scheduleId)
 		=> _activeJobs.FirstOrDefault(j => j.JobScheduleId == scheduleId);

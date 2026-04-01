@@ -90,7 +90,21 @@ public partial class IdeaService
 			};
 		}
 
-		var prompt = BuildCodebaseSuggestionPrompt(repoMap, project.Name, project.Description, project.PromptContext, request.IdeaCount);
+		var existingIdeas = await _dbContext.Ideas
+			.Where(idea => idea.ProjectId == projectId)
+			.OrderBy(idea => idea.SortOrder)
+			.ThenBy(idea => idea.CreatedAt)
+			.Select(idea => idea.Description)
+			.ToListAsync(cancellationToken);
+
+		var prompt = BuildCodebaseSuggestionPrompt(
+			repoMap,
+			project.Name,
+			project.Description,
+			project.PromptContext,
+			request.IdeaCount,
+			existingIdeas,
+			request.AdditionalContext);
 		const string systemPrompt = "You are a senior software engineer performing a codebase review. Identify concrete, actionable improvements. Return only a plain list of ideas, one per line starting with \"- \". No explanations or headers.";
 
 		var generationResult = request.UseInference
@@ -119,10 +133,7 @@ public partial class IdeaService
 		}
 
 		var knownSuggestionKeys = new HashSet<string>(
-			(await _dbContext.Ideas
-				.Where(idea => idea.ProjectId == projectId)
-				.Select(idea => idea.Description)
-				.ToListAsync(cancellationToken))
+			existingIdeas
 			.Select(NormalizeIdeaDescriptionForDuplicateCheck)
 			.Where(description => !string.IsNullOrEmpty(description)),
 			StringComparer.OrdinalIgnoreCase);
@@ -527,7 +538,14 @@ public partial class IdeaService
 		return PromptResponse.Fail(errorMessage);
 	}
 
-	private static string BuildCodebaseSuggestionPrompt(string repoMap, string projectName, string? description, string? promptContext, int ideaCount)
+	private static string BuildCodebaseSuggestionPrompt(
+		string repoMap,
+		string projectName,
+		string? description,
+		string? promptContext,
+		int ideaCount,
+		IReadOnlyCollection<string> existingIdeas,
+		string? additionalContext)
 	{
 		var sb = new StringBuilder();
 
@@ -549,9 +567,34 @@ public partial class IdeaService
 			sb.AppendLine("</project_instructions>");
 		}
 
+		if (!string.IsNullOrWhiteSpace(additionalContext))
+		{
+			sb.AppendLine("<run_context>");
+			sb.AppendLine(additionalContext.Trim());
+			sb.AppendLine("</run_context>");
+		}
+
 		sb.AppendLine("<repository_structure>");
 		sb.AppendLine(repoMap);
 		sb.AppendLine("</repository_structure>");
+
+		if (existingIdeas.Count > 0)
+		{
+			sb.AppendLine("<existing_ideas>");
+			sb.AppendLine("Avoid duplicating or lightly rewording ideas that already exist for this project backlog:");
+			foreach (var existingIdea in existingIdeas.Take(50))
+			{
+				sb.Append("- ");
+				sb.AppendLine(existingIdea);
+			}
+
+			if (existingIdeas.Count > 50)
+			{
+				sb.AppendLine($"- ...and {existingIdeas.Count - 50} more existing ideas not shown");
+			}
+
+			sb.AppendLine("</existing_ideas>");
+		}
 
 		sb.AppendLine("<objective>");
 		sb.AppendLine("Analyze the repository structure and identify areas for improvement.");
@@ -564,6 +607,7 @@ public partial class IdeaService
 
 		sb.AppendLine("<goal>");
 		sb.AppendLine($"Return exactly {ideaCount} concrete, actionable idea{(ideaCount == 1 ? "" : "s")}. Each idea must be a short description (1-2 sentences).");
+		sb.AppendLine("Do not repeat, restate, or lightly rename existing project ideas. Prefer genuinely new work items.");
 		sb.AppendLine("Format: one idea per line, each starting with \"- \". No headers, no explanations outside the list.");
 		sb.AppendLine("Example:");
 		sb.AppendLine("- Add input validation to the registration form to prevent invalid email addresses");
@@ -684,7 +728,8 @@ public partial class IdeaService
 			UseInference = request?.UseInference ?? true,
 			ProviderId = request?.ProviderId,
 			ModelId = string.IsNullOrWhiteSpace(request?.ModelId) ? null : request.ModelId.Trim(),
-			IdeaCount = Math.Clamp(request?.IdeaCount ?? SuggestIdeasRequest.DefaultIdeaCount, SuggestIdeasRequest.MinIdeaCount, SuggestIdeasRequest.MaxIdeaCount)
+			IdeaCount = Math.Clamp(request?.IdeaCount ?? SuggestIdeasRequest.DefaultIdeaCount, SuggestIdeasRequest.MinIdeaCount, SuggestIdeasRequest.MaxIdeaCount),
+			AdditionalContext = string.IsNullOrWhiteSpace(request?.AdditionalContext) ? null : request.AdditionalContext.Trim()
 		};
 	}
 

@@ -72,7 +72,7 @@ public sealed class SchedulerPageTests
 		});
 
 		Assert.Contains("No schedules yet", html);
-		Assert.Contains("Create a recurring prompt", html);
+		Assert.Contains("Create a recurring schedule", html);
 	}
 
 	[Fact]
@@ -116,6 +116,52 @@ public sealed class SchedulerPageTests
 		}
 	}
 
+	[Fact]
+	public async Task RenderedSchedulerPage_ShowsIdeaGenerationSchedules()
+	{
+		var timeZoneId = DateTimeHelper.ResolveTimeZone("America/New_York").Id;
+		var schedule = new JobSchedule
+		{
+			Id = Guid.NewGuid(),
+			ScheduleType = JobScheduleType.GenerateIdeas,
+			InferenceProviderId = Guid.NewGuid(),
+			InferenceProvider = new InferenceProvider
+			{
+				Id = Guid.NewGuid(),
+				Name = "Local Ollama",
+				Endpoint = "http://ollama:11434",
+				IsEnabled = true
+			},
+			IdeaCount = 3,
+			Frequency = JobScheduleFrequency.Daily,
+			HourUtc = 9,
+			MinuteUtc = 0,
+			IsEnabled = true,
+			NextRunAtUtc = new DateTime(2026, 3, 22, 9, 0, 0, DateTimeKind.Utc),
+			Project = new Project { Id = Guid.NewGuid(), Name = "Repo", WorkingPath = "/tmp/repo" }
+		};
+
+		try
+		{
+			var services = BuildServices(new FakeJobScheduleService([schedule]), timeZoneId);
+			await using var renderer = new HtmlRenderer(services.BuildServiceProvider(), NullLoggerFactory.Instance);
+
+			var html = await renderer.Dispatcher.InvokeAsync(async () =>
+			{
+				var output = await renderer.RenderComponentAsync<Scheduler>();
+				return output.ToHtmlString();
+			});
+
+			Assert.Contains("Idea Generation", html);
+			Assert.Contains("Generate 3 ideas", html);
+			Assert.Contains("Local Ollama", html);
+		}
+		finally
+		{
+			DateTimeHelper.ConfigureTimeZone(DateTimeHelper.UtcTimeZoneId);
+		}
+	}
+
 	private static ServiceCollection BuildServices(IJobScheduleService jobScheduleService, string timeZoneId)
 	{
 		var services = new ServiceCollection();
@@ -125,6 +171,7 @@ public sealed class SchedulerPageTests
 		services.AddSingleton<AppTimeZoneService>();
 		services.AddSingleton<IProjectService>(new FakeProjectService());
 		services.AddSingleton<IProviderService>(new FakeProviderService());
+		services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService());
 		services.AddSingleton<IJobService>(new FakeJobService());
 		services.AddSingleton<NotificationService>();
 		services.AddSingleton<NavigationManager>(new TestNavigationManager());
@@ -198,6 +245,20 @@ public sealed class SchedulerPageTests
 		public Task<Provider?> DetectProviderAsync(Provider provider, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<CliUpdateResult> UpdateCliAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<SessionSummary> GetSessionSummaryAsync(Guid providerId, string? sessionId, string? workingDirectory = null, string? fallbackOutput = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+	}
+
+	private sealed class FakeInferenceProviderService : IInferenceProviderService
+	{
+		public Task<IEnumerable<InferenceProvider>> GetAllAsync(CancellationToken ct = default) => Task.FromResult<IEnumerable<InferenceProvider>>([]);
+		public Task<InferenceProvider?> GetByIdAsync(Guid id, CancellationToken ct = default) => Task.FromResult<InferenceProvider?>(null);
+		public Task<IEnumerable<InferenceProvider>> GetEnabledAsync(CancellationToken ct = default) => Task.FromResult<IEnumerable<InferenceProvider>>([]);
+		public Task<InferenceProvider> CreateAsync(InferenceProvider provider, CancellationToken ct = default) => throw new NotSupportedException();
+		public Task<InferenceProvider> UpdateAsync(InferenceProvider provider, CancellationToken ct = default) => throw new NotSupportedException();
+		public Task DeleteAsync(Guid id, CancellationToken ct = default) => throw new NotSupportedException();
+		public Task<IEnumerable<InferenceModel>> GetModelsAsync(Guid providerId, CancellationToken ct = default) => Task.FromResult<IEnumerable<InferenceModel>>([]);
+		public Task<IEnumerable<InferenceModel>> RefreshModelsAsync(Guid providerId, CancellationToken ct = default) => throw new NotSupportedException();
+		public Task SetModelForTaskAsync(Guid providerId, string modelId, string taskType, CancellationToken ct = default) => throw new NotSupportedException();
+		public Task<InferenceModel?> GetModelForTaskAsync(string taskType, CancellationToken ct = default) => Task.FromResult<InferenceModel?>(null);
 	}
 
 	private sealed class FakeJobService : IJobService

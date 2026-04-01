@@ -188,6 +188,7 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 			entity.HasKey(e => e.Id);
 			entity.Property(e => e.Prompt).IsRequired().HasMaxLength(ValidationLimits.JobSchedulePromptMaxLength);
 			entity.Property(e => e.ModelId).HasMaxLength(ValidationLimits.JobScheduleModelIdMaxLength);
+			entity.Property(e => e.ScheduleType).HasConversion<string>();
 			entity.Property(e => e.ExecutionTarget).HasConversion<string>();
 			entity.Property(e => e.Frequency).HasConversion<string>();
 			entity.Property(e => e.WeeklyDay).HasConversion<string>();
@@ -204,6 +205,11 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 				.WithMany()
 				.HasForeignKey(e => e.TeamRoleId)
 				.OnDelete(DeleteBehavior.SetNull);
+			entity.HasOne(e => e.InferenceProvider)
+				.WithMany()
+				.HasForeignKey(e => e.InferenceProviderId)
+				.OnDelete(DeleteBehavior.SetNull);
+			entity.HasIndex(e => e.InferenceProviderId);
 			entity.HasIndex(e => e.ProviderId);
 			entity.HasIndex(e => e.TeamRoleId);
 			entity.HasIndex(e => new { e.IsEnabled, e.NextRunAtUtc });

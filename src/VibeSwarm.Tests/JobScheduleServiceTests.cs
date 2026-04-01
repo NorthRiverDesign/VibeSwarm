@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using VibeSwarm.Shared.Data;
+using VibeSwarm.Shared.Models;
 using VibeSwarm.Shared.Providers;
 using VibeSwarm.Shared.Services;
 using VibeSwarm.Shared.Utilities;
@@ -148,7 +149,7 @@ public sealed class JobScheduleServiceTests : IDisposable
 
 		var serviceProvider = new ServiceCollection().BuildServiceProvider();
 		var jobService = new JobService(dbContext, serviceProvider);
-		var processor = new JobScheduleProcessor(dbContext, jobService, NullLogger<JobScheduleProcessor>.Instance);
+		var processor = new JobScheduleProcessor(dbContext, jobService, new FakeIdeaService(), NullLogger<JobScheduleProcessor>.Instance);
 
 		var firstCount = await processor.ProcessDueSchedulesAsync();
 		var secondCount = await processor.ProcessDueSchedulesAsync();
@@ -261,7 +262,7 @@ public sealed class JobScheduleServiceTests : IDisposable
 
 		var serviceProvider = new ServiceCollection().BuildServiceProvider();
 		var jobService = new JobService(dbContext, serviceProvider);
-		var processor = new JobScheduleProcessor(dbContext, jobService, NullLogger<JobScheduleProcessor>.Instance);
+		var processor = new JobScheduleProcessor(dbContext, jobService, new FakeIdeaService(), NullLogger<JobScheduleProcessor>.Instance);
 
 		var createdCount = await processor.ProcessDueSchedulesAsync();
 
@@ -275,6 +276,111 @@ public sealed class JobScheduleServiceTests : IDisposable
 		Assert.Equal("copilot-reviewer", job.ModelUsed);
 		Assert.Equal("high", job.ReasoningEffort);
 		Assert.Null(job.SwarmId);
+	}
+
+	[Fact]
+	public async Task ProcessDueSchedulesAsync_GeneratesIdeasWithInferenceProvider()
+	{
+		await using var dbContext = CreateDbContext();
+		var project = CreateProject();
+		var inferenceProvider = new InferenceProvider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Local Ollama",
+			Endpoint = "http://ollama:11434",
+			IsEnabled = true
+		};
+		dbContext.Projects.Add(project);
+		dbContext.InferenceProviders.Add(inferenceProvider);
+
+		var dueTime = DateTime.UtcNow.AddMinutes(-2);
+		var schedule = new JobSchedule
+		{
+			Id = Guid.NewGuid(),
+			ProjectId = project.Id,
+			ScheduleType = JobScheduleType.GenerateIdeas,
+			InferenceProviderId = inferenceProvider.Id,
+			ModelId = "qwen2.5-coder:7b",
+			IdeaCount = 2,
+			Frequency = JobScheduleFrequency.Hourly,
+			MinuteUtc = dueTime.Minute,
+			NextRunAtUtc = dueTime,
+			IsEnabled = true
+		};
+		dbContext.JobSchedules.Add(schedule);
+		await dbContext.SaveChangesAsync();
+
+		var serviceProvider = new ServiceCollection().BuildServiceProvider();
+		var jobService = new JobService(dbContext, serviceProvider);
+		var ideaService = new CapturingIdeaService();
+		var processor = new JobScheduleProcessor(dbContext, jobService, ideaService, NullLogger<JobScheduleProcessor>.Instance);
+
+		var createdCount = await processor.ProcessDueSchedulesAsync();
+
+		Assert.Equal(1, createdCount);
+		Assert.NotNull(ideaService.LastRequest);
+		Assert.Equal(project.Id, ideaService.LastProjectId);
+		Assert.True(ideaService.LastRequest!.UseInference);
+		Assert.Equal(inferenceProvider.Id, ideaService.LastRequest.ProviderId);
+		Assert.Equal("qwen2.5-coder:7b", ideaService.LastRequest.ModelId);
+		Assert.Equal(2, ideaService.LastRequest.IdeaCount);
+		Assert.Contains("scheduler", ideaService.LastRequest.AdditionalContext, StringComparison.OrdinalIgnoreCase);
+		Assert.Empty(await dbContext.Jobs.ToListAsync());
+		var refreshed = await dbContext.JobSchedules.SingleAsync(item => item.Id == schedule.Id);
+		Assert.Equal(dueTime, refreshed.LastRunAtUtc);
+		Assert.Null(refreshed.LastError);
+	}
+
+	[Fact]
+	public async Task ProcessDueSchedulesAsync_StoresSuggestionFailureMessageForIdeaGeneration()
+	{
+		await using var dbContext = CreateDbContext();
+		var project = CreateProject();
+		var inferenceProvider = new InferenceProvider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Local Ollama",
+			Endpoint = "http://ollama:11434",
+			IsEnabled = true
+		};
+		dbContext.Projects.Add(project);
+		dbContext.InferenceProviders.Add(inferenceProvider);
+
+		var dueTime = DateTime.UtcNow.AddMinutes(-2);
+		var schedule = new JobSchedule
+		{
+			Id = Guid.NewGuid(),
+			ProjectId = project.Id,
+			ScheduleType = JobScheduleType.GenerateIdeas,
+			InferenceProviderId = inferenceProvider.Id,
+			IdeaCount = 1,
+			Frequency = JobScheduleFrequency.Hourly,
+			MinuteUtc = dueTime.Minute,
+			NextRunAtUtc = dueTime,
+			IsEnabled = true
+		};
+		dbContext.JobSchedules.Add(schedule);
+		await dbContext.SaveChangesAsync();
+
+		var serviceProvider = new ServiceCollection().BuildServiceProvider();
+		var jobService = new JobService(dbContext, serviceProvider);
+		var ideaService = new CapturingIdeaService
+		{
+			Result = new SuggestIdeasResult
+			{
+				Success = false,
+				Stage = SuggestIdeasStage.GenerateFailed,
+				Message = "Inference request failed."
+			}
+		};
+		var processor = new JobScheduleProcessor(dbContext, jobService, ideaService, NullLogger<JobScheduleProcessor>.Instance);
+
+		var createdCount = await processor.ProcessDueSchedulesAsync();
+
+		Assert.Equal(0, createdCount);
+		var refreshed = await dbContext.JobSchedules.SingleAsync(item => item.Id == schedule.Id);
+		Assert.Equal("Inference request failed.", refreshed.LastError);
+		Assert.Null(refreshed.LastRunAtUtc);
 	}
 
 	private VibeSwarmDbContext CreateDbContext() => new(_dbOptions);
@@ -301,6 +407,54 @@ public sealed class JobScheduleServiceTests : IDisposable
 		Name = name ?? $"Role-{Guid.NewGuid():N}",
 		IsEnabled = true
 	};
+
+	private class FakeIdeaService : IIdeaService
+	{
+		public Task<IEnumerable<Idea>> GetByProjectIdAsync(Guid projectId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<ProjectIdeasListResult> GetPagedByProjectIdAsync(Guid projectId, int page = 1, int pageSize = 10, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<Idea?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<Idea> CreateAsync(Idea idea, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<Idea> CreateAsync(CreateIdeaRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<Idea> UpdateAsync(Idea idea, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task DeleteAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<Idea?> GetNextUnprocessedAsync(Guid projectId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<Job?> ConvertToJobAsync(Guid ideaId, IdeaProcessingOptions? options = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<bool> CompleteIdeaFromJobAsync(Guid jobId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<bool> HandleJobCompletionAsync(Guid jobId, bool success, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<Idea?> GetByJobIdAsync(Guid jobId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task StartProcessingAsync(Guid projectId, IdeaProcessingOptions? options = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task StopProcessingAsync(Guid projectId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<bool> IsProcessingActiveAsync(Guid projectId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<bool> ProcessNextIdeaIfReadyAsync(Guid projectId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<IEnumerable<Guid>> GetActiveProcessingProjectsAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task RecoverStuckIdeasAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task ReorderIdeasAsync(Guid projectId, IEnumerable<Guid> ideaIdsInOrder, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<Idea> CopyToProjectAsync(Guid ideaId, Guid targetProjectId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<Idea> MoveToProjectAsync(Guid ideaId, Guid targetProjectId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<Idea?> ExpandIdeaAsync(Guid ideaId, IdeaExpansionRequest? request = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<Idea?> CancelExpansionAsync(Guid ideaId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<Idea?> ApproveExpansionAsync(Guid ideaId, string? editedDescription = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<Idea?> RejectExpansionAsync(Guid ideaId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<GlobalIdeasProcessingStatus> GetGlobalProcessingStatusAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task StartAllProcessingAsync(IdeaProcessingOptions? options = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task StopAllProcessingAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public virtual Task<SuggestIdeasResult> SuggestIdeasFromCodebaseAsync(Guid projectId, SuggestIdeasRequest? request = null, CancellationToken cancellationToken = default)
+			=> Task.FromResult(new SuggestIdeasResult { Success = true, Stage = SuggestIdeasStage.Success });
+	}
+
+	private sealed class CapturingIdeaService : FakeIdeaService
+	{
+		public Guid LastProjectId { get; private set; }
+		public SuggestIdeasRequest? LastRequest { get; private set; }
+		public SuggestIdeasResult Result { get; set; } = new() { Success = true, Stage = SuggestIdeasStage.Success };
+
+		public override Task<SuggestIdeasResult> SuggestIdeasFromCodebaseAsync(Guid projectId, SuggestIdeasRequest? request = null, CancellationToken cancellationToken = default)
+		{
+			LastProjectId = projectId;
+			LastRequest = request;
+			return Task.FromResult(Result);
+		}
+	}
 
 	public void Dispose()
 	{

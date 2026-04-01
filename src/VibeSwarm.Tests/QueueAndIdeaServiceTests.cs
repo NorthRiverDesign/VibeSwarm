@@ -636,7 +636,90 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 			Assert.Equal("deepseek-coder:14b", inferenceService.LastRequest?.Model);
 			Assert.Contains("Return exactly 2 concrete, actionable ideas.", inferenceService.LastRequest?.Prompt);
 			Assert.Contains("De-prioritize development-only work such as adding tests", inferenceService.LastRequest?.Prompt);
+			Assert.Contains("Do not repeat, restate, or lightly rename existing project ideas.", inferenceService.LastRequest?.Prompt);
 			Assert.Equal(2, await dbContext.Ideas.CountAsync(idea => idea.ProjectId == project.Id));
+		}
+		finally
+		{
+			if (Directory.Exists(workingPath))
+			{
+				Directory.Delete(workingPath, recursive: true);
+			}
+		}
+	}
+
+	[Fact]
+	public async Task SuggestIdeasFromCodebaseAsync_IncludesExistingIdeasAndAdditionalContextInPrompt()
+	{
+		await using var dbContext = CreateDbContext();
+		var workingPath = Path.Combine(Path.GetTempPath(), $"vibeswarm-scheduled-suggestion-{Guid.NewGuid():N}");
+		Directory.CreateDirectory(workingPath);
+		File.WriteAllText(Path.Combine(workingPath, "Program.cs"), "Console.WriteLine(\"Hello from VibeSwarm\");");
+		try
+		{
+			var project = new Project
+			{
+				Id = Guid.NewGuid(),
+				Name = "Scheduled Suggestion Project",
+				WorkingPath = workingPath
+			};
+			var provider = new InferenceProvider
+			{
+				Id = Guid.NewGuid(),
+				Name = "Preferred Ollama",
+				Endpoint = "http://preferred-ollama:11434",
+				IsEnabled = true,
+				Models =
+				[
+					new InferenceModel
+					{
+						Id = Guid.NewGuid(),
+						ModelId = "qwen2.5-coder:7b",
+						TaskType = "suggest",
+						IsDefault = true,
+						IsAvailable = true
+					}
+				]
+			};
+
+			provider.Models.First().InferenceProviderId = provider.Id;
+			dbContext.Projects.Add(project);
+			dbContext.InferenceProviders.Add(provider);
+			dbContext.Ideas.Add(new Idea
+			{
+				Id = Guid.NewGuid(),
+				ProjectId = project.Id,
+				Description = "Add a project summary card to the detail page",
+				SortOrder = 0,
+				CreatedAt = DateTime.UtcNow.AddMinutes(-3)
+			});
+			await dbContext.SaveChangesAsync();
+
+			var inferenceService = new FakeInferenceService
+			{
+				Response = new InferenceResponse
+				{
+					Success = true,
+					ModelUsed = "qwen2.5-coder:7b",
+					Response = "- Add a recent inference activity feed",
+					DurationMs = 700
+				}
+			};
+
+			var ideaService = CreateIdeaService(dbContext, new Provider(), inferenceService: inferenceService);
+			var result = await ideaService.SuggestIdeasFromCodebaseAsync(project.Id, new SuggestIdeasRequest
+			{
+				ProviderId = provider.Id,
+				IdeaCount = 1,
+				AdditionalContext = "This idea-generation request comes from the scheduler."
+			});
+
+			Assert.True(result.Success);
+			Assert.NotNull(inferenceService.LastRequest?.Prompt);
+			Assert.Contains("<existing_ideas>", inferenceService.LastRequest!.Prompt);
+			Assert.Contains("Add a project summary card to the detail page", inferenceService.LastRequest.Prompt);
+			Assert.Contains("<run_context>", inferenceService.LastRequest.Prompt);
+			Assert.Contains("comes from the scheduler", inferenceService.LastRequest.Prompt, StringComparison.OrdinalIgnoreCase);
 		}
 		finally
 		{

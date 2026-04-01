@@ -34,8 +34,14 @@ public class SuggestIdeasRequest
 	public string? ModelId { get; set; }
 
 	/// <summary>
-	/// How many ideas to ask the model to generate.
-	/// </summary>
+	 /// How many ideas to ask the model to generate.
+	 /// </summary>
 	[Range(MinIdeaCount, MaxIdeaCount)]
 	public int IdeaCount { get; set; } = DefaultIdeaCount;
+
+	/// <summary>
+	/// Optional extra scheduler context so idea generation can avoid already-queued plans and recent repeats.
+	/// </summary>
+	[StringLength(ValidationLimits.ProjectPromptContextMaxLength)]
+	public string? AdditionalContext { get; set; }
 }

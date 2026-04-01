@@ -1,9 +1,11 @@
 @using VibeSwarm.Shared.Data
 @using VibeSwarm.Shared.Services
 @using VibeSwarm.Shared.Utilities
+@using VibeSwarm.Shared.Validation
 @inject IJobScheduleService JobScheduleService
 @inject IProjectService ProjectService
 @inject IProviderService ProviderService
+@inject IInferenceProviderService InferenceProviderService
 @inject AppTimeZoneService AppTimeZoneService
 @inject NotificationService NotificationService
 
@@ -26,53 +28,100 @@
 				</select>
 			</div>
 
-			<div class="mb-3">
-				<label for="schedule-prompt" class="form-label">Prompt</label>
-				<InputTextArea id="schedule-prompt" @bind-Value="Schedule.Prompt" class="form-control" rows="5"
-							   placeholder="update dependencies, check for security issues" />
-				<ValidationMessage For="@(() => Schedule.Prompt)" class="text-danger small" />
-				<div class="form-text">Each time this schedule runs, VibeSwarm will create a new job with this prompt.</div>
+			<div class="row g-3 mb-3">
+				<div class="col-12 col-lg-4">
+					<label for="schedule-type" class="form-label">Schedule Type</label>
+					<InputSelect id="schedule-type" @bind-Value="Schedule.ScheduleType" @bind-Value:after="OnScheduleTypeChanged" class="form-select">
+						<option value="@JobScheduleType.RunJob">Run Job</option>
+						<option value="@JobScheduleType.GenerateIdeas">Generate Ideas</option>
+					</InputSelect>
+				</div>
 			</div>
 
-			<div class="row g-3">
-				<div class="col-12 col-lg-4">
-					<label for="schedule-target" class="form-label">Executor Type</label>
-					<InputSelect id="schedule-target" @bind-Value="Schedule.ExecutionTarget" @bind-Value:after="OnExecutionTargetChanged" class="form-select">
-						<option value="@JobScheduleExecutionTarget.Provider">Provider</option>
-						<option value="@JobScheduleExecutionTarget.TeamRole">Team Member</option>
-					</InputSelect>
-					<div class="form-text">Choose a direct provider or a project team member role that should run this task.</div>
+			@if (Schedule.ScheduleType == JobScheduleType.RunJob)
+			{
+				<div class="mb-3">
+					<label for="schedule-prompt" class="form-label">Prompt</label>
+					<InputTextArea id="schedule-prompt" @bind-Value="Schedule.Prompt" class="form-control" rows="5"
+								   placeholder="update dependencies, check for security issues" />
+					<ValidationMessage For="@(() => Schedule.Prompt)" class="text-danger small" />
+					<div class="form-text">Each time this schedule runs, VibeSwarm will create a new job with this prompt.</div>
 				</div>
+			}
+			else
+			{
+				<div class="mb-3">
+					<label for="schedule-idea-count" class="form-label">Ideas to Generate</label>
+					<InputSelect id="schedule-idea-count" @bind-Value="Schedule.IdeaCount" class="form-select">
+						@for (var count = ValidationLimits.JobScheduleIdeaCountMin; count <= ValidationLimits.JobScheduleIdeaCountMax; count++)
+						{
+							<option value="@count">@count</option>
+						}
+					</InputSelect>
+					<div class="form-text">Each run will analyze the project and add fresh ideas while avoiding existing backlog duplicates.</div>
+				</div>
+			}
 
-				@if (Schedule.ExecutionTarget == JobScheduleExecutionTarget.Provider)
+			<div class="row g-3">
+				@if (Schedule.ScheduleType == JobScheduleType.RunJob)
 				{
 					<div class="col-12 col-lg-4">
-						<label for="schedule-provider" class="form-label">Provider</label>
-						<select id="schedule-provider" class="form-select" value="@GetProviderValue()" @onchange="OnProviderChanged"
-								disabled="@(!_allowedProviders.Any())">
-							<option value="">@(_allowedProviders.Any() ? "Select provider..." : "No enabled providers")</option>
-							@foreach (var provider in _allowedProviders)
-							{
-								<option value="@provider.Id">@provider.Name</option>
-							}
-						</select>
+						<label for="schedule-target" class="form-label">Executor Type</label>
+						<InputSelect id="schedule-target" @bind-Value="Schedule.ExecutionTarget" @bind-Value:after="OnExecutionTargetChanged" class="form-select">
+							<option value="@JobScheduleExecutionTarget.Provider">Provider</option>
+							<option value="@JobScheduleExecutionTarget.TeamRole">Team Member</option>
+						</InputSelect>
+						<div class="form-text">Choose a direct provider or a project team member role that should run this task.</div>
 					</div>
+
+					@if (Schedule.ExecutionTarget == JobScheduleExecutionTarget.Provider)
+					{
+						<div class="col-12 col-lg-4">
+							<label for="schedule-provider" class="form-label">Provider</label>
+							<select id="schedule-provider" class="form-select" value="@GetProviderValue()" @onchange="OnProviderChanged"
+									disabled="@(!_allowedProviders.Any())">
+								<option value="">@(_allowedProviders.Any() ? "Select provider..." : "No enabled providers")</option>
+								@foreach (var provider in _allowedProviders)
+								{
+									<option value="@provider.Id">@provider.Name</option>
+								}
+							</select>
+						</div>
+					}
+					else
+					{
+						<div class="col-12 col-lg-4">
+							<label for="schedule-team-role" class="form-label">Team Member</label>
+							<select id="schedule-team-role" class="form-select" value="@GetTeamRoleValue()" @onchange="OnTeamRoleChanged"
+									disabled="@(!_availableTeamAssignments.Any())">
+								<option value="">@(_availableTeamAssignments.Any() ? "Select team member..." : "No enabled team members")</option>
+								@foreach (var assignment in _availableTeamAssignments)
+								{
+									<option value="@assignment.TeamRoleId">@GetTeamAssignmentDisplayText(assignment)</option>
+								}
+							</select>
+							@if (!_availableTeamAssignments.Any())
+							{
+								<div class="form-text text-warning">Assign an enabled team role with an enabled provider in the project settings first.</div>
+							}
+						</div>
+					}
 				}
 				else
 				{
 					<div class="col-12 col-lg-4">
-						<label for="schedule-team-role" class="form-label">Team Member</label>
-						<select id="schedule-team-role" class="form-select" value="@GetTeamRoleValue()" @onchange="OnTeamRoleChanged"
-								disabled="@(!_availableTeamAssignments.Any())">
-							<option value="">@(_availableTeamAssignments.Any() ? "Select team member..." : "No enabled team members")</option>
-							@foreach (var assignment in _availableTeamAssignments)
+						<label for="schedule-inference-provider" class="form-label">Inference Provider</label>
+						<select id="schedule-inference-provider" class="form-select" value="@GetInferenceProviderValue()" @onchange="OnInferenceProviderChanged"
+								disabled="@(!_inferenceProviders.Any())">
+							<option value="">@(_inferenceProviders.Any() ? "Select inference provider..." : "No enabled inference providers")</option>
+							@foreach (var provider in _inferenceProviders)
 							{
-								<option value="@assignment.TeamRoleId">@GetTeamAssignmentDisplayText(assignment)</option>
+								<option value="@provider.Id">@provider.Name</option>
 							}
 						</select>
-						@if (!_availableTeamAssignments.Any())
+						@if (!_inferenceProviders.Any())
 						{
-							<div class="form-text text-warning">Assign an enabled team role with an enabled provider in the project settings first.</div>
+							<div class="form-text text-warning">Configure an enabled inference provider first.</div>
 						}
 					</div>
 				}
@@ -91,7 +140,7 @@
 				</div>
 			</div>
 
-			@if (Schedule.ExecutionTarget == JobScheduleExecutionTarget.TeamRole)
+			@if (Schedule.ScheduleType == JobScheduleType.RunJob && Schedule.ExecutionTarget == JobScheduleExecutionTarget.TeamRole)
 			{
 				var assignment = GetSelectedTeamAssignment();
 				@if (assignment != null)
@@ -213,6 +262,7 @@
 	private bool _previousIsVisible;
 	private List<Project> _projects = [];
 	private List<Provider> _providers = [];
+	private List<InferenceProvider> _inferenceProviders = [];
 	private List<Provider> _allowedProviders = [];
 	private List<ProjectTeamRole> _availableTeamAssignments = [];
 	private List<ProviderModel> _models = [];
@@ -243,13 +293,21 @@
 
 	private async Task LoadLookupDataAsync()
 	{
-		_projects = (await ProjectService.GetAllAsync())
+		var projectsTask = ProjectService.GetAllAsync();
+		var providersTask = ProviderService.GetAllAsync();
+		var inferenceProvidersTask = InferenceProviderService.GetEnabledAsync();
+		await Task.WhenAll(projectsTask, providersTask, inferenceProvidersTask);
+
+		_projects = projectsTask.Result
 			.OrderBy(project => project.Name)
 			.ToList();
-		_providers = (await ProviderService.GetAllAsync())
+		_providers = providersTask.Result
 			.Where(provider => provider.IsEnabled)
 			.OrderByDescending(provider => provider.IsDefault)
 			.ThenBy(provider => provider.Name)
+			.ToList();
+		_inferenceProviders = inferenceProvidersTask.Result
+			.OrderBy(provider => provider.Name)
 			.ToList();
 	}
 
@@ -265,11 +323,14 @@
 			{
 				Id = EditSchedule.Id,
 				ProjectId = EditSchedule.ProjectId,
+				ScheduleType = EditSchedule.ScheduleType,
 				ExecutionTarget = EditSchedule.ExecutionTarget,
 				ProviderId = EditSchedule.ProviderId,
 				TeamRoleId = EditSchedule.TeamRoleId,
+				InferenceProviderId = EditSchedule.InferenceProviderId,
 				Prompt = EditSchedule.Prompt,
 				ModelId = EditSchedule.ModelId,
+				IdeaCount = EditSchedule.IdeaCount,
 				Frequency = EditSchedule.Frequency,
 				HourUtc = EditSchedule.HourUtc,
 				MinuteUtc = EditSchedule.MinuteUtc,
@@ -289,7 +350,10 @@
 			Schedule = new JobSchedule
 			{
 				ProjectId = project?.Id ?? Guid.Empty,
+				ScheduleType = JobScheduleType.RunJob,
 				ExecutionTarget = JobScheduleExecutionTarget.Provider,
+				InferenceProviderId = _inferenceProviders.FirstOrDefault()?.Id,
+				IdeaCount = SuggestIdeasRequest.DefaultIdeaCount,
 				Frequency = JobScheduleFrequency.Daily,
 				HourUtc = 9,
 				MinuteUtc = 0,
@@ -320,7 +384,17 @@
 			.OrderBy(assignment => assignment.TeamRole!.Name, StringComparer.OrdinalIgnoreCase)
 			.ToList() ?? [];
 
-		if (Schedule.ExecutionTarget == JobScheduleExecutionTarget.Provider)
+		if (Schedule.ScheduleType == JobScheduleType.GenerateIdeas)
+		{
+			if (!preserveCurrentSelection || !Schedule.InferenceProviderId.HasValue || !_inferenceProviders.Any(provider => provider.Id == Schedule.InferenceProviderId.Value))
+			{
+				Schedule.InferenceProviderId = _inferenceProviders.FirstOrDefault()?.Id;
+			}
+
+			Schedule.ProviderId = null;
+			Schedule.TeamRoleId = null;
+		}
+		else if (Schedule.ExecutionTarget == JobScheduleExecutionTarget.Provider)
 		{
 			if (!preserveCurrentSelection || !Schedule.ProviderId.HasValue || !_allowedProviders.Any(provider => provider.Id == Schedule.ProviderId.Value))
 			{
@@ -360,11 +434,30 @@
 
 		try
 		{
-			_models = (await ProviderService.GetModelsAsync(resolvedProviderId.Value))
-				.Where(model => model.IsAvailable)
-				.OrderByDescending(model => model.IsDefault)
-				.ThenBy(model => model.DisplayName ?? model.ModelId)
-				.ToList();
+			if (Schedule.ScheduleType == JobScheduleType.GenerateIdeas)
+			{
+				_models = (await InferenceProviderService.GetModelsAsync(resolvedProviderId.Value))
+					.Where(model => model.IsAvailable)
+					.Select(model => new ProviderModel
+					{
+						Id = model.Id,
+						ModelId = model.ModelId,
+						DisplayName = model.DisplayName ?? model.ModelId,
+						IsAvailable = model.IsAvailable,
+						IsDefault = model.IsDefault
+					})
+					.OrderByDescending(model => model.IsDefault)
+					.ThenBy(model => model.DisplayName ?? model.ModelId)
+					.ToList();
+			}
+			else
+			{
+				_models = (await ProviderService.GetModelsAsync(resolvedProviderId.Value))
+					.Where(model => model.IsAvailable)
+					.OrderByDescending(model => model.IsDefault)
+					.ThenBy(model => model.DisplayName ?? model.ModelId)
+					.ToList();
+			}
 
 			if (!string.IsNullOrWhiteSpace(Schedule.ModelId) && _models.Any(model => model.ModelId == Schedule.ModelId))
 			{
@@ -401,9 +494,22 @@
 		await SyncExecutionTargetsAsync(preserveCurrentSelection: false);
 	}
 
+	private async Task OnScheduleTypeChanged()
+	{
+		ErrorMessage = null;
+		await SyncExecutionTargetsAsync(preserveCurrentSelection: false);
+	}
+
 	private async Task OnProviderChanged(ChangeEventArgs args)
 	{
 		Schedule.ProviderId = TryParseNullableGuid(args.Value);
+		ErrorMessage = null;
+		await LoadModelsAsync();
+	}
+
+	private async Task OnInferenceProviderChanged(ChangeEventArgs args)
+	{
+		Schedule.InferenceProviderId = TryParseNullableGuid(args.Value);
 		ErrorMessage = null;
 		await LoadModelsAsync();
 	}
@@ -437,15 +543,21 @@
 			return;
 		}
 
-		if (Schedule.ExecutionTarget == JobScheduleExecutionTarget.Provider && !Schedule.ProviderId.HasValue)
+		if (Schedule.ScheduleType == JobScheduleType.RunJob && Schedule.ExecutionTarget == JobScheduleExecutionTarget.Provider && !Schedule.ProviderId.HasValue)
 		{
 			ErrorMessage = "Please select a provider.";
 			return;
 		}
 
-		if (Schedule.ExecutionTarget == JobScheduleExecutionTarget.TeamRole && !Schedule.TeamRoleId.HasValue)
+		if (Schedule.ScheduleType == JobScheduleType.RunJob && Schedule.ExecutionTarget == JobScheduleExecutionTarget.TeamRole && !Schedule.TeamRoleId.HasValue)
 		{
 			ErrorMessage = "Please select a team member.";
+			return;
+		}
+
+		if (Schedule.ScheduleType == JobScheduleType.GenerateIdeas && !Schedule.InferenceProviderId.HasValue)
+		{
+			ErrorMessage = "Please select an inference provider.";
 			return;
 		}
 
@@ -465,13 +577,21 @@
 			Schedule.HourUtc = 0;
 		}
 
-		if (Schedule.ExecutionTarget == JobScheduleExecutionTarget.Provider)
+		if (Schedule.ScheduleType == JobScheduleType.GenerateIdeas)
+		{
+			Schedule.ProviderId = null;
+			Schedule.TeamRoleId = null;
+			Schedule.Prompt = string.Empty;
+		}
+		else if (Schedule.ExecutionTarget == JobScheduleExecutionTarget.Provider)
 		{
 			Schedule.TeamRoleId = null;
+			Schedule.InferenceProviderId = null;
 		}
 		else
 		{
 			Schedule.ProviderId = null;
+			Schedule.InferenceProviderId = null;
 		}
 
 		Schedule.ModelId = string.IsNullOrWhiteSpace(_selectedModelId) ? null : _selectedModelId;
@@ -522,6 +642,11 @@
 
 	private Guid? ResolveSelectedProviderId()
 	{
+		if (Schedule.ScheduleType == JobScheduleType.GenerateIdeas)
+		{
+			return Schedule.InferenceProviderId;
+		}
+
 		if (Schedule.ExecutionTarget == JobScheduleExecutionTarget.Provider)
 		{
 			return Schedule.ProviderId;
@@ -532,6 +657,11 @@
 
 	private string ResolveDefaultModel(Guid providerId)
 	{
+		if (Schedule.ScheduleType == JobScheduleType.GenerateIdeas)
+		{
+			return _models.FirstOrDefault(model => model.IsDefault)?.ModelId ?? string.Empty;
+		}
+
 		if (Schedule.ExecutionTarget == JobScheduleExecutionTarget.Provider)
 		{
 			return ProjectExecutionDefaults.ResolveModelId(GetSelectedProject(), providerId, _models);
@@ -548,6 +678,11 @@
 
 	private string GetModelHelpText()
 	{
+		if (Schedule.ScheduleType == JobScheduleType.GenerateIdeas)
+		{
+			return "Leave empty to use the inference provider's default suggest/default model.";
+		}
+
 		if (Schedule.ExecutionTarget == JobScheduleExecutionTarget.Provider)
 		{
 			return "Leave empty to use the project's preferred provider model or the provider default.";
@@ -577,6 +712,7 @@
 	private string GetProjectValue() => Schedule.ProjectId == Guid.Empty ? string.Empty : Schedule.ProjectId.ToString();
 	private string GetProviderValue() => Schedule.ProviderId?.ToString() ?? string.Empty;
 	private string GetTeamRoleValue() => Schedule.TeamRoleId?.ToString() ?? string.Empty;
+	private string GetInferenceProviderValue() => Schedule.InferenceProviderId?.ToString() ?? string.Empty;
 
 	private static Guid TryParseGuid(object? value)
 		=> Guid.TryParse(value?.ToString(), out var id) ? id : Guid.Empty;
