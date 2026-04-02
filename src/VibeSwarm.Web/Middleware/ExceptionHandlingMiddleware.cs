@@ -48,18 +48,28 @@ public class ExceptionHandlingMiddleware
 
 		if (statusCode >= (int)HttpStatusCode.InternalServerError)
 		{
-			await criticalErrorLogService.LogAsync(new CriticalErrorLogEntry
+			try
 			{
-				Source = "server",
-				Category = "unhandled-exception",
-				Severity = "critical",
-				Message = exception.Message,
-				Details = exception.ToString(),
-				TraceId = traceId,
-				Url = $"{context.Request.Method} {context.Request.Path}{context.Request.QueryString}",
-				UserAgent = context.Request.Headers.UserAgent.ToString(),
-				UserId = TryGetUserId(context.User)
-			}, context.RequestAborted);
+				await criticalErrorLogService.LogAsync(new CriticalErrorLogEntry
+				{
+					Source = "server",
+					Category = "unhandled-exception",
+					Severity = "critical",
+					Message = exception.Message,
+					Details = exception.ToString(),
+					TraceId = traceId,
+					Url = $"{context.Request.Method} {context.Request.Path}{context.Request.QueryString}",
+					UserAgent = context.Request.Headers.UserAgent.ToString(),
+					UserId = TryGetUserId(context.User)
+				}, context.RequestAborted);
+			}
+			catch (Exception loggingException)
+			{
+				_logger.LogError(loggingException,
+					"Failed to persist critical error log for trace {TraceId} while handling {ExceptionType}.",
+					traceId,
+					exception.GetType().Name);
+			}
 		}
 
 		// Log the exception with appropriate level

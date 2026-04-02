@@ -4,7 +4,9 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using VibeSwarm.Shared.Data;
+using VibeSwarm.Shared.Models;
 using VibeSwarm.Shared.Providers;
+using VibeSwarm.Shared.Services;
 using VibeSwarm.Shared.VersionControl;
 using VibeSwarm.Shared.VersionControl.Models;
 using VibeSwarm.Web.Services;
@@ -122,6 +124,74 @@ public sealed class JobExecutionSafetyTests : IDisposable
 	}
 
 	[Fact]
+	public async Task ProcessJobAsync_PersistsCancelledStatus_WhenJobIsCancelledBeforeClaim()
+	{
+		var projectId = Guid.NewGuid();
+		var providerId = Guid.NewGuid();
+		var jobId = Guid.NewGuid();
+
+		await using (var setupContext = CreateDbContext())
+		{
+			setupContext.Projects.Add(new Project
+			{
+				Id = projectId,
+				Name = "Cancelled Before Start Project",
+				WorkingPath = "/tmp/cancelled-before-start-project"
+			});
+			setupContext.Providers.Add(new Provider
+			{
+				Id = providerId,
+				Name = "Copilot",
+				Type = ProviderType.Copilot,
+				IsEnabled = true
+			});
+			setupContext.Jobs.Add(new Job
+			{
+				Id = jobId,
+				ProjectId = projectId,
+				ProviderId = providerId,
+				GoalPrompt = "Do not start",
+				Status = JobStatus.New,
+				CancellationRequested = true
+			});
+
+			await setupContext.SaveChangesAsync();
+		}
+
+		var services = new ServiceCollection();
+		services.AddDbContext<VibeSwarmDbContext>(options => options.UseSqlite(_connection));
+		var serviceProvider = services.BuildServiceProvider();
+		var scopeFactory = serviceProvider.GetRequiredService<IServiceScopeFactory>();
+
+		var processingService = new JobProcessingService(
+			scopeFactory,
+			NullLogger<JobProcessingService>.Instance,
+			new NoOpVersionControlService(),
+			projectEnvironmentCredentialService: new NoOpProjectEnvironmentCredentialService());
+
+		await using var executionContext = CreateDbContext();
+		var job = await executionContext.Jobs
+			.Include(j => j.Project)
+			.Include(j => j.Provider)
+			.SingleAsync(j => j.Id == jobId);
+
+		await InvokeProcessJobAsync(
+			processingService,
+			job,
+			new StubJobService(isCancellationRequested: true),
+			new StubProviderService(),
+			executionContext);
+
+		await using var verificationContext = CreateDbContext();
+		var persistedJob = await verificationContext.Jobs.SingleAsync(j => j.Id == jobId);
+
+		Assert.Equal(JobStatus.Cancelled, persistedJob.Status);
+		Assert.NotNull(persistedJob.CompletedAt);
+		Assert.Equal("Cancelled before start", persistedJob.ErrorMessage);
+		Assert.Null(persistedJob.WorkerInstanceId);
+	}
+
+	[Fact]
 	public void ClaudeToolExecution_UsesExtendedWatchdogThreshold()
 	{
 		var serviceProvider = new ServiceCollection().BuildServiceProvider();
@@ -167,6 +237,26 @@ public sealed class JobExecutionSafetyTests : IDisposable
 		return await task;
 	}
 
+	private static async Task InvokeProcessJobAsync(
+		JobProcessingService service,
+		Job job,
+		IJobService jobService,
+		IProviderService providerService,
+		VibeSwarmDbContext dbContext)
+	{
+		var contextType = typeof(JobProcessingService).GetNestedType("JobExecutionContext", BindingFlags.NonPublic);
+		Assert.NotNull(contextType);
+
+		var executionContext = Activator.CreateInstance(contextType!);
+		Assert.NotNull(executionContext);
+
+		var method = typeof(JobProcessingService).GetMethod("ProcessJobAsync", BindingFlags.Instance | BindingFlags.NonPublic);
+		Assert.NotNull(method);
+
+		var task = (Task)method.Invoke(service, [job, jobService, providerService, dbContext, executionContext!, CancellationToken.None])!;
+		await task;
+	}
+
 	private static TimeSpan InvokeEffectiveStallThreshold(JobWatchdogService service, Job job)
 	{
 		var method = typeof(JobWatchdogService).GetMethod("GetEffectiveStallThreshold", BindingFlags.Instance | BindingFlags.NonPublic);
@@ -186,6 +276,74 @@ public sealed class JobExecutionSafetyTests : IDisposable
 		public void PopulateForEditing(Project? project) { }
 		public void PopulateForExecution(Project? project) { }
 		public Dictionary<string, string>? BuildJobEnvironmentVariables(Project? project) => null;
+	}
+
+	private sealed class StubJobService : IJobService
+	{
+		private readonly bool _isCancellationRequested;
+
+		public StubJobService(bool isCancellationRequested)
+		{
+			_isCancellationRequested = isCancellationRequested;
+		}
+
+		public Task<bool> IsCancellationRequestedAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult(_isCancellationRequested);
+		public Task<IEnumerable<Job>> GetAllAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<JobsListResult> GetPagedAsync(Guid? projectId = null, string statusFilter = "all", int page = 1, int pageSize = 25, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<IEnumerable<Job>> GetByProjectIdAsync(Guid projectId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<ProjectJobsListResult> GetPagedByProjectIdAsync(Guid projectId, int page = 1, int pageSize = 10, string? search = null, string statusFilter = "all", CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<IEnumerable<Job>> GetPendingJobsAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<IEnumerable<JobSummary>> GetActiveJobsAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<Job?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<Job?> GetByIdWithMessagesAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<Job> CreateAsync(Job job, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<Job> UpdateStatusAsync(Guid id, JobStatus status, string? output = null, string? errorMessage = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<Job> UpdateJobResultAsync(Guid id, JobStatus status, string? sessionId, string? output, string? errorMessage, int? inputTokens, int? outputTokens, decimal? costUsd, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task AddMessageAsync(Guid jobId, JobMessage message, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task AddMessagesAsync(Guid jobId, IEnumerable<JobMessage> messages, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<bool> RequestCancellationAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<bool> ForceCancelAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task UpdateProgressAsync(Guid id, string? currentActivity, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<bool> ResetJobAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task DeleteAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<bool> UpdateGitCommitHashAsync(Guid id, string commitHash, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<bool> UpdateGitDiffAsync(Guid id, string? gitDiff, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<bool> UpdateGitDeliveryAsync(Guid id, string? commitHash = null, int? pullRequestNumber = null, string? pullRequestUrl = null, DateTime? pullRequestCreatedAt = null, DateTime? mergedAt = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<bool> PauseForInteractionAsync(Guid id, string interactionPrompt, string interactionType, string? choices = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<(string? Prompt, string? Type, string? Choices)?> GetPendingInteractionAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<bool> ResumeJobAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<bool> ContinueJobAsync(Guid id, string followUpPrompt, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<IEnumerable<Job>> GetPausedJobsAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<string?> GetLastUsedModelAsync(Guid projectId, Guid providerId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<bool> ResetJobWithOptionsAsync(Guid id, Guid? providerId = null, string? modelId = null, string? reasoningEffort = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<bool> UpdateJobPromptAsync(Guid id, string newPrompt, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<int> CancelAllByProjectIdAsync(Guid projectId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<int> DeleteCompletedByProjectIdAsync(Guid projectId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<int> RetrySelectedByProjectIdAsync(Guid projectId, IReadOnlyCollection<Guid> jobIds, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<int> CancelSelectedByProjectIdAsync(Guid projectId, IReadOnlyCollection<Guid> jobIds, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<int> PrioritizeSelectedByProjectIdAsync(Guid projectId, IReadOnlyCollection<Guid> jobIds, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<bool> ForceFailJobAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task RefreshExecutionPlanAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+	}
+
+	private sealed class StubProviderService : IProviderService
+	{
+		public Task<IEnumerable<Provider>> GetAllAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<Provider?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<Provider?> GetDefaultAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public IProvider? CreateInstance(Provider config) => throw new NotSupportedException();
+		public Task<Provider> CreateAsync(Provider provider, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<Provider> UpdateAsync(Provider provider, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task DeleteAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<bool> TestConnectionAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<ConnectionTestResult> TestConnectionWithDetailsAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task SetEnabledAsync(Guid id, bool isEnabled, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task SetDefaultAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<SessionSummary> GetSessionSummaryAsync(Guid providerId, string? sessionId, string? workingDirectory = null, string? fallbackOutput = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<IEnumerable<ProviderModel>> GetModelsAsync(Guid providerId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<IEnumerable<ProviderModel>> RefreshModelsAsync(Guid providerId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task SetDefaultModelAsync(Guid providerId, Guid modelId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<CliUpdateResult> UpdateCliAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	}
 
 	private sealed class NoOpVersionControlService : IVersionControlService

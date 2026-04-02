@@ -31,8 +31,7 @@ public partial class JobProcessingService
             // Check if job was cancelled before we even started
             if (await jobService.IsCancellationRequestedAsync(job.Id, cancellationToken))
             {
-                var transition = JobStateMachine.TryTransition(job, JobStatus.Cancelled, "Cancelled before start");
-                await dbContext.SaveChangesAsync(cancellationToken);
+                await ReleaseJobAsync(job.Id, JobStatus.Cancelled, "Cancelled before start", dbContext, cancellationToken);
                 await NotifyJobCompletedAsync(job.Id, false, "Job was cancelled before processing started");
                 return;
             }

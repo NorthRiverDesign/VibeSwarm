@@ -29,14 +29,11 @@
 		{
 			while (await timer.WaitForNextTickAsync(cancellationToken))
 			{
-				var authenticationState = await AuthStateProvider.GetAuthenticationStateAsync();
-				if (authenticationState.User.Identity?.IsAuthenticated == true)
+				var authenticationState = await AuthStateProvider.RefreshAuthenticationStateAsync();
+				if (authenticationState.User.Identity?.IsAuthenticated != true)
 				{
-					continue;
+					return;
 				}
-
-				await AuthStateProvider.RefreshAuthenticationStateAsync();
-				return;
 			}
 		}
 		catch (OperationCanceledException)
