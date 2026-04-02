@@ -102,6 +102,8 @@ public partial class JobService
         job.LastHeartbeatAt = null;
         job.ProcessId = null;
         job.CommandUsed = null;
+        job.PlanningCommandUsed = null;
+        job.ExecutionCommandUsed = null;
         job.ConsoleOutput = null;
         job.GitDiff = null;
         job.GitCommitBefore = null;

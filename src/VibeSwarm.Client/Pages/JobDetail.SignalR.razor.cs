@@ -224,9 +224,14 @@ public partial class JobDetail : ComponentBase, IAsyncDisposable
         {
             _liveCommand = command;
             Job.ProcessId = processId;
-            if (string.IsNullOrEmpty(Job.CommandUsed))
+            Job.CommandUsed = command;
+            if (Job.Status == JobStatus.Planning)
             {
-                Job.CommandUsed = command;
+                Job.PlanningCommandUsed = command;
+            }
+            else
+            {
+                Job.ExecutionCommandUsed = command;
             }
 
             await InvokeAsync(StateHasChanged);

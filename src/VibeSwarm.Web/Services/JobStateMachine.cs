@@ -202,6 +202,8 @@ public class JobStateMachine
 				job.WorkerInstanceId = null;
 				job.ProcessId = null;
 				job.CommandUsed = null;
+				job.PlanningCommandUsed = null;
+				job.ExecutionCommandUsed = null;
 				job.LastHeartbeatAt = null;
 				job.CancellationRequested = false;
 				break;

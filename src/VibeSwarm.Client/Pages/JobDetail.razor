@@ -184,6 +184,7 @@ else
         <div class="col-12 col-xl-7 order-1 order-xl-2 d-flex flex-column">
             <JobSessionPanel Messages="@(Job!.Messages.ToList())" Status="@Job.Status" IsJobActive="@IsJobActive"
                              ErrorMessage="@Job.ErrorMessage" ConsoleOutput="@Job.ConsoleOutput" CommandUsed="@Job.CommandUsed"
+                             PlanningCommandUsed="@Job.PlanningCommandUsed" ExecutionCommandUsed="@Job.ExecutionCommandUsed"
                              SessionId="@Job.SessionId" LiveOutputLines="@_liveOutput.ToList()"
                              LiveMessages="@_pendingSessionMessages.ToList()" MaxOutputLines="@MaxOutputLines"
                              CurrentActivity="@Job.CurrentActivity"

@@ -589,6 +589,74 @@ public sealed class JobSessionPanelTests
 	}
 
 	[Fact]
+	public void JobSessionPanel_Bunit_RendersStepAccordionsForPlanningAndExecutionCommands()
+	{
+		using var context = new BunitContext();
+		context.JSInterop.SetupVoid("copyToClipboard", "copilot --plan");
+		context.JSInterop.SetupVoid("copyToClipboard", "copilot --run");
+
+		var cut = context.Render<JobSessionPanel>(parameters => parameters
+			.Add(panel => panel.Status, JobStatus.Completed)
+			.Add(panel => panel.Messages, new List<JobMessage>
+			{
+				new()
+				{
+					Id = Guid.NewGuid(),
+					JobId = Guid.NewGuid(),
+					Role = MessageRole.Assistant,
+					Content = "Completed successfully.",
+					CreatedAt = DateTime.UtcNow
+				}
+			})
+			.Add(panel => panel.PlanningCommandUsed, "copilot --plan")
+			.Add(panel => panel.ExecutionCommandUsed, "copilot --run"));
+
+		cut.FindAll("button[role='tab']")
+			.Single(button => button.TextContent.Contains("Command", StringComparison.Ordinal))
+			.Click();
+
+		Assert.Contains("accordion", cut.Markup);
+		Assert.Contains("Planning", cut.Markup);
+		Assert.Contains("Execution", cut.Markup);
+		Assert.Contains("copilot --plan", cut.Markup);
+		Assert.Contains("copilot --run", cut.Markup);
+	}
+
+	[Fact]
+	public void JobSessionPanel_Bunit_UsesExecutionFallbackWhenStepCommandsAreUnavailable()
+	{
+		using var context = new BunitContext();
+		context.JSInterop.SetupVoid("copyToClipboard", "dotnet test");
+
+		var cut = context.Render<JobSessionPanel>(parameters => parameters
+			.Add(panel => panel.Status, JobStatus.Completed)
+			.Add(panel => panel.Messages, new List<JobMessage>
+			{
+				new()
+				{
+					Id = Guid.NewGuid(),
+					JobId = Guid.NewGuid(),
+					Role = MessageRole.Assistant,
+					Content = "Completed successfully.",
+					CreatedAt = DateTime.UtcNow
+				}
+			})
+			.Add(panel => panel.CommandUsed, "dotnet test"));
+
+		cut.FindAll("button[role='tab']")
+			.Single(button => button.TextContent.Contains("Command", StringComparison.Ordinal))
+			.Click();
+
+		Assert.DoesNotContain("accordion-item", cut.Markup);
+		Assert.Contains("dotnet test", cut.Markup);
+
+		cut.Find("button[title='Copy command to clipboard']").Click();
+
+		var invocation = Assert.Single(context.JSInterop.Invocations);
+		Assert.Equal("dotnet test", invocation.Arguments[0]?.ToString());
+	}
+
+	[Fact]
 	public void JobSessionPanel_Bunit_CallsClearLiveOutputCallback()
 	{
 		using var context = new BunitContext();

@@ -175,6 +175,9 @@ public partial class JobService
         job.WorkerInstanceId = null;
         job.LastHeartbeatAt = null;
         job.ProcessId = null;
+        job.CommandUsed = null;
+        job.PlanningCommandUsed = null;
+        job.ExecutionCommandUsed = null;
         job.ConsoleOutput = null;  // Clear accumulated console output
         job.GitDiff = null;        // Clear git diff
         job.GitCommitBefore = null; // Clear git commit reference
@@ -182,6 +185,7 @@ public partial class JobService
         job.PlanningOutput = null;
         job.PlanningProviderId = null;
         job.PlanningModelUsed = null;
+        job.PlanningReasoningEffortUsed = null;
         job.PlanningGeneratedAt = null;
         job.GitCheckpointStatus = GitCheckpointStatus.None;
         job.GitCheckpointBranch = null;
@@ -293,7 +297,11 @@ public partial class JobService
         job.PlanningOutput = null;
         job.PlanningProviderId = null;
         job.PlanningModelUsed = null;
+        job.PlanningReasoningEffortUsed = null;
         job.PlanningGeneratedAt = null;
+        job.CommandUsed = null;
+        job.PlanningCommandUsed = null;
+        job.ExecutionCommandUsed = null;
 
         await _dbContext.SaveChangesAsync(cancellationToken);
 

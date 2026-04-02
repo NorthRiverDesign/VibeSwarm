@@ -273,6 +273,18 @@ public class Job
     public string? CommandUsed { get; set; }
 
     /// <summary>
+    /// The exact CLI command used during the planning stage, when present.
+    /// </summary>
+    [StringLength(4000)]
+    public string? PlanningCommandUsed { get; set; }
+
+    /// <summary>
+    /// The exact CLI command used during the execution stage, when present.
+    /// </summary>
+    [StringLength(4000)]
+    public string? ExecutionCommandUsed { get; set; }
+
+    /// <summary>
     /// Priority level for job scheduling (higher = more urgent)
     /// </summary>
     public int Priority { get; set; } = 0;

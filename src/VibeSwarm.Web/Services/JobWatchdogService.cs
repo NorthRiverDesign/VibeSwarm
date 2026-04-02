@@ -225,6 +225,9 @@ public class JobWatchdogService : BackgroundService
 				job.WorkerInstanceId = null;
 				job.LastHeartbeatAt = null;
 				job.ProcessId = null;
+				job.CommandUsed = null;
+				job.PlanningCommandUsed = null;
+				job.ExecutionCommandUsed = null;
 				job.CurrentActivity = null;
 
 				// Provide detailed error message based on whether process started
@@ -340,6 +343,9 @@ public class JobWatchdogService : BackgroundService
 				job.WorkerInstanceId = null;
 				job.LastHeartbeatAt = null;
 				job.ProcessId = null;
+				job.CommandUsed = null;
+				job.PlanningCommandUsed = null;
+				job.ExecutionCommandUsed = null;
 				job.CurrentActivity = null;
 				job.ErrorMessage = $"Worker crashed or became unresponsive. Retry {job.RetryCount}/{job.MaxRetries}";
 

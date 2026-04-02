@@ -283,6 +283,14 @@ public partial class JobProcessingService
                             {
                                 jobForPid.ProcessId = p.ProcessId.Value;
                                 jobForPid.CommandUsed = p.CommandUsed;
+                                if (jobForPid.Status == JobStatus.Planning)
+                                {
+                                    jobForPid.PlanningCommandUsed = p.CommandUsed;
+                                }
+                                else
+                                {
+                                    jobForPid.ExecutionCommandUsed = p.CommandUsed;
+                                }
                                 await pidDbContext.SaveChangesAsync(CancellationToken.None);
                                 _logger.LogDebug("Stored process ID {ProcessId} and command in database for job {JobId}",
                                     p.ProcessId.Value, job.Id);
@@ -597,6 +605,7 @@ public partial class JobProcessingService
                 job.PlanningModelUsed = planningResult.ModelUsed ?? job.Project.PlanningModelId;
                 job.PlanningReasoningEffortUsed = job.Project.PlanningReasoningEffort;
                 job.PlanningGeneratedAt = DateTime.UtcNow;
+                job.PlanningCommandUsed = executionContext.CommandUsed ?? planningResult.CommandUsed;
 
                 // Clear planning phase's command/process so execution phase starts clean
                 job.CommandUsed = null;
@@ -694,6 +703,10 @@ public partial class JobProcessingService
                     totalOutputTokens = (totalOutputTokens ?? 0) + result.OutputTokens.Value;
                 if (result.CostUsd.HasValue)
                     totalCostUsd = (totalCostUsd ?? 0) + result.CostUsd.Value;
+                if (!string.IsNullOrWhiteSpace(result.CommandUsed))
+                {
+                    job.ExecutionCommandUsed = result.CommandUsed;
+                }
 
                 // Check for cycle completion conditions
                 if (!result.Success)

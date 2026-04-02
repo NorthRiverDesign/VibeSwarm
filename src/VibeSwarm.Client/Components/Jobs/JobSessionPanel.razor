@@ -46,7 +46,7 @@
                         </button>
                     </li>
                 }
-                @if (!string.IsNullOrEmpty(CommandUsed))
+                @if (HasCommandTab)
                 {
                     <li class="nav-item" role="presentation">
                         <button type="button" class="nav-link px-3 px-sm-3 @(_activeTab == "command" ? "active" : "")"
@@ -235,16 +235,56 @@
         else if (_activeTab == "command")
         {
             <div class="p-3 flex-grow-1 overflow-auto">
-                <div class="d-flex justify-content-end mb-2">
-                    <button type="button" class="btn btn-sm btn-secondary" @onclick="CopyCommandToClipboard"
-                            title="Copy command to clipboard">
-                        <i class="bi bi-clipboard me-1"></i>
-                        <span class="d-none d-sm-inline">Copy</span>
-                    </button>
-                </div>
-                <div class="p-3 bg-body-tertiary rounded border">
-                    <code class="small d-block text-break" style="white-space: pre-wrap;">@CommandUsed</code>
-                </div>
+                @if (CommandSteps.Count > 1)
+                {
+                    <div class="accordion border rounded" id="job-command-steps">
+                        @foreach (var step in CommandSteps)
+                        {
+                            var isExpanded = string.Equals(step.Key, CommandSteps[0].Key, StringComparison.Ordinal);
+                            <div class="accordion-item">
+                                <h2 class="accordion-header" id="@($"job-command-heading-{step.Key}")">
+                                    <button class="accordion-button @(isExpanded ? string.Empty : "collapsed")" type="button"
+                                            data-bs-toggle="collapse" data-bs-target="@($"#job-command-collapse-{step.Key}")"
+                                            aria-expanded="@isExpanded.ToString().ToLowerInvariant()"
+                                            aria-controls="@($"job-command-collapse-{step.Key}")">
+                                        <span class="d-flex align-items-center gap-2">
+                                            <i class="bi @(step.Icon) opacity-75"></i>
+                                            <span>@step.Label</span>
+                                        </span>
+                                    </button>
+                                </h2>
+                                <div id="@($"job-command-collapse-{step.Key}")" class="accordion-collapse collapse @(isExpanded ? "show" : string.Empty)">
+                                    <div class="accordion-body">
+                                        <div class="d-flex justify-content-end mb-2">
+                                            <button type="button" class="btn btn-sm btn-secondary"
+                                                    @onclick="@(() => CopyCommandToClipboard(step.Command))"
+                                                    title="@($"Copy {step.Label} command to clipboard")">
+                                                <i class="bi bi-clipboard me-1"></i>
+                                                <span class="d-none d-sm-inline">Copy</span>
+                                            </button>
+                                        </div>
+                                        <div class="p-3 bg-body-tertiary rounded border">
+                                            <code class="small d-block text-break" style="white-space: pre-wrap;">@step.Command</code>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+                else if (!string.IsNullOrWhiteSpace(PrimaryCommandText))
+                {
+                    <div class="d-flex justify-content-end mb-2">
+                        <button type="button" class="btn btn-sm btn-secondary" @onclick="CopyPrimaryCommandToClipboard"
+                                title="Copy command to clipboard">
+                            <i class="bi bi-clipboard me-1"></i>
+                            <span class="d-none d-sm-inline">Copy</span>
+                        </button>
+                    </div>
+                    <div class="p-3 bg-body-tertiary rounded border">
+                        <code class="small d-block text-break" style="white-space: pre-wrap;">@PrimaryCommandText</code>
+                    </div>
+                }
                 @if (!string.IsNullOrEmpty(SessionId))
                 {
                     <div class="mt-3">
@@ -298,6 +338,12 @@
     public string? CommandUsed { get; set; }
 
     [Parameter]
+    public string? PlanningCommandUsed { get; set; }
+
+    [Parameter]
+    public string? ExecutionCommandUsed { get; set; }
+
+    [Parameter]
     public string? SessionId { get; set; }
 
     [Parameter]
@@ -326,6 +372,14 @@
     private string? _lastAutoScrollStateKey;
 
     private bool CanSendFollowUp => Status == JobStatus.Completed && OnSendFollowUp.HasDelegate;
+
+    private bool HasCommandTab => CommandSteps.Count > 0 || !string.IsNullOrWhiteSpace(CommandUsed);
+
+    private IReadOnlyList<CommandStep> CommandSteps => BuildCommandSteps();
+
+    private string? PrimaryCommandText => CommandSteps.Count > 0
+        ? CommandSteps[0].Command
+        : NormalizeCommand(CommandUsed);
 
     private IReadOnlyList<JobMessage> DisplayedMessages
         => JobSessionDisplayBuilder.BuildDisplayedMessages(Messages, LiveOutputLines, IsJobActive, LiveMessages);
@@ -421,11 +475,52 @@
         }
     }
 
-    private async Task CopyCommandToClipboard()
+    private static string? NormalizeCommand(string? command)
+        => string.IsNullOrWhiteSpace(command) ? null : command.Trim();
+
+    private List<CommandStep> BuildCommandSteps()
     {
-        if (!string.IsNullOrEmpty(CommandUsed))
+        var steps = new List<CommandStep>();
+        var planningCommand = NormalizeCommand(PlanningCommandUsed);
+        if (planningCommand == null && Status == JobStatus.Planning)
         {
-            await JSRuntime.InvokeVoidAsync("copyToClipboard", CommandUsed);
+            planningCommand = NormalizeCommand(CommandUsed);
+        }
+
+        var executionCommand = NormalizeCommand(ExecutionCommandUsed);
+        if (executionCommand == null && Status != JobStatus.Planning)
+        {
+            var fallbackCommand = NormalizeCommand(CommandUsed);
+            if (fallbackCommand != null &&
+                (planningCommand == null || !string.Equals(fallbackCommand, planningCommand, StringComparison.Ordinal)))
+            {
+                executionCommand = fallbackCommand;
+            }
+        }
+
+        if (planningCommand != null)
+        {
+            steps.Add(new CommandStep("planning", "Planning", "bi-map", planningCommand));
+        }
+
+        if (executionCommand != null)
+        {
+            steps.Add(new CommandStep("execution", "Execution", "bi-play-circle", executionCommand));
+        }
+
+        return steps;
+    }
+
+    private async Task CopyPrimaryCommandToClipboard()
+    {
+        if (!string.IsNullOrEmpty(PrimaryCommandText))
+        {
+            await JSRuntime.InvokeVoidAsync("copyToClipboard", PrimaryCommandText);
         }
     }
+
+    private async Task CopyCommandToClipboard(string command)
+        => await JSRuntime.InvokeVoidAsync("copyToClipboard", command);
+
+    private sealed record CommandStep(string Key, string Label, string Icon, string Command);
 }

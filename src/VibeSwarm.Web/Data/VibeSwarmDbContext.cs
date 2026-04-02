@@ -235,6 +235,8 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 			entity.Property(e => e.GitCheckpointReason).HasMaxLength(500);
 			entity.Property(e => e.SessionId).HasMaxLength(200);
 			entity.Property(e => e.CommandUsed).HasMaxLength(4000);
+			entity.Property(e => e.PlanningCommandUsed).HasMaxLength(4000);
+			entity.Property(e => e.ExecutionCommandUsed).HasMaxLength(4000);
 			entity.HasOne(e => e.JobSchedule)
 				.WithMany(schedule => schedule.Jobs)
 				.HasForeignKey(e => e.JobScheduleId)
