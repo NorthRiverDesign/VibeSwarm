@@ -187,6 +187,7 @@ public class JobStateMachine
 				job.CurrentActivity = null;
 				job.WorkerInstanceId = null;
 				job.ProcessId = null;
+				job.CommandUsed = null;
 				break;
 
 			case JobStatus.Stalled:
@@ -200,6 +201,7 @@ public class JobStateMachine
 				job.CurrentActivity = null;
 				job.WorkerInstanceId = null;
 				job.ProcessId = null;
+				job.CommandUsed = null;
 				job.LastHeartbeatAt = null;
 				job.CancellationRequested = false;
 				break;

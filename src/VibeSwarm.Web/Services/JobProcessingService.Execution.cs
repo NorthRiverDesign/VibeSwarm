@@ -509,13 +509,13 @@ public partial class JobProcessingService
                 var planningProviderConfig = await providerService.GetByIdAsync(planningProviderId, cancellationToken);
                 if (planningProviderConfig == null)
                 {
-                    await FailDuringPlanningAsync("Planning provider not found.");
+                    await FailDuringPlanningAsync($"[Planning] Provider not found (ID: {planningProviderId}).");
                     return;
                 }
 
                 if (!ProviderPlanningHelper.SupportsPlanningMode(planningProviderConfig.Type))
                 {
-                    await FailDuringPlanningAsync("Planning currently supports only Claude and GitHub Copilot providers.");
+                    await FailDuringPlanningAsync($"[Planning] {planningProviderConfig.Name} does not support planning mode.");
                     return;
                 }
 
@@ -523,7 +523,7 @@ public partial class JobProcessingService
                 var planningValidationError = await ValidateProviderAvailabilityAsync(job.Id, planningProviderConfig, planningProvider, cancellationToken);
                 if (!string.IsNullOrWhiteSpace(planningValidationError))
                 {
-                    await FailDuringPlanningAsync(planningValidationError);
+                    await FailDuringPlanningAsync($"[Planning] {planningProviderConfig.Name}: {planningValidationError}");
                     return;
                 }
 
@@ -587,7 +587,7 @@ public partial class JobProcessingService
                     var planningError = string.IsNullOrWhiteSpace(planningResult.ErrorMessage)
                         ? $"{planningProviderConfig.Name} did not return a plan."
                         : planningResult.ErrorMessage;
-                    await FailDuringPlanningAsync(planningError);
+                    await FailDuringPlanningAsync($"[Planning] {planningProviderConfig.Name}: {planningError}");
                     return;
                 }
 
@@ -596,6 +596,13 @@ public partial class JobProcessingService
                 job.PlanningModelUsed = planningResult.ModelUsed ?? job.Project.PlanningModelId;
                 job.PlanningReasoningEffortUsed = job.Project.PlanningReasoningEffort;
                 job.PlanningGeneratedAt = DateTime.UtcNow;
+
+                // Clear planning phase's command/process so execution phase starts clean
+                job.CommandUsed = null;
+                job.ProcessId = null;
+                executionContext.ProcessId = 0;
+                executionContext.CommandUsed = null;
+
                 await dbContext.SaveChangesAsync(cancellationToken);
             }
 

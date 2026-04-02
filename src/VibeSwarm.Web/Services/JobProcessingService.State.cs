@@ -21,6 +21,7 @@ public partial class JobProcessingService
             job.WorkerInstanceId = null;
             job.LastHeartbeatAt = null;
             job.ProcessId = null;
+            job.CommandUsed = null;
             job.CurrentActivity = null;
             job.ErrorMessage = errorMessage;
             await dbContext.SaveChangesAsync(cancellationToken);
