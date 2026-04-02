@@ -24,14 +24,14 @@
             <img src="img/logo_icon.png" alt="VibeSwarm" class="object-fit-contain" style="width: 24px; height: 24px;" />
             <span class="brand-text text-truncate">VibeSwarm</span>
         </a>
-        <button type="button"
-                class="btn btn-link text-secondary p-0 fs-5 d-flex align-items-center justify-content-center touch-manipulation mobile-header-icon"
-                @onclick="OpenSearch"
-                title="Search"
-                aria-label="Search">
-            <i class="bi bi-search"></i>
-        </button>
         <div class="ms-auto d-flex align-items-center gap-1">
+            <button type="button"
+                    class="btn btn-link text-secondary p-0 fs-5 d-flex align-items-center justify-content-center touch-manipulation mobile-header-icon"
+                    @onclick="OpenSearch"
+                    title="Search"
+                    aria-label="Search">
+                <i class="bi bi-search"></i>
+            </button>
             <NotificationsPanel Compact="true" />
             <LoginDisplay />
         </div>

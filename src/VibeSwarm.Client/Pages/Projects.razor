@@ -18,7 +18,7 @@
     </Actions>
 </PageHeader>
 
-<PageFiltersBar>
+<PageFiltersBar Class="mb-0">
 	<SearchContent>
 		<div class="input-group">
 			<span class="input-group-text"><i class="bi bi-search"></i></span>
@@ -28,7 +28,7 @@
 		</div>
 	</SearchContent>
 	<Tabs>
-		<ul class="nav nav-tabs flex-nowrap flex-sm-wrap overflow-auto overscroll-contain" role="tablist">
+		<ul class="nav nav-tabs flex-nowrap flex-sm-wrap overflow-x-auto overflow-y-hidden overscroll-contain" role="tablist">
 			<li class="nav-item">
 				<button class="nav-link @(ActiveFilter == "active" ? "active" : "")" @onclick='() => SetFilter("active")'>
 					<i class="bi bi-check-circle me-1"></i>Active
@@ -94,10 +94,6 @@ else
 							<div class="min-width-0">
 								<div class="d-flex align-items-center gap-2 flex-wrap">
 									<a href="/projects/@project.Id" class="fw-semibold text-decoration-none text-break">@project.Name</a>
-									@if (project.AutoCommitMode != AutoCommitMode.Off)
-									{
-										<i class="bi bi-arrow-repeat text-info opacity-75" title="Auto-commit: @project.AutoCommitMode"></i>
-									}
 									@if (!project.IsActive)
 									{
 										<span class="small text-body-tertiary">Inactive</span>

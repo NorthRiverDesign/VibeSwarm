@@ -1,29 +1,29 @@
 @* Reusable index-page filter shell for search, tabs, and secondary actions *@
 
 <div class="d-flex flex-column gap-2 mb-3 @Class">
-	@if (SearchContent != null || Actions != null)
+	@if (SearchContent != null)
 	{
-		<div class="d-flex flex-column flex-md-row align-items-stretch align-items-md-center justify-content-between gap-2">
-			@if (SearchContent != null)
+		<div class="min-width-0">
+			@SearchContent
+		</div>
+	}
+
+	@if (Tabs != null || Actions != null)
+	{
+		<div class="d-flex flex-column flex-sm-row align-items-stretch align-items-sm-center justify-content-between gap-2">
+			@if (Tabs != null)
 			{
 				<div class="flex-grow-1 min-width-0">
-					@SearchContent
+					@Tabs
 				</div>
 			}
 
 			@if (Actions != null)
 			{
-				<div class="d-flex flex-wrap align-items-stretch justify-content-start justify-content-md-end gap-2 flex-shrink-0">
+				<div class="d-flex flex-wrap align-items-stretch justify-content-end gap-2 flex-shrink-0 ms-sm-auto">
 					@Actions
 				</div>
 			}
-		</div>
-	}
-
-	@if (Tabs != null)
-	{
-		<div class="min-width-0">
-			@Tabs
 		</div>
 	}
 </div>

@@ -144,6 +144,7 @@ public sealed class ProjectsPageTests
 
 		Assert.Contains("btn btn-primary", html);
 		Assert.Contains(">Add<", html);
+		Assert.Contains("justify-content-end gap-2 flex-shrink-0 ms-auto", html);
 	}
 
 	[Fact]
@@ -351,6 +352,65 @@ public sealed class ProjectsPageTests
 		Assert.DoesNotContain("#1 Copilot", cut.Markup);
 		Assert.DoesNotContain("Architect (Unassigned)", cut.Markup);
 		Assert.DoesNotContain("$2.50", cut.Markup);
+	}
+
+	[Fact]
+	public void ProjectsPage_AlignsTabsAndStatsActionInSingleRow()
+	{
+		using var context = new BunitContext();
+
+		context.Services.AddLogging();
+		context.Services.AddSingleton<IProjectService>(new FakeProjectService([]));
+		context.Services.AddSingleton<IJobService>(new FakeJobService());
+		context.Services.AddSingleton<IIdeaService>(new FakeIdeaService());
+		context.Services.AddSingleton<IVersionControlService>(new FakeVersionControlService());
+		context.Services.AddSingleton<IProviderService>(new FakeProviderService());
+		context.Services.AddSingleton<ITeamRoleService>(new FakeTeamRoleService());
+		context.Services.AddSingleton<ISettingsService>(new FakeSettingsService());
+		context.Services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService());
+		context.Services.AddSingleton<NotificationService>();
+		context.Services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
+
+		var cut = context.Render<Projects>();
+
+		Assert.Contains("flex-column flex-sm-row align-items-stretch align-items-sm-center justify-content-between gap-2", cut.Markup);
+		Assert.Contains("overflow-x-auto overflow-y-hidden", cut.Markup);
+	}
+
+	[Fact]
+	public void ProjectsPage_ShowsSingleAutoCommitIndicator()
+	{
+		using var context = new BunitContext();
+
+		var project = new ProjectWithStats
+		{
+			Project = new Project
+			{
+				Id = Guid.NewGuid(),
+				Name = "Auto Commit Project",
+				WorkingPath = "/tmp/auto-commit-project",
+				IsActive = true,
+				AutoCommitMode = AutoCommitMode.CommitOnly
+			},
+			Stats = new ProjectJobStats()
+		};
+
+		context.Services.AddLogging();
+		context.Services.AddSingleton<IProjectService>(new FakeProjectService([project]));
+		context.Services.AddSingleton<IJobService>(new FakeJobService());
+		context.Services.AddSingleton<IIdeaService>(new FakeIdeaService());
+		context.Services.AddSingleton<IVersionControlService>(new FakeVersionControlService());
+		context.Services.AddSingleton<IProviderService>(new FakeProviderService());
+		context.Services.AddSingleton<ITeamRoleService>(new FakeTeamRoleService());
+		context.Services.AddSingleton<ISettingsService>(new FakeSettingsService());
+		context.Services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService());
+		context.Services.AddSingleton<NotificationService>();
+		context.Services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
+
+		var cut = context.Render<Projects>();
+
+		Assert.Single(cut.FindAll(".badge"), element => element.TextContent.Contains("Auto-commit", StringComparison.Ordinal));
+		Assert.DoesNotContain("Auto-commit:", cut.Markup);
 	}
 
 	private static void SetPrivateProperty(object instance, string propertyName, object? value)
