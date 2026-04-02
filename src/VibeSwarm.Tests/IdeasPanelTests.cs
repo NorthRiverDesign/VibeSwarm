@@ -133,6 +133,50 @@ public sealed class IdeasPanelTests
 	}
 
 	[Fact]
+	public async Task IdeaListItem_RendersAttachedImagePreviewAndDownloadLink()
+	{
+		var services = new ServiceCollection();
+		services.AddLogging();
+
+		await using var renderer = new HtmlRenderer(services.BuildServiceProvider(), NullLoggerFactory.Instance);
+
+		var attachmentId = Guid.NewGuid();
+		var idea = new Idea
+		{
+			Id = Guid.NewGuid(),
+			Description = "Use the attached screenshot",
+			ProjectId = Guid.NewGuid(),
+			Attachments =
+			[
+				new IdeaAttachment
+				{
+					Id = attachmentId,
+					FileName = "mockup.png",
+					ContentType = "image/png",
+					RelativePath = Path.Combine(".vibeswarm", "idea-attachments", "mockup.png"),
+					SizeBytes = 2048
+				}
+			]
+		};
+
+		var html = await renderer.Dispatcher.InvokeAsync(async () =>
+		{
+			var parameters = ParameterView.FromDictionary(new Dictionary<string, object?>
+			{
+				[nameof(IdeaListItem.Idea)] = idea,
+				[nameof(IdeaListItem.HasDefaultProvider)] = true
+			});
+			var output = await renderer.RenderComponentAsync<IdeaListItem>(parameters);
+			return output.ToHtmlString();
+		});
+
+		Assert.Contains($"/api/ideas/attachments/{attachmentId}", html);
+		Assert.Contains("mockup.png", html);
+		Assert.Contains("2 KB", html);
+		Assert.Contains("object-fit: cover;", html);
+	}
+
+	[Fact]
 	public void StartAllModal_DefaultsProviderAndModelFromProjectSelection()
 	{
 		using var context = new BunitContext();
@@ -330,6 +374,7 @@ public sealed class IdeasPanelTests
 		public Task<bool> CompleteIdeaFromJobAsync(Guid jobId, CancellationToken cancellationToken = default) => Task.FromResult(false);
 		public Task<bool> HandleJobCompletionAsync(Guid jobId, bool success, CancellationToken cancellationToken = default) => Task.FromResult(false);
 		public Task<Idea?> GetByJobIdAsync(Guid jobId, CancellationToken cancellationToken = default) => Task.FromResult<Idea?>(null);
+		public Task<IdeaAttachment?> GetAttachmentAsync(Guid attachmentId, CancellationToken cancellationToken = default) => Task.FromResult<IdeaAttachment?>(null);
 		public Task StartProcessingAsync(Guid projectId, IdeaProcessingOptions? options = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task StopProcessingAsync(Guid projectId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<bool> IsProcessingActiveAsync(Guid projectId, CancellationToken cancellationToken = default) => Task.FromResult(false);

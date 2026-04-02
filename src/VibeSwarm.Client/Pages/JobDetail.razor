@@ -1,6 +1,7 @@
 @page "/jobs/view/{JobId:guid}"
 @attribute [Authorize]
 @inject IJobService JobService
+@inject IIdeaService IdeaService
 @inject IVersionControlService VersionControlService
 @inject NavigationManager NavigationManager
 @inject IJSRuntime JSRuntime
@@ -180,10 +181,11 @@ else
         @* Right Column - Session Panel (Live Output, Console, Command, Conversation) *@
         <div class="col-12 @(ShowSidebarContent ? "col-xl-7 order-1 order-xl-2" : string.Empty) d-flex flex-column">
             <JobSessionPanel Messages="@(Job!.Messages.ToList())" Status="@Job.Status" IsJobActive="@IsJobActive"
-                             GoalPrompt="@Job.GoalPrompt" GoalPromptIdeaText="@GetGoalPromptIdeaText()"
-                             GoalPromptTimestamp="@Job.CreatedAt" OnCopyGoalPrompt="CopyPromptToClipboard"
-                             OnGoalPromptChanged="UpdateJobPrompt"
-                             ErrorMessage="@Job.ErrorMessage" ConsoleOutput="@Job.ConsoleOutput" CommandUsed="@Job.CommandUsed"
+                              GoalPrompt="@Job.GoalPrompt" GoalPromptIdeaText="@GetGoalPromptIdeaText()"
+                             AttachedIdeaFiles="@(_linkedIdea?.Attachments ?? Array.Empty<IdeaAttachment>())"
+                              GoalPromptTimestamp="@Job.CreatedAt" OnCopyGoalPrompt="CopyPromptToClipboard"
+                              OnGoalPromptChanged="UpdateJobPrompt"
+                              ErrorMessage="@Job.ErrorMessage" ConsoleOutput="@Job.ConsoleOutput" CommandUsed="@Job.CommandUsed"
                              PlanningCommandUsed="@Job.PlanningCommandUsed" ExecutionCommandUsed="@Job.ExecutionCommandUsed"
                              SessionId="@Job.SessionId" LiveOutputLines="@_liveOutput.ToList()"
                              LiveMessages="@_pendingSessionMessages.ToList()" MaxOutputLines="@MaxOutputLines"

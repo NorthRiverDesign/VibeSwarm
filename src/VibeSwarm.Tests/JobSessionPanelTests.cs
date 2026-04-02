@@ -720,6 +720,33 @@ public sealed class JobSessionPanelTests
 	}
 
 	[Fact]
+	public void JobSessionPanel_Bunit_RendersAttachedFilesSection()
+	{
+		using var context = new BunitContext();
+
+		var attachmentId = Guid.NewGuid();
+		var cut = context.Render<JobSessionPanel>(parameters => parameters
+			.Add(panel => panel.Status, JobStatus.Completed)
+			.Add(panel => panel.GoalPrompt, "Implement the feature exactly as described.")
+			.Add(panel => panel.AttachedIdeaFiles, new List<IdeaAttachment>
+			{
+				new()
+				{
+					Id = attachmentId,
+					FileName = "screenshot.png",
+					ContentType = "image/png",
+					RelativePath = Path.Combine(".vibeswarm", "idea-attachments", "screenshot.png"),
+					SizeBytes = 4096
+				}
+			}));
+
+		Assert.Contains("Attached files", cut.Markup);
+		Assert.Contains("screenshot.png", cut.Markup);
+		Assert.Contains($"/api/ideas/attachments/{attachmentId}", cut.Markup);
+		Assert.Contains("4 KB", cut.Markup);
+	}
+
+	[Fact]
 	public void JobSessionPanel_Bunit_AllowsEditingGoalPromptFromBubbleMenu()
 	{
 		using var context = new BunitContext();

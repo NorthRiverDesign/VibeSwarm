@@ -321,6 +321,14 @@ public partial class IdeaService : IIdeaService
 			.FirstOrDefaultAsync(i => i.JobId == jobId, cancellationToken);
 	}
 
+	public async Task<IdeaAttachment?> GetAttachmentAsync(Guid attachmentId, CancellationToken cancellationToken = default)
+	{
+		return await _dbContext.IdeaAttachments
+			.Include(attachment => attachment.Idea)
+				.ThenInclude(idea => idea!.Project)
+			.FirstOrDefaultAsync(attachment => attachment.Id == attachmentId, cancellationToken);
+	}
+
 	private static void EnsureLengthWithinLimit(string fieldName, string? value, int maxLength)
 	{
 		if (!string.IsNullOrEmpty(value) && value.Length > maxLength)

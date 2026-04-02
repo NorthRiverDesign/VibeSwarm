@@ -83,11 +83,47 @@ public class IdeasController : ControllerBase
     public async Task<IActionResult> HandleJobCompletion(Guid jobId, [FromQuery] bool success, CancellationToken ct)
         => await _ideaService.HandleJobCompletionAsync(jobId, success, ct) ? Ok() : BadRequest();
 
-    [HttpGet("by-job/{jobId:guid}")]
-    public async Task<IActionResult> GetByJobId(Guid jobId, CancellationToken ct) => Ok(await _ideaService.GetByJobIdAsync(jobId, ct));
+	[HttpGet("by-job/{jobId:guid}")]
+	public async Task<IActionResult> GetByJobId(Guid jobId, CancellationToken ct) => Ok(await _ideaService.GetByJobIdAsync(jobId, ct));
 
-    [HttpPost("project/{projectId:guid}/start-processing")]
-    public async Task<IActionResult> StartProcessing(Guid projectId, [FromBody] IdeaProcessingOptions? options, CancellationToken ct = default) { await _ideaService.StartProcessingAsync(projectId, options, ct); return Ok(); }
+	[HttpGet("attachments/{attachmentId:guid}/metadata")]
+	public async Task<IActionResult> GetAttachmentMetadata(Guid attachmentId, CancellationToken ct)
+	{
+		var attachment = await _ideaService.GetAttachmentAsync(attachmentId, ct);
+		return attachment == null ? NotFound() : Ok(attachment);
+	}
+
+	[HttpGet("attachments/{attachmentId:guid}")]
+	public async Task<IActionResult> DownloadAttachment(Guid attachmentId, CancellationToken ct)
+	{
+		var attachment = await _ideaService.GetAttachmentAsync(attachmentId, ct);
+		if (attachment?.Idea?.Project == null || string.IsNullOrWhiteSpace(attachment.RelativePath))
+		{
+			return NotFound();
+		}
+
+		var workingPath = attachment.Idea.Project.WorkingPath?.Trim();
+		if (string.IsNullOrWhiteSpace(workingPath) || !Directory.Exists(workingPath))
+		{
+			return NotFound();
+		}
+
+		var normalizedRoot = Path.GetFullPath(workingPath);
+		var fullPath = Path.GetFullPath(Path.Combine(normalizedRoot, attachment.RelativePath));
+		if (!fullPath.StartsWith(normalizedRoot, StringComparison.Ordinal) || !System.IO.File.Exists(fullPath))
+		{
+			return NotFound();
+		}
+
+		var contentType = string.IsNullOrWhiteSpace(attachment.ContentType)
+			? "application/octet-stream"
+			: attachment.ContentType;
+
+		return PhysicalFile(fullPath, contentType, attachment.FileName);
+	}
+
+	[HttpPost("project/{projectId:guid}/start-processing")]
+	public async Task<IActionResult> StartProcessing(Guid projectId, [FromBody] IdeaProcessingOptions? options, CancellationToken ct = default) { await _ideaService.StartProcessingAsync(projectId, options, ct); return Ok(); }
 
     [HttpPost("project/{projectId:guid}/stop-processing")]
     public async Task<IActionResult> StopProcessing(Guid projectId, CancellationToken ct) { await _ideaService.StopProcessingAsync(projectId, ct); return Ok(); }

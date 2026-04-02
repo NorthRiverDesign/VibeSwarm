@@ -76,6 +76,11 @@ public interface IIdeaService
 	Task<Idea?> GetByJobIdAsync(Guid jobId, CancellationToken cancellationToken = default);
 
 	/// <summary>
+	/// Gets a single persisted idea attachment by ID.
+	/// </summary>
+	Task<IdeaAttachment?> GetAttachmentAsync(Guid attachmentId, CancellationToken cancellationToken = default);
+
+	/// <summary>
 	/// Starts auto-processing of ideas for a project
 	/// </summary>
 	/// <param name="projectId">The project to start processing</param>

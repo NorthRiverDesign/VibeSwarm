@@ -15,6 +15,7 @@ public partial class JobDetail : ComponentBase
 
     // Retry modal state
     private bool _showRetryModal = false;
+    private Idea? _linkedIdea;
 
     #region Job Actions
 
@@ -23,6 +24,7 @@ public partial class JobDetail : ComponentBase
         try
         {
             Job = await JobService.GetByIdWithMessagesAsync(JobId);
+            _linkedIdea = Job == null ? null : await IdeaService.GetByJobIdAsync(Job.Id);
 
             if (Job != null && !string.IsNullOrWhiteSpace(Job.SessionSummary))
             {

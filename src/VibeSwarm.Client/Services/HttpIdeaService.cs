@@ -65,11 +65,14 @@ public class HttpIdeaService : IIdeaService
         return response.IsSuccessStatusCode;
     }
 
-    public async Task<Idea?> GetByJobIdAsync(Guid jobId, CancellationToken ct = default)
-        => await _http.GetJsonOrNullAsync<Idea>($"/api/ideas/by-job/{jobId}", ct);
+	public async Task<Idea?> GetByJobIdAsync(Guid jobId, CancellationToken ct = default)
+		=> await _http.GetJsonOrNullAsync<Idea>($"/api/ideas/by-job/{jobId}", ct);
 
-    public async Task StartProcessingAsync(Guid projectId, IdeaProcessingOptions? options = null, CancellationToken ct = default)
-        => await _http.PostAsJsonAsync($"/api/ideas/project/{projectId}/start-processing", options ?? new IdeaProcessingOptions(), ct);
+	public async Task<IdeaAttachment?> GetAttachmentAsync(Guid attachmentId, CancellationToken ct = default)
+		=> await _http.GetJsonOrNullAsync<IdeaAttachment>($"/api/ideas/attachments/{attachmentId}/metadata", ct);
+
+	public async Task StartProcessingAsync(Guid projectId, IdeaProcessingOptions? options = null, CancellationToken ct = default)
+		=> await _http.PostAsJsonAsync($"/api/ideas/project/{projectId}/start-processing", options ?? new IdeaProcessingOptions(), ct);
 
     public async Task StopProcessingAsync(Guid projectId, CancellationToken ct = default)
         => await _http.PostAsync($"/api/ideas/project/{projectId}/stop-processing", null, ct);

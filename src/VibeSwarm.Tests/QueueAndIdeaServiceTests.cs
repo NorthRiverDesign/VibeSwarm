@@ -2048,6 +2048,89 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 	}
 
 	[Fact]
+	public async Task HandleJobCompletionAsync_Failure_KeepsIdeaAndAttachmentFiles()
+	{
+		await using var dbContext = CreateDbContext();
+		var workingPath = Path.Combine(Path.GetTempPath(), $"vibeswarm-job-retain-{Guid.NewGuid():N}");
+		Directory.CreateDirectory(workingPath);
+
+		try
+		{
+			var project = new Project
+			{
+				Id = Guid.NewGuid(),
+				Name = "Retention Project",
+				WorkingPath = workingPath
+			};
+			var provider = new Provider
+			{
+				Id = Guid.NewGuid(),
+				Name = "Copilot",
+				Type = ProviderType.Copilot,
+				IsEnabled = true,
+				IsDefault = true
+			};
+			var job = new Job
+			{
+				Id = Guid.NewGuid(),
+				ProjectId = project.Id,
+				ProviderId = provider.Id,
+				GoalPrompt = "Fail job but keep idea attachment",
+				Status = JobStatus.Failed
+			};
+			var relativeAttachmentPath = Path.Combine(".vibeswarm", "idea-attachments", "retain", "context.txt");
+			var idea = new Idea
+			{
+				Id = Guid.NewGuid(),
+				ProjectId = project.Id,
+				Description = "Keep attachments after a failed job",
+				JobId = job.Id,
+				IsProcessing = true,
+				SortOrder = 0,
+				Attachments =
+				[
+					new IdeaAttachment
+					{
+						Id = Guid.NewGuid(),
+						FileName = "context.txt",
+						ContentType = "text/plain",
+						RelativePath = relativeAttachmentPath,
+						SizeBytes = 5
+					}
+				]
+			};
+
+			dbContext.Projects.Add(project);
+			dbContext.Providers.Add(provider);
+			dbContext.Jobs.Add(job);
+			dbContext.Ideas.Add(idea);
+			await dbContext.SaveChangesAsync();
+
+			var attachmentPath = Path.Combine(workingPath, relativeAttachmentPath);
+			Directory.CreateDirectory(Path.GetDirectoryName(attachmentPath)!);
+			await File.WriteAllTextAsync(attachmentPath, "hello");
+
+			var ideaService = CreateIdeaService(dbContext, provider);
+			var handled = await ideaService.HandleJobCompletionAsync(job.Id, success: false);
+
+			Assert.True(handled);
+			Assert.True(File.Exists(attachmentPath));
+
+			var retainedIdea = await dbContext.Ideas.Include(item => item.Attachments).SingleAsync(item => item.Id == idea.Id);
+			Assert.False(retainedIdea.IsProcessing);
+			Assert.Null(retainedIdea.JobId);
+			Assert.Single(retainedIdea.Attachments);
+		}
+		finally
+		{
+			if (Directory.Exists(workingPath))
+			{
+				Directory.Delete(workingPath, recursive: true);
+			}
+		}
+	}
+
+	[Fact]
 	public async Task JobQueueManager_GetPendingJobsAsync_SkipsJobsWithFutureNotBeforeUtc()
 	{
 		await using var dbContext = CreateDbContext();
