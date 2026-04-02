@@ -17,6 +17,11 @@ public static class ValidationLimits
 	public const int JobScheduleLastErrorMaxLength = 1000;
 	public const int JobScheduleIdeaCountMin = 1;
 	public const int JobScheduleIdeaCountMax = 7;
+	public const int JobTemplateNameMaxLength = 100;
+	public const int JobTemplateDescriptionMaxLength = 500;
+	public const int JobTemplatePromptMaxLength = 2000;
+	public const int JobTemplateModelIdMaxLength = 200;
+	public const int JobTemplateBranchMaxLength = 250;
 	public const int TeamRoleDescriptionMaxLength = 500;
 	public const int TeamRoleResponsibilitiesMaxLength = 4000;
 

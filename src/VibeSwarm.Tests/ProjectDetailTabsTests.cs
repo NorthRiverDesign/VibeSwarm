@@ -73,6 +73,7 @@ public sealed class ProjectDetailTabsTests
 		context.Services.AddSingleton<IProjectService>(new FakeProjectService());
 		context.Services.AddSingleton<IJobService>(new FakeJobService());
 		context.Services.AddSingleton<IProviderService>(new FakeProviderService());
+		context.Services.AddSingleton<IJobTemplateService>(new FakeJobTemplateService());
 		context.Services.AddSingleton<IVersionControlService>(new FakeVersionControlService(isGitRepository));
 		context.Services.AddSingleton<IIdeaService>(new FakeIdeaService());
 		context.Services.AddSingleton<IInferenceService>(new FakeInferenceService());
@@ -251,6 +252,16 @@ public sealed class ProjectDetailTabsTests
 		public Task StopAllProcessingAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 		public Task<SuggestIdeasResult> SuggestIdeasFromCodebaseAsync(Guid projectId, SuggestIdeasRequest? request = null, CancellationToken cancellationToken = default)
 			=> Task.FromResult(new SuggestIdeasResult());
+	}
+
+	private sealed class FakeJobTemplateService : IJobTemplateService
+	{
+		public Task<IEnumerable<JobTemplate>> GetAllAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<JobTemplate>>([]);
+		public Task<JobTemplate?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult<JobTemplate?>(null);
+		public Task<JobTemplate> CreateAsync(JobTemplate template, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<JobTemplate> UpdateAsync(JobTemplate template, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task DeleteAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<JobTemplate> IncrementUseCountAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	}
 
 	private sealed class FakeProviderService : IProviderService

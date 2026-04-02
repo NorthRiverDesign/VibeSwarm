@@ -85,10 +85,12 @@ public class Job
 	public Guid ProviderId { get; set; }
     public Provider? Provider { get; set; }
 
-    public bool IsScheduled { get; set; }
-    public Guid? JobScheduleId { get; set; }
-    public JobSchedule? JobSchedule { get; set; }
-    public DateTime? ScheduledForUtc { get; set; }
+	public bool IsScheduled { get; set; }
+	public Guid? JobScheduleId { get; set; }
+	public JobSchedule? JobSchedule { get; set; }
+	public Guid? JobTemplateId { get; set; }
+	public JobTemplate? JobTemplate { get; set; }
+	public DateTime? ScheduledForUtc { get; set; }
 
     /// <summary>
     /// The AI model that was used to execute this job (e.g., "claude-sonnet-4-20250514")

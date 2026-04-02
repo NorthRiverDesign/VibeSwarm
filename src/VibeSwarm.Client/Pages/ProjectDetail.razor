@@ -3,6 +3,7 @@
 @inject IProjectService ProjectService
 @inject IJobService JobService
 @inject IProviderService ProviderService
+@inject IJobTemplateService JobTemplateService
 @inject IVersionControlService VersionControlService
 @inject IIdeaService IdeaService
 @inject IInferenceService InferenceService
@@ -599,8 +600,8 @@ else
     <CreateJobModal @bind-IsVisible="_showCreateJobModal" JobModel="@NewJob" Providers="@GetAllowedJobProviders()"
                     AvailableModels="@AvailableModels" Branches="@Branches" CurrentBranch="@CurrentBranch"
                     ShowBranchSelector="@(IsGitRepository && Branches.Any())" IsLoadingModels="@IsLoadingModels" IsSaving="@IsSaving"
-                    ErrorMessage="@ErrorMessage" SelectedModelId="@SelectedModelId" ProviderHint="@GetProviderHint()" OnProviderChanged="OnProviderChanged"
-                    OnSubmit="HandleCreateJob" />
+                    ErrorMessage="@ErrorMessage" @bind-SelectedModelId="@SelectedModelId" ProviderHint="@GetProviderHint()" OnProviderChanged="OnProviderChanged"
+                    TemplateLibrary="@JobTemplates" OnTemplateLibraryChanged="LoadJobTemplates" OnSubmit="HandleCreateJob" />
 
     @* Edit Project Modal *@
     <ProjectModal @bind-IsVisible="_showEditProjectModal" EditProject="@Project" OnSaved="HandleProjectSaved"
@@ -628,6 +629,7 @@ else
 
     // Model selection
     private List<ProviderModel> AvailableModels { get; set; } = new();
+    private List<JobTemplate> JobTemplates { get; set; } = new();
     private string SelectedModelId { get; set; } = string.Empty;
     private bool IsLoadingModels { get; set; }
 

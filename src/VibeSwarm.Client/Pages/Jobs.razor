@@ -4,6 +4,7 @@
 @inject IJobService JobService
 @inject IProjectService ProjectService
 @inject IProviderService ProviderService
+@inject IJobTemplateService JobTemplateService
 @inject IVersionControlService VersionControlService
 @inject NavigationManager NavigationManager
 @inject NotificationService NotificationService
@@ -223,8 +224,8 @@
 <CreateJobModal @bind-IsVisible="_showCreateJobModal" JobModel="@_newJob" Providers="@GetAllowedCreateJobProviders()"
 				AvailableModels="@_availableModels" Branches="@_branches" CurrentBranch="@_currentBranch"
 				ShowBranchSelector="@(_branches.Any())" IsLoadingModels="@_isLoadingModels" IsSaving="@_isSaving"
-				ErrorMessage="@_createJobError" SelectedModelId="@_selectedModelId" OnProviderChanged="OnCreateJobProviderChanged"
-				OnSubmit="HandleCreateJob" />
+				ErrorMessage="@_createJobError" @bind-SelectedModelId="@_selectedModelId" OnProviderChanged="OnCreateJobProviderChanged"
+				TemplateLibrary="@_jobTemplates" OnTemplateLibraryChanged="LoadJobTemplates" OnSubmit="HandleCreateJob" />
 
 @code {
     [Parameter]
@@ -251,6 +252,7 @@
     private Job _newJob = new();
     private List<Provider> _providers = new();
     private List<ProviderModel> _availableModels = new();
+    private List<JobTemplate> _jobTemplates = new();
     private List<GitBranchInfo> _branches = new();
     private string? _currentBranch;
     private bool _isLoadingModels;
@@ -262,6 +264,7 @@
     {
         _selectedProjectId = ProjectFilter;
         await LoadData();
+        await LoadJobTemplates();
         StartAutoRefresh();
     }
 
@@ -709,6 +712,7 @@ TimeSpan.FromSeconds(10) })
 
         try
         {
+            await LoadJobTemplates();
             // Load providers
             _providers = (await ProviderService.GetAllAsync()).ToList();
 
@@ -837,6 +841,11 @@ TimeSpan.FromSeconds(10) })
         {
             _isSaving = false;
         }
+    }
+
+    private async Task LoadJobTemplates()
+    {
+        _jobTemplates = (await JobTemplateService.GetAllAsync()).ToList();
     }
 
     public async ValueTask DisposeAsync()

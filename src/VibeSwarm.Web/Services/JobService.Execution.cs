@@ -251,6 +251,16 @@ public partial class JobService
 
     private async Task ValidateRequestedExecutionAsync(Job job, CancellationToken cancellationToken)
     {
+		if (job.JobTemplateId.HasValue)
+		{
+			var templateExists = await _dbContext.JobTemplates
+				.AnyAsync(template => template.Id == job.JobTemplateId.Value, cancellationToken);
+			if (!templateExists)
+			{
+				throw new InvalidOperationException("The selected job template no longer exists.");
+			}
+		}
+
 		if (job.ProviderId == Guid.Empty)
 		{
 			if (!string.IsNullOrWhiteSpace(job.ModelUsed))

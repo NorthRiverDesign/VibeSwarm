@@ -23,6 +23,7 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 	public DbSet<ProjectTeamRole> ProjectTeamRoles { get; set; }
 	public DbSet<ProjectEnvironment> ProjectEnvironments { get; set; }
 	public DbSet<JobSchedule> JobSchedules { get; set; }
+	public DbSet<JobTemplate> JobTemplates { get; set; }
 	public DbSet<Job> Jobs { get; set; }
 	public DbSet<JobMessage> JobMessages { get; set; }
 	public DbSet<JobProviderAttempt> JobProviderAttempts { get; set; }
@@ -216,6 +217,25 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 			entity.HasIndex(e => new { e.ProjectId, e.IsEnabled });
 		});
 
+		modelBuilder.Entity<JobTemplate>(entity =>
+		{
+			entity.HasKey(e => e.Id);
+			entity.Property(e => e.Name).IsRequired().HasMaxLength(ValidationLimits.JobTemplateNameMaxLength);
+			entity.Property(e => e.Description).HasMaxLength(ValidationLimits.JobTemplateDescriptionMaxLength);
+			entity.Property(e => e.GoalPrompt).IsRequired().HasMaxLength(ValidationLimits.JobTemplatePromptMaxLength);
+			entity.Property(e => e.ModelId).HasMaxLength(ValidationLimits.JobTemplateModelIdMaxLength);
+			entity.Property(e => e.ReasoningEffort).HasMaxLength(ValidationLimits.ReasoningEffortMaxLength);
+			entity.Property(e => e.Branch).HasMaxLength(ValidationLimits.JobTemplateBranchMaxLength);
+			entity.Property(e => e.TargetBranch).HasMaxLength(ValidationLimits.JobTemplateBranchMaxLength);
+			entity.Property(e => e.CycleReviewPrompt).HasMaxLength(ValidationLimits.JobTemplatePromptMaxLength);
+			entity.HasOne(e => e.Provider)
+				.WithMany()
+				.HasForeignKey(e => e.ProviderId)
+				.OnDelete(DeleteBehavior.SetNull);
+			entity.HasIndex(e => e.Name).IsUnique();
+			entity.HasIndex(e => e.CreatedAt);
+		});
+
 		modelBuilder.Entity<Job>(entity =>
 		{
 			entity.HasKey(e => e.Id);
@@ -244,6 +264,10 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 			entity.HasOne(e => e.JobSchedule)
 				.WithMany(schedule => schedule.Jobs)
 				.HasForeignKey(e => e.JobScheduleId)
+				.OnDelete(DeleteBehavior.SetNull);
+			entity.HasOne(e => e.JobTemplate)
+				.WithMany(template => template.Jobs)
+				.HasForeignKey(e => e.JobTemplateId)
 				.OnDelete(DeleteBehavior.SetNull);
 			entity.HasOne(e => e.Project)
 	.WithMany(p => p.Jobs)

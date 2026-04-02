@@ -489,6 +489,7 @@ public partial class JobService : IJobService
     {
         job.GoalPrompt = job.GoalPrompt?.Trim() ?? string.Empty;
         job.Title = JobTitleHelper.BuildSafeJobTitle(job.Title, job.GoalPrompt);
+        job.JobTemplateId = job.JobTemplateId == Guid.Empty ? null : job.JobTemplateId;
         job.ModelUsed = string.IsNullOrWhiteSpace(job.ModelUsed) ? null : job.ModelUsed.Trim();
         job.ReasoningEffort = ProviderCapabilities.NormalizeReasoningEffort(job.ReasoningEffort);
         job.PlanningOutput = string.IsNullOrWhiteSpace(job.PlanningOutput) ? null : job.PlanningOutput.Trim();

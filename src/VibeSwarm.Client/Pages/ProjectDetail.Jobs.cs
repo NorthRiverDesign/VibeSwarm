@@ -76,6 +76,8 @@ public partial class ProjectDetail
 
     private async Task ShowCreateJobModal()
     {
+        await LoadJobTemplates();
+
         // Reset the form for a new job
         NewJob = new Job();
         NewJob.Branch = CurrentBranch;
@@ -94,6 +96,11 @@ public partial class ProjectDetail
 
         ErrorMessage = null;
         _showCreateJobModal = true;
+    }
+
+    private async Task LoadJobTemplates()
+    {
+        JobTemplates = (await JobTemplateService.GetAllAsync()).ToList();
     }
 
     private async Task HandleCreateJob()

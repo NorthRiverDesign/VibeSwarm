@@ -57,6 +57,7 @@ public sealed class JobsPageTests
 		context.Services.AddSingleton<IJobService>(new FakeJobService(jobsResult));
 		context.Services.AddSingleton<IProjectService>(new FakeProjectService(projectId));
 		context.Services.AddSingleton<IProviderService>(new FakeProviderService());
+		context.Services.AddSingleton<IJobTemplateService>(new FakeJobTemplateService());
 		context.Services.AddSingleton<IVersionControlService>(new FakeVersionControlService());
 		context.Services.AddSingleton<NotificationService>();
 		context.Services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
@@ -166,6 +167,16 @@ public sealed class JobsPageTests
 		public Task<IEnumerable<ProviderModel>> RefreshModelsAsync(Guid providerId, CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<ProviderModel>>([]);
 		public Task SetDefaultModelAsync(Guid providerId, Guid modelId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<CliUpdateResult> UpdateCliAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+	}
+
+	private sealed class FakeJobTemplateService : IJobTemplateService
+	{
+		public Task<IEnumerable<JobTemplate>> GetAllAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<JobTemplate>>([]);
+		public Task<JobTemplate?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult<JobTemplate?>(null);
+		public Task<JobTemplate> CreateAsync(JobTemplate template, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<JobTemplate> UpdateAsync(JobTemplate template, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task DeleteAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<JobTemplate> IncrementUseCountAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	}
 
 	private sealed class FakeVersionControlService : IVersionControlService
