@@ -272,6 +272,16 @@ public sealed class ProjectsPageTests
 				Name = "Toggle Stats Project",
 				WorkingPath = "/tmp/toggle-stats-project",
 				IsActive = true,
+				Environments =
+				[
+					new ProjectEnvironment
+					{
+						Id = Guid.NewGuid(),
+						Name = "Production",
+						Url = "https://example.com",
+						IsEnabled = true
+					}
+				],
 				TeamAssignments =
 				[
 					new ProjectTeamRole
@@ -283,7 +293,10 @@ public sealed class ProjectsPageTests
 			},
 			Stats = new ProjectJobStats
 			{
+				TotalIdeas = 4,
+				UnprocessedIdeas = 1,
 				TotalJobs = 2,
+				ActiveJobs = 1,
 				TotalInputTokens = 1000,
 				TotalOutputTokens = 500,
 				TotalCostUsd = 2.5m
@@ -304,12 +317,18 @@ public sealed class ProjectsPageTests
 
 		var cut = context.Render<Projects>();
 
+		Assert.Contains("4 ideas", cut.Markup);
+		Assert.Contains("1 pending", cut.Markup);
+		Assert.Contains("1 running", cut.Markup);
 		Assert.Contains("Architect (Unassigned)", cut.Markup);
 		Assert.Contains("$2.50", cut.Markup);
 
 		cut.Find("button[title='Toggle project stats']").Click();
 
 		Assert.Contains("Show stats", cut.Markup);
+		Assert.DoesNotContain("4 ideas", cut.Markup);
+		Assert.DoesNotContain("1 pending", cut.Markup);
+		Assert.DoesNotContain("1 running", cut.Markup);
 		Assert.DoesNotContain("Architect (Unassigned)", cut.Markup);
 		Assert.DoesNotContain("$2.50", cut.Markup);
 	}

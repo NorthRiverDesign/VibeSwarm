@@ -1,0 +1,43 @@
+@* Reusable index-page filter shell for search, tabs, and secondary actions *@
+
+<div class="d-flex flex-column gap-2 mb-3 @Class">
+	@if (SearchContent != null || Actions != null)
+	{
+		<div class="d-flex flex-column flex-lg-row align-items-stretch align-items-lg-center justify-content-between gap-2">
+			@if (SearchContent != null)
+			{
+				<div class="flex-grow-1 min-width-0">
+					@SearchContent
+				</div>
+			}
+
+			@if (Actions != null)
+			{
+				<div class="d-flex flex-wrap align-items-stretch justify-content-start justify-content-lg-end gap-2 flex-shrink-0">
+					@Actions
+				</div>
+			}
+		</div>
+	}
+
+	@if (Tabs != null)
+	{
+		<div class="min-width-0">
+			@Tabs
+		</div>
+	}
+</div>
+
+@code {
+	[Parameter]
+	public RenderFragment? SearchContent { get; set; }
+
+	[Parameter]
+	public RenderFragment? Tabs { get; set; }
+
+	[Parameter]
+	public RenderFragment? Actions { get; set; }
+
+	[Parameter]
+	public string Class { get; set; } = string.Empty;
+}

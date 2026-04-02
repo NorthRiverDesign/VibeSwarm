@@ -18,38 +18,40 @@
     </Actions>
 </PageHeader>
 
-@* Search bar *@
-<div class="mb-3">
-	<div class="input-group">
-		<span class="input-group-text"><i class="bi bi-search"></i></span>
-		<input type="search" class="form-control" placeholder="Search by name or repository…"
-			   @bind="_projectSearchQuery" @bind:event="oninput"
-			   title="Filter projects by name or repository" />
-	</div>
-</div>
-
-@* Active / Inactive filter tabs *@
-<div class="d-flex flex-column flex-sm-row align-items-stretch align-items-sm-center justify-content-between gap-2 mb-3">
-	<ul class="nav nav-tabs flex-grow-1">
-		<li class="nav-item">
-			<button class="nav-link @(ActiveFilter == "active" ? "active" : "")" @onclick='() => SetFilter("active")'>
-				<i class="bi bi-check-circle me-1"></i>Active
-				<span class="badge bg-primary-subtle text-primary-emphasis ms-1">@GetActiveCount()</span>
-			</button>
-		</li>
-		<li class="nav-item">
-			<button class="nav-link @(ActiveFilter == "inactive" ? "active" : "")" @onclick='() => SetFilter("inactive")'>
-				<i class="bi bi-pause-circle me-1"></i>Inactive
-				<span class="badge bg-secondary-subtle text-secondary-emphasis ms-1">@GetInactiveCount()</span>
-			</button>
-		</li>
-	</ul>
-	<button type="button" class="btn btn-sm btn-secondary align-self-start align-self-sm-auto"
-			@onclick="ToggleProjectStats" title="Toggle project stats">
-		<i class="bi @(ShowProjectStats ? "bi-eye-slash" : "bi-eye") me-1"></i>
-		@(ShowProjectStats ? "Hide stats" : "Show stats")
-	</button>
-</div>
+<PageFiltersBar>
+	<SearchContent>
+		<div class="input-group">
+			<span class="input-group-text"><i class="bi bi-search"></i></span>
+			<input type="search" class="form-control" placeholder="Search by name or repository…"
+				   @bind="_projectSearchQuery" @bind:event="oninput"
+				   title="Filter projects by name or repository" />
+		</div>
+	</SearchContent>
+	<Tabs>
+		<ul class="nav nav-tabs flex-nowrap flex-sm-wrap" role="tablist">
+			<li class="nav-item">
+				<button class="nav-link @(ActiveFilter == "active" ? "active" : "")" @onclick='() => SetFilter("active")'>
+					<i class="bi bi-check-circle me-1"></i>Active
+					<span class="badge bg-primary-subtle text-primary-emphasis ms-1">@GetActiveCount()</span>
+				</button>
+			</li>
+			<li class="nav-item">
+				<button class="nav-link @(ActiveFilter == "inactive" ? "active" : "")" @onclick='() => SetFilter("inactive")'>
+					<i class="bi bi-pause-circle me-1"></i>Inactive
+					<span class="badge bg-secondary-subtle text-secondary-emphasis ms-1">@GetInactiveCount()</span>
+				</button>
+			</li>
+		</ul>
+	</Tabs>
+	<Actions>
+		<ActionButton Icon="@(ShowProjectStats ? "eye-slash" : "eye")"
+					  Text="@(ShowProjectStats ? "Hide stats" : "Show stats")"
+					  Title="Toggle project stats"
+					  Size="ActionButton.ButtonSize.Small"
+					  HideTextOnMobile="true"
+					  OnClick="ToggleProjectStats" />
+	</Actions>
+</PageFiltersBar>
 
 @if (ShowInitialLoadingSpinner)
 {
@@ -98,13 +100,13 @@ else
 							{
 								<span class="small text-body-tertiary">Inactive</span>
 							}
-							@if (project.Environments.Any(environment => environment.IsEnabled))
+							@if (ShowProjectStats && project.Environments.Any(environment => environment.IsEnabled))
 							{
 								<span class="small text-body-secondary d-inline-flex align-items-center gap-1">
 									<i class="bi bi-globe2 opacity-75"></i>@project.Environments.Count(environment => environment.IsEnabled)
 								</span>
 							}
-							@if (stats.ActiveJobs > 0)
+							@if (ShowProjectStats && stats.ActiveJobs > 0)
 							{
 								<span class="small text-body-secondary d-inline-flex align-items-center gap-1">
 									<i class="bi bi-activity opacity-75"></i>@stats.ActiveJobs running
@@ -167,42 +169,45 @@ else
 								<span>@string.Join("  •  ", project.TeamAssignments.Where(assignment => assignment.IsEnabled && assignment.TeamRole != null).OrderBy(assignment => assignment.TeamRole!.Name).Select(assignment => $"{assignment.TeamRole!.Name} ({assignment.Provider?.Name ?? "Unassigned"})"))</span>
 							</div>
 						}
-						<div class="d-flex flex-wrap gap-2 gap-md-3 mt-2 small">
-							<span class="d-flex align-items-center gap-1 text-body-secondary" title="Total ideas">
-								<i class="bi bi-lightbulb opacity-75"></i>
-								@stats.TotalIdeas idea@(stats.TotalIdeas == 1 ? string.Empty : "s")
-							</span>
-							@if (stats.UnprocessedIdeas > 0)
-							{
-								<span class="d-flex align-items-center gap-1 text-body-secondary" title="Ideas waiting to run">
-									<i class="bi bi-hourglass-split opacity-75"></i>
-									@stats.UnprocessedIdeas pending
+						@if (ShowProjectStats)
+						{
+							<div class="d-flex flex-wrap gap-2 gap-md-3 mt-2 small">
+								<span class="d-flex align-items-center gap-1 text-body-secondary" title="Total ideas">
+									<i class="bi bi-lightbulb opacity-75"></i>
+									@stats.TotalIdeas idea@(stats.TotalIdeas == 1 ? string.Empty : "s")
 								</span>
-							}
-							@if (stats.TotalJobs > 0)
-							{
-								<span class="d-flex align-items-center gap-1 text-body-secondary" title="Total jobs">
-									<i class="bi bi-list-check opacity-75"></i>
-									@stats.TotalJobs jobs
-								</span>
-								@if (ShowProjectStats && (stats.TotalInputTokens > 0 || stats.TotalOutputTokens > 0))
+								@if (stats.UnprocessedIdeas > 0)
 								{
-									<span class="d-flex align-items-center gap-1 text-body-secondary"
-										  title="Total tokens (input / output)">
-										<i class="bi bi-braces opacity-75"></i>
-										@TokenHelper.FormatTokenCount(stats.TotalInputTokens) /
-										@TokenHelper.FormatTokenCount(stats.TotalOutputTokens)
+									<span class="d-flex align-items-center gap-1 text-body-secondary" title="Ideas waiting to run">
+										<i class="bi bi-hourglass-split opacity-75"></i>
+										@stats.UnprocessedIdeas pending
 									</span>
 								}
-								@if (ShowProjectStats && stats.TotalCostUsd > 0)
+								@if (stats.TotalJobs > 0)
 								{
-									<span class="d-flex align-items-center gap-1 text-success fw-medium" title="Total cost">
-										<i class="bi bi-currency-dollar opacity-75"></i>
-										@TokenHelper.FormatCost(stats.TotalCostUsd)
+									<span class="d-flex align-items-center gap-1 text-body-secondary" title="Total jobs">
+										<i class="bi bi-list-check opacity-75"></i>
+										@stats.TotalJobs jobs
 									</span>
+									@if (stats.TotalInputTokens > 0 || stats.TotalOutputTokens > 0)
+									{
+										<span class="d-flex align-items-center gap-1 text-body-secondary"
+											  title="Total tokens (input / output)">
+											<i class="bi bi-braces opacity-75"></i>
+											@TokenHelper.FormatTokenCount(stats.TotalInputTokens) /
+											@TokenHelper.FormatTokenCount(stats.TotalOutputTokens)
+										</span>
+									}
+									@if (stats.TotalCostUsd > 0)
+									{
+										<span class="d-flex align-items-center gap-1 text-success fw-medium" title="Total cost">
+											<i class="bi bi-currency-dollar opacity-75"></i>
+											@TokenHelper.FormatCost(stats.TotalCostUsd)
+										</span>
+									}
 								}
-							}
-						</div>
+							</div>
+						}
 						@if (latestJob != null)
 						{
 							<div class="border-top pt-2 mt-2">
@@ -447,6 +452,7 @@ else
     private void ToggleProjectStats()
     {
         ShowProjectStats = !ShowProjectStats;
+        StateHasChanged();
     }
 
     private void SetFilter(string filter)
