@@ -50,10 +50,61 @@
 				}
 			</div>
 			<div class="d-grid d-sm-flex align-items-stretch align-items-sm-center gap-2">
-				<span class="badge bg-secondary">@TotalJobsCount</span>
+				<div class="d-flex align-items-center justify-content-between gap-2">
+					<span class="badge bg-secondary align-self-center">@TotalJobsCount</span>
+					@if (HasBulkActions)
+					{
+						<div class="dropdown d-sm-none">
+							<button type="button" class="btn btn-sm btn-secondary dropdown-toggle w-100" data-bs-toggle="dropdown"
+									aria-expanded="false" title="Job actions">
+								<i class="bi bi-three-dots me-1"></i>Actions
+							</button>
+							<ul class="dropdown-menu dropdown-menu-end">
+								@if (HasActiveJobs)
+								{
+									<li>
+										<button type="button" class="dropdown-item text-danger" @onclick="HandleCancelAll"
+												disabled="@IsBulkActionInProgress" title="Cancel all queued and active jobs">
+											@if (_isCancellingAll)
+											{
+												<span class="spinner-border spinner-border-sm me-2" role="status"></span>
+											}
+											else
+											{
+												<i class="bi bi-x-octagon me-2"></i>
+											}
+											Cancel All
+										</button>
+									</li>
+								}
+								@if (HasActiveJobs && HasCompletedJobs)
+								{
+									<li><hr class="dropdown-divider"></li>
+								}
+								@if (HasCompletedJobs)
+								{
+									<li>
+										<button type="button" class="dropdown-item text-danger" @onclick="HandleDeleteCompleted"
+												disabled="@IsBulkActionInProgress" title="Delete completed jobs for this project">
+											@if (_isDeletingCompleted)
+											{
+												<span class="spinner-border spinner-border-sm me-2" role="status"></span>
+											}
+											else
+											{
+												<i class="bi bi-trash me-2"></i>
+											}
+											Delete Completed Jobs
+										</button>
+									</li>
+								}
+							</ul>
+						</div>
+					}
+				</div>
 				@if (HasBulkActions)
 				{
-					<div class="dropdown">
+					<div class="dropdown d-none d-sm-block">
 						<button type="button" class="btn btn-sm btn-secondary dropdown-toggle" data-bs-toggle="dropdown"
 								aria-expanded="false" title="More job actions">
 							<i class="bi bi-three-dots me-1"></i>More
@@ -119,45 +170,76 @@
 					</label>
 				</div>
 				<div class="d-grid d-sm-flex align-items-stretch align-items-sm-center gap-2">
-					<button type="button" class="btn btn-sm btn-secondary" @onclick="HandleRetrySelected"
-							disabled="@(IsSelectionActionInProgress || RetryableSelectedJobsCount == 0)"
-							title="Retry selected failed or cancelled jobs">
-						@if (_isRetryingSelected)
-						{
-							<span class="spinner-border spinner-border-sm me-1" role="status"></span>
-						}
-						else
-						{
-							<i class="bi bi-arrow-clockwise me-1"></i>
-						}
-						Retry Selected (@RetryableSelectedJobsCount)
-					</button>
-					<button type="button" class="btn btn-sm btn-danger" @onclick="HandleCancelSelected"
-							disabled="@(IsSelectionActionInProgress || CancellableSelectedJobsCount == 0)"
-							title="Cancel selected queued or active jobs">
-						@if (_isCancellingSelected)
-						{
-							<span class="spinner-border spinner-border-sm me-1" role="status"></span>
-						}
-						else
-						{
-							<i class="bi bi-x-octagon me-1"></i>
-						}
-						Cancel Selected (@CancellableSelectedJobsCount)
-					</button>
-					<button type="button" class="btn btn-sm btn-secondary" @onclick="HandlePrioritizeSelected"
-							disabled="@(IsSelectionActionInProgress || PrioritizableSelectedJobsCount == 0)"
-							title="Move selected queued jobs to the front">
-						@if (_isPrioritizingSelected)
-						{
-							<span class="spinner-border spinner-border-sm me-1" role="status"></span>
-						}
-						else
-						{
-							<i class="bi bi-arrow-up-circle me-1"></i>
-						}
-						Prioritize Selected (@PrioritizableSelectedJobsCount)
-					</button>
+					<div class="dropdown d-sm-none">
+						<button type="button" class="btn btn-sm btn-secondary dropdown-toggle w-100" data-bs-toggle="dropdown"
+								aria-expanded="false" title="Selected job actions">
+							<i class="bi bi-check2-square me-1"></i>Selected Actions
+						</button>
+						<ul class="dropdown-menu dropdown-menu-end">
+							<li>
+								<button type="button" class="dropdown-item" @onclick="HandleRetrySelected"
+										disabled="@(IsSelectionActionInProgress || RetryableSelectedJobsCount == 0)"
+										title="Retry selected failed or cancelled jobs">
+									<i class="bi bi-arrow-clockwise me-2"></i>Retry Selected (@RetryableSelectedJobsCount)
+								</button>
+							</li>
+							<li>
+								<button type="button" class="dropdown-item text-danger" @onclick="HandleCancelSelected"
+										disabled="@(IsSelectionActionInProgress || CancellableSelectedJobsCount == 0)"
+										title="Cancel selected queued or active jobs">
+									<i class="bi bi-x-octagon me-2"></i>Cancel Selected (@CancellableSelectedJobsCount)
+								</button>
+							</li>
+							<li>
+								<button type="button" class="dropdown-item" @onclick="HandlePrioritizeSelected"
+										disabled="@(IsSelectionActionInProgress || PrioritizableSelectedJobsCount == 0)"
+										title="Move selected queued jobs to the front">
+									<i class="bi bi-arrow-up-circle me-2"></i>Prioritize Selected (@PrioritizableSelectedJobsCount)
+								</button>
+							</li>
+						</ul>
+					</div>
+					<div class="d-none d-sm-flex align-items-stretch align-items-sm-center gap-2">
+						<button type="button" class="btn btn-sm btn-secondary" @onclick="HandleRetrySelected"
+								disabled="@(IsSelectionActionInProgress || RetryableSelectedJobsCount == 0)"
+								title="Retry selected failed or cancelled jobs">
+							@if (_isRetryingSelected)
+							{
+								<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+							}
+							else
+							{
+								<i class="bi bi-arrow-clockwise me-1"></i>
+							}
+							Retry Selected (@RetryableSelectedJobsCount)
+						</button>
+						<button type="button" class="btn btn-sm btn-danger" @onclick="HandleCancelSelected"
+								disabled="@(IsSelectionActionInProgress || CancellableSelectedJobsCount == 0)"
+								title="Cancel selected queued or active jobs">
+							@if (_isCancellingSelected)
+							{
+								<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+							}
+							else
+							{
+								<i class="bi bi-x-octagon me-1"></i>
+							}
+							Cancel Selected (@CancellableSelectedJobsCount)
+						</button>
+						<button type="button" class="btn btn-sm btn-secondary" @onclick="HandlePrioritizeSelected"
+								disabled="@(IsSelectionActionInProgress || PrioritizableSelectedJobsCount == 0)"
+								title="Move selected queued jobs to the front">
+							@if (_isPrioritizingSelected)
+							{
+								<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+							}
+							else
+							{
+								<i class="bi bi-arrow-up-circle me-1"></i>
+							}
+							Prioritize Selected (@PrioritizableSelectedJobsCount)
+						</button>
+					</div>
 					@if (SelectedJobsCount > 0)
 					{
 						<button type="button" class="btn btn-sm btn-secondary" @onclick="ClearSelection" title="Clear selected jobs">

@@ -15,17 +15,24 @@
 
 <div class="app-layout d-flex flex-column min-vh-100">
     @* Mobile Header *@
-    <header class="app-header d-lg-none sticky-top d-flex align-items-center gap-3 flex-shrink-0 bg-body-secondary border-bottom">
+    <header class="app-header d-lg-none sticky-top d-flex align-items-center gap-2 flex-shrink-0 bg-body-secondary border-bottom">
         <button id="mobile-menu-toggle" class="btn btn-link nav-toggle d-flex align-items-center justify-content-center p-0 bg-transparent border-0 rounded fs-4" @onclick="ToggleMobileMenu"
                 aria-label="Toggle navigation">
             <i class="bi bi-list"></i>
         </button>
-        <a class="app-brand d-flex align-items-center gap-2 text-decoration-none fw-semibold" href="/">
+        <a class="app-brand d-flex align-items-center gap-2 text-decoration-none fw-semibold min-width-0" href="/">
             <img src="img/logo_icon.png" alt="VibeSwarm" class="object-fit-contain" style="width: 24px; height: 24px;" />
-            <span class="brand-text">VibeSwarm</span>
+            <span class="brand-text text-truncate">VibeSwarm</span>
         </a>
-        <div class="ms-auto d-flex align-items-center gap-2">
-            <NotificationsPanel />
+        <button type="button"
+                class="btn btn-link text-secondary p-0 fs-5 d-flex align-items-center justify-content-center touch-manipulation mobile-header-icon"
+                @onclick="OpenSearch"
+                title="Search"
+                aria-label="Search">
+            <i class="bi bi-search"></i>
+        </button>
+        <div class="ms-auto d-flex align-items-center gap-1">
+            <NotificationsPanel Compact="true" />
             <LoginDisplay />
         </div>
     </header>
@@ -296,6 +303,7 @@
     {
         CloseMobileMenu();
         _showSearchModal = true;
+        StateHasChanged();
     }
 
     private void ToggleMobileMenu()

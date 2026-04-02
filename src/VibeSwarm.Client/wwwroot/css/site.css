@@ -195,9 +195,15 @@ body {
 .app-brand {
 	color: var(--bs-body-color);
 	font-size: 1.125rem;
+	min-width: 0;
 }
 .app-brand:hover {
 	color: var(--bs-emphasis-color);
+}
+
+.mobile-header-icon {
+	width: 2.5rem;
+	height: 2.5rem;
 }
 
 /* Sidebar — markup uses position-fixed d-flex flex-column overflow-y-auto */
@@ -785,6 +791,10 @@ body.vs-modal-open {
 	.app-header {
 		padding-left: calc(0.75rem + var(--vs-safe-area-left));
 		padding-right: calc(0.75rem + var(--vs-safe-area-right));
+	}
+
+	.brand-text {
+		max-width: 8rem;
 	}
 
 	.main-content {

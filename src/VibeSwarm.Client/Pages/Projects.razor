@@ -14,7 +14,7 @@
 
 <PageHeader Title="Projects" Subtitle="Manage your AI agent project workspaces">
     <Actions>
-        <ActionButton Icon="plus" Text="Add" Style="ActionButton.ButtonStyle.Primary" OnClick="ShowAddModal" />
+        <ActionButton Icon="plus" Text="Add" Style="ActionButton.ButtonStyle.Primary" HideTextOnMobile="true" OnClick="ShowAddModal" />
     </Actions>
 </PageHeader>
 
@@ -28,7 +28,7 @@
 		</div>
 	</SearchContent>
 	<Tabs>
-		<ul class="nav nav-tabs flex-nowrap flex-sm-wrap" role="tablist">
+		<ul class="nav nav-tabs flex-nowrap flex-sm-wrap overflow-auto overscroll-contain" role="tablist">
 			<li class="nav-item">
 				<button class="nav-link @(ActiveFilter == "active" ? "active" : "")" @onclick='() => SetFilter("active")'>
 					<i class="bi bi-check-circle me-1"></i>Active
@@ -88,17 +88,47 @@ else
 			var isSyncing = IsProjectGitOperation(project.Id, "sync");
 			var isMerging = IsProjectGitOperation(project.Id, "merge");
 			<div class="list-group-item p-3 hover-bg-tertiary">
-				<div class="d-flex align-items-start gap-3">
+				<div class="d-flex flex-column flex-lg-row align-items-stretch align-items-lg-start gap-3">
 					<div class="flex-grow-1 min-width-0">
-						<div class="d-flex align-items-center gap-2 flex-wrap">
-							<a href="/projects/@project.Id" class="fw-semibold text-decoration-none">@project.Name</a>
+						<div class="d-flex align-items-start justify-content-between gap-2">
+							<div class="min-width-0">
+								<div class="d-flex align-items-center gap-2 flex-wrap">
+									<a href="/projects/@project.Id" class="fw-semibold text-decoration-none text-break">@project.Name</a>
+									@if (project.AutoCommitMode != AutoCommitMode.Off)
+									{
+										<i class="bi bi-arrow-repeat text-info opacity-75" title="Auto-commit: @project.AutoCommitMode"></i>
+									}
+									@if (!project.IsActive)
+									{
+										<span class="small text-body-tertiary">Inactive</span>
+									}
+								</div>
+								@if (!string.IsNullOrEmpty(project.Description))
+								{
+									<div class="small text-body-secondary mt-1 d-md-none">@TruncateText(project.Description, 80)</div>
+								}
+							</div>
+							<div class="d-flex d-lg-none align-items-center gap-2 flex-shrink-0">
+								<ProjectActionsDropdown DetailsHref="@($"/projects/{project.Id}")" OnEdit="@(() => EditProject(project.Id))"
+														IsActive="@project.IsActive" OnToggleActive="@(() => ToggleActive(project))"
+														ShowStartIdeaQueueAction="@(stats.TotalIdeas > 0 && !project.IdeasProcessingActive)"
+														StartIdeaQueueEnabled="@CanStartIdeaQueue(projectInfo)"
+														IsStartingIdeaQueue="@(StartingIdeaQueueProjectId == project.Id)"
+														StartIdeaQueueTooltip="@GetStartIdeaQueueTooltip(projectInfo)"
+														OnStartIdeaQueue="@(() => StartIdeaQueue(projectInfo))"
+														ShowSyncAction="@(!string.IsNullOrEmpty(projectInfo.CurrentBranch))"
+														SyncLabel="Sync with Origin" OnSync="@(() => ResyncWithGit(project))"
+														ShowMergeBranchAction="@(!string.IsNullOrWhiteSpace(projectInfo.CurrentBranch))"
+														IsSyncing="@isSyncing"
+														IsMerging="@isMerging"
+														OnMergeBranch="@(() => ShowMergeBranchModal(projectInfo))"
+														ShowDeleteAction="true" OnDelete="@(() => ShowDeleteConfirmation(project))" />
+							</div>
+						</div>
+						<div class="d-flex flex-wrap align-items-center gap-2 mt-2 small">
 							@if (project.AutoCommitMode != AutoCommitMode.Off)
 							{
-								<i class="bi bi-arrow-repeat text-info opacity-75" title="Auto-commit: @project.AutoCommitMode"></i>
-							}
-							@if (!project.IsActive)
-							{
-								<span class="small text-body-tertiary">Inactive</span>
+								<span class="badge bg-info-subtle text-info-emphasis">Auto-commit</span>
 							}
 							@if (ShowProjectStats && project.Environments.Any(environment => environment.IsEnabled))
 							{
@@ -266,7 +296,7 @@ else
 							</div>
 						}
 					</div>
-					<div class="d-flex align-items-center gap-2 flex-shrink-0">
+					<div class="d-none d-lg-flex align-items-center gap-2 flex-shrink-0">
 						<ProjectActionsDropdown DetailsHref="@($"/projects/{project.Id}")" OnEdit="@(() => EditProject(project.Id))"
 												IsActive="@project.IsActive" OnToggleActive="@(() => ToggleActive(project))"
 												ShowStartIdeaQueueAction="@(stats.TotalIdeas > 0 && !project.IdeasProcessingActive)"

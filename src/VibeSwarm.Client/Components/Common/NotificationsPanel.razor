@@ -2,7 +2,7 @@
 @implements IDisposable
 
 <div class="position-relative">
-    <button class="btn btn-link text-secondary p-0 fs-5 d-flex align-items-center position-relative touch-manipulation"
+    <button class="btn btn-link text-secondary p-0 fs-5 d-flex align-items-center justify-content-center position-relative touch-manipulation @(Compact ? "mobile-header-icon" : string.Empty)"
             type="button" @onclick="NotificationService.TogglePanel" title="Notifications" aria-label="Notifications">
         <i class="bi bi-bell@(_unreadCount > 0 ? "-fill" : "")"></i>
         @if (_unreadCount > 0)
@@ -17,6 +17,9 @@
 
 @code {
     private int _unreadCount;
+
+    [Parameter]
+    public bool Compact { get; set; }
 
     protected override void OnInitialized()
     {
