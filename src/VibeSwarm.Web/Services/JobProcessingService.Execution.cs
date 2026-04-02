@@ -557,7 +557,8 @@ public partial class JobProcessingService
 							BashEnvPath = planningMcpOptions.BashEnvPath,
 							AdditionalArgs = planningMcpOptions.AdditionalArgs,
 							UseBareMode = planningProviderConfig.Type == ProviderType.Claude
-								&& planningProviderConfig.ConnectionMode == ProviderConnectionMode.CLI,
+								&& planningProviderConfig.ConnectionMode == ProviderConnectionMode.CLI
+								&& ShouldUseClaudeBareMode(planningProviderConfig),
 							Model = job.Project.PlanningModelId,
 							ReasoningEffort = job.Project.PlanningReasoningEffort,
 							Title = job.Title,
@@ -667,7 +668,8 @@ public partial class JobProcessingService
 							BashEnvPath = mcpOptions.BashEnvPath,
 							AdditionalArgs = mcpOptions.AdditionalArgs,
 							UseBareMode = provider.Type == ProviderType.Claude
-								&& provider.ConnectionMode == ProviderConnectionMode.CLI,
+								&& provider.ConnectionMode == ProviderConnectionMode.CLI
+								&& ShouldUseClaudeBareMode(job.Provider!),
 							Model = job.ModelUsed,
 							ReasoningEffort = job.ReasoningEffort,
 							Title = job.Title,
