@@ -336,6 +336,7 @@ public sealed class CopilotClaudeFormatTests
 	[InlineData("claude-sonnet-4", 1.0)]
 	[InlineData("claude-haiku-4.5", 0.33)]
 	[InlineData("gpt-5-mini", 0)]
+	[InlineData("gpt-5.4-mini", 0.33)]
 	[InlineData("gpt-4.1", 0)]
 	[InlineData("gpt-5.2", 1.0)]
 	[InlineData("gpt-5.4", 1.0)]
@@ -355,16 +356,17 @@ public sealed class CopilotClaudeFormatTests
 	public void ParseModelChoicesFromError_ExtractsModels()
 	{
 		var stderr = """
-		error: option '--model <model>' argument '__invalid__' is invalid. Allowed choices are claude-sonnet-4.6, claude-sonnet-4.5, claude-haiku-4.5, claude-opus-4.6, claude-opus-4.6-fast, claude-opus-4.5, claude-sonnet-4, gpt-5.4, gpt-5.3-codex, gpt-5.2-codex, gpt-5.2, gpt-5.1, gpt-5-mini, gpt-4.1.
+		error: option '--model <model>' argument '__invalid__' is invalid. Allowed choices are claude-sonnet-4.6, claude-sonnet-4.5, claude-haiku-4.5, claude-opus-4.6, claude-opus-4.6-fast, claude-opus-4.5, claude-sonnet-4, gpt-5.4, gpt-5.3-codex, gpt-5.2-codex, gpt-5.2, gpt-5.1, gpt-5.4-mini, gpt-5-mini, gpt-4.1.
 		""";
 
 		var models = CopilotModelParser.ParseModelChoicesFromError(stderr);
 
 		Assert.NotNull(models);
-		Assert.Equal(14, models!.Count);
+		Assert.Equal(15, models!.Count);
 		Assert.Contains("claude-sonnet-4.6", models);
 		Assert.Contains("claude-opus-4.6-fast", models);
 		Assert.Contains("gpt-5.4", models);
+		Assert.Contains("gpt-5.4-mini", models);
 		Assert.Contains("gpt-4.1", models);
 		Assert.DoesNotContain("gpt-5.1-codex", models);
 		Assert.DoesNotContain("gpt-5.1-codex-mini", models);

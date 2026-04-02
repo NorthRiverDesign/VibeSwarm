@@ -51,4 +51,30 @@ public sealed class ProviderCapabilitiesTests
 
 		Assert.True(ProviderCapabilities.SupportsReasoningEffort(provider, "xhigh"));
 	}
+
+	[Fact]
+	public void OpenCode_SupportedReasoningEfforts_IncludeVariantPresets()
+	{
+		var efforts = ProviderCapabilities.GetSupportedReasoningEfforts(ProviderType.OpenCode, ProviderConnectionMode.CLI);
+
+		Assert.Contains("minimal", efforts);
+		Assert.Contains("xhigh", efforts);
+		Assert.Contains("max", efforts);
+	}
+
+	[Theory]
+	[InlineData("minimal")]
+	[InlineData("xhigh")]
+	public void OpenCode_SupportsReasoningEffort_AcceptsVariantPresets(string effort)
+	{
+		var provider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "OpenCode",
+			Type = ProviderType.OpenCode,
+			ConnectionMode = ProviderConnectionMode.CLI
+		};
+
+		Assert.True(ProviderCapabilities.SupportsReasoningEffort(provider, effort));
+	}
 }

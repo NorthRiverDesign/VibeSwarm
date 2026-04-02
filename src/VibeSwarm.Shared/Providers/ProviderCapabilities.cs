@@ -75,7 +75,7 @@ public static class ProviderCapabilities
 		(ProviderType.Claude, ProviderConnectionMode.CLI) => ["low", "medium", "high", "max"],
 		(ProviderType.Copilot, ProviderConnectionMode.CLI) => ["low", "medium", "high", "xhigh"],
 		(ProviderType.Copilot, ProviderConnectionMode.SDK) => ["low", "medium", "high", "xhigh"],
-		(ProviderType.OpenCode, _) => ["low", "medium", "high", "max"],
+		(ProviderType.OpenCode, _) => ["minimal", "low", "medium", "high", "xhigh", "max"],
 		_ => []
 	};
 
