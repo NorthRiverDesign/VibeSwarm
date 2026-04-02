@@ -7,6 +7,7 @@ using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Models;
 using VibeSwarm.Shared.Providers;
 using VibeSwarm.Shared.Services;
+using VibeSwarm.Shared.Validation;
 
 namespace VibeSwarm.Tests;
 
@@ -134,7 +135,7 @@ public sealed class SkillServiceTests : IDisposable
 	{
 		await using var dbContext = CreateDbContext();
 		var service = CreateService(dbContext);
-		var longDescription = new string('a', 520);
+		var longDescription = new string('a', ValidationLimits.SkillDescriptionMaxLength + 20);
 		var request = CreateImportRequest(
 			"long-description.skill",
 			$"""
@@ -149,8 +150,10 @@ public sealed class SkillServiceTests : IDisposable
 
 		var preview = await service.PreviewImportAsync(request);
 
-		Assert.Equal(500, preview.Description!.Length);
-		Assert.Contains(preview.Warnings, warning => warning.Contains("truncated", StringComparison.OrdinalIgnoreCase));
+		Assert.Equal(ValidationLimits.SkillDescriptionMaxLength, preview.Description!.Length);
+		Assert.Contains(
+			preview.Warnings,
+			warning => warning == $"Description was truncated to {ValidationLimits.SkillDescriptionMaxLength} characters.");
 	}
 
 	private VibeSwarmDbContext CreateDbContext() => new(_dbOptions);

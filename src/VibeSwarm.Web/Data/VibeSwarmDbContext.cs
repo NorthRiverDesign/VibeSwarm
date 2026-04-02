@@ -70,7 +70,7 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 			entity.HasKey(e => e.Id);
 			entity.Property(e => e.ModelId).IsRequired().HasMaxLength(200);
 			entity.Property(e => e.DisplayName).HasMaxLength(200);
-			entity.Property(e => e.Description).HasMaxLength(500);
+			entity.Property(e => e.Description).HasMaxLength(ValidationLimits.SkillDescriptionMaxLength);
 			entity.HasOne(e => e.Provider)
 	.WithMany(p => p.AvailableModels)
 	.HasForeignKey(e => e.ProviderId)
@@ -320,7 +320,7 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 		{
 			entity.HasKey(e => e.Id);
 			entity.Property(e => e.Name).IsRequired().HasMaxLength(100);
-			entity.Property(e => e.Description).HasMaxLength(500);
+			entity.Property(e => e.Description).HasMaxLength(ValidationLimits.SkillDescriptionMaxLength);
 			entity.Property(e => e.Content).IsRequired();
 			entity.HasIndex(e => e.Name).IsUnique();
 		});

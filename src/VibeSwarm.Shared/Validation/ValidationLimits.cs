@@ -22,6 +22,7 @@ public static class ValidationLimits
 	public const int JobTemplatePromptMaxLength = 2000;
 	public const int JobTemplateModelIdMaxLength = 200;
 	public const int JobTemplateBranchMaxLength = 250;
+	public const int SkillDescriptionMaxLength = 2000;
 	public const int TeamRoleDescriptionMaxLength = 500;
 	public const int TeamRoleResponsibilitiesMaxLength = 4000;
 

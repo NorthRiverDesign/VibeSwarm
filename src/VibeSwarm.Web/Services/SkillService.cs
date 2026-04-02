@@ -11,7 +11,7 @@ namespace VibeSwarm.Shared.Services;
 
 public class SkillService : ISkillService
 {
-	private const int SkillDescriptionMaxLength = 500;
+	private const int SkillDescriptionMaxLength = ValidationLimits.SkillDescriptionMaxLength;
 	private readonly VibeSwarmDbContext _dbContext;
 	private readonly IProviderService _providerService;
 	private readonly ILogger<SkillService> _logger;
@@ -446,7 +446,7 @@ Write the content in clear, instructional Markdown format that an AI agent can e
 			return trimmed;
 		}
 
-		warnings.Add($"Description was truncated to {SkillDescriptionMaxLength} characters to fit VibeSwarm limits.");
+		warnings.Add($"Description was truncated to {SkillDescriptionMaxLength} characters.");
 		return trimmed[..SkillDescriptionMaxLength].TrimEnd();
 	}
 
