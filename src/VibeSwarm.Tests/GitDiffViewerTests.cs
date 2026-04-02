@@ -1,4 +1,5 @@
 using Bunit;
+using Microsoft.AspNetCore.Components;
 using VibeSwarm.Client.Components.Git;
 using VibeSwarm.Shared.VersionControl.Models;
 
@@ -121,6 +122,24 @@ public sealed class GitDiffViewerTests
 		Assert.Contains("new value", cut.Markup);
 		Assert.DoesNotContain("$ git status --short", cut.Markup, StringComparison.Ordinal);
 		Assert.DoesNotContain("M src/Noisy.cs", cut.Markup, StringComparison.Ordinal);
+	}
+
+	[Fact]
+	public void GitDiffViewer_Bunit_RendersCustomTitleAndFooterTemplate()
+	{
+		using var context = new BunitContext();
+
+		var cut = context.Render<GitDiffViewer>(parameters => parameters
+			.Add(viewer => viewer.DiffFiles, CreateDiffFiles())
+			.Add(viewer => viewer.Title, "Conflicted Files")
+			.Add(viewer => viewer.Icon, "exclamation-triangle")
+			.Add<RenderFragment<DiffFile>>(viewer => viewer.FileFooterTemplate, file => builder =>
+			{
+				builder.AddMarkupContent(0, $"<div class=\"conflict-editor\">Editor for {file.FileName}</div>");
+			}));
+
+		Assert.Contains("Conflicted Files", cut.Markup);
+		Assert.Contains("Editor for src/First.cs", cut.Markup);
 	}
 
 	private static List<DiffFile> CreateDiffFiles()

@@ -158,6 +158,44 @@ index 3333333..4444444 100644
 		Assert.Equal("Merged locally", result.Output);
 	}
 
+	[Fact]
+	public async Task MergeBranchAsync_SendsConflictResolutions_WhenProvided()
+	{
+		var service = CreateService(async request =>
+		{
+			Assert.Equal(HttpMethod.Post, request.Method);
+			Assert.Equal("/api/git/merge-branch", request.RequestUri?.AbsolutePath);
+
+			var payload = await request.Content!.ReadAsStringAsync();
+			Assert.Contains("\"fileName\":\"README.md\"", payload);
+			Assert.Contains("\"resolvedContent\":\"resolved content\"", payload);
+
+			return new HttpResponseMessage(HttpStatusCode.OK)
+			{
+				Content = new StringContent(
+					JsonSerializer.Serialize(GitOperationResult.Succeeded(output: "Resolved merge")),
+					Encoding.UTF8,
+					"application/json")
+			};
+		});
+
+		var result = await service.MergeBranchAsync(
+			"/repo",
+			"feature/test",
+			"main",
+			conflictResolutions:
+			[
+				new MergeConflictResolution
+				{
+					FileName = "README.md",
+					ResolvedContent = "resolved content"
+				}
+			]);
+
+		Assert.True(result.Success);
+		Assert.Equal("Resolved merge", result.Output);
+	}
+
 	private static HttpVersionControlService CreateService(Func<HttpRequestMessage, HttpResponseMessage> handler)
 		=> CreateService(request => Task.FromResult(handler(request)));
 

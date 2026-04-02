@@ -193,7 +193,8 @@ public interface IVersionControlService
 		string remoteName = "origin",
 		Action<string>? progressCallback = null,
 		CancellationToken cancellationToken = default,
-		bool pushAfterMerge = true);
+		bool pushAfterMerge = true,
+		IReadOnlyList<MergeConflictResolution>? conflictResolutions = null);
 
 	/// <summary>
 	/// Gets all branches (local and remote) for a repository.

@@ -130,7 +130,8 @@ public sealed partial class VersionControlService
 		string remoteName = "origin",
 		Action<string>? progressCallback = null,
 		CancellationToken cancellationToken = default,
-		bool pushAfterMerge = true)
+		bool pushAfterMerge = true,
+		IReadOnlyList<MergeConflictResolution>? conflictResolutions = null)
 		=> ExecuteMergeBranchAsync(
 			workingDirectory,
 			sourceBranch,
@@ -139,7 +140,8 @@ public sealed partial class VersionControlService
 			progressCallback,
 			cancellationToken,
 			previewOnly: false,
-			pushAfterMerge: pushAfterMerge);
+			pushAfterMerge: pushAfterMerge,
+			conflictResolutions: conflictResolutions);
 
 	private async Task<GitOperationResult> ExecuteMergeBranchAsync(
 		string workingDirectory,
@@ -149,7 +151,8 @@ public sealed partial class VersionControlService
 		Action<string>? progressCallback,
 		CancellationToken cancellationToken,
 		bool previewOnly,
-		bool pushAfterMerge)
+		bool pushAfterMerge,
+		IReadOnlyList<MergeConflictResolution>? conflictResolutions = null)
 	{
 		var tempWorktreePath = Path.Combine(Path.GetTempPath(), $"vibeswarm-merge-{Guid.NewGuid():N}");
 		var worktreeAdded = false;
@@ -239,7 +242,17 @@ public sealed partial class VersionControlService
 					: $"Merging '{sourceBranch}' into '{targetBranch}' would create conflicts. No repository changes were applied.";
 
 				operationResult = IsMergeConflictError(mergeError)
-					? GitOperationResult.Failed(conflictMessage)
+					? await BuildMergeConflictResultAsync(
+						tempWorktreePath,
+						conflictMessage,
+						previewOnly,
+						pushAfterMerge,
+						targetBranch,
+						sourceBranch,
+						remoteName,
+						progressCallback,
+						cancellationToken,
+						conflictResolutions)
 					: GitOperationResult.Failed(mergeError);
 			}
 			else if (previewOnly)
@@ -477,4 +490,223 @@ public sealed partial class VersionControlService
 	private static bool IsMergeConflictError(string error)
 		=> error.Contains("CONFLICT", StringComparison.OrdinalIgnoreCase)
 			|| error.Contains("Automatic merge failed", StringComparison.OrdinalIgnoreCase);
+
+	private async Task<GitOperationResult> BuildMergeConflictResultAsync(
+		string tempWorktreePath,
+		string conflictMessage,
+		bool previewOnly,
+		bool pushAfterMerge,
+		string targetBranch,
+		string sourceBranch,
+		string remoteName,
+		Action<string>? progressCallback,
+		CancellationToken cancellationToken,
+		IReadOnlyList<MergeConflictResolution>? conflictResolutions)
+	{
+		var conflictFiles = await GetMergeConflictFilesAsync(tempWorktreePath, cancellationToken);
+		if (previewOnly || conflictResolutions == null || conflictResolutions.Count == 0)
+		{
+			return GitOperationResult.Failed(conflictMessage, mergeConflictFiles: conflictFiles);
+		}
+
+		return await CompleteMergeConflictResolutionAsync(
+			tempWorktreePath,
+			conflictFiles,
+			conflictResolutions,
+			sourceBranch,
+			targetBranch,
+			remoteName,
+			pushAfterMerge,
+			progressCallback,
+			cancellationToken);
+	}
+
+	private async Task<GitOperationResult> CompleteMergeConflictResolutionAsync(
+		string tempWorktreePath,
+		IReadOnlyList<MergeConflictFile> conflictFiles,
+		IReadOnlyList<MergeConflictResolution> conflictResolutions,
+		string sourceBranch,
+		string targetBranch,
+		string remoteName,
+		bool pushAfterMerge,
+		Action<string>? progressCallback,
+		CancellationToken cancellationToken)
+	{
+		var resolutionLookup = conflictResolutions
+			.Where(resolution => !string.IsNullOrWhiteSpace(resolution.FileName))
+			.GroupBy(resolution => resolution.FileName, StringComparer.Ordinal)
+			.ToDictionary(group => group.Key, group => group.Last().ResolvedContent ?? string.Empty, StringComparer.Ordinal);
+
+		var unresolvedFiles = conflictFiles
+			.Where(conflict => !resolutionLookup.ContainsKey(conflict.FileName))
+			.ToList();
+		if (unresolvedFiles.Count > 0)
+		{
+			return GitOperationResult.Failed(
+				"Provide resolved content for every conflicted file before merging.",
+				mergeConflictFiles: conflictFiles);
+		}
+
+		progressCallback?.Invoke("Applying conflict resolutions...");
+		var repositoryRoot = Path.GetFullPath(tempWorktreePath);
+		foreach (var conflictFile in conflictFiles)
+		{
+			var resolvedContent = resolutionLookup[conflictFile.FileName];
+			if (ContainsConflictMarkers(resolvedContent))
+			{
+				return GitOperationResult.Failed(
+					"Remove all conflict markers before completing the merge.",
+					mergeConflictFiles: conflictFiles);
+			}
+
+			var fullPath = GetPathWithinRoot(repositoryRoot, conflictFile.FileName);
+			if (fullPath == null)
+			{
+				return GitOperationResult.Failed($"Conflicted file '{conflictFile.FileName}' is outside the repository root.");
+			}
+
+			var directoryPath = Path.GetDirectoryName(fullPath);
+			if (!string.IsNullOrWhiteSpace(directoryPath))
+			{
+				Directory.CreateDirectory(directoryPath);
+			}
+
+			await File.WriteAllTextAsync(fullPath, resolvedContent, new System.Text.UTF8Encoding(false), cancellationToken);
+		}
+
+		var stageResult = await _commandExecutor.ExecuteAsync(
+			"add -A",
+			tempWorktreePath,
+			cancellationToken,
+			timeoutSeconds: 60);
+		if (!stageResult.Success)
+		{
+			return GitOperationResult.Failed(
+				BuildCommandError(stageResult, "Failed to stage resolved merge files."),
+				mergeConflictFiles: await GetMergeConflictFilesAsync(tempWorktreePath, cancellationToken));
+		}
+
+		var remainingConflictFiles = await GetMergeConflictFilesAsync(tempWorktreePath, cancellationToken);
+		if (remainingConflictFiles.Count > 0)
+		{
+			return GitOperationResult.Failed(
+				"Some merge conflicts remain unresolved. Review each file and remove all conflict markers before merging.",
+				mergeConflictFiles: remainingConflictFiles);
+		}
+
+		progressCallback?.Invoke("Creating merge commit from resolved conflicts...");
+		var commitResult = await _commandExecutor.ExecuteAsync(
+			"commit --no-edit",
+			tempWorktreePath,
+			cancellationToken,
+			timeoutSeconds: 120);
+		if (!commitResult.Success)
+		{
+			return GitOperationResult.Failed(
+				BuildCommandError(commitResult, "Failed to create the merge commit."),
+				mergeConflictFiles: await GetMergeConflictFilesAsync(tempWorktreePath, cancellationToken));
+		}
+
+		var commitHash = await GetCurrentCommitHashAsync(tempWorktreePath, cancellationToken);
+		if (pushAfterMerge)
+		{
+			progressCallback?.Invoke($"Pushing {targetBranch} to {remoteName}...");
+			var pushResult = await PushAsync(tempWorktreePath, remoteName, targetBranch, cancellationToken);
+			if (!pushResult.Success)
+			{
+				return GitOperationResult.Failed(
+					$"Resolved merge conflicts locally, but pushing '{targetBranch}' failed: {pushResult.Error}",
+					commitHash: commitHash);
+			}
+
+			return GitOperationResult.Succeeded(
+				output: $"Resolved conflicts and merged '{sourceBranch}' into '{targetBranch}', then pushed to {remoteName}.",
+				commitHash: commitHash,
+				branchName: targetBranch,
+				remoteName: remoteName,
+				targetBranch: targetBranch);
+		}
+
+		return GitOperationResult.Succeeded(
+			output: $"Resolved conflicts and merged '{sourceBranch}' into '{targetBranch}' locally. Push when you are ready.",
+			commitHash: commitHash,
+			branchName: targetBranch,
+			remoteName: remoteName,
+			targetBranch: targetBranch);
+	}
+
+	private async Task<List<MergeConflictFile>> GetMergeConflictFilesAsync(string tempWorktreePath, CancellationToken cancellationToken)
+	{
+		var conflictListResult = await _commandExecutor.ExecuteAsync(
+			"diff --name-only --diff-filter=U",
+			tempWorktreePath,
+			cancellationToken,
+			timeoutSeconds: 30);
+		if (!conflictListResult.Success || string.IsNullOrWhiteSpace(conflictListResult.Output))
+		{
+			return [];
+		}
+
+		var repositoryRoot = Path.GetFullPath(tempWorktreePath);
+		var conflictFiles = new List<MergeConflictFile>();
+		foreach (var fileName in conflictListResult.Output
+			.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+			.Distinct(StringComparer.Ordinal))
+		{
+			var fullPath = GetPathWithinRoot(repositoryRoot, fileName);
+			if (fullPath == null || !File.Exists(fullPath))
+			{
+				continue;
+			}
+
+			var content = await File.ReadAllTextAsync(fullPath, cancellationToken);
+			conflictFiles.Add(new MergeConflictFile
+			{
+				FileName = fileName,
+				Content = content,
+				DiffContent = BuildConflictDiff(fileName, content)
+			});
+		}
+
+		return conflictFiles;
+	}
+
+	private static string BuildConflictDiff(string fileName, string content)
+	{
+		var lines = content.ReplaceLineEndings("\n").Split('\n');
+		var builder = new System.Text.StringBuilder();
+		builder.AppendLine($"diff --git a/{fileName} b/{fileName}");
+		builder.AppendLine($"--- a/{fileName}");
+		builder.AppendLine($"+++ b/{fileName}");
+		builder.AppendLine($"@@ -1,{Math.Max(lines.Length, 1)} +1,{Math.Max(lines.Length, 1)} @@");
+
+		foreach (var line in lines)
+		{
+			builder.Append(' ');
+			builder.AppendLine(line);
+		}
+
+		return builder.ToString().TrimEnd();
+	}
+
+	private static bool ContainsConflictMarkers(string content)
+		=> content.Contains("<<<<<<<", StringComparison.Ordinal)
+			|| content.Contains("=======", StringComparison.Ordinal)
+			|| content.Contains(">>>>>>>", StringComparison.Ordinal);
+
+	private static string? GetPathWithinRoot(string rootPath, string relativePath)
+	{
+		var normalizedRoot = Path.GetFullPath(rootPath)
+			.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+		var fullPath = Path.GetFullPath(Path.Combine(normalizedRoot, relativePath));
+		var rootWithSeparator = normalizedRoot + Path.DirectorySeparatorChar;
+
+		if (!fullPath.StartsWith(rootWithSeparator, StringComparison.Ordinal) &&
+			!string.Equals(fullPath, normalizedRoot, StringComparison.Ordinal))
+		{
+			return null;
+		}
+
+		return fullPath;
+	}
 }

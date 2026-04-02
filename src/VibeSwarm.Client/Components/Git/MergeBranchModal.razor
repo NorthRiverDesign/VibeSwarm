@@ -1,3 +1,6 @@
+@using VibeSwarm.Shared.VersionControl
+@using VibeSwarm.Shared.VersionControl.Models
+
 @* Merge current branch into another branch modal *@
 
 <ModalDialog IsVisible="IsVisible" IsVisibleChanged="HandleModalVisibilityChanged" Title="Merge Branch"
@@ -53,13 +56,17 @@
 					<div class="form-check">
 						<input id="actionPullRequest" class="form-check-input" type="radio" name="mergeAction"
 							checked="@CreatePullRequest" @onchange="() => HandleCreatePullRequestChanged(true)"
-							disabled="@(IsOperationInProgress || !IsGitHubCliAvailable)" />
+							disabled="@(IsOperationInProgress || !IsGitHubCliAvailable || ConflictFiles.Count > 0)" />
 						<label class="form-check-label @(!IsGitHubCliAvailable ? "text-body-tertiary" : "")" for="actionPullRequest">
 							<i class="bi bi-github me-1"></i>
 							Create pull request
 							@if (!IsGitHubCliAvailable)
 							{
 								<span class="text-body-tertiary small ms-1">(GitHub CLI not available)</span>
+							}
+							else if (ConflictFiles.Count > 0)
+							{
+								<span class="text-body-tertiary small ms-1">(Resolve conflicts locally first)</span>
 							}
 						</label>
 					</div>
@@ -92,6 +99,40 @@
 					<span class="spinner-border spinner-border-sm" role="status"></span>
 					<span>Checking whether the merge can be applied cleanly...</span>
 				</div>
+			}
+			else if (ConflictFiles.Count > 0)
+			{
+				<div class="alert alert-warning py-2 mb-3 d-flex align-items-start gap-2">
+					<i class="bi bi-exclamation-triangle-fill mt-1 flex-shrink-0"></i>
+					<div>
+						<div class="fw-semibold">This merge needs manual conflict resolution.</div>
+						<div>@(PreviewError ?? "Resolve each conflicted file below, remove all conflict markers, then complete the merge.")</div>
+						@if (HasUnresolvedConflictMarkers)
+						{
+							<div class="small mt-2">Remove all <code>&lt;&lt;&lt;&lt;&lt;&lt;&lt;</code>, <code>=======</code>, and <code>&gt;&gt;&gt;&gt;&gt;&gt;&gt;</code> markers before continuing.</div>
+						}
+					</div>
+				</div>
+
+				<GitDiffViewer DiffFiles="@ConflictDiffFiles" Title="Conflicted Files" Icon="exclamation-triangle"
+					ShowVerificationStatus="false">
+					<FileFooterTemplate Context="diffFile">
+						<div class="d-flex flex-column gap-2">
+							<label class="form-label small fw-medium mb-0" for="@GetConflictEditorId(diffFile.FileName)">Resolved content</label>
+							<textarea id="@GetConflictEditorId(diffFile.FileName)" class="form-control font-monospace"
+								rows="14"
+								@oninput="args => HandleConflictContentChanged(diffFile.FileName, args)"
+								disabled="@IsOperationInProgress">@GetConflictContent(diffFile.FileName)</textarea>
+							@if (ContainsConflictMarkers(GetConflictContent(diffFile.FileName)))
+							{
+								<div class="small text-warning-emphasis">
+									<i class="bi bi-exclamation-circle me-1"></i>
+									Conflict markers are still present in this file.
+								</div>
+							}
+						</div>
+					</FileFooterTemplate>
+				</GitDiffViewer>
 			}
 			else if (!string.IsNullOrWhiteSpace(PreviewError))
 			{
@@ -139,11 +180,21 @@
 		else
 		{
 			<button type="button" class="btn btn-primary" @onclick="HandleMerge"
-				disabled="@(IsOperationInProgress || IsCheckingPreview || IsAlreadyUpToDate || string.IsNullOrWhiteSpace(CurrentBranch) || TargetBranches.Count == 0 || string.IsNullOrWhiteSpace(SelectedTargetBranch) || !string.IsNullOrWhiteSpace(PreviewError))">
+				disabled="@(IsOperationInProgress || IsCheckingPreview || IsAlreadyUpToDate || string.IsNullOrWhiteSpace(CurrentBranch) || TargetBranches.Count == 0 || string.IsNullOrWhiteSpace(SelectedTargetBranch) || (!string.IsNullOrWhiteSpace(PreviewError) && ConflictFiles.Count == 0) || (ConflictFiles.Count > 0 && HasUnresolvedConflictMarkers))">
 				@if (IsMerging)
 				{
 					<span class="spinner-border spinner-border-sm me-1" role="status"></span>
 					<span>Merging...</span>
+				}
+				else if (ConflictFiles.Count > 0 && PushAfterMerge)
+				{
+					<i class="bi bi-wrench-adjustable-circle me-1"></i>
+					<span>Resolve, Merge & Push</span>
+				}
+				else if (ConflictFiles.Count > 0)
+				{
+					<i class="bi bi-wrench-adjustable-circle me-1"></i>
+					<span>Resolve & Merge</span>
 				}
 				else if (PushAfterMerge)
 				{
@@ -207,6 +258,9 @@
 	public bool IsGitHubCliAvailable { get; set; }
 
 	[Parameter]
+	public IReadOnlyList<MergeConflictFile> ConflictFiles { get; set; } = [];
+
+	[Parameter]
 	public EventCallback<string> OnTargetBranchChanged { get; set; }
 
 	[Parameter]
@@ -219,6 +273,9 @@
 	public EventCallback<string?> OnPullRequestTitleChanged { get; set; }
 
 	[Parameter]
+	public EventCallback<MergeConflictResolution> OnConflictResolutionChanged { get; set; }
+
+	[Parameter]
 	public EventCallback<(string targetBranch, bool pushAfterMerge)> OnMerge { get; set; }
 
 	[Parameter]
@@ -228,6 +285,16 @@
 	public EventCallback OnCancel { get; set; }
 
 	private bool IsOperationInProgress => IsMerging || IsCreatingPullRequest;
+
+	private bool HasUnresolvedConflictMarkers => ConflictFiles.Any(file => ContainsConflictMarkers(file.Content));
+
+	private List<DiffFile> ConflictDiffFiles => ConflictFiles
+		.Select(file => new DiffFile
+		{
+			FileName = file.FileName,
+			DiffContent = file.DiffContent
+		})
+		.ToList();
 
 	private async Task HandleModalVisibilityChanged(bool visible)
 	{
@@ -272,6 +339,15 @@
 		await OnPullRequestTitleChanged.InvokeAsync(value);
 	}
 
+	private async Task HandleConflictContentChanged(string fileName, ChangeEventArgs args)
+	{
+		await OnConflictResolutionChanged.InvokeAsync(new MergeConflictResolution
+		{
+			FileName = fileName,
+			ResolvedContent = args.Value?.ToString() ?? string.Empty
+		});
+	}
+
 	private async Task HandleMerge()
 	{
 		if (string.IsNullOrWhiteSpace(SelectedTargetBranch))
@@ -291,4 +367,15 @@
 
 		await OnCreatePullRequestSubmit.InvokeAsync((SelectedTargetBranch, PullRequestTitle));
 	}
+
+	private static string GetConflictEditorId(string fileName)
+		=> $"merge-conflict-{fileName.Replace('/', '-').Replace('\\', '-')}";
+
+	private string GetConflictContent(string fileName)
+		=> ConflictFiles.FirstOrDefault(file => string.Equals(file.FileName, fileName, StringComparison.Ordinal))?.Content ?? string.Empty;
+
+	private static bool ContainsConflictMarkers(string content)
+		=> content.Contains("<<<<<<<", StringComparison.Ordinal)
+			|| content.Contains("=======", StringComparison.Ordinal)
+			|| content.Contains(">>>>>>>", StringComparison.Ordinal);
 }

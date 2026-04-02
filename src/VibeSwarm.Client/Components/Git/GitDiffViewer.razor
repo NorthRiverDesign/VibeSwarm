@@ -8,8 +8,8 @@
 		<div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
 			<div class="d-flex align-items-center flex-wrap gap-2">
 				<div class="d-flex align-items-center">
-					<i class="bi bi-git me-2 opacity-75"></i>
-					<strong>Git Changes</strong>
+					<i class="bi bi-@Icon me-2 opacity-75"></i>
+					<strong>@Title</strong>
 					<span class="badge bg-secondary ms-2">@DiffFiles.Count</span>
 				</div>
 				@if (IsVerifying)
@@ -155,6 +155,12 @@
 								<div class="terminal-output overscroll-contain white-space-pre-wrap overflow-auto p-2 small" style="max-height: 350px;">
 									@((MarkupString)FormatDiff(file.DiffContent))
 								</div>
+								@if (FileFooterTemplate is not null)
+								{
+									<div class="border-top p-3">
+										@FileFooterTemplate(file)
+									</div>
+								}
 							</div>
 						</div>
 					</div>
@@ -167,6 +173,12 @@
 @code {
 	[Parameter]
 	public List<DiffFile> DiffFiles { get; set; } = new();
+
+	[Parameter]
+	public string Title { get; set; } = "Git Changes";
+
+	[Parameter]
+	public string Icon { get; set; } = "git";
 
 	[Parameter]
 	public bool IsVisible { get; set; } = true;
@@ -200,6 +212,9 @@
 
 	[Parameter]
 	public EventCallback OnRecheck { get; set; }
+
+	[Parameter]
+	public RenderFragment<DiffFile>? FileFooterTemplate { get; set; }
 
 	private HashSet<int> _expandedFiles = new();
 

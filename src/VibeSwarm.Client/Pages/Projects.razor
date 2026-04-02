@@ -333,6 +333,7 @@ else
 				  PushAfterMerge="@_mergePushAfterMerge" IsCheckingPreview="@_isCheckingMergePreview"
 				  IsMerging="@_isMergingBranch" PreviewMessage="@_mergePreviewMessage"
 				  PreviewError="@_mergePreviewError" IsAlreadyUpToDate="@_isMergeAlreadyUpToDate"
+				  ConflictFiles="@_mergeConflictFiles"
 				  CreatePullRequest="@_mergeCreatePullRequest"
 				  PullRequestTitle="@_mergePrTitle" IsCreatingPullRequest="@_isCreatingPullRequest"
 				  IsGitHubCliAvailable="@_isGitHubCliAvailable"
@@ -340,6 +341,7 @@ else
 				  OnPushAfterMergeChanged="HandleMergePushAfterMergeChanged"
 				  OnCreatePullRequestChanged="HandleMergeCreatePullRequestChanged"
 				  OnPullRequestTitleChanged="HandleMergePrTitleChanged"
+				  OnConflictResolutionChanged="HandleMergeConflictResolutionChanged"
 				  OnMerge="MergeCurrentBranchAsync" OnCreatePullRequestSubmit="CreatePullRequestAsync"
 				  OnCancel="CloseMergeBranchModal" />
 
@@ -384,6 +386,7 @@ else
     private string? _mergePreviewMessage { get; set; }
     private string? _mergePreviewError { get; set; }
     private bool _isMergeAlreadyUpToDate { get; set; }
+    private List<MergeConflictFile> _mergeConflictFiles { get; set; } = new();
     private string? MergeCurrentBranch => _mergeProjectInfo?.CurrentBranch;
     private List<string> MergeTargetBranches => _mergeBranches
         .Where(branch => !branch.IsRemote && !string.Equals(branch.Name, MergeCurrentBranch, StringComparison.Ordinal))
@@ -747,6 +750,7 @@ else
         _mergePreviewError = null;
         _mergePreviewMessage = null;
         _isMergeAlreadyUpToDate = false;
+        _mergeConflictFiles.Clear();
         _mergeTargetBranch = SelectDefaultMergeTargetBranch(projectInfo.Project);
         _showMergeBranchModal = true;
         StateHasChanged();
@@ -771,6 +775,7 @@ else
         _mergePreviewMessage = null;
         _mergePreviewError = null;
         _isMergeAlreadyUpToDate = false;
+        _mergeConflictFiles.Clear();
     }
 
     private Task HandleMergePushAfterMergeChanged(bool pushAfterMerge)
@@ -793,6 +798,17 @@ else
     private Task HandleMergePrTitleChanged(string? title)
     {
         _mergePrTitle = title;
+        return Task.CompletedTask;
+    }
+
+    private Task HandleMergeConflictResolutionChanged(MergeConflictResolution resolution)
+    {
+        var conflictFile = _mergeConflictFiles.FirstOrDefault(file => string.Equals(file.FileName, resolution.FileName, StringComparison.Ordinal));
+        if (conflictFile is not null)
+        {
+            conflictFile.Content = resolution.ResolvedContent;
+        }
+
         return Task.CompletedTask;
     }
 
@@ -845,6 +861,7 @@ else
         _mergePreviewMessage = null;
         _mergePreviewError = null;
         _isMergeAlreadyUpToDate = false;
+        _mergeConflictFiles.Clear();
         StateHasChanged();
 
         try
@@ -858,10 +875,16 @@ else
             {
                 _isMergeAlreadyUpToDate = result.ChangedFilesCount == 0;
                 _mergePreviewMessage = result.Output ?? $"'{MergeCurrentBranch}' can be merged into '{_mergeTargetBranch}' without conflicts.";
+                _mergeConflictFiles = new List<MergeConflictFile>();
             }
             else
             {
                 _mergePreviewError = result.Error ?? "Unable to verify the merge preview.";
+                _mergeConflictFiles = result.MergeConflictFiles.Select(CloneMergeConflictFile).ToList();
+                if (_mergeConflictFiles.Count > 0)
+                {
+                    _mergeCreatePullRequest = false;
+                }
             }
         }
         catch (Exception ex)
@@ -900,29 +923,41 @@ else
 
         try
         {
-            var previewResult = await VersionControlService.PreviewMergeBranchAsync(
-                _mergeProjectInfo.Project.WorkingPath,
-                MergeCurrentBranch,
-                args.targetBranch);
-
-            if (!previewResult.Success)
+            if (_mergeConflictFiles.Count == 0)
             {
-                _mergePreviewError = previewResult.Error ?? "Unable to verify the merge preview.";
-                return;
-            }
+                var previewResult = await VersionControlService.PreviewMergeBranchAsync(
+                    _mergeProjectInfo.Project.WorkingPath,
+                    MergeCurrentBranch,
+                    args.targetBranch);
 
-            _mergePreviewMessage = previewResult.Output ?? $"'{MergeCurrentBranch}' can be merged into '{args.targetBranch}' without conflicts.";
+                if (!previewResult.Success)
+                {
+                    _mergePreviewError = previewResult.Error ?? "Unable to verify the merge preview.";
+                    _mergeConflictFiles = previewResult.MergeConflictFiles.Select(CloneMergeConflictFile).ToList();
+                    return;
+                }
+
+                _mergePreviewMessage = previewResult.Output ?? $"'{MergeCurrentBranch}' can be merged into '{args.targetBranch}' without conflicts.";
+            }
 
             var result = await VersionControlService.MergeBranchAsync(
                 _mergeProjectInfo.Project.WorkingPath,
                 MergeCurrentBranch,
                 args.targetBranch,
                 progressCallback: _ => InvokeAsync(StateHasChanged),
-                pushAfterMerge: args.pushAfterMerge);
+                pushAfterMerge: args.pushAfterMerge,
+                conflictResolutions: _mergeConflictFiles.Count > 0
+                    ? _mergeConflictFiles.Select(file => new MergeConflictResolution
+                    {
+                        FileName = file.FileName,
+                        ResolvedContent = file.Content
+                    }).ToList()
+                    : null);
 
             if (!result.Success)
             {
                 _mergePreviewError = result.Error ?? "Failed to merge branches.";
+                _mergeConflictFiles = result.MergeConflictFiles.Select(CloneMergeConflictFile).ToList();
                 return;
             }
 
@@ -942,6 +977,14 @@ else
             StateHasChanged();
         }
     }
+
+    private static MergeConflictFile CloneMergeConflictFile(MergeConflictFile source)
+        => new()
+        {
+            FileName = source.FileName,
+            DiffContent = source.DiffContent,
+            Content = source.Content
+        };
 
     private async Task CreatePullRequestAsync((string targetBranch, string? title) args)
     {

@@ -578,6 +578,7 @@ else
                       PushAfterMerge="@_mergePushAfterMerge" IsCheckingPreview="@_isCheckingMergePreview"
                       IsMerging="@_isMergingBranch" PreviewMessage="@_mergePreviewMessage"
                       PreviewError="@_mergePreviewError" IsAlreadyUpToDate="@_isMergeAlreadyUpToDate"
+                      ConflictFiles="@_mergeConflictFiles"
                       CreatePullRequest="@_mergeCreatePullRequest"
                       PullRequestTitle="@_mergePrTitle" IsCreatingPullRequest="@_isCreatingPullRequest"
                       IsGitHubCliAvailable="@_isGitHubCliAvailable"
@@ -585,6 +586,7 @@ else
                       OnPushAfterMergeChanged="HandleMergePushAfterMergeChanged"
                       OnCreatePullRequestChanged="HandleMergeCreatePullRequestChanged"
                       OnPullRequestTitleChanged="HandleMergePrTitleChanged"
+                      OnConflictResolutionChanged="HandleMergeConflictResolutionChanged"
                       OnMerge="MergeCurrentBranchAsync" OnCreatePullRequestSubmit="CreatePullRequestAsync"
                       OnCancel="CloseMergeBranchModal" />
 
@@ -678,6 +680,7 @@ else
     private string? _mergePreviewMessage { get; set; }
     private string? _mergePreviewError { get; set; }
     private bool _isMergeAlreadyUpToDate { get; set; }
+    private List<MergeConflictFile> _mergeConflictFiles { get; set; } = new();
 
     // Uncommitted changes modal state
     private bool _hasUncommittedChangesHeader { get; set; }

@@ -61,6 +61,11 @@ public sealed class GitOperationResult
 	public int? ChangedFilesCount { get; init; }
 
 	/// <summary>
+	/// Merge conflict files captured during merge preview or resolution.
+	/// </summary>
+	public IReadOnlyList<MergeConflictFile> MergeConflictFiles { get; init; } = [];
+
+	/// <summary>
 	/// Creates a successful result.
 	/// </summary>
 	public static GitOperationResult Succeeded(
@@ -72,7 +77,8 @@ public sealed class GitOperationResult
 		string? pullRequestUrl = null,
 		int? pullRequestNumber = null,
 		string? savedReference = null,
-		int? changedFilesCount = null)
+		int? changedFilesCount = null,
+		IReadOnlyList<MergeConflictFile>? mergeConflictFiles = null)
 	{
 		return new GitOperationResult
 		{
@@ -85,20 +91,25 @@ public sealed class GitOperationResult
 			PullRequestUrl = pullRequestUrl,
 			PullRequestNumber = pullRequestNumber,
 			SavedReference = savedReference,
-			ChangedFilesCount = changedFilesCount
+			ChangedFilesCount = changedFilesCount,
+			MergeConflictFiles = mergeConflictFiles ?? []
 		};
 	}
 
 	/// <summary>
 	/// Creates a failed result.
 	/// </summary>
-	public static GitOperationResult Failed(string error, string? commitHash = null)
+	public static GitOperationResult Failed(
+		string error,
+		string? commitHash = null,
+		IReadOnlyList<MergeConflictFile>? mergeConflictFiles = null)
 	{
 		return new GitOperationResult
 		{
 			Success = false,
 			Error = error,
-			CommitHash = commitHash
+			CommitHash = commitHash,
+			MergeConflictFiles = mergeConflictFiles ?? []
 		};
 	}
 }
