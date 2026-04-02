@@ -106,7 +106,8 @@ internal static class JobSessionDisplayBuilder
 			ToolName = message.ToolName,
 			ToolInput = message.ToolInput,
 			ToolOutput = message.ToolOutput,
-			TokenCount = message.TokenCount
+			TokenCount = message.TokenCount,
+			DisplayVariant = message.DisplayVariant
 		};
 
 		switch (message.Role)
@@ -167,6 +168,7 @@ internal static class JobSessionDisplayBuilder
 			message.Role = MessageRole.System;
 			message.Source = MessageSource.Provider;
 			message.Level = MessageLevel.Normal;
+			message.DisplayVariant = MessageDisplayVariant.Thinking;
 			return;
 		}
 
@@ -316,6 +318,7 @@ internal static class JobSessionDisplayBuilder
 				Content = StripKnownPrefix(content, "[Reasoning]", "[Thinking]"),
 				Source = MessageSource.Provider,
 				Level = MessageLevel.Normal,
+				DisplayVariant = MessageDisplayVariant.Thinking,
 				CreatedAt = line.Timestamp
 			};
 		}
@@ -345,6 +348,7 @@ internal static class JobSessionDisplayBuilder
 				Content = StripKnownPrefix(content, "[Plan]"),
 				Source = MessageSource.Provider,
 				Level = MessageLevel.Normal,
+				DisplayVariant = MessageDisplayVariant.Thinking,
 				CreatedAt = line.Timestamp
 			};
 		}

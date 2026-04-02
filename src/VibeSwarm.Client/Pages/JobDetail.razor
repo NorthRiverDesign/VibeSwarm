@@ -52,14 +52,7 @@ else
 
     @* Main Content - Column Layout *@
     <div class="row g-3 g-lg-4">
-        @* Left Column - Goal Prompt & Git sections *@
-        <div class="col-12 col-xl-5 order-2 order-xl-1">
-
-            @* Goal Prompt Card *@
-            <JobGoalPromptCard GoalPrompt="@Job.GoalPrompt" IdeaText="@GetGoalPromptIdeaText()" Status="@Job.Status" CanRetry="@CanRetry"
-                               HasConsoleOutput="@(!string.IsNullOrEmpty(Job.ConsoleOutput))" OnCopyToClipboard="CopyPromptToClipboard"
-                               OnPromptChanged="UpdateJobPrompt" />
-
+        <div class="col-12 col-xl-5 order-2 order-xl-1 @(ShowSidebarContent ? string.Empty : "d-none")">
             @* User Interaction Section - shown when job is paused waiting for input *@
             @if (Job.Status == JobStatus.Paused && !string.IsNullOrEmpty(Job.PendingInteractionPrompt))
             {
@@ -185,8 +178,11 @@ else
         </div>
 
         @* Right Column - Session Panel (Live Output, Console, Command, Conversation) *@
-        <div class="col-12 col-xl-7 order-1 order-xl-2 d-flex flex-column">
+        <div class="col-12 @(ShowSidebarContent ? "col-xl-7 order-1 order-xl-2" : string.Empty) d-flex flex-column">
             <JobSessionPanel Messages="@(Job!.Messages.ToList())" Status="@Job.Status" IsJobActive="@IsJobActive"
+                             GoalPrompt="@Job.GoalPrompt" GoalPromptIdeaText="@GetGoalPromptIdeaText()"
+                             GoalPromptTimestamp="@Job.CreatedAt" OnCopyGoalPrompt="CopyPromptToClipboard"
+                             OnGoalPromptChanged="UpdateJobPrompt"
                              ErrorMessage="@Job.ErrorMessage" ConsoleOutput="@Job.ConsoleOutput" CommandUsed="@Job.CommandUsed"
                              PlanningCommandUsed="@Job.PlanningCommandUsed" ExecutionCommandUsed="@Job.ExecutionCommandUsed"
                              SessionId="@Job.SessionId" LiveOutputLines="@_liveOutput.ToList()"
@@ -264,6 +260,14 @@ else
         Job.Status == JobStatus.Paused);
 
     private bool ShowGitActions => Job?.Project?.WorkingPath != null && _isGitRepository && !IsJobActive;
+
+    private bool ShowSidebarContent
+        => (Job?.Status == JobStatus.Paused && !string.IsNullOrEmpty(Job.PendingInteractionPrompt))
+            || (_isGitRepository && _isLoadingGitDiff)
+            || (_isGitRepository && !IsJobActive && !string.IsNullOrEmpty(Job?.GitDiff))
+            || (_isGitRepository && !IsJobActive && Job?.Status == JobStatus.Completed && string.IsNullOrEmpty(Job?.GitDiff))
+            || (_isGitRepository && !IsJobActive && (Job?.Status == JobStatus.Failed || Job?.Status == JobStatus.Cancelled)
+                && Job?.Project?.WorkingPath != null);
 
     private bool CanPush => !_isPushing &&
         !string.IsNullOrWhiteSpace(_commitMessage) &&

@@ -108,7 +108,7 @@ public sealed class JobSessionPanelTests
 			return output.ToHtmlString();
 		});
 
-		Assert.Contains("1 messages", html);
+		Assert.Contains("1 message", html);
 		Assert.Contains("First response chunk", html);
 		Assert.Contains("Waiting for CLI response (12s)...", html);
 		Assert.DoesNotContain("[System] Still waiting for response", html);
@@ -685,6 +685,62 @@ public sealed class JobSessionPanelTests
 			.Click();
 
 		Assert.True(cleared);
+	}
+
+	[Fact]
+	public void JobSessionPanel_Bunit_RendersGoalPromptBubbleWithDropdownActions()
+	{
+		using var context = new BunitContext();
+		var copied = false;
+
+		var cut = context.Render<JobSessionPanel>(parameters => parameters
+			.Add(panel => panel.Status, JobStatus.Completed)
+			.Add(panel => panel.GoalPrompt, "Implement the feature exactly as described.")
+			.Add(panel => panel.GoalPromptIdeaText, "Ship the requested feature.")
+			.Add(panel => panel.GoalPromptTimestamp, DateTime.UtcNow)
+			.Add(panel => panel.OnCopyGoalPrompt, async () =>
+			{
+				copied = true;
+				await Task.CompletedTask;
+			}));
+
+		Assert.Contains("Messages", cut.Markup);
+		Assert.Contains("1 message", cut.Markup);
+		Assert.Contains("Ship the requested feature.", cut.Markup);
+		Assert.Contains("Goal", cut.Markup);
+
+		cut.Find("button[title='Copy prompt']").Click();
+
+		Assert.True(copied);
+
+		cut.Find("button[title='View full prompt']").Click();
+
+		Assert.Contains("Full Goal Prompt", cut.Markup);
+		Assert.Contains("Implement the feature exactly as described.", cut.Markup);
+	}
+
+	[Fact]
+	public void JobSessionPanel_Bunit_AllowsEditingGoalPromptFromBubbleMenu()
+	{
+		using var context = new BunitContext();
+		string? savedPrompt = null;
+
+		var cut = context.Render<JobSessionPanel>(parameters => parameters
+			.Add(panel => panel.Status, JobStatus.Failed)
+			.Add(panel => panel.GoalPrompt, "Original prompt")
+			.Add(panel => panel.OnGoalPromptChanged, async value =>
+			{
+				savedPrompt = value;
+				await Task.CompletedTask;
+			}));
+
+		cut.Find("button[title='Edit prompt']").Click();
+
+		var textarea = cut.Find("textarea");
+		textarea.Change("Updated prompt");
+		cut.Find("button[title='Save changes']").Click();
+
+		Assert.Equal("Updated prompt", savedPrompt);
 	}
 
 	[Fact]

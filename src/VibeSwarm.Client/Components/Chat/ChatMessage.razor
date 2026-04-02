@@ -1,7 +1,6 @@
 @* Single chat message component *@
 
-<div
-	class="chat-message d-flex flex-column chat-message-@Role.ToString().ToLower() @(Role == MessageRole.ToolUse || Role == MessageRole.ToolResult ? "ms-3" : "")">
+<div class="@GetContainerClasses()">
 	<div class="chat-bubble py-2 px-3 text-break @GetBubbleClasses()">
 		@if (Role == MessageRole.ToolUse)
 		{
@@ -28,7 +27,7 @@
 		}
 		else
 		{
-			<div class="white-space-pre-wrap m-0 lh-base">@Content</div>
+			<div class="@GetContentClasses()">@Content</div>
 		}
 	</div>
 	<div class="d-flex gap-2 mt-1 px-2 small text-secondary">
@@ -63,6 +62,9 @@
 	public MessageLevel Level { get; set; } = MessageLevel.Normal;
 
 	[Parameter]
+	public MessageDisplayVariant DisplayVariant { get; set; } = MessageDisplayVariant.Standard;
+
+	[Parameter]
 	public string? LabelOverride { get; set; }
 
 	[Parameter]
@@ -82,6 +84,9 @@
 	{
 		if (!string.IsNullOrWhiteSpace(LabelOverride))
 			return LabelOverride;
+
+		if (DisplayVariant == MessageDisplayVariant.Thinking)
+			return "Thinking";
 
 		return Role switch
 		{
@@ -103,6 +108,9 @@
 	{
 		if (!string.IsNullOrWhiteSpace(BubbleClassOverride))
 			return BubbleClassOverride;
+
+		if (DisplayVariant == MessageDisplayVariant.Thinking)
+			return "bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle";
 
 		if (Role == MessageRole.System)
 		{
@@ -130,6 +138,9 @@
 		if (!string.IsNullOrWhiteSpace(IconOverride))
 			return IconOverride;
 
+		if (DisplayVariant == MessageDisplayVariant.Thinking)
+			return "bi bi-lightbulb";
+
 		if (Role == MessageRole.System)
 		{
 			return Level switch
@@ -150,4 +161,18 @@
 			_ => "bi bi-chat-left-text"
 		};
 	}
+
+	private string GetContainerClasses()
+	{
+		var roleClass = DisplayVariant == MessageDisplayVariant.Thinking
+			? "chat-message-thinking"
+			: $"chat-message-{Role.ToString().ToLower()}";
+		var indentClass = Role is MessageRole.ToolUse or MessageRole.ToolResult ? " ms-3" : string.Empty;
+		return $"chat-message d-flex flex-column {roleClass}{indentClass}";
+	}
+
+	private string GetContentClasses()
+		=> DisplayVariant == MessageDisplayVariant.Thinking
+			? "white-space-pre-wrap m-0 lh-base fst-italic"
+			: "white-space-pre-wrap m-0 lh-base";
 }

@@ -414,6 +414,11 @@ body {
 	align-self: flex-start;
 	align-items: flex-start;
 }
+.chat-message-thinking {
+	align-self: flex-start;
+	align-items: flex-start;
+	max-width: 90%;
+}
 .chat-message-system {
 	align-self: center;
 	align-items: center;
@@ -433,6 +438,9 @@ body {
 	border-bottom-right-radius: 0.25rem;
 }
 .chat-message-assistant .chat-bubble {
+	border-bottom-left-radius: 0.25rem;
+}
+.chat-message-thinking .chat-bubble {
 	border-bottom-left-radius: 0.25rem;
 }
 .chat-message-system .chat-bubble {

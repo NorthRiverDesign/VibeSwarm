@@ -13,26 +13,12 @@
                         @if (IsJobActive)
                         {
                             <span class="live-indicator me-1"></span>
-                            <span>Live Output</span>
-                        }
-                        else if (Status == JobStatus.Completed)
-                        {
-                            <i class="bi bi-check-circle me-1 opacity-75 text-success"></i>
-                            <span class="d-none d-sm-inline">Session Log</span>
-                            <span class="d-sm-none">Log</span>
-                        }
-                        else if (Status == JobStatus.Failed || Status == JobStatus.Cancelled)
-                        {
-                            <i class="bi bi-x-circle me-1 opacity-75 text-danger"></i>
-                            <span class="d-none d-sm-inline">Session Log</span>
-                            <span class="d-sm-none">Log</span>
                         }
                         else
                         {
                             <i class="bi bi-chat-dots me-1 opacity-75"></i>
-                            <span class="d-none d-sm-inline">Session Log</span>
-                            <span class="d-sm-none">Log</span>
                         }
+                        <span>Messages</span>
                     </button>
                 </li>
                 @if (!string.IsNullOrEmpty(ConsoleOutput) && !IsJobActive)
@@ -85,10 +71,10 @@
         @if (_activeTab == "session")
         {
             <div class="flex-grow-1 overflow-auto p-2 p-sm-3">
-                @if (DisplayedMessages.Any())
+                @if (VisibleMessageCount > 0)
                 {
                     <div class="d-flex justify-content-end align-items-center gap-2 mb-2">
-                        @if (!IsJobActive)
+                        @if (!IsJobActive && DisplayedMessages.Any())
                         {
                             <div class="dropdown">
                                 <button class="btn btn-sm btn-secondary d-inline-flex align-items-center gap-1"
@@ -156,75 +142,143 @@
                                 </ul>
                             </div>
                         }
-                        <span class="badge bg-secondary">@FilteredMessages.Count messages</span>
+                        <span class="badge bg-secondary">@VisibleMessageCount @(VisibleMessageCount == 1 ? "message" : "messages")</span>
                     </div>
                 }
-                @if (!DisplayedMessages.Any())
-                {
-                    <div class="empty-state text-center py-5">
-                        @if (IsJobActive)
-                        {
-                            <div class="spinner-border text-info mb-3 d-block mx-auto" role="status">
-                                <span class="visually-hidden">Waiting for output...</span>
+                <div class="d-flex flex-column gap-3 overflow-auto p-2" style="max-height: 600px;" @ref="_sessionOutputContainer">
+                    @if (HasGoalPrompt)
+                    {
+                        <div class="chat-message d-flex flex-column chat-message-user">
+                            <div class="chat-bubble py-2 px-3 text-break bg-primary-subtle text-primary-emphasis border border-primary-subtle position-relative pe-5">
+                                @if (!_isEditingGoalPrompt)
+                                {
+                                    <div class="position-absolute top-0 end-0 p-2">
+                                        <div class="dropdown">
+                                            <button type="button" class="btn btn-sm btn-link p-0 text-primary-emphasis text-decoration-none"
+                                                    data-bs-toggle="dropdown" aria-expanded="false" title="Goal prompt actions">
+                                                <i class="bi bi-three-dots-vertical"></i>
+                                            </button>
+                                            <ul class="dropdown-menu dropdown-menu-end shadow-sm">
+                                                @if (CanEditGoalPrompt)
+                                                {
+                                                    <li>
+                                                        <button type="button" class="dropdown-item d-flex align-items-center gap-2"
+                                                                @onclick="StartGoalPromptEdit" title="Edit prompt">
+                                                            <i class="bi bi-pencil"></i>
+                                                            <span>Edit prompt</span>
+                                                        </button>
+                                                    </li>
+                                                }
+                                                <li>
+                                                    <button type="button" class="dropdown-item d-flex align-items-center gap-2"
+                                                            @onclick="CopyGoalPrompt" title="Copy prompt">
+                                                        <i class="bi bi-clipboard"></i>
+                                                        <span>Copy prompt</span>
+                                                    </button>
+                                                </li>
+                                                <li>
+                                                    <button type="button" class="dropdown-item d-flex align-items-center gap-2"
+                                                            @onclick="ShowFullGoalPrompt" title="View full prompt">
+                                                        <i class="bi bi-arrows-fullscreen"></i>
+                                                        <span>View full prompt</span>
+                                                    </button>
+                                                </li>
+                                            </ul>
+                                        </div>
+                                    </div>
+                                    <div class="white-space-pre-wrap m-0 lh-base">@GoalPromptDisplayText</div>
+                                }
+                                else
+                                {
+                                    <textarea class="form-control lh-base" style="min-height: 150px; resize: vertical;"
+                                              @bind="_editedGoalPrompt" rows="6" placeholder="Enter the goal prompt for the AI agent..."></textarea>
+                                }
                             </div>
-                            <span class="text-body-secondary d-block">Waiting for agent output...</span>
-                        }
-                        else if (Status == JobStatus.Completed)
-                        {
-                            <i class="bi bi-check-circle opacity-50 d-block mb-2" style="font-size: 2.5rem;"></i>
-                            <span class="text-body-secondary">Job completed but no conversation was recorded.</span>
-                        }
-                        else if (Status == JobStatus.Failed)
-                        {
-                            <i class="bi bi-exclamation-circle opacity-50 d-block mb-2" style="font-size: 2.5rem;"></i>
-                            <span class="text-body-secondary">Job failed. Check the error message above for details.</span>
-                        }
-                        else if (Status == JobStatus.Cancelled)
-                        {
-                            <i class="bi bi-x-circle opacity-50 d-block mb-2" style="font-size: 2.5rem;"></i>
-                            <span class="text-body-secondary">Job was cancelled. No conversation recorded.</span>
-                        }
-                        else if (Status == JobStatus.New || Status == JobStatus.Pending)
-                        {
-                            <i class="bi bi-hourglass opacity-50 d-block mb-2" style="font-size: 2.5rem;"></i>
-                            <span class="text-body-secondary">Conversation will appear after the job runs.</span>
-                        }
-                        else
-                        {
-                            <i class="bi bi-chat-left-text opacity-50 d-block mb-2" style="font-size: 2.5rem;"></i>
-                            <span class="text-body-secondary">No conversation recorded for this job.</span>
-                        }
-                    </div>
-                }
-				else
-				{
-					<div class="d-flex flex-column gap-3 overflow-auto p-2" style="max-height: 600px;" @ref="_sessionOutputContainer">
-						@foreach (var message in FilteredMessages)
-						{
-							<ChatMessage Role="@message.Role" Content="@message.Content" ToolName="@message.ToolName"
-										 ToolInput="@message.ToolInput" ToolOutput="@message.ToolOutput" Timestamp="@message.CreatedAt"
-										 Source="@message.Source" Level="@message.Level"
-										/>
-						}
+                            <div class="d-flex gap-2 mt-1 px-2 small text-secondary">
+                                <span class="fw-medium"><i class="bi bi-bullseye me-1"></i>Goal</span>
+                                @if (GoalPromptTimestamp.HasValue)
+                                {
+                                    <span class="opacity-75">@GoalPromptTimestamp.Value.FormatTime()</span>
+                                }
+                            </div>
+                            @if (_isEditingGoalPrompt)
+                            {
+                                <div class="d-flex justify-content-end gap-2 px-2">
+                                    <button type="button" class="btn btn-sm btn-secondary" @onclick="CancelGoalPromptEdit" title="Cancel editing">
+                                        <i class="bi bi-x-lg me-1"></i>
+                                        <span>Cancel</span>
+                                    </button>
+                                    <button type="button" class="btn btn-sm btn-primary" @onclick="SaveGoalPrompt"
+                                            disabled="@_isSavingGoalPrompt" title="Save changes">
+                                        @if (_isSavingGoalPrompt)
+                                        {
+                                            <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                                        }
+                                        else
+                                        {
+                                            <i class="bi bi-check-lg me-1"></i>
+                                        }
+                                        <span>Save</span>
+                                    </button>
+                                </div>
+                            }
+                        </div>
+                    }
 
-						@if (ShowInlineWaitingActivity)
-						{
-							<div class="chat-message chat-message-assistant d-flex flex-column" role="status" aria-live="polite">
-								<div class="chat-bubble py-2 px-3 bg-body-tertiary border d-flex gap-2 align-items-center">
-									<span class="typing-dot"></span>
-									<span class="typing-dot"></span>
-									<span class="typing-dot"></span>
-								</div>
-								@if (!string.IsNullOrWhiteSpace(CurrentActivity))
-								{
-									<div class="d-flex mt-1 px-2 small text-secondary">
-										<span class="opacity-75 text-truncate" style="max-width: min(100%, 24rem);">@CurrentActivity</span>
-									</div>
-								}
-							</div>
-						}
-					</div>
-				}
+                    @foreach (var message in FilteredMessages)
+                    {
+                        <ChatMessage Role="@message.Role" Content="@message.Content" ToolName="@message.ToolName"
+                                     ToolInput="@message.ToolInput" ToolOutput="@message.ToolOutput" Timestamp="@message.CreatedAt"
+                                     Source="@message.Source" Level="@message.Level" DisplayVariant="@message.DisplayVariant" />
+                    }
+
+                    @if (ShowInlineWaitingActivity)
+                    {
+                        <div class="chat-message chat-message-assistant d-flex flex-column" role="status" aria-live="polite">
+                            <div class="chat-bubble py-2 px-3 bg-body-tertiary border d-flex gap-2 align-items-center">
+                                <span class="typing-dot"></span>
+                                <span class="typing-dot"></span>
+                                <span class="typing-dot"></span>
+                            </div>
+                            @if (!string.IsNullOrWhiteSpace(CurrentActivity))
+                            {
+                                <div class="d-flex mt-1 px-2 small text-secondary">
+                                    <span class="opacity-75 text-truncate" style="max-width: min(100%, 24rem);">@CurrentActivity</span>
+                                </div>
+                            }
+                        </div>
+                    }
+                    else if (!DisplayedMessages.Any() && !HasGoalPrompt)
+                    {
+                        <div class="empty-state text-center py-5">
+                            @if (Status == JobStatus.Completed)
+                            {
+                                <i class="bi bi-check-circle opacity-50 d-block mb-2" style="font-size: 2.5rem;"></i>
+                                <span class="text-body-secondary">Job completed but no conversation was recorded.</span>
+                            }
+                            else if (Status == JobStatus.Failed)
+                            {
+                                <i class="bi bi-exclamation-circle opacity-50 d-block mb-2" style="font-size: 2.5rem;"></i>
+                                <span class="text-body-secondary">Job failed. Check the error message above for details.</span>
+                            }
+                            else if (Status == JobStatus.Cancelled)
+                            {
+                                <i class="bi bi-x-circle opacity-50 d-block mb-2" style="font-size: 2.5rem;"></i>
+                                <span class="text-body-secondary">Job was cancelled. No conversation recorded.</span>
+                            }
+                            else if (Status == JobStatus.New || Status == JobStatus.Pending)
+                            {
+                                <i class="bi bi-hourglass opacity-50 d-block mb-2" style="font-size: 2.5rem;"></i>
+                                <span class="text-body-secondary">Conversation will appear after the job runs.</span>
+                            }
+                            else
+                            {
+                                <i class="bi bi-chat-left-text opacity-50 d-block mb-2" style="font-size: 2.5rem;"></i>
+                                <span class="text-body-secondary">No conversation recorded for this job.</span>
+                            }
+                        </div>
+                    }
+                </div>
 			</div>
 		}
         else if (_activeTab == "console")
@@ -323,6 +377,15 @@
     public List<JobMessage> Messages { get; set; } = new();
 
     [Parameter]
+    public string? GoalPrompt { get; set; }
+
+    [Parameter]
+    public string? GoalPromptIdeaText { get; set; }
+
+    [Parameter]
+    public DateTime? GoalPromptTimestamp { get; set; }
+
+    [Parameter]
     public JobStatus Status { get; set; }
 
     [Parameter]
@@ -364,16 +427,36 @@
     [Parameter]
     public EventCallback<string> OnSendFollowUp { get; set; }
 
+    [Parameter]
+    public EventCallback OnCopyGoalPrompt { get; set; }
+
+    [Parameter]
+    public EventCallback<string> OnGoalPromptChanged { get; set; }
+
     private string _activeTab = "session";
     private string _followUpPrompt = string.Empty;
     private bool _isSendingFollowUp = false;
     private HashSet<MessageRole> _hiddenRoles = new();
     private ElementReference _sessionOutputContainer;
     private string? _lastAutoScrollStateKey;
+    private bool _showGoalPromptModal;
+    private bool _isEditingGoalPrompt;
+    private string _editedGoalPrompt = string.Empty;
+    private bool _isSavingGoalPrompt;
 
     private bool CanSendFollowUp => Status == JobStatus.Completed && OnSendFollowUp.HasDelegate;
 
     private bool HasCommandTab => CommandSteps.Count > 0 || !string.IsNullOrWhiteSpace(CommandUsed);
+
+    private bool HasGoalPrompt => !string.IsNullOrWhiteSpace(GoalPrompt);
+
+    private string GoalPromptDisplayText => !string.IsNullOrWhiteSpace(GoalPromptIdeaText)
+        ? GoalPromptIdeaText!
+        : GoalPrompt ?? string.Empty;
+
+    private bool CanEditGoalPrompt
+        => OnGoalPromptChanged.HasDelegate
+            && (Status == JobStatus.New || Status == JobStatus.Failed || Status == JobStatus.Cancelled);
 
     private IReadOnlyList<CommandStep> CommandSteps => BuildCommandSteps();
 
@@ -394,6 +477,8 @@
         }
     }
 
+    private int VisibleMessageCount => FilteredMessages.Count + (HasGoalPrompt ? 1 : 0);
+
     private void ToggleRoleFilter(MessageRole role)
     {
         if (!_hiddenRoles.Remove(role))
@@ -403,7 +488,7 @@
     private void ClearFilters() => _hiddenRoles.Clear();
 
     private bool ShowInlineWaitingActivity
-        => IsJobActive && DisplayedMessages.Any();
+        => IsJobActive;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -436,7 +521,7 @@
     private bool ShouldAutoScrollSessionOutput()
         => _activeTab == "session"
             && IsJobActive
-            && FilteredMessages.Any();
+            && (FilteredMessages.Any() || HasGoalPrompt);
 
     private string BuildAutoScrollStateKey()
     {
@@ -445,6 +530,8 @@
         var lastLiveMessage = LiveMessages.LastOrDefault();
 
         return string.Join("|",
+            HasGoalPrompt,
+            GoalPrompt ?? string.Empty,
             FilteredMessages.Count,
             lastVisibleMessage?.CreatedAt.Ticks ?? 0,
             (int?)lastVisibleMessage?.Role ?? -1,
@@ -456,6 +543,55 @@
             lastLiveMessage?.CreatedAt.Ticks ?? 0,
             (int?)lastLiveMessage?.Role ?? -1,
             lastLiveMessage?.Content ?? string.Empty);
+    }
+
+    private void ShowFullGoalPrompt()
+    {
+        _showGoalPromptModal = true;
+    }
+
+    private void CloseGoalPromptModal()
+    {
+        _showGoalPromptModal = false;
+    }
+
+    private async Task CopyGoalPrompt()
+    {
+        if (OnCopyGoalPrompt.HasDelegate)
+        {
+            await OnCopyGoalPrompt.InvokeAsync();
+        }
+    }
+
+    private void StartGoalPromptEdit()
+    {
+        _editedGoalPrompt = GoalPrompt ?? string.Empty;
+        _isEditingGoalPrompt = true;
+    }
+
+    private void CancelGoalPromptEdit()
+    {
+        _isEditingGoalPrompt = false;
+        _editedGoalPrompt = string.Empty;
+    }
+
+    private async Task SaveGoalPrompt()
+    {
+        if (string.IsNullOrWhiteSpace(_editedGoalPrompt) || !OnGoalPromptChanged.HasDelegate)
+        {
+            return;
+        }
+
+        _isSavingGoalPrompt = true;
+        try
+        {
+            await OnGoalPromptChanged.InvokeAsync(_editedGoalPrompt);
+            _isEditingGoalPrompt = false;
+        }
+        finally
+        {
+            _isSavingGoalPrompt = false;
+        }
     }
 
 
@@ -523,4 +659,30 @@
         => await JSRuntime.InvokeVoidAsync("copyToClipboard", command);
 
     private sealed record CommandStep(string Key, string Label, string Icon, string Command);
+}
+
+@if (_showGoalPromptModal)
+{
+    <div class="modal-backdrop fade show vs-modal-backdrop"></div>
+    <div class="modal fade show d-block vs-modal-container" tabindex="-1" role="dialog" @onclick="CloseGoalPromptModal">
+        <div class="modal-dialog modal-lg vs-modal-dialog modal-dialog-centered modal-dialog-scrollable"
+             @onclick:stopPropagation="true">
+            <div class="modal-content vs-modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-bullseye me-2"></i>Full Goal Prompt</h5>
+                    <button type="button" class="btn-close" @onclick="CloseGoalPromptModal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <pre class="bg-body-tertiary border rounded p-3 overflow-auto lh-base m-0 text-break"
+                         style="white-space: pre-wrap; max-height: 60vh;">@GoalPrompt</pre>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CopyGoalPrompt">
+                        <i class="bi bi-clipboard me-1"></i>Copy to Clipboard
+                    </button>
+                    <button type="button" class="btn btn-secondary" @onclick="CloseGoalPromptModal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
 }
