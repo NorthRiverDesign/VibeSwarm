@@ -266,10 +266,31 @@ A concise one-line description of what was implemented (max 72 chars)
 
 		if (success)
 		{
+			var shouldStopProcessing = idea.Project?.IdeasProcessingActive == true
+				&& !await _dbContext.Ideas
+					.AsNoTracking()
+					.AnyAsync(otherIdea => otherIdea.ProjectId == idea.ProjectId && otherIdea.Id != idea.Id, cancellationToken);
+
 			// Job completed successfully - remove the idea
 			_logger.LogInformation("Removing completed Idea {IdeaId} after Job {JobId} completed successfully", idea.Id, jobId);
 			await DeleteAttachmentFilesAsync(idea.Attachments, idea.Project?.WorkingPath);
 			_dbContext.Ideas.Remove(idea);
+
+			if (shouldStopProcessing)
+			{
+				var project = await _dbContext.Projects.FindAsync(new object[] { idea.ProjectId }, cancellationToken);
+				if (project?.IdeasProcessingActive == true)
+				{
+					project.IdeasProcessingActive = false;
+					project.IdeasProcessingProviderId = null;
+					project.IdeasProcessingModelId = null;
+					stoppedProcessing = true;
+					_logger.LogInformation(
+						"Stopped Ideas auto-processing for project {ProjectId} because Job {JobId} completed the last queued idea",
+						idea.ProjectId,
+						jobId);
+				}
+			}
 		}
 		else
 		{
