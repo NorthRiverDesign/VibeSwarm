@@ -271,7 +271,21 @@ public sealed class ProjectsPageTests
 				Id = Guid.NewGuid(),
 				Name = "Toggle Stats Project",
 				WorkingPath = "/tmp/toggle-stats-project",
+				GitHubRepository = "octocat/toggle-stats-project",
 				IsActive = true,
+				ProviderSelections =
+				[
+					new ProjectProvider
+					{
+						IsEnabled = true,
+						Priority = 0,
+						Provider = new Provider
+						{
+							Id = Guid.NewGuid(),
+							Name = "Copilot"
+						}
+					}
+				],
 				Environments =
 				[
 					new ProjectEnvironment
@@ -320,6 +334,9 @@ public sealed class ProjectsPageTests
 		Assert.Contains("4 ideas", cut.Markup);
 		Assert.Contains("1 pending", cut.Markup);
 		Assert.Contains("1 running", cut.Markup);
+		Assert.Contains("octocat/toggle-stats-project", cut.Markup);
+		Assert.Contains("Providers", cut.Markup);
+		Assert.Contains("#1 Copilot", cut.Markup);
 		Assert.Contains("Architect (Unassigned)", cut.Markup);
 		Assert.Contains("$2.50", cut.Markup);
 
@@ -329,6 +346,9 @@ public sealed class ProjectsPageTests
 		Assert.DoesNotContain("4 ideas", cut.Markup);
 		Assert.DoesNotContain("1 pending", cut.Markup);
 		Assert.DoesNotContain("1 running", cut.Markup);
+		Assert.DoesNotContain("octocat/toggle-stats-project", cut.Markup);
+		Assert.DoesNotContain("Providers", cut.Markup);
+		Assert.DoesNotContain("#1 Copilot", cut.Markup);
 		Assert.DoesNotContain("Architect (Unassigned)", cut.Markup);
 		Assert.DoesNotContain("$2.50", cut.Markup);
 	}

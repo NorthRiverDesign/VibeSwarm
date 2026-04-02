@@ -123,41 +123,44 @@ else
 						{
 							<div class="small text-body-secondary mt-1 d-none d-md-block">@TruncateText(project.Description, 100)</div>
 						}
-						<div class="d-flex flex-wrap gap-2 gap-md-3 mt-2 small text-body-secondary">
-							@if (!string.IsNullOrEmpty(project.GitHubRepository))
-							{
-								<span class="d-flex align-items-center gap-1" title="GitHub Repository">
-									<i class="bi bi-github opacity-75"></i>
-									<a href="https://github.com/@project.GitHubRepository" target="_blank"
-										   class="text-body-secondary text-decoration-none hover-underline">
-										@project.GitHubRepository
-									</a>
-								</span>
-							}
-							else
-							{
-								<span class="font-monospace bg-body-tertiary px-2 py-1 rounded-1 text-truncate"
-									  style="max-width: min(280px, 50vw);" title="@project.WorkingPath">
-									@project.WorkingPath
-								</span>
-							}
-							@if (!string.IsNullOrEmpty(currentBranch))
-							{
-								<span class="d-flex align-items-center gap-1" title="Current branch">
-									<i class="bi bi-git opacity-75"></i>
-									@currentBranch
-								</span>
-							}
-						</div>
-						@if (project.ProviderSelections.Any(pp => pp.IsEnabled))
+						@if (ShowProjectStats)
 						{
-							<div class="d-flex flex-wrap align-items-center gap-2 mt-2 small text-body-secondary">
-								<span class="d-flex align-items-center gap-1">
-									<i class="bi bi-diagram-3 opacity-75"></i>
-									Providers
-								</span>
-								<span>@string.Join("  •  ", project.ProviderSelections.Where(pp => pp.IsEnabled).OrderBy(pp => pp.Priority).Select(selection => $"#{selection.Priority + 1} {selection.Provider?.Name ?? "Unknown"}"))</span>
+							<div class="d-flex flex-wrap gap-2 gap-md-3 mt-2 small text-body-secondary">
+								@if (!string.IsNullOrEmpty(project.GitHubRepository))
+								{
+									<span class="d-flex align-items-center gap-1" title="GitHub Repository">
+										<i class="bi bi-github opacity-75"></i>
+										<a href="https://github.com/@project.GitHubRepository" target="_blank"
+											   class="text-body-secondary text-decoration-none hover-underline">
+											@project.GitHubRepository
+										</a>
+									</span>
+								}
+								else
+								{
+									<span class="font-monospace bg-body-tertiary px-2 py-1 rounded-1 text-truncate"
+										  style="max-width: min(280px, 50vw);" title="@project.WorkingPath">
+										@project.WorkingPath
+									</span>
+								}
+								@if (!string.IsNullOrEmpty(currentBranch))
+								{
+									<span class="d-flex align-items-center gap-1" title="Current branch">
+										<i class="bi bi-git opacity-75"></i>
+										@currentBranch
+									</span>
+								}
 							</div>
+							@if (project.ProviderSelections.Any(pp => pp.IsEnabled))
+							{
+								<div class="d-flex flex-wrap align-items-center gap-2 mt-2 small text-body-secondary">
+									<span class="d-flex align-items-center gap-1">
+										<i class="bi bi-diagram-3 opacity-75"></i>
+										Providers
+									</span>
+									<span>@string.Join("  •  ", project.ProviderSelections.Where(pp => pp.IsEnabled).OrderBy(pp => pp.Priority).Select(selection => $"#{selection.Priority + 1} {selection.Provider?.Name ?? "Unknown"}"))</span>
+								</div>
+							}
 						}
 						@if (ShowProjectStats && project.TeamAssignments.Any(assignment => assignment.IsEnabled && assignment.TeamRole != null))
 						{
