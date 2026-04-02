@@ -235,10 +235,10 @@ public partial class JobProcessingService
             var effectiveMaxCycles = job.CycleMode == CycleMode.SingleCycle ? 1 : job.MaxCycles;
             var currentCycle = job.CurrentCycle;
             var sessionId = job.SessionId;
-            ExecutionResult? lastResult = null;
-            int? totalInputTokens = null;
-            int? totalOutputTokens = null;
-            decimal? totalCostUsd = null;
+			ExecutionResult? lastResult = null;
+			int? executionInputTokens = null;
+			int? executionOutputTokens = null;
+			decimal? executionCostUsd = null;
 
             // Track last progress update time to avoid excessive database writes
             var lastProgressUpdate = DateTime.MinValue;
@@ -602,10 +602,13 @@ public partial class JobProcessingService
 
                 job.PlanningOutput = planningOutput.Trim();
                 job.PlanningProviderId = planningProviderConfig.Id;
-                job.PlanningModelUsed = planningResult.ModelUsed ?? job.Project.PlanningModelId;
-                job.PlanningReasoningEffortUsed = job.Project.PlanningReasoningEffort;
-                job.PlanningGeneratedAt = DateTime.UtcNow;
-                job.PlanningCommandUsed = executionContext.CommandUsed ?? planningResult.CommandUsed;
+				job.PlanningModelUsed = planningResult.ModelUsed ?? job.Project.PlanningModelId;
+				job.PlanningReasoningEffortUsed = job.Project.PlanningReasoningEffort;
+				job.PlanningGeneratedAt = DateTime.UtcNow;
+				job.PlanningInputTokens = planningResult.InputTokens;
+				job.PlanningOutputTokens = planningResult.OutputTokens;
+				job.PlanningCostUsd = planningResult.CostUsd;
+				job.PlanningCommandUsed = executionContext.CommandUsed ?? planningResult.CommandUsed;
 
                 // Clear planning phase's command/process so execution phase starts clean
                 job.CommandUsed = null;
@@ -697,12 +700,12 @@ public partial class JobProcessingService
                 // Store last result and accumulate tokens/cost
                 lastResult = result;
                 sessionId = result.SessionId ?? sessionId;
-                if (result.InputTokens.HasValue)
-                    totalInputTokens = (totalInputTokens ?? 0) + result.InputTokens.Value;
-                if (result.OutputTokens.HasValue)
-                    totalOutputTokens = (totalOutputTokens ?? 0) + result.OutputTokens.Value;
-                if (result.CostUsd.HasValue)
-                    totalCostUsd = (totalCostUsd ?? 0) + result.CostUsd.Value;
+				if (result.InputTokens.HasValue)
+					executionInputTokens = (executionInputTokens ?? 0) + result.InputTokens.Value;
+				if (result.OutputTokens.HasValue)
+					executionOutputTokens = (executionOutputTokens ?? 0) + result.OutputTokens.Value;
+				if (result.CostUsd.HasValue)
+					executionCostUsd = (executionCostUsd ?? 0) + result.CostUsd.Value;
                 if (!string.IsNullOrWhiteSpace(result.CommandUsed))
                 {
                     job.ExecutionCommandUsed = result.CommandUsed;
@@ -758,11 +761,11 @@ public partial class JobProcessingService
                 }
             }
 
-            // Use accumulated results
-            var finalResult = lastResult ?? new ExecutionResult { Success = false, ErrorMessage = "No execution result" };
-            finalResult.InputTokens = totalInputTokens;
-            finalResult.OutputTokens = totalOutputTokens;
-            finalResult.CostUsd = totalCostUsd;
+			// Use accumulated results
+			var finalResult = lastResult ?? new ExecutionResult { Success = false, ErrorMessage = "No execution result" };
+			finalResult.InputTokens = executionInputTokens;
+			finalResult.OutputTokens = executionOutputTokens;
+			finalResult.CostUsd = executionCostUsd;
 
             // Stop monitoring cancellation
             executionContext.CancellationTokenSource?.Cancel();

@@ -132,8 +132,14 @@
     [Parameter]
     public bool ShowProjectName { get; set; } = true;
 
-    [Parameter]
-    public string? ModelUsed { get; set; }
+	[Parameter]
+	public string? ModelUsed { get; set; }
+
+	[Parameter]
+	public string? PlanningProviderName { get; set; }
+
+	[Parameter]
+	public string? PlanningModelUsed { get; set; }
 
     [Parameter]
     public string? ProviderName { get; set; }
@@ -173,7 +179,7 @@
 
     private bool _isSelected => IsSelected;
 
-    private string? ProviderModelDisplay => BuildProviderModelDisplay(ProviderName, ModelUsed);
+	private string? ProviderModelDisplay => BuildProviderModelDisplay(PlanningProviderName, PlanningModelUsed, ProviderName, ModelUsed);
 
     private bool IsActiveStatus()
     {
@@ -219,20 +225,35 @@
         return model.Length > 20 ? model[..20] + "..." : model;
     }
 
-    private static string? BuildProviderModelDisplay(string? providerName, string? modelName)
-    {
-        var parts = new List<string>();
+	private static string? BuildProviderModelDisplay(string? planningProviderName, string? planningModelName, string? providerName, string? modelName)
+	{
+		var planningDisplay = BuildStageDisplay(planningProviderName, planningModelName);
+		var executionDisplay = BuildStageDisplay(providerName, modelName);
 
-        if (!string.IsNullOrWhiteSpace(providerName))
-        {
-            parts.Add(providerName);
-        }
+		if (!string.IsNullOrWhiteSpace(planningDisplay) &&
+			!string.IsNullOrWhiteSpace(executionDisplay) &&
+			!string.Equals(planningDisplay, executionDisplay, StringComparison.Ordinal))
+		{
+			return $"{planningDisplay} -> {executionDisplay}";
+		}
 
-        if (!string.IsNullOrWhiteSpace(modelName))
-        {
-            parts.Add(FormatModelName(modelName));
-        }
+		return executionDisplay ?? planningDisplay;
+	}
 
-        return parts.Count == 0 ? null : string.Join(" / ", parts);
-    }
+	private static string? BuildStageDisplay(string? providerName, string? modelName)
+	{
+		var parts = new List<string>();
+
+		if (!string.IsNullOrWhiteSpace(providerName))
+		{
+			parts.Add(providerName);
+		}
+
+		if (!string.IsNullOrWhiteSpace(modelName))
+		{
+			parts.Add(FormatModelName(modelName));
+		}
+
+		return parts.Count == 0 ? null : string.Join(" / ", parts);
+	}
 }

@@ -33,6 +33,10 @@ public sealed class JobsPageTests
 					Title = "Refresh job",
 					GoalPrompt = "Refresh job",
 					Status = JobStatus.Started,
+					ProviderName = "Copilot",
+					ModelUsed = "gpt-5.4",
+					PlanningProviderName = "Claude",
+					PlanningModelUsed = "claude-sonnet-4",
 					CreatedAt = DateTime.UtcNow.AddMinutes(-5)
 				}
 			],
@@ -66,6 +70,10 @@ public sealed class JobsPageTests
 
 		Assert.DoesNotContain("Loading jobs...", cut.Markup);
 		Assert.Contains("Refresh job", cut.Markup);
+		Assert.Contains("Claude", cut.Markup);
+		Assert.Contains("Copilot", cut.Markup);
+		Assert.Contains("gpt-5.4", cut.Markup);
+		Assert.Contains("claude-sonnet-4", cut.Markup);
 	}
 
 	private static void SetPrivateField(object instance, string fieldName, object? value)

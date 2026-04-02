@@ -187,6 +187,9 @@ public partial class JobService
         job.PlanningModelUsed = null;
         job.PlanningReasoningEffortUsed = null;
         job.PlanningGeneratedAt = null;
+        job.PlanningInputTokens = null;
+        job.PlanningOutputTokens = null;
+        job.PlanningCostUsd = null;
         job.GitCheckpointStatus = GitCheckpointStatus.None;
         job.GitCheckpointBranch = null;
         job.GitCheckpointBaseBranch = null;
@@ -195,6 +198,7 @@ public partial class JobService
         job.GitCheckpointCapturedAt = null;
         // Keep SessionId for potential session continuation
         // Keep InputTokens, OutputTokens, TotalCostUsd for historical tracking
+        // Keep Planning/Execution stage stats for historical tracking
         // Keep Messages for audit trail and context
 
         await _dbContext.SaveChangesAsync(cancellationToken);
@@ -299,6 +303,12 @@ public partial class JobService
         job.PlanningModelUsed = null;
         job.PlanningReasoningEffortUsed = null;
         job.PlanningGeneratedAt = null;
+        job.PlanningInputTokens = null;
+        job.PlanningOutputTokens = null;
+        job.PlanningCostUsd = null;
+        job.ExecutionInputTokens = null;
+        job.ExecutionOutputTokens = null;
+        job.ExecutionCostUsd = null;
         job.CommandUsed = null;
         job.PlanningCommandUsed = null;
         job.ExecutionCommandUsed = null;

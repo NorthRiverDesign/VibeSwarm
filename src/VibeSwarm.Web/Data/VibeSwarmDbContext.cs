@@ -237,6 +237,10 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 			entity.Property(e => e.CommandUsed).HasMaxLength(4000);
 			entity.Property(e => e.PlanningCommandUsed).HasMaxLength(4000);
 			entity.Property(e => e.ExecutionCommandUsed).HasMaxLength(4000);
+			entity.HasOne(e => e.PlanningProvider)
+				.WithMany()
+				.HasForeignKey(e => e.PlanningProviderId)
+				.OnDelete(DeleteBehavior.SetNull);
 			entity.HasOne(e => e.JobSchedule)
 				.WithMany(schedule => schedule.Jobs)
 				.HasForeignKey(e => e.JobScheduleId)

@@ -253,6 +253,9 @@ public partial class JobService
         job.PlanningModelUsed = null;
         job.PlanningReasoningEffortUsed = null;
         job.PlanningGeneratedAt = null;
+        job.PlanningInputTokens = null;
+        job.PlanningOutputTokens = null;
+        job.PlanningCostUsd = null;
         job.SessionId = null; // Clear session for fresh start with potentially new provider
         job.ModelUsed = modelId; // Set the requested model (null means use provider default)
         job.ReasoningEffort = ProviderCapabilities.NormalizeReasoningEffort(reasoningEffort);
@@ -266,6 +269,9 @@ public partial class JobService
         job.InputTokens = null;
         job.OutputTokens = null;
         job.TotalCostUsd = null;
+        job.ExecutionInputTokens = null;
+        job.ExecutionOutputTokens = null;
+        job.ExecutionCostUsd = null;
 
         var attempts = await _dbContext.JobProviderAttempts
             .Where(a => a.JobId == job.Id)

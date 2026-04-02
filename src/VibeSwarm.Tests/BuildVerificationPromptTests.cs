@@ -100,6 +100,25 @@ public sealed class BuildVerificationPromptTests
 	}
 
 	[Fact]
+	public void BuildExecutionPrompt_AppendsApprovedImplementationPlan()
+	{
+		var prompt = PromptBuilder.BuildExecutionPrompt(new Job
+		{
+			GoalPrompt = "Implement the feature",
+			Project = new Project
+			{
+				Name = "Prompt Project",
+				WorkingPath = "/tmp/test",
+				Environments = []
+			}
+		}, "1. Inspect the codebase\n2. Implement the change");
+
+		Assert.Contains("<implementation_plan>", prompt);
+		Assert.Contains("Use the implementation plan above as the approved plan for this task.", prompt);
+		Assert.Contains("Execute the work now.", prompt);
+	}
+
+	[Fact]
 	public void BuildSystemPromptRules_IncludesDisableAttributionGuidance_WhenDisabled()
 	{
 		var rules = PromptBuilder.BuildSystemPromptRules(

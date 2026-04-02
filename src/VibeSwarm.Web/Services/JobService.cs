@@ -49,6 +49,9 @@ public partial class JobService : IJobService
             ProviderId = j.ProviderId,
             ProviderName = j.Provider != null ? j.Provider.Name : null,
             ModelUsed = j.ModelUsed,
+            PlanningProviderId = j.PlanningProviderId,
+            PlanningProviderName = j.PlanningProvider != null ? j.PlanningProvider.Name : null,
+            PlanningModelUsed = j.PlanningModelUsed,
             CurrentActivity = j.CurrentActivity,
             ErrorMessage = j.ErrorMessage,
             CreatedAt = j.CreatedAt,
@@ -58,6 +61,12 @@ public partial class JobService : IJobService
             TotalCostUsd = j.TotalCostUsd,
             InputTokens = j.InputTokens,
             OutputTokens = j.OutputTokens,
+            PlanningCostUsd = j.PlanningCostUsd,
+            PlanningInputTokens = j.PlanningInputTokens,
+            PlanningOutputTokens = j.PlanningOutputTokens,
+            ExecutionCostUsd = j.ExecutionCostUsd,
+            ExecutionInputTokens = j.ExecutionInputTokens,
+            ExecutionOutputTokens = j.ExecutionOutputTokens,
             CurrentCycle = j.CurrentCycle,
             MaxCycles = j.MaxCycles,
             CycleMode = j.CycleMode,
@@ -79,6 +88,7 @@ public partial class JobService : IJobService
             .Include(j => j.Project)
                 .ThenInclude(p => p!.Environments)
             .Include(j => j.Provider)
+            .Include(j => j.PlanningProvider)
             .OrderByDescending(j => j.CreatedAt)
             .ToListAsync(cancellationToken);
     }
@@ -277,6 +287,7 @@ public partial class JobService : IJobService
             .Include(j => j.Project)
                 .ThenInclude(p => p!.Environments)
             .Include(j => j.Provider)
+            .Include(j => j.PlanningProvider)
             .Include(j => j.ProviderAttempts.OrderBy(a => a.AttemptOrder))
             .FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
     }
@@ -287,6 +298,7 @@ public partial class JobService : IJobService
             .Include(j => j.Project)
                 .ThenInclude(p => p!.Environments)
             .Include(j => j.Provider)
+            .Include(j => j.PlanningProvider)
             .Include(j => j.ProviderAttempts.OrderBy(a => a.AttemptOrder))
             .Include(j => j.Messages.OrderBy(m => m.CreatedAt))
             .FirstOrDefaultAsync(j => j.Id == id, cancellationToken);

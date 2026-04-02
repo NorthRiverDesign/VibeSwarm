@@ -103,11 +103,15 @@ public partial class JobProcessingService
 
         // Accumulate partial token usage if any
         if (result.InputTokens.HasValue)
-            job.InputTokens = (job.InputTokens ?? 0) + result.InputTokens.Value;
+            job.ExecutionInputTokens = (job.ExecutionInputTokens ?? 0) + result.InputTokens.Value;
         if (result.OutputTokens.HasValue)
-            job.OutputTokens = (job.OutputTokens ?? 0) + result.OutputTokens.Value;
+            job.ExecutionOutputTokens = (job.ExecutionOutputTokens ?? 0) + result.OutputTokens.Value;
         if (result.CostUsd.HasValue)
-            job.TotalCostUsd = (job.TotalCostUsd ?? 0) + result.CostUsd.Value;
+            job.ExecutionCostUsd = (job.ExecutionCostUsd ?? 0) + result.CostUsd.Value;
+
+        job.InputTokens = SumUsage(job.PlanningInputTokens, job.ExecutionInputTokens);
+        job.OutputTokens = SumUsage(job.PlanningOutputTokens, job.ExecutionOutputTokens);
+        job.TotalCostUsd = SumCost(job.PlanningCostUsd, job.ExecutionCostUsd);
 
         await dbContext.SaveChangesAsync(cancellationToken);
 
@@ -140,9 +144,12 @@ public partial class JobProcessingService
             job.SessionId = sessionId ?? job.SessionId;
             job.Output = output ?? job.Output;
             job.ErrorMessage = errorMessage;
-            job.InputTokens = inputTokens ?? job.InputTokens;
-            job.OutputTokens = outputTokens ?? job.OutputTokens;
-            job.TotalCostUsd = costUsd ?? job.TotalCostUsd;
+            job.ExecutionInputTokens = inputTokens ?? job.ExecutionInputTokens;
+            job.ExecutionOutputTokens = outputTokens ?? job.ExecutionOutputTokens;
+            job.ExecutionCostUsd = costUsd ?? job.ExecutionCostUsd;
+            job.InputTokens = SumUsage(job.PlanningInputTokens, job.ExecutionInputTokens);
+            job.OutputTokens = SumUsage(job.PlanningOutputTokens, job.ExecutionOutputTokens);
+            job.TotalCostUsd = SumCost(job.PlanningCostUsd, job.ExecutionCostUsd);
             job.ModelUsed = modelUsed ?? job.ModelUsed;
             job.WorkerInstanceId = null;
             job.LastHeartbeatAt = null;
@@ -240,6 +247,26 @@ public partial class JobProcessingService
         }
 
         return hasGitChanges;
+    }
+
+    private static int? SumUsage(int? first, int? second)
+    {
+        if (!first.HasValue && !second.HasValue)
+        {
+            return null;
+        }
+
+        return (first ?? 0) + (second ?? 0);
+    }
+
+    private static decimal? SumCost(decimal? first, decimal? second)
+    {
+        if (!first.HasValue && !second.HasValue)
+        {
+            return null;
+        }
+
+        return (first ?? 0m) + (second ?? 0m);
     }
 
     /// <summary>

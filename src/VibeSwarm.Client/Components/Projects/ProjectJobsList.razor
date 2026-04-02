@@ -164,11 +164,11 @@
 											@GetJobDisplayTitle(job)
 										</a>
 										<div class="d-flex flex-wrap gap-2 mt-1 small text-body-secondary">
-											<span>@(job.ProviderName ?? "Unknown")</span>
-											@if (!string.IsNullOrEmpty(job.ModelUsed))
+											<span>@GetProviderChain(job)</span>
+											@if (!string.IsNullOrEmpty(GetExecutionModel(job)))
 											{
 												<span class="text-body-tertiary">•</span>
-												<span class="text-body-tertiary" title="Model">@FormatModelName(job.ModelUsed)</span>
+												<span class="text-body-tertiary" title="Model">@FormatModelName(GetExecutionModel(job)!)</span>
 											}
 											<span class="text-body-tertiary">•</span>
 											<span>@job.CreatedAt.FormatDateTimeShort()</span>
@@ -352,6 +352,25 @@
 		if (string.IsNullOrEmpty(text) || text.Length <= maxLength)
 			return text;
 		return text[..maxLength] + "...";
+	}
+
+	private static string GetProviderChain(JobSummary job)
+	{
+		var planning = job.PlanningProviderName;
+		var execution = job.ProviderName;
+		if (!string.IsNullOrWhiteSpace(planning) &&
+			!string.IsNullOrWhiteSpace(execution) &&
+			!string.Equals(planning, execution, StringComparison.Ordinal))
+		{
+			return $"{planning} -> {execution}";
+		}
+
+		return execution ?? planning ?? "Unknown";
+	}
+
+	private static string? GetExecutionModel(JobSummary job)
+	{
+		return string.IsNullOrWhiteSpace(job.ModelUsed) ? null : job.ModelUsed;
 	}
 
 	private static string FormatModelName(string modelName)

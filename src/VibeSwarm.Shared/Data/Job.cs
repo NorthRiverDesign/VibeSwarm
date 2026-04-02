@@ -108,10 +108,11 @@ public class Job
     /// </summary>
     public string? PlanningOutput { get; set; }
 
-    /// <summary>
-    /// Provider that generated the persisted planning output, if any.
-    /// </summary>
-    public Guid? PlanningProviderId { get; set; }
+	/// <summary>
+	/// Provider that generated the persisted planning output, if any.
+	/// </summary>
+	public Guid? PlanningProviderId { get; set; }
+	public Provider? PlanningProvider { get; set; }
 
     /// <summary>
     /// Model that generated the persisted planning output, if any.
@@ -125,10 +126,25 @@ public class Job
     [StringLength(VibeSwarm.Shared.Validation.ValidationLimits.ReasoningEffortMaxLength)]
     public string? PlanningReasoningEffortUsed { get; set; }
 
-    /// <summary>
-    /// When the persisted planning output was last generated.
-    /// </summary>
-    public DateTime? PlanningGeneratedAt { get; set; }
+	/// <summary>
+	/// When the persisted planning output was last generated.
+	/// </summary>
+	public DateTime? PlanningGeneratedAt { get; set; }
+
+	/// <summary>
+	/// Input tokens consumed while generating the persisted planning output.
+	/// </summary>
+	public int? PlanningInputTokens { get; set; }
+
+	/// <summary>
+	/// Output tokens consumed while generating the persisted planning output.
+	/// </summary>
+	public int? PlanningOutputTokens { get; set; }
+
+	/// <summary>
+	/// Cost in USD for generating the persisted planning output.
+	/// </summary>
+	public decimal? PlanningCostUsd { get; set; }
 
     /// <summary>
     /// Ordered provider-model execution plan captured when the job is scheduled or reset.
@@ -224,10 +240,25 @@ public class Job
     /// </summary>
     public int? InputTokens { get; set; }
 
-    /// <summary>
-    /// Total output tokens used
-    /// </summary>
-    public int? OutputTokens { get; set; }
+	/// <summary>
+	/// Total output tokens used
+	/// </summary>
+	public int? OutputTokens { get; set; }
+
+	/// <summary>
+	/// Input tokens consumed by the execution stage.
+	/// </summary>
+	public int? ExecutionInputTokens { get; set; }
+
+	/// <summary>
+	/// Output tokens consumed by the execution stage.
+	/// </summary>
+	public int? ExecutionOutputTokens { get; set; }
+
+	/// <summary>
+	/// Cost in USD for the execution stage.
+	/// </summary>
+	public decimal? ExecutionCostUsd { get; set; }
 
     /// <summary>
     /// Current activity description (e.g., "Running tool: Read", "Thinking...")

@@ -141,7 +141,7 @@
 			@if (!string.IsNullOrEmpty(ProviderModelDisplay))
 			{
 				<span class="d-inline-flex align-items-center gap-2 px-2 py-1 bg-body-tertiary rounded-pill small text-body-secondary"
-					  title="Provider and model">
+					  title="Provider chain and model">
 					<i class="bi bi-cpu opacity-75"></i>
 					<span>@ProviderModelDisplay</span>
 				</span>
@@ -249,6 +249,20 @@
 											<i class="bi bi-currency-dollar me-1 opacity-75"></i>@TokenHelper.FormatCost(TotalCostUsd.Value)
 										</span>
 									}
+									@if (ShowPlanningBreakdown)
+									{
+										<span class="d-inline-flex align-items-center px-2 py-1 bg-body-tertiary rounded-pill text-nowrap"
+											  title="Planning stage totals">
+											<i class="bi bi-diagram-3 me-1 opacity-75"></i>P @StageUsageSummary(PlanningInputTokens, PlanningOutputTokens, PlanningCostUsd)
+										</span>
+									}
+									@if (ShowExecutionBreakdown)
+									{
+										<span class="d-inline-flex align-items-center px-2 py-1 bg-body-tertiary rounded-pill text-nowrap"
+											  title="Execution stage totals">
+											<i class="bi bi-terminal me-1 opacity-75"></i>E @StageUsageSummary(ExecutionInputTokens, ExecutionOutputTokens, ExecutionCostUsd)
+										</span>
+									}
 								</div>
 							}
 						</div>
@@ -301,6 +315,12 @@
 	public string? ModelUsed { get; set; }
 
 	[Parameter]
+	public string? PlanningProviderName { get; set; }
+
+	[Parameter]
+	public string? PlanningModelUsed { get; set; }
+
+	[Parameter]
 	public int RetryCount { get; set; }
 
 	[Parameter]
@@ -311,6 +331,24 @@
 
 	[Parameter]
 	public decimal? TotalCostUsd { get; set; }
+
+	[Parameter]
+	public int? PlanningInputTokens { get; set; }
+
+	[Parameter]
+	public int? PlanningOutputTokens { get; set; }
+
+	[Parameter]
+	public decimal? PlanningCostUsd { get; set; }
+
+	[Parameter]
+	public int? ExecutionInputTokens { get; set; }
+
+	[Parameter]
+	public int? ExecutionOutputTokens { get; set; }
+
+	[Parameter]
+	public decimal? ExecutionCostUsd { get; set; }
 
 	[Parameter]
 	public bool CanRetry { get; set; }
@@ -408,7 +446,13 @@
 	(InputTokens.HasValue && InputTokens.Value > 0) ||
 	(OutputTokens.HasValue && OutputTokens.Value > 0) ||
 	(TotalCostUsd.HasValue && TotalCostUsd.Value > 0) ||
+	ShowPlanningBreakdown ||
+	ShowExecutionBreakdown ||
 	RetryCount > 0;
+
+	private bool ShowPlanningBreakdown => HasStageUsage(PlanningInputTokens, PlanningOutputTokens, PlanningCostUsd);
+
+	private bool ShowExecutionBreakdown => HasStageUsage(ExecutionInputTokens, ExecutionOutputTokens, ExecutionCostUsd);
 
 	private string GetCycleModeTitle()
 	{
@@ -422,16 +466,49 @@
 
 	private string? BuildProviderModelDisplay()
 	{
-		var parts = new List<string>();
+		var planningDisplay = BuildStageProviderDisplay(PlanningProviderName, PlanningModelUsed);
+		var executionDisplay = BuildStageProviderDisplay(ProviderName, ModelUsed);
 
-		if (!string.IsNullOrWhiteSpace(ProviderName))
+		if (!string.IsNullOrWhiteSpace(planningDisplay) &&
+			!string.IsNullOrWhiteSpace(executionDisplay) &&
+			!string.Equals(planningDisplay, executionDisplay, StringComparison.Ordinal))
 		{
-			parts.Add(ProviderName);
+			return $"{planningDisplay} -> {executionDisplay}";
 		}
 
-		if (!string.IsNullOrWhiteSpace(ModelUsed))
+		return executionDisplay ?? planningDisplay;
+	}
+
+	private static bool HasStageUsage(int? inputTokens, int? outputTokens, decimal? costUsd)
+	{
+		return (inputTokens.HasValue && inputTokens.Value > 0) ||
+			(outputTokens.HasValue && outputTokens.Value > 0) ||
+			(costUsd.HasValue && costUsd.Value > 0);
+	}
+
+	private static string StageUsageSummary(int? inputTokens, int? outputTokens, decimal? costUsd)
+	{
+		var totalTokens = (inputTokens ?? 0) + (outputTokens ?? 0);
+		if (costUsd.HasValue && costUsd.Value > 0)
 		{
-			parts.Add(ModelUsed);
+			return $"{TokenHelper.FormatTokenCount(totalTokens)} / {TokenHelper.FormatCost(costUsd.Value)}";
+		}
+
+		return TokenHelper.FormatTokenCount(totalTokens);
+	}
+
+	private static string? BuildStageProviderDisplay(string? providerName, string? modelName)
+	{
+		var parts = new List<string>();
+
+		if (!string.IsNullOrWhiteSpace(providerName))
+		{
+			parts.Add(providerName);
+		}
+
+		if (!string.IsNullOrWhiteSpace(modelName))
+		{
+			parts.Add(modelName);
 		}
 
 		return parts.Count == 0 ? null : string.Join(" / ", parts);

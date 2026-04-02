@@ -51,6 +51,44 @@ public sealed class ProjectJobsListTests
 		Assert.DoesNotContain("border rounded-3 overflow-hidden", html);
 	}
 
+	[Fact]
+	public async Task RenderedJobsList_ShowsPlanningProviderChain()
+	{
+		var services = new ServiceCollection();
+		services.AddLogging();
+		services.AddSingleton<IErrorBoundaryLogger, NoOpErrorBoundaryLogger>();
+
+		await using var renderer = new HtmlRenderer(services.BuildServiceProvider(), NullLoggerFactory.Instance);
+
+		var html = await renderer.Dispatcher.InvokeAsync(async () =>
+		{
+			var parameters = ParameterView.FromDictionary(new Dictionary<string, object?>
+			{
+				[nameof(ProjectJobsList.Jobs)] = new List<JobSummary>
+				{
+					new()
+					{
+						Id = Guid.NewGuid(),
+						GoalPrompt = "Mixed provider job",
+						Title = "Mixed provider job",
+						Status = JobStatus.Completed,
+						ProviderName = "Copilot",
+						ModelUsed = "gpt-5.4",
+						PlanningProviderName = "Claude",
+						PlanningModelUsed = "claude-sonnet-4",
+						CreatedAt = DateTime.UtcNow
+					}
+				},
+				[nameof(ProjectJobsList.TotalJobsCount)] = 1
+			});
+			var output = await renderer.RenderComponentAsync<ProjectJobsList>(parameters);
+			return output.ToHtmlString();
+		});
+
+		Assert.Contains("Claude -&gt; Copilot", html);
+		Assert.Contains("gpt-5.4", html);
+	}
+
 	private sealed class NoOpErrorBoundaryLogger : IErrorBoundaryLogger
 	{
 		public ValueTask LogErrorAsync(Exception exception)

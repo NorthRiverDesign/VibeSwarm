@@ -125,6 +125,9 @@ public partial class JobService
         job.PlanningModelUsed = null;
         job.PlanningReasoningEffortUsed = null;
         job.PlanningGeneratedAt = null;
+        job.PlanningInputTokens = null;
+        job.PlanningOutputTokens = null;
+        job.PlanningCostUsd = null;
         job.CurrentCycle = 1;
         job.ActiveExecutionIndex = 0;
         job.LastSwitchAt = null;
@@ -132,6 +135,9 @@ public partial class JobService
         job.InputTokens = null;
         job.OutputTokens = null;
         job.TotalCostUsd = null;
+        job.ExecutionInputTokens = null;
+        job.ExecutionOutputTokens = null;
+        job.ExecutionCostUsd = null;
 
         var attempts = await _dbContext.JobProviderAttempts
             .Where(a => a.JobId == job.Id)

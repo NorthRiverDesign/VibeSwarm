@@ -184,6 +184,9 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 			PlanningOutput = "Existing saved plan",
 			PlanningProviderId = provider.Id,
 			PlanningModelUsed = "claude-sonnet-4",
+			PlanningInputTokens = 123,
+			PlanningOutputTokens = 456,
+			PlanningCostUsd = 1.23m,
 			PlanningGeneratedAt = DateTime.UtcNow.AddMinutes(-5)
 		};
 
@@ -205,6 +208,9 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		Assert.Null(savedJob.PlanningModelUsed);
 		Assert.Null(savedJob.PlanningReasoningEffortUsed);
 		Assert.Null(savedJob.PlanningGeneratedAt);
+		Assert.Null(savedJob.PlanningInputTokens);
+		Assert.Null(savedJob.PlanningOutputTokens);
+		Assert.Null(savedJob.PlanningCostUsd);
 	}
 
 	[Fact]
@@ -237,6 +243,9 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 			PlanningProviderId = provider.Id,
 			PlanningModelUsed = "gpt-5.4",
 			PlanningReasoningEffortUsed = "medium",
+			PlanningInputTokens = 100,
+			PlanningOutputTokens = 50,
+			PlanningCostUsd = 0.75m,
 			PlanningGeneratedAt = DateTime.UtcNow.AddMinutes(-3)
 		};
 
@@ -259,6 +268,9 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		Assert.Null(savedJob.PlanningModelUsed);
 		Assert.Null(savedJob.PlanningReasoningEffortUsed);
 		Assert.Null(savedJob.PlanningGeneratedAt);
+		Assert.Null(savedJob.PlanningInputTokens);
+		Assert.Null(savedJob.PlanningOutputTokens);
+		Assert.Null(savedJob.PlanningCostUsd);
 	}
 
 	[Fact]
