@@ -201,13 +201,93 @@ public partial class JobService
             return false;
         }
 
-        // Do not allow resetting completed jobs
+        var success = await ResetJobWithOptionsInternalAsync(job, providerId, modelId, reasoningEffort, cancellationToken);
+        if (!success)
+        {
+            return false;
+        }
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        // Notify about status change
+        if (_jobUpdateService != null)
+        {
+            try
+            {
+                await _jobUpdateService.NotifyJobStatusChanged(job.Id, job.Status.ToString());
+                await _jobUpdateService.NotifyJobListChanged();
+            }
+            catch { }
+        }
+
+        _jobProcessingService?.TriggerProcessing();
+
+        return true;
+    }
+
+    public async Task<int> RetrySelectedByProjectIdAsync(Guid projectId, IReadOnlyCollection<Guid> jobIds, CancellationToken cancellationToken = default)
+    {
+        if (jobIds.Count == 0)
+        {
+            return 0;
+        }
+
+        var jobs = await _dbContext.Jobs
+            .Where(j => j.ProjectId == projectId && jobIds.Contains(j.Id) && (j.Status == JobStatus.Failed || j.Status == JobStatus.Cancelled))
+            .ToListAsync(cancellationToken);
+
+        if (jobs.Count == 0)
+        {
+            return 0;
+        }
+
+        var retriedJobs = new List<Job>();
+        foreach (var job in jobs)
+        {
+            var success = await ResetJobWithOptionsInternalAsync(job, null, null, null, cancellationToken);
+            if (success)
+            {
+                retriedJobs.Add(job);
+            }
+        }
+
+        if (retriedJobs.Count == 0)
+        {
+            return 0;
+        }
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        if (_jobUpdateService != null)
+        {
+            foreach (var job in retriedJobs)
+            {
+                try
+                {
+                    await _jobUpdateService.NotifyJobStatusChanged(job.Id, job.Status.ToString());
+                }
+                catch { }
+            }
+
+            try
+            {
+                await _jobUpdateService.NotifyJobListChanged();
+            }
+            catch { }
+        }
+
+        _jobProcessingService?.TriggerProcessing();
+
+        return retriedJobs.Count;
+    }
+
+    private async Task<bool> ResetJobWithOptionsInternalAsync(Job job, Guid? providerId, string? modelId, string? reasoningEffort, CancellationToken cancellationToken)
+    {
         if (job.Status == JobStatus.Completed)
         {
             return false;
         }
 
-        // If provider is being changed, verify it exists and is enabled
         if (providerId.HasValue && providerId.Value != job.ProviderId)
         {
             var provider = await _dbContext.Providers
@@ -219,7 +299,6 @@ public partial class JobService
             job.ProviderId = providerId.Value;
         }
 
-        // Reset job to initial state while preserving the original configuration
         job.Status = JobStatus.New;
         job.CancellationRequested = false;
         job.StartedAt = null;
@@ -256,16 +335,14 @@ public partial class JobService
         job.PlanningInputTokens = null;
         job.PlanningOutputTokens = null;
         job.PlanningCostUsd = null;
-        job.SessionId = null; // Clear session for fresh start with potentially new provider
-        job.ModelUsed = modelId; // Set the requested model (null means use provider default)
+        job.SessionId = null;
+        job.ModelUsed = modelId;
         job.ReasoningEffort = ProviderCapabilities.NormalizeReasoningEffort(reasoningEffort);
-        job.RetryCount++; // Increment retry count to track attempts
+        job.RetryCount++;
         job.ActiveExecutionIndex = 0;
         job.ExecutionPlan = null;
         job.LastSwitchAt = null;
         job.LastSwitchReason = null;
-
-        // Clear token/cost tracking for fresh run
         job.InputTokens = null;
         job.OutputTokens = null;
         job.TotalCostUsd = null;
@@ -282,22 +359,6 @@ public partial class JobService
         }
 
         await InitializeExecutionPlanAsync(job, cancellationToken);
-
-        await _dbContext.SaveChangesAsync(cancellationToken);
-
-        // Notify about status change
-        if (_jobUpdateService != null)
-        {
-            try
-            {
-                await _jobUpdateService.NotifyJobStatusChanged(job.Id, job.Status.ToString());
-                await _jobUpdateService.NotifyJobListChanged();
-            }
-            catch { }
-        }
-
-        _jobProcessingService?.TriggerProcessing();
-
         return true;
     }
 }

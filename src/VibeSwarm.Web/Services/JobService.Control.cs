@@ -410,4 +410,116 @@ public partial class JobService
 
         return deletedJobs.Count;
     }
+
+    public async Task<int> CancelSelectedByProjectIdAsync(Guid projectId, IReadOnlyCollection<Guid> jobIds, CancellationToken cancellationToken = default)
+    {
+        if (jobIds.Count == 0)
+        {
+            return 0;
+        }
+
+        var activeStatuses = new[]
+        {
+            JobStatus.New, JobStatus.Pending, JobStatus.Started, JobStatus.Planning,
+            JobStatus.Processing, JobStatus.Paused, JobStatus.Stalled
+        };
+
+        var jobs = await _dbContext.Jobs
+            .Where(j => j.ProjectId == projectId && jobIds.Contains(j.Id) && activeStatuses.Contains(j.Status))
+            .ToListAsync(cancellationToken);
+
+        if (jobs.Count == 0)
+        {
+            return 0;
+        }
+
+        var now = DateTime.UtcNow;
+        foreach (var job in jobs)
+        {
+            if (job.ProcessId.HasValue && (job.Status == JobStatus.Started || job.Status == JobStatus.Planning || job.Status == JobStatus.Processing))
+            {
+                try
+                {
+                    var process = System.Diagnostics.Process.GetProcessById(job.ProcessId.Value);
+                    process.Kill(entireProcessTree: true);
+                }
+                catch { }
+            }
+
+            job.Status = JobStatus.Cancelled;
+            job.CompletedAt = now;
+            job.CancellationRequested = true;
+            job.CurrentActivity = null;
+            job.WorkerInstanceId = null;
+            job.ProcessId = null;
+            job.ErrorMessage ??= "Cancelled in bulk by user.";
+        }
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        if (_jobUpdateService != null)
+        {
+            foreach (var job in jobs)
+            {
+                try
+                {
+                    await _jobUpdateService.NotifyJobStatusChanged(job.Id, job.Status.ToString());
+                }
+                catch { }
+            }
+
+            try
+            {
+                await _jobUpdateService.NotifyJobListChanged();
+            }
+            catch { }
+        }
+
+        _jobProcessingService?.TriggerProcessing();
+
+        return jobs.Count;
+    }
+
+    public async Task<int> PrioritizeSelectedByProjectIdAsync(Guid projectId, IReadOnlyCollection<Guid> jobIds, CancellationToken cancellationToken = default)
+    {
+        if (jobIds.Count == 0)
+        {
+            return 0;
+        }
+
+        var jobs = await _dbContext.Jobs
+            .Where(j => j.ProjectId == projectId && jobIds.Contains(j.Id) && j.Status == JobStatus.New && !j.CancellationRequested)
+            .ToListAsync(cancellationToken);
+
+        if (jobs.Count == 0)
+        {
+            return 0;
+        }
+
+        var maxPriority = await _dbContext.Jobs
+            .Where(j => j.ProjectId == projectId)
+            .Select(j => (int?)j.Priority)
+            .MaxAsync(cancellationToken) ?? 0;
+
+        foreach (var job in jobs)
+        {
+            maxPriority++;
+            job.Priority = maxPriority;
+        }
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        if (_jobUpdateService != null)
+        {
+            try
+            {
+                await _jobUpdateService.NotifyJobListChanged();
+            }
+            catch { }
+        }
+
+        _jobProcessingService?.TriggerProcessing();
+
+        return jobs.Count;
+    }
 }

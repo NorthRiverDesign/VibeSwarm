@@ -154,6 +154,71 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 	}
 
 	[Fact]
+	public async Task PrioritizeSelectedByProjectIdAsync_OnlyUpdatesQueuedSelectedJobs()
+	{
+		await using var dbContext = CreateDbContext();
+		var project = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Priority Project",
+			WorkingPath = "/tmp/priority-project"
+		};
+		var provider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Copilot",
+			Type = ProviderType.Copilot,
+			IsEnabled = true,
+			IsDefault = true
+		};
+		var selectedQueuedJobId = Guid.NewGuid();
+		var otherQueuedJobId = Guid.NewGuid();
+		var failedJobId = Guid.NewGuid();
+
+		dbContext.Projects.Add(project);
+		dbContext.Providers.Add(provider);
+		dbContext.Jobs.AddRange(
+			new Job
+			{
+				Id = selectedQueuedJobId,
+				ProjectId = project.Id,
+				ProviderId = provider.Id,
+				GoalPrompt = "Selected queued job",
+				Status = JobStatus.New,
+				Priority = 1
+			},
+			new Job
+			{
+				Id = otherQueuedJobId,
+				ProjectId = project.Id,
+				ProviderId = provider.Id,
+				GoalPrompt = "Other queued job",
+				Status = JobStatus.New,
+				Priority = 5
+			},
+			new Job
+			{
+				Id = failedJobId,
+				ProjectId = project.Id,
+				ProviderId = provider.Id,
+				GoalPrompt = "Failed job",
+				Status = JobStatus.Failed,
+				Priority = 3
+			});
+		await dbContext.SaveChangesAsync();
+
+		var serviceProvider = new ServiceCollection().BuildServiceProvider();
+		var jobService = new JobService(dbContext, serviceProvider);
+
+		var updatedCount = await jobService.PrioritizeSelectedByProjectIdAsync(project.Id, [selectedQueuedJobId, failedJobId]);
+
+		Assert.Equal(1, updatedCount);
+		Assert.Equal(6, await dbContext.Jobs.Where(j => j.Id == selectedQueuedJobId).Select(j => j.Priority).SingleAsync());
+		Assert.Equal(5, await dbContext.Jobs.Where(j => j.Id == otherQueuedJobId).Select(j => j.Priority).SingleAsync());
+		Assert.Equal(3, await dbContext.Jobs.Where(j => j.Id == failedJobId).Select(j => j.Priority).SingleAsync());
+	}
+
+	[Fact]
 	public async Task UpdateJobPromptAsync_ClearsPersistedPlanningOutput()
 	{
 		await using var dbContext = CreateDbContext();

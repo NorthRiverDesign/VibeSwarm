@@ -284,6 +284,27 @@ public partial class ProjectDetail
         }
     }
 
+    private async Task RetrySelectedJobs(List<Guid> jobIds)
+    {
+        try
+        {
+            var count = await JobService.RetrySelectedByProjectIdAsync(ProjectId, jobIds);
+            if (count > 0)
+            {
+                await RefreshJobs();
+                NotificationService.ShowSuccess($"Queued {count} selected job(s) for retry.");
+            }
+            else
+            {
+                NotificationService.ShowInfo("No selected failed or cancelled jobs to retry.");
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.ShowError($"Error retrying selected jobs: {ex.Message}");
+        }
+    }
+
     private async Task DeleteCompletedJobs()
     {
         try
@@ -324,6 +345,48 @@ public partial class ProjectDetail
         catch (Exception ex)
         {
             NotificationService.ShowError($"Error cancelling jobs: {ex.Message}");
+        }
+    }
+
+    private async Task CancelSelectedJobs(List<Guid> jobIds)
+    {
+        try
+        {
+            var count = await JobService.CancelSelectedByProjectIdAsync(ProjectId, jobIds);
+            if (count > 0)
+            {
+                await RefreshJobs();
+                NotificationService.ShowSuccess($"Cancelled {count} selected job(s).");
+            }
+            else
+            {
+                NotificationService.ShowInfo("No selected active jobs to cancel.");
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.ShowError($"Error cancelling selected jobs: {ex.Message}");
+        }
+    }
+
+    private async Task PrioritizeSelectedJobs(List<Guid> jobIds)
+    {
+        try
+        {
+            var count = await JobService.PrioritizeSelectedByProjectIdAsync(ProjectId, jobIds);
+            if (count > 0)
+            {
+                await RefreshJobs();
+                NotificationService.ShowSuccess($"Prioritized {count} selected queued job(s).");
+            }
+            else
+            {
+                NotificationService.ShowInfo("No selected queued jobs to prioritize.");
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.ShowError($"Error prioritizing selected jobs: {ex.Message}");
         }
     }
 

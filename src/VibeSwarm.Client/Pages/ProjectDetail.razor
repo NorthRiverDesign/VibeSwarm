@@ -251,7 +251,9 @@ else
                                   HasCompletedJobs="@HasCompletedJobs" SearchQuery="@_jobSearchQuery" StatusFilter="@_jobStatusFilter"
                                   OnDeleteJob="DeleteJob" OnRetryJob="RetryJob" OnCreateJob="ShowCreateJobModal" OnPreviousPage="LoadPreviousJobsPage"
                                   OnNextPage="LoadNextJobsPage" OnCancelAll="CancelAllJobs"
-                                  OnDeleteCompleted="DeleteCompletedJobs" OnSearchChanged="HandleJobSearchChanged"
+                                  OnDeleteCompleted="DeleteCompletedJobs" OnRetrySelected="RetrySelectedJobs"
+                                  OnCancelSelected="CancelSelectedJobs" OnPrioritizeSelected="PrioritizeSelectedJobs"
+                                  OnSearchChanged="HandleJobSearchChanged"
                                   OnStatusFilterChanged="HandleJobStatusFilterChanged" />
                 }
             </div>

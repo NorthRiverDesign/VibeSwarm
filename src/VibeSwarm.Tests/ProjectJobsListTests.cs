@@ -1,3 +1,4 @@
+using Bunit;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.Extensions.DependencyInjection;
@@ -99,5 +100,73 @@ public sealed class ProjectJobsListTests
 	{
 		public ValueTask LogErrorAsync(Exception exception)
 			=> ValueTask.CompletedTask;
+	}
+
+	[Fact]
+	public void ProjectJobsList_BulkSelection_InvokesEligibleCallbacks()
+	{
+		using var context = new BunitContext();
+		List<Guid>? retriedIds = null;
+		List<Guid>? cancelledIds = null;
+		List<Guid>? prioritizedIds = null;
+
+		var failedJobId = Guid.NewGuid();
+		var queuedJobId = Guid.NewGuid();
+		var completedJobId = Guid.NewGuid();
+
+		var cut = context.Render<ProjectJobsList>(parameters => parameters
+			.Add(component => component.Jobs, new List<JobSummary>
+			{
+				new()
+				{
+					Id = failedJobId,
+					GoalPrompt = "Retry me",
+					Title = "Retry me",
+					Status = JobStatus.Failed,
+					CreatedAt = DateTime.UtcNow
+				},
+				new()
+				{
+					Id = queuedJobId,
+					GoalPrompt = "Queue me",
+					Title = "Queue me",
+					Status = JobStatus.New,
+					CreatedAt = DateTime.UtcNow
+				},
+				new()
+				{
+					Id = completedJobId,
+					GoalPrompt = "Done",
+					Title = "Done",
+					Status = JobStatus.Completed,
+					CreatedAt = DateTime.UtcNow
+				}
+			})
+			.Add(component => component.TotalJobsCount, 3)
+			.Add(component => component.OnRetrySelected, EventCallback.Factory.Create<List<Guid>>(this, ids => retriedIds = ids))
+			.Add(component => component.OnCancelSelected, EventCallback.Factory.Create<List<Guid>>(this, ids => cancelledIds = ids))
+			.Add(component => component.OnPrioritizeSelected, EventCallback.Factory.Create<List<Guid>>(this, ids => prioritizedIds = ids)));
+
+		cut.Find("input[aria-label='Select job Retry me']").Change(true);
+		cut.Find("input[aria-label='Select job Queue me']").Change(true);
+		cut.Find("input[aria-label='Select job Done']").Change(true);
+
+		Assert.Contains("3 selected", cut.Markup);
+		Assert.Contains("Retry Selected (1)", cut.Markup);
+		Assert.Contains("Cancel Selected (1)", cut.Markup);
+		Assert.Contains("Prioritize Selected (1)", cut.Markup);
+
+		cut.Find("button[title='Retry selected failed or cancelled jobs']").Click();
+		Assert.Equal([failedJobId], retriedIds);
+
+		cut.Find("input[aria-label='Select job Retry me']").Change(true);
+		cut.Find("input[aria-label='Select job Queue me']").Change(true);
+		cut.Find("button[title='Cancel selected queued or active jobs']").Click();
+		Assert.Equal([queuedJobId], cancelledIds);
+
+		cut.Find("input[aria-label='Select job Retry me']").Change(true);
+		cut.Find("input[aria-label='Select job Queue me']").Change(true);
+		cut.Find("button[title='Move selected queued jobs to the front']").Click();
+		Assert.Equal([queuedJobId], prioritizedIds);
 	}
 }

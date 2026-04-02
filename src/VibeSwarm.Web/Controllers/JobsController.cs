@@ -193,6 +193,27 @@ public class JobsController : ControllerBase
         return Ok(new { Deleted = count });
     }
 
+    [HttpPost("project/{projectId:guid}/retry-selected")]
+    public async Task<IActionResult> RetrySelectedByProject(Guid projectId, [FromBody] SelectedJobsRequest req, CancellationToken ct)
+    {
+        var count = await _jobService.RetrySelectedByProjectIdAsync(projectId, req.JobIds, ct);
+        return Ok(new { Retried = count });
+    }
+
+    [HttpPost("project/{projectId:guid}/cancel-selected")]
+    public async Task<IActionResult> CancelSelectedByProject(Guid projectId, [FromBody] SelectedJobsRequest req, CancellationToken ct)
+    {
+        var count = await _jobService.CancelSelectedByProjectIdAsync(projectId, req.JobIds, ct);
+        return Ok(new { Cancelled = count });
+    }
+
+    [HttpPost("project/{projectId:guid}/prioritize-selected")]
+    public async Task<IActionResult> PrioritizeSelectedByProject(Guid projectId, [FromBody] SelectedJobsRequest req, CancellationToken ct)
+    {
+        var count = await _jobService.PrioritizeSelectedByProjectIdAsync(projectId, req.JobIds, ct);
+        return Ok(new { Prioritized = count });
+    }
+
     // Request DTOs
     public record UpdateStatusRequest(string Status, string? Output, string? ErrorMessage);
     public record UpdateResultRequest(string Status, string? SessionId, string? Output, string? ErrorMessage, int? InputTokens, int? OutputTokens, decimal? CostUsd);
@@ -204,4 +225,5 @@ public class JobsController : ControllerBase
     public record ContinueJobRequest(string FollowUpPrompt);
     public record RetryRequest(Guid? ProviderId, string? ModelId, string? ReasoningEffort);
     public record UpdatePromptRequest(string Prompt);
+    public record SelectedJobsRequest(List<Guid> JobIds);
 }
