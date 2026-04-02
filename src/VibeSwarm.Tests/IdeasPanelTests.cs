@@ -56,9 +56,12 @@ public sealed class IdeasPanelTests
 
 		Assert.Contains("Refreshing ideas", html);
 		Assert.Contains("3 pending", html);
+		Assert.Contains(">Ideas</h3>", html);
+		Assert.Contains("Start All", html);
 		Assert.Contains("Set default provider", html);
 		Assert.Contains("Add idea", html);
 		Assert.Contains("Set a default provider to enable idea processing", html);
+		Assert.Contains("Paste images directly into the idea box to attach them.", html);
 		Assert.DoesNotContain("class=\"badge bg-secondary\">7</span>", html);
 		Assert.DoesNotContain("Short description of a feature or update.", html);
 		Assert.DoesNotContain("card-header", html);
@@ -94,7 +97,8 @@ public sealed class IdeasPanelTests
 			return output.ToHtmlString();
 		});
 
-		Assert.Contains("Suggest", html);
+		Assert.Contains("Suggest Ideas", html);
+		Assert.DoesNotContain("Paste Image", html);
 	}
 
 	[Fact]
@@ -255,7 +259,8 @@ public sealed class IdeasPanelTests
 		cut.WaitForAssertion(() =>
 		{
 			Assert.Contains("Attach Files", cut.Markup);
-			Assert.NotNull(cut.Find("button[title='Clipboard image paste is temporarily unavailable. Refresh the page to restore it.']"));
+			Assert.Contains("disabled opacity-50 pe-none", cut.Markup);
+			Assert.DoesNotContain("Paste images directly into the idea box to attach them.", cut.Markup);
 		});
 
 		var warning = Assert.Single(notificationService.Notifications);
@@ -265,34 +270,28 @@ public sealed class IdeasPanelTests
 	}
 
 	[Fact]
-	public void PasteImageButton_ShowsFallbackWarning_WhenClipboardReadIsUnsupported()
+	public void IdeasListHeader_ShowsPendingCountAndStartAllButton()
 	{
 		using var context = new BunitContext();
 		context.Services.AddLogging();
 		context.Services.AddSingleton<IProjectService>(new FakeProjectService());
 		context.Services.AddSingleton<IIdeaService>(new FakeIdeaService());
 		context.Services.AddSingleton<IJobService>(new FakeJobService());
-		var notificationService = new NotificationService();
-		context.Services.AddSingleton(notificationService);
-
-		context.JSInterop
-			.SetupVoid("vibeSwarmIdeas.registerPasteTarget", _ => true);
-		context.JSInterop
-			.Setup<IdeasPanel.ClipboardAttachmentDto?>("vibeSwarmIdeas.readImageFromClipboard", _ => true)
-			.SetException(new JSException("Clipboard image paste is not supported by this browser."));
+		context.Services.AddSingleton<NotificationService>();
+		context.JSInterop.SetupVoid("vibeSwarmIdeas.registerPasteTarget", _ => true);
 
 		var cut = context.Render<IdeasPanel>(parameters => parameters
-			.Add(component => component.CurrentProjectId, Guid.NewGuid())
+			.Add(component => component.Ideas, new List<Idea> { new() { Id = Guid.NewGuid(), ProjectId = Guid.NewGuid(), Description = "Queued idea" } })
+			.Add(component => component.TotalIdeasCount, 1)
+			.Add(component => component.UnprocessedIdeasCount, 1)
+			.Add(component => component.HasDefaultProvider, true)
 			.Add(component => component.HasInference, true)
 			.Add(component => component.AvailableInferenceProviders, new List<InferenceProvider>())
 			.Add(component => component.AvailableProviders, new List<Provider>()));
 
-		cut.Find("button[title='Paste an image from the clipboard']").Click();
-
-		var warning = notificationService.Notifications.Single();
-		Assert.Equal(NotificationType.Warning, warning.Type);
-		Assert.Equal("Paste Image", warning.Title);
-		Assert.Contains("Paste the image directly into the idea box instead.", warning.Message);
+		Assert.Contains("Ideas", cut.Markup);
+		Assert.Contains("1 pending", cut.Markup);
+		Assert.NotNull(cut.Find("button[title='Start processing all pending ideas']"));
 	}
 
 	private sealed class FakeProjectService : IProjectService

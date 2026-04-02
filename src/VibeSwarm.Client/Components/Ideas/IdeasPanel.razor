@@ -34,58 +34,6 @@
 				</span>
 			}
 		</div>
-		<div class="d-flex align-items-center gap-2">
-			@if (CanSuggestIdeas)
-			{
-				<button type="button" class="btn btn-sm btn-secondary" @onclick="OpenSuggestIdeasModal"
-						disabled="@(IsSuggestingIdeas || IsProcessingActive)"
-						title="@GetSuggestIdeasTooltip()">
-					@if (IsSuggestingIdeas)
-					{
-						<span class="spinner-border spinner-border-sm me-1" role="status"></span>
-					}
-					else
-					{
-						<i class="bi bi-stars me-1"></i>
-					}
-					<span class="d-none d-sm-inline">Suggest</span>
-				</button>
-			}
-			@if (TotalIdeasCount >= 1)
-			{
-				@if (IsProcessingActive)
-				{
-					<button type="button" class="btn btn-sm btn-danger" @onclick="OnStopProcessing"
-							disabled="@IsTogglingProcessing" title="Stop automatic idea processing">
-						@if (IsTogglingProcessing)
-						{
-							<span class="spinner-border spinner-border-sm me-1" role="status"></span>
-						}
-						else
-						{
-							<i class="bi bi-stop-fill"></i>
-						}
-						<span class="d-none d-sm-inline ms-1">Stop</span>
-					</button>
-				}
-				else
-				{
-					<button type="button" class="btn btn-sm btn-success" @onclick="OpenStartAllModal"
-							disabled="@(IsTogglingProcessing || !HasDefaultProvider || UnprocessedIdeasCount == 0)"
-							title="@GetStartAllTooltip()">
-						@if (IsTogglingProcessing)
-						{
-							<span class="spinner-border spinner-border-sm me-1" role="status"></span>
-						}
-						else
-						{
-							<i class="bi bi-play-fill"></i>
-						}
-						<span class="d-none d-sm-inline ms-1">Start All</span>
-					</button>
-				}
-			}
-		</div>
 	</div>
 
 	@if (_suggestResult != null)
@@ -137,23 +85,33 @@
 			</label>
 			<input id="@_fileInputId" class="d-none" type="file" multiple @onchange="HandleFileSelection"
 				   disabled="@(!_attachmentInteropAvailable)" />
-			<button type="button" class="btn btn-sm btn-secondary" @onclick="PasteImageFromClipboardAsync"
-					disabled="@(_isPastingAttachment || !_attachmentInteropAvailable)" title="@GetPasteImageTooltip()">
-				@if (_isPastingAttachment)
-				{
-					<span class="spinner-border spinner-border-sm me-1" role="status"></span>
-				}
-				else
-				{
-					<i class="bi bi-image me-1"></i>
-				}
-				<span>Paste Image</span>
-			</button>
+			@if (CanSuggestIdeas)
+			{
+				<button type="button" class="btn btn-sm btn-secondary" @onclick="OpenSuggestIdeasModal"
+						disabled="@(IsSuggestingIdeas || IsProcessingActive)"
+						title="@GetSuggestIdeasTooltip()">
+					@if (IsSuggestingIdeas)
+					{
+						<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+					}
+					else
+					{
+						<i class="bi bi-stars me-1"></i>
+					}
+					<span>Suggest Ideas</span>
+				</button>
+			}
 			@if (_pendingAttachments.Any())
 			{
 				<span class="small text-body-secondary">@GetAttachmentSummary()</span>
 			}
 		</div>
+		@if (_attachmentInteropAvailable)
+		{
+			<div class="small text-body-secondary mt-2">
+				Paste images directly into the idea box to attach them.
+			</div>
+		}
 		@if (_pendingAttachments.Any())
 		{
 			<div class="d-flex flex-column gap-2 mt-2">
@@ -209,6 +167,46 @@
 	}
 	else
 	{
+		<div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+			<div class="d-flex flex-wrap align-items-center gap-2">
+				<h3 class="mb-0 fs-5 fw-semibold">Ideas</h3>
+				@if (UnprocessedIdeasCount > 0)
+				{
+					<span class="badge bg-body-secondary text-body">@UnprocessedIdeasCount pending</span>
+				}
+			</div>
+			@if (IsProcessingActive)
+			{
+				<button type="button" class="btn btn-sm btn-danger" @onclick="OnStopProcessing"
+						disabled="@IsTogglingProcessing" title="Stop automatic idea processing">
+					@if (IsTogglingProcessing)
+					{
+						<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+					}
+					else
+					{
+						<i class="bi bi-stop-fill"></i>
+					}
+					<span class="d-none d-sm-inline ms-1">Stop</span>
+				</button>
+			}
+			else if (TotalIdeasCount >= 1)
+			{
+				<button type="button" class="btn btn-sm btn-success" @onclick="OpenStartAllModal"
+						disabled="@(IsTogglingProcessing || !HasDefaultProvider || UnprocessedIdeasCount == 0)"
+						title="@GetStartAllTooltip()">
+					@if (IsTogglingProcessing)
+					{
+						<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+					}
+					else
+					{
+						<i class="bi bi-play-fill"></i>
+					}
+					<span class="d-none d-sm-inline ms-1">Start All</span>
+				</button>
+			}
+		</div>
 		<div class="border rounded-3">
 			<ul class="list-group list-group-flush rounded-3">
 				@foreach (var idea in Ideas)
@@ -447,7 +445,6 @@
 	private readonly string _textareaId = $"idea-textarea-{Guid.NewGuid():N}";
 	private string NewIdeaDescription { get; set; } = string.Empty;
 	private List<IdeaAttachmentUpload> _pendingAttachments = [];
-	private bool _isPastingAttachment;
 	private bool _attachmentInteropAvailable = true;
 	private bool _pasteTargetRegistered;
 	private DotNetObjectReference<IdeasPanel>? _dotNetReference;
@@ -903,44 +900,6 @@
 		}
 	}
 
-	private async Task PasteImageFromClipboardAsync()
-	{
-		if (!_attachmentInteropAvailable)
-		{
-			ShowAttachmentInteropUnavailableWarning();
-			return;
-		}
-
-		_isPastingAttachment = true;
-		try
-		{
-			var upload = await JSRuntime.InvokeAsync<ClipboardAttachmentDto?>("vibeSwarmIdeas.readImageFromClipboard", _textareaId);
-			if (upload == null)
-			{
-				NotificationService.ShowWarning("Clipboard does not currently contain an image. You can also paste directly into the idea box.", "Paste Image");
-				return;
-			}
-
-			AddPendingAttachment(upload);
-		}
-		catch (JSException ex) when (ex.Message.Contains("not supported by this browser", StringComparison.OrdinalIgnoreCase))
-		{
-			NotificationService.ShowWarning("This browser blocks direct clipboard reads. Paste the image directly into the idea box instead.", "Paste Image");
-		}
-		catch (JSException ex) when (IsMissingIdeasInteropException(ex))
-		{
-			DisableAttachmentInterop();
-		}
-		catch (Exception ex)
-		{
-			NotificationService.ShowError($"Unable to read an image from the clipboard: {ex.Message}");
-		}
-		finally
-		{
-			_isPastingAttachment = false;
-		}
-	}
-
 	private void AddPendingAttachment(ClipboardAttachmentDto upload)
 	{
 		if (string.IsNullOrWhiteSpace(upload.FileName) || string.IsNullOrWhiteSpace(upload.Base64Content))
@@ -1045,13 +1004,6 @@
 		return _attachmentInteropAvailable
 			? "Attach files from the host filesystem"
 			: "Attachments are temporarily unavailable. Refresh the page to restore them.";
-	}
-
-	private string GetPasteImageTooltip()
-	{
-		return _attachmentInteropAvailable
-			? "Paste an image from the clipboard"
-			: "Clipboard image paste is temporarily unavailable. Refresh the page to restore it.";
 	}
 
 	private void DisableAttachmentInterop()
