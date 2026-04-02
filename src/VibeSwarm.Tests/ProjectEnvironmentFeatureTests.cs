@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using VibeSwarm.Shared.Data;
+using VibeSwarm.Shared.Models;
 using VibeSwarm.Shared.Providers;
 using VibeSwarm.Shared.Services;
 using VibeSwarm.Shared.VersionControl;
@@ -884,6 +885,8 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 		public Task DeleteAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<bool> NameExistsAsync(string name, Guid? excludeId = null, CancellationToken cancellationToken = default)
 			=> Task.FromResult(_skills.Any(skill => string.Equals(skill.Name, name, StringComparison.OrdinalIgnoreCase) && skill.Id != excludeId));
+		public Task<SkillImportPreview> PreviewImportAsync(SkillImportRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<SkillImportResult> ImportAsync(SkillImportRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<string?> ExpandSkillAsync(string description, Guid providerId, string? modelId = null, CancellationToken cancellationToken = default)
 			=> Task.FromResult<string?>(null);
 	}

@@ -2,13 +2,106 @@
 @attribute [Authorize]
 @inject ISkillService SkillService
 @inject NotificationService NotificationService
+@using Microsoft.AspNetCore.Components.Forms
+@using VibeSwarm.Shared.Models
 @using VibeSwarm.Shared.Utilities
 
 <PageHeader Title="Skills" Subtitle="Define agent skills that can be exposed via MCP to AI providers">
 	<Actions>
+		<label class="btn btn-secondary mb-0 cursor-pointer">
+			<i class="bi bi-box-arrow-in-down me-2"></i>Import
+			<InputFile OnChange="HandleImportFileSelected" accept=".skill" class="d-none" />
+		</label>
 		<ActionButton Icon="plus" Text="Add" Style="ActionButton.ButtonStyle.Primary" OnClick="ShowAddModal" />
 	</Actions>
 </PageHeader>
+
+@if (_importErrorMessage != null)
+{
+	<div class="alert alert-danger d-flex align-items-start gap-2 mb-3">
+		<i class="bi bi-exclamation-triangle-fill flex-shrink-0 mt-1"></i>
+		<div>@_importErrorMessage</div>
+	</div>
+}
+
+@if (_importPreview != null)
+{
+	<div class="card mb-3">
+		<div class="card-header bg-body-secondary d-flex flex-column flex-sm-row align-items-sm-center justify-content-between gap-2">
+			<div>
+				<h5 class="mb-1 fw-semibold">Import skill preview</h5>
+				<div class="small text-body-secondary">@_importFileName</div>
+			</div>
+			<div class="d-flex flex-wrap gap-2">
+				<button class="btn btn-secondary" @onclick="ResetImportPreview" disabled="@_isImportingSkill">
+					Cancel
+				</button>
+				<button class="btn btn-primary" @onclick="ConfirmImportAsync" disabled="@_isImportingSkill">
+					@if (_isImportingSkill)
+					{
+						<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+					}
+					<span>@(_isImportingSkill ? "Importing..." : "Import skill")</span>
+				</button>
+			</div>
+		</div>
+		<div class="card-body">
+			<div class="d-flex flex-column gap-3">
+				<div>
+					<div class="small text-body-secondary mb-1">Name</div>
+					<div class="fw-semibold font-monospace">@_importPreview.Name</div>
+				</div>
+				@if (!string.IsNullOrWhiteSpace(_importPreview.Description))
+				{
+					<div>
+						<div class="small text-body-secondary mb-1">Description</div>
+						<div>@_importPreview.Description</div>
+					</div>
+				}
+				<div class="d-flex flex-wrap gap-3 small text-body-secondary">
+					<span class="d-flex align-items-center gap-1">
+						<i class="bi bi-file-text opacity-75"></i>
+						@_importPreview.Content.Length chars
+					</span>
+					<span class="d-flex align-items-center gap-1">
+						<i class="bi bi-folder2-open opacity-75"></i>
+						@_importPreview.IncludedFiles.Count file(s)
+					</span>
+					@if (_importPreview.NameExists)
+					{
+						<span class="d-flex align-items-center gap-1 text-warning">
+							<i class="bi bi-exclamation-circle"></i>
+							This skill already exists and will be skipped.
+						</span>
+					}
+				</div>
+
+				@if (_importPreview.Warnings.Count > 0)
+				{
+					<div class="alert alert-warning mb-0">
+						<div class="fw-semibold mb-2">Warnings</div>
+						<ul class="mb-0 ps-3">
+							@foreach (var warning in _importPreview.Warnings)
+							{
+								<li>@warning</li>
+							}
+						</ul>
+					</div>
+				}
+
+				<div>
+					<div class="small text-body-secondary mb-1">Included files</div>
+					<div class="d-flex flex-column gap-1 small">
+						@foreach (var file in _importPreview.IncludedFiles)
+						{
+							<div class="font-monospace">@file</div>
+						}
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+}
 
 @if (_isLoading)
 {
@@ -89,6 +182,11 @@ else
 	private bool _showDeleteModal;
 	private Skill? _skillToDelete;
 	private bool _isDeleting;
+	private SkillImportRequest? _importRequest;
+	private SkillImportPreview? _importPreview;
+	private string? _importErrorMessage;
+	private bool _isImportingSkill;
+	private string? _importFileName;
 
 	protected override async Task OnInitializedAsync()
 	{
@@ -121,6 +219,8 @@ else
 
 	private void ShowAddModal()
 	{
+		ResetImportPreview();
+
 		// Close any other open modals first
 		_showDeleteModal = false;
 		_skillToDelete = null;
@@ -132,6 +232,8 @@ else
 
 	private void EditSkill(Skill skill)
 	{
+		ResetImportPreview();
+
 		// Close any other open modals first
 		_showDeleteModal = false;
 		_skillToDelete = null;
@@ -164,6 +266,8 @@ else
 
 	private void ShowDeleteConfirmation(Skill skill)
 	{
+		ResetImportPreview();
+
 		// Close any other open modals first
 		_showSkillModal = false;
 		_editingSkill = null;
@@ -208,5 +312,83 @@ else
 		catch (Exception)
 		{
 		}
+	}
+
+	private async Task HandleImportFileSelected(InputFileChangeEventArgs e)
+	{
+		ResetImportPreview();
+
+		var file = e.File;
+		if (file == null)
+		{
+			return;
+		}
+
+		try
+		{
+			await using var stream = file.OpenReadStream(maxAllowedSize: 5 * 1024 * 1024);
+			await using var memoryStream = new MemoryStream();
+			await stream.CopyToAsync(memoryStream);
+
+			_importFileName = file.Name;
+			_importRequest = new SkillImportRequest
+			{
+				FileName = file.Name,
+				Content = memoryStream.ToArray()
+			};
+			_importPreview = await SkillService.PreviewImportAsync(_importRequest);
+		}
+		catch (Exception ex)
+		{
+			_importErrorMessage = $"Failed to read skill import: {ex.Message}";
+		}
+	}
+
+	private async Task ConfirmImportAsync()
+	{
+		if (_importRequest == null)
+		{
+			return;
+		}
+
+		_isImportingSkill = true;
+		_importErrorMessage = null;
+
+		try
+		{
+			var result = await SkillService.ImportAsync(_importRequest);
+			if (result.Imported)
+			{
+				NotificationService.ShowSuccess(result.Message);
+				foreach (var warning in result.Warnings)
+				{
+					NotificationService.ShowWarning(warning);
+				}
+			}
+			else if (result.Skipped)
+			{
+				NotificationService.ShowInfo(result.Message);
+			}
+
+			await LoadSkills();
+			ResetImportPreview();
+		}
+		catch (Exception ex)
+		{
+			_importErrorMessage = $"Failed to import skill: {ex.Message}";
+		}
+		finally
+		{
+			_isImportingSkill = false;
+		}
+	}
+
+	private void ResetImportPreview()
+	{
+		_importRequest = null;
+		_importPreview = null;
+		_importErrorMessage = null;
+		_importFileName = null;
+		_isImportingSkill = false;
 	}
 }

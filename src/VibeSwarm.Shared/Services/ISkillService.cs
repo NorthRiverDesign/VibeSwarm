@@ -1,4 +1,5 @@
 using VibeSwarm.Shared.Data;
+using VibeSwarm.Shared.Models;
 
 namespace VibeSwarm.Shared.Services;
 
@@ -12,6 +13,8 @@ public interface ISkillService
 	Task<Skill> UpdateAsync(Skill skill, CancellationToken cancellationToken = default);
 	Task DeleteAsync(Guid id, CancellationToken cancellationToken = default);
 	Task<bool> NameExistsAsync(string name, Guid? excludeId = null, CancellationToken cancellationToken = default);
+	Task<SkillImportPreview> PreviewImportAsync(SkillImportRequest request, CancellationToken cancellationToken = default);
+	Task<SkillImportResult> ImportAsync(SkillImportRequest request, CancellationToken cancellationToken = default);
 
 	/// <summary>
 	/// Expands a skill description using AI to generate detailed content

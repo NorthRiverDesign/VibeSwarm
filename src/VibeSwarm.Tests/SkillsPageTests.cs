@@ -11,91 +11,39 @@ using VibeSwarm.Shared.Services;
 
 namespace VibeSwarm.Tests;
 
-public sealed class TeamRolesPageTests
+public sealed class SkillsPageTests
 {
 	[Fact]
-	public async Task RenderedTeamsPage_ShowsPrimaryAddActionInHeader()
-	{
-		var html = await RenderTeamsPageAsync([]);
-
-		Assert.Contains("btn btn-primary", html);
-		Assert.Contains(">Add<", html);
-	}
-
-	[Fact]
-	public async Task RenderedTeamsPage_ShowsConfiguredRoleDetailsAndSkills()
-	{
-		var skill = new Skill
-		{
-			Id = Guid.NewGuid(),
-			Name = "secure-review",
-			Description = "Review auth and data exposure."
-		};
-		var teamRole = new TeamRole
-		{
-			Id = Guid.NewGuid(),
-			Name = "Security Reviewer",
-			Description = "Focuses on threats and auth flaws.",
-			Responsibilities = "Review auth, secrets, and permission boundaries.",
-			DefaultProvider = new Provider
-			{
-				Id = Guid.NewGuid(),
-				Name = "Claude Code"
-			},
-			DefaultModelId = "claude-sonnet-4.6",
-			IsEnabled = true,
-			SkillLinks =
-			[
-				new TeamRoleSkill
-				{
-					SkillId = skill.Id,
-					Skill = skill
-				}
-			]
-		};
-
-		var html = await RenderTeamsPageAsync([teamRole], [skill]);
-
-		Assert.Contains("Security Reviewer", html);
-		Assert.Contains("Focuses on threats and auth flaws.", html);
-		Assert.Contains("secure-review", html);
-		Assert.Contains("linked skill", html);
-		Assert.Contains("Default provider: Claude Code", html);
-		Assert.Contains("Default model: claude-sonnet-4.6", html);
-	}
-
-	private static async Task<string> RenderTeamsPageAsync(
-		IReadOnlyList<TeamRole> teamRoles,
-		IReadOnlyList<Skill>? skills = null)
+	public async Task RenderedSkillsPage_ShowsImportActionAndExistingSkill()
 	{
 		var services = new ServiceCollection();
 		services.AddLogging();
-		services.AddSingleton<ITeamRoleService>(new FakeTeamRoleService(teamRoles));
+		services.AddSingleton<ISkillService>(new FakeSkillService([
+			new Skill
+			{
+				Id = Guid.NewGuid(),
+				Name = "bootstrap-ui",
+				Description = "Polished Bootstrap design system.",
+				Content = "# Bootstrap UI",
+				IsEnabled = true,
+				CreatedAt = DateTime.UtcNow
+			}
+		]));
 		services.AddSingleton<IProviderService>(new FakeProviderService([]));
-		services.AddSingleton<ISkillService>(new FakeSkillService(skills ?? []));
 		services.AddSingleton<NotificationService>();
 		services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
 
 		await using var renderer = new HtmlRenderer(services.BuildServiceProvider(), NullLoggerFactory.Instance);
 
-		return await renderer.Dispatcher.InvokeAsync(async () =>
+		var html = await renderer.Dispatcher.InvokeAsync(async () =>
 		{
-			var output = await renderer.RenderComponentAsync<Teams>();
+			var output = await renderer.RenderComponentAsync<Skills>();
 			return output.ToHtmlString();
 		});
-	}
 
-	private sealed class FakeTeamRoleService(IReadOnlyList<TeamRole> teamRoles) : ITeamRoleService
-	{
-		private readonly IReadOnlyList<TeamRole> _teamRoles = teamRoles;
-
-		public Task<IEnumerable<TeamRole>> GetAllAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<TeamRole>>(_teamRoles);
-		public Task<IEnumerable<TeamRole>> GetEnabledAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<TeamRole>>(_teamRoles.Where(teamRole => teamRole.IsEnabled));
-		public Task<TeamRole?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult(_teamRoles.FirstOrDefault(teamRole => teamRole.Id == id));
-		public Task<TeamRole> CreateAsync(TeamRole teamRole, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-		public Task<TeamRole> UpdateAsync(TeamRole teamRole, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-		public Task DeleteAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-		public Task<bool> NameExistsAsync(string name, Guid? excludeId = null, CancellationToken cancellationToken = default) => Task.FromResult(false);
+		Assert.Contains("Import", html);
+		Assert.Contains("accept=\".skill\"", html);
+		Assert.Contains("bootstrap-ui", html);
 	}
 
 	private sealed class FakeSkillService(IReadOnlyList<Skill> skills) : ISkillService
