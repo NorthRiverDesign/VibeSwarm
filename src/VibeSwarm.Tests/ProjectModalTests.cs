@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.JSInterop;
 using VibeSwarm.Client.Components.Projects;
+using VibeSwarm.Client.Models;
 using VibeSwarm.Client.Services;
 using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Models;
@@ -33,7 +34,7 @@ services.AddSingleton<IProjectService>(new FakeProjectService());
 services.AddSingleton<IProviderService>(new FakeProviderService(provider));
 	services.AddSingleton<ITeamRoleService>(new FakeTeamRoleService([]));
 services.AddSingleton<ISettingsService>(new FakeSettingsService());
-services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService());
+services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService([]));
 services.AddSingleton<NotificationService>();
 services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
 
@@ -177,10 +178,54 @@ public void AddTeamRole_AssignmentSeedsDefaultProviderAndModel()
 	Assert.Equal("gpt-5.4", cut.Find($"#team-model-{teamRole.Id}").GetAttribute("value"));
 }
 
+[Fact]
+public void EditProject_LoadsCommitSummaryInferenceSettings()
+{
+	var inferenceProviderId = Guid.NewGuid();
+	var inferenceProvider = new InferenceProvider
+	{
+		Id = inferenceProviderId,
+		Name = "Local Ollama",
+		ProviderType = VibeSwarm.Shared.Inference.InferenceProviderType.Ollama,
+		Endpoint = "http://localhost:11434",
+		IsEnabled = true,
+		Models =
+		[
+			new InferenceModel
+			{
+				InferenceProviderId = inferenceProviderId,
+				ModelId = "qwen3",
+				DisplayName = "Qwen 3",
+				IsAvailable = true,
+				IsDefault = true
+			}
+		]
+	};
+
+	using var context = CreateBunitContext(
+		inferenceProviders: [inferenceProvider]);
+
+	var cut = context.Render<ProjectModal>(parameters => parameters
+		.Add(component => component.IsVisible, true)
+		.Add(component => component.EditProject, new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Sample Project",
+			WorkingPath = "/tmp/sample",
+			CommitSummaryInferenceProviderId = inferenceProviderId,
+			CommitSummaryInferenceModelId = "qwen3"
+		}));
+
+	Assert.Contains("Commit Summary Source", cut.Markup);
+	Assert.Equal(inferenceProviderId.ToString(), cut.Find("#modal-commitSummaryInferenceProvider").GetAttribute("value"));
+	Assert.Equal("qwen3", cut.Find("#modal-commitSummaryInferenceModel").GetAttribute("value"));
+}
+
 private static BunitContext CreateBunitContext(
 	FakeProjectService? projectService = null,
 	IReadOnlyList<TeamRole>? teamRoles = null,
-	Provider? provider = null)
+	Provider? provider = null,
+	IReadOnlyList<InferenceProvider>? inferenceProviders = null)
 {
 	var context = new BunitContext();
 	context.JSInterop.SetupVoid("eval", "document.body.classList.add('vs-modal-open')");
@@ -198,9 +243,9 @@ private static BunitContext CreateBunitContext(
 	context.Services.AddSingleton<IProviderService>(new FakeProviderService(resolvedProvider));
 	context.Services.AddSingleton<ITeamRoleService>(new FakeTeamRoleService(teamRoles ?? []));
 	context.Services.AddSingleton<ISettingsService>(new FakeSettingsService());
-context.Services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService());
-context.Services.AddSingleton<NotificationService>();
-return context;
+	context.Services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService(inferenceProviders ?? []));
+	context.Services.AddSingleton<NotificationService>();
+	return context;
 }
 
 private sealed class FakeProjectService : IProjectService
@@ -283,15 +328,16 @@ public ValueTask<TValue> InvokeAsync<TValue>(string identifier, CancellationToke
 => ValueTask.FromResult(default(TValue)!);
 }
 
-private sealed class FakeInferenceProviderService : IInferenceProviderService
+private sealed class FakeInferenceProviderService(IReadOnlyList<InferenceProvider> providers) : IInferenceProviderService
 {
-public Task<IEnumerable<InferenceProvider>> GetAllAsync(CancellationToken ct = default) => Task.FromResult<IEnumerable<InferenceProvider>>([]);
-public Task<InferenceProvider?> GetByIdAsync(Guid id, CancellationToken ct = default) => Task.FromResult<InferenceProvider?>(null);
-public Task<IEnumerable<InferenceProvider>> GetEnabledAsync(CancellationToken ct = default) => Task.FromResult<IEnumerable<InferenceProvider>>([]);
+private readonly IReadOnlyList<InferenceProvider> _providers = providers;
+public Task<IEnumerable<InferenceProvider>> GetAllAsync(CancellationToken ct = default) => Task.FromResult<IEnumerable<InferenceProvider>>(_providers);
+public Task<InferenceProvider?> GetByIdAsync(Guid id, CancellationToken ct = default) => Task.FromResult(_providers.FirstOrDefault(provider => provider.Id == id));
+public Task<IEnumerable<InferenceProvider>> GetEnabledAsync(CancellationToken ct = default) => Task.FromResult<IEnumerable<InferenceProvider>>(_providers.Where(provider => provider.IsEnabled));
 public Task<InferenceProvider> CreateAsync(InferenceProvider provider, CancellationToken ct = default) => throw new NotSupportedException();
 public Task<InferenceProvider> UpdateAsync(InferenceProvider provider, CancellationToken ct = default) => throw new NotSupportedException();
 public Task DeleteAsync(Guid id, CancellationToken ct = default) => throw new NotSupportedException();
-public Task<IEnumerable<InferenceModel>> GetModelsAsync(Guid providerId, CancellationToken ct = default) => Task.FromResult<IEnumerable<InferenceModel>>([]);
+public Task<IEnumerable<InferenceModel>> GetModelsAsync(Guid providerId, CancellationToken ct = default) => Task.FromResult<IEnumerable<InferenceModel>>(_providers.FirstOrDefault(provider => provider.Id == providerId)?.Models ?? []);
 public Task<IEnumerable<InferenceModel>> RefreshModelsAsync(Guid providerId, CancellationToken ct = default) => Task.FromResult<IEnumerable<InferenceModel>>([]);
 public Task SetModelForTaskAsync(Guid providerId, string modelId, string taskType, CancellationToken ct = default) => throw new NotSupportedException();
 public Task<InferenceModel?> GetModelForTaskAsync(string taskType, CancellationToken ct = default) => Task.FromResult<InferenceModel?>(null);

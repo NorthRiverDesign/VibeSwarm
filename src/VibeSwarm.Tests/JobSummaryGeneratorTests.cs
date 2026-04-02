@@ -158,6 +158,92 @@ public sealed class JobSummaryGeneratorTests
 		Assert.Contains("Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>", versionControl.LastCommitOptions!.MessageTrailers);
 	}
 
+	[Fact]
+	public async Task PerformAutoCommitAsync_UsesInferenceCommitSummaryWhenConfigured()
+	{
+		var inferenceProviderId = Guid.NewGuid();
+		var versionControl = new RecordingVersionControlService
+		{
+			HasUncommittedChangesResult = true,
+			CommitResult = GitOperationResult.Succeeded(commitHash: "def5678"),
+			ChangedFilesResult =
+			[
+				"src/VibeSwarm.Web/Services/JobProcessingService.Delivery.cs",
+				"src/VibeSwarm.Shared/Data/Project.cs"
+			]
+		};
+		var inferenceProvider = new InferenceProvider
+		{
+			Id = inferenceProviderId,
+			Name = "Local Grok",
+			ProviderType = VibeSwarm.Shared.Inference.InferenceProviderType.Grok,
+			Endpoint = "https://inference.example",
+			IsEnabled = true,
+			Models =
+			[
+				new InferenceModel
+				{
+					InferenceProviderId = inferenceProviderId,
+					ModelId = "grok-commit",
+					IsAvailable = true,
+					IsDefault = true,
+					TaskType = "default"
+				}
+			]
+		};
+		var inferenceService = new RecordingInferenceService
+		{
+			Response = new VibeSwarm.Shared.Inference.InferenceResponse
+			{
+				Success = true,
+				Response = "Use inference summaries for project auto-commit messages"
+			}
+		};
+
+		var services = new ServiceCollection();
+		services.AddSingleton<IInferenceProviderService>(new RecordingInferenceProviderService(inferenceProvider));
+		services.AddSingleton<IInferenceService>(inferenceService);
+		var scopeFactory = services.BuildServiceProvider().GetRequiredService<IServiceScopeFactory>();
+
+		var processor = new JobProcessingService(
+			scopeFactory,
+			NullLogger<JobProcessingService>.Instance,
+			versionControl,
+			projectEnvironmentCredentialService: new NoOpProjectEnvironmentCredentialService());
+
+		var job = new Job
+		{
+			Id = Guid.NewGuid(),
+			Title = "Fallback title",
+			GoalPrompt = "allow selecting an inference provider and model for commit summaries",
+			SessionSummary = "provider summary should be ignored when inference is configured",
+			Project = new Project
+			{
+				AutoCommitMode = AutoCommitMode.CommitOnly,
+				CommitSummaryInferenceProviderId = inferenceProviderId,
+				CommitSummaryInferenceModelId = "grok-commit"
+			},
+			Provider = new VibeSwarm.Shared.Providers.Provider
+			{
+				Name = "Copilot",
+				Type = VibeSwarm.Shared.Providers.ProviderType.Copilot
+			}
+		};
+
+		var method = typeof(JobProcessingService).GetMethod("PerformAutoCommitAsync", BindingFlags.Instance | BindingFlags.NonPublic);
+		Assert.NotNull(method);
+
+		var task = (Task)method.Invoke(processor, [job, Path.GetTempPath(), false, CancellationToken.None])!;
+		await task;
+
+		Assert.Equal("Use inference summaries for project auto-commit messages", versionControl.LastCommitMessage);
+		Assert.NotNull(inferenceService.LastRequest);
+		Assert.Equal("grok-commit", inferenceService.LastRequest!.Model);
+		Assert.Contains("allow selecting an inference provider and model for commit summaries", inferenceService.LastRequest.Prompt);
+		Assert.Contains("src/VibeSwarm.Web/Services/JobProcessingService.Delivery.cs", inferenceService.LastRequest.Prompt);
+		Assert.Contains("src/VibeSwarm.Shared/Data/Project.cs", inferenceService.LastRequest.Prompt);
+	}
+
 	private sealed class NoOpProjectEnvironmentCredentialService : IProjectEnvironmentCredentialService
 	{
 		public void PrepareForStorage(Project project, IReadOnlyCollection<ProjectEnvironment>? existingEnvironments = null) { }
@@ -170,6 +256,7 @@ public sealed class JobSummaryGeneratorTests
 	{
 		public bool HasUncommittedChangesResult { get; set; }
 		public GitOperationResult CommitResult { get; set; } = GitOperationResult.Succeeded();
+		public IReadOnlyList<string> ChangedFilesResult { get; set; } = [];
 		public string? LastCommitMessage { get; private set; }
 		public GitCommitOptions? LastCommitOptions { get; private set; }
 
@@ -180,7 +267,7 @@ public sealed class JobSummaryGeneratorTests
 		public Task<string?> GetRemoteUrlAsync(string workingDirectory, string remoteName = "origin", CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<bool> HasUncommittedChangesAsync(string workingDirectory, CancellationToken cancellationToken = default) => Task.FromResult(HasUncommittedChangesResult);
 		public Task<GitWorkingTreeStatus> GetWorkingTreeStatusAsync(string workingDirectory, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-		public Task<IReadOnlyList<string>> GetChangedFilesAsync(string workingDirectory, string? baseCommit = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<IReadOnlyList<string>> GetChangedFilesAsync(string workingDirectory, string? baseCommit = null, CancellationToken cancellationToken = default) => Task.FromResult(ChangedFilesResult);
 		public Task<string?> GetWorkingDirectoryDiffAsync(string workingDirectory, string? baseCommit = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<string?> GetCommitRangeDiffAsync(string workingDirectory, string fromCommit, string? toCommit = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<GitDiffSummary?> GetDiffSummaryAsync(string workingDirectory, string? baseCommit = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
@@ -218,5 +305,38 @@ public sealed class JobSummaryGeneratorTests
 		public Task<IReadOnlyDictionary<string, string>> GetRemotesAsync(string workingDirectory, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<GitOperationResult> CloneWithGitHubCliAsync(string ownerRepo, string targetDirectory, Action<string>? progressCallback = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<GitOperationResult> PruneRemoteBranchesAsync(string workingDirectory, string remoteName = "origin", CancellationToken cancellationToken = default) => throw new NotSupportedException();
+	}
+
+	private sealed class RecordingInferenceProviderService(InferenceProvider provider) : IInferenceProviderService
+	{
+		private readonly InferenceProvider _provider = provider;
+
+		public Task<IEnumerable<InferenceProvider>> GetAllAsync(CancellationToken ct = default) => Task.FromResult<IEnumerable<InferenceProvider>>([_provider]);
+		public Task<InferenceProvider?> GetByIdAsync(Guid id, CancellationToken ct = default) => Task.FromResult<InferenceProvider?>(id == _provider.Id ? _provider : null);
+		public Task<IEnumerable<InferenceProvider>> GetEnabledAsync(CancellationToken ct = default) => Task.FromResult<IEnumerable<InferenceProvider>>([_provider]);
+		public Task<InferenceProvider> CreateAsync(InferenceProvider provider, CancellationToken ct = default) => throw new NotSupportedException();
+		public Task<InferenceProvider> UpdateAsync(InferenceProvider provider, CancellationToken ct = default) => throw new NotSupportedException();
+		public Task DeleteAsync(Guid id, CancellationToken ct = default) => throw new NotSupportedException();
+		public Task<IEnumerable<InferenceModel>> GetModelsAsync(Guid providerId, CancellationToken ct = default) => Task.FromResult<IEnumerable<InferenceModel>>(_provider.Models);
+		public Task<IEnumerable<InferenceModel>> RefreshModelsAsync(Guid providerId, CancellationToken ct = default) => throw new NotSupportedException();
+		public Task SetModelForTaskAsync(Guid providerId, string modelId, string taskType, CancellationToken ct = default) => throw new NotSupportedException();
+		public Task<InferenceModel?> GetModelForTaskAsync(string taskType, CancellationToken ct = default) => throw new NotSupportedException();
+	}
+
+	private sealed class RecordingInferenceService : IInferenceService
+	{
+		public VibeSwarm.Shared.Inference.InferenceRequest? LastRequest { get; private set; }
+		public VibeSwarm.Shared.Inference.InferenceResponse Response { get; set; } = new();
+
+		public Task<VibeSwarm.Shared.Inference.InferenceHealthResult> CheckHealthAsync(string? endpoint = null, VibeSwarm.Shared.Inference.InferenceProviderType? providerType = null, CancellationToken ct = default) => throw new NotSupportedException();
+		public Task<List<VibeSwarm.Shared.Inference.DiscoveredModel>> GetAvailableModelsAsync(string? endpoint = null, VibeSwarm.Shared.Inference.InferenceProviderType? providerType = null, CancellationToken ct = default) => throw new NotSupportedException();
+
+		public Task<VibeSwarm.Shared.Inference.InferenceResponse> GenerateAsync(VibeSwarm.Shared.Inference.InferenceRequest request, CancellationToken ct = default)
+		{
+			LastRequest = request;
+			return Task.FromResult(Response);
+		}
+
+		public Task<VibeSwarm.Shared.Inference.InferenceResponse> GenerateForTaskAsync(string taskType, string prompt, string? systemPrompt = null, CancellationToken ct = default) => throw new NotSupportedException();
 	}
 }

@@ -83,6 +83,8 @@ public class ProjectService : IProjectService
 		project.DefaultTargetBranch = string.IsNullOrWhiteSpace(project.DefaultTargetBranch) ? null : project.DefaultTargetBranch.Trim();
 		project.BuildCommand = string.IsNullOrWhiteSpace(project.BuildCommand) ? null : project.BuildCommand.Trim();
 		project.TestCommand = string.IsNullOrWhiteSpace(project.TestCommand) ? null : project.TestCommand.Trim();
+		project.IdeaInferenceModelId = string.IsNullOrWhiteSpace(project.IdeaInferenceModelId) ? null : project.IdeaInferenceModelId.Trim();
+		project.CommitSummaryInferenceModelId = string.IsNullOrWhiteSpace(project.CommitSummaryInferenceModelId) ? null : project.CommitSummaryInferenceModelId.Trim();
 		project.Memory = NormalizeProjectMemory(project.Memory);
 		NormalizeProviderSelections(project);
 		NormalizeTeamAssignments(project);
@@ -154,6 +156,8 @@ public class ProjectService : IProjectService
 		existing.PlanningReasoningEffort = project.PlanningReasoningEffort;
 		existing.IdeaInferenceProviderId = project.IdeaInferenceProviderId;
 		existing.IdeaInferenceModelId = string.IsNullOrWhiteSpace(project.IdeaInferenceModelId) ? null : project.IdeaInferenceModelId.Trim();
+		existing.CommitSummaryInferenceProviderId = project.CommitSummaryInferenceProviderId;
+		existing.CommitSummaryInferenceModelId = string.IsNullOrWhiteSpace(project.CommitSummaryInferenceModelId) ? null : project.CommitSummaryInferenceModelId.Trim();
 		existing.PromptContext = project.PromptContext;
 		existing.Memory = NormalizeProjectMemory(project.Memory);
 		existing.BuildVerificationEnabled = project.BuildVerificationEnabled;

@@ -193,14 +193,17 @@ public partial class JobProcessingService
                             _logger.LogWarning(cfEx, "Failed to count changed files for job {JobId}", jobId);
                         }
 
-                        // Generate session summary from git diff for pre-populating commit messages
-                        // Pass the commit log so we can include agent commit messages as bullet points
-                        var sessionSummary = JobSummaryGenerator.GenerateSummary(job, commitLog);
-                        if (!string.IsNullOrWhiteSpace(sessionSummary))
+                        if (string.IsNullOrWhiteSpace(job.SessionSummary))
                         {
-                            job.SessionSummary = sessionSummary;
-                            _logger.LogInformation("Generated session summary for job {JobId}: {Summary}",
-                                jobId, sessionSummary.Length > 100 ? sessionSummary[..100] + "..." : sessionSummary);
+                            // Generate session summary from git diff for pre-populating commit messages.
+                            // Pass the commit log so we can include agent commit messages as bullet points.
+                            var sessionSummary = JobSummaryGenerator.GenerateSummary(job, commitLog);
+                            if (!string.IsNullOrWhiteSpace(sessionSummary))
+                            {
+                                job.SessionSummary = sessionSummary;
+                                _logger.LogInformation("Generated session summary for job {JobId}: {Summary}",
+                                    jobId, sessionSummary.Length > 100 ? sessionSummary[..100] + "..." : sessionSummary);
+                            }
                         }
                     }
                     else

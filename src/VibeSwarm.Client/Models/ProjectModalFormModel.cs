@@ -46,6 +46,11 @@ public sealed class ProjectModalFormModel : IValidatableObject
 	[StringLength(200)]
 	public string? IdeaInferenceModelId { get; set; }
 
+	public Guid? CommitSummaryInferenceProviderId { get; set; }
+
+	[StringLength(200)]
+	public string? CommitSummaryInferenceModelId { get; set; }
+
 	public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
 	public DateTime? UpdatedAt { get; set; }
@@ -108,6 +113,8 @@ public sealed class ProjectModalFormModel : IValidatableObject
 			PlanningReasoningEffort = source.PlanningReasoningEffort,
 			IdeaInferenceProviderId = source.IdeaInferenceProviderId,
 			IdeaInferenceModelId = source.IdeaInferenceModelId,
+			CommitSummaryInferenceProviderId = source.CommitSummaryInferenceProviderId,
+			CommitSummaryInferenceModelId = source.CommitSummaryInferenceModelId,
 			CreatedAt = source.CreatedAt,
 			UpdatedAt = source.UpdatedAt,
 			ProviderSelections = source.ProviderSelections.ToList(),
@@ -142,6 +149,8 @@ public sealed class ProjectModalFormModel : IValidatableObject
 			PlanningReasoningEffort = ProviderCapabilities.NormalizeReasoningEffort(PlanningReasoningEffort),
 			IdeaInferenceProviderId = IdeaInferenceProviderId,
 			IdeaInferenceModelId = string.IsNullOrWhiteSpace(IdeaInferenceModelId) ? null : IdeaInferenceModelId.Trim(),
+			CommitSummaryInferenceProviderId = CommitSummaryInferenceProviderId,
+			CommitSummaryInferenceModelId = string.IsNullOrWhiteSpace(CommitSummaryInferenceModelId) ? null : CommitSummaryInferenceModelId.Trim(),
 			CreatedAt = CreatedAt,
 			UpdatedAt = UpdatedAt,
 			ProviderSelections = ProviderSelections.ToList(),

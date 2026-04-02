@@ -305,6 +305,11 @@ public class JobCompletionMonitorService : BackgroundService
 	/// </summary>
 	private async Task TryFetchSessionSummaryAsync(Job job, VibeSwarmDbContext dbContext, CancellationToken cancellationToken)
 	{
+		if (!string.IsNullOrWhiteSpace(job.SessionSummary))
+		{
+			return;
+		}
+
 		// First, try to generate a summary from git diff (no AI call required)
 		var diffBasedSummary = JobSummaryGenerator.GenerateSummary(job);
 

@@ -101,6 +101,19 @@ public class Project
 	[StringLength(200)]
 	public string? IdeaInferenceModelId { get; set; }
 
+	/// <summary>
+	/// Optional inference provider used to generate auto-commit summaries.
+	/// When null, commit summaries continue to come from the coding provider output.
+	/// </summary>
+	public Guid? CommitSummaryInferenceProviderId { get; set; }
+
+	/// <summary>
+	/// Optional inference model used to generate auto-commit summaries.
+	/// When null, the selected inference provider's default commit-summary/default model is used.
+	/// </summary>
+	[StringLength(200)]
+	public string? CommitSummaryInferenceModelId { get; set; }
+
 	public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     public DateTime? UpdatedAt { get; set; }

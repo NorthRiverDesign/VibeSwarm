@@ -32,7 +32,10 @@ OnSourceModeSelected="SelectSourceMode"
 OnGitHubRepositoryChanged="OnGitHubRepositoryChanged"
 OnBrowseGitHubRepositories="OpenGitHubRepositoryBrowser" />
 
-<ProjectAutomationSection Project="@FormModel" IsEdit="@IsEdit" />
+<ProjectAutomationSection Project="@FormModel" IsEdit="@IsEdit"
+AvailableInferenceProviders="@_availableInferenceProviders"
+InferenceModels="@_commitSummaryInferenceModels"
+OnCommitSummaryProviderChanged="HandleCommitSummaryInferenceProviderChanged" />
 
 <ProjectIdeaGenerationSection Project="@FormModel"
 AvailableInferenceProviders="@_availableInferenceProviders"
@@ -142,6 +145,7 @@ private List<TeamRole> _availableTeamRoles = [];
 private List<ProviderModel> _planningModels = [];
 private List<InferenceProvider> _availableInferenceProviders = [];
 private List<InferenceModel> _ideaInferenceModels = [];
+private List<InferenceModel> _commitSummaryInferenceModels = [];
 private readonly Dictionary<Guid, List<ProviderModel>> _providerModelsByProviderId = [];
 private readonly ProjectModalState _formState = new();
 private ProjectModalFormModel FormModel { get; set; } = new();
@@ -171,6 +175,7 @@ EnsurePlanningProviderSelection();
 await LoadPlanningModelsAsync();
 await LoadProviderSelectionModelsAsync();
 await LoadIdeaInferenceModelsAsync();
+await LoadCommitSummaryInferenceModelsAsync();
 }
 else
 {
@@ -283,6 +288,8 @@ ResetState();
 		_cloneProgressMessage = null;
 		_showGitHubRepositoryBrowser = false;
 		_planningModels = [];
+		_ideaInferenceModels = [];
+		_commitSummaryInferenceModels = [];
 		_providerModelsByProviderId.Clear();
 	}
 
@@ -648,21 +655,30 @@ FormModel.PlanningModelId = null;
 
 private async Task LoadInferenceProvidersAsync()
 {
-try
-{
-_availableInferenceProviders = (await InferenceProviderService.GetEnabledAsync()).ToList();
-await LoadIdeaInferenceModelsAsync();
-}
-catch
-{
-_availableInferenceProviders = [];
-}
+	try
+	{
+		_availableInferenceProviders = (await InferenceProviderService.GetEnabledAsync()).ToList();
+		await LoadIdeaInferenceModelsAsync();
+		await LoadCommitSummaryInferenceModelsAsync();
+	}
+	catch
+	{
+		_availableInferenceProviders = [];
+		_ideaInferenceModels = [];
+		_commitSummaryInferenceModels = [];
+	}
 }
 
 private async Task HandleIdeaInferenceProviderChanged()
 {
 FormModel.IdeaInferenceModelId = null;
 await LoadIdeaInferenceModelsAsync();
+}
+
+private async Task HandleCommitSummaryInferenceProviderChanged()
+{
+FormModel.CommitSummaryInferenceModelId = null;
+await LoadCommitSummaryInferenceModelsAsync();
 }
 
 private async Task LoadIdeaInferenceModelsAsync()
@@ -690,6 +706,34 @@ if (!string.IsNullOrWhiteSpace(FormModel.IdeaInferenceModelId) &&
 !_ideaInferenceModels.Any(model => string.Equals(model.ModelId, FormModel.IdeaInferenceModelId, StringComparison.Ordinal)))
 {
 FormModel.IdeaInferenceModelId = null;
+}
+}
+
+private async Task LoadCommitSummaryInferenceModelsAsync()
+{
+_commitSummaryInferenceModels = [];
+if (!FormModel.CommitSummaryInferenceProviderId.HasValue)
+{
+return;
+}
+
+try
+{
+_commitSummaryInferenceModels = (await InferenceProviderService.GetModelsAsync(FormModel.CommitSummaryInferenceProviderId.Value))
+.Where(model => model.IsAvailable)
+.OrderByDescending(model => model.IsDefault)
+.ThenBy(model => model.DisplayName ?? model.ModelId)
+.ToList();
+}
+catch
+{
+_commitSummaryInferenceModels = [];
+}
+
+if (!string.IsNullOrWhiteSpace(FormModel.CommitSummaryInferenceModelId) &&
+!_commitSummaryInferenceModels.Any(model => string.Equals(model.ModelId, FormModel.CommitSummaryInferenceModelId, StringComparison.Ordinal)))
+{
+FormModel.CommitSummaryInferenceModelId = null;
 }
 }
 
@@ -777,11 +821,13 @@ PlanningReasoningEffort = source.PlanningReasoningEffort,
 PromptContext = source.PromptContext,
 Memory = source.Memory,
 BuildVerificationEnabled = source.BuildVerificationEnabled,
-BuildCommand = source.BuildCommand,
-TestCommand = source.TestCommand,
-IdeaInferenceProviderId = source.IdeaInferenceProviderId,
-IdeaInferenceModelId = source.IdeaInferenceModelId,
-IsActive = source.IsActive,
+	BuildCommand = source.BuildCommand,
+	TestCommand = source.TestCommand,
+	IdeaInferenceProviderId = source.IdeaInferenceProviderId,
+	IdeaInferenceModelId = source.IdeaInferenceModelId,
+	CommitSummaryInferenceProviderId = source.CommitSummaryInferenceProviderId,
+	CommitSummaryInferenceModelId = source.CommitSummaryInferenceModelId,
+	IsActive = source.IsActive,
 CreatedAt = source.CreatedAt,
 	UpdatedAt = source.UpdatedAt,
 	ProviderSelections = source.ProviderSelections
