@@ -30,6 +30,56 @@ public sealed class VersionControlServiceWorkingTreeTests
 	}
 
 	[Fact]
+	public async Task GetChangedFilesAsync_NormalizesGitOutputLineEndings()
+	{
+		var executor = new RecordingGitCommandExecutor();
+		executor.AddGitResult(
+			"diff HEAD --name-only",
+			new GitCommandResult
+			{
+				ExitCode = 0,
+				Output = "src/App.cs\r\nsrc/NewFile.cs\r\n"
+			});
+		executor.AddGitResult(
+			"ls-files --others --exclude-standard",
+			new GitCommandResult
+			{
+				ExitCode = 0,
+				Output = "src/NewFile.cs\r\nsrc/Extra.cs\r\n"
+			});
+
+		var service = new VersionControlService(executor, NullLogger<VersionControlService>.Instance);
+
+		var changedFiles = await service.GetChangedFilesAsync("/repo");
+
+		Assert.Equal(
+			new[] { "src/App.cs", "src/Extra.cs", "src/NewFile.cs" },
+			changedFiles.OrderBy(path => path).ToArray());
+	}
+
+	[Fact]
+	public async Task GetDiffSummaryAsync_NormalizesGitOutputLineEndings()
+	{
+		var executor = new RecordingGitCommandExecutor();
+		executor.AddGitResult(
+			"diff HEAD --stat --shortstat",
+			new GitCommandResult
+			{
+				ExitCode = 0,
+				Output = " src/File1.cs | 5 +-\r\n src/File2.cs | 3 +--\r\n 2 files changed, 6 insertions(+), 2 deletions(-)\r\n"
+			});
+
+		var service = new VersionControlService(executor, NullLogger<VersionControlService>.Instance);
+
+		var summary = await service.GetDiffSummaryAsync("/repo");
+
+		Assert.NotNull(summary);
+		Assert.Equal(2, summary.FilesChanged);
+		Assert.Equal(6, summary.Insertions);
+		Assert.Equal(2, summary.Deletions);
+	}
+
+	[Fact]
 	public async Task HardCheckoutBranchAsync_PreservesLocalChangesBeforeReset()
 	{
 		var executor = new RecordingGitCommandExecutor();

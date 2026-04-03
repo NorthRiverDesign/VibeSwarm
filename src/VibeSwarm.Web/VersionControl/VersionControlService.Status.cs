@@ -21,10 +21,7 @@ public sealed partial class VersionControlService
 
 			if (result.Success && !string.IsNullOrWhiteSpace(result.Output))
 			{
-				changedFiles.AddRange(result.Output
-					.Split('\n', StringSplitOptions.RemoveEmptyEntries)
-					.Select(f => f.Trim())
-					.Where(f => !string.IsNullOrEmpty(f)));
+				changedFiles.AddRange(ParseNonEmptyGitOutputLines(result.Output));
 			}
 
 			// If diff against HEAD failed (e.g., fresh repo with no commits), fall back to staged files
@@ -37,10 +34,7 @@ public sealed partial class VersionControlService
 
 				if (stagedResult.Success && !string.IsNullOrWhiteSpace(stagedResult.Output))
 				{
-					changedFiles.AddRange(stagedResult.Output
-						.Split('\n', StringSplitOptions.RemoveEmptyEntries)
-						.Select(f => f.Trim())
-						.Where(f => !string.IsNullOrEmpty(f)));
+					changedFiles.AddRange(ParseNonEmptyGitOutputLines(stagedResult.Output));
 				}
 			}
 
@@ -52,10 +46,7 @@ public sealed partial class VersionControlService
 
 			if (untrackedResult.Success && !string.IsNullOrWhiteSpace(untrackedResult.Output))
 			{
-				changedFiles.AddRange(untrackedResult.Output
-					.Split('\n', StringSplitOptions.RemoveEmptyEntries)
-					.Select(f => f.Trim())
-					.Where(f => !string.IsNullOrEmpty(f)));
+				changedFiles.AddRange(ParseNonEmptyGitOutputLines(untrackedResult.Output));
 			}
 
 			return changedFiles.Distinct().ToList();
@@ -116,11 +107,7 @@ public sealed partial class VersionControlService
 
 			if (untrackedResult.Success && !string.IsNullOrWhiteSpace(untrackedResult.Output))
 			{
-				var untrackedFiles = untrackedResult.Output
-					.Split('\n', StringSplitOptions.RemoveEmptyEntries)
-					.Select(f => f.Trim())
-					.Where(f => !string.IsNullOrEmpty(f))
-					.ToList();
+				var untrackedFiles = ParseNonEmptyGitOutputLines(untrackedResult.Output);
 
 				foreach (var file in untrackedFiles)
 				{
@@ -253,36 +240,33 @@ public sealed partial class VersionControlService
 		var insertions = 0;
 		var deletions = 0;
 
-		var lines = output.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+		var lines = ParseNonEmptyGitOutputLines(output);
 
 		foreach (var line in lines)
 		{
 			if (line.Contains("changed") || line.Contains("insertion") || line.Contains("deletion"))
 			{
-				var parts = line.Trim().Split(',');
+				var parts = line.Split(',', StringSplitOptions.RemoveEmptyEntries);
 				foreach (var part in parts)
 				{
 					var trimmed = part.Trim();
 					if (trimmed.Contains("file"))
 					{
-						var numStr = new string(trimmed.TakeWhile(char.IsDigit).ToArray());
-						if (int.TryParse(numStr, out var files))
+						if (TryParseLeadingCount(trimmed, out var files))
 						{
 							filesChanged = files;
 						}
 					}
 					else if (trimmed.Contains("insertion"))
 					{
-						var numStr = new string(trimmed.TakeWhile(char.IsDigit).ToArray());
-						if (int.TryParse(numStr, out var ins))
+						if (TryParseLeadingCount(trimmed, out var ins))
 						{
 							insertions = ins;
 						}
 					}
 					else if (trimmed.Contains("deletion"))
 					{
-						var numStr = new string(trimmed.TakeWhile(char.IsDigit).ToArray());
-						if (int.TryParse(numStr, out var del))
+						if (TryParseLeadingCount(trimmed, out var del))
 						{
 							deletions = del;
 						}
@@ -297,5 +281,33 @@ public sealed partial class VersionControlService
 			Insertions = insertions,
 			Deletions = deletions
 		};
+	}
+
+	private static List<string> ParseNonEmptyGitOutputLines(string output)
+	{
+		if (string.IsNullOrWhiteSpace(output))
+		{
+			return [];
+		}
+
+		return output
+			.ReplaceLineEndings("\n")
+			.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+			.Select(line => line.Trim())
+			.Where(line => !string.IsNullOrEmpty(line))
+			.ToList();
+	}
+
+	private static bool TryParseLeadingCount(string value, out int count)
+	{
+		count = 0;
+
+		if (string.IsNullOrWhiteSpace(value))
+		{
+			return false;
+		}
+
+		var digits = new string(value.Trim().TakeWhile(char.IsDigit).ToArray());
+		return int.TryParse(digits, out count);
 	}
 }
