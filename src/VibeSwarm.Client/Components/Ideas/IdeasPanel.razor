@@ -443,6 +443,7 @@
 
 	private ElementReference _newIdeaTextarea;
 	private const string IdeaDraftStorageKeyPrefix = "vibeswarm.idea-draft";
+	private static readonly TimeSpan IdeasInteropTimeout = TimeSpan.FromMilliseconds(250);
 	private readonly string _fileInputId = $"idea-files-{Guid.NewGuid():N}";
 	private readonly string _textareaId = $"idea-textarea-{Guid.NewGuid():N}";
 	private string NewIdeaDescription { get; set; } = string.Empty;
@@ -889,7 +890,7 @@
 
 		try
 		{
-			var uploads = await JSRuntime.InvokeAsync<List<ClipboardAttachmentDto>>("vibeSwarmIdeas.consumeSelectedFiles", _fileInputId);
+			var uploads = await InvokeIdeasInteropAsync<List<ClipboardAttachmentDto>>("vibeSwarmIdeas.consumeSelectedFiles", _fileInputId);
 			if (uploads == null)
 			{
 				return;
@@ -915,6 +916,11 @@
 			DisableAttachmentInterop();
 		}
 		catch (OperationCanceledException ex)
+		{
+			LogIdeasInteropFailure("read selected attachments", ex);
+			DisableAttachmentInterop();
+		}
+		catch (TimeoutException ex)
 		{
 			LogIdeasInteropFailure("read selected attachments", ex);
 			DisableAttachmentInterop();
@@ -1017,7 +1023,7 @@
 		_dotNetReference = DotNetObjectReference.Create(this);
 		try
 		{
-			await JSRuntime.InvokeVoidAsync("vibeSwarmIdeas.registerPasteTarget", _textareaId, _newIdeaTextarea, _dotNetReference);
+			await InvokeIdeasInteropVoidAsync("vibeSwarmIdeas.registerPasteTarget", _textareaId, _newIdeaTextarea, _dotNetReference);
 			_pasteTargetRegistered = true;
 		}
 		catch (JSException ex) when (IsMissingIdeasInteropException(ex))
@@ -1035,6 +1041,11 @@
 			DisableAttachmentInterop();
 		}
 		catch (OperationCanceledException ex)
+		{
+			LogIdeasInteropFailure("initialize attachment interop", ex);
+			DisableAttachmentInterop();
+		}
+		catch (TimeoutException ex)
 		{
 			LogIdeasInteropFailure("initialize attachment interop", ex);
 			DisableAttachmentInterop();
@@ -1073,6 +1084,16 @@
 	private static void LogIdeasInteropFailure(string action, Exception exception)
 	{
 		Console.Error.WriteLine($"[IdeasPanel] Unable to {action}: {exception.Message}");
+	}
+
+	private async Task InvokeIdeasInteropVoidAsync(string identifier, params object?[] args)
+	{
+		await JSRuntime.InvokeVoidAsync(identifier, args).AsTask().WaitAsync(IdeasInteropTimeout);
+	}
+
+	private async Task<T?> InvokeIdeasInteropAsync<T>(string identifier, params object?[] args)
+	{
+		return await JSRuntime.InvokeAsync<T>(identifier, args).AsTask().WaitAsync(IdeasInteropTimeout);
 	}
 
 	private static bool IsMissingIdeasInteropException(JSException exception)
@@ -1445,7 +1466,7 @@
 		{
 			try
 			{
-				await JSRuntime.InvokeVoidAsync("vibeSwarmIdeas.unregisterPasteTarget", _textareaId);
+				await InvokeIdeasInteropVoidAsync("vibeSwarmIdeas.unregisterPasteTarget", _textareaId);
 			}
 			catch (JSException)
 			{
@@ -1454,6 +1475,9 @@
 			{
 			}
 			catch (OperationCanceledException)
+			{
+			}
+			catch (TimeoutException)
 			{
 			}
 		}

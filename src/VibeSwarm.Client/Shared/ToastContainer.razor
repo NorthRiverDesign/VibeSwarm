@@ -36,10 +36,12 @@
 @code {
 	private Timer? _autoRemoveTimer;
 	private Timer? _refreshTimer;
+	private Action? _onNotificationChanged;
 
 	protected override void OnInitialized()
 	{
-		NotificationService.OnChange += StateHasChanged;
+		_onNotificationChanged = () => _ = InvokeAsync(StateHasChanged);
+		NotificationService.OnChange += _onNotificationChanged;
 
 		// Timer to auto-remove expired notifications
 		_autoRemoveTimer = new Timer(_ =>
@@ -121,7 +123,11 @@
 
 	public void Dispose()
 	{
-		NotificationService.OnChange -= StateHasChanged;
+		if (_onNotificationChanged != null)
+		{
+			NotificationService.OnChange -= _onNotificationChanged;
+			_onNotificationChanged = null;
+		}
 		_autoRemoveTimer?.Dispose();
 		_refreshTimer?.Dispose();
 	}

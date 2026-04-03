@@ -154,6 +154,105 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 	}
 
 	[Fact]
+	public async Task GetPendingJobsAsync_SkipsJobsWithFutureNotBeforeUtc_AndIncompleteDependencies()
+	{
+		await using var dbContext = CreateDbContext();
+		var project = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Pending Filter Project",
+			WorkingPath = "/tmp/pending-filter-project"
+		};
+		var dependencyProject = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Dependency Project",
+			WorkingPath = "/tmp/dependency-project"
+		};
+		var provider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Copilot",
+			Type = ProviderType.Copilot,
+			IsEnabled = true,
+			IsDefault = true
+		};
+		var completedDependencyId = Guid.NewGuid();
+		var pendingDependencyId = Guid.NewGuid();
+		var readyJobId = Guid.NewGuid();
+		var backedOffJobId = Guid.NewGuid();
+		var blockedJobId = Guid.NewGuid();
+
+		dbContext.Projects.AddRange(project, dependencyProject);
+		dbContext.Providers.Add(provider);
+		dbContext.Jobs.AddRange(
+			new Job
+			{
+				Id = completedDependencyId,
+				ProjectId = project.Id,
+				ProviderId = provider.Id,
+				GoalPrompt = "Completed dependency",
+				Title = "Completed dependency",
+				Status = JobStatus.Completed,
+				CreatedAt = DateTime.UtcNow.AddMinutes(-10),
+				CompletedAt = DateTime.UtcNow.AddMinutes(-9)
+			},
+			new Job
+			{
+				Id = pendingDependencyId,
+				ProjectId = dependencyProject.Id,
+				ProviderId = provider.Id,
+				GoalPrompt = "Pending dependency",
+				Title = "Pending dependency",
+				Status = JobStatus.New,
+				CreatedAt = DateTime.UtcNow.AddMinutes(-8)
+			},
+			new Job
+			{
+				Id = readyJobId,
+				ProjectId = project.Id,
+				ProviderId = provider.Id,
+				GoalPrompt = "Ready queued job",
+				Title = "Ready queued job",
+				Status = JobStatus.New,
+				CreatedAt = DateTime.UtcNow.AddMinutes(-7),
+				DependsOnJobId = completedDependencyId
+			},
+			new Job
+			{
+				Id = backedOffJobId,
+				ProjectId = project.Id,
+				ProviderId = provider.Id,
+				GoalPrompt = "Backed off queued job",
+				Title = "Backed off queued job",
+				Status = JobStatus.New,
+				CreatedAt = DateTime.UtcNow.AddMinutes(-6),
+				NotBeforeUtc = DateTime.UtcNow.AddMinutes(30)
+			},
+			new Job
+			{
+				Id = blockedJobId,
+				ProjectId = project.Id,
+				ProviderId = provider.Id,
+				GoalPrompt = "Blocked queued job",
+				Title = "Blocked queued job",
+				Status = JobStatus.New,
+				CreatedAt = DateTime.UtcNow.AddMinutes(-5),
+				DependsOnJobId = pendingDependencyId
+			});
+		await dbContext.SaveChangesAsync();
+
+		var serviceProvider = new ServiceCollection().BuildServiceProvider();
+		var jobService = new JobService(dbContext, serviceProvider);
+
+		var pendingJobs = (await jobService.GetPendingJobsAsync()).ToList();
+
+		Assert.Contains(pendingJobs, job => job.Id == readyJobId);
+		Assert.DoesNotContain(pendingJobs, job => job.Id == backedOffJobId);
+		Assert.DoesNotContain(pendingJobs, job => job.Id == blockedJobId);
+	}
+
+	[Fact]
 	public async Task PrioritizeSelectedByProjectIdAsync_OnlyUpdatesQueuedSelectedJobs()
 	{
 		await using var dbContext = CreateDbContext();

@@ -50,6 +50,8 @@ public sealed class CriticalErrorLogServiceTests : IDisposable
 			});
 		}
 
+		await service.ApplyRetentionPolicyAsync();
+
 		var entries = await dbContext.CriticalErrorLogs
 			.OrderBy(entry => entry.CreatedAt)
 			.ToListAsync();

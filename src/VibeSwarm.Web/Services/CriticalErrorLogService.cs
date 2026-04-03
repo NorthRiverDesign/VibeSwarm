@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Services;
 using VibeSwarm.Shared.Validation;
@@ -7,13 +8,21 @@ namespace VibeSwarm.Web.Services;
 
 public class CriticalErrorLogService : ICriticalErrorLogService
 {
+	private static readonly TimeSpan LogOperationTimeout = TimeSpan.FromSeconds(5);
+	private static readonly TimeSpan RetentionInterval = TimeSpan.FromMinutes(1);
+	private static long _lastRetentionRunTicks;
 	private readonly VibeSwarmDbContext _dbContext;
 	private readonly ILogger<CriticalErrorLogService> _logger;
+	private readonly IServiceScopeFactory? _scopeFactory;
 
-	public CriticalErrorLogService(VibeSwarmDbContext dbContext, ILogger<CriticalErrorLogService> logger)
+	public CriticalErrorLogService(
+		VibeSwarmDbContext dbContext,
+		ILogger<CriticalErrorLogService> logger,
+		IServiceScopeFactory? scopeFactory = null)
 	{
 		_dbContext = dbContext;
 		_logger = logger;
+		_scopeFactory = scopeFactory;
 	}
 
 	public async Task<CriticalErrorLogEntry> LogAsync(CriticalErrorLogEntry entry, CancellationToken cancellationToken = default)
@@ -21,9 +30,13 @@ public class CriticalErrorLogService : ICriticalErrorLogService
 		ArgumentNullException.ThrowIfNull(entry);
 
 		var normalizedEntry = Normalize(entry);
-		_dbContext.CriticalErrorLogs.Add(normalizedEntry);
-		await _dbContext.SaveChangesAsync(cancellationToken);
-		await ApplyRetentionPolicyAsync(cancellationToken);
+		using var scope = CreateScope();
+		var dbContext = GetDbContext(scope);
+		dbContext.CriticalErrorLogs.Add(normalizedEntry);
+
+		using var timeoutCts = CreateTimeoutCancellationTokenSource(cancellationToken);
+		await dbContext.SaveChangesAsync(timeoutCts.Token);
+		await TryApplyRetentionPolicyAsync(cancellationToken);
 
 		_logger.LogDebug(
 			"Stored critical error log {Category} from {Source} at {CreatedAt}",
@@ -37,7 +50,10 @@ public class CriticalErrorLogService : ICriticalErrorLogService
 	public async Task<IReadOnlyList<CriticalErrorLogEntry>> GetRecentAsync(int limit = 25, CancellationToken cancellationToken = default)
 	{
 		var normalizedLimit = Math.Clamp(limit, 1, 200);
-		return await _dbContext.CriticalErrorLogs
+		using var scope = CreateScope();
+		var dbContext = GetDbContext(scope);
+
+		return await dbContext.CriticalErrorLogs
 			.AsNoTracking()
 			.OrderByDescending(entry => entry.CreatedAt)
 			.Take(normalizedLimit)
@@ -46,45 +62,106 @@ public class CriticalErrorLogService : ICriticalErrorLogService
 
 	public async Task ApplyRetentionPolicyAsync(CancellationToken cancellationToken = default)
 	{
-		var settings = await _dbContext.AppSettings
+		using var scope = CreateScope();
+		var dbContext = GetDbContext(scope);
+		await ApplyRetentionPolicyAsync(dbContext, cancellationToken);
+	}
+
+	private async Task ApplyRetentionPolicyAsync(VibeSwarmDbContext dbContext, CancellationToken cancellationToken)
+	{
+		using var timeoutCts = CreateTimeoutCancellationTokenSource(cancellationToken);
+		var effectiveCancellationToken = timeoutCts.Token;
+
+		var settings = await dbContext.AppSettings
 			.AsNoTracking()
 			.OrderBy(setting => setting.Id)
-			.FirstOrDefaultAsync(cancellationToken);
+			.FirstOrDefaultAsync(effectiveCancellationToken);
 
 		var retentionDays = NormalizeRetentionDays(settings?.CriticalErrorLogRetentionDays ?? AppSettings.DefaultCriticalErrorLogRetentionDays);
 		var maxEntries = NormalizeMaxEntries(settings?.CriticalErrorLogMaxEntries ?? AppSettings.DefaultCriticalErrorLogMaxEntries);
 		var cutoff = DateTime.UtcNow.AddDays(-retentionDays);
 
-		var expiredEntries = await _dbContext.CriticalErrorLogs
+		var expiredEntries = await dbContext.CriticalErrorLogs
 			.Where(entry => entry.CreatedAt < cutoff)
-			.ToListAsync(cancellationToken);
+			.ToListAsync(effectiveCancellationToken);
 
 		if (expiredEntries.Count > 0)
 		{
-			_dbContext.CriticalErrorLogs.RemoveRange(expiredEntries);
-			await _dbContext.SaveChangesAsync(cancellationToken);
+			dbContext.CriticalErrorLogs.RemoveRange(expiredEntries);
+			await dbContext.SaveChangesAsync(effectiveCancellationToken);
 		}
 
-		var totalCount = await _dbContext.CriticalErrorLogs.CountAsync(cancellationToken);
+		var totalCount = await dbContext.CriticalErrorLogs.CountAsync(effectiveCancellationToken);
 		var overflow = totalCount - maxEntries;
 
 		if (overflow > 0)
 		{
-			var overflowEntries = await _dbContext.CriticalErrorLogs
+			var overflowEntries = await dbContext.CriticalErrorLogs
 				.OrderBy(entry => entry.CreatedAt)
 				.Take(overflow)
-				.ToListAsync(cancellationToken);
+				.ToListAsync(effectiveCancellationToken);
 
 			if (overflowEntries.Count > 0)
 			{
-				_dbContext.CriticalErrorLogs.RemoveRange(overflowEntries);
+				dbContext.CriticalErrorLogs.RemoveRange(overflowEntries);
 			}
 		}
 
-		if (_dbContext.ChangeTracker.HasChanges())
+		if (dbContext.ChangeTracker.HasChanges())
 		{
-			await _dbContext.SaveChangesAsync(cancellationToken);
+			await dbContext.SaveChangesAsync(effectiveCancellationToken);
 		}
+	}
+
+	private async Task TryApplyRetentionPolicyAsync(CancellationToken cancellationToken)
+	{
+		if (!ShouldRunRetention())
+		{
+			return;
+		}
+
+		try
+		{
+			await ApplyRetentionPolicyAsync(cancellationToken);
+		}
+		catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested)
+		{
+			_logger.LogWarning(ex, "Timed out while pruning critical error logs after writing a new entry.");
+		}
+		catch (Exception ex)
+		{
+			_logger.LogWarning(ex, "Failed to prune critical error logs after writing a new entry.");
+		}
+	}
+
+	private IServiceScope? CreateScope()
+	{
+		return _scopeFactory?.CreateScope();
+	}
+
+	private VibeSwarmDbContext GetDbContext(IServiceScope? scope)
+	{
+		return scope?.ServiceProvider.GetRequiredService<VibeSwarmDbContext>() ?? _dbContext;
+	}
+
+	private static CancellationTokenSource CreateTimeoutCancellationTokenSource(CancellationToken cancellationToken)
+	{
+		var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+		timeoutCts.CancelAfter(LogOperationTimeout);
+		return timeoutCts;
+	}
+
+	private static bool ShouldRunRetention()
+	{
+		var nowTicks = DateTime.UtcNow.Ticks;
+		var lastRunTicks = Interlocked.Read(ref _lastRetentionRunTicks);
+		if (lastRunTicks != 0 && nowTicks - lastRunTicks < RetentionInterval.Ticks)
+		{
+			return false;
+		}
+
+		Interlocked.Exchange(ref _lastRetentionRunTicks, nowTicks);
+		return true;
 	}
 
 	private static CriticalErrorLogEntry Normalize(CriticalErrorLogEntry entry)

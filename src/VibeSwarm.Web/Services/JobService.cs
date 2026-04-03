@@ -215,8 +215,10 @@ public partial class JobService : IJobService
         };
     }
 
-    public async Task<IEnumerable<Job>> GetPendingJobsAsync(CancellationToken cancellationToken = default)
-    {
+	public async Task<IEnumerable<Job>> GetPendingJobsAsync(CancellationToken cancellationToken = default)
+	{
+		var now = DateTime.UtcNow;
+
         // Get the SwarmId (if any) of currently running jobs, grouped by project.
         // If ALL running jobs for a project share the same SwarmId, that swarm's remaining
         // members are allowed to start concurrently (swarm-aware scheduling).
@@ -251,6 +253,9 @@ public partial class JobService : IJobService
 				.ThenInclude(p => p!.Environments)
 			.Include(j => j.Provider)
             .Where(j => j.Status == JobStatus.New && !j.CancellationRequested)
+			.Where(j => j.NotBeforeUtc == null || j.NotBeforeUtc <= now)
+			.Where(j => !j.DependsOnJobId.HasValue
+				|| _dbContext.Jobs.Any(dependency => dependency.Id == j.DependsOnJobId && dependency.Status == JobStatus.Completed))
             .Where(j => !projectsWithRunningJobs.Contains(j.ProjectId)
                 || (j.SwarmId != null && activeSwarmIds.Contains(j.SwarmId.Value)))
             .OrderByDescending(j => j.Priority)
