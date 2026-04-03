@@ -904,6 +904,21 @@
 		{
 			DisableAttachmentInterop();
 		}
+		catch (JSException ex)
+		{
+			LogIdeasInteropFailure("read selected attachments", ex);
+			DisableAttachmentInterop();
+		}
+		catch (InvalidOperationException ex)
+		{
+			LogIdeasInteropFailure("read selected attachments", ex);
+			DisableAttachmentInterop();
+		}
+		catch (OperationCanceledException ex)
+		{
+			LogIdeasInteropFailure("read selected attachments", ex);
+			DisableAttachmentInterop();
+		}
 		catch (Exception ex)
 		{
 			NotificationService.ShowError($"Error attaching files: {ex.Message}");
@@ -1009,6 +1024,21 @@
 		{
 			DisableAttachmentInterop();
 		}
+		catch (JSException ex)
+		{
+			LogIdeasInteropFailure("initialize attachment interop", ex);
+			DisableAttachmentInterop();
+		}
+		catch (InvalidOperationException ex)
+		{
+			LogIdeasInteropFailure("initialize attachment interop", ex);
+			DisableAttachmentInterop();
+		}
+		catch (OperationCanceledException ex)
+		{
+			LogIdeasInteropFailure("initialize attachment interop", ex);
+			DisableAttachmentInterop();
+		}
 	}
 
 	private string GetAttachmentButtonTooltip()
@@ -1038,6 +1068,11 @@
 		NotificationService.ShowWarning(
 			"Idea attachments and clipboard image paste are temporarily unavailable on this page. Refresh the page to restore them.",
 			"Attachments unavailable");
+	}
+
+	private static void LogIdeasInteropFailure(string action, Exception exception)
+	{
+		Console.Error.WriteLine($"[IdeasPanel] Unable to {action}: {exception.Message}");
 	}
 
 	private static bool IsMissingIdeasInteropException(JSException exception)
@@ -1080,11 +1115,15 @@
 		}
 		catch (JSException ex)
 		{
-			Console.Error.WriteLine($"[IdeasPanel] Unable to restore idea draft: {ex.Message}");
+			LogIdeasInteropFailure("restore idea draft", ex);
 		}
 		catch (InvalidOperationException ex)
 		{
-			Console.Error.WriteLine($"[IdeasPanel] Unable to restore idea draft: {ex.Message}");
+			LogIdeasInteropFailure("restore idea draft", ex);
+		}
+		catch (OperationCanceledException ex)
+		{
+			LogIdeasInteropFailure("restore idea draft", ex);
 		}
 	}
 
@@ -1119,11 +1158,15 @@
 		}
 		catch (JSException ex)
 		{
-			Console.Error.WriteLine($"[IdeasPanel] Unable to save idea draft: {ex.Message}");
+			LogIdeasInteropFailure("save idea draft", ex);
 		}
 		catch (InvalidOperationException ex)
 		{
-			Console.Error.WriteLine($"[IdeasPanel] Unable to save idea draft: {ex.Message}");
+			LogIdeasInteropFailure("save idea draft", ex);
+		}
+		catch (OperationCanceledException ex)
+		{
+			LogIdeasInteropFailure("save idea draft", ex);
 		}
 	}
 
@@ -1147,11 +1190,15 @@
 		}
 		catch (JSException ex)
 		{
-			Console.Error.WriteLine($"[IdeasPanel] Unable to clear idea draft: {ex.Message}");
+			LogIdeasInteropFailure("clear idea draft", ex);
 		}
 		catch (InvalidOperationException ex)
 		{
-			Console.Error.WriteLine($"[IdeasPanel] Unable to clear idea draft: {ex.Message}");
+			LogIdeasInteropFailure("clear idea draft", ex);
+		}
+		catch (OperationCanceledException ex)
+		{
+			LogIdeasInteropFailure("clear idea draft", ex);
 		}
 	}
 
@@ -1401,6 +1448,12 @@
 				await JSRuntime.InvokeVoidAsync("vibeSwarmIdeas.unregisterPasteTarget", _textareaId);
 			}
 			catch (JSException)
+			{
+			}
+			catch (InvalidOperationException)
+			{
+			}
+			catch (OperationCanceledException)
 			{
 			}
 		}

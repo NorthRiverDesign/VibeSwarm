@@ -387,6 +387,74 @@ public sealed class IdeasPanelTests
 	}
 
 	[Fact]
+	public void Render_DoesNotCrash_WhenPasteInteropRegistrationIsCanceled()
+	{
+		using var context = new BunitContext();
+		context.Services.AddLogging();
+		context.Services.AddSingleton<IProjectService>(new FakeProjectService());
+		context.Services.AddSingleton<IIdeaService>(new FakeIdeaService());
+		context.Services.AddSingleton<IJobService>(new FakeJobService());
+		var notificationService = new NotificationService();
+		context.Services.AddSingleton(notificationService);
+		SetupEmptyIdeaDraftStorage(context);
+
+		context.JSInterop
+			.SetupVoid("vibeSwarmIdeas.registerPasteTarget", _ => true)
+			.SetException(new TaskCanceledException("The JavaScript interop call was canceled."));
+
+		var cut = context.Render<IdeasPanel>(parameters => parameters
+			.Add(component => component.CurrentProjectId, Guid.NewGuid())
+			.Add(component => component.HasInference, true)
+			.Add(component => component.AvailableInferenceProviders, new List<InferenceProvider>())
+			.Add(component => component.AvailableProviders, new List<Provider>()));
+
+		cut.WaitForAssertion(() =>
+		{
+			Assert.Contains("Attach Files", cut.Markup);
+			Assert.Contains("disabled opacity-50 pe-none", cut.Markup);
+			Assert.DoesNotContain("Paste images directly into the idea box to attach them.", cut.Markup);
+		});
+
+		var warning = Assert.Single(notificationService.Notifications);
+		Assert.Equal(NotificationType.Warning, warning.Type);
+		Assert.Equal("Attachments unavailable", warning.Title);
+	}
+
+	[Fact]
+	public void TypingIdea_DoesNotCrash_WhenDraftPersistenceIsCanceled()
+	{
+		using var context = new BunitContext();
+		context.Services.AddLogging();
+		context.Services.AddSingleton<IProjectService>(new FakeProjectService());
+		context.Services.AddSingleton<IIdeaService>(new FakeIdeaService());
+		context.Services.AddSingleton<IJobService>(new FakeJobService());
+		context.Services.AddSingleton<NotificationService>();
+
+		var projectId = Guid.NewGuid();
+		var storageKey = $"vibeswarm.idea-draft.{projectId:N}";
+
+		context.JSInterop.Setup<string?>("sessionStorage.getItem", invocation =>
+			invocation.Arguments.Count == 1 && string.Equals(invocation.Arguments[0]?.ToString(), storageKey, StringComparison.Ordinal))
+			.SetResult(null);
+		context.JSInterop.SetupVoid("sessionStorage.setItem", invocation =>
+			invocation.Arguments.Count == 2 &&
+			string.Equals(invocation.Arguments[0]?.ToString(), storageKey, StringComparison.Ordinal))
+			.SetException(new TaskCanceledException("The JavaScript interop call was canceled."));
+		context.JSInterop.SetupVoid("vibeSwarmIdeas.registerPasteTarget", _ => true);
+
+		var cut = context.Render<IdeasPanel>(parameters => parameters
+			.Add(component => component.CurrentProjectId, projectId)
+			.Add(component => component.HasInference, true)
+			.Add(component => component.AvailableInferenceProviders, new List<InferenceProvider>())
+			.Add(component => component.AvailableProviders, new List<Provider>()));
+
+		cut.Find("textarea").Input("Keep typing through a canceled draft save");
+
+		Assert.Equal("Keep typing through a canceled draft save", cut.Find("textarea").GetAttribute("value"));
+		Assert.Contains("Add idea", cut.Markup);
+	}
+
+	[Fact]
 	public void IdeasListHeader_ShowsPendingCountAndStartAllButton()
 	{
 		using var context = new BunitContext();
