@@ -67,6 +67,8 @@ return output.ToHtmlString();
 	Assert.Contains("Enable provider commit attribution", html);
 	Assert.Contains("Critical Error Logs", html);
 	Assert.Contains("Database Size", html);
+	Assert.Contains("Migration", html);
+	Assert.Contains("Migrate Database", html);
 	Assert.DoesNotContain("Add Provider", html);
 	Assert.DoesNotContain("inference provider", html);
 }
@@ -146,6 +148,14 @@ public Task<string?> GetDefaultProjectsDirectoryAsync(CancellationToken cancella
 	private sealed class FakeDatabaseService : IDatabaseService
 	{
 		public Task<DatabaseExportDto> ExportAsync(CancellationToken ct = default) => Task.FromResult(new DatabaseExportDto());
+		public Task<DatabaseConfigurationInfo> GetConfigurationAsync(CancellationToken ct = default) => Task.FromResult(new DatabaseConfigurationInfo
+		{
+			Provider = "sqlite",
+			ConnectionStringPreview = "/tmp/vibeswarm.db",
+			ConfigurationSource = "Application configuration",
+			RuntimeConfigurationPath = "/tmp/database.runtime.json",
+			CanUpdateConfiguration = true
+		});
 		public Task<DatabaseImportResult> ImportAsync(DatabaseExportDto export, CancellationToken ct = default) => throw new NotSupportedException();
 		public Task<DatabaseStorageSummary> GetStorageSummaryAsync(CancellationToken ct = default) => Task.FromResult(new DatabaseStorageSummary
 		{
@@ -155,6 +165,7 @@ public Task<string?> GetDefaultProjectsDirectoryAsync(CancellationToken cancella
 			JobMessagesCount = 4,
 			ProviderUsageRecordsCount = 1
 		});
+		public Task<DatabaseMigrationResult> MigrateAsync(DatabaseMigrationRequest request, CancellationToken ct = default) => throw new NotSupportedException();
 		public Task<DatabaseMaintenanceResult> RunMaintenanceAsync(DatabaseMaintenanceRequest request, CancellationToken ct = default) => throw new NotSupportedException();
 	}
 

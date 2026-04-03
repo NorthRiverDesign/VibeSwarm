@@ -1,7 +1,9 @@
 using System.Data;
 using System.Globalization;
+using System.Reflection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Data.Sqlite;
+using Microsoft.EntityFrameworkCore.Metadata;
 using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Models;
 using VibeSwarm.Shared.Services;
@@ -10,13 +12,25 @@ namespace VibeSwarm.Web.Services;
 
 public class DatabaseService : IDatabaseService
 {
+	private static readonly MethodInfo LoadEntitiesMethod = typeof(DatabaseService)
+		.GetMethod(nameof(LoadEntitiesAsyncCore), BindingFlags.NonPublic | BindingFlags.Static)!;
+	private static readonly MethodInfo AddEntitiesMethod = typeof(DatabaseService)
+		.GetMethod(nameof(AddEntitiesAsyncCore), BindingFlags.NonPublic | BindingFlags.Static)!;
+	private static readonly MethodInfo HasAnyEntitiesMethod = typeof(DatabaseService)
+		.GetMethod(nameof(HasAnyEntitiesAsyncCore), BindingFlags.NonPublic | BindingFlags.Static)!;
+
 	private readonly VibeSwarmDbContext _db;
 	private readonly ICriticalErrorLogService _criticalErrorLogService;
+	private readonly IDatabaseRuntimeConfigurationStore _runtimeConfigurationStore;
 
-	public DatabaseService(VibeSwarmDbContext db, ICriticalErrorLogService criticalErrorLogService)
+	public DatabaseService(
+		VibeSwarmDbContext db,
+		ICriticalErrorLogService criticalErrorLogService,
+		IDatabaseRuntimeConfigurationStore runtimeConfigurationStore)
 	{
 		_db = db;
 		_criticalErrorLogService = criticalErrorLogService;
+		_runtimeConfigurationStore = runtimeConfigurationStore;
 	}
 
 	public async Task<DatabaseExportDto> ExportAsync(CancellationToken ct = default)
@@ -410,6 +424,33 @@ public class DatabaseService : IDatabaseService
 		return result;
 	}
 
+	public Task<DatabaseConfigurationInfo> GetConfigurationAsync(CancellationToken ct = default)
+	{
+		var currentProvider = GetProvider();
+		var currentConnectionString = _db.Database.GetConnectionString();
+		var runtimeConfiguration = _runtimeConfigurationStore.Load();
+		var hasEnvironmentOverride = HasEnvironmentOverride();
+		var pendingConfiguration = GetPendingConfiguration(runtimeConfiguration, currentProvider, currentConnectionString);
+
+		return Task.FromResult(new DatabaseConfigurationInfo
+		{
+			Provider = currentProvider,
+			ConnectionStringPreview = BuildConnectionStringPreview(currentProvider, currentConnectionString),
+			ConfigurationSource = hasEnvironmentOverride
+				? "Environment variables"
+				: runtimeConfiguration != null
+					? "Runtime database config file"
+					: "Application configuration",
+			RuntimeConfigurationPath = _runtimeConfigurationStore.ConfigurationPath,
+			HasEnvironmentOverride = hasEnvironmentOverride,
+			CanUpdateConfiguration = !hasEnvironmentOverride,
+			PendingProvider = pendingConfiguration?.Provider,
+			PendingConnectionStringPreview = pendingConfiguration == null
+				? null
+				: BuildConnectionStringPreview(pendingConfiguration.Provider ?? currentProvider, pendingConfiguration.ConnectionString)
+		});
+	}
+
 	public async Task<DatabaseStorageSummary> GetStorageSummaryAsync(CancellationToken ct = default)
 	{
 		var provider = GetProvider();
@@ -436,6 +477,56 @@ public class DatabaseService : IDatabaseService
 				ct),
 			SupportsCompaction = string.Equals(provider, "sqlite", StringComparison.OrdinalIgnoreCase),
 			MeasuredAtUtc = DateTime.UtcNow
+		};
+	}
+
+	public async Task<DatabaseMigrationResult> MigrateAsync(DatabaseMigrationRequest request, CancellationToken ct = default)
+	{
+		ArgumentNullException.ThrowIfNull(request);
+
+		if (HasEnvironmentOverride())
+		{
+			throw new InvalidOperationException(
+				"Database migration is disabled while DATABASE_PROVIDER or ConnectionStrings__Default is set as an environment variable. " +
+				"Clear the environment override and try again.");
+		}
+
+		var targetProvider = DataServiceExtensions.ResolveProviderName(request.Provider);
+		var targetConnectionString = NormalizeTargetConnectionString(targetProvider, request.ConnectionString);
+		var currentProvider = GetProvider();
+		var currentConnectionString = _db.Database.GetConnectionString();
+
+		if (MatchesCurrentDatabase(targetProvider, targetConnectionString, currentProvider, currentConnectionString))
+		{
+			throw new InvalidOperationException("Choose a different target database before starting a migration.");
+		}
+
+		var targetOptions = new DbContextOptionsBuilder<VibeSwarmDbContext>();
+		DataServiceExtensions.ConfigureDbContext(targetOptions, targetConnectionString, targetProvider);
+
+		await using var targetDb = new VibeSwarmDbContext(targetOptions.Options);
+		await targetDb.Database.MigrateAsync(ct);
+
+		if (await HasExistingApplicationDataAsync(targetDb, ct))
+		{
+			throw new InvalidOperationException(
+				"The target database already contains VibeSwarm data. Choose an empty database for migration.");
+		}
+
+		var copySummary = await CopyAllDataAsync(_db, targetDb, ct);
+		await _runtimeConfigurationStore.SaveAsync(new DatabaseRuntimeConfiguration
+		{
+			Provider = targetProvider,
+			ConnectionString = targetConnectionString
+		}, ct);
+
+		return new DatabaseMigrationResult
+		{
+			Provider = targetProvider,
+			ConnectionStringPreview = BuildConnectionStringPreview(targetProvider, targetConnectionString),
+			CopiedTableCount = copySummary.TableCount,
+			CopiedRowCount = copySummary.RowCount,
+			Message = $"Copied {copySummary.RowCount} row(s) across {copySummary.TableCount} table(s). Restart VibeSwarm to begin using the {GetProviderDisplayName(targetProvider)} database."
 		};
 	}
 
@@ -560,6 +651,12 @@ public class DatabaseService : IDatabaseService
 			return "postgresql";
 		}
 
+		if (providerName.Contains("MySql", StringComparison.OrdinalIgnoreCase) ||
+			providerName.Contains("MariaDb", StringComparison.OrdinalIgnoreCase))
+		{
+			return "mysql";
+		}
+
 		if (providerName.Contains("SqlServer", StringComparison.OrdinalIgnoreCase))
 		{
 			return "sqlserver";
@@ -587,6 +684,9 @@ public class DatabaseService : IDatabaseService
 
 		var sizeBytes = provider switch
 		{
+			"mysql" => await ExecuteScalarInt64Async(
+				"SELECT COALESCE(SUM(data_length + index_length), 0) FROM information_schema.tables WHERE table_schema = DATABASE()",
+				ct),
 			"postgresql" => await ExecuteScalarInt64Async("SELECT pg_database_size(current_database())", ct),
 			"sqlserver" => await ExecuteScalarInt64Async("SELECT SUM(CAST(size AS BIGINT)) * 8192 FROM sys.database_files", ct),
 			_ => null
@@ -713,5 +813,394 @@ public class DatabaseService : IDatabaseService
 		public long? DataFileSizeBytes { get; set; }
 		public long? WalFileSizeBytes { get; set; }
 		public long? SharedMemoryFileSizeBytes { get; set; }
+	}
+
+	private static string GetProviderDisplayName(string provider)
+	{
+		return provider switch
+		{
+			"sqlite" => "SQLite",
+			"mysql" => "MySQL",
+			"postgresql" => "PostgreSQL",
+			"sqlserver" => "SQL Server",
+			_ => provider
+		};
+	}
+
+	private static bool HasEnvironmentOverride()
+	{
+		return !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("DATABASE_PROVIDER")) ||
+			!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("ConnectionStrings__Default")) ||
+			!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("CONNECTIONSTRINGS__DEFAULT"));
+	}
+
+	private static DatabaseRuntimeConfiguration? GetPendingConfiguration(
+		DatabaseRuntimeConfiguration? runtimeConfiguration,
+		string currentProvider,
+		string? currentConnectionString)
+	{
+		if (runtimeConfiguration == null ||
+			string.IsNullOrWhiteSpace(runtimeConfiguration.Provider) ||
+			string.IsNullOrWhiteSpace(runtimeConfiguration.ConnectionString))
+		{
+			return null;
+		}
+
+		var pendingProvider = DataServiceExtensions.ResolveProviderName(runtimeConfiguration.Provider);
+		return MatchesCurrentDatabase(
+			pendingProvider,
+			runtimeConfiguration.ConnectionString,
+			currentProvider,
+			currentConnectionString)
+			? null
+			: runtimeConfiguration;
+	}
+
+	private static string BuildConnectionStringPreview(string provider, string? connectionString)
+	{
+		if (string.IsNullOrWhiteSpace(connectionString))
+		{
+			return "Not configured";
+		}
+
+		if (string.Equals(provider, "sqlite", StringComparison.OrdinalIgnoreCase))
+		{
+			try
+			{
+				var builder = new SqliteConnectionStringBuilder(connectionString);
+				if (string.IsNullOrWhiteSpace(builder.DataSource))
+				{
+					return "SQLite";
+				}
+
+				return string.Equals(builder.DataSource, ":memory:", StringComparison.OrdinalIgnoreCase)
+					? "In-memory SQLite"
+					: Path.GetFullPath(builder.DataSource);
+			}
+			catch
+			{
+				return "SQLite";
+			}
+		}
+
+		try
+		{
+			var builder = new System.Data.Common.DbConnectionStringBuilder
+			{
+				ConnectionString = connectionString
+			};
+
+			foreach (var key in builder.Keys.OfType<string>().ToList())
+			{
+				if (IsSecretConnectionStringKey(key))
+				{
+					builder[key] = "********";
+				}
+			}
+
+			return builder.ConnectionString;
+		}
+		catch
+		{
+			return "Configured";
+		}
+	}
+
+	private static bool IsSecretConnectionStringKey(string key)
+	{
+		return key.Equals("Password", StringComparison.OrdinalIgnoreCase) ||
+			key.Equals("Pwd", StringComparison.OrdinalIgnoreCase) ||
+			key.Equals("User ID", StringComparison.OrdinalIgnoreCase) ||
+			key.Equals("Uid", StringComparison.OrdinalIgnoreCase) ||
+			key.Equals("Username", StringComparison.OrdinalIgnoreCase);
+	}
+
+	private static string NormalizeTargetConnectionString(string provider, string? connectionString)
+	{
+		var trimmedConnectionString = connectionString?.Trim();
+		if (string.IsNullOrWhiteSpace(trimmedConnectionString))
+		{
+			throw new InvalidOperationException("Enter a target connection string before starting a migration.");
+		}
+
+		if (!string.Equals(provider, "sqlite", StringComparison.OrdinalIgnoreCase))
+		{
+			return trimmedConnectionString;
+		}
+
+		var builder = new SqliteConnectionStringBuilder(trimmedConnectionString);
+		if (string.IsNullOrWhiteSpace(builder.DataSource) ||
+			string.Equals(builder.DataSource, ":memory:", StringComparison.OrdinalIgnoreCase) ||
+			builder.Mode == SqliteOpenMode.Memory)
+		{
+			throw new InvalidOperationException("Choose a file-based SQLite connection string for the migration target.");
+		}
+
+		builder.DataSource = Path.GetFullPath(builder.DataSource);
+		var directory = Path.GetDirectoryName(builder.DataSource);
+		if (!string.IsNullOrWhiteSpace(directory))
+		{
+			Directory.CreateDirectory(directory);
+		}
+
+		return builder.ToString();
+	}
+
+	private static bool MatchesCurrentDatabase(
+		string targetProvider,
+		string? targetConnectionString,
+		string currentProvider,
+		string? currentConnectionString)
+	{
+		if (!string.Equals(targetProvider, currentProvider, StringComparison.OrdinalIgnoreCase))
+		{
+			return false;
+		}
+
+		return string.Equals(
+			NormalizeConnectionStringForComparison(targetProvider, targetConnectionString),
+			NormalizeConnectionStringForComparison(currentProvider, currentConnectionString),
+			StringComparison.OrdinalIgnoreCase);
+	}
+
+	private static string NormalizeConnectionStringForComparison(string provider, string? connectionString)
+	{
+		if (string.IsNullOrWhiteSpace(connectionString))
+		{
+			return string.Empty;
+		}
+
+		if (!string.Equals(provider, "sqlite", StringComparison.OrdinalIgnoreCase))
+		{
+			return connectionString.Trim();
+		}
+
+		try
+		{
+			var builder = new SqliteConnectionStringBuilder(connectionString);
+			if (!string.IsNullOrWhiteSpace(builder.DataSource) &&
+				!string.Equals(builder.DataSource, ":memory:", StringComparison.OrdinalIgnoreCase) &&
+				builder.Mode != SqliteOpenMode.Memory)
+			{
+				builder.DataSource = Path.GetFullPath(builder.DataSource);
+			}
+
+			return builder.ToString();
+		}
+		catch
+		{
+			return connectionString.Trim();
+		}
+	}
+
+	private static IEnumerable<IEntityType> GetOrderedEntityTypes(VibeSwarmDbContext dbContext)
+	{
+		var entityTypes = dbContext.Model.GetEntityTypes()
+			.Where(entityType =>
+				!entityType.IsOwned() &&
+				entityType.FindPrimaryKey() != null &&
+				entityType.ClrType.IsClass &&
+				entityType.GetTableName() != null)
+			.OrderBy(entityType => entityType.Name, StringComparer.Ordinal)
+			.ToList();
+		var entityTypeSet = entityTypes.ToHashSet();
+		var remaining = new HashSet<IEntityType>(entityTypes);
+		var ordered = new List<IEntityType>(entityTypes.Count);
+
+		while (remaining.Count > 0)
+		{
+			var ready = remaining
+				.Where(entityType => entityType
+					.GetForeignKeys()
+					.Where(foreignKey => !foreignKey.IsOwnership && foreignKey.PrincipalEntityType != entityType)
+					.Select(foreignKey => foreignKey.PrincipalEntityType)
+					.Where(entityTypeSet.Contains)
+					.All(principal => !remaining.Contains(principal)))
+				.OrderBy(entityType => entityType.Name, StringComparer.Ordinal)
+				.ToList();
+
+			if (ready.Count == 0)
+			{
+				ready = remaining
+					.OrderBy(entityType => entityType.Name, StringComparer.Ordinal)
+					.ToList();
+			}
+
+			foreach (var entityType in ready)
+			{
+				ordered.Add(entityType);
+				remaining.Remove(entityType);
+			}
+		}
+
+		return ordered;
+	}
+
+	private static async Task<(int TableCount, int RowCount)> CopyAllDataAsync(
+		VibeSwarmDbContext sourceDb,
+		VibeSwarmDbContext targetDb,
+		CancellationToken ct)
+	{
+		var entityTypes = GetOrderedEntityTypes(sourceDb);
+		var copiedTableCount = 0;
+		var copiedRowCount = 0;
+
+		await using var transaction = await targetDb.Database.BeginTransactionAsync(ct);
+		targetDb.ChangeTracker.AutoDetectChangesEnabled = false;
+
+		try
+		{
+			foreach (var entityType in entityTypes)
+			{
+				var clones = await CloneEntitiesAsync(sourceDb, entityType, ct);
+				if (clones.Count == 0)
+				{
+					continue;
+				}
+
+				await AddEntitiesAsync(targetDb, entityType.ClrType, clones, ct);
+				copiedTableCount++;
+				copiedRowCount += clones.Count;
+			}
+
+			await transaction.CommitAsync(ct);
+			return (copiedTableCount, copiedRowCount);
+		}
+		catch
+		{
+			await transaction.RollbackAsync(ct);
+			throw;
+		}
+		finally
+		{
+			targetDb.ChangeTracker.AutoDetectChangesEnabled = true;
+		}
+	}
+
+	private static async Task<bool> HasExistingApplicationDataAsync(VibeSwarmDbContext dbContext, CancellationToken ct)
+	{
+		foreach (var entityType in GetOrderedEntityTypes(dbContext))
+		{
+			if (await HasAnyEntitiesAsync(dbContext, entityType.ClrType, ct))
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	private static async Task<List<object>> CloneEntitiesAsync(
+		VibeSwarmDbContext dbContext,
+		IEntityType entityType,
+		CancellationToken ct)
+	{
+		var sourceEntities = await LoadEntitiesAsync(dbContext, entityType.ClrType, ct);
+		var clones = new List<object>(sourceEntities.Count);
+
+		foreach (var sourceEntity in sourceEntities)
+		{
+			var clone = Activator.CreateInstance(entityType.ClrType)
+				?? throw new InvalidOperationException($"Could not create an instance of {entityType.ClrType.Name}.");
+
+			foreach (var property in entityType.GetProperties())
+			{
+				if (property.IsShadowProperty() || ShouldSkipPropertyCopy(property))
+				{
+					continue;
+				}
+
+				var propertyInfo = property.PropertyInfo;
+				if (propertyInfo == null || !propertyInfo.CanRead || !propertyInfo.CanWrite)
+				{
+					continue;
+				}
+
+				propertyInfo.SetValue(clone, propertyInfo.GetValue(sourceEntity));
+			}
+
+			clones.Add(clone);
+		}
+
+		return clones;
+	}
+
+	private static bool ShouldSkipPropertyCopy(IProperty property)
+	{
+		if (property.IsConcurrencyToken && property.ValueGenerated == ValueGenerated.OnAddOrUpdate)
+		{
+			return true;
+		}
+
+		if (!property.IsPrimaryKey())
+		{
+			return false;
+		}
+
+		return property.ValueGenerated != ValueGenerated.Never &&
+			(property.ClrType == typeof(int) ||
+				property.ClrType == typeof(long) ||
+				property.ClrType == typeof(int?) ||
+				property.ClrType == typeof(long?));
+	}
+
+	private static Task<IReadOnlyList<object>> LoadEntitiesAsync(
+		VibeSwarmDbContext dbContext,
+		Type clrType,
+		CancellationToken ct)
+	{
+		return (Task<IReadOnlyList<object>>)LoadEntitiesMethod
+			.MakeGenericMethod(clrType)
+			.Invoke(null, [dbContext, ct])!;
+	}
+
+	private static async Task<IReadOnlyList<object>> LoadEntitiesAsyncCore<TEntity>(
+		VibeSwarmDbContext dbContext,
+		CancellationToken ct)
+		where TEntity : class
+	{
+		var entities = await dbContext.Set<TEntity>()
+			.AsNoTracking()
+			.ToListAsync(ct);
+		return entities.Cast<object>().ToList();
+	}
+
+	private static Task AddEntitiesAsync(
+		VibeSwarmDbContext dbContext,
+		Type clrType,
+		IReadOnlyList<object> entities,
+		CancellationToken ct)
+	{
+		return (Task)AddEntitiesMethod
+			.MakeGenericMethod(clrType)
+			.Invoke(null, [dbContext, entities, ct])!;
+	}
+
+	private static async Task AddEntitiesAsyncCore<TEntity>(
+		VibeSwarmDbContext dbContext,
+		IReadOnlyList<object> entities,
+		CancellationToken ct)
+		where TEntity : class
+	{
+		dbContext.Set<TEntity>().AddRange(entities.Cast<TEntity>());
+		await dbContext.SaveChangesAsync(ct);
+	}
+
+	private static Task<bool> HasAnyEntitiesAsync(
+		VibeSwarmDbContext dbContext,
+		Type clrType,
+		CancellationToken ct)
+	{
+		return (Task<bool>)HasAnyEntitiesMethod
+			.MakeGenericMethod(clrType)
+			.Invoke(null, [dbContext, ct])!;
+	}
+
+	private static Task<bool> HasAnyEntitiesAsyncCore<TEntity>(
+		VibeSwarmDbContext dbContext,
+		CancellationToken ct)
+		where TEntity : class
+	{
+		return dbContext.Set<TEntity>().AnyAsync(ct);
 	}
 }

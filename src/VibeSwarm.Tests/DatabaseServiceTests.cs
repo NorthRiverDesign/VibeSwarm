@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.AspNetCore.Identity;
 using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Models;
 using VibeSwarm.Shared.Providers;
@@ -108,6 +109,59 @@ public sealed class DatabaseServiceTests : IDisposable
 		Assert.Single(await verificationContext.ProviderUsageRecords.ToListAsync());
 	}
 
+	[Fact]
+	public async Task MigrateAsync_CopiesFullDatabaseAndWritesRuntimeConfiguration()
+	{
+		await SeedDatabaseAsync();
+		var targetDatabasePath = Path.Combine(Path.GetTempPath(), $"vibeswarm-db-target-{Guid.NewGuid():N}.db");
+		var runtimeConfigurationPath = Path.Combine(Path.GetTempPath(), $"vibeswarm-db-config-{Guid.NewGuid():N}.json");
+
+		try
+		{
+			await using (var dbContext = CreateDbContext())
+			{
+				var service = CreateService(dbContext, runtimeConfigurationPath);
+				var result = await service.MigrateAsync(new DatabaseMigrationRequest
+				{
+					Provider = "sqlite",
+					ConnectionString = $"Data Source={targetDatabasePath}"
+				});
+
+				Assert.Equal("sqlite", result.Provider);
+				Assert.True(result.CopiedTableCount > 0);
+				Assert.True(result.CopiedRowCount > 0);
+				Assert.Contains("Restart VibeSwarm", result.Message);
+			}
+
+			var targetOptions = new DbContextOptionsBuilder<VibeSwarmDbContext>()
+				.UseSqlite($"Data Source={targetDatabasePath}")
+				.Options;
+			await using var targetContext = new VibeSwarmDbContext(targetOptions);
+
+			Assert.Equal(1, await targetContext.Users.CountAsync());
+			Assert.Equal(1, await targetContext.Roles.CountAsync());
+			Assert.Equal(1, await targetContext.UserRoles.CountAsync());
+			Assert.Equal(1, await targetContext.Providers.CountAsync());
+			Assert.Equal(2, await targetContext.Jobs.CountAsync());
+			Assert.Equal(2, await targetContext.JobMessages.CountAsync());
+			Assert.Equal(2, await targetContext.ProviderUsageRecords.CountAsync());
+			Assert.Equal(1, await targetContext.AppSettings.CountAsync());
+			Assert.Equal("secret-api-key", await targetContext.Providers.Select(provider => provider.ApiKey).SingleAsync());
+
+			var runtimeConfiguration = new DatabaseRuntimeConfigurationStore(runtimeConfigurationPath).Load();
+			Assert.NotNull(runtimeConfiguration);
+			Assert.Equal("sqlite", runtimeConfiguration!.Provider);
+			Assert.Contains(targetDatabasePath, runtimeConfiguration.ConnectionString, StringComparison.Ordinal);
+		}
+		finally
+		{
+			File.Delete(targetDatabasePath);
+			File.Delete($"{targetDatabasePath}-wal");
+			File.Delete($"{targetDatabasePath}-shm");
+			File.Delete(runtimeConfigurationPath);
+		}
+	}
+
 	private async Task SeedDatabaseAsync()
 	{
 		await using var dbContext = CreateDbContext();
@@ -118,14 +172,44 @@ public sealed class DatabaseServiceTests : IDisposable
 		dbContext.Projects.RemoveRange(dbContext.Projects);
 		dbContext.Providers.RemoveRange(dbContext.Providers);
 		dbContext.AppSettings.RemoveRange(dbContext.AppSettings);
+		dbContext.UserRoles.RemoveRange(dbContext.UserRoles);
+		dbContext.UserClaims.RemoveRange(dbContext.UserClaims);
+		dbContext.UserLogins.RemoveRange(dbContext.UserLogins);
+		dbContext.UserTokens.RemoveRange(dbContext.UserTokens);
+		dbContext.RoleClaims.RemoveRange(dbContext.RoleClaims);
+		dbContext.Users.RemoveRange(dbContext.Users);
+		dbContext.Roles.RemoveRange(dbContext.Roles);
 		await dbContext.SaveChangesAsync();
+
+		var role = new IdentityRole<Guid>
+		{
+			Id = Guid.NewGuid(),
+			Name = DatabaseSeeder.AdminRole,
+			NormalizedName = DatabaseSeeder.AdminRole.ToUpperInvariant()
+		};
+
+		var user = new ApplicationUser
+		{
+			Id = Guid.NewGuid(),
+			UserName = "admin",
+			NormalizedUserName = "ADMIN",
+			Email = "admin@vibeswarm.local",
+			NormalizedEmail = "ADMIN@VIBESWARM.LOCAL",
+			EmailConfirmed = true,
+			IsActive = true,
+			PasswordHash = "hash",
+			SecurityStamp = "security-stamp",
+			ConcurrencyStamp = "concurrency-stamp",
+			CreatedAt = DateTime.UtcNow
+		};
 
 		var provider = new Provider
 		{
 			Id = Guid.NewGuid(),
 			Name = "Copilot",
 			Type = ProviderType.Copilot,
-			ConnectionMode = ProviderConnectionMode.CLI
+			ConnectionMode = ProviderConnectionMode.CLI,
+			ApiKey = "secret-api-key"
 		};
 
 		var project = new Project
@@ -157,6 +241,13 @@ public sealed class DatabaseServiceTests : IDisposable
 			CompletedAt = DateTime.UtcNow.AddDays(-2)
 		};
 
+		dbContext.Roles.Add(role);
+		dbContext.Users.Add(user);
+		dbContext.UserRoles.Add(new IdentityUserRole<Guid>
+		{
+			UserId = user.Id,
+			RoleId = role.Id
+		});
 		dbContext.Providers.Add(provider);
 		dbContext.Projects.Add(project);
 		dbContext.AppSettings.Add(new AppSettings
@@ -224,11 +315,12 @@ public sealed class DatabaseServiceTests : IDisposable
 
 	private VibeSwarmDbContext CreateDbContext() => new(_dbOptions);
 
-	private static DatabaseService CreateService(VibeSwarmDbContext dbContext)
+	private static DatabaseService CreateService(VibeSwarmDbContext dbContext, string? runtimeConfigurationPath = null)
 	{
 		return new DatabaseService(
 			dbContext,
-			new CriticalErrorLogService(dbContext, NullLogger<CriticalErrorLogService>.Instance));
+			new CriticalErrorLogService(dbContext, NullLogger<CriticalErrorLogService>.Instance),
+			new DatabaseRuntimeConfigurationStore(runtimeConfigurationPath));
 	}
 
 	public void Dispose()

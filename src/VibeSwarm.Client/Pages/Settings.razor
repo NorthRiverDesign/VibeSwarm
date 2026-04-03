@@ -423,6 +423,122 @@ else if (_databaseSummary != null)
 <div class="card mb-3">
 <div class="card-header bg-body-secondary">
 <h5 class="mb-0 fw-semibold">
+<i class="bi bi-arrow-left-right me-2"></i>Migration
+</h5>
+</div>
+<div class="card-body d-flex flex-column gap-3">
+@if (_databaseMigrationResult != null)
+{
+<Alert Type="Alert.AlertType.Info" Class="mb-0">
+<div class="d-flex flex-column gap-1">
+<span>@_databaseMigrationResult.Message</span>
+@if (!string.IsNullOrWhiteSpace(_databaseMigrationResult.ConnectionStringPreview))
+{
+<span class="small text-body-secondary font-monospace text-break">@_databaseMigrationResult.ConnectionStringPreview</span>
+}
+</div>
+</Alert>
+}
+
+@if (_isLoadingDatabaseConfiguration && _databaseConfiguration == null)
+{
+<LoadingSpinner />
+}
+else if (_databaseConfiguration != null)
+{
+@if (_databaseConfiguration.HasEnvironmentOverride)
+{
+<Alert Type="Alert.AlertType.Warning" Class="mb-0">
+Migration is disabled because the current database is controlled by environment variables. Clear
+<code>DATABASE_PROVIDER</code> and <code>ConnectionStrings__Default</code> to manage database
+switching from the UI.
+</Alert>
+}
+
+@if (!string.IsNullOrWhiteSpace(_databaseConfiguration.PendingProvider))
+{
+<Alert Type="Alert.AlertType.Info" Class="mb-0">
+<div class="d-flex flex-column gap-1">
+<span>Restart pending: VibeSwarm will switch to @GetDatabaseProviderDisplayName(_databaseConfiguration.PendingProvider) after restart.</span>
+@if (!string.IsNullOrWhiteSpace(_databaseConfiguration.PendingConnectionStringPreview))
+{
+<span class="small text-body-secondary font-monospace text-break">@_databaseConfiguration.PendingConnectionStringPreview</span>
+}
+</div>
+</Alert>
+}
+
+<div class="row g-3">
+<div class="col-12 col-lg-4">
+<div class="border rounded-3 p-3 h-100 bg-body-tertiary d-flex flex-column gap-2">
+<div class="small text-body-secondary text-uppercase fw-semibold">Current Configuration</div>
+<div class="fw-semibold">@GetDatabaseProviderDisplayName(_databaseConfiguration.Provider)</div>
+<div class="small text-body-secondary">@_databaseConfiguration.ConfigurationSource</div>
+@if (!string.IsNullOrWhiteSpace(_databaseConfiguration.ConnectionStringPreview))
+{
+<div class="small text-body-secondary font-monospace text-break">@_databaseConfiguration.ConnectionStringPreview</div>
+}
+<div class="small text-body-secondary">Runtime config path: @_databaseConfiguration.RuntimeConfigurationPath</div>
+</div>
+</div>
+<div class="col-12 col-lg-8">
+<div class="border rounded-3 p-3 d-flex flex-column gap-3 h-100">
+<div class="row g-3">
+<div class="col-12 col-md-4">
+<label class="form-label">Target Provider</label>
+<select class="form-select" @bind="_databaseMigrationRequest.Provider">
+<option value="sqlite">SQLite</option>
+<option value="mysql">MySQL</option>
+<option value="postgresql">PostgreSQL</option>
+<option value="sqlserver">SQL Server</option>
+</select>
+</div>
+<div class="col-12 col-md-8">
+<label class="form-label">Target Connection String</label>
+<input type="text" class="form-control font-monospace" @bind="_databaseMigrationRequest.ConnectionString"
+placeholder="@GetDatabaseMigrationConnectionStringPlaceholder()" />
+</div>
+</div>
+
+<div class="small text-body-secondary">
+Copy the entire VibeSwarm database into an empty target database, then save the new provider and
+connection string to the runtime database config file. The current database is left unchanged until
+you restart the app.
+</div>
+<div class="small text-body-secondary">
+For SQLite, choose a new file path. For MySQL, PostgreSQL, or SQL Server, point to an empty
+database that the app can create tables in.
+</div>
+
+@if (!string.IsNullOrWhiteSpace(GetDatabaseMigrationValidationMessage()))
+{
+<div class="small text-danger">@GetDatabaseMigrationValidationMessage()</div>
+}
+
+<div class="d-flex flex-column flex-sm-row gap-2">
+<button type="button" class="btn btn-primary btn-sm" @onclick="OpenDatabaseMigrationModal"
+disabled="@IsDatabaseMigrationDisabled()">
+@if (_isMigratingDatabase)
+{
+<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+}
+<i class="bi bi-arrow-left-right me-1"></i>Migrate Database
+</button>
+<button type="button" class="btn btn-secondary btn-sm" @onclick="RefreshDatabaseConfiguration"
+disabled="@_isLoadingDatabaseConfiguration">
+<i class="bi bi-arrow-clockwise me-1"></i>Refresh Config
+</button>
+</div>
+</div>
+</div>
+</div>
+}
+</div>
+</div>
+
+<div class="card mb-3">
+<div class="card-header bg-body-secondary">
+<h5 class="mb-0 fw-semibold">
 <i class="bi bi-trash3 me-2"></i>Cleanup
 </h5>
 </div>
@@ -718,6 +834,10 @@ VibeSwarm can work with any directory that the host process has access to.
 Message="@GetDatabaseMaintenanceModalMessage()" SubMessage="@GetDatabaseMaintenanceModalSubMessage()"
 ConfirmText="@GetDatabaseMaintenanceConfirmText()" ButtonClass="@GetDatabaseMaintenanceButtonClass()"
 IsProcessing="@_isRunningDatabaseMaintenance" OnConfirm="RunDatabaseMaintenance" />
+<ConfirmationModal @bind-IsVisible="_showDatabaseMigrationModal" Title="Migrate Database"
+Message="@GetDatabaseMigrationModalMessage()" SubMessage="@GetDatabaseMigrationModalSubMessage()"
+ConfirmText="Migrate" ButtonClass="btn-primary" IsProcessing="@_isMigratingDatabase"
+OnConfirm="RunDatabaseMigration" />
 
 @code {
 private static readonly JsonSerializerOptions ImportJsonOptions = new()
@@ -745,10 +865,16 @@ private bool _isLoadingCriticalErrorLogs;
 private bool _isPruningCriticalErrorLogs;
 private List<CriticalErrorLogEntry> _criticalErrorLogs = [];
 private DatabaseStorageSummary? _databaseSummary;
+private DatabaseConfigurationInfo? _databaseConfiguration;
 private DatabaseMaintenanceResult? _databaseMaintenanceResult;
+private DatabaseMigrationResult? _databaseMigrationResult;
+private DatabaseMigrationRequest _databaseMigrationRequest = new();
 private DatabaseMaintenanceOperation? _pendingDatabaseMaintenanceOperation;
 private bool _isLoadingDatabaseSummary;
+private bool _isLoadingDatabaseConfiguration;
+private bool _isMigratingDatabase;
 private bool _isRunningDatabaseMaintenance;
+private bool _showDatabaseMigrationModal;
 private bool _showDatabaseMaintenanceModal;
 
 private IOrderedEnumerable<IGrouping<string, TimeZoneInfo>> GetGroupedTimeZones()
@@ -786,6 +912,7 @@ try
 	await CheckDirectoryExists();
 	await LoadCriticalErrorLogs();
 	await LoadDatabaseSummary();
+	await LoadDatabaseConfiguration();
 	}
 	catch (Exception ex)
 	{
@@ -818,6 +945,7 @@ _settings.DefaultProjectsDirectory = null;
 	await CheckDirectoryExists();
 	await LoadCriticalErrorLogs();
 	await LoadDatabaseSummary();
+	await LoadDatabaseConfiguration();
 	NotificationService.ShowSuccess("Settings saved successfully!");
 }
 catch (Exception ex)
@@ -843,6 +971,11 @@ private async Task RefreshCriticalErrorLogs()
 private async Task RefreshDatabaseSummary()
 {
 	await LoadDatabaseSummary();
+}
+
+private async Task RefreshDatabaseConfiguration()
+{
+	await LoadDatabaseConfiguration();
 }
 
 private async Task PruneCriticalErrorLogs()
@@ -898,6 +1031,29 @@ private async Task LoadDatabaseSummary()
 	finally
 	{
 		_isLoadingDatabaseSummary = false;
+	}
+}
+
+private async Task LoadDatabaseConfiguration()
+{
+	_isLoadingDatabaseConfiguration = true;
+
+	try
+	{
+		_databaseConfiguration = await DatabaseService.GetConfigurationAsync();
+		if (string.IsNullOrWhiteSpace(_databaseMigrationRequest.ConnectionString) &&
+			(string.IsNullOrWhiteSpace(_databaseMigrationRequest.Provider) || _databaseMigrationRequest.Provider == "sqlite"))
+		{
+			_databaseMigrationRequest.Provider = _databaseConfiguration.Provider;
+		}
+	}
+	catch (Exception ex)
+	{
+		NotificationService.ShowError($"Failed to load database configuration: {ex.Message}");
+	}
+	finally
+	{
+		_isLoadingDatabaseConfiguration = false;
 	}
 }
 
@@ -1019,6 +1175,16 @@ private void OpenDatabaseMaintenanceModal(DatabaseMaintenanceOperation operation
 	_showDatabaseMaintenanceModal = true;
 }
 
+private void OpenDatabaseMigrationModal()
+{
+	if (!string.IsNullOrWhiteSpace(GetDatabaseMigrationValidationMessage()))
+	{
+		return;
+	}
+
+	_showDatabaseMigrationModal = true;
+}
+
 private async Task RunDatabaseMaintenance()
 {
 	if (!_pendingDatabaseMaintenanceOperation.HasValue)
@@ -1051,6 +1217,34 @@ private async Task RunDatabaseMaintenance()
 	finally
 	{
 		_isRunningDatabaseMaintenance = false;
+	}
+}
+
+private async Task RunDatabaseMigration()
+{
+	var validationMessage = GetDatabaseMigrationValidationMessage();
+	if (!string.IsNullOrWhiteSpace(validationMessage))
+	{
+		NotificationService.ShowError(validationMessage);
+		return;
+	}
+
+	_isMigratingDatabase = true;
+
+	try
+	{
+		_databaseMigrationResult = await DatabaseService.MigrateAsync(_databaseMigrationRequest);
+		_showDatabaseMigrationModal = false;
+		await LoadDatabaseConfiguration();
+		NotificationService.ShowSuccess(_databaseMigrationResult.Message);
+	}
+	catch (Exception ex)
+	{
+		NotificationService.ShowError($"Database migration failed: {ex.Message}");
+	}
+	finally
+	{
+		_isMigratingDatabase = false;
 	}
 }
 
@@ -1116,11 +1310,77 @@ private string GetDatabaseProviderLabel()
 	return _databaseSummary?.Provider switch
 	{
 		"sqlite" => "SQLite database",
+		"mysql" => "MySQL database",
 		"postgresql" => "PostgreSQL database",
 		"sqlserver" => "SQL Server database",
 		{ Length: > 0 } provider => provider,
 		_ => "Database size unavailable"
 	};
+}
+
+private string GetDatabaseProviderDisplayName(string? provider)
+{
+	return provider switch
+	{
+		"sqlite" => "SQLite",
+		"mysql" => "MySQL",
+		"postgresql" => "PostgreSQL",
+		"sqlserver" => "SQL Server",
+		{ Length: > 0 } value => value,
+		_ => "Unknown"
+	};
+}
+
+private string GetDatabaseMigrationConnectionStringPlaceholder()
+{
+	return _databaseMigrationRequest.Provider switch
+	{
+		"sqlite" => OperatingSystem.IsWindows()
+			? @"Data Source=C:\VibeSwarm\vibeswarm.db"
+			: "Data Source=/var/lib/vibeswarm/vibeswarm.db",
+		"mysql" => "Server=localhost;Database=vibeswarm;User=vibeswarm;Password=secret",
+		"postgresql" => "Host=localhost;Database=vibeswarm;Username=vibeswarm;Password=secret",
+		"sqlserver" => "Server=localhost;Database=vibeswarm;Trusted_Connection=true;TrustServerCertificate=true",
+		_ => string.Empty
+	};
+}
+
+private bool IsDatabaseMigrationDisabled()
+{
+	return _isMigratingDatabase ||
+		_databaseConfiguration == null ||
+		_databaseConfiguration.HasEnvironmentOverride ||
+		!string.IsNullOrWhiteSpace(GetDatabaseMigrationValidationMessage());
+}
+
+private string? GetDatabaseMigrationValidationMessage()
+{
+	if (_databaseConfiguration?.HasEnvironmentOverride == true)
+	{
+		return "Environment variable overrides must be cleared before migrating from the UI.";
+	}
+
+	if (string.IsNullOrWhiteSpace(_databaseMigrationRequest.Provider))
+	{
+		return "Choose a target provider.";
+	}
+
+	if (string.IsNullOrWhiteSpace(_databaseMigrationRequest.ConnectionString))
+	{
+		return "Enter a target connection string.";
+	}
+
+	return null;
+}
+
+private string GetDatabaseMigrationModalMessage()
+{
+	return $"Copy all VibeSwarm data to the {GetDatabaseProviderDisplayName(_databaseMigrationRequest.Provider)} database now?";
+}
+
+private string GetDatabaseMigrationModalSubMessage()
+{
+	return "The target database must be empty. The current database remains untouched, and VibeSwarm will switch to the new database after restart.";
 }
 
 private static string FormatBytes(long? bytes)

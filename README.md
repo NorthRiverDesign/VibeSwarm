@@ -83,7 +83,7 @@ The `.env` file is the **only** configuration you need. Place it in the repo roo
 | `ASPNETCORE_URLS`            | `https://localhost:5001;http://localhost:5000` | Bind addresses. Use `0.0.0.0` for remote access.         |
 | `DEFAULT_ADMIN_USER`         | _(empty — setup wizard)_                       | Admin username for automated setup.                      |
 | `DEFAULT_ADMIN_PASS`         | _(empty — setup wizard)_                       | Admin password. Min 8 chars, upper + lower + digit.      |
-| `DATABASE_PROVIDER`          | `sqlite`                                       | Database engine: `sqlite`, `postgresql`, or `sqlserver`. |
+| `DATABASE_PROVIDER`          | `sqlite`                                       | Database engine: `sqlite`, `mysql`, `postgresql`, or `sqlserver`. |
 | `ConnectionStrings__Default` | `Data Source=vibeswarm.db`                     | Connection string for the chosen provider.               |
 
 You can also set these as system environment variables instead of using `.env`.
@@ -93,6 +93,13 @@ You can also set these as system environment variables instead of using `.env`.
 ## Database Options
 
 **SQLite (default)** — zero configuration. The file `vibeswarm.db` is created next to the app.
+
+**MySQL:**
+
+```bash
+DATABASE_PROVIDER=mysql
+ConnectionStrings__Default=Server=localhost;Database=vibeswarm;User=vibeswarm;Password=secret
+```
 
 **PostgreSQL:**
 
@@ -108,7 +115,11 @@ DATABASE_PROVIDER=sqlserver
 ConnectionStrings__Default=Server=localhost;Database=vibeswarm;Trusted_Connection=true;TrustServerCertificate=true
 ```
 
-Provider aliases are supported: `postgres` / `postgresql`, `mssql` / `sqlserver`.
+Provider aliases are supported: `mariadb` / `mysql`, `postgres` / `postgresql`, `mssql` / `sqlserver`.
+
+You can also switch databases from **Settings → Database**. That flow copies your current VibeSwarm
+data into an empty target database, writes the new provider and connection string to a runtime
+config file outside the repo, and takes effect after restart.
 
 ### Backup (SQLite)
 
