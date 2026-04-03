@@ -36,10 +36,10 @@ public partial class JobService : IJobService
     /// <summary>
     /// Projects a Job query into lightweight JobSummary DTOs, excluding heavy text fields.
     /// </summary>
-    internal static IQueryable<JobSummary> ProjectToSummary(IQueryable<Job> query)
-    {
-        return query.Select(j => new JobSummary
-        {
+	internal static IQueryable<JobSummary> ProjectToSummary(IQueryable<Job> query)
+	{
+		return query.Select(j => new JobSummary
+		{
             Id = j.Id,
             Title = j.Title,
             GoalPrompt = j.GoalPrompt,
@@ -52,21 +52,21 @@ public partial class JobService : IJobService
             PlanningProviderId = j.PlanningProviderId,
             PlanningProviderName = j.PlanningProvider != null ? j.PlanningProvider.Name : null,
             PlanningModelUsed = j.PlanningModelUsed,
-            CurrentActivity = j.CurrentActivity,
-            ErrorMessage = j.ErrorMessage,
-            CreatedAt = j.CreatedAt,
-            StartedAt = j.StartedAt,
-            CompletedAt = j.CompletedAt,
-            ExecutionDurationSeconds = j.ExecutionDurationSeconds,
-            TotalCostUsd = j.TotalCostUsd,
-            InputTokens = j.InputTokens,
-            OutputTokens = j.OutputTokens,
-            PlanningCostUsd = j.PlanningCostUsd,
-            PlanningInputTokens = j.PlanningInputTokens,
-            PlanningOutputTokens = j.PlanningOutputTokens,
-            ExecutionCostUsd = j.ExecutionCostUsd,
-            ExecutionInputTokens = j.ExecutionInputTokens,
-            ExecutionOutputTokens = j.ExecutionOutputTokens,
+			CurrentActivity = j.CurrentActivity,
+			ErrorMessage = j.ErrorMessage,
+			CreatedAt = j.CreatedAt,
+			StartedAt = j.StartedAt,
+			CompletedAt = j.CompletedAt,
+			ExecutionDurationSeconds = j.Statistics != null ? j.Statistics.ExecutionDurationSeconds : null,
+			TotalCostUsd = j.Statistics != null ? j.Statistics.TotalCostUsd : null,
+			InputTokens = j.Statistics != null ? j.Statistics.InputTokens : null,
+			OutputTokens = j.Statistics != null ? j.Statistics.OutputTokens : null,
+			PlanningCostUsd = j.PlanningStatistics != null ? j.PlanningStatistics.CostUsd : null,
+			PlanningInputTokens = j.PlanningStatistics != null ? j.PlanningStatistics.InputTokens : null,
+			PlanningOutputTokens = j.PlanningStatistics != null ? j.PlanningStatistics.OutputTokens : null,
+			ExecutionCostUsd = j.ExecutionStatistics != null ? j.ExecutionStatistics.CostUsd : null,
+			ExecutionInputTokens = j.ExecutionStatistics != null ? j.ExecutionStatistics.InputTokens : null,
+			ExecutionOutputTokens = j.ExecutionStatistics != null ? j.ExecutionStatistics.OutputTokens : null,
             CurrentCycle = j.CurrentCycle,
             MaxCycles = j.MaxCycles,
             CycleMode = j.CycleMode,
@@ -82,12 +82,12 @@ public partial class JobService : IJobService
         });
     }
 
-    public async Task<IEnumerable<Job>> GetAllAsync(CancellationToken cancellationToken = default)
-    {
-        return await _dbContext.Jobs
-            .Include(j => j.Project)
-                .ThenInclude(p => p!.Environments)
-            .Include(j => j.Provider)
+	public async Task<IEnumerable<Job>> GetAllAsync(CancellationToken cancellationToken = default)
+	{
+		return await IncludeStatistics(_dbContext.Jobs)
+			.Include(j => j.Project)
+				.ThenInclude(p => p!.Environments)
+			.Include(j => j.Provider)
             .Include(j => j.PlanningProvider)
             .OrderByDescending(j => j.CreatedAt)
             .ToListAsync(cancellationToken);
@@ -100,17 +100,17 @@ public partial class JobService : IJobService
         var totalCount = await filteredQuery.CountAsync(cancellationToken);
         var normalizedPage = NormalizePageNumber(page, normalizedPageSize, totalCount);
 
-        var aggregates = totalCount == 0
-            ? null
-            : await filteredQuery
-                .GroupBy(_ => 1)
-                .Select(group => new
-                {
-                    TotalInputTokens = group.Sum(job => job.InputTokens ?? 0),
-                    TotalOutputTokens = group.Sum(job => job.OutputTokens ?? 0),
-                    TotalCostUsd = group.Sum(job => job.TotalCostUsd ?? 0m)
-                })
-                .FirstOrDefaultAsync(cancellationToken);
+		var aggregates = totalCount == 0
+			? null
+			: await filteredQuery
+				.GroupBy(_ => 1)
+				.Select(group => new
+				{
+					TotalInputTokens = group.Sum(job => job.Statistics != null ? job.Statistics.InputTokens ?? 0 : 0),
+					TotalOutputTokens = group.Sum(job => job.Statistics != null ? job.Statistics.OutputTokens ?? 0 : 0),
+					TotalCostUsd = group.Sum(job => job.Statistics != null ? job.Statistics.TotalCostUsd ?? 0m : 0m)
+				})
+				.FirstOrDefaultAsync(cancellationToken);
 
         return new JobsListResult
         {
@@ -142,12 +142,12 @@ public partial class JobService : IJobService
         };
     }
 
-    public async Task<IEnumerable<Job>> GetByProjectIdAsync(Guid projectId, CancellationToken cancellationToken = default)
-    {
-        return await _dbContext.Jobs
-            .Include(j => j.Provider)
-            .Where(j => j.ProjectId == projectId)
-            .OrderByDescending(j => j.CreatedAt)
+	public async Task<IEnumerable<Job>> GetByProjectIdAsync(Guid projectId, CancellationToken cancellationToken = default)
+	{
+		return await IncludeStatistics(_dbContext.Jobs)
+			.Include(j => j.Provider)
+			.Where(j => j.ProjectId == projectId)
+			.OrderByDescending(j => j.CreatedAt)
             .ToListAsync(cancellationToken);
     }
 
@@ -243,10 +243,13 @@ public partial class JobService : IJobService
             .Select(g => g.First().SwarmId!.Value)
             .ToList();
 
-        var pendingJobs = await _dbContext.Jobs
-            .Include(j => j.Project)
-                .ThenInclude(p => p!.Environments)
-            .Include(j => j.Provider)
+		var pendingJobs = await _dbContext.Jobs
+			.Include(j => j.Statistics)
+			.Include(j => j.PlanningStatistics)
+			.Include(j => j.ExecutionStatistics)
+			.Include(j => j.Project)
+				.ThenInclude(p => p!.Environments)
+			.Include(j => j.Provider)
             .Where(j => j.Status == JobStatus.New && !j.CancellationRequested)
             .Where(j => !projectsWithRunningJobs.Contains(j.ProjectId)
                 || (j.SwarmId != null && activeSwarmIds.Contains(j.SwarmId.Value)))
@@ -281,23 +284,23 @@ public partial class JobService : IJobService
             .ToListAsync(cancellationToken);
     }
 
-    public async Task<Job?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
-    {
-        return await _dbContext.Jobs
-            .Include(j => j.Project)
-                .ThenInclude(p => p!.Environments)
-            .Include(j => j.Provider)
+	public async Task<Job?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
+	{
+		return await IncludeStatistics(_dbContext.Jobs)
+			.Include(j => j.Project)
+				.ThenInclude(p => p!.Environments)
+			.Include(j => j.Provider)
             .Include(j => j.PlanningProvider)
             .Include(j => j.ProviderAttempts.OrderBy(a => a.AttemptOrder))
             .FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
     }
 
-    public async Task<Job?> GetByIdWithMessagesAsync(Guid id, CancellationToken cancellationToken = default)
-    {
-        return await _dbContext.Jobs
-            .Include(j => j.Project)
-                .ThenInclude(p => p!.Environments)
-            .Include(j => j.Provider)
+	public async Task<Job?> GetByIdWithMessagesAsync(Guid id, CancellationToken cancellationToken = default)
+	{
+		return await IncludeStatistics(_dbContext.Jobs)
+			.Include(j => j.Project)
+				.ThenInclude(p => p!.Environments)
+			.Include(j => j.Provider)
             .Include(j => j.PlanningProvider)
             .Include(j => j.ProviderAttempts.OrderBy(a => a.AttemptOrder))
             .Include(j => j.Messages.OrderBy(m => m.CreatedAt))
@@ -445,7 +448,7 @@ public partial class JobService : IJobService
         return createdJobs;
     }
 
-    private IQueryable<Job> BuildFilteredJobsQuery(Guid? projectId, string statusFilter)
+	private IQueryable<Job> BuildFilteredJobsQuery(Guid? projectId, string statusFilter)
     {
         var query = _dbContext.Jobs.AsQueryable();
 
@@ -485,7 +488,7 @@ public partial class JobService : IJobService
         };
     }
 
-    private static void NormalizeJobForPersistence(Job job)
+	private static void NormalizeJobForPersistence(Job job)
     {
         job.GoalPrompt = job.GoalPrompt?.Trim() ?? string.Empty;
         job.Title = JobTitleHelper.BuildSafeJobTitle(job.Title, job.GoalPrompt);
@@ -496,8 +499,16 @@ public partial class JobService : IJobService
         job.PlanningModelUsed = string.IsNullOrWhiteSpace(job.PlanningModelUsed) ? null : job.PlanningModelUsed.Trim();
         job.PlanningReasoningEffortUsed = ProviderCapabilities.NormalizeReasoningEffort(job.PlanningReasoningEffortUsed);
         job.Branch = string.IsNullOrWhiteSpace(job.Branch) ? null : job.Branch.Trim();
-        job.TargetBranch = string.IsNullOrWhiteSpace(job.TargetBranch) ? null : job.TargetBranch.Trim();
-    }
+		job.TargetBranch = string.IsNullOrWhiteSpace(job.TargetBranch) ? null : job.TargetBranch.Trim();
+	}
+
+	private static IQueryable<Job> IncludeStatistics(IQueryable<Job> query)
+	{
+		return query
+			.Include(job => job.Statistics)
+			.Include(job => job.PlanningStatistics)
+			.Include(job => job.ExecutionStatistics);
+	}
 
     private static int NormalizePageSize(int pageSize, int defaultPageSize)
     {

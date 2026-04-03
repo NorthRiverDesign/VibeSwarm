@@ -225,9 +225,9 @@ public class ProjectService : IProjectService
 				CompletedJobs = g.Count(j => j.Status == JobStatus.Completed),
 				FailedJobs = g.Count(j => j.Status == JobStatus.Failed || j.Status == JobStatus.Cancelled),
 				ActiveJobs = g.Count(j => j.Status == JobStatus.New || j.Status == JobStatus.Started || j.Status == JobStatus.Planning || j.Status == JobStatus.Processing),
-				TotalInputTokens = g.Sum(j => j.InputTokens ?? 0),
-				TotalOutputTokens = g.Sum(j => j.OutputTokens ?? 0),
-				TotalCostUsd = g.Sum(j => j.TotalCostUsd ?? 0)
+				TotalInputTokens = g.Sum(j => j.Statistics != null ? j.Statistics.InputTokens ?? 0 : 0),
+				TotalOutputTokens = g.Sum(j => j.Statistics != null ? j.Statistics.OutputTokens ?? 0 : 0),
+				TotalCostUsd = g.Sum(j => j.Statistics != null ? j.Statistics.TotalCostUsd ?? 0 : 0)
 			})
 			.ToListAsync(cancellationToken);
 
@@ -366,9 +366,9 @@ public class ProjectService : IProjectService
 			{
 				CompletedAt = job.CompletedAt!.Value,
 				StartedAt = job.StartedAt,
-				ExecutionDurationSeconds = job.ExecutionDurationSeconds,
-				InputTokens = job.InputTokens,
-				OutputTokens = job.OutputTokens
+				ExecutionDurationSeconds = job.Statistics != null ? job.Statistics.ExecutionDurationSeconds : null,
+				InputTokens = job.Statistics != null ? job.Statistics.InputTokens : null,
+				OutputTokens = job.Statistics != null ? job.Statistics.OutputTokens : null
 			})
 			.ToListAsync(cancellationToken);
 

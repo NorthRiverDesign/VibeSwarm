@@ -25,6 +25,9 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 	public DbSet<JobSchedule> JobSchedules { get; set; }
 	public DbSet<JobTemplate> JobTemplates { get; set; }
 	public DbSet<Job> Jobs { get; set; }
+	public DbSet<JobStatistics> JobStatistics { get; set; }
+	public DbSet<JobPlanningStatistics> JobPlanningStatistics { get; set; }
+	public DbSet<JobExecutionStatistics> JobExecutionStatistics { get; set; }
 	public DbSet<JobMessage> JobMessages { get; set; }
 	public DbSet<JobProviderAttempt> JobProviderAttempts { get; set; }
 	public DbSet<Skill> Skills { get; set; }
@@ -282,10 +285,40 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 				.WithMany()
 				.HasForeignKey(e => e.TeamRoleId)
 				.OnDelete(DeleteBehavior.SetNull);
+			entity.Navigation(e => e.Statistics).AutoInclude();
+			entity.Navigation(e => e.PlanningStatistics).AutoInclude();
+			entity.Navigation(e => e.ExecutionStatistics).AutoInclude();
 			entity.HasIndex(e => e.Status);
 			entity.HasIndex(e => e.CreatedAt);
 			entity.HasIndex(e => e.SwarmId);
 			entity.HasIndex(e => new { e.JobScheduleId, e.ScheduledForUtc }).IsUnique();
+		});
+
+		modelBuilder.Entity<JobStatistics>(entity =>
+		{
+			entity.HasKey(e => e.JobId);
+			entity.HasOne(e => e.Job)
+				.WithOne(job => job.Statistics)
+				.HasForeignKey<JobStatistics>(e => e.JobId)
+				.OnDelete(DeleteBehavior.Cascade);
+		});
+
+		modelBuilder.Entity<JobPlanningStatistics>(entity =>
+		{
+			entity.HasKey(e => e.JobId);
+			entity.HasOne(e => e.Job)
+				.WithOne(job => job.PlanningStatistics)
+				.HasForeignKey<JobPlanningStatistics>(e => e.JobId)
+				.OnDelete(DeleteBehavior.Cascade);
+		});
+
+		modelBuilder.Entity<JobExecutionStatistics>(entity =>
+		{
+			entity.HasKey(e => e.JobId);
+			entity.HasOne(e => e.Job)
+				.WithOne(job => job.ExecutionStatistics)
+				.HasForeignKey<JobExecutionStatistics>(e => e.JobId)
+				.OnDelete(DeleteBehavior.Cascade);
 		});
 
 		modelBuilder.Entity<JobMessage>(entity =>

@@ -124,16 +124,19 @@ public partial class JobService
         return true;
     }
 
-    public async Task<bool> ContinueJobAsync(Guid id, string followUpPrompt, CancellationToken cancellationToken = default)
-    {
+	public async Task<bool> ContinueJobAsync(Guid id, string followUpPrompt, CancellationToken cancellationToken = default)
+	{
         var trimmedFollowUp = followUpPrompt?.Trim();
         if (string.IsNullOrWhiteSpace(trimmedFollowUp))
         {
             return false;
         }
 
-        var job = await _dbContext.Jobs
-            .FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
+		var job = await _dbContext.Jobs
+			.Include(j => j.Statistics)
+			.Include(j => j.PlanningStatistics)
+			.Include(j => j.ExecutionStatistics)
+			.FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
 
         if (job == null || job.Status != JobStatus.Completed)
         {
@@ -191,10 +194,13 @@ public partial class JobService
             .FirstOrDefaultAsync(cancellationToken);
     }
 
-    public async Task<bool> ResetJobWithOptionsAsync(Guid id, Guid? providerId = null, string? modelId = null, string? reasoningEffort = null, CancellationToken cancellationToken = default)
-    {
-        var job = await _dbContext.Jobs
-            .FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
+	public async Task<bool> ResetJobWithOptionsAsync(Guid id, Guid? providerId = null, string? modelId = null, string? reasoningEffort = null, CancellationToken cancellationToken = default)
+	{
+		var job = await _dbContext.Jobs
+			.Include(j => j.Statistics)
+			.Include(j => j.PlanningStatistics)
+			.Include(j => j.ExecutionStatistics)
+			.FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
 
         if (job == null)
         {
@@ -232,9 +238,12 @@ public partial class JobService
             return 0;
         }
 
-        var jobs = await _dbContext.Jobs
-            .Where(j => j.ProjectId == projectId && jobIds.Contains(j.Id) && (j.Status == JobStatus.Failed || j.Status == JobStatus.Cancelled))
-            .ToListAsync(cancellationToken);
+		var jobs = await _dbContext.Jobs
+			.Include(j => j.Statistics)
+			.Include(j => j.PlanningStatistics)
+			.Include(j => j.ExecutionStatistics)
+			.Where(j => j.ProjectId == projectId && jobIds.Contains(j.Id) && (j.Status == JobStatus.Failed || j.Status == JobStatus.Cancelled))
+			.ToListAsync(cancellationToken);
 
         if (jobs.Count == 0)
         {

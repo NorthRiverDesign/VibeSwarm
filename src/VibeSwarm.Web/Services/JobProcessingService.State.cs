@@ -75,8 +75,12 @@ public partial class JobProcessingService
         string? workingDirectory, DateTime? backoffUntil,
         VibeSwarmDbContext dbContext, CancellationToken cancellationToken)
     {
-        var job = await dbContext.Jobs.FindAsync(new object[] { jobId }, cancellationToken);
-        if (job == null) return;
+		var job = await dbContext.Jobs
+			.Include(j => j.Statistics)
+			.Include(j => j.PlanningStatistics)
+			.Include(j => j.ExecutionStatistics)
+			.FirstOrDefaultAsync(j => j.Id == jobId, cancellationToken);
+		if (job == null) return;
 
         // Store any partial console output
         var consoleOutput = executionContext.GetConsoleOutput();
@@ -128,10 +132,13 @@ public partial class JobProcessingService
         JobExecutionContext executionContext, string? workingDirectory,
         VibeSwarmDbContext dbContext, CancellationToken cancellationToken)
     {
-        var hasGitChanges = false;
-        var job = await dbContext.Jobs
-            .Include(j => j.Project)
-            .FirstOrDefaultAsync(j => j.Id == jobId, cancellationToken);
+		var hasGitChanges = false;
+		var job = await dbContext.Jobs
+			.Include(j => j.Statistics)
+			.Include(j => j.PlanningStatistics)
+			.Include(j => j.ExecutionStatistics)
+			.Include(j => j.Project)
+			.FirstOrDefaultAsync(j => j.Id == jobId, cancellationToken);
         if (job != null)
         {
             var transition = JobStateMachine.TryTransition(job, status, errorMessage);

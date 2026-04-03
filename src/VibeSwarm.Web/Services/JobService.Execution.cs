@@ -10,10 +10,13 @@ public partial class JobService
 {
     public async Task RefreshExecutionPlanAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        var job = await _dbContext.Jobs
-            .Include(j => j.Project)
-                .ThenInclude(p => p!.ProviderSelections)
-            .Include(j => j.Provider)
+		var job = await _dbContext.Jobs
+			.Include(j => j.Statistics)
+			.Include(j => j.PlanningStatistics)
+			.Include(j => j.ExecutionStatistics)
+			.Include(j => j.Project)
+				.ThenInclude(p => p!.ProviderSelections)
+			.Include(j => j.Provider)
             .FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
 
         if (job == null)

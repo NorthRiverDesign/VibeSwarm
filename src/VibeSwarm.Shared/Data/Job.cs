@@ -1,4 +1,6 @@
 using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
+using System.Text.Json.Serialization;
 using VibeSwarm.Shared.Providers;
 
 namespace VibeSwarm.Shared.Data;
@@ -53,7 +55,17 @@ public enum GitCheckpointStatus
 
 public class Job
 {
-    public Guid Id { get; set; }
+	private Guid _id;
+
+    public Guid Id
+	{
+		get => _id;
+		set
+		{
+			_id = value;
+			SyncStatisticsKeys();
+		}
+	}
 
     /// <summary>
     /// Short display title for the job. For manual jobs, this is derived from the goal prompt.
@@ -136,17 +148,56 @@ public class Job
 	/// <summary>
 	/// Input tokens consumed while generating the persisted planning output.
 	/// </summary>
-	public int? PlanningInputTokens { get; set; }
+	[NotMapped]
+	public int? PlanningInputTokens
+	{
+		get => PlanningStatistics?.InputTokens;
+		set
+		{
+			if (value is null && PlanningStatistics is null)
+			{
+				return;
+			}
+
+			EnsurePlanningStatistics().InputTokens = value;
+		}
+	}
 
 	/// <summary>
 	/// Output tokens consumed while generating the persisted planning output.
 	/// </summary>
-	public int? PlanningOutputTokens { get; set; }
+	[NotMapped]
+	public int? PlanningOutputTokens
+	{
+		get => PlanningStatistics?.OutputTokens;
+		set
+		{
+			if (value is null && PlanningStatistics is null)
+			{
+				return;
+			}
+
+			EnsurePlanningStatistics().OutputTokens = value;
+		}
+	}
 
 	/// <summary>
 	/// Cost in USD for generating the persisted planning output.
 	/// </summary>
-	public decimal? PlanningCostUsd { get; set; }
+	[NotMapped]
+	public decimal? PlanningCostUsd
+	{
+		get => PlanningStatistics?.CostUsd;
+		set
+		{
+			if (value is null && PlanningStatistics is null)
+			{
+				return;
+			}
+
+			EnsurePlanningStatistics().CostUsd = value;
+		}
+	}
 
     /// <summary>
     /// Ordered provider-model execution plan captured when the job is scheduled or reset.
@@ -198,7 +249,20 @@ public class Job
     /// Total execution time in seconds. Stored explicitly to preserve duration
     /// even if StartedAt/CompletedAt are modified or unavailable.
     /// </summary>
-    public double? ExecutionDurationSeconds { get; set; }
+    [NotMapped]
+    public double? ExecutionDurationSeconds
+	{
+		get => Statistics?.ExecutionDurationSeconds;
+		set
+		{
+			if (value is null && Statistics is null)
+			{
+				return;
+			}
+
+			EnsureStatistics().ExecutionDurationSeconds = value;
+		}
+	}
 
     /// <summary>
     /// Gets the execution duration as a TimeSpan.
@@ -235,32 +299,110 @@ public class Job
     /// <summary>
     /// Total cost in USD for this job (if available from provider)
     /// </summary>
-    public decimal? TotalCostUsd { get; set; }
+    [NotMapped]
+    public decimal? TotalCostUsd
+	{
+		get => Statistics?.TotalCostUsd;
+		set
+		{
+			if (value is null && Statistics is null)
+			{
+				return;
+			}
+
+			EnsureStatistics().TotalCostUsd = value;
+		}
+	}
 
     /// <summary>
     /// Total input tokens used
     /// </summary>
-    public int? InputTokens { get; set; }
+    [NotMapped]
+    public int? InputTokens
+	{
+		get => Statistics?.InputTokens;
+		set
+		{
+			if (value is null && Statistics is null)
+			{
+				return;
+			}
+
+			EnsureStatistics().InputTokens = value;
+		}
+	}
 
 	/// <summary>
 	/// Total output tokens used
 	/// </summary>
-	public int? OutputTokens { get; set; }
+	[NotMapped]
+	public int? OutputTokens
+	{
+		get => Statistics?.OutputTokens;
+		set
+		{
+			if (value is null && Statistics is null)
+			{
+				return;
+			}
+
+			EnsureStatistics().OutputTokens = value;
+		}
+	}
 
 	/// <summary>
 	/// Input tokens consumed by the execution stage.
 	/// </summary>
-	public int? ExecutionInputTokens { get; set; }
+	[NotMapped]
+	public int? ExecutionInputTokens
+	{
+		get => ExecutionStatistics?.InputTokens;
+		set
+		{
+			if (value is null && ExecutionStatistics is null)
+			{
+				return;
+			}
+
+			EnsureExecutionStatistics().InputTokens = value;
+		}
+	}
 
 	/// <summary>
 	/// Output tokens consumed by the execution stage.
 	/// </summary>
-	public int? ExecutionOutputTokens { get; set; }
+	[NotMapped]
+	public int? ExecutionOutputTokens
+	{
+		get => ExecutionStatistics?.OutputTokens;
+		set
+		{
+			if (value is null && ExecutionStatistics is null)
+			{
+				return;
+			}
+
+			EnsureExecutionStatistics().OutputTokens = value;
+		}
+	}
 
 	/// <summary>
 	/// Cost in USD for the execution stage.
 	/// </summary>
-	public decimal? ExecutionCostUsd { get; set; }
+	[NotMapped]
+	public decimal? ExecutionCostUsd
+	{
+		get => ExecutionStatistics?.CostUsd;
+		set
+		{
+			if (value is null && ExecutionStatistics is null)
+			{
+				return;
+			}
+
+			EnsureExecutionStatistics().CostUsd = value;
+		}
+	}
 
     /// <summary>
     /// Current activity description (e.g., "Running tool: Read", "Thinking...")
@@ -539,7 +681,16 @@ public class Job
     /// </summary>
     public Guid? TeamRoleId { get; set; }
 
-    public TeamRole? TeamRole { get; set; }
+	public TeamRole? TeamRole { get; set; }
+
+	[JsonIgnore]
+	public JobStatistics? Statistics { get; set; }
+
+	[JsonIgnore]
+	public JobPlanningStatistics? PlanningStatistics { get; set; }
+
+	[JsonIgnore]
+	public JobExecutionStatistics? ExecutionStatistics { get; set; }
 
     /// <summary>
     /// Earliest time this job may be dequeued. Set when a rate-limited provider has no
@@ -586,6 +737,51 @@ public class Job
             FailurePattern = FailurePattern
         };
     }
+
+	private JobStatistics EnsureStatistics()
+	{
+		Statistics ??= new JobStatistics();
+		Statistics.Job = this;
+		Statistics.JobId = Id;
+		return Statistics;
+	}
+
+	private JobPlanningStatistics EnsurePlanningStatistics()
+	{
+		PlanningStatistics ??= new JobPlanningStatistics();
+		PlanningStatistics.Job = this;
+		PlanningStatistics.JobId = Id;
+		return PlanningStatistics;
+	}
+
+	private JobExecutionStatistics EnsureExecutionStatistics()
+	{
+		ExecutionStatistics ??= new JobExecutionStatistics();
+		ExecutionStatistics.Job = this;
+		ExecutionStatistics.JobId = Id;
+		return ExecutionStatistics;
+	}
+
+	private void SyncStatisticsKeys()
+	{
+		if (Statistics is not null)
+		{
+			Statistics.JobId = Id;
+			Statistics.Job = this;
+		}
+
+		if (PlanningStatistics is not null)
+		{
+			PlanningStatistics.JobId = Id;
+			PlanningStatistics.Job = this;
+		}
+
+		if (ExecutionStatistics is not null)
+		{
+			ExecutionStatistics.JobId = Id;
+			ExecutionStatistics.Job = this;
+		}
+	}
 }
 
 public enum JobStatus

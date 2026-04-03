@@ -11,8 +11,11 @@ public partial class JobService
 {
     public async Task<bool> RequestCancellationAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        var job = await _dbContext.Jobs
-            .FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
+		var job = await _dbContext.Jobs
+			.Include(j => j.Statistics)
+			.Include(j => j.PlanningStatistics)
+			.Include(j => j.ExecutionStatistics)
+			.FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
 
         if (job == null)
         {
@@ -71,8 +74,11 @@ public partial class JobService
 
     public async Task<bool> ForceCancelAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        var job = await _dbContext.Jobs
-            .FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
+		var job = await _dbContext.Jobs
+			.Include(j => j.Statistics)
+			.Include(j => j.PlanningStatistics)
+			.Include(j => j.ExecutionStatistics)
+			.FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
 
         if (job == null)
         {
@@ -149,8 +155,11 @@ public partial class JobService
 
     public async Task<bool> ResetJobAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        var job = await _dbContext.Jobs
-            .FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
+		var job = await _dbContext.Jobs
+			.Include(j => j.Statistics)
+			.Include(j => j.PlanningStatistics)
+			.Include(j => j.ExecutionStatistics)
+			.FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
 
         if (job == null)
         {
@@ -220,8 +229,11 @@ public partial class JobService
 
     public async Task DeleteAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        var job = await _dbContext.Jobs
-            .FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
+		var job = await _dbContext.Jobs
+			.Include(j => j.Statistics)
+			.Include(j => j.PlanningStatistics)
+			.Include(j => j.ExecutionStatistics)
+			.FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
 
         if (job != null)
         {
@@ -243,8 +255,11 @@ public partial class JobService
 
     public async Task<bool> ForceFailJobAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        var job = await _dbContext.Jobs
-            .FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
+		var job = await _dbContext.Jobs
+			.Include(j => j.Statistics)
+			.Include(j => j.PlanningStatistics)
+			.Include(j => j.ExecutionStatistics)
+			.FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
 
         if (job == null || JobStateMachine.IsTerminalState(job.Status))
         {
@@ -277,10 +292,13 @@ public partial class JobService
         return true;
     }
 
-    public async Task<bool> UpdateJobPromptAsync(Guid id, string newPrompt, CancellationToken cancellationToken = default)
-    {
-        var job = await _dbContext.Jobs
-            .FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
+	public async Task<bool> UpdateJobPromptAsync(Guid id, string newPrompt, CancellationToken cancellationToken = default)
+	{
+		var job = await _dbContext.Jobs
+			.Include(j => j.Statistics)
+			.Include(j => j.PlanningStatistics)
+			.Include(j => j.ExecutionStatistics)
+			.FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
 
         if (job == null)
         {
