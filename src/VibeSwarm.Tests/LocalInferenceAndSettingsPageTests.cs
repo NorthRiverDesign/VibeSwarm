@@ -66,6 +66,7 @@ return output.ToHtmlString();
 	Assert.Contains("Timezone", html);
 	Assert.Contains("Enable provider commit attribution", html);
 	Assert.Contains("Critical Error Logs", html);
+	Assert.Contains("Database Size", html);
 	Assert.DoesNotContain("Add Provider", html);
 	Assert.DoesNotContain("inference provider", html);
 }
@@ -146,6 +147,15 @@ public Task<string?> GetDefaultProjectsDirectoryAsync(CancellationToken cancella
 	{
 		public Task<DatabaseExportDto> ExportAsync(CancellationToken ct = default) => Task.FromResult(new DatabaseExportDto());
 		public Task<DatabaseImportResult> ImportAsync(DatabaseExportDto export, CancellationToken ct = default) => throw new NotSupportedException();
+		public Task<DatabaseStorageSummary> GetStorageSummaryAsync(CancellationToken ct = default) => Task.FromResult(new DatabaseStorageSummary
+		{
+			Provider = "sqlite",
+			TotalSizeBytes = 1024 * 1024,
+			JobsCount = 2,
+			JobMessagesCount = 4,
+			ProviderUsageRecordsCount = 1
+		});
+		public Task<DatabaseMaintenanceResult> RunMaintenanceAsync(DatabaseMaintenanceRequest request, CancellationToken ct = default) => throw new NotSupportedException();
 	}
 
 	private sealed class NoOpJsRuntime : IJSRuntime

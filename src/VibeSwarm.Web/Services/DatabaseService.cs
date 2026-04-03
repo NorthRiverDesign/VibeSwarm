@@ -1,4 +1,7 @@
+using System.Data;
+using System.Globalization;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Data.Sqlite;
 using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Models;
 using VibeSwarm.Shared.Services;
@@ -8,8 +11,13 @@ namespace VibeSwarm.Web.Services;
 public class DatabaseService : IDatabaseService
 {
 	private readonly VibeSwarmDbContext _db;
+	private readonly ICriticalErrorLogService _criticalErrorLogService;
 
-	public DatabaseService(VibeSwarmDbContext db) => _db = db;
+	public DatabaseService(VibeSwarmDbContext db, ICriticalErrorLogService criticalErrorLogService)
+	{
+		_db = db;
+		_criticalErrorLogService = criticalErrorLogService;
+	}
 
 	public async Task<DatabaseExportDto> ExportAsync(CancellationToken ct = default)
 	{
@@ -402,6 +410,308 @@ public class DatabaseService : IDatabaseService
 		return result;
 	}
 
+	public async Task<DatabaseStorageSummary> GetStorageSummaryAsync(CancellationToken ct = default)
+	{
+		var provider = GetProvider();
+		var retentionCutoff = DateTime.UtcNow.AddDays(-DatabaseMaintenanceDefaults.HistoryRetentionDays);
+		var sizeDetails = await GetCurrentSizeDetailsAsync(provider, ct);
+
+		return new DatabaseStorageSummary
+		{
+			Provider = provider,
+			Location = GetDatabaseLocation(provider),
+			TotalSizeBytes = sizeDetails.TotalSizeBytes,
+			DataFileSizeBytes = sizeDetails.DataFileSizeBytes,
+			WalFileSizeBytes = sizeDetails.WalFileSizeBytes,
+			SharedMemoryFileSizeBytes = sizeDetails.SharedMemoryFileSizeBytes,
+			JobsCount = await _db.Jobs.CountAsync(ct),
+			JobMessagesCount = await _db.JobMessages.CountAsync(ct),
+			ProviderUsageRecordsCount = await _db.ProviderUsageRecords.CountAsync(ct),
+			CriticalErrorLogsCount = await _db.CriticalErrorLogs.CountAsync(ct),
+			CompletedJobsOlderThanRetentionCount = await _db.Jobs.CountAsync(
+				job => job.Status == JobStatus.Completed && (job.CompletedAt ?? job.CreatedAt) < retentionCutoff,
+				ct),
+			ProviderUsageRecordsOlderThanRetentionCount = await _db.ProviderUsageRecords.CountAsync(
+				record => record.RecordedAt < retentionCutoff,
+				ct),
+			SupportsCompaction = string.Equals(provider, "sqlite", StringComparison.OrdinalIgnoreCase),
+			MeasuredAtUtc = DateTime.UtcNow
+		};
+	}
+
+	public async Task<DatabaseMaintenanceResult> RunMaintenanceAsync(DatabaseMaintenanceRequest request, CancellationToken ct = default)
+	{
+		ArgumentNullException.ThrowIfNull(request);
+
+		var provider = GetProvider();
+		var sizeBefore = await GetCurrentSizeDetailsAsync(provider, ct);
+		var result = request.Operation switch
+		{
+			DatabaseMaintenanceOperation.ApplyCriticalErrorLogRetention => await ApplyCriticalErrorLogRetentionAsync(ct),
+			DatabaseMaintenanceOperation.DeleteCompletedJobsOlderThanRetention => await DeleteCompletedJobsOlderThanRetentionAsync(ct),
+			DatabaseMaintenanceOperation.DeleteProviderUsageOlderThanRetention => await DeleteProviderUsageOlderThanRetentionAsync(ct),
+			DatabaseMaintenanceOperation.CompactDatabase => await CompactDatabaseAsync(provider, ct),
+			_ => throw new InvalidOperationException($"Unsupported maintenance operation '{request.Operation}'.")
+		};
+
+		var sizeAfter = await GetCurrentSizeDetailsAsync(provider, ct);
+		result.Operation = request.Operation;
+		result.SizeBeforeBytes = sizeBefore.TotalSizeBytes;
+		result.SizeAfterBytes = sizeAfter.TotalSizeBytes;
+		return result;
+	}
+
 	private static string TruncateLabel(string text, int maxLength = 50)
 		=> text.Length <= maxLength ? text : text[..maxLength] + "…";
+
+	private async Task<DatabaseMaintenanceResult> ApplyCriticalErrorLogRetentionAsync(CancellationToken ct)
+	{
+		var beforeCount = await _db.CriticalErrorLogs.CountAsync(ct);
+		await _criticalErrorLogService.ApplyRetentionPolicyAsync(ct);
+		var afterCount = await _db.CriticalErrorLogs.CountAsync(ct);
+		var removedCount = Math.Max(beforeCount - afterCount, 0);
+
+		return new DatabaseMaintenanceResult
+		{
+			AffectedRows = removedCount,
+			Message = removedCount == 0
+				? "Critical error logs already match the configured retention policy."
+				: $"Removed {removedCount} critical error log entr{(removedCount == 1 ? "y" : "ies")}."
+		};
+	}
+
+	private async Task<DatabaseMaintenanceResult> DeleteCompletedJobsOlderThanRetentionAsync(CancellationToken ct)
+	{
+		var retentionCutoff = DateTime.UtcNow.AddDays(-DatabaseMaintenanceDefaults.HistoryRetentionDays);
+		var jobs = await _db.Jobs
+			.Where(job => job.Status == JobStatus.Completed && (job.CompletedAt ?? job.CreatedAt) < retentionCutoff)
+			.ToListAsync(ct);
+
+		if (jobs.Count == 0)
+		{
+			return new DatabaseMaintenanceResult
+			{
+				Message = $"No completed jobs older than {DatabaseMaintenanceDefaults.HistoryRetentionDays} days were found."
+			};
+		}
+
+		_db.Jobs.RemoveRange(jobs);
+		await _db.SaveChangesAsync(ct);
+
+		return new DatabaseMaintenanceResult
+		{
+			AffectedRows = jobs.Count,
+			Message = $"Deleted {jobs.Count} completed job{(jobs.Count == 1 ? string.Empty : "s")} older than {DatabaseMaintenanceDefaults.HistoryRetentionDays} days."
+		};
+	}
+
+	private async Task<DatabaseMaintenanceResult> DeleteProviderUsageOlderThanRetentionAsync(CancellationToken ct)
+	{
+		var retentionCutoff = DateTime.UtcNow.AddDays(-DatabaseMaintenanceDefaults.HistoryRetentionDays);
+		var records = await _db.ProviderUsageRecords
+			.Where(record => record.RecordedAt < retentionCutoff)
+			.ToListAsync(ct);
+
+		if (records.Count == 0)
+		{
+			return new DatabaseMaintenanceResult
+			{
+				Message = $"No provider usage records older than {DatabaseMaintenanceDefaults.HistoryRetentionDays} days were found."
+			};
+		}
+
+		_db.ProviderUsageRecords.RemoveRange(records);
+		await _db.SaveChangesAsync(ct);
+
+		return new DatabaseMaintenanceResult
+		{
+			AffectedRows = records.Count,
+			Message = $"Deleted {records.Count} provider usage record{(records.Count == 1 ? string.Empty : "s")} older than {DatabaseMaintenanceDefaults.HistoryRetentionDays} days."
+		};
+	}
+
+	private async Task<DatabaseMaintenanceResult> CompactDatabaseAsync(string provider, CancellationToken ct)
+	{
+		if (!string.Equals(provider, "sqlite", StringComparison.OrdinalIgnoreCase))
+		{
+			throw new InvalidOperationException("Database compaction is currently supported only for SQLite databases.");
+		}
+
+		await ExecuteNonQueryAsync("PRAGMA wal_checkpoint(TRUNCATE);", ct);
+		await ExecuteNonQueryAsync("VACUUM;", ct);
+
+		return new DatabaseMaintenanceResult
+		{
+			Message = "Compacted the SQLite database file and truncated the WAL where possible."
+		};
+	}
+
+	private string GetProvider()
+	{
+		var providerName = _db.Database.ProviderName ?? string.Empty;
+
+		if (providerName.Contains("Sqlite", StringComparison.OrdinalIgnoreCase))
+		{
+			return "sqlite";
+		}
+
+		if (providerName.Contains("Npgsql", StringComparison.OrdinalIgnoreCase))
+		{
+			return "postgresql";
+		}
+
+		if (providerName.Contains("SqlServer", StringComparison.OrdinalIgnoreCase))
+		{
+			return "sqlserver";
+		}
+
+		return string.IsNullOrWhiteSpace(providerName) ? "unknown" : providerName;
+	}
+
+	private string? GetDatabaseLocation(string provider)
+	{
+		if (!string.Equals(provider, "sqlite", StringComparison.OrdinalIgnoreCase))
+		{
+			return null;
+		}
+
+		return GetSqliteDatabasePath() ?? "In-memory SQLite";
+	}
+
+	private async Task<DatabaseSizeDetails> GetCurrentSizeDetailsAsync(string provider, CancellationToken ct)
+	{
+		if (string.Equals(provider, "sqlite", StringComparison.OrdinalIgnoreCase))
+		{
+			return await GetSqliteSizeDetailsAsync(ct);
+		}
+
+		var sizeBytes = provider switch
+		{
+			"postgresql" => await ExecuteScalarInt64Async("SELECT pg_database_size(current_database())", ct),
+			"sqlserver" => await ExecuteScalarInt64Async("SELECT SUM(CAST(size AS BIGINT)) * 8192 FROM sys.database_files", ct),
+			_ => null
+		};
+
+		return new DatabaseSizeDetails
+		{
+			TotalSizeBytes = sizeBytes
+		};
+	}
+
+	private async Task<DatabaseSizeDetails> GetSqliteSizeDetailsAsync(CancellationToken ct)
+	{
+		var dataSourcePath = GetSqliteDatabasePath();
+		if (!string.IsNullOrWhiteSpace(dataSourcePath))
+		{
+			var dataFile = new FileInfo(dataSourcePath);
+			var walFile = new FileInfo($"{dataSourcePath}-wal");
+			var sharedMemoryFile = new FileInfo($"{dataSourcePath}-shm");
+			var dataFileBytes = dataFile.Exists ? dataFile.Length : 0;
+			var walFileBytes = walFile.Exists ? walFile.Length : 0;
+			var sharedMemoryFileBytes = sharedMemoryFile.Exists ? sharedMemoryFile.Length : 0;
+
+			return new DatabaseSizeDetails
+			{
+				DataFileSizeBytes = dataFileBytes,
+				WalFileSizeBytes = walFile.Exists ? walFileBytes : null,
+				SharedMemoryFileSizeBytes = sharedMemoryFile.Exists ? sharedMemoryFileBytes : null,
+				TotalSizeBytes = dataFileBytes + walFileBytes + sharedMemoryFileBytes
+			};
+		}
+
+		var pageSize = await ExecuteScalarInt64Async("PRAGMA page_size;", ct) ?? 0;
+		var pageCount = await ExecuteScalarInt64Async("PRAGMA page_count;", ct) ?? 0;
+		return new DatabaseSizeDetails
+		{
+			TotalSizeBytes = pageSize * pageCount
+		};
+	}
+
+	private string? GetSqliteDatabasePath()
+	{
+		var connectionString = _db.Database.GetConnectionString();
+		if (string.IsNullOrWhiteSpace(connectionString))
+		{
+			return null;
+		}
+
+		var builder = new SqliteConnectionStringBuilder(connectionString);
+		if (string.IsNullOrWhiteSpace(builder.DataSource) ||
+			string.Equals(builder.DataSource, ":memory:", StringComparison.OrdinalIgnoreCase) ||
+			builder.Mode == SqliteOpenMode.Memory)
+		{
+			return null;
+		}
+
+		return Path.GetFullPath(builder.DataSource);
+	}
+
+	private async Task<long?> ExecuteScalarInt64Async(string sql, CancellationToken ct)
+	{
+		var result = await ExecuteScalarAsync(sql, ct);
+		if (result == null || result is DBNull)
+		{
+			return null;
+		}
+
+		return Convert.ToInt64(result, CultureInfo.InvariantCulture);
+	}
+
+	private async Task<object?> ExecuteScalarAsync(string sql, CancellationToken ct)
+	{
+		var connection = _db.Database.GetDbConnection();
+		var shouldClose = connection.State != ConnectionState.Open;
+
+		if (shouldClose)
+		{
+			await connection.OpenAsync(ct);
+		}
+
+		try
+		{
+			await using var command = connection.CreateCommand();
+			command.CommandText = sql;
+			return await command.ExecuteScalarAsync(ct);
+		}
+		finally
+		{
+			if (shouldClose)
+			{
+				await connection.CloseAsync();
+			}
+		}
+	}
+
+	private async Task ExecuteNonQueryAsync(string sql, CancellationToken ct)
+	{
+		var connection = _db.Database.GetDbConnection();
+		var shouldClose = connection.State != ConnectionState.Open;
+
+		if (shouldClose)
+		{
+			await connection.OpenAsync(ct);
+		}
+
+		try
+		{
+			await using var command = connection.CreateCommand();
+			command.CommandText = sql;
+			await command.ExecuteNonQueryAsync(ct);
+		}
+		finally
+		{
+			if (shouldClose)
+			{
+				await connection.CloseAsync();
+			}
+		}
+	}
+
+	private sealed class DatabaseSizeDetails
+	{
+		public long? TotalSizeBytes { get; set; }
+		public long? DataFileSizeBytes { get; set; }
+		public long? WalFileSizeBytes { get; set; }
+		public long? SharedMemoryFileSizeBytes { get; set; }
+	}
 }

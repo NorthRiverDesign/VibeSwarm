@@ -18,4 +18,14 @@ public class HttpDatabaseService : IDatabaseService
 		await HttpResponseErrorHelper.EnsureSuccessAsync(response, ct);
 		return await response.ReadJsonAsync(new DatabaseImportResult(), ct);
 	}
+
+	public async Task<DatabaseStorageSummary> GetStorageSummaryAsync(CancellationToken ct = default)
+		=> await _http.GetJsonAsync("/api/database/storage", new DatabaseStorageSummary(), ct);
+
+	public async Task<DatabaseMaintenanceResult> RunMaintenanceAsync(DatabaseMaintenanceRequest request, CancellationToken ct = default)
+	{
+		var response = await _http.PostAsJsonAsync("/api/database/maintenance", request, ct);
+		await HttpResponseErrorHelper.EnsureSuccessAsync(response, ct);
+		return await response.ReadJsonAsync(new DatabaseMaintenanceResult(), ct);
+	}
 }

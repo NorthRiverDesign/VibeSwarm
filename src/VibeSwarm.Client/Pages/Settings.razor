@@ -31,6 +31,53 @@
 </li>
 </ul>
 
+<div class="card mb-4">
+<div class="card-body d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-3">
+<div class="d-flex flex-column gap-1">
+<div class="small text-body-secondary text-uppercase fw-semibold">Database Size</div>
+@if (_isLoadingDatabaseSummary && _databaseSummary == null)
+{
+<div class="d-flex align-items-center gap-2 text-body-secondary">
+<span class="spinner-border spinner-border-sm" role="status"></span>
+<span>Loading storage details...</span>
+</div>
+}
+else
+{
+<div class="fs-4 fw-semibold">@FormatBytes(_databaseSummary?.TotalSizeBytes)</div>
+<div class="small text-body-secondary d-flex flex-wrap gap-3">
+<span>@GetDatabaseProviderLabel()</span>
+@if (_databaseSummary != null)
+{
+<span>@_databaseSummary.JobsCount job(s)</span>
+<span>@_databaseSummary.JobMessagesCount message(s)</span>
+<span>@_databaseSummary.ProviderUsageRecordsCount usage record(s)</span>
+}
+</div>
+@if (!string.IsNullOrWhiteSpace(_databaseSummary?.Location))
+{
+<div class="small text-body-secondary font-monospace text-break">@_databaseSummary.Location</div>
+}
+}
+</div>
+<div class="d-flex flex-column flex-sm-row gap-2">
+<button type="button" class="btn btn-secondary btn-sm" @onclick="RefreshDatabaseSummary" disabled="@_isLoadingDatabaseSummary">
+@if (_isLoadingDatabaseSummary)
+{
+<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+}
+<i class="bi bi-arrow-clockwise me-1"></i>Refresh Size
+</button>
+@if (_activeTab != "database")
+{
+<button type="button" class="btn btn-primary btn-sm" @onclick='() => SetTab("database")'>
+<i class="bi bi-database me-1"></i>Open Database Tab
+</button>
+}
+</div>
+</div>
+</div>
+
 @if (_activeTab == "app")
 {
 <div class="card">
@@ -295,6 +342,151 @@ else if (_activeTab == "database")
 <div class="card mb-3">
 <div class="card-header bg-body-secondary">
 <h5 class="mb-0 fw-semibold">
+<i class="bi bi-hdd-stack me-2"></i>Storage
+</h5>
+</div>
+<div class="card-body">
+@if (_isLoadingDatabaseSummary && _databaseSummary == null)
+{
+<LoadingSpinner />
+}
+else if (_databaseSummary != null)
+{
+<div class="row g-3">
+<div class="col-12 col-lg-4">
+<div class="border rounded-3 p-3 h-100 bg-body-tertiary">
+<div class="small text-body-secondary text-uppercase fw-semibold mb-1">Current Size</div>
+<div class="fs-3 fw-semibold">@FormatBytes(_databaseSummary.TotalSizeBytes)</div>
+<div class="small text-body-secondary">@GetDatabaseProviderLabel()</div>
+@if (!string.IsNullOrWhiteSpace(_databaseSummary.Location))
+{
+<div class="small text-body-secondary font-monospace text-break mt-2">@_databaseSummary.Location</div>
+}
+</div>
+</div>
+<div class="col-12 col-lg-8">
+<div class="row g-3">
+<div class="col-12 col-sm-6">
+<div class="border rounded-3 p-3 h-100">
+<div class="small text-body-secondary text-uppercase fw-semibold mb-1">Jobs</div>
+<div class="fw-semibold">@_databaseSummary.JobsCount total</div>
+<div class="small text-body-secondary">@_databaseSummary.CompletedJobsOlderThanRetentionCount completed older than @DatabaseMaintenanceDefaults.HistoryRetentionDays days</div>
+</div>
+</div>
+<div class="col-12 col-sm-6">
+<div class="border rounded-3 p-3 h-100">
+<div class="small text-body-secondary text-uppercase fw-semibold mb-1">Messages</div>
+<div class="fw-semibold">@_databaseSummary.JobMessagesCount total</div>
+<div class="small text-body-secondary">Stored session transcript rows</div>
+</div>
+</div>
+<div class="col-12 col-sm-6">
+<div class="border rounded-3 p-3 h-100">
+<div class="small text-body-secondary text-uppercase fw-semibold mb-1">Usage Records</div>
+<div class="fw-semibold">@_databaseSummary.ProviderUsageRecordsCount total</div>
+<div class="small text-body-secondary">@_databaseSummary.ProviderUsageRecordsOlderThanRetentionCount older than @DatabaseMaintenanceDefaults.HistoryRetentionDays days</div>
+</div>
+</div>
+<div class="col-12 col-sm-6">
+<div class="border rounded-3 p-3 h-100">
+<div class="small text-body-secondary text-uppercase fw-semibold mb-1">Critical Error Logs</div>
+<div class="fw-semibold">@_databaseSummary.CriticalErrorLogsCount total</div>
+<div class="small text-body-secondary">Managed by the retention settings on this page</div>
+</div>
+</div>
+</div>
+</div>
+@if (_databaseSummary.DataFileSizeBytes.HasValue || _databaseSummary.WalFileSizeBytes.HasValue || _databaseSummary.SharedMemoryFileSizeBytes.HasValue)
+{
+<div class="col-12">
+<div class="small text-body-secondary d-flex flex-wrap gap-3">
+@if (_databaseSummary.DataFileSizeBytes.HasValue)
+{
+<span>Data: @FormatBytes(_databaseSummary.DataFileSizeBytes)</span>
+}
+@if (_databaseSummary.WalFileSizeBytes.HasValue)
+{
+<span>WAL: @FormatBytes(_databaseSummary.WalFileSizeBytes)</span>
+}
+@if (_databaseSummary.SharedMemoryFileSizeBytes.HasValue)
+{
+<span>SHM: @FormatBytes(_databaseSummary.SharedMemoryFileSizeBytes)</span>
+}
+</div>
+</div>
+}
+</div>
+}
+</div>
+</div>
+
+<div class="card mb-3">
+<div class="card-header bg-body-secondary">
+<h5 class="mb-0 fw-semibold">
+<i class="bi bi-trash3 me-2"></i>Cleanup
+</h5>
+</div>
+<div class="card-body d-flex flex-column gap-3">
+@if (_databaseMaintenanceResult != null)
+{
+<Alert Type="Alert.AlertType.Info" Class="mb-0">
+<div class="d-flex flex-column gap-1">
+<span>@_databaseMaintenanceResult.Message</span>
+@if (_databaseMaintenanceResult.SizeBeforeBytes.HasValue || _databaseMaintenanceResult.SizeAfterBytes.HasValue)
+{
+<span class="small text-body-secondary">
+Size: @FormatBytes(_databaseMaintenanceResult.SizeBeforeBytes) -> @FormatBytes(_databaseMaintenanceResult.SizeAfterBytes)
+</span>
+}
+</div>
+</Alert>
+}
+
+<div class="border rounded-3 p-3 d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3">
+<div>
+<div class="fw-semibold">Apply critical error log retention</div>
+<div class="small text-body-secondary">Prune crash logs now using the retention settings configured on this page.</div>
+</div>
+<button type="button" class="btn btn-secondary btn-sm" @onclick='() => OpenDatabaseMaintenanceModal(DatabaseMaintenanceOperation.ApplyCriticalErrorLogRetention)' disabled="@_isRunningDatabaseMaintenance">
+<i class="bi bi-filter-circle me-1"></i>Run Cleanup
+</button>
+</div>
+
+<div class="border rounded-3 p-3 d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3">
+<div>
+<div class="fw-semibold">Delete completed jobs older than @DatabaseMaintenanceDefaults.HistoryRetentionDays days</div>
+<div class="small text-body-secondary">Removes old completed jobs and their stored transcript rows. Current candidates: @(_databaseSummary?.CompletedJobsOlderThanRetentionCount ?? 0).</div>
+</div>
+<button type="button" class="btn btn-danger btn-sm" @onclick='() => OpenDatabaseMaintenanceModal(DatabaseMaintenanceOperation.DeleteCompletedJobsOlderThanRetention)' disabled="@_isRunningDatabaseMaintenance">
+<i class="bi bi-trash3 me-1"></i>Delete Old Jobs
+</button>
+</div>
+
+<div class="border rounded-3 p-3 d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3">
+<div>
+<div class="fw-semibold">Delete provider usage records older than @DatabaseMaintenanceDefaults.HistoryRetentionDays days</div>
+<div class="small text-body-secondary">Clears historical provider usage snapshots that are no longer recent. Current candidates: @(_databaseSummary?.ProviderUsageRecordsOlderThanRetentionCount ?? 0).</div>
+</div>
+<button type="button" class="btn btn-danger btn-sm" @onclick='() => OpenDatabaseMaintenanceModal(DatabaseMaintenanceOperation.DeleteProviderUsageOlderThanRetention)' disabled="@_isRunningDatabaseMaintenance">
+<i class="bi bi-trash3 me-1"></i>Delete Old Usage
+</button>
+</div>
+
+<div class="border rounded-3 p-3 d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3">
+<div>
+<div class="fw-semibold">Compact database</div>
+<div class="small text-body-secondary">Runs SQLite compaction to reclaim unused space after cleanup. This is only available for SQLite databases.</div>
+</div>
+<button type="button" class="btn btn-primary btn-sm" @onclick='() => OpenDatabaseMaintenanceModal(DatabaseMaintenanceOperation.CompactDatabase)' disabled="@(_isRunningDatabaseMaintenance || _databaseSummary?.SupportsCompaction != true)">
+<i class="bi bi-arrows-collapse me-1"></i>Compact
+</button>
+</div>
+</div>
+</div>
+
+<div class="card mb-3">
+<div class="card-header bg-body-secondary">
+<h5 class="mb-0 fw-semibold">
 <i class="bi bi-box-arrow-up me-2"></i>Export
 </h5>
 </div>
@@ -522,6 +714,10 @@ VibeSwarm can work with any directory that the host process has access to.
 }
 
 <ScanProjectsModal @ref="_scanProjectsModal" OnProjectsImported="OnProjectsImported" />
+<ConfirmationModal @bind-IsVisible="_showDatabaseMaintenanceModal" Title="@GetDatabaseMaintenanceModalTitle()"
+Message="@GetDatabaseMaintenanceModalMessage()" SubMessage="@GetDatabaseMaintenanceModalSubMessage()"
+ConfirmText="@GetDatabaseMaintenanceConfirmText()" ButtonClass="@GetDatabaseMaintenanceButtonClass()"
+IsProcessing="@_isRunningDatabaseMaintenance" OnConfirm="RunDatabaseMaintenance" />
 
 @code {
 private static readonly JsonSerializerOptions ImportJsonOptions = new()
@@ -548,6 +744,12 @@ private bool _isImporting;
 private bool _isLoadingCriticalErrorLogs;
 private bool _isPruningCriticalErrorLogs;
 private List<CriticalErrorLogEntry> _criticalErrorLogs = [];
+private DatabaseStorageSummary? _databaseSummary;
+private DatabaseMaintenanceResult? _databaseMaintenanceResult;
+private DatabaseMaintenanceOperation? _pendingDatabaseMaintenanceOperation;
+private bool _isLoadingDatabaseSummary;
+private bool _isRunningDatabaseMaintenance;
+private bool _showDatabaseMaintenanceModal;
 
 private IOrderedEnumerable<IGrouping<string, TimeZoneInfo>> GetGroupedTimeZones()
 {
@@ -583,6 +785,7 @@ try
 	AppTimeZoneService.ApplyTimeZone(_settings.TimeZoneId);
 	await CheckDirectoryExists();
 	await LoadCriticalErrorLogs();
+	await LoadDatabaseSummary();
 	}
 	catch (Exception ex)
 	{
@@ -614,6 +817,7 @@ _settings.DefaultProjectsDirectory = null;
 	AppTimeZoneService.ApplyTimeZone(_settings.TimeZoneId);
 	await CheckDirectoryExists();
 	await LoadCriticalErrorLogs();
+	await LoadDatabaseSummary();
 	NotificationService.ShowSuccess("Settings saved successfully!");
 }
 catch (Exception ex)
@@ -634,6 +838,11 @@ await LoadSettings();
 private async Task RefreshCriticalErrorLogs()
 {
 	await LoadCriticalErrorLogs();
+}
+
+private async Task RefreshDatabaseSummary()
+{
+	await LoadDatabaseSummary();
 }
 
 private async Task PruneCriticalErrorLogs()
@@ -671,6 +880,24 @@ private async Task LoadCriticalErrorLogs()
 	finally
 	{
 		_isLoadingCriticalErrorLogs = false;
+	}
+}
+
+private async Task LoadDatabaseSummary()
+{
+	_isLoadingDatabaseSummary = true;
+
+	try
+	{
+		_databaseSummary = await DatabaseService.GetStorageSummaryAsync();
+	}
+	catch (Exception ex)
+	{
+		NotificationService.ShowError($"Failed to load database size: {ex.Message}");
+	}
+	finally
+	{
+		_isLoadingDatabaseSummary = false;
 	}
 }
 
@@ -784,5 +1011,144 @@ private void ResetImport()
 _importResult = null;
 _importPreview = null;
 _importParseError = null;
+}
+
+private void OpenDatabaseMaintenanceModal(DatabaseMaintenanceOperation operation)
+{
+	_pendingDatabaseMaintenanceOperation = operation;
+	_showDatabaseMaintenanceModal = true;
+}
+
+private async Task RunDatabaseMaintenance()
+{
+	if (!_pendingDatabaseMaintenanceOperation.HasValue)
+	{
+		return;
+	}
+
+	_isRunningDatabaseMaintenance = true;
+
+	try
+	{
+		_databaseMaintenanceResult = await DatabaseService.RunMaintenanceAsync(new DatabaseMaintenanceRequest
+		{
+			Operation = _pendingDatabaseMaintenanceOperation.Value
+		});
+
+		if (_pendingDatabaseMaintenanceOperation == DatabaseMaintenanceOperation.ApplyCriticalErrorLogRetention)
+		{
+			await LoadCriticalErrorLogs();
+		}
+
+		await LoadDatabaseSummary();
+		_showDatabaseMaintenanceModal = false;
+		NotificationService.ShowSuccess(_databaseMaintenanceResult.Message);
+	}
+	catch (Exception ex)
+	{
+		NotificationService.ShowError($"Database cleanup failed: {ex.Message}");
+	}
+	finally
+	{
+		_isRunningDatabaseMaintenance = false;
+	}
+}
+
+private string GetDatabaseMaintenanceModalTitle()
+{
+	return _pendingDatabaseMaintenanceOperation switch
+	{
+		DatabaseMaintenanceOperation.ApplyCriticalErrorLogRetention => "Apply Log Retention",
+		DatabaseMaintenanceOperation.DeleteCompletedJobsOlderThanRetention => "Delete Old Completed Jobs",
+		DatabaseMaintenanceOperation.DeleteProviderUsageOlderThanRetention => "Delete Old Provider Usage",
+		DatabaseMaintenanceOperation.CompactDatabase => "Compact Database",
+		_ => "Confirm Cleanup"
+	};
+}
+
+private string GetDatabaseMaintenanceModalMessage()
+{
+	return _pendingDatabaseMaintenanceOperation switch
+	{
+		DatabaseMaintenanceOperation.ApplyCriticalErrorLogRetention => "Apply the configured critical error log retention policy now?",
+		DatabaseMaintenanceOperation.DeleteCompletedJobsOlderThanRetention => $"Delete completed jobs older than {DatabaseMaintenanceDefaults.HistoryRetentionDays} days?",
+		DatabaseMaintenanceOperation.DeleteProviderUsageOlderThanRetention => $"Delete provider usage records older than {DatabaseMaintenanceDefaults.HistoryRetentionDays} days?",
+		DatabaseMaintenanceOperation.CompactDatabase => "Compact the SQLite database file now?",
+		_ => "Run the selected cleanup operation?"
+	};
+}
+
+private string? GetDatabaseMaintenanceModalSubMessage()
+{
+	return _pendingDatabaseMaintenanceOperation switch
+	{
+		DatabaseMaintenanceOperation.DeleteCompletedJobsOlderThanRetention => "This also removes stored messages and provider-attempt rows for those completed jobs.",
+		DatabaseMaintenanceOperation.CompactDatabase => "Compaction can take a moment on larger databases and is only available for SQLite.",
+		_ => null
+	};
+}
+
+private string GetDatabaseMaintenanceConfirmText()
+{
+	return _pendingDatabaseMaintenanceOperation switch
+	{
+		DatabaseMaintenanceOperation.ApplyCriticalErrorLogRetention => "Apply Retention",
+		DatabaseMaintenanceOperation.DeleteCompletedJobsOlderThanRetention => "Delete Jobs",
+		DatabaseMaintenanceOperation.DeleteProviderUsageOlderThanRetention => "Delete Usage",
+		DatabaseMaintenanceOperation.CompactDatabase => "Compact",
+		_ => "Confirm"
+	};
+}
+
+private string GetDatabaseMaintenanceButtonClass()
+{
+	return _pendingDatabaseMaintenanceOperation switch
+	{
+		DatabaseMaintenanceOperation.DeleteCompletedJobsOlderThanRetention => "btn-danger",
+		DatabaseMaintenanceOperation.DeleteProviderUsageOlderThanRetention => "btn-danger",
+		DatabaseMaintenanceOperation.CompactDatabase => "btn-primary",
+		_ => "btn-secondary"
+	};
+}
+
+private string GetDatabaseProviderLabel()
+{
+	return _databaseSummary?.Provider switch
+	{
+		"sqlite" => "SQLite database",
+		"postgresql" => "PostgreSQL database",
+		"sqlserver" => "SQL Server database",
+		{ Length: > 0 } provider => provider,
+		_ => "Database size unavailable"
+	};
+}
+
+private static string FormatBytes(long? bytes)
+{
+	if (!bytes.HasValue)
+	{
+		return "Unavailable";
+	}
+
+	const long kilobyte = 1024;
+	const long megabyte = kilobyte * 1024;
+	const long gigabyte = megabyte * 1024;
+
+	if (bytes.Value >= gigabyte)
+	{
+		return $"{bytes.Value / (double)gigabyte:0.#} GB";
+	}
+
+	if (bytes.Value >= megabyte)
+	{
+		return $"{bytes.Value / (double)megabyte:0.#} MB";
+	}
+
+	if (bytes.Value >= kilobyte)
+	{
+		return $"{bytes.Value / (double)kilobyte:0.#} KB";
+	}
+
+	return $"{bytes.Value} B";
 }
 }
