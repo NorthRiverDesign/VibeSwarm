@@ -90,10 +90,21 @@ public partial class JobDetail : ComponentBase
             {
                 _ = Task.Run(async () =>
                 {
-                    await Task.Delay(500);
-                    await InvokeAsync(async () => await CheckUncommittedChangesAsync());
+                    try
+                    {
+                        await Task.Delay(500);
+                        if (!_disposed) await InvokeAsync(async () => await CheckUncommittedChangesAsync());
+                    }
+                    catch { }
                 });
             }
+        }
+        catch (Exception) when (!IsLoading)
+        {
+            // During refresh cycles, swallow the error so the existing page state is preserved.
+            // The next poll or SignalR push will retry. Only throw during initial load so the
+            // page can show a proper error state.
+            return;
         }
         finally
         {

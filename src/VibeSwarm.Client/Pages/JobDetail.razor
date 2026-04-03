@@ -212,6 +212,7 @@ else
     private Job? Job { get; set; }
     private bool IsLoading { get; set; } = true;
     private bool _isRefreshing = false;
+    private bool _disposed = false;
     private Timer? _refreshTimer;
     private DateTime _pageLoadTime = DateTime.UtcNow;
 
@@ -313,7 +314,8 @@ else
             // Fire-and-forget with timeout protection for SignalR
             _ = InitializeSignalRSafe();
             await Task.Delay(500);
-            await RefreshJobSafely();
+            if (!_disposed)
+                await RefreshJobSafely();
         }
     }
 
@@ -321,32 +323,45 @@ else
     {
         _refreshTimer = new Timer(async _ =>
         {
-            var secondsSincePageLoad = (DateTime.UtcNow - _pageLoadTime).TotalSeconds;
-            var isTerminal = Job?.Status is JobStatus.Completed or JobStatus.Failed or JobStatus.Cancelled;
-            var shouldPoll = (secondsSincePageLoad < 10 && !isTerminal) || IsJobActive;
+            if (_disposed) return;
 
-            // When SignalR is actively connected and the job is running, skip the poll —
-            // SignalR already pushes all status changes, so polling only wastes CPU/battery.
-            // Keep polling as a fallback when SignalR is disconnected or during early page load.
-            if (_signalRConnected && IsJobActive)
-                shouldPoll = false;
-
-            if (shouldPoll && !_isRefreshing)
+            try
             {
-                await InvokeAsync(async () => await RefreshJobSafely());
+                var secondsSincePageLoad = (DateTime.UtcNow - _pageLoadTime).TotalSeconds;
+                var isTerminal = Job?.Status is JobStatus.Completed or JobStatus.Failed or JobStatus.Cancelled;
+                var shouldPoll = (secondsSincePageLoad < 10 && !isTerminal) || IsJobActive;
+
+                // When SignalR is actively connected and the job is running, skip the poll —
+                // SignalR already pushes all status changes, so polling only wastes CPU/battery.
+                // Keep polling as a fallback when SignalR is disconnected or during early page load.
+                if (_signalRConnected && IsJobActive)
+                    shouldPoll = false;
+
+                if (shouldPoll && !_isRefreshing)
+                {
+                    await InvokeAsync(async () => await RefreshJobSafely());
+                }
             }
+            catch (ObjectDisposedException) { }
+            catch { }
         }, null, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
     }
 
     private async Task RefreshJobSafely()
     {
-        if (_isRefreshing) return;
+        if (_isRefreshing || _disposed) return;
 
         try
         {
             _isRefreshing = true;
             await LoadJob();
             StateHasChanged();
+        }
+        catch (ObjectDisposedException) { }
+        catch (Exception)
+        {
+            // Swallow refresh errors to prevent ErrorBoundary from triggering a full page reload.
+            // The next poll or SignalR push will retry automatically.
         }
         finally
         {
