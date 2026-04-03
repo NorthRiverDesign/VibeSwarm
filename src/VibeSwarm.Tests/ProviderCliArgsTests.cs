@@ -937,24 +937,41 @@ public sealed class ProviderCliArgsTests
         Assert.Equal("/tmp/worktree", args[idx + 1]);
     }
 
-    [Fact]
-    public void OpenCode_WithForkSession_AndSupportedVersion_AddsForkFlag()
-    {
-        var provider = new OpenCodeProvider(CreateConfig(ProviderType.OpenCode));
-        provider.CachedCliVersion = new Version(1, 2, 6);
+	[Fact]
+	public void OpenCode_WithForkSession_AndSupportedVersion_AddsForkFlag()
+	{
+		var provider = new OpenCodeProvider(CreateConfig(ProviderType.OpenCode));
+		provider.CachedCliVersion = new Version(1, 2, 6);
         provider.ApplyOptions(new ExecutionOptions { ForkSession = true });
 
         var args = provider.BuildRunCommandArgs("test", "sess-xyz");
 
-        Assert.Contains("--fork", args);
-    }
+		Assert.Contains("--fork", args);
+	}
 
-    [Fact]
-    public void OpenCode_WithForkSession_AndOldVersion_OmitsForkFlag()
-    {
-        var provider = new OpenCodeProvider(CreateConfig(ProviderType.OpenCode));
-        provider.CachedCliVersion = new Version(1, 2, 5);
-        provider.ApplyOptions(new ExecutionOptions { ForkSession = true });
+	[Fact]
+	public void OpenCode_WithForkSession_AndContinueLastSession_AddsForkFlag()
+	{
+		var provider = new OpenCodeProvider(CreateConfig(ProviderType.OpenCode));
+		provider.CachedCliVersion = new Version(1, 3, 13);
+		provider.ApplyOptions(new ExecutionOptions
+		{
+			ContinueLastSession = true,
+			ForkSession = true
+		});
+
+		var args = provider.BuildRunCommandArgs("test", null);
+
+		Assert.Contains("--continue", args);
+		Assert.Contains("--fork", args);
+	}
+
+	[Fact]
+	public void OpenCode_WithForkSession_AndOldVersion_OmitsForkFlag()
+	{
+		var provider = new OpenCodeProvider(CreateConfig(ProviderType.OpenCode));
+		provider.CachedCliVersion = new Version(1, 2, 5);
+		provider.ApplyOptions(new ExecutionOptions { ForkSession = true });
 
         var args = provider.BuildRunCommandArgs("test", "sess-xyz");
 

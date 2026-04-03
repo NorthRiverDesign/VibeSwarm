@@ -67,8 +67,8 @@ return output.ToHtmlString();
 	Assert.Contains("Enable provider commit attribution", html);
 	Assert.Contains("Critical Error Logs", html);
 	Assert.Contains("Database Size", html);
-	Assert.Contains("Migration", html);
-	Assert.Contains("Migrate Database", html);
+	Assert.Contains("Database", html);
+	Assert.Contains("Open Database Tab", html);
 	Assert.DoesNotContain("Add Provider", html);
 	Assert.DoesNotContain("inference provider", html);
 }

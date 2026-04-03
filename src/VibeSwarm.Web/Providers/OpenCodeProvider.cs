@@ -194,12 +194,13 @@ public class OpenCodeProvider : CliProviderBase
         var supportsVariant = SupportsCliVersion(VariantVersion);
         var supportsForkSession = SupportsCliVersion(ForkSessionVersion);
 
-        // Session continuation options (--session takes precedence over --continue)
-        if (!string.IsNullOrEmpty(sessionId))
-        {
-            args.AddRange(new[] { "--session", sessionId });
-        }
-        else if (CurrentContinueLastSession)
+		// Session continuation options (--session takes precedence over --continue)
+		var isContinuingSession = !string.IsNullOrEmpty(sessionId) || CurrentContinueLastSession;
+		if (!string.IsNullOrEmpty(sessionId))
+		{
+			args.AddRange(new[] { "--session", sessionId });
+		}
+		else if (CurrentContinueLastSession)
         {
             args.Add("--continue");
         }
@@ -258,11 +259,11 @@ public class OpenCodeProvider : CliProviderBase
             }
         }
 
-        // Fork an existing session into a new branch (v1.2.6+)
-        if (supportsForkSession && CurrentForkSession && !string.IsNullOrEmpty(sessionId))
-        {
-            args.Add("--fork");
-        }
+		// Fork an existing session into a new branch (v1.2.6+, requires --continue or --session)
+		if (supportsForkSession && CurrentForkSession && isContinuingSession)
+		{
+			args.Add("--fork");
+		}
 
         var reasoningEffort = NormalizeReasoningEffort(CurrentReasoningEffort, "minimal", "low", "medium", "high", "xhigh", "max");
         if (supportsLegacyReasoning && !string.IsNullOrEmpty(reasoningEffort))
