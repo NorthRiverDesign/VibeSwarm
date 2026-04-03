@@ -37,14 +37,16 @@ public partial class IdeaService
 		// Notify clients about the expansion starting
 		await NotifyIdeaUpdateSafe(idea.Id, idea.ProjectId);
 
+		var useInference = request?.UseInference ?? false;
+		var expansionTimeout = GetExpansionTimeout(useInference);
+
 		// Create a linked cancellation token with timeout to prevent hanging
-		using var timeoutCts = new CancellationTokenSource(ExpansionTimeout);
+		using var timeoutCts = new CancellationTokenSource(expansionTimeout);
 		using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
 		var expandToken = linkedCts.Token;
 
 		try
 		{
-			var useInference = request?.UseInference ?? false;
 			var (providerId, modelName, usePlanningMode) = ResolveProviderExpansionRequest(idea.Project, request);
 
 			if (useInference)
@@ -61,7 +63,7 @@ public partial class IdeaService
 			idea.ExpansionStatus = IdeaExpansionStatus.Failed;
 			idea.ExpansionError = cancellationToken.IsCancellationRequested
 				? "Expansion was cancelled"
-				: "Expansion timed out after " + (int)ExpansionTimeout.TotalMinutes + " minutes";
+				: "Expansion timed out after " + (int)expansionTimeout.TotalMinutes + " minutes";
 			_logger.LogWarning("Idea {IdeaId} expansion cancelled/timed out", ideaId);
 		}
 		catch (Exception ex)
@@ -84,6 +86,9 @@ public partial class IdeaService
 
 		return idea;
 	}
+
+	internal static TimeSpan GetExpansionTimeout(bool useInference)
+		=> InferenceTimeouts.GetIdeaActionTimeout(useInference);
 
 	private async Task ExpandWithProviderAsync(
 		Idea idea,

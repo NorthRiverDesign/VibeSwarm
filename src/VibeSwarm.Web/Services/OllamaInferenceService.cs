@@ -465,8 +465,8 @@ public class OllamaInferenceService : IInferenceService
 	{
 		public TimeSpan HealthCheckTimeout { get; init; } = TimeSpan.FromSeconds(5);
 		public TimeSpan ModelDiscoveryTimeout { get; init; } = TimeSpan.FromSeconds(10);
-		public TimeSpan InitialResponseTimeout { get; init; } = TimeSpan.FromMinutes(15);
-		public TimeSpan StreamInactivityTimeout { get; init; } = TimeSpan.FromMinutes(5);
-		public TimeSpan GenerationTimeout { get; init; } = TimeSpan.FromMinutes(30);
+		public TimeSpan InitialResponseTimeout { get; init; } = InferenceTimeouts.LocalInitialResponseTimeout;
+		public TimeSpan StreamInactivityTimeout { get; init; } = InferenceTimeouts.LocalStreamInactivityTimeout;
+		public TimeSpan GenerationTimeout { get; init; } = InferenceTimeouts.LocalGenerationTimeout;
 	}
 }

@@ -1,5 +1,6 @@
 using System.Net.Http.Json;
 using VibeSwarm.Shared.Data;
+using VibeSwarm.Shared.Inference;
 using VibeSwarm.Shared.Models;
 using VibeSwarm.Shared.Services;
 
@@ -145,15 +146,18 @@ public class HttpIdeaService : IIdeaService
 
     public async Task<SuggestIdeasResult> SuggestIdeasFromCodebaseAsync(Guid projectId, SuggestIdeasRequest? request = null, CancellationToken ct = default)
     {
-        // Suggestion generation can take well over 100 s depending on the selected source.
+        var normalizedRequest = request ?? new SuggestIdeasRequest();
+        var timeout = InferenceTimeouts.GetIdeaActionTimeout(normalizedRequest.UseInference);
+
+        // Suggestion generation can take a long time, especially with local inference.
         // The HttpClient registered in DI uses Timeout.InfiniteTimeSpan, so this
         // CancellationTokenSource is now the sole timeout for the suggestion request.
-        using var timeoutCts = new CancellationTokenSource(TimeSpan.FromMinutes(5));
+        using var timeoutCts = new CancellationTokenSource(timeout);
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
 
         try
         {
-            var response = await _http.PostAsJsonAsync($"/api/ideas/project/{projectId}/suggest", request ?? new SuggestIdeasRequest(), linkedCts.Token);
+            var response = await _http.PostAsJsonAsync($"/api/ideas/project/{projectId}/suggest", normalizedRequest, linkedCts.Token);
 
             if (!response.IsSuccessStatusCode)
             {
@@ -181,11 +185,11 @@ public class HttpIdeaService : IIdeaService
         }
         catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested)
         {
-            Console.Error.WriteLine("[Suggest] Client-side 5-minute timeout fired.");
+            Console.Error.WriteLine($"[Suggest] Client-side {timeout.TotalMinutes:F0}-minute timeout fired.");
             return new SuggestIdeasResult
             {
                 Stage = SuggestIdeasStage.GenerateFailed,
-                Message = "The request timed out after 5 minutes. Try a smaller or faster model."
+                Message = $"The request timed out after {timeout.TotalMinutes:F0} minutes. Try a smaller or faster model."
             };
         }
         catch (OperationCanceledException)

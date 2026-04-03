@@ -26,11 +26,6 @@ public partial class IdeaService : IIdeaService
 	private readonly ILogger<IdeaService> _logger;
 
 	/// <summary>
-	/// Timeout for AI expansion operations (5 minutes)
-	/// </summary>
-	private static readonly TimeSpan ExpansionTimeout = TimeSpan.FromMinutes(5);
-
-	/// <summary>
 	/// Global lock to prevent race conditions when converting ideas to jobs
 	/// </summary>
 	private static readonly SemaphoreSlim _ideaConversionLock = new(1, 1);
