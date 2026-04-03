@@ -108,7 +108,7 @@ if (!RequiresMcp(skills, project))
 return null;
 }
 
-	var config = BuildStandardMcpConfig(skills, project, playwrightEnvironment: null);
+	var config = BuildStandardMcpConfig(skills, project, CreatePlaywrightEnvironmentVariables(project, browserArtifactsDirectory: null));
 return JsonSerializer.Serialize(config, JsonOptions);
 }
 
@@ -145,7 +145,7 @@ return JsonSerializer.Serialize(config, JsonOptions);
 		if (requiresMcp)
 		{
 			filePath = CreateConfigFilePath(providerType, workingDirectory);
-			var playwrightEnvironment = CreatePlaywrightEnvironmentVariables(browserArtifactsDirectory);
+			var playwrightEnvironment = CreatePlaywrightEnvironmentVariables(project, browserArtifactsDirectory);
 			var json = providerType == ProviderType.OpenCode
 				? JsonSerializer.Serialize(BuildOpenCodeConfig(skills, project, playwrightEnvironment), JsonOptions)
 				: JsonSerializer.Serialize(BuildStandardMcpConfig(skills, project, playwrightEnvironment), JsonOptions);
@@ -287,22 +287,64 @@ return skills.Any() || HasEnabledWebEnvironment(project);
 		return directoryPath;
 	}
 
-	private static Dictionary<string, string>? CreatePlaywrightEnvironmentVariables(string? browserArtifactsDirectory)
+	private static Dictionary<string, string>? CreatePlaywrightEnvironmentVariables(Project? project, string? browserArtifactsDirectory)
 	{
-		if (string.IsNullOrWhiteSpace(browserArtifactsDirectory))
+		var environmentVariables = new Dictionary<string, string>(StringComparer.Ordinal);
+		if (!string.IsNullOrWhiteSpace(browserArtifactsDirectory))
 		{
-			return null;
+			var temporaryDirectory = Path.Combine(browserArtifactsDirectory, "tmp");
+			environmentVariables["PLAYWRIGHT_BROWSERS_PATH"] = Path.Combine(browserArtifactsDirectory, "ms-playwright");
+			environmentVariables["TMPDIR"] = temporaryDirectory;
+			environmentVariables["TMP"] = temporaryDirectory;
+			environmentVariables["TEMP"] = temporaryDirectory;
+			environmentVariables["XDG_CACHE_HOME"] = Path.Combine(browserArtifactsDirectory, "cache");
 		}
 
-		var temporaryDirectory = Path.Combine(browserArtifactsDirectory, "tmp");
-		return new Dictionary<string, string>(StringComparer.Ordinal)
+		var webEnvironments = project?.Environments
+			.Where(environment => environment.IsEnabled && environment.Type == EnvironmentType.Web)
+			.OrderByDescending(environment => environment.IsPrimary)
+			.ThenBy(environment => environment.SortOrder)
+			.ThenBy(environment => environment.Name, StringComparer.OrdinalIgnoreCase)
+			.ToList();
+		if (webEnvironments?.Count > 0)
 		{
-			["PLAYWRIGHT_BROWSERS_PATH"] = Path.Combine(browserArtifactsDirectory, "ms-playwright"),
-			["TMPDIR"] = temporaryDirectory,
-			["TMP"] = temporaryDirectory,
-			["TEMP"] = temporaryDirectory,
-			["XDG_CACHE_HOME"] = Path.Combine(browserArtifactsDirectory, "cache")
-		};
+			foreach (var environment in webEnvironments)
+			{
+				var sanitizedName = SanitizeEnvironmentName(environment.Name);
+				if (!string.IsNullOrWhiteSpace(environment.Url))
+				{
+					environmentVariables[$"APP_{sanitizedName}_URL"] = environment.Url;
+				}
+
+				if (!string.IsNullOrWhiteSpace(environment.Username))
+				{
+					environmentVariables[$"APP_{sanitizedName}_USERNAME"] = environment.Username;
+				}
+
+				if (!string.IsNullOrWhiteSpace(environment.Password))
+				{
+					environmentVariables[$"APP_{sanitizedName}_PASSWORD"] = environment.Password;
+				}
+			}
+
+			var primaryEnvironment = webEnvironments.FirstOrDefault(environment => environment.IsPrimary) ?? webEnvironments[0];
+			if (!string.IsNullOrWhiteSpace(primaryEnvironment.Url))
+			{
+				environmentVariables["APP_URL"] = primaryEnvironment.Url;
+			}
+
+			if (!string.IsNullOrWhiteSpace(primaryEnvironment.Username))
+			{
+				environmentVariables["APP_USERNAME"] = primaryEnvironment.Username;
+			}
+
+			if (!string.IsNullOrWhiteSpace(primaryEnvironment.Password))
+			{
+				environmentVariables["APP_PASSWORD"] = primaryEnvironment.Password;
+			}
+		}
+
+		return environmentVariables.Count > 0 ? environmentVariables : null;
 	}
 
 	private static string CreateConfigFilePath(ProviderType providerType, string? workingDirectory)
@@ -501,13 +543,34 @@ suffix++;
 return $"{preferredName}-{suffix}";
 }
 
-private static string SanitizeSkillName(string name)
-{
-return System.Text.RegularExpressions.Regex.Replace(
-name.ToLowerInvariant(),
-@"[^a-z0-9\-_]",
-"-");
-}
+	private static string SanitizeSkillName(string name)
+	{
+	return System.Text.RegularExpressions.Regex.Replace(
+	name.ToLowerInvariant(),
+	@"[^a-z0-9\-_]",
+	"-");
+	}
+
+	private static string SanitizeEnvironmentName(string name)
+	{
+		if (string.IsNullOrWhiteSpace(name))
+		{
+			return "ENV";
+		}
+
+		var sanitized = new string(name
+			.ToUpperInvariant()
+			.Select(character => char.IsLetterOrDigit(character) ? character : '_')
+			.ToArray())
+			.Trim('_');
+
+		while (sanitized.Contains("__", StringComparison.Ordinal))
+		{
+			sanitized = sanitized.Replace("__", "_", StringComparison.Ordinal);
+		}
+
+		return string.IsNullOrEmpty(sanitized) ? "ENV" : sanitized;
+	}
 }
 
 /// <summary>

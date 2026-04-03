@@ -212,6 +212,20 @@ public static class PromptBuilder
 			}
 		}
 
+		if (enabledEnvironments.Any(environment =>
+			environment.Type == EnvironmentType.Web &&
+			(!string.IsNullOrWhiteSpace(environment.Username) || !string.IsNullOrWhiteSpace(environment.Password))))
+		{
+			if (sb.Length > 0)
+			{
+				sb.AppendLine();
+			}
+
+			sb.AppendLine("ENVIRONMENT AUTHENTICATION:");
+			sb.AppendLine("- When a configured web environment includes login credentials, use those exact values for browser automation.");
+			sb.AppendLine("- Do not invent placeholder or guessed accounts such as test@test.com when environment credentials are available.");
+		}
+
 		if (injectRepoMap && !string.IsNullOrWhiteSpace(project.RepoMap))
 		{
 			if (sb.Length > 0)

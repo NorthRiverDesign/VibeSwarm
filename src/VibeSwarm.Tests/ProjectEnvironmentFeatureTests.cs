@@ -312,6 +312,34 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 	}
 
 	[Fact]
+	public void BuildSystemPromptRules_IncludesCredentialUsageGuidance()
+	{
+		var rules = PromptBuilder.BuildSystemPromptRules(new Project
+		{
+			Name = "Web App",
+			WorkingPath = "/tmp/web-app",
+			Environments =
+			[
+				new ProjectEnvironment
+				{
+					Name = "Staging",
+					Type = EnvironmentType.Web,
+					Stage = EnvironmentStage.Development,
+					Url = "https://staging.example.com",
+					IsEnabled = true,
+					Username = "admin@example.com",
+					Password = "StagingPassword!"
+				}
+			]
+		});
+
+		Assert.NotNull(rules);
+		Assert.Contains("ENVIRONMENT AUTHENTICATION:", rules);
+		Assert.Contains("use those exact values for browser automation", rules);
+		Assert.Contains("test@test.com", rules);
+	}
+
+	[Fact]
 	public async Task GenerateMcpConfigJsonAsync_AddsPlaywrightServerWhenWebEnvironmentExists()
 	{
 		var service = new McpConfigService(new FakeSkillService(
@@ -328,6 +356,8 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 					Name = "Production",
 					Type = EnvironmentType.Web,
 					Url = "https://app.example.com",
+					Username = "admin@example.com",
+					Password = "ProdPassword!",
 					IsEnabled = true
 				}
 			]
@@ -337,6 +367,8 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 		Assert.Contains("\"playwright\"", json);
 		Assert.Contains("@playwright/mcp@latest", json);
 		Assert.Contains("\"repo-map\"", json);
+		Assert.Contains("\"APP_URL\"", json);
+		Assert.Contains("\"admin@example.com\"", json);
 	}
 
 	[Fact]
@@ -392,6 +424,16 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 							Name = "Production",
 							Type = EnvironmentType.Web,
 							Url = "https://app.example.com",
+							Username = "admin@example.com",
+							Password = "ProdPassword!",
+							IsPrimary = true,
+							IsEnabled = true
+						},
+						new ProjectEnvironment
+						{
+							Name = "Local Dev",
+							Type = EnvironmentType.Web,
+							Url = "http://localhost:5000",
 							IsEnabled = true
 						}
 					]
@@ -419,6 +461,13 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 			Assert.Equal(Path.Combine(resources.BrowserArtifactsDirectory!, "tmp"), environment.GetProperty("TMP").GetString());
 			Assert.Equal(Path.Combine(resources.BrowserArtifactsDirectory!, "tmp"), environment.GetProperty("TEMP").GetString());
 			Assert.Equal(Path.Combine(resources.BrowserArtifactsDirectory!, "cache"), environment.GetProperty("XDG_CACHE_HOME").GetString());
+			Assert.Equal("https://app.example.com", environment.GetProperty("APP_URL").GetString());
+			Assert.Equal("admin@example.com", environment.GetProperty("APP_USERNAME").GetString());
+			Assert.Equal("ProdPassword!", environment.GetProperty("APP_PASSWORD").GetString());
+			Assert.Equal("https://app.example.com", environment.GetProperty("APP_PRODUCTION_URL").GetString());
+			Assert.Equal("admin@example.com", environment.GetProperty("APP_PRODUCTION_USERNAME").GetString());
+			Assert.Equal("ProdPassword!", environment.GetProperty("APP_PRODUCTION_PASSWORD").GetString());
+			Assert.Equal("http://localhost:5000", environment.GetProperty("APP_LOCAL_DEV_URL").GetString());
 
 			service.CleanupExecutionResources(resources);
 
