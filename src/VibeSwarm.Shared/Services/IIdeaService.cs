@@ -186,6 +186,12 @@ public interface IIdeaService
 	Task<GlobalIdeasProcessingStatus> GetGlobalProcessingStatusAsync(CancellationToken cancellationToken = default);
 
 	/// <summary>
+	/// Gets the global queue snapshot used by the navigation queue panel.
+	/// Includes currently running jobs and upcoming ideas across active projects.
+	/// </summary>
+	Task<GlobalQueueSnapshot> GetGlobalQueueSnapshotAsync(CancellationToken cancellationToken = default);
+
+	/// <summary>
 	/// Starts auto-processing of ideas for all projects that have unprocessed ideas
 	/// </summary>
 	Task StartAllProcessingAsync(IdeaProcessingOptions? options = null, CancellationToken cancellationToken = default);

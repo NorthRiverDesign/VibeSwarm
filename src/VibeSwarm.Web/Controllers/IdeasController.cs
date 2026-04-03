@@ -134,6 +134,9 @@ public class IdeasController : ControllerBase
     [HttpGet("global-processing-status")]
     public async Task<IActionResult> GetGlobalProcessingStatus(CancellationToken ct) => Ok(await _ideaService.GetGlobalProcessingStatusAsync(ct));
 
+    [HttpGet("global-queue-snapshot")]
+    public async Task<IActionResult> GetGlobalQueueSnapshot(CancellationToken ct) => Ok(await _ideaService.GetGlobalQueueSnapshotAsync(ct));
+
     [HttpPost("start-all-processing")]
     public async Task<IActionResult> StartAllProcessing([FromBody] IdeaProcessingOptions? options, CancellationToken ct = default) { await _ideaService.StartAllProcessingAsync(options, ct); return Ok(); }
 

@@ -328,6 +328,81 @@ public partial class IdeaService
 		};
 	}
 
+	public async Task<GlobalQueueSnapshot> GetGlobalQueueSnapshotAsync(CancellationToken cancellationToken = default)
+	{
+		const int maxItemsPerSection = 6;
+
+		var runningJobsQuery = _dbContext.Jobs
+			.AsNoTracking()
+			.Where(j => j.Status == JobStatus.Started || j.Status == JobStatus.Planning || j.Status == JobStatus.Processing)
+			.OrderByDescending(j => j.StartedAt ?? j.CreatedAt);
+
+		var upcomingIdeasQuery = _dbContext.Ideas
+			.AsNoTracking()
+			.Where(i => i.Project != null
+				&& i.Project.IsActive
+				&& !i.IsProcessing
+				&& !i.JobId.HasValue)
+			.OrderByDescending(i => i.Project!.IdeasProcessingActive)
+			.ThenBy(i => i.Project!.Name)
+			.ThenBy(i => i.SortOrder)
+			.ThenBy(i => i.CreatedAt);
+
+		var runningJobsTask = runningJobsQuery
+			.Select(j => new GlobalQueueJobSummary
+			{
+				Id = j.Id,
+				ProjectId = j.ProjectId,
+				ProjectName = j.Project != null ? j.Project.Name : string.Empty,
+				Title = j.Title,
+				GoalPrompt = j.GoalPrompt,
+				Status = j.Status,
+				ProviderName = j.Provider != null ? j.Provider.Name : null,
+				CurrentActivity = j.CurrentActivity,
+				CreatedAt = j.CreatedAt,
+				StartedAt = j.StartedAt
+			})
+			.Take(maxItemsPerSection)
+			.ToListAsync(cancellationToken);
+
+		var runningJobsCountTask = runningJobsQuery.CountAsync(cancellationToken);
+
+		var upcomingIdeasTask = upcomingIdeasQuery
+			.Select(i => new GlobalQueueIdeaSummary
+			{
+				IdeaId = i.Id,
+				ProjectId = i.ProjectId,
+				ProjectName = i.Project != null ? i.Project.Name : string.Empty,
+				Description = i.Description,
+				SortOrder = i.SortOrder,
+				CreatedAt = i.CreatedAt,
+				IsProjectProcessing = i.Project != null && i.Project.IdeasProcessingActive
+			})
+			.Take(maxItemsPerSection)
+			.ToListAsync(cancellationToken);
+
+		var upcomingIdeasCountTask = upcomingIdeasQuery.CountAsync(cancellationToken);
+		var projectsCurrentlyProcessingTask = _dbContext.Projects
+			.AsNoTracking()
+			.CountAsync(p => p.IsActive && p.IdeasProcessingActive, cancellationToken);
+
+		await Task.WhenAll(
+			runningJobsTask,
+			runningJobsCountTask,
+			upcomingIdeasTask,
+			upcomingIdeasCountTask,
+			projectsCurrentlyProcessingTask);
+
+		return new GlobalQueueSnapshot
+		{
+			RunningJobsCount = runningJobsCountTask.Result,
+			UpcomingIdeasCount = upcomingIdeasCountTask.Result,
+			ProjectsCurrentlyProcessing = projectsCurrentlyProcessingTask.Result,
+			RunningJobs = runningJobsTask.Result,
+			UpcomingIdeas = upcomingIdeasTask.Result
+		};
+	}
+
 	public async Task StartAllProcessingAsync(IdeaProcessingOptions? options = null, CancellationToken cancellationToken = default)
 	{
 		// Get all active projects that have unprocessed ideas and are not already processing

@@ -84,6 +84,9 @@ public class HttpIdeaService : IIdeaService
     public async Task<GlobalIdeasProcessingStatus> GetGlobalProcessingStatusAsync(CancellationToken ct = default)
         => await _http.GetJsonAsync("/api/ideas/global-processing-status", new GlobalIdeasProcessingStatus(), ct);
 
+    public async Task<GlobalQueueSnapshot> GetGlobalQueueSnapshotAsync(CancellationToken ct = default)
+        => await _http.GetJsonAsync("/api/ideas/global-queue-snapshot", new GlobalQueueSnapshot(), ct);
+
     public async Task StartAllProcessingAsync(IdeaProcessingOptions? options = null, CancellationToken ct = default)
         => await _http.PostAsJsonAsync("/api/ideas/start-all-processing", options ?? new IdeaProcessingOptions(), ct);
 

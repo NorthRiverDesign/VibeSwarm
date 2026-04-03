@@ -62,6 +62,7 @@ builder.Services.AddScoped<NotificationService>();
 builder.Services.AddScoped<ChangePasswordModalService>();
 builder.Services.AddScoped<ThemeService>();
 builder.Services.AddScoped<AppTimeZoneService>();
+builder.Services.AddScoped<QueuePanelStateService>();
 
 // Auth
 builder.Services.AddAuthorizationCore();

@@ -534,6 +534,8 @@ public sealed class IdeasPanelTests
 			=> Task.FromResult(new SuggestIdeasResult());
 		public Task<GlobalIdeasProcessingStatus> GetGlobalProcessingStatusAsync(CancellationToken cancellationToken = default)
 			=> Task.FromResult(new GlobalIdeasProcessingStatus());
+		public Task<GlobalQueueSnapshot> GetGlobalQueueSnapshotAsync(CancellationToken cancellationToken = default)
+			=> Task.FromResult(new GlobalQueueSnapshot());
 		public Task StartAllProcessingAsync(IdeaProcessingOptions? options = null, CancellationToken cancellationToken = default) => Task.CompletedTask;
 		public Task StopAllProcessingAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 	}

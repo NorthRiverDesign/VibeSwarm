@@ -6,6 +6,7 @@
 @inject IIdeaService IdeaService
 @inject ICriticalErrorLogService CriticalErrorLogService
 @inject ChangePasswordModalService ChangePasswordModalService
+@inject QueuePanelStateService QueuePanelStateService
 @inject HttpClient HttpClient
 @inject NavigationManager NavigationManager
 @implements IAsyncDisposable
@@ -33,6 +34,7 @@
                 <i class="bi bi-search"></i>
             </button>
             <NotificationsPanel Compact="true" />
+            <QueueDropdownPanel Compact="true" />
             <LoginDisplay />
         </div>
     </header>
@@ -365,6 +367,26 @@ TimeSpan.FromSeconds(10) })
                 await OnGlobalJobCompleted(jobId, success, errorMessage);
             });
 
+            _globalHubConnection.On<string, string>("JobStatusChanged", async (jobId, status) =>
+            {
+                await OnGlobalJobStatusChanged(jobId, status);
+            });
+
+            _globalHubConnection.On<string, string>("JobCreated", async (jobId, projectId) =>
+            {
+                await OnGlobalJobCreated(jobId, projectId);
+            });
+
+            _globalHubConnection.On<string, string>("JobDeleted", async (jobId, projectId) =>
+            {
+                await OnGlobalJobDeleted(jobId, projectId);
+            });
+
+            _globalHubConnection.On("JobListChanged", async () =>
+            {
+                await OnGlobalJobListChanged();
+            });
+
             _globalHubConnection.On<string, string>("IdeaCreated", async (ideaId, projectId) =>
             {
                 await OnGlobalIdeaCreated(ideaId);
@@ -378,6 +400,11 @@ TimeSpan.FromSeconds(10) })
             _globalHubConnection.On<string, string, string>("IdeaStarted", async (ideaId, projectId, jobId) =>
             {
                 await OnGlobalIdeaStarted(ideaId, jobId);
+            });
+
+            _globalHubConnection.On<string, bool>("IdeasProcessingStateChanged", async (projectId, isActive) =>
+            {
+                await OnGlobalIdeasProcessingStateChanged(projectId, isActive);
             });
 
             _globalHubConnection.On<string, string, string, List<string>?, string?>("JobInteractionRequired",
@@ -415,12 +442,20 @@ TimeSpan.FromSeconds(10) })
 
             _globalHubConnection.Reconnected += async (connectionId) =>
             {
-                try { await _globalHubConnection.InvokeAsync("SubscribeToGlobalEvents"); } catch { }
+                try
+                {
+                    await _globalHubConnection.InvokeAsync("SubscribeToGlobalEvents");
+                    await _globalHubConnection.InvokeAsync("SubscribeToJobList");
+                }
+                catch
+                {
+                }
             };
 
             using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
             await _globalHubConnection.StartAsync(timeoutCts.Token);
             await _globalHubConnection.InvokeAsync("SubscribeToGlobalEvents");
+            await _globalHubConnection.InvokeAsync("SubscribeToJobList");
             _hubInitialized = true;
         }
         catch (OperationCanceledException)
@@ -440,7 +475,7 @@ TimeSpan.FromSeconds(10) })
 
     private Task OnGlobalJobStatusChanged(string jobId, string status)
     {
-        return Task.CompletedTask;
+        return QueuePanelStateService.RequestRefreshAsync();
     }
 
     private Task OnGlobalJobActivityUpdated(string jobId, string activity, DateTime timestamp)
@@ -450,12 +485,12 @@ TimeSpan.FromSeconds(10) })
 
     private Task OnGlobalJobCreated(string jobId, string projectId)
     {
-        return Task.CompletedTask;
+        return QueuePanelStateService.RequestRefreshAsync();
     }
 
     private Task OnGlobalJobDeleted(string jobId, string projectId)
     {
-        return Task.CompletedTask;
+        return QueuePanelStateService.RequestRefreshAsync();
     }
 
     private async Task OnGlobalJobCompleted(string jobId, bool success, string? errorMessage)
@@ -489,22 +524,27 @@ TimeSpan.FromSeconds(10) })
 
     private Task OnGlobalIdeaCreated(string ideaId)
     {
-        return Task.CompletedTask;
+        return QueuePanelStateService.RequestRefreshAsync();
     }
 
     private Task OnGlobalIdeaUpdated(string ideaId)
     {
-        return Task.CompletedTask;
+        return QueuePanelStateService.RequestRefreshAsync();
     }
 
     private Task OnGlobalIdeaStarted(string ideaId, string jobId)
     {
-        return Task.CompletedTask;
+        return QueuePanelStateService.RequestRefreshAsync();
+    }
+
+    private Task OnGlobalIdeasProcessingStateChanged(string projectId, bool isActive)
+    {
+        return QueuePanelStateService.RequestRefreshAsync();
     }
 
     private Task OnGlobalJobListChanged()
     {
-        return Task.CompletedTask;
+        return QueuePanelStateService.RequestRefreshAsync();
     }
 
     private Task OnGlobalJobMessageAdded(string jobId)
