@@ -68,6 +68,21 @@
                         <span>@TeamRoleName</span>
                     </span>
                 }
+                @if (PlaywrightEnabled)
+                {
+                    <span class="d-none d-md-inline-flex align-items-center gap-1 px-2 py-1 rounded-pill text-info-emphasis"
+                          style="background: rgba(13, 202, 240, 0.15);" title="Playwright MCP enabled">
+                        <i class="bi bi-browser-chrome opacity-75"></i>
+                    </span>
+                }
+                @if (EnvironmentCount > 0)
+                {
+                    <span class="d-none d-md-inline-flex align-items-center gap-1 px-2 py-1 rounded-pill text-success-emphasis"
+                          style="background: rgba(63, 185, 80, 0.15);" title="@EnvironmentCount environment(s) exposed">
+                        <i class="bi bi-globe opacity-75"></i>
+                        <span>@EnvironmentCount</span>
+                    </span>
+                }
                 @if (MaxCycles > 1)
                 {
                     <span title="@GetCycleModeTitle()">
@@ -176,6 +191,12 @@
 
     [Parameter]
     public string? TeamRoleName { get; set; }
+
+    [Parameter]
+    public bool PlaywrightEnabled { get; set; }
+
+    [Parameter]
+    public int EnvironmentCount { get; set; }
 
     private bool _isSelected => IsSelected;
 

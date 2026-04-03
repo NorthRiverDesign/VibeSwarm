@@ -292,6 +292,7 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 			entity.HasIndex(e => e.CreatedAt);
 			entity.HasIndex(e => e.SwarmId);
 			entity.HasIndex(e => new { e.JobScheduleId, e.ScheduledForUtc }).IsUnique();
+			entity.Property(e => e.EnvironmentsJson).HasMaxLength(4000);
 		});
 
 		modelBuilder.Entity<JobStatistics>(entity =>

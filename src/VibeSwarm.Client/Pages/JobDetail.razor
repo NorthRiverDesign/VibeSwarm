@@ -49,7 +49,9 @@ else
 					   OnCancel="CancelJob" OnForceCancel="ForceCancelJob"
 					   CanForceReset="@CanForceReset" IsForceResetting="@IsForceResetting" OnForceReset="ForceResetJob"
 					   CurrentActivity="@Job.CurrentActivity" LastActivityAt="@Job.LastActivityAt" CurrentCycle="@Job.CurrentCycle"
-					   MaxCycles="@Job.MaxCycles" CycleMode="@Job.CycleMode" TeamRoleName="@Job.TeamRole?.Name" />
+					   MaxCycles="@Job.MaxCycles" CycleMode="@Job.CycleMode" TeamRoleName="@Job.TeamRole?.Name"
+					   PlaywrightEnabled="@Job.PlaywrightEnabled" EnvironmentCount="@Job.EnvironmentSnapshots.Count"
+					   EnvironmentTooltip="@BuildEnvironmentTooltip()" />
 
     @* Main Content - Column Layout *@
     <div class="row g-3 g-lg-4">
@@ -299,6 +301,17 @@ else
         !string.IsNullOrWhiteSpace(_branchName) &&
         !string.IsNullOrWhiteSpace(EffectiveTargetBranch) &&
         !string.Equals(_branchName, EffectiveTargetBranch, StringComparison.Ordinal);
+
+    private string BuildEnvironmentTooltip()
+    {
+        var snapshots = Job?.EnvironmentSnapshots;
+        if (snapshots == null || snapshots.Count == 0)
+        {
+            return "No environments exposed";
+        }
+
+        return string.Join(", ", snapshots.Select(e => $"{e.Name} ({e.Stage})"));
+    }
 
     protected override async Task OnInitializedAsync()
     {

@@ -889,6 +889,208 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 		Assert.Equal("https://staging.example.com", result["APP_STAGING_URL"]);
 	}
 
+	[Fact]
+	public void JobEnvironmentSnapshot_FromProject_ReturnsEmptyForNull()
+	{
+		var result = JobEnvironmentSnapshot.FromProject(null);
+		Assert.Empty(result);
+	}
+
+	[Fact]
+	public void JobEnvironmentSnapshot_FromProject_CapturesEnabledEnvironments()
+	{
+		var project = new Project
+		{
+			Name = "Test",
+			WorkingPath = "/tmp",
+			Environments =
+			[
+				new ProjectEnvironment
+				{
+					Name = "Production",
+					Type = EnvironmentType.Web,
+					Stage = EnvironmentStage.Production,
+					Url = "https://prod.example.com",
+					IsPrimary = true,
+					IsEnabled = true
+				},
+				new ProjectEnvironment
+				{
+					Name = "Disabled",
+					Type = EnvironmentType.Web,
+					Stage = EnvironmentStage.Development,
+					Url = "https://disabled.example.com",
+					IsEnabled = false
+				},
+				new ProjectEnvironment
+				{
+					Name = "Local",
+					Type = EnvironmentType.Web,
+					Stage = EnvironmentStage.Local,
+					Url = "http://localhost:5000",
+					IsEnabled = true
+				}
+			]
+		};
+
+		var snapshots = JobEnvironmentSnapshot.FromProject(project);
+
+		Assert.Equal(2, snapshots.Count);
+		Assert.Equal("Production", snapshots[0].Name);
+		Assert.True(snapshots[0].IsPrimary);
+		Assert.Equal(EnvironmentType.Web, snapshots[0].Type);
+		Assert.Equal(EnvironmentStage.Production, snapshots[0].Stage);
+		Assert.Equal("https://prod.example.com", snapshots[0].Url);
+		Assert.Equal("Local", snapshots[1].Name);
+		Assert.False(snapshots[1].IsPrimary);
+	}
+
+	[Fact]
+	public void JobEnvironmentSnapshot_FromProject_ExcludesCredentials()
+	{
+		var project = new Project
+		{
+			Name = "Test",
+			WorkingPath = "/tmp",
+			Environments =
+			[
+				new ProjectEnvironment
+				{
+					Name = "Production",
+					Type = EnvironmentType.Web,
+					Url = "https://prod.example.com",
+					Username = "admin@example.com",
+					Password = "SuperSecret!",
+					IsEnabled = true
+				}
+			]
+		};
+
+		var snapshots = JobEnvironmentSnapshot.FromProject(project);
+		var json = System.Text.Json.JsonSerializer.Serialize(snapshots);
+
+		Assert.Single(snapshots);
+		Assert.DoesNotContain("admin@example.com", json);
+		Assert.DoesNotContain("SuperSecret!", json);
+	}
+
+	[Fact]
+	public void Job_EnvironmentSnapshots_DeserializesFromJson()
+	{
+		var snapshots = new List<JobEnvironmentSnapshot>
+		{
+			new() { Name = "Production", Url = "https://prod.example.com", Type = EnvironmentType.Web, Stage = EnvironmentStage.Production, IsPrimary = true },
+			new() { Name = "Local", Url = "http://localhost:5000", Type = EnvironmentType.Web, Stage = EnvironmentStage.Local, IsPrimary = false }
+		};
+
+		var job = new Job
+		{
+			GoalPrompt = "Test",
+			EnvironmentsJson = System.Text.Json.JsonSerializer.Serialize(snapshots),
+			PlaywrightEnabled = true,
+			EnvironmentCount = 2
+		};
+
+		var result = job.EnvironmentSnapshots;
+		Assert.Equal(2, result.Count);
+		Assert.Equal("Production", result[0].Name);
+		Assert.True(result[0].IsPrimary);
+		Assert.Equal("Local", result[1].Name);
+		Assert.False(result[1].IsPrimary);
+	}
+
+	[Fact]
+	public void Job_EnvironmentSnapshots_ReturnsEmptyForNullJson()
+	{
+		var job = new Job { GoalPrompt = "Test", EnvironmentsJson = null };
+		Assert.Empty(job.EnvironmentSnapshots);
+	}
+
+	[Fact]
+	public void Job_EnvironmentSnapshots_ReturnsEmptyForInvalidJson()
+	{
+		var job = new Job { GoalPrompt = "Test", EnvironmentsJson = "not valid json" };
+		Assert.Empty(job.EnvironmentSnapshots);
+	}
+
+	[Fact]
+	public void BuildSystemPromptRules_IncludesPlaywrightGuidance_WhenWebEnvironmentsExist()
+	{
+		var rules = PromptBuilder.BuildSystemPromptRules(new Project
+		{
+			Name = "Web App",
+			WorkingPath = "/tmp/web-app",
+			Environments =
+			[
+				new ProjectEnvironment
+				{
+					Name = "Production",
+					Type = EnvironmentType.Web,
+					Stage = EnvironmentStage.Production,
+					Url = "https://app.example.com",
+					IsEnabled = true
+				}
+			]
+		});
+
+		Assert.NotNull(rules);
+		Assert.Contains("DEPLOYED ENVIRONMENTS:", rules);
+		Assert.Contains("Playwright MCP", rules);
+		Assert.Contains("Do not assume localhost", rules);
+	}
+
+	[Fact]
+	public void BuildSystemPromptRules_OmitsPlaywright_WhenNoWebEnvironments()
+	{
+		var rules = PromptBuilder.BuildSystemPromptRules(new Project
+		{
+			Name = "CLI App",
+			WorkingPath = "/tmp/cli-app",
+			Environments =
+			[
+				new ProjectEnvironment
+				{
+					Name = "Release",
+					Type = EnvironmentType.Release,
+					Stage = EnvironmentStage.Production,
+					Url = "https://github.com/example/releases",
+					IsEnabled = true
+				}
+			]
+		});
+
+		Assert.NotNull(rules);
+		Assert.DoesNotContain("DEPLOYED ENVIRONMENTS:", rules);
+		Assert.DoesNotContain("Playwright MCP", rules);
+	}
+
+	[Fact]
+	public async Task GenerateMcpConfigJsonAsync_OmitsPlaywright_WhenNoWebEnvironments()
+	{
+		var service = new McpConfigService(new FakeSkillService(
+			new Skill { Id = Guid.NewGuid(), Name = "test-skill", Content = "content", IsEnabled = true }));
+
+		var json = await service.GenerateMcpConfigJsonAsync(new Project
+		{
+			Name = "CLI App",
+			WorkingPath = "/tmp/cli-app",
+			Environments =
+			[
+				new ProjectEnvironment
+				{
+					Name = "Release",
+					Type = EnvironmentType.Release,
+					Url = "https://github.com/example/releases",
+					IsEnabled = true
+				}
+			]
+		});
+
+		Assert.NotNull(json);
+		Assert.Contains("\"test-skill\"", json);
+		Assert.DoesNotContain("\"playwright\"", json);
+	}
+
 	private ProjectEnvironmentCredentialService CreateCredentialService()
 	{
 		var dataProtectionProvider = DataProtectionProvider.Create(new DirectoryInfo(_dataProtectionDirectory));

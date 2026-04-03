@@ -454,6 +454,34 @@ public partial class JobProcessingService
 
             var jobEnvironmentVariables = _projectEnvironmentCredentialService.BuildJobEnvironmentVariables(job.Project);
 
+            // Snapshot which environments and Playwright access were exposed to this job
+            var environmentSnapshots = JobEnvironmentSnapshot.FromProject(job.Project);
+            var hasWebEnvironment = environmentSnapshots.Any(e => e.Type == EnvironmentType.Web);
+            job.PlaywrightEnabled = hasWebEnvironment;
+            job.EnvironmentCount = environmentSnapshots.Count;
+            if (environmentSnapshots.Count > 0)
+            {
+                job.EnvironmentsJson = System.Text.Json.JsonSerializer.Serialize(environmentSnapshots);
+            }
+
+            try
+            {
+                using var snapshotScope = _scopeFactory.CreateScope();
+                var snapshotDbContext = snapshotScope.ServiceProvider.GetRequiredService<VibeSwarmDbContext>();
+                var jobForSnapshot = await snapshotDbContext.Jobs.FindAsync(new object[] { job.Id }, cancellationToken);
+                if (jobForSnapshot != null)
+                {
+                    jobForSnapshot.PlaywrightEnabled = job.PlaywrightEnabled;
+                    jobForSnapshot.EnvironmentCount = job.EnvironmentCount;
+                    jobForSnapshot.EnvironmentsJson = job.EnvironmentsJson;
+                    await snapshotDbContext.SaveChangesAsync(cancellationToken);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to persist environment snapshot for job {JobId}", job.Id);
+            }
+
             var enableStructuring = appSettings?.EnablePromptStructuring ?? true;
             var enableCommitAttribution = appSettings?.EnableCommitAttribution ?? true;
 

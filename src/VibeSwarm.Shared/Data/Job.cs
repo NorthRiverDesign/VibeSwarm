@@ -698,6 +698,49 @@ public class Job
     /// </summary>
     public DateTime? NotBeforeUtc { get; set; }
 
+    /// <summary>
+    /// Whether Playwright MCP was provided to this job for browser interaction.
+    /// Set at execution start based on whether enabled web environments exist.
+    /// </summary>
+    public bool PlaywrightEnabled { get; set; }
+
+    /// <summary>
+    /// JSON snapshot of the environments exposed to this job at execution time.
+    /// Stores names, URLs, types, and stages (no credentials) for audit and display.
+    /// </summary>
+    public string? EnvironmentsJson { get; set; }
+
+    /// <summary>
+    /// Number of environments exposed to this job at execution time.
+    /// Stored explicitly so list queries can display the count without deserializing JSON.
+    /// </summary>
+    public int EnvironmentCount { get; set; }
+
+    /// <summary>
+    /// Gets the deserialized environment snapshots from EnvironmentsJson.
+    /// Returns an empty list if no environments were captured.
+    /// </summary>
+    [NotMapped]
+    public List<JobEnvironmentSnapshot> EnvironmentSnapshots
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(EnvironmentsJson))
+            {
+                return new List<JobEnvironmentSnapshot>();
+            }
+
+            try
+            {
+                return System.Text.Json.JsonSerializer.Deserialize<List<JobEnvironmentSnapshot>>(EnvironmentsJson) ?? new List<JobEnvironmentSnapshot>();
+            }
+            catch
+            {
+                return new List<JobEnvironmentSnapshot>();
+            }
+        }
+    }
+
     public ICollection<JobMessage> Messages { get; set; } = new List<JobMessage>();
 
     public ICollection<JobProviderAttempt> ProviderAttempts { get; set; } = new List<JobProviderAttempt>();

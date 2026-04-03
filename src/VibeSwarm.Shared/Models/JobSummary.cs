@@ -49,6 +49,8 @@ public class JobSummary
 	public string? PullRequestUrl { get; set; }
 	public bool IsScheduled { get; set; }
 	public Guid? JobScheduleId { get; set; }
+	public bool PlaywrightEnabled { get; set; }
+	public int EnvironmentCount { get; set; }
 
 	public TimeSpan? ExecutionDuration
 	{
