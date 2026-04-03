@@ -166,9 +166,19 @@ body {
 	min-height: 100dvh;
 }
 
+#app:has(.app-layout) {
+	height: 100%;
+}
+
+body:has(.app-layout) {
+	height: 100%;
+	overflow: hidden;
+}
+
 /* dvh fallback — markup uses d-flex flex-column min-vh-100 */
 .app-layout {
 	min-height: 100dvh;
+	height: 100dvh;
 }
 
 /* Safe area calc — markup uses sticky-top d-flex align-items-center gap-3 flex-shrink-0 bg-body-secondary border-bottom */
@@ -224,6 +234,11 @@ body {
 	transform: translateX(0);
 }
 
+.app-sidebar > .overflow-y-auto {
+	-webkit-overflow-scrolling: touch;
+	overscroll-behavior-y: contain;
+}
+
 /* Overlay — markup uses position-fixed */
 .sidebar-overlay {
 	top: calc(var(--vs-header-height) + var(--vs-safe-area-top));
@@ -238,6 +253,8 @@ body {
 .app-main {
 	min-height: 0;
 	padding-bottom: var(--vs-safe-area-bottom);
+	-webkit-overflow-scrolling: touch;
+	overscroll-behavior-y: contain;
 }
 
 .main-content {
@@ -1105,6 +1122,17 @@ body.vs-modal-open {
 	/* Prevent pull-to-refresh gesture on main content when at top */
 	.app-main {
 		overscroll-behavior-y: contain;
+	}
+}
+
+@supports (-webkit-touch-callout: none) {
+	#app:has(.app-layout) {
+		min-height: -webkit-fill-available;
+	}
+
+	.app-layout {
+		min-height: -webkit-fill-available;
+		height: -webkit-fill-available;
 	}
 }
 
