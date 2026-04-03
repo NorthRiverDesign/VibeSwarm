@@ -1,6 +1,7 @@
 @page "/"
 @attribute [Authorize]
 @inject IProviderService ProviderService
+@inject ICommonProviderSetupService CommonProviderSetupService
 @inject IProjectService ProjectService
 @inject IVersionControlService VersionControlService
 @inject HttpProviderService HttpProviderService
@@ -182,7 +183,7 @@
                         <div class="col">
                             <ProviderCard Name="@provider.Name" ProviderType="@provider.Type.ToString()"
                                           ConnectionMode="@provider.ConnectionMode.ToString()" IsEnabled="@provider.IsEnabled"
-                                          CliVersion="@GetCliVersion(provider.Id)" UsageSummary="@GetUsageSummary(provider.Id)" />
+                                          CliVersion="@GetCliVersion(provider)" UsageSummary="@GetUsageSummary(provider.Id)" />
                         </div>
                     }
                 </div>
@@ -234,6 +235,7 @@
     private List<DashboardProjectInfo> DashboardProjects { get; set; } = new();
     private List<DashboardRunningJobInfo> RunningDashboardJobs { get; set; } = new();
     private Dictionary<Guid, ProviderUsageSummary> UsageSummaries { get; set; } = new();
+    private Dictionary<ProviderType, string> InstalledVersionsByType { get; set; } = new();
     private DashboardProjectSortOption SelectedProjectSort { get; set; } = DashboardProjectSortOption.LastRan;
     private bool IsLoading { get; set; } = true;
     private bool IsRefreshingDashboardData { get; set; }
@@ -260,13 +262,18 @@
         {
             var providersTask = ProviderService.GetAllAsync();
             var usageTask = HttpProviderService.GetAllUsageSummariesAsync();
+            var commonProviderStatusesTask = CommonProviderSetupService.GetStatusesAsync();
             var dashboardDataTask = LoadDashboardProjectsAsync();
             var ideasStatusTask = LoadIdeasStatusAsync();
 
-            await Task.WhenAll(providersTask, usageTask, dashboardDataTask, ideasStatusTask);
+            await Task.WhenAll(providersTask, usageTask, commonProviderStatusesTask, dashboardDataTask, ideasStatusTask);
 
             AllProviders = (await providersTask).ToList();
             UsageSummaries = await usageTask;
+            InstalledVersionsByType = (await commonProviderStatusesTask)
+                .Where(status => !string.IsNullOrWhiteSpace(status.InstalledVersion))
+                .GroupBy(status => status.ProviderType)
+                .ToDictionary(group => group.Key, group => group.First().InstalledVersion!);
         }
         finally
         {
@@ -284,9 +291,14 @@
         return Task.CompletedTask;
     }
 
-    private string? GetCliVersion(Guid providerId)
+    private string? GetCliVersion(Provider provider)
     {
-        return UsageSummaries.TryGetValue(providerId, out var summary) ? summary.CliVersion : null;
+        if (InstalledVersionsByType.TryGetValue(provider.Type, out var installedVersion))
+        {
+            return installedVersion;
+        }
+
+        return UsageSummaries.TryGetValue(provider.Id, out var summary) ? summary.CliVersion : null;
     }
 
     private ProviderUsageSummary? GetUsageSummary(Guid providerId)

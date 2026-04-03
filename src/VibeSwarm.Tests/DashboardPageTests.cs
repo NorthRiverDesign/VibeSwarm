@@ -60,6 +60,69 @@ public sealed class DashboardPageTests
 	}
 
 	[Fact]
+	public async Task Dashboard_PrefersLiveInstalledVersion_FromCommonProviderSetup()
+	{
+		var provider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Claude",
+			Type = ProviderType.Claude,
+			ConnectionMode = ProviderConnectionMode.CLI,
+			IsEnabled = true
+		};
+
+		var html = await RenderDashboardPageAsync(
+			new FakeProjectService([CreateProjectInfo("Alpha", DateTime.UtcNow.AddHours(-1))]),
+			new FakeProviderService([provider]),
+			usageSummaries: new Dictionary<Guid, ProviderUsageSummary>
+			{
+				[provider.Id] = new()
+				{
+					ProviderId = provider.Id,
+					CliVersion = "2.1.80"
+				}
+			},
+			commonProviderStatuses:
+			[
+				new CommonProviderSetupStatus
+				{
+					ProviderType = ProviderType.Claude,
+					InstalledVersion = "2.1.87"
+				}
+			]);
+
+		Assert.Contains("2.1.87", html);
+		Assert.DoesNotContain("2.1.80", html);
+	}
+
+	[Fact]
+	public async Task Dashboard_FallsBackToCachedUsageSummaryVersion_WhenLiveVersionUnavailable()
+	{
+		var provider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Copilot",
+			Type = ProviderType.Copilot,
+			ConnectionMode = ProviderConnectionMode.CLI,
+			IsEnabled = true
+		};
+
+		var html = await RenderDashboardPageAsync(
+			new FakeProjectService([CreateProjectInfo("Alpha", DateTime.UtcNow.AddHours(-1))]),
+			new FakeProviderService([provider]),
+			usageSummaries: new Dictionary<Guid, ProviderUsageSummary>
+			{
+				[provider.Id] = new()
+				{
+					ProviderId = provider.Id,
+					CliVersion = "1.0.16"
+				}
+			});
+
+		Assert.Contains("1.0.16", html);
+	}
+
+	[Fact]
 	public async Task Dashboard_ShowsRunningJobsSection_WhenProjectsHaveRunningJobs()
 	{
 		var nowUtc = DateTime.UtcNow;
@@ -202,17 +265,20 @@ public sealed class DashboardPageTests
 	private static async Task<string> RenderDashboardPageAsync(
 		IProjectService projectService,
 		IProviderService providerService,
-		IIdeaService? ideaService = null)
+		IIdeaService? ideaService = null,
+		Dictionary<Guid, ProviderUsageSummary>? usageSummaries = null,
+		IReadOnlyList<CommonProviderSetupStatus>? commonProviderStatuses = null)
 	{
 		var services = new ServiceCollection();
 		services.AddLogging();
 		services.AddSingleton(providerService);
 		services.AddSingleton(projectService);
+		services.AddSingleton<ICommonProviderSetupService>(new FakeCommonProviderSetupService(commonProviderStatuses ?? []));
 		services.AddSingleton<IVersionControlService>(new FakeVersionControlService());
 		services.AddSingleton(ideaService ?? new FakeIdeaService());
 		services.AddSingleton<NavigationManager>(new TestNavigationManager());
 		services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
-		services.AddSingleton(new HttpProviderService(new HttpClient(new StaticJsonHandler())
+		services.AddSingleton(new HttpProviderService(new HttpClient(new StaticJsonHandler(usageSummaries ?? new Dictionary<Guid, ProviderUsageSummary>()))
 		{
 			BaseAddress = new Uri("http://localhost")
 		}));
@@ -306,6 +372,16 @@ public sealed class DashboardPageTests
 		public Task<IEnumerable<ProviderModel>> RefreshModelsAsync(Guid providerId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task SetDefaultModelAsync(Guid providerId, Guid modelId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<CliUpdateResult> UpdateCliAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+	}
+
+	private sealed class FakeCommonProviderSetupService(IReadOnlyList<CommonProviderSetupStatus> statuses) : ICommonProviderSetupService
+	{
+		private readonly IReadOnlyList<CommonProviderSetupStatus> _statuses = statuses;
+
+		public Task<IReadOnlyList<CommonProviderSetupStatus>> GetStatusesAsync(CancellationToken cancellationToken = default) => Task.FromResult(_statuses);
+		public Task<IReadOnlyList<CommonProviderSetupStatus>> RefreshAsync(CancellationToken cancellationToken = default) => Task.FromResult(_statuses);
+		public Task<CommonProviderActionResult> InstallAsync(ProviderType providerType, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<CommonProviderActionResult> SaveAuthenticationAsync(CommonProviderSetupRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	}
 
 	private sealed class FakeProjectService(
@@ -412,15 +488,17 @@ public sealed class DashboardPageTests
 		public Task<SuggestIdeasResult> SuggestIdeasFromCodebaseAsync(Guid projectId, SuggestIdeasRequest? request = null, CancellationToken cancellationToken = default) => Task.FromResult(new SuggestIdeasResult());
 	}
 
-	private sealed class StaticJsonHandler : HttpMessageHandler
+	private sealed class StaticJsonHandler(Dictionary<Guid, ProviderUsageSummary> usageSummaries) : HttpMessageHandler
 	{
+		private readonly Dictionary<Guid, ProviderUsageSummary> _usageSummaries = usageSummaries;
+
 		protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
 		{
 			if (request.RequestUri?.AbsolutePath == "/api/providers/usage-summaries")
 			{
 				return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
 				{
-					Content = JsonContent.Create(new Dictionary<Guid, ProviderUsageSummary>())
+					Content = JsonContent.Create(_usageSummaries)
 				});
 			}
 
