@@ -80,11 +80,11 @@
 						}
 					</div>
 				</div>
-				@if ((IsRunningIdea() || IsQueuedIdea()) && Idea.JobId.HasValue)
+				@if (IsQueuedIdea() && Idea.JobId.HasValue)
 				{
 					<small class="text-body-secondary ms-4">
 						<a href="/jobs/view/@Idea.JobId" class="text-decoration-none">
-							@(IsQueuedIdea() ? "Queued Job" : "View Job") <i class="bi bi-arrow-right-short"></i>
+							Queued Job <i class="bi bi-arrow-right-short"></i>
 						</a>
 					</small>
 				}

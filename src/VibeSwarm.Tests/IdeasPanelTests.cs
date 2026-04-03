@@ -1,3 +1,5 @@
+using System.Linq;
+using System.Text.RegularExpressions;
 using Bunit;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
@@ -174,6 +176,45 @@ public sealed class IdeasPanelTests
 		Assert.Contains("mockup.png", html);
 		Assert.Contains("2 KB", html);
 		Assert.Contains("object-fit: cover;", html);
+	}
+
+	[Fact]
+	public async Task IdeaListItem_ShowsSingleViewJobLinkForRunningIdea()
+	{
+		var services = new ServiceCollection();
+		services.AddLogging();
+
+		await using var renderer = new HtmlRenderer(services.BuildServiceProvider(), NullLoggerFactory.Instance);
+
+		var jobId = Guid.NewGuid();
+		var idea = new Idea
+		{
+			Id = Guid.NewGuid(),
+			Description = "Investigate running job link duplication",
+			ProjectId = Guid.NewGuid(),
+			JobId = jobId,
+			Job = new Job
+			{
+				Id = jobId,
+				Status = JobStatus.Processing,
+				GoalPrompt = "Investigate running job link duplication"
+			}
+		};
+
+		var html = await renderer.Dispatcher.InvokeAsync(async () =>
+		{
+			var parameters = ParameterView.FromDictionary(new Dictionary<string, object?>
+			{
+				[nameof(IdeaListItem.Idea)] = idea,
+				[nameof(IdeaListItem.HasDefaultProvider)] = true
+			});
+			var output = await renderer.RenderComponentAsync<IdeaListItem>(parameters);
+			return output.ToHtmlString();
+		});
+
+		Assert.Single(Regex.Matches(html, "View Job").Cast<Match>());
+		Assert.Contains($"/jobs/view/{jobId}", html);
+		Assert.DoesNotContain("text-body-secondary ms-4", html);
 	}
 
 	[Fact]
