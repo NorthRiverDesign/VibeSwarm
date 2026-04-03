@@ -1,0 +1,86 @@
+@using Microsoft.AspNetCore.Components.Forms
+@using VibeSwarm.Client.Models
+@using VibeSwarm.Shared.Services
+
+<ModalDialog IsVisible="IsVisible" IsVisibleChanged="HandleVisibleChanged" Title="Add User" Icon="person-plus"
+			 Size="ModalDialog.ModalSize.Default" OnClose="HandleClose">
+	<ChildContent>
+		<EditForm Model="Model" OnValidSubmit="OnSubmit">
+			<DataAnnotationsValidator />
+
+			@if (!string.IsNullOrEmpty(ErrorMessage))
+			{
+				<div class="text-danger small mb-3">
+					<i class="bi bi-exclamation-circle me-1"></i>@ErrorMessage
+				</div>
+			}
+
+			<div class="mb-3">
+				<label for="addUserName" class="form-label">Username</label>
+				<InputText id="addUserName" @bind-Value="Model.UserName" class="form-control" />
+				<ValidationMessage For="@(() => Model.UserName)" class="text-danger small" />
+			</div>
+
+			<div class="mb-3">
+				<label for="addUserPassword" class="form-label">Password</label>
+				<InputText id="addUserPassword" @bind-Value="Model.Password" class="form-control" type="password" />
+				<ValidationMessage For="@(() => Model.Password)" class="text-danger small" />
+				<div class="form-text">
+					Password must be at least 8 characters with uppercase, lowercase, and a digit.
+				</div>
+			</div>
+
+			<div class="mb-3">
+				<label for="addUserRole" class="form-label">Role</label>
+				<InputSelect id="addUserRole" @bind-Value="Model.Role" class="form-select">
+					<option value="@UserRoles.User">User</option>
+					<option value="@UserRoles.Admin">Admin</option>
+				</InputSelect>
+			</div>
+
+			<div class="d-flex justify-content-end gap-2">
+				<button type="button" class="btn btn-secondary" @onclick="CloseAsync">Cancel</button>
+				<button type="submit" class="btn btn-primary" disabled="@IsSubmitting">
+					@if (IsSubmitting)
+					{
+						<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+					}
+					Add User
+				</button>
+			</div>
+		</EditForm>
+	</ChildContent>
+</ModalDialog>
+
+@code {
+	[Parameter]
+	public bool IsVisible { get; set; }
+
+	[Parameter]
+	public EventCallback<bool> IsVisibleChanged { get; set; }
+
+	[Parameter, EditorRequired]
+	public AddUserFormModel Model { get; set; } = new();
+
+	[Parameter]
+	public string? ErrorMessage { get; set; }
+
+	[Parameter]
+	public bool IsSubmitting { get; set; }
+
+	[Parameter]
+	public EventCallback OnSubmit { get; set; }
+
+	[Parameter]
+	public EventCallback OnCancel { get; set; }
+
+	private Task HandleVisibleChanged(bool isVisible) => IsVisibleChanged.InvokeAsync(isVisible);
+
+	private Task HandleClose() => OnCancel.InvokeAsync();
+
+	private async Task CloseAsync()
+	{
+		await IsVisibleChanged.InvokeAsync(false);
+		await OnCancel.InvokeAsync();
+	}
+}

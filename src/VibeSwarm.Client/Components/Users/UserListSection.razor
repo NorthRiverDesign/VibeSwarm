@@ -1,0 +1,55 @@
+@using VibeSwarm.Shared.Services
+
+@if (Users.Count == 0)
+{
+	<EmptyState Icon="people" Title="No users found" Message="Add users to allow access to VibeSwarm." />
+}
+else if (FilteredUsers.Count == 0)
+{
+	<EmptyState Icon="@(ActiveFilter == ActiveFilterValue ? "people" : "pause-circle")"
+				Title="@(ActiveFilter == ActiveFilterValue ? "No active users" : "No inactive users")"
+				Message="@(ActiveFilter == ActiveFilterValue ? "All users are currently inactive." : "All users are currently active.")" />
+}
+else
+{
+	<ul class="list-group list-group-flush border border-top-0 rounded-top-0">
+		@foreach (var user in FilteredUsers)
+		{
+			<UserListItem User="user"
+						  CurrentUserId="CurrentUserId"
+						  OnResetPassword="OnResetPassword"
+						  OnEditRole="OnEditRole"
+						  OnToggleActive="OnToggleActive"
+						  OnDelete="OnDelete" />
+		}
+	</ul>
+}
+
+@code {
+	private const string ActiveFilterValue = "active";
+
+	[Parameter]
+	public IReadOnlyList<UserDto> Users { get; set; } = [];
+
+	[Parameter]
+	public string ActiveFilter { get; set; } = ActiveFilterValue;
+
+	[Parameter]
+	public Guid CurrentUserId { get; set; }
+
+	[Parameter]
+	public EventCallback<UserDto> OnResetPassword { get; set; }
+
+	[Parameter]
+	public EventCallback<UserDto> OnEditRole { get; set; }
+
+	[Parameter]
+	public EventCallback<UserDto> OnToggleActive { get; set; }
+
+	[Parameter]
+	public EventCallback<UserDto> OnDelete { get; set; }
+
+	private IReadOnlyList<UserDto> FilteredUsers => ActiveFilter == ActiveFilterValue
+		? Users.Where(user => user.IsActive).ToList()
+		: Users.Where(user => !user.IsActive).ToList();
+}

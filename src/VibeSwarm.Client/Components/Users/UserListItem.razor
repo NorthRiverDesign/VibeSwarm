@@ -1,0 +1,92 @@
+@using VibeSwarm.Shared.Services
+@using VibeSwarm.Shared.Utilities
+
+<li class="list-group-item py-3">
+	<div class="d-flex align-items-center justify-content-between gap-3">
+		<div class="d-flex align-items-center gap-3 flex-grow-1 min-width-0">
+			<i class="bi bi-person-circle fs-4 text-secondary flex-shrink-0"></i>
+			<div class="min-width-0">
+				<div class="d-flex align-items-center gap-2 flex-wrap">
+					<span class="fw-semibold">@User.UserName</span>
+					@if (User.Roles.Contains(UserRoles.Admin))
+					{
+						<span class="badge bg-primary">Admin</span>
+					}
+					else
+					{
+						<span class="badge bg-secondary">User</span>
+					}
+				</div>
+				<div class="d-flex flex-wrap gap-2 text-body-secondary small mt-1">
+					<span class="d-none d-md-inline">
+						<i class="bi bi-calendar me-1"></i>Created @User.CreatedAt.FormatDateTimeShort()
+					</span>
+					<span class="d-none d-lg-inline">
+						<i class="bi bi-clock me-1"></i>Last login: @(User.LastLoginAt.HasValue ? User.LastLoginAt.Value.FormatDateTimeShort() : "Never")
+					</span>
+				</div>
+			</div>
+		</div>
+
+		<div class="dropdown flex-shrink-0">
+			<button class="btn btn-sm btn-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown"
+					aria-expanded="false" title="User actions">
+				<i class="bi bi-gear"></i>
+			</button>
+			<ul class="dropdown-menu dropdown-menu-end">
+				<li>
+					<button class="dropdown-item" @onclick="@(() => OnResetPassword.InvokeAsync(User))">
+						<i class="bi bi-key me-2"></i>Reset Password
+					</button>
+				</li>
+				<li>
+					<button class="dropdown-item" @onclick="@(() => OnEditRole.InvokeAsync(User))">
+						<i class="bi bi-pencil me-2"></i>Edit Role
+					</button>
+				</li>
+				<li>
+					<button class="dropdown-item" @onclick="@(() => OnToggleActive.InvokeAsync(User))"
+							disabled="@(User.Id == CurrentUserId && User.IsActive)">
+						<i class="bi bi-@(User.IsActive ? "x-circle" : "check-circle") me-2"></i>
+						@if (User.Id == CurrentUserId && User.IsActive)
+						{
+							<span class="text-body-secondary">Cannot deactivate yourself</span>
+						}
+						else
+						{
+							@(User.IsActive ? "Deactivate" : "Activate")
+						}
+					</button>
+				</li>
+				<li>
+					<hr class="dropdown-divider">
+				</li>
+				<li>
+					<button class="dropdown-item text-danger" @onclick="@(() => OnDelete.InvokeAsync(User))">
+						<i class="bi bi-trash me-2"></i>Delete
+					</button>
+				</li>
+			</ul>
+		</div>
+	</div>
+</li>
+
+@code {
+	[Parameter, EditorRequired]
+	public UserDto User { get; set; } = new();
+
+	[Parameter]
+	public Guid CurrentUserId { get; set; }
+
+	[Parameter]
+	public EventCallback<UserDto> OnResetPassword { get; set; }
+
+	[Parameter]
+	public EventCallback<UserDto> OnEditRole { get; set; }
+
+	[Parameter]
+	public EventCallback<UserDto> OnToggleActive { get; set; }
+
+	[Parameter]
+	public EventCallback<UserDto> OnDelete { get; set; }
+}
