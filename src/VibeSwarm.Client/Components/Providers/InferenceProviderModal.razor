@@ -1,0 +1,353 @@
+@using VibeSwarm.Shared.Data
+@using VibeSwarm.Shared.Inference
+@using VibeSwarm.Shared.Services
+@inject IInferenceProviderService InferenceProviderService
+@inject IInferenceService InferenceService
+@inject NotificationService NotificationService
+
+<ModalDialog IsVisible="IsVisible" IsVisibleChanged="HandleModalVisibilityChanged"
+			 Title="@(IsEdit ? "Edit Inference Provider" : "Add Inference Provider")" Icon="@(IsEdit ? "pencil" : "hdd-network")"
+			 Size="ModalDialog.ModalSize.Default" OnClose="HandleClose">
+	<ChildContent>
+		<EditForm Model="@Provider" OnValidSubmit="HandleValidSubmit">
+			<DataAnnotationsValidator />
+			<ValidationSummary class="text-danger mb-3" />
+
+			<div class="row g-3 mb-3">
+				<div class="col-12 col-md-6">
+					<label for="inference-name" class="form-label">Name</label>
+					<InputText id="inference-name" @bind-Value="Provider.Name" class="form-control"
+							   placeholder="Local Ollama" />
+					<ValidationMessage For="@(() => Provider.Name)" class="text-danger small" />
+				</div>
+				<div class="col-12 col-md-6">
+					<label for="inference-type" class="form-label">Provider Type</label>
+					<InputSelect id="inference-type" Value="Provider.ProviderType"
+								 ValueExpression="@(() => Provider.ProviderType)"
+								 ValueChanged="@((InferenceProviderType value) => OnProviderTypeChanged(value))" class="form-select">
+						@foreach (var type in Enum.GetValues<InferenceProviderType>())
+						{
+							<option value="@type">@type</option>
+						}
+					</InputSelect>
+				</div>
+			</div>
+
+			<div class="row g-3 mb-3">
+				<div class="col-12 col-md-6">
+					<label for="inference-apikey" class="form-label">
+						API Key
+						@if (Provider.ProviderType == InferenceProviderType.Grok)
+						{
+							<span class="text-danger">*</span>
+						}
+					</label>
+					<input type="password" id="inference-apikey" class="form-control font-monospace"
+						   @bind="Provider.ApiKey"
+						   placeholder="@(Provider.ProviderType == InferenceProviderType.Grok ? "xai-..." : "(optional)")" />
+				</div>
+				<div class="col-12 col-md-6">
+					<label for="inference-endpoint" class="form-label">Endpoint URL</label>
+					<div class="input-group">
+						<input type="url" id="inference-endpoint" class="form-control font-monospace"
+							   @bind="Provider.Endpoint"
+							   placeholder="@GetEndpointPlaceholder(Provider.ProviderType)" />
+						<button type="button" class="btn btn-secondary"
+								@onclick="TestConnection"
+								disabled="@_isTesting"
+								title="Test Connection">
+							@if (_isTesting)
+							{
+								<span class="spinner-border spinner-border-sm" role="status"></span>
+							}
+							else
+							{
+								<i class="bi bi-plug"></i>
+							}
+						</button>
+					</div>
+				</div>
+			</div>
+
+			<div class="row g-3 mb-3">
+				<div class="col-12 col-md-8">
+					<label for="inference-model" class="form-label">Default Model</label>
+					<div class="input-group">
+						<select id="inference-model" class="form-select" @bind="_selectedModelId">
+							<option value="">-- Select a model --</option>
+							@foreach (var model in _models.Where(m => m.IsAvailable))
+							{
+								<option value="@model.ModelId">
+									@(model.DisplayName ?? model.ModelId)
+									@if (!string.IsNullOrEmpty(model.ParameterSize))
+									{
+										@($" ({model.ParameterSize})")
+									}
+								</option>
+							}
+						</select>
+						<button type="button" class="btn btn-secondary"
+								@onclick="RefreshModels"
+								disabled="@_isRefreshingModels"
+								title="Refresh models from provider">
+							@if (_isRefreshingModels)
+							{
+								<span class="spinner-border spinner-border-sm" role="status"></span>
+							}
+							else
+							{
+								<i class="bi bi-arrow-clockwise"></i>
+							}
+						</button>
+					</div>
+					@if (!_models.Any() && !_isRefreshingModels)
+					{
+						<div class="form-text text-warning">
+							No models found. Click refresh to discover models from the provider.
+						</div>
+					}
+				</div>
+				<div class="col-12 col-md-4 d-flex align-items-end">
+					<div class="form-check form-switch">
+						<InputCheckbox id="inference-enabled" @bind-Value="Provider.IsEnabled" class="form-check-input" />
+						<label class="form-check-label" for="inference-enabled">Enabled</label>
+					</div>
+				</div>
+			</div>
+
+			@if (!string.IsNullOrEmpty(_errorMessage))
+			{
+				<div class="text-danger small mb-3">
+					<i class="bi bi-exclamation-circle me-1"></i>@_errorMessage
+				</div>
+			}
+
+			<div class="d-flex gap-2 justify-content-end">
+				<button type="button" class="btn btn-secondary" @onclick="HandleCancel">Cancel</button>
+				<button type="submit" class="btn btn-primary" disabled="@_isSaving">
+					@if (_isSaving)
+					{
+						<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+					}
+					@(_isSaving ? "Saving..." : (IsEdit ? "Save" : "Add Provider"))
+				</button>
+			</div>
+		</EditForm>
+	</ChildContent>
+</ModalDialog>
+
+@code {
+	[Parameter]
+	public bool IsVisible { get; set; }
+
+	[Parameter]
+	public EventCallback<bool> IsVisibleChanged { get; set; }
+
+	[Parameter]
+	public InferenceProvider? EditProvider { get; set; }
+
+	[Parameter]
+	public EventCallback<Guid?> OnSaved { get; set; }
+
+	[Parameter]
+	public EventCallback OnCancelled { get; set; }
+
+	[Parameter]
+	public EventCallback OnClosed { get; set; }
+
+	private InferenceProvider Provider { get; set; } = new();
+	private List<InferenceModel> _models = [];
+	private string _selectedModelId = string.Empty;
+	private bool IsEdit => EditProvider != null;
+	private bool _isSaving;
+	private bool _isTesting;
+	private bool _isRefreshingModels;
+	private string? _errorMessage;
+	private bool _previousIsVisible;
+
+	protected override async Task OnParametersSetAsync()
+	{
+		if (IsVisible && !_previousIsVisible)
+		{
+			ResetState();
+
+			if (EditProvider != null)
+			{
+				Provider = new InferenceProvider
+				{
+					Id = EditProvider.Id,
+					Name = EditProvider.Name,
+					ProviderType = EditProvider.ProviderType,
+					Endpoint = EditProvider.Endpoint,
+					ApiKey = EditProvider.ApiKey,
+					IsEnabled = EditProvider.IsEnabled,
+					CreatedAt = EditProvider.CreatedAt,
+					UpdatedAt = EditProvider.UpdatedAt
+				};
+
+				var models = (await InferenceProviderService.GetModelsAsync(EditProvider.Id)).ToList();
+				_models = models;
+				_selectedModelId = models.FirstOrDefault(m => m.IsDefault)?.ModelId ?? string.Empty;
+			}
+			else
+			{
+				Provider = new InferenceProvider
+				{
+					Name = "Local Ollama",
+					ProviderType = InferenceProviderType.Ollama,
+					Endpoint = "http://localhost:11434",
+					IsEnabled = true
+				};
+			}
+		}
+
+		_previousIsVisible = IsVisible;
+	}
+
+	private void ResetState()
+	{
+		_isSaving = false;
+		_isTesting = false;
+		_isRefreshingModels = false;
+		_errorMessage = null;
+		_models = [];
+		_selectedModelId = string.Empty;
+	}
+
+	private async Task HandleValidSubmit()
+	{
+		_isSaving = true;
+		_errorMessage = null;
+
+		try
+		{
+			InferenceProvider saved;
+			if (IsEdit)
+			{
+				saved = await InferenceProviderService.UpdateAsync(Provider);
+			}
+			else
+			{
+				saved = await InferenceProviderService.CreateAsync(Provider);
+			}
+
+			if (!string.IsNullOrEmpty(_selectedModelId))
+			{
+				await InferenceProviderService.SetModelForTaskAsync(saved.Id, _selectedModelId, "default");
+			}
+
+			NotificationService.ShowSuccess($"Provider \"{saved.Name}\" {(IsEdit ? "updated" : "created")}.");
+			await OnSaved.InvokeAsync(saved.Id);
+		}
+		catch (Exception ex)
+		{
+			_errorMessage = $"Failed to save provider: {ex.Message}";
+		}
+		finally
+		{
+			_isSaving = false;
+		}
+	}
+
+	private async Task TestConnection()
+	{
+		_isTesting = true;
+		try
+		{
+			var result = await InferenceService.CheckHealthAsync(Provider.Endpoint, Provider.ProviderType);
+			if (result.IsAvailable)
+			{
+				NotificationService.ShowSuccess($"Connected! {result.DiscoveredModels.Count} model(s) available.");
+			}
+			else
+			{
+				NotificationService.ShowError($"Connection failed: {result.Error ?? "Unable to reach endpoint"}");
+			}
+		}
+		catch (Exception ex)
+		{
+			NotificationService.ShowError($"Connection test failed: {ex.Message}");
+		}
+		finally
+		{
+			_isTesting = false;
+		}
+	}
+
+	private async Task RefreshModels()
+	{
+		if (!IsEdit) return;
+
+		_isRefreshingModels = true;
+		try
+		{
+			_models = (await InferenceProviderService.RefreshModelsAsync(Provider.Id)).ToList();
+			if (!_models.Any(m => m.ModelId == _selectedModelId))
+			{
+				_selectedModelId = _models.FirstOrDefault(m => m.IsDefault)?.ModelId ?? string.Empty;
+			}
+			NotificationService.ShowSuccess($"Found {_models.Count(m => m.IsAvailable)} model(s).");
+		}
+		catch (Exception ex)
+		{
+			NotificationService.ShowError($"Failed to refresh models: {ex.Message}");
+		}
+		finally
+		{
+			_isRefreshingModels = false;
+		}
+	}
+
+	private void OnProviderTypeChanged(InferenceProviderType newType)
+	{
+		var oldType = Provider.ProviderType;
+		Provider.ProviderType = newType;
+
+		var oldDefault = GetDefaultEndpoint(oldType);
+		if (string.IsNullOrWhiteSpace(Provider.Endpoint) ||
+			string.Equals(Provider.Endpoint.TrimEnd('/'), oldDefault.TrimEnd('/'), StringComparison.OrdinalIgnoreCase))
+		{
+			Provider.Endpoint = GetDefaultEndpoint(newType);
+		}
+
+		var defaultNames = new[] { "New Provider", "Local Ollama", "Grok (X.AI)" };
+		if (defaultNames.Contains(Provider.Name, StringComparer.OrdinalIgnoreCase))
+		{
+			Provider.Name = GetDefaultName(newType);
+		}
+	}
+
+	private async Task HandleModalVisibilityChanged(bool visible)
+	{
+		IsVisible = visible;
+		await IsVisibleChanged.InvokeAsync(visible);
+	}
+
+	private async Task HandleCancel()
+	{
+		await OnCancelled.InvokeAsync();
+	}
+
+	private async Task HandleClose()
+	{
+		await OnClosed.InvokeAsync();
+	}
+
+	private static string GetEndpointPlaceholder(InferenceProviderType type) => type switch
+	{
+		InferenceProviderType.Grok => "https://api.x.ai/v1",
+		_ => "http://localhost:11434"
+	};
+
+	private static string GetDefaultEndpoint(InferenceProviderType type) => type switch
+	{
+		InferenceProviderType.Grok => "https://api.x.ai/v1",
+		_ => "http://localhost:11434"
+	};
+
+	private static string GetDefaultName(InferenceProviderType type) => type switch
+	{
+		InferenceProviderType.Grok => "Grok (X.AI)",
+		_ => "Local Ollama"
+	};
+}

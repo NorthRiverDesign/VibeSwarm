@@ -8,13 +8,16 @@ namespace VibeSwarm.Client.Services;
 public class HttpProviderService : IProviderService
 {
     private readonly HttpClient _http;
+    private readonly CachedData<List<Provider>> _allProvidersCache = new(TimeSpan.FromSeconds(60));
+
     public HttpProviderService(HttpClient http) => _http = http;
 
     public IProvider? CreateInstance(Provider config)
         => throw new NotSupportedException("CreateInstance is a server-only operation");
 
     public async Task<IEnumerable<Provider>> GetAllAsync(CancellationToken ct = default)
-        => await _http.GetJsonAsync("/api/providers", new List<Provider>(), ct);
+        => await _allProvidersCache.GetOrFetchAsync(
+            async () => await _http.GetJsonAsync("/api/providers", new List<Provider>(), ct));
 
     public async Task<Provider?> GetByIdAsync(Guid id, CancellationToken ct = default)
         => await _http.GetJsonOrNullAsync<Provider>($"/api/providers/{id}", ct);
@@ -26,6 +29,7 @@ public class HttpProviderService : IProviderService
     {
         var response = await _http.PostAsJsonAsync("/api/providers", provider, ct);
         response.EnsureSuccessStatusCode();
+        _allProvidersCache.Invalidate();
         return await response.ReadJsonAsync(provider, ct);
     }
 
@@ -33,11 +37,15 @@ public class HttpProviderService : IProviderService
     {
         var response = await _http.PutAsJsonAsync($"/api/providers/{provider.Id}", provider, ct);
         response.EnsureSuccessStatusCode();
+        _allProvidersCache.Invalidate();
         return await response.ReadJsonAsync(provider, ct);
     }
 
     public async Task DeleteAsync(Guid id, CancellationToken ct = default)
-        => await _http.DeleteAsync($"/api/providers/{id}", ct);
+    {
+        await _http.DeleteAsync($"/api/providers/{id}", ct);
+        _allProvidersCache.Invalidate();
+    }
 
     public async Task<bool> TestConnectionAsync(Guid id, CancellationToken ct = default)
     {
@@ -52,10 +60,14 @@ public class HttpProviderService : IProviderService
     {
         var endpoint = isEnabled ? $"/api/providers/{id}/enable" : $"/api/providers/{id}/disable";
         await _http.PostAsync(endpoint, null, ct);
+        _allProvidersCache.Invalidate();
     }
 
     public async Task SetDefaultAsync(Guid id, CancellationToken ct = default)
-        => await _http.PostAsync($"/api/providers/{id}/set-default", null, ct);
+    {
+        await _http.PostAsync($"/api/providers/{id}/set-default", null, ct);
+        _allProvidersCache.Invalidate();
+    }
 
     public async Task<SessionSummary> GetSessionSummaryAsync(Guid providerId, string? sessionId, string? workingDirectory = null, string? fallbackOutput = null, CancellationToken ct = default)
     {

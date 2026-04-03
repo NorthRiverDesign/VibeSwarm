@@ -9,7 +9,7 @@
 @inject HttpProviderService HttpProviderService
 @inject NotificationService NotificationService
 
-<PageHeader Title="Providers" Subtitle="Manage your AI coding agent providers">
+<PageHeader Title="Providers">
     <Actions>
         <ActionButton Icon="plus" Text="Add" Style="ActionButton.ButtonStyle.Primary" OnClick="ShowAddModal" />
     </Actions>
@@ -18,10 +18,7 @@
 <div class="d-flex flex-column gap-4">
 	<div>
 		<div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
-			<div>
-				<h5 class="fw-semibold mb-1">Host Setup</h5>
-				<p class="text-body-secondary mb-0">See what the host can run, finish authentication, and keep each provider's VibeSwarm configuration close to its install state.</p>
-			</div>
+			<h5 class="fw-semibold mb-0">Host Setup</h5>
 			<ActionButton Icon="arrow-repeat" Text="Re-scan Host" OnClick="RefreshCommonProviderStatusesAsync"
 						  IsLoading="@IsRefreshingCommonProviders" />
 		</div>
@@ -80,10 +77,7 @@
 							<div class="card h-100">
 								<div class="card-body d-flex flex-column gap-3">
 									<div class="d-flex align-items-start justify-content-between flex-wrap gap-2">
-										<div>
-											<h6 class="fw-semibold mb-1">Connections</h6>
-											<p class="text-body-secondary small mb-0">Add and maintain the @status.DisplayName CLI, SDK, or REST connections that VibeSwarm can use.</p>
-										</div>
+										<h6 class="fw-semibold mb-0">Connections</h6>
 										<div class="d-flex flex-wrap gap-2">
 											@foreach (var supportedMode in GetSupportedModes(status.ProviderType))
 											{
@@ -101,7 +95,7 @@
 									@if (providersForType.Count == 0)
 									{
 										<div class="rounded-3 bg-body-tertiary p-3 small text-body-secondary">
-											No @status.DisplayName connections yet. Add one above to keep install, authentication, models, and health checks together.
+											No @status.DisplayName connections yet.
 										</div>
 									}
 									else

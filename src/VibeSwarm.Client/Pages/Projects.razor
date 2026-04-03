@@ -12,7 +12,7 @@
 @using VibeSwarm.Shared.Utilities
 @using VibeSwarm.Shared.VersionControl.Models
 
-<PageHeader Title="Projects" Subtitle="Manage your AI agent project workspaces">
+<PageHeader Title="Projects">
     <Actions>
         <ActionButton Icon="plus" Text="Add" Style="ActionButton.ButtonStyle.Primary" HideTextOnMobile="true" OnClick="ShowAddModal" />
     </Actions>
@@ -28,29 +28,27 @@
 		</div>
 	</SearchContent>
 	<Tabs>
-		<ul class="nav nav-tabs flex-nowrap flex-sm-wrap overflow-x-auto overflow-y-hidden overscroll-contain" role="tablist">
-			<li class="nav-item">
-				<button class="nav-link @(ActiveFilter == "active" ? "active" : "")" @onclick='() => SetFilter("active")'>
-					<i class="bi bi-check-circle me-1"></i>Active
-					<span class="badge bg-primary-subtle text-primary-emphasis ms-1">@GetActiveCount()</span>
-				</button>
-			</li>
-			<li class="nav-item">
-				<button class="nav-link @(ActiveFilter == "inactive" ? "active" : "")" @onclick='() => SetFilter("inactive")'>
-					<i class="bi bi-pause-circle me-1"></i>Inactive
-					<span class="badge bg-secondary-subtle text-secondary-emphasis ms-1">@GetInactiveCount()</span>
-				</button>
-			</li>
-		</ul>
+		<div class="d-flex align-items-center gap-2">
+			<ul class="nav nav-tabs flex-nowrap flex-sm-wrap overflow-x-auto overflow-y-hidden overscroll-contain mb-0" role="tablist">
+				<li class="nav-item">
+					<button class="nav-link @(ActiveFilter == "active" ? "active" : "")" @onclick='() => SetFilter("active")'>
+						<i class="bi bi-check-circle me-1"></i>Active
+						<span class="badge bg-primary-subtle text-primary-emphasis ms-1">@GetActiveCount()</span>
+					</button>
+				</li>
+				<li class="nav-item">
+					<button class="nav-link @(ActiveFilter == "inactive" ? "active" : "")" @onclick='() => SetFilter("inactive")'>
+						<i class="bi bi-pause-circle me-1"></i>Inactive
+						<span class="badge bg-secondary-subtle text-secondary-emphasis ms-1">@GetInactiveCount()</span>
+					</button>
+				</li>
+			</ul>
+			<button type="button" class="btn btn-sm btn-link text-body-secondary p-1 flex-shrink-0"
+					@onclick="ToggleProjectStats" title="@(ShowProjectStats ? "Hide stats" : "Show stats")">
+				<i class="bi bi-@(ShowProjectStats ? "eye-slash" : "eye")"></i>
+			</button>
+		</div>
 	</Tabs>
-	<Actions>
-		<ActionButton Icon="@(ShowProjectStats ? "eye-slash" : "eye")"
-					  Text="@(ShowProjectStats ? "Hide stats" : "Show stats")"
-					  Title="Toggle project stats"
-					  Size="ActionButton.ButtonSize.Small"
-					  HideTextOnMobile="true"
-					  OnClick="ToggleProjectStats" />
-	</Actions>
 </PageFiltersBar>
 
 @if (ShowInitialLoadingSpinner)
@@ -560,7 +558,8 @@ else
 
     private async Task LoadProjects()
     {
-        IsLoading = true;
+        if (!HasLoadedProjectsInitially)
+            IsLoading = true;
         try
         {
             var projectsWithStats = (await ProjectService.GetAllWithStatsAsync()).ToList();

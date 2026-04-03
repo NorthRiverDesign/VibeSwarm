@@ -3,10 +3,6 @@
 <div class="d-flex align-items-start justify-content-between gap-2 gap-sm-3 mb-3 mb-lg-4">
 	<div class="min-width-0">
 		<h3 class="mb-0 fs-4 fw-semibold">@Title</h3>
-		@if (!string.IsNullOrEmpty(Subtitle))
-		{
-			<p class="text-body-secondary mb-0 d-none d-sm-block small">@Subtitle</p>
-		}
 	</div>
 	@if (Actions != null)
 	{
@@ -19,9 +15,6 @@
 @code {
 	[Parameter]
 	public string Title { get; set; } = string.Empty;
-
-	[Parameter]
-	public string? Subtitle { get; set; }
 
 	[Parameter]
 	public RenderFragment? Actions { get; set; }

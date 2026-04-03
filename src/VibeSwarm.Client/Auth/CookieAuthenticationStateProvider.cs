@@ -39,14 +39,15 @@ public class CookieAuthenticationStateProvider : AuthenticationStateProvider
 
 	public async Task<AuthenticationState> RefreshAuthenticationStateAsync()
 	{
-		var authenticationStateTask = GetAuthenticationStateAsync();
-		NotifyAuthenticationStateChanged(authenticationStateTask);
-		return await authenticationStateTask;
+		var authenticationState = await GetAuthenticationStateAsync();
+		NotifyAuthenticationStateChanged(Task.FromResult(authenticationState));
+		return authenticationState;
 	}
 
-	public void NotifyAuthenticationStateChanged()
+	public async void NotifyAuthenticationStateChanged()
 	{
-		NotifyAuthenticationStateChanged(GetAuthenticationStateAsync());
+		var state = await GetAuthenticationStateAsync();
+		NotifyAuthenticationStateChanged(Task.FromResult(state));
 	}
 
 	private async Task<AuthenticationState> GetAuthenticationStateCoreAsync()

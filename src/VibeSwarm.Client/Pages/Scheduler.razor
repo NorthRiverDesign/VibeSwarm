@@ -9,7 +9,7 @@
 @using VibeSwarm.Shared.Models
 @using VibeSwarm.Shared.Utilities
 
-<PageHeader Title="Scheduler" Subtitle="@GetSubtitle()">
+<PageHeader Title="Scheduler">
 	<Actions>
 		<ActionButton Icon="plus" Text="Add" Style="ActionButton.ButtonStyle.Primary" OnClick="ShowAddModal" />
 	</Actions>
@@ -293,9 +293,6 @@ else
 	}
 
 	private static string FormatRelativeTime(DateTime value) => value.FormatRelativeToNow();
-
-	private string GetSubtitle()
-		=> "Create recurring schedules that automatically create jobs or generate ideas.";
 
 	private static string GetScheduleTitle(JobSchedule schedule)
 	{

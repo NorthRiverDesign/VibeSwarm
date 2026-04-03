@@ -8,19 +8,23 @@ namespace VibeSwarm.Client.Services;
 public class HttpCommonProviderSetupService(HttpClient http) : ICommonProviderSetupService
 {
 	private readonly HttpClient _http = http;
+	private readonly CachedData<List<CommonProviderSetupStatus>> _statusesCache = new(TimeSpan.FromSeconds(60));
 
 	public async Task<IReadOnlyList<CommonProviderSetupStatus>> GetStatusesAsync(CancellationToken cancellationToken = default)
-		=> await _http.GetJsonAsync("/api/providers/common-setup", new List<CommonProviderSetupStatus>(), cancellationToken);
+		=> await _statusesCache.GetOrFetchAsync(
+			async () => await _http.GetJsonAsync("/api/providers/common-setup", new List<CommonProviderSetupStatus>(), cancellationToken));
 
 	public async Task<IReadOnlyList<CommonProviderSetupStatus>> RefreshAsync(CancellationToken cancellationToken = default)
 	{
 		var response = await _http.PostAsync("/api/providers/common-setup/refresh", null, cancellationToken);
+		_statusesCache.Invalidate();
 		return await response.ReadJsonAsync(new List<CommonProviderSetupStatus>(), cancellationToken);
 	}
 
 	public async Task<CommonProviderActionResult> InstallAsync(ProviderType providerType, CancellationToken cancellationToken = default)
 	{
 		var response = await _http.PostAsync($"/api/providers/common-setup/{providerType}/install", null, cancellationToken);
+		_statusesCache.Invalidate();
 		return await response.ReadJsonAsync(new CommonProviderActionResult
 		{
 			Success = false,
@@ -31,6 +35,7 @@ public class HttpCommonProviderSetupService(HttpClient http) : ICommonProviderSe
 	public async Task<CommonProviderActionResult> SaveAuthenticationAsync(CommonProviderSetupRequest request, CancellationToken cancellationToken = default)
 	{
 		var response = await _http.PostAsJsonAsync($"/api/providers/common-setup/{request.ProviderType}/authenticate", request, cancellationToken);
+		_statusesCache.Invalidate();
 		return await response.ReadJsonAsync(new CommonProviderActionResult
 		{
 			Success = false,
