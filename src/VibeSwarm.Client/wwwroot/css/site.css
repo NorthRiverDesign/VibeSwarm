@@ -284,11 +284,11 @@ body:has(.app-layout) {
 	}
 }
 
-/* Sticky tab bar on mobile — pins below the app-header when scrolling past the project header */
+/* Sticky tab bar on mobile — pins to the top of .app-main (the scroll container) */
 @media (max-width: 991.98px) {
 	.project-detail-tabs {
 		position: sticky;
-		top: calc(var(--vs-header-height) + var(--vs-safe-area-top));
+		top: 0;
 		z-index: 100;
 		background: var(--bs-body-bg);
 		margin-left: -1rem;
