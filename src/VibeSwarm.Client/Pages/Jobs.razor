@@ -18,8 +18,8 @@
 
 @* Mobile: Project filter dropdown *@
 <div class="d-lg-none mb-3 jobs-mobile-filters">
-	<div class="d-flex flex-column gap-2">
-		<select class="form-select form-select-sm w-100" @onchange="OnProjectFilterChanged" disabled="@_isLoadingProjects">
+	<div class="d-grid gap-2">
+		<select class="form-select w-100" @onchange="OnProjectFilterChanged" disabled="@_isLoadingProjects" aria-label="Filter jobs by project">
 			@if (_isLoadingProjects)
 			{
 				<option value="">Loading projects...</option>
@@ -35,32 +35,26 @@
 				}
 			}
 		</select>
-		<div class="btn-group w-100" role="group" aria-label="Status filter">
-			<button type="button" class="btn btn-sm @(_statusFilter == "all" ? "btn-primary" : "btn-secondary")"
-					@onclick='() => SetStatusFilter("all")' title="All">
-				<i class="bi bi-inbox me-1"></i><span class="d-none d-sm-inline">All</span>
-			</button>
-			<button type="button" class="btn btn-sm @(_statusFilter == "active" ? "btn-info" : "btn-secondary")"
-					@onclick='() => SetStatusFilter("active")' title="Active">
-				<i class="bi bi-play-circle me-1"></i><span class="d-none d-sm-inline">Active</span>
-			</button>
-			<button type="button" class="btn btn-sm @(_statusFilter == "completed" ? "btn-success" : "btn-secondary")"
-					@onclick='() => SetStatusFilter("completed")' title="Completed">
-				<i class="bi bi-check-circle me-1"></i><span class="d-none d-sm-inline">Done</span>
-			</button>
-			<button type="button" class="btn btn-sm @(_statusFilter == "failed" ? "btn-danger" : "btn-secondary")"
-					@onclick='() => SetStatusFilter("failed")' title="Failed">
-				<i class="bi bi-x-circle me-1"></i><span class="d-none d-sm-inline">Failed</span>
-			</button>
+		<div class="row g-2">
+			<div class="@(_selectedProjectId.HasValue ? "col-12 col-sm-7" : "col-12")">
+				<select class="form-select" value="@_statusFilter" @onchange="OnStatusFilterChanged" aria-label="Filter jobs by status">
+					<option value="all">All jobs</option>
+					<option value="active">Active jobs</option>
+					<option value="completed">Completed jobs</option>
+					<option value="failed">Failed jobs</option>
+				</select>
+			</div>
+			@if (_selectedProjectId.HasValue)
+			{
+				<div class="col-12 col-sm-5">
+					<button type="button" class="btn btn-primary w-100" @onclick="ShowCreateJobModal"
+							disabled="@_isLoadingProjects">
+						<i class="bi bi-plus-lg me-1"></i>Create Job
+					</button>
+				</div>
+			}
 		</div>
 	</div>
-	@if (_selectedProjectId.HasValue)
-	{
-		<button type="button" class="btn btn-sm btn-primary w-100 mt-2" @onclick="ShowCreateJobModal"
-				disabled="@_isLoadingProjects">
-			<i class="bi bi-plus-lg me-1"></i>Create Job
-		</button>
-	}
 </div>
 
 @* Desktop: Inbox-style split layout *@
@@ -255,9 +249,14 @@
     private List<JobTemplate> _jobTemplates = new();
     private List<GitBranchInfo> _branches = new();
     private string? _currentBranch;
-    private bool _isLoadingModels;
-    private bool _isSaving;
-    private string? _createJobError;
+	private bool _isLoadingModels;
+	private bool _isSaving;
+	private string? _createJobError;
+
+	private void OnStatusFilterChanged(ChangeEventArgs e)
+	{
+		SetStatusFilter(e.Value?.ToString() ?? "all");
+	}
     private string _selectedModelId = string.Empty;
 
     protected override async Task OnInitializedAsync()

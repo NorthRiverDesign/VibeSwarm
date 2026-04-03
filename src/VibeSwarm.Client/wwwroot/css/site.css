@@ -1085,6 +1085,26 @@ body.vs-modal-open {
 	flex: 1;
 }
 
+@media (max-width: 767.98px) {
+	.mobile-icon-button {
+		width: 2.5rem;
+		height: 2.5rem;
+		padding: 0;
+	}
+
+	.jobs-mobile-filters .form-select,
+	.jobs-mobile-filters .btn {
+		min-height: 2.75rem;
+	}
+
+	.project-detail-overflow-menu {
+		min-width: min(16rem, calc(100vw - 1.5rem));
+		max-width: calc(100vw - 1.5rem);
+		max-height: min(24rem, calc(100dvh - 7rem));
+		overflow-y: auto;
+	}
+}
+
 @media all and (display-mode: standalone) {
 	html {
 		background: var(--bs-body-bg, #1a1d21);

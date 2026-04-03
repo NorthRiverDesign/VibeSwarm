@@ -88,7 +88,7 @@ else
 			var isSyncing = IsProjectGitOperation(project.Id, "sync");
 			var isMerging = IsProjectGitOperation(project.Id, "merge");
 			<div class="list-group-item p-3 hover-bg-tertiary">
-				<div class="d-flex flex-column flex-lg-row align-items-stretch align-items-lg-start gap-3">
+				<div class="d-flex flex-column flex-lg-row align-items-stretch align-items-lg-start gap-2 gap-lg-3">
 					<div class="flex-grow-1 min-width-0">
 						<div class="d-flex align-items-start justify-content-between gap-2">
 							<div class="min-width-0">
@@ -145,6 +145,32 @@ else
 								</span>
 							}
 						</div>
+						@if (ShowProjectStats)
+						{
+							<div class="d-flex d-md-none flex-wrap align-items-center gap-2 mt-2 small text-body-secondary">
+								@if (!string.IsNullOrEmpty(currentBranch))
+								{
+									<span class="d-inline-flex align-items-center gap-1">
+										<i class="bi bi-git opacity-75"></i>
+										@currentBranch
+									</span>
+								}
+								@if (project.ProviderSelections.Any(pp => pp.IsEnabled))
+								{
+									<span class="d-inline-flex align-items-center gap-1">
+										<i class="bi bi-diagram-3 opacity-75"></i>
+										@project.ProviderSelections.Count(pp => pp.IsEnabled) provider@(project.ProviderSelections.Count(pp => pp.IsEnabled) == 1 ? string.Empty : "s")
+									</span>
+								}
+								@if (project.TeamAssignments.Any(assignment => assignment.IsEnabled && assignment.TeamRole != null))
+								{
+									<span class="d-inline-flex align-items-center gap-1">
+										<i class="bi bi-people opacity-75"></i>
+										@project.TeamAssignments.Count(assignment => assignment.IsEnabled && assignment.TeamRole != null) role@(project.TeamAssignments.Count(assignment => assignment.IsEnabled && assignment.TeamRole != null) == 1 ? string.Empty : "s")
+									</span>
+								}
+							</div>
+						}
 						@if (!string.IsNullOrEmpty(project.Description))
 						{
 							<div class="small text-body-secondary mt-1 d-none d-md-block">@TruncateText(project.Description, 100)</div>
@@ -179,7 +205,7 @@ else
 							</div>
 							@if (project.ProviderSelections.Any(pp => pp.IsEnabled))
 							{
-								<div class="d-flex flex-wrap align-items-center gap-2 mt-2 small text-body-secondary">
+								<div class="d-none d-md-flex flex-wrap align-items-center gap-2 mt-2 small text-body-secondary">
 									<span class="d-flex align-items-center gap-1">
 										<i class="bi bi-diagram-3 opacity-75"></i>
 										Providers
@@ -190,7 +216,7 @@ else
 						}
 						@if (ShowProjectStats && project.TeamAssignments.Any(assignment => assignment.IsEnabled && assignment.TeamRole != null))
 						{
-							<div class="d-flex flex-wrap align-items-center gap-2 mt-2 small text-body-secondary">
+							<div class="d-none d-md-flex flex-wrap align-items-center gap-2 mt-2 small text-body-secondary">
 								<span class="d-flex align-items-center gap-1">
 									<i class="bi bi-people opacity-75"></i>
 									Team
@@ -242,7 +268,7 @@ else
 							<div class="border-top pt-2 mt-2">
 								<div class="d-flex align-items-center gap-2 small min-width-0">
 									<a href="/jobs/view/@latestJob.Id"
-										   class="d-flex align-items-center gap-2 text-decoration-none min-width-0"
+										   class="d-flex align-items-center gap-2 text-decoration-none min-width-0 w-100"
 										   title="@latestJob.DisplayTitle">
 										@switch (latestJob.Status)
 										{
@@ -268,7 +294,7 @@ else
 												<i class="bi bi-clock text-secondary flex-shrink-0" title="Pending"></i>
 												break;
 										}
-										<span class="text-truncate text-body-secondary">@TruncateText(latestJob.DisplayTitle, 60)</span>
+										<span class="text-truncate text-body-secondary flex-grow-1 min-width-0">@TruncateText(latestJob.DisplayTitle, 60)</span>
 									</a>
 								</div>
 							</div>
@@ -279,9 +305,9 @@ else
 								@foreach (var job in projectActiveJobs)
 								{
 									<div class="bg-body-tertiary rounded-2 p-2 mb-1 small">
-										<a href="/jobs/view/@job.Id" class="d-flex align-items-center gap-2 text-decoration-none small">
+										<a href="/jobs/view/@job.Id" class="d-flex align-items-center gap-2 text-decoration-none small min-width-0 w-100">
 											<StatusBadge Status="@job.Status.ToString()" />
-											<span class="text-truncate" style="max-width: min(200px, 40vw);">@TruncateText(job.DisplayTitle, 50)</span>
+											<span class="text-truncate flex-grow-1 min-width-0">@TruncateText(job.DisplayTitle, 50)</span>
 											@if (!string.IsNullOrEmpty(job.CurrentActivity))
 											{
 												<span class="text-info fst-italic small d-none d-md-inline">@job.CurrentActivity</span>

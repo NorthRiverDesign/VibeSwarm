@@ -1,7 +1,7 @@
 @* Reusable action button with icon and optional text *@
 
 <button type="@Type"
-		class="btn @GetButtonClass() @SizeClass d-inline-flex align-items-center justify-content-center gap-1"
+		class="btn @GetButtonClass() @SizeClass @(HideTextOnMobile && !string.IsNullOrEmpty(Icon) ? "mobile-icon-button" : string.Empty) d-inline-flex align-items-center justify-content-center gap-1"
 		@onclick="HandleClick" disabled="@(IsLoading || Disabled)" title="@Title">
 	@if (IsLoading)
 	{
