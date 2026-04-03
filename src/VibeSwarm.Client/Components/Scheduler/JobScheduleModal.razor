@@ -175,14 +175,14 @@
 				@if (Schedule.Frequency == JobScheduleFrequency.Hourly)
 				{
 					<div class="col-12 col-lg-4">
-						<label for="schedule-minute" class="form-label">Minute past the hour (@AppTimeZoneService.CurrentTimeZoneId)</label>
+						<label for="schedule-minute" class="form-label">Minute past the hour</label>
 						<InputNumber id="schedule-minute" @bind-Value="Schedule.MinuteUtc" class="form-control" min="0" max="59" />
 					</div>
 				}
 				else
 				{
 					<div class="col-12 col-lg-4">
-						<label for="schedule-time" class="form-label">Run time (@AppTimeZoneService.CurrentTimeZoneId)</label>
+						<label for="schedule-time" class="form-label">Run time</label>
 						<input id="schedule-time" type="time" class="form-control" value="@_timeValue" @onchange="OnTimeChanged" />
 					</div>
 				}

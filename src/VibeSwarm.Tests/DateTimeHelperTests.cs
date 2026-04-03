@@ -115,4 +115,37 @@ public class DateTimeHelperTests : IDisposable
 
 		Assert.Equal("3/5/2026 2:30 PM", result);
 	}
+
+	[Fact]
+	public void FormatRelativeToNow_ReturnsPastRelativeText()
+	{
+		var reference = new DateTime(2026, 3, 5, 14, 30, 0, DateTimeKind.Utc);
+		var dt = reference.AddMinutes(-42);
+
+		var result = dt.FormatRelativeToNow(reference);
+
+		Assert.Equal("42m ago", result);
+	}
+
+	[Fact]
+	public void FormatRelativeToNow_ReturnsFutureRelativeText()
+	{
+		var reference = new DateTime(2026, 3, 5, 14, 30, 0, DateTimeKind.Utc);
+		var dt = reference.AddHours(3);
+
+		var result = dt.FormatRelativeToNow(reference);
+
+		Assert.Equal("in 3h", result);
+	}
+
+	[Fact]
+	public void FormatRelativeToNow_ReturnsJustNowForRecentPast()
+	{
+		var reference = new DateTime(2026, 3, 5, 14, 30, 0, DateTimeKind.Utc);
+		var dt = reference.AddSeconds(-20);
+
+		var result = dt.FormatRelativeToNow(reference);
+
+		Assert.Equal("just now", result);
+	}
 }

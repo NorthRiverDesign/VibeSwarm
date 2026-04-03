@@ -19,6 +19,8 @@ public sealed class SchedulerPageTests
 	public async Task RenderedSchedulerPage_ShowsSchedulesAndActions()
 	{
 		var timeZoneId = DateTimeHelper.ResolveTimeZone("America/New_York").Id;
+		var nextRunAtUtc = DateTime.UtcNow.AddHours(2).AddMinutes(15);
+		var lastRunAtUtc = DateTime.UtcNow.AddMinutes(-37);
 		var schedule = new JobSchedule
 		{
 			Id = Guid.NewGuid(),
@@ -27,7 +29,8 @@ public sealed class SchedulerPageTests
 			HourUtc = 9,
 			MinuteUtc = 0,
 			IsEnabled = true,
-			NextRunAtUtc = new DateTime(2026, 3, 22, 9, 0, 0, DateTimeKind.Utc),
+			NextRunAtUtc = nextRunAtUtc,
+			LastRunAtUtc = lastRunAtUtc,
 			Project = new Project { Id = Guid.NewGuid(), Name = "Repo", WorkingPath = "/tmp/repo" },
 			Provider = new Provider { Id = Guid.NewGuid(), Name = "Copilot", Type = ProviderType.Copilot, IsEnabled = true }
 		};
@@ -50,8 +53,10 @@ public sealed class SchedulerPageTests
 			Assert.Contains("Delete", html);
 			Assert.Contains("Repo", html);
 			Assert.Contains("Copilot", html);
-			Assert.Contains(timeZoneId, html);
-			Assert.Contains(schedule.NextRunAtUtc.FormatDateTimeWithZone(), html);
+			Assert.Contains($"Next {nextRunAtUtc.FormatRelativeToNow()}", html);
+			Assert.Contains($"Last {lastRunAtUtc.FormatRelativeToNow()}", html);
+			Assert.DoesNotContain(timeZoneId, html);
+			Assert.DoesNotContain(nextRunAtUtc.FormatDateTimeWithZone(), html);
 		}
 		finally
 		{

@@ -79,6 +79,35 @@ public static class DateTimeHelper
 	public static string FormatDateTimeWithZone(this DateTime dateTime)
 		=> $"{dateTime.ToConfiguredTime():yyyy-MM-dd HH:mm} {CurrentTimeZoneId}";
 
+	public static string FormatRelativeToNow(this DateTime dateTime, DateTime? referenceTimeUtc = null)
+	{
+		var reference = NormalizeUtc(referenceTimeUtc ?? DateTime.UtcNow);
+		var target = NormalizeUtc(dateTime);
+		var elapsed = target - reference;
+		var isFuture = elapsed > TimeSpan.Zero;
+		var magnitude = elapsed.Duration();
+
+		if (magnitude.TotalMinutes < 1)
+		{
+			return isFuture ? "in less than a minute" : "just now";
+		}
+
+		if (magnitude.TotalMinutes < 60)
+		{
+			var minutes = (int)magnitude.TotalMinutes;
+			return isFuture ? $"in {minutes}m" : $"{minutes}m ago";
+		}
+
+		if (magnitude.TotalHours < 24)
+		{
+			var hours = (int)magnitude.TotalHours;
+			return isFuture ? $"in {hours}h" : $"{hours}h ago";
+		}
+
+		var days = (int)magnitude.TotalDays;
+		return isFuture ? $"in {days}d" : $"{days}d ago";
+	}
+
 	public static string FormatDateTime(this DateTime dateTime)
 	{
 		return dateTime.ToConfiguredTime().ToString("M/d/yyyy h:mm:ss tt", USCulture);
