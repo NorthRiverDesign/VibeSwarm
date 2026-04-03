@@ -253,6 +253,7 @@ public sealed class IdeasPanelTests
 		context.Services.AddSingleton<IIdeaService>(new FakeIdeaService());
 		context.Services.AddSingleton<IJobService>(new FakeJobService());
 		context.Services.AddSingleton<NotificationService>();
+		SetupEmptyIdeaDraftStorage(context);
 		context.JSInterop.SetupVoid("vibeSwarmIdeas.registerPasteTarget", _ => true);
 
 		var cut = context.Render<IdeasPanel>(parameters => parameters
@@ -280,6 +281,77 @@ public sealed class IdeasPanelTests
 	}
 
 	[Fact]
+	public void Render_RestoresSavedIdeaDraftFromSessionStorage()
+	{
+		using var context = new BunitContext();
+		context.Services.AddLogging();
+		context.Services.AddSingleton<IProjectService>(new FakeProjectService());
+		context.Services.AddSingleton<IIdeaService>(new FakeIdeaService());
+		context.Services.AddSingleton<IJobService>(new FakeJobService());
+		context.Services.AddSingleton<NotificationService>();
+
+		var projectId = Guid.NewGuid();
+		var storageKey = $"vibeswarm.idea-draft.{projectId:N}";
+		const string savedDraft = "Restore this idea after a reload";
+
+		context.JSInterop.Setup<string>("sessionStorage.getItem", invocation =>
+			invocation.Arguments.Count == 1 && string.Equals(invocation.Arguments[0]?.ToString(), storageKey, StringComparison.Ordinal))
+			.SetResult(savedDraft);
+		context.JSInterop.SetupVoid("vibeSwarmIdeas.registerPasteTarget", _ => true);
+
+		var cut = context.Render<IdeasPanel>(parameters => parameters
+			.Add(component => component.CurrentProjectId, projectId)
+			.Add(component => component.HasInference, true)
+			.Add(component => component.AvailableInferenceProviders, new List<InferenceProvider>())
+			.Add(component => component.AvailableProviders, new List<Provider>()));
+
+		cut.WaitForAssertion(() =>
+		{
+			Assert.Equal(savedDraft, cut.Find("textarea").GetAttribute("value"));
+		});
+	}
+
+	[Fact]
+	public void AddIdea_PersistsDraftWhileTyping_AndClearsItAfterSubmit()
+	{
+		using var context = new BunitContext();
+		context.Services.AddLogging();
+		context.Services.AddSingleton<IProjectService>(new FakeProjectService());
+		context.Services.AddSingleton<IIdeaService>(new FakeIdeaService());
+		context.Services.AddSingleton<IJobService>(new FakeJobService());
+		context.Services.AddSingleton<NotificationService>();
+
+		var projectId = Guid.NewGuid();
+		var storageKey = $"vibeswarm.idea-draft.{projectId:N}";
+		CreateIdeaRequest? submittedRequest = null;
+
+		context.JSInterop.Setup<string?>("sessionStorage.getItem", invocation =>
+			invocation.Arguments.Count == 1 && string.Equals(invocation.Arguments[0]?.ToString(), storageKey, StringComparison.Ordinal))
+			.SetResult(null);
+		context.JSInterop.SetupVoid("sessionStorage.setItem", invocation =>
+			invocation.Arguments.Count == 2 &&
+			string.Equals(invocation.Arguments[0]?.ToString(), storageKey, StringComparison.Ordinal) &&
+			string.Equals(invocation.Arguments[1]?.ToString(), "Keep this draft", StringComparison.Ordinal));
+		context.JSInterop.SetupVoid("sessionStorage.removeItem", invocation =>
+			invocation.Arguments.Count == 1 && string.Equals(invocation.Arguments[0]?.ToString(), storageKey, StringComparison.Ordinal));
+		context.JSInterop.SetupVoid("vibeSwarmIdeas.registerPasteTarget", _ => true);
+
+		var cut = context.Render<IdeasPanel>(parameters => parameters
+			.Add(component => component.CurrentProjectId, projectId)
+			.Add(component => component.OnAddIdea, EventCallback.Factory.Create<CreateIdeaRequest>(this, request => submittedRequest = request))
+			.Add(component => component.HasInference, true)
+			.Add(component => component.AvailableInferenceProviders, new List<InferenceProvider>())
+			.Add(component => component.AvailableProviders, new List<Provider>()));
+
+		cut.Find("textarea").Input("Keep this draft");
+		cut.Find("button.btn.btn-primary").Click();
+
+		Assert.NotNull(submittedRequest);
+		Assert.Equal("Keep this draft", submittedRequest!.Description);
+		Assert.Equal(string.Empty, cut.Find("textarea").GetAttribute("value"));
+	}
+
+	[Fact]
 	public void Render_DoesNotCrash_WhenPasteInteropScriptIsUnavailable()
 	{
 		using var context = new BunitContext();
@@ -289,6 +361,7 @@ public sealed class IdeasPanelTests
 		context.Services.AddSingleton<IJobService>(new FakeJobService());
 		var notificationService = new NotificationService();
 		context.Services.AddSingleton(notificationService);
+		SetupEmptyIdeaDraftStorage(context);
 
 		context.JSInterop
 			.SetupVoid("vibeSwarmIdeas.registerPasteTarget", _ => true)
@@ -322,6 +395,7 @@ public sealed class IdeasPanelTests
 		context.Services.AddSingleton<IIdeaService>(new FakeIdeaService());
 		context.Services.AddSingleton<IJobService>(new FakeJobService());
 		context.Services.AddSingleton<NotificationService>();
+		SetupEmptyIdeaDraftStorage(context);
 		context.JSInterop.SetupVoid("vibeSwarmIdeas.registerPasteTarget", _ => true);
 
 		var cut = context.Render<IdeasPanel>(parameters => parameters
@@ -444,5 +518,10 @@ public sealed class IdeasPanelTests
 
 		public ValueTask<TValue> InvokeAsync<TValue>(string identifier, CancellationToken cancellationToken, object?[]? args)
 			=> ValueTask.FromResult(default(TValue)!);
+	}
+
+	private static void SetupEmptyIdeaDraftStorage(BunitContext context)
+	{
+		context.JSInterop.Setup<string>("sessionStorage.getItem", _ => true).SetResult(string.Empty);
 	}
 }

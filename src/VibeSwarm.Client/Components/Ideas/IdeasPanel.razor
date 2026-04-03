@@ -5,6 +5,7 @@
 @inject IJSRuntime JSRuntime
 @inject NotificationService NotificationService
 @using System.Diagnostics.CodeAnalysis
+@using System.Globalization
 @using VibeSwarm.Shared.Data
 @using VibeSwarm.Shared.Inference
 @using VibeSwarm.Shared.Models
@@ -59,7 +60,7 @@
 		<div class="d-flex gap-2 align-items-end">
 			<div class="flex-grow-1">
 				<textarea class="form-control" id="@_textareaId" rows="5" placeholder="Describe a feature or improvement..."
-						  @bind="NewIdeaDescription" @bind:event="oninput" @onkeypress="HandleKeyPress"
+						  value="@NewIdeaDescription" @oninput="HandleNewIdeaInput" @onkeypress="HandleKeyPress"
 						  @ref="_newIdeaTextarea"
 						  maxlength="@ValidationLimits.IdeaDescriptionMaxLength"
 						  title="Describe a feature or improvement. Press Ctrl+Enter to submit or paste an image into the box."></textarea>
@@ -441,9 +442,11 @@
 	public string? DefaultInferenceModelId { get; set; }
 
 	private ElementReference _newIdeaTextarea;
+	private const string IdeaDraftStorageKeyPrefix = "vibeswarm.idea-draft";
 	private readonly string _fileInputId = $"idea-files-{Guid.NewGuid():N}";
 	private readonly string _textareaId = $"idea-textarea-{Guid.NewGuid():N}";
 	private string NewIdeaDescription { get; set; } = string.Empty;
+	private string? _savedDraftDescription;
 	private List<IdeaAttachmentUpload> _pendingAttachments = [];
 	private bool _attachmentInteropAvailable = true;
 	private bool _pasteTargetRegistered;
@@ -482,6 +485,12 @@
 		{
 			await AddIdea();
 		}
+	}
+
+	private async Task HandleNewIdeaInput(ChangeEventArgs e)
+	{
+		NewIdeaDescription = e.Value?.ToString() ?? string.Empty;
+		await PersistDraftAsync();
 	}
 
 	private bool _isSubmitting;
@@ -525,6 +534,7 @@
 			});
 			NewIdeaDescription = string.Empty;
 			_pendingAttachments.Clear();
+			await ClearDraftAsync();
 		}
 		finally { _isSubmitting = false; }
 	}
@@ -987,6 +997,8 @@
 			return;
 		}
 
+		await RestoreDraftAsync();
+
 		_dotNetReference = DotNetObjectReference.Create(this);
 		try
 		{
@@ -1034,6 +1046,113 @@
 			exception.Message.Contains("registerPasteTarget", StringComparison.OrdinalIgnoreCase) ||
 			exception.Message.Contains("consumeSelectedFiles", StringComparison.OrdinalIgnoreCase) ||
 			exception.Message.Contains("readImageFromClipboard", StringComparison.OrdinalIgnoreCase);
+	}
+
+	private string GetDraftStorageKey()
+	{
+		return string.Create(CultureInfo.InvariantCulture, $"{IdeaDraftStorageKeyPrefix}.{CurrentProjectId:N}");
+	}
+
+	private async Task RestoreDraftAsync()
+	{
+		if (CurrentProjectId == Guid.Empty)
+		{
+			return;
+		}
+
+		try
+		{
+			var savedDraft = await JSRuntime.InvokeAsync<string?>("sessionStorage.getItem", GetDraftStorageKey());
+			if (string.IsNullOrEmpty(savedDraft))
+			{
+				_savedDraftDescription = null;
+				return;
+			}
+
+			_savedDraftDescription = savedDraft;
+			if (!string.IsNullOrEmpty(NewIdeaDescription))
+			{
+				return;
+			}
+
+			NewIdeaDescription = savedDraft;
+			await InvokeAsync(StateHasChanged);
+		}
+		catch (JSException ex)
+		{
+			Console.Error.WriteLine($"[IdeasPanel] Unable to restore idea draft: {ex.Message}");
+		}
+		catch (InvalidOperationException ex)
+		{
+			Console.Error.WriteLine($"[IdeasPanel] Unable to restore idea draft: {ex.Message}");
+		}
+	}
+
+	private async Task PersistDraftAsync()
+	{
+		if (CurrentProjectId == Guid.Empty)
+		{
+			return;
+		}
+
+		var normalizedDraft = string.IsNullOrEmpty(NewIdeaDescription)
+			? null
+			: NewIdeaDescription;
+
+		if (string.Equals(_savedDraftDescription, normalizedDraft, StringComparison.Ordinal))
+		{
+			return;
+		}
+
+		try
+		{
+			if (string.IsNullOrEmpty(normalizedDraft))
+			{
+				await JSRuntime.InvokeVoidAsync("sessionStorage.removeItem", GetDraftStorageKey());
+			}
+			else
+			{
+				await JSRuntime.InvokeVoidAsync("sessionStorage.setItem", GetDraftStorageKey(), normalizedDraft);
+			}
+
+			_savedDraftDescription = normalizedDraft;
+		}
+		catch (JSException ex)
+		{
+			Console.Error.WriteLine($"[IdeasPanel] Unable to save idea draft: {ex.Message}");
+		}
+		catch (InvalidOperationException ex)
+		{
+			Console.Error.WriteLine($"[IdeasPanel] Unable to save idea draft: {ex.Message}");
+		}
+	}
+
+	private async Task ClearDraftAsync()
+	{
+		if (CurrentProjectId == Guid.Empty)
+		{
+			_savedDraftDescription = null;
+			return;
+		}
+
+		if (_savedDraftDescription == null)
+		{
+			return;
+		}
+
+		try
+		{
+			await JSRuntime.InvokeVoidAsync("sessionStorage.removeItem", GetDraftStorageKey());
+			_savedDraftDescription = null;
+		}
+		catch (JSException ex)
+		{
+			Console.Error.WriteLine($"[IdeasPanel] Unable to clear idea draft: {ex.Message}");
+		}
+		catch (InvalidOperationException ex)
+		{
+			Console.Error.WriteLine($"[IdeasPanel] Unable to clear idea draft: {ex.Message}");
+		}
 	}
 
 	private string GetSuggestResultContainerClass() => _suggestResult?.Success == true
