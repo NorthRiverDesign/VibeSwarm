@@ -118,6 +118,46 @@ public sealed class JobSummaryGeneratorTests
 	}
 
 	[Fact]
+	public void BuildCommitSubject_IgnoresPromptDerivedSessionSummaryAndArtifacts()
+	{
+		const string scheduledPrompt = "fix scheduled job commit summaries so they stay short and stop listing src/VibeSwarm.Web/Services/JobScheduleProcessor.cs";
+
+		var subject = JobSummaryGenerator.BuildCommitSubject(
+			sessionSummary: """
+				fix scheduled job commit summaries so they stay short and stop listing src/VibeSwarm.Web/Services/JobScheduleProcessor.cs | 2 files changed (+18/-6)
+
+				Files:
+				- src/VibeSwarm.Web/Services/JobScheduleProcessor.cs
+				- src/VibeSwarm.Shared/Services/JobSummaryGenerator.cs
+				""",
+			title: scheduledPrompt,
+			goalPrompt: scheduledPrompt);
+
+		Assert.Equal("Fix scheduled job commit summaries so they stay short and stop listing", subject);
+	}
+
+	[Fact]
+	public void BuildCommitSubject_IgnoresPromptDerivedCommitSummaryTagAndArtifacts()
+	{
+		const string scheduledPrompt = "fix scheduled job commit summaries so they stay short and stop listing src/VibeSwarm.Web/Services/JobScheduleProcessor.cs";
+
+		var subject = JobSummaryGenerator.BuildCommitSubject(
+			sessionSummary: null,
+			title: scheduledPrompt,
+			goalPrompt: scheduledPrompt,
+			consoleOutput: """
+				<commit-summary>
+				fix scheduled job commit summaries so they stay short and stop listing src/VibeSwarm.Web/Services/JobScheduleProcessor.cs | 2 files changed (+18/-6)
+				Files:
+				- src/VibeSwarm.Web/Services/JobScheduleProcessor.cs
+				- src/VibeSwarm.Shared/Services/JobSummaryGenerator.cs
+				</commit-summary>
+				""");
+
+		Assert.Equal("Fix scheduled job commit summaries so they stay short and stop listing", subject);
+	}
+
+	[Fact]
 	public async Task PerformAutoCommitAsync_UsesSanitizedCommitSubject()
 	{
 		var versionControl = new RecordingVersionControlService
@@ -169,6 +209,59 @@ public sealed class JobSummaryGeneratorTests
 		Assert.Equal("abc1234", job.GitCommitHash);
 		Assert.NotNull(versionControl.LastCommitOptions);
 		Assert.Contains("Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>", versionControl.LastCommitOptions!.MessageTrailers);
+	}
+
+	[Fact]
+	public async Task PerformAutoCommitAsync_ScheduledJobIgnoresPromptDerivedSessionSummaryArtifacts()
+	{
+		var versionControl = new RecordingVersionControlService
+		{
+			HasUncommittedChangesResult = true,
+			CommitResult = GitOperationResult.Succeeded(commitHash: "sched456")
+		};
+
+		var services = new ServiceCollection().BuildServiceProvider();
+		var scopeFactory = services.GetRequiredService<IServiceScopeFactory>();
+		var processor = new JobProcessingService(
+			scopeFactory,
+			NullLogger<JobProcessingService>.Instance,
+			versionControl,
+			projectEnvironmentCredentialService: new NoOpProjectEnvironmentCredentialService());
+
+		const string scheduledPrompt = "fix scheduled job commit summaries so they stay short and stop listing src/VibeSwarm.Web/Services/JobScheduleProcessor.cs";
+		var job = new Job
+		{
+			Id = Guid.NewGuid(),
+			IsScheduled = true,
+			Title = scheduledPrompt,
+			GoalPrompt = scheduledPrompt,
+			SessionSummary = """
+				fix scheduled job commit summaries so they stay short and stop listing src/VibeSwarm.Web/Services/JobScheduleProcessor.cs | 2 files changed (+18/-6)
+
+				Files:
+				- src/VibeSwarm.Web/Services/JobScheduleProcessor.cs
+				- src/VibeSwarm.Shared/Services/JobSummaryGenerator.cs
+				""",
+			Project = new Project
+			{
+				AutoCommitMode = AutoCommitMode.CommitOnly,
+				IdeasAutoCommit = false
+			},
+			Provider = new VibeSwarm.Shared.Providers.Provider
+			{
+				Name = "Copilot",
+				Type = VibeSwarm.Shared.Providers.ProviderType.Copilot
+			}
+		};
+
+		var method = typeof(JobProcessingService).GetMethod("PerformAutoCommitAsync", BindingFlags.Instance | BindingFlags.NonPublic);
+		Assert.NotNull(method);
+
+		var task = (Task)method.Invoke(processor, [job, Path.GetTempPath(), false, CancellationToken.None])!;
+		await task;
+
+		Assert.Equal("Fix scheduled job commit summaries so they stay short and stop listing", versionControl.LastCommitMessage);
+		Assert.Equal("sched456", job.GitCommitHash);
 	}
 
 	[Fact]

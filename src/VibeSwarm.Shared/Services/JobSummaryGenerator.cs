@@ -112,14 +112,18 @@ public static partial class JobSummaryGenerator
 		string? goalPrompt,
 		string? consoleOutput = null)
 	{
+		var promptFallbackSubject = BuildPromptFallbackCommitSubject(goalPrompt);
+
 		var agentSummary = ExtractAgentCommitSummary(consoleOutput);
-		if (!string.IsNullOrWhiteSpace(agentSummary))
+		if (!string.IsNullOrWhiteSpace(agentSummary)
+			&& !IsPromptDerivedCommitSubject(agentSummary, promptFallbackSubject))
 		{
 			return agentSummary;
 		}
 
 		var summarySubject = ExtractCommitSubjectCandidate(sessionSummary);
-		if (!string.IsNullOrWhiteSpace(summarySubject))
+		if (!string.IsNullOrWhiteSpace(summarySubject)
+			&& !IsPromptDerivedCommitSubject(summarySubject, promptFallbackSubject))
 		{
 			return summarySubject;
 		}
@@ -134,17 +138,30 @@ public static partial class JobSummaryGenerator
 			}
 		}
 
-		if (!string.IsNullOrWhiteSpace(goalPrompt))
+		if (!string.IsNullOrWhiteSpace(promptFallbackSubject))
 		{
-			var promptSubject = BuildHeadline(ExtractActionContext(goalPrompt), null);
-			var normalizedPromptSubject = NormalizeCommitSubject(promptSubject);
-			if (!string.IsNullOrWhiteSpace(normalizedPromptSubject))
-			{
-				return normalizedPromptSubject;
-			}
+			return promptFallbackSubject;
 		}
 
 		return "Update code";
+	}
+
+	private static string? BuildPromptFallbackCommitSubject(string? goalPrompt)
+	{
+		if (string.IsNullOrWhiteSpace(goalPrompt))
+		{
+			return null;
+		}
+
+		var promptSubject = BuildHeadline(ExtractActionContext(goalPrompt), null);
+		return NormalizeCommitSubject(promptSubject);
+	}
+
+	private static bool IsPromptDerivedCommitSubject(string? candidate, string? promptFallbackSubject)
+	{
+		return !string.IsNullOrWhiteSpace(candidate)
+			&& !string.IsNullOrWhiteSpace(promptFallbackSubject)
+			&& string.Equals(candidate, promptFallbackSubject, StringComparison.OrdinalIgnoreCase);
 	}
 
 	/// <summary>
