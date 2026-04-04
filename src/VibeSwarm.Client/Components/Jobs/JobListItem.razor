@@ -94,15 +94,21 @@
                 }
             </div>
 
-			<JobOutcomeBadges Status="@ParsedStatus"
-							  ChangedFilesCount="@ChangedFilesCount"
-							  BuildVerified="@BuildVerified"
-							  GitCommitHash="@GitCommitHash"
-							  PullRequestUrl="@PullRequestUrl" />
+ 			<JobOutcomeBadges Status="@ParsedStatus"
+ 							  ChangedFilesCount="@ChangedFilesCount"
+ 							  BuildVerified="@BuildVerified"
+ 							  GitCommitHash="@GitCommitHash"
+ 							  PullRequestUrl="@PullRequestUrl" />
 
-            @* Time display *@
-            @if (!string.IsNullOrEmpty(TimeDisplay))
-            {
+			<JobOutcomeHint Status="@ParsedStatus"
+							ChangedFilesCount="@ChangedFilesCount"
+							BuildVerified="@BuildVerified"
+							GitCommitHash="@GitCommitHash"
+							PullRequestUrl="@PullRequestUrl" />
+
+             @* Time display *@
+             @if (!string.IsNullOrEmpty(TimeDisplay))
+             {
                 <div class="small text-body-tertiary mt-1">@TimeDisplay</div>
             }
         </div>

@@ -81,4 +81,33 @@ public sealed class JobOutcomeComponentsTests
 		Assert.Contains("Review changes", cut.Markup);
 		Assert.Contains("Go to delivery", cut.Markup);
 	}
+
+	[Fact]
+	public void JobOutcomeHint_ShowsCompactVerificationFailureGuidance()
+	{
+		using var context = new BunitContext();
+
+		var cut = context.Render<JobOutcomeHint>(parameters => parameters
+			.Add(component => component.Status, JobStatus.Completed)
+			.Add(component => component.ChangedFilesCount, 2)
+			.Add(component => component.BuildVerified, false));
+
+		Assert.Contains("Verification failed.", cut.Markup);
+		Assert.Contains("Review the output before delivering these changes.", cut.Markup);
+	}
+
+	[Fact]
+	public void JobListItem_ShowsCompactOutcomeHintForPullRequestReadyRuns()
+	{
+		using var context = new BunitContext();
+
+		var cut = context.Render<JobListItem>(parameters => parameters
+			.Add(component => component.Status, JobStatus.Completed.ToString())
+			.Add(component => component.Prompt, "Ship the fix")
+			.Add(component => component.TimeDisplay, "now")
+			.Add(component => component.PullRequestUrl, "https://github.com/octo-org/octo-repo/pull/42"));
+
+		Assert.Contains("PR ready.", cut.Markup);
+		Assert.Contains("Review and merge it when the changes are approved.", cut.Markup);
+	}
 }
