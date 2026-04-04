@@ -8,14 +8,19 @@ internal static class JobOutcomeDisplayHelper
 		JobStatus status,
 		int? changedFilesCount,
 		bool? buildVerified,
+		bool buildVerificationEnabled,
+		bool isPushed,
 		string? gitCommitHash,
 		string? pullRequestUrl,
 		int? pullRequestNumber,
 		DateTime? mergedAt)
 	{
 		var badges = new List<JobOutcomeBadgeModel>();
-		var hasDeliveredChanges = HasDeliveredChanges(pullRequestUrl, gitCommitHash, mergedAt);
 		var hasDetectedChanges = HasDetectedChanges(changedFilesCount, pullRequestUrl, gitCommitHash, mergedAt);
+		var verificationMissing = status == JobStatus.Completed
+			&& buildVerificationEnabled
+			&& buildVerified is null
+			&& hasDetectedChanges;
 
 		if (status == JobStatus.Completed && changedFilesCount == 0)
 		{
@@ -51,6 +56,14 @@ internal static class JobOutcomeDisplayHelper
 				"Build or test verification failed after the job finished.",
 				"d-inline-flex align-items-center gap-1 px-2 py-1 rounded-pill small bg-danger-subtle text-danger-emphasis"));
 		}
+		else if (verificationMissing)
+		{
+			badges.Add(new JobOutcomeBadgeModel(
+				"bi-shield-exclamation",
+				"Checks missing",
+				"This project expects post-run verification, but this job did not record a verification result.",
+				"d-inline-flex align-items-center gap-1 px-2 py-1 rounded-pill small bg-warning-subtle text-warning-emphasis"));
+		}
 
 		if (mergedAt.HasValue)
 		{
@@ -59,6 +72,14 @@ internal static class JobOutcomeDisplayHelper
 				"Merged",
 				"The job's changes were merged into the target branch.",
 				"d-inline-flex align-items-center gap-1 px-2 py-1 rounded-pill small bg-success-subtle text-success-emphasis"));
+		}
+		else if (isPushed)
+		{
+			badges.Add(new JobOutcomeBadgeModel(
+				"bi-cloud-arrow-up",
+				"Pushed",
+				"The job's branch changes were pushed to the remote.",
+				"d-inline-flex align-items-center gap-1 px-2 py-1 rounded-pill small bg-info-subtle text-info-emphasis"));
 		}
 
 		if (!string.IsNullOrWhiteSpace(pullRequestUrl))
@@ -110,6 +131,8 @@ internal static class JobOutcomeDisplayHelper
 		JobStatus status,
 		int? changedFilesCount,
 		bool? buildVerified,
+		bool buildVerificationEnabled,
+		bool isPushed,
 		string? gitCommitHash,
 		string? pullRequestUrl,
 		int? pullRequestNumber,
@@ -117,6 +140,10 @@ internal static class JobOutcomeDisplayHelper
 	{
 		var hasDetectedChanges = HasDetectedChanges(changedFilesCount, pullRequestUrl, gitCommitHash, mergedAt);
 		var pullRequestReference = FormatPullRequestReference(pullRequestNumber);
+		var verificationMissing = status == JobStatus.Completed
+			&& buildVerificationEnabled
+			&& buildVerified is null
+			&& hasDetectedChanges;
 
 		return status switch
 		{
@@ -125,6 +152,11 @@ internal static class JobOutcomeDisplayHelper
 				"Checks failed.",
 				"Review the verification output before delivering these changes.",
 				"d-flex align-items-start gap-2 mt-2 px-2 py-2 rounded small bg-danger-subtle text-danger-emphasis"),
+			JobStatus.Completed when verificationMissing => new JobOutcomeHintModel(
+				"bi-shield-exclamation",
+				"Checks missing.",
+				"This project expects post-run verification, but this run did not record it.",
+				"d-flex align-items-start gap-2 mt-2 px-2 py-2 rounded small bg-warning-subtle text-warning-emphasis"),
 			JobStatus.Completed when mergedAt.HasValue => new JobOutcomeHintModel(
 				"bi-check2-circle",
 				"Merged.",
@@ -135,6 +167,11 @@ internal static class JobOutcomeDisplayHelper
 				$"{pullRequestReference} ready.",
 				"Review it and merge when the changes are approved.",
 				"d-flex align-items-start gap-2 mt-2 px-2 py-2 rounded small bg-success-subtle text-success-emphasis"),
+			JobStatus.Completed when isPushed => new JobOutcomeHintModel(
+				"bi-cloud-arrow-up",
+				"Branch pushed.",
+				"The remote branch is updated and ready for a pull request, merge, or branch review.",
+				"d-flex align-items-start gap-2 mt-2 px-2 py-2 rounded small bg-info-subtle text-info-emphasis"),
 			JobStatus.Completed when !string.IsNullOrWhiteSpace(gitCommitHash) => new JobOutcomeHintModel(
 				"bi-git",
 				$"{FormatCommitLabel(gitCommitHash)} created.",

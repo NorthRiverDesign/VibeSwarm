@@ -1,4 +1,6 @@
 using Bunit;
+using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Web;
 using VibeSwarm.Client.Components.Jobs;
 using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.VersionControl;
@@ -90,6 +92,7 @@ public sealed class JobOutcomeComponentsTests
 			.Add(component => component.DeliveryHref, "#job-delivery-section"));
 
 		Assert.Contains("Verification result missing", cut.Markup);
+		Assert.Contains("Checks missing", cut.Markup);
 		Assert.Contains("dotnet build", cut.Markup);
 		Assert.Contains("dotnet test", cut.Markup);
 		Assert.Contains("Ready for delivery", cut.Markup);
@@ -162,6 +165,20 @@ public sealed class JobOutcomeComponentsTests
 	}
 
 	[Fact]
+	public void JobOutcomeHint_ShowsVerificationMissingGuidanceWhenChecksWereExpected()
+	{
+		using var context = new BunitContext();
+
+		var cut = context.Render<JobOutcomeHint>(parameters => parameters
+			.Add(component => component.Status, JobStatus.Completed)
+			.Add(component => component.ChangedFilesCount, 2)
+			.Add(component => component.BuildVerificationEnabled, true));
+
+		Assert.Contains("Checks missing.", cut.Markup);
+		Assert.Contains("this run did not record it", cut.Markup);
+	}
+
+	[Fact]
 	public void JobOutcomeHint_ShowsMergedGuidanceBeforePullRequestReady()
 	{
 		using var context = new BunitContext();
@@ -178,6 +195,21 @@ public sealed class JobOutcomeComponentsTests
 	}
 
 	[Fact]
+	public void JobOutcomeHint_ShowsPushedBranchGuidanceBeforeCommitOnlyState()
+	{
+		using var context = new BunitContext();
+
+		var cut = context.Render<JobOutcomeHint>(parameters => parameters
+			.Add(component => component.Status, JobStatus.Completed)
+			.Add(component => component.GitCommitHash, "0123456789abcdef")
+			.Add(component => component.IsPushed, true));
+
+		Assert.Contains("Branch pushed.", cut.Markup);
+		Assert.Contains("The remote branch is updated", cut.Markup);
+		Assert.DoesNotContain("Commit 0123456 created.", cut.Markup);
+	}
+
+	[Fact]
 	public void JobListItem_ShowsCompactOutcomeHintForPullRequestReadyRuns()
 	{
 		using var context = new BunitContext();
@@ -191,6 +223,43 @@ public sealed class JobOutcomeComponentsTests
 
 		Assert.Contains("PR #42 ready.", cut.Markup);
 		Assert.Contains("Review it and merge when the changes are approved.", cut.Markup);
+	}
+
+	[Fact]
+	public void JobListItem_SupportsKeyboardActivation()
+	{
+		using var context = new BunitContext();
+
+		var clicked = false;
+		var cut = context.Render<JobListItem>(parameters => parameters
+			.Add(component => component.Status, JobStatus.Completed.ToString())
+			.Add(component => component.Prompt, "Ship the fix")
+			.Add(component => component.TimeDisplay, "now")
+			.Add(component => component.OnClick, EventCallback.Factory.Create(this, () => clicked = true)));
+
+		var item = cut.Find(".job-list-item");
+		Assert.Equal("button", item.GetAttribute("role"));
+		Assert.Equal("0", item.GetAttribute("tabindex"));
+
+		item.KeyDown(new KeyboardEventArgs { Key = "Enter" });
+
+		Assert.True(clicked);
+	}
+
+	[Fact]
+	public void JobListItem_ShowsPushedOutcomeHintForRemoteBranchRuns()
+	{
+		using var context = new BunitContext();
+
+		var cut = context.Render<JobListItem>(parameters => parameters
+			.Add(component => component.Status, JobStatus.Completed.ToString())
+			.Add(component => component.Prompt, "Ship the fix")
+			.Add(component => component.TimeDisplay, "now")
+			.Add(component => component.GitCommitHash, "0123456789abcdef")
+			.Add(component => component.IsPushed, true));
+
+		Assert.Contains("Pushed", cut.Markup);
+		Assert.Contains("Branch pushed.", cut.Markup);
 	}
 
 	[Fact]
@@ -264,5 +333,34 @@ public sealed class JobOutcomeComponentsTests
 			.Add(component => component.GitCommitHash, "0123456789abcdef"));
 
 		Assert.Contains("Commit 0123456", cut.Markup);
+	}
+
+	[Fact]
+	public void JobOutcomeBadges_ShowsPushedBadgeForRemoteBranchState()
+	{
+		using var context = new BunitContext();
+
+		var cut = context.Render<JobOutcomeBadges>(parameters => parameters
+			.Add(component => component.Status, JobStatus.Completed)
+			.Add(component => component.GitCommitHash, "0123456789abcdef")
+			.Add(component => component.IsPushed, true));
+
+		Assert.Contains("Pushed", cut.Markup);
+		Assert.Contains("Commit 0123456", cut.Markup);
+	}
+
+	[Fact]
+	public void JobOutcomeSummaryCard_ShowsPushedBranchOutcomeBeforeCommitOnlyState()
+	{
+		using var context = new BunitContext();
+
+		var cut = context.Render<JobOutcomeSummaryCard>(parameters => parameters
+			.Add(component => component.Status, JobStatus.Completed)
+			.Add(component => component.GitCommitHash, "0123456789abcdef")
+			.Add(component => component.IsPushed, true));
+
+		Assert.Contains("Changes pushed to the remote branch", cut.Markup);
+		Assert.Contains("Changes pushed remotely", cut.Markup);
+		Assert.DoesNotContain("Commit recorded", cut.Markup);
 	}
 }

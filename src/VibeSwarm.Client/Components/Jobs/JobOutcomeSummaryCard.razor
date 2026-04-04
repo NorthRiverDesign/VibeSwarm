@@ -25,12 +25,14 @@
 				}
 			</div>
 
- 			<JobOutcomeBadges Status="@Status"
- 							  ChangedFilesCount="@ChangedFilesCount"
- 							  BuildVerified="@BuildVerified"
- 							  GitCommitHash="@GitCommitHash"
- 							  PullRequestUrl="@PullRequestUrl"
- 							  PullRequestNumber="@PullRequestNumber"
+  			<JobOutcomeBadges Status="@Status"
+  							  ChangedFilesCount="@ChangedFilesCount"
+  							  BuildVerified="@BuildVerified"
+  							  BuildVerificationEnabled="@HasVerificationConfigured"
+  							  IsPushed="@IsPushed"
+  							  GitCommitHash="@GitCommitHash"
+  							  PullRequestUrl="@PullRequestUrl"
+  							  PullRequestNumber="@PullRequestNumber"
  							  MergedAt="@MergedAt" />
 
 			@if (!string.IsNullOrWhiteSpace(NormalizedSessionSummary))
@@ -221,10 +223,18 @@
 					"bi-check2-circle",
 					$"{JobOutcomeDisplayHelper.FormatPullRequestReference(PullRequestNumber)} ready for review",
 					$"The run completed successfully and {JobOutcomeDisplayHelper.FormatPullRequestReference(PullRequestNumber).ToLowerInvariant()} is ready for review."),
+				JobStatus.Completed when IsPushed => new OutcomeSummary(
+					"bi-cloud-arrow-up",
+					"Changes pushed to the remote branch",
+					"The run completed successfully and the branch is already updated on the remote."),
 				JobStatus.Completed when !string.IsNullOrWhiteSpace(GitCommitHash) => new OutcomeSummary(
 					"bi-check2-circle",
 					$"{JobOutcomeDisplayHelper.FormatCommitLabel(GitCommitHash)} recorded",
 					"The run completed successfully and the resulting changes are already committed."),
+				JobStatus.Completed when HasVerificationConfigured && BuildVerified is null && HasDetectedChanges => new OutcomeSummary(
+					"bi-shield-exclamation",
+					"Verification status is missing",
+					"The run finished with changes, but this project expected post-run checks and the job did not record their result."),
 				JobStatus.Completed when ChangedFilesCount == 0 => new OutcomeSummary(
 					"bi-file-earmark",
 					"Completed without code changes",

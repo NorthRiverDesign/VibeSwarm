@@ -1,6 +1,11 @@
 @* Job list item component for inbox-style CI/CD pipeline layout *@
 
-<div class="job-list-item p-3 border-bottom cursor-pointer @(_isSelected ? "job-selected" : "")" @onclick="HandleClick">
+<div class="job-list-item p-3 border-bottom cursor-pointer touch-manipulation @(_isSelected ? "job-selected" : "")"
+	 role="button"
+	 tabindex="0"
+	 aria-label="@Prompt"
+	 @onclick="HandleClick"
+	 @onkeydown="HandleKeyDown">
     <div class="d-flex align-items-start gap-3">
         @* Status Icon Column *@
         <div class="d-flex align-items-center justify-content-center flex-shrink-0" style="width: 24px; min-width: 24px;">
@@ -94,17 +99,21 @@
                 }
             </div>
 
-   			<JobOutcomeBadges Status="@ParsedStatus"
-   							  ChangedFilesCount="@ChangedFilesCount"
-   							  BuildVerified="@BuildVerified"
-   							  GitCommitHash="@GitCommitHash"
-   							  PullRequestUrl="@PullRequestUrl"
- 							  PullRequestNumber="@PullRequestNumber"
+    			<JobOutcomeBadges Status="@ParsedStatus"
+    							  ChangedFilesCount="@ChangedFilesCount"
+    							  BuildVerified="@BuildVerified"
+    							  BuildVerificationEnabled="@BuildVerificationEnabled"
+    							  IsPushed="@IsPushed"
+    							  GitCommitHash="@GitCommitHash"
+    							  PullRequestUrl="@PullRequestUrl"
+  							  PullRequestNumber="@PullRequestNumber"
 							  MergedAt="@MergedAt" />
  
 			<JobOutcomeHint Status="@ParsedStatus"
 							ChangedFilesCount="@ChangedFilesCount"
 							BuildVerified="@BuildVerified"
+							BuildVerificationEnabled="@BuildVerificationEnabled"
+							IsPushed="@IsPushed"
 							GitCommitHash="@GitCommitHash"
 							PullRequestUrl="@PullRequestUrl"
 							PullRequestNumber="@PullRequestNumber"
@@ -222,6 +231,12 @@
 	public bool? BuildVerified { get; set; }
 
 	[Parameter]
+	public bool BuildVerificationEnabled { get; set; }
+
+	[Parameter]
+	public bool IsPushed { get; set; }
+
+	[Parameter]
 	public string? GitCommitHash { get; set; }
 
 	[Parameter]
@@ -254,6 +269,16 @@
     {
         await OnClick.InvokeAsync();
     }
+
+	private async Task HandleKeyDown(KeyboardEventArgs args)
+	{
+		if (string.Equals(args.Key, "Enter", StringComparison.Ordinal) ||
+			string.Equals(args.Key, " ", StringComparison.Ordinal) ||
+			string.Equals(args.Key, "Spacebar", StringComparison.Ordinal))
+		{
+			await HandleClick();
+		}
+	}
 
     private string GetCycleModeTitle()
     {

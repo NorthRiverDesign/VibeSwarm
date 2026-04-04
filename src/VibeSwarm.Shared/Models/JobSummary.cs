@@ -44,10 +44,12 @@ public class JobSummary
 	public string? Branch { get; set; }
 	public int? ChangedFilesCount { get; set; }
 	public bool? BuildVerified { get; set; }
+	public bool BuildVerificationEnabled { get; set; }
 	public string? GitCommitHash { get; set; }
 	public int? PullRequestNumber { get; set; }
 	public string? PullRequestUrl { get; set; }
 	public DateTime? MergedAt { get; set; }
+	public bool IsPushed { get; set; }
 	public string? SessionSummary { get; set; }
 	public bool IsScheduled { get; set; }
 	public Guid? JobScheduleId { get; set; }

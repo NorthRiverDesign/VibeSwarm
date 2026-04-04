@@ -24,6 +24,12 @@
 	public bool? BuildVerified { get; set; }
 
 	[Parameter]
+	public bool BuildVerificationEnabled { get; set; }
+
+	[Parameter]
+	public bool IsPushed { get; set; }
+
+	[Parameter]
 	public string? GitCommitHash { get; set; }
 
 	[Parameter]
@@ -36,5 +42,14 @@
 	public DateTime? MergedAt { get; set; }
 
 	private IReadOnlyList<JobOutcomeBadgeModel> OutcomeBadges
-		=> JobOutcomeDisplayHelper.BuildBadges(Status, ChangedFilesCount, BuildVerified, GitCommitHash, PullRequestUrl, PullRequestNumber, MergedAt);
+		=> JobOutcomeDisplayHelper.BuildBadges(
+			Status,
+			ChangedFilesCount,
+			BuildVerified,
+			BuildVerificationEnabled,
+			IsPushed,
+			GitCommitHash,
+			PullRequestUrl,
+			PullRequestNumber,
+			MergedAt);
 }
