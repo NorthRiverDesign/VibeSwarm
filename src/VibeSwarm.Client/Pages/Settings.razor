@@ -23,56 +23,9 @@
 </li>
 </ul>
 
-<div class="card mb-4">
-<div class="card-body d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-3">
-<div class="d-flex flex-column gap-1">
-<div class="small text-body-secondary text-uppercase fw-semibold">Database Size</div>
-@if (_isLoadingDatabaseSummary && _databaseSummary == null)
-{
-<div class="d-flex align-items-center gap-2 text-body-secondary">
-<span class="spinner-border spinner-border-sm" role="status"></span>
-<span>Loading storage details...</span>
-</div>
-}
-else
-{
-<div class="fs-4 fw-semibold">@SettingsDatabaseTab.FormatBytes(_databaseSummary?.TotalSizeBytes)</div>
-<div class="small text-body-secondary d-flex flex-wrap gap-3">
-<span>@GetDatabaseProviderLabel()</span>
-@if (_databaseSummary != null)
-{
-<span>@_databaseSummary.JobsCount job(s)</span>
-<span>@_databaseSummary.JobMessagesCount message(s)</span>
-<span>@_databaseSummary.ProviderUsageRecordsCount usage record(s)</span>
-}
-</div>
-@if (!string.IsNullOrWhiteSpace(_databaseSummary?.Location))
-{
-<div class="small text-body-secondary font-monospace text-break">@_databaseSummary.Location</div>
-}
-}
-</div>
-<div class="d-flex flex-column flex-sm-row gap-2">
-<button type="button" class="btn btn-secondary btn-sm" @onclick="RefreshDatabaseSummary" disabled="@_isLoadingDatabaseSummary">
-@if (_isLoadingDatabaseSummary)
-{
-<span class="spinner-border spinner-border-sm me-1" role="status"></span>
-}
-<i class="bi bi-arrow-clockwise me-1"></i>Refresh Size
-</button>
-@if (_activeTab != "database")
-{
-<button type="button" class="btn btn-primary btn-sm" @onclick='() => SetTab("database")'>
-<i class="bi bi-database me-1"></i>Open Database Tab
-</button>
-}
-</div>
-</div>
-</div>
-
 @if (_activeTab == "app")
 {
-<SettingsAppTab OnSettingsSaved="RefreshDatabaseSummary" />
+	<SettingsAppTab OnSettingsSaved="RefreshDatabaseSummary" />
 }
 else if (_activeTab == "database")
 {
@@ -173,14 +126,4 @@ VibeSwarm can work with any directory that the host process has access to.
 			_isLoadingDatabaseSummary = false;
 		}
 	}
-
-	private string GetDatabaseProviderLabel() => _databaseSummary?.Provider switch
-	{
-		"sqlite" => "SQLite database",
-		"mysql" => "MySQL database",
-		"postgresql" => "PostgreSQL database",
-		"sqlserver" => "SQL Server database",
-		{ Length: > 0 } provider => provider,
-		_ => "Database size unavailable"
-	};
 }

@@ -73,13 +73,13 @@ return output.ToHtmlString();
 	Assert.Contains("Idea expansion template", html);
 	Assert.Contains("Direct idea implementation template", html);
 	Assert.Contains("Critical Error Logs", html);
-	Assert.Contains("Database Size", html);
 	Assert.Contains("Database", html);
-	Assert.Contains("Open Database Tab", html);
 	Assert.Contains("Developer Mode", html);
 	Assert.Contains("Rebuild And Restart", html);
 	Assert.DoesNotContain("Add Provider", html);
 	Assert.DoesNotContain("inference provider", html);
+	Assert.DoesNotContain("Database Size", html);
+	Assert.DoesNotContain("Open Database Tab", html);
 }
 
 	private sealed class FakeInferenceProviderService : IInferenceProviderService
