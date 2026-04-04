@@ -177,7 +177,7 @@
 			}
 			@if (LatestJob != null)
 			{
-				<div class="border-top pt-2 mt-2">
+				<div class="border-top pt-2 mt-2 d-flex flex-column gap-2 min-width-0">
 					<div class="d-flex align-items-center gap-2 small min-width-0">
 						<a href="/jobs/view/@LatestJob.Id"
 							   class="d-flex align-items-center gap-2 text-decoration-none min-width-0 w-100"
@@ -208,6 +208,16 @@
 							}
 							<span class="text-truncate text-body-secondary flex-grow-1 min-width-0">@TruncateText(LatestJob.DisplayTitle, 60)</span>
 						</a>
+					</div>
+					<div class="min-width-0">
+						<JobOutcomeHint Status="@LatestJob.Status"
+										ChangedFilesCount="@LatestJob.ChangedFilesCount"
+										BuildVerified="@LatestJob.BuildVerified"
+										GitCommitHash="@LatestJob.GitCommitHash"
+										PullRequestUrl="@LatestJob.PullRequestUrl"
+										PullRequestNumber="@LatestJob.PullRequestNumber"
+										MergedAt="@LatestJob.MergedAt" />
+						<JobOutcomeSummarySnippet SessionSummary="@LatestJob.SessionSummary" />
 					</div>
 				</div>
 			}

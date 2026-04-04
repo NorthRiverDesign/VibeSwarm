@@ -66,7 +66,7 @@ else
 								   MergedAt="@Job.MergedAt"
 								   IsPushed="@_changesPushed"
 								   SessionSummary="@Job.SessionSummary"
-								   ReviewChangesHref="@(ShowReviewChangesLink ? "#job-changes-section" : null)"
+								   ReviewChangesHref="@ReviewChangesSectionHref"
 								   DeliveryHref="@(ShowDeliveryLink ? "#job-delivery-section" : null)"
 								   ReviewTranscriptHref="#job-messages-section"
 								   VerificationOutputHref="#job-verification-output" />
@@ -168,14 +168,16 @@ else
                     &&
                     Job?.Project?.WorkingPath != null)
             {
-                <UncommittedChangesCard DiffFiles="@_uncommittedDiffFiles" IsChecking="@_isCheckingUncommittedChanges"
-                                        HasChecked="@_hasCheckedUncommittedChanges" HasChanges="@_hasUncommittedChanges"
-                                        ErrorMessage="@_uncommittedChangesError" JobFailed="@(Job.Status == JobStatus.Failed)"
-                                        CommitMessage="@_uncommittedCommitMessage"
-                                        CommitMessageChanged="@((msg) => _uncommittedCommitMessage = msg)"
-                                        IsCommitting="@_isCommittingUncommittedChanges" IsDiscarding="@_isDiscardingChanges"
-                                        OnCheck="CheckUncommittedChangesAsync" OnRefresh="CheckUncommittedChangesAsync"
-                                        OnCommit="CommitUncommittedChangesAsync" OnDiscard="DiscardUncommittedChangesAsync" />
+				<div id="job-uncommitted-changes-section">
+					<UncommittedChangesCard DiffFiles="@_uncommittedDiffFiles" IsChecking="@_isCheckingUncommittedChanges"
+											HasChecked="@_hasCheckedUncommittedChanges" HasChanges="@_hasUncommittedChanges"
+											ErrorMessage="@_uncommittedChangesError" JobFailed="@(Job.Status == JobStatus.Failed)"
+											CommitMessage="@_uncommittedCommitMessage"
+											CommitMessageChanged="@((msg) => _uncommittedCommitMessage = msg)"
+											IsCommitting="@_isCommittingUncommittedChanges" IsDiscarding="@_isDiscardingChanges"
+											OnCheck="CheckUncommittedChangesAsync" OnRefresh="CheckUncommittedChangesAsync"
+											OnCommit="CommitUncommittedChangesAsync" OnDiscard="DiscardUncommittedChangesAsync" />
+				</div>
             }
         </div>
 
@@ -272,6 +274,15 @@ else
 			&& !IsJobActive
 			&& (!string.IsNullOrEmpty(Job?.GitDiff)
 				|| Job?.Status is JobStatus.Failed or JobStatus.Cancelled);
+
+	private string? ReviewChangesSectionHref
+		=> !ShowReviewChangesLink
+			? null
+			: Job?.Status is JobStatus.Failed or JobStatus.Cancelled
+				? Job?.Project?.WorkingPath != null
+					? "#job-uncommitted-changes-section"
+					: null
+				: "#job-changes-section";
 
 	private bool ShowDeliveryLink
 		=> _isGitRepository

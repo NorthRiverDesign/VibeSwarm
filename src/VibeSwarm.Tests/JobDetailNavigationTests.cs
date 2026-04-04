@@ -62,21 +62,52 @@ public sealed class JobDetailNavigationTests
 		Assert.Contains("Check the transcript before retrying", cut.Markup);
 	}
 
-	private static BunitContext CreateContext(FakeJobService jobService)
+	[Fact]
+	public void JobDetail_FailedGitJobs_LinkOutcomeActionsToUncommittedChangesSection()
+	{
+		var jobId = Guid.Parse("55555555-5555-5555-5555-555555555555");
+		var jobService = new FakeJobService(new Dictionary<Guid, Job>
+		{
+			[jobId] = CreateJob(jobId, "Failed job title", "Recover the changes", JobStatus.Failed, changedFilesCount: 2, workingPath: "/tmp/outcome-project")
+		});
+
+		using var context = CreateContext(jobService, new FakeVersionControlService(isGitRepository: true));
+
+		var cut = context.Render<JobDetail>(parameters => parameters
+			.Add(component => component.JobId, jobId));
+
+		Assert.Contains("#job-uncommitted-changes-section", cut.Markup);
+		Assert.Contains("id=\"job-uncommitted-changes-section\"", cut.Markup);
+	}
+
+	private static BunitContext CreateContext(FakeJobService jobService, IVersionControlService? versionControlService = null)
 	{
 		var context = new BunitContext();
 		context.Services.AddLogging();
 		context.Services.AddSingleton<IJobService>(jobService);
 		context.Services.AddSingleton<IIdeaService>(new FakeIdeaService());
 		context.Services.AddSingleton<IProviderService>(new FakeProviderService());
-		context.Services.AddSingleton<IVersionControlService>(new FakeVersionControlService());
+		if (versionControlService != null)
+		{
+			context.Services.AddSingleton(versionControlService);
+		}
+		else
+		{
+			context.Services.AddSingleton<IVersionControlService>(new FakeVersionControlService());
+		}
 		context.Services.AddSingleton<NotificationService>();
 		context.Services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
 		context.Services.AddSingleton<NavigationManager>(new TestNavigationManager());
 		return context;
 	}
 
-	private static Job CreateJob(Guid jobId, string title, string goalPrompt, JobStatus status = JobStatus.Processing)
+	private static Job CreateJob(
+		Guid jobId,
+		string title,
+		string goalPrompt,
+		JobStatus status = JobStatus.Processing,
+		int? changedFilesCount = null,
+		string? workingPath = null)
 		=> new()
 		{
 			Id = jobId,
@@ -84,12 +115,14 @@ public sealed class JobDetailNavigationTests
 			Title = title,
 			GoalPrompt = goalPrompt,
 			Status = status,
+			ChangedFilesCount = changedFilesCount,
 			CreatedAt = DateTime.UtcNow.AddMinutes(-5),
 			Messages = [],
 			Project = new Project
 			{
 				Id = Guid.Parse("33333333-3333-3333-3333-333333333333"),
 				Name = "Navigation test project",
+				WorkingPath = workingPath ?? string.Empty,
 				IsActive = true
 			}
 		};
@@ -248,10 +281,10 @@ public sealed class JobDetailNavigationTests
 		public Task<CliUpdateResult> UpdateCliAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	}
 
-	private sealed class FakeVersionControlService : IVersionControlService
+	private sealed class FakeVersionControlService(bool isGitRepository = false) : IVersionControlService
 	{
 		public Task<bool> IsGitAvailableAsync(CancellationToken cancellationToken = default) => Task.FromResult(true);
-		public Task<bool> IsGitRepositoryAsync(string workingDirectory, CancellationToken cancellationToken = default) => Task.FromResult(false);
+		public Task<bool> IsGitRepositoryAsync(string workingDirectory, CancellationToken cancellationToken = default) => Task.FromResult(isGitRepository);
 		public Task<string?> GetCurrentCommitHashAsync(string workingDirectory, CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
 		public Task<string?> GetCurrentBranchAsync(string workingDirectory, CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
 		public Task<string?> GetRemoteUrlAsync(string workingDirectory, string remoteName = "origin", CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
