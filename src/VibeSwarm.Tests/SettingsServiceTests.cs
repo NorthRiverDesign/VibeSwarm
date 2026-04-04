@@ -38,7 +38,10 @@ public sealed class SettingsServiceTests : IDisposable
 			InjectEfficiencyRules = false,
 			EnableCommitAttribution = false,
 			CriticalErrorLogRetentionDays = 45,
-			CriticalErrorLogMaxEntries = 350
+			CriticalErrorLogMaxEntries = 350,
+			IdeaExpansionPromptTemplate = "Expand {{idea}}",
+			IdeaImplementationPromptTemplate = "Implement {{idea}}",
+			ApprovedIdeaImplementationPromptTemplate = "Idea {{idea}}\nSpec {{specification}}"
 		});
 
 		var saved = await dbContext.AppSettings.SingleAsync();
@@ -51,6 +54,9 @@ public sealed class SettingsServiceTests : IDisposable
 		Assert.False(saved.EnableCommitAttribution);
 		Assert.Equal(45, saved.CriticalErrorLogRetentionDays);
 		Assert.Equal(350, saved.CriticalErrorLogMaxEntries);
+		Assert.Equal("Expand {{idea}}", saved.IdeaExpansionPromptTemplate);
+		Assert.Equal("Implement {{idea}}", saved.IdeaImplementationPromptTemplate);
+		Assert.Equal("Idea {{idea}}\nSpec {{specification}}", saved.ApprovedIdeaImplementationPromptTemplate);
 		Assert.NotNull(saved.UpdatedAt);
 	}
 
@@ -63,6 +69,19 @@ public sealed class SettingsServiceTests : IDisposable
 		var settings = await service.GetSettingsAsync();
 
 		Assert.True(settings.EnableCommitAttribution);
+	}
+
+	[Fact]
+	public async Task GetSettingsAsync_CreatesDefaultIdeaPromptTemplates()
+	{
+		await using var dbContext = CreateDbContext();
+		var service = new SettingsService(dbContext);
+
+		var settings = await service.GetSettingsAsync();
+
+		Assert.Equal(PromptBuilder.DefaultIdeaExpansionPromptTemplate, settings.IdeaExpansionPromptTemplate);
+		Assert.Equal(PromptBuilder.DefaultIdeaImplementationPromptTemplate, settings.IdeaImplementationPromptTemplate);
+		Assert.Equal(PromptBuilder.DefaultApprovedIdeaImplementationPromptTemplate, settings.ApprovedIdeaImplementationPromptTemplate);
 	}
 
 	[Fact]
@@ -96,6 +115,25 @@ public sealed class SettingsServiceTests : IDisposable
 
 		Assert.Equal(AppSettings.MaxCriticalErrorLogRetentionDays, settings.CriticalErrorLogRetentionDays);
 		Assert.Equal(AppSettings.MaxCriticalErrorLogMaxEntries, settings.CriticalErrorLogMaxEntries);
+	}
+
+	[Fact]
+	public async Task UpdateSettingsAsync_BlankPromptTemplates_ResetToDefaults()
+	{
+		await using var dbContext = CreateDbContext();
+		var service = new SettingsService(dbContext);
+
+		var updated = await service.UpdateSettingsAsync(new AppSettings
+		{
+			TimeZoneId = "UTC",
+			IdeaExpansionPromptTemplate = "   ",
+			IdeaImplementationPromptTemplate = "",
+			ApprovedIdeaImplementationPromptTemplate = null
+		});
+
+		Assert.Equal(PromptBuilder.DefaultIdeaExpansionPromptTemplate, updated.IdeaExpansionPromptTemplate);
+		Assert.Equal(PromptBuilder.DefaultIdeaImplementationPromptTemplate, updated.IdeaImplementationPromptTemplate);
+		Assert.Equal(PromptBuilder.DefaultApprovedIdeaImplementationPromptTemplate, updated.ApprovedIdeaImplementationPromptTemplate);
 	}
 
 	private VibeSwarmDbContext CreateDbContext() => new(_dbOptions);

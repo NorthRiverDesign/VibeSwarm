@@ -2872,6 +2872,158 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		Assert.Contains("Write", providerInstance.LastExecutionOptions.DisallowedTools!);
 	}
 
+	[Fact]
+	public async Task ExpandIdeaAsync_UsesConfiguredIdeaExpansionPromptTemplate()
+	{
+		await using var dbContext = CreateDbContext();
+		var provider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Copilot",
+			Type = ProviderType.Copilot,
+			IsEnabled = true,
+			IsDefault = true
+		};
+		var project = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Idea Prompt Project",
+			WorkingPath = "/tmp/idea-prompt-project"
+		};
+		var idea = new Idea
+		{
+			Id = Guid.NewGuid(),
+			ProjectId = project.Id,
+			Description = "Ship a settings editor for prompt templates",
+			SortOrder = 0
+		};
+		var inferenceService = new FakeInferenceService
+		{
+			Response = new InferenceResponse
+			{
+				Success = true,
+				Response = "Overview: Add settings editor.\nAcceptance Criteria: Users can save templates."
+			}
+		};
+
+		dbContext.Providers.Add(provider);
+		dbContext.Projects.Add(project);
+		dbContext.Ideas.Add(idea);
+		dbContext.AppSettings.Add(new AppSettings
+		{
+			Id = Guid.NewGuid(),
+			TimeZoneId = "UTC",
+			IdeaExpansionPromptTemplate = "Explore first:\n{{idea}}\nThen produce a spec."
+		});
+		await dbContext.SaveChangesAsync();
+
+		var ideaService = CreateIdeaService(dbContext, provider, inferenceService: inferenceService);
+		var result = await ideaService.ExpandIdeaAsync(idea.Id, new IdeaExpansionRequest { UseInference = true });
+
+		Assert.NotNull(result);
+		Assert.NotNull(inferenceService.LastRequest);
+		Assert.Contains("Explore first:", inferenceService.LastRequest!.Prompt);
+		Assert.Contains(idea.Description, inferenceService.LastRequest.Prompt);
+		Assert.DoesNotContain("implementation-ready engineering specification", inferenceService.LastRequest.Prompt);
+	}
+
+	[Fact]
+	public async Task ConvertToJobAsync_UsesConfiguredIdeaImplementationPromptTemplate()
+	{
+		await using var dbContext = CreateDbContext();
+		var provider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Copilot",
+			Type = ProviderType.Copilot,
+			IsEnabled = true,
+			IsDefault = true
+		};
+		var project = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Idea Prompt Project",
+			WorkingPath = "/tmp/idea-job-project"
+		};
+		var idea = new Idea
+		{
+			Id = Guid.NewGuid(),
+			ProjectId = project.Id,
+			Description = "Implement settings-driven idea prompts",
+			SortOrder = 0
+		};
+
+		dbContext.Providers.Add(provider);
+		dbContext.Projects.Add(project);
+		dbContext.Ideas.Add(idea);
+		dbContext.AppSettings.Add(new AppSettings
+		{
+			Id = Guid.NewGuid(),
+			TimeZoneId = "UTC",
+			IdeaImplementationPromptTemplate = "Inspect the repo before coding.\nIdea:\n{{idea}}"
+		});
+		await dbContext.SaveChangesAsync();
+
+		var ideaService = CreateIdeaService(dbContext, provider);
+		var job = await ideaService.ConvertToJobAsync(idea.Id);
+
+		Assert.NotNull(job);
+		Assert.Contains("Inspect the repo before coding.", job!.GoalPrompt);
+		Assert.Contains(idea.Description, job.GoalPrompt);
+		Assert.DoesNotContain("Work directly from the idea below", job.GoalPrompt);
+	}
+
+	[Fact]
+	public async Task ConvertToJobAsync_UsesConfiguredApprovedIdeaImplementationPromptTemplate()
+	{
+		await using var dbContext = CreateDbContext();
+		var provider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Copilot",
+			Type = ProviderType.Copilot,
+			IsEnabled = true,
+			IsDefault = true
+		};
+		var project = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Approved Idea Prompt Project",
+			WorkingPath = "/tmp/approved-idea-job-project"
+		};
+		var idea = new Idea
+		{
+			Id = Guid.NewGuid(),
+			ProjectId = project.Id,
+			Description = "Add prompt template settings",
+			ExpandedDescription = "Persist app-level templates and render them in Settings.",
+			ExpansionStatus = IdeaExpansionStatus.Approved,
+			ExpandedAt = DateTime.UtcNow,
+			SortOrder = 0
+		};
+
+		dbContext.Providers.Add(provider);
+		dbContext.Projects.Add(project);
+		dbContext.Ideas.Add(idea);
+		dbContext.AppSettings.Add(new AppSettings
+		{
+			Id = Guid.NewGuid(),
+			TimeZoneId = "UTC",
+			ApprovedIdeaImplementationPromptTemplate = "Original:\n{{idea}}\nSpecification:\n{{specification}}\nShip it."
+		});
+		await dbContext.SaveChangesAsync();
+
+		var ideaService = CreateIdeaService(dbContext, provider);
+		var job = await ideaService.ConvertToJobAsync(idea.Id);
+
+		Assert.NotNull(job);
+		Assert.Contains("Original:", job!.GoalPrompt);
+		Assert.Contains(idea.Description, job.GoalPrompt);
+		Assert.Contains(idea.ExpandedDescription, job.GoalPrompt);
+		Assert.Contains("Ship it.", job.GoalPrompt);
+		Assert.DoesNotContain("This specification was reviewed and approved", job.GoalPrompt);
+	}
+
 	private VibeSwarmDbContext CreateDbContext()
 	{
 		return new VibeSwarmDbContext(_dbOptions);

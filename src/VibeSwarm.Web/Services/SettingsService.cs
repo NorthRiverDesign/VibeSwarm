@@ -28,6 +28,9 @@ public class SettingsService : ISettingsService
 				EnableCommitAttribution = true,
 				CriticalErrorLogRetentionDays = AppSettings.DefaultCriticalErrorLogRetentionDays,
 				CriticalErrorLogMaxEntries = AppSettings.DefaultCriticalErrorLogMaxEntries,
+				IdeaExpansionPromptTemplate = PromptBuilder.DefaultIdeaExpansionPromptTemplate,
+				IdeaImplementationPromptTemplate = PromptBuilder.DefaultIdeaImplementationPromptTemplate,
+				ApprovedIdeaImplementationPromptTemplate = PromptBuilder.DefaultApprovedIdeaImplementationPromptTemplate,
 				UpdatedAt = DateTime.UtcNow
 			};
 
@@ -39,14 +42,23 @@ public class SettingsService : ISettingsService
 			var normalizedTimeZoneId = NormalizeTimeZoneId(settings.TimeZoneId);
 			var normalizedRetentionDays = NormalizeCriticalErrorLogRetentionDays(settings.CriticalErrorLogRetentionDays);
 			var normalizedMaxEntries = NormalizeCriticalErrorLogMaxEntries(settings.CriticalErrorLogMaxEntries);
+			var normalizedIdeaExpansionPromptTemplate = NormalizePromptTemplate(settings.IdeaExpansionPromptTemplate, PromptBuilder.DefaultIdeaExpansionPromptTemplate);
+			var normalizedIdeaImplementationPromptTemplate = NormalizePromptTemplate(settings.IdeaImplementationPromptTemplate, PromptBuilder.DefaultIdeaImplementationPromptTemplate);
+			var normalizedApprovedIdeaImplementationPromptTemplate = NormalizePromptTemplate(settings.ApprovedIdeaImplementationPromptTemplate, PromptBuilder.DefaultApprovedIdeaImplementationPromptTemplate);
 
 			if (!string.Equals(settings.TimeZoneId, normalizedTimeZoneId, StringComparison.Ordinal) ||
 				settings.CriticalErrorLogRetentionDays != normalizedRetentionDays ||
-				settings.CriticalErrorLogMaxEntries != normalizedMaxEntries)
+				settings.CriticalErrorLogMaxEntries != normalizedMaxEntries ||
+				!string.Equals(settings.IdeaExpansionPromptTemplate, normalizedIdeaExpansionPromptTemplate, StringComparison.Ordinal) ||
+				!string.Equals(settings.IdeaImplementationPromptTemplate, normalizedIdeaImplementationPromptTemplate, StringComparison.Ordinal) ||
+				!string.Equals(settings.ApprovedIdeaImplementationPromptTemplate, normalizedApprovedIdeaImplementationPromptTemplate, StringComparison.Ordinal))
 			{
 				settings.TimeZoneId = normalizedTimeZoneId;
 				settings.CriticalErrorLogRetentionDays = normalizedRetentionDays;
 				settings.CriticalErrorLogMaxEntries = normalizedMaxEntries;
+				settings.IdeaExpansionPromptTemplate = normalizedIdeaExpansionPromptTemplate;
+				settings.IdeaImplementationPromptTemplate = normalizedIdeaImplementationPromptTemplate;
+				settings.ApprovedIdeaImplementationPromptTemplate = normalizedApprovedIdeaImplementationPromptTemplate;
 				settings.UpdatedAt ??= DateTime.UtcNow;
 				await _dbContext.SaveChangesAsync(cancellationToken);
 			}
@@ -66,6 +78,9 @@ public class SettingsService : ISettingsService
 			settings.TimeZoneId = NormalizeTimeZoneId(settings.TimeZoneId);
 			settings.CriticalErrorLogRetentionDays = NormalizeCriticalErrorLogRetentionDays(settings.CriticalErrorLogRetentionDays);
 			settings.CriticalErrorLogMaxEntries = NormalizeCriticalErrorLogMaxEntries(settings.CriticalErrorLogMaxEntries);
+			settings.IdeaExpansionPromptTemplate = NormalizePromptTemplate(settings.IdeaExpansionPromptTemplate, PromptBuilder.DefaultIdeaExpansionPromptTemplate);
+			settings.IdeaImplementationPromptTemplate = NormalizePromptTemplate(settings.IdeaImplementationPromptTemplate, PromptBuilder.DefaultIdeaImplementationPromptTemplate);
+			settings.ApprovedIdeaImplementationPromptTemplate = NormalizePromptTemplate(settings.ApprovedIdeaImplementationPromptTemplate, PromptBuilder.DefaultApprovedIdeaImplementationPromptTemplate);
 			settings.UpdatedAt = DateTime.UtcNow;
 			_dbContext.AppSettings.Add(settings);
 		}
@@ -80,6 +95,9 @@ public class SettingsService : ISettingsService
 			existing.EnableCommitAttribution = settings.EnableCommitAttribution;
 			existing.CriticalErrorLogRetentionDays = NormalizeCriticalErrorLogRetentionDays(settings.CriticalErrorLogRetentionDays);
 			existing.CriticalErrorLogMaxEntries = NormalizeCriticalErrorLogMaxEntries(settings.CriticalErrorLogMaxEntries);
+			existing.IdeaExpansionPromptTemplate = NormalizePromptTemplate(settings.IdeaExpansionPromptTemplate, PromptBuilder.DefaultIdeaExpansionPromptTemplate);
+			existing.IdeaImplementationPromptTemplate = NormalizePromptTemplate(settings.IdeaImplementationPromptTemplate, PromptBuilder.DefaultIdeaImplementationPromptTemplate);
+			existing.ApprovedIdeaImplementationPromptTemplate = NormalizePromptTemplate(settings.ApprovedIdeaImplementationPromptTemplate, PromptBuilder.DefaultApprovedIdeaImplementationPromptTemplate);
 			existing.UpdatedAt = DateTime.UtcNow;
 		}
 
@@ -108,4 +126,9 @@ public class SettingsService : ISettingsService
 			maxEntries,
 			AppSettings.MinCriticalErrorLogMaxEntries,
 			AppSettings.MaxCriticalErrorLogMaxEntries);
+
+	private static string NormalizePromptTemplate(string? template, string defaultTemplate)
+		=> string.IsNullOrWhiteSpace(template)
+			? defaultTemplate
+			: template.Trim().ReplaceLineEndings("\n");
 }

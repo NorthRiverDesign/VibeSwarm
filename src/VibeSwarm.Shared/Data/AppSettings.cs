@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using VibeSwarm.Shared.Validation;
 
 namespace VibeSwarm.Shared.Data;
 
@@ -58,4 +59,13 @@ public class AppSettings
 
 	[Range(MinCriticalErrorLogMaxEntries, MaxCriticalErrorLogMaxEntries)]
 	public int CriticalErrorLogMaxEntries { get; set; } = DefaultCriticalErrorLogMaxEntries;
+
+	[StringLength(ValidationLimits.IdeaPromptTemplateMaxLength)]
+	public string? IdeaExpansionPromptTemplate { get; set; }
+
+	[StringLength(ValidationLimits.IdeaPromptTemplateMaxLength)]
+	public string? IdeaImplementationPromptTemplate { get; set; }
+
+	[StringLength(ValidationLimits.IdeaPromptTemplateMaxLength)]
+	public string? ApprovedIdeaImplementationPromptTemplate { get; set; }
 }

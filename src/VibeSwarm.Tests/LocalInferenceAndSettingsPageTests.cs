@@ -69,6 +69,9 @@ return output.ToHtmlString();
 	Assert.Contains("App Settings", html);
 	Assert.Contains("Timezone", html);
 	Assert.Contains("Enable provider commit attribution", html);
+	Assert.Contains("Idea Prompt Templates", html);
+	Assert.Contains("Idea expansion template", html);
+	Assert.Contains("Direct idea implementation template", html);
 	Assert.Contains("Critical Error Logs", html);
 	Assert.Contains("Database Size", html);
 	Assert.Contains("Database", html);
@@ -107,7 +110,10 @@ public Task<AppSettings> GetSettingsAsync(CancellationToken cancellationToken = 
 {
 	TimeZoneId = "UTC",
 	CriticalErrorLogRetentionDays = AppSettings.DefaultCriticalErrorLogRetentionDays,
-	CriticalErrorLogMaxEntries = AppSettings.DefaultCriticalErrorLogMaxEntries
+	CriticalErrorLogMaxEntries = AppSettings.DefaultCriticalErrorLogMaxEntries,
+	IdeaExpansionPromptTemplate = PromptBuilder.DefaultIdeaExpansionPromptTemplate,
+	IdeaImplementationPromptTemplate = PromptBuilder.DefaultIdeaImplementationPromptTemplate,
+	ApprovedIdeaImplementationPromptTemplate = PromptBuilder.DefaultApprovedIdeaImplementationPromptTemplate
 });
 public Task<AppSettings> UpdateSettingsAsync(AppSettings settings, CancellationToken cancellationToken = default) => Task.FromResult(settings);
 public Task<string?> GetDefaultProjectsDirectoryAsync(CancellationToken cancellationToken = default) => Task.FromResult<string?>("/tmp/projects");

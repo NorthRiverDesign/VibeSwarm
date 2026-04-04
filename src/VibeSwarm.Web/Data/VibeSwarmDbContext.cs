@@ -431,6 +431,9 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 			entity.Property(e => e.EnableCommitAttribution).HasDefaultValue(true);
 			entity.Property(e => e.CriticalErrorLogRetentionDays).HasDefaultValue(global::VibeSwarm.Shared.Data.AppSettings.DefaultCriticalErrorLogRetentionDays);
 			entity.Property(e => e.CriticalErrorLogMaxEntries).HasDefaultValue(global::VibeSwarm.Shared.Data.AppSettings.DefaultCriticalErrorLogMaxEntries);
+			entity.Property(e => e.IdeaExpansionPromptTemplate).HasMaxLength(ValidationLimits.IdeaPromptTemplateMaxLength);
+			entity.Property(e => e.IdeaImplementationPromptTemplate).HasMaxLength(ValidationLimits.IdeaPromptTemplateMaxLength);
+			entity.Property(e => e.ApprovedIdeaImplementationPromptTemplate).HasMaxLength(ValidationLimits.IdeaPromptTemplateMaxLength);
 		});
 
 		modelBuilder.Entity<CriticalErrorLogEntry>(entity =>

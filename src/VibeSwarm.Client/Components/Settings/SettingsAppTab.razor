@@ -236,6 +236,10 @@ repository's default git identity without provider attribution.
 </div>
 </div>
 
+<div class="mb-4">
+<SettingsIdeaPromptTemplatesSection Settings="_settings" OnRestoreDefaults="RestoreIdeaPromptDefaults" />
+</div>
+
 <hr class="my-4" />
 
 <h6 class="text-body-secondary mb-3">
@@ -432,6 +436,14 @@ repository's default git identity without provider attribution.
 	}
 
 	private async Task ReloadSettings() => await LoadSettings();
+
+	private Task RestoreIdeaPromptDefaults()
+	{
+		_settings.IdeaExpansionPromptTemplate = PromptBuilder.DefaultIdeaExpansionPromptTemplate;
+		_settings.IdeaImplementationPromptTemplate = PromptBuilder.DefaultIdeaImplementationPromptTemplate;
+		_settings.ApprovedIdeaImplementationPromptTemplate = PromptBuilder.DefaultApprovedIdeaImplementationPromptTemplate;
+		return Task.CompletedTask;
+	}
 
 	private async Task StartSelfUpdate()
 	{

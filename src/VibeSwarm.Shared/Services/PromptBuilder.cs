@@ -14,6 +14,85 @@ public static class PromptBuilder
 	private const int MaxPromptLength = 2000;
 	private const int XmlOverhead = 200;
 	private const int MaxEnvironmentSectionLength = 1200;
+	public const string IdeaToken = "{{idea}}";
+	public const string SpecificationToken = "{{specification}}";
+
+	public static string DefaultIdeaExpansionPromptTemplate =>
+		"""
+		You are preparing an implementation-ready engineering specification from a brief product idea.
+
+		## Feature Idea
+		{{idea}}
+
+		## Your Task
+		Expand this into a concrete specification that gives an implementation agent enough context to fully build the feature.
+		Start by exploring the existing codebase, related workflows, reusable components, and architecture patterns that likely apply.
+		When the idea is ambiguous, make reasonable assumptions based on the repository's conventions and choose the approach that best fits the existing system.
+
+		Include these sections:
+		1. Overview: What the feature should accomplish and the intended outcome
+		2. User Flows: The main user journeys or operator workflows this affects
+		3. Architecture and Components: The key UI, services, models, APIs, storage, or background processing involved
+		4. Implementation Plan: A practical sequence of work items that can be executed end-to-end
+		5. Edge Cases and Risks: Validation, failure states, permissions, empty states, migrations, compatibility, or rollout concerns
+		6. Acceptance Criteria: Concrete checks that confirm the feature works correctly
+
+		Keep the specification concise but implementation-ready.
+		Focus on actionable engineering detail, not code samples.
+		""";
+
+	public static string DefaultIdeaImplementationPromptTemplate =>
+		"""
+		You are implementing a feature based on the following idea. Work directly from the idea below instead of first expanding it into a separate detailed specification.
+
+		## Feature Idea
+		{{idea}}
+
+		## Instructions
+		1. Start by exploring the existing codebase, related workflows, and reusable components before editing code.
+		2. Treat ambiguity as a normal part of the task. Infer missing implementation details from repository patterns, nearby features, tests, naming, architecture, and UI conventions.
+		3. If multiple reasonable implementations exist, choose the one that best fits the current system and complete it end-to-end instead of stopping for more specification work.
+		4. Preserve the original intent while turning the idea into a concrete, high-quality implementation with the necessary UX, validation, persistence, and error handling.
+		5. Consider edge cases and error handling.
+		6. Make sure the implementation follows the existing code patterns and style in the project.
+		7. Add or update tests when needed to cover the change.
+		8. Use subagents for research, codebase exploration, and parallel analysis to keep your context window efficient.
+
+		Begin implementing this feature now without first expanding it into a detailed specification.
+
+		When you are finished, end your response with a short summary in this exact format:
+		<commit-summary>
+		A concise one-line description of what was implemented (max 72 chars)
+		</commit-summary>
+		""";
+
+	public static string DefaultApprovedIdeaImplementationPromptTemplate =>
+		"""
+		You are implementing a feature based on the following specification. This specification was reviewed and approved by the user.
+
+		## Original Idea
+		{{idea}}
+
+		## Detailed Specification
+		{{specification}}
+
+		## Instructions
+		1. Start by exploring the existing codebase, related workflows, and reusable components before editing code.
+		2. Use the approved specification as the source of truth, but still infer any missing implementation details from repository patterns and adjacent features.
+		3. If multiple implementation details remain open, choose the option that best fits the current system and complete the work end-to-end.
+		4. Handle edge cases and error scenarios described by the specification, plus any additional ones implied by the codebase.
+		5. Follow the existing code patterns and style in the project.
+		6. Ensure the implementation is complete and functional.
+		7. Add or update tests when needed to cover the change.
+		8. Use subagents for research, codebase exploration, and parallel analysis to keep your context window efficient.
+
+		Implement this feature now.
+
+		When you are finished, end your response with a short summary in this exact format:
+		<commit-summary>
+		A concise one-line description of what was implemented (max 72 chars)
+		</commit-summary>
+		""";
 
 	public static string BuildStructuredPrompt(Job job, bool enableStructuring = true)
 	{
@@ -121,6 +200,34 @@ public static class PromptBuilder
 		sb.AppendLine("Use the implementation plan above as the approved plan for this task.");
 		sb.AppendLine("Execute the work now. Do not spend time generating another plan unless the task reveals missing information.");
 		return sb.ToString().TrimEnd();
+	}
+
+	public static string BuildIdeaExpansionPrompt(string ideaDescription, string? template = null)
+	{
+		return ApplyIdeaPromptTemplate(
+			string.IsNullOrWhiteSpace(template) ? DefaultIdeaExpansionPromptTemplate : template,
+			[
+				new TemplateToken(IdeaToken, ideaDescription, "## Feature Idea")
+			]);
+	}
+
+	public static string BuildIdeaImplementationPrompt(string ideaDescription, string? template = null)
+	{
+		return ApplyIdeaPromptTemplate(
+			string.IsNullOrWhiteSpace(template) ? DefaultIdeaImplementationPromptTemplate : template,
+			[
+				new TemplateToken(IdeaToken, ideaDescription, "## Feature Idea")
+			]);
+	}
+
+	public static string BuildApprovedIdeaImplementationPrompt(string originalIdea, string expandedDescription, string? template = null)
+	{
+		return ApplyIdeaPromptTemplate(
+			string.IsNullOrWhiteSpace(template) ? DefaultApprovedIdeaImplementationPromptTemplate : template,
+			[
+				new TemplateToken(IdeaToken, originalIdea, "## Original Idea"),
+				new TemplateToken(SpecificationToken, expandedDescription, "## Detailed Specification")
+			]);
 	}
 
 	public static string? BuildSystemPromptRules(
@@ -494,4 +601,38 @@ public static class PromptBuilder
 			.Replace("\"", "&quot;")
 			.Replace("'", "&apos;");
 	}
+
+	private static string ApplyIdeaPromptTemplate(string template, IReadOnlyList<TemplateToken> tokens)
+	{
+		var missingTokens = new List<TemplateToken>();
+		var prompt = template.Trim().ReplaceLineEndings("\n");
+
+		foreach (var token in tokens)
+		{
+			var containsToken = prompt.Contains(token.Placeholder, StringComparison.Ordinal);
+			prompt = prompt.Replace(token.Placeholder, token.Value.Trim(), StringComparison.Ordinal);
+			if (!containsToken)
+			{
+				missingTokens.Add(token);
+			}
+		}
+
+		if (missingTokens.Count == 0)
+		{
+			return prompt.TrimEnd();
+		}
+
+		var sb = new StringBuilder(prompt.TrimEnd());
+		foreach (var token in missingTokens)
+		{
+			sb.AppendLine();
+			sb.AppendLine();
+			sb.AppendLine(token.FallbackHeading);
+			sb.AppendLine(token.Value.Trim());
+		}
+
+		return sb.ToString().TrimEnd();
+	}
+
+	private sealed record TemplateToken(string Placeholder, string Value, string FallbackHeading);
 }

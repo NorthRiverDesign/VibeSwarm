@@ -1,0 +1,57 @@
+@using VibeSwarm.Shared.Services
+
+<div class="border rounded-3 p-3 bg-body-tertiary d-flex flex-column gap-3">
+	<div class="d-flex flex-column flex-lg-row justify-content-between gap-3">
+		<div class="d-flex flex-column gap-1">
+			<div class="fw-semibold">Idea Prompt Templates</div>
+			<div class="small text-body-secondary">
+				Tune how VibeSwarm turns vague ideas into implementation-ready prompts. Use
+				<code>@PromptBuilder.IdeaToken</code> and <code>@PromptBuilder.SpecificationToken</code> placeholders in the templates.
+			</div>
+		</div>
+		<div class="d-flex align-items-start">
+			<button type="button" class="btn btn-secondary btn-sm" @onclick="RestoreDefaultsRequested">
+				<i class="bi bi-arrow-counterclockwise me-1"></i>Restore Default Templates
+			</button>
+		</div>
+	</div>
+
+	<div class="d-flex flex-column gap-3">
+		<div>
+			<label for="ideaExpansionPromptTemplate" class="form-label fw-semibold">Idea expansion template</label>
+			<InputTextArea id="ideaExpansionPromptTemplate" @bind-Value="Settings.IdeaExpansionPromptTemplate" class="form-control font-monospace" rows="12" />
+			<div class="form-text">
+				Used when expanding an idea into a reviewed specification before implementation. Must include <code>@PromptBuilder.IdeaToken</code> or the idea is appended automatically.
+			</div>
+			<ValidationMessage For="@(() => Settings.IdeaExpansionPromptTemplate)" class="text-danger small" />
+		</div>
+
+		<div>
+			<label for="ideaImplementationPromptTemplate" class="form-label fw-semibold">Direct idea implementation template</label>
+			<InputTextArea id="ideaImplementationPromptTemplate" @bind-Value="Settings.IdeaImplementationPromptTemplate" class="form-control font-monospace" rows="12" />
+			<div class="form-text">
+				Used when an idea is sent straight to implementation without a separate expansion step. Must include <code>@PromptBuilder.IdeaToken</code> or the idea is appended automatically.
+			</div>
+			<ValidationMessage For="@(() => Settings.IdeaImplementationPromptTemplate)" class="text-danger small" />
+		</div>
+
+		<div>
+			<label for="approvedIdeaImplementationPromptTemplate" class="form-label fw-semibold">Approved specification implementation template</label>
+			<InputTextArea id="approvedIdeaImplementationPromptTemplate" @bind-Value="Settings.ApprovedIdeaImplementationPromptTemplate" class="form-control font-monospace" rows="12" />
+			<div class="form-text">
+				Used when an approved expansion is converted into a job. Include <code>@PromptBuilder.IdeaToken</code> and <code>@PromptBuilder.SpecificationToken</code> for best results; any missing sections are appended automatically.
+			</div>
+			<ValidationMessage For="@(() => Settings.ApprovedIdeaImplementationPromptTemplate)" class="text-danger small" />
+		</div>
+	</div>
+</div>
+
+@code {
+	[Parameter, EditorRequired] public AppSettings Settings { get; set; } = new();
+	[Parameter] public EventCallback OnRestoreDefaults { get; set; }
+
+	private async Task RestoreDefaultsRequested()
+	{
+		await OnRestoreDefaults.InvokeAsync();
+	}
+}

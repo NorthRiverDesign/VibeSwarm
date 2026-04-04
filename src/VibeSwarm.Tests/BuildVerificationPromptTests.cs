@@ -135,4 +135,36 @@ public sealed class BuildVerificationPromptTests
 		Assert.Contains("do not add provider attribution", rules);
 		Assert.Contains("repository's existing git identity", rules);
 	}
+
+	[Fact]
+	public void BuildIdeaImplementationPrompt_UsesConfiguredTemplate()
+	{
+		var prompt = PromptBuilder.BuildIdeaImplementationPrompt(
+			"Add bulk archive controls",
+			"""
+			Explore first.
+
+			Idea:
+			{{idea}}
+			""");
+
+		Assert.Contains("Explore first.", prompt);
+		Assert.Contains("Add bulk archive controls", prompt);
+		Assert.DoesNotContain("Work directly from the idea below", prompt);
+	}
+
+	[Fact]
+	public void BuildApprovedIdeaImplementationPrompt_AppendsMissingSectionsWhenTemplateOmitsTokens()
+	{
+		var prompt = PromptBuilder.BuildApprovedIdeaImplementationPrompt(
+			"Add archive controls",
+			"Implement a bulk action bar.",
+			"Keep this concise.");
+
+		Assert.Contains("Keep this concise.", prompt);
+		Assert.Contains("## Original Idea", prompt);
+		Assert.Contains("Add archive controls", prompt);
+		Assert.Contains("## Detailed Specification", prompt);
+		Assert.Contains("Implement a bulk action bar.", prompt);
+	}
 }

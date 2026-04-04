@@ -144,7 +144,11 @@ public partial class IdeaService
 			return;
 		}
 
-		var expansionPrompt = BuildIdeaExpansionPrompt(idea.Description);
+		var appSettings = await _dbContext.AppSettings
+			.AsNoTracking()
+			.OrderBy(settings => settings.Id)
+			.FirstOrDefaultAsync(cancellationToken);
+		var expansionPrompt = PromptBuilder.BuildIdeaExpansionPrompt(idea.Description, appSettings?.IdeaExpansionPromptTemplate);
 		var response = await ExecuteProviderExpansionAsync(
 			providerInstance,
 			provider,
@@ -258,7 +262,11 @@ public partial class IdeaService
 			return;
 		}
 
-		var expansionPrompt = BuildIdeaExpansionPrompt(idea.Description);
+		var appSettings = await _dbContext.AppSettings
+			.AsNoTracking()
+			.OrderBy(settings => settings.Id)
+			.FirstOrDefaultAsync(cancellationToken);
+		var expansionPrompt = PromptBuilder.BuildIdeaExpansionPrompt(idea.Description, appSettings?.IdeaExpansionPromptTemplate);
 
 		var inferenceRequest = new InferenceRequest
 		{
@@ -392,27 +400,6 @@ public partial class IdeaService
 		await NotifyIdeaUpdateSafe(ideaId, projectId);
 
 		return idea;
-	}
-
-	private static string BuildIdeaExpansionPrompt(string ideaDescription)
-	{
-		return $@"You are a software architect helping to expand a brief feature idea into a detailed specification.
-
-## Feature Idea
-{ideaDescription}
-
-## Your Task
-Expand this idea into a detailed implementation specification. Include:
-
-1. Overview: A clear summary of what the feature does
-2. User Stories: Key user interactions (e.g., As a user, I can...)
-3. Components: What UI components, services, or data models are needed
-4. Implementation Steps: A logical order of implementation tasks
-5. Edge Cases: Important scenarios to handle (validation, errors, empty states)
-6. Acceptance Criteria: How to verify the feature works correctly
-
-Keep the specification concise but complete. Focus on actionable implementation details.
-		Do not include code samples - just describe what needs to be built.";
 	}
 
 	private static void ValidateIdea(Idea idea)

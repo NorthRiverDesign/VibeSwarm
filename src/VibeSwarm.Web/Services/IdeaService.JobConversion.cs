@@ -68,8 +68,8 @@ public partial class IdeaService
 
 			// Use an approved expansion when available; otherwise send directly to implementation.
 			var goalPrompt = idea.HasExpandedDescription
-				? BuildPromptFromExpanded(idea.Description, idea.ExpandedDescription!)
-				: BuildImplementationPrompt(idea.Description);
+				? BuildPromptFromExpanded(idea.Description, idea.ExpandedDescription!, await GetApprovedIdeaImplementationPromptTemplateAsync(cancellationToken))
+				: BuildImplementationPrompt(idea.Description, await GetIdeaImplementationPromptTemplateAsync(cancellationToken));
 			var attachmentPaths = ResolveAttachmentPaths(idea.Project.WorkingPath, idea.Attachments);
 			if (attachmentPaths.Count > 0)
 			{
@@ -181,52 +181,28 @@ public partial class IdeaService
 		return ProviderCapabilities.NormalizeReasoningEffort(provider?.DefaultReasoningEffort);
 	}
 
-	private static string BuildPromptFromExpanded(string originalIdea, string expandedDescription)
+	private static string BuildPromptFromExpanded(string originalIdea, string expandedDescription, string? template)
+		=> PromptBuilder.BuildApprovedIdeaImplementationPrompt(originalIdea, expandedDescription, template);
+
+	private static string BuildImplementationPrompt(string ideaDescription, string? template)
+		=> PromptBuilder.BuildIdeaImplementationPrompt(ideaDescription, template);
+
+	private async Task<string?> GetIdeaImplementationPromptTemplateAsync(CancellationToken cancellationToken)
 	{
-		return $@"You are implementing a feature based on the following specification. This specification was reviewed and approved by the user.
-
-## Original Idea
-{originalIdea}
-
-## Detailed Specification
-{expandedDescription}
-
-## Instructions
-1. Implement the feature according to the specification above
-2. Handle edge cases and error scenarios as described
-3. Follow the existing code patterns and style in the project
-4. Ensure the implementation is complete and functional
-5. Use subagents for research, codebase exploration, and parallel analysis to keep your context window efficient
-
-Implement this feature now.
-
-When you are finished, end your response with a short summary in this exact format:
-<commit-summary>
-A concise one-line description of what was implemented (max 72 chars)
-</commit-summary>";
+		return await _dbContext.AppSettings
+			.AsNoTracking()
+			.OrderBy(settings => settings.Id)
+			.Select(settings => settings.IdeaImplementationPromptTemplate)
+			.FirstOrDefaultAsync(cancellationToken);
 	}
 
-	private static string BuildImplementationPrompt(string ideaDescription)
+	private async Task<string?> GetApprovedIdeaImplementationPromptTemplateAsync(CancellationToken cancellationToken)
 	{
-		return $@"You are implementing a feature based on the following idea. Work directly from the idea below instead of first expanding it into a separate detailed specification.
-
-## Feature Idea
-{ideaDescription}
-
-## Instructions
-1. Implement the feature directly from the idea above
-2. Fill in necessary implementation details while staying aligned with the original intent
-3. Consider edge cases and error handling
-4. Make sure the implementation follows the existing code patterns and style in the project
-5. Add or update tests when needed to cover the change
-6. Use subagents for research, codebase exploration, and parallel analysis to keep your context window efficient
-
-Begin implementing this feature now without first expanding it into a detailed specification.
-
-When you are finished, end your response with a short summary in this exact format:
-<commit-summary>
-A concise one-line description of what was implemented (max 72 chars)
-</commit-summary>";
+		return await _dbContext.AppSettings
+			.AsNoTracking()
+			.OrderBy(settings => settings.Id)
+			.Select(settings => settings.ApprovedIdeaImplementationPromptTemplate)
+			.FirstOrDefaultAsync(cancellationToken);
 	}
 
 	public async Task<bool> CompleteIdeaFromJobAsync(Guid jobId, CancellationToken cancellationToken = default)

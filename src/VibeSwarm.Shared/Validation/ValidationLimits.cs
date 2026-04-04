@@ -29,6 +29,7 @@ public static class ValidationLimits
 	public const int IdeaDescriptionMaxLength = 8000;
 	public const int IdeaExpandedDescriptionMaxLength = 20000;
 	public const int IdeaExpansionErrorMaxLength = 1000;
+	public const int IdeaPromptTemplateMaxLength = 12000;
 	public const int IdeaAttachmentMaxCount = 10;
 	public const long IdeaAttachmentMaxFileBytes = 15L * 1024 * 1024;
 	public const long IdeaAttachmentMaxTotalBytes = 50L * 1024 * 1024;
