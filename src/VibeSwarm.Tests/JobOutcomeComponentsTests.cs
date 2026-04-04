@@ -116,6 +116,38 @@ public sealed class JobOutcomeComponentsTests
 	}
 
 	[Fact]
+	public void JobOutcomeSummaryCard_PrefersDeliveryStateOverRawChangedFileCount()
+	{
+		using var context = new BunitContext();
+
+		var cut = context.Render<JobOutcomeSummaryCard>(parameters => parameters
+			.Add(component => component.Status, JobStatus.Completed)
+			.Add(component => component.ChangedFilesCount, 4)
+			.Add(component => component.PullRequestNumber, 42)
+			.Add(component => component.PullRequestUrl, "https://github.com/octo-org/octo-repo/pull/42")
+			.Add(component => component.TargetBranch, "main"));
+
+		Assert.Contains("PR #42 created", cut.Markup);
+		Assert.Contains("PR #42 is ready for review targeting main.", cut.Markup);
+		Assert.DoesNotContain("4 files were recorded for this run.", cut.Markup);
+	}
+
+	[Fact]
+	public void JobOutcomeSummaryCard_ShowsSessionSummaryWhenAvailable()
+	{
+		using var context = new BunitContext();
+
+		var cut = context.Render<JobOutcomeSummaryCard>(parameters => parameters
+			.Add(component => component.Status, JobStatus.Completed)
+			.Add(component => component.ChangedFilesCount, 0)
+			.Add(component => component.SessionSummary, "Implemented the delivery summary.\nImproved the outcome guidance."));
+
+		Assert.Contains("Work summary", cut.Markup);
+		Assert.Contains("Implemented the delivery summary.", cut.Markup);
+		Assert.Contains("Improved the outcome guidance.", cut.Markup);
+	}
+
+	[Fact]
 	public void JobOutcomeHint_ShowsCompactVerificationFailureGuidance()
 	{
 		using var context = new BunitContext();

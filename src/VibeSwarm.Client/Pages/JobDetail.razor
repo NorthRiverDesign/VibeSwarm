@@ -65,6 +65,7 @@ else
 								   TargetBranch="@EffectiveTargetBranch"
 								   MergedAt="@Job.MergedAt"
 								   IsPushed="@_changesPushed"
+								   SessionSummary="@Job.SessionSummary"
 								   ReviewChangesHref="@(ShowReviewChangesLink ? "#job-changes-section" : null)"
 								   DeliveryHref="@(ShowDeliveryLink ? "#job-delivery-section" : null)"
 								   ReviewTranscriptHref="#job-messages-section"

@@ -25,13 +25,21 @@
 				}
 			</div>
 
-			<JobOutcomeBadges Status="@Status"
-							  ChangedFilesCount="@ChangedFilesCount"
-							  BuildVerified="@BuildVerified"
-							  GitCommitHash="@GitCommitHash"
-							  PullRequestUrl="@PullRequestUrl"
-							  PullRequestNumber="@PullRequestNumber"
-							  MergedAt="@MergedAt" />
+ 			<JobOutcomeBadges Status="@Status"
+ 							  ChangedFilesCount="@ChangedFilesCount"
+ 							  BuildVerified="@BuildVerified"
+ 							  GitCommitHash="@GitCommitHash"
+ 							  PullRequestUrl="@PullRequestUrl"
+ 							  PullRequestNumber="@PullRequestNumber"
+ 							  MergedAt="@MergedAt" />
+
+			@if (!string.IsNullOrWhiteSpace(NormalizedSessionSummary))
+			{
+				<div class="border rounded p-3 d-flex flex-column gap-2 min-width-0">
+					<div class="small fw-semibold text-body-secondary text-uppercase">Work summary</div>
+					<div class="small white-space-pre-wrap text-break">@NormalizedSessionSummary</div>
+				</div>
+			}
 
 			<div class="row g-2">
 				<div class="col-12 col-lg-4">
@@ -158,6 +166,9 @@
 	public bool IsPushed { get; set; }
 
 	[Parameter]
+	public string? SessionSummary { get; set; }
+
+	[Parameter]
 	public string? ReviewChangesHref { get; set; }
 
 	[Parameter]
@@ -184,6 +195,11 @@
 			: !string.IsNullOrWhiteSpace(BuildOutput) && BuildVerified == false
 				? "#job-verification-output"
 				: null;
+
+	private string? NormalizedSessionSummary
+		=> string.IsNullOrWhiteSpace(SessionSummary)
+			? null
+			: SessionSummary.Trim();
 
 	private OutcomeSummary? Summary
 	{
@@ -246,6 +262,30 @@
 	{
 		get
 		{
+			if (MergedAt.HasValue)
+			{
+				return new DetailBlock("Changes merged", $"The resulting branch changes are already merged{FormatTargetBranchClause()}.");
+			}
+
+			if (!string.IsNullOrWhiteSpace(PullRequestUrl))
+			{
+				return new DetailBlock(
+					$"{JobOutcomeDisplayHelper.FormatPullRequestReference(PullRequestNumber)} created",
+					$"{JobOutcomeDisplayHelper.FormatPullRequestReference(PullRequestNumber)} is ready for review{FormatTargetBranchClause()}.");
+			}
+
+			if (IsPushed)
+			{
+				return new DetailBlock(
+					"Changes pushed remotely",
+					$"The updated branch is already on the remote and ready for the next delivery step{FormatTargetBranchClause()}.");
+			}
+
+			if (!string.IsNullOrWhiteSpace(GitCommitHash))
+			{
+				return new DetailBlock("Commit recorded", $"{JobOutcomeDisplayHelper.FormatCommitLabel(GitCommitHash)} was created for this run.");
+			}
+
 			if (ChangedFilesCount.GetValueOrDefault() > 0)
 			{
 				var fileLabel = ChangedFilesCount == 1 ? "file changed" : "files changed";
@@ -372,6 +412,11 @@
 			if (MergedAt.HasValue)
 			{
 				badges.Add("Merged");
+			}
+
+			if (IsPushed)
+			{
+				badges.Add("Pushed");
 			}
 
 			if (!string.IsNullOrWhiteSpace(BranchName))
