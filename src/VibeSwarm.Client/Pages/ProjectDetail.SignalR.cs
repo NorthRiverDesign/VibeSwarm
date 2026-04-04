@@ -155,10 +155,15 @@ TimeSpan.FromSeconds(10) })
 				await InvokeAsync(() =>
 				{
 					if (_disposed) return Task.CompletedTask;
-					var job = Jobs.FirstOrDefault(j => j.Id.ToString() == jobId);
-					if (job != null)
+					var pagedJob = PagedJobs.FirstOrDefault(j => j.Id.ToString() == jobId);
+					if (pagedJob != null)
 					{
-						job.CurrentActivity = activity;
+						pagedJob.CurrentActivity = activity;
+						StateHasChanged();
+					}
+					if (_activeJobSummary?.Id.ToString() == jobId)
+					{
+						_activeJobSummary.CurrentActivity = activity;
 						StateHasChanged();
 					}
 					return Task.CompletedTask;
@@ -183,6 +188,11 @@ TimeSpan.FromSeconds(10) })
 
 					if (success && (_activeTab == "changes" || _hasUncommittedChangesHeader))
 					{
+						_changesJobs = null; // Invalidate so next load gets fresh data
+						if (_activeTab == "changes")
+						{
+							await EnsureChangesJobsLoadedAsync(force: true);
+						}
 						await LoadChangesTabData();
 					}
 
@@ -201,16 +211,16 @@ TimeSpan.FromSeconds(10) })
 				await InvokeAsync(async () =>
 				{
 					if (_disposed) return;
-					if (!Jobs.Any(j => j.Id.ToString() == jobId))
-					{
-						return;
-					}
-
 					await RefreshJobs();
 					await RefreshUncommittedChangesStatus();
 
 					if (hasChanges || _activeTab == "changes")
 					{
+						_changesJobs = null; // Invalidate so next load gets fresh data
+						if (_activeTab == "changes")
+						{
+							await EnsureChangesJobsLoadedAsync(force: true);
+						}
 						await LoadChangesTabData();
 					}
 
@@ -401,6 +411,7 @@ TimeSpan.FromSeconds(10) })
 					await InvokeAsync(async () =>
 					{
 						if (_disposed) return;
+						await EnsureChangesJobsLoadedAsync();
 						await RefreshUncommittedChangesStatus();
 						await LoadChangesTabData();
 						StateHasChanged();

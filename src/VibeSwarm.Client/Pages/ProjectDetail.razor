@@ -278,7 +278,7 @@ else
         {
             <div class="tab-pane fade show active">
                 <ProjectChangesTab @ref="_changesTab" WorkingPath="@(Project?.WorkingPath ?? string.Empty)"
-                                   Jobs="@Jobs" IsGitRepository="@IsGitRepository"
+                                   Jobs="@(_changesJobs ?? new List<Job>())" IsGitRepository="@IsGitRepository"
                                    HasUncommittedChanges="@_hasUncommittedChangesHeader"
                                    UncommittedFilesCount="@_uncommittedFilesCount"
                                    WorkingTreeStatus="@_workingTreeStatus"
@@ -355,7 +355,6 @@ else
     private const int IdeasPageSize = 10;
 
     private Project? Project { get; set; }
-    private List<Job> Jobs { get; set; } = new();
     private List<JobSummary> PagedJobs { get; set; } = new();
     private List<Provider> Providers { get; set; } = new();
     private Job NewJob { get; set; } = new();
@@ -486,10 +485,7 @@ else
     private bool HasActiveJobs => ProjectActiveJobsCount > 0;
     private bool HasCompletedJobs => ProjectCompletedJobsCount > 0;
 
-    private Job? ActiveJob => Jobs.FirstOrDefault(j =>
-        j.Status == JobStatus.Started ||
-        j.Status == JobStatus.Planning ||
-        j.Status == JobStatus.Processing);
+    private JobSummary? ActiveJob => _activeJobSummary;
 
     private bool CanSuggestIdeas => _hasInference || Providers.Any(p => p.IsEnabled);
 

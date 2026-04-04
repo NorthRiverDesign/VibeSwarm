@@ -168,7 +168,7 @@ public partial class JobService : IJobService
         var projectQuery = _dbContext.Jobs
             .Where(j => j.ProjectId == projectId);
 
-        // Aggregate counts always reflect the full project, not the filtered view
+        // Aggregate counts and token totals always reflect the full project, not the filtered view
         var activeCount = await projectQuery.CountAsync(j =>
             j.Status == JobStatus.New ||
             j.Status == JobStatus.Pending ||
@@ -176,7 +176,32 @@ public partial class JobService : IJobService
             j.Status == JobStatus.Planning ||
             j.Status == JobStatus.Processing ||
             j.Status == JobStatus.Paused, cancellationToken);
-        var completedCount = await projectQuery.CountAsync(j => j.Status == JobStatus.Completed, cancellationToken);
+
+        var completedCount = await projectQuery.CountAsync(j =>
+            j.Status == JobStatus.Completed, cancellationToken);
+
+        var tokenAggregates = await projectQuery
+            .Select(j => new
+            {
+                Input = j.InputTokens ?? 0,
+                Output = j.OutputTokens ?? 0,
+                Cost = j.TotalCostUsd ?? 0m,
+            })
+            .ToListAsync(cancellationToken);
+
+        var totalInputTokens = tokenAggregates.Sum(a => a.Input);
+        var totalOutputTokens = tokenAggregates.Sum(a => a.Output);
+        var totalCostUsd = tokenAggregates.Sum(a => a.Cost);
+
+        // Fetch the first active/processing job summary for the header
+        var activeJobSummary = await ProjectToSummary(
+                projectQuery.Where(j =>
+                    j.Status == JobStatus.Started ||
+                    j.Status == JobStatus.Planning ||
+                    j.Status == JobStatus.Processing)
+                .OrderBy(j => j.StartedAt ?? j.CreatedAt)
+                .Take(1))
+            .FirstOrDefaultAsync(cancellationToken);
 
         var baseQuery = projectQuery.AsQueryable();
 
@@ -217,6 +242,10 @@ public partial class JobService : IJobService
             TotalCount = totalCount,
             ActiveCount = activeCount,
             CompletedCount = completedCount,
+            TotalInputTokens = totalInputTokens,
+            TotalOutputTokens = totalOutputTokens,
+            TotalCostUsd = totalCostUsd,
+            ActiveJobSummary = activeJobSummary,
             Items = await ProjectToSummary(
                     baseQuery
                         .OrderByDescending(j => j.CreatedAt)

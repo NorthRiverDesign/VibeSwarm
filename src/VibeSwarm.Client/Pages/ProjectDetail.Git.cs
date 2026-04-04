@@ -10,6 +10,28 @@ namespace VibeSwarm.Client.Pages;
 
 public partial class ProjectDetail
 {
+    // Lazy-loaded jobs for Changes tab and Uncommitted Changes modal.
+    // Only loaded on-demand when these features are used, not on every refresh.
+    private List<Job>? _changesJobs;
+    private DateTime _lastChangesJobsLoadTime = DateTime.MinValue;
+    private static readonly TimeSpan ChangesJobsDebounceInterval = TimeSpan.FromSeconds(5);
+
+    private async Task EnsureChangesJobsLoadedAsync(bool force = false)
+    {
+        if (!force && _changesJobs != null && (DateTime.UtcNow - _lastChangesJobsLoadTime) < ChangesJobsDebounceInterval)
+            return;
+
+        try
+        {
+            _changesJobs = (await JobService.GetByProjectIdAsync(ProjectId)).ToList();
+            _lastChangesJobsLoadTime = DateTime.UtcNow;
+        }
+        catch
+        {
+            _changesJobs ??= new List<Job>();
+        }
+    }
+
     private async Task LoadGitInfo()
     {
         if (Project == null || string.IsNullOrEmpty(Project.WorkingPath))
@@ -457,6 +479,7 @@ public partial class ProjectDetail
         }
 
         _activeTab = "changes";
+        await EnsureChangesJobsLoadedAsync();
         await RefreshUncommittedChangesStatus();
         await LoadChangesTabData();
     }
@@ -664,6 +687,7 @@ public partial class ProjectDetail
 
         try
         {
+            await EnsureChangesJobsLoadedAsync(force: true);
             await RefreshUncommittedChangesStatus();
             var diffOutput = await VersionControlService.GetWorkingDirectoryDiffAsync(Project.WorkingPath);
             if (!string.IsNullOrEmpty(diffOutput))
@@ -679,7 +703,6 @@ public partial class ProjectDetail
                 _uncommittedDiffError = "No uncommitted changes found";
             }
 
-            // Load completed jobs without a commit hash (pending attribution)
             _pendingCommitJobs = GetPendingCommitAttributionJobs();
         }
         catch (Exception ex)
@@ -957,6 +980,7 @@ public partial class ProjectDetail
     private async Task HandleChangesTabCommitted()
     {
         await RefreshJobs();
+        _changesJobs = null; // Invalidate cached changes jobs
         await RefreshUncommittedChangesStatus();
         if (Project != null && !string.IsNullOrEmpty(Project.WorkingPath) && IsGitRepository)
         {
@@ -966,11 +990,7 @@ public partial class ProjectDetail
         StateHasChanged();
     }
 
-    private ProjectChangesSelection GetProjectChangesSelection()
-        => ProjectChangesSectionResolver.Resolve(
-            Jobs,
-            _workingTreeStatus.HasUncommittedChanges || _hasUncommittedChangesHeader,
-            Math.Max(_workingTreeStatus.ChangedFilesCount, _uncommittedFilesCount));
+
 
     private static string ShortCommitHash(string? commitHash)
     {
@@ -1011,7 +1031,7 @@ public partial class ProjectDetail
 
     private List<Job> GetPendingCommitAttributionJobs()
     {
-        return Jobs
+        return (_changesJobs ?? [])
             .Where(job => job.Status == JobStatus.Completed && string.IsNullOrWhiteSpace(job.GitCommitHash))
             .OrderByDescending(job => job.CompletedAt ?? job.StartedAt ?? job.CreatedAt)
             .ToList();
@@ -1033,7 +1053,7 @@ public partial class ProjectDetail
                 continue;
             }
 
-            var localJob = Jobs.FirstOrDefault(existingJob => existingJob.Id == job.Id);
+            var localJob = _changesJobs?.FirstOrDefault(existingJob => existingJob.Id == job.Id);
             if (localJob != null)
             {
                 localJob.GitCommitHash = commitHash;
@@ -1052,7 +1072,7 @@ public partial class ProjectDetail
                 continue;
             }
 
-            var localJob = Jobs.FirstOrDefault(existingJob => existingJob.Id == job.Id);
+            var localJob = _changesJobs?.FirstOrDefault(existingJob => existingJob.Id == job.Id);
             if (localJob != null)
             {
                 localJob.GitDiff = null;
@@ -1064,6 +1084,7 @@ public partial class ProjectDetail
     private async Task SynchronizeProjectRepositoryStateAsync(bool reloadChangesTab = false)
     {
         await RefreshJobs();
+        _changesJobs = null; // Invalidate cached changes jobs
         await RefreshUncommittedChangesStatus();
 
         if (Project != null && !string.IsNullOrEmpty(Project.WorkingPath) && IsGitRepository)
@@ -1073,6 +1094,7 @@ public partial class ProjectDetail
 
         if (reloadChangesTab || _activeTab == "changes")
         {
+            await EnsureChangesJobsLoadedAsync(force: true);
             await LoadChangesTabData();
         }
     }

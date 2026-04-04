@@ -16,6 +16,12 @@ public partial class ProjectDetail
     private DateTime _lastJobsRefreshTime = DateTime.MinValue;
     private bool _isRefreshingJobs;
 
+    // Aggregated data from the paged result (replaces full Jobs list)
+    private int _projectTotalInputTokens;
+    private int _projectTotalOutputTokens;
+    private decimal _projectTotalCost;
+    private JobSummary? _activeJobSummary;
+
     private async Task RefreshJobs(bool force = false)
     {
         if (Project == null) return;
@@ -28,31 +34,21 @@ public partial class ProjectDetail
         _isRefreshingJobs = true;
         try
         {
-            var allJobsTask = JobService.GetByProjectIdAsync(ProjectId);
-            var pagedJobsTask = JobService.GetPagedByProjectIdAsync(ProjectId, _jobsPageNumber, ProjectJobsPageSize, _jobSearchQuery, _jobStatusFilter);
-            await Task.WhenAll(allJobsTask, pagedJobsTask);
+            var result = await JobService.GetPagedByProjectIdAsync(ProjectId, _jobsPageNumber, ProjectJobsPageSize, _jobSearchQuery, _jobStatusFilter);
 
-            Jobs = allJobsTask.Result.ToList();
-            ProjectActiveJobsCount = Jobs.Count(job =>
-                job.Status == JobStatus.New ||
-                job.Status == JobStatus.Pending ||
-                job.Status == JobStatus.Started ||
-                job.Status == JobStatus.Planning ||
-                job.Status == JobStatus.Processing ||
-                job.Status == JobStatus.Paused ||
-                job.Status == JobStatus.Stalled);
-
-            var result = pagedJobsTask.Result;
             _jobsPageNumber = result.PageNumber;
             PagedJobs = result.Items;
             JobsTotalCount = result.TotalCount;
+            ProjectActiveJobsCount = result.ActiveCount;
             ProjectCompletedJobsCount = result.CompletedCount;
+            _projectTotalInputTokens = result.TotalInputTokens;
+            _projectTotalOutputTokens = result.TotalOutputTokens;
+            _projectTotalCost = result.TotalCostUsd;
+            _activeJobSummary = result.ActiveJobSummary;
             _lastJobsRefreshTime = DateTime.UtcNow;
         }
         catch (Exception)
         {
-            // Swallow transient API errors during background refresh to prevent
-            // unhandled exceptions from crashing the Blazor WASM runtime
         }
         finally
         {
@@ -932,11 +928,11 @@ public partial class ProjectDetail
         await Task.WhenAll(tasks);
     }
 
-    private int GetProjectTotalInputTokens() => Jobs.Sum(j => j.InputTokens ?? 0);
-    private int GetProjectTotalOutputTokens() => Jobs.Sum(j => j.OutputTokens ?? 0);
-    private decimal GetProjectTotalCost() => Jobs.Sum(j => j.TotalCostUsd ?? 0);
-    private bool HasProjectTokenData() => GetProjectTotalInputTokens() > 0 || GetProjectTotalOutputTokens() > 0 ||
-    GetProjectTotalCost() > 0;
+    private int GetProjectTotalInputTokens() => _projectTotalInputTokens;
+    private int GetProjectTotalOutputTokens() => _projectTotalOutputTokens;
+    private decimal GetProjectTotalCost() => _projectTotalCost;
+    private bool HasProjectTokenData() => _projectTotalInputTokens > 0 || _projectTotalOutputTokens > 0 ||
+    _projectTotalCost > 0;
 
     private static string TruncateForToast(string text, int maxLength = 50)
     {
