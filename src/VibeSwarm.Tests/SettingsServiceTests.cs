@@ -66,6 +66,19 @@ public sealed class SettingsServiceTests : IDisposable
 	}
 
 	[Fact]
+	public async Task GetSettingsAsync_CreatesDefaultSettingsWithUtcTimezoneAndCriticalErrorDefaults()
+	{
+		await using var dbContext = CreateDbContext();
+		var service = new SettingsService(dbContext);
+
+		var settings = await service.GetSettingsAsync();
+
+		Assert.Equal("UTC", settings.TimeZoneId);
+		Assert.Equal(AppSettings.DefaultCriticalErrorLogRetentionDays, settings.CriticalErrorLogRetentionDays);
+		Assert.Equal(AppSettings.DefaultCriticalErrorLogMaxEntries, settings.CriticalErrorLogMaxEntries);
+	}
+
+	[Fact]
 	public async Task GetSettingsAsync_NormalizesCriticalErrorLogCapacity()
 	{
 		await using var dbContext = CreateDbContext();

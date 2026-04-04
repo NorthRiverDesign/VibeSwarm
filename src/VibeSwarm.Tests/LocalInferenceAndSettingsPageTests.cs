@@ -17,11 +17,12 @@ public sealed class LocalInferenceAndSettingsPageTests
 [Fact]
 public async Task RenderedLocalInferencePage_ShowsSetupAction_WhenNoProviderConfigured()
 {
-var services = new ServiceCollection();
-services.AddLogging();
-services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService());
-services.AddSingleton<IInferenceService>(new FakeInferenceService());
-services.AddSingleton<NotificationService>();
+	var services = new ServiceCollection();
+	services.AddLogging();
+	services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService());
+	services.AddSingleton<IInferenceService>(new FakeInferenceService());
+	services.AddSingleton<NotificationService>();
+	services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
 
 		await using var renderer = new HtmlRenderer(services.BuildServiceProvider(), NullLoggerFactory.Instance);
 
@@ -35,7 +36,8 @@ services.AddSingleton<NotificationService>();
 		});
 
 Assert.Contains("Inference", html);
-Assert.Contains("Add Provider", html);
+	Assert.Contains("Add", html);
+	Assert.Contains("No inference providers", html);
 Assert.DoesNotContain("App Settings", html);
 }
 
@@ -46,12 +48,14 @@ var services = new ServiceCollection();
 	services.AddLogging();
 	services.AddSingleton<ISettingsService>(new FakeSettingsService());
 	services.AddSingleton<AppTimeZoneService>();
+	services.AddSingleton<IDeveloperModeService>(new FakeDeveloperModeService());
 	services.AddSingleton<IFileSystemService>(new FakeFileSystemService());
 	services.AddSingleton<IProjectService>(new FakeProjectService());
 	services.AddSingleton<IDatabaseService>(new FakeDatabaseService());
 	services.AddSingleton<ICriticalErrorLogService>(new FakeCriticalErrorLogService());
 	services.AddSingleton<NavigationManager>(new TestNavigationManager());
 	services.AddSingleton<NotificationService>();
+	services.AddSingleton<DeveloperUpdateOverlayService>();
 	services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
 
 await using var renderer = new HtmlRenderer(services.BuildServiceProvider(), NullLoggerFactory.Instance);
@@ -69,6 +73,8 @@ return output.ToHtmlString();
 	Assert.Contains("Database Size", html);
 	Assert.Contains("Database", html);
 	Assert.Contains("Open Database Tab", html);
+	Assert.Contains("Developer Mode", html);
+	Assert.Contains("Rebuild And Restart", html);
 	Assert.DoesNotContain("Add Provider", html);
 	Assert.DoesNotContain("inference provider", html);
 }
@@ -106,6 +112,22 @@ public Task<AppSettings> GetSettingsAsync(CancellationToken cancellationToken = 
 public Task<AppSettings> UpdateSettingsAsync(AppSettings settings, CancellationToken cancellationToken = default) => Task.FromResult(settings);
 public Task<string?> GetDefaultProjectsDirectoryAsync(CancellationToken cancellationToken = default) => Task.FromResult<string?>("/tmp/projects");
 }
+
+	private sealed class FakeDeveloperModeService : IDeveloperModeService
+	{
+		public Task<DeveloperModeStatus> GetStatusAsync(CancellationToken cancellationToken = default) => Task.FromResult(new DeveloperModeStatus
+		{
+			IsEnabled = true,
+			Stage = DeveloperUpdateStage.Ready,
+			StatusMessage = "Developer mode is enabled.",
+			BuildCommandSummary = "dotnet build VibeSwarm.sln --nologo",
+			RestartCommandSummary = "systemctl restart vibeswarm.service",
+			WorkingDirectory = "/tmp",
+			RecentOutput = []
+		});
+
+		public Task<DeveloperModeStatus> StartSelfUpdateAsync(CancellationToken cancellationToken = default) => GetStatusAsync(cancellationToken);
+	}
 
 	private sealed class FakeCriticalErrorLogService : ICriticalErrorLogService
 	{

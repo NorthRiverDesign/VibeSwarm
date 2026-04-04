@@ -1,8 +1,11 @@
 @inject ISettingsService SettingsService
+@inject IDeveloperModeService DeveloperModeService
 @inject AppTimeZoneService AppTimeZoneService
 @inject IFileSystemService FileSystemService
 @inject NotificationService NotificationService
 @inject ICriticalErrorLogService CriticalErrorLogService
+@inject DeveloperUpdateOverlayService DeveloperUpdateOverlayService
+@using VibeSwarm.Shared.Models
 
 <div class="card">
 <div class="card-header bg-body-secondary">
@@ -19,6 +22,74 @@ else
 {
 <EditForm Model="@_settings" OnValidSubmit="SaveSettings">
 <DataAnnotationsValidator />
+
+@if (_developerModeStatus?.IsEnabled == true)
+{
+<h6 class="text-body-secondary mb-3">
+<i class="bi bi-code-slash me-1"></i>Developer Mode
+</h6>
+
+<div class="border rounded-3 p-3 bg-body-tertiary mb-4 d-flex flex-column gap-3">
+<div class="d-flex flex-column flex-lg-row justify-content-between gap-3">
+<div class="d-flex flex-column gap-2">
+<div class="d-flex align-items-center gap-2 flex-wrap">
+<span class="@GetDeveloperModeBadgeClass()">@GetDeveloperModeBadgeText()</span>
+<span class="small text-body-secondary">@_developerModeStatus.StatusMessage</span>
+</div>
+@if (!string.IsNullOrWhiteSpace(_developerModeStatus.WorkingDirectory))
+{
+<div class="small text-body-secondary text-break">
+<i class="bi bi-folder2-open me-1"></i>@_developerModeStatus.WorkingDirectory
+</div>
+}
+@if (!string.IsNullOrWhiteSpace(_developerModeStatus.BuildCommandSummary))
+{
+<div class="small">
+<div class="text-body-secondary fw-semibold mb-1">Build command</div>
+<code class="text-break white-space-pre-wrap">@_developerModeStatus.BuildCommandSummary</code>
+</div>
+}
+@if (!string.IsNullOrWhiteSpace(_developerModeStatus.RestartCommandSummary))
+{
+<div class="small">
+<div class="text-body-secondary fw-semibold mb-1">Restart command</div>
+<code class="text-break white-space-pre-wrap">@_developerModeStatus.RestartCommandSummary</code>
+</div>
+}
+</div>
+<div class="d-flex flex-column gap-2">
+<button type="button" class="btn btn-primary" @onclick="StartSelfUpdate" disabled="@(_isStartingSelfUpdate || !_developerModeStatus.CanStartUpdate)">
+@if (_isStartingSelfUpdate)
+{
+<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+<span>Starting...</span>
+}
+else if (_developerModeStatus.IsUpdateInProgress)
+{
+<i class="bi bi-arrow-repeat me-1"></i>
+<span>Update In Progress</span>
+}
+else
+{
+<i class="bi bi-arrow-repeat me-1"></i>
+<span>Rebuild And Restart</span>
+}
+</button>
+@if (!_developerModeStatus.SupportsSelfUpdate)
+{
+<div class="small text-warning-emphasis">
+Set <code>DeveloperMode__BuildCommand</code> and either <code>DeveloperMode__RestartCommand</code> or <code>DeveloperMode__ServiceName</code> in <code>.env</code>.
+</div>
+}
+</div>
+</div>
+<div class="small text-body-secondary">
+This starts a local rebuild and launches the configured restart command. The app will show a full-screen updating state and refresh automatically after the service comes back online.
+</div>
+</div>
+
+<hr class="my-4" />
+}
 
 <h6 class="text-body-secondary mb-3">
 <i class="bi bi-folder me-1"></i>Project Defaults
@@ -283,6 +354,8 @@ repository's default git identity without provider attribution.
 	private bool _isLoadingCriticalErrorLogs;
 	private bool _isPruningCriticalErrorLogs;
 	private List<CriticalErrorLogEntry> _criticalErrorLogs = [];
+	private DeveloperModeStatus? _developerModeStatus;
+	private bool _isStartingSelfUpdate;
 
 	private string _placeholder => OperatingSystem.IsWindows() ? @"C:\Projects" : "/home/user/projects";
 	private string _examplePath => OperatingSystem.IsWindows() ? @"C:\Projects" : "/home/user/projects";
@@ -311,6 +384,7 @@ repository's default git identity without provider attribution.
 			_settings = await SettingsService.GetSettingsAsync();
 			_settings.TimeZoneId = DateTimeHelper.ResolveTimeZone(_settings.TimeZoneId).Id;
 			AppTimeZoneService.ApplyTimeZone(_settings.TimeZoneId);
+			_developerModeStatus = await DeveloperModeService.GetStatusAsync();
 			await CheckDirectoryExists();
 			await LoadCriticalErrorLogs();
 		}
@@ -358,6 +432,26 @@ repository's default git identity without provider attribution.
 	}
 
 	private async Task ReloadSettings() => await LoadSettings();
+
+	private async Task StartSelfUpdate()
+	{
+		_isStartingSelfUpdate = true;
+
+		try
+		{
+			_developerModeStatus = await DeveloperModeService.StartSelfUpdateAsync();
+			DeveloperUpdateOverlayService.SetStatus(_developerModeStatus);
+			NotificationService.ShowInfo("Developer update started. The page will refresh automatically after restart.", "Developer Mode");
+		}
+		catch (Exception ex)
+		{
+			NotificationService.ShowError($"Failed to start developer update: {ex.Message}");
+		}
+		finally
+		{
+			_isStartingSelfUpdate = false;
+		}
+	}
 
 	private async Task RefreshCriticalErrorLogs() => await LoadCriticalErrorLogs();
 
@@ -449,5 +543,29 @@ repository's default git identity without provider attribution.
 	{
 		NotificationService.ShowSuccess("Projects imported successfully!");
 		StateHasChanged();
+	}
+
+	private string GetDeveloperModeBadgeClass()
+	{
+		return _developerModeStatus?.Stage switch
+		{
+			DeveloperUpdateStage.Building => "badge bg-primary-subtle text-primary-emphasis",
+			DeveloperUpdateStage.Restarting => "badge bg-primary-subtle text-primary-emphasis",
+			DeveloperUpdateStage.Failed => "badge bg-danger-subtle text-danger-emphasis",
+			_ when _developerModeStatus?.SupportsSelfUpdate == true => "badge bg-success-subtle text-success-emphasis",
+			_ => "badge bg-warning-subtle text-warning-emphasis"
+		};
+	}
+
+	private string GetDeveloperModeBadgeText()
+	{
+		return _developerModeStatus?.Stage switch
+		{
+			DeveloperUpdateStage.Building => "Building",
+			DeveloperUpdateStage.Restarting => "Restarting",
+			DeveloperUpdateStage.Failed => "Failed",
+			_ when _developerModeStatus?.SupportsSelfUpdate == true => "Ready",
+			_ => "Needs Configuration"
+		};
 	}
 }

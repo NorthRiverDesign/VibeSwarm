@@ -43,6 +43,17 @@ public class DiagnosticsController : ControllerBase
 		return NoContent();
 	}
 
+	[HttpGet("ping")]
+	[AllowAnonymous]
+	public IActionResult Ping()
+	{
+		return Ok(new
+		{
+			Ok = true,
+			ServerTimeUtc = DateTime.UtcNow
+		});
+	}
+
 	private static Guid? TryGetUserId(ClaimsPrincipal user)
 	{
 		var userId = user.FindFirstValue(ClaimTypes.NameIdentifier);

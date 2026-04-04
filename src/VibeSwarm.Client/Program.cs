@@ -43,6 +43,7 @@ builder.Services.AddScoped<ICommonProviderSetupService, HttpCommonProviderSetupS
 builder.Services.AddScoped<ISkillService, HttpSkillService>();
 builder.Services.AddScoped<ITeamRoleService, HttpTeamRoleService>();
 builder.Services.AddScoped<ISettingsService, HttpSettingsService>();
+builder.Services.AddScoped<IDeveloperModeService, HttpDeveloperModeService>();
 builder.Services.AddScoped<ICriticalErrorLogService, HttpCriticalErrorLogService>();
 builder.Services.AddScoped<IIdeaService, HttpIdeaService>();
 builder.Services.AddScoped<IUserService, HttpUserService>();
@@ -63,6 +64,7 @@ builder.Services.AddScoped<ChangePasswordModalService>();
 builder.Services.AddScoped<ThemeService>();
 builder.Services.AddScoped<AppTimeZoneService>();
 builder.Services.AddScoped<QueuePanelStateService>();
+builder.Services.AddScoped<DeveloperUpdateOverlayService>();
 
 // Auth
 builder.Services.AddAuthorizationCore();

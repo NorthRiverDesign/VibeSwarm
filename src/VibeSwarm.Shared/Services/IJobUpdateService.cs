@@ -1,5 +1,7 @@
 namespace VibeSwarm.Shared.Services;
 
+using VibeSwarm.Shared.Models;
+
 /// <summary>
 /// Service for broadcasting job updates to connected clients
 /// </summary>
@@ -166,4 +168,14 @@ public interface IJobUpdateService
     /// <param name="projectId">The project ID</param>
     /// <param name="loop">The current iteration loop state</param>
     Task NotifyAutoPilotStateChanged(Guid projectId, Data.IterationLoop loop);
+
+	/// <summary>
+	/// Notifies clients that the application's self-update state changed.
+	/// </summary>
+	Task NotifyDeveloperUpdateStatusChanged(DeveloperModeStatus status);
+
+	/// <summary>
+	/// Streams self-update output to connected clients.
+	/// </summary>
+	Task NotifyDeveloperUpdateOutputAdded(DeveloperUpdateOutputLine line);
 }

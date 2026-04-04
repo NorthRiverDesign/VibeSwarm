@@ -4,9 +4,11 @@
 @inject AppTimeZoneService AppTimeZoneService
 @inject IJobService JobService
 @inject IIdeaService IdeaService
+@inject IDeveloperModeService DeveloperModeService
 @inject ICriticalErrorLogService CriticalErrorLogService
 @inject ChangePasswordModalService ChangePasswordModalService
 @inject QueuePanelStateService QueuePanelStateService
+@inject DeveloperUpdateOverlayService DeveloperUpdateOverlayService
 @inject HttpClient HttpClient
 @inject NavigationManager NavigationManager
 @implements IAsyncDisposable
@@ -106,6 +108,7 @@
 
     @* Notifications Panel Overlay — rendered outside sticky header to avoid fixed-in-sticky clipping on mobile *@
     <NotificationsPanelOverlay />
+    <DeveloperUpdateOverlay />
 
     @* Mobile Menu Overlay *@
     @if (_mobileMenuOpen)
@@ -327,6 +330,7 @@
         if (firstRender)
         {
             await InitializeGlobalHub();
+            await SyncDeveloperUpdateStatusAsync();
             await RegisterSearchShortcut();
         }
     }
@@ -444,12 +448,33 @@ TimeSpan.FromSeconds(10) })
                 });
             });
 
+			_globalHubConnection.On<VibeSwarm.Shared.Models.DeveloperModeStatus>("DeveloperUpdateStatusChanged",
+			async status =>
+			{
+				await InvokeAsync(() =>
+				{
+					DeveloperUpdateOverlayService.SetStatus(status);
+					StateHasChanged();
+				});
+			});
+
+			_globalHubConnection.On<VibeSwarm.Shared.Models.DeveloperUpdateOutputLine>("DeveloperUpdateOutputAdded",
+			async line =>
+			{
+				await InvokeAsync(() =>
+				{
+					DeveloperUpdateOverlayService.AppendOutput(line);
+					StateHasChanged();
+				});
+			});
+
             _globalHubConnection.Reconnected += async (connectionId) =>
             {
                 try
                 {
                     await _globalHubConnection.InvokeAsync("SubscribeToGlobalEvents");
                     await _globalHubConnection.InvokeAsync("SubscribeToJobList");
+					await SyncDeveloperUpdateStatusAsync();
                 }
                 catch
                 {
@@ -471,6 +496,22 @@ TimeSpan.FromSeconds(10) })
             _hubInitialized = true;
         }
     }
+
+	private async Task SyncDeveloperUpdateStatusAsync()
+	{
+		try
+		{
+			var status = await DeveloperModeService.GetStatusAsync();
+			await InvokeAsync(() =>
+			{
+				DeveloperUpdateOverlayService.SetStatus(status);
+				StateHasChanged();
+			});
+		}
+		catch
+		{
+		}
+	}
 
     // Global SignalR event handlers for cross-page notifications
     private void OnConnectionStateChanged(string state)

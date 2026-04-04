@@ -174,8 +174,11 @@ builder.Services.AddSignalR(options =>
     options.StatefulReconnectBufferSize = 100 * 1024; // 100KB
 });
 
+builder.Services.Configure<DeveloperModeOptions>(builder.Configuration.GetSection(DeveloperModeOptions.SectionName));
 builder.Services.AddWorkerServices();
 builder.Services.AddVibeSwarmData(connectionString, databaseProvider);
+builder.Services.AddSingleton<ISystemCommandRunner, SystemCommandRunner>();
+builder.Services.AddSingleton<IDeveloperModeService, DeveloperUpdateService>();
 
 // Add Identity services
 builder.Services.AddIdentity<ApplicationUser, IdentityRole<Guid>>(options =>

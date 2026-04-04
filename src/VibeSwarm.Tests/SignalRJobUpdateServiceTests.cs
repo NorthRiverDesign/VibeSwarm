@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Logging.Abstractions;
+using VibeSwarm.Shared.Models;
 using VibeSwarm.Web.Hubs;
 using VibeSwarm.Web.Services;
 
@@ -43,6 +44,28 @@ public sealed class SignalRJobUpdateServiceTests
 			ideaId.ToString(),
 			projectId.ToString(),
 			jobId.ToString());
+	}
+
+	[Fact]
+	public async Task NotifyDeveloperUpdateStatusChanged_BroadcastsToGlobalEvents()
+	{
+		var hubContext = new TestHubContext();
+		var service = new SignalRJobUpdateService(hubContext, NullLogger<SignalRJobUpdateService>.Instance);
+		var status = new DeveloperModeStatus
+		{
+			IsEnabled = true,
+			IsUpdateInProgress = true,
+			Stage = DeveloperUpdateStage.Building,
+			StatusMessage = "Building..."
+		};
+
+		await service.NotifyDeveloperUpdateStatusChanged(status);
+
+		AssertInvocation(
+			hubContext,
+			"group:global-events",
+			"DeveloperUpdateStatusChanged",
+			status);
 	}
 
 	private static void AssertInvocation(
