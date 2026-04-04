@@ -29,7 +29,8 @@
 							  ChangedFilesCount="@ChangedFilesCount"
 							  BuildVerified="@BuildVerified"
 							  GitCommitHash="@GitCommitHash"
-							  PullRequestUrl="@PullRequestUrl" />
+							  PullRequestUrl="@PullRequestUrl"
+							  PullRequestNumber="@PullRequestNumber" />
 
 			<div class="row g-2">
 				<div class="col-12 col-lg-4">
@@ -82,7 +83,7 @@
 				<div class="small text-body-secondary">@NextStepBlock.Message</div>
 				@if (NextStepActions.Count > 0)
 				{
-					<div class="d-flex flex-column flex-sm-row flex-wrap gap-2">
+					<div class="d-grid d-sm-flex flex-wrap gap-2">
 						@foreach (var action in NextStepActions)
 						{
 							<a class="btn @(action.IsPrimary ? "btn-primary" : "btn-secondary") btn-sm"
@@ -99,7 +100,7 @@
 
 			@if (!string.IsNullOrWhiteSpace(BuildOutput) && BuildVerified == false)
 			{
-				<details>
+				<details id="job-verification-output">
 					<summary class="small text-body-secondary cursor-pointer">Show verification output</summary>
 					<pre class="mt-2 mb-0 p-3 bg-body-tertiary rounded small white-space-pre-wrap overflow-auto"
 						 style="max-height: 300px;">@BuildOutput</pre>
@@ -161,14 +162,27 @@
 	[Parameter]
 	public string? DeliveryHref { get; set; }
 
-	private bool HasDeliveredChanges => !string.IsNullOrWhiteSpace(PullRequestUrl) || !string.IsNullOrWhiteSpace(GitCommitHash);
+	[Parameter]
+	public string? ReviewTranscriptHref { get; set; }
 
-	private bool HasDetectedChanges => ChangedFilesCount.GetValueOrDefault() > 0 || HasDeliveredChanges;
+	[Parameter]
+	public string? VerificationOutputHref { get; set; }
+
+	private bool HasDeliveredChanges => JobOutcomeDisplayHelper.HasDeliveredChanges(PullRequestUrl, GitCommitHash);
+
+	private bool HasDetectedChanges => JobOutcomeDisplayHelper.HasDetectedChanges(ChangedFilesCount, PullRequestUrl, GitCommitHash);
 
 	private bool HasVerificationConfigured
 		=> BuildVerificationEnabled
 			|| !string.IsNullOrWhiteSpace(BuildCommand)
 			|| !string.IsNullOrWhiteSpace(TestCommand);
+
+	private string? EffectiveVerificationOutputHref
+		=> !string.IsNullOrWhiteSpace(VerificationOutputHref)
+			? VerificationOutputHref
+			: !string.IsNullOrWhiteSpace(BuildOutput) && BuildVerified == false
+				? "#job-verification-output"
+				: null;
 
 	private OutcomeSummary? Summary
 	{
@@ -184,15 +198,15 @@
 						: "Post-run verification failed after the run completed."),
 				JobStatus.Completed when !string.IsNullOrWhiteSpace(PullRequestUrl) => new OutcomeSummary(
 					"bi-check2-circle",
-					"Changes delivered with a pull request",
-					"The run completed successfully and a pull request is ready for review."),
+					$"{JobOutcomeDisplayHelper.FormatPullRequestReference(PullRequestNumber)} ready for review",
+					$"The run completed successfully and {JobOutcomeDisplayHelper.FormatPullRequestReference(PullRequestNumber).ToLowerInvariant()} is ready for review."),
 				JobStatus.Completed when MergedAt.HasValue => new OutcomeSummary(
 					"bi-check2-circle",
 					"Changes merged into the target branch",
 					"The run completed successfully and the resulting changes are already merged."),
 				JobStatus.Completed when !string.IsNullOrWhiteSpace(GitCommitHash) => new OutcomeSummary(
 					"bi-check2-circle",
-					"Changes committed to the branch",
+					$"{JobOutcomeDisplayHelper.FormatCommitLabel(GitCommitHash)} recorded",
 					"The run completed successfully and the resulting changes are already committed."),
 				JobStatus.Completed when ChangedFilesCount == 0 => new OutcomeSummary(
 					"bi-file-earmark",
@@ -239,7 +253,7 @@
 
 			if (HasDeliveredChanges)
 			{
-				return new DetailBlock("Deliverable result recorded", "The repository has a commit or pull request associated with this run.");
+				return new DetailBlock("Deliverable result recorded", "The repository already has a commit or pull request associated with this run.");
 			}
 
 			return Status switch
@@ -269,7 +283,7 @@
 
 			if (HasVerificationConfigured)
 			{
-				return new DetailBlock("Verification was enabled", "This project has post-run verification configured, but this run did not record a result.");
+				return new DetailBlock("Verification result missing", "This project is configured to verify changes after a run, but this job did not record a verification result.");
 			}
 
 			return new DetailBlock("Verification not configured", "This project does not run build or test verification before delivery.");
@@ -308,8 +322,8 @@
 			if (!string.IsNullOrWhiteSpace(PullRequestUrl))
 			{
 				return new DetailBlock(
-					"Pull request ready",
-					$"A pull request{FormatPullRequestSuffix()} is ready{FormatTargetBranchClause()}.");
+					$"{JobOutcomeDisplayHelper.FormatPullRequestReference(PullRequestNumber)} ready",
+					$"{JobOutcomeDisplayHelper.FormatPullRequestReference(PullRequestNumber)} is ready{FormatTargetBranchClause()}.");
 			}
 
 			if (MergedAt.HasValue)
@@ -328,7 +342,7 @@
 
 			if (!string.IsNullOrWhiteSpace(GitCommitHash))
 			{
-				return new DetailBlock("Changes committed locally", "A commit exists for this run, but it has not been delivered remotely yet.");
+				return new DetailBlock("Changes committed locally", $"{JobOutcomeDisplayHelper.FormatCommitLabel(GitCommitHash)} exists for this run, but it has not been delivered remotely yet.");
 			}
 
 			if (HasDetectedChanges && Status == JobStatus.Completed)
@@ -366,9 +380,14 @@
 
 			badges.Add(DeliveryMode == GitChangeDeliveryMode.PullRequest ? "Pull request flow" : "Branch flow");
 
+			if (PullRequestNumber.HasValue)
+			{
+				badges.Add($"PR #{PullRequestNumber.Value}");
+			}
+
 			if (!string.IsNullOrWhiteSpace(GitCommitHash))
 			{
-				badges.Add($"Commit {ShortCommitHash}");
+				badges.Add(JobOutcomeDisplayHelper.FormatCommitLabel(GitCommitHash));
 			}
 
 			return badges;
@@ -381,7 +400,7 @@
 		{
 			if (BuildVerified == false)
 			{
-				return new DetailBlock("Review the verification failure", "Inspect the verification output and repository changes before trying to deliver them.");
+				return new DetailBlock("Start with the failed checks", "Inspect the verification output and repository changes before trying to deliver them.");
 			}
 
 			if (!string.IsNullOrWhiteSpace(PullRequestUrl))
@@ -419,20 +438,25 @@
 		{
 			var actions = new List<NextStepAction>();
 
+			if (BuildVerified == false && !string.IsNullOrWhiteSpace(EffectiveVerificationOutputHref))
+			{
+				actions.Add(new NextStepAction("Review verification output", "bi-shield-x", EffectiveVerificationOutputHref, true, null, null));
+			}
+
 			if (!string.IsNullOrWhiteSpace(PullRequestUrl))
 			{
 				actions.Add(new NextStepAction(
-					$"Open PR{FormatPullRequestSuffix()}",
+					$"Open {JobOutcomeDisplayHelper.FormatPullRequestReference(PullRequestNumber)}",
 					"bi-github",
 					PullRequestUrl,
-					true,
+					actions.Count == 0,
 					"_blank",
 					"noreferrer"));
 			}
 
 			if (!string.IsNullOrWhiteSpace(ReviewChangesHref))
 			{
-				actions.Add(new NextStepAction("Review changes", "bi-files", ReviewChangesHref, string.IsNullOrWhiteSpace(PullRequestUrl), null, null));
+				actions.Add(new NextStepAction("Review changes", "bi-files", ReviewChangesHref, actions.Count == 0, null, null));
 			}
 
 			if (!string.IsNullOrWhiteSpace(DeliveryHref) && BuildVerified != false && Status == JobStatus.Completed)
@@ -440,24 +464,21 @@
 				actions.Add(new NextStepAction("Go to delivery", "bi-cloud-upload", DeliveryHref, actions.Count == 0, null, null));
 			}
 
+			if (!string.IsNullOrWhiteSpace(ReviewTranscriptHref)
+				&& Status is JobStatus.Failed or JobStatus.Cancelled or JobStatus.Stalled
+				&& actions.All(action => !string.Equals(action.Href, ReviewTranscriptHref, StringComparison.Ordinal)))
+			{
+				actions.Add(new NextStepAction("Review transcript", "bi-chat-square-text", ReviewTranscriptHref, actions.Count == 0, null, null));
+			}
+
 			return actions;
 		}
 	}
-
-	private string ShortCommitHash
-		=> string.IsNullOrWhiteSpace(GitCommitHash)
-			? string.Empty
-			: GitCommitHash[..Math.Min(7, GitCommitHash.Length)];
 
 	private string FormatTargetBranchClause()
 		=> string.IsNullOrWhiteSpace(TargetBranch)
 			? string.Empty
 			: $" targeting {TargetBranch}";
-
-	private string FormatPullRequestSuffix()
-		=> PullRequestNumber.HasValue
-			? $" #{PullRequestNumber.Value}"
-			: string.Empty;
 
 	private sealed class OutcomeSummary(string icon, string title, string message)
 	{

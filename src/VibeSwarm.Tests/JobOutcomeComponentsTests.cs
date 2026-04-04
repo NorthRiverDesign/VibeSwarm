@@ -16,11 +16,12 @@ public sealed class JobOutcomeComponentsTests
 			.Add(component => component.Status, JobStatus.Completed)
 			.Add(component => component.ChangedFilesCount, 3)
 			.Add(component => component.BuildVerified, true)
+			.Add(component => component.PullRequestNumber, 42)
 			.Add(component => component.PullRequestUrl, "https://github.com/octo-org/octo-repo/pull/42"));
 
 		Assert.Contains("3 files changed", cut.Markup);
-		Assert.Contains("Build verified", cut.Markup);
-		Assert.Contains("PR ready", cut.Markup);
+		Assert.Contains("Checks passed", cut.Markup);
+		Assert.Contains("PR #42", cut.Markup);
 	}
 
 	[Fact]
@@ -33,7 +34,7 @@ public sealed class JobOutcomeComponentsTests
 			.Add(component => component.ChangedFilesCount, 2));
 
 		Assert.Contains("2 files changed", cut.Markup);
-		Assert.Contains("Needs review", cut.Markup);
+		Assert.Contains("Review changes", cut.Markup);
 	}
 
 	[Fact]
@@ -49,8 +50,9 @@ public sealed class JobOutcomeComponentsTests
 
 		Assert.Contains("Verification blocked delivery", cut.Markup);
 		Assert.Contains("Verification failed", cut.Markup);
-		Assert.Contains("Build failed", cut.Markup);
-		Assert.Contains("Review the verification failure", cut.Markup);
+		Assert.Contains("Checks failed", cut.Markup);
+		Assert.Contains("Start with the failed checks", cut.Markup);
+		Assert.Contains("Review verification output", cut.Markup);
 		Assert.Contains("Show verification output", cut.Markup);
 		Assert.Contains("dotnet test failed", cut.Markup);
 	}
@@ -72,7 +74,7 @@ public sealed class JobOutcomeComponentsTests
 			.Add(component => component.ReviewChangesHref, "#job-changes-section")
 			.Add(component => component.DeliveryHref, "#job-delivery-section"));
 
-		Assert.Contains("Verification was enabled", cut.Markup);
+		Assert.Contains("Verification result missing", cut.Markup);
 		Assert.Contains("dotnet build", cut.Markup);
 		Assert.Contains("dotnet test", cut.Markup);
 		Assert.Contains("Ready for delivery", cut.Markup);
@@ -92,8 +94,8 @@ public sealed class JobOutcomeComponentsTests
 			.Add(component => component.ChangedFilesCount, 2)
 			.Add(component => component.BuildVerified, false));
 
-		Assert.Contains("Verification failed.", cut.Markup);
-		Assert.Contains("Review the output before delivering these changes.", cut.Markup);
+		Assert.Contains("Checks failed.", cut.Markup);
+		Assert.Contains("Review the verification output before delivering these changes.", cut.Markup);
 	}
 
 	[Fact]
@@ -105,9 +107,36 @@ public sealed class JobOutcomeComponentsTests
 			.Add(component => component.Status, JobStatus.Completed.ToString())
 			.Add(component => component.Prompt, "Ship the fix")
 			.Add(component => component.TimeDisplay, "now")
+			.Add(component => component.PullRequestNumber, 42)
 			.Add(component => component.PullRequestUrl, "https://github.com/octo-org/octo-repo/pull/42"));
 
-		Assert.Contains("PR ready.", cut.Markup);
-		Assert.Contains("Review and merge it when the changes are approved.", cut.Markup);
+		Assert.Contains("PR #42 ready.", cut.Markup);
+		Assert.Contains("Review it and merge when the changes are approved.", cut.Markup);
+	}
+
+	[Fact]
+	public void JobOutcomeSummaryCard_ShowsReviewTranscriptActionForStalledRuns()
+	{
+		using var context = new BunitContext();
+
+		var cut = context.Render<JobOutcomeSummaryCard>(parameters => parameters
+			.Add(component => component.Status, JobStatus.Stalled)
+			.Add(component => component.ReviewTranscriptHref, "#job-messages-section"));
+
+		Assert.Contains("Run stalled before completion", cut.Markup);
+		Assert.Contains("Review transcript", cut.Markup);
+		Assert.Contains("#job-messages-section", cut.Markup);
+	}
+
+	[Fact]
+	public void JobOutcomeBadges_ShowsShortCommitLabelForCommittedRuns()
+	{
+		using var context = new BunitContext();
+
+		var cut = context.Render<JobOutcomeBadges>(parameters => parameters
+			.Add(component => component.Status, JobStatus.Completed)
+			.Add(component => component.GitCommitHash, "0123456789abcdef"));
+
+		Assert.Contains("Commit 0123456", cut.Markup);
 	}
 }

@@ -331,13 +331,15 @@
  															  ChangedFilesCount="@job.ChangedFilesCount"
  															  BuildVerified="@job.BuildVerified"
  															  GitCommitHash="@job.GitCommitHash"
- 															  PullRequestUrl="@job.PullRequestUrl" />
- 										</div>
+ 															  PullRequestUrl="@job.PullRequestUrl"
+															  PullRequestNumber="@job.PullRequestNumber" />
+										</div>
 										<JobOutcomeHint Status="@job.Status"
 														ChangedFilesCount="@job.ChangedFilesCount"
 														BuildVerified="@job.BuildVerified"
 														GitCommitHash="@job.GitCommitHash"
-														PullRequestUrl="@job.PullRequestUrl" />
+														PullRequestUrl="@job.PullRequestUrl"
+														PullRequestNumber="@job.PullRequestNumber" />
 										@* Token and cost stats row *@
 										@if (job.InputTokens.HasValue || job.OutputTokens.HasValue || job.TotalCostUsd.HasValue)
 										{

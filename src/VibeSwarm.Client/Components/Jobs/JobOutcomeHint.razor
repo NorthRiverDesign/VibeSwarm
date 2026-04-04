@@ -27,75 +27,9 @@
 	[Parameter]
 	public string? PullRequestUrl { get; set; }
 
-	private bool HasDeliveredChanges => !string.IsNullOrWhiteSpace(PullRequestUrl) || !string.IsNullOrWhiteSpace(GitCommitHash);
+	[Parameter]
+	public int? PullRequestNumber { get; set; }
 
-	private bool HasDetectedChanges => ChangedFilesCount.GetValueOrDefault() > 0 || HasDeliveredChanges;
-
-	private OutcomeHintSummary? Summary
-	{
-		get
-		{
-			return Status switch
-			{
-				JobStatus.Completed when BuildVerified == false => new OutcomeHintSummary(
-					"bi-shield-x",
-					"Verification failed.",
-					"Review the output before delivering these changes.",
-					"d-flex align-items-start gap-2 mt-2 px-2 py-2 rounded small bg-danger-subtle text-danger-emphasis"),
-				JobStatus.Completed when !string.IsNullOrWhiteSpace(PullRequestUrl) => new OutcomeHintSummary(
-					"bi-github",
-					"PR ready.",
-					"Review and merge it when the changes are approved.",
-					"d-flex align-items-start gap-2 mt-2 px-2 py-2 rounded small bg-success-subtle text-success-emphasis"),
-				JobStatus.Completed when !string.IsNullOrWhiteSpace(GitCommitHash) => new OutcomeHintSummary(
-					"bi-git",
-					"Commit created.",
-					"Push it or open a pull request when you are ready.",
-					"d-flex align-items-start gap-2 mt-2 px-2 py-2 rounded small bg-primary-subtle text-primary-emphasis"),
-				JobStatus.Completed when ChangedFilesCount == 0 => new OutcomeHintSummary(
-					"bi-file-earmark",
-					"No code changes.",
-					"This run finished without any detected file modifications.",
-					"d-flex align-items-start gap-2 mt-2 px-2 py-2 rounded small bg-body-tertiary text-body-secondary"),
-				JobStatus.Completed when BuildVerified == true => new OutcomeHintSummary(
-					"bi-check2-circle",
-					"Verified changes ready.",
-					"Review the diff and finish delivery when it looks good.",
-					"d-flex align-items-start gap-2 mt-2 px-2 py-2 rounded small bg-success-subtle text-success-emphasis"),
-				JobStatus.Completed when HasDetectedChanges => new OutcomeHintSummary(
-					"bi-send-check",
-					"Changes ready.",
-					"Review the diff and deliver them when you are satisfied.",
-					"d-flex align-items-start gap-2 mt-2 px-2 py-2 rounded small bg-warning-subtle text-warning-emphasis"),
-				JobStatus.Failed or JobStatus.Cancelled or JobStatus.Stalled when HasDetectedChanges => new OutcomeHintSummary(
-					"bi-exclamation-triangle",
-					"Changes still present.",
-					"Review them before retrying, committing, or discarding anything.",
-					"d-flex align-items-start gap-2 mt-2 px-2 py-2 rounded small bg-warning-subtle text-warning-emphasis"),
-				JobStatus.Failed => new OutcomeHintSummary(
-					"bi-x-circle",
-					"Run failed.",
-					"Check the transcript before retrying.",
-					"d-flex align-items-start gap-2 mt-2 px-2 py-2 rounded small bg-danger-subtle text-danger-emphasis"),
-				JobStatus.Cancelled => new OutcomeHintSummary(
-					"bi-slash-circle",
-					"Run cancelled.",
-					"It stopped before reaching a deliverable result.",
-					"d-flex align-items-start gap-2 mt-2 px-2 py-2 rounded small bg-body-tertiary text-body-secondary"),
-				JobStatus.Stalled => new OutcomeHintSummary(
-					"bi-exclamation-triangle",
-					"Run stalled.",
-					"Check the transcript and retry if it still needs work.",
-					"d-flex align-items-start gap-2 mt-2 px-2 py-2 rounded small bg-warning-subtle text-warning-emphasis"),
-				JobStatus.Paused => new OutcomeHintSummary(
-					"bi-chat-dots",
-					"Waiting for input.",
-					"Reply to continue the run.",
-					"d-flex align-items-start gap-2 mt-2 px-2 py-2 rounded small bg-warning-subtle text-warning-emphasis"),
-				_ => null
-			};
-		}
-	}
-
-	private sealed record OutcomeHintSummary(string Icon, string Title, string Message, string ContainerClass);
+	private JobOutcomeHintModel? Summary
+		=> JobOutcomeDisplayHelper.BuildHint(Status, ChangedFilesCount, BuildVerified, GitCommitHash, PullRequestUrl, PullRequestNumber);
 }

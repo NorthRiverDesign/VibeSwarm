@@ -94,17 +94,19 @@
                 }
             </div>
 
- 			<JobOutcomeBadges Status="@ParsedStatus"
- 							  ChangedFilesCount="@ChangedFilesCount"
- 							  BuildVerified="@BuildVerified"
- 							  GitCommitHash="@GitCommitHash"
- 							  PullRequestUrl="@PullRequestUrl" />
+  			<JobOutcomeBadges Status="@ParsedStatus"
+  							  ChangedFilesCount="@ChangedFilesCount"
+  							  BuildVerified="@BuildVerified"
+  							  GitCommitHash="@GitCommitHash"
+  							  PullRequestUrl="@PullRequestUrl"
+							  PullRequestNumber="@PullRequestNumber" />
 
 			<JobOutcomeHint Status="@ParsedStatus"
 							ChangedFilesCount="@ChangedFilesCount"
 							BuildVerified="@BuildVerified"
 							GitCommitHash="@GitCommitHash"
-							PullRequestUrl="@PullRequestUrl" />
+							PullRequestUrl="@PullRequestUrl"
+							PullRequestNumber="@PullRequestNumber" />
 
              @* Time display *@
              @if (!string.IsNullOrEmpty(TimeDisplay))
@@ -220,6 +222,9 @@
 
 	[Parameter]
 	public string? PullRequestUrl { get; set; }
+
+	[Parameter]
+	public int? PullRequestNumber { get; set; }
 
     private bool _isSelected => IsSelected;
 

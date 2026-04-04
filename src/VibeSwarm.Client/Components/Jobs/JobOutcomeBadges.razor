@@ -29,94 +29,9 @@
 	[Parameter]
 	public string? PullRequestUrl { get; set; }
 
-	private IReadOnlyList<OutcomeBadge> OutcomeBadges
-	{
-		get
-		{
-			var badges = new List<OutcomeBadge>();
-			var hasDeliveredChanges = !string.IsNullOrWhiteSpace(PullRequestUrl) || !string.IsNullOrWhiteSpace(GitCommitHash);
-			var hasDetectedChanges = ChangedFilesCount.GetValueOrDefault() > 0 || hasDeliveredChanges;
+	[Parameter]
+	public int? PullRequestNumber { get; set; }
 
-			if (Status == JobStatus.Completed && ChangedFilesCount == 0)
-			{
-				badges.Add(new OutcomeBadge(
-					"bi-file-earmark",
-					"No changes",
-					"The job completed without any detected file changes.",
-					"d-inline-flex align-items-center gap-1 px-2 py-1 rounded-pill small bg-body-tertiary text-body-secondary"));
-			}
-			else if (ChangedFilesCount.GetValueOrDefault() > 0)
-			{
-				var fileLabel = ChangedFilesCount == 1 ? "file changed" : "files changed";
-				badges.Add(new OutcomeBadge(
-					"bi-files",
-					$"{ChangedFilesCount} {fileLabel}",
-					"The number of files changed by this job.",
-					"d-inline-flex align-items-center gap-1 px-2 py-1 rounded-pill small bg-body-tertiary text-body-secondary"));
-			}
-
-			if (BuildVerified == true)
-			{
-				badges.Add(new OutcomeBadge(
-					"bi-check2-circle",
-					"Build verified",
-					"Configured build and test verification passed after the job finished.",
-					"d-inline-flex align-items-center gap-1 px-2 py-1 rounded-pill small bg-success-subtle text-success-emphasis"));
-			}
-			else if (BuildVerified == false)
-			{
-				badges.Add(new OutcomeBadge(
-					"bi-x-circle",
-					"Build failed",
-					"Build or test verification failed after the job finished.",
-					"d-inline-flex align-items-center gap-1 px-2 py-1 rounded-pill small bg-danger-subtle text-danger-emphasis"));
-			}
-
-			if (!string.IsNullOrWhiteSpace(PullRequestUrl))
-			{
-				badges.Add(new OutcomeBadge(
-					"bi-github",
-					"PR ready",
-					"A pull request was created for this job's changes.",
-					"d-inline-flex align-items-center gap-1 px-2 py-1 rounded-pill small bg-primary-subtle text-primary-emphasis"));
-			}
-			else if (!string.IsNullOrWhiteSpace(GitCommitHash))
-			{
-				badges.Add(new OutcomeBadge(
-					"bi-git",
-					"Committed",
-					"The job's changes have been committed to git.",
-					"d-inline-flex align-items-center gap-1 px-2 py-1 rounded-pill small bg-info-subtle text-info-emphasis"));
-			}
-			else if (hasDetectedChanges && Status == JobStatus.Completed)
-			{
-				badges.Add(new OutcomeBadge(
-					"bi-send-check",
-					"Ready to deliver",
-					"The job produced changes, but they have not been committed or delivered yet.",
-					"d-inline-flex align-items-center gap-1 px-2 py-1 rounded-pill small bg-warning-subtle text-warning-emphasis"));
-			}
-			else if (hasDetectedChanges && Status is JobStatus.Failed or JobStatus.Cancelled or JobStatus.Stalled)
-			{
-				badges.Add(new OutcomeBadge(
-					"bi-exclamation-triangle",
-					"Needs review",
-					"The run stopped, but changes are still present for review.",
-					"d-inline-flex align-items-center gap-1 px-2 py-1 rounded-pill small bg-warning-subtle text-warning-emphasis"));
-			}
-
-			if (Status == JobStatus.Paused)
-			{
-				badges.Add(new OutcomeBadge(
-					"bi-chat-dots",
-					"Waiting for input",
-					"The job is paused until the user responds.",
-					"d-inline-flex align-items-center gap-1 px-2 py-1 rounded-pill small bg-warning-subtle text-warning-emphasis"));
-			}
-
-			return badges;
-		}
-	}
-
-	private sealed record OutcomeBadge(string Icon, string Text, string Title, string CssClass);
+	private IReadOnlyList<JobOutcomeBadgeModel> OutcomeBadges
+		=> JobOutcomeDisplayHelper.BuildBadges(Status, ChangedFilesCount, BuildVerified, GitCommitHash, PullRequestUrl, PullRequestNumber);
 }
