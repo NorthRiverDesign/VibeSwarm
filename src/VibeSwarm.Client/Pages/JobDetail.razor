@@ -35,7 +35,7 @@ else
 					   PlanningCostUsd="@Job.PlanningCostUsd" ExecutionInputTokens="@Job.ExecutionInputTokens"
 					   ExecutionOutputTokens="@Job.ExecutionOutputTokens" ExecutionCostUsd="@Job.ExecutionCostUsd"
 					   CanRetry="@CanRetry" CanCancel="@CanCancel" CanForceCancel="@CanForceCancel"
-					   ShowRetryOptions="@(Job.Status == JobStatus.Failed || Job.Status == JobStatus.Cancelled)" IsRetrying="@IsRetrying"
+					   ShowRetryOptions="@(Job.Status == JobStatus.Failed || Job.Status == JobStatus.Cancelled || Job.Status == JobStatus.Stalled)" IsRetrying="@IsRetrying"
 					   IsCancelling="@IsCancelling" IsForceCancelling="@IsForceCancelling" OnRetry="RetryJob"
 					   ShowGitActions="@ShowGitActions" IsGitSyncing="@_isSyncingWithOrigin"
 					   IsGitRefreshing="@_isRefreshingBranches" IsGitPruning="@_isPruningBranches"

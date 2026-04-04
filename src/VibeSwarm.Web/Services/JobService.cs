@@ -231,10 +231,15 @@ public partial class JobService : IJobService
                 || j.Status == JobStatus.Processing
                 || j.Status == JobStatus.Paused
                 || j.Status == JobStatus.Stalled)
-            .Select(j => new { j.ProjectId, j.SwarmId })
+            .Select(j => new { j.ProjectId, j.SwarmId, j.ProviderId })
             .ToListAsync(cancellationToken);
 
         var projectsWithRunningJobs = runningJobInfo.Select(j => j.ProjectId).Distinct().ToList();
+        var providersWithRunningJobs = runningJobInfo
+            .Select(j => j.ProviderId)
+            .Where(id => id != Guid.Empty)
+            .Distinct()
+            .ToList();
 
         // For each project, determine if the running jobs all belong to the same swarm.
         // If so, pending jobs from that same swarm can proceed.
@@ -260,15 +265,23 @@ public partial class JobService : IJobService
 				|| _dbContext.Jobs.Any(dependency => dependency.Id == j.DependsOnJobId && dependency.Status == JobStatus.Completed))
             .Where(j => !projectsWithRunningJobs.Contains(j.ProjectId)
                 || (j.SwarmId != null && activeSwarmIds.Contains(j.SwarmId.Value)))
+            .Where(j => j.ProviderId == Guid.Empty || !providersWithRunningJobs.Contains(j.ProviderId))
             .OrderByDescending(j => j.Priority)
             .ThenBy(j => j.CreatedAt)
             .ToListAsync(cancellationToken);
 
-        // Return all swarm member jobs that are eligible, but only one non-swarm job per project.
+        // Return at most one job per provider and one non-swarm job per project so the worker
+        // never launches two concurrent runs against the same provider.
         var seen = new HashSet<Guid>();
+        var seenProviders = new HashSet<Guid>();
         var result = new List<Job>();
         foreach (var job in pendingJobs)
         {
+            if (job.ProviderId != Guid.Empty && !seenProviders.Add(job.ProviderId))
+            {
+                continue;
+            }
+
             if (job.SwarmId.HasValue)
             {
                 result.Add(job); // All swarm members can be dispatched together
@@ -276,6 +289,10 @@ public partial class JobService : IJobService
             else if (seen.Add(job.ProjectId))
             {
                 result.Add(job); // One non-swarm job per project
+            }
+            else if (job.ProviderId != Guid.Empty)
+            {
+                seenProviders.Remove(job.ProviderId);
             }
         }
 

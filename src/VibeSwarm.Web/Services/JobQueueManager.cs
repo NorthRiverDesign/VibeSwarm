@@ -56,10 +56,15 @@ public class JobQueueManager
 					|| j.Status == JobStatus.Processing
 					|| j.Status == JobStatus.Paused
 					|| j.Status == JobStatus.Stalled)
-				.Select(j => new { j.ProjectId, j.SwarmId })
+				.Select(j => new { j.ProjectId, j.SwarmId, j.ProviderId })
 				.ToListAsync(cancellationToken);
 
 			var projectsWithRunningJobs = runningJobInfo.Select(j => j.ProjectId).Distinct().ToList();
+			var providersWithRunningJobs = runningJobInfo
+				.Select(j => j.ProviderId)
+				.Where(id => id != Guid.Empty)
+				.Distinct()
+				.ToList();
 
 			// If all running jobs for a project share the same SwarmId, pending jobs from
 			// that same swarm are still eligible to be dispatched.
@@ -79,6 +84,7 @@ public class JobQueueManager
 				.Where(j => j.Status == JobStatus.New && !j.CancellationRequested)
 				.Where(j => !projectsWithRunningJobs.Contains(j.ProjectId)
 					|| (j.SwarmId != null && activeSwarmIds.Contains(j.SwarmId.Value)))
+				.Where(j => j.ProviderId == Guid.Empty || !providersWithRunningJobs.Contains(j.ProviderId))
 				.Where(j => j.NotBeforeUtc == null || j.NotBeforeUtc <= now)
 				.OrderByDescending(j => j.Priority)
 				.ThenBy(j => j.CreatedAt)
@@ -236,11 +242,17 @@ public class JobQueueManager
 	{
 		var result = new List<Job>();
 		var jobCountByProject = new Dictionary<Guid, int>();
+		var providerIds = new HashSet<Guid>();
 
 		foreach (var job in jobs)
 		{
 			if (result.Count >= maxJobs)
 				break;
+
+			if (job.ProviderId != Guid.Empty && !providerIds.Add(job.ProviderId))
+			{
+				continue;
+			}
 
 			// Swarm members are always eligible — they were already filtered by the
 			// swarm-aware GetPendingJobsAsync query.
@@ -260,6 +272,10 @@ public class JobQueueManager
 			{
 				result.Add(job);
 				jobCountByProject[projectId] = count + 1;
+			}
+			else if (job.ProviderId != Guid.Empty)
+			{
+				providerIds.Remove(job.ProviderId);
 			}
 		}
 

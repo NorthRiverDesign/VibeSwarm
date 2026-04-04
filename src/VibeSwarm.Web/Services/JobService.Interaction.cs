@@ -242,7 +242,8 @@ public partial class JobService
 			.Include(j => j.Statistics)
 			.Include(j => j.PlanningStatistics)
 			.Include(j => j.ExecutionStatistics)
-			.Where(j => j.ProjectId == projectId && jobIds.Contains(j.Id) && (j.Status == JobStatus.Failed || j.Status == JobStatus.Cancelled))
+			.Where(j => j.ProjectId == projectId && jobIds.Contains(j.Id)
+				&& (j.Status == JobStatus.Failed || j.Status == JobStatus.Cancelled || j.Status == JobStatus.Stalled))
 			.ToListAsync(cancellationToken);
 
         if (jobs.Count == 0)

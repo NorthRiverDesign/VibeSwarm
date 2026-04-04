@@ -294,10 +294,10 @@ public partial class ProjectDetail
                 await RefreshJobs();
                 NotificationService.ShowSuccess($"Queued {count} selected job(s) for retry.");
             }
-            else
-            {
-                NotificationService.ShowInfo("No selected failed or cancelled jobs to retry.");
-            }
+			else
+			{
+				NotificationService.ShowInfo("No selected failed, cancelled, or stopped jobs to retry.");
+			}
         }
         catch (Exception ex)
         {

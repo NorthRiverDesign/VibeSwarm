@@ -177,7 +177,7 @@
 							<li>
 								<button type="button" class="dropdown-item" @onclick="HandleRetrySelected"
 										disabled="@(IsSelectionActionInProgress || RetryableSelectedJobsCount == 0)"
-										title="Retry selected failed or cancelled jobs">
+										title="Retry selected failed, cancelled, or stopped jobs">
 									<i class="bi bi-arrow-clockwise me-2"></i>Retry Selected (@RetryableSelectedJobsCount)
 								</button>
 							</li>
@@ -200,7 +200,7 @@
 					<div class="d-none d-md-flex align-items-center gap-2 flex-wrap">
 						<button type="button" class="btn btn-sm btn-secondary" @onclick="HandleRetrySelected"
 								disabled="@(IsSelectionActionInProgress || RetryableSelectedJobsCount == 0)"
-								title="Retry selected failed or cancelled jobs">
+								title="Retry selected failed, cancelled, or stopped jobs">
 							@if (_isRetryingSelected)
 							{
 								<span class="spinner-border spinner-border-sm me-1" role="status"></span>
@@ -376,7 +376,7 @@
 												<i class="bi bi-eye me-2"></i>View Details
 											</a>
 										</li>
-										@if (job.Status is JobStatus.Failed or JobStatus.Cancelled)
+										@if (job.Status is JobStatus.Failed or JobStatus.Cancelled or JobStatus.Stalled)
 										{
 											<li>
 												<button class="dropdown-item"
@@ -641,7 +641,7 @@
 
 	private static bool IsRetryable(JobStatus status)
 	{
-		return status is JobStatus.Failed or JobStatus.Cancelled;
+		return status is JobStatus.Failed or JobStatus.Cancelled or JobStatus.Stalled;
 	}
 
 	private static bool IsCancellable(JobStatus status)
