@@ -202,6 +202,8 @@
 								 OutputTokens="@job.OutputTokens" CurrentCycle="@job.CurrentCycle" MaxCycles="@job.MaxCycles"
 								 CycleMode="@job.CycleMode" TeamRoleName="@job.TeamRoleName"
 								 PlaywrightEnabled="@job.PlaywrightEnabled" EnvironmentCount="@job.EnvironmentCount"
+								 ChangedFilesCount="@job.ChangedFilesCount" BuildVerified="@job.BuildVerified"
+								 GitCommitHash="@job.GitCommitHash" PullRequestUrl="@job.PullRequestUrl"
 								 OnClick="@(() => NavigateToJob(job.Id))" />
 				}
 			}

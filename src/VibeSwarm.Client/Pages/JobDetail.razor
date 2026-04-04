@@ -60,6 +60,17 @@ else
                                       OnSubmitResponse="SubmitInteractionResponse" />
             }
 
+			@if (ShowJobOutcomeSummary)
+			{
+				<JobOutcomeSummaryCard Status="@Job.Status"
+									   ChangedFilesCount="@Job.ChangedFilesCount"
+									   BuildVerified="@Job.BuildVerified"
+									   GitCommitHash="@Job.GitCommitHash"
+									   PullRequestUrl="@Job.PullRequestUrl"
+									   PullRequestNumber="@Job.PullRequestNumber"
+									   BuildOutput="@Job.BuildOutput" />
+			}
+
             @* Git Diff Loading State *@
             @if (_isGitRepository && _isLoadingGitDiff)
             {
@@ -90,28 +101,6 @@ else
                                IsCommitted="@(!string.IsNullOrEmpty(Job.GitCommitHash))" MissingFiles="@_workingCopyMissingFiles"
                                ExtraFiles="@_workingCopyExtraFiles" ModifiedFiles="@_workingCopyModifiedFiles"
                                OnRecheck="CompareWithWorkingCopy" />
-
-                @* Build Verification Status *@
-                @if (Job.BuildVerified.HasValue)
-                {
-                    <div class="alert @(Job.BuildVerified.Value ? "alert-success" : "alert-danger") d-flex align-items-start gap-2 mb-3">
-                        <i class="bi @(Job.BuildVerified.Value ? "bi-check-circle-fill" : "bi-x-circle-fill") mt-1"></i>
-                        <div>
-                            <strong>Build Verification @(Job.BuildVerified.Value ? "Passed" : "Failed")</strong>
-                            @if (!Job.BuildVerified.Value)
-                            {
-                                <p class="mb-1 small">Changes were not auto-committed because the build or tests failed. Review the output below and fix any issues before committing.</p>
-                                @if (!string.IsNullOrEmpty(Job.BuildOutput))
-                                {
-                                    <details class="mt-1">
-                                        <summary class="small text-body-secondary" style="cursor: pointer;">Show build output</summary>
-                                        <pre class="mt-1 p-2 bg-body-tertiary rounded small" style="max-height: 300px; overflow-y: auto; white-space: pre-wrap;">@Job.BuildOutput</pre>
-                                    </details>
-                                }
-                            }
-                        </div>
-                    </div>
-                }
 
                 @* Commit Section - shown when there are git changes *@
                 <CommitSection CommitMessage="@_commitMessage" CommitMessageChanged="@((msg) => _commitMessage = msg)"
@@ -212,6 +201,7 @@ else
     private bool _disposed = false;
     private Timer? _refreshTimer;
     private DateTime _pageLoadTime = DateTime.UtcNow;
+	private bool ShowJobOutcomeSummary => Job != null && Job.Status is JobStatus.Completed or JobStatus.Failed or JobStatus.Cancelled or JobStatus.Stalled;
 
     // Toggle states for collapsible sections
     private bool _showGitDiff = true;

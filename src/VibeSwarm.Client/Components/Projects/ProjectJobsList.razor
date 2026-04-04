@@ -326,6 +326,13 @@
 											<span class="text-body-tertiary">•</span>
 											<span>@job.CreatedAt.FormatDateTimeShort()</span>
 										</div>
+										<div class="mt-2">
+											<JobOutcomeBadges Status="@job.Status"
+															  ChangedFilesCount="@job.ChangedFilesCount"
+															  BuildVerified="@job.BuildVerified"
+															  GitCommitHash="@job.GitCommitHash"
+															  PullRequestUrl="@job.PullRequestUrl" />
+										</div>
 										@* Token and cost stats row *@
 										@if (job.InputTokens.HasValue || job.OutputTokens.HasValue || job.TotalCostUsd.HasValue)
 										{
