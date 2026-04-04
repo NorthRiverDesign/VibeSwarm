@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.RegularExpressions;
 using VibeSwarm.Shared.Data;
+using VibeSwarm.Shared.Utilities;
 using VibeSwarm.Shared.VersionControl.Models;
 
 namespace VibeSwarm.Shared.Services;
@@ -123,10 +124,14 @@ public static partial class JobSummaryGenerator
 			return summarySubject;
 		}
 
-		var titleSubject = ExtractCommitSubjectCandidate(title);
-		if (!string.IsNullOrWhiteSpace(titleSubject))
+		var shouldUseTitle = !JobTitleHelper.ShouldSyncTitleWithGoalPrompt(title, goalPrompt);
+		if (shouldUseTitle)
 		{
-			return titleSubject;
+			var titleSubject = ExtractCommitSubjectCandidate(title);
+			if (!string.IsNullOrWhiteSpace(titleSubject))
+			{
+				return titleSubject;
+			}
 		}
 
 		if (!string.IsNullOrWhiteSpace(goalPrompt))

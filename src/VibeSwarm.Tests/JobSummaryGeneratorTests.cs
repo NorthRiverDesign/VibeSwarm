@@ -105,6 +105,19 @@ public sealed class JobSummaryGeneratorTests
 	}
 
 	[Fact]
+	public void BuildCommitSubject_IgnoresPromptDerivedTitleAndUsesPromptHeadline()
+	{
+		const string scheduledPrompt = "fix scheduled job commit summaries so they stay short and stop listing src/VibeSwarm.Web/Services/JobScheduleProcessor.cs";
+
+		var subject = JobSummaryGenerator.BuildCommitSubject(
+			sessionSummary: null,
+			title: scheduledPrompt,
+			goalPrompt: scheduledPrompt);
+
+		Assert.Equal("Fix scheduled job commit summaries so they stay short and stop listing", subject);
+	}
+
+	[Fact]
 	public async Task PerformAutoCommitAsync_UsesSanitizedCommitSubject()
 	{
 		var versionControl = new RecordingVersionControlService
@@ -242,6 +255,138 @@ public sealed class JobSummaryGeneratorTests
 		Assert.Contains("allow selecting an inference provider and model for commit summaries", inferenceService.LastRequest.Prompt);
 		Assert.Contains("src/VibeSwarm.Web/Services/JobProcessingService.Delivery.cs", inferenceService.LastRequest.Prompt);
 		Assert.Contains("src/VibeSwarm.Shared/Data/Project.cs", inferenceService.LastRequest.Prompt);
+	}
+
+	[Fact]
+	public async Task PerformAutoCommitAsync_ScheduledJobUsesProjectCommitSummaryInferenceSettings()
+	{
+		var inferenceProviderId = Guid.NewGuid();
+		var versionControl = new RecordingVersionControlService
+		{
+			HasUncommittedChangesResult = true,
+			CommitResult = GitOperationResult.Succeeded(commitHash: "sched123"),
+			ChangedFilesResult =
+			[
+				"src/VibeSwarm.Web/Services/JobScheduleProcessor.cs",
+				"src/VibeSwarm.Shared/Services/JobSummaryGenerator.cs"
+			]
+		};
+		var inferenceProvider = new InferenceProvider
+		{
+			Id = inferenceProviderId,
+			Name = "Local Grok",
+			ProviderType = VibeSwarm.Shared.Inference.InferenceProviderType.Grok,
+			Endpoint = "https://inference.example",
+			IsEnabled = true,
+			Models =
+			[
+				new InferenceModel
+				{
+					InferenceProviderId = inferenceProviderId,
+					ModelId = "grok-commit",
+					IsAvailable = true,
+					IsDefault = true,
+					TaskType = "default"
+				}
+			]
+		};
+		var inferenceService = new RecordingInferenceService
+		{
+			Response = new VibeSwarm.Shared.Inference.InferenceResponse
+			{
+				Success = true,
+				Response = "Keep scheduled job commit summaries concise"
+			}
+		};
+
+		var services = new ServiceCollection();
+		services.AddSingleton<IInferenceProviderService>(new RecordingInferenceProviderService(inferenceProvider));
+		services.AddSingleton<IInferenceService>(inferenceService);
+		var scopeFactory = services.BuildServiceProvider().GetRequiredService<IServiceScopeFactory>();
+
+		var processor = new JobProcessingService(
+			scopeFactory,
+			NullLogger<JobProcessingService>.Instance,
+			versionControl,
+			projectEnvironmentCredentialService: new NoOpProjectEnvironmentCredentialService());
+
+		const string scheduledPrompt = "fix scheduled job commit summaries so they stay short and stop listing src/VibeSwarm.Web/Services/JobScheduleProcessor.cs";
+		var job = new Job
+		{
+			Id = Guid.NewGuid(),
+			IsScheduled = true,
+			Title = scheduledPrompt,
+			GoalPrompt = scheduledPrompt,
+			SessionSummary = "prompt-derived fallback should be ignored when inference is configured",
+			Project = new Project
+			{
+				AutoCommitMode = AutoCommitMode.CommitOnly,
+				CommitSummaryInferenceProviderId = inferenceProviderId,
+				CommitSummaryInferenceModelId = "grok-commit"
+			},
+			Provider = new VibeSwarm.Shared.Providers.Provider
+			{
+				Name = "Copilot",
+				Type = VibeSwarm.Shared.Providers.ProviderType.Copilot
+			}
+		};
+
+		var method = typeof(JobProcessingService).GetMethod("PerformAutoCommitAsync", BindingFlags.Instance | BindingFlags.NonPublic);
+		Assert.NotNull(method);
+
+		var task = (Task)method.Invoke(processor, [job, Path.GetTempPath(), false, CancellationToken.None])!;
+		await task;
+
+		Assert.Equal("Keep scheduled job commit summaries concise", versionControl.LastCommitMessage);
+		Assert.NotNull(inferenceService.LastRequest);
+		Assert.Equal("grok-commit", inferenceService.LastRequest!.Model);
+		Assert.Contains("src/VibeSwarm.Web/Services/JobScheduleProcessor.cs", inferenceService.LastRequest.Prompt);
+	}
+
+	[Fact]
+	public async Task PerformAutoCommitAsync_ScheduledJobUsesPromptHeadlineWhenTitleMatchesPrompt()
+	{
+		var versionControl = new RecordingVersionControlService
+		{
+			HasUncommittedChangesResult = true,
+			CommitResult = GitOperationResult.Succeeded(commitHash: "fed4321")
+		};
+
+		var services = new ServiceCollection().BuildServiceProvider();
+		var scopeFactory = services.GetRequiredService<IServiceScopeFactory>();
+		var processor = new JobProcessingService(
+			scopeFactory,
+			NullLogger<JobProcessingService>.Instance,
+			versionControl,
+			projectEnvironmentCredentialService: new NoOpProjectEnvironmentCredentialService());
+
+		const string scheduledPrompt = "fix scheduled job commit summaries so they stay short and stop listing src/VibeSwarm.Web/Services/JobScheduleProcessor.cs";
+		var job = new Job
+		{
+			Id = Guid.NewGuid(),
+			IsScheduled = true,
+			Title = scheduledPrompt,
+			GoalPrompt = scheduledPrompt,
+			Project = new Project
+			{
+				AutoCommitMode = AutoCommitMode.CommitOnly,
+				IdeasAutoCommit = false
+			},
+			Provider = new VibeSwarm.Shared.Providers.Provider
+			{
+				Name = "Copilot",
+				Type = VibeSwarm.Shared.Providers.ProviderType.Copilot
+			}
+		};
+
+		var method = typeof(JobProcessingService).GetMethod("PerformAutoCommitAsync", BindingFlags.Instance | BindingFlags.NonPublic);
+		Assert.NotNull(method);
+
+		var task = (Task)method.Invoke(processor, [job, Path.GetTempPath(), false, CancellationToken.None])!;
+		await task;
+
+		Assert.Equal("Fix scheduled job commit summaries so they stay short and stop listing", versionControl.LastCommitMessage);
+		Assert.Equal("fed4321", job.GitCommitHash);
 	}
 
 	private sealed class NoOpProjectEnvironmentCredentialService : IProjectEnvironmentCredentialService
