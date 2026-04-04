@@ -1,12 +1,20 @@
-<ul class="nav nav-tabs overflow-x-auto overflow-y-hidden flex-nowrap">
-	<li class="nav-item">
-		<button class="nav-link @(ActiveFilter == ActiveFilterValue ? "active" : "")" @onclick="@(() => OnFilterChanged.InvokeAsync(ActiveFilterValue))">
+<ul class="nav nav-tabs flex-nowrap flex-sm-wrap overflow-x-auto overflow-y-hidden overscroll-contain mb-0" role="tablist">
+	<li class="nav-item" role="presentation">
+		<button type="button"
+				role="tab"
+				aria-selected="@(ActiveFilter == ActiveFilterValue)"
+				class="nav-link @(ActiveFilter == ActiveFilterValue ? "active" : "")"
+				@onclick="@(() => OnFilterChanged.InvokeAsync(ActiveFilterValue))">
 			<i class="bi bi-check-circle me-1"></i>Active
 			<span class="badge bg-primary-subtle text-primary-emphasis ms-1">@ActiveCount</span>
 		</button>
 	</li>
-	<li class="nav-item">
-		<button class="nav-link @(ActiveFilter == InactiveFilterValue ? "active" : "")" @onclick="@(() => OnFilterChanged.InvokeAsync(InactiveFilterValue))">
+	<li class="nav-item" role="presentation">
+		<button type="button"
+				role="tab"
+				aria-selected="@(ActiveFilter == InactiveFilterValue)"
+				class="nav-link @(ActiveFilter == InactiveFilterValue ? "active" : "")"
+				@onclick="@(() => OnFilterChanged.InvokeAsync(InactiveFilterValue))">
 			<i class="bi bi-pause-circle me-1"></i>Inactive
 			<span class="badge bg-secondary-subtle text-secondary-emphasis ms-1">@InactiveCount</span>
 		</button>

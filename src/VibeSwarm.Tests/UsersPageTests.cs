@@ -1,4 +1,5 @@
 using Bunit;
+using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.DependencyInjection;
 using VibeSwarm.Client.Components.Users;
 using VibeSwarm.Client.Pages;
@@ -29,9 +30,13 @@ public sealed class UsersPageTests
 			Roles = [UserRoles.User]
 		};
 
-		var html = RenderUsersPage([activeUser, inactiveUser]);
+		using var context = new BunitContext();
+		var cut = RenderUsersPage(context, [activeUser, inactiveUser]);
 
-		Assert.Contains("Manage user accounts and permissions", html);
+		cut.WaitForAssertion(() => Assert.Contains("Add User", cut.Markup));
+		var html = cut.Markup;
+
+		Assert.Contains(">Users<", html);
 		Assert.Contains("Add User", html);
 		Assert.Contains("btn btn-primary", html);
 	}
@@ -48,12 +53,29 @@ public sealed class UsersPageTests
 
 		var html = cut.Markup;
 
-		Assert.Contains("overflow-x-auto overflow-y-hidden flex-nowrap", html);
+		Assert.Contains("flex-nowrap flex-sm-wrap overflow-x-auto overflow-y-hidden overscroll-contain", html);
 		Assert.Contains("Active", html);
 		Assert.Contains("Inactive", html);
 		Assert.Contains(">3<", html);
 		Assert.Contains(">1<", html);
 		Assert.Contains("nav-link active", html);
+	}
+
+	[Fact]
+	public void UserFilterTabs_ClickingInactiveTabInvokesFilterChange()
+	{
+		using var context = new BunitContext();
+		var selectedFilter = "active";
+
+		var cut = context.Render<UserFilterTabs>(parameters => parameters
+			.Add(component => component.ActiveFilter, selectedFilter)
+			.Add(component => component.ActiveCount, 3)
+			.Add(component => component.InactiveCount, 1)
+			.Add(component => component.OnFilterChanged, EventCallback.Factory.Create<string>(this, filter => selectedFilter = filter)));
+
+		cut.FindAll("button.nav-link")[1].Click();
+
+		Assert.Equal("inactive", selectedFilter);
 	}
 
 	[Fact]
@@ -93,23 +115,59 @@ public sealed class UsersPageTests
 	}
 
 	[Fact]
+	public void UserListSection_RendersInactiveUsersWhenInactiveFilterSelected()
+	{
+		using var context = new BunitContext();
+
+		var activeUser = new UserDto
+		{
+			Id = Guid.NewGuid(),
+			UserName = "alice",
+			IsActive = true,
+			CreatedAt = DateTime.UtcNow,
+			Roles = [UserRoles.Admin]
+		};
+		var inactiveUser = new UserDto
+		{
+			Id = Guid.NewGuid(),
+			UserName = "bob",
+			IsActive = false,
+			CreatedAt = DateTime.UtcNow,
+			Roles = [UserRoles.User]
+		};
+
+		var cut = context.Render<UserListSection>(parameters => parameters
+			.Add(component => component.Users, [activeUser, inactiveUser])
+			.Add(component => component.ActiveFilter, "inactive")
+			.Add(component => component.CurrentUserId, Guid.NewGuid()));
+
+		var html = cut.Markup;
+
+		Assert.Contains("bob", html);
+		Assert.Contains("User", html);
+		Assert.DoesNotContain("alice", html);
+	}
+
+	[Fact]
 	public void RenderedUsersPage_ShowsEmptyStateWhenNoUsersExist()
 	{
-		var html = RenderUsersPage([]);
+		using var context = new BunitContext();
+		var cut = RenderUsersPage(context, []);
+
+		cut.WaitForAssertion(() => Assert.Contains("No users found", cut.Markup));
+		var html = cut.Markup;
 
 		Assert.Contains("No users found", html);
 		Assert.Contains("Active", html);
 		Assert.Contains("Inactive", html);
 	}
 
-	private static string RenderUsersPage(IReadOnlyList<UserDto> users)
+	private static IRenderedComponent<Users> RenderUsersPage(BunitContext context, IReadOnlyList<UserDto> users)
 	{
-		using var context = new BunitContext();
 		context.Services.AddSingleton<IUserService>(new FakeUserService(users));
 		context.Services.AddSingleton<NotificationService>();
 
-		var cut = context.Render<Users>();
-		return cut.Markup;
+		return context.Render<Users>();
 	}
 
 	private sealed class FakeUserService(IReadOnlyList<UserDto> users) : IUserService
