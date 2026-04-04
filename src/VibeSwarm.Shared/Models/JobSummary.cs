@@ -48,6 +48,7 @@ public class JobSummary
 	public int? PullRequestNumber { get; set; }
 	public string? PullRequestUrl { get; set; }
 	public DateTime? MergedAt { get; set; }
+	public string? SessionSummary { get; set; }
 	public bool IsScheduled { get; set; }
 	public Guid? JobScheduleId { get; set; }
 	public bool PlaywrightEnabled { get; set; }

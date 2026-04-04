@@ -203,6 +203,26 @@ internal static class JobOutcomeDisplayHelper
 		=> string.IsNullOrWhiteSpace(gitCommitHash)
 			? string.Empty
 			: gitCommitHash[..Math.Min(7, gitCommitHash.Length)];
+
+	public static string? FormatListSessionSummary(string? sessionSummary)
+	{
+		if (string.IsNullOrWhiteSpace(sessionSummary))
+		{
+			return null;
+		}
+
+		var firstLine = sessionSummary
+			.ReplaceLineEndings("\n")
+			.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+			.FirstOrDefault();
+
+		if (string.IsNullOrWhiteSpace(firstLine))
+		{
+			return null;
+		}
+
+		return firstLine.TrimStart('-', '*', '+', '\u2022', ' ').Trim();
+	}
 }
 
 internal sealed record JobOutcomeBadgeModel(string Icon, string Text, string Title, string CssClass);

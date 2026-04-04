@@ -37,6 +37,7 @@ public sealed class JobsPageTests
 					ModelUsed = "gpt-5.4",
 					PlanningProviderName = "Claude",
 					PlanningModelUsed = "claude-sonnet-4",
+					SessionSummary = "Kept the job list outcome readable during refresh.",
 					CreatedAt = DateTime.UtcNow.AddMinutes(-5)
 				}
 			],
@@ -75,6 +76,7 @@ public sealed class JobsPageTests
 		Assert.Contains("Copilot", cut.Markup);
 		Assert.Contains("gpt-5.4", cut.Markup);
 		Assert.Contains("claude-sonnet-4", cut.Markup);
+		Assert.Contains("Kept the job list outcome readable during refresh.", cut.Markup);
 	}
 
 	private static void SetPrivateField(object instance, string fieldName, object? value)

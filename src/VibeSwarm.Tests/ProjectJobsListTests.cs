@@ -96,6 +96,42 @@ public sealed class ProjectJobsListTests
 		Assert.Contains("gpt-5.4", html);
 	}
 
+	[Fact]
+	public async Task RenderedJobsList_ShowsCompactWorkSummary()
+	{
+		var services = new ServiceCollection();
+		services.AddLogging();
+		services.AddSingleton<IErrorBoundaryLogger, NoOpErrorBoundaryLogger>();
+
+		await using var renderer = new HtmlRenderer(services.BuildServiceProvider(), NullLoggerFactory.Instance);
+
+		var html = await renderer.Dispatcher.InvokeAsync(async () =>
+		{
+			var parameters = ParameterView.FromDictionary(new Dictionary<string, object?>
+			{
+				[nameof(ProjectJobsList.Jobs)] = new List<JobSummary>
+				{
+					new()
+					{
+						Id = Guid.NewGuid(),
+						GoalPrompt = "Summarize the run",
+						Title = "Summarize the run",
+						Status = JobStatus.Completed,
+						SessionSummary = "Improved the delivery guidance on the project jobs list.\nAdded a second line that should stay hidden.",
+						CreatedAt = DateTime.UtcNow
+					}
+				},
+				[nameof(ProjectJobsList.TotalJobsCount)] = 1
+			});
+			var output = await renderer.RenderComponentAsync<ProjectJobsList>(parameters);
+			return output.ToHtmlString();
+		});
+
+		Assert.Contains("Work summary:", html);
+		Assert.Contains("Improved the delivery guidance on the project jobs list.", html);
+		Assert.DoesNotContain("Added a second line that should stay hidden.", html);
+	}
+
 	private sealed class NoOpErrorBoundaryLogger : IErrorBoundaryLogger
 	{
 		public ValueTask LogErrorAsync(Exception exception)

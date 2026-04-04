@@ -110,6 +110,8 @@
 							PullRequestNumber="@PullRequestNumber"
 							MergedAt="@MergedAt" />
 
+			<JobOutcomeSummarySnippet SessionSummary="@SessionSummary" />
+
              @* Time display *@
              @if (!string.IsNullOrEmpty(TimeDisplay))
              {
@@ -230,6 +232,9 @@
 
 	[Parameter]
 	public DateTime? MergedAt { get; set; }
+
+	[Parameter]
+	public string? SessionSummary { get; set; }
 
     private bool _isSelected => IsSelected;
 

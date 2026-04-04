@@ -78,6 +78,7 @@ public partial class JobService : IJobService
             PullRequestNumber = j.PullRequestNumber,
             PullRequestUrl = j.PullRequestUrl,
             MergedAt = j.MergedAt,
+            SessionSummary = j.SessionSummary,
             IsScheduled = j.IsScheduled,
             JobScheduleId = j.JobScheduleId,
             PlaywrightEnabled = j.PlaywrightEnabled,

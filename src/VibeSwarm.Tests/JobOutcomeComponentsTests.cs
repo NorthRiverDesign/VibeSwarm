@@ -212,6 +212,35 @@ public sealed class JobOutcomeComponentsTests
 	}
 
 	[Fact]
+	public void JobOutcomeSummarySnippet_ShowsFirstSummaryLine()
+	{
+		using var context = new BunitContext();
+
+		var cut = context.Render<JobOutcomeSummarySnippet>(parameters => parameters
+			.Add(component => component.SessionSummary, "- Tightened the outcome UX across the job lists.\n- Added better delivery guidance."));
+
+		Assert.Contains("Work summary:", cut.Markup);
+		Assert.Contains("Tightened the outcome UX across the job lists.", cut.Markup);
+		Assert.DoesNotContain("Added better delivery guidance.", cut.Markup);
+	}
+
+	[Fact]
+	public void JobListItem_ShowsCompactWorkSummaryWhenSessionSummaryExists()
+	{
+		using var context = new BunitContext();
+
+		var cut = context.Render<JobListItem>(parameters => parameters
+			.Add(component => component.Status, JobStatus.Completed.ToString())
+			.Add(component => component.Prompt, "Ship the fix")
+			.Add(component => component.TimeDisplay, "now")
+			.Add(component => component.SessionSummary, "Polished the delivery guidance for completed jobs.\nAdded mobile-safe list summaries."));
+
+		Assert.Contains("Work summary:", cut.Markup);
+		Assert.Contains("Polished the delivery guidance for completed jobs.", cut.Markup);
+		Assert.DoesNotContain("Added mobile-safe list summaries.", cut.Markup);
+	}
+
+	[Fact]
 	public void JobOutcomeSummaryCard_ShowsReviewTranscriptActionForStalledRuns()
 	{
 		using var context = new BunitContext();

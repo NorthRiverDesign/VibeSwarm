@@ -342,6 +342,7 @@
 														PullRequestUrl="@job.PullRequestUrl"
 														PullRequestNumber="@job.PullRequestNumber"
 														MergedAt="@job.MergedAt" />
+										<JobOutcomeSummarySnippet SessionSummary="@job.SessionSummary" />
 										@* Token and cost stats row *@
 										@if (job.InputTokens.HasValue || job.OutputTokens.HasValue || job.TotalCostUsd.HasValue)
 										{
