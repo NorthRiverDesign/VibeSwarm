@@ -59,6 +59,12 @@
 	}
 	else if (Provider.ConnectionMode == ProviderConnectionMode.SDK)
 	{
+		<div class="mb-3">
+			<div class="form-label">Connection Type</div>
+			<div class="form-control-plaintext py-0 small text-body-secondary">
+				@ProviderCapabilities.GetConnectionTypeLabel(Provider)
+			</div>
+		</div>
 		@if (Provider.Type == ProviderType.Claude)
 		{
 			<div class="mb-3">
@@ -86,16 +92,31 @@
 		@if (Provider.Type == ProviderType.Copilot)
 		{
 			<div class="mb-3">
-				<label for="apiKey" class="form-label">GitHub Token (optional)</label>
-				<InputText id="apiKey" @bind-Value="Provider.ApiKey" class="form-control" type="password"
-					placeholder="ghp_... or gho_..." />
-				<div class="form-text">A GitHub token for authentication. Leave empty to use the logged-in Copilot CLI user. Supports BYOK with <code>COPILOT_GITHUB_TOKEN</code>.</div>
-			</div>
-			<div class="mb-3">
 				<label for="apiEndpoint" class="form-label">Custom API Provider (optional, BYOK)</label>
 				<InputText id="apiEndpoint" @bind-Value="Provider.ApiEndpoint" class="form-control"
 					placeholder="https://api.openai.com/v1" />
-				<div class="form-text">For Bring Your Own Key (BYOK) usage with OpenAI, Azure, or Anthropic endpoints. Leave empty for standard Copilot.</div>
+				<div class="form-text">Leave empty to use GitHub Copilot. Set a custom provider endpoint to run this SDK connection in BYOK mode.</div>
+			</div>
+			<div class="mb-3">
+				<label for="apiKey" class="form-label">
+					@(IsCopilotCustomProvider ? "Provider API Key" : "GitHub Token (optional)")
+					@if (IsCopilotCustomProvider)
+					{
+						<span class="text-danger"> *</span>
+					}
+				</label>
+				<InputText id="apiKey" @bind-Value="Provider.ApiKey" class="form-control" type="password"
+					placeholder="@(IsCopilotCustomProvider ? "sk-... or provider key" : "github_pat_...")" />
+				<div class="form-text">
+					@if (IsCopilotCustomProvider)
+					{
+						<span>This key is sent to the configured BYOK provider endpoint. It is not reused as a GitHub token.</span>
+					}
+					else
+					{
+						<span>Leave empty to use the logged-in Copilot CLI user, or provide a GitHub token for explicit SDK authentication.</span>
+					}
+				</div>
 			</div>
 			<div class="mb-3">
 				<label for="executablePath" class="form-label">Copilot CLI Path (optional)</label>
@@ -186,6 +207,7 @@
 	private string? ErrorMessage { get; set; }
 
 	private IReadOnlyList<string> ValidationErrors => ProviderCapabilities.ValidateConfiguration(Provider);
+	private bool IsCopilotCustomProvider => ProviderCapabilities.IsCopilotCustomProvider(Provider);
 
 	protected override void OnParametersSet()
 	{

@@ -61,13 +61,33 @@ public static class ProviderCapabilities
 	/// </summary>
 	public static string GetModeDescription(ProviderType providerType, ProviderConnectionMode mode) => (providerType, mode) switch
 	{
-		(ProviderType.Copilot, ProviderConnectionMode.SDK) => "Uses the GitHub.Copilot.SDK NuGet package for programmatic control via JSON-RPC. Requires the Copilot CLI installed.",
+		(ProviderType.Copilot, ProviderConnectionMode.SDK) => "Uses the GitHub.Copilot.SDK NuGet package for programmatic control via JSON-RPC. Supports logged-in user sessions, explicit GitHub tokens, or BYOK custom provider endpoints.",
 		(ProviderType.Copilot, ProviderConnectionMode.CLI) => "Spawns the Copilot CLI process directly for each job execution.",
-		(ProviderType.Claude, ProviderConnectionMode.SDK) => "Uses the Anthropic .NET SDK for direct API access. Requires an Anthropic API key.",
+		(ProviderType.Claude, ProviderConnectionMode.SDK) => "Uses the Anthropic .NET SDK for direct API access with an Anthropic API key.",
 		(ProviderType.Claude, ProviderConnectionMode.CLI) => "Spawns the Claude Code CLI process directly for each job execution.",
 		(ProviderType.OpenCode, ProviderConnectionMode.REST) => "Connects to the OpenCode REST API server.",
 		(ProviderType.OpenCode, ProviderConnectionMode.CLI) => "Spawns the OpenCode CLI process directly for each job execution.",
 		_ => $"{mode} mode for {providerType}."
+	};
+
+	public static bool IsCopilotCustomProvider(Provider provider)
+		=> provider.Type == ProviderType.Copilot
+			&& provider.ConnectionMode == ProviderConnectionMode.SDK
+			&& !string.IsNullOrWhiteSpace(provider.ApiEndpoint);
+
+	public static string? GetConnectionTypeLabel(Provider provider) => (provider.Type, provider.ConnectionMode) switch
+	{
+		(ProviderType.Claude, ProviderConnectionMode.SDK) => "API Key",
+		(ProviderType.Claude, ProviderConnectionMode.CLI) when !string.IsNullOrWhiteSpace(provider.ApiKey) => "API Key",
+		(ProviderType.Claude, ProviderConnectionMode.CLI) => "Browser Login",
+		(ProviderType.Copilot, ProviderConnectionMode.SDK) when IsCopilotCustomProvider(provider) => "Custom Provider",
+		(ProviderType.Copilot, ProviderConnectionMode.SDK) when !string.IsNullOrWhiteSpace(provider.ApiKey) => "GitHub Token",
+		(ProviderType.Copilot, ProviderConnectionMode.SDK) => "Logged-in User",
+		(ProviderType.Copilot, ProviderConnectionMode.CLI) when !string.IsNullOrWhiteSpace(provider.ApiKey) => "GitHub Token",
+		(ProviderType.Copilot, ProviderConnectionMode.CLI) => "Logged-in User",
+		(ProviderType.OpenCode, ProviderConnectionMode.REST) => "API Key",
+		(ProviderType.OpenCode, ProviderConnectionMode.CLI) when !string.IsNullOrWhiteSpace(provider.ApiKey) => "API Key",
+		_ => null
 	};
 
 	public static IReadOnlyList<string> GetSupportedReasoningEfforts(ProviderType providerType, ProviderConnectionMode mode) => (providerType, mode) switch
@@ -114,18 +134,21 @@ public static class ProviderCapabilities
 			errors.Add($"{provider.Type} does not support {provider.ConnectionMode} connection mode.");
 		}
 
-		// Validate REST mode requirements
+		// Validate endpoint requirements
 		if (provider.ConnectionMode == ProviderConnectionMode.REST)
 		{
 			if (string.IsNullOrWhiteSpace(provider.ApiEndpoint))
 			{
 				errors.Add("API Endpoint is required for REST connection mode.");
 			}
-			else if (!Uri.TryCreate(provider.ApiEndpoint, UriKind.Absolute, out var uri) ||
-					 (uri.Scheme != "http" && uri.Scheme != "https"))
+			else if (!IsValidHttpEndpoint(provider.ApiEndpoint))
 			{
 				errors.Add("API Endpoint must be a valid HTTP or HTTPS URL.");
 			}
+		}
+		else if (!string.IsNullOrWhiteSpace(provider.ApiEndpoint) && !IsValidHttpEndpoint(provider.ApiEndpoint))
+		{
+			errors.Add("API Endpoint must be a valid HTTP or HTTPS URL.");
 		}
 
 		// Validate SDK mode requirements
@@ -134,6 +157,11 @@ public static class ProviderCapabilities
 			if (provider.Type == ProviderType.Claude && string.IsNullOrWhiteSpace(provider.ApiKey))
 			{
 				errors.Add("API Key is required for Claude SDK connection mode.");
+			}
+
+			if (IsCopilotCustomProvider(provider) && string.IsNullOrWhiteSpace(provider.ApiKey))
+			{
+				errors.Add("API Key is required for Copilot SDK custom provider connections.");
 			}
 		}
 
@@ -144,4 +172,8 @@ public static class ProviderCapabilities
 
 		return errors;
 	}
+
+	private static bool IsValidHttpEndpoint(string endpoint)
+		=> Uri.TryCreate(endpoint, UriKind.Absolute, out var uri)
+			&& (uri.Scheme == "http" || uri.Scheme == "https");
 }

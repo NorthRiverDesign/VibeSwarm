@@ -123,6 +123,12 @@
 																<span class="badge bg-info-subtle text-info-emphasis">
 																	<i class="bi bi-@GetConnectionModeIcon(provider.ConnectionMode) me-1"></i>@provider.ConnectionMode
 																</span>
+																@if (ProviderCapabilities.GetConnectionTypeLabel(provider) is string connectionType && !string.IsNullOrWhiteSpace(connectionType))
+																{
+																	<span class="badge bg-secondary-subtle text-secondary-emphasis">
+																		<i class="bi bi-key me-1"></i>@connectionType
+																	</span>
+																}
 																@if (GetCliVersion(provider.Id) is string version && !string.IsNullOrEmpty(version))
 																{
 																	<span class="badge bg-secondary-subtle text-secondary-emphasis text-truncate"

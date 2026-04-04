@@ -25,12 +25,14 @@ public class CopilotSdkProvider : SdkProviderBase
 	/// </summary>
 	private CopilotClientOptions BuildClientOptions(string? workingDirectory = null)
 	{
+		var useCustomProvider = !string.IsNullOrEmpty(ApiEndpoint);
 		var options = new CopilotClientOptions
 		{
 			AutoStart = true,
 			AutoRestart = false,
 			UseStdio = true,
-			LogLevel = "warning"
+			LogLevel = "warning",
+			UseLoggedInUser = !useCustomProvider && string.IsNullOrEmpty(ApiKey)
 		};
 
 		// Resolve and validate CLI path if provided
@@ -54,7 +56,7 @@ public class CopilotSdkProvider : SdkProviderBase
 			options.Cwd = cwd;
 		}
 
-		if (!string.IsNullOrEmpty(ApiKey))
+		if (!useCustomProvider && !string.IsNullOrEmpty(ApiKey))
 		{
 			options.GitHubToken = ApiKey;
 		}
@@ -131,10 +133,37 @@ public class CopilotSdkProvider : SdkProviderBase
 		{
 			sessionConfig.Provider = new ProviderConfig
 			{
+				Type = InferProviderType(ApiEndpoint),
 				BaseUrl = ApiEndpoint,
 				ApiKey = ApiKey ?? string.Empty
 			};
 		}
+	}
+
+	private static string? InferProviderType(string endpoint)
+	{
+		if (!Uri.TryCreate(endpoint, UriKind.Absolute, out var uri))
+		{
+			return null;
+		}
+
+		var host = uri.Host.ToLowerInvariant();
+		if (host.Contains("openai.azure"))
+		{
+			return "azure";
+		}
+
+		if (host.Contains("openai"))
+		{
+			return "openai";
+		}
+
+		if (host.Contains("anthropic"))
+		{
+			return "anthropic";
+		}
+
+		return null;
 	}
 
 	public override async Task<bool> TestConnectionAsync(CancellationToken cancellationToken = default)

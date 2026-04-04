@@ -88,6 +88,30 @@ public sealed class ProvidersPageTests
 		Assert.Contains(">Add<", html);
 	}
 
+	[Fact]
+	public async Task RenderedProvidersPage_ShowsConnectionTypeBadgeForCopilotByokConnection()
+	{
+		var provider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Copilot BYOK",
+			Type = ProviderType.Copilot,
+			ConnectionMode = ProviderConnectionMode.SDK,
+			ApiEndpoint = "https://api.openai.com/v1",
+			ApiKey = "sk-provider",
+			IsEnabled = true
+		};
+
+		var statuses = new[]
+		{
+			CreateStatus(ProviderType.Copilot, "GitHub Copilot", provider)
+		};
+
+		var html = await RenderProvidersPageAsync([provider], statuses);
+
+		Assert.Contains("Custom Provider", html);
+	}
+
 	private static CommonProviderSetupStatus CreateStatus(ProviderType type, string displayName, Provider? provider = null)
 	{
 		return new CommonProviderSetupStatus
@@ -103,6 +127,7 @@ public sealed class ProvidersPageTests
 			IsInstalled = provider != null,
 			IsAuthenticated = provider != null,
 			HasConfiguredProvider = provider != null,
+			AuthenticationTypeLabel = provider == null ? null : ProviderCapabilities.GetConnectionTypeLabel(provider),
 			ConfiguredProviders = provider == null
 				? []
 				:

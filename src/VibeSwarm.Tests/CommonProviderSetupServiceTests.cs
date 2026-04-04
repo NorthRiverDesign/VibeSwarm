@@ -65,6 +65,7 @@ public sealed class CommonProviderSetupServiceTests : IDisposable
 		Assert.Equal(sdkProvider.Id, status.ProviderId);
 		Assert.Equal(sdkProvider.Name, status.ProviderName);
 		Assert.Equal(ProviderConnectionMode.SDK, status.AuthenticationConnectionMode);
+		Assert.Equal("API Key", status.AuthenticationTypeLabel);
 		Assert.True(status.IsAuthenticated);
 		Assert.Equal("Saved in VibeSwarm for this SDK connection.", status.AuthenticationStatus);
 	}
@@ -108,8 +109,11 @@ public sealed class CommonProviderSetupServiceTests : IDisposable
 		var status = Assert.Single(statuses, item => item.ProviderType == ProviderType.Copilot);
 
 		Assert.Equal(ProviderConnectionMode.SDK, status.AuthenticationConnectionMode);
+		Assert.Equal("Logged-in User", status.AuthenticationTypeLabel);
 		Assert.True(status.IsAuthenticated);
-		Assert.Equal("Copilot CLI login detected on host for this SDK connection.", status.AuthenticationStatus);
+		Assert.True(
+			status.AuthenticationStatus?.Contains("authentication detected", StringComparison.OrdinalIgnoreCase) == true ||
+			status.AuthenticationStatus?.Contains("Copilot CLI login detected", StringComparison.OrdinalIgnoreCase) == true);
 	}
 
 	[Fact]
@@ -179,6 +183,94 @@ public sealed class CommonProviderSetupServiceTests : IDisposable
 				Assert.True(
 					fd.ResolvedExecutablePath!.Contains("fd", StringComparison.OrdinalIgnoreCase) ||
 					fd.ResolvedExecutablePath.Contains("fdfind", StringComparison.OrdinalIgnoreCase));
+			});
+	}
+
+	[Fact]
+	public async Task SaveAuthenticationAsync_UpdatesDefaultClaudeSdkProvider()
+	{
+		await using var dbContext = CreateDbContext();
+		var sdkProvider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Claude SDK",
+			Type = ProviderType.Claude,
+			ConnectionMode = ProviderConnectionMode.SDK,
+			IsDefault = true,
+			IsEnabled = true
+		};
+		var cliProvider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Claude CLI",
+			Type = ProviderType.Claude,
+			ConnectionMode = ProviderConnectionMode.CLI,
+			IsDefault = false,
+			IsEnabled = true
+		};
+
+		dbContext.Providers.AddRange(sdkProvider, cliProvider);
+		await dbContext.SaveChangesAsync();
+
+		var service = CreateService(dbContext);
+		var result = await service.SaveAuthenticationAsync(new CommonProviderSetupRequest
+		{
+			ProviderType = ProviderType.Claude,
+			ApiKey = "sk-ant-updated"
+		});
+
+		Assert.True(result.Success);
+
+		var updatedSdkProvider = await dbContext.Providers.SingleAsync(item => item.Id == sdkProvider.Id);
+		var unchangedCliProvider = await dbContext.Providers.SingleAsync(item => item.Id == cliProvider.Id);
+
+		Assert.Equal("sk-ant-updated", updatedSdkProvider.ApiKey);
+		Assert.Null(unchangedCliProvider.ApiKey);
+	}
+
+	[Fact]
+	public async Task SaveAuthenticationAsync_DoesNotOverwriteCopilotByokProvider()
+	{
+		await using var dbContext = CreateDbContext();
+		var byokProvider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Copilot BYOK",
+			Type = ProviderType.Copilot,
+			ConnectionMode = ProviderConnectionMode.SDK,
+			ApiEndpoint = "https://api.openai.com/v1",
+			ApiKey = "sk-provider",
+			IsDefault = true,
+			IsEnabled = true
+		};
+
+		dbContext.Providers.Add(byokProvider);
+		await dbContext.SaveChangesAsync();
+
+		var service = CreateService(dbContext);
+		var result = await service.SaveAuthenticationAsync(new CommonProviderSetupRequest
+		{
+			ProviderType = ProviderType.Copilot,
+			ApiKey = "github_pat_new"
+		});
+
+		Assert.True(result.Success);
+
+		var providers = await dbContext.Providers
+			.Where(item => item.Type == ProviderType.Copilot)
+			.OrderBy(item => item.Name)
+			.ToListAsync();
+
+		Assert.Collection(providers,
+			byok =>
+			{
+				Assert.Equal("Copilot BYOK", byok.Name);
+				Assert.Equal("sk-provider", byok.ApiKey);
+			},
+			cli =>
+			{
+				Assert.Equal(ProviderConnectionMode.CLI, cli.ConnectionMode);
+				Assert.Equal("github_pat_new", cli.ApiKey);
 			});
 	}
 

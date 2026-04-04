@@ -7,7 +7,7 @@
 				<p class="card-text text-body-secondary small mb-0">@Status.Description</p>
 			</div>
 			<span class="badge bg-info-subtle text-info-emphasis">
-				<i class="bi bi-terminal me-1"></i>CLI
+				<i class="bi bi-@GetConnectionModeIcon(Status.AuthenticationConnectionMode) me-1"></i>@Status.AuthenticationConnectionMode
 			</span>
 		</div>
 
@@ -18,7 +18,7 @@
 			</span>
 			<span class="badge @(Status.IsAuthenticated ? "bg-success-subtle text-success-emphasis" : "bg-warning-subtle text-warning-emphasis")">
 				<i class="bi bi-@(Status.IsAuthenticated ? "shield-check" : "shield-exclamation") me-1"></i>
-				@($"{Status.AuthenticationConnectionMode} {(Status.IsAuthenticated ? "Auth Ready" : "Auth Needed")}")
+				@GetAuthenticationBadgeText()
 			</span>
 			<span class="badge @(Status.HasConfiguredProvider ? "bg-primary-subtle text-primary-emphasis" : "bg-secondary-subtle text-secondary-emphasis")">
 				<i class="bi bi-@(Status.HasConfiguredProvider ? "plug" : "plus-circle") me-1"></i>
@@ -63,7 +63,7 @@
 				@if (!string.IsNullOrWhiteSpace(Status.AuthenticationStatus))
 				{
 					<div>
-						<div class="fw-semibold text-body mb-1">Authentication (@Status.AuthenticationConnectionMode)</div>
+						<div class="fw-semibold text-body mb-1">Authentication (@GetAuthenticationHeading())</div>
 						<div>@Status.AuthenticationStatus</div>
 					</div>
 				}
@@ -258,4 +258,26 @@
 			_ => $"{Status.ConfiguredProviders.Count} providers"
 		};
 	}
+
+	private string GetAuthenticationBadgeText()
+	{
+		var prefix = string.IsNullOrWhiteSpace(Status.AuthenticationTypeLabel)
+			? Status.AuthenticationConnectionMode.ToString()
+			: $"{Status.AuthenticationConnectionMode} {Status.AuthenticationTypeLabel}";
+
+		return $"{prefix} {(Status.IsAuthenticated ? "Auth Ready" : "Auth Needed")}";
+	}
+
+	private string GetAuthenticationHeading()
+		=> string.IsNullOrWhiteSpace(Status.AuthenticationTypeLabel)
+			? Status.AuthenticationConnectionMode.ToString()
+			: $"{Status.AuthenticationConnectionMode}, {Status.AuthenticationTypeLabel}";
+
+	private static string GetConnectionModeIcon(ProviderConnectionMode mode) => mode switch
+	{
+		ProviderConnectionMode.CLI => "terminal",
+		ProviderConnectionMode.REST => "globe",
+		ProviderConnectionMode.SDK => "box",
+		_ => "plug"
+	};
 }

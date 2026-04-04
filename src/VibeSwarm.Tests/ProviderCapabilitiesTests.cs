@@ -77,4 +77,37 @@ public sealed class ProviderCapabilitiesTests
 
 		Assert.True(ProviderCapabilities.SupportsReasoningEffort(provider, effort));
 	}
+
+	[Fact]
+	public void CopilotSdkCustomProvider_RequiresApiKey()
+	{
+		var provider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Copilot BYOK",
+			Type = ProviderType.Copilot,
+			ConnectionMode = ProviderConnectionMode.SDK,
+			ApiEndpoint = "https://api.openai.com/v1"
+		};
+
+		var errors = ProviderCapabilities.ValidateConfiguration(provider);
+
+		Assert.Contains("API Key is required for Copilot SDK custom provider connections.", errors);
+	}
+
+	[Fact]
+	public void CopilotSdkCustomProvider_UsesCustomProviderConnectionType()
+	{
+		var provider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Copilot BYOK",
+			Type = ProviderType.Copilot,
+			ConnectionMode = ProviderConnectionMode.SDK,
+			ApiEndpoint = "https://api.openai.com/v1",
+			ApiKey = "sk-test"
+		};
+
+		Assert.Equal("Custom Provider", ProviderCapabilities.GetConnectionTypeLabel(provider));
+	}
 }
