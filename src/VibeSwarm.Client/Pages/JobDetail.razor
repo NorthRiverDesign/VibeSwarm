@@ -196,11 +196,12 @@ else
 
     // Shared state accessed by multiple partial files
     private Job? Job { get; set; }
-    private bool IsLoading { get; set; } = true;
-    private bool _isRefreshing = false;
-    private bool _disposed = false;
-    private Timer? _refreshTimer;
-    private DateTime _pageLoadTime = DateTime.UtcNow;
+	private bool IsLoading { get; set; } = true;
+	private bool _isRefreshing = false;
+	private bool _disposed = false;
+	private Timer? _refreshTimer;
+	private DateTime _pageLoadTime = DateTime.UtcNow;
+	private Guid? _loadedJobId;
 	private bool ShowJobOutcomeSummary => Job != null && Job.Status is JobStatus.Completed or JobStatus.Failed or JobStatus.Cancelled or JobStatus.Stalled;
 
     // Toggle states for collapsible sections
@@ -298,12 +299,16 @@ else
         return string.Join(", ", snapshots.Select(e => $"{e.Name} ({e.Stage})"));
     }
 
-    protected override async Task OnInitializedAsync()
-    {
-        await LoadJob();
-        StartAutoRefresh();
-        await LoadBranchName();
-    }
+	protected override async Task OnInitializedAsync()
+	{
+		StartAutoRefresh();
+		await EnsureCurrentJobLoadedAsync();
+	}
+
+	protected override async Task OnParametersSetAsync()
+	{
+		await EnsureCurrentJobLoadedAsync();
+	}
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -367,12 +372,45 @@ else
         }
     }
 
-    private string GetJobDisplayTitle()
-    {
-        if (Job == null) return "Job";
-        if (!string.IsNullOrEmpty(Job.Title)) return TruncateTitle(Job.Title, 40);
-        return TruncateTitle(Job.GoalPrompt, 40);
-    }
+	private string GetJobDisplayTitle()
+	{
+		if (Job == null) return "Job";
+		if (!string.IsNullOrEmpty(Job.Title)) return TruncateTitle(Job.Title, 40);
+		return TruncateTitle(Job.GoalPrompt, 40);
+	}
+
+	private async Task EnsureCurrentJobLoadedAsync()
+	{
+		if (_loadedJobId == JobId)
+		{
+			return;
+		}
+
+		var previousJobId = _loadedJobId;
+		_loadedJobId = JobId;
+
+		await HandleJobSelectionChangedAsync(previousJobId);
+	}
+
+	private async Task HandleJobSelectionChangedAsync(Guid? previousJobId)
+	{
+		if (previousJobId.HasValue && previousJobId.Value != JobId)
+		{
+			await UnsubscribeFromJobAsync(previousJobId.Value);
+		}
+
+		ResetJobDetailState();
+		IsLoading = true;
+		_pageLoadTime = DateTime.UtcNow;
+
+		await LoadJob();
+		await LoadBranchName();
+
+		if (_signalRConnected)
+		{
+			await SubscribeToSignalRGroups();
+		}
+	}
 
     private static string TruncateTitle(string text, int maxLength)
     {

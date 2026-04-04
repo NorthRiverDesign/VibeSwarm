@@ -73,13 +73,14 @@ public partial class JobDetail : ComponentBase, IAsyncDisposable
                 catch { }
             });
 
-            _hubConnection.On<string, int, int, double>("ProcessExited", async (jobId, processId, exitCode, durationSeconds) =>
-            {
-                if (_disposed) return;
-                try { await InvokeAsync(StateHasChanged); }
-                catch (ObjectDisposedException) { }
-                catch { }
-            });
+			_hubConnection.On<string, int, int, double>("ProcessExited", async (jobId, processId, exitCode, durationSeconds) =>
+			{
+				if (_disposed) return;
+				if (!IsCurrentRouteJob(jobId)) return;
+				try { await InvokeAsync(StateHasChanged); }
+				catch (ObjectDisposedException) { }
+				catch { }
+			});
 
             _hubConnection.On<string, string, string, List<string>?, string?>("JobInteractionRequired",
                 async (jobId, prompt, interactionType, choices, defaultResponse) =>
@@ -114,12 +115,13 @@ public partial class JobDetail : ComponentBase, IAsyncDisposable
                 catch { }
             });
 
-            _hubConnection.On<string, bool>("JobGitDiffUpdated", async (jobId, hasChanges) =>
-            {
-                if (_disposed) return;
-                try
-                {
-                    if (hasChanges)
+			_hubConnection.On<string, bool>("JobGitDiffUpdated", async (jobId, hasChanges) =>
+			{
+				if (_disposed) return;
+				if (!IsCurrentRouteJob(jobId)) return;
+				try
+				{
+					if (hasChanges)
                     {
                         await InvokeAsync(async () => await RefreshJobSafely());
                     }
@@ -176,25 +178,49 @@ public partial class JobDetail : ComponentBase, IAsyncDisposable
         catch { }
     }
 
-    private async Task SubscribeToSignalRGroups()
-    {
-        if (_hubConnection?.State != HubConnectionState.Connected) return;
+	private async Task SubscribeToSignalRGroups()
+	{
+		if (_hubConnection?.State != HubConnectionState.Connected) return;
 
-        try
+		try
         {
             await _hubConnection.InvokeAsync("SubscribeToJob", JobId.ToString());
             await _hubConnection.InvokeAsync("SubscribeToJobList");
-        }
-        catch { }
-    }
+		}
+		catch { }
+	}
 
-    #region SignalR Handlers
+	private async Task UnsubscribeFromJobAsync(Guid jobId)
+	{
+		if (_hubConnection?.State != HubConnectionState.Connected)
+		{
+			return;
+		}
 
-    private async Task OnJobStatusChanged(string jobId, string status)
-    {
-        if (Job != null && Enum.TryParse<JobStatus>(status, out var newStatus))
-        {
-            Job.Status = newStatus;
+		try
+		{
+			await _hubConnection.InvokeAsync("UnsubscribeFromJob", jobId.ToString());
+		}
+		catch
+		{
+		}
+	}
+
+	private bool IsCurrentRouteJob(string jobId)
+		=> Guid.TryParse(jobId, out var parsedJobId) && parsedJobId == JobId;
+
+	#region SignalR Handlers
+
+	private async Task OnJobStatusChanged(string jobId, string status)
+	{
+		if (!IsCurrentRouteJob(jobId) || Job == null)
+		{
+			return;
+		}
+
+		if (Job != null && Enum.TryParse<JobStatus>(status, out var newStatus))
+		{
+			Job.Status = newStatus;
             if (newStatus == JobStatus.Started)
             {
                 Job.StartedAt = DateTime.UtcNow;
@@ -218,25 +244,30 @@ public partial class JobDetail : ComponentBase, IAsyncDisposable
             await InvokeAsync(StateHasChanged);
         }
 
-        if (!_isRefreshing && !_disposed)
-        {
-            _ = Task.Run(async () =>
-            {
-                try
-                {
-                    await Task.Delay(500);
-                    if (!_disposed) await InvokeAsync(async () => await RefreshJobSafely());
-                }
-                catch { }
-            });
-        }
-    }
+		if (!_isRefreshing && !_disposed)
+		{
+			_ = Task.Run(async () =>
+			{
+				try
+				{
+					await Task.Delay(500);
+					if (!_disposed && IsCurrentRouteJob(jobId)) await InvokeAsync(async () => await RefreshJobSafely());
+				}
+				catch { }
+			});
+		}
+	}
 
-    private async Task OnJobActivityUpdated(string jobId, string activity, DateTime timestamp)
-    {
-        if (Job != null)
-        {
-            Job.CurrentActivity = activity;
+	private async Task OnJobActivityUpdated(string jobId, string activity, DateTime timestamp)
+	{
+		if (!IsCurrentRouteJob(jobId) || Job == null)
+		{
+			return;
+		}
+
+		if (Job != null)
+		{
+			Job.CurrentActivity = activity;
             Job.LastActivityAt = timestamp;
             await InvokeAsync(StateHasChanged);
         }
@@ -250,11 +281,16 @@ public partial class JobDetail : ComponentBase, IAsyncDisposable
         }
     }
 
-    private Task OnJobOutputReceived(string jobId, string line, bool isError, DateTime timestamp)
-    {
-        lock (_liveOutput)
-        {
-            _liveOutput.Add(JobSessionDisplayBuilder.CreateOutputLine(
+	private Task OnJobOutputReceived(string jobId, string line, bool isError, DateTime timestamp)
+	{
+		if (!IsCurrentRouteJob(jobId))
+		{
+			return Task.CompletedTask;
+		}
+
+		lock (_liveOutput)
+		{
+			_liveOutput.Add(JobSessionDisplayBuilder.CreateOutputLine(
                 isError ? $"[ERR] {line}" : line,
                 timestamp));
             // Trim from the front in one pass to avoid repeated O(n) RemoveAt(0) calls.
@@ -269,11 +305,16 @@ public partial class JobDetail : ComponentBase, IAsyncDisposable
         return Task.CompletedTask;
     }
 
-    private async Task OnProcessStarted(string jobId, int processId, string command)
-    {
-        if (Job != null)
-        {
-            _liveCommand = command;
+	private async Task OnProcessStarted(string jobId, int processId, string command)
+	{
+		if (!IsCurrentRouteJob(jobId) || Job == null)
+		{
+			return;
+		}
+
+		if (Job != null)
+		{
+			_liveCommand = command;
             Job.ProcessId = processId;
             Job.CommandUsed = command;
             if (Job.Status == JobStatus.Planning)
@@ -289,11 +330,16 @@ public partial class JobDetail : ComponentBase, IAsyncDisposable
         }
     }
 
-    private async Task OnJobInteractionRequested(string jobId, string prompt, List<string>? choices)
-    {
-        if (Job != null)
-        {
-            Job.Status = JobStatus.Paused;
+	private async Task OnJobInteractionRequested(string jobId, string prompt, List<string>? choices)
+	{
+		if (!IsCurrentRouteJob(jobId) || Job == null)
+		{
+			return;
+		}
+
+		if (Job != null)
+		{
+			Job.Status = JobStatus.Paused;
             Job.PendingInteractionPrompt = prompt;
             Job.InteractionRequestedAt = DateTime.UtcNow;
             _interactionChoices = choices;
@@ -302,11 +348,16 @@ public partial class JobDetail : ComponentBase, IAsyncDisposable
         }
     }
 
-    private async Task OnJobInteractionCompleted(string jobId)
-    {
-        if (Job != null)
-        {
-            Job.Status = JobStatus.Processing;
+	private async Task OnJobInteractionCompleted(string jobId)
+	{
+		if (!IsCurrentRouteJob(jobId) || Job == null)
+		{
+			return;
+		}
+
+		if (Job != null)
+		{
+			Job.Status = JobStatus.Processing;
             Job.PendingInteractionPrompt = null;
             Job.InteractionType = null;
             Job.InteractionRequestedAt = null;
@@ -317,21 +368,31 @@ public partial class JobDetail : ComponentBase, IAsyncDisposable
         }
     }
 
-    private async Task OnJobCycleProgress(string jobId, int currentCycle, int maxCycles)
-    {
-        if (Job != null && Job.Id.ToString() == jobId)
-        {
-            Job.CurrentCycle = currentCycle;
-            Job.MaxCycles = maxCycles;
+	private async Task OnJobCycleProgress(string jobId, int currentCycle, int maxCycles)
+	{
+		if (!IsCurrentRouteJob(jobId) || Job == null)
+		{
+			return;
+		}
+
+		if (Job != null)
+		{
+			Job.CurrentCycle = currentCycle;
+			Job.MaxCycles = maxCycles;
             await InvokeAsync(StateHasChanged);
         }
     }
 
-    private async Task OnJobCompleted(string jobId, bool success, string? errorMessage)
-    {
-        if (Job != null)
-        {
-            Job.Status = success ? JobStatus.Completed : JobStatus.Failed;
+	private async Task OnJobCompleted(string jobId, bool success, string? errorMessage)
+	{
+		if (!IsCurrentRouteJob(jobId) || Job == null)
+		{
+			return;
+		}
+
+		if (Job != null)
+		{
+			Job.Status = success ? JobStatus.Completed : JobStatus.Failed;
             Job.CompletedAt = DateTime.UtcNow;
             if (!string.IsNullOrEmpty(errorMessage))
             {
@@ -347,24 +408,29 @@ public partial class JobDetail : ComponentBase, IAsyncDisposable
             {
                 _ = Task.Run(async () =>
                 {
-                    try
-                    {
-                        await Task.Delay(1000);
-                        if (!_disposed) await InvokeAsync(async () => await CheckUncommittedChangesAsync());
-                    }
-                    catch { }
-                });
+					try
+					{
+						await Task.Delay(1000);
+						if (!_disposed && IsCurrentRouteJob(jobId)) await InvokeAsync(async () => await CheckUncommittedChangesAsync());
+					}
+					catch { }
+				});
             }
             await InvokeAsync(StateHasChanged);
         }
 
-        if (!_disposed)
-        {
-            await Task.Delay(500);
-            await InvokeAsync(async () =>
-            {
-                await RefreshJobSafely();
-                await HandlePostCompletionDataLoading(success);
+		if (!_disposed)
+		{
+			await Task.Delay(500);
+			if (!IsCurrentRouteJob(jobId))
+			{
+				return;
+			}
+
+			await InvokeAsync(async () =>
+			{
+				await RefreshJobSafely();
+				await HandlePostCompletionDataLoading(success);
             });
         }
     }
@@ -436,16 +502,16 @@ public partial class JobDetail : ComponentBase, IAsyncDisposable
         _pushCancellationTokenSource?.Cancel();
         _pushCancellationTokenSource?.Dispose();
 
-        if (_hubConnection != null)
-        {
-            try
-            {
-                if (_hubConnection.State == HubConnectionState.Connected)
-                {
-                    await _hubConnection.InvokeAsync("UnsubscribeFromJob", JobId.ToString());
-                    await _hubConnection.InvokeAsync("UnsubscribeFromJobList");
-                }
-                await _hubConnection.DisposeAsync();
+		if (_hubConnection != null)
+		{
+			try
+			{
+				if (_hubConnection.State == HubConnectionState.Connected)
+				{
+					await UnsubscribeFromJobAsync(JobId);
+					await _hubConnection.InvokeAsync("UnsubscribeFromJobList");
+				}
+				await _hubConnection.DisposeAsync();
             }
             catch
             {

@@ -17,10 +17,76 @@ public partial class JobDetail : ComponentBase
     private bool _showRetryModal = false;
     private Idea? _linkedIdea;
 
-    #region Job Actions
+	#region Job Actions
 
-    private async Task LoadJob()
-    {
+	private void ResetJobDetailState()
+	{
+		Job = null;
+		_linkedIdea = null;
+		_liveCommand = null;
+		_showGitDiff = true;
+		_parsedDiffFiles.Clear();
+		_interactionChoices = null;
+		_interactionError = null;
+		_isSubmittingResponse = false;
+		_showRetryModal = false;
+		IsCancelling = false;
+		IsForceCancelling = false;
+		IsRetrying = false;
+		IsForceResetting = false;
+
+		lock (_liveOutput)
+		{
+			_liveOutput.Clear();
+		}
+
+		_pendingSessionMessages.Clear();
+		_pendingOutputUpdate = false;
+
+		_branchName = null;
+		_isGitRepository = false;
+		_showCreateBranchModal = false;
+		_isCreatingBranch = false;
+		_createBranchError = null;
+		_isSyncingWithOrigin = false;
+		_isRefreshingBranches = false;
+		_isPruningBranches = false;
+		_commitMessage = string.Empty;
+		_isPushing = false;
+		_isCheckingGitDiff = false;
+		_isLoadingGitDiff = false;
+		_isLoadingSummary = false;
+		_summaryError = null;
+		_pushStatus = "Pushing...";
+		_pushError = null;
+		_changesPushed = false;
+		_pushedCommitHash = null;
+		_isCreatingPullRequest = false;
+		_isMergingBranch = false;
+		_commitMessageInitialized = false;
+		_isComparingWorkingCopy = false;
+		_workingCopyComparisonDone = false;
+		_workingCopyMatches = true;
+		_workingCopyMissingFiles.Clear();
+		_workingCopyExtraFiles.Clear();
+		_workingCopyModifiedFiles.Clear();
+
+		_pushCancellationTokenSource?.Cancel();
+		_pushCancellationTokenSource?.Dispose();
+		_pushCancellationTokenSource = null;
+
+		_isCheckingUncommittedChanges = false;
+		_hasCheckedUncommittedChanges = false;
+		_hasUncommittedChanges = false;
+		_uncommittedDiffFiles.Clear();
+		_uncommittedChangesError = null;
+		_isDiscardingChanges = false;
+		_uncommittedCommitMessage = string.Empty;
+		_isCommittingUncommittedChanges = false;
+	}
+
+	private async Task LoadJob()
+	{
         try
         {
             Job = await JobService.GetByIdWithMessagesAsync(JobId);
