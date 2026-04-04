@@ -64,10 +64,10 @@ public sealed class JobSessionPanelTests
 			return output.ToHtmlString();
 		});
 
-		Assert.Contains("3 messages", html);
-		Assert.Contains("Tool Call", html);
-		Assert.Contains("Tool Result", html);
+		Assert.Contains("2 messages", html);
+		Assert.Contains("Tool Activity", html);
 		Assert.Contains("git status --short", html);
+		Assert.Contains("Response", html);
 		Assert.Contains("<details>", html);
 		Assert.DoesNotContain("<details open", html);
 		Assert.DoesNotContain("Final summary only", html);
@@ -543,7 +543,11 @@ public sealed class JobSessionPanelTests
 			return output.ToHtmlString();
 		});
 
+		Assert.Contains("1 message", html);
 		Assert.Contains("bash", html);
+		Assert.Contains("Tool Activity", html);
+		Assert.Contains("git status --short", html);
+		Assert.Contains("M src/VibeSwarm.Client/Components/Jobs/JobSessionPanel.razor", html);
 		Assert.DoesNotContain("toolu_01A2B3C4", html);
 	}
 
@@ -584,14 +588,65 @@ public sealed class JobSessionPanelTests
 			return output.ToHtmlString();
 		});
 
-		Assert.Contains("4 messages", html);
+		Assert.Contains("3 messages", html);
 		Assert.Contains("Reviewing the repository state", html);
 		Assert.Contains("Checking the modified files before applying a patch.", html);
-		Assert.Contains("Tool Call", html);
-		Assert.Contains("Tool Result", html);
+		Assert.Contains("Tool Activity", html);
 		Assert.Contains("git status --short", html);
 		Assert.Contains("bash", html);
 		Assert.DoesNotContain("toolu_live_123", html);
+	}
+
+	[Fact]
+	public void JobSessionPanel_Bunit_TogglesCombinedToolActivityFilter()
+	{
+		using var context = new BunitContext();
+
+		var cut = context.Render<JobSessionPanel>(parameters => parameters
+			.Add(panel => panel.Status, JobStatus.Completed)
+			.Add(panel => panel.Messages, new List<JobMessage>
+			{
+				new()
+				{
+					Id = Guid.NewGuid(),
+					JobId = Guid.NewGuid(),
+					Role = MessageRole.Assistant,
+					Content = "Repository review complete.",
+					CreatedAt = DateTime.UtcNow.AddSeconds(-3)
+				},
+				new()
+				{
+					Id = Guid.NewGuid(),
+					JobId = Guid.NewGuid(),
+					Role = MessageRole.ToolUse,
+					Content = "bash",
+					ToolName = "bash",
+					ToolInput = "git diff --stat",
+					CreatedAt = DateTime.UtcNow.AddSeconds(-2)
+				},
+				new()
+				{
+					Id = Guid.NewGuid(),
+					JobId = Guid.NewGuid(),
+					Role = MessageRole.ToolResult,
+					Content = "3 files changed",
+					ToolName = "bash",
+					ToolOutput = "3 files changed",
+					CreatedAt = DateTime.UtcNow.AddSeconds(-1)
+				}
+			}));
+
+		Assert.Contains("2 messages", cut.Markup);
+		Assert.Contains("Tool Activity", cut.Markup);
+
+		cut.FindAll("button")
+			.Single(button => button.TextContent.Contains("Tool Activity", StringComparison.Ordinal))
+			.Click();
+
+		Assert.Contains("1 message", cut.Markup);
+		Assert.DoesNotContain("git diff --stat", cut.Markup);
+		Assert.DoesNotContain("3 files changed", cut.Markup);
+		Assert.Contains("Repository review complete.", cut.Markup);
 	}
 
 	[Fact]
