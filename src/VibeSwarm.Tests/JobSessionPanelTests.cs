@@ -598,6 +598,49 @@ public sealed class JobSessionPanelTests
 	}
 
 	[Fact]
+	public async Task RenderedJobSessionPanel_ShowsTranscriptWindowNoticeWhenMessagesAreCapped()
+	{
+		var services = new ServiceCollection();
+		services.AddLogging();
+		services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
+
+		await using var renderer = new HtmlRenderer(services.BuildServiceProvider(), NullLoggerFactory.Instance);
+
+		var html = await renderer.Dispatcher.InvokeAsync(async () =>
+		{
+			var parameters = ParameterView.FromDictionary(new Dictionary<string, object?>
+			{
+				[nameof(JobSessionPanel.Status)] = JobStatus.Completed,
+				[nameof(JobSessionPanel.TotalMessageCount)] = 500,
+				[nameof(JobSessionPanel.Messages)] = new List<JobMessage>
+				{
+					new()
+					{
+						Id = Guid.NewGuid(),
+						JobId = Guid.NewGuid(),
+						Role = MessageRole.Assistant,
+						Content = "Recent message one",
+						CreatedAt = DateTime.UtcNow.AddSeconds(-2)
+					},
+					new()
+					{
+						Id = Guid.NewGuid(),
+						JobId = Guid.NewGuid(),
+						Role = MessageRole.Assistant,
+						Content = "Recent message two",
+						CreatedAt = DateTime.UtcNow.AddSeconds(-1)
+					}
+				}
+			});
+
+			var output = await renderer.RenderComponentAsync<JobSessionPanel>(parameters);
+			return output.ToHtmlString();
+		});
+
+		Assert.Contains("Showing latest 2 of 500 messages", html);
+	}
+
+	[Fact]
 	public void JobSessionPanel_Bunit_TogglesCombinedToolActivityFilter()
 	{
 		using var context = new BunitContext();

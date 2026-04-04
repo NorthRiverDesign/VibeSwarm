@@ -184,6 +184,7 @@ public sealed class JobDetailNavigationTests
 				GoalPrompt = job.GoalPrompt,
 				Status = job.Status,
 				CreatedAt = job.CreatedAt,
+				TotalMessageCount = job.TotalMessageCount,
 				Messages = job.Messages.Select(message => new JobMessage
 				{
 					Id = message.Id,

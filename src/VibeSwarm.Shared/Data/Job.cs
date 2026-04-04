@@ -743,6 +743,12 @@ public class Job
 
     public ICollection<JobMessage> Messages { get; set; } = new List<JobMessage>();
 
+    [NotMapped]
+    public int TotalMessageCount { get; set; }
+
+    [NotMapped]
+    public bool HasHiddenMessages => TotalMessageCount > Messages.Count;
+
     public ICollection<JobProviderAttempt> ProviderAttempts { get; set; } = new List<JobProviderAttempt>();
 
     /// <summary>

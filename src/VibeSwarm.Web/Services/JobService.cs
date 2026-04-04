@@ -15,6 +15,7 @@ public partial class JobService : IJobService
     private const int DefaultJobsPageSize = 25;
     private const int DefaultProjectJobsPageSize = 10;
     private const int MaxPageSize = 100;
+    private const int JobDetailMessageLimit = 250;
 
     private readonly VibeSwarmDbContext _dbContext;
     private readonly IJobUpdateService? _jobUpdateService;
@@ -329,14 +330,30 @@ public partial class JobService : IJobService
 
 	public async Task<Job?> GetByIdWithMessagesAsync(Guid id, CancellationToken cancellationToken = default)
 	{
-		return await IncludeStatistics(_dbContext.Jobs)
+		var job = await IncludeStatistics(_dbContext.Jobs)
 			.Include(j => j.Project)
 				.ThenInclude(p => p!.Environments)
 			.Include(j => j.Provider)
             .Include(j => j.PlanningProvider)
             .Include(j => j.ProviderAttempts.OrderBy(a => a.AttemptOrder))
-            .Include(j => j.Messages.OrderBy(m => m.CreatedAt))
             .FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
+		if (job == null)
+		{
+			return null;
+		}
+
+		job.TotalMessageCount = await _dbContext.Set<JobMessage>()
+			.Where(message => message.JobId == id)
+			.CountAsync(cancellationToken);
+
+		job.Messages = await _dbContext.Set<JobMessage>()
+			.Where(message => message.JobId == id)
+			.OrderByDescending(message => message.CreatedAt)
+			.Take(JobDetailMessageLimit)
+			.OrderBy(message => message.CreatedAt)
+			.ToListAsync(cancellationToken);
+
+		return job;
     }
 
     public async Task<Job> CreateAsync(Job job, CancellationToken cancellationToken = default)

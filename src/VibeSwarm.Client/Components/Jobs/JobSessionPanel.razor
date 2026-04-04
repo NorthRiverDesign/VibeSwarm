@@ -1,5 +1,7 @@
 @* Unified job session panel - combines session log, error, console output, command, and live output *@
 @inject IJSRuntime JSRuntime
+@using System.Threading
+@implements IDisposable
 
 <div class="card d-flex flex-column">
     <div class="card-header bg-body-secondary p-0">
@@ -74,7 +76,7 @@
                 @if (VisibleMessageCount > 0)
                 {
                     <div class="d-flex justify-content-end align-items-center gap-2 mb-2">
-                        @if (!IsJobActive && DisplayedMessages.Any())
+                        @if (!IsJobActive && _displayedMessages.Any())
                         {
                             <div class="dropdown">
                                 <button class="btn btn-sm btn-secondary d-inline-flex align-items-center gap-1"
@@ -136,6 +138,12 @@
                         }
                         <span class="badge bg-secondary">@VisibleMessageCount @(VisibleMessageCount == 1 ? "message" : "messages")</span>
                     </div>
+                    @if (HasHiddenMessages)
+                    {
+                        <div class="small text-body-secondary mb-2">
+                            Showing latest @_displayedMessages.Count of @TotalMessageCount messages to keep this page responsive.
+                        </div>
+                    }
                 }
                 <div class="d-flex flex-column gap-3 overflow-auto p-2" style="max-height: 600px;" @ref="_sessionOutputContainer">
                     @if (HasGoalPrompt)
@@ -216,7 +224,7 @@
                             }
                         </div>
                     }
-                    @if (AttachmentList.Any())
+                    @if (_attachmentList.Any())
                     {
                         <div class="chat-message d-flex flex-column chat-message-user">
                             <div class="chat-bubble py-2 px-3 bg-body-tertiary border">
@@ -224,7 +232,7 @@
                                     <i class="bi bi-paperclip me-1"></i>Attached files
                                 </div>
                                 <div class="d-flex flex-column gap-2">
-                                    @foreach (var attachment in AttachmentList)
+                                    @foreach (var attachment in _attachmentList)
                                     {
                                         <a class="d-flex align-items-center gap-2 text-decoration-none border rounded-3 px-2 py-2 bg-body min-width-0"
                                            href="@GetAttachmentUrl(attachment.Id)" target="_blank" rel="noreferrer"
@@ -252,7 +260,7 @@
                         </div>
                     }
 
-                    @foreach (var entry in FilteredEntries)
+                    @foreach (var entry in _filteredEntries)
                     {
                         <ChatMessage Role="@entry.Message.Role" Content="@entry.Message.Content" ToolName="@entry.Message.ToolName"
                                      ToolInput="@entry.Message.ToolInput" ToolOutput="@entry.Message.ToolOutput" Timestamp="@entry.Message.CreatedAt"
@@ -275,7 +283,7 @@
                             }
                         </div>
                     }
-                    else if (!DisplayedMessages.Any() && !HasGoalPrompt)
+                    else if (!_displayedMessages.Any() && !HasGoalPrompt)
                     {
                         <div class="empty-state text-center py-5">
                             @if (Status == JobStatus.Completed)
@@ -316,12 +324,12 @@
         else if (_activeTab == "command")
         {
             <div class="p-3 flex-grow-1 overflow-auto">
-                @if (CommandSteps.Count > 1)
+                @if (_commandSteps.Count > 1)
                 {
                     <div class="accordion border rounded" id="job-command-steps">
-                        @foreach (var step in CommandSteps)
+                        @foreach (var step in _commandSteps)
                         {
-                            var isExpanded = string.Equals(step.Key, CommandSteps[0].Key, StringComparison.Ordinal);
+                            var isExpanded = string.Equals(step.Key, _commandSteps[0].Key, StringComparison.Ordinal);
                             <div class="accordion-item">
                                 <h2 class="accordion-header" id="@($"job-command-heading-{step.Key}")">
                                     <button class="accordion-button @(isExpanded ? string.Empty : "collapsed")" type="button"
@@ -381,8 +389,8 @@
     {
         <div class="card-footer bg-body-tertiary border-top">
             <div class="d-flex gap-2">
-                <textarea class="form-control" rows="4" placeholder="Add follow-up instructions..." @bind="_followUpPrompt"
-                          @bind:event="oninput" disabled="@_isSendingFollowUp"></textarea>
+                <textarea class="form-control" rows="4" placeholder="Add follow-up instructions..." value="@_followUpPrompt"
+                          @oninput="HandleFollowUpInput" disabled="@_isSendingFollowUp"></textarea>
                 <button class="btn btn-primary align-self-end flex-shrink-0" @onclick="SendFollowUp"
                         disabled="@(string.IsNullOrWhiteSpace(_followUpPrompt) || _isSendingFollowUp)" title="Send follow-up">
                     @if (_isSendingFollowUp)
@@ -420,6 +428,9 @@
 
     [Parameter]
     public bool IsJobActive { get; set; }
+
+    [Parameter]
+    public int TotalMessageCount { get; set; }
 
     [Parameter]
     public string? ErrorMessage { get; set; }
@@ -473,12 +484,20 @@
     private bool _isEditingGoalPrompt;
     private string _editedGoalPrompt = string.Empty;
     private bool _isSavingGoalPrompt;
+    private IReadOnlyList<JobMessage> _displayedMessages = [];
+    private IReadOnlyList<SessionDisplayEntry> _displayedEntries = [];
+    private IReadOnlyList<SessionDisplayEntry> _filteredEntries = [];
+    private IReadOnlyList<IdeaAttachment> _attachmentList = [];
+    private IReadOnlyList<CommandStep> _commandSteps = [];
+    private string? _displayStateKey;
 
     private bool CanSendFollowUp => Status == JobStatus.Completed && OnSendFollowUp.HasDelegate;
 
-    private bool HasCommandTab => CommandSteps.Count > 0 || !string.IsNullOrWhiteSpace(CommandUsed);
+    private bool HasCommandTab => _commandSteps.Count > 0 || !string.IsNullOrWhiteSpace(CommandUsed);
 
     private bool HasGoalPrompt => !string.IsNullOrWhiteSpace(GoalPrompt);
+
+    private bool HasHiddenMessages => TotalMessageCount > _displayedMessages.Count;
 
     private string GoalPromptDisplayText => !string.IsNullOrWhiteSpace(GoalPromptIdeaText)
         ? GoalPromptIdeaText!
@@ -488,39 +507,11 @@
         => OnGoalPromptChanged.HasDelegate
             && (Status == JobStatus.New || Status == JobStatus.Failed || Status == JobStatus.Cancelled);
 
-    private IReadOnlyList<CommandStep> CommandSteps => BuildCommandSteps();
-
-    private IReadOnlyList<IdeaAttachment> AttachmentList => AttachedIdeaFiles
-        .OrderBy(attachment => attachment.CreatedAt)
-        .ToList();
-
-    private string? PrimaryCommandText => CommandSteps.Count > 0
-        ? CommandSteps[0].Command
+    private string? PrimaryCommandText => _commandSteps.Count > 0
+        ? _commandSteps[0].Command
         : NormalizeCommand(CommandUsed);
 
-    private IReadOnlyList<JobMessage> DisplayedMessages
-        => JobSessionDisplayBuilder.BuildDisplayedMessages(Messages, LiveOutputLines, IsJobActive, LiveMessages);
-
-    private IReadOnlyList<SessionDisplayEntry> DisplayedEntries
-		=> BuildDisplayEntries(DisplayedMessages);
-
-    private IReadOnlyList<SessionDisplayEntry> FilteredEntries
-    {
-        get
-        {
-            var entries = DisplayedEntries;
-            if (!_hiddenRoles.Any())
-            {
-                return entries;
-            }
-
-            return entries
-                .Where(entry => !IsEntryHidden(entry))
-                .ToList();
-        }
-    }
-
-    private int VisibleMessageCount => FilteredEntries.Count + (HasGoalPrompt ? 1 : 0);
+    private int VisibleMessageCount => _filteredEntries.Count + (HasGoalPrompt ? 1 : 0);
 
     private bool AreToolMessagesHidden
 		=> _hiddenRoles.Contains(MessageRole.ToolUse) || _hiddenRoles.Contains(MessageRole.ToolResult);
@@ -531,13 +522,38 @@
             + (_hiddenRoles.Contains(MessageRole.System) ? 1 : 0)
             + (_hiddenRoles.Contains(MessageRole.User) ? 1 : 0);
 
+    protected override void OnParametersSet()
+    {
+        _commandSteps = BuildCommandSteps();
+        _attachmentList = AttachedIdeaFiles
+            .OrderBy(attachment => attachment.CreatedAt)
+            .ToList();
+
+        var displayStateKey = BuildDisplayStateKey();
+        if (string.Equals(_displayStateKey, displayStateKey, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _displayStateKey = displayStateKey;
+        _displayedMessages = JobSessionDisplayBuilder.BuildDisplayedMessages(Messages, LiveOutputLines, IsJobActive, LiveMessages);
+        _displayedEntries = BuildDisplayEntries(_displayedMessages);
+        ApplyFilters();
+    }
+
     private void ToggleRoleFilter(MessageRole role)
     {
         if (!_hiddenRoles.Remove(role))
             _hiddenRoles.Add(role);
+
+        ApplyFilters();
     }
 
-    private void ClearFilters() => _hiddenRoles.Clear();
+    private void ClearFilters()
+    {
+        _hiddenRoles.Clear();
+        ApplyFilters();
+    }
 
     private void ToggleToolFilters()
     {
@@ -545,11 +561,13 @@
         {
             _hiddenRoles.Remove(MessageRole.ToolUse);
             _hiddenRoles.Remove(MessageRole.ToolResult);
+            ApplyFilters();
             return;
         }
 
         _hiddenRoles.Add(MessageRole.ToolUse);
         _hiddenRoles.Add(MessageRole.ToolResult);
+        ApplyFilters();
     }
 
     private bool ShowInlineWaitingActivity
@@ -586,18 +604,18 @@
     private bool ShouldAutoScrollSessionOutput()
         => _activeTab == "session"
             && IsJobActive
-            && (FilteredEntries.Any() || HasGoalPrompt);
+            && (_filteredEntries.Any() || HasGoalPrompt);
 
     private string BuildAutoScrollStateKey()
     {
-        var lastVisibleMessage = FilteredEntries.LastOrDefault()?.Message;
+        var lastVisibleMessage = _filteredEntries.LastOrDefault()?.Message;
         var lastOutputLine = LiveOutputLines.LastOrDefault();
         var lastLiveMessage = LiveMessages.LastOrDefault();
 
         return string.Join("|",
             HasGoalPrompt,
             GoalPrompt ?? string.Empty,
-            FilteredEntries.Count,
+            _filteredEntries.Count,
             lastVisibleMessage?.CreatedAt.Ticks ?? 0,
             (int?)lastVisibleMessage?.Role ?? -1,
             lastVisibleMessage?.Content ?? string.Empty,
@@ -676,6 +694,12 @@
         }
     }
 
+    private Task HandleFollowUpInput(ChangeEventArgs e)
+    {
+        _followUpPrompt = e.Value?.ToString() ?? string.Empty;
+        return Task.CompletedTask;
+    }
+
     private static string? NormalizeCommand(string? command)
         => string.IsNullOrWhiteSpace(command) ? null : command.Trim();
 
@@ -710,6 +734,37 @@
         }
 
         return steps;
+    }
+
+    private string BuildDisplayStateKey()
+    {
+        var lastPersistedMessage = Messages.LastOrDefault();
+        var lastOutputLine = LiveOutputLines.LastOrDefault();
+        var lastLiveMessage = LiveMessages.LastOrDefault();
+
+        return string.Join("|",
+            IsJobActive,
+            TotalMessageCount,
+            Messages.Count,
+            lastPersistedMessage?.Id ?? Guid.Empty,
+            lastPersistedMessage?.CreatedAt.Ticks ?? 0,
+            lastPersistedMessage?.Content ?? string.Empty,
+            LiveOutputLines.Count,
+            lastOutputLine?.Timestamp.Ticks ?? 0,
+            lastOutputLine?.Content ?? string.Empty,
+            LiveMessages.Count,
+            lastLiveMessage?.Id ?? Guid.Empty,
+            lastLiveMessage?.CreatedAt.Ticks ?? 0,
+            lastLiveMessage?.Content ?? string.Empty);
+    }
+
+    private void ApplyFilters()
+    {
+        _filteredEntries = !_hiddenRoles.Any()
+            ? _displayedEntries
+            : _displayedEntries
+                .Where(entry => !IsEntryHidden(entry))
+                .ToList();
     }
 
     private async Task CopyPrimaryCommandToClipboard()
@@ -875,6 +930,10 @@
     private sealed record SessionDisplayEntry(JobMessage Message, bool IsCombinedToolActivity = false);
 
     private sealed record CommandStep(string Key, string Label, string Icon, string Command);
+
+    public void Dispose()
+    {
+    }
 }
 
 @if (_showGoalPromptModal)

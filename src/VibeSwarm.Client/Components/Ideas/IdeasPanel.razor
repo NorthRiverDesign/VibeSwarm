@@ -6,6 +6,7 @@
 @inject NotificationService NotificationService
 @using System.Diagnostics.CodeAnalysis
 @using System.Globalization
+@using System.Threading
 @using VibeSwarm.Shared.Validation
 @implements IAsyncDisposable
 
@@ -56,7 +57,7 @@
 		<div class="d-flex gap-2 align-items-end">
 			<div class="flex-grow-1">
 				<textarea class="form-control" id="@_textareaId" rows="5" placeholder="Describe a feature or improvement..."
-						  value="@NewIdeaDescription" @oninput="HandleNewIdeaInput" @onkeypress="HandleKeyPress"
+						  value="@NewIdeaDescription" @oninput="HandleNewIdeaInput" @onblur="FlushDraftSyncAsync" @onkeypress="HandleKeyPress"
 						  @ref="_newIdeaTextarea"
 						  maxlength="@ValidationLimits.IdeaDescriptionMaxLength"
 						  title="Describe a feature or improvement. Press Ctrl+Enter to submit or paste an image into the box."></textarea>
@@ -439,6 +440,7 @@
 
 	private ElementReference _newIdeaTextarea;
 	private const string IdeaDraftStorageKeyPrefix = "vibeswarm.idea-draft";
+	private static readonly TimeSpan IdeaDraftSyncDelay = TimeSpan.FromMilliseconds(150);
 	private static readonly TimeSpan IdeasInteropTimeout = TimeSpan.FromMilliseconds(250);
 	private readonly string _fileInputId = $"idea-files-{Guid.NewGuid():N}";
 	private readonly string _textareaId = $"idea-textarea-{Guid.NewGuid():N}";
@@ -448,6 +450,7 @@
 	private bool _attachmentInteropAvailable = true;
 	private bool _pasteTargetRegistered;
 	private DotNetObjectReference<IdeasPanel>? _dotNetReference;
+	private CancellationTokenSource? _draftSyncCts;
 	private Guid? StartingIdeaId { get; set; }
 	private bool IsSuggestingIdeas { get; set; }
 	private SuggestIdeasResult? _suggestResult;
@@ -487,7 +490,7 @@
 	private async Task HandleNewIdeaInput(ChangeEventArgs e)
 	{
 		NewIdeaDescription = e.Value?.ToString() ?? string.Empty;
-		await PersistDraftAsync();
+		ScheduleDraftSync();
 	}
 
 	private bool _isSubmitting;
@@ -516,6 +519,7 @@
 		_isSubmitting = true;
 		try
 		{
+			CancelDraftSync();
 			await OnAddIdea.InvokeAsync(new CreateIdeaRequest
 			{
 				ProjectId = CurrentProjectId,
@@ -534,6 +538,45 @@
 			await ClearDraftAsync();
 		}
 		finally { _isSubmitting = false; }
+	}
+
+	private void ScheduleDraftSync()
+	{
+		CancelDraftSync();
+		_draftSyncCts = new CancellationTokenSource();
+		_ = DebounceDraftSyncAsync(_draftSyncCts.Token);
+	}
+
+	private async Task DebounceDraftSyncAsync(CancellationToken cancellationToken)
+	{
+		try
+		{
+			await Task.Delay(IdeaDraftSyncDelay, cancellationToken);
+			if (cancellationToken.IsCancellationRequested)
+			{
+				return;
+			}
+
+			await PersistDraftAsync();
+			await InvokeAsync(StateHasChanged);
+		}
+		catch (OperationCanceledException)
+		{
+		}
+	}
+
+	private async Task FlushDraftSyncAsync()
+	{
+		CancelDraftSync();
+		await PersistDraftAsync();
+		await InvokeAsync(StateHasChanged);
+	}
+
+	private void CancelDraftSync()
+	{
+		_draftSyncCts?.Cancel();
+		_draftSyncCts?.Dispose();
+		_draftSyncCts = null;
 	}
 
 	private async Task HandleStopJob(Idea idea)
@@ -1458,6 +1501,8 @@
 
 	public async ValueTask DisposeAsync()
 	{
+		CancelDraftSync();
+
 		if (_pasteTargetRegistered)
 		{
 			try
