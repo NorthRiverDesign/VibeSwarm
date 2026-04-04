@@ -548,6 +548,53 @@ public sealed class JobSessionPanelTests
 	}
 
 	[Fact]
+	public async Task RenderedJobSessionPanel_ExpandsStructuredLiveJsonToolMessages()
+	{
+		var services = new ServiceCollection();
+		services.AddLogging();
+		services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
+
+		await using var renderer = new HtmlRenderer(services.BuildServiceProvider(), NullLoggerFactory.Instance);
+
+		var timestamp = DateTime.UtcNow;
+		var html = await renderer.Dispatcher.InvokeAsync(async () =>
+		{
+			var parameters = ParameterView.FromDictionary(new Dictionary<string, object?>
+			{
+				[nameof(JobSessionPanel.Status)] = JobStatus.Processing,
+				[nameof(JobSessionPanel.IsJobActive)] = true,
+				[nameof(JobSessionPanel.LiveOutputLines)] = new List<OutputLine>
+				{
+					new()
+					{
+						Content =
+							"""{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Reviewing the repository state"},{"type":"tool_use","id":"toolu_live_123","name":"bash","input":{"command":"git status --short","description":"Check status"}},{"type":"thinking","thinking":"Checking the modified files before applying a patch."}]}}""",
+						Timestamp = timestamp.AddSeconds(-2)
+					},
+					new()
+					{
+						Content =
+							"""{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_live_123","content":"M src/VibeSwarm.Client/Components/Jobs/JobSessionPanel.razor"}]}}""",
+						Timestamp = timestamp.AddSeconds(-1)
+					}
+				}
+			});
+
+			var output = await renderer.RenderComponentAsync<JobSessionPanel>(parameters);
+			return output.ToHtmlString();
+		});
+
+		Assert.Contains("4 messages", html);
+		Assert.Contains("Reviewing the repository state", html);
+		Assert.Contains("Checking the modified files before applying a patch.", html);
+		Assert.Contains("Tool Call", html);
+		Assert.Contains("Tool Result", html);
+		Assert.Contains("git status --short", html);
+		Assert.Contains("bash", html);
+		Assert.DoesNotContain("toolu_live_123", html);
+	}
+
+	[Fact]
 	public void JobSessionPanel_Bunit_SwitchesTabsAndCopiesCommand()
 	{
 		using var context = new BunitContext();
