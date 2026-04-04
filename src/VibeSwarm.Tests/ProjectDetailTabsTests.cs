@@ -25,14 +25,15 @@ public sealed class ProjectDetailTabsTests
 		var cut = context.Render<ProjectDetail>(parameters => parameters
 			.Add(component => component.ProjectId, TestProjectId));
 
-		Assert.Contains("nav nav-tabs d-flex d-sm-none flex-nowrap align-items-stretch", cut.Markup);
+		Assert.Contains("d-flex d-sm-none align-items-stretch border-bottom", cut.Markup);
+		Assert.Contains("nav nav-tabs flex-nowrap flex-grow-1 align-items-stretch", cut.Markup);
 		Assert.Contains("Ideas", cut.Markup);
 		Assert.Contains("Jobs", cut.Markup);
 		Assert.Contains("More", cut.Markup);
 		Assert.Contains("Environments", cut.Markup);
 		Assert.Contains("Changes", cut.Markup);
 		Assert.Contains("Auto-Pilot", cut.Markup);
-		Assert.Contains("dropdown-menu dropdown-menu-end w-100 shadow-sm", cut.Markup);
+		Assert.Contains("dropdown-menu dropdown-menu-end shadow-sm", cut.Markup);
 	}
 
 	[Fact]
@@ -46,7 +47,7 @@ public sealed class ProjectDetailTabsTests
 		SetPrivateField(cut.Instance, "_activeTab", "autopilot");
 		cut.Render();
 
-		Assert.Contains("dropdown-toggle w-100 h-100 active", cut.Markup);
+		Assert.Contains("dropdown-toggle h-100 px-3 active", cut.Markup);
 		Assert.Contains("<span>Auto-Pilot</span>", cut.Markup);
 		Assert.Contains("bi bi-robot me-1", cut.Markup);
 		Assert.Contains("Ideas", cut.Markup);

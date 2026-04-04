@@ -935,106 +935,35 @@ public partial class ProjectDetail
         }
     }
 
-    // Changes tab methods
+    // Changes tab methods (delegated to ProjectChangesTab component)
     private async Task LoadChangesTabData()
     {
-        if (_isLoadingChangesTab) return;
-        if (Project == null || string.IsNullOrEmpty(Project.WorkingPath)) return;
-
-        var previousDiffFiles = _changesTabDiffFiles;
-        var previousExpandedItems = _changesTabExpandedItems;
-        var shouldShowLoadingState = !_changesTabDiffFiles.Any() && string.IsNullOrEmpty(_changesTabLoadError);
-
-        _isLoadingChangesTab = true;
-        _changesTabCommitError = null;
-        _changesTabLoadError = null;
-        if (shouldShowLoadingState)
+        if (_changesTab != null)
         {
-            StateHasChanged();
+            await _changesTab.LoadDataAsync();
         }
+    }
 
-        try
+    private async Task HandleChangesTabGitOperation(string? message)
+    {
+        if (!string.IsNullOrEmpty(message))
         {
-            var nextDiffFiles = new List<DiffFile>();
-            var nextPendingJobs = new List<Job>();
-            var nextCommittedJobs = new List<Job>();
-            var nextShowingCommittedDiff = false;
-            var nextShowingPersistedDiff = false;
-            string? nextCommittedHash = null;
-            string? nextEmptyStateMessage = null;
-
-            await RefreshUncommittedChangesStatus();
-            var changeSelection = GetProjectChangesSelection();
-            string? diffOutput = null;
-            IReadOnlyList<string> changedFiles = [];
-
-            if (changeSelection.SourceType == ProjectChangesSourceType.WorkingDirectory)
-            {
-                changedFiles = _workingTreeStatus.ChangedFiles;
-                if (changedFiles.Count == 0 && Math.Max(_workingTreeStatus.ChangedFilesCount, _uncommittedFilesCount) > 0)
-                {
-                    changedFiles = await VersionControlService.GetChangedFilesAsync(Project.WorkingPath);
-                }
-
-                diffOutput = await VersionControlService.GetWorkingDirectoryDiffAsync(Project.WorkingPath);
-                nextPendingJobs = changeSelection.LinkedJobs.ToList();
-                nextEmptyStateMessage = "No uncommitted changes. Your working directory is clean.";
-            }
-            else if (changeSelection.SourceType == ProjectChangesSourceType.Commit)
-            {
-                nextShowingCommittedDiff = true;
-                nextCommittedHash = changeSelection.CommitHash;
-                nextCommittedJobs = changeSelection.LinkedJobs.ToList();
-                diffOutput = await LoadCommittedChangesDiffAsync(changeSelection);
-                if (string.IsNullOrWhiteSpace(diffOutput))
-                {
-                    diffOutput = GetPersistedDiffFallback(changeSelection);
-                }
-                nextEmptyStateMessage = $"No diff is available for commit {ShortCommitHash(changeSelection.CommitHash)}.";
-            }
-            else if (changeSelection.SourceType == ProjectChangesSourceType.PersistedJobDiff)
-            {
-                nextShowingPersistedDiff = true;
-                nextPendingJobs = changeSelection.LinkedJobs.ToList();
-                diffOutput = changeSelection.PersistedDiff;
-                nextEmptyStateMessage = "No captured diff is available on the latest job.";
-            }
-            else
-            {
-                nextEmptyStateMessage = "No project changes are available to show.";
-            }
-
-            if (!string.IsNullOrEmpty(diffOutput))
-            {
-                nextDiffFiles = ParseGitDiff(diffOutput);
-            }
-
-            if (nextDiffFiles.Count == 0 && changedFiles.Count > 0)
-            {
-                nextDiffFiles = BuildPlaceholderDiffFiles(changedFiles);
-            }
-
-            _changesTabDiffFiles = nextDiffFiles;
-            _changesTabPendingJobs = nextPendingJobs;
-            _changesTabCommittedJobs = nextCommittedJobs;
-            _changesTabShowingCommittedDiff = nextShowingCommittedDiff;
-            _changesTabShowingPersistedDiff = nextShowingPersistedDiff;
-            _changesTabCommittedHash = nextCommittedHash;
-            _changesTabEmptyStateMessage = nextEmptyStateMessage;
-            _changesTabExpandedItems = ProjectChangesTabState.PreserveExpandedItems(
-                previousDiffFiles,
-                previousExpandedItems,
-                nextDiffFiles);
+            GitOperationMessage = message;
+            GitOperationSuccess = true;
         }
-        catch (Exception ex)
+        await SynchronizeProjectRepositoryStateAsync();
+    }
+
+    private async Task HandleChangesTabCommitted()
+    {
+        await RefreshJobs();
+        await RefreshUncommittedChangesStatus();
+        if (Project != null && !string.IsNullOrEmpty(Project.WorkingPath) && IsGitRepository)
         {
-            _changesTabLoadError = $"Failed to load changes: {ex.Message}";
+            CurrentCommitHash = await VersionControlService.GetCurrentCommitHashAsync(Project.WorkingPath);
         }
-        finally
-        {
-            _isLoadingChangesTab = false;
-            StateHasChanged();
-        }
+        _activeTab = "jobs";
+        StateHasChanged();
     }
 
     private ProjectChangesSelection GetProjectChangesSelection()
@@ -1042,6 +971,16 @@ public partial class ProjectDetail
             Jobs,
             _workingTreeStatus.HasUncommittedChanges || _hasUncommittedChangesHeader,
             Math.Max(_workingTreeStatus.ChangedFilesCount, _uncommittedFilesCount));
+
+    private static string ShortCommitHash(string? commitHash)
+    {
+        if (string.IsNullOrWhiteSpace(commitHash))
+        {
+            return "unknown commit";
+        }
+
+        return commitHash[..Math.Min(7, commitHash.Length)];
+    }
 
     private static List<DiffFile> BuildPlaceholderDiffFiles(IReadOnlyList<string> changedFiles)
     {
@@ -1057,226 +996,9 @@ public partial class ProjectDetail
             .ToList();
     }
 
-    private static string? GetPersistedDiffFallback(ProjectChangesSelection changeSelection)
+    private static List<DiffFile> ParseGitDiff(string diffOutput)
     {
-        return changeSelection.LinkedJobs
-            .Select(job => job.GitDiff)
-            .FirstOrDefault(diff => !string.IsNullOrWhiteSpace(diff));
-    }
-
-    private async Task<string?> LoadCommittedChangesDiffAsync(ProjectChangesSelection changeSelection)
-    {
-        if (Project == null || string.IsNullOrEmpty(Project.WorkingPath) || string.IsNullOrWhiteSpace(changeSelection.CommitHash))
-        {
-            return null;
-        }
-
-        if (!string.IsNullOrWhiteSpace(changeSelection.BaseCommit) &&
-            !string.Equals(changeSelection.BaseCommit, changeSelection.CommitHash, StringComparison.OrdinalIgnoreCase))
-        {
-            var rangeDiff = await VersionControlService.GetCommitRangeDiffAsync(
-                Project.WorkingPath,
-                changeSelection.BaseCommit,
-                changeSelection.CommitHash);
-
-            if (!string.IsNullOrWhiteSpace(rangeDiff))
-            {
-                return rangeDiff;
-            }
-        }
-
-        return await VersionControlService.GetCommitRangeDiffAsync(
-            Project.WorkingPath,
-            $"{changeSelection.CommitHash}^",
-            changeSelection.CommitHash);
-    }
-
-    private static string ShortCommitHash(string? commitHash)
-    {
-        if (string.IsNullOrWhiteSpace(commitHash))
-        {
-            return "unknown commit";
-        }
-
-        return commitHash[..Math.Min(7, commitHash.Length)];
-    }
-
-    private void ToggleChangesTabExpanded(int index)
-    {
-        if (!_changesTabExpandedItems.Add(index))
-        {
-            _changesTabExpandedItems.Remove(index);
-        }
-    }
-
-    private void ExpandAllChangesTab()
-    {
-        _changesTabExpandedItems = Enumerable.Range(0, _changesTabDiffFiles.Count).ToHashSet();
-    }
-
-    private void CollapseAllChangesTab()
-    {
-        _changesTabExpandedItems.Clear();
-    }
-
-    private void GenerateChangesTabCommitMessage()
-    {
-        if (_changesTabPendingJobs == null || !_changesTabPendingJobs.Any()) return;
-
-        var sb = new System.Text.StringBuilder();
-        if (_changesTabPendingJobs.Count == 1)
-        {
-            var job = _changesTabPendingJobs[0];
-            sb.AppendLine(job.Title ?? "Feature implementation");
-            sb.AppendLine();
-            sb.AppendLine($"Job #{job.Id}: {TruncateForToast(job.GoalPrompt, 60)}");
-        }
-        else
-        {
-            sb.AppendLine($"Implement {_changesTabPendingJobs.Count} features");
-            sb.AppendLine();
-            foreach (var job in _changesTabPendingJobs.Take(10))
-            {
-                sb.AppendLine($"- Job #{job.Id}: {TruncateForToast(job.Title ?? job.GoalPrompt, 50)}");
-            }
-            if (_changesTabPendingJobs.Count > 10)
-            {
-                sb.AppendLine($"- ... and {_changesTabPendingJobs.Count - 10} more");
-            }
-        }
-        _changesTabCommitMessage = sb.ToString().TrimEnd();
-    }
-
-    private async Task ChangesTabCommitOnly()
-    {
-        if (string.IsNullOrWhiteSpace(_changesTabCommitMessage)) return;
-        if (Project == null || string.IsNullOrEmpty(Project.WorkingPath)) return;
-
-        _isChangesTabCommitting = true;
-        _isChangesTabCommitOnly = true;
-        _changesTabCommitError = null;
-        StateHasChanged();
-
-        try
-        {
-            var commitResult = await VersionControlService.CommitAllChangesAsync(
-                Project.WorkingPath,
-                _changesTabCommitMessage.Trim());
-
-            if (!commitResult.Success)
-            {
-                _changesTabCommitError = $"Failed to commit: {commitResult.Error}";
-                return;
-            }
-
-            await LinkJobsToCommitAsync(_changesTabPendingJobs, commitResult.CommitHash);
-
-            GitOperationMessage = "Successfully committed changes";
-            GitOperationSuccess = true;
-            CurrentCommitHash = commitResult.CommitHash;
-            _changesTabCommitMessage = string.Empty;
-            await SynchronizeProjectRepositoryStateAsync();
-            _activeTab = "jobs"; // Switch away from empty changes tab
-        }
-        catch (Exception ex)
-        {
-            _changesTabCommitError = $"Error: {ex.Message}";
-        }
-        finally
-        {
-            _isChangesTabCommitting = false;
-            _isChangesTabCommitOnly = false;
-            StateHasChanged();
-        }
-    }
-
-    private async Task ChangesTabCommitAndPush()
-    {
-        if (string.IsNullOrWhiteSpace(_changesTabCommitMessage)) return;
-        if (Project == null || string.IsNullOrEmpty(Project.WorkingPath)) return;
-
-        _isChangesTabCommitting = true;
-        _isChangesTabCommitOnly = false;
-        _changesTabCommitError = null;
-        StateHasChanged();
-
-        try
-        {
-            var commitResult = await VersionControlService.CommitAllChangesAsync(
-                Project.WorkingPath,
-                _changesTabCommitMessage.Trim());
-
-            if (!commitResult.Success)
-            {
-                _changesTabCommitError = $"Failed to commit: {commitResult.Error}";
-                return;
-            }
-
-            await LinkJobsToCommitAsync(_changesTabPendingJobs, commitResult.CommitHash);
-
-            var pushResult = await VersionControlService.PushAsync(Project.WorkingPath);
-            if (pushResult.Success)
-            {
-                GitOperationMessage = "Successfully committed and pushed changes";
-                GitOperationSuccess = true;
-                CurrentCommitHash = commitResult.CommitHash;
-                _changesTabCommitMessage = string.Empty;
-                await SynchronizeProjectRepositoryStateAsync(reloadChangesTab: true);
-                _activeTab = "jobs";
-            }
-            else
-            {
-                _changesTabCommitError = $"Commit succeeded but push failed: {pushResult.Error}";
-                _changesTabCommitMessage = string.Empty;
-                await SynchronizeProjectRepositoryStateAsync(reloadChangesTab: true);
-            }
-        }
-        catch (Exception ex)
-        {
-            _changesTabCommitError = $"Error: {ex.Message}";
-        }
-        finally
-        {
-            _isChangesTabCommitting = false;
-            StateHasChanged();
-        }
-    }
-
-    private async Task ChangesTabDiscardAll()
-    {
-        if (Project == null || string.IsNullOrEmpty(Project.WorkingPath)) return;
-
-        _isChangesTabDiscarding = true;
-        StateHasChanged();
-
-        try
-        {
-            var result = await VersionControlService.DiscardAllChangesAsync(Project.WorkingPath);
-            if (result.Success)
-            {
-                await ClearPendingChangeAttributionAsync(_changesTabPendingJobs);
-                GitOperationMessage = "Successfully discarded all uncommitted changes";
-                GitOperationSuccess = true;
-                _changesTabShowDiscardConfirm = false;
-                await SynchronizeProjectRepositoryStateAsync();
-                _activeTab = "jobs";
-            }
-            else
-            {
-                _changesTabCommitError = $"Failed to discard: {result.Error}";
-                _changesTabShowDiscardConfirm = false;
-            }
-        }
-        catch (Exception ex)
-        {
-            _changesTabCommitError = $"Error: {ex.Message}";
-            _changesTabShowDiscardConfirm = false;
-        }
-        finally
-        {
-            _isChangesTabDiscarding = false;
-            StateHasChanged();
-        }
+        return GitDiffParser.ParseDiff(diffOutput);
     }
 
     private static string FormatDiffContent(string diffContent)
@@ -1285,11 +1007,6 @@ public partial class ProjectDetail
             return "<span class=\"text-muted\">No changes</span>";
 
         return GitDiffParser.FormatDiffHtml(diffContent);
-    }
-
-    private List<DiffFile> ParseGitDiff(string diffOutput)
-    {
-        return GitDiffParser.ParseDiff(diffOutput);
     }
 
     private List<Job> GetPendingCommitAttributionJobs()

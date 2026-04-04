@@ -12,14 +12,6 @@
 @inject NavigationManager NavigationManager
 @inject NotificationService NotificationService
 @implements IAsyncDisposable
-@using VibeSwarm.Client.Models
-@using VibeSwarm.Shared.Inference
-@using VibeSwarm.Shared.Models
-@using VibeSwarm.Shared.Services
-@using VibeSwarm.Shared.Utilities
-@using VibeSwarm.Shared.VersionControl
-@using VibeSwarm.Shared.VersionControl.Models
-@using Microsoft.AspNetCore.SignalR.Client
 
 @if (IsLoading)
 {
@@ -121,83 +113,83 @@ else
             </li>
         </ul>
 
-        <ul class="nav nav-tabs d-flex d-sm-none flex-nowrap align-items-stretch overflow-x-auto overflow-y-hidden overscroll-contain" role="tablist">
-            <li class="nav-item flex-fill" role="presentation">
-                <button type="button" class="nav-link w-100 @(IsActiveTab("ideas") ? "active" : string.Empty)"
-                        @onclick='@(() => SetActiveTab("ideas"))' role="tab">
-                    <i class="bi bi-lightbulb me-1"></i>
-                    <span>Ideas</span>
-                    @if (IdeasTotalCount > 0)
-                    {
-                        <span class="badge bg-secondary ms-1">@IdeasTotalCount</span>
-                    }
-                </button>
-            </li>
-            <li class="nav-item flex-fill" role="presentation">
-                <button type="button" class="nav-link w-100 @(IsActiveTab("jobs") ? "active" : string.Empty)"
-                        @onclick='@(() => SetActiveTab("jobs"))' role="tab">
-                    <i class="bi bi-list-task me-1"></i>
-                    <span>Jobs</span>
-                    @if (JobsTotalCount > 0)
-                    {
-                        <span class="badge bg-secondary ms-1">@JobsTotalCount</span>
-                    }
-                </button>
-            </li>
-            <li class="nav-item flex-fill" role="presentation">
-                <div class="dropdown h-100">
-                    <button type="button" class="nav-link dropdown-toggle w-100 h-100 @(IsOverflowTabActive ? "active" : string.Empty)"
-                            data-bs-toggle="dropdown" aria-expanded="false" title="More project tabs">
-                        <i class="bi @GetOverflowToggleIcon() me-1"></i>
-                        <span>@GetOverflowTabLabel()</span>
+        <div class="d-flex d-sm-none align-items-stretch border-bottom">
+            <ul class="nav nav-tabs flex-nowrap flex-grow-1 align-items-stretch overflow-x-auto overflow-y-hidden overscroll-contain border-bottom-0 mb-0" role="tablist">
+                <li class="nav-item flex-fill" role="presentation">
+                    <button type="button" class="nav-link w-100 h-100 @(IsActiveTab("ideas") ? "active" : string.Empty)"
+                            @onclick='@(() => SetActiveTab("ideas"))' role="tab">
+                        <i class="bi bi-lightbulb me-1"></i>
+                        <span>Ideas</span>
+                        @if (IdeasTotalCount > 0)
+                        {
+                            <span class="badge bg-secondary ms-1">@IdeasTotalCount</span>
+                        }
                     </button>
-                    <ul class="dropdown-menu dropdown-menu-end w-100 shadow-sm project-detail-overflow-menu">
-                        <li>
-                            <button type="button" class="dropdown-item d-flex align-items-center justify-content-between gap-2 @(IsActiveTab("environments") ? "active" : string.Empty)"
-                                    @onclick='@(() => SetActiveTab("environments"))'>
-                                <span class="d-flex align-items-center gap-2">
-                                    <i class="bi bi-globe2"></i>
-                                    <span>Environments</span>
+                </li>
+                <li class="nav-item flex-fill" role="presentation">
+                    <button type="button" class="nav-link w-100 h-100 @(IsActiveTab("jobs") ? "active" : string.Empty)"
+                            @onclick='@(() => SetActiveTab("jobs"))' role="tab">
+                        <i class="bi bi-list-task me-1"></i>
+                        <span>Jobs</span>
+                        @if (JobsTotalCount > 0)
+                        {
+                            <span class="badge bg-secondary ms-1">@JobsTotalCount</span>
+                        }
+                    </button>
+                </li>
+            </ul>
+            <div class="dropdown flex-shrink-0">
+                <button type="button" class="nav-link dropdown-toggle h-100 px-3 @(IsOverflowTabActive ? "active" : string.Empty)"
+                        data-bs-toggle="dropdown" aria-expanded="false" title="More project tabs">
+                    <i class="bi @GetOverflowToggleIcon() me-1"></i>
+                    <span>@GetOverflowTabLabel()</span>
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end shadow-sm">
+                    <li>
+                        <button type="button" class="dropdown-item d-flex align-items-center justify-content-between gap-2 @(IsActiveTab("environments") ? "active" : string.Empty)"
+                                @onclick='@(() => SetActiveTab("environments"))'>
+                            <span class="d-flex align-items-center gap-2">
+                                <i class="bi bi-globe2"></i>
+                                <span>Environments</span>
+                            </span>
+                            @if (EnabledEnvironmentCount > 0)
+                            {
+                                <span class="badge bg-secondary">@EnabledEnvironmentCount</span>
+                            }
+                        </button>
+                    </li>
+                    <li>
+                        <button type="button" class="dropdown-item d-flex align-items-center justify-content-between gap-2 @(IsActiveTab("changes") ? "active" : string.Empty)"
+                                @onclick="OpenChangesTabAsync"
+                                disabled="@(!IsGitRepository)">
+                            <span class="d-flex align-items-center gap-2">
+                                <i class="bi bi-file-diff"></i>
+                                <span>Changes</span>
+                            </span>
+                            @if (HasChangesTabContent && _workingTreeStatus.ChangedFilesCount > 0)
+                            {
+                                <span class="badge bg-warning text-dark">@_workingTreeStatus.ChangedFilesCount</span>
+                            }
+                        </button>
+                    </li>
+                    <li>
+                        <button type="button" class="dropdown-item d-flex align-items-center justify-content-between gap-2 @(IsActiveTab("autopilot") ? "active" : string.Empty)"
+                                @onclick='@(() => SetActiveTab("autopilot"))'>
+                            <span class="d-flex align-items-center gap-2">
+                                <i class="bi bi-robot"></i>
+                                <span>Auto-Pilot</span>
+                            </span>
+                            @if (_autoPilotStatus != null && !AutoPilotPanel.IsTerminal(_autoPilotStatus.Status))
+                            {
+                                <span class="badge @AutoPilotPanel.GetStatusBadgeClass(_autoPilotStatus.Status)">
+                                    @_autoPilotStatus.Status.ToString()
                                 </span>
-                                @if (EnabledEnvironmentCount > 0)
-                                {
-                                    <span class="badge bg-secondary">@EnabledEnvironmentCount</span>
-                                }
-                            </button>
-                        </li>
-                        <li>
-                            <button type="button" class="dropdown-item d-flex align-items-center justify-content-between gap-2 @(IsActiveTab("changes") ? "active" : string.Empty)"
-                                    @onclick="OpenChangesTabAsync"
-                                    disabled="@(!IsGitRepository)">
-                                <span class="d-flex align-items-center gap-2">
-                                    <i class="bi bi-file-diff"></i>
-                                    <span>Changes</span>
-                                </span>
-                                @if (HasChangesTabContent && _workingTreeStatus.ChangedFilesCount > 0)
-                                {
-                                    <span class="badge bg-warning text-dark">@_workingTreeStatus.ChangedFilesCount</span>
-                                }
-                            </button>
-                        </li>
-                        <li>
-                            <button type="button" class="dropdown-item d-flex align-items-center justify-content-between gap-2 @(IsActiveTab("autopilot") ? "active" : string.Empty)"
-                                    @onclick='@(() => SetActiveTab("autopilot"))'>
-                                <span class="d-flex align-items-center gap-2">
-                                    <i class="bi bi-robot"></i>
-                                    <span>Auto-Pilot</span>
-                                </span>
-                                @if (_autoPilotStatus != null && !AutoPilotPanel.IsTerminal(_autoPilotStatus.Status))
-                                {
-                                    <span class="badge @AutoPilotPanel.GetStatusBadgeClass(_autoPilotStatus.Status)">
-                                        @_autoPilotStatus.Status.ToString()
-                                    </span>
-                                }
-                            </button>
-                        </li>
-                    </ul>
-                </div>
-            </li>
-        </ul>
+                            }
+                        </button>
+                    </li>
+                </ul>
+            </div>
+        </div>
     </div>
 
     <div class="tab-content pt-3">
@@ -285,270 +277,13 @@ else
         @if (_activeTab == "changes")
         {
             <div class="tab-pane fade show active">
-                @if (_isLoadingChangesTab)
-                {
-                    <div class="d-flex align-items-center justify-content-center gap-2 py-5 text-body-secondary">
-                        <span class="spinner-border spinner-border-sm" role="status"></span>
-                        <span>Loading changes...</span>
-                    </div>
-                }
-                else if (!string.IsNullOrEmpty(_changesTabLoadError))
-                {
-                    <Alert Type="Alert.AlertType.Danger" Message="@_changesTabLoadError" />
-                }
-                else if (_changesTabDiffFiles != null && _changesTabDiffFiles.Any())
-                {
-                    @if (_changesTabShowingCommittedDiff && _changesTabCommittedJobs.Any())
-                    {
-                        <div class="alert alert-success py-2 mb-3">
-                            <div class="d-flex align-items-center gap-2 mb-2">
-                                <i class="bi bi-git"></i>
-                                <strong>Showing committed changes from @ShortCommitHash(_changesTabCommittedHash)</strong>
-                            </div>
-                            <div class="d-flex flex-wrap gap-1">
-                                @foreach (var job in _changesTabCommittedJobs.Take(5))
-                                {
-                                    <span class="badge bg-success-subtle text-success border border-success-subtle">
-                                        <i class="bi bi-check-circle me-1"></i>@TruncateForToast(job.Title ?? job.GoalPrompt, 40)
-                                    </span>
-                                }
-                                @if (_changesTabCommittedJobs.Count > 5)
-                                {
-                                    <span class="badge bg-secondary-subtle text-secondary">
-                                        +@(_changesTabCommittedJobs.Count - 5) more
-                                    </span>
-                                }
-                            </div>
-                            <div class="mt-2 small text-body-secondary">
-                                <i class="bi bi-info-circle me-1"></i>The working directory is clean, so this view is using the linked commit diff.
-                            </div>
-                        </div>
-                    }
-
-                    @if (_changesTabShowingPersistedDiff && _changesTabPendingJobs.Any())
-                    {
-                        <div class="alert alert-info py-2 mb-3">
-                            <div class="d-flex align-items-center gap-2 mb-2">
-                                <i class="bi bi-shield-check"></i>
-                                <strong>Showing the last captured diff for @_changesTabPendingJobs[0].DisplayTitle</strong>
-                            </div>
-                            <div class="small text-body-secondary">
-                                <i class="bi bi-info-circle me-1"></i>This project is currently clean, so VibeSwarm is showing the diff captured on the job record instead.
-                            </div>
-                        </div>
-                    }
-
-                    @* Pending Jobs Section *@
-                    @if (!_changesTabShowingCommittedDiff && !_changesTabShowingPersistedDiff && _changesTabPendingJobs != null && _changesTabPendingJobs.Any())
-                    {
-                        <div class="alert alert-info py-2 mb-3">
-                            <div class="d-flex align-items-center gap-2 mb-2">
-                                <i class="bi bi-info-circle"></i>
-                                <strong>@_changesTabPendingJobs.Count completed job(s) may have contributed to these changes</strong>
-                            </div>
-                            <div class="d-flex flex-wrap gap-1">
-                                @foreach (var job in _changesTabPendingJobs.Take(5))
-                                {
-                                    <span class="badge bg-success-subtle text-success border border-success-subtle">
-                                        <i class="bi bi-check-circle me-1"></i>@TruncateForToast(job.Title ?? job.GoalPrompt, 40)
-                                    </span>
-                                }
-                                @if (_changesTabPendingJobs.Count > 5)
-                                {
-                                    <span class="badge bg-secondary-subtle text-secondary">
-                                        +@(_changesTabPendingJobs.Count - 5) more
-                                    </span>
-                                }
-                            </div>
-                            <div class="mt-2 small text-body-secondary">
-                                <i class="bi bi-lightbulb me-1"></i>Committing will link this commit to these jobs.
-                            </div>
-                        </div>
-                    }
-
-                    @* Diff Viewer *@
-                    <div class="mb-3">
-                        <div class="d-flex align-items-center justify-content-between mb-2">
-                            <span class="text-body-secondary small">
-                                <i class="bi bi-files me-1"></i>
-                                @_changesTabDiffFiles.Count file(s) modified
-                                <span class="ms-2">
-                                    <span class="text-success">+@_changesTabDiffFiles.Sum(f => f.Additions)</span>
-                                    <span class="text-danger ms-1">-@_changesTabDiffFiles.Sum(f => f.Deletions)</span>
-                                </span>
-                            </span>
-                            <div class="btn-group btn-group-sm">
-                                <button type="button" class="btn btn-secondary" @onclick="ExpandAllChangesTab" title="Expand all"
-                                        disabled="@_changesTabAllExpanded">
-                                    <i class="bi bi-arrows-expand"></i>
-                                </button>
-                                <button type="button" class="btn btn-secondary" @onclick="CollapseAllChangesTab" title="Collapse all"
-                                        disabled="@(_changesTabExpandedItems.Count == 0)">
-                                    <i class="bi bi-arrows-collapse"></i>
-                                </button>
-                            </div>
-                        </div>
-
-                        <div class="accordion border rounded overflow-y-auto" id="changesTabAccordion"
-                             style="max-height: min(400px, 50vh);">
-                            @foreach (var (file, index) in _changesTabDiffFiles.Select((f, i) => (f, i)))
-                            {
-                                var isExpanded = _changesTabExpandedItems.Contains(index);
-                                <div class="accordion-item">
-                                    <h2 class="accordion-header">
-                                        <button class="accordion-button @(isExpanded ? "" : "collapsed") py-2 px-3" type="button"
-                                                @onclick="() => ToggleChangesTabExpanded(index)">
-                                            <span class="d-flex align-items-center gap-2 w-100">
-                                                @if (file.IsNew)
-                                                {
-                                                    <i class="bi bi-file-earmark-plus text-success" title="New file"></i>
-                                                }
-                                                else if (file.IsDeleted)
-                                                {
-                                                    <i class="bi bi-file-earmark-minus text-danger" title="Deleted file"></i>
-                                                }
-                                                else
-                                                {
-                                                    <i class="bi bi-file-earmark-diff text-warning" title="Modified file"></i>
-                                                }
-                                                <span class="font-monospace small text-truncate flex-grow-1">@file.FileName</span>
-                                                <span class="small">
-                                                    @if (file.Additions > 0)
-                                                    {
-                                                        <span class="text-success fw-medium">+@file.Additions</span>
-                                                    }
-                                                    @if (file.Deletions > 0)
-                                                    {
-                                                        <span class="text-danger fw-medium ms-1">-@file.Deletions</span>
-                                                    }
-                                                </span>
-                                            </span>
-                                        </button>
-                                    </h2>
-                                    <div class="accordion-collapse collapse @(isExpanded ? "show" : "")">
-                                        <div class="accordion-body p-0">
-                                            @if (!file.IsDeleted)
-                                            {
-                                                <div class="terminal-output overscroll-contain white-space-pre-wrap overflow-auto p-2 small" style="max-height: 300px;">
-                                                    @((MarkupString)FormatDiffContent(file.DiffContent))
-                                                </div>
-                                            }
-                                            else
-                                            {
-                                                <div class="p-3 text-body-secondary small">
-                                                    <i class="bi bi-trash me-1"></i>File deleted
-                                                </div>
-                                            }
-                                        </div>
-                                    </div>
-                                </div>
-                            }
-                        </div>
-                    </div>
-
-                    @if (!_changesTabShowingCommittedDiff && !_changesTabShowingPersistedDiff)
-                    {
-                        <hr class="my-3" />
-
-                        @* Commit Section *@
-                        <div class="mb-3">
-                            <div class="d-flex align-items-center justify-content-between mb-2">
-                                <label for="changesTabCommitMessage" class="form-label fw-medium mb-0">
-                                    <i class="bi bi-chat-square-text me-1"></i>Commit Message
-                                </label>
-                                @if (_changesTabPendingJobs != null && _changesTabPendingJobs.Any() && string.IsNullOrWhiteSpace(_changesTabCommitMessage))
-                                {
-                                    <button type="button" class="btn btn-sm btn-primary" @onclick="GenerateChangesTabCommitMessage"
-                                            title="Generate commit message from job summaries">
-                                        <i class="bi bi-magic me-1"></i>Generate
-                                    </button>
-                                }
-                            </div>
-                            <textarea class="form-control font-monospace" id="changesTabCommitMessage" @bind="_changesTabCommitMessage"
-                                      @bind:event="oninput" rows="5" placeholder="Enter commit message..."
-                                      disabled="@_isChangesTabCommitting"></textarea>
-                        </div>
-
-                        @if (!string.IsNullOrEmpty(_changesTabCommitError))
-                        {
-                            <div class="alert alert-danger py-2">
-                                <i class="bi bi-exclamation-triangle me-1"></i>@_changesTabCommitError
-                            </div>
-                        }
-
-                        @* Discard Confirmation *@
-                        @if (_changesTabShowDiscardConfirm)
-                        {
-                            <div class="alert alert-warning py-3">
-                                <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
-                                    <div>
-                                        <i class="bi bi-exclamation-triangle me-2"></i>
-                                        <strong>Are you sure?</strong> This will permanently discard all uncommitted changes.
-                                    </div>
-                                    <div class="d-flex gap-2">
-                                        <button type="button" class="btn btn-secondary btn-sm" @onclick="@(() => _changesTabShowDiscardConfirm = false)">
-                                            Cancel
-                                        </button>
-                                        <button type="button" class="btn btn-danger btn-sm" @onclick="ChangesTabDiscardAll"
-                                                disabled="@_isChangesTabDiscarding">
-                                            @if (_isChangesTabDiscarding)
-                                            {
-                                                <span class="spinner-border spinner-border-sm me-1" role="status"></span>
-                                            }
-                                            Yes, Discard All
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        }
-
-                        @* Action Buttons *@
-                        @if (!_changesTabShowDiscardConfirm)
-                        {
-                            <div class="d-flex flex-column flex-sm-row justify-content-between gap-2">
-                                <button type="button" class="btn btn-danger" @onclick="@(() => _changesTabShowDiscardConfirm = true)"
-                                        disabled="@(_isChangesTabCommitting || _isChangesTabDiscarding)">
-                                    <i class="bi bi-trash me-1"></i>Discard All
-                                </button>
-                                <div class="d-flex gap-2">
-                                    <button type="button" class="btn btn-secondary" @onclick="ChangesTabCommitOnly"
-                                            disabled="@(_isChangesTabCommitting || _isChangesTabDiscarding || string.IsNullOrWhiteSpace(_changesTabCommitMessage))">
-                                        @if (_isChangesTabCommitting && _isChangesTabCommitOnly)
-                                        {
-                                            <span class="spinner-border spinner-border-sm me-1" role="status"></span>
-                                            <span>Committing...</span>
-                                        }
-                                        else
-                                        {
-                                            <i class="bi bi-check-circle me-1"></i>
-                                            <span>Commit Only</span>
-                                        }
-                                    </button>
-                                    <button type="button" class="btn btn-primary" @onclick="ChangesTabCommitAndPush"
-                                            disabled="@(_isChangesTabCommitting || _isChangesTabDiscarding || string.IsNullOrWhiteSpace(_changesTabCommitMessage))">
-                                        @if (_isChangesTabCommitting && !_isChangesTabCommitOnly)
-                                        {
-                                            <span class="spinner-border spinner-border-sm me-1" role="status"></span>
-                                            <span>Pushing...</span>
-                                        }
-                                        else
-                                        {
-                                            <i class="bi bi-cloud-arrow-up me-1"></i>
-                                            <span>Commit & Push</span>
-                                        }
-                                    </button>
-                                </div>
-                            </div>
-                        }
-                    }
-                }
-                else
-                {
-                    <div class="text-center py-5 text-body-secondary">
-                        <i class="bi bi-check-circle fs-1 d-block mb-2"></i>
-                        <p class="mb-0">@(_changesTabEmptyStateMessage ?? "No project changes are available to show.")</p>
-                    </div>
-                }
+                <ProjectChangesTab @ref="_changesTab" WorkingPath="@(Project?.WorkingPath ?? string.Empty)"
+                                   Jobs="@Jobs" IsGitRepository="@IsGitRepository"
+                                   HasUncommittedChanges="@_hasUncommittedChangesHeader"
+                                   UncommittedFilesCount="@_uncommittedFilesCount"
+                                   WorkingTreeStatus="@_workingTreeStatus"
+                                   OnGitOperationCompleted="HandleChangesTabGitOperation"
+                                   OnChangesCommitted="HandleChangesTabCommitted" />
             </div>
         }
         @if (_activeTab == "autopilot")
@@ -712,24 +447,8 @@ else
     private bool _isSavingEnvironments;
     private string? _environmentError;
 
-    // Changes tab state
-    private bool _isLoadingChangesTab;
-    private List<DiffFile> _changesTabDiffFiles = new();
-    private List<Job> _changesTabPendingJobs = new();
-    private List<Job> _changesTabCommittedJobs = new();
-    private bool _changesTabShowingCommittedDiff;
-    private bool _changesTabShowingPersistedDiff;
-    private string? _changesTabCommittedHash;
-    private string? _changesTabEmptyStateMessage;
-    private string _changesTabCommitMessage = string.Empty;
-    private string? _changesTabCommitError;
-    private string? _changesTabLoadError;
-    private bool _isChangesTabCommitting;
-    private bool _isChangesTabCommitOnly;
-    private bool _isChangesTabDiscarding;
-    private bool _changesTabShowDiscardConfirm;
-    private HashSet<int> _changesTabExpandedItems = new();
-    private bool _changesTabAllExpanded => _changesTabDiffFiles.Count > 0 && _changesTabExpandedItems.Count == _changesTabDiffFiles.Count;
+    // Changes tab component
+    private ProjectChangesTab? _changesTab;
     private bool HasChangesTabContent => IsGitRepository;
     private List<string> MergeTargetBranches => Branches
         .Where(branch => !branch.IsRemote && !string.Equals(branch.Name, CurrentBranch, StringComparison.Ordinal))
@@ -776,14 +495,6 @@ else
 
     private bool _isStoppingAll;
 
-    // SignalR connection
-    private HubConnection? _hubConnection;
-    private CancellationTokenSource? _signalRCts;
-    private HashSet<Guid> _localIdeaUpdateIds = new();
-    private HashSet<Guid> _localIdeaCreateIds = new();
-    private DateTime _lastIdeasLoadTime = DateTime.MinValue;
-    private bool _disposed;
-
     private void SetActiveTab(string tab)
     {
         _activeTab = tab;
@@ -814,552 +525,5 @@ else
             "autopilot" => "bi-robot",
             _ => "bi-three-dots"
         };
-    }
-
-    protected override async Task OnInitializedAsync()
-    {
-        // Load data first - this controls the loading spinner
-        await LoadData();
-
-        // These operations run after loading completes and shouldn't block UI
-        // Use fire-and-forget pattern with error handling for non-critical operations
-        _ = LoadGitInfoSafe();
-        _ = InitializeSignalRSafe();
-        StartAutoRefresh();
-    }
-
-    /// <summary>
-    /// Safe wrapper for LoadGitInfo that won't crash the component
-    /// </summary>
-    private async Task LoadGitInfoSafe()
-    {
-        try
-        {
-            await LoadGitInfo();
-        }
-        catch (Exception)
-        {
-            _isLoadingGitInfo = false;
-            IsGitRepository = false;
-        }
-        finally
-        {
-            await InvokeAsync(StateHasChanged);
-        }
-    }
-
-    /// <summary>
-    /// Safe wrapper for SignalR initialization with timeout and error handling.
-    /// SignalR is a progressive enhancement - the app works without it via polling.
-    /// </summary>
-    private async Task InitializeSignalRSafe()
-    {
-        try
-        {
-            _signalRCts = new CancellationTokenSource();
-
-            // Give SignalR 10 seconds to connect on mobile, then fall back to polling
-            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
-            _signalRCts.Token, timeoutCts.Token);
-
-            await InitializeSignalR(linkedCts.Token);
-        }
-        catch (OperationCanceledException)
-        {
-        }
-        catch (Exception)
-        {
-        }
-    }
-
-    private async Task InitializeSignalR(CancellationToken cancellationToken)
-    {
-        _hubConnection = new HubConnectionBuilder()
-        .WithUrl(NavigationManager.ToAbsoluteUri("/hubs/job"))
-        .WithAutomaticReconnect(new[] { TimeSpan.Zero, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(5),
-TimeSpan.FromSeconds(10) })
-        .Build();
-
-        // Register all event handlers before connecting
-        RegisterSignalRHandlers();
-
-        // Handle connection state changes
-        _hubConnection.Closed += async (error) =>
-        {
-            await Task.CompletedTask;
-        };
-
-        _hubConnection.Reconnected += async (connectionId) =>
-        {
-            // Re-subscribe after reconnection
-            await SubscribeToSignalRGroups();
-        };
-
-        try
-        {
-            await _hubConnection.StartAsync(cancellationToken);
-            await SubscribeToSignalRGroups();
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-        }
-    }
-
-    private void RegisterSignalRHandlers()
-    {
-        if (_hubConnection == null) return;
-
-        // Listen for job updates (status changes sent as jobId, status)
-        _hubConnection.On<string, string>("JobStatusChanged", async (jobId, status) =>
-        {
-            if (_disposed) return;
-            try
-            {
-                await InvokeAsync(async () =>
-                {
-                    if (_disposed) return;
-                    await RefreshJobs();
-                    // LoadIdeas is debounced to avoid redundant loads during rapid status changes
-                    await LoadIdeas();
-                    StateHasChanged();
-                });
-            }
-            catch (ObjectDisposedException) { }
-            catch (Exception) { }
-        });
-
-        // Job created events include jobId and projectId
-        _hubConnection.On<string, string>("JobCreated", async (jobId, projectId) =>
-        {
-            if (_disposed) return;
-            try
-            {
-                await InvokeAsync(async () =>
-                {
-                    if (_disposed) return;
-                    await RefreshJobs();
-                    await LoadIdeas();
-                    StateHasChanged();
-                });
-            }
-            catch (ObjectDisposedException) { }
-            catch (Exception) { }
-        });
-
-        // Job deleted events include jobId and projectId
-        _hubConnection.On<string, string>("JobDeleted", async (jobId, projectId) =>
-        {
-            if (_disposed) return;
-            try
-            {
-                await InvokeAsync(async () =>
-                {
-                    if (_disposed) return;
-                    await RefreshJobs();
-                    StateHasChanged();
-                });
-            }
-            catch (ObjectDisposedException) { }
-            catch (Exception) { }
-        });
-
-        // Activity updates include jobId, activity, and timestamp
-        _hubConnection.On<string, string, DateTime>("JobActivityUpdated", async (jobId, activity, timestamp) =>
-        {
-            if (_disposed) return;
-            try
-            {
-                await InvokeAsync(() =>
-                {
-                    if (_disposed) return Task.CompletedTask;
-                    var job = Jobs.FirstOrDefault(j => j.Id.ToString() == jobId);
-                    if (job != null)
-                    {
-                        job.CurrentActivity = activity;
-                        StateHasChanged();
-                    }
-                    return Task.CompletedTask;
-                });
-            }
-            catch (ObjectDisposedException) { }
-            catch (Exception) { }
-        });
-
-        // Job completed events
-        _hubConnection.On<string, bool, string?>("JobCompleted", async (jobId, success, errorMessage) =>
-        {
-            if (_disposed) return;
-            try
-            {
-                await InvokeAsync(async () =>
-                {
-                    if (_disposed) return;
-                    await RefreshJobs();
-                    await LoadIdeas();
-                    await RefreshUncommittedChangesStatus();
-                    ProcessingIdeaIds.Clear(); // Clear any stale processing states
-
-                    if (success && (_activeTab == "changes" || _hasUncommittedChangesHeader))
-                    {
-                        await LoadChangesTabData();
-                    }
-
-                    StateHasChanged();
-                });
-            }
-            catch (ObjectDisposedException) { }
-            catch (Exception) { }
-        });
-
-        _hubConnection.On<string, bool>("JobGitDiffUpdated", async (jobId, hasChanges) =>
-        {
-            if (_disposed) return;
-            try
-            {
-                await InvokeAsync(async () =>
-                {
-                    if (_disposed) return;
-                    if (!Jobs.Any(j => j.Id.ToString() == jobId))
-                    {
-                        return;
-                    }
-
-                    await RefreshJobs();
-                    await RefreshUncommittedChangesStatus();
-
-                    if (hasChanges || _activeTab == "changes")
-                    {
-                        await LoadChangesTabData();
-                    }
-
-                    StateHasChanged();
-                });
-            }
-            catch (ObjectDisposedException) { }
-            catch (Exception) { }
-        });
-
-        // Idea started processing (converted to job) - another user clicked Start
-        _hubConnection.On<string, string, string>("IdeaStarted", async (ideaId, projectId, jobId) =>
-        {
-            if (_disposed) return;
-            try
-            {
-                await InvokeAsync(async () =>
-                {
-                    if (_disposed) return;
-                    // Only refresh if this is for our project
-                    if (projectId == ProjectId.ToString())
-                    {
-                        await RefreshJobs();
-                        await LoadIdeas();
-                        StateHasChanged();
-                    }
-                });
-            }
-            catch (ObjectDisposedException) { }
-            catch (Exception) { }
-        });
-
-        // Ideas auto-processing state changed
-        _hubConnection.On<string, bool>("IdeasProcessingStateChanged", async (projectId, isActive) =>
-        {
-            if (_disposed) return;
-            try
-            {
-                await InvokeAsync(async () =>
-                {
-                    if (_disposed) return;
-                    // Only update if this is for our project
-                    if (projectId == ProjectId.ToString())
-                    {
-                        IsIdeasProcessingActive = isActive;
-                        if (!isActive)
-                        {
-                            ProcessingIdeaIds.Clear();
-                        }
-                        await LoadIdeas();
-                        StateHasChanged();
-                    }
-                });
-            }
-            catch (ObjectDisposedException) { }
-            catch (Exception) { }
-        });
-
-        // Idea created - another user added an idea
-        _hubConnection.On<string, string>("IdeaCreated", async (ideaId, projectId) =>
-        {
-            if (_disposed) return;
-            try
-            {
-                await InvokeAsync(async () =>
-                {
-                    if (_disposed) return;
-                    if (projectId == ProjectId.ToString())
-                    {
-                        // Skip reload for ideas we just created locally
-                        if (Guid.TryParse(ideaId, out var createdIdeaId) && _localIdeaCreateIds.Remove(createdIdeaId))
-                        {
-                            return;
-                        }
-                        await LoadIdeas();
-                        StateHasChanged();
-                    }
-                });
-            }
-            catch (ObjectDisposedException) { }
-            catch (Exception) { }
-        });
-
-        // Idea deleted - another user deleted an idea
-        _hubConnection.On<string, string>("IdeaDeleted", async (ideaId, projectId) =>
-        {
-            if (_disposed) return;
-            try
-            {
-                await InvokeAsync(async () =>
-                {
-                    if (_disposed) return;
-                    if (projectId == ProjectId.ToString())
-                    {
-                        // Remove from local processing set if present
-                        if (Guid.TryParse(ideaId, out var ideaGuid))
-                        {
-                            ProcessingIdeaIds.Remove(ideaGuid);
-                        }
-                        await LoadIdeas();
-                        StateHasChanged();
-                    }
-                });
-            }
-            catch (ObjectDisposedException) { }
-            catch (Exception) { }
-        });
-
-        // Idea updated - another user edited/expanded an idea
-        _hubConnection.On<string, string>("IdeaUpdated", async (ideaId, projectId) =>
-        {
-            if (_disposed) return;
-            try
-            {
-                await InvokeAsync(async () =>
-                {
-                    if (_disposed) return;
-                    if (projectId == ProjectId.ToString())
-                    {
-                        if (Guid.TryParse(ideaId, out var updatedIdeaId) && _localIdeaUpdateIds.Remove(updatedIdeaId))
-                        {
-                            StateHasChanged();
-                            return;
-                        }
-                        await LoadIdeas();
-                        StateHasChanged();
-                    }
-                });
-            }
-            catch (ObjectDisposedException) { }
-            catch (Exception) { }
-        });
-
-        _hubConnection.On<string, string, int, int>(
-            "AutoPilotStateChanged", async (projectId, status, completedIterations, maxIterations) =>
-        {
-            if (_disposed) return;
-            try
-            {
-                await InvokeAsync(async () =>
-                {
-                    if (_disposed) return;
-                    if (projectId == ProjectId.ToString())
-                    {
-                        // Refresh the full status from the API for up-to-date data
-                        try { _autoPilotStatus = await AutoPilotService.GetStatusAsync(ProjectId); } catch { }
-                        if (_autoPilotPanel != null)
-                            await _autoPilotPanel.RefreshAsync();
-                        StateHasChanged();
-                    }
-                });
-            }
-            catch (ObjectDisposedException) { }
-            catch (Exception) { }
-        });
-    }
-
-    private async Task SubscribeToSignalRGroups()
-    {
-        if (_hubConnection?.State != HubConnectionState.Connected) return;
-
-        try
-        {
-            // Subscribe to both project-specific and global job list updates for complete coverage
-            await _hubConnection.InvokeAsync("SubscribeToProject", ProjectId.ToString());
-            await _hubConnection.InvokeAsync("SubscribeToJobList");
-        }
-        catch (Exception)
-        {
-        }
-    }
-
-    private bool IsSignalRConnected => _hubConnection?.State == HubConnectionState.Connected;
-
-    private static readonly TimeSpan PollingIntervalActive = TimeSpan.FromSeconds(10);
-    private static readonly TimeSpan PollingIntervalSignalRFallback = TimeSpan.FromSeconds(30);
-
-    private void StartAutoRefresh()
-    {
-        _refreshTimer = new System.Threading.Timer(async _ =>
-        {
-            if (_disposed) return;
-            try
-            {
-                if (HasActiveJobs || IsIdeasProcessingActive)
-                {
-                    // When SignalR is connected, use relaxed interval as a safety net only
-                    if (IsSignalRConnected)
-                    {
-                        var timeSinceLastRefresh = DateTime.UtcNow - _lastJobsRefreshTime;
-                        if (timeSinceLastRefresh < PollingIntervalSignalRFallback)
-                            return;
-                    }
-
-                    await InvokeAsync(async () =>
-                    {
-                        if (_disposed) return;
-                        await RefreshJobs();
-                        await LoadIdeas();
-                        StateHasChanged();
-                    });
-                }
-                else if (_activeTab == "changes" && IsGitRepository)
-                {
-                    await InvokeAsync(async () =>
-                    {
-                        if (_disposed) return;
-                        await RefreshUncommittedChangesStatus();
-                        await LoadChangesTabData();
-                        StateHasChanged();
-                    });
-                }
-            }
-            catch (ObjectDisposedException) { }
-            catch (Exception) { }
-        }, null, PollingIntervalActive, PollingIntervalActive);
-    }
-
-    private bool _isLoadingJobs;
-    private bool _isLoadingIdeas;
-
-    private async Task LoadData()
-    {
-        IsLoading = true;
-        try
-        {
-            Project = await ProjectService.GetByIdAsync(ProjectId);
-            if (Project == null) return;
-
-            // Show the page shell immediately with the project header
-            IsLoading = false;
-            _isLoadingJobs = true;
-            _isLoadingIdeas = true;
-            StateHasChanged();
-
-            _jobsPageNumber = 1;
-            _ideasPageNumber = 1;
-
-            // Load jobs, ideas, and providers in parallel
-            var jobsTask = RefreshJobs(force: true).ContinueWith(_ =>
-            {
-                _isLoadingJobs = false;
-            }, TaskScheduler.Default);
-
-            var ideasTask = LoadIdeas(force: true).ContinueWith(_ =>
-            {
-                _isLoadingIdeas = false;
-            }, TaskScheduler.Default);
-
-            var providersTask = LoadProvidersAndModels();
-
-            var autoPilotTask = Task.Run(async () =>
-            {
-                try { _autoPilotStatus = await AutoPilotService.GetStatusAsync(ProjectId); } catch { /* non-critical */ }
-            });
-
-            await Task.WhenAll(jobsTask, ideasTask, providersTask, autoPilotTask);
-
-            await InvokeAsync(StateHasChanged);
-        }
-        catch
-        {
-            // Ensure loading state is cleared on error
-        }
-        finally
-        {
-            IsLoading = false;
-            _isLoadingJobs = false;
-            _isLoadingIdeas = false;
-        }
-    }
-
-    private async Task LoadProvidersAndModels()
-    {
-        try
-        {
-            Providers = (await ProviderService.GetAllAsync()).ToList();
-
-            // These depend on Providers being loaded, but can run in parallel with each other
-            var suggestionTask = LoadSuggestionProviderModels();
-            var defaultProviderTask = LoadDefaultProvider();
-            var inferenceTask = LoadInferenceModels();
-
-            await Task.WhenAll(suggestionTask, defaultProviderTask, inferenceTask);
-        }
-        catch
-        {
-            Providers = new List<Provider>();
-        }
-    }
-
-    private async Task LoadDefaultProvider()
-    {
-        var defaultProvider = await ProviderService.GetDefaultAsync();
-        if (defaultProvider != null)
-        {
-            NewJob.ProviderId = defaultProvider.Id;
-            await LoadModelsForProvider(defaultProvider.Id);
-        }
-    }
-
-    public async ValueTask DisposeAsync()
-    {
-        _disposed = true;
-
-        // Cancel any pending expansion
-        _expandCts?.Cancel();
-        _expandCts?.Dispose();
-
-        // Cancel any pending SignalR connection attempts
-        _signalRCts?.Cancel();
-        _signalRCts?.Dispose();
-
-        _refreshTimer?.Dispose();
-
-        if (_hubConnection != null)
-        {
-            try
-            {
-                if (_hubConnection.State == HubConnectionState.Connected)
-                {
-                    await _hubConnection.InvokeAsync("UnsubscribeFromProject", ProjectId.ToString());
-                    await _hubConnection.InvokeAsync("UnsubscribeFromJobList");
-                }
-                await _hubConnection.DisposeAsync();
-            }
-            catch
-            {
-                // Ignore disposal errors
-            }
-        }
     }
 }
