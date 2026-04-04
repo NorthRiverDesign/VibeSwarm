@@ -20,21 +20,9 @@
 		</div>
 	</ChildContent>
 	<FooterContent>
-		<button type="button" class="btn btn-secondary" @onclick="HandleCancel" disabled="@IsProcessing">
-			Cancel
-		</button>
-		<button type="button" class="btn btn-success" @onclick="HandleConfirm" disabled="@IsProcessing">
-			@if (IsProcessing)
-			{
-				<span class="spinner-border spinner-border-sm me-1" role="status"></span>
-				<span>Starting...</span>
-			}
-			else
-			{
-				<i class="bi bi-play-fill me-1"></i>
-				<span>Start Processing</span>
-			}
-		</button>
+		<ActionButton Text="Cancel" OnClick="HandleCancel" Disabled="@IsProcessing" />
+		<ActionButton Style="ActionButton.ButtonStyle.Success" Icon="play-fill" Text="Start Processing"
+					  LoadingText="Starting..." OnClick="HandleConfirm" IsLoading="@IsProcessing" />
 	</FooterContent>
 </ModalDialog>
 

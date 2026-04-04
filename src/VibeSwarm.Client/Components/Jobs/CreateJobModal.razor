@@ -249,19 +249,9 @@ rows="4" placeholder="Instructions for reviewing progress between cycles..." />
 </EditForm>
 </ChildContent>
 <FooterContent>
-<button type="button" class="btn btn-secondary" @onclick="Close" disabled="@IsSaving">Cancel</button>
-<button type="submit" form="@_formId" class="btn btn-primary" disabled="@IsSaving">
-@if (IsSaving)
-{
-<span class="spinner-border spinner-border-sm me-1" role="status"></span>
-<span>Creating...</span>
-}
-else
-{
-<i class="bi bi-plus-lg me-1"></i>
-<span>Create Job</span>
-}
-</button>
+<ActionButton Text="Cancel" OnClick="Close" Disabled="@IsSaving" />
+<ActionButton Type="submit" Form="@_formId" Style="ActionButton.ButtonStyle.Primary"
+			  Icon="plus-lg" Text="Create Job" LoadingText="Creating..." IsLoading="@IsSaving" />
 </FooterContent>
 </ModalDialog>
 
