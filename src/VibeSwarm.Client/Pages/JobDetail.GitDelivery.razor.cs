@@ -440,7 +440,7 @@ public partial class JobDetail : ComponentBase
                 }
             }
 
-            var prTitle = Job.SessionSummary ?? _commitMessage;
+            var prTitle = VibeSwarm.Shared.Services.JobSummaryGenerator.BuildCommitSubject(Job);
             var prBody = BuildPullRequestBody();
             var result = await VersionControlService.CreatePullRequestAsync(
                 Job.Project.WorkingPath,

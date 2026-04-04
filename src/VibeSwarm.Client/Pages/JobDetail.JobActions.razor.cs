@@ -96,7 +96,7 @@ public partial class JobDetail : ComponentBase
             {
                 if (string.IsNullOrWhiteSpace(_commitMessage) || !_commitMessageInitialized)
                 {
-                    _commitMessage = Job.SessionSummary;
+                    _commitMessage = VibeSwarm.Shared.Services.JobSummaryGenerator.BuildCommitSubject(Job);
                     _commitMessageInitialized = true;
                     _isLoadingSummary = false;
                 }

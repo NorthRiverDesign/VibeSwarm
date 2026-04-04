@@ -344,7 +344,11 @@ public class JobCompletionMonitorService : BackgroundService
 
 			if (sessionSummary.Success && !string.IsNullOrWhiteSpace(sessionSummary.Summary))
 			{
-				job.SessionSummary = sessionSummary.Summary;
+				job.SessionSummary = JobSummaryGenerator.BuildCommitSubject(
+					sessionSummary.Summary,
+					job.Title,
+					job.GoalPrompt,
+					job.Output ?? job.ConsoleOutput);
 				_logger.LogInformation("Retrieved session summary for job {JobId} from {Source}: {Summary}",
 					job.Id, sessionSummary.Source, sessionSummary.Summary.Length > 100
 						? sessionSummary.Summary[..100] + "..."

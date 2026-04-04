@@ -14,6 +14,12 @@ public static partial class JobSummaryGenerator
 {
 	private const int MaxCommitLogEntries = 10;
 	private const int MaxCommitSubjectLength = 72;
+	private static readonly string[] NarrativePrefixes = ["i ", "we ", "i'm ", "we're ", "i’ve ", "we’ve ", "i'd ", "we'd "];
+	private static readonly string[] DanglingEndingWords =
+	[
+		"a", "an", "and", "as", "at", "before", "but", "by", "for", "from",
+		"in", "into", "of", "on", "or", "that", "the", "this", "to", "with"
+	];
 
 	private static readonly string[] ActionKeywords =
 	[
@@ -192,7 +198,8 @@ public static partial class JobSummaryGenerator
 			if (string.IsNullOrWhiteSpace(subject))
 				return null;
 
-			return NormalizeCommitSubject(subject);
+			var normalizedSubject = NormalizeCommitSubject(subject);
+			return IsLowQualitySummaryCandidate(normalizedSubject) ? null : normalizedSubject;
 		}
 
 		return null;
@@ -430,7 +437,7 @@ public static partial class JobSummaryGenerator
 			}
 
 			var subject = NormalizeCommitSubject(line);
-			if (!string.IsNullOrWhiteSpace(subject))
+			if (!string.IsNullOrWhiteSpace(subject) && !IsLowQualitySummaryCandidate(subject))
 			{
 				return subject;
 			}
@@ -496,23 +503,16 @@ public static partial class JobSummaryGenerator
 	{
 		if (!string.IsNullOrWhiteSpace(title))
 		{
-			var normalizedTitle = title
-				.Replace("\\n", "\n")
-				.Replace("\\r", "\r");
-			var firstLine = normalizedTitle
-				.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
-				.Select(l => l.Trim())
-				.FirstOrDefault(l => l.Length > 0)
-				?? normalizedTitle.Trim();
-
-			var cleanTitle = TruncateAtWordBoundary(firstLine, MaxCommitSubjectLength);
-			if (cleanTitle.Length == 0)
+			var normalizedTitle = NormalizeCommitSubject(title);
+			if (!string.IsNullOrWhiteSpace(normalizedTitle))
 			{
-				cleanTitle = firstLine;
+				return normalizedTitle;
 			}
-
-			return char.ToUpper(cleanTitle[0]) + cleanTitle[1..];
 		}
+
+		var actionVerb = string.IsNullOrWhiteSpace(actionContext.ActionVerb)
+			? "Update"
+			: actionContext.ActionVerb;
 
 		if (!string.IsNullOrEmpty(actionContext.Subject))
 		{
@@ -521,13 +521,14 @@ public static partial class JobSummaryGenerator
 
 			if (startsWithVerb)
 			{
-				return char.ToUpper(actionContext.Subject[0]) + actionContext.Subject[1..];
+				return NormalizeCommitSubject(actionContext.Subject) ?? "Update code";
 			}
 
-			return $"{actionContext.ActionVerb} {char.ToLower(actionContext.Subject[0])}{actionContext.Subject[1..]}";
+			return NormalizeCommitSubject($"{actionVerb} {char.ToLower(actionContext.Subject[0])}{actionContext.Subject[1..]}")
+				?? "Update code";
 		}
 
-		return $"{actionContext.ActionVerb} code";
+		return NormalizeCommitSubject($"{actionVerb} code") ?? "Update code";
 	}
 
 	/// <summary>
@@ -540,79 +541,39 @@ public static partial class JobSummaryGenerator
 		string? title = null,
 		IReadOnlyList<string>? commitLog = null)
 	{
-		var sb = new StringBuilder();
-
 		// If we have no meaningful data, return null
 		if (diffInfo.ChangedFiles.Count == 0 && string.IsNullOrWhiteSpace(goalPrompt) && string.IsNullOrWhiteSpace(title))
 			return null;
 
-		// Build the title line - prefer explicit title over parsing goalPrompt
-		sb.Append(BuildHeadline(actionContext, title));
+		var preferredTitle = JobTitleHelper.ShouldSyncTitleWithGoalPrompt(title, goalPrompt)
+			? null
+			: title;
 
-		// If we have commit log entries, add them as bullet points
-		if (commitLog != null && commitLog.Count > 0)
+		return BuildHeadline(actionContext, preferredTitle);
+	}
+
+	private static bool IsLowQualitySummaryCandidate(string? text)
+	{
+		if (string.IsNullOrWhiteSpace(text))
 		{
-			sb.AppendLine();
-			sb.AppendLine();
-			sb.AppendLine("Changes:");
-
-			var entries = commitLog.Take(MaxCommitLogEntries);
-			foreach (var entry in entries)
-			{
-				sb.Append("• ");
-				sb.AppendLine(entry);
-			}
-
-			if (commitLog.Count > MaxCommitLogEntries)
-			{
-				sb.AppendLine($"... and {commitLog.Count - MaxCommitLogEntries} more commit(s)");
-			}
-		}
-		// If no commit log but we have file change info, add a brief summary
-		else if (diffInfo.ChangedFiles.Count > 0)
-		{
-			sb.AppendLine();
-			sb.AppendLine();
-
-			// Group files by directory/pattern
-			var filePatterns = GetFilePatterns(diffInfo.ChangedFiles);
-
-			if (diffInfo.FilesChanged > 0 || diffInfo.Insertions > 0 || diffInfo.Deletions > 0)
-			{
-				sb.Append(diffInfo.FilesChanged > 0 ? diffInfo.FilesChanged : diffInfo.ChangedFiles.Count);
-				sb.Append(" file(s) changed");
-
-				if (diffInfo.Insertions > 0 || diffInfo.Deletions > 0)
-				{
-					sb.Append(" (");
-					if (diffInfo.Insertions > 0)
-					{
-						sb.Append('+');
-						sb.Append(diffInfo.Insertions);
-					}
-					if (diffInfo.Insertions > 0 && diffInfo.Deletions > 0)
-					{
-						sb.Append('/');
-					}
-					if (diffInfo.Deletions > 0)
-					{
-						sb.Append('-');
-						sb.Append(diffInfo.Deletions);
-					}
-					sb.Append(')');
-				}
-			}
-
-			// Add file patterns if useful
-			if (filePatterns.Count > 0 && filePatterns.Count <= 5)
-			{
-				sb.AppendLine();
-				sb.Append("Files: ");
-				sb.Append(string.Join(", ", filePatterns));
-			}
+			return false;
 		}
 
-		return sb.ToString().Trim();
+		var normalized = text.Trim();
+		var lower = normalized.ToLowerInvariant();
+		if (!NarrativePrefixes.Any(prefix => lower.StartsWith(prefix, StringComparison.Ordinal)))
+		{
+			return false;
+		}
+
+		var words = lower.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+		if (words.Length < 6)
+		{
+			return false;
+		}
+
+		var lastWord = words[^1].TrimEnd('.', ',', ';', ':', '!', '?');
+		return DanglingEndingWords.Any(word => string.Equals(word, lastWord, StringComparison.Ordinal));
 	}
 
 	/// <summary>

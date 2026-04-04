@@ -105,6 +105,17 @@ public sealed class JobSummaryGeneratorTests
 	}
 
 	[Fact]
+	public void BuildCommitSubject_IgnoresIncompleteFirstPersonSummaryAndFallsBackToPrompt()
+	{
+		var subject = JobSummaryGenerator.BuildCommitSubject(
+			sessionSummary: "I created an Account API Token for Cloudflare but pasting the key in",
+			title: null,
+			goalPrompt: "update Cloudflare API connection");
+
+		Assert.Equal("Update Cloudflare API connection", subject);
+	}
+
+	[Fact]
 	public void BuildCommitSubject_IgnoresPromptDerivedTitleAndUsesPromptHeadline()
 	{
 		const string scheduledPrompt = "fix scheduled job commit summaries so they stay short and stop listing src/VibeSwarm.Web/Services/JobScheduleProcessor.cs";
@@ -209,6 +220,27 @@ public sealed class JobSummaryGeneratorTests
 		Assert.Equal("abc1234", job.GitCommitHash);
 		Assert.NotNull(versionControl.LastCommitOptions);
 		Assert.Contains("Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>", versionControl.LastCommitOptions!.MessageTrailers);
+	}
+
+	[Fact]
+	public void GenerateSummary_ReturnsSingleLineWithoutFileStatsOrFileNames()
+	{
+		var summary = JobSummaryGenerator.GenerateSummary(
+			gitDiff: """
+				diff --git a/src/CloudflareProvider.php b/src/CloudflareProvider.php
+				--- a/src/CloudflareProvider.php
+				+++ b/src/CloudflareProvider.php
+				diff --git a/tests/CloudflareProviderTest.php b/tests/CloudflareProviderTest.php
+				--- a/tests/CloudflareProviderTest.php
+				+++ b/tests/CloudflareProviderTest.php
+				2 files changed, 20 insertions(+), 4 deletions(-)
+				""",
+			goalPrompt: "update Cloudflare API connection");
+
+		Assert.Equal("Update Cloudflare API connection", summary);
+		Assert.DoesNotContain("Files:", summary, StringComparison.Ordinal);
+		Assert.DoesNotContain("file(s) changed", summary, StringComparison.OrdinalIgnoreCase);
+		Assert.DoesNotContain('\n', summary);
 	}
 
 	[Fact]

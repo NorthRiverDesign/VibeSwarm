@@ -252,7 +252,7 @@ public partial class JobProcessingService
             return;
         }
 
-        var pullRequestTitle = job.SessionSummary ?? $"{AppConstants.AppName}: {job.Title ?? "Job completed"}";
+        var pullRequestTitle = JobSummaryGenerator.BuildCommitSubject(job);
         var pullRequestBody = BuildPullRequestBody(job, sourceBranch, targetBranch);
         var pullRequestResult = await _versionControlService.CreatePullRequestAsync(
             workingDirectory,
