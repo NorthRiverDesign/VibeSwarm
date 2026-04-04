@@ -44,6 +44,24 @@ public sealed class JobDetailNavigationTests
 		Assert.Equal([firstJobId, secondJobId], jobService.LoadedJobIds);
 	}
 
+	[Fact]
+	public void JobDetail_ShowsOutcomeSummaryForTerminalJobsWithoutSidebarContent()
+	{
+		var jobId = Guid.Parse("44444444-4444-4444-4444-444444444444");
+		var jobService = new FakeJobService(new Dictionary<Guid, Job>
+		{
+			[jobId] = CreateJob(jobId, "Stalled job title", "Investigate the failure", JobStatus.Stalled)
+		});
+
+		using var context = CreateContext(jobService);
+
+		var cut = context.Render<JobDetail>(parameters => parameters
+			.Add(component => component.JobId, jobId));
+
+		Assert.Contains("Run stalled before completion", cut.Markup);
+		Assert.Contains("Check the transcript before retrying", cut.Markup);
+	}
+
 	private static BunitContext CreateContext(FakeJobService jobService)
 	{
 		var context = new BunitContext();
@@ -58,14 +76,14 @@ public sealed class JobDetailNavigationTests
 		return context;
 	}
 
-	private static Job CreateJob(Guid jobId, string title, string goalPrompt)
+	private static Job CreateJob(Guid jobId, string title, string goalPrompt, JobStatus status = JobStatus.Processing)
 		=> new()
 		{
 			Id = jobId,
 			ProjectId = Guid.Parse("33333333-3333-3333-3333-333333333333"),
 			Title = title,
 			GoalPrompt = goalPrompt,
-			Status = JobStatus.Processing,
+			Status = status,
 			CreatedAt = DateTime.UtcNow.AddMinutes(-5),
 			Messages = [],
 			Project = new Project

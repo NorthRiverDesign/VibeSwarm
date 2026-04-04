@@ -1,6 +1,7 @@
 using Bunit;
 using VibeSwarm.Client.Components.Jobs;
 using VibeSwarm.Shared.Data;
+using VibeSwarm.Shared.VersionControl;
 
 namespace VibeSwarm.Tests;
 
@@ -47,8 +48,37 @@ public sealed class JobOutcomeComponentsTests
 			.Add(component => component.BuildOutput, "dotnet test failed"));
 
 		Assert.Contains("Verification blocked delivery", cut.Markup);
+		Assert.Contains("Verification failed", cut.Markup);
 		Assert.Contains("Build failed", cut.Markup);
+		Assert.Contains("Review the verification failure", cut.Markup);
 		Assert.Contains("Show verification output", cut.Markup);
 		Assert.Contains("dotnet test failed", cut.Markup);
+	}
+
+	[Fact]
+	public void JobOutcomeSummaryCard_ShowsVerificationConfigurationAndDeliveryActions()
+	{
+		using var context = new BunitContext();
+
+		var cut = context.Render<JobOutcomeSummaryCard>(parameters => parameters
+			.Add(component => component.Status, JobStatus.Completed)
+			.Add(component => component.ChangedFilesCount, 2)
+			.Add(component => component.BuildVerificationEnabled, true)
+			.Add(component => component.BuildCommand, "dotnet build")
+			.Add(component => component.TestCommand, "dotnet test")
+			.Add(component => component.DeliveryMode, GitChangeDeliveryMode.PullRequest)
+			.Add(component => component.BranchName, "feature/outcome-card")
+			.Add(component => component.TargetBranch, "main")
+			.Add(component => component.ReviewChangesHref, "#job-changes-section")
+			.Add(component => component.DeliveryHref, "#job-delivery-section"));
+
+		Assert.Contains("Verification was enabled", cut.Markup);
+		Assert.Contains("dotnet build", cut.Markup);
+		Assert.Contains("dotnet test", cut.Markup);
+		Assert.Contains("Ready for delivery", cut.Markup);
+		Assert.Contains("Pull request flow", cut.Markup);
+		Assert.Contains("Finish delivery", cut.Markup);
+		Assert.Contains("Review changes", cut.Markup);
+		Assert.Contains("Go to delivery", cut.Markup);
 	}
 }

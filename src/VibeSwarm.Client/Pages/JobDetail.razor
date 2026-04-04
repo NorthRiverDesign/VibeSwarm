@@ -48,9 +48,30 @@ else
 					   PlaywrightEnabled="@Job.PlaywrightEnabled" EnvironmentCount="@Job.EnvironmentSnapshots.Count"
 					   EnvironmentTooltip="@BuildEnvironmentTooltip()" />
 
+		@if (ShowJobOutcomeSummary)
+		{
+			<JobOutcomeSummaryCard Status="@Job.Status"
+								   ChangedFilesCount="@Job.ChangedFilesCount"
+								   BuildVerified="@Job.BuildVerified"
+								   GitCommitHash="@Job.GitCommitHash"
+								   PullRequestUrl="@Job.PullRequestUrl"
+								   PullRequestNumber="@Job.PullRequestNumber"
+								   BuildOutput="@Job.BuildOutput"
+								   BuildVerificationEnabled="@(Job.Project?.BuildVerificationEnabled ?? false)"
+								   BuildCommand="@Job.Project?.BuildCommand"
+								   TestCommand="@Job.Project?.TestCommand"
+								   DeliveryMode="@Job.GitChangeDeliveryMode"
+								   BranchName="@_branchName"
+								   TargetBranch="@EffectiveTargetBranch"
+								   MergedAt="@Job.MergedAt"
+								   IsPushed="@_changesPushed"
+								   ReviewChangesHref="@(ShowReviewChangesLink ? "#job-changes-section" : null)"
+								   DeliveryHref="@(ShowDeliveryLink ? "#job-delivery-section" : null)" />
+		}
+
     @* Main Content - Column Layout *@
     <div class="row g-3 g-lg-4">
-        <div class="col-12 col-xl-5 order-2 order-xl-1 @(ShowSidebarContent ? string.Empty : "d-none")">
+        <div id="job-changes-section" class="col-12 col-xl-5 order-2 order-xl-1 @(ShowSidebarContent ? string.Empty : "d-none")">
             @* User Interaction Section - shown when job is paused waiting for input *@
             @if (Job.Status == JobStatus.Paused && !string.IsNullOrEmpty(Job.PendingInteractionPrompt))
             {
@@ -59,17 +80,6 @@ else
                                       RequestedAt="@Job.InteractionRequestedAt" OnSubmitChoice="SubmitInteractionResponse"
                                       OnSubmitResponse="SubmitInteractionResponse" />
             }
-
-			@if (ShowJobOutcomeSummary)
-			{
-				<JobOutcomeSummaryCard Status="@Job.Status"
-									   ChangedFilesCount="@Job.ChangedFilesCount"
-									   BuildVerified="@Job.BuildVerified"
-									   GitCommitHash="@Job.GitCommitHash"
-									   PullRequestUrl="@Job.PullRequestUrl"
-									   PullRequestNumber="@Job.PullRequestNumber"
-									   BuildOutput="@Job.BuildOutput" />
-			}
 
             @* Git Diff Loading State *@
             @if (_isGitRepository && _isLoadingGitDiff)
@@ -94,28 +104,30 @@ else
             @* Git Diff Viewer - shown after job completes if changes were detected *@
             else if (_isGitRepository && !IsJobActive && !string.IsNullOrEmpty(Job.GitDiff))
             {
-                <GitDiffViewer DiffFiles="@_parsedDiffFiles" @bind-IsVisible="_showGitDiff"
-                               IsVerifying="@_isComparingWorkingCopy"
-                               ShowVerificationStatus="@(_workingCopyComparisonDone && !_changesPushed && string.IsNullOrEmpty(Job.GitCommitHash))"
-                               IsVerified="@_workingCopyMatches" IsDiverged="@(!_workingCopyMatches)"
-                               IsCommitted="@(!string.IsNullOrEmpty(Job.GitCommitHash))" MissingFiles="@_workingCopyMissingFiles"
-                               ExtraFiles="@_workingCopyExtraFiles" ModifiedFiles="@_workingCopyModifiedFiles"
-                               OnRecheck="CompareWithWorkingCopy" />
+				<GitDiffViewer DiffFiles="@_parsedDiffFiles" @bind-IsVisible="_showGitDiff"
+							   IsVerifying="@_isComparingWorkingCopy"
+							   ShowVerificationStatus="@(_workingCopyComparisonDone && !_changesPushed && string.IsNullOrEmpty(Job.GitCommitHash))"
+							   IsVerified="@_workingCopyMatches" IsDiverged="@(!_workingCopyMatches)"
+							   IsCommitted="@(!string.IsNullOrEmpty(Job.GitCommitHash))" MissingFiles="@_workingCopyMissingFiles"
+							   ExtraFiles="@_workingCopyExtraFiles" ModifiedFiles="@_workingCopyModifiedFiles"
+							   OnRecheck="CompareWithWorkingCopy" />
 
                 @* Commit Section - shown when there are git changes *@
-                <CommitSection CommitMessage="@_commitMessage" CommitMessageChanged="@((msg) => _commitMessage = msg)"
-                                BranchName="@_branchName" IsLoadingSummary="@_isLoadingSummary"
-                                HasAISummary="@(!string.IsNullOrWhiteSpace(Job.SessionSummary))" SummaryError="@_summaryError"
-                                PushError="@_pushError" IsPushing="@_isPushing" PushStatus="@_pushStatus" IsPushed="@_changesPushed"
-                                PushedCommitHash="@_pushedCommitHash" CanPush="@CanPush" TargetBranch="@EffectiveTargetBranch"
-                                DeliveryMode="@Job.GitChangeDeliveryMode" CanCreatePullRequest="@CanCreatePullRequest"
-                                IsCreatingPullRequest="@_isCreatingPullRequest" PullRequestUrl="@Job.PullRequestUrl"
-                                PullRequestNumber="@Job.PullRequestNumber" CanMergeBranch="@CanMergeBranch"
-                                IsMergingBranch="@_isMergingBranch"
-                                IsAutoCommitted="@(!string.IsNullOrEmpty(Job.GitCommitHash) && !_changesPushed)"
-                                CommitMessageUsed="@(Job.SessionSummary ?? _commitMessage)" OnCommitAndPush="CommitAndPushChanges"
-                                OnCreatePullRequest="CreatePullRequest" OnMergeBranch="MergeBranchIntoTarget"
-                                OnRefreshSummary="RefreshSummary" />
+				<div id="job-delivery-section">
+					<CommitSection CommitMessage="@_commitMessage" CommitMessageChanged="@((msg) => _commitMessage = msg)"
+									BranchName="@_branchName" IsLoadingSummary="@_isLoadingSummary"
+									HasAISummary="@(!string.IsNullOrWhiteSpace(Job.SessionSummary))" SummaryError="@_summaryError"
+									PushError="@_pushError" IsPushing="@_isPushing" PushStatus="@_pushStatus" IsPushed="@_changesPushed"
+									PushedCommitHash="@_pushedCommitHash" CanPush="@CanPush" TargetBranch="@EffectiveTargetBranch"
+									DeliveryMode="@Job.GitChangeDeliveryMode" CanCreatePullRequest="@CanCreatePullRequest"
+									IsCreatingPullRequest="@_isCreatingPullRequest" PullRequestUrl="@Job.PullRequestUrl"
+									PullRequestNumber="@Job.PullRequestNumber" CanMergeBranch="@CanMergeBranch"
+									IsMergingBranch="@_isMergingBranch"
+									IsAutoCommitted="@(!string.IsNullOrEmpty(Job.GitCommitHash) && !_changesPushed)"
+									CommitMessageUsed="@(Job.SessionSummary ?? _commitMessage)" OnCommitAndPush="CommitAndPushChanges"
+									OnCreatePullRequest="CreatePullRequest" OnMergeBranch="MergeBranchIntoTarget"
+									OnRefreshSummary="RefreshSummary" />
+				</div>
             }
             else if (_isGitRepository && !IsJobActive && Job.Status == JobStatus.Completed &&
             string.IsNullOrEmpty(Job.GitDiff))
@@ -251,6 +263,17 @@ else
         Job.Status == JobStatus.Paused);
 
     private bool ShowGitActions => Job?.Project?.WorkingPath != null && _isGitRepository && !IsJobActive;
+
+	private bool ShowReviewChangesLink
+		=> _isGitRepository
+			&& !IsJobActive
+			&& (!string.IsNullOrEmpty(Job?.GitDiff)
+				|| Job?.Status is JobStatus.Failed or JobStatus.Cancelled);
+
+	private bool ShowDeliveryLink
+		=> _isGitRepository
+			&& !IsJobActive
+			&& !string.IsNullOrEmpty(Job?.GitDiff);
 
     private bool ShowSidebarContent
         => (Job?.Status == JobStatus.Paused && !string.IsNullOrEmpty(Job.PendingInteractionPrompt))

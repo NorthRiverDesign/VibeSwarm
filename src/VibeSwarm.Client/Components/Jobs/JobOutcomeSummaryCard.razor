@@ -1,4 +1,5 @@
 @using VibeSwarm.Shared.Data
+@using VibeSwarm.Shared.VersionControl
 
 @if (Summary != null)
 {
@@ -29,6 +30,72 @@
 							  BuildVerified="@BuildVerified"
 							  GitCommitHash="@GitCommitHash"
 							  PullRequestUrl="@PullRequestUrl" />
+
+			<div class="row g-2">
+				<div class="col-12 col-lg-4">
+					<div class="border rounded p-3 h-100 d-flex flex-column gap-2 min-width-0">
+						<div class="small fw-semibold text-body-secondary text-uppercase">Outcome</div>
+						<div class="fw-semibold">@OutcomeBlock.Title</div>
+						<div class="small text-body-secondary">@OutcomeBlock.Message</div>
+					</div>
+				</div>
+				<div class="col-12 col-lg-4">
+					<div class="border rounded p-3 h-100 d-flex flex-column gap-2 min-width-0">
+						<div class="small fw-semibold text-body-secondary text-uppercase">Verification</div>
+						<div class="fw-semibold">@VerificationBlock.Title</div>
+						<div class="small text-body-secondary">@VerificationBlock.Message</div>
+						@if (VerificationCommands.Count > 0)
+						{
+							<div class="d-flex flex-column gap-2">
+								@foreach (var command in VerificationCommands)
+								{
+									<div class="d-flex flex-column gap-1">
+										<div class="small text-body-secondary">@command.Label</div>
+										<div class="small font-monospace bg-body-tertiary rounded px-2 py-1 text-break">@command.Value</div>
+									</div>
+								}
+							</div>
+						}
+					</div>
+				</div>
+				<div class="col-12 col-lg-4">
+					<div class="border rounded p-3 h-100 d-flex flex-column gap-2 min-width-0">
+						<div class="small fw-semibold text-body-secondary text-uppercase">Delivery</div>
+						<div class="fw-semibold">@DeliveryBlock.Title</div>
+						<div class="small text-body-secondary">@DeliveryBlock.Message</div>
+						@if (DeliveryBadges.Count > 0)
+						{
+							<div class="d-flex flex-wrap gap-2">
+								@foreach (var badge in DeliveryBadges)
+								{
+									<span class="badge bg-body-tertiary text-body font-monospace text-break">@badge</span>
+								}
+							</div>
+						}
+					</div>
+				</div>
+			</div>
+
+			<div class="border rounded p-3 d-flex flex-column gap-2 min-width-0">
+				<div class="small fw-semibold text-body-secondary text-uppercase">Next step</div>
+				<div class="fw-semibold">@NextStepBlock.Title</div>
+				<div class="small text-body-secondary">@NextStepBlock.Message</div>
+				@if (NextStepActions.Count > 0)
+				{
+					<div class="d-flex flex-column flex-sm-row flex-wrap gap-2">
+						@foreach (var action in NextStepActions)
+						{
+							<a class="btn @(action.IsPrimary ? "btn-primary" : "btn-secondary") btn-sm"
+							   href="@action.Href"
+							   target="@action.Target"
+							   rel="@action.Rel">
+								<i class="bi @action.Icon me-1"></i>
+								<span>@action.Text</span>
+							</a>
+						}
+					</div>
+				}
+			</div>
 
 			@if (!string.IsNullOrWhiteSpace(BuildOutput) && BuildVerified == false)
 			{
@@ -64,25 +131,65 @@
 	[Parameter]
 	public string? BuildOutput { get; set; }
 
+	[Parameter]
+	public bool BuildVerificationEnabled { get; set; }
+
+	[Parameter]
+	public string? BuildCommand { get; set; }
+
+	[Parameter]
+	public string? TestCommand { get; set; }
+
+	[Parameter]
+	public GitChangeDeliveryMode DeliveryMode { get; set; } = GitChangeDeliveryMode.CommitToBranch;
+
+	[Parameter]
+	public string? BranchName { get; set; }
+
+	[Parameter]
+	public string? TargetBranch { get; set; }
+
+	[Parameter]
+	public DateTime? MergedAt { get; set; }
+
+	[Parameter]
+	public bool IsPushed { get; set; }
+
+	[Parameter]
+	public string? ReviewChangesHref { get; set; }
+
+	[Parameter]
+	public string? DeliveryHref { get; set; }
+
+	private bool HasDeliveredChanges => !string.IsNullOrWhiteSpace(PullRequestUrl) || !string.IsNullOrWhiteSpace(GitCommitHash);
+
+	private bool HasDetectedChanges => ChangedFilesCount.GetValueOrDefault() > 0 || HasDeliveredChanges;
+
+	private bool HasVerificationConfigured
+		=> BuildVerificationEnabled
+			|| !string.IsNullOrWhiteSpace(BuildCommand)
+			|| !string.IsNullOrWhiteSpace(TestCommand);
+
 	private OutcomeSummary? Summary
 	{
 		get
 		{
-			var hasDeliveredChanges = !string.IsNullOrWhiteSpace(PullRequestUrl) || !string.IsNullOrWhiteSpace(GitCommitHash);
-			var hasDetectedChanges = ChangedFilesCount.GetValueOrDefault() > 0 || hasDeliveredChanges;
-
 			return Status switch
 			{
 				JobStatus.Completed when BuildVerified == false => new OutcomeSummary(
 					"bi-shield-x",
 					"Verification blocked delivery",
-					hasDetectedChanges
-						? "Build or tests failed after the run, so the changes were left for manual review instead of being auto-delivered."
-						: "Build or tests failed after the run completed."),
+					HasDetectedChanges
+						? "The run finished with changes, but post-run verification failed so delivery stayed manual."
+						: "Post-run verification failed after the run completed."),
 				JobStatus.Completed when !string.IsNullOrWhiteSpace(PullRequestUrl) => new OutcomeSummary(
 					"bi-check2-circle",
 					"Changes delivered with a pull request",
-					"The run completed successfully, the changes were verified, and a pull request is ready for review."),
+					"The run completed successfully and a pull request is ready for review."),
+				JobStatus.Completed when MergedAt.HasValue => new OutcomeSummary(
+					"bi-check2-circle",
+					"Changes merged into the target branch",
+					"The run completed successfully and the resulting changes are already merged."),
 				JobStatus.Completed when !string.IsNullOrWhiteSpace(GitCommitHash) => new OutcomeSummary(
 					"bi-check2-circle",
 					"Changes committed to the branch",
@@ -95,11 +202,11 @@
 					"bi-check2-circle",
 					"Verified changes are ready",
 					"The run completed successfully, verification passed, and the changes are ready for final review or delivery."),
-				JobStatus.Completed when hasDetectedChanges => new OutcomeSummary(
+				JobStatus.Completed when HasDetectedChanges => new OutcomeSummary(
 					"bi-send-check",
 					"Changes are ready for review",
 					"The run completed and produced changes, but they still need to be reviewed and delivered."),
-				JobStatus.Failed or JobStatus.Cancelled or JobStatus.Stalled when hasDetectedChanges => new OutcomeSummary(
+				JobStatus.Failed or JobStatus.Cancelled or JobStatus.Stalled when HasDetectedChanges => new OutcomeSummary(
 					"bi-exclamation-triangle",
 					"Run stopped with changes still present",
 					"The job did not finish cleanly, but repository changes remain available for review, commit, or discard."),
@@ -120,6 +227,238 @@
 		}
 	}
 
+	private DetailBlock OutcomeBlock
+	{
+		get
+		{
+			if (ChangedFilesCount.GetValueOrDefault() > 0)
+			{
+				var fileLabel = ChangedFilesCount == 1 ? "file changed" : "files changed";
+				return new DetailBlock("Repository changes detected", $"{ChangedFilesCount} {fileLabel} were recorded for this run.");
+			}
+
+			if (HasDeliveredChanges)
+			{
+				return new DetailBlock("Deliverable result recorded", "The repository has a commit or pull request associated with this run.");
+			}
+
+			return Status switch
+			{
+				JobStatus.Completed => new DetailBlock("No repository changes detected", "The run completed without producing file changes."),
+				JobStatus.Failed => new DetailBlock("Execution stopped with an error", "Review the transcript to see where the run failed."),
+				JobStatus.Cancelled => new DetailBlock("Execution stopped by request", "The run was cancelled before it could finish cleanly."),
+				JobStatus.Stalled => new DetailBlock("Execution stopped making progress", "The run stalled and may need intervention or a retry."),
+				_ => new DetailBlock("Outcome available", "Review the job transcript for more context.")
+			};
+		}
+	}
+
+	private DetailBlock VerificationBlock
+	{
+		get
+		{
+			if (BuildVerified == true)
+			{
+				return new DetailBlock("Verification passed", "Configured build and test checks passed after the run.");
+			}
+
+			if (BuildVerified == false)
+			{
+				return new DetailBlock("Verification failed", "Build or test verification failed, so delivery stayed manual.");
+			}
+
+			if (HasVerificationConfigured)
+			{
+				return new DetailBlock("Verification was enabled", "This project has post-run verification configured, but this run did not record a result.");
+			}
+
+			return new DetailBlock("Verification not configured", "This project does not run build or test verification before delivery.");
+		}
+	}
+
+	private IReadOnlyList<CommandChip> VerificationCommands
+	{
+		get
+		{
+			var commands = new List<CommandChip>();
+
+			if (!string.IsNullOrWhiteSpace(BuildCommand))
+			{
+				commands.Add(new CommandChip("Build command", BuildCommand));
+			}
+
+			if (!string.IsNullOrWhiteSpace(TestCommand))
+			{
+				commands.Add(new CommandChip("Test command", TestCommand));
+			}
+
+			return commands;
+		}
+	}
+
+	private DetailBlock DeliveryBlock
+	{
+		get
+		{
+			if (!HasDetectedChanges && Status == JobStatus.Completed)
+			{
+				return new DetailBlock("No delivery needed", "There are no code changes from this run to push, merge, or review.");
+			}
+
+			if (!string.IsNullOrWhiteSpace(PullRequestUrl))
+			{
+				return new DetailBlock(
+					"Pull request ready",
+					$"A pull request{FormatPullRequestSuffix()} is ready{FormatTargetBranchClause()}.");
+			}
+
+			if (MergedAt.HasValue)
+			{
+				return new DetailBlock(
+					"Merged into target branch",
+					$"The resulting changes were merged{FormatTargetBranchClause()}.");
+			}
+
+			if (IsPushed)
+			{
+				return new DetailBlock(
+					"Changes pushed to the remote branch",
+					$"The branch is updated and ready for the next delivery step{FormatTargetBranchClause()}.");
+			}
+
+			if (!string.IsNullOrWhiteSpace(GitCommitHash))
+			{
+				return new DetailBlock("Changes committed locally", "A commit exists for this run, but it has not been delivered remotely yet.");
+			}
+
+			if (HasDetectedChanges && Status == JobStatus.Completed)
+			{
+				var readyMessage = DeliveryMode == GitChangeDeliveryMode.PullRequest
+					? $"Review the diff, then create or update a pull request{FormatTargetBranchClause()}."
+					: "Review the diff, then commit and push the branch when it is ready.";
+				return new DetailBlock("Ready for delivery", readyMessage);
+			}
+
+			if (HasDetectedChanges)
+			{
+				return new DetailBlock("Delivery paused", "The run stopped before delivery, but repository changes remain available for review.");
+			}
+
+			return new DetailBlock("No delivery result recorded", "This run did not produce a deliverable repository update.");
+		}
+	}
+
+	private IReadOnlyList<string> DeliveryBadges
+	{
+		get
+		{
+			var badges = new List<string>();
+
+			if (!string.IsNullOrWhiteSpace(BranchName))
+			{
+				badges.Add($"Source {BranchName}");
+			}
+
+			if (!string.IsNullOrWhiteSpace(TargetBranch))
+			{
+				badges.Add($"Target {TargetBranch}");
+			}
+
+			badges.Add(DeliveryMode == GitChangeDeliveryMode.PullRequest ? "Pull request flow" : "Branch flow");
+
+			if (!string.IsNullOrWhiteSpace(GitCommitHash))
+			{
+				badges.Add($"Commit {ShortCommitHash}");
+			}
+
+			return badges;
+		}
+	}
+
+	private DetailBlock NextStepBlock
+	{
+		get
+		{
+			if (BuildVerified == false)
+			{
+				return new DetailBlock("Review the verification failure", "Inspect the verification output and repository changes before trying to deliver them.");
+			}
+
+			if (!string.IsNullOrWhiteSpace(PullRequestUrl))
+			{
+				return new DetailBlock("Review the pull request", "Open the PR, check the diff, and merge it when the review is complete.");
+			}
+
+			if (MergedAt.HasValue)
+			{
+				return new DetailBlock("Delivery is complete", "The code is already merged, so only follow-up review or monitoring remains.");
+			}
+
+			if (HasDetectedChanges && !string.IsNullOrWhiteSpace(DeliveryHref) && Status == JobStatus.Completed)
+			{
+				return new DetailBlock("Finish delivery", "Review the diff and use the delivery actions below to push, create a pull request, or merge.");
+			}
+
+			if (HasDetectedChanges && !string.IsNullOrWhiteSpace(ReviewChangesHref))
+			{
+				return new DetailBlock("Inspect the remaining changes", "Review the repository changes before retrying, committing, or discarding them.");
+			}
+
+			if (Status == JobStatus.Completed)
+			{
+				return new DetailBlock("No follow-up required", "This run does not need a delivery action unless you want the agent to take another pass.");
+			}
+
+			return new DetailBlock("Check the transcript before retrying", "Use the session messages to understand what stopped the run before you retry it.");
+		}
+	}
+
+	private IReadOnlyList<NextStepAction> NextStepActions
+	{
+		get
+		{
+			var actions = new List<NextStepAction>();
+
+			if (!string.IsNullOrWhiteSpace(PullRequestUrl))
+			{
+				actions.Add(new NextStepAction(
+					$"Open PR{FormatPullRequestSuffix()}",
+					"bi-github",
+					PullRequestUrl,
+					true,
+					"_blank",
+					"noreferrer"));
+			}
+
+			if (!string.IsNullOrWhiteSpace(ReviewChangesHref))
+			{
+				actions.Add(new NextStepAction("Review changes", "bi-files", ReviewChangesHref, string.IsNullOrWhiteSpace(PullRequestUrl), null, null));
+			}
+
+			if (!string.IsNullOrWhiteSpace(DeliveryHref) && BuildVerified != false && Status == JobStatus.Completed)
+			{
+				actions.Add(new NextStepAction("Go to delivery", "bi-cloud-upload", DeliveryHref, actions.Count == 0, null, null));
+			}
+
+			return actions;
+		}
+	}
+
+	private string ShortCommitHash
+		=> string.IsNullOrWhiteSpace(GitCommitHash)
+			? string.Empty
+			: GitCommitHash[..Math.Min(7, GitCommitHash.Length)];
+
+	private string FormatTargetBranchClause()
+		=> string.IsNullOrWhiteSpace(TargetBranch)
+			? string.Empty
+			: $" targeting {TargetBranch}";
+
+	private string FormatPullRequestSuffix()
+		=> PullRequestNumber.HasValue
+			? $" #{PullRequestNumber.Value}"
+			: string.Empty;
+
 	private sealed class OutcomeSummary(string icon, string title, string message)
 	{
 		public string Icon { get; } = icon;
@@ -127,4 +466,8 @@
 		public string Message { get; } = message;
 		public string IconContainerClass => "d-inline-flex align-items-center justify-content-center rounded-circle flex-shrink-0 bg-body-tertiary text-body-secondary";
 	}
+
+	private sealed record DetailBlock(string Title, string Message);
+	private sealed record CommandChip(string Label, string Value);
+	private sealed record NextStepAction(string Text, string Icon, string Href, bool IsPrimary, string? Target, string? Rel);
 }
