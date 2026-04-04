@@ -77,6 +77,7 @@ public partial class JobService : IJobService
             GitCommitHash = j.GitCommitHash,
             PullRequestNumber = j.PullRequestNumber,
             PullRequestUrl = j.PullRequestUrl,
+            MergedAt = j.MergedAt,
             IsScheduled = j.IsScheduled,
             JobScheduleId = j.JobScheduleId,
             PlaywrightEnabled = j.PlaywrightEnabled,

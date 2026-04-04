@@ -47,6 +47,7 @@ public class JobSummary
 	public string? GitCommitHash { get; set; }
 	public int? PullRequestNumber { get; set; }
 	public string? PullRequestUrl { get; set; }
+	public DateTime? MergedAt { get; set; }
 	public bool IsScheduled { get; set; }
 	public Guid? JobScheduleId { get; set; }
 	public bool PlaywrightEnabled { get; set; }

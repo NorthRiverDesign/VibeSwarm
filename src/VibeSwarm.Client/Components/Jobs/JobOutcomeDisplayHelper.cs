@@ -10,11 +10,12 @@ internal static class JobOutcomeDisplayHelper
 		bool? buildVerified,
 		string? gitCommitHash,
 		string? pullRequestUrl,
-		int? pullRequestNumber)
+		int? pullRequestNumber,
+		DateTime? mergedAt)
 	{
 		var badges = new List<JobOutcomeBadgeModel>();
-		var hasDeliveredChanges = HasDeliveredChanges(pullRequestUrl, gitCommitHash);
-		var hasDetectedChanges = HasDetectedChanges(changedFilesCount, pullRequestUrl, gitCommitHash);
+		var hasDeliveredChanges = HasDeliveredChanges(pullRequestUrl, gitCommitHash, mergedAt);
+		var hasDetectedChanges = HasDetectedChanges(changedFilesCount, pullRequestUrl, gitCommitHash, mergedAt);
 
 		if (status == JobStatus.Completed && changedFilesCount == 0)
 		{
@@ -51,6 +52,15 @@ internal static class JobOutcomeDisplayHelper
 				"d-inline-flex align-items-center gap-1 px-2 py-1 rounded-pill small bg-danger-subtle text-danger-emphasis"));
 		}
 
+		if (mergedAt.HasValue)
+		{
+			badges.Add(new JobOutcomeBadgeModel(
+				"bi-check2-circle",
+				"Merged",
+				"The job's changes were merged into the target branch.",
+				"d-inline-flex align-items-center gap-1 px-2 py-1 rounded-pill small bg-success-subtle text-success-emphasis"));
+		}
+
 		if (!string.IsNullOrWhiteSpace(pullRequestUrl))
 		{
 			badges.Add(new JobOutcomeBadgeModel(
@@ -59,7 +69,7 @@ internal static class JobOutcomeDisplayHelper
 				"A pull request was created for this job's changes.",
 				"d-inline-flex align-items-center gap-1 px-2 py-1 rounded-pill small bg-primary-subtle text-primary-emphasis"));
 		}
-		else if (!string.IsNullOrWhiteSpace(gitCommitHash))
+		else if (!string.IsNullOrWhiteSpace(gitCommitHash) && !mergedAt.HasValue)
 		{
 			badges.Add(new JobOutcomeBadgeModel(
 				"bi-git",
@@ -102,9 +112,10 @@ internal static class JobOutcomeDisplayHelper
 		bool? buildVerified,
 		string? gitCommitHash,
 		string? pullRequestUrl,
-		int? pullRequestNumber)
+		int? pullRequestNumber,
+		DateTime? mergedAt)
 	{
-		var hasDetectedChanges = HasDetectedChanges(changedFilesCount, pullRequestUrl, gitCommitHash);
+		var hasDetectedChanges = HasDetectedChanges(changedFilesCount, pullRequestUrl, gitCommitHash, mergedAt);
 		var pullRequestReference = FormatPullRequestReference(pullRequestNumber);
 
 		return status switch
@@ -114,6 +125,11 @@ internal static class JobOutcomeDisplayHelper
 				"Checks failed.",
 				"Review the verification output before delivering these changes.",
 				"d-flex align-items-start gap-2 mt-2 px-2 py-2 rounded small bg-danger-subtle text-danger-emphasis"),
+			JobStatus.Completed when mergedAt.HasValue => new JobOutcomeHintModel(
+				"bi-check2-circle",
+				"Merged.",
+				"The changes are already on the target branch, so only follow-up review remains.",
+				"d-flex align-items-start gap-2 mt-2 px-2 py-2 rounded small bg-success-subtle text-success-emphasis"),
 			JobStatus.Completed when !string.IsNullOrWhiteSpace(pullRequestUrl) => new JobOutcomeHintModel(
 				"bi-github",
 				$"{pullRequestReference} ready.",
@@ -168,11 +184,11 @@ internal static class JobOutcomeDisplayHelper
 		};
 	}
 
-	public static bool HasDeliveredChanges(string? pullRequestUrl, string? gitCommitHash)
-		=> !string.IsNullOrWhiteSpace(pullRequestUrl) || !string.IsNullOrWhiteSpace(gitCommitHash);
+	public static bool HasDeliveredChanges(string? pullRequestUrl, string? gitCommitHash, DateTime? mergedAt = null)
+		=> mergedAt.HasValue || !string.IsNullOrWhiteSpace(pullRequestUrl) || !string.IsNullOrWhiteSpace(gitCommitHash);
 
-	public static bool HasDetectedChanges(int? changedFilesCount, string? pullRequestUrl, string? gitCommitHash)
-		=> changedFilesCount.GetValueOrDefault() > 0 || HasDeliveredChanges(pullRequestUrl, gitCommitHash);
+	public static bool HasDetectedChanges(int? changedFilesCount, string? pullRequestUrl, string? gitCommitHash, DateTime? mergedAt = null)
+		=> changedFilesCount.GetValueOrDefault() > 0 || HasDeliveredChanges(pullRequestUrl, gitCommitHash, mergedAt);
 
 	public static string FormatPullRequestLabel(int? pullRequestNumber)
 		=> pullRequestNumber.HasValue ? $"PR #{pullRequestNumber.Value}" : "PR ready";

@@ -32,6 +32,9 @@
 	[Parameter]
 	public int? PullRequestNumber { get; set; }
 
+	[Parameter]
+	public DateTime? MergedAt { get; set; }
+
 	private IReadOnlyList<JobOutcomeBadgeModel> OutcomeBadges
-		=> JobOutcomeDisplayHelper.BuildBadges(Status, ChangedFilesCount, BuildVerified, GitCommitHash, PullRequestUrl, PullRequestNumber);
+		=> JobOutcomeDisplayHelper.BuildBadges(Status, ChangedFilesCount, BuildVerified, GitCommitHash, PullRequestUrl, PullRequestNumber, MergedAt);
 }

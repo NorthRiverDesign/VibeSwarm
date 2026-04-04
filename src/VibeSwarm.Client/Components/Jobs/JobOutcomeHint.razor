@@ -30,6 +30,9 @@
 	[Parameter]
 	public int? PullRequestNumber { get; set; }
 
+	[Parameter]
+	public DateTime? MergedAt { get; set; }
+
 	private JobOutcomeHintModel? Summary
-		=> JobOutcomeDisplayHelper.BuildHint(Status, ChangedFilesCount, BuildVerified, GitCommitHash, PullRequestUrl, PullRequestNumber);
+		=> JobOutcomeDisplayHelper.BuildHint(Status, ChangedFilesCount, BuildVerified, GitCommitHash, PullRequestUrl, PullRequestNumber, MergedAt);
 }

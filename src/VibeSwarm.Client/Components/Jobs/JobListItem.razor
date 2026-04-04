@@ -94,19 +94,21 @@
                 }
             </div>
 
-  			<JobOutcomeBadges Status="@ParsedStatus"
-  							  ChangedFilesCount="@ChangedFilesCount"
-  							  BuildVerified="@BuildVerified"
-  							  GitCommitHash="@GitCommitHash"
-  							  PullRequestUrl="@PullRequestUrl"
-							  PullRequestNumber="@PullRequestNumber" />
-
+   			<JobOutcomeBadges Status="@ParsedStatus"
+   							  ChangedFilesCount="@ChangedFilesCount"
+   							  BuildVerified="@BuildVerified"
+   							  GitCommitHash="@GitCommitHash"
+   							  PullRequestUrl="@PullRequestUrl"
+ 							  PullRequestNumber="@PullRequestNumber"
+							  MergedAt="@MergedAt" />
+ 
 			<JobOutcomeHint Status="@ParsedStatus"
 							ChangedFilesCount="@ChangedFilesCount"
 							BuildVerified="@BuildVerified"
 							GitCommitHash="@GitCommitHash"
 							PullRequestUrl="@PullRequestUrl"
-							PullRequestNumber="@PullRequestNumber" />
+							PullRequestNumber="@PullRequestNumber"
+							MergedAt="@MergedAt" />
 
              @* Time display *@
              @if (!string.IsNullOrEmpty(TimeDisplay))
@@ -225,6 +227,9 @@
 
 	[Parameter]
 	public int? PullRequestNumber { get; set; }
+
+	[Parameter]
+	public DateTime? MergedAt { get; set; }
 
     private bool _isSelected => IsSelected;
 

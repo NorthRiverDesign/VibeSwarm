@@ -332,14 +332,16 @@
  															  BuildVerified="@job.BuildVerified"
  															  GitCommitHash="@job.GitCommitHash"
  															  PullRequestUrl="@job.PullRequestUrl"
-															  PullRequestNumber="@job.PullRequestNumber" />
+															  PullRequestNumber="@job.PullRequestNumber"
+															  MergedAt="@job.MergedAt" />
 										</div>
 										<JobOutcomeHint Status="@job.Status"
 														ChangedFilesCount="@job.ChangedFilesCount"
 														BuildVerified="@job.BuildVerified"
 														GitCommitHash="@job.GitCommitHash"
 														PullRequestUrl="@job.PullRequestUrl"
-														PullRequestNumber="@job.PullRequestNumber" />
+														PullRequestNumber="@job.PullRequestNumber"
+														MergedAt="@job.MergedAt" />
 										@* Token and cost stats row *@
 										@if (job.InputTokens.HasValue || job.OutputTokens.HasValue || job.TotalCostUsd.HasValue)
 										{

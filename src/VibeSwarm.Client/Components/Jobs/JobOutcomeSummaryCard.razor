@@ -30,7 +30,8 @@
 							  BuildVerified="@BuildVerified"
 							  GitCommitHash="@GitCommitHash"
 							  PullRequestUrl="@PullRequestUrl"
-							  PullRequestNumber="@PullRequestNumber" />
+							  PullRequestNumber="@PullRequestNumber"
+							  MergedAt="@MergedAt" />
 
 			<div class="row g-2">
 				<div class="col-12 col-lg-4">
@@ -168,9 +169,9 @@
 	[Parameter]
 	public string? VerificationOutputHref { get; set; }
 
-	private bool HasDeliveredChanges => JobOutcomeDisplayHelper.HasDeliveredChanges(PullRequestUrl, GitCommitHash);
+	private bool HasDeliveredChanges => JobOutcomeDisplayHelper.HasDeliveredChanges(PullRequestUrl, GitCommitHash, MergedAt);
 
-	private bool HasDetectedChanges => JobOutcomeDisplayHelper.HasDetectedChanges(ChangedFilesCount, PullRequestUrl, GitCommitHash);
+	private bool HasDetectedChanges => JobOutcomeDisplayHelper.HasDetectedChanges(ChangedFilesCount, PullRequestUrl, GitCommitHash, MergedAt);
 
 	private bool HasVerificationConfigured
 		=> BuildVerificationEnabled
@@ -196,14 +197,14 @@
 					HasDetectedChanges
 						? "The run finished with changes, but post-run verification failed so delivery stayed manual."
 						: "Post-run verification failed after the run completed."),
-				JobStatus.Completed when !string.IsNullOrWhiteSpace(PullRequestUrl) => new OutcomeSummary(
-					"bi-check2-circle",
-					$"{JobOutcomeDisplayHelper.FormatPullRequestReference(PullRequestNumber)} ready for review",
-					$"The run completed successfully and {JobOutcomeDisplayHelper.FormatPullRequestReference(PullRequestNumber).ToLowerInvariant()} is ready for review."),
 				JobStatus.Completed when MergedAt.HasValue => new OutcomeSummary(
 					"bi-check2-circle",
 					"Changes merged into the target branch",
 					"The run completed successfully and the resulting changes are already merged."),
+				JobStatus.Completed when !string.IsNullOrWhiteSpace(PullRequestUrl) => new OutcomeSummary(
+					"bi-check2-circle",
+					$"{JobOutcomeDisplayHelper.FormatPullRequestReference(PullRequestNumber)} ready for review",
+					$"The run completed successfully and {JobOutcomeDisplayHelper.FormatPullRequestReference(PullRequestNumber).ToLowerInvariant()} is ready for review."),
 				JobStatus.Completed when !string.IsNullOrWhiteSpace(GitCommitHash) => new OutcomeSummary(
 					"bi-check2-circle",
 					$"{JobOutcomeDisplayHelper.FormatCommitLabel(GitCommitHash)} recorded",
@@ -319,18 +320,18 @@
 				return new DetailBlock("No delivery needed", "There are no code changes from this run to push, merge, or review.");
 			}
 
-			if (!string.IsNullOrWhiteSpace(PullRequestUrl))
-			{
-				return new DetailBlock(
-					$"{JobOutcomeDisplayHelper.FormatPullRequestReference(PullRequestNumber)} ready",
-					$"{JobOutcomeDisplayHelper.FormatPullRequestReference(PullRequestNumber)} is ready{FormatTargetBranchClause()}.");
-			}
-
 			if (MergedAt.HasValue)
 			{
 				return new DetailBlock(
 					"Merged into target branch",
 					$"The resulting changes were merged{FormatTargetBranchClause()}.");
+			}
+
+			if (!string.IsNullOrWhiteSpace(PullRequestUrl))
+			{
+				return new DetailBlock(
+					$"{JobOutcomeDisplayHelper.FormatPullRequestReference(PullRequestNumber)} ready",
+					$"{JobOutcomeDisplayHelper.FormatPullRequestReference(PullRequestNumber)} is ready{FormatTargetBranchClause()}.");
 			}
 
 			if (IsPushed)
@@ -368,6 +369,11 @@
 		{
 			var badges = new List<string>();
 
+			if (MergedAt.HasValue)
+			{
+				badges.Add("Merged");
+			}
+
 			if (!string.IsNullOrWhiteSpace(BranchName))
 			{
 				badges.Add($"Source {BranchName}");
@@ -403,14 +409,14 @@
 				return new DetailBlock("Start with the failed checks", "Inspect the verification output and repository changes before trying to deliver them.");
 			}
 
-			if (!string.IsNullOrWhiteSpace(PullRequestUrl))
-			{
-				return new DetailBlock("Review the pull request", "Open the PR, check the diff, and merge it when the review is complete.");
-			}
-
 			if (MergedAt.HasValue)
 			{
 				return new DetailBlock("Delivery is complete", "The code is already merged, so only follow-up review or monitoring remains.");
+			}
+
+			if (!string.IsNullOrWhiteSpace(PullRequestUrl))
+			{
+				return new DetailBlock("Review the pull request", "Open the PR, check the diff, and merge it when the review is complete.");
 			}
 
 			if (HasDetectedChanges && !string.IsNullOrWhiteSpace(DeliveryHref) && Status == JobStatus.Completed)

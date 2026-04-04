@@ -25,6 +25,21 @@ public sealed class JobOutcomeComponentsTests
 	}
 
 	[Fact]
+	public void JobOutcomeBadges_ShowsMergedBadgeWhenMergeRecorded()
+	{
+		using var context = new BunitContext();
+
+		var cut = context.Render<JobOutcomeBadges>(parameters => parameters
+			.Add(component => component.Status, JobStatus.Completed)
+			.Add(component => component.PullRequestNumber, 42)
+			.Add(component => component.PullRequestUrl, "https://github.com/octo-org/octo-repo/pull/42")
+			.Add(component => component.MergedAt, DateTime.UtcNow));
+
+		Assert.Contains("Merged", cut.Markup);
+		Assert.Contains("PR #42", cut.Markup);
+	}
+
+	[Fact]
 	public void JobOutcomeBadges_ShowsNeedsReviewWhenFailedChangesRemain()
 	{
 		using var context = new BunitContext();
@@ -85,6 +100,22 @@ public sealed class JobOutcomeComponentsTests
 	}
 
 	[Fact]
+	public void JobOutcomeSummaryCard_PrefersMergedOutcomeOverPullRequestReady()
+	{
+		using var context = new BunitContext();
+
+		var cut = context.Render<JobOutcomeSummaryCard>(parameters => parameters
+			.Add(component => component.Status, JobStatus.Completed)
+			.Add(component => component.PullRequestNumber, 42)
+			.Add(component => component.PullRequestUrl, "https://github.com/octo-org/octo-repo/pull/42")
+			.Add(component => component.MergedAt, DateTime.UtcNow));
+
+		Assert.Contains("Changes merged into the target branch", cut.Markup);
+		Assert.Contains("Delivery is complete", cut.Markup);
+		Assert.DoesNotContain("PR #42 ready for review", cut.Markup);
+	}
+
+	[Fact]
 	public void JobOutcomeHint_ShowsCompactVerificationFailureGuidance()
 	{
 		using var context = new BunitContext();
@@ -96,6 +127,22 @@ public sealed class JobOutcomeComponentsTests
 
 		Assert.Contains("Checks failed.", cut.Markup);
 		Assert.Contains("Review the verification output before delivering these changes.", cut.Markup);
+	}
+
+	[Fact]
+	public void JobOutcomeHint_ShowsMergedGuidanceBeforePullRequestReady()
+	{
+		using var context = new BunitContext();
+
+		var cut = context.Render<JobOutcomeHint>(parameters => parameters
+			.Add(component => component.Status, JobStatus.Completed)
+			.Add(component => component.PullRequestNumber, 42)
+			.Add(component => component.PullRequestUrl, "https://github.com/octo-org/octo-repo/pull/42")
+			.Add(component => component.MergedAt, DateTime.UtcNow));
+
+		Assert.Contains("Merged.", cut.Markup);
+		Assert.Contains("The changes are already on the target branch", cut.Markup);
+		Assert.DoesNotContain("PR #42 ready.", cut.Markup);
 	}
 
 	[Fact]
@@ -112,6 +159,24 @@ public sealed class JobOutcomeComponentsTests
 
 		Assert.Contains("PR #42 ready.", cut.Markup);
 		Assert.Contains("Review it and merge when the changes are approved.", cut.Markup);
+	}
+
+	[Fact]
+	public void JobListItem_ShowsMergedOutcomeHintWhenMergeWasRecorded()
+	{
+		using var context = new BunitContext();
+
+		var cut = context.Render<JobListItem>(parameters => parameters
+			.Add(component => component.Status, JobStatus.Completed.ToString())
+			.Add(component => component.Prompt, "Ship the fix")
+			.Add(component => component.TimeDisplay, "now")
+			.Add(component => component.PullRequestNumber, 42)
+			.Add(component => component.PullRequestUrl, "https://github.com/octo-org/octo-repo/pull/42")
+			.Add(component => component.MergedAt, DateTime.UtcNow));
+
+		Assert.Contains("Merged.", cut.Markup);
+		Assert.Contains("The changes are already on the target branch", cut.Markup);
+		Assert.DoesNotContain("PR #42 ready.", cut.Markup);
 	}
 
 	[Fact]
