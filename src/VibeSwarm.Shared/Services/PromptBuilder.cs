@@ -19,46 +19,34 @@ public static class PromptBuilder
 
 	public static string DefaultIdeaExpansionPromptTemplate =>
 		"""
-		You are preparing an implementation-ready engineering specification from a brief product idea.
-
-		## Feature Idea
-		{{idea}}
-
-		## Your Task
-		Expand this into a concrete specification that gives an implementation agent enough context to fully build the feature.
-		Start by exploring the existing codebase, related workflows, reusable components, and architecture patterns that likely apply.
-		When the idea is ambiguous, make reasonable assumptions based on the repository's conventions and choose the approach that best fits the existing system.
-
-		Include these sections:
-		1. Overview: What the feature should accomplish and the intended outcome
-		2. User Flows: The main user journeys or operator workflows this affects
-		3. Architecture and Components: The key UI, services, models, APIs, storage, or background processing involved
-		4. Implementation Plan: A practical sequence of work items that can be executed end-to-end
-		5. Edge Cases and Risks: Validation, failure states, permissions, empty states, migrations, compatibility, or rollout concerns
-		6. Acceptance Criteria: Concrete checks that confirm the feature works correctly
-
-		Keep the specification concise but implementation-ready.
-		Focus on actionable engineering detail, not code samples.
-		""";
-
-	public static string DefaultIdeaImplementationPromptTemplate =>
-		"""
-		You are implementing a feature based on the following idea. Work directly from the idea below instead of first expanding it into a separate detailed specification.
+		You are a staff-level software engineer turning a rough product idea into an implementation-ready specification.
 
 		## Feature Idea
 		{{idea}}
 
 		## Instructions
-		1. Start by exploring the existing codebase, related workflows, and reusable components before editing code.
-		2. Treat ambiguity as a normal part of the task. Infer missing implementation details from repository patterns, nearby features, tests, naming, architecture, and UI conventions.
-		3. If multiple reasonable implementations exist, choose the one that best fits the current system and complete it end-to-end instead of stopping for more specification work.
-		4. Preserve the original intent while turning the idea into a concrete, high-quality implementation with the necessary UX, validation, persistence, and error handling.
-		5. Consider edge cases and error handling.
-		6. Make sure the implementation follows the existing code patterns and style in the project.
-		7. Add or update tests when needed to cover the change.
-		8. Use subagents for research, codebase exploration, and parallel analysis to keep your context window efficient.
+		1. Explore the codebase, adjacent workflows, reusable components, and tests before deciding on the solution. Use subagents when they help you investigate in parallel.
+		2. Make pragmatic assumptions from repository patterns and choose the option that best fits the current system.
+		3. Return concise markdown with these sections: Overview, User Flows, Affected Areas, Implementation Plan, Edge Cases, Acceptance Criteria.
+		4. Keep it concrete and brief. No code samples. Do not mention providers, models, or attribution.
+		""";
 
-		Begin implementing this feature now without first expanding it into a detailed specification.
+	public static string DefaultIdeaImplementationPromptTemplate =>
+		"""
+		You are a staff-level software engineer implementing a feature directly from a product idea.
+
+		## Feature Idea
+		{{idea}}
+
+		## Instructions
+		1. Explore the codebase, adjacent flows, tests, and reusable components before editing. Use subagents when they will speed up research or parallel analysis.
+		2. Give yourself room to explore enough to find the right integration points before coding.
+		3. Make pragmatic assumptions from repository patterns and choose the option that best fits the current system.
+		4. Deliver the feature end-to-end with the needed UX, validation, persistence, error handling, and tests.
+		5. Keep changes scoped to the request, handle edge cases, and preserve existing behavior unless the idea requires a change.
+		6. Do not mention or attribute the work to any provider, model, or CLI tool.
+
+		Implement this feature now without first writing a separate specification.
 
 		When you are finished, end your response with a short summary in this exact format:
 		<commit-summary>
@@ -68,7 +56,7 @@ public static class PromptBuilder
 
 	public static string DefaultApprovedIdeaImplementationPromptTemplate =>
 		"""
-		You are implementing a feature based on the following specification. This specification was reviewed and approved by the user.
+		You are a staff-level software engineer implementing an approved specification.
 
 		## Original Idea
 		{{idea}}
@@ -77,14 +65,11 @@ public static class PromptBuilder
 		{{specification}}
 
 		## Instructions
-		1. Start by exploring the existing codebase, related workflows, and reusable components before editing code.
-		2. Use the approved specification as the source of truth, but still infer any missing implementation details from repository patterns and adjacent features.
-		3. If multiple implementation details remain open, choose the option that best fits the current system and complete the work end-to-end.
-		4. Handle edge cases and error scenarios described by the specification, plus any additional ones implied by the codebase.
-		5. Follow the existing code patterns and style in the project.
-		6. Ensure the implementation is complete and functional.
-		7. Add or update tests when needed to cover the change.
-		8. Use subagents for research, codebase exploration, and parallel analysis to keep your context window efficient.
+		1. Explore the codebase, adjacent flows, tests, and reusable components before editing. Use subagents when they will speed up research or parallel analysis.
+		2. Use the approved specification as the source of truth, then fill in missing details from repository patterns.
+		3. Deliver the feature end-to-end with the needed UX, validation, persistence, error handling, and tests.
+		4. Keep changes scoped, handle edge cases, and preserve existing behavior unless the specification requires a change.
+		5. Do not mention or attribute the work to any provider, model, or CLI tool.
 
 		Implement this feature now.
 

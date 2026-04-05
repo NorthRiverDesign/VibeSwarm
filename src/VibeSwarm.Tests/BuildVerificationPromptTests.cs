@@ -154,6 +154,26 @@ public sealed class BuildVerificationPromptTests
 	}
 
 	[Fact]
+	public void BuildIdeaExpansionPrompt_DefaultTemplate_UsesStaffLevelExplorationGuidance()
+	{
+		var prompt = PromptBuilder.BuildIdeaExpansionPrompt("Add bulk archive controls");
+
+		Assert.Contains("staff-level software engineer", prompt);
+		Assert.Contains("Use subagents when they help you investigate in parallel.", prompt);
+		Assert.Contains("Do not mention providers, models, or attribution.", prompt);
+	}
+
+	[Fact]
+	public void BuildIdeaImplementationPrompt_DefaultTemplate_UsesStaffLevelExplorationGuidance()
+	{
+		var prompt = PromptBuilder.BuildIdeaImplementationPrompt("Add bulk archive controls");
+
+		Assert.Contains("staff-level software engineer", prompt);
+		Assert.Contains("Use subagents when they will speed up research or parallel analysis.", prompt);
+		Assert.Contains("Do not mention or attribute the work to any provider, model, or CLI tool.", prompt);
+	}
+
+	[Fact]
 	public void BuildApprovedIdeaImplementationPrompt_AppendsMissingSectionsWhenTemplateOmitsTokens()
 	{
 		var prompt = PromptBuilder.BuildApprovedIdeaImplementationPrompt(
@@ -166,5 +186,17 @@ public sealed class BuildVerificationPromptTests
 		Assert.Contains("Add archive controls", prompt);
 		Assert.Contains("## Detailed Specification", prompt);
 		Assert.Contains("Implement a bulk action bar.", prompt);
+	}
+
+	[Fact]
+	public void BuildApprovedIdeaImplementationPrompt_DefaultTemplate_AvoidsProviderAttribution()
+	{
+		var prompt = PromptBuilder.BuildApprovedIdeaImplementationPrompt(
+			"Add archive controls",
+			"Implement a bulk action bar.");
+
+		Assert.Contains("staff-level software engineer", prompt);
+		Assert.Contains("Use subagents when they will speed up research or parallel analysis.", prompt);
+		Assert.Contains("Do not mention or attribute the work to any provider, model, or CLI tool.", prompt);
 	}
 }

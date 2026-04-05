@@ -1748,7 +1748,8 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		var job = await ideaService.ConvertToJobAsync(idea.Id);
 
 		Assert.NotNull(job);
-		Assert.Contains("Work directly from the idea below instead of first expanding it into a separate detailed specification.", job!.GoalPrompt);
+		Assert.Contains("You are a staff-level software engineer implementing a feature directly from a product idea.", job!.GoalPrompt);
+		Assert.Contains("Do not mention or attribute the work to any provider, model, or CLI tool.", job.GoalPrompt);
 		Assert.DoesNotContain("Begin by expanding this idea into a detailed specification, then implement it.", job.GoalPrompt);
 	}
 
