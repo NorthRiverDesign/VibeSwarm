@@ -9,7 +9,7 @@ namespace VibeSwarm.Tests;
 public sealed class DeveloperUpdateServiceTests
 {
 	[Fact]
-	public async Task StartSelfUpdateAsync_BuildFailureSetsFailedStateAndSkipsRestart()
+	public async Task StartSelfUpdateAsync_BuildFailureBroadcastsFailureButSubsequentStatusReturnsReady()
 	{
 		var commandRunner = new FakeSystemCommandRunner
 		{
@@ -25,16 +25,17 @@ public sealed class DeveloperUpdateServiceTests
 		});
 
 		var started = await service.StartSelfUpdateAsync();
-		await WaitForAsync(async () => (await service.GetStatusAsync()).Stage == DeveloperUpdateStage.Failed);
-		var failed = await service.GetStatusAsync();
+		await WaitForAsync(() => Task.FromResult(updates.StatusUpdates.Any(update => update.Stage == DeveloperUpdateStage.Failed)));
+		var ready = await service.GetStatusAsync();
 
 		Assert.True(started.IsUpdateInProgress);
 		Assert.Equal(DeveloperUpdateStage.Building, started.Stage);
-		Assert.Equal(DeveloperUpdateStage.Failed, failed.Stage);
-		Assert.False(failed.IsUpdateInProgress);
+		Assert.Equal(DeveloperUpdateStage.Ready, ready.Stage);
+		Assert.False(ready.IsUpdateInProgress);
 		Assert.Empty(commandRunner.DetachedCommands);
-		Assert.Contains("dotnet build failed", failed.StatusMessage);
-		Assert.Contains(updates.StatusUpdates, update => update.Stage == DeveloperUpdateStage.Failed);
+		Assert.Contains("dotnet build failed", updates.StatusUpdates.Single(update => update.Stage == DeveloperUpdateStage.Failed).StatusMessage);
+		Assert.Equal("dotnet build", ready.BuildCommandSummary);
+		Assert.Equal("systemctl restart vibeswarm.service", ready.RestartCommandSummary);
 	}
 
 	[Fact]
@@ -123,7 +124,7 @@ public sealed class DeveloperUpdateServiceTests
 	}
 
 	[Fact]
-	public async Task GetStatusAsync_WhenRestartTimeoutExpires_FailsUpdateOnSameInstance()
+	public async Task GetStatusAsync_WhenRestartTimeoutExpires_ReturnsFailureOnceThenResetsToReady()
 	{
 		var commandRunner = new FakeSystemCommandRunner();
 		var updates = new TestJobUpdateService();
@@ -137,15 +138,18 @@ public sealed class DeveloperUpdateServiceTests
 		});
 
 		await service.StartSelfUpdateAsync();
-		await WaitForAsync(async () => (await service.GetStatusAsync()).Stage == DeveloperUpdateStage.Failed);
+		await WaitForAsync(() => Task.FromResult(updates.StatusUpdates.Any(update => update.Stage == DeveloperUpdateStage.Restarting)));
 		var failed = await service.GetStatusAsync();
+		var ready = await service.GetStatusAsync();
 
 		Assert.Equal(DeveloperUpdateStage.Failed, failed.Stage);
 		Assert.False(failed.IsUpdateInProgress);
 		Assert.Null(failed.RestartDeadlineUtc);
 		Assert.Contains("still running", failed.StatusMessage);
-		Assert.Contains(failed.RecentOutput, line => line.IsError && line.Text.Contains("still running", StringComparison.Ordinal));
+		Assert.Contains(updates.OutputLines, line => line.IsError && line.Text.Contains("still running", StringComparison.Ordinal));
 		Assert.Contains(updates.StatusUpdates, update => update.Stage == DeveloperUpdateStage.Failed && update.StatusMessage.Contains("still running", StringComparison.Ordinal));
+		Assert.Equal(DeveloperUpdateStage.Ready, ready.Stage);
+		Assert.False(ready.IsUpdateInProgress);
 	}
 
 	private static DeveloperUpdateService CreateService(

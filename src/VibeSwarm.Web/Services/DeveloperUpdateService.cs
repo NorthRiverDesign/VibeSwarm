@@ -220,16 +220,6 @@ public class DeveloperUpdateService : IDeveloperModeService
 			return;
 		}
 
-		if (_status.Stage == DeveloperUpdateStage.Failed && options.Enabled)
-		{
-			_status.IsEnabled = true;
-			_status.ServerInstanceId = _serverInstanceId;
-			_status.BuildCommandSummary = options.BuildCommand;
-			_status.RestartCommandSummary = options.RestartCommand;
-			_status.WorkingDirectory = options.WorkingDirectory;
-			return;
-		}
-
 		_status = CreateConfiguredStatus(options);
 	}
 
