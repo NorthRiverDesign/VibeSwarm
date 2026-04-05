@@ -23,6 +23,22 @@ public sealed class MobileShellScrollingTests
 		Assert.Contains(".app-sidebar > .overflow-y-auto", css);
 		Assert.Contains("height: -webkit-fill-available;", css);
 		Assert.Matches(new Regex(@"\.app-layout\s*\{[\s\S]*height:\s*100dvh;", RegexOptions.Multiline), css);
+		Assert.Contains("scroll-padding-top: calc(", css);
+		Assert.Contains(".app-header .dropdown.d-lg-none > .dropdown-menu", css);
+		Assert.Contains("left: 50% !important;", css);
+		Assert.Contains("transform: translateX(-50%) !important;", css);
+		Assert.Contains(".notifications-panel", css);
+		Assert.Contains("transform: translateX(-50%);", css);
+	}
+
+	[Fact]
+	public void MobileHeaderDropdowns_UseStaticDisplayForViewportCenteredPanels()
+	{
+		var loginDisplayMarkup = File.ReadAllText(GetRepositoryPath("src", "VibeSwarm.Client", "Shared", "LoginDisplay.razor"));
+		var queuePanelMarkup = File.ReadAllText(GetRepositoryPath("src", "VibeSwarm.Client", "Components", "Common", "QueueDropdownPanel.razor"));
+
+		Assert.Contains("data-bs-toggle=\"dropdown\" data-bs-display=\"static\"", loginDisplayMarkup);
+		Assert.Contains("data-bs-display=\"@(Compact ? \"static\" : null)\"", queuePanelMarkup);
 	}
 
 	private static string GetRepositoryPath(params string[] segments)

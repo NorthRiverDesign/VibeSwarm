@@ -143,6 +143,18 @@ public sealed class QueueDropdownPanelTests
 		Assert.Contains("Start Queue", cut.Markup);
 	}
 
+	[Fact]
+	public void QueueDropdownPanel_CompactMode_UsesStaticDropdownDisplay()
+	{
+		using var context = CreateContext(new FakeIdeaService());
+		var cut = context.Render<QueueDropdownPanel>(parameters => parameters
+			.Add(component => component.Compact, true));
+
+		var toggle = cut.Find("button[title='Queue']");
+
+		Assert.Equal("static", toggle.GetAttribute("data-bs-display"));
+	}
+
 	private static BunitContext CreateContext(FakeIdeaService ideaService)
 	{
 		var context = new BunitContext();

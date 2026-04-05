@@ -286,6 +286,40 @@ body:has(.app-layout) {
 
 /* Sticky tab bar on mobile — pins to the top of .app-main (the scroll container) */
 @media (max-width: 991.98px) {
+	.app-main {
+		scroll-padding-top: calc(
+			var(--vs-header-height) + var(--vs-safe-area-top) + 0.75rem
+		);
+	}
+
+	.app-header .dropdown.d-lg-none {
+		position: static;
+	}
+
+	.app-header .dropdown.d-lg-none > .dropdown-menu {
+		position: fixed;
+		top: calc(var(--vs-header-height) + var(--vs-safe-area-top) + 0.5rem) !important;
+		left: 50% !important;
+		right: auto !important;
+		width: min(
+			24rem,
+			calc(
+				100vw - 1.5rem - var(--vs-safe-area-left) -
+					var(--vs-safe-area-right)
+			)
+		);
+		max-width: min(
+			24rem,
+			calc(
+				100vw - 1.5rem - var(--vs-safe-area-left) -
+					var(--vs-safe-area-right)
+			)
+		);
+		margin-top: 0 !important;
+		transform: translateX(-50%) !important;
+		z-index: 1001;
+	}
+
 	.project-detail-tabs {
 		position: sticky;
 		top: 0;
@@ -747,11 +781,11 @@ body.vs-modal-open .app-main {
 	}
 }
 
-/* Mobile: panel appears below the header, right-aligned */
+/* Mobile: panel appears below the header and stays centered in the viewport */
 .notifications-panel {
 	top: calc(var(--vs-header-height) + env(safe-area-inset-top, 0px) + 4px);
-	right: max(8px, env(safe-area-inset-right, 0px));
-	left: auto;
+	left: 50%;
+	right: auto;
 	width: min(
 		340px,
 		calc(
@@ -764,6 +798,7 @@ body.vs-modal-open .app-main {
 			env(safe-area-inset-bottom, 0px) - 16px
 	);
 	animation: notificationSlideIn 0.2s ease-out;
+	transform: translateX(-50%);
 }
 @keyframes notificationSlideIn {
 	from {
@@ -910,9 +945,12 @@ body.vs-modal-open .app-main {
 		max-width: none;
 	}
 
-	/* Mobile dropdown safe area margins */
+	/* Keep mobile header panels visually centered inside the safe area */
 	.app-header .dropdown-menu {
-		margin-right: env(safe-area-inset-right, 0px);
+		width: calc(
+			100vw - 1rem - env(safe-area-inset-left, 0px) -
+				env(safe-area-inset-right, 0px)
+		);
 		max-width: calc(
 			100vw - 1rem - env(safe-area-inset-left, 0px) -
 				env(safe-area-inset-right, 0px)
