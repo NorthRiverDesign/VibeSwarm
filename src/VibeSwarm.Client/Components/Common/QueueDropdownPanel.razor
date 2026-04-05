@@ -3,7 +3,7 @@
 @inject QueuePanelStateService QueuePanelStateService
 @implements IDisposable
 
-<div class="dropdown @(OpenUpward ? "dropup" : string.Empty)">
+<div class="dropdown @(Compact ? "mobile-header-dropdown" : string.Empty) @(OpenUpward ? "dropup" : string.Empty)">
 	<button class="btn btn-link text-secondary p-0 fs-5 d-flex align-items-center justify-content-center position-relative touch-manipulation @(Compact ? "mobile-header-icon" : "lh-1")"
 			type="button"
 			data-bs-toggle="dropdown"

@@ -151,8 +151,10 @@ public sealed class QueueDropdownPanelTests
 			.Add(component => component.Compact, true));
 
 		var toggle = cut.Find("button[title='Queue']");
+		var dropdown = cut.Find("div.dropdown");
 
 		Assert.Equal("static", toggle.GetAttribute("data-bs-display"));
+		Assert.Contains("mobile-header-dropdown", dropdown.ClassList);
 	}
 
 	private static BunitContext CreateContext(FakeIdeaService ideaService)

@@ -292,11 +292,11 @@ body:has(.app-layout) {
 		);
 	}
 
-	.app-header .dropdown.d-lg-none {
+	.app-header .mobile-header-dropdown {
 		position: static;
 	}
 
-	.app-header .dropdown.d-lg-none > .dropdown-menu {
+	.app-header .mobile-header-dropdown > .dropdown-menu {
 		position: fixed;
 		top: calc(var(--vs-header-height) + var(--vs-safe-area-top) + 0.5rem) !important;
 		left: 50% !important;
@@ -1109,14 +1109,14 @@ body.vs-modal-open .app-main {
 }
 
 /* Mobile header dropdown touch target */
-.app-header .dropdown.d-lg-none > .btn,
-.app-header .dropdown.d-lg-none > .btn-link {
+.app-header .mobile-header-dropdown > .btn,
+.app-header .mobile-header-dropdown > .btn-link {
 	width: 44px;
 	height: 44px;
 	min-width: 44px;
 }
-.app-header .dropdown.d-lg-none > .btn .bi-person-circle,
-.app-header .dropdown.d-lg-none > .btn-link .bi-person-circle {
+.app-header .mobile-header-dropdown > .btn .bi-person-circle,
+.app-header .mobile-header-dropdown > .btn-link .bi-person-circle {
 	margin-right: 0 !important;
 }
 

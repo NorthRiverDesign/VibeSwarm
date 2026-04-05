@@ -24,7 +24,7 @@ public sealed class MobileShellScrollingTests
 		Assert.Contains("height: -webkit-fill-available;", css);
 		Assert.Matches(new Regex(@"\.app-layout\s*\{[\s\S]*height:\s*100dvh;", RegexOptions.Multiline), css);
 		Assert.Contains("scroll-padding-top: calc(", css);
-		Assert.Contains(".app-header .dropdown.d-lg-none > .dropdown-menu", css);
+		Assert.Contains(".app-header .mobile-header-dropdown > .dropdown-menu", css);
 		Assert.Contains("left: 50% !important;", css);
 		Assert.Contains("transform: translateX(-50%) !important;", css);
 		Assert.Contains(".notifications-panel", css);
@@ -39,6 +39,8 @@ public sealed class MobileShellScrollingTests
 
 		Assert.Contains("data-bs-toggle=\"dropdown\" data-bs-display=\"static\"", loginDisplayMarkup);
 		Assert.Contains("data-bs-display=\"@(Compact ? \"static\" : null)\"", queuePanelMarkup);
+		Assert.Contains("mobile-header-dropdown", loginDisplayMarkup);
+		Assert.Contains("mobile-header-dropdown", queuePanelMarkup);
 	}
 
 	private static string GetRepositoryPath(params string[] segments)
