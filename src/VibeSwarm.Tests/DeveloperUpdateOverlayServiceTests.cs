@@ -79,4 +79,33 @@ public sealed class DeveloperUpdateOverlayServiceTests
 		Assert.Empty(currentStatus.RecentOutput);
 		Assert.Equal(DeveloperUpdateStage.Ready, currentStatus.Stage);
 	}
+
+	[Fact]
+	public void SetStatus_PreservesServerInstanceIdAndRestartDeadline_WhenIncomingStatusOmitsThem()
+	{
+		var service = new DeveloperUpdateOverlayService();
+		var restartDeadlineUtc = DateTime.UtcNow.AddSeconds(30);
+
+		service.SetStatus(new DeveloperModeStatus
+		{
+			IsEnabled = true,
+			IsUpdateInProgress = true,
+			Stage = DeveloperUpdateStage.Restarting,
+			StatusMessage = "Restarting...",
+			ServerInstanceId = "instance-a",
+			RestartDeadlineUtc = restartDeadlineUtc
+		});
+
+		service.SetStatus(new DeveloperModeStatus
+		{
+			IsEnabled = true,
+			IsUpdateInProgress = true,
+			Stage = DeveloperUpdateStage.Restarting,
+			StatusMessage = "Still restarting..."
+		});
+
+		var currentStatus = Assert.IsType<DeveloperModeStatus>(service.CurrentStatus);
+		Assert.Equal("instance-a", currentStatus.ServerInstanceId);
+		Assert.Equal(restartDeadlineUtc, currentStatus.RestartDeadlineUtc);
+	}
 }

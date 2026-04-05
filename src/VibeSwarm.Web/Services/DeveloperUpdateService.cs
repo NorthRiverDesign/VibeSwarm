@@ -13,6 +13,7 @@ public class DeveloperUpdateService : IDeveloperModeService
 	private readonly IJobUpdateService _jobUpdateService;
 	private readonly ILogger<DeveloperUpdateService> _logger;
 	private readonly object _sync = new();
+	private readonly string _serverInstanceId = Guid.NewGuid().ToString("N");
 	private DeveloperModeStatus _status;
 
 	public DeveloperUpdateService(
@@ -30,11 +31,19 @@ public class DeveloperUpdateService : IDeveloperModeService
 
 	public Task<DeveloperModeStatus> GetStatusAsync(CancellationToken cancellationToken = default)
 	{
+		DeveloperModeStatus? statusToBroadcast = null;
+		DeveloperModeStatus snapshot;
+
 		lock (_sync)
 		{
 			RefreshIdleStatusLocked();
-			return Task.FromResult(CloneStatus(_status));
+			statusToBroadcast = FailRestartIfTimedOutLocked();
+			snapshot = CloneStatus(_status);
 		}
+
+		return statusToBroadcast is null
+			? Task.FromResult(snapshot)
+			: BroadcastStatusAsync(statusToBroadcast, snapshot);
 	}
 
 	public async Task<DeveloperModeStatus> StartSelfUpdateAsync(CancellationToken cancellationToken = default)
@@ -69,6 +78,7 @@ public class DeveloperUpdateService : IDeveloperModeService
 			_status.StatusMessage = "Rebuilding the application...";
 			_status.StartedAtUtc = timestamp;
 			_status.LastUpdatedAtUtc = timestamp;
+			_status.RestartDeadlineUtc = null;
 			startedStatus = CloneStatus(_status);
 		}
 
@@ -121,6 +131,7 @@ public class DeveloperUpdateService : IDeveloperModeService
 			{
 				status.Stage = DeveloperUpdateStage.Restarting;
 				status.StatusMessage = "Restart command launched. Waiting for the app to come back online...";
+				status.RestartDeadlineUtc = DateTime.UtcNow.AddSeconds(options.RestartTimeoutSeconds);
 			});
 		}
 		catch (Exception ex)
@@ -188,6 +199,7 @@ public class DeveloperUpdateService : IDeveloperModeService
 			status.IsUpdateInProgress = false;
 			status.Stage = DeveloperUpdateStage.Failed;
 			status.StatusMessage = message;
+			status.RestartDeadlineUtc = null;
 		});
 	}
 
@@ -201,6 +213,7 @@ public class DeveloperUpdateService : IDeveloperModeService
 		if (_status.IsUpdateInProgress)
 		{
 			_status.IsEnabled = options.Enabled;
+			_status.ServerInstanceId = _serverInstanceId;
 			_status.BuildCommandSummary = options.BuildCommand;
 			_status.RestartCommandSummary = options.RestartCommand;
 			_status.WorkingDirectory = options.WorkingDirectory;
@@ -210,6 +223,7 @@ public class DeveloperUpdateService : IDeveloperModeService
 		if (_status.Stage == DeveloperUpdateStage.Failed && options.Enabled)
 		{
 			_status.IsEnabled = true;
+			_status.ServerInstanceId = _serverInstanceId;
 			_status.BuildCommandSummary = options.BuildCommand;
 			_status.RestartCommandSummary = options.RestartCommand;
 			_status.WorkingDirectory = options.WorkingDirectory;
@@ -237,6 +251,7 @@ public class DeveloperUpdateService : IDeveloperModeService
 			RestartCommand = restartCommand,
 			WorkingDirectory = workingDirectory,
 			RestartDelaySeconds = Math.Max(0, options.RestartDelaySeconds),
+			RestartTimeoutSeconds = Math.Clamp(options.RestartTimeoutSeconds, 0, 300),
 			MaxOutputLines = Math.Clamp(options.MaxOutputLines, 20, 500)
 		};
 	}
@@ -285,7 +300,7 @@ public class DeveloperUpdateService : IDeveloperModeService
 			: $"systemctl restart {serviceName.Trim()}";
 	}
 
-	private static DeveloperModeStatus CreateConfiguredStatus(ResolvedDeveloperModeOptions options)
+	private DeveloperModeStatus CreateConfiguredStatus(ResolvedDeveloperModeOptions options)
 	{
 		if (!options.Enabled)
 		{
@@ -293,6 +308,7 @@ public class DeveloperUpdateService : IDeveloperModeService
 			{
 				IsEnabled = false,
 				Stage = DeveloperUpdateStage.Disabled,
+				ServerInstanceId = _serverInstanceId,
 				StatusMessage = "Developer mode is disabled."
 			};
 		}
@@ -303,6 +319,7 @@ public class DeveloperUpdateService : IDeveloperModeService
 			{
 				IsEnabled = true,
 				Stage = DeveloperUpdateStage.Ready,
+				ServerInstanceId = _serverInstanceId,
 				StatusMessage = "Developer mode is enabled, but self-update needs a build command and a restart command.",
 				BuildCommandSummary = options.BuildCommand,
 				RestartCommandSummary = options.RestartCommand,
@@ -314,6 +331,7 @@ public class DeveloperUpdateService : IDeveloperModeService
 		{
 			IsEnabled = true,
 			Stage = DeveloperUpdateStage.Ready,
+			ServerInstanceId = _serverInstanceId,
 			StatusMessage = "Developer mode is enabled. Rebuild and restart is ready.",
 			BuildCommandSummary = options.BuildCommand,
 			RestartCommandSummary = options.RestartCommand,
@@ -329,11 +347,13 @@ public class DeveloperUpdateService : IDeveloperModeService
 			IsUpdateInProgress = status.IsUpdateInProgress,
 			Stage = status.Stage,
 			StatusMessage = status.StatusMessage,
+			ServerInstanceId = status.ServerInstanceId,
 			BuildCommandSummary = status.BuildCommandSummary,
 			RestartCommandSummary = status.RestartCommandSummary,
 			WorkingDirectory = status.WorkingDirectory,
 			StartedAtUtc = status.StartedAtUtc,
 			LastUpdatedAtUtc = status.LastUpdatedAtUtc,
+			RestartDeadlineUtc = status.RestartDeadlineUtc,
 			RecentOutput = status.RecentOutput
 				.Select(line => new DeveloperUpdateOutputLine
 				{
@@ -352,6 +372,33 @@ public class DeveloperUpdateService : IDeveloperModeService
 		public string? RestartCommand { get; init; }
 		public string WorkingDirectory { get; init; } = string.Empty;
 		public int RestartDelaySeconds { get; init; }
+		public int RestartTimeoutSeconds { get; init; }
 		public int MaxOutputLines { get; init; }
+	}
+
+	private DeveloperModeStatus? FailRestartIfTimedOutLocked()
+	{
+		if (!_status.IsUpdateInProgress ||
+			_status.Stage != DeveloperUpdateStage.Restarting ||
+			_status.RestartDeadlineUtc is not DateTime restartDeadlineUtc ||
+			DateTime.UtcNow < restartDeadlineUtc)
+		{
+			return null;
+		}
+
+		_status.IsUpdateInProgress = false;
+		_status.Stage = DeveloperUpdateStage.Failed;
+		_status.StatusMessage = "Restart command launched, but this app instance is still running. Check the restart command and service logs.";
+		_status.LastUpdatedAtUtc = DateTime.UtcNow;
+		_status.RestartDeadlineUtc = null;
+
+		return CloneStatus(_status);
+	}
+
+	private async Task<DeveloperModeStatus> BroadcastStatusAsync(DeveloperModeStatus statusToBroadcast, DeveloperModeStatus snapshot)
+	{
+		await AppendOutputAsync(statusToBroadcast.StatusMessage, isError: true);
+		await _jobUpdateService.NotifyDeveloperUpdateStatusChanged(statusToBroadcast);
+		return snapshot;
 	}
 }

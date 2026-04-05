@@ -59,6 +59,8 @@ public sealed class DeveloperUpdateServiceTests
 
 		Assert.Equal(DeveloperUpdateStage.Restarting, restarting.Stage);
 		Assert.True(restarting.IsUpdateInProgress);
+		Assert.False(string.IsNullOrWhiteSpace(restarting.ServerInstanceId));
+		Assert.NotNull(restarting.RestartDeadlineUtc);
 		Assert.Single(commandRunner.DetachedCommands);
 		Assert.Contains("systemctl restart vibeswarm.service", commandRunner.DetachedCommands[0].Command);
 		Assert.Contains("Build succeeded.", restarting.RecentOutput.Select(line => line.Text));
@@ -118,6 +120,32 @@ public sealed class DeveloperUpdateServiceTests
 
 		commandRunner.BuildCompletionSource.SetResult(new CommandExecutionResult(true, 0));
 		await WaitForAsync(async () => (await service.GetStatusAsync()).Stage == DeveloperUpdateStage.Restarting);
+	}
+
+	[Fact]
+	public async Task GetStatusAsync_WhenRestartTimeoutExpires_FailsUpdateOnSameInstance()
+	{
+		var commandRunner = new FakeSystemCommandRunner();
+		var updates = new TestJobUpdateService();
+		var service = CreateService(commandRunner, updates, new DeveloperModeOptions
+		{
+			Enabled = true,
+			BuildCommand = "dotnet build",
+			RestartCommand = "systemctl restart vibeswarm.service",
+			WorkingDirectory = "/tmp",
+			RestartTimeoutSeconds = 0
+		});
+
+		await service.StartSelfUpdateAsync();
+		await WaitForAsync(async () => (await service.GetStatusAsync()).Stage == DeveloperUpdateStage.Failed);
+		var failed = await service.GetStatusAsync();
+
+		Assert.Equal(DeveloperUpdateStage.Failed, failed.Stage);
+		Assert.False(failed.IsUpdateInProgress);
+		Assert.Null(failed.RestartDeadlineUtc);
+		Assert.Contains("still running", failed.StatusMessage);
+		Assert.Contains(failed.RecentOutput, line => line.IsError && line.Text.Contains("still running", StringComparison.Ordinal));
+		Assert.Contains(updates.StatusUpdates, update => update.Stage == DeveloperUpdateStage.Failed && update.StatusMessage.Contains("still running", StringComparison.Ordinal));
 	}
 
 	private static DeveloperUpdateService CreateService(

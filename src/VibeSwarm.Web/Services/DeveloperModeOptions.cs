@@ -10,5 +10,6 @@ public class DeveloperModeOptions
 	public string? ServiceName { get; set; }
 	public string? WorkingDirectory { get; set; }
 	public int RestartDelaySeconds { get; set; } = 2;
+	public int RestartTimeoutSeconds { get; set; } = 45;
 	public int MaxOutputLines { get; set; } = 200;
 }

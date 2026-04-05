@@ -1,6 +1,5 @@
 @inject DeveloperUpdateOverlayService DeveloperUpdateOverlayService
 @inject IDeveloperModeService DeveloperModeService
-@inject HttpClient HttpClient
 @inject IJSRuntime JSRuntime
 @inject NavigationManager NavigationManager
 @implements IDisposable
@@ -37,7 +36,7 @@
 				@if (_status.Stage == DeveloperUpdateStage.Restarting)
 				{
 					<div class="small text-body-secondary">
-						The page will refresh automatically after the service is reachable again.
+						The page will refresh automatically after the restarted app instance is detected.
 					</div>
 				}
 
@@ -80,8 +79,6 @@
 	private DeveloperModeStatus? _status;
 	private Timer? _clockTimer;
 	private CancellationTokenSource? _statusSyncCancellationTokenSource;
-	private CancellationTokenSource? _pollCancellationTokenSource;
-	private bool _hasObservedUnavailablePing;
 
 	protected override void OnInitialized()
 	{
@@ -101,12 +98,12 @@
 	private void UpdatePolling()
 	{
 		UpdateStatusSyncPolling();
-		UpdateRestartPolling();
 	}
 
 	private void UpdateStatusSyncPolling()
 	{
-		var shouldPoll = _status?.IsUpdateInProgress == true && _status.Stage == DeveloperUpdateStage.Building;
+		var shouldPoll = _status?.IsUpdateInProgress == true &&
+			(_status.Stage == DeveloperUpdateStage.Building || _status.Stage == DeveloperUpdateStage.Restarting);
 		if (!shouldPoll)
 		{
 			StopStatusSyncPolling();
@@ -120,25 +117,6 @@
 
 		_statusSyncCancellationTokenSource = new CancellationTokenSource();
 		_ = PollForStatusUpdatesAsync(_statusSyncCancellationTokenSource.Token);
-	}
-
-	private void UpdateRestartPolling()
-	{
-		var shouldPoll = _status?.IsUpdateInProgress == true && _status.Stage == DeveloperUpdateStage.Restarting;
-		if (!shouldPoll)
-		{
-			StopRestartPolling();
-			return;
-		}
-
-		if (_pollCancellationTokenSource is not null)
-		{
-			return;
-		}
-
-		_hasObservedUnavailablePing = false;
-		_pollCancellationTokenSource = new CancellationTokenSource();
-		_ = PollUntilServiceReturnsAsync(_pollCancellationTokenSource.Token);
 	}
 
 	private async Task PollForStatusUpdatesAsync(CancellationToken cancellationToken)
@@ -158,42 +136,18 @@
 		}
 	}
 
-	private async Task PollUntilServiceReturnsAsync(CancellationToken cancellationToken)
-	{
-		try
-		{
-			await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
-
-			while (!cancellationToken.IsCancellationRequested)
-			{
-				var isAvailable = await TryPingAsync(cancellationToken);
-				if (!isAvailable)
-				{
-					_hasObservedUnavailablePing = true;
-				}
-				else if (_hasObservedUnavailablePing || HasRestartWaitElapsed())
-				{
-					await ReloadPageAsync();
-					return;
-				}
-
-				await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
-			}
-		}
-		catch (OperationCanceledException)
-		{
-		}
-	}
-
 	private async Task RefreshStatusAsync(CancellationToken cancellationToken)
 	{
 		try
 		{
 			var status = await DeveloperModeService.GetStatusAsync(cancellationToken);
 			if (_status?.Stage == DeveloperUpdateStage.Restarting &&
-				!status.IsUpdateInProgress &&
-				status.Stage != DeveloperUpdateStage.Failed)
+				!string.IsNullOrWhiteSpace(_status.ServerInstanceId) &&
+				!string.IsNullOrWhiteSpace(status.ServerInstanceId) &&
+				!string.Equals(_status.ServerInstanceId, status.ServerInstanceId, StringComparison.Ordinal))
 			{
+				DeveloperUpdateOverlayService.SetStatus(status);
+				await ReloadPageAsync();
 				return;
 			}
 
@@ -205,25 +159,6 @@
 		}
 		catch
 		{
-		}
-	}
-
-	private bool HasRestartWaitElapsed()
-	{
-		return _status?.StartedAtUtc is DateTime startedAtUtc &&
-			DateTime.UtcNow - startedAtUtc > TimeSpan.FromSeconds(10);
-	}
-
-	private async Task<bool> TryPingAsync(CancellationToken cancellationToken)
-	{
-		try
-		{
-			using var response = await HttpClient.GetAsync("/api/diagnostics/ping", cancellationToken);
-			return response.IsSuccessStatusCode;
-		}
-		catch
-		{
-			return false;
 		}
 	}
 
@@ -244,19 +179,6 @@
 	private void DismissFailure()
 	{
 		DeveloperUpdateOverlayService.Clear();
-	}
-
-	private void StopRestartPolling()
-	{
-		if (_pollCancellationTokenSource is null)
-		{
-			return;
-		}
-
-		_pollCancellationTokenSource.Cancel();
-		_pollCancellationTokenSource.Dispose();
-		_pollCancellationTokenSource = null;
-		_hasObservedUnavailablePing = false;
 	}
 
 	private void StopStatusSyncPolling()
@@ -308,7 +230,6 @@
 		DeveloperUpdateOverlayService.OnChange -= HandleOverlayChanged;
 		_clockTimer?.Dispose();
 		StopStatusSyncPolling();
-		StopRestartPolling();
 	}
 
 	public ValueTask DisposeAsync()

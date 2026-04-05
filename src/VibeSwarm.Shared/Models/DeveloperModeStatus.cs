@@ -6,11 +6,13 @@ public class DeveloperModeStatus
 	public bool IsUpdateInProgress { get; set; }
 	public DeveloperUpdateStage Stage { get; set; } = DeveloperUpdateStage.Disabled;
 	public string StatusMessage { get; set; } = string.Empty;
+	public string ServerInstanceId { get; set; } = string.Empty;
 	public string? BuildCommandSummary { get; set; }
 	public string? RestartCommandSummary { get; set; }
 	public string? WorkingDirectory { get; set; }
 	public DateTime? StartedAtUtc { get; set; }
 	public DateTime? LastUpdatedAtUtc { get; set; }
+	public DateTime? RestartDeadlineUtc { get; set; }
 	public List<DeveloperUpdateOutputLine> RecentOutput { get; set; } = [];
 
 	public bool SupportsSelfUpdate =>

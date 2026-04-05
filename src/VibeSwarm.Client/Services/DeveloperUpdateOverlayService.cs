@@ -70,11 +70,13 @@ public class DeveloperUpdateOverlayService
 			IsUpdateInProgress = status.IsUpdateInProgress,
 			Stage = status.Stage,
 			StatusMessage = status.StatusMessage,
+			ServerInstanceId = status.ServerInstanceId,
 			BuildCommandSummary = status.BuildCommandSummary,
 			RestartCommandSummary = status.RestartCommandSummary,
 			WorkingDirectory = status.WorkingDirectory,
 			StartedAtUtc = status.StartedAtUtc,
 			LastUpdatedAtUtc = status.LastUpdatedAtUtc,
+			RestartDeadlineUtc = status.RestartDeadlineUtc,
 			RecentOutput = status.RecentOutput
 				.Select(line => new DeveloperUpdateOutputLine
 				{
@@ -103,6 +105,11 @@ public class DeveloperUpdateOverlayService
 			nextStatus.WorkingDirectory = currentStatus.WorkingDirectory;
 		}
 
+		if (string.IsNullOrWhiteSpace(nextStatus.ServerInstanceId))
+		{
+			nextStatus.ServerInstanceId = currentStatus.ServerInstanceId;
+		}
+
 		if (string.IsNullOrWhiteSpace(nextStatus.BuildCommandSummary))
 		{
 			nextStatus.BuildCommandSummary = currentStatus.BuildCommandSummary;
@@ -111,6 +118,11 @@ public class DeveloperUpdateOverlayService
 		if (string.IsNullOrWhiteSpace(nextStatus.RestartCommandSummary))
 		{
 			nextStatus.RestartCommandSummary = currentStatus.RestartCommandSummary;
+		}
+
+		if (nextStatus.RestartDeadlineUtc is null)
+		{
+			nextStatus.RestartDeadlineUtc = currentStatus.RestartDeadlineUtc;
 		}
 
 		if (currentStatus.RecentOutput.Count == 0)
