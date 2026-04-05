@@ -85,6 +85,41 @@ public sealed class DeveloperUpdateServiceTests
 		Assert.True(status.CanStartUpdate);
 	}
 
+	[Fact]
+	public async Task GetStatusAsync_DuringBuildIncludesLiveOutput()
+	{
+		var commandRunner = new FakeSystemCommandRunner
+		{
+			BuildCompletionSource = new TaskCompletionSource<CommandExecutionResult>(TaskCreationOptions.RunContinuationsAsynchronously)
+		};
+		commandRunner.BuildOutput.Add(("Determining projects to restore...", false));
+		var updates = new TestJobUpdateService();
+		var service = CreateService(commandRunner, updates, new DeveloperModeOptions
+		{
+			Enabled = true,
+			BuildCommand = "dotnet build",
+			RestartCommand = "systemctl restart vibeswarm.service",
+			WorkingDirectory = "/tmp"
+		});
+
+		await service.StartSelfUpdateAsync();
+		await WaitForAsync(async () =>
+		{
+			var status = await service.GetStatusAsync();
+			return status.Stage == DeveloperUpdateStage.Building &&
+				status.RecentOutput.Any(line => line.Text == "Determining projects to restore...");
+		});
+
+		var building = await service.GetStatusAsync();
+
+		Assert.True(building.IsUpdateInProgress);
+		Assert.Equal(DeveloperUpdateStage.Building, building.Stage);
+		Assert.Contains(building.RecentOutput, line => line.Text == "Determining projects to restore...");
+
+		commandRunner.BuildCompletionSource.SetResult(new CommandExecutionResult(true, 0));
+		await WaitForAsync(async () => (await service.GetStatusAsync()).Stage == DeveloperUpdateStage.Restarting);
+	}
+
 	private static DeveloperUpdateService CreateService(
 		FakeSystemCommandRunner commandRunner,
 		TestJobUpdateService updates,
@@ -129,6 +164,7 @@ public sealed class DeveloperUpdateServiceTests
 	private sealed class FakeSystemCommandRunner : ISystemCommandRunner
 	{
 		public CommandExecutionResult BuildResult { get; set; } = new(true, 0);
+		public TaskCompletionSource<CommandExecutionResult>? BuildCompletionSource { get; set; }
 		public List<(string Text, bool IsError)> BuildOutput { get; } = [];
 		public List<(string Command, string WorkingDirectory, int DelaySeconds)> DetachedCommands { get; } = [];
 
@@ -140,6 +176,11 @@ public sealed class DeveloperUpdateServiceTests
 				{
 					await onOutput(text, isError);
 				}
+			}
+
+			if (BuildCompletionSource is not null)
+			{
+				return await BuildCompletionSource.Task;
 			}
 
 			return BuildResult;

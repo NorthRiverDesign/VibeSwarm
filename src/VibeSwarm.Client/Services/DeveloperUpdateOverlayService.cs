@@ -16,7 +16,20 @@ public class DeveloperUpdateOverlayService
 
 	public void SetStatus(DeveloperModeStatus? status)
 	{
-		CurrentStatus = status is null ? null : CloneStatus(status);
+		if (status is null)
+		{
+			CurrentStatus = null;
+			OnChange?.Invoke();
+			return;
+		}
+
+		var nextStatus = CloneStatus(status);
+		if (CurrentStatus is not null)
+		{
+			nextStatus = MergeStatus(CurrentStatus, nextStatus);
+		}
+
+		CurrentStatus = nextStatus;
 		OnChange?.Invoke();
 	}
 
@@ -71,5 +84,70 @@ public class DeveloperUpdateOverlayService
 				})
 				.ToList()
 		};
+	}
+
+	private static DeveloperModeStatus MergeStatus(DeveloperModeStatus currentStatus, DeveloperModeStatus nextStatus)
+	{
+		if (!nextStatus.IsUpdateInProgress && nextStatus.Stage != DeveloperUpdateStage.Failed)
+		{
+			return nextStatus;
+		}
+
+		if (nextStatus.StartedAtUtc is null)
+		{
+			nextStatus.StartedAtUtc = currentStatus.StartedAtUtc;
+		}
+
+		if (string.IsNullOrWhiteSpace(nextStatus.WorkingDirectory))
+		{
+			nextStatus.WorkingDirectory = currentStatus.WorkingDirectory;
+		}
+
+		if (string.IsNullOrWhiteSpace(nextStatus.BuildCommandSummary))
+		{
+			nextStatus.BuildCommandSummary = currentStatus.BuildCommandSummary;
+		}
+
+		if (string.IsNullOrWhiteSpace(nextStatus.RestartCommandSummary))
+		{
+			nextStatus.RestartCommandSummary = currentStatus.RestartCommandSummary;
+		}
+
+		if (currentStatus.RecentOutput.Count == 0)
+		{
+			return nextStatus;
+		}
+
+		var mergedOutput = new List<DeveloperUpdateOutputLine>(currentStatus.RecentOutput.Count + nextStatus.RecentOutput.Count);
+		var seen = new HashSet<string>(StringComparer.Ordinal);
+
+		foreach (var line in currentStatus.RecentOutput.Concat(nextStatus.RecentOutput))
+		{
+			var key = $"{line.TimestampUtc.Ticks}|{line.IsError}|{line.Text}";
+			if (!seen.Add(key))
+			{
+				continue;
+			}
+
+			mergedOutput.Add(new DeveloperUpdateOutputLine
+			{
+				TimestampUtc = line.TimestampUtc,
+				Text = line.Text,
+				IsError = line.IsError
+			});
+		}
+
+		nextStatus.RecentOutput = mergedOutput
+			.OrderBy(line => line.TimestampUtc)
+			.TakeLast(MaxOutputLines)
+			.ToList();
+
+		if (currentStatus.LastUpdatedAtUtc is DateTime currentLastUpdatedAtUtc &&
+			(nextStatus.LastUpdatedAtUtc is null || currentLastUpdatedAtUtc > nextStatus.LastUpdatedAtUtc))
+		{
+			nextStatus.LastUpdatedAtUtc = currentLastUpdatedAtUtc;
+		}
+
+		return nextStatus;
 	}
 }

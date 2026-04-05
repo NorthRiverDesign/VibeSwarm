@@ -1,4 +1,5 @@
 @inject DeveloperUpdateOverlayService DeveloperUpdateOverlayService
+@inject IDeveloperModeService DeveloperModeService
 @inject HttpClient HttpClient
 @inject IJSRuntime JSRuntime
 @inject NavigationManager NavigationManager
@@ -78,6 +79,7 @@
 @code {
 	private DeveloperModeStatus? _status;
 	private Timer? _clockTimer;
+	private CancellationTokenSource? _statusSyncCancellationTokenSource;
 	private CancellationTokenSource? _pollCancellationTokenSource;
 	private bool _hasObservedUnavailablePing;
 
@@ -86,14 +88,38 @@
 		DeveloperUpdateOverlayService.OnChange += HandleOverlayChanged;
 		_status = DeveloperUpdateOverlayService.CurrentStatus;
 		_clockTimer = new Timer(_ => InvokeAsync(StateHasChanged), null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
-		UpdateRestartPolling();
+		UpdatePolling();
 	}
 
 	private void HandleOverlayChanged()
 	{
 		_status = DeveloperUpdateOverlayService.CurrentStatus;
-		UpdateRestartPolling();
+		UpdatePolling();
 		InvokeAsync(StateHasChanged);
+	}
+
+	private void UpdatePolling()
+	{
+		UpdateStatusSyncPolling();
+		UpdateRestartPolling();
+	}
+
+	private void UpdateStatusSyncPolling()
+	{
+		var shouldPoll = _status?.IsUpdateInProgress == true && _status.Stage == DeveloperUpdateStage.Building;
+		if (!shouldPoll)
+		{
+			StopStatusSyncPolling();
+			return;
+		}
+
+		if (_statusSyncCancellationTokenSource is not null)
+		{
+			return;
+		}
+
+		_statusSyncCancellationTokenSource = new CancellationTokenSource();
+		_ = PollForStatusUpdatesAsync(_statusSyncCancellationTokenSource.Token);
 	}
 
 	private void UpdateRestartPolling()
@@ -113,6 +139,23 @@
 		_hasObservedUnavailablePing = false;
 		_pollCancellationTokenSource = new CancellationTokenSource();
 		_ = PollUntilServiceReturnsAsync(_pollCancellationTokenSource.Token);
+	}
+
+	private async Task PollForStatusUpdatesAsync(CancellationToken cancellationToken)
+	{
+		try
+		{
+			await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+
+			while (!cancellationToken.IsCancellationRequested)
+			{
+				await RefreshStatusAsync(cancellationToken);
+				await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+			}
+		}
+		catch (OperationCanceledException)
+		{
+		}
 	}
 
 	private async Task PollUntilServiceReturnsAsync(CancellationToken cancellationToken)
@@ -138,6 +181,29 @@
 			}
 		}
 		catch (OperationCanceledException)
+		{
+		}
+	}
+
+	private async Task RefreshStatusAsync(CancellationToken cancellationToken)
+	{
+		try
+		{
+			var status = await DeveloperModeService.GetStatusAsync(cancellationToken);
+			if (_status?.Stage == DeveloperUpdateStage.Restarting &&
+				!status.IsUpdateInProgress &&
+				status.Stage != DeveloperUpdateStage.Failed)
+			{
+				return;
+			}
+
+			DeveloperUpdateOverlayService.SetStatus(status);
+		}
+		catch (OperationCanceledException)
+		{
+			throw;
+		}
+		catch
 		{
 		}
 	}
@@ -193,6 +259,18 @@
 		_hasObservedUnavailablePing = false;
 	}
 
+	private void StopStatusSyncPolling()
+	{
+		if (_statusSyncCancellationTokenSource is null)
+		{
+			return;
+		}
+
+		_statusSyncCancellationTokenSource.Cancel();
+		_statusSyncCancellationTokenSource.Dispose();
+		_statusSyncCancellationTokenSource = null;
+	}
+
 	private static string FormatElapsed(DateTime startedAtUtc)
 	{
 		var elapsed = DateTime.UtcNow - startedAtUtc;
@@ -229,6 +307,7 @@
 	{
 		DeveloperUpdateOverlayService.OnChange -= HandleOverlayChanged;
 		_clockTimer?.Dispose();
+		StopStatusSyncPolling();
 		StopRestartPolling();
 	}
 
