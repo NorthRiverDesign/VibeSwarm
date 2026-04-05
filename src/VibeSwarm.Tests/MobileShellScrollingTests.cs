@@ -13,6 +13,18 @@ public sealed class MobileShellScrollingTests
 	}
 
 	[Fact]
+	public void MainLayout_UsesDashboardIconForMobileHeader_WithoutBrandBlock()
+	{
+		var layoutMarkup = File.ReadAllText(GetRepositoryPath("src", "VibeSwarm.Client", "Shared", "MainLayout.razor"));
+
+		Assert.Contains("title=\"Dashboard\" aria-label=\"Dashboard\"", layoutMarkup);
+		Assert.Contains("<i class=\"bi bi-house-door\"></i>", layoutMarkup);
+		Assert.Contains("ms-auto d-flex align-items-center gap-2", layoutMarkup);
+		Assert.DoesNotContain("img/logo_icon.png", layoutMarkup);
+		Assert.DoesNotContain("<span class=\"brand-text", layoutMarkup);
+	}
+
+	[Fact]
 	public void SiteCss_UsesMomentumScrollingForAppShell()
 	{
 		var css = File.ReadAllText(GetRepositoryPath("src", "VibeSwarm.Client", "wwwroot", "css", "site.css"));
