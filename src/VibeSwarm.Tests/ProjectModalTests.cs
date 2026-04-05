@@ -178,9 +178,9 @@ public void AddTeamRole_AssignmentSeedsDefaultProviderAndModel()
 	Assert.Equal("gpt-5.4", cut.Find($"#team-model-{teamRole.Id}").GetAttribute("value"));
 }
 
-[Fact]
-public void EditProject_LoadsCommitSummaryInferenceSettings()
-{
+	[Fact]
+	public void EditProject_LoadsCommitSummaryInferenceSettings()
+	{
 	var inferenceProviderId = Guid.NewGuid();
 	var inferenceProvider = new InferenceProvider
 	{
@@ -219,7 +219,36 @@ public void EditProject_LoadsCommitSummaryInferenceSettings()
 	Assert.Contains("Commit Summary Source", cut.Markup);
 	Assert.Equal(inferenceProviderId.ToString(), cut.Find("#modal-commitSummaryInferenceProvider").GetAttribute("value"));
 	Assert.Equal("qwen3", cut.Find("#modal-commitSummaryInferenceModel").GetAttribute("value"));
-}
+	}
+
+	[Fact]
+	public void EditProject_ClearProjectMemoryConfirmationClearsMemoryField()
+	{
+		using var context = CreateBunitContext();
+
+		var cut = context.Render<ProjectModal>(parameters => parameters
+			.Add(component => component.IsVisible, true)
+			.Add(component => component.EditProject, new Project
+			{
+				Id = Guid.NewGuid(),
+				Name = "Sample Project",
+				WorkingPath = "/tmp/sample",
+				Memory = "Remember the deployment checklist."
+			}));
+
+		cut.FindAll("button")
+			.Single(button => button.TextContent.Contains("Clear", StringComparison.Ordinal))
+			.Click();
+
+		Assert.Contains("Clear project memory", cut.Markup, StringComparison.OrdinalIgnoreCase);
+
+		cut.FindAll("button")
+			.Single(button => button.TextContent.Contains("Clear memory", StringComparison.OrdinalIgnoreCase))
+			.Click();
+
+		Assert.True(string.IsNullOrEmpty(cut.Find("#modal-projectMemory").GetAttribute("value")));
+		Assert.DoesNotContain(">Clear<", cut.Markup, StringComparison.Ordinal);
+	}
 
 private static BunitContext CreateBunitContext(
 	FakeProjectService? projectService = null,

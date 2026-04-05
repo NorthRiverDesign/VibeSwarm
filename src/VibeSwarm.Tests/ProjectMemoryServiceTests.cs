@@ -76,6 +76,43 @@ public sealed class ProjectMemoryServiceTests : IDisposable
 		Assert.Equal("Always run build verification.\nRemember to update migrations after schema changes.", persistedMemory);
 	}
 
+	[Fact]
+	public async Task SyncMemoryFromFileAsync_EmptyFileClearsPersistedMemory()
+	{
+		var projectId = Guid.NewGuid();
+
+		await using (var seedContext = CreateDbContext())
+		{
+			seedContext.Projects.Add(new Project
+			{
+				Id = projectId,
+				Name = "Memory Project",
+				WorkingPath = _workingDirectory,
+				Memory = "Remember the deployment checklist."
+			});
+			await seedContext.SaveChangesAsync();
+		}
+
+		var memoryDirectory = Path.Combine(_workingDirectory, ".vibeswarm");
+		Directory.CreateDirectory(memoryDirectory);
+		var memoryFilePath = Path.Combine(memoryDirectory, "project-memory.md");
+		await File.WriteAllTextAsync(memoryFilePath, "\n \r\n");
+
+		await using (var syncContext = CreateDbContext())
+		{
+			var service = CreateService(syncContext);
+			await service.SyncMemoryFromFileAsync(projectId, memoryFilePath);
+		}
+
+		await using var verifyContext = CreateDbContext();
+		var persistedMemory = await verifyContext.Projects
+			.Where(project => project.Id == projectId)
+			.Select(project => project.Memory)
+			.SingleAsync();
+
+		Assert.Null(persistedMemory);
+	}
+
 	private VibeSwarmDbContext CreateDbContext() => new(_dbOptions);
 
 	private static ProjectMemoryService CreateService(VibeSwarmDbContext dbContext)
