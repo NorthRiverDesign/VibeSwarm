@@ -623,6 +623,10 @@ body.vs-modal-open {
 	overscroll-behavior: contain;
 }
 
+body.vs-modal-open .app-main {
+	overflow: hidden !important;
+}
+
 .vs-modal-container {
 	z-index: 1055 !important;
 	padding: var(--vs-safe-area-top) var(--vs-safe-area-right)
@@ -860,6 +864,8 @@ body.vs-modal-open {
 	.vs-modal-dialog .modal-content {
 		min-height: 100vh !important;
 		min-height: 100dvh !important;
+		max-height: 100vh !important;
+		max-height: 100dvh !important;
 		border-radius: 0 !important;
 		border: none !important;
 	}
@@ -867,6 +873,7 @@ body.vs-modal-open {
 		padding-top: calc(0.75rem + var(--vs-safe-area-top));
 	}
 	.vs-modal-dialog .modal-body {
+		overflow-y: auto;
 		padding-bottom: calc(1rem + var(--vs-safe-area-bottom));
 	}
 	.vs-project-modal-body .input-group {
@@ -1038,6 +1045,7 @@ body.vs-modal-open {
 		--vs-header-height: 44px;
 	}
 	.vs-modal-dialog .modal-body {
+		overflow-y: auto;
 		max-height: calc(100vh - 120px);
 		max-height: calc(100dvh - 120px);
 	}

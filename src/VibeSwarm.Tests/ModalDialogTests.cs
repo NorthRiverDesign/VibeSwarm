@@ -39,9 +39,11 @@ public sealed class ModalDialogTests
 		Assert.Contains("custom-container", html);
 		Assert.Contains("vs-modal-dialog", html);
 		Assert.Contains("custom-dialog", html);
+		Assert.Contains("modal-dialog-scrollable", html);
 		Assert.Contains("vs-modal-content", html);
 		Assert.Contains("custom-content", html);
 		Assert.Contains("modal-body", html);
+		Assert.Contains("vs-modal-body", html);
 		Assert.Contains("custom-body", html);
 		Assert.Contains("Modal Test", html);
 	}
