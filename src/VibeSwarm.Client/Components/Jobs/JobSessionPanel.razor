@@ -785,22 +785,24 @@
             return [];
         }
 
-        var entries = new List<SessionDisplayEntry>();
-        var consumedIndexes = new HashSet<int>();
+        var toolPairs = BuildToolPairs(messages);
+        var consumedResultIndexes = toolPairs.Count == 0
+            ? []
+            : toolPairs.Values.ToHashSet();
+        var entries = new List<SessionDisplayEntry>(messages.Count);
 
         for (var index = 0; index < messages.Count; index++)
         {
-            if (consumedIndexes.Contains(index))
+            if (consumedResultIndexes.Contains(index))
             {
                 continue;
             }
 
             var currentMessage = messages[index];
-            if (TryFindToolResultIndex(messages, index, consumedIndexes, out var toolResultIndex)
+            if (toolPairs.TryGetValue(index, out var toolResultIndex)
                 && TryCreateCombinedToolEntry(currentMessage, messages[toolResultIndex], out var combinedEntry))
             {
                 entries.Add(combinedEntry);
-                consumedIndexes.Add(toolResultIndex);
                 continue;
             }
 
@@ -810,38 +812,131 @@
         return entries;
     }
 
-    private static bool TryFindToolResultIndex(
-        IReadOnlyList<JobMessage> messages,
-        int toolUseIndex,
-        HashSet<int> consumedIndexes,
-        out int toolResultIndex)
+    private static Dictionary<int, int> BuildToolPairs(IReadOnlyList<JobMessage> messages)
     {
-        toolResultIndex = -1;
+        var pairs = new Dictionary<int, int>();
+        var pendingToolUseIndexes = new LinkedList<int>();
+        var pendingNodes = new Dictionary<int, LinkedListNode<int>>();
+        var blankToolUseIndexes = new Queue<int>();
+        var namedToolUseIndexes = new Dictionary<string, Queue<int>>(StringComparer.OrdinalIgnoreCase);
 
-        if (toolUseIndex < 0
-            || toolUseIndex >= messages.Count
-            || messages[toolUseIndex].Role != MessageRole.ToolUse)
+        for (var index = 0; index < messages.Count; index++)
         {
-            return false;
-        }
+            var message = messages[index];
+            if (message.Role == MessageRole.ToolUse)
+            {
+                var node = pendingToolUseIndexes.AddLast(index);
+                pendingNodes[index] = node;
 
-        for (var candidateIndex = toolUseIndex + 1; candidateIndex < messages.Count; candidateIndex++)
-        {
-            if (consumedIndexes.Contains(candidateIndex))
+                var toolName = message.ToolName?.Trim();
+                if (string.IsNullOrWhiteSpace(toolName))
+                {
+                    blankToolUseIndexes.Enqueue(index);
+                }
+                else
+                {
+                    if (!namedToolUseIndexes.TryGetValue(toolName, out var queue))
+                    {
+                        queue = new Queue<int>();
+                        namedToolUseIndexes[toolName] = queue;
+                    }
+
+                    queue.Enqueue(index);
+                }
+
+                continue;
+            }
+
+            if (message.Role != MessageRole.ToolResult)
             {
                 continue;
             }
 
-            var candidateMessage = messages[candidateIndex];
-            if (candidateMessage.Role == MessageRole.ToolResult
-                && CanCombineToolMessages(messages[toolUseIndex], candidateMessage))
+            var toolUseIndex = GetCompatibleToolUseIndex(message.ToolName, pendingNodes, blankToolUseIndexes, namedToolUseIndexes);
+            if (toolUseIndex is null)
             {
-                toolResultIndex = candidateIndex;
-                return true;
+                continue;
+            }
+
+            pairs[toolUseIndex.Value] = index;
+            pendingToolUseIndexes.Remove(pendingNodes[toolUseIndex.Value]);
+            pendingNodes.Remove(toolUseIndex.Value);
+        }
+
+        return pairs;
+    }
+
+    private static int? GetCompatibleToolUseIndex(
+        string? toolResultName,
+        IReadOnlyDictionary<int, LinkedListNode<int>> pendingNodes,
+        Queue<int> blankToolUseIndexes,
+        IReadOnlyDictionary<string, Queue<int>> namedToolUseIndexes)
+    {
+        var firstBlankIndex = PeekActiveIndex(blankToolUseIndexes, pendingNodes);
+        var normalizedToolResultName = toolResultName?.Trim();
+
+        if (string.IsNullOrWhiteSpace(normalizedToolResultName))
+        {
+            return firstBlankIndex ?? GetFirstActiveNamedIndex(namedToolUseIndexes, pendingNodes);
+        }
+
+        var firstNamedIndex = namedToolUseIndexes.TryGetValue(normalizedToolResultName, out var namedIndexes)
+            ? PeekActiveIndex(namedIndexes, pendingNodes)
+            : null;
+
+        if (firstBlankIndex is null)
+        {
+            return firstNamedIndex;
+        }
+
+        if (firstNamedIndex is null)
+        {
+            return firstBlankIndex;
+        }
+
+        return firstBlankIndex.Value <= firstNamedIndex.Value
+            ? firstBlankIndex
+            : firstNamedIndex;
+    }
+
+    private static int? GetFirstActiveNamedIndex(
+        IReadOnlyDictionary<string, Queue<int>> namedToolUseIndexes,
+        IReadOnlyDictionary<int, LinkedListNode<int>> pendingNodes)
+    {
+        int? firstNamedIndex = null;
+        foreach (var queue in namedToolUseIndexes.Values)
+        {
+            var candidateIndex = PeekActiveIndex(queue, pendingNodes);
+            if (candidateIndex is null)
+            {
+                continue;
+            }
+
+            if (firstNamedIndex is null || candidateIndex.Value < firstNamedIndex.Value)
+            {
+                firstNamedIndex = candidateIndex.Value;
             }
         }
 
-        return false;
+        return firstNamedIndex;
+    }
+
+    private static int? PeekActiveIndex(
+        Queue<int> indexes,
+        IReadOnlyDictionary<int, LinkedListNode<int>> pendingNodes)
+    {
+        while (indexes.Count > 0)
+        {
+            var index = indexes.Peek();
+            if (pendingNodes.ContainsKey(index))
+            {
+                return index;
+            }
+
+            indexes.Dequeue();
+        }
+
+        return null;
     }
 
     private static bool TryCreateCombinedToolEntry(

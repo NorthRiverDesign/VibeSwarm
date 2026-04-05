@@ -552,6 +552,83 @@ public sealed class JobSessionPanelTests
 	}
 
 	[Fact]
+	public async Task RenderedJobSessionPanel_PairsInterleavedToolMessagesWithEarliestCompatibleUse()
+	{
+		var services = new ServiceCollection();
+		services.AddLogging();
+		services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
+
+		await using var renderer = new HtmlRenderer(services.BuildServiceProvider(), NullLoggerFactory.Instance);
+
+		var html = await renderer.Dispatcher.InvokeAsync(async () =>
+		{
+			var parameters = ParameterView.FromDictionary(new Dictionary<string, object?>
+			{
+				[nameof(JobSessionPanel.Status)] = JobStatus.Completed,
+				[nameof(JobSessionPanel.Messages)] = new List<JobMessage>
+				{
+					new()
+					{
+						Id = Guid.NewGuid(),
+						JobId = Guid.NewGuid(),
+						Role = MessageRole.ToolUse,
+						Content = "pending",
+						ToolInput = "placeholder command",
+						CreatedAt = DateTime.UtcNow.AddSeconds(-4)
+					},
+					new()
+					{
+						Id = Guid.NewGuid(),
+						JobId = Guid.NewGuid(),
+						Role = MessageRole.ToolUse,
+						Content = "bash",
+						ToolName = "bash",
+						ToolInput = "git diff --stat",
+						CreatedAt = DateTime.UtcNow.AddSeconds(-3)
+					},
+					new()
+					{
+						Id = Guid.NewGuid(),
+						JobId = Guid.NewGuid(),
+						Role = MessageRole.ToolResult,
+						Content = "first output",
+						ToolName = "bash",
+						ToolOutput = "first output",
+						CreatedAt = DateTime.UtcNow.AddSeconds(-2)
+					},
+					new()
+					{
+						Id = Guid.NewGuid(),
+						JobId = Guid.NewGuid(),
+						Role = MessageRole.ToolResult,
+						Content = "second output",
+						ToolOutput = "second output",
+						CreatedAt = DateTime.UtcNow.AddSeconds(-1)
+					}
+				}
+			});
+
+			var output = await renderer.RenderComponentAsync<JobSessionPanel>(parameters);
+			return output.ToHtmlString();
+		});
+
+		Assert.Contains("2 messages", html);
+		Assert.Contains("placeholder command", html);
+		Assert.Contains("git diff --stat", html);
+		Assert.Contains("first output", html);
+		Assert.Contains("second output", html);
+		Assert.True(
+			html.IndexOf("placeholder command", StringComparison.Ordinal)
+				< html.IndexOf("first output", StringComparison.Ordinal));
+		Assert.True(
+			html.IndexOf("first output", StringComparison.Ordinal)
+				< html.IndexOf("git diff --stat", StringComparison.Ordinal));
+		Assert.True(
+			html.IndexOf("git diff --stat", StringComparison.Ordinal)
+				< html.IndexOf("second output", StringComparison.Ordinal));
+	}
+
+	[Fact]
 	public async Task RenderedJobSessionPanel_ExpandsStructuredLiveJsonToolMessages()
 	{
 		var services = new ServiceCollection();
