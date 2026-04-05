@@ -451,6 +451,7 @@ public sealed class ProviderCliArgsTests
 		var idx = args.IndexOf("--output-format");
 		Assert.True(idx >= 0);
 		Assert.Equal("json", args[idx + 1]);
+		Assert.DoesNotContain("--silent", args);
 	}
 
 	[Fact]
