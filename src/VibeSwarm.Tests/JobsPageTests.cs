@@ -72,10 +72,9 @@ public sealed class JobsPageTests
 
 		Assert.DoesNotContain("Loading jobs...", cut.Markup);
 		Assert.Contains("Refresh job", cut.Markup);
-		Assert.Contains("Claude", cut.Markup);
-		Assert.Contains("Copilot", cut.Markup);
-		Assert.Contains("gpt-5.4", cut.Markup);
-		Assert.Contains("claude-sonnet-4", cut.Markup);
+		Assert.DoesNotContain("Claude -&gt; Copilot", cut.Markup);
+		Assert.DoesNotContain("gpt-5.4", cut.Markup);
+		Assert.DoesNotContain("claude-sonnet-4", cut.Markup);
 		Assert.Contains("Kept the job list outcome readable during refresh.", cut.Markup);
 	}
 

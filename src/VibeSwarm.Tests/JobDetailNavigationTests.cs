@@ -63,6 +63,24 @@ public sealed class JobDetailNavigationTests
 	}
 
 	[Fact]
+	public void JobDetail_HidesOutcomeSummaryCardForCompletedJobs()
+	{
+		var jobId = Guid.Parse("66666666-6666-6666-6666-666666666666");
+		var jobService = new FakeJobService(new Dictionary<Guid, Job>
+		{
+			[jobId] = CreateJob(jobId, "Completed job title", "Ship the feature", JobStatus.Completed, changedFilesCount: 1)
+		});
+
+		using var context = CreateContext(jobService, new FakeVersionControlService(isGitRepository: true));
+
+		var cut = context.Render<JobDetail>(parameters => parameters
+			.Add(component => component.JobId, jobId));
+
+		Assert.DoesNotContain("Verified changes are ready", cut.Markup);
+		Assert.DoesNotContain("Ready for delivery", cut.Markup);
+	}
+
+	[Fact]
 	public void JobDetail_FailedGitJobs_LinkOutcomeActionsToUncommittedChangesSection()
 	{
 		var jobId = Guid.Parse("55555555-5555-5555-5555-555555555555");

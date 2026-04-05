@@ -310,6 +310,28 @@ public sealed class JobOutcomeComponentsTests
 	}
 
 	[Fact]
+	public void JobListItem_HidesProviderAndEnvironmentDetailsByDefault()
+	{
+		using var context = new BunitContext();
+
+		var cut = context.Render<JobListItem>(parameters => parameters
+			.Add(component => component.Status, JobStatus.Completed.ToString())
+			.Add(component => component.Prompt, "Ship the fix")
+			.Add(component => component.TimeDisplay, "now")
+			.Add(component => component.ProviderName, "Copilot")
+			.Add(component => component.ModelUsed, "gpt-5.4")
+			.Add(component => component.PlanningProviderName, "Claude")
+			.Add(component => component.PlanningModelUsed, "claude-sonnet-4")
+			.Add(component => component.PlaywrightEnabled, true)
+			.Add(component => component.EnvironmentCount, 2));
+
+		Assert.DoesNotContain("Claude -&gt; Copilot", cut.Markup);
+		Assert.DoesNotContain("gpt-5.4", cut.Markup);
+		Assert.DoesNotContain("bi-browser-chrome", cut.Markup);
+		Assert.DoesNotContain("bi-globe", cut.Markup);
+	}
+
+	[Fact]
 	public void JobOutcomeSummaryCard_ShowsReviewTranscriptActionForStalledRuns()
 	{
 		using var context = new BunitContext();

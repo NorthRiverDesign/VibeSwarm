@@ -220,7 +220,7 @@ else
 	private Timer? _refreshTimer;
 	private DateTime _pageLoadTime = DateTime.UtcNow;
 	private Guid? _loadedJobId;
-	private bool ShowJobOutcomeSummary => Job != null && Job.Status is JobStatus.Completed or JobStatus.Failed or JobStatus.Cancelled or JobStatus.Stalled;
+	private bool ShowJobOutcomeSummary => Job != null && Job.Status is JobStatus.Failed or JobStatus.Cancelled or JobStatus.Stalled;
 
     // Toggle states for collapsible sections
     private bool _showGitDiff = true;

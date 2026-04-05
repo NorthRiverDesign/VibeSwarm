@@ -59,7 +59,7 @@ public sealed class ProjectJobsListTests
 	}
 
 	[Fact]
-	public async Task RenderedJobsList_ShowsPlanningProviderChain()
+	public async Task RenderedJobsList_HidesProviderChainByDefault()
 	{
 		var services = new ServiceCollection();
 		services.AddLogging();
@@ -92,8 +92,8 @@ public sealed class ProjectJobsListTests
 			return output.ToHtmlString();
 		});
 
-		Assert.Contains("Claude -&gt; Copilot", html);
-		Assert.Contains("gpt-5.4", html);
+		Assert.DoesNotContain("Claude -&gt; Copilot", html);
+		Assert.DoesNotContain("gpt-5.4", html);
 	}
 
 	[Fact]
