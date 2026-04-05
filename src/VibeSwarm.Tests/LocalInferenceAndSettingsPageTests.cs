@@ -1,3 +1,4 @@
+using Bunit;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.Extensions.DependencyInjection;
@@ -82,15 +83,123 @@ return output.ToHtmlString();
 	Assert.DoesNotContain("Open Database Tab", html);
 }
 
+[Fact]
+public void LocalInferencePage_TestInference_UsesSelectedProviderAndModel()
+{
+	var firstProviderId = Guid.NewGuid();
+	var secondProviderId = Guid.NewGuid();
+	var providers = new[]
+	{
+		new InferenceProvider
+		{
+			Id = firstProviderId,
+			Name = "Local Ollama",
+			ProviderType = InferenceProviderType.Ollama,
+			Endpoint = "http://ollama:11434",
+			IsEnabled = true
+		},
+		new InferenceProvider
+		{
+			Id = secondProviderId,
+			Name = "Grok Cloud",
+			ProviderType = InferenceProviderType.Grok,
+			Endpoint = "https://api.x.ai/v1",
+			IsEnabled = true
+		}
+	};
+	var modelsByProvider = new Dictionary<Guid, IReadOnlyList<InferenceModel>>
+	{
+		[firstProviderId] =
+		[
+			new InferenceModel
+			{
+				InferenceProviderId = firstProviderId,
+				ModelId = "qwen3",
+				DisplayName = "Qwen 3",
+				IsAvailable = true,
+				IsDefault = true,
+				TaskType = "default"
+			}
+		],
+		[secondProviderId] =
+		[
+			new InferenceModel
+			{
+				InferenceProviderId = secondProviderId,
+				ModelId = "grok-beta",
+				DisplayName = "Grok Beta",
+				IsAvailable = true,
+				IsDefault = true,
+				TaskType = "default"
+			}
+		]
+	};
+	var providerService = new FakeInferenceProviderService(providers, modelsByProvider);
+	var inferenceService = new FakeInferenceService
+	{
+		GenerateResponse = new InferenceResponse
+		{
+			Success = true,
+			Response = "Done",
+			ModelUsed = "grok-beta"
+		}
+	};
+
+	using var context = new BunitContext();
+	context.Services.AddLogging();
+	context.Services.AddSingleton<IInferenceProviderService>(providerService);
+	context.Services.AddSingleton<IInferenceService>(inferenceService);
+	context.Services.AddSingleton<NotificationService>();
+	context.Services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
+
+	var cut = context.Render<LocalInference>();
+
+	cut.WaitForAssertion(() =>
+	{
+		Assert.Contains("Use provider default model", cut.Markup);
+		Assert.Contains("Qwen 3 (Default)", cut.Markup);
+	});
+
+	cut.Find("#testProvider").Change(secondProviderId.ToString());
+
+	cut.WaitForAssertion(() => Assert.Contains("Grok Beta (Default)", cut.Markup));
+
+	cut.Find("#testModel").Change("grok-beta");
+	cut.Find("#testPrompt").Change("Use the selected provider.");
+	cut.FindAll("button")
+		.Single(button => button.TextContent.Contains("Send", StringComparison.Ordinal))
+		.Click();
+
+	cut.WaitForAssertion(() => Assert.NotNull(inferenceService.LastRequest));
+
+	Assert.Equal(secondProviderId, inferenceService.LastRequest!.ProviderId);
+	Assert.Equal(InferenceProviderType.Grok, inferenceService.LastRequest.ProviderType);
+	Assert.Equal("https://api.x.ai/v1", inferenceService.LastRequest.Endpoint);
+	Assert.Equal("grok-beta", inferenceService.LastRequest.Model);
+	Assert.Equal("Use the selected provider.", inferenceService.LastRequest.Prompt);
+}
+
 	private sealed class FakeInferenceProviderService : IInferenceProviderService
 	{
-	public Task<IEnumerable<InferenceProvider>> GetAllAsync(CancellationToken ct = default) => Task.FromResult<IEnumerable<InferenceProvider>>([]);
-	public Task<InferenceProvider?> GetByIdAsync(Guid id, CancellationToken ct = default) => Task.FromResult<InferenceProvider?>(null);
-	public Task<IEnumerable<InferenceProvider>> GetEnabledAsync(CancellationToken ct = default) => Task.FromResult<IEnumerable<InferenceProvider>>([]);
+		private readonly IReadOnlyList<InferenceProvider> _providers;
+		private readonly IReadOnlyDictionary<Guid, IReadOnlyList<InferenceModel>> _modelsByProvider;
+
+		public FakeInferenceProviderService(
+			IReadOnlyList<InferenceProvider>? providers = null,
+			IReadOnlyDictionary<Guid, IReadOnlyList<InferenceModel>>? modelsByProvider = null)
+		{
+			_providers = providers ?? [];
+			_modelsByProvider = modelsByProvider ?? new Dictionary<Guid, IReadOnlyList<InferenceModel>>();
+		}
+
+	public Task<IEnumerable<InferenceProvider>> GetAllAsync(CancellationToken ct = default) => Task.FromResult<IEnumerable<InferenceProvider>>(_providers);
+	public Task<InferenceProvider?> GetByIdAsync(Guid id, CancellationToken ct = default) => Task.FromResult(_providers.FirstOrDefault(provider => provider.Id == id));
+	public Task<IEnumerable<InferenceProvider>> GetEnabledAsync(CancellationToken ct = default) => Task.FromResult<IEnumerable<InferenceProvider>>(_providers.Where(provider => provider.IsEnabled).ToList());
 	public Task<InferenceProvider> CreateAsync(InferenceProvider provider, CancellationToken ct = default) => throw new NotSupportedException();
 	public Task<InferenceProvider> UpdateAsync(InferenceProvider provider, CancellationToken ct = default) => throw new NotSupportedException();
 	public Task DeleteAsync(Guid id, CancellationToken ct = default) => throw new NotSupportedException();
-	public Task<IEnumerable<InferenceModel>> GetModelsAsync(Guid providerId, CancellationToken ct = default) => Task.FromResult<IEnumerable<InferenceModel>>([]);
+	public Task<IEnumerable<InferenceModel>> GetModelsAsync(Guid providerId, CancellationToken ct = default)
+		=> Task.FromResult<IEnumerable<InferenceModel>>(_modelsByProvider.TryGetValue(providerId, out var models) ? models : []);
 	public Task<IEnumerable<InferenceModel>> RefreshModelsAsync(Guid providerId, CancellationToken ct = default) => Task.FromResult<IEnumerable<InferenceModel>>([]);
 	public Task SetModelForTaskAsync(Guid providerId, string modelId, string taskType, CancellationToken ct = default) => throw new NotSupportedException();
 	public Task<InferenceModel?> GetModelForTaskAsync(string taskType, CancellationToken ct = default) => Task.FromResult<InferenceModel?>(null);
@@ -98,9 +207,15 @@ return output.ToHtmlString();
 
 private sealed class FakeInferenceService : IInferenceService
 {
+public InferenceRequest? LastRequest { get; private set; }
+public InferenceResponse GenerateResponse { get; set; } = new() { Success = true, Response = "OK" };
 public Task<InferenceHealthResult> CheckHealthAsync(string? endpoint = null, InferenceProviderType? providerType = null, CancellationToken ct = default) => Task.FromResult(new InferenceHealthResult());
 public Task<List<DiscoveredModel>> GetAvailableModelsAsync(string? endpoint = null, InferenceProviderType? providerType = null, CancellationToken ct = default) => Task.FromResult(new List<DiscoveredModel>());
-public Task<InferenceResponse> GenerateAsync(InferenceRequest request, CancellationToken ct = default) => throw new NotSupportedException();
+public Task<InferenceResponse> GenerateAsync(InferenceRequest request, CancellationToken ct = default)
+{
+	LastRequest = request;
+	return Task.FromResult(GenerateResponse);
+}
 public Task<InferenceResponse> GenerateForTaskAsync(string taskType, string prompt, string? systemPrompt = null, CancellationToken ct = default) => throw new NotSupportedException();
 }
 

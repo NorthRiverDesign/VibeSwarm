@@ -90,15 +90,10 @@ public class GrokInferenceService : IInferenceService
 
 	public async Task<InferenceResponse> GenerateAsync(InferenceRequest request, CancellationToken ct = default)
 	{
-		var endpoint = NormalizeEndpoint(request.Endpoint ?? await ResolveEndpointAsync(ct));
-		var apiKey = await ResolveApiKeyAsync(ct);
-		var model = request.Model;
-
-		if (string.IsNullOrEmpty(model))
-		{
-			var resolved = await _providerService.GetModelForTaskAsync(request.TaskType, ct);
-			model = resolved?.ModelId;
-		}
+		var provider = await ResolveRequestedProviderAsync(request, ct);
+		var endpoint = NormalizeEndpoint(request.Endpoint ?? provider?.Endpoint ?? await ResolveEndpointAsync(ct));
+		var apiKey = provider?.ApiKey ?? await ResolveApiKeyAsync(ct);
+		var model = await ResolveModelAsync(request, provider, ct);
 
 		if (string.IsNullOrEmpty(model))
 		{
@@ -281,6 +276,48 @@ public class GrokInferenceService : IInferenceService
 		var providers = await _providerService.GetEnabledAsync(ct);
 		var provider = providers.FirstOrDefault(p => p.ProviderType == InferenceProviderType.Grok);
 		return provider?.ApiKey;
+	}
+
+	private async Task<InferenceProvider?> ResolveRequestedProviderAsync(InferenceRequest request, CancellationToken ct)
+	{
+		if (request.ProviderId.HasValue)
+		{
+			var provider = await _providerService.GetByIdAsync(request.ProviderId.Value, ct);
+			if (provider?.IsEnabled == true && provider.ProviderType == InferenceProviderType.Grok)
+			{
+				return provider;
+			}
+		}
+
+		if (!string.IsNullOrWhiteSpace(request.Endpoint))
+		{
+			var normalizedEndpoint = NormalizeEndpoint(request.Endpoint);
+			var providers = await _providerService.GetEnabledAsync(ct);
+			return providers.FirstOrDefault(provider =>
+				provider.ProviderType == InferenceProviderType.Grok &&
+				string.Equals(NormalizeEndpoint(provider.Endpoint), normalizedEndpoint, StringComparison.OrdinalIgnoreCase));
+		}
+
+		return null;
+	}
+
+	private async Task<string?> ResolveModelAsync(InferenceRequest request, InferenceProvider? provider, CancellationToken ct)
+	{
+		if (!string.IsNullOrWhiteSpace(request.Model))
+		{
+			return request.Model;
+		}
+
+		var taskType = string.IsNullOrWhiteSpace(request.TaskType) ? "default" : request.TaskType;
+		var providerModel = provider?.Models.FirstOrDefault(model => model.IsAvailable && model.IsDefault && model.TaskType == taskType)
+			?? provider?.Models.FirstOrDefault(model => model.IsAvailable && model.IsDefault && model.TaskType == "default");
+		if (!string.IsNullOrWhiteSpace(providerModel?.ModelId))
+		{
+			return providerModel.ModelId;
+		}
+
+		var resolved = await _providerService.GetModelForTaskAsync(taskType, ct);
+		return resolved?.ModelId;
 	}
 
 	private static string NormalizeEndpoint(string endpoint)

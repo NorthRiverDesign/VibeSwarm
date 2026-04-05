@@ -39,7 +39,7 @@ public class InferenceServiceDispatcher : IInferenceService
 	public async Task<InferenceResponse> GenerateAsync(InferenceRequest request, CancellationToken ct = default)
 	{
 		var providerType = request.ProviderType
-			?? await ResolveProviderTypeByEndpointAsync(request.Endpoint, ct);
+			?? await ResolveProviderTypeAsync(request, ct);
 		return await GetService(providerType).GenerateAsync(request, ct);
 	}
 
@@ -81,6 +81,20 @@ public class InferenceServiceDispatcher : IInferenceService
 			string.Equals(p.Endpoint?.TrimEnd('/'), endpoint.TrimEnd('/'), StringComparison.OrdinalIgnoreCase));
 
 		return match?.ProviderType ?? InferenceProviderType.Ollama;
+	}
+
+	private async Task<InferenceProviderType> ResolveProviderTypeAsync(InferenceRequest request, CancellationToken ct)
+	{
+		if (request.ProviderId.HasValue)
+		{
+			var provider = await _providerService.GetByIdAsync(request.ProviderId.Value, ct);
+			if (provider != null)
+			{
+				return provider.ProviderType;
+			}
+		}
+
+		return await ResolveProviderTypeByEndpointAsync(request.Endpoint, ct);
 	}
 
 	private async Task<InferenceProviderType?> ResolveProviderByModelAsync(InferenceModel model, CancellationToken ct)

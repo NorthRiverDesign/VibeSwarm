@@ -84,6 +84,75 @@ public sealed class OllamaInferenceServiceTests
 		Assert.Contains("Timed out waiting for inference", response.Error, StringComparison.OrdinalIgnoreCase);
 	}
 
+	[Fact]
+	public async Task GenerateAsync_UsesSelectedProviderDefaultModel_WhenProviderIdSpecified()
+	{
+		var selectedProvider = new InferenceProvider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Selected Ollama",
+			ProviderType = InferenceProviderType.Ollama,
+			Endpoint = "http://selected-ollama:11434",
+			IsEnabled = true,
+			Models =
+			[
+				new InferenceModel
+				{
+					InferenceProviderId = Guid.NewGuid(),
+					ModelId = "selected-model",
+					IsAvailable = true,
+					IsDefault = true,
+					TaskType = "default"
+				}
+			]
+		};
+		var otherProvider = new InferenceProvider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Other Ollama",
+			ProviderType = InferenceProviderType.Ollama,
+			Endpoint = "http://other-ollama:11434",
+			IsEnabled = true
+		};
+		var fallbackModel = new InferenceModel
+		{
+			InferenceProviderId = otherProvider.Id,
+			ModelId = "fallback-model",
+			IsAvailable = true,
+			IsDefault = true,
+			TaskType = "default"
+		};
+		Uri? requestUri = null;
+		string? requestBody = null;
+		var handler = new StubHttpMessageHandler(async (request, _) =>
+		{
+			requestUri = request.RequestUri;
+			requestBody = await request.Content!.ReadAsStringAsync();
+			return new HttpResponseMessage(HttpStatusCode.OK)
+			{
+				Content = new StringContent("""
+{"model":"selected-model","response":"Hello","done":false}
+{"model":"selected-model","done":true}
+""", Encoding.UTF8, "application/x-ndjson")
+			};
+		});
+		var service = CreateService(
+			handler,
+			providerService: new FakeInferenceProviderService([otherProvider, selectedProvider], fallbackModel));
+
+		var response = await service.GenerateAsync(new InferenceRequest
+		{
+			ProviderId = selectedProvider.Id,
+			Endpoint = selectedProvider.Endpoint,
+			Prompt = "Say hello."
+		});
+
+		Assert.True(response.Success);
+		Assert.Equal("selected-model", response.ModelUsed);
+		Assert.Equal("http://selected-ollama:11434/api/generate", requestUri?.ToString());
+		Assert.Contains("\"model\":\"selected-model\"", requestBody, StringComparison.Ordinal);
+	}
+
 	private static OllamaInferenceService CreateService(
 		string responseBody,
 		OllamaInferenceService.RuntimeOptions? runtimeOptions = null)
@@ -98,7 +167,8 @@ public sealed class OllamaInferenceServiceTests
 
 	private static OllamaInferenceService CreateService(
 		HttpMessageHandler handler,
-		OllamaInferenceService.RuntimeOptions? runtimeOptions = null)
+		OllamaInferenceService.RuntimeOptions? runtimeOptions = null,
+		IInferenceProviderService? providerService = null)
 	{
 		var httpClient = new HttpClient(handler)
 		{
@@ -107,7 +177,7 @@ public sealed class OllamaInferenceServiceTests
 
 		return new OllamaInferenceService(
 			new FakeHttpClientFactory(httpClient),
-			new FakeInferenceProviderService(),
+			providerService ?? new FakeInferenceProviderService(),
 			runtimeOptions);
 	}
 
@@ -136,16 +206,18 @@ public sealed class OllamaInferenceServiceTests
 			=> _handler(request, cancellationToken);
 	}
 
-	private sealed class FakeInferenceProviderService : IInferenceProviderService
+	private sealed class FakeInferenceProviderService(
+		IReadOnlyList<InferenceProvider>? providers = null,
+		InferenceModel? fallbackModel = null) : IInferenceProviderService
 	{
 		public Task<IEnumerable<InferenceProvider>> GetAllAsync(CancellationToken ct = default)
-			=> Task.FromResult<IEnumerable<InferenceProvider>>([]);
+			=> Task.FromResult<IEnumerable<InferenceProvider>>(providers ?? []);
 
 		public Task<InferenceProvider?> GetByIdAsync(Guid id, CancellationToken ct = default)
-			=> Task.FromResult<InferenceProvider?>(null);
+			=> Task.FromResult((providers ?? []).FirstOrDefault(provider => provider.Id == id));
 
 		public Task<IEnumerable<InferenceProvider>> GetEnabledAsync(CancellationToken ct = default)
-			=> Task.FromResult<IEnumerable<InferenceProvider>>([]);
+			=> Task.FromResult<IEnumerable<InferenceProvider>>((providers ?? []).Where(provider => provider.IsEnabled).ToList());
 
 		public Task<InferenceProvider> CreateAsync(InferenceProvider provider, CancellationToken ct = default)
 			=> throw new NotSupportedException();
@@ -166,6 +238,6 @@ public sealed class OllamaInferenceServiceTests
 			=> throw new NotSupportedException();
 
 		public Task<InferenceModel?> GetModelForTaskAsync(string taskType, CancellationToken ct = default)
-			=> Task.FromResult<InferenceModel?>(null);
+			=> Task.FromResult(fallbackModel);
 	}
 }

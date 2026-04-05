@@ -72,16 +72,33 @@ else
 				<i class="bi bi-chat-square-dots me-2"></i>Test Inference
 			</h6>
 			<div class="row g-3 mb-3">
-				<div class="col-12 col-md-4">
+				<div class="col-12 col-lg-3">
 					<label for="testProvider" class="form-label">Provider</label>
-					<select id="testProvider" class="form-select" @bind="_testProviderId">
+					<select id="testProvider" class="form-select" value="@(_testProviderId?.ToString() ?? string.Empty)" @onchange="OnTestProviderChanged">
 						@foreach (var provider in _providers.Where(p => p.IsEnabled))
 						{
 							<option value="@provider.Id">@provider.Name</option>
 						}
 					</select>
 				</div>
-				<div class="col-12 col-md-8">
+				<div class="col-12 col-lg-4">
+					<label for="testModel" class="form-label">Model</label>
+					<select id="testModel" class="form-select" @bind="_selectedTestModelId" disabled="@(_isLoadingTestModels || !_testModels.Any())">
+						<option value="">@(_isLoadingTestModels ? "Loading..." : "Use provider default model")</option>
+						@foreach (var model in _testModels)
+						{
+							<option value="@model.ModelId">
+								@(model.DisplayName ?? model.ModelId)
+								@if (model.IsDefault)
+								{
+									@(" (Default)")
+								}
+							</option>
+						}
+					</select>
+					<div class="form-text">@GetTestModelHelpText()</div>
+				</div>
+				<div class="col-12 col-lg-5">
 					<label for="testPrompt" class="form-label">Prompt</label>
 					<textarea id="testPrompt" class="form-control font-monospace" rows="3"
 						@bind="_testPrompt" placeholder="Enter a test prompt..."></textarea>
@@ -156,8 +173,11 @@ else
 
 	// Test inference state
 	private Guid? _testProviderId;
+	private List<InferenceModel> _testModels = [];
+	private string _selectedTestModelId = string.Empty;
 	private string _testPrompt = "Say hello in one sentence.";
 	private bool _isTesting;
+	private bool _isLoadingTestModels;
 	private InferenceResponse? _testResponse;
 
 	protected override async Task OnInitializedAsync()
@@ -165,13 +185,25 @@ else
 		await LoadProviders();
 	}
 
-	private async Task LoadProviders()
+	private async Task LoadProviders(Guid? preferredProviderId = null)
 	{
 		_isLoading = true;
 		try
 		{
 			_providers = (await InferenceProviderService.GetAllAsync()).ToList();
-			_testProviderId ??= _providers.FirstOrDefault(p => p.IsEnabled)?.Id;
+			var enabledProviders = _providers
+				.Where(p => p.IsEnabled)
+				.ToList();
+			if (preferredProviderId.HasValue && enabledProviders.Any(p => p.Id == preferredProviderId.Value))
+			{
+				_testProviderId = preferredProviderId.Value;
+			}
+			else if (!_testProviderId.HasValue || !enabledProviders.Any(p => p.Id == _testProviderId.Value))
+			{
+				_testProviderId = enabledProviders.FirstOrDefault()?.Id;
+			}
+
+			await LoadTestModelsAsync();
 
 			foreach (var provider in _providers)
 			{
@@ -224,7 +256,7 @@ else
 		_editingProvider = null;
 		_healthStatus.Clear();
 		_healthChecked.Clear();
-		await LoadProviders();
+		await LoadProviders(newProviderId);
 	}
 
 	private void HandleModalCancelled()
@@ -272,6 +304,8 @@ else
 				_testResponse = null;
 			}
 
+			await LoadTestModelsAsync();
+
 			NotificationService.ShowSuccess($"Provider \"{_providerToDelete.Name}\" removed.");
 			_showDeleteModal = false;
 			_providerToDelete = null;
@@ -288,6 +322,49 @@ else
 
 	// Test inference
 
+	private async Task OnTestProviderChanged(ChangeEventArgs e)
+	{
+		_testProviderId = Guid.TryParse(e.Value?.ToString(), out var providerId)
+			? providerId
+			: null;
+		_selectedTestModelId = string.Empty;
+		_testResponse = null;
+		await LoadTestModelsAsync();
+	}
+
+	private async Task LoadTestModelsAsync()
+	{
+		_testModels = [];
+		if (!_testProviderId.HasValue)
+		{
+			_selectedTestModelId = string.Empty;
+			return;
+		}
+
+		_isLoadingTestModels = true;
+		try
+		{
+			_testModels = (await InferenceProviderService.GetModelsAsync(_testProviderId.Value))
+				.Where(model => model.IsAvailable)
+				.OrderByDescending(model => model.IsDefault)
+				.ThenBy(model => model.DisplayName ?? model.ModelId)
+				.ToList();
+			if (!_testModels.Any(model => model.ModelId == _selectedTestModelId))
+			{
+				_selectedTestModelId = string.Empty;
+			}
+		}
+		catch (Exception ex)
+		{
+			_selectedTestModelId = string.Empty;
+			NotificationService.ShowError($"Failed to load inference models: {ex.Message}");
+		}
+		finally
+		{
+			_isLoadingTestModels = false;
+		}
+	}
+
 	private async Task TestGeneration()
 	{
 		var provider = _providers.FirstOrDefault(p => p.Id == _testProviderId);
@@ -301,6 +378,8 @@ else
 			_testResponse = await InferenceService.GenerateAsync(new InferenceRequest
 			{
 				Prompt = _testPrompt.Trim(),
+				Model = string.IsNullOrWhiteSpace(_selectedTestModelId) ? null : _selectedTestModelId,
+				ProviderId = provider.Id,
 				Endpoint = provider.Endpoint,
 				ProviderType = provider.ProviderType
 			});
@@ -313,6 +392,24 @@ else
 		{
 			_isTesting = false;
 		}
+	}
+
+	private string GetTestModelHelpText()
+	{
+		if (_isLoadingTestModels)
+		{
+			return "Loading models for the selected provider...";
+		}
+
+		if (_testModels.Count == 0)
+		{
+			return "No discovered models are available for this provider yet.";
+		}
+
+		var defaultModel = _testModels.FirstOrDefault(model => model.IsDefault);
+		return defaultModel == null
+			? "Choose a model to test with this provider."
+			: $"Leave unselected to use {defaultModel.DisplayName ?? defaultModel.ModelId}.";
 	}
 
 	private static string GetProviderIcon(InferenceProviderType type) => type switch
