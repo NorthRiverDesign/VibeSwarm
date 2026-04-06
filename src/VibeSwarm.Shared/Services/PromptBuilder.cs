@@ -14,6 +14,7 @@ public static class PromptBuilder
 	private const int MaxPromptLength = 2000;
 	private const int XmlOverhead = 200;
 	private const int MaxEnvironmentSectionLength = 1200;
+	private const int MaxSkillSummaryLength = 160;
 	public const string IdeaToken = "{{idea}}";
 	public const string SpecificationToken = "{{specification}}";
 
@@ -98,6 +99,7 @@ public static class PromptBuilder
 
 		var environmentSection = BuildEnvironmentSection(job.Project);
 		var teamSection = BuildTeamSection(job.Project);
+		var skillSection = BuildSkillSection(job.Project);
 		var sb = new StringBuilder();
 
 		sb.AppendLine("<task>");
@@ -122,6 +124,11 @@ public static class PromptBuilder
 			sb.Append(teamSection);
 		}
 
+		if (!string.IsNullOrWhiteSpace(skillSection))
+		{
+			sb.Append(skillSection);
+		}
+
 		var hasConstraints = !string.IsNullOrWhiteSpace(job.Project.PromptContext)
 			|| job.MaxCostUsd.HasValue
 			|| !string.IsNullOrWhiteSpace(job.Branch)
@@ -135,7 +142,7 @@ public static class PromptBuilder
 			if (!string.IsNullOrWhiteSpace(job.Project.PromptContext))
 			{
 				var context = job.Project.PromptContext.Trim();
-				var availableSpace = MaxPromptLength - XmlOverhead - job.GoalPrompt.Length - environmentSection.Length - teamSection.Length - 100;
+				var availableSpace = MaxPromptLength - XmlOverhead - job.GoalPrompt.Length - environmentSection.Length - teamSection.Length - skillSection.Length - 100;
 				if (availableSpace > 0 && context.Length > availableSpace)
 				{
 					context = context[..availableSpace] + "...";
@@ -526,6 +533,37 @@ public static class PromptBuilder
 		return sb.ToString();
 	}
 
+	private static string BuildSkillSection(Project project)
+	{
+		var skills = ProjectSkillHelper.GetConfiguredSkills(project);
+		if (skills.Count == 0)
+		{
+			return string.Empty;
+		}
+
+		var sb = new StringBuilder();
+		sb.AppendLine("<available_skills>");
+		sb.AppendLine("  App-configured MCP skills available to compatible providers for this job. Use them when relevant instead of guessing project conventions:");
+		foreach (var skill in skills)
+		{
+			var lineBuilder = new StringBuilder();
+			lineBuilder.Append("  - ");
+			lineBuilder.Append(skill.Name);
+
+			var summary = BuildSkillSummary(skill);
+			if (!string.IsNullOrWhiteSpace(summary))
+			{
+				lineBuilder.Append(" | Use for: ");
+				lineBuilder.Append(summary);
+			}
+
+			sb.AppendLine(EscapeXml(lineBuilder.ToString()));
+		}
+
+		sb.AppendLine("</available_skills>");
+		return sb.ToString();
+	}
+
 	private static List<string> BuildEnvironmentStageRules(IEnumerable<ProjectEnvironment> environments)
 	{
 		var enabledStages = new HashSet<EnvironmentStage>(environments.Select(environment => environment.Stage));
@@ -570,6 +608,19 @@ public static class PromptBuilder
 			sb.AppendLine($"Your responsibilities: {role.Responsibilities.Trim()}");
 		}
 
+		var skills = role.SkillLinks
+			.Where(link => link.Skill != null && link.Skill.IsEnabled)
+			.Select(link => link.Skill!)
+			.GroupBy(skill => skill.Id)
+			.Select(group => group.First())
+			.OrderBy(skill => skill.Name, StringComparer.OrdinalIgnoreCase)
+			.ToList();
+		if (skills.Count > 0)
+		{
+			sb.AppendLine($"Available MCP skills for this role: {string.Join("; ", skills.Select(FormatSkillReference))}");
+			sb.AppendLine("Use those skills when they match the task instead of guessing project-specific conventions.");
+		}
+
 		if (totalSwarmSize > 1)
 		{
 			sb.AppendLine();
@@ -580,6 +631,30 @@ public static class PromptBuilder
 		}
 
 		return sb.ToString().TrimEnd();
+	}
+
+	private static string FormatSkillReference(Skill skill)
+	{
+		var summary = BuildSkillSummary(skill);
+		return string.IsNullOrWhiteSpace(summary)
+			? skill.Name
+			: $"{skill.Name} - {summary}";
+	}
+
+	private static string? BuildSkillSummary(Skill skill)
+	{
+		if (string.IsNullOrWhiteSpace(skill.Description))
+		{
+			return null;
+		}
+
+		var summary = string.Join(" ", skill.Description.Split([' ', '\r', '\n', '\t'], StringSplitOptions.RemoveEmptyEntries));
+		if (summary.Length <= MaxSkillSummaryLength)
+		{
+			return summary;
+		}
+
+		return $"{summary[..(MaxSkillSummaryLength - 3)].TrimEnd()}...";
 	}
 
 	private static string EscapeXml(string value)

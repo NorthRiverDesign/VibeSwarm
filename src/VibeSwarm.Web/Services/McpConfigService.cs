@@ -95,22 +95,22 @@ PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
 DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
 };
 
-public McpConfigService(ISkillService skillService)
-{
-_skillService = skillService;
-}
+	public McpConfigService(ISkillService skillService)
+	{
+		_skillService = skillService;
+	}
 
-public async Task<string?> GenerateMcpConfigJsonAsync(Project? project = null, CancellationToken cancellationToken = default)
-{
-var skills = await _skillService.GetEnabledAsync(cancellationToken);
-if (!RequiresMcp(skills, project))
-{
-return null;
-}
+	public async Task<string?> GenerateMcpConfigJsonAsync(Project? project = null, CancellationToken cancellationToken = default)
+	{
+		var skills = ProjectSkillHelper.GetExecutionSkills(project, await _skillService.GetEnabledAsync(cancellationToken));
+		if (!RequiresMcp(skills, project))
+		{
+			return null;
+		}
 
-	var config = BuildStandardMcpConfig(skills, project, CreatePlaywrightEnvironmentVariables(project, browserArtifactsDirectory: null));
-return JsonSerializer.Serialize(config, JsonOptions);
-}
+		var config = BuildStandardMcpConfig(skills, project, CreatePlaywrightEnvironmentVariables(project, browserArtifactsDirectory: null));
+		return JsonSerializer.Serialize(config, JsonOptions);
+	}
 
 	public async Task<string?> GenerateMcpConfigFileAsync(
 		ProviderType providerType,
@@ -128,7 +128,7 @@ return JsonSerializer.Serialize(config, JsonOptions);
 		string? workingDirectory = null,
 		CancellationToken cancellationToken = default)
 	{
-		var skills = await _skillService.GetEnabledAsync(cancellationToken);
+		var skills = ProjectSkillHelper.GetExecutionSkills(project, await _skillService.GetEnabledAsync(cancellationToken));
 		var requiresMcp = RequiresMcp(skills, project);
 		var bashEnvFilePath = providerType == ProviderType.Copilot
 			? await CreateCopilotBashEnvFileAsync(cancellationToken)

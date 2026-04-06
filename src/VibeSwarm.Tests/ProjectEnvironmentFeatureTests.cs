@@ -342,13 +342,38 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 	[Fact]
 	public async Task GenerateMcpConfigJsonAsync_AddsPlaywrightServerWhenWebEnvironmentExists()
 	{
+		var repoMapSkill = new Skill { Id = Guid.NewGuid(), Name = "repo-map", Description = "Repository navigation help.", Content = "Skill content", IsEnabled = true };
+		var unrelatedSkill = new Skill { Id = Guid.NewGuid(), Name = "other-skill", Description = "Should not be injected.", Content = "Other content", IsEnabled = true };
 		var service = new McpConfigService(new FakeSkillService(
-			new Skill { Id = Guid.NewGuid(), Name = "repo-map", Content = "Skill content", IsEnabled = true }));
+			repoMapSkill,
+			unrelatedSkill));
 
 		var json = await service.GenerateMcpConfigJsonAsync(new Project
 		{
 			Name = "Web App",
 			WorkingPath = "/tmp/web-app",
+			TeamAssignments =
+			[
+				new ProjectTeamRole
+				{
+					TeamRoleId = Guid.NewGuid(),
+					IsEnabled = true,
+					TeamRole = new TeamRole
+					{
+						Id = Guid.NewGuid(),
+						Name = "Code Reviewer",
+						IsEnabled = true,
+						SkillLinks =
+						[
+							new TeamRoleSkill
+							{
+								SkillId = repoMapSkill.Id,
+								Skill = repoMapSkill
+							}
+						]
+					}
+				}
+			],
 			Environments =
 			[
 				new ProjectEnvironment
@@ -367,6 +392,7 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 		Assert.Contains("\"playwright\"", json);
 		Assert.Contains("@playwright/mcp@latest", json);
 		Assert.Contains("\"repo-map\"", json);
+		Assert.DoesNotContain("\"other-skill\"", json);
 		Assert.Contains("\"APP_URL\"", json);
 		Assert.Contains("\"admin@example.com\"", json);
 	}
@@ -1067,13 +1093,43 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 	[Fact]
 	public async Task GenerateMcpConfigJsonAsync_OmitsPlaywright_WhenNoWebEnvironments()
 	{
+		var testSkill = new Skill
+		{
+			Id = Guid.NewGuid(),
+			Name = "test-skill",
+			Description = "CLI guidance.",
+			Content = "content",
+			IsEnabled = true
+		};
 		var service = new McpConfigService(new FakeSkillService(
-			new Skill { Id = Guid.NewGuid(), Name = "test-skill", Content = "content", IsEnabled = true }));
+			testSkill));
 
 		var json = await service.GenerateMcpConfigJsonAsync(new Project
 		{
 			Name = "CLI App",
 			WorkingPath = "/tmp/cli-app",
+			TeamAssignments =
+			[
+				new ProjectTeamRole
+				{
+					TeamRoleId = Guid.NewGuid(),
+					IsEnabled = true,
+					TeamRole = new TeamRole
+					{
+						Id = Guid.NewGuid(),
+						Name = "CLI Reviewer",
+						IsEnabled = true,
+						SkillLinks =
+						[
+							new TeamRoleSkill
+							{
+								SkillId = testSkill.Id,
+								Skill = testSkill
+							}
+						]
+					}
+				}
+			],
 			Environments =
 			[
 				new ProjectEnvironment
@@ -1089,6 +1145,75 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 		Assert.NotNull(json);
 		Assert.Contains("\"test-skill\"", json);
 		Assert.DoesNotContain("\"playwright\"", json);
+	}
+
+	[Fact]
+	public async Task GenerateMcpConfigJsonAsync_IncludesOnlyProjectAssignedEnabledSkills()
+	{
+		var assignedSkill = new Skill
+		{
+			Id = Guid.NewGuid(),
+			Name = "bootstrap-ui",
+			Description = "Bootstrap UI guidance.",
+			Content = "Bootstrap content",
+			IsEnabled = true
+		};
+		var unassignedSkill = new Skill
+		{
+			Id = Guid.NewGuid(),
+			Name = "security-review",
+			Description = "Security review guidance.",
+			Content = "Security content",
+			IsEnabled = true
+		};
+		var disabledSkill = new Skill
+		{
+			Id = Guid.NewGuid(),
+			Name = "disabled-skill",
+			Description = "Disabled skill",
+			Content = "Disabled content",
+			IsEnabled = false
+		};
+		var service = new McpConfigService(new FakeSkillService(assignedSkill, unassignedSkill, disabledSkill));
+
+		var json = await service.GenerateMcpConfigJsonAsync(new Project
+		{
+			Name = "Scoped Skills",
+			WorkingPath = "/tmp/scoped-skills",
+			TeamAssignments =
+			[
+				new ProjectTeamRole
+				{
+					TeamRoleId = Guid.NewGuid(),
+					IsEnabled = true,
+					TeamRole = new TeamRole
+					{
+						Id = Guid.NewGuid(),
+						Name = "Frontend",
+						IsEnabled = true,
+						SkillLinks =
+						[
+							new TeamRoleSkill
+							{
+								SkillId = assignedSkill.Id,
+								Skill = assignedSkill
+							},
+							new TeamRoleSkill
+							{
+								SkillId = disabledSkill.Id,
+								Skill = disabledSkill
+							}
+						]
+					}
+				}
+			],
+			Environments = []
+		});
+
+		Assert.NotNull(json);
+		Assert.Contains("\"bootstrap-ui\"", json);
+		Assert.DoesNotContain("\"security-review\"", json);
+		Assert.DoesNotContain("\"disabled-skill\"", json);
 	}
 
 	private ProjectEnvironmentCredentialService CreateCredentialService()

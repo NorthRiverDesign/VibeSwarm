@@ -9,6 +9,7 @@ public sealed class ProjectTeamPromptTests
 	[Fact]
 	public void BuildStructuredPrompt_IncludesAssignedTeamRoles()
 	{
+		var bootstrapSkillId = Guid.NewGuid();
 		var job = new Job
 		{
 			GoalPrompt = "Harden auth and improve deployment flow.",
@@ -41,8 +42,9 @@ public sealed class ProjectTeamPromptTests
 									SkillId = Guid.NewGuid(),
 									Skill = new Skill
 									{
-										Id = Guid.NewGuid(),
+										Id = bootstrapSkillId,
 										Name = "secure-review",
+										Description = "Review auth, secrets, and security-sensitive changes.",
 										Content = "Review code for security issues."
 									}
 								}
@@ -61,5 +63,40 @@ public sealed class ProjectTeamPromptTests
 		Assert.Contains("GitHub Copilot", prompt);
 		Assert.Contains("gpt-5.4", prompt);
 		Assert.Contains("secure-review", prompt);
+		Assert.Contains("<available_skills>", prompt);
+		Assert.Contains("Use them when relevant instead of guessing project conventions", prompt);
+		Assert.Contains("Review auth, secrets, and security-sensitive changes.", prompt);
+	}
+
+	[Fact]
+	public void BuildRoleSystemPromptContext_IncludesAssignedSkillSummaries()
+	{
+		var context = PromptBuilder.BuildRoleSystemPromptContext(
+			new TeamRole
+			{
+				Id = Guid.NewGuid(),
+				Name = "UI Reviewer",
+				Description = "Catches UI polish issues.",
+				Responsibilities = "Review Bootstrap usage and responsive layout details.",
+				SkillLinks =
+				[
+					new TeamRoleSkill
+					{
+						SkillId = Guid.NewGuid(),
+						Skill = new Skill
+						{
+							Id = Guid.NewGuid(),
+							Name = "bootstrap-ui",
+							Description = "Prefer Bootstrap utilities and avoid custom CSS unless needed.",
+							Content = "Bootstrap skill"
+						}
+					}
+				]
+			},
+			totalSwarmSize: 2);
+
+		Assert.Contains("Available MCP skills for this role:", context);
+		Assert.Contains("bootstrap-ui - Prefer Bootstrap utilities and avoid custom CSS unless needed.", context);
+		Assert.Contains("Use those skills when they match the task instead of guessing project-specific conventions.", context);
 	}
 }

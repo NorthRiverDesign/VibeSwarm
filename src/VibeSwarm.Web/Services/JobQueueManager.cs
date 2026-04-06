@@ -80,6 +80,15 @@ public class JobQueueManager
 			var now = DateTime.UtcNow;
 			var pendingJobs = await dbContext.Jobs
 				.Include(j => j.Project)
+					.ThenInclude(project => project!.Environments)
+				.Include(j => j.Project)
+					.ThenInclude(project => project!.TeamAssignments)
+						.ThenInclude(assignment => assignment.Provider)
+				.Include(j => j.Project)
+					.ThenInclude(project => project!.TeamAssignments)
+						.ThenInclude(assignment => assignment.TeamRole)
+							.ThenInclude(teamRole => teamRole!.SkillLinks)
+								.ThenInclude(link => link.Skill)
 				.Include(j => j.Provider)
 				.Where(j => j.Status == JobStatus.New && !j.CancellationRequested)
 				.Where(j => !projectsWithRunningJobs.Contains(j.ProjectId)

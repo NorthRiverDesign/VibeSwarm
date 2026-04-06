@@ -509,6 +509,8 @@ public partial class JobProcessingService
                 try
                 {
                     var teamRole = await dbContext.TeamRoles
+						.Include(role => role.SkillLinks)
+							.ThenInclude(link => link.Skill)
                         .FirstOrDefaultAsync(r => r.Id == job.TeamRoleId.Value, cancellationToken);
                     if (teamRole != null)
                     {
