@@ -6,6 +6,7 @@
 @inject IProviderService ProviderService
 @inject IVersionControlService VersionControlService
 @inject NotificationService NotificationService
+@inject QueuePanelStateService QueuePanelStateService
 @implements IDisposable
 
 <PageHeader Title="Projects">
@@ -386,6 +387,7 @@ else
 				AutoCommitMode = autoCommitEnabled ? AutoCommitMode.CommitOnly : AutoCommitMode.Off
 			});
 			projectInfo.Project.IdeasProcessingActive = true;
+			await QueuePanelStateService.RequestRefreshAsync();
 
             var queueMessage = hasActiveJobs ? " New ideas will queue behind the current job." : string.Empty;
             var commitMessage = autoCommitEnabled ? " Auto-commit is enabled." : string.Empty;

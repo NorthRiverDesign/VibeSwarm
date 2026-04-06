@@ -83,6 +83,7 @@ public sealed class ProjectDetailTabsTests
 		context.Services.AddSingleton<ITeamRoleService>(new FakeTeamRoleService());
 		context.Services.AddSingleton<ISettingsService>(new FakeSettingsService());
 		context.Services.AddSingleton<NotificationService>();
+		context.Services.AddSingleton<QueuePanelStateService>();
 		context.Services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
 		context.JSInterop.SetupVoid("vibeSwarmIdeas.registerPasteTarget", _ => true);
 		return context;

@@ -2165,6 +2165,66 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 	}
 
 	[Fact]
+	public async Task GetGlobalQueueSnapshotAsync_PrioritizesRecentlyUpdatedQueues_AndSupportsLargerIdeaPreviews()
+	{
+		await using var dbContext = CreateDbContext();
+		var now = DateTime.UtcNow;
+		var provider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Claude",
+			Type = ProviderType.Claude,
+			IsEnabled = true,
+			IsDefault = true
+		};
+		var recentlyStartedProject = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Recent Queue",
+			WorkingPath = "/tmp/recent-queue",
+			IsActive = true,
+			IdeasProcessingActive = true,
+			UpdatedAt = now
+		};
+		var earlierStartedProject = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Earlier Queue",
+			WorkingPath = "/tmp/earlier-queue",
+			IsActive = true,
+			IdeasProcessingActive = true,
+			UpdatedAt = now.AddMinutes(-10)
+		};
+		var pendingProject = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Pending Queue",
+			WorkingPath = "/tmp/pending-queue",
+			IsActive = true,
+			IdeasProcessingActive = false,
+			UpdatedAt = now.AddMinutes(-20)
+		};
+
+		dbContext.Providers.Add(provider);
+		dbContext.Projects.AddRange(recentlyStartedProject, earlierStartedProject, pendingProject);
+		dbContext.Ideas.AddRange(
+			CreateIdeaRange(recentlyStartedProject.Id, "Recent", 8, now.AddMinutes(-1))
+				.Concat(CreateIdeaRange(earlierStartedProject.Id, "Earlier", 8, now.AddMinutes(-2)))
+				.Concat(CreateIdeaRange(pendingProject.Id, "Pending", 8, now.AddMinutes(-3))));
+		await dbContext.SaveChangesAsync();
+
+		var ideaService = CreateIdeaService(dbContext, provider);
+		var snapshot = await ideaService.GetGlobalQueueSnapshotAsync();
+
+		Assert.Equal(24, snapshot.UpcomingIdeasCount);
+		Assert.Equal(24, snapshot.UpcomingIdeas.Count);
+		Assert.All(snapshot.UpcomingIdeas.Take(8), idea => Assert.Equal(recentlyStartedProject.Id, idea.ProjectId));
+		Assert.All(snapshot.UpcomingIdeas.Skip(8).Take(8), idea => Assert.Equal(earlierStartedProject.Id, idea.ProjectId));
+		Assert.All(snapshot.UpcomingIdeas.Skip(16).Take(8), idea => Assert.Equal(pendingProject.Id, idea.ProjectId));
+		Assert.Equal(Enumerable.Range(0, 8), snapshot.UpcomingIdeas.Take(8).Select(idea => idea.SortOrder));
+	}
+
+	[Fact]
 	public async Task JobQueueManager_GetPendingJobsAsync_ReturnsSingleJobPerProject()
 	{
 		await using var dbContext = CreateDbContext();
@@ -3206,6 +3266,18 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		services.AddLogging();
 		services.AddDbContext<VibeSwarmDbContext>(options => options.UseSqlite(_connection));
 		return services.BuildServiceProvider();
+	}
+
+	private static IEnumerable<Idea> CreateIdeaRange(Guid projectId, string prefix, int count, DateTime createdAt)
+	{
+		return Enumerable.Range(0, count).Select(index => new Idea
+		{
+			Id = Guid.NewGuid(),
+			ProjectId = projectId,
+			Description = $"{prefix} idea {index + 1}",
+			SortOrder = index,
+			CreatedAt = createdAt.AddSeconds(index)
+		});
 	}
 
 	private static IdeaService CreateIdeaService(

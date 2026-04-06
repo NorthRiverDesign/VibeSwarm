@@ -44,6 +44,7 @@ public sealed class ProjectsPageTests
 		services.AddSingleton<ISettingsService>(new FakeSettingsService());
 		services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService());
 		services.AddSingleton<NotificationService>();
+		services.AddSingleton<QueuePanelStateService>();
 		services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
 
 		await using var renderer = new HtmlRenderer(services.BuildServiceProvider(), NullLoggerFactory.Instance);
@@ -101,6 +102,7 @@ public sealed class ProjectsPageTests
 		services.AddSingleton<ISettingsService>(new FakeSettingsService());
 		services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService());
 		services.AddSingleton<NotificationService>();
+		services.AddSingleton<QueuePanelStateService>();
 		services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
 
 		await using var renderer = new HtmlRenderer(services.BuildServiceProvider(), NullLoggerFactory.Instance);
@@ -132,6 +134,7 @@ public sealed class ProjectsPageTests
 		services.AddSingleton<ISettingsService>(new FakeSettingsService());
 		services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService());
 		services.AddSingleton<NotificationService>();
+		services.AddSingleton<QueuePanelStateService>();
 		services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
 
 		await using var renderer = new HtmlRenderer(services.BuildServiceProvider(), NullLoggerFactory.Instance);
@@ -177,6 +180,7 @@ public sealed class ProjectsPageTests
 		services.AddSingleton<ISettingsService>(new FakeSettingsService());
 		services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService());
 		services.AddSingleton<NotificationService>();
+		services.AddSingleton<QueuePanelStateService>();
 		services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
 
 		await using var renderer = new HtmlRenderer(services.BuildServiceProvider(), NullLoggerFactory.Instance);
@@ -206,6 +210,7 @@ public sealed class ProjectsPageTests
 		services.AddSingleton<ISettingsService>(new FakeSettingsService());
 		services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService());
 		services.AddSingleton<NotificationService>();
+		services.AddSingleton<QueuePanelStateService>();
 		services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
 
 		await using var renderer = new HtmlRenderer(services.BuildServiceProvider(), NullLoggerFactory.Instance);
@@ -243,11 +248,18 @@ public sealed class ProjectsPageTests
 		context.Services.AddSingleton<IJobService>(new FakeJobService());
 		context.Services.AddSingleton<IIdeaService>(new FakeIdeaService());
 		context.Services.AddSingleton<IVersionControlService>(new FakeVersionControlService());
-		context.Services.AddSingleton<IProviderService>(new FakeProviderService());
+		context.Services.AddSingleton<IProviderService>(new FakeProviderService(new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Copilot",
+			IsEnabled = true,
+			IsDefault = true
+		}));
 		context.Services.AddSingleton<ITeamRoleService>(new FakeTeamRoleService());
 		context.Services.AddSingleton<ISettingsService>(new FakeSettingsService());
 		context.Services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService());
 		context.Services.AddSingleton<NotificationService>();
+		context.Services.AddSingleton<QueuePanelStateService>();
 		context.Services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
 
 		var cut = context.Render<Projects>();
@@ -258,6 +270,67 @@ public sealed class ProjectsPageTests
 
 		Assert.DoesNotContain("Loading projects...", cut.Markup);
 		Assert.Contains("Refresh Project", cut.Markup);
+	}
+
+	[Fact]
+	public async Task ProjectsPage_StartIdeaQueue_RequestsQueueRefreshImmediately()
+	{
+		using var context = new BunitContext();
+
+		var project = new ProjectWithStats
+		{
+			Project = new Project
+			{
+				Id = Guid.NewGuid(),
+				Name = "Queue Refresh Project",
+				WorkingPath = "/tmp/queue-refresh-project",
+				IsActive = true
+			},
+			Stats = new ProjectJobStats
+			{
+				TotalIdeas = 4,
+				UnprocessedIdeas = 2
+			}
+		};
+		var ideaService = new FakeIdeaService();
+		var queuePanelStateService = new QueuePanelStateService();
+		var refreshRequests = 0;
+		queuePanelStateService.RefreshRequested += () =>
+		{
+			refreshRequests++;
+			return Task.CompletedTask;
+		};
+
+		context.Services.AddLogging();
+		context.Services.AddSingleton<IProjectService>(new FakeProjectService([project]));
+		context.Services.AddSingleton<IJobService>(new FakeJobService());
+		context.Services.AddSingleton<IIdeaService>(ideaService);
+		context.Services.AddSingleton<IVersionControlService>(new FakeVersionControlService());
+		context.Services.AddSingleton<IProviderService>(new FakeProviderService());
+		context.Services.AddSingleton<ITeamRoleService>(new FakeTeamRoleService());
+		context.Services.AddSingleton<ISettingsService>(new FakeSettingsService());
+		context.Services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService());
+		context.Services.AddSingleton<NotificationService>();
+		context.Services.AddSingleton(queuePanelStateService);
+		context.Services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
+
+		var cut = context.Render<Projects>();
+		cut.WaitForAssertion(() => Assert.Contains("Queue Refresh Project", cut.Markup));
+		SetPrivateProperty(cut.Instance, "HasDefaultProvider", true);
+
+		var startIdeaQueue = cut.Instance.GetType().GetMethod("StartIdeaQueue", BindingFlags.Instance | BindingFlags.NonPublic);
+		Assert.NotNull(startIdeaQueue);
+
+		var projectsWithInfo = Assert.IsAssignableFrom<System.Collections.IEnumerable>(GetPrivateProperty(cut.Instance, "ProjectsWithInfo"));
+		await cut.InvokeAsync(async () =>
+		{
+			var task = Assert.IsAssignableFrom<Task>(startIdeaQueue.Invoke(cut.Instance, [projectsWithInfo.Cast<object>().Single()]));
+			await task;
+		});
+
+		Assert.Equal(1, ideaService.StartProcessingCalls);
+		Assert.Equal(project.Project.Id, ideaService.LastStartProcessingProjectId);
+		Assert.Equal(1, refreshRequests);
 	}
 
 	[Fact]
@@ -328,6 +401,7 @@ public sealed class ProjectsPageTests
 		context.Services.AddSingleton<ISettingsService>(new FakeSettingsService());
 		context.Services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService());
 		context.Services.AddSingleton<NotificationService>();
+		context.Services.AddSingleton<QueuePanelStateService>();
 		context.Services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
 
 		var cut = context.Render<Projects>();
@@ -369,6 +443,7 @@ public sealed class ProjectsPageTests
 		context.Services.AddSingleton<ISettingsService>(new FakeSettingsService());
 		context.Services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService());
 		context.Services.AddSingleton<NotificationService>();
+		context.Services.AddSingleton<QueuePanelStateService>();
 		context.Services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
 
 		var cut = context.Render<Projects>();
@@ -405,6 +480,7 @@ public sealed class ProjectsPageTests
 		context.Services.AddSingleton<ISettingsService>(new FakeSettingsService());
 		context.Services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService());
 		context.Services.AddSingleton<NotificationService>();
+		context.Services.AddSingleton<QueuePanelStateService>();
 		context.Services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
 
 		var cut = context.Render<Projects>();
@@ -419,6 +495,14 @@ public sealed class ProjectsPageTests
 
 		Assert.NotNull(property);
 		property.SetValue(instance, value);
+	}
+
+	private static object? GetPrivateProperty(object instance, string propertyName)
+	{
+		var property = instance.GetType().GetProperty(propertyName, BindingFlags.Instance | BindingFlags.NonPublic);
+
+		Assert.NotNull(property);
+		return property.GetValue(instance);
 	}
 
 	private sealed class FakeProjectService(IReadOnlyList<ProjectWithStats> projectSummaries) : IProjectService
@@ -452,6 +536,9 @@ public sealed class ProjectsPageTests
 
 	private sealed class FakeIdeaService : IIdeaService
 	{
+		public int StartProcessingCalls { get; private set; }
+		public Guid? LastStartProcessingProjectId { get; private set; }
+
 		public Task<IEnumerable<Idea>> GetByProjectIdAsync(Guid projectId, CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Idea>>([]);
 		public Task<ProjectIdeasListResult> GetPagedByProjectIdAsync(Guid projectId, int page = 1, int pageSize = 10, CancellationToken cancellationToken = default)
 			=> Task.FromResult(new ProjectIdeasListResult());
@@ -466,7 +553,12 @@ public sealed class ProjectsPageTests
 		public Task<bool> HandleJobCompletionAsync(Guid jobId, bool success, CancellationToken cancellationToken = default) => Task.FromResult(false);
 		public Task<Idea?> GetByJobIdAsync(Guid jobId, CancellationToken cancellationToken = default) => Task.FromResult<Idea?>(null);
 		public Task<IdeaAttachment?> GetAttachmentAsync(Guid attachmentId, CancellationToken cancellationToken = default) => Task.FromResult<IdeaAttachment?>(null);
-		public Task StartProcessingAsync(Guid projectId, IdeaProcessingOptions? options = null, CancellationToken cancellationToken = default) => Task.CompletedTask;
+		public Task StartProcessingAsync(Guid projectId, IdeaProcessingOptions? options = null, CancellationToken cancellationToken = default)
+		{
+			StartProcessingCalls++;
+			LastStartProcessingProjectId = projectId;
+			return Task.CompletedTask;
+		}
 		public Task StopProcessingAsync(Guid projectId, CancellationToken cancellationToken = default) => Task.CompletedTask;
 		public Task<bool> IsProcessingActiveAsync(Guid projectId, CancellationToken cancellationToken = default) => Task.FromResult(false);
 		public Task<bool> ProcessNextIdeaIfReadyAsync(Guid projectId, CancellationToken cancellationToken = default) => Task.FromResult(false);
@@ -581,11 +673,11 @@ public sealed class ProjectsPageTests
 		public Task<GitOperationResult> PruneRemoteBranchesAsync(string workingDirectory, string remoteName = "origin", CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	}
 
-	private sealed class FakeProviderService : IProviderService
+	private sealed class FakeProviderService(Provider? defaultProvider = null) : IProviderService
 	{
 		public Task<IEnumerable<Provider>> GetAllAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Provider>>([]);
 		public Task<Provider?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult<Provider?>(null);
-		public Task<Provider?> GetDefaultAsync(CancellationToken cancellationToken = default) => Task.FromResult<Provider?>(null);
+		public Task<Provider?> GetDefaultAsync(CancellationToken cancellationToken = default) => Task.FromResult(defaultProvider);
 		public IProvider? CreateInstance(Provider config) => null;
 		public Task<Provider> CreateAsync(Provider provider, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<Provider> UpdateAsync(Provider provider, CancellationToken cancellationToken = default) => throw new NotSupportedException();

@@ -30,6 +30,7 @@ public partial class IdeaService
 				project.IdeasAutoCommit = normalizedOptions.AutoCommitMode != AutoCommitMode.Off;
 				project.IdeasProcessingProviderId = normalizedOptions.ProviderId;
 				project.IdeasProcessingModelId = normalizedOptions.ModelId;
+				project.UpdatedAt = DateTime.UtcNow;
 				await _dbContext.SaveChangesAsync(cancellationToken);
 				_logger.LogInformation(
 					"Started Ideas auto-processing for project {ProjectId} (AutoCommit: {AutoCommit}, ProviderOverride: {ProviderId}, ModelOverride: {ModelId})",
@@ -74,6 +75,7 @@ public partial class IdeaService
 				project.IdeasProcessingActive = false;
 				project.IdeasProcessingProviderId = null;
 				project.IdeasProcessingModelId = null;
+				project.UpdatedAt = DateTime.UtcNow;
 				await _dbContext.SaveChangesAsync(cancellationToken);
 				_logger.LogInformation("Stopped Ideas auto-processing for project {ProjectId}", projectId);
 
@@ -242,6 +244,12 @@ public partial class IdeaService
 			}
 		}
 
+		var project = await _dbContext.Projects.FindAsync(new object[] { projectId }, cancellationToken);
+		if (project != null)
+		{
+			project.UpdatedAt = DateTime.UtcNow;
+		}
+
 		await _dbContext.SaveChangesAsync(cancellationToken);
 	}
 
@@ -267,6 +275,8 @@ public partial class IdeaService
 			ProjectId = targetProjectId
 		};
 
+		targetProject.UpdatedAt = DateTime.UtcNow;
+
 		return await CreateAsync(newIdea, cancellationToken);
 	}
 
@@ -291,8 +301,17 @@ public partial class IdeaService
 			throw new InvalidOperationException($"Target project with ID {targetProjectId} not found.");
 		}
 
+		var sourceProjectId = idea.ProjectId;
+
 		// Update the idea's project
 		idea.ProjectId = targetProjectId;
+		var now = DateTime.UtcNow;
+		targetProject.UpdatedAt = now;
+		var sourceProject = await _dbContext.Projects.FindAsync(new object[] { sourceProjectId }, cancellationToken);
+		if (sourceProject != null)
+		{
+			sourceProject.UpdatedAt = now;
+		}
 
 		// Update sort order in new project
 		var maxSortOrder = await _dbContext.Ideas
@@ -330,7 +349,7 @@ public partial class IdeaService
 
 	public async Task<GlobalQueueSnapshot> GetGlobalQueueSnapshotAsync(CancellationToken cancellationToken = default)
 	{
-		const int maxItemsPerSection = 6;
+		const int maxItemsPerSection = 25;
 
 		var runningJobsQuery = _dbContext.Jobs
 			.AsNoTracking()
@@ -344,6 +363,7 @@ public partial class IdeaService
 				&& !i.IsProcessing
 				&& !i.JobId.HasValue)
 			.OrderByDescending(i => i.Project!.IdeasProcessingActive)
+			.ThenByDescending(i => i.Project!.UpdatedAt ?? i.Project!.CreatedAt)
 			.ThenBy(i => i.Project!.Name)
 			.ThenBy(i => i.SortOrder)
 			.ThenBy(i => i.CreatedAt);

@@ -187,7 +187,6 @@ public partial class IdeaService : IIdeaService
 		ValidateAttachmentUploads(request.Attachments);
 
 		var project = await _dbContext.Projects
-			.AsNoTracking()
 			.FirstOrDefaultAsync(project => project.Id == request.ProjectId, cancellationToken)
 			?? throw new InvalidOperationException($"Project with ID {request.ProjectId} not found.");
 
@@ -208,6 +207,7 @@ public partial class IdeaService : IIdeaService
 
 		idea.Id = Guid.NewGuid();
 		idea.CreatedAt = DateTime.UtcNow;
+		project.UpdatedAt = DateTime.UtcNow;
 
 		var maxSortOrder = await _dbContext.Ideas
 			.Where(i => i.ProjectId == idea.ProjectId)
@@ -246,6 +246,11 @@ public partial class IdeaService : IIdeaService
 		existing.Description = idea.Description;
 		existing.SortOrder = idea.SortOrder;
 		ValidateIdea(existing);
+		var project = await _dbContext.Projects.FindAsync(new object[] { existing.ProjectId }, cancellationToken);
+		if (project != null)
+		{
+			project.UpdatedAt = DateTime.UtcNow;
+		}
 
 		await _dbContext.SaveChangesAsync(cancellationToken);
 
@@ -271,6 +276,10 @@ public partial class IdeaService : IIdeaService
 		if (idea != null)
 		{
 			var projectId = idea.ProjectId;
+			if (idea.Project != null)
+			{
+				idea.Project.UpdatedAt = DateTime.UtcNow;
+			}
 			await DeleteAttachmentFilesAsync(idea.Attachments, idea.Project?.WorkingPath);
 
 			// Cancel the associated job if it is still queued (not yet running)

@@ -439,6 +439,7 @@ public partial class ProjectDetail
                 _localIdeaCreateIds.Add(created.Id);
             }
             _ideasPageNumber = Math.Max(1, ((IdeasTotalCount + 1) + IdeasPageSize - 1) / IdeasPageSize);
+            await QueuePanelStateService.RequestRefreshAsync();
             await LoadIdeas(force: true);
         }
         catch (Exception ex)
@@ -487,6 +488,7 @@ public partial class ProjectDetail
                 Ideas[ideaIndex] = updatedIdea;
             }
 
+            await QueuePanelStateService.RequestRefreshAsync();
             StateHasChanged();
         }
         catch (Exception ex)
@@ -501,6 +503,7 @@ public partial class ProjectDetail
         try
         {
             await IdeaService.DeleteAsync(ideaId);
+            await QueuePanelStateService.RequestRefreshAsync();
             await LoadIdeas(force: true);
         }
         catch (Exception ex)
@@ -515,6 +518,7 @@ public partial class ProjectDetail
         {
             var targetProject = await ProjectService.GetByIdAsync(args.targetProjectId);
             await IdeaService.CopyToProjectAsync(args.ideaId, args.targetProjectId);
+            await QueuePanelStateService.RequestRefreshAsync();
             NotificationService.ShowSuccess($"Idea copied to {targetProject?.Name ?? "project"} successfully.");
         }
         catch (Exception ex)
@@ -529,6 +533,7 @@ public partial class ProjectDetail
         {
             var targetProject = await ProjectService.GetByIdAsync(args.targetProjectId);
             await IdeaService.MoveToProjectAsync(args.ideaId, args.targetProjectId);
+            await QueuePanelStateService.RequestRefreshAsync();
             await LoadIdeas(force: true);
             NotificationService.ShowSuccess($"Idea moved to {targetProject?.Name ?? "project"} successfully.");
         }
@@ -572,6 +577,7 @@ public partial class ProjectDetail
                 Project.IdeasProcessingProviderId = options.ProviderId;
                 Project.IdeasProcessingModelId = string.IsNullOrWhiteSpace(options.ModelId) ? null : options.ModelId.Trim();
             }
+            await QueuePanelStateService.RequestRefreshAsync();
 
             var autoCommit = autoCommitMode != AutoCommitMode.Off;
             var commitMessage = autoCommit ? " Auto-commit is enabled." : "";
@@ -614,6 +620,7 @@ public partial class ProjectDetail
                 Project.IdeasProcessingProviderId = null;
                 Project.IdeasProcessingModelId = null;
             }
+            await QueuePanelStateService.RequestRefreshAsync();
             NotificationService.ShowInfo("Ideas auto-processing stopped.", "Processing Stopped");
         }
         catch (Exception ex)
@@ -646,6 +653,7 @@ public partial class ProjectDetail
             var job = await IdeaService.ConvertToJobAsync(ideaId);
             if (job != null)
             {
+                await QueuePanelStateService.RequestRefreshAsync();
                 await RefreshJobs();
                 await LoadIdeas(force: true);
             }
