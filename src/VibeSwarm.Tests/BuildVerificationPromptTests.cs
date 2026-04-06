@@ -170,6 +170,8 @@ public sealed class BuildVerificationPromptTests
 
 		Assert.Contains("staff-level software engineer", prompt);
 		Assert.Contains("Use subagents when they will speed up research or parallel analysis.", prompt);
+		Assert.Contains("inspect -> plan -> implement -> verify loop", prompt);
+		Assert.Contains("autonomous CI coding job", prompt);
 		Assert.Contains("Do not mention or attribute the work to any provider, model, or CLI tool.", prompt);
 	}
 
@@ -197,6 +199,8 @@ public sealed class BuildVerificationPromptTests
 
 		Assert.Contains("staff-level software engineer", prompt);
 		Assert.Contains("Use subagents when they will speed up research or parallel analysis.", prompt);
+		Assert.Contains("inspect -> plan -> implement -> verify loop", prompt);
+		Assert.Contains("autonomous CI coding job", prompt);
 		Assert.Contains("Do not mention or attribute the work to any provider, model, or CLI tool.", prompt);
 	}
 }

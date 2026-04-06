@@ -40,13 +40,15 @@ public static class PromptBuilder
 
 		## Instructions
 		1. Explore the codebase, adjacent flows, tests, and reusable components before editing. Use subagents when they will speed up research or parallel analysis.
-		2. Give yourself room to explore enough to find the right integration points before coding.
-		3. Make pragmatic assumptions from repository patterns and choose the option that best fits the current system.
-		4. Deliver the feature end-to-end with the needed UX, validation, persistence, error handling, and tests.
-		5. Keep changes scoped to the request, handle edge cases, and preserve existing behavior unless the idea requires a change.
-		6. Do not mention or attribute the work to any provider, model, or CLI tool.
+		2. Work in a tight inspect -> plan -> implement -> verify loop. Keep the plan lightweight and update it as you learn.
+		3. Prefer the simplest solution that fully satisfies the idea. Reuse existing patterns, helpers, and components before introducing new ones.
+		4. Make pragmatic assumptions from repository patterns and choose the option that best fits the current system.
+		5. Deliver the feature end-to-end with the needed UX, validation, persistence, error handling, and tests. Fix the root cause, not just the first visible symptom.
+		6. Operate like an autonomous CI coding job: complete the requested work, run the relevant verification, and leave the repository in a working state before finishing.
+		7. Keep changes scoped to the request, handle edge cases, and preserve existing behavior unless the idea requires a change.
+		8. Do not mention or attribute the work to any provider, model, or CLI tool.
 
-		Implement this feature now without first writing a separate specification.
+		Implement this feature now without first writing a separate specification or stopping at a plan-only response.
 
 		When you are finished, end your response with a short summary in this exact format:
 		<commit-summary>
@@ -67,9 +69,12 @@ public static class PromptBuilder
 		## Instructions
 		1. Explore the codebase, adjacent flows, tests, and reusable components before editing. Use subagents when they will speed up research or parallel analysis.
 		2. Use the approved specification as the source of truth, then fill in missing details from repository patterns.
-		3. Deliver the feature end-to-end with the needed UX, validation, persistence, error handling, and tests.
-		4. Keep changes scoped, handle edge cases, and preserve existing behavior unless the specification requires a change.
-		5. Do not mention or attribute the work to any provider, model, or CLI tool.
+		3. Work in a tight inspect -> plan -> implement -> verify loop. Keep the plan lightweight and update it as you learn.
+		4. Prefer the simplest solution that fully satisfies the specification. Reuse existing patterns, helpers, and components before introducing new ones.
+		5. Deliver the feature end-to-end with the needed UX, validation, persistence, error handling, and tests. Fix the root cause, not just the first visible symptom.
+		6. Operate like an autonomous CI coding job: complete the requested work, run the relevant verification, and leave the repository in a working state before finishing.
+		7. Keep changes scoped, handle edge cases, and preserve existing behavior unless the specification requires a change.
+		8. Do not mention or attribute the work to any provider, model, or CLI tool.
 
 		Implement this feature now.
 
