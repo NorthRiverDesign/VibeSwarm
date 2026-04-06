@@ -39,6 +39,8 @@ public sealed class MobileShellScrollingTests
 		Assert.Contains(".app-header .mobile-header-dropdown > .dropdown-menu", css);
 		Assert.Contains("left: 50% !important;", css);
 		Assert.Contains("transform: translateX(-50%) !important;", css);
+		Assert.Contains(".vs-nav-dropdown-menu", css);
+		Assert.Contains("0 1.25rem 2.5rem rgba(15, 23, 42, 0.18)", css);
 		Assert.Contains(".notifications-panel", css);
 		Assert.Contains("transform: translateX(-50%);", css);
 	}
@@ -53,6 +55,8 @@ public sealed class MobileShellScrollingTests
 		Assert.Contains("data-bs-display=\"@(Compact ? \"static\" : null)\"", queuePanelMarkup);
 		Assert.Contains("mobile-header-dropdown", loginDisplayMarkup);
 		Assert.Contains("mobile-header-dropdown", queuePanelMarkup);
+		Assert.Contains("vs-nav-dropdown-menu", loginDisplayMarkup);
+		Assert.Contains("vs-nav-dropdown-menu", queuePanelMarkup);
 	}
 
 	private static string GetRepositoryPath(params string[] segments)

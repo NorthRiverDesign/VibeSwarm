@@ -374,6 +374,12 @@ body:has(.app-layout) {
 	color: var(--vs-accent-blue);
 }
 
+.vs-nav-dropdown-menu {
+	box-shadow:
+		0 1.25rem 2.5rem rgba(15, 23, 42, 0.18),
+		0 0.5rem 1rem rgba(15, 23, 42, 0.12) !important;
+}
+
 /* ============================================
    5. INTERACTIVE UTILITIES (hover states, transitions)
 ============================================ */
@@ -669,8 +675,8 @@ body.vs-modal-open .app-main {
 
 .vs-modal-backdrop {
 	background: rgba(0, 0, 0, 0.75) !important;
-	backdrop-filter: blur(32px);
-	-webkit-backdrop-filter: blur(32px);
+	backdrop-filter: blur(40px);
+	-webkit-backdrop-filter: blur(40px);
 	z-index: 1050 !important;
 }
 
@@ -1051,8 +1057,8 @@ body.vs-modal-open .app-main {
 	/* Frosted-glass backdrop on desktop — lower opacity lets the blur be visible */
 	.vs-modal-backdrop {
 		background: rgba(0, 0, 0, 0.5) !important;
-		backdrop-filter: blur(48px);
-		-webkit-backdrop-filter: blur(48px);
+		backdrop-filter: blur(64px);
+		-webkit-backdrop-filter: blur(64px);
 	}
 	.directory-list {
 		max-height: 400px;

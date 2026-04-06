@@ -48,6 +48,30 @@ public sealed class ModalDialogTests
 		Assert.Contains("Modal Test", html);
 	}
 
+	[Fact]
+	public void SiteCss_UsesStrongerModalBackdropBlur()
+	{
+		var css = File.ReadAllText(GetRepositoryPath("src", "VibeSwarm.Client", "wwwroot", "css", "site.css"));
+
+		Assert.Contains("backdrop-filter: blur(40px);", css);
+		Assert.Contains("-webkit-backdrop-filter: blur(40px);", css);
+		Assert.Contains("backdrop-filter: blur(64px);", css);
+		Assert.Contains("-webkit-backdrop-filter: blur(64px);", css);
+	}
+
+	private static string GetRepositoryPath(params string[] segments)
+	{
+		var directory = new DirectoryInfo(AppContext.BaseDirectory);
+
+		while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "VibeSwarm.sln")))
+		{
+			directory = directory.Parent;
+		}
+
+		Assert.NotNull(directory);
+		return Path.Combine([directory.FullName, .. segments]);
+	}
+
 	private sealed class NoOpJsRuntime : IJSRuntime
 	{
 		public ValueTask<TValue> InvokeAsync<TValue>(string identifier, object?[]? args)

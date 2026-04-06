@@ -152,9 +152,11 @@ public sealed class QueueDropdownPanelTests
 
 		var toggle = cut.Find("button[title='Queue']");
 		var dropdown = cut.Find("div.dropdown");
+		var menu = cut.Find("div.dropdown-menu");
 
 		Assert.Equal("static", toggle.GetAttribute("data-bs-display"));
 		Assert.Contains("mobile-header-dropdown", dropdown.ClassList);
+		Assert.Contains("vs-nav-dropdown-menu", menu.ClassList);
 	}
 
 	private static BunitContext CreateContext(FakeIdeaService ideaService)
