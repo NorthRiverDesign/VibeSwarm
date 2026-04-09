@@ -15,10 +15,40 @@ public class CopilotSdkProvider : SdkProviderBase
 	private CopilotClient? _client;
 	private const string DefaultModel = "gpt-4o";
 	private UsageLimits? _lastObservedUsageLimits;
+	private static readonly string[] FallbackAvailableModels =
+	[
+		"claude-sonnet-4.6",
+		"claude-sonnet-4.5",
+		"claude-haiku-4.5",
+		"claude-opus-4.6",
+		"claude-opus-4.6-fast",
+		"claude-opus-4.5",
+		"claude-sonnet-4",
+		"gpt-5.4",
+		"gpt-5.3-codex",
+		"gpt-5.2-codex",
+		"gpt-5.2",
+		"gpt-5.1",
+		"gpt-5.4-mini",
+		"gpt-5-mini",
+		"gpt-4.1"
+	];
 
 	public override ProviderType Type => ProviderType.Copilot;
 
 	public CopilotSdkProvider(Provider config) : base(config) { }
+
+	internal static IReadOnlyList<string> GetFallbackAvailableModels() => FallbackAvailableModels;
+
+	internal static void ApplySessionDefaults(SessionConfig sessionConfig)
+	{
+		sessionConfig.OnPermissionRequest = PermissionHandler.ApproveAll;
+	}
+
+	internal static void ApplyResumeSessionDefaults(ResumeSessionConfig sessionConfig)
+	{
+		sessionConfig.OnPermissionRequest = PermissionHandler.ApproveAll;
+	}
 
 	/// <summary>
 	/// Builds the CopilotClientOptions from provider configuration.
@@ -29,7 +59,6 @@ public class CopilotSdkProvider : SdkProviderBase
 		var options = new CopilotClientOptions
 		{
 			AutoStart = true,
-			AutoRestart = false,
 			UseStdio = true,
 			LogLevel = "warning",
 			UseLoggedInUser = !useCustomProvider && string.IsNullOrEmpty(ApiKey)
@@ -234,6 +263,7 @@ public class CopilotSdkProvider : SdkProviderBase
 
 			var sessionConfig = new SessionConfig { Model = ResolveModel() };
 			ApplyByokConfig(sessionConfig);
+			ApplySessionDefaults(sessionConfig);
 			await using var session = await client.CreateSessionAsync(sessionConfig);
 
 			var responseBuilder = new StringBuilder();
@@ -307,6 +337,7 @@ public class CopilotSdkProvider : SdkProviderBase
 				Streaming = true,
 				InfiniteSessions = new InfiniteSessionConfig { Enabled = true }
 			};
+			ApplySessionDefaults(sessionConfig);
 
 			// Apply BYOK provider configuration if an API endpoint is set
 			ApplyByokConfig(sessionConfig);
@@ -337,6 +368,7 @@ public class CopilotSdkProvider : SdkProviderBase
 						Streaming = true,
 						WorkingDirectory = effectiveWorkingDir
 					};
+					ApplyResumeSessionDefaults(resumeConfig);
 					session = await client.ResumeSessionAsync(sessionId, resumeConfig, cancellationToken);
 				}
 				catch
@@ -700,16 +732,7 @@ public class CopilotSdkProvider : SdkProviderBase
 		var info = new ProviderInfo
 		{
 			Version = "SDK (GitHub.Copilot.SDK)",
-			AvailableModels = new List<string>
-			{
-				"gpt-4o",
-				"gpt-5",
-				"gpt-5.4",
-				"claude-opus-4.6",
-				"claude-sonnet-4.6",
-				"claude-sonnet-4.5",
-				"o3-mini"
-			},
+			AvailableModels = GetFallbackAvailableModels().ToList(),
 			AvailableAgents = new List<AgentInfo>
 			{
 				new() { Name = "default", Description = "GitHub Copilot SDK agent", IsDefault = true }
@@ -785,6 +808,7 @@ public class CopilotSdkProvider : SdkProviderBase
 			try
 			{
 				var config = new ResumeSessionConfig();
+				ApplyResumeSessionDefaults(config);
 				var session = await _client.ResumeSessionAsync(sessionId, config, cancellationToken);
 				await using (session)
 				{
@@ -843,6 +867,7 @@ public class CopilotSdkProvider : SdkProviderBase
 
 			var sessionConfig = new SessionConfig { Model = model };
 			ApplyByokConfig(sessionConfig);
+			ApplySessionDefaults(sessionConfig);
 			await using var session = await client.CreateSessionAsync(sessionConfig);
 
 			var responseBuilder = new StringBuilder();

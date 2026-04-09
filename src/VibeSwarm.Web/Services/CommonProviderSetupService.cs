@@ -422,7 +422,6 @@ public class CommonProviderSetupService(
 			var options = new CopilotClientOptions
 			{
 				AutoStart = true,
-				AutoRestart = false,
 				UseStdio = true,
 				LogLevel = "error",
 				UseLoggedInUser = true
