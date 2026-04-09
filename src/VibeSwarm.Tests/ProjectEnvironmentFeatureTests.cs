@@ -429,6 +429,129 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 	}
 
 	[Fact]
+	public async Task GenerateExecutionResourcesAsync_IncludesProjectMcpServersFromDotMcpJson()
+	{
+		var service = new McpConfigService(new FakeSkillService());
+		var workingDirectory = Path.Combine(Path.GetTempPath(), $"vibeswarm-project-mcp-{Guid.NewGuid():N}");
+		Directory.CreateDirectory(workingDirectory);
+		McpExecutionResources? resources = null;
+
+		try
+		{
+			await WriteProjectMcpConfigAsync(workingDirectory, """
+				{
+				  "mcpServers": {
+				    "laravel-boost": {
+				      "command": "php",
+				      "args": ["artisan", "boost:mcp"]
+				    }
+				  }
+				}
+				""");
+
+			resources = await service.GenerateExecutionResourcesAsync(
+				ProviderType.Claude,
+				new Project
+				{
+					Name = "Laravel App",
+					WorkingPath = workingDirectory
+				},
+				workingDirectory);
+
+			Assert.NotNull(resources);
+			Assert.NotNull(resources!.ConfigFilePath);
+			using var document = JsonDocument.Parse(await File.ReadAllTextAsync(resources.ConfigFilePath!));
+			var server = document.RootElement
+				.GetProperty("mcpServers")
+				.GetProperty("laravel-boost");
+
+			Assert.Equal("php", server.GetProperty("command").GetString());
+			Assert.Equal(
+				["artisan", "boost:mcp"],
+				server.GetProperty("args").EnumerateArray().Select(value => value.GetString()).ToList());
+		}
+		finally
+		{
+			service.CleanupExecutionResources(resources);
+			if (Directory.Exists(workingDirectory))
+			{
+				Directory.Delete(workingDirectory, recursive: true);
+			}
+		}
+	}
+
+	[Fact]
+	public async Task GenerateExecutionResourcesAsync_ForOpenCode_MergesProjectMcpServersWithPlaywright()
+	{
+		var service = new McpConfigService(new FakeSkillService());
+		var workingDirectory = Path.Combine(Path.GetTempPath(), $"vibeswarm-project-opencode-mcp-{Guid.NewGuid():N}");
+		Directory.CreateDirectory(workingDirectory);
+		McpExecutionResources? resources = null;
+
+		try
+		{
+			await WriteProjectMcpConfigAsync(workingDirectory, """
+				{
+				  "mcpServers": {
+				    "laravel-boost": {
+				      "command": "php",
+				      "args": ["artisan", "boost:mcp"]
+				    }
+				  }
+				}
+				""");
+
+			resources = await service.GenerateExecutionResourcesAsync(
+				ProviderType.OpenCode,
+				new Project
+				{
+					Name = "Laravel App",
+					WorkingPath = workingDirectory,
+					Environments =
+					[
+						new ProjectEnvironment
+						{
+							Name = "Production",
+							Type = EnvironmentType.Web,
+							Url = "https://app.example.com",
+							IsEnabled = true,
+							IsPrimary = true
+						}
+					]
+				},
+				workingDirectory);
+
+			Assert.NotNull(resources);
+			Assert.NotNull(resources!.ConfigFilePath);
+			using var document = JsonDocument.Parse(await File.ReadAllTextAsync(resources.ConfigFilePath!));
+			var mcp = document.RootElement.GetProperty("mcp");
+
+			var laravelBoost = mcp.GetProperty("laravel-boost");
+			Assert.Equal("local", laravelBoost.GetProperty("type").GetString());
+			Assert.Equal(
+				["php", "artisan", "boost:mcp"],
+				laravelBoost.GetProperty("command").EnumerateArray().Select(value => value.GetString()).ToList());
+
+			var playwright = mcp.GetProperty("playwright");
+			Assert.Equal("local", playwright.GetProperty("type").GetString());
+			Assert.Equal(
+				["npx", "-y", "@playwright/mcp@latest"],
+				playwright.GetProperty("command").EnumerateArray().Select(value => value.GetString()).ToList());
+			Assert.Equal(
+				"https://app.example.com",
+				playwright.GetProperty("environment").GetProperty("APP_URL").GetString());
+		}
+		finally
+		{
+			service.CleanupExecutionResources(resources);
+			if (Directory.Exists(workingDirectory))
+			{
+				Directory.Delete(workingDirectory, recursive: true);
+			}
+		}
+	}
+
+	[Fact]
 	public async Task GenerateExecutionResourcesAsync_StoresPlaywrightArtifactsOutsideWorkingDirectory_AndCleansThemUp()
 	{
 		var service = new McpConfigService(new FakeSkillService());
@@ -1220,6 +1343,11 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 	{
 		var dataProtectionProvider = DataProtectionProvider.Create(new DirectoryInfo(_dataProtectionDirectory));
 		return new ProjectEnvironmentCredentialService(dataProtectionProvider);
+	}
+
+	private static Task WriteProjectMcpConfigAsync(string workingDirectory, string json)
+	{
+		return File.WriteAllTextAsync(Path.Combine(workingDirectory, ".mcp.json"), json.Trim());
 	}
 
 	private VibeSwarmDbContext CreateDbContext() => new(_dbOptions);
