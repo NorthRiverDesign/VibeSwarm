@@ -159,13 +159,45 @@ public sealed class QueueDropdownPanelTests
 		Assert.Contains("vs-nav-dropdown-menu", menu.ClassList);
 	}
 
-	private static BunitContext CreateContext(FakeIdeaService ideaService)
+	[Fact]
+	public async Task QueueDropdownPanel_RefreshRequest_UpdatesBadgeWithoutToggle()
+	{
+		var queuePanelStateService = new QueuePanelStateService();
+		var ideaService = new FakeIdeaService(
+			new GlobalQueueSnapshot
+			{
+				RunningJobsCount = 1,
+				UpcomingIdeasCount = 1,
+				ProjectsCurrentlyProcessing = 1
+			},
+			new GlobalQueueSnapshot
+			{
+				RunningJobsCount = 0,
+				UpcomingIdeasCount = 1,
+				ProjectsCurrentlyProcessing = 0
+			});
+
+		using var context = CreateContext(ideaService, queuePanelStateService);
+		var cut = context.Render<QueueDropdownPanel>();
+
+		Assert.Equal("2 queue items", cut.Find(".notification-bell-badge").GetAttribute("aria-label"));
+
+		await cut.InvokeAsync(queuePanelStateService.RequestRefreshAsync);
+
+		cut.WaitForAssertion(() =>
+		{
+			Assert.Equal("1 queue item", cut.Find(".notification-bell-badge").GetAttribute("aria-label"));
+			Assert.Contains("Start Queue", cut.Markup);
+		});
+	}
+
+	private static BunitContext CreateContext(FakeIdeaService ideaService, QueuePanelStateService? queuePanelStateService = null)
 	{
 		var context = new BunitContext();
 		context.Services.AddLogging();
 		context.Services.AddSingleton<IIdeaService>(ideaService);
 		context.Services.AddSingleton<NotificationService>();
-		context.Services.AddSingleton<QueuePanelStateService>();
+		context.Services.AddSingleton(queuePanelStateService ?? new QueuePanelStateService());
 		context.Services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
 		return context;
 	}

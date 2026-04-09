@@ -533,6 +533,8 @@ TimeSpan.FromSeconds(10) })
 
     private async Task OnGlobalJobCompleted(string jobId, bool success, string? errorMessage)
     {
+        await QueuePanelStateService.RequestRefreshAsync();
+
         if (!TryBeginToastEvent($"job-completed:{jobId}:{success}:{errorMessage}"))
         {
             return;
