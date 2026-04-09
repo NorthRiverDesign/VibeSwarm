@@ -9,10 +9,10 @@
 @inject QueuePanelStateService QueuePanelStateService
 @implements IDisposable
 
-<PageHeader Title="Projects">
-    <Actions>
-        <ActionButton Icon="plus" Text="Add" Style="ActionButton.ButtonStyle.Primary" HideTextOnMobile="true" OnClick="ShowAddModal" />
-    </Actions>
+<PageHeader Title="Projects" AlignItemsClass="align-items-center">
+	<Actions>
+		<ActionButton Icon="plus" Text="Add" Style="ActionButton.ButtonStyle.Primary" HideTextOnMobile="true" OnClick="ShowAddModal" />
+	</Actions>
 </PageHeader>
 
 <PageFiltersBar Class="mb-0">
@@ -25,8 +25,8 @@
 		</div>
 	</SearchContent>
 	<Tabs>
-		<div class="d-flex align-items-center gap-2">
-			<ul class="nav nav-tabs flex-nowrap flex-sm-wrap overflow-x-auto overflow-y-hidden overscroll-contain mb-0" role="tablist">
+		<div class="d-flex align-items-stretch border-bottom">
+			<ul class="nav nav-tabs flex-nowrap flex-sm-wrap overflow-x-auto overflow-y-hidden overscroll-contain border-bottom-0 mb-0 flex-grow-1 min-width-0" role="tablist">
 				<li class="nav-item">
 					<button class="nav-link @(ActiveFilter == "active" ? "active" : "")" @onclick='() => SetFilter("active")'>
 						<i class="bi bi-check-circle me-1"></i>Active
@@ -40,8 +40,9 @@
 					</button>
 				</li>
 			</ul>
-			<button type="button" class="btn btn-sm btn-link text-body-secondary p-1 flex-shrink-0"
-					@onclick="ToggleProjectStats" title="@(ShowProjectStats ? "Hide stats" : "Show stats")">
+			<button type="button" class="btn btn-sm btn-link text-body-secondary p-1 flex-shrink-0 align-self-center"
+					@onclick="ToggleProjectStats" title="Toggle project stats"
+					aria-label="@(ShowProjectStats ? "Hide stats" : "Show stats")">
 				<i class="bi bi-@(ShowProjectStats ? "eye-slash" : "eye")"></i>
 			</button>
 		</div>
@@ -164,7 +165,7 @@ else
     private bool HasDefaultProvider { get; set; }
     private Guid? StartingIdeaQueueProjectId { get; set; }
     private bool _isAutoRefreshing;
-    private bool ShowProjectStats { get; set; } = true;
+    private bool ShowProjectStats { get; set; }
     private bool ShowInitialLoadingSpinner => IsLoading && !HasLoadedProjectsInitially;
     private Guid? _gitOperationProjectId;
     private string? _gitOperationKind;

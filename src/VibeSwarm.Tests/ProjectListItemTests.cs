@@ -12,7 +12,7 @@ namespace VibeSwarm.Tests;
 public sealed class ProjectListItemTests
 {
 	[Fact]
-	public async Task RenderedProjectListItem_ShowsLatestJobOutcomeGuidance()
+	public async Task RenderedProjectListItem_ShowsLatestJobSummaryWithoutOutcomeGuidance()
 	{
 		var services = new ServiceCollection();
 		services.AddLogging();
@@ -48,11 +48,11 @@ public sealed class ProjectListItemTests
 			return output.ToHtmlString();
 		});
 
-		Assert.Contains("PR #42 ready.", html);
-		Assert.Contains("Review it and merge when the changes are approved.", html);
 		Assert.Contains("Work summary:", html);
 		Assert.Contains("Polished the delivery summary for the latest project run.", html);
 		Assert.DoesNotContain("Hidden detail.", html);
+		Assert.DoesNotContain("PR #42 ready.", html);
+		Assert.DoesNotContain("Review it and merge when the changes are approved.", html);
 	}
 
 	private sealed class NoOpErrorBoundaryLogger : IErrorBoundaryLogger

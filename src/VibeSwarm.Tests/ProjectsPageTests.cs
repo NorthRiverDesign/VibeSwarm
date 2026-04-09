@@ -63,7 +63,7 @@ public sealed class ProjectsPageTests
 	}
 
 	[Fact]
-	public async Task RenderedProjectsPage_ShowsProjectStatsToggleAndStatsByDefault()
+	public async Task RenderedProjectsPage_HidesProjectStatsByDefault()
 	{
 		var project = new ProjectWithStats
 		{
@@ -113,11 +113,11 @@ public sealed class ProjectsPageTests
 			return output.ToHtmlString();
 		});
 
-		Assert.Contains("Hide stats", html);
-		Assert.Contains("Team", html);
-		Assert.Contains("Reviewer (Unassigned)", html);
-		Assert.Contains("1.2K /", html);
-		Assert.Contains("$1.25", html);
+		Assert.Contains("Show stats", html);
+		Assert.DoesNotContain("Team", html);
+		Assert.DoesNotContain("Reviewer (Unassigned)", html);
+		Assert.DoesNotContain("1.2K /", html);
+		Assert.DoesNotContain("$1.25", html);
 	}
 
 	[Fact]
@@ -147,11 +147,12 @@ public sealed class ProjectsPageTests
 
 		Assert.Contains("btn btn-primary", html);
 		Assert.Contains(">Add<", html);
+		Assert.Contains("d-flex align-items-center justify-content-between gap-2 gap-sm-3 mb-3 mb-lg-4", html);
 		Assert.Contains("justify-content-end gap-2 flex-shrink-0 ms-auto", html);
 	}
 
 	[Fact]
-	public async Task RenderedProjectsPage_ShowsIdeaCountsAndQueueAction()
+	public async Task RenderedProjectsPage_KeepsQueueActionVisibleWhileStatsAreHiddenByDefault()
 	{
 		var project = new ProjectWithStats
 		{
@@ -191,8 +192,9 @@ public sealed class ProjectsPageTests
 			return output.ToHtmlString();
 		});
 
-		Assert.Contains("4 ideas", html);
-		Assert.Contains("2 pending", html);
+		Assert.Contains("Show stats", html);
+		Assert.DoesNotContain("4 ideas", html);
+		Assert.DoesNotContain("2 pending", html);
 		Assert.Contains("Start Idea Queue", html);
 	}
 
@@ -334,7 +336,7 @@ public sealed class ProjectsPageTests
 	}
 
 	[Fact]
-	public void ProjectsPage_ToggleProjectStats_HidesOptionalStats()
+	public void ProjectsPage_ToggleProjectStats_ShowsOptionalStats()
 	{
 		using var context = new BunitContext();
 
@@ -406,17 +408,6 @@ public sealed class ProjectsPageTests
 
 		var cut = context.Render<Projects>();
 
-		Assert.Contains("4 ideas", cut.Markup);
-		Assert.Contains("1 pending", cut.Markup);
-		Assert.Contains("1 running", cut.Markup);
-		Assert.Contains("octocat/toggle-stats-project", cut.Markup);
-		Assert.Contains("Providers", cut.Markup);
-		Assert.Contains("#1 Copilot", cut.Markup);
-		Assert.Contains("Architect (Unassigned)", cut.Markup);
-		Assert.Contains("$2.50", cut.Markup);
-
-		cut.Find("button[title='Toggle project stats']").Click();
-
 		Assert.Contains("Show stats", cut.Markup);
 		Assert.DoesNotContain("4 ideas", cut.Markup);
 		Assert.DoesNotContain("1 pending", cut.Markup);
@@ -426,6 +417,18 @@ public sealed class ProjectsPageTests
 		Assert.DoesNotContain("#1 Copilot", cut.Markup);
 		Assert.DoesNotContain("Architect (Unassigned)", cut.Markup);
 		Assert.DoesNotContain("$2.50", cut.Markup);
+
+		cut.Find("button[title='Toggle project stats']").Click();
+
+		Assert.Contains("Hide stats", cut.Markup);
+		Assert.Contains("4 ideas", cut.Markup);
+		Assert.Contains("1 pending", cut.Markup);
+		Assert.Contains("1 running", cut.Markup);
+		Assert.Contains("octocat/toggle-stats-project", cut.Markup);
+		Assert.Contains("Providers", cut.Markup);
+		Assert.Contains("#1 Copilot", cut.Markup);
+		Assert.Contains("Architect (Unassigned)", cut.Markup);
+		Assert.Contains("$2.50", cut.Markup);
 	}
 
 	[Fact]
@@ -449,7 +452,8 @@ public sealed class ProjectsPageTests
 		var cut = context.Render<Projects>();
 
 		Assert.Contains("flex-column flex-sm-row align-items-stretch align-items-sm-center justify-content-between gap-2", cut.Markup);
-		Assert.Contains("overflow-x-auto overflow-y-hidden", cut.Markup);
+		Assert.Contains("d-flex align-items-stretch border-bottom", cut.Markup);
+		Assert.Contains("overflow-x-auto overflow-y-hidden overscroll-contain border-bottom-0 mb-0 flex-grow-1 min-width-0", cut.Markup);
 	}
 
 	[Fact]
