@@ -227,6 +227,14 @@ public static class PromptBuilder
 			]);
 	}
 
+	public static string? BuildIdeaSystemPromptRules(
+		Project? project,
+		bool injectEfficiencyRules = true,
+		bool injectRepoMap = true)
+	{
+		return BuildSystemPromptRules(project, injectEfficiencyRules, injectRepoMap, providerType: null);
+	}
+
 	public static string? BuildSystemPromptRules(
 		Project? project,
 		bool injectEfficiencyRules = true,

@@ -488,12 +488,23 @@ public partial class JobProcessingService
             // Build system prompt rules for agent efficiency
             var injectEfficiencyRules = appSettings?.InjectEfficiencyRules ?? true;
             var injectRepoMap = appSettings?.InjectRepoMap ?? true;
-            var systemPromptRules = PromptBuilder.BuildSystemPromptRules(
-                job.Project,
-                injectEfficiencyRules,
-                injectRepoMap,
-                provider.Type,
-                enableCommitAttribution);
+            var isIdeaJob = await dbContext.Ideas
+                .AsNoTracking()
+                .AnyAsync(idea => idea.JobId == job.Id, cancellationToken);
+
+            string? BuildExecutionSystemPromptRules(ProviderType providerType)
+            {
+                return isIdeaJob
+                    ? PromptBuilder.BuildIdeaSystemPromptRules(job.Project, injectEfficiencyRules, injectRepoMap)
+                    : PromptBuilder.BuildSystemPromptRules(
+                        job.Project,
+                        injectEfficiencyRules,
+                        injectRepoMap,
+                        providerType,
+                        enableCommitAttribution);
+            }
+
+            var systemPromptRules = BuildExecutionSystemPromptRules(provider.Type);
             projectMemoryFilePath = await PrepareProjectMemoryFileAsync(job.Project, cancellationToken);
             var projectMemoryRules = PromptBuilder.BuildProjectMemoryRules(job.Project, projectMemoryFilePath);
             if (!string.IsNullOrWhiteSpace(projectMemoryRules))
@@ -571,12 +582,7 @@ public partial class JobProcessingService
 					var planningSystemPromptRules = systemPromptRules;
 					if (provider.Type != planningProviderConfig.Type)
 					{
-						planningSystemPromptRules = PromptBuilder.BuildSystemPromptRules(
-							job.Project,
-							injectEfficiencyRules,
-							injectRepoMap,
-							planningProviderConfig.Type,
-							enableCommitAttribution);
+						planningSystemPromptRules = BuildExecutionSystemPromptRules(planningProviderConfig.Type);
 						if (!string.IsNullOrWhiteSpace(projectMemoryRules))
 						{
 							planningSystemPromptRules = string.IsNullOrWhiteSpace(planningSystemPromptRules)

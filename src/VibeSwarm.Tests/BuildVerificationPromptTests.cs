@@ -137,6 +137,23 @@ public sealed class BuildVerificationPromptTests
 	}
 
 	[Fact]
+	public void BuildIdeaSystemPromptRules_OmitsCommitAttributionSection()
+	{
+		var rules = PromptBuilder.BuildIdeaSystemPromptRules(new Project
+		{
+			Name = "Idea Project",
+			WorkingPath = "/tmp/test",
+			Environments = []
+		});
+
+		Assert.NotNull(rules);
+		Assert.Contains("BUILD VERIFICATION (CRITICAL):", rules);
+		Assert.DoesNotContain("COMMIT ATTRIBUTION:", rules);
+		Assert.DoesNotContain("Co-authored-by: Copilot", rules);
+		Assert.DoesNotContain("provider-specific trailers", rules);
+	}
+
+	[Fact]
 	public void BuildIdeaImplementationPrompt_UsesConfiguredTemplate()
 	{
 		var prompt = PromptBuilder.BuildIdeaImplementationPrompt(
