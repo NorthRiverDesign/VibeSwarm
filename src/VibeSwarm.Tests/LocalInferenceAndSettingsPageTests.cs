@@ -179,6 +179,88 @@ public void LocalInferencePage_TestInference_UsesSelectedProviderAndModel()
 	Assert.Equal("Use the selected provider.", inferenceService.LastRequest.Prompt);
 }
 
+[Fact]
+public void LocalInferencePage_DefaultsToLastUsedProviderFromSessionStorage()
+{
+	var firstProviderId = Guid.NewGuid();
+	var secondProviderId = Guid.NewGuid();
+	var providers = new[]
+	{
+		new InferenceProvider
+		{
+			Id = firstProviderId,
+			Name = "Local Ollama",
+			ProviderType = InferenceProviderType.Ollama,
+			Endpoint = "http://ollama:11434",
+			IsEnabled = true
+		},
+		new InferenceProvider
+		{
+			Id = secondProviderId,
+			Name = "Grok Cloud",
+			ProviderType = InferenceProviderType.Grok,
+			Endpoint = "https://api.x.ai/v1",
+			IsEnabled = true
+		}
+	};
+	var modelsByProvider = new Dictionary<Guid, IReadOnlyList<InferenceModel>>
+	{
+		[firstProviderId] =
+		[
+			new InferenceModel
+			{
+				InferenceProviderId = firstProviderId,
+				ModelId = "qwen3",
+				DisplayName = "Qwen 3",
+				IsAvailable = true,
+				IsDefault = true,
+				TaskType = "default"
+			}
+		],
+		[secondProviderId] =
+		[
+			new InferenceModel
+			{
+				InferenceProviderId = secondProviderId,
+				ModelId = "grok-beta",
+				DisplayName = "Grok Beta",
+				IsAvailable = true,
+				IsDefault = true,
+				TaskType = "default"
+			}
+		]
+	};
+	var providerService = new FakeInferenceProviderService(providers, modelsByProvider);
+	var inferenceService = new FakeInferenceService();
+	var jsRuntime = new NoOpJsRuntime(new Dictionary<string, string?>
+	{
+		["vibeswarm.local-inference.last-test-provider"] = secondProviderId.ToString("D")
+	});
+
+	using var context = new BunitContext();
+	context.Services.AddLogging();
+	context.Services.AddSingleton<IInferenceProviderService>(providerService);
+	context.Services.AddSingleton<IInferenceService>(inferenceService);
+	context.Services.AddSingleton<NotificationService>();
+	context.Services.AddSingleton<IJSRuntime>(jsRuntime);
+
+	var cut = context.Render<LocalInference>();
+
+	cut.WaitForAssertion(() =>
+	{
+		Assert.Contains("Grok Beta (Default)", cut.Markup);
+		Assert.DoesNotContain("Qwen 3 (Default)", cut.Markup);
+	});
+
+	cut.FindAll("button")
+		.Single(button => button.TextContent.Contains("Send", StringComparison.Ordinal))
+		.Click();
+
+	cut.WaitForAssertion(() => Assert.NotNull(inferenceService.LastRequest));
+
+	Assert.Equal(secondProviderId, inferenceService.LastRequest!.ProviderId);
+}
+
 	private sealed class FakeInferenceProviderService : IInferenceProviderService
 	{
 		private readonly IReadOnlyList<InferenceProvider> _providers;
@@ -314,11 +396,55 @@ public Task<string?> GetDefaultProjectsDirectoryAsync(CancellationToken cancella
 
 	private sealed class NoOpJsRuntime : IJSRuntime
 	{
-	public ValueTask<TValue> InvokeAsync<TValue>(string identifier, object?[]? args)
-	=> ValueTask.FromResult(default(TValue)!);
+		private readonly Dictionary<string, string?> _sessionStorage;
 
-	public ValueTask<TValue> InvokeAsync<TValue>(string identifier, CancellationToken cancellationToken, object?[]? args)
-	=> ValueTask.FromResult(default(TValue)!);
+		public NoOpJsRuntime(IReadOnlyDictionary<string, string?>? sessionStorage = null)
+		{
+			_sessionStorage = sessionStorage == null
+				? new Dictionary<string, string?>()
+				: new Dictionary<string, string?>(sessionStorage);
+		}
+
+		public ValueTask<TValue> InvokeAsync<TValue>(string identifier, object?[]? args)
+			=> InvokeAsync<TValue>(identifier, CancellationToken.None, args);
+
+		public ValueTask<TValue> InvokeAsync<TValue>(string identifier, CancellationToken cancellationToken, object?[]? args)
+		{
+			if (string.Equals(identifier, "sessionStorage.getItem", StringComparison.Ordinal))
+			{
+				var key = args is { Length: > 0 } ? args[0]?.ToString() : null;
+				if (!string.IsNullOrEmpty(key) && _sessionStorage.TryGetValue(key, out var storedValue))
+				{
+					return ValueTask.FromResult((TValue)(object?)storedValue!);
+				}
+
+				return ValueTask.FromResult((TValue)(object?)null!);
+			}
+
+			if (string.Equals(identifier, "sessionStorage.setItem", StringComparison.Ordinal))
+			{
+				var key = args is { Length: > 0 } ? args[0]?.ToString() : null;
+				if (!string.IsNullOrEmpty(key))
+				{
+					_sessionStorage[key] = args is { Length: > 1 } ? args[1]?.ToString() : null;
+				}
+
+				return ValueTask.FromResult(default(TValue)!);
+			}
+
+			if (string.Equals(identifier, "sessionStorage.removeItem", StringComparison.Ordinal))
+			{
+				var key = args is { Length: > 0 } ? args[0]?.ToString() : null;
+				if (!string.IsNullOrEmpty(key))
+				{
+					_sessionStorage.Remove(key);
+				}
+
+				return ValueTask.FromResult(default(TValue)!);
+			}
+
+			return ValueTask.FromResult(default(TValue)!);
+		}
 	}
 
 	private sealed class TestNavigationManager : NavigationManager

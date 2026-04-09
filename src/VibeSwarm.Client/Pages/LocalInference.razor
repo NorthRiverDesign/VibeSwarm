@@ -3,6 +3,7 @@
 @inject IInferenceProviderService InferenceProviderService
 @inject IInferenceService InferenceService
 @inject NotificationService NotificationService
+@inject IJSRuntime JSRuntime
 
 <PageHeader Title="Inference">
 	<Actions>
@@ -157,6 +158,8 @@ else
 				   OnCancel="CancelDelete" />
 
 @code {
+	private const string LastTestProviderStorageKey = "vibeswarm.local-inference.last-test-provider";
+
 	private List<InferenceProvider> _providers = [];
 	private Dictionary<Guid, bool> _healthStatus = new();
 	private HashSet<Guid> _healthChecked = new();
@@ -182,7 +185,13 @@ else
 
 	protected override async Task OnInitializedAsync()
 	{
-		await LoadProviders();
+		var preferredProviderId = await TryRestoreLastTestProviderIdAsync();
+		await LoadProviders(preferredProviderId);
+
+		if (preferredProviderId.HasValue && _testProviderId != preferredProviderId.Value)
+		{
+			await PersistLastTestProviderIdAsync(_testProviderId);
+		}
 	}
 
 	private async Task LoadProviders(Guid? preferredProviderId = null)
@@ -302,6 +311,7 @@ else
 			{
 				_testProviderId = _providers.FirstOrDefault(p => p.IsEnabled)?.Id;
 				_testResponse = null;
+				await PersistLastTestProviderIdAsync(_testProviderId);
 			}
 
 			await LoadTestModelsAsync();
@@ -327,6 +337,7 @@ else
 		_testProviderId = Guid.TryParse(e.Value?.ToString(), out var providerId)
 			? providerId
 			: null;
+		await PersistLastTestProviderIdAsync(_testProviderId);
 		_selectedTestModelId = string.Empty;
 		_testResponse = null;
 		await LoadTestModelsAsync();
@@ -375,6 +386,7 @@ else
 
 		try
 		{
+			await PersistLastTestProviderIdAsync(provider.Id);
 			_testResponse = await InferenceService.GenerateAsync(new InferenceRequest
 			{
 				Prompt = _testPrompt.Trim(),
@@ -392,6 +404,70 @@ else
 		{
 			_isTesting = false;
 		}
+	}
+
+	private async Task<Guid?> TryRestoreLastTestProviderIdAsync()
+	{
+		try
+		{
+			var storedProviderId = await JSRuntime.InvokeAsync<string?>("sessionStorage.getItem", LastTestProviderStorageKey);
+			if (string.IsNullOrWhiteSpace(storedProviderId))
+			{
+				return null;
+			}
+
+			if (Guid.TryParse(storedProviderId, out var providerId))
+			{
+				return providerId;
+			}
+
+			await PersistLastTestProviderIdAsync(null);
+		}
+		catch (JSException ex)
+		{
+			LogTestProviderStorageFailure("restore the last test provider", ex);
+		}
+		catch (InvalidOperationException ex)
+		{
+			LogTestProviderStorageFailure("restore the last test provider", ex);
+		}
+		catch (OperationCanceledException ex)
+		{
+			LogTestProviderStorageFailure("restore the last test provider", ex);
+		}
+
+		return null;
+	}
+
+	private async Task PersistLastTestProviderIdAsync(Guid? providerId)
+	{
+		try
+		{
+			if (providerId.HasValue)
+			{
+				await JSRuntime.InvokeVoidAsync("sessionStorage.setItem", LastTestProviderStorageKey, providerId.Value.ToString("D"));
+				return;
+			}
+
+			await JSRuntime.InvokeVoidAsync("sessionStorage.removeItem", LastTestProviderStorageKey);
+		}
+		catch (JSException ex)
+		{
+			LogTestProviderStorageFailure("save the last test provider", ex);
+		}
+		catch (InvalidOperationException ex)
+		{
+			LogTestProviderStorageFailure("save the last test provider", ex);
+		}
+		catch (OperationCanceledException ex)
+		{
+			LogTestProviderStorageFailure("save the last test provider", ex);
+		}
+	}
+
+	private static void LogTestProviderStorageFailure(string action, Exception exception)
+	{
+		Console.Error.WriteLine($"[LocalInference] Unable to {action}: {exception.Message}");
 	}
 
 	private string GetTestModelHelpText()
