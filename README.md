@@ -28,9 +28,9 @@ Agents are **auto-detected** at startup. If a supported CLI tool is on your PATH
 
 ## Quick Start
 
-### 1. Install .NET 9 Runtime
+### 1. Install .NET 10 SDK
 
-Download from [dot.net/download](https://dotnet.microsoft.com/download/dotnet/9.0). Install the **ASP.NET Core Runtime** for your platform.
+Download from [dot.net/download](https://dotnet.microsoft.com/download/dotnet/10.0). Install the **.NET SDK** for your platform.
 
 ### 2. Clone the Repository
 
@@ -209,7 +209,7 @@ Change the port in `.env` via `ASPNETCORE_URLS`.
 
 ### Prerequisites
 
-- .NET 9 SDK
+- .NET 10 SDK
 - Windows, Linux, or macOS
 - Git
 
@@ -253,7 +253,7 @@ VibeSwarm/
 
 ### Technologies
 
-- **.NET 9.0** - Web framework
+- **.NET 10.0** - Web framework
 - **Blazor WebAssembly** - UI
 - **SignalR** - Real-time communication
 - **Entity Framework Core** - ORM (SQLite, PostgreSQL, SQL Server)
