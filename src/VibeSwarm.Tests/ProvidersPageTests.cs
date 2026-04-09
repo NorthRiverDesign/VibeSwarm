@@ -112,6 +112,60 @@ public sealed class ProvidersPageTests
 		Assert.Contains("Custom Provider", html);
 	}
 
+	[Fact]
+	public async Task RenderedProvidersPage_UsesScrollableTabsAndCompactInstalledIndicator()
+	{
+		var installedProvider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Copilot CLI Main",
+			Type = ProviderType.Copilot,
+			ConnectionMode = ProviderConnectionMode.CLI,
+			IsEnabled = true
+		};
+
+		var statuses = new[]
+		{
+			CreateStatus(ProviderType.Claude, "Anthropic Claude"),
+			CreateStatus(ProviderType.Copilot, "GitHub Copilot", installedProvider)
+		};
+
+		var html = await RenderProvidersPageAsync([installedProvider], statuses);
+
+		Assert.Contains("overflow-x-auto overflow-y-hidden pb-1", html);
+		Assert.Contains("nav nav-tabs flex-nowrap mb-3", html);
+		Assert.Contains("bi bi-check2-circle-fill text-success", html);
+		Assert.Contains("aria-label=\"Installed\"", html);
+		Assert.DoesNotContain("badge bg-success ms-2", html);
+	}
+
+	[Fact]
+	public async Task RenderedProvidersPage_UsesResponsiveGridForConfiguredProviderRows()
+	{
+		var provider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Claude CLI Main",
+			Type = ProviderType.Claude,
+			ConnectionMode = ProviderConnectionMode.CLI,
+			IsEnabled = true
+		};
+
+		var statuses = new[]
+		{
+			CreateStatus(ProviderType.Claude, "Anthropic Claude", provider)
+		};
+
+		var html = await RenderProvidersPageAsync([provider], statuses);
+
+		Assert.Contains("row g-3 align-items-start", html);
+		Assert.Contains("col-12 col-lg min-width-0", html);
+		Assert.Contains("col-12 col-lg-auto", html);
+		Assert.Contains("col-12 col-sm-6 col-lg-12", html);
+		Assert.Contains("rounded-3 bg-body-tertiary px-3 py-2 d-flex align-items-center justify-content-between gap-3", html);
+		Assert.DoesNotContain("d-flex align-items-start gap-2 gap-md-3", html);
+	}
+
 	private static CommonProviderSetupStatus CreateStatus(ProviderType type, string displayName, Provider? provider = null)
 	{
 		return new CommonProviderSetupStatus
