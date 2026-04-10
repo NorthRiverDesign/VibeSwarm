@@ -39,6 +39,7 @@ public async Task RenderedLocalInferencePage_ShowsSetupAction_WhenNoProviderConf
 Assert.Contains("Inference", html);
 	Assert.Contains("Add", html);
 	Assert.Contains("No inference providers", html);
+	Assert.Contains("d-flex align-items-center justify-content-between gap-2 gap-sm-3 mb-3 mb-lg-4", html);
 Assert.DoesNotContain("App Settings", html);
 }
 

@@ -45,18 +45,13 @@ public class LoginModel : PageModel
 
     public string? ErrorMessage { get; set; }
 
-    public bool NoUsersExist { get; set; }
-
     public IActionResult OnGet()
     {
-        // Check if setup is required and redirect
-        var setupRequired = Environment.GetEnvironmentVariable("VIBESWARM_SETUP_REQUIRED") == "true";
-        if (setupRequired)
+        if (!_userManager.Users.Any())
         {
+            _logger.LogInformation("No users exist in the database, redirecting to setup");
             return Redirect("/setup");
         }
-
-        NoUsersExist = Environment.GetEnvironmentVariable("VIBESWARM_NO_USERS") == "true";
 
         ErrorMessage = Error switch
         {

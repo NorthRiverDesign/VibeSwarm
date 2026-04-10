@@ -39,20 +39,21 @@ git clone https://github.com/NorthRiverDesign/VibeSwarm.git
 cd VibeSwarm
 ```
 
-### 3. Copy the Example Configuration
+### 3. Run
+
+```bash
+dotnet run --project src/VibeSwarm.Web
+```
+
+The default setup uses SQLite and the browser-based setup wizard, so you can start the app without creating a config file first.
+
+### 4. Optional Configuration
 
 ```bash
 cp src/VibeSwarm.Web/.env.example .env
 ```
 
-Edit `.env` if needed — the defaults work for local development.
-
-### 4. Run
-
-```bash
-cd src/VibeSwarm.Web
-dotnet run
-```
+Only copy `.env` when you want to customize ports, pre-create the first admin account, or switch databases.
 
 The application will:
 
@@ -70,7 +71,22 @@ Your browser will show a certificate warning (self-signed cert). This is expecte
 - **Chrome/Edge**: Click "Advanced" → "Proceed to localhost"
 - **Firefox**: Click "Advanced" → "Accept the Risk and Continue"
 
-On first launch you will be redirected to a setup wizard to create your admin account. Alternatively, set `DEFAULT_ADMIN_USER` and `DEFAULT_ADMIN_PASS` in your `.env` file for automated deployments.
+On first launch you will be redirected to a setup wizard to create your admin account. For automated deployments, set `DEFAULT_ADMIN_PASS` and optionally `DEFAULT_ADMIN_USER` in your `.env` file before starting the app.
+
+### 6. Release Install
+
+Prefer the portable release asset from GitHub Releases for production installs, or publish one locally:
+
+```bash
+dotnet publish src/VibeSwarm.Web/VibeSwarm.Web.csproj -c Release -o ./build/vibeswarm /p:UseAppHost=false
+cp src/VibeSwarm.Web/.env.example ./build/vibeswarm/.env
+```
+
+Then run the published app from `./build/vibeswarm` with:
+
+```bash
+dotnet VibeSwarm.Web.dll
+```
 
 ---
 
@@ -81,7 +97,7 @@ The `.env` file is the **only** configuration you need. Place it in the repo roo
 | Variable                     | Default                                        | Description                                              |
 | ---------------------------- | ---------------------------------------------- | -------------------------------------------------------- |
 | `ASPNETCORE_URLS`            | `https://localhost:5001;http://localhost:5000` | Bind addresses. Use `0.0.0.0` for remote access.         |
-| `DEFAULT_ADMIN_USER`         | _(empty — setup wizard)_                       | Admin username for automated setup.                      |
+| `DEFAULT_ADMIN_USER`         | `admin` when only a password is provided       | Optional admin username for automated setup.             |
 | `DEFAULT_ADMIN_PASS`         | _(empty — setup wizard)_                       | Admin password. Min 8 chars, upper + lower + digit.      |
 | `DATABASE_PROVIDER`          | `sqlite`                                       | Database engine: `sqlite`, `mysql`, `postgresql`, or `sqlserver`. |
 | `ConnectionStrings__Default` | `Data Source=vibeswarm.db`                     | Connection string for the chosen provider.               |

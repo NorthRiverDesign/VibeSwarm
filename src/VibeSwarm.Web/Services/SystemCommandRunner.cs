@@ -122,7 +122,7 @@ public class SystemCommandRunner : ISystemCommandRunner
 		StringBuilder? captureBuffer,
 		CancellationToken cancellationToken)
 	{
-		while (!reader.EndOfStream)
+		while (true)
 		{
 			var line = await reader.ReadLineAsync(cancellationToken);
 			if (line is null)

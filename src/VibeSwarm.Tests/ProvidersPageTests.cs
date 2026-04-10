@@ -86,6 +86,7 @@ public sealed class ProvidersPageTests
 
 		Assert.Contains("btn btn-primary", html);
 		Assert.Contains(">Add<", html);
+		Assert.Contains("d-flex align-items-center justify-content-between gap-2 gap-sm-3 mb-3 mb-lg-4", html);
 	}
 
 	[Fact]
@@ -109,6 +110,8 @@ public sealed class ProvidersPageTests
 
 		var html = await RenderProvidersPageAsync([provider], statuses);
 
+		Assert.Contains("d-flex align-items-center justify-content-between flex-wrap gap-2", html);
+		Assert.DoesNotContain("d-flex align-items-start justify-content-between flex-wrap gap-2", html);
 		Assert.Contains("Custom Provider", html);
 	}
 

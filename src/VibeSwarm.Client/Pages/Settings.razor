@@ -92,7 +92,6 @@ VibeSwarm can work with any directory that the host process has access to.
 @code {
 	private string _activeTab = "app";
 	private DatabaseStorageSummary? _databaseSummary;
-	private bool _isLoadingDatabaseSummary;
 
 	private void SetTab(string tab)
 	{
@@ -111,8 +110,6 @@ VibeSwarm can work with any directory that the host process has access to.
 
 	private async Task LoadDatabaseSummary()
 	{
-		_isLoadingDatabaseSummary = true;
-
 		try
 		{
 			_databaseSummary = await DatabaseService.GetStorageSummaryAsync();
@@ -120,10 +117,6 @@ VibeSwarm can work with any directory that the host process has access to.
 		catch (Exception ex)
 		{
 			NotificationService.ShowError($"Failed to load database size: {ex.Message}");
-		}
-		finally
-		{
-			_isLoadingDatabaseSummary = false;
 		}
 	}
 }

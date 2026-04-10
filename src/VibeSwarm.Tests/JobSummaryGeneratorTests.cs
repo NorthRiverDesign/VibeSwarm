@@ -237,10 +237,11 @@ public sealed class JobSummaryGeneratorTests
 				""",
 			goalPrompt: "update Cloudflare API connection");
 
+		Assert.NotNull(summary);
 		Assert.Equal("Update Cloudflare API connection", summary);
 		Assert.DoesNotContain("Files:", summary, StringComparison.Ordinal);
 		Assert.DoesNotContain("file(s) changed", summary, StringComparison.OrdinalIgnoreCase);
-		Assert.DoesNotContain('\n', summary);
+		Assert.DoesNotContain('\n', summary!);
 	}
 
 	[Fact]

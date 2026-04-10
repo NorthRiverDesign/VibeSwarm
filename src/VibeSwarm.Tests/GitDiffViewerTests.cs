@@ -128,15 +128,16 @@ public sealed class GitDiffViewerTests
 	public void GitDiffViewer_Bunit_RendersCustomTitleAndFooterTemplate()
 	{
 		using var context = new BunitContext();
+		RenderFragment<DiffFile> footerTemplate = file => builder =>
+		{
+			builder.AddMarkupContent(0, $"<div class=\"conflict-editor\">Editor for {file.FileName}</div>");
+		};
 
 		var cut = context.Render<GitDiffViewer>(parameters => parameters
 			.Add(viewer => viewer.DiffFiles, CreateDiffFiles())
 			.Add(viewer => viewer.Title, "Conflicted Files")
 			.Add(viewer => viewer.Icon, "exclamation-triangle")
-			.Add<RenderFragment<DiffFile>>(viewer => viewer.FileFooterTemplate, file => builder =>
-			{
-				builder.AddMarkupContent(0, $"<div class=\"conflict-editor\">Editor for {file.FileName}</div>");
-			}));
+			.Add(viewer => viewer.FileFooterTemplate, footerTemplate));
 
 		Assert.Contains("Conflicted Files", cut.Markup);
 		Assert.Contains("Editor for src/First.cs", cut.Markup);

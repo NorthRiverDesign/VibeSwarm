@@ -80,7 +80,7 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 	}
 
 	[Fact]
-	public async Task GetPendingJobsAsync_ReturnsOnlyOneQueuedJobPerProject()
+	public async Task GetPendingJobsAsync_ReturnsOnlyOneQueuedJobPerProject_WhenProjectsUseDifferentProviders()
 	{
 		await using var dbContext = CreateDbContext();
 		var firstProject = new Project
@@ -103,9 +103,16 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 			IsEnabled = true,
 			IsDefault = true
 		};
+		var secondProvider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Claude",
+			Type = ProviderType.Claude,
+			IsEnabled = true
+		};
 
 		dbContext.Projects.AddRange(firstProject, secondProject);
-		dbContext.Providers.Add(provider);
+		dbContext.Providers.AddRange(provider, secondProvider);
 		dbContext.Jobs.AddRange(
 			new Job
 			{
@@ -133,7 +140,7 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 			{
 				Id = Guid.NewGuid(),
 				ProjectId = secondProject.Id,
-				ProviderId = provider.Id,
+				ProviderId = secondProvider.Id,
 				GoalPrompt = "Second project queued job",
 				Title = "Second project queued job",
 				Status = JobStatus.New,
@@ -177,6 +184,13 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 			IsEnabled = true,
 			IsDefault = true
 		};
+		var dependencyProvider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Claude",
+			Type = ProviderType.Claude,
+			IsEnabled = true
+		};
 		var completedDependencyId = Guid.NewGuid();
 		var pendingDependencyId = Guid.NewGuid();
 		var readyJobId = Guid.NewGuid();
@@ -184,7 +198,7 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		var blockedJobId = Guid.NewGuid();
 
 		dbContext.Projects.AddRange(project, dependencyProject);
-		dbContext.Providers.Add(provider);
+		dbContext.Providers.AddRange(provider, dependencyProvider);
 		dbContext.Jobs.AddRange(
 			new Job
 			{
@@ -201,7 +215,7 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 			{
 				Id = pendingDependencyId,
 				ProjectId = dependencyProject.Id,
-				ProviderId = provider.Id,
+				ProviderId = dependencyProvider.Id,
 				GoalPrompt = "Pending dependency",
 				Title = "Pending dependency",
 				Status = JobStatus.New,
@@ -2227,7 +2241,7 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 	}
 
 	[Fact]
-	public async Task JobQueueManager_GetPendingJobsAsync_ReturnsSingleJobPerProject()
+	public async Task JobQueueManager_GetPendingJobsAsync_ReturnsSingleJobPerProject_WhenProjectsUseDifferentProviders()
 	{
 		await using var dbContext = CreateDbContext();
 		var firstProject = new Project
@@ -2250,9 +2264,16 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 			IsEnabled = true,
 			IsDefault = true
 		};
+		var secondProvider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Claude",
+			Type = ProviderType.Claude,
+			IsEnabled = true
+		};
 
 		dbContext.Projects.AddRange(firstProject, secondProject);
-		dbContext.Providers.Add(provider);
+		dbContext.Providers.AddRange(provider, secondProvider);
 		dbContext.Jobs.AddRange(
 			new Job
 			{
@@ -2278,7 +2299,7 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 			{
 				Id = Guid.NewGuid(),
 				ProjectId = secondProject.Id,
-				ProviderId = provider.Id,
+				ProviderId = secondProvider.Id,
 				GoalPrompt = "Second project queued job",
 				Status = JobStatus.New,
 				Priority = 1,
@@ -2537,13 +2558,20 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 			IsEnabled = true,
 			IsDefault = true
 		};
+		var secondProvider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Copilot",
+			Type = ProviderType.Copilot,
+			IsEnabled = true
+		};
 
 		var readyJobId = Guid.NewGuid();
 		var backedOffJobId = Guid.NewGuid();
 		var expiredBackoffJobId = Guid.NewGuid();
 
 		dbContext.Projects.Add(project);
-		dbContext.Providers.Add(provider);
+		dbContext.Providers.AddRange(provider, secondProvider);
 		dbContext.Jobs.AddRange(
 			new Job
 			{
@@ -2559,7 +2587,7 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 			{
 				Id = backedOffJobId,
 				ProjectId = project.Id,
-				ProviderId = provider.Id,
+				ProviderId = secondProvider.Id,
 				GoalPrompt = "Backed off job",
 				Status = JobStatus.New,
 				CreatedAt = DateTime.UtcNow.AddMinutes(-2),
@@ -2569,7 +2597,7 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 			{
 				Id = expiredBackoffJobId,
 				ProjectId = project.Id,
-				ProviderId = provider.Id,
+				ProviderId = secondProvider.Id,
 				GoalPrompt = "Expired backoff job",
 				Status = JobStatus.New,
 				CreatedAt = DateTime.UtcNow.AddMinutes(-1),
@@ -2582,8 +2610,8 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 			serviceProvider.GetRequiredService<IServiceScopeFactory>(),
 			NullLogger<JobQueueManager>.Instance);
 
-		// MaxJobsPerProject=1 means only the highest-priority eligible job per project is returned.
-		// Both readyJob and expiredBackoffJob are eligible; backedOffJob is not.
+		// Both readyJob and expiredBackoffJob are eligible because they do not share the same
+		// provider slot; backedOffJob is still excluded by its future NotBeforeUtc value.
 		queueManager.MaxJobsPerProject = 10;
 		var pendingJobs = await queueManager.GetPendingJobsAsync(10);
 
