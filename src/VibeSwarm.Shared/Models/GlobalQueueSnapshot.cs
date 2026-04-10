@@ -35,4 +35,5 @@ public sealed class GlobalQueueIdeaSummary
 	public int SortOrder { get; set; }
 	public DateTime CreatedAt { get; set; }
 	public bool IsProjectProcessing { get; set; }
+	public bool HasQueuedJob { get; set; }
 }

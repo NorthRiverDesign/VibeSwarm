@@ -21,7 +21,7 @@
     }
 
     @if (IdeasStatus is not null &&
-        (IdeasStatus.TotalUnprocessedIdeas > 0 || IdeasStatus.ProjectsCurrentlyProcessing > 0))
+        (IdeasStatus.TotalQueueIdeas > 0 || IdeasStatus.ProjectsCurrentlyProcessing > 0))
     {
         <div class="col-12">
             <section>
@@ -69,7 +69,7 @@
                 }
 
                 <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-2 g-lg-3">
-                    @foreach (var project in IdeasStatus.Projects.Where(p => p.UnprocessedIdeas > 0 || p.IsProcessing))
+                    @foreach (var project in IdeasStatus.Projects.Where(p => p.TotalQueueIdeas > 0 || p.IsProcessing))
                     {
                         <div class="col">
                             <div class="card border h-100">
@@ -77,19 +77,23 @@
                                     <div class="flex-grow-1 min-width-0">
                                         <div class="fw-medium text-truncate">@project.ProjectName</div>
                                         <small class="text-body-secondary">
-                                            @project.UnprocessedIdeas idea@(project.UnprocessedIdeas != 1 ? "s" : "") remaining
+                                            @project.TotalQueueIdeas idea@(project.TotalQueueIdeas != 1 ? "s" : "") remaining
                                         </small>
                                     </div>
-                                    @if (project.IsProcessing)
+                                    @if (project.HasRunningJob)
                                     {
                                         <span class="badge bg-success-subtle text-success-emphasis flex-shrink-0">
                                             <span class="spinner-border spinner-border-sm" style="width: 0.5rem; height: 0.5rem;" role="status"></span>
                                             Running
                                         </span>
                                     }
+                                    else if (project.IsProcessing || project.QueuedIdeas > 0)
+                                    {
+                                        <span class="badge text-bg-info flex-shrink-0">Queued</span>
+                                    }
                                     else
                                     {
-                                        <span class="badge bg-body-secondary text-body-secondary flex-shrink-0">Queued</span>
+                                        <span class="badge bg-body-secondary text-body-secondary flex-shrink-0">Pending</span>
                                     }
                                 </div>
                             </div>

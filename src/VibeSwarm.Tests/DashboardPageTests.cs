@@ -262,6 +262,35 @@ public sealed class DashboardPageTests
 		Assert.DoesNotContain(">Stop<", html);
 	}
 
+	[Fact]
+	public async Task Dashboard_ShowsStartedIdeasThatAreStillQueued()
+	{
+		var html = await RenderDashboardPageAsync(
+			new FakeProjectService([CreateProjectInfo("Alpha", DateTime.UtcNow.AddHours(-1))]),
+			new FakeProviderService([]),
+			new FakeIdeaService(new GlobalIdeasProcessingStatus
+			{
+				TotalUnprocessedIdeas = 0,
+				TotalQueuedIdeas = 1,
+				ProjectsCurrentlyProcessing = 0,
+				Projects =
+				[
+					new ProjectIdeasSummary
+					{
+						ProjectId = Guid.NewGuid(),
+						ProjectName = "Alpha",
+						QueuedIdeas = 1,
+						IsProcessing = false
+					}
+				]
+			}));
+
+		Assert.Contains("Ideas Processing", html);
+		Assert.Contains("1 idea remaining", html);
+		Assert.Contains(">Queued<", html);
+		Assert.DoesNotContain("Start All Ideas", html);
+	}
+
 	private static async Task<string> RenderDashboardPageAsync(
 		IProjectService projectService,
 		IProviderService providerService,

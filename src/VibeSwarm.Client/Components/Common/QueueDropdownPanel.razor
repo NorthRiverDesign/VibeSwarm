@@ -141,8 +141,8 @@
 								<div class="d-flex align-items-start justify-content-between gap-2">
 									<div class="min-width-0">
 										<div class="d-flex align-items-center gap-2 flex-wrap">
-											<span class="badge @(idea.IsProjectProcessing ? "text-bg-info" : "bg-body-secondary text-body")">
-												@(idea.IsProjectProcessing ? "Queued" : "Pending")
+											<span class="badge @((idea.IsProjectProcessing || idea.HasQueuedJob) ? "text-bg-info" : "bg-body-secondary text-body")">
+												@((idea.IsProjectProcessing || idea.HasQueuedJob) ? "Queued" : "Pending")
 											</span>
 											<span class="fw-medium text-truncate">@idea.Description</span>
 										</div>

@@ -71,6 +71,34 @@ public sealed class QueueDropdownPanelTests
 	}
 
 	[Fact]
+	public void QueueDropdownPanel_ShowsQueuedBadge_ForStartedIdeasWithQueuedJobs()
+	{
+		using var context = CreateContext(new FakeIdeaService(
+			new GlobalQueueSnapshot
+			{
+				UpcomingIdeasCount = 1,
+				UpcomingIdeas =
+				[
+					new GlobalQueueIdeaSummary
+					{
+						IdeaId = Guid.NewGuid(),
+						ProjectId = Guid.NewGuid(),
+						ProjectName = "Alpha",
+						Description = "Queued started idea",
+						HasQueuedJob = true,
+						IsProjectProcessing = false
+					}
+				]
+			}));
+
+		var cut = context.Render<QueueDropdownPanel>();
+
+		Assert.Contains("Queued started idea", cut.Markup);
+		Assert.Contains("Queued", cut.Markup);
+		Assert.DoesNotContain("Pending", cut.Markup);
+	}
+
+	[Fact]
 	public void QueueDropdownPanel_StartQueue_StartsGlobalProcessing()
 	{
 		var ideaService = new FakeIdeaService(

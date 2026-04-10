@@ -2181,6 +2181,131 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 	}
 
 	[Fact]
+	public async Task GetGlobalProcessingStatusAsync_IncludesStartedIdeasThatAreStillQueued()
+	{
+		await using var dbContext = CreateDbContext();
+		var now = DateTime.UtcNow;
+		var provider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Claude",
+			Type = ProviderType.Claude,
+			IsEnabled = true,
+			IsDefault = true
+		};
+		var project = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Queued Idea Project",
+			WorkingPath = "/tmp/queued-idea-project",
+			IsActive = true
+		};
+		var queuedJob = new Job
+		{
+			Id = Guid.NewGuid(),
+			ProjectId = project.Id,
+			ProviderId = provider.Id,
+			GoalPrompt = "Queued started idea",
+			Title = "Queued started idea",
+			Status = JobStatus.New,
+			CreatedAt = now.AddMinutes(-1)
+		};
+		var queuedIdea = new Idea
+		{
+			Id = Guid.NewGuid(),
+			ProjectId = project.Id,
+			Description = "Queued started idea",
+			CreatedAt = now.AddMinutes(-2),
+			SortOrder = 0,
+			IsProcessing = true,
+			JobId = queuedJob.Id
+		};
+		var pendingIdea = new Idea
+		{
+			Id = Guid.NewGuid(),
+			ProjectId = project.Id,
+			Description = "Pending idea",
+			CreatedAt = now.AddMinutes(-3),
+			SortOrder = 1
+		};
+
+		dbContext.Providers.Add(provider);
+		dbContext.Projects.Add(project);
+		dbContext.Jobs.Add(queuedJob);
+		dbContext.Ideas.AddRange(queuedIdea, pendingIdea);
+		await dbContext.SaveChangesAsync();
+
+		var ideaService = CreateIdeaService(dbContext, provider);
+		var status = await ideaService.GetGlobalProcessingStatusAsync();
+
+		Assert.Equal(1, status.TotalUnprocessedIdeas);
+		Assert.Equal(1, status.TotalQueuedIdeas);
+		Assert.Equal(2, status.TotalQueueIdeas);
+
+		var projectSummary = Assert.Single(status.Projects);
+		Assert.Equal(1, projectSummary.UnprocessedIdeas);
+		Assert.Equal(1, projectSummary.QueuedIdeas);
+		Assert.Equal(2, projectSummary.TotalQueueIdeas);
+		Assert.False(projectSummary.HasRunningJob);
+	}
+
+	[Fact]
+	public async Task GetGlobalQueueSnapshotAsync_IncludesStartedIdeasWhoseJobsAreStillQueued()
+	{
+		await using var dbContext = CreateDbContext();
+		var now = DateTime.UtcNow;
+		var provider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Claude",
+			Type = ProviderType.Claude,
+			IsEnabled = true,
+			IsDefault = true
+		};
+		var project = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Queued Queue Project",
+			WorkingPath = "/tmp/queued-queue-project",
+			IsActive = true
+		};
+		var queuedJob = new Job
+		{
+			Id = Guid.NewGuid(),
+			ProjectId = project.Id,
+			ProviderId = provider.Id,
+			GoalPrompt = "Queued started idea",
+			Title = "Queued started idea",
+			Status = JobStatus.New,
+			CreatedAt = now.AddMinutes(-1)
+		};
+		var queuedIdea = new Idea
+		{
+			Id = Guid.NewGuid(),
+			ProjectId = project.Id,
+			Description = "Queued started idea",
+			CreatedAt = now.AddMinutes(-2),
+			SortOrder = 0,
+			IsProcessing = true,
+			JobId = queuedJob.Id
+		};
+
+		dbContext.Providers.Add(provider);
+		dbContext.Projects.Add(project);
+		dbContext.Jobs.Add(queuedJob);
+		dbContext.Ideas.Add(queuedIdea);
+		await dbContext.SaveChangesAsync();
+
+		var ideaService = CreateIdeaService(dbContext, provider);
+		var snapshot = await ideaService.GetGlobalQueueSnapshotAsync();
+
+		Assert.Equal(1, snapshot.UpcomingIdeasCount);
+		var queueIdea = Assert.Single(snapshot.UpcomingIdeas);
+		Assert.Equal(queuedIdea.Description, queueIdea.Description);
+		Assert.True(queueIdea.HasQueuedJob);
+	}
+
+	[Fact]
 	public async Task GetGlobalQueueSnapshotAsync_PrioritizesRecentlyUpdatedQueues_AndSupportsLargerIdeaPreviews()
 	{
 		await using var dbContext = CreateDbContext();

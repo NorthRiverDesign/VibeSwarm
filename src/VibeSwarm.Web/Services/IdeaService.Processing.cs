@@ -334,6 +334,11 @@ public partial class IdeaService
 				ProjectId = p.Id,
 				ProjectName = p.Name,
 				UnprocessedIdeas = p.Ideas.Count(i => !i.IsProcessing && !i.JobId.HasValue),
+				QueuedIdeas = p.Ideas.Count(i => i.IsProcessing && i.Job != null && i.Job.Status == JobStatus.New),
+				HasRunningJob = p.Ideas.Any(i => i.Job != null &&
+					(i.Job.Status == JobStatus.Started
+						|| i.Job.Status == JobStatus.Planning
+						|| i.Job.Status == JobStatus.Processing)),
 				IsProcessing = p.IdeasProcessingActive
 			})
 			.ToListAsync(cancellationToken);
@@ -342,6 +347,7 @@ public partial class IdeaService
 		{
 			TotalProjectsWithIdeas = projectsWithIdeas.Count,
 			TotalUnprocessedIdeas = projectsWithIdeas.Sum(p => p.UnprocessedIdeas),
+			TotalQueuedIdeas = projectsWithIdeas.Sum(p => p.QueuedIdeas),
 			ProjectsCurrentlyProcessing = projectsWithIdeas.Count(p => p.IsProcessing),
 			Projects = projectsWithIdeas
 		};
@@ -360,8 +366,8 @@ public partial class IdeaService
 			.AsNoTracking()
 			.Where(i => i.Project != null
 				&& i.Project.IsActive
-				&& !i.IsProcessing
-				&& !i.JobId.HasValue)
+				&& ((!i.IsProcessing && !i.JobId.HasValue)
+					|| (i.IsProcessing && i.Job != null && i.Job.Status == JobStatus.New)))
 			.OrderByDescending(i => i.Project!.IdeasProcessingActive)
 			.ThenByDescending(i => i.Project!.UpdatedAt ?? i.Project!.CreatedAt)
 			.ThenBy(i => i.Project!.Name)
@@ -396,7 +402,8 @@ public partial class IdeaService
 				Description = i.Description,
 				SortOrder = i.SortOrder,
 				CreatedAt = i.CreatedAt,
-				IsProjectProcessing = i.Project != null && i.Project.IdeasProcessingActive
+				IsProjectProcessing = i.Project != null && i.Project.IdeasProcessingActive,
+				HasQueuedJob = i.Job != null && i.Job.Status == JobStatus.New
 			})
 			.Take(maxItemsPerSection)
 			.ToListAsync(cancellationToken);
