@@ -43,6 +43,9 @@
 :root {
 	--vs-sidebar-width: 240px;
 	--vs-header-height: 56px;
+	--vs-nav-popout-shadow:
+		0 1.25rem 2.5rem rgba(15, 23, 42, 0.18),
+		0 0.5rem 1rem rgba(15, 23, 42, 0.12);
 	--vs-accent-blue: #58a6ff;
 	--vs-accent-green: #3fb950;
 	--vs-accent-orange: #d29922;
@@ -375,9 +378,7 @@ body:has(.app-layout) {
 }
 
 .vs-nav-dropdown-menu {
-	box-shadow:
-		0 1.25rem 2.5rem rgba(15, 23, 42, 0.18),
-		0 0.5rem 1rem rgba(15, 23, 42, 0.12) !important;
+	box-shadow: var(--vs-nav-popout-shadow) !important;
 }
 
 /* ============================================
@@ -792,6 +793,7 @@ body.vs-modal-open .app-main {
 	top: calc(var(--vs-header-height) + env(safe-area-inset-top, 0px) + 4px);
 	left: 50%;
 	right: auto;
+	box-shadow: var(--vs-nav-popout-shadow);
 	width: min(
 		340px,
 		calc(
@@ -809,11 +811,11 @@ body.vs-modal-open .app-main {
 @keyframes notificationSlideIn {
 	from {
 		opacity: 0;
-		transform: translateY(-8px);
+		transform: translateX(-50%) translateY(-8px);
 	}
 	to {
 		opacity: 1;
-		transform: translateY(0);
+		transform: translateX(-50%) translateY(0);
 	}
 }
 

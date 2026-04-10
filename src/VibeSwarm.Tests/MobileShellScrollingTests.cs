@@ -39,10 +39,15 @@ public sealed class MobileShellScrollingTests
 		Assert.Contains(".app-header .mobile-header-dropdown > .dropdown-menu", css);
 		Assert.Contains("left: 50% !important;", css);
 		Assert.Contains("transform: translateX(-50%) !important;", css);
+		Assert.Contains("--vs-nav-popout-shadow:", css);
 		Assert.Contains(".vs-nav-dropdown-menu", css);
 		Assert.Contains("0 1.25rem 2.5rem rgba(15, 23, 42, 0.18)", css);
+		Assert.Contains("box-shadow: var(--vs-nav-popout-shadow) !important;", css);
 		Assert.Contains(".notifications-panel", css);
+		Assert.Contains("box-shadow: var(--vs-nav-popout-shadow);", css);
 		Assert.Contains("transform: translateX(-50%);", css);
+		Assert.Contains("transform: translateX(-50%) translateY(-8px);", css);
+		Assert.Contains("transform: translateX(-50%) translateY(0);", css);
 	}
 
 	[Fact]
