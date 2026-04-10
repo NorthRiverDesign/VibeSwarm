@@ -222,6 +222,35 @@ public void AddTeamRole_AssignmentSeedsDefaultProviderAndModel()
 	}
 
 	[Fact]
+	public void EditProject_ShowsSinglePlanningReasoningInput()
+	{
+		var provider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "GitHub Copilot",
+			Type = ProviderType.Copilot,
+			IsEnabled = true
+		};
+
+		using var context = CreateBunitContext(provider: provider);
+
+		var cut = context.Render<ProjectModal>(parameters => parameters
+			.Add(component => component.IsVisible, true)
+			.Add(component => component.EditProject, new Project
+			{
+				Id = Guid.NewGuid(),
+				Name = "Sample Project",
+				WorkingPath = "/tmp/sample",
+				PlanningEnabled = true,
+				PlanningProviderId = provider.Id,
+				PlanningReasoningEffort = "medium"
+			}));
+
+		Assert.Single(cut.FindAll("#modal-planningReasoning"));
+		Assert.Single(cut.FindAll("label[for='modal-planningReasoning']"));
+	}
+
+	[Fact]
 	public void EditProject_ClearProjectMemoryConfirmationClearsMemoryField()
 	{
 		using var context = CreateBunitContext();
