@@ -398,6 +398,18 @@ public class CopilotProvider : CliProviderBase
             args.Add(CurrentAgent);
         }
 
+        if (CurrentAdditionalDirectories != null)
+        {
+            foreach (var dir in CurrentAdditionalDirectories
+                .Where(static dir => !string.IsNullOrWhiteSpace(dir))
+                .Select(static dir => dir.Trim())
+                .Distinct(StringComparer.Ordinal))
+            {
+                args.Add("--add-dir");
+                args.Add(dir);
+            }
+        }
+
         // Max autopilot continues limit
         if (CurrentMaxTurns.HasValue)
         {

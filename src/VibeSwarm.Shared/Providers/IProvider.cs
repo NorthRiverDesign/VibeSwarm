@@ -545,7 +545,7 @@ public class ExecutionOptions
     public decimal? MaxBudgetUsd { get; set; }
 
 	/// <summary>
-	/// Additional working directories to include (Claude: --add-dir)
+	/// Additional working directories to include (Claude/Copilot: --add-dir, OpenCode: --dir)
 	/// </summary>
 	public List<string>? AdditionalDirectories { get; set; }
 

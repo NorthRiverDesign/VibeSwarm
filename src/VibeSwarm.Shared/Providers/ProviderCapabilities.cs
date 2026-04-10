@@ -39,9 +39,9 @@ public static class ProviderCapabilities
 	/// </summary>
 	public static string GetDescription(ProviderType providerType) => providerType switch
 	{
-		ProviderType.OpenCode => "OpenCode AI agent with CLI-first execution and optional REST API support",
-		ProviderType.Claude => "Anthropic Claude Code with CLI and SDK support",
-		ProviderType.Copilot => "GitHub Copilot with CLI and SDK support",
+		ProviderType.OpenCode => "OpenCode with CLI-first execution, reasoning variants, and optional REST API support",
+		ProviderType.Claude => "Anthropic Claude Code with CLI and SDK support for MCP-aware automation",
+		ProviderType.Copilot => "GitHub Copilot with CLI and SDK support, BYOK providers, and .mcp.json workspace MCP discovery",
 		_ => "Unknown provider"
 	};
 
@@ -61,12 +61,12 @@ public static class ProviderCapabilities
 	/// </summary>
 	public static string GetModeDescription(ProviderType providerType, ProviderConnectionMode mode) => (providerType, mode) switch
 	{
-		(ProviderType.Copilot, ProviderConnectionMode.SDK) => "Uses the GitHub.Copilot.SDK NuGet package for programmatic control via JSON-RPC. Supports logged-in user sessions, explicit GitHub tokens, or BYOK custom provider endpoints.",
-		(ProviderType.Copilot, ProviderConnectionMode.CLI) => "Spawns the Copilot CLI process directly for each job execution.",
+		(ProviderType.Copilot, ProviderConnectionMode.SDK) => "Uses the GitHub.Copilot.SDK package for structured Copilot CLI sessions. Supports logged-in user sessions, GitHub tokens, or BYOK custom provider endpoints.",
+		(ProviderType.Copilot, ProviderConnectionMode.CLI) => "Spawns the Copilot CLI for each job with prompt-mode automation, reasoning effort, BASH_ENV support, per-run MCP config injection, and additional directory allowances.",
 		(ProviderType.Claude, ProviderConnectionMode.SDK) => "Uses the Anthropic .NET SDK for direct API access with an Anthropic API key.",
-		(ProviderType.Claude, ProviderConnectionMode.CLI) => "Spawns the Claude Code CLI process directly for each job execution.",
+		(ProviderType.Claude, ProviderConnectionMode.CLI) => "Spawns the Claude Code CLI for each job with version-gated bare mode, worktree support, MCP config injection, and effort control.",
 		(ProviderType.OpenCode, ProviderConnectionMode.REST) => "Connects to the OpenCode REST API server.",
-		(ProviderType.OpenCode, ProviderConnectionMode.CLI) => "Spawns the OpenCode CLI process directly for each job execution.",
+		(ProviderType.OpenCode, ProviderConnectionMode.CLI) => "Spawns the OpenCode CLI for each job with reasoning variants, session forking, and MCP config injection.",
 		_ => $"{mode} mode for {providerType}."
 	};
 

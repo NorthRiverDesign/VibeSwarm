@@ -478,6 +478,23 @@ public sealed class ProviderCliArgsTests
         Assert.Equal("gpt-4", args[idx + 1]);
     }
 
+	[Fact]
+	public void Copilot_WithAdditionalDirectories_AddsDistinctTrimmedAddDirFlags()
+	{
+		var provider = new CopilotProvider(CreateConfig(ProviderType.Copilot));
+		provider.ApplyOptions(new ExecutionOptions
+		{
+			AdditionalDirectories = [" /repo/shared ", "/repo/shared", "", "   ", "/repo/docs"]
+		});
+
+		var args = provider.BuildCliArgs("test", null);
+
+		var indices = args.Select((a, i) => (a, i)).Where(x => x.a == "--add-dir").Select(x => x.i).ToList();
+		Assert.Equal(2, indices.Count);
+		Assert.Equal("/repo/shared", args[indices[0] + 1]);
+		Assert.Equal("/repo/docs", args[indices[1] + 1]);
+	}
+
     [Fact]
     public void Copilot_WithSessionId_AddsResumeFlag()
     {
