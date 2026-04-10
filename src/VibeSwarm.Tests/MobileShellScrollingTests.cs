@@ -59,6 +59,20 @@ public sealed class MobileShellScrollingTests
 		Assert.Contains("vs-nav-dropdown-menu", queuePanelMarkup);
 	}
 
+	[Fact]
+	public void LoginPages_UseViewportSafeHeightRules()
+	{
+		var css = File.ReadAllText(GetRepositoryPath("src", "VibeSwarm.Client", "wwwroot", "css", "site.css"));
+		var loginMarkup = File.ReadAllText(GetRepositoryPath("src", "VibeSwarm.Web", "Pages", "Login.cshtml"));
+		var setupMarkup = File.ReadAllText(GetRepositoryPath("src", "VibeSwarm.Web", "Pages", "Setup.cshtml"));
+
+		Assert.Contains("login-layout d-flex align-items-center justify-content-center min-vh-100", loginMarkup);
+		Assert.Contains("login-layout d-flex align-items-center justify-content-center min-vh-100", setupMarkup);
+		Assert.Matches(new Regex(@"\.login-layout\s*\{[\s\S]*box-sizing:\s*border-box;[\s\S]*min-height:\s*100dvh;", RegexOptions.Multiline), css);
+		Assert.Contains("100dvh - var(--vs-safe-area-top) - var(--vs-safe-area-bottom)", css);
+		Assert.Matches(new Regex(@"@supports \(-webkit-touch-callout: none\)\s*\{[\s\S]*\.login-layout\s*\{[\s\S]*min-height:\s*-webkit-fill-available;", RegexOptions.Multiline), css);
+	}
+
 	private static string GetRepositoryPath(params string[] segments)
 	{
 		var directory = new DirectoryInfo(AppContext.BaseDirectory);

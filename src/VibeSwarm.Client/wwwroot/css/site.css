@@ -1108,6 +1108,8 @@ body.vs-modal-open .app-main {
 }
 
 .login-layout {
+	box-sizing: border-box;
+	min-height: 100dvh;
 	padding-top: var(--vs-safe-area-top);
 	padding-bottom: var(--vs-safe-area-bottom);
 	padding-left: var(--vs-safe-area-left);
@@ -1129,6 +1131,9 @@ body.vs-modal-open .app-main {
 .login-content {
 	max-height: calc(
 		100vh - var(--vs-safe-area-top) - var(--vs-safe-area-bottom)
+	);
+	max-height: calc(
+		100dvh - var(--vs-safe-area-top) - var(--vs-safe-area-bottom)
 	);
 	overflow-y: auto;
 }
@@ -1198,6 +1203,11 @@ body.vs-modal-open .app-main {
 }
 
 @supports (-webkit-touch-callout: none) {
+	html,
+	body {
+		min-height: -webkit-fill-available;
+	}
+
 	#app:has(.app-layout) {
 		min-height: -webkit-fill-available;
 	}
@@ -1205,6 +1215,10 @@ body.vs-modal-open .app-main {
 	.app-layout {
 		min-height: -webkit-fill-available;
 		height: -webkit-fill-available;
+	}
+
+	.login-layout {
+		min-height: -webkit-fill-available;
 	}
 }
 
