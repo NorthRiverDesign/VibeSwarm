@@ -1,5 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Providers;
 using VibeSwarm.Shared.Utilities;
@@ -86,6 +88,7 @@ private const string ProjectMcpConfigFileName = ".mcp.json";
 private static readonly string[] PlaywrightCommandArgs = ["-y", "@playwright/mcp@latest"];
 
 	private readonly ISkillService _skillService;
+	private readonly ILogger<McpConfigService> _logger;
 	private static readonly List<string> _tempConfigFiles = new();
 	private static readonly List<string> _tempArtifactDirectories = new();
 	private static readonly object _tempFilesLock = new();
@@ -97,9 +100,10 @@ PropertyNameCaseInsensitive = true,
 DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
 };
 
-	public McpConfigService(ISkillService skillService)
+	public McpConfigService(ISkillService skillService, ILogger<McpConfigService>? logger = null)
 	{
 		_skillService = skillService;
+		_logger = logger ?? NullLogger<McpConfigService>.Instance;
 	}
 
 	public async Task<string?> GenerateMcpConfigJsonAsync(Project? project = null, CancellationToken cancellationToken = default)
@@ -137,7 +141,13 @@ DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
 	{
 		var skills = ProjectSkillHelper.GetExecutionSkills(project, await _skillService.GetEnabledAsync(cancellationToken));
 		var projectMcpConfig = await LoadProjectMcpConfigAsync(project, workingDirectory, cancellationToken);
-		var requiresMcp = RequiresMcp(skills, project, projectMcpConfig);
+		var generatedProjectMcpConfig = providerType == ProviderType.Copilot
+			? null
+			: projectMcpConfig;
+		var reservedServerNames = providerType == ProviderType.Copilot
+			? projectMcpConfig?.McpServers.Keys
+			: null;
+		var requiresMcp = RequiresMcp(skills, project, generatedProjectMcpConfig);
 		var bashEnvFilePath = providerType == ProviderType.Copilot
 			? await CreateCopilotBashEnvFileAsync(cancellationToken)
 			: null;
@@ -155,8 +165,8 @@ DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
 			filePath = CreateConfigFilePath(providerType, workingDirectory);
 			var playwrightEnvironment = CreatePlaywrightEnvironmentVariables(project, browserArtifactsDirectory);
 			var json = providerType == ProviderType.OpenCode
-				? JsonSerializer.Serialize(BuildOpenCodeConfig(skills, project, playwrightEnvironment, projectMcpConfig), JsonOptions)
-				: JsonSerializer.Serialize(BuildStandardMcpConfig(skills, project, playwrightEnvironment, projectMcpConfig), JsonOptions);
+				? JsonSerializer.Serialize(BuildOpenCodeConfig(skills, project, playwrightEnvironment, generatedProjectMcpConfig, reservedServerNames), JsonOptions)
+				: JsonSerializer.Serialize(BuildStandardMcpConfig(skills, project, playwrightEnvironment, generatedProjectMcpConfig, reservedServerNames), JsonOptions);
 
 			await File.WriteAllTextAsync(filePath, json, cancellationToken);
 			TrackTempFile(filePath);
@@ -355,7 +365,7 @@ return skills.Any() || HasEnabledWebEnvironment(project) || projectMcpConfig?.Mc
 		return environmentVariables.Count > 0 ? environmentVariables : null;
 	}
 
-	private static async Task<McpConfig?> LoadProjectMcpConfigAsync(
+	private async Task<McpConfig?> LoadProjectMcpConfigAsync(
 		Project? project,
 		string? workingDirectory,
 		CancellationToken cancellationToken)
@@ -366,22 +376,32 @@ return skills.Any() || HasEnabledWebEnvironment(project) || projectMcpConfig?.Mc
 			return null;
 		}
 
-		var json = await File.ReadAllTextAsync(configPath, cancellationToken);
-		using var document = JsonDocument.Parse(json);
-		if (!document.RootElement.TryGetProperty("mcpServers", out var mcpServers) ||
-			mcpServers.ValueKind != JsonValueKind.Object)
+		try
 		{
+			var json = await File.ReadAllTextAsync(configPath, cancellationToken);
+			using var document = JsonDocument.Parse(json);
+			if (!document.RootElement.TryGetProperty("mcpServers", out var mcpServers) ||
+				mcpServers.ValueKind != JsonValueKind.Object)
+			{
+				return null;
+			}
+
+			var config = JsonSerializer.Deserialize<McpConfig>(json, JsonOptions);
+			if (config == null)
+			{
+				return null;
+			}
+
+			config.McpServers ??= new Dictionary<string, McpServer>();
+			return config;
+		}
+		catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or NotSupportedException)
+		{
+			_logger.LogWarning(ex,
+				"Failed to load project MCP config from {ConfigPath}; continuing without repo MCP servers",
+				configPath);
 			return null;
 		}
-
-		var config = JsonSerializer.Deserialize<McpConfig>(json, JsonOptions);
-		if (config == null)
-		{
-			return null;
-		}
-
-		config.McpServers ??= new Dictionary<string, McpServer>();
-		return config;
 	}
 
 	private static string? ResolveProjectMcpConfigPath(Project? project, string? workingDirectory)
@@ -520,7 +540,8 @@ var fileName = $"opencode-mcp-{Guid.NewGuid():N}.json";
 		IEnumerable<Skill> skills,
 		Project? project,
 		Dictionary<string, string>? playwrightEnvironment,
-		McpConfig? projectMcpConfig = null)
+		McpConfig? projectMcpConfig = null,
+		IEnumerable<string>? reservedServerNames = null)
 	{
 		var config = new McpConfig
 		{
@@ -536,39 +557,41 @@ var fileName = $"opencode-mcp-{Guid.NewGuid():N}.json";
 			}
 		}
 
-foreach (var skill in skills)
-{
-var serverName = GetUniqueServerName(config.McpServers.Keys, SanitizeSkillName(skill.Name));
-config.McpServers[serverName] = new McpServer
-{
-Command = "vibeswarm-skill",
-Args = [skill.Name],
-Env = new Dictionary<string, string>
-{
-["VIBESWARM_SKILL_CONTENT"] = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(skill.Content))
-}
-};
-}
+		var usedServerNames = GetUsedServerNames(config.McpServers.Keys, reservedServerNames);
+		foreach (var skill in skills)
+		{
+			var serverName = GetUniqueServerName(usedServerNames, SanitizeSkillName(skill.Name));
+			config.McpServers[serverName] = new McpServer
+			{
+				Command = "vibeswarm-skill",
+				Args = [skill.Name],
+				Env = new Dictionary<string, string>
+				{
+					["VIBESWARM_SKILL_CONTENT"] = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(skill.Content))
+				}
+			};
+		}
 
-if (HasEnabledWebEnvironment(project))
-{
-var serverName = GetUniqueServerName(config.McpServers.Keys, PlaywrightServerName);
+		if (HasEnabledWebEnvironment(project))
+		{
+			var serverName = GetUniqueServerName(usedServerNames, PlaywrightServerName);
 		config.McpServers[serverName] = new McpServer
 		{
 			Command = "npx",
 			Args = PlaywrightCommandArgs,
 			Env = playwrightEnvironment
 		};
-	}
+		}
 
-return config;
-}
+		return config;
+	}
 
 	private static OpenCodeMcpConfig BuildOpenCodeConfig(
 		IEnumerable<Skill> skills,
 		Project? project,
 		Dictionary<string, string>? playwrightEnvironment,
-		McpConfig? projectMcpConfig = null)
+		McpConfig? projectMcpConfig = null,
+		IEnumerable<string>? reservedServerNames = null)
 	{
 		var config = new OpenCodeMcpConfig();
 
@@ -580,24 +603,25 @@ return config;
 			}
 		}
 
-foreach (var skill in skills)
-{
-var serverName = GetUniqueServerName(config.Mcp.Keys, SanitizeSkillName(skill.Name));
-config.Mcp[serverName] = new OpenCodeMcpServer
-{
-Type = "local",
-Command = ["vibeswarm-skill", skill.Name],
-Enabled = true,
-Environment = new Dictionary<string, string>
-{
-["VIBESWARM_SKILL_CONTENT"] = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(skill.Content))
-}
-};
-}
+		var usedServerNames = GetUsedServerNames(config.Mcp.Keys, reservedServerNames);
+		foreach (var skill in skills)
+		{
+			var serverName = GetUniqueServerName(usedServerNames, SanitizeSkillName(skill.Name));
+			config.Mcp[serverName] = new OpenCodeMcpServer
+			{
+				Type = "local",
+				Command = ["vibeswarm-skill", skill.Name],
+				Enabled = true,
+				Environment = new Dictionary<string, string>
+				{
+					["VIBESWARM_SKILL_CONTENT"] = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(skill.Content))
+				}
+			};
+		}
 
-if (HasEnabledWebEnvironment(project))
-{
-var serverName = GetUniqueServerName(config.Mcp.Keys, PlaywrightServerName);
+		if (HasEnabledWebEnvironment(project))
+		{
+			var serverName = GetUniqueServerName(usedServerNames, PlaywrightServerName);
 		config.Mcp[serverName] = new OpenCodeMcpServer
 		{
 			Type = "local",
@@ -605,10 +629,19 @@ var serverName = GetUniqueServerName(config.Mcp.Keys, PlaywrightServerName);
 			Enabled = true,
 			Environment = playwrightEnvironment
 		};
+		}
+
+		return config;
 	}
 
-return config;
-}
+	private static IEnumerable<string> GetUsedServerNames(
+		IEnumerable<string> existingServerNames,
+		IEnumerable<string>? reservedServerNames)
+	{
+		return reservedServerNames == null
+			? existingServerNames
+			: existingServerNames.Concat(reservedServerNames);
+	}
 
 private static string GetUniqueServerName(IEnumerable<string> existingNames, string preferredName)
 {

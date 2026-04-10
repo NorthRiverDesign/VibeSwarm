@@ -552,6 +552,152 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 	}
 
 	[Fact]
+	public async Task GenerateExecutionResourcesAsync_IgnoresInvalidProjectMcpConfig_AndStillGeneratesManagedServers()
+	{
+		var service = new McpConfigService(new FakeSkillService());
+		var workingDirectory = Path.Combine(Path.GetTempPath(), $"vibeswarm-project-invalid-mcp-{Guid.NewGuid():N}");
+		Directory.CreateDirectory(workingDirectory);
+		McpExecutionResources? resources = null;
+
+		try
+		{
+			await WriteProjectMcpConfigAsync(workingDirectory, "{ not-valid-json");
+
+			resources = await service.GenerateExecutionResourcesAsync(
+				ProviderType.Claude,
+				new Project
+				{
+					Name = "Web App",
+					WorkingPath = workingDirectory,
+					Environments =
+					[
+						new ProjectEnvironment
+						{
+							Name = "Production",
+							Type = EnvironmentType.Web,
+							Url = "https://app.example.com",
+							IsEnabled = true,
+							IsPrimary = true
+						}
+					]
+				},
+				workingDirectory);
+
+			Assert.NotNull(resources);
+			Assert.NotNull(resources!.ConfigFilePath);
+
+			using var document = JsonDocument.Parse(await File.ReadAllTextAsync(resources.ConfigFilePath!));
+			Assert.True(document.RootElement.GetProperty("mcpServers").TryGetProperty("playwright", out _));
+		}
+		finally
+		{
+			service.CleanupExecutionResources(resources);
+			if (Directory.Exists(workingDirectory))
+			{
+				Directory.Delete(workingDirectory, recursive: true);
+			}
+		}
+	}
+
+	[Fact]
+	public async Task GenerateExecutionResourcesAsync_ForCopilot_DoesNotDuplicateProjectMcpServers()
+	{
+		var repoMapSkill = new Skill
+		{
+			Id = Guid.NewGuid(),
+			Name = "repo-map",
+			Description = "Repository navigation help.",
+			Content = "Skill content",
+			IsEnabled = true
+		};
+		var service = new McpConfigService(new FakeSkillService(repoMapSkill));
+		var workingDirectory = Path.Combine(Path.GetTempPath(), $"vibeswarm-project-copilot-mcp-{Guid.NewGuid():N}");
+		Directory.CreateDirectory(workingDirectory);
+		McpExecutionResources? resources = null;
+
+		try
+		{
+			await WriteProjectMcpConfigAsync(workingDirectory, """
+				{
+				  "mcpServers": {
+				    "playwright": {
+				      "command": "npx",
+				      "args": ["-y", "@playwright/mcp@latest"]
+				    },
+				    "repo-map": {
+				      "command": "custom-repo-map"
+				    }
+				  }
+				}
+				""");
+
+			resources = await service.GenerateExecutionResourcesAsync(
+				ProviderType.Copilot,
+				new Project
+				{
+					Name = "Copilot App",
+					WorkingPath = workingDirectory,
+					TeamAssignments =
+					[
+						new ProjectTeamRole
+						{
+							TeamRoleId = Guid.NewGuid(),
+							IsEnabled = true,
+							TeamRole = new TeamRole
+							{
+								Id = Guid.NewGuid(),
+								Name = "Code Reviewer",
+								IsEnabled = true,
+								SkillLinks =
+								[
+									new TeamRoleSkill
+									{
+										SkillId = repoMapSkill.Id,
+										Skill = repoMapSkill
+									}
+								]
+							}
+						}
+					],
+					Environments =
+					[
+						new ProjectEnvironment
+						{
+							Name = "Production",
+							Type = EnvironmentType.Web,
+							Url = "https://app.example.com",
+							IsEnabled = true,
+							IsPrimary = true
+						}
+					]
+				},
+				workingDirectory);
+
+			Assert.NotNull(resources);
+			Assert.NotNull(resources!.ConfigFilePath);
+
+			using var document = JsonDocument.Parse(await File.ReadAllTextAsync(resources.ConfigFilePath!));
+			var mcpServers = document.RootElement.GetProperty("mcpServers");
+
+			Assert.False(mcpServers.TryGetProperty("playwright", out _));
+			Assert.False(mcpServers.TryGetProperty("repo-map", out _));
+			Assert.True(mcpServers.TryGetProperty("playwright-1", out var playwrightServer));
+			Assert.True(mcpServers.TryGetProperty("repo-map-1", out var repoMapServer));
+			Assert.Equal("npx", playwrightServer.GetProperty("command").GetString());
+			Assert.Equal("vibeswarm-skill", repoMapServer.GetProperty("command").GetString());
+			Assert.Equal(2, mcpServers.EnumerateObject().Count());
+		}
+		finally
+		{
+			service.CleanupExecutionResources(resources);
+			if (Directory.Exists(workingDirectory))
+			{
+				Directory.Delete(workingDirectory, recursive: true);
+			}
+		}
+	}
+
+	[Fact]
 	public async Task GenerateExecutionResourcesAsync_StoresPlaywrightArtifactsOutsideWorkingDirectory_AndCleansThemUp()
 	{
 		var service = new McpConfigService(new FakeSkillService());
