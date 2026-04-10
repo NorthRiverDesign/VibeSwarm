@@ -7,6 +7,70 @@ namespace VibeSwarm.Shared.Services;
 public class SettingsService : ISettingsService
 {
 	private readonly VibeSwarmDbContext _dbContext;
+	private const string LegacyDefaultIdeaExpansionPromptTemplate =
+		"""
+		You are a staff-level software engineer turning a rough product idea into an implementation-ready specification.
+
+		## Feature Idea
+		{{idea}}
+
+		## Instructions
+		1. Explore the codebase, adjacent workflows, reusable components, and tests before deciding on the solution. Use subagents when they help you investigate in parallel.
+		2. Make pragmatic assumptions from repository patterns and choose the option that best fits the current system.
+		3. Return concise markdown with these sections: Overview, User Flows, Affected Areas, Implementation Plan, Edge Cases, Acceptance Criteria.
+		4. Keep it concrete and brief. No code samples. Do not mention providers, models, or attribution.
+		""";
+	private const string LegacyDefaultIdeaImplementationPromptTemplate =
+		"""
+		You are a staff-level software engineer implementing a feature directly from a product idea.
+
+		## Feature Idea
+		{{idea}}
+
+		## Instructions
+		1. Explore the codebase, adjacent flows, tests, and reusable components before editing. Use subagents when they will speed up research or parallel analysis.
+		2. Work in a tight inspect -> plan -> implement -> verify loop. Keep the plan lightweight and update it as you learn.
+		3. Prefer the simplest solution that fully satisfies the idea. Reuse existing patterns, helpers, and components before introducing new ones.
+		4. Make pragmatic assumptions from repository patterns and choose the option that best fits the current system.
+		5. Deliver the feature end-to-end with the needed UX, validation, persistence, error handling, and tests. Fix the root cause, not just the first visible symptom.
+		6. Operate like an autonomous CI coding job: complete the requested work, run the relevant verification, and leave the repository in a working state before finishing.
+		7. Keep changes scoped to the request, handle edge cases, and preserve existing behavior unless the idea requires a change.
+		8. Do not mention or attribute the work to any provider, model, or CLI tool.
+
+		Implement this feature now without first writing a separate specification or stopping at a plan-only response.
+
+		When you are finished, end your response with a short summary in this exact format:
+		<commit-summary>
+		A concise one-line description of what was implemented (max 72 chars)
+		</commit-summary>
+		""";
+	private const string LegacyDefaultApprovedIdeaImplementationPromptTemplate =
+		"""
+		You are a staff-level software engineer implementing an approved specification.
+
+		## Original Idea
+		{{idea}}
+
+		## Detailed Specification
+		{{specification}}
+
+		## Instructions
+		1. Explore the codebase, adjacent flows, tests, and reusable components before editing. Use subagents when they will speed up research or parallel analysis.
+		2. Use the approved specification as the source of truth, then fill in missing details from repository patterns.
+		3. Work in a tight inspect -> plan -> implement -> verify loop. Keep the plan lightweight and update it as you learn.
+		4. Prefer the simplest solution that fully satisfies the specification. Reuse existing patterns, helpers, and components before introducing new ones.
+		5. Deliver the feature end-to-end with the needed UX, validation, persistence, error handling, and tests. Fix the root cause, not just the first visible symptom.
+		6. Operate like an autonomous CI coding job: complete the requested work, run the relevant verification, and leave the repository in a working state before finishing.
+		7. Keep changes scoped, handle edge cases, and preserve existing behavior unless the specification requires a change.
+		8. Do not mention or attribute the work to any provider, model, or CLI tool.
+
+		Implement this feature now.
+
+		When you are finished, end your response with a short summary in this exact format:
+		<commit-summary>
+		A concise one-line description of what was implemented (max 72 chars)
+		</commit-summary>
+		""";
 
 	public SettingsService(VibeSwarmDbContext dbContext)
 	{
@@ -42,9 +106,18 @@ public class SettingsService : ISettingsService
 			var normalizedTimeZoneId = NormalizeTimeZoneId(settings.TimeZoneId);
 			var normalizedRetentionDays = NormalizeCriticalErrorLogRetentionDays(settings.CriticalErrorLogRetentionDays);
 			var normalizedMaxEntries = NormalizeCriticalErrorLogMaxEntries(settings.CriticalErrorLogMaxEntries);
-			var normalizedIdeaExpansionPromptTemplate = NormalizePromptTemplate(settings.IdeaExpansionPromptTemplate, PromptBuilder.DefaultIdeaExpansionPromptTemplate);
-			var normalizedIdeaImplementationPromptTemplate = NormalizePromptTemplate(settings.IdeaImplementationPromptTemplate, PromptBuilder.DefaultIdeaImplementationPromptTemplate);
-			var normalizedApprovedIdeaImplementationPromptTemplate = NormalizePromptTemplate(settings.ApprovedIdeaImplementationPromptTemplate, PromptBuilder.DefaultApprovedIdeaImplementationPromptTemplate);
+			var normalizedIdeaExpansionPromptTemplate = NormalizePromptTemplate(
+				settings.IdeaExpansionPromptTemplate,
+				PromptBuilder.DefaultIdeaExpansionPromptTemplate,
+				LegacyDefaultIdeaExpansionPromptTemplate);
+			var normalizedIdeaImplementationPromptTemplate = NormalizePromptTemplate(
+				settings.IdeaImplementationPromptTemplate,
+				PromptBuilder.DefaultIdeaImplementationPromptTemplate,
+				LegacyDefaultIdeaImplementationPromptTemplate);
+			var normalizedApprovedIdeaImplementationPromptTemplate = NormalizePromptTemplate(
+				settings.ApprovedIdeaImplementationPromptTemplate,
+				PromptBuilder.DefaultApprovedIdeaImplementationPromptTemplate,
+				LegacyDefaultApprovedIdeaImplementationPromptTemplate);
 
 			if (!string.Equals(settings.TimeZoneId, normalizedTimeZoneId, StringComparison.Ordinal) ||
 				settings.CriticalErrorLogRetentionDays != normalizedRetentionDays ||
@@ -78,9 +151,18 @@ public class SettingsService : ISettingsService
 			settings.TimeZoneId = NormalizeTimeZoneId(settings.TimeZoneId);
 			settings.CriticalErrorLogRetentionDays = NormalizeCriticalErrorLogRetentionDays(settings.CriticalErrorLogRetentionDays);
 			settings.CriticalErrorLogMaxEntries = NormalizeCriticalErrorLogMaxEntries(settings.CriticalErrorLogMaxEntries);
-			settings.IdeaExpansionPromptTemplate = NormalizePromptTemplate(settings.IdeaExpansionPromptTemplate, PromptBuilder.DefaultIdeaExpansionPromptTemplate);
-			settings.IdeaImplementationPromptTemplate = NormalizePromptTemplate(settings.IdeaImplementationPromptTemplate, PromptBuilder.DefaultIdeaImplementationPromptTemplate);
-			settings.ApprovedIdeaImplementationPromptTemplate = NormalizePromptTemplate(settings.ApprovedIdeaImplementationPromptTemplate, PromptBuilder.DefaultApprovedIdeaImplementationPromptTemplate);
+			settings.IdeaExpansionPromptTemplate = NormalizePromptTemplate(
+				settings.IdeaExpansionPromptTemplate,
+				PromptBuilder.DefaultIdeaExpansionPromptTemplate,
+				LegacyDefaultIdeaExpansionPromptTemplate);
+			settings.IdeaImplementationPromptTemplate = NormalizePromptTemplate(
+				settings.IdeaImplementationPromptTemplate,
+				PromptBuilder.DefaultIdeaImplementationPromptTemplate,
+				LegacyDefaultIdeaImplementationPromptTemplate);
+			settings.ApprovedIdeaImplementationPromptTemplate = NormalizePromptTemplate(
+				settings.ApprovedIdeaImplementationPromptTemplate,
+				PromptBuilder.DefaultApprovedIdeaImplementationPromptTemplate,
+				LegacyDefaultApprovedIdeaImplementationPromptTemplate);
 			settings.UpdatedAt = DateTime.UtcNow;
 			_dbContext.AppSettings.Add(settings);
 		}
@@ -95,9 +177,18 @@ public class SettingsService : ISettingsService
 			existing.EnableCommitAttribution = settings.EnableCommitAttribution;
 			existing.CriticalErrorLogRetentionDays = NormalizeCriticalErrorLogRetentionDays(settings.CriticalErrorLogRetentionDays);
 			existing.CriticalErrorLogMaxEntries = NormalizeCriticalErrorLogMaxEntries(settings.CriticalErrorLogMaxEntries);
-			existing.IdeaExpansionPromptTemplate = NormalizePromptTemplate(settings.IdeaExpansionPromptTemplate, PromptBuilder.DefaultIdeaExpansionPromptTemplate);
-			existing.IdeaImplementationPromptTemplate = NormalizePromptTemplate(settings.IdeaImplementationPromptTemplate, PromptBuilder.DefaultIdeaImplementationPromptTemplate);
-			existing.ApprovedIdeaImplementationPromptTemplate = NormalizePromptTemplate(settings.ApprovedIdeaImplementationPromptTemplate, PromptBuilder.DefaultApprovedIdeaImplementationPromptTemplate);
+			existing.IdeaExpansionPromptTemplate = NormalizePromptTemplate(
+				settings.IdeaExpansionPromptTemplate,
+				PromptBuilder.DefaultIdeaExpansionPromptTemplate,
+				LegacyDefaultIdeaExpansionPromptTemplate);
+			existing.IdeaImplementationPromptTemplate = NormalizePromptTemplate(
+				settings.IdeaImplementationPromptTemplate,
+				PromptBuilder.DefaultIdeaImplementationPromptTemplate,
+				LegacyDefaultIdeaImplementationPromptTemplate);
+			existing.ApprovedIdeaImplementationPromptTemplate = NormalizePromptTemplate(
+				settings.ApprovedIdeaImplementationPromptTemplate,
+				PromptBuilder.DefaultApprovedIdeaImplementationPromptTemplate,
+				LegacyDefaultApprovedIdeaImplementationPromptTemplate);
 			existing.UpdatedAt = DateTime.UtcNow;
 		}
 
@@ -127,8 +218,17 @@ public class SettingsService : ISettingsService
 			AppSettings.MinCriticalErrorLogMaxEntries,
 			AppSettings.MaxCriticalErrorLogMaxEntries);
 
-	private static string NormalizePromptTemplate(string? template, string defaultTemplate)
-		=> string.IsNullOrWhiteSpace(template)
+	private static string NormalizePromptTemplate(string? template, string defaultTemplate, params string[] legacyDefaultTemplates)
+	{
+		if (string.IsNullOrWhiteSpace(template))
+		{
+			return defaultTemplate;
+		}
+
+		var normalizedTemplate = template.Trim().ReplaceLineEndings("\n");
+		return legacyDefaultTemplates.Any(legacyDefault =>
+				string.Equals(normalizedTemplate, legacyDefault, StringComparison.Ordinal))
 			? defaultTemplate
-			: template.Trim().ReplaceLineEndings("\n");
+			: normalizedTemplate;
+	}
 }

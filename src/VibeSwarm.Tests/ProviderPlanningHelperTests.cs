@@ -31,7 +31,7 @@ public sealed class ProviderPlanningHelperTests
 		var prompt = ProviderPlanningHelper.BuildPlanningPrompt(providerType, "Implement a dashboard");
 
 		Assert.DoesNotContain("/plan", prompt, StringComparison.Ordinal);
-		Assert.StartsWith("Explore the codebase and create an implementation-ready plan", prompt, StringComparison.Ordinal);
+		Assert.StartsWith("Explore the codebase and write an implementation-ready plan", prompt, StringComparison.Ordinal);
 	}
 
 	[Theory]

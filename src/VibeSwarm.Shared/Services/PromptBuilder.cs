@@ -20,16 +20,16 @@ public static class PromptBuilder
 
 	public static string DefaultIdeaExpansionPromptTemplate =>
 		"""
-		You are a staff-level software engineer turning a rough product idea into an implementation-ready specification.
+		You are a staff-level software engineer turning a product idea into an implementation-ready specification.
 
 		## Feature Idea
 		{{idea}}
 
 		## Instructions
-		1. Explore the codebase, adjacent workflows, reusable components, and tests before deciding on the solution. Use subagents when they help you investigate in parallel.
-		2. Make pragmatic assumptions from repository patterns and choose the option that best fits the current system.
-		3. Return concise markdown with these sections: Overview, User Flows, Affected Areas, Implementation Plan, Edge Cases, Acceptance Criteria.
-		4. Keep it concrete and brief. No code samples. Do not mention providers, models, or attribution.
+		1. Inspect the codebase, related flows, reusable components, and tests first. Use subagents when they help.
+		2. Fill in missing details from repository patterns and choose the option that best fits the current system.
+		3. Return concise markdown with: Overview, User Flows, Affected Areas, Implementation Plan, Edge Cases, Acceptance Criteria.
+		4. Keep it concrete. No code samples or provider/model attribution.
 		""";
 
 	public static string DefaultIdeaImplementationPromptTemplate =>
@@ -40,16 +40,14 @@ public static class PromptBuilder
 		{{idea}}
 
 		## Instructions
-		1. Explore the codebase, adjacent flows, tests, and reusable components before editing. Use subagents when they will speed up research or parallel analysis.
-		2. Work in a tight inspect -> plan -> implement -> verify loop. Keep the plan lightweight and update it as you learn.
-		3. Prefer the simplest solution that fully satisfies the idea. Reuse existing patterns, helpers, and components before introducing new ones.
-		4. Make pragmatic assumptions from repository patterns and choose the option that best fits the current system.
-		5. Deliver the feature end-to-end with the needed UX, validation, persistence, error handling, and tests. Fix the root cause, not just the first visible symptom.
-		6. Operate like an autonomous CI coding job: complete the requested work, run the relevant verification, and leave the repository in a working state before finishing.
-		7. Keep changes scoped to the request, handle edge cases, and preserve existing behavior unless the idea requires a change.
-		8. Do not mention or attribute the work to any provider, model, or CLI tool.
+		1. Inspect the codebase, related flows, reusable components, and tests before editing. Use subagents when they help.
+		2. Fill in missing details from repository patterns and prefer the simplest solution that fully satisfies the idea.
+		3. Reuse existing patterns, helpers, and components before adding new ones.
+		4. Implement the feature end-to-end with the needed UX, validation, persistence, error handling, and tests.
+		5. Keep changes scoped, preserve existing behavior unless the idea requires a change, and leave the repository in a working state.
+		6. Do not mention or attribute the work to any provider, model, or CLI tool.
 
-		Implement this feature now without first writing a separate specification or stopping at a plan-only response.
+		Implement this feature now without first writing a separate specification.
 
 		When you are finished, end your response with a short summary in this exact format:
 		<commit-summary>
@@ -68,14 +66,12 @@ public static class PromptBuilder
 		{{specification}}
 
 		## Instructions
-		1. Explore the codebase, adjacent flows, tests, and reusable components before editing. Use subagents when they will speed up research or parallel analysis.
-		2. Use the approved specification as the source of truth, then fill in missing details from repository patterns.
-		3. Work in a tight inspect -> plan -> implement -> verify loop. Keep the plan lightweight and update it as you learn.
-		4. Prefer the simplest solution that fully satisfies the specification. Reuse existing patterns, helpers, and components before introducing new ones.
-		5. Deliver the feature end-to-end with the needed UX, validation, persistence, error handling, and tests. Fix the root cause, not just the first visible symptom.
-		6. Operate like an autonomous CI coding job: complete the requested work, run the relevant verification, and leave the repository in a working state before finishing.
-		7. Keep changes scoped, handle edge cases, and preserve existing behavior unless the specification requires a change.
-		8. Do not mention or attribute the work to any provider, model, or CLI tool.
+		1. Use the approved specification as the source of truth, then fill in missing details from repository patterns.
+		2. Inspect the codebase, related flows, reusable components, and tests before editing. Use subagents when they help.
+		3. Reuse existing patterns, helpers, and components before adding new ones.
+		4. Implement the feature end-to-end with the needed UX, validation, persistence, error handling, and tests.
+		5. Keep changes scoped, preserve existing behavior unless the specification requires a change, and leave the repository in a working state.
+		6. Do not mention or attribute the work to any provider, model, or CLI tool.
 
 		Implement this feature now.
 
@@ -194,8 +190,8 @@ public static class PromptBuilder
 		sb.AppendLine(planningOutput.Trim());
 		sb.AppendLine("</implementation_plan>");
 		sb.AppendLine();
-		sb.AppendLine("Use the implementation plan above as the approved plan for this task.");
-		sb.AppendLine("Execute the work now. Do not spend time generating another plan unless the task reveals missing information.");
+		sb.AppendLine("Treat the implementation plan above as approved.");
+		sb.AppendLine("Implement it now. Only revisit planning if execution reveals missing information.");
 		return sb.ToString().TrimEnd();
 	}
 
@@ -252,13 +248,13 @@ public static class PromptBuilder
 		if (injectEfficiencyRules)
 		{
 			sb.AppendLine("IMPORTANT RULES:");
-			sb.AppendLine("- Only perform the requested task. Do not modify unrelated files.");
-			sb.AppendLine("- Do not add comments, docstrings, or type annotations to code you did not change.");
-			sb.AppendLine("- Do not refactor or \"improve\" code beyond what was requested.");
-			sb.AppendLine("- If you encounter issues unrelated to the task, note them but do not fix them.");
+			sb.AppendLine("- Do only the requested work. Do not modify unrelated files.");
+			sb.AppendLine("- Do not add comments, docstrings, or type annotations to untouched code.");
+			sb.AppendLine("- Do not refactor beyond the request.");
+			sb.AppendLine("- If you spot unrelated issues, note them without fixing them.");
 			sb.AppendLine();
 			sb.AppendLine("BUILD VERIFICATION (CRITICAL):");
-			sb.AppendLine("- You MUST verify that your changes compile and build successfully before finishing.");
+			sb.AppendLine("- Verify the project builds before finishing.");
 
 			if (!string.IsNullOrWhiteSpace(project.BuildCommand))
 			{
@@ -266,7 +262,7 @@ public static class PromptBuilder
 			}
 			else
 			{
-				sb.AppendLine("- Run the appropriate build command for this project (e.g., dotnet build, npm run build, cargo build).");
+				sb.AppendLine("- Run the appropriate build command for this project (for example: dotnet build, npm run build, cargo build).");
 			}
 
 			if (!string.IsNullOrWhiteSpace(project.TestCommand))
@@ -274,8 +270,8 @@ public static class PromptBuilder
 				sb.AppendLine($"- Run the project test command: {project.TestCommand.Trim()}");
 			}
 
-			sb.AppendLine("- If the build or tests fail, fix the issues before completing your work.");
-			sb.AppendLine("- Never leave the project in a broken state. A failing build is unacceptable.");
+			sb.AppendLine("- If the build or tests fail, fix them before finishing.");
+			sb.AppendLine("- Do not leave the repository in a broken state.");
 
 			var commitAttributionRules = CommitAttributionHelper.BuildPromptRules(providerType, enableCommitAttribution);
 			if (commitAttributionRules.Count > 0)

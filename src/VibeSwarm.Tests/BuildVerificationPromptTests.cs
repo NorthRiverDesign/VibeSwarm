@@ -18,8 +18,8 @@ public sealed class BuildVerificationPromptTests
 
 		Assert.NotNull(rules);
 		Assert.Contains("BUILD VERIFICATION (CRITICAL):", rules);
-		Assert.Contains("MUST verify", rules);
-		Assert.Contains("Never leave the project in a broken state", rules);
+		Assert.Contains("Verify the project builds before finishing.", rules);
+		Assert.Contains("Do not leave the repository in a broken state.", rules);
 	}
 
 	[Fact]
@@ -114,8 +114,8 @@ public sealed class BuildVerificationPromptTests
 		}, "1. Inspect the codebase\n2. Implement the change");
 
 		Assert.Contains("<implementation_plan>", prompt);
-		Assert.Contains("Use the implementation plan above as the approved plan for this task.", prompt);
-		Assert.Contains("Execute the work now.", prompt);
+		Assert.Contains("Treat the implementation plan above as approved.", prompt);
+		Assert.Contains("Implement it now.", prompt);
 	}
 
 	[Fact]
@@ -176,8 +176,8 @@ public sealed class BuildVerificationPromptTests
 		var prompt = PromptBuilder.BuildIdeaExpansionPrompt("Add bulk archive controls");
 
 		Assert.Contains("staff-level software engineer", prompt);
-		Assert.Contains("Use subagents when they help you investigate in parallel.", prompt);
-		Assert.Contains("Do not mention providers, models, or attribution.", prompt);
+		Assert.Contains("Inspect the codebase, related flows, reusable components, and tests first. Use subagents when they help.", prompt);
+		Assert.Contains("No code samples or provider/model attribution.", prompt);
 	}
 
 	[Fact]
@@ -186,9 +186,11 @@ public sealed class BuildVerificationPromptTests
 		var prompt = PromptBuilder.BuildIdeaImplementationPrompt("Add bulk archive controls");
 
 		Assert.Contains("staff-level software engineer", prompt);
-		Assert.Contains("Use subagents when they will speed up research or parallel analysis.", prompt);
-		Assert.Contains("inspect -> plan -> implement -> verify loop", prompt);
-		Assert.Contains("autonomous CI coding job", prompt);
+		Assert.Contains("Inspect the codebase, related flows, reusable components, and tests before editing. Use subagents when they help.", prompt);
+		Assert.Contains("Implement the feature end-to-end with the needed UX, validation, persistence, error handling, and tests.", prompt);
+		Assert.Contains("leave the repository in a working state", prompt);
+		Assert.DoesNotContain("inspect -> plan -> implement -> verify loop", prompt);
+		Assert.DoesNotContain("autonomous CI coding job", prompt);
 		Assert.Contains("Do not mention or attribute the work to any provider, model, or CLI tool.", prompt);
 	}
 
@@ -215,9 +217,11 @@ public sealed class BuildVerificationPromptTests
 			"Implement a bulk action bar.");
 
 		Assert.Contains("staff-level software engineer", prompt);
-		Assert.Contains("Use subagents when they will speed up research or parallel analysis.", prompt);
-		Assert.Contains("inspect -> plan -> implement -> verify loop", prompt);
-		Assert.Contains("autonomous CI coding job", prompt);
+		Assert.Contains("Use the approved specification as the source of truth", prompt);
+		Assert.Contains("Inspect the codebase, related flows, reusable components, and tests before editing. Use subagents when they help.", prompt);
+		Assert.Contains("leave the repository in a working state", prompt);
+		Assert.DoesNotContain("inspect -> plan -> implement -> verify loop", prompt);
+		Assert.DoesNotContain("autonomous CI coding job", prompt);
 		Assert.Contains("Do not mention or attribute the work to any provider, model, or CLI tool.", prompt);
 	}
 }

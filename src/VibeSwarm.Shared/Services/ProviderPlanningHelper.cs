@@ -33,22 +33,22 @@ public static class ProviderPlanningHelper
 			: requestDescription.Trim();
 
 		var sb = new StringBuilder();
-		sb.AppendLine("Explore the codebase and create an implementation-ready plan for the request below.");
-		sb.AppendLine("This is a read-only planning phase. Do not edit files, run shell commands, or make commits.");
-		sb.AppendLine("A separate execution agent will implement the plan once it is complete.");
+		sb.AppendLine("Explore the codebase and write an implementation-ready plan for the request below.");
+		sb.AppendLine("Read-only planning only. Do not edit files, run shell commands, or make commits.");
+		sb.AppendLine("A separate execution agent will implement the approved plan.");
 		sb.AppendLine();
 		sb.AppendLine("## Request");
 		sb.AppendLine(description);
 		sb.AppendLine();
-		sb.AppendLine("## Planning Requirements");
-		sb.AppendLine("1. Overview: Summarize the intended outcome");
-		sb.AppendLine("2. User Experience: Describe the expected user-visible behavior");
-		sb.AppendLine("3. Components: Identify the files, services, models, and UI surfaces involved");
-		sb.AppendLine("4. Implementation Steps: Outline a practical build order");
-		sb.AppendLine("5. Edge Cases: Call out important validation, failure, and empty-state scenarios");
-		sb.AppendLine("6. Verification: List the build and test checks that should confirm completion");
+		sb.AppendLine("## Plan");
+		sb.AppendLine("1. Outcome");
+		sb.AppendLine("2. User Experience");
+		sb.AppendLine("3. Affected Areas");
+		sb.AppendLine("4. Implementation Steps");
+		sb.AppendLine("5. Edge Cases");
+		sb.AppendLine("6. Verification");
 		sb.AppendLine();
-		sb.AppendLine("Return only the plan/specification. Do not implement the feature and do not include code samples.");
+		sb.AppendLine("Return only the plan. Do not implement the feature or include code samples.");
 		return sb.ToString().TrimEnd();
 	}
 

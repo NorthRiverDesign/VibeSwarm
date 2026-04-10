@@ -1763,7 +1763,7 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 
 		Assert.NotNull(job);
 		Assert.Contains("You are a staff-level software engineer implementing a feature directly from a product idea.", job!.GoalPrompt);
-		Assert.Contains("Operate like an autonomous CI coding job", job.GoalPrompt);
+		Assert.Contains("Implement the feature end-to-end with the needed UX, validation, persistence, error handling, and tests.", job.GoalPrompt);
 		Assert.Contains("Do not mention or attribute the work to any provider, model, or CLI tool.", job.GoalPrompt);
 		Assert.DoesNotContain("Begin by expanding this idea into a detailed specification, then implement it.", job.GoalPrompt);
 	}
@@ -1877,7 +1877,7 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 
 		Assert.NotNull(job);
 		Assert.Contains("## Detailed Specification", job!.GoalPrompt);
-		Assert.Contains("Operate like an autonomous CI coding job", job.GoalPrompt);
+		Assert.Contains("Use the approved specification as the source of truth", job.GoalPrompt);
 		Assert.Contains(idea.ExpandedDescription, job.GoalPrompt);
 		Assert.DoesNotContain("Work directly from the idea below", job.GoalPrompt);
 	}
@@ -3124,7 +3124,7 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		Assert.Contains("Overview: Add project planning controls.", result.ExpandedDescription);
 		Assert.NotNull(providerInstance.LastExecutePrompt);
 		Assert.DoesNotContain("/plan", providerInstance.LastExecutePrompt!, StringComparison.Ordinal);
-		Assert.StartsWith("Explore the codebase and create an implementation-ready plan", providerInstance.LastExecutePrompt!, StringComparison.Ordinal);
+		Assert.StartsWith("Explore the codebase and write an implementation-ready plan", providerInstance.LastExecutePrompt!, StringComparison.Ordinal);
 		Assert.Equal(project.PlanningModelId, providerInstance.LastExecutionOptions?.Model);
 		Assert.Equal(project.PlanningReasoningEffort, providerInstance.LastExecutionOptions?.ReasoningEffort);
 		Assert.NotNull(providerInstance.LastExecutionOptions?.DisallowedTools);
