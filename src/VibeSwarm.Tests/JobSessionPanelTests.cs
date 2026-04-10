@@ -930,6 +930,8 @@ public sealed class JobSessionPanelTests
 		Assert.Contains("1 message", cut.Markup);
 		Assert.Contains("Ship the requested feature.", cut.Markup);
 		Assert.Contains("Goal", cut.Markup);
+		Assert.DoesNotContain("overflow-hidden", cut.Find(".card-body").ClassName);
+		Assert.Equal("static", cut.Find("button[title='Goal prompt actions']").GetAttribute("data-bs-display"));
 
 		cut.Find("button[title='Copy prompt']").Click();
 
