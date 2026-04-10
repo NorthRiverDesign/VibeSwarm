@@ -1,0 +1,80 @@
+@if (IsLoading)
+{
+	<LoadingSpinner />
+}
+else if (Providers.Count == 0)
+{
+	<EmptyState Icon="hdd-network" Title="No inference providers"
+				Message="Set up Ollama, Grok, or another inference provider for AI tasks like idea generation and commit messages." />
+}
+else
+{
+	<div class="list-group mb-4">
+		@foreach (var provider in Providers)
+		{
+			var isHealthy = HealthStatus.GetValueOrDefault(provider.Id);
+			var healthChecked = HealthChecked.Contains(provider.Id);
+
+			<div class="list-group-item d-flex flex-column flex-md-row align-items-md-start gap-2 gap-md-3 p-3 hover-bg-tertiary">
+				<div class="flex-grow-1 min-width-0">
+					<div class="d-flex align-items-center gap-2 flex-wrap">
+						<span class="fw-semibold">
+							<i class="bi @GetProviderIcon(provider.ProviderType) me-1"></i>@provider.Name
+						</span>
+						<span class="badge bg-body-tertiary text-body-secondary">@provider.ProviderType</span>
+						@if (isHealthy)
+						{
+							<span class="badge bg-success-subtle text-success-emphasis">
+								<i class="bi bi-check-circle me-1"></i>Connected
+							</span>
+						}
+						else if (healthChecked)
+						{
+							<span class="badge bg-danger-subtle text-danger-emphasis">
+								<i class="bi bi-x-circle me-1"></i>Disconnected
+							</span>
+						}
+						@if (!provider.IsEnabled)
+						{
+							<span class="badge bg-warning-subtle text-warning-emphasis">Disabled</span>
+						}
+					</div>
+					<div class="small text-body-secondary mt-1 font-monospace text-truncate">@provider.Endpoint</div>
+				</div>
+				<div class="d-flex flex-wrap gap-2 flex-shrink-0 align-items-center">
+					<ActionButton Icon="pencil" Text="Edit" Size="ActionButton.ButtonSize.Small" HideTextOnMobile="true"
+								  OnClick="@(() => OnEditProvider.InvokeAsync(provider))" />
+					<ActionButton Icon="trash" Text="Delete" Size="ActionButton.ButtonSize.Small"
+								  Style="ActionButton.ButtonStyle.Danger" HideTextOnMobile="true"
+								  OnClick="@(() => OnDeleteProvider.InvokeAsync(provider))" />
+				</div>
+			</div>
+		}
+	</div>
+}
+
+@code {
+	[Parameter]
+	public bool IsLoading { get; set; }
+
+	[Parameter, EditorRequired]
+	public IReadOnlyList<InferenceProvider> Providers { get; set; } = [];
+
+	[Parameter]
+	public IReadOnlyDictionary<Guid, bool> HealthStatus { get; set; } = new Dictionary<Guid, bool>();
+
+	[Parameter]
+	public IReadOnlyCollection<Guid> HealthChecked { get; set; } = Array.Empty<Guid>();
+
+	[Parameter]
+	public EventCallback<InferenceProvider> OnEditProvider { get; set; }
+
+	[Parameter]
+	public EventCallback<InferenceProvider> OnDeleteProvider { get; set; }
+
+	private static string GetProviderIcon(InferenceProviderType type) => type switch
+	{
+		InferenceProviderType.Grok => "bi-cloud",
+		_ => "bi-hdd-network"
+	};
+}

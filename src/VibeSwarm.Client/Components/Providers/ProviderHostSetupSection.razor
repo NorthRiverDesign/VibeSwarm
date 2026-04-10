@@ -1,0 +1,265 @@
+<div class="d-flex flex-column gap-4">
+	<div>
+		<div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+			<h5 class="fw-semibold mb-0">Host Setup</h5>
+			<ActionButton Icon="arrow-repeat" Text="Re-scan Host" OnClick="OnRefreshStatuses"
+						  IsLoading="IsRefreshing" />
+		</div>
+		<div class="row g-2 mb-3">
+			<div class="col-6 col-xl-3">
+				<StatItem Label="Primary CLIs" Value="@Statuses.Count.ToString()" />
+			</div>
+			<div class="col-6 col-xl-3">
+				<StatItem Label="Installed" Value="@Statuses.Count(status => status.IsInstalled).ToString()" />
+			</div>
+			<div class="col-6 col-xl-3">
+				<StatItem Label="Auth Ready" Value="@Statuses.Count(status => status.IsAuthenticated).ToString()" />
+			</div>
+			<div class="col-6 col-xl-3">
+				<StatItem Label="Configured" Value="@Statuses.Sum(status => status.ConfiguredProviders.Count).ToString()" />
+			</div>
+		</div>
+
+		@if (IsLoading)
+		{
+			<LoadingSpinner Text="Loading host setup..." />
+		}
+		else if (Statuses.Count > 0 && ActiveStatus != null)
+		{
+			var providersForType = GetProvidersForType(ActiveStatus.ProviderType);
+
+			<div class="overflow-x-auto overflow-y-hidden pb-1">
+				<ul class="nav nav-tabs flex-nowrap mb-3" role="tablist">
+					@foreach (var status in Statuses)
+					{
+						<li class="nav-item" role="presentation">
+							<button type="button" role="tab"
+									class="nav-link text-nowrap @(IsActiveStatus(status) ? "active" : "")"
+									@onclick="() => SetActiveTab(status.ProviderType)">
+								<i class="bi bi-@GetProviderTypeIcon(status.ProviderType) me-1"></i>
+								@status.DisplayName
+								@if (status.IsInstalled)
+								{
+									<i class="bi bi-check2-circle-fill text-success ms-1 ms-sm-2 flex-shrink-0"
+									   title="Installed" aria-label="Installed"></i>
+								}
+							</button>
+						</li>
+					}
+				</ul>
+			</div>
+
+			<div class="row g-3">
+				<div class="col-12 col-lg-4">
+					<CommonProviderSetupCard Status="ActiveStatus"
+											 IsInstalling="@(InstallingProviderType == ActiveStatus.ProviderType)"
+											 IsSavingAuthentication="@(SavingAuthenticationProviderType == ActiveStatus.ProviderType)"
+											 OnInstall="OnInstallProvider"
+											 OnSaveAuthentication="OnSaveAuthentication" />
+				</div>
+				<div class="col-12 col-lg-8">
+					<div class="card h-100">
+						<div class="card-body d-flex flex-column gap-3">
+							<div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+								<h6 class="fw-semibold mb-0">Connections</h6>
+								<div class="d-flex flex-wrap gap-2">
+									@foreach (var supportedMode in GetSupportedModes(ActiveStatus.ProviderType))
+									{
+										<ActionButton Icon="@GetConnectionModeIcon(supportedMode)"
+													  Text="@($"Add {supportedMode}")"
+													  Title="@($"Add {ActiveStatus.DisplayName} {supportedMode} connection")"
+													  Size="ActionButton.ButtonSize.Small"
+													  OnClick="@(() => HandleAddConnection(ActiveStatus.ProviderType, supportedMode))" />
+									}
+								</div>
+							</div>
+							@if (providersForType.Count == 0)
+							{
+								<div class="rounded-3 bg-body-tertiary p-3 small text-body-secondary">
+									No @ActiveStatus.DisplayName connections yet.
+								</div>
+							}
+							else
+							{
+								<div class="list-group">
+									@foreach (var provider in providersForType)
+									{
+										<ProviderConnectionListItem Provider="provider"
+																	Models="GetProviderModels(provider.Id)"
+																	UsageSummary="GetUsageSummary(provider.Id)"
+																	TestResult="GetTestResult(provider.Id)"
+																	RefreshModelsError="GetRefreshModelsError(provider.Id)"
+																	IsTesting="@(TestingId == provider.Id)"
+																	IsRefreshingModels="@(RefreshingModelsId == provider.Id)"
+																	IsUpdatingCli="@(UpdatingCliId == provider.Id)"
+																	OnToggleEnabled="OnToggleEnabled"
+																	OnTestConnection="OnTestConnection"
+																	OnRefreshModels="OnRefreshModels"
+																	OnUpdateCli="OnUpdateCli"
+																	OnShowSelectDefaultModel="OnShowSelectDefaultModel"
+																	OnMakeDefault="OnMakeDefault"
+																	OnEditProvider="OnEditProvider"
+																	OnDeleteProvider="OnDeleteProvider" />
+									}
+								</div>
+							}
+						</div>
+					</div>
+				</div>
+			</div>
+		}
+	</div>
+</div>
+
+@code {
+	[Parameter]
+	public bool IsLoading { get; set; }
+
+	[Parameter, EditorRequired]
+	public IReadOnlyList<CommonProviderSetupStatus> Statuses { get; set; } = [];
+
+	[Parameter, EditorRequired]
+	public IReadOnlyList<Provider> Providers { get; set; } = [];
+
+	[Parameter]
+	public string ActiveProviderTab { get; set; } = string.Empty;
+
+	[Parameter]
+	public EventCallback<string> ActiveProviderTabChanged { get; set; }
+
+	[Parameter]
+	public bool IsRefreshing { get; set; }
+
+	[Parameter]
+	public ProviderType? InstallingProviderType { get; set; }
+
+	[Parameter]
+	public ProviderType? SavingAuthenticationProviderType { get; set; }
+
+	[Parameter]
+	public IReadOnlyDictionary<Guid, List<ProviderModel>> ProviderModels { get; set; } = new Dictionary<Guid, List<ProviderModel>>();
+
+	[Parameter]
+	public IReadOnlyDictionary<Guid, ProviderUsageSummary> UsageSummaries { get; set; } = new Dictionary<Guid, ProviderUsageSummary>();
+
+	[Parameter]
+	public IReadOnlyDictionary<Guid, ConnectionTestResult> TestResults { get; set; } = new Dictionary<Guid, ConnectionTestResult>();
+
+	[Parameter]
+	public IReadOnlyDictionary<Guid, string> RefreshModelsErrors { get; set; } = new Dictionary<Guid, string>();
+
+	[Parameter]
+	public Guid? TestingId { get; set; }
+
+	[Parameter]
+	public Guid? RefreshingModelsId { get; set; }
+
+	[Parameter]
+	public Guid? UpdatingCliId { get; set; }
+
+	[Parameter]
+	public EventCallback OnRefreshStatuses { get; set; }
+
+	[Parameter]
+	public EventCallback<ProviderType> OnInstallProvider { get; set; }
+
+	[Parameter]
+	public EventCallback<CommonProviderSetupRequest> OnSaveAuthentication { get; set; }
+
+	[Parameter]
+	public EventCallback<(ProviderType ProviderType, ProviderConnectionMode ConnectionMode)> OnAddConnection { get; set; }
+
+	[Parameter]
+	public EventCallback<Provider> OnToggleEnabled { get; set; }
+
+	[Parameter]
+	public EventCallback<Provider> OnTestConnection { get; set; }
+
+	[Parameter]
+	public EventCallback<Provider> OnRefreshModels { get; set; }
+
+	[Parameter]
+	public EventCallback<Provider> OnUpdateCli { get; set; }
+
+	[Parameter]
+	public EventCallback<Provider> OnShowSelectDefaultModel { get; set; }
+
+	[Parameter]
+	public EventCallback<Provider> OnMakeDefault { get; set; }
+
+	[Parameter]
+	public EventCallback<Provider> OnEditProvider { get; set; }
+
+	[Parameter]
+	public EventCallback<Provider> OnDeleteProvider { get; set; }
+
+	private CommonProviderSetupStatus? ActiveStatus =>
+		Statuses.FirstOrDefault(status => string.Equals(status.ProviderType.ToString(), ActiveProviderTab, StringComparison.Ordinal))
+		?? Statuses.FirstOrDefault();
+
+	private bool IsActiveStatus(CommonProviderSetupStatus status)
+	{
+		return string.Equals(status.ProviderType.ToString(), ActiveStatus?.ProviderType.ToString(), StringComparison.Ordinal);
+	}
+
+	private Task SetActiveTab(ProviderType providerType)
+	{
+		return ActiveProviderTabChanged.InvokeAsync(providerType.ToString());
+	}
+
+	private Task HandleAddConnection(ProviderType providerType, ProviderConnectionMode connectionMode)
+	{
+		return OnAddConnection.InvokeAsync((providerType, connectionMode));
+	}
+
+	private List<Provider> GetProvidersForType(ProviderType providerType)
+	{
+		return Providers
+			.Where(provider => provider.Type == providerType)
+			.OrderByDescending(provider => provider.IsDefault)
+			.ThenByDescending(provider => provider.IsEnabled)
+			.ThenBy(provider => provider.Name, StringComparer.OrdinalIgnoreCase)
+			.ToList();
+	}
+
+	private IReadOnlyList<ProviderModel> GetProviderModels(Guid providerId)
+	{
+		return ProviderModels.TryGetValue(providerId, out var models) ? models : [];
+	}
+
+	private ProviderUsageSummary? GetUsageSummary(Guid providerId)
+	{
+		return UsageSummaries.TryGetValue(providerId, out var summary) ? summary : null;
+	}
+
+	private ConnectionTestResult? GetTestResult(Guid providerId)
+	{
+		return TestResults.TryGetValue(providerId, out var result) ? result : null;
+	}
+
+	private string? GetRefreshModelsError(Guid providerId)
+	{
+		return RefreshModelsErrors.TryGetValue(providerId, out var error) ? error : null;
+	}
+
+	private static IReadOnlyList<ProviderConnectionMode> GetSupportedModes(ProviderType providerType)
+	{
+		return ProviderCapabilities.GetSupportedModes(providerType);
+	}
+
+	private static string GetProviderTypeIcon(ProviderType type) => type switch
+	{
+		ProviderType.OpenCode => "code-slash",
+		ProviderType.Claude => "robot",
+		ProviderType.Copilot => "github",
+		_ => "cpu"
+	};
+
+	private static string GetConnectionModeIcon(ProviderConnectionMode mode) => mode switch
+	{
+		ProviderConnectionMode.CLI => "terminal",
+		ProviderConnectionMode.REST => "globe",
+		ProviderConnectionMode.SDK => "box",
+		_ => "plug"
+	};
+}

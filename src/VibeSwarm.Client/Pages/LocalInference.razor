@@ -11,143 +11,26 @@
 	</Actions>
 </PageHeader>
 
-@if (_isLoading)
-{
-	<LoadingSpinner />
-}
-else if (!_providers.Any())
-{
-	<EmptyState Icon="hdd-network" Title="No inference providers"
-				Message="Set up Ollama, Grok, or another inference provider for AI tasks like idea generation and commit messages." />
-}
-else
-{
-	<div class="list-group mb-4">
-		@foreach (var provider in _providers)
-		{
-			var isHealthy = _healthStatus.GetValueOrDefault(provider.Id);
-			var healthChecked = _healthChecked.Contains(provider.Id);
-			<div class="list-group-item d-flex flex-column flex-md-row align-items-md-start gap-2 gap-md-3 p-3 hover-bg-tertiary">
-				<div class="flex-grow-1 min-width-0">
-					<div class="d-flex align-items-center gap-2 flex-wrap">
-						<span class="fw-semibold">
-							<i class="bi @GetProviderIcon(provider.ProviderType) me-1"></i>@provider.Name
-						</span>
-						<span class="badge bg-body-tertiary text-body-secondary">@provider.ProviderType</span>
-						@if (isHealthy)
-						{
-							<span class="badge bg-success-subtle text-success-emphasis">
-								<i class="bi bi-check-circle me-1"></i>Connected
-							</span>
-						}
-						else if (healthChecked)
-						{
-							<span class="badge bg-danger-subtle text-danger-emphasis">
-								<i class="bi bi-x-circle me-1"></i>Disconnected
-							</span>
-						}
-						@if (!provider.IsEnabled)
-						{
-							<span class="badge bg-warning-subtle text-warning-emphasis">Disabled</span>
-						}
-					</div>
-					<div class="small text-body-secondary mt-1 font-monospace text-truncate">@provider.Endpoint</div>
-				</div>
-				<div class="d-flex flex-wrap gap-2 flex-shrink-0 align-items-center">
-					<ActionButton Icon="pencil" Text="Edit" Size="ActionButton.ButtonSize.Small" HideTextOnMobile="true"
-								  OnClick="@(() => EditProvider(provider))" />
-					<ActionButton Icon="trash" Text="Delete" Size="ActionButton.ButtonSize.Small"
-								  Style="ActionButton.ButtonStyle.Danger" HideTextOnMobile="true"
-								  OnClick="@(() => ShowDeleteConfirmation(provider))" />
-				</div>
-			</div>
-		}
-	</div>
-}
+<InferenceProvidersSection IsLoading="@_isLoading"
+						   Providers="_providers"
+						   HealthStatus="_healthStatus"
+						   HealthChecked="_healthChecked"
+						   OnEditProvider="EditProvider"
+						   OnDeleteProvider="ShowDeleteConfirmation" />
 
-@if (_providers.Any())
-{
-	<div class="card">
-		<div class="card-body">
-			<h6 class="fw-semibold mb-3">
-				<i class="bi bi-chat-square-dots me-2"></i>Test Inference
-			</h6>
-			<div class="row g-3 mb-3">
-				<div class="col-12 col-lg-3">
-					<label for="testProvider" class="form-label">Provider</label>
-					<select id="testProvider" class="form-select" value="@(_testProviderId?.ToString() ?? string.Empty)" @onchange="OnTestProviderChanged">
-						@foreach (var provider in _providers.Where(p => p.IsEnabled))
-						{
-							<option value="@provider.Id">@provider.Name</option>
-						}
-					</select>
-				</div>
-				<div class="col-12 col-lg-4">
-					<label for="testModel" class="form-label">Model</label>
-					<select id="testModel" class="form-select" @bind="_selectedTestModelId" disabled="@(_isLoadingTestModels || !_testModels.Any())">
-						<option value="">@(_isLoadingTestModels ? "Loading..." : "Use provider default model")</option>
-						@foreach (var model in _testModels)
-						{
-							<option value="@model.ModelId">
-								@(model.DisplayName ?? model.ModelId)
-								@if (model.IsDefault)
-								{
-									@(" (Default)")
-								}
-							</option>
-						}
-					</select>
-					<div class="form-text">@GetTestModelHelpText()</div>
-				</div>
-				<div class="col-12 col-lg-5">
-					<label for="testPrompt" class="form-label">Prompt</label>
-					<textarea id="testPrompt" class="form-control font-monospace" rows="3"
-						@bind="_testPrompt" placeholder="Enter a test prompt..."></textarea>
-				</div>
-			</div>
-			<button type="button" class="btn btn-primary"
-				@onclick="TestGeneration"
-				disabled="@(_isTesting || string.IsNullOrWhiteSpace(_testPrompt))">
-				@if (_isTesting)
-				{
-					<span class="spinner-border spinner-border-sm me-1" role="status"></span>
-					<span>Sending...</span>
-				}
-				else
-				{
-					<i class="bi bi-send me-1"></i>
-					<span>Send</span>
-				}
-			</button>
-			@if (_testResponse != null)
-			{
-				<hr />
-				@if (_testResponse.Success)
-				{
-					<div class="d-flex flex-wrap gap-3 small text-body-secondary mb-2">
-						@if (!string.IsNullOrEmpty(_testResponse.ModelUsed))
-						{
-							<span><i class="bi bi-cpu me-1"></i>@_testResponse.ModelUsed</span>
-						}
-						@if (_testResponse.DurationMs.HasValue)
-						{
-							<span><i class="bi bi-clock me-1"></i>@((_testResponse.DurationMs.Value / 1000.0).ToString("F2"))s</span>
-						}
-						@if (_testResponse.CompletionTokens.HasValue)
-						{
-							<span><i class="bi bi-hash me-1"></i>@_testResponse.CompletionTokens tokens</span>
-						}
-					</div>
-					<pre class="p-3 rounded bg-body-secondary small mb-0 white-space-pre-wrap" style="word-break:break-word;">@_testResponse.Response</pre>
-				}
-				else
-				{
-					<Alert Type="Alert.AlertType.Danger" Message="@(_testResponse.Error ?? "An unknown error occurred.")" />
-				}
-			}
-		</div>
-	</div>
-}
+<InferenceTestSection Providers="_providers"
+					  SelectedProviderId="_testProviderId"
+					  SelectedProviderIdChanged="OnTestProviderChanged"
+					  TestModels="_testModels"
+					  SelectedModelId="_selectedTestModelId"
+					  SelectedModelIdChanged="OnSelectedTestModelIdChanged"
+					  TestPrompt="_testPrompt"
+					  TestPromptChanged="OnTestPromptChanged"
+					  IsLoadingModels="_isLoadingTestModels"
+					  IsTesting="_isTesting"
+					  TestResponse="_testResponse"
+					  TestModelHelpText="@GetTestModelHelpText()"
+					  OnSubmit="TestGeneration" />
 
 <InferenceProviderModal @bind-IsVisible="_showModal" EditProvider="@_editingProvider"
 						OnSaved="HandleProviderSaved" OnCancelled="HandleModalCancelled" OnClosed="HandleModalClosed" />
@@ -332,15 +215,25 @@ else
 
 	// Test inference
 
-	private async Task OnTestProviderChanged(ChangeEventArgs e)
+	private async Task OnTestProviderChanged(Guid? providerId)
 	{
-		_testProviderId = Guid.TryParse(e.Value?.ToString(), out var providerId)
-			? providerId
-			: null;
+		_testProviderId = providerId;
 		await PersistLastTestProviderIdAsync(_testProviderId);
 		_selectedTestModelId = string.Empty;
 		_testResponse = null;
 		await LoadTestModelsAsync();
+	}
+
+	private Task OnSelectedTestModelIdChanged(string selectedModelId)
+	{
+		_selectedTestModelId = selectedModelId;
+		return Task.CompletedTask;
+	}
+
+	private Task OnTestPromptChanged(string testPrompt)
+	{
+		_testPrompt = testPrompt;
+		return Task.CompletedTask;
 	}
 
 	private async Task LoadTestModelsAsync()
@@ -488,9 +381,4 @@ else
 			: $"Leave unselected to use {defaultModel.DisplayName ?? defaultModel.ModelId}.";
 	}
 
-	private static string GetProviderIcon(InferenceProviderType type) => type switch
-	{
-		InferenceProviderType.Grok => "bi-cloud",
-		_ => "bi-hdd-network"
-	};
 }

@@ -1,0 +1,149 @@
+@if (Providers.Count > 0)
+{
+	<div class="card">
+		<div class="card-body">
+			<h6 class="fw-semibold mb-3">
+				<i class="bi bi-chat-square-dots me-2"></i>Test Inference
+			</h6>
+			<div class="row g-3 mb-3">
+				<div class="col-12 col-lg-3">
+					<label for="testProvider" class="form-label">Provider</label>
+					<select id="testProvider" class="form-select" value="@(SelectedProviderId?.ToString() ?? string.Empty)" @onchange="HandleProviderChanged">
+						@foreach (var provider in Providers.Where(provider => provider.IsEnabled))
+						{
+							<option value="@provider.Id">@provider.Name</option>
+						}
+					</select>
+				</div>
+				<div class="col-12 col-lg-4">
+					<label for="testModel" class="form-label">Model</label>
+					<select id="testModel" class="form-select" value="@SelectedModelId" @onchange="HandleModelChanged"
+							disabled="@(IsLoadingModels || TestModels.Count == 0)">
+						<option value="">@(IsLoadingModels ? "Loading..." : "Use provider default model")</option>
+						@foreach (var model in TestModels)
+						{
+							<option value="@model.ModelId">
+								@(model.DisplayName ?? model.ModelId)
+								@if (model.IsDefault)
+								{
+									@(" (Default)")
+								}
+							</option>
+						}
+					</select>
+					<div class="form-text">@TestModelHelpText</div>
+				</div>
+				<div class="col-12 col-lg-5">
+					<label for="testPrompt" class="form-label">Prompt</label>
+					<textarea id="testPrompt" class="form-control font-monospace" rows="3"
+							  value="@TestPrompt" @onchange="HandlePromptChanged" placeholder="Enter a test prompt..."></textarea>
+				</div>
+			</div>
+			<button type="button" class="btn btn-primary"
+					@onclick="HandleSubmit"
+					disabled="@(IsTesting || string.IsNullOrWhiteSpace(TestPrompt))">
+				@if (IsTesting)
+				{
+					<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+					<span>Sending...</span>
+				}
+				else
+				{
+					<i class="bi bi-send me-1"></i>
+					<span>Send</span>
+				}
+			</button>
+			@if (TestResponse != null)
+			{
+				<hr />
+				@if (TestResponse.Success)
+				{
+					<div class="d-flex flex-wrap gap-3 small text-body-secondary mb-2">
+						@if (!string.IsNullOrEmpty(TestResponse.ModelUsed))
+						{
+							<span><i class="bi bi-cpu me-1"></i>@TestResponse.ModelUsed</span>
+						}
+						@if (TestResponse.DurationMs.HasValue)
+						{
+							<span><i class="bi bi-clock me-1"></i>@((TestResponse.DurationMs.Value / 1000.0).ToString("F2"))s</span>
+						}
+						@if (TestResponse.CompletionTokens.HasValue)
+						{
+							<span><i class="bi bi-hash me-1"></i>@TestResponse.CompletionTokens tokens</span>
+						}
+					</div>
+					<pre class="p-3 rounded bg-body-secondary small mb-0 white-space-pre-wrap" style="word-break:break-word;">@TestResponse.Response</pre>
+				}
+				else
+				{
+					<Alert Type="Alert.AlertType.Danger" Message="@(TestResponse.Error ?? "An unknown error occurred.")" />
+				}
+			}
+		</div>
+	</div>
+}
+
+@code {
+	[Parameter, EditorRequired]
+	public IReadOnlyList<InferenceProvider> Providers { get; set; } = [];
+
+	[Parameter]
+	public Guid? SelectedProviderId { get; set; }
+
+	[Parameter]
+	public EventCallback<Guid?> SelectedProviderIdChanged { get; set; }
+
+	[Parameter]
+	public IReadOnlyList<InferenceModel> TestModels { get; set; } = [];
+
+	[Parameter]
+	public string SelectedModelId { get; set; } = string.Empty;
+
+	[Parameter]
+	public EventCallback<string> SelectedModelIdChanged { get; set; }
+
+	[Parameter]
+	public string TestPrompt { get; set; } = string.Empty;
+
+	[Parameter]
+	public EventCallback<string> TestPromptChanged { get; set; }
+
+	[Parameter]
+	public bool IsLoadingModels { get; set; }
+
+	[Parameter]
+	public bool IsTesting { get; set; }
+
+	[Parameter]
+	public InferenceResponse? TestResponse { get; set; }
+
+	[Parameter]
+	public string TestModelHelpText { get; set; } = string.Empty;
+
+	[Parameter]
+	public EventCallback OnSubmit { get; set; }
+
+	private Task HandleProviderChanged(ChangeEventArgs args)
+	{
+		Guid? providerId = Guid.TryParse(args.Value?.ToString(), out var parsedProviderId)
+			? parsedProviderId
+			: null;
+
+		return SelectedProviderIdChanged.InvokeAsync(providerId);
+	}
+
+	private Task HandleModelChanged(ChangeEventArgs args)
+	{
+		return SelectedModelIdChanged.InvokeAsync(args.Value?.ToString() ?? string.Empty);
+	}
+
+	private Task HandlePromptChanged(ChangeEventArgs args)
+	{
+		return TestPromptChanged.InvokeAsync(args.Value?.ToString() ?? string.Empty);
+	}
+
+	private Task HandleSubmit()
+	{
+		return OnSubmit.InvokeAsync();
+	}
+}
