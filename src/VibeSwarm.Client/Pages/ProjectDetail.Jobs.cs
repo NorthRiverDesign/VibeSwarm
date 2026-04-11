@@ -799,7 +799,7 @@ public partial class ProjectDetail
         {
             await ProjectService.UpdateAsync(Project);
             Project = await ProjectService.GetByIdAsync(ProjectId);
-            NotificationService.ShowSuccess("Environments saved successfully.");
+            NotificationService.ShowProjectSuccess(Project?.Name, "Environments saved successfully.");
         }
         catch (Exception ex)
         {
@@ -961,13 +961,13 @@ public partial class ProjectDetail
         {
             Project.IsActive = !Project.IsActive;
             await ProjectService.UpdateAsync(Project);
-            NotificationService.ShowSuccess($"{Project.Name} is now {(Project.IsActive ? "active" : "inactive")}.");
+            NotificationService.ShowProjectSuccess(Project.Name, $"Project is now {(Project.IsActive ? "active" : "inactive")}.");
             StateHasChanged();
         }
         catch (Exception ex)
         {
             Project.IsActive = !Project.IsActive; // Revert on failure
-            NotificationService.ShowError($"Error toggling project status: {ex.Message}");
+            NotificationService.ShowProjectError(Project.Name, $"Error toggling project status: {ex.Message}");
         }
     }
 
@@ -993,7 +993,7 @@ public partial class ProjectDetail
         // Reload data after a repository is created (this updates Project.GitHubRepository in UI)
         await LoadData();
         await LoadGitInfo();
-        NotificationService.ShowSuccess("GitHub repository created and linked successfully!");
+        NotificationService.ShowProjectSuccess(Project?.Name, "GitHub repository created and linked successfully!");
     }
 
     private async Task StopAllActive()

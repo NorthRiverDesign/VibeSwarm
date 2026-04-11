@@ -26,6 +26,32 @@ public sealed class NotificationFeatureTests
 	}
 
 	[Fact]
+	public void ShowProjectSuccess_UsesProjectNameAsTitle()
+	{
+		var notificationService = new NotificationService();
+
+		notificationService.ShowProjectSuccess("Demo Project", "Successfully synced with origin.");
+
+		var notification = Assert.Single(notificationService.Notifications);
+		Assert.Equal("Demo Project", notification.Title);
+		Assert.Equal(NotificationType.Success, notification.Type);
+		Assert.Equal("Successfully synced with origin.", notification.Message);
+	}
+
+	[Fact]
+	public void ShowProjectError_FallsBackToGenericTitle_WhenProjectNameMissing()
+	{
+		var notificationService = new NotificationService();
+
+		notificationService.ShowProjectError("   ", "Failed to sync with origin.");
+
+		var notification = Assert.Single(notificationService.Notifications);
+		Assert.Equal("Error", notification.Title);
+		Assert.Equal(NotificationType.Error, notification.Type);
+		Assert.Equal("Failed to sync with origin.", notification.Message);
+	}
+
+	[Fact]
 	public void ToastContainer_ViewJobButton_NavigatesToJob()
 	{
 		using var context = new BunitContext();

@@ -391,7 +391,9 @@ public partial class ProjectDetail
             await LoadBranches();
             CloseMergeBranchModal();
 
-            NotificationService.ShowSuccess(result.Output ?? $"Merged '{CurrentBranch}' into '{args.targetBranch}'.");
+            NotificationService.ShowProjectSuccess(
+                Project.Name,
+                result.Output ?? $"Merged '{CurrentBranch}' into '{args.targetBranch}'.");
         }
         catch (Exception ex)
         {
@@ -456,7 +458,7 @@ public partial class ProjectDetail
             GitOperationSuccess = true;
             CloseMergeBranchModal();
 
-            NotificationService.ShowSuccess(message);
+            NotificationService.ShowProjectSuccess(Project.Name, message);
         }
         catch (Exception ex)
         {
@@ -556,36 +558,32 @@ public partial class ProjectDetail
 
         IsGitOperationInProgress = true;
         GitOperationMessage = null;
+        GitProgressMessage = null;
         StateHasChanged();
 
         try
         {
-            var result = await VersionControlService.SyncWithOriginAsync(
-            Project.WorkingPath,
-            progressCallback: progress =>
-            {
-                GitProgressMessage = progress;
-                InvokeAsync(StateHasChanged);
-            });
+            var result = await VersionControlService.SyncWithOriginAsync(Project.WorkingPath);
 
             if (result.Success)
             {
-                GitOperationMessage = result.Output ?? $"Successfully synced with origin/{CurrentBranch}";
-                GitOperationSuccess = true;
                 CurrentCommitHash = result.CommitHash;
                 await RefreshUncommittedChangesStatus();
                 await PopulateGitHubRepositoryIfMissing();
+                NotificationService.ShowProjectSuccess(
+                    Project.Name,
+                    string.IsNullOrWhiteSpace(CurrentBranch)
+                        ? "Successfully synced with origin."
+                        : $"Successfully synced with origin/{CurrentBranch}.");
             }
             else
             {
-                GitOperationMessage = result.Error ?? "Failed to sync with origin";
-                GitOperationSuccess = false;
+                NotificationService.ShowProjectError(Project.Name, result.Error ?? "Failed to sync with origin.");
             }
         }
         catch (Exception ex)
         {
-            GitOperationMessage = $"Error syncing with origin: {ex.Message}";
-            GitOperationSuccess = false;
+            NotificationService.ShowProjectError(Project.Name, $"Error syncing with origin: {ex.Message}");
         }
         finally
         {

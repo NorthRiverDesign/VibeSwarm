@@ -298,13 +298,13 @@ else
         {
             project.IsActive = !project.IsActive;
             await ProjectService.UpdateAsync(project);
-            NotificationService.ShowSuccess($"{project.Name} is now {(project.IsActive ? "active" : "inactive")}.");
+            NotificationService.ShowProjectSuccess(project.Name, $"Project is now {(project.IsActive ? "active" : "inactive")}.");
             StateHasChanged();
         }
         catch (Exception ex)
         {
             project.IsActive = !project.IsActive; // Revert on failure
-            NotificationService.ShowError($"Error toggling project status: {ex.Message}");
+            NotificationService.ShowProjectError(project.Name, $"Error toggling project status: {ex.Message}");
         }
     }
 
@@ -401,7 +401,7 @@ else
         }
         catch (Exception ex)
         {
-            NotificationService.ShowError($"Error starting idea queue: {ex.Message}");
+            NotificationService.ShowProjectError(projectInfo.Project.Name, $"Error starting idea queue: {ex.Message}");
         }
         finally
         {
@@ -767,7 +767,9 @@ else
 
             CloseMergeBranchModal();
             await LoadProjects();
-            NotificationService.ShowSuccess(result.Output ?? $"Merged '{MergeCurrentBranch}' into '{args.targetBranch}'.");
+            NotificationService.ShowProjectSuccess(
+                _mergeProjectInfo.Project.Name,
+                result.Output ?? $"Merged '{MergeCurrentBranch}' into '{args.targetBranch}'.");
         }
         catch (Exception ex)
         {
@@ -830,7 +832,8 @@ else
             }
 
             CloseMergeBranchModal();
-            NotificationService.ShowSuccess(
+            NotificationService.ShowProjectSuccess(
+                _mergeProjectInfo.Project.Name,
                 !string.IsNullOrWhiteSpace(result.PullRequestUrl)
                     ? $"Pull request created: {result.PullRequestUrl}"
                     : result.Output ?? $"Pull request created from '{MergeCurrentBranch}' to '{args.targetBranch}'.");
@@ -885,16 +888,16 @@ else
             if (result.Success)
             {
                 await LoadProjects();
-                NotificationService.ShowSuccess($"Successfully synced {project.Name} with origin.", "Sync Complete");
+                NotificationService.ShowProjectSuccess(project.Name, "Successfully synced with origin.");
             }
             else
             {
-                NotificationService.ShowError(result.Error ?? "Failed to resync with git.", "Resync Failed");
+                NotificationService.ShowProjectError(project.Name, result.Error ?? "Failed to resync with git.");
             }
         }
         catch (Exception ex)
         {
-            NotificationService.ShowError($"Error resyncing with git: {ex.Message}", "Resync Failed");
+            NotificationService.ShowProjectError(project.Name, $"Error resyncing with git: {ex.Message}");
         }
         finally
         {

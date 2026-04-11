@@ -493,6 +493,59 @@ public sealed class ProjectsPageTests
 		Assert.DoesNotContain("Auto-commit:", cut.Markup);
 	}
 
+	[Fact]
+	public async Task ProjectsPage_ResyncWithGit_UsesProjectNameAsToastTitle()
+	{
+		using var context = new BunitContext();
+
+		var project = new ProjectWithStats
+		{
+			Project = new Project
+			{
+				Id = Guid.NewGuid(),
+				Name = "Repo Project",
+				WorkingPath = "/tmp/repo-project",
+				IsActive = true
+			},
+			Stats = new ProjectJobStats(),
+			CurrentBranch = "main"
+		};
+		var notificationService = new NotificationService();
+
+		context.Services.AddLogging();
+		context.Services.AddSingleton<IProjectService>(new FakeProjectService([project]));
+		context.Services.AddSingleton<IJobService>(new FakeJobService());
+		context.Services.AddSingleton<IIdeaService>(new FakeIdeaService());
+		context.Services.AddSingleton<IVersionControlService>(new FakeVersionControlService());
+		context.Services.AddSingleton<IProviderService>(new FakeProviderService());
+		context.Services.AddSingleton<ITeamRoleService>(new FakeTeamRoleService());
+		context.Services.AddSingleton<ISettingsService>(new FakeSettingsService());
+		context.Services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService());
+		context.Services.AddSingleton(notificationService);
+		context.Services.AddSingleton<QueuePanelStateService>();
+		context.Services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
+
+		var cut = context.Render<Projects>();
+		cut.WaitForAssertion(() => Assert.Contains("Repo Project", cut.Markup));
+
+		var resyncMethod = cut.Instance.GetType().GetMethod("ResyncWithGit", BindingFlags.Instance | BindingFlags.NonPublic);
+		Assert.NotNull(resyncMethod);
+
+		await cut.InvokeAsync(async () =>
+		{
+			var task = Assert.IsAssignableFrom<Task>(resyncMethod.Invoke(cut.Instance, [project.Project]));
+			await task;
+		});
+
+		cut.WaitForAssertion(() =>
+		{
+			var notification = Assert.Single(notificationService.Notifications);
+			Assert.Equal("Repo Project", notification.Title);
+			Assert.Equal("Successfully synced with origin.", notification.Message);
+			Assert.Equal(NotificationType.Success, notification.Type);
+		});
+	}
+
 	private static void SetPrivateProperty(object instance, string propertyName, object? value)
 	{
 		var property = instance.GetType().GetProperty(propertyName, BindingFlags.Instance | BindingFlags.NonPublic);

@@ -93,7 +93,7 @@ public partial class JobDetail : ComponentBase
             {
                 _branchName = result.BranchName ?? trimmedBranchName;
                 _showCreateBranchModal = false;
-                NotificationService.ShowSuccess($"Created and switched to branch '{_branchName}'.");
+                NotificationService.ShowProjectSuccess(Job?.Project?.Name, $"Created and switched to branch '{_branchName}'.");
             }
             else
             {
@@ -127,18 +127,18 @@ public partial class JobDetail : ComponentBase
             if (result.Success)
             {
                 await LoadBranchName();
-                NotificationService.ShowSuccess(string.IsNullOrWhiteSpace(_branchName)
+                NotificationService.ShowProjectSuccess(Job?.Project?.Name, string.IsNullOrWhiteSpace(_branchName)
                     ? "Successfully synced with origin."
                     : $"Successfully synced with origin/{_branchName}.");
             }
             else
             {
-                NotificationService.ShowError(result.Error ?? "Failed to sync with origin.");
+                NotificationService.ShowProjectError(Job?.Project?.Name, result.Error ?? "Failed to sync with origin.");
             }
         }
         catch (Exception ex)
         {
-            NotificationService.ShowError($"Error syncing with origin: {ex.Message}");
+            NotificationService.ShowProjectError(Job?.Project?.Name, $"Error syncing with origin: {ex.Message}");
         }
         finally
         {
@@ -161,11 +161,11 @@ public partial class JobDetail : ComponentBase
         {
             await VersionControlService.FetchAsync(Job.Project.WorkingPath);
             await LoadBranchName();
-            NotificationService.ShowSuccess("Branch information refreshed.");
+            NotificationService.ShowProjectSuccess(Job?.Project?.Name, "Branch information refreshed.");
         }
         catch (Exception ex)
         {
-            NotificationService.ShowError($"Failed to refresh branches: {ex.Message}");
+            NotificationService.ShowProjectError(Job?.Project?.Name, $"Failed to refresh branches: {ex.Message}");
         }
         finally
         {
@@ -190,16 +190,16 @@ public partial class JobDetail : ComponentBase
             if (result.Success)
             {
                 await LoadBranchName();
-                NotificationService.ShowSuccess("Stale remote branches pruned successfully.");
+                NotificationService.ShowProjectSuccess(Job?.Project?.Name, "Stale remote branches pruned successfully.");
             }
             else
             {
-                NotificationService.ShowError(result.Error ?? "Failed to prune stale branches.");
+                NotificationService.ShowProjectError(Job?.Project?.Name, result.Error ?? "Failed to prune stale branches.");
             }
         }
         catch (Exception ex)
         {
-            NotificationService.ShowError($"Error pruning stale branches: {ex.Message}");
+            NotificationService.ShowProjectError(Job?.Project?.Name, $"Error pruning stale branches: {ex.Message}");
         }
         finally
         {
@@ -271,7 +271,7 @@ public partial class JobDetail : ComponentBase
         }
         catch (Exception ex)
         {
-            NotificationService.ShowError($"Error checking git changes: {ex.Message}");
+            NotificationService.ShowProjectError(Job?.Project?.Name, $"Error checking git changes: {ex.Message}");
         }
         finally
         {
@@ -386,7 +386,7 @@ public partial class JobDetail : ComponentBase
                 _changesPushed = true;
                 _pushedCommitHash = result.CommitHash;
                 _branchName = result.BranchName ?? _branchName;
-                NotificationService.ShowSuccess("Changes committed and pushed successfully!");
+                NotificationService.ShowProjectSuccess(Job?.Project?.Name, "Changes committed and pushed successfully!");
 
                 if (!string.IsNullOrEmpty(result.CommitHash) && Job != null)
                 {
@@ -397,18 +397,18 @@ public partial class JobDetail : ComponentBase
             else
             {
                 _pushError = result.Error ?? "An unknown error occurred";
-                NotificationService.ShowError(_pushError);
+                NotificationService.ShowProjectError(Job?.Project?.Name, _pushError);
             }
         }
         catch (OperationCanceledException)
         {
             _pushError = "Push operation timed out. Please check your network connection and try again.";
-            NotificationService.ShowError(_pushError);
+            NotificationService.ShowProjectError(Job?.Project?.Name, _pushError);
         }
         catch (Exception ex)
         {
             _pushError = $"Unexpected error: {ex.Message}";
-            NotificationService.ShowError(_pushError);
+            NotificationService.ShowProjectError(Job?.Project?.Name, _pushError);
         }
         finally
         {
@@ -452,7 +452,7 @@ public partial class JobDetail : ComponentBase
             if (!result.Success)
             {
                 _pushError = result.Error ?? "Failed to create pull request.";
-                NotificationService.ShowError(_pushError);
+                NotificationService.ShowProjectError(Job?.Project?.Name, _pushError);
                 return;
             }
 
@@ -468,14 +468,14 @@ public partial class JobDetail : ComponentBase
                 pullRequestUrl: result.PullRequestUrl,
                 pullRequestCreatedAt: Job.PullRequestCreatedAt);
 
-            NotificationService.ShowSuccess(result.PullRequestUrl is null
+            NotificationService.ShowProjectSuccess(Job?.Project?.Name, result.PullRequestUrl is null
                 ? "Pull request created successfully."
                 : $"Pull request created: {result.PullRequestUrl}");
         }
         catch (Exception ex)
         {
             _pushError = $"Error creating pull request: {ex.Message}";
-            NotificationService.ShowError(_pushError);
+            NotificationService.ShowProjectError(Job?.Project?.Name, _pushError);
         }
         finally
         {
@@ -511,7 +511,7 @@ public partial class JobDetail : ComponentBase
             if (!result.Success)
             {
                 _pushError = result.Error ?? "Failed to merge branch.";
-                NotificationService.ShowError(_pushError);
+                NotificationService.ShowProjectError(Job?.Project?.Name, _pushError);
                 return;
             }
 
@@ -526,13 +526,14 @@ public partial class JobDetail : ComponentBase
                 commitHash: result.CommitHash,
                 mergedAt: Job.MergedAt);
 
-            NotificationService.ShowSuccess($"Merged '{Job.Branch ?? _branchName}' into '{EffectiveTargetBranch}'.");
+            var mergedBranchName = Job?.Branch ?? _branchName;
+            NotificationService.ShowProjectSuccess(Job?.Project?.Name, $"Merged '{mergedBranchName}' into '{EffectiveTargetBranch}'.");
             await LoadBranchName();
         }
         catch (Exception ex)
         {
             _pushError = $"Error merging branch: {ex.Message}";
-            NotificationService.ShowError(_pushError);
+            NotificationService.ShowProjectError(Job?.Project?.Name, _pushError);
         }
         finally
         {

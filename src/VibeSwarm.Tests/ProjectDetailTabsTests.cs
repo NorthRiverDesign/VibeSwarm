@@ -67,6 +67,35 @@ public sealed class ProjectDetailTabsTests
 		Assert.DoesNotContain("badge bg-warning text-dark", cut.Markup);
 	}
 
+	[Fact]
+	public async Task ProjectDetail_SyncWithOrigin_UsesProjectToastInsteadOfAlertMessage()
+	{
+		using var context = CreateContext(isGitRepository: true);
+		var notificationService = context.Services.GetRequiredService<NotificationService>();
+
+		var cut = context.Render<ProjectDetail>(parameters => parameters
+			.Add(component => component.ProjectId, TestProjectId));
+
+		var syncMethod = cut.Instance.GetType().GetMethod("SyncWithOrigin", BindingFlags.Instance | BindingFlags.NonPublic);
+		Assert.NotNull(syncMethod);
+
+		await cut.InvokeAsync(async () =>
+		{
+			var task = Assert.IsAssignableFrom<Task>(syncMethod.Invoke(cut.Instance, []));
+			await task;
+		});
+
+		cut.WaitForAssertion(() =>
+		{
+			var notification = Assert.Single(notificationService.Notifications);
+			Assert.Equal("Mobile Tabs Project", notification.Title);
+			Assert.StartsWith("Successfully synced with origin", notification.Message, StringComparison.Ordinal);
+			Assert.Empty(cut.FindAll(".alert-success"));
+			Assert.Empty(cut.FindAll(".alert-danger"));
+			Assert.Empty(cut.FindAll(".alert-info"));
+		});
+	}
+
 	private static BunitContext CreateContext(bool isGitRepository)
 	{
 		var context = new BunitContext();

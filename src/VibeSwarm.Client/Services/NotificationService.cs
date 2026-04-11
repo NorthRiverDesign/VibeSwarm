@@ -173,6 +173,16 @@ public class NotificationService
 		});
 	}
 
+	public void ShowProjectSuccess(string? projectName, string message, int durationMs = 5000)
+	{
+		ShowSuccess(message, ResolveContextTitle(projectName, "Success"), durationMs);
+	}
+
+	public void ShowProjectError(string? projectName, string message, int durationMs = 8000)
+	{
+		ShowError(message, ResolveContextTitle(projectName, "Error"), durationMs);
+	}
+
 	/// <summary>
 	/// Show a job completion notification
 	/// </summary>
@@ -269,6 +279,9 @@ public class NotificationService
 		}
 		OnChange?.Invoke();
 	}
+
+	private static string ResolveContextTitle(string? contextName, string fallbackTitle)
+		=> string.IsNullOrWhiteSpace(contextName) ? fallbackTitle : contextName.Trim();
 }
 
 /// <summary>
