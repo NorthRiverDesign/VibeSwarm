@@ -178,9 +178,12 @@ body:has(.app-layout) {
 	overflow: hidden;
 }
 
-/* dvh fallback — markup uses d-flex flex-column min-vh-100 */
+/* Viewport fallback — keep full-height rules in CSS so Bootstrap's 100vh utility
+   does not override iPhone-safe 100dvh sizing. */
 .app-layout {
+	min-height: 100vh;
 	min-height: 100dvh;
+	height: 100vh;
 	height: 100dvh;
 }
 
@@ -1111,6 +1114,7 @@ body.vs-modal-open .app-main {
 
 .login-layout {
 	box-sizing: border-box;
+	min-height: 100vh;
 	min-height: 100dvh;
 	padding-top: var(--vs-safe-area-top);
 	padding-bottom: var(--vs-safe-area-bottom);

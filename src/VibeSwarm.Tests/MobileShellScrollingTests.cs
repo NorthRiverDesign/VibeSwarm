@@ -9,6 +9,8 @@ public sealed class MobileShellScrollingTests
 	{
 		var layoutMarkup = File.ReadAllText(GetRepositoryPath("src", "VibeSwarm.Client", "Shared", "MainLayout.razor"));
 
+		Assert.Contains("app-layout d-flex flex-column", layoutMarkup);
+		Assert.DoesNotContain("min-vh-100", layoutMarkup);
 		Assert.Contains("app-main flex-grow-1 min-height-0 overflow-y-auto overflow-x-hidden", layoutMarkup);
 	}
 
@@ -65,15 +67,24 @@ public sealed class MobileShellScrollingTests
 	}
 
 	[Fact]
-	public void LoginPages_UseViewportSafeHeightRules()
+	public void FullHeightScreens_UseViewportSafeHeightRules()
 	{
+		var appMarkup = File.ReadAllText(GetRepositoryPath("src", "VibeSwarm.Client", "App.razor"));
+		var redirectMarkup = File.ReadAllText(GetRepositoryPath("src", "VibeSwarm.Client", "Components", "Common", "RedirectToLogin.razor"));
 		var css = File.ReadAllText(GetRepositoryPath("src", "VibeSwarm.Client", "wwwroot", "css", "site.css"));
 		var loginMarkup = File.ReadAllText(GetRepositoryPath("src", "VibeSwarm.Web", "Pages", "Login.cshtml"));
 		var setupMarkup = File.ReadAllText(GetRepositoryPath("src", "VibeSwarm.Web", "Pages", "Setup.cshtml"));
 
-		Assert.Contains("login-layout d-flex align-items-center justify-content-center min-vh-100", loginMarkup);
-		Assert.Contains("login-layout d-flex align-items-center justify-content-center min-vh-100", setupMarkup);
-		Assert.Matches(new Regex(@"\.login-layout\s*\{[\s\S]*box-sizing:\s*border-box;[\s\S]*min-height:\s*100dvh;", RegexOptions.Multiline), css);
+		Assert.Contains("login-layout d-flex align-items-center justify-content-center", appMarkup);
+		Assert.Contains("login-layout d-flex align-items-center justify-content-center", redirectMarkup);
+		Assert.Contains("login-layout d-flex align-items-center justify-content-center", loginMarkup);
+		Assert.Contains("login-layout d-flex align-items-center justify-content-center", setupMarkup);
+		Assert.DoesNotContain("min-vh-100", appMarkup);
+		Assert.DoesNotContain("min-vh-100", redirectMarkup);
+		Assert.DoesNotContain("min-vh-100", loginMarkup);
+		Assert.DoesNotContain("min-vh-100", setupMarkup);
+		Assert.Matches(new Regex(@"\.login-layout\s*\{[\s\S]*box-sizing:\s*border-box;[\s\S]*min-height:\s*100vh;[\s\S]*min-height:\s*100dvh;", RegexOptions.Multiline), css);
+		Assert.Matches(new Regex(@"\.app-layout\s*\{[\s\S]*min-height:\s*100vh;[\s\S]*min-height:\s*100dvh;[\s\S]*height:\s*100vh;[\s\S]*height:\s*100dvh;", RegexOptions.Multiline), css);
 		Assert.Contains("100dvh - var(--vs-safe-area-top) - var(--vs-safe-area-bottom)", css);
 		Assert.Matches(new Regex(@"@supports \(-webkit-touch-callout: none\)\s*\{[\s\S]*\.login-layout\s*\{[\s\S]*min-height:\s*-webkit-fill-available;", RegexOptions.Multiline), css);
 	}
