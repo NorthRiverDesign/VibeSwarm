@@ -675,6 +675,267 @@ public sealed class JobSessionPanelTests
 	}
 
 	[Fact]
+	public async Task RenderedJobSessionPanel_GroupsThreeConsecutiveToolActivitiesIntoCollapsibleSection()
+	{
+		var services = new ServiceCollection();
+		services.AddLogging();
+		services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
+
+		await using var renderer = new HtmlRenderer(services.BuildServiceProvider(), NullLoggerFactory.Instance);
+
+		var timestamp = DateTime.UtcNow;
+		var html = await renderer.Dispatcher.InvokeAsync(async () =>
+		{
+			var parameters = ParameterView.FromDictionary(new Dictionary<string, object?>
+			{
+				[nameof(JobSessionPanel.Status)] = JobStatus.Completed,
+				[nameof(JobSessionPanel.Messages)] = new List<JobMessage>
+				{
+					new()
+					{
+						Id = Guid.NewGuid(),
+						JobId = Guid.NewGuid(),
+						Role = MessageRole.ToolUse,
+						Content = "bash",
+						ToolName = "bash",
+						ToolInput = "git status --short",
+						CreatedAt = timestamp.AddSeconds(-6)
+					},
+					new()
+					{
+						Id = Guid.NewGuid(),
+						JobId = Guid.NewGuid(),
+						Role = MessageRole.ToolResult,
+						Content = "M src/VibeSwarm.Client/Components/Jobs/JobSessionPanel.razor",
+						ToolName = "bash",
+						ToolOutput = "M src/VibeSwarm.Client/Components/Jobs/JobSessionPanel.razor",
+						CreatedAt = timestamp.AddSeconds(-5)
+					},
+					new()
+					{
+						Id = Guid.NewGuid(),
+						JobId = Guid.NewGuid(),
+						Role = MessageRole.ToolUse,
+						Content = "rg",
+						ToolName = "rg",
+						ToolInput = "rg ToolUse src",
+						CreatedAt = timestamp.AddSeconds(-4)
+					},
+					new()
+					{
+						Id = Guid.NewGuid(),
+						JobId = Guid.NewGuid(),
+						Role = MessageRole.ToolResult,
+						Content = "src/VibeSwarm.Shared/Data/JobMessage.cs",
+						ToolName = "rg",
+						ToolOutput = "src/VibeSwarm.Shared/Data/JobMessage.cs",
+						CreatedAt = timestamp.AddSeconds(-3)
+					},
+					new()
+					{
+						Id = Guid.NewGuid(),
+						JobId = Guid.NewGuid(),
+						Role = MessageRole.ToolUse,
+						Content = "dotnet",
+						ToolName = "dotnet",
+						ToolInput = "dotnet test --filter JobSessionPanel",
+						CreatedAt = timestamp.AddSeconds(-2)
+					},
+					new()
+					{
+						Id = Guid.NewGuid(),
+						JobId = Guid.NewGuid(),
+						Role = MessageRole.ToolResult,
+						Content = "Passed!",
+						ToolName = "dotnet",
+						ToolOutput = "Passed!",
+						CreatedAt = timestamp.AddSeconds(-1)
+					}
+				}
+			});
+
+			var output = await renderer.RenderComponentAsync<JobSessionPanel>(parameters);
+			return output.ToHtmlString();
+		});
+
+		Assert.Contains("3 messages", html);
+		Assert.Contains("3 tool calls: bash, rg, dotnet", html);
+		Assert.Contains("data-tool-group=\"true\"", html);
+		Assert.Contains("git status --short", html);
+		Assert.Contains("rg ToolUse src", html);
+		Assert.Contains("dotnet test --filter JobSessionPanel", html);
+		Assert.DoesNotContain("<details open", html);
+	}
+
+	[Fact]
+	public async Task RenderedJobSessionPanel_DoesNotGroupTwoConsecutiveToolActivities()
+	{
+		var services = new ServiceCollection();
+		services.AddLogging();
+		services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
+
+		await using var renderer = new HtmlRenderer(services.BuildServiceProvider(), NullLoggerFactory.Instance);
+
+		var timestamp = DateTime.UtcNow;
+		var html = await renderer.Dispatcher.InvokeAsync(async () =>
+		{
+			var parameters = ParameterView.FromDictionary(new Dictionary<string, object?>
+			{
+				[nameof(JobSessionPanel.Status)] = JobStatus.Completed,
+				[nameof(JobSessionPanel.Messages)] = new List<JobMessage>
+				{
+					new()
+					{
+						Id = Guid.NewGuid(),
+						JobId = Guid.NewGuid(),
+						Role = MessageRole.ToolUse,
+						Content = "bash",
+						ToolName = "bash",
+						ToolInput = "git diff --stat",
+						CreatedAt = timestamp.AddSeconds(-4)
+					},
+					new()
+					{
+						Id = Guid.NewGuid(),
+						JobId = Guid.NewGuid(),
+						Role = MessageRole.ToolResult,
+						Content = "2 files changed",
+						ToolName = "bash",
+						ToolOutput = "2 files changed",
+						CreatedAt = timestamp.AddSeconds(-3)
+					},
+					new()
+					{
+						Id = Guid.NewGuid(),
+						JobId = Guid.NewGuid(),
+						Role = MessageRole.ToolUse,
+						Content = "rg",
+						ToolName = "rg",
+						ToolInput = "rg JobSessionPanel src",
+						CreatedAt = timestamp.AddSeconds(-2)
+					},
+					new()
+					{
+						Id = Guid.NewGuid(),
+						JobId = Guid.NewGuid(),
+						Role = MessageRole.ToolResult,
+						Content = "src/VibeSwarm.Tests/JobSessionPanelTests.cs",
+						ToolName = "rg",
+						ToolOutput = "src/VibeSwarm.Tests/JobSessionPanelTests.cs",
+						CreatedAt = timestamp.AddSeconds(-1)
+					}
+				}
+			});
+
+			var output = await renderer.RenderComponentAsync<JobSessionPanel>(parameters);
+			return output.ToHtmlString();
+		});
+
+		Assert.Contains("2 messages", html);
+		Assert.DoesNotContain("data-tool-group=\"true\"", html);
+		Assert.DoesNotContain("2 tool calls:", html);
+		Assert.Equal(2, Regex.Matches(html, "<details>").Count);
+	}
+
+	[Fact]
+	public async Task RenderedJobSessionPanel_DoesNotGroupToolActivitiesSeparatedByAssistantMessage()
+	{
+		var services = new ServiceCollection();
+		services.AddLogging();
+		services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
+
+		await using var renderer = new HtmlRenderer(services.BuildServiceProvider(), NullLoggerFactory.Instance);
+
+		var timestamp = DateTime.UtcNow;
+		var html = await renderer.Dispatcher.InvokeAsync(async () =>
+		{
+			var parameters = ParameterView.FromDictionary(new Dictionary<string, object?>
+			{
+				[nameof(JobSessionPanel.Status)] = JobStatus.Completed,
+				[nameof(JobSessionPanel.Messages)] = new List<JobMessage>
+				{
+					new()
+					{
+						Id = Guid.NewGuid(),
+						JobId = Guid.NewGuid(),
+						Role = MessageRole.ToolUse,
+						Content = "bash",
+						ToolName = "bash",
+						ToolInput = "git status --short",
+						CreatedAt = timestamp.AddSeconds(-7)
+					},
+					new()
+					{
+						Id = Guid.NewGuid(),
+						JobId = Guid.NewGuid(),
+						Role = MessageRole.ToolResult,
+						Content = "M src/VibeSwarm.Client/Components/Jobs/JobSessionPanel.razor",
+						ToolName = "bash",
+						ToolOutput = "M src/VibeSwarm.Client/Components/Jobs/JobSessionPanel.razor",
+						CreatedAt = timestamp.AddSeconds(-6)
+					},
+					new()
+					{
+						Id = Guid.NewGuid(),
+						JobId = Guid.NewGuid(),
+						Role = MessageRole.Assistant,
+						Content = "I need two more checks before making the change.",
+						CreatedAt = timestamp.AddSeconds(-5)
+					},
+					new()
+					{
+						Id = Guid.NewGuid(),
+						JobId = Guid.NewGuid(),
+						Role = MessageRole.ToolUse,
+						Content = "rg",
+						ToolName = "rg",
+						ToolInput = "rg ToolUse src",
+						CreatedAt = timestamp.AddSeconds(-4)
+					},
+					new()
+					{
+						Id = Guid.NewGuid(),
+						JobId = Guid.NewGuid(),
+						Role = MessageRole.ToolResult,
+						Content = "src/VibeSwarm.Shared/Data/JobMessage.cs",
+						ToolName = "rg",
+						ToolOutput = "src/VibeSwarm.Shared/Data/JobMessage.cs",
+						CreatedAt = timestamp.AddSeconds(-3)
+					},
+					new()
+					{
+						Id = Guid.NewGuid(),
+						JobId = Guid.NewGuid(),
+						Role = MessageRole.ToolUse,
+						Content = "dotnet",
+						ToolName = "dotnet",
+						ToolInput = "dotnet test --filter JobSessionPanel",
+						CreatedAt = timestamp.AddSeconds(-2)
+					},
+					new()
+					{
+						Id = Guid.NewGuid(),
+						JobId = Guid.NewGuid(),
+						Role = MessageRole.ToolResult,
+						Content = "Passed!",
+						ToolName = "dotnet",
+						ToolOutput = "Passed!",
+						CreatedAt = timestamp.AddSeconds(-1)
+					}
+				}
+			});
+
+			var output = await renderer.RenderComponentAsync<JobSessionPanel>(parameters);
+			return output.ToHtmlString();
+		});
+
+		Assert.Contains("4 messages", html);
+		Assert.Contains("I need two more checks before making the change.", html);
+		Assert.DoesNotContain("data-tool-group=\"true\"", html);
+		Assert.DoesNotContain("3 tool calls:", html);
+	}
+
+	[Fact]
 	public async Task RenderedJobSessionPanel_ShowsTranscriptWindowNoticeWhenMessagesAreCapped()
 	{
 		var services = new ServiceCollection();
@@ -766,6 +1027,102 @@ public sealed class JobSessionPanelTests
 		Assert.Contains("1 message", cut.Markup);
 		Assert.DoesNotContain("git diff --stat", cut.Markup);
 		Assert.DoesNotContain("3 files changed", cut.Markup);
+		Assert.Contains("Repository review complete.", cut.Markup);
+	}
+
+	[Fact]
+	public void JobSessionPanel_Bunit_TogglesGroupedToolActivityFilter()
+	{
+		using var context = new BunitContext();
+
+		var timestamp = DateTime.UtcNow;
+		var cut = context.Render<JobSessionPanel>(parameters => parameters
+			.Add(panel => panel.Status, JobStatus.Completed)
+			.Add(panel => panel.Messages, new List<JobMessage>
+			{
+				new()
+				{
+					Id = Guid.NewGuid(),
+					JobId = Guid.NewGuid(),
+					Role = MessageRole.Assistant,
+					Content = "Repository review complete.",
+					CreatedAt = timestamp.AddSeconds(-7)
+				},
+				new()
+				{
+					Id = Guid.NewGuid(),
+					JobId = Guid.NewGuid(),
+					Role = MessageRole.ToolUse,
+					Content = "bash",
+					ToolName = "bash",
+					ToolInput = "git status --short",
+					CreatedAt = timestamp.AddSeconds(-6)
+				},
+				new()
+				{
+					Id = Guid.NewGuid(),
+					JobId = Guid.NewGuid(),
+					Role = MessageRole.ToolResult,
+					Content = "M src/VibeSwarm.Client/Components/Jobs/JobSessionPanel.razor",
+					ToolName = "bash",
+					ToolOutput = "M src/VibeSwarm.Client/Components/Jobs/JobSessionPanel.razor",
+					CreatedAt = timestamp.AddSeconds(-5)
+				},
+				new()
+				{
+					Id = Guid.NewGuid(),
+					JobId = Guid.NewGuid(),
+					Role = MessageRole.ToolUse,
+					Content = "rg",
+					ToolName = "rg",
+					ToolInput = "rg ToolUse src",
+					CreatedAt = timestamp.AddSeconds(-4)
+				},
+				new()
+				{
+					Id = Guid.NewGuid(),
+					JobId = Guid.NewGuid(),
+					Role = MessageRole.ToolResult,
+					Content = "src/VibeSwarm.Shared/Data/JobMessage.cs",
+					ToolName = "rg",
+					ToolOutput = "src/VibeSwarm.Shared/Data/JobMessage.cs",
+					CreatedAt = timestamp.AddSeconds(-3)
+				},
+				new()
+				{
+					Id = Guid.NewGuid(),
+					JobId = Guid.NewGuid(),
+					Role = MessageRole.ToolUse,
+					Content = "dotnet",
+					ToolName = "dotnet",
+					ToolInput = "dotnet test --filter JobSessionPanel",
+					CreatedAt = timestamp.AddSeconds(-2)
+				},
+				new()
+				{
+					Id = Guid.NewGuid(),
+					JobId = Guid.NewGuid(),
+					Role = MessageRole.ToolResult,
+					Content = "Passed!",
+					ToolName = "dotnet",
+					ToolOutput = "Passed!",
+					CreatedAt = timestamp.AddSeconds(-1)
+				}
+			}));
+
+		Assert.Contains("4 messages", cut.Markup);
+		Assert.Contains("3 tool calls: bash, rg, dotnet", cut.Markup);
+		Assert.Contains("data-tool-group=\"true\"", cut.Markup);
+
+		cut.FindAll("button")
+			.Single(button => button.TextContent.Contains("Tool Activity", StringComparison.Ordinal))
+			.Click();
+
+		Assert.Contains("1 message", cut.Markup);
+		Assert.DoesNotContain("3 tool calls: bash, rg, dotnet", cut.Markup);
+		Assert.DoesNotContain("git status --short", cut.Markup);
+		Assert.DoesNotContain("rg ToolUse src", cut.Markup);
+		Assert.DoesNotContain("dotnet test --filter JobSessionPanel", cut.Markup);
 		Assert.Contains("Repository review complete.", cut.Markup);
 	}
 

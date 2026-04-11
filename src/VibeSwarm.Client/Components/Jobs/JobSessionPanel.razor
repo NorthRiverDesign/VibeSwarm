@@ -262,9 +262,38 @@
 
                     @foreach (var entry in _filteredEntries)
                     {
-                        <ChatMessage Role="@entry.Message.Role" Content="@entry.Message.Content" ToolName="@entry.Message.ToolName"
-                                     ToolInput="@entry.Message.ToolInput" ToolOutput="@entry.Message.ToolOutput" Timestamp="@entry.Message.CreatedAt"
-                                     Source="@entry.Message.Source" Level="@entry.Message.Level" DisplayVariant="@entry.Message.DisplayVariant" />
+                        @if (entry.IsToolGroup)
+                        {
+                            <div class="chat-message d-flex flex-column chat-message-tooluse" data-tool-group="true">
+                                <div class="chat-bubble py-2 px-3 text-break bg-body-tertiary border">
+                                    <details>
+                                        <summary class="fw-semibold small opacity-75">
+                                            <i class="bi bi-tools me-1"></i>@entry.Message.Content
+                                        </summary>
+                                        <div class="d-flex flex-column gap-2 mt-2">
+                                            @foreach (var toolEntry in entry.ToolEntries!)
+                                            {
+                                                <ChatMessage Role="@toolEntry.Message.Role" Content="@toolEntry.Message.Content"
+                                                             ToolName="@toolEntry.Message.ToolName" ToolInput="@toolEntry.Message.ToolInput"
+                                                             ToolOutput="@toolEntry.Message.ToolOutput" Timestamp="@toolEntry.Message.CreatedAt"
+                                                             Source="@toolEntry.Message.Source" Level="@toolEntry.Message.Level"
+                                                             DisplayVariant="@toolEntry.Message.DisplayVariant" />
+                                            }
+                                        </div>
+                                    </details>
+                                </div>
+                                <div class="d-flex gap-2 mt-1 px-2 small text-secondary">
+                                    <span class="fw-medium"><i class="bi bi-tools me-1"></i>Tool Calls</span>
+                                    <span class="opacity-75">@GetEntryTimestampText(entry)</span>
+                                </div>
+                            </div>
+                        }
+                        else
+                        {
+                            <ChatMessage Role="@entry.Message.Role" Content="@entry.Message.Content" ToolName="@entry.Message.ToolName"
+                                         ToolInput="@entry.Message.ToolInput" ToolOutput="@entry.Message.ToolOutput" Timestamp="@entry.Message.CreatedAt"
+                                         Source="@entry.Message.Source" Level="@entry.Message.Level" DisplayVariant="@entry.Message.DisplayVariant" />
+                        }
                     }
 
                     @if (ShowInlineWaitingActivity)
@@ -474,6 +503,8 @@
     [Parameter]
     public EventCallback<string> OnGoalPromptChanged { get; set; }
 
+    private const int ToolActivityGroupThreshold = 3;
+
     private string _activeTab = "session";
     private string _followUpPrompt = string.Empty;
     private bool _isSendingFollowUp = false;
@@ -511,7 +542,7 @@
         ? _commandSteps[0].Command
         : NormalizeCommand(CommandUsed);
 
-    private int VisibleMessageCount => _filteredEntries.Count + (HasGoalPrompt ? 1 : 0);
+    private int VisibleMessageCount => _filteredEntries.Sum(entry => entry.VisibleEntryCount) + (HasGoalPrompt ? 1 : 0);
 
     private bool AreToolMessagesHidden
 		=> _hiddenRoles.Contains(MessageRole.ToolUse) || _hiddenRoles.Contains(MessageRole.ToolResult);
@@ -608,14 +639,14 @@
 
     private string BuildAutoScrollStateKey()
     {
-        var lastVisibleMessage = _filteredEntries.LastOrDefault()?.Message;
+        var lastVisibleMessage = _filteredEntries.LastOrDefault()?.LastMessage;
         var lastOutputLine = LiveOutputLines.LastOrDefault();
         var lastLiveMessage = LiveMessages.LastOrDefault();
 
         return string.Join("|",
             HasGoalPrompt,
             GoalPrompt ?? string.Empty,
-            _filteredEntries.Count,
+            VisibleMessageCount,
             lastVisibleMessage?.CreatedAt.Ticks ?? 0,
             (int?)lastVisibleMessage?.Role ?? -1,
             lastVisibleMessage?.Content ?? string.Empty,
@@ -760,11 +791,13 @@
 
     private void ApplyFilters()
     {
-        _filteredEntries = !_hiddenRoles.Any()
+        var visibleEntries = !_hiddenRoles.Any()
             ? _displayedEntries
             : _displayedEntries
                 .Where(entry => !IsEntryHidden(entry))
                 .ToList();
+
+        _filteredEntries = GroupToolEntries(visibleEntries);
     }
 
     private async Task CopyPrimaryCommandToClipboard()
@@ -810,6 +843,47 @@
         }
 
         return entries;
+    }
+
+    private static IReadOnlyList<SessionDisplayEntry> GroupToolEntries(IReadOnlyList<SessionDisplayEntry> entries)
+    {
+        if (entries.Count < ToolActivityGroupThreshold)
+        {
+            return entries;
+        }
+
+        var groupedEntries = new List<SessionDisplayEntry>(entries.Count);
+
+        for (var index = 0; index < entries.Count;)
+        {
+            if (!entries[index].IsToolActivity)
+            {
+                groupedEntries.Add(entries[index]);
+                index++;
+                continue;
+            }
+
+            var groupStart = index;
+            while (index < entries.Count && entries[index].IsToolActivity)
+            {
+                index++;
+            }
+
+            var groupLength = index - groupStart;
+            if (groupLength < ToolActivityGroupThreshold)
+            {
+                for (var toolIndex = groupStart; toolIndex < index; toolIndex++)
+                {
+                    groupedEntries.Add(entries[toolIndex]);
+                }
+
+                continue;
+            }
+
+            groupedEntries.Add(CreateToolGroupEntry(entries.Skip(groupStart).Take(groupLength).ToList()));
+        }
+
+        return groupedEntries;
     }
 
     private static Dictionary<int, int> BuildToolPairs(IReadOnlyList<JobMessage> messages)
@@ -979,6 +1053,25 @@
         return true;
     }
 
+    private static SessionDisplayEntry CreateToolGroupEntry(IReadOnlyList<SessionDisplayEntry> toolEntries)
+    {
+        var firstMessage = toolEntries[0].Message;
+        var summary = BuildToolGroupSummary(toolEntries);
+
+        return new SessionDisplayEntry(new JobMessage
+        {
+            Id = firstMessage.Id,
+            JobId = firstMessage.JobId,
+            Job = firstMessage.Job,
+            Role = MessageRole.ToolUse,
+            Content = summary,
+            CreatedAt = firstMessage.CreatedAt,
+            Source = firstMessage.Source,
+            Level = firstMessage.Level,
+            DisplayVariant = firstMessage.DisplayVariant
+        }, ToolEntries: toolEntries);
+    }
+
     private static bool CanCombineToolMessages(JobMessage toolUseMessage, JobMessage toolResultMessage)
     {
         var toolUseName = toolUseMessage.ToolName?.Trim();
@@ -991,6 +1084,11 @@
 
     private bool IsEntryHidden(SessionDisplayEntry entry)
     {
+        if (entry.IsToolGroup)
+        {
+            return AreToolMessagesHidden;
+        }
+
         if (entry.IsCombinedToolActivity)
         {
             return AreToolMessagesHidden;
@@ -1022,7 +1120,62 @@
         return $"{kilobytes / 1024d:0.#} MB";
     }
 
-    private sealed record SessionDisplayEntry(JobMessage Message, bool IsCombinedToolActivity = false);
+    private static string BuildToolGroupSummary(IReadOnlyList<SessionDisplayEntry> toolEntries)
+    {
+        var distinctToolNames = toolEntries
+            .Select(GetToolEntryName)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var summaryNames = distinctToolNames
+            .Take(3)
+            .ToList();
+
+        var additionalToolNameCount = distinctToolNames.Count - summaryNames.Count;
+        var toolCountLabel = $"{toolEntries.Count} tool {(toolEntries.Count == 1 ? "call" : "calls")}";
+
+        if (summaryNames.Count == 0)
+        {
+            return toolCountLabel;
+        }
+
+        var toolNames = string.Join(", ", summaryNames);
+        return additionalToolNameCount > 0
+            ? $"{toolCountLabel}: {toolNames} +{additionalToolNameCount} more"
+            : $"{toolCountLabel}: {toolNames}";
+    }
+
+    private static string GetToolEntryName(SessionDisplayEntry entry)
+    {
+        var toolName = entry.Message.ToolName?.Trim();
+        return string.IsNullOrWhiteSpace(toolName) ? "unknown_tool" : toolName;
+    }
+
+    private static string GetEntryTimestampText(SessionDisplayEntry entry)
+    {
+        var startTime = entry.Message.CreatedAt.FormatTime();
+        var endTime = entry.LastMessage.CreatedAt.FormatTime();
+        return string.Equals(startTime, endTime, StringComparison.Ordinal)
+            ? startTime
+            : $"{startTime} - {endTime}";
+    }
+
+    private sealed record SessionDisplayEntry(
+        JobMessage Message,
+        bool IsCombinedToolActivity = false,
+        IReadOnlyList<SessionDisplayEntry>? ToolEntries = null)
+    {
+        public bool IsToolGroup => ToolEntries is { Count: > 0 };
+
+        public bool IsToolActivity => IsCombinedToolActivity || Message.Role is MessageRole.ToolUse or MessageRole.ToolResult;
+
+        public int VisibleEntryCount => IsToolGroup
+            ? ToolEntries!.Sum(entry => entry.VisibleEntryCount)
+            : 1;
+
+        public JobMessage LastMessage => IsToolGroup
+            ? ToolEntries![^1].LastMessage
+            : Message;
+    }
 
     private sealed record CommandStep(string Key, string Label, string Icon, string Command);
 
