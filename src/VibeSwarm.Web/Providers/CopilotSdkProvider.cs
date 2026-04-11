@@ -53,7 +53,7 @@ public class CopilotSdkProvider : SdkProviderBase
 	/// <summary>
 	/// Builds the CopilotClientOptions from provider configuration.
 	/// </summary>
-	private CopilotClientOptions BuildClientOptions(string? workingDirectory = null)
+	internal CopilotClientOptions BuildClientOptions(string? workingDirectory = null)
 	{
 		var useCustomProvider = !string.IsNullOrEmpty(ApiEndpoint);
 		var options = new CopilotClientOptions
@@ -90,12 +90,67 @@ public class CopilotSdkProvider : SdkProviderBase
 			options.GitHubToken = ApiKey;
 		}
 
-		if (CurrentEnvironmentVariables is { Count: > 0 })
+		if (BuildStartupEnvironmentVariables() is { Count: > 0 } environmentVariables)
 		{
-			options.Environment = new Dictionary<string, string>(CurrentEnvironmentVariables);
+			options.Environment = environmentVariables;
+		}
+
+		if (BuildStartupCliArgs() is { Count: > 0 } cliArgs)
+		{
+			options.CliArgs = [.. cliArgs];
 		}
 
 		return options;
+	}
+
+	internal List<string>? BuildStartupCliArgs()
+	{
+		List<string>? args = null;
+
+		if (!string.IsNullOrWhiteSpace(CurrentBashEnvPath))
+		{
+			args ??= [];
+			args.Add("--bash-env");
+			args.Add("on");
+		}
+
+		if (!string.IsNullOrWhiteSpace(CurrentMcpConfigPath))
+		{
+			args ??= [];
+			args.Add("--additional-mcp-config");
+			args.Add($"@{CurrentMcpConfigPath}");
+		}
+
+		if (CurrentAdditionalDirectories is { Count: > 0 })
+		{
+			foreach (var dir in CurrentAdditionalDirectories
+				.Where(static dir => !string.IsNullOrWhiteSpace(dir))
+				.Select(static dir => dir.Trim())
+				.Distinct(StringComparer.Ordinal))
+			{
+				args ??= [];
+				args.Add("--add-dir");
+				args.Add(dir);
+			}
+		}
+
+		return args;
+	}
+
+	private Dictionary<string, string>? BuildStartupEnvironmentVariables()
+	{
+		var environmentVariables = GetEffectiveEnvironmentVariables();
+		if (string.IsNullOrWhiteSpace(CurrentBashEnvPath))
+		{
+			return environmentVariables;
+		}
+
+		environmentVariables = environmentVariables != null
+			? new Dictionary<string, string>(environmentVariables, StringComparer.Ordinal)
+			: new Dictionary<string, string>(StringComparer.Ordinal);
+
+		environmentVariables["BASH_ENV"] = CurrentBashEnvPath;
+		return environmentVariables;
 	}
 
 	/// <summary>
@@ -301,6 +356,31 @@ public class CopilotSdkProvider : SdkProviderBase
 			// Reset the client so the next call starts a fresh CLI process
 			await ResetClientAsync();
 			throw;
+		}
+	}
+
+	public override async Task<ExecutionResult> ExecuteWithOptionsAsync(
+		string prompt,
+		ExecutionOptions options,
+		IProgress<ExecutionProgress>? progress = null,
+		CancellationToken cancellationToken = default)
+	{
+		await ResetClientAsync();
+		ApplyOptions(options);
+
+		try
+		{
+			return await ExecuteWithSessionAsync(
+				prompt,
+				options.SessionId,
+				options.WorkingDirectory,
+				progress,
+				cancellationToken);
+		}
+		finally
+		{
+			ClearExecutionContext();
+			await ResetClientAsync();
 		}
 	}
 
