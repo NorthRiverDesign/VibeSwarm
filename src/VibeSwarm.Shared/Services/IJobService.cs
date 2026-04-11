@@ -91,9 +91,10 @@ public interface IJobService
     /// <param name="id">The job ID</param>
     /// <param name="providerId">New provider ID (null to keep current)</param>
     /// <param name="modelId">Model ID to use (null for default)</param>
+    /// <param name="reasoningEffort">Reasoning effort to use (null for default)</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>True if successful</returns>
-    Task<bool> ResetJobWithOptionsAsync(Guid id, Guid? providerId = null, string? modelId = null, CancellationToken cancellationToken = default);
+    Task<bool> ResetJobWithOptionsAsync(Guid id, Guid? providerId = null, string? modelId = null, string? reasoningEffort = null, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Updates the goal prompt for a job that hasn't started yet
@@ -120,6 +121,33 @@ public interface IJobService
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>The number of jobs deleted</returns>
     Task<int> DeleteCompletedByProjectIdAsync(Guid projectId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Retries selected failed or cancelled jobs for a project.
+    /// </summary>
+    /// <param name="projectId">The project ID</param>
+    /// <param name="jobIds">The selected job IDs</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>The number of jobs queued for retry</returns>
+    Task<int> RetrySelectedByProjectIdAsync(Guid projectId, IReadOnlyCollection<Guid> jobIds, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Cancels selected non-terminal jobs for a project.
+    /// </summary>
+    /// <param name="projectId">The project ID</param>
+    /// <param name="jobIds">The selected job IDs</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>The number of jobs cancelled</returns>
+    Task<int> CancelSelectedByProjectIdAsync(Guid projectId, IReadOnlyCollection<Guid> jobIds, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Raises the priority of selected queued jobs for a project.
+    /// </summary>
+    /// <param name="projectId">The project ID</param>
+    /// <param name="jobIds">The selected job IDs</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>The number of jobs reprioritized</returns>
+    Task<int> PrioritizeSelectedByProjectIdAsync(Guid projectId, IReadOnlyCollection<Guid> jobIds, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Bypasses the state machine and directly sets a non-terminal job to Failed.

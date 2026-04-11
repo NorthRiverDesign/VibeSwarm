@@ -1,3 +1,6 @@
+using System.Linq;
+using System.Text.RegularExpressions;
+using Bunit;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.Extensions.DependencyInjection;
@@ -46,7 +49,6 @@ public sealed class IdeasPanelTests
 				[nameof(IdeasPanel.IsPageLoading)] = true,
 				[nameof(IdeasPanel.HasDefaultProvider)] = false,
 				[nameof(IdeasPanel.HasInference)] = true,
-				[nameof(IdeasPanel.CurrentAutoExpandIdeas)] = true,
 				[nameof(IdeasPanel.AvailableInferenceProviders)] = new List<InferenceProvider>(),
 				[nameof(IdeasPanel.AvailableProviders)] = new List<Provider>()
 			});
@@ -56,10 +58,12 @@ public sealed class IdeasPanelTests
 
 		Assert.Contains("Refreshing ideas", html);
 		Assert.Contains("3 pending", html);
+		Assert.Contains(">Ideas</h3>", html);
+		Assert.Contains("Start All", html);
 		Assert.Contains("Set default provider", html);
 		Assert.Contains("Add idea", html);
-		Assert.Contains("Expands before running", html);
 		Assert.Contains("Set a default provider to enable idea processing", html);
+		Assert.Contains("Paste images directly into the idea box to attach them.", html);
 		Assert.DoesNotContain("class=\"badge bg-secondary\">7</span>", html);
 		Assert.DoesNotContain("Short description of a feature or update.", html);
 		Assert.DoesNotContain("card-header", html);
@@ -95,7 +99,8 @@ public sealed class IdeasPanelTests
 			return output.ToHtmlString();
 		});
 
-		Assert.Contains("Suggest", html);
+		Assert.Contains("Suggest Ideas", html);
+		Assert.DoesNotContain("Paste Image", html);
 	}
 
 	[Fact]
@@ -129,6 +134,393 @@ public sealed class IdeasPanelTests
 		Assert.Contains("align-self-stretch align-self-sm-start gap-2", html);
 	}
 
+	[Fact]
+	public async Task IdeaListItem_RendersAttachedImagePreviewAndDownloadLink()
+	{
+		var services = new ServiceCollection();
+		services.AddLogging();
+
+		await using var renderer = new HtmlRenderer(services.BuildServiceProvider(), NullLoggerFactory.Instance);
+
+		var attachmentId = Guid.NewGuid();
+		var idea = new Idea
+		{
+			Id = Guid.NewGuid(),
+			Description = "Use the attached screenshot",
+			ProjectId = Guid.NewGuid(),
+			Attachments =
+			[
+				new IdeaAttachment
+				{
+					Id = attachmentId,
+					FileName = "mockup.png",
+					ContentType = "image/png",
+					RelativePath = Path.Combine(".vibeswarm", "idea-attachments", "mockup.png"),
+					SizeBytes = 2048
+				}
+			]
+		};
+
+		var html = await renderer.Dispatcher.InvokeAsync(async () =>
+		{
+			var parameters = ParameterView.FromDictionary(new Dictionary<string, object?>
+			{
+				[nameof(IdeaListItem.Idea)] = idea,
+				[nameof(IdeaListItem.HasDefaultProvider)] = true
+			});
+			var output = await renderer.RenderComponentAsync<IdeaListItem>(parameters);
+			return output.ToHtmlString();
+		});
+
+		Assert.Contains($"/api/ideas/attachments/{attachmentId}", html);
+		Assert.Contains("mockup.png", html);
+		Assert.Contains("2 KB", html);
+		Assert.Contains("object-fit: cover;", html);
+	}
+
+	[Fact]
+	public async Task IdeaListItem_ShowsSingleViewJobLinkForRunningIdea()
+	{
+		var services = new ServiceCollection();
+		services.AddLogging();
+
+		await using var renderer = new HtmlRenderer(services.BuildServiceProvider(), NullLoggerFactory.Instance);
+
+		var jobId = Guid.NewGuid();
+		var idea = new Idea
+		{
+			Id = Guid.NewGuid(),
+			Description = "Investigate running job link duplication",
+			ProjectId = Guid.NewGuid(),
+			JobId = jobId,
+			Job = new Job
+			{
+				Id = jobId,
+				Status = JobStatus.Processing,
+				GoalPrompt = "Investigate running job link duplication"
+			}
+		};
+
+		var html = await renderer.Dispatcher.InvokeAsync(async () =>
+		{
+			var parameters = ParameterView.FromDictionary(new Dictionary<string, object?>
+			{
+				[nameof(IdeaListItem.Idea)] = idea,
+				[nameof(IdeaListItem.HasDefaultProvider)] = true
+			});
+			var output = await renderer.RenderComponentAsync<IdeaListItem>(parameters);
+			return output.ToHtmlString();
+		});
+
+		Assert.Single(Regex.Matches(html, "View Job").Cast<Match>());
+		Assert.Contains($"/jobs/view/{jobId}", html);
+		Assert.DoesNotContain("text-body-secondary ms-4", html);
+	}
+
+	[Fact]
+	public void StartAllModal_DefaultsProviderAndModelFromProjectSelection()
+	{
+		using var context = new BunitContext();
+		context.Services.AddLogging();
+		context.Services.AddSingleton<IProjectService>(new FakeProjectService());
+		context.Services.AddSingleton<IIdeaService>(new FakeIdeaService());
+		context.Services.AddSingleton<IJobService>(new FakeJobService());
+		context.Services.AddSingleton<NotificationService>();
+		context.Services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
+		context.JSInterop.SetupVoid("eval", _ => true);
+
+		var primaryProviderId = Guid.NewGuid();
+		var secondaryProviderId = Guid.NewGuid();
+		IdeaProcessingOptions? submittedOptions = null;
+
+		var cut = context.Render<IdeasPanel>(parameters => parameters
+			.Add(component => component.Ideas, new List<Idea> { new() { Id = Guid.NewGuid(), ProjectId = Guid.NewGuid(), Description = "Queue provider override" } })
+			.Add(component => component.TotalIdeasCount, 1)
+			.Add(component => component.UnprocessedIdeasCount, 1)
+			.Add(component => component.HasDefaultProvider, true)
+			.Add(component => component.IsGitRepository, true)
+			.Add(component => component.AvailableProviders, new List<Provider>
+			{
+				new()
+				{
+					Id = primaryProviderId,
+					Name = "Claude",
+					Type = ProviderType.Claude,
+					IsEnabled = true,
+					AvailableModels =
+					[
+						new ProviderModel { ProviderId = primaryProviderId, ModelId = "claude-sonnet-4.6", DisplayName = "Claude Sonnet 4.6", IsAvailable = true, IsDefault = true },
+						new ProviderModel { ProviderId = primaryProviderId, ModelId = "claude-opus-4.6", DisplayName = "Claude Opus 4.6", IsAvailable = true }
+					]
+				},
+				new()
+				{
+					Id = secondaryProviderId,
+					Name = "Copilot",
+					Type = ProviderType.Copilot,
+					IsEnabled = true,
+					AvailableModels =
+					[
+						new ProviderModel { ProviderId = secondaryProviderId, ModelId = "gpt-5.4", DisplayName = "GPT-5.4", IsAvailable = true, IsDefault = true }
+					]
+				}
+			})
+			.Add(component => component.DefaultProcessingProviderId, primaryProviderId)
+			.Add(component => component.DefaultProcessingModelId, "claude-opus-4.6")
+			.Add(component => component.OnStartProcessingWithOptions, EventCallback.Factory.Create<IdeaProcessingOptions>(this, options => submittedOptions = options)));
+
+		cut.Find("button[title='Start processing all pending ideas']").Click();
+
+		var providerSelect = cut.Find("#startAllProvider");
+		var modelSelect = cut.Find("#startAllModel");
+		Assert.Equal(primaryProviderId.ToString(), providerSelect.GetAttribute("value"));
+		Assert.Equal("claude-opus-4.6", modelSelect.GetAttribute("value"));
+
+		modelSelect.Change("claude-sonnet-4.6");
+		cut.FindAll("button.btn.btn-success").Last().Click();
+
+		Assert.NotNull(submittedOptions);
+		Assert.Equal(primaryProviderId, submittedOptions!.ProviderId);
+		Assert.Equal("claude-sonnet-4.6", submittedOptions.ModelId);
+		Assert.Equal(AutoCommitMode.Off, submittedOptions.AutoCommitMode);
+	}
+
+	[Fact]
+	public async Task HandleClipboardImagePasted_ShowsImagePreviewAndIncludesAttachmentSummary()
+	{
+		using var context = new BunitContext();
+		context.Services.AddLogging();
+		context.Services.AddSingleton<IProjectService>(new FakeProjectService());
+		context.Services.AddSingleton<IIdeaService>(new FakeIdeaService());
+		context.Services.AddSingleton<IJobService>(new FakeJobService());
+		context.Services.AddSingleton<NotificationService>();
+		SetupEmptyIdeaDraftStorage(context);
+		context.JSInterop.SetupVoid("vibeSwarmIdeas.registerPasteTarget", _ => true);
+
+		var cut = context.Render<IdeasPanel>(parameters => parameters
+			.Add(component => component.CurrentProjectId, Guid.NewGuid())
+			.Add(component => component.HasInference, true)
+			.Add(component => component.AvailableInferenceProviders, new List<InferenceProvider>())
+			.Add(component => component.AvailableProviders, new List<Provider>()));
+
+		await cut.InvokeAsync(async () =>
+		{
+			await cut.Instance.HandleClipboardImagePasted(new IdeasPanel.ClipboardAttachmentDto
+			{
+				FileName = "clipboard.png",
+				ContentType = "image/png",
+				Base64Content = Convert.ToBase64String([137, 80, 78, 71])
+			});
+		});
+
+		var html = cut.Markup;
+
+		Assert.Contains("clipboard.png", html);
+		Assert.Contains("1 attachment", html);
+		Assert.Contains("data:image/png;base64,", html);
+		Assert.Contains("clipboard.png\" class=\"rounded border", html);
+	}
+
+	[Fact]
+	public void Render_RestoresSavedIdeaDraftFromSessionStorage()
+	{
+		using var context = new BunitContext();
+		context.Services.AddLogging();
+		context.Services.AddSingleton<IProjectService>(new FakeProjectService());
+		context.Services.AddSingleton<IIdeaService>(new FakeIdeaService());
+		context.Services.AddSingleton<IJobService>(new FakeJobService());
+		context.Services.AddSingleton<NotificationService>();
+
+		var projectId = Guid.NewGuid();
+		var storageKey = $"vibeswarm.idea-draft.{projectId:N}";
+		const string savedDraft = "Restore this idea after a reload";
+
+		context.JSInterop.Setup<string>("sessionStorage.getItem", invocation =>
+			invocation.Arguments.Count == 1 && string.Equals(invocation.Arguments[0]?.ToString(), storageKey, StringComparison.Ordinal))
+			.SetResult(savedDraft);
+		context.JSInterop.SetupVoid("vibeSwarmIdeas.registerPasteTarget", _ => true);
+
+		var cut = context.Render<IdeasPanel>(parameters => parameters
+			.Add(component => component.CurrentProjectId, projectId)
+			.Add(component => component.HasInference, true)
+			.Add(component => component.AvailableInferenceProviders, new List<InferenceProvider>())
+			.Add(component => component.AvailableProviders, new List<Provider>()));
+
+		cut.WaitForAssertion(() =>
+		{
+			Assert.Equal(savedDraft, cut.Find("textarea").GetAttribute("value"));
+		});
+	}
+
+	[Fact]
+	public void AddIdea_PersistsDraftWhileTyping_AndClearsItAfterSubmit()
+	{
+		using var context = new BunitContext();
+		context.Services.AddLogging();
+		context.Services.AddSingleton<IProjectService>(new FakeProjectService());
+		context.Services.AddSingleton<IIdeaService>(new FakeIdeaService());
+		context.Services.AddSingleton<IJobService>(new FakeJobService());
+		context.Services.AddSingleton<NotificationService>();
+
+		var projectId = Guid.NewGuid();
+		var storageKey = $"vibeswarm.idea-draft.{projectId:N}";
+		CreateIdeaRequest? submittedRequest = null;
+
+		context.JSInterop.Setup<string?>("sessionStorage.getItem", invocation =>
+			invocation.Arguments.Count == 1 && string.Equals(invocation.Arguments[0]?.ToString(), storageKey, StringComparison.Ordinal))
+			.SetResult(null);
+		context.JSInterop.SetupVoid("sessionStorage.setItem", invocation =>
+			invocation.Arguments.Count == 2 &&
+			string.Equals(invocation.Arguments[0]?.ToString(), storageKey, StringComparison.Ordinal) &&
+			string.Equals(invocation.Arguments[1]?.ToString(), "Keep this draft", StringComparison.Ordinal));
+		context.JSInterop.SetupVoid("sessionStorage.removeItem", invocation =>
+			invocation.Arguments.Count == 1 && string.Equals(invocation.Arguments[0]?.ToString(), storageKey, StringComparison.Ordinal));
+		context.JSInterop.SetupVoid("vibeSwarmIdeas.registerPasteTarget", _ => true);
+
+		var cut = context.Render<IdeasPanel>(parameters => parameters
+			.Add(component => component.CurrentProjectId, projectId)
+			.Add(component => component.OnAddIdea, EventCallback.Factory.Create<CreateIdeaRequest>(this, request => submittedRequest = request))
+			.Add(component => component.HasInference, true)
+			.Add(component => component.AvailableInferenceProviders, new List<InferenceProvider>())
+			.Add(component => component.AvailableProviders, new List<Provider>()));
+
+		cut.Find("textarea").Input("Keep this draft");
+		cut.Find("button.btn.btn-primary").Click();
+
+		Assert.NotNull(submittedRequest);
+		Assert.Equal("Keep this draft", submittedRequest!.Description);
+		Assert.Equal(string.Empty, cut.Find("textarea").GetAttribute("value"));
+	}
+
+	[Fact]
+	public void Render_DoesNotCrash_WhenPasteInteropScriptIsUnavailable()
+	{
+		using var context = new BunitContext();
+		context.Services.AddLogging();
+		context.Services.AddSingleton<IProjectService>(new FakeProjectService());
+		context.Services.AddSingleton<IIdeaService>(new FakeIdeaService());
+		context.Services.AddSingleton<IJobService>(new FakeJobService());
+		var notificationService = new NotificationService();
+		context.Services.AddSingleton(notificationService);
+		SetupEmptyIdeaDraftStorage(context);
+
+		context.JSInterop
+			.SetupVoid("vibeSwarmIdeas.registerPasteTarget", _ => true)
+			.SetException(new JSException("Could not find 'vibeSwarmIdeas.registerPasteTarget' ('vibeSwarmIdeas' was undefined)."));
+
+		var cut = context.Render<IdeasPanel>(parameters => parameters
+			.Add(component => component.CurrentProjectId, Guid.NewGuid())
+			.Add(component => component.HasInference, true)
+			.Add(component => component.AvailableInferenceProviders, new List<InferenceProvider>())
+			.Add(component => component.AvailableProviders, new List<Provider>()));
+
+		cut.WaitForAssertion(() =>
+		{
+			Assert.Contains("Attach Files", cut.Markup);
+			Assert.Contains("disabled opacity-50 pe-none", cut.Markup);
+			Assert.DoesNotContain("Paste images directly into the idea box to attach them.", cut.Markup);
+		});
+
+		var warning = Assert.Single(notificationService.Notifications);
+		Assert.Equal(NotificationType.Warning, warning.Type);
+		Assert.Equal("Attachments unavailable", warning.Title);
+		Assert.Contains("temporarily unavailable", warning.Message);
+	}
+
+	[Fact]
+	public void Render_DoesNotCrash_WhenPasteInteropRegistrationIsCanceled()
+	{
+		using var context = new BunitContext();
+		context.Services.AddLogging();
+		context.Services.AddSingleton<IProjectService>(new FakeProjectService());
+		context.Services.AddSingleton<IIdeaService>(new FakeIdeaService());
+		context.Services.AddSingleton<IJobService>(new FakeJobService());
+		var notificationService = new NotificationService();
+		context.Services.AddSingleton(notificationService);
+		SetupEmptyIdeaDraftStorage(context);
+
+		context.JSInterop
+			.SetupVoid("vibeSwarmIdeas.registerPasteTarget", _ => true)
+			.SetException(new TaskCanceledException("The JavaScript interop call was canceled."));
+
+		var cut = context.Render<IdeasPanel>(parameters => parameters
+			.Add(component => component.CurrentProjectId, Guid.NewGuid())
+			.Add(component => component.HasInference, true)
+			.Add(component => component.AvailableInferenceProviders, new List<InferenceProvider>())
+			.Add(component => component.AvailableProviders, new List<Provider>()));
+
+		cut.WaitForAssertion(() =>
+		{
+			Assert.Contains("Attach Files", cut.Markup);
+			Assert.Contains("disabled opacity-50 pe-none", cut.Markup);
+			Assert.DoesNotContain("Paste images directly into the idea box to attach them.", cut.Markup);
+		});
+
+		var warning = Assert.Single(notificationService.Notifications);
+		Assert.Equal(NotificationType.Warning, warning.Type);
+		Assert.Equal("Attachments unavailable", warning.Title);
+	}
+
+	[Fact]
+	public void TypingIdea_DoesNotCrash_WhenDraftPersistenceIsCanceled()
+	{
+		using var context = new BunitContext();
+		context.Services.AddLogging();
+		context.Services.AddSingleton<IProjectService>(new FakeProjectService());
+		context.Services.AddSingleton<IIdeaService>(new FakeIdeaService());
+		context.Services.AddSingleton<IJobService>(new FakeJobService());
+		context.Services.AddSingleton<NotificationService>();
+
+		var projectId = Guid.NewGuid();
+		var storageKey = $"vibeswarm.idea-draft.{projectId:N}";
+
+		context.JSInterop.Setup<string?>("sessionStorage.getItem", invocation =>
+			invocation.Arguments.Count == 1 && string.Equals(invocation.Arguments[0]?.ToString(), storageKey, StringComparison.Ordinal))
+			.SetResult(null);
+		context.JSInterop.SetupVoid("sessionStorage.setItem", invocation =>
+			invocation.Arguments.Count == 2 &&
+			string.Equals(invocation.Arguments[0]?.ToString(), storageKey, StringComparison.Ordinal))
+			.SetException(new TaskCanceledException("The JavaScript interop call was canceled."));
+		context.JSInterop.SetupVoid("vibeSwarmIdeas.registerPasteTarget", _ => true);
+
+		var cut = context.Render<IdeasPanel>(parameters => parameters
+			.Add(component => component.CurrentProjectId, projectId)
+			.Add(component => component.HasInference, true)
+			.Add(component => component.AvailableInferenceProviders, new List<InferenceProvider>())
+			.Add(component => component.AvailableProviders, new List<Provider>()));
+
+		cut.Find("textarea").Input("Keep typing through a canceled draft save");
+
+		Assert.Equal("Keep typing through a canceled draft save", cut.Find("textarea").GetAttribute("value"));
+		Assert.Contains("Add idea", cut.Markup);
+	}
+
+	[Fact]
+	public void IdeasListHeader_ShowsPendingCountAndStartAllButton()
+	{
+		using var context = new BunitContext();
+		context.Services.AddLogging();
+		context.Services.AddSingleton<IProjectService>(new FakeProjectService());
+		context.Services.AddSingleton<IIdeaService>(new FakeIdeaService());
+		context.Services.AddSingleton<IJobService>(new FakeJobService());
+		context.Services.AddSingleton<NotificationService>();
+		SetupEmptyIdeaDraftStorage(context);
+		context.JSInterop.SetupVoid("vibeSwarmIdeas.registerPasteTarget", _ => true);
+
+		var cut = context.Render<IdeasPanel>(parameters => parameters
+			.Add(component => component.Ideas, new List<Idea> { new() { Id = Guid.NewGuid(), ProjectId = Guid.NewGuid(), Description = "Queued idea" } })
+			.Add(component => component.TotalIdeasCount, 1)
+			.Add(component => component.UnprocessedIdeasCount, 1)
+			.Add(component => component.HasDefaultProvider, true)
+			.Add(component => component.HasInference, true)
+			.Add(component => component.AvailableInferenceProviders, new List<InferenceProvider>())
+			.Add(component => component.AvailableProviders, new List<Provider>()));
+
+		Assert.Contains("Ideas", cut.Markup);
+		Assert.Contains("1 pending", cut.Markup);
+		Assert.NotNull(cut.Find("button[title='Start processing all pending ideas']"));
+	}
+
 	private sealed class FakeProjectService : IProjectService
 	{
 		public Task<IEnumerable<Project>> GetAllAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Project>>([]);
@@ -157,14 +549,16 @@ public sealed class IdeasPanelTests
 			=> Task.FromResult(new ProjectIdeasListResult());
 		public Task<Idea?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult<Idea?>(null);
 		public Task<Idea> CreateAsync(Idea idea, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<Idea> CreateAsync(CreateIdeaRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<Idea> UpdateAsync(Idea idea, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task DeleteAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<Idea?> GetNextUnprocessedAsync(Guid projectId, CancellationToken cancellationToken = default) => Task.FromResult<Idea?>(null);
-		public Task<Job?> ConvertToJobAsync(Guid ideaId, CancellationToken cancellationToken = default) => Task.FromResult<Job?>(null);
+		public Task<Job?> ConvertToJobAsync(Guid ideaId, IdeaProcessingOptions? options = null, CancellationToken cancellationToken = default) => Task.FromResult<Job?>(null);
 		public Task<bool> CompleteIdeaFromJobAsync(Guid jobId, CancellationToken cancellationToken = default) => Task.FromResult(false);
 		public Task<bool> HandleJobCompletionAsync(Guid jobId, bool success, CancellationToken cancellationToken = default) => Task.FromResult(false);
 		public Task<Idea?> GetByJobIdAsync(Guid jobId, CancellationToken cancellationToken = default) => Task.FromResult<Idea?>(null);
-		public Task StartProcessingAsync(Guid projectId, bool autoCommit = false, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<IdeaAttachment?> GetAttachmentAsync(Guid attachmentId, CancellationToken cancellationToken = default) => Task.FromResult<IdeaAttachment?>(null);
+		public Task StartProcessingAsync(Guid projectId, IdeaProcessingOptions? options = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task StopProcessingAsync(Guid projectId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<bool> IsProcessingActiveAsync(Guid projectId, CancellationToken cancellationToken = default) => Task.FromResult(false);
 		public Task<bool> ProcessNextIdeaIfReadyAsync(Guid projectId, CancellationToken cancellationToken = default) => Task.FromResult(false);
@@ -179,6 +573,12 @@ public sealed class IdeasPanelTests
 		public Task<Idea?> RejectExpansionAsync(Guid ideaId, CancellationToken cancellationToken = default) => Task.FromResult<Idea?>(null);
 		public Task<SuggestIdeasResult> SuggestIdeasFromCodebaseAsync(Guid projectId, SuggestIdeasRequest? request = null, CancellationToken cancellationToken = default)
 			=> Task.FromResult(new SuggestIdeasResult());
+		public Task<GlobalIdeasProcessingStatus> GetGlobalProcessingStatusAsync(CancellationToken cancellationToken = default)
+			=> Task.FromResult(new GlobalIdeasProcessingStatus());
+		public Task<GlobalQueueSnapshot> GetGlobalQueueSnapshotAsync(CancellationToken cancellationToken = default)
+			=> Task.FromResult(new GlobalQueueSnapshot());
+		public Task StartAllProcessingAsync(IdeaProcessingOptions? options = null, CancellationToken cancellationToken = default) => Task.CompletedTask;
+		public Task StopAllProcessingAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 	}
 
 	private sealed class FakeJobService : IJobService
@@ -211,10 +611,13 @@ public sealed class IdeasPanelTests
 		public Task<bool> ContinueJobAsync(Guid id, string followUpPrompt, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<IEnumerable<Job>> GetPausedJobsAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<string?> GetLastUsedModelAsync(Guid projectId, Guid providerId, CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
-		public Task<bool> ResetJobWithOptionsAsync(Guid id, Guid? providerId = null, string? modelId = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<bool> ResetJobWithOptionsAsync(Guid id, Guid? providerId = null, string? modelId = null, string? reasoningEffort = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<bool> UpdateJobPromptAsync(Guid id, string newPrompt, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<int> CancelAllByProjectIdAsync(Guid projectId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<int> DeleteCompletedByProjectIdAsync(Guid projectId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<int> RetrySelectedByProjectIdAsync(Guid projectId, IReadOnlyCollection<Guid> jobIds, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<int> CancelSelectedByProjectIdAsync(Guid projectId, IReadOnlyCollection<Guid> jobIds, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<int> PrioritizeSelectedByProjectIdAsync(Guid projectId, IReadOnlyCollection<Guid> jobIds, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<bool> ForceFailJobAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task RefreshExecutionPlanAsync(Guid id, CancellationToken cancellationToken = default) => Task.CompletedTask;
 	}
@@ -226,5 +629,10 @@ public sealed class IdeasPanelTests
 
 		public ValueTask<TValue> InvokeAsync<TValue>(string identifier, CancellationToken cancellationToken, object?[]? args)
 			=> ValueTask.FromResult(default(TValue)!);
+	}
+
+	private static void SetupEmptyIdeaDraftStorage(BunitContext context)
+	{
+		context.JSInterop.Setup<string>("sessionStorage.getItem", _ => true).SetResult(string.Empty);
 	}
 }

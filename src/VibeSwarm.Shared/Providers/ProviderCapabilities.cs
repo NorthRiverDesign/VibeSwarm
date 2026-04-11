@@ -39,9 +39,9 @@ public static class ProviderCapabilities
 	/// </summary>
 	public static string GetDescription(ProviderType providerType) => providerType switch
 	{
-		ProviderType.OpenCode => "OpenCode AI agent with CLI-first execution and optional REST API support",
-		ProviderType.Claude => "Anthropic Claude Code with CLI and SDK support",
-		ProviderType.Copilot => "GitHub Copilot with CLI and SDK support",
+		ProviderType.OpenCode => "OpenCode with CLI-first execution, reasoning variants, and optional REST API support",
+		ProviderType.Claude => "Anthropic Claude Code with CLI and SDK support for MCP-aware automation",
+		ProviderType.Copilot => "GitHub Copilot with CLI and SDK support, BYOK providers, and .mcp.json workspace MCP discovery",
 		_ => "Unknown provider"
 	};
 
@@ -61,14 +61,60 @@ public static class ProviderCapabilities
 	/// </summary>
 	public static string GetModeDescription(ProviderType providerType, ProviderConnectionMode mode) => (providerType, mode) switch
 	{
-		(ProviderType.Copilot, ProviderConnectionMode.SDK) => "Uses the GitHub.Copilot.SDK NuGet package for programmatic control via JSON-RPC. Requires the Copilot CLI installed.",
-		(ProviderType.Copilot, ProviderConnectionMode.CLI) => "Spawns the Copilot CLI process directly for each job execution.",
-		(ProviderType.Claude, ProviderConnectionMode.SDK) => "Uses the Anthropic .NET SDK for direct API access. Requires an Anthropic API key.",
-		(ProviderType.Claude, ProviderConnectionMode.CLI) => "Spawns the Claude Code CLI process directly for each job execution.",
+		(ProviderType.Copilot, ProviderConnectionMode.SDK) => "Uses the GitHub.Copilot.SDK package for structured Copilot CLI sessions. Supports logged-in user sessions, GitHub tokens, or BYOK custom provider endpoints.",
+		(ProviderType.Copilot, ProviderConnectionMode.CLI) => "Spawns the Copilot CLI for each job with prompt-mode automation, reasoning effort, BASH_ENV support, per-run MCP config injection, and additional directory allowances.",
+		(ProviderType.Claude, ProviderConnectionMode.SDK) => "Uses the Anthropic .NET SDK for direct API access with an Anthropic API key.",
+		(ProviderType.Claude, ProviderConnectionMode.CLI) => "Spawns the Claude Code CLI for each job with version-gated bare mode, worktree support, MCP config injection, and effort control.",
 		(ProviderType.OpenCode, ProviderConnectionMode.REST) => "Connects to the OpenCode REST API server.",
-		(ProviderType.OpenCode, ProviderConnectionMode.CLI) => "Spawns the OpenCode CLI process directly for each job execution.",
+		(ProviderType.OpenCode, ProviderConnectionMode.CLI) => "Spawns the OpenCode CLI for each job with reasoning variants, session forking, and MCP config injection.",
 		_ => $"{mode} mode for {providerType}."
 	};
+
+	public static bool IsCopilotCustomProvider(Provider provider)
+		=> provider.Type == ProviderType.Copilot
+			&& provider.ConnectionMode == ProviderConnectionMode.SDK
+			&& !string.IsNullOrWhiteSpace(provider.ApiEndpoint);
+
+	public static string? GetConnectionTypeLabel(Provider provider) => (provider.Type, provider.ConnectionMode) switch
+	{
+		(ProviderType.Claude, ProviderConnectionMode.SDK) => "API Key",
+		(ProviderType.Claude, ProviderConnectionMode.CLI) when !string.IsNullOrWhiteSpace(provider.ApiKey) => "API Key",
+		(ProviderType.Claude, ProviderConnectionMode.CLI) => "Browser Login",
+		(ProviderType.Copilot, ProviderConnectionMode.SDK) when IsCopilotCustomProvider(provider) => "Custom Provider",
+		(ProviderType.Copilot, ProviderConnectionMode.SDK) when !string.IsNullOrWhiteSpace(provider.ApiKey) => "GitHub Token",
+		(ProviderType.Copilot, ProviderConnectionMode.SDK) => "Logged-in User",
+		(ProviderType.Copilot, ProviderConnectionMode.CLI) when !string.IsNullOrWhiteSpace(provider.ApiKey) => "GitHub Token",
+		(ProviderType.Copilot, ProviderConnectionMode.CLI) => "Logged-in User",
+		(ProviderType.OpenCode, ProviderConnectionMode.REST) => "API Key",
+		(ProviderType.OpenCode, ProviderConnectionMode.CLI) when !string.IsNullOrWhiteSpace(provider.ApiKey) => "API Key",
+		_ => null
+	};
+
+	public static IReadOnlyList<string> GetSupportedReasoningEfforts(ProviderType providerType, ProviderConnectionMode mode) => (providerType, mode) switch
+	{
+		(ProviderType.Claude, ProviderConnectionMode.CLI) => ["low", "medium", "high", "max"],
+		(ProviderType.Copilot, ProviderConnectionMode.CLI) => ["low", "medium", "high", "xhigh"],
+		(ProviderType.Copilot, ProviderConnectionMode.SDK) => ["low", "medium", "high", "xhigh"],
+		(ProviderType.OpenCode, _) => ["minimal", "low", "medium", "high", "xhigh", "max"],
+		_ => []
+	};
+
+	public static IReadOnlyList<string> GetSupportedReasoningEfforts(Provider provider)
+		=> GetSupportedReasoningEfforts(provider.Type, provider.ConnectionMode);
+
+	public static string? NormalizeReasoningEffort(string? reasoningEffort)
+		=> string.IsNullOrWhiteSpace(reasoningEffort) ? null : reasoningEffort.Trim().ToLowerInvariant();
+
+	public static bool SupportsReasoningEffort(Provider provider, string? reasoningEffort)
+	{
+		var normalized = NormalizeReasoningEffort(reasoningEffort);
+		if (normalized == null)
+		{
+			return true;
+		}
+
+		return GetSupportedReasoningEfforts(provider).Contains(normalized, StringComparer.Ordinal);
+	}
 
 	/// <summary>
 	/// Returns whether the "Update CLI" action is applicable for a given mode.
@@ -88,18 +134,21 @@ public static class ProviderCapabilities
 			errors.Add($"{provider.Type} does not support {provider.ConnectionMode} connection mode.");
 		}
 
-		// Validate REST mode requirements
+		// Validate endpoint requirements
 		if (provider.ConnectionMode == ProviderConnectionMode.REST)
 		{
 			if (string.IsNullOrWhiteSpace(provider.ApiEndpoint))
 			{
 				errors.Add("API Endpoint is required for REST connection mode.");
 			}
-			else if (!Uri.TryCreate(provider.ApiEndpoint, UriKind.Absolute, out var uri) ||
-					 (uri.Scheme != "http" && uri.Scheme != "https"))
+			else if (!IsValidHttpEndpoint(provider.ApiEndpoint))
 			{
 				errors.Add("API Endpoint must be a valid HTTP or HTTPS URL.");
 			}
+		}
+		else if (!string.IsNullOrWhiteSpace(provider.ApiEndpoint) && !IsValidHttpEndpoint(provider.ApiEndpoint))
+		{
+			errors.Add("API Endpoint must be a valid HTTP or HTTPS URL.");
 		}
 
 		// Validate SDK mode requirements
@@ -109,8 +158,22 @@ public static class ProviderCapabilities
 			{
 				errors.Add("API Key is required for Claude SDK connection mode.");
 			}
+
+			if (IsCopilotCustomProvider(provider) && string.IsNullOrWhiteSpace(provider.ApiKey))
+			{
+				errors.Add("API Key is required for Copilot SDK custom provider connections.");
+			}
+		}
+
+		if (!SupportsReasoningEffort(provider, provider.DefaultReasoningEffort))
+		{
+			errors.Add($"{provider.Type} {provider.ConnectionMode} does not support the selected reasoning effort.");
 		}
 
 		return errors;
 	}
+
+	private static bool IsValidHttpEndpoint(string endpoint)
+		=> Uri.TryCreate(endpoint, UriKind.Absolute, out var uri)
+			&& (uri.Scheme == "http" || uri.Scheme == "https");
 }

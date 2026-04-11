@@ -1,0 +1,17 @@
+@* Skeleton placeholder using Bootstrap 5.3 placeholder-wave utility *@
+
+<div class="placeholder-wave" aria-hidden="true">
+    @for (var i = 0; i < Lines; i++)
+    {
+        var widthClass = i == Lines - 1 && Lines > 1 ? "col-8" : "col-12";
+        <span class="placeholder @widthClass bg-body-secondary rounded mb-2 d-block" style="height: @($"{LineHeight}px")"></span>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public int Lines { get; set; } = 3;
+
+    [Parameter]
+    public int LineHeight { get; set; } = 16;
+}

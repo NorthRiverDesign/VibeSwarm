@@ -2,9 +2,6 @@
 @inject IAutoPilotService AutoPilotService
 @inject NavigationManager NavigationManager
 @inject NotificationService NotificationService
-@using VibeSwarm.Shared.Data
-@using VibeSwarm.Shared.Providers
-@using VibeSwarm.Shared.Services
 
 <div class="d-grid gap-3">
 	@if (_isLoading)
@@ -172,19 +169,19 @@
 						@if (_loop.Status == IterationLoopStatus.Running)
 						{
 							<button type="button" class="btn btn-sm btn-warning" @onclick="PauseAutoPilot" disabled="@_isToggling">
-								<i class="bi bi-pause-fill"></i> Pause
+								<i class="bi bi-pause-fill"></i><span class="d-none d-sm-inline ms-1">Pause</span>
 							</button>
 							<button type="button" class="btn btn-sm btn-danger" @onclick="StopAutoPilot" disabled="@_isToggling">
-								<i class="bi bi-stop-fill"></i> Stop
+								<i class="bi bi-stop-fill"></i><span class="d-none d-sm-inline ms-1">Stop</span>
 							</button>
 						}
 						else if (_loop.Status == IterationLoopStatus.Paused)
 						{
 							<button type="button" class="btn btn-sm btn-success" @onclick="ResumeAutoPilot" disabled="@_isToggling">
-								<i class="bi bi-play-fill"></i> Resume
+								<i class="bi bi-play-fill"></i><span class="d-none d-sm-inline ms-1">Resume</span>
 							</button>
 							<button type="button" class="btn btn-sm btn-danger" @onclick="StopAutoPilot" disabled="@_isToggling">
-								<i class="bi bi-stop-fill"></i> Stop
+								<i class="bi bi-stop-fill"></i><span class="d-none d-sm-inline ms-1">Stop</span>
 							</button>
 						}
 						else if (_loop.Status == IterationLoopStatus.Stopping)

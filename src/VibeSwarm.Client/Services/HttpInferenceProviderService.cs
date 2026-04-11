@@ -10,11 +10,13 @@ namespace VibeSwarm.Client.Services;
 public class HttpInferenceProviderService : IInferenceProviderService
 {
 	private readonly HttpClient _http;
+	private readonly CachedData<List<InferenceProvider>> _allProvidersCache = new(TimeSpan.FromSeconds(60));
 
 	public HttpInferenceProviderService(HttpClient http) => _http = http;
 
 	public async Task<IEnumerable<InferenceProvider>> GetAllAsync(CancellationToken ct = default)
-		=> await _http.GetJsonAsync("/api/inference/providers", new List<InferenceProvider>(), ct);
+		=> await _allProvidersCache.GetOrFetchAsync(
+			async () => await _http.GetJsonAsync("/api/inference/providers", new List<InferenceProvider>(), ct));
 
 	public async Task<InferenceProvider?> GetByIdAsync(Guid id, CancellationToken ct = default)
 		=> await _http.GetJsonOrNullAsync<InferenceProvider>($"/api/inference/providers/{id}", ct);
@@ -29,6 +31,7 @@ public class HttpInferenceProviderService : IInferenceProviderService
 	{
 		var response = await _http.PostAsJsonAsync("/api/inference/providers", provider, ct);
 		response.EnsureSuccessStatusCode();
+		_allProvidersCache.Invalidate();
 		return await response.ReadJsonAsync(provider, ct);
 	}
 
@@ -36,11 +39,15 @@ public class HttpInferenceProviderService : IInferenceProviderService
 	{
 		var response = await _http.PutAsJsonAsync($"/api/inference/providers/{provider.Id}", provider, ct);
 		response.EnsureSuccessStatusCode();
+		_allProvidersCache.Invalidate();
 		return await response.ReadJsonAsync(provider, ct);
 	}
 
 	public async Task DeleteAsync(Guid id, CancellationToken ct = default)
-		=> await _http.DeleteAsync($"/api/inference/providers/{id}", ct);
+	{
+		await _http.DeleteAsync($"/api/inference/providers/{id}", ct);
+		_allProvidersCache.Invalidate();
+	}
 
 	public async Task<IEnumerable<InferenceModel>> GetModelsAsync(Guid providerId, CancellationToken ct = default)
 		=> await _http.GetJsonAsync($"/api/inference/providers/{providerId}/models", new List<InferenceModel>(), ct);

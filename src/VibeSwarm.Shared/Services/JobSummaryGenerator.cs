@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.RegularExpressions;
 using VibeSwarm.Shared.Data;
+using VibeSwarm.Shared.Utilities;
 using VibeSwarm.Shared.VersionControl.Models;
 
 namespace VibeSwarm.Shared.Services;
@@ -12,6 +13,13 @@ namespace VibeSwarm.Shared.Services;
 public static partial class JobSummaryGenerator
 {
 	private const int MaxCommitLogEntries = 10;
+	private const int MaxCommitSubjectLength = 72;
+	private static readonly string[] NarrativePrefixes = ["i ", "we ", "i'm ", "we're ", "i’ve ", "we’ve ", "i'd ", "we'd "];
+	private static readonly string[] DanglingEndingWords =
+	[
+		"a", "an", "and", "as", "at", "before", "but", "by", "for", "from",
+		"in", "into", "of", "on", "or", "that", "the", "this", "to", "with"
+	];
 
 	private static readonly string[] ActionKeywords =
 	[
@@ -97,6 +105,71 @@ public static partial class JobSummaryGenerator
 		return BuildSummary(diffInfo, actionContext, goalPrompt, title, commitLog);
 	}
 
+	public static string BuildCommitSubject(Job job)
+	{
+		ArgumentNullException.ThrowIfNull(job);
+
+		return BuildCommitSubject(job.SessionSummary, job.Title, job.GoalPrompt, job.ConsoleOutput);
+	}
+
+	public static string BuildCommitSubject(
+		string? sessionSummary,
+		string? title,
+		string? goalPrompt,
+		string? consoleOutput = null)
+	{
+		var promptFallbackSubject = BuildPromptFallbackCommitSubject(goalPrompt);
+
+		var agentSummary = ExtractAgentCommitSummary(consoleOutput);
+		if (!string.IsNullOrWhiteSpace(agentSummary)
+			&& !IsPromptDerivedCommitSubject(agentSummary, promptFallbackSubject))
+		{
+			return agentSummary;
+		}
+
+		var summarySubject = ExtractCommitSubjectCandidate(sessionSummary);
+		if (!string.IsNullOrWhiteSpace(summarySubject)
+			&& !IsPromptDerivedCommitSubject(summarySubject, promptFallbackSubject))
+		{
+			return summarySubject;
+		}
+
+		var shouldUseTitle = !JobTitleHelper.ShouldSyncTitleWithGoalPrompt(title, goalPrompt);
+		if (shouldUseTitle)
+		{
+			var titleSubject = ExtractCommitSubjectCandidate(title);
+			if (!string.IsNullOrWhiteSpace(titleSubject))
+			{
+				return titleSubject;
+			}
+		}
+
+		if (!string.IsNullOrWhiteSpace(promptFallbackSubject))
+		{
+			return promptFallbackSubject;
+		}
+
+		return "Update code";
+	}
+
+	private static string? BuildPromptFallbackCommitSubject(string? goalPrompt)
+	{
+		if (string.IsNullOrWhiteSpace(goalPrompt))
+		{
+			return null;
+		}
+
+		var promptSubject = BuildHeadline(ExtractActionContext(goalPrompt), null);
+		return NormalizeCommitSubject(promptSubject);
+	}
+
+	private static bool IsPromptDerivedCommitSubject(string? candidate, string? promptFallbackSubject)
+	{
+		return !string.IsNullOrWhiteSpace(candidate)
+			&& !string.IsNullOrWhiteSpace(promptFallbackSubject)
+			&& string.Equals(candidate, promptFallbackSubject, StringComparison.OrdinalIgnoreCase);
+	}
+
 	/// <summary>
 	/// Extracts the AI agent's commit summary from console output.
 	/// Looks for content between &lt;commit-summary&gt; tags.
@@ -125,8 +198,8 @@ public static partial class JobSummaryGenerator
 			if (string.IsNullOrWhiteSpace(subject))
 				return null;
 
-			// Enforce max length at a word boundary
-			return TruncateAtWordBoundary(subject, 72);
+			var normalizedSubject = NormalizeCommitSubject(subject);
+			return IsLowQualitySummaryCandidate(normalizedSubject) ? null : normalizedSubject;
 		}
 
 		return null;
@@ -146,6 +219,27 @@ public static partial class JobSummaryGenerator
 
 	[GeneratedRegex(@"<commit-summary>\s*(.+?)\s*</commit-summary>", RegexOptions.Singleline | RegexOptions.IgnoreCase)]
 	private static partial Regex CommitSummaryTagRegex();
+
+	[GeneratedRegex(@"^\s*(changes?|files?|summary|details?)\s*:\s*$", RegexOptions.IgnoreCase)]
+	private static partial Regex CommitArtifactHeadingRegex();
+
+	[GeneratedRegex(@"^\s*(?:[-*•]|\d+[.)])\s+")]
+	private static partial Regex ListPrefixRegex();
+
+	[GeneratedRegex(@"^\s*\d+\s+file\(s\)\s+changed(?:\s*\([^)]+\))?\s*$", RegexOptions.IgnoreCase)]
+	private static partial Regex FileChangeStatsRegex();
+
+	[GeneratedRegex(@"\s*(?:[|]|[-–—:])\s*(?:files?|diff|changes?|details?)\s*:.*$", RegexOptions.IgnoreCase)]
+	private static partial Regex InlineArtifactHeadingSuffixRegex();
+
+	[GeneratedRegex(@"\s+(?:\d+\s+file(?:\(s\))?s?\s+changed(?:\s*\([^)]+\))?(?:,\s*\d+\s+insertions?\(\+\))?(?:,\s*\d+\s+deletions?\(-\))?|[+-]\d+(?:/[+-]\d+)+)\s*$", RegexOptions.IgnoreCase)]
+	private static partial Regex InlineStatSuffixRegex();
+
+	[GeneratedRegex(@"\s*(?:[|]|[-–—:])\s*(?:(?:[A-Za-z0-9._-]+[/\\])+[A-Za-z0-9._-]+(?:\s*,\s*(?:[A-Za-z0-9._-]+[/\\])+[A-Za-z0-9._-]+)*)\s*$", RegexOptions.IgnoreCase)]
+	private static partial Regex InlinePathListSuffixRegex();
+
+	[GeneratedRegex(@"[<>`*_#\[\]\{\}|~]+")]
+	private static partial Regex CommitMarkupRegex();
 
 	/// <summary>
 	/// Parses a git diff string to extract file changes and statistics.
@@ -323,6 +417,120 @@ public static partial class JobSummaryGenerator
 		return subject.Trim();
 	}
 
+	private static string? ExtractCommitSubjectCandidate(string? text)
+	{
+		if (string.IsNullOrWhiteSpace(text))
+		{
+			return null;
+		}
+
+		var normalized = text
+			.Replace("\\n", "\n")
+			.Replace("\\r", "\r");
+
+		foreach (var rawLine in normalized.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries))
+		{
+			var line = rawLine.Trim();
+			if (line.Length == 0 || IsCommitArtifactLine(line))
+			{
+				continue;
+			}
+
+			var subject = NormalizeCommitSubject(line);
+			if (!string.IsNullOrWhiteSpace(subject) && !IsLowQualitySummaryCandidate(subject))
+			{
+				return subject;
+			}
+		}
+
+		return null;
+	}
+
+	private static bool IsCommitArtifactLine(string line)
+	{
+		return CommitArtifactHeadingRegex().IsMatch(line)
+			|| ListPrefixRegex().IsMatch(line)
+			|| FileChangeStatsRegex().IsMatch(line)
+			|| line.StartsWith("Files:", StringComparison.OrdinalIgnoreCase)
+			|| line.StartsWith("Diff:", StringComparison.OrdinalIgnoreCase);
+	}
+
+	private static string? NormalizeCommitSubject(string? text)
+	{
+		if (string.IsNullOrWhiteSpace(text))
+		{
+			return null;
+		}
+
+		var normalized = text.Trim();
+		normalized = CommitSummaryTagRegex().Replace(normalized, "$1");
+		normalized = ListPrefixRegex().Replace(normalized, string.Empty);
+		normalized = CommitMarkupRegex().Replace(normalized, string.Empty);
+		normalized = normalized.Replace('"', ' ').Replace('\t', ' ');
+		normalized = string.Join(" ", normalized.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+		normalized = StripInlineCommitArtifacts(normalized);
+		normalized = normalized.Trim(' ', '.', ',', ';', ':', '-', '–', '—');
+
+		if (normalized.Length == 0 || IsCommitArtifactLine(normalized))
+		{
+			return null;
+		}
+
+		if (normalized.Length == 1)
+		{
+			return normalized.ToUpperInvariant();
+		}
+
+		normalized = char.ToUpper(normalized[0]) + normalized[1..];
+		return TruncateAtWordBoundary(normalized, MaxCommitSubjectLength);
+	}
+
+	private static string StripInlineCommitArtifacts(string text)
+	{
+		if (string.IsNullOrWhiteSpace(text))
+		{
+			return string.Empty;
+		}
+
+		var normalized = text;
+		normalized = InlineArtifactHeadingSuffixRegex().Replace(normalized, string.Empty);
+		normalized = InlineStatSuffixRegex().Replace(normalized, string.Empty);
+		normalized = InlinePathListSuffixRegex().Replace(normalized, string.Empty);
+		return normalized.Trim();
+	}
+
+	private static string BuildHeadline(ActionContext actionContext, string? title)
+	{
+		if (!string.IsNullOrWhiteSpace(title))
+		{
+			var normalizedTitle = NormalizeCommitSubject(title);
+			if (!string.IsNullOrWhiteSpace(normalizedTitle))
+			{
+				return normalizedTitle;
+			}
+		}
+
+		var actionVerb = string.IsNullOrWhiteSpace(actionContext.ActionVerb)
+			? "Update"
+			: actionContext.ActionVerb;
+
+		if (!string.IsNullOrEmpty(actionContext.Subject))
+		{
+			var subjectLower = actionContext.Subject.ToLowerInvariant();
+			var startsWithVerb = ActionKeywords.Any(k => subjectLower.StartsWith(k));
+
+			if (startsWithVerb)
+			{
+				return NormalizeCommitSubject(actionContext.Subject) ?? "Update code";
+			}
+
+			return NormalizeCommitSubject($"{actionVerb} {char.ToLower(actionContext.Subject[0])}{actionContext.Subject[1..]}")
+				?? "Update code";
+		}
+
+		return NormalizeCommitSubject($"{actionVerb} code") ?? "Update code";
+	}
+
 	/// <summary>
 	/// Builds the final summary from parsed information.
 	/// </summary>
@@ -333,122 +541,39 @@ public static partial class JobSummaryGenerator
 		string? title = null,
 		IReadOnlyList<string>? commitLog = null)
 	{
-		var sb = new StringBuilder();
-
 		// If we have no meaningful data, return null
 		if (diffInfo.ChangedFiles.Count == 0 && string.IsNullOrWhiteSpace(goalPrompt) && string.IsNullOrWhiteSpace(title))
 			return null;
 
-		// Build the title line - prefer explicit title over parsing goalPrompt
-		if (!string.IsNullOrWhiteSpace(title))
-		{
-			// Normalize literal escape sequences and take only the first line of the title
-			var normalizedTitle = title
-				.Replace("\\n", "\n")
-				.Replace("\\r", "\r");
-			var firstLine = normalizedTitle
-				.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
-				.Select(l => l.Trim())
-				.FirstOrDefault(l => l.Length > 0)
-				?? normalizedTitle.Trim();
+		var preferredTitle = JobTitleHelper.ShouldSyncTitleWithGoalPrompt(title, goalPrompt)
+			? null
+			: title;
 
-			var cleanTitle = TruncateAtWordBoundary(firstLine, 72);
-			if (cleanTitle.Length == 0)
-				cleanTitle = firstLine;
+		return BuildHeadline(actionContext, preferredTitle);
+	}
 
-			sb.Append(char.ToUpper(cleanTitle[0]));
-			sb.Append(cleanTitle[1..]);
-		}
-		else if (!string.IsNullOrEmpty(actionContext.Subject))
+	private static bool IsLowQualitySummaryCandidate(string? text)
+	{
+		if (string.IsNullOrWhiteSpace(text))
 		{
-			// Fall back to parsing goalPrompt for action + subject
-			var subjectLower = actionContext.Subject.ToLowerInvariant();
-			var startsWithVerb = ActionKeywords.Any(k => subjectLower.StartsWith(k));
-
-			if (startsWithVerb)
-			{
-				// Capitalize first letter
-				sb.Append(char.ToUpper(actionContext.Subject[0]));
-				sb.Append(actionContext.Subject[1..]);
-			}
-			else
-			{
-				sb.Append(actionContext.ActionVerb);
-				sb.Append(' ');
-				sb.Append(char.ToLower(actionContext.Subject[0]));
-				sb.Append(actionContext.Subject[1..]);
-			}
-		}
-		else
-		{
-			sb.Append(actionContext.ActionVerb);
-			sb.Append(" code");
+			return false;
 		}
 
-		// If we have commit log entries, add them as bullet points
-		if (commitLog != null && commitLog.Count > 0)
+		var normalized = text.Trim();
+		var lower = normalized.ToLowerInvariant();
+		if (!NarrativePrefixes.Any(prefix => lower.StartsWith(prefix, StringComparison.Ordinal)))
 		{
-			sb.AppendLine();
-			sb.AppendLine();
-			sb.AppendLine("Changes:");
-
-			var entries = commitLog.Take(MaxCommitLogEntries);
-			foreach (var entry in entries)
-			{
-				sb.Append("• ");
-				sb.AppendLine(entry);
-			}
-
-			if (commitLog.Count > MaxCommitLogEntries)
-			{
-				sb.AppendLine($"... and {commitLog.Count - MaxCommitLogEntries} more commit(s)");
-			}
-		}
-		// If no commit log but we have file change info, add a brief summary
-		else if (diffInfo.ChangedFiles.Count > 0)
-		{
-			sb.AppendLine();
-			sb.AppendLine();
-
-			// Group files by directory/pattern
-			var filePatterns = GetFilePatterns(diffInfo.ChangedFiles);
-
-			if (diffInfo.FilesChanged > 0 || diffInfo.Insertions > 0 || diffInfo.Deletions > 0)
-			{
-				sb.Append(diffInfo.FilesChanged > 0 ? diffInfo.FilesChanged : diffInfo.ChangedFiles.Count);
-				sb.Append(" file(s) changed");
-
-				if (diffInfo.Insertions > 0 || diffInfo.Deletions > 0)
-				{
-					sb.Append(" (");
-					if (diffInfo.Insertions > 0)
-					{
-						sb.Append('+');
-						sb.Append(diffInfo.Insertions);
-					}
-					if (diffInfo.Insertions > 0 && diffInfo.Deletions > 0)
-					{
-						sb.Append('/');
-					}
-					if (diffInfo.Deletions > 0)
-					{
-						sb.Append('-');
-						sb.Append(diffInfo.Deletions);
-					}
-					sb.Append(')');
-				}
-			}
-
-			// Add file patterns if useful
-			if (filePatterns.Count > 0 && filePatterns.Count <= 5)
-			{
-				sb.AppendLine();
-				sb.Append("Files: ");
-				sb.Append(string.Join(", ", filePatterns));
-			}
+			return false;
 		}
 
-		return sb.ToString().Trim();
+		var words = lower.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+		if (words.Length < 6)
+		{
+			return false;
+		}
+
+		var lastWord = words[^1].TrimEnd('.', ',', ';', ':', '!', '?');
+		return DanglingEndingWords.Any(word => string.Equals(word, lastWord, StringComparison.Ordinal));
 	}
 
 	/// <summary>

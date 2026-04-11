@@ -2,8 +2,7 @@ namespace VibeSwarm.Web.Middleware;
 
 /// <summary>
 /// Middleware that redirects users to the setup page when initial configuration is required.
-/// Setup is required when no users exist in the database and no admin credentials
-/// are configured via environment variables (DEFAULT_ADMIN_USER/DEFAULT_ADMIN_PASS).
+/// Setup is required whenever the application has not created its first user yet.
 /// </summary>
 public class SetupRequiredMiddleware
 {
@@ -43,8 +42,7 @@ public class SetupRequiredMiddleware
 			return;
 		}
 
-		// Check if setup is required (set by the initialization process)
-		var setupRequired = Environment.GetEnvironmentVariable("VIBESWARM_SETUP_REQUIRED") == "true";
+		var setupRequired = Environment.GetEnvironmentVariable("VIBESWARM_NO_USERS") == "true";
 
 		if (setupRequired)
 		{

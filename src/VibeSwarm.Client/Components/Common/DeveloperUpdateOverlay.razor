@@ -1,0 +1,240 @@
+@inject DeveloperUpdateOverlayService DeveloperUpdateOverlayService
+@inject IDeveloperModeService DeveloperModeService
+@inject IJSRuntime JSRuntime
+@inject NavigationManager NavigationManager
+@implements IDisposable
+@implements IAsyncDisposable
+@using VibeSwarm.Shared.Models
+
+@if (_status is not null && DeveloperUpdateOverlayService.IsVisible)
+{
+	<div class="position-fixed inset-0 bg-body d-flex align-items-center justify-content-center p-3" style="z-index: 1080;">
+		<div class="card w-100 shadow-lg" style="max-width: 720px;">
+			<div class="card-header bg-body-secondary d-flex align-items-center justify-content-between gap-2 flex-wrap">
+				<div class="d-flex align-items-center gap-2">
+					<i class="@GetStageIconClass(_status.Stage)"></i>
+					<span class="fw-semibold">Updating VibeSwarm</span>
+				</div>
+				<span class="@GetStageBadgeClass(_status.Stage)">@GetStageLabel(_status.Stage)</span>
+			</div>
+			<div class="card-body d-flex flex-column gap-3">
+				<div class="d-flex flex-column flex-sm-row justify-content-between gap-2">
+					<div class="fw-medium">@_status.StatusMessage</div>
+					@if (_status.StartedAtUtc is DateTime startedAtUtc)
+					{
+						<div class="small text-body-secondary">Elapsed: @FormatElapsed(startedAtUtc)</div>
+					}
+				</div>
+
+				@if (!string.IsNullOrWhiteSpace(_status.WorkingDirectory))
+				{
+					<div class="small text-body-secondary">
+						<i class="bi bi-folder2-open me-1"></i>@_status.WorkingDirectory
+					</div>
+				}
+
+				@if (_status.Stage == DeveloperUpdateStage.Restarting)
+				{
+					<div class="small text-body-secondary">
+						The page will refresh automatically after the restarted app instance is detected.
+					</div>
+				}
+
+				<div class="border rounded-3 bg-body-tertiary">
+					<div class="px-3 py-2 border-bottom small text-body-secondary fw-semibold">
+						Build Progress
+					</div>
+					<div class="p-3 overflow-auto font-monospace small white-space-pre-wrap" style="max-height: 320px;">
+						@if (_status.RecentOutput.Count == 0)
+						{
+							<div class="text-body-secondary">Waiting for output...</div>
+						}
+						else
+						{
+							@foreach (var line in _status.RecentOutput.TakeLast(60))
+							{
+								<div class="d-flex gap-2">
+									<span class="text-body-secondary flex-shrink-0">[@line.TimestampUtc.ToLocalTime().ToString("HH:mm:ss")]</span>
+									<span class="text-break @(line.IsError ? "text-danger" : string.Empty)">@line.Text</span>
+								</div>
+							}
+						}
+					</div>
+				</div>
+
+				@if (_status.Stage == DeveloperUpdateStage.Failed)
+				{
+					<div class="d-flex justify-content-end">
+						<button type="button" class="btn btn-secondary" @onclick="DismissFailure">
+							Dismiss
+						</button>
+					</div>
+				}
+			</div>
+		</div>
+	</div>
+}
+
+@code {
+	private DeveloperModeStatus? _status;
+	private Timer? _clockTimer;
+	private CancellationTokenSource? _statusSyncCancellationTokenSource;
+
+	protected override void OnInitialized()
+	{
+		DeveloperUpdateOverlayService.OnChange += HandleOverlayChanged;
+		_status = DeveloperUpdateOverlayService.CurrentStatus;
+		_clockTimer = new Timer(_ => InvokeAsync(StateHasChanged), null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
+		UpdatePolling();
+	}
+
+	private void HandleOverlayChanged()
+	{
+		_status = DeveloperUpdateOverlayService.CurrentStatus;
+		UpdatePolling();
+		InvokeAsync(StateHasChanged);
+	}
+
+	private void UpdatePolling()
+	{
+		UpdateStatusSyncPolling();
+	}
+
+	private void UpdateStatusSyncPolling()
+	{
+		var shouldPoll = _status?.IsUpdateInProgress == true &&
+			(_status.Stage == DeveloperUpdateStage.Building || _status.Stage == DeveloperUpdateStage.Restarting);
+		if (!shouldPoll)
+		{
+			StopStatusSyncPolling();
+			return;
+		}
+
+		if (_statusSyncCancellationTokenSource is not null)
+		{
+			return;
+		}
+
+		_statusSyncCancellationTokenSource = new CancellationTokenSource();
+		_ = PollForStatusUpdatesAsync(_statusSyncCancellationTokenSource.Token);
+	}
+
+	private async Task PollForStatusUpdatesAsync(CancellationToken cancellationToken)
+	{
+		try
+		{
+			await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+
+			while (!cancellationToken.IsCancellationRequested)
+			{
+				await RefreshStatusAsync(cancellationToken);
+				await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+			}
+		}
+		catch (OperationCanceledException)
+		{
+		}
+	}
+
+	private async Task RefreshStatusAsync(CancellationToken cancellationToken)
+	{
+		try
+		{
+			var status = await DeveloperModeService.GetStatusAsync(cancellationToken);
+			if (_status?.Stage == DeveloperUpdateStage.Restarting &&
+				!string.IsNullOrWhiteSpace(_status.ServerInstanceId) &&
+				!string.IsNullOrWhiteSpace(status.ServerInstanceId) &&
+				!string.Equals(_status.ServerInstanceId, status.ServerInstanceId, StringComparison.Ordinal))
+			{
+				DeveloperUpdateOverlayService.SetStatus(status);
+				await ReloadPageAsync();
+				return;
+			}
+
+			DeveloperUpdateOverlayService.SetStatus(status);
+		}
+		catch (OperationCanceledException)
+		{
+			throw;
+		}
+		catch
+		{
+		}
+	}
+
+	private async Task ReloadPageAsync()
+	{
+		DeveloperUpdateOverlayService.Clear();
+
+		try
+		{
+			await JSRuntime.InvokeVoidAsync("location.reload", true);
+		}
+		catch
+		{
+			NavigationManager.NavigateTo(NavigationManager.Uri, forceLoad: true);
+		}
+	}
+
+	private void DismissFailure()
+	{
+		DeveloperUpdateOverlayService.Clear();
+	}
+
+	private void StopStatusSyncPolling()
+	{
+		if (_statusSyncCancellationTokenSource is null)
+		{
+			return;
+		}
+
+		_statusSyncCancellationTokenSource.Cancel();
+		_statusSyncCancellationTokenSource.Dispose();
+		_statusSyncCancellationTokenSource = null;
+	}
+
+	private static string FormatElapsed(DateTime startedAtUtc)
+	{
+		var elapsed = DateTime.UtcNow - startedAtUtc;
+		return elapsed.TotalHours >= 1
+			? $"{(int)elapsed.TotalHours:D2}:{elapsed.Minutes:D2}:{elapsed.Seconds:D2}"
+			: $"{elapsed.Minutes:D2}:{elapsed.Seconds:D2}";
+	}
+
+	private static string GetStageLabel(DeveloperUpdateStage stage) => stage switch
+	{
+		DeveloperUpdateStage.Building => "Building",
+		DeveloperUpdateStage.Restarting => "Restarting",
+		DeveloperUpdateStage.Failed => "Failed",
+		_ => "Preparing"
+	};
+
+	private static string GetStageIconClass(DeveloperUpdateStage stage) => stage switch
+	{
+		DeveloperUpdateStage.Building => "bi bi-hammer text-primary",
+		DeveloperUpdateStage.Restarting => "bi bi-arrow-repeat text-primary",
+		DeveloperUpdateStage.Failed => "bi bi-exclamation-octagon text-danger",
+		_ => "bi bi-gear text-primary"
+	};
+
+	private static string GetStageBadgeClass(DeveloperUpdateStage stage) => stage switch
+	{
+		DeveloperUpdateStage.Building => "badge bg-primary-subtle text-primary-emphasis",
+		DeveloperUpdateStage.Restarting => "badge bg-primary-subtle text-primary-emphasis",
+		DeveloperUpdateStage.Failed => "badge bg-danger-subtle text-danger-emphasis",
+		_ => "badge bg-body-secondary text-body-secondary"
+	};
+
+	public void Dispose()
+	{
+		DeveloperUpdateOverlayService.OnChange -= HandleOverlayChanged;
+		_clockTimer?.Dispose();
+		StopStatusSyncPolling();
+	}
+
+	public ValueTask DisposeAsync()
+	{
+		Dispose();
+		return ValueTask.CompletedTask;
+	}
+}

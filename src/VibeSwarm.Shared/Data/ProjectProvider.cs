@@ -25,6 +25,9 @@ public class ProjectProvider
 	[StringLength(200)]
 	public string? PreferredModelId { get; set; }
 
+	[StringLength(VibeSwarm.Shared.Validation.ValidationLimits.ReasoningEffortMaxLength)]
+	public string? PreferredReasoningEffort { get; set; }
+
 	public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
 	public DateTime? UpdatedAt { get; set; }

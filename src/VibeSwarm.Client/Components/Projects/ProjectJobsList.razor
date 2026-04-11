@@ -1,33 +1,37 @@
 @* Project jobs list component *@
-@using VibeSwarm.Shared.Models
-@using VibeSwarm.Shared.Utilities
 
 <SectionErrorBoundary SectionTitle="job list">
 	<div class="d-grid gap-3">
 		@* Search and filter row *@
-		<div class="d-flex flex-wrap gap-2 align-items-center">
-			<div class="flex-grow-1" style="min-width: 160px; max-width: 320px;">
-				<div class="input-group input-group-sm">
-					<span class="input-group-text"><i class="bi bi-search"></i></span>
-					<input type="search" class="form-control" placeholder="Search jobs…"
-						   value="@SearchQuery"
-						   @oninput="HandleSearchInput"
-						   title="Filter jobs by name" />
+		<div class="d-flex flex-column flex-lg-row align-items-stretch align-items-lg-center gap-2">
+			<div class="flex-grow-1 min-width-0">
+				<div class="row g-2 align-items-stretch">
+					<div class="col-12 col-md-8">
+						<div class="input-group input-group-sm">
+							<span class="input-group-text"><i class="bi bi-search"></i></span>
+							<input type="search" class="form-control" placeholder="Search jobs…"
+								   value="@SearchQuery"
+								   @oninput="HandleSearchInput"
+								   title="Filter jobs by name" />
+						</div>
+					</div>
+					<div class="col-12 col-md-4">
+						<select class="form-select form-select-sm"
+								value="@StatusFilter"
+								@onchange="HandleStatusFilterChange"
+								title="Filter by status">
+							<option value="all">All statuses</option>
+							<option value="active">Active</option>
+							<option value="completed">Completed</option>
+							<option value="failed">Failed</option>
+							<option value="cancelled">Cancelled</option>
+						</select>
+					</div>
 				</div>
 			</div>
-			<select class="form-select form-select-sm" style="max-width: 140px;"
-					value="@StatusFilter"
-					@onchange="HandleStatusFilterChange"
-					title="Filter by status">
-				<option value="all">All statuses</option>
-				<option value="active">Active</option>
-				<option value="completed">Completed</option>
-				<option value="failed">Failed</option>
-				<option value="cancelled">Cancelled</option>
-			</select>
 		</div>
-		<div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
-			<div class="d-flex flex-wrap align-items-center gap-2 small text-body-secondary">
+		<div class="d-flex flex-column flex-sm-row justify-content-between align-items-stretch align-items-sm-center gap-2">
+			<div class="d-flex flex-wrap align-items-center gap-2 small text-body-secondary min-width-0">
 				@if (IsPageLoading)
 				{
 					<span class="d-inline-flex align-items-center gap-2">
@@ -43,11 +47,62 @@
 					</span>
 				}
 			</div>
-			<div class="d-flex align-items-center gap-2">
-				<span class="badge bg-secondary">@TotalJobsCount</span>
+			<div class="d-grid d-sm-flex align-items-stretch align-items-sm-center gap-2">
+				<div class="d-flex align-items-center justify-content-between gap-2">
+					<span class="badge bg-secondary align-self-center">@TotalJobsCount</span>
+					@if (HasBulkActions)
+					{
+						<div class="dropdown d-sm-none">
+							<button type="button" class="btn btn-sm btn-secondary dropdown-toggle w-100" data-bs-toggle="dropdown"
+									aria-expanded="false" title="Job actions">
+								<i class="bi bi-three-dots me-1"></i>Actions
+							</button>
+							<ul class="dropdown-menu dropdown-menu-end">
+								@if (HasActiveJobs)
+								{
+									<li>
+										<button type="button" class="dropdown-item text-danger" @onclick="HandleCancelAll"
+												disabled="@IsBulkActionInProgress" title="Cancel all queued and active jobs">
+											@if (_isCancellingAll)
+											{
+												<span class="spinner-border spinner-border-sm me-2" role="status"></span>
+											}
+											else
+											{
+												<i class="bi bi-x-octagon me-2"></i>
+											}
+											Cancel All
+										</button>
+									</li>
+								}
+								@if (HasActiveJobs && HasCompletedJobs)
+								{
+									<li><hr class="dropdown-divider"></li>
+								}
+								@if (HasCompletedJobs)
+								{
+									<li>
+										<button type="button" class="dropdown-item text-danger" @onclick="HandleDeleteCompleted"
+												disabled="@IsBulkActionInProgress" title="Delete completed jobs for this project">
+											@if (_isDeletingCompleted)
+											{
+												<span class="spinner-border spinner-border-sm me-2" role="status"></span>
+											}
+											else
+											{
+												<i class="bi bi-trash me-2"></i>
+											}
+											Delete Completed Jobs
+										</button>
+									</li>
+								}
+							</ul>
+						</div>
+					}
+				</div>
 				@if (HasBulkActions)
 				{
-					<div class="dropdown">
+					<div class="dropdown d-none d-sm-block">
 						<button type="button" class="btn btn-sm btn-secondary dropdown-toggle" data-bs-toggle="dropdown"
 								aria-expanded="false" title="More job actions">
 							<i class="bi bi-three-dots me-1"></i>More
@@ -100,6 +155,98 @@
 				</button>
 			</div>
 		</div>
+		@if (Jobs.Any())
+		{
+			<div class="d-flex flex-column flex-sm-row justify-content-between align-items-stretch align-items-sm-center gap-2 border rounded-3 bg-body-tertiary p-2">
+				<div class="form-check mb-0">
+					<input id="@_selectAllCheckboxId" class="form-check-input" type="checkbox"
+						   checked="@IsAllVisibleJobsSelected"
+						   @onchange="HandleSelectAllChanged"
+						   aria-label="Select all visible jobs" />
+					<label class="form-check-label small" for="@_selectAllCheckboxId">
+						@(SelectedJobsCount > 0 ? $"{SelectedJobsCount} selected" : "Select visible jobs")
+					</label>
+				</div>
+				<div class="d-grid d-sm-flex align-items-stretch align-items-sm-center gap-2">
+					<div class="dropdown d-md-none">
+						<button type="button" class="btn btn-sm btn-secondary dropdown-toggle w-100" data-bs-toggle="dropdown"
+								aria-expanded="false" title="Selected job actions">
+							<i class="bi bi-check2-square me-1"></i>Selected Actions
+						</button>
+						<ul class="dropdown-menu dropdown-menu-end">
+							<li>
+								<button type="button" class="dropdown-item" @onclick="HandleRetrySelected"
+										disabled="@(IsSelectionActionInProgress || RetryableSelectedJobsCount == 0)"
+										title="Retry selected failed, cancelled, or stopped jobs">
+									<i class="bi bi-arrow-clockwise me-2"></i>Retry Selected (@RetryableSelectedJobsCount)
+								</button>
+							</li>
+							<li>
+								<button type="button" class="dropdown-item text-danger" @onclick="HandleCancelSelected"
+										disabled="@(IsSelectionActionInProgress || CancellableSelectedJobsCount == 0)"
+										title="Cancel selected queued or active jobs">
+									<i class="bi bi-x-octagon me-2"></i>Cancel Selected (@CancellableSelectedJobsCount)
+								</button>
+							</li>
+							<li>
+								<button type="button" class="dropdown-item" @onclick="HandlePrioritizeSelected"
+										disabled="@(IsSelectionActionInProgress || PrioritizableSelectedJobsCount == 0)"
+										title="Move selected queued jobs to the front">
+									<i class="bi bi-arrow-up-circle me-2"></i>Prioritize Selected (@PrioritizableSelectedJobsCount)
+								</button>
+							</li>
+						</ul>
+					</div>
+					<div class="d-none d-md-flex align-items-center gap-2 flex-wrap">
+						<button type="button" class="btn btn-sm btn-secondary" @onclick="HandleRetrySelected"
+								disabled="@(IsSelectionActionInProgress || RetryableSelectedJobsCount == 0)"
+								title="Retry selected failed, cancelled, or stopped jobs">
+							@if (_isRetryingSelected)
+							{
+								<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+							}
+							else
+							{
+								<i class="bi bi-arrow-clockwise me-1"></i>
+							}
+							Retry Selected (@RetryableSelectedJobsCount)
+						</button>
+						<button type="button" class="btn btn-sm btn-danger" @onclick="HandleCancelSelected"
+								disabled="@(IsSelectionActionInProgress || CancellableSelectedJobsCount == 0)"
+								title="Cancel selected queued or active jobs">
+							@if (_isCancellingSelected)
+							{
+								<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+							}
+							else
+							{
+								<i class="bi bi-x-octagon me-1"></i>
+							}
+							Cancel Selected (@CancellableSelectedJobsCount)
+						</button>
+						<button type="button" class="btn btn-sm btn-secondary" @onclick="HandlePrioritizeSelected"
+								disabled="@(IsSelectionActionInProgress || PrioritizableSelectedJobsCount == 0)"
+								title="Move selected queued jobs to the front">
+							@if (_isPrioritizingSelected)
+							{
+								<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+							}
+							else
+							{
+								<i class="bi bi-arrow-up-circle me-1"></i>
+							}
+							Prioritize Selected (@PrioritizableSelectedJobsCount)
+						</button>
+					</div>
+					@if (SelectedJobsCount > 0)
+					{
+						<button type="button" class="btn btn-sm btn-secondary" @onclick="ClearSelection" title="Clear selected jobs">
+							<i class="bi bi-x-lg me-1"></i>Clear
+						</button>
+					}
+				</div>
+			</div>
+		}
 		@if (!Jobs.Any())
 		{
 			@if (HasActiveFilters)
@@ -122,6 +269,12 @@
 						<li class="list-group-item">
 							<div class="d-flex justify-content-between align-items-start gap-2">
 								<div class="d-flex align-items-start gap-2 flex-grow-1 min-width-0">
+									<div class="form-check flex-shrink-0 m-0 pt-1">
+										<input class="form-check-input" type="checkbox"
+											   checked="@IsJobSelected(job.Id)"
+											   @onchange="e => HandleJobSelectionChanged(job.Id, e)"
+											   aria-label="@($"Select job {GetJobDisplayTitle(job)}")" />
+									</div>
 									@* Status Icon *@
 									<div class="flex-shrink-0 pt-1">
 										@switch (job.Status)
@@ -164,15 +317,29 @@
 											@GetJobDisplayTitle(job)
 										</a>
 										<div class="d-flex flex-wrap gap-2 mt-1 small text-body-secondary">
-											<span>@(job.ProviderName ?? "Unknown")</span>
-											@if (!string.IsNullOrEmpty(job.ModelUsed))
-											{
-												<span class="text-body-tertiary">•</span>
-												<span class="text-body-tertiary" title="Model">@FormatModelName(job.ModelUsed)</span>
-											}
-											<span class="text-body-tertiary">•</span>
 											<span>@job.CreatedAt.FormatDateTimeShort()</span>
 										</div>
+ 										<div class="mt-2">
+ 											<JobOutcomeBadges Status="@job.Status"
+ 															  ChangedFilesCount="@job.ChangedFilesCount"
+ 															  BuildVerified="@job.BuildVerified"
+ 															  BuildVerificationEnabled="@job.BuildVerificationEnabled"
+ 															  IsPushed="@job.IsPushed"
+ 															  GitCommitHash="@job.GitCommitHash"
+ 															  PullRequestUrl="@job.PullRequestUrl"
+															  PullRequestNumber="@job.PullRequestNumber"
+															  MergedAt="@job.MergedAt" />
+										</div>
+										<JobOutcomeHint Status="@job.Status"
+														ChangedFilesCount="@job.ChangedFilesCount"
+														BuildVerified="@job.BuildVerified"
+														BuildVerificationEnabled="@job.BuildVerificationEnabled"
+														IsPushed="@job.IsPushed"
+														GitCommitHash="@job.GitCommitHash"
+														PullRequestUrl="@job.PullRequestUrl"
+														PullRequestNumber="@job.PullRequestNumber"
+														MergedAt="@job.MergedAt" />
+										<JobOutcomeSummarySnippet SessionSummary="@job.SessionSummary" />
 										@* Token and cost stats row *@
 										@if (job.InputTokens.HasValue || job.OutputTokens.HasValue || job.TotalCostUsd.HasValue)
 										{
@@ -223,7 +390,7 @@
 												<i class="bi bi-eye me-2"></i>View Details
 											</a>
 										</li>
-										@if (job.Status is JobStatus.Failed or JobStatus.Cancelled)
+										@if (job.Status is JobStatus.Failed or JobStatus.Cancelled or JobStatus.Stalled)
 										{
 											<li>
 												<button class="dropdown-item"
@@ -299,6 +466,15 @@
 	public EventCallback OnDeleteCompleted { get; set; }
 
 	[Parameter]
+	public EventCallback<List<Guid>> OnRetrySelected { get; set; }
+
+	[Parameter]
+	public EventCallback<List<Guid>> OnCancelSelected { get; set; }
+
+	[Parameter]
+	public EventCallback<List<Guid>> OnPrioritizeSelected { get; set; }
+
+	[Parameter]
 	public string SearchQuery { get; set; } = string.Empty;
 
 	[Parameter]
@@ -312,8 +488,25 @@
 
 	private bool _isCancellingAll;
 	private bool _isDeletingCompleted;
+	private bool _isRetryingSelected;
+	private bool _isCancellingSelected;
+	private bool _isPrioritizingSelected;
+	private readonly HashSet<Guid> _selectedJobIds = new();
+	private readonly string _selectAllCheckboxId = $"project-jobs-select-all-{Guid.NewGuid():N}";
 
 	private bool HasActiveFilters => !string.IsNullOrWhiteSpace(SearchQuery) || StatusFilter != "all";
+	private int SelectedJobsCount => _selectedJobIds.Count;
+	private bool IsAllVisibleJobsSelected => Jobs.Count > 0 && Jobs.All(job => _selectedJobIds.Contains(job.Id));
+	private bool IsSelectionActionInProgress => _isRetryingSelected || _isCancellingSelected || _isPrioritizingSelected;
+	private int RetryableSelectedJobsCount => GetRetryableSelectedJobIds().Count;
+	private int CancellableSelectedJobsCount => GetCancellableSelectedJobIds().Count;
+	private int PrioritizableSelectedJobsCount => GetPrioritizableSelectedJobIds().Count;
+
+	protected override void OnParametersSet()
+	{
+		var visibleIds = Jobs.Select(job => job.Id).ToHashSet();
+		_selectedJobIds.IntersectWith(visibleIds);
+	}
 
 	private async Task HandleSearchInput(ChangeEventArgs e)
 	{
@@ -327,6 +520,8 @@
 
 	private bool HasBulkActions => HasActiveJobs || HasCompletedJobs;
 	private bool IsBulkActionInProgress => _isCancellingAll || _isDeletingCompleted;
+
+	private bool IsJobSelected(Guid jobId) => _selectedJobIds.Contains(jobId);
 
 	private async Task HandleCancelAll()
 	{
@@ -342,6 +537,137 @@
 		_isDeletingCompleted = false;
 	}
 
+	private void HandleSelectAllChanged(ChangeEventArgs e)
+	{
+		var shouldSelectAll = e.Value as bool? == true;
+		if (shouldSelectAll)
+		{
+			foreach (var jobId in Jobs.Select(job => job.Id))
+			{
+				_selectedJobIds.Add(jobId);
+			}
+			return;
+		}
+
+		ClearSelection();
+	}
+
+	private void HandleJobSelectionChanged(Guid jobId, ChangeEventArgs e)
+	{
+		var isSelected = e.Value as bool? == true;
+		if (isSelected)
+		{
+			_selectedJobIds.Add(jobId);
+			return;
+		}
+
+		_selectedJobIds.Remove(jobId);
+	}
+
+	private void ClearSelection()
+	{
+		_selectedJobIds.Clear();
+	}
+
+	private async Task HandleRetrySelected()
+	{
+		var selectedIds = GetRetryableSelectedJobIds();
+		if (selectedIds.Count == 0)
+		{
+			return;
+		}
+
+		_isRetryingSelected = true;
+		try
+		{
+			await OnRetrySelected.InvokeAsync(selectedIds);
+			ClearSelection();
+		}
+		finally
+		{
+			_isRetryingSelected = false;
+		}
+	}
+
+	private async Task HandleCancelSelected()
+	{
+		var selectedIds = GetCancellableSelectedJobIds();
+		if (selectedIds.Count == 0)
+		{
+			return;
+		}
+
+		_isCancellingSelected = true;
+		try
+		{
+			await OnCancelSelected.InvokeAsync(selectedIds);
+			ClearSelection();
+		}
+		finally
+		{
+			_isCancellingSelected = false;
+		}
+	}
+
+	private async Task HandlePrioritizeSelected()
+	{
+		var selectedIds = GetPrioritizableSelectedJobIds();
+		if (selectedIds.Count == 0)
+		{
+			return;
+		}
+
+		_isPrioritizingSelected = true;
+		try
+		{
+			await OnPrioritizeSelected.InvokeAsync(selectedIds);
+			ClearSelection();
+		}
+		finally
+		{
+			_isPrioritizingSelected = false;
+		}
+	}
+
+	private List<Guid> GetRetryableSelectedJobIds()
+	{
+		return Jobs
+			.Where(job => _selectedJobIds.Contains(job.Id) && IsRetryable(job.Status))
+			.Select(job => job.Id)
+			.ToList();
+	}
+
+	private List<Guid> GetCancellableSelectedJobIds()
+	{
+		return Jobs
+			.Where(job => _selectedJobIds.Contains(job.Id) && IsCancellable(job.Status))
+			.Select(job => job.Id)
+			.ToList();
+	}
+
+	private List<Guid> GetPrioritizableSelectedJobIds()
+	{
+		return Jobs
+			.Where(job => _selectedJobIds.Contains(job.Id) && IsPrioritizable(job.Status))
+			.Select(job => job.Id)
+			.ToList();
+	}
+
+	private static bool IsRetryable(JobStatus status)
+	{
+		return status is JobStatus.Failed or JobStatus.Cancelled or JobStatus.Stalled;
+	}
+
+	private static bool IsCancellable(JobStatus status)
+	{
+		return status is JobStatus.New or JobStatus.Pending or JobStatus.Started or JobStatus.Planning or JobStatus.Processing or JobStatus.Paused or JobStatus.Stalled;
+	}
+
+	private static bool IsPrioritizable(JobStatus status)
+	{
+		return status == JobStatus.New;
+	}
+
 	private static string GetJobDisplayTitle(JobSummary job)
 	{
 		return TruncateText(job.DisplayTitle, 100);
@@ -352,6 +678,25 @@
 		if (string.IsNullOrEmpty(text) || text.Length <= maxLength)
 			return text;
 		return text[..maxLength] + "...";
+	}
+
+	private static string GetProviderChain(JobSummary job)
+	{
+		var planning = job.PlanningProviderName;
+		var execution = job.ProviderName;
+		if (!string.IsNullOrWhiteSpace(planning) &&
+			!string.IsNullOrWhiteSpace(execution) &&
+			!string.Equals(planning, execution, StringComparison.Ordinal))
+		{
+			return $"{planning} -> {execution}";
+		}
+
+		return execution ?? planning ?? "Unknown";
+	}
+
+	private static string? GetExecutionModel(JobSummary job)
+	{
+		return string.IsNullOrWhiteSpace(job.ModelUsed) ? null : job.ModelUsed;
 	}
 
 	private static string FormatModelName(string modelName)

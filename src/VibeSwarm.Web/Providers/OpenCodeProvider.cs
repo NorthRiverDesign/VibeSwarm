@@ -12,9 +12,17 @@ namespace VibeSwarm.Shared.Providers;
 /// </summary>
 public class OpenCodeProvider : CliProviderBase
 {
+    private static readonly Version DirectoryVersion = new(1, 2, 0);
+    private static readonly Version TimeoutVersion = new(1, 2, 0);
+    private static readonly Version TimeoutRemovedVersion = new(1, 3, 0);
+    private static readonly Version LegacyReasoningVersion = new(1, 2, 0);
+    private static readonly Version VariantVersion = new(1, 3, 0);
+    private static readonly Version ForkSessionVersion = new(1, 2, 6);
+
     private readonly string? _apiEndpoint;
     private readonly string? _apiKey;
     private readonly HttpClient? _httpClient;
+    private Version? _cachedCliVersion;
 
     private const string DefaultExecutable = "opencode";
 
@@ -53,6 +61,12 @@ public class OpenCodeProvider : CliProviderBase
     protected override string GetUpdateArguments() => "upgrade";
     protected override string? GetDefaultExecutablePath() => GetExecutablePath();
 
+    internal Version? CachedCliVersion
+    {
+        get => _cachedCliVersion;
+        set => _cachedCliVersion = value;
+    }
+
     public override async Task<bool> TestConnectionAsync(CancellationToken cancellationToken = default)
     {
         try
@@ -60,7 +74,14 @@ public class OpenCodeProvider : CliProviderBase
             if (ConnectionMode == ProviderConnectionMode.CLI)
             {
                 await EnsureCliAuthenticationReadyAsync(cancellationToken);
-                return await TestCliConnectionAsync(GetExecutablePath(), "OpenCode", cancellationToken: cancellationToken);
+                var isConnected = await TestCliConnectionAsync(GetExecutablePath(), "OpenCode", cancellationToken: cancellationToken);
+                if (isConnected)
+                {
+                    var versionString = await GetCliVersionAsync(GetExecutablePath(), cancellationToken: cancellationToken);
+                    _cachedCliVersion = ParseCliVersion(versionString);
+                }
+
+                return isConnected;
             }
             else
             {
@@ -161,18 +182,25 @@ public class OpenCodeProvider : CliProviderBase
     /// --attach        Attach to a running opencode server
     /// --port          Port for the local server
     /// --dir           Working directory for the session (v1.2.0+)
-    /// --timeout       Timeout in seconds for the execution (v1.2.0+)
+    /// --timeout       Timeout in seconds for the execution (legacy v1.2.x only)
+    /// --variant       Provider-specific model variant / reasoning preset (v1.3.0+)
     /// </summary>
     internal List<string> BuildRunCommandArgs(string prompt, string? sessionId)
     {
         var args = new List<string> { "run" };
+        var supportsDirectory = SupportsCliVersion(DirectoryVersion);
+        var supportsLegacyTimeout = SupportsCliVersion(TimeoutVersion) && !SupportsCliVersion(TimeoutRemovedVersion);
+        var supportsLegacyReasoning = SupportsCliVersion(LegacyReasoningVersion) && !SupportsCliVersion(VariantVersion);
+        var supportsVariant = SupportsCliVersion(VariantVersion);
+        var supportsForkSession = SupportsCliVersion(ForkSessionVersion);
 
-        // Session continuation options (--session takes precedence over --continue)
-        if (!string.IsNullOrEmpty(sessionId))
-        {
-            args.AddRange(new[] { "--session", sessionId });
-        }
-        else if (CurrentContinueLastSession)
+		// Session continuation options (--session takes precedence over --continue)
+		var isContinuingSession = !string.IsNullOrEmpty(sessionId) || CurrentContinueLastSession;
+		if (!string.IsNullOrEmpty(sessionId))
+		{
+			args.AddRange(new[] { "--session", sessionId });
+		}
+		else if (CurrentContinueLastSession)
         {
             args.Add("--continue");
         }
@@ -202,14 +230,16 @@ public class OpenCodeProvider : CliProviderBase
         }
 
         // Working directory override (v1.2.0+)
-        if (CurrentAdditionalDirectories != null && CurrentAdditionalDirectories.Count > 0)
+        if (supportsDirectory
+            && CurrentAdditionalDirectories != null
+            && CurrentAdditionalDirectories.Count > 0)
         {
             // OpenCode uses --dir for the working directory
             args.AddRange(new[] { "--dir", CurrentAdditionalDirectories[0] });
         }
 
-        // Timeout in seconds (v1.2.0+)
-        if (CurrentTimeoutSeconds.HasValue)
+        // Timeout in seconds was available in v1.2.x and removed from current 1.3.x run help/docs.
+        if (supportsLegacyTimeout && CurrentTimeoutSeconds.HasValue)
         {
             args.AddRange(new[] { "--timeout", CurrentTimeoutSeconds.Value.ToString() });
         }
@@ -229,17 +259,20 @@ public class OpenCodeProvider : CliProviderBase
             }
         }
 
-        // Fork an existing session into a new branch (v1.2.6+)
-        if (CurrentForkSession && !string.IsNullOrEmpty(sessionId))
-        {
-            args.Add("--fork");
-        }
+		// Fork an existing session into a new branch (v1.2.6+, requires --continue or --session)
+		if (supportsForkSession && CurrentForkSession && isContinuingSession)
+		{
+			args.Add("--fork");
+		}
 
-        // Adaptive reasoning effort level (v1.2.0+)
-        var reasoningEffort = NormalizeReasoningEffort(CurrentReasoningEffort, "low", "medium", "high", "xhigh");
-        if (!string.IsNullOrEmpty(reasoningEffort))
+        var reasoningEffort = NormalizeReasoningEffort(CurrentReasoningEffort, "minimal", "low", "medium", "high", "xhigh", "max");
+        if (supportsLegacyReasoning && !string.IsNullOrEmpty(reasoningEffort))
         {
             args.AddRange(new[] { "--reasoning", reasoningEffort });
+        }
+        else if (supportsVariant && !string.IsNullOrEmpty(reasoningEffort))
+        {
+            args.AddRange(new[] { "--variant", reasoningEffort });
         }
 
         if (!string.IsNullOrEmpty(CurrentMcpConfigPath))
@@ -259,6 +292,79 @@ public class OpenCodeProvider : CliProviderBase
         return args;
     }
 
+    public override async Task<CliUpdateResult> UpdateCliAsync(CancellationToken cancellationToken = default)
+    {
+        var updateCommand = GetExecutablePath();
+        if (string.IsNullOrEmpty(updateCommand))
+        {
+            return CliUpdateResult.Fail("Update command not configured for this provider");
+        }
+
+        string? previousVersion = null;
+
+        try
+        {
+            previousVersion = await GetCliVersionAsync(updateCommand, cancellationToken: cancellationToken);
+            _cachedCliVersion = ParseCliVersion(previousVersion);
+
+            var updatePlan = BuildUpdatePlan(updateCommand);
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = updateCommand,
+                Arguments = updatePlan.Arguments
+            };
+
+            PlatformHelper.ConfigureForCrossPlatform(startInfo);
+
+            if (!string.IsNullOrWhiteSpace(updatePlan.NpmConfigPrefix))
+            {
+                startInfo.Environment["npm_config_prefix"] = updatePlan.NpmConfigPrefix;
+            }
+
+            using var process = new Process { StartInfo = startInfo };
+            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromMinutes(5));
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
+
+            process.Start();
+
+            var output = await process.StandardOutput.ReadToEndAsync(linkedCts.Token);
+            var error = await process.StandardError.ReadToEndAsync(linkedCts.Token);
+
+            try
+            {
+                await process.WaitForExitAsync(linkedCts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                try { process.Kill(entireProcessTree: true); } catch { }
+                return CliUpdateResult.Fail("Update command timed out", previousVersion);
+            }
+
+            if (process.ExitCode != 0)
+            {
+                var errorMsg = !string.IsNullOrEmpty(error) ? error.Trim() : $"Exit code: {process.ExitCode}";
+                return CliUpdateResult.Fail($"Update failed: {errorMsg}", previousVersion);
+            }
+
+            var newVersion = await GetCliVersionAsync(updateCommand, cancellationToken: cancellationToken);
+            _cachedCliVersion = ParseCliVersion(newVersion);
+
+            var combinedOutputParts = new[] { output.Trim(), error.Trim() }
+                .Where(value => !string.IsNullOrWhiteSpace(value));
+            var combinedOutput = string.Join(Environment.NewLine, combinedOutputParts);
+
+            return CliUpdateResult.Ok(previousVersion, newVersion, string.IsNullOrWhiteSpace(combinedOutput) ? null : combinedOutput);
+        }
+        catch (System.ComponentModel.Win32Exception ex)
+        {
+            return CliUpdateResult.Fail($"Update command not found: {ex.Message}", previousVersion);
+        }
+        catch (Exception ex)
+        {
+            return CliUpdateResult.Fail($"Update failed: {ex.Message}", previousVersion);
+        }
+    }
+
     private async Task<ExecutionResult> ExecuteCliWithSessionAsync(
         string prompt,
         string? sessionId,
@@ -267,6 +373,7 @@ public class OpenCodeProvider : CliProviderBase
         CancellationToken cancellationToken)
     {
         await EnsureCliAuthenticationReadyAsync(cancellationToken);
+        await EnsureCachedCliVersionAsync(cancellationToken);
 
         var execPath = GetExecutablePath();
         if (string.IsNullOrEmpty(execPath))
@@ -896,6 +1003,8 @@ public class OpenCodeProvider : CliProviderBase
 
     private async Task<string> ExecuteCliAsync(string prompt, string? sessionId, CancellationToken cancellationToken)
     {
+        await EnsureCachedCliVersionAsync(cancellationToken);
+
         var execPath = GetExecutablePath();
         if (string.IsNullOrEmpty(execPath))
         {
@@ -1052,10 +1161,67 @@ public class OpenCodeProvider : CliProviderBase
             }
 
             info.Version = await GetCliVersionAsync(execPath, cancellationToken: cancellationToken);
+            _cachedCliVersion = ParseCliVersion(info.Version);
         }
 
         return info;
     }
+
+    private async Task EnsureCachedCliVersionAsync(CancellationToken cancellationToken)
+    {
+        if (ConnectionMode != ProviderConnectionMode.CLI || _cachedCliVersion != null)
+        {
+            return;
+        }
+
+        var versionString = await GetCliVersionAsync(GetExecutablePath(), cancellationToken: cancellationToken);
+        _cachedCliVersion = ParseCliVersion(versionString);
+    }
+
+    private bool SupportsCliVersion(Version minimumVersion)
+        => _cachedCliVersion != null && _cachedCliVersion >= minimumVersion;
+
+    internal static Version? ParseCliVersion(string? versionString)
+    {
+        if (string.IsNullOrWhiteSpace(versionString))
+        {
+            return null;
+        }
+
+        var cleaned = versionString.TrimStart('v').Split('-')[0].Split('+')[0].Trim();
+        return Version.TryParse(cleaned, out var version) ? version : null;
+    }
+
+    internal static OpenCodeUpdatePlan BuildUpdatePlan(string executablePath, string? homeDirectory = null)
+    {
+        homeDirectory ??= Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        if (string.IsNullOrWhiteSpace(homeDirectory))
+        {
+            homeDirectory = Environment.GetEnvironmentVariable("HOME");
+        }
+
+        if (string.IsNullOrWhiteSpace(homeDirectory))
+        {
+            return new OpenCodeUpdatePlan("upgrade", null);
+        }
+
+        var localPrefix = Path.GetFullPath(Path.Combine(homeDirectory, ".local"));
+        var executableFullPath = Path.GetFullPath(executablePath);
+        var prefixWithSeparator = EnsureTrailingDirectorySeparator(localPrefix);
+        var comparison = PlatformHelper.IsWindows ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+
+        if (executableFullPath.StartsWith(prefixWithSeparator, comparison))
+        {
+            return new OpenCodeUpdatePlan("upgrade --method npm", localPrefix);
+        }
+
+        return new OpenCodeUpdatePlan("upgrade", null);
+    }
+
+    private static string EnsureTrailingDirectorySeparator(string path)
+        => path.EndsWith(Path.DirectorySeparatorChar) || path.EndsWith(Path.AltDirectorySeparatorChar)
+            ? path
+            : path + Path.DirectorySeparatorChar;
 
     public override Task<UsageLimits> GetUsageLimitsAsync(CancellationToken cancellationToken = default)
     {
@@ -1276,3 +1442,5 @@ public class OpenCodeProvider : CliProviderBase
         return Path.Combine(dataDirectory, "opencode", "auth.json");
     }
 }
+
+internal sealed record OpenCodeUpdatePlan(string Arguments, string? NpmConfigPrefix);

@@ -43,6 +43,9 @@
 :root {
 	--vs-sidebar-width: 240px;
 	--vs-header-height: 56px;
+	--vs-nav-popout-shadow:
+		0 1.25rem 2.5rem rgba(15, 23, 42, 0.18),
+		0 0.5rem 1rem rgba(15, 23, 42, 0.12);
 	--vs-accent-blue: #58a6ff;
 	--vs-accent-green: #3fb950;
 	--vs-accent-orange: #d29922;
@@ -151,6 +154,7 @@ textarea.form-control {
 html {
 	font-size: 16px;
 	-webkit-text-size-adjust: 100%;
+	-webkit-tap-highlight-color: transparent;
 	height: 100%;
 	overflow-x: clip;
 }
@@ -165,9 +169,22 @@ body {
 	min-height: 100dvh;
 }
 
-/* dvh fallback — markup uses d-flex flex-column min-vh-100 */
+#app:has(.app-layout) {
+	height: 100%;
+}
+
+body:has(.app-layout) {
+	height: 100%;
+	overflow: hidden;
+}
+
+/* Viewport fallback — keep full-height rules in CSS so Bootstrap's 100vh utility
+   does not override iPhone-safe 100dvh sizing. */
 .app-layout {
+	min-height: 100vh;
 	min-height: 100dvh;
+	height: 100vh;
+	height: 100dvh;
 }
 
 /* Safe area calc — markup uses sticky-top d-flex align-items-center gap-3 flex-shrink-0 bg-body-secondary border-bottom */
@@ -194,9 +211,15 @@ body {
 .app-brand {
 	color: var(--bs-body-color);
 	font-size: 1.125rem;
+	min-width: 0;
 }
 .app-brand:hover {
 	color: var(--bs-emphasis-color);
+}
+
+.mobile-header-icon {
+	width: 2.5rem;
+	height: 2.5rem;
 }
 
 /* Sidebar — markup uses position-fixed d-flex flex-column overflow-y-auto */
@@ -217,6 +240,11 @@ body {
 	transform: translateX(0);
 }
 
+.app-sidebar > .overflow-y-auto {
+	-webkit-overflow-scrolling: touch;
+	overscroll-behavior-y: contain;
+}
+
 /* Overlay — markup uses position-fixed */
 .sidebar-overlay {
 	top: calc(var(--vs-header-height) + var(--vs-safe-area-top));
@@ -231,6 +259,8 @@ body {
 .app-main {
 	min-height: 0;
 	padding-bottom: var(--vs-safe-area-bottom);
+	-webkit-overflow-scrolling: touch;
+	overscroll-behavior-y: contain;
 }
 
 .main-content {
@@ -260,17 +290,52 @@ body {
 	}
 }
 
-/* Sticky tab bar on mobile — pins below the app-header when scrolling past the project header */
+/* Sticky tab bar on mobile — pins to the top of .app-main (the scroll container) */
 @media (max-width: 991.98px) {
+	.app-main {
+		scroll-padding-top: calc(
+			var(--vs-header-height) + var(--vs-safe-area-top) + 0.75rem
+		);
+	}
+
+	.app-header .mobile-header-dropdown {
+		position: static;
+	}
+
+	.app-header .mobile-header-dropdown > .dropdown-menu {
+		position: fixed;
+		top: calc(var(--vs-header-height) + var(--vs-safe-area-top) + 0.5rem) !important;
+		left: 50% !important;
+		right: auto !important;
+		width: min(
+			24rem,
+			calc(
+				100vw - 1.5rem - var(--vs-safe-area-left) -
+					var(--vs-safe-area-right)
+			)
+		);
+		max-width: min(
+			24rem,
+			calc(
+				100vw - 1.5rem - var(--vs-safe-area-left) -
+					var(--vs-safe-area-right)
+			)
+		);
+		margin-top: 0 !important;
+		transform: translateX(-50%) !important;
+		z-index: 1001;
+	}
+
 	.project-detail-tabs {
 		position: sticky;
-		top: calc(var(--vs-header-height) + var(--vs-safe-area-top));
+		top: 0;
 		z-index: 100;
 		background: var(--bs-body-bg);
 		margin-left: -1rem;
 		margin-right: -1rem;
 		padding-left: 1rem;
 		padding-right: 1rem;
+		padding-top: 0.25rem;
 	}
 }
 @media (max-width: 575.98px) {
@@ -279,6 +344,16 @@ body {
 		margin-right: -0.75rem;
 		padding-left: 0.75rem;
 		padding-right: 0.75rem;
+	}
+	.project-detail-tabs .nav-tabs {
+		--bs-nav-tabs-border-width: 0;
+	}
+	.project-detail-tabs .nav-link {
+		padding-left: 0.75rem;
+		padding-right: 0.75rem;
+	}
+	.project-detail-tabs .dropdown-menu {
+		min-width: 12rem;
 	}
 }
 
@@ -303,6 +378,10 @@ body {
 .app-sidebar .nav-item.active {
 	background: rgba(88, 166, 255, 0.15);
 	color: var(--vs-accent-blue);
+}
+
+.vs-nav-dropdown-menu {
+	box-shadow: var(--vs-nav-popout-shadow) !important;
 }
 
 /* ============================================
@@ -402,6 +481,11 @@ body {
 	align-self: flex-start;
 	align-items: flex-start;
 }
+.chat-message-thinking {
+	align-self: flex-start;
+	align-items: flex-start;
+	max-width: 90%;
+}
 .chat-message-system {
 	align-self: center;
 	align-items: center;
@@ -421,6 +505,9 @@ body {
 	border-bottom-right-radius: 0.25rem;
 }
 .chat-message-assistant .chat-bubble {
+	border-bottom-left-radius: 0.25rem;
+}
+.chat-message-thinking .chat-bubble {
 	border-bottom-left-radius: 0.25rem;
 }
 .chat-message-system .chat-bubble {
@@ -580,6 +667,10 @@ body.vs-modal-open {
 	overscroll-behavior: contain;
 }
 
+body.vs-modal-open .app-main {
+	overflow: hidden !important;
+}
+
 .vs-modal-container {
 	z-index: 1055 !important;
 	padding: var(--vs-safe-area-top) var(--vs-safe-area-right)
@@ -588,8 +679,8 @@ body.vs-modal-open {
 
 .vs-modal-backdrop {
 	background: rgba(0, 0, 0, 0.75) !important;
-	backdrop-filter: blur(32px);
-	-webkit-backdrop-filter: blur(32px);
+	backdrop-filter: blur(40px);
+	-webkit-backdrop-filter: blur(40px);
 	z-index: 1050 !important;
 }
 
@@ -700,11 +791,12 @@ body.vs-modal-open {
 	}
 }
 
-/* Mobile: panel appears below the header, right-aligned */
+/* Mobile: panel appears below the header and stays centered in the viewport */
 .notifications-panel {
 	top: calc(var(--vs-header-height) + env(safe-area-inset-top, 0px) + 4px);
-	right: max(8px, env(safe-area-inset-right, 0px));
-	left: auto;
+	left: 50%;
+	right: auto;
+	box-shadow: var(--vs-nav-popout-shadow);
 	width: min(
 		340px,
 		calc(
@@ -717,15 +809,16 @@ body.vs-modal-open {
 			env(safe-area-inset-bottom, 0px) - 16px
 	);
 	animation: notificationSlideIn 0.2s ease-out;
+	transform: translateX(-50%);
 }
 @keyframes notificationSlideIn {
 	from {
 		opacity: 0;
-		transform: translateY(-8px);
+		transform: translateX(-50%) translateY(-8px);
 	}
 	to {
 		opacity: 1;
-		transform: translateY(0);
+		transform: translateX(-50%) translateY(0);
 	}
 }
 
@@ -765,6 +858,10 @@ body.vs-modal-open {
 	.app-header {
 		padding-left: calc(0.75rem + var(--vs-safe-area-left));
 		padding-right: calc(0.75rem + var(--vs-safe-area-right));
+	}
+
+	.brand-text {
+		max-width: 8rem;
 	}
 
 	.main-content {
@@ -813,6 +910,8 @@ body.vs-modal-open {
 	.vs-modal-dialog .modal-content {
 		min-height: 100vh !important;
 		min-height: 100dvh !important;
+		max-height: 100vh !important;
+		max-height: 100dvh !important;
 		border-radius: 0 !important;
 		border: none !important;
 	}
@@ -820,6 +919,7 @@ body.vs-modal-open {
 		padding-top: calc(0.75rem + var(--vs-safe-area-top));
 	}
 	.vs-modal-dialog .modal-body {
+		overflow-y: auto;
 		padding-bottom: calc(1rem + var(--vs-safe-area-bottom));
 	}
 	.vs-project-modal-body .input-group {
@@ -856,9 +956,12 @@ body.vs-modal-open {
 		max-width: none;
 	}
 
-	/* Mobile dropdown safe area margins */
+	/* Keep mobile header panels visually centered inside the safe area */
 	.app-header .dropdown-menu {
-		margin-right: env(safe-area-inset-right, 0px);
+		width: calc(
+			100vw - 1rem - env(safe-area-inset-left, 0px) -
+				env(safe-area-inset-right, 0px)
+		);
 		max-width: calc(
 			100vw - 1rem - env(safe-area-inset-left, 0px) -
 				env(safe-area-inset-right, 0px)
@@ -959,8 +1062,8 @@ body.vs-modal-open {
 	/* Frosted-glass backdrop on desktop — lower opacity lets the blur be visible */
 	.vs-modal-backdrop {
 		background: rgba(0, 0, 0, 0.5) !important;
-		backdrop-filter: blur(48px);
-		-webkit-backdrop-filter: blur(48px);
+		backdrop-filter: blur(64px);
+		-webkit-backdrop-filter: blur(64px);
 	}
 	.directory-list {
 		max-height: 400px;
@@ -991,6 +1094,7 @@ body.vs-modal-open {
 		--vs-header-height: 44px;
 	}
 	.vs-modal-dialog .modal-body {
+		overflow-y: auto;
 		max-height: calc(100vh - 120px);
 		max-height: calc(100dvh - 120px);
 	}
@@ -1009,6 +1113,9 @@ body.vs-modal-open {
 }
 
 .login-layout {
+	box-sizing: border-box;
+	min-height: 100vh;
+	min-height: 100dvh;
 	padding-top: var(--vs-safe-area-top);
 	padding-bottom: var(--vs-safe-area-bottom);
 	padding-left: var(--vs-safe-area-left);
@@ -1016,20 +1123,23 @@ body.vs-modal-open {
 }
 
 /* Mobile header dropdown touch target */
-.app-header .dropdown.d-lg-none > .btn,
-.app-header .dropdown.d-lg-none > .btn-link {
+.app-header .mobile-header-dropdown > .btn,
+.app-header .mobile-header-dropdown > .btn-link {
 	width: 44px;
 	height: 44px;
 	min-width: 44px;
 }
-.app-header .dropdown.d-lg-none > .btn .bi-person-circle,
-.app-header .dropdown.d-lg-none > .btn-link .bi-person-circle {
+.app-header .mobile-header-dropdown > .btn .bi-person-circle,
+.app-header .mobile-header-dropdown > .btn-link .bi-person-circle {
 	margin-right: 0 !important;
 }
 
 .login-content {
 	max-height: calc(
 		100vh - var(--vs-safe-area-top) - var(--vs-safe-area-bottom)
+	);
+	max-height: calc(
+		100dvh - var(--vs-safe-area-top) - var(--vs-safe-area-bottom)
 	);
 	overflow-y: auto;
 }
@@ -1038,9 +1148,31 @@ body.vs-modal-open {
 	flex: 1;
 }
 
+@media (max-width: 767.98px) {
+	.mobile-icon-button {
+		width: 2.5rem;
+		height: 2.5rem;
+		padding: 0;
+	}
+
+	.jobs-mobile-filters .form-select,
+	.jobs-mobile-filters .btn {
+		min-height: 2.75rem;
+	}
+
+	.project-detail-overflow-menu {
+		min-width: min(16rem, calc(100vw - 1.5rem));
+		max-width: calc(100vw - 1.5rem);
+		max-height: min(24rem, calc(100dvh - 7rem));
+		overflow-y: auto;
+	}
+}
+
 @media all and (display-mode: standalone) {
 	html {
 		background: var(--bs-body-bg, #1a1d21);
+		/* Prevent overscroll bounce and back-swipe navigation */
+		overscroll-behavior: none;
 	}
 	.app-header,
 	.app-sidebar,
@@ -1048,6 +1180,14 @@ body.vs-modal-open {
 	.btn {
 		-webkit-user-select: none;
 		user-select: none;
+	}
+	/* Remove tap highlight for native app feel */
+	a,
+	button,
+	.nav-item,
+	.btn,
+	[role="button"] {
+		-webkit-tap-highlight-color: transparent;
 	}
 	body::before {
 		content: "";
@@ -1061,6 +1201,30 @@ body.vs-modal-open {
 	}
 	body {
 		overscroll-behavior-y: contain;
+	}
+	/* Prevent pull-to-refresh gesture on main content when at top */
+	.app-main {
+		overscroll-behavior-y: contain;
+	}
+}
+
+@supports (-webkit-touch-callout: none) {
+	html,
+	body {
+		min-height: -webkit-fill-available;
+	}
+
+	#app:has(.app-layout) {
+		min-height: -webkit-fill-available;
+	}
+
+	.app-layout {
+		min-height: -webkit-fill-available;
+		height: -webkit-fill-available;
+	}
+
+	.login-layout {
+		min-height: -webkit-fill-available;
 	}
 }
 

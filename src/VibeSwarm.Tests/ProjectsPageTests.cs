@@ -44,6 +44,7 @@ public sealed class ProjectsPageTests
 		services.AddSingleton<ISettingsService>(new FakeSettingsService());
 		services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService());
 		services.AddSingleton<NotificationService>();
+		services.AddSingleton<QueuePanelStateService>();
 		services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
 
 		await using var renderer = new HtmlRenderer(services.BuildServiceProvider(), NullLoggerFactory.Instance);
@@ -56,8 +57,67 @@ public sealed class ProjectsPageTests
 
 		Assert.Contains("View Details", html);
 		Assert.Contains("Git", html);
-		Assert.Contains("Resync with Git", html);
+		Assert.Contains("Sync with Origin", html);
+		Assert.Contains("Merge Branch...", html);
 		Assert.DoesNotContain("project-danger-menu", html);
+	}
+
+	[Fact]
+	public async Task RenderedProjectsPage_HidesProjectStatsByDefault()
+	{
+		var project = new ProjectWithStats
+		{
+			Project = new Project
+			{
+				Id = Guid.NewGuid(),
+				Name = "Stats Project",
+				WorkingPath = "/tmp/stats-project",
+				IsActive = true,
+				TeamAssignments =
+				[
+					new ProjectTeamRole
+					{
+						IsEnabled = true,
+						TeamRole = new TeamRole { Name = "Reviewer" }
+					}
+				]
+			},
+			Stats = new ProjectJobStats
+			{
+				TotalJobs = 3,
+				TotalInputTokens = 1200,
+				TotalOutputTokens = 800,
+				TotalCostUsd = 1.25m
+			}
+		};
+
+		var services = new ServiceCollection();
+		services.AddLogging();
+		services.AddSingleton<IProjectService>(new FakeProjectService([project]));
+		services.AddSingleton<IJobService>(new FakeJobService());
+		services.AddSingleton<IIdeaService>(new FakeIdeaService());
+		services.AddSingleton<IVersionControlService>(new FakeVersionControlService());
+		services.AddSingleton<IProviderService>(new FakeProviderService());
+		services.AddSingleton<ITeamRoleService>(new FakeTeamRoleService());
+		services.AddSingleton<ISettingsService>(new FakeSettingsService());
+		services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService());
+		services.AddSingleton<NotificationService>();
+		services.AddSingleton<QueuePanelStateService>();
+		services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
+
+		await using var renderer = new HtmlRenderer(services.BuildServiceProvider(), NullLoggerFactory.Instance);
+
+		var html = await renderer.Dispatcher.InvokeAsync(async () =>
+		{
+			var output = await renderer.RenderComponentAsync<Projects>();
+			return output.ToHtmlString();
+		});
+
+		Assert.Contains("Show stats", html);
+		Assert.DoesNotContain("Team", html);
+		Assert.DoesNotContain("Reviewer (Unassigned)", html);
+		Assert.DoesNotContain("1.2K /", html);
+		Assert.DoesNotContain("$1.25", html);
 	}
 
 	[Fact]
@@ -74,6 +134,7 @@ public sealed class ProjectsPageTests
 		services.AddSingleton<ISettingsService>(new FakeSettingsService());
 		services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService());
 		services.AddSingleton<NotificationService>();
+		services.AddSingleton<QueuePanelStateService>();
 		services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
 
 		await using var renderer = new HtmlRenderer(services.BuildServiceProvider(), NullLoggerFactory.Instance);
@@ -86,10 +147,12 @@ public sealed class ProjectsPageTests
 
 		Assert.Contains("btn btn-primary", html);
 		Assert.Contains(">Add<", html);
+		Assert.Contains("d-flex align-items-center justify-content-between gap-2 gap-sm-3 mb-3 mb-lg-4", html);
+		Assert.Contains("justify-content-end gap-2 flex-shrink-0 ms-auto", html);
 	}
 
 	[Fact]
-	public async Task RenderedProjectsPage_ShowsIdeaCountsAndQueueAction()
+	public async Task RenderedProjectsPage_KeepsQueueActionVisibleWhileStatsAreHiddenByDefault()
 	{
 		var project = new ProjectWithStats
 		{
@@ -118,6 +181,7 @@ public sealed class ProjectsPageTests
 		services.AddSingleton<ISettingsService>(new FakeSettingsService());
 		services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService());
 		services.AddSingleton<NotificationService>();
+		services.AddSingleton<QueuePanelStateService>();
 		services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
 
 		await using var renderer = new HtmlRenderer(services.BuildServiceProvider(), NullLoggerFactory.Instance);
@@ -128,8 +192,9 @@ public sealed class ProjectsPageTests
 			return output.ToHtmlString();
 		});
 
-		Assert.Contains("4 ideas", html);
-		Assert.Contains("2 pending", html);
+		Assert.Contains("Show stats", html);
+		Assert.DoesNotContain("4 ideas", html);
+		Assert.DoesNotContain("2 pending", html);
 		Assert.Contains("Start Idea Queue", html);
 	}
 
@@ -147,6 +212,7 @@ public sealed class ProjectsPageTests
 		services.AddSingleton<ISettingsService>(new FakeSettingsService());
 		services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService());
 		services.AddSingleton<NotificationService>();
+		services.AddSingleton<QueuePanelStateService>();
 		services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
 
 		await using var renderer = new HtmlRenderer(services.BuildServiceProvider(), NullLoggerFactory.Instance);
@@ -184,11 +250,18 @@ public sealed class ProjectsPageTests
 		context.Services.AddSingleton<IJobService>(new FakeJobService());
 		context.Services.AddSingleton<IIdeaService>(new FakeIdeaService());
 		context.Services.AddSingleton<IVersionControlService>(new FakeVersionControlService());
-		context.Services.AddSingleton<IProviderService>(new FakeProviderService());
+		context.Services.AddSingleton<IProviderService>(new FakeProviderService(new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Copilot",
+			IsEnabled = true,
+			IsDefault = true
+		}));
 		context.Services.AddSingleton<ITeamRoleService>(new FakeTeamRoleService());
 		context.Services.AddSingleton<ISettingsService>(new FakeSettingsService());
 		context.Services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService());
 		context.Services.AddSingleton<NotificationService>();
+		context.Services.AddSingleton<QueuePanelStateService>();
 		context.Services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
 
 		var cut = context.Render<Projects>();
@@ -201,12 +274,292 @@ public sealed class ProjectsPageTests
 		Assert.Contains("Refresh Project", cut.Markup);
 	}
 
+	[Fact]
+	public async Task ProjectsPage_StartIdeaQueue_RequestsQueueRefreshImmediately()
+	{
+		using var context = new BunitContext();
+
+		var project = new ProjectWithStats
+		{
+			Project = new Project
+			{
+				Id = Guid.NewGuid(),
+				Name = "Queue Refresh Project",
+				WorkingPath = "/tmp/queue-refresh-project",
+				IsActive = true
+			},
+			Stats = new ProjectJobStats
+			{
+				TotalIdeas = 4,
+				UnprocessedIdeas = 2
+			}
+		};
+		var ideaService = new FakeIdeaService();
+		var queuePanelStateService = new QueuePanelStateService();
+		var refreshRequests = 0;
+		queuePanelStateService.RefreshRequested += () =>
+		{
+			refreshRequests++;
+			return Task.CompletedTask;
+		};
+
+		context.Services.AddLogging();
+		context.Services.AddSingleton<IProjectService>(new FakeProjectService([project]));
+		context.Services.AddSingleton<IJobService>(new FakeJobService());
+		context.Services.AddSingleton<IIdeaService>(ideaService);
+		context.Services.AddSingleton<IVersionControlService>(new FakeVersionControlService());
+		context.Services.AddSingleton<IProviderService>(new FakeProviderService());
+		context.Services.AddSingleton<ITeamRoleService>(new FakeTeamRoleService());
+		context.Services.AddSingleton<ISettingsService>(new FakeSettingsService());
+		context.Services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService());
+		context.Services.AddSingleton<NotificationService>();
+		context.Services.AddSingleton(queuePanelStateService);
+		context.Services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
+
+		var cut = context.Render<Projects>();
+		cut.WaitForAssertion(() => Assert.Contains("Queue Refresh Project", cut.Markup));
+		SetPrivateProperty(cut.Instance, "HasDefaultProvider", true);
+
+		var startIdeaQueue = cut.Instance.GetType().GetMethod("StartIdeaQueue", BindingFlags.Instance | BindingFlags.NonPublic);
+		Assert.NotNull(startIdeaQueue);
+
+		var projectsWithInfo = Assert.IsAssignableFrom<System.Collections.IEnumerable>(GetPrivateProperty(cut.Instance, "ProjectsWithInfo"));
+		await cut.InvokeAsync(async () =>
+		{
+			var task = Assert.IsAssignableFrom<Task>(startIdeaQueue.Invoke(cut.Instance, [projectsWithInfo.Cast<object>().Single()]));
+			await task;
+		});
+
+		Assert.Equal(1, ideaService.StartProcessingCalls);
+		Assert.Equal(project.Project.Id, ideaService.LastStartProcessingProjectId);
+		Assert.Equal(1, refreshRequests);
+	}
+
+	[Fact]
+	public void ProjectsPage_ToggleProjectStats_ShowsOptionalStats()
+	{
+		using var context = new BunitContext();
+
+		var project = new ProjectWithStats
+		{
+			Project = new Project
+			{
+				Id = Guid.NewGuid(),
+				Name = "Toggle Stats Project",
+				WorkingPath = "/tmp/toggle-stats-project",
+				GitHubRepository = "octocat/toggle-stats-project",
+				IsActive = true,
+				ProviderSelections =
+				[
+					new ProjectProvider
+					{
+						IsEnabled = true,
+						Priority = 0,
+						Provider = new Provider
+						{
+							Id = Guid.NewGuid(),
+							Name = "Copilot"
+						}
+					}
+				],
+				Environments =
+				[
+					new ProjectEnvironment
+					{
+						Id = Guid.NewGuid(),
+						Name = "Production",
+						Url = "https://example.com",
+						IsEnabled = true
+					}
+				],
+				TeamAssignments =
+				[
+					new ProjectTeamRole
+					{
+						IsEnabled = true,
+						TeamRole = new TeamRole { Name = "Architect" }
+					}
+				]
+			},
+			Stats = new ProjectJobStats
+			{
+				TotalIdeas = 4,
+				UnprocessedIdeas = 1,
+				TotalJobs = 2,
+				ActiveJobs = 1,
+				TotalInputTokens = 1000,
+				TotalOutputTokens = 500,
+				TotalCostUsd = 2.5m
+			}
+		};
+
+		context.Services.AddLogging();
+		context.Services.AddSingleton<IProjectService>(new FakeProjectService([project]));
+		context.Services.AddSingleton<IJobService>(new FakeJobService());
+		context.Services.AddSingleton<IIdeaService>(new FakeIdeaService());
+		context.Services.AddSingleton<IVersionControlService>(new FakeVersionControlService());
+		context.Services.AddSingleton<IProviderService>(new FakeProviderService());
+		context.Services.AddSingleton<ITeamRoleService>(new FakeTeamRoleService());
+		context.Services.AddSingleton<ISettingsService>(new FakeSettingsService());
+		context.Services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService());
+		context.Services.AddSingleton<NotificationService>();
+		context.Services.AddSingleton<QueuePanelStateService>();
+		context.Services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
+
+		var cut = context.Render<Projects>();
+
+		Assert.Contains("Show stats", cut.Markup);
+		Assert.DoesNotContain("4 ideas", cut.Markup);
+		Assert.DoesNotContain("1 pending", cut.Markup);
+		Assert.DoesNotContain("1 running", cut.Markup);
+		Assert.DoesNotContain("octocat/toggle-stats-project", cut.Markup);
+		Assert.DoesNotContain("Providers", cut.Markup);
+		Assert.DoesNotContain("#1 Copilot", cut.Markup);
+		Assert.DoesNotContain("Architect (Unassigned)", cut.Markup);
+		Assert.DoesNotContain("$2.50", cut.Markup);
+
+		cut.Find("button[title='Toggle project stats']").Click();
+
+		Assert.Contains("Hide stats", cut.Markup);
+		Assert.Contains("4 ideas", cut.Markup);
+		Assert.Contains("1 pending", cut.Markup);
+		Assert.Contains("1 running", cut.Markup);
+		Assert.Contains("octocat/toggle-stats-project", cut.Markup);
+		Assert.Contains("Providers", cut.Markup);
+		Assert.Contains("#1 Copilot", cut.Markup);
+		Assert.Contains("Architect (Unassigned)", cut.Markup);
+		Assert.Contains("$2.50", cut.Markup);
+	}
+
+	[Fact]
+	public void ProjectsPage_AlignsTabsAndStatsActionInSingleRow()
+	{
+		using var context = new BunitContext();
+
+		context.Services.AddLogging();
+		context.Services.AddSingleton<IProjectService>(new FakeProjectService([]));
+		context.Services.AddSingleton<IJobService>(new FakeJobService());
+		context.Services.AddSingleton<IIdeaService>(new FakeIdeaService());
+		context.Services.AddSingleton<IVersionControlService>(new FakeVersionControlService());
+		context.Services.AddSingleton<IProviderService>(new FakeProviderService());
+		context.Services.AddSingleton<ITeamRoleService>(new FakeTeamRoleService());
+		context.Services.AddSingleton<ISettingsService>(new FakeSettingsService());
+		context.Services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService());
+		context.Services.AddSingleton<NotificationService>();
+		context.Services.AddSingleton<QueuePanelStateService>();
+		context.Services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
+
+		var cut = context.Render<Projects>();
+
+		Assert.Contains("flex-column flex-sm-row align-items-stretch align-items-sm-center justify-content-between gap-2", cut.Markup);
+		Assert.Contains("d-flex align-items-stretch border-bottom", cut.Markup);
+		Assert.Contains("overflow-x-auto overflow-y-hidden overscroll-contain border-bottom-0 mb-0 flex-grow-1 min-width-0", cut.Markup);
+	}
+
+	[Fact]
+	public void ProjectsPage_ShowsSingleAutoCommitIndicator()
+	{
+		using var context = new BunitContext();
+
+		var project = new ProjectWithStats
+		{
+			Project = new Project
+			{
+				Id = Guid.NewGuid(),
+				Name = "Auto Commit Project",
+				WorkingPath = "/tmp/auto-commit-project",
+				IsActive = true,
+				AutoCommitMode = AutoCommitMode.CommitOnly
+			},
+			Stats = new ProjectJobStats()
+		};
+
+		context.Services.AddLogging();
+		context.Services.AddSingleton<IProjectService>(new FakeProjectService([project]));
+		context.Services.AddSingleton<IJobService>(new FakeJobService());
+		context.Services.AddSingleton<IIdeaService>(new FakeIdeaService());
+		context.Services.AddSingleton<IVersionControlService>(new FakeVersionControlService());
+		context.Services.AddSingleton<IProviderService>(new FakeProviderService());
+		context.Services.AddSingleton<ITeamRoleService>(new FakeTeamRoleService());
+		context.Services.AddSingleton<ISettingsService>(new FakeSettingsService());
+		context.Services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService());
+		context.Services.AddSingleton<NotificationService>();
+		context.Services.AddSingleton<QueuePanelStateService>();
+		context.Services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
+
+		var cut = context.Render<Projects>();
+
+		Assert.Single(cut.FindAll(".badge"), element => element.TextContent.Contains("Auto-commit", StringComparison.Ordinal));
+		Assert.DoesNotContain("Auto-commit:", cut.Markup);
+	}
+
+	[Fact]
+	public async Task ProjectsPage_ResyncWithGit_UsesProjectNameAsToastTitle()
+	{
+		using var context = new BunitContext();
+
+		var project = new ProjectWithStats
+		{
+			Project = new Project
+			{
+				Id = Guid.NewGuid(),
+				Name = "Repo Project",
+				WorkingPath = "/tmp/repo-project",
+				IsActive = true
+			},
+			Stats = new ProjectJobStats(),
+			CurrentBranch = "main"
+		};
+		var notificationService = new NotificationService();
+
+		context.Services.AddLogging();
+		context.Services.AddSingleton<IProjectService>(new FakeProjectService([project]));
+		context.Services.AddSingleton<IJobService>(new FakeJobService());
+		context.Services.AddSingleton<IIdeaService>(new FakeIdeaService());
+		context.Services.AddSingleton<IVersionControlService>(new FakeVersionControlService());
+		context.Services.AddSingleton<IProviderService>(new FakeProviderService());
+		context.Services.AddSingleton<ITeamRoleService>(new FakeTeamRoleService());
+		context.Services.AddSingleton<ISettingsService>(new FakeSettingsService());
+		context.Services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService());
+		context.Services.AddSingleton(notificationService);
+		context.Services.AddSingleton<QueuePanelStateService>();
+		context.Services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
+
+		var cut = context.Render<Projects>();
+		cut.WaitForAssertion(() => Assert.Contains("Repo Project", cut.Markup));
+
+		var resyncMethod = cut.Instance.GetType().GetMethod("ResyncWithGit", BindingFlags.Instance | BindingFlags.NonPublic);
+		Assert.NotNull(resyncMethod);
+
+		await cut.InvokeAsync(async () =>
+		{
+			var task = Assert.IsAssignableFrom<Task>(resyncMethod.Invoke(cut.Instance, [project.Project]));
+			await task;
+		});
+
+		cut.WaitForAssertion(() =>
+		{
+			var notification = Assert.Single(notificationService.Notifications);
+			Assert.Equal("Repo Project", notification.Title);
+			Assert.Equal("Successfully synced with origin.", notification.Message);
+			Assert.Equal(NotificationType.Success, notification.Type);
+		});
+	}
+
 	private static void SetPrivateProperty(object instance, string propertyName, object? value)
 	{
 		var property = instance.GetType().GetProperty(propertyName, BindingFlags.Instance | BindingFlags.NonPublic);
 
 		Assert.NotNull(property);
 		property.SetValue(instance, value);
+	}
+
+	private static object? GetPrivateProperty(object instance, string propertyName)
+	{
+		var property = instance.GetType().GetProperty(propertyName, BindingFlags.Instance | BindingFlags.NonPublic);
+
+		Assert.NotNull(property);
+		return property.GetValue(instance);
 	}
 
 	private sealed class FakeProjectService(IReadOnlyList<ProjectWithStats> projectSummaries) : IProjectService
@@ -240,19 +593,29 @@ public sealed class ProjectsPageTests
 
 	private sealed class FakeIdeaService : IIdeaService
 	{
+		public int StartProcessingCalls { get; private set; }
+		public Guid? LastStartProcessingProjectId { get; private set; }
+
 		public Task<IEnumerable<Idea>> GetByProjectIdAsync(Guid projectId, CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Idea>>([]);
 		public Task<ProjectIdeasListResult> GetPagedByProjectIdAsync(Guid projectId, int page = 1, int pageSize = 10, CancellationToken cancellationToken = default)
 			=> Task.FromResult(new ProjectIdeasListResult());
 		public Task<Idea?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult<Idea?>(null);
 		public Task<Idea> CreateAsync(Idea idea, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<Idea> CreateAsync(CreateIdeaRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<Idea> UpdateAsync(Idea idea, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task DeleteAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<Idea?> GetNextUnprocessedAsync(Guid projectId, CancellationToken cancellationToken = default) => Task.FromResult<Idea?>(null);
-		public Task<Job?> ConvertToJobAsync(Guid ideaId, CancellationToken cancellationToken = default) => Task.FromResult<Job?>(null);
+		public Task<Job?> ConvertToJobAsync(Guid ideaId, IdeaProcessingOptions? options = null, CancellationToken cancellationToken = default) => Task.FromResult<Job?>(null);
 		public Task<bool> CompleteIdeaFromJobAsync(Guid jobId, CancellationToken cancellationToken = default) => Task.FromResult(false);
 		public Task<bool> HandleJobCompletionAsync(Guid jobId, bool success, CancellationToken cancellationToken = default) => Task.FromResult(false);
 		public Task<Idea?> GetByJobIdAsync(Guid jobId, CancellationToken cancellationToken = default) => Task.FromResult<Idea?>(null);
-		public Task StartProcessingAsync(Guid projectId, bool autoCommit = false, CancellationToken cancellationToken = default) => Task.CompletedTask;
+		public Task<IdeaAttachment?> GetAttachmentAsync(Guid attachmentId, CancellationToken cancellationToken = default) => Task.FromResult<IdeaAttachment?>(null);
+		public Task StartProcessingAsync(Guid projectId, IdeaProcessingOptions? options = null, CancellationToken cancellationToken = default)
+		{
+			StartProcessingCalls++;
+			LastStartProcessingProjectId = projectId;
+			return Task.CompletedTask;
+		}
 		public Task StopProcessingAsync(Guid projectId, CancellationToken cancellationToken = default) => Task.CompletedTask;
 		public Task<bool> IsProcessingActiveAsync(Guid projectId, CancellationToken cancellationToken = default) => Task.FromResult(false);
 		public Task<bool> ProcessNextIdeaIfReadyAsync(Guid projectId, CancellationToken cancellationToken = default) => Task.FromResult(false);
@@ -267,6 +630,12 @@ public sealed class ProjectsPageTests
 		public Task<Idea?> RejectExpansionAsync(Guid ideaId, CancellationToken cancellationToken = default) => Task.FromResult<Idea?>(null);
 		public Task<SuggestIdeasResult> SuggestIdeasFromCodebaseAsync(Guid projectId, SuggestIdeasRequest? request = null, CancellationToken cancellationToken = default)
 			=> Task.FromResult(new SuggestIdeasResult());
+		public Task<GlobalIdeasProcessingStatus> GetGlobalProcessingStatusAsync(CancellationToken cancellationToken = default)
+			=> Task.FromResult(new GlobalIdeasProcessingStatus());
+		public Task<GlobalQueueSnapshot> GetGlobalQueueSnapshotAsync(CancellationToken cancellationToken = default)
+			=> Task.FromResult(new GlobalQueueSnapshot());
+		public Task StartAllProcessingAsync(IdeaProcessingOptions? options = null, CancellationToken cancellationToken = default) => Task.CompletedTask;
+		public Task StopAllProcessingAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 	}
 
 	private sealed class FakeTeamRoleService : ITeamRoleService
@@ -310,10 +679,13 @@ public sealed class ProjectsPageTests
 		public Task<bool> ContinueJobAsync(Guid id, string followUpPrompt, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<IEnumerable<Job>> GetPausedJobsAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<string?> GetLastUsedModelAsync(Guid projectId, Guid providerId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-		public Task<bool> ResetJobWithOptionsAsync(Guid id, Guid? providerId = null, string? modelId = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<bool> ResetJobWithOptionsAsync(Guid id, Guid? providerId = null, string? modelId = null, string? reasoningEffort = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<bool> UpdateJobPromptAsync(Guid id, string newPrompt, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<int> CancelAllByProjectIdAsync(Guid projectId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<int> DeleteCompletedByProjectIdAsync(Guid projectId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<int> RetrySelectedByProjectIdAsync(Guid projectId, IReadOnlyCollection<Guid> jobIds, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<int> CancelSelectedByProjectIdAsync(Guid projectId, IReadOnlyCollection<Guid> jobIds, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<int> PrioritizeSelectedByProjectIdAsync(Guid projectId, IReadOnlyCollection<Guid> jobIds, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<bool> ForceFailJobAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task RefreshExecutionPlanAsync(Guid id, CancellationToken cancellationToken = default) => Task.CompletedTask;
 	}
@@ -330,12 +702,12 @@ public sealed class ProjectsPageTests
 		public Task<string?> GetWorkingDirectoryDiffAsync(string workingDirectory, string? baseCommit = null, CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
 		public Task<string?> GetCommitRangeDiffAsync(string workingDirectory, string fromCommit, string? toCommit = null, CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
 		public Task<GitDiffSummary?> GetDiffSummaryAsync(string workingDirectory, string? baseCommit = null, CancellationToken cancellationToken = default) => Task.FromResult<GitDiffSummary?>(null);
-		public Task<GitOperationResult> CommitAllChangesAsync(string workingDirectory, string commitMessage, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<GitOperationResult> CommitAllChangesAsync(string workingDirectory, string commitMessage, CancellationToken cancellationToken = default, GitCommitOptions? commitOptions = null) => throw new NotSupportedException();
 		public Task<GitOperationResult> PushAsync(string workingDirectory, string remoteName = "origin", string? branchName = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<GitOperationResult> CommitAndPushAsync(string workingDirectory, string commitMessage, string remoteName = "origin", Action<string>? progressCallback = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<GitOperationResult> CreatePullRequestAsync(string workingDirectory, string sourceBranch, string targetBranch, string title, string? body = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<GitOperationResult> PreviewMergeBranchAsync(string workingDirectory, string sourceBranch, string targetBranch, string remoteName = "origin", CancellationToken cancellationToken = default) => throw new NotSupportedException();
-		public Task<GitOperationResult> MergeBranchAsync(string workingDirectory, string sourceBranch, string targetBranch, string remoteName = "origin", Action<string>? progressCallback = null, CancellationToken cancellationToken = default, bool pushAfterMerge = true) => throw new NotSupportedException();
+		public Task<GitOperationResult> MergeBranchAsync(string workingDirectory, string sourceBranch, string targetBranch, string remoteName = "origin", Action<string>? progressCallback = null, CancellationToken cancellationToken = default, bool pushAfterMerge = true, IReadOnlyList<MergeConflictResolution>? conflictResolutions = null) => throw new NotSupportedException();
 		public Task<IReadOnlyList<GitBranchInfo>> GetBranchesAsync(string workingDirectory, bool includeRemote = true, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<GitBranchInfo>>([]);
 		public Task<GitOperationResult> FetchAsync(string workingDirectory, string remoteName = "origin", bool prune = true, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<GitOperationResult> HardCheckoutBranchAsync(string workingDirectory, string branchName, string remoteName = "origin", Action<string>? progressCallback = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
@@ -358,11 +730,11 @@ public sealed class ProjectsPageTests
 		public Task<GitOperationResult> PruneRemoteBranchesAsync(string workingDirectory, string remoteName = "origin", CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	}
 
-	private sealed class FakeProviderService : IProviderService
+	private sealed class FakeProviderService(Provider? defaultProvider = null) : IProviderService
 	{
 		public Task<IEnumerable<Provider>> GetAllAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Provider>>([]);
 		public Task<Provider?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult<Provider?>(null);
-		public Task<Provider?> GetDefaultAsync(CancellationToken cancellationToken = default) => Task.FromResult<Provider?>(null);
+		public Task<Provider?> GetDefaultAsync(CancellationToken cancellationToken = default) => Task.FromResult(defaultProvider);
 		public IProvider? CreateInstance(Provider config) => null;
 		public Task<Provider> CreateAsync(Provider provider, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<Provider> UpdateAsync(Provider provider, CancellationToken cancellationToken = default) => throw new NotSupportedException();

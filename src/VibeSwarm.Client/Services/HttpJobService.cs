@@ -175,9 +175,9 @@ public class HttpJobService : IJobService
         return await response.Content.ReadFromJsonAsync<string?>(ct);
     }
 
-    public async Task<bool> ResetJobWithOptionsAsync(Guid id, Guid? providerId = null, string? modelId = null, CancellationToken ct = default)
+    public async Task<bool> ResetJobWithOptionsAsync(Guid id, Guid? providerId = null, string? modelId = null, string? reasoningEffort = null, CancellationToken ct = default)
     {
-        var response = await _http.PostAsJsonAsync($"/api/jobs/{id}/retry", new { ProviderId = providerId, ModelId = modelId }, ct);
+        var response = await _http.PostAsJsonAsync($"/api/jobs/{id}/retry", new { ProviderId = providerId, ModelId = modelId, ReasoningEffort = reasoningEffort }, ct);
         return response.IsSuccessStatusCode;
     }
 
@@ -209,6 +209,30 @@ public class HttpJobService : IJobService
         return result?.Deleted ?? 0;
     }
 
+    public async Task<int> RetrySelectedByProjectIdAsync(Guid projectId, IReadOnlyCollection<Guid> jobIds, CancellationToken ct = default)
+    {
+        var response = await _http.PostAsJsonAsync($"/api/jobs/project/{projectId}/retry-selected", new SelectedJobsRequest { JobIds = jobIds.ToList() }, ct);
+        if (!response.IsSuccessStatusCode) return 0;
+        var result = await response.Content.ReadFromJsonAsync<JobBulkActionResponse>(ct);
+        return result?.Retried ?? 0;
+    }
+
+    public async Task<int> CancelSelectedByProjectIdAsync(Guid projectId, IReadOnlyCollection<Guid> jobIds, CancellationToken ct = default)
+    {
+        var response = await _http.PostAsJsonAsync($"/api/jobs/project/{projectId}/cancel-selected", new SelectedJobsRequest { JobIds = jobIds.ToList() }, ct);
+        if (!response.IsSuccessStatusCode) return 0;
+        var result = await response.Content.ReadFromJsonAsync<JobBulkActionResponse>(ct);
+        return result?.Cancelled ?? 0;
+    }
+
+    public async Task<int> PrioritizeSelectedByProjectIdAsync(Guid projectId, IReadOnlyCollection<Guid> jobIds, CancellationToken ct = default)
+    {
+        var response = await _http.PostAsJsonAsync($"/api/jobs/project/{projectId}/prioritize-selected", new SelectedJobsRequest { JobIds = jobIds.ToList() }, ct);
+        if (!response.IsSuccessStatusCode) return 0;
+        var result = await response.Content.ReadFromJsonAsync<JobBulkActionResponse>(ct);
+        return result?.Prioritized ?? 0;
+    }
+
     private class InteractionInfo
     {
         public string? Prompt { get; set; }
@@ -220,5 +244,12 @@ public class HttpJobService : IJobService
     {
         public int Cancelled { get; set; }
         public int Deleted { get; set; }
+        public int Retried { get; set; }
+        public int Prioritized { get; set; }
+    }
+
+    private class SelectedJobsRequest
+    {
+        public List<Guid> JobIds { get; set; } = new();
     }
 }

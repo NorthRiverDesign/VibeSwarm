@@ -24,6 +24,9 @@ public class ProjectTeamRole
 	[StringLength(200)]
 	public string? PreferredModelId { get; set; }
 
+	[StringLength(VibeSwarm.Shared.Validation.ValidationLimits.ReasoningEffortMaxLength)]
+	public string? PreferredReasoningEffort { get; set; }
+
 	public bool IsEnabled { get; set; } = true;
 
 	public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

@@ -29,6 +29,7 @@ public sealed class HttpTeamRoleServiceTests
 		{
 			Name = "Security Reviewer",
 			DefaultProviderId = Guid.NewGuid(),
+			DefaultReasoningEffort = "high",
 			DefaultProvider = new Provider
 			{
 				Id = Guid.NewGuid(),
@@ -63,6 +64,7 @@ public sealed class HttpTeamRoleServiceTests
 
 		Assert.NotNull(capturedPayload);
 		Assert.Null(capturedPayload!.DefaultProvider);
+		Assert.Equal("high", capturedPayload.DefaultReasoningEffort);
 		Assert.Single(capturedPayload.SkillLinks);
 		Assert.All(capturedPayload.SkillLinks, link => Assert.Null(link.Skill));
 	}
@@ -88,6 +90,7 @@ public sealed class HttpTeamRoleServiceTests
 		{
 			Id = teamRoleId,
 			Name = "Platform Engineer",
+			DefaultReasoningEffort = "medium",
 			SkillLinks =
 			[
 				new TeamRoleSkill
@@ -106,6 +109,7 @@ public sealed class HttpTeamRoleServiceTests
 
 		Assert.NotNull(capturedPayload);
 		Assert.Equal(teamRoleId, capturedPayload!.Id);
+		Assert.Equal("medium", capturedPayload.DefaultReasoningEffort);
 		Assert.Single(capturedPayload.SkillLinks);
 		Assert.Equal(skillId, capturedPayload.SkillLinks.Single().SkillId);
 		Assert.All(capturedPayload.SkillLinks, link => Assert.Null(link.Skill));

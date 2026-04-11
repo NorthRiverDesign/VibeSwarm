@@ -15,22 +15,53 @@ public class CopilotSdkProvider : SdkProviderBase
 	private CopilotClient? _client;
 	private const string DefaultModel = "gpt-4o";
 	private UsageLimits? _lastObservedUsageLimits;
+	private static readonly string[] FallbackAvailableModels =
+	[
+		"claude-sonnet-4.6",
+		"claude-sonnet-4.5",
+		"claude-haiku-4.5",
+		"claude-opus-4.6",
+		"claude-opus-4.6-fast",
+		"claude-opus-4.5",
+		"claude-sonnet-4",
+		"gpt-5.4",
+		"gpt-5.3-codex",
+		"gpt-5.2-codex",
+		"gpt-5.2",
+		"gpt-5.1",
+		"gpt-5.4-mini",
+		"gpt-5-mini",
+		"gpt-4.1"
+	];
 
 	public override ProviderType Type => ProviderType.Copilot;
 
 	public CopilotSdkProvider(Provider config) : base(config) { }
 
+	internal static IReadOnlyList<string> GetFallbackAvailableModels() => FallbackAvailableModels;
+
+	internal static void ApplySessionDefaults(SessionConfig sessionConfig)
+	{
+		sessionConfig.OnPermissionRequest = PermissionHandler.ApproveAll;
+	}
+
+	internal static void ApplyResumeSessionDefaults(ResumeSessionConfig sessionConfig)
+	{
+		sessionConfig.OnPermissionRequest = PermissionHandler.ApproveAll;
+	}
+
 	/// <summary>
 	/// Builds the CopilotClientOptions from provider configuration.
 	/// </summary>
-	private CopilotClientOptions BuildClientOptions(string? workingDirectory = null)
+	internal CopilotClientOptions BuildClientOptions(string? workingDirectory = null)
 	{
+		var useCustomProvider = !string.IsNullOrEmpty(ApiEndpoint);
 		var options = new CopilotClientOptions
 		{
 			AutoStart = true,
-			AutoRestart = false,
 			UseStdio = true,
-			LogLevel = "warning"
+			LogLevel = "warning",
+			UseLoggedInUser = !useCustomProvider && string.IsNullOrEmpty(ApiKey)
 		};
 
 		// Resolve and validate CLI path if provided
@@ -54,17 +85,72 @@ public class CopilotSdkProvider : SdkProviderBase
 			options.Cwd = cwd;
 		}
 
-		if (!string.IsNullOrEmpty(ApiKey))
+		if (!useCustomProvider && !string.IsNullOrEmpty(ApiKey))
 		{
 			options.GitHubToken = ApiKey;
 		}
 
-		if (CurrentEnvironmentVariables is { Count: > 0 })
+		if (BuildStartupEnvironmentVariables() is { Count: > 0 } environmentVariables)
 		{
-			options.Environment = new Dictionary<string, string>(CurrentEnvironmentVariables);
+			options.Environment = environmentVariables;
+		}
+
+		if (BuildStartupCliArgs() is { Count: > 0 } cliArgs)
+		{
+			options.CliArgs = [.. cliArgs];
 		}
 
 		return options;
+	}
+
+	internal List<string>? BuildStartupCliArgs()
+	{
+		List<string>? args = null;
+
+		if (!string.IsNullOrWhiteSpace(CurrentBashEnvPath))
+		{
+			args ??= [];
+			args.Add("--bash-env");
+			args.Add("on");
+		}
+
+		if (!string.IsNullOrWhiteSpace(CurrentMcpConfigPath))
+		{
+			args ??= [];
+			args.Add("--additional-mcp-config");
+			args.Add($"@{CurrentMcpConfigPath}");
+		}
+
+		if (CurrentAdditionalDirectories is { Count: > 0 })
+		{
+			foreach (var dir in CurrentAdditionalDirectories
+				.Where(static dir => !string.IsNullOrWhiteSpace(dir))
+				.Select(static dir => dir.Trim())
+				.Distinct(StringComparer.Ordinal))
+			{
+				args ??= [];
+				args.Add("--add-dir");
+				args.Add(dir);
+			}
+		}
+
+		return args;
+	}
+
+	private Dictionary<string, string>? BuildStartupEnvironmentVariables()
+	{
+		var environmentVariables = GetEffectiveEnvironmentVariables();
+		if (string.IsNullOrWhiteSpace(CurrentBashEnvPath))
+		{
+			return environmentVariables;
+		}
+
+		environmentVariables = environmentVariables != null
+			? new Dictionary<string, string>(environmentVariables, StringComparer.Ordinal)
+			: new Dictionary<string, string>(StringComparer.Ordinal);
+
+		environmentVariables["BASH_ENV"] = CurrentBashEnvPath;
+		return environmentVariables;
 	}
 
 	/// <summary>
@@ -131,10 +217,37 @@ public class CopilotSdkProvider : SdkProviderBase
 		{
 			sessionConfig.Provider = new ProviderConfig
 			{
+				Type = InferProviderType(ApiEndpoint),
 				BaseUrl = ApiEndpoint,
 				ApiKey = ApiKey ?? string.Empty
 			};
 		}
+	}
+
+	private static string? InferProviderType(string endpoint)
+	{
+		if (!Uri.TryCreate(endpoint, UriKind.Absolute, out var uri))
+		{
+			return null;
+		}
+
+		var host = uri.Host.ToLowerInvariant();
+		if (host.Contains("openai.azure"))
+		{
+			return "azure";
+		}
+
+		if (host.Contains("openai"))
+		{
+			return "openai";
+		}
+
+		if (host.Contains("anthropic"))
+		{
+			return "anthropic";
+		}
+
+		return null;
 	}
 
 	public override async Task<bool> TestConnectionAsync(CancellationToken cancellationToken = default)
@@ -205,6 +318,7 @@ public class CopilotSdkProvider : SdkProviderBase
 
 			var sessionConfig = new SessionConfig { Model = ResolveModel() };
 			ApplyByokConfig(sessionConfig);
+			ApplySessionDefaults(sessionConfig);
 			await using var session = await client.CreateSessionAsync(sessionConfig);
 
 			var responseBuilder = new StringBuilder();
@@ -245,6 +359,31 @@ public class CopilotSdkProvider : SdkProviderBase
 		}
 	}
 
+	public override async Task<ExecutionResult> ExecuteWithOptionsAsync(
+		string prompt,
+		ExecutionOptions options,
+		IProgress<ExecutionProgress>? progress = null,
+		CancellationToken cancellationToken = default)
+	{
+		await ResetClientAsync();
+		ApplyOptions(options);
+
+		try
+		{
+			return await ExecuteWithSessionAsync(
+				prompt,
+				options.SessionId,
+				options.WorkingDirectory,
+				progress,
+				cancellationToken);
+		}
+		finally
+		{
+			ClearExecutionContext();
+			await ResetClientAsync();
+		}
+	}
+
 	public override async Task<ExecutionResult> ExecuteWithSessionAsync(
 		string prompt,
 		string? sessionId = null,
@@ -278,6 +417,7 @@ public class CopilotSdkProvider : SdkProviderBase
 				Streaming = true,
 				InfiniteSessions = new InfiniteSessionConfig { Enabled = true }
 			};
+			ApplySessionDefaults(sessionConfig);
 
 			// Apply BYOK provider configuration if an API endpoint is set
 			ApplyByokConfig(sessionConfig);
@@ -308,6 +448,7 @@ public class CopilotSdkProvider : SdkProviderBase
 						Streaming = true,
 						WorkingDirectory = effectiveWorkingDir
 					};
+					ApplyResumeSessionDefaults(resumeConfig);
 					session = await client.ResumeSessionAsync(sessionId, resumeConfig, cancellationToken);
 				}
 				catch
@@ -671,16 +812,7 @@ public class CopilotSdkProvider : SdkProviderBase
 		var info = new ProviderInfo
 		{
 			Version = "SDK (GitHub.Copilot.SDK)",
-			AvailableModels = new List<string>
-			{
-				"gpt-4o",
-				"gpt-5",
-				"gpt-5.4",
-				"claude-opus-4.6",
-				"claude-sonnet-4.6",
-				"claude-sonnet-4.5",
-				"o3-mini"
-			},
+			AvailableModels = GetFallbackAvailableModels().ToList(),
 			AvailableAgents = new List<AgentInfo>
 			{
 				new() { Name = "default", Description = "GitHub Copilot SDK agent", IsDefault = true }
@@ -756,6 +888,7 @@ public class CopilotSdkProvider : SdkProviderBase
 			try
 			{
 				var config = new ResumeSessionConfig();
+				ApplyResumeSessionDefaults(config);
 				var session = await _client.ResumeSessionAsync(sessionId, config, cancellationToken);
 				await using (session)
 				{
@@ -814,6 +947,7 @@ public class CopilotSdkProvider : SdkProviderBase
 
 			var sessionConfig = new SessionConfig { Model = model };
 			ApplyByokConfig(sessionConfig);
+			ApplySessionDefaults(sessionConfig);
 			await using var session = await client.CreateSessionAsync(sessionConfig);
 
 			var responseBuilder = new StringBuilder();

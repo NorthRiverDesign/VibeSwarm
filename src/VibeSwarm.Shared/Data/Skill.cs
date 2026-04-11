@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using VibeSwarm.Shared.Validation;
 
 namespace VibeSwarm.Shared.Data;
 
@@ -20,7 +21,7 @@ public class Skill
 	/// <summary>
 	/// A brief description of what the skill does, shown to AI agents.
 	/// </summary>
-	[StringLength(500)]
+	[StringLength(ValidationLimits.SkillDescriptionMaxLength)]
 	public string? Description { get; set; }
 
 	/// <summary>

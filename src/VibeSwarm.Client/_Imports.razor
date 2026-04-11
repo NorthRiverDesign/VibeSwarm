@@ -7,6 +7,7 @@
 @using Microsoft.AspNetCore.Components.Web
 @using Microsoft.AspNetCore.Components.WebAssembly.Http
 @using Microsoft.JSInterop
+@using Microsoft.AspNetCore.SignalR.Client
 @using VibeSwarm.Client
 @using VibeSwarm.Client.Shared
 @using VibeSwarm.Client.Services
@@ -30,7 +31,10 @@
 @using VibeSwarm.Client.Components.Ideas
 @using VibeSwarm.Client.Components.Chat
 @using VibeSwarm.Client.Components.Scheduler
+@using VibeSwarm.Client.Components.Settings
+@using VibeSwarm.Client.Components.Users
 @using VibeSwarm.Client.Models
+@using VibeSwarm.Shared.VersionControl.Models
 
 @* All pages require authentication by default. Use [AllowAnonymous] to override. *@
 @attribute [Authorize]

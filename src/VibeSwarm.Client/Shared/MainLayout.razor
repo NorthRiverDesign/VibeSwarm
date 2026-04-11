@@ -4,39 +4,44 @@
 @inject AppTimeZoneService AppTimeZoneService
 @inject IJobService JobService
 @inject IIdeaService IdeaService
+@inject IDeveloperModeService DeveloperModeService
+@inject ICriticalErrorLogService CriticalErrorLogService
 @inject ChangePasswordModalService ChangePasswordModalService
+@inject QueuePanelStateService QueuePanelStateService
+@inject DeveloperUpdateOverlayService DeveloperUpdateOverlayService
 @inject HttpClient HttpClient
 @inject NavigationManager NavigationManager
 @implements IAsyncDisposable
 @implements IDisposable
-@using Microsoft.AspNetCore.SignalR.Client
+@using System.Text.Json
 
-<div class="app-layout d-flex flex-column min-vh-100">
+<div class="app-layout d-flex flex-column">
     @* Mobile Header *@
-    <header class="app-header d-lg-none sticky-top d-flex align-items-center gap-3 flex-shrink-0 bg-body-secondary border-bottom">
+    <header class="app-header d-lg-none sticky-top d-flex align-items-center gap-2 flex-shrink-0 bg-body-secondary border-bottom">
         <button id="mobile-menu-toggle" class="btn btn-link nav-toggle d-flex align-items-center justify-content-center p-0 bg-transparent border-0 rounded fs-4" @onclick="ToggleMobileMenu"
                 aria-label="Toggle navigation">
             <i class="bi bi-list"></i>
         </button>
-        <a class="app-brand d-flex align-items-center gap-2 text-decoration-none fw-semibold" href="/">
-            <img src="img/logo_icon.png" alt="VibeSwarm" class="object-fit-contain" style="width: 24px; height: 24px;" />
-            <span class="brand-text">VibeSwarm</span>
+        <a class="btn btn-link text-secondary p-0 fs-5 d-flex align-items-center justify-content-center text-decoration-none touch-manipulation mobile-header-icon" href="/"
+           title="Dashboard" aria-label="Dashboard">
+            <i class="bi bi-house-door"></i>
         </a>
         <div class="ms-auto d-flex align-items-center gap-2">
-            <NotificationsPanel />
+            <button type="button"
+                    class="btn btn-link text-secondary p-0 fs-5 d-flex align-items-center justify-content-center touch-manipulation mobile-header-icon"
+                    @onclick="OpenSearch"
+                    title="Search"
+                    aria-label="Search">
+                <i class="bi bi-search"></i>
+            </button>
+            <NotificationsPanel Compact="true" />
+            <QueueDropdownPanel Compact="true" />
             <LoginDisplay />
         </div>
     </header>
 
     @* Sidebar Navigation *@
     <nav id="app-sidebar" class="app-sidebar position-fixed d-flex flex-column @(_mobileMenuOpen ? "open" : "")">
-        <div class="p-4 border-bottom d-none d-lg-flex flex-shrink-0">
-            <a class="app-brand d-flex align-items-center gap-2 text-decoration-none fw-semibold" href="/">
-                <img src="img/logo_icon.png" alt="VibeSwarm" class="object-fit-contain" style="width: 24px; height: 24px;" />
-                <span class="brand-text">VibeSwarm</span>
-            </a>
-        </div>
-
         <div class="flex-grow-1 p-3 d-flex flex-column gap-1 overflow-y-auto" style="min-height: 0;">
             <button class="nav-item d-flex align-items-center gap-3 rounded fw-medium text-decoration-none border-0 bg-transparent w-100 text-start cursor-pointer search-nav-btn" @onclick="OpenSearch" title="Search (Ctrl+K)">
                 <i class="bi bi-search"></i>
@@ -78,7 +83,7 @@
             <AuthorizeView Roles="Admin">
                 <Authorized>
                     <NavLink class="nav-item d-flex align-items-center gap-3 rounded fw-medium text-decoration-none" href="/users" @onclick="CloseMobileMenu">
-                        <i class="bi bi-people"></i>
+                        <i class="bi bi-person"></i>
                         <span>Users</span>
                     </NavLink>
                 </Authorized>
@@ -96,6 +101,7 @@
 
     @* Notifications Panel Overlay — rendered outside sticky header to avoid fixed-in-sticky clipping on mobile *@
     <NotificationsPanelOverlay />
+    <DeveloperUpdateOverlay />
 
     @* Mobile Menu Overlay *@
     @if (_mobileMenuOpen)
@@ -104,13 +110,16 @@
     }
 
     @* Main Content *@
-    <main class="app-main flex-grow-1">
+    <main class="app-main flex-grow-1 min-height-0 overflow-y-auto overflow-x-hidden">
         <div class="main-content mw-100">
             <ErrorBoundary @ref="_errorBoundary">
                 <ChildContent>
                     @Body
                 </ChildContent>
                 <ErrorContent Context="exception">
+                    @{
+                        _ = ReportFatalUiErrorAsync(exception);
+                    }
                     <div class="d-flex align-items-center justify-content-center w-100" style="min-height: 50vh;">
                         <div class="text-center p-4 mx-auto" style="max-width: 500px;">
                             <div class="mb-4">
@@ -119,11 +128,16 @@
                             <h4 class="text-body mb-3">Something Went Wrong</h4>
                             <p class="text-muted mb-4">An unexpected error occurred while loading this page.</p>
                             <div class="d-flex flex-column flex-sm-row gap-2 justify-content-center">
-                                <button class="btn btn-primary" @onclick="ForceReloadPage">
+                                <button class="btn btn-primary" @onclick="RecoverFromError">
                                     <i class="bi bi-arrow-clockwise me-2"></i>Try Again
                                 </button>
-                                <button class="btn btn-secondary" @onclick="ForceNavigateToDashboard">
+                                <button class="btn btn-secondary" @onclick="NavigateToDashboard">
                                     <i class="bi bi-house me-2"></i>Go to Dashboard
+                                </button>
+                            </div>
+                            <div class="mt-2">
+                                <button class="btn btn-link btn-sm text-muted" @onclick="ForceReloadPage">
+                                    <i class="bi bi-arrow-repeat me-1"></i>Full page reload
                                 </button>
                             </div>
                             @if (IsDevelopment())
@@ -148,6 +162,7 @@
 
     <AuthenticationKeepAlive />
     <AppUpdateBanner />
+    <InstallPromptBanner />
     <ToastContainer />
 
     @* Global Search Modal *@
@@ -221,6 +236,7 @@
     private bool _isChangingPassword;
     private string? _changePasswordError;
     private ChangePasswordModel _changePasswordModel = new();
+    private string? _lastReportedFatalErrorSignature;
 
     protected override void OnInitialized()
     {
@@ -289,6 +305,7 @@
     {
         CloseMobileMenu();
         _showSearchModal = true;
+        StateHasChanged();
     }
 
     private void ToggleMobileMenu()
@@ -306,6 +323,7 @@
         if (firstRender)
         {
             await InitializeGlobalHub();
+            await SyncDeveloperUpdateStatusAsync();
             await RegisterSearchShortcut();
         }
     }
@@ -350,6 +368,26 @@ TimeSpan.FromSeconds(10) })
                 await OnGlobalJobCompleted(jobId, success, errorMessage);
             });
 
+            _globalHubConnection.On<string, string>("JobStatusChanged", async (jobId, status) =>
+            {
+                await OnGlobalJobStatusChanged(jobId, status);
+            });
+
+            _globalHubConnection.On<string, string>("JobCreated", async (jobId, projectId) =>
+            {
+                await OnGlobalJobCreated(jobId, projectId);
+            });
+
+            _globalHubConnection.On<string, string>("JobDeleted", async (jobId, projectId) =>
+            {
+                await OnGlobalJobDeleted(jobId, projectId);
+            });
+
+            _globalHubConnection.On("JobListChanged", async () =>
+            {
+                await OnGlobalJobListChanged();
+            });
+
             _globalHubConnection.On<string, string>("IdeaCreated", async (ideaId, projectId) =>
             {
                 await OnGlobalIdeaCreated(ideaId);
@@ -365,6 +403,11 @@ TimeSpan.FromSeconds(10) })
                 await OnGlobalIdeaStarted(ideaId, jobId);
             });
 
+            _globalHubConnection.On<string, bool>("IdeasProcessingStateChanged", async (projectId, isActive) =>
+            {
+                await OnGlobalIdeasProcessingStateChanged(projectId, isActive);
+            });
+
             _globalHubConnection.On<string, string, string, List<string>?, string?>("JobInteractionRequired",
             async (jobId, prompt, interactionType, choices, defaultResponse) =>
             {
@@ -376,14 +419,65 @@ TimeSpan.FromSeconds(10) })
             });
             });
 
+            _globalHubConnection.On<string, string, string, string?>("ProviderRateLimited",
+            async (providerId, providerName, message, resetTimeStr) =>
+            {
+                await InvokeAsync(() =>
+                {
+                    var resetInfo = "";
+                    if (DateTime.TryParse(resetTimeStr, null, System.Globalization.DateTimeStyles.RoundtripKind, out var resetTime))
+                    {
+                        var remaining = resetTime - DateTime.UtcNow;
+                        if (remaining.TotalMinutes > 0)
+                        {
+                            resetInfo = remaining.TotalHours >= 1
+                                ? $" Resets in ~{remaining.TotalHours:F0}h {remaining.Minutes}m."
+                                : $" Resets in ~{remaining.TotalMinutes:F0}m.";
+                        }
+                    }
+                    NotificationService.ShowWarning($"{providerName} rate limited.{resetInfo} Jobs will resume automatically.",
+                        "Provider Rate Limited");
+                    StateHasChanged();
+                });
+            });
+
+			_globalHubConnection.On<VibeSwarm.Shared.Models.DeveloperModeStatus>("DeveloperUpdateStatusChanged",
+			async status =>
+			{
+				await InvokeAsync(() =>
+				{
+					DeveloperUpdateOverlayService.SetStatus(status);
+					StateHasChanged();
+				});
+			});
+
+			_globalHubConnection.On<VibeSwarm.Shared.Models.DeveloperUpdateOutputLine>("DeveloperUpdateOutputAdded",
+			async line =>
+			{
+				await InvokeAsync(() =>
+				{
+					DeveloperUpdateOverlayService.AppendOutput(line);
+					StateHasChanged();
+				});
+			});
+
             _globalHubConnection.Reconnected += async (connectionId) =>
             {
-                try { await _globalHubConnection.InvokeAsync("SubscribeToGlobalEvents"); } catch { }
+                try
+                {
+                    await _globalHubConnection.InvokeAsync("SubscribeToGlobalEvents");
+                    await _globalHubConnection.InvokeAsync("SubscribeToJobList");
+					await SyncDeveloperUpdateStatusAsync();
+                }
+                catch
+                {
+                }
             };
 
             using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
             await _globalHubConnection.StartAsync(timeoutCts.Token);
             await _globalHubConnection.InvokeAsync("SubscribeToGlobalEvents");
+            await _globalHubConnection.InvokeAsync("SubscribeToJobList");
             _hubInitialized = true;
         }
         catch (OperationCanceledException)
@@ -396,6 +490,22 @@ TimeSpan.FromSeconds(10) })
         }
     }
 
+	private async Task SyncDeveloperUpdateStatusAsync()
+	{
+		try
+		{
+			var status = await DeveloperModeService.GetStatusAsync();
+			await InvokeAsync(() =>
+			{
+				DeveloperUpdateOverlayService.SetStatus(status);
+				StateHasChanged();
+			});
+		}
+		catch
+		{
+		}
+	}
+
     // Global SignalR event handlers for cross-page notifications
     private void OnConnectionStateChanged(string state)
     {
@@ -403,7 +513,7 @@ TimeSpan.FromSeconds(10) })
 
     private Task OnGlobalJobStatusChanged(string jobId, string status)
     {
-        return Task.CompletedTask;
+        return QueuePanelStateService.RequestRefreshAsync();
     }
 
     private Task OnGlobalJobActivityUpdated(string jobId, string activity, DateTime timestamp)
@@ -413,16 +523,18 @@ TimeSpan.FromSeconds(10) })
 
     private Task OnGlobalJobCreated(string jobId, string projectId)
     {
-        return Task.CompletedTask;
+        return QueuePanelStateService.RequestRefreshAsync();
     }
 
     private Task OnGlobalJobDeleted(string jobId, string projectId)
     {
-        return Task.CompletedTask;
+        return QueuePanelStateService.RequestRefreshAsync();
     }
 
     private async Task OnGlobalJobCompleted(string jobId, bool success, string? errorMessage)
     {
+        await QueuePanelStateService.RequestRefreshAsync();
+
         if (!TryBeginToastEvent($"job-completed:{jobId}:{success}:{errorMessage}"))
         {
             return;
@@ -452,22 +564,27 @@ TimeSpan.FromSeconds(10) })
 
     private Task OnGlobalIdeaCreated(string ideaId)
     {
-        return Task.CompletedTask;
+        return QueuePanelStateService.RequestRefreshAsync();
     }
 
     private Task OnGlobalIdeaUpdated(string ideaId)
     {
-        return Task.CompletedTask;
+        return QueuePanelStateService.RequestRefreshAsync();
     }
 
     private Task OnGlobalIdeaStarted(string ideaId, string jobId)
     {
-        return Task.CompletedTask;
+        return QueuePanelStateService.RequestRefreshAsync();
+    }
+
+    private Task OnGlobalIdeasProcessingStateChanged(string projectId, bool isActive)
+    {
+        return QueuePanelStateService.RequestRefreshAsync();
     }
 
     private Task OnGlobalJobListChanged()
     {
-        return Task.CompletedTask;
+        return QueuePanelStateService.RequestRefreshAsync();
     }
 
     private Task OnGlobalJobMessageAdded(string jobId)
@@ -499,13 +616,23 @@ TimeSpan.FromSeconds(10) })
                 _ => string.Empty
             };
 
-            NotificationService.ShowSuccess($"{jobTitle} completed successfully{scope}.{changeInfo}", "Job Completed");
+            NotificationService.Show(
+                $"{jobTitle} completed successfully{scope}.{changeInfo}",
+                "Job Completed",
+                NotificationType.Success,
+                5000,
+                "View Job",
+                job?.Id is Guid jobId ? $"/jobs/view/{jobId}" : null);
             return;
         }
 
-        NotificationService.ShowError(
+        NotificationService.Show(
             errorMessage ?? $"{TruncateForToast(job?.Title, 80, "Job")} failed.",
-            "Job Failed");
+            "Job Failed",
+            NotificationType.Error,
+            8000,
+            "View Job",
+            job?.Id is Guid failedJobId ? $"/jobs/view/{failedJobId}" : null);
     }
 
     private readonly Dictionary<string, DateTime> _recentToastEvents = new();
@@ -570,6 +697,8 @@ TimeSpan.FromSeconds(10) })
 
     private async Task ForceReloadPage()
     {
+        await LogRefreshActionAsync("page-reload");
+
         try
         {
             await JSRuntime.InvokeVoidAsync("location.reload", true);
@@ -583,6 +712,8 @@ TimeSpan.FromSeconds(10) })
 
     private async Task ForceNavigateToDashboard()
     {
+        await LogRefreshActionAsync("navigate-dashboard");
+
         try
         {
             await JSRuntime.InvokeVoidAsync("eval", "window.location.href = '/'");
@@ -607,6 +738,58 @@ return true;
 #else
         return false;
 #endif
+    }
+
+    private Task ReportFatalUiErrorAsync(Exception exception)
+    {
+        var signature = $"{exception.GetType().FullName}:{exception.Message}";
+        if (string.Equals(_lastReportedFatalErrorSignature, signature, StringComparison.Ordinal))
+        {
+            return Task.CompletedTask;
+        }
+
+        _lastReportedFatalErrorSignature = signature;
+        return LogCriticalErrorAsync(
+            category: "ui-error-boundary",
+            message: exception.Message,
+            details: exception.ToString(),
+            triggeredRefresh: false,
+            refreshAction: null);
+    }
+
+    private Task LogRefreshActionAsync(string refreshAction)
+    {
+        return LogCriticalErrorAsync(
+            category: "ui-recovery-action",
+            message: $"User initiated {refreshAction} after a fatal UI error.",
+            details: null,
+            triggeredRefresh: true,
+            refreshAction: refreshAction);
+    }
+
+    private async Task LogCriticalErrorAsync(string category, string message, string? details, bool triggeredRefresh, string? refreshAction)
+    {
+        try
+        {
+            await CriticalErrorLogService.LogAsync(new CriticalErrorLogEntry
+            {
+                Source = "client",
+                Category = category,
+                Severity = "critical",
+                Message = message,
+                Details = details,
+                Url = NavigationManager.Uri,
+                TriggeredRefresh = triggeredRefresh,
+                RefreshAction = refreshAction,
+                AdditionalDataJson = JsonSerializer.Serialize(new
+                {
+                    currentUri = NavigationManager.Uri
+                })
+            });
+        }
+        catch
+        {
+        }
     }
 
     public void Dispose()

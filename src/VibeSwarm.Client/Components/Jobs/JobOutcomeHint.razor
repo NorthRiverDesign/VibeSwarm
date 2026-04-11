@@ -1,0 +1,53 @@
+@using VibeSwarm.Shared.Data
+
+@if (Summary != null)
+{
+	<div class="@Summary.ContainerClass">
+		<i class="bi @Summary.Icon flex-shrink-0 opacity-75"></i>
+		<div class="min-width-0">
+			<span class="fw-semibold">@Summary.Title</span>
+			<span class="text-body-secondary"> @Summary.Message</span>
+		</div>
+	</div>
+}
+
+@code {
+	[Parameter]
+	public JobStatus Status { get; set; }
+
+	[Parameter]
+	public int? ChangedFilesCount { get; set; }
+
+	[Parameter]
+	public bool? BuildVerified { get; set; }
+
+	[Parameter]
+	public bool BuildVerificationEnabled { get; set; }
+
+	[Parameter]
+	public bool IsPushed { get; set; }
+
+	[Parameter]
+	public string? GitCommitHash { get; set; }
+
+	[Parameter]
+	public string? PullRequestUrl { get; set; }
+
+	[Parameter]
+	public int? PullRequestNumber { get; set; }
+
+	[Parameter]
+	public DateTime? MergedAt { get; set; }
+
+	private JobOutcomeHintModel? Summary
+		=> JobOutcomeDisplayHelper.BuildHint(
+			Status,
+			ChangedFilesCount,
+			BuildVerified,
+			BuildVerificationEnabled,
+			IsPushed,
+			GitCommitHash,
+			PullRequestUrl,
+			PullRequestNumber,
+			MergedAt);
+}

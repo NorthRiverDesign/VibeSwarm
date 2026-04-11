@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using VibeSwarm.Shared.Validation;
 
 namespace VibeSwarm.Shared.Data;
 
@@ -8,6 +9,13 @@ namespace VibeSwarm.Shared.Data;
 /// </summary>
 public class AppSettings
 {
+	public const int DefaultCriticalErrorLogRetentionDays = 30;
+	public const int DefaultCriticalErrorLogMaxEntries = 200;
+	public const int MinCriticalErrorLogRetentionDays = 1;
+	public const int MaxCriticalErrorLogRetentionDays = 365;
+	public const int MinCriticalErrorLogMaxEntries = 10;
+	public const int MaxCriticalErrorLogMaxEntries = 5000;
+
 	public Guid Id { get; set; }
 
 	/// <summary>
@@ -40,4 +48,24 @@ public class AppSettings
 	/// Whether to inject efficiency rules into the system prompt to reduce wasted tokens.
 	/// </summary>
 	public bool InjectEfficiencyRules { get; set; } = true;
+
+	/// <summary>
+	/// Whether provider-attributed git commits should be used when jobs or providers create commits.
+	/// </summary>
+	public bool EnableCommitAttribution { get; set; } = true;
+
+	[Range(MinCriticalErrorLogRetentionDays, MaxCriticalErrorLogRetentionDays)]
+	public int CriticalErrorLogRetentionDays { get; set; } = DefaultCriticalErrorLogRetentionDays;
+
+	[Range(MinCriticalErrorLogMaxEntries, MaxCriticalErrorLogMaxEntries)]
+	public int CriticalErrorLogMaxEntries { get; set; } = DefaultCriticalErrorLogMaxEntries;
+
+	[StringLength(ValidationLimits.IdeaPromptTemplateMaxLength)]
+	public string? IdeaExpansionPromptTemplate { get; set; }
+
+	[StringLength(ValidationLimits.IdeaPromptTemplateMaxLength)]
+	public string? IdeaImplementationPromptTemplate { get; set; }
+
+	[StringLength(ValidationLimits.IdeaPromptTemplateMaxLength)]
+	public string? ApprovedIdeaImplementationPromptTemplate { get; set; }
 }

@@ -12,25 +12,47 @@ public partial class ProjectDetail
     private string _jobSearchQuery = string.Empty;
     private string _jobStatusFilter = "all";
 
-    private async Task RefreshJobs()
-    {
-        if (Project != null)
-        {
-            Jobs = (await JobService.GetByProjectIdAsync(ProjectId)).ToList();
-            ProjectActiveJobsCount = Jobs.Count(job =>
-                job.Status == JobStatus.New ||
-                job.Status == JobStatus.Pending ||
-                job.Status == JobStatus.Started ||
-                job.Status == JobStatus.Planning ||
-                job.Status == JobStatus.Processing ||
-                job.Status == JobStatus.Paused ||
-                job.Status == JobStatus.Stalled);
+    private static readonly TimeSpan JobsRefreshDebounceInterval = TimeSpan.FromSeconds(2);
+    private DateTime _lastJobsRefreshTime = DateTime.MinValue;
+    private bool _isRefreshingJobs;
 
+    // Aggregated data from the paged result (replaces full Jobs list)
+    private int _projectTotalInputTokens;
+    private int _projectTotalOutputTokens;
+    private decimal _projectTotalCost;
+    private JobSummary? _activeJobSummary;
+
+    private async Task RefreshJobs(bool force = false)
+    {
+        if (Project == null) return;
+
+        if (!force && _isRefreshingJobs) return;
+
+        if (!force && (DateTime.UtcNow - _lastJobsRefreshTime) < JobsRefreshDebounceInterval)
+            return;
+
+        _isRefreshingJobs = true;
+        try
+        {
             var result = await JobService.GetPagedByProjectIdAsync(ProjectId, _jobsPageNumber, ProjectJobsPageSize, _jobSearchQuery, _jobStatusFilter);
+
             _jobsPageNumber = result.PageNumber;
             PagedJobs = result.Items;
             JobsTotalCount = result.TotalCount;
+            ProjectActiveJobsCount = result.ActiveCount;
             ProjectCompletedJobsCount = result.CompletedCount;
+            _projectTotalInputTokens = result.TotalInputTokens;
+            _projectTotalOutputTokens = result.TotalOutputTokens;
+            _projectTotalCost = result.TotalCostUsd;
+            _activeJobSummary = result.ActiveJobSummary;
+            _lastJobsRefreshTime = DateTime.UtcNow;
+        }
+        catch (Exception)
+        {
+        }
+        finally
+        {
+            _isRefreshingJobs = false;
         }
     }
 
@@ -50,6 +72,8 @@ public partial class ProjectDetail
 
     private async Task ShowCreateJobModal()
     {
+        await LoadJobTemplates();
+
         // Reset the form for a new job
         NewJob = new Job();
         NewJob.Branch = CurrentBranch;
@@ -57,6 +81,7 @@ public partial class ProjectDetail
         NewJob.TargetBranch = Project?.DefaultTargetBranch ?? CurrentBranch;
         SelectedModelId = string.Empty;
         AvailableModels.Clear();
+        NewJob.ReasoningEffort = null;
 
         var initialProvider = GetPreferredJobProvider();
         if (initialProvider != null)
@@ -67,6 +92,11 @@ public partial class ProjectDetail
 
         ErrorMessage = null;
         _showCreateJobModal = true;
+    }
+
+    private async Task LoadJobTemplates()
+    {
+        JobTemplates = (await JobTemplateService.GetAllAsync()).ToList();
     }
 
     private async Task HandleCreateJob()
@@ -152,6 +182,10 @@ public partial class ProjectDetail
                 .ToList();
 
             SelectedModelId = ProjectExecutionDefaults.ResolveModelId(Project, providerId, AvailableModels);
+            var provider = GetAllowedJobProviders().FirstOrDefault(item => item.Id == providerId);
+            NewJob.ReasoningEffort = provider != null
+                ? ProjectExecutionDefaults.ResolveReasoningEffort(Project, provider)
+                : null;
         }
         finally
         {
@@ -167,6 +201,29 @@ public partial class ProjectDetail
     private Provider? GetPreferredJobProvider()
     {
         return ProjectExecutionDefaults.GetPreferredProvider(Project, Providers);
+    }
+
+    private Guid? GetDefaultIdeasProcessingProviderId()
+    {
+        return GetPreferredJobProvider()?.Id;
+    }
+
+    private string? GetDefaultIdeasProcessingModelId()
+    {
+        var provider = GetPreferredJobProvider();
+        if (provider == null)
+        {
+            return null;
+        }
+
+        var models = provider.AvailableModels
+            .Where(model => model.IsAvailable)
+            .OrderByDescending(model => model.IsDefault)
+            .ThenBy(model => model.DisplayName ?? model.ModelId)
+            .ToList();
+
+        var resolvedModelId = ProjectExecutionDefaults.ResolveModelId(Project, provider.Id, models);
+        return string.IsNullOrWhiteSpace(resolvedModelId) ? null : resolvedModelId;
     }
 
     private string? GetProviderHint()
@@ -223,6 +280,27 @@ public partial class ProjectDetail
         }
     }
 
+    private async Task RetrySelectedJobs(List<Guid> jobIds)
+    {
+        try
+        {
+            var count = await JobService.RetrySelectedByProjectIdAsync(ProjectId, jobIds);
+            if (count > 0)
+            {
+                await RefreshJobs();
+                NotificationService.ShowSuccess($"Queued {count} selected job(s) for retry.");
+            }
+			else
+			{
+				NotificationService.ShowInfo("No selected failed, cancelled, or stopped jobs to retry.");
+			}
+        }
+        catch (Exception ex)
+        {
+            NotificationService.ShowError($"Error retrying selected jobs: {ex.Message}");
+        }
+    }
+
     private async Task DeleteCompletedJobs()
     {
         try
@@ -266,9 +344,58 @@ public partial class ProjectDetail
         }
     }
 
-    // Ideas management methods
-    private async Task LoadIdeas()
+    private async Task CancelSelectedJobs(List<Guid> jobIds)
     {
+        try
+        {
+            var count = await JobService.CancelSelectedByProjectIdAsync(ProjectId, jobIds);
+            if (count > 0)
+            {
+                await RefreshJobs();
+                NotificationService.ShowSuccess($"Cancelled {count} selected job(s).");
+            }
+            else
+            {
+                NotificationService.ShowInfo("No selected active jobs to cancel.");
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.ShowError($"Error cancelling selected jobs: {ex.Message}");
+        }
+    }
+
+    private async Task PrioritizeSelectedJobs(List<Guid> jobIds)
+    {
+        try
+        {
+            var count = await JobService.PrioritizeSelectedByProjectIdAsync(ProjectId, jobIds);
+            if (count > 0)
+            {
+                await RefreshJobs();
+                NotificationService.ShowSuccess($"Prioritized {count} selected queued job(s).");
+            }
+            else
+            {
+                NotificationService.ShowInfo("No selected queued jobs to prioritize.");
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.ShowError($"Error prioritizing selected jobs: {ex.Message}");
+        }
+    }
+
+    // Ideas management methods
+    private static readonly TimeSpan IdeasLoadDebounceInterval = TimeSpan.FromSeconds(2);
+
+    private async Task<bool> LoadIdeas(bool force = false)
+    {
+        if (!force && (DateTime.UtcNow - _lastIdeasLoadTime) < IdeasLoadDebounceInterval)
+        {
+            return false;
+        }
+
         try
         {
             var result = await IdeaService.GetPagedByProjectIdAsync(ProjectId, _ideasPageNumber, IdeasPageSize);
@@ -282,33 +409,38 @@ public partial class ProjectDetail
                 .ToHashSet();
             ProcessingIdeaIds.RemoveWhere(id => ideaIdsWithJobs.Contains(id) || Ideas.All(i => i.Id != id));
             IsIdeasProcessingActive = await IdeaService.IsProcessingActiveAsync(ProjectId);
+            _lastIdeasLoadTime = DateTime.UtcNow;
+            return true;
         }
         catch (Exception)
         {
             Ideas = new List<Idea>();
             IdeasTotalCount = 0;
             IdeasUnprocessedCount = 0;
+            return true;
         }
     }
 
-    private async Task AddIdea(string description)
+    private async Task AddIdea(CreateIdeaRequest request)
     {
-        if (string.IsNullOrWhiteSpace(description)) return;
+        if (request == null || string.IsNullOrWhiteSpace(request.Description)) return;
 
         _isAddingIdea = true;
         StateHasChanged();
 
         try
         {
-            var idea = new Idea
-            {
-                ProjectId = ProjectId,
-                Description = description.Trim()
-            };
+            request.ProjectId = ProjectId;
+            request.Description = request.Description.Trim();
 
-            await IdeaService.CreateAsync(idea);
+            var created = await IdeaService.CreateAsync(request);
+            if (created != null)
+            {
+                _localIdeaCreateIds.Add(created.Id);
+            }
             _ideasPageNumber = Math.Max(1, ((IdeasTotalCount + 1) + IdeasPageSize - 1) / IdeasPageSize);
-            await LoadIdeas();
+            await QueuePanelStateService.RequestRefreshAsync();
+            await LoadIdeas(force: true);
         }
         catch (Exception ex)
         {
@@ -356,6 +488,7 @@ public partial class ProjectDetail
                 Ideas[ideaIndex] = updatedIdea;
             }
 
+            await QueuePanelStateService.RequestRefreshAsync();
             StateHasChanged();
         }
         catch (Exception ex)
@@ -370,7 +503,8 @@ public partial class ProjectDetail
         try
         {
             await IdeaService.DeleteAsync(ideaId);
-            await LoadIdeas();
+            await QueuePanelStateService.RequestRefreshAsync();
+            await LoadIdeas(force: true);
         }
         catch (Exception ex)
         {
@@ -384,6 +518,7 @@ public partial class ProjectDetail
         {
             var targetProject = await ProjectService.GetByIdAsync(args.targetProjectId);
             await IdeaService.CopyToProjectAsync(args.ideaId, args.targetProjectId);
+            await QueuePanelStateService.RequestRefreshAsync();
             NotificationService.ShowSuccess($"Idea copied to {targetProject?.Name ?? "project"} successfully.");
         }
         catch (Exception ex)
@@ -398,7 +533,8 @@ public partial class ProjectDetail
         {
             var targetProject = await ProjectService.GetByIdAsync(args.targetProjectId);
             await IdeaService.MoveToProjectAsync(args.ideaId, args.targetProjectId);
-            await LoadIdeas();
+            await QueuePanelStateService.RequestRefreshAsync();
+            await LoadIdeas(force: true);
             NotificationService.ShowSuccess($"Idea moved to {targetProject?.Name ?? "project"} successfully.");
         }
         catch (Exception ex)
@@ -409,10 +545,15 @@ public partial class ProjectDetail
 
     private async Task StartIdeasProcessing()
     {
-        await StartIdeasProcessingWithOptions(Project?.AutoCommitMode ?? AutoCommitMode.Off);
+        await StartIdeasProcessingWithOptions(new IdeaProcessingOptions
+        {
+            AutoCommitMode = Project?.AutoCommitMode ?? AutoCommitMode.Off,
+            ProviderId = GetDefaultIdeasProcessingProviderId(),
+            ModelId = GetDefaultIdeasProcessingModelId()
+        });
     }
 
-    private async Task StartIdeasProcessingWithOptions(AutoCommitMode autoCommitMode)
+    private async Task StartIdeasProcessingWithOptions(IdeaProcessingOptions options)
     {
         _isTogglingIdeasProcessing = true;
         StateHasChanged();
@@ -420,6 +561,7 @@ public partial class ProjectDetail
         try
         {
             var hasRunningJob = HasActiveJobs;
+            var autoCommitMode = options.AutoCommitMode;
 
             // Update auto-commit mode if changed
             if (Project != null && Project.AutoCommitMode != autoCommitMode)
@@ -428,13 +570,26 @@ public partial class ProjectDetail
                 await ProjectService.UpdateAsync(Project);
             }
 
-            var autoCommit = autoCommitMode != AutoCommitMode.Off;
-            await IdeaService.StartProcessingAsync(ProjectId, autoCommit);
+            await IdeaService.StartProcessingAsync(ProjectId, options);
             IsIdeasProcessingActive = true;
+            if (Project != null)
+            {
+                Project.IdeasProcessingProviderId = options.ProviderId;
+                Project.IdeasProcessingModelId = string.IsNullOrWhiteSpace(options.ModelId) ? null : options.ModelId.Trim();
+            }
+            await QueuePanelStateService.RequestRefreshAsync();
+
+            var autoCommit = autoCommitMode != AutoCommitMode.Off;
             var commitMessage = autoCommit ? " Auto-commit is enabled." : "";
             var queueMessage = hasRunningJob ? " New ideas will queue behind the current job." : string.Empty;
+            var providerName = options.ProviderId.HasValue
+                ? GetAllowedJobProviders().FirstOrDefault(provider => provider.Id == options.ProviderId.Value)?.Name
+                : null;
+            var providerMessage = providerName == null
+                ? string.Empty
+                : $" Queued ideas will use {providerName}{(string.IsNullOrWhiteSpace(options.ModelId) ? string.Empty : $" ({options.ModelId})")}.";
             NotificationService.ShowInfo(
-                $"Ideas will be converted to jobs automatically.{queueMessage}{commitMessage}",
+                $"Ideas will be converted to jobs automatically.{queueMessage}{commitMessage}{providerMessage}",
                 "Auto-Processing Started");
         }
         catch (Exception ex)
@@ -460,6 +615,12 @@ public partial class ProjectDetail
             await IdeaService.StopProcessingAsync(ProjectId);
             IsIdeasProcessingActive = false;
             ProcessingIdeaIds.Clear();
+            if (Project != null)
+            {
+                Project.IdeasProcessingProviderId = null;
+                Project.IdeasProcessingModelId = null;
+            }
+            await QueuePanelStateService.RequestRefreshAsync();
             NotificationService.ShowInfo("Ideas auto-processing stopped.", "Processing Stopped");
         }
         catch (Exception ex)
@@ -492,8 +653,9 @@ public partial class ProjectDetail
             var job = await IdeaService.ConvertToJobAsync(ideaId);
             if (job != null)
             {
+                await QueuePanelStateService.RequestRefreshAsync();
                 await RefreshJobs();
-                await LoadIdeas();
+                await LoadIdeas(force: true);
             }
             else
             {
@@ -525,7 +687,7 @@ public partial class ProjectDetail
             var result = await IdeaService.ExpandIdeaAsync(ideaId, request, ct);
             if (result != null)
             {
-                await LoadIdeas();
+                await LoadIdeas(force: true);
                 if (result.ExpansionStatus == IdeaExpansionStatus.PendingReview)
                 {
                     NotificationService.ShowSuccess("Idea expanded successfully. Review the specification.", "AI Expansion Complete");
@@ -542,7 +704,7 @@ public partial class ProjectDetail
             try
             {
                 await IdeaService.CancelExpansionAsync(ideaId);
-                await LoadIdeas();
+                await LoadIdeas(force: true);
             }
             catch { /* Best effort */ }
             NotificationService.ShowInfo("Expansion cancelled.", "Cancelled");
@@ -553,7 +715,7 @@ public partial class ProjectDetail
             try
             {
                 await IdeaService.CancelExpansionAsync(ideaId);
-                await LoadIdeas();
+                await LoadIdeas(force: true);
             }
             catch { /* Best effort */ }
             NotificationService.ShowError($"Error expanding idea: {ex.Message}");
@@ -571,7 +733,7 @@ public partial class ProjectDetail
         try
         {
             await IdeaService.CancelExpansionAsync(ideaId);
-            await LoadIdeas();
+            await LoadIdeas(force: true);
             NotificationService.ShowInfo("Expansion cancelled.", "Cancelled");
         }
         catch (Exception ex)
@@ -591,7 +753,7 @@ public partial class ProjectDetail
             var result = await IdeaService.ApproveExpansionAsync(args.ideaId, args.editedDescription);
             if (result != null)
             {
-                await LoadIdeas();
+                await LoadIdeas(force: true);
                 NotificationService.ShowSuccess("Specification approved. The idea is ready to run.", "Expansion Approved");
             }
         }
@@ -606,7 +768,7 @@ public partial class ProjectDetail
         try
         {
             await IdeaService.RejectExpansionAsync(ideaId);
-            await LoadIdeas();
+            await LoadIdeas(force: true);
             NotificationService.ShowInfo("Expansion discarded. You can try again or edit manually.", "Expansion Discarded");
         }
         catch (Exception ex)
@@ -621,7 +783,7 @@ public partial class ProjectDetail
         // This callback is invoked only on success so we reload the ideas list.
         var expectedTotalIdeas = Math.Max(IdeasTotalCount, 1);
         _ideasPageNumber = Math.Max(1, (expectedTotalIdeas + IdeasPageSize - 1) / IdeasPageSize);
-        await LoadIdeas();
+        await LoadIdeas(force: true);
         StateHasChanged();
     }
 
@@ -637,7 +799,7 @@ public partial class ProjectDetail
         {
             await ProjectService.UpdateAsync(Project);
             Project = await ProjectService.GetByIdAsync(ProjectId);
-            NotificationService.ShowSuccess("Environments saved successfully.");
+            NotificationService.ShowProjectSuccess(Project?.Name, "Environments saved successfully.");
         }
         catch (Exception ex)
         {
@@ -688,7 +850,7 @@ public partial class ProjectDetail
 
         try
         {
-            await RefreshJobs();
+            await RefreshJobs(force: true);
         }
         finally
         {
@@ -726,7 +888,7 @@ public partial class ProjectDetail
 
         try
         {
-            await LoadIdeas();
+            await LoadIdeas(force: true);
         }
         finally
         {
@@ -762,21 +924,23 @@ public partial class ProjectDetail
 
     private async Task LoadSuggestionProviderModels()
     {
-        foreach (var provider in Providers.Where(provider => provider.IsEnabled))
+        var enabledProviders = Providers.Where(provider => provider.IsEnabled).ToList();
+        var tasks = enabledProviders.Select(async provider =>
         {
             provider.AvailableModels = (await ProviderService.GetModelsAsync(provider.Id))
                 .Where(model => model.IsAvailable)
                 .OrderByDescending(model => model.IsDefault)
                 .ThenBy(model => model.DisplayName ?? model.ModelId)
                 .ToList();
-        }
+        });
+        await Task.WhenAll(tasks);
     }
 
-    private int GetProjectTotalInputTokens() => Jobs.Sum(j => j.InputTokens ?? 0);
-    private int GetProjectTotalOutputTokens() => Jobs.Sum(j => j.OutputTokens ?? 0);
-    private decimal GetProjectTotalCost() => Jobs.Sum(j => j.TotalCostUsd ?? 0);
-    private bool HasProjectTokenData() => GetProjectTotalInputTokens() > 0 || GetProjectTotalOutputTokens() > 0 ||
-    GetProjectTotalCost() > 0;
+    private int GetProjectTotalInputTokens() => _projectTotalInputTokens;
+    private int GetProjectTotalOutputTokens() => _projectTotalOutputTokens;
+    private decimal GetProjectTotalCost() => _projectTotalCost;
+    private bool HasProjectTokenData() => _projectTotalInputTokens > 0 || _projectTotalOutputTokens > 0 ||
+    _projectTotalCost > 0;
 
     private static string TruncateForToast(string text, int maxLength = 50)
     {
@@ -797,13 +961,13 @@ public partial class ProjectDetail
         {
             Project.IsActive = !Project.IsActive;
             await ProjectService.UpdateAsync(Project);
-            NotificationService.ShowSuccess($"{Project.Name} is now {(Project.IsActive ? "active" : "inactive")}.");
+            NotificationService.ShowProjectSuccess(Project.Name, $"Project is now {(Project.IsActive ? "active" : "inactive")}.");
             StateHasChanged();
         }
         catch (Exception ex)
         {
             Project.IsActive = !Project.IsActive; // Revert on failure
-            NotificationService.ShowError($"Error toggling project status: {ex.Message}");
+            NotificationService.ShowProjectError(Project.Name, $"Error toggling project status: {ex.Message}");
         }
     }
 
@@ -829,7 +993,7 @@ public partial class ProjectDetail
         // Reload data after a repository is created (this updates Project.GitHubRepository in UI)
         await LoadData();
         await LoadGitInfo();
-        NotificationService.ShowSuccess("GitHub repository created and linked successfully!");
+        NotificationService.ShowProjectSuccess(Project?.Name, "GitHub repository created and linked successfully!");
     }
 
     private async Task StopAllActive()

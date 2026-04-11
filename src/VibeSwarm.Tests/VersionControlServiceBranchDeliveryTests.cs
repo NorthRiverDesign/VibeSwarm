@@ -40,6 +40,7 @@ public sealed class VersionControlServiceBranchDeliveryTests
 		executor.AddGitResult("rev-parse --verify refs/heads/feature/test", new GitCommandResult { ExitCode = 0, Output = "feature/test\n" });
 		executor.AddGitResult("rev-parse --verify refs/remotes/origin/main", new GitCommandResult { ExitCode = 0, Output = "origin/main\n" });
 		executor.AddGitResult("rev-parse --verify refs/heads/main", new GitCommandResult { ExitCode = 0, Output = "main\n" });
+		executor.AddGitResult("merge-base --is-ancestor \"feature/test\" \"origin/main\"", new GitCommandResult { ExitCode = 1 });
 		executor.AddGitResult(command => command.StartsWith("worktree add --force --detach ", StringComparison.Ordinal) && command.EndsWith("\"origin/main\"", StringComparison.Ordinal), new GitCommandResult { ExitCode = 0 });
 		executor.AddGitResult("merge --no-commit --no-ff \"feature/test\"", new GitCommandResult { ExitCode = 0, Output = "Automatic merge went well." });
 		executor.AddGitResult(command => command.StartsWith("worktree remove --force ", StringComparison.Ordinal), new GitCommandResult { ExitCode = 0 });
@@ -67,8 +68,10 @@ public sealed class VersionControlServiceBranchDeliveryTests
 		executor.AddGitResult("rev-parse --verify refs/heads/feature/test", new GitCommandResult { ExitCode = 0, Output = "feature/test\n" });
 		executor.AddGitResult("rev-parse --verify refs/remotes/origin/main", new GitCommandResult { ExitCode = 0, Output = "origin/main\n" });
 		executor.AddGitResult("rev-parse --verify refs/heads/main", new GitCommandResult { ExitCode = 0, Output = "main\n" });
+		executor.AddGitResult("merge-base --is-ancestor \"feature/test\" \"origin/main\"", new GitCommandResult { ExitCode = 1 });
 		executor.AddGitResult(command => command.StartsWith("worktree add --force --detach ", StringComparison.Ordinal) && command.EndsWith("\"origin/main\"", StringComparison.Ordinal), new GitCommandResult { ExitCode = 0 });
 		executor.AddGitResult("merge --no-commit --no-ff \"feature/test\"", new GitCommandResult { ExitCode = 1, Error = "CONFLICT (content): Merge conflict in README.md" });
+		executor.AddGitResult("diff --name-only --diff-filter=U", new GitCommandResult { ExitCode = 0, Output = "README.md\n" });
 		executor.AddGitResult(command => command.StartsWith("worktree remove --force ", StringComparison.Ordinal), new GitCommandResult { ExitCode = 0 });
 		executor.AddGitResult("worktree prune", new GitCommandResult { ExitCode = 0 });
 
@@ -78,7 +81,53 @@ public sealed class VersionControlServiceBranchDeliveryTests
 
 		Assert.False(result.Success);
 		Assert.Contains("would create conflicts", result.Error);
+		Assert.Single(result.MergeConflictFiles);
+		Assert.Equal("README.md", result.MergeConflictFiles[0].FileName);
+		Assert.Contains("diff --git a/README.md b/README.md", result.MergeConflictFiles[0].DiffContent);
 		Assert.Contains(executor.GitCommands, command => command.StartsWith("worktree remove --force ", StringComparison.Ordinal));
+	}
+
+	[Fact]
+	public async Task MergeBranchAsync_AppliesConflictResolutionsAndCommitsResolvedMerge()
+	{
+		var repositoryPath = Path.Combine(Path.GetTempPath(), $"vibeswarm-merge-test-{Guid.NewGuid():N}");
+		Directory.CreateDirectory(repositoryPath);
+		var executor = new RecordingGitCommandExecutor(repositoryPath);
+		executor.AddGitResult("rev-parse --is-inside-work-tree", new GitCommandResult { ExitCode = 0, Output = "true\n" });
+		executor.AddGitResult("fetch origin --prune", new GitCommandResult { ExitCode = 0, Output = "fetch ok" });
+		executor.AddGitResult("rev-parse --verify refs/heads/feature/test", new GitCommandResult { ExitCode = 0, Output = "feature/test\n" });
+		executor.AddGitResult("rev-parse --verify refs/remotes/origin/main", new GitCommandResult { ExitCode = 0, Output = "origin/main\n" });
+		executor.AddGitResult("merge-base --is-ancestor \"feature/test\" \"origin/main\"", new GitCommandResult { ExitCode = 1 });
+		executor.AddGitResult(command => command.StartsWith("worktree add --force -B \"main\" ", StringComparison.Ordinal) && command.EndsWith("\"origin/main\"", StringComparison.Ordinal), new GitCommandResult { ExitCode = 0 });
+		executor.AddGitResult("merge --no-ff --no-edit \"feature/test\"", new GitCommandResult { ExitCode = 1, Error = "CONFLICT (content): Merge conflict in README.md" });
+		executor.AddGitResult("diff --name-only --diff-filter=U", new GitCommandResult { ExitCode = 0, Output = "README.md\n" });
+		executor.AddGitResult("add -A", new GitCommandResult { ExitCode = 0 });
+		executor.AddGitResult("diff --name-only --diff-filter=U", new GitCommandResult { ExitCode = 0, Output = string.Empty });
+		executor.AddGitResult("commit --no-edit", new GitCommandResult { ExitCode = 0, Output = "[main abc1234] Merge branch 'feature/test'" });
+		executor.AddGitResult("rev-parse HEAD", new GitCommandResult { ExitCode = 0, Output = "abc123def456\n" });
+		executor.AddGitResult(command => command.StartsWith("worktree remove --force ", StringComparison.Ordinal), new GitCommandResult { ExitCode = 0 });
+		executor.AddGitResult("worktree prune", new GitCommandResult { ExitCode = 0 });
+
+		var service = new VersionControlService(executor, NullLogger<VersionControlService>.Instance);
+
+		var result = await service.MergeBranchAsync(
+			repositoryPath,
+			"feature/test",
+			"main",
+			pushAfterMerge: false,
+			conflictResolutions:
+			[
+				new MergeConflictResolution
+				{
+					FileName = "README.md",
+					ResolvedContent = "resolved content\n"
+				}
+			]);
+
+		Assert.True(result.Success);
+		Assert.Contains("Resolved conflicts", result.Output);
+		Assert.Contains(executor.GitCommands, command => command == "commit --no-edit");
+		Assert.Equal("resolved content\n", await File.ReadAllTextAsync(Path.Combine(executor.LastWorktreePath!, "README.md")));
 	}
 
 	[Fact]
@@ -90,6 +139,7 @@ public sealed class VersionControlServiceBranchDeliveryTests
 		executor.AddGitResult("rev-parse --verify refs/heads/feature/test", new GitCommandResult { ExitCode = 0, Output = "feature/test\n" });
 		executor.AddGitResult("rev-parse --verify refs/remotes/origin/main", new GitCommandResult { ExitCode = 0, Output = "origin/main\n" });
 		executor.AddGitResult("rev-parse --verify refs/heads/main", new GitCommandResult { ExitCode = 0, Output = "main\n" });
+		executor.AddGitResult("merge-base --is-ancestor \"feature/test\" \"origin/main\"", new GitCommandResult { ExitCode = 1 });
 		executor.AddGitResult(command => command.StartsWith("worktree add --force -B \"main\" ", StringComparison.Ordinal) && command.EndsWith("\"origin/main\"", StringComparison.Ordinal), new GitCommandResult { ExitCode = 0 });
 		executor.AddGitResult("merge --no-ff --no-edit \"feature/test\"", new GitCommandResult { ExitCode = 0, Output = "Merge made by the 'ort' strategy." });
 		executor.AddGitResult("rev-parse HEAD", new GitCommandResult { ExitCode = 0, Output = "abc123def456\n" });
@@ -119,6 +169,7 @@ public sealed class VersionControlServiceBranchDeliveryTests
 		executor.AddGitResult("rev-parse --verify refs/heads/feature/test", new GitCommandResult { ExitCode = 0, Output = "feature/test\n" });
 		executor.AddGitResult("rev-parse --verify refs/remotes/origin/main", new GitCommandResult { ExitCode = 1, Error = "fatal: Needed a single revision" });
 		executor.AddGitResult("rev-parse --verify refs/heads/main", new GitCommandResult { ExitCode = 0, Output = "main\n" });
+		executor.AddGitResult("merge-base --is-ancestor \"feature/test\" \"main\"", new GitCommandResult { ExitCode = 1 });
 		executor.AddGitResult(command => command.StartsWith("worktree add --force ", StringComparison.Ordinal) && !command.Contains("--detach", StringComparison.Ordinal) && !command.Contains(" -B ", StringComparison.Ordinal) && command.EndsWith("\"main\"", StringComparison.Ordinal), new GitCommandResult { ExitCode = 0 });
 		executor.AddGitResult("merge --no-ff --no-edit \"feature/test\"", new GitCommandResult { ExitCode = 0, Output = "Merge made by the 'ort' strategy." });
 		executor.AddGitResult("rev-parse HEAD", new GitCommandResult { ExitCode = 0, Output = "abc123def456\n" });
@@ -155,12 +206,48 @@ public sealed class VersionControlServiceBranchDeliveryTests
 		Assert.Contains(executor.GitCommands, command => command.StartsWith("commit -m \"Add a feature", StringComparison.Ordinal));
 	}
 
+	[Fact]
+	public async Task CommitAllChangesAsync_AddsAuthorAndTrailersWhenConfigured()
+	{
+		var executor = new RecordingGitCommandExecutor();
+		executor.AddGitResult("add -A", new GitCommandResult { ExitCode = 0 });
+		executor.AddGitResult(
+			command => command.Contains("--author \"Claude <noreply@anthropic.com>\"", StringComparison.Ordinal)
+				&& command.Contains("-m \"Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>\"", StringComparison.Ordinal),
+			new GitCommandResult { ExitCode = 0, Output = "[main abc1234] Add a feature" });
+		executor.AddGitResult("rev-parse HEAD", new GitCommandResult { ExitCode = 0, Output = "abc1234\n" });
+
+		var service = new VersionControlService(executor, NullLogger<VersionControlService>.Instance);
+
+		var result = await service.CommitAllChangesAsync(
+			"/repo",
+			"Add a feature",
+			commitOptions: new GitCommitOptions
+			{
+				AuthorName = "Claude",
+				AuthorEmail = "noreply@anthropic.com",
+				MessageTrailers = ["Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"]
+			});
+
+		Assert.True(result.Success);
+		Assert.Contains(executor.GitCommands, command => command.Contains("--author \"Claude <noreply@anthropic.com>\"", StringComparison.Ordinal));
+		Assert.Contains(executor.GitCommands, command => command.Contains("-m \"Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>\"", StringComparison.Ordinal));
+	}
+
 	private sealed class RecordingGitCommandExecutor : IGitCommandExecutor
 	{
 		private readonly List<(Func<string, bool> Match, Queue<GitCommandResult> Results)> _gitResults = [];
 		private readonly Dictionary<string, Queue<GitCommandResult>> _rawResults = new(StringComparer.Ordinal);
+		private readonly string? _repositoryPath;
 
 		public List<string> GitCommands { get; } = [];
+
+		public string? LastWorktreePath { get; private set; }
+
+		public RecordingGitCommandExecutor(string? repositoryPath = null)
+		{
+			_repositoryPath = repositoryPath;
+		}
 
 		public void AddGitResult(string arguments, GitCommandResult result)
 			=> AddGitResult(command => string.Equals(command, arguments, StringComparison.Ordinal), result);
@@ -196,6 +283,17 @@ public sealed class VersionControlServiceBranchDeliveryTests
 			int timeoutSeconds = 30)
 		{
 			GitCommands.Add(arguments);
+			if (arguments.StartsWith("worktree add --force", StringComparison.Ordinal))
+			{
+				LastWorktreePath = ExtractWorktreePath(arguments);
+				if (LastWorktreePath is not null)
+				{
+					Directory.CreateDirectory(LastWorktreePath);
+					var conflictFilePath = Path.Combine(LastWorktreePath, "README.md");
+					Directory.CreateDirectory(Path.GetDirectoryName(conflictFilePath)!);
+					File.WriteAllText(conflictFilePath, "<<<<<<< HEAD\nmain\n=======\nfeature\n>>>>>>> feature/test\n");
+				}
+			}
 
 			foreach (var (match, results) in _gitResults)
 			{
@@ -226,6 +324,22 @@ public sealed class VersionControlServiceBranchDeliveryTests
 			}
 
 			return queue.Dequeue();
+		}
+
+		private static string? ExtractWorktreePath(string arguments)
+		{
+			var matches = System.Text.RegularExpressions.Regex.Matches(arguments, "\"([^\"]+)\"");
+			if (matches.Count == 0)
+			{
+				return null;
+			}
+
+			if (arguments.Contains(" --detach ", StringComparison.Ordinal))
+			{
+				return matches[0].Groups[1].Value;
+			}
+
+			return matches.Count >= 2 ? matches[1].Groups[1].Value : matches[0].Groups[1].Value;
 		}
 	}
 }

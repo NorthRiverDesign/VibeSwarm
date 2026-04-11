@@ -1,7 +1,4 @@
 @* Reusable project card component for project listings *@
-@using VibeSwarm.Shared.Data
-@using VibeSwarm.Shared.Models
-@using VibeSwarm.Shared.Utilities
 
 <a href="/projects/@ProjectId"
 	class="card h-100 text-decoration-none border-start border-3 project-card-hover @GetBorderColorClass()">
@@ -16,18 +13,18 @@
 		<div class="mb-2 small text-body-secondary">
 			@if (!string.IsNullOrEmpty(GitHubRepository))
 			{
-				<div class="d-flex align-items-center gap-2 min-width-0">
-					<i class="bi bi-github opacity-75"></i>
-					<span class="font-monospace text-truncate" style="max-width: min(180px, 50vw);"
-						title="@GitHubRepository">
-						@GitHubRepository
-					</span>
+				<div class="d-flex flex-column gap-1 min-width-0">
+					<div class="d-flex align-items-center gap-2 min-width-0">
+						<i class="bi bi-github opacity-75"></i>
+						<span class="font-monospace text-truncate" title="@GitHubRepository">
+							@GitHubRepository
+						</span>
+					</div>
 					@if (!string.IsNullOrEmpty(CurrentBranch))
 					{
-						<span class="text-body-tertiary">/</span>
-						<span class="text-truncate" title="@CurrentBranch">
+						<div class="d-flex align-items-center gap-1 min-width-0">
 							<i class="bi bi-git me-1 opacity-75"></i>@TruncateText(CurrentBranch, 18)
-						</span>
+						</div>
 					}
 				</div>
 			}
@@ -155,6 +152,6 @@
 		if (timeSpan.TotalDays < 7)
 			return $"{(int)timeSpan.TotalDays}d ago";
 
-		return dateTime.ToConfiguredTime().ToString("MMM d");
+		return dateTime.FormatDateShort();
 	}
 }

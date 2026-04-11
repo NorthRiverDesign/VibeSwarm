@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Models;
+using VibeSwarm.Shared.Providers;
 using VibeSwarm.Shared.Validation;
 
 namespace VibeSwarm.Client.Models;
@@ -37,10 +38,18 @@ public sealed class ProjectModalFormModel : IValidatableObject
 	[StringLength(ValidationLimits.ProjectPlanningModelIdMaxLength)]
 	public string? PlanningModelId { get; set; }
 
+	[StringLength(ValidationLimits.ReasoningEffortMaxLength)]
+	public string? PlanningReasoningEffort { get; set; }
+
 	public Guid? IdeaInferenceProviderId { get; set; }
 
 	[StringLength(200)]
 	public string? IdeaInferenceModelId { get; set; }
+
+	public Guid? CommitSummaryInferenceProviderId { get; set; }
+
+	[StringLength(200)]
+	public string? CommitSummaryInferenceModelId { get; set; }
 
 	public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
@@ -61,8 +70,6 @@ public sealed class ProjectModalFormModel : IValidatableObject
 	public bool IsActive { get; set; } = true;
 
 	public bool EnableTeamSwarm { get; set; }
-
-	public bool IdeasAutoExpand { get; set; } = true;
 
 	public bool BuildVerificationEnabled { get; set; }
 
@@ -103,8 +110,11 @@ public sealed class ProjectModalFormModel : IValidatableObject
 			PlanningEnabled = source.PlanningEnabled,
 			PlanningProviderId = source.PlanningProviderId,
 			PlanningModelId = source.PlanningModelId,
+			PlanningReasoningEffort = source.PlanningReasoningEffort,
 			IdeaInferenceProviderId = source.IdeaInferenceProviderId,
 			IdeaInferenceModelId = source.IdeaInferenceModelId,
+			CommitSummaryInferenceProviderId = source.CommitSummaryInferenceProviderId,
+			CommitSummaryInferenceModelId = source.CommitSummaryInferenceModelId,
 			CreatedAt = source.CreatedAt,
 			UpdatedAt = source.UpdatedAt,
 			ProviderSelections = source.ProviderSelections.ToList(),
@@ -114,7 +124,6 @@ public sealed class ProjectModalFormModel : IValidatableObject
 			Memory = source.Memory,
 			IsActive = source.IsActive,
 			EnableTeamSwarm = source.EnableTeamSwarm,
-			IdeasAutoExpand = source.IdeasAutoExpand,
 			BuildVerificationEnabled = source.BuildVerificationEnabled,
 			BuildCommand = source.BuildCommand,
 			TestCommand = source.TestCommand,
@@ -137,8 +146,11 @@ public sealed class ProjectModalFormModel : IValidatableObject
 			PlanningEnabled = PlanningEnabled,
 			PlanningProviderId = PlanningProviderId,
 			PlanningModelId = string.IsNullOrWhiteSpace(PlanningModelId) ? null : PlanningModelId.Trim(),
+			PlanningReasoningEffort = ProviderCapabilities.NormalizeReasoningEffort(PlanningReasoningEffort),
 			IdeaInferenceProviderId = IdeaInferenceProviderId,
 			IdeaInferenceModelId = string.IsNullOrWhiteSpace(IdeaInferenceModelId) ? null : IdeaInferenceModelId.Trim(),
+			CommitSummaryInferenceProviderId = CommitSummaryInferenceProviderId,
+			CommitSummaryInferenceModelId = string.IsNullOrWhiteSpace(CommitSummaryInferenceModelId) ? null : CommitSummaryInferenceModelId.Trim(),
 			CreatedAt = CreatedAt,
 			UpdatedAt = UpdatedAt,
 			ProviderSelections = ProviderSelections.ToList(),
@@ -150,8 +162,7 @@ public sealed class ProjectModalFormModel : IValidatableObject
 			BuildVerificationEnabled = BuildVerificationEnabled,
 			BuildCommand = string.IsNullOrWhiteSpace(BuildCommand) ? null : BuildCommand.Trim(),
 			TestCommand = string.IsNullOrWhiteSpace(TestCommand) ? null : TestCommand.Trim(),
-			IsActive = IsActive,
-			IdeasAutoExpand = IdeasAutoExpand
+			IsActive = IsActive
 		};
 	}
 

@@ -1,8 +1,11 @@
+using System.Globalization;
+
 namespace VibeSwarm.Shared.Utilities;
 
 public static class DateTimeHelper
 {
 	public const string UtcTimeZoneId = "UTC";
+	private static readonly CultureInfo USCulture = CultureInfo.GetCultureInfo("en-US");
 
 	private static readonly object TimeZoneLock = new();
 	private static TimeZoneInfo _currentTimeZone = TimeZoneInfo.Utc;
@@ -76,29 +79,68 @@ public static class DateTimeHelper
 	public static string FormatDateTimeWithZone(this DateTime dateTime)
 		=> $"{dateTime.ToConfiguredTime():yyyy-MM-dd HH:mm} {CurrentTimeZoneId}";
 
+	public static string FormatRelativeToNow(this DateTime dateTime, DateTime? referenceTimeUtc = null)
+	{
+		var reference = NormalizeUtc(referenceTimeUtc ?? DateTime.UtcNow);
+		var target = NormalizeUtc(dateTime);
+		var elapsed = target - reference;
+		var isFuture = elapsed > TimeSpan.Zero;
+		var magnitude = elapsed.Duration();
+
+		if (magnitude.TotalMinutes < 1)
+		{
+			return isFuture ? "in less than a minute" : "just now";
+		}
+
+		if (magnitude.TotalMinutes < 60)
+		{
+			var minutes = (int)magnitude.TotalMinutes;
+			return isFuture ? $"in {minutes}m" : $"{minutes}m ago";
+		}
+
+		if (magnitude.TotalHours < 24)
+		{
+			var hours = (int)magnitude.TotalHours;
+			return isFuture ? $"in {hours}h" : $"{hours}h ago";
+		}
+
+		var days = (int)magnitude.TotalDays;
+		return isFuture ? $"in {days}d" : $"{days}d ago";
+	}
+
 	public static string FormatDateTime(this DateTime dateTime)
 	{
-		return dateTime.ToConfiguredTime().ToString("MM/dd/yyyy hh:mm:ss tt");
+		return dateTime.ToConfiguredTime().ToString("M/d/yyyy h:mm:ss tt", USCulture);
 	}
 
 	public static string FormatDateTimeShort(this DateTime dateTime)
 	{
-		return dateTime.ToConfiguredTime().ToString("MM/dd/yyyy hh:mm tt");
+		return dateTime.ToConfiguredTime().ToString("M/d/yyyy h:mm tt", USCulture);
 	}
 
 	public static string FormatDate(this DateTime dateTime)
 	{
-		return dateTime.ToConfiguredTime().ToString("MM/dd/yyyy");
+		return dateTime.ToConfiguredTime().ToString("M/d/yyyy", USCulture);
 	}
 
 	public static string FormatTime(this DateTime dateTime)
 	{
-		return dateTime.ToConfiguredTime().ToString("hh:mm:ss tt");
+		return dateTime.ToConfiguredTime().ToString("h:mm:ss tt", USCulture);
 	}
 
 	public static string FormatTimeShort(this DateTime dateTime)
 	{
-		return dateTime.ToConfiguredTime().ToString("hh:mm tt");
+		return dateTime.ToConfiguredTime().ToString("h:mm tt", USCulture);
+	}
+
+	public static string FormatDateShort(this DateTime dateTime)
+	{
+		return dateTime.ToConfiguredTime().ToString("MMM d", USCulture);
+	}
+
+	public static string FormatDateShort(this DateTime? dateTime)
+	{
+		return dateTime?.FormatDateShort() ?? string.Empty;
 	}
 
 	public static string GetTimeZoneOptionLabel(TimeZoneInfo timeZone)

@@ -146,26 +146,34 @@ public class NotificationService
 	/// </summary>
 	public void ShowJobCompleted(Guid jobId, bool success, string? projectName = null, string? errorMessage = null)
 	{
+		var targetUrl = $"/jobs/view/{jobId}";
+
 		if (success)
 		{
 			var message = projectName != null
 				? $"Job in '{projectName}' completed successfully"
 				: "Job completed successfully";
-			ShowSuccess(message, "Job Completed");
+			Show(message, "Job Completed", NotificationType.Success, 5000, "View Job", targetUrl);
 		}
 		else
 		{
 			var message = errorMessage ?? (projectName != null
 				? $"Job in '{projectName}' failed"
 				: "Job failed");
-			ShowError(message, "Job Failed");
+			Show(message, "Job Failed", NotificationType.Error, 8000, "View Job", targetUrl);
 		}
 	}
 
 	/// <summary>
 	/// Show a notification with custom parameters
 	/// </summary>
-	public void Show(string message, string title, NotificationType type, int durationMs = 5000)
+	public void Show(
+		string message,
+		string title,
+		NotificationType type,
+		int durationMs = 5000,
+		string? actionLabel = null,
+		string? actionUrl = null)
 	{
 		AddNotification(new ToastNotification
 		{
@@ -174,7 +182,9 @@ public class NotificationService
 			Message = message,
 			Type = type,
 			CreatedAt = DateTime.UtcNow,
-			DurationMs = durationMs
+			DurationMs = durationMs,
+			ActionLabel = actionLabel,
+			ActionUrl = actionUrl
 		});
 	}
 
@@ -240,6 +250,9 @@ public class ToastNotification
 	public NotificationType Type { get; set; }
 	public DateTime CreatedAt { get; set; }
 	public int DurationMs { get; set; }
+	public string? ActionLabel { get; set; }
+	public string? ActionUrl { get; set; }
+	public bool HasAction => !string.IsNullOrWhiteSpace(ActionLabel) && !string.IsNullOrWhiteSpace(ActionUrl);
 }
 
 /// <summary>

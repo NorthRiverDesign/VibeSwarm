@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using VibeSwarm.Shared.Data;
+using VibeSwarm.Shared.Providers;
 using VibeSwarm.Shared.Services;
 using VibeSwarm.Shared.Validation;
 
@@ -56,6 +57,7 @@ public class TeamRoleService : ITeamRoleService
 			Responsibilities = teamRole.Responsibilities,
 			DefaultProviderId = teamRole.DefaultProviderId,
 			DefaultModelId = teamRole.DefaultModelId,
+			DefaultReasoningEffort = teamRole.DefaultReasoningEffort,
 			IsEnabled = teamRole.IsEnabled,
 			CreatedAt = DateTime.UtcNow,
 			UpdatedAt = null,
@@ -103,6 +105,7 @@ public class TeamRoleService : ITeamRoleService
 		existing.Responsibilities = teamRole.Responsibilities;
 		existing.DefaultProviderId = teamRole.DefaultProviderId;
 		existing.DefaultModelId = teamRole.DefaultModelId;
+		existing.DefaultReasoningEffort = teamRole.DefaultReasoningEffort;
 		existing.IsEnabled = teamRole.IsEnabled;
 		existing.UpdatedAt = DateTime.UtcNow;
 
@@ -148,9 +151,11 @@ public class TeamRoleService : ITeamRoleService
 		teamRole.Description = string.IsNullOrWhiteSpace(teamRole.Description) ? null : teamRole.Description.Trim();
 		teamRole.Responsibilities = string.IsNullOrWhiteSpace(teamRole.Responsibilities) ? null : teamRole.Responsibilities.Trim();
 		teamRole.DefaultModelId = string.IsNullOrWhiteSpace(teamRole.DefaultModelId) ? null : teamRole.DefaultModelId.Trim();
+		teamRole.DefaultReasoningEffort = ProviderCapabilities.NormalizeReasoningEffort(teamRole.DefaultReasoningEffort);
 		if (!teamRole.DefaultProviderId.HasValue)
 		{
 			teamRole.DefaultModelId = null;
+			teamRole.DefaultReasoningEffort = null;
 		}
 		teamRole.SkillLinks = (teamRole.SkillLinks ?? [])
 			.GroupBy(link => link.SkillId)
@@ -220,15 +225,25 @@ public class TeamRoleService : ITeamRoleService
 				throw new InvalidOperationException("A default model requires selecting a default provider.");
 			}
 
+			if (!string.IsNullOrWhiteSpace(teamRole.DefaultReasoningEffort))
+			{
+				throw new InvalidOperationException("A default reasoning level requires selecting a default provider.");
+			}
+
 			return;
 		}
 
-		var providerExists = await _dbContext.Providers
+		var provider = await _dbContext.Providers
 			.AsNoTracking()
-			.AnyAsync(provider => provider.Id == teamRole.DefaultProviderId.Value, cancellationToken);
-		if (!providerExists)
+			.FirstOrDefaultAsync(provider => provider.Id == teamRole.DefaultProviderId.Value, cancellationToken);
+		if (provider == null)
 		{
 			throw new InvalidOperationException("The selected default provider does not exist.");
+		}
+
+		if (!ProviderCapabilities.SupportsReasoningEffort(provider, teamRole.DefaultReasoningEffort))
+		{
+			throw new InvalidOperationException("The selected default reasoning level is not supported by the chosen provider.");
 		}
 
 		if (string.IsNullOrWhiteSpace(teamRole.DefaultModelId))

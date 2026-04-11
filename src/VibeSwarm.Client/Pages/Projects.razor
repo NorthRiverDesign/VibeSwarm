@@ -6,42 +6,48 @@
 @inject IProviderService ProviderService
 @inject IVersionControlService VersionControlService
 @inject NotificationService NotificationService
+@inject QueuePanelStateService QueuePanelStateService
 @implements IDisposable
-@using VibeSwarm.Shared.Data
-@using VibeSwarm.Shared.Models
-@using VibeSwarm.Shared.Utilities
 
-<PageHeader Title="Projects" Subtitle="Manage your AI agent project workspaces">
-    <Actions>
-        <ActionButton Icon="plus" Text="Add" Style="ActionButton.ButtonStyle.Primary" OnClick="ShowAddModal" />
-    </Actions>
+<PageHeader Title="Projects" AlignItemsClass="align-items-center">
+	<Actions>
+		<ActionButton Icon="plus" Text="Add" Style="ActionButton.ButtonStyle.Primary" HideTextOnMobile="true" OnClick="ShowAddModal" />
+	</Actions>
 </PageHeader>
 
-@* Search bar *@
-<div class="mb-3">
-	<div class="input-group">
-		<span class="input-group-text"><i class="bi bi-search"></i></span>
-		<input type="search" class="form-control" placeholder="Search by name or repository…"
-			   @bind="_projectSearchQuery" @bind:event="oninput"
-			   title="Filter projects by name or repository" />
-	</div>
-</div>
-
-@* Active / Inactive filter tabs *@
-<ul class="nav nav-tabs">
-	<li class="nav-item">
-		<button class="nav-link @(ActiveFilter == "active" ? "active" : "")" @onclick='() => SetFilter("active")'>
-			<i class="bi bi-check-circle me-1"></i>Active
-			<span class="badge bg-primary-subtle text-primary-emphasis ms-1">@GetActiveCount()</span>
-		</button>
-	</li>
-	<li class="nav-item">
-		<button class="nav-link @(ActiveFilter == "inactive" ? "active" : "")" @onclick='() => SetFilter("inactive")'>
-			<i class="bi bi-pause-circle me-1"></i>Inactive
-			<span class="badge bg-secondary-subtle text-secondary-emphasis ms-1">@GetInactiveCount()</span>
-		</button>
-	</li>
-</ul>
+<PageFiltersBar Class="mb-0">
+	<SearchContent>
+		<div class="input-group">
+			<span class="input-group-text"><i class="bi bi-search"></i></span>
+			<input type="search" class="form-control" placeholder="Search by name or repository…"
+				   @bind="_projectSearchQuery" @bind:event="oninput"
+				   title="Filter projects by name or repository" />
+		</div>
+	</SearchContent>
+	<Tabs>
+		<div class="d-flex align-items-stretch border-bottom">
+			<ul class="nav nav-tabs flex-nowrap flex-sm-wrap overflow-x-auto overflow-y-hidden overscroll-contain border-bottom-0 mb-0 flex-grow-1 min-width-0" role="tablist">
+				<li class="nav-item">
+					<button class="nav-link @(ActiveFilter == "active" ? "active" : "")" @onclick='() => SetFilter("active")'>
+						<i class="bi bi-check-circle me-1"></i>Active
+						<span class="badge bg-primary-subtle text-primary-emphasis ms-1">@GetActiveCount()</span>
+					</button>
+				</li>
+				<li class="nav-item">
+					<button class="nav-link @(ActiveFilter == "inactive" ? "active" : "")" @onclick='() => SetFilter("inactive")'>
+						<i class="bi bi-pause-circle me-1"></i>Inactive
+						<span class="badge bg-secondary-subtle text-secondary-emphasis ms-1">@GetInactiveCount()</span>
+					</button>
+				</li>
+			</ul>
+			<button type="button" class="btn btn-sm btn-link text-body-secondary p-1 flex-shrink-0 align-self-center"
+					@onclick="ToggleProjectStats" title="Toggle project stats"
+					aria-label="@(ShowProjectStats ? "Hide stats" : "Show stats")">
+				<i class="bi bi-@(ShowProjectStats ? "eye-slash" : "eye")"></i>
+			</button>
+		</div>
+	</Tabs>
+</PageFiltersBar>
 
 @if (ShowInitialLoadingSpinner)
 {
@@ -72,196 +78,21 @@ else
 		{
 			var project = projectInfo.Project;
 			var stats = projectInfo.Stats;
-			var latestJob = projectInfo.LatestJob;
-			var currentBranch = projectInfo.CurrentBranch;
 			var projectActiveJobs = ActiveJobs.Where(j => j.ProjectId == project.Id).ToList();
-			<div class="list-group-item p-3 hover-bg-tertiary">
-				<div class="d-flex align-items-start gap-3">
-					<div class="flex-grow-1 min-width-0">
-						<div class="d-flex align-items-center gap-2 flex-wrap">
-							<a href="/projects/@project.Id" class="fw-semibold text-decoration-none">@project.Name</a>
-							@if (project.AutoCommitMode != AutoCommitMode.Off)
-							{
-								<i class="bi bi-arrow-repeat text-info opacity-75" title="Auto-commit: @project.AutoCommitMode"></i>
-							}
-							@if (!project.IsActive)
-							{
-								<span class="small text-body-tertiary">Inactive</span>
-							}
-							@if (project.Environments.Any(environment => environment.IsEnabled))
-							{
-								<span class="small text-body-secondary d-inline-flex align-items-center gap-1">
-									<i class="bi bi-globe2 opacity-75"></i>@project.Environments.Count(environment => environment.IsEnabled)
-								</span>
-							}
-							@if (stats.ActiveJobs > 0)
-							{
-								<span class="small text-body-secondary d-inline-flex align-items-center gap-1">
-									<i class="bi bi-activity opacity-75"></i>@stats.ActiveJobs running
-								</span>
-							}
-							@if (project.IdeasProcessingActive)
-							{
-								<span class="small text-info-emphasis d-inline-flex align-items-center gap-1" title="Idea queue is running">
-									<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>Queue running
-								</span>
-							}
-						</div>
-						@if (!string.IsNullOrEmpty(project.Description))
-						{
-							<div class="small text-body-secondary mt-1">@TruncateText(project.Description, 100)</div>
-						}
-						<div class="d-flex flex-wrap gap-2 gap-md-3 mt-2 small text-body-secondary">
-							@if (!string.IsNullOrEmpty(project.GitHubRepository))
-							{
-								<span class="d-flex align-items-center gap-1" title="GitHub Repository">
-									<i class="bi bi-github opacity-75"></i>
-									<a href="https://github.com/@project.GitHubRepository" target="_blank"
-										   class="text-body-secondary text-decoration-none hover-underline">
-										@project.GitHubRepository
-									</a>
-								</span>
-							}
-							else
-							{
-								<span class="font-monospace bg-body-tertiary px-2 py-1 rounded-1 text-truncate"
-									  style="max-width: min(280px, 50vw);" title="@project.WorkingPath">
-									@project.WorkingPath
-								</span>
-							}
-							@if (!string.IsNullOrEmpty(currentBranch))
-							{
-								<span class="d-flex align-items-center gap-1" title="Current branch">
-									<i class="bi bi-git opacity-75"></i>
-									@currentBranch
-								</span>
-							}
-						</div>
-						@if (project.ProviderSelections.Any(pp => pp.IsEnabled))
-						{
-							<div class="d-flex flex-wrap align-items-center gap-2 mt-2 small text-body-secondary">
-								<span class="d-flex align-items-center gap-1">
-									<i class="bi bi-diagram-3 opacity-75"></i>
-									Providers
-								</span>
-								<span>@string.Join("  •  ", project.ProviderSelections.Where(pp => pp.IsEnabled).OrderBy(pp => pp.Priority).Select(selection => $"#{selection.Priority + 1} {selection.Provider?.Name ?? "Unknown"}"))</span>
-							</div>
-						}
-						@if (project.TeamAssignments.Any(assignment => assignment.IsEnabled && assignment.TeamRole != null))
-						{
-							<div class="d-flex flex-wrap align-items-center gap-2 mt-2 small text-body-secondary">
-								<span class="d-flex align-items-center gap-1">
-									<i class="bi bi-people opacity-75"></i>
-									Team
-								</span>
-								<span>@string.Join("  •  ", project.TeamAssignments.Where(assignment => assignment.IsEnabled && assignment.TeamRole != null).OrderBy(assignment => assignment.TeamRole!.Name).Select(assignment => $"{assignment.TeamRole!.Name} ({assignment.Provider?.Name ?? "Unassigned"})"))</span>
-							</div>
-						}
-						<div class="d-flex flex-wrap gap-2 gap-md-3 mt-2 small">
-							<span class="d-flex align-items-center gap-1 text-body-secondary" title="Total ideas">
-								<i class="bi bi-lightbulb opacity-75"></i>
-								@stats.TotalIdeas idea@(stats.TotalIdeas == 1 ? string.Empty : "s")
-							</span>
-							@if (stats.UnprocessedIdeas > 0)
-							{
-								<span class="d-flex align-items-center gap-1 text-body-secondary" title="Ideas waiting to run">
-									<i class="bi bi-hourglass-split opacity-75"></i>
-									@stats.UnprocessedIdeas pending
-								</span>
-							}
-							@if (stats.TotalJobs > 0)
-							{
-								<span class="d-flex align-items-center gap-1 text-body-secondary" title="Total jobs">
-									<i class="bi bi-list-check opacity-75"></i>
-									@stats.TotalJobs jobs
-								</span>
-								@if (stats.TotalInputTokens > 0 || stats.TotalOutputTokens > 0)
-								{
-									<span class="d-flex align-items-center gap-1 text-body-secondary"
-										  title="Total tokens (input / output)">
-										<i class="bi bi-braces opacity-75"></i>
-										@TokenHelper.FormatTokenCount(stats.TotalInputTokens) /
-										@TokenHelper.FormatTokenCount(stats.TotalOutputTokens)
-									</span>
-								}
-								@if (stats.TotalCostUsd > 0)
-								{
-									<span class="d-flex align-items-center gap-1 text-success fw-medium" title="Total cost">
-										<i class="bi bi-currency-dollar opacity-75"></i>
-										@TokenHelper.FormatCost(stats.TotalCostUsd)
-									</span>
-								}
-							}
-						</div>
-						@if (latestJob != null)
-						{
-							<div class="border-top pt-2 mt-2">
-								<div class="d-flex align-items-center gap-2 small min-width-0">
-									<a href="/jobs/view/@latestJob.Id"
-										   class="d-flex align-items-center gap-2 text-decoration-none min-width-0"
-										   title="@latestJob.DisplayTitle">
-										@switch (latestJob.Status)
-										{
-											case JobStatus.Completed:
-												<i class="bi bi-check-circle-fill text-success flex-shrink-0" title="Completed"></i>
-												break;
-											case JobStatus.Failed:
-												<i class="bi bi-x-circle-fill text-danger flex-shrink-0" title="Failed"></i>
-												break;
-											case JobStatus.Started:
-											case JobStatus.Planning:
-											case JobStatus.Processing:
-												<span class="spinner-border spinner-border-sm text-info flex-shrink-0" role="status"
-													  title="Running"></span>
-												break;
-											case JobStatus.Cancelled:
-												<i class="bi bi-slash-circle text-secondary flex-shrink-0" title="Cancelled"></i>
-												break;
-											case JobStatus.Stalled:
-												<i class="bi bi-exclamation-triangle-fill text-warning flex-shrink-0" title="Stalled"></i>
-												break;
-											default:
-												<i class="bi bi-clock text-secondary flex-shrink-0" title="Pending"></i>
-												break;
-										}
-										<span class="text-truncate text-body-secondary">@TruncateText(latestJob.DisplayTitle, 60)</span>
-									</a>
-								</div>
-							</div>
-						}
-						@if (projectActiveJobs.Any())
-						{
-							<div class="@(latestJob == null ? "border-top pt-2 mt-2" : "mt-1")">
-								@foreach (var job in projectActiveJobs)
-								{
-									<div class="bg-body-tertiary rounded-2 p-2 mb-1 small">
-										<a href="/jobs/view/@job.Id" class="d-flex align-items-center gap-2 text-decoration-none small">
-											<StatusBadge Status="@job.Status.ToString()" />
-											<span class="text-truncate" style="max-width: min(200px, 40vw);">@TruncateText(job.DisplayTitle, 50)</span>
-											@if (!string.IsNullOrEmpty(job.CurrentActivity))
-											{
-												<span class="text-info fst-italic small d-none d-md-inline">@job.CurrentActivity</span>
-											}
-										</a>
-									</div>
-								}
-							</div>
-						}
-					</div>
-					<div class="d-flex align-items-center gap-2 flex-shrink-0">
-						<ProjectActionsDropdown DetailsHref="@($"/projects/{project.Id}")" OnEdit="@(() => EditProject(project.Id))"
-												IsActive="@project.IsActive" OnToggleActive="@(() => ToggleActive(project))"
-												ShowStartIdeaQueueAction="@(stats.TotalIdeas > 0 && !project.IdeasProcessingActive)"
-												StartIdeaQueueEnabled="@CanStartIdeaQueue(projectInfo)"
-												IsStartingIdeaQueue="@(StartingIdeaQueueProjectId == project.Id)"
-												StartIdeaQueueTooltip="@GetStartIdeaQueueTooltip(projectInfo)"
-												OnStartIdeaQueue="@(() => StartIdeaQueue(projectInfo))"
-												ShowSyncAction="@(!string.IsNullOrEmpty(projectInfo.CurrentBranch))"
-												SyncLabel="Resync with Git" OnSync="@(() => ResyncWithGit(project))"
-												ShowDeleteAction="true" OnDelete="@(() => ShowDeleteConfirmation(project))" />
-					</div>
-				</div>
-			</div>
+			<ProjectListItem Project="@project" Stats="@stats" LatestJob="@projectInfo.LatestJob"
+							 CurrentBranch="@projectInfo.CurrentBranch" ActiveJobs="@projectActiveJobs"
+							 ShowStats="@ShowProjectStats"
+							 IsSyncing="@IsProjectGitOperation(project.Id, "sync")"
+							 IsMerging="@IsProjectGitOperation(project.Id, "merge")"
+							 StartIdeaQueueEnabled="@CanStartIdeaQueue(projectInfo)"
+							 IsStartingIdeaQueue="@(StartingIdeaQueueProjectId == project.Id)"
+							 StartIdeaQueueTooltip="@GetStartIdeaQueueTooltip(projectInfo)"
+							 OnEdit="@(() => EditProject(project.Id))"
+							 OnToggleActive="@(() => ToggleActive(project))"
+							 OnStartIdeaQueue="@(() => StartIdeaQueue(projectInfo))"
+							 OnSync="@(() => ResyncWithGit(project))"
+							 OnMergeBranch="@(() => ShowMergeBranchModal(projectInfo))"
+							 OnDelete="@(() => ShowDeleteConfirmation(project))" />
 		}
 	</div>
 }
@@ -304,7 +135,24 @@ else
 				Delete@(DeleteDirectoryConfirmed ? " & Remove Files" : "")
 			</button>
 		</FooterContent>
-	</ModalDialog>
+</ModalDialog>
+
+<MergeBranchModal @bind-IsVisible="_showMergeBranchModal" CurrentBranch="@MergeCurrentBranch"
+				  TargetBranches="@MergeTargetBranches" SelectedTargetBranch="@_mergeTargetBranch"
+				  PushAfterMerge="@_mergePushAfterMerge" IsCheckingPreview="@_isCheckingMergePreview"
+				  IsMerging="@_isMergingBranch" PreviewMessage="@_mergePreviewMessage"
+				  PreviewError="@_mergePreviewError" IsAlreadyUpToDate="@_isMergeAlreadyUpToDate"
+				  ConflictFiles="@_mergeConflictFiles"
+				  CreatePullRequest="@_mergeCreatePullRequest"
+				  PullRequestTitle="@_mergePrTitle" IsCreatingPullRequest="@_isCreatingPullRequest"
+				  IsGitHubCliAvailable="@_isGitHubCliAvailable"
+				  OnTargetBranchChanged="HandleMergeTargetBranchChanged"
+				  OnPushAfterMergeChanged="HandleMergePushAfterMergeChanged"
+				  OnCreatePullRequestChanged="HandleMergeCreatePullRequestChanged"
+				  OnPullRequestTitleChanged="HandleMergePrTitleChanged"
+				  OnConflictResolutionChanged="HandleMergeConflictResolutionChanged"
+				  OnMerge="MergeCurrentBranchAsync" OnCreatePullRequestSubmit="CreatePullRequestAsync"
+				  OnCancel="CloseMergeBranchModal" />
 
 @code {
     private List<ProjectInfoWithStats> ProjectsWithInfo { get; set; } = new();
@@ -317,7 +165,10 @@ else
     private bool HasDefaultProvider { get; set; }
     private Guid? StartingIdeaQueueProjectId { get; set; }
     private bool _isAutoRefreshing;
+    private bool ShowProjectStats { get; set; }
     private bool ShowInitialLoadingSpinner => IsLoading && !HasLoadedProjectsInitially;
+    private Guid? _gitOperationProjectId;
+    private string? _gitOperationKind;
 
     // Modal state
     private bool ShowProjectModal { get; set; }
@@ -328,6 +179,30 @@ else
     private Project? ProjectToDelete { get; set; }
     private bool IsDeleting { get; set; }
     private bool DeleteDirectoryConfirmed { get; set; }
+
+    // Merge branch modal state
+    private bool _showMergeBranchModal { get; set; }
+    private ProjectInfoWithStats? _mergeProjectInfo { get; set; }
+    private List<GitBranchInfo> _mergeBranches { get; set; } = new();
+    private string? _mergeTargetBranch { get; set; }
+    private bool _mergePushAfterMerge { get; set; } = true;
+    private bool _mergeCreatePullRequest { get; set; }
+    private string? _mergePrTitle { get; set; }
+    private bool _isCreatingPullRequest { get; set; }
+    private bool _isGitHubCliAvailable { get; set; }
+    private bool _isCheckingMergePreview { get; set; }
+    private bool _isMergingBranch { get; set; }
+    private string? _mergePreviewMessage { get; set; }
+    private string? _mergePreviewError { get; set; }
+    private bool _isMergeAlreadyUpToDate { get; set; }
+    private List<MergeConflictFile> _mergeConflictFiles { get; set; } = new();
+    private string? MergeCurrentBranch => _mergeProjectInfo?.CurrentBranch;
+    private List<string> MergeTargetBranches => _mergeBranches
+        .Where(branch => !branch.IsRemote && !string.Equals(branch.Name, MergeCurrentBranch, StringComparison.Ordinal))
+        .Select(branch => branch.Name)
+        .Distinct(StringComparer.Ordinal)
+        .OrderBy(branch => branch, StringComparer.OrdinalIgnoreCase)
+        .ToList();
 
     protected override async Task OnInitializedAsync()
     {
@@ -382,11 +257,10 @@ else
         }
     }
 
-    private static string TruncateText(string text, int maxLength)
+    private void ToggleProjectStats()
     {
-        if (string.IsNullOrEmpty(text) || text.Length <= maxLength)
-            return text;
-        return text[..maxLength] + "...";
+        ShowProjectStats = !ShowProjectStats;
+        StateHasChanged();
     }
 
     private void SetFilter(string filter)
@@ -396,6 +270,9 @@ else
 
     private int GetActiveCount() => ProjectsWithInfo.Count(p => p.Project.IsActive);
     private int GetInactiveCount() => ProjectsWithInfo.Count(p => !p.Project.IsActive);
+    private bool HasActiveJobsForProject(Guid projectId) => ActiveJobs.Any(job => job.ProjectId == projectId);
+    private bool IsProjectGitOperation(Guid projectId, string operationKind)
+        => _gitOperationProjectId == projectId && string.Equals(_gitOperationKind, operationKind, StringComparison.Ordinal);
 
     private IEnumerable<ProjectInfoWithStats> GetFilteredProjects()
     {
@@ -421,19 +298,20 @@ else
         {
             project.IsActive = !project.IsActive;
             await ProjectService.UpdateAsync(project);
-            NotificationService.ShowSuccess($"{project.Name} is now {(project.IsActive ? "active" : "inactive")}.");
+            NotificationService.ShowProjectSuccess(project.Name, $"Project is now {(project.IsActive ? "active" : "inactive")}.");
             StateHasChanged();
         }
         catch (Exception ex)
         {
             project.IsActive = !project.IsActive; // Revert on failure
-            NotificationService.ShowError($"Error toggling project status: {ex.Message}");
+            NotificationService.ShowProjectError(project.Name, $"Error toggling project status: {ex.Message}");
         }
     }
 
     private async Task LoadProjects()
     {
-        IsLoading = true;
+        if (!HasLoadedProjectsInitially)
+            IsLoading = true;
         try
         {
             var projectsWithStats = (await ProjectService.GetAllWithStatsAsync()).ToList();
@@ -505,8 +383,12 @@ else
             var autoCommitEnabled = projectInfo.Project.AutoCommitMode != AutoCommitMode.Off;
             var hasActiveJobs = projectInfo.Stats.ActiveJobs > 0 || ActiveJobs.Any(job => job.ProjectId == projectInfo.Project.Id);
 
-            await IdeaService.StartProcessingAsync(projectInfo.Project.Id, autoCommitEnabled);
-            projectInfo.Project.IdeasProcessingActive = true;
+			await IdeaService.StartProcessingAsync(projectInfo.Project.Id, new IdeaProcessingOptions
+			{
+				AutoCommitMode = autoCommitEnabled ? AutoCommitMode.CommitOnly : AutoCommitMode.Off
+			});
+			projectInfo.Project.IdeasProcessingActive = true;
+			await QueuePanelStateService.RequestRefreshAsync();
 
             var queueMessage = hasActiveJobs ? " New ideas will queue behind the current job." : string.Empty;
             var commitMessage = autoCommitEnabled ? " Auto-commit is enabled." : string.Empty;
@@ -519,7 +401,7 @@ else
         }
         catch (Exception ex)
         {
-            NotificationService.ShowError($"Error starting idea queue: {ex.Message}");
+            NotificationService.ShowProjectError(projectInfo.Project.Name, $"Error starting idea queue: {ex.Message}");
         }
         finally
         {
@@ -640,6 +522,335 @@ else
         }
     }
 
+    private async Task ShowMergeBranchModal(ProjectInfoWithStats projectInfo)
+    {
+        if (HasActiveJobsForProject(projectInfo.Project.Id))
+        {
+            NotificationService.ShowWarning("Stop active jobs before merging branches for this project.", "Project Busy");
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(projectInfo.Project.WorkingPath) || string.IsNullOrWhiteSpace(projectInfo.CurrentBranch))
+        {
+            NotificationService.ShowWarning("A current Git branch is required before merging.", "Merge Unavailable");
+            return;
+        }
+
+        try
+        {
+            _mergeBranches = (await VersionControlService.GetBranchesAsync(projectInfo.Project.WorkingPath, includeRemote: true)).ToList();
+        }
+        catch (Exception ex)
+        {
+            NotificationService.ShowError($"Unable to load branches for merge: {ex.Message}", "Merge Unavailable");
+            return;
+        }
+
+        _mergeProjectInfo = projectInfo;
+        _mergePushAfterMerge = true;
+        _mergeCreatePullRequest = false;
+        _mergePrTitle = null;
+        _isCreatingPullRequest = false;
+        _mergePreviewError = null;
+        _mergePreviewMessage = null;
+        _isMergeAlreadyUpToDate = false;
+        _mergeConflictFiles.Clear();
+        _mergeTargetBranch = SelectDefaultMergeTargetBranch(projectInfo.Project);
+        _showMergeBranchModal = true;
+        StateHasChanged();
+
+        _ = CheckGitHubCliAvailabilityAsync();
+        if (!string.IsNullOrWhiteSpace(_mergeTargetBranch))
+        {
+            await PreviewMergeBranchAsync();
+        }
+    }
+
+    private void CloseMergeBranchModal()
+    {
+        _showMergeBranchModal = false;
+        _mergeProjectInfo = null;
+        _mergeBranches = new List<GitBranchInfo>();
+        _mergeTargetBranch = null;
+        _mergePushAfterMerge = true;
+        _mergeCreatePullRequest = false;
+        _mergePrTitle = null;
+        _isCreatingPullRequest = false;
+        _mergePreviewMessage = null;
+        _mergePreviewError = null;
+        _isMergeAlreadyUpToDate = false;
+        _mergeConflictFiles.Clear();
+    }
+
+    private Task HandleMergePushAfterMergeChanged(bool pushAfterMerge)
+    {
+        _mergePushAfterMerge = pushAfterMerge;
+        return Task.CompletedTask;
+    }
+
+    private Task HandleMergeCreatePullRequestChanged(bool createPr)
+    {
+        _mergeCreatePullRequest = createPr;
+        if (createPr)
+        {
+            _mergePushAfterMerge = true;
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private Task HandleMergePrTitleChanged(string? title)
+    {
+        _mergePrTitle = title;
+        return Task.CompletedTask;
+    }
+
+    private Task HandleMergeConflictResolutionChanged(MergeConflictResolution resolution)
+    {
+        var conflictFile = _mergeConflictFiles.FirstOrDefault(file => string.Equals(file.FileName, resolution.FileName, StringComparison.Ordinal));
+        if (conflictFile is not null)
+        {
+            conflictFile.Content = resolution.ResolvedContent;
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private async Task HandleMergeTargetBranchChanged(string targetBranch)
+    {
+        _mergeTargetBranch = targetBranch;
+        await PreviewMergeBranchAsync();
+    }
+
+    private async Task CheckGitHubCliAvailabilityAsync()
+    {
+        try
+        {
+            _isGitHubCliAvailable = await VersionControlService.IsGitHubCliAvailableAsync();
+            if (_isGitHubCliAvailable)
+            {
+                _isGitHubCliAvailable = await VersionControlService.IsGitHubCliAuthenticatedAsync();
+            }
+
+            StateHasChanged();
+        }
+        catch
+        {
+            _isGitHubCliAvailable = false;
+        }
+    }
+
+    private string? SelectDefaultMergeTargetBranch(Project project)
+    {
+        if (!string.IsNullOrWhiteSpace(project.DefaultTargetBranch) &&
+            MergeTargetBranches.Contains(project.DefaultTargetBranch, StringComparer.Ordinal))
+        {
+            return project.DefaultTargetBranch;
+        }
+
+        return MergeTargetBranches.FirstOrDefault();
+    }
+
+    private async Task PreviewMergeBranchAsync()
+    {
+        if (!_showMergeBranchModal || _isMergingBranch || _mergeProjectInfo == null ||
+            string.IsNullOrWhiteSpace(_mergeProjectInfo.Project.WorkingPath) ||
+            string.IsNullOrWhiteSpace(MergeCurrentBranch) ||
+            string.IsNullOrWhiteSpace(_mergeTargetBranch))
+        {
+            return;
+        }
+
+        _isCheckingMergePreview = true;
+        _mergePreviewMessage = null;
+        _mergePreviewError = null;
+        _isMergeAlreadyUpToDate = false;
+        _mergeConflictFiles.Clear();
+        StateHasChanged();
+
+        try
+        {
+            var result = await VersionControlService.PreviewMergeBranchAsync(
+                _mergeProjectInfo.Project.WorkingPath,
+                MergeCurrentBranch,
+                _mergeTargetBranch);
+
+            if (result.Success)
+            {
+                _isMergeAlreadyUpToDate = result.ChangedFilesCount == 0;
+                _mergePreviewMessage = result.Output ?? $"'{MergeCurrentBranch}' can be merged into '{_mergeTargetBranch}' without conflicts.";
+                _mergeConflictFiles = new List<MergeConflictFile>();
+            }
+            else
+            {
+                _mergePreviewError = result.Error ?? "Unable to verify the merge preview.";
+                _mergeConflictFiles = result.MergeConflictFiles.Select(CloneMergeConflictFile).ToList();
+                if (_mergeConflictFiles.Count > 0)
+                {
+                    _mergeCreatePullRequest = false;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _mergePreviewError = $"Error checking merge preview: {ex.Message}";
+        }
+        finally
+        {
+            _isCheckingMergePreview = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task MergeCurrentBranchAsync((string targetBranch, bool pushAfterMerge) args)
+    {
+        if (_mergeProjectInfo == null || string.IsNullOrWhiteSpace(_mergeProjectInfo.Project.WorkingPath) ||
+            string.IsNullOrWhiteSpace(MergeCurrentBranch) || string.IsNullOrWhiteSpace(args.targetBranch))
+        {
+            return;
+        }
+
+        if (HasActiveJobsForProject(_mergeProjectInfo.Project.Id))
+        {
+            NotificationService.ShowWarning("Stop active jobs before merging branches for this project.", "Project Busy");
+            return;
+        }
+
+        _gitOperationProjectId = _mergeProjectInfo.Project.Id;
+        _gitOperationKind = "merge";
+        _isMergingBranch = true;
+        _mergeTargetBranch = args.targetBranch;
+        _mergePushAfterMerge = args.pushAfterMerge;
+        _mergePreviewError = null;
+        _mergePreviewMessage = null;
+        StateHasChanged();
+
+        try
+        {
+            if (_mergeConflictFiles.Count == 0)
+            {
+                var previewResult = await VersionControlService.PreviewMergeBranchAsync(
+                    _mergeProjectInfo.Project.WorkingPath,
+                    MergeCurrentBranch,
+                    args.targetBranch);
+
+                if (!previewResult.Success)
+                {
+                    _mergePreviewError = previewResult.Error ?? "Unable to verify the merge preview.";
+                    _mergeConflictFiles = previewResult.MergeConflictFiles.Select(CloneMergeConflictFile).ToList();
+                    return;
+                }
+
+                _mergePreviewMessage = previewResult.Output ?? $"'{MergeCurrentBranch}' can be merged into '{args.targetBranch}' without conflicts.";
+            }
+
+            var result = await VersionControlService.MergeBranchAsync(
+                _mergeProjectInfo.Project.WorkingPath,
+                MergeCurrentBranch,
+                args.targetBranch,
+                progressCallback: _ => InvokeAsync(StateHasChanged),
+                pushAfterMerge: args.pushAfterMerge,
+                conflictResolutions: _mergeConflictFiles.Count > 0
+                    ? _mergeConflictFiles.Select(file => new MergeConflictResolution
+                    {
+                        FileName = file.FileName,
+                        ResolvedContent = file.Content
+                    }).ToList()
+                    : null);
+
+            if (!result.Success)
+            {
+                _mergePreviewError = result.Error ?? "Failed to merge branches.";
+                _mergeConflictFiles = result.MergeConflictFiles.Select(CloneMergeConflictFile).ToList();
+                return;
+            }
+
+            CloseMergeBranchModal();
+            await LoadProjects();
+            NotificationService.ShowProjectSuccess(
+                _mergeProjectInfo.Project.Name,
+                result.Output ?? $"Merged '{MergeCurrentBranch}' into '{args.targetBranch}'.");
+        }
+        catch (Exception ex)
+        {
+            _mergePreviewError = $"Error merging branches: {ex.Message}";
+        }
+        finally
+        {
+            _isMergingBranch = false;
+            _gitOperationProjectId = null;
+            _gitOperationKind = null;
+            StateHasChanged();
+        }
+    }
+
+    private static MergeConflictFile CloneMergeConflictFile(MergeConflictFile source)
+        => new()
+        {
+            FileName = source.FileName,
+            DiffContent = source.DiffContent,
+            Content = source.Content
+        };
+
+    private async Task CreatePullRequestAsync((string targetBranch, string? title) args)
+    {
+        if (_mergeProjectInfo == null || string.IsNullOrWhiteSpace(_mergeProjectInfo.Project.WorkingPath) ||
+            string.IsNullOrWhiteSpace(MergeCurrentBranch) || string.IsNullOrWhiteSpace(args.targetBranch))
+        {
+            return;
+        }
+
+        if (HasActiveJobsForProject(_mergeProjectInfo.Project.Id))
+        {
+            NotificationService.ShowWarning("Stop active jobs before opening a pull request for this project.", "Project Busy");
+            return;
+        }
+
+        _gitOperationProjectId = _mergeProjectInfo.Project.Id;
+        _gitOperationKind = "merge";
+        _isCreatingPullRequest = true;
+        _mergePreviewError = null;
+        _mergePreviewMessage = null;
+        StateHasChanged();
+
+        try
+        {
+            var pullRequestTitle = !string.IsNullOrWhiteSpace(args.title)
+                ? args.title
+                : $"Merge {MergeCurrentBranch} into {args.targetBranch}";
+
+            var result = await VersionControlService.CreatePullRequestAsync(
+                _mergeProjectInfo.Project.WorkingPath,
+                MergeCurrentBranch,
+                args.targetBranch,
+                pullRequestTitle);
+
+            if (!result.Success)
+            {
+                _mergePreviewError = result.Error ?? "Failed to create pull request.";
+                return;
+            }
+
+            CloseMergeBranchModal();
+            NotificationService.ShowProjectSuccess(
+                _mergeProjectInfo.Project.Name,
+                !string.IsNullOrWhiteSpace(result.PullRequestUrl)
+                    ? $"Pull request created: {result.PullRequestUrl}"
+                    : result.Output ?? $"Pull request created from '{MergeCurrentBranch}' to '{args.targetBranch}'.");
+        }
+        catch (Exception ex)
+        {
+            _mergePreviewError = $"Error creating pull request: {ex.Message}";
+        }
+        finally
+        {
+            _isCreatingPullRequest = false;
+            _gitOperationProjectId = null;
+            _gitOperationKind = null;
+            StateHasChanged();
+        }
+    }
+
     public void Dispose()
     {
         _disposed = true;
@@ -648,6 +859,12 @@ else
 
     private async Task ResyncWithGit(Project project)
     {
+        if (_gitOperationProjectId.HasValue)
+        {
+            NotificationService.ShowWarning("Another Git action is already running. Please wait for it to finish.", "Git Busy");
+            return;
+        }
+
         try
         {
             var isRepo = await VersionControlService.IsGitRepositoryAsync(project.WorkingPath);
@@ -663,19 +880,30 @@ else
                 return;
             }
 
+            _gitOperationProjectId = project.Id;
+            _gitOperationKind = "sync";
+            StateHasChanged();
+
             var result = await VersionControlService.SyncWithOriginAsync(project.WorkingPath, "origin");
             if (result.Success)
             {
-                NotificationService.ShowSuccess($"Successfully resynced {project.Name} with Git.", "Resync Complete");
+                await LoadProjects();
+                NotificationService.ShowProjectSuccess(project.Name, "Successfully synced with origin.");
             }
             else
             {
-                NotificationService.ShowError(result.Error ?? "Failed to resync with git.", "Resync Failed");
+                NotificationService.ShowProjectError(project.Name, result.Error ?? "Failed to resync with git.");
             }
         }
         catch (Exception ex)
         {
-            NotificationService.ShowError($"Error resyncing with git: {ex.Message}", "Resync Failed");
+            NotificationService.ShowProjectError(project.Name, $"Error resyncing with git: {ex.Message}");
+        }
+        finally
+        {
+            _gitOperationProjectId = null;
+            _gitOperationKind = null;
+            StateHasChanged();
         }
     }
 }

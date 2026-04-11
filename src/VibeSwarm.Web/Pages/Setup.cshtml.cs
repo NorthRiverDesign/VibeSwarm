@@ -158,23 +158,10 @@ public class SetupModel : PageModel
 	}
 
 	/// <summary>
-	/// Checks if setup is required (no users exist and no env credentials configured).
+	/// Keeps the setup wizard available until the first user has been created.
 	/// </summary>
 	private bool IsSetupRequired()
 	{
-		// Check if any users exist
-		var hasUsers = _userManager.Users.Any();
-		if (hasUsers)
-		{
-			return false;
-		}
-
-		// Check if env vars are configured (setup not required if they are)
-		var hasEnvUser = !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("DEFAULT_ADMIN_USER"));
-		var hasEnvPass = !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("DEFAULT_ADMIN_PASS"));
-
-		// Setup is required only if no users exist AND no credentials are configured
-		// Note: If credentials ARE configured, the seeder will handle user creation
-		return !hasEnvUser || !hasEnvPass;
+		return !_userManager.Users.Any();
 	}
 }

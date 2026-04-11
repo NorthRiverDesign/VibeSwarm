@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using System.Text;
 using VibeSwarm.Shared.Data;
+using VibeSwarm.Shared.Inference;
 using VibeSwarm.Shared.Services;
 using VibeSwarm.Shared.VersionControl.Models;
 using VibeSwarm.Shared;
@@ -12,10 +13,17 @@ public partial class JobProcessingService
     /// <summary>
     /// Performs auto-commit (and optionally push) based on project settings.
     /// </summary>
-    private async Task PerformAutoCommitAsync(Job job, string workingDirectory, CancellationToken cancellationToken)
+    private async Task PerformAutoCommitAsync(
+        Job job,
+        string workingDirectory,
+        bool enableCommitAttribution,
+        CancellationToken cancellationToken)
     {
         try
         {
+            // Remove agent artifacts (task files, screenshots, etc.) before staging
+            CleanupAgentArtifacts(job.Id, workingDirectory);
+
             var shouldCreatePullRequest = ShouldCreatePullRequest(job);
 
             // Check if there are uncommitted changes
@@ -77,7 +85,8 @@ public partial class JobProcessingService
                 ? job.Project.AutoCommitMode
                 : AutoCommitMode.CommitOnly;
 
-            var commitMessage = job.SessionSummary ?? $"{AppConstants.AppName}: {job.Title ?? "Job completed"}";
+            var commitMessage = await BuildCommitMessageAsync(job, workingDirectory, cancellationToken);
+            var commitOptions = CommitAttributionHelper.BuildGitCommitOptions(job.Provider?.Type, enableCommitAttribution);
 
             _logger.LogInformation("Auto-committing changes for job {JobId} with mode {Mode}",
                 job.Id, effectiveCommitMode);
@@ -85,7 +94,8 @@ public partial class JobProcessingService
             var commitResult = await _versionControlService.CommitAllChangesAsync(
                 workingDirectory,
                 commitMessage,
-                cancellationToken);
+                cancellationToken,
+                commitOptions);
 
             if (commitResult.Success)
             {
@@ -242,7 +252,7 @@ public partial class JobProcessingService
             return;
         }
 
-        var pullRequestTitle = job.SessionSummary ?? $"{AppConstants.AppName}: {job.Title ?? "Job completed"}";
+        var pullRequestTitle = JobSummaryGenerator.BuildCommitSubject(job);
         var pullRequestBody = BuildPullRequestBody(job, sourceBranch, targetBranch);
         var pullRequestResult = await _versionControlService.CreatePullRequestAsync(
             workingDirectory,
@@ -362,5 +372,194 @@ public partial class JobProcessingService
         }
 
         return body.ToString().Trim();
+    }
+
+    private async Task<string> BuildCommitMessageAsync(Job job, string workingDirectory, CancellationToken cancellationToken)
+    {
+        var inferenceSummary = await TryGenerateInferenceCommitSummaryAsync(job, workingDirectory, cancellationToken);
+        if (!string.IsNullOrWhiteSpace(inferenceSummary))
+        {
+            return inferenceSummary;
+        }
+
+        return JobSummaryGenerator.BuildCommitSubject(job);
+    }
+
+    private async Task<string?> TryGenerateInferenceCommitSummaryAsync(Job job, string workingDirectory, CancellationToken cancellationToken)
+    {
+        var project = job.Project;
+        if (project?.CommitSummaryInferenceProviderId is not Guid inferenceProviderId)
+        {
+            return null;
+        }
+
+        using var scope = _scopeFactory.CreateScope();
+        var inferenceProviderService = scope.ServiceProvider.GetRequiredService<IInferenceProviderService>();
+        var inferenceService = scope.ServiceProvider.GetRequiredService<IInferenceService>();
+
+        var provider = await inferenceProviderService.GetByIdAsync(inferenceProviderId, cancellationToken);
+        if (provider == null || !provider.IsEnabled)
+        {
+            _logger.LogWarning(
+                "Skipping inference commit summary for job {JobId} because provider {ProviderId} is unavailable.",
+                job.Id,
+                inferenceProviderId);
+            return null;
+        }
+
+        InferenceModel? selectedModel;
+        if (!string.IsNullOrWhiteSpace(project.CommitSummaryInferenceModelId))
+        {
+            selectedModel = provider.Models
+                .Where(model => model.IsAvailable)
+                .FirstOrDefault(model => string.Equals(model.ModelId, project.CommitSummaryInferenceModelId, StringComparison.Ordinal));
+
+            if (selectedModel == null)
+            {
+                _logger.LogWarning(
+                    "Skipping inference commit summary for job {JobId} because model {ModelId} is unavailable on provider {ProviderName}.",
+                    job.Id,
+                    project.CommitSummaryInferenceModelId,
+                    provider.Name);
+                return null;
+            }
+        }
+        else
+        {
+            selectedModel = ResolveCommitSummaryModel(provider);
+            if (selectedModel == null)
+            {
+                _logger.LogWarning(
+                    "Skipping inference commit summary for job {JobId} because provider {ProviderName} has no default commit-summary model configured.",
+                    job.Id,
+                    provider.Name);
+                return null;
+            }
+        }
+
+        IReadOnlyList<string> changedFiles;
+        try
+        {
+            changedFiles = await _versionControlService.GetChangedFilesAsync(workingDirectory, null, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to collect changed files for inference commit summary on job {JobId}", job.Id);
+            changedFiles = [];
+        }
+
+        if (changedFiles.Count == 0 && !string.IsNullOrWhiteSpace(job.GitDiff))
+        {
+            changedFiles = JobSummaryGenerator.ParseGitDiff(job.GitDiff)
+                .ChangedFiles
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+        }
+
+        var response = await inferenceService.GenerateAsync(new InferenceRequest
+        {
+            TaskType = "commit-summary",
+            Prompt = BuildCommitSummaryPrompt(job.GoalPrompt, changedFiles),
+            SystemPrompt = "Write a single concise git commit subject line. Respond with only the subject, no quotes or bullets, and keep it under 72 characters.",
+            Endpoint = provider.Endpoint,
+            Model = selectedModel.ModelId,
+            ProviderType = provider.ProviderType,
+            Temperature = 0.2,
+            MaxTokens = 60
+        }, cancellationToken);
+
+        if (!response.Success || string.IsNullOrWhiteSpace(response.Response))
+        {
+            _logger.LogWarning(
+                "Inference commit summary generation failed for job {JobId} with provider {ProviderName}: {Error}",
+                job.Id,
+                provider.Name,
+                response.Error ?? "No response");
+            return null;
+        }
+
+        var commitSubject = JobSummaryGenerator.BuildCommitSubject(response.Response, null, job.GoalPrompt);
+        _logger.LogInformation(
+            "Generated inference commit summary for job {JobId} using {ProviderName}: {Summary}",
+            job.Id,
+            provider.Name,
+            commitSubject);
+        return commitSubject;
+    }
+
+    private static string BuildCommitSummaryPrompt(string goalPrompt, IReadOnlyList<string> changedFiles)
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine("Goal prompt:");
+        builder.AppendLine(goalPrompt.Trim());
+        builder.AppendLine();
+        builder.AppendLine("Changed files:");
+
+        if (changedFiles.Count == 0)
+        {
+            builder.AppendLine("- No changed files detected");
+        }
+        else
+        {
+            foreach (var file in changedFiles.Take(50))
+            {
+                builder.Append("- ");
+                builder.AppendLine(file);
+            }
+        }
+
+        return builder.ToString().Trim();
+    }
+
+    private static InferenceModel? ResolveCommitSummaryModel(InferenceProvider provider)
+    {
+        return provider.Models
+            .Where(model => model.IsAvailable && model.IsDefault && string.Equals(model.TaskType, "commit-summary", StringComparison.OrdinalIgnoreCase))
+            .OrderBy(model => model.ModelId)
+            .FirstOrDefault()
+            ?? provider.Models
+                .Where(model => model.IsAvailable && model.IsDefault && string.Equals(model.TaskType, "default", StringComparison.OrdinalIgnoreCase))
+                .OrderBy(model => model.ModelId)
+                .FirstOrDefault();
+    }
+
+    /// <summary>
+    /// Deletes known agent artifact files from the working directory so they are not
+    /// included in auto-commits. Artifacts are non-code files that CLI agents create
+    /// for their own internal tracking (task lists, screenshots, etc.).
+    /// </summary>
+    private void CleanupAgentArtifacts(Guid jobId, string workingDirectory)
+    {
+        foreach (var pattern in ProjectMemoryService.ArtifactCleanupPatterns)
+        {
+            try
+            {
+                var fullPath = Path.Combine(workingDirectory, pattern);
+                if (File.Exists(fullPath))
+                {
+                    File.Delete(fullPath);
+                    _logger.LogInformation("Cleaned up agent artifact {Artifact} for job {JobId}", pattern, jobId);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Failed to clean up agent artifact {Artifact} for job {JobId}", pattern, jobId);
+            }
+        }
+
+        // Remove empty tasks/ directory if all artifact files were deleted
+        try
+        {
+            var tasksDir = Path.Combine(workingDirectory, "tasks");
+            if (Directory.Exists(tasksDir) && !Directory.EnumerateFileSystemEntries(tasksDir).Any())
+            {
+                Directory.Delete(tasksDir);
+                _logger.LogDebug("Removed empty tasks/ directory for job {JobId}", jobId);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Failed to remove empty tasks/ directory for job {JobId}", jobId);
+        }
     }
 }

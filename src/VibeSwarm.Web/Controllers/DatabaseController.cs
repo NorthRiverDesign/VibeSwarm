@@ -35,12 +35,48 @@ public class DatabaseController : ControllerBase
 		return File(bytes, "application/json", filename);
 	}
 
+	[HttpGet("storage")]
+	public async Task<IActionResult> GetStorageSummary(CancellationToken ct)
+		=> Ok(await _databaseService.GetStorageSummaryAsync(ct));
+
+	[HttpGet("configuration")]
+	public async Task<IActionResult> GetConfiguration(CancellationToken ct)
+		=> Ok(await _databaseService.GetConfigurationAsync(ct));
+
 	[HttpPost("import")]
 	public async Task<IActionResult> Import([FromBody] DatabaseExportDto export, CancellationToken ct)
 	{
 		try
 		{
 			var result = await _databaseService.ImportAsync(export, ct);
+			return Ok(result);
+		}
+		catch (Exception ex)
+		{
+			return BadRequest(new { error = ex.Message });
+		}
+	}
+
+	[HttpPost("migrate")]
+	public async Task<IActionResult> Migrate([FromBody] DatabaseMigrationRequest request, CancellationToken ct)
+	{
+		try
+		{
+			var result = await _databaseService.MigrateAsync(request, ct);
+			return Ok(result);
+		}
+		catch (Exception ex)
+		{
+			return BadRequest(new { error = ex.Message });
+		}
+	}
+
+	[HttpPost("maintenance")]
+	public async Task<IActionResult> RunMaintenance([FromBody] DatabaseMaintenanceRequest request, CancellationToken ct)
+	{
+		try
+		{
+			var result = await _databaseService.RunMaintenanceAsync(request, ct);
 			return Ok(result);
 		}
 		catch (Exception ex)

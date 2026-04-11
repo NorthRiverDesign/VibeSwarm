@@ -31,8 +31,7 @@ public partial class JobProcessingService
             // Check if job was cancelled before we even started
             if (await jobService.IsCancellationRequestedAsync(job.Id, cancellationToken))
             {
-                var transition = JobStateMachine.TryTransition(job, JobStatus.Cancelled, "Cancelled before start");
-                await dbContext.SaveChangesAsync(cancellationToken);
+                await ReleaseJobAsync(job.Id, JobStatus.Cancelled, "Cancelled before start", dbContext, cancellationToken);
                 await NotifyJobCompletedAsync(job.Id, false, "Job was cancelled before processing started");
                 return;
             }
@@ -74,6 +73,7 @@ public partial class JobProcessingService
             job.LastActivityAt = DateTime.UtcNow;
             job.WorkerInstanceId = _workerInstanceId;
             job.LastHeartbeatAt = DateTime.UtcNow;
+            job.NotBeforeUtc = null; // Clear any rate-limit backoff now that we're running
             await NotifyStatusChangedAsync(job.Id, JobStatus.Started);
 
             // Check again after status update - double-check for race conditions
@@ -234,10 +234,10 @@ public partial class JobProcessingService
             var effectiveMaxCycles = job.CycleMode == CycleMode.SingleCycle ? 1 : job.MaxCycles;
             var currentCycle = job.CurrentCycle;
             var sessionId = job.SessionId;
-            ExecutionResult? lastResult = null;
-            int? totalInputTokens = null;
-            int? totalOutputTokens = null;
-            decimal? totalCostUsd = null;
+			ExecutionResult? lastResult = null;
+			int? executionInputTokens = null;
+			int? executionOutputTokens = null;
+			decimal? executionCostUsd = null;
 
             // Track last progress update time to avoid excessive database writes
             var lastProgressUpdate = DateTime.MinValue;
@@ -282,6 +282,14 @@ public partial class JobProcessingService
                             {
                                 jobForPid.ProcessId = p.ProcessId.Value;
                                 jobForPid.CommandUsed = p.CommandUsed;
+                                if (jobForPid.Status == JobStatus.Planning)
+                                {
+                                    jobForPid.PlanningCommandUsed = p.CommandUsed;
+                                }
+                                else
+                                {
+                                    jobForPid.ExecutionCommandUsed = p.CommandUsed;
+                                }
                                 await pidDbContext.SaveChangesAsync(CancellationToken.None);
                                 _logger.LogDebug("Stored process ID {ProcessId} and command in database for job {JobId}",
                                     p.ProcessId.Value, job.Id);
@@ -446,12 +454,57 @@ public partial class JobProcessingService
 
             var jobEnvironmentVariables = _projectEnvironmentCredentialService.BuildJobEnvironmentVariables(job.Project);
 
+            // Snapshot which environments and Playwright access were exposed to this job
+            var environmentSnapshots = JobEnvironmentSnapshot.FromProject(job.Project);
+            var hasWebEnvironment = environmentSnapshots.Any(e => e.Type == EnvironmentType.Web);
+            job.PlaywrightEnabled = hasWebEnvironment;
+            job.EnvironmentCount = environmentSnapshots.Count;
+            if (environmentSnapshots.Count > 0)
+            {
+                job.EnvironmentsJson = System.Text.Json.JsonSerializer.Serialize(environmentSnapshots);
+            }
+
+            try
+            {
+                using var snapshotScope = _scopeFactory.CreateScope();
+                var snapshotDbContext = snapshotScope.ServiceProvider.GetRequiredService<VibeSwarmDbContext>();
+                var jobForSnapshot = await snapshotDbContext.Jobs.FindAsync(new object[] { job.Id }, cancellationToken);
+                if (jobForSnapshot != null)
+                {
+                    jobForSnapshot.PlaywrightEnabled = job.PlaywrightEnabled;
+                    jobForSnapshot.EnvironmentCount = job.EnvironmentCount;
+                    jobForSnapshot.EnvironmentsJson = job.EnvironmentsJson;
+                    await snapshotDbContext.SaveChangesAsync(cancellationToken);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to persist environment snapshot for job {JobId}", job.Id);
+            }
+
             var enableStructuring = appSettings?.EnablePromptStructuring ?? true;
+            var enableCommitAttribution = appSettings?.EnableCommitAttribution ?? true;
 
             // Build system prompt rules for agent efficiency
             var injectEfficiencyRules = appSettings?.InjectEfficiencyRules ?? true;
             var injectRepoMap = appSettings?.InjectRepoMap ?? true;
-            var systemPromptRules = PromptBuilder.BuildSystemPromptRules(job.Project, injectEfficiencyRules, injectRepoMap);
+            var isIdeaJob = await dbContext.Ideas
+                .AsNoTracking()
+                .AnyAsync(idea => idea.JobId == job.Id, cancellationToken);
+
+            string? BuildExecutionSystemPromptRules(ProviderType providerType)
+            {
+                return isIdeaJob
+                    ? PromptBuilder.BuildIdeaSystemPromptRules(job.Project, injectEfficiencyRules, injectRepoMap)
+                    : PromptBuilder.BuildSystemPromptRules(
+                        job.Project,
+                        injectEfficiencyRules,
+                        injectRepoMap,
+                        providerType,
+                        enableCommitAttribution);
+            }
+
+            var systemPromptRules = BuildExecutionSystemPromptRules(provider.Type);
             projectMemoryFilePath = await PrepareProjectMemoryFileAsync(job.Project, cancellationToken);
             var projectMemoryRules = PromptBuilder.BuildProjectMemoryRules(job.Project, projectMemoryFilePath);
             if (!string.IsNullOrWhiteSpace(projectMemoryRules))
@@ -467,6 +520,8 @@ public partial class JobProcessingService
                 try
                 {
                     var teamRole = await dbContext.TeamRoles
+						.Include(role => role.SkillLinks)
+							.ThenInclude(link => link.Skill)
                         .FirstOrDefaultAsync(r => r.Id == job.TeamRoleId.Value, cancellationToken);
                     if (teamRole != null)
                     {
@@ -502,13 +557,13 @@ public partial class JobProcessingService
                 var planningProviderConfig = await providerService.GetByIdAsync(planningProviderId, cancellationToken);
                 if (planningProviderConfig == null)
                 {
-                    await FailDuringPlanningAsync("Planning provider not found.");
+                    await FailDuringPlanningAsync($"[Planning] Provider not found (ID: {planningProviderId}).");
                     return;
                 }
 
                 if (!ProviderPlanningHelper.SupportsPlanningMode(planningProviderConfig.Type))
                 {
-                    await FailDuringPlanningAsync("Planning currently supports only Claude and GitHub Copilot providers.");
+                    await FailDuringPlanningAsync($"[Planning] {planningProviderConfig.Name} does not support planning mode.");
                     return;
                 }
 
@@ -516,7 +571,7 @@ public partial class JobProcessingService
                 var planningValidationError = await ValidateProviderAvailabilityAsync(job.Id, planningProviderConfig, planningProvider, cancellationToken);
                 if (!string.IsNullOrWhiteSpace(planningValidationError))
                 {
-                    await FailDuringPlanningAsync(planningValidationError);
+                    await FailDuringPlanningAsync($"[Planning] {planningProviderConfig.Name}: {planningValidationError}");
                     return;
                 }
 
@@ -524,6 +579,18 @@ public partial class JobProcessingService
 				ExecutionResult planningResult;
 				try
 				{
+					var planningSystemPromptRules = systemPromptRules;
+					if (provider.Type != planningProviderConfig.Type)
+					{
+						planningSystemPromptRules = BuildExecutionSystemPromptRules(planningProviderConfig.Type);
+						if (!string.IsNullOrWhiteSpace(projectMemoryRules))
+						{
+							planningSystemPromptRules = string.IsNullOrWhiteSpace(planningSystemPromptRules)
+								? projectMemoryRules
+								: $"{planningSystemPromptRules}{Environment.NewLine}{Environment.NewLine}{projectMemoryRules}";
+						}
+					}
+
 					planningResult = await planningProvider.ExecuteWithOptionsAsync(
 						ProviderPlanningHelper.BuildPlanningPrompt(planningProviderConfig.Type, job.GoalPrompt),
 						new ExecutionOptions
@@ -532,9 +599,13 @@ public partial class JobProcessingService
 							McpConfigPath = planningMcpOptions.McpConfigPath,
 							BashEnvPath = planningMcpOptions.BashEnvPath,
 							AdditionalArgs = planningMcpOptions.AdditionalArgs,
+							UseBareMode = planningProviderConfig.Type == ProviderType.Claude
+								&& planningProviderConfig.ConnectionMode == ProviderConnectionMode.CLI
+								&& ShouldUseClaudeBareMode(planningProviderConfig),
 							Model = job.Project.PlanningModelId,
+							ReasoningEffort = job.Project.PlanningReasoningEffort,
 							Title = job.Title,
-							AppendSystemPrompt = systemPromptRules,
+							AppendSystemPrompt = planningSystemPromptRules,
 							EnvironmentVariables = jobEnvironmentVariables,
 							DisallowedTools = ProviderPlanningHelper.PlanningDisallowedTools
 						},
@@ -560,18 +631,31 @@ public partial class JobProcessingService
                     var planningError = string.IsNullOrWhiteSpace(planningResult.ErrorMessage)
                         ? $"{planningProviderConfig.Name} did not return a plan."
                         : planningResult.ErrorMessage;
-                    await FailDuringPlanningAsync(planningError);
+                    await FailDuringPlanningAsync($"[Planning] {planningProviderConfig.Name}: {planningError}");
                     return;
                 }
 
                 job.PlanningOutput = planningOutput.Trim();
                 job.PlanningProviderId = planningProviderConfig.Id;
-                job.PlanningModelUsed = planningResult.ModelUsed ?? job.Project.PlanningModelId;
-                job.PlanningGeneratedAt = DateTime.UtcNow;
+				job.PlanningModelUsed = planningResult.ModelUsed ?? job.Project.PlanningModelId;
+				job.PlanningReasoningEffortUsed = job.Project.PlanningReasoningEffort;
+				job.PlanningGeneratedAt = DateTime.UtcNow;
+				job.PlanningInputTokens = planningResult.InputTokens;
+				job.PlanningOutputTokens = planningResult.OutputTokens;
+				job.PlanningCostUsd = planningResult.CostUsd;
+				job.PlanningCommandUsed = executionContext.CommandUsed ?? planningResult.CommandUsed;
+
+                // Clear planning phase's command/process so execution phase starts clean
+                job.CommandUsed = null;
+                job.ProcessId = null;
+                executionContext.ProcessId = 0;
+                executionContext.CommandUsed = null;
+
                 await dbContext.SaveChangesAsync(cancellationToken);
             }
 
             var currentPrompt = PromptBuilder.BuildExecutionPrompt(job, planningOutput, enableStructuring);
+            var attachedFiles = DeserializeAttachedFiles(job.AttachedFilesJson);
             var cycleComplete = false;
             await UpdateJobStatusAsync(job.Id, JobStatus.Processing, dbContext, cancellationToken);
             await NotifyStatusChangedAsync(job.Id, JobStatus.Processing);
@@ -630,8 +714,13 @@ public partial class JobProcessingService
 							McpConfigPath = mcpOptions.McpConfigPath,
 							BashEnvPath = mcpOptions.BashEnvPath,
 							AdditionalArgs = mcpOptions.AdditionalArgs,
+							UseBareMode = provider.Type == ProviderType.Claude
+								&& provider.ConnectionMode == ProviderConnectionMode.CLI
+								&& ShouldUseClaudeBareMode(job.Provider!),
 							Model = job.ModelUsed,
+							ReasoningEffort = job.ReasoningEffort,
 							Title = job.Title,
+							AttachedFiles = attachedFiles,
 							AppendSystemPrompt = systemPromptRules,
 							EnvironmentVariables = jobEnvironmentVariables
 						},
@@ -646,12 +735,16 @@ public partial class JobProcessingService
                 // Store last result and accumulate tokens/cost
                 lastResult = result;
                 sessionId = result.SessionId ?? sessionId;
-                if (result.InputTokens.HasValue)
-                    totalInputTokens = (totalInputTokens ?? 0) + result.InputTokens.Value;
-                if (result.OutputTokens.HasValue)
-                    totalOutputTokens = (totalOutputTokens ?? 0) + result.OutputTokens.Value;
-                if (result.CostUsd.HasValue)
-                    totalCostUsd = (totalCostUsd ?? 0) + result.CostUsd.Value;
+				if (result.InputTokens.HasValue)
+					executionInputTokens = (executionInputTokens ?? 0) + result.InputTokens.Value;
+				if (result.OutputTokens.HasValue)
+					executionOutputTokens = (executionOutputTokens ?? 0) + result.OutputTokens.Value;
+				if (result.CostUsd.HasValue)
+					executionCostUsd = (executionCostUsd ?? 0) + result.CostUsd.Value;
+                if (!string.IsNullOrWhiteSpace(result.CommandUsed))
+                {
+                    job.ExecutionCommandUsed = result.CommandUsed;
+                }
 
                 // Check for cycle completion conditions
                 if (!result.Success)
@@ -703,11 +796,11 @@ public partial class JobProcessingService
                 }
             }
 
-            // Use accumulated results
-            var finalResult = lastResult ?? new ExecutionResult { Success = false, ErrorMessage = "No execution result" };
-            finalResult.InputTokens = totalInputTokens;
-            finalResult.OutputTokens = totalOutputTokens;
-            finalResult.CostUsd = totalCostUsd;
+			// Use accumulated results
+			var finalResult = lastResult ?? new ExecutionResult { Success = false, ErrorMessage = "No execution result" };
+			finalResult.InputTokens = executionInputTokens;
+			finalResult.OutputTokens = executionOutputTokens;
+			finalResult.CostUsd = executionCostUsd;
 
             // Stop monitoring cancellation
             executionContext.CancellationTokenSource?.Cancel();
@@ -780,25 +873,76 @@ public partial class JobProcessingService
                 var providerDisplayName = job.Provider?.Name;
                 providerDisplayName ??= provider?.Name;
                 providerDisplayName ??= "Unknown Provider";
-                await CompleteJobAsync(job.Id, JobStatus.Failed, finalResult.SessionId, finalResult.Output,
-                    finalResult.ErrorMessage, finalResult.InputTokens, finalResult.OutputTokens, finalResult.CostUsd, finalResult.ModelUsed,
-                    executionContext, workingDirectory, dbContext, CancellationToken.None);
 
                 // Record usage even for failed jobs
                 await RecordUsageAndCheckExhaustionAsync(job.ProviderId, providerDisplayName, job.Id, finalResult, provider!, CancellationToken.None);
 
-                // System-level errors (model unavailable, upstream outages) should immediately
-                // trip the circuit breaker to prevent cascading failures on queued jobs
-                if (finalResult.IsSystemError && _healthTracker != null)
-                {
-                    _healthTracker.RecordSystemFailure(job.ProviderId, finalResult.ErrorMessage);
-                    _logger.LogWarning("Job {JobId} failed with system error, circuit breaker tripped for provider {ProviderId}: {Error}",
-                        job.Id, job.ProviderId, finalResult.ErrorMessage);
-                }
+                // Rate limit detection: if the provider reported a rate limit, re-queue the job
+                // instead of marking it as failed. The circuit breaker cooldown respects the
+                // provider's reset time (can be hours for GitHub Copilot).
+                var isRateLimited = finalResult.IsSystemError &&
+                    finalResult.DetectedUsageLimits is { IsLimitReached: true } &&
+                    (finalResult.DetectedUsageLimits.LimitType is UsageLimitType.RateLimit or UsageLimitType.PremiumRequests);
 
-                _logger.LogWarning("Job {JobId} failed: {Error}. InputTokens: {InputTokens}, OutputTokens: {OutputTokens}, Cost: {CostUsd}",
-                    job.Id, finalResult.ErrorMessage, finalResult.InputTokens, finalResult.OutputTokens, finalResult.CostUsd);
-                await NotifyJobCompletedAsync(job.Id, false, finalResult.ErrorMessage);
+                if (isRateLimited && _healthTracker != null)
+                {
+                    var limits = finalResult.DetectedUsageLimits!;
+                    _healthTracker.RecordRateLimitFailure(job.ProviderId, finalResult.ErrorMessage, limits.ResetTime);
+
+                    var resetDescription = limits.ResetTime.HasValue
+                        ? $"Resets at {limits.ResetTime.Value:u}"
+                        : "Reset time unknown";
+
+                    // Check whether any alternative provider can pick up this job.
+                    // If not, set a backoff time so the job doesn't spin in the queue.
+                    var hasAlternativeProvider = await HasAlternativeProviderAsync(
+                        job.ProjectId, job.ProviderId, dbContext, CancellationToken.None);
+
+                    DateTime? backoffUntil = null;
+                    if (!hasAlternativeProvider)
+                    {
+                        backoffUntil = limits.ResetTime ?? DateTime.UtcNow + TimeSpan.FromMinutes(30);
+                        _logger.LogInformation(
+                            "No alternative provider for job {JobId}. Backing off until {BackoffUntil:u}",
+                            job.Id, backoffUntil);
+                    }
+
+                    // Re-queue the job instead of failing it — don't consume a retry attempt
+                    await RequeueJobForRateLimitAsync(job.Id, job.ProviderId, providerDisplayName, resetDescription,
+                        finalResult, executionContext, workingDirectory, backoffUntil, dbContext, CancellationToken.None);
+
+                    _logger.LogWarning("Job {JobId} hit rate limit on provider {ProviderId}. {ResetDesc}. Re-queued for later execution",
+                        job.Id, job.ProviderId, resetDescription);
+
+                    if (_jobUpdateService != null)
+                    {
+                        var backoffMessage = hasAlternativeProvider
+                            ? $"Rate limited. {resetDescription}. Jobs will try alternative providers."
+                            : $"Rate limited. {resetDescription}. No alternative provider configured — jobs will back off until reset.";
+                        await _jobUpdateService.NotifyProviderRateLimited(job.ProviderId, providerDisplayName,
+                            backoffMessage, limits.ResetTime);
+                    }
+                    await NotifyStatusChangedAsync(job.Id, JobStatus.New);
+                }
+                else
+                {
+                    await CompleteJobAsync(job.Id, JobStatus.Failed, finalResult.SessionId, finalResult.Output,
+                        finalResult.ErrorMessage, finalResult.InputTokens, finalResult.OutputTokens, finalResult.CostUsd, finalResult.ModelUsed,
+                        executionContext, workingDirectory, dbContext, CancellationToken.None);
+
+                    // System-level errors (model unavailable, upstream outages) should immediately
+                    // trip the circuit breaker to prevent cascading failures on queued jobs
+                    if (finalResult.IsSystemError && _healthTracker != null)
+                    {
+                        _healthTracker.RecordSystemFailure(job.ProviderId, finalResult.ErrorMessage);
+                        _logger.LogWarning("Job {JobId} failed with system error, circuit breaker tripped for provider {ProviderId}: {Error}",
+                            job.Id, job.ProviderId, finalResult.ErrorMessage);
+                    }
+
+                    _logger.LogWarning("Job {JobId} failed: {Error}. InputTokens: {InputTokens}, OutputTokens: {OutputTokens}, Cost: {CostUsd}",
+                        job.Id, finalResult.ErrorMessage, finalResult.InputTokens, finalResult.OutputTokens, finalResult.CostUsd);
+                    await NotifyJobCompletedAsync(job.Id, false, finalResult.ErrorMessage);
+                }
             }
         }
         catch (OperationCanceledException)
@@ -895,6 +1039,30 @@ public partial class JobProcessingService
                     _logger.LogWarning(disposeEx, "Error disposing provider for job {JobId}", job.Id);
                 }
             }
+        }
+    }
+
+    private static List<string>? DeserializeAttachedFiles(string? attachedFilesJson)
+    {
+        if (string.IsNullOrWhiteSpace(attachedFilesJson))
+        {
+            return null;
+        }
+
+        try
+        {
+            var parsed = JsonSerializer.Deserialize<List<string>>(attachedFilesJson);
+            var normalized = parsed?
+                .Where(path => !string.IsNullOrWhiteSpace(path))
+                .Select(path => path.Trim())
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+
+            return normalized is { Count: > 0 } ? normalized : null;
+        }
+        catch
+        {
+            return null;
         }
     }
 }

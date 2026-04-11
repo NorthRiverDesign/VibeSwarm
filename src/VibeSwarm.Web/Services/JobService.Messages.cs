@@ -34,8 +34,9 @@ public partial class JobService
 
     public async Task UpdateProgressAsync(Guid id, string? currentActivity, CancellationToken cancellationToken = default)
     {
-        var job = await _dbContext.Jobs
-            .FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
+		var job = await _dbContext.Jobs
+			.Include(j => j.Statistics)
+			.FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
 
         if (job == null)
         {
@@ -59,8 +60,9 @@ public partial class JobService
         decimal? costUsd,
         CancellationToken cancellationToken = default)
     {
-        var job = await _dbContext.Jobs
-            .FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
+		var job = await _dbContext.Jobs
+			.Include(j => j.Statistics)
+			.FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
 
         if (job == null)
         {
@@ -122,10 +124,11 @@ public partial class JobService
         return job;
     }
 
-    public async Task<Job> UpdateStatusAsync(Guid id, JobStatus status, string? output = null, string? errorMessage = null, CancellationToken cancellationToken = default)
-    {
-        var job = await _dbContext.Jobs
-            .FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
+	public async Task<Job> UpdateStatusAsync(Guid id, JobStatus status, string? output = null, string? errorMessage = null, CancellationToken cancellationToken = default)
+	{
+		var job = await _dbContext.Jobs
+			.Include(j => j.Statistics)
+			.FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
 
         if (job == null)
         {

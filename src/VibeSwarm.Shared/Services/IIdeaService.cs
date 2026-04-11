@@ -27,6 +27,11 @@ public interface IIdeaService
 	Task<Idea> CreateAsync(Idea idea, CancellationToken cancellationToken = default);
 
 	/// <summary>
+	/// Creates a new idea with optional uploaded attachments.
+	/// </summary>
+	Task<Idea> CreateAsync(CreateIdeaRequest request, CancellationToken cancellationToken = default);
+
+	/// <summary>
 	/// Updates an existing idea
 	/// </summary>
 	Task<Idea> UpdateAsync(Idea idea, CancellationToken cancellationToken = default);
@@ -48,7 +53,7 @@ public interface IIdeaService
 	/// <param name="ideaId">The idea to convert</param>
 	/// <param name="cancellationToken">Cancellation token</param>
 	/// <returns>The created job, or null if the idea doesn't exist</returns>
-	Task<Job?> ConvertToJobAsync(Guid ideaId, CancellationToken cancellationToken = default);
+	Task<Job?> ConvertToJobAsync(Guid ideaId, IdeaProcessingOptions? options = null, CancellationToken cancellationToken = default);
 
 	/// <summary>
 	/// Marks an idea as completed and removes it (called when the associated job completes)
@@ -71,12 +76,17 @@ public interface IIdeaService
 	Task<Idea?> GetByJobIdAsync(Guid jobId, CancellationToken cancellationToken = default);
 
 	/// <summary>
+	/// Gets a single persisted idea attachment by ID.
+	/// </summary>
+	Task<IdeaAttachment?> GetAttachmentAsync(Guid attachmentId, CancellationToken cancellationToken = default);
+
+	/// <summary>
 	/// Starts auto-processing of ideas for a project
 	/// </summary>
 	/// <param name="projectId">The project to start processing</param>
 	/// <param name="autoCommit">Whether to auto-commit changes when jobs complete</param>
 	/// <param name="cancellationToken">Cancellation token</param>
-	Task StartProcessingAsync(Guid projectId, bool autoCommit = false, CancellationToken cancellationToken = default);
+	Task StartProcessingAsync(Guid projectId, IdeaProcessingOptions? options = null, CancellationToken cancellationToken = default);
 
 	/// <summary>
 	/// Stops auto-processing of ideas for a project
@@ -169,6 +179,27 @@ public interface IIdeaService
 	/// <param name="cancellationToken">Cancellation token</param>
 	/// <returns>The reset idea</returns>
 	Task<Idea?> RejectExpansionAsync(Guid ideaId, CancellationToken cancellationToken = default);
+
+	/// <summary>
+	/// Gets a summary of ideas processing status across all projects
+	/// </summary>
+	Task<GlobalIdeasProcessingStatus> GetGlobalProcessingStatusAsync(CancellationToken cancellationToken = default);
+
+	/// <summary>
+	/// Gets the global queue snapshot used by the navigation queue panel.
+	/// Includes currently running jobs and upcoming ideas across active projects.
+	/// </summary>
+	Task<GlobalQueueSnapshot> GetGlobalQueueSnapshotAsync(CancellationToken cancellationToken = default);
+
+	/// <summary>
+	/// Starts auto-processing of ideas for all projects that have unprocessed ideas
+	/// </summary>
+	Task StartAllProcessingAsync(IdeaProcessingOptions? options = null, CancellationToken cancellationToken = default);
+
+	/// <summary>
+	/// Stops auto-processing of ideas for all currently processing projects
+	/// </summary>
+	Task StopAllProcessingAsync(CancellationToken cancellationToken = default);
 
 	/// <summary>
 	/// Uses local AI inference to scan the project directory and suggest feature ideas or improvements.

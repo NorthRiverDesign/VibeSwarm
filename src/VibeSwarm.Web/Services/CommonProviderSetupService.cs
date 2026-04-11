@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text.Json;
+using GitHub.Copilot.SDK;
 using Microsoft.EntityFrameworkCore;
 using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Providers;
@@ -35,7 +36,7 @@ public class CommonProviderSetupService(
 
 			var preferredCliProvider = providersForType
 				.FirstOrDefault(provider => provider.ConnectionMode == ProviderConnectionMode.CLI);
-			var preferredAuthProvider = providersForType.FirstOrDefault();
+			var preferredAuthProvider = SelectAuthenticationTargetProvider(providerType, providersForType) ?? providersForType.FirstOrDefault();
 
 			var installSpec = GetInstallSpec(providerType);
 			var installStatus = await _providerCliDetectionService.DetectAsync(
@@ -45,7 +46,11 @@ public class CommonProviderSetupService(
 				preferredCliProvider?.ExecutablePath,
 				cancellationToken: cancellationToken);
 			var hostTools = await GetHostToolsAsync(providerType, cancellationToken);
-			var authStatus = DetectAuthentication(providerType, preferredAuthProvider);
+			var authStatus = await DetectAuthenticationAsync(
+				providerType,
+				preferredAuthProvider,
+				preferredCliProvider?.ExecutablePath ?? installStatus.ResolvedExecutablePath,
+				cancellationToken);
 			var authConnectionMode = preferredAuthProvider?.ConnectionMode ?? ProviderCapabilities.GetDefaultMode(providerType);
 
 			statuses.Add(new CommonProviderSetupStatus
@@ -68,6 +73,7 @@ public class CommonProviderSetupService(
 				ProviderId = preferredAuthProvider?.Id,
 				ProviderName = preferredAuthProvider?.Name,
 				AuthenticationConnectionMode = authConnectionMode,
+				AuthenticationTypeLabel = authStatus.TypeLabel,
 				IsAuthenticated = authStatus.IsAuthenticated,
 				AuthenticationStatus = authStatus.Message,
 				HostTools = hostTools,
@@ -126,10 +132,16 @@ public class CommonProviderSetupService(
 			};
 		}
 
-		var provider = await _dbContext.Providers
-			.Where(item => item.Type == request.ProviderType && item.ConnectionMode == ProviderConnectionMode.CLI)
-			.OrderBy(item => item.Name)
-			.FirstOrDefaultAsync(cancellationToken);
+		var providersForType = await _dbContext.Providers
+			.Where(item => item.Type == request.ProviderType)
+			.OrderByDescending(item => item.IsDefault)
+			.ThenBy(item => item.Name)
+			.ToListAsync(cancellationToken);
+		var provider = SelectAuthenticationTargetProvider(request.ProviderType, providersForType);
+		if (request.ProviderType == ProviderType.Copilot && provider != null && ProviderCapabilities.IsCopilotCustomProvider(provider))
+		{
+			provider = null;
+		}
 
 		if (provider == null)
 		{
@@ -320,37 +332,61 @@ public class CommonProviderSetupService(
 		};
 	}
 
-	private static AuthenticationState DetectAuthentication(ProviderType providerType, Provider? provider)
+	private async Task<AuthenticationState> DetectAuthenticationAsync(
+		ProviderType providerType,
+		Provider? provider,
+		string? executablePath,
+		CancellationToken cancellationToken)
 	{
 		var connectionMode = provider?.ConnectionMode ?? ProviderCapabilities.GetDefaultMode(providerType);
+
+		if (providerType == ProviderType.Copilot && provider != null && ProviderCapabilities.IsCopilotCustomProvider(provider))
+		{
+			return !string.IsNullOrWhiteSpace(provider.ApiKey)
+				? new AuthenticationState(true, "Saved in VibeSwarm for this SDK custom provider connection.", "Custom Provider")
+				: new AuthenticationState(false, "Save the custom provider API key for this SDK custom provider connection.", "Custom Provider");
+		}
+
 		if (!string.IsNullOrWhiteSpace(provider?.ApiKey))
 		{
-			return new AuthenticationState(true, $"Saved in VibeSwarm for this {connectionMode} connection.");
+			return new AuthenticationState(
+				true,
+				$"Saved in VibeSwarm for this {connectionMode} connection.",
+				ProviderCapabilities.GetConnectionTypeLabel(provider));
+		}
+
+		if (providerType == ProviderType.Copilot)
+		{
+			var sdkAuthStatus = await TryGetCopilotAuthenticationStateAsync(executablePath, cancellationToken);
+			if (sdkAuthStatus != null)
+			{
+				return sdkAuthStatus;
+			}
 		}
 
 		return (providerType, connectionMode) switch
 		{
 			(ProviderType.Claude, ProviderConnectionMode.CLI) when File.Exists(Path.Combine(GetUserHomeDirectory(), ".claude.json"))
-				=> new AuthenticationState(true, "Claude Code browser login detected on host for this CLI connection."),
+				=> new AuthenticationState(true, "Claude Code browser login detected on host for this CLI connection.", "Browser Login"),
 			(ProviderType.Copilot, ProviderConnectionMode.CLI or ProviderConnectionMode.SDK) when HasCopilotEnvironmentToken()
-				=> new AuthenticationState(true, $"Using host GitHub token environment variables for this {connectionMode} connection."),
+				=> new AuthenticationState(true, $"Using host GitHub token environment variables for this {connectionMode} connection.", "GitHub Token"),
 			(ProviderType.Copilot, ProviderConnectionMode.CLI or ProviderConnectionMode.SDK) when TryReadCopilotAuthStatus()
-				=> new AuthenticationState(true, $"Copilot CLI login detected on host for this {connectionMode} connection."),
+				=> new AuthenticationState(true, $"Copilot CLI login detected on host for this {connectionMode} connection.", "Logged-in User"),
 			(ProviderType.OpenCode, ProviderConnectionMode.CLI) when TryReadOpenCodeAuthStatus()
-				=> new AuthenticationState(true, "OpenCode auth.json detected on host for this CLI connection."),
+				=> new AuthenticationState(true, "OpenCode auth.json detected on host for this CLI connection.", "API Key"),
 			(ProviderType.Claude, ProviderConnectionMode.CLI)
-				=> new AuthenticationState(false, "Save an Anthropic API key or complete Claude's browser login on the host for this CLI connection."),
+				=> new AuthenticationState(false, "Save an Anthropic API key or complete Claude's browser login on the host for this CLI connection.", "Browser Login"),
 			(ProviderType.Claude, ProviderConnectionMode.SDK)
-				=> new AuthenticationState(false, "Save an Anthropic API key for this SDK connection."),
+				=> new AuthenticationState(false, "Save an Anthropic API key for this SDK connection.", "API Key"),
 			(ProviderType.Copilot, ProviderConnectionMode.CLI)
-				=> new AuthenticationState(false, "Sign in with 'copilot login' or save a GitHub token for this CLI connection."),
+				=> new AuthenticationState(false, "Sign in with 'copilot login' or save a GitHub token for this CLI connection.", "Logged-in User"),
 			(ProviderType.Copilot, ProviderConnectionMode.SDK)
-				=> new AuthenticationState(false, "Save a GitHub token or sign in with 'copilot login' so this SDK connection can use the Copilot CLI session."),
+				=> new AuthenticationState(false, "Save a GitHub token or sign in with 'copilot login' so this SDK connection can use the Copilot CLI session.", "Logged-in User"),
 			(ProviderType.OpenCode, ProviderConnectionMode.CLI)
-				=> new AuthenticationState(false, "Save an OpenCode API key to populate the host auth.json for this CLI connection."),
+				=> new AuthenticationState(false, "Save an OpenCode API key to populate the host auth.json for this CLI connection.", "API Key"),
 			(ProviderType.OpenCode, ProviderConnectionMode.REST)
-				=> new AuthenticationState(false, "Save an OpenCode API key for this REST connection."),
-			_ => new AuthenticationState(false, null)
+				=> new AuthenticationState(false, "Save an OpenCode API key for this REST connection.", "API Key"),
+			_ => new AuthenticationState(false, null, null)
 		};
 	}
 
@@ -360,6 +396,78 @@ public class CommonProviderSetupService(
 			!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("GH_TOKEN")) ||
 			!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("GITHUB_TOKEN"));
 	}
+
+	private static Provider? SelectAuthenticationTargetProvider(ProviderType providerType, IReadOnlyList<Provider> providersForType)
+	{
+		var preferredProvider = providersForType.FirstOrDefault();
+		if (preferredProvider == null)
+		{
+			return null;
+		}
+
+		return providerType switch
+		{
+			ProviderType.Copilot when ProviderCapabilities.IsCopilotCustomProvider(preferredProvider)
+				=> providersForType.FirstOrDefault(item => item.ConnectionMode == ProviderConnectionMode.CLI) ?? preferredProvider,
+			ProviderType.OpenCode
+				=> providersForType.FirstOrDefault(item => item.ConnectionMode == ProviderConnectionMode.CLI) ?? preferredProvider,
+			_ => preferredProvider
+		};
+	}
+
+	private static async Task<AuthenticationState?> TryGetCopilotAuthenticationStateAsync(string? executablePath, CancellationToken cancellationToken)
+	{
+		try
+		{
+			var options = new CopilotClientOptions
+			{
+				AutoStart = true,
+				UseStdio = true,
+				LogLevel = "error",
+				UseLoggedInUser = true
+			};
+
+			if (!string.IsNullOrWhiteSpace(executablePath))
+			{
+				options.CliPath = executablePath;
+			}
+
+			await using var client = new CopilotClient(options);
+			var authStatus = await client.GetAuthStatusAsync(cancellationToken);
+			if (authStatus is null || !authStatus.IsAuthenticated)
+			{
+				return null;
+			}
+
+			var typeLabel = MapCopilotAuthTypeLabel(authStatus.AuthType);
+			return new AuthenticationState(true, BuildCopilotAuthenticationMessage(typeLabel, authStatus.Login), typeLabel);
+		}
+		catch
+		{
+			return null;
+		}
+	}
+
+	private static string BuildCopilotAuthenticationMessage(string? typeLabel, string? login)
+	{
+		if (!string.IsNullOrWhiteSpace(login))
+		{
+			return $"{typeLabel ?? "Copilot"} authentication detected for {login}.";
+		}
+
+		return $"{typeLabel ?? "Copilot"} authentication detected on host.";
+	}
+
+	private static string? MapCopilotAuthTypeLabel(string? authType) => authType?.Trim().ToLowerInvariant() switch
+	{
+		"user" => "Logged-in User",
+		"env" => "Environment Token",
+		"gh-cli" => "GitHub CLI",
+		"hmac" => "HMAC",
+		"api-key" => "API Key",
+		"token" => "GitHub Token",
+		_ => string.IsNullOrWhiteSpace(authType) ? null : authType
+	};
 
 	internal static bool TryReadCopilotAuthStatus()
 	{
@@ -621,7 +729,7 @@ public class CommonProviderSetupService(
 	}
 
 	private sealed record InstallSpec(string ExecutableName, string Label, string Command, string VersionArguments);
-	private sealed record AuthenticationState(bool IsAuthenticated, string? Message);
+	private sealed record AuthenticationState(bool IsAuthenticated, string? Message, string? TypeLabel);
 	private sealed record ProcessResult(bool Success, string? Output, string? ErrorMessage);
 	private sealed record ShellCommand(string FileName, IReadOnlyList<string> Arguments);
 }

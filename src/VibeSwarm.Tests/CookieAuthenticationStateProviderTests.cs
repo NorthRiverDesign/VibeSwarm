@@ -102,6 +102,28 @@ public sealed class CookieAuthenticationStateProviderTests
 		Assert.True(requestCount >= 1);
 	}
 
+	[Fact]
+	public async Task AuthenticationKeepAlive_ContinuesRefreshingWhileUserRemainsAuthenticated()
+	{
+		using var context = new BunitContext();
+
+		var requestCount = 0;
+		var provider = CreateProvider((request, _) =>
+		{
+			requestCount++;
+			Assert.Equal("/api/auth/user", request.RequestUri?.AbsolutePath);
+			return Task.FromResult(CreateAuthenticatedResponse("kyle"));
+		});
+
+		context.Services.AddSingleton(provider);
+
+		_ = context.Render<AuthenticationKeepAlive>(parameters => parameters
+			.Add(component => component.Interval, TimeSpan.FromMilliseconds(20)));
+
+		await Task.Delay(150);
+		Assert.True(requestCount >= 3);
+	}
+
 	private static CookieAuthenticationStateProvider CreateProvider(
 		Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> handler)
 	{

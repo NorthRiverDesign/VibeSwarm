@@ -1,0 +1,277 @@
+@inject IIdeaService IdeaService
+@inject NotificationService NotificationService
+@inject QueuePanelStateService QueuePanelStateService
+@implements IDisposable
+
+<div class="dropdown @(Compact ? "mobile-header-dropdown" : string.Empty) @(OpenUpward ? "dropup" : string.Empty)">
+	<button class="btn btn-link text-secondary p-0 fs-5 d-flex align-items-center justify-content-center position-relative touch-manipulation @(Compact ? "mobile-header-icon" : "lh-1")"
+			type="button"
+			data-bs-toggle="dropdown"
+			data-bs-display="@(Compact ? "static" : null)"
+			aria-expanded="false"
+			title="Queue"
+			aria-label="Queue"
+			@onclick="HandleToggleAsync">
+		<i class="bi bi-list-task"></i>
+		@if (BadgeCount > 0)
+		{
+			<span class="notification-bell-badge position-absolute badge rounded-pill bg-primary"
+				  aria-label="@BadgeCount queue item@(BadgeCount == 1 ? string.Empty : "s")">
+				@(BadgeCount > 9 ? "9+" : BadgeCount.ToString())
+			</span>
+		}
+	</button>
+
+	<div class="dropdown-menu dropdown-menu-end shadow vs-nav-dropdown-menu p-0" style="min-width: min(24rem, 92vw); max-width: min(24rem, 92vw);">
+		<div class="p-3 border-bottom bg-body-tertiary">
+			<div class="d-flex align-items-start justify-content-between gap-3">
+				<div class="min-width-0">
+					<div class="fw-semibold">Queue</div>
+					<div class="small text-body-secondary">
+						@_snapshot.RunningJobsCount running
+						<span class="mx-1">&bull;</span>
+						@_snapshot.UpcomingIdeasCount upcoming
+					</div>
+				</div>
+				<span class="badge @(IsQueueActive ? "text-bg-info" : "bg-body-secondary text-body")">
+					@(IsQueueActive ? "Running" : "Idle")
+				</span>
+			</div>
+
+			<div class="d-flex flex-column flex-sm-row align-items-stretch align-items-sm-center gap-2 mt-3">
+				@if (IsQueueActive)
+				{
+					<button type="button" class="btn btn-sm btn-danger" @onclick="StopQueueAsync" disabled="@_isMutatingQueue">
+						@if (_isMutatingQueue)
+						{
+							<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+						}
+						else
+						{
+							<i class="bi bi-stop-fill me-1"></i>
+						}
+						Stop Queue
+					</button>
+				}
+				else
+				{
+					<button type="button" class="btn btn-sm btn-primary" @onclick="StartQueueAsync" disabled="@(_isMutatingQueue || _snapshot.UpcomingIdeasCount == 0)">
+						@if (_isMutatingQueue)
+						{
+							<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+						}
+						else
+						{
+							<i class="bi bi-play-fill me-1"></i>
+						}
+						Start Queue
+					</button>
+				}
+				<a class="btn btn-sm btn-secondary" href="/jobs">
+					<i class="bi bi-box-arrow-up-right me-1"></i>All Jobs
+				</a>
+			</div>
+		</div>
+
+		@if (!string.IsNullOrWhiteSpace(_loadError))
+		{
+			<div class="px-3 py-2 border-bottom small text-danger">
+				<i class="bi bi-exclamation-circle me-1"></i>@_loadError
+			</div>
+		}
+
+		@if (!_hasLoadedSnapshot && _isLoadingSnapshot)
+		{
+			<div class="p-3 small text-body-secondary d-flex align-items-center gap-2">
+				<span class="spinner-border spinner-border-sm" role="status"></span>
+				<span>Loading queue...</span>
+			</div>
+		}
+		else if (BadgeCount == 0)
+		{
+			<div class="p-3 small text-body-secondary">
+				No running jobs or queued ideas.
+			</div>
+		}
+		else
+		{
+			<div class="overflow-y-auto" style="max-height: min(28rem, 70vh);">
+				@if (_snapshot.RunningJobs.Count > 0)
+				{
+					<div class="px-3 py-2 border-bottom small text-uppercase text-body-secondary fw-semibold">Running Jobs</div>
+					<div class="list-group list-group-flush">
+						@foreach (var job in _snapshot.RunningJobs)
+						{
+							<a class="list-group-item list-group-item-action px-3 py-2 text-decoration-none text-body"
+							   href="/jobs/view/@job.Id">
+								<div class="d-flex align-items-start justify-content-between gap-2">
+									<div class="min-width-0">
+										<div class="d-flex align-items-center gap-2 flex-wrap">
+											<span class="badge text-bg-primary">Running</span>
+											<span class="fw-medium text-truncate">@job.DisplayTitle</span>
+										</div>
+										<div class="small text-body-secondary mt-1 text-truncate">
+											@job.ProjectName
+											@if (!string.IsNullOrWhiteSpace(job.ProviderName))
+											{
+												<span class="mx-1">&bull;</span>
+												<span>@job.ProviderName</span>
+											}
+										</div>
+										@if (!string.IsNullOrWhiteSpace(job.CurrentActivity))
+										{
+											<div class="small text-body-secondary mt-1 text-truncate">@job.CurrentActivity</div>
+										}
+									</div>
+									<i class="bi bi-chevron-right text-body-tertiary"></i>
+								</div>
+							</a>
+						}
+					</div>
+				}
+
+				@if (_snapshot.UpcomingIdeas.Count > 0)
+				{
+					<div class="px-3 py-2 border-bottom border-top small text-uppercase text-body-secondary fw-semibold">Upcoming Ideas</div>
+					<div class="list-group list-group-flush">
+						@foreach (var idea in _snapshot.UpcomingIdeas)
+						{
+							<a class="list-group-item list-group-item-action px-3 py-2 text-decoration-none text-body"
+							   href="/projects/@idea.ProjectId">
+								<div class="d-flex align-items-start justify-content-between gap-2">
+									<div class="min-width-0">
+										<div class="d-flex align-items-center gap-2 flex-wrap">
+											<span class="badge @((idea.IsProjectProcessing || idea.HasQueuedJob) ? "text-bg-info" : "bg-body-secondary text-body")">
+												@((idea.IsProjectProcessing || idea.HasQueuedJob) ? "Queued" : "Pending")
+											</span>
+											<span class="fw-medium text-truncate">@idea.Description</span>
+										</div>
+										<div class="small text-body-secondary mt-1 text-truncate">@idea.ProjectName</div>
+									</div>
+									<i class="bi bi-chevron-right text-body-tertiary"></i>
+								</div>
+							</a>
+						}
+					</div>
+				}
+			</div>
+		}
+	</div>
+</div>
+
+@code {
+	[Parameter]
+	public bool Compact { get; set; }
+
+	[Parameter]
+	public bool OpenUpward { get; set; }
+
+	private GlobalQueueSnapshot _snapshot = new();
+	private bool _hasLoadedSnapshot;
+	private bool _isLoadingSnapshot;
+	private bool _pendingRefresh;
+	private bool _isMutatingQueue;
+	private string? _loadError;
+
+	private bool IsQueueActive => _snapshot.ProjectsCurrentlyProcessing > 0;
+	private int BadgeCount => _snapshot.RunningJobsCount + _snapshot.UpcomingIdeasCount;
+
+	protected override async Task OnInitializedAsync()
+	{
+		QueuePanelStateService.RefreshRequested += RefreshQueueAsync;
+		await RefreshQueueAsync();
+	}
+
+	private async Task HandleToggleAsync()
+	{
+		await RefreshQueueAsync();
+	}
+
+	private async Task RefreshQueueAsync()
+	{
+		if (_isLoadingSnapshot)
+		{
+			_pendingRefresh = true;
+			return;
+		}
+
+		do
+		{
+			_pendingRefresh = false;
+			_isLoadingSnapshot = true;
+
+			try
+			{
+				_snapshot = await IdeaService.GetGlobalQueueSnapshotAsync();
+				_loadError = null;
+				_hasLoadedSnapshot = true;
+			}
+			catch (Exception ex)
+			{
+				_loadError = $"Failed to load queue: {ex.Message}";
+			}
+			finally
+			{
+				_isLoadingSnapshot = false;
+			}
+
+			await InvokeAsync(StateHasChanged);
+		}
+		while (_pendingRefresh);
+	}
+
+	private async Task StartQueueAsync()
+	{
+		if (_isMutatingQueue || _snapshot.UpcomingIdeasCount == 0)
+		{
+			return;
+		}
+
+		_isMutatingQueue = true;
+		try
+		{
+			await IdeaService.StartAllProcessingAsync();
+			NotificationService.ShowSuccess("Started queued ideas across active projects.", "Queue started");
+			await RefreshQueueAsync();
+		}
+		catch (Exception ex)
+		{
+			NotificationService.ShowError($"Failed to start queue: {ex.Message}");
+		}
+		finally
+		{
+			_isMutatingQueue = false;
+			await InvokeAsync(StateHasChanged);
+		}
+	}
+
+	private async Task StopQueueAsync()
+	{
+		if (_isMutatingQueue || !IsQueueActive)
+		{
+			return;
+		}
+
+		_isMutatingQueue = true;
+		try
+		{
+			await IdeaService.StopAllProcessingAsync();
+			NotificationService.ShowSuccess("Stopped automatic idea queue processing.", "Queue stopped");
+			await RefreshQueueAsync();
+		}
+		catch (Exception ex)
+		{
+			NotificationService.ShowError($"Failed to stop queue: {ex.Message}");
+		}
+		finally
+		{
+			_isMutatingQueue = false;
+			await InvokeAsync(StateHasChanged);
+		}
+	}
+
+	public void Dispose()
+	{
+		QueuePanelStateService.RefreshRequested -= RefreshQueueAsync;
+	}
+}

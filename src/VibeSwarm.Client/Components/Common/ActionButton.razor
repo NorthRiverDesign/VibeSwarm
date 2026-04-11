@@ -1,7 +1,7 @@
 @* Reusable action button with icon and optional text *@
 
-<button type="@Type"
-		class="btn @GetButtonClass() @SizeClass d-inline-flex align-items-center justify-content-center gap-1"
+<button type="@Type" form="@Form"
+		class="btn @GetButtonClass() @SizeClass @(HideTextOnMobile && !string.IsNullOrEmpty(Icon) ? "mobile-icon-button" : string.Empty) d-inline-flex align-items-center justify-content-center gap-1"
 		@onclick="HandleClick" disabled="@(IsLoading || Disabled)" title="@Title">
 	@if (IsLoading)
 	{
@@ -11,9 +11,9 @@
 	{
 		<i class="bi bi-@Icon"></i>
 	}
-	@if (!string.IsNullOrEmpty(Text))
+	@if (!string.IsNullOrEmpty(DisplayText))
 	{
-		<span class="@(HideTextOnMobile ? "d-none d-md-inline" : "")">@Text</span>
+		<span class="@(HideTextOnMobile ? "d-none d-md-inline" : "")">@DisplayText</span>
 	}
 </button>
 
@@ -31,6 +31,9 @@
 	public string Type { get; set; } = "button";
 
 	[Parameter]
+	public string? Form { get; set; }
+
+	[Parameter]
 	public ButtonStyle Style { get; set; } = ButtonStyle.Secondary;
 
 	[Parameter]
@@ -44,6 +47,9 @@
 	public bool IsLoading { get; set; }
 
 	[Parameter]
+	public string? LoadingText { get; set; }
+
+	[Parameter]
 	public bool Disabled { get; set; }
 
 	[Parameter]
@@ -51,6 +57,8 @@
 
 	[Parameter]
 	public EventCallback OnClick { get; set; }
+
+	private string? DisplayText => IsLoading && !string.IsNullOrEmpty(LoadingText) ? LoadingText : Text;
 
 	private string SizeClass => Size switch
 	{

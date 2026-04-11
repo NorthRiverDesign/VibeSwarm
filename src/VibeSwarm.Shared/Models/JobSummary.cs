@@ -19,6 +19,9 @@ public class JobSummary
 	public Guid ProviderId { get; set; }
 	public string? ProviderName { get; set; }
 	public string? ModelUsed { get; set; }
+	public Guid? PlanningProviderId { get; set; }
+	public string? PlanningProviderName { get; set; }
+	public string? PlanningModelUsed { get; set; }
 	public string? CurrentActivity { get; set; }
 	public string? ErrorMessage { get; set; }
 	public DateTime CreatedAt { get; set; }
@@ -28,6 +31,12 @@ public class JobSummary
 	public decimal? TotalCostUsd { get; set; }
 	public int? InputTokens { get; set; }
 	public int? OutputTokens { get; set; }
+	public decimal? PlanningCostUsd { get; set; }
+	public int? PlanningInputTokens { get; set; }
+	public int? PlanningOutputTokens { get; set; }
+	public decimal? ExecutionCostUsd { get; set; }
+	public int? ExecutionInputTokens { get; set; }
+	public int? ExecutionOutputTokens { get; set; }
 	public int CurrentCycle { get; set; }
 	public int MaxCycles { get; set; }
 	public CycleMode CycleMode { get; set; }
@@ -35,11 +44,17 @@ public class JobSummary
 	public string? Branch { get; set; }
 	public int? ChangedFilesCount { get; set; }
 	public bool? BuildVerified { get; set; }
+	public bool BuildVerificationEnabled { get; set; }
 	public string? GitCommitHash { get; set; }
 	public int? PullRequestNumber { get; set; }
 	public string? PullRequestUrl { get; set; }
+	public DateTime? MergedAt { get; set; }
+	public bool IsPushed { get; set; }
+	public string? SessionSummary { get; set; }
 	public bool IsScheduled { get; set; }
 	public Guid? JobScheduleId { get; set; }
+	public bool PlaywrightEnabled { get; set; }
+	public int EnvironmentCount { get; set; }
 
 	public TimeSpan? ExecutionDuration
 	{

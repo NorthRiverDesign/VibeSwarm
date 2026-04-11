@@ -1,5 +1,6 @@
 using System.Net.Http.Json;
 using VibeSwarm.Shared.Data;
+using VibeSwarm.Shared.Inference;
 using VibeSwarm.Shared.Models;
 using VibeSwarm.Shared.Services;
 
@@ -26,6 +27,13 @@ public class HttpIdeaService : IIdeaService
         return await response.ReadJsonAsync(idea, ct);
     }
 
+    public async Task<Idea> CreateAsync(CreateIdeaRequest request, CancellationToken ct = default)
+    {
+        var response = await _http.PostAsJsonAsync("/api/ideas/create-with-attachments", request, ct);
+        await HttpResponseErrorHelper.EnsureSuccessAsync(response, ct);
+        return await response.ReadJsonAsync(new Idea(), ct);
+    }
+
     public async Task<Idea> UpdateAsync(Idea idea, CancellationToken ct = default)
     {
         var response = await _http.PutAsJsonAsync($"/api/ideas/{idea.Id}", idea, ct);
@@ -39,9 +47,9 @@ public class HttpIdeaService : IIdeaService
     public async Task<Idea?> GetNextUnprocessedAsync(Guid projectId, CancellationToken ct = default)
         => await _http.GetJsonOrNullAsync<Idea>($"/api/ideas/project/{projectId}/next-unprocessed", ct);
 
-    public async Task<Job?> ConvertToJobAsync(Guid ideaId, CancellationToken ct = default)
+    public async Task<Job?> ConvertToJobAsync(Guid ideaId, IdeaProcessingOptions? options = null, CancellationToken ct = default)
     {
-        var response = await _http.PostAsync($"/api/ideas/{ideaId}/convert-to-job", null, ct);
+        var response = await _http.PostAsJsonAsync($"/api/ideas/{ideaId}/convert-to-job", options ?? new IdeaProcessingOptions(), ct);
         if (!response.IsSuccessStatusCode) return null;
         return await response.ReadJsonOrNullAsync<Job>(ct);
     }
@@ -58,17 +66,32 @@ public class HttpIdeaService : IIdeaService
         return response.IsSuccessStatusCode;
     }
 
-    public async Task<Idea?> GetByJobIdAsync(Guid jobId, CancellationToken ct = default)
-        => await _http.GetJsonOrNullAsync<Idea>($"/api/ideas/by-job/{jobId}", ct);
+	public async Task<Idea?> GetByJobIdAsync(Guid jobId, CancellationToken ct = default)
+		=> await _http.GetJsonOrNullAsync<Idea>($"/api/ideas/by-job/{jobId}", ct);
 
-    public async Task StartProcessingAsync(Guid projectId, bool autoCommit = false, CancellationToken ct = default)
-        => await _http.PostAsync($"/api/ideas/project/{projectId}/start-processing?autoCommit={autoCommit}", null, ct);
+	public async Task<IdeaAttachment?> GetAttachmentAsync(Guid attachmentId, CancellationToken ct = default)
+		=> await _http.GetJsonOrNullAsync<IdeaAttachment>($"/api/ideas/attachments/{attachmentId}/metadata", ct);
+
+	public async Task StartProcessingAsync(Guid projectId, IdeaProcessingOptions? options = null, CancellationToken ct = default)
+		=> await _http.PostAsJsonAsync($"/api/ideas/project/{projectId}/start-processing", options ?? new IdeaProcessingOptions(), ct);
 
     public async Task StopProcessingAsync(Guid projectId, CancellationToken ct = default)
         => await _http.PostAsync($"/api/ideas/project/{projectId}/stop-processing", null, ct);
 
     public async Task<bool> IsProcessingActiveAsync(Guid projectId, CancellationToken ct = default)
         => await _http.GetJsonValueAsync($"/api/ideas/project/{projectId}/processing-active", false, ct);
+
+    public async Task<GlobalIdeasProcessingStatus> GetGlobalProcessingStatusAsync(CancellationToken ct = default)
+        => await _http.GetJsonAsync("/api/ideas/global-processing-status", new GlobalIdeasProcessingStatus(), ct);
+
+    public async Task<GlobalQueueSnapshot> GetGlobalQueueSnapshotAsync(CancellationToken ct = default)
+        => await _http.GetJsonAsync("/api/ideas/global-queue-snapshot", new GlobalQueueSnapshot(), ct);
+
+    public async Task StartAllProcessingAsync(IdeaProcessingOptions? options = null, CancellationToken ct = default)
+        => await _http.PostAsJsonAsync("/api/ideas/start-all-processing", options ?? new IdeaProcessingOptions(), ct);
+
+    public async Task StopAllProcessingAsync(CancellationToken ct = default)
+        => await _http.PostAsync("/api/ideas/stop-all-processing", null, ct);
 
     public async Task<bool> ProcessNextIdeaIfReadyAsync(Guid projectId, CancellationToken ct = default)
         => throw new NotSupportedException("ProcessNextIdeaIfReadyAsync is server-only");
@@ -126,15 +149,18 @@ public class HttpIdeaService : IIdeaService
 
     public async Task<SuggestIdeasResult> SuggestIdeasFromCodebaseAsync(Guid projectId, SuggestIdeasRequest? request = null, CancellationToken ct = default)
     {
-        // Suggestion generation can take well over 100 s depending on the selected source.
+        var normalizedRequest = request ?? new SuggestIdeasRequest();
+        var timeout = InferenceTimeouts.GetIdeaActionTimeout(normalizedRequest.UseInference);
+
+        // Suggestion generation can take a long time, especially with local inference.
         // The HttpClient registered in DI uses Timeout.InfiniteTimeSpan, so this
         // CancellationTokenSource is now the sole timeout for the suggestion request.
-        using var timeoutCts = new CancellationTokenSource(TimeSpan.FromMinutes(5));
+        using var timeoutCts = new CancellationTokenSource(timeout);
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
 
         try
         {
-            var response = await _http.PostAsJsonAsync($"/api/ideas/project/{projectId}/suggest", request ?? new SuggestIdeasRequest(), linkedCts.Token);
+            var response = await _http.PostAsJsonAsync($"/api/ideas/project/{projectId}/suggest", normalizedRequest, linkedCts.Token);
 
             if (!response.IsSuccessStatusCode)
             {
@@ -162,11 +188,11 @@ public class HttpIdeaService : IIdeaService
         }
         catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested)
         {
-            Console.Error.WriteLine("[Suggest] Client-side 5-minute timeout fired.");
+            Console.Error.WriteLine($"[Suggest] Client-side {timeout.TotalMinutes:F0}-minute timeout fired.");
             return new SuggestIdeasResult
             {
                 Stage = SuggestIdeasStage.GenerateFailed,
-                Message = "The request timed out after 5 minutes. Try a smaller or faster model."
+                Message = $"The request timed out after {timeout.TotalMinutes:F0} minutes. Try a smaller or faster model."
             };
         }
         catch (OperationCanceledException)

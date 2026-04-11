@@ -60,6 +60,7 @@ public class HttpTeamRoleService : ITeamRoleService
 			Responsibilities = teamRole.Responsibilities,
 			DefaultProviderId = teamRole.DefaultProviderId,
 			DefaultModelId = teamRole.DefaultModelId,
+			DefaultReasoningEffort = teamRole.DefaultReasoningEffort,
 			IsEnabled = teamRole.IsEnabled,
 			SkillLinks = (teamRole.SkillLinks ?? [])
 				.GroupBy(link => link.SkillId)

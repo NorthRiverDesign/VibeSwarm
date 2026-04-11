@@ -44,11 +44,14 @@ public class JobMessage
     [NotMapped]
     public MessageSource Source { get; set; } = MessageSource.System;
 
-    /// <summary>
-    /// Severity level for styling. Not persisted — assigned at display time.
-    /// </summary>
-    [NotMapped]
-    public MessageLevel Level { get; set; } = MessageLevel.Normal;
+	/// <summary>
+	/// Severity level for styling. Not persisted — assigned at display time.
+	/// </summary>
+	[NotMapped]
+	public MessageLevel Level { get; set; } = MessageLevel.Normal;
+
+	[NotMapped]
+	public MessageDisplayVariant DisplayVariant { get; set; } = MessageDisplayVariant.Standard;
 }
 
 public enum MessageRole
@@ -78,8 +81,14 @@ public enum MessageSource
 /// </summary>
 public enum MessageLevel
 {
-    Normal,
-    Warning,
-    Error,
-    Success
+	Normal,
+	Warning,
+	Error,
+	Success
+}
+
+public enum MessageDisplayVariant
+{
+	Standard,
+	Thinking
 }

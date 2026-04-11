@@ -83,6 +83,13 @@ public class Project
 	public string? PlanningModelId { get; set; }
 
 	/// <summary>
+	/// Optional reasoning effort override to use for project planning.
+	/// When omitted, the planning provider's default reasoning is used.
+	/// </summary>
+	[StringLength(ValidationLimits.ReasoningEffortMaxLength)]
+	public string? PlanningReasoningEffort { get; set; }
+
+	/// <summary>
 	/// Default inference provider for idea generation (e.g., Grok, Ollama).
 	/// Used as the default in Auto-Pilot and suggestion workflows.
 	/// </summary>
@@ -93,6 +100,19 @@ public class Project
 	/// </summary>
 	[StringLength(200)]
 	public string? IdeaInferenceModelId { get; set; }
+
+	/// <summary>
+	/// Optional inference provider used to generate auto-commit summaries.
+	/// When null, commit summaries continue to come from the coding provider output.
+	/// </summary>
+	public Guid? CommitSummaryInferenceProviderId { get; set; }
+
+	/// <summary>
+	/// Optional inference model used to generate auto-commit summaries.
+	/// When null, the selected inference provider's default commit-summary/default model is used.
+	/// </summary>
+	[StringLength(200)]
+	public string? CommitSummaryInferenceModelId { get; set; }
 
 	public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
@@ -151,10 +171,15 @@ public class Project
 	public bool IdeasAutoCommit { get; set; }
 
 	/// <summary>
-	/// Whether ideas should be automatically expanded into detailed specs before creating jobs.
-	/// When disabled, ideas are sent directly to implementation unless an approved expansion exists.
+	/// Optional provider override used while Start All idea auto-processing is active.
 	/// </summary>
-	public bool IdeasAutoExpand { get; set; } = true;
+	public Guid? IdeasProcessingProviderId { get; set; }
+
+	/// <summary>
+	/// Optional model override used while Start All idea auto-processing is active.
+	/// </summary>
+	[StringLength(ValidationLimits.JobScheduleModelIdMaxLength)]
+	public string? IdeasProcessingModelId { get; set; }
 
 	/// <summary>
 	/// When enabled and at least two team roles are configured, creating a job automatically

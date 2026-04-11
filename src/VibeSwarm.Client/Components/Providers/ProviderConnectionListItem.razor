@@ -1,0 +1,290 @@
+<div class="list-group-item p-3 hover-bg-tertiary @(Provider.IsDefault ? "bg-success bg-opacity-10" : "")">
+	<div class="row g-3 align-items-start">
+		<div class="col-12 col-lg min-width-0">
+			<div class="d-flex align-items-center gap-2 flex-wrap">
+				<span class="fw-semibold">@Provider.Name</span>
+				@if (Provider.IsDefault)
+				{
+					<span class="badge text-bg-success text-uppercase" style="font-size: 0.7rem;">Default</span>
+				}
+				<StatusBadge Status="@(Provider.IsEnabled ? "Active" : "Off")" ShowSpinner="false" />
+			</div>
+			<div class="d-flex flex-wrap gap-2 gap-md-3 mt-2">
+				<span class="badge bg-primary-subtle text-primary-emphasis">
+					<i class="bi bi-@GetProviderTypeIcon(Provider.Type) me-1"></i>@Provider.Type
+				</span>
+				<span class="badge bg-info-subtle text-info-emphasis">
+					<i class="bi bi-@GetConnectionModeIcon(Provider.ConnectionMode) me-1"></i>@Provider.ConnectionMode
+				</span>
+				@if (ProviderCapabilities.GetConnectionTypeLabel(Provider) is string connectionType && !string.IsNullOrWhiteSpace(connectionType))
+				{
+					<span class="badge bg-secondary-subtle text-secondary-emphasis">
+						<i class="bi bi-key me-1"></i>@connectionType
+					</span>
+				}
+				@if (GetCliVersion() is string version && !string.IsNullOrEmpty(version))
+				{
+					<span class="badge bg-secondary-subtle text-secondary-emphasis text-truncate"
+						  style="max-width: min(200px, 50vw);" title="@version">
+						<i class="bi bi-tag me-1"></i>@TruncateVersion(version)
+					</span>
+				}
+			</div>
+			@if (UsageSummary?.EffectiveMaxUsage > 0)
+			{
+				<div class="mt-2" style="max-width: min(300px, 100%);">
+					<UsageMeter UsageSummary="UsageSummary" ShowResetTime="true" />
+				</div>
+			}
+			@if (TestResult != null)
+			{
+				<div class="mt-2 p-2 rounded-2 @(TestResult.IsConnected ? "text-success bg-success bg-opacity-10" : "text-danger bg-danger bg-opacity-10")">
+					<strong>@(TestResult.IsConnected ? "Connected" : "Connection Failed")</strong>
+					@if (!TestResult.IsConnected && !string.IsNullOrEmpty(TestResult.ErrorMessage))
+					{
+						<div class="mt-1">
+							<pre class="mb-0 small text-break overflow-auto">@TestResult.ErrorMessage</pre>
+						</div>
+					}
+				</div>
+			}
+			@if (!string.IsNullOrEmpty(RefreshModelsError))
+			{
+				<Alert Type="Alert.AlertType.Warning" Message="@RefreshModelsError" Class="mt-2 mb-0 py-2 px-3 small" />
+			}
+		</div>
+		<div class="col-12 col-lg-auto">
+			<div class="row g-2">
+				<div class="col-12 col-sm-6 col-lg-12">
+					<div class="rounded-3 bg-body-tertiary px-3 py-2 d-flex align-items-center justify-content-between gap-3">
+						<span class="small fw-medium text-body-secondary">Active</span>
+						<label class="toggle-switch flex-shrink-0" title="@(Provider.IsEnabled ? "Disable" : "Enable")">
+							<input type="checkbox" checked="@Provider.IsEnabled" @onchange="HandleToggleEnabled" />
+							<span class="toggle-slider"></span>
+						</label>
+					</div>
+				</div>
+				<div class="col-12 col-sm-6 col-lg-12">
+					<div class="d-flex align-items-center justify-content-sm-end gap-2 flex-wrap">
+						<ActionButton Icon="lightning" Text="Test" Size="ActionButton.ButtonSize.Small" HideTextOnMobile="true"
+									  IsLoading="IsTesting" OnClick="HandleTestConnection" />
+
+						<div class="dropdown">
+							<button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
+									id="provider-menu-@Provider.Id" data-bs-toggle="dropdown" aria-expanded="false"
+									title="Provider actions">
+								<i class="bi bi-gear"></i>
+							</button>
+							<ul class="dropdown-menu dropdown-menu-end" aria-labelledby="provider-menu-@Provider.Id">
+								<li>
+									<button class="dropdown-item" @onclick="HandleRefreshModels"
+											@onclick:stopPropagation="true" disabled="@IsRefreshingModels">
+										<i class="bi bi-arrow-repeat me-2 @(IsRefreshingModels ? "spin" : "")"></i>
+										Refresh Models
+									</button>
+								</li>
+								<li>
+									<button class="dropdown-item" @onclick="HandleUpdateCli"
+											@onclick:stopPropagation="true"
+											disabled="@(IsUpdatingCli || Provider.ConnectionMode == ProviderConnectionMode.SDK)">
+										<i class="bi bi-download me-2 @(IsUpdatingCli ? "spin" : "")"></i>
+										@(Provider.ConnectionMode == ProviderConnectionMode.SDK ? "Update via NuGet" : "Update CLI")
+									</button>
+								</li>
+								<li>
+									<button class="dropdown-item" @onclick="HandleShowSelectDefaultModel"
+											@onclick:stopPropagation="true">
+										<i class="bi bi-star me-2"></i>
+										Select Default Model
+									</button>
+								</li>
+								@if (!Provider.IsDefault)
+								{
+									<li>
+										<button class="dropdown-item" @onclick="HandleMakeDefault"
+												@onclick:stopPropagation="true">
+											<i class="bi bi-check2-circle me-2"></i>
+											Set as Default
+										</button>
+									</li>
+								}
+								<li>
+									<button class="dropdown-item" @onclick="HandleEditProvider"
+											@onclick:stopPropagation="true">
+										<i class="bi bi-pencil me-2"></i>
+										Edit
+									</button>
+								</li>
+								<li>
+									<hr class="dropdown-divider">
+								</li>
+								<li>
+									<button class="dropdown-item text-danger"
+											@onclick="HandleDeleteProvider" @onclick:stopPropagation="true">
+										<i class="bi bi-trash me-2"></i>
+										Delete
+									</button>
+								</li>
+							</ul>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+	@if (Models.Count > 0)
+	{
+		var availableModels = Models.Where(model => model.IsAvailable).ToList();
+
+		<div class="mt-3 pt-3 border-top">
+			<span class="fw-medium small text-body-secondary">Models:</span>
+			<div class="d-flex flex-wrap gap-1 mt-1">
+				@foreach (var model in availableModels.Take(5))
+				{
+					<span class="badge @(model.IsDefault ? "bg-primary bg-opacity-75" : "bg-secondary-subtle text-secondary-emphasis")"
+						  title="@model.ModelId">
+						@(model.DisplayName ?? model.ModelId)
+					</span>
+				}
+				@if (availableModels.Count > 5)
+				{
+					<span class="badge bg-secondary bg-opacity-50">+@(availableModels.Count - 5) more</span>
+				}
+			</div>
+			@if (Provider.LastModelsRefreshAt.HasValue)
+			{
+				<small class="text-body-tertiary d-block mt-1">
+					Updated @Provider.LastModelsRefreshAt.Value.FormatDateTimeShort()
+				</small>
+			}
+		</div>
+	}
+</div>
+
+@code {
+	[Parameter, EditorRequired]
+	public required Provider Provider { get; set; }
+
+	[Parameter]
+	public IReadOnlyList<ProviderModel> Models { get; set; } = [];
+
+	[Parameter]
+	public ProviderUsageSummary? UsageSummary { get; set; }
+
+	[Parameter]
+	public ConnectionTestResult? TestResult { get; set; }
+
+	[Parameter]
+	public string? RefreshModelsError { get; set; }
+
+	[Parameter]
+	public bool IsTesting { get; set; }
+
+	[Parameter]
+	public bool IsRefreshingModels { get; set; }
+
+	[Parameter]
+	public bool IsUpdatingCli { get; set; }
+
+	[Parameter]
+	public EventCallback<Provider> OnToggleEnabled { get; set; }
+
+	[Parameter]
+	public EventCallback<Provider> OnTestConnection { get; set; }
+
+	[Parameter]
+	public EventCallback<Provider> OnRefreshModels { get; set; }
+
+	[Parameter]
+	public EventCallback<Provider> OnUpdateCli { get; set; }
+
+	[Parameter]
+	public EventCallback<Provider> OnShowSelectDefaultModel { get; set; }
+
+	[Parameter]
+	public EventCallback<Provider> OnMakeDefault { get; set; }
+
+	[Parameter]
+	public EventCallback<Provider> OnEditProvider { get; set; }
+
+	[Parameter]
+	public EventCallback<Provider> OnDeleteProvider { get; set; }
+
+	private Task HandleToggleEnabled(ChangeEventArgs _)
+	{
+		return OnToggleEnabled.InvokeAsync(Provider);
+	}
+
+	private Task HandleTestConnection()
+	{
+		return OnTestConnection.InvokeAsync(Provider);
+	}
+
+	private Task HandleRefreshModels()
+	{
+		return OnRefreshModels.InvokeAsync(Provider);
+	}
+
+	private Task HandleUpdateCli()
+	{
+		return OnUpdateCli.InvokeAsync(Provider);
+	}
+
+	private Task HandleShowSelectDefaultModel()
+	{
+		return OnShowSelectDefaultModel.InvokeAsync(Provider);
+	}
+
+	private Task HandleMakeDefault()
+	{
+		return OnMakeDefault.InvokeAsync(Provider);
+	}
+
+	private Task HandleEditProvider()
+	{
+		return OnEditProvider.InvokeAsync(Provider);
+	}
+
+	private Task HandleDeleteProvider()
+	{
+		return OnDeleteProvider.InvokeAsync(Provider);
+	}
+
+	private string? GetCliVersion()
+	{
+		return UsageSummary?.CliVersion;
+	}
+
+	private static string GetProviderTypeIcon(ProviderType type) => type switch
+	{
+		ProviderType.OpenCode => "code-slash",
+		ProviderType.Claude => "robot",
+		ProviderType.Copilot => "github",
+		_ => "cpu"
+	};
+
+	private static string GetConnectionModeIcon(ProviderConnectionMode mode) => mode switch
+	{
+		ProviderConnectionMode.CLI => "terminal",
+		ProviderConnectionMode.REST => "globe",
+		ProviderConnectionMode.SDK => "box",
+		_ => "plug"
+	};
+
+	private static string TruncateVersion(string version)
+	{
+		if (string.IsNullOrEmpty(version))
+		{
+			return version;
+		}
+
+		var firstLine = version.Split('\n', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault()?.Trim() ?? version;
+		var dotIndex = firstLine.IndexOf(". ", StringComparison.Ordinal);
+		if (dotIndex > 0)
+		{
+			firstLine = firstLine[..dotIndex];
+		}
+
+		return firstLine.Length > 40 ? firstLine[..37] + "..." : firstLine;
+	}
+}

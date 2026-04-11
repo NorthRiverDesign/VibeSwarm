@@ -1,14 +1,7 @@
 @page "/settings"
 @attribute [Authorize]
-@inject ISettingsService SettingsService
-@inject AppTimeZoneService AppTimeZoneService
-@inject IFileSystemService FileSystemService
-@inject NotificationService NotificationService
 @inject IDatabaseService DatabaseService
-@using System.Text.Json
-@using System.Text.Json.Serialization
-@using VibeSwarm.Shared.Models
-@using VibeSwarm.Shared.Utilities
+@inject NotificationService NotificationService
 
 <PageHeader Title="Settings" />
 
@@ -32,315 +25,11 @@
 
 @if (_activeTab == "app")
 {
-<div class="card">
-<div class="card-header bg-body-secondary">
-<h5 class="mb-0 fw-semibold">
-<i class="bi bi-gear me-2"></i>Application Settings
-</h5>
-</div>
-<div class="card-body">
-@if (_isLoading)
-{
-<LoadingSpinner />
-}
-else
-{
-<EditForm Model="@_settings" OnValidSubmit="SaveSettings">
-<DataAnnotationsValidator />
-
-<h6 class="text-body-secondary mb-3">
-<i class="bi bi-folder me-1"></i>Project Defaults
-</h6>
-
-<div class="mb-3">
-<label for="defaultProjectsDirectory" class="form-label">Default Projects Directory</label>
-<div class="input-group">
-<input type="text" id="defaultProjectsDirectory" class="form-control font-monospace"
-   @bind="_settings.DefaultProjectsDirectory" placeholder="@_placeholder" />
-<button type="button" class="btn btn-secondary" @onclick="OpenDirectoryBrowser"
-title="Browse directories">
-<i class="bi bi-folder2-open"></i>
-</button>
-</div>
-<div class="form-text">
-This path will be used as the default prefix when creating new projects.
-For example, if you set this to <code>@_examplePath</code> and create a project named
-"MyApp",
-the working path will default to
-<code>@_examplePath@Path.DirectorySeparatorChar@("MyApp")</code>.
-</div>
-
-@if (!string.IsNullOrEmpty(_settings.DefaultProjectsDirectory))
-{
-<div class="mt-2 d-flex flex-wrap align-items-center gap-2">
-@if (_directoryExists)
-{
-<span class="badge bg-success-subtle text-success-emphasis">
-<i class="bi bi-check-circle me-1"></i>Directory exists
-</span>
-<button type="button" class="btn btn-primary btn-sm" @onclick="OpenScanProjectsModal">
-<i class="bi bi-folder-symlink me-1"></i>Scan For Projects
-</button>
-}
-else
-{
-<span class="badge bg-warning-subtle text-warning-emphasis">
-<i class="bi bi-exclamation-triangle me-1"></i>Directory does not exist
-</span>
-}
-</div>
-}
-</div>
-
-<div class="mb-3">
-<label for="timeZoneId" class="form-label">Timezone</label>
-<select id="timeZoneId" class="form-select" @bind="_settings.TimeZoneId">
-	@foreach (var group in GetGroupedTimeZones())
-	{
-		<optgroup label="@group.Key">
-			@foreach (var timeZone in group)
-			{
-				<option value="@timeZone.Id">@DateTimeHelper.GetTimeZoneOptionLabel(timeZone)</option>
-			}
-		</optgroup>
-	}
-</select>
-<div class="form-text">
-Recurring schedules and timestamp displays use this timezone. Existing schedules keep the same local
-clock time when you change it.
-</div>
-</div>
-
-<div class="d-flex flex-column flex-sm-row gap-2 mt-4">
-<button type="submit" class="btn btn-primary" disabled="@_isSaving">
-@if (_isSaving)
-{
-<span class="spinner-border spinner-border-sm me-1" role="status"></span>
-<span>Saving...</span>
-}
-else
-{
-<i class="bi bi-check-lg me-1"></i>
-<span>Save Settings</span>
-}
-</button>
-<button type="button" class="btn btn-secondary" @onclick="ReloadSettings" disabled="@_isSaving">
-<i class="bi bi-arrow-counterclockwise me-1"></i>
-Reset
-</button>
-</div>
-
-<hr class="my-4" />
-
-<h6 class="text-body-secondary mb-3">
-<i class="bi bi-robot me-1"></i>Agent Quality
-</h6>
-
-<div class="mb-3">
-<div class="form-check form-switch">
-<input class="form-check-input" type="checkbox" id="enablePromptStructuring"
-   @bind="_settings.EnablePromptStructuring" />
-<label class="form-check-label" for="enablePromptStructuring">
-Structure job prompts with XML tags
-</label>
-</div>
-<div class="form-text">
-Wraps job prompts with project context and constraints using XML tags for clearer agent
-instructions.
-</div>
-</div>
-
-<div class="mb-3">
-<div class="form-check form-switch">
-<input class="form-check-input" type="checkbox" id="injectRepoMap"
-   @bind="_settings.InjectRepoMap" />
-<label class="form-check-label" for="injectRepoMap">
-Inject repo map into system prompt
-</label>
-</div>
-<div class="form-text">
-Auto-generates a compact project file tree and injects it into the agent's system prompt for
-faster codebase navigation.
-</div>
-</div>
-
-<div class="mb-3">
-<div class="form-check form-switch">
-<input class="form-check-input" type="checkbox" id="injectEfficiencyRules"
-   @bind="_settings.InjectEfficiencyRules" />
-<label class="form-check-label" for="injectEfficiencyRules">
-Inject efficiency rules into system prompt
-</label>
-</div>
-<div class="form-text">
-Adds rules to prevent agents from modifying unrelated files, adding unnecessary comments, or
-refactoring beyond the task.
-</div>
-</div>
-</EditForm>
-}
-</div>
-</div>
+	<SettingsAppTab OnSettingsSaved="RefreshDatabaseSummary" />
 }
 else if (_activeTab == "database")
 {
-<div class="card mb-3">
-<div class="card-header bg-body-secondary">
-<h5 class="mb-0 fw-semibold">
-<i class="bi bi-box-arrow-up me-2"></i>Export
-</h5>
-</div>
-<div class="card-body">
-<p class="text-body-secondary small mb-3">
-Download a JSON backup of your configuration including projects, ideas, skills, team roles,
-and schedules. Provider credentials and job history are not included.
-</p>
-<a href="/api/database/export" class="btn btn-primary">
-<i class="bi bi-download me-2"></i>Download Export
-</a>
-</div>
-</div>
-
-<div class="card">
-<div class="card-header bg-body-secondary">
-<h5 class="mb-0 fw-semibold">
-<i class="bi bi-box-arrow-in-down me-2"></i>Import
-</h5>
-</div>
-<div class="card-body">
-<p class="text-body-secondary small mb-3">
-Import a previously exported JSON file. Existing records with the same name will be skipped
-to avoid duplicates. New ideas will be added to existing projects.
-</p>
-
-@if (_importResult == null && !_isImporting)
-{
-<div class="mb-3">
-<label class="form-label">Select export file</label>
-<InputFile OnChange="OnImportFileSelected" accept=".json" class="form-control" />
-</div>
-
-@if (_importParseError != null)
-{
-<div class="alert alert-danger d-flex align-items-start gap-2 mb-3">
-<i class="bi bi-exclamation-triangle-fill flex-shrink-0 mt-1"></i>
-<div>@_importParseError</div>
-</div>
-}
-
-@if (_importPreview != null)
-{
-<div class="border rounded p-3 mb-3 bg-body-secondary">
-<h6 class="fw-semibold mb-2">Preview</h6>
-<div class="d-flex flex-wrap gap-3 small">
-<div class="d-flex align-items-center gap-1">
-<i class="bi bi-folder text-primary"></i>
-<span>@_importPreview.Projects.Count project(s)</span>
-</div>
-<div class="d-flex align-items-center gap-1">
-<i class="bi bi-lightbulb text-warning"></i>
-<span>@_importPreview.Projects.Sum(p => p.Ideas.Count) idea(s)</span>
-</div>
-<div class="d-flex align-items-center gap-1">
-<i class="bi bi-tools text-success"></i>
-<span>@_importPreview.Skills.Count skill(s)</span>
-</div>
-<div class="d-flex align-items-center gap-1">
-<i class="bi bi-people text-info"></i>
-<span>@_importPreview.TeamRoles.Count team role(s)</span>
-</div>
-<div class="d-flex align-items-center gap-1">
-<i class="bi bi-clock text-secondary"></i>
-<span>@_importPreview.Schedules.Count schedule(s)</span>
-</div>
-</div>
-@if (_importPreview.ExportedAt != default)
-{
-<div class="text-body-secondary small mt-2">
-Exported @_importPreview.ExportedAt.ToString("g") UTC
-</div>
-}
-</div>
-
-<button class="btn btn-primary" @onclick="ConfirmImport">
-<i class="bi bi-check-lg me-1"></i>Import
-</button>
-}
-}
-else if (_isImporting)
-{
-<div class="d-flex align-items-center gap-2 text-body-secondary">
-<span class="spinner-border spinner-border-sm" role="status"></span>
-<span>Importing...</span>
-</div>
-}
-else if (_importResult != null)
-{
-@if (_importResult.Imported.Count > 0)
-{
-<div class="mb-3">
-<h6 class="text-success fw-semibold mb-2">
-<i class="bi bi-check-circle me-1"></i>Imported (@_importResult.Imported.Count)
-</h6>
-<ul class="list-unstyled small mb-0">
-@foreach (var item in _importResult.Imported)
-{
-<li class="d-flex align-items-start gap-1 mb-1">
-<i class="bi bi-check text-success flex-shrink-0 mt-1"></i>
-<span>@item</span>
-</li>
-}
-</ul>
-</div>
-}
-
-@if (_importResult.Skipped.Count > 0)
-{
-<div class="mb-3">
-<h6 class="text-warning fw-semibold mb-2">
-<i class="bi bi-skip-forward me-1"></i>Skipped — already exists (@_importResult.Skipped.Count)
-</h6>
-<ul class="list-unstyled small mb-0">
-@foreach (var item in _importResult.Skipped)
-{
-<li class="d-flex align-items-start gap-1 mb-1">
-<i class="bi bi-dash text-warning flex-shrink-0 mt-1"></i>
-<span>@item</span>
-</li>
-}
-</ul>
-</div>
-}
-
-@if (_importResult.Errors.Count > 0)
-{
-<div class="mb-3">
-<h6 class="text-danger fw-semibold mb-2">
-<i class="bi bi-exclamation-triangle me-1"></i>Errors (@_importResult.Errors.Count)
-</h6>
-<ul class="list-unstyled small mb-0">
-@foreach (var item in _importResult.Errors)
-{
-<li class="d-flex align-items-start gap-1 mb-1">
-<i class="bi bi-x text-danger flex-shrink-0 mt-1"></i>
-<span>@item</span>
-</li>
-}
-</ul>
-</div>
-}
-
-@if (_importResult.Imported.Count == 0 && _importResult.Skipped.Count == 0 && _importResult.Errors.Count == 0)
-{
-<p class="text-body-secondary small">Nothing to import.</p>
-}
-
-<button class="btn btn-secondary btn-sm" @onclick="ResetImport">
-<i class="bi bi-arrow-counterclockwise me-1"></i>Import another file
-</button>
-}
-</div>
-</div>
+<SettingsDatabaseTab DatabaseSummary="@_databaseSummary" OnDatabaseChanged="RefreshDatabaseSummary" />
 }
 else
 {
@@ -369,13 +58,6 @@ in writing, reviewing, and optimizing code.
 <i class="bi bi-hdd opacity-75"></i>
 <span><strong>Runtime:</strong> @System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription</span>
 </div>
-@if (_settings.UpdatedAt.HasValue)
-{
-<div class="d-flex align-items-center gap-2">
-<i class="bi bi-clock-history opacity-75"></i>
-<span><strong>Settings Last Updated:</strong> @_settings.UpdatedAt.Value.FormatDateTimeShort()</span>
-</div>
-}
 </div>
 </div>
 </div>
@@ -407,226 +89,34 @@ VibeSwarm can work with any directory that the host process has access to.
 </div>
 }
 
-@if (_showDirectoryBrowser)
-{
-<DirectoryBrowser @ref="_directoryBrowser" InitialPath="@_settings.DefaultProjectsDirectory"
-  OnDirectorySelected="OnDirectorySelected" OnClosed="CloseDirectoryBrowser" />
-}
-
-<ScanProjectsModal @ref="_scanProjectsModal" OnProjectsImported="OnProjectsImported" />
-
 @code {
-private static readonly JsonSerializerOptions ImportJsonOptions = new()
-{
-	PropertyNameCaseInsensitive = true,
-	Converters = { new JsonStringEnumConverter() },
-};
+	private string _activeTab = "app";
+	private DatabaseStorageSummary? _databaseSummary;
 
-private AppSettings _settings = new();
-private bool _isLoading = true;
-private bool _isSaving = false;
-private bool _showDirectoryBrowser = false;
-private bool _directoryExists = false;
-private DirectoryBrowser? _directoryBrowser;
-private ScanProjectsModal? _scanProjectsModal;
-private string _activeTab = "app";
-private IReadOnlyList<TimeZoneInfo> _timeZones = [];
-
-// Database tab state
-private DatabaseExportDto? _importPreview;
-private DatabaseImportResult? _importResult;
-private string? _importParseError;
-private bool _isImporting;
-
-private IOrderedEnumerable<IGrouping<string, TimeZoneInfo>> GetGroupedTimeZones()
-{
-	return _timeZones
-		.GroupBy(tz => tz.Id.Contains('/') ? tz.Id.Split('/')[0] : "Other")
-		.OrderBy(g => g.Key == "Other" ? 1 : 0)
-		.ThenBy(g => g.Key, StringComparer.Ordinal);
-}
-
-private string _placeholder => OperatingSystem.IsWindows() ? @"C:\Projects" : "/home/user/projects";
-private string _examplePath => OperatingSystem.IsWindows() ? @"C:\Projects" : "/home/user/projects";
-
-private void SetTab(string tab)
-{
-_activeTab = tab;
-}
-
-protected override async Task OnInitializedAsync()
-{
-_timeZones = AppTimeZoneService.GetAvailableTimeZones();
-await AppTimeZoneService.EnsureInitializedAsync();
-await LoadSettings();
-}
-
-private async Task LoadSettings()
-{
-_isLoading = true;
-
-try
-{
-_settings = await SettingsService.GetSettingsAsync();
-_settings.TimeZoneId = DateTimeHelper.ResolveTimeZone(_settings.TimeZoneId).Id;
-AppTimeZoneService.ApplyTimeZone(_settings.TimeZoneId);
-await CheckDirectoryExists();
-}
-catch (Exception ex)
-{
-NotificationService.ShowError($"Failed to load settings: {ex.Message}");
-}
-finally
-{
-_isLoading = false;
-}
-}
-
-private async Task SaveSettings()
-{
-_isSaving = true;
-
-try
-{
-if (!string.IsNullOrWhiteSpace(_settings.DefaultProjectsDirectory))
-{
-_settings.DefaultProjectsDirectory = _settings.DefaultProjectsDirectory.Trim();
-}
-else
-{
-_settings.DefaultProjectsDirectory = null;
-}
-
-	_settings.TimeZoneId = DateTimeHelper.ResolveTimeZone(_settings.TimeZoneId).Id;
-	_settings = await SettingsService.UpdateSettingsAsync(_settings);
-	AppTimeZoneService.ApplyTimeZone(_settings.TimeZoneId);
-	await CheckDirectoryExists();
-	NotificationService.ShowSuccess("Settings saved successfully!");
-}
-catch (Exception ex)
-{
-NotificationService.ShowError($"Failed to save settings: {ex.Message}");
-}
-finally
-{
-_isSaving = false;
-}
-}
-
-private async Task ReloadSettings()
-{
-await LoadSettings();
-}
-
-private async Task CheckDirectoryExists()
-{
-if (!string.IsNullOrWhiteSpace(_settings.DefaultProjectsDirectory))
-{
-_directoryExists = await FileSystemService.DirectoryExistsAsync(_settings.DefaultProjectsDirectory);
-}
-else
-{
-_directoryExists = false;
-}
-}
-
-private async Task OpenDirectoryBrowser()
-{
-_showDirectoryBrowser = true;
-StateHasChanged();
-
-await Task.Delay(50);
-
-if (_directoryBrowser != null)
-{
-await _directoryBrowser.ShowAsync(_settings.DefaultProjectsDirectory);
-}
-}
-
-private async Task OnDirectorySelected(string path)
-{
-_settings.DefaultProjectsDirectory = path;
-_showDirectoryBrowser = false;
-await CheckDirectoryExists();
-StateHasChanged();
-}
-
-private void CloseDirectoryBrowser()
-{
-_showDirectoryBrowser = false;
-}
-
-private async Task OpenScanProjectsModal()
-{
-if (_scanProjectsModal != null)
-{
-await _scanProjectsModal.ShowAsync(_settings.DefaultProjectsDirectory);
-}
-}
-
-private void OnProjectsImported()
-{
-NotificationService.ShowSuccess("Projects imported successfully!");
-StateHasChanged();
-}
-
-private async Task OnImportFileSelected(InputFileChangeEventArgs e)
-{
-_importPreview = null;
-_importParseError = null;
-
-var file = e.File;
-if (file == null)
-	return;
-
-try
-{
-	using var stream = file.OpenReadStream(maxAllowedSize: 50 * 1024 * 1024); // 50 MB limit
-	var export = await JsonSerializer.DeserializeAsync<DatabaseExportDto>(stream, ImportJsonOptions);
-	if (export == null)
+	private void SetTab(string tab)
 	{
-		_importParseError = "The file could not be parsed as a valid VibeSwarm export.";
-		return;
+		_activeTab = tab;
 	}
-	_importPreview = export;
-}
-catch (JsonException ex)
-{
-	_importParseError = $"Invalid JSON: {ex.Message}";
-}
-catch (Exception ex)
-{
-	_importParseError = $"Failed to read file: {ex.Message}";
-}
-}
 
-private async Task ConfirmImport()
-{
-if (_importPreview == null)
-	return;
+	protected override async Task OnInitializedAsync()
+	{
+		await LoadDatabaseSummary();
+	}
 
-_isImporting = true;
+	private async Task RefreshDatabaseSummary()
+	{
+		await LoadDatabaseSummary();
+	}
 
-try
-{
-	_importResult = await DatabaseService.ImportAsync(_importPreview);
-	NotificationService.ShowSuccess("Import complete!");
-}
-catch (Exception ex)
-{
-	NotificationService.ShowError($"Import failed: {ex.Message}");
-	_isImporting = false;
-	return;
-}
-
-_isImporting = false;
-_importPreview = null;
-}
-
-private void ResetImport()
-{
-_importResult = null;
-_importPreview = null;
-_importParseError = null;
-}
+	private async Task LoadDatabaseSummary()
+	{
+		try
+		{
+			_databaseSummary = await DatabaseService.GetStorageSummaryAsync();
+		}
+		catch (Exception ex)
+		{
+			NotificationService.ShowError($"Failed to load database size: {ex.Message}");
+		}
+	}
 }

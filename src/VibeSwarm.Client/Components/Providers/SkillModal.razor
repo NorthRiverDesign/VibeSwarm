@@ -1,6 +1,4 @@
 @* Modal component for adding and editing skills *@
-@using VibeSwarm.Shared.Data
-@using VibeSwarm.Shared.Services
 @inject ISkillService SkillService
 @inject IProviderService ProviderService
 @inject NotificationService NotificationService
@@ -123,14 +121,10 @@
 			}
 
 			<div class="d-flex gap-2 justify-content-end">
-				<button type="button" class="btn btn-secondary" @onclick="HandleCancel">Cancel</button>
-				<button type="submit" class="btn btn-primary" disabled="@IsSaving">
-					@if (IsSaving)
-					{
-						<span class="spinner-border spinner-border-sm me-1" role="status"></span>
-					}
-					@(IsSaving ? "Saving..." : (IsEdit ? "Update Skill" : "Add Skill"))
-				</button>
+				<ActionButton Text="Cancel" OnClick="HandleCancel" />
+				<ActionButton Type="submit" Style="ActionButton.ButtonStyle.Primary"
+							  Text="@(IsEdit ? "Update Skill" : "Add Skill")" LoadingText="Saving..."
+							  IsLoading="@IsSaving" />
 			</div>
 		</EditForm>
 	</ChildContent>

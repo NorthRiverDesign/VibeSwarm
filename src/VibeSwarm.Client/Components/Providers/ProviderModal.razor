@@ -1,6 +1,4 @@
 @* Modal component for adding and editing providers *@
-@using VibeSwarm.Shared.Data
-@using VibeSwarm.Shared.Services
 @inject IProviderService ProviderService
 @inject NotificationService NotificationService
 
@@ -67,6 +65,12 @@
 			}
 			else if (Provider.ConnectionMode == ProviderConnectionMode.SDK)
 			{
+				<div class="mb-3">
+					<div class="form-label">Connection Type</div>
+					<div class="form-control-plaintext py-0 small text-body-secondary">
+						@ProviderCapabilities.GetConnectionTypeLabel(Provider)
+					</div>
+				</div>
 				@if (Provider.Type == ProviderType.Claude)
 				{
 					<div class="mb-3">
@@ -91,19 +95,34 @@
 						<div class="form-text">Leave empty to use the default Anthropic API endpoint.</div>
 					</div>
 				}
-			@if (Provider.Type == ProviderType.Copilot)
+				@if (Provider.Type == ProviderType.Copilot)
 				{
-					<div class="mb-3">
-						<label for="modal-apiKey" class="form-label">GitHub Token (optional)</label>
-						<InputText id="modal-apiKey" @bind-Value="Provider.ApiKey" class="form-control" type="password"
-							placeholder="ghp_... or gho_..." />
-						<div class="form-text">A GitHub token for authentication. Leave empty to use the logged-in Copilot CLI user. Supports BYOK with <code>COPILOT_GITHUB_TOKEN</code>.</div>
-					</div>
 					<div class="mb-3">
 						<label for="modal-apiEndpoint" class="form-label">Custom API Provider (optional, BYOK)</label>
 						<InputText id="modal-apiEndpoint" @bind-Value="Provider.ApiEndpoint" class="form-control"
 							placeholder="https://api.openai.com/v1" />
-						<div class="form-text">For Bring Your Own Key (BYOK) usage with OpenAI, Azure, or Anthropic endpoints. Leave empty for standard Copilot.</div>
+						<div class="form-text">Leave empty to use GitHub Copilot. Set a custom provider endpoint to run this SDK connection in BYOK mode.</div>
+					</div>
+					<div class="mb-3">
+						<label for="modal-apiKey" class="form-label">
+							@(IsCopilotCustomProvider ? "Provider API Key" : "GitHub Token (optional)")
+							@if (IsCopilotCustomProvider)
+							{
+								<span class="text-danger"> *</span>
+							}
+						</label>
+						<InputText id="modal-apiKey" @bind-Value="Provider.ApiKey" class="form-control" type="password"
+							placeholder="@(IsCopilotCustomProvider ? "sk-... or provider key" : "github_pat_...")" />
+						<div class="form-text">
+							@if (IsCopilotCustomProvider)
+							{
+								<span>This key is sent to the configured BYOK provider endpoint. It is not reused as a GitHub token.</span>
+							}
+							else
+							{
+								<span>Leave empty to use the logged-in Copilot CLI user, or provide a GitHub token for explicit SDK authentication.</span>
+							}
+						</div>
 					</div>
 					<div class="mb-3">
 						<label for="modal-executablePath" class="form-label">Copilot CLI Path (optional)</label>
@@ -147,6 +166,27 @@
 				</div>
 				<div class="form-text">Jobs using this provider will be automatically stopped after this time. Leave
 					empty for no limit.</div>
+				</div>
+
+				<div class="mb-3">
+					<label for="modal-defaultReasoning" class="form-label">Default Reasoning</label>
+					<InputSelect id="modal-defaultReasoning" @bind-Value="Provider.DefaultReasoningEffort" class="form-select" disabled="@(!ReasoningOptions.Any())">
+						<option value="">Use provider default behavior</option>
+						@foreach (var reasoning in ReasoningOptions)
+						{
+							<option value="@reasoning">@reasoning</option>
+						}
+					</InputSelect>
+					<div class="form-text">
+						@if (!ReasoningOptions.Any())
+						{
+							<span>This provider/mode does not expose configurable reasoning levels.</span>
+						}
+						else
+						{
+							<span>New jobs and project defaults can inherit this reasoning level unless they override it.</span>
+						}
+					</div>
 				</div>
 
 				@* Usage Limit Configuration *@
@@ -275,6 +315,8 @@
 	private bool _previousIsVisible;
 
 	private IReadOnlyList<string> ValidationErrors => ProviderCapabilities.ValidateConfiguration(Provider);
+	private IReadOnlyList<string> ReasoningOptions => ProviderCapabilities.GetSupportedReasoningEfforts(Provider);
+	private bool IsCopilotCustomProvider => ProviderCapabilities.IsCopilotCustomProvider(Provider);
 
 	protected override void OnParametersSet()
 	{
@@ -295,6 +337,7 @@
 					ExecutablePath = EditProvider.ExecutablePath,
 					ApiEndpoint = EditProvider.ApiEndpoint,
 					ApiKey = EditProvider.ApiKey,
+					DefaultReasoningEffort = EditProvider.DefaultReasoningEffort,
 					IsEnabled = EditProvider.IsEnabled,
 					MaxExecutionMinutes = EditProvider.MaxExecutionMinutes,
 					ConfiguredUsageLimit = EditProvider.ConfiguredUsageLimit,

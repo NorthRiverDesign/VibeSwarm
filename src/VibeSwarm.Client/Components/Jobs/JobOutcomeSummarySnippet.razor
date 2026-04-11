@@ -1,0 +1,17 @@
+@if (!string.IsNullOrWhiteSpace(DisplaySummary))
+{
+	<div class="d-flex align-items-start gap-2 mt-2 small text-body-secondary min-width-0">
+		<i class="bi bi-stars flex-shrink-0 opacity-75"></i>
+		<div class="min-width-0">
+			<span class="fw-semibold text-body">Work summary:</span>
+			<span class="ms-1 text-truncate-lines-2">@DisplaySummary</span>
+		</div>
+	</div>
+}
+
+@code {
+	[Parameter]
+	public string? SessionSummary { get; set; }
+
+	private string? DisplaySummary => JobOutcomeDisplayHelper.FormatListSessionSummary(SessionSummary);
+}

@@ -106,7 +106,8 @@ internal static class JobSessionDisplayBuilder
 			ToolName = message.ToolName,
 			ToolInput = message.ToolInput,
 			ToolOutput = message.ToolOutput,
-			TokenCount = message.TokenCount
+			TokenCount = message.TokenCount,
+			DisplayVariant = message.DisplayVariant
 		};
 
 		switch (message.Role)
@@ -167,6 +168,7 @@ internal static class JobSessionDisplayBuilder
 			message.Role = MessageRole.System;
 			message.Source = MessageSource.Provider;
 			message.Level = MessageLevel.Normal;
+			message.DisplayVariant = MessageDisplayVariant.Thinking;
 			return;
 		}
 
@@ -222,6 +224,7 @@ internal static class JobSessionDisplayBuilder
 
 		var messages = new List<JobMessage>();
 		JobMessage? currentTextMessage = null;
+		var parserState = new LiveTranscriptParserState();
 
 		foreach (var line in outputLines.OrderBy(line => line.Timestamp))
 		{
@@ -230,106 +233,123 @@ internal static class JobSessionDisplayBuilder
 				continue;
 			}
 
-			var parsedMessage = ParseOutputLine(line);
-			if (parsedMessage == null)
+			var parsedMessages = ParseOutputMessages(line, parserState);
+			if (parsedMessages.Count == 0)
 			{
 				continue;
 			}
 
-			if (IsDuplicateProcessStartedMessage(messages.LastOrDefault(), parsedMessage))
+			foreach (var parsedMessage in parsedMessages)
 			{
-				continue;
+				if (IsDuplicateProcessStartedMessage(messages.LastOrDefault(), parsedMessage))
+				{
+					continue;
+				}
+
+				var isTextMessage = parsedMessage.Role is MessageRole.Assistant
+					&& string.IsNullOrEmpty(parsedMessage.ToolName)
+					&& string.IsNullOrEmpty(parsedMessage.ToolInput)
+					&& string.IsNullOrEmpty(parsedMessage.ToolOutput);
+
+				if (isTextMessage
+					&& currentTextMessage != null
+					&& currentTextMessage.Role == parsedMessage.Role
+					&& !line.IsError)
+				{
+					currentTextMessage.Content = string.Concat(
+						currentTextMessage.Content,
+						Environment.NewLine,
+						parsedMessage.Content);
+					continue;
+				}
+
+				messages.Add(parsedMessage);
+				currentTextMessage = isTextMessage ? parsedMessage : null;
 			}
-
-			var isTextMessage = parsedMessage.Role is MessageRole.Assistant
-				&& string.IsNullOrEmpty(parsedMessage.ToolName)
-				&& string.IsNullOrEmpty(parsedMessage.ToolInput)
-				&& string.IsNullOrEmpty(parsedMessage.ToolOutput);
-
-			if (isTextMessage
-				&& currentTextMessage != null
-				&& currentTextMessage.Role == parsedMessage.Role
-				&& !line.IsError)
-			{
-				currentTextMessage.Content = string.Concat(
-					currentTextMessage.Content,
-					Environment.NewLine,
-					parsedMessage.Content);
-				continue;
-			}
-
-			messages.Add(parsedMessage);
-			currentTextMessage = isTextMessage ? parsedMessage : null;
 		}
 
 		return messages;
 	}
 
-	private static JobMessage? ParseOutputLine(OutputLine line)
+	private static IReadOnlyList<JobMessage> ParseOutputMessages(OutputLine line, LiveTranscriptParserState parserState)
 	{
 		var content = line.Content.Trim();
 		if (content.Length == 0)
 		{
-			return null;
+			return [];
 		}
 
 		if (IsCliWaitStatus(content))
 		{
-			return null;
+			return [];
 		}
 
-		// Detect raw JSON stream events and extract human-readable content
-		if (content.StartsWith('{') && TryExtractFromStreamJson(content, line.Timestamp, out var jsonMessage))
+		if (content.StartsWith('{') && TryExtractMessagesFromStreamJson(content, line.Timestamp, parserState, out var jsonMessages))
 		{
-			return jsonMessage;
+			return jsonMessages;
 		}
 
 		if (TryParseToolUse(content, out var toolName, out var toolInput))
 		{
-			return new JobMessage
-			{
-				Role = MessageRole.ToolUse,
-				Content = toolName,
-				ToolName = toolName,
-				ToolInput = toolInput,
-				CreatedAt = line.Timestamp
-			};
+			parserState.RegisterToolUse(null, toolName);
+			return
+			[
+				new JobMessage
+				{
+					Role = MessageRole.ToolUse,
+					Content = toolName,
+					ToolName = toolName,
+					ToolInput = toolInput,
+					CreatedAt = line.Timestamp
+				}
+			];
 		}
 
 		if (TryParseToolResult(content, out toolName, out var toolOutput))
 		{
-			return new JobMessage
-			{
-				Role = MessageRole.ToolResult,
-				Content = toolOutput ?? string.Empty,
-				ToolName = toolName,
-				ToolOutput = toolOutput,
-				CreatedAt = line.Timestamp
-			};
+			var resolvedToolName = parserState.ResolveToolName(toolName);
+			return
+			[
+				new JobMessage
+				{
+					Role = MessageRole.ToolResult,
+					Content = toolOutput ?? string.Empty,
+					ToolName = resolvedToolName,
+					ToolOutput = toolOutput,
+					CreatedAt = line.Timestamp
+				}
+			];
 		}
 
 		if (line.IsThinking)
 		{
-			return new JobMessage
-			{
-				Role = MessageRole.System,
-				Content = StripKnownPrefix(content, "[Reasoning]", "[Thinking]"),
-				Source = MessageSource.Provider,
-				Level = MessageLevel.Normal,
-				CreatedAt = line.Timestamp
-			};
+			return
+			[
+				new JobMessage
+				{
+					Role = MessageRole.System,
+					Content = StripKnownPrefix(content, "[Reasoning]", "[Thinking]"),
+					Source = MessageSource.Provider,
+					Level = MessageLevel.Normal,
+					DisplayVariant = MessageDisplayVariant.Thinking,
+					CreatedAt = line.Timestamp
+				}
+			];
 		}
 
 		if (TryParseSystemMessage(content, out var systemContent, out var source, out var level))
 		{
-			return new JobMessage
-			{
-				Role = MessageRole.System,
-				Content = systemContent,
-				Source = source,
-				Level = level,
-				CreatedAt = line.Timestamp
-			};
+			return
+			[
+				new JobMessage
+				{
+					Role = MessageRole.System,
+					Content = systemContent,
+					Source = source,
+					Level = level,
+					CreatedAt = line.Timestamp
+				}
+			];
 		}
 
 		if (content.StartsWith("[Assistant]", StringComparison.OrdinalIgnoreCase))
@@ -339,36 +359,46 @@ internal static class JobSessionDisplayBuilder
 
 		if (content.StartsWith("[Plan]", StringComparison.OrdinalIgnoreCase))
 		{
-			return new JobMessage
-			{
-				Role = MessageRole.System,
-				Content = StripKnownPrefix(content, "[Plan]"),
-				Source = MessageSource.Provider,
-				Level = MessageLevel.Normal,
-				CreatedAt = line.Timestamp
-			};
+			return
+			[
+				new JobMessage
+				{
+					Role = MessageRole.System,
+					Content = StripKnownPrefix(content, "[Plan]"),
+					Source = MessageSource.Provider,
+					Level = MessageLevel.Normal,
+					DisplayVariant = MessageDisplayVariant.Thinking,
+					CreatedAt = line.Timestamp
+				}
+			];
 		}
 
 		if (line.IsError)
 		{
-			return new JobMessage
-			{
-				Role = MessageRole.System,
-				Content = content,
-				Source = MessageSource.System,
-				Level = MessageLevel.Error,
-				CreatedAt = line.Timestamp
-			};
+			return
+			[
+				new JobMessage
+				{
+					Role = MessageRole.System,
+					Content = content,
+					Source = MessageSource.System,
+					Level = MessageLevel.Error,
+					CreatedAt = line.Timestamp
+				}
+			];
 		}
 
-		return new JobMessage
-		{
-			Role = MessageRole.Assistant,
-			Content = content,
-			Source = MessageSource.Provider,
-			Level = MessageLevel.Normal,
-			CreatedAt = line.Timestamp
-		};
+		return
+		[
+			new JobMessage
+			{
+				Role = MessageRole.Assistant,
+				Content = content,
+				Source = MessageSource.Provider,
+				Level = MessageLevel.Normal,
+				CreatedAt = line.Timestamp
+			}
+		];
 	}
 
 	private static bool HasStructuredMessages(IReadOnlyCollection<JobMessage> messages)
@@ -501,13 +531,13 @@ internal static class JobSessionDisplayBuilder
 		return content;
 	}
 
-	/// <summary>
-	/// Attempts to extract a human-readable message from a raw JSON stream event.
-	/// Returns null for events that should be hidden from the Session Log (e.g., init events).
-	/// </summary>
-	private static bool TryExtractFromStreamJson(string json, DateTime timestamp, out JobMessage? message)
+	private static bool TryExtractMessagesFromStreamJson(
+		string json,
+		DateTime timestamp,
+		LiveTranscriptParserState parserState,
+		out IReadOnlyList<JobMessage> messages)
 	{
-		message = null;
+		messages = [];
 
 		try
 		{
@@ -524,34 +554,22 @@ internal static class JobSessionDisplayBuilder
 			switch (type)
 			{
 				case "system":
-					// Init events are noise for the Session Log — skip them
 					return true;
 
 				case "assistant":
 				{
-					// Skip error responses — the "result" event contains the same text
-					// and is the authoritative final message. Showing both would duplicate.
 					if (root.TryGetProperty("error", out _))
 					{
 						return true;
 					}
 
-					var text = ExtractAssistantText(root);
-					if (string.IsNullOrWhiteSpace(text))
-					{
-						return true;
-					}
-
-					message = new JobMessage
-					{
-						Role = MessageRole.Assistant,
-						Content = text,
-						Source = MessageSource.Provider,
-						Level = MessageLevel.Normal,
-						CreatedAt = timestamp
-					};
+					messages = ExtractAssistantMessages(root, timestamp, parserState);
 					return true;
 				}
+
+				case "user":
+					messages = ExtractUserMessages(root, timestamp, parserState);
+					return true;
 
 				case "result":
 				{
@@ -567,63 +585,248 @@ internal static class JobSessionDisplayBuilder
 					var isError = root.TryGetProperty("is_error", out var isErrorProp)
 						&& isErrorProp.GetBoolean();
 
-					message = new JobMessage
-					{
-						Role = isError ? MessageRole.System : MessageRole.Assistant,
-						Content = resultText,
-						Source = MessageSource.Provider,
-						Level = isError ? MessageLevel.Error : MessageLevel.Normal,
-						CreatedAt = timestamp
-					};
+					messages =
+					[
+						new JobMessage
+						{
+							Role = isError ? MessageRole.System : MessageRole.Assistant,
+							Content = resultText,
+							Source = MessageSource.Provider,
+							Level = isError ? MessageLevel.Error : MessageLevel.Normal,
+							CreatedAt = timestamp
+						}
+					];
 					return true;
 				}
 
 				default:
-					// Unknown JSON event type — skip to avoid showing raw JSON
 					return true;
 			}
 		}
 		catch (JsonException)
 		{
-			// Not valid JSON — fall through to normal text parsing
 			return false;
 		}
 	}
 
-	private static string? ExtractAssistantText(JsonElement root)
+	private static IReadOnlyList<JobMessage> ExtractAssistantMessages(
+		JsonElement root,
+		DateTime timestamp,
+		LiveTranscriptParserState parserState)
 	{
 		if (!root.TryGetProperty("message", out var messageProp))
 		{
-			return null;
+			return [];
 		}
 
 		if (!messageProp.TryGetProperty("content", out var contentProp)
 			|| contentProp.ValueKind != JsonValueKind.Array)
 		{
-			return null;
+			return [];
 		}
+
+		var messages = new List<JobMessage>();
 
 		foreach (var block in contentProp.EnumerateArray())
 		{
-			if (block.TryGetProperty("type", out var blockType)
-				&& blockType.GetString() == "text"
-				&& block.TryGetProperty("text", out var textProp))
+			if (!block.TryGetProperty("type", out var blockType))
 			{
-				var text = textProp.GetString();
-				if (!string.IsNullOrWhiteSpace(text))
+				continue;
+			}
+
+			switch (blockType.GetString())
+			{
+				case "text":
 				{
-					return text;
+					var text = block.TryGetProperty("text", out var textProp)
+						? textProp.GetString()
+						: null;
+					if (!string.IsNullOrWhiteSpace(text))
+					{
+						messages.Add(new JobMessage
+						{
+							Role = MessageRole.Assistant,
+							Content = text,
+							Source = MessageSource.Provider,
+							Level = MessageLevel.Normal,
+							CreatedAt = timestamp
+						});
+					}
+
+					break;
+				}
+
+				case "thinking":
+				{
+					var thinking = block.TryGetProperty("thinking", out var thinkingProp)
+						? thinkingProp.GetString()
+						: null;
+					if (!string.IsNullOrWhiteSpace(thinking))
+					{
+						messages.Add(new JobMessage
+						{
+							Role = MessageRole.System,
+							Content = thinking,
+							Source = MessageSource.Provider,
+							Level = MessageLevel.Normal,
+							DisplayVariant = MessageDisplayVariant.Thinking,
+							CreatedAt = timestamp
+						});
+					}
+
+					break;
+				}
+
+				case "tool_use":
+				{
+					var toolId = block.TryGetProperty("id", out var idProp)
+						? idProp.GetString()
+						: null;
+					var toolName = block.TryGetProperty("name", out var nameProp)
+						? nameProp.GetString()
+						: null;
+					var toolInput = block.TryGetProperty("input", out var inputProp)
+						? inputProp.GetRawText()
+						: null;
+					var displayName = string.IsNullOrWhiteSpace(toolName) ? "unknown_tool" : toolName;
+
+					parserState.RegisterToolUse(toolId, displayName);
+					messages.Add(new JobMessage
+					{
+						Role = MessageRole.ToolUse,
+						Content = displayName,
+						ToolName = displayName,
+						ToolInput = toolInput,
+						CreatedAt = timestamp
+					});
+					break;
 				}
 			}
 		}
 
-		return null;
+		return messages;
+	}
+
+	private static IReadOnlyList<JobMessage> ExtractUserMessages(
+		JsonElement root,
+		DateTime timestamp,
+		LiveTranscriptParserState parserState)
+	{
+		if (!root.TryGetProperty("message", out var messageProp))
+		{
+			return [];
+		}
+
+		if (!messageProp.TryGetProperty("content", out var contentProp)
+			|| contentProp.ValueKind != JsonValueKind.Array)
+		{
+			return [];
+		}
+
+		var messages = new List<JobMessage>();
+
+		foreach (var block in contentProp.EnumerateArray())
+		{
+			if (!block.TryGetProperty("type", out var blockType)
+				|| !string.Equals(blockType.GetString(), "tool_result", StringComparison.Ordinal))
+			{
+				continue;
+			}
+
+			var toolUseId = block.TryGetProperty("tool_use_id", out var toolUseIdProp)
+				? toolUseIdProp.GetString()
+				: null;
+			var output = block.TryGetProperty("content", out var toolOutputProp)
+				? ExtractJsonContent(toolOutputProp)
+				: string.Empty;
+
+			messages.Add(new JobMessage
+			{
+				Role = MessageRole.ToolResult,
+				Content = output,
+				ToolName = parserState.ResolveToolName(toolUseId),
+				ToolOutput = output,
+				CreatedAt = timestamp
+			});
+		}
+
+		return messages;
+	}
+
+	private static string ExtractJsonContent(JsonElement element)
+	{
+		return element.ValueKind switch
+		{
+			JsonValueKind.String => element.GetString() ?? string.Empty,
+			JsonValueKind.Array => string.Join(Environment.NewLine, element.EnumerateArray()
+				.Select(ExtractJsonContent)
+				.Where(content => !string.IsNullOrWhiteSpace(content))),
+			JsonValueKind.Object => element.GetRawText(),
+			JsonValueKind.Null or JsonValueKind.Undefined => string.Empty,
+			_ => element.GetRawText()
+		};
 	}
 
 	private static bool IsCliWaitStatus(string content)
 		=> content.StartsWith("[System] Still initializing...", StringComparison.OrdinalIgnoreCase)
 			|| content.StartsWith("[System] Still waiting for response...", StringComparison.OrdinalIgnoreCase)
 			|| content.StartsWith("[System] Still waiting (", StringComparison.OrdinalIgnoreCase);
+
+	private sealed class LiveTranscriptParserState
+	{
+		private readonly Dictionary<string, string> _toolNamesById = new(StringComparer.Ordinal);
+		private readonly Queue<string> _pendingToolNames = new();
+
+		public void RegisterToolUse(string? toolId, string? toolName)
+		{
+			if (string.IsNullOrWhiteSpace(toolName))
+			{
+				return;
+			}
+
+			_pendingToolNames.Enqueue(toolName);
+
+			if (!string.IsNullOrWhiteSpace(toolId))
+			{
+				_toolNamesById[toolId] = toolName;
+			}
+		}
+
+		public string ResolveToolName(string? candidate)
+		{
+			if (!string.IsNullOrWhiteSpace(candidate) && _toolNamesById.TryGetValue(candidate, out var mappedToolName))
+			{
+				DequeueIfMatches(mappedToolName);
+				return mappedToolName;
+			}
+
+			if (string.IsNullOrWhiteSpace(candidate) || LooksLikeGeneratedToolIdentifier(candidate))
+			{
+				if (_pendingToolNames.Count > 0)
+				{
+					return _pendingToolNames.Dequeue();
+				}
+
+				return string.IsNullOrWhiteSpace(candidate) ? "unknown_tool" : candidate;
+			}
+
+			DequeueIfMatches(candidate);
+			return candidate;
+		}
+
+		private void DequeueIfMatches(string toolName)
+		{
+			if (_pendingToolNames.Count == 0)
+			{
+				return;
+			}
+
+			if (string.Equals(_pendingToolNames.Peek(), toolName, StringComparison.OrdinalIgnoreCase))
+			{
+				_pendingToolNames.Dequeue();
+			}
+		}
+	}
 
 	/// <summary>
 	/// Matches bracketed prefix messages, strips the prefix, and assigns Source/Level.

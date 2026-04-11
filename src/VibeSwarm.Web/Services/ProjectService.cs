@@ -83,6 +83,8 @@ public class ProjectService : IProjectService
 		project.DefaultTargetBranch = string.IsNullOrWhiteSpace(project.DefaultTargetBranch) ? null : project.DefaultTargetBranch.Trim();
 		project.BuildCommand = string.IsNullOrWhiteSpace(project.BuildCommand) ? null : project.BuildCommand.Trim();
 		project.TestCommand = string.IsNullOrWhiteSpace(project.TestCommand) ? null : project.TestCommand.Trim();
+		project.IdeaInferenceModelId = string.IsNullOrWhiteSpace(project.IdeaInferenceModelId) ? null : project.IdeaInferenceModelId.Trim();
+		project.CommitSummaryInferenceModelId = string.IsNullOrWhiteSpace(project.CommitSummaryInferenceModelId) ? null : project.CommitSummaryInferenceModelId.Trim();
 		project.Memory = NormalizeProjectMemory(project.Memory);
 		NormalizeProviderSelections(project);
 		NormalizeTeamAssignments(project);
@@ -151,15 +153,17 @@ public class ProjectService : IProjectService
 		existing.PlanningEnabled = project.PlanningEnabled;
 		existing.PlanningProviderId = project.PlanningProviderId;
 		existing.PlanningModelId = project.PlanningModelId;
+		existing.PlanningReasoningEffort = project.PlanningReasoningEffort;
 		existing.IdeaInferenceProviderId = project.IdeaInferenceProviderId;
 		existing.IdeaInferenceModelId = string.IsNullOrWhiteSpace(project.IdeaInferenceModelId) ? null : project.IdeaInferenceModelId.Trim();
+		existing.CommitSummaryInferenceProviderId = project.CommitSummaryInferenceProviderId;
+		existing.CommitSummaryInferenceModelId = string.IsNullOrWhiteSpace(project.CommitSummaryInferenceModelId) ? null : project.CommitSummaryInferenceModelId.Trim();
 		existing.PromptContext = project.PromptContext;
 		existing.Memory = NormalizeProjectMemory(project.Memory);
 		existing.BuildVerificationEnabled = project.BuildVerificationEnabled;
 		existing.BuildCommand = string.IsNullOrWhiteSpace(project.BuildCommand) ? null : project.BuildCommand.Trim();
 		existing.TestCommand = string.IsNullOrWhiteSpace(project.TestCommand) ? null : project.TestCommand.Trim();
 		existing.IsActive = project.IsActive;
-		existing.IdeasAutoExpand = project.IdeasAutoExpand;
 		existing.UpdatedAt = DateTime.UtcNow;
 
 		await _dbContext.Entry(existing)
@@ -221,9 +225,9 @@ public class ProjectService : IProjectService
 				CompletedJobs = g.Count(j => j.Status == JobStatus.Completed),
 				FailedJobs = g.Count(j => j.Status == JobStatus.Failed || j.Status == JobStatus.Cancelled),
 				ActiveJobs = g.Count(j => j.Status == JobStatus.New || j.Status == JobStatus.Started || j.Status == JobStatus.Planning || j.Status == JobStatus.Processing),
-				TotalInputTokens = g.Sum(j => j.InputTokens ?? 0),
-				TotalOutputTokens = g.Sum(j => j.OutputTokens ?? 0),
-				TotalCostUsd = g.Sum(j => j.TotalCostUsd ?? 0)
+				TotalInputTokens = g.Sum(j => j.Statistics != null ? j.Statistics.InputTokens ?? 0 : 0),
+				TotalOutputTokens = g.Sum(j => j.Statistics != null ? j.Statistics.OutputTokens ?? 0 : 0),
+				TotalCostUsd = g.Sum(j => j.Statistics != null ? j.Statistics.TotalCostUsd ?? 0 : 0)
 			})
 			.ToListAsync(cancellationToken);
 
@@ -362,9 +366,9 @@ public class ProjectService : IProjectService
 			{
 				CompletedAt = job.CompletedAt!.Value,
 				StartedAt = job.StartedAt,
-				ExecutionDurationSeconds = job.ExecutionDurationSeconds,
-				InputTokens = job.InputTokens,
-				OutputTokens = job.OutputTokens
+				ExecutionDurationSeconds = job.Statistics != null ? job.Statistics.ExecutionDurationSeconds : null,
+				InputTokens = job.Statistics != null ? job.Statistics.InputTokens : null,
+				OutputTokens = job.Statistics != null ? job.Statistics.OutputTokens : null
 			})
 			.ToListAsync(cancellationToken);
 
@@ -627,6 +631,7 @@ public class ProjectService : IProjectService
 			selection.PreferredModelId = string.IsNullOrWhiteSpace(selection.PreferredModelId)
 				? null
 				: selection.PreferredModelId.Trim();
+			selection.PreferredReasoningEffort = ProviderCapabilities.NormalizeReasoningEffort(selection.PreferredReasoningEffort);
 			selection.UpdatedAt = DateTime.UtcNow;
 			if (selection.CreatedAt == default)
 			{
@@ -659,6 +664,7 @@ public class ProjectService : IProjectService
 			assignment.PreferredModelId = string.IsNullOrWhiteSpace(assignment.PreferredModelId)
 				? null
 				: assignment.PreferredModelId.Trim();
+			assignment.PreferredReasoningEffort = ProviderCapabilities.NormalizeReasoningEffort(assignment.PreferredReasoningEffort);
 			assignment.UpdatedAt = DateTime.UtcNow;
 			if (assignment.CreatedAt == default)
 			{
@@ -674,6 +680,7 @@ public class ProjectService : IProjectService
 		project.PlanningModelId = string.IsNullOrWhiteSpace(project.PlanningModelId)
 			? null
 			: project.PlanningModelId.Trim();
+		project.PlanningReasoningEffort = ProviderCapabilities.NormalizeReasoningEffort(project.PlanningReasoningEffort);
 	}
 
 	private static string? NormalizeProjectMemory(string? memory)
@@ -768,6 +775,7 @@ public class ProjectService : IProjectService
 					Priority = requested.Priority,
 					IsEnabled = requested.IsEnabled,
 					PreferredModelId = requested.PreferredModelId,
+					PreferredReasoningEffort = requested.PreferredReasoningEffort,
 					CreatedAt = requested.CreatedAt,
 					UpdatedAt = requested.UpdatedAt
 				});
@@ -777,6 +785,7 @@ public class ProjectService : IProjectService
 			current.Priority = requested.Priority;
 			current.IsEnabled = requested.IsEnabled;
 			current.PreferredModelId = requested.PreferredModelId;
+			current.PreferredReasoningEffort = requested.PreferredReasoningEffort;
 			current.UpdatedAt = DateTime.UtcNow;
 		}
 	}
@@ -812,6 +821,7 @@ public class ProjectService : IProjectService
 					TeamRoleId = requested.TeamRoleId,
 					ProviderId = requested.ProviderId,
 					PreferredModelId = requested.PreferredModelId,
+					PreferredReasoningEffort = requested.PreferredReasoningEffort,
 					IsEnabled = requested.IsEnabled,
 					CreatedAt = requested.CreatedAt,
 					UpdatedAt = requested.UpdatedAt
@@ -821,6 +831,7 @@ public class ProjectService : IProjectService
 
 			current.ProviderId = requested.ProviderId;
 			current.PreferredModelId = requested.PreferredModelId;
+			current.PreferredReasoningEffort = requested.PreferredReasoningEffort;
 			current.IsEnabled = requested.IsEnabled;
 			current.UpdatedAt = DateTime.UtcNow;
 		}
@@ -902,10 +913,11 @@ public class ProjectService : IProjectService
 			throw new InvalidOperationException("Duplicate provider selection detected. Provider IDs cannot be repeated.");
 		}
 
-		var existingProviderIds = await _dbContext.Providers
+		var existingProviders = await _dbContext.Providers
 			.Where(provider => providerIds.Contains(provider.Id))
-			.Select(provider => provider.Id)
+			.Select(provider => new { provider.Id, provider.Type, provider.ConnectionMode })
 			.ToListAsync(cancellationToken);
+		var existingProviderIds = existingProviders.Select(provider => provider.Id).ToList();
 
 		var invalidIds = providerIds.Except(existingProviderIds).ToList();
 		if (invalidIds.Any())
@@ -941,6 +953,25 @@ public class ProjectService : IProjectService
 		{
 			throw new InvalidOperationException($"One or more preferred project models are not available for their provider: {string.Join(", ", invalidPreferredModels)}");
 		}
+
+		var providerLookup = existingProviders.ToDictionary(
+			provider => provider.Id,
+			provider => new Provider
+			{
+				Id = provider.Id,
+				Type = provider.Type,
+				ConnectionMode = provider.ConnectionMode
+			});
+		var invalidReasoningSelections = selections
+			.Where(selection => !ProviderCapabilities.SupportsReasoningEffort(
+				providerLookup[selection.ProviderId],
+				selection.PreferredReasoningEffort))
+			.Select(selection => selection.ProviderId)
+			.ToList();
+		if (invalidReasoningSelections.Any())
+		{
+			throw new InvalidOperationException($"One or more preferred project reasoning levels are not supported by their provider: {string.Join(", ", invalidReasoningSelections)}");
+		}
 	}
 
 	private async Task ValidateTeamAssignmentsAsync(ICollection<ProjectTeamRole> assignments, CancellationToken cancellationToken)
@@ -973,10 +1004,11 @@ public class ProjectService : IProjectService
 		}
 
 		var providerIds = assignments.Select(assignment => assignment.ProviderId).Distinct().ToList();
-		var existingProviderIds = await _dbContext.Providers
+		var existingProviders = await _dbContext.Providers
 			.Where(provider => providerIds.Contains(provider.Id))
-			.Select(provider => provider.Id)
+			.Select(provider => new { provider.Id, provider.Type, provider.ConnectionMode })
 			.ToListAsync(cancellationToken);
+		var existingProviderIds = existingProviders.Select(provider => provider.Id).ToList();
 		var invalidProviderIds = providerIds.Except(existingProviderIds).ToList();
 		if (invalidProviderIds.Any())
 		{
@@ -1010,6 +1042,25 @@ public class ProjectService : IProjectService
 		{
 			throw new InvalidOperationException($"One or more team role models are not available for their provider: {string.Join(", ", invalidPreferredModels)}");
 		}
+
+		var providerLookup = existingProviders.ToDictionary(
+			provider => provider.Id,
+			provider => new Provider
+			{
+				Id = provider.Id,
+				Type = provider.Type,
+				ConnectionMode = provider.ConnectionMode
+			});
+		var invalidReasoningSelections = assignments
+			.Where(assignment => !ProviderCapabilities.SupportsReasoningEffort(
+				providerLookup[assignment.ProviderId],
+				assignment.PreferredReasoningEffort))
+			.Select(assignment => assignment.TeamRoleId)
+			.ToList();
+		if (invalidReasoningSelections.Any())
+		{
+			throw new InvalidOperationException($"One or more team role reasoning levels are not supported by their provider: {string.Join(", ", invalidReasoningSelections)}");
+		}
 	}
 
 	private async Task ValidatePlanningAsync(Project project, CancellationToken cancellationToken)
@@ -1040,6 +1091,11 @@ public class ProjectService : IProjectService
 		if (provider.Type is not (ProviderType.Claude or ProviderType.Copilot))
 		{
 			throw new InvalidOperationException("Planning currently supports only Claude and GitHub Copilot providers.");
+		}
+
+		if (!ProviderCapabilities.SupportsReasoningEffort(provider, project.PlanningReasoningEffort))
+		{
+			throw new InvalidOperationException("The selected planning reasoning level is not supported by the chosen provider.");
 		}
 
 		if (string.IsNullOrWhiteSpace(project.PlanningModelId))

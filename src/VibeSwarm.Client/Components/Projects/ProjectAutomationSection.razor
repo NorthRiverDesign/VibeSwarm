@@ -1,5 +1,3 @@
-@using VibeSwarm.Client.Models
-@using VibeSwarm.Shared.Data
 @using VibeSwarm.Shared.Validation
 
 <div class="mb-3">
@@ -34,6 +32,47 @@ Choose whether successful jobs should stay on their working branch or be deliver
 </div>
 </div>
 
+<div class="mb-3">
+<label for="modal-commitSummaryInferenceProvider" class="form-label">
+<i class="bi bi-card-text me-1"></i>Commit Summary Source
+</label>
+<InputSelect TValue="Guid?" id="modal-commitSummaryInferenceProvider" @bind-Value="Project.CommitSummaryInferenceProviderId" @bind-Value:after="HandleCommitSummaryProviderChanged" class="form-select">
+<option value="">None (use execution provider)</option>
+@foreach (var provider in AvailableInferenceProviders)
+{
+<option value="@provider.Id">@provider.Name (@provider.ProviderType)</option>
+}
+</InputSelect>
+<div class="form-text">Use an inference provider to generate a short commit message from the goal prompt and changed file names before auto-commit. Leave blank to rely on the coding provider's normal commit-summary output.</div>
+</div>
+
+@if (Project.CommitSummaryInferenceProviderId.HasValue)
+{
+<div class="mb-3">
+<label for="modal-commitSummaryInferenceModel" class="form-label">
+<i class="bi bi-cpu me-1"></i>Commit Summary Model
+<span class="text-body-secondary fw-normal">(optional)</span>
+</label>
+<InputSelect id="modal-commitSummaryInferenceModel" @bind-Value="Project.CommitSummaryInferenceModelId" class="form-select" disabled="@(!InferenceModels.Any())">
+<option value="">Use provider default model</option>
+@foreach (var model in InferenceModels)
+{
+<option value="@model.ModelId">@(model.DisplayName ?? model.ModelId)</option>
+}
+</InputSelect>
+<div class="form-text">
+@if (!InferenceModels.Any())
+{
+<span>No models found. Refresh models on the Inference page first.</span>
+}
+else
+{
+<span>Leave blank to use the selected inference provider's default commit-summary or default model.</span>
+}
+</div>
+</div>
+}
+
 @if (Project.GitChangeDeliveryMode == GitChangeDeliveryMode.PullRequest)
 {
 <div class="mb-3">
@@ -48,14 +87,6 @@ New jobs will target this branch when creating pull requests or merging complete
 </div>
 </div>
 }
-
-<div class="form-check form-switch @(IsEdit ? "mb-3" : string.Empty)">
-<InputCheckbox id="modal-ideasAutoExpand" @bind-Value="Project.IdeasAutoExpand" class="form-check-input" />
-<label class="form-check-label" for="modal-ideasAutoExpand">
-<i class="bi bi-stars me-1"></i>Auto-Expand Ideas
-</label>
-</div>
-<div class="form-text @(IsEdit ? "mb-3" : string.Empty)">When enabled, ideas without an approved expansion are first turned into a fuller specification before a job is created.</div>
 
 @if (IsEdit)
 {
@@ -76,5 +107,16 @@ New jobs will target this branch when creating pull requests or merging complete
 public ProjectModalFormModel Project { get; set; } = default!;
 
 [Parameter]
+public IReadOnlyList<InferenceProvider> AvailableInferenceProviders { get; set; } = [];
+
+[Parameter]
+public IReadOnlyList<InferenceModel> InferenceModels { get; set; } = [];
+
+[Parameter]
+public EventCallback OnCommitSummaryProviderChanged { get; set; }
+
+[Parameter]
 public bool IsEdit { get; set; }
+
+private Task HandleCommitSummaryProviderChanged() => OnCommitSummaryProviderChanged.InvokeAsync();
 }

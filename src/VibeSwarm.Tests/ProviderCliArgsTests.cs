@@ -57,6 +57,30 @@ public sealed class ProviderCliArgsTests
     }
 
     [Fact]
+    public void Claude_WithBareMode_AndSupportedVersion_AddsBareFlag()
+    {
+        var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+        provider.CachedCliVersion = new Version(2, 1, 81);
+        provider.ApplyOptions(new ExecutionOptions { UseBareMode = true });
+
+        var args = provider.BuildCliArgs("test", null);
+
+        Assert.Contains("--bare", args);
+    }
+
+    [Fact]
+    public void Claude_WithBareMode_AndOldVersion_OmitsBareFlag()
+    {
+        var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+        provider.CachedCliVersion = new Version(2, 1, 80);
+        provider.ApplyOptions(new ExecutionOptions { UseBareMode = true });
+
+        var args = provider.BuildCliArgs("test", null);
+
+        Assert.DoesNotContain("--bare", args);
+    }
+
+    [Fact]
     public void Claude_WithSessionId_AddsResumeFlag()
     {
         var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
@@ -80,6 +104,32 @@ public sealed class ProviderCliArgsTests
 
         Assert.Contains("--continue", args);
         Assert.DoesNotContain("--resume", args);
+    }
+
+    [Fact]
+    public void Claude_WithAgent_AndSupportedVersion_AddsAgentFlag()
+    {
+        var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+        provider.CachedCliVersion = new Version(2, 1, 64);
+        provider.ApplyOptions(new ExecutionOptions { Agent = " reviewer " });
+
+        var args = provider.BuildCliArgs("test", null);
+
+        var idx = args.IndexOf("--agent");
+        Assert.True(idx >= 0);
+        Assert.Equal("reviewer", args[idx + 1]);
+    }
+
+    [Fact]
+    public void Claude_WithAgent_AndOldVersion_OmitsAgentFlag()
+    {
+        var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+        provider.CachedCliVersion = new Version(2, 1, 63);
+        provider.ApplyOptions(new ExecutionOptions { Agent = "reviewer" });
+
+        var args = provider.BuildCliArgs("test", null);
+
+        Assert.DoesNotContain("--agent", args);
     }
 
     [Fact]
@@ -122,6 +172,23 @@ public sealed class ProviderCliArgsTests
     }
 
     [Fact]
+    public void Claude_WithAdditionalDirectories_AddsDistinctTrimmedAddDirFlags()
+    {
+        var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+        provider.ApplyOptions(new ExecutionOptions
+        {
+            AdditionalDirectories = [" /repo/shared ", "/repo/shared", "", "   ", "/repo/docs"]
+        });
+
+        var args = provider.BuildCliArgs("test", null);
+
+        var indices = args.Select((a, i) => (a, i)).Where(x => x.a == "--add-dir").Select(x => x.i).ToList();
+        Assert.Equal(2, indices.Count);
+        Assert.Equal("/repo/shared", args[indices[0] + 1]);
+        Assert.Equal("/repo/docs", args[indices[1] + 1]);
+    }
+
+    [Fact]
     public void Claude_WithAllowedTools_AddsMultipleToolsFlags()
     {
         var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
@@ -140,6 +207,7 @@ public sealed class ProviderCliArgsTests
     public void Claude_WithDisallowedTools_AddsDisallowedToolsFlags()
     {
         var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+        provider.CachedCliVersion = new Version(2, 1, 0);
         provider.ApplyOptions(new ExecutionOptions { DisallowedTools = ["Bash"] });
 
         var args = provider.BuildCliArgs("test", null);
@@ -153,6 +221,7 @@ public sealed class ProviderCliArgsTests
     public void Claude_WithWorktree_AddsWorktreeFlag()
     {
         var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+        provider.CachedCliVersion = new Version(2, 1, 49);
         provider.ApplyOptions(new ExecutionOptions { UseWorktree = true });
 
         var args = provider.BuildCliArgs("test", null);
@@ -177,6 +246,7 @@ public sealed class ProviderCliArgsTests
     public void Claude_WithReasoningEffort_AddsEffortFlag()
     {
         var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+        provider.CachedCliVersion = new Version(2, 1, 63);
         provider.ApplyOptions(new ExecutionOptions { ReasoningEffort = "high" });
 
         var args = provider.BuildCliArgs("test", null);
@@ -187,9 +257,24 @@ public sealed class ProviderCliArgsTests
     }
 
     [Fact]
+    public void Claude_WithMaxReasoningEffort_AddsEffortFlag()
+    {
+        var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+        provider.CachedCliVersion = new Version(2, 1, 87);
+        provider.ApplyOptions(new ExecutionOptions { ReasoningEffort = "max" });
+
+        var args = provider.BuildCliArgs("test", null);
+
+        var idx = args.IndexOf("--effort");
+        Assert.True(idx >= 0);
+        Assert.Equal("max", args[idx + 1]);
+    }
+
+    [Fact]
     public void Claude_WithMaxBudget_AddsMaxBudgetFlag()
     {
         var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+        provider.CachedCliVersion = new Version(2, 0, 28);
         provider.ApplyOptions(new ExecutionOptions { MaxBudgetUsd = 5.00m });
 
         var args = provider.BuildCliArgs("test", null);
@@ -203,6 +288,7 @@ public sealed class ProviderCliArgsTests
     public void Claude_WithFromPr_AddsFromPrFlag()
     {
         var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+        provider.CachedCliVersion = new Version(2, 1, 27);
         provider.ApplyOptions(new ExecutionOptions { FromPullRequest = "42" });
 
         var args = provider.BuildCliArgs("test", null);
@@ -210,6 +296,90 @@ public sealed class ProviderCliArgsTests
         var idx = args.IndexOf("--from-pr");
         Assert.True(idx >= 0);
         Assert.Equal("42", args[idx + 1]);
+    }
+
+    [Fact]
+    public void Claude_WithDisallowedTools_AndOldVersion_OmitsDisallowedToolsFlag()
+    {
+        var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+        provider.CachedCliVersion = new Version(2, 0, 99);
+        provider.ApplyOptions(new ExecutionOptions { DisallowedTools = ["Bash"] });
+
+        var args = provider.BuildCliArgs("test", null);
+
+        Assert.DoesNotContain("--disallowed-tools", args);
+    }
+
+    [Fact]
+    public void Claude_WithWorktree_AndOldVersion_OmitsWorktreeFlag()
+    {
+        var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+        provider.CachedCliVersion = new Version(2, 1, 48);
+        provider.ApplyOptions(new ExecutionOptions { UseWorktree = true });
+
+        var args = provider.BuildCliArgs("test", null);
+
+        Assert.DoesNotContain("--worktree", args);
+    }
+
+    [Fact]
+    public void Claude_WithReasoningEffort_AndOldVersion_OmitsEffortFlag()
+    {
+        var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+        provider.CachedCliVersion = new Version(2, 1, 62);
+        provider.ApplyOptions(new ExecutionOptions { ReasoningEffort = "high" });
+
+        var args = provider.BuildCliArgs("test", null);
+
+        Assert.DoesNotContain("--effort", args);
+    }
+
+    [Fact]
+    public void Claude_WithMaxBudget_AndOldVersion_OmitsMaxBudgetFlag()
+    {
+        var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+        provider.CachedCliVersion = new Version(2, 0, 27);
+        provider.ApplyOptions(new ExecutionOptions { MaxBudgetUsd = 5.00m });
+
+        var args = provider.BuildCliArgs("test", null);
+
+        Assert.DoesNotContain("--max-budget-usd", args);
+    }
+
+    [Fact]
+    public void Claude_WithFromPr_AndOldVersion_OmitsFromPrFlag()
+    {
+        var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+        provider.CachedCliVersion = new Version(2, 1, 26);
+        provider.ApplyOptions(new ExecutionOptions { FromPullRequest = "42" });
+
+        var args = provider.BuildCliArgs("test", null);
+
+        Assert.DoesNotContain("--from-pr", args);
+    }
+
+    [Fact]
+    public void Claude_WithInitMode_AndSupportedVersion_AddsInitFlag()
+    {
+        var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+        provider.CachedCliVersion = new Version(2, 1, 10);
+        provider.ApplyOptions(new ExecutionOptions { InitMode = "ide" });
+
+        var args = provider.BuildCliArgs("test", null);
+
+        Assert.Contains("--ide", args);
+    }
+
+    [Fact]
+    public void Claude_WithInitMode_AndOldVersion_OmitsInitFlag()
+    {
+        var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+        provider.CachedCliVersion = new Version(2, 1, 9);
+        provider.ApplyOptions(new ExecutionOptions { InitMode = "ide" });
+
+        var args = provider.BuildCliArgs("test", null);
+
+        Assert.DoesNotContain("--ide", args);
     }
 
     [Fact]
@@ -281,6 +451,7 @@ public sealed class ProviderCliArgsTests
 		var idx = args.IndexOf("--output-format");
 		Assert.True(idx >= 0);
 		Assert.Equal("json", args[idx + 1]);
+		Assert.DoesNotContain("--silent", args);
 	}
 
 	[Fact]
@@ -306,6 +477,23 @@ public sealed class ProviderCliArgsTests
         Assert.True(idx >= 0);
         Assert.Equal("gpt-4", args[idx + 1]);
     }
+
+	[Fact]
+	public void Copilot_WithAdditionalDirectories_AddsDistinctTrimmedAddDirFlags()
+	{
+		var provider = new CopilotProvider(CreateConfig(ProviderType.Copilot));
+		provider.ApplyOptions(new ExecutionOptions
+		{
+			AdditionalDirectories = [" /repo/shared ", "/repo/shared", "", "   ", "/repo/docs"]
+		});
+
+		var args = provider.BuildCliArgs("test", null);
+
+		var indices = args.Select((a, i) => (a, i)).Where(x => x.a == "--add-dir").Select(x => x.i).ToList();
+		Assert.Equal(2, indices.Count);
+		Assert.Equal("/repo/shared", args[indices[0] + 1]);
+		Assert.Equal("/repo/docs", args[indices[1] + 1]);
+	}
 
     [Fact]
     public void Copilot_WithSessionId_AddsResumeFlag()
@@ -335,7 +523,7 @@ public sealed class ProviderCliArgsTests
     }
 
     [Fact]
-    public void Copilot_WithBashEnvPath_AndSupportedVersion_AddsBashEnvFlag()
+    public void Copilot_WithBashEnvPath_AndSupportedVersion_AddsBashEnvOnFlag()
     {
         var provider = new CopilotProvider(CreateConfig(ProviderType.Copilot));
         provider.CachedCliVersion = new Version(0, 0, 418);
@@ -345,7 +533,7 @@ public sealed class ProviderCliArgsTests
 
         var idx = args.IndexOf("--bash-env");
         Assert.True(idx >= 0);
-        Assert.Equal("/tmp/bash-env.sh", args[idx + 1]);
+        Assert.Equal("on", args[idx + 1]);
     }
 
     [Fact]
@@ -390,6 +578,7 @@ public sealed class ProviderCliArgsTests
     public void Copilot_WithAltScreen_AddsAltScreenFlag()
     {
         var provider = new CopilotProvider(CreateConfig(ProviderType.Copilot));
+        provider.CachedCliVersion = new Version(1, 0, 11);
         provider.ApplyOptions(new ExecutionOptions { UseAltScreen = true });
 
         var args = provider.BuildCliArgs("test", null);
@@ -397,6 +586,29 @@ public sealed class ProviderCliArgsTests
         var idx = args.IndexOf("--alt-screen");
         Assert.True(idx >= 0);
         Assert.Equal("on", args[idx + 1]);
+    }
+
+    [Fact]
+    public void Copilot_WithAltScreen_AndRemovedVersion_OmitsAltScreenFlag()
+    {
+        var provider = new CopilotProvider(CreateConfig(ProviderType.Copilot));
+        provider.CachedCliVersion = new Version(1, 0, 12);
+        provider.ApplyOptions(new ExecutionOptions { UseAltScreen = true });
+
+        var args = provider.BuildCliArgs("test", null);
+
+        Assert.DoesNotContain("--alt-screen", args);
+    }
+
+    [Fact]
+    public void Copilot_WithAltScreen_AndUnknownVersion_OmitsAltScreenFlag()
+    {
+        var provider = new CopilotProvider(CreateConfig(ProviderType.Copilot));
+        provider.ApplyOptions(new ExecutionOptions { UseAltScreen = true });
+
+        var args = provider.BuildCliArgs("test", null);
+
+        Assert.DoesNotContain("--alt-screen", args);
     }
 
     [Fact]
@@ -457,13 +669,13 @@ public sealed class ProviderCliArgsTests
     {
         var provider = new CopilotProvider(CreateConfig(ProviderType.Copilot));
         provider.CachedCliVersion = new Version(1, 0, 4);
-        provider.ApplyOptions(new ExecutionOptions { ReasoningEffort = "medium" });
+        provider.ApplyOptions(new ExecutionOptions { ReasoningEffort = "xhigh" });
 
         var args = provider.BuildCliArgs("test", null);
 
         var idx = args.IndexOf("--reasoning-effort");
         Assert.True(idx >= 0, "--reasoning-effort should be present on v1.0.4+");
-        Assert.Equal("medium", args[idx + 1]);
+        Assert.Equal("xhigh", args[idx + 1]);
         Assert.DoesNotContain("--effort", args);
     }
 
@@ -593,9 +805,10 @@ public sealed class ProviderCliArgsTests
     }
 
     [Fact]
-    public void OpenCode_WithTimeout_AddsTimeoutFlag()
+    public void OpenCode_WithTimeout_AndLegacyVersion_AddsTimeoutFlag()
     {
         var provider = new OpenCodeProvider(CreateConfig(ProviderType.OpenCode));
+        provider.CachedCliVersion = new Version(1, 2, 0);
         provider.ApplyOptions(new ExecutionOptions { TimeoutSeconds = 300 });
 
         var args = provider.BuildRunCommandArgs("test", null);
@@ -606,9 +819,33 @@ public sealed class ProviderCliArgsTests
     }
 
     [Fact]
-    public void OpenCode_WithReasoningEffort_AddsReasoningFlag()
+    public void OpenCode_WithTimeout_AndUnknownVersion_OmitsTimeoutFlag()
     {
         var provider = new OpenCodeProvider(CreateConfig(ProviderType.OpenCode));
+        provider.ApplyOptions(new ExecutionOptions { TimeoutSeconds = 300 });
+
+        var args = provider.BuildRunCommandArgs("test", null);
+
+        Assert.DoesNotContain("--timeout", args);
+    }
+
+    [Fact]
+    public void OpenCode_WithTimeout_AndCurrentVersion_OmitsTimeoutFlag()
+    {
+        var provider = new OpenCodeProvider(CreateConfig(ProviderType.OpenCode));
+        provider.CachedCliVersion = new Version(1, 3, 7);
+        provider.ApplyOptions(new ExecutionOptions { TimeoutSeconds = 300 });
+
+        var args = provider.BuildRunCommandArgs("test", null);
+
+        Assert.DoesNotContain("--timeout", args);
+    }
+
+    [Fact]
+    public void OpenCode_WithReasoningEffort_AndLegacyVersion_AddsReasoningFlag()
+    {
+        var provider = new OpenCodeProvider(CreateConfig(ProviderType.OpenCode));
+        provider.CachedCliVersion = new Version(1, 2, 0);
         provider.ApplyOptions(new ExecutionOptions { ReasoningEffort = "xhigh" });
 
         var args = provider.BuildRunCommandArgs("test", null);
@@ -616,6 +853,37 @@ public sealed class ProviderCliArgsTests
         var idx = args.IndexOf("--reasoning");
         Assert.True(idx >= 0);
         Assert.Equal("xhigh", args[idx + 1]);
+        Assert.DoesNotContain("--effort", args);
+        Assert.DoesNotContain("--reasoning-effort", args);
+    }
+
+    [Fact]
+    public void OpenCode_WithReasoningEffort_AndCurrentVersion_AddsVariantFlag()
+    {
+        var provider = new OpenCodeProvider(CreateConfig(ProviderType.OpenCode));
+        provider.CachedCliVersion = new Version(1, 3, 7);
+        provider.ApplyOptions(new ExecutionOptions { ReasoningEffort = "xhigh" });
+
+        var args = provider.BuildRunCommandArgs("test", null);
+
+        var idx = args.IndexOf("--variant");
+        Assert.True(idx >= 0);
+        Assert.Equal("xhigh", args[idx + 1]);
+        Assert.DoesNotContain("--reasoning", args);
+        Assert.DoesNotContain("--effort", args);
+        Assert.DoesNotContain("--reasoning-effort", args);
+    }
+
+    [Fact]
+    public void OpenCode_WithReasoningEffort_AndUnknownVersion_OmitsReasoningAndVariantFlags()
+    {
+        var provider = new OpenCodeProvider(CreateConfig(ProviderType.OpenCode));
+        provider.ApplyOptions(new ExecutionOptions { ReasoningEffort = "xhigh" });
+
+        var args = provider.BuildRunCommandArgs("test", null);
+
+        Assert.DoesNotContain("--reasoning", args);
+        Assert.DoesNotContain("--variant", args);
         Assert.DoesNotContain("--effort", args);
         Assert.DoesNotContain("--reasoning-effort", args);
     }
@@ -646,6 +914,106 @@ public sealed class ProviderCliArgsTests
         Assert.Equal("/tmp/config.json", args[idx + 1]);
         Assert.DoesNotContain("--mcp-config", args);
         Assert.DoesNotContain("--additional-mcp-config", args);
+    }
+
+    [Fact]
+    public void OpenCode_WithAdditionalDirectory_AndSupportedVersion_AddsDirFlag()
+    {
+        var provider = new OpenCodeProvider(CreateConfig(ProviderType.OpenCode));
+        provider.CachedCliVersion = new Version(1, 2, 0);
+        provider.ApplyOptions(new ExecutionOptions { AdditionalDirectories = ["/tmp/worktree"] });
+
+        var args = provider.BuildRunCommandArgs("test", null);
+
+        var idx = args.IndexOf("--dir");
+        Assert.True(idx >= 0);
+        Assert.Equal("/tmp/worktree", args[idx + 1]);
+    }
+
+    [Fact]
+    public void OpenCode_WithAdditionalDirectory_AndUnknownVersion_OmitsDirFlag()
+    {
+        var provider = new OpenCodeProvider(CreateConfig(ProviderType.OpenCode));
+        provider.ApplyOptions(new ExecutionOptions { AdditionalDirectories = ["/tmp/worktree"] });
+
+        var args = provider.BuildRunCommandArgs("test", null);
+
+        Assert.DoesNotContain("--dir", args);
+    }
+
+    [Fact]
+    public void OpenCode_WithAdditionalDirectory_AndCurrentVersion_AddsDirFlag()
+    {
+        var provider = new OpenCodeProvider(CreateConfig(ProviderType.OpenCode));
+        provider.CachedCliVersion = new Version(1, 3, 7);
+        provider.ApplyOptions(new ExecutionOptions { AdditionalDirectories = ["/tmp/worktree"] });
+
+        var args = provider.BuildRunCommandArgs("test", null);
+
+        var idx = args.IndexOf("--dir");
+        Assert.True(idx >= 0);
+        Assert.Equal("/tmp/worktree", args[idx + 1]);
+    }
+
+	[Fact]
+	public void OpenCode_WithForkSession_AndSupportedVersion_AddsForkFlag()
+	{
+		var provider = new OpenCodeProvider(CreateConfig(ProviderType.OpenCode));
+		provider.CachedCliVersion = new Version(1, 2, 6);
+        provider.ApplyOptions(new ExecutionOptions { ForkSession = true });
+
+        var args = provider.BuildRunCommandArgs("test", "sess-xyz");
+
+		Assert.Contains("--fork", args);
+	}
+
+	[Fact]
+	public void OpenCode_WithForkSession_AndContinueLastSession_AddsForkFlag()
+	{
+		var provider = new OpenCodeProvider(CreateConfig(ProviderType.OpenCode));
+		provider.CachedCliVersion = new Version(1, 3, 13);
+		provider.ApplyOptions(new ExecutionOptions
+		{
+			ContinueLastSession = true,
+			ForkSession = true
+		});
+
+		var args = provider.BuildRunCommandArgs("test", null);
+
+		Assert.Contains("--continue", args);
+		Assert.Contains("--fork", args);
+	}
+
+	[Fact]
+	public void OpenCode_WithForkSession_AndOldVersion_OmitsForkFlag()
+	{
+		var provider = new OpenCodeProvider(CreateConfig(ProviderType.OpenCode));
+		provider.CachedCliVersion = new Version(1, 2, 5);
+		provider.ApplyOptions(new ExecutionOptions { ForkSession = true });
+
+        var args = provider.BuildRunCommandArgs("test", "sess-xyz");
+
+        Assert.DoesNotContain("--fork", args);
+    }
+
+    [Fact]
+    public void OpenCode_BuildUpdatePlan_ForUserLocalInstall_UsesNpmMethodAndPrefix()
+    {
+        var plan = OpenCodeProvider.BuildUpdatePlan("/home/test/.local/bin/opencode", "/home/test");
+
+        Assert.Equal("upgrade --method npm", plan.Arguments);
+        Assert.Equal("/home/test/.local", plan.NpmConfigPrefix);
+    }
+
+    [Fact]
+    public void OpenCode_BuildUpdatePlan_ForNestedUserLocalInstall_UsesNpmMethodAndPrefix()
+    {
+        var plan = OpenCodeProvider.BuildUpdatePlan(
+            "/home/test/.local/lib/node_modules/opencode-ai/bin/.opencode",
+            "/home/test");
+
+        Assert.Equal("upgrade --method npm", plan.Arguments);
+        Assert.Equal("/home/test/.local", plan.NpmConfigPrefix);
     }
 
     [Fact]

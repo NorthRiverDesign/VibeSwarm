@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using VibeSwarm.Shared.Data;
@@ -7,8 +8,10 @@ namespace VibeSwarm.Shared.Services;
 
 public partial class IdeaService
 {
-	public async Task StartProcessingAsync(Guid projectId, bool autoCommit = false, CancellationToken cancellationToken = default)
+	public async Task StartProcessingAsync(Guid projectId, IdeaProcessingOptions? options = null, CancellationToken cancellationToken = default)
 	{
+		var normalizedOptions = await NormalizeIdeaProcessingOptionsAsync(projectId, options, cancellationToken);
+
 		// Use a lock to prevent race conditions when toggling processing state
 		await _processingStateLock.WaitAsync(cancellationToken);
 		try
@@ -24,9 +27,17 @@ public partial class IdeaService
 				}
 
 				project.IdeasProcessingActive = true;
-				project.IdeasAutoCommit = autoCommit;
+				project.IdeasAutoCommit = normalizedOptions.AutoCommitMode != AutoCommitMode.Off;
+				project.IdeasProcessingProviderId = normalizedOptions.ProviderId;
+				project.IdeasProcessingModelId = normalizedOptions.ModelId;
+				project.UpdatedAt = DateTime.UtcNow;
 				await _dbContext.SaveChangesAsync(cancellationToken);
-				_logger.LogInformation("Started Ideas auto-processing for project {ProjectId} (AutoCommit: {AutoCommit})", projectId, autoCommit);
+				_logger.LogInformation(
+					"Started Ideas auto-processing for project {ProjectId} (AutoCommit: {AutoCommit}, ProviderOverride: {ProviderId}, ModelOverride: {ModelId})",
+					projectId,
+					project.IdeasAutoCommit,
+					project.IdeasProcessingProviderId,
+					project.IdeasProcessingModelId);
 
 				// Notify all clients about the state change
 				if (_jobUpdateService != null)
@@ -62,6 +73,9 @@ public partial class IdeaService
 				}
 
 				project.IdeasProcessingActive = false;
+				project.IdeasProcessingProviderId = null;
+				project.IdeasProcessingModelId = null;
+				project.UpdatedAt = DateTime.UtcNow;
 				await _dbContext.SaveChangesAsync(cancellationToken);
 				_logger.LogInformation("Stopped Ideas auto-processing for project {ProjectId}", projectId);
 
@@ -136,6 +150,14 @@ public partial class IdeaService
 				processingIdea.JobId = null;
 				await _dbContext.SaveChangesAsync(cancellationToken);
 				_logger.LogInformation("Reset failed Idea {IdeaId} for retry", processingIdea.Id);
+
+				// If the job was cancelled, stop auto-processing to avoid repeat failures
+				if (processingIdea.Job?.Status == JobStatus.Cancelled)
+				{
+					await StopProcessingAsync(projectId, cancellationToken);
+					_logger.LogInformation("Stopped Ideas auto-processing for project {ProjectId} because Idea job was cancelled", projectId);
+					return false;
+				}
 			}
 		}
 
@@ -155,6 +177,34 @@ public partial class IdeaService
 			return false;
 		}
 
+		// Resolve the provider this project would use and ensure it has no active jobs.
+		// This limits each provider to one idea job at a time, preventing rate-limit overload
+		// when multiple projects target the same provider.
+		var processingOptions = new IdeaProcessingOptions
+		{
+			AutoCommitMode = project.IdeasAutoCommit ? AutoCommitMode.CommitOnly : AutoCommitMode.Off,
+			ProviderId = project.IdeasProcessingProviderId,
+			ModelId = project.IdeasProcessingModelId
+		};
+
+		var targetProvider = await ResolveJobProviderAsync(projectId, processingOptions, cancellationToken);
+		if (targetProvider != null)
+		{
+			var providerHasActiveJob = await _dbContext.Jobs
+				.AsNoTracking()
+				.AnyAsync(j => j.ProviderId == targetProvider.Id
+					&& j.Status != JobStatus.Completed
+					&& j.Status != JobStatus.Failed
+					&& j.Status != JobStatus.Cancelled,
+					cancellationToken);
+
+			if (providerHasActiveJob)
+			{
+				_logger.LogDebug("Provider {ProviderId} already has an active job, deferring ideas for project {ProjectId}", targetProvider.Id, projectId);
+				return false;
+			}
+		}
+
 		// Get the next unprocessed idea
 		var nextIdea = await GetNextUnprocessedAsync(projectId, cancellationToken);
 		if (nextIdea == null)
@@ -166,7 +216,7 @@ public partial class IdeaService
 		}
 
 		// Convert the idea to a job
-		var job = await ConvertToJobAsync(nextIdea.Id, cancellationToken);
+		var job = await ConvertToJobAsync(nextIdea.Id, processingOptions, cancellationToken);
 		return job != null;
 	}
 
@@ -194,6 +244,12 @@ public partial class IdeaService
 			}
 		}
 
+		var project = await _dbContext.Projects.FindAsync(new object[] { projectId }, cancellationToken);
+		if (project != null)
+		{
+			project.UpdatedAt = DateTime.UtcNow;
+		}
+
 		await _dbContext.SaveChangesAsync(cancellationToken);
 	}
 
@@ -219,6 +275,8 @@ public partial class IdeaService
 			ProjectId = targetProjectId
 		};
 
+		targetProject.UpdatedAt = DateTime.UtcNow;
+
 		return await CreateAsync(newIdea, cancellationToken);
 	}
 
@@ -243,8 +301,17 @@ public partial class IdeaService
 			throw new InvalidOperationException($"Target project with ID {targetProjectId} not found.");
 		}
 
+		var sourceProjectId = idea.ProjectId;
+
 		// Update the idea's project
 		idea.ProjectId = targetProjectId;
+		var now = DateTime.UtcNow;
+		targetProject.UpdatedAt = now;
+		var sourceProject = await _dbContext.Projects.FindAsync(new object[] { sourceProjectId }, cancellationToken);
+		if (sourceProject != null)
+		{
+			sourceProject.UpdatedAt = now;
+		}
 
 		// Update sort order in new project
 		var maxSortOrder = await _dbContext.Ideas
@@ -255,6 +322,147 @@ public partial class IdeaService
 		await _dbContext.SaveChangesAsync(cancellationToken);
 
 		return idea;
+	}
+
+	public async Task<GlobalIdeasProcessingStatus> GetGlobalProcessingStatusAsync(CancellationToken cancellationToken = default)
+	{
+		var projectsWithIdeas = await _dbContext.Projects
+			.AsNoTracking()
+			.Where(p => p.IsActive && p.Ideas.Any())
+			.Select(p => new ProjectIdeasSummary
+			{
+				ProjectId = p.Id,
+				ProjectName = p.Name,
+				UnprocessedIdeas = p.Ideas.Count(i => !i.IsProcessing && !i.JobId.HasValue),
+				QueuedIdeas = p.Ideas.Count(i => i.IsProcessing && i.Job != null && i.Job.Status == JobStatus.New),
+				HasRunningJob = p.Ideas.Any(i => i.Job != null &&
+					(i.Job.Status == JobStatus.Started
+						|| i.Job.Status == JobStatus.Planning
+						|| i.Job.Status == JobStatus.Processing)),
+				IsProcessing = p.IdeasProcessingActive
+			})
+			.ToListAsync(cancellationToken);
+
+		return new GlobalIdeasProcessingStatus
+		{
+			TotalProjectsWithIdeas = projectsWithIdeas.Count,
+			TotalUnprocessedIdeas = projectsWithIdeas.Sum(p => p.UnprocessedIdeas),
+			TotalQueuedIdeas = projectsWithIdeas.Sum(p => p.QueuedIdeas),
+			ProjectsCurrentlyProcessing = projectsWithIdeas.Count(p => p.IsProcessing),
+			Projects = projectsWithIdeas
+		};
+	}
+
+	public async Task<GlobalQueueSnapshot> GetGlobalQueueSnapshotAsync(CancellationToken cancellationToken = default)
+	{
+		const int maxItemsPerSection = 25;
+
+		var runningJobsQuery = _dbContext.Jobs
+			.AsNoTracking()
+			.Where(j => j.Status == JobStatus.Started || j.Status == JobStatus.Planning || j.Status == JobStatus.Processing)
+			.OrderByDescending(j => j.StartedAt ?? j.CreatedAt);
+
+		var upcomingIdeasQuery = _dbContext.Ideas
+			.AsNoTracking()
+			.Where(i => i.Project != null
+				&& i.Project.IsActive
+				&& ((!i.IsProcessing && !i.JobId.HasValue)
+					|| (i.IsProcessing && i.Job != null && i.Job.Status == JobStatus.New)))
+			.OrderByDescending(i => i.Project!.IdeasProcessingActive)
+			.ThenByDescending(i => i.Project!.UpdatedAt ?? i.Project!.CreatedAt)
+			.ThenBy(i => i.Project!.Name)
+			.ThenBy(i => i.SortOrder)
+			.ThenBy(i => i.CreatedAt);
+
+		var runningJobsTask = runningJobsQuery
+			.Select(j => new GlobalQueueJobSummary
+			{
+				Id = j.Id,
+				ProjectId = j.ProjectId,
+				ProjectName = j.Project != null ? j.Project.Name : string.Empty,
+				Title = j.Title,
+				GoalPrompt = j.GoalPrompt,
+				Status = j.Status,
+				ProviderName = j.Provider != null ? j.Provider.Name : null,
+				CurrentActivity = j.CurrentActivity,
+				CreatedAt = j.CreatedAt,
+				StartedAt = j.StartedAt
+			})
+			.Take(maxItemsPerSection)
+			.ToListAsync(cancellationToken);
+
+		var runningJobsCountTask = runningJobsQuery.CountAsync(cancellationToken);
+
+		var upcomingIdeasTask = upcomingIdeasQuery
+			.Select(i => new GlobalQueueIdeaSummary
+			{
+				IdeaId = i.Id,
+				ProjectId = i.ProjectId,
+				ProjectName = i.Project != null ? i.Project.Name : string.Empty,
+				Description = i.Description,
+				SortOrder = i.SortOrder,
+				CreatedAt = i.CreatedAt,
+				IsProjectProcessing = i.Project != null && i.Project.IdeasProcessingActive,
+				HasQueuedJob = i.Job != null && i.Job.Status == JobStatus.New
+			})
+			.Take(maxItemsPerSection)
+			.ToListAsync(cancellationToken);
+
+		var upcomingIdeasCountTask = upcomingIdeasQuery.CountAsync(cancellationToken);
+		var projectsCurrentlyProcessingTask = _dbContext.Projects
+			.AsNoTracking()
+			.CountAsync(p => p.IsActive && p.IdeasProcessingActive, cancellationToken);
+
+		await Task.WhenAll(
+			runningJobsTask,
+			runningJobsCountTask,
+			upcomingIdeasTask,
+			upcomingIdeasCountTask,
+			projectsCurrentlyProcessingTask);
+
+		return new GlobalQueueSnapshot
+		{
+			RunningJobsCount = runningJobsCountTask.Result,
+			UpcomingIdeasCount = upcomingIdeasCountTask.Result,
+			ProjectsCurrentlyProcessing = projectsCurrentlyProcessingTask.Result,
+			RunningJobs = runningJobsTask.Result,
+			UpcomingIdeas = upcomingIdeasTask.Result
+		};
+	}
+
+	public async Task StartAllProcessingAsync(IdeaProcessingOptions? options = null, CancellationToken cancellationToken = default)
+	{
+		// Get all active projects that have unprocessed ideas and are not already processing
+		var projectIds = await _dbContext.Projects
+			.AsNoTracking()
+			.Where(p => p.IsActive && !p.IdeasProcessingActive &&
+				p.Ideas.Any(i => !i.IsProcessing && !i.JobId.HasValue))
+			.Select(p => p.Id)
+			.ToListAsync(cancellationToken);
+
+		var normalizedOptions = options ?? new IdeaProcessingOptions();
+		_logger.LogInformation("Starting Ideas auto-processing for {Count} projects (AutoCommitMode: {AutoCommitMode})", projectIds.Count, normalizedOptions.AutoCommitMode);
+
+		foreach (var projectId in projectIds)
+		{
+			await StartProcessingAsync(projectId, normalizedOptions, cancellationToken);
+		}
+	}
+
+	public async Task StopAllProcessingAsync(CancellationToken cancellationToken = default)
+	{
+		var projectIds = await _dbContext.Projects
+			.AsNoTracking()
+			.Where(p => p.IdeasProcessingActive)
+			.Select(p => p.Id)
+			.ToListAsync(cancellationToken);
+
+		_logger.LogInformation("Stopping Ideas auto-processing for {Count} projects", projectIds.Count);
+
+		foreach (var projectId in projectIds)
+		{
+			await StopProcessingAsync(projectId, cancellationToken);
+		}
 	}
 
 	public async Task RecoverStuckIdeasAsync(CancellationToken cancellationToken = default)
@@ -284,5 +492,68 @@ public partial class IdeaService
 			await _dbContext.SaveChangesAsync(cancellationToken);
 			_logger.LogInformation("Recovered {Count} stuck ideas", recovered);
 		}
+	}
+
+	private async Task<IdeaProcessingOptions> NormalizeIdeaProcessingOptionsAsync(Guid projectId, IdeaProcessingOptions? options, CancellationToken cancellationToken)
+	{
+		var normalized = new IdeaProcessingOptions
+		{
+			AutoCommitMode = options?.AutoCommitMode ?? AutoCommitMode.Off,
+			ProviderId = options?.ProviderId,
+			ModelId = string.IsNullOrWhiteSpace(options?.ModelId) ? null : options!.ModelId!.Trim()
+		};
+
+		if (!normalized.ProviderId.HasValue)
+		{
+			if (normalized.ModelId != null)
+			{
+				throw new ValidationException("Choose a provider before selecting a model for queued ideas.");
+			}
+
+			return normalized;
+		}
+
+		var providerId = normalized.ProviderId.Value;
+		var projectSelectionExists = await _dbContext.ProjectProviders
+			.AsNoTracking()
+			.AnyAsync(selection => selection.ProjectId == projectId && selection.IsEnabled, cancellationToken);
+
+		var providerIsAllowed = projectSelectionExists
+			? await _dbContext.ProjectProviders
+				.AsNoTracking()
+				.Where(selection => selection.ProjectId == projectId && selection.IsEnabled && selection.ProviderId == providerId)
+				.Join(
+					_dbContext.Providers.AsNoTracking().Where(provider => provider.IsEnabled),
+					selection => selection.ProviderId,
+					provider => provider.Id,
+					(_, _) => true)
+				.AnyAsync(cancellationToken)
+			: await _dbContext.Providers
+				.AsNoTracking()
+				.AnyAsync(provider => provider.Id == providerId && provider.IsEnabled, cancellationToken);
+
+		if (!providerIsAllowed)
+		{
+			throw new ValidationException("The selected provider is not available for this project's idea queue.");
+		}
+
+		if (normalized.ModelId == null)
+		{
+			return normalized;
+		}
+
+		var modelIsAvailable = await _dbContext.ProviderModels
+			.AsNoTracking()
+			.AnyAsync(model => model.ProviderId == providerId
+				&& model.IsAvailable
+				&& model.ModelId == normalized.ModelId,
+				cancellationToken);
+
+		if (!modelIsAvailable)
+		{
+			throw new ValidationException("The selected model is not available for the chosen provider.");
+		}
+
+		return normalized;
 	}
 }

@@ -12,6 +12,9 @@ public sealed class CreateJobFormModel : IValidatableObject
 	[Required(ErrorMessage = "Please select a provider.")]
 	public Guid? ProviderId { get; set; }
 
+	[StringLength(VibeSwarm.Shared.Validation.ValidationLimits.ReasoningEffortMaxLength)]
+	public string? ReasoningEffort { get; set; }
+
 	[StringLength(250)]
 	public string? Branch { get; set; }
 
@@ -36,6 +39,7 @@ public sealed class CreateJobFormModel : IValidatableObject
 		{
 			GoalPrompt = job.GoalPrompt,
 			ProviderId = job.ProviderId == Guid.Empty ? null : job.ProviderId,
+			ReasoningEffort = job.ReasoningEffort,
 			Branch = job.Branch,
 			GitChangeDeliveryMode = job.GitChangeDeliveryMode,
 			TargetBranch = job.TargetBranch,
@@ -50,6 +54,7 @@ public sealed class CreateJobFormModel : IValidatableObject
 	{
 		job.GoalPrompt = GoalPrompt.Trim();
 		job.ProviderId = ProviderId ?? Guid.Empty;
+		job.ReasoningEffort = VibeSwarm.Shared.Providers.ProviderCapabilities.NormalizeReasoningEffort(ReasoningEffort);
 		job.Branch = string.IsNullOrWhiteSpace(Branch) ? null : Branch.Trim();
 		job.GitChangeDeliveryMode = GitChangeDeliveryMode;
 		job.TargetBranch = string.IsNullOrWhiteSpace(TargetBranch) ? null : TargetBranch.Trim();

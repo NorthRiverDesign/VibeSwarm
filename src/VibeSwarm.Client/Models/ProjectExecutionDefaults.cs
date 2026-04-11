@@ -51,6 +51,17 @@ availableModels.Any(model => string.Equals(model.ModelId, preferredModelId, Stri
 return preferredModelId;
 }
 
-return availableModels.FirstOrDefault(model => model.IsDefault)?.ModelId ?? string.Empty;
+	return availableModels.FirstOrDefault(model => model.IsDefault)?.ModelId ?? string.Empty;
+}
+
+public static string ResolveReasoningEffort(Project? project, Provider provider)
+{
+	var preferredReasoning = project?.ProviderSelections?
+		.Where(selection => selection.IsEnabled && selection.ProviderId == provider.Id)
+		.OrderBy(selection => selection.Priority)
+		.Select(selection => selection.PreferredReasoningEffort)
+		.FirstOrDefault(reasoning => !string.IsNullOrWhiteSpace(reasoning));
+
+	return ProviderCapabilities.NormalizeReasoningEffort(preferredReasoning ?? provider.DefaultReasoningEffort) ?? string.Empty;
 }
 }

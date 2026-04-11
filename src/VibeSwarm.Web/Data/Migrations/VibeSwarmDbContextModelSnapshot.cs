@@ -149,14 +149,41 @@ namespace VibeSwarm.Shared.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("ApprovedIdeaImplementationPromptTemplate")
+                        .HasMaxLength(12000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("CriticalErrorLogMaxEntries")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(200);
+
+                    b.Property<int>("CriticalErrorLogRetentionDays")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(30);
+
                     b.Property<string>("DefaultProjectsDirectory")
                         .HasMaxLength(1000)
                         .HasColumnType("TEXT");
+
+                    b.Property<bool>("EnableCommitAttribution")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(true);
 
                     b.Property<bool>("EnablePromptStructuring")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER")
                         .HasDefaultValue(true);
+
+                    b.Property<string>("IdeaExpansionPromptTemplate")
+                        .HasMaxLength(12000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("IdeaImplementationPromptTemplate")
+                        .HasMaxLength(12000)
+                        .HasColumnType("TEXT");
 
                     b.Property<bool>("InjectEfficiencyRules")
                         .ValueGeneratedOnAdd()
@@ -264,6 +291,74 @@ namespace VibeSwarm.Shared.Data.Migrations
                     b.ToTable("AspNetUsers", (string)null);
                 });
 
+            modelBuilder.Entity("VibeSwarm.Shared.Data.CriticalErrorLogEntry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("AdditionalDataJson")
+                        .HasMaxLength(4000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Details")
+                        .HasMaxLength(8000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Message")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RefreshAction")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Severity")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("TraceId")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("TriggeredRefresh")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Url")
+                        .HasMaxLength(2000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("UserAgent")
+                        .HasMaxLength(1000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("UserId")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt");
+
+                    b.HasIndex("Source", "CreatedAt");
+
+                    b.ToTable("CriticalErrorLogs");
+                });
+
             modelBuilder.Entity("VibeSwarm.Shared.Data.Idea", b =>
                 {
                     b.Property<Guid>("Id")
@@ -316,6 +411,42 @@ namespace VibeSwarm.Shared.Data.Migrations
                     b.HasIndex("SortOrder");
 
                     b.ToTable("Ideas");
+                });
+
+            modelBuilder.Entity("VibeSwarm.Shared.Data.IdeaAttachment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ContentType")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("IdeaId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RelativePath")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IdeaId");
+
+                    b.ToTable("IdeaAttachments");
                 });
 
             modelBuilder.Entity("VibeSwarm.Shared.Data.InferenceModel", b =>
@@ -516,6 +647,10 @@ namespace VibeSwarm.Shared.Data.Migrations
                     b.Property<int>("ActiveExecutionIndex")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("AttachedFilesJson")
+                        .HasMaxLength(4000)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Branch")
                         .HasMaxLength(250)
                         .HasColumnType("TEXT");
@@ -564,11 +699,19 @@ namespace VibeSwarm.Shared.Data.Migrations
                     b.Property<Guid?>("DependsOnJobId")
                         .HasColumnType("TEXT");
 
+                    b.Property<int>("EnvironmentCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("EnvironmentsJson")
+                        .HasMaxLength(4000)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("ErrorMessage")
                         .HasColumnType("TEXT");
 
-                    b.Property<double?>("ExecutionDurationSeconds")
-                        .HasColumnType("REAL");
+                    b.Property<string>("ExecutionCommandUsed")
+                        .HasMaxLength(4000)
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("ExecutionPlan")
                         .HasColumnType("TEXT");
@@ -615,9 +758,6 @@ namespace VibeSwarm.Shared.Data.Migrations
                         .HasMaxLength(2000)
                         .HasColumnType("TEXT");
 
-                    b.Property<int?>("InputTokens")
-                        .HasColumnType("INTEGER");
-
                     b.Property<string>("InteractionChoices")
                         .HasColumnType("TEXT");
 
@@ -635,6 +775,9 @@ namespace VibeSwarm.Shared.Data.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<Guid?>("JobScheduleId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("JobTemplateId")
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime?>("LastActivityAt")
@@ -672,16 +815,20 @@ namespace VibeSwarm.Shared.Data.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("TEXT");
 
-                    b.Property<string>("Output")
+                    b.Property<DateTime?>("NotBeforeUtc")
                         .HasColumnType("TEXT");
 
-                    b.Property<int?>("OutputTokens")
-                        .HasColumnType("INTEGER");
+                    b.Property<string>("Output")
+                        .HasColumnType("TEXT");
 
                     b.Property<Guid?>("ParentJobId")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("PendingInteractionPrompt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PlanningCommandUsed")
+                        .HasMaxLength(4000)
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime?>("PlanningGeneratedAt")
@@ -696,6 +843,13 @@ namespace VibeSwarm.Shared.Data.Migrations
 
                     b.Property<Guid?>("PlanningProviderId")
                         .HasColumnType("TEXT");
+
+                    b.Property<string>("PlanningReasoningEffortUsed")
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("PlaywrightEnabled")
+                        .HasColumnType("INTEGER");
 
                     b.Property<int>("Priority")
                         .HasColumnType("INTEGER");
@@ -716,6 +870,10 @@ namespace VibeSwarm.Shared.Data.Migrations
                         .HasColumnType("INTEGER");
 
                     b.Property<string>("PullRequestUrl")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ReasoningEffort")
+                        .HasMaxLength(32)
                         .HasColumnType("TEXT");
 
                     b.Property<int>("RetryCount")
@@ -760,15 +918,16 @@ namespace VibeSwarm.Shared.Data.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("TEXT");
 
-                    b.Property<decimal?>("TotalCostUsd")
-                        .HasColumnType("TEXT");
-
                     b.Property<string>("WorkerInstanceId")
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
 
                     b.HasIndex("CreatedAt");
+
+                    b.HasIndex("JobTemplateId");
+
+                    b.HasIndex("PlanningProviderId");
 
                     b.HasIndex("ProjectId");
 
@@ -784,6 +943,25 @@ namespace VibeSwarm.Shared.Data.Migrations
                         .IsUnique();
 
                     b.ToTable("Jobs");
+                });
+
+            modelBuilder.Entity("VibeSwarm.Shared.Data.JobExecutionStatistics", b =>
+                {
+                    b.Property<Guid>("JobId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal?>("CostUsd")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("InputTokens")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("OutputTokens")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("JobId");
+
+                    b.ToTable("JobExecutionStatistics");
                 });
 
             modelBuilder.Entity("VibeSwarm.Shared.Data.JobMessage", b =>
@@ -826,6 +1004,25 @@ namespace VibeSwarm.Shared.Data.Migrations
                     b.HasIndex("JobId");
 
                     b.ToTable("JobMessages");
+                });
+
+            modelBuilder.Entity("VibeSwarm.Shared.Data.JobPlanningStatistics", b =>
+                {
+                    b.Property<Guid>("JobId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal?>("CostUsd")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("InputTokens")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("OutputTokens")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("JobId");
+
+                    b.ToTable("JobPlanningStatistics");
                 });
 
             modelBuilder.Entity("VibeSwarm.Shared.Data.JobProviderAttempt", b =>
@@ -884,12 +1081,22 @@ namespace VibeSwarm.Shared.Data.Migrations
                     b.Property<int>("DayOfMonth")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("ExecutionTarget")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Frequency")
                         .IsRequired()
                         .HasColumnType("TEXT");
 
                     b.Property<int>("HourUtc")
                         .HasColumnType("INTEGER");
+
+                    b.Property<int>("IdeaCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid?>("InferenceProviderId")
+                        .HasColumnType("TEXT");
 
                     b.Property<bool>("IsEnabled")
                         .HasColumnType("INTEGER");
@@ -919,7 +1126,14 @@ namespace VibeSwarm.Shared.Data.Migrations
                         .HasMaxLength(2000)
                         .HasColumnType("TEXT");
 
-                    b.Property<Guid>("ProviderId")
+                    b.Property<Guid?>("ProviderId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ScheduleType")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("TeamRoleId")
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime?>("UpdatedAt")
@@ -931,13 +1145,115 @@ namespace VibeSwarm.Shared.Data.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("InferenceProviderId");
+
                     b.HasIndex("ProviderId");
+
+                    b.HasIndex("TeamRoleId");
 
                     b.HasIndex("IsEnabled", "NextRunAtUtc");
 
                     b.HasIndex("ProjectId", "IsEnabled");
 
                     b.ToTable("JobSchedules");
+                });
+
+            modelBuilder.Entity("VibeSwarm.Shared.Data.JobStatistics", b =>
+                {
+                    b.Property<Guid>("JobId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<double?>("ExecutionDurationSeconds")
+                        .HasColumnType("REAL");
+
+                    b.Property<int?>("InputTokens")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("OutputTokens")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<decimal?>("TotalCostUsd")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("JobId");
+
+                    b.ToTable("JobStatistics");
+                });
+
+            modelBuilder.Entity("VibeSwarm.Shared.Data.JobTemplate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Branch")
+                        .HasMaxLength(250)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("CycleMode")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("CycleReviewPrompt")
+                        .HasMaxLength(2000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("CycleSessionMode")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("GitChangeDeliveryMode")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("GoalPrompt")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("MaxCycles")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ModelId")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("ProviderId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ReasoningEffort")
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("TargetBranch")
+                        .HasMaxLength(250)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("UseCount")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt");
+
+                    b.HasIndex("Name")
+                        .IsUnique();
+
+                    b.HasIndex("ProviderId");
+
+                    b.ToTable("JobTemplates");
                 });
 
             modelBuilder.Entity("VibeSwarm.Shared.Data.Project", b =>
@@ -955,6 +1271,13 @@ namespace VibeSwarm.Shared.Data.Migrations
 
                     b.Property<bool>("BuildVerificationEnabled")
                         .HasColumnType("INTEGER");
+
+                    b.Property<string>("CommitSummaryInferenceModelId")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("CommitSummaryInferenceProviderId")
+                        .HasColumnType("TEXT");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("TEXT");
@@ -987,13 +1310,15 @@ namespace VibeSwarm.Shared.Data.Migrations
                     b.Property<bool>("IdeasAutoCommit")
                         .HasColumnType("INTEGER");
 
-                    b.Property<bool>("IdeasAutoExpand")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER")
-                        .HasDefaultValue(true);
-
                     b.Property<bool>("IdeasProcessingActive")
                         .HasColumnType("INTEGER");
+
+                    b.Property<string>("IdeasProcessingModelId")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("IdeasProcessingProviderId")
+                        .HasColumnType("TEXT");
 
                     b.Property<bool>("IsActive")
                         .HasColumnType("INTEGER");
@@ -1015,6 +1340,10 @@ namespace VibeSwarm.Shared.Data.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<Guid?>("PlanningProviderId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PlanningReasoningEffort")
+                        .HasMaxLength(32)
                         .HasColumnType("TEXT");
 
                     b.Property<string>("PromptContext")
@@ -1127,6 +1456,10 @@ namespace VibeSwarm.Shared.Data.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("PreferredReasoningEffort")
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
                     b.Property<int>("Priority")
                         .HasColumnType("INTEGER");
 
@@ -1167,6 +1500,10 @@ namespace VibeSwarm.Shared.Data.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("PreferredReasoningEffort")
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
                     b.Property<Guid>("ProjectId")
                         .HasColumnType("TEXT");
 
@@ -1198,7 +1535,7 @@ namespace VibeSwarm.Shared.Data.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Description")
-                        .HasMaxLength(500)
+                        .HasMaxLength(2000)
                         .HasColumnType("TEXT");
 
                     b.Property<string>("DisplayName")
@@ -1390,7 +1727,7 @@ namespace VibeSwarm.Shared.Data.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Description")
-                        .HasMaxLength(500)
+                        .HasMaxLength(2000)
                         .HasColumnType("TEXT");
 
                     b.Property<bool>("IsEnabled")
@@ -1426,6 +1763,10 @@ namespace VibeSwarm.Shared.Data.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<Guid?>("DefaultProviderId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DefaultReasoningEffort")
+                        .HasMaxLength(32)
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Description")
@@ -1498,6 +1839,10 @@ namespace VibeSwarm.Shared.Data.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DefaultReasoningEffort")
+                        .HasMaxLength(32)
                         .HasColumnType("TEXT");
 
                     b.Property<string>("ExecutablePath")
@@ -1612,6 +1957,17 @@ namespace VibeSwarm.Shared.Data.Migrations
                     b.Navigation("Project");
                 });
 
+            modelBuilder.Entity("VibeSwarm.Shared.Data.IdeaAttachment", b =>
+                {
+                    b.HasOne("VibeSwarm.Shared.Data.Idea", "Idea")
+                        .WithMany("Attachments")
+                        .HasForeignKey("IdeaId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Idea");
+                });
+
             modelBuilder.Entity("VibeSwarm.Shared.Data.InferenceModel", b =>
                 {
                     b.HasOne("VibeSwarm.Shared.Data.InferenceProvider", "InferenceProvider")
@@ -1648,6 +2004,16 @@ namespace VibeSwarm.Shared.Data.Migrations
                         .HasForeignKey("JobScheduleId")
                         .OnDelete(DeleteBehavior.SetNull);
 
+                    b.HasOne("VibeSwarm.Shared.Data.JobTemplate", "JobTemplate")
+                        .WithMany("Jobs")
+                        .HasForeignKey("JobTemplateId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("VibeSwarm.Shared.Providers.Provider", "PlanningProvider")
+                        .WithMany()
+                        .HasForeignKey("PlanningProviderId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("VibeSwarm.Shared.Data.Project", "Project")
                         .WithMany("Jobs")
                         .HasForeignKey("ProjectId")
@@ -1667,6 +2033,10 @@ namespace VibeSwarm.Shared.Data.Migrations
 
                     b.Navigation("JobSchedule");
 
+                    b.Navigation("JobTemplate");
+
+                    b.Navigation("PlanningProvider");
+
                     b.Navigation("Project");
 
                     b.Navigation("Provider");
@@ -1674,11 +2044,33 @@ namespace VibeSwarm.Shared.Data.Migrations
                     b.Navigation("TeamRole");
                 });
 
+            modelBuilder.Entity("VibeSwarm.Shared.Data.JobExecutionStatistics", b =>
+                {
+                    b.HasOne("VibeSwarm.Shared.Data.Job", "Job")
+                        .WithOne("ExecutionStatistics")
+                        .HasForeignKey("VibeSwarm.Shared.Data.JobExecutionStatistics", "JobId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Job");
+                });
+
             modelBuilder.Entity("VibeSwarm.Shared.Data.JobMessage", b =>
                 {
                     b.HasOne("VibeSwarm.Shared.Data.Job", "Job")
                         .WithMany("Messages")
                         .HasForeignKey("JobId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Job");
+                });
+
+            modelBuilder.Entity("VibeSwarm.Shared.Data.JobPlanningStatistics", b =>
+                {
+                    b.HasOne("VibeSwarm.Shared.Data.Job", "Job")
+                        .WithOne("PlanningStatistics")
+                        .HasForeignKey("VibeSwarm.Shared.Data.JobPlanningStatistics", "JobId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
@@ -1698,6 +2090,11 @@ namespace VibeSwarm.Shared.Data.Migrations
 
             modelBuilder.Entity("VibeSwarm.Shared.Data.JobSchedule", b =>
                 {
+                    b.HasOne("VibeSwarm.Shared.Data.InferenceProvider", "InferenceProvider")
+                        .WithMany()
+                        .HasForeignKey("InferenceProviderId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("VibeSwarm.Shared.Data.Project", "Project")
                         .WithMany()
                         .HasForeignKey("ProjectId")
@@ -1707,10 +2104,39 @@ namespace VibeSwarm.Shared.Data.Migrations
                     b.HasOne("VibeSwarm.Shared.Providers.Provider", "Provider")
                         .WithMany()
                         .HasForeignKey("ProviderId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("VibeSwarm.Shared.Data.TeamRole", "TeamRole")
+                        .WithMany()
+                        .HasForeignKey("TeamRoleId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("InferenceProvider");
+
+                    b.Navigation("Project");
+
+                    b.Navigation("Provider");
+
+                    b.Navigation("TeamRole");
+                });
+
+            modelBuilder.Entity("VibeSwarm.Shared.Data.JobStatistics", b =>
+                {
+                    b.HasOne("VibeSwarm.Shared.Data.Job", "Job")
+                        .WithOne("Statistics")
+                        .HasForeignKey("VibeSwarm.Shared.Data.JobStatistics", "JobId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.Navigation("Project");
+                    b.Navigation("Job");
+                });
+
+            modelBuilder.Entity("VibeSwarm.Shared.Data.JobTemplate", b =>
+                {
+                    b.HasOne("VibeSwarm.Shared.Providers.Provider", "Provider")
+                        .WithMany()
+                        .HasForeignKey("ProviderId")
+                        .OnDelete(DeleteBehavior.SetNull);
 
                     b.Navigation("Provider");
                 });
@@ -1841,6 +2267,11 @@ namespace VibeSwarm.Shared.Data.Migrations
                     b.Navigation("TeamRole");
                 });
 
+            modelBuilder.Entity("VibeSwarm.Shared.Data.Idea", b =>
+                {
+                    b.Navigation("Attachments");
+                });
+
             modelBuilder.Entity("VibeSwarm.Shared.Data.InferenceProvider", b =>
                 {
                     b.Navigation("Models");
@@ -1848,12 +2279,23 @@ namespace VibeSwarm.Shared.Data.Migrations
 
             modelBuilder.Entity("VibeSwarm.Shared.Data.Job", b =>
                 {
+                    b.Navigation("ExecutionStatistics");
+
                     b.Navigation("Messages");
 
+                    b.Navigation("PlanningStatistics");
+
                     b.Navigation("ProviderAttempts");
+
+                    b.Navigation("Statistics");
                 });
 
             modelBuilder.Entity("VibeSwarm.Shared.Data.JobSchedule", b =>
+                {
+                    b.Navigation("Jobs");
+                });
+
+            modelBuilder.Entity("VibeSwarm.Shared.Data.JobTemplate", b =>
                 {
                     b.Navigation("Jobs");
                 });

@@ -62,9 +62,14 @@ public class JobScheduleService : IJobScheduleService
 		}
 
 		existing.ProjectId = schedule.ProjectId;
+		existing.ScheduleType = schedule.ScheduleType;
+		existing.ExecutionTarget = schedule.ExecutionTarget;
 		existing.ProviderId = schedule.ProviderId;
+		existing.TeamRoleId = schedule.TeamRoleId;
+		existing.InferenceProviderId = schedule.InferenceProviderId;
 		existing.Prompt = schedule.Prompt;
 		existing.ModelId = schedule.ModelId;
+		existing.IdeaCount = schedule.IdeaCount;
 		existing.Frequency = schedule.Frequency;
 		existing.HourUtc = schedule.HourUtc;
 		existing.MinuteUtc = schedule.MinuteUtc;
@@ -127,7 +132,9 @@ public class JobScheduleService : IJobScheduleService
 	{
 		return _dbContext.JobSchedules
 			.Include(schedule => schedule.Project)
-			.Include(schedule => schedule.Provider);
+			.Include(schedule => schedule.Provider)
+			.Include(schedule => schedule.TeamRole)
+			.Include(schedule => schedule.InferenceProvider);
 	}
 
 	private async Task ValidateReferencesAsync(JobSchedule schedule, CancellationToken cancellationToken)
@@ -138,11 +145,78 @@ public class JobScheduleService : IJobScheduleService
 			throw new InvalidOperationException("The selected project was not found.");
 		}
 
-		var providerExists = await _dbContext.Providers
-			.AnyAsync(provider => provider.Id == schedule.ProviderId && provider.IsEnabled, cancellationToken);
-		if (!providerExists)
+		if (schedule.ScheduleType == JobScheduleType.GenerateIdeas)
 		{
-			throw new InvalidOperationException("The selected provider is not enabled.");
+			if (!schedule.InferenceProviderId.HasValue || schedule.InferenceProviderId == Guid.Empty)
+			{
+				throw new InvalidOperationException("The selected inference provider is not enabled.");
+			}
+
+			var inferenceProviderExists = await _dbContext.InferenceProviders
+				.AnyAsync(provider => provider.Id == schedule.InferenceProviderId.Value && provider.IsEnabled, cancellationToken);
+			if (!inferenceProviderExists)
+			{
+				throw new InvalidOperationException("The selected inference provider is not enabled.");
+			}
+
+			if (string.IsNullOrWhiteSpace(schedule.ModelId))
+			{
+				return;
+			}
+
+			var inferenceModelExists = await _dbContext.InferenceModels
+				.AnyAsync(model =>
+					model.InferenceProviderId == schedule.InferenceProviderId.Value &&
+					model.IsAvailable &&
+					model.ModelId == schedule.ModelId,
+					cancellationToken);
+			if (!inferenceModelExists)
+			{
+				throw new InvalidOperationException("The selected model is not available for the chosen inference provider.");
+			}
+
+			return;
+		}
+
+		if (schedule.ExecutionTarget == JobScheduleExecutionTarget.Provider)
+		{
+			if (!schedule.ProviderId.HasValue || schedule.ProviderId == Guid.Empty)
+			{
+				throw new InvalidOperationException("The selected provider is not enabled.");
+			}
+
+			var providerExists = await _dbContext.Providers
+				.AnyAsync(provider => provider.Id == schedule.ProviderId.Value && provider.IsEnabled, cancellationToken);
+			if (!providerExists)
+			{
+				throw new InvalidOperationException("The selected provider is not enabled.");
+			}
+		}
+		else
+		{
+			if (!schedule.TeamRoleId.HasValue || schedule.TeamRoleId == Guid.Empty)
+			{
+				throw new InvalidOperationException("The selected team member is not assigned to this project.");
+			}
+
+			var assignment = await _dbContext.ProjectTeamRoles
+				.Include(projectTeamRole => projectTeamRole.TeamRole)
+				.Include(projectTeamRole => projectTeamRole.Provider)
+				.FirstOrDefaultAsync(projectTeamRole =>
+					projectTeamRole.ProjectId == schedule.ProjectId &&
+					projectTeamRole.TeamRoleId == schedule.TeamRoleId.Value,
+					cancellationToken);
+			if (assignment == null || !assignment.IsEnabled || assignment.TeamRole == null || !assignment.TeamRole.IsEnabled)
+			{
+				throw new InvalidOperationException("The selected team member is not assigned to this project.");
+			}
+
+			if (assignment.Provider == null || !assignment.Provider.IsEnabled)
+			{
+				throw new InvalidOperationException("The selected team member does not have an enabled provider assignment.");
+			}
+
+			schedule.ProviderId = assignment.ProviderId;
 		}
 
 		if (string.IsNullOrWhiteSpace(schedule.ModelId))
@@ -150,9 +224,15 @@ public class JobScheduleService : IJobScheduleService
 			return;
 		}
 
+		var providerId = schedule.ProviderId;
+		if (!providerId.HasValue || providerId == Guid.Empty)
+		{
+			throw new InvalidOperationException("The selected provider is not enabled.");
+		}
+
 		var modelExists = await _dbContext.ProviderModels
 			.AnyAsync(model =>
-				model.ProviderId == schedule.ProviderId &&
+				model.ProviderId == providerId.Value &&
 				model.IsAvailable &&
 				model.ModelId == schedule.ModelId,
 				cancellationToken);
@@ -167,6 +247,28 @@ public class JobScheduleService : IJobScheduleService
 		schedule.Prompt = schedule.Prompt?.Trim() ?? string.Empty;
 		schedule.ModelId = string.IsNullOrWhiteSpace(schedule.ModelId) ? null : schedule.ModelId.Trim();
 		schedule.LastError = string.IsNullOrWhiteSpace(schedule.LastError) ? null : schedule.LastError.Trim();
+		schedule.ProviderId = schedule.ProviderId == Guid.Empty ? null : schedule.ProviderId;
+		schedule.TeamRoleId = schedule.TeamRoleId == Guid.Empty ? null : schedule.TeamRoleId;
+		schedule.InferenceProviderId = schedule.InferenceProviderId == Guid.Empty ? null : schedule.InferenceProviderId;
+		schedule.IdeaCount = Math.Clamp(schedule.IdeaCount, ValidationLimits.JobScheduleIdeaCountMin, ValidationLimits.JobScheduleIdeaCountMax);
+		if (schedule.ScheduleType == JobScheduleType.GenerateIdeas)
+		{
+			schedule.ProviderId = null;
+			schedule.TeamRoleId = null;
+			schedule.Prompt = string.Empty;
+			schedule.ExecutionTarget = JobScheduleExecutionTarget.Provider;
+			return;
+		}
+
+		schedule.InferenceProviderId = null;
+		if (schedule.ExecutionTarget == JobScheduleExecutionTarget.Provider)
+		{
+			schedule.TeamRoleId = null;
+		}
+		else
+		{
+			schedule.ProviderId = null;
+		}
 	}
 
 	private async Task<TimeZoneInfo> GetSchedulerTimeZoneAsync(CancellationToken cancellationToken)

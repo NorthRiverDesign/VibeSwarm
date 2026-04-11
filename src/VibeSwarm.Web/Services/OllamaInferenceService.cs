@@ -106,14 +106,9 @@ public class OllamaInferenceService : IInferenceService
 
 	public async Task<InferenceResponse> GenerateAsync(InferenceRequest request, CancellationToken ct = default)
 	{
-		var endpoint = NormalizeEndpoint(request.Endpoint ?? await ResolveEndpointAsync(ct));
-		var model = request.Model;
-
-		if (string.IsNullOrEmpty(model))
-		{
-			var resolved = await _providerService.GetModelForTaskAsync(request.TaskType, ct);
-			model = resolved?.ModelId;
-		}
+		var provider = await ResolveRequestedProviderAsync(request, ct);
+		var endpoint = NormalizeEndpoint(request.Endpoint ?? provider?.Endpoint ?? await ResolveEndpointAsync(ct));
+		var model = await ResolveModelAsync(request, provider, ct);
 
 		if (string.IsNullOrEmpty(model))
 		{
@@ -405,8 +400,50 @@ public class OllamaInferenceService : IInferenceService
 	private async Task<string> ResolveEndpointAsync(CancellationToken ct)
 	{
 		var providers = await _providerService.GetEnabledAsync(ct);
-		var provider = providers.FirstOrDefault();
+		var provider = providers.FirstOrDefault(p => p.ProviderType == InferenceProviderType.Ollama);
 		return provider?.Endpoint ?? "http://localhost:11434";
+	}
+
+	private async Task<InferenceProvider?> ResolveRequestedProviderAsync(InferenceRequest request, CancellationToken ct)
+	{
+		if (request.ProviderId.HasValue)
+		{
+			var provider = await _providerService.GetByIdAsync(request.ProviderId.Value, ct);
+			if (provider?.IsEnabled == true && provider.ProviderType == InferenceProviderType.Ollama)
+			{
+				return provider;
+			}
+		}
+
+		if (!string.IsNullOrWhiteSpace(request.Endpoint))
+		{
+			var normalizedEndpoint = NormalizeEndpoint(request.Endpoint);
+			var providers = await _providerService.GetEnabledAsync(ct);
+			return providers.FirstOrDefault(provider =>
+				provider.ProviderType == InferenceProviderType.Ollama &&
+				string.Equals(NormalizeEndpoint(provider.Endpoint), normalizedEndpoint, StringComparison.OrdinalIgnoreCase));
+		}
+
+		return null;
+	}
+
+	private async Task<string?> ResolveModelAsync(InferenceRequest request, InferenceProvider? provider, CancellationToken ct)
+	{
+		if (!string.IsNullOrWhiteSpace(request.Model))
+		{
+			return request.Model;
+		}
+
+		var taskType = string.IsNullOrWhiteSpace(request.TaskType) ? "default" : request.TaskType;
+		var providerModel = provider?.Models.FirstOrDefault(model => model.IsAvailable && model.IsDefault && model.TaskType == taskType)
+			?? provider?.Models.FirstOrDefault(model => model.IsAvailable && model.IsDefault && model.TaskType == "default");
+		if (!string.IsNullOrWhiteSpace(providerModel?.ModelId))
+		{
+			return providerModel.ModelId;
+		}
+
+		var resolved = await _providerService.GetModelForTaskAsync(taskType, ct);
+		return resolved?.ModelId;
 	}
 
 	private static string NormalizeEndpoint(string endpoint)
@@ -465,8 +502,8 @@ public class OllamaInferenceService : IInferenceService
 	{
 		public TimeSpan HealthCheckTimeout { get; init; } = TimeSpan.FromSeconds(5);
 		public TimeSpan ModelDiscoveryTimeout { get; init; } = TimeSpan.FromSeconds(10);
-		public TimeSpan InitialResponseTimeout { get; init; } = TimeSpan.FromMinutes(15);
-		public TimeSpan StreamInactivityTimeout { get; init; } = TimeSpan.FromMinutes(5);
-		public TimeSpan GenerationTimeout { get; init; } = TimeSpan.FromMinutes(30);
+		public TimeSpan InitialResponseTimeout { get; init; } = InferenceTimeouts.LocalInitialResponseTimeout;
+		public TimeSpan StreamInactivityTimeout { get; init; } = InferenceTimeouts.LocalStreamInactivityTimeout;
+		public TimeSpan GenerationTimeout { get; init; } = InferenceTimeouts.LocalGenerationTimeout;
 	}
 }

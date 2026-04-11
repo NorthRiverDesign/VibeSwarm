@@ -2,12 +2,13 @@
 @inject IProjectService ProjectService
 @inject IIdeaService IdeaService
 @inject IJobService JobService
+@inject IJSRuntime JSRuntime
 @inject NotificationService NotificationService
-@using VibeSwarm.Shared.Data
-@using VibeSwarm.Shared.Inference
-@using VibeSwarm.Shared.Models
-@using VibeSwarm.Shared.Providers
+@using System.Diagnostics.CodeAnalysis
+@using System.Globalization
+@using System.Threading
 @using VibeSwarm.Shared.Validation
+@implements IAsyncDisposable
 
 <div class="d-grid gap-3">
 	<div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
@@ -31,58 +32,6 @@
 				</span>
 			}
 		</div>
-		<div class="d-flex align-items-center gap-2">
-			@if (CanSuggestIdeas)
-			{
-				<button type="button" class="btn btn-sm btn-secondary" @onclick="OpenSuggestIdeasModal"
-						disabled="@(IsSuggestingIdeas || IsProcessingActive)"
-						title="@GetSuggestIdeasTooltip()">
-					@if (IsSuggestingIdeas)
-					{
-						<span class="spinner-border spinner-border-sm me-1" role="status"></span>
-					}
-					else
-					{
-						<i class="bi bi-stars me-1"></i>
-					}
-					<span class="d-none d-sm-inline">Suggest</span>
-				</button>
-			}
-			@if (TotalIdeasCount >= 1)
-			{
-				@if (IsProcessingActive)
-				{
-					<button type="button" class="btn btn-sm btn-danger" @onclick="OnStopProcessing"
-							disabled="@IsTogglingProcessing" title="Stop automatic idea processing">
-						@if (IsTogglingProcessing)
-						{
-							<span class="spinner-border spinner-border-sm me-1" role="status"></span>
-						}
-						else
-						{
-							<i class="bi bi-stop-fill me-1"></i>
-						}
-						Stop
-					</button>
-				}
-				else
-				{
-					<button type="button" class="btn btn-sm btn-success" @onclick="OpenStartAllModal"
-							disabled="@(IsTogglingProcessing || !HasDefaultProvider || UnprocessedIdeasCount == 0)"
-							title="@GetStartAllTooltip()">
-						@if (IsTogglingProcessing)
-						{
-							<span class="spinner-border spinner-border-sm me-1" role="status"></span>
-						}
-						else
-						{
-							<i class="bi bi-play-fill me-1"></i>
-						}
-						Start All
-					</button>
-				}
-			}
-		</div>
 	</div>
 
 	@if (_suggestResult != null)
@@ -104,13 +53,14 @@
 	}
 
 	<div class="border rounded-3 bg-body-tertiary p-3">
-		<label class="form-label fw-medium mb-2" for="newIdeaDescription">Add idea</label>
+		<label class="form-label fw-medium mb-2" for="@_textareaId">Add idea</label>
 		<div class="d-flex gap-2 align-items-end">
 			<div class="flex-grow-1">
-				<textarea class="form-control" id="newIdeaDescription" rows="5" placeholder="Describe a feature or improvement..."
-						  @bind="NewIdeaDescription" @bind:event="oninput" @onkeypress="HandleKeyPress"
+				<textarea class="form-control" id="@_textareaId" rows="5" placeholder="Describe a feature or improvement..."
+						  value="@NewIdeaDescription" @oninput="HandleNewIdeaInput" @onblur="FlushDraftSyncAsync" @onkeypress="HandleKeyPress"
+						  @ref="_newIdeaTextarea"
 						  maxlength="@ValidationLimits.IdeaDescriptionMaxLength"
-						  title="Describe a feature or improvement. Press Ctrl+Enter to submit."></textarea>
+						  title="Describe a feature or improvement. Press Ctrl+Enter to submit or paste an image into the box."></textarea>
 			</div>
 			<button type="button" class="btn btn-primary align-self-stretch px-3" @onclick="AddIdea"
 					disabled="@(!CanAddIdea)"
@@ -126,11 +76,71 @@
 				<span class="d-none d-sm-inline ms-1">Add</span>
 			</button>
 		</div>
+		<div class="d-flex flex-wrap align-items-center gap-2 mt-2">
+			<label class="btn btn-sm btn-secondary mb-0 @(_attachmentInteropAvailable ? string.Empty : "disabled opacity-50 pe-none")"
+				   for="@_fileInputId" title="@GetAttachmentButtonTooltip()">
+				<i class="bi bi-paperclip me-1"></i>Attach Files
+			</label>
+			<input id="@_fileInputId" class="d-none" type="file" multiple @onchange="HandleFileSelection"
+				   disabled="@(!_attachmentInteropAvailable)" />
+			@if (CanSuggestIdeas)
+			{
+				<button type="button" class="btn btn-sm btn-secondary" @onclick="OpenSuggestIdeasModal"
+						disabled="@(IsSuggestingIdeas || IsProcessingActive)"
+						title="@GetSuggestIdeasTooltip()">
+					@if (IsSuggestingIdeas)
+					{
+						<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+					}
+					else
+					{
+						<i class="bi bi-stars me-1"></i>
+					}
+					<span>Suggest Ideas</span>
+				</button>
+			}
+			@if (_pendingAttachments.Any())
+			{
+				<span class="small text-body-secondary">@GetAttachmentSummary()</span>
+			}
+		</div>
+		@if (_attachmentInteropAvailable)
+		{
+			<div class="small text-body-secondary mt-2">
+				Paste images directly into the idea box to attach them.
+			</div>
+		}
+		@if (_pendingAttachments.Any())
+		{
+			<div class="d-flex flex-column gap-2 mt-2">
+				@foreach (var attachment in _pendingAttachments.Select((item, index) => (item, index)))
+				{
+					var attachmentIndex = attachment.index;
+					<div class="d-flex flex-wrap align-items-center justify-content-between gap-2 border rounded-3 px-2 py-2 bg-body">
+						<div class="d-flex align-items-center gap-2 min-width-0">
+							@if (TryGetAttachmentPreviewDataUrl(attachment.item, out var previewDataUrl))
+							{
+								<img src="@previewDataUrl" alt="@attachment.item.FileName" class="rounded border flex-shrink-0"
+									 style="width: 3.5rem; height: 3.5rem; object-fit: cover;" />
+							}
+							else
+							{
+								<i class="bi bi-paperclip text-body-secondary"></i>
+							}
+							<div class="d-flex flex-column min-width-0">
+								<span class="text-truncate min-width-0">@attachment.item.FileName</span>
+								<span class="small text-body-secondary">@FormatAttachmentSize(attachment.item.Content.LongLength)</span>
+							</div>
+						</div>
+						<button type="button" class="btn btn-sm btn-secondary" @onclick="() => RemovePendingAttachment(attachmentIndex)">
+							<i class="bi bi-x-lg"></i>
+						</button>
+					</div>
+				}
+			</div>
+		}
 		<div class="d-flex flex-wrap align-items-center gap-2 mt-2 small text-body-secondary">
 			<span>@GetIdeaLengthSummary(NewIdeaDescription)</span>
-			<span class="badge bg-body-secondary text-body">
-				@(CurrentAutoExpandIdeas ? "Expands before running" : "Runs directly")
-			</span>
 			<span><kbd>Ctrl</kbd>+<kbd>Enter</kbd> to add</span>
 			@if (!HasDefaultProvider)
 			{
@@ -155,6 +165,46 @@
 	}
 	else
 	{
+		<div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+			<div class="d-flex flex-wrap align-items-center gap-2">
+				<h3 class="mb-0 fs-5 fw-semibold">Ideas</h3>
+				@if (UnprocessedIdeasCount > 0)
+				{
+					<span class="badge bg-body-secondary text-body">@UnprocessedIdeasCount pending</span>
+				}
+			</div>
+			@if (IsProcessingActive)
+			{
+				<button type="button" class="btn btn-sm btn-danger" @onclick="OnStopProcessing"
+						disabled="@IsTogglingProcessing" title="Stop automatic idea processing">
+					@if (IsTogglingProcessing)
+					{
+						<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+					}
+					else
+					{
+						<i class="bi bi-stop-fill"></i>
+					}
+					<span class="d-none d-sm-inline ms-1">Stop</span>
+				</button>
+			}
+			else if (TotalIdeasCount >= 1)
+			{
+				<button type="button" class="btn btn-sm btn-success" @onclick="OpenStartAllModal"
+						disabled="@(IsTogglingProcessing || !HasDefaultProvider || UnprocessedIdeasCount == 0)"
+						title="@GetStartAllTooltip()">
+					@if (IsTogglingProcessing)
+					{
+						<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+					}
+					else
+					{
+						<i class="bi bi-play-fill"></i>
+					}
+					<span class="d-none d-sm-inline ms-1">Start All</span>
+				</button>
+			}
+		</div>
 		<div class="border rounded-3">
 			<ul class="list-group list-group-flush rounded-3">
 				@foreach (var idea in Ideas)
@@ -212,6 +262,38 @@
 						<div class="form-text">Controls what happens after each job completes.</div>
 					</div>
 				}
+
+				<div class="mb-2">
+					<label for="startAllProvider" class="form-label fw-medium">Provider</label>
+					<select id="startAllProvider" class="form-select" @bind="SelectedStartAllProviderIdValue"
+							disabled="@(!StartAllProviders.Any())">
+						@foreach (var provider in StartAllProviders)
+						{
+							<option value="@provider.Id">@provider.Name</option>
+						}
+					</select>
+					<div class="form-text">
+						Choose which provider queued ideas should use. Defaults to the project's current priority.
+					</div>
+				</div>
+
+				<div class="mb-0">
+					<label for="startAllModel" class="form-label fw-medium">
+						Model
+						<span class="text-body-secondary fw-normal">(optional)</span>
+					</label>
+					<select id="startAllModel" class="form-select" @bind="SelectedStartAllModelIdValue"
+							disabled="@(!SelectedStartAllProviderId.HasValue || !SelectedStartAllProviderModels.Any())">
+						<option value="">Use project/provider default model</option>
+						@foreach (var model in SelectedStartAllProviderModels)
+						{
+							<option value="@model.ModelId">@GetStartAllModelDisplayName(model)</option>
+						}
+					</select>
+					<div class="form-text">
+						Leave blank to keep the project's default model for the selected provider.
+					</div>
+				</div>
 			</ChildContent>
 			<FooterContent>
 				<button type="button" class="btn btn-secondary" @onclick="CloseStartAllModal">Cancel</button>
@@ -285,7 +367,7 @@
 	public EventCallback OnStopProcessing { get; set; }
 
 	[Parameter]
-	public EventCallback<string> OnAddIdea { get; set; }
+	public EventCallback<CreateIdeaRequest> OnAddIdea { get; set; }
 
 	[Parameter]
 	public EventCallback<(Guid IdeaId, string Description)> OnUpdateIdea { get; set; }
@@ -327,13 +409,10 @@
 	public AutoCommitMode CurrentAutoCommitMode { get; set; } = AutoCommitMode.Off;
 
 	[Parameter]
-	public bool CurrentAutoExpandIdeas { get; set; } = true;
-
-	[Parameter]
 	public bool IsGitRepository { get; set; }
 
 	[Parameter]
-	public EventCallback<AutoCommitMode> OnStartProcessingWithOptions { get; set; }
+	public EventCallback<IdeaProcessingOptions> OnStartProcessingWithOptions { get; set; }
 
 	[Parameter]
 	public List<DiscoveredModel> AvailableLocalModels { get; set; } = new();
@@ -345,6 +424,12 @@
 	public List<Provider> AvailableProviders { get; set; } = new();
 
 	[Parameter]
+	public Guid? DefaultProcessingProviderId { get; set; }
+
+	[Parameter]
+	public string? DefaultProcessingModelId { get; set; }
+
+	[Parameter]
 	public List<InferenceProvider> AvailableInferenceProviders { get; set; } = new();
 
 	[Parameter]
@@ -353,7 +438,19 @@
 	[Parameter]
 	public string? DefaultInferenceModelId { get; set; }
 
+	private ElementReference _newIdeaTextarea;
+	private const string IdeaDraftStorageKeyPrefix = "vibeswarm.idea-draft";
+	private static readonly TimeSpan IdeaDraftSyncDelay = TimeSpan.FromMilliseconds(150);
+	private static readonly TimeSpan IdeasInteropTimeout = TimeSpan.FromMilliseconds(250);
+	private readonly string _fileInputId = $"idea-files-{Guid.NewGuid():N}";
+	private readonly string _textareaId = $"idea-textarea-{Guid.NewGuid():N}";
 	private string NewIdeaDescription { get; set; } = string.Empty;
+	private string? _savedDraftDescription;
+	private List<IdeaAttachmentUpload> _pendingAttachments = [];
+	private bool _attachmentInteropAvailable = true;
+	private bool _pasteTargetRegistered;
+	private DotNetObjectReference<IdeasPanel>? _dotNetReference;
+	private CancellationTokenSource? _draftSyncCts;
 	private Guid? StartingIdeaId { get; set; }
 	private bool IsSuggestingIdeas { get; set; }
 	private SuggestIdeasResult? _suggestResult;
@@ -368,6 +465,8 @@
 	// Start All confirmation modal state
 	private bool _showStartAllModal { get; set; }
 	private AutoCommitMode _startAllAutoCommitMode { get; set; }
+	private Guid? _selectedStartAllProviderId;
+	private string? _selectedStartAllModelId;
 
 	// Modal state
 	private bool ShowCopyModal { get; set; }
@@ -388,8 +487,14 @@
 		}
 	}
 
+	private async Task HandleNewIdeaInput(ChangeEventArgs e)
+	{
+		NewIdeaDescription = e.Value?.ToString() ?? string.Empty;
+		ScheduleDraftSync();
+	}
+
 	private bool _isSubmitting;
-	private string? AddIdeaValidationMessage => ValidateIdeaDescription(NewIdeaDescription);
+	private string? AddIdeaValidationMessage => ValidateAddIdeaInput();
 	private bool CanAddIdea => string.IsNullOrWhiteSpace(AddIdeaValidationMessage) &&
 		!string.IsNullOrWhiteSpace(NewIdeaDescription) &&
 		!IsAddingIdea &&
@@ -414,10 +519,64 @@
 		_isSubmitting = true;
 		try
 		{
-			await OnAddIdea.InvokeAsync(NewIdeaDescription.Trim());
+			CancelDraftSync();
+			await OnAddIdea.InvokeAsync(new CreateIdeaRequest
+			{
+				ProjectId = CurrentProjectId,
+				Description = NewIdeaDescription.Trim(),
+				Attachments = _pendingAttachments
+					.Select(attachment => new IdeaAttachmentUpload
+					{
+						FileName = attachment.FileName,
+						ContentType = attachment.ContentType,
+						Content = attachment.Content
+					})
+					.ToList()
+			});
 			NewIdeaDescription = string.Empty;
+			_pendingAttachments.Clear();
+			await ClearDraftAsync();
 		}
 		finally { _isSubmitting = false; }
+	}
+
+	private void ScheduleDraftSync()
+	{
+		CancelDraftSync();
+		_draftSyncCts = new CancellationTokenSource();
+		_ = DebounceDraftSyncAsync(_draftSyncCts.Token);
+	}
+
+	private async Task DebounceDraftSyncAsync(CancellationToken cancellationToken)
+	{
+		try
+		{
+			await Task.Delay(IdeaDraftSyncDelay, cancellationToken);
+			if (cancellationToken.IsCancellationRequested)
+			{
+				return;
+			}
+
+			await PersistDraftAsync();
+			await InvokeAsync(StateHasChanged);
+		}
+		catch (OperationCanceledException)
+		{
+		}
+	}
+
+	private async Task FlushDraftSyncAsync()
+	{
+		CancelDraftSync();
+		await PersistDraftAsync();
+		await InvokeAsync(StateHasChanged);
+	}
+
+	private void CancelDraftSync()
+	{
+		_draftSyncCts?.Cancel();
+		_draftSyncCts?.Dispose();
+		_draftSyncCts = null;
 	}
 
 	private async Task HandleStopJob(Idea idea)
@@ -615,11 +774,44 @@
 	[Parameter]
 	public int UnprocessedIdeasCount { get; set; }
 
-	private string ActiveProcessingMessage => CurrentAutoExpandIdeas
-		? "Ideas expand and queue automatically."
-		: "Ideas queue automatically from their current text.";
+	private string ActiveProcessingMessage => "Ideas queue automatically from their current text.";
 
 	private bool CanSuggestIdeas => HasInference || AvailableProviders.Any();
+
+	private IReadOnlyList<Provider> StartAllProviders => AvailableProviders
+		.Where(provider => provider.IsEnabled)
+		.OrderBy(provider => provider.Name)
+		.ToList();
+
+	private Guid? SelectedStartAllProviderId => _selectedStartAllProviderId;
+
+	private IReadOnlyList<ProviderModel> SelectedStartAllProviderModels => StartAllProviders
+		.FirstOrDefault(provider => provider.Id == SelectedStartAllProviderId)?
+		.AvailableModels?
+		.Where(model => model.IsAvailable)
+		.OrderByDescending(model => model.IsDefault)
+		.ThenBy(model => model.DisplayName ?? model.ModelId)
+		.ToList() ?? [];
+
+	private string SelectedStartAllProviderIdValue
+	{
+		get => SelectedStartAllProviderId?.ToString() ?? string.Empty;
+		set
+		{
+			Guid? providerId = Guid.TryParse(value, out var parsed) ? parsed : null;
+			if (SelectedStartAllProviderId != providerId)
+			{
+				_selectedStartAllProviderId = providerId;
+				ResetStartAllModelIfUnavailable();
+			}
+		}
+	}
+
+	private string SelectedStartAllModelIdValue
+	{
+		get => _selectedStartAllModelId ?? string.Empty;
+		set => _selectedStartAllModelId = string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+	}
 
 	private Guid? SelectedSuggestProviderId => _suggestUseInference
 		? _selectedInferenceProviderId
@@ -629,9 +821,7 @@
 		? _selectedInferenceModelId
 		: _selectedConfiguredModelId;
 
-	private string StartAllDescription => CurrentAutoExpandIdeas
-		? "Ideas will expand first, then queue one job at a time for this project."
-		: "Ideas will queue from their current text, one job at a time for this project.";
+	private string StartAllDescription => "Ideas will queue from their current text, one job at a time for this project.";
 
 	private string GetSuggestIdeasTooltip()
 	{
@@ -700,6 +890,376 @@
 		}
 
 		return null;
+	}
+
+	private string? ValidateAddIdeaInput()
+	{
+		var descriptionValidation = ValidateIdeaDescription(NewIdeaDescription);
+		if (!string.IsNullOrWhiteSpace(descriptionValidation))
+		{
+			return descriptionValidation;
+		}
+
+		if (_pendingAttachments.Count > ValidationLimits.IdeaAttachmentMaxCount)
+		{
+			return $"Ideas can include at most {ValidationLimits.IdeaAttachmentMaxCount} attachments.";
+		}
+
+		var totalBytes = _pendingAttachments.Sum(attachment => attachment.Content.LongLength);
+		if (_pendingAttachments.Any(attachment => attachment.Content.LongLength > ValidationLimits.IdeaAttachmentMaxFileBytes))
+		{
+			return $"Each attachment must be {ValidationLimits.IdeaAttachmentMaxFileBytes / (1024 * 1024)} MB or smaller.";
+		}
+
+		if (totalBytes > ValidationLimits.IdeaAttachmentMaxTotalBytes)
+		{
+			return $"Idea attachments exceed the total limit of {ValidationLimits.IdeaAttachmentMaxTotalBytes / (1024 * 1024)} MB.";
+		}
+
+		return null;
+	}
+
+	private async Task HandleFileSelection(ChangeEventArgs _)
+	{
+		if (!_attachmentInteropAvailable)
+		{
+			ShowAttachmentInteropUnavailableWarning();
+			return;
+		}
+
+		try
+		{
+			var uploads = await InvokeIdeasInteropAsync<List<ClipboardAttachmentDto>>("vibeSwarmIdeas.consumeSelectedFiles", _fileInputId);
+			if (uploads == null)
+			{
+				return;
+			}
+
+			foreach (var upload in uploads)
+			{
+				AddPendingAttachment(upload);
+			}
+		}
+		catch (JSException ex) when (IsMissingIdeasInteropException(ex))
+		{
+			DisableAttachmentInterop();
+		}
+		catch (JSException ex)
+		{
+			LogIdeasInteropFailure("read selected attachments", ex);
+			DisableAttachmentInterop();
+		}
+		catch (InvalidOperationException ex)
+		{
+			LogIdeasInteropFailure("read selected attachments", ex);
+			DisableAttachmentInterop();
+		}
+		catch (OperationCanceledException ex)
+		{
+			LogIdeasInteropFailure("read selected attachments", ex);
+			DisableAttachmentInterop();
+		}
+		catch (TimeoutException ex)
+		{
+			LogIdeasInteropFailure("read selected attachments", ex);
+			DisableAttachmentInterop();
+		}
+		catch (Exception ex)
+		{
+			NotificationService.ShowError($"Error attaching files: {ex.Message}");
+		}
+	}
+
+	private void AddPendingAttachment(ClipboardAttachmentDto upload)
+	{
+		if (string.IsNullOrWhiteSpace(upload.FileName) || string.IsNullOrWhiteSpace(upload.Base64Content))
+		{
+			return;
+		}
+
+		_pendingAttachments.Add(new IdeaAttachmentUpload
+		{
+			FileName = upload.FileName.Trim(),
+			ContentType = string.IsNullOrWhiteSpace(upload.ContentType) ? null : upload.ContentType.Trim(),
+			Content = Convert.FromBase64String(upload.Base64Content)
+		});
+	}
+
+	[JSInvokable]
+	public Task HandleClipboardImagePasted(ClipboardAttachmentDto? upload)
+	{
+		if (upload == null)
+		{
+			return Task.CompletedTask;
+		}
+
+		AddPendingAttachment(upload);
+		InvokeAsync(StateHasChanged);
+		return Task.CompletedTask;
+	}
+
+	private void RemovePendingAttachment(int index)
+	{
+		if (index >= 0 && index < _pendingAttachments.Count)
+		{
+			_pendingAttachments.RemoveAt(index);
+		}
+	}
+
+	private string GetAttachmentSummary()
+	{
+		var totalBytes = _pendingAttachments.Sum(attachment => attachment.Content.LongLength);
+		return $"{_pendingAttachments.Count} attachment{(_pendingAttachments.Count == 1 ? string.Empty : "s")} • {FormatAttachmentSize(totalBytes)}";
+	}
+
+	private static string FormatAttachmentSize(long bytes)
+	{
+		const long kilobyte = 1024;
+		const long megabyte = kilobyte * 1024;
+
+		if (bytes >= megabyte)
+		{
+			return $"{bytes / (double)megabyte:F1} MB";
+		}
+
+		if (bytes >= kilobyte)
+		{
+			return $"{bytes / (double)kilobyte:F1} KB";
+		}
+
+		return $"{bytes} B";
+	}
+
+	private static bool TryGetAttachmentPreviewDataUrl(IdeaAttachmentUpload attachment, [NotNullWhen(true)] out string? previewDataUrl)
+	{
+		previewDataUrl = null;
+		if (attachment.Content.Length == 0 || string.IsNullOrWhiteSpace(attachment.ContentType) ||
+			!attachment.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+		{
+			return false;
+		}
+
+		previewDataUrl = $"data:{attachment.ContentType};base64,{Convert.ToBase64String(attachment.Content)}";
+		return true;
+	}
+
+	public sealed class ClipboardAttachmentDto
+	{
+		public string FileName { get; set; } = string.Empty;
+		public string? ContentType { get; set; }
+		public string Base64Content { get; set; } = string.Empty;
+	}
+
+	protected override async Task OnAfterRenderAsync(bool firstRender)
+	{
+		if (!firstRender)
+		{
+			return;
+		}
+
+		await RestoreDraftAsync();
+
+		_dotNetReference = DotNetObjectReference.Create(this);
+		try
+		{
+			await InvokeIdeasInteropVoidAsync("vibeSwarmIdeas.registerPasteTarget", _textareaId, _newIdeaTextarea, _dotNetReference);
+			_pasteTargetRegistered = true;
+		}
+		catch (JSException ex) when (IsMissingIdeasInteropException(ex))
+		{
+			DisableAttachmentInterop();
+		}
+		catch (JSException ex)
+		{
+			LogIdeasInteropFailure("initialize attachment interop", ex);
+			DisableAttachmentInterop();
+		}
+		catch (InvalidOperationException ex)
+		{
+			LogIdeasInteropFailure("initialize attachment interop", ex);
+			DisableAttachmentInterop();
+		}
+		catch (OperationCanceledException ex)
+		{
+			LogIdeasInteropFailure("initialize attachment interop", ex);
+			DisableAttachmentInterop();
+		}
+		catch (TimeoutException ex)
+		{
+			LogIdeasInteropFailure("initialize attachment interop", ex);
+			DisableAttachmentInterop();
+		}
+	}
+
+	private string GetAttachmentButtonTooltip()
+	{
+		return _attachmentInteropAvailable
+			? "Attach files from the host filesystem"
+			: "Attachments are temporarily unavailable. Refresh the page to restore them.";
+	}
+
+	private void DisableAttachmentInterop()
+	{
+		if (!_attachmentInteropAvailable)
+		{
+			return;
+		}
+
+		_attachmentInteropAvailable = false;
+		_pasteTargetRegistered = false;
+		_dotNetReference?.Dispose();
+		_dotNetReference = null;
+		ShowAttachmentInteropUnavailableWarning();
+		_ = InvokeAsync(StateHasChanged);
+	}
+
+	private void ShowAttachmentInteropUnavailableWarning()
+	{
+		NotificationService.ShowWarning(
+			"Idea attachments and clipboard image paste are temporarily unavailable on this page. Refresh the page to restore them.",
+			"Attachments unavailable");
+	}
+
+	private static void LogIdeasInteropFailure(string action, Exception exception)
+	{
+		Console.Error.WriteLine($"[IdeasPanel] Unable to {action}: {exception.Message}");
+	}
+
+	private async Task InvokeIdeasInteropVoidAsync(string identifier, params object?[] args)
+	{
+		await JSRuntime.InvokeVoidAsync(identifier, args).AsTask().WaitAsync(IdeasInteropTimeout);
+	}
+
+	private async Task<T?> InvokeIdeasInteropAsync<T>(string identifier, params object?[] args)
+	{
+		return await JSRuntime.InvokeAsync<T>(identifier, args).AsTask().WaitAsync(IdeasInteropTimeout);
+	}
+
+	private static bool IsMissingIdeasInteropException(JSException exception)
+	{
+		return exception.Message.Contains("vibeSwarmIdeas", StringComparison.OrdinalIgnoreCase) ||
+			exception.Message.Contains("registerPasteTarget", StringComparison.OrdinalIgnoreCase) ||
+			exception.Message.Contains("consumeSelectedFiles", StringComparison.OrdinalIgnoreCase) ||
+			exception.Message.Contains("readImageFromClipboard", StringComparison.OrdinalIgnoreCase);
+	}
+
+	private string GetDraftStorageKey()
+	{
+		return string.Create(CultureInfo.InvariantCulture, $"{IdeaDraftStorageKeyPrefix}.{CurrentProjectId:N}");
+	}
+
+	private async Task RestoreDraftAsync()
+	{
+		if (CurrentProjectId == Guid.Empty)
+		{
+			return;
+		}
+
+		try
+		{
+			var savedDraft = await JSRuntime.InvokeAsync<string?>("sessionStorage.getItem", GetDraftStorageKey());
+			if (string.IsNullOrEmpty(savedDraft))
+			{
+				_savedDraftDescription = null;
+				return;
+			}
+
+			_savedDraftDescription = savedDraft;
+			if (!string.IsNullOrEmpty(NewIdeaDescription))
+			{
+				return;
+			}
+
+			NewIdeaDescription = savedDraft;
+			await InvokeAsync(StateHasChanged);
+		}
+		catch (JSException ex)
+		{
+			LogIdeasInteropFailure("restore idea draft", ex);
+		}
+		catch (InvalidOperationException ex)
+		{
+			LogIdeasInteropFailure("restore idea draft", ex);
+		}
+		catch (OperationCanceledException ex)
+		{
+			LogIdeasInteropFailure("restore idea draft", ex);
+		}
+	}
+
+	private async Task PersistDraftAsync()
+	{
+		if (CurrentProjectId == Guid.Empty)
+		{
+			return;
+		}
+
+		var normalizedDraft = string.IsNullOrEmpty(NewIdeaDescription)
+			? null
+			: NewIdeaDescription;
+
+		if (string.Equals(_savedDraftDescription, normalizedDraft, StringComparison.Ordinal))
+		{
+			return;
+		}
+
+		try
+		{
+			if (string.IsNullOrEmpty(normalizedDraft))
+			{
+				await JSRuntime.InvokeVoidAsync("sessionStorage.removeItem", GetDraftStorageKey());
+			}
+			else
+			{
+				await JSRuntime.InvokeVoidAsync("sessionStorage.setItem", GetDraftStorageKey(), normalizedDraft);
+			}
+
+			_savedDraftDescription = normalizedDraft;
+		}
+		catch (JSException ex)
+		{
+			LogIdeasInteropFailure("save idea draft", ex);
+		}
+		catch (InvalidOperationException ex)
+		{
+			LogIdeasInteropFailure("save idea draft", ex);
+		}
+		catch (OperationCanceledException ex)
+		{
+			LogIdeasInteropFailure("save idea draft", ex);
+		}
+	}
+
+	private async Task ClearDraftAsync()
+	{
+		if (CurrentProjectId == Guid.Empty)
+		{
+			_savedDraftDescription = null;
+			return;
+		}
+
+		if (_savedDraftDescription == null)
+		{
+			return;
+		}
+
+		try
+		{
+			await JSRuntime.InvokeVoidAsync("sessionStorage.removeItem", GetDraftStorageKey());
+			_savedDraftDescription = null;
+		}
+		catch (JSException ex)
+		{
+			LogIdeasInteropFailure("clear idea draft", ex);
+		}
+		catch (InvalidOperationException ex)
+		{
+			LogIdeasInteropFailure("clear idea draft", ex);
+		}
+		catch (OperationCanceledException ex)
+		{
+			LogIdeasInteropFailure("clear idea draft", ex);
+		}
 	}
 
 	private string GetSuggestResultContainerClass() => _suggestResult?.Success == true
@@ -864,6 +1424,13 @@
 	private void OpenStartAllModal()
 	{
 		_startAllAutoCommitMode = CurrentAutoCommitMode;
+		_selectedStartAllProviderId = StartAllProviders.Any(provider => provider.Id == DefaultProcessingProviderId)
+			? DefaultProcessingProviderId
+			: StartAllProviders.Select(provider => (Guid?)provider.Id).FirstOrDefault();
+		_selectedStartAllModelId = _selectedStartAllProviderId == DefaultProcessingProviderId && !string.IsNullOrWhiteSpace(DefaultProcessingModelId)
+			? DefaultProcessingModelId
+			: null;
+		ResetStartAllModelIfUnavailable();
 		_showStartAllModal = true;
 	}
 
@@ -875,7 +1442,12 @@
 	private async Task ConfirmStartAll()
 	{
 		_showStartAllModal = false;
-		await OnStartProcessingWithOptions.InvokeAsync(_startAllAutoCommitMode);
+		await OnStartProcessingWithOptions.InvokeAsync(new IdeaProcessingOptions
+		{
+			AutoCommitMode = _startAllAutoCommitMode,
+			ProviderId = _selectedStartAllProviderId,
+			ModelId = _selectedStartAllModelId
+		});
 	}
 
 	private void EnsureSuggestProviderSelection()
@@ -905,5 +1477,54 @@
 			.OrderBy(provider => provider.Name)
 			.Select(provider => (Guid?)provider.Id)
 			.FirstOrDefault();
+	}
+
+	private void ResetStartAllModelIfUnavailable()
+	{
+		var validModelIds = SelectedStartAllProviderModels
+			.Select(model => model.ModelId)
+			.ToHashSet(StringComparer.Ordinal);
+
+		if (!string.IsNullOrWhiteSpace(_selectedStartAllModelId) && !validModelIds.Contains(_selectedStartAllModelId))
+		{
+			_selectedStartAllModelId = null;
+		}
+	}
+
+	private static string GetStartAllModelDisplayName(ProviderModel model)
+	{
+		var label = model.DisplayName ?? model.ModelId;
+		return model.IsDefault
+			? $"{label} (Default)"
+			: label;
+	}
+
+	public async ValueTask DisposeAsync()
+	{
+		CancelDraftSync();
+
+		if (_pasteTargetRegistered)
+		{
+			try
+			{
+				await InvokeIdeasInteropVoidAsync("vibeSwarmIdeas.unregisterPasteTarget", _textareaId);
+			}
+			catch (JSException)
+			{
+			}
+			catch (InvalidOperationException)
+			{
+			}
+			catch (OperationCanceledException)
+			{
+			}
+			catch (TimeoutException)
+			{
+			}
+		}
+
+		_dotNetReference?.Dispose();
+		_dotNetReference = null;
+		_pasteTargetRegistered = false;
 	}
 }

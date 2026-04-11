@@ -14,12 +14,13 @@
                 </div>
                 <div class="d-flex align-items-center gap-3">
                     <NotificationsPanel />
+                    <QueueDropdownPanel OpenUpward="true" />
                     <div class="dropup">
                         <button class="btn btn-link text-secondary p-0 lh-1" type="button" data-bs-toggle="dropdown"
                                 aria-expanded="false" title="User options">
                             <i class="bi bi-gear"></i>
                         </button>
-                        <ul class="dropdown-menu dropdown-menu-end shadow" style="min-width: 16rem;">
+                        <ul class="dropdown-menu dropdown-menu-end shadow vs-nav-dropdown-menu" style="min-width: 16rem;">
                             <li>
                                 <ThemeSelector SelectedTheme="_selectedTheme" IsLoading="_isUpdatingTheme"
                                                OnThemeSelected="HandleThemeSelected" />
@@ -46,13 +47,13 @@
             </div>
 
             @* Mobile: Compact dropdown with user icon *@
-            <div class="dropdown d-lg-none">
-                <button class="btn btn-link text-secondary p-0 fs-5 d-flex align-items-center" type="button"
-                        data-bs-toggle="dropdown" aria-expanded="false" title="User menu">
-                    <i class="bi bi-person-circle me-1"></i>
-                    <i class="bi bi-chevron-down small" style="font-size: 0.65rem; margin-left: 0.125rem;"></i>
-                </button>
-                <ul class="dropdown-menu dropdown-menu-end shadow" style="min-width: 16rem;">
+			<div class="dropdown d-lg-none mobile-header-dropdown">
+				<button class="btn btn-link text-secondary p-0 fs-5 d-flex align-items-center justify-content-center gap-1 lh-1 touch-manipulation mobile-header-icon" type="button"
+						data-bs-toggle="dropdown" data-bs-display="static" aria-expanded="false" title="User menu">
+					<i class="bi bi-person-circle"></i>
+					<i class="bi bi-chevron-down small" style="font-size: 0.65rem;"></i>
+				</button>
+                <ul class="dropdown-menu dropdown-menu-end shadow vs-nav-dropdown-menu" style="min-width: 16rem;">
                     <li class="dropdown-header">
                         <span class="fw-semibold">@context.User.Identity?.Name</span>
                     </li>

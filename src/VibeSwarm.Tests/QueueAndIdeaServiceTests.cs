@@ -80,7 +80,7 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 	}
 
 	[Fact]
-	public async Task GetPendingJobsAsync_ReturnsOnlyOneQueuedJobPerProject()
+	public async Task GetPendingJobsAsync_ReturnsOnlyOneQueuedJobPerProject_WhenProjectsUseDifferentProviders()
 	{
 		await using var dbContext = CreateDbContext();
 		var firstProject = new Project
@@ -103,9 +103,16 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 			IsEnabled = true,
 			IsDefault = true
 		};
+		var secondProvider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Claude",
+			Type = ProviderType.Claude,
+			IsEnabled = true
+		};
 
 		dbContext.Projects.AddRange(firstProject, secondProject);
-		dbContext.Providers.Add(provider);
+		dbContext.Providers.AddRange(provider, secondProvider);
 		dbContext.Jobs.AddRange(
 			new Job
 			{
@@ -133,7 +140,7 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 			{
 				Id = Guid.NewGuid(),
 				ProjectId = secondProject.Id,
-				ProviderId = provider.Id,
+				ProviderId = secondProvider.Id,
 				GoalPrompt = "Second project queued job",
 				Title = "Second project queued job",
 				Status = JobStatus.New,
@@ -151,6 +158,347 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		Assert.Equal(2, pendingJobs.Select(job => job.ProjectId).Distinct().Count());
 		Assert.Contains(pendingJobs, job => job.ProjectId == firstProject.Id && job.Title == "First project, first queued job");
 		Assert.DoesNotContain(pendingJobs, job => job.ProjectId == firstProject.Id && job.Title == "First project, second queued job");
+	}
+
+	[Fact]
+	public async Task GetPendingJobsAsync_SkipsJobsWithFutureNotBeforeUtc_AndIncompleteDependencies()
+	{
+		await using var dbContext = CreateDbContext();
+		var project = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Pending Filter Project",
+			WorkingPath = "/tmp/pending-filter-project"
+		};
+		var dependencyProject = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Dependency Project",
+			WorkingPath = "/tmp/dependency-project"
+		};
+		var provider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Copilot",
+			Type = ProviderType.Copilot,
+			IsEnabled = true,
+			IsDefault = true
+		};
+		var dependencyProvider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Claude",
+			Type = ProviderType.Claude,
+			IsEnabled = true
+		};
+		var completedDependencyId = Guid.NewGuid();
+		var pendingDependencyId = Guid.NewGuid();
+		var readyJobId = Guid.NewGuid();
+		var backedOffJobId = Guid.NewGuid();
+		var blockedJobId = Guid.NewGuid();
+
+		dbContext.Projects.AddRange(project, dependencyProject);
+		dbContext.Providers.AddRange(provider, dependencyProvider);
+		dbContext.Jobs.AddRange(
+			new Job
+			{
+				Id = completedDependencyId,
+				ProjectId = project.Id,
+				ProviderId = provider.Id,
+				GoalPrompt = "Completed dependency",
+				Title = "Completed dependency",
+				Status = JobStatus.Completed,
+				CreatedAt = DateTime.UtcNow.AddMinutes(-10),
+				CompletedAt = DateTime.UtcNow.AddMinutes(-9)
+			},
+			new Job
+			{
+				Id = pendingDependencyId,
+				ProjectId = dependencyProject.Id,
+				ProviderId = dependencyProvider.Id,
+				GoalPrompt = "Pending dependency",
+				Title = "Pending dependency",
+				Status = JobStatus.New,
+				CreatedAt = DateTime.UtcNow.AddMinutes(-8)
+			},
+			new Job
+			{
+				Id = readyJobId,
+				ProjectId = project.Id,
+				ProviderId = provider.Id,
+				GoalPrompt = "Ready queued job",
+				Title = "Ready queued job",
+				Status = JobStatus.New,
+				CreatedAt = DateTime.UtcNow.AddMinutes(-7),
+				DependsOnJobId = completedDependencyId
+			},
+			new Job
+			{
+				Id = backedOffJobId,
+				ProjectId = project.Id,
+				ProviderId = provider.Id,
+				GoalPrompt = "Backed off queued job",
+				Title = "Backed off queued job",
+				Status = JobStatus.New,
+				CreatedAt = DateTime.UtcNow.AddMinutes(-6),
+				NotBeforeUtc = DateTime.UtcNow.AddMinutes(30)
+			},
+			new Job
+			{
+				Id = blockedJobId,
+				ProjectId = project.Id,
+				ProviderId = provider.Id,
+				GoalPrompt = "Blocked queued job",
+				Title = "Blocked queued job",
+				Status = JobStatus.New,
+				CreatedAt = DateTime.UtcNow.AddMinutes(-5),
+				DependsOnJobId = pendingDependencyId
+			});
+		await dbContext.SaveChangesAsync();
+
+		var serviceProvider = new ServiceCollection().BuildServiceProvider();
+		var jobService = new JobService(dbContext, serviceProvider);
+
+		var pendingJobs = (await jobService.GetPendingJobsAsync()).ToList();
+
+		Assert.Contains(pendingJobs, job => job.Id == readyJobId);
+		Assert.DoesNotContain(pendingJobs, job => job.Id == backedOffJobId);
+		Assert.DoesNotContain(pendingJobs, job => job.Id == blockedJobId);
+	}
+
+	[Fact]
+	public async Task GetPendingJobsAsync_ReturnsAtMostOneQueuedJobPerProvider()
+	{
+		await using var dbContext = CreateDbContext();
+		var firstProject = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "First Provider Queue Project",
+			WorkingPath = "/tmp/first-provider-queue-project"
+		};
+		var secondProject = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Second Provider Queue Project",
+			WorkingPath = "/tmp/second-provider-queue-project"
+		};
+		var thirdProject = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Third Provider Queue Project",
+			WorkingPath = "/tmp/third-provider-queue-project"
+		};
+		var copilotProvider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Copilot",
+			Type = ProviderType.Copilot,
+			IsEnabled = true,
+			IsDefault = true
+		};
+		var claudeProvider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Claude",
+			Type = ProviderType.Claude,
+			IsEnabled = true
+		};
+
+		dbContext.Projects.AddRange(firstProject, secondProject, thirdProject);
+		dbContext.Providers.AddRange(copilotProvider, claudeProvider);
+		dbContext.Jobs.AddRange(
+			new Job
+			{
+				Id = Guid.NewGuid(),
+				ProjectId = firstProject.Id,
+				ProviderId = copilotProvider.Id,
+				GoalPrompt = "First Copilot queued job",
+				Title = "First Copilot queued job",
+				Status = JobStatus.New,
+				Priority = 5,
+				CreatedAt = DateTime.UtcNow.AddMinutes(-3)
+			},
+			new Job
+			{
+				Id = Guid.NewGuid(),
+				ProjectId = secondProject.Id,
+				ProviderId = copilotProvider.Id,
+				GoalPrompt = "Second Copilot queued job",
+				Title = "Second Copilot queued job",
+				Status = JobStatus.New,
+				Priority = 1,
+				CreatedAt = DateTime.UtcNow.AddMinutes(-2)
+			},
+			new Job
+			{
+				Id = Guid.NewGuid(),
+				ProjectId = thirdProject.Id,
+				ProviderId = claudeProvider.Id,
+				GoalPrompt = "Claude queued job",
+				Title = "Claude queued job",
+				Status = JobStatus.New,
+				Priority = 3,
+				CreatedAt = DateTime.UtcNow.AddMinutes(-1)
+			});
+		await dbContext.SaveChangesAsync();
+
+		var serviceProvider = new ServiceCollection().BuildServiceProvider();
+		var jobService = new JobService(dbContext, serviceProvider);
+
+		var pendingJobs = (await jobService.GetPendingJobsAsync()).ToList();
+
+		Assert.Equal(2, pendingJobs.Count);
+		Assert.Contains(pendingJobs, job => job.ProviderId == claudeProvider.Id);
+		Assert.Contains(pendingJobs, job => job.ProviderId == copilotProvider.Id && job.Title == "First Copilot queued job");
+		Assert.DoesNotContain(pendingJobs, job => job.ProviderId == copilotProvider.Id && job.Title == "Second Copilot queued job");
+	}
+
+	[Fact]
+	public async Task GetPendingJobsAsync_SkipsQueuedJobsForProvidersThatAreAlreadyRunning()
+	{
+		await using var dbContext = CreateDbContext();
+		var runningProject = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Running Provider Project",
+			WorkingPath = "/tmp/running-provider-project"
+		};
+		var blockedProject = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Blocked Provider Project",
+			WorkingPath = "/tmp/blocked-provider-project"
+		};
+		var readyProject = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Ready Provider Project",
+			WorkingPath = "/tmp/ready-provider-project"
+		};
+		var copilotProvider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Copilot",
+			Type = ProviderType.Copilot,
+			IsEnabled = true,
+			IsDefault = true
+		};
+		var claudeProvider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Claude",
+			Type = ProviderType.Claude,
+			IsEnabled = true
+		};
+
+		dbContext.Projects.AddRange(runningProject, blockedProject, readyProject);
+		dbContext.Providers.AddRange(copilotProvider, claudeProvider);
+		dbContext.Jobs.AddRange(
+			new Job
+			{
+				Id = Guid.NewGuid(),
+				ProjectId = runningProject.Id,
+				ProviderId = copilotProvider.Id,
+				GoalPrompt = "Running Copilot job",
+				Title = "Running Copilot job",
+				Status = JobStatus.Processing,
+				StartedAt = DateTime.UtcNow.AddMinutes(-5)
+			},
+			new Job
+			{
+				Id = Guid.NewGuid(),
+				ProjectId = blockedProject.Id,
+				ProviderId = copilotProvider.Id,
+				GoalPrompt = "Queued Copilot job",
+				Title = "Queued Copilot job",
+				Status = JobStatus.New,
+				CreatedAt = DateTime.UtcNow.AddMinutes(-2)
+			},
+			new Job
+			{
+				Id = Guid.NewGuid(),
+				ProjectId = readyProject.Id,
+				ProviderId = claudeProvider.Id,
+				GoalPrompt = "Queued Claude job",
+				Title = "Queued Claude job",
+				Status = JobStatus.New,
+				CreatedAt = DateTime.UtcNow.AddMinutes(-1)
+			});
+		await dbContext.SaveChangesAsync();
+
+		var serviceProvider = new ServiceCollection().BuildServiceProvider();
+		var jobService = new JobService(dbContext, serviceProvider);
+
+		var pendingJobs = (await jobService.GetPendingJobsAsync()).ToList();
+
+		var readyJob = Assert.Single(pendingJobs);
+		Assert.Equal(claudeProvider.Id, readyJob.ProviderId);
+		Assert.Equal("Queued Claude job", readyJob.Title);
+	}
+
+	[Fact]
+	public async Task PrioritizeSelectedByProjectIdAsync_OnlyUpdatesQueuedSelectedJobs()
+	{
+		await using var dbContext = CreateDbContext();
+		var project = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Priority Project",
+			WorkingPath = "/tmp/priority-project"
+		};
+		var provider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Copilot",
+			Type = ProviderType.Copilot,
+			IsEnabled = true,
+			IsDefault = true
+		};
+		var selectedQueuedJobId = Guid.NewGuid();
+		var otherQueuedJobId = Guid.NewGuid();
+		var failedJobId = Guid.NewGuid();
+
+		dbContext.Projects.Add(project);
+		dbContext.Providers.Add(provider);
+		dbContext.Jobs.AddRange(
+			new Job
+			{
+				Id = selectedQueuedJobId,
+				ProjectId = project.Id,
+				ProviderId = provider.Id,
+				GoalPrompt = "Selected queued job",
+				Status = JobStatus.New,
+				Priority = 1
+			},
+			new Job
+			{
+				Id = otherQueuedJobId,
+				ProjectId = project.Id,
+				ProviderId = provider.Id,
+				GoalPrompt = "Other queued job",
+				Status = JobStatus.New,
+				Priority = 5
+			},
+			new Job
+			{
+				Id = failedJobId,
+				ProjectId = project.Id,
+				ProviderId = provider.Id,
+				GoalPrompt = "Failed job",
+				Status = JobStatus.Failed,
+				Priority = 3
+			});
+		await dbContext.SaveChangesAsync();
+
+		var serviceProvider = new ServiceCollection().BuildServiceProvider();
+		var jobService = new JobService(dbContext, serviceProvider);
+
+		var updatedCount = await jobService.PrioritizeSelectedByProjectIdAsync(project.Id, [selectedQueuedJobId, failedJobId]);
+
+		Assert.Equal(1, updatedCount);
+		Assert.Equal(6, await dbContext.Jobs.Where(j => j.Id == selectedQueuedJobId).Select(j => j.Priority).SingleAsync());
+		Assert.Equal(5, await dbContext.Jobs.Where(j => j.Id == otherQueuedJobId).Select(j => j.Priority).SingleAsync());
+		Assert.Equal(3, await dbContext.Jobs.Where(j => j.Id == failedJobId).Select(j => j.Priority).SingleAsync());
 	}
 
 	[Fact]
@@ -184,6 +532,9 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 			PlanningOutput = "Existing saved plan",
 			PlanningProviderId = provider.Id,
 			PlanningModelUsed = "claude-sonnet-4",
+			PlanningInputTokens = 123,
+			PlanningOutputTokens = 456,
+			PlanningCostUsd = 1.23m,
 			PlanningGeneratedAt = DateTime.UtcNow.AddMinutes(-5)
 		};
 
@@ -203,7 +554,71 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		Assert.Null(savedJob.PlanningOutput);
 		Assert.Null(savedJob.PlanningProviderId);
 		Assert.Null(savedJob.PlanningModelUsed);
+		Assert.Null(savedJob.PlanningReasoningEffortUsed);
 		Assert.Null(savedJob.PlanningGeneratedAt);
+		Assert.Null(savedJob.PlanningInputTokens);
+		Assert.Null(savedJob.PlanningOutputTokens);
+		Assert.Null(savedJob.PlanningCostUsd);
+	}
+
+	[Fact]
+	public async Task ResetJobWithOptionsAsync_PersistsNormalizedReasoningEffortAndClearsPlanningReasoning()
+	{
+		await using var dbContext = CreateDbContext();
+		var provider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "GitHub Copilot",
+			Type = ProviderType.Copilot,
+			ConnectionMode = ProviderConnectionMode.CLI,
+			IsEnabled = true,
+			IsDefault = true
+		};
+		var project = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Retry Project",
+			WorkingPath = "/tmp/retry-project"
+		};
+		var job = new Job
+		{
+			Id = Guid.NewGuid(),
+			ProjectId = project.Id,
+			ProviderId = provider.Id,
+			GoalPrompt = "Retry me",
+			Status = JobStatus.Failed,
+			PlanningOutput = "Existing plan",
+			PlanningProviderId = provider.Id,
+			PlanningModelUsed = "gpt-5.4",
+			PlanningReasoningEffortUsed = "medium",
+			PlanningInputTokens = 100,
+			PlanningOutputTokens = 50,
+			PlanningCostUsd = 0.75m,
+			PlanningGeneratedAt = DateTime.UtcNow.AddMinutes(-3)
+		};
+
+		dbContext.Projects.Add(project);
+		dbContext.Providers.Add(provider);
+		dbContext.Jobs.Add(job);
+		await dbContext.SaveChangesAsync();
+
+		var serviceProvider = new ServiceCollection().BuildServiceProvider();
+		var jobService = new JobService(dbContext, serviceProvider);
+
+		var reset = await jobService.ResetJobWithOptionsAsync(job.Id, reasoningEffort: " High ");
+
+		Assert.True(reset);
+		var savedJob = await dbContext.Jobs.SingleAsync(item => item.Id == job.Id);
+		Assert.Equal(JobStatus.New, savedJob.Status);
+		Assert.Equal("high", savedJob.ReasoningEffort);
+		Assert.Null(savedJob.PlanningOutput);
+		Assert.Null(savedJob.PlanningProviderId);
+		Assert.Null(savedJob.PlanningModelUsed);
+		Assert.Null(savedJob.PlanningReasoningEffortUsed);
+		Assert.Null(savedJob.PlanningGeneratedAt);
+		Assert.Null(savedJob.PlanningInputTokens);
+		Assert.Null(savedJob.PlanningOutputTokens);
+		Assert.Null(savedJob.PlanningCostUsd);
 	}
 
 	[Fact]
@@ -581,7 +996,90 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 			Assert.Equal("deepseek-coder:14b", inferenceService.LastRequest?.Model);
 			Assert.Contains("Return exactly 2 concrete, actionable ideas.", inferenceService.LastRequest?.Prompt);
 			Assert.Contains("De-prioritize development-only work such as adding tests", inferenceService.LastRequest?.Prompt);
+			Assert.Contains("Do not repeat, restate, or lightly rename existing project ideas.", inferenceService.LastRequest?.Prompt);
 			Assert.Equal(2, await dbContext.Ideas.CountAsync(idea => idea.ProjectId == project.Id));
+		}
+		finally
+		{
+			if (Directory.Exists(workingPath))
+			{
+				Directory.Delete(workingPath, recursive: true);
+			}
+		}
+	}
+
+	[Fact]
+	public async Task SuggestIdeasFromCodebaseAsync_IncludesExistingIdeasAndAdditionalContextInPrompt()
+	{
+		await using var dbContext = CreateDbContext();
+		var workingPath = Path.Combine(Path.GetTempPath(), $"vibeswarm-scheduled-suggestion-{Guid.NewGuid():N}");
+		Directory.CreateDirectory(workingPath);
+		File.WriteAllText(Path.Combine(workingPath, "Program.cs"), "Console.WriteLine(\"Hello from VibeSwarm\");");
+		try
+		{
+			var project = new Project
+			{
+				Id = Guid.NewGuid(),
+				Name = "Scheduled Suggestion Project",
+				WorkingPath = workingPath
+			};
+			var provider = new InferenceProvider
+			{
+				Id = Guid.NewGuid(),
+				Name = "Preferred Ollama",
+				Endpoint = "http://preferred-ollama:11434",
+				IsEnabled = true,
+				Models =
+				[
+					new InferenceModel
+					{
+						Id = Guid.NewGuid(),
+						ModelId = "qwen2.5-coder:7b",
+						TaskType = "suggest",
+						IsDefault = true,
+						IsAvailable = true
+					}
+				]
+			};
+
+			provider.Models.First().InferenceProviderId = provider.Id;
+			dbContext.Projects.Add(project);
+			dbContext.InferenceProviders.Add(provider);
+			dbContext.Ideas.Add(new Idea
+			{
+				Id = Guid.NewGuid(),
+				ProjectId = project.Id,
+				Description = "Add a project summary card to the detail page",
+				SortOrder = 0,
+				CreatedAt = DateTime.UtcNow.AddMinutes(-3)
+			});
+			await dbContext.SaveChangesAsync();
+
+			var inferenceService = new FakeInferenceService
+			{
+				Response = new InferenceResponse
+				{
+					Success = true,
+					ModelUsed = "qwen2.5-coder:7b",
+					Response = "- Add a recent inference activity feed",
+					DurationMs = 700
+				}
+			};
+
+			var ideaService = CreateIdeaService(dbContext, new Provider(), inferenceService: inferenceService);
+			var result = await ideaService.SuggestIdeasFromCodebaseAsync(project.Id, new SuggestIdeasRequest
+			{
+				ProviderId = provider.Id,
+				IdeaCount = 1,
+				AdditionalContext = "This idea-generation request comes from the scheduler."
+			});
+
+			Assert.True(result.Success);
+			Assert.NotNull(inferenceService.LastRequest?.Prompt);
+			Assert.Contains("<existing_ideas>", inferenceService.LastRequest!.Prompt);
+			Assert.Contains("Add a project summary card to the detail page", inferenceService.LastRequest.Prompt);
+			Assert.Contains("<run_context>", inferenceService.LastRequest.Prompt);
+			Assert.Contains("comes from the scheduler", inferenceService.LastRequest.Prompt, StringComparison.OrdinalIgnoreCase);
 		}
 		finally
 		{
@@ -1016,6 +1514,7 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 			null!,
 			null!,
 			null!,
+			new FakeProjectMemoryService(),
 			NullLogger<IdeaService>.Instance);
 
 		var updatedIdea = await ideaService.UpdateAsync(new Idea
@@ -1052,6 +1551,7 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 			null!,
 			null!,
 			null!,
+			new FakeProjectMemoryService(),
 			NullLogger<IdeaService>.Instance);
 
 		var error = await Assert.ThrowsAsync<System.ComponentModel.DataAnnotations.ValidationException>(() => ideaService.CreateAsync(new Idea
@@ -1061,6 +1561,68 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		}));
 
 		Assert.Contains(nameof(Idea.Description), error.Message);
+	}
+
+	[Fact]
+	public async Task CreateAsync_WithAttachments_PersistsMetadataAndFiles()
+	{
+		await using var dbContext = CreateDbContext();
+		var workingPath = Path.Combine(Path.GetTempPath(), $"vibeswarm-idea-attachments-{Guid.NewGuid():N}");
+		Directory.CreateDirectory(workingPath);
+
+		try
+		{
+			var project = new Project
+			{
+				Id = Guid.NewGuid(),
+				Name = "Attachment Project",
+				WorkingPath = workingPath
+			};
+
+			dbContext.Projects.Add(project);
+			await dbContext.SaveChangesAsync();
+
+			var ideaService = new IdeaService(
+				dbContext,
+				null!,
+				null!,
+				null!,
+				new FakeProjectMemoryService(),
+				NullLogger<IdeaService>.Instance);
+
+			var created = await ideaService.CreateAsync(new CreateIdeaRequest
+			{
+				ProjectId = project.Id,
+				Description = "Add image context support",
+				Attachments =
+				[
+					new IdeaAttachmentUpload
+					{
+						FileName = "screenshot.png",
+						ContentType = "image/png",
+						Content = [1, 2, 3, 4]
+					}
+				]
+			});
+
+			var savedIdea = await dbContext.Ideas.Include(idea => idea.Attachments).SingleAsync(idea => idea.Id == created.Id);
+			var attachment = Assert.Single(savedIdea.Attachments);
+			Assert.Equal("screenshot.png", attachment.FileName);
+			Assert.Equal("image/png", attachment.ContentType);
+			Assert.Equal(4, attachment.SizeBytes);
+			Assert.Contains(Path.Combine(".vibeswarm", "idea-attachments"), attachment.RelativePath, StringComparison.Ordinal);
+
+			var storedPath = Path.Combine(workingPath, attachment.RelativePath);
+			Assert.True(File.Exists(storedPath));
+			Assert.Equal([1, 2, 3, 4], await File.ReadAllBytesAsync(storedPath));
+		}
+		finally
+		{
+			if (Directory.Exists(workingPath))
+			{
+				Directory.Delete(workingPath, recursive: true);
+			}
+		}
 	}
 
 	[Fact]
@@ -1110,6 +1672,7 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 			null!,
 			null!,
 			null!,
+			new FakeProjectMemoryService(),
 			NullLogger<IdeaService>.Instance);
 
 		var ideas = (await ideaService.GetByProjectIdAsync(project.Id)).ToList();
@@ -1152,6 +1715,7 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 			null!,
 			null!,
 			null!,
+			new FakeProjectMemoryService(),
 			NullLogger<IdeaService>.Instance);
 
 		var page = await ideaService.GetPagedByProjectIdAsync(projectId, page: 2, pageSize: 2);
@@ -1164,15 +1728,14 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 	}
 
 	[Fact]
-	public async Task ConvertToJobAsync_UsesDirectImplementationPrompt_WhenProjectAutoExpandDisabled()
+	public async Task ConvertToJobAsync_UsesDirectImplementationPrompt_WhenNoApprovedExpansion()
 	{
 		await using var dbContext = CreateDbContext();
 		var project = new Project
 		{
 			Id = Guid.NewGuid(),
 			Name = "Direct Ideas Project",
-			WorkingPath = "/tmp/direct-ideas",
-			IdeasAutoExpand = false
+			WorkingPath = "/tmp/direct-ideas"
 		};
 		var provider = new Provider
 		{
@@ -1199,59 +1762,92 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		var job = await ideaService.ConvertToJobAsync(idea.Id);
 
 		Assert.NotNull(job);
-		Assert.Contains("Work directly from the idea below instead of first expanding it into a separate detailed specification.", job!.GoalPrompt);
+		Assert.Contains("You are a staff-level software engineer implementing a feature directly from a product idea.", job!.GoalPrompt);
+		Assert.Contains("Implement the feature end-to-end with the needed UX, validation, persistence, error handling, and tests.", job.GoalPrompt);
+		Assert.Contains("Do not mention or attribute the work to any provider, model, or CLI tool.", job.GoalPrompt);
 		Assert.DoesNotContain("Begin by expanding this idea into a detailed specification, then implement it.", job.GoalPrompt);
 	}
 
 	[Fact]
-	public async Task ConvertToJobAsync_UsesExpansionPrompt_WhenProjectAutoExpandEnabled()
+	public async Task ConvertToJobAsync_IncludesAttachmentManifestAndAttachedFilesJson()
 	{
 		await using var dbContext = CreateDbContext();
-		var project = new Project
-		{
-			Id = Guid.NewGuid(),
-			Name = "Expanded Ideas Project",
-			WorkingPath = "/tmp/expanded-ideas",
-			IdeasAutoExpand = true
-		};
-		var provider = new Provider
-		{
-			Id = Guid.NewGuid(),
-			Name = "Claude",
-			Type = ProviderType.Claude,
-			IsEnabled = true,
-			IsDefault = true
-		};
-		var idea = new Idea
-		{
-			Id = Guid.NewGuid(),
-			ProjectId = project.Id,
-			Description = "Add project usage charts",
-			SortOrder = 0
-		};
+		var workingPath = Path.Combine(Path.GetTempPath(), $"vibeswarm-job-attachments-{Guid.NewGuid():N}");
+		var attachmentDirectory = Path.Combine(workingPath, ".vibeswarm", "idea-attachments");
+		Directory.CreateDirectory(attachmentDirectory);
 
-		dbContext.Projects.Add(project);
-		dbContext.Providers.Add(provider);
-		dbContext.Ideas.Add(idea);
-		await dbContext.SaveChangesAsync();
+		try
+		{
+			var project = new Project
+			{
+				Id = Guid.NewGuid(),
+				Name = "Idea Attachment Conversion",
+				WorkingPath = workingPath
+			};
+			var provider = new Provider
+			{
+				Id = Guid.NewGuid(),
+				Name = "OpenCode",
+				Type = ProviderType.OpenCode,
+				IsEnabled = true,
+				IsDefault = true
+			};
+			var idea = new Idea
+			{
+				Id = Guid.NewGuid(),
+				ProjectId = project.Id,
+				Description = "Use the attached screenshot while implementing this idea",
+				SortOrder = 0,
+				Attachments =
+				[
+					new IdeaAttachment
+					{
+						Id = Guid.NewGuid(),
+						FileName = "screenshot.png",
+						ContentType = "image/png",
+						RelativePath = Path.Combine(".vibeswarm", "idea-attachments", "screenshot.png"),
+						SizeBytes = 4
+					}
+				]
+			};
 
-		var ideaService = CreateIdeaService(dbContext, provider);
-		var job = await ideaService.ConvertToJobAsync(idea.Id);
+			dbContext.Projects.Add(project);
+			dbContext.Providers.Add(provider);
+			dbContext.Ideas.Add(idea);
+			await dbContext.SaveChangesAsync();
 
-		Assert.NotNull(job);
-		Assert.Contains("Begin by expanding this idea into a detailed specification, then implement it.", job!.GoalPrompt);
+			var absoluteAttachmentPath = Path.Combine(workingPath, idea.Attachments.Single().RelativePath);
+			Directory.CreateDirectory(Path.GetDirectoryName(absoluteAttachmentPath)!);
+			await File.WriteAllBytesAsync(absoluteAttachmentPath, [1, 2, 3, 4]);
+
+			var ideaService = CreateIdeaService(dbContext, provider);
+			var job = await ideaService.ConvertToJobAsync(idea.Id);
+
+			Assert.NotNull(job);
+			Assert.Contains("## Attached Context Files", job!.GoalPrompt);
+			Assert.Contains("screenshot.png", job.GoalPrompt);
+			Assert.Contains(absoluteAttachmentPath, job.GoalPrompt);
+			Assert.NotNull(job.AttachedFilesJson);
+			Assert.Contains(absoluteAttachmentPath, job.AttachedFilesJson, StringComparison.Ordinal);
+		}
+		finally
+		{
+			if (Directory.Exists(workingPath))
+			{
+				Directory.Delete(workingPath, recursive: true);
+			}
+		}
 	}
 
 	[Fact]
-	public async Task ConvertToJobAsync_PrefersApprovedExpansion_WhenProjectAutoExpandDisabled()
+	public async Task ConvertToJobAsync_PrefersApprovedExpansion_OverDirectPrompt()
 	{
 		await using var dbContext = CreateDbContext();
 		var project = new Project
 		{
 			Id = Guid.NewGuid(),
 			Name = "Approved Expansion Project",
-			WorkingPath = "/tmp/approved-expansion",
-			IdeasAutoExpand = false
+			WorkingPath = "/tmp/approved-expansion"
 		};
 		var provider = new Provider
 		{
@@ -1281,6 +1877,7 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 
 		Assert.NotNull(job);
 		Assert.Contains("## Detailed Specification", job!.GoalPrompt);
+		Assert.Contains("Use the approved specification as the source of truth", job.GoalPrompt);
 		Assert.Contains(idea.ExpandedDescription, job.GoalPrompt);
 		Assert.DoesNotContain("Work directly from the idea below", job.GoalPrompt);
 	}
@@ -1293,8 +1890,7 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		{
 			Id = Guid.NewGuid(),
 			Name = "Idea Notification Project",
-			WorkingPath = "/tmp/idea-notification-project",
-			IdeasAutoExpand = false
+			WorkingPath = "/tmp/idea-notification-project"
 		};
 		var provider = new Provider
 		{
@@ -1355,7 +1951,6 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 			Id = Guid.NewGuid(),
 			Name = "Project Priority Defaults",
 			WorkingPath = "/tmp/project-priority-defaults",
-			IdeasAutoExpand = false,
 			ProviderSelections =
 			[
 				new ProjectProvider
@@ -1363,7 +1958,8 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 					ProviderId = projectProvider.Id,
 					Priority = 0,
 					IsEnabled = true,
-					PreferredModelId = "claude-opus-4.6"
+					PreferredModelId = "claude-opus-4.6",
+					PreferredReasoningEffort = "high"
 				}
 			]
 		};
@@ -1405,8 +2001,114 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		Assert.NotNull(job);
 		Assert.Equal(projectProvider.Id, job!.ProviderId);
 		Assert.Equal("claude-opus-4.6", job.ModelUsed);
+		Assert.Equal("high", job.ReasoningEffort);
 	}
 
+
+	[Fact]
+	public async Task StartProcessingAsync_PersistsQueueProviderAndModelOverrides()
+	{
+		await using var dbContext = CreateDbContext();
+		var project = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Persist Queue Overrides",
+			WorkingPath = "/tmp/persist-queue-overrides"
+		};
+		var provider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Claude",
+			Type = ProviderType.Claude,
+			IsEnabled = true,
+			IsDefault = true
+		};
+
+		dbContext.Projects.Add(project);
+		dbContext.Providers.Add(provider);
+		dbContext.ProviderModels.Add(new ProviderModel
+		{
+			Id = Guid.NewGuid(),
+			ProviderId = provider.Id,
+			ModelId = "claude-sonnet-4.6",
+			DisplayName = "Claude Sonnet 4.6",
+			IsAvailable = true,
+			IsDefault = true
+		});
+		await dbContext.SaveChangesAsync();
+
+		var ideaService = CreateIdeaService(dbContext, provider);
+		await ideaService.StartProcessingAsync(project.Id, new IdeaProcessingOptions
+		{
+			AutoCommitMode = AutoCommitMode.CommitOnly,
+			ProviderId = provider.Id,
+			ModelId = "claude-sonnet-4.6"
+		});
+
+		var updatedProject = await dbContext.Projects.SingleAsync(item => item.Id == project.Id);
+		Assert.True(updatedProject.IdeasProcessingActive);
+		Assert.True(updatedProject.IdeasAutoCommit);
+		Assert.Equal(provider.Id, updatedProject.IdeasProcessingProviderId);
+		Assert.Equal("claude-sonnet-4.6", updatedProject.IdeasProcessingModelId);
+	}
+
+	[Fact]
+	public async Task ProcessNextIdeaIfReadyAsync_UsesQueuedProviderAndModelOverrides()
+	{
+		await using var dbContext = CreateDbContext();
+		var defaultProvider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Default Provider",
+			Type = ProviderType.Copilot,
+			IsEnabled = true,
+			IsDefault = true
+		};
+		var overrideProvider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Override Provider",
+			Type = ProviderType.Claude,
+			IsEnabled = true
+		};
+		var project = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Queued Override Project",
+			WorkingPath = "/tmp/queued-override-project",
+			IdeasProcessingActive = true,
+			IdeasProcessingProviderId = overrideProvider.Id,
+			IdeasProcessingModelId = "claude-opus-4.6"
+		};
+		var idea = new Idea
+		{
+			Id = Guid.NewGuid(),
+			ProjectId = project.Id,
+			Description = "Use queued overrides",
+			SortOrder = 0
+		};
+
+		dbContext.Projects.Add(project);
+		dbContext.Providers.AddRange(defaultProvider, overrideProvider);
+		dbContext.ProviderModels.Add(new ProviderModel
+		{
+			Id = Guid.NewGuid(),
+			ProviderId = overrideProvider.Id,
+			ModelId = "claude-opus-4.6",
+			DisplayName = "Claude Opus 4.6",
+			IsAvailable = true
+		});
+		dbContext.Ideas.Add(idea);
+		await dbContext.SaveChangesAsync();
+
+		var ideaService = CreateIdeaService(dbContext, defaultProvider);
+		var processed = await ideaService.ProcessNextIdeaIfReadyAsync(project.Id);
+
+		Assert.True(processed);
+		var job = await dbContext.Jobs.SingleAsync(item => item.ProjectId == project.Id);
+		Assert.Equal(overrideProvider.Id, job.ProviderId);
+		Assert.Equal("claude-opus-4.6", job.ModelUsed);
+	}
 	[Fact]
 	public async Task ProcessNextIdeaIfReadyAsync_WaitsForExistingProjectJobToFinish()
 	{
@@ -1416,8 +2118,7 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 			Id = Guid.NewGuid(),
 			Name = "Ideas Queue Project",
 			WorkingPath = "/tmp/ideas-queue-project",
-			IdeasProcessingActive = true,
-			IdeasAutoExpand = false
+			IdeasProcessingActive = true
 		};
 		var provider = new Provider
 		{
@@ -1480,7 +2181,192 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 	}
 
 	[Fact]
-	public async Task JobQueueManager_GetPendingJobsAsync_ReturnsSingleJobPerProject()
+	public async Task GetGlobalProcessingStatusAsync_IncludesStartedIdeasThatAreStillQueued()
+	{
+		await using var dbContext = CreateDbContext();
+		var now = DateTime.UtcNow;
+		var provider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Claude",
+			Type = ProviderType.Claude,
+			IsEnabled = true,
+			IsDefault = true
+		};
+		var project = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Queued Idea Project",
+			WorkingPath = "/tmp/queued-idea-project",
+			IsActive = true
+		};
+		var queuedJob = new Job
+		{
+			Id = Guid.NewGuid(),
+			ProjectId = project.Id,
+			ProviderId = provider.Id,
+			GoalPrompt = "Queued started idea",
+			Title = "Queued started idea",
+			Status = JobStatus.New,
+			CreatedAt = now.AddMinutes(-1)
+		};
+		var queuedIdea = new Idea
+		{
+			Id = Guid.NewGuid(),
+			ProjectId = project.Id,
+			Description = "Queued started idea",
+			CreatedAt = now.AddMinutes(-2),
+			SortOrder = 0,
+			IsProcessing = true,
+			JobId = queuedJob.Id
+		};
+		var pendingIdea = new Idea
+		{
+			Id = Guid.NewGuid(),
+			ProjectId = project.Id,
+			Description = "Pending idea",
+			CreatedAt = now.AddMinutes(-3),
+			SortOrder = 1
+		};
+
+		dbContext.Providers.Add(provider);
+		dbContext.Projects.Add(project);
+		dbContext.Jobs.Add(queuedJob);
+		dbContext.Ideas.AddRange(queuedIdea, pendingIdea);
+		await dbContext.SaveChangesAsync();
+
+		var ideaService = CreateIdeaService(dbContext, provider);
+		var status = await ideaService.GetGlobalProcessingStatusAsync();
+
+		Assert.Equal(1, status.TotalUnprocessedIdeas);
+		Assert.Equal(1, status.TotalQueuedIdeas);
+		Assert.Equal(2, status.TotalQueueIdeas);
+
+		var projectSummary = Assert.Single(status.Projects);
+		Assert.Equal(1, projectSummary.UnprocessedIdeas);
+		Assert.Equal(1, projectSummary.QueuedIdeas);
+		Assert.Equal(2, projectSummary.TotalQueueIdeas);
+		Assert.False(projectSummary.HasRunningJob);
+	}
+
+	[Fact]
+	public async Task GetGlobalQueueSnapshotAsync_IncludesStartedIdeasWhoseJobsAreStillQueued()
+	{
+		await using var dbContext = CreateDbContext();
+		var now = DateTime.UtcNow;
+		var provider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Claude",
+			Type = ProviderType.Claude,
+			IsEnabled = true,
+			IsDefault = true
+		};
+		var project = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Queued Queue Project",
+			WorkingPath = "/tmp/queued-queue-project",
+			IsActive = true
+		};
+		var queuedJob = new Job
+		{
+			Id = Guid.NewGuid(),
+			ProjectId = project.Id,
+			ProviderId = provider.Id,
+			GoalPrompt = "Queued started idea",
+			Title = "Queued started idea",
+			Status = JobStatus.New,
+			CreatedAt = now.AddMinutes(-1)
+		};
+		var queuedIdea = new Idea
+		{
+			Id = Guid.NewGuid(),
+			ProjectId = project.Id,
+			Description = "Queued started idea",
+			CreatedAt = now.AddMinutes(-2),
+			SortOrder = 0,
+			IsProcessing = true,
+			JobId = queuedJob.Id
+		};
+
+		dbContext.Providers.Add(provider);
+		dbContext.Projects.Add(project);
+		dbContext.Jobs.Add(queuedJob);
+		dbContext.Ideas.Add(queuedIdea);
+		await dbContext.SaveChangesAsync();
+
+		var ideaService = CreateIdeaService(dbContext, provider);
+		var snapshot = await ideaService.GetGlobalQueueSnapshotAsync();
+
+		Assert.Equal(1, snapshot.UpcomingIdeasCount);
+		var queueIdea = Assert.Single(snapshot.UpcomingIdeas);
+		Assert.Equal(queuedIdea.Description, queueIdea.Description);
+		Assert.True(queueIdea.HasQueuedJob);
+	}
+
+	[Fact]
+	public async Task GetGlobalQueueSnapshotAsync_PrioritizesRecentlyUpdatedQueues_AndSupportsLargerIdeaPreviews()
+	{
+		await using var dbContext = CreateDbContext();
+		var now = DateTime.UtcNow;
+		var provider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Claude",
+			Type = ProviderType.Claude,
+			IsEnabled = true,
+			IsDefault = true
+		};
+		var recentlyStartedProject = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Recent Queue",
+			WorkingPath = "/tmp/recent-queue",
+			IsActive = true,
+			IdeasProcessingActive = true,
+			UpdatedAt = now
+		};
+		var earlierStartedProject = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Earlier Queue",
+			WorkingPath = "/tmp/earlier-queue",
+			IsActive = true,
+			IdeasProcessingActive = true,
+			UpdatedAt = now.AddMinutes(-10)
+		};
+		var pendingProject = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Pending Queue",
+			WorkingPath = "/tmp/pending-queue",
+			IsActive = true,
+			IdeasProcessingActive = false,
+			UpdatedAt = now.AddMinutes(-20)
+		};
+
+		dbContext.Providers.Add(provider);
+		dbContext.Projects.AddRange(recentlyStartedProject, earlierStartedProject, pendingProject);
+		dbContext.Ideas.AddRange(
+			CreateIdeaRange(recentlyStartedProject.Id, "Recent", 8, now.AddMinutes(-1))
+				.Concat(CreateIdeaRange(earlierStartedProject.Id, "Earlier", 8, now.AddMinutes(-2)))
+				.Concat(CreateIdeaRange(pendingProject.Id, "Pending", 8, now.AddMinutes(-3))));
+		await dbContext.SaveChangesAsync();
+
+		var ideaService = CreateIdeaService(dbContext, provider);
+		var snapshot = await ideaService.GetGlobalQueueSnapshotAsync();
+
+		Assert.Equal(24, snapshot.UpcomingIdeasCount);
+		Assert.Equal(24, snapshot.UpcomingIdeas.Count);
+		Assert.All(snapshot.UpcomingIdeas.Take(8), idea => Assert.Equal(recentlyStartedProject.Id, idea.ProjectId));
+		Assert.All(snapshot.UpcomingIdeas.Skip(8).Take(8), idea => Assert.Equal(earlierStartedProject.Id, idea.ProjectId));
+		Assert.All(snapshot.UpcomingIdeas.Skip(16).Take(8), idea => Assert.Equal(pendingProject.Id, idea.ProjectId));
+		Assert.Equal(Enumerable.Range(0, 8), snapshot.UpcomingIdeas.Take(8).Select(idea => idea.SortOrder));
+	}
+
+	[Fact]
+	public async Task JobQueueManager_GetPendingJobsAsync_ReturnsSingleJobPerProject_WhenProjectsUseDifferentProviders()
 	{
 		await using var dbContext = CreateDbContext();
 		var firstProject = new Project
@@ -1503,9 +2389,16 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 			IsEnabled = true,
 			IsDefault = true
 		};
+		var secondProvider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Claude",
+			Type = ProviderType.Claude,
+			IsEnabled = true
+		};
 
 		dbContext.Projects.AddRange(firstProject, secondProject);
-		dbContext.Providers.Add(provider);
+		dbContext.Providers.AddRange(provider, secondProvider);
 		dbContext.Jobs.AddRange(
 			new Job
 			{
@@ -1531,7 +2424,7 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 			{
 				Id = Guid.NewGuid(),
 				ProjectId = secondProject.Id,
-				ProviderId = provider.Id,
+				ProviderId = secondProvider.Id,
 				GoalPrompt = "Second project queued job",
 				Status = JobStatus.New,
 				Priority = 1,
@@ -1550,6 +2443,306 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		Assert.Equal(2, pendingJobs.Select(job => job.ProjectId).Distinct().Count());
 		Assert.Contains(pendingJobs, job => job.ProjectId == firstProject.Id && job.GoalPrompt == "First project first queued job");
 		Assert.DoesNotContain(pendingJobs, job => job.ProjectId == firstProject.Id && job.GoalPrompt == "First project second queued job");
+	}
+
+	[Fact]
+	public async Task HandleJobCompletionAsync_Success_DeletesIdeaAndAttachmentFiles()
+	{
+		await using var dbContext = CreateDbContext();
+		var workingPath = Path.Combine(Path.GetTempPath(), $"vibeswarm-job-cleanup-{Guid.NewGuid():N}");
+		Directory.CreateDirectory(workingPath);
+
+		try
+		{
+			var project = new Project
+			{
+				Id = Guid.NewGuid(),
+				Name = "Cleanup Project",
+				WorkingPath = workingPath
+			};
+			var provider = new Provider
+			{
+				Id = Guid.NewGuid(),
+				Name = "Copilot",
+				Type = ProviderType.Copilot,
+				IsEnabled = true,
+				IsDefault = true
+			};
+			var job = new Job
+			{
+				Id = Guid.NewGuid(),
+				ProjectId = project.Id,
+				ProviderId = provider.Id,
+				GoalPrompt = "Complete job with idea attachment cleanup",
+				Status = JobStatus.Completed
+			};
+			var relativeAttachmentPath = Path.Combine(".vibeswarm", "idea-attachments", "cleanup", "context.txt");
+			var idea = new Idea
+			{
+				Id = Guid.NewGuid(),
+				ProjectId = project.Id,
+				Description = "Cleanup attachments on success",
+				JobId = job.Id,
+				IsProcessing = true,
+				SortOrder = 0,
+				Attachments =
+				[
+					new IdeaAttachment
+					{
+						Id = Guid.NewGuid(),
+						FileName = "context.txt",
+						ContentType = "text/plain",
+						RelativePath = relativeAttachmentPath,
+						SizeBytes = 5
+					}
+				]
+			};
+
+			dbContext.Projects.Add(project);
+			dbContext.Providers.Add(provider);
+			dbContext.Jobs.Add(job);
+			dbContext.Ideas.Add(idea);
+			await dbContext.SaveChangesAsync();
+
+			var attachmentPath = Path.Combine(workingPath, relativeAttachmentPath);
+			Directory.CreateDirectory(Path.GetDirectoryName(attachmentPath)!);
+			await File.WriteAllTextAsync(attachmentPath, "hello");
+
+			var ideaService = CreateIdeaService(dbContext, provider);
+			var handled = await ideaService.HandleJobCompletionAsync(job.Id, success: true);
+
+			Assert.True(handled);
+			Assert.False(File.Exists(attachmentPath));
+			Assert.False(await dbContext.Ideas.AnyAsync(item => item.Id == idea.Id));
+			Assert.False(await dbContext.IdeaAttachments.AnyAsync(item => item.IdeaId == idea.Id));
+		}
+		finally
+		{
+			if (Directory.Exists(workingPath))
+			{
+				Directory.Delete(workingPath, recursive: true);
+			}
+		}
+	}
+
+	[Fact]
+	public async Task HandleJobCompletionAsync_Success_StopsIdeasProcessingWhenLastIdeaCompletes()
+	{
+		await using var dbContext = CreateDbContext();
+		var project = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Stop Processing Project",
+			WorkingPath = "/tmp/stop-processing-project",
+			IdeasProcessingActive = true,
+			IdeasAutoCommit = true
+		};
+		var provider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Copilot",
+			Type = ProviderType.Copilot,
+			IsEnabled = true,
+			IsDefault = true
+		};
+		var job = new Job
+		{
+			Id = Guid.NewGuid(),
+			ProjectId = project.Id,
+			ProviderId = provider.Id,
+			GoalPrompt = "Complete the final queued idea",
+			Status = JobStatus.Completed
+		};
+		var idea = new Idea
+		{
+			Id = Guid.NewGuid(),
+			ProjectId = project.Id,
+			Description = "Final queued idea",
+			JobId = job.Id,
+			IsProcessing = true,
+			SortOrder = 0
+		};
+
+		dbContext.Projects.Add(project);
+		dbContext.Providers.Add(provider);
+		dbContext.Jobs.Add(job);
+		dbContext.Ideas.Add(idea);
+		await dbContext.SaveChangesAsync();
+
+		var jobUpdateService = new FakeJobUpdateService();
+		var ideaService = CreateIdeaService(dbContext, provider, jobUpdateService: jobUpdateService);
+		var handled = await ideaService.HandleJobCompletionAsync(job.Id, success: true);
+
+		Assert.True(handled);
+		var refreshedProject = await dbContext.Projects.SingleAsync(item => item.Id == project.Id);
+		Assert.False(refreshedProject.IdeasProcessingActive);
+		Assert.True(refreshedProject.IdeasAutoCommit);
+		Assert.Null(refreshedProject.IdeasProcessingProviderId);
+		Assert.Null(refreshedProject.IdeasProcessingModelId);
+		Assert.Contains(jobUpdateService.IdeasProcessingStateChanges, change => change.ProjectId == project.Id && !change.IsActive);
+	}
+
+	[Fact]
+	public async Task HandleJobCompletionAsync_Failure_KeepsIdeaAndAttachmentFiles()
+	{
+		await using var dbContext = CreateDbContext();
+		var workingPath = Path.Combine(Path.GetTempPath(), $"vibeswarm-job-retain-{Guid.NewGuid():N}");
+		Directory.CreateDirectory(workingPath);
+
+		try
+		{
+			var project = new Project
+			{
+				Id = Guid.NewGuid(),
+				Name = "Retention Project",
+				WorkingPath = workingPath
+			};
+			var provider = new Provider
+			{
+				Id = Guid.NewGuid(),
+				Name = "Copilot",
+				Type = ProviderType.Copilot,
+				IsEnabled = true,
+				IsDefault = true
+			};
+			var job = new Job
+			{
+				Id = Guid.NewGuid(),
+				ProjectId = project.Id,
+				ProviderId = provider.Id,
+				GoalPrompt = "Fail job but keep idea attachment",
+				Status = JobStatus.Failed
+			};
+			var relativeAttachmentPath = Path.Combine(".vibeswarm", "idea-attachments", "retain", "context.txt");
+			var idea = new Idea
+			{
+				Id = Guid.NewGuid(),
+				ProjectId = project.Id,
+				Description = "Keep attachments after a failed job",
+				JobId = job.Id,
+				IsProcessing = true,
+				SortOrder = 0,
+				Attachments =
+				[
+					new IdeaAttachment
+					{
+						Id = Guid.NewGuid(),
+						FileName = "context.txt",
+						ContentType = "text/plain",
+						RelativePath = relativeAttachmentPath,
+						SizeBytes = 5
+					}
+				]
+			};
+
+			dbContext.Projects.Add(project);
+			dbContext.Providers.Add(provider);
+			dbContext.Jobs.Add(job);
+			dbContext.Ideas.Add(idea);
+			await dbContext.SaveChangesAsync();
+
+			var attachmentPath = Path.Combine(workingPath, relativeAttachmentPath);
+			Directory.CreateDirectory(Path.GetDirectoryName(attachmentPath)!);
+			await File.WriteAllTextAsync(attachmentPath, "hello");
+
+			var ideaService = CreateIdeaService(dbContext, provider);
+			var handled = await ideaService.HandleJobCompletionAsync(job.Id, success: false);
+
+			Assert.True(handled);
+			Assert.True(File.Exists(attachmentPath));
+
+			var retainedIdea = await dbContext.Ideas.Include(item => item.Attachments).SingleAsync(item => item.Id == idea.Id);
+			Assert.False(retainedIdea.IsProcessing);
+			Assert.Null(retainedIdea.JobId);
+			Assert.Single(retainedIdea.Attachments);
+		}
+		finally
+		{
+			if (Directory.Exists(workingPath))
+			{
+				Directory.Delete(workingPath, recursive: true);
+			}
+		}
+	}
+
+	[Fact]
+	public async Task JobQueueManager_GetPendingJobsAsync_SkipsJobsWithFutureNotBeforeUtc()
+	{
+		await using var dbContext = CreateDbContext();
+		var project = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Backoff Project",
+			WorkingPath = "/tmp/backoff-project"
+		};
+		var provider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Claude",
+			Type = ProviderType.Claude,
+			IsEnabled = true,
+			IsDefault = true
+		};
+		var secondProvider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Copilot",
+			Type = ProviderType.Copilot,
+			IsEnabled = true
+		};
+
+		var readyJobId = Guid.NewGuid();
+		var backedOffJobId = Guid.NewGuid();
+		var expiredBackoffJobId = Guid.NewGuid();
+
+		dbContext.Projects.Add(project);
+		dbContext.Providers.AddRange(provider, secondProvider);
+		dbContext.Jobs.AddRange(
+			new Job
+			{
+				Id = readyJobId,
+				ProjectId = project.Id,
+				ProviderId = provider.Id,
+				GoalPrompt = "Ready job",
+				Status = JobStatus.New,
+				CreatedAt = DateTime.UtcNow.AddMinutes(-3),
+				NotBeforeUtc = null
+			},
+			new Job
+			{
+				Id = backedOffJobId,
+				ProjectId = project.Id,
+				ProviderId = secondProvider.Id,
+				GoalPrompt = "Backed off job",
+				Status = JobStatus.New,
+				CreatedAt = DateTime.UtcNow.AddMinutes(-2),
+				NotBeforeUtc = DateTime.UtcNow.AddHours(1) // still in backoff
+			},
+			new Job
+			{
+				Id = expiredBackoffJobId,
+				ProjectId = project.Id,
+				ProviderId = secondProvider.Id,
+				GoalPrompt = "Expired backoff job",
+				Status = JobStatus.New,
+				CreatedAt = DateTime.UtcNow.AddMinutes(-1),
+				NotBeforeUtc = DateTime.UtcNow.AddMinutes(-5) // backoff expired
+			});
+		await dbContext.SaveChangesAsync();
+
+		using var serviceProvider = CreateScopedServiceProvider();
+		var queueManager = new JobQueueManager(
+			serviceProvider.GetRequiredService<IServiceScopeFactory>(),
+			NullLogger<JobQueueManager>.Instance);
+
+		// Both readyJob and expiredBackoffJob are eligible because they do not share the same
+		// provider slot; backedOffJob is still excluded by its future NotBeforeUtc value.
+		queueManager.MaxJobsPerProject = 10;
+		var pendingJobs = await queueManager.GetPendingJobsAsync(10);
+
+		Assert.DoesNotContain(pendingJobs, j => j.Id == backedOffJobId);
+		Assert.Contains(pendingJobs, j => j.Id == readyJobId);
+		Assert.Contains(pendingJobs, j => j.Id == expiredBackoffJobId);
 	}
 
 	[Fact]
@@ -1917,37 +3110,6 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 	}
 
 	[Fact]
-	public async Task ProjectService_UpdateAsync_PersistsIdeasAutoExpandSetting()
-	{
-		await using var dbContext = CreateDbContext();
-		var project = new Project
-		{
-			Id = Guid.NewGuid(),
-			Name = "Project Service Project",
-			WorkingPath = "/tmp/project-service",
-			IdeasAutoExpand = true
-		};
-
-		dbContext.Projects.Add(project);
-		await dbContext.SaveChangesAsync();
-
-		var projectService = new ProjectService(dbContext, new NoOpProjectEnvironmentCredentialService(), new FakeVersionControlService());
-		var updated = await projectService.UpdateAsync(new Project
-		{
-			Id = project.Id,
-			Name = project.Name,
-			WorkingPath = project.WorkingPath,
-			IdeasAutoExpand = false
-		});
-
-		Assert.False(updated.IdeasAutoExpand);
-		Assert.False(await dbContext.Projects
-			.Where(p => p.Id == project.Id)
-			.Select(p => p.IdeasAutoExpand)
-			.SingleAsync());
-	}
-
-	[Fact]
 	public async Task ProjectService_UpdateAsync_PersistsPlanningSettings()
 	{
 		await using var dbContext = CreateDbContext();
@@ -2047,7 +3209,8 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 			WorkingPath = "/tmp/planned-ideas",
 			PlanningEnabled = true,
 			PlanningProviderId = provider.Id,
-			PlanningModelId = "claude-sonnet-4.6"
+			PlanningModelId = "claude-sonnet-4.6",
+			PlanningReasoningEffort = "high"
 		};
 		var idea = new Idea
 		{
@@ -2086,12 +3249,165 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		Assert.Contains("Overview: Add project planning controls.", result.ExpandedDescription);
 		Assert.NotNull(providerInstance.LastExecutePrompt);
 		Assert.DoesNotContain("/plan", providerInstance.LastExecutePrompt!, StringComparison.Ordinal);
-		Assert.StartsWith("Explore the codebase and create an implementation-ready plan", providerInstance.LastExecutePrompt!, StringComparison.Ordinal);
+		Assert.StartsWith("Explore the codebase and write an implementation-ready plan", providerInstance.LastExecutePrompt!, StringComparison.Ordinal);
 		Assert.Equal(project.PlanningModelId, providerInstance.LastExecutionOptions?.Model);
+		Assert.Equal(project.PlanningReasoningEffort, providerInstance.LastExecutionOptions?.ReasoningEffort);
 		Assert.NotNull(providerInstance.LastExecutionOptions?.DisallowedTools);
 		Assert.Contains("Bash", providerInstance.LastExecutionOptions!.DisallowedTools!);
 		Assert.Contains("Edit", providerInstance.LastExecutionOptions.DisallowedTools!);
 		Assert.Contains("Write", providerInstance.LastExecutionOptions.DisallowedTools!);
+	}
+
+	[Fact]
+	public async Task ExpandIdeaAsync_UsesConfiguredIdeaExpansionPromptTemplate()
+	{
+		await using var dbContext = CreateDbContext();
+		var provider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Copilot",
+			Type = ProviderType.Copilot,
+			IsEnabled = true,
+			IsDefault = true
+		};
+		var project = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Idea Prompt Project",
+			WorkingPath = "/tmp/idea-prompt-project"
+		};
+		var idea = new Idea
+		{
+			Id = Guid.NewGuid(),
+			ProjectId = project.Id,
+			Description = "Ship a settings editor for prompt templates",
+			SortOrder = 0
+		};
+		var inferenceService = new FakeInferenceService
+		{
+			Response = new InferenceResponse
+			{
+				Success = true,
+				Response = "Overview: Add settings editor.\nAcceptance Criteria: Users can save templates."
+			}
+		};
+
+		dbContext.Providers.Add(provider);
+		dbContext.Projects.Add(project);
+		dbContext.Ideas.Add(idea);
+		dbContext.AppSettings.Add(new AppSettings
+		{
+			Id = Guid.NewGuid(),
+			TimeZoneId = "UTC",
+			IdeaExpansionPromptTemplate = "Explore first:\n{{idea}}\nThen produce a spec."
+		});
+		await dbContext.SaveChangesAsync();
+
+		var ideaService = CreateIdeaService(dbContext, provider, inferenceService: inferenceService);
+		var result = await ideaService.ExpandIdeaAsync(idea.Id, new IdeaExpansionRequest { UseInference = true });
+
+		Assert.NotNull(result);
+		Assert.NotNull(inferenceService.LastRequest);
+		Assert.Contains("Explore first:", inferenceService.LastRequest!.Prompt);
+		Assert.Contains(idea.Description, inferenceService.LastRequest.Prompt);
+		Assert.DoesNotContain("implementation-ready engineering specification", inferenceService.LastRequest.Prompt);
+	}
+
+	[Fact]
+	public async Task ConvertToJobAsync_UsesConfiguredIdeaImplementationPromptTemplate()
+	{
+		await using var dbContext = CreateDbContext();
+		var provider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Copilot",
+			Type = ProviderType.Copilot,
+			IsEnabled = true,
+			IsDefault = true
+		};
+		var project = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Idea Prompt Project",
+			WorkingPath = "/tmp/idea-job-project"
+		};
+		var idea = new Idea
+		{
+			Id = Guid.NewGuid(),
+			ProjectId = project.Id,
+			Description = "Implement settings-driven idea prompts",
+			SortOrder = 0
+		};
+
+		dbContext.Providers.Add(provider);
+		dbContext.Projects.Add(project);
+		dbContext.Ideas.Add(idea);
+		dbContext.AppSettings.Add(new AppSettings
+		{
+			Id = Guid.NewGuid(),
+			TimeZoneId = "UTC",
+			IdeaImplementationPromptTemplate = "Inspect the repo before coding.\nIdea:\n{{idea}}"
+		});
+		await dbContext.SaveChangesAsync();
+
+		var ideaService = CreateIdeaService(dbContext, provider);
+		var job = await ideaService.ConvertToJobAsync(idea.Id);
+
+		Assert.NotNull(job);
+		Assert.Contains("Inspect the repo before coding.", job!.GoalPrompt);
+		Assert.Contains(idea.Description, job.GoalPrompt);
+		Assert.DoesNotContain("Work directly from the idea below", job.GoalPrompt);
+	}
+
+	[Fact]
+	public async Task ConvertToJobAsync_UsesConfiguredApprovedIdeaImplementationPromptTemplate()
+	{
+		await using var dbContext = CreateDbContext();
+		var provider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Copilot",
+			Type = ProviderType.Copilot,
+			IsEnabled = true,
+			IsDefault = true
+		};
+		var project = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Approved Idea Prompt Project",
+			WorkingPath = "/tmp/approved-idea-job-project"
+		};
+		var idea = new Idea
+		{
+			Id = Guid.NewGuid(),
+			ProjectId = project.Id,
+			Description = "Add prompt template settings",
+			ExpandedDescription = "Persist app-level templates and render them in Settings.",
+			ExpansionStatus = IdeaExpansionStatus.Approved,
+			ExpandedAt = DateTime.UtcNow,
+			SortOrder = 0
+		};
+
+		dbContext.Providers.Add(provider);
+		dbContext.Projects.Add(project);
+		dbContext.Ideas.Add(idea);
+		dbContext.AppSettings.Add(new AppSettings
+		{
+			Id = Guid.NewGuid(),
+			TimeZoneId = "UTC",
+			ApprovedIdeaImplementationPromptTemplate = "Original:\n{{idea}}\nSpecification:\n{{specification}}\nShip it."
+		});
+		await dbContext.SaveChangesAsync();
+
+		var ideaService = CreateIdeaService(dbContext, provider);
+		var job = await ideaService.ConvertToJobAsync(idea.Id);
+
+		Assert.NotNull(job);
+		Assert.Contains("Original:", job!.GoalPrompt);
+		Assert.Contains(idea.Description, job.GoalPrompt);
+		Assert.Contains(idea.ExpandedDescription, job.GoalPrompt);
+		Assert.Contains("Ship it.", job.GoalPrompt);
+		Assert.DoesNotContain("This specification was reviewed and approved", job.GoalPrompt);
 	}
 
 	private VibeSwarmDbContext CreateDbContext()
@@ -2107,6 +3423,18 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		return services.BuildServiceProvider();
 	}
 
+	private static IEnumerable<Idea> CreateIdeaRange(Guid projectId, string prefix, int count, DateTime createdAt)
+	{
+		return Enumerable.Range(0, count).Select(index => new Idea
+		{
+			Id = Guid.NewGuid(),
+			ProjectId = projectId,
+			Description = $"{prefix} idea {index + 1}",
+			SortOrder = index,
+			CreatedAt = createdAt.AddSeconds(index)
+		});
+	}
+
 	private static IdeaService CreateIdeaService(
 		VibeSwarmDbContext dbContext,
 		Provider provider,
@@ -2119,12 +3447,14 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		var jobService = new JobService(dbContext, serviceProvider);
 		var providerService = new FakeProviderService(provider, providerInstance, models);
 		var versionControlService = new FakeVersionControlService();
+		var projectMemoryService = new FakeProjectMemoryService();
 
 		return new IdeaService(
 			dbContext,
 			jobService,
 			providerService,
 			versionControlService,
+			projectMemoryService,
 			NullLogger<IdeaService>.Instance,
 			inferenceService,
 			jobUpdateService);
@@ -2222,12 +3552,12 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		public Task<string?> GetWorkingDirectoryDiffAsync(string workingDirectory, string? baseCommit = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<string?> GetCommitRangeDiffAsync(string workingDirectory, string fromCommit, string? toCommit = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<GitDiffSummary?> GetDiffSummaryAsync(string workingDirectory, string? baseCommit = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-		public Task<GitOperationResult> CommitAllChangesAsync(string workingDirectory, string commitMessage, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<GitOperationResult> CommitAllChangesAsync(string workingDirectory, string commitMessage, CancellationToken cancellationToken = default, GitCommitOptions? commitOptions = null) => throw new NotSupportedException();
 		public Task<GitOperationResult> PushAsync(string workingDirectory, string remoteName = "origin", string? branchName = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<GitOperationResult> CommitAndPushAsync(string workingDirectory, string commitMessage, string remoteName = "origin", Action<string>? progressCallback = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<GitOperationResult> CreatePullRequestAsync(string workingDirectory, string sourceBranch, string targetBranch, string title, string? body = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<GitOperationResult> PreviewMergeBranchAsync(string workingDirectory, string sourceBranch, string targetBranch, string remoteName = "origin", CancellationToken cancellationToken = default) => throw new NotSupportedException();
-		public Task<GitOperationResult> MergeBranchAsync(string workingDirectory, string sourceBranch, string targetBranch, string remoteName = "origin", Action<string>? progressCallback = null, CancellationToken cancellationToken = default, bool pushAfterMerge = true) => throw new NotSupportedException();
+		public Task<GitOperationResult> MergeBranchAsync(string workingDirectory, string sourceBranch, string targetBranch, string remoteName = "origin", Action<string>? progressCallback = null, CancellationToken cancellationToken = default, bool pushAfterMerge = true, IReadOnlyList<MergeConflictResolution>? conflictResolutions = null) => throw new NotSupportedException();
 		public Task<IReadOnlyList<GitBranchInfo>> GetBranchesAsync(string workingDirectory, bool includeRemote = true, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<GitOperationResult> FetchAsync(string workingDirectory, string remoteName = "origin", bool prune = true, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<GitOperationResult> HardCheckoutBranchAsync(string workingDirectory, string branchName, string remoteName = "origin", Action<string>? progressCallback = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
@@ -2256,6 +3586,13 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		public void PopulateForEditing(Project? project) { }
 		public void PopulateForExecution(Project? project) { }
 		public Dictionary<string, string>? BuildJobEnvironmentVariables(Project? project) => null;
+	}
+
+	private sealed class FakeProjectMemoryService : IProjectMemoryService
+	{
+		public Task<string?> PrepareMemoryFileAsync(Project? project, CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
+		public Task SyncMemoryFromFileAsync(Guid projectId, string? memoryFilePath, CancellationToken cancellationToken = default) => Task.CompletedTask;
+		public Task EnsureGitExcludeAsync(string workingPath, CancellationToken cancellationToken = default) => Task.CompletedTask;
 	}
 
 	private sealed class FakeInferenceService : IInferenceService
@@ -2300,6 +3637,7 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 	{
 		public List<(Guid IdeaId, Guid ProjectId)> IdeaUpdatedNotifications { get; } = [];
 		public List<(Guid IdeaId, Guid ProjectId, Guid JobId)> IdeaStartedNotifications { get; } = [];
+		public List<(Guid ProjectId, bool IsActive)> IdeasProcessingStateChanges { get; } = [];
 
 		public Task NotifyJobStatusChanged(Guid jobId, string status) => Task.CompletedTask;
 		public Task NotifyJobActivity(Guid jobId, string activity, DateTime timestamp) => Task.CompletedTask;
@@ -2316,11 +3654,18 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 		public Task NotifyJobInteractionRequired(Guid jobId, string prompt, string interactionType, List<string>? choices = null, string? defaultResponse = null) => Task.CompletedTask;
 		public Task NotifyJobResumed(Guid jobId) => Task.CompletedTask;
 		public Task NotifyJobCycleProgress(Guid jobId, int currentCycle, int maxCycles) => Task.CompletedTask;
-		public Task NotifyIdeasProcessingStateChanged(Guid projectId, bool isActive) => Task.CompletedTask;
+		public Task NotifyIdeasProcessingStateChanged(Guid projectId, bool isActive)
+		{
+			IdeasProcessingStateChanges.Add((projectId, isActive));
+			return Task.CompletedTask;
+		}
 		public Task NotifyIdeaCreated(Guid ideaId, Guid projectId) => Task.CompletedTask;
 		public Task NotifyIdeaDeleted(Guid ideaId, Guid projectId) => Task.CompletedTask;
 		public Task NotifyProviderUsageWarning(Guid providerId, string providerName, int percentUsed, string message, bool isExhausted, DateTime? resetTime) => Task.CompletedTask;
+		public Task NotifyProviderRateLimited(Guid providerId, string providerName, string message, DateTime? resetTime) => Task.CompletedTask;
 		public Task NotifyAutoPilotStateChanged(Guid projectId, VibeSwarm.Shared.Data.IterationLoop loop) => Task.CompletedTask;
+		public Task NotifyDeveloperUpdateStatusChanged(VibeSwarm.Shared.Models.DeveloperModeStatus status) => Task.CompletedTask;
+		public Task NotifyDeveloperUpdateOutputAdded(VibeSwarm.Shared.Models.DeveloperUpdateOutputLine line) => Task.CompletedTask;
 
 		public Task NotifyIdeaStarted(Guid ideaId, Guid projectId, Guid jobId)
 		{

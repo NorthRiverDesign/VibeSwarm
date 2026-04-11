@@ -1,16 +1,12 @@
 @page "/jobs/view/{JobId:guid}"
 @attribute [Authorize]
 @inject IJobService JobService
+@inject IIdeaService IdeaService
 @inject IVersionControlService VersionControlService
 @inject NavigationManager NavigationManager
 @inject IJSRuntime JSRuntime
 @inject NotificationService NotificationService
 @using System.Threading
-@using VibeSwarm.Shared.Data
-@using VibeSwarm.Shared.Utilities
-@using VibeSwarm.Shared.VersionControl
-@using VibeSwarm.Shared.VersionControl.Models
-@using Microsoft.AspNetCore.SignalR.Client
 
 @if (IsLoading)
 {
@@ -33,9 +29,13 @@ else
                       ProjectName="@(Job.Project?.Name ?? "Unknown")" ProviderName="@Job.Provider?.Name"
                       ProcessId="@Job.ProcessId" CreatedAt="@Job.CreatedAt" StartedAt="@Job.StartedAt" CompletedAt="@Job.CompletedAt"
 					   ExecutionDuration="@Job.ExecutionDuration" ModelUsed="@Job.ModelUsed" RetryCount="@Job.RetryCount"
+					   PlanningProviderName="@Job.PlanningProvider?.Name" PlanningModelUsed="@Job.PlanningModelUsed"
 					   InputTokens="@Job.InputTokens" OutputTokens="@Job.OutputTokens" TotalCostUsd="@Job.TotalCostUsd"
+					   PlanningInputTokens="@Job.PlanningInputTokens" PlanningOutputTokens="@Job.PlanningOutputTokens"
+					   PlanningCostUsd="@Job.PlanningCostUsd" ExecutionInputTokens="@Job.ExecutionInputTokens"
+					   ExecutionOutputTokens="@Job.ExecutionOutputTokens" ExecutionCostUsd="@Job.ExecutionCostUsd"
 					   CanRetry="@CanRetry" CanCancel="@CanCancel" CanForceCancel="@CanForceCancel"
-					   ShowRetryOptions="@(Job.Status == JobStatus.Failed || Job.Status == JobStatus.Cancelled)" IsRetrying="@IsRetrying"
+					   ShowRetryOptions="@(Job.Status == JobStatus.Failed || Job.Status == JobStatus.Cancelled || Job.Status == JobStatus.Stalled)" IsRetrying="@IsRetrying"
 					   IsCancelling="@IsCancelling" IsForceCancelling="@IsForceCancelling" OnRetry="RetryJob"
 					   ShowGitActions="@ShowGitActions" IsGitSyncing="@_isSyncingWithOrigin"
 					   IsGitRefreshing="@_isRefreshingBranches" IsGitPruning="@_isPruningBranches"
@@ -44,18 +44,37 @@ else
 					   OnCancel="CancelJob" OnForceCancel="ForceCancelJob"
 					   CanForceReset="@CanForceReset" IsForceResetting="@IsForceResetting" OnForceReset="ForceResetJob"
 					   CurrentActivity="@Job.CurrentActivity" LastActivityAt="@Job.LastActivityAt" CurrentCycle="@Job.CurrentCycle"
-					   MaxCycles="@Job.MaxCycles" CycleMode="@Job.CycleMode" TeamRoleName="@Job.TeamRole?.Name" />
+					   MaxCycles="@Job.MaxCycles" CycleMode="@Job.CycleMode" TeamRoleName="@Job.TeamRole?.Name"
+					   PlaywrightEnabled="@Job.PlaywrightEnabled" EnvironmentCount="@Job.EnvironmentSnapshots.Count"
+					   EnvironmentTooltip="@BuildEnvironmentTooltip()" />
+
+		@if (ShowJobOutcomeSummary)
+		{
+			<JobOutcomeSummaryCard Status="@Job.Status"
+								   ChangedFilesCount="@Job.ChangedFilesCount"
+								   BuildVerified="@Job.BuildVerified"
+								   GitCommitHash="@Job.GitCommitHash"
+								   PullRequestUrl="@Job.PullRequestUrl"
+								   PullRequestNumber="@Job.PullRequestNumber"
+								   BuildOutput="@Job.BuildOutput"
+								   BuildVerificationEnabled="@(Job.Project?.BuildVerificationEnabled ?? false)"
+								   BuildCommand="@Job.Project?.BuildCommand"
+								   TestCommand="@Job.Project?.TestCommand"
+								   DeliveryMode="@Job.GitChangeDeliveryMode"
+								   BranchName="@_branchName"
+								   TargetBranch="@EffectiveTargetBranch"
+								   MergedAt="@Job.MergedAt"
+								   IsPushed="@_changesPushed"
+								   SessionSummary="@Job.SessionSummary"
+								   ReviewChangesHref="@ReviewChangesSectionHref"
+								   DeliveryHref="@(ShowDeliveryLink ? "#job-delivery-section" : null)"
+								   ReviewTranscriptHref="#job-messages-section"
+								   VerificationOutputHref="#job-verification-output" />
+		}
 
     @* Main Content - Column Layout *@
     <div class="row g-3 g-lg-4">
-        @* Left Column - Goal Prompt & Git sections *@
-        <div class="col-12 col-xl-5 order-2 order-xl-1">
-
-            @* Goal Prompt Card *@
-            <JobGoalPromptCard GoalPrompt="@Job.GoalPrompt" IdeaText="@GetGoalPromptIdeaText()" Status="@Job.Status" CanRetry="@CanRetry"
-                               HasConsoleOutput="@(!string.IsNullOrEmpty(Job.ConsoleOutput))" OnCopyToClipboard="CopyPromptToClipboard"
-                               OnPromptChanged="UpdateJobPrompt" />
-
+        <div id="job-changes-section" class="col-12 col-xl-5 order-2 order-xl-1 @(ShowSidebarContent ? string.Empty : "d-none")">
             @* User Interaction Section - shown when job is paused waiting for input *@
             @if (Job.Status == JobStatus.Paused && !string.IsNullOrEmpty(Job.PendingInteractionPrompt))
             {
@@ -88,50 +107,30 @@ else
             @* Git Diff Viewer - shown after job completes if changes were detected *@
             else if (_isGitRepository && !IsJobActive && !string.IsNullOrEmpty(Job.GitDiff))
             {
-                <GitDiffViewer DiffFiles="@_parsedDiffFiles" @bind-IsVisible="_showGitDiff"
-                               IsVerifying="@_isComparingWorkingCopy"
-                               ShowVerificationStatus="@(_workingCopyComparisonDone && !_changesPushed && string.IsNullOrEmpty(Job.GitCommitHash))"
-                               IsVerified="@_workingCopyMatches" IsDiverged="@(!_workingCopyMatches)"
-                               IsCommitted="@(!string.IsNullOrEmpty(Job.GitCommitHash))" MissingFiles="@_workingCopyMissingFiles"
-                               ExtraFiles="@_workingCopyExtraFiles" ModifiedFiles="@_workingCopyModifiedFiles"
-                               OnRecheck="CompareWithWorkingCopy" />
-
-                @* Build Verification Status *@
-                @if (Job.BuildVerified.HasValue)
-                {
-                    <div class="alert @(Job.BuildVerified.Value ? "alert-success" : "alert-danger") d-flex align-items-start gap-2 mb-3">
-                        <i class="bi @(Job.BuildVerified.Value ? "bi-check-circle-fill" : "bi-x-circle-fill") mt-1"></i>
-                        <div>
-                            <strong>Build Verification @(Job.BuildVerified.Value ? "Passed" : "Failed")</strong>
-                            @if (!Job.BuildVerified.Value)
-                            {
-                                <p class="mb-1 small">Changes were not auto-committed because the build or tests failed. Review the output below and fix any issues before committing.</p>
-                                @if (!string.IsNullOrEmpty(Job.BuildOutput))
-                                {
-                                    <details class="mt-1">
-                                        <summary class="small text-body-secondary" style="cursor: pointer;">Show build output</summary>
-                                        <pre class="mt-1 p-2 bg-body-tertiary rounded small" style="max-height: 300px; overflow-y: auto; white-space: pre-wrap;">@Job.BuildOutput</pre>
-                                    </details>
-                                }
-                            }
-                        </div>
-                    </div>
-                }
+				<GitDiffViewer DiffFiles="@_parsedDiffFiles" @bind-IsVisible="_showGitDiff"
+							   IsVerifying="@_isComparingWorkingCopy"
+							   ShowVerificationStatus="@(_workingCopyComparisonDone && !_changesPushed && string.IsNullOrEmpty(Job.GitCommitHash))"
+							   IsVerified="@_workingCopyMatches" IsDiverged="@(!_workingCopyMatches)"
+							   IsCommitted="@(!string.IsNullOrEmpty(Job.GitCommitHash))" MissingFiles="@_workingCopyMissingFiles"
+							   ExtraFiles="@_workingCopyExtraFiles" ModifiedFiles="@_workingCopyModifiedFiles"
+							   OnRecheck="CompareWithWorkingCopy" />
 
                 @* Commit Section - shown when there are git changes *@
-                <CommitSection CommitMessage="@_commitMessage" CommitMessageChanged="@((msg) => _commitMessage = msg)"
-                                BranchName="@_branchName" IsLoadingSummary="@_isLoadingSummary"
-                                HasAISummary="@(!string.IsNullOrWhiteSpace(Job.SessionSummary))" SummaryError="@_summaryError"
-                                PushError="@_pushError" IsPushing="@_isPushing" PushStatus="@_pushStatus" IsPushed="@_changesPushed"
-                                PushedCommitHash="@_pushedCommitHash" CanPush="@CanPush" TargetBranch="@EffectiveTargetBranch"
-                                DeliveryMode="@Job.GitChangeDeliveryMode" CanCreatePullRequest="@CanCreatePullRequest"
-                                IsCreatingPullRequest="@_isCreatingPullRequest" PullRequestUrl="@Job.PullRequestUrl"
-                                PullRequestNumber="@Job.PullRequestNumber" CanMergeBranch="@CanMergeBranch"
-                                IsMergingBranch="@_isMergingBranch"
-                                IsAutoCommitted="@(!string.IsNullOrEmpty(Job.GitCommitHash) && !_changesPushed)"
-                                CommitMessageUsed="@(Job.SessionSummary ?? _commitMessage)" OnCommitAndPush="CommitAndPushChanges"
-                                OnCreatePullRequest="CreatePullRequest" OnMergeBranch="MergeBranchIntoTarget"
-                                OnRefreshSummary="RefreshSummary" />
+				<div id="job-delivery-section">
+					<CommitSection CommitMessage="@_commitMessage" CommitMessageChanged="@((msg) => _commitMessage = msg)"
+									BranchName="@_branchName" IsLoadingSummary="@_isLoadingSummary"
+									HasAISummary="@(!string.IsNullOrWhiteSpace(Job.SessionSummary))" SummaryError="@_summaryError"
+									PushError="@_pushError" IsPushing="@_isPushing" PushStatus="@_pushStatus" IsPushed="@_changesPushed"
+									PushedCommitHash="@_pushedCommitHash" CanPush="@CanPush" TargetBranch="@EffectiveTargetBranch"
+									DeliveryMode="@Job.GitChangeDeliveryMode" CanCreatePullRequest="@CanCreatePullRequest"
+									IsCreatingPullRequest="@_isCreatingPullRequest" PullRequestUrl="@Job.PullRequestUrl"
+									PullRequestNumber="@Job.PullRequestNumber" CanMergeBranch="@CanMergeBranch"
+									IsMergingBranch="@_isMergingBranch"
+									IsAutoCommitted="@(!string.IsNullOrEmpty(Job.GitCommitHash) && !_changesPushed)"
+									CommitMessageUsed="@(Job.SessionSummary ?? _commitMessage)" OnCommitAndPush="CommitAndPushChanges"
+									OnCreatePullRequest="CreatePullRequest" OnMergeBranch="MergeBranchIntoTarget"
+									OnRefreshSummary="RefreshSummary" />
+				</div>
             }
             else if (_isGitRepository && !IsJobActive && Job.Status == JobStatus.Completed &&
             string.IsNullOrEmpty(Job.GitDiff))
@@ -169,21 +168,29 @@ else
                     &&
                     Job?.Project?.WorkingPath != null)
             {
-                <UncommittedChangesCard DiffFiles="@_uncommittedDiffFiles" IsChecking="@_isCheckingUncommittedChanges"
-                                        HasChecked="@_hasCheckedUncommittedChanges" HasChanges="@_hasUncommittedChanges"
-                                        ErrorMessage="@_uncommittedChangesError" JobFailed="@(Job.Status == JobStatus.Failed)"
-                                        CommitMessage="@_uncommittedCommitMessage"
-                                        CommitMessageChanged="@((msg) => _uncommittedCommitMessage = msg)"
-                                        IsCommitting="@_isCommittingUncommittedChanges" IsDiscarding="@_isDiscardingChanges"
-                                        OnCheck="CheckUncommittedChangesAsync" OnRefresh="CheckUncommittedChangesAsync"
-                                        OnCommit="CommitUncommittedChangesAsync" OnDiscard="DiscardUncommittedChangesAsync" />
+				<div id="job-uncommitted-changes-section">
+					<UncommittedChangesCard DiffFiles="@_uncommittedDiffFiles" IsChecking="@_isCheckingUncommittedChanges"
+											HasChecked="@_hasCheckedUncommittedChanges" HasChanges="@_hasUncommittedChanges"
+											ErrorMessage="@_uncommittedChangesError" JobFailed="@(Job.Status == JobStatus.Failed)"
+											CommitMessage="@_uncommittedCommitMessage"
+											CommitMessageChanged="@((msg) => _uncommittedCommitMessage = msg)"
+											IsCommitting="@_isCommittingUncommittedChanges" IsDiscarding="@_isDiscardingChanges"
+											OnCheck="CheckUncommittedChangesAsync" OnRefresh="CheckUncommittedChangesAsync"
+											OnCommit="CommitUncommittedChangesAsync" OnDiscard="DiscardUncommittedChangesAsync" />
+				</div>
             }
         </div>
 
         @* Right Column - Session Panel (Live Output, Console, Command, Conversation) *@
-        <div class="col-12 col-xl-7 order-1 order-xl-2 d-flex flex-column">
+        <div id="job-messages-section" class="col-12 @(ShowSidebarContent ? "col-xl-7 order-1 order-xl-2" : string.Empty) d-flex flex-column">
             <JobSessionPanel Messages="@(Job!.Messages.ToList())" Status="@Job.Status" IsJobActive="@IsJobActive"
-                             ErrorMessage="@Job.ErrorMessage" ConsoleOutput="@Job.ConsoleOutput" CommandUsed="@Job.CommandUsed"
+                              TotalMessageCount="@Job.TotalMessageCount"
+                              GoalPrompt="@Job.GoalPrompt" GoalPromptIdeaText="@GetGoalPromptIdeaText()"
+                              AttachedIdeaFiles="@(_linkedIdea?.Attachments ?? Array.Empty<IdeaAttachment>())"
+                              GoalPromptTimestamp="@Job.CreatedAt" OnCopyGoalPrompt="CopyPromptToClipboard"
+                              OnGoalPromptChanged="UpdateJobPrompt"
+                              ErrorMessage="@Job.ErrorMessage" ConsoleOutput="@Job.ConsoleOutput" CommandUsed="@Job.CommandUsed"
+                             PlanningCommandUsed="@Job.PlanningCommandUsed" ExecutionCommandUsed="@Job.ExecutionCommandUsed"
                              SessionId="@Job.SessionId" LiveOutputLines="@_liveOutput.ToList()"
                              LiveMessages="@_pendingSessionMessages.ToList()" MaxOutputLines="@MaxOutputLines"
                              CurrentActivity="@Job.CurrentActivity"
@@ -207,10 +214,13 @@ else
 
     // Shared state accessed by multiple partial files
     private Job? Job { get; set; }
-    private bool IsLoading { get; set; } = true;
-    private bool _isRefreshing = false;
-    private Timer? _refreshTimer;
-    private DateTime _pageLoadTime = DateTime.UtcNow;
+	private bool IsLoading { get; set; } = true;
+	private bool _isRefreshing = false;
+	private bool _disposed = false;
+	private Timer? _refreshTimer;
+	private DateTime _pageLoadTime = DateTime.UtcNow;
+	private Guid? _loadedJobId;
+	private bool ShowJobOutcomeSummary => Job != null && Job.Status is JobStatus.Failed or JobStatus.Cancelled or JobStatus.Stalled;
 
     // Toggle states for collapsible sections
     private bool _showGitDiff = true;
@@ -260,6 +270,34 @@ else
 
     private bool ShowGitActions => Job?.Project?.WorkingPath != null && _isGitRepository && !IsJobActive;
 
+	private bool ShowReviewChangesLink
+		=> _isGitRepository
+			&& !IsJobActive
+			&& (!string.IsNullOrEmpty(Job?.GitDiff)
+				|| Job?.Status is JobStatus.Failed or JobStatus.Cancelled);
+
+	private string? ReviewChangesSectionHref
+		=> !ShowReviewChangesLink
+			? null
+			: Job?.Status is JobStatus.Failed or JobStatus.Cancelled
+				? Job?.Project?.WorkingPath != null
+					? "#job-uncommitted-changes-section"
+					: null
+				: "#job-changes-section";
+
+	private bool ShowDeliveryLink
+		=> _isGitRepository
+			&& !IsJobActive
+			&& !string.IsNullOrEmpty(Job?.GitDiff);
+
+    private bool ShowSidebarContent
+        => (Job?.Status == JobStatus.Paused && !string.IsNullOrEmpty(Job.PendingInteractionPrompt))
+            || (_isGitRepository && _isLoadingGitDiff)
+            || (_isGitRepository && !IsJobActive && !string.IsNullOrEmpty(Job?.GitDiff))
+            || (_isGitRepository && !IsJobActive && Job?.Status == JobStatus.Completed && string.IsNullOrEmpty(Job?.GitDiff))
+            || (_isGitRepository && !IsJobActive && (Job?.Status == JobStatus.Failed || Job?.Status == JobStatus.Cancelled)
+                && Job?.Project?.WorkingPath != null);
+
     private bool CanPush => !_isPushing &&
         !string.IsNullOrWhiteSpace(_commitMessage) &&
         !_changesPushed &&
@@ -288,12 +326,27 @@ else
         !string.IsNullOrWhiteSpace(EffectiveTargetBranch) &&
         !string.Equals(_branchName, EffectiveTargetBranch, StringComparison.Ordinal);
 
-    protected override async Task OnInitializedAsync()
+    private string BuildEnvironmentTooltip()
     {
-        await LoadJob();
-        StartAutoRefresh();
-        await LoadBranchName();
+        var snapshots = Job?.EnvironmentSnapshots;
+        if (snapshots == null || snapshots.Count == 0)
+        {
+            return "No environments exposed";
+        }
+
+        return string.Join(", ", snapshots.Select(e => $"{e.Name} ({e.Stage})"));
     }
+
+	protected override async Task OnInitializedAsync()
+	{
+		StartAutoRefresh();
+		await EnsureCurrentJobLoadedAsync();
+	}
+
+	protected override async Task OnParametersSetAsync()
+	{
+		await EnsureCurrentJobLoadedAsync();
+	}
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -302,7 +355,8 @@ else
             // Fire-and-forget with timeout protection for SignalR
             _ = InitializeSignalRSafe();
             await Task.Delay(500);
-            await RefreshJobSafely();
+            if (!_disposed)
+                await RefreshJobSafely();
         }
     }
 
@@ -310,26 +364,33 @@ else
     {
         _refreshTimer = new Timer(async _ =>
         {
-            var secondsSincePageLoad = (DateTime.UtcNow - _pageLoadTime).TotalSeconds;
-            var isTerminal = Job?.Status is JobStatus.Completed or JobStatus.Failed or JobStatus.Cancelled;
-            var shouldPoll = (secondsSincePageLoad < 10 && !isTerminal) || IsJobActive;
+            if (_disposed) return;
 
-            // When SignalR is actively connected and the job is running, skip the poll —
-            // SignalR already pushes all status changes, so polling only wastes CPU/battery.
-            // Keep polling as a fallback when SignalR is disconnected or during early page load.
-            if (_signalRConnected && IsJobActive)
-                shouldPoll = false;
-
-            if (shouldPoll && !_isRefreshing)
+            try
             {
-                await InvokeAsync(async () => await RefreshJobSafely());
+                var secondsSincePageLoad = (DateTime.UtcNow - _pageLoadTime).TotalSeconds;
+                var isTerminal = Job?.Status is JobStatus.Completed or JobStatus.Failed or JobStatus.Cancelled;
+                var shouldPoll = (secondsSincePageLoad < 10 && !isTerminal) || IsJobActive;
+
+                // When SignalR is actively connected and the job is running, skip the poll —
+                // SignalR already pushes all status changes, so polling only wastes CPU/battery.
+                // Keep polling as a fallback when SignalR is disconnected or during early page load.
+                if (_signalRConnected && IsJobActive)
+                    shouldPoll = false;
+
+                if (shouldPoll && !_isRefreshing)
+                {
+                    await InvokeAsync(async () => await RefreshJobSafely());
+                }
             }
+            catch (ObjectDisposedException) { }
+            catch { }
         }, null, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
     }
 
     private async Task RefreshJobSafely()
     {
-        if (_isRefreshing) return;
+        if (_isRefreshing || _disposed) return;
 
         try
         {
@@ -337,18 +398,57 @@ else
             await LoadJob();
             StateHasChanged();
         }
+        catch (ObjectDisposedException) { }
+        catch (Exception)
+        {
+            // Swallow refresh errors to prevent ErrorBoundary from triggering a full page reload.
+            // The next poll or SignalR push will retry automatically.
+        }
         finally
         {
             _isRefreshing = false;
         }
     }
 
-    private string GetJobDisplayTitle()
-    {
-        if (Job == null) return "Job";
-        if (!string.IsNullOrEmpty(Job.Title)) return TruncateTitle(Job.Title, 40);
-        return TruncateTitle(Job.GoalPrompt, 40);
-    }
+	private string GetJobDisplayTitle()
+	{
+		if (Job == null) return "Job";
+		if (!string.IsNullOrEmpty(Job.Title)) return TruncateTitle(Job.Title, 40);
+		return TruncateTitle(Job.GoalPrompt, 40);
+	}
+
+	private async Task EnsureCurrentJobLoadedAsync()
+	{
+		if (_loadedJobId == JobId)
+		{
+			return;
+		}
+
+		var previousJobId = _loadedJobId;
+		_loadedJobId = JobId;
+
+		await HandleJobSelectionChangedAsync(previousJobId);
+	}
+
+	private async Task HandleJobSelectionChangedAsync(Guid? previousJobId)
+	{
+		if (previousJobId.HasValue && previousJobId.Value != JobId)
+		{
+			await UnsubscribeFromJobAsync(previousJobId.Value);
+		}
+
+		ResetJobDetailState();
+		IsLoading = true;
+		_pageLoadTime = DateTime.UtcNow;
+
+		await LoadJob();
+		await LoadBranchName();
+
+		if (_signalRConnected)
+		{
+			await SubscribeToSignalRGroups();
+		}
+	}
 
     private static string TruncateTitle(string text, int maxLength)
     {

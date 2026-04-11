@@ -23,7 +23,7 @@ public class JobCoordinatorService : IJobCoordinatorService
 	/// <summary>
 	/// Maximum number of jobs that can be assigned to a single provider at once
 	/// </summary>
-	public int MaxJobsPerProvider { get; set; } = 3;
+	public int MaxJobsPerProvider { get; set; } = 1;
 
 	/// <summary>
 	/// Timeout for provider selection operations

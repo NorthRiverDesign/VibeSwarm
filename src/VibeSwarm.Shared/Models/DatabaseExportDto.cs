@@ -20,6 +20,9 @@ public class AppSettingsExportDto
 	public bool EnablePromptStructuring { get; set; }
 	public bool InjectRepoMap { get; set; }
 	public bool InjectEfficiencyRules { get; set; }
+	public bool EnableCommitAttribution { get; set; } = true;
+	public int CriticalErrorLogRetentionDays { get; set; } = AppSettings.DefaultCriticalErrorLogRetentionDays;
+	public int CriticalErrorLogMaxEntries { get; set; } = AppSettings.DefaultCriticalErrorLogMaxEntries;
 }
 
 public class ProjectExportDto
@@ -33,8 +36,9 @@ public class ProjectExportDto
 	public string? DefaultTargetBranch { get; set; }
 	public bool PlanningEnabled { get; set; }
 	public string? PromptContext { get; set; }
-	public bool IdeasAutoExpand { get; set; }
 	public bool IdeasAutoCommit { get; set; }
+	public Guid? IdeasProcessingProviderId { get; set; }
+	public string? IdeasProcessingModelId { get; set; }
 	public bool EnableTeamSwarm { get; set; }
 	public bool BuildVerificationEnabled { get; set; }
 	public string? BuildCommand { get; set; }

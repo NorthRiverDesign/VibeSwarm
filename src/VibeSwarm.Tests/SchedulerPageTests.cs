@@ -19,6 +19,8 @@ public sealed class SchedulerPageTests
 	public async Task RenderedSchedulerPage_ShowsSchedulesAndActions()
 	{
 		var timeZoneId = DateTimeHelper.ResolveTimeZone("America/New_York").Id;
+		var nextRunAtUtc = DateTime.UtcNow.AddHours(2).AddMinutes(15);
+		var lastRunAtUtc = DateTime.UtcNow.AddMinutes(-37);
 		var schedule = new JobSchedule
 		{
 			Id = Guid.NewGuid(),
@@ -27,7 +29,8 @@ public sealed class SchedulerPageTests
 			HourUtc = 9,
 			MinuteUtc = 0,
 			IsEnabled = true,
-			NextRunAtUtc = new DateTime(2026, 3, 22, 9, 0, 0, DateTimeKind.Utc),
+			NextRunAtUtc = nextRunAtUtc,
+			LastRunAtUtc = lastRunAtUtc,
 			Project = new Project { Id = Guid.NewGuid(), Name = "Repo", WorkingPath = "/tmp/repo" },
 			Provider = new Provider { Id = Guid.NewGuid(), Name = "Copilot", Type = ProviderType.Copilot, IsEnabled = true }
 		};
@@ -48,10 +51,13 @@ public sealed class SchedulerPageTests
 			Assert.Contains("Pause", html);
 			Assert.Contains("Edit", html);
 			Assert.Contains("Delete", html);
+			Assert.Contains("d-flex align-items-center justify-content-between gap-2 gap-sm-3 mb-3 mb-lg-4", html);
 			Assert.Contains("Repo", html);
 			Assert.Contains("Copilot", html);
-			Assert.Contains(timeZoneId, html);
-			Assert.Contains(schedule.NextRunAtUtc.FormatDateTimeWithZone(), html);
+			Assert.Contains($"Next {nextRunAtUtc.FormatRelativeToNow()}", html);
+			Assert.Contains($"Last {lastRunAtUtc.FormatRelativeToNow()}", html);
+			Assert.DoesNotContain(timeZoneId, html);
+			Assert.DoesNotContain(nextRunAtUtc.FormatDateTimeWithZone(), html);
 		}
 		finally
 		{
@@ -72,7 +78,94 @@ public sealed class SchedulerPageTests
 		});
 
 		Assert.Contains("No schedules yet", html);
-		Assert.Contains("Create a recurring prompt", html);
+		Assert.Contains("Create a recurring schedule", html);
+	}
+
+	[Fact]
+	public async Task RenderedSchedulerPage_ShowsTeamMemberSchedules()
+	{
+		var timeZoneId = DateTimeHelper.ResolveTimeZone("America/New_York").Id;
+		var schedule = new JobSchedule
+		{
+			Id = Guid.NewGuid(),
+			Prompt = "review for security issues",
+			ExecutionTarget = JobScheduleExecutionTarget.TeamRole,
+			TeamRoleId = Guid.NewGuid(),
+			TeamRole = new TeamRole { Id = Guid.NewGuid(), Name = "Security Reviewer", IsEnabled = true },
+			Frequency = JobScheduleFrequency.Weekly,
+			WeeklyDay = DayOfWeek.Friday,
+			HourUtc = 9,
+			MinuteUtc = 30,
+			IsEnabled = true,
+			NextRunAtUtc = new DateTime(2026, 3, 27, 9, 30, 0, DateTimeKind.Utc),
+			Project = new Project { Id = Guid.NewGuid(), Name = "Repo", WorkingPath = "/tmp/repo" }
+		};
+
+		try
+		{
+			var services = BuildServices(new FakeJobScheduleService([schedule]), timeZoneId);
+			await using var renderer = new HtmlRenderer(services.BuildServiceProvider(), NullLoggerFactory.Instance);
+
+			var html = await renderer.Dispatcher.InvokeAsync(async () =>
+			{
+				var output = await renderer.RenderComponentAsync<Scheduler>();
+				return output.ToHtmlString();
+			});
+
+			Assert.Contains("Security Reviewer", html);
+			Assert.DoesNotContain("Unknown team member", html);
+			Assert.Contains("review for security issues", html);
+		}
+		finally
+		{
+			DateTimeHelper.ConfigureTimeZone(DateTimeHelper.UtcTimeZoneId);
+		}
+	}
+
+	[Fact]
+	public async Task RenderedSchedulerPage_ShowsIdeaGenerationSchedules()
+	{
+		var timeZoneId = DateTimeHelper.ResolveTimeZone("America/New_York").Id;
+		var schedule = new JobSchedule
+		{
+			Id = Guid.NewGuid(),
+			ScheduleType = JobScheduleType.GenerateIdeas,
+			InferenceProviderId = Guid.NewGuid(),
+			InferenceProvider = new InferenceProvider
+			{
+				Id = Guid.NewGuid(),
+				Name = "Local Ollama",
+				Endpoint = "http://ollama:11434",
+				IsEnabled = true
+			},
+			IdeaCount = 3,
+			Frequency = JobScheduleFrequency.Daily,
+			HourUtc = 9,
+			MinuteUtc = 0,
+			IsEnabled = true,
+			NextRunAtUtc = new DateTime(2026, 3, 22, 9, 0, 0, DateTimeKind.Utc),
+			Project = new Project { Id = Guid.NewGuid(), Name = "Repo", WorkingPath = "/tmp/repo" }
+		};
+
+		try
+		{
+			var services = BuildServices(new FakeJobScheduleService([schedule]), timeZoneId);
+			await using var renderer = new HtmlRenderer(services.BuildServiceProvider(), NullLoggerFactory.Instance);
+
+			var html = await renderer.Dispatcher.InvokeAsync(async () =>
+			{
+				var output = await renderer.RenderComponentAsync<Scheduler>();
+				return output.ToHtmlString();
+			});
+
+			Assert.Contains("Idea Generation", html);
+			Assert.Contains("Generate 3 ideas", html);
+			Assert.Contains("Local Ollama", html);
+		}
+		finally
+		{
+			DateTimeHelper.ConfigureTimeZone(DateTimeHelper.UtcTimeZoneId);
+		}
 	}
 
 	private static ServiceCollection BuildServices(IJobScheduleService jobScheduleService, string timeZoneId)
@@ -84,6 +177,7 @@ public sealed class SchedulerPageTests
 		services.AddSingleton<AppTimeZoneService>();
 		services.AddSingleton<IProjectService>(new FakeProjectService());
 		services.AddSingleton<IProviderService>(new FakeProviderService());
+		services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService());
 		services.AddSingleton<IJobService>(new FakeJobService());
 		services.AddSingleton<NotificationService>();
 		services.AddSingleton<NavigationManager>(new TestNavigationManager());
@@ -159,6 +253,20 @@ public sealed class SchedulerPageTests
 		public Task<SessionSummary> GetSessionSummaryAsync(Guid providerId, string? sessionId, string? workingDirectory = null, string? fallbackOutput = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	}
 
+	private sealed class FakeInferenceProviderService : IInferenceProviderService
+	{
+		public Task<IEnumerable<InferenceProvider>> GetAllAsync(CancellationToken ct = default) => Task.FromResult<IEnumerable<InferenceProvider>>([]);
+		public Task<InferenceProvider?> GetByIdAsync(Guid id, CancellationToken ct = default) => Task.FromResult<InferenceProvider?>(null);
+		public Task<IEnumerable<InferenceProvider>> GetEnabledAsync(CancellationToken ct = default) => Task.FromResult<IEnumerable<InferenceProvider>>([]);
+		public Task<InferenceProvider> CreateAsync(InferenceProvider provider, CancellationToken ct = default) => throw new NotSupportedException();
+		public Task<InferenceProvider> UpdateAsync(InferenceProvider provider, CancellationToken ct = default) => throw new NotSupportedException();
+		public Task DeleteAsync(Guid id, CancellationToken ct = default) => throw new NotSupportedException();
+		public Task<IEnumerable<InferenceModel>> GetModelsAsync(Guid providerId, CancellationToken ct = default) => Task.FromResult<IEnumerable<InferenceModel>>([]);
+		public Task<IEnumerable<InferenceModel>> RefreshModelsAsync(Guid providerId, CancellationToken ct = default) => throw new NotSupportedException();
+		public Task SetModelForTaskAsync(Guid providerId, string modelId, string taskType, CancellationToken ct = default) => throw new NotSupportedException();
+		public Task<InferenceModel?> GetModelForTaskAsync(string taskType, CancellationToken ct = default) => Task.FromResult<InferenceModel?>(null);
+	}
+
 	private sealed class FakeJobService : IJobService
 	{
 		public Task<IEnumerable<Job>> GetAllAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Job>>([]);
@@ -189,10 +297,13 @@ public sealed class SchedulerPageTests
 		public Task<bool> ContinueJobAsync(Guid id, string followUpPrompt, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<IEnumerable<Job>> GetPausedJobsAsync(CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<string?> GetLastUsedModelAsync(Guid projectId, Guid providerId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-		public Task<bool> ResetJobWithOptionsAsync(Guid id, Guid? providerId = null, string? modelId = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<bool> ResetJobWithOptionsAsync(Guid id, Guid? providerId = null, string? modelId = null, string? reasoningEffort = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<bool> UpdateJobPromptAsync(Guid id, string newPrompt, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<int> CancelAllByProjectIdAsync(Guid projectId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<int> DeleteCompletedByProjectIdAsync(Guid projectId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<int> RetrySelectedByProjectIdAsync(Guid projectId, IReadOnlyCollection<Guid> jobIds, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<int> CancelSelectedByProjectIdAsync(Guid projectId, IReadOnlyCollection<Guid> jobIds, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<int> PrioritizeSelectedByProjectIdAsync(Guid projectId, IReadOnlyCollection<Guid> jobIds, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<bool> ForceFailJobAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task RefreshExecutionPlanAsync(Guid id, CancellationToken cancellationToken = default) => Task.CompletedTask;
 	}

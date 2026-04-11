@@ -1,5 +1,4 @@
 @* Usage meter component showing provider usage as one or more progress bars *@
-@using VibeSwarm.Shared.Providers
 
 @{
 	var displayWindows = GetDisplayWindows();
@@ -249,7 +248,7 @@ else if (UsageSummary != null && ShowEmptyState)
 		if (diff.TotalSeconds > 0)
 			return "soon";
 
-		return resetTime.ToString("MMM d");
+		return resetTime.ToString("M/d");
 	}
 
 	private static UsageLimitWindowScope InferScope(UsageLimitType limitType) => limitType switch

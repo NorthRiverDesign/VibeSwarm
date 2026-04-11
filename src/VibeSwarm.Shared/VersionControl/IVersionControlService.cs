@@ -108,7 +108,11 @@ public interface IVersionControlService
 	/// <param name="commitMessage">The commit message.</param>
 	/// <param name="cancellationToken">Cancellation token.</param>
 	/// <returns>Result containing success status, commit hash, and any error message.</returns>
-	Task<GitOperationResult> CommitAllChangesAsync(string workingDirectory, string commitMessage, CancellationToken cancellationToken = default);
+	Task<GitOperationResult> CommitAllChangesAsync(
+		string workingDirectory,
+		string commitMessage,
+		CancellationToken cancellationToken = default,
+		GitCommitOptions? commitOptions = null);
 
 	/// <summary>
 	/// Pushes commits to the remote repository.
@@ -189,7 +193,8 @@ public interface IVersionControlService
 		string remoteName = "origin",
 		Action<string>? progressCallback = null,
 		CancellationToken cancellationToken = default,
-		bool pushAfterMerge = true);
+		bool pushAfterMerge = true,
+		IReadOnlyList<MergeConflictResolution>? conflictResolutions = null);
 
 	/// <summary>
 	/// Gets all branches (local and remote) for a repository.

@@ -12,6 +12,18 @@ public enum JobScheduleFrequency
 	Monthly = 3
 }
 
+public enum JobScheduleExecutionTarget
+{
+	Provider = 0,
+	TeamRole = 1
+}
+
+public enum JobScheduleType
+{
+	RunJob = 0,
+	GenerateIdeas = 1
+}
+
 public class JobSchedule : IValidatableObject
 {
 	public Guid Id { get; set; }
@@ -19,15 +31,27 @@ public class JobSchedule : IValidatableObject
 	public Guid ProjectId { get; set; }
 	public Project? Project { get; set; }
 
-	public Guid ProviderId { get; set; }
+	public JobScheduleType ScheduleType { get; set; } = JobScheduleType.RunJob;
+
+	public JobScheduleExecutionTarget ExecutionTarget { get; set; } = JobScheduleExecutionTarget.Provider;
+
+	public Guid? ProviderId { get; set; }
 	public Provider? Provider { get; set; }
 
-	[Required]
-	[StringLength(ValidationLimits.JobSchedulePromptMaxLength, MinimumLength = 1)]
+	public Guid? TeamRoleId { get; set; }
+	public TeamRole? TeamRole { get; set; }
+
+	public Guid? InferenceProviderId { get; set; }
+	public InferenceProvider? InferenceProvider { get; set; }
+
+	[StringLength(ValidationLimits.JobSchedulePromptMaxLength)]
 	public string Prompt { get; set; } = string.Empty;
 
 	[StringLength(ValidationLimits.JobScheduleModelIdMaxLength)]
 	public string? ModelId { get; set; }
+
+	[Range(ValidationLimits.JobScheduleIdeaCountMin, ValidationLimits.JobScheduleIdeaCountMax)]
+	public int IdeaCount { get; set; } = 3;
 
 	public JobScheduleFrequency Frequency { get; set; } = JobScheduleFrequency.Daily;
 
@@ -61,12 +85,22 @@ public class JobSchedule : IValidatableObject
 			yield return new ValidationResult("A project is required.", [nameof(ProjectId)]);
 		}
 
-		if (ProviderId == Guid.Empty)
+		if (ScheduleType == JobScheduleType.RunJob && ExecutionTarget == JobScheduleExecutionTarget.Provider && (!ProviderId.HasValue || ProviderId == Guid.Empty))
 		{
 			yield return new ValidationResult("A provider is required.", [nameof(ProviderId)]);
 		}
 
-		if (string.IsNullOrWhiteSpace(Prompt))
+		if (ScheduleType == JobScheduleType.RunJob && ExecutionTarget == JobScheduleExecutionTarget.TeamRole && (!TeamRoleId.HasValue || TeamRoleId == Guid.Empty))
+		{
+			yield return new ValidationResult("A team member is required.", [nameof(TeamRoleId)]);
+		}
+
+		if (ScheduleType == JobScheduleType.GenerateIdeas && (!InferenceProviderId.HasValue || InferenceProviderId == Guid.Empty))
+		{
+			yield return new ValidationResult("An inference provider is required.", [nameof(InferenceProviderId)]);
+		}
+
+		if (ScheduleType == JobScheduleType.RunJob && string.IsNullOrWhiteSpace(Prompt))
 		{
 			yield return new ValidationResult("A prompt is required.", [nameof(Prompt)]);
 		}

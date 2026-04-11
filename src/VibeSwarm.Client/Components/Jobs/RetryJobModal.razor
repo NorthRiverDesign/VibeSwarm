@@ -93,6 +93,27 @@
 					}
 				</div>
 
+				<div class="mb-3">
+					<label for="retryReasoning" class="form-label">Reasoning</label>
+					<select id="retryReasoning" class="form-select" @bind="SelectedReasoningEffort" disabled="@(!ReasoningOptions.Any())">
+						<option value="">Default (provider decides)</option>
+						@foreach (var reasoning in ReasoningOptions)
+						{
+							<option value="@reasoning">@reasoning</option>
+						}
+					</select>
+					<div class="form-text">
+						@if (!ReasoningOptions.Any())
+						{
+							<span>This provider does not expose configurable reasoning levels.</span>
+						}
+						else
+						{
+							<span>Choose a specific reasoning level or use the provider/project default.</span>
+						}
+					</div>
+				</div>
+
 				@if (!string.IsNullOrEmpty(ErrorMessage))
 				{
 					<div class="alert alert-danger py-2 mb-0">
@@ -139,10 +160,16 @@
 	private List<ProviderModel> AvailableModels { get; set; } = new();
 	private Guid SelectedProviderId { get; set; }
 	private string? SelectedModelId { get; set; }
+	private string? SelectedReasoningEffort { get; set; }
 	private bool IsLoading { get; set; } = true;
 	private bool IsLoadingModels { get; set; }
 	private bool IsSubmitting { get; set; }
 	private string? ErrorMessage { get; set; }
+	private IReadOnlyList<string> ReasoningOptions => Providers
+		.Where(provider => provider.Id == SelectedProviderId)
+		.SelectMany(ProviderCapabilities.GetSupportedReasoningEfforts)
+		.Distinct(StringComparer.Ordinal)
+		.ToList();
 
 	protected override async Task OnParametersSetAsync()
 	{
@@ -208,6 +235,7 @@
 			{
 				SelectedModelId = null; // Use default
 			}
+			SelectedReasoningEffort = Job?.ReasoningEffort;
 		}
 		catch (Exception ex)
 		{
@@ -246,7 +274,8 @@
 			var options = new RetryOptions
 			{
 				ProviderId = SelectedProviderId,
-				ModelId = string.IsNullOrEmpty(SelectedModelId) ? null : SelectedModelId
+				ModelId = string.IsNullOrEmpty(SelectedModelId) ? null : SelectedModelId,
+				ReasoningEffort = string.IsNullOrEmpty(SelectedReasoningEffort) ? null : SelectedReasoningEffort
 			};
 
 			await OnRetry.InvokeAsync(options);
@@ -268,6 +297,7 @@
 		// Reset state for next open
 		IsLoading = true;
 		SelectedModelId = null;
+		SelectedReasoningEffort = null;
 		ErrorMessage = null;
 	}
 
@@ -280,6 +310,7 @@
 			await IsVisibleChanged.InvokeAsync(false);
 			IsLoading = true;
 			SelectedModelId = null;
+			SelectedReasoningEffort = null;
 			ErrorMessage = null;
 		}
 	}
@@ -288,5 +319,6 @@
 	{
 		public Guid ProviderId { get; set; }
 		public string? ModelId { get; set; }
+		public string? ReasoningEffort { get; set; }
 	}
 }

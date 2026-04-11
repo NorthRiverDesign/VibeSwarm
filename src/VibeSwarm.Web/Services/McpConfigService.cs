@@ -1,5 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Providers;
 using VibeSwarm.Shared.Utilities;
@@ -82,9 +84,11 @@ public sealed class McpExecutionResources
 public class McpConfigService : IMcpConfigService
 {
 private const string PlaywrightServerName = "playwright";
+private const string ProjectMcpConfigFileName = ".mcp.json";
 private static readonly string[] PlaywrightCommandArgs = ["-y", "@playwright/mcp@latest"];
 
 	private readonly ISkillService _skillService;
+	private readonly ILogger<McpConfigService> _logger;
 	private static readonly List<string> _tempConfigFiles = new();
 	private static readonly List<string> _tempArtifactDirectories = new();
 	private static readonly object _tempFilesLock = new();
@@ -92,25 +96,32 @@ private static readonly JsonSerializerOptions JsonOptions = new()
 {
 WriteIndented = true,
 PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+PropertyNameCaseInsensitive = true,
 DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
 };
 
-public McpConfigService(ISkillService skillService)
-{
-_skillService = skillService;
-}
+	public McpConfigService(ISkillService skillService, ILogger<McpConfigService>? logger = null)
+	{
+		_skillService = skillService;
+		_logger = logger ?? NullLogger<McpConfigService>.Instance;
+	}
 
-public async Task<string?> GenerateMcpConfigJsonAsync(Project? project = null, CancellationToken cancellationToken = default)
-{
-var skills = await _skillService.GetEnabledAsync(cancellationToken);
-if (!RequiresMcp(skills, project))
-{
-return null;
-}
+	public async Task<string?> GenerateMcpConfigJsonAsync(Project? project = null, CancellationToken cancellationToken = default)
+	{
+		var skills = ProjectSkillHelper.GetExecutionSkills(project, await _skillService.GetEnabledAsync(cancellationToken));
+		var projectMcpConfig = await LoadProjectMcpConfigAsync(project, project?.WorkingPath, cancellationToken);
+		if (!RequiresMcp(skills, project, projectMcpConfig))
+		{
+			return null;
+		}
 
-	var config = BuildStandardMcpConfig(skills, project, playwrightEnvironment: null);
-return JsonSerializer.Serialize(config, JsonOptions);
-}
+		var config = BuildStandardMcpConfig(
+			skills,
+			project,
+			CreatePlaywrightEnvironmentVariables(project, browserArtifactsDirectory: null),
+			projectMcpConfig);
+		return JsonSerializer.Serialize(config, JsonOptions);
+	}
 
 	public async Task<string?> GenerateMcpConfigFileAsync(
 		ProviderType providerType,
@@ -128,8 +139,15 @@ return JsonSerializer.Serialize(config, JsonOptions);
 		string? workingDirectory = null,
 		CancellationToken cancellationToken = default)
 	{
-		var skills = await _skillService.GetEnabledAsync(cancellationToken);
-		var requiresMcp = RequiresMcp(skills, project);
+		var skills = ProjectSkillHelper.GetExecutionSkills(project, await _skillService.GetEnabledAsync(cancellationToken));
+		var projectMcpConfig = await LoadProjectMcpConfigAsync(project, workingDirectory, cancellationToken);
+		var generatedProjectMcpConfig = providerType == ProviderType.Copilot
+			? null
+			: projectMcpConfig;
+		var reservedServerNames = providerType == ProviderType.Copilot
+			? projectMcpConfig?.McpServers.Keys
+			: null;
+		var requiresMcp = RequiresMcp(skills, project, generatedProjectMcpConfig);
 		var bashEnvFilePath = providerType == ProviderType.Copilot
 			? await CreateCopilotBashEnvFileAsync(cancellationToken)
 			: null;
@@ -145,10 +163,10 @@ return JsonSerializer.Serialize(config, JsonOptions);
 		if (requiresMcp)
 		{
 			filePath = CreateConfigFilePath(providerType, workingDirectory);
-			var playwrightEnvironment = CreatePlaywrightEnvironmentVariables(browserArtifactsDirectory);
+			var playwrightEnvironment = CreatePlaywrightEnvironmentVariables(project, browserArtifactsDirectory);
 			var json = providerType == ProviderType.OpenCode
-				? JsonSerializer.Serialize(BuildOpenCodeConfig(skills, project, playwrightEnvironment), JsonOptions)
-				: JsonSerializer.Serialize(BuildStandardMcpConfig(skills, project, playwrightEnvironment), JsonOptions);
+				? JsonSerializer.Serialize(BuildOpenCodeConfig(skills, project, playwrightEnvironment, generatedProjectMcpConfig, reservedServerNames), JsonOptions)
+				: JsonSerializer.Serialize(BuildStandardMcpConfig(skills, project, playwrightEnvironment, generatedProjectMcpConfig, reservedServerNames), JsonOptions);
 
 			await File.WriteAllTextAsync(filePath, json, cancellationToken);
 			TrackTempFile(filePath);
@@ -267,9 +285,9 @@ foreach (var filePath in filesToClean)
 		}
 	}
 
-private static bool RequiresMcp(IEnumerable<Skill> skills, Project? project)
+private static bool RequiresMcp(IEnumerable<Skill> skills, Project? project, McpConfig? projectMcpConfig)
 {
-return skills.Any() || HasEnabledWebEnvironment(project);
+return skills.Any() || HasEnabledWebEnvironment(project) || projectMcpConfig?.McpServers.Count > 0;
 }
 
 	private static bool HasEnabledWebEnvironment(Project? project)
@@ -287,22 +305,131 @@ return skills.Any() || HasEnabledWebEnvironment(project);
 		return directoryPath;
 	}
 
-	private static Dictionary<string, string>? CreatePlaywrightEnvironmentVariables(string? browserArtifactsDirectory)
+	private static Dictionary<string, string>? CreatePlaywrightEnvironmentVariables(Project? project, string? browserArtifactsDirectory)
 	{
-		if (string.IsNullOrWhiteSpace(browserArtifactsDirectory))
+		var environmentVariables = new Dictionary<string, string>(StringComparer.Ordinal);
+		if (!string.IsNullOrWhiteSpace(browserArtifactsDirectory))
+		{
+			var temporaryDirectory = Path.Combine(browserArtifactsDirectory, "tmp");
+			environmentVariables["PLAYWRIGHT_BROWSERS_PATH"] = Path.Combine(browserArtifactsDirectory, "ms-playwright");
+			environmentVariables["TMPDIR"] = temporaryDirectory;
+			environmentVariables["TMP"] = temporaryDirectory;
+			environmentVariables["TEMP"] = temporaryDirectory;
+			environmentVariables["XDG_CACHE_HOME"] = Path.Combine(browserArtifactsDirectory, "cache");
+		}
+
+		var webEnvironments = project?.Environments
+			.Where(environment => environment.IsEnabled && environment.Type == EnvironmentType.Web)
+			.OrderByDescending(environment => environment.IsPrimary)
+			.ThenBy(environment => environment.SortOrder)
+			.ThenBy(environment => environment.Name, StringComparer.OrdinalIgnoreCase)
+			.ToList();
+		if (webEnvironments?.Count > 0)
+		{
+			foreach (var environment in webEnvironments)
+			{
+				var sanitizedName = SanitizeEnvironmentName(environment.Name);
+				if (!string.IsNullOrWhiteSpace(environment.Url))
+				{
+					environmentVariables[$"APP_{sanitizedName}_URL"] = environment.Url;
+				}
+
+				if (!string.IsNullOrWhiteSpace(environment.Username))
+				{
+					environmentVariables[$"APP_{sanitizedName}_USERNAME"] = environment.Username;
+				}
+
+				if (!string.IsNullOrWhiteSpace(environment.Password))
+				{
+					environmentVariables[$"APP_{sanitizedName}_PASSWORD"] = environment.Password;
+				}
+			}
+
+			var primaryEnvironment = webEnvironments.FirstOrDefault(environment => environment.IsPrimary) ?? webEnvironments[0];
+			if (!string.IsNullOrWhiteSpace(primaryEnvironment.Url))
+			{
+				environmentVariables["APP_URL"] = primaryEnvironment.Url;
+			}
+
+			if (!string.IsNullOrWhiteSpace(primaryEnvironment.Username))
+			{
+				environmentVariables["APP_USERNAME"] = primaryEnvironment.Username;
+			}
+
+			if (!string.IsNullOrWhiteSpace(primaryEnvironment.Password))
+			{
+				environmentVariables["APP_PASSWORD"] = primaryEnvironment.Password;
+			}
+		}
+
+		return environmentVariables.Count > 0 ? environmentVariables : null;
+	}
+
+	private async Task<McpConfig?> LoadProjectMcpConfigAsync(
+		Project? project,
+		string? workingDirectory,
+		CancellationToken cancellationToken)
+	{
+		var configPath = ResolveProjectMcpConfigPath(project, workingDirectory);
+		if (string.IsNullOrWhiteSpace(configPath))
 		{
 			return null;
 		}
 
-		var temporaryDirectory = Path.Combine(browserArtifactsDirectory, "tmp");
-		return new Dictionary<string, string>(StringComparer.Ordinal)
+		try
 		{
-			["PLAYWRIGHT_BROWSERS_PATH"] = Path.Combine(browserArtifactsDirectory, "ms-playwright"),
-			["TMPDIR"] = temporaryDirectory,
-			["TMP"] = temporaryDirectory,
-			["TEMP"] = temporaryDirectory,
-			["XDG_CACHE_HOME"] = Path.Combine(browserArtifactsDirectory, "cache")
-		};
+			var json = await File.ReadAllTextAsync(configPath, cancellationToken);
+			using var document = JsonDocument.Parse(json);
+			if (!document.RootElement.TryGetProperty("mcpServers", out var mcpServers) ||
+				mcpServers.ValueKind != JsonValueKind.Object)
+			{
+				return null;
+			}
+
+			var config = JsonSerializer.Deserialize<McpConfig>(json, JsonOptions);
+			if (config == null)
+			{
+				return null;
+			}
+
+			config.McpServers ??= new Dictionary<string, McpServer>();
+			return config;
+		}
+		catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or NotSupportedException)
+		{
+			_logger.LogWarning(ex,
+				"Failed to load project MCP config from {ConfigPath}; continuing without repo MCP servers",
+				configPath);
+			return null;
+		}
+	}
+
+	private static string? ResolveProjectMcpConfigPath(Project? project, string? workingDirectory)
+	{
+		var searchRoots = new[]
+		{
+			workingDirectory,
+			project?.WorkingPath
+		}
+			.Where(path => !string.IsNullOrWhiteSpace(path))
+			.Select(path => Path.GetFullPath(path!))
+			.Distinct(StringComparer.OrdinalIgnoreCase);
+
+		foreach (var root in searchRoots)
+		{
+			if (!Directory.Exists(root))
+			{
+				continue;
+			}
+
+			var configPath = Path.Combine(root, ProjectMcpConfigFileName);
+			if (File.Exists(configPath))
+			{
+				return configPath;
+			}
+		}
+
+		return null;
 	}
 
 	private static string CreateConfigFilePath(ProviderType providerType, string? workingDirectory)
@@ -412,66 +539,89 @@ var fileName = $"opencode-mcp-{Guid.NewGuid():N}.json";
 	private static McpConfig BuildStandardMcpConfig(
 		IEnumerable<Skill> skills,
 		Project? project,
-		Dictionary<string, string>? playwrightEnvironment)
+		Dictionary<string, string>? playwrightEnvironment,
+		McpConfig? projectMcpConfig = null,
+		IEnumerable<string>? reservedServerNames = null)
 	{
 		var config = new McpConfig
 		{
-			McpServers = new Dictionary<string, McpServer>()
-};
+			McpServers = new Dictionary<string, McpServer>(),
+			AdditionalProperties = CloneExtensionData(projectMcpConfig?.AdditionalProperties)
+		};
 
-foreach (var skill in skills)
-{
-var serverName = SanitizeSkillName(skill.Name);
-config.McpServers[serverName] = new McpServer
-{
-Command = "vibeswarm-skill",
-Args = [skill.Name],
-Env = new Dictionary<string, string>
-{
-["VIBESWARM_SKILL_CONTENT"] = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(skill.Content))
-}
-};
-}
+		if (projectMcpConfig?.McpServers != null)
+		{
+			foreach (var server in projectMcpConfig.McpServers)
+			{
+				config.McpServers[server.Key] = CloneMcpServer(server.Value);
+			}
+		}
 
-if (HasEnabledWebEnvironment(project))
-{
-var serverName = GetUniqueServerName(config.McpServers.Keys, PlaywrightServerName);
+		var usedServerNames = GetUsedServerNames(config.McpServers.Keys, reservedServerNames);
+		foreach (var skill in skills)
+		{
+			var serverName = GetUniqueServerName(usedServerNames, SanitizeSkillName(skill.Name));
+			config.McpServers[serverName] = new McpServer
+			{
+				Command = "vibeswarm-skill",
+				Args = [skill.Name],
+				Env = new Dictionary<string, string>
+				{
+					["VIBESWARM_SKILL_CONTENT"] = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(skill.Content))
+				}
+			};
+		}
+
+		if (HasEnabledWebEnvironment(project))
+		{
+			var serverName = GetUniqueServerName(usedServerNames, PlaywrightServerName);
 		config.McpServers[serverName] = new McpServer
 		{
 			Command = "npx",
 			Args = PlaywrightCommandArgs,
 			Env = playwrightEnvironment
 		};
-	}
+		}
 
-return config;
-}
+		return config;
+	}
 
 	private static OpenCodeMcpConfig BuildOpenCodeConfig(
 		IEnumerable<Skill> skills,
 		Project? project,
-		Dictionary<string, string>? playwrightEnvironment)
+		Dictionary<string, string>? playwrightEnvironment,
+		McpConfig? projectMcpConfig = null,
+		IEnumerable<string>? reservedServerNames = null)
 	{
 		var config = new OpenCodeMcpConfig();
 
-foreach (var skill in skills)
-{
-var serverName = SanitizeSkillName(skill.Name);
-config.Mcp[serverName] = new OpenCodeMcpServer
-{
-Type = "local",
-Command = ["vibeswarm-skill", skill.Name],
-Enabled = true,
-Environment = new Dictionary<string, string>
-{
-["VIBESWARM_SKILL_CONTENT"] = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(skill.Content))
-}
-};
-}
+		if (projectMcpConfig?.McpServers != null)
+		{
+			foreach (var server in projectMcpConfig.McpServers)
+			{
+				config.Mcp[server.Key] = ConvertToOpenCodeMcpServer(server.Value);
+			}
+		}
 
-if (HasEnabledWebEnvironment(project))
-{
-var serverName = GetUniqueServerName(config.Mcp.Keys, PlaywrightServerName);
+		var usedServerNames = GetUsedServerNames(config.Mcp.Keys, reservedServerNames);
+		foreach (var skill in skills)
+		{
+			var serverName = GetUniqueServerName(usedServerNames, SanitizeSkillName(skill.Name));
+			config.Mcp[serverName] = new OpenCodeMcpServer
+			{
+				Type = "local",
+				Command = ["vibeswarm-skill", skill.Name],
+				Enabled = true,
+				Environment = new Dictionary<string, string>
+				{
+					["VIBESWARM_SKILL_CONTENT"] = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(skill.Content))
+				}
+			};
+		}
+
+		if (HasEnabledWebEnvironment(project))
+		{
+			var serverName = GetUniqueServerName(usedServerNames, PlaywrightServerName);
 		config.Mcp[serverName] = new OpenCodeMcpServer
 		{
 			Type = "local",
@@ -479,10 +629,19 @@ var serverName = GetUniqueServerName(config.Mcp.Keys, PlaywrightServerName);
 			Enabled = true,
 			Environment = playwrightEnvironment
 		};
+		}
+
+		return config;
 	}
 
-return config;
-}
+	private static IEnumerable<string> GetUsedServerNames(
+		IEnumerable<string> existingServerNames,
+		IEnumerable<string>? reservedServerNames)
+	{
+		return reservedServerNames == null
+			? existingServerNames
+			: existingServerNames.Concat(reservedServerNames);
+	}
 
 private static string GetUniqueServerName(IEnumerable<string> existingNames, string preferredName)
 {
@@ -501,13 +660,118 @@ suffix++;
 return $"{preferredName}-{suffix}";
 }
 
-private static string SanitizeSkillName(string name)
-{
-return System.Text.RegularExpressions.Regex.Replace(
-name.ToLowerInvariant(),
-@"[^a-z0-9\-_]",
-"-");
-}
+	private static string SanitizeSkillName(string name)
+	{
+	return System.Text.RegularExpressions.Regex.Replace(
+	name.ToLowerInvariant(),
+	@"[^a-z0-9\-_]",
+	"-");
+	}
+
+	private static string SanitizeEnvironmentName(string name)
+	{
+		if (string.IsNullOrWhiteSpace(name))
+		{
+			return "ENV";
+		}
+
+		var sanitized = new string(name
+			.ToUpperInvariant()
+			.Select(character => char.IsLetterOrDigit(character) ? character : '_')
+			.ToArray())
+			.Trim('_');
+
+		while (sanitized.Contains("__", StringComparison.Ordinal))
+		{
+			sanitized = sanitized.Replace("__", "_", StringComparison.Ordinal);
+		}
+
+	return string.IsNullOrEmpty(sanitized) ? "ENV" : sanitized;
+	}
+
+	private static McpServer CloneMcpServer(McpServer server)
+	{
+		return new McpServer
+		{
+			Command = server.Command,
+			Args = server.Args?.ToArray(),
+			Env = server.Env != null
+				? new Dictionary<string, string>(server.Env, StringComparer.Ordinal)
+				: null,
+			AdditionalProperties = CloneExtensionData(server.AdditionalProperties)
+		};
+	}
+
+	private static OpenCodeMcpServer ConvertToOpenCodeMcpServer(McpServer server)
+	{
+		var additionalProperties = CloneExtensionData(server.AdditionalProperties, "type", "enabled");
+		var command = new List<string>();
+		if (!string.IsNullOrWhiteSpace(server.Command))
+		{
+			command.Add(server.Command);
+		}
+
+		if (server.Args != null)
+		{
+			command.AddRange(server.Args.Where(argument => !string.IsNullOrWhiteSpace(argument)));
+		}
+
+		var type = "local";
+		if (server.AdditionalProperties?.TryGetValue("type", out var typeElement) == true &&
+			typeElement.ValueKind == JsonValueKind.String &&
+			!string.IsNullOrWhiteSpace(typeElement.GetString()))
+		{
+			type = typeElement.GetString()!;
+		}
+		else if (additionalProperties?.ContainsKey("url") == true)
+		{
+			type = "remote";
+		}
+
+		var enabled = true;
+		if (server.AdditionalProperties?.TryGetValue("enabled", out var enabledElement) == true &&
+			(enabledElement.ValueKind == JsonValueKind.True || enabledElement.ValueKind == JsonValueKind.False))
+		{
+			enabled = enabledElement.GetBoolean();
+		}
+
+		return new OpenCodeMcpServer
+		{
+			Type = type,
+			Command = command.Count > 0 ? [..command] : null,
+			Enabled = enabled,
+			Environment = server.Env != null
+				? new Dictionary<string, string>(server.Env, StringComparer.Ordinal)
+				: null,
+			AdditionalProperties = additionalProperties
+		};
+	}
+
+	private static Dictionary<string, JsonElement>? CloneExtensionData(
+		Dictionary<string, JsonElement>? extensionData,
+		params string[] excludedKeys)
+	{
+		if (extensionData == null || extensionData.Count == 0)
+		{
+			return null;
+		}
+
+		var excluded = excludedKeys.Length > 0
+			? new HashSet<string>(excludedKeys, StringComparer.OrdinalIgnoreCase)
+			: null;
+		var clone = new Dictionary<string, JsonElement>(StringComparer.Ordinal);
+		foreach (var property in extensionData)
+		{
+			if (excluded?.Contains(property.Key) == true)
+			{
+				continue;
+			}
+
+			clone[property.Key] = property.Value.Clone();
+		}
+
+		return clone.Count > 0 ? clone : null;
+	}
 }
 
 /// <summary>
@@ -517,6 +781,9 @@ public class McpConfig
 {
 [JsonPropertyName("mcpServers")]
 public Dictionary<string, McpServer> McpServers { get; set; } = new();
+
+[JsonExtensionData]
+public Dictionary<string, JsonElement>? AdditionalProperties { get; set; }
 }
 
 public class McpServer
@@ -529,6 +796,9 @@ public string[]? Args { get; set; }
 
 [JsonPropertyName("env")]
 public Dictionary<string, string>? Env { get; set; }
+
+[JsonExtensionData]
+public Dictionary<string, JsonElement>? AdditionalProperties { get; set; }
 }
 
 /// <summary>
@@ -556,4 +826,7 @@ public bool Enabled { get; set; } = true;
 
 [JsonPropertyName("environment")]
 public Dictionary<string, string>? Environment { get; set; }
+
+[JsonExtensionData]
+public Dictionary<string, JsonElement>? AdditionalProperties { get; set; }
 }

@@ -1,0 +1,75 @@
+
+<ModalDialog IsVisible="IsVisible" IsVisibleChanged="HandleVisibleChanged" Title="Edit User" Icon="pencil"
+			 Size="ModalDialog.ModalSize.Default" OnClose="HandleClose">
+	<ChildContent>
+		@if (!string.IsNullOrEmpty(UserName))
+		{
+			<p class="text-body-secondary">
+				Edit role for <strong>@UserName</strong>
+			</p>
+
+			@if (!string.IsNullOrEmpty(ErrorMessage))
+			{
+				<div class="text-danger small mb-3">
+					<i class="bi bi-exclamation-circle me-1"></i>@ErrorMessage
+				</div>
+			}
+
+			<div class="mb-3">
+				<label for="editUserRole" class="form-label">Role</label>
+				<select id="editUserRole" value="@SelectedRole" @onchange="HandleRoleChanged" class="form-select">
+					<option value="@UserRoles.User">User</option>
+					<option value="@UserRoles.Admin">Admin</option>
+				</select>
+			</div>
+
+			<div class="d-flex justify-content-end gap-2">
+				<ActionButton Text="Cancel" OnClick="CloseAsync" />
+				<ActionButton Style="ActionButton.ButtonStyle.Primary" Text="Save Changes"
+							  OnClick="OnSubmit" IsLoading="@IsSubmitting" />
+			</div>
+		}
+	</ChildContent>
+</ModalDialog>
+
+@code {
+	[Parameter]
+	public bool IsVisible { get; set; }
+
+	[Parameter]
+	public EventCallback<bool> IsVisibleChanged { get; set; }
+
+	[Parameter]
+	public string? UserName { get; set; }
+
+	[Parameter]
+	public string SelectedRole { get; set; } = UserRoles.User;
+
+	[Parameter]
+	public EventCallback<string> SelectedRoleChanged { get; set; }
+
+	[Parameter]
+	public string? ErrorMessage { get; set; }
+
+	[Parameter]
+	public bool IsSubmitting { get; set; }
+
+	[Parameter]
+	public EventCallback OnSubmit { get; set; }
+
+	[Parameter]
+	public EventCallback OnCancel { get; set; }
+
+	private Task HandleVisibleChanged(bool isVisible) => IsVisibleChanged.InvokeAsync(isVisible);
+
+	private Task HandleClose() => OnCancel.InvokeAsync();
+
+	private Task HandleRoleChanged(ChangeEventArgs args)
+		=> SelectedRoleChanged.InvokeAsync(args.Value?.ToString() ?? UserRoles.User);
+
+	private async Task CloseAsync()
+	{
+		await IsVisibleChanged.InvokeAsync(false);
+		await OnCancel.InvokeAsync();
+	}
+}

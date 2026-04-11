@@ -8,7 +8,7 @@
   "display": "standalone",
   "background_color": "#1a1d21",
   "theme_color": "#1a1d21",
-  "orientation": "portrait-primary",
+  "orientation": "any",
   "scope": "/",
   "icons": [
     {
@@ -66,9 +66,42 @@
       "purpose": "maskable"
     }
   ],
+  "shortcuts": [
+    {
+      "name": "Dashboard",
+      "short_name": "Dashboard",
+      "url": "/",
+      "icons": [{ "src": "/favicon-96x96.png?v=8", "sizes": "96x96" }]
+    },
+    {
+      "name": "Projects",
+      "short_name": "Projects",
+      "url": "/projects",
+      "icons": [{ "src": "/favicon-96x96.png?v=8", "sizes": "96x96" }]
+    },
+    {
+      "name": "Jobs",
+      "short_name": "Jobs",
+      "url": "/jobs",
+      "icons": [{ "src": "/favicon-96x96.png?v=8", "sizes": "96x96" }]
+    },
+    {
+      "name": "Providers",
+      "short_name": "Providers",
+      "url": "/providers",
+      "icons": [{ "src": "/favicon-96x96.png?v=8", "sizes": "96x96" }]
+    }
+  ],
   "categories": [
     "productivity",
     "utilities"
   ],
-  "prefer_related_applications": false
+  "prefer_related_applications": false,
+  "launch_handler": {
+    "client_mode": "navigate-existing"
+  },
+  "handle_links": "preferred",
+  "edge_side_panel": {
+    "preferred_width": 400
+  }
 }

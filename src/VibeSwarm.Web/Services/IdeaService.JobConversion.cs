@@ -1,3 +1,5 @@
+using System.Text;
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using VibeSwarm.Shared.Data;
@@ -9,7 +11,7 @@ namespace VibeSwarm.Shared.Services;
 
 public partial class IdeaService
 {
-	public async Task<Job?> ConvertToJobAsync(Guid ideaId, CancellationToken cancellationToken = default)
+	public async Task<Job?> ConvertToJobAsync(Guid ideaId, IdeaProcessingOptions? options = null, CancellationToken cancellationToken = default)
 	{
 		// Use a lock to prevent race conditions when multiple users click "Start" simultaneously
 		await _ideaConversionLock.WaitAsync(cancellationToken);
@@ -18,6 +20,7 @@ public partial class IdeaService
 			// Re-fetch the idea inside the lock to ensure we have the latest state
 			var idea = await _dbContext.Ideas
 				.Include(i => i.Project)
+				.Include(i => i.Attachments)
 				.FirstOrDefaultAsync(i => i.Id == ideaId, cancellationToken);
 
 			if (idea?.Project == null)
@@ -38,7 +41,7 @@ public partial class IdeaService
 			idea.IsProcessing = true;
 			await _dbContext.SaveChangesAsync(cancellationToken);
 
-			var defaultProvider = await ResolveJobProviderAsync(idea.ProjectId, cancellationToken);
+			var defaultProvider = await ResolveJobProviderAsync(idea.ProjectId, options, cancellationToken);
 			if (defaultProvider == null)
 			{
 				_logger.LogWarning("No default provider configured. Cannot convert idea to job.");
@@ -63,12 +66,15 @@ public partial class IdeaService
 				_logger.LogWarning(ex, "Could not get current branch for project {ProjectId}", idea.ProjectId);
 			}
 
-			// Use an approved expansion when available; otherwise honor the project's auto-expand setting.
+			// Use an approved expansion when available; otherwise send directly to implementation.
 			var goalPrompt = idea.HasExpandedDescription
-				? BuildPromptFromExpanded(idea.Description, idea.ExpandedDescription!)
-				: idea.Project.IdeasAutoExpand
-					? BuildExpandedPrompt(idea.Description)
-					: BuildImplementationPrompt(idea.Description);
+				? BuildPromptFromExpanded(idea.Description, idea.ExpandedDescription!, await GetApprovedIdeaImplementationPromptTemplateAsync(cancellationToken))
+				: BuildImplementationPrompt(idea.Description, await GetIdeaImplementationPromptTemplateAsync(cancellationToken));
+			var attachmentPaths = ResolveAttachmentPaths(idea.Project.WorkingPath, idea.Attachments);
+			if (attachmentPaths.Count > 0)
+			{
+				goalPrompt = BuildPromptWithAttachments(goalPrompt, idea.Attachments, attachmentPaths);
+			}
 
 			// Create the job with the original idea as the title
 			var job = new Job
@@ -78,6 +84,9 @@ public partial class IdeaService
 				Title = idea.Description,  // Use the original idea text as the title
 				GoalPrompt = goalPrompt,
 				Branch = currentBranch,
+				ModelUsed = await ResolveJobModelAsync(idea.ProjectId, defaultProvider.Id, options, cancellationToken),
+				ReasoningEffort = await ResolveJobReasoningAsync(idea.ProjectId, defaultProvider.Id, cancellationToken),
+				AttachedFilesJson = attachmentPaths.Count > 0 ? JsonSerializer.Serialize(attachmentPaths) : null,
 				Status = JobStatus.New
 			};
 
@@ -107,8 +116,16 @@ public partial class IdeaService
 		}
 	}
 
-	private async Task<Provider?> ResolveJobProviderAsync(Guid projectId, CancellationToken cancellationToken)
+	private async Task<Provider?> ResolveJobProviderAsync(Guid projectId, IdeaProcessingOptions? options, CancellationToken cancellationToken)
 	{
+		if (options?.ProviderId is Guid providerOverrideId)
+		{
+			return await _dbContext.Providers
+				.AsNoTracking()
+				.Where(provider => provider.Id == providerOverrideId && provider.IsEnabled)
+				.FirstOrDefaultAsync(cancellationToken);
+		}
+
 		var projectProvider = await _dbContext.ProjectProviders
 			.AsNoTracking()
 			.Where(selection => selection.ProjectId == projectId && selection.IsEnabled)
@@ -123,80 +140,76 @@ public partial class IdeaService
 		return projectProvider ?? await _providerService.GetDefaultAsync(cancellationToken);
 	}
 
-	private static string BuildPromptFromExpanded(string originalIdea, string expandedDescription)
+	private async Task<string?> ResolveJobModelAsync(Guid projectId, Guid providerId, IdeaProcessingOptions? options, CancellationToken cancellationToken)
 	{
-		return $@"You are implementing a feature based on the following specification. This specification was reviewed and approved by the user.
+		var modelOverride = string.IsNullOrWhiteSpace(options?.ModelId) ? null : options!.ModelId!.Trim();
+		if (modelOverride != null)
+		{
+			return modelOverride;
+		}
 
-## Original Idea
-{originalIdea}
+		var projectSelection = await _dbContext.ProjectProviders
+			.AsNoTracking()
+			.Where(selection => selection.ProjectId == projectId && selection.IsEnabled && selection.ProviderId == providerId)
+			.OrderBy(selection => selection.Priority)
+			.Select(selection => selection.PreferredModelId)
+			.FirstOrDefaultAsync(cancellationToken);
 
-## Detailed Specification
-{expandedDescription}
-
-## Instructions
-1. Implement the feature according to the specification above
-2. Handle edge cases and error scenarios as described
-3. Follow the existing code patterns and style in the project
-4. Ensure the implementation is complete and functional
-5. Use subagents for research, codebase exploration, and parallel analysis to keep your context window efficient
-
-Implement this feature now.
-
-When you are finished, end your response with a short summary in this exact format:
-<commit-summary>
-A concise one-line description of what was implemented (max 72 chars)
-</commit-summary>";
+		return string.IsNullOrWhiteSpace(projectSelection) ? null : projectSelection.Trim();
 	}
 
-	private static string BuildExpandedPrompt(string ideaDescription)
+	private async Task<string?> ResolveJobReasoningAsync(Guid projectId, Guid providerId, CancellationToken cancellationToken)
 	{
-		return $@"You are implementing a feature based on the following idea. First, take a moment to understand the idea and expand it into a complete feature specification. Consider edge cases, user experience, and implementation details. Then implement the feature.
+		var projectSelection = await _dbContext.ProjectProviders
+			.AsNoTracking()
+			.Where(selection => selection.ProjectId == projectId && selection.IsEnabled && selection.ProviderId == providerId)
+			.OrderBy(selection => selection.Priority)
+			.Select(selection => selection.PreferredReasoningEffort)
+			.FirstOrDefaultAsync(cancellationToken);
 
-## Feature Idea
-{ideaDescription}
+		if (!string.IsNullOrWhiteSpace(projectSelection))
+		{
+			return ProviderCapabilities.NormalizeReasoningEffort(projectSelection);
+		}
 
-## Instructions
-1. Analyze the idea and identify all the components needed
-2. Consider edge cases and error handling
-3. Think about the user experience and how users will interact with this feature
-4. Implement the feature completely, including any necessary tests
-5. Make sure the implementation follows the existing code patterns and style in the project
-6. Use subagents for research, codebase exploration, and parallel analysis to keep your context window efficient
+		var provider = await _dbContext.Providers
+			.AsNoTracking()
+			.Where(item => item.Id == providerId)
+			.Select(item => new { item.DefaultReasoningEffort })
+			.FirstOrDefaultAsync(cancellationToken);
 
-Begin by expanding this idea into a detailed specification, then implement it.
-
-When you are finished, end your response with a short summary in this exact format:
-<commit-summary>
-A concise one-line description of what was implemented (max 72 chars)
-</commit-summary>";
+		return ProviderCapabilities.NormalizeReasoningEffort(provider?.DefaultReasoningEffort);
 	}
 
-	private static string BuildImplementationPrompt(string ideaDescription)
+	private static string BuildPromptFromExpanded(string originalIdea, string expandedDescription, string? template)
+		=> PromptBuilder.BuildApprovedIdeaImplementationPrompt(originalIdea, expandedDescription, template);
+
+	private static string BuildImplementationPrompt(string ideaDescription, string? template)
+		=> PromptBuilder.BuildIdeaImplementationPrompt(ideaDescription, template);
+
+	private async Task<string?> GetIdeaImplementationPromptTemplateAsync(CancellationToken cancellationToken)
 	{
-		return $@"You are implementing a feature based on the following idea. Work directly from the idea below instead of first expanding it into a separate detailed specification.
+		return await _dbContext.AppSettings
+			.AsNoTracking()
+			.OrderBy(settings => settings.Id)
+			.Select(settings => settings.IdeaImplementationPromptTemplate)
+			.FirstOrDefaultAsync(cancellationToken);
+	}
 
-## Feature Idea
-{ideaDescription}
-
-## Instructions
-1. Implement the feature directly from the idea above
-2. Fill in necessary implementation details while staying aligned with the original intent
-3. Consider edge cases and error handling
-4. Make sure the implementation follows the existing code patterns and style in the project
-5. Add or update tests when needed to cover the change
-6. Use subagents for research, codebase exploration, and parallel analysis to keep your context window efficient
-
-Begin implementing this feature now without first expanding it into a detailed specification.
-
-When you are finished, end your response with a short summary in this exact format:
-<commit-summary>
-A concise one-line description of what was implemented (max 72 chars)
-</commit-summary>";
+	private async Task<string?> GetApprovedIdeaImplementationPromptTemplateAsync(CancellationToken cancellationToken)
+	{
+		return await _dbContext.AppSettings
+			.AsNoTracking()
+			.OrderBy(settings => settings.Id)
+			.Select(settings => settings.ApprovedIdeaImplementationPromptTemplate)
+			.FirstOrDefaultAsync(cancellationToken);
 	}
 
 	public async Task<bool> CompleteIdeaFromJobAsync(Guid jobId, CancellationToken cancellationToken = default)
 	{
 		var idea = await _dbContext.Ideas
+			.Include(i => i.Project)
+			.Include(i => i.Attachments)
 			.FirstOrDefaultAsync(i => i.JobId == jobId, cancellationToken);
 
 		if (idea == null)
@@ -205,6 +218,7 @@ A concise one-line description of what was implemented (max 72 chars)
 		}
 
 		_logger.LogInformation("Removing completed Idea {IdeaId} after Job {JobId} completed", idea.Id, jobId);
+		await DeleteAttachmentFilesAsync(idea.Attachments, idea.Project?.WorkingPath);
 
 		_dbContext.Ideas.Remove(idea);
 		await _dbContext.SaveChangesAsync(cancellationToken);
@@ -215,6 +229,8 @@ A concise one-line description of what was implemented (max 72 chars)
 	public async Task<bool> HandleJobCompletionAsync(Guid jobId, bool success, CancellationToken cancellationToken = default)
 	{
 		var idea = await _dbContext.Ideas
+			.Include(i => i.Project)
+			.Include(i => i.Attachments)
 			.FirstOrDefaultAsync(i => i.JobId == jobId, cancellationToken);
 
 		if (idea == null)
@@ -222,11 +238,35 @@ A concise one-line description of what was implemented (max 72 chars)
 			return false;
 		}
 
+		var stoppedProcessing = false;
+
 		if (success)
 		{
+			var shouldStopProcessing = idea.Project?.IdeasProcessingActive == true
+				&& !await _dbContext.Ideas
+					.AsNoTracking()
+					.AnyAsync(otherIdea => otherIdea.ProjectId == idea.ProjectId && otherIdea.Id != idea.Id, cancellationToken);
+
 			// Job completed successfully - remove the idea
 			_logger.LogInformation("Removing completed Idea {IdeaId} after Job {JobId} completed successfully", idea.Id, jobId);
+			await DeleteAttachmentFilesAsync(idea.Attachments, idea.Project?.WorkingPath);
 			_dbContext.Ideas.Remove(idea);
+
+			if (shouldStopProcessing)
+			{
+				var project = await _dbContext.Projects.FindAsync(new object[] { idea.ProjectId }, cancellationToken);
+				if (project?.IdeasProcessingActive == true)
+				{
+					project.IdeasProcessingActive = false;
+					project.IdeasProcessingProviderId = null;
+					project.IdeasProcessingModelId = null;
+					stoppedProcessing = true;
+					_logger.LogInformation(
+						"Stopped Ideas auto-processing for project {ProjectId} because Job {JobId} completed the last queued idea",
+						idea.ProjectId,
+						jobId);
+				}
+			}
 		}
 		else
 		{
@@ -234,6 +274,23 @@ A concise one-line description of what was implemented (max 72 chars)
 			_logger.LogInformation("Resetting Idea {IdeaId} after Job {JobId} failed/cancelled", idea.Id, jobId);
 			idea.IsProcessing = false;
 			idea.JobId = null;
+
+			// If the job was cancelled, stop ideas auto-processing to avoid repeat failures
+			// (e.g. provider maintenance or rate limits causing the user to cancel)
+			var job = await _dbContext.Jobs
+				.AsNoTracking()
+				.FirstOrDefaultAsync(j => j.Id == jobId, cancellationToken);
+
+			if (job?.Status == JobStatus.Cancelled)
+			{
+				var project = await _dbContext.Projects.FindAsync(new object[] { idea.ProjectId }, cancellationToken);
+				if (project?.IdeasProcessingActive == true)
+				{
+					project.IdeasProcessingActive = false;
+					stoppedProcessing = true;
+					_logger.LogInformation("Stopped Ideas auto-processing for project {ProjectId} because Job {JobId} was cancelled", idea.ProjectId, jobId);
+				}
+			}
 		}
 
 		await _dbContext.SaveChangesAsync(cancellationToken);
@@ -244,10 +301,81 @@ A concise one-line description of what was implemented (max 72 chars)
 			try
 			{
 				await _jobUpdateService.NotifyIdeaUpdated(idea.Id, idea.ProjectId);
+
+				if (stoppedProcessing)
+				{
+					await _jobUpdateService.NotifyIdeasProcessingStateChanged(idea.ProjectId, false);
+				}
 			}
 			catch { /* Don't fail if notification fails */ }
 		}
 
 		return true;
+	}
+
+	private static List<string> ResolveAttachmentPaths(string? workingPath, IEnumerable<IdeaAttachment>? attachments)
+	{
+		var resolved = new List<string>();
+		if (string.IsNullOrWhiteSpace(workingPath) || attachments == null)
+		{
+			return resolved;
+		}
+
+		var normalizedRoot = Path.GetFullPath(workingPath);
+		foreach (var attachment in attachments)
+		{
+			if (string.IsNullOrWhiteSpace(attachment.RelativePath))
+			{
+				continue;
+			}
+
+			var fullPath = Path.GetFullPath(Path.Combine(normalizedRoot, attachment.RelativePath));
+			if (!fullPath.StartsWith(normalizedRoot, StringComparison.Ordinal))
+			{
+				continue;
+			}
+
+			if (File.Exists(fullPath))
+			{
+				resolved.Add(fullPath);
+			}
+		}
+
+		return resolved;
+	}
+
+	private static string BuildPromptWithAttachments(string prompt, IEnumerable<IdeaAttachment> attachments, IReadOnlyList<string> attachmentPaths)
+	{
+		var attachmentList = attachments.ToList();
+		if (attachmentList.Count == 0 || attachmentPaths.Count == 0)
+		{
+			return prompt;
+		}
+
+		var sb = new StringBuilder();
+		sb.AppendLine(prompt.TrimEnd());
+		sb.AppendLine();
+		sb.AppendLine("## Attached Context Files");
+		sb.AppendLine("The user attached the following files as additional context. Review them before implementing the change.");
+		sb.AppendLine();
+
+		for (var index = 0; index < attachmentList.Count && index < attachmentPaths.Count; index++)
+		{
+			var attachment = attachmentList[index];
+			sb.Append("- `");
+			sb.Append(attachment.FileName);
+			sb.Append("`");
+			if (!string.IsNullOrWhiteSpace(attachment.ContentType))
+			{
+				sb.Append(" (");
+				sb.Append(attachment.ContentType);
+				sb.Append(')');
+			}
+			sb.Append(" - path: `");
+			sb.Append(attachmentPaths[index]);
+			sb.AppendLine("`");
+		}
+
+		return sb.ToString();
 	}
 }

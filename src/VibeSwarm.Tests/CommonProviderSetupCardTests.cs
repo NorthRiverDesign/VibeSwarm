@@ -32,6 +32,7 @@ public sealed class CommonProviderSetupCardTests
 				ApiKeyHelpText = "Use a fine-grained PAT.",
 				IsInstalled = false,
 				AuthenticationConnectionMode = ProviderConnectionMode.CLI,
+				AuthenticationTypeLabel = "GitHub Token",
 				IsAuthenticated = false,
 				HasConfiguredProvider = false,
 				InstallationStatus = $"{AppConstants.AppName} could not find 'copilot' on the host PATH. It also checked common user install locations.",
@@ -67,7 +68,7 @@ public sealed class CommonProviderSetupCardTests
 
 		Assert.Contains("GitHub Copilot", html);
 		Assert.Contains("Not Installed", html);
-		Assert.Contains("CLI Auth Needed", html);
+		Assert.Contains("CLI GitHub Token Auth Needed", html);
 		Assert.Contains("Provider Not Added", html);
 		Assert.Contains("Host detection", html);
 		Assert.Contains("Supporting host tools", html);
@@ -100,6 +101,7 @@ public sealed class CommonProviderSetupCardTests
 				ResolvedExecutablePath = "/usr/local/bin/claude",
 				InstallationStatus = "Detected on host.",
 				AuthenticationConnectionMode = ProviderConnectionMode.SDK,
+				AuthenticationTypeLabel = "API Key",
 				IsAuthenticated = true,
 				HasConfiguredProvider = true,
 				ProviderName = "Claude Code CLI",
@@ -124,7 +126,7 @@ public sealed class CommonProviderSetupCardTests
 		});
 
 		Assert.Contains("Installed", html);
-		Assert.Contains("SDK Auth Ready", html);
+		Assert.Contains("SDK API Key Auth Ready", html);
 		Assert.Contains("Provider Configured", html);
 		Assert.Contains("Claude Code CLI", html);
 		Assert.Contains("1.0.58", html);

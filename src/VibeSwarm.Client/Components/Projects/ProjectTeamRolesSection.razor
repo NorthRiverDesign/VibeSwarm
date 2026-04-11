@@ -1,6 +1,3 @@
-@using VibeSwarm.Client.Models
-@using VibeSwarm.Shared.Data
-@using VibeSwarm.Shared.Providers
 
 <div class="mb-3">
 <label class="form-label d-flex align-items-center gap-2 mb-2">
@@ -43,11 +40,14 @@ else
 var teamRole = ResolveTeamRole(assignment.TeamRoleId);
 var providerSelectId = $"team-provider-{assignment.TeamRoleId}";
 var modelSelectId = $"team-model-{assignment.TeamRoleId}";
+var reasoningSelectId = $"team-reasoning-{assignment.TeamRoleId}";
 var models = ResolveProviderModels(assignment.ProviderId)
 .Where(model => model.IsAvailable)
 .OrderByDescending(model => model.IsDefault)
 .ThenBy(model => model.DisplayName ?? model.ModelId)
 .ToList();
+var assignmentProvider = AvailableProviders.FirstOrDefault(provider => provider.Id == assignment.ProviderId);
+var reasoningOptions = assignmentProvider != null ? ProviderCapabilities.GetSupportedReasoningEfforts(assignmentProvider) : [];
 
 <div class="rounded border bg-body p-3">
 <div class="d-flex align-items-start justify-content-between gap-2 flex-wrap">
@@ -104,7 +104,7 @@ var models = ResolveProviderModels(assignment.ProviderId)
 </label>
 <InputSelect TValue="string" id="@modelSelectId"
  Value="@(assignment.PreferredModelId ?? string.Empty)"
- ValueChanged="@(async (string? value) => await HandlePreferredModelChanged(assignment.TeamRoleId, value))"
+ ValueChanged="@(async (string? value) => await HandlePreferredSelectionChanged(assignment.TeamRoleId, value, assignment.PreferredReasoningEffort))"
  ValueExpression="@(() => assignment.PreferredModelId)"
  class="form-select form-select-sm"
  disabled="@(!models.Any())">
@@ -122,6 +122,33 @@ var models = ResolveProviderModels(assignment.ProviderId)
 else
 {
 <span>New multi-agent work can start with this model unless a workflow overrides it.</span>
+}
+</div>
+</div>
+<div class="col-12 col-lg-6">
+<label for="@reasoningSelectId" class="form-label small mb-1">
+<i class="bi bi-lightning-charge me-1"></i>Default Reasoning
+</label>
+<InputSelect TValue="string" id="@reasoningSelectId"
+ Value="@(assignment.PreferredReasoningEffort ?? string.Empty)"
+ ValueChanged="@(async (string? value) => await HandlePreferredSelectionChanged(assignment.TeamRoleId, assignment.PreferredModelId, value))"
+ ValueExpression="@(() => assignment.PreferredReasoningEffort)"
+ class="form-select form-select-sm"
+ disabled="@(!reasoningOptions.Any())">
+<option value="">Use provider default reasoning</option>
+@foreach (var reasoning in reasoningOptions)
+{
+<option value="@reasoning">@reasoning</option>
+}
+</InputSelect>
+<div class="form-text">
+@if (!reasoningOptions.Any())
+{
+<span>This provider does not expose configurable reasoning levels.</span>
+}
+else
+{
+<span>New multi-agent work can start with this reasoning level unless a workflow overrides it.</span>
 }
 </div>
 </div>
@@ -161,7 +188,7 @@ var isAssigned = IsTeamRoleAssigned(teamRole.Id);
 										{
 											<span class="text-body-secondary ms-sm-2 d-block d-sm-inline">@teamRole.Description</span>
 										}
-										@if (teamRole.DefaultProvider != null || !string.IsNullOrWhiteSpace(teamRole.DefaultModelId))
+										@if (teamRole.DefaultProvider != null || !string.IsNullOrWhiteSpace(teamRole.DefaultModelId) || !string.IsNullOrWhiteSpace(teamRole.DefaultReasoningEffort))
 										{
 											<span class="d-block small text-body-secondary mt-1">
 												@if (teamRole.DefaultProvider != null)
@@ -171,6 +198,10 @@ var isAssigned = IsTeamRoleAssigned(teamRole.Id);
 												@if (!string.IsNullOrWhiteSpace(teamRole.DefaultModelId))
 												{
 													<span class="ms-sm-2 d-block d-sm-inline"><i class="bi bi-diagram-3 me-1"></i>@teamRole.DefaultModelId</span>
+												}
+												@if (!string.IsNullOrWhiteSpace(teamRole.DefaultReasoningEffort))
+												{
+													<span class="ms-sm-2 d-block d-sm-inline"><i class="bi bi-lightning-charge me-1"></i>@teamRole.DefaultReasoningEffort</span>
 												}
 											</span>
 										}
@@ -230,12 +261,13 @@ ProviderId = providerId
 });
 }
 
-private Task HandlePreferredModelChanged(Guid teamRoleId, string? preferredModelId)
+private Task HandlePreferredSelectionChanged(Guid teamRoleId, string? preferredModelId, string? preferredReasoningEffort)
 {
 return OnPreferredModelChanged.InvokeAsync(new ProjectTeamRoleModelSelectionChange
 {
 TeamRoleId = teamRoleId,
-PreferredModelId = string.IsNullOrWhiteSpace(preferredModelId) ? null : preferredModelId
+PreferredModelId = string.IsNullOrWhiteSpace(preferredModelId) ? null : preferredModelId,
+PreferredReasoningEffort = string.IsNullOrWhiteSpace(preferredReasoningEffort) ? null : preferredReasoningEffort
 });
 }
 }

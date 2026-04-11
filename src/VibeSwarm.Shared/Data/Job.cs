@@ -1,4 +1,6 @@
 using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
+using System.Text.Json.Serialization;
 using VibeSwarm.Shared.Providers;
 
 namespace VibeSwarm.Shared.Data;
@@ -53,7 +55,17 @@ public enum GitCheckpointStatus
 
 public class Job
 {
-    public Guid Id { get; set; }
+	private Guid _id;
+
+    public Guid Id
+	{
+		get => _id;
+		set
+		{
+			_id = value;
+			SyncStatisticsKeys();
+		}
+	}
 
     /// <summary>
     /// Short display title for the job. For manual jobs, this is derived from the goal prompt.
@@ -72,18 +84,25 @@ public class Job
     [StringLength(2000, MinimumLength = 1)]
     public string GoalPrompt { get; set; } = string.Empty;
 
+    /// <summary>
+    /// JSON array of absolute attachment paths supplied with this job execution.
+    /// </summary>
+    public string? AttachedFilesJson { get; set; }
+
     public JobStatus Status { get; set; } = JobStatus.New;
 
     public Guid ProjectId { get; set; }
     public Project? Project { get; set; }
 
-    public Guid ProviderId { get; set; }
+	public Guid ProviderId { get; set; }
     public Provider? Provider { get; set; }
 
-    public bool IsScheduled { get; set; }
-    public Guid? JobScheduleId { get; set; }
-    public JobSchedule? JobSchedule { get; set; }
-    public DateTime? ScheduledForUtc { get; set; }
+	public bool IsScheduled { get; set; }
+	public Guid? JobScheduleId { get; set; }
+	public JobSchedule? JobSchedule { get; set; }
+	public Guid? JobTemplateId { get; set; }
+	public JobTemplate? JobTemplate { get; set; }
+	public DateTime? ScheduledForUtc { get; set; }
 
     /// <summary>
     /// The AI model that was used to execute this job (e.g., "claude-sonnet-4-20250514")
@@ -92,15 +111,22 @@ public class Job
     public string? ModelUsed { get; set; }
 
     /// <summary>
+    /// The requested reasoning effort for this job.
+    /// </summary>
+    [StringLength(VibeSwarm.Shared.Validation.ValidationLimits.ReasoningEffortMaxLength)]
+    public string? ReasoningEffort { get; set; }
+
+    /// <summary>
     /// Planning output generated before execution when project planning is enabled.
     /// Persisted so execution and retries can reuse the reviewed plan without regenerating it.
     /// </summary>
     public string? PlanningOutput { get; set; }
 
-    /// <summary>
-    /// Provider that generated the persisted planning output, if any.
-    /// </summary>
-    public Guid? PlanningProviderId { get; set; }
+	/// <summary>
+	/// Provider that generated the persisted planning output, if any.
+	/// </summary>
+	public Guid? PlanningProviderId { get; set; }
+	public Provider? PlanningProvider { get; set; }
 
     /// <summary>
     /// Model that generated the persisted planning output, if any.
@@ -109,9 +135,69 @@ public class Job
     public string? PlanningModelUsed { get; set; }
 
     /// <summary>
-    /// When the persisted planning output was last generated.
+    /// Reasoning effort used to generate the persisted planning output, if any.
     /// </summary>
-    public DateTime? PlanningGeneratedAt { get; set; }
+    [StringLength(VibeSwarm.Shared.Validation.ValidationLimits.ReasoningEffortMaxLength)]
+    public string? PlanningReasoningEffortUsed { get; set; }
+
+	/// <summary>
+	/// When the persisted planning output was last generated.
+	/// </summary>
+	public DateTime? PlanningGeneratedAt { get; set; }
+
+	/// <summary>
+	/// Input tokens consumed while generating the persisted planning output.
+	/// </summary>
+	[NotMapped]
+	public int? PlanningInputTokens
+	{
+		get => PlanningStatistics?.InputTokens;
+		set
+		{
+			if (value is null && PlanningStatistics is null)
+			{
+				return;
+			}
+
+			EnsurePlanningStatistics().InputTokens = value;
+		}
+	}
+
+	/// <summary>
+	/// Output tokens consumed while generating the persisted planning output.
+	/// </summary>
+	[NotMapped]
+	public int? PlanningOutputTokens
+	{
+		get => PlanningStatistics?.OutputTokens;
+		set
+		{
+			if (value is null && PlanningStatistics is null)
+			{
+				return;
+			}
+
+			EnsurePlanningStatistics().OutputTokens = value;
+		}
+	}
+
+	/// <summary>
+	/// Cost in USD for generating the persisted planning output.
+	/// </summary>
+	[NotMapped]
+	public decimal? PlanningCostUsd
+	{
+		get => PlanningStatistics?.CostUsd;
+		set
+		{
+			if (value is null && PlanningStatistics is null)
+			{
+				return;
+			}
+
+			EnsurePlanningStatistics().CostUsd = value;
+		}
+	}
 
     /// <summary>
     /// Ordered provider-model execution plan captured when the job is scheduled or reset.
@@ -163,7 +249,20 @@ public class Job
     /// Total execution time in seconds. Stored explicitly to preserve duration
     /// even if StartedAt/CompletedAt are modified or unavailable.
     /// </summary>
-    public double? ExecutionDurationSeconds { get; set; }
+    [NotMapped]
+    public double? ExecutionDurationSeconds
+	{
+		get => Statistics?.ExecutionDurationSeconds;
+		set
+		{
+			if (value is null && Statistics is null)
+			{
+				return;
+			}
+
+			EnsureStatistics().ExecutionDurationSeconds = value;
+		}
+	}
 
     /// <summary>
     /// Gets the execution duration as a TimeSpan.
@@ -200,17 +299,110 @@ public class Job
     /// <summary>
     /// Total cost in USD for this job (if available from provider)
     /// </summary>
-    public decimal? TotalCostUsd { get; set; }
+    [NotMapped]
+    public decimal? TotalCostUsd
+	{
+		get => Statistics?.TotalCostUsd;
+		set
+		{
+			if (value is null && Statistics is null)
+			{
+				return;
+			}
+
+			EnsureStatistics().TotalCostUsd = value;
+		}
+	}
 
     /// <summary>
     /// Total input tokens used
     /// </summary>
-    public int? InputTokens { get; set; }
+    [NotMapped]
+    public int? InputTokens
+	{
+		get => Statistics?.InputTokens;
+		set
+		{
+			if (value is null && Statistics is null)
+			{
+				return;
+			}
 
-    /// <summary>
-    /// Total output tokens used
-    /// </summary>
-    public int? OutputTokens { get; set; }
+			EnsureStatistics().InputTokens = value;
+		}
+	}
+
+	/// <summary>
+	/// Total output tokens used
+	/// </summary>
+	[NotMapped]
+	public int? OutputTokens
+	{
+		get => Statistics?.OutputTokens;
+		set
+		{
+			if (value is null && Statistics is null)
+			{
+				return;
+			}
+
+			EnsureStatistics().OutputTokens = value;
+		}
+	}
+
+	/// <summary>
+	/// Input tokens consumed by the execution stage.
+	/// </summary>
+	[NotMapped]
+	public int? ExecutionInputTokens
+	{
+		get => ExecutionStatistics?.InputTokens;
+		set
+		{
+			if (value is null && ExecutionStatistics is null)
+			{
+				return;
+			}
+
+			EnsureExecutionStatistics().InputTokens = value;
+		}
+	}
+
+	/// <summary>
+	/// Output tokens consumed by the execution stage.
+	/// </summary>
+	[NotMapped]
+	public int? ExecutionOutputTokens
+	{
+		get => ExecutionStatistics?.OutputTokens;
+		set
+		{
+			if (value is null && ExecutionStatistics is null)
+			{
+				return;
+			}
+
+			EnsureExecutionStatistics().OutputTokens = value;
+		}
+	}
+
+	/// <summary>
+	/// Cost in USD for the execution stage.
+	/// </summary>
+	[NotMapped]
+	public decimal? ExecutionCostUsd
+	{
+		get => ExecutionStatistics?.CostUsd;
+		set
+		{
+			if (value is null && ExecutionStatistics is null)
+			{
+				return;
+			}
+
+			EnsureExecutionStatistics().CostUsd = value;
+		}
+	}
 
     /// <summary>
     /// Current activity description (e.g., "Running tool: Read", "Thinking...")
@@ -254,6 +446,18 @@ public class Job
     /// </summary>
     [StringLength(4000)]
     public string? CommandUsed { get; set; }
+
+    /// <summary>
+    /// The exact CLI command used during the planning stage, when present.
+    /// </summary>
+    [StringLength(4000)]
+    public string? PlanningCommandUsed { get; set; }
+
+    /// <summary>
+    /// The exact CLI command used during the execution stage, when present.
+    /// </summary>
+    [StringLength(4000)]
+    public string? ExecutionCommandUsed { get; set; }
 
     /// <summary>
     /// Priority level for job scheduling (higher = more urgent)
@@ -477,9 +681,73 @@ public class Job
     /// </summary>
     public Guid? TeamRoleId { get; set; }
 
-    public TeamRole? TeamRole { get; set; }
+	public TeamRole? TeamRole { get; set; }
+
+	[JsonIgnore]
+	public JobStatistics? Statistics { get; set; }
+
+	[JsonIgnore]
+	public JobPlanningStatistics? PlanningStatistics { get; set; }
+
+	[JsonIgnore]
+	public JobExecutionStatistics? ExecutionStatistics { get; set; }
+
+    /// <summary>
+    /// Earliest time this job may be dequeued. Set when a rate-limited provider has no
+    /// alternative and the job must back off until the rate limit resets.
+    /// </summary>
+    public DateTime? NotBeforeUtc { get; set; }
+
+    /// <summary>
+    /// Whether Playwright MCP was provided to this job for browser interaction.
+    /// Set at execution start based on whether enabled web environments exist.
+    /// </summary>
+    public bool PlaywrightEnabled { get; set; }
+
+    /// <summary>
+    /// JSON snapshot of the environments exposed to this job at execution time.
+    /// Stores names, URLs, types, and stages (no credentials) for audit and display.
+    /// </summary>
+    public string? EnvironmentsJson { get; set; }
+
+    /// <summary>
+    /// Number of environments exposed to this job at execution time.
+    /// Stored explicitly so list queries can display the count without deserializing JSON.
+    /// </summary>
+    public int EnvironmentCount { get; set; }
+
+    /// <summary>
+    /// Gets the deserialized environment snapshots from EnvironmentsJson.
+    /// Returns an empty list if no environments were captured.
+    /// </summary>
+    [NotMapped]
+    public List<JobEnvironmentSnapshot> EnvironmentSnapshots
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(EnvironmentsJson))
+            {
+                return new List<JobEnvironmentSnapshot>();
+            }
+
+            try
+            {
+                return System.Text.Json.JsonSerializer.Deserialize<List<JobEnvironmentSnapshot>>(EnvironmentsJson) ?? new List<JobEnvironmentSnapshot>();
+            }
+            catch
+            {
+                return new List<JobEnvironmentSnapshot>();
+            }
+        }
+    }
 
     public ICollection<JobMessage> Messages { get; set; } = new List<JobMessage>();
+
+    [NotMapped]
+    public int TotalMessageCount { get; set; }
+
+    [NotMapped]
+    public bool HasHiddenMessages => TotalMessageCount > Messages.Count;
 
     public ICollection<JobProviderAttempt> ProviderAttempts { get; set; } = new List<JobProviderAttempt>();
 
@@ -518,6 +786,51 @@ public class Job
             FailurePattern = FailurePattern
         };
     }
+
+	private JobStatistics EnsureStatistics()
+	{
+		Statistics ??= new JobStatistics();
+		Statistics.Job = this;
+		Statistics.JobId = Id;
+		return Statistics;
+	}
+
+	private JobPlanningStatistics EnsurePlanningStatistics()
+	{
+		PlanningStatistics ??= new JobPlanningStatistics();
+		PlanningStatistics.Job = this;
+		PlanningStatistics.JobId = Id;
+		return PlanningStatistics;
+	}
+
+	private JobExecutionStatistics EnsureExecutionStatistics()
+	{
+		ExecutionStatistics ??= new JobExecutionStatistics();
+		ExecutionStatistics.Job = this;
+		ExecutionStatistics.JobId = Id;
+		return ExecutionStatistics;
+	}
+
+	private void SyncStatisticsKeys()
+	{
+		if (Statistics is not null)
+		{
+			Statistics.JobId = Id;
+			Statistics.Job = this;
+		}
+
+		if (PlanningStatistics is not null)
+		{
+			PlanningStatistics.JobId = Id;
+			PlanningStatistics.Job = this;
+		}
+
+		if (ExecutionStatistics is not null)
+		{
+			ExecutionStatistics.JobId = Id;
+			ExecutionStatistics.Job = this;
+		}
+	}
 }
 
 public enum JobStatus

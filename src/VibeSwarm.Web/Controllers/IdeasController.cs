@@ -31,8 +31,12 @@ public class IdeasController : ControllerBase
         return idea == null ? NotFound() : Ok(idea);
     }
 
-    [HttpPost]
-    public async Task<IActionResult> Create([FromBody] Idea idea, CancellationToken ct) => Ok(await _ideaService.CreateAsync(idea, ct));
+	[HttpPost]
+	public async Task<IActionResult> Create([FromBody] Idea idea, CancellationToken ct) => Ok(await _ideaService.CreateAsync(idea, ct));
+
+	[HttpPost("create-with-attachments")]
+	public async Task<IActionResult> CreateWithAttachments([FromBody] CreateIdeaRequest request, CancellationToken ct)
+		=> Ok(await _ideaService.CreateAsync(request, ct));
 
     [HttpPut("{id:guid}")]
     public async Task<IActionResult> Update(Guid id, [FromBody] Idea idea, CancellationToken ct)
@@ -48,7 +52,7 @@ public class IdeasController : ControllerBase
     public async Task<IActionResult> GetNextUnprocessed(Guid projectId, CancellationToken ct) => Ok(await _ideaService.GetNextUnprocessedAsync(projectId, ct));
 
     [HttpPost("{id:guid}/convert-to-job")]
-    public async Task<IActionResult> ConvertToJob(Guid id, CancellationToken ct)
+    public async Task<IActionResult> ConvertToJob(Guid id, [FromBody] IdeaProcessingOptions? options, CancellationToken ct)
     {
         // First check if the idea is already being processed (before acquiring lock)
         var idea = await _ideaService.GetByIdAsync(id, ct);
@@ -62,7 +66,7 @@ public class IdeasController : ControllerBase
             return Conflict(new { error = "This idea is already being processed", code = "ALREADY_PROCESSING", ideaId = id, jobId = idea.JobId });
         }
 
-        var job = await _ideaService.ConvertToJobAsync(id, ct);
+        var job = await _ideaService.ConvertToJobAsync(id, options, ct);
         if (job == null)
         {
             // The lock prevented double-start, or another error occurred
@@ -79,17 +83,65 @@ public class IdeasController : ControllerBase
     public async Task<IActionResult> HandleJobCompletion(Guid jobId, [FromQuery] bool success, CancellationToken ct)
         => await _ideaService.HandleJobCompletionAsync(jobId, success, ct) ? Ok() : BadRequest();
 
-    [HttpGet("by-job/{jobId:guid}")]
-    public async Task<IActionResult> GetByJobId(Guid jobId, CancellationToken ct) => Ok(await _ideaService.GetByJobIdAsync(jobId, ct));
+	[HttpGet("by-job/{jobId:guid}")]
+	public async Task<IActionResult> GetByJobId(Guid jobId, CancellationToken ct) => Ok(await _ideaService.GetByJobIdAsync(jobId, ct));
 
-    [HttpPost("project/{projectId:guid}/start-processing")]
-    public async Task<IActionResult> StartProcessing(Guid projectId, [FromQuery] bool autoCommit = false, CancellationToken ct = default) { await _ideaService.StartProcessingAsync(projectId, autoCommit, ct); return Ok(); }
+	[HttpGet("attachments/{attachmentId:guid}/metadata")]
+	public async Task<IActionResult> GetAttachmentMetadata(Guid attachmentId, CancellationToken ct)
+	{
+		var attachment = await _ideaService.GetAttachmentAsync(attachmentId, ct);
+		return attachment == null ? NotFound() : Ok(attachment);
+	}
+
+	[HttpGet("attachments/{attachmentId:guid}")]
+	public async Task<IActionResult> DownloadAttachment(Guid attachmentId, CancellationToken ct)
+	{
+		var attachment = await _ideaService.GetAttachmentAsync(attachmentId, ct);
+		if (attachment?.Idea?.Project == null || string.IsNullOrWhiteSpace(attachment.RelativePath))
+		{
+			return NotFound();
+		}
+
+		var workingPath = attachment.Idea.Project.WorkingPath?.Trim();
+		if (string.IsNullOrWhiteSpace(workingPath) || !Directory.Exists(workingPath))
+		{
+			return NotFound();
+		}
+
+		var normalizedRoot = Path.GetFullPath(workingPath);
+		var fullPath = Path.GetFullPath(Path.Combine(normalizedRoot, attachment.RelativePath));
+		if (!fullPath.StartsWith(normalizedRoot, StringComparison.Ordinal) || !System.IO.File.Exists(fullPath))
+		{
+			return NotFound();
+		}
+
+		var contentType = string.IsNullOrWhiteSpace(attachment.ContentType)
+			? "application/octet-stream"
+			: attachment.ContentType;
+
+		return PhysicalFile(fullPath, contentType, attachment.FileName);
+	}
+
+	[HttpPost("project/{projectId:guid}/start-processing")]
+	public async Task<IActionResult> StartProcessing(Guid projectId, [FromBody] IdeaProcessingOptions? options, CancellationToken ct = default) { await _ideaService.StartProcessingAsync(projectId, options, ct); return Ok(); }
 
     [HttpPost("project/{projectId:guid}/stop-processing")]
     public async Task<IActionResult> StopProcessing(Guid projectId, CancellationToken ct) { await _ideaService.StopProcessingAsync(projectId, ct); return Ok(); }
 
     [HttpGet("project/{projectId:guid}/processing-active")]
     public async Task<IActionResult> IsProcessingActive(Guid projectId, CancellationToken ct) => Ok(await _ideaService.IsProcessingActiveAsync(projectId, ct));
+
+    [HttpGet("global-processing-status")]
+    public async Task<IActionResult> GetGlobalProcessingStatus(CancellationToken ct) => Ok(await _ideaService.GetGlobalProcessingStatusAsync(ct));
+
+    [HttpGet("global-queue-snapshot")]
+    public async Task<IActionResult> GetGlobalQueueSnapshot(CancellationToken ct) => Ok(await _ideaService.GetGlobalQueueSnapshotAsync(ct));
+
+    [HttpPost("start-all-processing")]
+    public async Task<IActionResult> StartAllProcessing([FromBody] IdeaProcessingOptions? options, CancellationToken ct = default) { await _ideaService.StartAllProcessingAsync(options, ct); return Ok(); }
+
+    [HttpPost("stop-all-processing")]
+    public async Task<IActionResult> StopAllProcessing(CancellationToken ct = default) { await _ideaService.StopAllProcessingAsync(ct); return Ok(); }
 
     [HttpPut("project/{projectId:guid}/reorder")]
     public async Task<IActionResult> Reorder(Guid projectId, [FromBody] List<Guid> ideaIds, CancellationToken ct) { await _ideaService.ReorderIdeasAsync(projectId, ideaIds, ct); return Ok(); }

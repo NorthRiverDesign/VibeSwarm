@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using VibeSwarm.Shared.VersionControl;
+using VibeSwarm.Shared.VersionControl.Models;
 
 namespace VibeSwarm.Web.Controllers;
 
@@ -50,7 +51,7 @@ public class GitController : ControllerBase
     public async Task<IActionResult> GetBranches([FromQuery] string path, [FromQuery] bool includeRemote = true, CancellationToken ct = default) => Ok(await _gitService.GetBranchesAsync(path, includeRemote, ct));
 
     [HttpPost("commit")]
-    public async Task<IActionResult> Commit([FromBody] CommitRequest req, CancellationToken ct) => Ok(await _gitService.CommitAllChangesAsync(req.Path, req.Message, ct));
+    public async Task<IActionResult> Commit([FromBody] CommitRequest req, CancellationToken ct) => Ok(await _gitService.CommitAllChangesAsync(req.Path, req.Message, ct, req.CommitOptions));
 
     [HttpPost("push")]
     public async Task<IActionResult> Push([FromBody] PushRequest req, CancellationToken ct) => Ok(await _gitService.PushAsync(req.Path, req.Remote ?? "origin", req.Branch, ct));
@@ -68,7 +69,7 @@ public class GitController : ControllerBase
 
     [HttpPost("merge-branch")]
     public async Task<IActionResult> MergeBranch([FromBody] MergeBranchRequest req, CancellationToken ct)
-        => Ok(await _gitService.MergeBranchAsync(req.Path, req.SourceBranch, req.TargetBranch, req.Remote ?? "origin", null, ct, req.PushAfterMerge));
+        => Ok(await _gitService.MergeBranchAsync(req.Path, req.SourceBranch, req.TargetBranch, req.Remote ?? "origin", null, ct, req.PushAfterMerge, req.ConflictResolutions));
 
     [HttpPost("fetch")]
     public async Task<IActionResult> Fetch([FromBody] FetchRequest req, CancellationToken ct) => Ok(await _gitService.FetchAsync(req.Path, req.Remote ?? "origin", req.Prune, ct));
@@ -134,11 +135,11 @@ public class GitController : ControllerBase
     }
 
     // Request DTOs
-    public record CommitRequest(string Path, string Message);
+    public record CommitRequest(string Path, string Message, GitCommitOptions? CommitOptions = null);
     public record PushRequest(string Path, string? Remote, string? Branch);
     public record CommitAndPushRequest(string Path, string Message, string? Remote);
     public record CreatePullRequestRequest(string Path, string SourceBranch, string TargetBranch, string Title, string? Body);
-    public record MergeBranchRequest(string Path, string SourceBranch, string TargetBranch, string? Remote, bool PushAfterMerge = true);
+    public record MergeBranchRequest(string Path, string SourceBranch, string TargetBranch, string? Remote, bool PushAfterMerge = true, IReadOnlyList<MergeConflictResolution>? ConflictResolutions = null);
     public record FetchRequest(string Path, string? Remote, bool Prune = true);
     public record CheckoutRequest(string Path, string Branch, string? Remote);
     public record SyncRequest(string Path, string? Remote);

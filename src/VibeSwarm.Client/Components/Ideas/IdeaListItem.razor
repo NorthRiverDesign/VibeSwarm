@@ -80,13 +80,38 @@
 						}
 					</div>
 				</div>
-				@if ((IsRunningIdea() || IsQueuedIdea()) && Idea.JobId.HasValue)
+				@if (IsQueuedIdea() && Idea.JobId.HasValue)
 				{
 					<small class="text-body-secondary ms-4">
 						<a href="/jobs/view/@Idea.JobId" class="text-decoration-none">
-							@(IsQueuedIdea() ? "Queued Job" : "View Job") <i class="bi bi-arrow-right-short"></i>
+							Queued Job <i class="bi bi-arrow-right-short"></i>
 						</a>
 					</small>
+				}
+				@if (Idea.Attachments.Any())
+				{
+					<div class="d-flex flex-wrap gap-2 mt-2 ms-4">
+						@foreach (var attachment in Idea.Attachments.OrderBy(attachment => attachment.CreatedAt))
+						{
+							<a class="d-inline-flex align-items-center gap-2 text-decoration-none border rounded-3 px-2 py-2 bg-body min-width-0"
+							   href="@GetAttachmentUrl(attachment.Id)" target="_blank" rel="noreferrer"
+							   title="@attachment.FileName">
+								@if (IsImageAttachment(attachment))
+								{
+									<img src="@GetAttachmentUrl(attachment.Id)" alt="@attachment.FileName" class="rounded border flex-shrink-0"
+										 style="width: 3rem; height: 3rem; object-fit: cover;" />
+								}
+								else
+								{
+									<i class="bi bi-paperclip text-body-secondary flex-shrink-0"></i>
+								}
+								<span class="d-flex flex-column min-width-0">
+									<span class="text-body text-truncate">@attachment.FileName</span>
+									<span class="small text-body-secondary">@FormatAttachmentSize(attachment.SizeBytes)</span>
+								</span>
+							</a>
+						}
+					</div>
 				}
 			</div>
 
@@ -118,9 +143,17 @@
 						<span class="d-inline d-sm-none ms-1">Queued</span>
 					</button>
 				}
+				else if (Idea.JobId.HasValue)
+				{
+					@* Show spinner with link to view the running job *@
+					<a href="/jobs/view/@Idea.JobId" class="btn btn-sm btn-secondary flex-grow-1 flex-sm-grow-0">
+						<span class="spinner-border spinner-border-sm" role="status"></span>
+						<span class="ms-1">View Job</span>
+					</a>
+				}
 				else
 				{
-					@* Show spinner when idea is processing *@
+					@* Show spinner when idea is processing but no job yet *@
 					<button type="button" class="btn btn-sm btn-secondary flex-grow-1 flex-sm-grow-0" disabled>
 						<span class="spinner-border spinner-border-sm" role="status"></span>
 						<span class="d-inline d-sm-none ms-1">Processing</span>
@@ -294,5 +327,28 @@
 	private string GetEditLengthSummary()
 	{
 		return $"{EditDescription.Length}/{ValidationLimits.IdeaDescriptionMaxLength} characters";
+	}
+
+	private static bool IsImageAttachment(IdeaAttachment attachment)
+		=> !string.IsNullOrWhiteSpace(attachment.ContentType)
+			&& attachment.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase);
+
+	private static string GetAttachmentUrl(Guid attachmentId)
+		=> $"/api/ideas/attachments/{attachmentId}";
+
+	private static string FormatAttachmentSize(long sizeBytes)
+	{
+		if (sizeBytes < 1024)
+		{
+			return $"{sizeBytes} B";
+		}
+
+		var kilobytes = sizeBytes / 1024d;
+		if (kilobytes < 1024)
+		{
+			return $"{kilobytes:0.#} KB";
+		}
+
+		return $"{kilobytes / 1024d:0.#} MB";
 	}
 }

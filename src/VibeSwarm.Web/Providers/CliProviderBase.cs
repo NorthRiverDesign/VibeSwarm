@@ -542,7 +542,6 @@ public abstract class CliProviderBase : ProviderBase
 	{
 		progress?.Report(new ExecutionProgress
 		{
-			CurrentMessage = "CLI process started successfully",
 			ProcessId = processId,
 			CommandUsed = fullCommand,
 			IsStreaming = false

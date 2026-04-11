@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using VibeSwarm.Shared.Data;
+using VibeSwarm.Shared.Models;
 using VibeSwarm.Shared.Providers;
 using VibeSwarm.Shared.Services;
 using VibeSwarm.Shared.VersionControl;
@@ -311,12 +312,9 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 	}
 
 	[Fact]
-	public async Task GenerateMcpConfigJsonAsync_AddsPlaywrightServerWhenWebEnvironmentExists()
+	public void BuildSystemPromptRules_IncludesCredentialUsageGuidance()
 	{
-		var service = new McpConfigService(new FakeSkillService(
-			new Skill { Id = Guid.NewGuid(), Name = "repo-map", Content = "Skill content", IsEnabled = true }));
-
-		var json = await service.GenerateMcpConfigJsonAsync(new Project
+		var rules = PromptBuilder.BuildSystemPromptRules(new Project
 		{
 			Name = "Web App",
 			WorkingPath = "/tmp/web-app",
@@ -324,9 +322,67 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 			[
 				new ProjectEnvironment
 				{
+					Name = "Staging",
+					Type = EnvironmentType.Web,
+					Stage = EnvironmentStage.Development,
+					Url = "https://staging.example.com",
+					IsEnabled = true,
+					Username = "admin@example.com",
+					Password = "StagingPassword!"
+				}
+			]
+		});
+
+		Assert.NotNull(rules);
+		Assert.Contains("ENVIRONMENT AUTHENTICATION:", rules);
+		Assert.Contains("use those exact values for browser automation", rules);
+		Assert.Contains("test@test.com", rules);
+	}
+
+	[Fact]
+	public async Task GenerateMcpConfigJsonAsync_AddsPlaywrightServerWhenWebEnvironmentExists()
+	{
+		var repoMapSkill = new Skill { Id = Guid.NewGuid(), Name = "repo-map", Description = "Repository navigation help.", Content = "Skill content", IsEnabled = true };
+		var unrelatedSkill = new Skill { Id = Guid.NewGuid(), Name = "other-skill", Description = "Should not be injected.", Content = "Other content", IsEnabled = true };
+		var service = new McpConfigService(new FakeSkillService(
+			repoMapSkill,
+			unrelatedSkill));
+
+		var json = await service.GenerateMcpConfigJsonAsync(new Project
+		{
+			Name = "Web App",
+			WorkingPath = "/tmp/web-app",
+			TeamAssignments =
+			[
+				new ProjectTeamRole
+				{
+					TeamRoleId = Guid.NewGuid(),
+					IsEnabled = true,
+					TeamRole = new TeamRole
+					{
+						Id = Guid.NewGuid(),
+						Name = "Code Reviewer",
+						IsEnabled = true,
+						SkillLinks =
+						[
+							new TeamRoleSkill
+							{
+								SkillId = repoMapSkill.Id,
+								Skill = repoMapSkill
+							}
+						]
+					}
+				}
+			],
+			Environments =
+			[
+				new ProjectEnvironment
+				{
 					Name = "Production",
 					Type = EnvironmentType.Web,
 					Url = "https://app.example.com",
+					Username = "admin@example.com",
+					Password = "ProdPassword!",
 					IsEnabled = true
 				}
 			]
@@ -336,6 +392,9 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 		Assert.Contains("\"playwright\"", json);
 		Assert.Contains("@playwright/mcp@latest", json);
 		Assert.Contains("\"repo-map\"", json);
+		Assert.DoesNotContain("\"other-skill\"", json);
+		Assert.Contains("\"APP_URL\"", json);
+		Assert.Contains("\"admin@example.com\"", json);
 	}
 
 	[Fact]
@@ -370,6 +429,275 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 	}
 
 	[Fact]
+	public async Task GenerateExecutionResourcesAsync_IncludesProjectMcpServersFromDotMcpJson()
+	{
+		var service = new McpConfigService(new FakeSkillService());
+		var workingDirectory = Path.Combine(Path.GetTempPath(), $"vibeswarm-project-mcp-{Guid.NewGuid():N}");
+		Directory.CreateDirectory(workingDirectory);
+		McpExecutionResources? resources = null;
+
+		try
+		{
+			await WriteProjectMcpConfigAsync(workingDirectory, """
+				{
+				  "mcpServers": {
+				    "laravel-boost": {
+				      "command": "php",
+				      "args": ["artisan", "boost:mcp"]
+				    }
+				  }
+				}
+				""");
+
+			resources = await service.GenerateExecutionResourcesAsync(
+				ProviderType.Claude,
+				new Project
+				{
+					Name = "Laravel App",
+					WorkingPath = workingDirectory
+				},
+				workingDirectory);
+
+			Assert.NotNull(resources);
+			Assert.NotNull(resources!.ConfigFilePath);
+			using var document = JsonDocument.Parse(await File.ReadAllTextAsync(resources.ConfigFilePath!));
+			var server = document.RootElement
+				.GetProperty("mcpServers")
+				.GetProperty("laravel-boost");
+
+			Assert.Equal("php", server.GetProperty("command").GetString());
+			Assert.Equal(
+				["artisan", "boost:mcp"],
+				server.GetProperty("args").EnumerateArray().Select(value => value.GetString()).ToList());
+		}
+		finally
+		{
+			service.CleanupExecutionResources(resources);
+			if (Directory.Exists(workingDirectory))
+			{
+				Directory.Delete(workingDirectory, recursive: true);
+			}
+		}
+	}
+
+	[Fact]
+	public async Task GenerateExecutionResourcesAsync_ForOpenCode_MergesProjectMcpServersWithPlaywright()
+	{
+		var service = new McpConfigService(new FakeSkillService());
+		var workingDirectory = Path.Combine(Path.GetTempPath(), $"vibeswarm-project-opencode-mcp-{Guid.NewGuid():N}");
+		Directory.CreateDirectory(workingDirectory);
+		McpExecutionResources? resources = null;
+
+		try
+		{
+			await WriteProjectMcpConfigAsync(workingDirectory, """
+				{
+				  "mcpServers": {
+				    "laravel-boost": {
+				      "command": "php",
+				      "args": ["artisan", "boost:mcp"]
+				    }
+				  }
+				}
+				""");
+
+			resources = await service.GenerateExecutionResourcesAsync(
+				ProviderType.OpenCode,
+				new Project
+				{
+					Name = "Laravel App",
+					WorkingPath = workingDirectory,
+					Environments =
+					[
+						new ProjectEnvironment
+						{
+							Name = "Production",
+							Type = EnvironmentType.Web,
+							Url = "https://app.example.com",
+							IsEnabled = true,
+							IsPrimary = true
+						}
+					]
+				},
+				workingDirectory);
+
+			Assert.NotNull(resources);
+			Assert.NotNull(resources!.ConfigFilePath);
+			using var document = JsonDocument.Parse(await File.ReadAllTextAsync(resources.ConfigFilePath!));
+			var mcp = document.RootElement.GetProperty("mcp");
+
+			var laravelBoost = mcp.GetProperty("laravel-boost");
+			Assert.Equal("local", laravelBoost.GetProperty("type").GetString());
+			Assert.Equal(
+				["php", "artisan", "boost:mcp"],
+				laravelBoost.GetProperty("command").EnumerateArray().Select(value => value.GetString()).ToList());
+
+			var playwright = mcp.GetProperty("playwright");
+			Assert.Equal("local", playwright.GetProperty("type").GetString());
+			Assert.Equal(
+				["npx", "-y", "@playwright/mcp@latest"],
+				playwright.GetProperty("command").EnumerateArray().Select(value => value.GetString()).ToList());
+			Assert.Equal(
+				"https://app.example.com",
+				playwright.GetProperty("environment").GetProperty("APP_URL").GetString());
+		}
+		finally
+		{
+			service.CleanupExecutionResources(resources);
+			if (Directory.Exists(workingDirectory))
+			{
+				Directory.Delete(workingDirectory, recursive: true);
+			}
+		}
+	}
+
+	[Fact]
+	public async Task GenerateExecutionResourcesAsync_IgnoresInvalidProjectMcpConfig_AndStillGeneratesManagedServers()
+	{
+		var service = new McpConfigService(new FakeSkillService());
+		var workingDirectory = Path.Combine(Path.GetTempPath(), $"vibeswarm-project-invalid-mcp-{Guid.NewGuid():N}");
+		Directory.CreateDirectory(workingDirectory);
+		McpExecutionResources? resources = null;
+
+		try
+		{
+			await WriteProjectMcpConfigAsync(workingDirectory, "{ not-valid-json");
+
+			resources = await service.GenerateExecutionResourcesAsync(
+				ProviderType.Claude,
+				new Project
+				{
+					Name = "Web App",
+					WorkingPath = workingDirectory,
+					Environments =
+					[
+						new ProjectEnvironment
+						{
+							Name = "Production",
+							Type = EnvironmentType.Web,
+							Url = "https://app.example.com",
+							IsEnabled = true,
+							IsPrimary = true
+						}
+					]
+				},
+				workingDirectory);
+
+			Assert.NotNull(resources);
+			Assert.NotNull(resources!.ConfigFilePath);
+
+			using var document = JsonDocument.Parse(await File.ReadAllTextAsync(resources.ConfigFilePath!));
+			Assert.True(document.RootElement.GetProperty("mcpServers").TryGetProperty("playwright", out _));
+		}
+		finally
+		{
+			service.CleanupExecutionResources(resources);
+			if (Directory.Exists(workingDirectory))
+			{
+				Directory.Delete(workingDirectory, recursive: true);
+			}
+		}
+	}
+
+	[Fact]
+	public async Task GenerateExecutionResourcesAsync_ForCopilot_DoesNotDuplicateProjectMcpServers()
+	{
+		var repoMapSkill = new Skill
+		{
+			Id = Guid.NewGuid(),
+			Name = "repo-map",
+			Description = "Repository navigation help.",
+			Content = "Skill content",
+			IsEnabled = true
+		};
+		var service = new McpConfigService(new FakeSkillService(repoMapSkill));
+		var workingDirectory = Path.Combine(Path.GetTempPath(), $"vibeswarm-project-copilot-mcp-{Guid.NewGuid():N}");
+		Directory.CreateDirectory(workingDirectory);
+		McpExecutionResources? resources = null;
+
+		try
+		{
+			await WriteProjectMcpConfigAsync(workingDirectory, """
+				{
+				  "mcpServers": {
+				    "playwright": {
+				      "command": "npx",
+				      "args": ["-y", "@playwright/mcp@latest"]
+				    },
+				    "repo-map": {
+				      "command": "custom-repo-map"
+				    }
+				  }
+				}
+				""");
+
+			resources = await service.GenerateExecutionResourcesAsync(
+				ProviderType.Copilot,
+				new Project
+				{
+					Name = "Copilot App",
+					WorkingPath = workingDirectory,
+					TeamAssignments =
+					[
+						new ProjectTeamRole
+						{
+							TeamRoleId = Guid.NewGuid(),
+							IsEnabled = true,
+							TeamRole = new TeamRole
+							{
+								Id = Guid.NewGuid(),
+								Name = "Code Reviewer",
+								IsEnabled = true,
+								SkillLinks =
+								[
+									new TeamRoleSkill
+									{
+										SkillId = repoMapSkill.Id,
+										Skill = repoMapSkill
+									}
+								]
+							}
+						}
+					],
+					Environments =
+					[
+						new ProjectEnvironment
+						{
+							Name = "Production",
+							Type = EnvironmentType.Web,
+							Url = "https://app.example.com",
+							IsEnabled = true,
+							IsPrimary = true
+						}
+					]
+				},
+				workingDirectory);
+
+			Assert.NotNull(resources);
+			Assert.NotNull(resources!.ConfigFilePath);
+
+			using var document = JsonDocument.Parse(await File.ReadAllTextAsync(resources.ConfigFilePath!));
+			var mcpServers = document.RootElement.GetProperty("mcpServers");
+
+			Assert.False(mcpServers.TryGetProperty("playwright", out _));
+			Assert.False(mcpServers.TryGetProperty("repo-map", out _));
+			Assert.True(mcpServers.TryGetProperty("playwright-1", out var playwrightServer));
+			Assert.True(mcpServers.TryGetProperty("repo-map-1", out var repoMapServer));
+			Assert.Equal("npx", playwrightServer.GetProperty("command").GetString());
+			Assert.Equal("vibeswarm-skill", repoMapServer.GetProperty("command").GetString());
+			Assert.Equal(2, mcpServers.EnumerateObject().Count());
+		}
+		finally
+		{
+			service.CleanupExecutionResources(resources);
+			if (Directory.Exists(workingDirectory))
+			{
+				Directory.Delete(workingDirectory, recursive: true);
+			}
+		}
+	}
+
+	[Fact]
 	public async Task GenerateExecutionResourcesAsync_StoresPlaywrightArtifactsOutsideWorkingDirectory_AndCleansThemUp()
 	{
 		var service = new McpConfigService(new FakeSkillService());
@@ -391,6 +719,16 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 							Name = "Production",
 							Type = EnvironmentType.Web,
 							Url = "https://app.example.com",
+							Username = "admin@example.com",
+							Password = "ProdPassword!",
+							IsPrimary = true,
+							IsEnabled = true
+						},
+						new ProjectEnvironment
+						{
+							Name = "Local Dev",
+							Type = EnvironmentType.Web,
+							Url = "http://localhost:5000",
 							IsEnabled = true
 						}
 					]
@@ -418,6 +756,13 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 			Assert.Equal(Path.Combine(resources.BrowserArtifactsDirectory!, "tmp"), environment.GetProperty("TMP").GetString());
 			Assert.Equal(Path.Combine(resources.BrowserArtifactsDirectory!, "tmp"), environment.GetProperty("TEMP").GetString());
 			Assert.Equal(Path.Combine(resources.BrowserArtifactsDirectory!, "cache"), environment.GetProperty("XDG_CACHE_HOME").GetString());
+			Assert.Equal("https://app.example.com", environment.GetProperty("APP_URL").GetString());
+			Assert.Equal("admin@example.com", environment.GetProperty("APP_USERNAME").GetString());
+			Assert.Equal("ProdPassword!", environment.GetProperty("APP_PASSWORD").GetString());
+			Assert.Equal("https://app.example.com", environment.GetProperty("APP_PRODUCTION_URL").GetString());
+			Assert.Equal("admin@example.com", environment.GetProperty("APP_PRODUCTION_USERNAME").GetString());
+			Assert.Equal("ProdPassword!", environment.GetProperty("APP_PRODUCTION_PASSWORD").GetString());
+			Assert.Equal("http://localhost:5000", environment.GetProperty("APP_LOCAL_DEV_URL").GetString());
 
 			service.CleanupExecutionResources(resources);
 
@@ -596,7 +941,6 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 				Description = project.Description,
 				WorkingPath = project.WorkingPath,
 				IsActive = project.IsActive,
-				IdeasAutoExpand = project.IdeasAutoExpand,
 				ProviderSelections = project.ProviderSelections
 					.Select(ps => new ProjectProvider
 					{
@@ -700,7 +1044,6 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 				Description = project.Description,
 				WorkingPath = project.WorkingPath,
 				IsActive = project.IsActive,
-				IdeasAutoExpand = project.IdeasAutoExpand,
 				ProviderSelections = project.ProviderSelections
 					.Select(ps => new ProjectProvider
 					{
@@ -841,10 +1184,316 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 		Assert.Equal("https://staging.example.com", result["APP_STAGING_URL"]);
 	}
 
+	[Fact]
+	public void JobEnvironmentSnapshot_FromProject_ReturnsEmptyForNull()
+	{
+		var result = JobEnvironmentSnapshot.FromProject(null);
+		Assert.Empty(result);
+	}
+
+	[Fact]
+	public void JobEnvironmentSnapshot_FromProject_CapturesEnabledEnvironments()
+	{
+		var project = new Project
+		{
+			Name = "Test",
+			WorkingPath = "/tmp",
+			Environments =
+			[
+				new ProjectEnvironment
+				{
+					Name = "Production",
+					Type = EnvironmentType.Web,
+					Stage = EnvironmentStage.Production,
+					Url = "https://prod.example.com",
+					IsPrimary = true,
+					IsEnabled = true
+				},
+				new ProjectEnvironment
+				{
+					Name = "Disabled",
+					Type = EnvironmentType.Web,
+					Stage = EnvironmentStage.Development,
+					Url = "https://disabled.example.com",
+					IsEnabled = false
+				},
+				new ProjectEnvironment
+				{
+					Name = "Local",
+					Type = EnvironmentType.Web,
+					Stage = EnvironmentStage.Local,
+					Url = "http://localhost:5000",
+					IsEnabled = true
+				}
+			]
+		};
+
+		var snapshots = JobEnvironmentSnapshot.FromProject(project);
+
+		Assert.Equal(2, snapshots.Count);
+		Assert.Equal("Production", snapshots[0].Name);
+		Assert.True(snapshots[0].IsPrimary);
+		Assert.Equal(EnvironmentType.Web, snapshots[0].Type);
+		Assert.Equal(EnvironmentStage.Production, snapshots[0].Stage);
+		Assert.Equal("https://prod.example.com", snapshots[0].Url);
+		Assert.Equal("Local", snapshots[1].Name);
+		Assert.False(snapshots[1].IsPrimary);
+	}
+
+	[Fact]
+	public void JobEnvironmentSnapshot_FromProject_ExcludesCredentials()
+	{
+		var project = new Project
+		{
+			Name = "Test",
+			WorkingPath = "/tmp",
+			Environments =
+			[
+				new ProjectEnvironment
+				{
+					Name = "Production",
+					Type = EnvironmentType.Web,
+					Url = "https://prod.example.com",
+					Username = "admin@example.com",
+					Password = "SuperSecret!",
+					IsEnabled = true
+				}
+			]
+		};
+
+		var snapshots = JobEnvironmentSnapshot.FromProject(project);
+		var json = System.Text.Json.JsonSerializer.Serialize(snapshots);
+
+		Assert.Single(snapshots);
+		Assert.DoesNotContain("admin@example.com", json);
+		Assert.DoesNotContain("SuperSecret!", json);
+	}
+
+	[Fact]
+	public void Job_EnvironmentSnapshots_DeserializesFromJson()
+	{
+		var snapshots = new List<JobEnvironmentSnapshot>
+		{
+			new() { Name = "Production", Url = "https://prod.example.com", Type = EnvironmentType.Web, Stage = EnvironmentStage.Production, IsPrimary = true },
+			new() { Name = "Local", Url = "http://localhost:5000", Type = EnvironmentType.Web, Stage = EnvironmentStage.Local, IsPrimary = false }
+		};
+
+		var job = new Job
+		{
+			GoalPrompt = "Test",
+			EnvironmentsJson = System.Text.Json.JsonSerializer.Serialize(snapshots),
+			PlaywrightEnabled = true,
+			EnvironmentCount = 2
+		};
+
+		var result = job.EnvironmentSnapshots;
+		Assert.Equal(2, result.Count);
+		Assert.Equal("Production", result[0].Name);
+		Assert.True(result[0].IsPrimary);
+		Assert.Equal("Local", result[1].Name);
+		Assert.False(result[1].IsPrimary);
+	}
+
+	[Fact]
+	public void Job_EnvironmentSnapshots_ReturnsEmptyForNullJson()
+	{
+		var job = new Job { GoalPrompt = "Test", EnvironmentsJson = null };
+		Assert.Empty(job.EnvironmentSnapshots);
+	}
+
+	[Fact]
+	public void Job_EnvironmentSnapshots_ReturnsEmptyForInvalidJson()
+	{
+		var job = new Job { GoalPrompt = "Test", EnvironmentsJson = "not valid json" };
+		Assert.Empty(job.EnvironmentSnapshots);
+	}
+
+	[Fact]
+	public void BuildSystemPromptRules_IncludesPlaywrightGuidance_WhenWebEnvironmentsExist()
+	{
+		var rules = PromptBuilder.BuildSystemPromptRules(new Project
+		{
+			Name = "Web App",
+			WorkingPath = "/tmp/web-app",
+			Environments =
+			[
+				new ProjectEnvironment
+				{
+					Name = "Production",
+					Type = EnvironmentType.Web,
+					Stage = EnvironmentStage.Production,
+					Url = "https://app.example.com",
+					IsEnabled = true
+				}
+			]
+		});
+
+		Assert.NotNull(rules);
+		Assert.Contains("DEPLOYED ENVIRONMENTS:", rules);
+		Assert.Contains("Playwright MCP", rules);
+		Assert.Contains("Do not assume localhost", rules);
+	}
+
+	[Fact]
+	public void BuildSystemPromptRules_OmitsPlaywright_WhenNoWebEnvironments()
+	{
+		var rules = PromptBuilder.BuildSystemPromptRules(new Project
+		{
+			Name = "CLI App",
+			WorkingPath = "/tmp/cli-app",
+			Environments =
+			[
+				new ProjectEnvironment
+				{
+					Name = "Release",
+					Type = EnvironmentType.Release,
+					Stage = EnvironmentStage.Production,
+					Url = "https://github.com/example/releases",
+					IsEnabled = true
+				}
+			]
+		});
+
+		Assert.NotNull(rules);
+		Assert.DoesNotContain("DEPLOYED ENVIRONMENTS:", rules);
+		Assert.DoesNotContain("Playwright MCP", rules);
+	}
+
+	[Fact]
+	public async Task GenerateMcpConfigJsonAsync_OmitsPlaywright_WhenNoWebEnvironments()
+	{
+		var testSkill = new Skill
+		{
+			Id = Guid.NewGuid(),
+			Name = "test-skill",
+			Description = "CLI guidance.",
+			Content = "content",
+			IsEnabled = true
+		};
+		var service = new McpConfigService(new FakeSkillService(
+			testSkill));
+
+		var json = await service.GenerateMcpConfigJsonAsync(new Project
+		{
+			Name = "CLI App",
+			WorkingPath = "/tmp/cli-app",
+			TeamAssignments =
+			[
+				new ProjectTeamRole
+				{
+					TeamRoleId = Guid.NewGuid(),
+					IsEnabled = true,
+					TeamRole = new TeamRole
+					{
+						Id = Guid.NewGuid(),
+						Name = "CLI Reviewer",
+						IsEnabled = true,
+						SkillLinks =
+						[
+							new TeamRoleSkill
+							{
+								SkillId = testSkill.Id,
+								Skill = testSkill
+							}
+						]
+					}
+				}
+			],
+			Environments =
+			[
+				new ProjectEnvironment
+				{
+					Name = "Release",
+					Type = EnvironmentType.Release,
+					Url = "https://github.com/example/releases",
+					IsEnabled = true
+				}
+			]
+		});
+
+		Assert.NotNull(json);
+		Assert.Contains("\"test-skill\"", json);
+		Assert.DoesNotContain("\"playwright\"", json);
+	}
+
+	[Fact]
+	public async Task GenerateMcpConfigJsonAsync_IncludesOnlyProjectAssignedEnabledSkills()
+	{
+		var assignedSkill = new Skill
+		{
+			Id = Guid.NewGuid(),
+			Name = "bootstrap-ui",
+			Description = "Bootstrap UI guidance.",
+			Content = "Bootstrap content",
+			IsEnabled = true
+		};
+		var unassignedSkill = new Skill
+		{
+			Id = Guid.NewGuid(),
+			Name = "security-review",
+			Description = "Security review guidance.",
+			Content = "Security content",
+			IsEnabled = true
+		};
+		var disabledSkill = new Skill
+		{
+			Id = Guid.NewGuid(),
+			Name = "disabled-skill",
+			Description = "Disabled skill",
+			Content = "Disabled content",
+			IsEnabled = false
+		};
+		var service = new McpConfigService(new FakeSkillService(assignedSkill, unassignedSkill, disabledSkill));
+
+		var json = await service.GenerateMcpConfigJsonAsync(new Project
+		{
+			Name = "Scoped Skills",
+			WorkingPath = "/tmp/scoped-skills",
+			TeamAssignments =
+			[
+				new ProjectTeamRole
+				{
+					TeamRoleId = Guid.NewGuid(),
+					IsEnabled = true,
+					TeamRole = new TeamRole
+					{
+						Id = Guid.NewGuid(),
+						Name = "Frontend",
+						IsEnabled = true,
+						SkillLinks =
+						[
+							new TeamRoleSkill
+							{
+								SkillId = assignedSkill.Id,
+								Skill = assignedSkill
+							},
+							new TeamRoleSkill
+							{
+								SkillId = disabledSkill.Id,
+								Skill = disabledSkill
+							}
+						]
+					}
+				}
+			],
+			Environments = []
+		});
+
+		Assert.NotNull(json);
+		Assert.Contains("\"bootstrap-ui\"", json);
+		Assert.DoesNotContain("\"security-review\"", json);
+		Assert.DoesNotContain("\"disabled-skill\"", json);
+	}
+
 	private ProjectEnvironmentCredentialService CreateCredentialService()
 	{
 		var dataProtectionProvider = DataProtectionProvider.Create(new DirectoryInfo(_dataProtectionDirectory));
 		return new ProjectEnvironmentCredentialService(dataProtectionProvider);
+	}
+
+	private static Task WriteProjectMcpConfigAsync(string workingDirectory, string json)
+	{
+		return File.WriteAllTextAsync(Path.Combine(workingDirectory, ".mcp.json"), json.Trim());
 	}
 
 	private VibeSwarmDbContext CreateDbContext() => new(_dbOptions);
@@ -886,6 +1535,8 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 		public Task DeleteAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<bool> NameExistsAsync(string name, Guid? excludeId = null, CancellationToken cancellationToken = default)
 			=> Task.FromResult(_skills.Any(skill => string.Equals(skill.Name, name, StringComparison.OrdinalIgnoreCase) && skill.Id != excludeId));
+		public Task<SkillImportPreview> PreviewImportAsync(SkillImportRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<SkillImportResult> ImportAsync(SkillImportRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<string?> ExpandSkillAsync(string description, Guid providerId, string? modelId = null, CancellationToken cancellationToken = default)
 			=> Task.FromResult<string?>(null);
 	}
@@ -902,12 +1553,12 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 		public Task<string?> GetWorkingDirectoryDiffAsync(string workingDirectory, string? baseCommit = null, CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
 		public Task<string?> GetCommitRangeDiffAsync(string workingDirectory, string fromCommit, string? toCommit = null, CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
 		public Task<GitDiffSummary?> GetDiffSummaryAsync(string workingDirectory, string? baseCommit = null, CancellationToken cancellationToken = default) => Task.FromResult<GitDiffSummary?>(null);
-		public Task<GitOperationResult> CommitAllChangesAsync(string workingDirectory, string commitMessage, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<GitOperationResult> CommitAllChangesAsync(string workingDirectory, string commitMessage, CancellationToken cancellationToken = default, GitCommitOptions? commitOptions = null) => throw new NotSupportedException();
 		public Task<GitOperationResult> PushAsync(string workingDirectory, string remoteName = "origin", string? branchName = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<GitOperationResult> CommitAndPushAsync(string workingDirectory, string commitMessage, string remoteName = "origin", Action<string>? progressCallback = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<GitOperationResult> CreatePullRequestAsync(string workingDirectory, string sourceBranch, string targetBranch, string title, string? body = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<GitOperationResult> PreviewMergeBranchAsync(string workingDirectory, string sourceBranch, string targetBranch, string remoteName = "origin", CancellationToken cancellationToken = default) => throw new NotSupportedException();
-		public Task<GitOperationResult> MergeBranchAsync(string workingDirectory, string sourceBranch, string targetBranch, string remoteName = "origin", Action<string>? progressCallback = null, CancellationToken cancellationToken = default, bool pushAfterMerge = true) => throw new NotSupportedException();
+		public Task<GitOperationResult> MergeBranchAsync(string workingDirectory, string sourceBranch, string targetBranch, string remoteName = "origin", Action<string>? progressCallback = null, CancellationToken cancellationToken = default, bool pushAfterMerge = true, IReadOnlyList<MergeConflictResolution>? conflictResolutions = null) => throw new NotSupportedException();
 		public Task<IReadOnlyList<GitBranchInfo>> GetBranchesAsync(string workingDirectory, bool includeRemote = true, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<GitBranchInfo>>([]);
 		public Task<GitOperationResult> FetchAsync(string workingDirectory, string remoteName = "origin", bool prune = true, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<GitOperationResult> HardCheckoutBranchAsync(string workingDirectory, string branchName, string remoteName = "origin", Action<string>? progressCallback = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();

@@ -131,9 +131,13 @@ public class HttpVersionControlService : IVersionControlService
         return await _http.GetJsonOrNullAsync<GitDiffSummary>(url, ct);
     }
 
-    public async Task<GitOperationResult> CommitAllChangesAsync(string workingDirectory, string commitMessage, CancellationToken ct = default)
+    public async Task<GitOperationResult> CommitAllChangesAsync(
+        string workingDirectory,
+        string commitMessage,
+        CancellationToken ct = default,
+        GitCommitOptions? commitOptions = null)
     {
-        var response = await _http.PostAsJsonAsync("/api/git/commit", new { Path = workingDirectory, Message = commitMessage }, ct);
+        var response = await _http.PostAsJsonAsync("/api/git/commit", new { Path = workingDirectory, Message = commitMessage, CommitOptions = commitOptions }, ct);
         return await response.ReadJsonAsync(new GitOperationResult { Success = false, Error = "Failed to parse response" }, ct);
     }
 
@@ -192,7 +196,8 @@ public class HttpVersionControlService : IVersionControlService
         string remoteName = "origin",
         Action<string>? progressCallback = null,
         CancellationToken ct = default,
-        bool pushAfterMerge = true)
+        bool pushAfterMerge = true,
+        IReadOnlyList<MergeConflictResolution>? conflictResolutions = null)
     {
         var response = await _http.PostAsJsonAsync("/api/git/merge-branch", new
         {
@@ -200,7 +205,8 @@ public class HttpVersionControlService : IVersionControlService
             SourceBranch = sourceBranch,
             TargetBranch = targetBranch,
             Remote = remoteName,
-            PushAfterMerge = pushAfterMerge
+            PushAfterMerge = pushAfterMerge,
+            ConflictResolutions = conflictResolutions
         }, ct);
         return await response.ReadJsonAsync(new GitOperationResult { Success = false, Error = "Failed to parse response" }, ct);
     }

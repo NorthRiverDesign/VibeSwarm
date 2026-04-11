@@ -1,10 +1,5 @@
 @* Modal component for adding and editing projects *@
 @using VibeSwarm.Client.Components.Projects
-@using VibeSwarm.Client.Models
-@using VibeSwarm.Shared.Data
-@using VibeSwarm.Shared.Models
-@using VibeSwarm.Shared.Providers
-@using VibeSwarm.Shared.Services
 @using VibeSwarm.Shared.Validation
 @inject IProjectService ProjectService
 @inject IProviderService ProviderService
@@ -32,7 +27,10 @@ OnSourceModeSelected="SelectSourceMode"
 OnGitHubRepositoryChanged="OnGitHubRepositoryChanged"
 OnBrowseGitHubRepositories="OpenGitHubRepositoryBrowser" />
 
-<ProjectAutomationSection Project="@FormModel" IsEdit="@IsEdit" />
+<ProjectAutomationSection Project="@FormModel" IsEdit="@IsEdit"
+AvailableInferenceProviders="@_availableInferenceProviders"
+InferenceModels="@_commitSummaryInferenceModels"
+OnCommitSummaryProviderChanged="HandleCommitSummaryInferenceProviderChanged" />
 
 <ProjectIdeaGenerationSection Project="@FormModel"
 AvailableInferenceProviders="@_availableInferenceProviders"
@@ -142,6 +140,7 @@ private List<TeamRole> _availableTeamRoles = [];
 private List<ProviderModel> _planningModels = [];
 private List<InferenceProvider> _availableInferenceProviders = [];
 private List<InferenceModel> _ideaInferenceModels = [];
+private List<InferenceModel> _commitSummaryInferenceModels = [];
 private readonly Dictionary<Guid, List<ProviderModel>> _providerModelsByProviderId = [];
 private readonly ProjectModalState _formState = new();
 private ProjectModalFormModel FormModel { get; set; } = new();
@@ -171,6 +170,7 @@ EnsurePlanningProviderSelection();
 await LoadPlanningModelsAsync();
 await LoadProviderSelectionModelsAsync();
 await LoadIdeaInferenceModelsAsync();
+await LoadCommitSummaryInferenceModelsAsync();
 }
 else
 {
@@ -283,6 +283,8 @@ ResetState();
 		_cloneProgressMessage = null;
 		_showGitHubRepositoryBrowser = false;
 		_planningModels = [];
+		_ideaInferenceModels = [];
+		_commitSummaryInferenceModels = [];
 		_providerModelsByProviderId.Clear();
 	}
 
@@ -425,6 +427,9 @@ FormModel.TeamAssignments.Add(new ProjectTeamRole
 	PreferredModelId = teamRole.DefaultProviderId == defaultProvider.Id
 		? teamRole.DefaultModelId
 		: null,
+	PreferredReasoningEffort = teamRole.DefaultProviderId == defaultProvider.Id
+		? teamRole.DefaultReasoningEffort
+		: null,
 	IsEnabled = true,
 	CreatedAt = DateTime.UtcNow,
 	UpdatedAt = DateTime.UtcNow
@@ -490,6 +495,9 @@ await LoadProviderModelsAsync(change.ProviderId);
 selection.PreferredModelId = string.IsNullOrWhiteSpace(change.PreferredModelId)
 ? null
 : change.PreferredModelId.Trim();
+selection.PreferredReasoningEffort = string.IsNullOrWhiteSpace(change.PreferredReasoningEffort)
+? null
+: ProviderCapabilities.NormalizeReasoningEffort(change.PreferredReasoningEffort);
 selection.UpdatedAt = DateTime.UtcNow;
 }
 
@@ -504,6 +512,7 @@ if (assignment == null)
 assignment.ProviderId = change.ProviderId;
 assignment.Provider = ResolveProvider(change.ProviderId);
 assignment.PreferredModelId = null;
+assignment.PreferredReasoningEffort = null;
 assignment.UpdatedAt = DateTime.UtcNow;
 await LoadProviderModelsAsync(change.ProviderId);
 }
@@ -524,6 +533,9 @@ if (!_providerModelsByProviderId.ContainsKey(assignment.ProviderId))
 assignment.PreferredModelId = string.IsNullOrWhiteSpace(change.PreferredModelId)
 	? null
 	: change.PreferredModelId.Trim();
+assignment.PreferredReasoningEffort = string.IsNullOrWhiteSpace(change.PreferredReasoningEffort)
+	? null
+	: ProviderCapabilities.NormalizeReasoningEffort(change.PreferredReasoningEffort);
 assignment.UpdatedAt = DateTime.UtcNow;
 }
 
@@ -577,6 +589,7 @@ await LoadPlanningModelsAsync();
 private async Task HandlePlanningProviderChanged()
 {
 FormModel.PlanningModelId = null;
+FormModel.PlanningReasoningEffort = null;
 EnsurePlanningProviderSelection();
 await LoadPlanningModelsAsync();
 }
@@ -593,6 +606,7 @@ if (planningProviders.Count == 0)
 {
 FormModel.PlanningProviderId = null;
 FormModel.PlanningModelId = null;
+FormModel.PlanningReasoningEffort = null;
 _planningModels = [];
 return;
 }
@@ -601,6 +615,7 @@ if (!FormModel.PlanningProviderId.HasValue || !planningProviders.Any(provider =>
 {
 FormModel.PlanningProviderId = planningProviders[0].Id;
 FormModel.PlanningModelId = null;
+FormModel.PlanningReasoningEffort = null;
 _planningModels = [];
 }
 }
@@ -635,21 +650,30 @@ FormModel.PlanningModelId = null;
 
 private async Task LoadInferenceProvidersAsync()
 {
-try
-{
-_availableInferenceProviders = (await InferenceProviderService.GetEnabledAsync()).ToList();
-await LoadIdeaInferenceModelsAsync();
-}
-catch
-{
-_availableInferenceProviders = [];
-}
+	try
+	{
+		_availableInferenceProviders = (await InferenceProviderService.GetEnabledAsync()).ToList();
+		await LoadIdeaInferenceModelsAsync();
+		await LoadCommitSummaryInferenceModelsAsync();
+	}
+	catch
+	{
+		_availableInferenceProviders = [];
+		_ideaInferenceModels = [];
+		_commitSummaryInferenceModels = [];
+	}
 }
 
 private async Task HandleIdeaInferenceProviderChanged()
 {
 FormModel.IdeaInferenceModelId = null;
 await LoadIdeaInferenceModelsAsync();
+}
+
+private async Task HandleCommitSummaryInferenceProviderChanged()
+{
+FormModel.CommitSummaryInferenceModelId = null;
+await LoadCommitSummaryInferenceModelsAsync();
 }
 
 private async Task LoadIdeaInferenceModelsAsync()
@@ -677,6 +701,34 @@ if (!string.IsNullOrWhiteSpace(FormModel.IdeaInferenceModelId) &&
 !_ideaInferenceModels.Any(model => string.Equals(model.ModelId, FormModel.IdeaInferenceModelId, StringComparison.Ordinal)))
 {
 FormModel.IdeaInferenceModelId = null;
+}
+}
+
+private async Task LoadCommitSummaryInferenceModelsAsync()
+{
+_commitSummaryInferenceModels = [];
+if (!FormModel.CommitSummaryInferenceProviderId.HasValue)
+{
+return;
+}
+
+try
+{
+_commitSummaryInferenceModels = (await InferenceProviderService.GetModelsAsync(FormModel.CommitSummaryInferenceProviderId.Value))
+.Where(model => model.IsAvailable)
+.OrderByDescending(model => model.IsDefault)
+.ThenBy(model => model.DisplayName ?? model.ModelId)
+.ToList();
+}
+catch
+{
+_commitSummaryInferenceModels = [];
+}
+
+if (!string.IsNullOrWhiteSpace(FormModel.CommitSummaryInferenceModelId) &&
+!_commitSummaryInferenceModels.Any(model => string.Equals(model.ModelId, FormModel.CommitSummaryInferenceModelId, StringComparison.Ordinal)))
+{
+FormModel.CommitSummaryInferenceModelId = null;
 }
 }
 
@@ -721,6 +773,14 @@ var selection = FormModel.ProviderSelections.FirstOrDefault(projectProvider => p
 	{
 	selection.PreferredModelId = null;
 	}
+	if (selection != null)
+	{
+		var provider = ResolveProvider(providerId);
+		if (provider == null || !ProviderCapabilities.SupportsReasoningEffort(provider, selection.PreferredReasoningEffort))
+		{
+			selection.PreferredReasoningEffort = null;
+		}
+	}
 
 	foreach (var assignment in FormModel.TeamAssignments.Where(projectTeamRole => projectTeamRole.ProviderId == providerId))
 	{
@@ -728,6 +788,11 @@ var selection = FormModel.ProviderSelections.FirstOrDefault(projectProvider => p
 			!_providerModelsByProviderId[providerId].Any(model => string.Equals(model.ModelId, assignment.PreferredModelId, StringComparison.Ordinal)))
 		{
 			assignment.PreferredModelId = null;
+		}
+		var provider = ResolveProvider(providerId);
+		if (provider == null || !ProviderCapabilities.SupportsReasoningEffort(provider, assignment.PreferredReasoningEffort))
+		{
+			assignment.PreferredReasoningEffort = null;
 		}
 	}
 }
@@ -747,15 +812,17 @@ DefaultTargetBranch = source.DefaultTargetBranch,
 PlanningEnabled = source.PlanningEnabled,
 PlanningProviderId = source.PlanningProviderId,
 PlanningModelId = source.PlanningModelId,
-IdeasAutoExpand = source.IdeasAutoExpand,
+PlanningReasoningEffort = source.PlanningReasoningEffort,
 PromptContext = source.PromptContext,
 Memory = source.Memory,
 BuildVerificationEnabled = source.BuildVerificationEnabled,
-BuildCommand = source.BuildCommand,
-TestCommand = source.TestCommand,
-IdeaInferenceProviderId = source.IdeaInferenceProviderId,
-IdeaInferenceModelId = source.IdeaInferenceModelId,
-IsActive = source.IsActive,
+	BuildCommand = source.BuildCommand,
+	TestCommand = source.TestCommand,
+	IdeaInferenceProviderId = source.IdeaInferenceProviderId,
+	IdeaInferenceModelId = source.IdeaInferenceModelId,
+	CommitSummaryInferenceProviderId = source.CommitSummaryInferenceProviderId,
+	CommitSummaryInferenceModelId = source.CommitSummaryInferenceModelId,
+	IsActive = source.IsActive,
 CreatedAt = source.CreatedAt,
 	UpdatedAt = source.UpdatedAt,
 	ProviderSelections = source.ProviderSelections
@@ -765,10 +832,11 @@ CreatedAt = source.CreatedAt,
 Id = projectProvider.Id,
 ProjectId = projectProvider.ProjectId,
 ProviderId = projectProvider.ProviderId,
-Priority = projectProvider.Priority,
-IsEnabled = projectProvider.IsEnabled,
-PreferredModelId = projectProvider.PreferredModelId,
-CreatedAt = projectProvider.CreatedAt,
+	Priority = projectProvider.Priority,
+	IsEnabled = projectProvider.IsEnabled,
+	PreferredModelId = projectProvider.PreferredModelId,
+	PreferredReasoningEffort = projectProvider.PreferredReasoningEffort,
+	CreatedAt = projectProvider.CreatedAt,
 UpdatedAt = projectProvider.UpdatedAt,
 Provider = ResolveProvider(projectProvider.ProviderId)
 	})
@@ -781,6 +849,7 @@ Provider = ResolveProvider(projectProvider.ProviderId)
 		TeamRoleId = projectTeamRole.TeamRoleId,
 		ProviderId = projectTeamRole.ProviderId,
 		PreferredModelId = projectTeamRole.PreferredModelId,
+		PreferredReasoningEffort = projectTeamRole.PreferredReasoningEffort,
 		IsEnabled = projectTeamRole.IsEnabled,
 		CreatedAt = projectTeamRole.CreatedAt,
 		UpdatedAt = projectTeamRole.UpdatedAt,

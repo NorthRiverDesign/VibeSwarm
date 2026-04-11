@@ -101,4 +101,29 @@ public class Idea
 	/// </summary>
 	public bool HasExpandedDescription => !string.IsNullOrWhiteSpace(ExpandedDescription) &&
 		ExpansionStatus == IdeaExpansionStatus.Approved;
+
+	public ICollection<IdeaAttachment> Attachments { get; set; } = new List<IdeaAttachment>();
+}
+
+public class IdeaAttachment
+{
+	public Guid Id { get; set; }
+
+	public Guid IdeaId { get; set; }
+	public Idea? Idea { get; set; }
+
+	[Required]
+	[StringLength(ValidationLimits.IdeaAttachmentFileNameMaxLength, MinimumLength = 1)]
+	public string FileName { get; set; } = string.Empty;
+
+	[StringLength(ValidationLimits.IdeaAttachmentContentTypeMaxLength)]
+	public string? ContentType { get; set; }
+
+	[Required]
+	[StringLength(ValidationLimits.IdeaAttachmentRelativePathMaxLength, MinimumLength = 1)]
+	public string RelativePath { get; set; } = string.Empty;
+
+	public long SizeBytes { get; set; }
+
+	public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

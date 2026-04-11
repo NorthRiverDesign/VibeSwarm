@@ -53,10 +53,73 @@ public sealed class DashboardPageTests
 		Assert.Contains("Name", html);
 		Assert.Contains("Claude", html);
 		Assert.DoesNotContain("Copilot", html);
-		Assert.Contains("row g-2 g-lg-4", html);
+		Assert.Contains("row g-3", html);
 		Assert.Contains("row row-cols-1 row-cols-md-2 row-cols-xl-3 g-2 g-lg-3", html);
 		Assert.True(html.IndexOf("Beta", StringComparison.Ordinal) < html.IndexOf("Alpha", StringComparison.Ordinal));
 		Assert.True(html.IndexOf("Alpha", StringComparison.Ordinal) < html.IndexOf("Gamma", StringComparison.Ordinal));
+	}
+
+	[Fact]
+	public async Task Dashboard_PrefersLiveInstalledVersion_FromCommonProviderSetup()
+	{
+		var provider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Claude",
+			Type = ProviderType.Claude,
+			ConnectionMode = ProviderConnectionMode.CLI,
+			IsEnabled = true
+		};
+
+		var html = await RenderDashboardPageAsync(
+			new FakeProjectService([CreateProjectInfo("Alpha", DateTime.UtcNow.AddHours(-1))]),
+			new FakeProviderService([provider]),
+			usageSummaries: new Dictionary<Guid, ProviderUsageSummary>
+			{
+				[provider.Id] = new()
+				{
+					ProviderId = provider.Id,
+					CliVersion = "2.1.80"
+				}
+			},
+			commonProviderStatuses:
+			[
+				new CommonProviderSetupStatus
+				{
+					ProviderType = ProviderType.Claude,
+					InstalledVersion = "2.1.87"
+				}
+			]);
+
+		Assert.Contains("2.1.87", html);
+		Assert.DoesNotContain("2.1.80", html);
+	}
+
+	[Fact]
+	public async Task Dashboard_FallsBackToCachedUsageSummaryVersion_WhenLiveVersionUnavailable()
+	{
+		var provider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Copilot",
+			Type = ProviderType.Copilot,
+			ConnectionMode = ProviderConnectionMode.CLI,
+			IsEnabled = true
+		};
+
+		var html = await RenderDashboardPageAsync(
+			new FakeProjectService([CreateProjectInfo("Alpha", DateTime.UtcNow.AddHours(-1))]),
+			new FakeProviderService([provider]),
+			usageSummaries: new Dictionary<Guid, ProviderUsageSummary>
+			{
+				[provider.Id] = new()
+				{
+					ProviderId = provider.Id,
+					CliVersion = "1.0.16"
+				}
+			});
+
+		Assert.Contains("1.0.16", html);
 	}
 
 	[Fact]
@@ -86,6 +149,41 @@ public sealed class DashboardPageTests
 	}
 
 	[Fact]
+	public async Task Dashboard_ShowsRunningJobsBeforeIdeasAndAnalytics_WhenPresent()
+	{
+		var nowUtc = DateTime.UtcNow;
+
+		var html = await RenderDashboardPageAsync(
+			new FakeProjectService(
+				[CreateProjectInfo("Alpha", nowUtc.AddHours(-1))],
+				[CreateRunningJobInfo("Alpha", "Alpha active job", JobStatus.Processing, nowUtc.AddMinutes(-5))]),
+			new FakeProviderService([]),
+			new FakeIdeaService(new GlobalIdeasProcessingStatus
+			{
+				TotalUnprocessedIdeas = 2,
+				ProjectsCurrentlyProcessing = 1,
+				Projects =
+				[
+					new ProjectIdeasSummary
+					{
+						ProjectId = Guid.NewGuid(),
+						ProjectName = "Alpha",
+						UnprocessedIdeas = 2,
+						IsProcessing = true
+					}
+				]
+			}));
+
+		var runningJobsIndex = html.IndexOf("Running Jobs", StringComparison.Ordinal);
+		var ideasProcessingIndex = html.IndexOf("Ideas Processing", StringComparison.Ordinal);
+		var jobAnalyticsIndex = html.IndexOf("Job Analytics", StringComparison.Ordinal);
+
+		Assert.True(runningJobsIndex >= 0);
+		Assert.True(ideasProcessingIndex > runningJobsIndex);
+		Assert.True(jobAnalyticsIndex > ideasProcessingIndex);
+	}
+
+	[Fact]
 	public async Task Dashboard_HidesRunningJobsSection_WhenNoProjectsHaveRunningJobs()
 	{
 		var dashboardProjects = new[]
@@ -100,16 +198,116 @@ public sealed class DashboardPageTests
 		Assert.DoesNotContain("Running Jobs", html);
 	}
 
-	private static async Task<string> RenderDashboardPageAsync(IProjectService projectService, IProviderService providerService)
+	[Fact]
+	public async Task Dashboard_ShowsStopWithoutStartAll_WhenIdeasProcessingIsActive()
+	{
+		var html = await RenderDashboardPageAsync(
+			new FakeProjectService([CreateProjectInfo("Alpha", DateTime.UtcNow.AddHours(-1))]),
+			new FakeProviderService([]),
+			new FakeIdeaService(new GlobalIdeasProcessingStatus
+			{
+				TotalUnprocessedIdeas = 7,
+				ProjectsCurrentlyProcessing = 2,
+				Projects =
+				[
+					new ProjectIdeasSummary
+					{
+						ProjectId = Guid.NewGuid(),
+						ProjectName = "Alpha",
+						UnprocessedIdeas = 3,
+						IsProcessing = true
+					},
+					new ProjectIdeasSummary
+					{
+						ProjectId = Guid.NewGuid(),
+						ProjectName = "Beta",
+						UnprocessedIdeas = 4,
+						IsProcessing = false
+					}
+				]
+			}));
+
+		Assert.Contains("Ideas Processing", html);
+		Assert.Contains("2 projects processing", html);
+		Assert.Contains(">Stop<", html);
+		Assert.DoesNotContain("Start All Ideas", html);
+		Assert.Contains("d-flex flex-column flex-sm-row align-items-stretch align-items-sm-center gap-2 align-self-stretch align-self-sm-auto", html);
+		Assert.Contains("d-flex flex-column flex-sm-row align-items-stretch align-items-sm-center gap-2", html);
+		Assert.Contains("badge bg-success-subtle text-success-emphasis d-inline-flex align-items-center justify-content-center justify-content-sm-start gap-1 text-wrap align-self-start align-self-sm-auto", html);
+	}
+
+	[Fact]
+	public async Task Dashboard_ShowsStartAllWithoutStop_WhenIdeasRemainQueued()
+	{
+		var html = await RenderDashboardPageAsync(
+			new FakeProjectService([CreateProjectInfo("Alpha", DateTime.UtcNow.AddHours(-1))]),
+			new FakeProviderService([]),
+			new FakeIdeaService(new GlobalIdeasProcessingStatus
+			{
+				TotalUnprocessedIdeas = 4,
+				ProjectsCurrentlyProcessing = 0,
+				Projects =
+				[
+					new ProjectIdeasSummary
+					{
+						ProjectId = Guid.NewGuid(),
+						ProjectName = "Alpha",
+						UnprocessedIdeas = 4,
+						IsProcessing = false
+					}
+				]
+			}));
+
+		Assert.Contains("Start All Ideas", html);
+		Assert.DoesNotContain(">Stop<", html);
+	}
+
+	[Fact]
+	public async Task Dashboard_ShowsStartedIdeasThatAreStillQueued()
+	{
+		var html = await RenderDashboardPageAsync(
+			new FakeProjectService([CreateProjectInfo("Alpha", DateTime.UtcNow.AddHours(-1))]),
+			new FakeProviderService([]),
+			new FakeIdeaService(new GlobalIdeasProcessingStatus
+			{
+				TotalUnprocessedIdeas = 0,
+				TotalQueuedIdeas = 1,
+				ProjectsCurrentlyProcessing = 0,
+				Projects =
+				[
+					new ProjectIdeasSummary
+					{
+						ProjectId = Guid.NewGuid(),
+						ProjectName = "Alpha",
+						QueuedIdeas = 1,
+						IsProcessing = false
+					}
+				]
+			}));
+
+		Assert.Contains("Ideas Processing", html);
+		Assert.Contains("1 idea remaining", html);
+		Assert.Contains(">Queued<", html);
+		Assert.DoesNotContain("Start All Ideas", html);
+	}
+
+	private static async Task<string> RenderDashboardPageAsync(
+		IProjectService projectService,
+		IProviderService providerService,
+		IIdeaService? ideaService = null,
+		Dictionary<Guid, ProviderUsageSummary>? usageSummaries = null,
+		IReadOnlyList<CommonProviderSetupStatus>? commonProviderStatuses = null)
 	{
 		var services = new ServiceCollection();
 		services.AddLogging();
 		services.AddSingleton(providerService);
 		services.AddSingleton(projectService);
+		services.AddSingleton<ICommonProviderSetupService>(new FakeCommonProviderSetupService(commonProviderStatuses ?? []));
 		services.AddSingleton<IVersionControlService>(new FakeVersionControlService());
+		services.AddSingleton(ideaService ?? new FakeIdeaService());
 		services.AddSingleton<NavigationManager>(new TestNavigationManager());
 		services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
-		services.AddSingleton(new HttpProviderService(new HttpClient(new StaticJsonHandler())
+		services.AddSingleton(new HttpProviderService(new HttpClient(new StaticJsonHandler(usageSummaries ?? new Dictionary<Guid, ProviderUsageSummary>()))
 		{
 			BaseAddress = new Uri("http://localhost")
 		}));
@@ -205,6 +403,16 @@ public sealed class DashboardPageTests
 		public Task<CliUpdateResult> UpdateCliAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	}
 
+	private sealed class FakeCommonProviderSetupService(IReadOnlyList<CommonProviderSetupStatus> statuses) : ICommonProviderSetupService
+	{
+		private readonly IReadOnlyList<CommonProviderSetupStatus> _statuses = statuses;
+
+		public Task<IReadOnlyList<CommonProviderSetupStatus>> GetStatusesAsync(CancellationToken cancellationToken = default) => Task.FromResult(_statuses);
+		public Task<IReadOnlyList<CommonProviderSetupStatus>> RefreshAsync(CancellationToken cancellationToken = default) => Task.FromResult(_statuses);
+		public Task<CommonProviderActionResult> InstallAsync(ProviderType providerType, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<CommonProviderActionResult> SaveAuthenticationAsync(CommonProviderSetupRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+	}
+
 	private sealed class FakeProjectService(
 		IReadOnlyList<DashboardProjectInfo> dashboardProjects,
 		IReadOnlyList<DashboardRunningJobInfo>? runningJobs = null) : IProjectService
@@ -245,12 +453,12 @@ public sealed class DashboardPageTests
 		public Task<string?> GetWorkingDirectoryDiffAsync(string workingDirectory, string? baseCommit = null, CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
 		public Task<string?> GetCommitRangeDiffAsync(string workingDirectory, string fromCommit, string? toCommit = null, CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
 		public Task<GitDiffSummary?> GetDiffSummaryAsync(string workingDirectory, string? baseCommit = null, CancellationToken cancellationToken = default) => Task.FromResult<GitDiffSummary?>(null);
-		public Task<GitOperationResult> CommitAllChangesAsync(string workingDirectory, string commitMessage, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<GitOperationResult> CommitAllChangesAsync(string workingDirectory, string commitMessage, CancellationToken cancellationToken = default, GitCommitOptions? commitOptions = null) => throw new NotSupportedException();
 		public Task<GitOperationResult> PushAsync(string workingDirectory, string remoteName = "origin", string? branchName = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<GitOperationResult> CommitAndPushAsync(string workingDirectory, string commitMessage, string remoteName = "origin", Action<string>? progressCallback = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<GitOperationResult> CreatePullRequestAsync(string workingDirectory, string sourceBranch, string targetBranch, string title, string? body = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<GitOperationResult> PreviewMergeBranchAsync(string workingDirectory, string sourceBranch, string targetBranch, string remoteName = "origin", CancellationToken cancellationToken = default) => throw new NotSupportedException();
-		public Task<GitOperationResult> MergeBranchAsync(string workingDirectory, string sourceBranch, string targetBranch, string remoteName = "origin", Action<string>? progressCallback = null, CancellationToken cancellationToken = default, bool pushAfterMerge = true) => throw new NotSupportedException();
+		public Task<GitOperationResult> MergeBranchAsync(string workingDirectory, string sourceBranch, string targetBranch, string remoteName = "origin", Action<string>? progressCallback = null, CancellationToken cancellationToken = default, bool pushAfterMerge = true, IReadOnlyList<MergeConflictResolution>? conflictResolutions = null) => throw new NotSupportedException();
 		public Task<IReadOnlyList<GitBranchInfo>> GetBranchesAsync(string workingDirectory, bool includeRemote = true, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<GitBranchInfo>>([]);
 		public Task<GitOperationResult> FetchAsync(string workingDirectory, string remoteName = "origin", bool prune = true, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<GitOperationResult> HardCheckoutBranchAsync(string workingDirectory, string branchName, string remoteName = "origin", Action<string>? progressCallback = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
@@ -273,15 +481,54 @@ public sealed class DashboardPageTests
 		public Task<GitOperationResult> PruneRemoteBranchesAsync(string workingDirectory, string remoteName = "origin", CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	}
 
-	private sealed class StaticJsonHandler : HttpMessageHandler
+	private sealed class FakeIdeaService(GlobalIdeasProcessingStatus? globalProcessingStatus = null) : IIdeaService
 	{
+		private readonly GlobalIdeasProcessingStatus _globalProcessingStatus = globalProcessingStatus ?? new GlobalIdeasProcessingStatus();
+
+		public Task<IEnumerable<Idea>> GetByProjectIdAsync(Guid projectId, CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Idea>>([]);
+		public Task<ProjectIdeasListResult> GetPagedByProjectIdAsync(Guid projectId, int page = 1, int pageSize = 10, CancellationToken cancellationToken = default) => Task.FromResult(new ProjectIdeasListResult());
+		public Task<Idea?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult<Idea?>(null);
+		public Task<Idea> CreateAsync(Idea idea, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<Idea> CreateAsync(CreateIdeaRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<Idea> UpdateAsync(Idea idea, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task DeleteAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<Idea?> GetNextUnprocessedAsync(Guid projectId, CancellationToken cancellationToken = default) => Task.FromResult<Idea?>(null);
+		public Task<Job?> ConvertToJobAsync(Guid ideaId, IdeaProcessingOptions? options = null, CancellationToken cancellationToken = default) => Task.FromResult<Job?>(null);
+		public Task<bool> CompleteIdeaFromJobAsync(Guid jobId, CancellationToken cancellationToken = default) => Task.FromResult(false);
+		public Task<bool> HandleJobCompletionAsync(Guid jobId, bool success, CancellationToken cancellationToken = default) => Task.FromResult(false);
+		public Task<Idea?> GetByJobIdAsync(Guid jobId, CancellationToken cancellationToken = default) => Task.FromResult<Idea?>(null);
+		public Task<IdeaAttachment?> GetAttachmentAsync(Guid attachmentId, CancellationToken cancellationToken = default) => Task.FromResult<IdeaAttachment?>(null);
+		public Task StartProcessingAsync(Guid projectId, IdeaProcessingOptions? options = null, CancellationToken cancellationToken = default) => Task.CompletedTask;
+		public Task StopProcessingAsync(Guid projectId, CancellationToken cancellationToken = default) => Task.CompletedTask;
+		public Task<bool> IsProcessingActiveAsync(Guid projectId, CancellationToken cancellationToken = default) => Task.FromResult(false);
+		public Task<bool> ProcessNextIdeaIfReadyAsync(Guid projectId, CancellationToken cancellationToken = default) => Task.FromResult(false);
+		public Task<IEnumerable<Guid>> GetActiveProcessingProjectsAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Guid>>([]);
+		public Task RecoverStuckIdeasAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+		public Task ReorderIdeasAsync(Guid projectId, IEnumerable<Guid> ideaIdsInOrder, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<Idea> CopyToProjectAsync(Guid ideaId, Guid targetProjectId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<Idea> MoveToProjectAsync(Guid ideaId, Guid targetProjectId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<Idea?> ExpandIdeaAsync(Guid ideaId, IdeaExpansionRequest? request = null, CancellationToken cancellationToken = default) => Task.FromResult<Idea?>(null);
+		public Task<Idea?> CancelExpansionAsync(Guid ideaId, CancellationToken cancellationToken = default) => Task.FromResult<Idea?>(null);
+		public Task<Idea?> ApproveExpansionAsync(Guid ideaId, string? editedDescription = null, CancellationToken cancellationToken = default) => Task.FromResult<Idea?>(null);
+		public Task<Idea?> RejectExpansionAsync(Guid ideaId, CancellationToken cancellationToken = default) => Task.FromResult<Idea?>(null);
+		public Task<GlobalIdeasProcessingStatus> GetGlobalProcessingStatusAsync(CancellationToken cancellationToken = default) => Task.FromResult(_globalProcessingStatus);
+		public Task<GlobalQueueSnapshot> GetGlobalQueueSnapshotAsync(CancellationToken cancellationToken = default) => Task.FromResult(new GlobalQueueSnapshot());
+		public Task StartAllProcessingAsync(IdeaProcessingOptions? options = null, CancellationToken cancellationToken = default) => Task.CompletedTask;
+		public Task StopAllProcessingAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+		public Task<SuggestIdeasResult> SuggestIdeasFromCodebaseAsync(Guid projectId, SuggestIdeasRequest? request = null, CancellationToken cancellationToken = default) => Task.FromResult(new SuggestIdeasResult());
+	}
+
+	private sealed class StaticJsonHandler(Dictionary<Guid, ProviderUsageSummary> usageSummaries) : HttpMessageHandler
+	{
+		private readonly Dictionary<Guid, ProviderUsageSummary> _usageSummaries = usageSummaries;
+
 		protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
 		{
 			if (request.RequestUri?.AbsolutePath == "/api/providers/usage-summaries")
 			{
 				return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
 				{
-					Content = JsonContent.Create(new Dictionary<Guid, ProviderUsageSummary>())
+					Content = JsonContent.Create(_usageSummaries)
 				});
 			}
 

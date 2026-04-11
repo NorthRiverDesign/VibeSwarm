@@ -1,6 +1,7 @@
 @* Modal component for creating new jobs *@
-@using VibeSwarm.Client.Models
-@using VibeSwarm.Shared.VersionControl.Models
+@using System.ComponentModel.DataAnnotations
+@inject IJobTemplateService JobTemplateService
+@inject NotificationService NotificationService
 
 <ModalDialog IsVisible="IsVisible" IsVisibleChanged="IsVisibleChanged" Title="Create Job" Icon="plus-circle"
 Size="ModalDialog.ModalSize.Large" OnClose="Close">
@@ -8,6 +9,43 @@ Size="ModalDialog.ModalSize.Large" OnClose="Close">
 <EditForm id="@_formId" Model="@FormModel" OnValidSubmit="HandleSubmit">
 <DataAnnotationsValidator />
 <ValidationSummary class="text-danger mb-3" />
+
+<div class="border rounded p-3 mb-3 bg-body-tertiary">
+<div class="d-flex flex-column flex-lg-row align-items-lg-end gap-3">
+<div class="flex-grow-1">
+<label for="jobTemplate" class="form-label">Template Library</label>
+<InputSelect TValue="Guid?" id="jobTemplate" @bind-Value="_selectedTemplateId" @bind-Value:after="HandleTemplateSelectionChanged" class="form-select" disabled="@_isApplyingTemplate">
+<option value="">Start from scratch...</option>
+@foreach (var template in TemplateLibrary)
+{
+<option value="@template.Id">@template.Name</option>
+}
+</InputSelect>
+<div class="form-text">Apply a reusable prompt and settings, then customize anything before creating the job.</div>
+</div>
+<div class="d-flex flex-wrap gap-2">
+<button type="button" class="btn btn-secondary" @onclick="RefreshTemplatesAsync" disabled="@(_isApplyingTemplate || _isSavingTemplate)">
+<i class="bi bi-arrow-clockwise me-1"></i>Refresh
+</button>
+<button type="button" class="btn btn-primary" @onclick="SaveAsTemplateAsync" disabled="@(_isApplyingTemplate || _isSavingTemplate)">
+@if (_isSavingTemplate)
+{
+<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+<span>Saving...</span>
+}
+else
+{
+<i class="bi bi-bookmark-plus me-1"></i>
+<span>Save as Template</span>
+}
+</button>
+</div>
+</div>
+@if (!string.IsNullOrWhiteSpace(_templateStatusMessage))
+{
+<div class="form-text mt-2">@_templateStatusMessage</div>
+}
+</div>
 
 <div class="mb-3">
 <label for="goalPrompt" class="form-label">Goal Prompt</label>
@@ -61,6 +99,28 @@ else
 }
 </InputSelect>
 <div class="form-text">Leave empty to use the project's default model, or the provider default when no project override is set.</div>
+</div>
+
+<div class="mb-3">
+<label for="reasoning" class="form-label">Reasoning</label>
+<InputSelect id="reasoning" @bind-Value="FormModel.ReasoningEffort" class="form-select"
+disabled="@(!FormModel.ProviderId.HasValue || !ReasoningOptions.Any())">
+<option value="">Use project/provider default</option>
+@foreach (var reasoning in ReasoningOptions)
+{
+<option value="@reasoning">@reasoning</option>
+}
+</InputSelect>
+<div class="form-text">
+@if (FormModel.ProviderId.HasValue && !ReasoningOptions.Any())
+{
+<span>This provider does not expose configurable reasoning levels.</span>
+}
+else
+{
+<span>Leave empty to use the project's default reasoning, or the provider default when no project override is set.</span>
+}
+</div>
 </div>
 
 @if (ShowBranchSelector && Branches.Any())
@@ -189,19 +249,9 @@ rows="4" placeholder="Instructions for reviewing progress between cycles..." />
 </EditForm>
 </ChildContent>
 <FooterContent>
-<button type="button" class="btn btn-secondary" @onclick="Close" disabled="@IsSaving">Cancel</button>
-<button type="submit" form="@_formId" class="btn btn-primary" disabled="@IsSaving">
-@if (IsSaving)
-{
-<span class="spinner-border spinner-border-sm me-1" role="status"></span>
-<span>Creating...</span>
-}
-else
-{
-<i class="bi bi-plus-lg me-1"></i>
-<span>Create Job</span>
-}
-</button>
+<ActionButton Text="Cancel" OnClick="Close" Disabled="@IsSaving" />
+<ActionButton Type="submit" Form="@_formId" Style="ActionButton.ButtonStyle.Primary"
+			  Icon="plus-lg" Text="Create Job" LoadingText="Creating..." IsLoading="@IsSaving" />
 </FooterContent>
 </ModalDialog>
 
@@ -243,6 +293,9 @@ public string? ErrorMessage { get; set; }
 public string SelectedModelId { get; set; } = string.Empty;
 
 [Parameter]
+public EventCallback<string> SelectedModelIdChanged { get; set; }
+
+[Parameter]
 public EventCallback<Guid> OnProviderChanged { get; set; }
 
 [Parameter]
@@ -251,16 +304,34 @@ public EventCallback OnSubmit { get; set; }
 [Parameter]
 public string? ProviderHint { get; set; }
 
+[Parameter]
+public List<JobTemplate> TemplateLibrary { get; set; } = new();
+
+[Parameter]
+public EventCallback OnTemplateLibraryChanged { get; set; }
+
 private readonly string _formId = $"create-job-form-{Guid.NewGuid():N}";
 private bool ShowAdvancedOptions { get; set; }
 private bool _previousIsVisible;
 private CreateJobFormModel FormModel { get; set; } = new();
+private Guid? _selectedTemplateId;
+private bool _isApplyingTemplate;
+private bool _isSavingTemplate;
+private string? _templateStatusMessage;
+private IReadOnlyList<string> ReasoningOptions => FormModel.ProviderId.HasValue
+? Providers.Where(provider => provider.Id == FormModel.ProviderId.Value)
+	.SelectMany(ProviderCapabilities.GetSupportedReasoningEfforts)
+	.Distinct(StringComparer.Ordinal)
+	.ToList()
+: [];
 
 protected override void OnParametersSet()
 {
 if (IsVisible && !_previousIsVisible)
 {
 FormModel = CreateJobFormModel.FromJob(JobModel);
+_selectedTemplateId = JobModel.JobTemplateId;
+_templateStatusMessage = null;
 ShowAdvancedOptions = FormModel.CycleMode != CycleMode.SingleCycle;
 }
 
@@ -280,8 +351,100 @@ await OnProviderChanged.InvokeAsync(FormModel.ProviderId ?? Guid.Empty);
 private async Task HandleSubmit()
 {
 FormModel.ApplyTo(JobModel);
+JobModel.JobTemplateId = _selectedTemplateId;
 JobModel.ModelUsed = string.IsNullOrEmpty(SelectedModelId) ? null : SelectedModelId;
+await SelectedModelIdChanged.InvokeAsync(SelectedModelId);
 await OnSubmit.InvokeAsync();
+}
+
+private async Task HandleTemplateSelectionChanged()
+{
+	if (!_selectedTemplateId.HasValue)
+	{
+		JobModel.JobTemplateId = null;
+		_templateStatusMessage = null;
+		return;
+	}
+
+	var template = TemplateLibrary.FirstOrDefault(item => item.Id == _selectedTemplateId.Value)
+		?? await JobTemplateService.GetByIdAsync(_selectedTemplateId.Value);
+	if (template == null)
+	{
+		_templateStatusMessage = "The selected template could not be found.";
+		return;
+	}
+
+	_isApplyingTemplate = true;
+	try
+	{
+		ApplyTemplateToJob(template);
+		FormModel = CreateJobFormModel.FromJob(JobModel);
+		ShowAdvancedOptions = FormModel.CycleMode != CycleMode.SingleCycle;
+		await SelectedModelIdChanged.InvokeAsync(SelectedModelId);
+		await OnProviderChanged.InvokeAsync(FormModel.ProviderId ?? Guid.Empty);
+		_templateStatusMessage = $"Applied template '{template.Name}'.";
+		await JobTemplateService.IncrementUseCountAsync(template.Id);
+		await RefreshTemplatesAsync();
+	}
+	finally
+	{
+		_isApplyingTemplate = false;
+	}
+}
+
+private async Task RefreshTemplatesAsync()
+{
+	await OnTemplateLibraryChanged.InvokeAsync();
+	_templateStatusMessage = "Template library refreshed.";
+}
+
+private async Task SaveAsTemplateAsync()
+{
+	try
+	{
+		_isSavingTemplate = true;
+		FormModel.ApplyTo(JobModel);
+		JobModel.ModelUsed = string.IsNullOrEmpty(SelectedModelId) ? null : SelectedModelId;
+
+		var templateName = BuildTemplateName(JobModel.GoalPrompt);
+		var template = new JobTemplate
+		{
+			Name = templateName,
+			Description = $"Saved from a create-job draft on {DateTime.UtcNow:yyyy-MM-dd}.",
+			GoalPrompt = JobModel.GoalPrompt,
+			ProviderId = JobModel.ProviderId == Guid.Empty ? null : JobModel.ProviderId,
+			ModelId = JobModel.ModelUsed,
+			ReasoningEffort = JobModel.ReasoningEffort,
+			Branch = JobModel.Branch,
+			GitChangeDeliveryMode = JobModel.GitChangeDeliveryMode,
+			TargetBranch = JobModel.TargetBranch,
+			CycleMode = JobModel.CycleMode,
+			CycleSessionMode = JobModel.CycleSessionMode,
+			MaxCycles = JobModel.MaxCycles,
+			CycleReviewPrompt = JobModel.CycleReviewPrompt
+		};
+
+		var created = await JobTemplateService.CreateAsync(template);
+		_selectedTemplateId = created.Id;
+		JobModel.JobTemplateId = created.Id;
+		await RefreshTemplatesAsync();
+		_templateStatusMessage = $"Saved template '{created.Name}'.";
+		NotificationService.ShowSuccess($"Saved template '{created.Name}'.");
+	}
+	catch (ValidationException ex)
+	{
+		_templateStatusMessage = ex.Message;
+		NotificationService.ShowError(ex.Message);
+	}
+	catch (HttpRequestException ex)
+	{
+		_templateStatusMessage = ex.Message;
+		NotificationService.ShowError(ex.Message);
+	}
+	finally
+	{
+		_isSavingTemplate = false;
+	}
 }
 
 private async Task Close()
@@ -295,5 +458,35 @@ var index = Providers.FindIndex(p => p.Id == provider.Id);
 return index >= 0
 ? $"#{index + 1} {provider.Name} ({provider.Type})"
 : $"{provider.Name} ({provider.Type})";
+}
+
+private void ApplyTemplateToJob(JobTemplate template)
+{
+	JobModel.JobTemplateId = template.Id;
+	JobModel.GoalPrompt = template.GoalPrompt;
+	JobModel.ProviderId = template.ProviderId ?? Guid.Empty;
+	JobModel.ModelUsed = template.ModelId;
+	JobModel.ReasoningEffort = template.ReasoningEffort;
+	JobModel.Branch = template.Branch;
+	JobModel.GitChangeDeliveryMode = template.GitChangeDeliveryMode;
+	JobModel.TargetBranch = template.TargetBranch;
+	JobModel.CycleMode = template.CycleMode;
+	JobModel.CycleSessionMode = template.CycleSessionMode;
+	JobModel.MaxCycles = template.MaxCycles;
+	JobModel.CycleReviewPrompt = template.CycleReviewPrompt;
+	SelectedModelId = template.ModelId ?? string.Empty;
+}
+
+private static string BuildTemplateName(string prompt)
+{
+	var trimmed = prompt.Trim();
+	if (string.IsNullOrEmpty(trimmed))
+	{
+		throw new ValidationException("Enter a goal prompt before saving a template.");
+	}
+
+	const int maxLength = 100;
+	var firstLine = trimmed.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? trimmed;
+	return firstLine.Length <= maxLength ? firstLine : firstLine[..maxLength].TrimEnd();
 }
 }

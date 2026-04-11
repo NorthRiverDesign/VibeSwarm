@@ -37,14 +37,16 @@ public partial class IdeaService
 		// Notify clients about the expansion starting
 		await NotifyIdeaUpdateSafe(idea.Id, idea.ProjectId);
 
+		var useInference = request?.UseInference ?? false;
+		var expansionTimeout = GetExpansionTimeout(useInference);
+
 		// Create a linked cancellation token with timeout to prevent hanging
-		using var timeoutCts = new CancellationTokenSource(ExpansionTimeout);
+		using var timeoutCts = new CancellationTokenSource(expansionTimeout);
 		using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
 		var expandToken = linkedCts.Token;
 
 		try
 		{
-			var useInference = request?.UseInference ?? false;
 			var (providerId, modelName, usePlanningMode) = ResolveProviderExpansionRequest(idea.Project, request);
 
 			if (useInference)
@@ -61,7 +63,7 @@ public partial class IdeaService
 			idea.ExpansionStatus = IdeaExpansionStatus.Failed;
 			idea.ExpansionError = cancellationToken.IsCancellationRequested
 				? "Expansion was cancelled"
-				: "Expansion timed out after " + (int)ExpansionTimeout.TotalMinutes + " minutes";
+				: "Expansion timed out after " + (int)expansionTimeout.TotalMinutes + " minutes";
 			_logger.LogWarning("Idea {IdeaId} expansion cancelled/timed out", ideaId);
 		}
 		catch (Exception ex)
@@ -84,6 +86,9 @@ public partial class IdeaService
 
 		return idea;
 	}
+
+	internal static TimeSpan GetExpansionTimeout(bool useInference)
+		=> InferenceTimeouts.GetIdeaActionTimeout(useInference);
 
 	private async Task ExpandWithProviderAsync(
 		Idea idea,
@@ -139,10 +144,15 @@ public partial class IdeaService
 			return;
 		}
 
-		var expansionPrompt = BuildIdeaExpansionPrompt(idea.Description);
+		var appSettings = await _dbContext.AppSettings
+			.AsNoTracking()
+			.OrderBy(settings => settings.Id)
+			.FirstOrDefaultAsync(cancellationToken);
+		var expansionPrompt = PromptBuilder.BuildIdeaExpansionPrompt(idea.Description, appSettings?.IdeaExpansionPromptTemplate);
 		var response = await ExecuteProviderExpansionAsync(
 			providerInstance,
 			provider,
+			idea.Project!,
 			idea.Project!.WorkingPath,
 			idea.Description,
 			expansionPrompt,
@@ -175,6 +185,7 @@ public partial class IdeaService
 	private async Task<PromptResponse> ExecuteProviderExpansionAsync(
 		IProvider providerInstance,
 		Provider provider,
+		Project project,
 		string workingDirectory,
 		string ideaDescription,
 		string expansionPrompt,
@@ -192,7 +203,10 @@ public partial class IdeaService
 			new ExecutionOptions
 			{
 				WorkingDirectory = workingDirectory,
+				UseBareMode = provider.Type == ProviderType.Claude
+					&& provider.ConnectionMode == ProviderConnectionMode.CLI,
 				Model = modelName,
+				ReasoningEffort = usePlanningMode ? project.PlanningReasoningEffort : null,
 				DisallowedTools = usePlanningMode ? ProviderPlanningHelper.PlanningDisallowedTools : null
 			},
 			cancellationToken: cancellationToken);
@@ -248,7 +262,11 @@ public partial class IdeaService
 			return;
 		}
 
-		var expansionPrompt = BuildIdeaExpansionPrompt(idea.Description);
+		var appSettings = await _dbContext.AppSettings
+			.AsNoTracking()
+			.OrderBy(settings => settings.Id)
+			.FirstOrDefaultAsync(cancellationToken);
+		var expansionPrompt = PromptBuilder.BuildIdeaExpansionPrompt(idea.Description, appSettings?.IdeaExpansionPromptTemplate);
 
 		var inferenceRequest = new InferenceRequest
 		{
@@ -382,27 +400,6 @@ public partial class IdeaService
 		await NotifyIdeaUpdateSafe(ideaId, projectId);
 
 		return idea;
-	}
-
-	private static string BuildIdeaExpansionPrompt(string ideaDescription)
-	{
-		return $@"You are a software architect helping to expand a brief feature idea into a detailed specification.
-
-## Feature Idea
-{ideaDescription}
-
-## Your Task
-Expand this idea into a detailed implementation specification. Include:
-
-1. Overview: A clear summary of what the feature does
-2. User Stories: Key user interactions (e.g., As a user, I can...)
-3. Components: What UI components, services, or data models are needed
-4. Implementation Steps: A logical order of implementation tasks
-5. Edge Cases: Important scenarios to handle (validation, errors, empty states)
-6. Acceptance Criteria: How to verify the feature works correctly
-
-Keep the specification concise but complete. Focus on actionable implementation details.
-		Do not include code samples - just describe what needs to be built.";
 	}
 
 	private static void ValidateIdea(Idea idea)

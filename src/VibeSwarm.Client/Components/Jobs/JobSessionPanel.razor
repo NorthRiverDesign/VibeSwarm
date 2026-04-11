@@ -1,5 +1,7 @@
 @* Unified job session panel - combines session log, error, console output, command, and live output *@
 @inject IJSRuntime JSRuntime
+@using System.Threading
+@implements IDisposable
 
 <div class="card d-flex flex-column">
     <div class="card-header bg-body-secondary p-0">
@@ -13,26 +15,12 @@
                         @if (IsJobActive)
                         {
                             <span class="live-indicator me-1"></span>
-                            <span>Live Output</span>
-                        }
-                        else if (Status == JobStatus.Completed)
-                        {
-                            <i class="bi bi-check-circle me-1 opacity-75 text-success"></i>
-                            <span class="d-none d-sm-inline">Session Log</span>
-                            <span class="d-sm-none">Log</span>
-                        }
-                        else if (Status == JobStatus.Failed || Status == JobStatus.Cancelled)
-                        {
-                            <i class="bi bi-x-circle me-1 opacity-75 text-danger"></i>
-                            <span class="d-none d-sm-inline">Session Log</span>
-                            <span class="d-sm-none">Log</span>
                         }
                         else
                         {
                             <i class="bi bi-chat-dots me-1 opacity-75"></i>
-                            <span class="d-none d-sm-inline">Session Log</span>
-                            <span class="d-sm-none">Log</span>
                         }
+                        <span>Messages</span>
                     </button>
                 </li>
                 @if (!string.IsNullOrEmpty(ConsoleOutput) && !IsJobActive)
@@ -46,7 +34,7 @@
                         </button>
                     </li>
                 }
-                @if (!string.IsNullOrEmpty(CommandUsed))
+                @if (HasCommandTab)
                 {
                     <li class="nav-item" role="presentation">
                         <button type="button" class="nav-link px-3 px-sm-3 @(_activeTab == "command" ? "active" : "")"
@@ -81,82 +69,280 @@
         </div>
     }
 
-    <div class="card-body p-0 flex-grow-1 overflow-hidden d-flex flex-column" style="min-height: 300px;">
+    <div class="card-body p-0 flex-grow-1 d-flex flex-column" style="min-height: 300px;">
         @if (_activeTab == "session")
         {
             <div class="flex-grow-1 overflow-auto p-2 p-sm-3">
-                @if (DisplayedMessages.Any())
+                @if (VisibleMessageCount > 0)
                 {
-                    <div class="d-flex justify-content-end mb-2">
-                        <span class="badge bg-secondary">@DisplayedMessages.Count messages</span>
-                    </div>
-                }
-                @if (!DisplayedMessages.Any())
-                {
-                    <div class="empty-state text-center py-5">
-                        @if (IsJobActive)
+                    <div class="d-flex justify-content-end align-items-center gap-2 mb-2">
+                        @if (!IsJobActive && _displayedMessages.Any())
                         {
-                            <div class="spinner-border text-info mb-3 d-block mx-auto" role="status">
-                                <span class="visually-hidden">Waiting for output...</span>
+                            <div class="dropdown">
+                                <button class="btn btn-sm btn-secondary d-inline-flex align-items-center gap-1"
+                                        type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside"
+                                        aria-expanded="false">
+                                    <i class="bi bi-funnel"></i>
+                                    <span class="d-none d-sm-inline">Filter</span>
+                                    @if (HiddenFilterCount > 0)
+                                    {
+                                        <span class="badge bg-light text-dark rounded-pill ms-1">@HiddenFilterCount</span>
+                                    }
+                                </button>
+                                <ul class="dropdown-menu dropdown-menu-end shadow-sm">
+                                    <li>
+                                        <button class="dropdown-item d-flex align-items-center gap-2" type="button"
+                                                @onclick="@(() => ToggleRoleFilter(MessageRole.Assistant))">
+                                            <i class="bi @(_hiddenRoles.Contains(MessageRole.Assistant) ? "bi-square" : "bi-check-square-fill text-primary")"></i>
+                                            <i class="bi bi-stars opacity-75"></i>
+                                            Responses
+                                        </button>
+                                    </li>
+                                    <li>
+                                        <button class="dropdown-item d-flex align-items-center gap-2" type="button"
+                                                @onclick="ToggleToolFilters">
+                                            <i class="bi @(AreToolMessagesHidden ? "bi-square" : "bi-check-square-fill text-primary")"></i>
+                                            <i class="bi bi-tools opacity-75"></i>
+                                            Tool Activity
+                                        </button>
+                                    </li>
+                                    <li>
+                                        <button class="dropdown-item d-flex align-items-center gap-2" type="button"
+                                                @onclick="@(() => ToggleRoleFilter(MessageRole.System))">
+                                            <i class="bi @(_hiddenRoles.Contains(MessageRole.System) ? "bi-square" : "bi-check-square-fill text-primary")"></i>
+                                            <i class="bi bi-gear opacity-75"></i>
+                                            System
+                                        </button>
+                                    </li>
+                                    <li>
+                                        <button class="dropdown-item d-flex align-items-center gap-2" type="button"
+                                                @onclick="@(() => ToggleRoleFilter(MessageRole.User))">
+                                            <i class="bi @(_hiddenRoles.Contains(MessageRole.User) ? "bi-square" : "bi-check-square-fill text-primary")"></i>
+                                            <i class="bi bi-person opacity-75"></i>
+                                            User
+                                        </button>
+                                    </li>
+                                    @if (_hiddenRoles.Any())
+                                    {
+                                        <li><hr class="dropdown-divider"></li>
+                                        <li>
+                                            <button class="dropdown-item d-flex align-items-center gap-2 text-primary" type="button"
+                                                    @onclick="ClearFilters">
+                                                <i class="bi bi-arrow-counterclockwise"></i>
+                                                Show All
+                                            </button>
+                                        </li>
+                                    }
+                                </ul>
                             </div>
-                            <span class="text-body-secondary d-block">Waiting for agent output...</span>
                         }
-                        else if (Status == JobStatus.Completed)
+                        <span class="badge bg-secondary">@VisibleMessageCount @(VisibleMessageCount == 1 ? "message" : "messages")</span>
+                    </div>
+                    @if (HasHiddenMessages)
+                    {
+                        <div class="small text-body-secondary mb-2">
+                            Showing latest @_displayedMessages.Count of @TotalMessageCount messages to keep this page responsive.
+                        </div>
+                    }
+                }
+                <div class="d-flex flex-column gap-3 overflow-auto p-2" style="max-height: 600px;" @ref="_sessionOutputContainer">
+                    @if (HasGoalPrompt)
+                    {
+                        <div class="chat-message d-flex flex-column chat-message-user">
+                            <div class="chat-bubble py-2 px-3 text-break bg-primary-subtle text-primary-emphasis border border-primary-subtle position-relative pe-5">
+                                @if (!_isEditingGoalPrompt)
+                                {
+                                    <div class="position-absolute top-0 end-0 p-2">
+                                        <div class="dropdown">
+                                            <button type="button" class="btn btn-sm btn-link p-0 text-primary-emphasis text-decoration-none"
+                                                    data-bs-toggle="dropdown" data-bs-display="static" aria-expanded="false" title="Goal prompt actions">
+                                                <i class="bi bi-three-dots-vertical"></i>
+                                            </button>
+                                            <ul class="dropdown-menu dropdown-menu-end shadow-sm">
+                                                @if (CanEditGoalPrompt)
+                                                {
+                                                    <li>
+                                                        <button type="button" class="dropdown-item d-flex align-items-center gap-2"
+                                                                @onclick="StartGoalPromptEdit" title="Edit prompt">
+                                                            <i class="bi bi-pencil"></i>
+                                                            <span>Edit prompt</span>
+                                                        </button>
+                                                    </li>
+                                                }
+                                                <li>
+                                                    <button type="button" class="dropdown-item d-flex align-items-center gap-2"
+                                                            @onclick="CopyGoalPrompt" title="Copy prompt">
+                                                        <i class="bi bi-clipboard"></i>
+                                                        <span>Copy prompt</span>
+                                                    </button>
+                                                </li>
+                                                <li>
+                                                    <button type="button" class="dropdown-item d-flex align-items-center gap-2"
+                                                            @onclick="ShowFullGoalPrompt" title="View full prompt">
+                                                        <i class="bi bi-arrows-fullscreen"></i>
+                                                        <span>View full prompt</span>
+                                                    </button>
+                                                </li>
+                                            </ul>
+                                        </div>
+                                    </div>
+                                    <div class="white-space-pre-wrap m-0 lh-base">@GoalPromptDisplayText</div>
+                                }
+                                else
+                                {
+                                    <textarea class="form-control lh-base" style="min-height: 150px; resize: vertical;"
+                                              @bind="_editedGoalPrompt" rows="6" placeholder="Enter the goal prompt for the AI agent..."></textarea>
+                                }
+                            </div>
+                            <div class="d-flex gap-2 mt-1 px-2 small text-secondary">
+                                <span class="fw-medium"><i class="bi bi-bullseye me-1"></i>Goal</span>
+                                @if (GoalPromptTimestamp.HasValue)
+                                {
+                                    <span class="opacity-75">@GoalPromptTimestamp.Value.FormatTime()</span>
+                                }
+                            </div>
+                            @if (_isEditingGoalPrompt)
+                            {
+                                <div class="d-flex justify-content-end gap-2 px-2">
+                                    <button type="button" class="btn btn-sm btn-secondary" @onclick="CancelGoalPromptEdit" title="Cancel editing">
+                                        <i class="bi bi-x-lg me-1"></i>
+                                        <span>Cancel</span>
+                                    </button>
+                                    <button type="button" class="btn btn-sm btn-primary" @onclick="SaveGoalPrompt"
+                                            disabled="@_isSavingGoalPrompt" title="Save changes">
+                                        @if (_isSavingGoalPrompt)
+                                        {
+                                            <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                                        }
+                                        else
+                                        {
+                                            <i class="bi bi-check-lg me-1"></i>
+                                        }
+                                        <span>Save</span>
+                                    </button>
+                                </div>
+                            }
+                        </div>
+                    }
+                    @if (_attachmentList.Any())
+                    {
+                        <div class="chat-message d-flex flex-column chat-message-user">
+                            <div class="chat-bubble py-2 px-3 bg-body-tertiary border">
+                                <div class="small fw-semibold text-body-secondary mb-2">
+                                    <i class="bi bi-paperclip me-1"></i>Attached files
+                                </div>
+                                <div class="d-flex flex-column gap-2">
+                                    @foreach (var attachment in _attachmentList)
+                                    {
+                                        <a class="d-flex align-items-center gap-2 text-decoration-none border rounded-3 px-2 py-2 bg-body min-width-0"
+                                           href="@GetAttachmentUrl(attachment.Id)" target="_blank" rel="noreferrer"
+                                           title="@attachment.FileName">
+                                            @if (IsImageAttachment(attachment))
+                                            {
+                                                <img src="@GetAttachmentUrl(attachment.Id)" alt="@attachment.FileName" class="rounded border flex-shrink-0"
+                                                     style="width: 3rem; height: 3rem; object-fit: cover;" />
+                                            }
+                                            else
+                                            {
+                                                <i class="bi bi-paperclip text-body-secondary flex-shrink-0"></i>
+                                            }
+                                            <span class="d-flex flex-column min-width-0">
+                                                <span class="text-body text-truncate">@attachment.FileName</span>
+                                                <span class="small text-body-secondary">@FormatAttachmentSize(attachment.SizeBytes)</span>
+                                            </span>
+                                        </a>
+                                    }
+                                </div>
+                            </div>
+                            <div class="d-flex gap-2 mt-1 px-2 small text-secondary">
+                                <span class="fw-medium"><i class="bi bi-image me-1"></i>Context</span>
+                            </div>
+                        </div>
+                    }
+
+                    @foreach (var entry in _filteredEntries)
+                    {
+                        @if (entry.IsToolGroup)
                         {
-                            <i class="bi bi-check-circle opacity-50 d-block mb-2" style="font-size: 2.5rem;"></i>
-                            <span class="text-body-secondary">Job completed but no conversation was recorded.</span>
-                        }
-                        else if (Status == JobStatus.Failed)
-                        {
-                            <i class="bi bi-exclamation-circle opacity-50 d-block mb-2" style="font-size: 2.5rem;"></i>
-                            <span class="text-body-secondary">Job failed. Check the error message above for details.</span>
-                        }
-                        else if (Status == JobStatus.Cancelled)
-                        {
-                            <i class="bi bi-x-circle opacity-50 d-block mb-2" style="font-size: 2.5rem;"></i>
-                            <span class="text-body-secondary">Job was cancelled. No conversation recorded.</span>
-                        }
-                        else if (Status == JobStatus.New || Status == JobStatus.Pending)
-                        {
-                            <i class="bi bi-hourglass opacity-50 d-block mb-2" style="font-size: 2.5rem;"></i>
-                            <span class="text-body-secondary">Conversation will appear after the job runs.</span>
+                            <div class="chat-message d-flex flex-column chat-message-tooluse" data-tool-group="true">
+                                <div class="chat-bubble py-2 px-3 text-break bg-body-tertiary border">
+                                    <details>
+                                        <summary class="fw-semibold small opacity-75">
+                                            <i class="bi bi-tools me-1"></i>@entry.Message.Content
+                                        </summary>
+                                        <div class="d-flex flex-column gap-2 mt-2">
+                                            @foreach (var toolEntry in entry.ToolEntries!)
+                                            {
+                                                <ChatMessage Role="@toolEntry.Message.Role" Content="@toolEntry.Message.Content"
+                                                             ToolName="@toolEntry.Message.ToolName" ToolInput="@toolEntry.Message.ToolInput"
+                                                             ToolOutput="@toolEntry.Message.ToolOutput" Timestamp="@toolEntry.Message.CreatedAt"
+                                                             Source="@toolEntry.Message.Source" Level="@toolEntry.Message.Level"
+                                                             DisplayVariant="@toolEntry.Message.DisplayVariant" />
+                                            }
+                                        </div>
+                                    </details>
+                                </div>
+                                <div class="d-flex gap-2 mt-1 px-2 small text-secondary">
+                                    <span class="fw-medium"><i class="bi bi-tools me-1"></i>Tool Calls</span>
+                                    <span class="opacity-75">@GetEntryTimestampText(entry)</span>
+                                </div>
+                            </div>
                         }
                         else
                         {
-                            <i class="bi bi-chat-left-text opacity-50 d-block mb-2" style="font-size: 2.5rem;"></i>
-                            <span class="text-body-secondary">No conversation recorded for this job.</span>
+                            <ChatMessage Role="@entry.Message.Role" Content="@entry.Message.Content" ToolName="@entry.Message.ToolName"
+                                         ToolInput="@entry.Message.ToolInput" ToolOutput="@entry.Message.ToolOutput" Timestamp="@entry.Message.CreatedAt"
+                                         Source="@entry.Message.Source" Level="@entry.Message.Level" DisplayVariant="@entry.Message.DisplayVariant" />
                         }
-                    </div>
-                }
-				else
-				{
-					<div class="d-flex flex-column gap-3 overflow-auto p-2" style="max-height: 600px;">
-						@foreach (var message in DisplayedMessages)
-						{
-							<ChatMessage Role="@message.Role" Content="@message.Content" ToolName="@message.ToolName"
-										 ToolInput="@message.ToolInput" ToolOutput="@message.ToolOutput" Timestamp="@message.CreatedAt"
-										 Source="@message.Source" Level="@message.Level"
-										/>
-						}
+                    }
 
-						@if (ShowInlineWaitingActivity)
-						{
-							<div class="chat-message chat-message-assistant d-flex flex-column" role="status" aria-live="polite">
-								<div class="chat-bubble py-2 px-3 bg-body-tertiary border d-flex gap-2 align-items-center">
-									<span class="typing-dot"></span>
-									<span class="typing-dot"></span>
-									<span class="typing-dot"></span>
-								</div>
-								@if (!string.IsNullOrWhiteSpace(CurrentActivity))
-								{
-									<div class="d-flex mt-1 px-2 small text-secondary">
-										<span class="opacity-75 text-truncate" style="max-width: min(100%, 24rem);">@CurrentActivity</span>
-									</div>
-								}
-							</div>
-						}
-					</div>
-				}
+                    @if (ShowInlineWaitingActivity)
+                    {
+                        <div class="chat-message chat-message-assistant d-flex flex-column" role="status" aria-live="polite">
+                            <div class="chat-bubble py-2 px-3 bg-body-tertiary border d-flex gap-2 align-items-center">
+                                <span class="typing-dot"></span>
+                                <span class="typing-dot"></span>
+                                <span class="typing-dot"></span>
+                            </div>
+                            @if (!string.IsNullOrWhiteSpace(CurrentActivity))
+                            {
+                                <div class="d-flex mt-1 px-2 small text-secondary">
+                                    <span class="opacity-75 text-truncate" style="max-width: min(100%, 24rem);">@CurrentActivity</span>
+                                </div>
+                            }
+                        </div>
+                    }
+                    else if (!_displayedMessages.Any() && !HasGoalPrompt)
+                    {
+                        <div class="empty-state text-center py-5">
+                            @if (Status == JobStatus.Completed)
+                            {
+                                <i class="bi bi-check-circle opacity-50 d-block mb-2" style="font-size: 2.5rem;"></i>
+                                <span class="text-body-secondary">Job completed but no conversation was recorded.</span>
+                            }
+                            else if (Status == JobStatus.Failed)
+                            {
+                                <i class="bi bi-exclamation-circle opacity-50 d-block mb-2" style="font-size: 2.5rem;"></i>
+                                <span class="text-body-secondary">Job failed. Check the error message above for details.</span>
+                            }
+                            else if (Status == JobStatus.Cancelled)
+                            {
+                                <i class="bi bi-x-circle opacity-50 d-block mb-2" style="font-size: 2.5rem;"></i>
+                                <span class="text-body-secondary">Job was cancelled. No conversation recorded.</span>
+                            }
+                            else if (Status == JobStatus.New || Status == JobStatus.Pending)
+                            {
+                                <i class="bi bi-hourglass opacity-50 d-block mb-2" style="font-size: 2.5rem;"></i>
+                                <span class="text-body-secondary">Conversation will appear after the job runs.</span>
+                            }
+                            else
+                            {
+                                <i class="bi bi-chat-left-text opacity-50 d-block mb-2" style="font-size: 2.5rem;"></i>
+                                <span class="text-body-secondary">No conversation recorded for this job.</span>
+                            }
+                        </div>
+                    }
+                </div>
 			</div>
 		}
         else if (_activeTab == "console")
@@ -167,16 +353,56 @@
         else if (_activeTab == "command")
         {
             <div class="p-3 flex-grow-1 overflow-auto">
-                <div class="d-flex justify-content-end mb-2">
-                    <button type="button" class="btn btn-sm btn-secondary" @onclick="CopyCommandToClipboard"
-                            title="Copy command to clipboard">
-                        <i class="bi bi-clipboard me-1"></i>
-                        <span class="d-none d-sm-inline">Copy</span>
-                    </button>
-                </div>
-                <div class="p-3 bg-body-tertiary rounded border">
-                    <code class="small d-block text-break" style="white-space: pre-wrap;">@CommandUsed</code>
-                </div>
+                @if (_commandSteps.Count > 1)
+                {
+                    <div class="accordion border rounded" id="job-command-steps">
+                        @foreach (var step in _commandSteps)
+                        {
+                            var isExpanded = string.Equals(step.Key, _commandSteps[0].Key, StringComparison.Ordinal);
+                            <div class="accordion-item">
+                                <h2 class="accordion-header" id="@($"job-command-heading-{step.Key}")">
+                                    <button class="accordion-button @(isExpanded ? string.Empty : "collapsed")" type="button"
+                                            data-bs-toggle="collapse" data-bs-target="@($"#job-command-collapse-{step.Key}")"
+                                            aria-expanded="@isExpanded.ToString().ToLowerInvariant()"
+                                            aria-controls="@($"job-command-collapse-{step.Key}")">
+                                        <span class="d-flex align-items-center gap-2">
+                                            <i class="bi @(step.Icon) opacity-75"></i>
+                                            <span>@step.Label</span>
+                                        </span>
+                                    </button>
+                                </h2>
+                                <div id="@($"job-command-collapse-{step.Key}")" class="accordion-collapse collapse @(isExpanded ? "show" : string.Empty)">
+                                    <div class="accordion-body">
+                                        <div class="d-flex justify-content-end mb-2">
+                                            <button type="button" class="btn btn-sm btn-secondary"
+                                                    @onclick="@(() => CopyCommandToClipboard(step.Command))"
+                                                    title="@($"Copy {step.Label} command to clipboard")">
+                                                <i class="bi bi-clipboard me-1"></i>
+                                                <span class="d-none d-sm-inline">Copy</span>
+                                            </button>
+                                        </div>
+                                        <div class="p-3 bg-body-tertiary rounded border">
+                                            <code class="small d-block text-break" style="white-space: pre-wrap;">@step.Command</code>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+                else if (!string.IsNullOrWhiteSpace(PrimaryCommandText))
+                {
+                    <div class="d-flex justify-content-end mb-2">
+                        <button type="button" class="btn btn-sm btn-secondary" @onclick="CopyPrimaryCommandToClipboard"
+                                title="Copy command to clipboard">
+                            <i class="bi bi-clipboard me-1"></i>
+                            <span class="d-none d-sm-inline">Copy</span>
+                        </button>
+                    </div>
+                    <div class="p-3 bg-body-tertiary rounded border">
+                        <code class="small d-block text-break" style="white-space: pre-wrap;">@PrimaryCommandText</code>
+                    </div>
+                }
                 @if (!string.IsNullOrEmpty(SessionId))
                 {
                     <div class="mt-3">
@@ -192,8 +418,8 @@
     {
         <div class="card-footer bg-body-tertiary border-top">
             <div class="d-flex gap-2">
-                <textarea class="form-control" rows="4" placeholder="Add follow-up instructions..." @bind="_followUpPrompt"
-                          @bind:event="oninput" disabled="@_isSendingFollowUp"></textarea>
+                <textarea class="form-control" rows="4" placeholder="Add follow-up instructions..." value="@_followUpPrompt"
+                          @oninput="HandleFollowUpInput" disabled="@_isSendingFollowUp"></textarea>
                 <button class="btn btn-primary align-self-end flex-shrink-0" @onclick="SendFollowUp"
                         disabled="@(string.IsNullOrWhiteSpace(_followUpPrompt) || _isSendingFollowUp)" title="Send follow-up">
                     @if (_isSendingFollowUp)
@@ -215,10 +441,25 @@
     public List<JobMessage> Messages { get; set; } = new();
 
     [Parameter]
+    public string? GoalPrompt { get; set; }
+
+    [Parameter]
+    public string? GoalPromptIdeaText { get; set; }
+
+    [Parameter]
+    public IEnumerable<IdeaAttachment> AttachedIdeaFiles { get; set; } = Array.Empty<IdeaAttachment>();
+
+    [Parameter]
+    public DateTime? GoalPromptTimestamp { get; set; }
+
+    [Parameter]
     public JobStatus Status { get; set; }
 
     [Parameter]
     public bool IsJobActive { get; set; }
+
+    [Parameter]
+    public int TotalMessageCount { get; set; }
 
     [Parameter]
     public string? ErrorMessage { get; set; }
@@ -228,6 +469,12 @@
 
     [Parameter]
     public string? CommandUsed { get; set; }
+
+    [Parameter]
+    public string? PlanningCommandUsed { get; set; }
+
+    [Parameter]
+    public string? ExecutionCommandUsed { get; set; }
 
     [Parameter]
     public string? SessionId { get; set; }
@@ -250,17 +497,216 @@
     [Parameter]
     public EventCallback<string> OnSendFollowUp { get; set; }
 
+    [Parameter]
+    public EventCallback OnCopyGoalPrompt { get; set; }
+
+    [Parameter]
+    public EventCallback<string> OnGoalPromptChanged { get; set; }
+
+    private const int ToolActivityGroupThreshold = 3;
+
     private string _activeTab = "session";
     private string _followUpPrompt = string.Empty;
     private bool _isSendingFollowUp = false;
+    private HashSet<MessageRole> _hiddenRoles = new();
+    private ElementReference _sessionOutputContainer;
+    private string? _lastAutoScrollStateKey;
+    private bool _showGoalPromptModal;
+    private bool _isEditingGoalPrompt;
+    private string _editedGoalPrompt = string.Empty;
+    private bool _isSavingGoalPrompt;
+    private IReadOnlyList<JobMessage> _displayedMessages = [];
+    private IReadOnlyList<SessionDisplayEntry> _displayedEntries = [];
+    private IReadOnlyList<SessionDisplayEntry> _filteredEntries = [];
+    private IReadOnlyList<IdeaAttachment> _attachmentList = [];
+    private IReadOnlyList<CommandStep> _commandSteps = [];
+    private string? _displayStateKey;
 
     private bool CanSendFollowUp => Status == JobStatus.Completed && OnSendFollowUp.HasDelegate;
 
-    private IReadOnlyList<JobMessage> DisplayedMessages
-        => JobSessionDisplayBuilder.BuildDisplayedMessages(Messages, LiveOutputLines, IsJobActive, LiveMessages);
+    private bool HasCommandTab => _commandSteps.Count > 0 || !string.IsNullOrWhiteSpace(CommandUsed);
+
+    private bool HasGoalPrompt => !string.IsNullOrWhiteSpace(GoalPrompt);
+
+    private bool HasHiddenMessages => TotalMessageCount > _displayedMessages.Count;
+
+    private string GoalPromptDisplayText => !string.IsNullOrWhiteSpace(GoalPromptIdeaText)
+        ? GoalPromptIdeaText!
+        : GoalPrompt ?? string.Empty;
+
+    private bool CanEditGoalPrompt
+        => OnGoalPromptChanged.HasDelegate
+            && (Status == JobStatus.New || Status == JobStatus.Failed || Status == JobStatus.Cancelled);
+
+    private string? PrimaryCommandText => _commandSteps.Count > 0
+        ? _commandSteps[0].Command
+        : NormalizeCommand(CommandUsed);
+
+    private int VisibleMessageCount => _filteredEntries.Sum(entry => entry.VisibleEntryCount) + (HasGoalPrompt ? 1 : 0);
+
+    private bool AreToolMessagesHidden
+		=> _hiddenRoles.Contains(MessageRole.ToolUse) || _hiddenRoles.Contains(MessageRole.ToolResult);
+
+    private int HiddenFilterCount
+        => (AreToolMessagesHidden ? 1 : 0)
+            + (_hiddenRoles.Contains(MessageRole.Assistant) ? 1 : 0)
+            + (_hiddenRoles.Contains(MessageRole.System) ? 1 : 0)
+            + (_hiddenRoles.Contains(MessageRole.User) ? 1 : 0);
+
+    protected override void OnParametersSet()
+    {
+        _commandSteps = BuildCommandSteps();
+        _attachmentList = AttachedIdeaFiles
+            .OrderBy(attachment => attachment.CreatedAt)
+            .ToList();
+
+        var displayStateKey = BuildDisplayStateKey();
+        if (string.Equals(_displayStateKey, displayStateKey, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _displayStateKey = displayStateKey;
+        _displayedMessages = JobSessionDisplayBuilder.BuildDisplayedMessages(Messages, LiveOutputLines, IsJobActive, LiveMessages);
+        _displayedEntries = BuildDisplayEntries(_displayedMessages);
+        ApplyFilters();
+    }
+
+    private void ToggleRoleFilter(MessageRole role)
+    {
+        if (!_hiddenRoles.Remove(role))
+            _hiddenRoles.Add(role);
+
+        ApplyFilters();
+    }
+
+    private void ClearFilters()
+    {
+        _hiddenRoles.Clear();
+        ApplyFilters();
+    }
+
+    private void ToggleToolFilters()
+    {
+        if (AreToolMessagesHidden)
+        {
+            _hiddenRoles.Remove(MessageRole.ToolUse);
+            _hiddenRoles.Remove(MessageRole.ToolResult);
+            ApplyFilters();
+            return;
+        }
+
+        _hiddenRoles.Add(MessageRole.ToolUse);
+        _hiddenRoles.Add(MessageRole.ToolResult);
+        ApplyFilters();
+    }
 
     private bool ShowInlineWaitingActivity
-        => IsJobActive && DisplayedMessages.Any();
+        => IsJobActive;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!ShouldAutoScrollSessionOutput())
+        {
+            _lastAutoScrollStateKey = null;
+            return;
+        }
+
+        var currentStateKey = BuildAutoScrollStateKey();
+        if (string.Equals(_lastAutoScrollStateKey, currentStateKey, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _lastAutoScrollStateKey = currentStateKey;
+
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("vibeSwarmLiveOutput.sync", _sessionOutputContainer);
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+        catch (InvalidOperationException)
+        {
+        }
+    }
+
+    private bool ShouldAutoScrollSessionOutput()
+        => _activeTab == "session"
+            && IsJobActive
+            && (_filteredEntries.Any() || HasGoalPrompt);
+
+    private string BuildAutoScrollStateKey()
+    {
+        var lastVisibleMessage = _filteredEntries.LastOrDefault()?.LastMessage;
+        var lastOutputLine = LiveOutputLines.LastOrDefault();
+        var lastLiveMessage = LiveMessages.LastOrDefault();
+
+        return string.Join("|",
+            HasGoalPrompt,
+            GoalPrompt ?? string.Empty,
+            VisibleMessageCount,
+            lastVisibleMessage?.CreatedAt.Ticks ?? 0,
+            (int?)lastVisibleMessage?.Role ?? -1,
+            lastVisibleMessage?.Content ?? string.Empty,
+            LiveOutputLines.Count,
+            lastOutputLine?.Timestamp.Ticks ?? 0,
+            lastOutputLine?.Content ?? string.Empty,
+            LiveMessages.Count,
+            lastLiveMessage?.CreatedAt.Ticks ?? 0,
+            (int?)lastLiveMessage?.Role ?? -1,
+            lastLiveMessage?.Content ?? string.Empty);
+    }
+
+    private void ShowFullGoalPrompt()
+    {
+        _showGoalPromptModal = true;
+    }
+
+    private void CloseGoalPromptModal()
+    {
+        _showGoalPromptModal = false;
+    }
+
+    private async Task CopyGoalPrompt()
+    {
+        if (OnCopyGoalPrompt.HasDelegate)
+        {
+            await OnCopyGoalPrompt.InvokeAsync();
+        }
+    }
+
+    private void StartGoalPromptEdit()
+    {
+        _editedGoalPrompt = GoalPrompt ?? string.Empty;
+        _isEditingGoalPrompt = true;
+    }
+
+    private void CancelGoalPromptEdit()
+    {
+        _isEditingGoalPrompt = false;
+        _editedGoalPrompt = string.Empty;
+    }
+
+    private async Task SaveGoalPrompt()
+    {
+        if (string.IsNullOrWhiteSpace(_editedGoalPrompt) || !OnGoalPromptChanged.HasDelegate)
+        {
+            return;
+        }
+
+        _isSavingGoalPrompt = true;
+        try
+        {
+            await OnGoalPromptChanged.InvokeAsync(_editedGoalPrompt);
+            _isEditingGoalPrompt = false;
+        }
+        finally
+        {
+            _isSavingGoalPrompt = false;
+        }
+    }
 
 
     private async Task SendFollowUp()
@@ -279,11 +725,487 @@
         }
     }
 
-    private async Task CopyCommandToClipboard()
+    private Task HandleFollowUpInput(ChangeEventArgs e)
     {
-        if (!string.IsNullOrEmpty(CommandUsed))
+        _followUpPrompt = e.Value?.ToString() ?? string.Empty;
+        return Task.CompletedTask;
+    }
+
+    private static string? NormalizeCommand(string? command)
+        => string.IsNullOrWhiteSpace(command) ? null : command.Trim();
+
+    private List<CommandStep> BuildCommandSteps()
+    {
+        var steps = new List<CommandStep>();
+        var planningCommand = NormalizeCommand(PlanningCommandUsed);
+        if (planningCommand == null && Status == JobStatus.Planning)
         {
-            await JSRuntime.InvokeVoidAsync("copyToClipboard", CommandUsed);
+            planningCommand = NormalizeCommand(CommandUsed);
+        }
+
+        var executionCommand = NormalizeCommand(ExecutionCommandUsed);
+        if (executionCommand == null && Status != JobStatus.Planning)
+        {
+            var fallbackCommand = NormalizeCommand(CommandUsed);
+            if (fallbackCommand != null &&
+                (planningCommand == null || !string.Equals(fallbackCommand, planningCommand, StringComparison.Ordinal)))
+            {
+                executionCommand = fallbackCommand;
+            }
+        }
+
+        if (planningCommand != null)
+        {
+            steps.Add(new CommandStep("planning", "Planning", "bi-map", planningCommand));
+        }
+
+        if (executionCommand != null)
+        {
+            steps.Add(new CommandStep("execution", "Execution", "bi-play-circle", executionCommand));
+        }
+
+        return steps;
+    }
+
+    private string BuildDisplayStateKey()
+    {
+        var lastPersistedMessage = Messages.LastOrDefault();
+        var lastOutputLine = LiveOutputLines.LastOrDefault();
+        var lastLiveMessage = LiveMessages.LastOrDefault();
+
+        return string.Join("|",
+            IsJobActive,
+            TotalMessageCount,
+            Messages.Count,
+            lastPersistedMessage?.Id ?? Guid.Empty,
+            lastPersistedMessage?.CreatedAt.Ticks ?? 0,
+            lastPersistedMessage?.Content ?? string.Empty,
+            LiveOutputLines.Count,
+            lastOutputLine?.Timestamp.Ticks ?? 0,
+            lastOutputLine?.Content ?? string.Empty,
+            LiveMessages.Count,
+            lastLiveMessage?.Id ?? Guid.Empty,
+            lastLiveMessage?.CreatedAt.Ticks ?? 0,
+            lastLiveMessage?.Content ?? string.Empty);
+    }
+
+    private void ApplyFilters()
+    {
+        var visibleEntries = !_hiddenRoles.Any()
+            ? _displayedEntries
+            : _displayedEntries
+                .Where(entry => !IsEntryHidden(entry))
+                .ToList();
+
+        _filteredEntries = GroupToolEntries(visibleEntries);
+    }
+
+    private async Task CopyPrimaryCommandToClipboard()
+    {
+        if (!string.IsNullOrEmpty(PrimaryCommandText))
+        {
+            await JSRuntime.InvokeVoidAsync("copyToClipboard", PrimaryCommandText);
         }
     }
+
+    private async Task CopyCommandToClipboard(string command)
+        => await JSRuntime.InvokeVoidAsync("copyToClipboard", command);
+
+    private static IReadOnlyList<SessionDisplayEntry> BuildDisplayEntries(IReadOnlyList<JobMessage> messages)
+    {
+        if (messages.Count == 0)
+        {
+            return [];
+        }
+
+        var toolPairs = BuildToolPairs(messages);
+        var consumedResultIndexes = toolPairs.Count == 0
+            ? []
+            : toolPairs.Values.ToHashSet();
+        var entries = new List<SessionDisplayEntry>(messages.Count);
+
+        for (var index = 0; index < messages.Count; index++)
+        {
+            if (consumedResultIndexes.Contains(index))
+            {
+                continue;
+            }
+
+            var currentMessage = messages[index];
+            if (toolPairs.TryGetValue(index, out var toolResultIndex)
+                && TryCreateCombinedToolEntry(currentMessage, messages[toolResultIndex], out var combinedEntry))
+            {
+                entries.Add(combinedEntry);
+                continue;
+            }
+
+            entries.Add(new SessionDisplayEntry(currentMessage));
+        }
+
+        return entries;
+    }
+
+    private static IReadOnlyList<SessionDisplayEntry> GroupToolEntries(IReadOnlyList<SessionDisplayEntry> entries)
+    {
+        if (entries.Count < ToolActivityGroupThreshold)
+        {
+            return entries;
+        }
+
+        var groupedEntries = new List<SessionDisplayEntry>(entries.Count);
+
+        for (var index = 0; index < entries.Count;)
+        {
+            if (!entries[index].IsToolActivity)
+            {
+                groupedEntries.Add(entries[index]);
+                index++;
+                continue;
+            }
+
+            var groupStart = index;
+            while (index < entries.Count && entries[index].IsToolActivity)
+            {
+                index++;
+            }
+
+            var groupLength = index - groupStart;
+            if (groupLength < ToolActivityGroupThreshold)
+            {
+                for (var toolIndex = groupStart; toolIndex < index; toolIndex++)
+                {
+                    groupedEntries.Add(entries[toolIndex]);
+                }
+
+                continue;
+            }
+
+            groupedEntries.Add(CreateToolGroupEntry(entries.Skip(groupStart).Take(groupLength).ToList()));
+        }
+
+        return groupedEntries;
+    }
+
+    private static Dictionary<int, int> BuildToolPairs(IReadOnlyList<JobMessage> messages)
+    {
+        var pairs = new Dictionary<int, int>();
+        var pendingToolUseIndexes = new LinkedList<int>();
+        var pendingNodes = new Dictionary<int, LinkedListNode<int>>();
+        var blankToolUseIndexes = new Queue<int>();
+        var namedToolUseIndexes = new Dictionary<string, Queue<int>>(StringComparer.OrdinalIgnoreCase);
+
+        for (var index = 0; index < messages.Count; index++)
+        {
+            var message = messages[index];
+            if (message.Role == MessageRole.ToolUse)
+            {
+                var node = pendingToolUseIndexes.AddLast(index);
+                pendingNodes[index] = node;
+
+                var toolName = message.ToolName?.Trim();
+                if (string.IsNullOrWhiteSpace(toolName))
+                {
+                    blankToolUseIndexes.Enqueue(index);
+                }
+                else
+                {
+                    if (!namedToolUseIndexes.TryGetValue(toolName, out var queue))
+                    {
+                        queue = new Queue<int>();
+                        namedToolUseIndexes[toolName] = queue;
+                    }
+
+                    queue.Enqueue(index);
+                }
+
+                continue;
+            }
+
+            if (message.Role != MessageRole.ToolResult)
+            {
+                continue;
+            }
+
+            var toolUseIndex = GetCompatibleToolUseIndex(message.ToolName, pendingNodes, blankToolUseIndexes, namedToolUseIndexes);
+            if (toolUseIndex is null)
+            {
+                continue;
+            }
+
+            pairs[toolUseIndex.Value] = index;
+            pendingToolUseIndexes.Remove(pendingNodes[toolUseIndex.Value]);
+            pendingNodes.Remove(toolUseIndex.Value);
+        }
+
+        return pairs;
+    }
+
+    private static int? GetCompatibleToolUseIndex(
+        string? toolResultName,
+        IReadOnlyDictionary<int, LinkedListNode<int>> pendingNodes,
+        Queue<int> blankToolUseIndexes,
+        IReadOnlyDictionary<string, Queue<int>> namedToolUseIndexes)
+    {
+        var firstBlankIndex = PeekActiveIndex(blankToolUseIndexes, pendingNodes);
+        var normalizedToolResultName = toolResultName?.Trim();
+
+        if (string.IsNullOrWhiteSpace(normalizedToolResultName))
+        {
+            return firstBlankIndex ?? GetFirstActiveNamedIndex(namedToolUseIndexes, pendingNodes);
+        }
+
+        var firstNamedIndex = namedToolUseIndexes.TryGetValue(normalizedToolResultName, out var namedIndexes)
+            ? PeekActiveIndex(namedIndexes, pendingNodes)
+            : null;
+
+        if (firstBlankIndex is null)
+        {
+            return firstNamedIndex;
+        }
+
+        if (firstNamedIndex is null)
+        {
+            return firstBlankIndex;
+        }
+
+        return firstBlankIndex.Value <= firstNamedIndex.Value
+            ? firstBlankIndex
+            : firstNamedIndex;
+    }
+
+    private static int? GetFirstActiveNamedIndex(
+        IReadOnlyDictionary<string, Queue<int>> namedToolUseIndexes,
+        IReadOnlyDictionary<int, LinkedListNode<int>> pendingNodes)
+    {
+        int? firstNamedIndex = null;
+        foreach (var queue in namedToolUseIndexes.Values)
+        {
+            var candidateIndex = PeekActiveIndex(queue, pendingNodes);
+            if (candidateIndex is null)
+            {
+                continue;
+            }
+
+            if (firstNamedIndex is null || candidateIndex.Value < firstNamedIndex.Value)
+            {
+                firstNamedIndex = candidateIndex.Value;
+            }
+        }
+
+        return firstNamedIndex;
+    }
+
+    private static int? PeekActiveIndex(
+        Queue<int> indexes,
+        IReadOnlyDictionary<int, LinkedListNode<int>> pendingNodes)
+    {
+        while (indexes.Count > 0)
+        {
+            var index = indexes.Peek();
+            if (pendingNodes.ContainsKey(index))
+            {
+                return index;
+            }
+
+            indexes.Dequeue();
+        }
+
+        return null;
+    }
+
+    private static bool TryCreateCombinedToolEntry(
+        JobMessage toolUseMessage,
+        JobMessage toolResultMessage,
+        out SessionDisplayEntry combinedEntry)
+    {
+        combinedEntry = default!;
+
+        if (toolUseMessage.Role != MessageRole.ToolUse || toolResultMessage.Role != MessageRole.ToolResult)
+        {
+            return false;
+        }
+
+        if (!CanCombineToolMessages(toolUseMessage, toolResultMessage))
+        {
+            return false;
+        }
+
+        var toolUseName = toolUseMessage.ToolName?.Trim();
+        var toolResultName = toolResultMessage.ToolName?.Trim();
+        combinedEntry = new SessionDisplayEntry(new JobMessage
+        {
+            Id = toolUseMessage.Id,
+            JobId = toolUseMessage.JobId,
+            Job = toolUseMessage.Job,
+            Role = MessageRole.ToolUse,
+            Content = toolUseMessage.Content,
+            CreatedAt = toolUseMessage.CreatedAt,
+            ToolName = string.IsNullOrWhiteSpace(toolUseName)
+                ? (string.IsNullOrWhiteSpace(toolResultName) ? "unknown_tool" : toolResultName)
+                : toolUseName,
+            ToolInput = toolUseMessage.ToolInput,
+            ToolOutput = string.IsNullOrWhiteSpace(toolResultMessage.ToolOutput) ? toolResultMessage.Content : toolResultMessage.ToolOutput,
+            TokenCount = toolUseMessage.TokenCount ?? toolResultMessage.TokenCount,
+            Source = toolUseMessage.Source,
+            Level = toolUseMessage.Level,
+            DisplayVariant = toolUseMessage.DisplayVariant
+        }, IsCombinedToolActivity: true);
+        return true;
+    }
+
+    private static SessionDisplayEntry CreateToolGroupEntry(IReadOnlyList<SessionDisplayEntry> toolEntries)
+    {
+        var firstMessage = toolEntries[0].Message;
+        var summary = BuildToolGroupSummary(toolEntries);
+
+        return new SessionDisplayEntry(new JobMessage
+        {
+            Id = firstMessage.Id,
+            JobId = firstMessage.JobId,
+            Job = firstMessage.Job,
+            Role = MessageRole.ToolUse,
+            Content = summary,
+            CreatedAt = firstMessage.CreatedAt,
+            Source = firstMessage.Source,
+            Level = firstMessage.Level,
+            DisplayVariant = firstMessage.DisplayVariant
+        }, ToolEntries: toolEntries);
+    }
+
+    private static bool CanCombineToolMessages(JobMessage toolUseMessage, JobMessage toolResultMessage)
+    {
+        var toolUseName = toolUseMessage.ToolName?.Trim();
+        var toolResultName = toolResultMessage.ToolName?.Trim();
+
+        return string.IsNullOrWhiteSpace(toolUseName)
+            || string.IsNullOrWhiteSpace(toolResultName)
+            || string.Equals(toolUseName, toolResultName, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool IsEntryHidden(SessionDisplayEntry entry)
+    {
+        if (entry.IsToolGroup)
+        {
+            return AreToolMessagesHidden;
+        }
+
+        if (entry.IsCombinedToolActivity)
+        {
+            return AreToolMessagesHidden;
+        }
+
+        return _hiddenRoles.Contains(entry.Message.Role);
+    }
+
+    private static bool IsImageAttachment(IdeaAttachment attachment)
+        => !string.IsNullOrWhiteSpace(attachment.ContentType)
+            && attachment.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase);
+
+    private static string GetAttachmentUrl(Guid attachmentId)
+        => $"/api/ideas/attachments/{attachmentId}";
+
+    private static string FormatAttachmentSize(long sizeBytes)
+    {
+        if (sizeBytes < 1024)
+        {
+            return $"{sizeBytes} B";
+        }
+
+        var kilobytes = sizeBytes / 1024d;
+        if (kilobytes < 1024)
+        {
+            return $"{kilobytes:0.#} KB";
+        }
+
+        return $"{kilobytes / 1024d:0.#} MB";
+    }
+
+    private static string BuildToolGroupSummary(IReadOnlyList<SessionDisplayEntry> toolEntries)
+    {
+        var distinctToolNames = toolEntries
+            .Select(GetToolEntryName)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var summaryNames = distinctToolNames
+            .Take(3)
+            .ToList();
+
+        var additionalToolNameCount = distinctToolNames.Count - summaryNames.Count;
+        var toolCountLabel = $"{toolEntries.Count} tool {(toolEntries.Count == 1 ? "call" : "calls")}";
+
+        if (summaryNames.Count == 0)
+        {
+            return toolCountLabel;
+        }
+
+        var toolNames = string.Join(", ", summaryNames);
+        return additionalToolNameCount > 0
+            ? $"{toolCountLabel}: {toolNames} +{additionalToolNameCount} more"
+            : $"{toolCountLabel}: {toolNames}";
+    }
+
+    private static string GetToolEntryName(SessionDisplayEntry entry)
+    {
+        var toolName = entry.Message.ToolName?.Trim();
+        return string.IsNullOrWhiteSpace(toolName) ? "unknown_tool" : toolName;
+    }
+
+    private static string GetEntryTimestampText(SessionDisplayEntry entry)
+    {
+        var startTime = entry.Message.CreatedAt.FormatTime();
+        var endTime = entry.LastMessage.CreatedAt.FormatTime();
+        return string.Equals(startTime, endTime, StringComparison.Ordinal)
+            ? startTime
+            : $"{startTime} - {endTime}";
+    }
+
+    private sealed record SessionDisplayEntry(
+        JobMessage Message,
+        bool IsCombinedToolActivity = false,
+        IReadOnlyList<SessionDisplayEntry>? ToolEntries = null)
+    {
+        public bool IsToolGroup => ToolEntries is { Count: > 0 };
+
+        public bool IsToolActivity => IsCombinedToolActivity || Message.Role is MessageRole.ToolUse or MessageRole.ToolResult;
+
+        public int VisibleEntryCount => IsToolGroup
+            ? ToolEntries!.Sum(entry => entry.VisibleEntryCount)
+            : 1;
+
+        public JobMessage LastMessage => IsToolGroup
+            ? ToolEntries![^1].LastMessage
+            : Message;
+    }
+
+    private sealed record CommandStep(string Key, string Label, string Icon, string Command);
+
+    public void Dispose()
+    {
+    }
+}
+
+@if (_showGoalPromptModal)
+{
+    <div class="modal-backdrop fade show vs-modal-backdrop"></div>
+    <div class="modal fade show d-block vs-modal-container" tabindex="-1" role="dialog" @onclick="CloseGoalPromptModal">
+        <div class="modal-dialog modal-lg vs-modal-dialog modal-dialog-centered modal-dialog-scrollable"
+             @onclick:stopPropagation="true">
+            <div class="modal-content vs-modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-bullseye me-2"></i>Full Goal Prompt</h5>
+                    <button type="button" class="btn-close" @onclick="CloseGoalPromptModal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <pre class="bg-body-tertiary border rounded p-3 overflow-auto lh-base m-0 text-break"
+                         style="white-space: pre-wrap; max-height: 60vh;">@GoalPrompt</pre>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="CopyGoalPrompt">
+                        <i class="bi bi-clipboard me-1"></i>Copy to Clipboard
+                    </button>
+                    <button type="button" class="btn btn-secondary" @onclick="CloseGoalPromptModal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
 }

@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.SignalR;
+using VibeSwarm.Shared.Models;
 using VibeSwarm.Shared.Services;
 using VibeSwarm.Web.Hubs;
 
@@ -471,6 +472,26 @@ public class SignalRJobUpdateService : IJobUpdateService
         }
     }
 
+    public async Task NotifyProviderRateLimited(Guid providerId, string providerName, string message, DateTime? resetTime)
+    {
+        try
+        {
+            await _hubContext.Clients
+                .Group("global-events")
+                .SendAsync("ProviderRateLimited",
+                    providerId.ToString(),
+                    providerName,
+                    message,
+                    resetTime?.ToString("o"));
+
+            _logger.LogWarning("Sent ProviderRateLimited for {ProviderName}: {Message}", providerName, message);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error sending ProviderRateLimited notification for provider {ProviderId}", providerId);
+        }
+    }
+
     public async Task NotifyAutoPilotStateChanged(Guid projectId, Shared.Data.IterationLoop loop)
     {
         try
@@ -501,4 +522,35 @@ public class SignalRJobUpdateService : IJobUpdateService
             _logger.LogError(ex, "Error sending AutoPilotStateChanged notification for project {ProjectId}", projectId);
         }
     }
+
+	public async Task NotifyDeveloperUpdateStatusChanged(DeveloperModeStatus status)
+	{
+		try
+		{
+			await _hubContext.Clients
+				.Group("global-events")
+				.SendAsync("DeveloperUpdateStatusChanged", status);
+
+			_logger.LogInformation("Sent DeveloperUpdateStatusChanged: {Stage}, InProgress={IsUpdateInProgress}",
+				status.Stage, status.IsUpdateInProgress);
+		}
+		catch (Exception ex)
+		{
+			_logger.LogError(ex, "Error sending DeveloperUpdateStatusChanged notification");
+		}
+	}
+
+	public async Task NotifyDeveloperUpdateOutputAdded(DeveloperUpdateOutputLine line)
+	{
+		try
+		{
+			await _hubContext.Clients
+				.Group("global-events")
+				.SendAsync("DeveloperUpdateOutputAdded", line);
+		}
+		catch (Exception ex)
+		{
+			_logger.LogWarning(ex, "Error sending DeveloperUpdateOutputAdded notification");
+		}
+	}
 }

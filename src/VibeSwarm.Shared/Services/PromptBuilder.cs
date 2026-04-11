@@ -1,5 +1,6 @@
 using System.Text;
 using VibeSwarm.Shared.Data;
+using VibeSwarm.Shared.Providers;
 using VibeSwarm.Shared.Validation;
 
 namespace VibeSwarm.Shared.Services;
@@ -13,6 +14,72 @@ public static class PromptBuilder
 	private const int MaxPromptLength = 2000;
 	private const int XmlOverhead = 200;
 	private const int MaxEnvironmentSectionLength = 1200;
+	private const int MaxSkillSummaryLength = 160;
+	public const string IdeaToken = "{{idea}}";
+	public const string SpecificationToken = "{{specification}}";
+
+	public static string DefaultIdeaExpansionPromptTemplate =>
+		"""
+		You are a staff-level software engineer turning a product idea into an implementation-ready specification.
+
+		## Feature Idea
+		{{idea}}
+
+		## Instructions
+		1. Inspect the codebase, related flows, reusable components, and tests first. Use subagents when they help.
+		2. Fill in missing details from repository patterns and choose the option that best fits the current system.
+		3. Return concise markdown with: Overview, User Flows, Affected Areas, Implementation Plan, Edge Cases, Acceptance Criteria.
+		4. Keep it concrete. No code samples or provider/model attribution.
+		""";
+
+	public static string DefaultIdeaImplementationPromptTemplate =>
+		"""
+		You are a staff-level software engineer implementing a feature directly from a product idea.
+
+		## Feature Idea
+		{{idea}}
+
+		## Instructions
+		1. Inspect the codebase, related flows, reusable components, and tests before editing. Use subagents when they help.
+		2. Fill in missing details from repository patterns and prefer the simplest solution that fully satisfies the idea.
+		3. Reuse existing patterns, helpers, and components before adding new ones.
+		4. Implement the feature end-to-end with the needed UX, validation, persistence, error handling, and tests.
+		5. Keep changes scoped, preserve existing behavior unless the idea requires a change, and leave the repository in a working state.
+		6. Do not mention or attribute the work to any provider, model, or CLI tool.
+
+		Implement this feature now without first writing a separate specification.
+
+		When you are finished, end your response with a short summary in this exact format:
+		<commit-summary>
+		A concise one-line description of what was implemented (max 72 chars)
+		</commit-summary>
+		""";
+
+	public static string DefaultApprovedIdeaImplementationPromptTemplate =>
+		"""
+		You are a staff-level software engineer implementing an approved specification.
+
+		## Original Idea
+		{{idea}}
+
+		## Detailed Specification
+		{{specification}}
+
+		## Instructions
+		1. Use the approved specification as the source of truth, then fill in missing details from repository patterns.
+		2. Inspect the codebase, related flows, reusable components, and tests before editing. Use subagents when they help.
+		3. Reuse existing patterns, helpers, and components before adding new ones.
+		4. Implement the feature end-to-end with the needed UX, validation, persistence, error handling, and tests.
+		5. Keep changes scoped, preserve existing behavior unless the specification requires a change, and leave the repository in a working state.
+		6. Do not mention or attribute the work to any provider, model, or CLI tool.
+
+		Implement this feature now.
+
+		When you are finished, end your response with a short summary in this exact format:
+		<commit-summary>
+		A concise one-line description of what was implemented (max 72 chars)
+		</commit-summary>
+		""";
 
 	public static string BuildStructuredPrompt(Job job, bool enableStructuring = true)
 	{
@@ -28,6 +95,7 @@ public static class PromptBuilder
 
 		var environmentSection = BuildEnvironmentSection(job.Project);
 		var teamSection = BuildTeamSection(job.Project);
+		var skillSection = BuildSkillSection(job.Project);
 		var sb = new StringBuilder();
 
 		sb.AppendLine("<task>");
@@ -52,6 +120,11 @@ public static class PromptBuilder
 			sb.Append(teamSection);
 		}
 
+		if (!string.IsNullOrWhiteSpace(skillSection))
+		{
+			sb.Append(skillSection);
+		}
+
 		var hasConstraints = !string.IsNullOrWhiteSpace(job.Project.PromptContext)
 			|| job.MaxCostUsd.HasValue
 			|| !string.IsNullOrWhiteSpace(job.Branch)
@@ -65,7 +138,7 @@ public static class PromptBuilder
 			if (!string.IsNullOrWhiteSpace(job.Project.PromptContext))
 			{
 				var context = job.Project.PromptContext.Trim();
-				var availableSpace = MaxPromptLength - XmlOverhead - job.GoalPrompt.Length - environmentSection.Length - teamSection.Length - 100;
+				var availableSpace = MaxPromptLength - XmlOverhead - job.GoalPrompt.Length - environmentSection.Length - teamSection.Length - skillSection.Length - 100;
 				if (availableSpace > 0 && context.Length > availableSpace)
 				{
 					context = context[..availableSpace] + "...";
@@ -117,12 +190,53 @@ public static class PromptBuilder
 		sb.AppendLine(planningOutput.Trim());
 		sb.AppendLine("</implementation_plan>");
 		sb.AppendLine();
-		sb.AppendLine("Use the implementation plan above as the approved plan for this task.");
-		sb.AppendLine("Execute the work now. Do not spend time generating another plan unless the task reveals missing information.");
+		sb.AppendLine("Treat the implementation plan above as approved.");
+		sb.AppendLine("Implement it now. Only revisit planning if execution reveals missing information.");
 		return sb.ToString().TrimEnd();
 	}
 
-	public static string? BuildSystemPromptRules(Project? project, bool injectEfficiencyRules = true, bool injectRepoMap = true)
+	public static string BuildIdeaExpansionPrompt(string ideaDescription, string? template = null)
+	{
+		return ApplyIdeaPromptTemplate(
+			string.IsNullOrWhiteSpace(template) ? DefaultIdeaExpansionPromptTemplate : template,
+			[
+				new TemplateToken(IdeaToken, ideaDescription, "## Feature Idea")
+			]);
+	}
+
+	public static string BuildIdeaImplementationPrompt(string ideaDescription, string? template = null)
+	{
+		return ApplyIdeaPromptTemplate(
+			string.IsNullOrWhiteSpace(template) ? DefaultIdeaImplementationPromptTemplate : template,
+			[
+				new TemplateToken(IdeaToken, ideaDescription, "## Feature Idea")
+			]);
+	}
+
+	public static string BuildApprovedIdeaImplementationPrompt(string originalIdea, string expandedDescription, string? template = null)
+	{
+		return ApplyIdeaPromptTemplate(
+			string.IsNullOrWhiteSpace(template) ? DefaultApprovedIdeaImplementationPromptTemplate : template,
+			[
+				new TemplateToken(IdeaToken, originalIdea, "## Original Idea"),
+				new TemplateToken(SpecificationToken, expandedDescription, "## Detailed Specification")
+			]);
+	}
+
+	public static string? BuildIdeaSystemPromptRules(
+		Project? project,
+		bool injectEfficiencyRules = true,
+		bool injectRepoMap = true)
+	{
+		return BuildSystemPromptRules(project, injectEfficiencyRules, injectRepoMap, providerType: null);
+	}
+
+	public static string? BuildSystemPromptRules(
+		Project? project,
+		bool injectEfficiencyRules = true,
+		bool injectRepoMap = true,
+		ProviderType? providerType = null,
+		bool enableCommitAttribution = true)
 	{
 		if (project == null)
 		{
@@ -134,13 +248,13 @@ public static class PromptBuilder
 		if (injectEfficiencyRules)
 		{
 			sb.AppendLine("IMPORTANT RULES:");
-			sb.AppendLine("- Only perform the requested task. Do not modify unrelated files.");
-			sb.AppendLine("- Do not add comments, docstrings, or type annotations to code you did not change.");
-			sb.AppendLine("- Do not refactor or \"improve\" code beyond what was requested.");
-			sb.AppendLine("- If you encounter issues unrelated to the task, note them but do not fix them.");
+			sb.AppendLine("- Do only the requested work. Do not modify unrelated files.");
+			sb.AppendLine("- Do not add comments, docstrings, or type annotations to untouched code.");
+			sb.AppendLine("- Do not refactor beyond the request.");
+			sb.AppendLine("- If you spot unrelated issues, note them without fixing them.");
 			sb.AppendLine();
 			sb.AppendLine("BUILD VERIFICATION (CRITICAL):");
-			sb.AppendLine("- You MUST verify that your changes compile and build successfully before finishing.");
+			sb.AppendLine("- Verify the project builds before finishing.");
 
 			if (!string.IsNullOrWhiteSpace(project.BuildCommand))
 			{
@@ -148,7 +262,7 @@ public static class PromptBuilder
 			}
 			else
 			{
-				sb.AppendLine("- Run the appropriate build command for this project (e.g., dotnet build, npm run build, cargo build).");
+				sb.AppendLine("- Run the appropriate build command for this project (for example: dotnet build, npm run build, cargo build).");
 			}
 
 			if (!string.IsNullOrWhiteSpace(project.TestCommand))
@@ -156,8 +270,19 @@ public static class PromptBuilder
 				sb.AppendLine($"- Run the project test command: {project.TestCommand.Trim()}");
 			}
 
-			sb.AppendLine("- If the build or tests fail, fix the issues before completing your work.");
-			sb.AppendLine("- Never leave the project in a broken state. A failing build is unacceptable.");
+			sb.AppendLine("- If the build or tests fail, fix them before finishing.");
+			sb.AppendLine("- Do not leave the repository in a broken state.");
+
+			var commitAttributionRules = CommitAttributionHelper.BuildPromptRules(providerType, enableCommitAttribution);
+			if (commitAttributionRules.Count > 0)
+			{
+				sb.AppendLine();
+				sb.AppendLine("COMMIT ATTRIBUTION:");
+				foreach (var rule in commitAttributionRules)
+				{
+					sb.AppendLine($"- {rule}");
+				}
+			}
 		}
 
 		var enabledEnvironments = project.Environments
@@ -193,6 +318,20 @@ public static class PromptBuilder
 					sb.AppendLine($"- {rule}");
 				}
 			}
+		}
+
+		if (enabledEnvironments.Any(environment =>
+			environment.Type == EnvironmentType.Web &&
+			(!string.IsNullOrWhiteSpace(environment.Username) || !string.IsNullOrWhiteSpace(environment.Password))))
+		{
+			if (sb.Length > 0)
+			{
+				sb.AppendLine();
+			}
+
+			sb.AppendLine("ENVIRONMENT AUTHENTICATION:");
+			sb.AppendLine("- When a configured web environment includes login credentials, use those exact values for browser automation.");
+			sb.AppendLine("- Do not invent placeholder or guessed accounts such as test@test.com when environment credentials are available.");
 		}
 
 		if (injectRepoMap && !string.IsNullOrWhiteSpace(project.RepoMap))
@@ -398,6 +537,37 @@ public static class PromptBuilder
 		return sb.ToString();
 	}
 
+	private static string BuildSkillSection(Project project)
+	{
+		var skills = ProjectSkillHelper.GetConfiguredSkills(project);
+		if (skills.Count == 0)
+		{
+			return string.Empty;
+		}
+
+		var sb = new StringBuilder();
+		sb.AppendLine("<available_skills>");
+		sb.AppendLine("  App-configured MCP skills available to compatible providers for this job. Use them when relevant instead of guessing project conventions:");
+		foreach (var skill in skills)
+		{
+			var lineBuilder = new StringBuilder();
+			lineBuilder.Append("  - ");
+			lineBuilder.Append(skill.Name);
+
+			var summary = BuildSkillSummary(skill);
+			if (!string.IsNullOrWhiteSpace(summary))
+			{
+				lineBuilder.Append(" | Use for: ");
+				lineBuilder.Append(summary);
+			}
+
+			sb.AppendLine(EscapeXml(lineBuilder.ToString()));
+		}
+
+		sb.AppendLine("</available_skills>");
+		return sb.ToString();
+	}
+
 	private static List<string> BuildEnvironmentStageRules(IEnumerable<ProjectEnvironment> environments)
 	{
 		var enabledStages = new HashSet<EnvironmentStage>(environments.Select(environment => environment.Stage));
@@ -442,6 +612,19 @@ public static class PromptBuilder
 			sb.AppendLine($"Your responsibilities: {role.Responsibilities.Trim()}");
 		}
 
+		var skills = role.SkillLinks
+			.Where(link => link.Skill != null && link.Skill.IsEnabled)
+			.Select(link => link.Skill!)
+			.GroupBy(skill => skill.Id)
+			.Select(group => group.First())
+			.OrderBy(skill => skill.Name, StringComparer.OrdinalIgnoreCase)
+			.ToList();
+		if (skills.Count > 0)
+		{
+			sb.AppendLine($"Available MCP skills for this role: {string.Join("; ", skills.Select(FormatSkillReference))}");
+			sb.AppendLine("Use those skills when they match the task instead of guessing project-specific conventions.");
+		}
+
 		if (totalSwarmSize > 1)
 		{
 			sb.AppendLine();
@@ -454,6 +637,30 @@ public static class PromptBuilder
 		return sb.ToString().TrimEnd();
 	}
 
+	private static string FormatSkillReference(Skill skill)
+	{
+		var summary = BuildSkillSummary(skill);
+		return string.IsNullOrWhiteSpace(summary)
+			? skill.Name
+			: $"{skill.Name} - {summary}";
+	}
+
+	private static string? BuildSkillSummary(Skill skill)
+	{
+		if (string.IsNullOrWhiteSpace(skill.Description))
+		{
+			return null;
+		}
+
+		var summary = string.Join(" ", skill.Description.Split([' ', '\r', '\n', '\t'], StringSplitOptions.RemoveEmptyEntries));
+		if (summary.Length <= MaxSkillSummaryLength)
+		{
+			return summary;
+		}
+
+		return $"{summary[..(MaxSkillSummaryLength - 3)].TrimEnd()}...";
+	}
+
 	private static string EscapeXml(string value)
 	{
 		return value
@@ -463,4 +670,38 @@ public static class PromptBuilder
 			.Replace("\"", "&quot;")
 			.Replace("'", "&apos;");
 	}
+
+	private static string ApplyIdeaPromptTemplate(string template, IReadOnlyList<TemplateToken> tokens)
+	{
+		var missingTokens = new List<TemplateToken>();
+		var prompt = template.Trim().ReplaceLineEndings("\n");
+
+		foreach (var token in tokens)
+		{
+			var containsToken = prompt.Contains(token.Placeholder, StringComparison.Ordinal);
+			prompt = prompt.Replace(token.Placeholder, token.Value.Trim(), StringComparison.Ordinal);
+			if (!containsToken)
+			{
+				missingTokens.Add(token);
+			}
+		}
+
+		if (missingTokens.Count == 0)
+		{
+			return prompt.TrimEnd();
+		}
+
+		var sb = new StringBuilder(prompt.TrimEnd());
+		foreach (var token in missingTokens)
+		{
+			sb.AppendLine();
+			sb.AppendLine();
+			sb.AppendLine(token.FallbackHeading);
+			sb.AppendLine(token.Value.Trim());
+		}
+
+		return sb.ToString().TrimEnd();
+	}
+
+	private sealed record TemplateToken(string Placeholder, string Value, string FallbackHeading);
 }

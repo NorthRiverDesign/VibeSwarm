@@ -14,6 +14,11 @@ namespace VibeSwarm.Shared.Providers;
 public class CopilotProvider : CliProviderBase
 {
     private const string DefaultExecutable = "copilot";
+    private static readonly Version JsonOutputVersion = new(0, 0, 422);
+    private static readonly Version BashEnvFlagVersion = new(0, 0, 418);
+    private static readonly Version ReasoningEffortVersion = new(1, 0, 4);
+    private static readonly Version AltScreenVersion = new(0, 0, 407);
+    private static readonly Version AltScreenRemovedVersion = new(1, 0, 12);
     private UsageLimits? _lastObservedUsageLimits;
 
     // Cached CLI version for feature gating (populated on TestConnectionAsync)
@@ -122,6 +127,8 @@ public class CopilotProvider : CliProviderBase
         IProgress<ExecutionProgress>? progress,
         CancellationToken cancellationToken)
     {
+        EnsureBashEnvEnvironmentVariable();
+
         var execPath = GetExecutablePath();
         if (string.IsNullOrEmpty(execPath))
         {
@@ -344,18 +351,23 @@ public class CopilotProvider : CliProviderBase
 
         // Build arguments for non-interactive execution
         // Reference: https://github.com/github/copilot-cli/blob/main/changelog.md
+		var supportsJsonOutput = _cachedCliVersion != null && _cachedCliVersion >= JsonOutputVersion;
 		var args = new List<string>
 		{
 			"-p",
 			effectivePrompt,
-			"--yolo",       // Auto-approve all tool permissions (v0.0.381+)
-			"--silent",     // Suppress stats output for cleaner capture (v0.0.365+)
-			"--autopilot"   // Autonomous task completion mode (v0.0.400+, GA v0.0.411+)
+			"--yolo",
+			"--autopilot"
 		};
+
+		if (!supportsJsonOutput)
+		{
+			args.Add("--silent");
+		}
 
 		// Structured JSON output in prompt mode (v0.0.422+).
 		// Skip on older or unknown versions to avoid passing an unsupported flag.
-		if (_cachedCliVersion != null && _cachedCliVersion >= new Version(0, 0, 422))
+		if (supportsJsonOutput)
 		{
 			args.Add("--output-format");
 			args.Add("json");
@@ -386,6 +398,18 @@ public class CopilotProvider : CliProviderBase
             args.Add(CurrentAgent);
         }
 
+        if (CurrentAdditionalDirectories != null)
+        {
+            foreach (var dir in CurrentAdditionalDirectories
+                .Where(static dir => !string.IsNullOrWhiteSpace(dir))
+                .Select(static dir => dir.Trim())
+                .Distinct(StringComparer.Ordinal))
+            {
+                args.Add("--add-dir");
+                args.Add(dir);
+            }
+        }
+
         // Max autopilot continues limit
         if (CurrentMaxTurns.HasValue)
         {
@@ -394,33 +418,35 @@ public class CopilotProvider : CliProviderBase
         }
 
         // Reasoning effort level (v1.0.4+)
-        // --reasoning-effort was added in v1.0.4; skip on older CLIs to prevent startup errors.
-        var reasoningEffort = NormalizeReasoningEffort(CurrentReasoningEffort, "low", "medium", "high");
+        // Current Copilot CLI supports low/medium/high/xhigh; skip on older CLIs to prevent startup errors.
+        var reasoningEffort = NormalizeReasoningEffort(CurrentReasoningEffort, "low", "medium", "high", "xhigh");
         if (!string.IsNullOrEmpty(reasoningEffort)
             && _cachedCliVersion != null
-            && _cachedCliVersion >= new Version(1, 0, 4))
+            && _cachedCliVersion >= ReasoningEffortVersion)
         {
             args.Add("--reasoning-effort");
             args.Add(reasoningEffort);
         }
 
-        // Alt-screen buffer mode (v0.0.407+, on by default since v1.0.8)
-        if (CurrentUseAltScreen)
+        // Alt-screen buffer mode existed from v0.0.407 through v1.0.11 and was removed in v1.0.12.
+        if (CurrentUseAltScreen
+            && _cachedCliVersion != null
+            && _cachedCliVersion >= AltScreenVersion
+            && _cachedCliVersion < AltScreenRemovedVersion)
         {
             args.Add("--alt-screen");
             args.Add("on");
         }
 
-        // Bash environment file path (v0.0.418+).
-        // Versions prior to 0.0.418 only accept "on" or "off" for --bash-env, not a file path.
-        // Skip the flag entirely when the version is unknown or below 0.0.418 to prevent job failures
-        // on older installations (e.g. Raspberry Pi running an older release).
+        // Copilot 1.0.15 accepts only "on"/"off" for --bash-env.
+        // Inject the generated file path through the standard BASH_ENV environment variable and
+        // enable loading with "--bash-env on" on versions where the flag is known to exist.
         if (!string.IsNullOrEmpty(CurrentBashEnvPath)
             && _cachedCliVersion != null
-            && _cachedCliVersion >= new Version(0, 0, 418))
+            && _cachedCliVersion >= BashEnvFlagVersion)
         {
             args.Add("--bash-env");
-            args.Add(CurrentBashEnvPath);
+            args.Add("on");
         }
 
         // Disable mouse input for headless/non-interactive jobs
@@ -506,6 +532,20 @@ public class CopilotProvider : CliProviderBase
         sb.Append(prompt);
 
         return sb.ToString();
+    }
+
+    private void EnsureBashEnvEnvironmentVariable()
+    {
+        if (string.IsNullOrWhiteSpace(CurrentBashEnvPath))
+        {
+            return;
+        }
+
+        CurrentEnvironmentVariables = CurrentEnvironmentVariables != null
+            ? new Dictionary<string, string>(CurrentEnvironmentVariables, StringComparer.Ordinal)
+            : new Dictionary<string, string>(StringComparer.Ordinal);
+
+        CurrentEnvironmentVariables["BASH_ENV"] = CurrentBashEnvPath;
     }
 
     /// <summary>
@@ -915,7 +955,6 @@ public class CopilotProvider : CliProviderBase
         var options = new CopilotClientOptions
         {
             AutoStart = true,
-            AutoRestart = false,
             UseStdio = true,
             LogLevel = "warning"
         };
@@ -1063,6 +1102,8 @@ public class CopilotProvider : CliProviderBase
 
     private async Task<string> ExecuteCliAsync(string prompt, CancellationToken cancellationToken)
     {
+        EnsureBashEnvEnvironmentVariable();
+
         var execPath = GetExecutablePath();
         if (string.IsNullOrEmpty(execPath))
         {
@@ -1078,6 +1119,14 @@ public class CopilotProvider : CliProviderBase
         };
 
         PlatformHelper.ConfigureForCrossPlatform(startInfo);
+
+        if (GetEffectiveEnvironmentVariables() is { Count: > 0 } environmentVariables)
+        {
+            foreach (var kvp in environmentVariables)
+            {
+                startInfo.Environment[kvp.Key] = kvp.Value;
+            }
+        }
 
         if (!string.IsNullOrEmpty(WorkingDirectory))
         {

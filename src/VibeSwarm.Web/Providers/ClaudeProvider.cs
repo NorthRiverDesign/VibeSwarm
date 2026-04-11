@@ -13,7 +13,16 @@ namespace VibeSwarm.Shared.Providers;
 public class ClaudeProvider : CliProviderBase
 {
     private const string DefaultExecutable = "claude";
+    private static readonly Version AgentVersion = new(2, 1, 64);
+    private static readonly Version BareModeVersion = new(2, 1, 81);
+    private static readonly Version DisallowedToolsVersion = new(2, 1, 0);
+    private static readonly Version MaxBudgetVersion = new(2, 0, 28);
+    private static readonly Version FromPullRequestVersion = new(2, 1, 27);
+    private static readonly Version InitModeVersion = new(2, 1, 10);
+    private static readonly Version WorktreeVersion = new(2, 1, 49);
+    private static readonly Version ReasoningEffortVersion = new(2, 1, 63);
     private UsageLimits? _lastObservedUsageLimits;
+    private Version? _cachedCliVersion;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -45,13 +54,26 @@ public class ClaudeProvider : CliProviderBase
     {
         try
         {
-            return await TestCliConnectionAsync(GetExecutablePath(), "Claude", cancellationToken: cancellationToken);
+            var connected = await TestCliConnectionAsync(GetExecutablePath(), "Claude", cancellationToken: cancellationToken);
+            if (connected && _cachedCliVersion == null)
+            {
+                var versionString = await GetCliVersionAsync(GetExecutablePath(), cancellationToken: cancellationToken);
+                _cachedCliVersion = ParseCliVersion(versionString);
+            }
+
+            return connected;
         }
         catch
         {
             IsConnected = false;
             return false;
         }
+    }
+
+    internal Version? CachedCliVersion
+    {
+        get => _cachedCliVersion;
+        set => _cachedCliVersion = value;
     }
 
     public override async Task<string> ExecuteAsync(string prompt, CancellationToken cancellationToken = default)
@@ -76,6 +98,8 @@ public class ClaudeProvider : CliProviderBase
         IProgress<ExecutionProgress>? progress,
         CancellationToken cancellationToken)
     {
+        await EnsureCachedCliVersionAsync(cancellationToken);
+
         var execPath = GetExecutablePath();
         if (string.IsNullOrEmpty(execPath))
         {
@@ -312,11 +336,17 @@ public class ClaudeProvider : CliProviderBase
             args.Add(CurrentModel);
         }
 
-        // Agent selection (e.g., --agent my-agent)
-        if (!string.IsNullOrEmpty(CurrentAgent))
+        // Bare mode reduces Claude Code startup overhead and disables implicit local context loading.
+        if (SupportsCliVersion(BareModeVersion) && CurrentUseBareMode)
+        {
+            args.Add("--bare");
+        }
+
+        // Agent selection (v2.1.64+, e.g., --agent my-agent)
+        if (SupportsCliVersion(AgentVersion) && !string.IsNullOrWhiteSpace(CurrentAgent))
         {
             args.Add("--agent");
-            args.Add(CurrentAgent);
+            args.Add(CurrentAgent.Trim());
         }
 
         // System prompt override
@@ -343,7 +373,10 @@ public class ClaudeProvider : CliProviderBase
         // Additional working directories
         if (CurrentAdditionalDirectories != null)
         {
-            foreach (var dir in CurrentAdditionalDirectories)
+            foreach (var dir in CurrentAdditionalDirectories
+                .Where(static dir => !string.IsNullOrWhiteSpace(dir))
+                .Select(static dir => dir.Trim())
+                .Distinct(StringComparer.Ordinal))
             {
                 args.Add("--add-dir");
                 args.Add(dir);
@@ -361,7 +394,9 @@ public class ClaudeProvider : CliProviderBase
         }
 
         // Disallowed tools (v2.1.0+)
-        if (CurrentDisallowedTools != null && CurrentDisallowedTools.Count > 0)
+        if (SupportsCliVersion(DisallowedToolsVersion)
+            && CurrentDisallowedTools != null
+            && CurrentDisallowedTools.Count > 0)
         {
             foreach (var tool in CurrentDisallowedTools)
             {
@@ -371,34 +406,34 @@ public class ClaudeProvider : CliProviderBase
         }
 
         // Maximum budget in USD for cost control (v2.0.28+)
-        if (CurrentMaxBudgetUsd.HasValue)
+        if (SupportsCliVersion(MaxBudgetVersion) && CurrentMaxBudgetUsd.HasValue)
         {
             args.Add("--max-budget-usd");
             args.Add(CurrentMaxBudgetUsd.Value.ToString(System.Globalization.CultureInfo.InvariantCulture));
         }
 
         // Isolated git worktree mode (v2.1.49+)
-        if (CurrentUseWorktree)
+        if (SupportsCliVersion(WorktreeVersion) && CurrentUseWorktree)
         {
             args.Add("--worktree");
         }
 
         // Resume from PR (v2.1.27+)
-        if (!string.IsNullOrEmpty(CurrentFromPullRequest))
+        if (SupportsCliVersion(FromPullRequestVersion) && !string.IsNullOrEmpty(CurrentFromPullRequest))
         {
             args.Add("--from-pr");
             args.Add(CurrentFromPullRequest);
         }
 
         // Initialization mode for setup hooks (v2.1.10+)
-        if (!string.IsNullOrEmpty(CurrentInitMode))
+        if (SupportsCliVersion(InitModeVersion) && !string.IsNullOrEmpty(CurrentInitMode))
         {
             args.Add($"--{CurrentInitMode}");
         }
 
-        // Reasoning effort level (v2.1.63+)
-        var reasoningEffort = NormalizeReasoningEffort(CurrentReasoningEffort, "low", "medium", "high");
-        if (!string.IsNullOrEmpty(reasoningEffort))
+		// Reasoning effort level (v2.1.63+)
+		var reasoningEffort = NormalizeReasoningEffort(CurrentReasoningEffort, "low", "medium", "high", "max");
+        if (SupportsCliVersion(ReasoningEffortVersion) && !string.IsNullOrEmpty(reasoningEffort))
         {
             args.Add("--effort");
             args.Add(reasoningEffort);
@@ -416,6 +451,40 @@ public class ClaudeProvider : CliProviderBase
         }
 
         return args;
+    }
+
+    private async Task EnsureCachedCliVersionAsync(CancellationToken cancellationToken)
+    {
+        if (_cachedCliVersion != null)
+        {
+            return;
+        }
+
+        var versionString = await GetCliVersionAsync(GetExecutablePath(), cancellationToken: cancellationToken);
+        _cachedCliVersion = ParseCliVersion(versionString);
+    }
+
+    private bool SupportsCliVersion(Version minimumVersion)
+        => _cachedCliVersion != null && _cachedCliVersion >= minimumVersion;
+
+    internal static Version? ParseCliVersion(string? versionString)
+    {
+        if (string.IsNullOrWhiteSpace(versionString))
+        {
+            return null;
+        }
+
+        var firstToken = versionString
+            .Split(new[] { ' ', '\t', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
+            .FirstOrDefault();
+
+        if (string.IsNullOrWhiteSpace(firstToken))
+        {
+            return null;
+        }
+
+        var cleaned = firstToken.TrimStart('v').Split('-')[0].Split('+')[0].Trim();
+        return Version.TryParse(cleaned, out var version) ? version : null;
     }
 
     // Accumulated token usage across all assistant message events

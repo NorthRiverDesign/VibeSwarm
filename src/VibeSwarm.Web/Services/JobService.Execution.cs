@@ -10,10 +10,13 @@ public partial class JobService
 {
     public async Task RefreshExecutionPlanAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        var job = await _dbContext.Jobs
-            .Include(j => j.Project)
-                .ThenInclude(p => p!.ProviderSelections)
-            .Include(j => j.Provider)
+		var job = await _dbContext.Jobs
+			.Include(j => j.Statistics)
+			.Include(j => j.PlanningStatistics)
+			.Include(j => j.ExecutionStatistics)
+			.Include(j => j.Project)
+				.ThenInclude(p => p!.ProviderSelections)
+			.Include(j => j.Provider)
             .FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
 
         if (job == null)
@@ -40,14 +43,19 @@ public partial class JobService
         job.LastSwitchAt = null;
         job.LastSwitchReason = null;
 
-        if (job.ProviderId == Guid.Empty && targets.Count > 0)
-        {
-            job.ProviderId = targets[0].ProviderId;
-        }
+		if (job.ProviderId == Guid.Empty && targets.Count > 0)
+		{
+			job.ProviderId = targets[0].ProviderId;
+		}
 
         if (string.IsNullOrWhiteSpace(job.ModelUsed) && targets.Count > 0)
         {
             job.ModelUsed = targets[0].ModelId;
+        }
+
+        if (string.IsNullOrWhiteSpace(job.ReasoningEffort) && targets.Count > 0)
+        {
+            job.ReasoningEffort = targets[0].ReasoningEffort;
         }
     }
 
@@ -97,6 +105,8 @@ public partial class JobService
         job.LastHeartbeatAt = null;
         job.ProcessId = null;
         job.CommandUsed = null;
+        job.PlanningCommandUsed = null;
+        job.ExecutionCommandUsed = null;
         job.ConsoleOutput = null;
         job.GitDiff = null;
         job.GitCommitBefore = null;
@@ -116,7 +126,11 @@ public partial class JobService
         job.PlanningOutput = null;
         job.PlanningProviderId = null;
         job.PlanningModelUsed = null;
+        job.PlanningReasoningEffortUsed = null;
         job.PlanningGeneratedAt = null;
+        job.PlanningInputTokens = null;
+        job.PlanningOutputTokens = null;
+        job.PlanningCostUsd = null;
         job.CurrentCycle = 1;
         job.ActiveExecutionIndex = 0;
         job.LastSwitchAt = null;
@@ -124,6 +138,9 @@ public partial class JobService
         job.InputTokens = null;
         job.OutputTokens = null;
         job.TotalCostUsd = null;
+        job.ExecutionInputTokens = null;
+        job.ExecutionOutputTokens = null;
+        job.ExecutionCostUsd = null;
 
         var attempts = await _dbContext.JobProviderAttempts
             .Where(a => a.JobId == job.Id)
@@ -153,7 +170,7 @@ public partial class JobService
             .OrderBy(pp => pp.Priority)
             .ToListAsync(cancellationToken);
 
-        var providerOrder = BuildProviderOrder(job.ProviderId, enabledProviders, projectSelections);
+		var providerOrder = BuildProviderOrder(job.ProviderId, enabledProviders, projectSelections);
 
         var modelLookup = await _dbContext.ProviderModels
             .Where(m => providerIds.Contains(m.ProviderId) && m.IsAvailable)
@@ -174,42 +191,48 @@ public partial class JobService
             modelsByProvider.TryGetValue(provider.Id, out var providerModels);
             providerModels ??= [];
 
-            var plannedModels = new List<(string? ModelId, string Source)>();
+            var plannedTargets = new List<(string? ModelId, string? ReasoningEffort, string Source)>();
+            var selectedReasoning = provider.Id == job.ProviderId
+                ? job.ReasoningEffort
+                : selection?.PreferredReasoningEffort ?? provider.DefaultReasoningEffort;
             if (provider.Id == job.ProviderId)
             {
                 if (!string.IsNullOrWhiteSpace(job.ModelUsed))
                 {
-                    plannedModels.Add((job.ModelUsed, "job-selected-model"));
+                    plannedTargets.Add((job.ModelUsed, selectedReasoning, "job-selected-model"));
                 }
                 else if (!string.IsNullOrWhiteSpace(selection?.PreferredModelId))
                 {
-                    plannedModels.Add((selection.PreferredModelId, "project-preferred-model"));
+                    plannedTargets.Add((selection.PreferredModelId, selectedReasoning, "project-preferred-model"));
                 }
             }
             else if (!string.IsNullOrWhiteSpace(selection?.PreferredModelId))
             {
-                plannedModels.Add((selection.PreferredModelId, "project-preferred-model"));
+                plannedTargets.Add((selection.PreferredModelId, selectedReasoning, "project-preferred-model"));
             }
 
             var defaultModel = providerModels.FirstOrDefault(m => m.IsDefault);
             if (defaultModel != null)
             {
-                plannedModels.Add((defaultModel.ModelId, "provider-default-model"));
+                plannedTargets.Add((defaultModel.ModelId, selectedReasoning, "provider-default-model"));
             }
 
             foreach (var model in providerModels)
             {
-                plannedModels.Add((model.ModelId, "provider-available-model"));
+                plannedTargets.Add((model.ModelId, selectedReasoning, "provider-available-model"));
             }
 
-            if (plannedModels.Count == 0)
+            if (plannedTargets.Count == 0)
             {
-                plannedModels.Add((null, "provider-default-model"));
+                plannedTargets.Add((null, selectedReasoning, "provider-default-model"));
             }
 
-            foreach (var candidate in plannedModels)
+            foreach (var candidate in plannedTargets)
             {
-                if (targets.Any(existing => existing.ProviderId == provider.Id && existing.ModelId == candidate.ModelId))
+                if (targets.Any(existing =>
+                    existing.ProviderId == provider.Id &&
+                    existing.ModelId == candidate.ModelId &&
+                    existing.ReasoningEffort == candidate.ReasoningEffort))
                 {
                     continue;
                 }
@@ -219,6 +242,7 @@ public partial class JobService
                     ProviderId = provider.Id,
                     ProviderName = provider.Name,
                     ModelId = candidate.ModelId,
+                    ReasoningEffort = candidate.ReasoningEffort,
                     Order = order++,
                     Source = candidate.Source
                 });
@@ -230,21 +254,42 @@ public partial class JobService
 
     private async Task ValidateRequestedExecutionAsync(Job job, CancellationToken cancellationToken)
     {
-        if (job.ProviderId == Guid.Empty)
-        {
-            if (!string.IsNullOrWhiteSpace(job.ModelUsed))
+		if (job.JobTemplateId.HasValue)
+		{
+			var templateExists = await _dbContext.JobTemplates
+				.AnyAsync(template => template.Id == job.JobTemplateId.Value, cancellationToken);
+			if (!templateExists)
+			{
+				throw new InvalidOperationException("The selected job template no longer exists.");
+			}
+		}
+
+		if (job.ProviderId == Guid.Empty)
+		{
+			if (!string.IsNullOrWhiteSpace(job.ModelUsed))
+			{
+				throw new InvalidOperationException("Selecting a model requires selecting a provider.");
+            }
+
+            if (!string.IsNullOrWhiteSpace(job.ReasoningEffort))
             {
-                throw new InvalidOperationException("Selecting a model requires selecting a provider.");
+                throw new InvalidOperationException("Selecting a reasoning level requires selecting a provider.");
             }
 
             return;
         }
 
-        var providerExists = await _dbContext.Providers
-            .AnyAsync(provider => provider.Id == job.ProviderId && provider.IsEnabled, cancellationToken);
-        if (!providerExists)
+		var provider = await _dbContext.Providers
+			.AsNoTracking()
+			.FirstOrDefaultAsync(provider => provider.Id == job.ProviderId && provider.IsEnabled, cancellationToken);
+        if (provider == null)
         {
             throw new InvalidOperationException("The selected provider is not enabled.");
+        }
+
+        if (!ProviderCapabilities.SupportsReasoningEffort(provider, job.ReasoningEffort))
+        {
+            throw new InvalidOperationException("The selected reasoning level is not supported by the chosen provider.");
         }
 
         if (string.IsNullOrWhiteSpace(job.ModelUsed))
@@ -254,17 +299,17 @@ public partial class JobService
 
         var modelExists = await _dbContext.ProviderModels
             .AnyAsync(model =>
-                model.ProviderId == job.ProviderId &&
-                model.IsAvailable &&
-                model.ModelId == job.ModelUsed,
-                cancellationToken);
+				model.ProviderId == job.ProviderId &&
+				model.IsAvailable &&
+				model.ModelId == job.ModelUsed,
+				cancellationToken);
         if (!modelExists)
         {
             throw new InvalidOperationException("The selected model is not available for the chosen provider.");
         }
     }
 
-    private static List<Provider> BuildProviderOrder(Guid selectedProviderId, List<Provider> enabledProviders, List<ProjectProvider> projectSelections)
+	private static List<Provider> BuildProviderOrder(Guid selectedProviderId, List<Provider> enabledProviders, List<ProjectProvider> projectSelections)
     {
         if (projectSelections.Count == 0)
         {
@@ -280,14 +325,14 @@ public partial class JobService
         return OrderProvidersWithSelectionFirst(selectedProviderId, orderedProviders);
     }
 
-    private static List<Provider> OrderProvidersWithSelectionFirst(Guid selectedProviderId, List<Provider> providers)
-    {
-        if (selectedProviderId == Guid.Empty)
-        {
-            return providers;
-        }
+	private static List<Provider> OrderProvidersWithSelectionFirst(Guid selectedProviderId, List<Provider> providers)
+	{
+		if (selectedProviderId == Guid.Empty)
+		{
+			return providers;
+		}
 
-        var selectedProvider = providers.FirstOrDefault(p => p.Id == selectedProviderId);
+		var selectedProvider = providers.FirstOrDefault(p => p.Id == selectedProviderId);
         if (selectedProvider == null)
         {
             return providers;

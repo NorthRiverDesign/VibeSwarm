@@ -1,5 +1,6 @@
 using System.Net.Http.Json;
 using VibeSwarm.Shared.Data;
+using VibeSwarm.Shared.Models;
 using VibeSwarm.Shared.Services;
 
 namespace VibeSwarm.Client.Services;
@@ -38,15 +39,29 @@ public class HttpSkillService : ISkillService
     public async Task DeleteAsync(Guid id, CancellationToken ct = default)
         => await _http.DeleteAsync($"/api/skills/{id}", ct);
 
-    public async Task<bool> NameExistsAsync(string name, Guid? excludeId = null, CancellationToken ct = default)
-    {
-        var url = $"/api/skills/name-exists?name={Uri.EscapeDataString(name)}";
-        if (excludeId.HasValue) url += $"&excludeId={excludeId}";
-        return await _http.GetJsonValueAsync(url, false, ct);
-    }
+	public async Task<bool> NameExistsAsync(string name, Guid? excludeId = null, CancellationToken ct = default)
+	{
+		var url = $"/api/skills/name-exists?name={Uri.EscapeDataString(name)}";
+		if (excludeId.HasValue) url += $"&excludeId={excludeId}";
+		return await _http.GetJsonValueAsync(url, false, ct);
+	}
 
-    public async Task<string?> ExpandSkillAsync(string description, Guid providerId, string? modelId = null, CancellationToken ct = default)
-    {
+	public async Task<SkillImportPreview> PreviewImportAsync(SkillImportRequest request, CancellationToken ct = default)
+	{
+		var response = await _http.PostAsJsonAsync("/api/skills/import/preview", request, ct);
+		await HttpResponseErrorHelper.EnsureSuccessAsync(response, ct);
+		return await response.ReadJsonAsync(new SkillImportPreview(), ct);
+	}
+
+	public async Task<SkillImportResult> ImportAsync(SkillImportRequest request, CancellationToken ct = default)
+	{
+		var response = await _http.PostAsJsonAsync("/api/skills/import", request, ct);
+		await HttpResponseErrorHelper.EnsureSuccessAsync(response, ct);
+		return await response.ReadJsonAsync(new SkillImportResult(), ct);
+	}
+
+	public async Task<string?> ExpandSkillAsync(string description, Guid providerId, string? modelId = null, CancellationToken ct = default)
+	{
         var request = new { description, providerId, modelId };
         var response = await _http.PostAsJsonAsync("/api/skills/expand", request, ct);
 

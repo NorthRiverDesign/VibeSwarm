@@ -3,554 +3,382 @@
 @inject IInferenceProviderService InferenceProviderService
 @inject IInferenceService InferenceService
 @inject NotificationService NotificationService
+@inject IJSRuntime JSRuntime
 
-<PageHeader Title="Inference" Subtitle="Manage your inference providers and models" />
+<PageHeader Title="Inference">
+	<Actions>
+		<ActionButton Icon="plus" Text="Add" Style="ActionButton.ButtonStyle.Primary" OnClick="ShowAddModal" />
+	</Actions>
+</PageHeader>
 
-<div class="d-flex align-items-center justify-content-between mb-3">
-<h5 class="mb-0 fw-semibold">
-<i class="bi bi-cpu me-2"></i>Providers
-</h5>
-<button class="btn btn-primary btn-sm" @onclick="AddProvider">
-<i class="bi bi-plus-lg me-1"></i>Add Provider
-</button>
-</div>
+<InferenceProvidersSection IsLoading="@_isLoading"
+						   Providers="_providers"
+						   HealthStatus="_healthStatus"
+						   HealthChecked="_healthChecked"
+						   OnEditProvider="EditProvider"
+						   OnDeleteProvider="ShowDeleteConfirmation" />
 
-@if (_isLoading)
-{
-<LoadingSpinner />
-}
-else if (!_providers.Any())
-{
-<div class="card">
-<div class="card-body text-center py-4">
-<i class="bi bi-cpu display-4 text-body-secondary mb-3 d-block"></i>
-<p class="text-body-secondary mb-3">
-No inference provider configured. Set up Ollama, Grok, or another
-inference provider for AI tasks like idea generation, summarization,
-and commit messages.
-</p>
-<button class="btn btn-primary" @onclick="AddProvider">
-<i class="bi bi-plus-lg me-1"></i>Add Provider
-</button>
-</div>
-</div>
-}
-else
-{
-@foreach (var provider in _providers)
-{
-var isSelected = _selectedProvider?.Id == provider.Id;
-var isHealthy = _healthStatus.GetValueOrDefault(provider.Id);
-<div class="card mb-3 @(isSelected ? "border-primary" : "")">
-<div class="card-header bg-body-secondary d-flex align-items-center justify-content-between flex-wrap gap-2 cursor-pointer"
- @onclick="() => SelectProvider(provider)">
-<div class="d-flex align-items-center gap-2">
-<h6 class="mb-0 fw-semibold">
-<i class="bi @GetProviderIcon(provider.ProviderType) me-1"></i>@provider.Name
-</h6>
-<span class="badge bg-body-tertiary text-body-secondary">@provider.ProviderType</span>
-@if (isHealthy)
-{
-<span class="badge bg-success-subtle text-success-emphasis">
-<i class="bi bi-check-circle me-1"></i>Connected
-</span>
-}
-else if (_healthChecked.Contains(provider.Id))
-{
-<span class="badge bg-danger-subtle text-danger-emphasis">
-<i class="bi bi-x-circle me-1"></i>Disconnected
-</span>
-}
-@if (!provider.IsEnabled)
-{
-<span class="badge bg-warning-subtle text-warning-emphasis">Disabled</span>
-}
-</div>
-<i class="bi @(isSelected ? "bi-chevron-up" : "bi-chevron-down")"></i>
-</div>
+<InferenceTestSection Providers="_providers"
+					  SelectedProviderId="_testProviderId"
+					  SelectedProviderIdChanged="OnTestProviderChanged"
+					  TestModels="_testModels"
+					  SelectedModelId="_selectedTestModelId"
+					  SelectedModelIdChanged="OnSelectedTestModelIdChanged"
+					  TestPrompt="_testPrompt"
+					  TestPromptChanged="OnTestPromptChanged"
+					  IsLoadingModels="_isLoadingTestModels"
+					  IsTesting="_isTesting"
+					  TestResponse="_testResponse"
+					  TestModelHelpText="@GetTestModelHelpText()"
+					  OnSubmit="TestGeneration" />
 
-@if (isSelected)
-{
-<div class="card-body">
-<div class="row g-3">
-<div class="col-12 col-md-6">
-<label class="form-label">Provider Name</label>
-<input type="text" class="form-control" @bind="provider.Name" />
-</div>
-<div class="col-12 col-md-6">
-<label class="form-label">Provider Type</label>
-<select class="form-select"
-    value="@provider.ProviderType"
-    @onchange="e => OnProviderTypeChanged(provider, e)">
-@foreach (var type in Enum.GetValues<InferenceProviderType>())
-{
-<option value="@type">@type</option>
-}
-</select>
-</div>
-<div class="col-12 col-md-6">
-<label class="form-label">
-API Key
-@if (provider.ProviderType == InferenceProviderType.Grok)
-{
-<span class="text-danger">*</span>
-}
-</label>
-<input type="password" class="form-control font-monospace"
-    @bind="provider.ApiKey"
-    placeholder="@(provider.ProviderType == InferenceProviderType.Grok ? "xai-..." : "(optional)")" />
-@if (provider.ProviderType == InferenceProviderType.Grok)
-{
-<div class="form-text">Required for Grok. Get your key from the X.AI console.</div>
-}
-</div>
-<div class="col-12 col-md-6">
-<label class="form-label">Endpoint URL</label>
-<div class="input-group">
-<input type="url" class="form-control font-monospace"
-    @bind="provider.Endpoint"
-    placeholder="@GetEndpointPlaceholder(provider.ProviderType)" />
-<button type="button" class="btn btn-secondary"
-    @onclick="() => TestConnection(provider)"
-    disabled="@IsOperationActive(provider.Id)"
-    title="Test Connection">
-@if (_activeOperation == provider.Id && _operationType == "test")
-{
-<span class="spinner-border spinner-border-sm" role="status"></span>
-}
-else
-{
-<i class="bi bi-plug"></i>
-}
-</button>
-</div>
-</div>
-<div class="col-12 col-md-8">
-<label class="form-label">Default Model</label>
-<div class="input-group">
-<select class="form-select" @bind="_selectedModelIds[provider.Id]">
-<option value="">-- Select a model --</option>
-@foreach (var model in GetModelsForProvider(provider.Id).Where(m => m.IsAvailable))
-{
-<option value="@model.ModelId">
-@(model.DisplayName ?? model.ModelId)
-@if (!string.IsNullOrEmpty(model.ParameterSize))
-{
-@($" ({model.ParameterSize})")
-}
-</option>
-}
-</select>
-<button type="button" class="btn btn-secondary"
-    @onclick="() => RefreshModels(provider)"
-    disabled="@IsOperationActive(provider.Id)"
-    title="Refresh models from provider">
-@if (_activeOperation == provider.Id && _operationType == "refresh")
-{
-<span class="spinner-border spinner-border-sm" role="status"></span>
-}
-else
-{
-<i class="bi bi-arrow-clockwise"></i>
-}
-</button>
-</div>
-@if (!GetModelsForProvider(provider.Id).Any())
-{
-<div class="form-text text-warning">
-No models found. Click refresh to discover models from the provider.
-</div>
-}
-</div>
-<div class="col-12 col-md-4 d-flex align-items-end">
-<div class="form-check form-switch">
-<input class="form-check-input" type="checkbox" id="@($"enabled-{provider.Id}")"
-    @bind="provider.IsEnabled" />
-<label class="form-check-label" for="@($"enabled-{provider.Id}")">Enabled</label>
-</div>
-</div>
-</div>
+<InferenceProviderModal @bind-IsVisible="_showModal" EditProvider="@_editingProvider"
+						OnSaved="HandleProviderSaved" OnCancelled="HandleModalCancelled" OnClosed="HandleModalClosed" />
 
-<hr />
-
-<div class="d-flex flex-column flex-sm-row gap-2">
-<button type="button" class="btn btn-primary"
-    @onclick="() => SaveProvider(provider)"
-    disabled="@IsOperationActive(provider.Id)">
-@if (_activeOperation == provider.Id && _operationType == "save")
-{
-<span class="spinner-border spinner-border-sm me-1" role="status"></span>
-<span>Saving...</span>
-}
-else
-{
-<i class="bi bi-check-lg me-1"></i>
-<span>Save</span>
-}
-</button>
-<button type="button" class="btn btn-danger" @onclick="() => DeleteProvider(provider)">
-<i class="bi bi-trash me-1"></i>Remove
-</button>
-</div>
-</div>
-<div class="card-body border-top">
-<h6 class="fw-semibold mb-3">
-<i class="bi bi-chat-square-dots me-2"></i>Test Inference
-</h6>
-<div class="mb-3">
-<label for="testPrompt" class="form-label">Prompt</label>
-<textarea id="testPrompt" class="form-control font-monospace" rows="5"
-  @bind="_testPrompt" placeholder="Enter a test prompt..."></textarea>
-</div>
-<button type="button" class="btn btn-primary"
-@onclick="TestGeneration"
-disabled="@(_isTesting || string.IsNullOrWhiteSpace(_testPrompt))">
-@if (_isTesting)
-{
-<span class="spinner-border spinner-border-sm me-1" role="status"></span>
-<span>Sending...</span>
-}
-else
-{
-<i class="bi bi-send me-1"></i>
-<span>Send</span>
-}
-</button>
-@if (_testResponse != null)
-{
-<hr />
-@if (_testResponse.Success)
-{
-<div class="d-flex flex-wrap gap-3 small text-body-secondary mb-2">
-@if (!string.IsNullOrEmpty(_testResponse.ModelUsed))
-{
-<span><i class="bi bi-cpu me-1"></i>@_testResponse.ModelUsed</span>
-}
-@if (_testResponse.DurationMs.HasValue)
-{
-<span><i class="bi bi-clock me-1"></i>@((_testResponse.DurationMs.Value / 1000.0).ToString("F2"))s</span>
-}
-@if (_testResponse.CompletionTokens.HasValue)
-{
-<span><i class="bi bi-hash me-1"></i>@_testResponse.CompletionTokens tokens</span>
-}
-</div>
-<pre class="p-3 rounded bg-body-secondary small mb-0" style="white-space:pre-wrap;word-break:break-word;">@_testResponse.Response</pre>
-}
-else
-{
-<Alert Type="Alert.AlertType.Danger" Message="@(_testResponse.Error ?? "An unknown error occurred.")" />
-}
-}
-</div>
-}
-</div>
-}
-}
+<ConfirmationModal @bind-IsVisible="_showDeleteModal" Title="Delete Provider"
+				   Message="@($"Are you sure you want to remove {_providerToDelete?.Name}?")" SubMessage="This action cannot be undone."
+				   ConfirmText="Delete" ButtonClass="btn-danger" IsProcessing="_isDeleting" OnConfirm="ConfirmDelete"
+				   OnCancel="CancelDelete" />
 
 @code {
-private List<InferenceProvider> _providers = [];
-private InferenceProvider? _selectedProvider;
-private Dictionary<Guid, List<InferenceModel>> _providerModels = new();
-private Dictionary<Guid, string> _selectedModelIds = new();
-private Dictionary<Guid, bool> _healthStatus = new();
-private HashSet<Guid> _healthChecked = new();
-private bool _isLoading = true;
+	private const string LastTestProviderStorageKey = "vibeswarm.local-inference.last-test-provider";
 
-// Operation tracking per provider
-private Guid? _activeOperation;
-private string? _operationType;
+	private List<InferenceProvider> _providers = [];
+	private Dictionary<Guid, bool> _healthStatus = new();
+	private HashSet<Guid> _healthChecked = new();
+	private bool _isLoading = true;
 
-// Test inference state
-private string _testPrompt = "Say hello in one sentence.";
-private bool _isTesting = false;
-private InferenceResponse? _testResponse = null;
+	// Modal state
+	private bool _showModal;
+	private InferenceProvider? _editingProvider;
 
-protected override async Task OnInitializedAsync()
-{
-await LoadProviders();
-}
+	// Delete state
+	private bool _showDeleteModal;
+	private InferenceProvider? _providerToDelete;
+	private bool _isDeleting;
 
-private async Task LoadProviders()
-{
-_isLoading = true;
+	// Test inference state
+	private Guid? _testProviderId;
+	private List<InferenceModel> _testModels = [];
+	private string _selectedTestModelId = string.Empty;
+	private string _testPrompt = "Say hello in one sentence.";
+	private bool _isTesting;
+	private bool _isLoadingTestModels;
+	private InferenceResponse? _testResponse;
 
-try
-{
-var providers = await InferenceProviderService.GetAllAsync();
-_providers = providers.ToList();
+	protected override async Task OnInitializedAsync()
+	{
+		var preferredProviderId = await TryRestoreLastTestProviderIdAsync();
+		await LoadProviders(preferredProviderId);
 
-foreach (var provider in _providers)
-{
-var models = (await InferenceProviderService.GetModelsAsync(provider.Id)).ToList();
-_providerModels[provider.Id] = models;
-_selectedModelIds[provider.Id] = models.FirstOrDefault(m => m.IsDefault)?.ModelId ?? string.Empty;
-}
+		if (preferredProviderId.HasValue && _testProviderId != preferredProviderId.Value)
+		{
+			await PersistLastTestProviderIdAsync(_testProviderId);
+		}
+	}
 
-// Select the first provider by default
-_selectedProvider = _providers.FirstOrDefault();
+	private async Task LoadProviders(Guid? preferredProviderId = null)
+	{
+		_isLoading = true;
+		try
+		{
+			_providers = (await InferenceProviderService.GetAllAsync()).ToList();
+			var enabledProviders = _providers
+				.Where(p => p.IsEnabled)
+				.ToList();
+			if (preferredProviderId.HasValue && enabledProviders.Any(p => p.Id == preferredProviderId.Value))
+			{
+				_testProviderId = preferredProviderId.Value;
+			}
+			else if (!_testProviderId.HasValue || !enabledProviders.Any(p => p.Id == _testProviderId.Value))
+			{
+				_testProviderId = enabledProviders.FirstOrDefault()?.Id;
+			}
 
-// Check health for all providers in the background
-foreach (var provider in _providers)
-{
-_ = CheckHealth(provider);
-}
-}
-catch (Exception ex)
-{
-NotificationService.ShowError($"Failed to load inference providers: {ex.Message}");
-}
-finally
-{
-_isLoading = false;
-}
-}
+			await LoadTestModelsAsync();
 
-private void SelectProvider(InferenceProvider provider)
-{
-_selectedProvider = _selectedProvider?.Id == provider.Id ? null : provider;
-_testResponse = null;
-}
+			foreach (var provider in _providers)
+			{
+				_ = CheckHealth(provider);
+			}
+		}
+		catch (Exception ex)
+		{
+			NotificationService.ShowError($"Failed to load inference providers: {ex.Message}");
+		}
+		finally
+		{
+			_isLoading = false;
+		}
+	}
 
-private async Task AddProvider()
-{
-var provider = new InferenceProvider
-{
-Name = "New Provider",
-ProviderType = InferenceProviderType.Ollama,
-Endpoint = "http://localhost:11434"
-};
+	private async Task CheckHealth(InferenceProvider provider)
+	{
+		try
+		{
+			var result = await InferenceService.CheckHealthAsync(provider.Endpoint, provider.ProviderType);
+			_healthStatus[provider.Id] = result.IsAvailable;
+			_healthChecked.Add(provider.Id);
+			await InvokeAsync(StateHasChanged);
+		}
+		catch
+		{
+			_healthStatus[provider.Id] = false;
+			_healthChecked.Add(provider.Id);
+		}
+	}
 
-try
-{
-provider = await InferenceProviderService.CreateAsync(provider);
-_providers.Add(provider);
-_providerModels[provider.Id] = [];
-_selectedModelIds[provider.Id] = string.Empty;
-_selectedProvider = provider;
-NotificationService.ShowSuccess("Provider created. Configure it and test the connection.");
-}
-catch (Exception ex)
-{
-NotificationService.ShowError($"Failed to create provider: {ex.Message}");
-}
-}
+	// Modal handlers
 
-private void OnProviderTypeChanged(InferenceProvider provider, ChangeEventArgs e)
-{
-if (Enum.TryParse<InferenceProviderType>(e.Value?.ToString(), out var newType))
-{
-var oldType = provider.ProviderType;
-provider.ProviderType = newType;
+	private void ShowAddModal()
+	{
+		_editingProvider = null;
+		_showModal = true;
+	}
 
-// Auto-set endpoint when switching type (only if it still has the old default)
-var oldDefault = GetDefaultEndpoint(oldType);
-if (string.IsNullOrWhiteSpace(provider.Endpoint) ||
-    string.Equals(provider.Endpoint.TrimEnd('/'), oldDefault.TrimEnd('/'), StringComparison.OrdinalIgnoreCase))
-{
-provider.Endpoint = GetDefaultEndpoint(newType);
-}
+	private void EditProvider(InferenceProvider provider)
+	{
+		_editingProvider = provider;
+		_showModal = true;
+	}
 
-// Auto-set name if it's still a default name
-var defaultNames = new[] { "New Provider", "Local Ollama", "Grok (X.AI)" };
-if (defaultNames.Contains(provider.Name, StringComparer.OrdinalIgnoreCase))
-{
-provider.Name = GetDefaultName(newType);
-}
-}
-}
+	private async Task HandleProviderSaved(Guid? newProviderId)
+	{
+		_showModal = false;
+		_editingProvider = null;
+		_healthStatus.Clear();
+		_healthChecked.Clear();
+		await LoadProviders(newProviderId);
+	}
 
-private async Task SaveProvider(InferenceProvider provider)
-{
-_activeOperation = provider.Id;
-_operationType = "save";
+	private void HandleModalCancelled()
+	{
+		_showModal = false;
+		_editingProvider = null;
+	}
 
-try
-{
-var updated = await InferenceProviderService.UpdateAsync(provider);
+	private void HandleModalClosed()
+	{
+		_showModal = false;
+		_editingProvider = null;
+		StateHasChanged();
+	}
 
-// Update in list
-var idx = _providers.FindIndex(p => p.Id == updated.Id);
-if (idx >= 0) _providers[idx] = updated;
-if (_selectedProvider?.Id == updated.Id) _selectedProvider = updated;
+	// Delete handlers
 
-var selectedModel = _selectedModelIds.GetValueOrDefault(provider.Id);
-if (!string.IsNullOrEmpty(selectedModel))
-{
-await InferenceProviderService.SetModelForTaskAsync(provider.Id, selectedModel, "default");
-}
+	private void ShowDeleteConfirmation(InferenceProvider provider)
+	{
+		_providerToDelete = provider;
+		_showDeleteModal = true;
+	}
 
-NotificationService.ShowSuccess($"Provider \"{updated.Name}\" saved.");
-}
-catch (Exception ex)
-{
-NotificationService.ShowError($"Failed to save provider: {ex.Message}");
-}
-finally
-{
-_activeOperation = null;
-_operationType = null;
-}
-}
+	private void CancelDelete()
+	{
+		_showDeleteModal = false;
+		_providerToDelete = null;
+	}
 
-private async Task DeleteProvider(InferenceProvider provider)
-{
-try
-{
-await InferenceProviderService.DeleteAsync(provider.Id);
-_providers.Remove(provider);
-_providerModels.Remove(provider.Id);
-_selectedModelIds.Remove(provider.Id);
-_healthStatus.Remove(provider.Id);
-_healthChecked.Remove(provider.Id);
+	private async Task ConfirmDelete()
+	{
+		if (_providerToDelete == null) return;
 
-if (_selectedProvider?.Id == provider.Id)
-{
-_selectedProvider = _providers.FirstOrDefault();
-_testResponse = null;
-}
+		_isDeleting = true;
+		try
+		{
+			await InferenceProviderService.DeleteAsync(_providerToDelete.Id);
+			_providers.Remove(_providerToDelete);
+			_healthStatus.Remove(_providerToDelete.Id);
+			_healthChecked.Remove(_providerToDelete.Id);
 
-NotificationService.ShowSuccess($"Provider \"{provider.Name}\" removed.");
-}
-catch (Exception ex)
-{
-NotificationService.ShowError($"Failed to delete provider: {ex.Message}");
-}
-}
+			if (_testProviderId == _providerToDelete.Id)
+			{
+				_testProviderId = _providers.FirstOrDefault(p => p.IsEnabled)?.Id;
+				_testResponse = null;
+				await PersistLastTestProviderIdAsync(_testProviderId);
+			}
 
-private async Task TestConnection(InferenceProvider provider)
-{
-_activeOperation = provider.Id;
-_operationType = "test";
+			await LoadTestModelsAsync();
 
-try
-{
-var result = await InferenceService.CheckHealthAsync(provider.Endpoint, provider.ProviderType);
-_healthStatus[provider.Id] = result.IsAvailable;
-_healthChecked.Add(provider.Id);
+			NotificationService.ShowSuccess($"Provider \"{_providerToDelete.Name}\" removed.");
+			_showDeleteModal = false;
+			_providerToDelete = null;
+		}
+		catch (Exception ex)
+		{
+			NotificationService.ShowError($"Failed to delete provider: {ex.Message}");
+		}
+		finally
+		{
+			_isDeleting = false;
+		}
+	}
 
-if (result.IsAvailable)
-{
-NotificationService.ShowSuccess($"Connected to {provider.Name}! {result.DiscoveredModels.Count} model(s) available.");
-}
-else
-{
-NotificationService.ShowError($"Connection failed: {result.Error ?? "Unable to reach endpoint"}");
-}
-}
-catch (Exception ex)
-{
-_healthStatus[provider.Id] = false;
-_healthChecked.Add(provider.Id);
-NotificationService.ShowError($"Connection test failed: {ex.Message}");
-}
-finally
-{
-_activeOperation = null;
-_operationType = null;
-}
-}
+	// Test inference
 
-private async Task RefreshModels(InferenceProvider provider)
-{
-_activeOperation = provider.Id;
-_operationType = "refresh";
+	private async Task OnTestProviderChanged(Guid? providerId)
+	{
+		_testProviderId = providerId;
+		await PersistLastTestProviderIdAsync(_testProviderId);
+		_selectedTestModelId = string.Empty;
+		_testResponse = null;
+		await LoadTestModelsAsync();
+	}
 
-try
-{
-var models = (await InferenceProviderService.RefreshModelsAsync(provider.Id)).ToList();
-_providerModels[provider.Id] = models;
+	private Task OnSelectedTestModelIdChanged(string selectedModelId)
+	{
+		_selectedTestModelId = selectedModelId;
+		return Task.CompletedTask;
+	}
 
-var currentSelection = _selectedModelIds.GetValueOrDefault(provider.Id);
-if (!models.Any(m => m.ModelId == currentSelection))
-{
-_selectedModelIds[provider.Id] = models.FirstOrDefault(m => m.IsDefault)?.ModelId ?? string.Empty;
-}
+	private Task OnTestPromptChanged(string testPrompt)
+	{
+		_testPrompt = testPrompt;
+		return Task.CompletedTask;
+	}
 
-NotificationService.ShowSuccess($"Found {models.Count(m => m.IsAvailable)} model(s) for {provider.Name}.");
-}
-catch (Exception ex)
-{
-NotificationService.ShowError($"Failed to refresh models: {ex.Message}");
-}
-finally
-{
-_activeOperation = null;
-_operationType = null;
-}
-}
+	private async Task LoadTestModelsAsync()
+	{
+		_testModels = [];
+		if (!_testProviderId.HasValue)
+		{
+			_selectedTestModelId = string.Empty;
+			return;
+		}
 
-private async Task CheckHealth(InferenceProvider provider)
-{
-try
-{
-var result = await InferenceService.CheckHealthAsync(provider.Endpoint, provider.ProviderType);
-_healthStatus[provider.Id] = result.IsAvailable;
-_healthChecked.Add(provider.Id);
-await InvokeAsync(StateHasChanged);
-}
-catch
-{
-_healthStatus[provider.Id] = false;
-_healthChecked.Add(provider.Id);
-}
-}
+		_isLoadingTestModels = true;
+		try
+		{
+			_testModels = (await InferenceProviderService.GetModelsAsync(_testProviderId.Value))
+				.Where(model => model.IsAvailable)
+				.OrderByDescending(model => model.IsDefault)
+				.ThenBy(model => model.DisplayName ?? model.ModelId)
+				.ToList();
+			if (!_testModels.Any(model => model.ModelId == _selectedTestModelId))
+			{
+				_selectedTestModelId = string.Empty;
+			}
+		}
+		catch (Exception ex)
+		{
+			_selectedTestModelId = string.Empty;
+			NotificationService.ShowError($"Failed to load inference models: {ex.Message}");
+		}
+		finally
+		{
+			_isLoadingTestModels = false;
+		}
+	}
 
-private async Task TestGeneration()
-{
-if (_selectedProvider == null || string.IsNullOrWhiteSpace(_testPrompt)) return;
+	private async Task TestGeneration()
+	{
+		var provider = _providers.FirstOrDefault(p => p.Id == _testProviderId);
+		if (provider == null || string.IsNullOrWhiteSpace(_testPrompt)) return;
 
-_isTesting = true;
-_testResponse = null;
+		_isTesting = true;
+		_testResponse = null;
 
-try
-{
-var modelId = _selectedModelIds.GetValueOrDefault(_selectedProvider.Id);
-_testResponse = await InferenceService.GenerateAsync(new InferenceRequest
-{
-Prompt = _testPrompt.Trim(),
-Model = string.IsNullOrEmpty(modelId) ? null : modelId,
-Endpoint = _selectedProvider.Endpoint,
-ProviderType = _selectedProvider.ProviderType
-});
-}
-catch (Exception ex)
-{
-_testResponse = new InferenceResponse { Success = false, Error = ex.Message };
-}
-finally
-{
-_isTesting = false;
-}
-}
+		try
+		{
+			await PersistLastTestProviderIdAsync(provider.Id);
+			_testResponse = await InferenceService.GenerateAsync(new InferenceRequest
+			{
+				Prompt = _testPrompt.Trim(),
+				Model = string.IsNullOrWhiteSpace(_selectedTestModelId) ? null : _selectedTestModelId,
+				ProviderId = provider.Id,
+				Endpoint = provider.Endpoint,
+				ProviderType = provider.ProviderType
+			});
+		}
+		catch (Exception ex)
+		{
+			_testResponse = new InferenceResponse { Success = false, Error = ex.Message };
+		}
+		finally
+		{
+			_isTesting = false;
+		}
+	}
 
-private List<InferenceModel> GetModelsForProvider(Guid providerId)
-=> _providerModels.GetValueOrDefault(providerId) ?? [];
+	private async Task<Guid?> TryRestoreLastTestProviderIdAsync()
+	{
+		try
+		{
+			var storedProviderId = await JSRuntime.InvokeAsync<string?>("sessionStorage.getItem", LastTestProviderStorageKey);
+			if (string.IsNullOrWhiteSpace(storedProviderId))
+			{
+				return null;
+			}
 
-private bool IsOperationActive(Guid providerId)
-=> _activeOperation == providerId;
+			if (Guid.TryParse(storedProviderId, out var providerId))
+			{
+				return providerId;
+			}
 
-private static string GetProviderIcon(InferenceProviderType type) => type switch
-{
-InferenceProviderType.Grok => "bi-cloud",
-_ => "bi-hdd-network"
-};
+			await PersistLastTestProviderIdAsync(null);
+		}
+		catch (JSException ex)
+		{
+			LogTestProviderStorageFailure("restore the last test provider", ex);
+		}
+		catch (InvalidOperationException ex)
+		{
+			LogTestProviderStorageFailure("restore the last test provider", ex);
+		}
+		catch (OperationCanceledException ex)
+		{
+			LogTestProviderStorageFailure("restore the last test provider", ex);
+		}
 
-private static string GetEndpointPlaceholder(InferenceProviderType type) => type switch
-{
-InferenceProviderType.Grok => "https://api.x.ai/v1",
-_ => "http://localhost:11434"
-};
+		return null;
+	}
 
-private static string GetDefaultEndpoint(InferenceProviderType type) => type switch
-{
-InferenceProviderType.Grok => "https://api.x.ai/v1",
-_ => "http://localhost:11434"
-};
+	private async Task PersistLastTestProviderIdAsync(Guid? providerId)
+	{
+		try
+		{
+			if (providerId.HasValue)
+			{
+				await JSRuntime.InvokeVoidAsync("sessionStorage.setItem", LastTestProviderStorageKey, providerId.Value.ToString("D"));
+				return;
+			}
 
-private static string GetDefaultName(InferenceProviderType type) => type switch
-{
-InferenceProviderType.Grok => "Grok (X.AI)",
-_ => "Local Ollama"
-};
+			await JSRuntime.InvokeVoidAsync("sessionStorage.removeItem", LastTestProviderStorageKey);
+		}
+		catch (JSException ex)
+		{
+			LogTestProviderStorageFailure("save the last test provider", ex);
+		}
+		catch (InvalidOperationException ex)
+		{
+			LogTestProviderStorageFailure("save the last test provider", ex);
+		}
+		catch (OperationCanceledException ex)
+		{
+			LogTestProviderStorageFailure("save the last test provider", ex);
+		}
+	}
+
+	private static void LogTestProviderStorageFailure(string action, Exception exception)
+	{
+		Console.Error.WriteLine($"[LocalInference] Unable to {action}: {exception.Message}");
+	}
+
+	private string GetTestModelHelpText()
+	{
+		if (_isLoadingTestModels)
+		{
+			return "Loading models for the selected provider...";
+		}
+
+		if (_testModels.Count == 0)
+		{
+			return "No discovered models are available for this provider yet.";
+		}
+
+		var defaultModel = _testModels.FirstOrDefault(model => model.IsDefault);
+		return defaultModel == null
+			? "Choose a model to test with this provider."
+			: $"Leave unselected to use {defaultModel.DisplayName ?? defaultModel.ModelId}.";
+	}
+
 }

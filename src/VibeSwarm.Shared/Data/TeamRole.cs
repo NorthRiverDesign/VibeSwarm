@@ -24,6 +24,9 @@ public class TeamRole
 	[StringLength(200)]
 	public string? DefaultModelId { get; set; }
 
+	[StringLength(Validation.ValidationLimits.ReasoningEffortMaxLength)]
+	public string? DefaultReasoningEffort { get; set; }
+
 	public bool IsEnabled { get; set; } = true;
 
 	public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

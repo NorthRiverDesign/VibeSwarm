@@ -40,6 +40,8 @@ if (envPath is not null)
 }
 
 var builder = WebApplication.CreateBuilder(args);
+var runtimeDatabaseConfigurationStore = new DatabaseRuntimeConfigurationStore();
+var runtimeDatabaseConfiguration = runtimeDatabaseConfigurationStore.Load();
 
 // Generate self-signed certificate if it doesn't exist
 var certPath = Path.Combine(AppContext.BaseDirectory, "vibeswarm.pfx");
@@ -73,13 +75,18 @@ if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("ASPNETCORE_URLS")))
     builder.WebHost.UseUrls("http://localhost:5000", "https://localhost:5001");
 }
 
-var connectionString = builder.Configuration.GetConnectionString("Default")
-    ?? "Data Source=vibeswarm.db";
+var environmentConnectionString = Environment.GetEnvironmentVariable("ConnectionStrings__Default")
+	?? Environment.GetEnvironmentVariable("CONNECTIONSTRINGS__DEFAULT");
+var connectionString = environmentConnectionString
+	?? runtimeDatabaseConfiguration?.ConnectionString
+	?? builder.Configuration.GetConnectionString("Default")
+	?? "Data Source=vibeswarm.db";
 
-// Determine database provider: env var > config > default (sqlite)
+// Determine database provider: env var > runtime config > config > default (sqlite)
 var databaseProvider = Environment.GetEnvironmentVariable("DATABASE_PROVIDER")
-    ?? builder.Configuration["Database:Provider"]
-    ?? "sqlite";
+	?? runtimeDatabaseConfiguration?.Provider
+	?? builder.Configuration["Database:Provider"]
+	?? "sqlite";
 
 // Validate that non-SQLite providers have a connection string configured
 var resolvedProvider = VibeSwarm.Shared.Data.DataServiceExtensions.ResolveProviderName(databaseProvider);
@@ -91,6 +98,10 @@ if (resolvedProvider != "sqlite" && connectionString == "Data Source=vibeswarm.d
 }
 
 Console.WriteLine($"Database provider: {resolvedProvider}");
+if (runtimeDatabaseConfiguration != null)
+{
+	Console.WriteLine($"Runtime database config: {runtimeDatabaseConfigurationStore.ConfigurationPath}");
+}
 
 // Add authorization services
 builder.Services.AddAuthorization();
@@ -163,8 +174,11 @@ builder.Services.AddSignalR(options =>
     options.StatefulReconnectBufferSize = 100 * 1024; // 100KB
 });
 
+builder.Services.Configure<DeveloperModeOptions>(builder.Configuration.GetSection(DeveloperModeOptions.SectionName));
 builder.Services.AddWorkerServices();
 builder.Services.AddVibeSwarmData(connectionString, databaseProvider);
+builder.Services.AddSingleton<ISystemCommandRunner, SystemCommandRunner>();
+builder.Services.AddSingleton<IDeveloperModeService, DeveloperUpdateService>();
 
 // Add Identity services
 builder.Services.AddIdentity<ApplicationUser, IdentityRole<Guid>>(options =>

@@ -70,8 +70,14 @@ public class Provider
     [Range(30, 1800)]
     public int? StallTimeoutSeconds { get; set; }
 
-    /// <summary>
-    /// Available AI models for this provider
-    /// </summary>
-    public ICollection<ProviderModel> AvailableModels { get; set; } = new List<ProviderModel>();
+	/// <summary>
+	/// Available AI models for this provider
+	/// </summary>
+	public ICollection<ProviderModel> AvailableModels { get; set; } = new List<ProviderModel>();
+
+	/// <summary>
+	/// Default reasoning effort to apply when jobs do not override it.
+	/// </summary>
+	[StringLength(VibeSwarm.Shared.Validation.ValidationLimits.ReasoningEffortMaxLength)]
+	public string? DefaultReasoningEffort { get; set; }
 }

@@ -2,10 +2,8 @@
 @attribute [Authorize]
 @inject ITeamRoleService TeamRoleService
 @inject NotificationService NotificationService
-@using VibeSwarm.Shared.Data
-@using VibeSwarm.Shared.Utilities
 
-<PageHeader Title="Teams" Subtitle="Define reusable multi-agent roles that projects can assign to providers and models">
+<PageHeader Title="Teams">
 	<Actions>
 		<ActionButton Icon="plus" Text="Add" Style="ActionButton.ButtonStyle.Primary" OnClick="ShowAddModal" />
 	</Actions>
@@ -37,7 +35,7 @@ else
 							</span>
 						}
 					</div>
-					@if (teamRole.DefaultProvider != null || !string.IsNullOrWhiteSpace(teamRole.DefaultModelId))
+					@if (teamRole.DefaultProvider != null || !string.IsNullOrWhiteSpace(teamRole.DefaultModelId) || !string.IsNullOrWhiteSpace(teamRole.DefaultReasoningEffort))
 					{
 						<div class="d-flex flex-wrap gap-2 gap-md-3 mt-2 small text-body-secondary">
 							@if (teamRole.DefaultProvider != null)
@@ -52,6 +50,13 @@ else
 								<span class="d-flex align-items-center gap-1">
 									<i class="bi bi-diagram-3 opacity-75"></i>
 									Default model: @teamRole.DefaultModelId
+								</span>
+							}
+							@if (!string.IsNullOrWhiteSpace(teamRole.DefaultReasoningEffort))
+							{
+								<span class="d-flex align-items-center gap-1">
+									<i class="bi bi-lightning-charge opacity-75"></i>
+									Default reasoning: @teamRole.DefaultReasoningEffort
 								</span>
 							}
 						</div>

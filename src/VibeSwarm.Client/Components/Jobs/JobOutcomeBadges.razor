@@ -1,0 +1,55 @@
+@using VibeSwarm.Shared.Data
+
+@if (OutcomeBadges.Count > 0)
+{
+	<div class="d-flex flex-wrap align-items-center gap-2">
+		@foreach (var badge in OutcomeBadges)
+		{
+			<span class="@badge.CssClass" title="@badge.Title">
+				<i class="bi @badge.Icon opacity-75"></i>
+				<span>@badge.Text</span>
+			</span>
+		}
+	</div>
+}
+
+@code {
+	[Parameter]
+	public JobStatus Status { get; set; }
+
+	[Parameter]
+	public int? ChangedFilesCount { get; set; }
+
+	[Parameter]
+	public bool? BuildVerified { get; set; }
+
+	[Parameter]
+	public bool BuildVerificationEnabled { get; set; }
+
+	[Parameter]
+	public bool IsPushed { get; set; }
+
+	[Parameter]
+	public string? GitCommitHash { get; set; }
+
+	[Parameter]
+	public string? PullRequestUrl { get; set; }
+
+	[Parameter]
+	public int? PullRequestNumber { get; set; }
+
+	[Parameter]
+	public DateTime? MergedAt { get; set; }
+
+	private IReadOnlyList<JobOutcomeBadgeModel> OutcomeBadges
+		=> JobOutcomeDisplayHelper.BuildBadges(
+			Status,
+			ChangedFilesCount,
+			BuildVerified,
+			BuildVerificationEnabled,
+			IsPushed,
+			GitCommitHash,
+			PullRequestUrl,
+			PullRequestNumber,
+			MergedAt);
+}

@@ -1,0 +1,57 @@
+name: Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore VibeSwarm.sln --nologo
+
+      - name: Build
+        run: dotnet build VibeSwarm.sln --configuration Release --no-restore --nologo -warnaserror
+
+      - name: Test
+        run: dotnet test VibeSwarm.sln --configuration Release --no-build --nologo
+
+      - name: Publish portable app
+        run: dotnet publish src/VibeSwarm.Web/VibeSwarm.Web.csproj --configuration Release --no-build -o artifacts/vibeswarm /p:UseAppHost=false
+
+      - name: Copy example configuration
+        run: cp src/VibeSwarm.Web/.env.example artifacts/vibeswarm/.env.example
+
+      - name: Create release archive
+        run: |
+          archive_name="vibeswarm-${GITHUB_REF_NAME//\//-}"
+          cd artifacts
+          zip -r "${archive_name}.zip" vibeswarm
+
+      - name: Upload release archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: vibeswarm-release
+          path: artifacts/*.zip
+
+      - name: Publish GitHub release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*.zip
+          generate_release_notes: true

@@ -42,6 +42,11 @@ public class InferenceRequest
 	public string? Model { get; set; }
 
 	/// <summary>
+	/// Optional: explicitly specify the stored provider to use.
+	/// </summary>
+	public Guid? ProviderId { get; set; }
+
+	/// <summary>
 	/// Optional: explicitly specify the endpoint. If null, the service resolves from provider config.
 	/// </summary>
 	public string? Endpoint { get; set; }

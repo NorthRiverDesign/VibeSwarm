@@ -1,7 +1,11 @@
 @* Job list item component for inbox-style CI/CD pipeline layout *@
-@using VibeSwarm.Shared.Utilities
 
-<div class="job-list-item p-3 border-bottom cursor-pointer @(_isSelected ? "job-selected" : "")" @onclick="HandleClick">
+<div class="job-list-item p-3 border-bottom cursor-pointer touch-manipulation @(_isSelected ? "job-selected" : "")"
+	 role="button"
+	 tabindex="0"
+	 aria-label="@Prompt"
+	 @onclick="HandleClick"
+	 @onkeydown="HandleKeyDown">
     <div class="d-flex align-items-start gap-3">
         @* Status Icon Column *@
         <div class="d-flex align-items-center justify-content-center flex-shrink-0" style="width: 24px; min-width: 24px;">
@@ -52,14 +56,6 @@
                 {
                     <span class="fw-medium">@ProjectName</span>
                 }
-                @if (!string.IsNullOrEmpty(ProviderModelDisplay))
-                {
-                    <span class="d-inline-flex align-items-center gap-1 px-2 py-1 bg-body-tertiary rounded-pill text-body-secondary"
-                          title="Provider and model">
-                        <i class="bi bi-cpu opacity-75"></i>
-                        <span>@ProviderModelDisplay</span>
-                    </span>
-                }
                 @if (!string.IsNullOrEmpty(TeamRoleName))
                 {
                     <span class="d-inline-flex align-items-center gap-1 px-2 py-1 bg-primary-subtle text-primary-emphasis rounded-pill"
@@ -80,9 +76,31 @@
                 }
             </div>
 
-            @* Time display *@
-            @if (!string.IsNullOrEmpty(TimeDisplay))
-            {
+    			<JobOutcomeBadges Status="@ParsedStatus"
+    							  ChangedFilesCount="@ChangedFilesCount"
+    							  BuildVerified="@BuildVerified"
+    							  BuildVerificationEnabled="@BuildVerificationEnabled"
+    							  IsPushed="@IsPushed"
+    							  GitCommitHash="@GitCommitHash"
+    							  PullRequestUrl="@PullRequestUrl"
+  							  PullRequestNumber="@PullRequestNumber"
+							  MergedAt="@MergedAt" />
+ 
+			<JobOutcomeHint Status="@ParsedStatus"
+							ChangedFilesCount="@ChangedFilesCount"
+							BuildVerified="@BuildVerified"
+							BuildVerificationEnabled="@BuildVerificationEnabled"
+							IsPushed="@IsPushed"
+							GitCommitHash="@GitCommitHash"
+							PullRequestUrl="@PullRequestUrl"
+							PullRequestNumber="@PullRequestNumber"
+							MergedAt="@MergedAt" />
+
+			<JobOutcomeSummarySnippet SessionSummary="@SessionSummary" />
+
+             @* Time display *@
+             @if (!string.IsNullOrEmpty(TimeDisplay))
+             {
                 <div class="small text-body-tertiary mt-1">@TimeDisplay</div>
             }
         </div>
@@ -132,8 +150,14 @@
     [Parameter]
     public bool ShowProjectName { get; set; } = true;
 
-    [Parameter]
-    public string? ModelUsed { get; set; }
+	[Parameter]
+	public string? ModelUsed { get; set; }
+
+	[Parameter]
+	public string? PlanningProviderName { get; set; }
+
+	[Parameter]
+	public string? PlanningModelUsed { get; set; }
 
     [Parameter]
     public string? ProviderName { get; set; }
@@ -171,9 +195,46 @@
     [Parameter]
     public string? TeamRoleName { get; set; }
 
+    [Parameter]
+    public bool PlaywrightEnabled { get; set; }
+
+    [Parameter]
+    public int EnvironmentCount { get; set; }
+
+	[Parameter]
+	public int? ChangedFilesCount { get; set; }
+
+	[Parameter]
+	public bool? BuildVerified { get; set; }
+
+	[Parameter]
+	public bool BuildVerificationEnabled { get; set; }
+
+	[Parameter]
+	public bool IsPushed { get; set; }
+
+	[Parameter]
+	public string? GitCommitHash { get; set; }
+
+	[Parameter]
+	public string? PullRequestUrl { get; set; }
+
+	[Parameter]
+	public int? PullRequestNumber { get; set; }
+
+	[Parameter]
+	public DateTime? MergedAt { get; set; }
+
+	[Parameter]
+	public string? SessionSummary { get; set; }
+
     private bool _isSelected => IsSelected;
 
-    private string? ProviderModelDisplay => BuildProviderModelDisplay(ProviderName, ModelUsed);
+	private string? ProviderModelDisplay => BuildProviderModelDisplay(PlanningProviderName, PlanningModelUsed, ProviderName, ModelUsed);
+
+	private JobStatus ParsedStatus => Enum.TryParse<JobStatus>(Status, ignoreCase: true, out var status)
+		? status
+		: JobStatus.New;
 
     private bool IsActiveStatus()
     {
@@ -185,6 +246,16 @@
     {
         await OnClick.InvokeAsync();
     }
+
+	private async Task HandleKeyDown(KeyboardEventArgs args)
+	{
+		if (string.Equals(args.Key, "Enter", StringComparison.Ordinal) ||
+			string.Equals(args.Key, " ", StringComparison.Ordinal) ||
+			string.Equals(args.Key, "Spacebar", StringComparison.Ordinal))
+		{
+			await HandleClick();
+		}
+	}
 
     private string GetCycleModeTitle()
     {
@@ -219,20 +290,35 @@
         return model.Length > 20 ? model[..20] + "..." : model;
     }
 
-    private static string? BuildProviderModelDisplay(string? providerName, string? modelName)
-    {
-        var parts = new List<string>();
+	private static string? BuildProviderModelDisplay(string? planningProviderName, string? planningModelName, string? providerName, string? modelName)
+	{
+		var planningDisplay = BuildStageDisplay(planningProviderName, planningModelName);
+		var executionDisplay = BuildStageDisplay(providerName, modelName);
 
-        if (!string.IsNullOrWhiteSpace(providerName))
-        {
-            parts.Add(providerName);
-        }
+		if (!string.IsNullOrWhiteSpace(planningDisplay) &&
+			!string.IsNullOrWhiteSpace(executionDisplay) &&
+			!string.Equals(planningDisplay, executionDisplay, StringComparison.Ordinal))
+		{
+			return $"{planningDisplay} -> {executionDisplay}";
+		}
 
-        if (!string.IsNullOrWhiteSpace(modelName))
-        {
-            parts.Add(FormatModelName(modelName));
-        }
+		return executionDisplay ?? planningDisplay;
+	}
 
-        return parts.Count == 0 ? null : string.Join(" / ", parts);
-    }
+	private static string? BuildStageDisplay(string? providerName, string? modelName)
+	{
+		var parts = new List<string>();
+
+		if (!string.IsNullOrWhiteSpace(providerName))
+		{
+			parts.Add(providerName);
+		}
+
+		if (!string.IsNullOrWhiteSpace(modelName))
+		{
+			parts.Add(FormatModelName(modelName));
+		}
+
+		return parts.Count == 0 ? null : string.Join(" / ", parts);
+	}
 }

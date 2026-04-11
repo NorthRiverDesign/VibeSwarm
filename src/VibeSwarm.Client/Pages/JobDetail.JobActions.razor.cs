@@ -15,20 +15,88 @@ public partial class JobDetail : ComponentBase
 
     // Retry modal state
     private bool _showRetryModal = false;
+    private Idea? _linkedIdea;
 
-    #region Job Actions
+	#region Job Actions
 
-    private async Task LoadJob()
-    {
+	private void ResetJobDetailState()
+	{
+		Job = null;
+		_linkedIdea = null;
+		_liveCommand = null;
+		_showGitDiff = true;
+		_parsedDiffFiles.Clear();
+		_interactionChoices = null;
+		_interactionError = null;
+		_isSubmittingResponse = false;
+		_showRetryModal = false;
+		IsCancelling = false;
+		IsForceCancelling = false;
+		IsRetrying = false;
+		IsForceResetting = false;
+
+		lock (_liveOutput)
+		{
+			_liveOutput.Clear();
+		}
+
+		_pendingSessionMessages.Clear();
+		_pendingOutputUpdate = false;
+
+		_branchName = null;
+		_isGitRepository = false;
+		_showCreateBranchModal = false;
+		_isCreatingBranch = false;
+		_createBranchError = null;
+		_isSyncingWithOrigin = false;
+		_isRefreshingBranches = false;
+		_isPruningBranches = false;
+		_commitMessage = string.Empty;
+		_isPushing = false;
+		_isCheckingGitDiff = false;
+		_isLoadingGitDiff = false;
+		_isLoadingSummary = false;
+		_summaryError = null;
+		_pushStatus = "Pushing...";
+		_pushError = null;
+		_changesPushed = false;
+		_pushedCommitHash = null;
+		_isCreatingPullRequest = false;
+		_isMergingBranch = false;
+		_commitMessageInitialized = false;
+		_isComparingWorkingCopy = false;
+		_workingCopyComparisonDone = false;
+		_workingCopyMatches = true;
+		_workingCopyMissingFiles.Clear();
+		_workingCopyExtraFiles.Clear();
+		_workingCopyModifiedFiles.Clear();
+
+		_pushCancellationTokenSource?.Cancel();
+		_pushCancellationTokenSource?.Dispose();
+		_pushCancellationTokenSource = null;
+
+		_isCheckingUncommittedChanges = false;
+		_hasCheckedUncommittedChanges = false;
+		_hasUncommittedChanges = false;
+		_uncommittedDiffFiles.Clear();
+		_uncommittedChangesError = null;
+		_isDiscardingChanges = false;
+		_uncommittedCommitMessage = string.Empty;
+		_isCommittingUncommittedChanges = false;
+	}
+
+	private async Task LoadJob()
+	{
         try
         {
             Job = await JobService.GetByIdWithMessagesAsync(JobId);
+            _linkedIdea = Job == null ? null : await IdeaService.GetByJobIdAsync(Job.Id);
 
             if (Job != null && !string.IsNullOrWhiteSpace(Job.SessionSummary))
             {
                 if (string.IsNullOrWhiteSpace(_commitMessage) || !_commitMessageInitialized)
                 {
-                    _commitMessage = Job.SessionSummary;
+                    _commitMessage = VibeSwarm.Shared.Services.JobSummaryGenerator.BuildCommitSubject(Job);
                     _commitMessageInitialized = true;
                     _isLoadingSummary = false;
                 }
@@ -88,10 +156,21 @@ public partial class JobDetail : ComponentBase
             {
                 _ = Task.Run(async () =>
                 {
-                    await Task.Delay(500);
-                    await InvokeAsync(async () => await CheckUncommittedChangesAsync());
+                    try
+                    {
+                        await Task.Delay(500);
+                        if (!_disposed) await InvokeAsync(async () => await CheckUncommittedChangesAsync());
+                    }
+                    catch { }
                 });
             }
+        }
+        catch (Exception) when (!IsLoading)
+        {
+            // During refresh cycles, swallow the error so the existing page state is preserved.
+            // The next poll or SignalR push will retry. Only throw during initial load so the
+            // page can show a proper error state.
+            return;
         }
         finally
         {
@@ -270,7 +349,7 @@ public partial class JobDetail : ComponentBase
 
         try
         {
-            var result = await JobService.ResetJobWithOptionsAsync(Job.Id, options.ProviderId, options.ModelId);
+            var result = await JobService.ResetJobWithOptionsAsync(Job.Id, options.ProviderId, options.ModelId, options.ReasoningEffort);
             if (result)
             {
                 NotificationService.ShowSuccess("Job has been reset with new options and will be retried shortly.");

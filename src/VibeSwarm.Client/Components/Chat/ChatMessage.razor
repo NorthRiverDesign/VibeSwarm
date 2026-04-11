@@ -1,13 +1,36 @@
 @* Single chat message component *@
 
-<div
-	class="chat-message d-flex flex-column chat-message-@Role.ToString().ToLower() @(Role == MessageRole.ToolUse || Role == MessageRole.ToolResult ? "ms-3" : "")">
+<div class="@GetContainerClasses()">
 	<div class="chat-bubble py-2 px-3 text-break @GetBubbleClasses()">
-		@if (Role == MessageRole.ToolUse)
+		@if (IsCombinedToolActivity)
 		{
 			<details>
 				<summary class="fw-semibold small opacity-75">
-					<i class="bi bi-tools me-1"></i>@ToolName
+					<i class="bi bi-tools me-1"></i>@GetToolDisplayName()
+				</summary>
+				@if (!string.IsNullOrEmpty(ToolInput))
+				{
+					<div class="mt-2">
+						<div class="small fw-semibold text-body-secondary text-uppercase mb-1">Call</div>
+						<pre class="chat-tool-code white-space-pre-wrap m-0 p-2 rounded small text-break overflow-auto"
+							style="max-height: 150px;">@ToolInput</pre>
+					</div>
+				}
+				@if (!string.IsNullOrEmpty(ToolOutput))
+				{
+					<div class="mt-2">
+						<div class="small fw-semibold text-body-secondary text-uppercase mb-1">Response</div>
+						<pre class="chat-tool-code white-space-pre-wrap m-0 p-2 rounded small text-break overflow-auto"
+							style="max-height: 150px;">@TruncateOutput(ToolOutput, 500)</pre>
+					</div>
+				}
+			</details>
+		}
+		else if (Role == MessageRole.ToolUse)
+		{
+			<details>
+				<summary class="fw-semibold small opacity-75">
+					<i class="bi bi-tools me-1"></i>@GetToolDisplayName()
 				</summary>
 				@if (!string.IsNullOrEmpty(ToolInput))
 				{
@@ -20,7 +43,7 @@
 		{
 			<details>
 				<summary class="fw-semibold small opacity-75">
-					<i class="bi bi-arrow-return-right me-1"></i>@ToolName
+					<i class="bi bi-arrow-return-right me-1"></i>@GetToolDisplayName()
 				</summary>
 				<pre class="chat-tool-code white-space-pre-wrap m-0 mt-2 p-2 rounded small text-break overflow-auto"
 					style="max-height: 150px;">@TruncateOutput(ToolOutput ?? Content ?? "", 500)</pre>
@@ -28,7 +51,7 @@
 		}
 		else
 		{
-			<div class="white-space-pre-wrap m-0 lh-base">@Content</div>
+			<div class="@GetContentClasses()">@Content</div>
 		}
 	</div>
 	<div class="d-flex gap-2 mt-1 px-2 small text-secondary">
@@ -63,6 +86,9 @@
 	public MessageLevel Level { get; set; } = MessageLevel.Normal;
 
 	[Parameter]
+	public MessageDisplayVariant DisplayVariant { get; set; } = MessageDisplayVariant.Standard;
+
+	[Parameter]
 	public string? LabelOverride { get; set; }
 
 	[Parameter]
@@ -71,6 +97,10 @@
 	[Parameter]
 	public string? IconOverride { get; set; }
 
+	private bool IsCombinedToolActivity
+		=> Role == MessageRole.ToolUse
+			&& !string.IsNullOrWhiteSpace(ToolOutput);
+
 	private static string TruncateOutput(string text, int maxLength)
 	{
 		if (string.IsNullOrEmpty(text) || text.Length <= maxLength)
@@ -78,10 +108,19 @@
 		return text[..maxLength] + "\n... (truncated)";
 	}
 
+	private string GetToolDisplayName()
+		=> string.IsNullOrWhiteSpace(ToolName) ? "unknown_tool" : ToolName;
+
 	private string GetLabel()
 	{
 		if (!string.IsNullOrWhiteSpace(LabelOverride))
 			return LabelOverride;
+
+		if (DisplayVariant == MessageDisplayVariant.Thinking)
+			return "Thinking";
+
+		if (IsCombinedToolActivity)
+			return "Tool Activity";
 
 		return Role switch
 		{
@@ -103,6 +142,12 @@
 	{
 		if (!string.IsNullOrWhiteSpace(BubbleClassOverride))
 			return BubbleClassOverride;
+
+		if (DisplayVariant == MessageDisplayVariant.Thinking)
+			return "bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle";
+
+		if (IsCombinedToolActivity)
+			return "bg-info-subtle text-info-emphasis border";
 
 		if (Role == MessageRole.System)
 		{
@@ -130,6 +175,12 @@
 		if (!string.IsNullOrWhiteSpace(IconOverride))
 			return IconOverride;
 
+		if (DisplayVariant == MessageDisplayVariant.Thinking)
+			return "bi bi-lightbulb";
+
+		if (IsCombinedToolActivity)
+			return "bi bi-tools";
+
 		if (Role == MessageRole.System)
 		{
 			return Level switch
@@ -150,4 +201,18 @@
 			_ => "bi bi-chat-left-text"
 		};
 	}
+
+	private string GetContainerClasses()
+	{
+		var roleClass = DisplayVariant == MessageDisplayVariant.Thinking
+			? "chat-message-thinking"
+			: $"chat-message-{Role.ToString().ToLower()}";
+		var indentClass = Role is MessageRole.ToolUse or MessageRole.ToolResult ? " ms-3" : string.Empty;
+		return $"chat-message d-flex flex-column {roleClass}{indentClass}";
+	}
+
+	private string GetContentClasses()
+		=> DisplayVariant == MessageDisplayVariant.Thinking
+			? "white-space-pre-wrap m-0 lh-base fst-italic"
+			: "white-space-pre-wrap m-0 lh-base";
 }

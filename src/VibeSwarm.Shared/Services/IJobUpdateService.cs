@@ -1,5 +1,7 @@
 namespace VibeSwarm.Shared.Services;
 
+using VibeSwarm.Shared.Models;
+
 /// <summary>
 /// Service for broadcasting job updates to connected clients
 /// </summary>
@@ -152,9 +154,28 @@ public interface IJobUpdateService
         string message, bool isExhausted, DateTime? resetTime);
 
     /// <summary>
+    /// Notifies all clients that a provider has been rate limited
+    /// </summary>
+    /// <param name="providerId">The provider ID</param>
+    /// <param name="providerName">The provider name for display</param>
+    /// <param name="message">Human-readable description of the rate limit</param>
+    /// <param name="resetTime">When the rate limit is expected to lift (if known)</param>
+    Task NotifyProviderRateLimited(Guid providerId, string providerName, string message, DateTime? resetTime);
+
+    /// <summary>
     /// Notifies clients that an auto-pilot loop's state has changed
     /// </summary>
     /// <param name="projectId">The project ID</param>
     /// <param name="loop">The current iteration loop state</param>
     Task NotifyAutoPilotStateChanged(Guid projectId, Data.IterationLoop loop);
+
+	/// <summary>
+	/// Notifies clients that the application's self-update state changed.
+	/// </summary>
+	Task NotifyDeveloperUpdateStatusChanged(DeveloperModeStatus status);
+
+	/// <summary>
+	/// Streams self-update output to connected clients.
+	/// </summary>
+	Task NotifyDeveloperUpdateOutputAdded(DeveloperUpdateOutputLine line);
 }

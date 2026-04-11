@@ -544,13 +544,19 @@ public class ExecutionOptions
     /// </summary>
     public decimal? MaxBudgetUsd { get; set; }
 
-    /// <summary>
-    /// Additional working directories to include (Claude: --add-dir)
-    /// </summary>
-    public List<string>? AdditionalDirectories { get; set; }
+	/// <summary>
+	/// Additional working directories to include (Claude/Copilot: --add-dir, OpenCode: --dir)
+	/// </summary>
+	public List<string>? AdditionalDirectories { get; set; }
+
+	/// <summary>
+	/// Enable Claude bare mode for automated executions (Claude: --bare, v2.1.81+).
+	/// Bare mode skips implicit local context discovery so VibeSwarm can provide deterministic context explicitly.
+	/// </summary>
+	public bool UseBareMode { get; set; }
 
     /// <summary>
-    /// Timeout in seconds for the execution (OpenCode: --timeout)
+    /// Timeout in seconds for the execution (OpenCode legacy run: --timeout on v1.2.x)
     /// </summary>
     public int? TimeoutSeconds { get; set; }
 
@@ -600,7 +606,8 @@ public class ExecutionOptions
 
     /// <summary>
     /// Reasoning effort level.
-    /// Common values are "low", "medium", and "high"; some providers support additional values such as "xhigh".
+    /// Common values are "low", "medium", and "high"; some providers support additional values such as
+    /// "xhigh", while current OpenCode CLI maps this concept through the run command's --variant flag.
     /// </summary>
     public string? ReasoningEffort { get; set; }
 
@@ -615,7 +622,7 @@ public class ExecutionOptions
     public string? BashEnvPath { get; set; }
 
     /// <summary>
-    /// Enable alternate screen buffer mode (Copilot: --alt-screen, v0.0.407+).
+    /// Enable alternate screen buffer mode (Copilot: --alt-screen, v0.0.407-v1.0.11).
     /// Experimental feature for improved display.
     /// </summary>
     public bool UseAltScreen { get; set; }

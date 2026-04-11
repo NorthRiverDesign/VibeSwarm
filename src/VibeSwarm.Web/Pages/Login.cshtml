@@ -26,7 +26,7 @@
     </head>
 
     <body>
-        <div class="login-layout d-flex align-items-center justify-content-center min-vh-100"
+        <div class="login-layout d-flex align-items-center justify-content-center"
             style="background-image: url('/img/login_bg.jpg'); background-size: cover; background-position: center; background-repeat: no-repeat; background-attachment: fixed;">
             <div class="position-absolute top-0 start-0 w-100 h-100" style="background-color: rgba(0, 0, 0, 0.5);">
             </div>
@@ -38,17 +38,6 @@
                                 <img src="/img/logo_color.png" alt="VibeSwarm Logo" class="img-fluid"
                                     style="max-width: 200px;" />
                             </div>
-                            @if (Model.NoUsersExist)
-                            {
-                                <div class="alert alert-info mb-3" role="alert">
-                                    <h5 class="alert-heading"><i class="bi bi-gear-fill me-2"></i>Setup Required</h5>
-                                    <p class="mb-2">No users exist in the database. Complete the initial setup to create
-                                        your administrator account.</p>
-                                    <a href="/setup" class="btn btn-primary">
-                                        <i class="bi bi-arrow-right-circle me-2"></i>Go to Setup
-                                    </a>
-                                </div>
-                            }
                             <div class="card shadow">
                                 <div class="card-body">
                                     <h3 class="card-title text-center mb-4">VibeSwarm Login</h3>

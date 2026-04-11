@@ -172,6 +172,16 @@ public partial class JobProcessingService
         return project?.PlanningEnabled == true && project.PlanningProviderId.HasValue;
     }
 
+    /// <summary>
+    /// Bare mode requires a direct API key (ANTHROPIC_API_KEY). When the provider has no API key
+    /// configured, Claude CLI uses OAuth session auth which --bare disables.
+    /// </summary>
+    private static bool ShouldUseClaudeBareMode(Provider config)
+    {
+        return !string.IsNullOrWhiteSpace(config.ApiKey)
+            || !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("ANTHROPIC_API_KEY"));
+    }
+
     private static IProvider CreateProviderInstance(Provider config)
     {
         return (config.Type, config.ConnectionMode) switch

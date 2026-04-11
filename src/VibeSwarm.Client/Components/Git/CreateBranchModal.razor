@@ -24,22 +24,10 @@
         </div>
     </ChildContent>
     <FooterContent>
-        <button type="button" class="btn btn-secondary" @onclick="HandleClose" disabled="@IsCreating">
-            Cancel
-        </button>
-        <button type="button" class="btn btn-primary" @onclick="HandleCreate"
-            disabled="@(IsCreating || string.IsNullOrWhiteSpace(_branchName))">
-            @if (IsCreating)
-            {
-                <span class="spinner-border spinner-border-sm me-1" role="status"></span>
-                <span>Creating...</span>
-            }
-            else
-            {
-                <i class="bi bi-plus-lg me-1"></i>
-                <span>Create & Switch</span>
-            }
-        </button>
+        <ActionButton Text="Cancel" OnClick="HandleClose" Disabled="@IsCreating" />
+        <ActionButton Style="ActionButton.ButtonStyle.Primary" Icon="plus-lg" Text="Create & Switch"
+            LoadingText="Creating..." OnClick="HandleCreate"
+            Disabled="@(IsCreating || string.IsNullOrWhiteSpace(_branchName))" IsLoading="@IsCreating" />
     </FooterContent>
 </ModalDialog>
 

@@ -4,7 +4,7 @@
     <head>
         <meta charset="utf-8" />
         <meta name="viewport"
-            content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+            content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 
         <!-- PWA Meta Tags -->
         <meta name="application-name" content="VibeSwarm" />
@@ -16,6 +16,40 @@
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         <meta name="apple-mobile-web-app-title" content="VibeSwarm" />
         <meta name="format-detection" content="telephone=no" />
+
+        <!-- iOS Splash Screens (generated for common device sizes) -->
+        <!-- iPhone SE / 8 (750x1334) -->
+        <link rel="apple-touch-startup-image"
+              media="(device-width: 375px) and (device-height: 667px) and (-webkit-device-pixel-ratio: 2)"
+              href="/apple-touch-icon.png" />
+        <!-- iPhone X / XS / 11 Pro / 12 Mini / 13 Mini (1125x2436) -->
+        <link rel="apple-touch-startup-image"
+              media="(device-width: 375px) and (device-height: 812px) and (-webkit-device-pixel-ratio: 3)"
+              href="/web-app-manifest-512x512.png" />
+        <!-- iPhone XR / 11 / 12 / 13 / 14 (828x1792) -->
+        <link rel="apple-touch-startup-image"
+              media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 2)"
+              href="/web-app-manifest-512x512.png" />
+        <!-- iPhone 12 Pro / 13 Pro / 14 (1170x2532) -->
+        <link rel="apple-touch-startup-image"
+              media="(device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3)"
+              href="/web-app-manifest-512x512.png" />
+        <!-- iPhone 14 Pro / 15 / 15 Pro (1179x2556) -->
+        <link rel="apple-touch-startup-image"
+              media="(device-width: 393px) and (device-height: 852px) and (-webkit-device-pixel-ratio: 3)"
+              href="/web-app-manifest-512x512.png" />
+        <!-- iPhone 14 Pro Max / 15 Plus / 15 Pro Max (1290x2796) -->
+        <link rel="apple-touch-startup-image"
+              media="(device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3)"
+              href="/web-app-manifest-512x512.png" />
+        <!-- iPad 10.2" (1620x2160) -->
+        <link rel="apple-touch-startup-image"
+              media="(device-width: 810px) and (device-height: 1080px) and (-webkit-device-pixel-ratio: 2)"
+              href="/web-app-manifest-512x512.png" />
+        <!-- iPad Air / Pro 11" (1640x2360) -->
+        <link rel="apple-touch-startup-image"
+              media="(device-width: 820px) and (device-height: 1180px) and (-webkit-device-pixel-ratio: 2)"
+              href="/web-app-manifest-512x512.png" />
 
         <title>VibeSwarm</title>
         <base href="/" />
@@ -77,6 +111,32 @@
 
         <!-- Error handling for iOS Safari and WebAssembly loading issues -->
         <script>
+            window.vibeSwarmDiagnostics = {
+                reportCriticalError: function (payload) {
+                    try {
+                        return fetch('/api/diagnostics/critical-errors', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            credentials: 'include',
+                            body: JSON.stringify({
+                                source: payload.source || 'client-startup',
+                                category: payload.category || 'startup-failure',
+                                severity: payload.severity || 'critical',
+                                message: payload.message || 'Critical startup error',
+                                details: payload.details || null,
+                                url: window.location.href,
+                                userAgent: navigator.userAgent,
+                                triggeredRefresh: !!payload.triggeredRefresh,
+                                refreshAction: payload.refreshAction || null,
+                                additionalDataJson: payload.additionalDataJson || null
+                            })
+                        }).catch(function () { });
+                    } catch (e) {
+                        return Promise.resolve();
+                    }
+                }
+            };
+
             // Set a timeout to show loading status if Blazor takes too long
             var loadTimeout = setTimeout(function () {
                 var loadingMsg = document.getElementById('loading-message');
@@ -87,6 +147,13 @@
 
             // Show error UI after extended timeout (30s)
             var errorTimeout = setTimeout(function () {
+                window.vibeSwarmDiagnostics.reportCriticalError({
+                    source: 'client-startup',
+                    category: 'startup-timeout',
+                    message: 'Blazor WebAssembly did not finish loading before the startup timeout.',
+                    triggeredRefresh: true,
+                    refreshAction: 'reload-app'
+                });
                 document.getElementById('blazor-error-ui').style.display = 'block';
                 document.getElementById('app').style.display = 'none';
             }, 30000);
@@ -117,6 +184,13 @@
 
                 Promise.all(tasks).finally(function () {
                     try { localStorage.clear(); } catch (e) { }
+                    window.vibeSwarmDiagnostics.reportCriticalError({
+                        source: 'client-startup',
+                        category: 'manual-cache-reset',
+                        message: 'User cleared cached app resources and triggered a reload.',
+                        triggeredRefresh: true,
+                        refreshAction: 'clear-cache-reload'
+                    });
                     // Navigate with a cache-bust param; Blazor router ignores unknown query params
                     window.location.href = window.location.pathname + '?_cb=' + Date.now();
                 });
@@ -124,6 +198,220 @@
         </script>
 
         <script src="_framework/blazor.webassembly.js" autostart="false"></script>
+
+        <script>
+            window.vibeSwarmIdeas = {
+                _pasteTargets: {},
+                readAttachmentAsDataUrl: function (file, fallbackFileName) {
+                    return new Promise(function (resolve, reject) {
+                        var reader = new FileReader();
+                        reader.onload = function () {
+                            var result = reader.result || '';
+                            var commaIndex = result.indexOf(',');
+                            resolve({
+                                fileName: (file && file.name) || fallbackFileName || 'attachment',
+                                contentType: (file && file.type) || null,
+                                base64Content: commaIndex >= 0 ? result.substring(commaIndex + 1) : result
+                            });
+                        };
+                        reader.onerror = function () { reject(new Error('Unable to read attachment.')); };
+                        reader.readAsDataURL(file);
+                    });
+                },
+                createPastedImageFileName: function (contentType) {
+                    var extension = (contentType || 'image/png').split('/')[1] || 'png';
+                    return 'pasted-image-' + new Date().toISOString().replace(/[:.]/g, '-') + '.' + extension;
+                },
+                consumeSelectedFiles: async function (inputId) {
+                    var input = document.getElementById(inputId);
+                    if (!input || !input.files || input.files.length === 0) {
+                        return [];
+                    }
+
+                    var files = Array.from(input.files);
+                    var uploads = await Promise.all(files.map(function (file) {
+                        return window.vibeSwarmIdeas.readAttachmentAsDataUrl(file, file.name);
+                    }));
+
+                    input.value = '';
+                    return uploads;
+                },
+                registerPasteTarget: function (targetId, element, dotNetRef) {
+                    if (!element || !dotNetRef) {
+                        return;
+                    }
+
+                    window.vibeSwarmIdeas.unregisterPasteTarget(targetId);
+
+                    var handler = async function (event) {
+                        var clipboardData = event.clipboardData;
+                        if (!clipboardData || !clipboardData.items) {
+                            return;
+                        }
+
+                        var items = Array.from(clipboardData.items);
+                        var imageItem = items.find(function (item) {
+                            return item.kind === 'file' && item.type && item.type.indexOf('image/') === 0;
+                        });
+
+                        if (!imageItem) {
+                            return;
+                        }
+
+                        var file = imageItem.getAsFile();
+                        if (!file) {
+                            return;
+                        }
+
+                        event.preventDefault();
+                        try {
+                            var upload = await window.vibeSwarmIdeas.readAttachmentAsDataUrl(
+                                file,
+                                window.vibeSwarmIdeas.createPastedImageFileName(file.type)
+                            );
+                            await dotNetRef.invokeMethodAsync('HandleClipboardImagePasted', upload);
+                        } catch (error) {
+                            console.error('Unable to handle pasted image.', error);
+                        }
+                    };
+
+                    element.addEventListener('paste', handler);
+                    window.vibeSwarmIdeas._pasteTargets[targetId] = { element: element, handler: handler };
+                },
+                unregisterPasteTarget: function (targetId) {
+                    var entry = window.vibeSwarmIdeas._pasteTargets[targetId];
+                    if (!entry) {
+                        return;
+                    }
+
+                    entry.element.removeEventListener('paste', entry.handler);
+                    delete window.vibeSwarmIdeas._pasteTargets[targetId];
+                },
+                readImageFromClipboard: async function (targetId) {
+                    if (!navigator.clipboard || !navigator.clipboard.read) {
+                        throw new Error('Clipboard image paste is not supported by this browser.');
+                    }
+
+                    var items = await navigator.clipboard.read();
+                    for (var i = 0; i < items.length; i++) {
+                        var item = items[i];
+                        var imageType = item.types.find(function (type) { return type.indexOf('image/') === 0; });
+                        if (!imageType) {
+                            continue;
+                        }
+
+                        var blob = await item.getType(imageType);
+                        blob.name = window.vibeSwarmIdeas.createPastedImageFileName(imageType);
+                        return await window.vibeSwarmIdeas.readAttachmentAsDataUrl(blob, blob.name);
+                    }
+
+                    return null;
+                }
+            };
+
+            // Touch-based drag-and-drop reorder for iOS/mobile.
+            // Called by DragDropList.razor to enable touch reordering on drag handles.
+            window.vibeSwarmInitTouchDrag = function (containerElement, dotNetRef) {
+                if (!containerElement) return;
+
+                var handles = containerElement.querySelectorAll('[data-drag-handle]');
+                handles.forEach(function (handle) {
+                    // Skip if already initialized (prevents duplicate listeners)
+                    if (handle.__vsTouchInit) return;
+                    handle.__vsTouchInit = true;
+
+                    // Prevent scrolling when touching the drag handle
+                    handle.style.touchAction = 'none';
+
+                    handle.addEventListener('touchstart', function (e) {
+                        var item = handle.closest('[data-drag-index]');
+                        if (!item) return;
+
+                        var dragIndex = parseInt(item.getAttribute('data-drag-index'));
+                        var startY = e.touches[0].clientY;
+                        var currentOverIndex = -1;
+                        var items = containerElement.querySelectorAll('[data-drag-index]');
+
+                        // Apply dragging visual
+                        item.style.opacity = '0.5';
+
+                        function onTouchMove(ev) {
+                            ev.preventDefault();
+                            var touch = ev.touches[0];
+                            var elementBelow = document.elementFromPoint(touch.clientX, touch.clientY);
+                            if (!elementBelow) return;
+
+                            var targetItem = elementBelow.closest('[data-drag-index]');
+                            var newOverIndex = targetItem ? parseInt(targetItem.getAttribute('data-drag-index')) : -1;
+
+                            if (newOverIndex !== currentOverIndex) {
+                                // Remove previous over indicator
+                                items.forEach(function (el) { el.classList.remove('drag-drop-over'); });
+                                // Add indicator to new target
+                                if (targetItem && newOverIndex !== dragIndex) {
+                                    targetItem.classList.add('drag-drop-over');
+                                }
+                                currentOverIndex = newOverIndex;
+                            }
+                        }
+
+                        function onTouchEnd(ev) {
+                            document.removeEventListener('touchmove', onTouchMove);
+                            document.removeEventListener('touchend', onTouchEnd);
+
+                            // Clean up visuals
+                            item.style.opacity = '';
+                            items.forEach(function (el) { el.classList.remove('drag-drop-over'); });
+
+                            if (currentOverIndex >= 0 && currentOverIndex !== dragIndex) {
+                                dotNetRef.invokeMethodAsync('OnTouchReorder', dragIndex, currentOverIndex);
+                            }
+                        }
+
+                        document.addEventListener('touchmove', onTouchMove, { passive: false });
+                        document.addEventListener('touchend', onTouchEnd, { once: true });
+                    }, { passive: true });
+                });
+            };
+        </script>
+
+        <script>
+            window.vibeSwarmLiveOutput = {
+                isNearBottom: function (element) {
+                    if (!element) {
+                        return false;
+                    }
+
+                    return element.scrollHeight - element.scrollTop - element.clientHeight <= 4;
+                },
+                sync: function (element) {
+                    if (!element) {
+                        return;
+                    }
+
+                    var shouldStick = element.dataset.vsAutoscroll !== 'false';
+                    if (shouldStick) {
+                        element.scrollTo({
+                            top: element.scrollHeight,
+                            behavior: 'smooth'
+                        });
+                    }
+
+                    var updateAutoscrollState = function () {
+                        element.dataset.vsAutoscroll = window.vibeSwarmLiveOutput.isNearBottom(element)
+                            ? 'true'
+                            : 'false';
+                    };
+
+                    if (!element.dataset.vsAutoscrollInitialized) {
+                        element.dataset.vsAutoscrollInitialized = 'true';
+                        element.addEventListener('scroll', updateAutoscrollState, { passive: true });
+                    }
+
+                    updateAutoscrollState();
+                }
+            };
+        </script>
 
         <script>
             window.scrollToEnd = function (element) {
@@ -184,8 +472,82 @@
                 clearTimeout(loadTimeout);
                 clearTimeout(errorTimeout);
                 console.error('Blazor WebAssembly failed to start:', err);
+                window.vibeSwarmDiagnostics.reportCriticalError({
+                    source: 'client-startup',
+                    category: 'blazor-start-failure',
+                    message: 'Blazor WebAssembly failed to start.',
+                    details: err && err.stack ? err.stack : String(err),
+                    triggeredRefresh: true,
+                    refreshAction: 'reload-app'
+                });
                 document.getElementById('blazor-error-ui').style.display = 'block';
                 document.getElementById('app').style.display = 'none';
+            });
+        </script>
+
+        <script>
+            window.addEventListener('error', function (event) {
+                if (!event) return;
+
+                window.vibeSwarmDiagnostics.reportCriticalError({
+                    source: 'client-startup',
+                    category: 'window-error',
+                    message: event.message || 'Unhandled browser error.',
+                    details: event.error && event.error.stack ? event.error.stack : (event.filename ? event.filename + ':' + event.lineno + ':' + event.colno : null)
+                });
+            });
+
+            window.addEventListener('unhandledrejection', function (event) {
+                var reason = event && event.reason ? event.reason : null;
+                window.vibeSwarmDiagnostics.reportCriticalError({
+                    source: 'client-startup',
+                    category: 'unhandled-rejection',
+                    message: 'Unhandled promise rejection during startup.',
+                    details: reason && reason.stack ? reason.stack : String(reason)
+                });
+            });
+        </script>
+
+        <!-- PWA Install Prompt -->
+        <script>
+            // Captures the beforeinstallprompt event so a custom install banner can trigger it later.
+            window.vibeSwarmInstallPrompt = null;
+            window.vibeSwarmInstallable = false;
+
+            window.addEventListener('beforeinstallprompt', function (e) {
+                e.preventDefault();
+                window.vibeSwarmInstallPrompt = e;
+                window.vibeSwarmInstallable = true;
+            });
+
+            // Returns true when the app is in standalone/installed mode
+            window.vibeSwarmIsStandalone = function () {
+                return window.matchMedia('(display-mode: standalone)').matches
+                    || window.navigator.standalone === true;
+            };
+
+            // Called by InstallPromptBanner.razor to check if install is available
+            window.checkInstallAvailable = function () {
+                // Don't show install prompt if already installed
+                if (window.vibeSwarmIsStandalone()) return false;
+                return window.vibeSwarmInstallable;
+            };
+
+            // Called by InstallPromptBanner.razor when the user taps Install
+            window.promptInstall = function () {
+                if (!window.vibeSwarmInstallPrompt) return Promise.resolve(false);
+                window.vibeSwarmInstallPrompt.prompt();
+                return window.vibeSwarmInstallPrompt.userChoice.then(function (result) {
+                    window.vibeSwarmInstallPrompt = null;
+                    window.vibeSwarmInstallable = false;
+                    return result.outcome === 'accepted';
+                });
+            };
+
+            // Listen for successful install
+            window.addEventListener('appinstalled', function () {
+                window.vibeSwarmInstallPrompt = null;
+                window.vibeSwarmInstallable = false;
             });
         </script>
 

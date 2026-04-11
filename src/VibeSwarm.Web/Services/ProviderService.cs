@@ -48,6 +48,7 @@ public class ProviderService : IProviderService
 
     public async Task<Provider> CreateAsync(Provider provider, CancellationToken cancellationToken = default)
     {
+        NormalizeProvider(provider);
         provider.Id = Guid.NewGuid();
         provider.CreatedAt = DateTime.UtcNow;
 
@@ -59,6 +60,7 @@ public class ProviderService : IProviderService
 
     public async Task<Provider> UpdateAsync(Provider provider, CancellationToken cancellationToken = default)
     {
+        NormalizeProvider(provider);
         var existing = await _dbContext.Providers
             .FirstOrDefaultAsync(p => p.Id == provider.Id, cancellationToken);
 
@@ -73,7 +75,11 @@ public class ProviderService : IProviderService
         existing.ExecutablePath = provider.ExecutablePath;
         existing.ApiEndpoint = provider.ApiEndpoint;
         existing.ApiKey = provider.ApiKey;
+        existing.DefaultReasoningEffort = provider.DefaultReasoningEffort;
         existing.IsEnabled = provider.IsEnabled;
+        existing.MaxExecutionMinutes = provider.MaxExecutionMinutes;
+        existing.ConfiguredUsageLimit = provider.ConfiguredUsageLimit;
+        existing.ConfiguredLimitType = provider.ConfiguredLimitType;
 
         await _dbContext.SaveChangesAsync(cancellationToken);
 
@@ -243,6 +249,16 @@ public class ProviderService : IProviderService
             (ProviderType.Copilot, _) => new CopilotProvider(config),
             _ => throw new NotSupportedException($"Provider type {config.Type} with mode {config.ConnectionMode} is not supported.")
         };
+    }
+
+    private static void NormalizeProvider(Provider provider)
+    {
+        provider.Name = provider.Name.Trim();
+        provider.ExecutablePath = string.IsNullOrWhiteSpace(provider.ExecutablePath) ? null : provider.ExecutablePath.Trim();
+        provider.WorkingDirectory = string.IsNullOrWhiteSpace(provider.WorkingDirectory) ? null : provider.WorkingDirectory.Trim();
+        provider.ApiEndpoint = string.IsNullOrWhiteSpace(provider.ApiEndpoint) ? null : provider.ApiEndpoint.Trim();
+        provider.ApiKey = string.IsNullOrWhiteSpace(provider.ApiKey) ? null : provider.ApiKey.Trim();
+        provider.DefaultReasoningEffort = ProviderCapabilities.NormalizeReasoningEffort(provider.DefaultReasoningEffort);
     }
 
     public async Task<IEnumerable<ProviderModel>> GetModelsAsync(Guid providerId, CancellationToken cancellationToken = default)
