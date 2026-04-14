@@ -19,7 +19,8 @@ public sealed class TeamRolesPageTests
 		var html = await RenderTeamsPageAsync([]);
 
 		Assert.Contains("btn btn-primary", html);
-		Assert.Contains(">Add<", html);
+		Assert.Contains(">Add Agent<", html);
+		Assert.Contains(">Agents<", html);
 		Assert.Contains("d-flex align-items-center justify-content-between gap-2 gap-sm-3 mb-3 mb-lg-4", html);
 	}
 
@@ -44,6 +45,9 @@ public sealed class TeamRolesPageTests
 				Name = "Claude Code"
 			},
 			DefaultModelId = "claude-sonnet-4.6",
+			DefaultCycleMode = CycleMode.Autonomous,
+			DefaultCycleSessionMode = CycleSessionMode.ContinueSession,
+			DefaultMaxCycles = 4,
 			IsEnabled = true,
 			SkillLinks =
 			[
@@ -63,6 +67,7 @@ public sealed class TeamRolesPageTests
 		Assert.Contains("linked skill", html);
 		Assert.Contains("Default provider: Claude Code", html);
 		Assert.Contains("Default model: claude-sonnet-4.6", html);
+		Assert.Contains("Default run: autonomous up to 4 cycles, resume session", html);
 	}
 
 	private static async Task<string> RenderTeamsPageAsync(

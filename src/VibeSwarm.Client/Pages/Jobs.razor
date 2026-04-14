@@ -218,7 +218,7 @@
 </div>
 
 @* Create Job Modal *@
-<CreateJobModal @bind-IsVisible="_showCreateJobModal" JobModel="@_newJob" Providers="@GetAllowedCreateJobProviders()"
+<CreateJobModal @bind-IsVisible="_showCreateJobModal" JobModel="@_newJob" Project="@GetSelectedProject()" Providers="@GetAllowedCreateJobProviders()"
 				AvailableModels="@_availableModels" Branches="@_branches" CurrentBranch="@_currentBranch"
 				ShowBranchSelector="@(_branches.Any())" IsLoadingModels="@_isLoadingModels" IsSaving="@_isSaving"
 				ErrorMessage="@_createJobError" @bind-SelectedModelId="@_selectedModelId" OnProviderChanged="OnCreateJobProviderChanged"

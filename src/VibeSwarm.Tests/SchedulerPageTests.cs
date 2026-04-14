@@ -113,7 +113,7 @@ public sealed class SchedulerPageTests
 			});
 
 			Assert.Contains("Security Reviewer", html);
-			Assert.DoesNotContain("Unknown team member", html);
+			Assert.DoesNotContain("Unknown agent", html);
 			Assert.Contains("review for security issues", html);
 		}
 		finally

@@ -43,7 +43,7 @@ public class TeamRoleService : ITeamRoleService
 
 		if (await NameExistsAsync(teamRole.Name, cancellationToken: cancellationToken))
 		{
-			throw new InvalidOperationException($"A team role named '{teamRole.Name}' already exists.");
+			throw new InvalidOperationException($"An agent named '{teamRole.Name}' already exists.");
 		}
 
 		await ValidateSkillsAsync(teamRole.SkillLinks, cancellationToken);
@@ -58,6 +58,10 @@ public class TeamRoleService : ITeamRoleService
 			DefaultProviderId = teamRole.DefaultProviderId,
 			DefaultModelId = teamRole.DefaultModelId,
 			DefaultReasoningEffort = teamRole.DefaultReasoningEffort,
+			DefaultCycleMode = teamRole.DefaultCycleMode,
+			DefaultCycleSessionMode = teamRole.DefaultCycleSessionMode,
+			DefaultMaxCycles = teamRole.DefaultMaxCycles,
+			DefaultCycleReviewPrompt = teamRole.DefaultCycleReviewPrompt,
 			IsEnabled = teamRole.IsEnabled,
 			CreatedAt = DateTime.UtcNow,
 			UpdatedAt = null,
@@ -89,12 +93,12 @@ public class TeamRoleService : ITeamRoleService
 			.FirstOrDefaultAsync(role => role.Id == teamRole.Id, cancellationToken);
 		if (existing == null)
 		{
-			throw new InvalidOperationException($"Team role with ID {teamRole.Id} not found.");
+			throw new InvalidOperationException($"Agent with ID {teamRole.Id} not found.");
 		}
 
 		if (await NameExistsAsync(teamRole.Name, teamRole.Id, cancellationToken))
 		{
-			throw new InvalidOperationException($"A team role named '{teamRole.Name}' already exists.");
+			throw new InvalidOperationException($"An agent named '{teamRole.Name}' already exists.");
 		}
 
 		await ValidateSkillsAsync(teamRole.SkillLinks, cancellationToken);
@@ -106,6 +110,10 @@ public class TeamRoleService : ITeamRoleService
 		existing.DefaultProviderId = teamRole.DefaultProviderId;
 		existing.DefaultModelId = teamRole.DefaultModelId;
 		existing.DefaultReasoningEffort = teamRole.DefaultReasoningEffort;
+		existing.DefaultCycleMode = teamRole.DefaultCycleMode;
+		existing.DefaultCycleSessionMode = teamRole.DefaultCycleSessionMode;
+		existing.DefaultMaxCycles = teamRole.DefaultMaxCycles;
+		existing.DefaultCycleReviewPrompt = teamRole.DefaultCycleReviewPrompt;
 		existing.IsEnabled = teamRole.IsEnabled;
 		existing.UpdatedAt = DateTime.UtcNow;
 
@@ -152,10 +160,20 @@ public class TeamRoleService : ITeamRoleService
 		teamRole.Responsibilities = string.IsNullOrWhiteSpace(teamRole.Responsibilities) ? null : teamRole.Responsibilities.Trim();
 		teamRole.DefaultModelId = string.IsNullOrWhiteSpace(teamRole.DefaultModelId) ? null : teamRole.DefaultModelId.Trim();
 		teamRole.DefaultReasoningEffort = ProviderCapabilities.NormalizeReasoningEffort(teamRole.DefaultReasoningEffort);
+		teamRole.DefaultCycleReviewPrompt = string.IsNullOrWhiteSpace(teamRole.DefaultCycleReviewPrompt)
+			? null
+			: teamRole.DefaultCycleReviewPrompt.Trim();
+		teamRole.DefaultMaxCycles = Math.Clamp(teamRole.DefaultMaxCycles, 1, 100);
 		if (!teamRole.DefaultProviderId.HasValue)
 		{
 			teamRole.DefaultModelId = null;
 			teamRole.DefaultReasoningEffort = null;
+		}
+		if (teamRole.DefaultCycleMode == CycleMode.SingleCycle)
+		{
+			teamRole.DefaultCycleSessionMode = CycleSessionMode.ContinueSession;
+			teamRole.DefaultMaxCycles = 1;
+			teamRole.DefaultCycleReviewPrompt = null;
 		}
 		teamRole.SkillLinks = (teamRole.SkillLinks ?? [])
 			.GroupBy(link => link.SkillId)

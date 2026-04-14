@@ -190,14 +190,14 @@ public sealed class ProjectModalFormModel : IValidatableObject
 		if (duplicateTeamRoleIds.Any())
 		{
 			yield return new ValidationResult(
-				"Each team role can only be assigned once per project.",
+				"Each agent can only be assigned once per project.",
 				[nameof(TeamAssignments)]);
 		}
 
 		if (TeamAssignments.Any(assignment => assignment.ProviderId == Guid.Empty))
 		{
 			yield return new ValidationResult(
-				"Each assigned team role must have a provider.",
+				"Each assigned agent must have a provider.",
 				[nameof(TeamAssignments)]);
 		}
 

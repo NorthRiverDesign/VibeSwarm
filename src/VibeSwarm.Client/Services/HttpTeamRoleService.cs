@@ -61,6 +61,10 @@ public class HttpTeamRoleService : ITeamRoleService
 			DefaultProviderId = teamRole.DefaultProviderId,
 			DefaultModelId = teamRole.DefaultModelId,
 			DefaultReasoningEffort = teamRole.DefaultReasoningEffort,
+			DefaultCycleMode = teamRole.DefaultCycleMode,
+			DefaultCycleSessionMode = teamRole.DefaultCycleSessionMode,
+			DefaultMaxCycles = teamRole.DefaultMaxCycles,
+			DefaultCycleReviewPrompt = teamRole.DefaultCycleReviewPrompt,
 			IsEnabled = teamRole.IsEnabled,
 			SkillLinks = (teamRole.SkillLinks ?? [])
 				.GroupBy(link => link.SkillId)

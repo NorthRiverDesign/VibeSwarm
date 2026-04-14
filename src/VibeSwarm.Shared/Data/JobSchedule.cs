@@ -92,7 +92,7 @@ public class JobSchedule : IValidatableObject
 
 		if (ScheduleType == JobScheduleType.RunJob && ExecutionTarget == JobScheduleExecutionTarget.TeamRole && (!TeamRoleId.HasValue || TeamRoleId == Guid.Empty))
 		{
-			yield return new ValidationResult("A team member is required.", [nameof(TeamRoleId)]);
+			yield return new ValidationResult("An agent is required.", [nameof(TeamRoleId)]);
 		}
 
 		if (ScheduleType == JobScheduleType.GenerateIdeas && (!InferenceProviderId.HasValue || InferenceProviderId == Guid.Empty))

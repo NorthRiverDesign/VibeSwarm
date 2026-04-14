@@ -62,7 +62,7 @@ Assert.Contains("Planning", html);
 Assert.Contains("Job Execution", html);
 Assert.Contains("Instructions &amp; Memory", html);
 Assert.Contains("Default Job Model", html);
-Assert.Contains("Team Roles", html);
+Assert.Contains("Agents", html);
 Assert.Contains("Build Verification", html);
 Assert.Contains("Create Project", html);
 }

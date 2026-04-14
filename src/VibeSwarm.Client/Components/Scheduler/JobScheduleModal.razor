@@ -66,9 +66,9 @@
 						<label for="schedule-target" class="form-label">Executor Type</label>
 						<InputSelect id="schedule-target" @bind-Value="Schedule.ExecutionTarget" @bind-Value:after="OnExecutionTargetChanged" class="form-select">
 							<option value="@JobScheduleExecutionTarget.Provider">Provider</option>
-							<option value="@JobScheduleExecutionTarget.TeamRole">Team Member</option>
+							<option value="@JobScheduleExecutionTarget.TeamRole">Agent</option>
 						</InputSelect>
-						<div class="form-text">Choose a direct provider or a project team member role that should run this task.</div>
+						<div class="form-text">Choose a direct provider or a project agent that should run this task.</div>
 					</div>
 
 					@if (Schedule.ExecutionTarget == JobScheduleExecutionTarget.Provider)
@@ -88,10 +88,10 @@
 					else
 					{
 						<div class="col-12 col-lg-4">
-							<label for="schedule-team-role" class="form-label">Team Member</label>
+							<label for="schedule-team-role" class="form-label">Agent</label>
 							<select id="schedule-team-role" class="form-select" value="@GetTeamRoleValue()" @onchange="OnTeamRoleChanged"
 									disabled="@(!_availableTeamAssignments.Any())">
-								<option value="">@(_availableTeamAssignments.Any() ? "Select team member..." : "No enabled team members")</option>
+								<option value="">@(_availableTeamAssignments.Any() ? "Select agent..." : "No enabled agents")</option>
 								@foreach (var assignment in _availableTeamAssignments)
 								{
 									<option value="@assignment.TeamRoleId">@GetTeamAssignmentDisplayText(assignment)</option>
@@ -99,7 +99,7 @@
 							</select>
 							@if (!_availableTeamAssignments.Any())
 							{
-								<div class="form-text text-warning">Assign an enabled team role with an enabled provider in the project settings first.</div>
+								<div class="form-text text-warning">Assign an enabled agent with an enabled provider in the project settings first.</div>
 							}
 						</div>
 					}
@@ -548,7 +548,7 @@
 
 		if (Schedule.ScheduleType == JobScheduleType.RunJob && Schedule.ExecutionTarget == JobScheduleExecutionTarget.TeamRole && !Schedule.TeamRoleId.HasValue)
 		{
-			ErrorMessage = "Please select a team member.";
+			ErrorMessage = "Please select an agent.";
 			return;
 		}
 
@@ -688,7 +688,7 @@
 		var assignment = GetSelectedTeamAssignment();
 		if (assignment == null)
 		{
-			return "Leave empty to use the selected team member's assigned default model.";
+			return "Leave empty to use the selected agent's assigned default model.";
 		}
 
 		if (!string.IsNullOrWhiteSpace(assignment.PreferredModelId))
@@ -696,12 +696,12 @@
 			return $"Leave empty to use {assignment.TeamRole?.Name}'s assigned model ({assignment.PreferredModelId}).";
 		}
 
-		return "Leave empty to use the selected team member's provider default model.";
+		return "Leave empty to use the selected agent's provider default model.";
 	}
 
 	private static string GetTeamAssignmentDisplayText(ProjectTeamRole assignment)
 	{
-		var roleName = assignment.TeamRole?.Name ?? "Unknown team member";
+		var roleName = assignment.TeamRole?.Name ?? "Unknown agent";
 		var providerName = assignment.Provider?.Name ?? "Unknown provider";
 		return $"{roleName} ({providerName})";
 	}

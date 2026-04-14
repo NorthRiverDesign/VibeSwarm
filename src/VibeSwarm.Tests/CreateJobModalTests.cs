@@ -49,6 +49,75 @@ public sealed class CreateJobModalTests
 		Assert.Contains("Save as Template", cut.Markup);
 	}
 
+	[Fact]
+	public void CreateJobModal_SelectingAgentPresetAppliesAssignedExecutionDefaults()
+	{
+		using var context = new BunitContext();
+		context.JSInterop.SetupVoid("eval", "document.body.classList.add('vs-modal-open')");
+		context.JSInterop.SetupVoid("eval", "document.body.classList.remove('vs-modal-open')");
+		context.Services.AddSingleton<IJobTemplateService>(new FakeJobTemplateService());
+		context.Services.AddSingleton<NotificationService>();
+
+		var provider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "GitHub Copilot",
+			Type = ProviderType.Copilot,
+			IsEnabled = true
+		};
+		var teamRole = new TeamRole
+		{
+			Id = Guid.NewGuid(),
+			Name = "Security Reviewer",
+			Description = "Reviews risky auth and secrets changes.",
+			Responsibilities = "Inspect security-sensitive code paths before shipping.",
+			DefaultCycleMode = CycleMode.Autonomous,
+			DefaultCycleSessionMode = CycleSessionMode.ContinueSession,
+			DefaultMaxCycles = 4,
+			DefaultCycleReviewPrompt = "Review the last cycle and continue only if work remains."
+		};
+		var project = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "VibeSwarm",
+			TeamAssignments =
+			[
+				new ProjectTeamRole
+				{
+					ProjectId = Guid.NewGuid(),
+					TeamRoleId = teamRole.Id,
+					TeamRole = teamRole,
+					ProviderId = provider.Id,
+					Provider = provider,
+					PreferredModelId = "gpt-5.4",
+					PreferredReasoningEffort = "high",
+					IsEnabled = true
+				}
+			]
+		};
+
+		var cut = context.Render<CreateJobModal>(parameters => parameters
+			.Add(component => component.IsVisible, true)
+			.Add(component => component.JobModel, new Job())
+			.Add(component => component.Project, project)
+			.Add(component => component.Providers, [provider])
+			.Add(component => component.AvailableModels, new List<ProviderModel>())
+			.Add(component => component.Branches, new List<GitBranchInfo>())
+			.Add(component => component.TemplateLibrary, []));
+
+		cut.Find("#agentPreset").Change(teamRole.Id.ToString());
+
+		Assert.Contains("Agent Preset", cut.Markup);
+		Assert.Contains("Security Reviewer", cut.Markup);
+		Assert.Contains("GitHub Copilot", cut.Markup);
+		Assert.Contains("gpt-5.4", cut.Markup);
+		Assert.Contains("high", cut.Markup);
+		Assert.Contains("Autonomous (max 4 cycles)", cut.Markup);
+		Assert.Contains("Continue session between cycles", cut.Markup);
+		Assert.Contains("Review the last cycle and continue only if work remains.", cut.Markup);
+		Assert.Empty(cut.FindAll("#provider"));
+	}
+
 	private sealed class FakeJobTemplateService : IJobTemplateService
 	{
 		public Task<IEnumerable<JobTemplate>> GetAllAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<JobTemplate>>([]);

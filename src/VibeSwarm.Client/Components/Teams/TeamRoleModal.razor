@@ -4,7 +4,7 @@
 @inject NotificationService NotificationService
 
 <ModalDialog IsVisible="IsVisible" IsVisibleChanged="HandleModalVisibilityChanged"
-			 Title="@(IsEdit ? "Edit Team Role" : "Add Team Role")" Icon="@(IsEdit ? "pencil" : "people")"
+			 Title="@(IsEdit ? "Edit Agent" : "Add Agent")" Icon="@(IsEdit ? "pencil" : "cpu")"
 			 Size="ModalDialog.ModalSize.Large" OnClose="HandleClose">
 	<ChildContent>
 		<EditForm Model="@TeamRole" OnValidSubmit="HandleValidSubmit">
@@ -19,18 +19,18 @@
 			</div>
 
 			<div class="mb-3">
-				<label for="team-role-description" class="form-label">Description</label>
+				<label for="team-role-description" class="form-label">Purpose</label>
 				<InputTextArea id="team-role-description" @bind-Value="TeamRole.Description" class="form-control"
 							   rows="4" placeholder="Short summary of this role's purpose..." />
-				<div class="form-text">Shown in project team assignment pickers and role summaries.</div>
+				<div class="form-text">Shown in project agent pickers and execution summaries.</div>
 			</div>
 
 			<div class="mb-3">
-				<label for="team-role-responsibilities" class="form-label">Responsibilities</label>
+				<label for="team-role-responsibilities" class="form-label">Agent Instructions</label>
 				<InputTextArea id="team-role-responsibilities" @bind-Value="TeamRole.Responsibilities" class="form-control"
 							   rows="6" placeholder="Describe what this role owns, reviews, or specializes in..." />
 				<ValidationMessage For="@(() => TeamRole.Responsibilities)" class="text-danger small" />
-				<div class="form-text">Use this to capture the role's responsibilities, review focus, and collaboration expectations.</div>
+				<div class="form-text">Use this to capture what the agent owns, reviews, and how it should approach the work.</div>
 			</div>
 
 			<div class="row g-3 mb-3">
@@ -39,7 +39,7 @@
 					@if (!_providers.Any())
 					{
 						<div class="rounded border bg-body-tertiary p-3 small text-body-secondary">
-							No enabled providers are available yet. You can still save this role and choose a provider when assigning it to a project.
+							No enabled providers are available yet. You can still save this agent and choose a provider when assigning it to a project.
 						</div>
 					}
 					else
@@ -55,7 +55,7 @@
 								<option value="@provider.Id">@provider.Name</option>
 							}
 						</InputSelect>
-						<div class="form-text">Used as the default provider when this role is added to a project.</div>
+						<div class="form-text">Used when this agent is assigned to a project or selected for a job.</div>
 					}
 				</div>
 				<div class="col-12 col-lg-6">
@@ -118,6 +118,44 @@
 				</div>
 			</div>
 
+			<div class="border rounded bg-body-tertiary p-3 mb-3">
+				<div class="fw-semibold mb-2">Default Execution Profile</div>
+				<div class="row g-3">
+					<div class="col-12 col-lg-6">
+						<label for="team-role-cycle-mode" class="form-label">Cycle Mode</label>
+						<InputSelect id="team-role-cycle-mode" @bind-Value="TeamRole.DefaultCycleMode" class="form-select">
+							<option value="@CycleMode.SingleCycle">Single Cycle</option>
+							<option value="@CycleMode.FixedCount">Fixed Count</option>
+							<option value="@CycleMode.Autonomous">Autonomous</option>
+						</InputSelect>
+						<div class="form-text">Applied when this agent is selected directly for a job or schedule.</div>
+					</div>
+					@if (TeamRole.DefaultCycleMode != CycleMode.SingleCycle)
+					{
+						<div class="col-12 col-lg-6">
+							<label for="team-role-max-cycles" class="form-label">Max Cycles</label>
+							<InputNumber id="team-role-max-cycles" @bind-Value="TeamRole.DefaultMaxCycles" class="form-control" min="1" max="100" />
+							<ValidationMessage For="@(() => TeamRole.DefaultMaxCycles)" class="text-danger small" />
+							<div class="form-text">Safety limit for fixed-count or autonomous execution.</div>
+						</div>
+						<div class="col-12 col-lg-6">
+							<label for="team-role-session-mode" class="form-label">Session Mode</label>
+							<InputSelect id="team-role-session-mode" @bind-Value="TeamRole.DefaultCycleSessionMode" class="form-select">
+								<option value="@CycleSessionMode.ContinueSession">Continue Session</option>
+								<option value="@CycleSessionMode.FreshSession">Fresh Session</option>
+							</InputSelect>
+							<div class="form-text">Controls whether the agent resumes the same provider session between cycles.</div>
+						</div>
+						<div class="col-12">
+							<label for="team-role-cycle-review" class="form-label">Cycle Review Prompt (Optional)</label>
+							<InputTextArea id="team-role-cycle-review" @bind-Value="TeamRole.DefaultCycleReviewPrompt" class="form-control"
+										   rows="4" placeholder="Review instructions used between cycles..." />
+							<div class="form-text">Optional review instructions applied between cycles for this agent.</div>
+						</div>
+					}
+				</div>
+			</div>
+
 			<div class="mb-3">
 				<label class="form-label">Skills</label>
 				@if (!_skills.Any())
@@ -162,7 +200,7 @@
 						Enabled
 					</label>
 				</div>
-				<div class="form-text">Disabled roles stay saved but should not be assigned to new projects.</div>
+				<div class="form-text">Disabled agents stay saved but should not be assigned to new projects.</div>
 			</div>
 
 			@if (!string.IsNullOrEmpty(ErrorMessage))
@@ -179,7 +217,7 @@
 					{
 						<span class="spinner-border spinner-border-sm me-1" role="status"></span>
 					}
-					@(IsSaving ? "Saving..." : (IsEdit ? "Update Team Role" : "Add Team Role"))
+					@(IsSaving ? "Saving..." : (IsEdit ? "Update Agent" : "Add Agent"))
 				</button>
 			</div>
 		</EditForm>
@@ -249,6 +287,10 @@
 					DefaultProvider = EditTeamRole.DefaultProvider,
 					DefaultModelId = EditTeamRole.DefaultModelId,
 					DefaultReasoningEffort = EditTeamRole.DefaultReasoningEffort,
+					DefaultCycleMode = EditTeamRole.DefaultCycleMode,
+					DefaultCycleSessionMode = EditTeamRole.DefaultCycleSessionMode,
+					DefaultMaxCycles = EditTeamRole.DefaultMaxCycles,
+					DefaultCycleReviewPrompt = EditTeamRole.DefaultCycleReviewPrompt,
 					IsEnabled = EditTeamRole.IsEnabled,
 					CreatedAt = EditTeamRole.CreatedAt,
 					UpdatedAt = EditTeamRole.UpdatedAt,
@@ -390,7 +432,7 @@
 			var nameExists = await TeamRoleService.NameExistsAsync(TeamRole.Name, IsEdit ? TeamRole.Id : null);
 			if (nameExists)
 			{
-				ErrorMessage = "A team role with this name already exists.";
+				ErrorMessage = "An agent with this name already exists.";
 				IsSaving = false;
 				return;
 			}
@@ -399,13 +441,13 @@
 			if (IsEdit)
 			{
 				await TeamRoleService.UpdateAsync(TeamRole);
-				NotificationService.ShowSuccess("Team role updated successfully.");
+				NotificationService.ShowSuccess("Agent updated successfully.");
 			}
 			else
 			{
 				var created = await TeamRoleService.CreateAsync(TeamRole);
 				newTeamRoleId = created.Id;
-				NotificationService.ShowSuccess("Team role added successfully.");
+				NotificationService.ShowSuccess("Agent added successfully.");
 			}
 
 			await OnSaved.InvokeAsync(newTeamRoleId);
@@ -413,7 +455,7 @@
 		}
 		catch (Exception ex)
 		{
-			ErrorMessage = $"Error saving team role: {ex.Message}";
+			ErrorMessage = $"Error saving agent: {ex.Message}";
 		}
 		finally
 		{

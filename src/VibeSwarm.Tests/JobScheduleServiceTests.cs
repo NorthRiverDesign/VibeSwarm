@@ -187,7 +187,7 @@ public sealed class JobScheduleServiceTests : IDisposable
 			MinuteUtc = 0
 		}));
 
-		Assert.Equal("The selected team member is not assigned to this project.", exception.Message);
+		Assert.Equal("The selected agent is not assigned to this project.", exception.Message);
 	}
 
 	[Fact]

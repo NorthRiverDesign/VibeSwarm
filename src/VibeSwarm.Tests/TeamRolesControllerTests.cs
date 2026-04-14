@@ -31,7 +31,7 @@ public sealed class TeamRolesControllerTests
 		var result = await controller.Create(new TeamRole { Name = "Security Reviewer" }, CancellationToken.None);
 
 		var badRequest = Assert.IsType<BadRequestObjectResult>(result);
-		Assert.Contains("A team role with this name already exists.", SerializeValue(badRequest.Value));
+		Assert.Contains("An agent with this name already exists.", SerializeValue(badRequest.Value));
 	}
 
 	[Fact]

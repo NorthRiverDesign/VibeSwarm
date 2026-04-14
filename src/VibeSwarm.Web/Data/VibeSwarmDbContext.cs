@@ -367,6 +367,7 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 			entity.Property(e => e.Responsibilities).HasMaxLength(ValidationLimits.TeamRoleResponsibilitiesMaxLength);
 			entity.Property(e => e.DefaultModelId).HasMaxLength(200);
 			entity.Property(e => e.DefaultReasoningEffort).HasMaxLength(ValidationLimits.ReasoningEffortMaxLength);
+			entity.Property(e => e.DefaultCycleReviewPrompt).HasMaxLength(ValidationLimits.JobTemplatePromptMaxLength);
 			entity.HasOne(e => e.DefaultProvider)
 				.WithMany()
 				.HasForeignKey(e => e.DefaultProviderId)

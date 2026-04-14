@@ -96,7 +96,7 @@ public class TeamRolesController : ControllerBase
 			message.Contains("TeamRoles", StringComparison.OrdinalIgnoreCase) &&
 			message.Contains("Name", StringComparison.OrdinalIgnoreCase))
 		{
-			return "A team role with this name already exists.";
+			return "An agent with this name already exists.";
 		}
 
 		if (message.Contains("FOREIGN KEY", StringComparison.OrdinalIgnoreCase) ||

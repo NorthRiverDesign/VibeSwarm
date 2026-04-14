@@ -99,9 +99,10 @@ public partial class JobService : IJobService
 			.Include(j => j.Project)
 				.ThenInclude(p => p!.Environments)
 			.Include(j => j.Provider)
-            .Include(j => j.PlanningProvider)
-            .OrderByDescending(j => j.CreatedAt)
-            .ToListAsync(cancellationToken);
+			.Include(j => j.PlanningProvider)
+			.Include(j => j.TeamRole)
+			.OrderByDescending(j => j.CreatedAt)
+			.ToListAsync(cancellationToken);
     }
 
     public async Task<JobsListResult> GetPagedAsync(Guid? projectId = null, string statusFilter = "all", int page = 1, int pageSize = DefaultJobsPageSize, CancellationToken cancellationToken = default)
@@ -157,6 +158,7 @@ public partial class JobService : IJobService
 	{
 		return await IncludeStatistics(_dbContext.Jobs)
 			.Include(j => j.Provider)
+			.Include(j => j.TeamRole)
 			.Where(j => j.ProjectId == projectId)
 			.OrderByDescending(j => j.CreatedAt)
             .ToListAsync(cancellationToken);
@@ -352,9 +354,10 @@ public partial class JobService : IJobService
 			.Include(j => j.Project)
 				.ThenInclude(p => p!.Environments)
 			.Include(j => j.Provider)
-            .Include(j => j.PlanningProvider)
-            .Include(j => j.ProviderAttempts.OrderBy(a => a.AttemptOrder))
-            .FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
+			.Include(j => j.PlanningProvider)
+			.Include(j => j.TeamRole)
+			.Include(j => j.ProviderAttempts.OrderBy(a => a.AttemptOrder))
+			.FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
     }
 
 	public async Task<Job?> GetByIdWithMessagesAsync(Guid id, CancellationToken cancellationToken = default)
@@ -363,9 +366,10 @@ public partial class JobService : IJobService
 			.Include(j => j.Project)
 				.ThenInclude(p => p!.Environments)
 			.Include(j => j.Provider)
-            .Include(j => j.PlanningProvider)
-            .Include(j => j.ProviderAttempts.OrderBy(a => a.AttemptOrder))
-            .FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
+			.Include(j => j.PlanningProvider)
+			.Include(j => j.TeamRole)
+			.Include(j => j.ProviderAttempts.OrderBy(a => a.AttemptOrder))
+			.FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
 		if (job == null)
 		{
 			return null;
@@ -387,6 +391,8 @@ public partial class JobService : IJobService
 
     public async Task<Job> CreateAsync(Job job, CancellationToken cancellationToken = default)
     {
+        NormalizeJobForPersistence(job);
+        await ApplySelectedAgentDefaultsAsync(job, cancellationToken);
         NormalizeJobForPersistence(job);
         await ValidateRequestedExecutionAsync(job, cancellationToken);
 
@@ -469,17 +475,16 @@ public partial class JobService : IJobService
         {
             var firstAssignment = enabledAssignments[0];
             primaryJobDb.SwarmId = swarmId;
-            primaryJobDb.TeamRoleId = firstAssignment.TeamRoleId;
-			primaryJobDb.ProviderId = firstAssignment.ProviderId;
-            if (!string.IsNullOrWhiteSpace(firstAssignment.PreferredModelId))
-            {
-                primaryJobDb.ModelUsed = firstAssignment.PreferredModelId;
-            }
-            primaryJobDb.ReasoningEffort = firstAssignment.PreferredReasoningEffort;
+			primaryJobDb.ProviderId = Guid.Empty;
+			primaryJobDb.ModelUsed = null;
+			primaryJobDb.ReasoningEffort = null;
+			AgentPresetHelper.ApplyExecutionDefaults(primaryJobDb, firstAssignment);
             // Update the in-memory job so callers see the changes
             primaryJob.SwarmId = swarmId;
-            primaryJob.TeamRoleId = firstAssignment.TeamRoleId;
-            primaryJob.ReasoningEffort = firstAssignment.PreferredReasoningEffort;
+			primaryJob.ProviderId = Guid.Empty;
+			primaryJob.ModelUsed = null;
+			primaryJob.ReasoningEffort = null;
+			AgentPresetHelper.ApplyExecutionDefaults(primaryJob, firstAssignment);
         }
 
         // Create sibling jobs for each remaining role
@@ -505,18 +510,10 @@ public partial class JobService : IJobService
                 MaxExecutionMinutes = primaryJob.MaxExecutionMinutes,
                 MaxTokens = primaryJob.MaxTokens,
                 SwarmId = swarmId,
-                TeamRoleId = assignment.TeamRoleId,
             };
 
+			AgentPresetHelper.ApplyExecutionDefaults(roleJob, assignment);
             await InitializeExecutionPlanAsync(roleJob, cancellationToken);
-            // Ensure the role's provider is used even if execution plan defaulted to another
-            if (roleJob.ProviderId == Guid.Empty || roleJob.ProviderId != assignment.ProviderId)
-            {
-                roleJob.ProviderId = assignment.ProviderId;
-                if (!string.IsNullOrWhiteSpace(assignment.PreferredModelId))
-                    roleJob.ModelUsed = assignment.PreferredModelId;
-                roleJob.ReasoningEffort = assignment.PreferredReasoningEffort;
-            }
 
             _dbContext.Jobs.Add(roleJob);
             createdJobs.Add(roleJob);

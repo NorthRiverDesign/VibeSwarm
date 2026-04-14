@@ -2,36 +2,36 @@
 <div class="mb-3">
 <label class="form-label d-flex align-items-center gap-2 mb-2">
 <i class="bi bi-people"></i>
-<span>Team Roles</span>
+<span>Agents</span>
 </label>
 
 <Alert Type="Alert.AlertType.Info" Class="py-2 px-3 small">
 @if (Project.TeamAssignments.Any())
 {
-<span>Assign reusable team roles to this project so jobs can reference consistent responsibilities, provider choices, and model defaults.</span>
+<span>Assign reusable agents to this project so jobs can reference consistent purpose, provider/model choices, and execution defaults.</span>
 }
 else
 {
-<span>No project-specific team roles configured yet. Add roles to define the specialists available to this repository.</span>
+<span>No project-specific agents configured yet. Add agents to define the specialists available to this repository.</span>
 }
 </Alert>
 
 @if (!AvailableTeamRoles.Any())
 {
 <div class="text-warning small mt-2">
-<i class="bi bi-exclamation-triangle me-1"></i>No team roles available yet. Create roles from the Teams page first.
+<i class="bi bi-exclamation-triangle me-1"></i>No agents available yet. Create them from the Agents page first.
 </div>
 }
 else if (!AvailableProviders.Any())
 {
 <div class="text-warning small mt-2">
-<i class="bi bi-exclamation-triangle me-1"></i>No enabled providers are available to assign to team roles yet.
+<i class="bi bi-exclamation-triangle me-1"></i>No enabled providers are available to assign to agents yet.
 </div>
 }
 else
 {
 <div class="border rounded p-3 bg-body-tertiary">
-<div class="small text-body-secondary fw-semibold mb-2">Assigned Roles</div>
+<div class="small text-body-secondary fw-semibold mb-2">Assigned Agents</div>
 @if (Project.TeamAssignments.Any())
 {
 <div class="d-grid gap-3 mb-3">
@@ -53,7 +53,7 @@ var reasoningOptions = assignmentProvider != null ? ProviderCapabilities.GetSupp
 <div class="d-flex align-items-start justify-content-between gap-2 flex-wrap">
 <div class="min-width-0 flex-grow-1">
 <div class="d-flex align-items-center gap-2 flex-wrap">
-<span class="fw-semibold">@(teamRole?.Name ?? "Unknown Team Role")</span>
+<span class="fw-semibold">@(teamRole?.Name ?? "Unknown Agent")</span>
 @if (teamRole != null && !teamRole.IsEnabled)
 {
 <span class="badge bg-secondary-subtle text-secondary-emphasis">Disabled</span>
@@ -77,7 +77,7 @@ var reasoningOptions = assignmentProvider != null ? ProviderCapabilities.GetSupp
 </div>
 }
 </div>
-<button type="button" class="btn btn-sm btn-danger" @onclick="() => OnRemove.InvokeAsync(assignment.TeamRoleId)" title="Remove role">
+<button type="button" class="btn btn-sm btn-danger" @onclick="() => OnRemove.InvokeAsync(assignment.TeamRoleId)" title="Remove agent">
 <i class="bi bi-x-lg"></i>
 </button>
 </div>
@@ -121,7 +121,7 @@ var reasoningOptions = assignmentProvider != null ? ProviderCapabilities.GetSupp
 }
 else
 {
-<span>New multi-agent work can start with this model unless a workflow overrides it.</span>
+<span>New agent-backed work can start with this model unless a workflow overrides it.</span>
 }
 </div>
 </div>
@@ -148,7 +148,7 @@ else
 }
 else
 {
-<span>New multi-agent work can start with this reasoning level unless a workflow overrides it.</span>
+<span>New agent-backed work can start with this reasoning level unless a workflow overrides it.</span>
 }
 </div>
 </div>
@@ -159,7 +159,7 @@ else
 }
 else
 {
-<div class="small text-body-secondary fst-italic mb-3">No team roles assigned to this project yet.</div>
+<div class="small text-body-secondary fst-italic mb-3">No agents assigned to this project yet.</div>
 }
 
 @if (Project.TeamAssignments.Count(a => a.IsEnabled) >= 2)
@@ -168,14 +168,14 @@ else
 <div class="form-check form-switch">
 <InputCheckbox id="modal-enableTeamSwarm" @bind-Value="Project.EnableTeamSwarm" class="form-check-input" />
 <label class="form-check-label" for="modal-enableTeamSwarm">
-<i class="bi bi-diagram-3 me-1"></i>Enable Team Swarm
+<i class="bi bi-diagram-3 me-1"></i>Enable Agent Swarm
 </label>
 </div>
-<div class="form-text">When enabled, creating a job automatically fans out into parallel role-based jobs — one per assigned team role. Each agent works in the same repository with a role-specific system prompt.</div>
+<div class="form-text">When enabled, creating a job automatically fans out into parallel agent jobs — one per assigned agent. Each agent works in the same repository with an agent-specific system prompt.</div>
 </div>
 }
 
-<div class="small text-body-secondary fw-semibold mb-2">Add Role</div>
+<div class="small text-body-secondary fw-semibold mb-2">Add Agent</div>
 <div class="d-grid gap-2">
 @foreach (var teamRole in AvailableTeamRoles.OrderByDescending(role => role.IsEnabled).ThenBy(role => role.Name))
 {

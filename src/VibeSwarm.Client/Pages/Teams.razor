@@ -3,20 +3,20 @@
 @inject ITeamRoleService TeamRoleService
 @inject NotificationService NotificationService
 
-<PageHeader Title="Teams">
+<PageHeader Title="Agents">
 	<Actions>
-		<ActionButton Icon="plus" Text="Add" Style="ActionButton.ButtonStyle.Primary" OnClick="ShowAddModal" />
+		<ActionButton Icon="plus" Text="Add Agent" Style="ActionButton.ButtonStyle.Primary" OnClick="ShowAddModal" />
 	</Actions>
 </PageHeader>
 
 @if (_isLoading)
 {
-	<LoadingSpinner Text="Loading team roles..." />
+	<LoadingSpinner Text="Loading agents..." />
 }
 else if (!_teamRoles.Any())
 {
-	<EmptyState Icon="people" Title="No team roles yet"
-				Message="Create team roles like Security Reviewer, Front End Designer, or Deployment Engineer to reuse across projects." />
+	<EmptyState Icon="cpu" Title="No agents yet"
+				Message="Create reusable agent presets like Security Reviewer, Front End Designer, or Deployment Engineer to run consistent work across projects." />
 }
 else
 {
@@ -35,9 +35,9 @@ else
 							</span>
 						}
 					</div>
-					@if (teamRole.DefaultProvider != null || !string.IsNullOrWhiteSpace(teamRole.DefaultModelId) || !string.IsNullOrWhiteSpace(teamRole.DefaultReasoningEffort))
-					{
-						<div class="d-flex flex-wrap gap-2 gap-md-3 mt-2 small text-body-secondary">
+						@if (teamRole.DefaultProvider != null || !string.IsNullOrWhiteSpace(teamRole.DefaultModelId) || !string.IsNullOrWhiteSpace(teamRole.DefaultReasoningEffort) || teamRole.DefaultCycleMode != CycleMode.SingleCycle)
+						{
+							<div class="d-flex flex-wrap gap-2 gap-md-3 mt-2 small text-body-secondary">
 							@if (teamRole.DefaultProvider != null)
 							{
 								<span class="d-flex align-items-center gap-1">
@@ -57,6 +57,13 @@ else
 								<span class="d-flex align-items-center gap-1">
 									<i class="bi bi-lightning-charge opacity-75"></i>
 									Default reasoning: @teamRole.DefaultReasoningEffort
+								</span>
+							}
+							@if (teamRole.DefaultCycleMode != CycleMode.SingleCycle)
+							{
+								<span class="d-flex align-items-center gap-1">
+									<i class="bi bi-arrow-repeat opacity-75"></i>
+									@DescribeExecutionProfile(teamRole)
 								</span>
 							}
 						</div>
@@ -98,7 +105,7 @@ else
 <TeamRoleModal @bind-IsVisible="_showTeamRoleModal" EditTeamRole="@_editingTeamRole" OnSaved="HandleTeamRoleSaved"
 			   OnCancelled="HandleModalCancelled" OnClosed="HandleTeamRoleModalClosed" />
 
-<ConfirmationModal @bind-IsVisible="_showDeleteModal" Title="Delete Team Role"
+<ConfirmationModal @bind-IsVisible="_showDeleteModal" Title="Delete Agent"
 				   Message="@($"Are you sure you want to delete {_teamRoleToDelete?.Name}?")" SubMessage="This action cannot be undone."
 				   ConfirmText="Delete" ButtonClass="btn-danger" IsProcessing="_isDeleting" OnConfirm="ConfirmDelete"
 				   OnCancel="CancelDelete" />
@@ -126,7 +133,7 @@ else
 		}
 		catch (Exception ex)
 		{
-			NotificationService.ShowError($"Failed to load team roles: {ex.Message}");
+			NotificationService.ShowError($"Failed to load agents: {ex.Message}");
 		}
 		finally
 		{
@@ -142,6 +149,25 @@ else
 		}
 
 		return text[..maxLength] + "...";
+	}
+
+	private static string DescribeExecutionProfile(TeamRole teamRole)
+	{
+		var cycleMode = teamRole.DefaultCycleMode switch
+		{
+			CycleMode.FixedCount => $"Default run: {teamRole.DefaultMaxCycles} fixed cycles",
+			CycleMode.Autonomous => $"Default run: autonomous up to {teamRole.DefaultMaxCycles} cycles",
+			_ => "Default run: single cycle"
+		};
+		if (teamRole.DefaultCycleMode == CycleMode.SingleCycle)
+		{
+			return cycleMode;
+		}
+
+		var sessionMode = teamRole.DefaultCycleSessionMode == CycleSessionMode.ContinueSession
+			? "resume session"
+			: "fresh session";
+		return $"{cycleMode}, {sessionMode}";
 	}
 
 	private void ShowAddModal()

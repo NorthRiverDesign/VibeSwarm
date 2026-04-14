@@ -52,7 +52,7 @@ else
 						{
 							<span class="small text-body-secondary d-inline-flex align-items-center gap-1">
 								<i class="bi bi-person-badge opacity-75"></i>
-								@(schedule.TeamRole?.Name ?? "Unknown team member")
+								@(schedule.TeamRole?.Name ?? "Unknown agent")
 							</span>
 						}
 						else
@@ -279,7 +279,7 @@ else
 		var action = schedule.ScheduleType == JobScheduleType.GenerateIdeas
 			? $"generate {schedule.IdeaCount} idea{(schedule.IdeaCount == 1 ? string.Empty : "s")} with {schedule.InferenceProvider?.Name ?? "Unknown inference provider"}"
 			: schedule.ExecutionTarget == JobScheduleExecutionTarget.TeamRole
-				? schedule.TeamRole?.Name ?? "Unknown team member"
+				? schedule.TeamRole?.Name ?? "Unknown agent"
 				: schedule.Provider?.Name ?? "Unknown provider";
 		return schedule.Frequency switch
 		{

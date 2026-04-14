@@ -985,12 +985,12 @@ public class ProjectService : IProjectService
 		var duplicates = teamRoleIds.GroupBy(id => id).Where(group => group.Count() > 1).Select(group => group.Key).ToList();
 		if (duplicates.Any())
 		{
-			throw new InvalidOperationException("Duplicate team role assignment detected. Team roles cannot be repeated.");
+			throw new InvalidOperationException("Duplicate agent assignment detected. Agents cannot be repeated.");
 		}
 
 		if (assignments.Any(assignment => assignment.ProviderId == Guid.Empty))
 		{
-			throw new InvalidOperationException("Each team role assignment must select a provider.");
+			throw new InvalidOperationException("Each agent assignment must select a provider.");
 		}
 
 		var existingTeamRoleIds = await _dbContext.TeamRoles
@@ -1000,7 +1000,7 @@ public class ProjectService : IProjectService
 		var invalidTeamRoleIds = teamRoleIds.Except(existingTeamRoleIds).ToList();
 		if (invalidTeamRoleIds.Any())
 		{
-			throw new InvalidOperationException($"One or more team role IDs do not exist: {string.Join(", ", invalidTeamRoleIds)}");
+			throw new InvalidOperationException($"One or more agent IDs do not exist: {string.Join(", ", invalidTeamRoleIds)}");
 		}
 
 		var providerIds = assignments.Select(assignment => assignment.ProviderId).Distinct().ToList();
@@ -1040,7 +1040,7 @@ public class ProjectService : IProjectService
 			.ToList();
 		if (invalidPreferredModels.Any())
 		{
-			throw new InvalidOperationException($"One or more team role models are not available for their provider: {string.Join(", ", invalidPreferredModels)}");
+			throw new InvalidOperationException($"One or more agent models are not available for their provider: {string.Join(", ", invalidPreferredModels)}");
 		}
 
 		var providerLookup = existingProviders.ToDictionary(
@@ -1059,7 +1059,7 @@ public class ProjectService : IProjectService
 			.ToList();
 		if (invalidReasoningSelections.Any())
 		{
-			throw new InvalidOperationException($"One or more team role reasoning levels are not supported by their provider: {string.Join(", ", invalidReasoningSelections)}");
+			throw new InvalidOperationException($"One or more agent reasoning levels are not supported by their provider: {string.Join(", ", invalidReasoningSelections)}");
 		}
 	}
 

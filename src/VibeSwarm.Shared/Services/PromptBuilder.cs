@@ -488,8 +488,8 @@ public static class PromptBuilder
 		}
 
 		var sb = new StringBuilder();
-		sb.AppendLine("<team_roles>");
-		sb.AppendLine("  Configured collaborator roles available for this repository:");
+		sb.AppendLine("<agents>");
+		sb.AppendLine("  Configured agent presets available for this repository:");
 		foreach (var assignment in assignments)
 		{
 			var lineBuilder = new StringBuilder();
@@ -498,13 +498,13 @@ public static class PromptBuilder
 
 			if (!string.IsNullOrWhiteSpace(assignment.TeamRole.Description))
 			{
-				lineBuilder.Append(" | Summary: ");
+				lineBuilder.Append(" | Purpose: ");
 				lineBuilder.Append(assignment.TeamRole.Description);
 			}
 
 			if (!string.IsNullOrWhiteSpace(assignment.TeamRole.Responsibilities))
 			{
-				lineBuilder.Append(" | Responsibilities: ");
+				lineBuilder.Append(" | Instructions: ");
 				lineBuilder.Append(assignment.TeamRole.Responsibilities);
 			}
 
@@ -530,10 +530,17 @@ public static class PromptBuilder
 				lineBuilder.Append(string.Join(", ", skills));
 			}
 
+			var cycleDefaults = DescribeAgentCycleDefaults(assignment.TeamRole);
+			if (!string.IsNullOrWhiteSpace(cycleDefaults))
+			{
+				lineBuilder.Append(" | Execution: ");
+				lineBuilder.Append(cycleDefaults);
+			}
+
 			sb.AppendLine(EscapeXml(lineBuilder.ToString()));
 		}
 
-		sb.AppendLine("</team_roles>");
+		sb.AppendLine("</agents>");
 		return sb.ToString();
 	}
 
@@ -600,16 +607,16 @@ public static class PromptBuilder
 	{
 		var sb = new StringBuilder();
 
-		sb.AppendLine($"You are acting as the {role.Name} for this project.");
+		sb.AppendLine($"You are acting as the {role.Name} agent for this project.");
 
 		if (!string.IsNullOrWhiteSpace(role.Description))
 		{
-			sb.AppendLine($"Role summary: {role.Description.Trim()}");
+			sb.AppendLine($"Agent purpose: {role.Description.Trim()}");
 		}
 
 		if (!string.IsNullOrWhiteSpace(role.Responsibilities))
 		{
-			sb.AppendLine($"Your responsibilities: {role.Responsibilities.Trim()}");
+			sb.AppendLine($"Your instructions: {role.Responsibilities.Trim()}");
 		}
 
 		var skills = role.SkillLinks
@@ -621,7 +628,7 @@ public static class PromptBuilder
 			.ToList();
 		if (skills.Count > 0)
 		{
-			sb.AppendLine($"Available MCP skills for this role: {string.Join("; ", skills.Select(FormatSkillReference))}");
+			sb.AppendLine($"Available MCP skills for this agent: {string.Join("; ", skills.Select(FormatSkillReference))}");
 			sb.AppendLine("Use those skills when they match the task instead of guessing project-specific conventions.");
 		}
 
@@ -643,6 +650,30 @@ public static class PromptBuilder
 		return string.IsNullOrWhiteSpace(summary)
 			? skill.Name
 			: $"{skill.Name} - {summary}";
+	}
+
+	private static string? DescribeAgentCycleDefaults(TeamRole role)
+	{
+		if (role.DefaultCycleMode == CycleMode.SingleCycle)
+		{
+			return null;
+		}
+
+		var cycleMode = role.DefaultCycleMode switch
+		{
+			CycleMode.FixedCount => $"fixed-count ({role.DefaultMaxCycles} cycles)",
+			CycleMode.Autonomous => $"autonomous (max {role.DefaultMaxCycles} cycles)",
+			_ => null
+		};
+		if (string.IsNullOrWhiteSpace(cycleMode))
+		{
+			return null;
+		}
+
+		var sessionMode = role.DefaultCycleSessionMode == CycleSessionMode.ContinueSession
+			? "resume session"
+			: "fresh session";
+		return $"{cycleMode}, {sessionMode}";
 	}
 
 	private static string? BuildSkillSummary(Skill skill)

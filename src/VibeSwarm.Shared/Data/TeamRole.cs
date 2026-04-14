@@ -27,6 +27,16 @@ public class TeamRole
 	[StringLength(Validation.ValidationLimits.ReasoningEffortMaxLength)]
 	public string? DefaultReasoningEffort { get; set; }
 
+	public CycleMode DefaultCycleMode { get; set; } = CycleMode.SingleCycle;
+
+	public CycleSessionMode DefaultCycleSessionMode { get; set; } = CycleSessionMode.ContinueSession;
+
+	[Range(1, 100)]
+	public int DefaultMaxCycles { get; set; } = 1;
+
+	[StringLength(Validation.ValidationLimits.JobTemplatePromptMaxLength)]
+	public string? DefaultCycleReviewPrompt { get; set; }
+
 	public bool IsEnabled { get; set; } = true;
 
 	public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

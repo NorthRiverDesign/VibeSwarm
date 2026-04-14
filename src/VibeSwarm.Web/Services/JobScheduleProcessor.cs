@@ -148,7 +148,7 @@ public class JobScheduleProcessor
 
 		if (!schedule.TeamRoleId.HasValue || schedule.TeamRoleId == Guid.Empty)
 		{
-			throw new InvalidOperationException("The selected team member is not assigned to this project.");
+			throw new InvalidOperationException("The selected agent is not assigned to this project.");
 		}
 
 		var assignment = await _dbContext.ProjectTeamRoles
@@ -160,12 +160,12 @@ public class JobScheduleProcessor
 				cancellationToken);
 		if (assignment == null || !assignment.IsEnabled || assignment.TeamRole == null || !assignment.TeamRole.IsEnabled)
 		{
-			throw new InvalidOperationException("The selected team member is not assigned to this project.");
+			throw new InvalidOperationException("The selected agent is not assigned to this project.");
 		}
 
 		if (assignment.Provider == null || !assignment.Provider.IsEnabled)
 		{
-			throw new InvalidOperationException("The selected team member does not have an enabled provider assignment.");
+			throw new InvalidOperationException("The selected agent does not have an enabled provider assignment.");
 		}
 
 		if (!string.IsNullOrWhiteSpace(schedule.ModelId))

@@ -175,6 +175,53 @@ public sealed class TeamRoleServiceTests : IDisposable
 	}
 
 	[Fact]
+	public async Task CreateAsync_PersistsExecutionDefaults()
+	{
+		await using var dbContext = CreateDbContext();
+		var service = new TeamRoleService(dbContext);
+
+		var created = await service.CreateAsync(new TeamRole
+		{
+			Name = "Iteration Planner",
+			DefaultCycleMode = CycleMode.Autonomous,
+			DefaultCycleSessionMode = CycleSessionMode.ContinueSession,
+			DefaultMaxCycles = 6,
+			DefaultCycleReviewPrompt = "Review progress before starting the next cycle."
+		});
+
+		Assert.Equal(CycleMode.Autonomous, created.DefaultCycleMode);
+		Assert.Equal(CycleSessionMode.ContinueSession, created.DefaultCycleSessionMode);
+		Assert.Equal(6, created.DefaultMaxCycles);
+		Assert.Equal("Review progress before starting the next cycle.", created.DefaultCycleReviewPrompt);
+	}
+
+	[Fact]
+	public async Task UpdateAsync_SingleCycleClearsCycleReviewPrompt()
+	{
+		await using var dbContext = CreateDbContext();
+		var service = new TeamRoleService(dbContext);
+		var created = await service.CreateAsync(new TeamRole
+		{
+			Name = "Reviewer",
+			DefaultCycleMode = CycleMode.Autonomous,
+			DefaultCycleSessionMode = CycleSessionMode.ContinueSession,
+			DefaultMaxCycles = 4,
+			DefaultCycleReviewPrompt = "Keep iterating while issues remain."
+		});
+
+		created.DefaultCycleMode = CycleMode.SingleCycle;
+		created.DefaultCycleSessionMode = CycleSessionMode.FreshSession;
+		created.DefaultMaxCycles = 9;
+		created.DefaultCycleReviewPrompt = "Should be cleared";
+
+		var updated = await service.UpdateAsync(created);
+
+		Assert.Equal(CycleMode.SingleCycle, updated.DefaultCycleMode);
+		Assert.Equal(1, updated.DefaultMaxCycles);
+		Assert.Null(updated.DefaultCycleReviewPrompt);
+	}
+
+	[Fact]
 	public async Task CreateAsync_WithDefaultProviderNavigation_DoesNotReinsertProvider()
 	{
 		await using var dbContext = CreateDbContext();

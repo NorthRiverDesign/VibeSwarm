@@ -30,6 +30,10 @@ public sealed class HttpTeamRoleServiceTests
 			Name = "Security Reviewer",
 			DefaultProviderId = Guid.NewGuid(),
 			DefaultReasoningEffort = "high",
+			DefaultCycleMode = CycleMode.Autonomous,
+			DefaultCycleSessionMode = CycleSessionMode.ContinueSession,
+			DefaultMaxCycles = 5,
+			DefaultCycleReviewPrompt = "Review the last cycle before deciding whether to continue.",
 			DefaultProvider = new Provider
 			{
 				Id = Guid.NewGuid(),
@@ -65,6 +69,10 @@ public sealed class HttpTeamRoleServiceTests
 		Assert.NotNull(capturedPayload);
 		Assert.Null(capturedPayload!.DefaultProvider);
 		Assert.Equal("high", capturedPayload.DefaultReasoningEffort);
+		Assert.Equal(CycleMode.Autonomous, capturedPayload.DefaultCycleMode);
+		Assert.Equal(CycleSessionMode.ContinueSession, capturedPayload.DefaultCycleSessionMode);
+		Assert.Equal(5, capturedPayload.DefaultMaxCycles);
+		Assert.Equal("Review the last cycle before deciding whether to continue.", capturedPayload.DefaultCycleReviewPrompt);
 		Assert.Single(capturedPayload.SkillLinks);
 		Assert.All(capturedPayload.SkillLinks, link => Assert.Null(link.Skill));
 	}
@@ -91,6 +99,10 @@ public sealed class HttpTeamRoleServiceTests
 			Id = teamRoleId,
 			Name = "Platform Engineer",
 			DefaultReasoningEffort = "medium",
+			DefaultCycleMode = CycleMode.FixedCount,
+			DefaultCycleSessionMode = CycleSessionMode.FreshSession,
+			DefaultMaxCycles = 3,
+			DefaultCycleReviewPrompt = "Check whether the goal is complete after each pass.",
 			SkillLinks =
 			[
 				new TeamRoleSkill
@@ -110,6 +122,10 @@ public sealed class HttpTeamRoleServiceTests
 		Assert.NotNull(capturedPayload);
 		Assert.Equal(teamRoleId, capturedPayload!.Id);
 		Assert.Equal("medium", capturedPayload.DefaultReasoningEffort);
+		Assert.Equal(CycleMode.FixedCount, capturedPayload.DefaultCycleMode);
+		Assert.Equal(CycleSessionMode.FreshSession, capturedPayload.DefaultCycleSessionMode);
+		Assert.Equal(3, capturedPayload.DefaultMaxCycles);
+		Assert.Equal("Check whether the goal is complete after each pass.", capturedPayload.DefaultCycleReviewPrompt);
 		Assert.Single(capturedPayload.SkillLinks);
 		Assert.Equal(skillId, capturedPayload.SkillLinks.Single().SkillId);
 		Assert.All(capturedPayload.SkillLinks, link => Assert.Null(link.Skill));
