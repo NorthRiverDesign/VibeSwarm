@@ -1,0 +1,13 @@
+@* Reusable tab strip wrapping Bootstrap nav-tabs *@
+
+<ul class="nav nav-tabs @Class" role="tablist">
+	@ChildContent
+</ul>
+
+@code {
+	[Parameter]
+	public RenderFragment? ChildContent { get; set; }
+
+	[Parameter]
+	public string? Class { get; set; }
+}

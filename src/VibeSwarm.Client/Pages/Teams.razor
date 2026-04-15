@@ -87,10 +87,8 @@ else
 					}
 				</div>
 				<div class="d-flex flex-wrap gap-2 flex-shrink-0 align-items-center">
-					<label class="toggle-switch me-1" title="@(teamRole.IsEnabled ? "Disable" : "Enable")">
-						<input type="checkbox" checked="@teamRole.IsEnabled" @onchange="() => ToggleEnabled(teamRole)" />
-						<span class="toggle-slider"></span>
-					</label>
+					<ToggleSwitch Value="@teamRole.IsEnabled" Title="@(teamRole.IsEnabled ? "Disable" : "Enable")"
+								  Class="me-1" OnChange="() => ToggleEnabled(teamRole)" />
 					<ActionButton Icon="pencil" Text="Edit" Size="ActionButton.ButtonSize.Small" HideTextOnMobile="true"
 								  OnClick="@(() => EditTeamRole(teamRole))" />
 					<ActionButton Icon="trash" Text="Delete" Size="ActionButton.ButtonSize.Small"

@@ -31,12 +31,8 @@ else
 				<div class="flex-grow-1 min-width-0">
 					<div class="d-flex align-items-center gap-2 flex-wrap">
 						<span class="fw-semibold">@GetScheduleTitle(schedule)</span>
-						<span class="badge @(schedule.IsEnabled ? "bg-success-subtle text-success-emphasis" : "bg-secondary-subtle text-secondary-emphasis")">
-							@(schedule.IsEnabled ? "Active" : "Paused")
-						</span>
-						<span class="badge @(schedule.ScheduleType == JobScheduleType.GenerateIdeas ? "bg-warning-subtle text-warning-emphasis" : "bg-primary-subtle text-primary-emphasis")">
-							@(schedule.ScheduleType == JobScheduleType.GenerateIdeas ? "Idea Generation" : "Job Running")
-						</span>
+						<StatusBadge Status="@(schedule.IsEnabled ? "Active" : "Paused")" ShowSpinner="false" />
+						<StatusBadge Status="@(schedule.ScheduleType == JobScheduleType.GenerateIdeas ? "Idea Generation" : "Job Running")" ShowSpinner="false" />
 						<span class="small text-body-secondary d-inline-flex align-items-center gap-1">
 							<i class="bi bi-folder opacity-75"></i>
 							@(schedule.Project?.Name ?? "Unknown project")

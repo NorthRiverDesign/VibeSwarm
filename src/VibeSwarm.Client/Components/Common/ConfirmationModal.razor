@@ -14,14 +14,9 @@
 		}
 	</ChildContent>
 	<FooterContent>
-		<button type="button" class="btn btn-secondary" @onclick="HandleCancel">Cancel</button>
-		<button type="button" class="btn @ButtonClass" @onclick="HandleConfirm" disabled="@IsProcessing">
-			@if (IsProcessing)
-			{
-				<span class="spinner-border spinner-border-sm me-1" role="status"></span>
-			}
-			@ConfirmText
-		</button>
+		<ActionButton Text="Cancel" OnClick="HandleCancel" />
+		<ActionButton Text="@ConfirmText" Style="@GetConfirmStyle()" OnClick="HandleConfirm"
+					  IsLoading="IsProcessing" Disabled="IsProcessing" />
 	</FooterContent>
 </ModalDialog>
 
@@ -69,4 +64,14 @@
 		await IsVisibleChanged.InvokeAsync(false);
 		await OnCancel.InvokeAsync();
 	}
+
+	private ActionButton.ButtonStyle GetConfirmStyle() => ButtonClass switch
+	{
+		"btn-danger" => ActionButton.ButtonStyle.Danger,
+		"btn-success" => ActionButton.ButtonStyle.Success,
+		"btn-warning" => ActionButton.ButtonStyle.Warning,
+		"btn-info" => ActionButton.ButtonStyle.Info,
+		"btn-primary" => ActionButton.ButtonStyle.Primary,
+		_ => ActionButton.ButtonStyle.Danger
+	};
 }

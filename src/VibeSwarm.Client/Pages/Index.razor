@@ -37,26 +37,17 @@
                                     <span class="spinner-border spinner-border-sm flex-shrink-0" style="width: 0.65rem; height: 0.65rem;" role="status"></span>
                                     @IdeasStatus.ProjectsCurrentlyProcessing project@(IdeasStatus.ProjectsCurrentlyProcessing != 1 ? "s" : "") processing
                                 </span>
-                                <button class="btn btn-sm btn-danger" @onclick="OnStopAllProcessing" disabled="@IsStoppingAll">
-                                    @if (IsStoppingAll)
-                                    {
-                                        <span class="spinner-border spinner-border-sm me-1" role="status"></span>
-                                        <span>Stopping...</span>
-                                    }
-                                     else
-                                     {
-                                         <i class="bi bi-stop-fill me-1"></i>
-                                         <span>Stop</span>
-                                     }
-                                 </button>
+                                <ActionButton Text="@(IsStoppingAll ? "Stopping..." : "Stop")" Icon="stop-fill"
+                                              Size="ActionButton.ButtonSize.Small" Style="ActionButton.ButtonStyle.Danger"
+                                              IsLoading="IsStoppingAll" Disabled="IsStoppingAll" OnClick="OnStopAllProcessing" />
                              </div>
                          }
                          else if (IdeasStatus.TotalUnprocessedIdeas > 0 && !IsStartingAll)
                          {
-                             <button class="btn btn-sm btn-success" @onclick="() => ShowStartAllModal = true">
-                                 <i class="bi bi-play-fill me-1"></i>Start All Ideas
-                                 <span class="badge bg-white text-success ms-1">@IdeasStatus.TotalUnprocessedIdeas</span>
-                             </button>
+                             <ActionButton Text="Start All Ideas" Icon="play-fill"
+                                          Size="ActionButton.ButtonSize.Small" Style="ActionButton.ButtonStyle.Success"
+                                          OnClick="() => ShowStartAllModal = true">
+                             </ActionButton>
                         }
                     </div>
                 </div>
@@ -121,7 +112,8 @@
                         <option value="@DashboardProjectSortOption.LastRan">Last ran</option>
                         <option value="@DashboardProjectSortOption.Name">Name</option>
                     </InputSelect>
-                    <a href="/projects" class="btn btn-sm btn-secondary">View All</a>
+                    <ActionButton Text="View All" Size="ActionButton.ButtonSize.Small"
+                                  OnClick="@(() => NavigationManager.NavigateTo("/projects"))" />
                 </div>
             </div>
 
@@ -133,9 +125,9 @@
             {
                 <EmptyState Icon="folder" Title="No projects yet"
                             Message="Create your first project to start running AI agent jobs.">
-                    <a href="/projects" class="btn btn-sm btn-primary">
-                        <i class="bi bi-plus-lg me-1"></i>Create Project
-                    </a>
+                    <ActionButton Icon="plus-lg" Text="Create Project" Size="ActionButton.ButtonSize.Small"
+                                  Style="ActionButton.ButtonStyle.Primary"
+                                  OnClick="@(() => NavigationManager.NavigateTo("/projects"))" />
                 </EmptyState>
             }
             else
@@ -161,7 +153,8 @@
                 <h5 class="mb-0 fw-semibold text-truncate">
                     <i class="bi bi-cpu me-2 opacity-75"></i>Providers
                 </h5>
-                <a href="/providers" class="btn btn-sm btn-secondary align-self-stretch align-self-sm-auto">Manage</a>
+                <ActionButton Text="Manage" Size="ActionButton.ButtonSize.Small"
+                              OnClick="@(() => NavigationManager.NavigateTo("/providers"))" />
             </div>
 
             @if (IsLoading)
@@ -172,9 +165,9 @@
             {
                 <EmptyState Icon="cpu" Title="@(HasConfiguredProviders ? "No active providers" : "No providers configured")"
                             Message="@(HasConfiguredProviders ? "Enable a provider to show it on the dashboard." : "Connect to AI coding agents like Claude Code CLI.")">
-                    <a href="/providers" class="btn btn-sm btn-primary">
-                        <i class="bi bi-plus-lg me-1"></i>@(HasConfiguredProviders ? "Manage Providers" : "Add Provider")
-                    </a>
+                    <ActionButton Icon="plus-lg" Text="@(HasConfiguredProviders ? "Manage Providers" : "Add Provider")"
+                                  Size="ActionButton.ButtonSize.Small" Style="ActionButton.ButtonStyle.Primary"
+                                  OnClick="@(() => NavigationManager.NavigateTo("/providers"))" />
                 </EmptyState>
             }
             else
@@ -205,30 +198,14 @@
         <p class="text-body-secondary small mb-0">
             Each idea will be converted to a job and queued for execution. You can stop processing at any time.
         </p>
-        <div class="form-check mt-3">
-            <input class="form-check-input" type="checkbox" id="dashboardAutoCommit" @bind="StartAllAutoCommit" />
-            <label class="form-check-label" for="dashboardAutoCommit">
-                <i class="bi bi-git me-1"></i>
-                Auto-commit changes when jobs complete
-            </label>
-        </div>
+        <FormCheck @bind-Value="StartAllAutoCommit" Icon="git" Id="dashboardAutoCommit"
+                  Text="Auto-commit changes when jobs complete" Class="mt-3" />
     </ChildContent>
     <FooterContent>
-        <button type="button" class="btn btn-secondary" @onclick="() => ShowStartAllModal = false" disabled="@IsStartingAll">
-            Cancel
-        </button>
-        <button type="button" class="btn btn-success" @onclick="OnStartAllProcessing" disabled="@IsStartingAll">
-            @if (IsStartingAll)
-            {
-                <span class="spinner-border spinner-border-sm me-1" role="status"></span>
-                <span>Starting...</span>
-            }
-            else
-            {
-                <i class="bi bi-play-fill me-1"></i>
-                <span>Start Processing</span>
-            }
-        </button>
+        <ActionButton Text="Cancel" OnClick="() => ShowStartAllModal = false" Disabled="IsStartingAll" />
+        <ActionButton Text="@(IsStartingAll ? "Starting..." : "Start Processing")" Icon="play-fill"
+                      Style="ActionButton.ButtonStyle.Success" OnClick="OnStartAllProcessing"
+                      IsLoading="IsStartingAll" Disabled="IsStartingAll" />
     </FooterContent>
 </ModalDialog>
 

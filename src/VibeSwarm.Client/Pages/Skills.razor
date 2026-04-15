@@ -15,34 +15,18 @@
 
 @if (_importErrorMessage != null)
 {
-	<div class="alert alert-danger d-flex align-items-start gap-2 mb-3">
-		<i class="bi bi-exclamation-triangle-fill flex-shrink-0 mt-1"></i>
-		<div>@_importErrorMessage</div>
-	</div>
+	<Alert Type="Alert.AlertType.Danger" Message="@_importErrorMessage" Class="mb-3" />
 }
 
 @if (_importPreview != null)
 {
-	<div class="card mb-3">
-		<div class="card-header bg-body-secondary d-flex flex-column flex-sm-row align-items-sm-center justify-content-between gap-2">
-			<div>
-				<h5 class="mb-1 fw-semibold">Import skill preview</h5>
-				<div class="small text-body-secondary">@_importFileName</div>
-			</div>
-			<div class="d-flex flex-wrap gap-2">
-				<button class="btn btn-secondary" @onclick="ResetImportPreview" disabled="@_isImportingSkill">
-					Cancel
-				</button>
-				<button class="btn btn-primary" @onclick="ConfirmImportAsync" disabled="@_isImportingSkill">
-					@if (_isImportingSkill)
-					{
-						<span class="spinner-border spinner-border-sm me-1" role="status"></span>
-					}
-					<span>@(_isImportingSkill ? "Importing..." : "Import skill")</span>
-				</button>
-			</div>
-		</div>
-		<div class="card-body">
+	<Card Class="mb-3" Title="Import skill preview">
+		<HeaderActions>
+			<ActionButton Text="Cancel" OnClick="ResetImportPreview" Disabled="_isImportingSkill" />
+			<ActionButton Text="@(_isImportingSkill ? "Importing..." : "Import skill")" Style="ActionButton.ButtonStyle.Primary"
+						  OnClick="ConfirmImportAsync" IsLoading="_isImportingSkill" Disabled="_isImportingSkill" />
+		</HeaderActions>
+		<ChildContent>
 			<div class="d-flex flex-column gap-3">
 				<div>
 					<div class="small text-body-secondary mb-1">Name</div>
@@ -75,7 +59,7 @@
 
 				@if (_importPreview.Warnings.Count > 0)
 				{
-					<div class="alert alert-warning mb-0">
+					<Alert Type="Alert.AlertType.Warning" Class="mb-0">
 						<div class="fw-semibold mb-2">Warnings</div>
 						<ul class="mb-0 ps-3">
 							@foreach (var warning in _importPreview.Warnings)
@@ -83,7 +67,7 @@
 								<li>@warning</li>
 							}
 						</ul>
-					</div>
+					</Alert>
 				}
 
 				<div>
@@ -96,8 +80,8 @@
 					</div>
 				</div>
 			</div>
-		</div>
-	</div>
+		</ChildContent>
+	</Card>
 }
 
 @if (_isLoading)
@@ -144,10 +128,8 @@ else
 					</div>
 				</div>
 				<div class="d-flex flex-wrap gap-2 flex-shrink-0 align-items-center">
-					<label class="toggle-switch me-1" title="@(skill.IsEnabled ? "Disable" : "Enable")">
-						<input type="checkbox" checked="@skill.IsEnabled" @onchange="() => ToggleEnabled(skill)" />
-						<span class="toggle-slider"></span>
-					</label>
+					<ToggleSwitch Value="@skill.IsEnabled" Title="@(skill.IsEnabled ? "Disable" : "Enable")"
+								  Class="me-1" OnChange="() => ToggleEnabled(skill)" />
 					<ActionButton Icon="pencil" Text="Edit" Size="ActionButton.ButtonSize.Small" HideTextOnMobile="true"
 								  OnClick="@(() => EditSkill(skill))" />
 					<ActionButton Icon="trash" Text="Delete" Size="ActionButton.ButtonSize.Small"
