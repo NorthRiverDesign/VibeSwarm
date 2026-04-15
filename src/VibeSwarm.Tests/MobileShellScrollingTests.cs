@@ -37,6 +37,7 @@ public sealed class MobileShellScrollingTests
 		Assert.Contains(".app-sidebar > .overflow-y-auto", css);
 		Assert.Contains("height: -webkit-fill-available;", css);
 		Assert.Matches(new Regex(@"\.app-layout\s*\{[\s\S]*height:\s*100dvh;", RegexOptions.Multiline), css);
+		Assert.Matches(new Regex(@"body:has\(\.app-layout\)\s*\{[\s\S]*height:\s*100dvh;", RegexOptions.Multiline), css);
 		Assert.Contains("scroll-padding-top: calc(", css);
 		Assert.Contains(".app-header .mobile-header-dropdown > .dropdown-menu", css);
 		Assert.Contains("left: 50% !important;", css);
@@ -87,6 +88,8 @@ public sealed class MobileShellScrollingTests
 		Assert.Matches(new Regex(@"\.app-layout\s*\{[\s\S]*min-height:\s*100vh;[\s\S]*min-height:\s*100dvh;[\s\S]*height:\s*100vh;[\s\S]*height:\s*100dvh;", RegexOptions.Multiline), css);
 		Assert.Contains("100dvh - var(--vs-safe-area-top) - var(--vs-safe-area-bottom)", css);
 		Assert.Matches(new Regex(@"@supports \(-webkit-touch-callout: none\)\s*\{[\s\S]*\.login-layout\s*\{[\s\S]*min-height:\s*-webkit-fill-available;", RegexOptions.Multiline), css);
+		Assert.Matches(new Regex(@"@supports \(-webkit-touch-callout: none\)\s*\{[\s\S]*body:has\(\.app-layout\)\s*\{[\s\S]*height:\s*-webkit-fill-available;", RegexOptions.Multiline), css);
+		Assert.Matches(new Regex(@"html\s*\{[\s\S]*background-color:\s*var\(--bs-body-bg\);", RegexOptions.Multiline), css);
 	}
 
 	private static string GetRepositoryPath(params string[] segments)
