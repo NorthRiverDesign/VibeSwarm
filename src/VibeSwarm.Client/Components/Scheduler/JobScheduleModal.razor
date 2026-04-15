@@ -125,14 +125,29 @@
 
 				<div class="col-12 col-lg-4">
 					<label for="schedule-model" class="form-label">Model</label>
-					<select id="schedule-model" class="form-select" @bind="_selectedModelId" @bind:after="OnModelChanged"
-							disabled="@(_isLoadingModels || !_models.Any())">
-						<option value="">@(_isLoadingModels ? "Loading..." : "Use assigned default")</option>
-						@foreach (var model in _models)
-						{
-							<option value="@model.ModelId">@(model.DisplayName ?? model.ModelId)</option>
-						}
-					</select>
+					<div class="input-group">
+						<select id="schedule-model" class="form-select" @bind="_selectedModelId" @bind:after="OnModelChanged"
+								disabled="@(_isLoadingModels || !_models.Any())">
+							<option value="">@(_isLoadingModels ? "Loading..." : "Use assigned default")</option>
+							@foreach (var model in _models)
+							{
+								<option value="@model.ModelId">@(model.DisplayName ?? model.ModelId)</option>
+							}
+						</select>
+						<button type="button" class="btn btn-secondary"
+								@onclick="RefreshModelsAsync"
+								disabled="@(_isRefreshingModels || _isLoadingModels || !ResolveSelectedProviderId().HasValue)"
+								title="Refresh models from provider">
+							@if (_isRefreshingModels)
+							{
+								<span class="spinner-border spinner-border-sm" role="status"></span>
+							}
+							else
+							{
+								<i class="bi bi-arrow-clockwise"></i>
+							}
+						</button>
+					</div>
 					<div class="form-text">@GetModelHelpText()</div>
 				</div>
 			</div>
@@ -164,12 +179,23 @@
 					<InputSelect id="schedule-frequency" @bind-Value="Schedule.Frequency" class="form-select">
 						@foreach (var frequency in Enum.GetValues<JobScheduleFrequency>())
 						{
-							<option value="@frequency">@frequency</option>
+							<option value="@frequency">@GetFrequencyLabel(frequency)</option>
 						}
 					</InputSelect>
 				</div>
 
-				@if (Schedule.Frequency == JobScheduleFrequency.Hourly)
+				@if (Schedule.Frequency == JobScheduleFrequency.Minutes)
+				{
+					<div class="col-12 col-lg-4">
+						<label for="schedule-interval-minutes" class="form-label">Run every</label>
+						<div class="input-group">
+							<InputNumber id="schedule-interval-minutes" @bind-Value="Schedule.IntervalMinutes" class="form-control" min="5" max="60" />
+							<span class="input-group-text">minutes</span>
+						</div>
+						<div class="form-text">Between 5 and 60 minutes.</div>
+					</div>
+				}
+				else if (Schedule.Frequency == JobScheduleFrequency.Hourly)
 				{
 					<div class="col-12 col-lg-4">
 						<label for="schedule-minute" class="form-label">Minute past the hour</label>
@@ -264,6 +290,7 @@
 	private List<ProjectAgent> _availableAgentAssignments = [];
 	private List<ProviderModel> _models = [];
 	private bool _isLoadingModels;
+	private bool _isRefreshingModels;
 	private string _selectedModelId = string.Empty;
 	private string _timeValue = "09:00";
 
@@ -329,6 +356,7 @@
 				ModelId = EditSchedule.ModelId,
 				IdeaCount = EditSchedule.IdeaCount,
 				Frequency = EditSchedule.Frequency,
+				IntervalMinutes = EditSchedule.IntervalMinutes,
 				HourUtc = EditSchedule.HourUtc,
 				MinuteUtc = EditSchedule.MinuteUtc,
 				WeeklyDay = EditSchedule.WeeklyDay,
@@ -352,6 +380,7 @@
 				InferenceProviderId = _inferenceProviders.FirstOrDefault()?.Id,
 				IdeaCount = SuggestIdeasRequest.DefaultIdeaCount,
 				Frequency = JobScheduleFrequency.Daily,
+				IntervalMinutes = 15,
 				HourUtc = 9,
 				MinuteUtc = 0,
 				WeeklyDay = DayOfWeek.Monday,
@@ -524,6 +553,78 @@
 		return Task.CompletedTask;
 	}
 
+	private async Task RefreshModelsAsync()
+	{
+		var providerId = ResolveSelectedProviderId();
+		if (!providerId.HasValue)
+		{
+			return;
+		}
+
+		_isRefreshingModels = true;
+		StateHasChanged();
+		try
+		{
+			if (Schedule.ScheduleType == JobScheduleType.GenerateIdeas)
+			{
+				var refreshed = (await InferenceProviderService.RefreshModelsAsync(providerId.Value)).ToList();
+				_models = refreshed
+					.Where(model => model.IsAvailable)
+					.Select(model => new ProviderModel
+					{
+						Id = model.Id,
+						ModelId = model.ModelId,
+						DisplayName = model.DisplayName ?? model.ModelId,
+						IsAvailable = model.IsAvailable,
+						IsDefault = model.IsDefault
+					})
+					.OrderByDescending(model => model.IsDefault)
+					.ThenBy(model => model.DisplayName ?? model.ModelId)
+					.ToList();
+			}
+			else
+			{
+				_models = (await ProviderService.RefreshModelsAsync(providerId.Value))
+					.Where(model => model.IsAvailable)
+					.OrderByDescending(model => model.IsDefault)
+					.ThenBy(model => model.DisplayName ?? model.ModelId)
+					.ToList();
+			}
+
+			if (!string.IsNullOrWhiteSpace(_selectedModelId) && _models.Any(model => model.ModelId == _selectedModelId))
+			{
+				// Preserve current selection when still available.
+			}
+			else
+			{
+				_selectedModelId = ResolveDefaultModel(providerId.Value);
+				Schedule.ModelId = string.IsNullOrWhiteSpace(_selectedModelId) ? null : _selectedModelId;
+			}
+
+			NotificationService.ShowSuccess($"Found {_models.Count} model(s).");
+		}
+		catch (Exception ex)
+		{
+			NotificationService.ShowError($"Failed to refresh models: {ex.Message}");
+		}
+		finally
+		{
+			_isRefreshingModels = false;
+			StateHasChanged();
+		}
+	}
+
+	private static string GetFrequencyLabel(JobScheduleFrequency frequency)
+		=> frequency switch
+		{
+			JobScheduleFrequency.Minutes => "Every N Minutes",
+			JobScheduleFrequency.Hourly => "Hourly",
+			JobScheduleFrequency.Daily => "Daily",
+			JobScheduleFrequency.Weekly => "Weekly",
+			JobScheduleFrequency.Monthly => "Monthly",
+			_ => frequency.ToString()
+		};
+
 	private Task OnTimeChanged(ChangeEventArgs args)
 	{
 		_timeValue = args.Value?.ToString() ?? string.Empty;
@@ -558,7 +659,18 @@
 			return;
 		}
 
-		if (Schedule.Frequency != JobScheduleFrequency.Hourly)
+		if (Schedule.Frequency == JobScheduleFrequency.Minutes)
+		{
+			if (Schedule.IntervalMinutes < 5 || Schedule.IntervalMinutes > 60)
+			{
+				ErrorMessage = "Interval must be between 5 and 60 minutes.";
+				return;
+			}
+
+			Schedule.HourUtc = 0;
+			Schedule.MinuteUtc = 0;
+		}
+		else if (Schedule.Frequency != JobScheduleFrequency.Hourly)
 		{
 			if (!TimeOnly.TryParse(_timeValue, out var time))
 			{

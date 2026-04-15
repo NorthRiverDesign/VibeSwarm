@@ -193,6 +193,7 @@ public class JobScheduleProcessor
 	{
 		var scheduleDescriptor = schedule.Frequency switch
 		{
+			JobScheduleFrequency.Minutes => $"every {schedule.IntervalMinutes} minutes",
 			JobScheduleFrequency.Hourly => $"hourly at minute {schedule.MinuteUtc:D2}",
 			JobScheduleFrequency.Weekly => $"weekly on {schedule.WeeklyDay} at {schedule.HourUtc:D2}:{schedule.MinuteUtc:D2} UTC",
 			JobScheduleFrequency.Monthly => $"monthly on day {schedule.DayOfMonth} at {schedule.HourUtc:D2}:{schedule.MinuteUtc:D2} UTC",

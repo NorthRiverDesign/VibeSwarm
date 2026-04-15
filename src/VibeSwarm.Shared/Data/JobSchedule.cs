@@ -9,7 +9,8 @@ public enum JobScheduleFrequency
 	Hourly = 0,
 	Daily = 1,
 	Weekly = 2,
-	Monthly = 3
+	Monthly = 3,
+	Minutes = 4
 }
 
 public enum JobScheduleExecutionTarget
@@ -54,6 +55,9 @@ public class JobSchedule : IValidatableObject
 	public int IdeaCount { get; set; } = 3;
 
 	public JobScheduleFrequency Frequency { get; set; } = JobScheduleFrequency.Daily;
+
+	[Range(5, 60)]
+	public int IntervalMinutes { get; set; } = 15;
 
 	[Range(0, 23)]
 	public int HourUtc { get; set; } = 9;
@@ -103,6 +107,11 @@ public class JobSchedule : IValidatableObject
 		if (ScheduleType == JobScheduleType.RunJob && string.IsNullOrWhiteSpace(Prompt))
 		{
 			yield return new ValidationResult("A prompt is required.", [nameof(Prompt)]);
+		}
+
+		if (Frequency == JobScheduleFrequency.Minutes && (IntervalMinutes < 5 || IntervalMinutes > 60))
+		{
+			yield return new ValidationResult("Interval must be between 5 and 60 minutes.", [nameof(IntervalMinutes)]);
 		}
 	}
 }

@@ -14,11 +14,18 @@ public static class JobScheduleCalculator
 
 		return schedule.Frequency switch
 		{
+			JobScheduleFrequency.Minutes => CalculateNextMinutesRun(schedule, afterUtc),
 			JobScheduleFrequency.Hourly => CalculateNextHourlyRun(schedule, afterUtc, localAfter, timeZone),
 			JobScheduleFrequency.Weekly => CalculateNextWeeklyRun(schedule, afterUtc, localAfter, timeZone),
 			JobScheduleFrequency.Monthly => CalculateNextMonthlyRun(schedule, afterUtc, localAfter, timeZone),
 			_ => CalculateNextDailyRun(schedule, afterUtc, localAfter, timeZone)
 		};
+	}
+
+	private static DateTime CalculateNextMinutesRun(JobSchedule schedule, DateTime afterUtc)
+	{
+		var interval = Math.Clamp(schedule.IntervalMinutes, 5, 60);
+		return afterUtc.AddMinutes(interval);
 	}
 
 	private static DateTime CalculateNextHourlyRun(JobSchedule schedule, DateTime afterUtc, DateTime localAfter, TimeZoneInfo timeZone)

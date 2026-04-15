@@ -54,7 +54,7 @@ public sealed class SchedulerPageTests
 			Assert.Contains("d-flex align-items-center justify-content-between gap-2 gap-sm-3 mb-3 mb-lg-4", html);
 			Assert.Contains("Repo", html);
 			Assert.Contains("Copilot", html);
-			Assert.Contains($"Next {nextRunAtUtc.FormatRelativeToNow()}", html);
+			Assert.Contains($"Next: {nextRunAtUtc.FormatRelativeToNow()}", html);
 			Assert.Contains($"Last {lastRunAtUtc.FormatRelativeToNow()}", html);
 			Assert.DoesNotContain(timeZoneId, html);
 			Assert.DoesNotContain(nextRunAtUtc.FormatDateTimeWithZone(), html);
