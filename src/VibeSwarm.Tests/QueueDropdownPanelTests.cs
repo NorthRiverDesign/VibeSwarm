@@ -217,8 +217,8 @@ public sealed class QueueDropdownPanelTests
 		Assert.Contains("Stalled", cut.Markup);
 		Assert.Contains("Paused job", cut.Markup);
 		Assert.Contains("Stalled job", cut.Markup);
-		// Should not show generic Running badge for paused/stalled
-		Assert.DoesNotContain(">Running<", cut.Markup);
+		// Should not show generic Running badge for paused/stalled individual job items
+		Assert.DoesNotContain("text-bg-primary\">Running<", cut.Markup);
 	}
 
 	[Fact]

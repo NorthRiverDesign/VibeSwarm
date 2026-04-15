@@ -240,26 +240,26 @@
 									@if (InputTokens.HasValue && InputTokens.Value > 0)
 									{
 										<span class="d-inline-flex align-items-center px-2 py-1 bg-body-tertiary rounded-pill text-nowrap"
-											  title="Input Tokens">
-											<i class="bi bi-arrow-right-circle me-1 opacity-75"></i>@TokenHelper.FormatTokenCount(InputTokens.Value)
+											  title="@(IsTokenEstimate ? "Estimated Input Tokens" : "Input Tokens")">
+											<i class="bi bi-arrow-right-circle me-1 opacity-75"></i>@(IsTokenEstimate ? "~" : "")@TokenHelper.FormatTokenCount(InputTokens.Value)
 										</span>
 									}
 									@if (OutputTokens.HasValue && OutputTokens.Value > 0)
 									{
 										<span class="d-inline-flex align-items-center px-2 py-1 bg-body-tertiary rounded-pill text-nowrap"
-											  title="Output Tokens">
-											<i class="bi bi-arrow-left-circle me-1 opacity-75"></i>@TokenHelper.FormatTokenCount(OutputTokens.Value)
+											  title="@(IsTokenEstimate ? "Estimated Output Tokens" : "Output Tokens")">
+											<i class="bi bi-arrow-left-circle me-1 opacity-75"></i>@(IsTokenEstimate ? "~" : "")@TokenHelper.FormatTokenCount(OutputTokens.Value)
 										</span>
 									}
 									@if (InputTokens.HasValue && InputTokens.Value > 0 && OutputTokens.HasValue && OutputTokens.Value > 0)
 									{
 										<span class="d-inline-flex align-items-center px-2 py-1 bg-body-tertiary rounded-pill text-nowrap"
-											  title="Total Tokens">
-											<i class="bi bi-arrow-left-right me-1 opacity-75"></i>@TokenHelper.FormatTokenCount(InputTokens.Value +
+											  title="@(IsTokenEstimate ? "Estimated Total Tokens" : "Total Tokens")">
+											<i class="bi bi-arrow-left-right me-1 opacity-75"></i>@(IsTokenEstimate ? "~" : "")@TokenHelper.FormatTokenCount(InputTokens.Value +
 																																											OutputTokens.Value)
 										</span>
 									}
-									@if (TotalCostUsd.HasValue && TotalCostUsd.Value > 0)
+									@if (!IsTokenEstimate && TotalCostUsd.HasValue && TotalCostUsd.Value > 0)
 									{
 										<span class="d-inline-flex align-items-center px-2 py-1 rounded-pill text-nowrap text-success fw-medium"
 											  style="background: rgba(63, 185, 80, 0.15);" title="Total Cost">
@@ -270,14 +270,14 @@
 									{
 										<span class="d-inline-flex align-items-center px-2 py-1 bg-body-tertiary rounded-pill text-nowrap"
 											  title="Planning stage totals">
-											<i class="bi bi-diagram-3 me-1 opacity-75"></i>P @StageUsageSummary(PlanningInputTokens, PlanningOutputTokens, PlanningCostUsd)
+											<i class="bi bi-diagram-3 me-1 opacity-75"></i>P @StageUsageSummary(PlanningInputTokens, PlanningOutputTokens, IsTokenEstimate ? null : PlanningCostUsd, IsTokenEstimate)
 										</span>
 									}
 									@if (ShowExecutionBreakdown)
 									{
 										<span class="d-inline-flex align-items-center px-2 py-1 bg-body-tertiary rounded-pill text-nowrap"
 											  title="Execution stage totals">
-											<i class="bi bi-terminal me-1 opacity-75"></i>E @StageUsageSummary(ExecutionInputTokens, ExecutionOutputTokens, ExecutionCostUsd)
+											<i class="bi bi-terminal me-1 opacity-75"></i>E @StageUsageSummary(ExecutionInputTokens, ExecutionOutputTokens, IsTokenEstimate ? null : ExecutionCostUsd, IsTokenEstimate)
 										</span>
 									}
 								</div>
@@ -366,6 +366,9 @@
 
 	[Parameter]
 	public decimal? ExecutionCostUsd { get; set; }
+
+	[Parameter]
+	public bool IsTokenEstimate { get; set; }
 
 	[Parameter]
 	public bool CanRetry { get; set; }
@@ -512,15 +515,16 @@
 			(costUsd.HasValue && costUsd.Value > 0);
 	}
 
-	private static string StageUsageSummary(int? inputTokens, int? outputTokens, decimal? costUsd)
+	private static string StageUsageSummary(int? inputTokens, int? outputTokens, decimal? costUsd, bool isEstimate = false)
 	{
 		var totalTokens = (inputTokens ?? 0) + (outputTokens ?? 0);
-		if (costUsd.HasValue && costUsd.Value > 0)
+		var prefix = isEstimate ? "~" : "";
+		if (!isEstimate && costUsd.HasValue && costUsd.Value > 0)
 		{
-			return $"{TokenHelper.FormatTokenCount(totalTokens)} / {TokenHelper.FormatCost(costUsd.Value)}";
+			return $"{prefix}{TokenHelper.FormatTokenCount(totalTokens)} / {TokenHelper.FormatCost(costUsd.Value)}";
 		}
 
-		return TokenHelper.FormatTokenCount(totalTokens);
+		return $"{prefix}{TokenHelper.FormatTokenCount(totalTokens)}";
 	}
 
 	private static string? BuildStageProviderDisplay(string? providerName, string? modelName)

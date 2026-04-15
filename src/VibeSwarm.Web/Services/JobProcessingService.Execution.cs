@@ -802,6 +802,26 @@ public partial class JobProcessingService
 			finalResult.OutputTokens = executionOutputTokens;
 			finalResult.CostUsd = executionCostUsd;
 
+			// If the provider did not report token usage, fall back to text-length estimates.
+			// This is common for GitHub Copilot CLI which reports premium requests rather than raw tokens.
+			if (!finalResult.InputTokens.HasValue && !finalResult.OutputTokens.HasValue)
+			{
+				var inputText = job.GoalPrompt + (job.PlanningOutput is { Length: > 0 } ? "\n" + job.PlanningOutput : "");
+				finalResult.InputTokens = TokenHelper.EstimateTokenCount(inputText);
+
+				var assistantContent = string.Join("\n", finalResult.Messages
+					.Where(m => string.Equals(m.Role, "assistant", StringComparison.OrdinalIgnoreCase))
+					.Select(m => m.Content));
+
+				if (string.IsNullOrEmpty(assistantContent))
+				{
+					assistantContent = executionContext.GetConsoleOutput();
+				}
+
+				finalResult.OutputTokens = TokenHelper.EstimateTokenCount(assistantContent);
+				finalResult.IsTokenEstimate = true;
+			}
+
             // Stop monitoring cancellation
             executionContext.CancellationTokenSource?.Cancel();
             try { await cancellationMonitorTask; } catch { }
@@ -819,7 +839,8 @@ public partial class JobProcessingService
                 providerDisplayName ??= "Unknown Provider";
                 await CompleteJobAsync(job.Id, JobStatus.Cancelled, finalResult.SessionId, finalResult.Output,
                     "Job was cancelled by user", finalResult.InputTokens, finalResult.OutputTokens, finalResult.CostUsd, finalResult.ModelUsed,
-                    executionContext, workingDirectory, dbContext, CancellationToken.None);
+                    executionContext, workingDirectory, dbContext, CancellationToken.None,
+                    finalResult.IsTokenEstimate);
 
                 // Record usage even for cancelled jobs
                 await RecordUsageAndCheckExhaustionAsync(job.ProviderId, providerDisplayName, job.Id, finalResult, provider!, CancellationToken.None);
@@ -853,7 +874,8 @@ public partial class JobProcessingService
 
                 var hasGitChanges = await CompleteJobAsync(job.Id, JobStatus.Completed, finalResult.SessionId, finalResult.Output,
                     null, finalResult.InputTokens, finalResult.OutputTokens, finalResult.CostUsd, finalResult.ModelUsed,
-                    executionContext, workingDirectory, dbContext, CancellationToken.None);
+                    executionContext, workingDirectory, dbContext, CancellationToken.None,
+                    finalResult.IsTokenEstimate);
 
                 if (hasGitChanges)
                 {
@@ -928,7 +950,8 @@ public partial class JobProcessingService
                 {
                     await CompleteJobAsync(job.Id, JobStatus.Failed, finalResult.SessionId, finalResult.Output,
                         finalResult.ErrorMessage, finalResult.InputTokens, finalResult.OutputTokens, finalResult.CostUsd, finalResult.ModelUsed,
-                        executionContext, workingDirectory, dbContext, CancellationToken.None);
+                        executionContext, workingDirectory, dbContext, CancellationToken.None,
+                        finalResult.IsTokenEstimate);
 
                     // System-level errors (model unavailable, upstream outages) should immediately
                     // trip the circuit breaker to prevent cascading failures on queued jobs

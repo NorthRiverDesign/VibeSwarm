@@ -31,6 +31,11 @@ public class JobSummary
 	public decimal? TotalCostUsd { get; set; }
 	public int? InputTokens { get; set; }
 	public int? OutputTokens { get; set; }
+	/// <summary>
+	/// True when InputTokens/OutputTokens are estimates derived from text length
+	/// rather than exact counts reported by the provider.
+	/// </summary>
+	public bool IsTokenEstimate { get; set; }
 	public decimal? PlanningCostUsd { get; set; }
 	public int? PlanningInputTokens { get; set; }
 	public int? PlanningOutputTokens { get; set; }

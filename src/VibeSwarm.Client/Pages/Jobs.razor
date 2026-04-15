@@ -196,7 +196,7 @@
 								 PlanningProviderName="@job.PlanningProviderName" PlanningModelUsed="@job.PlanningModelUsed"
 								 Activity="@((job.Status == JobStatus.Started || job.Status == JobStatus.Planning || job.Status == JobStatus.Processing) ? (job.CurrentActivity ?? "Working...") : null)"
 								 TimeDisplay="@GetTimeDisplay(job)" Cost="@job.TotalCostUsd" InputTokens="@job.InputTokens"
-								 OutputTokens="@job.OutputTokens" CurrentCycle="@job.CurrentCycle" MaxCycles="@job.MaxCycles"
+								 OutputTokens="@job.OutputTokens" IsTokenEstimate="@job.IsTokenEstimate" CurrentCycle="@job.CurrentCycle" MaxCycles="@job.MaxCycles"
 								 CycleMode="@job.CycleMode" AgentName="@job.AgentName"
 								 PlaywrightEnabled="@job.PlaywrightEnabled" EnvironmentCount="@job.EnvironmentCount"
 								 ChangedFilesCount="@job.ChangedFilesCount" BuildVerified="@job.BuildVerified"

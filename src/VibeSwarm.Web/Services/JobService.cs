@@ -62,6 +62,7 @@ public partial class JobService : IJobService
 			TotalCostUsd = j.Statistics != null ? j.Statistics.TotalCostUsd : null,
 			InputTokens = j.Statistics != null ? j.Statistics.InputTokens : null,
 			OutputTokens = j.Statistics != null ? j.Statistics.OutputTokens : null,
+			IsTokenEstimate = j.Statistics != null && j.Statistics.IsTokenEstimate,
 			PlanningCostUsd = j.PlanningStatistics != null ? j.PlanningStatistics.CostUsd : null,
 			PlanningInputTokens = j.PlanningStatistics != null ? j.PlanningStatistics.InputTokens : null,
 			PlanningOutputTokens = j.PlanningStatistics != null ? j.PlanningStatistics.OutputTokens : null,

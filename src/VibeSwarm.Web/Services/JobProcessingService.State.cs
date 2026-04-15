@@ -130,7 +130,8 @@ public partial class JobProcessingService
         Guid jobId, JobStatus status, string? sessionId, string? output, string? errorMessage,
         int? inputTokens, int? outputTokens, decimal? costUsd, string? modelUsed,
         JobExecutionContext executionContext, string? workingDirectory,
-        VibeSwarmDbContext dbContext, CancellationToken cancellationToken)
+        VibeSwarmDbContext dbContext, CancellationToken cancellationToken,
+        bool isTokenEstimate = false)
     {
 		var hasGitChanges = false;
 		var job = await dbContext.Jobs
@@ -157,6 +158,7 @@ public partial class JobProcessingService
             job.InputTokens = SumUsage(job.PlanningInputTokens, job.ExecutionInputTokens);
             job.OutputTokens = SumUsage(job.PlanningOutputTokens, job.ExecutionOutputTokens);
             job.TotalCostUsd = SumCost(job.PlanningCostUsd, job.ExecutionCostUsd);
+            job.IsTokenEstimate = isTokenEstimate;
             job.ModelUsed = modelUsed ?? job.ModelUsed;
             job.WorkerInstanceId = null;
             job.LastHeartbeatAt = null;

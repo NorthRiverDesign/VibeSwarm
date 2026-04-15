@@ -154,6 +154,12 @@ public class ExecutionResult
     public decimal? CostUsd { get; set; }
 
     /// <summary>
+    /// True when InputTokens/OutputTokens are estimates derived from text length
+    /// rather than exact counts reported by the provider.
+    /// </summary>
+    public bool IsTokenEstimate { get; set; }
+
+    /// <summary>
     /// The AI model that was used for this execution (e.g., "claude-sonnet-4-20250514")
     /// </summary>
     public string? ModelUsed { get; set; }

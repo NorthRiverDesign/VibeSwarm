@@ -351,6 +351,25 @@ public class Job
 	}
 
 	/// <summary>
+	/// True when InputTokens/OutputTokens are estimates derived from text length
+	/// rather than exact counts reported by the provider.
+	/// </summary>
+	[NotMapped]
+	public bool IsTokenEstimate
+	{
+		get => Statistics?.IsTokenEstimate ?? false;
+		set
+		{
+			if (!value && Statistics is null)
+			{
+				return;
+			}
+
+			EnsureStatistics().IsTokenEstimate = value;
+		}
+	}
+
+	/// <summary>
 	/// Input tokens consumed by the execution stage.
 	/// </summary>
 	[NotMapped]

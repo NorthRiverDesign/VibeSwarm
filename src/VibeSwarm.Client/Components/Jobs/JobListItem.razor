@@ -110,12 +110,12 @@
             @* Token info *@
             @if (InputTokens.HasValue || OutputTokens.HasValue)
             {
-                <span class="font-monospace small text-body-secondary" title="Input / Output tokens">
-                    @TokenHelper.FormatTokenCount(InputTokens ?? 0) / @TokenHelper.FormatTokenCount(OutputTokens ?? 0)
+                <span class="font-monospace small text-body-secondary" title="@(IsTokenEstimate ? "Estimated Input / Output tokens" : "Input / Output tokens")">
+                    @(IsTokenEstimate ? "~" : "")@TokenHelper.FormatTokenCount(InputTokens ?? 0) / @TokenHelper.FormatTokenCount(OutputTokens ?? 0)
                 </span>
             }
-            @* Cost *@
-            @if (Cost.HasValue && Cost.Value > 0)
+            @* Cost - hidden for estimated tokens *@
+            @if (!IsTokenEstimate && Cost.HasValue && Cost.Value > 0)
             {
                 <span class="font-monospace small fw-medium text-success">@TokenHelper.FormatCost(Cost.Value)</span>
             }
@@ -127,8 +127,8 @@
         @if (InputTokens.HasValue || OutputTokens.HasValue || Cost.HasValue)
         {
             <span class="font-monospace">
-                @TokenHelper.FormatTokenCount((InputTokens ?? 0) + (OutputTokens ?? 0)) tokens
-                @if (Cost.HasValue && Cost.Value > 0)
+                @(IsTokenEstimate ? "~" : "")@TokenHelper.FormatTokenCount((InputTokens ?? 0) + (OutputTokens ?? 0)) tokens
+                @if (!IsTokenEstimate && Cost.HasValue && Cost.Value > 0)
                 {
                     <span class="text-success ms-1">@TokenHelper.FormatCost(Cost.Value)</span>
                 }
@@ -176,6 +176,9 @@
 
     [Parameter]
     public int? OutputTokens { get; set; }
+
+    [Parameter]
+    public bool IsTokenEstimate { get; set; }
 
     [Parameter]
     public bool IsSelected { get; set; }
