@@ -11,12 +11,12 @@ using VibeSwarm.Shared.Services;
 
 namespace VibeSwarm.Tests;
 
-public sealed class TeamRolesPageTests
+public sealed class AgentsPageTests
 {
 	[Fact]
-	public async Task RenderedTeamsPage_ShowsPrimaryAddActionInHeader()
+	public async Task RenderedAgentsPage_ShowsPrimaryAddActionInHeader()
 	{
-		var html = await RenderTeamsPageAsync([]);
+		var html = await RenderAgentsPageAsync([]);
 
 		Assert.Contains("btn btn-primary", html);
 		Assert.Contains(">Add Agent<", html);
@@ -25,7 +25,7 @@ public sealed class TeamRolesPageTests
 	}
 
 	[Fact]
-	public async Task RenderedTeamsPage_ShowsConfiguredRoleDetailsAndSkills()
+	public async Task RenderedAgentsPage_ShowsConfiguredRoleDetailsAndSkills()
 	{
 		var skill = new Skill
 		{
@@ -33,7 +33,7 @@ public sealed class TeamRolesPageTests
 			Name = "secure-review",
 			Description = "Review auth and data exposure."
 		};
-		var teamRole = new TeamRole
+		var agent = new Agent
 		{
 			Id = Guid.NewGuid(),
 			Name = "Security Reviewer",
@@ -51,7 +51,7 @@ public sealed class TeamRolesPageTests
 			IsEnabled = true,
 			SkillLinks =
 			[
-				new TeamRoleSkill
+				new AgentSkill
 				{
 					SkillId = skill.Id,
 					Skill = skill
@@ -59,7 +59,7 @@ public sealed class TeamRolesPageTests
 			]
 		};
 
-		var html = await RenderTeamsPageAsync([teamRole], [skill]);
+		var html = await RenderAgentsPageAsync([agent], [skill]);
 
 		Assert.Contains("Security Reviewer", html);
 		Assert.Contains("Focuses on threats and auth flaws.", html);
@@ -70,13 +70,13 @@ public sealed class TeamRolesPageTests
 		Assert.Contains("Default run: autonomous up to 4 cycles, resume session", html);
 	}
 
-	private static async Task<string> RenderTeamsPageAsync(
-		IReadOnlyList<TeamRole> teamRoles,
+	private static async Task<string> RenderAgentsPageAsync(
+		IReadOnlyList<Agent> agents,
 		IReadOnlyList<Skill>? skills = null)
 	{
 		var services = new ServiceCollection();
 		services.AddLogging();
-		services.AddSingleton<ITeamRoleService>(new FakeTeamRoleService(teamRoles));
+		services.AddSingleton<IAgentService>(new FakeAgentService(agents));
 		services.AddSingleton<IProviderService>(new FakeProviderService([]));
 		services.AddSingleton<ISkillService>(new FakeSkillService(skills ?? []));
 		services.AddSingleton<NotificationService>();
@@ -86,20 +86,20 @@ public sealed class TeamRolesPageTests
 
 		return await renderer.Dispatcher.InvokeAsync(async () =>
 		{
-			var output = await renderer.RenderComponentAsync<Teams>();
+			var output = await renderer.RenderComponentAsync<Agents>();
 			return output.ToHtmlString();
 		});
 	}
 
-	private sealed class FakeTeamRoleService(IReadOnlyList<TeamRole> teamRoles) : ITeamRoleService
+	private sealed class FakeAgentService(IReadOnlyList<Agent> agents) : IAgentService
 	{
-		private readonly IReadOnlyList<TeamRole> _teamRoles = teamRoles;
+		private readonly IReadOnlyList<Agent> _agents = agents;
 
-		public Task<IEnumerable<TeamRole>> GetAllAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<TeamRole>>(_teamRoles);
-		public Task<IEnumerable<TeamRole>> GetEnabledAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<TeamRole>>(_teamRoles.Where(teamRole => teamRole.IsEnabled));
-		public Task<TeamRole?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult(_teamRoles.FirstOrDefault(teamRole => teamRole.Id == id));
-		public Task<TeamRole> CreateAsync(TeamRole teamRole, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-		public Task<TeamRole> UpdateAsync(TeamRole teamRole, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<IEnumerable<Agent>> GetAllAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Agent>>(_agents);
+		public Task<IEnumerable<Agent>> GetEnabledAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Agent>>(_agents.Where(agent => agent.IsEnabled));
+		public Task<Agent?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult(_agents.FirstOrDefault(agent => agent.Id == id));
+		public Task<Agent> CreateAsync(Agent agent, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<Agent> UpdateAsync(Agent agent, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task DeleteAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<bool> NameExistsAsync(string name, Guid? excludeId = null, CancellationToken cancellationToken = default) => Task.FromResult(false);
 	}

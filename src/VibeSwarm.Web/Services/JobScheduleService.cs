@@ -65,7 +65,7 @@ public class JobScheduleService : IJobScheduleService
 		existing.ScheduleType = schedule.ScheduleType;
 		existing.ExecutionTarget = schedule.ExecutionTarget;
 		existing.ProviderId = schedule.ProviderId;
-		existing.TeamRoleId = schedule.TeamRoleId;
+		existing.AgentId = schedule.AgentId;
 		existing.InferenceProviderId = schedule.InferenceProviderId;
 		existing.Prompt = schedule.Prompt;
 		existing.ModelId = schedule.ModelId;
@@ -133,7 +133,7 @@ public class JobScheduleService : IJobScheduleService
 		return _dbContext.JobSchedules
 			.Include(schedule => schedule.Project)
 			.Include(schedule => schedule.Provider)
-			.Include(schedule => schedule.TeamRole)
+			.Include(schedule => schedule.Agent)
 			.Include(schedule => schedule.InferenceProvider);
 	}
 
@@ -194,19 +194,19 @@ public class JobScheduleService : IJobScheduleService
 		}
 		else
 		{
-			if (!schedule.TeamRoleId.HasValue || schedule.TeamRoleId == Guid.Empty)
+			if (!schedule.AgentId.HasValue || schedule.AgentId == Guid.Empty)
 			{
 				throw new InvalidOperationException("The selected agent is not assigned to this project.");
 			}
 
-			var assignment = await _dbContext.ProjectTeamRoles
-				.Include(projectTeamRole => projectTeamRole.TeamRole)
-				.Include(projectTeamRole => projectTeamRole.Provider)
-				.FirstOrDefaultAsync(projectTeamRole =>
-					projectTeamRole.ProjectId == schedule.ProjectId &&
-					projectTeamRole.TeamRoleId == schedule.TeamRoleId.Value,
+			var assignment = await _dbContext.ProjectAgents
+				.Include(projectAgent => projectAgent.Agent)
+				.Include(projectAgent => projectAgent.Provider)
+				.FirstOrDefaultAsync(projectAgent =>
+					projectAgent.ProjectId == schedule.ProjectId &&
+					projectAgent.AgentId == schedule.AgentId.Value,
 					cancellationToken);
-			if (assignment == null || !assignment.IsEnabled || assignment.TeamRole == null || !assignment.TeamRole.IsEnabled)
+			if (assignment == null || !assignment.IsEnabled || assignment.Agent == null || !assignment.Agent.IsEnabled)
 			{
 				throw new InvalidOperationException("The selected agent is not assigned to this project.");
 			}
@@ -248,13 +248,13 @@ public class JobScheduleService : IJobScheduleService
 		schedule.ModelId = string.IsNullOrWhiteSpace(schedule.ModelId) ? null : schedule.ModelId.Trim();
 		schedule.LastError = string.IsNullOrWhiteSpace(schedule.LastError) ? null : schedule.LastError.Trim();
 		schedule.ProviderId = schedule.ProviderId == Guid.Empty ? null : schedule.ProviderId;
-		schedule.TeamRoleId = schedule.TeamRoleId == Guid.Empty ? null : schedule.TeamRoleId;
+		schedule.AgentId = schedule.AgentId == Guid.Empty ? null : schedule.AgentId;
 		schedule.InferenceProviderId = schedule.InferenceProviderId == Guid.Empty ? null : schedule.InferenceProviderId;
 		schedule.IdeaCount = Math.Clamp(schedule.IdeaCount, ValidationLimits.JobScheduleIdeaCountMin, ValidationLimits.JobScheduleIdeaCountMax);
 		if (schedule.ScheduleType == JobScheduleType.GenerateIdeas)
 		{
 			schedule.ProviderId = null;
-			schedule.TeamRoleId = null;
+			schedule.AgentId = null;
 			schedule.Prompt = string.Empty;
 			schedule.ExecutionTarget = JobScheduleExecutionTarget.Provider;
 			return;
@@ -263,7 +263,7 @@ public class JobScheduleService : IJobScheduleService
 		schedule.InferenceProviderId = null;
 		if (schedule.ExecutionTarget == JobScheduleExecutionTarget.Provider)
 		{
-			schedule.TeamRoleId = null;
+			schedule.AgentId = null;
 		}
 		else
 		{

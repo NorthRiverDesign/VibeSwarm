@@ -40,7 +40,7 @@ public class JobSummary
 	public int CurrentCycle { get; set; }
 	public int MaxCycles { get; set; }
 	public CycleMode CycleMode { get; set; }
-	public string? TeamRoleName { get; set; }
+	public string? AgentName { get; set; }
 	public string? Branch { get; set; }
 	public int? ChangedFilesCount { get; set; }
 	public bool? BuildVerified { get; set; }

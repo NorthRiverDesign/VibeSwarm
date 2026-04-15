@@ -1,8 +1,8 @@
 namespace VibeSwarm.Client.Models;
 
-public sealed class ProjectTeamRoleModelSelectionChange
+public sealed class ProjectAgentModelSelectionChange
 {
-	public Guid TeamRoleId { get; set; }
+	public Guid AgentId { get; set; }
 
 	public string? PreferredModelId { get; set; }
 

@@ -89,9 +89,9 @@ public sealed class SchedulerPageTests
 		{
 			Id = Guid.NewGuid(),
 			Prompt = "review for security issues",
-			ExecutionTarget = JobScheduleExecutionTarget.TeamRole,
-			TeamRoleId = Guid.NewGuid(),
-			TeamRole = new TeamRole { Id = Guid.NewGuid(), Name = "Security Reviewer", IsEnabled = true },
+			ExecutionTarget = JobScheduleExecutionTarget.Agent,
+			AgentId = Guid.NewGuid(),
+			Agent = new Agent { Id = Guid.NewGuid(), Name = "Security Reviewer", IsEnabled = true },
 			Frequency = JobScheduleFrequency.Weekly,
 			WeeklyDay = DayOfWeek.Friday,
 			HourUtc = 9,

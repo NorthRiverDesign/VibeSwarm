@@ -8,36 +8,36 @@ using VibeSwarm.Shared.Services;
 namespace VibeSwarm.Web.Controllers;
 
 [ApiController]
-[Route("api/team-roles")]
+[Route("api/agents")]
 [Authorize]
-public class TeamRolesController : ControllerBase
+public class AgentsController : ControllerBase
 {
-	private readonly ITeamRoleService _teamRoleService;
+	private readonly IAgentService _agentService;
 
-	public TeamRolesController(ITeamRoleService teamRoleService)
+	public AgentsController(IAgentService agentService)
 	{
-		_teamRoleService = teamRoleService;
+		_agentService = agentService;
 	}
 
 	[HttpGet]
-	public async Task<IActionResult> GetAll(CancellationToken ct) => Ok(await _teamRoleService.GetAllAsync(ct));
+	public async Task<IActionResult> GetAll(CancellationToken ct) => Ok(await _agentService.GetAllAsync(ct));
 
 	[HttpGet("enabled")]
-	public async Task<IActionResult> GetEnabled(CancellationToken ct) => Ok(await _teamRoleService.GetEnabledAsync(ct));
+	public async Task<IActionResult> GetEnabled(CancellationToken ct) => Ok(await _agentService.GetEnabledAsync(ct));
 
 	[HttpGet("{id:guid}")]
 	public async Task<IActionResult> GetById(Guid id, CancellationToken ct)
 	{
-		var teamRole = await _teamRoleService.GetByIdAsync(id, ct);
-		return teamRole == null ? NotFound() : Ok(teamRole);
+		var agent = await _agentService.GetByIdAsync(id, ct);
+		return agent == null ? NotFound() : Ok(agent);
 	}
 
 	[HttpPost]
-	public async Task<IActionResult> Create([FromBody] TeamRole teamRole, CancellationToken ct)
+	public async Task<IActionResult> Create([FromBody] Agent agent, CancellationToken ct)
 	{
 		try
 		{
-			return Ok(await _teamRoleService.CreateAsync(teamRole, ct));
+			return Ok(await _agentService.CreateAsync(agent, ct));
 		}
 		catch (ValidationException ex)
 		{
@@ -54,12 +54,12 @@ public class TeamRolesController : ControllerBase
 	}
 
 	[HttpPut("{id:guid}")]
-	public async Task<IActionResult> Update(Guid id, [FromBody] TeamRole teamRole, CancellationToken ct)
+	public async Task<IActionResult> Update(Guid id, [FromBody] Agent agent, CancellationToken ct)
 	{
 		try
 		{
-			teamRole.Id = id;
-			return Ok(await _teamRoleService.UpdateAsync(teamRole, ct));
+			agent.Id = id;
+			return Ok(await _agentService.UpdateAsync(agent, ct));
 		}
 		catch (ValidationException ex)
 		{
@@ -80,20 +80,20 @@ public class TeamRolesController : ControllerBase
 	[HttpDelete("{id:guid}")]
 	public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
 	{
-		await _teamRoleService.DeleteAsync(id, ct);
+		await _agentService.DeleteAsync(id, ct);
 		return Ok();
 	}
 
 	[HttpGet("name-exists")]
 	public async Task<IActionResult> NameExists([FromQuery] string name, [FromQuery] Guid? excludeId = null, CancellationToken ct = default)
-		=> Ok(await _teamRoleService.NameExistsAsync(name, excludeId, ct));
+		=> Ok(await _agentService.NameExistsAsync(name, excludeId, ct));
 
 	private static string GetPersistenceErrorMessage(DbUpdateException exception)
 	{
 		var message = exception.InnerException?.Message ?? exception.Message;
 
 		if (message.Contains("UNIQUE", StringComparison.OrdinalIgnoreCase) &&
-			message.Contains("TeamRoles", StringComparison.OrdinalIgnoreCase) &&
+			message.Contains("Agents", StringComparison.OrdinalIgnoreCase) &&
 			message.Contains("Name", StringComparison.OrdinalIgnoreCase))
 		{
 			return "An agent with this name already exists.";
@@ -109,7 +109,7 @@ public class TeamRolesController : ControllerBase
 			}
 
 			if (message.Contains("SkillId", StringComparison.OrdinalIgnoreCase) ||
-				message.Contains("TeamRoleSkills", StringComparison.OrdinalIgnoreCase) ||
+				message.Contains("AgentSkills", StringComparison.OrdinalIgnoreCase) ||
 				message.Contains("Skills", StringComparison.OrdinalIgnoreCase))
 			{
 				return "One or more selected skills do not exist.";

@@ -65,7 +65,7 @@ public sealed class CreateJobModalTests
 			Type = ProviderType.Copilot,
 			IsEnabled = true
 		};
-		var teamRole = new TeamRole
+		var agent = new Agent
 		{
 			Id = Guid.NewGuid(),
 			Name = "Security Reviewer",
@@ -80,13 +80,13 @@ public sealed class CreateJobModalTests
 		{
 			Id = Guid.NewGuid(),
 			Name = "VibeSwarm",
-			TeamAssignments =
+			AgentAssignments =
 			[
-				new ProjectTeamRole
+				new ProjectAgent
 				{
 					ProjectId = Guid.NewGuid(),
-					TeamRoleId = teamRole.Id,
-					TeamRole = teamRole,
+					AgentId = agent.Id,
+					Agent = agent,
 					ProviderId = provider.Id,
 					Provider = provider,
 					PreferredModelId = "gpt-5.4",
@@ -105,7 +105,7 @@ public sealed class CreateJobModalTests
 			.Add(component => component.Branches, new List<GitBranchInfo>())
 			.Add(component => component.TemplateLibrary, []));
 
-		cut.Find("#agentPreset").Change(teamRole.Id.ToString());
+		cut.Find("#agentPreset").Change(agent.Id.ToString());
 
 		Assert.Contains("Agent Preset", cut.Markup);
 		Assert.Contains("Security Reviewer", cut.Markup);

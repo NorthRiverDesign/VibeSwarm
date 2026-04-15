@@ -7,17 +7,17 @@ using VibeSwarm.Shared.Providers;
 
 namespace VibeSwarm.Tests;
 
-public sealed class HttpTeamRoleServiceTests
+public sealed class HttpAgentServiceTests
 {
 	[Fact]
 	public async Task CreateAsync_SendsScalarOnlyPayload()
 	{
 		var skillId = Guid.NewGuid();
-		TeamRole? capturedPayload = null;
+		Agent? capturedPayload = null;
 		var service = CreateService(async request =>
 		{
 			capturedPayload = await DeserializeRequestAsync(request);
-			return CreateJsonResponse(HttpStatusCode.OK, new TeamRole
+			return CreateJsonResponse(HttpStatusCode.OK, new Agent
 			{
 				Id = Guid.NewGuid(),
 				Name = capturedPayload!.Name,
@@ -25,7 +25,7 @@ public sealed class HttpTeamRoleServiceTests
 			});
 		});
 
-		await service.CreateAsync(new TeamRole
+		await service.CreateAsync(new Agent
 		{
 			Name = "Security Reviewer",
 			DefaultProviderId = Guid.NewGuid(),
@@ -43,7 +43,7 @@ public sealed class HttpTeamRoleServiceTests
 			},
 			SkillLinks =
 			[
-				new TeamRoleSkill
+				new AgentSkill
 				{
 					SkillId = skillId,
 					Skill = new Skill
@@ -53,7 +53,7 @@ public sealed class HttpTeamRoleServiceTests
 						Content = "Review auth boundaries."
 					}
 				},
-				new TeamRoleSkill
+				new AgentSkill
 				{
 					SkillId = skillId,
 					Skill = new Skill
@@ -80,23 +80,23 @@ public sealed class HttpTeamRoleServiceTests
 	[Fact]
 	public async Task UpdateAsync_SendsScalarOnlyPayload()
 	{
-		var teamRoleId = Guid.NewGuid();
+		var agentId = Guid.NewGuid();
 		var skillId = Guid.NewGuid();
-		TeamRole? capturedPayload = null;
+		Agent? capturedPayload = null;
 		var service = CreateService(async request =>
 		{
 			capturedPayload = await DeserializeRequestAsync(request);
-			return CreateJsonResponse(HttpStatusCode.OK, new TeamRole
+			return CreateJsonResponse(HttpStatusCode.OK, new Agent
 			{
-				Id = teamRoleId,
+				Id = agentId,
 				Name = capturedPayload!.Name,
 				SkillLinks = capturedPayload.SkillLinks
 			});
 		});
 
-		await service.UpdateAsync(new TeamRole
+		await service.UpdateAsync(new Agent
 		{
-			Id = teamRoleId,
+			Id = agentId,
 			Name = "Platform Engineer",
 			DefaultReasoningEffort = "medium",
 			DefaultCycleMode = CycleMode.FixedCount,
@@ -105,9 +105,9 @@ public sealed class HttpTeamRoleServiceTests
 			DefaultCycleReviewPrompt = "Check whether the goal is complete after each pass.",
 			SkillLinks =
 			[
-				new TeamRoleSkill
+				new AgentSkill
 				{
-					TeamRoleId = teamRoleId,
+					AgentId = agentId,
 					SkillId = skillId,
 					Skill = new Skill
 					{
@@ -120,7 +120,7 @@ public sealed class HttpTeamRoleServiceTests
 		});
 
 		Assert.NotNull(capturedPayload);
-		Assert.Equal(teamRoleId, capturedPayload!.Id);
+		Assert.Equal(agentId, capturedPayload!.Id);
 		Assert.Equal("medium", capturedPayload.DefaultReasoningEffort);
 		Assert.Equal(CycleMode.FixedCount, capturedPayload.DefaultCycleMode);
 		Assert.Equal(CycleSessionMode.FreshSession, capturedPayload.DefaultCycleSessionMode);
@@ -131,20 +131,20 @@ public sealed class HttpTeamRoleServiceTests
 		Assert.All(capturedPayload.SkillLinks, link => Assert.Null(link.Skill));
 	}
 
-	private static HttpTeamRoleService CreateService(Func<HttpRequestMessage, Task<HttpResponseMessage>> handler)
+	private static HttpAgentService CreateService(Func<HttpRequestMessage, Task<HttpResponseMessage>> handler)
 	{
 		var httpClient = new HttpClient(new StubHttpMessageHandler((request, _) => handler(request)))
 		{
 			BaseAddress = new Uri("https://example.test")
 		};
 
-		return new HttpTeamRoleService(httpClient);
+		return new HttpAgentService(httpClient);
 	}
 
-	private static async Task<TeamRole> DeserializeRequestAsync(HttpRequestMessage request)
+	private static async Task<Agent> DeserializeRequestAsync(HttpRequestMessage request)
 	{
 		var json = await request.Content!.ReadAsStringAsync();
-		return JsonSerializer.Deserialize<TeamRole>(json, new JsonSerializerOptions(JsonSerializerDefaults.Web))
+		return JsonSerializer.Deserialize<Agent>(json, new JsonSerializerOptions(JsonSerializerDefaults.Web))
 			?? throw new InvalidOperationException("Failed to deserialize team role request payload.");
 	}
 

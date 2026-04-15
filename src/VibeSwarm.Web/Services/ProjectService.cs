@@ -87,10 +87,10 @@ public class ProjectService : IProjectService
 		project.CommitSummaryInferenceModelId = string.IsNullOrWhiteSpace(project.CommitSummaryInferenceModelId) ? null : project.CommitSummaryInferenceModelId.Trim();
 		project.Memory = NormalizeProjectMemory(project.Memory);
 		NormalizeProviderSelections(project);
-		NormalizeTeamAssignments(project);
+		NormalizeAgentAssignments(project);
 		NormalizeEnvironments(project);
 		await ValidateProviderSelectionsAsync(project.ProviderSelections, cancellationToken);
-		await ValidateTeamAssignmentsAsync(project.TeamAssignments, cancellationToken);
+		await ValidateAgentAssignmentsAsync(project.AgentAssignments, cancellationToken);
 		await ValidatePlanningAsync(project, cancellationToken);
 		ValidateEnvironments(project.Environments);
 		_credentialService.PrepareForStorage(project);
@@ -170,23 +170,23 @@ public class ProjectService : IProjectService
 			.Collection(p => p.ProviderSelections)
 			.LoadAsync(cancellationToken);
 		await _dbContext.Entry(existing)
-			.Collection(p => p.TeamAssignments)
+			.Collection(p => p.AgentAssignments)
 			.LoadAsync(cancellationToken);
 		await _dbContext.Entry(existing)
 			.Collection(p => p.Environments)
 			.LoadAsync(cancellationToken);
 
 		NormalizeProviderSelections(project);
-		NormalizeTeamAssignments(project);
+		NormalizeAgentAssignments(project);
 		NormalizeEnvironments(project);
 		await ValidateProviderSelectionsAsync(project.ProviderSelections, cancellationToken);
-		await ValidateTeamAssignmentsAsync(project.TeamAssignments, cancellationToken);
+		await ValidateAgentAssignmentsAsync(project.AgentAssignments, cancellationToken);
 		await ValidatePlanningAsync(project, cancellationToken);
 		ValidateEnvironments(project.Environments);
 		_credentialService.PrepareForStorage(project, existing.Environments.ToList());
 
 		SynchronizeProviderSelections(existing, project.ProviderSelections);
-		SynchronizeTeamAssignments(existing, project.TeamAssignments);
+		SynchronizeAgentAssignments(existing, project.AgentAssignments);
 		SynchronizeEnvironments(existing, project.Environments);
 
 		await _dbContext.SaveChangesAsync(cancellationToken);
@@ -486,11 +486,11 @@ public class ProjectService : IProjectService
 			.Include(p => p.Environments.OrderBy(environment => environment.SortOrder))
 			.Include(p => p.ProviderSelections.OrderBy(pp => pp.Priority))
 				.ThenInclude(pp => pp.Provider)
-			.Include(p => p.TeamAssignments)
+			.Include(p => p.AgentAssignments)
 				.ThenInclude(assignment => assignment.Provider)
-			.Include(p => p.TeamAssignments)
-				.ThenInclude(assignment => assignment.TeamRole)
-					.ThenInclude(teamRole => teamRole!.SkillLinks)
+			.Include(p => p.AgentAssignments)
+				.ThenInclude(assignment => assignment.Agent)
+					.ThenInclude(agent => agent!.SkillLinks)
 						.ThenInclude(link => link.Skill);
 	}
 
@@ -642,16 +642,16 @@ public class ProjectService : IProjectService
 		project.ProviderSelections = orderedSelections;
 	}
 
-	private static void NormalizeTeamAssignments(Project project)
+	private static void NormalizeAgentAssignments(Project project)
 	{
-		if (project.TeamAssignments == null || project.TeamAssignments.Count == 0)
+		if (project.AgentAssignments == null || project.AgentAssignments.Count == 0)
 		{
-			project.TeamAssignments = [];
+			project.AgentAssignments = [];
 			return;
 		}
 
-		var normalizedAssignments = project.TeamAssignments
-			.GroupBy(assignment => assignment.TeamRoleId)
+		var normalizedAssignments = project.AgentAssignments
+			.GroupBy(assignment => assignment.AgentId)
 			.Select(group => group.First())
 			.ToList();
 
@@ -659,7 +659,7 @@ public class ProjectService : IProjectService
 		{
 			assignment.Id = assignment.Id == Guid.Empty ? Guid.NewGuid() : assignment.Id;
 			assignment.ProjectId = project.Id;
-			assignment.TeamRole = null;
+			assignment.Agent = null;
 			assignment.Provider = null;
 			assignment.PreferredModelId = string.IsNullOrWhiteSpace(assignment.PreferredModelId)
 				? null
@@ -672,7 +672,7 @@ public class ProjectService : IProjectService
 			}
 		}
 
-		project.TeamAssignments = normalizedAssignments;
+		project.AgentAssignments = normalizedAssignments;
 	}
 
 	private static void NormalizePlanningSettings(Project project)
@@ -790,35 +790,35 @@ public class ProjectService : IProjectService
 		}
 	}
 
-	private void SynchronizeTeamAssignments(Project existing, ICollection<ProjectTeamRole> requestedAssignments)
+	private void SynchronizeAgentAssignments(Project existing, ICollection<ProjectAgent> requestedAssignments)
 	{
 		var requestedProject = new Project
 		{
 			Id = existing.Id,
-			TeamAssignments = requestedAssignments ?? []
+			AgentAssignments = requestedAssignments ?? []
 		};
 
-		NormalizeTeamAssignments(requestedProject);
-		var requestedByTeamRole = requestedProject.TeamAssignments.ToDictionary(assignment => assignment.TeamRoleId);
+		NormalizeAgentAssignments(requestedProject);
+		var requestedByAgent = requestedProject.AgentAssignments.ToDictionary(assignment => assignment.AgentId);
 
-		var assignmentsToRemove = existing.TeamAssignments
-			.Where(current => !requestedByTeamRole.ContainsKey(current.TeamRoleId))
+		var assignmentsToRemove = existing.AgentAssignments
+			.Where(current => !requestedByAgent.ContainsKey(current.AgentId))
 			.ToList();
 		foreach (var assignment in assignmentsToRemove)
 		{
-			_dbContext.ProjectTeamRoles.Remove(assignment);
+			_dbContext.ProjectAgents.Remove(assignment);
 		}
 
-		foreach (var requested in requestedProject.TeamAssignments)
+		foreach (var requested in requestedProject.AgentAssignments)
 		{
-			var current = existing.TeamAssignments.FirstOrDefault(assignment => assignment.TeamRoleId == requested.TeamRoleId);
+			var current = existing.AgentAssignments.FirstOrDefault(assignment => assignment.AgentId == requested.AgentId);
 			if (current == null)
 			{
-				_dbContext.ProjectTeamRoles.Add(new ProjectTeamRole
+				_dbContext.ProjectAgents.Add(new ProjectAgent
 				{
 					Id = requested.Id,
 					ProjectId = existing.Id,
-					TeamRoleId = requested.TeamRoleId,
+					AgentId = requested.AgentId,
 					ProviderId = requested.ProviderId,
 					PreferredModelId = requested.PreferredModelId,
 					PreferredReasoningEffort = requested.PreferredReasoningEffort,
@@ -974,15 +974,15 @@ public class ProjectService : IProjectService
 		}
 	}
 
-	private async Task ValidateTeamAssignmentsAsync(ICollection<ProjectTeamRole> assignments, CancellationToken cancellationToken)
+	private async Task ValidateAgentAssignmentsAsync(ICollection<ProjectAgent> assignments, CancellationToken cancellationToken)
 	{
 		if (assignments == null || !assignments.Any())
 		{
 			return;
 		}
 
-		var teamRoleIds = assignments.Select(assignment => assignment.TeamRoleId).ToList();
-		var duplicates = teamRoleIds.GroupBy(id => id).Where(group => group.Count() > 1).Select(group => group.Key).ToList();
+		var agentIds = assignments.Select(assignment => assignment.AgentId).ToList();
+		var duplicates = agentIds.GroupBy(id => id).Where(group => group.Count() > 1).Select(group => group.Key).ToList();
 		if (duplicates.Any())
 		{
 			throw new InvalidOperationException("Duplicate agent assignment detected. Agents cannot be repeated.");
@@ -993,14 +993,14 @@ public class ProjectService : IProjectService
 			throw new InvalidOperationException("Each agent assignment must select a provider.");
 		}
 
-		var existingTeamRoleIds = await _dbContext.TeamRoles
-			.Where(teamRole => teamRoleIds.Contains(teamRole.Id))
-			.Select(teamRole => teamRole.Id)
+		var existingAgentIds = await _dbContext.Agents
+			.Where(agent => agentIds.Contains(agent.Id))
+			.Select(agent => agent.Id)
 			.ToListAsync(cancellationToken);
-		var invalidTeamRoleIds = teamRoleIds.Except(existingTeamRoleIds).ToList();
-		if (invalidTeamRoleIds.Any())
+		var invalidAgentIds = agentIds.Except(existingAgentIds).ToList();
+		if (invalidAgentIds.Any())
 		{
-			throw new InvalidOperationException($"One or more agent IDs do not exist: {string.Join(", ", invalidTeamRoleIds)}");
+			throw new InvalidOperationException($"One or more agent IDs do not exist: {string.Join(", ", invalidAgentIds)}");
 		}
 
 		var providerIds = assignments.Select(assignment => assignment.ProviderId).Distinct().ToList();
@@ -1055,7 +1055,7 @@ public class ProjectService : IProjectService
 			.Where(assignment => !ProviderCapabilities.SupportsReasoningEffort(
 				providerLookup[assignment.ProviderId],
 				assignment.PreferredReasoningEffort))
-			.Select(assignment => assignment.TeamRoleId)
+			.Select(assignment => assignment.AgentId)
 			.ToList();
 		if (invalidReasoningSelections.Any())
 		{

@@ -352,20 +352,20 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 		{
 			Name = "Web App",
 			WorkingPath = "/tmp/web-app",
-			TeamAssignments =
+			AgentAssignments =
 			[
-				new ProjectTeamRole
+				new ProjectAgent
 				{
-					TeamRoleId = Guid.NewGuid(),
+					AgentId = Guid.NewGuid(),
 					IsEnabled = true,
-					TeamRole = new TeamRole
+					Agent = new Agent
 					{
 						Id = Guid.NewGuid(),
 						Name = "Code Reviewer",
 						IsEnabled = true,
 						SkillLinks =
 						[
-							new TeamRoleSkill
+							new AgentSkill
 							{
 								SkillId = repoMapSkill.Id,
 								Skill = repoMapSkill
@@ -637,20 +637,20 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 				{
 					Name = "Copilot App",
 					WorkingPath = workingDirectory,
-					TeamAssignments =
+					AgentAssignments =
 					[
-						new ProjectTeamRole
+						new ProjectAgent
 						{
-							TeamRoleId = Guid.NewGuid(),
+							AgentId = Guid.NewGuid(),
 							IsEnabled = true,
-							TeamRole = new TeamRole
+							Agent = new Agent
 							{
 								Id = Guid.NewGuid(),
 								Name = "Code Reviewer",
 								IsEnabled = true,
 								SkillLinks =
 								[
-									new TeamRoleSkill
+									new AgentSkill
 									{
 										SkillId = repoMapSkill.Id,
 										Skill = repoMapSkill
@@ -1377,20 +1377,20 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 		{
 			Name = "CLI App",
 			WorkingPath = "/tmp/cli-app",
-			TeamAssignments =
+			AgentAssignments =
 			[
-				new ProjectTeamRole
+				new ProjectAgent
 				{
-					TeamRoleId = Guid.NewGuid(),
+					AgentId = Guid.NewGuid(),
 					IsEnabled = true,
-					TeamRole = new TeamRole
+					Agent = new Agent
 					{
 						Id = Guid.NewGuid(),
 						Name = "CLI Reviewer",
 						IsEnabled = true,
 						SkillLinks =
 						[
-							new TeamRoleSkill
+							new AgentSkill
 							{
 								SkillId = testSkill.Id,
 								Skill = testSkill
@@ -1449,25 +1449,25 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 		{
 			Name = "Scoped Skills",
 			WorkingPath = "/tmp/scoped-skills",
-			TeamAssignments =
+			AgentAssignments =
 			[
-				new ProjectTeamRole
+				new ProjectAgent
 				{
-					TeamRoleId = Guid.NewGuid(),
+					AgentId = Guid.NewGuid(),
 					IsEnabled = true,
-					TeamRole = new TeamRole
+					Agent = new Agent
 					{
 						Id = Guid.NewGuid(),
 						Name = "Frontend",
 						IsEnabled = true,
 						SkillLinks =
 						[
-							new TeamRoleSkill
+							new AgentSkill
 							{
 								SkillId = assignedSkill.Id,
 								Skill = assignedSkill
 							},
-							new TeamRoleSkill
+							new AgentSkill
 							{
 								SkillId = disabledSkill.Id,
 								Skill = disabledSkill

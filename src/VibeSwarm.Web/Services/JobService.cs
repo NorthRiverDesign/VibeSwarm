@@ -71,7 +71,7 @@ public partial class JobService : IJobService
             CurrentCycle = j.CurrentCycle,
             MaxCycles = j.MaxCycles,
             CycleMode = j.CycleMode,
-            TeamRoleName = j.TeamRole != null ? j.TeamRole.Name : null,
+            AgentName = j.Agent != null ? j.Agent.Name : null,
              Branch = j.Branch,
              ChangedFilesCount = j.ChangedFilesCount,
              BuildVerified = j.BuildVerified,
@@ -100,7 +100,7 @@ public partial class JobService : IJobService
 				.ThenInclude(p => p!.Environments)
 			.Include(j => j.Provider)
 			.Include(j => j.PlanningProvider)
-			.Include(j => j.TeamRole)
+			.Include(j => j.Agent)
 			.OrderByDescending(j => j.CreatedAt)
 			.ToListAsync(cancellationToken);
     }
@@ -158,7 +158,7 @@ public partial class JobService : IJobService
 	{
 		return await IncludeStatistics(_dbContext.Jobs)
 			.Include(j => j.Provider)
-			.Include(j => j.TeamRole)
+			.Include(j => j.Agent)
 			.Where(j => j.ProjectId == projectId)
 			.OrderByDescending(j => j.CreatedAt)
             .ToListAsync(cancellationToken);
@@ -355,7 +355,7 @@ public partial class JobService : IJobService
 				.ThenInclude(p => p!.Environments)
 			.Include(j => j.Provider)
 			.Include(j => j.PlanningProvider)
-			.Include(j => j.TeamRole)
+			.Include(j => j.Agent)
 			.Include(j => j.ProviderAttempts.OrderBy(a => a.AttemptOrder))
 			.FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
     }
@@ -367,7 +367,7 @@ public partial class JobService : IJobService
 				.ThenInclude(p => p!.Environments)
 			.Include(j => j.Provider)
 			.Include(j => j.PlanningProvider)
-			.Include(j => j.TeamRole)
+			.Include(j => j.Agent)
 			.Include(j => j.ProviderAttempts.OrderBy(a => a.AttemptOrder))
 			.FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
 		if (job == null)
@@ -414,7 +414,7 @@ public partial class JobService : IJobService
         await _dbContext.SaveChangesAsync(cancellationToken);
 
         // Fan out to team swarm jobs if the project has team swarm enabled
-		var swarmJobs = job.TeamRoleId.HasValue
+		var swarmJobs = job.AgentId.HasValue
 			? []
 			: await TryCreateTeamSwarmJobsAsync(job, cancellationToken);
 
@@ -446,21 +446,21 @@ public partial class JobService : IJobService
     private async Task<List<Job>> TryCreateTeamSwarmJobsAsync(Job primaryJob, CancellationToken cancellationToken)
     {
         var project = await _dbContext.Projects
-            .Include(p => p.TeamAssignments)
-                .ThenInclude(a => a.TeamRole)
-            .Include(p => p.TeamAssignments)
+            .Include(p => p.AgentAssignments)
+                .ThenInclude(a => a.Agent)
+            .Include(p => p.AgentAssignments)
                 .ThenInclude(a => a.Provider)
             .FirstOrDefaultAsync(p => p.Id == primaryJob.ProjectId, cancellationToken);
 
         if (project == null || !project.EnableTeamSwarm)
             return [];
 
-        var enabledAssignments = project.TeamAssignments
+        var enabledAssignments = project.AgentAssignments
             .Where(a => a.IsEnabled
-                && a.TeamRole != null
-                && a.TeamRole.IsEnabled
+                && a.Agent != null
+                && a.Agent.IsEnabled
                 && a.ProviderId != Guid.Empty)
-            .OrderBy(a => a.TeamRole!.Name, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(a => a.Agent!.Name, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
         if (enabledAssignments.Count < 2)

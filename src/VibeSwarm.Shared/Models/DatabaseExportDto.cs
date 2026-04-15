@@ -9,7 +9,7 @@ public class DatabaseExportDto
 	public AppSettingsExportDto? Settings { get; set; }
 	public List<ProjectExportDto> Projects { get; set; } = [];
 	public List<SkillExportDto> Skills { get; set; } = [];
-	public List<TeamRoleExportDto> TeamRoles { get; set; } = [];
+	public List<AgentExportDto> Agents { get; set; } = [];
 	public List<ScheduleExportDto> Schedules { get; set; } = [];
 }
 
@@ -76,7 +76,7 @@ public class SkillExportDto
 	public bool IsEnabled { get; set; } = true;
 }
 
-public class TeamRoleExportDto
+public class AgentExportDto
 {
 	public string Name { get; set; } = string.Empty;
 	public string? Description { get; set; }

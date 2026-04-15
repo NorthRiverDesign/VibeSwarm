@@ -47,7 +47,7 @@ public class DatabaseService : IDatabaseService
 			.OrderBy(s => s.Name)
 			.ToListAsync(ct);
 
-		var teamRoles = await _db.TeamRoles
+		var agents = await _db.Agents
 			.Include(r => r.SkillLinks)
 				.ThenInclude(sl => sl.Skill)
 			.OrderBy(r => r.Name)
@@ -122,7 +122,7 @@ public class DatabaseService : IDatabaseService
 				Content = s.Content,
 				IsEnabled = s.IsEnabled,
 			}).ToList(),
-			TeamRoles = teamRoles.Select(r => new TeamRoleExportDto
+			Agents = agents.Select(r => new AgentExportDto
 			{
 				Name = r.Name,
 				Description = r.Description,
@@ -192,9 +192,9 @@ public class DatabaseService : IDatabaseService
 		await _db.SaveChangesAsync(ct);
 
 		// Import team roles
-		var existingRoleNames = await _db.TeamRoles.Select(r => r.Name).ToHashSetAsync(ct);
+		var existingRoleNames = await _db.Agents.Select(r => r.Name).ToHashSetAsync(ct);
 
-		foreach (var roleDto in export.TeamRoles)
+		foreach (var roleDto in export.Agents)
 		{
 			if (string.IsNullOrWhiteSpace(roleDto.Name))
 				continue;
@@ -205,7 +205,7 @@ public class DatabaseService : IDatabaseService
 				continue;
 			}
 
-			var role = new TeamRole
+			var role = new Agent
 			{
 				Id = Guid.NewGuid(),
 				Name = roleDto.Name,
@@ -220,17 +220,17 @@ public class DatabaseService : IDatabaseService
 			{
 				if (importedSkillsByName.TryGetValue(skillName, out var skill))
 				{
-					role.SkillLinks.Add(new TeamRoleSkill { TeamRoleId = role.Id, SkillId = skill.Id });
+					role.SkillLinks.Add(new AgentSkill { AgentId = role.Id, SkillId = skill.Id });
 				}
 				else
 				{
 					var existingSkill = await _db.Skills.FirstOrDefaultAsync(s => s.Name == skillName, ct);
 					if (existingSkill != null)
-						role.SkillLinks.Add(new TeamRoleSkill { TeamRoleId = role.Id, SkillId = existingSkill.Id });
+						role.SkillLinks.Add(new AgentSkill { AgentId = role.Id, SkillId = existingSkill.Id });
 				}
 			}
 
-			_db.TeamRoles.Add(role);
+			_db.Agents.Add(role);
 			result.Imported.Add($"Team role '{roleDto.Name}'");
 		}
 

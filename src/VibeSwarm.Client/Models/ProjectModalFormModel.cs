@@ -57,7 +57,7 @@ public sealed class ProjectModalFormModel : IValidatableObject
 
 	public ICollection<ProjectProvider> ProviderSelections { get; set; } = new List<ProjectProvider>();
 
-	public ICollection<ProjectTeamRole> TeamAssignments { get; set; } = new List<ProjectTeamRole>();
+	public ICollection<ProjectAgent> AgentAssignments { get; set; } = new List<ProjectAgent>();
 
 	public ICollection<ProjectEnvironment> Environments { get; set; } = new List<ProjectEnvironment>();
 
@@ -118,7 +118,7 @@ public sealed class ProjectModalFormModel : IValidatableObject
 			CreatedAt = source.CreatedAt,
 			UpdatedAt = source.UpdatedAt,
 			ProviderSelections = source.ProviderSelections.ToList(),
-			TeamAssignments = source.TeamAssignments.ToList(),
+			AgentAssignments = source.AgentAssignments.ToList(),
 			Environments = source.Environments.ToList(),
 			PromptContext = source.PromptContext,
 			Memory = source.Memory,
@@ -154,7 +154,7 @@ public sealed class ProjectModalFormModel : IValidatableObject
 			CreatedAt = CreatedAt,
 			UpdatedAt = UpdatedAt,
 			ProviderSelections = ProviderSelections.ToList(),
-			TeamAssignments = TeamAssignments.ToList(),
+			AgentAssignments = AgentAssignments.ToList(),
 			Environments = Environments.ToList(),
 			PromptContext = string.IsNullOrWhiteSpace(PromptContext) ? null : PromptContext.Trim(),
 			Memory = string.IsNullOrWhiteSpace(Memory) ? null : Memory.Trim(),
@@ -182,23 +182,23 @@ public sealed class ProjectModalFormModel : IValidatableObject
 				[nameof(BuildCommand)]);
 		}
 
-		var duplicateTeamRoleIds = TeamAssignments
-			.GroupBy(assignment => assignment.TeamRoleId)
+		var duplicateAgentIds = AgentAssignments
+			.GroupBy(assignment => assignment.AgentId)
 			.Where(group => group.Key != Guid.Empty && group.Count() > 1)
 			.Select(group => group.Key)
 			.ToList();
-		if (duplicateTeamRoleIds.Any())
+		if (duplicateAgentIds.Any())
 		{
 			yield return new ValidationResult(
 				"Each agent can only be assigned once per project.",
-				[nameof(TeamAssignments)]);
+				[nameof(AgentAssignments)]);
 		}
 
-		if (TeamAssignments.Any(assignment => assignment.ProviderId == Guid.Empty))
+		if (AgentAssignments.Any(assignment => assignment.ProviderId == Guid.Empty))
 		{
 			yield return new ValidationResult(
 				"Each assigned agent must have a provider.",
-				[nameof(TeamAssignments)]);
+				[nameof(AgentAssignments)]);
 		}
 
 		if (CreationMode == ProjectCreationMode.ExistingDirectory)

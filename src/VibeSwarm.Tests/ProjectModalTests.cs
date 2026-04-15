@@ -32,7 +32,7 @@ var services = new ServiceCollection();
 services.AddLogging();
 services.AddSingleton<IProjectService>(new FakeProjectService());
 services.AddSingleton<IProviderService>(new FakeProviderService(provider));
-	services.AddSingleton<ITeamRoleService>(new FakeTeamRoleService([]));
+	services.AddSingleton<IAgentService>(new FakeAgentService([]));
 services.AddSingleton<ISettingsService>(new FakeSettingsService());
 services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService([]));
 services.AddSingleton<NotificationService>();
@@ -146,7 +146,7 @@ public void BrowseGitHubRepositories_NullRepositoryListShowsEmptyState()
 }
 
 [Fact]
-public void AddTeamRole_AssignmentSeedsDefaultProviderAndModel()
+public void AddAgent_AssignmentSeedsDefaultProviderAndModel()
 {
 	var provider = new Provider
 	{
@@ -155,7 +155,7 @@ public void AddTeamRole_AssignmentSeedsDefaultProviderAndModel()
 		Type = ProviderType.Copilot,
 		IsEnabled = true
 	};
-	var teamRole = new TeamRole
+	var agent = new Agent
 	{
 		Id = Guid.NewGuid(),
 		Name = "Backend Engineer",
@@ -165,7 +165,7 @@ public void AddTeamRole_AssignmentSeedsDefaultProviderAndModel()
 		IsEnabled = true
 	};
 
-	using var context = CreateBunitContext(teamRoles: [teamRole], provider: provider);
+	using var context = CreateBunitContext(agents: [agent], provider: provider);
 
 	var cut = context.Render<ProjectModal>(parameters => parameters
 		.Add(component => component.IsVisible, true));
@@ -174,8 +174,8 @@ public void AddTeamRole_AssignmentSeedsDefaultProviderAndModel()
 		.Single(button => button.TextContent.Contains("Backend Engineer", StringComparison.Ordinal))
 		.Click();
 
-	Assert.Equal(provider.Id.ToString(), cut.Find($"#team-provider-{teamRole.Id}").GetAttribute("value"));
-	Assert.Equal("gpt-5.4", cut.Find($"#team-model-{teamRole.Id}").GetAttribute("value"));
+	Assert.Equal(provider.Id.ToString(), cut.Find($"#team-provider-{agent.Id}").GetAttribute("value"));
+	Assert.Equal("gpt-5.4", cut.Find($"#team-model-{agent.Id}").GetAttribute("value"));
 }
 
 	[Fact]
@@ -281,7 +281,7 @@ public void AddTeamRole_AssignmentSeedsDefaultProviderAndModel()
 
 private static BunitContext CreateBunitContext(
 	FakeProjectService? projectService = null,
-	IReadOnlyList<TeamRole>? teamRoles = null,
+	IReadOnlyList<Agent>? agents = null,
 	Provider? provider = null,
 	IReadOnlyList<InferenceProvider>? inferenceProviders = null)
 {
@@ -299,7 +299,7 @@ private static BunitContext CreateBunitContext(
 	};
 	context.Services.AddSingleton<IProjectService>(projectService ?? new FakeProjectService());
 	context.Services.AddSingleton<IProviderService>(new FakeProviderService(resolvedProvider));
-	context.Services.AddSingleton<ITeamRoleService>(new FakeTeamRoleService(teamRoles ?? []));
+	context.Services.AddSingleton<IAgentService>(new FakeAgentService(agents ?? []));
 	context.Services.AddSingleton<ISettingsService>(new FakeSettingsService());
 	context.Services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService(inferenceProviders ?? []));
 	context.Services.AddSingleton<NotificationService>();
@@ -364,15 +364,15 @@ public Task<AppSettings> UpdateSettingsAsync(AppSettings settings, CancellationT
 public Task<string?> GetDefaultProjectsDirectoryAsync(CancellationToken cancellationToken = default) => Task.FromResult<string?>("/tmp/projects");
 }
 
-private sealed class FakeTeamRoleService(IReadOnlyList<TeamRole> teamRoles) : ITeamRoleService
+private sealed class FakeAgentService(IReadOnlyList<Agent> agents) : IAgentService
 {
-	private readonly IReadOnlyList<TeamRole> _teamRoles = teamRoles;
+	private readonly IReadOnlyList<Agent> _agents = agents;
 
-	public Task<IEnumerable<TeamRole>> GetAllAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<TeamRole>>(_teamRoles);
-	public Task<IEnumerable<TeamRole>> GetEnabledAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<TeamRole>>(_teamRoles.Where(teamRole => teamRole.IsEnabled));
-	public Task<TeamRole?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult(_teamRoles.FirstOrDefault(teamRole => teamRole.Id == id));
-	public Task<TeamRole> CreateAsync(TeamRole teamRole, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-	public Task<TeamRole> UpdateAsync(TeamRole teamRole, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+	public Task<IEnumerable<Agent>> GetAllAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Agent>>(_agents);
+	public Task<IEnumerable<Agent>> GetEnabledAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Agent>>(_agents.Where(agent => agent.IsEnabled));
+	public Task<Agent?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult(_agents.FirstOrDefault(agent => agent.Id == id));
+	public Task<Agent> CreateAsync(Agent agent, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+	public Task<Agent> UpdateAsync(Agent agent, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	public Task DeleteAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 public Task<bool> NameExistsAsync(string name, Guid? excludeId = null, CancellationToken cancellationToken = default) => Task.FromResult(false);
 }

@@ -7,7 +7,7 @@ namespace VibeSwarm.Tests;
 public sealed class ProjectTeamPromptTests
 {
 	[Fact]
-	public void BuildStructuredPrompt_IncludesAssignedTeamRoles()
+	public void BuildStructuredPrompt_IncludesAssignedAgents()
 	{
 		var bootstrapSkillId = Guid.NewGuid();
 		var job = new Job
@@ -17,11 +17,11 @@ public sealed class ProjectTeamPromptTests
 			{
 				Name = "VibeSwarm",
 				WorkingPath = "/tmp/vibeswarm",
-				TeamAssignments =
+				AgentAssignments =
 				[
-					new ProjectTeamRole
+					new ProjectAgent
 					{
-						TeamRoleId = Guid.NewGuid(),
+						AgentId = Guid.NewGuid(),
 						ProviderId = Guid.NewGuid(),
 						PreferredModelId = "gpt-5.4",
 						Provider = new Provider
@@ -29,7 +29,7 @@ public sealed class ProjectTeamPromptTests
 							Id = Guid.NewGuid(),
 							Name = "GitHub Copilot"
 						},
-						TeamRole = new TeamRole
+						Agent = new Agent
 						{
 							Id = Guid.NewGuid(),
 							Name = "Security Reviewer",
@@ -40,7 +40,7 @@ public sealed class ProjectTeamPromptTests
 							DefaultMaxCycles = 4,
 							SkillLinks =
 							[
-								new TeamRoleSkill
+								new AgentSkill
 								{
 									SkillId = Guid.NewGuid(),
 									Skill = new Skill
@@ -76,7 +76,7 @@ public sealed class ProjectTeamPromptTests
 	public void BuildRoleSystemPromptContext_IncludesAssignedSkillSummaries()
 	{
 		var context = PromptBuilder.BuildRoleSystemPromptContext(
-			new TeamRole
+			new Agent
 			{
 				Id = Guid.NewGuid(),
 				Name = "UI Reviewer",
@@ -84,7 +84,7 @@ public sealed class ProjectTeamPromptTests
 				Responsibilities = "Review Bootstrap usage and responsive layout details.",
 				SkillLinks =
 				[
-					new TeamRoleSkill
+					new AgentSkill
 					{
 						SkillId = Guid.NewGuid(),
 						Skill = new Skill

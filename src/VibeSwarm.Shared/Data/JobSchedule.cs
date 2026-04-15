@@ -15,7 +15,7 @@ public enum JobScheduleFrequency
 public enum JobScheduleExecutionTarget
 {
 	Provider = 0,
-	TeamRole = 1
+	Agent = 1
 }
 
 public enum JobScheduleType
@@ -38,8 +38,8 @@ public class JobSchedule : IValidatableObject
 	public Guid? ProviderId { get; set; }
 	public Provider? Provider { get; set; }
 
-	public Guid? TeamRoleId { get; set; }
-	public TeamRole? TeamRole { get; set; }
+	public Guid? AgentId { get; set; }
+	public Agent? Agent { get; set; }
 
 	public Guid? InferenceProviderId { get; set; }
 	public InferenceProvider? InferenceProvider { get; set; }
@@ -90,9 +90,9 @@ public class JobSchedule : IValidatableObject
 			yield return new ValidationResult("A provider is required.", [nameof(ProviderId)]);
 		}
 
-		if (ScheduleType == JobScheduleType.RunJob && ExecutionTarget == JobScheduleExecutionTarget.TeamRole && (!TeamRoleId.HasValue || TeamRoleId == Guid.Empty))
+		if (ScheduleType == JobScheduleType.RunJob && ExecutionTarget == JobScheduleExecutionTarget.Agent && (!AgentId.HasValue || AgentId == Guid.Empty))
 		{
-			yield return new ValidationResult("An agent is required.", [nameof(TeamRoleId)]);
+			yield return new ValidationResult("An agent is required.", [nameof(AgentId)]);
 		}
 
 		if (ScheduleType == JobScheduleType.GenerateIdeas && (!InferenceProviderId.HasValue || InferenceProviderId == Guid.Empty))

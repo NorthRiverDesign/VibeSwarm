@@ -172,7 +172,7 @@ public partial class JobService
             .OrderBy(pp => pp.Priority)
             .ToListAsync(cancellationToken);
 
-		var providerOrder = job.TeamRoleId.HasValue && job.ProviderId != Guid.Empty
+		var providerOrder = job.AgentId.HasValue && job.ProviderId != Guid.Empty
 			? enabledProviders.Where(provider => provider.Id == job.ProviderId).ToList()
 			: BuildProviderOrder(job.ProviderId, enabledProviders, projectSelections);
 
@@ -315,19 +315,19 @@ public partial class JobService
 
 	private async Task ApplySelectedAgentDefaultsAsync(Job job, CancellationToken cancellationToken)
 	{
-		if (!job.TeamRoleId.HasValue || job.TeamRoleId == Guid.Empty)
+		if (!job.AgentId.HasValue || job.AgentId == Guid.Empty)
 		{
 			return;
 		}
 
-		var assignment = await _dbContext.ProjectTeamRoles
-			.Include(projectTeamRole => projectTeamRole.TeamRole)
-			.Include(projectTeamRole => projectTeamRole.Provider)
-			.FirstOrDefaultAsync(projectTeamRole =>
-				projectTeamRole.ProjectId == job.ProjectId &&
-				projectTeamRole.TeamRoleId == job.TeamRoleId.Value,
+		var assignment = await _dbContext.ProjectAgents
+			.Include(projectAgent => projectAgent.Agent)
+			.Include(projectAgent => projectAgent.Provider)
+			.FirstOrDefaultAsync(projectAgent =>
+				projectAgent.ProjectId == job.ProjectId &&
+				projectAgent.AgentId == job.AgentId.Value,
 				cancellationToken);
-		if (assignment == null || !assignment.IsEnabled || assignment.TeamRole == null || !assignment.TeamRole.IsEnabled)
+		if (assignment == null || !assignment.IsEnabled || assignment.Agent == null || !assignment.Agent.IsEnabled)
 		{
 			throw new InvalidOperationException("The selected agent is not assigned to this project.");
 		}

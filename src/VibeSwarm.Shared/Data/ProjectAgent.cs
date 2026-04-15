@@ -4,7 +4,7 @@ using VibeSwarm.Shared.Providers;
 
 namespace VibeSwarm.Shared.Data;
 
-public class ProjectTeamRole
+public class ProjectAgent
 {
 	public Guid Id { get; set; } = Guid.NewGuid();
 
@@ -13,9 +13,9 @@ public class ProjectTeamRole
 	[JsonIgnore]
 	public Project? Project { get; set; }
 
-	public Guid TeamRoleId { get; set; }
+	public Guid AgentId { get; set; }
 
-	public TeamRole? TeamRole { get; set; }
+	public Agent? Agent { get; set; }
 
 	public Guid ProviderId { get; set; }
 

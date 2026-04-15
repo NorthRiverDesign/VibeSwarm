@@ -6,14 +6,14 @@ public static class ProjectSkillHelper
 {
 	public static IReadOnlyList<Skill> GetConfiguredSkills(Project? project)
 	{
-		if (project?.TeamAssignments == null || project.TeamAssignments.Count == 0)
+		if (project?.AgentAssignments == null || project.AgentAssignments.Count == 0)
 		{
 			return [];
 		}
 
-		return project.TeamAssignments
-			.Where(assignment => assignment.IsEnabled && assignment.TeamRole?.IsEnabled == true)
-			.SelectMany(assignment => assignment.TeamRole!.SkillLinks)
+		return project.AgentAssignments
+			.Where(assignment => assignment.IsEnabled && assignment.Agent?.IsEnabled == true)
+			.SelectMany(assignment => assignment.Agent!.SkillLinks)
 			.Where(link => link.Skill != null && link.Skill.IsEnabled)
 			.Select(link => link.Skill!)
 			.GroupBy(skill => skill.Id)
@@ -34,7 +34,7 @@ public static class ProjectSkillHelper
 			return enabledSkillList;
 		}
 
-		if (project.TeamAssignments == null || project.TeamAssignments.Count == 0)
+		if (project.AgentAssignments == null || project.AgentAssignments.Count == 0)
 		{
 			return [];
 		}
@@ -42,9 +42,9 @@ public static class ProjectSkillHelper
 		var enabledSkillsById = enabledSkillList.ToDictionary(skill => skill.Id);
 		var selectedSkills = new Dictionary<Guid, Skill>();
 
-		foreach (var assignment in project.TeamAssignments.Where(assignment => assignment.IsEnabled && assignment.TeamRole?.IsEnabled == true))
+		foreach (var assignment in project.AgentAssignments.Where(assignment => assignment.IsEnabled && assignment.Agent?.IsEnabled == true))
 		{
-			foreach (var link in assignment.TeamRole!.SkillLinks)
+			foreach (var link in assignment.Agent!.SkillLinks)
 			{
 				if (enabledSkillsById.TryGetValue(link.SkillId, out var skill))
 				{

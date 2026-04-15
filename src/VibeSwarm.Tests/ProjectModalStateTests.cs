@@ -95,11 +95,11 @@ var isValid = Validator.TryValidateObject(project, new ValidationContext(project
 		{
 			Name = "Sample Project",
 			WorkingPath = "/tmp/sample-project",
-			TeamAssignments =
+			AgentAssignments =
 			[
-				new ProjectTeamRole
+				new ProjectAgent
 				{
-					TeamRoleId = Guid.NewGuid(),
+					AgentId = Guid.NewGuid(),
 					ProviderId = Guid.Empty
 				}
 			]

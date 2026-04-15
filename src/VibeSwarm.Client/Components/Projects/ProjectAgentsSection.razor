@@ -6,7 +6,7 @@
 </label>
 
 <Alert Type="Alert.AlertType.Info" Class="py-2 px-3 small">
-@if (Project.TeamAssignments.Any())
+@if (Project.AgentAssignments.Any())
 {
 <span>Assign reusable agents to this project so jobs can reference consistent purpose, provider/model choices, and execution defaults.</span>
 }
@@ -16,7 +16,7 @@ else
 }
 </Alert>
 
-@if (!AvailableTeamRoles.Any())
+@if (!AvailableAgents.Any())
 {
 <div class="text-warning small mt-2">
 <i class="bi bi-exclamation-triangle me-1"></i>No agents available yet. Create them from the Agents page first.
@@ -32,15 +32,15 @@ else
 {
 <div class="border rounded p-3 bg-body-tertiary">
 <div class="small text-body-secondary fw-semibold mb-2">Assigned Agents</div>
-@if (Project.TeamAssignments.Any())
+@if (Project.AgentAssignments.Any())
 {
 <div class="d-grid gap-3 mb-3">
-@foreach (var assignment in Project.TeamAssignments.OrderBy(assignment => ResolveTeamRole(assignment.TeamRoleId)?.Name ?? string.Empty).ToList())
+@foreach (var assignment in Project.AgentAssignments.OrderBy(assignment => ResolveAgent(assignment.AgentId)?.Name ?? string.Empty).ToList())
 {
-var teamRole = ResolveTeamRole(assignment.TeamRoleId);
-var providerSelectId = $"team-provider-{assignment.TeamRoleId}";
-var modelSelectId = $"team-model-{assignment.TeamRoleId}";
-var reasoningSelectId = $"team-reasoning-{assignment.TeamRoleId}";
+var agent = ResolveAgent(assignment.AgentId);
+var providerSelectId = $"team-provider-{assignment.AgentId}";
+var modelSelectId = $"team-model-{assignment.AgentId}";
+var reasoningSelectId = $"team-reasoning-{assignment.AgentId}";
 var models = ResolveProviderModels(assignment.ProviderId)
 .Where(model => model.IsAvailable)
 .OrderByDescending(model => model.IsDefault)
@@ -53,31 +53,31 @@ var reasoningOptions = assignmentProvider != null ? ProviderCapabilities.GetSupp
 <div class="d-flex align-items-start justify-content-between gap-2 flex-wrap">
 <div class="min-width-0 flex-grow-1">
 <div class="d-flex align-items-center gap-2 flex-wrap">
-<span class="fw-semibold">@(teamRole?.Name ?? "Unknown Agent")</span>
-@if (teamRole != null && !teamRole.IsEnabled)
+<span class="fw-semibold">@(agent?.Name ?? "Unknown Agent")</span>
+@if (agent != null && !agent.IsEnabled)
 {
 <span class="badge bg-secondary-subtle text-secondary-emphasis">Disabled</span>
 }
 </div>
-@if (!string.IsNullOrWhiteSpace(teamRole?.Description))
+@if (!string.IsNullOrWhiteSpace(agent?.Description))
 {
-<div class="small text-body-secondary mt-1">@teamRole.Description</div>
+<div class="small text-body-secondary mt-1">@agent.Description</div>
 }
-@if (teamRole?.SkillLinks.Any(link => link.Skill != null) == true)
+@if (agent?.SkillLinks.Any(link => link.Skill != null) == true)
 {
 <div class="d-flex flex-wrap gap-1 mt-2">
-@foreach (var skillLink in teamRole.SkillLinks.Where(link => link.Skill != null).Take(4))
+@foreach (var skillLink in agent.SkillLinks.Where(link => link.Skill != null).Take(4))
 {
 <span class="badge bg-primary-subtle text-primary-emphasis">@skillLink.Skill!.Name</span>
 }
-@if (teamRole.SkillLinks.Count > 4)
+@if (agent.SkillLinks.Count > 4)
 {
-<span class="badge bg-secondary-subtle text-secondary-emphasis">+@(teamRole.SkillLinks.Count - 4)</span>
+<span class="badge bg-secondary-subtle text-secondary-emphasis">+@(agent.SkillLinks.Count - 4)</span>
 }
 </div>
 }
 </div>
-<button type="button" class="btn btn-sm btn-danger" @onclick="() => OnRemove.InvokeAsync(assignment.TeamRoleId)" title="Remove agent">
+<button type="button" class="btn btn-sm btn-danger" @onclick="() => OnRemove.InvokeAsync(assignment.AgentId)" title="Remove agent">
 <i class="bi bi-x-lg"></i>
 </button>
 </div>
@@ -89,7 +89,7 @@ var reasoningOptions = assignmentProvider != null ? ProviderCapabilities.GetSupp
 </label>
 <InputSelect TValue="Guid" id="@providerSelectId"
  Value="assignment.ProviderId"
- ValueChanged="@(async (Guid value) => await HandleProviderChanged(assignment.TeamRoleId, value))"
+ ValueChanged="@(async (Guid value) => await HandleProviderChanged(assignment.AgentId, value))"
  ValueExpression="@(() => assignment.ProviderId)"
  class="form-select form-select-sm">
 @foreach (var provider in AvailableProviders)
@@ -104,7 +104,7 @@ var reasoningOptions = assignmentProvider != null ? ProviderCapabilities.GetSupp
 </label>
 <InputSelect TValue="string" id="@modelSelectId"
  Value="@(assignment.PreferredModelId ?? string.Empty)"
- ValueChanged="@(async (string? value) => await HandlePreferredSelectionChanged(assignment.TeamRoleId, value, assignment.PreferredReasoningEffort))"
+ ValueChanged="@(async (string? value) => await HandlePreferredSelectionChanged(assignment.AgentId, value, assignment.PreferredReasoningEffort))"
  ValueExpression="@(() => assignment.PreferredModelId)"
  class="form-select form-select-sm"
  disabled="@(!models.Any())">
@@ -131,7 +131,7 @@ else
 </label>
 <InputSelect TValue="string" id="@reasoningSelectId"
  Value="@(assignment.PreferredReasoningEffort ?? string.Empty)"
- ValueChanged="@(async (string? value) => await HandlePreferredSelectionChanged(assignment.TeamRoleId, assignment.PreferredModelId, value))"
+ ValueChanged="@(async (string? value) => await HandlePreferredSelectionChanged(assignment.AgentId, assignment.PreferredModelId, value))"
  ValueExpression="@(() => assignment.PreferredReasoningEffort)"
  class="form-select form-select-sm"
  disabled="@(!reasoningOptions.Any())">
@@ -162,7 +162,7 @@ else
 <div class="small text-body-secondary fst-italic mb-3">No agents assigned to this project yet.</div>
 }
 
-@if (Project.TeamAssignments.Count(a => a.IsEnabled) >= 2)
+@if (Project.AgentAssignments.Count(a => a.IsEnabled) >= 2)
 {
 <div class="border-top pt-3 mt-3">
 <div class="form-check form-switch">
@@ -177,31 +177,31 @@ else
 
 <div class="small text-body-secondary fw-semibold mb-2">Add Agent</div>
 <div class="d-grid gap-2">
-@foreach (var teamRole in AvailableTeamRoles.OrderByDescending(role => role.IsEnabled).ThenBy(role => role.Name))
+@foreach (var agent in AvailableAgents.OrderByDescending(role => role.IsEnabled).ThenBy(role => role.Name))
 {
-var isAssigned = IsTeamRoleAssigned(teamRole.Id);
+var isAssigned = IsAgentAssigned(agent.Id);
 <button type="button" class="btn @(isAssigned ? "btn-secondary" : "btn-primary") d-flex align-items-center justify-content-between gap-2 text-start flex-wrap"
-@onclick="() => OnAdd.InvokeAsync(teamRole)" disabled="@isAssigned">
+@onclick="() => OnAdd.InvokeAsync(agent)" disabled="@isAssigned">
 <span class="text-start min-width-0">
-										<span class="fw-semibold">@teamRole.Name</span>
-										@if (!string.IsNullOrWhiteSpace(teamRole.Description))
+										<span class="fw-semibold">@agent.Name</span>
+										@if (!string.IsNullOrWhiteSpace(agent.Description))
 										{
-											<span class="text-body-secondary ms-sm-2 d-block d-sm-inline">@teamRole.Description</span>
+											<span class="text-body-secondary ms-sm-2 d-block d-sm-inline">@agent.Description</span>
 										}
-										@if (teamRole.DefaultProvider != null || !string.IsNullOrWhiteSpace(teamRole.DefaultModelId) || !string.IsNullOrWhiteSpace(teamRole.DefaultReasoningEffort))
+										@if (agent.DefaultProvider != null || !string.IsNullOrWhiteSpace(agent.DefaultModelId) || !string.IsNullOrWhiteSpace(agent.DefaultReasoningEffort))
 										{
 											<span class="d-block small text-body-secondary mt-1">
-												@if (teamRole.DefaultProvider != null)
+												@if (agent.DefaultProvider != null)
 												{
-													<span><i class="bi bi-cpu me-1"></i>@teamRole.DefaultProvider.Name</span>
+													<span><i class="bi bi-cpu me-1"></i>@agent.DefaultProvider.Name</span>
 												}
-												@if (!string.IsNullOrWhiteSpace(teamRole.DefaultModelId))
+												@if (!string.IsNullOrWhiteSpace(agent.DefaultModelId))
 												{
-													<span class="ms-sm-2 d-block d-sm-inline"><i class="bi bi-diagram-3 me-1"></i>@teamRole.DefaultModelId</span>
+													<span class="ms-sm-2 d-block d-sm-inline"><i class="bi bi-diagram-3 me-1"></i>@agent.DefaultModelId</span>
 												}
-												@if (!string.IsNullOrWhiteSpace(teamRole.DefaultReasoningEffort))
+												@if (!string.IsNullOrWhiteSpace(agent.DefaultReasoningEffort))
 												{
-													<span class="ms-sm-2 d-block d-sm-inline"><i class="bi bi-lightning-charge me-1"></i>@teamRole.DefaultReasoningEffort</span>
+													<span class="ms-sm-2 d-block d-sm-inline"><i class="bi bi-lightning-charge me-1"></i>@agent.DefaultReasoningEffort</span>
 												}
 											</span>
 										}
@@ -226,16 +226,16 @@ else
 public ProjectModalFormModel Project { get; set; } = default!;
 
 [Parameter]
-public IReadOnlyList<TeamRole> AvailableTeamRoles { get; set; } = [];
+public IReadOnlyList<Agent> AvailableAgents { get; set; } = [];
 
 [Parameter]
 public IReadOnlyList<Provider> AvailableProviders { get; set; } = [];
 
 [Parameter, EditorRequired]
-public Func<Guid, TeamRole?> ResolveTeamRole { get; set; } = _ => null;
+public Func<Guid, Agent?> ResolveAgent { get; set; } = _ => null;
 
 [Parameter, EditorRequired]
-public Func<Guid, bool> IsTeamRoleAssigned { get; set; } = _ => false;
+public Func<Guid, bool> IsAgentAssigned { get; set; } = _ => false;
 
 [Parameter, EditorRequired]
 public Func<Guid, IReadOnlyList<ProviderModel>> ResolveProviderModels { get; set; } = _ => [];
@@ -244,28 +244,28 @@ public Func<Guid, IReadOnlyList<ProviderModel>> ResolveProviderModels { get; set
 public EventCallback<Guid> OnRemove { get; set; }
 
 [Parameter]
-public EventCallback<TeamRole> OnAdd { get; set; }
+public EventCallback<Agent> OnAdd { get; set; }
 
 [Parameter]
-public EventCallback<ProjectTeamRoleProviderChange> OnProviderChanged { get; set; }
+public EventCallback<ProjectAgentProviderChange> OnProviderChanged { get; set; }
 
 [Parameter]
-public EventCallback<ProjectTeamRoleModelSelectionChange> OnPreferredModelChanged { get; set; }
+public EventCallback<ProjectAgentModelSelectionChange> OnPreferredModelChanged { get; set; }
 
-private Task HandleProviderChanged(Guid teamRoleId, Guid providerId)
+private Task HandleProviderChanged(Guid agentId, Guid providerId)
 {
-return OnProviderChanged.InvokeAsync(new ProjectTeamRoleProviderChange
+return OnProviderChanged.InvokeAsync(new ProjectAgentProviderChange
 {
-TeamRoleId = teamRoleId,
+AgentId = agentId,
 ProviderId = providerId
 });
 }
 
-private Task HandlePreferredSelectionChanged(Guid teamRoleId, string? preferredModelId, string? preferredReasoningEffort)
+private Task HandlePreferredSelectionChanged(Guid agentId, string? preferredModelId, string? preferredReasoningEffort)
 {
-return OnPreferredModelChanged.InvokeAsync(new ProjectTeamRoleModelSelectionChange
+return OnPreferredModelChanged.InvokeAsync(new ProjectAgentModelSelectionChange
 {
-TeamRoleId = teamRoleId,
+AgentId = agentId,
 PreferredModelId = string.IsNullOrWhiteSpace(preferredModelId) ? null : preferredModelId,
 PreferredReasoningEffort = string.IsNullOrWhiteSpace(preferredReasoningEffort) ? null : preferredReasoningEffort
 });

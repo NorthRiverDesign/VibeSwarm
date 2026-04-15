@@ -6,12 +6,12 @@ using VibeSwarm.Web.Services;
 
 namespace VibeSwarm.Tests;
 
-public sealed class TeamRoleServiceTests : IDisposable
+public sealed class AgentServiceTests : IDisposable
 {
 	private readonly SqliteConnection _connection;
 	private readonly DbContextOptions<VibeSwarmDbContext> _dbOptions;
 
-	public TeamRoleServiceTests()
+	public AgentServiceTests()
 	{
 		_connection = new SqliteConnection("Data Source=:memory:");
 		_connection.Open();
@@ -37,15 +37,15 @@ public sealed class TeamRoleServiceTests : IDisposable
 		dbContext.Skills.Add(skill);
 		await dbContext.SaveChangesAsync();
 
-		var service = new TeamRoleService(dbContext);
-		var created = await service.CreateAsync(new TeamRole
+		var service = new AgentService(dbContext);
+		var created = await service.CreateAsync(new Agent
 		{
 			Name = "Front End Designer",
 			Description = "Shapes the UI.",
 			Responsibilities = "Own layout and interaction quality.",
 			SkillLinks =
 			[
-				new TeamRoleSkill
+				new AgentSkill
 				{
 					SkillId = skill.Id
 				}
@@ -76,13 +76,13 @@ public sealed class TeamRoleServiceTests : IDisposable
 		dbContext.Skills.AddRange(firstSkill, secondSkill);
 		await dbContext.SaveChangesAsync();
 
-		var service = new TeamRoleService(dbContext);
-		var created = await service.CreateAsync(new TeamRole
+		var service = new AgentService(dbContext);
+		var created = await service.CreateAsync(new Agent
 		{
 			Name = "Project Manager",
 			SkillLinks =
 			[
-				new TeamRoleSkill
+				new AgentSkill
 				{
 					SkillId = firstSkill.Id
 				}
@@ -91,7 +91,7 @@ public sealed class TeamRoleServiceTests : IDisposable
 
 		created.SkillLinks =
 		[
-			new TeamRoleSkill
+			new AgentSkill
 			{
 				SkillId = secondSkill.Id
 			}
@@ -126,8 +126,8 @@ public sealed class TeamRoleServiceTests : IDisposable
 		});
 		await dbContext.SaveChangesAsync();
 
-		var service = new TeamRoleService(dbContext);
-		var created = await service.CreateAsync(new TeamRole
+		var service = new AgentService(dbContext);
+		var created = await service.CreateAsync(new Agent
 		{
 			Name = "Backend Engineer",
 			DefaultProviderId = provider.Id,
@@ -162,8 +162,8 @@ public sealed class TeamRoleServiceTests : IDisposable
 		});
 		await dbContext.SaveChangesAsync();
 
-		var service = new TeamRoleService(dbContext);
-		var created = await service.CreateAsync(new TeamRole
+		var service = new AgentService(dbContext);
+		var created = await service.CreateAsync(new Agent
 		{
 			Name = "Reasoning Engineer",
 			DefaultProviderId = provider.Id,
@@ -178,9 +178,9 @@ public sealed class TeamRoleServiceTests : IDisposable
 	public async Task CreateAsync_PersistsExecutionDefaults()
 	{
 		await using var dbContext = CreateDbContext();
-		var service = new TeamRoleService(dbContext);
+		var service = new AgentService(dbContext);
 
-		var created = await service.CreateAsync(new TeamRole
+		var created = await service.CreateAsync(new Agent
 		{
 			Name = "Iteration Planner",
 			DefaultCycleMode = CycleMode.Autonomous,
@@ -199,8 +199,8 @@ public sealed class TeamRoleServiceTests : IDisposable
 	public async Task UpdateAsync_SingleCycleClearsCycleReviewPrompt()
 	{
 		await using var dbContext = CreateDbContext();
-		var service = new TeamRoleService(dbContext);
-		var created = await service.CreateAsync(new TeamRole
+		var service = new AgentService(dbContext);
+		var created = await service.CreateAsync(new Agent
 		{
 			Name = "Reviewer",
 			DefaultCycleMode = CycleMode.Autonomous,
@@ -244,8 +244,8 @@ public sealed class TeamRoleServiceTests : IDisposable
 		});
 		await dbContext.SaveChangesAsync();
 
-		var service = new TeamRoleService(dbContext);
-		var created = await service.CreateAsync(new TeamRole
+		var service = new AgentService(dbContext);
+		var created = await service.CreateAsync(new Agent
 		{
 			Name = "Backend Engineer",
 			Description = "Builds durable backend features with clean, framework-first code.",
@@ -283,9 +283,9 @@ public sealed class TeamRoleServiceTests : IDisposable
 		dbContext.Providers.Add(provider);
 		await dbContext.SaveChangesAsync();
 
-		var service = new TeamRoleService(dbContext);
+		var service = new AgentService(dbContext);
 
-		var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => service.CreateAsync(new TeamRole
+		var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => service.CreateAsync(new Agent
 		{
 			Name = "Backend Engineer",
 			DefaultProviderId = provider.Id,
@@ -310,9 +310,9 @@ public sealed class TeamRoleServiceTests : IDisposable
 		dbContext.Providers.Add(provider);
 		await dbContext.SaveChangesAsync();
 
-		var service = new TeamRoleService(dbContext);
+		var service = new AgentService(dbContext);
 
-		var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => service.CreateAsync(new TeamRole
+		var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => service.CreateAsync(new Agent
 		{
 			Name = "Unsupported Reasoner",
 			DefaultProviderId = provider.Id,

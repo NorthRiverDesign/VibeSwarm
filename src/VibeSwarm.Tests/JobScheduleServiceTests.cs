@@ -163,15 +163,15 @@ public sealed class JobScheduleServiceTests : IDisposable
 	}
 
 	[Fact]
-	public async Task CreateAsync_RejectsTeamRoleThatIsNotAssignedToProject()
+	public async Task CreateAsync_RejectsAgentThatIsNotAssignedToProject()
 	{
 		await using var dbContext = CreateDbContext();
 		var project = CreateProject();
 		var provider = CreateProvider();
-		var teamRole = CreateTeamRole();
+		var agent = CreateAgent();
 		dbContext.Projects.Add(project);
 		dbContext.Providers.Add(provider);
-		dbContext.TeamRoles.Add(teamRole);
+		dbContext.Agents.Add(agent);
 		await dbContext.SaveChangesAsync();
 
 		var service = new JobScheduleService(dbContext);
@@ -179,8 +179,8 @@ public sealed class JobScheduleServiceTests : IDisposable
 		var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => service.CreateAsync(new JobSchedule
 		{
 			ProjectId = project.Id,
-			ExecutionTarget = JobScheduleExecutionTarget.TeamRole,
-			TeamRoleId = teamRole.Id,
+			ExecutionTarget = JobScheduleExecutionTarget.Agent,
+			AgentId = agent.Id,
 			Prompt = "review security findings",
 			Frequency = JobScheduleFrequency.Daily,
 			HourUtc = 9,
@@ -191,32 +191,32 @@ public sealed class JobScheduleServiceTests : IDisposable
 	}
 
 	[Fact]
-	public async Task ProcessDueSchedulesAsync_CreatesTeamRoleJobFromProjectAssignmentWithoutSwarmFanout()
+	public async Task ProcessDueSchedulesAsync_CreatesAgentJobFromProjectAssignmentWithoutSwarmFanout()
 	{
 		await using var dbContext = CreateDbContext();
 		var project = CreateProject();
 		project.EnableTeamSwarm = true;
 		var primaryProvider = CreateProvider();
 		var secondaryProvider = CreateProvider();
-		var reviewerRole = CreateTeamRole("Security Reviewer");
-		var backupRole = CreateTeamRole("Dependency Reviewer");
+		var reviewerRole = CreateAgent("Security Reviewer");
+		var backupRole = CreateAgent("Dependency Reviewer");
 		dbContext.Projects.Add(project);
 		dbContext.Providers.AddRange(primaryProvider, secondaryProvider);
-		dbContext.TeamRoles.AddRange(reviewerRole, backupRole);
-		dbContext.ProjectTeamRoles.AddRange(
-			new ProjectTeamRole
+		dbContext.Agents.AddRange(reviewerRole, backupRole);
+		dbContext.ProjectAgents.AddRange(
+			new ProjectAgent
 			{
 				ProjectId = project.Id,
-				TeamRoleId = reviewerRole.Id,
+				AgentId = reviewerRole.Id,
 				ProviderId = primaryProvider.Id,
 				PreferredModelId = "copilot-reviewer",
 				PreferredReasoningEffort = "high",
 				IsEnabled = true
 			},
-			new ProjectTeamRole
+			new ProjectAgent
 			{
 				ProjectId = project.Id,
-				TeamRoleId = backupRole.Id,
+				AgentId = backupRole.Id,
 				ProviderId = secondaryProvider.Id,
 				PreferredModelId = "copilot-backup",
 				PreferredReasoningEffort = "medium",
@@ -250,8 +250,8 @@ public sealed class JobScheduleServiceTests : IDisposable
 		{
 			Id = Guid.NewGuid(),
 			ProjectId = project.Id,
-			ExecutionTarget = JobScheduleExecutionTarget.TeamRole,
-			TeamRoleId = reviewerRole.Id,
+			ExecutionTarget = JobScheduleExecutionTarget.Agent,
+			AgentId = reviewerRole.Id,
 			Prompt = "review for security issues",
 			Frequency = JobScheduleFrequency.Hourly,
 			MinuteUtc = dueTime.Minute,
@@ -271,7 +271,7 @@ public sealed class JobScheduleServiceTests : IDisposable
 		Assert.Single(jobs);
 		var job = jobs[0];
 		Assert.True(job.IsScheduled);
-		Assert.Equal(reviewerRole.Id, job.TeamRoleId);
+		Assert.Equal(reviewerRole.Id, job.AgentId);
 		Assert.Equal(primaryProvider.Id, job.ProviderId);
 		Assert.Equal("copilot-reviewer", job.ModelUsed);
 		Assert.Equal("high", job.ReasoningEffort);
@@ -401,7 +401,7 @@ public sealed class JobScheduleServiceTests : IDisposable
 		IsDefault = true
 	};
 
-	private static TeamRole CreateTeamRole(string? name = null) => new()
+	private static Agent CreateAgent(string? name = null) => new()
 	{
 		Id = Guid.NewGuid(),
 		Name = name ?? $"Role-{Guid.NewGuid():N}",

@@ -49,7 +49,7 @@ public sealed class JobServiceAgentPresetTests : IDisposable
 			ConnectionMode = ProviderConnectionMode.CLI,
 			IsEnabled = true
 		};
-		var teamRole = new TeamRole
+		var agent = new Agent
 		{
 			Id = Guid.NewGuid(),
 			Name = "Security Reviewer",
@@ -79,12 +79,12 @@ public sealed class JobServiceAgentPresetTests : IDisposable
 					IsEnabled = true
 				}
 			],
-			TeamAssignments =
+			AgentAssignments =
 			[
-				new ProjectTeamRole
+				new ProjectAgent
 				{
-					TeamRoleId = teamRole.Id,
-					TeamRole = teamRole,
+					AgentId = agent.Id,
+					Agent = agent,
 					ProviderId = selectedProvider.Id,
 					Provider = selectedProvider,
 					PreferredModelId = "gpt-5.4",
@@ -112,7 +112,7 @@ public sealed class JobServiceAgentPresetTests : IDisposable
 				IsAvailable = true,
 				IsDefault = true
 			});
-		dbContext.TeamRoles.Add(teamRole);
+		dbContext.Agents.Add(agent);
 		dbContext.Projects.Add(project);
 		await dbContext.SaveChangesAsync();
 
@@ -121,7 +121,7 @@ public sealed class JobServiceAgentPresetTests : IDisposable
 		{
 			ProjectId = project.Id,
 			GoalPrompt = "Review the current auth changes for security issues.",
-			TeamRoleId = teamRole.Id
+			AgentId = agent.Id
 		});
 
 		Assert.Equal(selectedProvider.Id, created.ProviderId);
@@ -152,7 +152,7 @@ public sealed class JobServiceAgentPresetTests : IDisposable
 			IsEnabled = true,
 			IsDefault = true
 		};
-		var teamRole = new TeamRole
+		var agent = new Agent
 		{
 			Id = Guid.NewGuid(),
 			Name = "Implementation Agent",
@@ -176,12 +176,12 @@ public sealed class JobServiceAgentPresetTests : IDisposable
 					IsEnabled = true
 				}
 			],
-			TeamAssignments =
+			AgentAssignments =
 			[
-				new ProjectTeamRole
+				new ProjectAgent
 				{
-					TeamRoleId = teamRole.Id,
-					TeamRole = teamRole,
+					AgentId = agent.Id,
+					Agent = agent,
 					ProviderId = provider.Id,
 					Provider = provider,
 					PreferredModelId = "gpt-5.4",
@@ -200,7 +200,7 @@ public sealed class JobServiceAgentPresetTests : IDisposable
 			IsAvailable = true,
 			IsDefault = true
 		});
-		dbContext.TeamRoles.Add(teamRole);
+		dbContext.Agents.Add(agent);
 		dbContext.Projects.Add(project);
 		await dbContext.SaveChangesAsync();
 
@@ -209,7 +209,7 @@ public sealed class JobServiceAgentPresetTests : IDisposable
 		{
 			ProjectId = project.Id,
 			GoalPrompt = "Implement the next feature iteration.",
-			TeamRoleId = teamRole.Id,
+			AgentId = agent.Id,
 			CycleMode = CycleMode.FixedCount,
 			CycleSessionMode = CycleSessionMode.FreshSession,
 			MaxCycles = 2,

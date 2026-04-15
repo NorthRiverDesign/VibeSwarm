@@ -246,7 +246,7 @@ public partial class ProjectDetail
 
     private bool IsSelectedAgentProviderAllowed()
     {
-        var assignment = AgentPresetHelper.ResolveAgent(Project, NewJob.TeamRoleId);
+        var assignment = AgentPresetHelper.ResolveAgent(Project, NewJob.AgentId);
         return assignment != null && assignment.ProviderId == NewJob.ProviderId;
     }
 

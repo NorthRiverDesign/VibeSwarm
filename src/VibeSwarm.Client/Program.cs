@@ -41,7 +41,7 @@ builder.Services.AddScoped<HttpProviderService>();
 builder.Services.AddScoped<IProviderService>(sp => sp.GetRequiredService<HttpProviderService>());
 builder.Services.AddScoped<ICommonProviderSetupService, HttpCommonProviderSetupService>();
 builder.Services.AddScoped<ISkillService, HttpSkillService>();
-builder.Services.AddScoped<ITeamRoleService, HttpTeamRoleService>();
+builder.Services.AddScoped<IAgentService, HttpAgentService>();
 builder.Services.AddScoped<ISettingsService, HttpSettingsService>();
 builder.Services.AddScoped<IDeveloperModeService, HttpDeveloperModeService>();
 builder.Services.AddScoped<ICriticalErrorLogService, HttpCriticalErrorLogService>();

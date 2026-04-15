@@ -473,14 +473,14 @@ public static class PromptBuilder
 
 	private static string BuildTeamSection(Project project)
 	{
-		if (project.TeamAssignments == null || project.TeamAssignments.Count == 0)
+		if (project.AgentAssignments == null || project.AgentAssignments.Count == 0)
 		{
 			return string.Empty;
 		}
 
-		var assignments = project.TeamAssignments
-			.Where(assignment => assignment.IsEnabled && assignment.TeamRole != null)
-			.OrderBy(assignment => assignment.TeamRole!.Name, StringComparer.OrdinalIgnoreCase)
+		var assignments = project.AgentAssignments
+			.Where(assignment => assignment.IsEnabled && assignment.Agent != null)
+			.OrderBy(assignment => assignment.Agent!.Name, StringComparer.OrdinalIgnoreCase)
 			.ToList();
 		if (assignments.Count == 0)
 		{
@@ -494,18 +494,18 @@ public static class PromptBuilder
 		{
 			var lineBuilder = new StringBuilder();
 			lineBuilder.Append("  - ");
-			lineBuilder.Append(assignment.TeamRole!.Name);
+			lineBuilder.Append(assignment.Agent!.Name);
 
-			if (!string.IsNullOrWhiteSpace(assignment.TeamRole.Description))
+			if (!string.IsNullOrWhiteSpace(assignment.Agent.Description))
 			{
 				lineBuilder.Append(" | Purpose: ");
-				lineBuilder.Append(assignment.TeamRole.Description);
+				lineBuilder.Append(assignment.Agent.Description);
 			}
 
-			if (!string.IsNullOrWhiteSpace(assignment.TeamRole.Responsibilities))
+			if (!string.IsNullOrWhiteSpace(assignment.Agent.Responsibilities))
 			{
 				lineBuilder.Append(" | Instructions: ");
-				lineBuilder.Append(assignment.TeamRole.Responsibilities);
+				lineBuilder.Append(assignment.Agent.Responsibilities);
 			}
 
 			if (assignment.Provider != null)
@@ -520,7 +520,7 @@ public static class PromptBuilder
 				lineBuilder.Append(assignment.PreferredModelId);
 			}
 
-			var skills = assignment.TeamRole.SkillLinks
+			var skills = assignment.Agent.SkillLinks
 				.Where(link => link.Skill != null)
 				.Select(link => link.Skill!.Name)
 				.ToList();
@@ -530,7 +530,7 @@ public static class PromptBuilder
 				lineBuilder.Append(string.Join(", ", skills));
 			}
 
-			var cycleDefaults = DescribeAgentCycleDefaults(assignment.TeamRole);
+			var cycleDefaults = DescribeAgentCycleDefaults(assignment.Agent);
 			if (!string.IsNullOrWhiteSpace(cycleDefaults))
 			{
 				lineBuilder.Append(" | Execution: ");
@@ -603,7 +603,7 @@ public static class PromptBuilder
 	/// append-system-prompt when the job is part of a team swarm. This establishes the agent's
 	/// persona, responsibilities, and coordination guidelines for parallel execution.
 	/// </summary>
-	public static string BuildRoleSystemPromptContext(TeamRole role, int totalSwarmSize)
+	public static string BuildRoleSystemPromptContext(Agent role, int totalSwarmSize)
 	{
 		var sb = new StringBuilder();
 
@@ -652,7 +652,7 @@ public static class PromptBuilder
 			: $"{skill.Name} - {summary}";
 	}
 
-	private static string? DescribeAgentCycleDefaults(TeamRole role)
+	private static string? DescribeAgentCycleDefaults(Agent role)
 	{
 		if (role.DefaultCycleMode == CycleMode.SingleCycle)
 		{

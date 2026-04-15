@@ -2,12 +2,12 @@ using System.Text.Json.Serialization;
 
 namespace VibeSwarm.Shared.Data;
 
-public class TeamRoleSkill
+public class AgentSkill
 {
-	public Guid TeamRoleId { get; set; }
+	public Guid AgentId { get; set; }
 
 	[JsonIgnore]
-	public TeamRole? TeamRole { get; set; }
+	public Agent? Agent { get; set; }
 
 	public Guid SkillId { get; set; }
 

@@ -124,7 +124,7 @@ public class Project
 
     public ICollection<ProjectProvider> ProviderSelections { get; set; } = new List<ProjectProvider>();
 
-    public ICollection<ProjectTeamRole> TeamAssignments { get; set; } = new List<ProjectTeamRole>();
+    public ICollection<ProjectAgent> AgentAssignments { get; set; } = new List<ProjectAgent>();
 
     public ICollection<ProjectEnvironment> Environments { get; set; } = new List<ProjectEnvironment>();
 

@@ -40,7 +40,7 @@ public sealed class ProjectsPageTests
 		services.AddSingleton<IIdeaService>(new FakeIdeaService());
 		services.AddSingleton<IVersionControlService>(new FakeVersionControlService());
 		services.AddSingleton<IProviderService>(new FakeProviderService());
-		services.AddSingleton<ITeamRoleService>(new FakeTeamRoleService());
+		services.AddSingleton<IAgentService>(new FakeAgentService());
 		services.AddSingleton<ISettingsService>(new FakeSettingsService());
 		services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService());
 		services.AddSingleton<NotificationService>();
@@ -73,12 +73,12 @@ public sealed class ProjectsPageTests
 				Name = "Stats Project",
 				WorkingPath = "/tmp/stats-project",
 				IsActive = true,
-				TeamAssignments =
+				AgentAssignments =
 				[
-					new ProjectTeamRole
+					new ProjectAgent
 					{
 						IsEnabled = true,
-						TeamRole = new TeamRole { Name = "Reviewer" }
+						Agent = new Agent { Name = "Reviewer" }
 					}
 				]
 			},
@@ -98,7 +98,7 @@ public sealed class ProjectsPageTests
 		services.AddSingleton<IIdeaService>(new FakeIdeaService());
 		services.AddSingleton<IVersionControlService>(new FakeVersionControlService());
 		services.AddSingleton<IProviderService>(new FakeProviderService());
-		services.AddSingleton<ITeamRoleService>(new FakeTeamRoleService());
+		services.AddSingleton<IAgentService>(new FakeAgentService());
 		services.AddSingleton<ISettingsService>(new FakeSettingsService());
 		services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService());
 		services.AddSingleton<NotificationService>();
@@ -130,7 +130,7 @@ public sealed class ProjectsPageTests
 		services.AddSingleton<IIdeaService>(new FakeIdeaService());
 		services.AddSingleton<IVersionControlService>(new FakeVersionControlService());
 		services.AddSingleton<IProviderService>(new FakeProviderService());
-		services.AddSingleton<ITeamRoleService>(new FakeTeamRoleService());
+		services.AddSingleton<IAgentService>(new FakeAgentService());
 		services.AddSingleton<ISettingsService>(new FakeSettingsService());
 		services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService());
 		services.AddSingleton<NotificationService>();
@@ -177,7 +177,7 @@ public sealed class ProjectsPageTests
 		services.AddSingleton<IIdeaService>(new FakeIdeaService());
 		services.AddSingleton<IVersionControlService>(new FakeVersionControlService());
 		services.AddSingleton<IProviderService>(new FakeProviderService());
-		services.AddSingleton<ITeamRoleService>(new FakeTeamRoleService());
+		services.AddSingleton<IAgentService>(new FakeAgentService());
 		services.AddSingleton<ISettingsService>(new FakeSettingsService());
 		services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService());
 		services.AddSingleton<NotificationService>();
@@ -208,7 +208,7 @@ public sealed class ProjectsPageTests
 		services.AddSingleton<IIdeaService>(new FakeIdeaService());
 		services.AddSingleton<IVersionControlService>(new FakeVersionControlService());
 		services.AddSingleton<IProviderService>(new FakeProviderService());
-		services.AddSingleton<ITeamRoleService>(new FakeTeamRoleService());
+		services.AddSingleton<IAgentService>(new FakeAgentService());
 		services.AddSingleton<ISettingsService>(new FakeSettingsService());
 		services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService());
 		services.AddSingleton<NotificationService>();
@@ -257,7 +257,7 @@ public sealed class ProjectsPageTests
 			IsEnabled = true,
 			IsDefault = true
 		}));
-		context.Services.AddSingleton<ITeamRoleService>(new FakeTeamRoleService());
+		context.Services.AddSingleton<IAgentService>(new FakeAgentService());
 		context.Services.AddSingleton<ISettingsService>(new FakeSettingsService());
 		context.Services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService());
 		context.Services.AddSingleton<NotificationService>();
@@ -309,7 +309,7 @@ public sealed class ProjectsPageTests
 		context.Services.AddSingleton<IIdeaService>(ideaService);
 		context.Services.AddSingleton<IVersionControlService>(new FakeVersionControlService());
 		context.Services.AddSingleton<IProviderService>(new FakeProviderService());
-		context.Services.AddSingleton<ITeamRoleService>(new FakeTeamRoleService());
+		context.Services.AddSingleton<IAgentService>(new FakeAgentService());
 		context.Services.AddSingleton<ISettingsService>(new FakeSettingsService());
 		context.Services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService());
 		context.Services.AddSingleton<NotificationService>();
@@ -372,12 +372,12 @@ public sealed class ProjectsPageTests
 						IsEnabled = true
 					}
 				],
-				TeamAssignments =
+				AgentAssignments =
 				[
-					new ProjectTeamRole
+					new ProjectAgent
 					{
 						IsEnabled = true,
-						TeamRole = new TeamRole { Name = "Architect" }
+						Agent = new Agent { Name = "Architect" }
 					}
 				]
 			},
@@ -399,7 +399,7 @@ public sealed class ProjectsPageTests
 		context.Services.AddSingleton<IIdeaService>(new FakeIdeaService());
 		context.Services.AddSingleton<IVersionControlService>(new FakeVersionControlService());
 		context.Services.AddSingleton<IProviderService>(new FakeProviderService());
-		context.Services.AddSingleton<ITeamRoleService>(new FakeTeamRoleService());
+		context.Services.AddSingleton<IAgentService>(new FakeAgentService());
 		context.Services.AddSingleton<ISettingsService>(new FakeSettingsService());
 		context.Services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService());
 		context.Services.AddSingleton<NotificationService>();
@@ -442,7 +442,7 @@ public sealed class ProjectsPageTests
 		context.Services.AddSingleton<IIdeaService>(new FakeIdeaService());
 		context.Services.AddSingleton<IVersionControlService>(new FakeVersionControlService());
 		context.Services.AddSingleton<IProviderService>(new FakeProviderService());
-		context.Services.AddSingleton<ITeamRoleService>(new FakeTeamRoleService());
+		context.Services.AddSingleton<IAgentService>(new FakeAgentService());
 		context.Services.AddSingleton<ISettingsService>(new FakeSettingsService());
 		context.Services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService());
 		context.Services.AddSingleton<NotificationService>();
@@ -480,7 +480,7 @@ public sealed class ProjectsPageTests
 		context.Services.AddSingleton<IIdeaService>(new FakeIdeaService());
 		context.Services.AddSingleton<IVersionControlService>(new FakeVersionControlService());
 		context.Services.AddSingleton<IProviderService>(new FakeProviderService());
-		context.Services.AddSingleton<ITeamRoleService>(new FakeTeamRoleService());
+		context.Services.AddSingleton<IAgentService>(new FakeAgentService());
 		context.Services.AddSingleton<ISettingsService>(new FakeSettingsService());
 		context.Services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService());
 		context.Services.AddSingleton<NotificationService>();
@@ -518,7 +518,7 @@ public sealed class ProjectsPageTests
 		context.Services.AddSingleton<IIdeaService>(new FakeIdeaService());
 		context.Services.AddSingleton<IVersionControlService>(new FakeVersionControlService());
 		context.Services.AddSingleton<IProviderService>(new FakeProviderService());
-		context.Services.AddSingleton<ITeamRoleService>(new FakeTeamRoleService());
+		context.Services.AddSingleton<IAgentService>(new FakeAgentService());
 		context.Services.AddSingleton<ISettingsService>(new FakeSettingsService());
 		context.Services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService());
 		context.Services.AddSingleton(notificationService);
@@ -638,13 +638,13 @@ public sealed class ProjectsPageTests
 		public Task StopAllProcessingAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 	}
 
-	private sealed class FakeTeamRoleService : ITeamRoleService
+	private sealed class FakeAgentService : IAgentService
 	{
-		public Task<IEnumerable<TeamRole>> GetAllAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<TeamRole>>([]);
-		public Task<IEnumerable<TeamRole>> GetEnabledAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<TeamRole>>([]);
-		public Task<TeamRole?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult<TeamRole?>(null);
-		public Task<TeamRole> CreateAsync(TeamRole teamRole, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-		public Task<TeamRole> UpdateAsync(TeamRole teamRole, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<IEnumerable<Agent>> GetAllAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Agent>>([]);
+		public Task<IEnumerable<Agent>> GetEnabledAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Agent>>([]);
+		public Task<Agent?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult<Agent?>(null);
+		public Task<Agent> CreateAsync(Agent agent, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<Agent> UpdateAsync(Agent agent, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task DeleteAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<bool> NameExistsAsync(string name, Guid? excludeId = null, CancellationToken cancellationToken = default) => Task.FromResult(false);
 	}

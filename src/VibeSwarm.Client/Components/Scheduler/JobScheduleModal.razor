@@ -66,7 +66,7 @@
 						<label for="schedule-target" class="form-label">Executor Type</label>
 						<InputSelect id="schedule-target" @bind-Value="Schedule.ExecutionTarget" @bind-Value:after="OnExecutionTargetChanged" class="form-select">
 							<option value="@JobScheduleExecutionTarget.Provider">Provider</option>
-							<option value="@JobScheduleExecutionTarget.TeamRole">Agent</option>
+							<option value="@JobScheduleExecutionTarget.Agent">Agent</option>
 						</InputSelect>
 						<div class="form-text">Choose a direct provider or a project agent that should run this task.</div>
 					</div>
@@ -89,15 +89,15 @@
 					{
 						<div class="col-12 col-lg-4">
 							<label for="schedule-team-role" class="form-label">Agent</label>
-							<select id="schedule-team-role" class="form-select" value="@GetTeamRoleValue()" @onchange="OnTeamRoleChanged"
-									disabled="@(!_availableTeamAssignments.Any())">
-								<option value="">@(_availableTeamAssignments.Any() ? "Select agent..." : "No enabled agents")</option>
-								@foreach (var assignment in _availableTeamAssignments)
+							<select id="schedule-team-role" class="form-select" value="@GetAgentValue()" @onchange="OnAgentChanged"
+									disabled="@(!_availableAgentAssignments.Any())">
+								<option value="">@(_availableAgentAssignments.Any() ? "Select agent..." : "No enabled agents")</option>
+								@foreach (var assignment in _availableAgentAssignments)
 								{
-									<option value="@assignment.TeamRoleId">@GetTeamAssignmentDisplayText(assignment)</option>
+									<option value="@assignment.AgentId">@GetTeamAssignmentDisplayText(assignment)</option>
 								}
 							</select>
-							@if (!_availableTeamAssignments.Any())
+							@if (!_availableAgentAssignments.Any())
 							{
 								<div class="form-text text-warning">Assign an enabled agent with an enabled provider in the project settings first.</div>
 							}
@@ -137,7 +137,7 @@
 				</div>
 			</div>
 
-			@if (Schedule.ScheduleType == JobScheduleType.RunJob && Schedule.ExecutionTarget == JobScheduleExecutionTarget.TeamRole)
+			@if (Schedule.ScheduleType == JobScheduleType.RunJob && Schedule.ExecutionTarget == JobScheduleExecutionTarget.Agent)
 			{
 				var assignment = GetSelectedTeamAssignment();
 				@if (assignment != null)
@@ -261,7 +261,7 @@
 	private List<Provider> _providers = [];
 	private List<InferenceProvider> _inferenceProviders = [];
 	private List<Provider> _allowedProviders = [];
-	private List<ProjectTeamRole> _availableTeamAssignments = [];
+	private List<ProjectAgent> _availableAgentAssignments = [];
 	private List<ProviderModel> _models = [];
 	private bool _isLoadingModels;
 	private string _selectedModelId = string.Empty;
@@ -323,7 +323,7 @@
 				ScheduleType = EditSchedule.ScheduleType,
 				ExecutionTarget = EditSchedule.ExecutionTarget,
 				ProviderId = EditSchedule.ProviderId,
-				TeamRoleId = EditSchedule.TeamRoleId,
+				AgentId = EditSchedule.AgentId,
 				InferenceProviderId = EditSchedule.InferenceProviderId,
 				Prompt = EditSchedule.Prompt,
 				ModelId = EditSchedule.ModelId,
@@ -371,14 +371,14 @@
 	{
 		var project = GetSelectedProject();
 		_allowedProviders = ProjectExecutionDefaults.GetAllowedProviders(project, _providers);
-		_availableTeamAssignments = project?.TeamAssignments?
+		_availableAgentAssignments = project?.AgentAssignments?
 			.Where(assignment =>
 				assignment.IsEnabled &&
-				assignment.TeamRole != null &&
-				assignment.TeamRole.IsEnabled &&
+				assignment.Agent != null &&
+				assignment.Agent.IsEnabled &&
 				assignment.Provider != null &&
 				assignment.Provider.IsEnabled)
-			.OrderBy(assignment => assignment.TeamRole!.Name, StringComparer.OrdinalIgnoreCase)
+			.OrderBy(assignment => assignment.Agent!.Name, StringComparer.OrdinalIgnoreCase)
 			.ToList() ?? [];
 
 		if (Schedule.ScheduleType == JobScheduleType.GenerateIdeas)
@@ -389,7 +389,7 @@
 			}
 
 			Schedule.ProviderId = null;
-			Schedule.TeamRoleId = null;
+			Schedule.AgentId = null;
 		}
 		else if (Schedule.ExecutionTarget == JobScheduleExecutionTarget.Provider)
 		{
@@ -399,13 +399,13 @@
 					?? _allowedProviders.FirstOrDefault()?.Id;
 			}
 
-			Schedule.TeamRoleId = null;
+			Schedule.AgentId = null;
 		}
 		else
 		{
-			if (!preserveCurrentSelection || !Schedule.TeamRoleId.HasValue || !_availableTeamAssignments.Any(assignment => assignment.TeamRoleId == Schedule.TeamRoleId.Value))
+			if (!preserveCurrentSelection || !Schedule.AgentId.HasValue || !_availableAgentAssignments.Any(assignment => assignment.AgentId == Schedule.AgentId.Value))
 			{
-				Schedule.TeamRoleId = _availableTeamAssignments.FirstOrDefault()?.TeamRoleId;
+				Schedule.AgentId = _availableAgentAssignments.FirstOrDefault()?.AgentId;
 			}
 
 			Schedule.ProviderId = null;
@@ -511,9 +511,9 @@
 		await LoadModelsAsync();
 	}
 
-	private async Task OnTeamRoleChanged(ChangeEventArgs args)
+	private async Task OnAgentChanged(ChangeEventArgs args)
 	{
-		Schedule.TeamRoleId = TryParseNullableGuid(args.Value);
+		Schedule.AgentId = TryParseNullableGuid(args.Value);
 		ErrorMessage = null;
 		await LoadModelsAsync();
 	}
@@ -546,7 +546,7 @@
 			return;
 		}
 
-		if (Schedule.ScheduleType == JobScheduleType.RunJob && Schedule.ExecutionTarget == JobScheduleExecutionTarget.TeamRole && !Schedule.TeamRoleId.HasValue)
+		if (Schedule.ScheduleType == JobScheduleType.RunJob && Schedule.ExecutionTarget == JobScheduleExecutionTarget.Agent && !Schedule.AgentId.HasValue)
 		{
 			ErrorMessage = "Please select an agent.";
 			return;
@@ -577,12 +577,12 @@
 		if (Schedule.ScheduleType == JobScheduleType.GenerateIdeas)
 		{
 			Schedule.ProviderId = null;
-			Schedule.TeamRoleId = null;
+			Schedule.AgentId = null;
 			Schedule.Prompt = string.Empty;
 		}
 		else if (Schedule.ExecutionTarget == JobScheduleExecutionTarget.Provider)
 		{
-			Schedule.TeamRoleId = null;
+			Schedule.AgentId = null;
 			Schedule.InferenceProviderId = null;
 		}
 		else
@@ -632,9 +632,9 @@
 		await IsVisibleChanged.InvokeAsync(isVisible);
 	}
 
-	private ProjectTeamRole? GetSelectedTeamAssignment()
-		=> Schedule.TeamRoleId.HasValue
-			? _availableTeamAssignments.FirstOrDefault(assignment => assignment.TeamRoleId == Schedule.TeamRoleId.Value)
+	private ProjectAgent? GetSelectedTeamAssignment()
+		=> Schedule.AgentId.HasValue
+			? _availableAgentAssignments.FirstOrDefault(assignment => assignment.AgentId == Schedule.AgentId.Value)
 			: null;
 
 	private Guid? ResolveSelectedProviderId()
@@ -693,22 +693,22 @@
 
 		if (!string.IsNullOrWhiteSpace(assignment.PreferredModelId))
 		{
-			return $"Leave empty to use {assignment.TeamRole?.Name}'s assigned model ({assignment.PreferredModelId}).";
+			return $"Leave empty to use {assignment.Agent?.Name}'s assigned model ({assignment.PreferredModelId}).";
 		}
 
 		return "Leave empty to use the selected agent's provider default model.";
 	}
 
-	private static string GetTeamAssignmentDisplayText(ProjectTeamRole assignment)
+	private static string GetTeamAssignmentDisplayText(ProjectAgent assignment)
 	{
-		var roleName = assignment.TeamRole?.Name ?? "Unknown agent";
+		var roleName = assignment.Agent?.Name ?? "Unknown agent";
 		var providerName = assignment.Provider?.Name ?? "Unknown provider";
 		return $"{roleName} ({providerName})";
 	}
 
 	private string GetProjectValue() => Schedule.ProjectId == Guid.Empty ? string.Empty : Schedule.ProjectId.ToString();
 	private string GetProviderValue() => Schedule.ProviderId?.ToString() ?? string.Empty;
-	private string GetTeamRoleValue() => Schedule.TeamRoleId?.ToString() ?? string.Empty;
+	private string GetAgentValue() => Schedule.AgentId?.ToString() ?? string.Empty;
 	private string GetInferenceProviderValue() => Schedule.InferenceProviderId?.ToString() ?? string.Empty;
 
 	private static Guid TryParseGuid(object? value)

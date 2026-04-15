@@ -44,7 +44,7 @@ else
 					   OnCancel="CancelJob" OnForceCancel="ForceCancelJob"
 					   CanForceReset="@CanForceReset" IsForceResetting="@IsForceResetting" OnForceReset="ForceResetJob"
 					   CurrentActivity="@Job.CurrentActivity" LastActivityAt="@Job.LastActivityAt" CurrentCycle="@Job.CurrentCycle"
-					   MaxCycles="@Job.MaxCycles" CycleMode="@Job.CycleMode" TeamRoleName="@Job.TeamRole?.Name"
+					   MaxCycles="@Job.MaxCycles" CycleMode="@Job.CycleMode" AgentName="@Job.Agent?.Name"
 					   PlaywrightEnabled="@Job.PlaywrightEnabled" EnvironmentCount="@Job.EnvironmentSnapshots.Count"
 					   EnvironmentTooltip="@BuildEnvironmentTooltip()" />
 

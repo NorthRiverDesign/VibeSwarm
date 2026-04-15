@@ -5,28 +5,28 @@ namespace VibeSwarm.Shared.Services;
 
 public static class AgentPresetHelper
 {
-	public static List<ProjectTeamRole> GetEnabledAgents(Project? project)
+	public static List<ProjectAgent> GetEnabledAgents(Project? project)
 	{
-		if (project?.TeamAssignments == null || project.TeamAssignments.Count == 0)
+		if (project?.AgentAssignments == null || project.AgentAssignments.Count == 0)
 		{
 			return [];
 		}
 
-		return project.TeamAssignments
+		return project.AgentAssignments
 			.Where(IsEnabledAgentAssignment)
-			.OrderBy(assignment => assignment.TeamRole!.Name, StringComparer.OrdinalIgnoreCase)
+			.OrderBy(assignment => assignment.Agent!.Name, StringComparer.OrdinalIgnoreCase)
 			.ToList();
 	}
 
-	public static ProjectTeamRole? ResolveAgent(Project? project, Guid? teamRoleId)
+	public static ProjectAgent? ResolveAgent(Project? project, Guid? agentId)
 	{
-		if (!teamRoleId.HasValue || teamRoleId == Guid.Empty)
+		if (!agentId.HasValue || agentId == Guid.Empty)
 		{
 			return null;
 		}
 
 		return GetEnabledAgents(project)
-			.FirstOrDefault(assignment => assignment.TeamRoleId == teamRoleId.Value);
+			.FirstOrDefault(assignment => assignment.AgentId == agentId.Value);
 	}
 
 	public static bool HasCustomCycleSettings(Job job)
@@ -37,7 +37,7 @@ public static class AgentPresetHelper
 			|| !string.IsNullOrWhiteSpace(job.CycleReviewPrompt);
 	}
 
-	public static void ApplyExecutionDefaults(Job job, ProjectTeamRole assignment)
+	public static void ApplyExecutionDefaults(Job job, ProjectAgent assignment)
 	{
 		ArgumentNullException.ThrowIfNull(job);
 		ArgumentNullException.ThrowIfNull(assignment);
@@ -47,8 +47,8 @@ public static class AgentPresetHelper
 			throw new InvalidOperationException("The selected agent is not enabled for this project.");
 		}
 
-		var teamRole = assignment.TeamRole!;
-		job.TeamRoleId = assignment.TeamRoleId;
+		var agent = assignment.Agent!;
+		job.AgentId = assignment.AgentId;
 
 		if (job.ProviderId == Guid.Empty)
 		{
@@ -56,7 +56,7 @@ public static class AgentPresetHelper
 		}
 		else if (job.ProviderId != assignment.ProviderId)
 		{
-			throw new InvalidOperationException($"The selected agent '{teamRole.Name}' is assigned to a different provider.");
+			throw new InvalidOperationException($"The selected agent '{agent.Name}' is assigned to a different provider.");
 		}
 
 		if (string.IsNullOrWhiteSpace(job.ModelUsed))
@@ -76,19 +76,19 @@ public static class AgentPresetHelper
 			return;
 		}
 
-		job.CycleMode = teamRole.DefaultCycleMode;
-		job.CycleSessionMode = teamRole.DefaultCycleSessionMode;
-		job.MaxCycles = Math.Clamp(teamRole.DefaultMaxCycles, 1, 100);
-		job.CycleReviewPrompt = string.IsNullOrWhiteSpace(teamRole.DefaultCycleReviewPrompt)
+		job.CycleMode = agent.DefaultCycleMode;
+		job.CycleSessionMode = agent.DefaultCycleSessionMode;
+		job.MaxCycles = Math.Clamp(agent.DefaultMaxCycles, 1, 100);
+		job.CycleReviewPrompt = string.IsNullOrWhiteSpace(agent.DefaultCycleReviewPrompt)
 			? null
-			: teamRole.DefaultCycleReviewPrompt.Trim();
+			: agent.DefaultCycleReviewPrompt.Trim();
 	}
 
-	private static bool IsEnabledAgentAssignment(ProjectTeamRole assignment)
+	private static bool IsEnabledAgentAssignment(ProjectAgent assignment)
 	{
 		return assignment.IsEnabled
 			&& assignment.ProviderId != Guid.Empty
-			&& assignment.TeamRole != null
-			&& assignment.TeamRole.IsEnabled;
+			&& assignment.Agent != null
+			&& assignment.Agent.IsEnabled;
 	}
 }

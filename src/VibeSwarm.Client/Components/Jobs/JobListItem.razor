@@ -56,12 +56,12 @@
                 {
                     <span class="fw-medium">@ProjectName</span>
                 }
-                @if (!string.IsNullOrEmpty(TeamRoleName))
+                @if (!string.IsNullOrEmpty(AgentName))
                 {
                     <span class="d-inline-flex align-items-center gap-1 px-2 py-1 bg-primary-subtle text-primary-emphasis rounded-pill"
                           title="Team swarm role">
                         <i class="bi bi-diagram-3 opacity-75"></i>
-                        <span>@TeamRoleName</span>
+                        <span>@AgentName</span>
                     </span>
                 }
                 @if (MaxCycles > 1)
@@ -193,7 +193,7 @@
     public CycleMode CycleMode { get; set; } = CycleMode.SingleCycle;
 
     [Parameter]
-    public string? TeamRoleName { get; set; }
+    public string? AgentName { get; set; }
 
     [Parameter]
     public bool PlaywrightEnabled { get; set; }

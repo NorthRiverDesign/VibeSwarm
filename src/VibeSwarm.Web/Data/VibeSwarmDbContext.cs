@@ -20,7 +20,7 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 	public DbSet<ProviderUsageSummary> ProviderUsageSummaries { get; set; }
 	public DbSet<Project> Projects { get; set; }
 	public DbSet<ProjectProvider> ProjectProviders { get; set; }
-	public DbSet<ProjectTeamRole> ProjectTeamRoles { get; set; }
+	public DbSet<ProjectAgent> ProjectAgents { get; set; }
 	public DbSet<ProjectEnvironment> ProjectEnvironments { get; set; }
 	public DbSet<JobSchedule> JobSchedules { get; set; }
 	public DbSet<JobTemplate> JobTemplates { get; set; }
@@ -31,8 +31,8 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 	public DbSet<JobMessage> JobMessages { get; set; }
 	public DbSet<JobProviderAttempt> JobProviderAttempts { get; set; }
 	public DbSet<Skill> Skills { get; set; }
-	public DbSet<TeamRole> TeamRoles { get; set; }
-	public DbSet<TeamRoleSkill> TeamRoleSkills { get; set; }
+	public DbSet<Agent> Agents { get; set; }
+	public DbSet<AgentSkill> AgentSkills { get; set; }
 	public DbSet<Idea> Ideas { get; set; }
 	public DbSet<IdeaAttachment> IdeaAttachments { get; set; }
 	public DbSet<AppSettings> AppSettings { get; set; }
@@ -150,16 +150,16 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 			entity.HasIndex(e => new { e.ProjectId, e.Priority });
 		});
 
-		modelBuilder.Entity<ProjectTeamRole>(entity =>
+		modelBuilder.Entity<ProjectAgent>(entity =>
 		{
 			entity.HasKey(e => e.Id);
 			entity.HasOne(e => e.Project)
-	.WithMany(project => project.TeamAssignments)
+	.WithMany(project => project.AgentAssignments)
 	.HasForeignKey(e => e.ProjectId)
 	.OnDelete(DeleteBehavior.Cascade);
-			entity.HasOne(e => e.TeamRole)
+			entity.HasOne(e => e.Agent)
 	.WithMany(role => role.ProjectAssignments)
-	.HasForeignKey(e => e.TeamRoleId)
+	.HasForeignKey(e => e.AgentId)
 	.OnDelete(DeleteBehavior.Cascade);
 			entity.HasOne(e => e.Provider)
 	.WithMany()
@@ -167,7 +167,7 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 	.OnDelete(DeleteBehavior.Restrict);
 			entity.Property(e => e.PreferredModelId).HasMaxLength(200);
 			entity.Property(e => e.PreferredReasoningEffort).HasMaxLength(ValidationLimits.ReasoningEffortMaxLength);
-			entity.HasIndex(e => new { e.ProjectId, e.TeamRoleId }).IsUnique();
+			entity.HasIndex(e => new { e.ProjectId, e.AgentId }).IsUnique();
 		});
 
 		modelBuilder.Entity<ProjectEnvironment>(entity =>
@@ -206,9 +206,9 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 				.WithMany()
 				.HasForeignKey(e => e.ProviderId)
 				.OnDelete(DeleteBehavior.SetNull);
-			entity.HasOne(e => e.TeamRole)
+			entity.HasOne(e => e.Agent)
 				.WithMany()
-				.HasForeignKey(e => e.TeamRoleId)
+				.HasForeignKey(e => e.AgentId)
 				.OnDelete(DeleteBehavior.SetNull);
 			entity.HasOne(e => e.InferenceProvider)
 				.WithMany()
@@ -216,7 +216,7 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 				.OnDelete(DeleteBehavior.SetNull);
 			entity.HasIndex(e => e.InferenceProviderId);
 			entity.HasIndex(e => e.ProviderId);
-			entity.HasIndex(e => e.TeamRoleId);
+			entity.HasIndex(e => e.AgentId);
 			entity.HasIndex(e => new { e.IsEnabled, e.NextRunAtUtc });
 			entity.HasIndex(e => new { e.ProjectId, e.IsEnabled });
 		});
@@ -281,9 +281,9 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 	.WithMany()
 	.HasForeignKey(e => e.ProviderId)
 	.OnDelete(DeleteBehavior.Restrict);
-			entity.HasOne(e => e.TeamRole)
+			entity.HasOne(e => e.Agent)
 				.WithMany()
-				.HasForeignKey(e => e.TeamRoleId)
+				.HasForeignKey(e => e.AgentId)
 				.OnDelete(DeleteBehavior.SetNull);
 			entity.Navigation(e => e.Statistics).AutoInclude();
 			entity.Navigation(e => e.PlanningStatistics).AutoInclude();
@@ -359,12 +359,12 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 			entity.HasIndex(e => e.Name).IsUnique();
 		});
 
-		modelBuilder.Entity<TeamRole>(entity =>
+		modelBuilder.Entity<Agent>(entity =>
 		{
 			entity.HasKey(e => e.Id);
 			entity.Property(e => e.Name).IsRequired().HasMaxLength(100);
-			entity.Property(e => e.Description).HasMaxLength(ValidationLimits.TeamRoleDescriptionMaxLength);
-			entity.Property(e => e.Responsibilities).HasMaxLength(ValidationLimits.TeamRoleResponsibilitiesMaxLength);
+			entity.Property(e => e.Description).HasMaxLength(ValidationLimits.AgentDescriptionMaxLength);
+			entity.Property(e => e.Responsibilities).HasMaxLength(ValidationLimits.AgentResponsibilitiesMaxLength);
 			entity.Property(e => e.DefaultModelId).HasMaxLength(200);
 			entity.Property(e => e.DefaultReasoningEffort).HasMaxLength(ValidationLimits.ReasoningEffortMaxLength);
 			entity.Property(e => e.DefaultCycleReviewPrompt).HasMaxLength(ValidationLimits.JobTemplatePromptMaxLength);
@@ -375,12 +375,12 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 			entity.HasIndex(e => e.Name).IsUnique();
 		});
 
-		modelBuilder.Entity<TeamRoleSkill>(entity =>
+		modelBuilder.Entity<AgentSkill>(entity =>
 		{
-			entity.HasKey(e => new { e.TeamRoleId, e.SkillId });
-			entity.HasOne(e => e.TeamRole)
+			entity.HasKey(e => new { e.AgentId, e.SkillId });
+			entity.HasOne(e => e.Agent)
 	.WithMany(role => role.SkillLinks)
-	.HasForeignKey(e => e.TeamRoleId)
+	.HasForeignKey(e => e.AgentId)
 	.OnDelete(DeleteBehavior.Cascade);
 			entity.HasOne(e => e.Skill)
 	.WithMany()

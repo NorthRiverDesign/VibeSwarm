@@ -1,4 +1,4 @@
-@inject ITeamRoleService TeamRoleService
+@inject IAgentService AgentService
 @inject ISkillService SkillService
 @inject IProviderService ProviderService
 @inject NotificationService NotificationService
@@ -7,29 +7,29 @@
 			 Title="@(IsEdit ? "Edit Agent" : "Add Agent")" Icon="@(IsEdit ? "pencil" : "cpu")"
 			 Size="ModalDialog.ModalSize.Large" OnClose="HandleClose">
 	<ChildContent>
-		<EditForm Model="@TeamRole" OnValidSubmit="HandleValidSubmit">
+		<EditForm Model="@Agent" OnValidSubmit="HandleValidSubmit">
 			<DataAnnotationsValidator />
 			<ValidationSummary class="text-danger mb-3" />
 
 			<div class="mb-3">
 				<label for="team-role-name" class="form-label">Name</label>
-				<InputText id="team-role-name" @bind-Value="TeamRole.Name" class="form-control"
+				<InputText id="team-role-name" @bind-Value="Agent.Name" class="form-control"
 						   placeholder="Security Reviewer" />
-				<ValidationMessage For="@(() => TeamRole.Name)" class="text-danger small" />
+				<ValidationMessage For="@(() => Agent.Name)" class="text-danger small" />
 			</div>
 
 			<div class="mb-3">
 				<label for="team-role-description" class="form-label">Purpose</label>
-				<InputTextArea id="team-role-description" @bind-Value="TeamRole.Description" class="form-control"
+				<InputTextArea id="team-role-description" @bind-Value="Agent.Description" class="form-control"
 							   rows="4" placeholder="Short summary of this role's purpose..." />
 				<div class="form-text">Shown in project agent pickers and execution summaries.</div>
 			</div>
 
 			<div class="mb-3">
 				<label for="team-role-responsibilities" class="form-label">Agent Instructions</label>
-				<InputTextArea id="team-role-responsibilities" @bind-Value="TeamRole.Responsibilities" class="form-control"
+				<InputTextArea id="team-role-responsibilities" @bind-Value="Agent.Responsibilities" class="form-control"
 							   rows="6" placeholder="Describe what this role owns, reviews, or specializes in..." />
-				<ValidationMessage For="@(() => TeamRole.Responsibilities)" class="text-danger small" />
+				<ValidationMessage For="@(() => Agent.Responsibilities)" class="text-danger small" />
 				<div class="form-text">Use this to capture what the agent owns, reviews, and how it should approach the work.</div>
 			</div>
 
@@ -45,9 +45,9 @@
 					else
 					{
 						<InputSelect TValue="Guid?" id="team-role-provider"
-									 Value="TeamRole.DefaultProviderId"
+									 Value="Agent.DefaultProviderId"
 									 ValueChanged="HandleDefaultProviderChanged"
-									 ValueExpression="@(() => TeamRole.DefaultProviderId)"
+									 ValueExpression="@(() => Agent.DefaultProviderId)"
 									 class="form-select">
 							<option value="">Choose when assigned to a project</option>
 							@foreach (var provider in _providers)
@@ -61,11 +61,11 @@
 				<div class="col-12 col-lg-6">
 					<label for="team-role-model" class="form-label">Default Model</label>
 					<InputSelect TValue="string" id="team-role-model"
-								 Value="@(TeamRole.DefaultModelId ?? string.Empty)"
+								 Value="@(Agent.DefaultModelId ?? string.Empty)"
 								 ValueChanged="HandleDefaultModelChanged"
-								 ValueExpression="@(() => TeamRole.DefaultModelId)"
+								 ValueExpression="@(() => Agent.DefaultModelId)"
 								 class="form-select"
-								 disabled="@(!TeamRole.DefaultProviderId.HasValue || !CurrentProviderModels.Any())">
+								 disabled="@(!Agent.DefaultProviderId.HasValue || !CurrentProviderModels.Any())">
 						<option value="">Use provider default model</option>
 						@foreach (var model in CurrentProviderModels)
 						{
@@ -73,7 +73,7 @@
 						}
 					</InputSelect>
 					<div class="form-text">
-						@if (!TeamRole.DefaultProviderId.HasValue)
+						@if (!Agent.DefaultProviderId.HasValue)
 						{
 							<span>Select a default provider first.</span>
 						}
@@ -90,11 +90,11 @@
 				<div class="col-12 col-lg-6">
 					<label for="team-role-reasoning" class="form-label">Default Reasoning</label>
 					<InputSelect TValue="string" id="team-role-reasoning"
-								 Value="@(TeamRole.DefaultReasoningEffort ?? string.Empty)"
+								 Value="@(Agent.DefaultReasoningEffort ?? string.Empty)"
 								 ValueChanged="HandleDefaultReasoningChanged"
-								 ValueExpression="@(() => TeamRole.DefaultReasoningEffort)"
+								 ValueExpression="@(() => Agent.DefaultReasoningEffort)"
 								 class="form-select"
-								 disabled="@(!TeamRole.DefaultProviderId.HasValue || !CurrentReasoningOptions.Any())">
+								 disabled="@(!Agent.DefaultProviderId.HasValue || !CurrentReasoningOptions.Any())">
 						<option value="">Use provider default reasoning</option>
 						@foreach (var reasoning in CurrentReasoningOptions)
 						{
@@ -102,7 +102,7 @@
 						}
 					</InputSelect>
 					<div class="form-text">
-						@if (!TeamRole.DefaultProviderId.HasValue)
+						@if (!Agent.DefaultProviderId.HasValue)
 						{
 							<span>Select a default provider first.</span>
 						}
@@ -123,24 +123,24 @@
 				<div class="row g-3">
 					<div class="col-12 col-lg-6">
 						<label for="team-role-cycle-mode" class="form-label">Cycle Mode</label>
-						<InputSelect id="team-role-cycle-mode" @bind-Value="TeamRole.DefaultCycleMode" class="form-select">
+						<InputSelect id="team-role-cycle-mode" @bind-Value="Agent.DefaultCycleMode" class="form-select">
 							<option value="@CycleMode.SingleCycle">Single Cycle</option>
 							<option value="@CycleMode.FixedCount">Fixed Count</option>
 							<option value="@CycleMode.Autonomous">Autonomous</option>
 						</InputSelect>
 						<div class="form-text">Applied when this agent is selected directly for a job or schedule.</div>
 					</div>
-					@if (TeamRole.DefaultCycleMode != CycleMode.SingleCycle)
+					@if (Agent.DefaultCycleMode != CycleMode.SingleCycle)
 					{
 						<div class="col-12 col-lg-6">
 							<label for="team-role-max-cycles" class="form-label">Max Cycles</label>
-							<InputNumber id="team-role-max-cycles" @bind-Value="TeamRole.DefaultMaxCycles" class="form-control" min="1" max="100" />
-							<ValidationMessage For="@(() => TeamRole.DefaultMaxCycles)" class="text-danger small" />
+							<InputNumber id="team-role-max-cycles" @bind-Value="Agent.DefaultMaxCycles" class="form-control" min="1" max="100" />
+							<ValidationMessage For="@(() => Agent.DefaultMaxCycles)" class="text-danger small" />
 							<div class="form-text">Safety limit for fixed-count or autonomous execution.</div>
 						</div>
 						<div class="col-12 col-lg-6">
 							<label for="team-role-session-mode" class="form-label">Session Mode</label>
-							<InputSelect id="team-role-session-mode" @bind-Value="TeamRole.DefaultCycleSessionMode" class="form-select">
+							<InputSelect id="team-role-session-mode" @bind-Value="Agent.DefaultCycleSessionMode" class="form-select">
 								<option value="@CycleSessionMode.ContinueSession">Continue Session</option>
 								<option value="@CycleSessionMode.FreshSession">Fresh Session</option>
 							</InputSelect>
@@ -148,7 +148,7 @@
 						</div>
 						<div class="col-12">
 							<label for="team-role-cycle-review" class="form-label">Cycle Review Prompt (Optional)</label>
-							<InputTextArea id="team-role-cycle-review" @bind-Value="TeamRole.DefaultCycleReviewPrompt" class="form-control"
+							<InputTextArea id="team-role-cycle-review" @bind-Value="Agent.DefaultCycleReviewPrompt" class="form-control"
 										   rows="4" placeholder="Review instructions used between cycles..." />
 							<div class="form-text">Optional review instructions applied between cycles for this agent.</div>
 						</div>
@@ -195,7 +195,7 @@
 
 			<div class="mb-3">
 				<div class="form-check form-switch">
-					<InputCheckbox id="team-role-enabled" @bind-Value="TeamRole.IsEnabled" class="form-check-input" />
+					<InputCheckbox id="team-role-enabled" @bind-Value="Agent.IsEnabled" class="form-check-input" />
 					<label class="form-check-label" for="team-role-enabled">
 						Enabled
 					</label>
@@ -232,7 +232,7 @@
 	public EventCallback<bool> IsVisibleChanged { get; set; }
 
 	[Parameter]
-	public TeamRole? EditTeamRole { get; set; }
+	public Agent? EditAgent { get; set; }
 
 	[Parameter]
 	public EventCallback<Guid?> OnSaved { get; set; }
@@ -243,20 +243,20 @@
 	[Parameter]
 	public EventCallback OnClosed { get; set; }
 
-	private TeamRole TeamRole { get; set; } = new();
+	private Agent Agent { get; set; } = new();
 	private List<Skill> _skills = [];
 	private List<Provider> _providers = [];
 	private readonly Dictionary<Guid, List<ProviderModel>> _providerModelsByProviderId = [];
-	private bool IsEdit => EditTeamRole != null;
+	private bool IsEdit => EditAgent != null;
 	private bool IsSaving { get; set; }
 	private string? ErrorMessage { get; set; }
 	private bool _previousIsVisible;
-	private IReadOnlyList<ProviderModel> CurrentProviderModels => TeamRole.DefaultProviderId.HasValue && _providerModelsByProviderId.TryGetValue(TeamRole.DefaultProviderId.Value, out var models)
+	private IReadOnlyList<ProviderModel> CurrentProviderModels => Agent.DefaultProviderId.HasValue && _providerModelsByProviderId.TryGetValue(Agent.DefaultProviderId.Value, out var models)
 		? models
 		: [];
-	private IReadOnlyList<string> CurrentReasoningOptions => TeamRole.DefaultProviderId.HasValue
+	private IReadOnlyList<string> CurrentReasoningOptions => Agent.DefaultProviderId.HasValue
 		? _providers
-			.Where(provider => provider.Id == TeamRole.DefaultProviderId.Value)
+			.Where(provider => provider.Id == Agent.DefaultProviderId.Value)
 			.SelectMany(ProviderCapabilities.GetSupportedReasoningEfforts)
 			.Distinct(StringComparer.Ordinal)
 			.ToList()
@@ -275,29 +275,29 @@
 			await LoadProvidersAsync();
 			ResetState();
 
-			if (EditTeamRole != null)
+			if (EditAgent != null)
 			{
-				TeamRole = new TeamRole
+				Agent = new Agent
 				{
-					Id = EditTeamRole.Id,
-					Name = EditTeamRole.Name,
-					Description = EditTeamRole.Description,
-					Responsibilities = EditTeamRole.Responsibilities,
-					DefaultProviderId = EditTeamRole.DefaultProviderId,
-					DefaultProvider = EditTeamRole.DefaultProvider,
-					DefaultModelId = EditTeamRole.DefaultModelId,
-					DefaultReasoningEffort = EditTeamRole.DefaultReasoningEffort,
-					DefaultCycleMode = EditTeamRole.DefaultCycleMode,
-					DefaultCycleSessionMode = EditTeamRole.DefaultCycleSessionMode,
-					DefaultMaxCycles = EditTeamRole.DefaultMaxCycles,
-					DefaultCycleReviewPrompt = EditTeamRole.DefaultCycleReviewPrompt,
-					IsEnabled = EditTeamRole.IsEnabled,
-					CreatedAt = EditTeamRole.CreatedAt,
-					UpdatedAt = EditTeamRole.UpdatedAt,
-					SkillLinks = EditTeamRole.SkillLinks
-						.Select(link => new TeamRoleSkill
+					Id = EditAgent.Id,
+					Name = EditAgent.Name,
+					Description = EditAgent.Description,
+					Responsibilities = EditAgent.Responsibilities,
+					DefaultProviderId = EditAgent.DefaultProviderId,
+					DefaultProvider = EditAgent.DefaultProvider,
+					DefaultModelId = EditAgent.DefaultModelId,
+					DefaultReasoningEffort = EditAgent.DefaultReasoningEffort,
+					DefaultCycleMode = EditAgent.DefaultCycleMode,
+					DefaultCycleSessionMode = EditAgent.DefaultCycleSessionMode,
+					DefaultMaxCycles = EditAgent.DefaultMaxCycles,
+					DefaultCycleReviewPrompt = EditAgent.DefaultCycleReviewPrompt,
+					IsEnabled = EditAgent.IsEnabled,
+					CreatedAt = EditAgent.CreatedAt,
+					UpdatedAt = EditAgent.UpdatedAt,
+					SkillLinks = EditAgent.SkillLinks
+						.Select(link => new AgentSkill
 						{
-							TeamRoleId = EditTeamRole.Id,
+							AgentId = EditAgent.Id,
 							SkillId = link.SkillId,
 							Skill = link.Skill
 						})
@@ -305,18 +305,18 @@
 				};
 			}
 
-			if (TeamRole.DefaultProviderId.HasValue)
+			if (Agent.DefaultProviderId.HasValue)
 			{
-				if (!_providers.Any(provider => provider.Id == TeamRole.DefaultProviderId.Value) && TeamRole.DefaultProvider != null)
+				if (!_providers.Any(provider => provider.Id == Agent.DefaultProviderId.Value) && Agent.DefaultProvider != null)
 				{
-					_providers.Add(TeamRole.DefaultProvider);
+					_providers.Add(Agent.DefaultProvider);
 					_providers = _providers
 						.OrderByDescending(provider => provider.IsDefault)
 						.ThenBy(provider => provider.Name)
 						.ToList();
 				}
 
-				await LoadProviderModelsAsync(TeamRole.DefaultProviderId.Value);
+				await LoadProviderModelsAsync(Agent.DefaultProviderId.Value);
 			}
 		}
 
@@ -349,12 +349,12 @@
 
 	private async Task HandleDefaultProviderChanged(Guid? providerId)
 	{
-		TeamRole.DefaultProviderId = providerId;
-		TeamRole.DefaultProvider = providerId.HasValue
+		Agent.DefaultProviderId = providerId;
+		Agent.DefaultProvider = providerId.HasValue
 			? _providers.FirstOrDefault(provider => provider.Id == providerId.Value)
 			: null;
-		TeamRole.DefaultModelId = null;
-		TeamRole.DefaultReasoningEffort = null;
+		Agent.DefaultModelId = null;
+		Agent.DefaultReasoningEffort = null;
 
 		if (providerId.HasValue)
 		{
@@ -364,13 +364,13 @@
 
 	private Task HandleDefaultModelChanged(string? modelId)
 	{
-		TeamRole.DefaultModelId = string.IsNullOrWhiteSpace(modelId) ? null : modelId.Trim();
+		Agent.DefaultModelId = string.IsNullOrWhiteSpace(modelId) ? null : modelId.Trim();
 		return Task.CompletedTask;
 	}
 
 	private Task HandleDefaultReasoningChanged(string? reasoningEffort)
 	{
-		TeamRole.DefaultReasoningEffort = string.IsNullOrWhiteSpace(reasoningEffort)
+		Agent.DefaultReasoningEffort = string.IsNullOrWhiteSpace(reasoningEffort)
 			? null
 			: ProviderCapabilities.NormalizeReasoningEffort(reasoningEffort);
 		return Task.CompletedTask;
@@ -391,34 +391,34 @@
 			_providerModelsByProviderId[providerId] = [];
 		}
 
-		if (!string.IsNullOrWhiteSpace(TeamRole.DefaultModelId) &&
+		if (!string.IsNullOrWhiteSpace(Agent.DefaultModelId) &&
 			(!_providerModelsByProviderId.TryGetValue(providerId, out var models) ||
-			 !models.Any(model => string.Equals(model.ModelId, TeamRole.DefaultModelId, StringComparison.Ordinal))))
+			 !models.Any(model => string.Equals(model.ModelId, Agent.DefaultModelId, StringComparison.Ordinal))))
 		{
-			TeamRole.DefaultModelId = null;
+			Agent.DefaultModelId = null;
 		}
 	}
 
 	private bool IsSkillSelected(Guid skillId)
 	{
-		return TeamRole.SkillLinks.Any(link => link.SkillId == skillId);
+		return Agent.SkillLinks.Any(link => link.SkillId == skillId);
 	}
 
 	private void ToggleSkill(Skill skill, bool isSelected)
 	{
-		var existing = TeamRole.SkillLinks.FirstOrDefault(link => link.SkillId == skill.Id);
+		var existing = Agent.SkillLinks.FirstOrDefault(link => link.SkillId == skill.Id);
 		if (isSelected && existing == null)
 		{
-			TeamRole.SkillLinks.Add(new TeamRoleSkill
+			Agent.SkillLinks.Add(new AgentSkill
 			{
-				TeamRoleId = TeamRole.Id,
+				AgentId = Agent.Id,
 				SkillId = skill.Id,
 				Skill = skill
 			});
 		}
 		else if (!isSelected && existing != null)
 		{
-			TeamRole.SkillLinks.Remove(existing);
+			Agent.SkillLinks.Remove(existing);
 		}
 	}
 
@@ -429,7 +429,7 @@
 
 		try
 		{
-			var nameExists = await TeamRoleService.NameExistsAsync(TeamRole.Name, IsEdit ? TeamRole.Id : null);
+			var nameExists = await AgentService.NameExistsAsync(Agent.Name, IsEdit ? Agent.Id : null);
 			if (nameExists)
 			{
 				ErrorMessage = "An agent with this name already exists.";
@@ -437,20 +437,20 @@
 				return;
 			}
 
-			Guid? newTeamRoleId = null;
+			Guid? newAgentId = null;
 			if (IsEdit)
 			{
-				await TeamRoleService.UpdateAsync(TeamRole);
+				await AgentService.UpdateAsync(Agent);
 				NotificationService.ShowSuccess("Agent updated successfully.");
 			}
 			else
 			{
-				var created = await TeamRoleService.CreateAsync(TeamRole);
-				newTeamRoleId = created.Id;
+				var created = await AgentService.CreateAsync(Agent);
+				newAgentId = created.Id;
 				NotificationService.ShowSuccess("Agent added successfully.");
 			}
 
-			await OnSaved.InvokeAsync(newTeamRoleId);
+			await OnSaved.InvokeAsync(newAgentId);
 			await CloseModal();
 		}
 		catch (Exception ex)
@@ -493,7 +493,7 @@
 
 	private void ResetState()
 	{
-		TeamRole = new TeamRole();
+		Agent = new Agent();
 		ErrorMessage = null;
 		IsSaving = false;
 		_providerModelsByProviderId.Clear();

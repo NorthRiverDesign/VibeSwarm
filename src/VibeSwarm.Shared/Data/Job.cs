@@ -679,9 +679,9 @@ public class Job
     /// The team role this job is executing as. Set when the job is part of a team swarm.
     /// Null for regular jobs or when no specific role is assigned.
     /// </summary>
-    public Guid? TeamRoleId { get; set; }
+    public Guid? AgentId { get; set; }
 
-	public TeamRole? TeamRole { get; set; }
+	public Agent? Agent { get; set; }
 
 	[JsonIgnore]
 	public JobStatistics? Statistics { get; set; }

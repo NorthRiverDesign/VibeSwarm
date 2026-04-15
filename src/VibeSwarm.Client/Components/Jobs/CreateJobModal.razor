@@ -59,14 +59,14 @@ placeholder="Describe what you want the AI agent to accomplish..." />
 <div class="mb-3">
 <label for="agentPreset" class="form-label">Run as Agent</label>
 <InputSelect TValue="Guid?" id="agentPreset"
-			 Value="FormModel.TeamRoleId"
+			 Value="FormModel.AgentId"
 			 ValueChanged="HandleAgentChanged"
-			 ValueExpression="@(() => FormModel.TeamRoleId)"
+			 ValueExpression="@(() => FormModel.AgentId)"
 			 class="form-select">
 <option value="">Choose provider manually</option>
 @foreach (var agent in AvailableAgents)
 {
-<option value="@agent.TeamRoleId">@agent.TeamRole!.Name</option>
+<option value="@agent.AgentId">@agent.Agent!.Name</option>
 }
 </InputSelect>
 <div class="form-text">Agent presets combine a purpose, provider/model assignment, and optional multi-cycle defaults for this project.</div>
@@ -78,17 +78,17 @@ placeholder="Describe what you want the AI agent to accomplish..." />
 <div class="border rounded p-3 mb-3 bg-body-tertiary">
 <div class="d-flex align-items-start justify-content-between gap-2 flex-wrap">
 <div class="min-width-0 flex-grow-1">
-<div class="fw-semibold">@SelectedAgent.TeamRole!.Name</div>
-@if (!string.IsNullOrWhiteSpace(SelectedAgent.TeamRole.Description))
+<div class="fw-semibold">@SelectedAgent.Agent!.Name</div>
+@if (!string.IsNullOrWhiteSpace(SelectedAgent.Agent.Description))
 {
-<div class="small text-body-secondary mt-1">@SelectedAgent.TeamRole.Description</div>
+<div class="small text-body-secondary mt-1">@SelectedAgent.Agent.Description</div>
 }
 </div>
 <span class="badge bg-primary-subtle text-primary-emphasis">Agent Preset</span>
 </div>
-@if (!string.IsNullOrWhiteSpace(SelectedAgent.TeamRole.Responsibilities))
+@if (!string.IsNullOrWhiteSpace(SelectedAgent.Agent.Responsibilities))
 {
-<div class="small white-space-pre-wrap mt-2">@SelectedAgent.TeamRole.Responsibilities</div>
+<div class="small white-space-pre-wrap mt-2">@SelectedAgent.Agent.Responsibilities</div>
 }
 <div class="row g-3 mt-1">
 <div class="col-12 col-md-6">
@@ -399,8 +399,8 @@ private Guid? _selectedTemplateId;
 private bool _isApplyingTemplate;
 private bool _isSavingTemplate;
 private string? _templateStatusMessage;
-private IReadOnlyList<ProjectTeamRole> AvailableAgents => AgentPresetHelper.GetEnabledAgents(Project);
-private ProjectTeamRole? SelectedAgent => AgentPresetHelper.ResolveAgent(Project, FormModel.TeamRoleId);
+private IReadOnlyList<ProjectAgent> AvailableAgents => AgentPresetHelper.GetEnabledAgents(Project);
+private ProjectAgent? SelectedAgent => AgentPresetHelper.ResolveAgent(Project, FormModel.AgentId);
 private IReadOnlyList<string> ReasoningOptions => FormModel.ProviderId.HasValue
 ? Providers.Where(provider => provider.Id == FormModel.ProviderId.Value)
 	.SelectMany(ProviderCapabilities.GetSupportedReasoningEfforts)
@@ -439,9 +439,9 @@ return;
 ShowAdvancedOptions = !ShowAdvancedOptions;
 }
 
-private Task HandleAgentChanged(Guid? teamRoleId)
+private Task HandleAgentChanged(Guid? agentId)
 {
-FormModel.TeamRoleId = teamRoleId;
+FormModel.AgentId = agentId;
 
 if (SelectedAgent != null)
 {
@@ -577,7 +577,7 @@ private void ApplyTemplateToJob(JobTemplate template)
 {
 	JobModel.JobTemplateId = template.Id;
 	JobModel.GoalPrompt = template.GoalPrompt;
-	JobModel.TeamRoleId = null;
+	JobModel.AgentId = null;
 	JobModel.ProviderId = template.ProviderId ?? Guid.Empty;
 	JobModel.ModelUsed = template.ModelId;
 	JobModel.ReasoningEffort = template.ReasoningEffort;
@@ -591,12 +591,12 @@ private void ApplyTemplateToJob(JobTemplate template)
 	SelectedModelId = template.ModelId ?? string.Empty;
 }
 
-private void ApplySelectedAgent(ProjectTeamRole assignment)
+private void ApplySelectedAgent(ProjectAgent assignment)
 {
 	var job = new Job
 	{
 		GoalPrompt = FormModel.GoalPrompt,
-		TeamRoleId = assignment.TeamRoleId
+		AgentId = assignment.AgentId
 	};
 
 	AgentPresetHelper.ApplyExecutionDefaults(job, assignment);

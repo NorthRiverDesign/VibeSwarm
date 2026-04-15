@@ -8,15 +8,15 @@ using VibeSwarm.Web.Controllers;
 
 namespace VibeSwarm.Tests;
 
-public sealed class TeamRolesControllerTests
+public sealed class AgentsControllerTests
 {
 	[Fact]
 	public async Task Create_WhenValidationFails_ReturnsBadRequestWithValidationMessage()
 	{
-		var controller = new TeamRolesController(new ThrowingTeamRoleService(
+		var controller = new AgentsController(new ThrowingAgentService(
 			new ValidationException("Name is required.")));
 
-		var result = await controller.Create(new TeamRole(), CancellationToken.None);
+		var result = await controller.Create(new Agent(), CancellationToken.None);
 
 		var badRequest = Assert.IsType<BadRequestObjectResult>(result);
 		Assert.Contains("Name is required.", SerializeValue(badRequest.Value));
@@ -25,10 +25,10 @@ public sealed class TeamRolesControllerTests
 	[Fact]
 	public async Task Create_WhenUniqueConstraintFails_ReturnsFriendlyDuplicateNameMessage()
 	{
-		var controller = new TeamRolesController(new ThrowingTeamRoleService(
-			CreateDbUpdateException("SQLite Error 19: 'UNIQUE constraint failed: TeamRoles.Name'.")));
+		var controller = new AgentsController(new ThrowingAgentService(
+			CreateDbUpdateException("SQLite Error 19: 'UNIQUE constraint failed: Agents.Name'.")));
 
-		var result = await controller.Create(new TeamRole { Name = "Security Reviewer" }, CancellationToken.None);
+		var result = await controller.Create(new Agent { Name = "Security Reviewer" }, CancellationToken.None);
 
 		var badRequest = Assert.IsType<BadRequestObjectResult>(result);
 		Assert.Contains("An agent with this name already exists.", SerializeValue(badRequest.Value));
@@ -37,10 +37,10 @@ public sealed class TeamRolesControllerTests
 	[Fact]
 	public async Task Update_WhenSkillForeignKeyFails_ReturnsFriendlySkillValidationMessage()
 	{
-		var controller = new TeamRolesController(new ThrowingTeamRoleService(
-			CreateDbUpdateException("SQLite Error 19: 'FOREIGN KEY constraint failed: TeamRoleSkills.SkillId -> Skills.Id'.")));
+		var controller = new AgentsController(new ThrowingAgentService(
+			CreateDbUpdateException("SQLite Error 19: 'FOREIGN KEY constraint failed: AgentSkills.SkillId -> Skills.Id'.")));
 
-		var result = await controller.Update(Guid.NewGuid(), new TeamRole { Name = "Security Reviewer" }, CancellationToken.None);
+		var result = await controller.Update(Guid.NewGuid(), new Agent { Name = "Security Reviewer" }, CancellationToken.None);
 
 		var badRequest = Assert.IsType<BadRequestObjectResult>(result);
 		Assert.Contains("One or more selected skills do not exist.", SerializeValue(badRequest.Value));
@@ -56,22 +56,22 @@ public sealed class TeamRolesControllerTests
 		return JsonSerializer.Serialize(value);
 	}
 
-	private sealed class ThrowingTeamRoleService(Exception exception) : ITeamRoleService
+	private sealed class ThrowingAgentService(Exception exception) : IAgentService
 	{
-		public Task<IEnumerable<TeamRole>> GetAllAsync(CancellationToken cancellationToken = default)
+		public Task<IEnumerable<Agent>> GetAllAsync(CancellationToken cancellationToken = default)
 			=> throw new NotSupportedException();
 
-		public Task<IEnumerable<TeamRole>> GetEnabledAsync(CancellationToken cancellationToken = default)
+		public Task<IEnumerable<Agent>> GetEnabledAsync(CancellationToken cancellationToken = default)
 			=> throw new NotSupportedException();
 
-		public Task<TeamRole?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
+		public Task<Agent?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
 			=> throw new NotSupportedException();
 
-		public Task<TeamRole> CreateAsync(TeamRole teamRole, CancellationToken cancellationToken = default)
-			=> Task.FromException<TeamRole>(exception);
+		public Task<Agent> CreateAsync(Agent agent, CancellationToken cancellationToken = default)
+			=> Task.FromException<Agent>(exception);
 
-		public Task<TeamRole> UpdateAsync(TeamRole teamRole, CancellationToken cancellationToken = default)
-			=> Task.FromException<TeamRole>(exception);
+		public Task<Agent> UpdateAsync(Agent agent, CancellationToken cancellationToken = default)
+			=> Task.FromException<Agent>(exception);
 
 		public Task DeleteAsync(Guid id, CancellationToken cancellationToken = default)
 			=> throw new NotSupportedException();

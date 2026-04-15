@@ -3,7 +3,7 @@ using VibeSwarm.Shared.Providers;
 
 namespace VibeSwarm.Shared.Data;
 
-public class TeamRole
+public class Agent
 {
 	public Guid Id { get; set; }
 
@@ -11,10 +11,10 @@ public class TeamRole
 	[StringLength(100, MinimumLength = 1)]
 	public string Name { get; set; } = string.Empty;
 
-	[StringLength(Validation.ValidationLimits.TeamRoleDescriptionMaxLength)]
+	[StringLength(Validation.ValidationLimits.AgentDescriptionMaxLength)]
 	public string? Description { get; set; }
 
-	[StringLength(Validation.ValidationLimits.TeamRoleResponsibilitiesMaxLength)]
+	[StringLength(Validation.ValidationLimits.AgentResponsibilitiesMaxLength)]
 	public string? Responsibilities { get; set; }
 
 	public Guid? DefaultProviderId { get; set; }
@@ -43,7 +43,7 @@ public class TeamRole
 
 	public DateTime? UpdatedAt { get; set; }
 
-	public ICollection<TeamRoleSkill> SkillLinks { get; set; } = new List<TeamRoleSkill>();
+	public ICollection<AgentSkill> SkillLinks { get; set; } = new List<AgentSkill>();
 
-	public ICollection<ProjectTeamRole> ProjectAssignments { get; set; } = new List<ProjectTeamRole>();
+	public ICollection<ProjectAgent> ProjectAssignments { get; set; } = new List<ProjectAgent>();
 }

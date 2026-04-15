@@ -515,20 +515,20 @@ public partial class JobProcessingService
             }
 
             // Inject role-specific system prompt context for team swarm jobs
-            if (job.TeamRoleId.HasValue)
+            if (job.AgentId.HasValue)
             {
                 try
                 {
-                    var teamRole = await dbContext.TeamRoles
+                    var agent = await dbContext.Agents
 						.Include(role => role.SkillLinks)
 							.ThenInclude(link => link.Skill)
-                        .FirstOrDefaultAsync(r => r.Id == job.TeamRoleId.Value, cancellationToken);
-                    if (teamRole != null)
+                        .FirstOrDefaultAsync(r => r.Id == job.AgentId.Value, cancellationToken);
+                    if (agent != null)
                     {
                         var swarmSize = job.SwarmId.HasValue
                             ? await dbContext.Jobs.CountAsync(j => j.SwarmId == job.SwarmId, cancellationToken)
                             : 1;
-                        var roleContext = PromptBuilder.BuildRoleSystemPromptContext(teamRole, swarmSize);
+                        var roleContext = PromptBuilder.BuildRoleSystemPromptContext(agent, swarmSize);
                         if (!string.IsNullOrWhiteSpace(roleContext))
                         {
                             systemPromptRules = string.IsNullOrWhiteSpace(systemPromptRules)

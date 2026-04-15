@@ -74,11 +74,11 @@
 							@Project.ProviderSelections.Count(pp => pp.IsEnabled) provider@(Project.ProviderSelections.Count(pp => pp.IsEnabled) == 1 ? string.Empty : "s")
 						</span>
 					}
-					@if (Project.TeamAssignments.Any(assignment => assignment.IsEnabled && assignment.TeamRole != null))
+					@if (Project.AgentAssignments.Any(assignment => assignment.IsEnabled && assignment.Agent != null))
 					{
 						<span class="d-inline-flex align-items-center gap-1">
 							<i class="bi bi-people opacity-75"></i>
-							@Project.TeamAssignments.Count(assignment => assignment.IsEnabled && assignment.TeamRole != null) role@(Project.TeamAssignments.Count(assignment => assignment.IsEnabled && assignment.TeamRole != null) == 1 ? string.Empty : "s")
+							@Project.AgentAssignments.Count(assignment => assignment.IsEnabled && assignment.Agent != null) role@(Project.AgentAssignments.Count(assignment => assignment.IsEnabled && assignment.Agent != null) == 1 ? string.Empty : "s")
 						</span>
 					}
 				</div>
@@ -126,14 +126,14 @@
 					</div>
 				}
 			}
-			@if (ShowStats && Project.TeamAssignments.Any(assignment => assignment.IsEnabled && assignment.TeamRole != null))
+			@if (ShowStats && Project.AgentAssignments.Any(assignment => assignment.IsEnabled && assignment.Agent != null))
 			{
 				<div class="d-none d-md-flex flex-wrap align-items-center gap-2 mt-2 small text-body-secondary">
 					<span class="d-flex align-items-center gap-1">
 						<i class="bi bi-people opacity-75"></i>
 						Team
 					</span>
-					<span>@string.Join("  •  ", Project.TeamAssignments.Where(assignment => assignment.IsEnabled && assignment.TeamRole != null).OrderBy(assignment => assignment.TeamRole!.Name).Select(assignment => $"{assignment.TeamRole!.Name} ({assignment.Provider?.Name ?? "Unassigned"})"))</span>
+					<span>@string.Join("  •  ", Project.AgentAssignments.Where(assignment => assignment.IsEnabled && assignment.Agent != null).OrderBy(assignment => assignment.Agent!.Name).Select(assignment => $"{assignment.Agent!.Name} ({assignment.Provider?.Name ?? "Unassigned"})"))</span>
 				</div>
 			}
 			@if (ShowStats)
