@@ -19,6 +19,8 @@ public class CopilotProvider : CliProviderBase
     private static readonly Version ReasoningEffortVersion = new(1, 0, 4);
     private static readonly Version AltScreenVersion = new(0, 0, 407);
     private static readonly Version AltScreenRemovedVersion = new(1, 0, 12);
+    // All of the Tier 1/2 Copilot flags below are present in current v1.0.x; guard with a conservative gate.
+    private static readonly Version ModernFlagsVersion = new(1, 0, 0);
     private UsageLimits? _lastObservedUsageLimits;
 
     // Cached CLI version for feature gating (populated on TestConnectionAsync)
@@ -42,11 +44,18 @@ public class CopilotProvider : CliProviderBase
 
     public override ProviderType Type => ProviderType.Copilot;
 
+    // BYOK (Bring Your Own Key) config: when ApiEndpoint + ApiKey are both set, the CLI is run against
+    // a non-GitHub provider via the COPILOT_PROVIDER_* env vars.
+    private readonly string? _byokProviderEndpoint;
+    private readonly string? _byokProviderKey;
+
     public CopilotProvider(Provider config)
         : base(config.Id, config.Name, ProviderConnectionMode.CLI, config.ExecutablePath, config.WorkingDirectory)
     {
         // Copilot CLI only supports CLI mode (no REST API)
         ConnectionMode = ProviderConnectionMode.CLI;
+
+        var isByok = !string.IsNullOrWhiteSpace(config.ApiEndpoint) && !string.IsNullOrWhiteSpace(config.ApiKey);
 
         if (!string.IsNullOrWhiteSpace(config.ApiKey))
         {
@@ -55,6 +64,12 @@ public class CopilotProvider : CliProviderBase
                 ["GH_TOKEN"] = config.ApiKey,
                 ["GITHUB_TOKEN"] = config.ApiKey
             };
+        }
+
+        if (isByok)
+        {
+            _byokProviderEndpoint = config.ApiEndpoint;
+            _byokProviderKey = config.ApiKey;
         }
     }
 
@@ -128,6 +143,7 @@ public class CopilotProvider : CliProviderBase
         CancellationToken cancellationToken)
     {
         EnsureBashEnvEnvironmentVariable();
+        EnsureByokEnvironmentVariables();
 
         var execPath = GetExecutablePath();
         if (string.IsNullOrEmpty(execPath))
@@ -352,13 +368,34 @@ public class CopilotProvider : CliProviderBase
         // Build arguments for non-interactive execution
         // Reference: https://github.com/github/copilot-cli/blob/main/changelog.md
 		var supportsJsonOutput = _cachedCliVersion != null && _cachedCliVersion >= JsonOutputVersion;
+		var supportsModernFlags = _cachedCliVersion != null && _cachedCliVersion >= ModernFlagsVersion;
+
 		var args = new List<string>
 		{
 			"-p",
 			effectivePrompt,
-			"--yolo",
-			"--autopilot"
 		};
+
+		// Permission strategy:
+		//  - Default (no CopilotMode): preserve existing behavior (--yolo --autopilot) for backwards compatibility.
+		//  - CopilotMode explicitly set → --mode <value> and --allow-all-tools --allow-all-paths so non-interactive
+		//    dispatch still runs without prompts. Callers who want a stricter allowlist should use --available-tools
+		//    (via CurrentAllowedTools) or additional args.
+		if (!string.IsNullOrEmpty(CurrentCopilotMode))
+		{
+			args.Add("--mode");
+			args.Add(CurrentCopilotMode);
+			if (supportsModernFlags)
+			{
+				args.Add("--allow-all-tools");
+				args.Add("--allow-all-paths");
+			}
+		}
+		else
+		{
+			args.Add("--yolo");
+			args.Add("--autopilot");
+		}
 
 		if (!supportsJsonOutput)
 		{
@@ -480,6 +517,93 @@ public class CopilotProvider : CliProviderBase
             }
         }
 
+        // Redact secret env var values from captured output (safer than trusting stdout scrubbing).
+        if (supportsModernFlags)
+        {
+            var secretNames = BuildSecretEnvVarList();
+            if (secretNames.Count > 0)
+            {
+                args.Add("--secret-env-vars");
+                args.Add(string.Join(",", secretNames));
+            }
+
+            if (CurrentDisableCustomInstructions)
+            {
+                args.Add("--no-custom-instructions");
+            }
+
+            if (CurrentDisableAskUser)
+            {
+                args.Add("--no-ask-user");
+            }
+
+            if (CurrentDisableBuiltinMcps)
+            {
+                args.Add("--disable-builtin-mcps");
+            }
+
+            if (CurrentDisabledMcpServers != null)
+            {
+                foreach (var name in CurrentDisabledMcpServers
+                    .Where(static n => !string.IsNullOrWhiteSpace(n))
+                    .Select(static n => n.Trim()))
+                {
+                    args.Add("--disable-mcp-server");
+                    args.Add(name);
+                }
+            }
+
+            if (CurrentAllowedUrls != null)
+            {
+                foreach (var url in CurrentAllowedUrls
+                    .Where(static u => !string.IsNullOrWhiteSpace(u))
+                    .Select(static u => u.Trim()))
+                {
+                    args.Add("--allow-url");
+                    args.Add(url);
+                }
+            }
+
+            if (CurrentDeniedUrls != null)
+            {
+                foreach (var url in CurrentDeniedUrls
+                    .Where(static u => !string.IsNullOrWhiteSpace(u))
+                    .Select(static u => u.Trim()))
+                {
+                    args.Add("--deny-url");
+                    args.Add(url);
+                }
+            }
+
+            if (CurrentGitHubMcpToolsets != null)
+            {
+                foreach (var toolset in CurrentGitHubMcpToolsets
+                    .Where(static t => !string.IsNullOrWhiteSpace(t))
+                    .Select(static t => t.Trim()))
+                {
+                    args.Add("--add-github-mcp-toolset");
+                    args.Add(toolset);
+                }
+            }
+
+            if (CurrentGitHubMcpTools != null)
+            {
+                foreach (var tool in CurrentGitHubMcpTools
+                    .Where(static t => !string.IsNullOrWhiteSpace(t))
+                    .Select(static t => t.Trim()))
+                {
+                    args.Add("--add-github-mcp-tool");
+                    args.Add(tool);
+                }
+            }
+
+            if (CurrentStreamOutput.HasValue)
+            {
+                args.Add("--stream");
+                args.Add(CurrentStreamOutput.Value ? "on" : "off");
+            }
+        }
+
         if (!string.IsNullOrEmpty(CurrentMcpConfigPath))
         {
             args.Add("--additional-mcp-config");
@@ -492,6 +616,49 @@ public class CopilotProvider : CliProviderBase
         }
 
         return args;
+    }
+
+    /// <summary>
+    /// Builds the consolidated list of env var names to pass to --secret-env-vars. Merges:
+    /// - The caller's explicit <c>ExecutionOptions.SecretEnvVars</c> list
+    /// - Auth tokens the provider injects (GH_TOKEN, GITHUB_TOKEN when ApiKey is configured)
+    /// - BYOK credentials (COPILOT_PROVIDER_API_KEY) when configured
+    /// Returns an empty list when no secrets are known.
+    /// </summary>
+    private List<string> BuildSecretEnvVarList()
+    {
+        var names = new List<string>();
+
+        void AddIfUnique(string name)
+        {
+            if (!names.Contains(name, StringComparer.Ordinal)) names.Add(name);
+        }
+
+        if (CurrentSecretEnvVars != null)
+        {
+            foreach (var name in CurrentSecretEnvVars
+                .Where(static n => !string.IsNullOrWhiteSpace(n))
+                .Select(static n => n.Trim()))
+            {
+                AddIfUnique(name);
+            }
+        }
+
+        if (BaseEnvironmentVariables != null && BaseEnvironmentVariables.Count > 0)
+        {
+            // Any value the provider itself injects (currently GH_TOKEN / GITHUB_TOKEN) is a secret.
+            foreach (var key in BaseEnvironmentVariables.Keys)
+            {
+                AddIfUnique(key);
+            }
+        }
+
+        if (!string.IsNullOrEmpty(_byokProviderKey))
+        {
+            AddIfUnique("COPILOT_PROVIDER_API_KEY");
+        }
+
+        return names;
     }
 
     /// <summary>
@@ -546,6 +713,43 @@ public class CopilotProvider : CliProviderBase
             : new Dictionary<string, string>(StringComparer.Ordinal);
 
         CurrentEnvironmentVariables["BASH_ENV"] = CurrentBashEnvPath;
+    }
+
+    /// <summary>
+    /// Injects COPILOT_PROVIDER_* env vars so the Copilot CLI routes model requests to a
+    /// non-GitHub endpoint (Azure / Anthropic / OpenAI-compatible) using the provider's ApiEndpoint + ApiKey.
+    /// Does not override values the caller has already set via ExecutionOptions.EnvironmentVariables.
+    /// </summary>
+    private void EnsureByokEnvironmentVariables()
+    {
+        if (string.IsNullOrWhiteSpace(_byokProviderEndpoint) || string.IsNullOrWhiteSpace(_byokProviderKey))
+        {
+            return;
+        }
+
+        CurrentEnvironmentVariables = CurrentEnvironmentVariables != null
+            ? new Dictionary<string, string>(CurrentEnvironmentVariables, StringComparer.Ordinal)
+            : new Dictionary<string, string>(StringComparer.Ordinal);
+
+        if (!CurrentEnvironmentVariables.ContainsKey("COPILOT_PROVIDER_BASE_URL"))
+        {
+            CurrentEnvironmentVariables["COPILOT_PROVIDER_BASE_URL"] = _byokProviderEndpoint!;
+        }
+
+        if (!CurrentEnvironmentVariables.ContainsKey("COPILOT_PROVIDER_API_KEY"))
+        {
+            CurrentEnvironmentVariables["COPILOT_PROVIDER_API_KEY"] = _byokProviderKey!;
+        }
+
+        if (!CurrentEnvironmentVariables.ContainsKey("COPILOT_PROVIDER_TYPE"))
+        {
+            CurrentEnvironmentVariables["COPILOT_PROVIDER_TYPE"] = "openai";
+        }
+
+        if (!CurrentEnvironmentVariables.ContainsKey("COPILOT_PROVIDER_WIRE_API"))
+        {
+            CurrentEnvironmentVariables["COPILOT_PROVIDER_WIRE_API"] = "completions";
+        }
     }
 
     /// <summary>

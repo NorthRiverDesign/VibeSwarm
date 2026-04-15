@@ -206,6 +206,81 @@ public abstract class ProviderBase : IProvider
     /// </summary>
     protected string? CurrentPermissionMode { get; private set; }
 
+    /// <summary>Pre-assigned session UUID (Claude --session-id).</summary>
+    protected string? CurrentPreassignedSessionId { get; private set; }
+
+    /// <summary>CLI-level automatic fallback model (Claude --fallback-model).</summary>
+    protected string? CurrentFallbackModel { get; private set; }
+
+    /// <summary>Use only the supplied MCP config file (Claude --strict-mcp-config).</summary>
+    protected bool CurrentStrictMcpConfig { get; private set; }
+
+    /// <summary>Settings sources (Claude --setting-sources).</summary>
+    protected string? CurrentSettingSources { get; private set; }
+
+    /// <summary>Move dynamic system prompt sections into first user message (Claude --exclude-dynamic-system-prompt-sections).</summary>
+    protected bool CurrentExcludeDynamicSystemPromptSections { get; private set; }
+
+    /// <summary>Enable 1-hour prompt cache TTL via ENABLE_PROMPT_CACHING_1H (Claude).</summary>
+    protected bool CurrentEnableOneHourPromptCache { get; private set; }
+
+    /// <summary>Skip waiting for MCP connection in -p mode via MCP_CONNECTION_NONBLOCKING (Claude).</summary>
+    protected bool CurrentNonBlockingMcpConnection { get; private set; }
+
+    /// <summary>Do not persist the session to disk (Claude --no-session-persistence).</summary>
+    protected bool CurrentNoSessionPersistence { get; private set; }
+
+    /// <summary>JSON Schema constraint for structured output (Claude --json-schema).</summary>
+    protected string? CurrentJsonSchema { get; private set; }
+
+    /// <summary>Session display name (Claude --name).</summary>
+    protected string? CurrentSessionName { get; private set; }
+
+    /// <summary>Include hook lifecycle events in stream-json output (Claude --include-hook-events).</summary>
+    protected bool CurrentIncludeHookEvents { get; private set; }
+
+    /// <summary>Path to file appended to the system prompt (Claude --append-system-prompt-file).</summary>
+    protected string? CurrentAppendSystemPromptFile { get; private set; }
+
+    /// <summary>Copilot execution mode (Copilot --mode: autopilot/plan/interactive).</summary>
+    protected string? CurrentCopilotMode { get; private set; }
+
+    /// <summary>Skip auto-discovered instructions (Copilot --no-custom-instructions).</summary>
+    protected bool CurrentDisableCustomInstructions { get; private set; }
+
+    /// <summary>Disable the ask-user tool (Copilot --no-ask-user).</summary>
+    protected bool CurrentDisableAskUser { get; private set; }
+
+    /// <summary>Env var names whose values should be redacted (Copilot --secret-env-vars).</summary>
+    protected List<string>? CurrentSecretEnvVars { get; private set; }
+
+    /// <summary>MCP servers to disable (Copilot --disable-mcp-server).</summary>
+    protected List<string>? CurrentDisabledMcpServers { get; private set; }
+
+    /// <summary>Disable all built-in MCPs including GitHub (Copilot --disable-builtin-mcps).</summary>
+    protected bool CurrentDisableBuiltinMcps { get; private set; }
+
+    /// <summary>Allowed URL hosts/patterns (Copilot --allow-url).</summary>
+    protected List<string>? CurrentAllowedUrls { get; private set; }
+
+    /// <summary>Denied URL hosts/patterns (Copilot --deny-url).</summary>
+    protected List<string>? CurrentDeniedUrls { get; private set; }
+
+    /// <summary>GitHub MCP toolsets to enable (Copilot --add-github-mcp-toolset).</summary>
+    protected List<string>? CurrentGitHubMcpToolsets { get; private set; }
+
+    /// <summary>GitHub MCP tools to enable (Copilot --add-github-mcp-tool).</summary>
+    protected List<string>? CurrentGitHubMcpTools { get; private set; }
+
+    /// <summary>Toggle streaming output (Copilot --stream on/off).</summary>
+    protected bool? CurrentStreamOutput { get; private set; }
+
+    /// <summary>Skip OpenCode permission prompts (OpenCode --dangerously-skip-permissions).</summary>
+    protected bool CurrentSkipPermissions { get; private set; }
+
+    /// <summary>Show thinking blocks in OpenCode output (OpenCode --thinking).</summary>
+    protected bool CurrentShowThinking { get; private set; }
+
     /// <summary>
     /// Applies execution options to the current context so that BuildCliArgs can read them.
     /// Exposed as internal for unit testing.
@@ -241,6 +316,31 @@ public abstract class ProviderBase : IProvider
         CurrentDisableLargeContext = options.DisableLargeContext;
         CurrentBashEnvPath = options.BashEnvPath;
         CurrentPermissionMode = options.PermissionMode;
+        CurrentPreassignedSessionId = options.PreassignedSessionId;
+        CurrentFallbackModel = options.FallbackModel;
+        CurrentStrictMcpConfig = options.StrictMcpConfig;
+        CurrentSettingSources = options.SettingSources;
+        CurrentExcludeDynamicSystemPromptSections = options.ExcludeDynamicSystemPromptSections;
+        CurrentEnableOneHourPromptCache = options.EnableOneHourPromptCache;
+        CurrentNonBlockingMcpConnection = options.NonBlockingMcpConnection;
+        CurrentNoSessionPersistence = options.NoSessionPersistence;
+        CurrentJsonSchema = options.JsonSchema;
+        CurrentSessionName = options.SessionName;
+        CurrentIncludeHookEvents = options.IncludeHookEvents;
+        CurrentAppendSystemPromptFile = options.AppendSystemPromptFile;
+        CurrentCopilotMode = options.CopilotMode;
+        CurrentDisableCustomInstructions = options.DisableCustomInstructions;
+        CurrentDisableAskUser = options.DisableAskUser;
+        CurrentSecretEnvVars = options.SecretEnvVars;
+        CurrentDisabledMcpServers = options.DisabledMcpServers;
+        CurrentDisableBuiltinMcps = options.DisableBuiltinMcps;
+        CurrentAllowedUrls = options.AllowedUrls;
+        CurrentDeniedUrls = options.DeniedUrls;
+        CurrentGitHubMcpToolsets = options.GitHubMcpToolsets;
+        CurrentGitHubMcpTools = options.GitHubMcpTools;
+        CurrentStreamOutput = options.StreamOutput;
+        CurrentSkipPermissions = options.SkipPermissions;
+        CurrentShowThinking = options.ShowThinking;
     }
 
     /// <summary>
@@ -277,6 +377,31 @@ public abstract class ProviderBase : IProvider
         CurrentDisableLargeContext = false;
         CurrentBashEnvPath = null;
         CurrentPermissionMode = null;
+        CurrentPreassignedSessionId = null;
+        CurrentFallbackModel = null;
+        CurrentStrictMcpConfig = false;
+        CurrentSettingSources = null;
+        CurrentExcludeDynamicSystemPromptSections = false;
+        CurrentEnableOneHourPromptCache = false;
+        CurrentNonBlockingMcpConnection = false;
+        CurrentNoSessionPersistence = false;
+        CurrentJsonSchema = null;
+        CurrentSessionName = null;
+        CurrentIncludeHookEvents = false;
+        CurrentAppendSystemPromptFile = null;
+        CurrentCopilotMode = null;
+        CurrentDisableCustomInstructions = false;
+        CurrentDisableAskUser = false;
+        CurrentSecretEnvVars = null;
+        CurrentDisabledMcpServers = null;
+        CurrentDisableBuiltinMcps = false;
+        CurrentAllowedUrls = null;
+        CurrentDeniedUrls = null;
+        CurrentGitHubMcpToolsets = null;
+        CurrentGitHubMcpTools = null;
+        CurrentStreamOutput = null;
+        CurrentSkipPermissions = false;
+        CurrentShowThinking = false;
     }
 
     /// <summary>

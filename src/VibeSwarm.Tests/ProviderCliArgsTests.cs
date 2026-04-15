@@ -1077,4 +1077,442 @@ public sealed class ProviderCliArgsTests
             Assert.False(args[idx].Contains('='), $"Flag {flag} should not use = syntax");
         }
     }
+
+    // ─── Claude: new Tier 1 flags ──────────────────────────────────────
+
+    [Fact]
+    public void Claude_WithPreassignedSessionId_AndSupportedVersion_AddsSessionIdFlag()
+    {
+        var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+        provider.CachedCliVersion = new Version(2, 1, 108);
+        provider.ApplyOptions(new ExecutionOptions { PreassignedSessionId = "abc-123" });
+
+        var args = provider.BuildCliArgs("test", null);
+
+        var idx = args.IndexOf("--session-id");
+        Assert.True(idx >= 0);
+        Assert.Equal("abc-123", args[idx + 1]);
+        Assert.DoesNotContain("--resume", args);
+    }
+
+    [Fact]
+    public void Claude_WithPreassignedSessionId_AndOldVersion_OmitsSessionIdFlag()
+    {
+        var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+        provider.CachedCliVersion = new Version(2, 1, 80);
+        provider.ApplyOptions(new ExecutionOptions { PreassignedSessionId = "abc-123" });
+
+        var args = provider.BuildCliArgs("test", null);
+
+        Assert.DoesNotContain("--session-id", args);
+    }
+
+    [Fact]
+    public void Claude_WithResumeSession_IgnoresPreassignedSessionId()
+    {
+        var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+        provider.CachedCliVersion = new Version(2, 1, 108);
+        provider.ApplyOptions(new ExecutionOptions { PreassignedSessionId = "fresh-id" });
+
+        var args = provider.BuildCliArgs("test", "existing-id");
+
+        // Resume wins over preassigned; --session-id should NOT be added.
+        Assert.Contains("--resume", args);
+        Assert.DoesNotContain("--session-id", args);
+    }
+
+    [Fact]
+    public void Claude_WithFallbackModel_AddsFallbackModelFlag()
+    {
+        var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+        provider.CachedCliVersion = new Version(2, 1, 100);
+        provider.ApplyOptions(new ExecutionOptions { FallbackModel = "haiku" });
+
+        var args = provider.BuildCliArgs("test", null);
+
+        var idx = args.IndexOf("--fallback-model");
+        Assert.True(idx >= 0);
+        Assert.Equal("haiku", args[idx + 1]);
+    }
+
+    [Fact]
+    public void Claude_WithStrictMcpConfig_AddsStrictMcpFlag()
+    {
+        var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+        provider.CachedCliVersion = new Version(2, 1, 100);
+        provider.ApplyOptions(new ExecutionOptions
+        {
+            McpConfigPath = "/tmp/mcp.json",
+            StrictMcpConfig = true
+        });
+
+        var args = provider.BuildCliArgs("test", null);
+
+        Assert.Contains("--strict-mcp-config", args);
+    }
+
+    [Fact]
+    public void Claude_WithStrictMcpConfig_WithoutMcpPath_OmitsStrictMcpFlag()
+    {
+        var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+        provider.CachedCliVersion = new Version(2, 1, 100);
+        provider.ApplyOptions(new ExecutionOptions { StrictMcpConfig = true });
+
+        var args = provider.BuildCliArgs("test", null);
+
+        // --strict-mcp-config is only meaningful when --mcp-config is present.
+        Assert.DoesNotContain("--strict-mcp-config", args);
+    }
+
+    [Fact]
+    public void Claude_WithSettingSources_AddsFlag()
+    {
+        var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+        provider.CachedCliVersion = new Version(2, 1, 100);
+        provider.ApplyOptions(new ExecutionOptions { SettingSources = "project" });
+
+        var args = provider.BuildCliArgs("test", null);
+
+        var idx = args.IndexOf("--setting-sources");
+        Assert.True(idx >= 0);
+        Assert.Equal("project", args[idx + 1]);
+    }
+
+    [Fact]
+    public void Claude_WithExcludeDynamicSystemPromptSections_AndSupportedVersion_AddsFlag()
+    {
+        var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+        provider.CachedCliVersion = new Version(2, 1, 98);
+        provider.ApplyOptions(new ExecutionOptions { ExcludeDynamicSystemPromptSections = true });
+
+        var args = provider.BuildCliArgs("test", null);
+
+        Assert.Contains("--exclude-dynamic-system-prompt-sections", args);
+    }
+
+    [Fact]
+    public void Claude_WithExcludeDynamicSystemPromptSections_AndOldVersion_OmitsFlag()
+    {
+        var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+        provider.CachedCliVersion = new Version(2, 1, 97);
+        provider.ApplyOptions(new ExecutionOptions { ExcludeDynamicSystemPromptSections = true });
+
+        var args = provider.BuildCliArgs("test", null);
+
+        Assert.DoesNotContain("--exclude-dynamic-system-prompt-sections", args);
+    }
+
+    [Fact]
+    public void Claude_WithNoSessionPersistence_AddsFlag()
+    {
+        var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+        provider.CachedCliVersion = new Version(2, 1, 100);
+        provider.ApplyOptions(new ExecutionOptions { NoSessionPersistence = true });
+
+        var args = provider.BuildCliArgs("test", null);
+
+        Assert.Contains("--no-session-persistence", args);
+    }
+
+    [Fact]
+    public void Claude_WithSessionName_AddsNameFlag()
+    {
+        var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+        provider.CachedCliVersion = new Version(2, 1, 100);
+        provider.ApplyOptions(new ExecutionOptions { SessionName = "job-42" });
+
+        var args = provider.BuildCliArgs("test", null);
+
+        var idx = args.IndexOf("--name");
+        Assert.True(idx >= 0);
+        Assert.Equal("job-42", args[idx + 1]);
+    }
+
+    [Fact]
+    public void Claude_WithIncludeHookEvents_AddsFlag()
+    {
+        var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+        provider.CachedCliVersion = new Version(2, 1, 100);
+        provider.ApplyOptions(new ExecutionOptions { IncludeHookEvents = true });
+
+        var args = provider.BuildCliArgs("test", null);
+
+        Assert.Contains("--include-hook-events", args);
+    }
+
+    [Fact]
+    public void Claude_WithAppendSystemPromptFile_AddsFlag()
+    {
+        var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+        provider.CachedCliVersion = new Version(2, 1, 100);
+        provider.ApplyOptions(new ExecutionOptions { AppendSystemPromptFile = "/tmp/prompt.md" });
+
+        var args = provider.BuildCliArgs("test", null);
+
+        var idx = args.IndexOf("--append-system-prompt-file");
+        Assert.True(idx >= 0);
+        Assert.Equal("/tmp/prompt.md", args[idx + 1]);
+    }
+
+    [Fact]
+    public void Claude_WithForkSession_AndResume_AddsForkSessionFlag()
+    {
+        var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+        provider.CachedCliVersion = new Version(2, 1, 100);
+        provider.ApplyOptions(new ExecutionOptions { ForkSession = true });
+
+        var args = provider.BuildCliArgs("test", "parent-session");
+
+        Assert.Contains("--resume", args);
+        Assert.Contains("--fork-session", args);
+    }
+
+    [Fact]
+    public void Claude_WithForkSession_WithoutResumeOrContinue_OmitsForkSessionFlag()
+    {
+        var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+        provider.CachedCliVersion = new Version(2, 1, 100);
+        provider.ApplyOptions(new ExecutionOptions { ForkSession = true });
+
+        var args = provider.BuildCliArgs("test", null);
+
+        Assert.DoesNotContain("--fork-session", args);
+    }
+
+    [Fact]
+    public void Claude_WithJsonSchema_AndJsonOutputFormat_AddsSchemaFlag()
+    {
+        var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+        provider.CachedCliVersion = new Version(2, 1, 100);
+        provider.ApplyOptions(new ExecutionOptions
+        {
+            JsonSchema = "{\"type\":\"object\"}",
+            OutputFormat = "json"
+        });
+
+        var args = provider.BuildCliArgs("test", null);
+
+        var idx = args.IndexOf("--json-schema");
+        Assert.True(idx >= 0);
+        Assert.Equal("{\"type\":\"object\"}", args[idx + 1]);
+    }
+
+    [Fact]
+    public void Claude_WithJsonSchema_WithoutJsonOutputFormat_OmitsSchemaFlag()
+    {
+        var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+        provider.CachedCliVersion = new Version(2, 1, 100);
+        provider.ApplyOptions(new ExecutionOptions { JsonSchema = "{\"type\":\"object\"}" });
+
+        var args = provider.BuildCliArgs("test", null);
+
+        // --json-schema only emitted when the caller has set OutputFormat = "json".
+        Assert.DoesNotContain("--json-schema", args);
+    }
+
+    // ─── Copilot: new Tier 1 / Tier 2 flags ────────────────────────────
+
+    [Fact]
+    public void Copilot_DefaultMode_StillEmitsYoloAutopilot()
+    {
+        var provider = new CopilotProvider(CreateConfig(ProviderType.Copilot));
+        provider.CachedCliVersion = new Version(1, 0, 27);
+        provider.ApplyOptions(new ExecutionOptions());
+
+        var args = provider.BuildCliArgs("test", null);
+
+        Assert.Contains("--yolo", args);
+        Assert.Contains("--autopilot", args);
+        Assert.DoesNotContain("--mode", args);
+    }
+
+    [Fact]
+    public void Copilot_WithExplicitMode_EmitsModeFlagInsteadOfYolo()
+    {
+        var provider = new CopilotProvider(CreateConfig(ProviderType.Copilot));
+        provider.CachedCliVersion = new Version(1, 0, 27);
+        provider.ApplyOptions(new ExecutionOptions { CopilotMode = "plan" });
+
+        var args = provider.BuildCliArgs("test", null);
+
+        var idx = args.IndexOf("--mode");
+        Assert.True(idx >= 0);
+        Assert.Equal("plan", args[idx + 1]);
+        Assert.DoesNotContain("--yolo", args);
+        // Still needs headless permission flags.
+        Assert.Contains("--allow-all-tools", args);
+        Assert.Contains("--allow-all-paths", args);
+    }
+
+    [Fact]
+    public void Copilot_WithDisableCustomInstructions_AddsFlag()
+    {
+        var provider = new CopilotProvider(CreateConfig(ProviderType.Copilot));
+        provider.CachedCliVersion = new Version(1, 0, 27);
+        provider.ApplyOptions(new ExecutionOptions { DisableCustomInstructions = true });
+
+        var args = provider.BuildCliArgs("test", null);
+
+        Assert.Contains("--no-custom-instructions", args);
+    }
+
+    [Fact]
+    public void Copilot_WithDisableAskUser_AddsFlag()
+    {
+        var provider = new CopilotProvider(CreateConfig(ProviderType.Copilot));
+        provider.CachedCliVersion = new Version(1, 0, 27);
+        provider.ApplyOptions(new ExecutionOptions { DisableAskUser = true });
+
+        var args = provider.BuildCliArgs("test", null);
+
+        Assert.Contains("--no-ask-user", args);
+    }
+
+    [Fact]
+    public void Copilot_WithDisableBuiltinMcps_AddsFlag()
+    {
+        var provider = new CopilotProvider(CreateConfig(ProviderType.Copilot));
+        provider.CachedCliVersion = new Version(1, 0, 27);
+        provider.ApplyOptions(new ExecutionOptions { DisableBuiltinMcps = true });
+
+        var args = provider.BuildCliArgs("test", null);
+
+        Assert.Contains("--disable-builtin-mcps", args);
+    }
+
+    [Fact]
+    public void Copilot_WithDisabledMcpServers_AddsRepeatedFlags()
+    {
+        var provider = new CopilotProvider(CreateConfig(ProviderType.Copilot));
+        provider.CachedCliVersion = new Version(1, 0, 27);
+        provider.ApplyOptions(new ExecutionOptions
+        {
+            DisabledMcpServers = new List<string> { "github", "jira" }
+        });
+
+        var args = provider.BuildCliArgs("test", null);
+
+        var count = args.Count(a => a == "--disable-mcp-server");
+        Assert.Equal(2, count);
+        Assert.Contains("github", args);
+        Assert.Contains("jira", args);
+    }
+
+    [Fact]
+    public void Copilot_WithAllowedAndDeniedUrls_AddsFlags()
+    {
+        var provider = new CopilotProvider(CreateConfig(ProviderType.Copilot));
+        provider.CachedCliVersion = new Version(1, 0, 27);
+        provider.ApplyOptions(new ExecutionOptions
+        {
+            AllowedUrls = new List<string> { "api.github.com" },
+            DeniedUrls = new List<string> { "evil.example.com" }
+        });
+
+        var args = provider.BuildCliArgs("test", null);
+
+        var allowIdx = args.IndexOf("--allow-url");
+        var denyIdx = args.IndexOf("--deny-url");
+        Assert.True(allowIdx >= 0);
+        Assert.Equal("api.github.com", args[allowIdx + 1]);
+        Assert.True(denyIdx >= 0);
+        Assert.Equal("evil.example.com", args[denyIdx + 1]);
+    }
+
+    [Fact]
+    public void Copilot_WithStreamOutputTrue_EmitsStreamOn()
+    {
+        var provider = new CopilotProvider(CreateConfig(ProviderType.Copilot));
+        provider.CachedCliVersion = new Version(1, 0, 27);
+        provider.ApplyOptions(new ExecutionOptions { StreamOutput = true });
+
+        var args = provider.BuildCliArgs("test", null);
+
+        var idx = args.IndexOf("--stream");
+        Assert.True(idx >= 0);
+        Assert.Equal("on", args[idx + 1]);
+    }
+
+    [Fact]
+    public void Copilot_WithStreamOutputFalse_EmitsStreamOff()
+    {
+        var provider = new CopilotProvider(CreateConfig(ProviderType.Copilot));
+        provider.CachedCliVersion = new Version(1, 0, 27);
+        provider.ApplyOptions(new ExecutionOptions { StreamOutput = false });
+
+        var args = provider.BuildCliArgs("test", null);
+
+        var idx = args.IndexOf("--stream");
+        Assert.True(idx >= 0);
+        Assert.Equal("off", args[idx + 1]);
+    }
+
+    [Fact]
+    public void Copilot_WithApiKey_AutoIncludesProviderTokensInSecretEnvVars()
+    {
+        var config = CreateConfig(ProviderType.Copilot);
+        config.ApiKey = "gho_testtoken";
+        var provider = new CopilotProvider(config);
+        provider.CachedCliVersion = new Version(1, 0, 27);
+        provider.ApplyOptions(new ExecutionOptions());
+
+        var args = provider.BuildCliArgs("test", null);
+
+        var idx = args.IndexOf("--secret-env-vars");
+        Assert.True(idx >= 0);
+        var value = args[idx + 1];
+        // GH_TOKEN and GITHUB_TOKEN are auto-injected by the provider.
+        Assert.Contains("GH_TOKEN", value);
+        Assert.Contains("GITHUB_TOKEN", value);
+    }
+
+    [Fact]
+    public void Copilot_WithoutSecrets_OmitsSecretEnvVarsFlag()
+    {
+        var provider = new CopilotProvider(CreateConfig(ProviderType.Copilot));
+        provider.CachedCliVersion = new Version(1, 0, 27);
+        provider.ApplyOptions(new ExecutionOptions());
+
+        var args = provider.BuildCliArgs("test", null);
+
+        Assert.DoesNotContain("--secret-env-vars", args);
+    }
+
+    // ─── OpenCode: new Tier 1 flags ────────────────────────────────────
+
+    [Fact]
+    public void OpenCode_WithSkipPermissions_AndSupportedVersion_AddsFlag()
+    {
+        var provider = new OpenCodeProvider(CreateConfig(ProviderType.OpenCode));
+        provider.CachedCliVersion = new Version(1, 4, 0);
+        provider.ApplyOptions(new ExecutionOptions { SkipPermissions = true });
+
+        var args = provider.BuildRunCommandArgs("test", null);
+
+        Assert.Contains("--dangerously-skip-permissions", args);
+    }
+
+    [Fact]
+    public void OpenCode_WithSkipPermissions_AndOldVersion_OmitsFlag()
+    {
+        var provider = new OpenCodeProvider(CreateConfig(ProviderType.OpenCode));
+        provider.CachedCliVersion = new Version(1, 3, 99);
+        provider.ApplyOptions(new ExecutionOptions { SkipPermissions = true });
+
+        var args = provider.BuildRunCommandArgs("test", null);
+
+        Assert.DoesNotContain("--dangerously-skip-permissions", args);
+    }
+
+    [Fact]
+    public void OpenCode_WithShowThinking_AndSupportedVersion_AddsFlag()
+    {
+        var provider = new OpenCodeProvider(CreateConfig(ProviderType.OpenCode));
+        provider.CachedCliVersion = new Version(1, 4, 0);
+        provider.ApplyOptions(new ExecutionOptions { ShowThinking = true });
+
+        var args = provider.BuildRunCommandArgs("test", null);
+
+        Assert.Contains("--thinking", args);
+    }
 }

@@ -18,6 +18,8 @@ public class OpenCodeProvider : CliProviderBase
     private static readonly Version LegacyReasoningVersion = new(1, 2, 0);
     private static readonly Version VariantVersion = new(1, 3, 0);
     private static readonly Version ForkSessionVersion = new(1, 2, 6);
+    private static readonly Version SkipPermissionsVersion = new(1, 4, 0);
+    private static readonly Version ThinkingVersion = new(1, 4, 0);
 
     private readonly string? _apiEndpoint;
     private readonly string? _apiKey;
@@ -278,6 +280,19 @@ public class OpenCodeProvider : CliProviderBase
         if (!string.IsNullOrEmpty(CurrentMcpConfigPath))
         {
             args.AddRange(new[] { "--config", CurrentMcpConfigPath });
+        }
+
+        // Skip permission prompts in `opencode run` (v1.4.0+). Brings OpenCode dispatch to parity with
+        // Claude/Copilot headless modes so tool calls don't block for a TTY confirm.
+        if (CurrentSkipPermissions && SupportsCliVersion(SkipPermissionsVersion))
+        {
+            args.Add("--dangerously-skip-permissions");
+        }
+
+        // Surface thinking/reasoning blocks in the output stream (v1.4.0+).
+        if (CurrentShowThinking && SupportsCliVersion(ThinkingVersion))
+        {
+            args.Add("--thinking");
         }
 
         // Additional custom arguments (provider-specific or user-defined)

@@ -702,6 +702,43 @@ public partial class JobProcessingService
 
 				var mcpOptions = await GetMcpExecutionOptionsAsync(job.ProviderId, job.Project, workingDirectory, cancellationToken);
 
+				// Smart defaults for latest CLI capabilities:
+				// - Auto-enable 1-hour prompt cache for multi-cycle / swarm jobs (Claude v2.1.108+).
+				//   Guarded inside the provider on CLI version, so safe to always request.
+				// - Exclude dynamic system prompt sections to keep the static AppendSystemPrompt cacheable
+				//   across runs (Claude v2.1.98+).
+				// - Non-blocking MCP startup prevents -p mode from hanging on slow MCP servers (v2.1.89+).
+				//   Only enable when MCP config is actually in play.
+				// - Pre-mint a session UUID on the first cycle of a fresh Claude job so Job.SessionId is
+				//   populated before the CLI emits its first system/init event (v2.1.86+).
+				var wantsOneHourCache = provider.Type == ProviderType.Claude
+					&& (job.CycleMode != CycleMode.SingleCycle || job.SwarmId != null);
+				var hasMcp = !string.IsNullOrEmpty(mcpOptions.McpConfigPath);
+				string? preassignedSessionId = null;
+				if (provider.Type == ProviderType.Claude
+					&& provider.ConnectionMode == ProviderConnectionMode.CLI
+					&& string.IsNullOrEmpty(cycleSessionId)
+					&& string.IsNullOrEmpty(job.SessionId))
+				{
+					preassignedSessionId = Guid.NewGuid().ToString();
+					// Persist before launching the CLI so concurrent readers (UI, resume flow) see the ID.
+					try
+					{
+						var jobForSessionUpdate = await dbContext.Jobs.FirstOrDefaultAsync(j => j.Id == job.Id, cancellationToken);
+						if (jobForSessionUpdate != null && string.IsNullOrEmpty(jobForSessionUpdate.SessionId))
+						{
+							jobForSessionUpdate.SessionId = preassignedSessionId;
+							await dbContext.SaveChangesAsync(cancellationToken);
+							job.SessionId = preassignedSessionId;
+						}
+					}
+					catch (Exception ex)
+					{
+						_logger.LogWarning(ex, "Failed to persist pre-assigned session UUID for job {JobId}; continuing without it", job.Id);
+						preassignedSessionId = null;
+					}
+				}
+
 				ExecutionResult result;
 				try
 				{
@@ -722,7 +759,19 @@ public partial class JobProcessingService
 							Title = job.Title,
 							AttachedFiles = attachedFiles,
 							AppendSystemPrompt = systemPromptRules,
-							EnvironmentVariables = jobEnvironmentVariables
+							EnvironmentVariables = jobEnvironmentVariables,
+							// Claude smart defaults (ignored by other providers).
+							PreassignedSessionId = preassignedSessionId,
+							EnableOneHourPromptCache = wantsOneHourCache,
+							ExcludeDynamicSystemPromptSections = provider.Type == ProviderType.Claude,
+							NonBlockingMcpConnection = provider.Type == ProviderType.Claude && hasMcp,
+							// Copilot smart defaults (ignored by other providers): dispatched runs are headless,
+							// so silence the interactive ask-user tool. Secret redaction is handled inside
+							// CopilotProvider, which auto-derives the list from BaseEnvironmentVariables.
+							DisableAskUser = provider.Type == ProviderType.Copilot,
+							// OpenCode smart defaults (ignored by other providers): dispatched runs cannot respond
+							// to permission prompts, so skip them on v1.4.0+.
+							SkipPermissions = provider.Type == ProviderType.OpenCode,
 						},
 						progress,
 						cancellationToken);
