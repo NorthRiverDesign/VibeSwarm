@@ -2,17 +2,20 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using VibeSwarm.Shared.Data;
 
 #nullable disable
 
-namespace VibeSwarm.Shared.Data.Migrations
+namespace VibeSwarm.Web.Data.Migrations
 {
     [DbContext(typeof(VibeSwarmDbContext))]
-    partial class VibeSwarmDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260415174511_AddSkillInstallMetadata")]
+    partial class AddSkillInstallMetadata
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "9.0.15");
@@ -253,10 +256,6 @@ namespace VibeSwarm.Shared.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER")
                         .HasDefaultValue(true);
-
-                    b.Property<string>("GitHubToken")
-                        .HasMaxLength(200)
-                        .HasColumnType("TEXT");
 
                     b.Property<string>("IdeaExpansionPromptTemplate")
                         .HasMaxLength(12000)

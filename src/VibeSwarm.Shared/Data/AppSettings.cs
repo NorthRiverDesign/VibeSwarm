@@ -68,4 +68,13 @@ public class AppSettings
 
 	[StringLength(ValidationLimits.IdeaPromptTemplateMaxLength)]
 	public string? ApprovedIdeaImplementationPromptTemplate { get; set; }
+
+	/// <summary>
+	/// Optional GitHub personal access token used when querying the skills marketplace.
+	/// Anonymous requests are limited to 60/hour; an unscoped read-only token raises that
+	/// to 5000/hour. The token is only used for outbound requests to <c>api.github.com</c>
+	/// and is never sent to a CLI agent.
+	/// </summary>
+	[StringLength(200)]
+	public string? GitHubToken { get; set; }
 }

@@ -342,38 +342,15 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 	[Fact]
 	public async Task GenerateMcpConfigJsonAsync_AddsPlaywrightServerWhenWebEnvironmentExists()
 	{
-		var repoMapSkill = new Skill { Id = Guid.NewGuid(), Name = "repo-map", Description = "Repository navigation help.", Content = "Skill content", IsEnabled = true };
-		var unrelatedSkill = new Skill { Id = Guid.NewGuid(), Name = "other-skill", Description = "Should not be injected.", Content = "Other content", IsEnabled = true };
-		var service = new McpConfigService(new FakeSkillService(
-			repoMapSkill,
-			unrelatedSkill));
+		// Skills are no longer translated into MCP servers (they're surfaced to agents via
+		// PromptBuilder). This test verifies the remaining MCP responsibility — emitting a
+		// Playwright server entry when the project has an enabled web environment.
+		var service = new McpConfigService();
 
 		var json = await service.GenerateMcpConfigJsonAsync(new Project
 		{
 			Name = "Web App",
 			WorkingPath = "/tmp/web-app",
-			AgentAssignments =
-			[
-				new ProjectAgent
-				{
-					AgentId = Guid.NewGuid(),
-					IsEnabled = true,
-					Agent = new Agent
-					{
-						Id = Guid.NewGuid(),
-						Name = "Code Reviewer",
-						IsEnabled = true,
-						SkillLinks =
-						[
-							new AgentSkill
-							{
-								SkillId = repoMapSkill.Id,
-								Skill = repoMapSkill
-							}
-						]
-					}
-				}
-			],
 			Environments =
 			[
 				new ProjectEnvironment
@@ -391,7 +368,7 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 		Assert.NotNull(json);
 		Assert.Contains("\"playwright\"", json);
 		Assert.Contains("@playwright/mcp@latest", json);
-		Assert.Contains("\"repo-map\"", json);
+		Assert.DoesNotContain("\"repo-map\"", json);
 		Assert.DoesNotContain("\"other-skill\"", json);
 		Assert.Contains("\"APP_URL\"", json);
 		Assert.Contains("\"admin@example.com\"", json);
@@ -400,7 +377,7 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 	[Fact]
 	public async Task GenerateMcpConfigFileAsync_UsesOpenCodeShapeForOpenCodeProvider()
 	{
-		var service = new McpConfigService(new FakeSkillService());
+		var service = new McpConfigService();
 
 		var filePath = await service.GenerateMcpConfigFileAsync(
 			ProviderType.OpenCode,
@@ -431,7 +408,7 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 	[Fact]
 	public async Task GenerateExecutionResourcesAsync_IncludesProjectMcpServersFromDotMcpJson()
 	{
-		var service = new McpConfigService(new FakeSkillService());
+		var service = new McpConfigService();
 		var workingDirectory = Path.Combine(Path.GetTempPath(), $"vibeswarm-project-mcp-{Guid.NewGuid():N}");
 		Directory.CreateDirectory(workingDirectory);
 		McpExecutionResources? resources = null;
@@ -483,7 +460,7 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 	[Fact]
 	public async Task GenerateExecutionResourcesAsync_ForOpenCode_MergesProjectMcpServersWithPlaywright()
 	{
-		var service = new McpConfigService(new FakeSkillService());
+		var service = new McpConfigService();
 		var workingDirectory = Path.Combine(Path.GetTempPath(), $"vibeswarm-project-opencode-mcp-{Guid.NewGuid():N}");
 		Directory.CreateDirectory(workingDirectory);
 		McpExecutionResources? resources = null;
@@ -554,7 +531,7 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 	[Fact]
 	public async Task GenerateExecutionResourcesAsync_IgnoresInvalidProjectMcpConfig_AndStillGeneratesManagedServers()
 	{
-		var service = new McpConfigService(new FakeSkillService());
+		var service = new McpConfigService();
 		var workingDirectory = Path.Combine(Path.GetTempPath(), $"vibeswarm-project-invalid-mcp-{Guid.NewGuid():N}");
 		Directory.CreateDirectory(workingDirectory);
 		McpExecutionResources? resources = null;
@@ -610,7 +587,7 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 			Content = "Skill content",
 			IsEnabled = true
 		};
-		var service = new McpConfigService(new FakeSkillService(repoMapSkill));
+		var service = new McpConfigService();
 		var workingDirectory = Path.Combine(Path.GetTempPath(), $"vibeswarm-project-copilot-mcp-{Guid.NewGuid():N}");
 		Directory.CreateDirectory(workingDirectory);
 		McpExecutionResources? resources = null;
@@ -679,13 +656,17 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 			using var document = JsonDocument.Parse(await File.ReadAllTextAsync(resources.ConfigFilePath!));
 			var mcpServers = document.RootElement.GetProperty("mcpServers");
 
+			// The project's own `playwright` and `repo-map` entries are routed to Copilot
+			// via --additional-mcp-config, not merged into our generated file, so they must
+			// not appear here. Our generated Playwright entry must still dodge the project's
+			// `playwright` name to avoid a cross-file collision at Copilot runtime. Skills
+			// are no longer translated into MCP servers at all.
 			Assert.False(mcpServers.TryGetProperty("playwright", out _));
 			Assert.False(mcpServers.TryGetProperty("repo-map", out _));
+			Assert.False(mcpServers.TryGetProperty("repo-map-1", out _));
 			Assert.True(mcpServers.TryGetProperty("playwright-1", out var playwrightServer));
-			Assert.True(mcpServers.TryGetProperty("repo-map-1", out var repoMapServer));
 			Assert.Equal("npx", playwrightServer.GetProperty("command").GetString());
-			Assert.Equal("vibeswarm-skill", repoMapServer.GetProperty("command").GetString());
-			Assert.Equal(2, mcpServers.EnumerateObject().Count());
+			Assert.Single(mcpServers.EnumerateObject());
 		}
 		finally
 		{
@@ -700,7 +681,7 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 	[Fact]
 	public async Task GenerateExecutionResourcesAsync_StoresPlaywrightArtifactsOutsideWorkingDirectory_AndCleansThemUp()
 	{
-		var service = new McpConfigService(new FakeSkillService());
+		var service = new McpConfigService();
 		var workingDirectory = Path.Combine(Path.GetTempPath(), $"vibeswarm-browser-test-{Guid.NewGuid():N}");
 		Directory.CreateDirectory(workingDirectory);
 
@@ -781,7 +762,7 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 	[Fact]
 	public async Task GenerateExecutionResourcesAsync_ForCopilot_CreatesBashEnvFile_AndCleansItUp()
 	{
-		var service = new McpConfigService(new FakeSkillService());
+		var service = new McpConfigService();
 
 		var resources = await service.GenerateExecutionResourcesAsync(ProviderType.Copilot);
 
@@ -1360,8 +1341,11 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 	}
 
 	[Fact]
-	public async Task GenerateMcpConfigJsonAsync_OmitsPlaywright_WhenNoWebEnvironments()
+	public async Task GenerateMcpConfigJsonAsync_ReturnsNull_WhenOnlySkillsArePresent()
 	{
+		// Skills are no longer MCP servers — they're surfaced to agents via the system prompt.
+		// When a project has only skills (no web environment, no project .mcp.json), the MCP
+		// service should have nothing to emit and return null.
 		var testSkill = new Skill
 		{
 			Id = Guid.NewGuid(),
@@ -1370,8 +1354,7 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 			Content = "content",
 			IsEnabled = true
 		};
-		var service = new McpConfigService(new FakeSkillService(
-			testSkill));
+		var service = new McpConfigService();
 
 		var json = await service.GenerateMcpConfigJsonAsync(new Project
 		{
@@ -1411,14 +1394,16 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 			]
 		});
 
-		Assert.NotNull(json);
-		Assert.Contains("\"test-skill\"", json);
-		Assert.DoesNotContain("\"playwright\"", json);
+		Assert.Null(json);
 	}
 
 	[Fact]
-	public async Task GenerateMcpConfigJsonAsync_IncludesOnlyProjectAssignedEnabledSkills()
+	public async Task GenerateMcpConfigJsonAsync_DoesNotEmitSkillsAsMcpServers()
 	{
+		// Locks in the contract that skills are *never* translated into MCP server entries,
+		// regardless of agent assignment or enabled state. Skills live on disk and are
+		// referenced via the system prompt; MCP is reserved for Playwright and project-
+		// configured external servers.
 		var assignedSkill = new Skill
 		{
 			Id = Guid.NewGuid(),
@@ -1427,23 +1412,7 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 			Content = "Bootstrap content",
 			IsEnabled = true
 		};
-		var unassignedSkill = new Skill
-		{
-			Id = Guid.NewGuid(),
-			Name = "security-review",
-			Description = "Security review guidance.",
-			Content = "Security content",
-			IsEnabled = true
-		};
-		var disabledSkill = new Skill
-		{
-			Id = Guid.NewGuid(),
-			Name = "disabled-skill",
-			Description = "Disabled skill",
-			Content = "Disabled content",
-			IsEnabled = false
-		};
-		var service = new McpConfigService(new FakeSkillService(assignedSkill, unassignedSkill, disabledSkill));
+		var service = new McpConfigService();
 
 		var json = await service.GenerateMcpConfigJsonAsync(new Project
 		{
@@ -1466,23 +1435,29 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 							{
 								SkillId = assignedSkill.Id,
 								Skill = assignedSkill
-							},
-							new AgentSkill
-							{
-								SkillId = disabledSkill.Id,
-								Skill = disabledSkill
 							}
 						]
 					}
 				}
 			],
-			Environments = []
+			Environments =
+			[
+				// Web env exists so we still generate a Playwright MCP entry — giving us a
+				// non-null JSON to inspect for the negative skill assertion.
+				new ProjectEnvironment
+				{
+					Name = "Production",
+					Type = EnvironmentType.Web,
+					Url = "https://app.example.com",
+					IsEnabled = true
+				}
+			]
 		});
 
 		Assert.NotNull(json);
-		Assert.Contains("\"bootstrap-ui\"", json);
-		Assert.DoesNotContain("\"security-review\"", json);
-		Assert.DoesNotContain("\"disabled-skill\"", json);
+		Assert.Contains("\"playwright\"", json);
+		Assert.DoesNotContain("\"bootstrap-ui\"", json);
+		Assert.DoesNotContain("vibeswarm-skill", json);
 	}
 
 	private ProjectEnvironmentCredentialService CreateCredentialService()
@@ -1512,33 +1487,6 @@ public sealed class ProjectEnvironmentFeatureTests : IDisposable
 		{
 			Directory.Delete(_dataProtectionDirectory, recursive: true);
 		}
-	}
-
-	private sealed class FakeSkillService(params Skill[] skills) : ISkillService
-	{
-		private readonly IReadOnlyList<Skill> _skills = skills;
-
-		public Task<IEnumerable<Skill>> GetAllAsync(CancellationToken cancellationToken = default)
-			=> Task.FromResult<IEnumerable<Skill>>(_skills);
-
-		public Task<IEnumerable<Skill>> GetEnabledAsync(CancellationToken cancellationToken = default)
-			=> Task.FromResult<IEnumerable<Skill>>(_skills.Where(skill => skill.IsEnabled));
-
-		public Task<Skill?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
-			=> Task.FromResult(_skills.FirstOrDefault(skill => skill.Id == id));
-
-		public Task<Skill?> GetByNameAsync(string name, CancellationToken cancellationToken = default)
-			=> Task.FromResult(_skills.FirstOrDefault(skill => string.Equals(skill.Name, name, StringComparison.OrdinalIgnoreCase)));
-
-		public Task<Skill> CreateAsync(Skill skill, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-		public Task<Skill> UpdateAsync(Skill skill, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-		public Task DeleteAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-		public Task<bool> NameExistsAsync(string name, Guid? excludeId = null, CancellationToken cancellationToken = default)
-			=> Task.FromResult(_skills.Any(skill => string.Equals(skill.Name, name, StringComparison.OrdinalIgnoreCase) && skill.Id != excludeId));
-		public Task<SkillImportPreview> PreviewImportAsync(SkillImportRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-		public Task<SkillImportResult> ImportAsync(SkillImportRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-		public Task<string?> ExpandSkillAsync(string description, Guid providerId, string? modelId = null, CancellationToken cancellationToken = default)
-			=> Task.FromResult<string?>(null);
 	}
 
 	private sealed class NoOpVersionControlService : IVersionControlService

@@ -554,7 +554,9 @@ public static class PromptBuilder
 
 		var sb = new StringBuilder();
 		sb.AppendLine("<available_skills>");
-		sb.AppendLine("  App-configured MCP skills available to compatible providers for this job. Use them when relevant instead of guessing project conventions:");
+		sb.AppendLine("  Skills are folders of instructions installed on this machine. When a skill");
+		sb.AppendLine("  matches the task, read its SKILL.md (and any referenced files in the skill's");
+		sb.AppendLine("  folder) before acting. Honor each skill's allowed-tools list when present:");
 		foreach (var skill in skills)
 		{
 			var lineBuilder = new StringBuilder();
@@ -566,6 +568,18 @@ public static class PromptBuilder
 			{
 				lineBuilder.Append(" | Use for: ");
 				lineBuilder.Append(summary);
+			}
+
+			if (!string.IsNullOrWhiteSpace(skill.StoragePath))
+			{
+				lineBuilder.Append(" | SKILL.md: ");
+				lineBuilder.Append(Path.Combine(skill.StoragePath, "SKILL.md"));
+			}
+
+			if (!string.IsNullOrWhiteSpace(skill.AllowedTools))
+			{
+				lineBuilder.Append(" | allowed-tools: ");
+				lineBuilder.Append(skill.AllowedTools.Trim());
 			}
 
 			sb.AppendLine(EscapeXml(lineBuilder.ToString()));
@@ -628,8 +642,8 @@ public static class PromptBuilder
 			.ToList();
 		if (skills.Count > 0)
 		{
-			sb.AppendLine($"Available MCP skills for this agent: {string.Join("; ", skills.Select(FormatSkillReference))}");
-			sb.AppendLine("Use those skills when they match the task instead of guessing project-specific conventions.");
+			sb.AppendLine($"Skills installed for this agent: {string.Join("; ", skills.Select(FormatSkillReference))}");
+			sb.AppendLine("Read each skill's SKILL.md from the path shown before acting on it, and honor any allowed-tools restrictions declared there.");
 		}
 
 		if (totalSwarmSize > 1)
@@ -646,10 +660,25 @@ public static class PromptBuilder
 
 	private static string FormatSkillReference(Skill skill)
 	{
+		var parts = new List<string> { skill.Name };
+
 		var summary = BuildSkillSummary(skill);
-		return string.IsNullOrWhiteSpace(summary)
-			? skill.Name
-			: $"{skill.Name} - {summary}";
+		if (!string.IsNullOrWhiteSpace(summary))
+		{
+			parts.Add(summary);
+		}
+
+		if (!string.IsNullOrWhiteSpace(skill.StoragePath))
+		{
+			parts.Add($"SKILL.md: {Path.Combine(skill.StoragePath, "SKILL.md")}");
+		}
+
+		if (!string.IsNullOrWhiteSpace(skill.AllowedTools))
+		{
+			parts.Add($"allowed-tools: {skill.AllowedTools.Trim()}");
+		}
+
+		return string.Join(" - ", parts);
 	}
 
 	private static string? DescribeAgentCycleDefaults(Agent role)

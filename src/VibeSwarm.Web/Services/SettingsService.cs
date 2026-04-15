@@ -163,6 +163,7 @@ public class SettingsService : ISettingsService
 				settings.ApprovedIdeaImplementationPromptTemplate,
 				PromptBuilder.DefaultApprovedIdeaImplementationPromptTemplate,
 				LegacyDefaultApprovedIdeaImplementationPromptTemplate);
+			settings.GitHubToken = NormalizeGitHubToken(settings.GitHubToken);
 			settings.UpdatedAt = DateTime.UtcNow;
 			_dbContext.AppSettings.Add(settings);
 		}
@@ -189,6 +190,7 @@ public class SettingsService : ISettingsService
 				settings.ApprovedIdeaImplementationPromptTemplate,
 				PromptBuilder.DefaultApprovedIdeaImplementationPromptTemplate,
 				LegacyDefaultApprovedIdeaImplementationPromptTemplate);
+			existing.GitHubToken = NormalizeGitHubToken(settings.GitHubToken);
 			existing.UpdatedAt = DateTime.UtcNow;
 		}
 
@@ -217,6 +219,17 @@ public class SettingsService : ISettingsService
 			maxEntries,
 			AppSettings.MinCriticalErrorLogMaxEntries,
 			AppSettings.MaxCriticalErrorLogMaxEntries);
+
+	private static string? NormalizeGitHubToken(string? token)
+	{
+		if (string.IsNullOrWhiteSpace(token))
+		{
+			return null;
+		}
+
+		var trimmed = token.Trim();
+		return trimmed.Length == 0 ? null : trimmed;
+	}
 
 	private static string NormalizePromptTemplate(string? template, string defaultTemplate, params string[] legacyDefaultTemplates)
 	{

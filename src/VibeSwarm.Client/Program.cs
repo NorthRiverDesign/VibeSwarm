@@ -41,6 +41,8 @@ builder.Services.AddScoped<HttpProviderService>();
 builder.Services.AddScoped<IProviderService>(sp => sp.GetRequiredService<HttpProviderService>());
 builder.Services.AddScoped<ICommonProviderSetupService, HttpCommonProviderSetupService>();
 builder.Services.AddScoped<ISkillService, HttpSkillService>();
+builder.Services.AddScoped<HttpSkillInstallerService>();
+builder.Services.AddScoped<ISkillInstallerService>(sp => sp.GetRequiredService<HttpSkillInstallerService>());
 builder.Services.AddScoped<IAgentService, HttpAgentService>();
 builder.Services.AddScoped<ISettingsService, HttpSettingsService>();
 builder.Services.AddScoped<IDeveloperModeService, HttpDeveloperModeService>();

@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -32,6 +33,15 @@ public sealed class SkillsPageTests
 		services.AddSingleton<IProviderService>(new FakeProviderService([]));
 		services.AddSingleton<NotificationService>();
 		services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
+
+		// The Skills page now embeds SkillMarketplaceModal + SkillLocalPathModal which inject
+		// HttpSkillInstallerService, NavigationManager, and ISettingsService. The modals are
+		// hidden during render (IsVisible = false) but the DI graph still needs to resolve the
+		// injected dependencies, so wire stubs for construction.
+		services.AddSingleton(new HttpClient { BaseAddress = new Uri("http://localhost/") });
+		services.AddSingleton<HttpSkillInstallerService>();
+		services.AddSingleton<NavigationManager>(new TestNavigationManager());
+		services.AddSingleton<ISettingsService>(new FakeSettingsService());
 
 		await using var renderer = new HtmlRenderer(services.BuildServiceProvider(), NullLoggerFactory.Instance);
 
@@ -90,5 +100,25 @@ public sealed class SkillsPageTests
 	{
 		public ValueTask<TValue> InvokeAsync<TValue>(string identifier, object?[]? args) => ValueTask.FromResult(default(TValue)!);
 		public ValueTask<TValue> InvokeAsync<TValue>(string identifier, CancellationToken cancellationToken, object?[]? args) => ValueTask.FromResult(default(TValue)!);
+	}
+
+	private sealed class TestNavigationManager : NavigationManager
+	{
+		public TestNavigationManager()
+		{
+			Initialize("http://localhost/", "http://localhost/skills");
+		}
+
+		protected override void NavigateToCore(string uri, bool forceLoad)
+		{
+			Uri = ToAbsoluteUri(uri).ToString();
+		}
+	}
+
+	private sealed class FakeSettingsService : ISettingsService
+	{
+		public Task<AppSettings> GetSettingsAsync(CancellationToken cancellationToken = default) => Task.FromResult(new AppSettings());
+		public Task<AppSettings> UpdateSettingsAsync(AppSettings settings, CancellationToken cancellationToken = default) => Task.FromResult(settings);
+		public Task<string?> GetDefaultProjectsDirectoryAsync(CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
 	}
 }

@@ -368,8 +368,9 @@ public partial class JobProcessingService : BackgroundService
                     var scopedJobService = jobScope.ServiceProvider.GetRequiredService<IJobService>();
                     var scopedProviderService = jobScope.ServiceProvider.GetRequiredService<IProviderService>();
                     var scopedDbContext = jobScope.ServiceProvider.GetRequiredService<VibeSwarmDbContext>();
+                    var scopedSkillStorage = jobScope.ServiceProvider.GetRequiredService<ISkillStorageService>();
 
-                    await ProcessJobAsync(job, scopedJobService, scopedProviderService, scopedDbContext, context, jobCts.Token);
+                    await ProcessJobAsync(job, scopedJobService, scopedProviderService, scopedDbContext, scopedSkillStorage, context, jobCts.Token);
                 }, stoppingToken);
 
                 _runningJobs[job.Id] = context;

@@ -15,6 +15,7 @@ public partial class JobProcessingService
         IJobService jobService,
         IProviderService providerService,
         VibeSwarmDbContext dbContext,
+        ISkillStorageService skillStorage,
         JobExecutionContext executionContext,
         CancellationToken cancellationToken)
     {
@@ -525,6 +526,8 @@ public partial class JobProcessingService
                         .FirstOrDefaultAsync(r => r.Id == job.AgentId.Value, cancellationToken);
                     if (agent != null)
                     {
+                        await EnsureAgentSkillsMaterializedAsync(agent, skillStorage, cancellationToken);
+
                         var swarmSize = job.SwarmId.HasValue
                             ? await dbContext.Jobs.CountAsync(j => j.SwarmId == job.SwarmId, cancellationToken)
                             : 1;
@@ -654,6 +657,7 @@ public partial class JobProcessingService
                 await dbContext.SaveChangesAsync(cancellationToken);
             }
 
+            await EnsureProjectSkillsMaterializedAsync(job.Project, skillStorage, cancellationToken);
             var currentPrompt = PromptBuilder.BuildExecutionPrompt(job, planningOutput, enableStructuring);
             var attachedFiles = DeserializeAttachedFiles(job.AttachedFilesJson);
             var cycleComplete = false;
@@ -1135,6 +1139,85 @@ public partial class JobProcessingService
         catch
         {
             return null;
+        }
+    }
+
+    /// <summary>
+    /// Ensures every skill reachable from <paramref name="project"/>'s agent assignments has
+    /// been materialized to disk so <see cref="PromptBuilder.BuildSkillSection"/> can surface
+    /// its absolute SKILL.md path to the agent. Idempotent for already-materialized skills.
+    /// </summary>
+    private async Task EnsureProjectSkillsMaterializedAsync(
+        Project? project,
+        ISkillStorageService skillStorage,
+        CancellationToken cancellationToken)
+    {
+        if (project?.AgentAssignments is null)
+        {
+            return;
+        }
+
+        var seen = new HashSet<Guid>();
+        foreach (var assignment in project.AgentAssignments)
+        {
+            var agent = assignment.Agent;
+            if (agent?.SkillLinks is null)
+            {
+                continue;
+            }
+
+            foreach (var link in agent.SkillLinks)
+            {
+                if (link.Skill is null || !seen.Add(link.Skill.Id))
+                {
+                    continue;
+                }
+
+                await MaterializeSkillSafelyAsync(link.Skill, skillStorage, cancellationToken);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Ensures an individual agent's skills have been materialized ahead of
+    /// <see cref="PromptBuilder.BuildRoleSystemPromptContext"/>. Separate from the project-level
+    /// path because swarm jobs load the agent independently of <c>job.Project</c>.
+    /// </summary>
+    private async Task EnsureAgentSkillsMaterializedAsync(
+        Agent agent,
+        ISkillStorageService skillStorage,
+        CancellationToken cancellationToken)
+    {
+        if (agent.SkillLinks is null)
+        {
+            return;
+        }
+
+        foreach (var link in agent.SkillLinks)
+        {
+            if (link.Skill is null)
+            {
+                continue;
+            }
+
+            await MaterializeSkillSafelyAsync(link.Skill, skillStorage, cancellationToken);
+        }
+    }
+
+    private async Task MaterializeSkillSafelyAsync(
+        Skill skill,
+        ISkillStorageService skillStorage,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await skillStorage.EnsureMaterializedAsync(skill, cancellationToken);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Never fail a job because a skill can't be written to disk — the agent still
+            // receives name + description via the system prompt, just without an absolute path.
+            _logger.LogWarning(ex, "Failed to materialize skill {SkillId} ({SkillName}); continuing without storage path", skill.Id, skill.Name);
         }
     }
 }

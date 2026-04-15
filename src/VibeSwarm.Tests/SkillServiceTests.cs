@@ -15,6 +15,8 @@ public sealed class SkillServiceTests : IDisposable
 {
 	private readonly SqliteConnection _connection;
 	private readonly DbContextOptions<VibeSwarmDbContext> _dbOptions;
+	private readonly string _skillStorageRoot;
+	private readonly string? _previousSkillsPathOverride;
 
 	public SkillServiceTests()
 	{
@@ -27,6 +29,12 @@ public sealed class SkillServiceTests : IDisposable
 
 		using var dbContext = CreateDbContext();
 		dbContext.Database.EnsureCreated();
+
+		// Isolate skill storage under a throwaway temp directory so installs don't touch
+		// the developer's real ~/.local/share tree.
+		_skillStorageRoot = Path.Combine(Path.GetTempPath(), "vibeswarm-tests", "skills-" + Guid.NewGuid().ToString("N"));
+		_previousSkillsPathOverride = Environment.GetEnvironmentVariable("VIBESWARM_SKILLS_PATH");
+		Environment.SetEnvironmentVariable("VIBESWARM_SKILLS_PATH", _skillStorageRoot);
 	}
 
 	[Fact]
@@ -60,8 +68,11 @@ public sealed class SkillServiceTests : IDisposable
 		Assert.Contains("## Reference: components", preview.Content);
 		Assert.Contains("Use cards and buttons.", preview.Content);
 		Assert.False(preview.NameExists);
-		Assert.Contains("bootstrap-ui/SKILL.md", preview.IncludedFiles);
-		Assert.Contains("bootstrap-ui/references/components.md", preview.IncludedFiles);
+		// The installer refactor strips the archive's root folder from file paths so they
+		// read like the post-install layout. Older assertions expected the leading
+		// "bootstrap-ui/" directory which was incidental to the Claude export format.
+		Assert.Contains("SKILL.md", preview.IncludedFiles);
+		Assert.Contains("references/components.md", preview.IncludedFiles);
 	}
 
 	[Fact]
@@ -87,13 +98,52 @@ public sealed class SkillServiceTests : IDisposable
 
 		Assert.True(result.Imported);
 		Assert.False(result.Skipped);
-		Assert.Equal("Imported skill 'bootstrap-ui'.", result.Message);
+		Assert.Equal("Installed skill 'bootstrap-ui'.", result.Message);
 
 		var saved = await dbContext.Skills.SingleAsync();
 		Assert.Equal("bootstrap-ui", saved.Name);
 		Assert.Equal("A polished Bootstrap UI skill.", saved.Description);
 		Assert.Contains("# Bootstrap UI", saved.Content);
 		Assert.True(saved.IsEnabled);
+	}
+
+	[Fact]
+	public async Task ImportAsync_PopulatesInstallMetadataAndMaterializesFolder()
+	{
+		await using var dbContext = CreateDbContext();
+		var service = CreateService(dbContext);
+		var request = CreateImportRequest(
+			"pdf.skill",
+			"""
+			---
+			name: pdf
+			description: Extract text and fill PDF forms.
+			allowed-tools: Bash(python:*) Bash(pip:*)
+			---
+
+			# PDF Skill
+
+			Instructions for working with PDFs.
+			""");
+
+		var result = await service.ImportAsync(request);
+		Assert.True(result.Imported);
+
+		var saved = await dbContext.Skills.SingleAsync();
+		Assert.Equal(SkillSourceType.ZipImport, saved.SourceType);
+		Assert.Equal("pdf.skill", saved.SourceUri);
+		Assert.Null(saved.SourceRef);
+		Assert.False(saved.HasScripts);
+		Assert.Equal("Bash(python:*) Bash(pip:*)", saved.AllowedTools);
+		Assert.NotNull(saved.InstalledAt);
+		Assert.NotNull(saved.StoragePath);
+
+		// The storage service should have written SKILL.md into the central storage directory
+		// so PromptBuilder can reference it by absolute path.
+		Assert.True(Directory.Exists(saved.StoragePath));
+		var manifestPath = Path.Combine(saved.StoragePath!, "SKILL.md");
+		Assert.True(File.Exists(manifestPath));
+		Assert.Contains("# PDF Skill", await File.ReadAllTextAsync(manifestPath));
 	}
 
 	[Fact]
@@ -159,7 +209,15 @@ public sealed class SkillServiceTests : IDisposable
 	private VibeSwarmDbContext CreateDbContext() => new(_dbOptions);
 
 	private static SkillService CreateService(VibeSwarmDbContext dbContext)
-		=> new(dbContext, new NoOpProviderService(), NullLogger<SkillService>.Instance);
+	{
+		var storage = new SkillStorageService(dbContext, NullLogger<SkillStorageService>.Instance);
+		var installer = new SkillInstallerService(
+			dbContext,
+			storage,
+			[new ZipSkillInstaller()],
+			NullLogger<SkillInstallerService>.Instance);
+		return new SkillService(dbContext, new NoOpProviderService(), installer, NullLogger<SkillService>.Instance);
+	}
 
 	private static SkillImportRequest CreateImportRequest(
 		string fileName,
@@ -196,7 +254,20 @@ public sealed class SkillServiceTests : IDisposable
 
 	public void Dispose()
 	{
+		Environment.SetEnvironmentVariable("VIBESWARM_SKILLS_PATH", _previousSkillsPathOverride);
 		_connection.Dispose();
+
+		try
+		{
+			if (Directory.Exists(_skillStorageRoot))
+			{
+				Directory.Delete(_skillStorageRoot, recursive: true);
+			}
+		}
+		catch
+		{
+			// best-effort cleanup
+		}
 	}
 
 	private sealed class NoOpProviderService : IProviderService

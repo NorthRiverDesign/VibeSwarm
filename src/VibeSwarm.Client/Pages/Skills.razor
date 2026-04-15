@@ -5,6 +5,8 @@
 
 <PageHeader Title="Skills">
 	<Actions>
+		<ActionButton Icon="shop" Text="Marketplace" OnClick="ShowMarketplaceModal" />
+		<ActionButton Icon="folder2-open" Text="From folder" OnClick="ShowLocalPathModal" />
 		<label class="btn btn-secondary mb-0 cursor-pointer">
 			<i class="bi bi-box-arrow-in-down me-2"></i>Import
 			<InputFile OnChange="HandleImportFileSelected" accept=".skill" class="d-none" />
@@ -151,6 +153,12 @@ else
 				   ConfirmText="Delete" ButtonClass="btn-danger" IsProcessing="_isDeleting" OnConfirm="ConfirmDelete"
 				   OnCancel="CancelDelete" />
 
+@* Marketplace browse modal *@
+<SkillMarketplaceModal @bind-IsVisible="_showMarketplaceModal" OnInstalled="HandleMarketplaceInstall" />
+
+@* Local filesystem path install modal *@
+<SkillLocalPathModal @bind-IsVisible="_showLocalPathModal" OnInstalled="HandleLocalPathInstall" />
+
 @code {
 	private List<Skill> _skillsList = new();
 	private bool _isLoading = true;
@@ -166,6 +174,12 @@ else
 	private string? _importErrorMessage;
 	private bool _isImportingSkill;
 	private string? _importFileName;
+
+	// Marketplace modal state
+	private bool _showMarketplaceModal;
+
+	// Local-path install modal state
+	private bool _showLocalPathModal;
 
 	protected override async Task OnInitializedAsync()
 	{
@@ -369,5 +383,45 @@ else
 		_importErrorMessage = null;
 		_importFileName = null;
 		_isImportingSkill = false;
+	}
+
+	private void ShowMarketplaceModal()
+	{
+		// Close any other open modals first so focus traps don't collide.
+		ResetImportPreview();
+		_showSkillModal = false;
+		_editingSkill = null;
+		_showDeleteModal = false;
+		_skillToDelete = null;
+
+		_showMarketplaceModal = true;
+		StateHasChanged();
+	}
+
+	private async Task HandleMarketplaceInstall()
+	{
+		// The marketplace modal stays open (user may install multiple skills) while the main
+		// list refreshes behind it.
+		await LoadSkills();
+	}
+
+	private void ShowLocalPathModal()
+	{
+		ResetImportPreview();
+		_showSkillModal = false;
+		_editingSkill = null;
+		_showDeleteModal = false;
+		_skillToDelete = null;
+		_showMarketplaceModal = false;
+
+		_showLocalPathModal = true;
+		StateHasChanged();
+	}
+
+	private async Task HandleLocalPathInstall(SkillInstallResult result)
+	{
+		// The local-path modal closes itself on a successful install. Refresh the list either
+		// way so name-collision skips show the existing skill immediately.
+		await LoadSkills();
 	}
 }

@@ -10,6 +10,7 @@ public sealed class ProjectTeamPromptTests
 	public void BuildStructuredPrompt_IncludesAssignedAgents()
 	{
 		var bootstrapSkillId = Guid.NewGuid();
+		var storagePath = Path.Combine(Path.GetTempPath(), "vibeswarm-skills", bootstrapSkillId.ToString("N"));
 		var job = new Job
 		{
 			GoalPrompt = "Harden auth and improve deployment flow.",
@@ -48,7 +49,9 @@ public sealed class ProjectTeamPromptTests
 										Id = bootstrapSkillId,
 										Name = "secure-review",
 										Description = "Review auth, secrets, and security-sensitive changes.",
-										Content = "Review code for security issues."
+										Content = "Review code for security issues.",
+										StoragePath = storagePath,
+										AllowedTools = "Bash(git:*) Read"
 									}
 								}
 							]
@@ -68,13 +71,68 @@ public sealed class ProjectTeamPromptTests
 		Assert.Contains("secure-review", prompt);
 		Assert.Contains("autonomous (max 4 cycles)", prompt);
 		Assert.Contains("<available_skills>", prompt);
-		Assert.Contains("Use them when relevant instead of guessing project conventions", prompt);
+		Assert.Contains("read its SKILL.md", prompt);
 		Assert.Contains("Review auth, secrets, and security-sensitive changes.", prompt);
+		Assert.Contains($"SKILL.md: {Path.Combine(storagePath, "SKILL.md")}", prompt);
+		Assert.Contains("allowed-tools: Bash(git:*) Read", prompt);
+	}
+
+	[Fact]
+	public void BuildStructuredPrompt_OmitsStorageDetailsForLegacySkillsWithoutPath()
+	{
+		// Skills predating the install metadata feature have no StoragePath yet — they still
+		// need to appear in the system prompt (with just name + description) until the storage
+		// service materializes them.
+		var job = new Job
+		{
+			GoalPrompt = "Just do the thing.",
+			Project = new Project
+			{
+				Name = "Legacy",
+				WorkingPath = "/tmp/legacy",
+				AgentAssignments =
+				[
+					new ProjectAgent
+					{
+						AgentId = Guid.NewGuid(),
+						Agent = new Agent
+						{
+							Id = Guid.NewGuid(),
+							Name = "Any",
+							SkillLinks =
+							[
+								new AgentSkill
+								{
+									SkillId = Guid.NewGuid(),
+									Skill = new Skill
+									{
+										Id = Guid.NewGuid(),
+										Name = "legacy-skill",
+										Description = "Pre-install-metadata skill.",
+										Content = "Legacy content"
+										// StoragePath + AllowedTools deliberately null
+									}
+								}
+							]
+						}
+					}
+				],
+				Environments = []
+			}
+		};
+
+		var prompt = PromptBuilder.BuildStructuredPrompt(job);
+
+		Assert.Contains("legacy-skill", prompt);
+		Assert.Contains("Pre-install-metadata skill.", prompt);
+		Assert.DoesNotContain("SKILL.md:", prompt);
+		Assert.DoesNotContain("allowed-tools:", prompt);
 	}
 
 	[Fact]
 	public void BuildRoleSystemPromptContext_IncludesAssignedSkillSummaries()
 	{
+		var storagePath = Path.Combine(Path.GetTempPath(), "vibeswarm-skills", "bootstrap-ui");
 		var context = PromptBuilder.BuildRoleSystemPromptContext(
 			new Agent
 			{
@@ -92,7 +150,9 @@ public sealed class ProjectTeamPromptTests
 							Id = Guid.NewGuid(),
 							Name = "bootstrap-ui",
 							Description = "Prefer Bootstrap utilities and avoid custom CSS unless needed.",
-							Content = "Bootstrap skill"
+							Content = "Bootstrap skill",
+							StoragePath = storagePath,
+							AllowedTools = "Read Bash(npx:*)"
 						}
 					}
 				]
@@ -100,8 +160,10 @@ public sealed class ProjectTeamPromptTests
 			totalSwarmSize: 2);
 
 		Assert.Contains("Agent purpose: Catches UI polish issues.", context);
-		Assert.Contains("Available MCP skills for this agent:", context);
+		Assert.Contains("Skills installed for this agent:", context);
 		Assert.Contains("bootstrap-ui - Prefer Bootstrap utilities and avoid custom CSS unless needed.", context);
-		Assert.Contains("Use those skills when they match the task instead of guessing project-specific conventions.", context);
+		Assert.Contains($"SKILL.md: {Path.Combine(storagePath, "SKILL.md")}", context);
+		Assert.Contains("allowed-tools: Read Bash(npx:*)", context);
+		Assert.Contains("Read each skill's SKILL.md from the path shown before acting", context);
 	}
 }
