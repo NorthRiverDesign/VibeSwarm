@@ -5,13 +5,14 @@
 
 <PageHeader Title="Skills">
 	<Actions>
-		<ActionButton Icon="shop" Text="Marketplace" OnClick="ShowMarketplaceModal" />
-		<ActionButton Icon="folder2-open" Text="From folder" OnClick="ShowLocalPathModal" />
-		<label class="btn btn-secondary mb-0 cursor-pointer">
-			<i class="bi bi-box-arrow-in-down me-2"></i>Import
+		<ActionButton Icon="shop" Text="Marketplace" HideTextOnMobile="true" OnClick="ShowMarketplaceModal" />
+		<ActionButton Icon="folder2-open" Text="From folder" HideTextOnMobile="true" OnClick="ShowLocalPathModal" />
+		<label class="btn btn-secondary mb-0 cursor-pointer mobile-icon-button d-inline-flex align-items-center gap-1" title="Import">
+			<i class="bi bi-box-arrow-in-down"></i>
+			<span class="d-none d-md-inline">Import</span>
 			<InputFile OnChange="HandleImportFileSelected" accept=".skill" class="d-none" />
 		</label>
-		<ActionButton Icon="plus" Text="Add" Style="ActionButton.ButtonStyle.Primary" OnClick="ShowAddModal" />
+		<ActionButton Icon="plus" Text="Add" HideTextOnMobile="true" Style="ActionButton.ButtonStyle.Primary" OnClick="ShowAddModal" />
 	</Actions>
 </PageHeader>
 
