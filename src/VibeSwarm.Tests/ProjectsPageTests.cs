@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Components.Web;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.JSInterop;
+using VibeSwarm.Client.Models;
 using VibeSwarm.Client.Pages;
 using VibeSwarm.Client.Services;
 using VibeSwarm.Shared.Data;
@@ -546,6 +547,126 @@ public sealed class ProjectsPageTests
 		});
 	}
 
+	[Fact]
+	public async Task ProjectsPage_MergeBranch_ShowsToastWithProjectNameOnSuccess()
+	{
+		using var context = new BunitContext();
+
+		var projectId = Guid.NewGuid();
+		var projectInfo = new ProjectInfoWithStats
+		{
+			Project = new Project
+			{
+				Id = projectId,
+				Name = "Merge Project",
+				WorkingPath = "/tmp/merge-project",
+				IsActive = true
+			},
+			Stats = new ProjectJobStats(),
+			CurrentBranch = "feature/test"
+		};
+		var notificationService = new NotificationService();
+
+		context.Services.AddLogging();
+		context.Services.AddSingleton<IProjectService>(new FakeProjectService([new ProjectWithStats
+		{
+			Project = projectInfo.Project,
+			Stats = projectInfo.Stats,
+			CurrentBranch = "feature/test"
+		}]));
+		context.Services.AddSingleton<IJobService>(new FakeJobService());
+		context.Services.AddSingleton<IIdeaService>(new FakeIdeaService());
+		context.Services.AddSingleton<IVersionControlService>(new FakeVersionControlServiceWithMerge());
+		context.Services.AddSingleton<IProviderService>(new FakeProviderService());
+		context.Services.AddSingleton<IAgentService>(new FakeAgentService());
+		context.Services.AddSingleton<ISettingsService>(new FakeSettingsService());
+		context.Services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService());
+		context.Services.AddSingleton(notificationService);
+		context.Services.AddSingleton<QueuePanelStateService>();
+		context.Services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
+
+		var cut = context.Render<Projects>();
+		cut.WaitForAssertion(() => Assert.Contains("Merge Project", cut.Markup));
+
+		SetPrivateProperty(cut.Instance, "_mergeProjectInfo", projectInfo);
+
+		var mergeMethod = cut.Instance.GetType().GetMethod("MergeCurrentBranchAsync", BindingFlags.Instance | BindingFlags.NonPublic);
+		Assert.NotNull(mergeMethod);
+
+		await cut.InvokeAsync(async () =>
+		{
+			var task = Assert.IsAssignableFrom<Task>(mergeMethod.Invoke(cut.Instance, [("main", false)]));
+			await task;
+		});
+
+		cut.WaitForAssertion(() =>
+		{
+			var notification = Assert.Single(notificationService.Notifications);
+			Assert.Equal("Merge Project", notification.Title);
+			Assert.Equal(NotificationType.Success, notification.Type);
+		});
+	}
+
+	[Fact]
+	public async Task ProjectsPage_CreatePullRequest_ShowsToastWithProjectNameOnSuccess()
+	{
+		using var context = new BunitContext();
+
+		var projectId = Guid.NewGuid();
+		var projectInfo = new ProjectInfoWithStats
+		{
+			Project = new Project
+			{
+				Id = projectId,
+				Name = "PR Project",
+				WorkingPath = "/tmp/pr-project",
+				IsActive = true
+			},
+			Stats = new ProjectJobStats(),
+			CurrentBranch = "feature/pr-branch"
+		};
+		var notificationService = new NotificationService();
+
+		context.Services.AddLogging();
+		context.Services.AddSingleton<IProjectService>(new FakeProjectService([new ProjectWithStats
+		{
+			Project = projectInfo.Project,
+			Stats = projectInfo.Stats,
+			CurrentBranch = "feature/pr-branch"
+		}]));
+		context.Services.AddSingleton<IJobService>(new FakeJobService());
+		context.Services.AddSingleton<IIdeaService>(new FakeIdeaService());
+		context.Services.AddSingleton<IVersionControlService>(new FakeVersionControlServiceWithMerge());
+		context.Services.AddSingleton<IProviderService>(new FakeProviderService());
+		context.Services.AddSingleton<IAgentService>(new FakeAgentService());
+		context.Services.AddSingleton<ISettingsService>(new FakeSettingsService());
+		context.Services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService());
+		context.Services.AddSingleton(notificationService);
+		context.Services.AddSingleton<QueuePanelStateService>();
+		context.Services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
+
+		var cut = context.Render<Projects>();
+		cut.WaitForAssertion(() => Assert.Contains("PR Project", cut.Markup));
+
+		SetPrivateProperty(cut.Instance, "_mergeProjectInfo", projectInfo);
+
+		var createPrMethod = cut.Instance.GetType().GetMethod("CreatePullRequestAsync", BindingFlags.Instance | BindingFlags.NonPublic);
+		Assert.NotNull(createPrMethod);
+
+		await cut.InvokeAsync(async () =>
+		{
+			var task = Assert.IsAssignableFrom<Task>(createPrMethod.Invoke(cut.Instance, [("main", (string?)null)]));
+			await task;
+		});
+
+		cut.WaitForAssertion(() =>
+		{
+			var notification = Assert.Single(notificationService.Notifications);
+			Assert.Equal("PR Project", notification.Title);
+			Assert.Equal(NotificationType.Success, notification.Type);
+		});
+	}
+
 	private static void SetPrivateProperty(object instance, string propertyName, object? value)
 	{
 		var property = instance.GetType().GetProperty(propertyName, BindingFlags.Instance | BindingFlags.NonPublic);
@@ -778,5 +899,48 @@ public sealed class ProjectsPageTests
 		public Task<IEnumerable<InferenceModel>> RefreshModelsAsync(Guid providerId, CancellationToken ct = default) => Task.FromResult<IEnumerable<InferenceModel>>([]);
 		public Task SetModelForTaskAsync(Guid providerId, string modelId, string taskType, CancellationToken ct = default) => throw new NotSupportedException();
 		public Task<InferenceModel?> GetModelForTaskAsync(string taskType, CancellationToken ct = default) => Task.FromResult<InferenceModel?>(null);
+	}
+
+	private sealed class FakeVersionControlServiceWithMerge : IVersionControlService
+	{
+		public Task<bool> IsGitAvailableAsync(CancellationToken cancellationToken = default) => Task.FromResult(true);
+		public Task<bool> IsGitRepositoryAsync(string workingDirectory, CancellationToken cancellationToken = default) => Task.FromResult(true);
+		public Task<string?> GetCurrentCommitHashAsync(string workingDirectory, CancellationToken cancellationToken = default) => Task.FromResult<string?>("abc1234");
+		public Task<string?> GetCurrentBranchAsync(string workingDirectory, CancellationToken cancellationToken = default) => Task.FromResult<string?>("feature/test");
+		public Task<string?> GetRemoteUrlAsync(string workingDirectory, string remoteName = "origin", CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
+		public Task<bool> HasUncommittedChangesAsync(string workingDirectory, CancellationToken cancellationToken = default) => Task.FromResult(false);
+		public Task<IReadOnlyList<string>> GetChangedFilesAsync(string workingDirectory, string? baseCommit = null, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<string>>([]);
+		public Task<string?> GetWorkingDirectoryDiffAsync(string workingDirectory, string? baseCommit = null, CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
+		public Task<string?> GetCommitRangeDiffAsync(string workingDirectory, string fromCommit, string? toCommit = null, CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
+		public Task<GitDiffSummary?> GetDiffSummaryAsync(string workingDirectory, string? baseCommit = null, CancellationToken cancellationToken = default) => Task.FromResult<GitDiffSummary?>(null);
+		public Task<GitOperationResult> CommitAllChangesAsync(string workingDirectory, string commitMessage, CancellationToken cancellationToken = default, GitCommitOptions? commitOptions = null) => throw new NotSupportedException();
+		public Task<GitOperationResult> PushAsync(string workingDirectory, string remoteName = "origin", string? branchName = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<GitOperationResult> CommitAndPushAsync(string workingDirectory, string commitMessage, string remoteName = "origin", Action<string>? progressCallback = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<GitOperationResult> CreatePullRequestAsync(string workingDirectory, string sourceBranch, string targetBranch, string title, string? body = null, CancellationToken cancellationToken = default)
+			=> Task.FromResult(GitOperationResult.Succeeded(output: $"Pull request created from '{sourceBranch}' to '{targetBranch}'."));
+		public Task<GitOperationResult> PreviewMergeBranchAsync(string workingDirectory, string sourceBranch, string targetBranch, string remoteName = "origin", CancellationToken cancellationToken = default)
+			=> Task.FromResult(GitOperationResult.Succeeded(output: $"'{sourceBranch}' can be merged into '{targetBranch}' without conflicts.", changedFilesCount: 1));
+		public Task<GitOperationResult> MergeBranchAsync(string workingDirectory, string sourceBranch, string targetBranch, string remoteName = "origin", Action<string>? progressCallback = null, CancellationToken cancellationToken = default, bool pushAfterMerge = true, IReadOnlyList<MergeConflictResolution>? conflictResolutions = null)
+			=> Task.FromResult(GitOperationResult.Succeeded(output: $"Merged '{sourceBranch}' into '{targetBranch}'."));
+		public Task<IReadOnlyList<GitBranchInfo>> GetBranchesAsync(string workingDirectory, bool includeRemote = true, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<GitBranchInfo>>([]);
+		public Task<GitOperationResult> FetchAsync(string workingDirectory, string remoteName = "origin", bool prune = true, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<GitOperationResult> HardCheckoutBranchAsync(string workingDirectory, string branchName, string remoteName = "origin", Action<string>? progressCallback = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<GitOperationResult> SyncWithOriginAsync(string workingDirectory, string remoteName = "origin", Action<string>? progressCallback = null, CancellationToken cancellationToken = default) => Task.FromResult(GitOperationResult.Succeeded(output: "Synced"));
+		public Task<GitOperationResult> CloneRepositoryAsync(string repositoryUrl, string targetDirectory, string? branch = null, Action<string>? progressCallback = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public string GetGitHubCloneUrl(string ownerAndRepo, bool useSsh = true) => throw new NotSupportedException();
+		public string? ExtractGitHubRepository(string? remoteUrl) => null;
+		public Task<GitWorkingTreeStatus> GetWorkingTreeStatusAsync(string workingDirectory, CancellationToken cancellationToken = default) => Task.FromResult(new GitWorkingTreeStatus());
+		public Task<GitOperationResult> PreserveChangesAsync(string workingDirectory, string message, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<GitOperationResult> CreateBranchAsync(string workingDirectory, string branchName, bool switchToBranch = true, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<GitOperationResult> DiscardAllChangesAsync(string workingDirectory, bool includeUntracked = true, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<IReadOnlyList<string>> GetCommitLogAsync(string workingDirectory, string fromCommit, string? toCommit = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<GitOperationResult> InitializeRepositoryAsync(string workingDirectory, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<bool> IsGitHubCliAvailableAsync(CancellationToken cancellationToken = default) => Task.FromResult(false);
+		public Task<bool> IsGitHubCliAuthenticatedAsync(CancellationToken cancellationToken = default) => Task.FromResult(false);
+		public Task<GitOperationResult> CreateGitHubRepositoryAsync(string workingDirectory, string repositoryName, string? description = null, bool isPrivate = false, Action<string>? progressCallback = null, CancellationToken cancellationToken = default, string? gitignoreTemplate = null, string? licenseTemplate = null, bool initializeReadme = false) => throw new NotSupportedException();
+		public Task<GitOperationResult> AddRemoteAsync(string workingDirectory, string remoteName, string remoteUrl, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<IReadOnlyDictionary<string, string>> GetRemotesAsync(string workingDirectory, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<GitOperationResult> CloneWithGitHubCliAsync(string ownerRepo, string targetDirectory, Action<string>? progressCallback = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<GitOperationResult> PruneRemoteBranchesAsync(string workingDirectory, string remoteName = "origin", CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	}
 }

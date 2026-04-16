@@ -751,11 +751,13 @@ else
                 return;
             }
 
+            var projectName = _mergeProjectInfo.Project.Name;
+            var sourceBranch = MergeCurrentBranch;
             CloseMergeBranchModal();
             await LoadProjects();
             NotificationService.ShowProjectSuccess(
-                _mergeProjectInfo.Project.Name,
-                result.Output ?? $"Merged '{MergeCurrentBranch}' into '{args.targetBranch}'.");
+                projectName,
+                result.Output ?? $"Merged '{sourceBranch}' into '{args.targetBranch}'.");
         }
         catch (Exception ex)
         {
@@ -817,12 +819,14 @@ else
                 return;
             }
 
+            var projectName = _mergeProjectInfo.Project.Name;
+            var sourceBranch = MergeCurrentBranch;
             CloseMergeBranchModal();
             NotificationService.ShowProjectSuccess(
-                _mergeProjectInfo.Project.Name,
+                projectName,
                 !string.IsNullOrWhiteSpace(result.PullRequestUrl)
                     ? $"Pull request created: {result.PullRequestUrl}"
-                    : result.Output ?? $"Pull request created from '{MergeCurrentBranch}' to '{args.targetBranch}'.");
+                    : result.Output ?? $"Pull request created from '{sourceBranch}' to '{args.targetBranch}'.");
         }
         catch (Exception ex)
         {
