@@ -15,15 +15,27 @@ public sealed class MobileShellScrollingTests
 	}
 
 	[Fact]
-	public void MainLayout_UsesDashboardIconForMobileHeader_WithoutBrandBlock()
+	public void MainLayout_HasMobileBottomNavAndSimplifiedHeader()
 	{
 		var layoutMarkup = File.ReadAllText(GetRepositoryPath("src", "VibeSwarm.Client", "Shared", "MainLayout.razor"));
 
-		Assert.Contains("title=\"Dashboard\" aria-label=\"Dashboard\"", layoutMarkup);
-		Assert.Contains("<i class=\"bi bi-house-door\"></i>", layoutMarkup);
+		Assert.Contains("<MobileBottomNav", layoutMarkup);
 		Assert.Contains("ms-auto d-flex align-items-center gap-2", layoutMarkup);
 		Assert.DoesNotContain("img/logo_icon.png", layoutMarkup);
 		Assert.DoesNotContain("<span class=\"brand-text", layoutMarkup);
+	}
+
+	[Fact]
+	public void MobileBottomNav_ContainsPrimaryNavigationLinks()
+	{
+		var navMarkup = File.ReadAllText(GetRepositoryPath("src", "VibeSwarm.Client", "Components", "Common", "MobileBottomNav.razor"));
+
+		Assert.Contains("href=\"/\"", navMarkup);
+		Assert.Contains("NavLinkMatch.All", navMarkup);
+		Assert.Contains("href=\"/projects\"", navMarkup);
+		Assert.Contains("href=\"/jobs\"", navMarkup);
+		Assert.Contains("href=\"/providers\"", navMarkup);
+		Assert.Contains("bi-house-door", navMarkup);
 	}
 
 	[Fact]

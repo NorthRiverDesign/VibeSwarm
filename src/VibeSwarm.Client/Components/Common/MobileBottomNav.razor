@@ -1,0 +1,38 @@
+@* Mobile bottom navigation bar — primary navigation for iOS/Android PWA users. *@
+@* Rendered as position:fixed at the bottom; CSS hides it on desktop (≥ 992px). *@
+
+<nav class="app-bottom-nav d-lg-none" role="navigation" aria-label="Main navigation">
+    <NavLink class="bottom-nav-item flex-grow-1 d-flex flex-column align-items-center justify-content-center gap-1 text-decoration-none touch-manipulation"
+             href="/" Match="NavLinkMatch.All" title="Dashboard" aria-label="Dashboard">
+        <i class="bi bi-house-door-fill"></i>
+        <span class="bottom-nav-label">Home</span>
+    </NavLink>
+    <NavLink class="bottom-nav-item flex-grow-1 d-flex flex-column align-items-center justify-content-center gap-1 text-decoration-none touch-manipulation"
+             href="/projects" title="Projects" aria-label="Projects">
+        <i class="bi bi-folder-fill"></i>
+        <span class="bottom-nav-label">Projects</span>
+    </NavLink>
+    <NavLink class="bottom-nav-item flex-grow-1 d-flex flex-column align-items-center justify-content-center gap-1 text-decoration-none touch-manipulation"
+             href="/jobs" title="Jobs" aria-label="Jobs">
+        <i class="bi bi-list-check"></i>
+        <span class="bottom-nav-label">Jobs</span>
+    </NavLink>
+    <NavLink class="bottom-nav-item flex-grow-1 d-flex flex-column align-items-center justify-content-center gap-1 text-decoration-none touch-manipulation"
+             href="/providers" title="Providers" aria-label="Providers">
+        <i class="bi bi-cpu-fill"></i>
+        <span class="bottom-nav-label">Providers</span>
+    </NavLink>
+    <button class="bottom-nav-item bottom-nav-more flex-grow-1 d-flex flex-column align-items-center justify-content-center gap-1 border-0 bg-transparent touch-manipulation @(IsMoreOpen ? "active" : "")"
+            @onclick="OnMoreClicked"
+            title="More"
+            aria-label="More navigation options"
+            aria-expanded="@IsMoreOpen.ToString().ToLowerInvariant()">
+        <i class="bi @(IsMoreOpen ? "bi-x-lg" : "bi-grid-3x3")"></i>
+        <span class="bottom-nav-label">More</span>
+    </button>
+</nav>
+
+@code {
+    [Parameter] public bool IsMoreOpen { get; set; }
+    [Parameter] public EventCallback OnMoreClicked { get; set; }
+}
