@@ -504,8 +504,14 @@ public class ClaudeProvider : CliProviderBase
             args.Add($"--{CurrentInitMode}");
         }
 
-		// Reasoning effort level (v2.1.63+)
-		var reasoningEffort = NormalizeReasoningEffort(CurrentReasoningEffort, "low", "medium", "high", "max");
+		// Reasoning effort level (v2.1.63+). Claude v2.1.72+ renamed "medium" to "standard"
+		// and added "xhigh"; "max" is Opus 4.7 only (other models silently downgrade to "high").
+		var rawEffort = CurrentReasoningEffort?.Trim().ToLowerInvariant();
+		if (string.Equals(rawEffort, "medium", StringComparison.Ordinal))
+		{
+			rawEffort = "standard";
+		}
+		var reasoningEffort = NormalizeReasoningEffort(rawEffort, "low", "standard", "high", "xhigh", "max");
         if (SupportsCliVersion(ReasoningEffortVersion) && !string.IsNullOrEmpty(reasoningEffort))
         {
             args.Add("--effort");
@@ -881,6 +887,7 @@ public class ClaudeProvider : CliProviderBase
                 "sonnet",
                 "opus",
                 "haiku",
+                "claude-opus-4-7",
                 "claude-sonnet-4-6",
                 "claude-opus-4-6",
                 "claude-haiku-4-5",
@@ -899,10 +906,20 @@ public class ClaudeProvider : CliProviderBase
                     ["sonnet"] = 1.0m,
                     ["opus"] = 5.0m,
                     ["haiku"] = 0.27m,
+                    ["claude-opus-4-7"] = 5.0m,
                     ["claude-sonnet-4-6"] = 1.0m,
                     ["claude-opus-4-6"] = 5.0m,
                     ["claude-haiku-4-5"] = 0.27m,
                 }
+            },
+            ModelRetirementDates = new Dictionary<string, DateTime>
+            {
+                ["claude-haiku-3"] = new DateTime(2026, 4, 19, 0, 0, 0, DateTimeKind.Utc),
+                ["claude-3-haiku-20240307"] = new DateTime(2026, 4, 19, 0, 0, 0, DateTimeKind.Utc),
+                ["claude-sonnet-4"] = new DateTime(2026, 6, 15, 0, 0, 0, DateTimeKind.Utc),
+                ["claude-sonnet-4-20250514"] = new DateTime(2026, 6, 15, 0, 0, 0, DateTimeKind.Utc),
+                ["claude-opus-4"] = new DateTime(2026, 6, 15, 0, 0, 0, DateTimeKind.Utc),
+                ["claude-opus-4-20250514"] = new DateTime(2026, 6, 15, 0, 0, 0, DateTimeKind.Utc),
             },
             AdditionalInfo = new Dictionary<string, object>
             {

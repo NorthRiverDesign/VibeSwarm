@@ -37,7 +37,7 @@
 						<span class="badge bg-danger-subtle text-danger-emphasis me-1">
 							<i class="bi bi-x-circle me-1"></i>Not Found
 						</span>
-						<button type="button" class="btn btn-sm btn-outline-primary"
+						<button type="button" class="btn btn-sm btn-primary"
 								@onclick='() => InstallTool("git")'
 								disabled="@(_isInstalling != null)">
 							@if (_isInstalling == "git")
@@ -69,7 +69,7 @@
 						<span class="badge bg-danger-subtle text-danger-emphasis me-1">
 							<i class="bi bi-x-circle me-1"></i>Not Found
 						</span>
-						<button type="button" class="btn btn-sm btn-outline-primary"
+						<button type="button" class="btn btn-sm btn-primary"
 								@onclick='() => InstallTool("gh")'
 								disabled="@(_isInstalling != null)">
 							@if (_isInstalling == "gh")
@@ -131,7 +131,7 @@
 						<span class="badge bg-secondary-subtle text-secondary-emphasis me-1">
 							<i class="bi bi-dash-circle me-1"></i>Not Found
 						</span>
-						<button type="button" class="btn btn-sm btn-outline-secondary"
+						<button type="button" class="btn btn-sm btn-secondary"
 								@onclick='() => InstallTool("nodejs")'
 								disabled="@(_isInstalling != null)">
 							@if (_isInstalling == "nodejs")
@@ -169,7 +169,7 @@
 						<span class="badge bg-secondary-subtle text-secondary-emphasis me-1">
 							<i class="bi bi-dash-circle me-1"></i>Not Installed
 						</span>
-						<button type="button" class="btn btn-sm btn-outline-secondary"
+						<button type="button" class="btn btn-sm btn-secondary"
 								@onclick='() => InstallTool("playwright")'
 								disabled="@(_isInstalling != null)">
 							@if (_isInstalling == "playwright")

@@ -308,6 +308,13 @@ public class ProviderInfo
     public List<AgentInfo> AvailableAgents { get; set; } = new();
     public PricingInfo? Pricing { get; set; }
     public Dictionary<string, object> AdditionalInfo { get; set; } = new();
+
+    /// <summary>
+    /// Upstream retirement dates for specific model IDs. Applied to matching
+    /// <see cref="VibeSwarm.Shared.Data.ProviderModel.RetiresOn"/> rows during refresh so the UI
+    /// can surface an advance-notice badge.
+    /// </summary>
+    public Dictionary<string, DateTime> ModelRetirementDates { get; set; } = new();
 }
 
 /// <summary>

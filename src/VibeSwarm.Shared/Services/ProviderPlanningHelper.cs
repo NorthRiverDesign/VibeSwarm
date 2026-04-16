@@ -1,4 +1,3 @@
-using System.Text;
 using VibeSwarm.Shared.Providers;
 
 namespace VibeSwarm.Shared.Services;
@@ -26,30 +25,17 @@ public static class ProviderPlanningHelper
 		return providerType is ProviderType.Claude or ProviderType.Copilot;
 	}
 
-	public static string BuildPlanningPrompt(ProviderType providerType, string requestDescription)
+	public static string BuildPlanningPrompt(ProviderType providerType, string requestDescription, string? templateOverride = null)
 	{
 		var description = string.IsNullOrWhiteSpace(requestDescription)
 			? "No task description was provided."
 			: requestDescription.Trim();
 
-		var sb = new StringBuilder();
-		sb.AppendLine("Explore the codebase and write an implementation-ready plan for the request below.");
-		sb.AppendLine("Read-only planning only. Do not edit files, run shell commands, or make commits.");
-		sb.AppendLine("A separate execution agent will implement the approved plan.");
-		sb.AppendLine();
-		sb.AppendLine("## Request");
-		sb.AppendLine(description);
-		sb.AppendLine();
-		sb.AppendLine("## Plan");
-		sb.AppendLine("1. Outcome");
-		sb.AppendLine("2. User Experience");
-		sb.AppendLine("3. Affected Areas");
-		sb.AppendLine("4. Implementation Steps");
-		sb.AppendLine("5. Edge Cases");
-		sb.AppendLine("6. Verification");
-		sb.AppendLine();
-		sb.AppendLine("Return only the plan. Do not implement the feature or include code samples.");
-		return sb.ToString().TrimEnd();
+		var template = string.IsNullOrWhiteSpace(templateOverride)
+			? PromptBuilder.DefaultPlanningPromptTemplate
+			: templateOverride;
+
+		return template.Replace(PromptBuilder.RequestToken, description, StringComparison.Ordinal).TrimEnd();
 	}
 
 	public static string? ExtractExecutionText(ExecutionResult result)

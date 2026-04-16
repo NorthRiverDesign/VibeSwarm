@@ -26,46 +26,27 @@
 			</div>
 		</div>
 
-		<div class="dropdown flex-shrink-0">
-			<button class="btn btn-sm btn-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown"
-					aria-expanded="false" title="User actions">
-				<i class="bi bi-gear"></i>
-			</button>
-			<ul class="dropdown-menu dropdown-menu-end">
-				<li>
-					<button class="dropdown-item" @onclick="@(() => OnResetPassword.InvokeAsync(User))">
-						<i class="bi bi-key me-2"></i>Reset Password
-					</button>
-				</li>
-				<li>
-					<button class="dropdown-item" @onclick="@(() => OnEditRole.InvokeAsync(User))">
-						<i class="bi bi-pencil me-2"></i>Edit Role
-					</button>
-				</li>
-				<li>
-					<button class="dropdown-item" @onclick="@(() => OnToggleActive.InvokeAsync(User))"
-							disabled="@(User.Id == CurrentUserId && User.IsActive)">
-						<i class="bi bi-@(User.IsActive ? "x-circle" : "check-circle") me-2"></i>
-						@if (User.Id == CurrentUserId && User.IsActive)
-						{
-							<span class="text-body-secondary">Cannot deactivate yourself</span>
-						}
-						else
-						{
-							@(User.IsActive ? "Deactivate" : "Activate")
-						}
-					</button>
-				</li>
-				<li>
-					<hr class="dropdown-divider">
-				</li>
-				<li>
-					<button class="dropdown-item text-danger" @onclick="@(() => OnDelete.InvokeAsync(User))">
-						<i class="bi bi-trash me-2"></i>Delete
-					</button>
-				</li>
-			</ul>
-		</div>
+		<RowActionsDropdown AriaLabel="User actions">
+			<RowActionsItem Icon="key" Text="Reset Password"
+							OnClick="@(() => OnResetPassword.InvokeAsync(User))" />
+			<RowActionsItem Icon="pencil" Text="Edit Role"
+							OnClick="@(() => OnEditRole.InvokeAsync(User))" />
+			<RowActionsItem Icon="@(User.IsActive ? "x-circle" : "check-circle")"
+							OnClick="@(() => OnToggleActive.InvokeAsync(User))"
+							Disabled="@(User.Id == CurrentUserId && User.IsActive)">
+				@if (User.Id == CurrentUserId && User.IsActive)
+				{
+					<span class="text-body-secondary">Cannot deactivate yourself</span>
+				}
+				else
+				{
+					@(User.IsActive ? "Deactivate" : "Activate")
+				}
+			</RowActionsItem>
+			<RowActionsDivider />
+			<RowActionsItem Icon="trash" Text="Delete" Danger="true"
+							OnClick="@(() => OnDelete.InvokeAsync(User))" />
+		</RowActionsDropdown>
 	</div>
 </li>
 

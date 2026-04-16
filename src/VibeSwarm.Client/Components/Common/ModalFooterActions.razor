@@ -1,0 +1,52 @@
+@* Standard Cancel + Submit modal footer. Supports click-handler or form-submit primary action. *@
+
+<div class="d-flex justify-content-end gap-2 flex-wrap">
+	@if (OnCancel.HasDelegate)
+	{
+		<ActionButton Icon="@CancelIcon" Text="@CancelText"
+					  Style="ActionButton.ButtonStyle.Secondary"
+					  OnClick="OnCancel" Disabled="@Busy" />
+	}
+	@if (OnSubmit.HasDelegate || IsSubmit || !string.IsNullOrEmpty(SubmitFormId))
+	{
+		<ActionButton Type="@((IsSubmit || !string.IsNullOrEmpty(SubmitFormId)) ? "submit" : "button")"
+					  Form="@SubmitFormId"
+					  Icon="@SubmitIcon"
+					  Text="@SubmitText"
+					  LoadingText="@SubmitLoadingText"
+					  Style="@SubmitStyle"
+					  OnClick="OnSubmit"
+					  IsLoading="@Busy"
+					  Disabled="@SubmitDisabled" />
+	}
+	@ExtraActions
+</div>
+
+@code {
+	/// <summary>Click handler for the cancel button. Omit to hide the cancel button entirely.</summary>
+	[Parameter] public EventCallback OnCancel { get; set; }
+	[Parameter] public string CancelText { get; set; } = "Cancel";
+	[Parameter] public string? CancelIcon { get; set; }
+
+	/// <summary>Click handler for the submit/primary action. Omit when using <see cref="SubmitFormId"/>.</summary>
+	[Parameter] public EventCallback OnSubmit { get; set; }
+
+	/// <summary>When set, the submit button is rendered with <c>type="submit"</c> targeting this form id.</summary>
+	[Parameter] public string? SubmitFormId { get; set; }
+
+	/// <summary>Render the submit button as <c>type="submit"</c> without a form id.
+	/// Use when the footer is a child of an EditForm (the button submits its enclosing form).</summary>
+	[Parameter] public bool IsSubmit { get; set; }
+
+	[Parameter] public string SubmitText { get; set; } = "Save";
+	[Parameter] public string? SubmitIcon { get; set; }
+	[Parameter] public string? SubmitLoadingText { get; set; }
+	[Parameter] public ActionButton.ButtonStyle SubmitStyle { get; set; } = ActionButton.ButtonStyle.Primary;
+	[Parameter] public bool SubmitDisabled { get; set; }
+
+	/// <summary>When true, disables cancel and shows a spinner on submit.</summary>
+	[Parameter] public bool Busy { get; set; }
+
+	/// <summary>Optional slot for extra buttons appended after the submit button.</summary>
+	[Parameter] public RenderFragment? ExtraActions { get; set; }
+}

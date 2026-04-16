@@ -168,7 +168,7 @@ else
 <option value="">Use project/provider default</option>
 @foreach (var model in AvailableModels.Where(m => m.IsAvailable))
 {
-<option value="@model.ModelId">@(model.DisplayName ?? model.ModelId)@(model.IsDefault ? " (default)" : "")</option>
+<option value="@model.ModelId">@(model.DisplayName ?? model.ModelId)@(model.IsDefault ? " (default)" : "")@(model.RetiresOn.HasValue ? $" — retires {model.RetiresOn.Value:yyyy-MM-dd}" : "")</option>
 }
 }
 </InputSelect>
@@ -327,9 +327,9 @@ rows="4" placeholder="Instructions for reviewing progress between cycles..." />
 </EditForm>
 </ChildContent>
 <FooterContent>
-<ActionButton Text="Cancel" OnClick="Close" Disabled="@IsSaving" />
-<ActionButton Type="submit" Form="@_formId" Style="ActionButton.ButtonStyle.Primary"
-			  Icon="plus-lg" Text="Create Job" LoadingText="Creating..." IsLoading="@IsSaving" />
+<ModalFooterActions OnCancel="Close" Busy="@IsSaving"
+					SubmitFormId="@_formId" SubmitIcon="plus-lg"
+					SubmitText="Create Job" SubmitLoadingText="Creating..." />
 </FooterContent>
 </ModalDialog>
 

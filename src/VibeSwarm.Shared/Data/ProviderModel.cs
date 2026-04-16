@@ -68,4 +68,10 @@ public class ProviderModel
 	/// When this model record was last updated
 	/// </summary>
 	public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+
+	/// <summary>
+	/// Upstream retirement date announced by the provider (null when evergreen).
+	/// When set, the model picker displays a "Retires YYYY-MM-DD" badge.
+	/// </summary>
+	public DateTime? RetiresOn { get; set; }
 }

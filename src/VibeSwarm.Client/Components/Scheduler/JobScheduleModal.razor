@@ -245,15 +245,11 @@
 				</div>
 			}
 
-			<div class="d-flex gap-2 justify-content-end mt-4">
-				<button type="button" class="btn btn-secondary" @onclick="HandleCancel">Cancel</button>
-				<button type="submit" class="btn btn-primary" disabled="@IsSaving">
-					@if (IsSaving)
-					{
-						<span class="spinner-border spinner-border-sm me-1" role="status"></span>
-					}
-					@(IsSaving ? "Saving..." : (IsEdit ? "Update Schedule" : "Add Schedule"))
-				</button>
+			<div class="mt-4">
+				<ModalFooterActions OnCancel="HandleCancel" Busy="@IsSaving" IsSubmit="true"
+									SubmitText="@(IsEdit ? "Update Schedule" : "Add Schedule")"
+									SubmitLoadingText="Saving..."
+									SubmitIcon="@(IsEdit ? "check-lg" : "plus-lg")" />
 			</div>
 		</EditForm>
 	</ChildContent>

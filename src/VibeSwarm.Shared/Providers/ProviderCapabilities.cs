@@ -92,7 +92,10 @@ public static class ProviderCapabilities
 
 	public static IReadOnlyList<string> GetSupportedReasoningEfforts(ProviderType providerType, ProviderConnectionMode mode) => (providerType, mode) switch
 	{
-		(ProviderType.Claude, ProviderConnectionMode.CLI) => ["low", "medium", "high", "max"],
+		// Claude Code v2.1.72+ restructured effort levels: low/standard/high/xhigh/max.
+		// "max" is Opus 4.7 only; other models silently downgrade to "high".
+		(ProviderType.Claude, ProviderConnectionMode.CLI) => ["low", "standard", "high", "xhigh", "max"],
+		(ProviderType.Claude, ProviderConnectionMode.SDK) => ["low", "standard", "high", "xhigh", "max"],
 		(ProviderType.Copilot, ProviderConnectionMode.CLI) => ["low", "medium", "high", "xhigh"],
 		(ProviderType.Copilot, ProviderConnectionMode.SDK) => ["low", "medium", "high", "xhigh"],
 		(ProviderType.OpenCode, _) => ["minimal", "low", "medium", "high", "xhigh", "max"],
@@ -103,11 +106,31 @@ public static class ProviderCapabilities
 		=> GetSupportedReasoningEfforts(provider.Type, provider.ConnectionMode);
 
 	public static string? NormalizeReasoningEffort(string? reasoningEffort)
-		=> string.IsNullOrWhiteSpace(reasoningEffort) ? null : reasoningEffort.Trim().ToLowerInvariant();
+	{
+		if (string.IsNullOrWhiteSpace(reasoningEffort)) return null;
+		return reasoningEffort.Trim().ToLowerInvariant();
+	}
+
+	/// <summary>
+	/// Normalizes an effort value for a specific provider, applying legacy aliases
+	/// (e.g. Claude's old "medium" is now "standard" after the v2.1.72 rename).
+	/// </summary>
+	public static string? NormalizeReasoningEffort(Provider provider, string? reasoningEffort)
+	{
+		var normalized = NormalizeReasoningEffort(reasoningEffort);
+		if (normalized == null) return null;
+
+		if (provider.Type == ProviderType.Claude && normalized == "medium")
+		{
+			return "standard";
+		}
+
+		return normalized;
+	}
 
 	public static bool SupportsReasoningEffort(Provider provider, string? reasoningEffort)
 	{
-		var normalized = NormalizeReasoningEffort(reasoningEffort);
+		var normalized = NormalizeReasoningEffort(provider, reasoningEffort);
 		if (normalized == null)
 		{
 			return true;

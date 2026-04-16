@@ -153,11 +153,11 @@ else
 								  Text="@(schedule.IsEnabled ? "Pause" : "Resume")"
 								  Size="ActionButton.ButtonSize.Small"
 								  OnClick="@(() => ToggleScheduleAsync(schedule))" />
-					<ActionButton Icon="pencil" Text="Edit" Size="ActionButton.ButtonSize.Small"
-								  HideTextOnMobile="true" OnClick="@(() => EditSchedule(schedule))" />
-					<ActionButton Icon="trash" Text="Delete" Size="ActionButton.ButtonSize.Small"
-								  Style="ActionButton.ButtonStyle.Danger" HideTextOnMobile="true"
-								  OnClick="@(() => ShowDeleteConfirmation(schedule))" />
+					<RowActionsDropdown>
+						<RowActionsItem Icon="pencil" Text="Edit" OnClick="@(() => EditSchedule(schedule))" />
+						<RowActionsItem Icon="trash" Text="Delete" Danger="true"
+										OnClick="@(() => ShowDeleteConfirmation(schedule))" />
+					</RowActionsDropdown>
 				</div>
 			</div>
 		}

@@ -26,9 +26,11 @@ public partial class IdeaService : IIdeaService
 	private readonly ILogger<IdeaService> _logger;
 
 	/// <summary>
-	/// Global lock to prevent race conditions when converting ideas to jobs
+	/// Per-idea locks to prevent concurrent conversion of the same idea into multiple jobs,
+	/// while still allowing different ideas to dispatch in parallel.
+	/// Entries are pruned inside <see cref="ConvertToJobAsync"/> on release.
 	/// </summary>
-	private static readonly SemaphoreSlim _ideaConversionLock = new(1, 1);
+	private static readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, SemaphoreSlim> _ideaConversionLocks = new();
 
 	/// <summary>
 	/// Lock for toggling ideas processing state

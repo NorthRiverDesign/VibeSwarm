@@ -1,0 +1,44 @@
+@* Three-dots dropdown for list-item CRUD actions. Consumers compose <RowActionsItem> children. *@
+
+<div class="dropdown flex-shrink-0 @CssClass">
+	<button class="btn @ButtonSizeClass btn-@ButtonStyle dropdown-toggle" type="button"
+			data-bs-toggle="dropdown" aria-expanded="false"
+			aria-label="@AriaLabel"
+			disabled="@Disabled">
+		<i class="bi bi-three-dots-vertical"></i>
+		@if (!string.IsNullOrEmpty(MobileLabel))
+		{
+			<span class="d-inline d-sm-none ms-1">@MobileLabel</span>
+		}
+	</button>
+	<ul class="dropdown-menu @MenuAlignClass">
+		@ChildContent
+	</ul>
+</div>
+
+@code {
+	[Parameter] public RenderFragment? ChildContent { get; set; }
+
+	/// <summary>Extra classes appended to the outer <c>dropdown</c> container.</summary>
+	[Parameter] public string? CssClass { get; set; }
+
+	/// <summary>Label shown next to the icon on XS screens only. Null/empty hides it.</summary>
+	[Parameter] public string? MobileLabel { get; set; }
+
+	/// <summary>ARIA label for the toggle button.</summary>
+	[Parameter] public string AriaLabel { get; set; } = "More actions";
+
+	/// <summary>Bootstrap button style (primary|secondary|danger|...). Defaults to secondary.</summary>
+	[Parameter] public string ButtonStyle { get; set; } = "secondary";
+
+	/// <summary>Button size: "sm" (default), "" (default size), or "lg".</summary>
+	[Parameter] public string ButtonSize { get; set; } = "sm";
+
+	/// <summary>Menu alignment. Defaults to <c>dropdown-menu-end</c> to avoid right-edge clipping on mobile.</summary>
+	[Parameter] public string MenuAlignClass { get; set; } = "dropdown-menu-end";
+
+	/// <summary>When true, disables the toggle button.</summary>
+	[Parameter] public bool Disabled { get; set; }
+
+	private string ButtonSizeClass => string.IsNullOrEmpty(ButtonSize) ? string.Empty : $"btn-{ButtonSize}";
+}

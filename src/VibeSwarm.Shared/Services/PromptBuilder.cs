@@ -17,6 +17,32 @@ public static class PromptBuilder
 	private const int MaxSkillSummaryLength = 160;
 	public const string IdeaToken = "{{idea}}";
 	public const string SpecificationToken = "{{specification}}";
+	public const string RequestToken = "{{request}}";
+
+	/// <summary>
+	/// Default template for the read-only planning stage. Substitutes <see cref="RequestToken"/>.
+	/// Consumed by <see cref="ProviderPlanningHelper.BuildPlanningPrompt"/> so planning-stage agents
+	/// share the same templating mechanism as idea expansion and implementation.
+	/// </summary>
+	public static string DefaultPlanningPromptTemplate =>
+		"""
+		Explore the codebase and write an implementation-ready plan for the request below.
+		Read-only planning only. Do not edit files, run shell commands, or make commits.
+		A separate execution agent will implement the approved plan.
+
+		## Request
+		{{request}}
+
+		## Plan
+		1. Outcome
+		2. User Experience
+		3. Affected Areas
+		4. Implementation Steps
+		5. Edge Cases
+		6. Verification
+
+		Return only the plan. Do not implement the feature or include code samples.
+		""";
 
 	public static string DefaultIdeaExpansionPromptTemplate =>
 		"""

@@ -37,12 +37,18 @@
 								{
 									<small class="@(model.IsDefault ? "" : "text-body-secondary")">@model.Description</small>
 								}
-								<small class="@(model.IsDefault ? "" : "text-body-tertiary") d-flex align-items-center gap-1">
+								<small class="@(model.IsDefault ? "" : "text-body-tertiary") d-flex align-items-center gap-1 flex-wrap">
 									@model.ModelId
 									@if (model.PriceMultiplier.HasValue)
 									{
 										<span class="badge @(model.IsDefault ? "bg-light text-dark" : "bg-secondary-subtle text-secondary-emphasis")">
 											@(model.PriceMultiplier.Value)x
+										</span>
+									}
+									@if (model.RetiresOn.HasValue)
+									{
+										<span class="badge bg-warning-subtle text-warning-emphasis" title="@($"Upstream retirement: {model.RetiresOn.Value:yyyy-MM-dd}")">
+											<i class="bi bi-exclamation-triangle me-1"></i>Retires @model.RetiresOn.Value.ToString("yyyy-MM-dd")
 										</span>
 									}
 								</small>

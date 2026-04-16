@@ -69,64 +69,27 @@
 						<ActionButton Icon="lightning" Text="Test" Size="ActionButton.ButtonSize.Small" HideTextOnMobile="true"
 									  IsLoading="IsTesting" OnClick="HandleTestConnection" />
 
-						<div class="dropdown">
-							<button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
-									id="provider-menu-@Provider.Id" data-bs-toggle="dropdown" aria-expanded="false"
-									title="Provider actions">
-								<i class="bi bi-gear"></i>
-							</button>
-							<ul class="dropdown-menu dropdown-menu-end" aria-labelledby="provider-menu-@Provider.Id">
-								<li>
-									<button class="dropdown-item" @onclick="HandleRefreshModels"
-											@onclick:stopPropagation="true" disabled="@IsRefreshingModels">
-										<i class="bi bi-arrow-repeat me-2 @(IsRefreshingModels ? "spin" : "")"></i>
-										Refresh Models
-									</button>
-								</li>
-								<li>
-									<button class="dropdown-item" @onclick="HandleUpdateCli"
-											@onclick:stopPropagation="true"
-											disabled="@(IsUpdatingCli || Provider.ConnectionMode == ProviderConnectionMode.SDK)">
-										<i class="bi bi-download me-2 @(IsUpdatingCli ? "spin" : "")"></i>
-										@(Provider.ConnectionMode == ProviderConnectionMode.SDK ? "Update via NuGet" : "Update CLI")
-									</button>
-								</li>
-								<li>
-									<button class="dropdown-item" @onclick="HandleShowSelectDefaultModel"
-											@onclick:stopPropagation="true">
-										<i class="bi bi-star me-2"></i>
-										Select Default Model
-									</button>
-								</li>
-								@if (!Provider.IsDefault)
-								{
-									<li>
-										<button class="dropdown-item" @onclick="HandleMakeDefault"
-												@onclick:stopPropagation="true">
-											<i class="bi bi-check2-circle me-2"></i>
-											Set as Default
-										</button>
-									</li>
-								}
-								<li>
-									<button class="dropdown-item" @onclick="HandleEditProvider"
-											@onclick:stopPropagation="true">
-										<i class="bi bi-pencil me-2"></i>
-										Edit
-									</button>
-								</li>
-								<li>
-									<hr class="dropdown-divider">
-								</li>
-								<li>
-									<button class="dropdown-item text-danger"
-											@onclick="HandleDeleteProvider" @onclick:stopPropagation="true">
-										<i class="bi bi-trash me-2"></i>
-										Delete
-									</button>
-								</li>
-							</ul>
-						</div>
+						<RowActionsDropdown AriaLabel="Provider actions">
+							<RowActionsItem Icon="arrow-repeat" IconSpin="@IsRefreshingModels"
+											Text="Refresh Models"
+											OnClick="HandleRefreshModels"
+											Disabled="@IsRefreshingModels" />
+							<RowActionsItem Icon="download" IconSpin="@IsUpdatingCli"
+											Text="@(Provider.ConnectionMode == ProviderConnectionMode.SDK ? "Update via NuGet" : "Update CLI")"
+											OnClick="HandleUpdateCli"
+											Disabled="@(IsUpdatingCli || Provider.ConnectionMode == ProviderConnectionMode.SDK)" />
+							<RowActionsItem Icon="star" Text="Select Default Model"
+											OnClick="HandleShowSelectDefaultModel" />
+							@if (!Provider.IsDefault)
+							{
+								<RowActionsItem Icon="check2-circle" Text="Set as Default"
+												OnClick="HandleMakeDefault" />
+							}
+							<RowActionsItem Icon="pencil" Text="Edit" OnClick="HandleEditProvider" />
+							<RowActionsDivider />
+							<RowActionsItem Icon="trash" Text="Delete" Danger="true"
+											OnClick="HandleDeleteProvider" />
+						</RowActionsDropdown>
 					</div>
 				</div>
 			</div>
@@ -141,9 +104,13 @@
 			<div class="d-flex flex-wrap gap-1 mt-1">
 				@foreach (var model in availableModels.Take(5))
 				{
-					<span class="badge @(model.IsDefault ? "bg-primary bg-opacity-75" : "bg-secondary-subtle text-secondary-emphasis")"
-						  title="@model.ModelId">
+					<span class="badge @(model.IsDefault ? "bg-primary bg-opacity-75" : "bg-secondary-subtle text-secondary-emphasis") d-inline-flex align-items-center gap-1"
+						  title="@(model.RetiresOn.HasValue ? $"{model.ModelId} — retires {model.RetiresOn.Value:yyyy-MM-dd}" : model.ModelId)">
 						@(model.DisplayName ?? model.ModelId)
+						@if (model.RetiresOn.HasValue)
+						{
+							<i class="bi bi-exclamation-triangle text-warning-emphasis"></i>
+						}
 					</span>
 				}
 				@if (availableModels.Count > 5)

@@ -13,8 +13,10 @@ public partial class IdeaService
 {
 	public async Task<Job?> ConvertToJobAsync(Guid ideaId, IdeaProcessingOptions? options = null, CancellationToken cancellationToken = default)
 	{
-		// Use a lock to prevent race conditions when multiple users click "Start" simultaneously
-		await _ideaConversionLock.WaitAsync(cancellationToken);
+		// Per-idea lock: prevents the same idea from being dispatched twice while still
+		// allowing different ideas to run through conversion concurrently.
+		var ideaLock = _ideaConversionLocks.GetOrAdd(ideaId, _ => new SemaphoreSlim(1, 1));
+		await ideaLock.WaitAsync(cancellationToken);
 		try
 		{
 			// Re-fetch the idea inside the lock to ensure we have the latest state
@@ -112,7 +114,14 @@ public partial class IdeaService
 		}
 		finally
 		{
-			_ideaConversionLock.Release();
+			ideaLock.Release();
+			// Best-effort prune: drop the per-idea semaphore once no one else is waiting
+			// so the dictionary doesn't grow unbounded over long-lived app lifetimes.
+			if (ideaLock.CurrentCount == 1 && _ideaConversionLocks.TryRemove(ideaId, out var removed) && !ReferenceEquals(removed, ideaLock))
+			{
+				// A different semaphore was registered for this id since we began; re-register it.
+				_ideaConversionLocks.TryAdd(ideaId, removed);
+			}
 		}
 	}
 

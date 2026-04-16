@@ -1367,6 +1367,10 @@ public class CopilotProvider : CliProviderBase
                 Currency = "USD",
                 ModelMultipliers = new Dictionary<string, decimal>()
             },
+            ModelRetirementDates = new Dictionary<string, DateTime>
+            {
+                ["claude-sonnet-4"] = new DateTime(2026, 6, 15, 0, 0, 0, DateTimeKind.Utc),
+            },
             AdditionalInfo = new Dictionary<string, object>
             {
                 ["isAvailable"] = true,
