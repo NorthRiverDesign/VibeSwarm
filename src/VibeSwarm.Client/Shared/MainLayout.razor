@@ -18,7 +18,14 @@
 <div class="app-layout d-flex flex-column">
     @* Mobile Header *@
     <header class="app-header d-lg-none sticky-top d-flex align-items-center gap-2 flex-shrink-0 bg-body-secondary border-bottom">
-        <span class="fw-semibold flex-grow-1 min-width-0 ps-1">VibeSwarm</span>
+        <button id="mobile-menu-toggle" class="btn btn-link nav-toggle d-flex align-items-center justify-content-center p-0 bg-transparent border-0 rounded fs-4"
+                @onclick="ToggleMobileMenu" aria-label="Toggle navigation">
+            <i class="bi bi-list"></i>
+        </button>
+        <a class="btn btn-link text-secondary p-0 fs-5 d-flex align-items-center justify-content-center text-decoration-none touch-manipulation mobile-header-icon"
+           href="/" title="Dashboard" aria-label="Dashboard">
+            <i class="bi bi-house-door"></i>
+        </a>
         <div class="ms-auto d-flex align-items-center gap-2">
             <button type="button"
                     class="btn btn-link text-secondary p-0 fs-5 d-flex align-items-center justify-content-center touch-manipulation mobile-header-icon"
@@ -152,8 +159,7 @@
             </div>
         </main>
 
-    <MobileBottomNav IsMoreOpen="_mobileMenuOpen" OnMoreClicked="ToggleMobileMenu" />
-</div>
+    </div>
 
     <AuthenticationKeepAlive />
     <AppUpdateBanner />

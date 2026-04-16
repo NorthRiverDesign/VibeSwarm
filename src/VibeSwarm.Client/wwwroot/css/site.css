@@ -43,7 +43,6 @@
 :root {
 	--vs-sidebar-width: 240px;
 	--vs-header-height: 56px;
-	--vs-bottom-nav-height: 56px;
 	--vs-nav-popout-shadow:
 		0 1.25rem 2.5rem rgba(15, 23, 42, 0.18),
 		0 0.5rem 1rem rgba(15, 23, 42, 0.12);
@@ -237,7 +236,7 @@ body:has(.app-layout) {
 	z-index: 999;
 	transform: translateX(-100%);
 	transition: transform var(--vs-transition);
-	padding-bottom: calc(var(--vs-bottom-nav-height) + var(--vs-safe-area-bottom));
+	padding-bottom: var(--vs-safe-area-bottom);
 	padding-left: var(--vs-safe-area-left);
 }
 .app-sidebar.open {
@@ -262,7 +261,7 @@ body:has(.app-layout) {
 /* Main area — markup uses flex-grow-1 */
 .app-main {
 	min-height: 0;
-	padding-bottom: calc(var(--vs-bottom-nav-height) + var(--vs-safe-area-bottom));
+	padding-bottom: var(--vs-safe-area-bottom);
 	-webkit-overflow-scrolling: touch;
 	overscroll-behavior-y: contain;
 }
@@ -275,9 +274,6 @@ body:has(.app-layout) {
 
 /* Desktop layout */
 @media (min-width: 992px) {
-	:root {
-		--vs-bottom-nav-height: 0px;
-	}
 	.app-sidebar {
 		top: 0;
 		bottom: 0;
@@ -1245,54 +1241,6 @@ body.vs-modal-open .app-main {
 		background-attachment: scroll !important;
 		background-position: center top !important;
 	}
-}
-
-/* ============================================
-   16. MOBILE BOTTOM NAVIGATION BAR
-   Visible on mobile only (d-lg-none on element).
-   --vs-bottom-nav-height drives padding on app-main and app-sidebar.
-============================================ */
-.app-bottom-nav {
-	position: fixed;
-	left: 0;
-	right: 0;
-	bottom: 0;
-	height: calc(var(--vs-bottom-nav-height) + var(--vs-safe-area-bottom));
-	padding-bottom: var(--vs-safe-area-bottom);
-	padding-left: var(--vs-safe-area-left);
-	padding-right: var(--vs-safe-area-right);
-	background: var(--bs-secondary-bg);
-	border-top: 1px solid var(--bs-border-color);
-	z-index: 1000;
-	backdrop-filter: blur(12px);
-	-webkit-backdrop-filter: blur(12px);
-}
-
-.bottom-nav-item {
-	color: var(--bs-secondary-color);
-	font-size: 1.25rem;
-	cursor: pointer;
-	transition: color var(--vs-transition);
-	padding: 0;
-	min-width: 0;
-	-webkit-user-select: none;
-	user-select: none;
-}
-.bottom-nav-item:hover,
-.bottom-nav-item.active {
-	color: var(--bs-primary);
-}
-
-.bottom-nav-label {
-	font-size: 0.625rem;
-	font-weight: 500;
-	letter-spacing: 0.02em;
-	line-height: 1;
-}
-
-/* Floating banners — positioned above the bottom nav on mobile, above viewport edge on desktop */
-.pwa-fixed-banner {
-	bottom: calc(var(--vs-bottom-nav-height) + var(--vs-safe-area-bottom) + 1rem);
 }
 
 /* ============================================
