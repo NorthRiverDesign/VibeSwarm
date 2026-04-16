@@ -76,6 +76,17 @@ var reasoningOptions = assignmentProvider != null ? ProviderCapabilities.GetSupp
 }
 </div>
 }
+@if (agent != null && agent.DefaultCycleMode != CycleMode.SingleCycle)
+{
+<div class="d-flex flex-wrap gap-1 mt-2">
+<span class="badge bg-body-secondary text-body-secondary border" title="Cycle mode from agent defaults">
+<i class="bi bi-arrow-repeat me-1"></i>
+@(agent.DefaultCycleMode == CycleMode.FixedCount
+	? $"{agent.DefaultMaxCycles} fixed cycles"
+	: $"autonomous up to {agent.DefaultMaxCycles} cycles")
+</span>
+</div>
+}
 </div>
 <button type="button" class="btn btn-sm btn-danger" @onclick="() => OnRemove.InvokeAsync(assignment.AgentId)" title="Remove agent">
 <i class="bi bi-x-lg"></i>

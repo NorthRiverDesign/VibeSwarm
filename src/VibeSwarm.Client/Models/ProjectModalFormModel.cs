@@ -153,8 +153,30 @@ public sealed class ProjectModalFormModel : IValidatableObject
 			CommitSummaryInferenceModelId = string.IsNullOrWhiteSpace(CommitSummaryInferenceModelId) ? null : CommitSummaryInferenceModelId.Trim(),
 			CreatedAt = CreatedAt,
 			UpdatedAt = UpdatedAt,
-			ProviderSelections = ProviderSelections.ToList(),
-			AgentAssignments = AgentAssignments.ToList(),
+			ProviderSelections = ProviderSelections.Select(s => new ProjectProvider
+			{
+				Id = s.Id,
+				ProjectId = s.ProjectId,
+				ProviderId = s.ProviderId,
+				Priority = s.Priority,
+				IsEnabled = s.IsEnabled,
+				PreferredModelId = s.PreferredModelId,
+				PreferredReasoningEffort = s.PreferredReasoningEffort,
+				CreatedAt = s.CreatedAt,
+				UpdatedAt = s.UpdatedAt
+			}).ToList(),
+			AgentAssignments = AgentAssignments.Select(a => new ProjectAgent
+			{
+				Id = a.Id,
+				ProjectId = a.ProjectId,
+				AgentId = a.AgentId,
+				ProviderId = a.ProviderId,
+				PreferredModelId = a.PreferredModelId,
+				PreferredReasoningEffort = a.PreferredReasoningEffort,
+				IsEnabled = a.IsEnabled,
+				CreatedAt = a.CreatedAt,
+				UpdatedAt = a.UpdatedAt
+			}).ToList(),
 			Environments = Environments.ToList(),
 			PromptContext = string.IsNullOrWhiteSpace(PromptContext) ? null : PromptContext.Trim(),
 			Memory = string.IsNullOrWhiteSpace(Memory) ? null : Memory.Trim(),
