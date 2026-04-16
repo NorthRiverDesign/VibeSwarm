@@ -296,6 +296,14 @@ else
     private HashSet<int> _expandedItems = new();
     private bool _allExpanded => _changesTabDiffFiles.Count > 0 && _expandedItems.Count == _changesTabDiffFiles.Count;
 
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await LoadDataAsync();
+        }
+    }
+
     public async Task LoadDataAsync()
     {
         if (_isLoadingChangesTab) return;
