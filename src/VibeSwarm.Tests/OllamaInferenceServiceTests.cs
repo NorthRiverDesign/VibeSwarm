@@ -70,7 +70,8 @@ public sealed class OllamaInferenceServiceTests
 			{
 				GenerationTimeout = TimeSpan.FromMilliseconds(50),
 				InitialResponseTimeout = TimeSpan.FromSeconds(1),
-				StreamInactivityTimeout = TimeSpan.FromSeconds(1)
+				StreamInactivityTimeout = TimeSpan.FromSeconds(1),
+				StallDetectionWindow = TimeSpan.FromSeconds(1)
 			});
 
 		var response = await service.GenerateAsync(new InferenceRequest
@@ -82,6 +83,44 @@ public sealed class OllamaInferenceServiceTests
 		Assert.False(response.Success);
 		Assert.Equal("tinyllama", response.ModelUsed);
 		Assert.Contains("Timed out waiting for inference", response.Error, StringComparison.OrdinalIgnoreCase);
+	}
+
+	[Fact]
+	public async Task GenerateAsync_ReturnsStallError_WhenGenerationStopsAfterInitialTokens()
+	{
+		// Stream sends enough tokens to pass the stall threshold, then hangs.
+		var streamBody = string.Join("\n", Enumerable.Range(1, 6).Select(i =>
+			$$"""{"model":"phi4-mini","response":"word{{i}} ","done":false}""")) + "\n";
+
+		var handler = new StubHttpMessageHandler(async (_, ct) =>
+		{
+			return new HttpResponseMessage(HttpStatusCode.OK)
+			{
+				Content = new HangingStreamContent(streamBody, ct)
+			};
+		});
+
+		var service = CreateService(
+			handler,
+			new OllamaInferenceService.RuntimeOptions
+			{
+				GenerationTimeout = TimeSpan.FromSeconds(30),
+				InitialResponseTimeout = TimeSpan.FromSeconds(5),
+				StreamInactivityTimeout = TimeSpan.FromSeconds(5),
+				StallDetectionWindow = TimeSpan.FromMilliseconds(200),
+				StallDetectionTokenThreshold = 5
+			});
+
+		var response = await service.GenerateAsync(new InferenceRequest
+		{
+			Model = "phi4-mini",
+			Prompt = "Tell me something."
+		});
+
+		Assert.False(response.Success);
+		Assert.Equal("phi4-mini", response.ModelUsed);
+		Assert.Contains("stopped generating", response.Error, StringComparison.OrdinalIgnoreCase);
+		Assert.Contains("out of memory", response.Error, StringComparison.OrdinalIgnoreCase);
 	}
 
 	[Fact]
@@ -239,5 +278,87 @@ public sealed class OllamaInferenceServiceTests
 
 		public Task<InferenceModel?> GetModelForTaskAsync(string taskType, CancellationToken ct = default)
 			=> Task.FromResult(fallbackModel);
+	}
+
+	/// <summary>
+	/// HttpContent that delivers <paramref name="initialBody"/> immediately then blocks
+	/// indefinitely until the request cancellation token fires. Simulates a model that
+	/// starts generating tokens then stalls mid-stream (e.g. OOM on low-RAM hardware).
+	/// </summary>
+	private sealed class HangingStreamContent : HttpContent
+	{
+		private readonly byte[] _initialBytes;
+		private readonly CancellationToken _requestCt;
+
+		public HangingStreamContent(string initialBody, CancellationToken requestCt)
+		{
+			_initialBytes = Encoding.UTF8.GetBytes(initialBody);
+			_requestCt = requestCt;
+			Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/x-ndjson");
+		}
+
+		protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context)
+			=> throw new NotSupportedException("Use ReadAsStreamAsync instead.");
+
+		protected override bool TryComputeLength(out long length)
+		{
+			length = 0;
+			return false;
+		}
+
+		protected override Task<Stream> CreateContentReadStreamAsync(CancellationToken ct)
+			=> Task.FromResult<Stream>(new HangingStream(_initialBytes, _requestCt));
+	}
+
+	/// <summary>
+	/// Stream that returns pre-buffered bytes synchronously, then blocks indefinitely
+	/// until any cancellation token fires. Simulates a mid-stream model stall.
+	/// </summary>
+	private sealed class HangingStream : Stream
+	{
+		private readonly byte[] _buffer;
+		private int _position;
+		private readonly CancellationToken _externalCt;
+
+		public HangingStream(byte[] buffer, CancellationToken externalCt)
+		{
+			_buffer = buffer;
+			_externalCt = externalCt;
+		}
+
+		public override bool CanRead => true;
+		public override bool CanSeek => false;
+		public override bool CanWrite => false;
+		public override long Length => throw new NotSupportedException();
+		public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+
+		public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+		{
+			if (_position < _buffer.Length)
+			{
+				var toRead = Math.Min(buffer.Length, _buffer.Length - _position);
+				_buffer.AsSpan(_position, toRead).CopyTo(buffer.Span);
+				_position += toRead;
+				return ValueTask.FromResult(toRead);
+			}
+			return BlockUntilCancelledAsync(cancellationToken);
+		}
+
+		private async ValueTask<int> BlockUntilCancelledAsync(CancellationToken cancellationToken)
+		{
+			using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _externalCt);
+			try { await Task.Delay(Timeout.Infinite, linked.Token).ConfigureAwait(false); }
+			catch (OperationCanceledException) { }
+			return 0;
+		}
+
+		public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+			=> ReadAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
+
+		public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+		public override void Flush() { }
+		public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+		public override void SetLength(long value) => throw new NotSupportedException();
+		public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
 	}
 }
