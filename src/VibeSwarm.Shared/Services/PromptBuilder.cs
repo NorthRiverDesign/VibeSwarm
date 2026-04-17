@@ -221,6 +221,42 @@ public static class PromptBuilder
 		return sb.ToString().TrimEnd();
 	}
 
+	public static string BuildRecoveryPrompt(
+		string basePrompt,
+		string? recoveryPrompt,
+		string? recentConsoleOutput,
+		string? lastResumeFailureReason,
+		bool forceFreshSession)
+	{
+		var effectivePrompt = string.IsNullOrWhiteSpace(recoveryPrompt)
+			? basePrompt.Trim()
+			: recoveryPrompt.Trim();
+
+		var sb = new StringBuilder();
+		sb.AppendLine(effectivePrompt);
+		sb.AppendLine();
+		sb.AppendLine("<recovery_context>");
+		sb.AppendLine("A previous execution of this exact job was interrupted before completion.");
+		sb.AppendLine(forceFreshSession
+			? "The previous provider session could not be resumed. Start a fresh session, inspect the recovery context below, and continue from the current repository state without redoing completed work."
+			: "Resume from the existing provider session if it is still available. Before making changes, inspect the current repository state and continue from where the interrupted run left off.");
+
+		if (!string.IsNullOrWhiteSpace(lastResumeFailureReason))
+		{
+			sb.AppendLine($"Last resume failure: {lastResumeFailureReason.Trim()}");
+		}
+
+		if (!string.IsNullOrWhiteSpace(recentConsoleOutput))
+		{
+			sb.AppendLine("<recent_console_output>");
+			sb.AppendLine(recentConsoleOutput.Trim());
+			sb.AppendLine("</recent_console_output>");
+		}
+
+		sb.AppendLine("</recovery_context>");
+		return sb.ToString().TrimEnd();
+	}
+
 	public static string BuildIdeaExpansionPrompt(string ideaDescription, string? template = null)
 	{
 		return ApplyIdeaPromptTemplate(

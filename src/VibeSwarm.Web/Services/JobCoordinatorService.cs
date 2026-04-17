@@ -20,6 +20,23 @@ public class JobCoordinatorService : IJobCoordinatorService
 
 	private sealed record ProviderCandidate(Provider Provider, ProjectProvider? ProjectSelection, ProviderHealth Health, double Score);
 
+	private static DateTime? GetLaterCooldown(DateTime? firstCooldownUntil, DateTime? secondCooldownUntil)
+	{
+		if (!firstCooldownUntil.HasValue)
+		{
+			return secondCooldownUntil;
+		}
+
+		if (!secondCooldownUntil.HasValue)
+		{
+			return firstCooldownUntil;
+		}
+
+		return firstCooldownUntil.Value >= secondCooldownUntil.Value
+			? firstCooldownUntil
+			: secondCooldownUntil;
+	}
+
 	/// <summary>
 	/// Maximum number of jobs that can be assigned to a single provider at once
 	/// </summary>
@@ -74,23 +91,25 @@ public class JobCoordinatorService : IJobCoordinatorService
 				{
 					var providerIsAllowed = allowedProviderIds.Count == 0 || allowedProviderIds.Contains(assignedProvider.Id);
 					var health = _healthTracker.GetProviderHealth(assignedProvider.Id);
+					var cooldownUntil = await GetProviderCooldownUntilAsync(assignedProvider.Id, health, dbContext, cancellationToken);
 					var exhaustionWarning = usageService != null
 						? await usageService.CheckExhaustionAsync(assignedProvider.Id, cancellationToken: cancellationToken)
 						: null;
-					if (providerIsAllowed && health.IsHealthy && health.CurrentLoad < MaxJobsPerProvider && exhaustionWarning?.IsExhausted != true)
+					if (providerIsAllowed && !cooldownUntil.HasValue && health.IsHealthy && health.CurrentLoad < MaxJobsPerProvider && exhaustionWarning?.IsExhausted != true)
 					{
 						_logger.LogDebug("Using assigned provider {ProviderId} for job {JobId}",
 							assignedProvider.Id, job.Id);
 						return assignedProvider;
 					}
 
-					_logger.LogWarning("Assigned provider {ProviderId} is not eligible for job {JobId}. Allowed={Allowed}, Healthy={Healthy}, Load={Load}, Exhausted={Exhausted}",
+					_logger.LogWarning("Assigned provider {ProviderId} is not eligible for job {JobId}. Allowed={Allowed}, Healthy={Healthy}, Load={Load}, Exhausted={Exhausted}, CooldownUntil={CooldownUntil}",
 						assignedProvider.Id,
 						job.Id,
 						providerIsAllowed,
 						health.IsHealthy,
 						health.CurrentLoad,
-						exhaustionWarning?.IsExhausted == true);
+						exhaustionWarning?.IsExhausted == true,
+						cooldownUntil);
 				}
 			}
 
@@ -129,11 +148,12 @@ public class JobCoordinatorService : IJobCoordinatorService
 			var eligibleProviders = new List<ProviderCandidate>();
 			foreach (var providerCandidate in scoredProviders)
 			{
+				var cooldownUntil = await GetProviderCooldownUntilAsync(providerCandidate.Provider.Id, providerCandidate.Health, dbContext, cancellationToken);
 				var exhaustionWarning = usageService != null
 					? await usageService.CheckExhaustionAsync(providerCandidate.Provider.Id, cancellationToken: cancellationToken)
 					: null;
 
-				if (!providerCandidate.Health.IsHealthy || providerCandidate.Health.CurrentLoad >= MaxJobsPerProvider || exhaustionWarning?.IsExhausted == true)
+				if (cooldownUntil.HasValue || !providerCandidate.Health.IsHealthy || providerCandidate.Health.CurrentLoad >= MaxJobsPerProvider || exhaustionWarning?.IsExhausted == true)
 				{
 					continue;
 				}
@@ -195,6 +215,14 @@ public class JobCoordinatorService : IJobCoordinatorService
 
 			// Verify provider health
 			var health = _healthTracker.GetProviderHealth(providerId);
+			var cooldownUntil = await GetProviderCooldownUntilAsync(providerId, health, dbContext, cancellationToken);
+			if (cooldownUntil.HasValue)
+			{
+				_logger.LogWarning("Cannot assign job {JobId} to provider {ProviderId} while it is cooling down until {CooldownUntil:u}",
+					jobId, providerId, cooldownUntil.Value);
+				return false;
+			}
+
 			if (!health.IsHealthy)
 			{
 				_logger.LogWarning("Cannot assign job {JobId} to unhealthy provider {ProviderId}", jobId, providerId);
@@ -313,6 +341,31 @@ public class JobCoordinatorService : IJobCoordinatorService
 				}
 			}
 		}
+	}
+
+	private async Task<DateTime?> GetProviderCooldownUntilAsync(
+		Guid providerId,
+		ProviderHealth health,
+		VibeSwarmDbContext dbContext,
+		CancellationToken cancellationToken)
+	{
+		var now = DateTime.UtcNow;
+		var persistedCooldownUntil = await dbContext.ProviderUsageSummaries
+			.AsNoTracking()
+			.Where(summary => summary.ProviderId == providerId)
+			.Select(summary => summary.NextExecutionAvailableAt)
+			.FirstOrDefaultAsync(cancellationToken);
+
+		if (persistedCooldownUntil.HasValue && persistedCooldownUntil.Value <= now)
+		{
+			persistedCooldownUntil = null;
+		}
+
+		var trackedCooldownUntil = health.IsRateLimited && health.RateLimitResetTime.HasValue && health.RateLimitResetTime.Value > now
+			? health.RateLimitResetTime.Value
+			: (DateTime?)null;
+
+		return GetLaterCooldown(persistedCooldownUntil, trackedCooldownUntil);
 	}
 
 	/// <summary>

@@ -479,7 +479,8 @@ public class CopilotSdkProvider : SdkProviderBase
 				progress?.Report(new ExecutionProgress
 				{
 					CurrentMessage = $"Connected. Session: {session.SessionId}",
-					IsStreaming = false
+					IsStreaming = false,
+					SessionId = session.SessionId
 				});
 
 				// Subscribe to all session events

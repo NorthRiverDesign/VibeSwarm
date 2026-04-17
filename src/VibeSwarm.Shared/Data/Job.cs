@@ -55,17 +55,17 @@ public enum GitCheckpointStatus
 
 public class Job
 {
-	private Guid _id;
+    private Guid _id;
 
     public Guid Id
-	{
-		get => _id;
-		set
-		{
-			_id = value;
-			SyncStatisticsKeys();
-		}
-	}
+    {
+        get => _id;
+        set
+        {
+            _id = value;
+            SyncStatisticsKeys();
+        }
+    }
 
     /// <summary>
     /// Short display title for the job. For manual jobs, this is derived from the goal prompt.
@@ -94,15 +94,15 @@ public class Job
     public Guid ProjectId { get; set; }
     public Project? Project { get; set; }
 
-	public Guid ProviderId { get; set; }
+    public Guid ProviderId { get; set; }
     public Provider? Provider { get; set; }
 
-	public bool IsScheduled { get; set; }
-	public Guid? JobScheduleId { get; set; }
-	public JobSchedule? JobSchedule { get; set; }
-	public Guid? JobTemplateId { get; set; }
-	public JobTemplate? JobTemplate { get; set; }
-	public DateTime? ScheduledForUtc { get; set; }
+    public bool IsScheduled { get; set; }
+    public Guid? JobScheduleId { get; set; }
+    public JobSchedule? JobSchedule { get; set; }
+    public Guid? JobTemplateId { get; set; }
+    public JobTemplate? JobTemplate { get; set; }
+    public DateTime? ScheduledForUtc { get; set; }
 
     /// <summary>
     /// The AI model that was used to execute this job (e.g., "claude-sonnet-4-20250514")
@@ -122,11 +122,11 @@ public class Job
     /// </summary>
     public string? PlanningOutput { get; set; }
 
-	/// <summary>
-	/// Provider that generated the persisted planning output, if any.
-	/// </summary>
-	public Guid? PlanningProviderId { get; set; }
-	public Provider? PlanningProvider { get; set; }
+    /// <summary>
+    /// Provider that generated the persisted planning output, if any.
+    /// </summary>
+    public Guid? PlanningProviderId { get; set; }
+    public Provider? PlanningProvider { get; set; }
 
     /// <summary>
     /// Model that generated the persisted planning output, if any.
@@ -140,64 +140,64 @@ public class Job
     [StringLength(VibeSwarm.Shared.Validation.ValidationLimits.ReasoningEffortMaxLength)]
     public string? PlanningReasoningEffortUsed { get; set; }
 
-	/// <summary>
-	/// When the persisted planning output was last generated.
-	/// </summary>
-	public DateTime? PlanningGeneratedAt { get; set; }
+    /// <summary>
+    /// When the persisted planning output was last generated.
+    /// </summary>
+    public DateTime? PlanningGeneratedAt { get; set; }
 
-	/// <summary>
-	/// Input tokens consumed while generating the persisted planning output.
-	/// </summary>
-	[NotMapped]
-	public int? PlanningInputTokens
-	{
-		get => PlanningStatistics?.InputTokens;
-		set
-		{
-			if (value is null && PlanningStatistics is null)
-			{
-				return;
-			}
+    /// <summary>
+    /// Input tokens consumed while generating the persisted planning output.
+    /// </summary>
+    [NotMapped]
+    public int? PlanningInputTokens
+    {
+        get => PlanningStatistics?.InputTokens;
+        set
+        {
+            if (value is null && PlanningStatistics is null)
+            {
+                return;
+            }
 
-			EnsurePlanningStatistics().InputTokens = value;
-		}
-	}
+            EnsurePlanningStatistics().InputTokens = value;
+        }
+    }
 
-	/// <summary>
-	/// Output tokens consumed while generating the persisted planning output.
-	/// </summary>
-	[NotMapped]
-	public int? PlanningOutputTokens
-	{
-		get => PlanningStatistics?.OutputTokens;
-		set
-		{
-			if (value is null && PlanningStatistics is null)
-			{
-				return;
-			}
+    /// <summary>
+    /// Output tokens consumed while generating the persisted planning output.
+    /// </summary>
+    [NotMapped]
+    public int? PlanningOutputTokens
+    {
+        get => PlanningStatistics?.OutputTokens;
+        set
+        {
+            if (value is null && PlanningStatistics is null)
+            {
+                return;
+            }
 
-			EnsurePlanningStatistics().OutputTokens = value;
-		}
-	}
+            EnsurePlanningStatistics().OutputTokens = value;
+        }
+    }
 
-	/// <summary>
-	/// Cost in USD for generating the persisted planning output.
-	/// </summary>
-	[NotMapped]
-	public decimal? PlanningCostUsd
-	{
-		get => PlanningStatistics?.CostUsd;
-		set
-		{
-			if (value is null && PlanningStatistics is null)
-			{
-				return;
-			}
+    /// <summary>
+    /// Cost in USD for generating the persisted planning output.
+    /// </summary>
+    [NotMapped]
+    public decimal? PlanningCostUsd
+    {
+        get => PlanningStatistics?.CostUsd;
+        set
+        {
+            if (value is null && PlanningStatistics is null)
+            {
+                return;
+            }
 
-			EnsurePlanningStatistics().CostUsd = value;
-		}
-	}
+            EnsurePlanningStatistics().CostUsd = value;
+        }
+    }
 
     /// <summary>
     /// Ordered provider-model execution plan captured when the job is scheduled or reset.
@@ -228,16 +228,16 @@ public class Job
     [StringLength(250)]
     public string? Branch { get; set; }
 
-	/// <summary>
-	/// Controls how this job's changes should be delivered after completion.
-	/// </summary>
-	public GitChangeDeliveryMode GitChangeDeliveryMode { get; set; } = GitChangeDeliveryMode.CommitToBranch;
+    /// <summary>
+    /// Controls how this job's changes should be delivered after completion.
+    /// </summary>
+    public GitChangeDeliveryMode GitChangeDeliveryMode { get; set; } = GitChangeDeliveryMode.CommitToBranch;
 
-	/// <summary>
-	/// Optional target branch used when creating a pull request or merging changes.
-	/// </summary>
-	[StringLength(250)]
-	public string? TargetBranch { get; set; }
+    /// <summary>
+    /// Optional target branch used when creating a pull request or merging changes.
+    /// </summary>
+    [StringLength(250)]
+    public string? TargetBranch { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
@@ -251,18 +251,18 @@ public class Job
     /// </summary>
     [NotMapped]
     public double? ExecutionDurationSeconds
-	{
-		get => Statistics?.ExecutionDurationSeconds;
-		set
-		{
-			if (value is null && Statistics is null)
-			{
-				return;
-			}
+    {
+        get => Statistics?.ExecutionDurationSeconds;
+        set
+        {
+            if (value is null && Statistics is null)
+            {
+                return;
+            }
 
-			EnsureStatistics().ExecutionDurationSeconds = value;
-		}
-	}
+            EnsureStatistics().ExecutionDurationSeconds = value;
+        }
+    }
 
     /// <summary>
     /// Gets the execution duration as a TimeSpan.
@@ -292,6 +292,44 @@ public class Job
     public string? SessionId { get; set; }
 
     /// <summary>
+    /// Active status that should be resumed after crash recovery.
+    /// Populated when an in-flight job is re-queued after a worker crash or power loss.
+    /// </summary>
+    public JobStatus? ResumeFromStatus { get; set; }
+
+    /// <summary>
+    /// Last checkpoint time for durable recovery state.
+    /// </summary>
+    public DateTime? RecoveryCheckpointAt { get; set; }
+
+    /// <summary>
+    /// Prompt snapshot used to resume or reconstruct interrupted execution.
+    /// </summary>
+    public string? RecoveryPrompt { get; set; }
+
+    /// <summary>
+    /// Number of times VibeSwarm attempted to resume the stored provider session.
+    /// </summary>
+    public int ResumeAttemptCount { get; set; }
+
+    /// <summary>
+    /// Most recent time VibeSwarm attempted provider session resume for this job.
+    /// </summary>
+    public DateTime? LastResumeAttemptAt { get; set; }
+
+    /// <summary>
+    /// Why the last provider session resume attempt failed.
+    /// </summary>
+    [StringLength(1000)]
+    public string? LastResumeFailureReason { get; set; }
+
+    /// <summary>
+    /// Skip provider session resume and start a fresh session using durable recovery context.
+    /// Set after an interrupted job proves the stored session is no longer resumable.
+    /// </summary>
+    public bool ForceFreshSession { get; set; }
+
+    /// <summary>
     /// Flag to request cancellation of the job
     /// </summary>
     public bool CancellationRequested { get; set; }
@@ -301,127 +339,127 @@ public class Job
     /// </summary>
     [NotMapped]
     public decimal? TotalCostUsd
-	{
-		get => Statistics?.TotalCostUsd;
-		set
-		{
-			if (value is null && Statistics is null)
-			{
-				return;
-			}
+    {
+        get => Statistics?.TotalCostUsd;
+        set
+        {
+            if (value is null && Statistics is null)
+            {
+                return;
+            }
 
-			EnsureStatistics().TotalCostUsd = value;
-		}
-	}
+            EnsureStatistics().TotalCostUsd = value;
+        }
+    }
 
     /// <summary>
     /// Total input tokens used
     /// </summary>
     [NotMapped]
     public int? InputTokens
-	{
-		get => Statistics?.InputTokens;
-		set
-		{
-			if (value is null && Statistics is null)
-			{
-				return;
-			}
+    {
+        get => Statistics?.InputTokens;
+        set
+        {
+            if (value is null && Statistics is null)
+            {
+                return;
+            }
 
-			EnsureStatistics().InputTokens = value;
-		}
-	}
+            EnsureStatistics().InputTokens = value;
+        }
+    }
 
-	/// <summary>
-	/// Total output tokens used
-	/// </summary>
-	[NotMapped]
-	public int? OutputTokens
-	{
-		get => Statistics?.OutputTokens;
-		set
-		{
-			if (value is null && Statistics is null)
-			{
-				return;
-			}
+    /// <summary>
+    /// Total output tokens used
+    /// </summary>
+    [NotMapped]
+    public int? OutputTokens
+    {
+        get => Statistics?.OutputTokens;
+        set
+        {
+            if (value is null && Statistics is null)
+            {
+                return;
+            }
 
-			EnsureStatistics().OutputTokens = value;
-		}
-	}
+            EnsureStatistics().OutputTokens = value;
+        }
+    }
 
-	/// <summary>
-	/// True when InputTokens/OutputTokens are estimates derived from text length
-	/// rather than exact counts reported by the provider.
-	/// </summary>
-	[NotMapped]
-	public bool IsTokenEstimate
-	{
-		get => Statistics?.IsTokenEstimate ?? false;
-		set
-		{
-			if (!value && Statistics is null)
-			{
-				return;
-			}
+    /// <summary>
+    /// True when InputTokens/OutputTokens are estimates derived from text length
+    /// rather than exact counts reported by the provider.
+    /// </summary>
+    [NotMapped]
+    public bool IsTokenEstimate
+    {
+        get => Statistics?.IsTokenEstimate ?? false;
+        set
+        {
+            if (!value && Statistics is null)
+            {
+                return;
+            }
 
-			EnsureStatistics().IsTokenEstimate = value;
-		}
-	}
+            EnsureStatistics().IsTokenEstimate = value;
+        }
+    }
 
-	/// <summary>
-	/// Input tokens consumed by the execution stage.
-	/// </summary>
-	[NotMapped]
-	public int? ExecutionInputTokens
-	{
-		get => ExecutionStatistics?.InputTokens;
-		set
-		{
-			if (value is null && ExecutionStatistics is null)
-			{
-				return;
-			}
+    /// <summary>
+    /// Input tokens consumed by the execution stage.
+    /// </summary>
+    [NotMapped]
+    public int? ExecutionInputTokens
+    {
+        get => ExecutionStatistics?.InputTokens;
+        set
+        {
+            if (value is null && ExecutionStatistics is null)
+            {
+                return;
+            }
 
-			EnsureExecutionStatistics().InputTokens = value;
-		}
-	}
+            EnsureExecutionStatistics().InputTokens = value;
+        }
+    }
 
-	/// <summary>
-	/// Output tokens consumed by the execution stage.
-	/// </summary>
-	[NotMapped]
-	public int? ExecutionOutputTokens
-	{
-		get => ExecutionStatistics?.OutputTokens;
-		set
-		{
-			if (value is null && ExecutionStatistics is null)
-			{
-				return;
-			}
+    /// <summary>
+    /// Output tokens consumed by the execution stage.
+    /// </summary>
+    [NotMapped]
+    public int? ExecutionOutputTokens
+    {
+        get => ExecutionStatistics?.OutputTokens;
+        set
+        {
+            if (value is null && ExecutionStatistics is null)
+            {
+                return;
+            }
 
-			EnsureExecutionStatistics().OutputTokens = value;
-		}
-	}
+            EnsureExecutionStatistics().OutputTokens = value;
+        }
+    }
 
-	/// <summary>
-	/// Cost in USD for the execution stage.
-	/// </summary>
-	[NotMapped]
-	public decimal? ExecutionCostUsd
-	{
-		get => ExecutionStatistics?.CostUsd;
-		set
-		{
-			if (value is null && ExecutionStatistics is null)
-			{
-				return;
-			}
+    /// <summary>
+    /// Cost in USD for the execution stage.
+    /// </summary>
+    [NotMapped]
+    public decimal? ExecutionCostUsd
+    {
+        get => ExecutionStatistics?.CostUsd;
+        set
+        {
+            if (value is null && ExecutionStatistics is null)
+            {
+                return;
+            }
 
-			EnsureExecutionStatistics().CostUsd = value;
-		}
-	}
+            EnsureExecutionStatistics().CostUsd = value;
+        }
+    }
 
     /// <summary>
     /// Current activity description (e.g., "Running tool: Read", "Thinking...")
@@ -615,25 +653,25 @@ public class Job
     /// When the recovery checkpoint was created.
     /// </summary>
     public DateTime? GitCheckpointCapturedAt { get; set; }
-	/// <summary>
-	/// GitHub pull request number created for this job, if any.
-	/// </summary>
-	public int? PullRequestNumber { get; set; }
+    /// <summary>
+    /// GitHub pull request number created for this job, if any.
+    /// </summary>
+    public int? PullRequestNumber { get; set; }
 
-	/// <summary>
-	/// GitHub pull request URL created for this job, if any.
-	/// </summary>
-	public string? PullRequestUrl { get; set; }
+    /// <summary>
+    /// GitHub pull request URL created for this job, if any.
+    /// </summary>
+    public string? PullRequestUrl { get; set; }
 
-	/// <summary>
-	/// When a pull request was created for this job.
-	/// </summary>
-	public DateTime? PullRequestCreatedAt { get; set; }
+    /// <summary>
+    /// When a pull request was created for this job.
+    /// </summary>
+    public DateTime? PullRequestCreatedAt { get; set; }
 
-	/// <summary>
-	/// When this job's branch changes were merged into the target branch.
-	/// </summary>
-	public DateTime? MergedAt { get; set; }
+    /// <summary>
+    /// When this job's branch changes were merged into the target branch.
+    /// </summary>
+    public DateTime? MergedAt { get; set; }
 
     /// <summary>
     /// Number of files changed during job execution.
@@ -700,16 +738,16 @@ public class Job
     /// </summary>
     public Guid? AgentId { get; set; }
 
-	public Agent? Agent { get; set; }
+    public Agent? Agent { get; set; }
 
-	[JsonIgnore]
-	public JobStatistics? Statistics { get; set; }
+    [JsonIgnore]
+    public JobStatistics? Statistics { get; set; }
 
-	[JsonIgnore]
-	public JobPlanningStatistics? PlanningStatistics { get; set; }
+    [JsonIgnore]
+    public JobPlanningStatistics? PlanningStatistics { get; set; }
 
-	[JsonIgnore]
-	public JobExecutionStatistics? ExecutionStatistics { get; set; }
+    [JsonIgnore]
+    public JobExecutionStatistics? ExecutionStatistics { get; set; }
 
     /// <summary>
     /// Earliest time this job may be dequeued. Set when a rate-limited provider has no
@@ -770,11 +808,11 @@ public class Job
 
     public ICollection<JobProviderAttempt> ProviderAttempts { get; set; } = new List<JobProviderAttempt>();
 
-	/// <summary>
-	/// Snapshots of prior change sets captured before each follow-up reset.
-	/// Ordered by FollowUpIndex ascending (0 = initial run).
-	/// </summary>
-	public ICollection<JobChangeSet> ChangeSets { get; set; } = new List<JobChangeSet>();
+    /// <summary>
+    /// Snapshots of prior change sets captured before each follow-up reset.
+    /// Ordered by FollowUpIndex ascending (0 = initial run).
+    /// </summary>
+    public ICollection<JobChangeSet> ChangeSets { get; set; } = new List<JobChangeSet>();
 
     /// <summary>
     /// Creates completion criteria from this job's settings.
@@ -802,60 +840,60 @@ public class Job
             MaxExecutionTime = maxExecutionTime,
             MaxCostUsd = MaxCostUsd,
             MaxTokens = MaxTokens,
-			StallTimeout = StallTimeoutSeconds.HasValue
-				? TimeSpan.FromSeconds(StallTimeoutSeconds.Value)
-				: Provider?.StallTimeoutSeconds is > 0
-					? TimeSpan.FromSeconds(Provider.StallTimeoutSeconds.Value)
-					: TimeSpan.FromMinutes(10),
+            StallTimeout = StallTimeoutSeconds.HasValue
+                ? TimeSpan.FromSeconds(StallTimeoutSeconds.Value)
+                : Provider?.StallTimeoutSeconds is > 0
+                    ? TimeSpan.FromSeconds(Provider.StallTimeoutSeconds.Value)
+                    : TimeSpan.FromMinutes(10),
             SuccessPattern = SuccessPattern,
             FailurePattern = FailurePattern
         };
     }
 
-	private JobStatistics EnsureStatistics()
-	{
-		Statistics ??= new JobStatistics();
-		Statistics.Job = this;
-		Statistics.JobId = Id;
-		return Statistics;
-	}
+    private JobStatistics EnsureStatistics()
+    {
+        Statistics ??= new JobStatistics();
+        Statistics.Job = this;
+        Statistics.JobId = Id;
+        return Statistics;
+    }
 
-	private JobPlanningStatistics EnsurePlanningStatistics()
-	{
-		PlanningStatistics ??= new JobPlanningStatistics();
-		PlanningStatistics.Job = this;
-		PlanningStatistics.JobId = Id;
-		return PlanningStatistics;
-	}
+    private JobPlanningStatistics EnsurePlanningStatistics()
+    {
+        PlanningStatistics ??= new JobPlanningStatistics();
+        PlanningStatistics.Job = this;
+        PlanningStatistics.JobId = Id;
+        return PlanningStatistics;
+    }
 
-	private JobExecutionStatistics EnsureExecutionStatistics()
-	{
-		ExecutionStatistics ??= new JobExecutionStatistics();
-		ExecutionStatistics.Job = this;
-		ExecutionStatistics.JobId = Id;
-		return ExecutionStatistics;
-	}
+    private JobExecutionStatistics EnsureExecutionStatistics()
+    {
+        ExecutionStatistics ??= new JobExecutionStatistics();
+        ExecutionStatistics.Job = this;
+        ExecutionStatistics.JobId = Id;
+        return ExecutionStatistics;
+    }
 
-	private void SyncStatisticsKeys()
-	{
-		if (Statistics is not null)
-		{
-			Statistics.JobId = Id;
-			Statistics.Job = this;
-		}
+    private void SyncStatisticsKeys()
+    {
+        if (Statistics is not null)
+        {
+            Statistics.JobId = Id;
+            Statistics.Job = this;
+        }
 
-		if (PlanningStatistics is not null)
-		{
-			PlanningStatistics.JobId = Id;
-			PlanningStatistics.Job = this;
-		}
+        if (PlanningStatistics is not null)
+        {
+            PlanningStatistics.JobId = Id;
+            PlanningStatistics.Job = this;
+        }
 
-		if (ExecutionStatistics is not null)
-		{
-			ExecutionStatistics.JobId = Id;
-			ExecutionStatistics.Job = this;
-		}
-	}
+        if (ExecutionStatistics is not null)
+        {
+            ExecutionStatistics.JobId = Id;
+            ExecutionStatistics.Job = this;
+        }
+    }
 }
 
 public enum JobStatus

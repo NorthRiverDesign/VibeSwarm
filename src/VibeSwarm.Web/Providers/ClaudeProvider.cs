@@ -504,14 +504,14 @@ public class ClaudeProvider : CliProviderBase
             args.Add($"--{CurrentInitMode}");
         }
 
-		// Reasoning effort level (v2.1.63+). Claude v2.1.72+ renamed "medium" to "standard"
-		// and added "xhigh"; "max" is Opus 4.7 only (other models silently downgrade to "high").
-		var rawEffort = CurrentReasoningEffort?.Trim().ToLowerInvariant();
-		if (string.Equals(rawEffort, "medium", StringComparison.Ordinal))
-		{
-			rawEffort = "standard";
-		}
-		var reasoningEffort = NormalizeReasoningEffort(rawEffort, "low", "standard", "high", "xhigh", "max");
+        // Reasoning effort level (v2.1.63+). Claude v2.1.72+ renamed "medium" to "standard"
+        // and added "xhigh"; "max" is Opus 4.7 only (other models silently downgrade to "high").
+        var rawEffort = CurrentReasoningEffort?.Trim().ToLowerInvariant();
+        if (string.Equals(rawEffort, "medium", StringComparison.Ordinal))
+        {
+            rawEffort = "standard";
+        }
+        var reasoningEffort = NormalizeReasoningEffort(rawEffort, "low", "standard", "high", "xhigh", "max");
         if (SupportsCliVersion(ReasoningEffortVersion) && !string.IsNullOrEmpty(reasoningEffort))
         {
             args.Add("--effort");
@@ -625,6 +625,11 @@ public class ClaudeProvider : CliProviderBase
                 if (!string.IsNullOrEmpty(evt.SessionId))
                 {
                     result.SessionId = evt.SessionId;
+                    progress?.Report(new ExecutionProgress
+                    {
+                        SessionId = evt.SessionId,
+                        IsStreaming = false
+                    });
                 }
                 progress?.Report(new ExecutionProgress
                 {
@@ -742,6 +747,11 @@ public class ClaudeProvider : CliProviderBase
                 if (!string.IsNullOrEmpty(evt.SessionId))
                 {
                     result.SessionId = evt.SessionId;
+                    progress?.Report(new ExecutionProgress
+                    {
+                        SessionId = evt.SessionId,
+                        IsStreaming = false
+                    });
                 }
                 break;
 
@@ -826,6 +836,11 @@ public class ClaudeProvider : CliProviderBase
                 if (!string.IsNullOrEmpty(evt.SessionId))
                 {
                     result.SessionId = evt.SessionId;
+                    progress?.Report(new ExecutionProgress
+                    {
+                        SessionId = evt.SessionId,
+                        IsStreaming = false
+                    });
                 }
                 if (!string.IsNullOrEmpty(evt.Result))
                 {

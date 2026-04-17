@@ -218,6 +218,12 @@ public class JobWatchdogService : BackgroundService
 			// Check if we should retry or fail
 			if (job.MaxRetries == 0 || job.RetryCount < job.MaxRetries)
 			{
+				JobRecoveryHelper.CaptureRecoveryState(
+					job,
+					job.Status == JobStatus.Planning ? JobStatus.Planning : JobStatus.Processing,
+					job.RecoveryPrompt ?? job.GoalPrompt,
+					job.SessionId,
+					job.ConsoleOutput);
 				// Reset job for retry
 				job.Status = JobStatus.New;
 				job.RetryCount++;
@@ -286,6 +292,7 @@ public class JobWatchdogService : BackgroundService
 
 			job.Status = JobStatus.Cancelled;
 			job.CompletedAt = DateTime.UtcNow;
+			JobRecoveryHelper.ClearRecoveryState(job, clearSessionId: true);
 			job.WorkerInstanceId = null;
 			job.ProcessId = null;
 			job.CurrentActivity = null;
@@ -336,6 +343,12 @@ public class JobWatchdogService : BackgroundService
 			// Check if we should retry or fail
 			if (job.MaxRetries == 0 || job.RetryCount < job.MaxRetries)
 			{
+				JobRecoveryHelper.CaptureRecoveryState(
+					job,
+					job.Status == JobStatus.Planning ? JobStatus.Planning : JobStatus.Processing,
+					job.RecoveryPrompt ?? job.GoalPrompt,
+					job.SessionId,
+					job.ConsoleOutput);
 				// Reset job for retry
 				job.Status = JobStatus.New;
 				job.RetryCount++;
@@ -428,6 +441,13 @@ public class JobWatchdogService : BackgroundService
 			_logger.LogWarning("Failed to transition job {JobId} to stalled recovery state: {Error}", job.Id, transition.ErrorMessage);
 			return false;
 		}
+
+		JobRecoveryHelper.CaptureRecoveryState(
+			job,
+			job.Status == JobStatus.Planning ? JobStatus.Planning : JobStatus.Processing,
+			job.RecoveryPrompt ?? job.GoalPrompt,
+			job.SessionId,
+			job.ConsoleOutput ?? diff);
 
 		job.GitDiff = !string.IsNullOrWhiteSpace(diff) ? diff : job.GitDiff;
 		job.ChangedFilesCount = workingTreeStatus.ChangedFilesCount;

@@ -124,19 +124,19 @@ public partial class JobService
         return true;
     }
 
-	public async Task<bool> ContinueJobAsync(Guid id, string followUpPrompt, CancellationToken cancellationToken = default)
-	{
+    public async Task<bool> ContinueJobAsync(Guid id, string followUpPrompt, CancellationToken cancellationToken = default)
+    {
         var trimmedFollowUp = followUpPrompt?.Trim();
         if (string.IsNullOrWhiteSpace(trimmedFollowUp))
         {
             return false;
         }
 
-		var job = await _dbContext.Jobs
-			.Include(j => j.Statistics)
-			.Include(j => j.PlanningStatistics)
-			.Include(j => j.ExecutionStatistics)
-			.FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
+        var job = await _dbContext.Jobs
+            .Include(j => j.Statistics)
+            .Include(j => j.PlanningStatistics)
+            .Include(j => j.ExecutionStatistics)
+            .FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
 
         if (job == null || job.Status is not (JobStatus.Completed or JobStatus.Stalled or JobStatus.Failed))
         {
@@ -155,30 +155,30 @@ public partial class JobService
 
         _dbContext.JobMessages.Add(message);
 
-		// Capture the current change set before clearing it for the follow-up.
-		var followUpIndex = await _dbContext.JobChangeSets
-			.Where(cs => cs.JobId == job.Id)
-			.CountAsync(cancellationToken);
+        // Capture the current change set before clearing it for the follow-up.
+        var followUpIndex = await _dbContext.JobChangeSets
+            .Where(cs => cs.JobId == job.Id)
+            .CountAsync(cancellationToken);
 
-		var changeSet = new JobChangeSet
-		{
-			Id = Guid.NewGuid(),
-			JobId = job.Id,
-			FollowUpIndex = followUpIndex,
-			CompletedAt = job.CompletedAt,
-			GitCommitHash = job.GitCommitHash,
-			GitCommitBefore = job.GitCommitBefore,
-			ChangedFilesCount = job.ChangedFilesCount,
-			SessionSummary = job.SessionSummary,
-			PullRequestNumber = job.PullRequestNumber,
-			PullRequestUrl = job.PullRequestUrl,
-			MergedAt = job.MergedAt,
-			BuildVerified = job.BuildVerified,
-			ModelUsed = job.ModelUsed,
-			CreatedAt = submittedAt
-		};
+        var changeSet = new JobChangeSet
+        {
+            Id = Guid.NewGuid(),
+            JobId = job.Id,
+            FollowUpIndex = followUpIndex,
+            CompletedAt = job.CompletedAt,
+            GitCommitHash = job.GitCommitHash,
+            GitCommitBefore = job.GitCommitBefore,
+            ChangedFilesCount = job.ChangedFilesCount,
+            SessionSummary = job.SessionSummary,
+            PullRequestNumber = job.PullRequestNumber,
+            PullRequestUrl = job.PullRequestUrl,
+            MergedAt = job.MergedAt,
+            BuildVerified = job.BuildVerified,
+            ModelUsed = job.ModelUsed,
+            CreatedAt = submittedAt
+        };
 
-		_dbContext.JobChangeSets.Add(changeSet);
+        _dbContext.JobChangeSets.Add(changeSet);
 
         job.GoalPrompt = BuildContinuationPrompt(job.GoalPrompt, trimmedFollowUp);
         await ResetJobForFollowUp(job, submittedAt, cancellationToken);
@@ -219,13 +219,13 @@ public partial class JobService
             .FirstOrDefaultAsync(cancellationToken);
     }
 
-	public async Task<bool> ResetJobWithOptionsAsync(Guid id, Guid? providerId = null, string? modelId = null, string? reasoningEffort = null, CancellationToken cancellationToken = default)
-	{
-		var job = await _dbContext.Jobs
-			.Include(j => j.Statistics)
-			.Include(j => j.PlanningStatistics)
-			.Include(j => j.ExecutionStatistics)
-			.FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
+    public async Task<bool> ResetJobWithOptionsAsync(Guid id, Guid? providerId = null, string? modelId = null, string? reasoningEffort = null, CancellationToken cancellationToken = default)
+    {
+        var job = await _dbContext.Jobs
+            .Include(j => j.Statistics)
+            .Include(j => j.PlanningStatistics)
+            .Include(j => j.ExecutionStatistics)
+            .FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
 
         if (job == null)
         {
@@ -263,13 +263,13 @@ public partial class JobService
             return 0;
         }
 
-		var jobs = await _dbContext.Jobs
-			.Include(j => j.Statistics)
-			.Include(j => j.PlanningStatistics)
-			.Include(j => j.ExecutionStatistics)
-			.Where(j => j.ProjectId == projectId && jobIds.Contains(j.Id)
-				&& (j.Status == JobStatus.Failed || j.Status == JobStatus.Cancelled || j.Status == JobStatus.Stalled))
-			.ToListAsync(cancellationToken);
+        var jobs = await _dbContext.Jobs
+            .Include(j => j.Statistics)
+            .Include(j => j.PlanningStatistics)
+            .Include(j => j.ExecutionStatistics)
+            .Where(j => j.ProjectId == projectId && jobIds.Contains(j.Id)
+                && (j.Status == JobStatus.Failed || j.Status == JobStatus.Cancelled || j.Status == JobStatus.Stalled))
+            .ToListAsync(cancellationToken);
 
         if (jobs.Count == 0)
         {
@@ -378,6 +378,7 @@ public partial class JobService
         job.ExecutionPlan = null;
         job.LastSwitchAt = null;
         job.LastSwitchReason = null;
+        JobRecoveryHelper.ClearRecoveryState(job, clearSessionId: true);
         job.InputTokens = null;
         job.OutputTokens = null;
         job.TotalCostUsd = null;

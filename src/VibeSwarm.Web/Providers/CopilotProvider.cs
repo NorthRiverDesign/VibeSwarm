@@ -367,52 +367,52 @@ public class CopilotProvider : CliProviderBase
 
         // Build arguments for non-interactive execution
         // Reference: https://github.com/github/copilot-cli/blob/main/changelog.md
-		var supportsJsonOutput = _cachedCliVersion != null && _cachedCliVersion >= JsonOutputVersion;
-		var supportsModernFlags = _cachedCliVersion != null && _cachedCliVersion >= ModernFlagsVersion;
+        var supportsJsonOutput = _cachedCliVersion != null && _cachedCliVersion >= JsonOutputVersion;
+        var supportsModernFlags = _cachedCliVersion != null && _cachedCliVersion >= ModernFlagsVersion;
 
-		var args = new List<string>
-		{
-			"-p",
-			effectivePrompt,
-		};
+        var args = new List<string>
+        {
+            "-p",
+            effectivePrompt,
+        };
 
-		// Permission strategy:
-		//  - Default (no CopilotMode): preserve existing behavior (--yolo --autopilot) for backwards compatibility.
-		//  - CopilotMode explicitly set → --mode <value> and --allow-all-tools --allow-all-paths so non-interactive
-		//    dispatch still runs without prompts. Callers who want a stricter allowlist should use --available-tools
-		//    (via CurrentAllowedTools) or additional args.
-		if (!string.IsNullOrEmpty(CurrentCopilotMode))
-		{
-			args.Add("--mode");
-			args.Add(CurrentCopilotMode);
-			if (supportsModernFlags)
-			{
-				args.Add("--allow-all-tools");
-				args.Add("--allow-all-paths");
-			}
-		}
-		else
-		{
-			args.Add("--yolo");
-			args.Add("--autopilot");
-		}
+        // Permission strategy:
+        //  - Default (no CopilotMode): preserve existing behavior (--yolo --autopilot) for backwards compatibility.
+        //  - CopilotMode explicitly set → --mode <value> and --allow-all-tools --allow-all-paths so non-interactive
+        //    dispatch still runs without prompts. Callers who want a stricter allowlist should use --available-tools
+        //    (via CurrentAllowedTools) or additional args.
+        if (!string.IsNullOrEmpty(CurrentCopilotMode))
+        {
+            args.Add("--mode");
+            args.Add(CurrentCopilotMode);
+            if (supportsModernFlags)
+            {
+                args.Add("--allow-all-tools");
+                args.Add("--allow-all-paths");
+            }
+        }
+        else
+        {
+            args.Add("--yolo");
+            args.Add("--autopilot");
+        }
 
-		if (!supportsJsonOutput)
-		{
-			args.Add("--silent");
-		}
+        if (!supportsJsonOutput)
+        {
+            args.Add("--silent");
+        }
 
-		// Structured JSON output in prompt mode (v0.0.422+).
-		// Skip on older or unknown versions to avoid passing an unsupported flag.
-		if (supportsJsonOutput)
-		{
-			args.Add("--output-format");
-			args.Add("json");
-		}
+        // Structured JSON output in prompt mode (v0.0.422+).
+        // Skip on older or unknown versions to avoid passing an unsupported flag.
+        if (supportsJsonOutput)
+        {
+            args.Add("--output-format");
+            args.Add("json");
+        }
 
-		// Session resume support (v0.0.372+)
-		if (!string.IsNullOrEmpty(sessionId))
-		{
+        // Session resume support (v0.0.372+)
+        if (!string.IsNullOrEmpty(sessionId))
+        {
             args.Add("--resume");
             args.Add(sessionId);
         }
@@ -774,6 +774,11 @@ public class CopilotProvider : CliProviderBase
         if (!string.IsNullOrEmpty(evt.SessionId) && string.IsNullOrEmpty(result.SessionId))
         {
             result.SessionId = evt.SessionId;
+            progress?.Report(new ExecutionProgress
+            {
+                SessionId = evt.SessionId,
+                IsStreaming = false
+            });
         }
 
         // Track premium request usage

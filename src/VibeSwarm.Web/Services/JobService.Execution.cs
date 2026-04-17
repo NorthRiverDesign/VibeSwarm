@@ -146,6 +146,7 @@ public partial class JobService
         job.ActiveExecutionIndex = 0;
         job.LastSwitchAt = null;
         job.LastSwitchReason = null;
+        JobRecoveryHelper.ClearRecoveryState(job);
         job.InputTokens = null;
         job.OutputTokens = null;
         job.TotalCostUsd = null;

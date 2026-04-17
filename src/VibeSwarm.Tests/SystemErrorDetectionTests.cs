@@ -179,6 +179,85 @@ public sealed class SystemErrorDetectionTests
 		Assert.True(health.IsHealthy);
 	}
 
+	[Fact]
+	public void RecordRateLimitFailure_EscalatesCooldownToThreeMinutes()
+	{
+		var tracker = new ProviderHealthTracker();
+		var providerId = Guid.NewGuid();
+
+		tracker.RecordRateLimitFailure(providerId, "first");
+		var firstCooldown = tracker.GetProviderHealth(providerId).RateLimitResetTime;
+
+		tracker.RecordRateLimitFailure(providerId, "second");
+		var secondCooldown = tracker.GetProviderHealth(providerId).RateLimitResetTime;
+
+		tracker.RecordRateLimitFailure(providerId, "third");
+		var thirdCooldown = tracker.GetProviderHealth(providerId).RateLimitResetTime;
+
+		tracker.RecordRateLimitFailure(providerId, "fourth");
+		var fourthCooldown = tracker.GetProviderHealth(providerId).RateLimitResetTime;
+
+		Assert.NotNull(firstCooldown);
+		Assert.NotNull(secondCooldown);
+		Assert.NotNull(thirdCooldown);
+		Assert.NotNull(fourthCooldown);
+		Assert.True(secondCooldown > firstCooldown);
+		Assert.True(thirdCooldown > secondCooldown);
+		Assert.True(fourthCooldown <= thirdCooldown!.Value.AddSeconds(2));
+	}
+
+	[Fact]
+	public void RecordRateLimitFailure_UsesProviderResetWhenItIsLonger()
+	{
+		var tracker = new ProviderHealthTracker();
+		var providerId = Guid.NewGuid();
+		var providerResetTime = DateTime.UtcNow.AddMinutes(7);
+
+		tracker.RecordRateLimitFailure(providerId, "copilot cooldown", providerResetTime);
+		var health = tracker.GetProviderHealth(providerId);
+
+		Assert.True(health.IsRateLimited);
+		Assert.Equal(providerResetTime, health.RateLimitResetTime);
+	}
+
+	[Fact]
+	public void RecordSuccess_ClearsEscalatedRateLimitBackoff()
+	{
+		var tracker = new ProviderHealthTracker();
+		var providerId = Guid.NewGuid();
+
+		tracker.RecordRateLimitFailure(providerId, "first");
+		tracker.RecordSuccess(providerId);
+		tracker.RecordRateLimitFailure(providerId, "after success");
+		var health = tracker.GetProviderHealth(providerId);
+
+		Assert.True(health.IsRateLimited);
+		Assert.NotNull(health.RateLimitResetTime);
+		Assert.True(health.RateLimitResetTime <= DateTime.UtcNow.AddMinutes(1).AddSeconds(2));
+	}
+
+	#endregion
+
+	#region Copilot rate limit parsing
+
+	[Fact]
+	public void CopilotUsageParser_TryAgainInOneMinute_IsRateLimit()
+	{
+		var result = new ExecutionResult
+		{
+			Success = false,
+			ErrorMessage = "Request failed. Please try again in 1 minute."
+		};
+
+		CopilotUsageParser.ApplyToExecutionResult(result.ErrorMessage!, result);
+
+		Assert.NotNull(result.DetectedUsageLimits);
+		Assert.True(result.DetectedUsageLimits!.IsLimitReached);
+		Assert.Equal(UsageLimitType.RateLimit, result.DetectedUsageLimits.LimitType);
+		Assert.NotNull(result.DetectedUsageLimits.ResetTime);
+		Assert.True(result.DetectedUsageLimits.ResetTime > DateTime.UtcNow.AddSeconds(30));
+	}
+
 	#endregion
 
 	#region ExecutionResult.IsSystemError

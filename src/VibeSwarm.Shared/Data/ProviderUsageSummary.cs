@@ -168,6 +168,35 @@ public class ProviderUsageSummary
 	/// </summary>
 	public DateTime LastUpdatedAt { get; set; } = DateTime.UtcNow;
 
+	/// <summary>
+	/// Most recent time a job started using this provider.
+	/// Used to enforce durable provider start spacing across restarts.
+	/// </summary>
+	public DateTime? LastJobStartedAt { get; set; }
+
+	/// <summary>
+	/// Earliest time another job may start on this provider.
+	/// Used for durable rate-limit cooldown enforcement.
+	/// </summary>
+	public DateTime? NextExecutionAvailableAt { get; set; }
+
+	/// <summary>
+	/// Count of consecutive rate-limit events observed for this provider.
+	/// Drives the 1 minute / 2 minutes / 3 minutes backoff schedule.
+	/// </summary>
+	public int ConsecutiveRateLimitCount { get; set; }
+
+	/// <summary>
+	/// When the provider most recently reported a rate limit.
+	/// </summary>
+	public DateTime? LastRateLimitAt { get; set; }
+
+	/// <summary>
+	/// Last human-readable rate-limit message recorded for the provider.
+	/// </summary>
+	[StringLength(500)]
+	public string? LastRateLimitMessage { get; set; }
+
 	#endregion
 
 	#region Computed Properties

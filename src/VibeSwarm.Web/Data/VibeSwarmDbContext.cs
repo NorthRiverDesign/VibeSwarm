@@ -108,6 +108,7 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 			entity.Property(e => e.LimitMessage).HasMaxLength(500);
 			entity.Property(e => e.LimitWindowsJson).HasMaxLength(4000);
 			entity.Property(e => e.CliVersion).HasMaxLength(50);
+			entity.Property(e => e.LastRateLimitMessage).HasMaxLength(500);
 			entity.HasOne(e => e.Provider)
 	.WithMany()
 	.HasForeignKey(e => e.ProviderId)
@@ -259,6 +260,7 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 			entity.Property(e => e.GitCheckpointCommitHash).HasMaxLength(100);
 			entity.Property(e => e.GitCheckpointReason).HasMaxLength(500);
 			entity.Property(e => e.SessionId).HasMaxLength(200);
+			entity.Property(e => e.LastResumeFailureReason).HasMaxLength(1000);
 			entity.Property(e => e.CommandUsed).HasMaxLength(4000);
 			entity.Property(e => e.PlanningCommandUsed).HasMaxLength(4000);
 			entity.Property(e => e.ExecutionCommandUsed).HasMaxLength(4000);

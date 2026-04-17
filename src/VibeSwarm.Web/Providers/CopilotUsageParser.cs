@@ -38,6 +38,9 @@ public static partial class CopilotUsageParser
 	[GeneratedRegex(@"resets?\s+(?:on|at|in)\s*([^\r\n.]+)", RegexOptions.IgnoreCase)]
 	private static partial Regex ResetPattern();
 
+	[GeneratedRegex(@"try\s+again\s+in\s*([^\r\n.]+)", RegexOptions.IgnoreCase)]
+	private static partial Regex TryAgainPattern();
+
 	[GeneratedRegex(@"(\d+)\s*(hour|minute|second|day)s?", RegexOptions.IgnoreCase)]
 	private static partial Regex RelativeResetPattern();
 
@@ -130,9 +133,26 @@ public static partial class CopilotUsageParser
 			matched = true;
 		}
 
+		if (!matched && resetTime.HasValue && stderr.Contains("try again in", StringComparison.OrdinalIgnoreCase))
+		{
+			var message = ExtractRateLimitLine(stderr) ?? matchedLine;
+			windows.Add(new UsageLimitWindow
+			{
+				Scope = UsageLimitWindowScope.Unknown,
+				LimitType = UsageLimitType.RateLimit,
+				ResetTime = resetTime,
+				IsLimitReached = true,
+				Message = message
+			});
+			matchedLine = message;
+			matched = true;
+		}
+
 		return matched
 			? UsageLimitWindowHelper.CreateUsageLimits(
-				UsageLimitType.PremiumRequests,
+				windows.Any(window => window.LimitType == UsageLimitType.RateLimit)
+					? UsageLimitType.RateLimit
+					: UsageLimitType.PremiumRequests,
 				matchedLine,
 				windows,
 				windows.Any(window => window.IsLimitReached))
@@ -213,6 +233,10 @@ public static partial class CopilotUsageParser
 		var match = ResetPattern().Match(stderr);
 		if (!match.Success)
 		{
+			match = TryAgainPattern().Match(stderr);
+		}
+		if (!match.Success)
+		{
 			return null;
 		}
 
@@ -265,5 +289,15 @@ public static partial class CopilotUsageParser
 				line.Contains("premium request", StringComparison.OrdinalIgnoreCase)
 				|| line.Contains("premium budget", StringComparison.OrdinalIgnoreCase)
 				|| line.Contains("remaining requests", StringComparison.OrdinalIgnoreCase));
+	}
+
+	private static string? ExtractRateLimitLine(string stderr)
+	{
+		return stderr
+			.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+			.FirstOrDefault(line =>
+				line.Contains("try again in", StringComparison.OrdinalIgnoreCase)
+				|| line.Contains("rate limit", StringComparison.OrdinalIgnoreCase)
+				|| line.Contains("too many requests", StringComparison.OrdinalIgnoreCase));
 	}
 }

@@ -24,6 +24,7 @@ public partial class JobProcessingService
 
         // Store provider ID for later cleanup
         executionContext.ProviderId = job.ProviderId;
+        executionContext.SessionId = job.SessionId;
 
         string? workingDirectory = null;
         string? projectMemoryFilePath = null;
@@ -51,19 +52,20 @@ public partial class JobProcessingService
             try
             {
                 await jobService.RefreshExecutionPlanAsync(job.Id, cancellationToken);
-                await dbContext.Entry(job).ReloadAsync(cancellationToken);
-                if (job.Provider == null)
-                {
-                    await dbContext.Entry(job).Reference(j => j.Provider).LoadAsync(cancellationToken);
-                }
-                if (job.Project == null)
-                {
-                    await dbContext.Entry(job).Reference(j => j.Project).LoadAsync(cancellationToken);
-                }
             }
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "Failed to refresh execution plan for job {JobId}, continuing with existing plan", job.Id);
+            }
+
+            await dbContext.Entry(job).ReloadAsync(cancellationToken);
+            if (job.Provider == null)
+            {
+                await dbContext.Entry(job).Reference(j => j.Provider).LoadAsync(cancellationToken);
+            }
+            if (job.Project == null)
+            {
+                await dbContext.Entry(job).Reference(j => j.Project).LoadAsync(cancellationToken);
             }
 
             // Store provider ID for cleanup (may have changed after refresh)
@@ -93,11 +95,35 @@ public partial class JobProcessingService
                 return;
             }
 
+            var providerResolution = await ResolveProviderForExecutionAsync(job, dbContext, cancellationToken);
+            if (providerResolution.Provider == null)
+            {
+                await ReleaseJobAsync(job.Id, JobStatus.Failed, "Provider not found", dbContext, cancellationToken);
+                await NotifyJobCompletedAsync(job.Id, false, "Provider not found");
+                return;
+            }
+
+            if (providerResolution.CooldownUntil.HasValue)
+            {
+                await RequeueJobForProviderCooldownAsync(
+                    job.Id,
+                    providerResolution.Provider.Name,
+                    providerResolution.CooldownUntil.Value,
+                    executionContext,
+                    dbContext,
+                    cancellationToken);
+                await NotifyStatusChangedAsync(job.Id, JobStatus.New);
+                return;
+            }
+
+            executionContext.ProviderId = job.ProviderId;
+            await ReserveProviderExecutionSlotAsync(job.ProviderId, dbContext, cancellationToken);
+
             // Create provider instance
-            var provider = CreateProviderInstance(job.Provider);
+            var provider = CreateProviderInstance(providerResolution.Provider);
             executionContext.ProviderInstance = provider;
 
-            var providerValidationError = await ValidateProviderAvailabilityAsync(job.Id, job.Provider, provider, cancellationToken);
+            var providerValidationError = await ValidateProviderAvailabilityAsync(job.Id, providerResolution.Provider, provider, cancellationToken);
             if (!string.IsNullOrWhiteSpace(providerValidationError))
             {
                 await ReleaseJobAsync(job.Id, JobStatus.Failed, providerValidationError, dbContext, cancellationToken);
@@ -106,9 +132,14 @@ public partial class JobProcessingService
             }
 
             // Update status to processing
-            var initialStatus = ShouldUsePlanningStage(job.Project) && string.IsNullOrWhiteSpace(job.PlanningOutput)
-                ? JobStatus.Planning
-                : JobStatus.Processing;
+            var initialStatus = job.ResumeFromStatus switch
+            {
+                JobStatus.Planning => JobStatus.Planning,
+                JobStatus.Started or JobStatus.Processing => JobStatus.Processing,
+                _ => ShouldUsePlanningStage(job.Project) && string.IsNullOrWhiteSpace(job.PlanningOutput)
+                    ? JobStatus.Planning
+                    : JobStatus.Processing
+            };
             await UpdateJobStatusAsync(job.Id, initialStatus, dbContext, cancellationToken);
             await NotifyStatusChangedAsync(job.Id, initialStatus);
 
@@ -235,10 +266,10 @@ public partial class JobProcessingService
             var effectiveMaxCycles = job.CycleMode == CycleMode.SingleCycle ? 1 : job.MaxCycles;
             var currentCycle = job.CurrentCycle;
             var sessionId = job.SessionId;
-			ExecutionResult? lastResult = null;
-			int? executionInputTokens = null;
-			int? executionOutputTokens = null;
-			decimal? executionCostUsd = null;
+            ExecutionResult? lastResult = null;
+            int? executionInputTokens = null;
+            int? executionOutputTokens = null;
+            decimal? executionCostUsd = null;
 
             // Track last progress update time to avoid excessive database writes
             var lastProgressUpdate = DateTime.MinValue;
@@ -301,6 +332,13 @@ public partial class JobProcessingService
                             _logger.LogWarning(ex, "Failed to store process ID/command for job {JobId}", job.Id);
                         }
                     });
+                }
+
+                if (job.Status != JobStatus.Planning
+                    && !string.IsNullOrWhiteSpace(p.SessionId)
+                    && !string.Equals(executionContext.SessionId, p.SessionId, StringComparison.Ordinal))
+                {
+                    executionContext.SessionId = p.SessionId;
                 }
 
                 // Log provider connection state changes
@@ -397,6 +435,7 @@ public partial class JobProcessingService
                     : (p.IsStreaming ? "Processing..." : p.CurrentMessage ?? "Working...");
 
                 _logger.LogDebug("Job {JobId} progress: {Activity}", job.Id, activity);
+                executionContext.LatestActivity = activity;
 
                 // Throttle progress updates to avoid database overload
                 var now = DateTime.UtcNow;
@@ -420,8 +459,13 @@ public partial class JobProcessingService
                             // Create a new scope for this background operation
                             using var progressScope = _scopeFactory.CreateScope();
                             var scopedDbContext = progressScope.ServiceProvider.GetRequiredService<VibeSwarmDbContext>();
+                            var checkpointStatus = job.Status == JobStatus.Planning ? JobStatus.Planning : JobStatus.Processing;
 
                             await UpdateHeartbeatAsync(job.Id, activity, scopedDbContext, CancellationToken.None);
+                            if (now - executionContext.LastCheckpointPersistedAt >= RecoveryCheckpointInterval)
+                            {
+                                await PersistExecutionCheckpointAsync(job.Id, checkpointStatus, executionContext, CancellationToken.None);
+                            }
                             await NotifyJobActivityAsync(job.Id, activity, now);
                         }
                         catch (Exception ex)
@@ -521,8 +565,8 @@ public partial class JobProcessingService
                 try
                 {
                     var agent = await dbContext.Agents
-						.Include(role => role.SkillLinks)
-							.ThenInclude(link => link.Skill)
+                        .Include(role => role.SkillLinks)
+                            .ThenInclude(link => link.Skill)
                         .FirstOrDefaultAsync(r => r.Id == job.AgentId.Value, cancellationToken);
                     if (agent != null)
                     {
@@ -578,47 +622,61 @@ public partial class JobProcessingService
                     return;
                 }
 
-				var planningMcpOptions = await GetMcpExecutionOptionsAsync(planningProviderId, job.Project, workingDirectory, cancellationToken);
-				ExecutionResult planningResult;
-				try
-				{
-					var planningSystemPromptRules = systemPromptRules;
-					if (provider.Type != planningProviderConfig.Type)
-					{
-						planningSystemPromptRules = BuildExecutionSystemPromptRules(planningProviderConfig.Type);
-						if (!string.IsNullOrWhiteSpace(projectMemoryRules))
-						{
-							planningSystemPromptRules = string.IsNullOrWhiteSpace(planningSystemPromptRules)
-								? projectMemoryRules
-								: $"{planningSystemPromptRules}{Environment.NewLine}{Environment.NewLine}{projectMemoryRules}";
-						}
-					}
+                var planningMcpOptions = await GetMcpExecutionOptionsAsync(planningProviderId, job.Project, workingDirectory, cancellationToken);
+                var planningPrompt = ProviderPlanningHelper.BuildPlanningPrompt(planningProviderConfig.Type, job.GoalPrompt);
+                if (job.ResumeFromStatus == JobStatus.Planning)
+                {
+                    planningPrompt = PromptBuilder.BuildRecoveryPrompt(
+                        planningPrompt,
+                        job.RecoveryPrompt,
+                        JobRecoveryHelper.TrimTail(job.ConsoleOutput, JobRecoveryHelper.MaxRecoveryConsoleOutputLength),
+                        job.LastResumeFailureReason,
+                        forceFreshSession: true);
+                }
 
-					planningResult = await planningProvider.ExecuteWithOptionsAsync(
-						ProviderPlanningHelper.BuildPlanningPrompt(planningProviderConfig.Type, job.GoalPrompt),
-						new ExecutionOptions
-						{
-							WorkingDirectory = workingDirectory,
-							McpConfigPath = planningMcpOptions.McpConfigPath,
-							BashEnvPath = planningMcpOptions.BashEnvPath,
-							AdditionalArgs = planningMcpOptions.AdditionalArgs,
-							UseBareMode = planningProviderConfig.Type == ProviderType.Claude
-								&& planningProviderConfig.ConnectionMode == ProviderConnectionMode.CLI
-								&& ShouldUseClaudeBareMode(planningProviderConfig),
-							Model = job.Project.PlanningModelId,
-							ReasoningEffort = job.Project.PlanningReasoningEffort,
-							Title = job.Title,
-							AppendSystemPrompt = planningSystemPromptRules,
-							EnvironmentVariables = jobEnvironmentVariables,
-							DisallowedTools = ProviderPlanningHelper.PlanningDisallowedTools
-						},
-						progress,
-						cancellationToken);
-				}
-				finally
-				{
-					CleanupMcpExecutionResources(planningMcpOptions.Resources);
-				}
+                executionContext.ActivePrompt = planningPrompt;
+                executionContext.LatestActivity = planningActivity;
+                await PersistExecutionCheckpointAsync(job.Id, JobStatus.Planning, executionContext, cancellationToken);
+                ExecutionResult planningResult;
+                try
+                {
+                    var planningSystemPromptRules = systemPromptRules;
+                    if (provider.Type != planningProviderConfig.Type)
+                    {
+                        planningSystemPromptRules = BuildExecutionSystemPromptRules(planningProviderConfig.Type);
+                        if (!string.IsNullOrWhiteSpace(projectMemoryRules))
+                        {
+                            planningSystemPromptRules = string.IsNullOrWhiteSpace(planningSystemPromptRules)
+                                ? projectMemoryRules
+                                : $"{planningSystemPromptRules}{Environment.NewLine}{Environment.NewLine}{projectMemoryRules}";
+                        }
+                    }
+
+                    planningResult = await planningProvider.ExecuteWithOptionsAsync(
+                        planningPrompt,
+                        new ExecutionOptions
+                        {
+                            WorkingDirectory = workingDirectory,
+                            McpConfigPath = planningMcpOptions.McpConfigPath,
+                            BashEnvPath = planningMcpOptions.BashEnvPath,
+                            AdditionalArgs = planningMcpOptions.AdditionalArgs,
+                            UseBareMode = planningProviderConfig.Type == ProviderType.Claude
+                                && planningProviderConfig.ConnectionMode == ProviderConnectionMode.CLI
+                                && ShouldUseClaudeBareMode(planningProviderConfig),
+                            Model = job.Project.PlanningModelId,
+                            ReasoningEffort = job.Project.PlanningReasoningEffort,
+                            Title = job.Title,
+                            AppendSystemPrompt = planningSystemPromptRules,
+                            EnvironmentVariables = jobEnvironmentVariables,
+                            DisallowedTools = ProviderPlanningHelper.PlanningDisallowedTools
+                        },
+                        progress,
+                        cancellationToken);
+                }
+                finally
+                {
+                    CleanupMcpExecutionResources(planningMcpOptions.Resources);
+                }
 
                 await RecordUsageAndCheckExhaustionAsync(
                     planningProviderConfig.Id,
@@ -640,29 +698,107 @@ public partial class JobProcessingService
 
                 job.PlanningOutput = planningOutput.Trim();
                 job.PlanningProviderId = planningProviderConfig.Id;
-				job.PlanningModelUsed = planningResult.ModelUsed ?? job.Project.PlanningModelId;
-				job.PlanningReasoningEffortUsed = job.Project.PlanningReasoningEffort;
-				job.PlanningGeneratedAt = DateTime.UtcNow;
-				job.PlanningInputTokens = planningResult.InputTokens;
-				job.PlanningOutputTokens = planningResult.OutputTokens;
-				job.PlanningCostUsd = planningResult.CostUsd;
-				job.PlanningCommandUsed = executionContext.CommandUsed ?? planningResult.CommandUsed;
+                job.PlanningModelUsed = planningResult.ModelUsed ?? job.Project.PlanningModelId;
+                job.PlanningReasoningEffortUsed = job.Project.PlanningReasoningEffort;
+                job.PlanningGeneratedAt = DateTime.UtcNow;
+                job.PlanningInputTokens = planningResult.InputTokens;
+                job.PlanningOutputTokens = planningResult.OutputTokens;
+                job.PlanningCostUsd = planningResult.CostUsd;
+                job.PlanningCommandUsed = executionContext.CommandUsed ?? planningResult.CommandUsed;
 
                 // Clear planning phase's command/process so execution phase starts clean
                 job.CommandUsed = null;
                 job.ProcessId = null;
                 executionContext.ProcessId = 0;
                 executionContext.CommandUsed = null;
+                JobRecoveryHelper.ClearRecoveryState(job);
 
                 await dbContext.SaveChangesAsync(cancellationToken);
             }
 
             await EnsureProjectSkillsMaterializedAsync(job.Project, skillStorage, cancellationToken);
             var currentPrompt = PromptBuilder.BuildExecutionPrompt(job, planningOutput, enableStructuring);
+            var shouldRunRecoveryFlow = JobRecoveryHelper.IsResumeCandidate(job);
+            executionContext.ActivePrompt = currentPrompt;
             var attachedFiles = DeserializeAttachedFiles(job.AttachedFilesJson);
             var cycleComplete = false;
             await UpdateJobStatusAsync(job.Id, JobStatus.Processing, dbContext, cancellationToken);
             await NotifyStatusChangedAsync(job.Id, JobStatus.Processing);
+
+            async Task<string?> TryPrepareClaudeSessionIdAsync(string? requestedSessionId)
+            {
+                if (provider.Type != ProviderType.Claude
+                    || provider.ConnectionMode != ProviderConnectionMode.CLI
+                    || !string.IsNullOrEmpty(requestedSessionId)
+                    || !string.IsNullOrEmpty(executionContext.SessionId))
+                {
+                    return null;
+                }
+
+                var preassignedSessionId = Guid.NewGuid().ToString();
+                try
+                {
+                    var jobForSessionUpdate = await dbContext.Jobs.FirstOrDefaultAsync(j => j.Id == job.Id, cancellationToken);
+                    if (jobForSessionUpdate != null && string.IsNullOrEmpty(jobForSessionUpdate.SessionId))
+                    {
+                        jobForSessionUpdate.SessionId = preassignedSessionId;
+                        await dbContext.SaveChangesAsync(cancellationToken);
+                        job.SessionId = preassignedSessionId;
+                        executionContext.SessionId = preassignedSessionId;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to persist pre-assigned session UUID for job {JobId}; continuing without it", job.Id);
+                    return null;
+                }
+
+                return preassignedSessionId;
+            }
+
+            async Task<ExecutionResult> ExecuteCurrentCycleAsync(string promptToExecute, string? requestedSessionId)
+            {
+                var mcpOptions = await GetMcpExecutionOptionsAsync(job.ProviderId, job.Project, workingDirectory, cancellationToken);
+                var wantsOneHourCache = provider.Type == ProviderType.Claude
+                    && (job.CycleMode != CycleMode.SingleCycle || job.SwarmId != null);
+                var hasMcp = !string.IsNullOrEmpty(mcpOptions.McpConfigPath);
+                var preassignedSessionId = await TryPrepareClaudeSessionIdAsync(requestedSessionId);
+
+                try
+                {
+                    return await provider.ExecuteWithOptionsAsync(
+                        promptToExecute,
+                        new ExecutionOptions
+                        {
+                            SessionId = requestedSessionId,
+                            WorkingDirectory = workingDirectory,
+                            McpConfigPath = mcpOptions.McpConfigPath,
+                            BashEnvPath = mcpOptions.BashEnvPath,
+                            AdditionalArgs = mcpOptions.AdditionalArgs,
+                            UseBareMode = provider.Type == ProviderType.Claude
+                                && provider.ConnectionMode == ProviderConnectionMode.CLI
+                                && ShouldUseClaudeBareMode(job.Provider!),
+                            Model = job.ModelUsed,
+                            ReasoningEffort = job.ReasoningEffort,
+                            Title = job.Title,
+                            AttachedFiles = attachedFiles,
+                            AppendSystemPrompt = systemPromptRules,
+                            EnvironmentVariables = jobEnvironmentVariables,
+                            PreassignedSessionId = preassignedSessionId,
+                            EnableOneHourPromptCache = wantsOneHourCache,
+                            ExcludeDynamicSystemPromptSections = provider.Type == ProviderType.Claude,
+                            NonBlockingMcpConnection = provider.Type == ProviderType.Claude && hasMcp,
+                            DisableAskUser = provider.Type == ProviderType.Copilot,
+                            SkipPermissions = provider.Type == ProviderType.OpenCode,
+                        },
+                        progress,
+                        cancellationToken);
+                }
+                finally
+                {
+                    CleanupMcpExecutionResources(mcpOptions.Resources);
+                }
+            }
 
             while (currentCycle <= effectiveMaxCycles && !cycleComplete && !cancellationToken.IsCancellationRequested)
             {
@@ -688,8 +824,11 @@ public partial class JobProcessingService
                     }
                 }
 
-                // Determine session ID for this cycle
-                var cycleSessionId = job.CycleSessionMode == CycleSessionMode.ContinueSession ? sessionId : null;
+                // Determine session ID for this cycle. Recovery runs always attempt the persisted
+                // provider session first, regardless of normal cycle session policy.
+                var cycleSessionId = shouldRunRecoveryFlow
+                    ? sessionId
+                    : job.CycleSessionMode == CycleSessionMode.ContinueSession ? sessionId : null;
 
                 if (currentCycle == job.CurrentCycle)
                 {
@@ -704,96 +843,74 @@ public partial class JobProcessingService
                         cancellationToken);
                 }
 
-				var mcpOptions = await GetMcpExecutionOptionsAsync(job.ProviderId, job.Project, workingDirectory, cancellationToken);
+                var attemptedSessionResume = false;
+                var promptToExecute = currentPrompt;
+                if (shouldRunRecoveryFlow)
+                {
+                    promptToExecute = BuildRecoveryPrompt(job, executionContext, currentPrompt);
+                    attemptedSessionResume = JobRecoveryHelper.ShouldAttemptSessionResume(job)
+                        && !string.IsNullOrWhiteSpace(cycleSessionId);
+                    if (attemptedSessionResume)
+                    {
+                        JobRecoveryHelper.RecordResumeAttempt(job);
+                        await dbContext.SaveChangesAsync(cancellationToken);
+                    }
+                    else
+                    {
+                        cycleSessionId = null;
+                    }
+                }
 
-				// Smart defaults for latest CLI capabilities:
-				// - Auto-enable 1-hour prompt cache for multi-cycle / swarm jobs (Claude v2.1.108+).
-				//   Guarded inside the provider on CLI version, so safe to always request.
-				// - Exclude dynamic system prompt sections to keep the static AppendSystemPrompt cacheable
-				//   across runs (Claude v2.1.98+).
-				// - Non-blocking MCP startup prevents -p mode from hanging on slow MCP servers (v2.1.89+).
-				//   Only enable when MCP config is actually in play.
-				// - Pre-mint a session UUID on the first cycle of a fresh Claude job so Job.SessionId is
-				//   populated before the CLI emits its first system/init event (v2.1.86+).
-				var wantsOneHourCache = provider.Type == ProviderType.Claude
-					&& (job.CycleMode != CycleMode.SingleCycle || job.SwarmId != null);
-				var hasMcp = !string.IsNullOrEmpty(mcpOptions.McpConfigPath);
-				string? preassignedSessionId = null;
-				if (provider.Type == ProviderType.Claude
-					&& provider.ConnectionMode == ProviderConnectionMode.CLI
-					&& string.IsNullOrEmpty(cycleSessionId)
-					&& string.IsNullOrEmpty(job.SessionId))
-				{
-					preassignedSessionId = Guid.NewGuid().ToString();
-					// Persist before launching the CLI so concurrent readers (UI, resume flow) see the ID.
-					try
-					{
-						var jobForSessionUpdate = await dbContext.Jobs.FirstOrDefaultAsync(j => j.Id == job.Id, cancellationToken);
-						if (jobForSessionUpdate != null && string.IsNullOrEmpty(jobForSessionUpdate.SessionId))
-						{
-							jobForSessionUpdate.SessionId = preassignedSessionId;
-							await dbContext.SaveChangesAsync(cancellationToken);
-							job.SessionId = preassignedSessionId;
-						}
-					}
-					catch (Exception ex)
-					{
-						_logger.LogWarning(ex, "Failed to persist pre-assigned session UUID for job {JobId}; continuing without it", job.Id);
-						preassignedSessionId = null;
-					}
-				}
+                executionContext.ActivePrompt = promptToExecute;
+                executionContext.LatestActivity = shouldRunRecoveryFlow
+                    ? "Recovering interrupted job..."
+                    : executionContext.LatestActivity;
+                await PersistExecutionCheckpointAsync(job.Id, JobStatus.Processing, executionContext, cancellationToken);
 
-				ExecutionResult result;
-				try
-				{
-					result = await provider.ExecuteWithOptionsAsync(
-						currentPrompt,
-						new ExecutionOptions
-						{
-							SessionId = cycleSessionId,
-							WorkingDirectory = workingDirectory,
-							McpConfigPath = mcpOptions.McpConfigPath,
-							BashEnvPath = mcpOptions.BashEnvPath,
-							AdditionalArgs = mcpOptions.AdditionalArgs,
-							UseBareMode = provider.Type == ProviderType.Claude
-								&& provider.ConnectionMode == ProviderConnectionMode.CLI
-								&& ShouldUseClaudeBareMode(job.Provider!),
-							Model = job.ModelUsed,
-							ReasoningEffort = job.ReasoningEffort,
-							Title = job.Title,
-							AttachedFiles = attachedFiles,
-							AppendSystemPrompt = systemPromptRules,
-							EnvironmentVariables = jobEnvironmentVariables,
-							// Claude smart defaults (ignored by other providers).
-							PreassignedSessionId = preassignedSessionId,
-							EnableOneHourPromptCache = wantsOneHourCache,
-							ExcludeDynamicSystemPromptSections = provider.Type == ProviderType.Claude,
-							NonBlockingMcpConnection = provider.Type == ProviderType.Claude && hasMcp,
-							// Copilot smart defaults (ignored by other providers): dispatched runs are headless,
-							// so silence the interactive ask-user tool. Secret redaction is handled inside
-							// CopilotProvider, which auto-derives the list from BaseEnvironmentVariables.
-							DisableAskUser = provider.Type == ProviderType.Copilot,
-							// OpenCode smart defaults (ignored by other providers): dispatched runs cannot respond
-							// to permission prompts, so skip them on v1.4.0+.
-							SkipPermissions = provider.Type == ProviderType.OpenCode,
-						},
-						progress,
-						cancellationToken);
-				}
-				finally
-				{
-					CleanupMcpExecutionResources(mcpOptions.Resources);
-				}
+                var result = await ExecuteCurrentCycleAsync(promptToExecute, cycleSessionId);
+                if (attemptedSessionResume && IsSessionResumeFailure(result))
+                {
+                    _logger.LogWarning(
+                        "Stored session resume failed for job {JobId}. Retrying in a fresh session. Error: {Error}",
+                        job.Id,
+                        result.ErrorMessage);
+                    if (result.InputTokens.HasValue)
+                    {
+                        executionInputTokens = (executionInputTokens ?? 0) + result.InputTokens.Value;
+                    }
+                    if (result.OutputTokens.HasValue)
+                    {
+                        executionOutputTokens = (executionOutputTokens ?? 0) + result.OutputTokens.Value;
+                    }
+                    if (result.CostUsd.HasValue)
+                    {
+                        executionCostUsd = (executionCostUsd ?? 0) + result.CostUsd.Value;
+                    }
+
+                    JobRecoveryHelper.RecordResumeFailure(job, result.ErrorMessage ?? result.Output);
+                    await dbContext.SaveChangesAsync(cancellationToken);
+                    sessionId = null;
+                    executionContext.SessionId = null;
+
+                    var freshRecoveryPrompt = BuildRecoveryPrompt(job, executionContext, currentPrompt);
+                    executionContext.ActivePrompt = freshRecoveryPrompt;
+                    executionContext.LatestActivity = "Retrying interrupted job in a fresh session...";
+                    await PersistExecutionCheckpointAsync(job.Id, JobStatus.Processing, executionContext, cancellationToken);
+
+                    result = await ExecuteCurrentCycleAsync(freshRecoveryPrompt, null);
+                }
 
                 // Store last result and accumulate tokens/cost
                 lastResult = result;
-                sessionId = result.SessionId ?? sessionId;
-				if (result.InputTokens.HasValue)
-					executionInputTokens = (executionInputTokens ?? 0) + result.InputTokens.Value;
-				if (result.OutputTokens.HasValue)
-					executionOutputTokens = (executionOutputTokens ?? 0) + result.OutputTokens.Value;
-				if (result.CostUsd.HasValue)
-					executionCostUsd = (executionCostUsd ?? 0) + result.CostUsd.Value;
+                sessionId = result.SessionId ?? executionContext.SessionId ?? sessionId;
+                executionContext.SessionId = sessionId;
+                job.SessionId = sessionId ?? job.SessionId;
+                if (result.InputTokens.HasValue)
+                    executionInputTokens = (executionInputTokens ?? 0) + result.InputTokens.Value;
+                if (result.OutputTokens.HasValue)
+                    executionOutputTokens = (executionOutputTokens ?? 0) + result.OutputTokens.Value;
+                if (result.CostUsd.HasValue)
+                    executionCostUsd = (executionCostUsd ?? 0) + result.CostUsd.Value;
                 if (!string.IsNullOrWhiteSpace(result.CommandUsed))
                 {
                     job.ExecutionCommandUsed = result.CommandUsed;
@@ -806,6 +923,13 @@ public partial class JobProcessingService
                         currentCycle, job.Id, result.ErrorMessage);
                     cycleComplete = true;
                     break;
+                }
+
+                if (shouldRunRecoveryFlow)
+                {
+                    JobRecoveryHelper.ClearRecoveryState(job);
+                    await dbContext.SaveChangesAsync(cancellationToken);
+                    shouldRunRecoveryFlow = false;
                 }
 
                 // Check cancellation between cycles
@@ -838,6 +962,7 @@ public partial class JobProcessingService
                         currentPrompt = string.IsNullOrWhiteSpace(job.CycleReviewPrompt)
                             ? "Review all changes made so far. Verify the code compiles and tests pass. If the task is complete and working correctly, respond with CYCLE_COMPLETE. Otherwise, continue implementing the remaining work."
                             : job.CycleReviewPrompt;
+                        executionContext.ActivePrompt = currentPrompt;
                         currentCycle++;
                     }
                 }
@@ -845,35 +970,36 @@ public partial class JobProcessingService
                 {
                     // Build next cycle prompt for fixed count mode
                     currentPrompt = $"Continue implementing the task. This is cycle {currentCycle + 1} of {effectiveMaxCycles}. Review the current state and continue where you left off.";
+                    executionContext.ActivePrompt = currentPrompt;
                     currentCycle++;
                 }
             }
 
-			// Use accumulated results
-			var finalResult = lastResult ?? new ExecutionResult { Success = false, ErrorMessage = "No execution result" };
-			finalResult.InputTokens = executionInputTokens;
-			finalResult.OutputTokens = executionOutputTokens;
-			finalResult.CostUsd = executionCostUsd;
+            // Use accumulated results
+            var finalResult = lastResult ?? new ExecutionResult { Success = false, ErrorMessage = "No execution result" };
+            finalResult.InputTokens = executionInputTokens;
+            finalResult.OutputTokens = executionOutputTokens;
+            finalResult.CostUsd = executionCostUsd;
 
-			// If the provider did not report token usage, fall back to text-length estimates.
-			// This is common for GitHub Copilot CLI which reports premium requests rather than raw tokens.
-			if (!finalResult.InputTokens.HasValue && !finalResult.OutputTokens.HasValue)
-			{
-				var inputText = job.GoalPrompt + (job.PlanningOutput is { Length: > 0 } ? "\n" + job.PlanningOutput : "");
-				finalResult.InputTokens = TokenHelper.EstimateTokenCount(inputText);
+            // If the provider did not report token usage, fall back to text-length estimates.
+            // This is common for GitHub Copilot CLI which reports premium requests rather than raw tokens.
+            if (!finalResult.InputTokens.HasValue && !finalResult.OutputTokens.HasValue)
+            {
+                var inputText = job.GoalPrompt + (job.PlanningOutput is { Length: > 0 } ? "\n" + job.PlanningOutput : "");
+                finalResult.InputTokens = TokenHelper.EstimateTokenCount(inputText);
 
-				var assistantContent = string.Join("\n", finalResult.Messages
-					.Where(m => string.Equals(m.Role, "assistant", StringComparison.OrdinalIgnoreCase))
-					.Select(m => m.Content));
+                var assistantContent = string.Join("\n", finalResult.Messages
+                    .Where(m => string.Equals(m.Role, "assistant", StringComparison.OrdinalIgnoreCase))
+                    .Select(m => m.Content));
 
-				if (string.IsNullOrEmpty(assistantContent))
-				{
-					assistantContent = executionContext.GetConsoleOutput();
-				}
+                if (string.IsNullOrEmpty(assistantContent))
+                {
+                    assistantContent = executionContext.GetConsoleOutput();
+                }
 
-				finalResult.OutputTokens = TokenHelper.EstimateTokenCount(assistantContent);
-				finalResult.IsTokenEstimate = true;
-			}
+                finalResult.OutputTokens = TokenHelper.EstimateTokenCount(assistantContent);
+                finalResult.IsTokenEstimate = true;
+            }
 
             // Stop monitoring cancellation
             executionContext.CancellationTokenSource?.Cancel();
@@ -908,6 +1034,7 @@ public partial class JobProcessingService
                 var providerDisplayName = job.Provider?.Name;
                 providerDisplayName ??= provider?.Name;
                 providerDisplayName ??= "Unknown Provider";
+                await ClearProviderRateLimitAsync(job.ProviderId, dbContext, CancellationToken.None);
                 // Save messages
                 if (finalResult.Messages.Count > 0)
                 {
@@ -959,10 +1086,18 @@ public partial class JobProcessingService
                     finalResult.DetectedUsageLimits is { IsLimitReached: true } &&
                     (finalResult.DetectedUsageLimits.LimitType is UsageLimitType.RateLimit or UsageLimitType.PremiumRequests);
 
-                if (isRateLimited && _healthTracker != null)
+                if (isRateLimited)
                 {
                     var limits = finalResult.DetectedUsageLimits!;
-                    _healthTracker.RecordRateLimitFailure(job.ProviderId, finalResult.ErrorMessage, limits.ResetTime);
+                    _healthTracker?.RecordRateLimitFailure(job.ProviderId, finalResult.ErrorMessage, limits.ResetTime);
+                    var trackedCooldownUntil = _healthTracker?.GetProviderHealth(job.ProviderId).RateLimitResetTime;
+                    var durableBackoffUntil = await RecordProviderRateLimitAsync(
+                        job.ProviderId,
+                        limits.ResetTime,
+                        finalResult.ErrorMessage,
+                        dbContext,
+                        CancellationToken.None,
+                        trackedCooldownUntil);
 
                     var resetDescription = limits.ResetTime.HasValue
                         ? $"Resets at {limits.ResetTime.Value:u}"
@@ -976,7 +1111,7 @@ public partial class JobProcessingService
                     DateTime? backoffUntil = null;
                     if (!hasAlternativeProvider)
                     {
-                        backoffUntil = limits.ResetTime ?? DateTime.UtcNow + TimeSpan.FromMinutes(30);
+                        backoffUntil = durableBackoffUntil;
                         _logger.LogInformation(
                             "No alternative provider for job {JobId}. Backing off until {BackoffUntil:u}",
                             job.Id, backoffUntil);
@@ -1055,11 +1190,18 @@ public partial class JobProcessingService
                     {
                         // User requested cancellation
                         JobStateMachine.TryTransition(jobEntity, JobStatus.Cancelled, "Job was cancelled by user.");
+                        JobRecoveryHelper.ClearRecoveryState(jobEntity);
                         jobEntity.ErrorMessage = "Job was cancelled by user";
                     }
                     else
                     {
                         // Service shutdown or timeout - reset for retry
+                        JobRecoveryHelper.CaptureRecoveryState(
+                            jobEntity,
+                            jobEntity.Status == JobStatus.Planning ? JobStatus.Planning : JobStatus.Processing,
+                            executionContext.ActivePrompt,
+                            executionContext.SessionId ?? jobEntity.SessionId,
+                            executionContext.GetConsoleOutput());
                         JobStateMachine.TryTransition(jobEntity, JobStatus.New, "Service shutdown during execution. Queued for retry.");
                         jobEntity.ErrorMessage = jobEntity.GitCheckpointStatus == GitCheckpointStatus.Preserved
                             ? "Service shutdown during execution. Queued for retry after preserving local changes."

@@ -99,6 +99,27 @@ public partial class JobProcessingService : BackgroundService
         public string? CommandUsed { get; set; }
 
         /// <summary>
+        /// Most recent provider session ID observed during execution.
+        /// </summary>
+        public string? SessionId { get; set; }
+
+        /// <summary>
+        /// Prompt snapshot currently being executed.
+        /// Persisted to durable recovery checkpoints.
+        /// </summary>
+        public string? ActivePrompt { get; set; }
+
+        /// <summary>
+        /// Most recent activity summary observed from the provider.
+        /// </summary>
+        public string? LatestActivity { get; set; }
+
+        /// <summary>
+        /// Last time durable recovery state was flushed to the database.
+        /// </summary>
+        public DateTime LastCheckpointPersistedAt { get; set; }
+
+        /// <summary>
         /// Accumulates console output during execution for storage in the database
         /// </summary>
         public StringBuilder ConsoleOutputBuffer { get; } = new StringBuilder();
@@ -306,12 +327,19 @@ public partial class JobProcessingService : BackgroundService
 
                 if (job.MaxRetries == 0 || job.RetryCount < job.MaxRetries)
                 {
+                    JobRecoveryHelper.CaptureRecoveryState(
+                        job,
+                        job.Status == JobStatus.Planning ? JobStatus.Planning : JobStatus.Processing,
+                        job.RecoveryPrompt ?? job.GoalPrompt,
+                        job.SessionId,
+                        job.ConsoleOutput);
                     JobStateMachine.TryTransition(job, JobStatus.New, "Automatic orphan recovery");
                     job.RetryCount++;
                     job.ErrorMessage = "Worker crashed or became unresponsive. Automatic recovery.";
                 }
                 else
                 {
+                    JobRecoveryHelper.ClearRecoveryState(job);
                     JobStateMachine.TryTransition(job, JobStatus.Failed, "Automatic orphan recovery exhausted retries");
                     job.ErrorMessage = $"Job failed after {job.RetryCount} retry attempts (worker crash).";
                 }
