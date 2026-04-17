@@ -399,11 +399,10 @@
 		_availableAgentAssignments = project?.AgentAssignments?
 			.Where(assignment =>
 				assignment.IsEnabled &&
-				assignment.Agent != null &&
-				assignment.Agent.IsEnabled &&
-				assignment.Provider != null &&
-				assignment.Provider.IsEnabled)
-			.OrderBy(assignment => assignment.Agent!.Name, StringComparer.OrdinalIgnoreCase)
+				assignment.AgentId != Guid.Empty &&
+				assignment.Agent?.IsEnabled != false &&
+				_providers.Any(p => p.Id == assignment.ProviderId))
+			.OrderBy(assignment => assignment.Agent?.Name ?? string.Empty, StringComparer.OrdinalIgnoreCase)
 			.ToList() ?? [];
 
 		if (Schedule.ScheduleType == JobScheduleType.GenerateIdeas)
