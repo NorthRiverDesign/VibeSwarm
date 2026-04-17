@@ -148,31 +148,27 @@ public class JobScheduleProcessor
 
 		if (!schedule.AgentId.HasValue || schedule.AgentId == Guid.Empty)
 		{
-			throw new InvalidOperationException("The selected agent is not assigned to this project.");
+			throw new InvalidOperationException("An agent is required.");
 		}
 
-		var assignment = await _dbContext.ProjectAgents
-			.Include(projectAgent => projectAgent.Agent)
-			.Include(projectAgent => projectAgent.Provider)
-			.FirstOrDefaultAsync(projectAgent =>
-				projectAgent.ProjectId == schedule.ProjectId &&
-				projectAgent.AgentId == schedule.AgentId.Value,
-				cancellationToken);
-		if (assignment == null || !assignment.IsEnabled || assignment.Agent == null || !assignment.Agent.IsEnabled)
+		var agent = await _dbContext.Agents
+			.Include(a => a.DefaultProvider)
+			.FirstOrDefaultAsync(a => a.Id == schedule.AgentId.Value, cancellationToken);
+		if (agent == null || !agent.IsEnabled)
 		{
-			throw new InvalidOperationException("The selected agent is not assigned to this project.");
+			throw new InvalidOperationException("The selected agent does not exist or is disabled.");
 		}
 
-		if (assignment.Provider == null || !assignment.Provider.IsEnabled)
+		if (!agent.DefaultProviderId.HasValue || agent.DefaultProvider == null || !agent.DefaultProvider.IsEnabled)
 		{
-			throw new InvalidOperationException("The selected agent does not have an enabled provider assignment.");
+			throw new InvalidOperationException("The selected agent does not have an enabled default provider.");
 		}
 
 		if (!string.IsNullOrWhiteSpace(schedule.ModelId))
 		{
 			var modelExists = await _dbContext.ProviderModels
 				.AnyAsync(model =>
-					model.ProviderId == assignment.ProviderId &&
+					model.ProviderId == agent.DefaultProviderId.Value &&
 					model.IsAvailable &&
 					model.ModelId == schedule.ModelId,
 					cancellationToken);
@@ -183,10 +179,10 @@ public class JobScheduleProcessor
 		}
 
 		return new ScheduledExecutionSelection(
-			assignment.ProviderId,
-			string.IsNullOrWhiteSpace(schedule.ModelId) ? assignment.PreferredModelId : schedule.ModelId,
-			assignment.PreferredReasoningEffort,
-			assignment.AgentId);
+			agent.DefaultProviderId.Value,
+			string.IsNullOrWhiteSpace(schedule.ModelId) ? agent.DefaultModelId : schedule.ModelId,
+			agent.DefaultReasoningEffort,
+			agent.Id);
 	}
 
 	private static string BuildScheduledIdeaContext(JobSchedule schedule, DateTime scheduledForUtc)

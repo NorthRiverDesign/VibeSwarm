@@ -9,20 +9,17 @@ using VibeSwarm.Shared.Services;
 namespace VibeSwarm.Tests;
 
 /// <summary>
-/// Regression tests for the scheduler modal agent dropdown bug where newly added
-/// agents would not appear in the dropdown if their navigation properties were null
-/// (e.g. due to JSON serialization cycles). The fix uses FK-based filtering instead.
+/// Tests for the scheduler modal agent dropdown. Agents are global entities — they
+/// appear in the dropdown based on IsEnabled status, not per-project assignments.
 /// </summary>
 public sealed class JobScheduleModalTests
 {
 	/// <summary>
-	/// Regression: an agent assignment whose Agent nav prop is null (as can happen
-	/// after JSON deserialization breaks a circular reference) must still appear in
-	/// the scheduler modal agent dropdown, because the fix uses AgentId (FK) rather
-	/// than the Agent nav prop to determine inclusion.
+	/// Enabled agents with a default provider should appear in the scheduler dropdown
+	/// regardless of whether they are assigned to the selected project.
 	/// </summary>
 	[Fact]
-	public void JobScheduleModal_AgentDropdown_ShowsAssignment_WhenAgentNavPropIsNull()
+	public void JobScheduleModal_AgentDropdown_ShowsGlobalAgents_WithoutProjectAssignment()
 	{
 		var agentId = Guid.NewGuid();
 		var providerId = Guid.NewGuid();
@@ -37,25 +34,21 @@ public sealed class JobScheduleModalTests
 			IsDefault = true
 		};
 
-		// Simulate post-deserialization state: AgentId is set but Agent nav prop is null.
-		// This was the root cause of the bug — the old filter required Agent != null.
+		var agent = new Agent
+		{
+			Id = agentId,
+			Name = "Code Reviewer",
+			IsEnabled = true,
+			DefaultProviderId = providerId,
+			DefaultProvider = provider
+		};
+
+		// Project has NO AgentAssignments — agents should still appear in the dropdown.
 		var project = new Project
 		{
 			Id = projectId,
 			Name = "VibeSwarm",
-			WorkingPath = "/tmp/vibeswarm",
-			AgentAssignments =
-			[
-				new ProjectAgent
-				{
-					ProjectId = projectId,
-					AgentId = agentId,
-					Agent = null,        // null nav prop — the exact case that was broken
-					ProviderId = providerId,
-					Provider = null,     // null nav prop — same
-					IsEnabled = true
-				}
-			]
+			WorkingPath = "/tmp/vibeswarm"
 		};
 
 		var editSchedule = new JobSchedule
@@ -64,6 +57,133 @@ public sealed class JobScheduleModalTests
 			ProjectId = projectId,
 			ExecutionTarget = JobScheduleExecutionTarget.Agent,
 			AgentId = agentId,
+			ScheduleType = JobScheduleType.RunJob,
+			Prompt = "Run checks",
+			Frequency = JobScheduleFrequency.Daily,
+			HourUtc = 9,
+			IsEnabled = true
+		};
+
+		using var context = new BunitContext();
+		context.JSInterop.SetupVoid("eval", "document.body.classList.add('vs-modal-open')");
+		context.JSInterop.SetupVoid("eval", "document.body.classList.remove('vs-modal-open')");
+		context.Services.AddSingleton<IProjectService>(new FakeProjectService([project]));
+		context.Services.AddSingleton<IAgentService>(new FakeAgentService([agent]));
+		context.Services.AddSingleton<IProviderService>(new FakeProviderService([provider]));
+		context.Services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService());
+		context.Services.AddSingleton<IJobScheduleService>(new FakeJobScheduleService());
+		context.Services.AddSingleton<ISettingsService>(new FakeSettingsService());
+		context.Services.AddSingleton<AppTimeZoneService>();
+		context.Services.AddSingleton<NotificationService>();
+
+		var cut = context.Render<JobScheduleModal>(parameters => parameters
+			.Add(component => component.IsVisible, true)
+			.Add(component => component.EditSchedule, editSchedule));
+
+		Assert.DoesNotContain("No enabled agents", cut.Markup);
+		Assert.Contains(agentId.ToString(), cut.Markup);
+		Assert.Contains("Code Reviewer", cut.Markup);
+	}
+
+	/// <summary>
+	/// Multiple enabled agents should all appear in the dropdown.
+	/// </summary>
+	[Fact]
+	public void JobScheduleModal_AgentDropdown_ShowsMultipleAgents()
+	{
+		var firstAgentId = Guid.NewGuid();
+		var secondAgentId = Guid.NewGuid();
+		var providerId = Guid.NewGuid();
+		var projectId = Guid.NewGuid();
+
+		var provider = new Provider
+		{
+			Id = providerId,
+			Name = "GitHub Copilot",
+			Type = ProviderType.Copilot,
+			IsEnabled = true,
+			IsDefault = true
+		};
+
+		var firstAgent = new Agent
+		{
+			Id = firstAgentId,
+			Name = "Security Reviewer",
+			IsEnabled = true,
+			DefaultProviderId = providerId,
+			DefaultProvider = provider
+		};
+
+		var secondAgent = new Agent
+		{
+			Id = secondAgentId,
+			Name = "Front-End Developer",
+			IsEnabled = true,
+			DefaultProviderId = providerId,
+			DefaultProvider = provider
+		};
+
+		var project = new Project
+		{
+			Id = projectId,
+			Name = "VibeSwarm",
+			WorkingPath = "/tmp/vibeswarm"
+		};
+
+		var editSchedule = new JobSchedule
+		{
+			Id = Guid.NewGuid(),
+			ProjectId = projectId,
+			ExecutionTarget = JobScheduleExecutionTarget.Agent,
+			AgentId = firstAgentId,
+			ScheduleType = JobScheduleType.RunJob,
+			Prompt = "Run checks",
+			Frequency = JobScheduleFrequency.Daily,
+			HourUtc = 9,
+			IsEnabled = true
+		};
+
+		using var context = new BunitContext();
+		context.JSInterop.SetupVoid("eval", "document.body.classList.add('vs-modal-open')");
+		context.JSInterop.SetupVoid("eval", "document.body.classList.remove('vs-modal-open')");
+		context.Services.AddSingleton<IProjectService>(new FakeProjectService([project]));
+		context.Services.AddSingleton<IAgentService>(new FakeAgentService([firstAgent, secondAgent]));
+		context.Services.AddSingleton<IProviderService>(new FakeProviderService([provider]));
+		context.Services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService());
+		context.Services.AddSingleton<IJobScheduleService>(new FakeJobScheduleService());
+		context.Services.AddSingleton<ISettingsService>(new FakeSettingsService());
+		context.Services.AddSingleton<AppTimeZoneService>();
+		context.Services.AddSingleton<NotificationService>();
+
+		var cut = context.Render<JobScheduleModal>(parameters => parameters
+			.Add(component => component.IsVisible, true)
+			.Add(component => component.EditSchedule, editSchedule));
+
+		Assert.Contains("Security Reviewer", cut.Markup);
+		Assert.Contains("Front-End Developer", cut.Markup);
+		Assert.DoesNotContain("No enabled agents", cut.Markup);
+	}
+
+	/// <summary>
+	/// When no agents are enabled, the dropdown should show the empty-state message.
+	/// </summary>
+	[Fact]
+	public void JobScheduleModal_AgentDropdown_ShowsEmptyState_WhenNoEnabledAgents()
+	{
+		var projectId = Guid.NewGuid();
+
+		var project = new Project
+		{
+			Id = projectId,
+			Name = "VibeSwarm",
+			WorkingPath = "/tmp/vibeswarm"
+		};
+
+		var editSchedule = new JobSchedule
+		{
+			Id = Guid.NewGuid(),
+			ProjectId = projectId,
+			ExecutionTarget = JobScheduleExecutionTarget.Agent,
 			ScheduleType = JobScheduleType.RunJob,
 			Prompt = "Run checks",
 			Frequency = JobScheduleFrequency.Daily,
@@ -76,7 +196,7 @@ public sealed class JobScheduleModalTests
 		context.JSInterop.SetupVoid("eval", "document.body.classList.remove('vs-modal-open')");
 		context.Services.AddSingleton<IProjectService>(new FakeProjectService([project]));
 		context.Services.AddSingleton<IAgentService>(new FakeAgentService([]));
-		context.Services.AddSingleton<IProviderService>(new FakeProviderService([provider]));
+		context.Services.AddSingleton<IProviderService>(new FakeProviderService([]));
 		context.Services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService());
 		context.Services.AddSingleton<IJobScheduleService>(new FakeJobScheduleService());
 		context.Services.AddSingleton<ISettingsService>(new FakeSettingsService());
@@ -87,18 +207,14 @@ public sealed class JobScheduleModalTests
 			.Add(component => component.IsVisible, true)
 			.Add(component => component.EditSchedule, editSchedule));
 
-		// The dropdown must exist and must NOT show the empty-state placeholder.
-		Assert.DoesNotContain("No enabled agents", cut.Markup);
-		// The agent option must have the correct value attribute.
-		Assert.Contains(agentId.ToString(), cut.Markup);
+		Assert.Contains("No enabled agents", cut.Markup);
 	}
 
 	/// <summary>
-	/// Verifies that an agent assignment with fully populated nav props (the happy path)
-	/// also renders the agent name in the dropdown, including the provider name fallback.
+	/// An agent with a default provider should display the provider name in parentheses.
 	/// </summary>
 	[Fact]
-	public void JobScheduleModal_AgentDropdown_ShowsAgentName_WhenNavPropsArePopulated()
+	public void JobScheduleModal_AgentDropdown_DisplaysProviderName()
 	{
 		var agentId = Guid.NewGuid();
 		var providerId = Guid.NewGuid();
@@ -107,334 +223,26 @@ public sealed class JobScheduleModalTests
 		var provider = new Provider
 		{
 			Id = providerId,
-			Name = "GitHub Copilot",
-			Type = ProviderType.Copilot,
+			Name = "Claude Code",
+			Type = ProviderType.Claude,
 			IsEnabled = true,
 			IsDefault = true
 		};
+
 		var agent = new Agent
 		{
 			Id = agentId,
-			Name = "Security Reviewer",
-			IsEnabled = true
-		};
-		var project = new Project
-		{
-			Id = projectId,
-			Name = "VibeSwarm",
-			WorkingPath = "/tmp/vibeswarm",
-			AgentAssignments =
-			[
-				new ProjectAgent
-				{
-					ProjectId = projectId,
-					AgentId = agentId,
-					Agent = agent,
-					ProviderId = providerId,
-					Provider = provider,
-					IsEnabled = true
-				}
-			]
-		};
-
-		var editSchedule = new JobSchedule
-		{
-			Id = Guid.NewGuid(),
-			ProjectId = projectId,
-			ExecutionTarget = JobScheduleExecutionTarget.Agent,
-			AgentId = agentId,
-			ScheduleType = JobScheduleType.RunJob,
-			Prompt = "Run checks",
-			Frequency = JobScheduleFrequency.Daily,
-			HourUtc = 9,
-			IsEnabled = true
-		};
-
-		using var context = new BunitContext();
-		context.JSInterop.SetupVoid("eval", "document.body.classList.add('vs-modal-open')");
-		context.JSInterop.SetupVoid("eval", "document.body.classList.remove('vs-modal-open')");
-		context.Services.AddSingleton<IProjectService>(new FakeProjectService([project]));
-		context.Services.AddSingleton<IAgentService>(new FakeAgentService([agent]));
-		context.Services.AddSingleton<IProviderService>(new FakeProviderService([provider]));
-		context.Services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService());
-		context.Services.AddSingleton<IJobScheduleService>(new FakeJobScheduleService());
-		context.Services.AddSingleton<ISettingsService>(new FakeSettingsService());
-		context.Services.AddSingleton<AppTimeZoneService>();
-		context.Services.AddSingleton<NotificationService>();
-
-		var cut = context.Render<JobScheduleModal>(parameters => parameters
-			.Add(component => component.IsVisible, true)
-			.Add(component => component.EditSchedule, editSchedule));
-
-		Assert.Contains("Security Reviewer", cut.Markup);
-		Assert.Contains("GitHub Copilot", cut.Markup);
-		Assert.DoesNotContain("No enabled agents", cut.Markup);
-	}
-
-	[Fact]
-	public void JobScheduleModal_AgentDropdown_UsesSelectedProjectDetails_WhenBulkProjectListIsStale()
-	{
-		var firstAgentId = Guid.NewGuid();
-		var secondAgentId = Guid.NewGuid();
-		var providerId = Guid.NewGuid();
-		var projectId = Guid.NewGuid();
-
-		var provider = new Provider
-		{
-			Id = providerId,
-			Name = "GitHub Copilot",
-			Type = ProviderType.Copilot,
-			IsEnabled = true,
-			IsDefault = true
-		};
-		var firstAgent = new Agent
-		{
-			Id = firstAgentId,
-			Name = "Security Reviewer",
-			IsEnabled = true
-		};
-		var secondAgent = new Agent
-		{
-			Id = secondAgentId,
-			Name = "Release Manager",
-			IsEnabled = true
-		};
-		var bulkProject = new Project
-		{
-			Id = projectId,
-			Name = "VibeSwarm",
-			WorkingPath = "/tmp/vibeswarm",
-			AgentAssignments =
-			[
-				new ProjectAgent
-				{
-					ProjectId = projectId,
-					AgentId = firstAgentId,
-					Agent = firstAgent,
-					ProviderId = providerId,
-					Provider = provider,
-					IsEnabled = true
-				}
-			]
-		};
-		var detailedProject = new Project
-		{
-			Id = projectId,
-			Name = "VibeSwarm",
-			WorkingPath = "/tmp/vibeswarm",
-			AgentAssignments =
-			[
-				new ProjectAgent
-				{
-					ProjectId = projectId,
-					AgentId = firstAgentId,
-					Agent = firstAgent,
-					ProviderId = providerId,
-					Provider = provider,
-					IsEnabled = true
-				},
-				new ProjectAgent
-				{
-					ProjectId = projectId,
-					AgentId = secondAgentId,
-					Agent = secondAgent,
-					ProviderId = providerId,
-					Provider = provider,
-					IsEnabled = true
-				}
-			]
-		};
-
-		var editSchedule = new JobSchedule
-		{
-			Id = Guid.NewGuid(),
-			ProjectId = projectId,
-			ExecutionTarget = JobScheduleExecutionTarget.Agent,
-			AgentId = firstAgentId,
-			ScheduleType = JobScheduleType.RunJob,
-			Prompt = "Run checks",
-			Frequency = JobScheduleFrequency.Daily,
-			HourUtc = 9,
-			IsEnabled = true
-		};
-
-		using var context = new BunitContext();
-		context.JSInterop.SetupVoid("eval", "document.body.classList.add('vs-modal-open')");
-		context.JSInterop.SetupVoid("eval", "document.body.classList.remove('vs-modal-open')");
-		context.Services.AddSingleton<IProjectService>(new FakeProjectService([bulkProject], detailedProject));
-		context.Services.AddSingleton<IAgentService>(new FakeAgentService([firstAgent, secondAgent]));
-		context.Services.AddSingleton<IProviderService>(new FakeProviderService([provider]));
-		context.Services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService());
-		context.Services.AddSingleton<IJobScheduleService>(new FakeJobScheduleService());
-		context.Services.AddSingleton<ISettingsService>(new FakeSettingsService());
-		context.Services.AddSingleton<AppTimeZoneService>();
-		context.Services.AddSingleton<NotificationService>();
-
-		var cut = context.Render<JobScheduleModal>(parameters => parameters
-			.Add(component => component.IsVisible, true)
-			.Add(component => component.EditSchedule, editSchedule));
-
-		Assert.Contains("Security Reviewer", cut.Markup);
-		Assert.Contains("Release Manager", cut.Markup);
-	}
-
-	[Fact]
-	public void JobScheduleModal_AgentDropdown_MergesBulkAssignments_WhenDetailedProjectIsMissingNewAgent()
-	{
-		var firstAgentId = Guid.NewGuid();
-		var secondAgentId = Guid.NewGuid();
-		var providerId = Guid.NewGuid();
-		var projectId = Guid.NewGuid();
-
-		var provider = new Provider
-		{
-			Id = providerId,
-			Name = "GitHub Copilot",
-			Type = ProviderType.Copilot,
-			IsEnabled = true,
-			IsDefault = true
-		};
-		var firstAgent = new Agent
-		{
-			Id = firstAgentId,
-			Name = "Front-End Developer",
-			IsEnabled = true
-		};
-		var secondAgent = new Agent
-		{
-			Id = secondAgentId,
 			Name = "Code Reviewer",
-			IsEnabled = true
-		};
-		var bulkProject = new Project
-		{
-			Id = projectId,
-			Name = "VibeSwarm",
-			WorkingPath = "/tmp/vibeswarm",
-			AgentAssignments =
-			[
-				new ProjectAgent
-				{
-					ProjectId = projectId,
-					AgentId = firstAgentId,
-					Agent = firstAgent,
-					ProviderId = providerId,
-					Provider = provider,
-					IsEnabled = true
-				},
-				new ProjectAgent
-				{
-					ProjectId = projectId,
-					AgentId = secondAgentId,
-					Agent = secondAgent,
-					ProviderId = providerId,
-					Provider = provider,
-					IsEnabled = true
-				}
-			]
-		};
-		var detailedProject = new Project
-		{
-			Id = projectId,
-			Name = "VibeSwarm",
-			WorkingPath = "/tmp/vibeswarm",
-			AgentAssignments =
-			[
-				new ProjectAgent
-				{
-					ProjectId = projectId,
-					AgentId = firstAgentId,
-					Agent = firstAgent,
-					ProviderId = providerId,
-					Provider = provider,
-					IsEnabled = true
-				}
-			]
-		};
-
-		var editSchedule = new JobSchedule
-		{
-			Id = Guid.NewGuid(),
-			ProjectId = projectId,
-			ExecutionTarget = JobScheduleExecutionTarget.Agent,
-			AgentId = firstAgentId,
-			ScheduleType = JobScheduleType.RunJob,
-			Prompt = "Review UI",
-			Frequency = JobScheduleFrequency.Daily,
-			HourUtc = 9,
-			IsEnabled = true
-		};
-
-		using var context = new BunitContext();
-		context.JSInterop.SetupVoid("eval", "document.body.classList.add('vs-modal-open')");
-		context.JSInterop.SetupVoid("eval", "document.body.classList.remove('vs-modal-open')");
-		context.Services.AddSingleton<IProjectService>(new FakeProjectService([bulkProject], detailedProject));
-		context.Services.AddSingleton<IAgentService>(new FakeAgentService([firstAgent, secondAgent]));
-		context.Services.AddSingleton<IProviderService>(new FakeProviderService([provider]));
-		context.Services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService());
-		context.Services.AddSingleton<IJobScheduleService>(new FakeJobScheduleService());
-		context.Services.AddSingleton<ISettingsService>(new FakeSettingsService());
-		context.Services.AddSingleton<AppTimeZoneService>();
-		context.Services.AddSingleton<NotificationService>();
-
-		var cut = context.Render<JobScheduleModal>(parameters => parameters
-			.Add(component => component.IsVisible, true)
-			.Add(component => component.EditSchedule, editSchedule));
-
-		Assert.Contains("Front-End Developer", cut.Markup);
-		Assert.Contains("Code Reviewer", cut.Markup);
-	}
-
-	/// <summary>
-	/// Regression: a newly-added agent assignment whose provider is not yet in the
-	/// client-side provider cache must still appear in the dropdown. The old filter
-	/// used _providers.Any(p => p.Id == assignment.ProviderId) which would silently
-	/// exclude the assignment when the 60-second provider cache was stale. The fix
-	/// checks assignment.Provider?.IsEnabled instead, using the nav prop that is
-	/// always populated by the API response.
-	/// </summary>
-	[Fact]
-	public void JobScheduleModal_AgentDropdown_ShowsAssignment_WhenProviderNotInClientCache()
-	{
-		var agentId = Guid.NewGuid();
-		var providerId = Guid.NewGuid();
-		var projectId = Guid.NewGuid();
-
-		var provider = new Provider
-		{
-			Id = providerId,
-			Name = "GitHub Copilot",
-			Type = ProviderType.Copilot,
 			IsEnabled = true,
-			IsDefault = true
-		};
-		var agent = new Agent
-		{
-			Id = agentId,
-			Name = "Release Manager",
-			IsEnabled = true
+			DefaultProviderId = providerId,
+			DefaultProvider = provider
 		};
 
-		// Simulate the project returned by GetByIdAsync: the new agent assignment has
-		// the Provider nav prop populated (as it would be from the server), but the
-		// FakeProviderService returns an EMPTY list to simulate a stale provider cache.
 		var project = new Project
 		{
 			Id = projectId,
 			Name = "VibeSwarm",
-			WorkingPath = "/tmp/vibeswarm",
-			AgentAssignments =
-			[
-				new ProjectAgent
-				{
-					ProjectId = projectId,
-					AgentId = agentId,
-					Agent = agent,
-					ProviderId = providerId,
-					Provider = provider,
-					IsEnabled = true
-				}
-			]
+			WorkingPath = "/tmp/vibeswarm"
 		};
 
 		var editSchedule = new JobSchedule
@@ -444,7 +252,7 @@ public sealed class JobScheduleModalTests
 			ExecutionTarget = JobScheduleExecutionTarget.Agent,
 			AgentId = agentId,
 			ScheduleType = JobScheduleType.RunJob,
-			Prompt = "Run checks",
+			Prompt = "Review code",
 			Frequency = JobScheduleFrequency.Daily,
 			HourUtc = 9,
 			IsEnabled = true
@@ -455,314 +263,6 @@ public sealed class JobScheduleModalTests
 		context.JSInterop.SetupVoid("eval", "document.body.classList.remove('vs-modal-open')");
 		context.Services.AddSingleton<IProjectService>(new FakeProjectService([project]));
 		context.Services.AddSingleton<IAgentService>(new FakeAgentService([agent]));
-		// Empty provider list simulates a stale client-side cache that does not yet
-		// include the newly added provider used by the new agent assignment.
-		context.Services.AddSingleton<IProviderService>(new FakeProviderService([]));
-		context.Services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService());
-		context.Services.AddSingleton<IJobScheduleService>(new FakeJobScheduleService());
-		context.Services.AddSingleton<ISettingsService>(new FakeSettingsService());
-		context.Services.AddSingleton<AppTimeZoneService>();
-		context.Services.AddSingleton<NotificationService>();
-
-		var cut = context.Render<JobScheduleModal>(parameters => parameters
-			.Add(component => component.IsVisible, true)
-			.Add(component => component.EditSchedule, editSchedule));
-
-		Assert.DoesNotContain("No enabled agents", cut.Markup);
-		Assert.Contains(agentId.ToString(), cut.Markup);
-	}
-
-	/// <summary>
-	/// Regression: an agent assignment whose provider has IsEnabled=false must still appear in
-	/// the scheduler modal agent dropdown. Previously the filter excluded such assignments,
-	/// silently hiding agents added after a provider was disabled. The server validates
-	/// provider state at save time; the dropdown should not pre-filter by provider status.
-	/// </summary>
-	[Fact]
-	public void JobScheduleModal_AgentDropdown_ShowsAssignment_WhenProviderIsDisabled()
-	{
-		var agentId = Guid.NewGuid();
-		var providerId = Guid.NewGuid();
-		var projectId = Guid.NewGuid();
-
-		// Provider is disabled — the old filter (`assignment.Provider?.IsEnabled != false`) would
-		// have silently excluded this assignment, causing the agent to vanish from the dropdown.
-		var provider = new Provider
-		{
-			Id = providerId,
-			Name = "GitHub Copilot",
-			Type = ProviderType.Copilot,
-			IsEnabled = false,
-			IsDefault = false
-		};
-		var agent = new Agent
-		{
-			Id = agentId,
-			Name = "Security Auditor",
-			IsEnabled = true
-		};
-
-		var project = new Project
-		{
-			Id = projectId,
-			Name = "VibeSwarm",
-			WorkingPath = "/tmp/vibeswarm",
-			AgentAssignments =
-			[
-				new ProjectAgent
-				{
-					ProjectId = projectId,
-					AgentId = agentId,
-					Agent = agent,
-					ProviderId = providerId,
-					Provider = provider,
-					IsEnabled = true
-				}
-			]
-		};
-
-		var editSchedule = new JobSchedule
-		{
-			Id = Guid.NewGuid(),
-			ProjectId = projectId,
-			ExecutionTarget = JobScheduleExecutionTarget.Agent,
-			AgentId = agentId,
-			ScheduleType = JobScheduleType.RunJob,
-			Prompt = "Run security audit",
-			Frequency = JobScheduleFrequency.Daily,
-			HourUtc = 9,
-			IsEnabled = true
-		};
-
-		using var context = new BunitContext();
-		context.JSInterop.SetupVoid("eval", "document.body.classList.add('vs-modal-open')");
-		context.JSInterop.SetupVoid("eval", "document.body.classList.remove('vs-modal-open')");
-		context.Services.AddSingleton<IProjectService>(new FakeProjectService([project]));
-		context.Services.AddSingleton<IAgentService>(new FakeAgentService([agent]));
-		context.Services.AddSingleton<IProviderService>(new FakeProviderService([]));
-		context.Services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService());
-		context.Services.AddSingleton<IJobScheduleService>(new FakeJobScheduleService());
-		context.Services.AddSingleton<ISettingsService>(new FakeSettingsService());
-		context.Services.AddSingleton<AppTimeZoneService>();
-		context.Services.AddSingleton<NotificationService>();
-
-		var cut = context.Render<JobScheduleModal>(parameters => parameters
-			.Add(component => component.IsVisible, true)
-			.Add(component => component.EditSchedule, editSchedule));
-
-		Assert.DoesNotContain("No enabled agents", cut.Markup);
-		Assert.Contains(agentId.ToString(), cut.Markup);
-	}
-
-/// <summary>
-/// Regression: when the parent page re-renders while the modal is open (e.g., due to
-/// the Scheduler's 1-minute refresh timer) and the provider list is empty, the
-/// <c>else if (!_projects.Any() || !_providers.Any())</c> branch fires.  That branch
-/// reloads lookup data — clearing the <c>_projectDetailsById</c> cache — but previously
-/// never called <c>SyncExecutionTargetsAsync</c>, so any agent added to the project
-/// after the modal was first opened would not appear in the dropdown until the modal
-/// was closed and reopened.
-/// </summary>
-[Fact]
-public void JobScheduleModal_AgentDropdown_RefreshesAfterParentRerender_WhenModalIsOpen()
-{
-var agentId = Guid.NewGuid();
-var newAgentId = Guid.NewGuid();
-var providerId = Guid.NewGuid();
-var projectId = Guid.NewGuid();
-
-var agent = new Agent { Id = agentId, Name = "Security Reviewer", IsEnabled = true };
-var newAgent = new Agent { Id = newAgentId, Name = "Newly Added Agent", IsEnabled = true };
-
-var projectWithoutNewAgent = new Project
-{
-Id = projectId,
-Name = "VibeSwarm",
-WorkingPath = "/tmp/vibeswarm",
-AgentAssignments =
-[
-new ProjectAgent
-{
-ProjectId = projectId,
-AgentId = agentId,
-Agent = agent,
-ProviderId = providerId,
-Provider = null,
-IsEnabled = true
-}
-]
-};
-
-var projectWithNewAgent = new Project
-{
-Id = projectId,
-Name = "VibeSwarm",
-WorkingPath = "/tmp/vibeswarm",
-AgentAssignments =
-[
-new ProjectAgent
-{
-ProjectId = projectId,
-AgentId = agentId,
-Agent = agent,
-ProviderId = providerId,
-Provider = null,
-IsEnabled = true
-},
-new ProjectAgent
-{
-ProjectId = projectId,
-AgentId = newAgentId,
-Agent = newAgent,
-ProviderId = providerId,
-Provider = null,
-IsEnabled = true
-}
-]
-};
-
-var editSchedule = new JobSchedule
-{
-Id = Guid.NewGuid(),
-ProjectId = projectId,
-ExecutionTarget = JobScheduleExecutionTarget.Agent,
-AgentId = agentId,
-ScheduleType = JobScheduleType.RunJob,
-Prompt = "Run checks",
-Frequency = JobScheduleFrequency.Daily,
-HourUtc = 9,
-IsEnabled = true
-};
-
-var projectService = new LiveProjectService(projectWithoutNewAgent);
-
-using var context = new BunitContext();
-context.JSInterop.SetupVoid("eval", "document.body.classList.add('vs-modal-open')");
-context.JSInterop.SetupVoid("eval", "document.body.classList.remove('vs-modal-open')");
-context.Services.AddSingleton<IProjectService>(projectService);
-context.Services.AddSingleton<IAgentService>(new FakeAgentService([agent, newAgent]));
-// Empty provider list causes _providers.Any() == false, which triggers the else-if
-// branch on re-render — this is the condition that exposed the missing
-// SyncExecutionTargetsAsync call.
-context.Services.AddSingleton<IProviderService>(new FakeProviderService([]));
-context.Services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService());
-context.Services.AddSingleton<IJobScheduleService>(new FakeJobScheduleService());
-context.Services.AddSingleton<ISettingsService>(new FakeSettingsService());
-context.Services.AddSingleton<AppTimeZoneService>();
-context.Services.AddSingleton<NotificationService>();
-
-var cut = context.Render<JobScheduleModal>(parameters => parameters
-.Add(component => component.IsVisible, true)
-.Add(component => component.EditSchedule, editSchedule));
-
-// Initial open — only the original agent should be visible.
-Assert.Contains("Security Reviewer", cut.Markup);
-Assert.DoesNotContain("Newly Added Agent", cut.Markup);
-
-// Simulate: user adds a new agent to the project after the modal was opened.
-projectService.Update(projectWithNewAgent);
-
-// Simulate: the Scheduler page's 1-minute refresh timer triggers a parent
-// re-render, causing OnParametersSetAsync to fire while the modal stays open.
-// Because _providers is empty, the else-if branch fires and clears the
-// _projectDetailsById cache.  The fix ensures SyncExecutionTargetsAsync is
-// called afterward so the dropdown is rebuilt from fresh data.
-cut.Render(parameters => parameters
-.Add(component => component.IsVisible, true)
-.Add(component => component.EditSchedule, editSchedule));
-
-Assert.Contains("Security Reviewer", cut.Markup);
-Assert.Contains("Newly Added Agent", cut.Markup);
-}
-
-	/// <summary>
-	/// Regression: agent added to the project after the Edit Schedule modal was opened
-	/// must appear in the dropdown when providers ARE configured (non-empty _providers).
-	/// Previously, with populated lookup data both else-if conditions evaluated to false,
-	/// so the _projectDetailsById cache was never invalidated and the new agent never
-	/// appeared until the modal was closed and reopened.
-	/// </summary>
-	[Fact]
-	public void JobScheduleModal_AgentDropdown_RefreshesAfterParentRerender_WhenProvidersAreConfigured()
-	{
-		var agentId = Guid.NewGuid();
-		var newAgentId = Guid.NewGuid();
-		var providerId = Guid.NewGuid();
-		var projectId = Guid.NewGuid();
-
-		var agent = new Agent { Id = agentId, Name = "Security Reviewer", IsEnabled = true };
-		var newAgent = new Agent { Id = newAgentId, Name = "Newly Added Agent", IsEnabled = true };
-		var provider = new Provider { Id = providerId, Name = "GitHub Copilot", IsEnabled = true, IsDefault = true };
-
-		var projectWithoutNewAgent = new Project
-		{
-			Id = projectId,
-			Name = "VibeSwarm",
-			WorkingPath = "/tmp/vibeswarm",
-			AgentAssignments =
-			[
-				new ProjectAgent
-				{
-					ProjectId = projectId,
-					AgentId = agentId,
-					Agent = agent,
-					ProviderId = providerId,
-					Provider = provider,
-					IsEnabled = true
-				}
-			]
-		};
-
-		var projectWithNewAgent = new Project
-		{
-			Id = projectId,
-			Name = "VibeSwarm",
-			WorkingPath = "/tmp/vibeswarm",
-			AgentAssignments =
-			[
-				new ProjectAgent
-				{
-					ProjectId = projectId,
-					AgentId = agentId,
-					Agent = agent,
-					ProviderId = providerId,
-					Provider = provider,
-					IsEnabled = true
-				},
-				new ProjectAgent
-				{
-					ProjectId = projectId,
-					AgentId = newAgentId,
-					Agent = newAgent,
-					ProviderId = providerId,
-					Provider = provider,
-					IsEnabled = true
-				}
-			]
-		};
-
-		var editSchedule = new JobSchedule
-		{
-			Id = Guid.NewGuid(),
-			ProjectId = projectId,
-			ExecutionTarget = JobScheduleExecutionTarget.Agent,
-			AgentId = agentId,
-			ScheduleType = JobScheduleType.RunJob,
-			Prompt = "Run checks",
-			Frequency = JobScheduleFrequency.Daily,
-			HourUtc = 9,
-			IsEnabled = true
-		};
-
-		var projectService = new LiveProjectService(projectWithoutNewAgent);
-
-		using var context = new BunitContext();
-		context.JSInterop.SetupVoid("eval", "document.body.classList.add('vs-modal-open')");
-		context.JSInterop.SetupVoid("eval", "document.body.classList.remove('vs-modal-open')");
-		context.Services.AddSingleton<IProjectService>(projectService);
-		context.Services.AddSingleton<IAgentService>(new FakeAgentService([agent, newAgent]));
-		// Real provider — _providers is non-empty, so the lookup-data fallback branches
-		// never fire. The new third branch (IsVisible + non-empty ProjectId) must handle this.
 		context.Services.AddSingleton<IProviderService>(new FakeProviderService([provider]));
 		context.Services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService());
 		context.Services.AddSingleton<IJobScheduleService>(new FakeJobScheduleService());
@@ -774,22 +274,7 @@ Assert.Contains("Newly Added Agent", cut.Markup);
 			.Add(component => component.IsVisible, true)
 			.Add(component => component.EditSchedule, editSchedule));
 
-		// Initial open — only the original agent should be visible.
-		Assert.Contains("Security Reviewer", cut.Markup);
-		Assert.DoesNotContain("Newly Added Agent", cut.Markup);
-
-		// Simulate: user adds a new agent to the project after the modal was opened.
-		projectService.Update(projectWithNewAgent);
-
-		// Simulate: the Scheduler page's 1-minute refresh timer triggers a parent re-render,
-		// causing OnParametersSetAsync to fire while the modal stays open.
-		cut.Render(parameters => parameters
-			.Add(component => component.IsVisible, true)
-			.Add(component => component.EditSchedule, editSchedule));
-
-		// Both agents must appear in the dropdown.
-		Assert.Contains("Security Reviewer", cut.Markup);
-		Assert.Contains("Newly Added Agent", cut.Markup);
+		Assert.Contains("Code Reviewer (Claude Code)", cut.Markup);
 	}
 
 	private sealed class FakeSettingsService : ISettingsService
@@ -882,30 +367,4 @@ Assert.Contains("Newly Added Agent", cut.Markup);
 		public Task<JobSchedule> SetEnabledAsync(Guid id, bool isEnabled, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task DeleteAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	}
-
-/// <summary>
-/// A mutable project service whose current project can be swapped at any time,
-/// simulating server-side data changes that occur while the modal is open.
-/// </summary>
-private sealed class LiveProjectService(Project initialProject) : IProjectService
-{
-private Project _project = initialProject;
-
-public void Update(Project project) => _project = project;
-
-public Task<IEnumerable<Project>> GetAllAsync(CancellationToken cancellationToken = default)
-=> Task.FromResult<IEnumerable<Project>>([_project]);
-public Task<IEnumerable<Project>> GetRecentAsync(int count, CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Project>>([]);
-public Task<Project?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
-=> Task.FromResult<Project?>(_project.Id == id ? _project : null);
-public Task<Project?> GetByIdWithJobsAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult<Project?>(null);
-public Task<Project> CreateAsync(Project project, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-public Task<Project> CreateProjectAsync(Shared.Models.ProjectCreationRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-public Task<Project> UpdateAsync(Project project, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-public Task DeleteAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-public Task<IEnumerable<ProjectWithStats>> GetAllWithStatsAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<ProjectWithStats>>([]);
-public Task<IEnumerable<DashboardProjectInfo>> GetRecentWithLatestJobAsync(int count, CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<DashboardProjectInfo>>([]);
-public Task<DashboardJobMetrics> GetDashboardJobMetricsAsync(int rangeDays, CancellationToken cancellationToken = default) => Task.FromResult(new DashboardJobMetrics { RangeDays = rangeDays, Buckets = [] });
-public Task<IEnumerable<DashboardRunningJobInfo>> GetDashboardRunningJobsAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<DashboardRunningJobInfo>>([]);
-}
 }

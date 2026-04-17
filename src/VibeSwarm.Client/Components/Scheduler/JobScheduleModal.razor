@@ -91,16 +91,16 @@
 						<div class="col-12 col-lg-4">
 							<label for="schedule-team-role" class="form-label">Agent</label>
 							<select id="schedule-team-role" class="form-select" value="@GetAgentValue()" @onchange="OnAgentChanged"
-									disabled="@(!_availableAgentAssignments.Any())">
-								<option value="">@(_availableAgentAssignments.Any() ? "Select agent..." : "No enabled agents")</option>
-								@foreach (var assignment in _availableAgentAssignments)
+									disabled="@(!_agents.Any())">
+								<option value="">@(_agents.Any() ? "Select agent..." : "No enabled agents")</option>
+								@foreach (var agent in _agents)
 								{
-									<option value="@assignment.AgentId">@GetTeamAssignmentDisplayText(assignment)</option>
+									<option value="@agent.Id">@GetAgentDisplayText(agent)</option>
 								}
 							</select>
-							@if (!_availableAgentAssignments.Any())
+							@if (!_agents.Any())
 							{
-								<div class="form-text text-warning">Assign an enabled agent with an enabled provider in the project settings first.</div>
+								<div class="form-text text-warning">Create an enabled agent from the Agents page first.</div>
 							}
 						</div>
 					}
@@ -155,19 +155,19 @@
 
 			@if (Schedule.ScheduleType == JobScheduleType.RunJob && Schedule.ExecutionTarget == JobScheduleExecutionTarget.Agent)
 			{
-				var assignment = GetSelectedTeamAssignment();
-				@if (assignment != null)
+				var selectedAgent = GetSelectedAgent();
+				@if (selectedAgent != null)
 				{
 					<div class="small text-body-secondary mt-2 d-flex flex-wrap gap-3">
 						<span class="d-inline-flex align-items-center gap-1">
 							<i class="bi bi-cpu opacity-75"></i>
-							@(assignment.Provider?.Name ?? "Unknown provider")
+							@(selectedAgent.DefaultProvider?.Name ?? "No default provider")
 						</span>
-						@if (!string.IsNullOrWhiteSpace(assignment.PreferredReasoningEffort))
+						@if (!string.IsNullOrWhiteSpace(selectedAgent.DefaultReasoningEffort))
 						{
 							<span class="d-inline-flex align-items-center gap-1">
 								<i class="bi bi-lightning-charge opacity-75"></i>
-								@assignment.PreferredReasoningEffort
+								@selectedAgent.DefaultReasoningEffort
 							</span>
 						}
 					</div>
@@ -286,7 +286,6 @@
 	private List<Provider> _providers = [];
 	private List<InferenceProvider> _inferenceProviders = [];
 	private List<Provider> _allowedProviders = [];
-	private List<ProjectAgent> _availableAgentAssignments = [];
 	private List<ProviderModel> _models = [];
 	private bool _isLoadingModels;
 	private bool _isRefreshingModels;
@@ -313,9 +312,8 @@
 		}
 		else if (IsVisible && Schedule.ProjectId != Guid.Empty)
 		{
-			// Modal is already open with populated lookup data. Clear the project detail
-			// cache so the next SyncExecutionTargetsAsync fetches fresh agent assignments
-			// (picks up agents added to the project while the modal was open).
+			// Modal is already open — clear the project detail cache so provider
+			// selections are refreshed on re-render (e.g. timer-driven parent updates).
 			_projectDetailsById.Remove(Schedule.ProjectId);
 			await SyncExecutionTargetsAsync(preserveCurrentSelection: true);
 		}
@@ -422,43 +420,33 @@
 			return cachedProject;
 		}
 
-		var selectedProject = GetSelectedProject();
 		var detailedProject = await ProjectService.GetByIdAsync(Schedule.ProjectId);
 		if (detailedProject == null)
 		{
-			return selectedProject;
+			return GetSelectedProject();
 		}
 
-		var mergedProject = MergeProjectAssignments(selectedProject, detailedProject);
-		_projectDetailsById[Schedule.ProjectId] = mergedProject;
-		var projectIndex = _projects.FindIndex(project => project.Id == mergedProject.Id);
+		_projectDetailsById[Schedule.ProjectId] = detailedProject;
+		var projectIndex = _projects.FindIndex(project => project.Id == detailedProject.Id);
 		if (projectIndex >= 0)
 		{
-			_projects[projectIndex] = mergedProject;
+			_projects[projectIndex] = detailedProject;
 		}
 		else
 		{
-			_projects.Add(mergedProject);
+			_projects.Add(detailedProject);
 			_projects = _projects
 				.OrderBy(project => project.Name)
 				.ToList();
 		}
 
-		return mergedProject;
+		return detailedProject;
 	}
 
 	private async Task SyncExecutionTargetsAsync(bool preserveCurrentSelection)
 	{
 		var project = await GetSelectedProjectAsync();
 		_allowedProviders = ProjectExecutionDefaults.GetAllowedProviders(project, _providers);
-		_availableAgentAssignments = project?.AgentAssignments?
-			.Select(EnrichAgentAssignment)
-			.Where(assignment =>
-				assignment.IsEnabled &&
-				assignment.AgentId != Guid.Empty)
-			.OrderBy(assignment => assignment.Agent?.Name ?? string.Empty, StringComparer.OrdinalIgnoreCase)
-			.ThenBy(assignment => assignment.Provider?.Name ?? string.Empty, StringComparer.OrdinalIgnoreCase)
-			.ToList() ?? [];
 
 		if (Schedule.ScheduleType == JobScheduleType.GenerateIdeas)
 		{
@@ -482,9 +470,9 @@
 		}
 		else
 		{
-			if (!preserveCurrentSelection || !Schedule.AgentId.HasValue || !_availableAgentAssignments.Any(assignment => assignment.AgentId == Schedule.AgentId.Value))
+			if (!preserveCurrentSelection || !Schedule.AgentId.HasValue || !_agents.Any(agent => agent.Id == Schedule.AgentId.Value))
 			{
-				Schedule.AgentId = _availableAgentAssignments.FirstOrDefault()?.AgentId;
+				Schedule.AgentId = _agents.FirstOrDefault()?.Id;
 			}
 
 			Schedule.ProviderId = null;
@@ -794,9 +782,9 @@
 		await IsVisibleChanged.InvokeAsync(isVisible);
 	}
 
-	private ProjectAgent? GetSelectedTeamAssignment()
+	private Agent? GetSelectedAgent()
 		=> Schedule.AgentId.HasValue
-			? _availableAgentAssignments.FirstOrDefault(assignment => assignment.AgentId == Schedule.AgentId.Value)
+			? _agents.FirstOrDefault(agent => agent.Id == Schedule.AgentId.Value)
 			: null;
 
 	private Guid? ResolveSelectedProviderId()
@@ -811,7 +799,7 @@
 			return Schedule.ProviderId;
 		}
 
-		return GetSelectedTeamAssignment()?.ProviderId;
+		return GetSelectedAgent()?.DefaultProviderId;
 	}
 
 	private string ResolveDefaultModel(Guid providerId)
@@ -826,10 +814,10 @@
 			return ProjectExecutionDefaults.ResolveModelId(GetSelectedProject(), providerId, _models);
 		}
 
-		var teamAssignment = GetSelectedTeamAssignment();
-		if (!string.IsNullOrWhiteSpace(teamAssignment?.PreferredModelId) && _models.Any(model => model.ModelId == teamAssignment.PreferredModelId))
+		var selectedAgent = GetSelectedAgent();
+		if (!string.IsNullOrWhiteSpace(selectedAgent?.DefaultModelId) && _models.Any(model => model.ModelId == selectedAgent.DefaultModelId))
 		{
-			return teamAssignment.PreferredModelId!;
+			return selectedAgent.DefaultModelId!;
 		}
 
 		return _models.FirstOrDefault(model => model.IsDefault)?.ModelId ?? string.Empty;
@@ -847,105 +835,24 @@
 			return "Leave empty to use the project's preferred provider model or the provider default.";
 		}
 
-		var assignment = GetSelectedTeamAssignment();
-		if (assignment == null)
+		var selectedAgent = GetSelectedAgent();
+		if (selectedAgent == null)
 		{
-			return "Leave empty to use the selected agent's assigned default model.";
+			return "Leave empty to use the selected agent's default model.";
 		}
 
-		if (!string.IsNullOrWhiteSpace(assignment.PreferredModelId))
+		if (!string.IsNullOrWhiteSpace(selectedAgent.DefaultModelId))
 		{
-			return $"Leave empty to use {assignment.Agent?.Name}'s assigned model ({assignment.PreferredModelId}).";
+			return $"Leave empty to use {selectedAgent.Name}'s default model ({selectedAgent.DefaultModelId}).";
 		}
 
 		return "Leave empty to use the selected agent's provider default model.";
 	}
 
-	private static string GetTeamAssignmentDisplayText(ProjectAgent assignment)
+	private static string GetAgentDisplayText(Agent agent)
 	{
-		var roleName = assignment.Agent?.Name ?? "Unknown agent";
-		var providerName = assignment.Provider?.Name ?? "Unknown provider";
-		return $"{roleName} ({providerName})";
-	}
-
-	private ProjectAgent EnrichAgentAssignment(ProjectAgent assignment)
-	{
-		return new ProjectAgent
-		{
-			Id = assignment.Id,
-			ProjectId = assignment.ProjectId,
-			Project = assignment.Project,
-			AgentId = assignment.AgentId,
-			Agent = assignment.Agent ?? _agents.FirstOrDefault(agent => agent.Id == assignment.AgentId),
-			ProviderId = assignment.ProviderId,
-			Provider = assignment.Provider ?? _providers.FirstOrDefault(provider => provider.Id == assignment.ProviderId),
-			PreferredModelId = assignment.PreferredModelId,
-			PreferredReasoningEffort = assignment.PreferredReasoningEffort,
-			IsEnabled = assignment.IsEnabled,
-			CreatedAt = assignment.CreatedAt,
-			UpdatedAt = assignment.UpdatedAt
-		};
-	}
-
-	private static Project MergeProjectAssignments(Project? baseProject, Project detailedProject)
-	{
-		if (baseProject?.AgentAssignments == null || baseProject.AgentAssignments.Count == 0)
-		{
-			return detailedProject;
-		}
-
-		var mergedAssignments = baseProject.AgentAssignments
-			.Concat(detailedProject.AgentAssignments ?? [])
-			.Where(assignment => assignment.AgentId != Guid.Empty)
-			.GroupBy(assignment => assignment.AgentId)
-			.Select(group => MergeProjectAgentAssignment(group))
-			.ToList();
-
-		detailedProject.AgentAssignments = mergedAssignments;
-		return detailedProject;
-	}
-
-	private static ProjectAgent MergeProjectAgentAssignment(IEnumerable<ProjectAgent> assignments)
-	{
-		var assignmentList = assignments.ToList();
-		if (assignmentList.Count == 0)
-		{
-			return new ProjectAgent();
-		}
-
-		var merged = new ProjectAgent
-		{
-			Id = assignmentList[0].Id,
-			ProjectId = assignmentList[0].ProjectId,
-			Project = assignmentList[0].Project,
-			AgentId = assignmentList[0].AgentId,
-			Agent = assignmentList[0].Agent,
-			ProviderId = assignmentList[0].ProviderId,
-			Provider = assignmentList[0].Provider,
-			PreferredModelId = assignmentList[0].PreferredModelId,
-			PreferredReasoningEffort = assignmentList[0].PreferredReasoningEffort,
-			IsEnabled = assignmentList[0].IsEnabled,
-			CreatedAt = assignmentList[0].CreatedAt,
-			UpdatedAt = assignmentList[0].UpdatedAt
-		};
-
-		foreach (var assignment in assignmentList.Skip(1))
-		{
-			merged.Project ??= assignment.Project;
-			merged.Agent ??= assignment.Agent;
-			merged.Provider ??= assignment.Provider;
-			merged.PreferredModelId ??= assignment.PreferredModelId;
-			merged.PreferredReasoningEffort ??= assignment.PreferredReasoningEffort;
-			merged.IsEnabled |= assignment.IsEnabled;
-			if (assignment.CreatedAt != default && assignment.CreatedAt < merged.CreatedAt)
-			{
-				merged.CreatedAt = assignment.CreatedAt;
-			}
-
-			merged.UpdatedAt = assignment.UpdatedAt ?? merged.UpdatedAt;
-		}
-
-		return merged;
+		var providerName = agent.DefaultProvider?.Name;
+		return string.IsNullOrWhiteSpace(providerName) ? agent.Name : $"{agent.Name} ({providerName})";
 	}
 
 	private string GetProjectValue() => Schedule.ProjectId == Guid.Empty ? string.Empty : Schedule.ProjectId.ToString();
