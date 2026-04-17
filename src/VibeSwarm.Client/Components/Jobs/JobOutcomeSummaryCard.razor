@@ -92,7 +92,7 @@
 				<div class="small fw-semibold text-body-secondary text-uppercase">Next step</div>
 				<div class="fw-semibold">@NextStepBlock.Title</div>
 				<div class="small text-body-secondary">@NextStepBlock.Message</div>
-				@if (NextStepActions.Count > 0)
+				@if (NextStepActions.Count > 0 || (CanMergeBranch && !MergedAt.HasValue))
 				{
 					<div class="d-grid d-sm-flex flex-wrap gap-2">
 						@foreach (var action in NextStepActions)
@@ -104,6 +104,21 @@
 								<i class="bi @action.Icon me-1"></i>
 								<span>@action.Text</span>
 							</a>
+						}
+						@if (CanMergeBranch && !MergedAt.HasValue)
+						{
+							<button class="btn btn-success btn-sm" @onclick="HandleMergeBranch" disabled="@IsMergingBranch">
+								@if (IsMergingBranch)
+								{
+									<span class="spinner-border spinner-border-sm me-1" role="status"></span>
+									<span>Merging...</span>
+								}
+								else
+								{
+									<i class="bi bi-arrow-left-right me-1"></i>
+									<span>Merge into @TargetBranch</span>
+								}
+							</button>
 						}
 					</div>
 				}
@@ -181,6 +196,15 @@
 
 	[Parameter]
 	public string? VerificationOutputHref { get; set; }
+
+	[Parameter]
+	public bool CanMergeBranch { get; set; }
+
+	[Parameter]
+	public bool IsMergingBranch { get; set; }
+
+	[Parameter]
+	public EventCallback OnMergeBranch { get; set; }
 
 	private bool HasDeliveredChanges => JobOutcomeDisplayHelper.HasDeliveredChanges(PullRequestUrl, GitCommitHash, MergedAt);
 
@@ -474,6 +498,13 @@
 				return new DetailBlock("Review the pull request", "Open the PR, check the diff, and merge it when the review is complete.");
 			}
 
+			if (CanMergeBranch && Status == JobStatus.Completed && !MergedAt.HasValue)
+			{
+				return new DetailBlock(
+					"Merge into the target branch",
+					$"The changes are ready. Use the merge button below to merge{FormatTargetBranchClause()}.");
+			}
+
 			if (HasDetectedChanges && !string.IsNullOrWhiteSpace(DeliveryHref) && Status == JobStatus.Completed)
 			{
 				return new DetailBlock("Finish delivery", "Review the diff and use the delivery actions below to push, create a pull request, or merge.");
@@ -540,6 +571,11 @@
 		=> string.IsNullOrWhiteSpace(TargetBranch)
 			? string.Empty
 			: $" targeting {TargetBranch}";
+
+	private async Task HandleMergeBranch()
+	{
+		await OnMergeBranch.InvokeAsync();
+	}
 
 	private sealed class OutcomeSummary(string icon, string title, string message)
 	{

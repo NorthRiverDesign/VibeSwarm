@@ -332,6 +332,43 @@ public sealed class JobOutcomeComponentsTests
 	}
 
 	[Fact]
+	public void JobOutcomeSummaryCard_ShowsMergeBranchButtonWhenMergeIsAvailable()
+	{
+		using var context = new BunitContext();
+		var mergeCalled = false;
+
+		var cut = context.Render<JobOutcomeSummaryCard>(parameters => parameters
+			.Add(component => component.Status, JobStatus.Completed)
+			.Add(component => component.GitCommitHash, "abc1234567890")
+			.Add(component => component.BranchName, "feature/new-thing")
+			.Add(component => component.TargetBranch, "main")
+			.Add(component => component.CanMergeBranch, true)
+			.Add(component => component.OnMergeBranch, EventCallback.Factory.Create(this, () => mergeCalled = true)));
+
+		Assert.Contains("Merge into main", cut.Markup);
+		Assert.Contains("Merge into the target branch", cut.Markup);
+		cut.Find("button.btn-success").Click();
+		Assert.True(mergeCalled);
+	}
+
+	[Fact]
+	public void JobOutcomeSummaryCard_HidesMergeBranchButtonWhenAlreadyMerged()
+	{
+		using var context = new BunitContext();
+
+		var cut = context.Render<JobOutcomeSummaryCard>(parameters => parameters
+			.Add(component => component.Status, JobStatus.Completed)
+			.Add(component => component.GitCommitHash, "abc1234567890")
+			.Add(component => component.BranchName, "feature/new-thing")
+			.Add(component => component.TargetBranch, "main")
+			.Add(component => component.CanMergeBranch, true)
+			.Add(component => component.MergedAt, DateTime.UtcNow));
+
+		Assert.DoesNotContain("Merge into main", cut.Markup);
+		Assert.Contains("Delivery is complete", cut.Markup);
+	}
+
+	[Fact]
 	public void JobOutcomeSummaryCard_ShowsReviewTranscriptActionForStalledRuns()
 	{
 		using var context = new BunitContext();
