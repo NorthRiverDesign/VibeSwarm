@@ -1,8 +1,5 @@
 namespace VibeSwarm.Shared.Exceptions;
 
-/// <summary>
-/// Base exception for all VibeSwarm application errors
-/// </summary>
 public class VibeSwarmException : Exception
 {
 	public string ErrorCode { get; }
@@ -23,9 +20,6 @@ public class VibeSwarmException : Exception
 	}
 }
 
-/// <summary>
-/// Exception thrown when a Git operation fails
-/// </summary>
 public class GitException : VibeSwarmException
 {
 	public string? WorkingDirectory { get; }
@@ -46,9 +40,6 @@ public class GitException : VibeSwarmException
 	}
 }
 
-/// <summary>
-/// Exception thrown when Git is not available on the system
-/// </summary>
 public class GitNotAvailableException : GitException
 {
 	public GitNotAvailableException()
@@ -57,9 +48,6 @@ public class GitNotAvailableException : GitException
 	}
 }
 
-/// <summary>
-/// Exception thrown when a path is not a Git repository
-/// </summary>
 public class NotAGitRepositoryException : GitException
 {
 	public NotAGitRepositoryException(string workingDirectory)
@@ -68,9 +56,6 @@ public class NotAGitRepositoryException : GitException
 	}
 }
 
-/// <summary>
-/// Exception thrown when a CLI agent operation fails
-/// </summary>
 public class CliAgentException : VibeSwarmException
 {
 	public string ProviderName { get; }
@@ -94,9 +79,6 @@ public class CliAgentException : VibeSwarmException
 	}
 }
 
-/// <summary>
-/// Exception thrown when a CLI agent is not available or not configured
-/// </summary>
 public class CliAgentNotAvailableException : CliAgentException
 {
 	public CliAgentNotAvailableException(string providerName)
@@ -105,9 +87,6 @@ public class CliAgentNotAvailableException : CliAgentException
 	}
 }
 
-/// <summary>
-/// Exception thrown when a CLI agent requires authentication
-/// </summary>
 public class CliAgentAuthenticationException : CliAgentException
 {
 	public CliAgentAuthenticationException(string providerName)
@@ -116,9 +95,6 @@ public class CliAgentAuthenticationException : CliAgentException
 	}
 }
 
-/// <summary>
-/// Exception thrown when a CLI agent exceeds its usage limit
-/// </summary>
 public class CliAgentUsageLimitException : CliAgentException
 {
 	public decimal? UsagePercentage { get; }
@@ -132,9 +108,6 @@ public class CliAgentUsageLimitException : CliAgentException
 	}
 }
 
-/// <summary>
-/// Exception thrown when a filesystem operation fails
-/// </summary>
 public class FileSystemException : VibeSwarmException
 {
 	public string? Path { get; }
@@ -155,9 +128,6 @@ public class FileSystemException : VibeSwarmException
 	}
 }
 
-/// <summary>
-/// Exception thrown when a path is not found
-/// </summary>
 public class PathNotFoundException : FileSystemException
 {
 	public PathNotFoundException(string path)
@@ -166,9 +136,6 @@ public class PathNotFoundException : FileSystemException
 	}
 }
 
-/// <summary>
-/// Exception thrown when access to a path is denied
-/// </summary>
 public class PathAccessDeniedException : FileSystemException
 {
 	public PathAccessDeniedException(string path, FileSystemOperation operation = FileSystemOperation.Unknown)
@@ -177,9 +144,6 @@ public class PathAccessDeniedException : FileSystemException
 	}
 }
 
-/// <summary>
-/// Exception thrown when an entity is not found
-/// </summary>
 public class EntityNotFoundException : VibeSwarmException
 {
 	public string EntityType { get; }
@@ -193,9 +157,6 @@ public class EntityNotFoundException : VibeSwarmException
 	}
 }
 
-/// <summary>
-/// Exception thrown when an API request fails
-/// </summary>
 public class ApiException : VibeSwarmException
 {
 	public int StatusCode { get; }
@@ -216,9 +177,6 @@ public class ApiException : VibeSwarmException
 	}
 }
 
-/// <summary>
-/// Exception thrown when JSON deserialization fails
-/// </summary>
 public class JsonParseException : VibeSwarmException
 {
 	public string? RawContent { get; }
@@ -239,9 +197,6 @@ public class JsonParseException : VibeSwarmException
 	}
 }
 
-/// <summary>
-/// Represents the type of filesystem operation
-/// </summary>
 public enum FileSystemOperation
 {
 	Unknown,
