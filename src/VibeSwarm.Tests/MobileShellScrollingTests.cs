@@ -39,8 +39,10 @@ public sealed class MobileShellScrollingTests
 		Assert.Contains("height: -webkit-fill-available;", css);
 		Assert.Matches(new Regex(@"\.app-layout\s*\{[\s\S]*height:\s*100dvh;", RegexOptions.Multiline), css);
 		Assert.Matches(new Regex(@"body:has\(\.app-layout\)\s*\{[\s\S]*height:\s*100dvh;", RegexOptions.Multiline), css);
-		Assert.Matches(new Regex(@"\.app-sidebar\s*\{[^}]*bottom:\s*calc\(-1 \* var\(--vs-safe-area-bottom\)\);", RegexOptions.Multiline), css);
-		Assert.Matches(new Regex(@"\.sidebar-overlay\s*\{[^}]*bottom:\s*calc\(-1 \* var\(--vs-safe-area-bottom\)\);", RegexOptions.Multiline), css);
+		Assert.Matches(new Regex(@"\.app-sidebar\s*\{[^}]*bottom:\s*0;", RegexOptions.Multiline), css);
+		Assert.Matches(new Regex(@"\.app-sidebar::after\s*\{[^}]*bottom:\s*calc\(-1 \* var\(--vs-safe-area-bottom\)\);[^}]*height:\s*var\(--vs-safe-area-bottom\);", RegexOptions.Multiline), css);
+		Assert.Matches(new Regex(@"\.sidebar-overlay\s*\{[^}]*bottom:\s*0;", RegexOptions.Multiline), css);
+		Assert.Matches(new Regex(@"\.sidebar-overlay::after\s*\{[^}]*bottom:\s*calc\(-1 \* var\(--vs-safe-area-bottom\)\);[^}]*height:\s*var\(--vs-safe-area-bottom\);", RegexOptions.Multiline), css);
 		Assert.Contains("scroll-padding-top: calc(", css);
 		Assert.Contains(".app-header .mobile-header-dropdown > .dropdown-menu", css);
 		Assert.Contains("left: 50% !important;", css);
@@ -58,6 +60,7 @@ public sealed class MobileShellScrollingTests
 		Assert.DoesNotContain(".bottom-tab-bar", css);
 		Assert.DoesNotContain("padding-bottom: calc(var(--vs-bottom-nav-height) + var(--vs-safe-area-bottom)) !important;", css);
 		Assert.DoesNotMatch(new Regex(@"\.app-main\s*\{[^}]*padding-bottom:\s*var\(--vs-safe-area-bottom\);", RegexOptions.Multiline), css);
+		Assert.Matches(new Regex(@"body::after\s*\{[^}]*bottom:\s*0;[^}]*height:\s*var\(--vs-safe-area-bottom\);", RegexOptions.Multiline), css);
 	}
 
 	[Fact]

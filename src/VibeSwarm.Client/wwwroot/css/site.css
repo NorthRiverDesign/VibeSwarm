@@ -229,7 +229,7 @@ body:has(.app-layout) {
 .app-sidebar {
 	top: calc(var(--vs-header-height) + var(--vs-safe-area-top));
 	left: 0;
-	bottom: calc(-1 * var(--vs-safe-area-bottom));
+	bottom: 0;
 	width: var(--vs-sidebar-width);
 	background: var(--bs-secondary-bg);
 	border-right: 1px solid var(--bs-border-color);
@@ -238,6 +238,15 @@ body:has(.app-layout) {
 	transition: transform var(--vs-transition);
 	padding-bottom: var(--vs-safe-area-bottom);
 	padding-left: var(--vs-safe-area-left);
+}
+.app-sidebar::after {
+	content: "";
+	position: absolute;
+	left: 0;
+	right: 0;
+	bottom: calc(-1 * var(--vs-safe-area-bottom));
+	height: var(--vs-safe-area-bottom);
+	background: inherit;
 }
 .app-sidebar.open {
 	transform: translateX(0);
@@ -253,9 +262,18 @@ body:has(.app-layout) {
 	top: calc(var(--vs-header-height) + var(--vs-safe-area-top));
 	left: 0;
 	right: 0;
-	bottom: calc(-1 * var(--vs-safe-area-bottom));
+	bottom: 0;
 	background: rgba(0, 0, 0, 0.5);
 	z-index: 998;
+}
+.sidebar-overlay::after {
+	content: "";
+	position: absolute;
+	left: 0;
+	right: 0;
+	bottom: calc(-1 * var(--vs-safe-area-bottom));
+	height: var(--vs-safe-area-bottom);
+	background: inherit;
 }
 
 /* Main area — markup uses flex-grow-1 */
@@ -1206,6 +1224,17 @@ body.vs-modal-open .app-main {
 		height: var(--vs-safe-area-top);
 		background: var(--bs-secondary-bg);
 		z-index: 1001;
+	}
+	body::after {
+		content: "";
+		position: fixed;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		height: var(--vs-safe-area-bottom);
+		background: var(--bs-body-bg, #1a1d21);
+		z-index: 997;
+		pointer-events: none;
 	}
 	body {
 		overscroll-behavior-y: contain;
