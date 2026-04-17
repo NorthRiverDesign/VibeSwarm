@@ -75,6 +75,7 @@ public sealed class JobScheduleModalTests
 		context.JSInterop.SetupVoid("eval", "document.body.classList.add('vs-modal-open')");
 		context.JSInterop.SetupVoid("eval", "document.body.classList.remove('vs-modal-open')");
 		context.Services.AddSingleton<IProjectService>(new FakeProjectService([project]));
+		context.Services.AddSingleton<IAgentService>(new FakeAgentService([]));
 		context.Services.AddSingleton<IProviderService>(new FakeProviderService([provider]));
 		context.Services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService());
 		context.Services.AddSingleton<IJobScheduleService>(new FakeJobScheduleService());
@@ -153,6 +154,7 @@ public sealed class JobScheduleModalTests
 		context.JSInterop.SetupVoid("eval", "document.body.classList.add('vs-modal-open')");
 		context.JSInterop.SetupVoid("eval", "document.body.classList.remove('vs-modal-open')");
 		context.Services.AddSingleton<IProjectService>(new FakeProjectService([project]));
+		context.Services.AddSingleton<IAgentService>(new FakeAgentService([agent]));
 		context.Services.AddSingleton<IProviderService>(new FakeProviderService([provider]));
 		context.Services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService());
 		context.Services.AddSingleton<IJobScheduleService>(new FakeJobScheduleService());
@@ -260,6 +262,7 @@ public sealed class JobScheduleModalTests
 		context.JSInterop.SetupVoid("eval", "document.body.classList.add('vs-modal-open')");
 		context.JSInterop.SetupVoid("eval", "document.body.classList.remove('vs-modal-open')");
 		context.Services.AddSingleton<IProjectService>(new FakeProjectService([bulkProject], detailedProject));
+		context.Services.AddSingleton<IAgentService>(new FakeAgentService([firstAgent, secondAgent]));
 		context.Services.AddSingleton<IProviderService>(new FakeProviderService([provider]));
 		context.Services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService());
 		context.Services.AddSingleton<IJobScheduleService>(new FakeJobScheduleService());
@@ -273,6 +276,113 @@ public sealed class JobScheduleModalTests
 
 		Assert.Contains("Security Reviewer", cut.Markup);
 		Assert.Contains("Release Manager", cut.Markup);
+	}
+
+	[Fact]
+	public void JobScheduleModal_AgentDropdown_MergesBulkAssignments_WhenDetailedProjectIsMissingNewAgent()
+	{
+		var firstAgentId = Guid.NewGuid();
+		var secondAgentId = Guid.NewGuid();
+		var providerId = Guid.NewGuid();
+		var projectId = Guid.NewGuid();
+
+		var provider = new Provider
+		{
+			Id = providerId,
+			Name = "GitHub Copilot",
+			Type = ProviderType.Copilot,
+			IsEnabled = true,
+			IsDefault = true
+		};
+		var firstAgent = new Agent
+		{
+			Id = firstAgentId,
+			Name = "Front-End Developer",
+			IsEnabled = true
+		};
+		var secondAgent = new Agent
+		{
+			Id = secondAgentId,
+			Name = "Code Reviewer",
+			IsEnabled = true
+		};
+		var bulkProject = new Project
+		{
+			Id = projectId,
+			Name = "VibeSwarm",
+			WorkingPath = "/tmp/vibeswarm",
+			AgentAssignments =
+			[
+				new ProjectAgent
+				{
+					ProjectId = projectId,
+					AgentId = firstAgentId,
+					Agent = firstAgent,
+					ProviderId = providerId,
+					Provider = provider,
+					IsEnabled = true
+				},
+				new ProjectAgent
+				{
+					ProjectId = projectId,
+					AgentId = secondAgentId,
+					Agent = secondAgent,
+					ProviderId = providerId,
+					Provider = provider,
+					IsEnabled = true
+				}
+			]
+		};
+		var detailedProject = new Project
+		{
+			Id = projectId,
+			Name = "VibeSwarm",
+			WorkingPath = "/tmp/vibeswarm",
+			AgentAssignments =
+			[
+				new ProjectAgent
+				{
+					ProjectId = projectId,
+					AgentId = firstAgentId,
+					Agent = firstAgent,
+					ProviderId = providerId,
+					Provider = provider,
+					IsEnabled = true
+				}
+			]
+		};
+
+		var editSchedule = new JobSchedule
+		{
+			Id = Guid.NewGuid(),
+			ProjectId = projectId,
+			ExecutionTarget = JobScheduleExecutionTarget.Agent,
+			AgentId = firstAgentId,
+			ScheduleType = JobScheduleType.RunJob,
+			Prompt = "Review UI",
+			Frequency = JobScheduleFrequency.Daily,
+			HourUtc = 9,
+			IsEnabled = true
+		};
+
+		using var context = new BunitContext();
+		context.JSInterop.SetupVoid("eval", "document.body.classList.add('vs-modal-open')");
+		context.JSInterop.SetupVoid("eval", "document.body.classList.remove('vs-modal-open')");
+		context.Services.AddSingleton<IProjectService>(new FakeProjectService([bulkProject], detailedProject));
+		context.Services.AddSingleton<IAgentService>(new FakeAgentService([firstAgent, secondAgent]));
+		context.Services.AddSingleton<IProviderService>(new FakeProviderService([provider]));
+		context.Services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService());
+		context.Services.AddSingleton<IJobScheduleService>(new FakeJobScheduleService());
+		context.Services.AddSingleton<ISettingsService>(new FakeSettingsService());
+		context.Services.AddSingleton<AppTimeZoneService>();
+		context.Services.AddSingleton<NotificationService>();
+
+		var cut = context.Render<JobScheduleModal>(parameters => parameters
+			.Add(component => component.IsVisible, true)
+			.Add(component => component.EditSchedule, editSchedule));
+
+		Assert.Contains("Front-End Developer", cut.Markup);
+		Assert.Contains("Code Reviewer", cut.Markup);
 	}
 
 	private sealed class FakeSettingsService : ISettingsService
@@ -302,6 +412,20 @@ public sealed class JobScheduleModalTests
 		public Task<IEnumerable<DashboardProjectInfo>> GetRecentWithLatestJobAsync(int count, CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<DashboardProjectInfo>>([]);
 		public Task<DashboardJobMetrics> GetDashboardJobMetricsAsync(int rangeDays, CancellationToken cancellationToken = default) => Task.FromResult(new DashboardJobMetrics { RangeDays = rangeDays, Buckets = [] });
 		public Task<IEnumerable<DashboardRunningJobInfo>> GetDashboardRunningJobsAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<DashboardRunningJobInfo>>([]);
+	}
+
+	private sealed class FakeAgentService(IReadOnlyList<Agent> agents) : IAgentService
+	{
+		public Task<IEnumerable<Agent>> GetAllAsync(CancellationToken ct = default) => Task.FromResult<IEnumerable<Agent>>(agents);
+		public Task<IEnumerable<Agent>> GetEnabledAsync(CancellationToken ct = default) => Task.FromResult<IEnumerable<Agent>>(agents.Where(agent => agent.IsEnabled));
+		public Task<Agent?> GetByIdAsync(Guid id, CancellationToken ct = default) => Task.FromResult(agents.FirstOrDefault(agent => agent.Id == id));
+		public Task<Agent> CreateAsync(Agent agent, CancellationToken ct = default) => throw new NotSupportedException();
+		public Task<Agent> UpdateAsync(Agent agent, CancellationToken ct = default) => throw new NotSupportedException();
+		public Task DeleteAsync(Guid id, CancellationToken ct = default) => throw new NotSupportedException();
+		public Task<bool> NameExistsAsync(string name, Guid? excludeId = null, CancellationToken cancellationToken = default)
+			=> Task.FromResult(agents.Any(agent =>
+				string.Equals(agent.Name, name, StringComparison.OrdinalIgnoreCase) &&
+				(!excludeId.HasValue || agent.Id != excludeId.Value)));
 	}
 
 	private sealed class FakeProviderService(IReadOnlyList<Provider> providers) : IProviderService

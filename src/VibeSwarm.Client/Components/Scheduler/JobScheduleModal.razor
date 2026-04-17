@@ -1,6 +1,7 @@
 @using VibeSwarm.Shared.Validation
 @inject IJobScheduleService JobScheduleService
 @inject IProjectService ProjectService
+@inject IAgentService AgentService
 @inject IProviderService ProviderService
 @inject IInferenceProviderService InferenceProviderService
 @inject AppTimeZoneService AppTimeZoneService
@@ -281,6 +282,7 @@
 	private bool _previousIsVisible;
 	private List<Project> _projects = [];
 	private readonly Dictionary<Guid, Project> _projectDetailsById = [];
+	private List<Agent> _agents = [];
 	private List<Provider> _providers = [];
 	private List<InferenceProvider> _inferenceProviders = [];
 	private List<Provider> _allowedProviders = [];
@@ -315,14 +317,19 @@
 	private async Task LoadLookupDataAsync()
 	{
 		var projectsTask = ProjectService.GetAllAsync();
+		var agentsTask = AgentService.GetAllAsync();
 		var providersTask = ProviderService.GetAllAsync();
 		var inferenceProvidersTask = InferenceProviderService.GetEnabledAsync();
-		await Task.WhenAll(projectsTask, providersTask, inferenceProvidersTask);
+		await Task.WhenAll(projectsTask, agentsTask, providersTask, inferenceProvidersTask);
 
 		_projects = projectsTask.Result
 			.OrderBy(project => project.Name)
 			.ToList();
 		_projectDetailsById.Clear();
+		_agents = agentsTask.Result
+			.Where(agent => agent.IsEnabled)
+			.OrderBy(agent => agent.Name)
+			.ToList();
 		_providers = providersTask.Result
 			.Where(provider => provider.IsEnabled)
 			.OrderByDescending(provider => provider.IsDefault)
@@ -406,27 +413,29 @@
 			return cachedProject;
 		}
 
+		var selectedProject = GetSelectedProject();
 		var detailedProject = await ProjectService.GetByIdAsync(Schedule.ProjectId);
 		if (detailedProject == null)
 		{
-			return GetSelectedProject();
+			return selectedProject;
 		}
 
-		_projectDetailsById[Schedule.ProjectId] = detailedProject;
-		var projectIndex = _projects.FindIndex(project => project.Id == detailedProject.Id);
+		var mergedProject = MergeProjectAssignments(selectedProject, detailedProject);
+		_projectDetailsById[Schedule.ProjectId] = mergedProject;
+		var projectIndex = _projects.FindIndex(project => project.Id == mergedProject.Id);
 		if (projectIndex >= 0)
 		{
-			_projects[projectIndex] = detailedProject;
+			_projects[projectIndex] = mergedProject;
 		}
 		else
 		{
-			_projects.Add(detailedProject);
+			_projects.Add(mergedProject);
 			_projects = _projects
 				.OrderBy(project => project.Name)
 				.ToList();
 		}
 
-		return detailedProject;
+		return mergedProject;
 	}
 
 	private async Task SyncExecutionTargetsAsync(bool preserveCurrentSelection)
@@ -434,12 +443,14 @@
 		var project = await GetSelectedProjectAsync();
 		_allowedProviders = ProjectExecutionDefaults.GetAllowedProviders(project, _providers);
 		_availableAgentAssignments = project?.AgentAssignments?
+			.Select(EnrichAgentAssignment)
 			.Where(assignment =>
 				assignment.IsEnabled &&
 				assignment.AgentId != Guid.Empty &&
 				assignment.Agent?.IsEnabled != false &&
 				_providers.Any(p => p.Id == assignment.ProviderId))
 			.OrderBy(assignment => assignment.Agent?.Name ?? string.Empty, StringComparer.OrdinalIgnoreCase)
+			.ThenBy(assignment => assignment.Provider?.Name ?? string.Empty, StringComparer.OrdinalIgnoreCase)
 			.ToList() ?? [];
 
 		if (Schedule.ScheduleType == JobScheduleType.GenerateIdeas)
@@ -848,6 +859,86 @@
 		var roleName = assignment.Agent?.Name ?? "Unknown agent";
 		var providerName = assignment.Provider?.Name ?? "Unknown provider";
 		return $"{roleName} ({providerName})";
+	}
+
+	private ProjectAgent EnrichAgentAssignment(ProjectAgent assignment)
+	{
+		return new ProjectAgent
+		{
+			Id = assignment.Id,
+			ProjectId = assignment.ProjectId,
+			Project = assignment.Project,
+			AgentId = assignment.AgentId,
+			Agent = assignment.Agent ?? _agents.FirstOrDefault(agent => agent.Id == assignment.AgentId),
+			ProviderId = assignment.ProviderId,
+			Provider = assignment.Provider ?? _providers.FirstOrDefault(provider => provider.Id == assignment.ProviderId),
+			PreferredModelId = assignment.PreferredModelId,
+			PreferredReasoningEffort = assignment.PreferredReasoningEffort,
+			IsEnabled = assignment.IsEnabled,
+			CreatedAt = assignment.CreatedAt,
+			UpdatedAt = assignment.UpdatedAt
+		};
+	}
+
+	private static Project MergeProjectAssignments(Project? baseProject, Project detailedProject)
+	{
+		if (baseProject?.AgentAssignments == null || baseProject.AgentAssignments.Count == 0)
+		{
+			return detailedProject;
+		}
+
+		var mergedAssignments = baseProject.AgentAssignments
+			.Concat(detailedProject.AgentAssignments ?? [])
+			.Where(assignment => assignment.AgentId != Guid.Empty)
+			.GroupBy(assignment => assignment.AgentId)
+			.Select(group => MergeProjectAgentAssignment(group))
+			.ToList();
+
+		detailedProject.AgentAssignments = mergedAssignments;
+		return detailedProject;
+	}
+
+	private static ProjectAgent MergeProjectAgentAssignment(IEnumerable<ProjectAgent> assignments)
+	{
+		var assignmentList = assignments.ToList();
+		if (assignmentList.Count == 0)
+		{
+			return new ProjectAgent();
+		}
+
+		var merged = new ProjectAgent
+		{
+			Id = assignmentList[0].Id,
+			ProjectId = assignmentList[0].ProjectId,
+			Project = assignmentList[0].Project,
+			AgentId = assignmentList[0].AgentId,
+			Agent = assignmentList[0].Agent,
+			ProviderId = assignmentList[0].ProviderId,
+			Provider = assignmentList[0].Provider,
+			PreferredModelId = assignmentList[0].PreferredModelId,
+			PreferredReasoningEffort = assignmentList[0].PreferredReasoningEffort,
+			IsEnabled = assignmentList[0].IsEnabled,
+			CreatedAt = assignmentList[0].CreatedAt,
+			UpdatedAt = assignmentList[0].UpdatedAt
+		};
+
+		foreach (var assignment in assignmentList.Skip(1))
+		{
+			merged.Project ??= assignment.Project;
+			merged.Agent ??= assignment.Agent;
+			merged.Provider ??= assignment.Provider;
+			merged.PreferredModelId ??= assignment.PreferredModelId;
+			merged.PreferredReasoningEffort ??= assignment.PreferredReasoningEffort;
+			merged.IsEnabled |= assignment.IsEnabled;
+			if (assignment.CreatedAt != default && assignment.CreatedAt < merged.CreatedAt)
+			{
+				merged.CreatedAt = assignment.CreatedAt;
+			}
+
+			merged.UpdatedAt = assignment.UpdatedAt ?? merged.UpdatedAt;
+		}
+
+		return merged;
 	}
 
 	private string GetProjectValue() => Schedule.ProjectId == Guid.Empty ? string.Empty : Schedule.ProjectId.ToString();
