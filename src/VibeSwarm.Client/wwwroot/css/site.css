@@ -229,7 +229,7 @@ body:has(.app-layout) {
 .app-sidebar {
 	top: calc(var(--vs-header-height) + var(--vs-safe-area-top));
 	left: 0;
-	bottom: 0;
+	bottom: calc(-1 * var(--vs-safe-area-bottom));
 	width: var(--vs-sidebar-width);
 	background: var(--bs-secondary-bg);
 	border-right: 1px solid var(--bs-border-color);
@@ -253,7 +253,7 @@ body:has(.app-layout) {
 	top: calc(var(--vs-header-height) + var(--vs-safe-area-top));
 	left: 0;
 	right: 0;
-	bottom: 0;
+	bottom: calc(-1 * var(--vs-safe-area-bottom));
 	background: rgba(0, 0, 0, 0.5);
 	z-index: 998;
 }
