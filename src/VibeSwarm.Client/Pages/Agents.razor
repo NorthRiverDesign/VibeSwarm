@@ -1,0 +1,257 @@
+@page "/agents"
+@attribute [Authorize]
+@inject IAgentService AgentService
+@inject NotificationService NotificationService
+
+<PageHeader Title="Agents">
+	<Actions>
+		<ActionButton Icon="plus" Text="Add Agent" Style="ActionButton.ButtonStyle.Primary" OnClick="ShowAddModal" />
+	</Actions>
+</PageHeader>
+
+@if (_isLoading)
+{
+	<LoadingSpinner Text="Loading agents..." />
+}
+else if (!_agents.Any())
+{
+	<EmptyState Icon="cpu" Title="No agents yet"
+				Message="Create reusable agent presets like Security Reviewer, Front End Designer, or Deployment Engineer to run consistent work across projects." />
+}
+else
+{
+	<div class="list-group">
+		@foreach (var agent in _agents)
+		{
+			<div class="list-group-item d-flex flex-column flex-md-row align-items-md-start gap-2 gap-md-3 p-3 hover-bg-tertiary">
+				<div class="flex-grow-1 min-width-0">
+					<div class="d-flex align-items-center gap-2 flex-wrap">
+						<span class="fw-semibold">@agent.Name</span>
+						<StatusBadge Status="@(agent.IsEnabled ? "Active" : "Off")" ShowSpinner="false" />
+						@if (agent.SkillLinks.Any(link => link.Skill != null))
+						{
+							<span class="small text-body-secondary d-inline-flex align-items-center gap-1">
+								<i class="bi bi-lightbulb opacity-75"></i>@agent.SkillLinks.Count linked skill@(agent.SkillLinks.Count == 1 ? string.Empty : "s")
+							</span>
+						}
+					</div>
+						@if (agent.DefaultProvider != null || !string.IsNullOrWhiteSpace(agent.DefaultModelId) || !string.IsNullOrWhiteSpace(agent.DefaultReasoningEffort) || agent.DefaultCycleMode != CycleMode.SingleCycle)
+						{
+							<div class="d-flex flex-wrap gap-2 gap-md-3 mt-2 small text-body-secondary">
+							@if (agent.DefaultProvider != null)
+							{
+								<span class="d-flex align-items-center gap-1">
+									<i class="bi bi-cpu opacity-75"></i>
+									Default provider: @agent.DefaultProvider.Name
+								</span>
+							}
+							@if (!string.IsNullOrWhiteSpace(agent.DefaultModelId))
+							{
+								<span class="d-flex align-items-center gap-1">
+									<i class="bi bi-diagram-3 opacity-75"></i>
+									Default model: @agent.DefaultModelId
+								</span>
+							}
+							@if (!string.IsNullOrWhiteSpace(agent.DefaultReasoningEffort))
+							{
+								<span class="d-flex align-items-center gap-1">
+									<i class="bi bi-lightning-charge opacity-75"></i>
+									Default reasoning: @agent.DefaultReasoningEffort
+								</span>
+							}
+							@if (agent.DefaultCycleMode != CycleMode.SingleCycle)
+							{
+								<span class="d-flex align-items-center gap-1">
+									<i class="bi bi-arrow-repeat opacity-75"></i>
+									@DescribeExecutionProfile(agent)
+								</span>
+							}
+						</div>
+					}
+					@if (!string.IsNullOrWhiteSpace(agent.Description))
+					{
+						<div class="small text-body-secondary mt-1">@agent.Description</div>
+					}
+					@if (!string.IsNullOrWhiteSpace(agent.Responsibilities))
+					{
+						<div class="small mt-2 white-space-pre-wrap">@TruncateText(agent.Responsibilities, 240)</div>
+					}
+					@if (agent.SkillLinks.Any(link => link.Skill != null))
+					{
+						<div class="d-flex flex-wrap gap-1 mt-2">
+							@foreach (var skillLink in agent.SkillLinks.Where(link => link.Skill != null))
+							{
+								<span class="badge bg-primary-subtle text-primary-emphasis">@skillLink.Skill!.Name</span>
+							}
+						</div>
+					}
+				</div>
+				<div class="d-flex flex-wrap gap-2 flex-shrink-0 align-items-center">
+					<ToggleSwitch Value="@agent.IsEnabled" Title="@(agent.IsEnabled ? "Disable" : "Enable")"
+								  Class="me-1" OnChange="() => ToggleEnabled(agent)" />
+					<ActionButton Icon="pencil" Text="Edit" Size="ActionButton.ButtonSize.Small" HideTextOnMobile="true"
+								  OnClick="@(() => EditAgent(agent))" />
+					<ActionButton Icon="trash" Text="Delete" Size="ActionButton.ButtonSize.Small"
+								  Style="ActionButton.ButtonStyle.Danger" HideTextOnMobile="true"
+								  OnClick="@(() => ShowDeleteConfirmation(agent))" />
+				</div>
+			</div>
+		}
+	</div>
+}
+
+<AgentModal @bind-IsVisible="_showAgentModal" EditAgent="@_editingAgent" OnSaved="HandleAgentSaved"
+			   OnCancelled="HandleModalCancelled" OnClosed="HandleAgentModalClosed" />
+
+<ConfirmationModal @bind-IsVisible="_showDeleteModal" Title="Delete Agent"
+				   Message="@($"Are you sure you want to delete {_agentToDelete?.Name}?")" SubMessage="This action cannot be undone."
+				   ConfirmText="Delete" ButtonClass="btn-danger" IsProcessing="_isDeleting" OnConfirm="ConfirmDelete"
+				   OnCancel="CancelDelete" />
+
+@code {
+	private List<Agent> _agents = [];
+	private bool _isLoading = true;
+	private bool _showAgentModal;
+	private Agent? _editingAgent;
+	private bool _showDeleteModal;
+	private Agent? _agentToDelete;
+	private bool _isDeleting;
+
+	protected override async Task OnInitializedAsync()
+	{
+		await LoadAgents();
+	}
+
+	private async Task LoadAgents()
+	{
+		_isLoading = true;
+		try
+		{
+			_agents = (await AgentService.GetAllAsync()).ToList();
+		}
+		catch (Exception ex)
+		{
+			NotificationService.ShowError($"Failed to load agents: {ex.Message}");
+		}
+		finally
+		{
+			_isLoading = false;
+		}
+	}
+
+	private static string TruncateText(string text, int maxLength)
+	{
+		if (string.IsNullOrEmpty(text) || text.Length <= maxLength)
+		{
+			return text;
+		}
+
+		return text[..maxLength] + "...";
+	}
+
+	private static string DescribeExecutionProfile(Agent agent)
+	{
+		var cycleMode = agent.DefaultCycleMode switch
+		{
+			CycleMode.FixedCount => $"Default run: {agent.DefaultMaxCycles} fixed cycles",
+			CycleMode.Autonomous => $"Default run: autonomous up to {agent.DefaultMaxCycles} cycles",
+			_ => "Default run: single cycle"
+		};
+		if (agent.DefaultCycleMode == CycleMode.SingleCycle)
+		{
+			return cycleMode;
+		}
+
+		var sessionMode = agent.DefaultCycleSessionMode == CycleSessionMode.ContinueSession
+			? "resume session"
+			: "fresh session";
+		return $"{cycleMode}, {sessionMode}";
+	}
+
+	private void ShowAddModal()
+	{
+		_showDeleteModal = false;
+		_agentToDelete = null;
+		_editingAgent = null;
+		_showAgentModal = true;
+		StateHasChanged();
+	}
+
+	private void EditAgent(Agent agent)
+	{
+		_showDeleteModal = false;
+		_agentToDelete = null;
+		_editingAgent = agent;
+		_showAgentModal = true;
+		StateHasChanged();
+	}
+
+	private async Task HandleAgentSaved(Guid? newAgentId)
+	{
+		_showAgentModal = false;
+		_editingAgent = null;
+		await LoadAgents();
+	}
+
+	private void HandleModalCancelled()
+	{
+		_showAgentModal = false;
+		_editingAgent = null;
+	}
+
+	private void HandleAgentModalClosed()
+	{
+		_showAgentModal = false;
+		_editingAgent = null;
+		StateHasChanged();
+	}
+
+	private void ShowDeleteConfirmation(Agent agent)
+	{
+		_showAgentModal = false;
+		_editingAgent = null;
+		_agentToDelete = agent;
+		_showDeleteModal = true;
+		StateHasChanged();
+	}
+
+	private void CancelDelete()
+	{
+		_showDeleteModal = false;
+		_agentToDelete = null;
+	}
+
+	private async Task ConfirmDelete()
+	{
+		if (_agentToDelete == null)
+		{
+			return;
+		}
+
+		_isDeleting = true;
+		try
+		{
+			await AgentService.DeleteAsync(_agentToDelete.Id);
+			_showDeleteModal = false;
+			_agentToDelete = null;
+			await LoadAgents();
+		}
+		finally
+		{
+			_isDeleting = false;
+		}
+	}
+
+	private async Task ToggleEnabled(Agent agent)
+	{
+		try
+		{
+			agent.IsEnabled = !agent.IsEnabled;
+			await AgentService.UpdateAsync(agent);
+			await LoadAgents();
+		}
+		catch (Exception)
+		{
+		}
+	}
+}

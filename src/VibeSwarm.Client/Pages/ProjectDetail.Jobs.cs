@@ -107,7 +107,7 @@ public partial class ProjectDetail
             return;
         }
 
-        if (!GetAllowedJobProviders().Any(p => p.Id == NewJob.ProviderId))
+        if (!GetAllowedJobProviders().Any(p => p.Id == NewJob.ProviderId) && !IsSelectedAgentProviderAllowed())
         {
             ErrorMessage = "The selected provider is not allowed for this project.";
             return;
@@ -242,6 +242,12 @@ public partial class ProjectDetail
 
         var chain = string.Join(" -> ", allowedProviders.Select(p => p.Name));
         return $"This project will try providers in this order: {chain}.";
+    }
+
+    private bool IsSelectedAgentProviderAllowed()
+    {
+        var assignment = AgentPresetHelper.ResolveAgent(Project, NewJob.AgentId);
+        return assignment != null && assignment.ProviderId == NewJob.ProviderId;
     }
 
     private async Task DeleteJob(Guid jobId)

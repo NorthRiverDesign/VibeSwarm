@@ -30,6 +30,8 @@ public partial class JobService
             return;
         }
 
+        await ApplySelectedAgentDefaultsAsync(job, cancellationToken);
+        NormalizeJobForPersistence(job);
         job.ExecutionPlan = null;
         await InitializeExecutionPlanAsync(job, cancellationToken);
         await _dbContext.SaveChangesAsync(cancellationToken);
@@ -170,7 +172,9 @@ public partial class JobService
             .OrderBy(pp => pp.Priority)
             .ToListAsync(cancellationToken);
 
-		var providerOrder = BuildProviderOrder(job.ProviderId, enabledProviders, projectSelections);
+		var providerOrder = job.AgentId.HasValue && job.ProviderId != Guid.Empty
+			? enabledProviders.Where(provider => provider.Id == job.ProviderId).ToList()
+			: BuildProviderOrder(job.ProviderId, enabledProviders, projectSelections);
 
         var modelLookup = await _dbContext.ProviderModels
             .Where(m => providerIds.Contains(m.ProviderId) && m.IsAvailable)
@@ -308,6 +312,33 @@ public partial class JobService
             throw new InvalidOperationException("The selected model is not available for the chosen provider.");
         }
     }
+
+	private async Task ApplySelectedAgentDefaultsAsync(Job job, CancellationToken cancellationToken)
+	{
+		if (!job.AgentId.HasValue || job.AgentId == Guid.Empty)
+		{
+			return;
+		}
+
+		var assignment = await _dbContext.ProjectAgents
+			.Include(projectAgent => projectAgent.Agent)
+			.Include(projectAgent => projectAgent.Provider)
+			.FirstOrDefaultAsync(projectAgent =>
+				projectAgent.ProjectId == job.ProjectId &&
+				projectAgent.AgentId == job.AgentId.Value,
+				cancellationToken);
+		if (assignment == null || !assignment.IsEnabled || assignment.Agent == null || !assignment.Agent.IsEnabled)
+		{
+			throw new InvalidOperationException("The selected agent is not assigned to this project.");
+		}
+
+		if (assignment.Provider == null || !assignment.Provider.IsEnabled)
+		{
+			throw new InvalidOperationException("The selected agent does not have an enabled provider assignment.");
+		}
+
+		AgentPresetHelper.ApplyExecutionDefaults(job, assignment);
+	}
 
 	private static List<Provider> BuildProviderOrder(Guid selectedProviderId, List<Provider> enabledProviders, List<ProjectProvider> projectSelections)
     {

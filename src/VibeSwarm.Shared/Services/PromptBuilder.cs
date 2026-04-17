@@ -17,6 +17,32 @@ public static class PromptBuilder
 	private const int MaxSkillSummaryLength = 160;
 	public const string IdeaToken = "{{idea}}";
 	public const string SpecificationToken = "{{specification}}";
+	public const string RequestToken = "{{request}}";
+
+	/// <summary>
+	/// Default template for the read-only planning stage. Substitutes <see cref="RequestToken"/>.
+	/// Consumed by <see cref="ProviderPlanningHelper.BuildPlanningPrompt"/> so planning-stage agents
+	/// share the same templating mechanism as idea expansion and implementation.
+	/// </summary>
+	public static string DefaultPlanningPromptTemplate =>
+		"""
+		Explore the codebase and write an implementation-ready plan for the request below.
+		Read-only planning only. Do not edit files, run shell commands, or make commits.
+		A separate execution agent will implement the approved plan.
+
+		## Request
+		{{request}}
+
+		## Plan
+		1. Outcome
+		2. User Experience
+		3. Affected Areas
+		4. Implementation Steps
+		5. Edge Cases
+		6. Verification
+
+		Return only the plan. Do not implement the feature or include code samples.
+		""";
 
 	public static string DefaultIdeaExpansionPromptTemplate =>
 		"""
@@ -473,14 +499,14 @@ public static class PromptBuilder
 
 	private static string BuildTeamSection(Project project)
 	{
-		if (project.TeamAssignments == null || project.TeamAssignments.Count == 0)
+		if (project.AgentAssignments == null || project.AgentAssignments.Count == 0)
 		{
 			return string.Empty;
 		}
 
-		var assignments = project.TeamAssignments
-			.Where(assignment => assignment.IsEnabled && assignment.TeamRole != null)
-			.OrderBy(assignment => assignment.TeamRole!.Name, StringComparer.OrdinalIgnoreCase)
+		var assignments = project.AgentAssignments
+			.Where(assignment => assignment.IsEnabled && assignment.Agent != null)
+			.OrderBy(assignment => assignment.Agent!.Name, StringComparer.OrdinalIgnoreCase)
 			.ToList();
 		if (assignments.Count == 0)
 		{
@@ -488,24 +514,24 @@ public static class PromptBuilder
 		}
 
 		var sb = new StringBuilder();
-		sb.AppendLine("<team_roles>");
-		sb.AppendLine("  Configured collaborator roles available for this repository:");
+		sb.AppendLine("<agents>");
+		sb.AppendLine("  Configured agent presets available for this repository:");
 		foreach (var assignment in assignments)
 		{
 			var lineBuilder = new StringBuilder();
 			lineBuilder.Append("  - ");
-			lineBuilder.Append(assignment.TeamRole!.Name);
+			lineBuilder.Append(assignment.Agent!.Name);
 
-			if (!string.IsNullOrWhiteSpace(assignment.TeamRole.Description))
+			if (!string.IsNullOrWhiteSpace(assignment.Agent.Description))
 			{
-				lineBuilder.Append(" | Summary: ");
-				lineBuilder.Append(assignment.TeamRole.Description);
+				lineBuilder.Append(" | Purpose: ");
+				lineBuilder.Append(assignment.Agent.Description);
 			}
 
-			if (!string.IsNullOrWhiteSpace(assignment.TeamRole.Responsibilities))
+			if (!string.IsNullOrWhiteSpace(assignment.Agent.Responsibilities))
 			{
-				lineBuilder.Append(" | Responsibilities: ");
-				lineBuilder.Append(assignment.TeamRole.Responsibilities);
+				lineBuilder.Append(" | Instructions: ");
+				lineBuilder.Append(assignment.Agent.Responsibilities);
 			}
 
 			if (assignment.Provider != null)
@@ -520,7 +546,7 @@ public static class PromptBuilder
 				lineBuilder.Append(assignment.PreferredModelId);
 			}
 
-			var skills = assignment.TeamRole.SkillLinks
+			var skills = assignment.Agent.SkillLinks
 				.Where(link => link.Skill != null)
 				.Select(link => link.Skill!.Name)
 				.ToList();
@@ -530,10 +556,17 @@ public static class PromptBuilder
 				lineBuilder.Append(string.Join(", ", skills));
 			}
 
+			var cycleDefaults = DescribeAgentCycleDefaults(assignment.Agent);
+			if (!string.IsNullOrWhiteSpace(cycleDefaults))
+			{
+				lineBuilder.Append(" | Execution: ");
+				lineBuilder.Append(cycleDefaults);
+			}
+
 			sb.AppendLine(EscapeXml(lineBuilder.ToString()));
 		}
 
-		sb.AppendLine("</team_roles>");
+		sb.AppendLine("</agents>");
 		return sb.ToString();
 	}
 
@@ -547,7 +580,9 @@ public static class PromptBuilder
 
 		var sb = new StringBuilder();
 		sb.AppendLine("<available_skills>");
-		sb.AppendLine("  App-configured MCP skills available to compatible providers for this job. Use them when relevant instead of guessing project conventions:");
+		sb.AppendLine("  Skills are folders of instructions installed on this machine. When a skill");
+		sb.AppendLine("  matches the task, read its SKILL.md (and any referenced files in the skill's");
+		sb.AppendLine("  folder) before acting. Honor each skill's allowed-tools list when present:");
 		foreach (var skill in skills)
 		{
 			var lineBuilder = new StringBuilder();
@@ -559,6 +594,18 @@ public static class PromptBuilder
 			{
 				lineBuilder.Append(" | Use for: ");
 				lineBuilder.Append(summary);
+			}
+
+			if (!string.IsNullOrWhiteSpace(skill.StoragePath))
+			{
+				lineBuilder.Append(" | SKILL.md: ");
+				lineBuilder.Append(Path.Combine(skill.StoragePath, "SKILL.md"));
+			}
+
+			if (!string.IsNullOrWhiteSpace(skill.AllowedTools))
+			{
+				lineBuilder.Append(" | allowed-tools: ");
+				lineBuilder.Append(skill.AllowedTools.Trim());
 			}
 
 			sb.AppendLine(EscapeXml(lineBuilder.ToString()));
@@ -596,20 +643,20 @@ public static class PromptBuilder
 	/// append-system-prompt when the job is part of a team swarm. This establishes the agent's
 	/// persona, responsibilities, and coordination guidelines for parallel execution.
 	/// </summary>
-	public static string BuildRoleSystemPromptContext(TeamRole role, int totalSwarmSize)
+	public static string BuildRoleSystemPromptContext(Agent role, int totalSwarmSize)
 	{
 		var sb = new StringBuilder();
 
-		sb.AppendLine($"You are acting as the {role.Name} for this project.");
+		sb.AppendLine($"You are acting as the {role.Name} agent for this project.");
 
 		if (!string.IsNullOrWhiteSpace(role.Description))
 		{
-			sb.AppendLine($"Role summary: {role.Description.Trim()}");
+			sb.AppendLine($"Agent purpose: {role.Description.Trim()}");
 		}
 
 		if (!string.IsNullOrWhiteSpace(role.Responsibilities))
 		{
-			sb.AppendLine($"Your responsibilities: {role.Responsibilities.Trim()}");
+			sb.AppendLine($"Your instructions: {role.Responsibilities.Trim()}");
 		}
 
 		var skills = role.SkillLinks
@@ -621,8 +668,8 @@ public static class PromptBuilder
 			.ToList();
 		if (skills.Count > 0)
 		{
-			sb.AppendLine($"Available MCP skills for this role: {string.Join("; ", skills.Select(FormatSkillReference))}");
-			sb.AppendLine("Use those skills when they match the task instead of guessing project-specific conventions.");
+			sb.AppendLine($"Skills installed for this agent: {string.Join("; ", skills.Select(FormatSkillReference))}");
+			sb.AppendLine("Read each skill's SKILL.md from the path shown before acting on it, and honor any allowed-tools restrictions declared there.");
 		}
 
 		if (totalSwarmSize > 1)
@@ -639,10 +686,49 @@ public static class PromptBuilder
 
 	private static string FormatSkillReference(Skill skill)
 	{
+		var parts = new List<string> { skill.Name };
+
 		var summary = BuildSkillSummary(skill);
-		return string.IsNullOrWhiteSpace(summary)
-			? skill.Name
-			: $"{skill.Name} - {summary}";
+		if (!string.IsNullOrWhiteSpace(summary))
+		{
+			parts.Add(summary);
+		}
+
+		if (!string.IsNullOrWhiteSpace(skill.StoragePath))
+		{
+			parts.Add($"SKILL.md: {Path.Combine(skill.StoragePath, "SKILL.md")}");
+		}
+
+		if (!string.IsNullOrWhiteSpace(skill.AllowedTools))
+		{
+			parts.Add($"allowed-tools: {skill.AllowedTools.Trim()}");
+		}
+
+		return string.Join(" - ", parts);
+	}
+
+	private static string? DescribeAgentCycleDefaults(Agent role)
+	{
+		if (role.DefaultCycleMode == CycleMode.SingleCycle)
+		{
+			return null;
+		}
+
+		var cycleMode = role.DefaultCycleMode switch
+		{
+			CycleMode.FixedCount => $"fixed-count ({role.DefaultMaxCycles} cycles)",
+			CycleMode.Autonomous => $"autonomous (max {role.DefaultMaxCycles} cycles)",
+			_ => null
+		};
+		if (string.IsNullOrWhiteSpace(cycleMode))
+		{
+			return null;
+		}
+
+		var sessionMode = role.DefaultCycleSessionMode == CycleSessionMode.ContinueSession
+			? "resume session"
+			: "fresh session";
+		return $"{cycleMode}, {sessionMode}";
 	}
 
 	private static string? BuildSkillSummary(Skill skill)

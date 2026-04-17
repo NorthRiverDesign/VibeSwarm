@@ -1,0 +1,33 @@
+@* Reusable toggle switch wrapping the checkbox+label pattern *@
+
+<label class="toggle-switch @Class" title="@Title">
+	<input type="checkbox" checked="@Value" @onchange="HandleChange" disabled="@Disabled" />
+	<span class="toggle-slider"></span>
+</label>
+
+@code {
+	[Parameter]
+	public bool Value { get; set; }
+
+	[Parameter]
+	public EventCallback<bool> ValueChanged { get; set; }
+
+	[Parameter]
+	public EventCallback OnChange { get; set; }
+
+	[Parameter]
+	public bool Disabled { get; set; }
+
+	[Parameter]
+	public string? Title { get; set; }
+
+	[Parameter]
+	public string? Class { get; set; }
+
+	private async Task HandleChange(ChangeEventArgs e)
+	{
+		var newValue = (bool)(e.Value ?? false);
+		await ValueChanged.InvokeAsync(newValue);
+		await OnChange.InvokeAsync();
+	}
+}

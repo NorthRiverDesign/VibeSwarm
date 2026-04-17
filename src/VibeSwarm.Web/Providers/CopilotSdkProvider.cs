@@ -17,6 +17,7 @@ public class CopilotSdkProvider : SdkProviderBase
 	private UsageLimits? _lastObservedUsageLimits;
 	private static readonly string[] FallbackAvailableModels =
 	[
+		"claude-opus-4.7",
 		"claude-sonnet-4.6",
 		"claude-sonnet-4.5",
 		"claude-haiku-4.5",
@@ -33,6 +34,11 @@ public class CopilotSdkProvider : SdkProviderBase
 		"gpt-5-mini",
 		"gpt-4.1"
 	];
+
+	private static readonly Dictionary<string, DateTime> UpstreamRetirementDates = new()
+	{
+		["claude-sonnet-4"] = new DateTime(2026, 6, 15, 0, 0, 0, DateTimeKind.Utc),
+	};
 
 	public override ProviderType Type => ProviderType.Copilot;
 
@@ -821,6 +827,7 @@ public class CopilotSdkProvider : SdkProviderBase
 			{
 				Currency = "USD"
 			},
+			ModelRetirementDates = new Dictionary<string, DateTime>(UpstreamRetirementDates),
 			AdditionalInfo = new Dictionary<string, object>
 			{
 				["isAvailable"] = true,

@@ -14,8 +14,18 @@ namespace VibeSwarm.Web.Controllers;
 public class SkillsController : ControllerBase
 {
     private readonly ISkillService _skillService;
+    private readonly ISkillInstallerService _installerService;
+    private readonly IGitHubSkillCatalogClient _catalogClient;
 
-    public SkillsController(ISkillService skillService) => _skillService = skillService;
+    public SkillsController(
+        ISkillService skillService,
+        ISkillInstallerService installerService,
+        IGitHubSkillCatalogClient catalogClient)
+    {
+        _skillService = skillService;
+        _installerService = installerService;
+        _catalogClient = catalogClient;
+    }
 
     [HttpGet]
     public async Task<IActionResult> GetAll(CancellationToken ct) => Ok(await _skillService.GetAllAsync(ct));
@@ -63,6 +73,34 @@ public class SkillsController : ControllerBase
 	public async Task<IActionResult> Import([FromBody] SkillImportRequest request, CancellationToken ct)
 		=> await ExecuteMutationAsync(() => _skillService.ImportAsync(request, ct));
 
+    [HttpGet("marketplace")]
+    public async Task<IActionResult> GetMarketplaceCatalog([FromQuery] bool refresh = false, CancellationToken ct = default)
+    {
+        if (refresh)
+        {
+            _catalogClient.InvalidateCache();
+        }
+
+        try
+        {
+            var catalog = await _catalogClient.ListSkillsAsync(ct);
+            return Ok(catalog);
+        }
+        catch (HttpRequestException ex)
+        {
+            // Surface the GitHub failure reason so the UI can show "rate limit hit" vs "offline".
+            return StatusCode(StatusCodes.Status502BadGateway, new { message = $"Failed to reach GitHub: {ex.Message}" });
+        }
+    }
+
+    [HttpPost("install/preview")]
+    public async Task<IActionResult> PreviewInstall([FromBody] SkillInstallRequest request, CancellationToken ct)
+        => await ExecuteInstallAsync(() => _installerService.PreviewAsync(request, ct));
+
+    [HttpPost("install")]
+    public async Task<IActionResult> Install([FromBody] SkillInstallRequest request, CancellationToken ct)
+        => await ExecuteInstallAsync(() => _installerService.InstallAsync(request, ct));
+
     [HttpPost("expand")]
 	public async Task<IActionResult> ExpandSkill([FromBody] ExpandSkillRequest request, CancellationToken ct)
 	{
@@ -84,6 +122,22 @@ public class SkillsController : ControllerBase
 		catch (Exception ex) when (ex is ValidationException or InvalidOperationException or InvalidDataException)
 		{
 			return BadRequest(new { message = ex.Message });
+		}
+	}
+
+	private async Task<IActionResult> ExecuteInstallAsync<T>(Func<Task<T>> action)
+	{
+		try
+		{
+			return Ok(await action());
+		}
+		catch (Exception ex) when (ex is ValidationException or InvalidOperationException or InvalidDataException or ArgumentException)
+		{
+			return BadRequest(new { message = ex.Message });
+		}
+		catch (HttpRequestException ex)
+		{
+			return StatusCode(StatusCodes.Status502BadGateway, new { message = $"Skill source is unreachable: {ex.Message}" });
 		}
 	}
 }

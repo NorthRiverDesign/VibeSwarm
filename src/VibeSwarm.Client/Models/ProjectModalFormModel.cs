@@ -57,7 +57,7 @@ public sealed class ProjectModalFormModel : IValidatableObject
 
 	public ICollection<ProjectProvider> ProviderSelections { get; set; } = new List<ProjectProvider>();
 
-	public ICollection<ProjectTeamRole> TeamAssignments { get; set; } = new List<ProjectTeamRole>();
+	public ICollection<ProjectAgent> AgentAssignments { get; set; } = new List<ProjectAgent>();
 
 	public ICollection<ProjectEnvironment> Environments { get; set; } = new List<ProjectEnvironment>();
 
@@ -118,7 +118,7 @@ public sealed class ProjectModalFormModel : IValidatableObject
 			CreatedAt = source.CreatedAt,
 			UpdatedAt = source.UpdatedAt,
 			ProviderSelections = source.ProviderSelections.ToList(),
-			TeamAssignments = source.TeamAssignments.ToList(),
+			AgentAssignments = source.AgentAssignments.ToList(),
 			Environments = source.Environments.ToList(),
 			PromptContext = source.PromptContext,
 			Memory = source.Memory,
@@ -153,8 +153,30 @@ public sealed class ProjectModalFormModel : IValidatableObject
 			CommitSummaryInferenceModelId = string.IsNullOrWhiteSpace(CommitSummaryInferenceModelId) ? null : CommitSummaryInferenceModelId.Trim(),
 			CreatedAt = CreatedAt,
 			UpdatedAt = UpdatedAt,
-			ProviderSelections = ProviderSelections.ToList(),
-			TeamAssignments = TeamAssignments.ToList(),
+			ProviderSelections = ProviderSelections.Select(s => new ProjectProvider
+			{
+				Id = s.Id,
+				ProjectId = s.ProjectId,
+				ProviderId = s.ProviderId,
+				Priority = s.Priority,
+				IsEnabled = s.IsEnabled,
+				PreferredModelId = s.PreferredModelId,
+				PreferredReasoningEffort = s.PreferredReasoningEffort,
+				CreatedAt = s.CreatedAt,
+				UpdatedAt = s.UpdatedAt
+			}).ToList(),
+			AgentAssignments = AgentAssignments.Select(a => new ProjectAgent
+			{
+				Id = a.Id,
+				ProjectId = a.ProjectId,
+				AgentId = a.AgentId,
+				ProviderId = a.ProviderId,
+				PreferredModelId = a.PreferredModelId,
+				PreferredReasoningEffort = a.PreferredReasoningEffort,
+				IsEnabled = a.IsEnabled,
+				CreatedAt = a.CreatedAt,
+				UpdatedAt = a.UpdatedAt
+			}).ToList(),
 			Environments = Environments.ToList(),
 			PromptContext = string.IsNullOrWhiteSpace(PromptContext) ? null : PromptContext.Trim(),
 			Memory = string.IsNullOrWhiteSpace(Memory) ? null : Memory.Trim(),
@@ -182,23 +204,23 @@ public sealed class ProjectModalFormModel : IValidatableObject
 				[nameof(BuildCommand)]);
 		}
 
-		var duplicateTeamRoleIds = TeamAssignments
-			.GroupBy(assignment => assignment.TeamRoleId)
+		var duplicateAgentIds = AgentAssignments
+			.GroupBy(assignment => assignment.AgentId)
 			.Where(group => group.Key != Guid.Empty && group.Count() > 1)
 			.Select(group => group.Key)
 			.ToList();
-		if (duplicateTeamRoleIds.Any())
+		if (duplicateAgentIds.Any())
 		{
 			yield return new ValidationResult(
-				"Each team role can only be assigned once per project.",
-				[nameof(TeamAssignments)]);
+				"Each agent can only be assigned once per project.",
+				[nameof(AgentAssignments)]);
 		}
 
-		if (TeamAssignments.Any(assignment => assignment.ProviderId == Guid.Empty))
+		if (AgentAssignments.Any(assignment => assignment.ProviderId == Guid.Empty))
 		{
 			yield return new ValidationResult(
-				"Each assigned team role must have a provider.",
-				[nameof(TeamAssignments)]);
+				"Each assigned agent must have a provider.",
+				[nameof(AgentAssignments)]);
 		}
 
 		if (CreationMode == ProjectCreationMode.ExistingDirectory)

@@ -1,0 +1,46 @@
+@* Reusable tab item wrapping Bootstrap nav-item + nav-link *@
+
+<li class="nav-item" role="presentation">
+	<button class="nav-link @(IsActive ? "active" : "") @Class" type="button" @onclick="HandleClick">
+		@if (!string.IsNullOrEmpty(Icon))
+		{
+			<i class="bi bi-@Icon me-2 @IconClass"></i>
+		}
+		@Text
+		@if (BadgeCount.HasValue)
+		{
+			<span class="badge @BadgeClass ms-1">@BadgeCount.Value</span>
+		}
+	</button>
+</li>
+
+@code {
+	[Parameter]
+	public string? Text { get; set; }
+
+	[Parameter]
+	public string? Icon { get; set; }
+
+	[Parameter]
+	public string? IconClass { get; set; } = "d-none d-sm-inline";
+
+	[Parameter]
+	public bool IsActive { get; set; }
+
+	[Parameter]
+	public int? BadgeCount { get; set; }
+
+	[Parameter]
+	public string BadgeClass { get; set; } = "bg-secondary-subtle text-secondary-emphasis";
+
+	[Parameter]
+	public EventCallback OnClick { get; set; }
+
+	[Parameter]
+	public string? Class { get; set; }
+
+	private async Task HandleClick()
+	{
+		await OnClick.InvokeAsync();
+	}
+}

@@ -357,10 +357,23 @@ public partial class IdeaService
 	{
 		const int maxItemsPerSection = 25;
 
+		// Active jobs: started, planning, processing, paused (awaiting input), or stalled
 		var runningJobsQuery = _dbContext.Jobs
 			.AsNoTracking()
-			.Where(j => j.Status == JobStatus.Started || j.Status == JobStatus.Planning || j.Status == JobStatus.Processing)
+			.Where(j => j.Status == JobStatus.Started
+				|| j.Status == JobStatus.Planning
+				|| j.Status == JobStatus.Processing
+				|| j.Status == JobStatus.Paused
+				|| j.Status == JobStatus.Stalled)
 			.OrderByDescending(j => j.StartedAt ?? j.CreatedAt);
+
+		// Queued jobs: New or Pending status that are not linked to an idea (idea-linked pending
+		// jobs already appear in the UpcomingIdeas section via HasQueuedJob)
+		var queuedJobsQuery = _dbContext.Jobs
+			.AsNoTracking()
+			.Where(j => (j.Status == JobStatus.New || j.Status == JobStatus.Pending)
+				&& !_dbContext.Ideas.Any(i => i.JobId == j.Id))
+			.OrderBy(j => j.CreatedAt);
 
 		var upcomingIdeasQuery = _dbContext.Ideas
 			.AsNoTracking()
@@ -374,24 +387,25 @@ public partial class IdeaService
 			.ThenBy(i => i.SortOrder)
 			.ThenBy(i => i.CreatedAt);
 
-		var runningJobsTask = runningJobsQuery
-			.Select(j => new GlobalQueueJobSummary
-			{
-				Id = j.Id,
-				ProjectId = j.ProjectId,
-				ProjectName = j.Project != null ? j.Project.Name : string.Empty,
-				Title = j.Title,
-				GoalPrompt = j.GoalPrompt,
-				Status = j.Status,
-				ProviderName = j.Provider != null ? j.Provider.Name : null,
-				CurrentActivity = j.CurrentActivity,
-				CreatedAt = j.CreatedAt,
-				StartedAt = j.StartedAt
-			})
-			.Take(maxItemsPerSection)
-			.ToListAsync(cancellationToken);
+		var jobSummarySelector = (IQueryable<Job> q) => q.Select(j => new GlobalQueueJobSummary
+		{
+			Id = j.Id,
+			ProjectId = j.ProjectId,
+			ProjectName = j.Project != null ? j.Project.Name : string.Empty,
+			Title = j.Title,
+			GoalPrompt = j.GoalPrompt,
+			Status = j.Status,
+			ProviderName = j.Provider != null ? j.Provider.Name : null,
+			CurrentActivity = j.CurrentActivity,
+			CreatedAt = j.CreatedAt,
+			StartedAt = j.StartedAt
+		});
 
+		var runningJobsTask = jobSummarySelector(runningJobsQuery).Take(maxItemsPerSection).ToListAsync(cancellationToken);
 		var runningJobsCountTask = runningJobsQuery.CountAsync(cancellationToken);
+
+		var queuedJobsTask = jobSummarySelector(queuedJobsQuery).Take(maxItemsPerSection).ToListAsync(cancellationToken);
+		var queuedJobsCountTask = queuedJobsQuery.CountAsync(cancellationToken);
 
 		var upcomingIdeasTask = upcomingIdeasQuery
 			.Select(i => new GlobalQueueIdeaSummary
@@ -416,6 +430,8 @@ public partial class IdeaService
 		await Task.WhenAll(
 			runningJobsTask,
 			runningJobsCountTask,
+			queuedJobsTask,
+			queuedJobsCountTask,
 			upcomingIdeasTask,
 			upcomingIdeasCountTask,
 			projectsCurrentlyProcessingTask);
@@ -423,9 +439,11 @@ public partial class IdeaService
 		return new GlobalQueueSnapshot
 		{
 			RunningJobsCount = runningJobsCountTask.Result,
+			QueuedJobsCount = queuedJobsCountTask.Result,
 			UpcomingIdeasCount = upcomingIdeasCountTask.Result,
 			ProjectsCurrentlyProcessing = projectsCurrentlyProcessingTask.Result,
 			RunningJobs = runningJobsTask.Result,
+			QueuedJobs = queuedJobsTask.Result,
 			UpcomingIdeas = upcomingIdeasTask.Result
 		};
 	}

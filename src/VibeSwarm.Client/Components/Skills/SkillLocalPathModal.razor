@@ -1,0 +1,172 @@
+@* Install a skill from a folder on the server's local filesystem. *@
+@inject HttpSkillInstallerService InstallerService
+
+<ModalDialog IsVisible="IsVisible" IsVisibleChanged="HandleVisibilityChanged"
+			 Title="Install from local folder" Icon="folder2-open"
+			 Size="ModalDialog.ModalSize.Default" OnClose="HandleClose">
+	<ChildContent>
+		<p class="text-body-secondary small">
+			Enter the absolute path to a folder containing <code>SKILL.md</code>. The folder is
+			copied into VibeSwarm's skill storage; the original stays where it is.
+		</p>
+
+		<div class="input-group mb-3">
+			<input type="text" class="form-control font-monospace"
+				   placeholder="/absolute/path/to/skill-folder"
+				   @bind="_path" @bind:event="oninput"
+				   @onkeydown="HandleKeydown" />
+			<button class="btn btn-secondary" type="button" @onclick="OpenDirectoryBrowser" title="Browse">
+				<i class="bi bi-folder2-open"></i>
+			</button>
+		</div>
+
+		@if (_errorMessage != null)
+		{
+			<Alert Type="Alert.AlertType.Danger" Message="@_errorMessage" Class="mb-0" />
+		}
+	</ChildContent>
+	<FooterContent>
+		<ActionButton Text="Cancel" OnClick="HandleClose" Disabled="_isValidating" />
+		<ActionButton Text="@(_isValidating ? "Validating..." : "Preview install")"
+					  Style="ActionButton.ButtonStyle.Primary"
+					  Icon="arrow-right"
+					  OnClick="ValidateAsync"
+					  IsLoading="_isValidating"
+					  Disabled="@(string.IsNullOrWhiteSpace(_path) || _isValidating)" />
+	</FooterContent>
+</ModalDialog>
+
+@if (_showDirectoryBrowser)
+{
+	<DirectoryBrowser @ref="_directoryBrowser"
+					  OnDirectorySelected="HandleDirectorySelected"
+					  OnClosed="CloseDirectoryBrowser" />
+}
+
+<SkillInstallPreviewModal @bind-IsVisible="_showPreview"
+						   Preview="_preview"
+						   Request="_pendingRequest"
+						   OnInstalled="HandleInstalled" />
+
+@code {
+	[Parameter] public bool IsVisible { get; set; }
+	[Parameter] public EventCallback<bool> IsVisibleChanged { get; set; }
+	[Parameter] public EventCallback<SkillInstallResult> OnInstalled { get; set; }
+
+	private string _path = string.Empty;
+	private bool _isValidating;
+	private string? _errorMessage;
+
+	private bool _showPreview;
+	private SkillInstallPreview? _preview;
+	private SkillInstallRequest? _pendingRequest;
+
+	private bool _showDirectoryBrowser;
+	private DirectoryBrowser? _directoryBrowser;
+
+	private async Task ValidateAsync()
+	{
+		if (string.IsNullOrWhiteSpace(_path))
+		{
+			return;
+		}
+
+		_isValidating = true;
+		_errorMessage = null;
+		try
+		{
+			var request = new SkillInstallRequest
+			{
+				Source = SkillInstallSource.LocalPath,
+				LocalPath = _path.Trim(),
+			};
+			_preview = await InstallerService.PreviewAsync(request);
+			_pendingRequest = request;
+			_showPreview = true;
+		}
+		catch (Exception ex)
+		{
+			_errorMessage = ex.Message;
+		}
+		finally
+		{
+			_isValidating = false;
+		}
+	}
+
+	private async Task HandleInstalled(SkillInstallResult result)
+	{
+		_showPreview = false;
+		_preview = null;
+		_pendingRequest = null;
+
+		// Close the local-path modal after a successful install so the user returns to the
+		// skills list; keep it open on a skip/failure so they can adjust the path.
+		if (result.Installed)
+		{
+			IsVisible = false;
+			await IsVisibleChanged.InvokeAsync(false);
+		}
+
+		await OnInstalled.InvokeAsync(result);
+	}
+
+	private async Task HandleKeydown(KeyboardEventArgs args)
+	{
+		if (args.Key == "Enter")
+		{
+			await ValidateAsync();
+		}
+	}
+
+	private async Task OpenDirectoryBrowser()
+	{
+		_showDirectoryBrowser = true;
+		StateHasChanged();
+		await Task.Delay(50);
+		if (_directoryBrowser != null)
+		{
+			await _directoryBrowser.ShowAsync(string.IsNullOrWhiteSpace(_path) ? null : _path);
+		}
+	}
+
+	private void HandleDirectorySelected(string path)
+	{
+		_path = path;
+		_showDirectoryBrowser = false;
+		StateHasChanged();
+	}
+
+	private void CloseDirectoryBrowser()
+	{
+		_showDirectoryBrowser = false;
+		StateHasChanged();
+	}
+
+	private async Task HandleVisibilityChanged(bool visible)
+	{
+		IsVisible = visible;
+		await IsVisibleChanged.InvokeAsync(visible);
+
+		if (!visible)
+		{
+			// Reset state when the modal is dismissed so re-opening starts fresh.
+			_path = string.Empty;
+			_errorMessage = null;
+			_preview = null;
+			_pendingRequest = null;
+			_showPreview = false;
+		}
+	}
+
+	private async Task HandleClose()
+	{
+		IsVisible = false;
+		await IsVisibleChanged.InvokeAsync(false);
+		_path = string.Empty;
+		_errorMessage = null;
+		_preview = null;
+		_pendingRequest = null;
+		_showPreview = false;
+	}
+}

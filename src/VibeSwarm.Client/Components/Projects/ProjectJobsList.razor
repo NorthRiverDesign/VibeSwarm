@@ -346,13 +346,13 @@
 											<div class="d-flex flex-wrap gap-2 mt-1 small">
 												@if (job.InputTokens.HasValue || job.OutputTokens.HasValue)
 												{
-													<span class="font-monospace text-body-secondary" title="Input / Output tokens">
+													<span class="font-monospace text-body-secondary" title="@(job.IsTokenEstimate ? "Estimated Input / Output tokens" : "Input / Output tokens")">
 														<i
-														class="bi bi-arrow-left-right me-1 opacity-75"></i>@TokenHelper.FormatTokenCount(job.InputTokens
+														class="bi bi-arrow-left-right me-1 opacity-75"></i>@(job.IsTokenEstimate ? "~" : "")@TokenHelper.FormatTokenCount(job.InputTokens
 																							?? 0) / @TokenHelper.FormatTokenCount(job.OutputTokens ?? 0)
 													</span>
 												}
-												@if (job.TotalCostUsd.HasValue && job.TotalCostUsd.Value > 0)
+												@if (!job.IsTokenEstimate && job.TotalCostUsd.HasValue && job.TotalCostUsd.Value > 0)
 												{
 													<span class="font-monospace fw-medium text-success" title="Cost">
 														@TokenHelper.FormatCost(job.TotalCostUsd.Value)

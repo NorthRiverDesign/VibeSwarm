@@ -62,6 +62,7 @@ public partial class JobService : IJobService
 			TotalCostUsd = j.Statistics != null ? j.Statistics.TotalCostUsd : null,
 			InputTokens = j.Statistics != null ? j.Statistics.InputTokens : null,
 			OutputTokens = j.Statistics != null ? j.Statistics.OutputTokens : null,
+			IsTokenEstimate = j.Statistics != null && j.Statistics.IsTokenEstimate,
 			PlanningCostUsd = j.PlanningStatistics != null ? j.PlanningStatistics.CostUsd : null,
 			PlanningInputTokens = j.PlanningStatistics != null ? j.PlanningStatistics.InputTokens : null,
 			PlanningOutputTokens = j.PlanningStatistics != null ? j.PlanningStatistics.OutputTokens : null,
@@ -71,7 +72,7 @@ public partial class JobService : IJobService
             CurrentCycle = j.CurrentCycle,
             MaxCycles = j.MaxCycles,
             CycleMode = j.CycleMode,
-            TeamRoleName = j.TeamRole != null ? j.TeamRole.Name : null,
+            AgentName = j.Agent != null ? j.Agent.Name : null,
              Branch = j.Branch,
              ChangedFilesCount = j.ChangedFilesCount,
              BuildVerified = j.BuildVerified,
@@ -99,9 +100,10 @@ public partial class JobService : IJobService
 			.Include(j => j.Project)
 				.ThenInclude(p => p!.Environments)
 			.Include(j => j.Provider)
-            .Include(j => j.PlanningProvider)
-            .OrderByDescending(j => j.CreatedAt)
-            .ToListAsync(cancellationToken);
+			.Include(j => j.PlanningProvider)
+			.Include(j => j.Agent)
+			.OrderByDescending(j => j.CreatedAt)
+			.ToListAsync(cancellationToken);
     }
 
     public async Task<JobsListResult> GetPagedAsync(Guid? projectId = null, string statusFilter = "all", int page = 1, int pageSize = DefaultJobsPageSize, CancellationToken cancellationToken = default)
@@ -157,6 +159,7 @@ public partial class JobService : IJobService
 	{
 		return await IncludeStatistics(_dbContext.Jobs)
 			.Include(j => j.Provider)
+			.Include(j => j.Agent)
 			.Where(j => j.ProjectId == projectId)
 			.OrderByDescending(j => j.CreatedAt)
             .ToListAsync(cancellationToken);
@@ -352,9 +355,10 @@ public partial class JobService : IJobService
 			.Include(j => j.Project)
 				.ThenInclude(p => p!.Environments)
 			.Include(j => j.Provider)
-            .Include(j => j.PlanningProvider)
-            .Include(j => j.ProviderAttempts.OrderBy(a => a.AttemptOrder))
-            .FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
+			.Include(j => j.PlanningProvider)
+			.Include(j => j.Agent)
+			.Include(j => j.ProviderAttempts.OrderBy(a => a.AttemptOrder))
+			.FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
     }
 
 	public async Task<Job?> GetByIdWithMessagesAsync(Guid id, CancellationToken cancellationToken = default)
@@ -363,9 +367,10 @@ public partial class JobService : IJobService
 			.Include(j => j.Project)
 				.ThenInclude(p => p!.Environments)
 			.Include(j => j.Provider)
-            .Include(j => j.PlanningProvider)
-            .Include(j => j.ProviderAttempts.OrderBy(a => a.AttemptOrder))
-            .FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
+			.Include(j => j.PlanningProvider)
+			.Include(j => j.Agent)
+			.Include(j => j.ProviderAttempts.OrderBy(a => a.AttemptOrder))
+			.FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
 		if (job == null)
 		{
 			return null;
@@ -388,6 +393,8 @@ public partial class JobService : IJobService
     public async Task<Job> CreateAsync(Job job, CancellationToken cancellationToken = default)
     {
         NormalizeJobForPersistence(job);
+        await ApplySelectedAgentDefaultsAsync(job, cancellationToken);
+        NormalizeJobForPersistence(job);
         await ValidateRequestedExecutionAsync(job, cancellationToken);
 
         job.Id = Guid.NewGuid();
@@ -408,7 +415,7 @@ public partial class JobService : IJobService
         await _dbContext.SaveChangesAsync(cancellationToken);
 
         // Fan out to team swarm jobs if the project has team swarm enabled
-		var swarmJobs = job.TeamRoleId.HasValue
+		var swarmJobs = job.AgentId.HasValue
 			? []
 			: await TryCreateTeamSwarmJobsAsync(job, cancellationToken);
 
@@ -440,21 +447,21 @@ public partial class JobService : IJobService
     private async Task<List<Job>> TryCreateTeamSwarmJobsAsync(Job primaryJob, CancellationToken cancellationToken)
     {
         var project = await _dbContext.Projects
-            .Include(p => p.TeamAssignments)
-                .ThenInclude(a => a.TeamRole)
-            .Include(p => p.TeamAssignments)
+            .Include(p => p.AgentAssignments)
+                .ThenInclude(a => a.Agent)
+            .Include(p => p.AgentAssignments)
                 .ThenInclude(a => a.Provider)
             .FirstOrDefaultAsync(p => p.Id == primaryJob.ProjectId, cancellationToken);
 
         if (project == null || !project.EnableTeamSwarm)
             return [];
 
-        var enabledAssignments = project.TeamAssignments
+        var enabledAssignments = project.AgentAssignments
             .Where(a => a.IsEnabled
-                && a.TeamRole != null
-                && a.TeamRole.IsEnabled
+                && a.Agent != null
+                && a.Agent.IsEnabled
                 && a.ProviderId != Guid.Empty)
-            .OrderBy(a => a.TeamRole!.Name, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(a => a.Agent!.Name, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
         if (enabledAssignments.Count < 2)
@@ -469,17 +476,16 @@ public partial class JobService : IJobService
         {
             var firstAssignment = enabledAssignments[0];
             primaryJobDb.SwarmId = swarmId;
-            primaryJobDb.TeamRoleId = firstAssignment.TeamRoleId;
-			primaryJobDb.ProviderId = firstAssignment.ProviderId;
-            if (!string.IsNullOrWhiteSpace(firstAssignment.PreferredModelId))
-            {
-                primaryJobDb.ModelUsed = firstAssignment.PreferredModelId;
-            }
-            primaryJobDb.ReasoningEffort = firstAssignment.PreferredReasoningEffort;
+			primaryJobDb.ProviderId = Guid.Empty;
+			primaryJobDb.ModelUsed = null;
+			primaryJobDb.ReasoningEffort = null;
+			AgentPresetHelper.ApplyExecutionDefaults(primaryJobDb, firstAssignment);
             // Update the in-memory job so callers see the changes
             primaryJob.SwarmId = swarmId;
-            primaryJob.TeamRoleId = firstAssignment.TeamRoleId;
-            primaryJob.ReasoningEffort = firstAssignment.PreferredReasoningEffort;
+			primaryJob.ProviderId = Guid.Empty;
+			primaryJob.ModelUsed = null;
+			primaryJob.ReasoningEffort = null;
+			AgentPresetHelper.ApplyExecutionDefaults(primaryJob, firstAssignment);
         }
 
         // Create sibling jobs for each remaining role
@@ -505,18 +511,10 @@ public partial class JobService : IJobService
                 MaxExecutionMinutes = primaryJob.MaxExecutionMinutes,
                 MaxTokens = primaryJob.MaxTokens,
                 SwarmId = swarmId,
-                TeamRoleId = assignment.TeamRoleId,
             };
 
+			AgentPresetHelper.ApplyExecutionDefaults(roleJob, assignment);
             await InitializeExecutionPlanAsync(roleJob, cancellationToken);
-            // Ensure the role's provider is used even if execution plan defaulted to another
-            if (roleJob.ProviderId == Guid.Empty || roleJob.ProviderId != assignment.ProviderId)
-            {
-                roleJob.ProviderId = assignment.ProviderId;
-                if (!string.IsNullOrWhiteSpace(assignment.PreferredModelId))
-                    roleJob.ModelUsed = assignment.PreferredModelId;
-                roleJob.ReasoningEffort = assignment.PreferredReasoningEffort;
-            }
 
             _dbContext.Jobs.Add(roleJob);
             createdJobs.Add(roleJob);

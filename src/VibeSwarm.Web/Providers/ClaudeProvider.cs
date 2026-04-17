@@ -21,6 +21,20 @@ public class ClaudeProvider : CliProviderBase
     private static readonly Version InitModeVersion = new(2, 1, 10);
     private static readonly Version WorktreeVersion = new(2, 1, 49);
     private static readonly Version ReasoningEffortVersion = new(2, 1, 63);
+    // New capability gates (introduced mid/late v2.1.x)
+    private static readonly Version SessionIdVersion = new(2, 1, 86);
+    private static readonly Version FallbackModelVersion = new(2, 1, 0);
+    private static readonly Version StrictMcpConfigVersion = new(2, 1, 0);
+    private static readonly Version SettingSourcesVersion = new(2, 1, 0);
+    private static readonly Version NoSessionPersistenceVersion = new(2, 1, 0);
+    private static readonly Version McpNonBlockingVersion = new(2, 1, 89);
+    private static readonly Version ExcludeDynamicSystemPromptVersion = new(2, 1, 98);
+    private static readonly Version PromptCacheOneHourVersion = new(2, 1, 108);
+    private static readonly Version JsonSchemaVersion = new(2, 1, 0);
+    private static readonly Version ForkSessionVersion = new(2, 1, 0);
+    private static readonly Version SessionNameVersion = new(2, 1, 0);
+    private static readonly Version IncludeHookEventsVersion = new(2, 1, 0);
+    private static readonly Version AppendSystemPromptFileVersion = new(2, 1, 0);
     private UsageLimits? _lastObservedUsageLimits;
     private Version? _cachedCliVersion;
 
@@ -128,6 +142,20 @@ public class ClaudeProvider : CliProviderBase
         {
             CurrentEnvironmentVariables ??= new Dictionary<string, string>();
             CurrentEnvironmentVariables["CLAUDE_CODE_DISABLE_1M_CONTEXT"] = "1";
+        }
+
+        // 1-hour prompt cache TTL for multi-cycle / swarm jobs (Claude v2.1.108+).
+        if (CurrentEnableOneHourPromptCache && SupportsCliVersion(PromptCacheOneHourVersion))
+        {
+            CurrentEnvironmentVariables ??= new Dictionary<string, string>();
+            CurrentEnvironmentVariables["ENABLE_PROMPT_CACHING_1H"] = "1";
+        }
+
+        // Non-blocking MCP connection in -p mode (Claude v2.1.89+).
+        if (CurrentNonBlockingMcpConnection && SupportsCliVersion(McpNonBlockingVersion))
+        {
+            CurrentEnvironmentVariables ??= new Dictionary<string, string>();
+            CurrentEnvironmentVariables["MCP_CONNECTION_NONBLOCKING"] = "true";
         }
 
         var fullCommand = FormatCommandForDisplay(execPath, args);
@@ -323,10 +351,27 @@ public class ClaudeProvider : CliProviderBase
         {
             args.Add("--resume");
             args.Add(sessionId);
+
+            // Fork from the resumed session instead of continuing it (v2.1+).
+            if (CurrentForkSession && SupportsCliVersion(ForkSessionVersion))
+            {
+                args.Add("--fork-session");
+            }
         }
         else if (CurrentContinueLastSession)
         {
             args.Add("--continue");
+
+            if (CurrentForkSession && SupportsCliVersion(ForkSessionVersion))
+            {
+                args.Add("--fork-session");
+            }
+        }
+        else if (!string.IsNullOrEmpty(CurrentPreassignedSessionId) && SupportsCliVersion(SessionIdVersion))
+        {
+            // Fresh session with a UUID pre-assigned by VibeSwarm (v2.1.86+).
+            args.Add("--session-id");
+            args.Add(CurrentPreassignedSessionId);
         }
 
         // Model selection (e.g., --model opus, --model sonnet)
@@ -334,6 +379,20 @@ public class ClaudeProvider : CliProviderBase
         {
             args.Add("--model");
             args.Add(CurrentModel);
+        }
+
+        // Automatic fallback model on overload (print mode).
+        if (!string.IsNullOrEmpty(CurrentFallbackModel) && SupportsCliVersion(FallbackModelVersion))
+        {
+            args.Add("--fallback-model");
+            args.Add(CurrentFallbackModel);
+        }
+
+        // Display name for the session (enables `claude --resume <name>` for debugging).
+        if (!string.IsNullOrEmpty(CurrentSessionName) && SupportsCliVersion(SessionNameVersion))
+        {
+            args.Add("--name");
+            args.Add(CurrentSessionName);
         }
 
         // Bare mode reduces Claude Code startup overhead and disables implicit local context loading.
@@ -361,6 +420,20 @@ public class ClaudeProvider : CliProviderBase
         {
             args.Add("--append-system-prompt");
             args.Add(CurrentAppendSystemPrompt);
+        }
+
+        // Append system prompt from file (avoids CLI arg-length limits for large prompts).
+        if (!string.IsNullOrEmpty(CurrentAppendSystemPromptFile) && SupportsCliVersion(AppendSystemPromptFileVersion))
+        {
+            args.Add("--append-system-prompt-file");
+            args.Add(CurrentAppendSystemPromptFile);
+        }
+
+        // Move dynamic (per-machine/per-run) system prompt sections into the first user message so the
+        // static system prompt stays cacheable across dispatched runs (v2.1.98+).
+        if (CurrentExcludeDynamicSystemPromptSections && SupportsCliVersion(ExcludeDynamicSystemPromptVersion))
+        {
+            args.Add("--exclude-dynamic-system-prompt-sections");
         }
 
         // Max turns limit
@@ -431,8 +504,14 @@ public class ClaudeProvider : CliProviderBase
             args.Add($"--{CurrentInitMode}");
         }
 
-		// Reasoning effort level (v2.1.63+)
-		var reasoningEffort = NormalizeReasoningEffort(CurrentReasoningEffort, "low", "medium", "high", "max");
+		// Reasoning effort level (v2.1.63+). Claude v2.1.72+ renamed "medium" to "standard"
+		// and added "xhigh"; "max" is Opus 4.7 only (other models silently downgrade to "high").
+		var rawEffort = CurrentReasoningEffort?.Trim().ToLowerInvariant();
+		if (string.Equals(rawEffort, "medium", StringComparison.Ordinal))
+		{
+			rawEffort = "standard";
+		}
+		var reasoningEffort = NormalizeReasoningEffort(rawEffort, "low", "standard", "high", "xhigh", "max");
         if (SupportsCliVersion(ReasoningEffortVersion) && !string.IsNullOrEmpty(reasoningEffort))
         {
             args.Add("--effort");
@@ -443,6 +522,42 @@ public class ClaudeProvider : CliProviderBase
         {
             args.Add("--mcp-config");
             args.Add(CurrentMcpConfigPath);
+
+            // Use ONLY the supplied MCP config — ignore user-level ~/.claude.json MCP entries.
+            if (CurrentStrictMcpConfig && SupportsCliVersion(StrictMcpConfigVersion))
+            {
+                args.Add("--strict-mcp-config");
+            }
+        }
+
+        // Explicit settings sources for reproducible dispatch across worker hosts.
+        if (!string.IsNullOrEmpty(CurrentSettingSources) && SupportsCliVersion(SettingSourcesVersion))
+        {
+            args.Add("--setting-sources");
+            args.Add(CurrentSettingSources);
+        }
+
+        // Skip writing this session to disk (preflight / planning calls).
+        if (CurrentNoSessionPersistence && SupportsCliVersion(NoSessionPersistenceVersion))
+        {
+            args.Add("--no-session-persistence");
+        }
+
+        // Include hook lifecycle events in stream-json output.
+        if (CurrentIncludeHookEvents && SupportsCliVersion(IncludeHookEventsVersion))
+        {
+            args.Add("--include-hook-events");
+        }
+
+        // Structured output validation. --json-schema requires --output-format json, but our base args already
+        // set --output-format stream-json. Only emit --json-schema when the caller has explicitly overridden
+        // the output format to json via CurrentOutputFormat.
+        if (!string.IsNullOrEmpty(CurrentJsonSchema)
+            && SupportsCliVersion(JsonSchemaVersion)
+            && string.Equals(CurrentOutputFormat, "json", StringComparison.OrdinalIgnoreCase))
+        {
+            args.Add("--json-schema");
+            args.Add(CurrentJsonSchema);
         }
 
         if (CurrentAdditionalArgs != null)
@@ -772,6 +887,7 @@ public class ClaudeProvider : CliProviderBase
                 "sonnet",
                 "opus",
                 "haiku",
+                "claude-opus-4-7",
                 "claude-sonnet-4-6",
                 "claude-opus-4-6",
                 "claude-haiku-4-5",
@@ -790,10 +906,20 @@ public class ClaudeProvider : CliProviderBase
                     ["sonnet"] = 1.0m,
                     ["opus"] = 5.0m,
                     ["haiku"] = 0.27m,
+                    ["claude-opus-4-7"] = 5.0m,
                     ["claude-sonnet-4-6"] = 1.0m,
                     ["claude-opus-4-6"] = 5.0m,
                     ["claude-haiku-4-5"] = 0.27m,
                 }
+            },
+            ModelRetirementDates = new Dictionary<string, DateTime>
+            {
+                ["claude-haiku-3"] = new DateTime(2026, 4, 19, 0, 0, 0, DateTimeKind.Utc),
+                ["claude-3-haiku-20240307"] = new DateTime(2026, 4, 19, 0, 0, 0, DateTimeKind.Utc),
+                ["claude-sonnet-4"] = new DateTime(2026, 6, 15, 0, 0, 0, DateTimeKind.Utc),
+                ["claude-sonnet-4-20250514"] = new DateTime(2026, 6, 15, 0, 0, 0, DateTimeKind.Utc),
+                ["claude-opus-4"] = new DateTime(2026, 6, 15, 0, 0, 0, DateTimeKind.Utc),
+                ["claude-opus-4-20250514"] = new DateTime(2026, 6, 15, 0, 0, 0, DateTimeKind.Utc),
             },
             AdditionalInfo = new Dictionary<string, object>
             {

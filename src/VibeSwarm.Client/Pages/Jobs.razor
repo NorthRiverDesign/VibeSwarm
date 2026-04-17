@@ -16,7 +16,8 @@
 @* Mobile: Project filter dropdown *@
 <div class="d-lg-none mb-3 jobs-mobile-filters">
 	<div class="d-grid gap-2">
-		<select class="form-select w-100" @onchange="OnProjectFilterChanged" disabled="@_isLoadingProjects" aria-label="Filter jobs by project">
+		<FormSelect TValue="string" Value="@(_selectedProjectId?.ToString() ?? "")" ValueChanged="OnProjectFilterStringChanged"
+					Disabled="_isLoadingProjects" AriaLabel="Filter jobs by project" Class="w-100">
 			@if (_isLoadingProjects)
 			{
 				<option value="">Loading projects...</option>
@@ -31,23 +32,22 @@
 					</option>
 				}
 			}
-		</select>
+		</FormSelect>
 		<div class="row g-2">
 			<div class="@(_selectedProjectId.HasValue ? "col-12 col-sm-7" : "col-12")">
-				<select class="form-select" value="@_statusFilter" @onchange="OnStatusFilterChanged" aria-label="Filter jobs by status">
+				<FormSelect TValue="string" Value="@_statusFilter" ValueChanged="OnStatusFilterStringChanged"
+							AriaLabel="Filter jobs by status">
 					<option value="all">All jobs</option>
 					<option value="active">Active jobs</option>
 					<option value="completed">Completed jobs</option>
 					<option value="failed">Failed jobs</option>
-				</select>
+				</FormSelect>
 			</div>
 			@if (_selectedProjectId.HasValue)
 			{
 				<div class="col-12 col-sm-5">
-					<button type="button" class="btn btn-primary w-100" @onclick="ShowCreateJobModal"
-							disabled="@_isLoadingProjects">
-						<i class="bi bi-plus-lg me-1"></i>Create Job
-					</button>
+					<ActionButton Icon="plus-lg" Text="Create Job" Style="ActionButton.ButtonStyle.Primary"
+								  OnClick="ShowCreateJobModal" Disabled="_isLoadingProjects" />
 				</div>
 			}
 		</div>
@@ -63,10 +63,9 @@
 				<i class="bi bi-inbox"></i> Jobs
 				@if (_selectedProjectId.HasValue)
 				{
-					<button type="button" class="btn btn-sm btn-primary ms-auto" @onclick="ShowCreateJobModal"
-							title="Create Job" disabled="@_isLoadingProjects">
-						<i class="bi bi-plus-lg me-1"></i><span class="d-none d-xl-inline">Create Job</span>
-					</button>
+					<ActionButton Icon="plus-lg" Text="Create Job" Size="ActionButton.ButtonSize.Small"
+								  Style="ActionButton.ButtonStyle.Primary" HideTextOnMobile="true"
+								  OnClick="ShowCreateJobModal" Disabled="_isLoadingProjects" />
 				}
 			</h5>
 		</div>
@@ -166,15 +165,14 @@
 							Message="Jobs are created when you run AI agent tasks on your projects.">
 					@if (_selectedProjectId.HasValue)
 					{
-						<button type="button" class="btn btn-sm btn-primary" @onclick="ShowCreateJobModal">
-							<i class="bi bi-plus-lg me-1"></i>Create Job
-						</button>
+						<ActionButton Icon="plus-lg" Text="Create Job" Size="ActionButton.ButtonSize.Small"
+									  Style="ActionButton.ButtonStyle.Primary" OnClick="ShowCreateJobModal" />
 					}
 					else
 					{
-						<a href="/projects" class="btn btn-sm btn-primary">
-							<i class="bi bi-folder me-1"></i>Go to Projects
-						</a>
+						<ActionButton Icon="folder" Text="Go to Projects" Size="ActionButton.ButtonSize.Small"
+									  Style="ActionButton.ButtonStyle.Primary"
+									  OnClick="@(() => NavigationManager.NavigateTo("/projects"))" />
 					}
 				</EmptyState>
 			}
@@ -183,9 +181,8 @@
 				<EmptyState Icon="@GetFilterEmptyIcon()" Title="@GetFilterEmptyTitle()" Message="@GetFilterEmptyMessage()">
 					@if (_selectedProjectId.HasValue)
 					{
-						<button type="button" class="btn btn-sm btn-primary" @onclick="ShowCreateJobModal">
-							<i class="bi bi-plus-lg me-1"></i>Create Job
-						</button>
+						<ActionButton Icon="plus-lg" Text="Create Job" Size="ActionButton.ButtonSize.Small"
+									  Style="ActionButton.ButtonStyle.Primary" OnClick="ShowCreateJobModal" />
 					}
 				</EmptyState>
 			}
@@ -199,8 +196,8 @@
 								 PlanningProviderName="@job.PlanningProviderName" PlanningModelUsed="@job.PlanningModelUsed"
 								 Activity="@((job.Status == JobStatus.Started || job.Status == JobStatus.Planning || job.Status == JobStatus.Processing) ? (job.CurrentActivity ?? "Working...") : null)"
 								 TimeDisplay="@GetTimeDisplay(job)" Cost="@job.TotalCostUsd" InputTokens="@job.InputTokens"
-								 OutputTokens="@job.OutputTokens" CurrentCycle="@job.CurrentCycle" MaxCycles="@job.MaxCycles"
-								 CycleMode="@job.CycleMode" TeamRoleName="@job.TeamRoleName"
+								 OutputTokens="@job.OutputTokens" IsTokenEstimate="@job.IsTokenEstimate" CurrentCycle="@job.CurrentCycle" MaxCycles="@job.MaxCycles"
+								 CycleMode="@job.CycleMode" AgentName="@job.AgentName"
 								 PlaywrightEnabled="@job.PlaywrightEnabled" EnvironmentCount="@job.EnvironmentCount"
 								 ChangedFilesCount="@job.ChangedFilesCount" BuildVerified="@job.BuildVerified"
 								 BuildVerificationEnabled="@job.BuildVerificationEnabled" IsPushed="@job.IsPushed"
@@ -218,7 +215,7 @@
 </div>
 
 @* Create Job Modal *@
-<CreateJobModal @bind-IsVisible="_showCreateJobModal" JobModel="@_newJob" Providers="@GetAllowedCreateJobProviders()"
+<CreateJobModal @bind-IsVisible="_showCreateJobModal" JobModel="@_newJob" Project="@GetSelectedProject()" Providers="@GetAllowedCreateJobProviders()"
 				AvailableModels="@_availableModels" Branches="@_branches" CurrentBranch="@_currentBranch"
 				ShowBranchSelector="@(_branches.Any())" IsLoadingModels="@_isLoadingModels" IsSaving="@_isSaving"
 				ErrorMessage="@_createJobError" @bind-SelectedModelId="@_selectedModelId" OnProviderChanged="OnCreateJobProviderChanged"
@@ -259,6 +256,11 @@
 	private void OnStatusFilterChanged(ChangeEventArgs e)
 	{
 		SetStatusFilter(e.Value?.ToString() ?? "all");
+	}
+
+	private void OnStatusFilterStringChanged(string value)
+	{
+		SetStatusFilter(value ?? "all");
 	}
     private string _selectedModelId = string.Empty;
 
@@ -581,6 +583,18 @@ TimeSpan.FromSeconds(10) })
     private void OnProjectFilterChanged(ChangeEventArgs e)
     {
         if (Guid.TryParse(e.Value?.ToString(), out var projectId))
+        {
+            SelectProject(projectId);
+        }
+        else
+        {
+            SelectProject(null);
+        }
+    }
+
+    private void OnProjectFilterStringChanged(string value)
+    {
+        if (Guid.TryParse(value, out var projectId))
         {
             SelectProject(projectId);
         }

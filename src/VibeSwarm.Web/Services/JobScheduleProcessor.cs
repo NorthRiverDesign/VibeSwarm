@@ -100,7 +100,7 @@ public class JobScheduleProcessor
 					IsScheduled = true,
 					JobScheduleId = schedule.Id,
 					ScheduledForUtc = scheduledForUtc,
-					TeamRoleId = resolvedExecution.TeamRoleId
+					AgentId = resolvedExecution.AgentId
 				}, cancellationToken);
 			}
 
@@ -146,26 +146,26 @@ public class JobScheduleProcessor
 				null);
 		}
 
-		if (!schedule.TeamRoleId.HasValue || schedule.TeamRoleId == Guid.Empty)
+		if (!schedule.AgentId.HasValue || schedule.AgentId == Guid.Empty)
 		{
-			throw new InvalidOperationException("The selected team member is not assigned to this project.");
+			throw new InvalidOperationException("The selected agent is not assigned to this project.");
 		}
 
-		var assignment = await _dbContext.ProjectTeamRoles
-			.Include(projectTeamRole => projectTeamRole.TeamRole)
-			.Include(projectTeamRole => projectTeamRole.Provider)
-			.FirstOrDefaultAsync(projectTeamRole =>
-				projectTeamRole.ProjectId == schedule.ProjectId &&
-				projectTeamRole.TeamRoleId == schedule.TeamRoleId.Value,
+		var assignment = await _dbContext.ProjectAgents
+			.Include(projectAgent => projectAgent.Agent)
+			.Include(projectAgent => projectAgent.Provider)
+			.FirstOrDefaultAsync(projectAgent =>
+				projectAgent.ProjectId == schedule.ProjectId &&
+				projectAgent.AgentId == schedule.AgentId.Value,
 				cancellationToken);
-		if (assignment == null || !assignment.IsEnabled || assignment.TeamRole == null || !assignment.TeamRole.IsEnabled)
+		if (assignment == null || !assignment.IsEnabled || assignment.Agent == null || !assignment.Agent.IsEnabled)
 		{
-			throw new InvalidOperationException("The selected team member is not assigned to this project.");
+			throw new InvalidOperationException("The selected agent is not assigned to this project.");
 		}
 
 		if (assignment.Provider == null || !assignment.Provider.IsEnabled)
 		{
-			throw new InvalidOperationException("The selected team member does not have an enabled provider assignment.");
+			throw new InvalidOperationException("The selected agent does not have an enabled provider assignment.");
 		}
 
 		if (!string.IsNullOrWhiteSpace(schedule.ModelId))
@@ -186,13 +186,14 @@ public class JobScheduleProcessor
 			assignment.ProviderId,
 			string.IsNullOrWhiteSpace(schedule.ModelId) ? assignment.PreferredModelId : schedule.ModelId,
 			assignment.PreferredReasoningEffort,
-			assignment.TeamRoleId);
+			assignment.AgentId);
 	}
 
 	private static string BuildScheduledIdeaContext(JobSchedule schedule, DateTime scheduledForUtc)
 	{
 		var scheduleDescriptor = schedule.Frequency switch
 		{
+			JobScheduleFrequency.Minutes => $"every {schedule.IntervalMinutes} minutes",
 			JobScheduleFrequency.Hourly => $"hourly at minute {schedule.MinuteUtc:D2}",
 			JobScheduleFrequency.Weekly => $"weekly on {schedule.WeeklyDay} at {schedule.HourUtc:D2}:{schedule.MinuteUtc:D2} UTC",
 			JobScheduleFrequency.Monthly => $"monthly on day {schedule.DayOfMonth} at {schedule.HourUtc:D2}:{schedule.MinuteUtc:D2} UTC",
@@ -219,5 +220,5 @@ public class JobScheduleProcessor
 		return DateTimeHelper.ResolveTimeZone(timeZoneId);
 	}
 
-	private sealed record ScheduledExecutionSelection(Guid ProviderId, string? ModelId, string? ReasoningEffort, Guid? TeamRoleId);
+	private sealed record ScheduledExecutionSelection(Guid ProviderId, string? ModelId, string? ReasoningEffort, Guid? AgentId);
 }

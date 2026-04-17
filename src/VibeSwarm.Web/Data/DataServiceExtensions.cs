@@ -41,7 +41,22 @@ public static class DataServiceExtensions
 		services.AddScoped<ISettingsService, SettingsService>();
 		services.AddScoped<ICriticalErrorLogService, CriticalErrorLogService>();
 		services.AddScoped<ISkillService, SkillService>();
-		services.AddScoped<ITeamRoleService, TeamRoleService>();
+		services.AddScoped<ISkillStorageService, SkillStorageService>();
+		services.AddScoped<ISkillInstaller, ZipSkillInstaller>();
+		services.AddScoped<ISkillInstaller, MarketplaceSkillInstaller>();
+		services.AddScoped<ISkillInstaller, LocalPathSkillInstaller>();
+		services.AddScoped<ISkillInstallerService, SkillInstallerService>();
+		services.AddMemoryCache();
+		services.AddScoped<IGitHubSkillCatalogClient, GitHubSkillCatalogClient>();
+		services.AddHttpClient(GitHubSkillCatalogClient.HttpClientName, client =>
+		{
+			client.BaseAddress = new Uri("https://api.github.com/");
+			client.DefaultRequestHeaders.UserAgent.ParseAdd("VibeSwarm-Skills-Installer");
+			client.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
+			client.DefaultRequestHeaders.Add("X-GitHub-Api-Version", "2022-11-28");
+			client.Timeout = TimeSpan.FromSeconds(30);
+		});
+		services.AddScoped<IAgentService, AgentService>();
 		services.AddScoped<IMcpConfigService, McpConfigService>();
 		services.AddScoped<IProjectMemoryService, ProjectMemoryService>();
 		services.AddScoped<IIdeaService, IdeaService>();

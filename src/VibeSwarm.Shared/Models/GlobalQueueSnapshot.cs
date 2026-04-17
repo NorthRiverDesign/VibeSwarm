@@ -5,9 +5,11 @@ namespace VibeSwarm.Shared.Models;
 public sealed class GlobalQueueSnapshot
 {
 	public int RunningJobsCount { get; set; }
+	public int QueuedJobsCount { get; set; }
 	public int UpcomingIdeasCount { get; set; }
 	public int ProjectsCurrentlyProcessing { get; set; }
 	public List<GlobalQueueJobSummary> RunningJobs { get; set; } = [];
+	public List<GlobalQueueJobSummary> QueuedJobs { get; set; } = [];
 	public List<GlobalQueueIdeaSummary> UpcomingIdeas { get; set; } = [];
 }
 

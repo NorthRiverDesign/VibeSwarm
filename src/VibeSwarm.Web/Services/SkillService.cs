@@ -1,6 +1,3 @@
-using System.ComponentModel.DataAnnotations;
-using System.IO.Compression;
-using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using VibeSwarm.Shared.Data;
@@ -11,15 +8,20 @@ namespace VibeSwarm.Shared.Services;
 
 public class SkillService : ISkillService
 {
-	private const int SkillDescriptionMaxLength = ValidationLimits.SkillDescriptionMaxLength;
 	private readonly VibeSwarmDbContext _dbContext;
 	private readonly IProviderService _providerService;
+	private readonly ISkillInstallerService _installerService;
 	private readonly ILogger<SkillService> _logger;
 
-	public SkillService(VibeSwarmDbContext dbContext, IProviderService providerService, ILogger<SkillService> logger)
+	public SkillService(
+		VibeSwarmDbContext dbContext,
+		IProviderService providerService,
+		ISkillInstallerService installerService,
+		ILogger<SkillService> logger)
 	{
 		_dbContext = dbContext;
 		_providerService = providerService;
+		_installerService = installerService;
 		_logger = logger;
 	}
 
@@ -117,50 +119,52 @@ public class SkillService : ISkillService
 	public async Task<SkillImportPreview> PreviewImportAsync(SkillImportRequest request, CancellationToken cancellationToken = default)
 	{
 		ArgumentNullException.ThrowIfNull(request);
-		var imported = ParseSkillImport(request);
-		var preview = imported.Preview;
-		preview.NameExists = await NameExistsAsync(preview.Name, cancellationToken: cancellationToken);
-		return preview;
+		var preview = await _installerService.PreviewAsync(
+			new SkillInstallRequest
+			{
+				Source = SkillInstallSource.Zip,
+				FileName = request.FileName,
+				ZipContent = request.Content,
+			},
+			cancellationToken);
+
+		return ToImportPreview(preview);
 	}
 
 	public async Task<SkillImportResult> ImportAsync(SkillImportRequest request, CancellationToken cancellationToken = default)
 	{
 		ArgumentNullException.ThrowIfNull(request);
-		var imported = ParseSkillImport(request);
-		var preview = imported.Preview;
-		var existing = await _dbContext.Skills.FirstOrDefaultAsync(s => s.Name == preview.Name, cancellationToken);
-
-		if (existing != null)
-		{
-			preview.NameExists = true;
-			return new SkillImportResult
+		var result = await _installerService.InstallAsync(
+			new SkillInstallRequest
 			{
-				Skipped = true,
-				Message = $"Skill '{preview.Name}' already exists.",
-				Skill = existing,
-				Preview = preview,
-				Warnings = [..preview.Warnings]
-			};
-		}
+				Source = SkillInstallSource.Zip,
+				FileName = request.FileName,
+				ZipContent = request.Content,
+			},
+			cancellationToken);
 
-		var skill = new Skill
+		return new SkillImportResult
+		{
+			Imported = result.Installed,
+			Skipped = result.Skipped,
+			Message = result.Message,
+			Skill = result.Skill,
+			Preview = result.Preview is null ? null : ToImportPreview(result.Preview),
+			Warnings = result.Warnings.ToList(),
+		};
+	}
+
+	private static SkillImportPreview ToImportPreview(SkillInstallPreview preview)
+	{
+		return new SkillImportPreview
 		{
 			Name = preview.Name,
 			Description = preview.Description,
 			Content = preview.Content,
-			IsEnabled = preview.IsEnabled
-		};
-
-		var created = await CreateAsync(skill, cancellationToken);
-		preview.NameExists = false;
-
-		return new SkillImportResult
-		{
-			Imported = true,
-			Message = $"Imported skill '{created.Name}'.",
-			Skill = created,
-			Preview = preview,
-			Warnings = [..preview.Warnings]
+			IsEnabled = preview.IsEnabled,
+			NameExists = preview.NameExists,
+			IncludedFiles = preview.Files.Select(file => file.RelativePath).ToList(),
+			Warnings = preview.Warnings.ToList(),
 		};
 	}
 
@@ -242,213 +246,4 @@ Write the content in clear, instructional Markdown format that an AI agent can e
 		}
 	}
 
-	private static ParsedSkillImport ParseSkillImport(SkillImportRequest request)
-	{
-		if (string.IsNullOrWhiteSpace(request.FileName))
-		{
-			throw new ValidationException("File name is required.");
-		}
-
-		if (request.Content.Length == 0)
-		{
-			throw new ValidationException("Skill file content is empty.");
-		}
-
-		if (!request.FileName.EndsWith(".skill", StringComparison.OrdinalIgnoreCase))
-		{
-			throw new InvalidDataException("Only Claude-exported .skill files are supported.");
-		}
-
-		using var archiveStream = new MemoryStream(request.Content, writable: false);
-		using var archive = new ZipArchive(archiveStream, ZipArchiveMode.Read, leaveOpen: false);
-
-		var skillEntry = archive.Entries
-			.FirstOrDefault(entry => entry.FullName.EndsWith("/SKILL.md", StringComparison.OrdinalIgnoreCase));
-		if (skillEntry == null)
-		{
-			throw new InvalidDataException("The .skill archive is missing SKILL.md.");
-		}
-
-		var warnings = new List<string>();
-		var includedFiles = new List<string> { skillEntry.FullName };
-		var skillMarkdown = ReadEntryAsString(skillEntry);
-		if (string.IsNullOrWhiteSpace(skillMarkdown))
-		{
-			throw new InvalidDataException("The .skill archive contains an empty SKILL.md file.");
-		}
-
-		var (metadata, body) = ParseFrontMatter(skillMarkdown);
-		var fallbackName = Path.GetFileNameWithoutExtension(request.FileName);
-		var name = NormalizeImportedName(GetMetadataValue(metadata, "name"), fallbackName);
-		var description = NormalizeDescription(GetMetadataValue(metadata, "description"), warnings);
-
-		var contentBuilder = new StringBuilder(body.Trim());
-		var referenceEntries = archive.Entries
-			.Where(entry =>
-				!string.IsNullOrEmpty(entry.Name) &&
-				(
-					entry.FullName.StartsWith("bootstrap-ui/references/", StringComparison.OrdinalIgnoreCase) ||
-				entry.FullName.Contains("/references/", StringComparison.OrdinalIgnoreCase))
-				)
-			.OrderBy(entry => entry.FullName, StringComparer.OrdinalIgnoreCase)
-			.ToList();
-
-		foreach (var referenceEntry in referenceEntries)
-		{
-			var referenceContent = ReadEntryAsString(referenceEntry).Trim();
-			if (string.IsNullOrWhiteSpace(referenceContent))
-			{
-				continue;
-			}
-
-			includedFiles.Add(referenceEntry.FullName);
-			contentBuilder
-				.AppendLine()
-				.AppendLine()
-				.AppendLine("---")
-				.AppendLine()
-				.AppendLine($"## Reference: {Path.GetFileNameWithoutExtension(referenceEntry.Name)}")
-				.AppendLine()
-				.AppendLine(referenceContent);
-		}
-
-		var content = contentBuilder.ToString().Trim();
-		if (string.IsNullOrWhiteSpace(content))
-		{
-			throw new ValidationException("Imported skill content is empty.");
-		}
-
-		return new ParsedSkillImport(new SkillImportPreview
-		{
-			Name = name,
-			Description = description,
-			Content = content,
-			IsEnabled = true,
-			IncludedFiles = includedFiles,
-			Warnings = warnings
-		});
-	}
-
-	private static string ReadEntryAsString(ZipArchiveEntry entry)
-	{
-		using var stream = entry.Open();
-		using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
-		return reader.ReadToEnd();
-	}
-
-	private static (Dictionary<string, string> metadata, string body) ParseFrontMatter(string content)
-	{
-		var lines = content.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n');
-		if (lines.Length == 0 || lines[0].Trim() != "---")
-		{
-			return (new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase), content);
-		}
-
-		var metadata = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-		var index = 1;
-		while (index < lines.Length)
-		{
-			var line = lines[index];
-			if (line.Trim() == "---")
-			{
-				index++;
-				break;
-			}
-
-			if (string.IsNullOrWhiteSpace(line))
-			{
-				index++;
-				continue;
-			}
-
-			var separatorIndex = line.IndexOf(':');
-			if (separatorIndex <= 0)
-			{
-				index++;
-				continue;
-			}
-
-			var key = line[..separatorIndex].Trim();
-			var value = line[(separatorIndex + 1)..].Trim();
-
-			if (value is ">" or "|" or ">-" or "|-")
-			{
-				index++;
-				var continuation = new List<string>();
-				while (index < lines.Length)
-				{
-					var continuationLine = lines[index];
-					if (continuationLine.Trim() == "---")
-					{
-						break;
-					}
-
-					if (continuationLine.Length > 0 && char.IsWhiteSpace(continuationLine[0]))
-					{
-						continuation.Add(continuationLine.Trim());
-						index++;
-						continue;
-					}
-
-					break;
-				}
-
-				metadata[key] = string.Join(' ', continuation).Trim();
-				continue;
-			}
-
-			metadata[key] = value.Trim().Trim('"');
-			index++;
-		}
-
-		var body = string.Join('\n', lines.Skip(index)).Trim();
-		return (metadata, body);
-	}
-
-	private static string? GetMetadataValue(IReadOnlyDictionary<string, string> metadata, string key)
-		=> metadata.TryGetValue(key, out var value) ? value : null;
-
-	private static string NormalizeImportedName(string? rawName, string fallbackName)
-	{
-		var source = string.IsNullOrWhiteSpace(rawName) ? fallbackName : rawName;
-		var normalized = new string(source
-			.Trim()
-			.ToLowerInvariant()
-			.Select(character => char.IsLetterOrDigit(character) ? character : '-')
-			.ToArray());
-
-		while (normalized.Contains("--", StringComparison.Ordinal))
-		{
-			normalized = normalized.Replace("--", "-", StringComparison.Ordinal);
-		}
-
-		normalized = normalized.Trim('-');
-		if (string.IsNullOrWhiteSpace(normalized))
-		{
-			throw new ValidationException("Imported skill name is empty.");
-		}
-
-		return normalized.Length <= 100
-			? normalized
-			: normalized[..100].TrimEnd('-');
-	}
-
-	private static string? NormalizeDescription(string? description, List<string> warnings)
-	{
-		if (string.IsNullOrWhiteSpace(description))
-		{
-			return null;
-		}
-
-		var trimmed = description.Trim();
-		if (trimmed.Length <= SkillDescriptionMaxLength)
-		{
-			return trimmed;
-		}
-
-		warnings.Add($"Description was truncated to {SkillDescriptionMaxLength} characters.");
-		return trimmed[..SkillDescriptionMaxLength].TrimEnd();
-	}
-
-	private sealed record ParsedSkillImport(SkillImportPreview Preview);
 }

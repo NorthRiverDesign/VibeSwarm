@@ -4,6 +4,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading.Channels;
 using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Providers;
 using VibeSwarm.Shared.Services;
@@ -37,7 +38,16 @@ public partial class JobProcessingService : BackgroundService
     private readonly int _maxConcurrentJobs = 5; // Maximum number of concurrent jobs
     private readonly Dictionary<Guid, JobExecutionContext> _runningJobs = new();
     private readonly SemaphoreSlim _jobsLock = new(1, 1);
-    private readonly SemaphoreSlim _processingTrigger = new(0); // Semaphore to trigger immediate processing
+    // Coalescing wake-up channel: bounded to 1 and drops newest writes so repeated triggers
+    // collapse into a single pending signal. The polling tick serves as a safety fallback for
+    // orphan recovery and for jobs whose NotBeforeUtc has passed without an explicit trigger.
+    private readonly Channel<byte> _wakeSignal = Channel.CreateBounded<byte>(
+        new BoundedChannelOptions(1)
+        {
+            FullMode = BoundedChannelFullMode.DropWrite,
+            SingleReader = true,
+            SingleWriter = false
+        });
     private static readonly string _workerInstanceId = $"{Environment.MachineName}-{Environment.ProcessId}-{Guid.NewGuid():N}";
 
     /// <summary>
@@ -193,10 +203,19 @@ public partial class JobProcessingService : BackgroundService
                 _logger.LogError(ex, "Error processing jobs");
             }
 
-            // Wait for either the polling interval or a trigger signal
+            // Wait for either the polling interval or a wake signal from the Channel.
             try
             {
-                await _processingTrigger.WaitAsync(_pollingInterval, stoppingToken);
+                using var timeoutCts = new CancellationTokenSource(_pollingInterval);
+                using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken, timeoutCts.Token);
+                try
+                {
+                    await _wakeSignal.Reader.ReadAsync(linkedCts.Token);
+                }
+                catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !stoppingToken.IsCancellationRequested)
+                {
+                    // Polling tick — safety fallback for orphan recovery / rate-limited jobs becoming eligible.
+                }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -311,18 +330,12 @@ public partial class JobProcessingService : BackgroundService
     }
 
     /// <summary>
-    /// Triggers immediate job processing (called when a new job is created)
+    /// Triggers immediate job processing. Safe to call from any thread.
+    /// Repeated calls between ticks coalesce into a single pending wake (bounded channel, DropWrite).
     /// </summary>
     public void TriggerProcessing()
     {
-        try
-        {
-            _processingTrigger.Release();
-        }
-        catch
-        {
-            // Ignore if semaphore is already signaled
-        }
+        _wakeSignal.Writer.TryWrite(0);
     }
 
     private async Task ProcessPendingJobsAsync(CancellationToken stoppingToken)
@@ -368,8 +381,9 @@ public partial class JobProcessingService : BackgroundService
                     var scopedJobService = jobScope.ServiceProvider.GetRequiredService<IJobService>();
                     var scopedProviderService = jobScope.ServiceProvider.GetRequiredService<IProviderService>();
                     var scopedDbContext = jobScope.ServiceProvider.GetRequiredService<VibeSwarmDbContext>();
+                    var scopedSkillStorage = jobScope.ServiceProvider.GetRequiredService<ISkillStorageService>();
 
-                    await ProcessJobAsync(job, scopedJobService, scopedProviderService, scopedDbContext, context, jobCts.Token);
+                    await ProcessJobAsync(job, scopedJobService, scopedProviderService, scopedDbContext, scopedSkillStorage, context, jobCts.Token);
                 }, stoppingToken);
 
                 _runningJobs[job.Id] = context;

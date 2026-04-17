@@ -3,7 +3,7 @@
 @using VibeSwarm.Shared.Validation
 @inject IProjectService ProjectService
 @inject IProviderService ProviderService
-@inject ITeamRoleService TeamRoleService
+@inject IAgentService AgentService
 @inject IInferenceProviderService InferenceProviderService
 @inject ISettingsService SettingsService
 @inject NotificationService NotificationService
@@ -49,9 +49,9 @@ OnReorder="ReorderProviderSelection"
 OnRemove="RemoveProviderSelection" OnAdd="AddProviderSelection"
 OnPreferredModelChanged="HandlePreferredModelChanged" />
 
-<ProjectTeamRolesSection Project="@FormModel" AvailableTeamRoles="@_availableTeamRoles"
-AvailableProviders="@_availableProviders" ResolveTeamRole="ResolveTeamRole"
-IsTeamRoleAssigned="IsTeamRoleAssigned" ResolveProviderModels="GetProviderModels"
+<ProjectAgentsSection Project="@FormModel" AvailableAgents="@_availableAgents"
+AvailableProviders="@_availableProviders" ResolveAgent="ResolveAgent"
+IsAgentAssigned="IsAgentAssigned" ResolveProviderModels="GetProviderModels"
 OnRemove="RemoveTeamAssignment" OnAdd="AddTeamAssignment"
 OnProviderChanged="HandleTeamAssignmentProviderChanged"
 OnPreferredModelChanged="HandleTeamAssignmentPreferredModelChanged" />
@@ -136,7 +136,7 @@ private bool _showGitHubRepositoryBrowser;
 private DirectoryBrowser? _directoryBrowser;
 private string? _defaultProjectsDirectory;
 private List<Provider> _availableProviders = [];
-private List<TeamRole> _availableTeamRoles = [];
+private List<Agent> _availableAgents = [];
 private List<ProviderModel> _planningModels = [];
 private List<InferenceProvider> _availableInferenceProviders = [];
 private List<InferenceModel> _ideaInferenceModels = [];
@@ -149,7 +149,7 @@ protected override async Task OnInitializedAsync()
 {
 await LoadDefaultProjectsDirectory();
 await LoadProvidersAsync();
-await LoadTeamRolesAsync();
+await LoadAgentsAsync();
 await LoadInferenceProvidersAsync();
 }
 
@@ -158,7 +158,7 @@ protected override async Task OnParametersSetAsync()
 if (IsVisible && !_previousIsVisible)
 {
 await LoadProvidersAsync();
-await LoadTeamRolesAsync();
+await LoadAgentsAsync();
 ResetState();
 
 if (EditProject != null)
@@ -344,11 +344,11 @@ _availableProviders = (await ProviderService.GetAllAsync())
 .ToList();
 	}
 
-	private async Task LoadTeamRolesAsync()
+	private async Task LoadAgentsAsync()
 	{
-		_availableTeamRoles = (await TeamRoleService.GetAllAsync())
-			.OrderByDescending(teamRole => teamRole.IsEnabled)
-			.ThenBy(teamRole => teamRole.Name)
+		_availableAgents = (await AgentService.GetAllAsync())
+			.OrderByDescending(agent => agent.IsEnabled)
+			.ThenBy(agent => agent.Name)
 			.ToList();
 	}
 
@@ -363,15 +363,15 @@ private bool IsProviderSelected(Guid providerId)
 return FormModel.ProviderSelections.Any(selection => selection.ProviderId == providerId);
 }
 
-private TeamRole? ResolveTeamRole(Guid teamRoleId)
+private Agent? ResolveAgent(Guid agentId)
 {
-return _availableTeamRoles.FirstOrDefault(teamRole => teamRole.Id == teamRoleId)
-?? EditProject?.TeamAssignments.FirstOrDefault(assignment => assignment.TeamRoleId == teamRoleId)?.TeamRole;
+return _availableAgents.FirstOrDefault(agent => agent.Id == agentId)
+?? EditProject?.AgentAssignments.FirstOrDefault(assignment => assignment.AgentId == agentId)?.Agent;
 }
 
-private bool IsTeamRoleAssigned(Guid teamRoleId)
+private bool IsAgentAssigned(Guid agentId)
 {
-return FormModel.TeamAssignments.Any(assignment => assignment.TeamRoleId == teamRoleId);
+return FormModel.AgentAssignments.Any(assignment => assignment.AgentId == agentId);
 }
 
 private async Task AddProviderSelection(Provider provider)
@@ -396,9 +396,9 @@ EnsurePlanningProviderSelection();
 await LoadProviderModelsAsync(provider.Id);
 }
 
-private async Task AddTeamAssignment(TeamRole teamRole)
+private async Task AddTeamAssignment(Agent agent)
 {
-if (IsTeamRoleAssigned(teamRole.Id))
+if (IsAgentAssigned(agent.Id))
 {
 return;
 }
@@ -406,8 +406,8 @@ return;
 	var defaultProvider = FormModel.ProviderSelections
 		.OrderBy(selection => selection.Priority)
 		.Select(selection => ResolveProvider(selection.ProviderId))
-		.FirstOrDefault(provider => provider != null && teamRole.DefaultProviderId.HasValue && provider.Id == teamRole.DefaultProviderId.Value)
-		?? ResolveProvider(teamRole.DefaultProviderId ?? Guid.Empty)
+		.FirstOrDefault(provider => provider != null && agent.DefaultProviderId.HasValue && provider.Id == agent.DefaultProviderId.Value)
+		?? ResolveProvider(agent.DefaultProviderId ?? Guid.Empty)
 		?? FormModel.ProviderSelections
 	.OrderBy(selection => selection.Priority)
 	.Select(selection => ResolveProvider(selection.ProviderId))
@@ -418,17 +418,17 @@ if (defaultProvider == null)
 	return;
 }
 
-FormModel.TeamAssignments.Add(new ProjectTeamRole
+FormModel.AgentAssignments.Add(new ProjectAgent
 {
-	TeamRoleId = teamRole.Id,
-	TeamRole = teamRole,
+	AgentId = agent.Id,
+	Agent = agent,
 	ProviderId = defaultProvider.Id,
 	Provider = defaultProvider,
-	PreferredModelId = teamRole.DefaultProviderId == defaultProvider.Id
-		? teamRole.DefaultModelId
+	PreferredModelId = agent.DefaultProviderId == defaultProvider.Id
+		? agent.DefaultModelId
 		: null,
-	PreferredReasoningEffort = teamRole.DefaultProviderId == defaultProvider.Id
-		? teamRole.DefaultReasoningEffort
+	PreferredReasoningEffort = agent.DefaultProviderId == defaultProvider.Id
+		? agent.DefaultReasoningEffort
 		: null,
 	IsEnabled = true,
 	CreatedAt = DateTime.UtcNow,
@@ -452,15 +452,15 @@ NormalizeProviderSelectionOrder();
 EnsurePlanningProviderSelection();
 }
 
-private void RemoveTeamAssignment(Guid teamRoleId)
+private void RemoveTeamAssignment(Guid agentId)
 {
-var assignment = FormModel.TeamAssignments.FirstOrDefault(projectTeamRole => projectTeamRole.TeamRoleId == teamRoleId);
+var assignment = FormModel.AgentAssignments.FirstOrDefault(projectAgent => projectAgent.AgentId == agentId);
 if (assignment == null)
 {
 	return;
 }
 
-FormModel.TeamAssignments.Remove(assignment);
+FormModel.AgentAssignments.Remove(assignment);
 }
 
 private void ReorderProviderSelection(DragDropReorderArgs args)
@@ -501,9 +501,9 @@ selection.PreferredReasoningEffort = string.IsNullOrWhiteSpace(change.PreferredR
 selection.UpdatedAt = DateTime.UtcNow;
 }
 
-private async Task HandleTeamAssignmentProviderChanged(ProjectTeamRoleProviderChange change)
+private async Task HandleTeamAssignmentProviderChanged(ProjectAgentProviderChange change)
 {
-var assignment = FormModel.TeamAssignments.FirstOrDefault(projectTeamRole => projectTeamRole.TeamRoleId == change.TeamRoleId);
+var assignment = FormModel.AgentAssignments.FirstOrDefault(projectAgent => projectAgent.AgentId == change.AgentId);
 if (assignment == null)
 {
 	return;
@@ -517,9 +517,9 @@ assignment.UpdatedAt = DateTime.UtcNow;
 await LoadProviderModelsAsync(change.ProviderId);
 }
 
-private async Task HandleTeamAssignmentPreferredModelChanged(ProjectTeamRoleModelSelectionChange change)
+private async Task HandleTeamAssignmentPreferredModelChanged(ProjectAgentModelSelectionChange change)
 {
-var assignment = FormModel.TeamAssignments.FirstOrDefault(projectTeamRole => projectTeamRole.TeamRoleId == change.TeamRoleId);
+var assignment = FormModel.AgentAssignments.FirstOrDefault(projectAgent => projectAgent.AgentId == change.AgentId);
 if (assignment == null)
 {
 	return;
@@ -743,7 +743,7 @@ private async Task LoadProviderSelectionModelsAsync()
 {
 foreach (var providerId in FormModel.ProviderSelections
 	.Select(projectProvider => projectProvider.ProviderId)
-	.Concat(FormModel.TeamAssignments.Select(projectTeamRole => projectTeamRole.ProviderId))
+	.Concat(FormModel.AgentAssignments.Select(projectAgent => projectAgent.ProviderId))
 	.Distinct())
 {
 await LoadProviderModelsAsync(providerId);
@@ -782,7 +782,7 @@ var selection = FormModel.ProviderSelections.FirstOrDefault(projectProvider => p
 		}
 	}
 
-	foreach (var assignment in FormModel.TeamAssignments.Where(projectTeamRole => projectTeamRole.ProviderId == providerId))
+	foreach (var assignment in FormModel.AgentAssignments.Where(projectAgent => projectAgent.ProviderId == providerId))
 	{
 		if (!string.IsNullOrWhiteSpace(assignment.PreferredModelId) &&
 			!_providerModelsByProviderId[providerId].Any(model => string.Equals(model.ModelId, assignment.PreferredModelId, StringComparison.Ordinal)))
@@ -841,20 +841,20 @@ UpdatedAt = projectProvider.UpdatedAt,
 Provider = ResolveProvider(projectProvider.ProviderId)
 	})
 	.ToList(),
-	TeamAssignments = source.TeamAssignments
-	.Select(projectTeamRole => new ProjectTeamRole
+	AgentAssignments = source.AgentAssignments
+	.Select(projectAgent => new ProjectAgent
 	{
-		Id = projectTeamRole.Id,
-		ProjectId = projectTeamRole.ProjectId,
-		TeamRoleId = projectTeamRole.TeamRoleId,
-		ProviderId = projectTeamRole.ProviderId,
-		PreferredModelId = projectTeamRole.PreferredModelId,
-		PreferredReasoningEffort = projectTeamRole.PreferredReasoningEffort,
-		IsEnabled = projectTeamRole.IsEnabled,
-		CreatedAt = projectTeamRole.CreatedAt,
-		UpdatedAt = projectTeamRole.UpdatedAt,
-		TeamRole = ResolveTeamRole(projectTeamRole.TeamRoleId),
-		Provider = ResolveProvider(projectTeamRole.ProviderId)
+		Id = projectAgent.Id,
+		ProjectId = projectAgent.ProjectId,
+		AgentId = projectAgent.AgentId,
+		ProviderId = projectAgent.ProviderId,
+		PreferredModelId = projectAgent.PreferredModelId,
+		PreferredReasoningEffort = projectAgent.PreferredReasoningEffort,
+		IsEnabled = projectAgent.IsEnabled,
+		CreatedAt = projectAgent.CreatedAt,
+		UpdatedAt = projectAgent.UpdatedAt,
+		Agent = ResolveAgent(projectAgent.AgentId),
+		Provider = ResolveProvider(projectAgent.ProviderId)
 	})
 	.ToList(),
 	Environments = (source.Environments ?? [])

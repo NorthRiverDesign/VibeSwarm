@@ -29,6 +29,11 @@
 					<div class="fw-semibold">Queue</div>
 					<div class="small text-body-secondary">
 						@_snapshot.RunningJobsCount running
+						@if (_snapshot.QueuedJobsCount > 0)
+						{
+							<span class="mx-1">&bull;</span>
+							<span>@_snapshot.QueuedJobsCount queued</span>
+						}
 						<span class="mx-1">&bull;</span>
 						@_snapshot.UpcomingIdeasCount upcoming
 					</div>
@@ -90,7 +95,7 @@
 		else if (BadgeCount == 0)
 		{
 			<div class="p-3 small text-body-secondary">
-				No running jobs or queued ideas.
+				No running or queued jobs or upcoming ideas.
 			</div>
 		}
 		else
@@ -107,7 +112,7 @@
 								<div class="d-flex align-items-start justify-content-between gap-2">
 									<div class="min-width-0">
 										<div class="d-flex align-items-center gap-2 flex-wrap">
-											<span class="badge text-bg-primary">Running</span>
+											<span class="badge @(job.Status is VibeSwarm.Shared.Data.JobStatus.Paused ? "text-bg-warning" : job.Status is VibeSwarm.Shared.Data.JobStatus.Stalled ? "text-bg-danger" : "text-bg-primary")">@(job.Status is VibeSwarm.Shared.Data.JobStatus.Paused ? "Paused" : job.Status is VibeSwarm.Shared.Data.JobStatus.Stalled ? "Stalled" : "Running")</span>
 											<span class="fw-medium text-truncate">@job.DisplayTitle</span>
 										</div>
 										<div class="small text-body-secondary mt-1 text-truncate">
@@ -122,6 +127,36 @@
 										{
 											<div class="small text-body-secondary mt-1 text-truncate">@job.CurrentActivity</div>
 										}
+									</div>
+									<i class="bi bi-chevron-right text-body-tertiary"></i>
+								</div>
+							</a>
+						}
+					</div>
+				}
+
+				@if (_snapshot.QueuedJobs.Count > 0)
+				{
+					<div class="px-3 py-2 border-bottom border-top small text-uppercase text-body-secondary fw-semibold">Queued Jobs</div>
+					<div class="list-group list-group-flush">
+						@foreach (var job in _snapshot.QueuedJobs)
+						{
+							<a class="list-group-item list-group-item-action px-3 py-2 text-decoration-none text-body"
+							   href="/jobs/view/@job.Id">
+								<div class="d-flex align-items-start justify-content-between gap-2">
+									<div class="min-width-0">
+										<div class="d-flex align-items-center gap-2 flex-wrap">
+											<span class="badge bg-body-secondary text-body">Pending</span>
+											<span class="fw-medium text-truncate">@job.DisplayTitle</span>
+										</div>
+										<div class="small text-body-secondary mt-1 text-truncate">
+											@job.ProjectName
+											@if (!string.IsNullOrWhiteSpace(job.ProviderName))
+											{
+												<span class="mx-1">&bull;</span>
+												<span>@job.ProviderName</span>
+											}
+										</div>
 									</div>
 									<i class="bi bi-chevron-right text-body-tertiary"></i>
 								</div>
@@ -174,7 +209,7 @@
 	private string? _loadError;
 
 	private bool IsQueueActive => _snapshot.ProjectsCurrentlyProcessing > 0;
-	private int BadgeCount => _snapshot.RunningJobsCount + _snapshot.UpcomingIdeasCount;
+	private int BadgeCount => _snapshot.RunningJobsCount + _snapshot.QueuedJobsCount + _snapshot.UpcomingIdeasCount;
 
 	protected override async Task OnInitializedAsync()
 	{

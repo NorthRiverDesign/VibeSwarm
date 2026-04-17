@@ -1,0 +1,62 @@
+@* Reusable card wrapping Bootstrap card pattern *@
+
+<div class="card @Class">
+	@if (!string.IsNullOrEmpty(Title))
+	{
+		<div class="card-header @HeaderClass">
+			<div class="d-flex align-items-center justify-content-between gap-2">
+				<h5 class="mb-0 fw-semibold">
+					@if (!string.IsNullOrEmpty(Icon))
+					{
+						<i class="bi bi-@Icon me-2"></i>
+					}
+					@Title
+				</h5>
+				@if (HeaderActions != null)
+				{
+					<div class="d-flex gap-2">
+						@HeaderActions
+					</div>
+				}
+			</div>
+		</div>
+	}
+	<div class="card-body @BodyClass">
+		@ChildContent
+	</div>
+	@if (FooterContent != null)
+	{
+		<div class="card-footer @FooterClass">
+			@FooterContent
+		</div>
+	}
+</div>
+
+@code {
+	[Parameter]
+	public string? Title { get; set; }
+
+	[Parameter]
+	public string? Icon { get; set; }
+
+	[Parameter]
+	public RenderFragment? HeaderActions { get; set; }
+
+	[Parameter]
+	public RenderFragment? ChildContent { get; set; }
+
+	[Parameter]
+	public RenderFragment? FooterContent { get; set; }
+
+	[Parameter]
+	public string? Class { get; set; }
+
+	[Parameter]
+	public string HeaderClass { get; set; } = "bg-body-secondary";
+
+	[Parameter]
+	public string? BodyClass { get; set; }
+
+	[Parameter]
+	public string? FooterClass { get; set; }
+}

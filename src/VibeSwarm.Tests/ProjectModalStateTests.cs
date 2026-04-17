@@ -95,11 +95,11 @@ var isValid = Validator.TryValidateObject(project, new ValidationContext(project
 		{
 			Name = "Sample Project",
 			WorkingPath = "/tmp/sample-project",
-			TeamAssignments =
+			AgentAssignments =
 			[
-				new ProjectTeamRole
+				new ProjectAgent
 				{
-					TeamRoleId = Guid.NewGuid(),
+					AgentId = Guid.NewGuid(),
 					ProviderId = Guid.Empty
 				}
 			]
@@ -108,6 +108,6 @@ var isValid = Validator.TryValidateObject(project, new ValidationContext(project
 		var isValid = Validator.TryValidateObject(project, new ValidationContext(project), validationResults, validateAllProperties: true);
 
 		Assert.False(isValid);
-		Assert.Contains(validationResults, result => result.ErrorMessage == "Each assigned team role must have a provider.");
+		Assert.Contains(validationResults, result => result.ErrorMessage == "Each assigned agent must have a provider.");
 	}
 }

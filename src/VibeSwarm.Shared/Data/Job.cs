@@ -351,6 +351,25 @@ public class Job
 	}
 
 	/// <summary>
+	/// True when InputTokens/OutputTokens are estimates derived from text length
+	/// rather than exact counts reported by the provider.
+	/// </summary>
+	[NotMapped]
+	public bool IsTokenEstimate
+	{
+		get => Statistics?.IsTokenEstimate ?? false;
+		set
+		{
+			if (!value && Statistics is null)
+			{
+				return;
+			}
+
+			EnsureStatistics().IsTokenEstimate = value;
+		}
+	}
+
+	/// <summary>
 	/// Input tokens consumed by the execution stage.
 	/// </summary>
 	[NotMapped]
@@ -679,9 +698,9 @@ public class Job
     /// The team role this job is executing as. Set when the job is part of a team swarm.
     /// Null for regular jobs or when no specific role is assigned.
     /// </summary>
-    public Guid? TeamRoleId { get; set; }
+    public Guid? AgentId { get; set; }
 
-	public TeamRole? TeamRole { get; set; }
+	public Agent? Agent { get; set; }
 
 	[JsonIgnore]
 	public JobStatistics? Statistics { get; set; }

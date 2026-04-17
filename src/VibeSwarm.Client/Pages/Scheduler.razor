@@ -24,19 +24,51 @@ else if (!_schedules.Any())
 }
 else
 {
+	<PageFiltersBar Class="mb-2">
+		<Tabs>
+			<div class="d-flex flex-column flex-sm-row flex-wrap align-items-stretch align-items-sm-end gap-2 gap-sm-3 border-bottom">
+				<TabStrip Class="flex-nowrap overflow-x-auto overflow-y-hidden overscroll-contain border-bottom-0 mb-0 min-width-0">
+					<TabItem Text="All" IsActive="@(_statusFilter == "all")"
+							 BadgeCount="@_schedules.Count"
+							 OnClick='() => SetStatusFilter("all")' />
+					<TabItem Text="Active" Icon="check-circle" IconClass="me-1" IsActive="@(_statusFilter == "active")"
+							 BadgeCount="@GetStatusCount("active")" BadgeClass="bg-primary-subtle text-primary-emphasis"
+							 OnClick='() => SetStatusFilter("active")' />
+					<TabItem Text="Paused" Icon="pause-circle" IconClass="me-1" IsActive="@(_statusFilter == "paused")"
+							 BadgeCount="@GetStatusCount("paused")" BadgeClass="bg-secondary-subtle text-secondary-emphasis"
+							 OnClick='() => SetStatusFilter("paused")' />
+				</TabStrip>
+				<TabStrip Class="flex-nowrap overflow-x-auto overflow-y-hidden overscroll-contain border-bottom-0 mb-0 min-width-0">
+					<TabItem Text="All Types" IsActive="@(_typeFilter == "all")"
+							 BadgeCount="@_schedules.Count"
+							 OnClick='() => SetTypeFilter("all")' />
+					<TabItem Text="Jobs" Icon="play-circle" IconClass="me-1" IsActive="@(_typeFilter == "runjob")"
+							 BadgeCount="@GetTypeCount("runjob")" BadgeClass="bg-info-subtle text-info-emphasis"
+							 OnClick='() => SetTypeFilter("runjob")' />
+					<TabItem Text="Ideas" Icon="stars" IconClass="me-1" IsActive="@(_typeFilter == "ideas")"
+							 BadgeCount="@GetTypeCount("ideas")" BadgeClass="bg-warning-subtle text-warning-emphasis"
+							 OnClick='() => SetTypeFilter("ideas")' />
+				</TabStrip>
+			</div>
+		</Tabs>
+	</PageFiltersBar>
+
+	@if (!GetFilteredSchedules().Any())
+	{
+		<EmptyState Icon="funnel" Title="No schedules match these filters"
+					Message="Try switching back to All or clearing the filter." />
+	}
+	else
+	{
 	<div class="list-group">
-		@foreach (var schedule in _schedules)
+		@foreach (var schedule in GetFilteredSchedules())
 		{
 			<div class="list-group-item d-flex flex-column flex-md-row align-items-md-start gap-3 p-3 hover-bg-tertiary">
 				<div class="flex-grow-1 min-width-0">
 					<div class="d-flex align-items-center gap-2 flex-wrap">
 						<span class="fw-semibold">@GetScheduleTitle(schedule)</span>
-						<span class="badge @(schedule.IsEnabled ? "bg-success-subtle text-success-emphasis" : "bg-secondary-subtle text-secondary-emphasis")">
-							@(schedule.IsEnabled ? "Active" : "Paused")
-						</span>
-						<span class="badge @(schedule.ScheduleType == JobScheduleType.GenerateIdeas ? "bg-warning-subtle text-warning-emphasis" : "bg-primary-subtle text-primary-emphasis")">
-							@(schedule.ScheduleType == JobScheduleType.GenerateIdeas ? "Idea Generation" : "Job Running")
-						</span>
+						<StatusBadge Status="@(schedule.IsEnabled ? "Active" : "Paused")" ShowSpinner="false" />
+						<StatusBadge Status="@(schedule.ScheduleType == JobScheduleType.GenerateIdeas ? "Idea Generation" : "Job Running")" ShowSpinner="false" />
 						<span class="small text-body-secondary d-inline-flex align-items-center gap-1">
 							<i class="bi bi-folder opacity-75"></i>
 							@(schedule.Project?.Name ?? "Unknown project")
@@ -48,11 +80,11 @@ else
 								@(schedule.InferenceProvider?.Name ?? "Unknown inference provider")
 							</span>
 						}
-						else if (schedule.ExecutionTarget == JobScheduleExecutionTarget.TeamRole)
+						else if (schedule.ExecutionTarget == JobScheduleExecutionTarget.Agent)
 						{
 							<span class="small text-body-secondary d-inline-flex align-items-center gap-1">
 								<i class="bi bi-person-badge opacity-75"></i>
-								@(schedule.TeamRole?.Name ?? "Unknown team member")
+								@(schedule.Agent?.Name ?? "Unknown agent")
 							</span>
 						}
 						else
@@ -81,7 +113,7 @@ else
 					<div class="d-flex flex-wrap gap-2 gap-md-3 mt-2 small text-body-secondary">
 						<span class="d-inline-flex align-items-center gap-1" title="@schedule.NextRunAtUtc.FormatDateTimeShort()">
 							<i class="bi bi-calendar-event opacity-75"></i>
-							Next @FormatRelativeTime(schedule.NextRunAtUtc)
+							@FormatNextRun(schedule.NextRunAtUtc)
 						</span>
 						@if (schedule.LastRunAtUtc.HasValue)
 						{
@@ -121,15 +153,16 @@ else
 								  Text="@(schedule.IsEnabled ? "Pause" : "Resume")"
 								  Size="ActionButton.ButtonSize.Small"
 								  OnClick="@(() => ToggleScheduleAsync(schedule))" />
-					<ActionButton Icon="pencil" Text="Edit" Size="ActionButton.ButtonSize.Small"
-								  HideTextOnMobile="true" OnClick="@(() => EditSchedule(schedule))" />
-					<ActionButton Icon="trash" Text="Delete" Size="ActionButton.ButtonSize.Small"
-								  Style="ActionButton.ButtonStyle.Danger" HideTextOnMobile="true"
-								  OnClick="@(() => ShowDeleteConfirmation(schedule))" />
+					<RowActionsDropdown>
+						<RowActionsItem Icon="pencil" Text="Edit" OnClick="@(() => EditSchedule(schedule))" />
+						<RowActionsItem Icon="trash" Text="Delete" Danger="true"
+										OnClick="@(() => ShowDeleteConfirmation(schedule))" />
+					</RowActionsDropdown>
 				</div>
 			</div>
 		}
 	</div>
+	}
 }
 
 <JobScheduleModal @bind-IsVisible="_showScheduleModal" EditSchedule="_editingSchedule" OnSaved="HandleScheduleSaved"
@@ -151,6 +184,8 @@ else
 	private JobSchedule? _scheduleToDelete;
 	private bool _isDeleting;
 	private Timer? _refreshTimer;
+	private string _statusFilter = "all";
+	private string _typeFilter = "all";
 
 	protected override async Task OnInitializedAsync()
 	{
@@ -278,11 +313,12 @@ else
 		var time = $"{schedule.HourUtc:D2}:{schedule.MinuteUtc:D2}";
 		var action = schedule.ScheduleType == JobScheduleType.GenerateIdeas
 			? $"generate {schedule.IdeaCount} idea{(schedule.IdeaCount == 1 ? string.Empty : "s")} with {schedule.InferenceProvider?.Name ?? "Unknown inference provider"}"
-			: schedule.ExecutionTarget == JobScheduleExecutionTarget.TeamRole
-				? schedule.TeamRole?.Name ?? "Unknown team member"
+			: schedule.ExecutionTarget == JobScheduleExecutionTarget.Agent
+				? schedule.Agent?.Name ?? "Unknown agent"
 				: schedule.Provider?.Name ?? "Unknown provider";
 		return schedule.Frequency switch
 		{
+			JobScheduleFrequency.Minutes => $"{action} every {schedule.IntervalMinutes} minute{(schedule.IntervalMinutes == 1 ? string.Empty : "s")}",
 			JobScheduleFrequency.Hourly => $"{action} hourly at minute {schedule.MinuteUtc:D2} past the hour",
 			JobScheduleFrequency.Weekly => $"{action} weekly on {schedule.WeeklyDay} at {time}",
 			JobScheduleFrequency.Monthly => $"{action} monthly on day {schedule.DayOfMonth} at {time}",
@@ -291,6 +327,64 @@ else
 	}
 
 	private static string FormatRelativeTime(DateTime value) => value.FormatRelativeToNow();
+
+	private static string FormatNextRun(DateTime nextRunUtc)
+	{
+		var delta = nextRunUtc - DateTime.UtcNow;
+		// Past or near-past: the poller runs every 30s, re-enabled schedules can legitimately
+		// have a NextRun slightly in the past, and "Next 35m ago" is nonsensical.
+		if (delta <= TimeSpan.FromMinutes(1))
+		{
+			return "Next: due now";
+		}
+
+		return $"Next: {nextRunUtc.FormatRelativeToNow()}";
+	}
+
+	private void SetStatusFilter(string filter)
+	{
+		_statusFilter = filter;
+	}
+
+	private void SetTypeFilter(string filter)
+	{
+		_typeFilter = filter;
+	}
+
+	private int GetStatusCount(string status) => status switch
+	{
+		"active" => _schedules.Count(s => s.IsEnabled),
+		"paused" => _schedules.Count(s => !s.IsEnabled),
+		_ => _schedules.Count
+	};
+
+	private int GetTypeCount(string type) => type switch
+	{
+		"runjob" => _schedules.Count(s => s.ScheduleType == JobScheduleType.RunJob),
+		"ideas" => _schedules.Count(s => s.ScheduleType == JobScheduleType.GenerateIdeas),
+		_ => _schedules.Count
+	};
+
+	private List<JobSchedule> GetFilteredSchedules()
+	{
+		IEnumerable<JobSchedule> query = _schedules;
+
+		query = _statusFilter switch
+		{
+			"active" => query.Where(s => s.IsEnabled),
+			"paused" => query.Where(s => !s.IsEnabled),
+			_ => query
+		};
+
+		query = _typeFilter switch
+		{
+			"runjob" => query.Where(s => s.ScheduleType == JobScheduleType.RunJob),
+			"ideas" => query.Where(s => s.ScheduleType == JobScheduleType.GenerateIdeas),
+			_ => query
+		};
+
+		return query.ToList();
+	}
 
 	private static string GetScheduleTitle(JobSchedule schedule)
 	{

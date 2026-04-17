@@ -66,9 +66,9 @@
 						<label for="schedule-target" class="form-label">Executor Type</label>
 						<InputSelect id="schedule-target" @bind-Value="Schedule.ExecutionTarget" @bind-Value:after="OnExecutionTargetChanged" class="form-select">
 							<option value="@JobScheduleExecutionTarget.Provider">Provider</option>
-							<option value="@JobScheduleExecutionTarget.TeamRole">Team Member</option>
+							<option value="@JobScheduleExecutionTarget.Agent">Agent</option>
 						</InputSelect>
-						<div class="form-text">Choose a direct provider or a project team member role that should run this task.</div>
+						<div class="form-text">Choose a direct provider or a project agent that should run this task.</div>
 					</div>
 
 					@if (Schedule.ExecutionTarget == JobScheduleExecutionTarget.Provider)
@@ -88,18 +88,18 @@
 					else
 					{
 						<div class="col-12 col-lg-4">
-							<label for="schedule-team-role" class="form-label">Team Member</label>
-							<select id="schedule-team-role" class="form-select" value="@GetTeamRoleValue()" @onchange="OnTeamRoleChanged"
-									disabled="@(!_availableTeamAssignments.Any())">
-								<option value="">@(_availableTeamAssignments.Any() ? "Select team member..." : "No enabled team members")</option>
-								@foreach (var assignment in _availableTeamAssignments)
+							<label for="schedule-team-role" class="form-label">Agent</label>
+							<select id="schedule-team-role" class="form-select" value="@GetAgentValue()" @onchange="OnAgentChanged"
+									disabled="@(!_availableAgentAssignments.Any())">
+								<option value="">@(_availableAgentAssignments.Any() ? "Select agent..." : "No enabled agents")</option>
+								@foreach (var assignment in _availableAgentAssignments)
 								{
-									<option value="@assignment.TeamRoleId">@GetTeamAssignmentDisplayText(assignment)</option>
+									<option value="@assignment.AgentId">@GetTeamAssignmentDisplayText(assignment)</option>
 								}
 							</select>
-							@if (!_availableTeamAssignments.Any())
+							@if (!_availableAgentAssignments.Any())
 							{
-								<div class="form-text text-warning">Assign an enabled team role with an enabled provider in the project settings first.</div>
+								<div class="form-text text-warning">Assign an enabled agent with an enabled provider in the project settings first.</div>
 							}
 						</div>
 					}
@@ -125,19 +125,34 @@
 
 				<div class="col-12 col-lg-4">
 					<label for="schedule-model" class="form-label">Model</label>
-					<select id="schedule-model" class="form-select" @bind="_selectedModelId" @bind:after="OnModelChanged"
-							disabled="@(_isLoadingModels || !_models.Any())">
-						<option value="">@(_isLoadingModels ? "Loading..." : "Use assigned default")</option>
-						@foreach (var model in _models)
-						{
-							<option value="@model.ModelId">@(model.DisplayName ?? model.ModelId)</option>
-						}
-					</select>
+					<div class="input-group">
+						<select id="schedule-model" class="form-select" @bind="_selectedModelId" @bind:after="OnModelChanged"
+								disabled="@(_isLoadingModels || !_models.Any())">
+							<option value="">@(_isLoadingModels ? "Loading..." : "Use assigned default")</option>
+							@foreach (var model in _models)
+							{
+								<option value="@model.ModelId">@(model.DisplayName ?? model.ModelId)</option>
+							}
+						</select>
+						<button type="button" class="btn btn-secondary"
+								@onclick="RefreshModelsAsync"
+								disabled="@(_isRefreshingModels || _isLoadingModels || !ResolveSelectedProviderId().HasValue)"
+								title="Refresh models from provider">
+							@if (_isRefreshingModels)
+							{
+								<span class="spinner-border spinner-border-sm" role="status"></span>
+							}
+							else
+							{
+								<i class="bi bi-arrow-clockwise"></i>
+							}
+						</button>
+					</div>
 					<div class="form-text">@GetModelHelpText()</div>
 				</div>
 			</div>
 
-			@if (Schedule.ScheduleType == JobScheduleType.RunJob && Schedule.ExecutionTarget == JobScheduleExecutionTarget.TeamRole)
+			@if (Schedule.ScheduleType == JobScheduleType.RunJob && Schedule.ExecutionTarget == JobScheduleExecutionTarget.Agent)
 			{
 				var assignment = GetSelectedTeamAssignment();
 				@if (assignment != null)
@@ -164,12 +179,23 @@
 					<InputSelect id="schedule-frequency" @bind-Value="Schedule.Frequency" class="form-select">
 						@foreach (var frequency in Enum.GetValues<JobScheduleFrequency>())
 						{
-							<option value="@frequency">@frequency</option>
+							<option value="@frequency">@GetFrequencyLabel(frequency)</option>
 						}
 					</InputSelect>
 				</div>
 
-				@if (Schedule.Frequency == JobScheduleFrequency.Hourly)
+				@if (Schedule.Frequency == JobScheduleFrequency.Minutes)
+				{
+					<div class="col-12 col-lg-4">
+						<label for="schedule-interval-minutes" class="form-label">Run every</label>
+						<div class="input-group">
+							<InputNumber id="schedule-interval-minutes" @bind-Value="Schedule.IntervalMinutes" class="form-control" min="5" max="60" />
+							<span class="input-group-text">minutes</span>
+						</div>
+						<div class="form-text">Between 5 and 60 minutes.</div>
+					</div>
+				}
+				else if (Schedule.Frequency == JobScheduleFrequency.Hourly)
 				{
 					<div class="col-12 col-lg-4">
 						<label for="schedule-minute" class="form-label">Minute past the hour</label>
@@ -219,15 +245,11 @@
 				</div>
 			}
 
-			<div class="d-flex gap-2 justify-content-end mt-4">
-				<button type="button" class="btn btn-secondary" @onclick="HandleCancel">Cancel</button>
-				<button type="submit" class="btn btn-primary" disabled="@IsSaving">
-					@if (IsSaving)
-					{
-						<span class="spinner-border spinner-border-sm me-1" role="status"></span>
-					}
-					@(IsSaving ? "Saving..." : (IsEdit ? "Update Schedule" : "Add Schedule"))
-				</button>
+			<div class="mt-4">
+				<ModalFooterActions OnCancel="HandleCancel" Busy="@IsSaving" IsSubmit="true"
+									SubmitText="@(IsEdit ? "Update Schedule" : "Add Schedule")"
+									SubmitLoadingText="Saving..."
+									SubmitIcon="@(IsEdit ? "check-lg" : "plus-lg")" />
 			</div>
 		</EditForm>
 	</ChildContent>
@@ -261,9 +283,10 @@
 	private List<Provider> _providers = [];
 	private List<InferenceProvider> _inferenceProviders = [];
 	private List<Provider> _allowedProviders = [];
-	private List<ProjectTeamRole> _availableTeamAssignments = [];
+	private List<ProjectAgent> _availableAgentAssignments = [];
 	private List<ProviderModel> _models = [];
 	private bool _isLoadingModels;
+	private bool _isRefreshingModels;
 	private string _selectedModelId = string.Empty;
 	private string _timeValue = "09:00";
 
@@ -275,14 +298,14 @@
 
 	protected override async Task OnParametersSetAsync()
 	{
-		if (!_projects.Any() || !_providers.Any())
-		{
-			await LoadLookupDataAsync();
-		}
-
 		if (IsVisible && !_previousIsVisible)
 		{
+			await LoadLookupDataAsync();
 			await ResetStateAsync();
+		}
+		else if (!_projects.Any() || !_providers.Any())
+		{
+			await LoadLookupDataAsync();
 		}
 
 		_previousIsVisible = IsVisible;
@@ -323,12 +346,13 @@
 				ScheduleType = EditSchedule.ScheduleType,
 				ExecutionTarget = EditSchedule.ExecutionTarget,
 				ProviderId = EditSchedule.ProviderId,
-				TeamRoleId = EditSchedule.TeamRoleId,
+				AgentId = EditSchedule.AgentId,
 				InferenceProviderId = EditSchedule.InferenceProviderId,
 				Prompt = EditSchedule.Prompt,
 				ModelId = EditSchedule.ModelId,
 				IdeaCount = EditSchedule.IdeaCount,
 				Frequency = EditSchedule.Frequency,
+				IntervalMinutes = EditSchedule.IntervalMinutes,
 				HourUtc = EditSchedule.HourUtc,
 				MinuteUtc = EditSchedule.MinuteUtc,
 				WeeklyDay = EditSchedule.WeeklyDay,
@@ -352,6 +376,7 @@
 				InferenceProviderId = _inferenceProviders.FirstOrDefault()?.Id,
 				IdeaCount = SuggestIdeasRequest.DefaultIdeaCount,
 				Frequency = JobScheduleFrequency.Daily,
+				IntervalMinutes = 15,
 				HourUtc = 9,
 				MinuteUtc = 0,
 				WeeklyDay = DayOfWeek.Monday,
@@ -371,14 +396,14 @@
 	{
 		var project = GetSelectedProject();
 		_allowedProviders = ProjectExecutionDefaults.GetAllowedProviders(project, _providers);
-		_availableTeamAssignments = project?.TeamAssignments?
+		_availableAgentAssignments = project?.AgentAssignments?
 			.Where(assignment =>
 				assignment.IsEnabled &&
-				assignment.TeamRole != null &&
-				assignment.TeamRole.IsEnabled &&
+				assignment.Agent != null &&
+				assignment.Agent.IsEnabled &&
 				assignment.Provider != null &&
 				assignment.Provider.IsEnabled)
-			.OrderBy(assignment => assignment.TeamRole!.Name, StringComparer.OrdinalIgnoreCase)
+			.OrderBy(assignment => assignment.Agent!.Name, StringComparer.OrdinalIgnoreCase)
 			.ToList() ?? [];
 
 		if (Schedule.ScheduleType == JobScheduleType.GenerateIdeas)
@@ -389,7 +414,7 @@
 			}
 
 			Schedule.ProviderId = null;
-			Schedule.TeamRoleId = null;
+			Schedule.AgentId = null;
 		}
 		else if (Schedule.ExecutionTarget == JobScheduleExecutionTarget.Provider)
 		{
@@ -399,13 +424,13 @@
 					?? _allowedProviders.FirstOrDefault()?.Id;
 			}
 
-			Schedule.TeamRoleId = null;
+			Schedule.AgentId = null;
 		}
 		else
 		{
-			if (!preserveCurrentSelection || !Schedule.TeamRoleId.HasValue || !_availableTeamAssignments.Any(assignment => assignment.TeamRoleId == Schedule.TeamRoleId.Value))
+			if (!preserveCurrentSelection || !Schedule.AgentId.HasValue || !_availableAgentAssignments.Any(assignment => assignment.AgentId == Schedule.AgentId.Value))
 			{
-				Schedule.TeamRoleId = _availableTeamAssignments.FirstOrDefault()?.TeamRoleId;
+				Schedule.AgentId = _availableAgentAssignments.FirstOrDefault()?.AgentId;
 			}
 
 			Schedule.ProviderId = null;
@@ -511,9 +536,9 @@
 		await LoadModelsAsync();
 	}
 
-	private async Task OnTeamRoleChanged(ChangeEventArgs args)
+	private async Task OnAgentChanged(ChangeEventArgs args)
 	{
-		Schedule.TeamRoleId = TryParseNullableGuid(args.Value);
+		Schedule.AgentId = TryParseNullableGuid(args.Value);
 		ErrorMessage = null;
 		await LoadModelsAsync();
 	}
@@ -523,6 +548,78 @@
 		Schedule.ModelId = string.IsNullOrWhiteSpace(_selectedModelId) ? null : _selectedModelId;
 		return Task.CompletedTask;
 	}
+
+	private async Task RefreshModelsAsync()
+	{
+		var providerId = ResolveSelectedProviderId();
+		if (!providerId.HasValue)
+		{
+			return;
+		}
+
+		_isRefreshingModels = true;
+		StateHasChanged();
+		try
+		{
+			if (Schedule.ScheduleType == JobScheduleType.GenerateIdeas)
+			{
+				var refreshed = (await InferenceProviderService.RefreshModelsAsync(providerId.Value)).ToList();
+				_models = refreshed
+					.Where(model => model.IsAvailable)
+					.Select(model => new ProviderModel
+					{
+						Id = model.Id,
+						ModelId = model.ModelId,
+						DisplayName = model.DisplayName ?? model.ModelId,
+						IsAvailable = model.IsAvailable,
+						IsDefault = model.IsDefault
+					})
+					.OrderByDescending(model => model.IsDefault)
+					.ThenBy(model => model.DisplayName ?? model.ModelId)
+					.ToList();
+			}
+			else
+			{
+				_models = (await ProviderService.RefreshModelsAsync(providerId.Value))
+					.Where(model => model.IsAvailable)
+					.OrderByDescending(model => model.IsDefault)
+					.ThenBy(model => model.DisplayName ?? model.ModelId)
+					.ToList();
+			}
+
+			if (!string.IsNullOrWhiteSpace(_selectedModelId) && _models.Any(model => model.ModelId == _selectedModelId))
+			{
+				// Preserve current selection when still available.
+			}
+			else
+			{
+				_selectedModelId = ResolveDefaultModel(providerId.Value);
+				Schedule.ModelId = string.IsNullOrWhiteSpace(_selectedModelId) ? null : _selectedModelId;
+			}
+
+			NotificationService.ShowSuccess($"Found {_models.Count} model(s).");
+		}
+		catch (Exception ex)
+		{
+			NotificationService.ShowError($"Failed to refresh models: {ex.Message}");
+		}
+		finally
+		{
+			_isRefreshingModels = false;
+			StateHasChanged();
+		}
+	}
+
+	private static string GetFrequencyLabel(JobScheduleFrequency frequency)
+		=> frequency switch
+		{
+			JobScheduleFrequency.Minutes => "Every N Minutes",
+			JobScheduleFrequency.Hourly => "Hourly",
+			JobScheduleFrequency.Daily => "Daily",
+			JobScheduleFrequency.Weekly => "Weekly",
+			JobScheduleFrequency.Monthly => "Monthly",
+			_ => frequency.ToString()
+		};
 
 	private Task OnTimeChanged(ChangeEventArgs args)
 	{
@@ -546,9 +643,9 @@
 			return;
 		}
 
-		if (Schedule.ScheduleType == JobScheduleType.RunJob && Schedule.ExecutionTarget == JobScheduleExecutionTarget.TeamRole && !Schedule.TeamRoleId.HasValue)
+		if (Schedule.ScheduleType == JobScheduleType.RunJob && Schedule.ExecutionTarget == JobScheduleExecutionTarget.Agent && !Schedule.AgentId.HasValue)
 		{
-			ErrorMessage = "Please select a team member.";
+			ErrorMessage = "Please select an agent.";
 			return;
 		}
 
@@ -558,7 +655,18 @@
 			return;
 		}
 
-		if (Schedule.Frequency != JobScheduleFrequency.Hourly)
+		if (Schedule.Frequency == JobScheduleFrequency.Minutes)
+		{
+			if (Schedule.IntervalMinutes < 5 || Schedule.IntervalMinutes > 60)
+			{
+				ErrorMessage = "Interval must be between 5 and 60 minutes.";
+				return;
+			}
+
+			Schedule.HourUtc = 0;
+			Schedule.MinuteUtc = 0;
+		}
+		else if (Schedule.Frequency != JobScheduleFrequency.Hourly)
 		{
 			if (!TimeOnly.TryParse(_timeValue, out var time))
 			{
@@ -577,12 +685,12 @@
 		if (Schedule.ScheduleType == JobScheduleType.GenerateIdeas)
 		{
 			Schedule.ProviderId = null;
-			Schedule.TeamRoleId = null;
+			Schedule.AgentId = null;
 			Schedule.Prompt = string.Empty;
 		}
 		else if (Schedule.ExecutionTarget == JobScheduleExecutionTarget.Provider)
 		{
-			Schedule.TeamRoleId = null;
+			Schedule.AgentId = null;
 			Schedule.InferenceProviderId = null;
 		}
 		else
@@ -632,9 +740,9 @@
 		await IsVisibleChanged.InvokeAsync(isVisible);
 	}
 
-	private ProjectTeamRole? GetSelectedTeamAssignment()
-		=> Schedule.TeamRoleId.HasValue
-			? _availableTeamAssignments.FirstOrDefault(assignment => assignment.TeamRoleId == Schedule.TeamRoleId.Value)
+	private ProjectAgent? GetSelectedTeamAssignment()
+		=> Schedule.AgentId.HasValue
+			? _availableAgentAssignments.FirstOrDefault(assignment => assignment.AgentId == Schedule.AgentId.Value)
 			: null;
 
 	private Guid? ResolveSelectedProviderId()
@@ -688,27 +796,27 @@
 		var assignment = GetSelectedTeamAssignment();
 		if (assignment == null)
 		{
-			return "Leave empty to use the selected team member's assigned default model.";
+			return "Leave empty to use the selected agent's assigned default model.";
 		}
 
 		if (!string.IsNullOrWhiteSpace(assignment.PreferredModelId))
 		{
-			return $"Leave empty to use {assignment.TeamRole?.Name}'s assigned model ({assignment.PreferredModelId}).";
+			return $"Leave empty to use {assignment.Agent?.Name}'s assigned model ({assignment.PreferredModelId}).";
 		}
 
-		return "Leave empty to use the selected team member's provider default model.";
+		return "Leave empty to use the selected agent's provider default model.";
 	}
 
-	private static string GetTeamAssignmentDisplayText(ProjectTeamRole assignment)
+	private static string GetTeamAssignmentDisplayText(ProjectAgent assignment)
 	{
-		var roleName = assignment.TeamRole?.Name ?? "Unknown team member";
+		var roleName = assignment.Agent?.Name ?? "Unknown agent";
 		var providerName = assignment.Provider?.Name ?? "Unknown provider";
 		return $"{roleName} ({providerName})";
 	}
 
 	private string GetProjectValue() => Schedule.ProjectId == Guid.Empty ? string.Empty : Schedule.ProjectId.ToString();
 	private string GetProviderValue() => Schedule.ProviderId?.ToString() ?? string.Empty;
-	private string GetTeamRoleValue() => Schedule.TeamRoleId?.ToString() ?? string.Empty;
+	private string GetAgentValue() => Schedule.AgentId?.ToString() ?? string.Empty;
 	private string GetInferenceProviderValue() => Schedule.InferenceProviderId?.ToString() ?? string.Empty;
 
 	private static Guid TryParseGuid(object? value)

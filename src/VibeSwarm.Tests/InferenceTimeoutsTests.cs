@@ -28,5 +28,20 @@ public sealed class InferenceTimeoutsTests
 		Assert.Equal(InferenceTimeouts.LocalInitialResponseTimeout, options.InitialResponseTimeout);
 		Assert.Equal(InferenceTimeouts.LocalStreamInactivityTimeout, options.StreamInactivityTimeout);
 		Assert.Equal(InferenceTimeouts.LocalGenerationTimeout, options.GenerationTimeout);
+		Assert.Equal(InferenceTimeouts.LocalStallDetectionWindow, options.StallDetectionWindow);
+	}
+
+	[Fact]
+	public void LocalTimeouts_AreExtendedForSlowHardware()
+	{
+		// Initial response timeout must be long enough for model loading on a Raspberry Pi.
+		Assert.True(InferenceTimeouts.LocalInitialResponseTimeout >= TimeSpan.FromMinutes(60));
+
+		// Generation cap must accommodate long completions on ARM/embedded hardware.
+		Assert.True(InferenceTimeouts.LocalGenerationTimeout >= TimeSpan.FromMinutes(120));
+
+		// The stall detection window must be shorter than the general inactivity timeout
+		// so mid-generation hangs are caught before the full inactivity window expires.
+		Assert.True(InferenceTimeouts.LocalStallDetectionWindow < InferenceTimeouts.LocalStreamInactivityTimeout);
 	}
 }

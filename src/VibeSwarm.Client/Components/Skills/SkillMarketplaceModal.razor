@@ -1,0 +1,236 @@
+@* Browse anthropics/skills catalog and kick off an install. *@
+@inject HttpSkillInstallerService InstallerService
+@inject ISettingsService SettingsService
+@inject NotificationService NotificationService
+@inject NavigationManager NavigationManager
+
+<ModalDialog IsVisible="IsVisible" IsVisibleChanged="HandleVisibilityChanged"
+			 Title="Browse skills marketplace" Icon="shop"
+			 Size="ModalDialog.ModalSize.Large" OnClose="HandleClose">
+	<ChildContent>
+		@if (_errorMessage != null)
+		{
+			<Alert Type="Alert.AlertType.Danger" Message="@_errorMessage" Class="mb-3" />
+		}
+
+		@if (_showTokenHint)
+		{
+			<Alert Type="Alert.AlertType.Info" Class="mb-3">
+				<div class="d-flex flex-column flex-md-row align-items-md-center gap-2">
+					<div class="flex-grow-1 small">
+						<i class="bi bi-info-circle me-1"></i>
+						No GitHub token is configured. Anonymous GitHub requests are rate-limited to 60/hour per IP —
+						add a token in <a href="/settings" @onclick="GoToSettings" @onclick:preventDefault="true" class="fw-semibold">Settings</a>
+						to lift the limit to 5000/hour.
+					</div>
+					<button type="button" class="btn-close flex-shrink-0" aria-label="Dismiss"
+							@onclick="() => _showTokenHint = false"></button>
+				</div>
+			</Alert>
+		}
+
+		<div class="d-flex flex-column flex-md-row align-items-md-center gap-2 mb-3">
+			<div class="flex-grow-1">
+				<input type="text" class="form-control" placeholder="Filter skills by name or description..."
+					   @bind="_filterText" @bind:event="oninput" />
+			</div>
+			<ActionButton Icon="arrow-clockwise" Text="Refresh" Size="ActionButton.ButtonSize.Small"
+						  OnClick="RefreshAsync" IsLoading="_isLoadingCatalog" Disabled="_isLoadingCatalog" />
+		</div>
+
+		@if (_isLoadingCatalog)
+		{
+			<LoadingSpinner Text="Loading marketplace catalog..." />
+		}
+		else if (_filteredCatalog.Count == 0)
+		{
+			<EmptyState Icon="shop"
+						Title="@(string.IsNullOrWhiteSpace(_filterText) ? "No marketplace skills available" : "No skills match that filter")"
+						Message="@(string.IsNullOrWhiteSpace(_filterText) ? "GitHub returned no catalog entries. Try refreshing." : "Try a different search term.")" />
+		}
+		else
+		{
+			<div class="list-group">
+				@foreach (var entry in _filteredCatalog)
+				{
+					<div class="list-group-item d-flex flex-column flex-md-row gap-2 gap-md-3 p-3">
+						<div class="flex-grow-1 min-width-0">
+							<div class="d-flex align-items-center gap-2 flex-wrap">
+								<span class="fw-semibold font-monospace">@entry.Name</span>
+								<code class="small text-body-secondary">@entry.Slug</code>
+							</div>
+							@if (!string.IsNullOrWhiteSpace(entry.Description))
+							{
+								<div class="small text-body-secondary mt-1">@entry.Description</div>
+							}
+							@if (!string.IsNullOrWhiteSpace(entry.AllowedTools))
+							{
+								<div class="small text-body-secondary mt-1 font-monospace">
+									<i class="bi bi-shield-lock opacity-75 me-1"></i>
+									allowed-tools: @entry.AllowedTools
+								</div>
+							}
+						</div>
+						<div class="d-flex flex-shrink-0 align-items-center">
+							<ActionButton Icon="box-arrow-in-down" Text="Install"
+										  Style="ActionButton.ButtonStyle.Primary"
+										  Size="ActionButton.ButtonSize.Small"
+										  IsLoading="@(_previewingSlug == entry.Slug)"
+										  Disabled="@(_previewingSlug != null)"
+										  OnClick="@(() => StartInstallAsync(entry))" />
+						</div>
+					</div>
+				}
+			</div>
+		}
+	</ChildContent>
+	<FooterContent>
+		<ActionButton Text="Close" OnClick="HandleClose" />
+	</FooterContent>
+</ModalDialog>
+
+<SkillInstallPreviewModal @bind-IsVisible="_showPreview"
+						   Preview="_preview"
+						   Request="_pendingRequest"
+						   OnInstalled="HandleInstalled" />
+
+@code {
+	[Parameter] public bool IsVisible { get; set; }
+	[Parameter] public EventCallback<bool> IsVisibleChanged { get; set; }
+	[Parameter] public EventCallback OnInstalled { get; set; }
+
+	private List<MarketplaceSkillSummary> _catalog = [];
+	private string _filterText = string.Empty;
+	private bool _isLoadingCatalog;
+	private string? _errorMessage;
+	private string? _previewingSlug;
+	private bool _showPreview;
+	private SkillInstallPreview? _preview;
+	private SkillInstallRequest? _pendingRequest;
+	private bool _showTokenHint;
+	private bool _tokenHintChecked;
+
+	private List<MarketplaceSkillSummary> _filteredCatalog => string.IsNullOrWhiteSpace(_filterText)
+		? _catalog
+		: _catalog
+			.Where(entry =>
+				entry.Name.Contains(_filterText, StringComparison.OrdinalIgnoreCase) ||
+				entry.Slug.Contains(_filterText, StringComparison.OrdinalIgnoreCase) ||
+				(entry.Description ?? string.Empty).Contains(_filterText, StringComparison.OrdinalIgnoreCase))
+			.ToList();
+
+	protected override async Task OnParametersSetAsync()
+	{
+		// Lazy-load the catalog the first time the modal is opened.
+		if (IsVisible && _catalog.Count == 0 && !_isLoadingCatalog)
+		{
+			await LoadCatalogAsync(refresh: false);
+		}
+
+		// Check the token-configured state once per modal-open cycle so the hint only shows
+		// when the user genuinely hasn't set one.
+		if (IsVisible && !_tokenHintChecked)
+		{
+			_tokenHintChecked = true;
+			try
+			{
+				var settings = await SettingsService.GetSettingsAsync();
+				_showTokenHint = string.IsNullOrWhiteSpace(settings.GitHubToken);
+			}
+			catch
+			{
+				// A failed settings read isn't worth nagging about — the hint just stays hidden.
+				_showTokenHint = false;
+			}
+		}
+		else if (!IsVisible)
+		{
+			_tokenHintChecked = false;
+		}
+	}
+
+	private void GoToSettings()
+	{
+		NavigationManager.NavigateTo("/settings");
+	}
+
+	private Task RefreshAsync() => LoadCatalogAsync(refresh: true);
+
+	private async Task LoadCatalogAsync(bool refresh)
+	{
+		_isLoadingCatalog = true;
+		_errorMessage = null;
+		try
+		{
+			var catalog = await InstallerService.GetMarketplaceCatalogAsync(refresh);
+			_catalog = catalog.ToList();
+		}
+		catch (Exception ex)
+		{
+			_errorMessage = $"Failed to load marketplace: {ex.Message}";
+		}
+		finally
+		{
+			_isLoadingCatalog = false;
+		}
+	}
+
+	private async Task StartInstallAsync(MarketplaceSkillSummary entry)
+	{
+		_previewingSlug = entry.Slug;
+		_errorMessage = null;
+		try
+		{
+			var request = new SkillInstallRequest
+			{
+				Source = SkillInstallSource.Marketplace,
+				MarketplaceSlug = entry.Slug,
+			};
+			_preview = await InstallerService.PreviewAsync(request);
+			_pendingRequest = request;
+			_showPreview = true;
+		}
+		catch (Exception ex)
+		{
+			_errorMessage = $"Failed to prepare install: {ex.Message}";
+		}
+		finally
+		{
+			_previewingSlug = null;
+		}
+	}
+
+	private async Task HandleInstalled(SkillInstallResult result)
+	{
+		_showPreview = false;
+		_preview = null;
+		_pendingRequest = null;
+
+		if (result.Installed && result.Skill is not null)
+		{
+			NotificationService.ShowSuccess(result.Message);
+			foreach (var warning in result.Warnings)
+			{
+				NotificationService.ShowWarning(warning);
+			}
+		}
+		else if (result.Skipped)
+		{
+			NotificationService.ShowInfo(result.Message);
+		}
+
+		await OnInstalled.InvokeAsync();
+	}
+
+	private async Task HandleVisibilityChanged(bool visible)
+	{
+		IsVisible = visible;
+		await IsVisibleChanged.InvokeAsync(visible);
+	}
+
+	private async Task HandleClose()
+	{
+		IsVisible = false;
+		await IsVisibleChanged.InvokeAsync(false);
+	}
+}

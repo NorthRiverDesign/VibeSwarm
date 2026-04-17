@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using VibeSwarm.Shared.Data;
@@ -7,6 +8,27 @@ namespace VibeSwarm.Web.Services;
 
 public partial class JobProcessingService
 {
+    /// <summary>
+    /// Invokes a SignalR/job-update notification with uniform error handling.
+    /// Failures are logged as warnings so the job can still complete even when the
+    /// notification channel is temporarily down (e.g. hub restart, client disconnected).
+    /// </summary>
+    private async Task NotifyAsync(
+        Guid jobId,
+        Func<IJobUpdateService, Task> notify,
+        [CallerMemberName] string caller = "")
+    {
+        if (_jobUpdateService is null) return;
+        try
+        {
+            await notify(_jobUpdateService);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Notification {Caller} failed for job {JobId}", caller, jobId);
+        }
+    }
+
     /// <summary>
     /// Monitors for cancellation requests and sends regular heartbeats.
     /// Does NOT use the passed dbContext - creates its own scopes to avoid disposal issues.
@@ -65,15 +87,7 @@ public partial class JobProcessingService
                         }
                         _logger.LogDebug("Sent heartbeat for job {JobId}", jobId);
 
-                        // Send SignalR heartbeat notification
-                        if (_jobUpdateService != null)
-                        {
-                            try
-                            {
-                                await _jobUpdateService.NotifyJobHeartbeat(jobId, now);
-                            }
-                            catch { }
-                        }
+                        await NotifyAsync(jobId, svc => svc.NotifyJobHeartbeat(jobId, now));
                     }
                 }
                 catch (ObjectDisposedException)
@@ -95,64 +109,18 @@ public partial class JobProcessingService
         }
     }
 
-    private async Task NotifyStatusChangedAsync(Guid jobId, JobStatus status)
-    {
-        if (_jobUpdateService != null)
-        {
-            try
-            {
-                await _jobUpdateService.NotifyJobStatusChanged(jobId, status.ToString());
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Failed to send status change notification for job {JobId}", jobId);
-            }
-        }
-    }
+    private Task NotifyStatusChangedAsync(Guid jobId, JobStatus status)
+        => NotifyAsync(jobId, svc => svc.NotifyJobStatusChanged(jobId, status.ToString()));
 
-    private async Task NotifyJobActivityAsync(Guid jobId, string activity, DateTime timestamp)
-    {
-        if (_jobUpdateService != null)
-        {
-            try
-            {
-                await _jobUpdateService.NotifyJobActivity(jobId, activity, timestamp);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Failed to send activity notification for job {JobId}", jobId);
-            }
-        }
-    }
+    private Task NotifyJobActivityAsync(Guid jobId, string activity, DateTime timestamp)
+        => NotifyAsync(jobId, svc => svc.NotifyJobActivity(jobId, activity, timestamp));
 
-    private async Task NotifyJobMessageAddedAsync(Guid jobId)
-    {
-        if (_jobUpdateService != null)
-        {
-            try
-            {
-                await _jobUpdateService.NotifyJobMessageAdded(jobId);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Failed to send message added notification for job {JobId}", jobId);
-            }
-        }
-    }
+    private Task NotifyJobMessageAddedAsync(Guid jobId)
+        => NotifyAsync(jobId, svc => svc.NotifyJobMessageAdded(jobId));
 
     private async Task NotifyJobCompletedAsync(Guid jobId, bool success, string? errorMessage = null)
     {
-        if (_jobUpdateService != null)
-        {
-            try
-            {
-                await _jobUpdateService.NotifyJobCompleted(jobId, success, errorMessage);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Failed to send completion notification for job {JobId}", jobId);
-            }
-        }
+        await NotifyAsync(jobId, svc => svc.NotifyJobCompleted(jobId, success, errorMessage));
 
         // Handle idea state when job completes (reset IsProcessing for failed jobs, remove for successful ones)
         try
@@ -169,20 +137,8 @@ public partial class JobProcessingService
         TriggerProcessing();
     }
 
-    private async Task NotifyJobGitDiffUpdatedAsync(Guid jobId, bool hasChanges)
-    {
-        if (_jobUpdateService != null)
-        {
-            try
-            {
-                await _jobUpdateService.NotifyJobGitDiffUpdated(jobId, hasChanges);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Failed to send git diff notification for job {JobId}", jobId);
-            }
-        }
-    }
+    private Task NotifyJobGitDiffUpdatedAsync(Guid jobId, bool hasChanges)
+        => NotifyAsync(jobId, svc => svc.NotifyJobGitDiffUpdated(jobId, hasChanges));
 
     /// <summary>
     /// Gets temporary execution resources for the given provider, including MCP config and bash env files when needed.

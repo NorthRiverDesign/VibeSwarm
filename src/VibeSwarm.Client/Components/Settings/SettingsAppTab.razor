@@ -243,6 +243,31 @@ repository's default git identity without provider attribution.
 <hr class="my-4" />
 
 <h6 class="text-body-secondary mb-3">
+<i class="bi bi-shop me-1"></i>Skills Marketplace
+</h6>
+
+<div class="mb-3">
+	<label for="githubToken" class="form-label">GitHub token <span class="text-body-secondary">(optional)</span></label>
+	<div class="input-group">
+		<input type="@(_showGitHubToken ? "text" : "password")" id="githubToken" class="form-control font-monospace"
+			   @bind="_settings.GitHubToken" placeholder="ghp_..." autocomplete="off" />
+		<button type="button" class="btn btn-secondary" @onclick="ToggleGitHubTokenVisibility"
+				title="@(_showGitHubToken ? "Hide token" : "Show token")">
+			<i class="bi @(_showGitHubToken ? "bi-eye-slash" : "bi-eye")"></i>
+		</button>
+	</div>
+	<div class="form-text">
+		Used only when browsing the <code>anthropics/skills</code> marketplace from the Skills page.
+		Without a token, GitHub limits anonymous requests to 60/hour per IP; adding an unscoped
+		read-only personal access token lifts that to 5000/hour. The token is never sent to
+		CLI agents.
+	</div>
+	<ValidationMessage For="@(() => _settings.GitHubToken)" class="text-danger small" />
+</div>
+
+<hr class="my-4" />
+
+<h6 class="text-body-secondary mb-3">
 <i class="bi bi-exclamation-octagon me-1"></i>Critical Error Logs
 </h6>
 
@@ -360,6 +385,9 @@ repository's default git identity without provider attribution.
 	private List<CriticalErrorLogEntry> _criticalErrorLogs = [];
 	private DeveloperModeStatus? _developerModeStatus;
 	private bool _isStartingSelfUpdate;
+	private bool _showGitHubToken;
+
+	private void ToggleGitHubTokenVisibility() => _showGitHubToken = !_showGitHubToken;
 
 	private string _placeholder => OperatingSystem.IsWindows() ? @"C:\Projects" : "/home/user/projects";
 	private string _examplePath => OperatingSystem.IsWindows() ? @"C:\Projects" : "/home/user/projects";

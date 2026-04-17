@@ -337,7 +337,7 @@ else
                              OnCancelDiscard="CloseDiscardConfirmation" />
 
     @* Create Job Modal *@
-    <CreateJobModal @bind-IsVisible="_showCreateJobModal" JobModel="@NewJob" Providers="@GetAllowedJobProviders()"
+    <CreateJobModal @bind-IsVisible="_showCreateJobModal" JobModel="@NewJob" Project="@Project" Providers="@GetAllowedJobProviders()"
                     AvailableModels="@AvailableModels" Branches="@Branches" CurrentBranch="@CurrentBranch"
                     ShowBranchSelector="@(IsGitRepository && Branches.Any())" IsLoadingModels="@IsLoadingModels" IsSaving="@IsSaving"
                     ErrorMessage="@ErrorMessage" @bind-SelectedModelId="@SelectedModelId" ProviderHint="@GetProviderHint()" OnProviderChanged="OnProviderChanged"

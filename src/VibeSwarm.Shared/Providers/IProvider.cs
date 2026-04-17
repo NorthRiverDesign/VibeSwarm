@@ -154,6 +154,12 @@ public class ExecutionResult
     public decimal? CostUsd { get; set; }
 
     /// <summary>
+    /// True when InputTokens/OutputTokens are estimates derived from text length
+    /// rather than exact counts reported by the provider.
+    /// </summary>
+    public bool IsTokenEstimate { get; set; }
+
+    /// <summary>
     /// The AI model that was used for this execution (e.g., "claude-sonnet-4-20250514")
     /// </summary>
     public string? ModelUsed { get; set; }
@@ -302,6 +308,13 @@ public class ProviderInfo
     public List<AgentInfo> AvailableAgents { get; set; } = new();
     public PricingInfo? Pricing { get; set; }
     public Dictionary<string, object> AdditionalInfo { get; set; } = new();
+
+    /// <summary>
+    /// Upstream retirement dates for specific model IDs. Applied to matching
+    /// <see cref="VibeSwarm.Shared.Data.ProviderModel.RetiresOn"/> rows during refresh so the UI
+    /// can surface an advance-notice badge.
+    /// </summary>
+    public Dictionary<string, DateTime> ModelRetirementDates { get; set; } = new();
 }
 
 /// <summary>
@@ -632,6 +645,150 @@ public class ExecutionOptions
     /// Common values: "bypassPermissions", "dontAsk". When null, provider uses its default.
     /// </summary>
     public string? PermissionMode { get; set; }
+
+    /// <summary>
+    /// Pre-assigned session UUID (Claude: --session-id, v2.1.86+).
+    /// When set on a fresh session, VibeSwarm controls the session UUID instead of letting the CLI mint one.
+    /// Lets the job record write <c>Job.SessionId</c> before the CLI emits its first <c>system/init</c> event.
+    /// Distinct from <see cref="SessionId"/>, which is used with --resume to continue an existing session.
+    /// </summary>
+    public string? PreassignedSessionId { get; set; }
+
+    /// <summary>
+    /// Automatic fallback model inside the CLI (Claude: --fallback-model, print mode only).
+    /// Used when the primary <see cref="Model"/> is overloaded; complements VibeSwarm's outer ExecutionPlan fallback.
+    /// </summary>
+    public string? FallbackModel { get; set; }
+
+    /// <summary>
+    /// Use only the MCP servers defined in <see cref="McpConfigPath"/> (Claude: --strict-mcp-config).
+    /// Prevents user-level ~/.claude.json MCP entries from contaminating dispatched runs.
+    /// </summary>
+    public bool StrictMcpConfig { get; set; }
+
+    /// <summary>
+    /// Which settings sources to load (Claude: --setting-sources, e.g. "project", "user,project").
+    /// When null, the CLI's default sources are used.
+    /// </summary>
+    public string? SettingSources { get; set; }
+
+    /// <summary>
+    /// Exclude dynamic (per-machine / per-run) system prompt sections and move them into the first user message
+    /// for better cache reuse across dispatched runs (Claude: --exclude-dynamic-system-prompt-sections, v2.1.98+).
+    /// </summary>
+    public bool ExcludeDynamicSystemPromptSections { get; set; }
+
+    /// <summary>
+    /// Enable 1-hour prompt cache TTL via the <c>ENABLE_PROMPT_CACHING_1H=1</c> env var (Claude, v2.1.108+).
+    /// Strongly recommended for multi-cycle and swarm jobs that share a large system prompt.
+    /// </summary>
+    public bool EnableOneHourPromptCache { get; set; }
+
+    /// <summary>
+    /// Skip blocking on MCP server startup in -p mode via <c>MCP_CONNECTION_NONBLOCKING=true</c> env var
+    /// (Claude, v2.1.89+). Prevents the CLI from hanging on slow or flaky MCP servers.
+    /// </summary>
+    public bool NonBlockingMcpConnection { get; set; }
+
+    /// <summary>
+    /// Skip writing the session to disk (Claude: --no-session-persistence).
+    /// Useful for preflight, planning, or one-shot calls where a persistent .jsonl is unnecessary.
+    /// </summary>
+    public bool NoSessionPersistence { get; set; }
+
+    /// <summary>
+    /// JSON Schema (as a raw JSON string) that the final result must conform to
+    /// (Claude: --json-schema, requires --output-format json).
+    /// </summary>
+    public string? JsonSchema { get; set; }
+
+    /// <summary>
+    /// Display name for the session (Claude: -n/--name). Enables later <c>claude --resume &lt;name&gt;</c>.
+    /// </summary>
+    public string? SessionName { get; set; }
+
+    /// <summary>
+    /// Include hook lifecycle events in the streaming output (Claude: --include-hook-events).
+    /// Requires stream-json output.
+    /// </summary>
+    public bool IncludeHookEvents { get; set; }
+
+    /// <summary>
+    /// Path to a file whose contents should be appended to the system prompt
+    /// (Claude: --append-system-prompt-file). Avoids CLI argument length limits for large prompts.
+    /// </summary>
+    public string? AppendSystemPromptFile { get; set; }
+
+    /// <summary>
+    /// Copilot CLI execution mode (Copilot: --mode). Values: "autopilot", "plan", "interactive".
+    /// When null, the provider retains its existing default (--yolo --autopilot).
+    /// </summary>
+    public string? CopilotMode { get; set; }
+
+    /// <summary>
+    /// Disable loading of auto-discovered instructions (Copilot: --no-custom-instructions).
+    /// Prevents the target repo's .github/copilot-instructions.md from overriding VibeSwarm's system prompt.
+    /// </summary>
+    public bool DisableCustomInstructions { get; set; }
+
+    /// <summary>
+    /// Disable the interactive ask-user tool (Copilot: --no-ask-user).
+    /// Recommended for non-interactive dispatch where no human can answer prompts.
+    /// </summary>
+    public bool DisableAskUser { get; set; }
+
+    /// <summary>
+    /// Environment variable names whose values should be redacted from Copilot CLI output
+    /// (Copilot: --secret-env-vars). Values are read from the process environment; names only are passed on the CLI.
+    /// </summary>
+    public List<string>? SecretEnvVars { get; set; }
+
+    /// <summary>
+    /// Names of MCP servers to disable for this execution (Copilot: --disable-mcp-server).
+    /// </summary>
+    public List<string>? DisabledMcpServers { get; set; }
+
+    /// <summary>
+    /// Disable the built-in GitHub MCP server (Copilot: --disable-builtin-mcps).
+    /// </summary>
+    public bool DisableBuiltinMcps { get; set; }
+
+    /// <summary>
+    /// URL patterns/hosts to allow (Copilot: --allow-url).
+    /// </summary>
+    public List<string>? AllowedUrls { get; set; }
+
+    /// <summary>
+    /// URL patterns/hosts to deny (Copilot: --deny-url). Takes precedence over <see cref="AllowedUrls"/>.
+    /// </summary>
+    public List<string>? DeniedUrls { get; set; }
+
+    /// <summary>
+    /// GitHub MCP toolsets to enable (Copilot: --add-github-mcp-toolset).
+    /// </summary>
+    public List<string>? GitHubMcpToolsets { get; set; }
+
+    /// <summary>
+    /// Explicit GitHub MCP tools to enable (Copilot: --add-github-mcp-tool).
+    /// </summary>
+    public List<string>? GitHubMcpTools { get; set; }
+
+    /// <summary>
+    /// Explicitly toggle streaming output (Copilot: --stream on/off).
+    /// Null preserves the CLI's existing streaming default.
+    /// </summary>
+    public bool? StreamOutput { get; set; }
+
+    /// <summary>
+    /// Skip permission prompts in <c>opencode run</c> (OpenCode: --dangerously-skip-permissions, v1.4.0+).
+    /// Brings OpenCode dispatch to parity with Claude/Copilot non-interactive modes.
+    /// </summary>
+    public bool SkipPermissions { get; set; }
+
+    /// <summary>
+    /// Show thinking/reasoning blocks in OpenCode output (OpenCode: --thinking, v1.4.0+).
+    /// </summary>
+    public bool ShowThinking { get; set; }
 
     /// <summary>
     /// Creates ExecutionOptions from the legacy parameters

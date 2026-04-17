@@ -99,6 +99,129 @@ public sealed class QueueDropdownPanelTests
 	}
 
 	[Fact]
+	public void QueueDropdownPanel_ShowsQueuedJobsSection_ForPendingDirectJobs()
+	{
+		var jobId = Guid.NewGuid();
+		using var context = CreateContext(new FakeIdeaService(
+			new GlobalQueueSnapshot
+			{
+				QueuedJobsCount = 2,
+				QueuedJobs =
+				[
+					new GlobalQueueJobSummary
+					{
+						Id = jobId,
+						ProjectId = Guid.NewGuid(),
+						ProjectName = "Alpha",
+						Title = "Add dark mode",
+						GoalPrompt = "Add dark mode",
+						Status = JobStatus.New,
+						ProviderName = "Claude"
+					},
+					new GlobalQueueJobSummary
+					{
+						Id = Guid.NewGuid(),
+						ProjectId = Guid.NewGuid(),
+						ProjectName = "Beta",
+						GoalPrompt = "Fix login bug",
+						Status = JobStatus.Pending
+					}
+				]
+			}));
+
+		var cut = context.Render<QueueDropdownPanel>();
+
+		Assert.Contains("Queued Jobs", cut.Markup);
+		Assert.Contains("Add dark mode", cut.Markup);
+		Assert.Contains("Fix login bug", cut.Markup);
+		Assert.Contains("2 queued", cut.Markup);
+		// Badge count should reflect queued jobs
+		Assert.Equal("2 queue items", cut.Find(".notification-bell-badge").GetAttribute("aria-label"));
+	}
+
+	[Fact]
+	public void QueueDropdownPanel_BadgeCount_IncludesQueuedJobs()
+	{
+		using var context = CreateContext(new FakeIdeaService(
+			new GlobalQueueSnapshot
+			{
+				RunningJobsCount = 1,
+				QueuedJobsCount = 3,
+				UpcomingIdeasCount = 2,
+				ProjectsCurrentlyProcessing = 1,
+				RunningJobs =
+				[
+					new GlobalQueueJobSummary
+					{
+						Id = Guid.NewGuid(),
+						ProjectId = Guid.NewGuid(),
+						ProjectName = "Alpha",
+						GoalPrompt = "Running job",
+						Status = JobStatus.Processing
+					}
+				],
+				QueuedJobs =
+				[
+					new GlobalQueueJobSummary
+					{
+						Id = Guid.NewGuid(),
+						ProjectId = Guid.NewGuid(),
+						ProjectName = "Beta",
+						GoalPrompt = "Queued job",
+						Status = JobStatus.New
+					}
+				]
+			}));
+
+		var cut = context.Render<QueueDropdownPanel>();
+
+		// Badge = 1 running + 3 queued + 2 upcoming = 6
+		Assert.Equal("6 queue items", cut.Find(".notification-bell-badge").GetAttribute("aria-label"));
+		Assert.Contains("1 running", cut.Markup);
+		Assert.Contains("3 queued", cut.Markup);
+		Assert.Contains("2 upcoming", cut.Markup);
+	}
+
+	[Fact]
+	public void QueueDropdownPanel_ShowsPausedAndStalledBadges_ForActiveJobs()
+	{
+		using var context = CreateContext(new FakeIdeaService(
+			new GlobalQueueSnapshot
+			{
+				RunningJobsCount = 2,
+				ProjectsCurrentlyProcessing = 1,
+				RunningJobs =
+				[
+					new GlobalQueueJobSummary
+					{
+						Id = Guid.NewGuid(),
+						ProjectId = Guid.NewGuid(),
+						ProjectName = "Alpha",
+						GoalPrompt = "Paused job",
+						Status = JobStatus.Paused
+					},
+					new GlobalQueueJobSummary
+					{
+						Id = Guid.NewGuid(),
+						ProjectId = Guid.NewGuid(),
+						ProjectName = "Beta",
+						GoalPrompt = "Stalled job",
+						Status = JobStatus.Stalled
+					}
+				]
+			}));
+
+		var cut = context.Render<QueueDropdownPanel>();
+
+		Assert.Contains("Paused", cut.Markup);
+		Assert.Contains("Stalled", cut.Markup);
+		Assert.Contains("Paused job", cut.Markup);
+		Assert.Contains("Stalled job", cut.Markup);
+		// Should not show generic Running badge for paused/stalled individual job items
+		Assert.DoesNotContain("text-bg-primary\">Running<", cut.Markup);
+	}
+
+	[Fact]
 	public void QueueDropdownPanel_StartQueue_StartsGlobalProcessing()
 	{
 		var ideaService = new FakeIdeaService(

@@ -54,6 +54,80 @@ placeholder="Describe what you want the AI agent to accomplish..." />
 <ValidationMessage For="@(() => FormModel.GoalPrompt)" class="text-danger small" />
 </div>
 
+@if (AvailableAgents.Any())
+{
+<div class="mb-3">
+<label for="agentPreset" class="form-label">Run as Agent</label>
+<InputSelect TValue="Guid?" id="agentPreset"
+			 Value="FormModel.AgentId"
+			 ValueChanged="HandleAgentChanged"
+			 ValueExpression="@(() => FormModel.AgentId)"
+			 class="form-select">
+<option value="">Choose provider manually</option>
+@foreach (var agent in AvailableAgents)
+{
+<option value="@agent.AgentId">@agent.Agent!.Name</option>
+}
+</InputSelect>
+<div class="form-text">Agent presets combine a purpose, provider/model assignment, and optional multi-cycle defaults for this project.</div>
+</div>
+}
+
+@if (SelectedAgent != null)
+{
+<div class="border rounded p-3 mb-3 bg-body-tertiary">
+<div class="d-flex align-items-start justify-content-between gap-2 flex-wrap">
+<div class="min-width-0 flex-grow-1">
+<div class="fw-semibold">@SelectedAgent.Agent!.Name</div>
+@if (!string.IsNullOrWhiteSpace(SelectedAgent.Agent.Description))
+{
+<div class="small text-body-secondary mt-1">@SelectedAgent.Agent.Description</div>
+}
+</div>
+<span class="badge bg-primary-subtle text-primary-emphasis">Agent Preset</span>
+</div>
+@if (!string.IsNullOrWhiteSpace(SelectedAgent.Agent.Responsibilities))
+{
+<div class="small white-space-pre-wrap mt-2">@SelectedAgent.Agent.Responsibilities</div>
+}
+<div class="row g-3 mt-1">
+<div class="col-12 col-md-6">
+<div class="small text-body-secondary text-uppercase fw-semibold mb-1">Provider</div>
+<div>@GetSelectedAgentProviderDisplayText()</div>
+</div>
+<div class="col-12 col-md-6">
+<div class="small text-body-secondary text-uppercase fw-semibold mb-1">Model</div>
+<div>@GetSelectedAgentModelDisplayText()</div>
+</div>
+<div class="col-12 col-md-6">
+<div class="small text-body-secondary text-uppercase fw-semibold mb-1">Reasoning</div>
+<div>@GetSelectedAgentReasoningDisplayText()</div>
+</div>
+<div class="col-12 col-md-6">
+<div class="small text-body-secondary text-uppercase fw-semibold mb-1">Execution</div>
+<div>@GetSelectedAgentExecutionDisplayText()</div>
+</div>
+@if (FormModel.CycleMode != CycleMode.SingleCycle)
+{
+<div class="col-12 col-md-6">
+<div class="small text-body-secondary text-uppercase fw-semibold mb-1">Session</div>
+<div>@GetCycleSessionModeDisplayText(FormModel.CycleSessionMode)</div>
+</div>
+}
+</div>
+@if (!string.IsNullOrWhiteSpace(FormModel.CycleReviewPrompt))
+{
+<div class="mt-3">
+<div class="small text-body-secondary text-uppercase fw-semibold mb-1">Cycle Review Prompt</div>
+<div class="small white-space-pre-wrap">@FormModel.CycleReviewPrompt</div>
+</div>
+}
+<div class="form-text mt-3">Remove the agent selection to choose provider, model, reasoning, or cycle behavior manually for this one job.</div>
+</div>
+}
+
+@if (SelectedAgent == null)
+{
 <div class="mb-3">
 <label for="provider" class="form-label">Provider</label>
 @if (!string.IsNullOrEmpty(ProviderHint))
@@ -94,7 +168,7 @@ else
 <option value="">Use project/provider default</option>
 @foreach (var model in AvailableModels.Where(m => m.IsAvailable))
 {
-<option value="@model.ModelId">@(model.DisplayName ?? model.ModelId)@(model.IsDefault ? " (default)" : "")</option>
+<option value="@model.ModelId">@(model.DisplayName ?? model.ModelId)@(model.IsDefault ? " (default)" : "")@(model.RetiresOn.HasValue ? $" — retires {model.RetiresOn.Value:yyyy-MM-dd}" : "")</option>
 }
 }
 </InputSelect>
@@ -122,6 +196,7 @@ else
 }
 </div>
 </div>
+}
 
 @if (ShowBranchSelector && Branches.Any())
 {
@@ -172,6 +247,8 @@ else
 </div>
 }
 
+@if (SelectedAgent == null)
+{
 <div class="mb-3">
 <button type="button" class="btn btn-link p-0 text-decoration-none" @onclick="ToggleAdvancedOptions">
 <i class="bi @(ShowAdvancedOptions ? "bi-chevron-down" : "bi-chevron-right") me-1"></i>
@@ -241,6 +318,7 @@ rows="4" placeholder="Instructions for reviewing progress between cycles..." />
 }
 </div>
 }
+}
 
 @if (!string.IsNullOrEmpty(ErrorMessage))
 {
@@ -249,9 +327,9 @@ rows="4" placeholder="Instructions for reviewing progress between cycles..." />
 </EditForm>
 </ChildContent>
 <FooterContent>
-<ActionButton Text="Cancel" OnClick="Close" Disabled="@IsSaving" />
-<ActionButton Type="submit" Form="@_formId" Style="ActionButton.ButtonStyle.Primary"
-			  Icon="plus-lg" Text="Create Job" LoadingText="Creating..." IsLoading="@IsSaving" />
+<ModalFooterActions OnCancel="Close" Busy="@IsSaving"
+					SubmitFormId="@_formId" SubmitIcon="plus-lg"
+					SubmitText="Create Job" SubmitLoadingText="Creating..." />
 </FooterContent>
 </ModalDialog>
 
@@ -264,6 +342,9 @@ public EventCallback<bool> IsVisibleChanged { get; set; }
 
 [Parameter, EditorRequired]
 public Job JobModel { get; set; } = new();
+
+[Parameter]
+public Project? Project { get; set; }
 
 [Parameter]
 public List<Provider> Providers { get; set; } = new();
@@ -318,6 +399,8 @@ private Guid? _selectedTemplateId;
 private bool _isApplyingTemplate;
 private bool _isSavingTemplate;
 private string? _templateStatusMessage;
+private IReadOnlyList<ProjectAgent> AvailableAgents => AgentPresetHelper.GetEnabledAgents(Project);
+private ProjectAgent? SelectedAgent => AgentPresetHelper.ResolveAgent(Project, FormModel.AgentId);
 private IReadOnlyList<string> ReasoningOptions => FormModel.ProviderId.HasValue
 ? Providers.Where(provider => provider.Id == FormModel.ProviderId.Value)
 	.SelectMany(ProviderCapabilities.GetSupportedReasoningEfforts)
@@ -332,7 +415,15 @@ if (IsVisible && !_previousIsVisible)
 FormModel = CreateJobFormModel.FromJob(JobModel);
 _selectedTemplateId = JobModel.JobTemplateId;
 _templateStatusMessage = null;
+if (SelectedAgent != null)
+{
+ApplySelectedAgent(SelectedAgent);
+ShowAdvancedOptions = false;
+}
+else
+{
 ShowAdvancedOptions = FormModel.CycleMode != CycleMode.SingleCycle;
+}
 }
 
 _previousIsVisible = IsVisible;
@@ -340,7 +431,29 @@ _previousIsVisible = IsVisible;
 
 private void ToggleAdvancedOptions()
 {
+if (SelectedAgent != null)
+{
+return;
+}
+
 ShowAdvancedOptions = !ShowAdvancedOptions;
+}
+
+private Task HandleAgentChanged(Guid? agentId)
+{
+FormModel.AgentId = agentId;
+
+if (SelectedAgent != null)
+{
+ApplySelectedAgent(SelectedAgent);
+ShowAdvancedOptions = false;
+}
+else
+{
+ShowAdvancedOptions = FormModel.CycleMode != CycleMode.SingleCycle;
+}
+
+return Task.CompletedTask;
 }
 
 private async Task HandleProviderChanged()
@@ -464,6 +577,7 @@ private void ApplyTemplateToJob(JobTemplate template)
 {
 	JobModel.JobTemplateId = template.Id;
 	JobModel.GoalPrompt = template.GoalPrompt;
+	JobModel.AgentId = null;
 	JobModel.ProviderId = template.ProviderId ?? Guid.Empty;
 	JobModel.ModelUsed = template.ModelId;
 	JobModel.ReasoningEffort = template.ReasoningEffort;
@@ -475,6 +589,62 @@ private void ApplyTemplateToJob(JobTemplate template)
 	JobModel.MaxCycles = template.MaxCycles;
 	JobModel.CycleReviewPrompt = template.CycleReviewPrompt;
 	SelectedModelId = template.ModelId ?? string.Empty;
+}
+
+private void ApplySelectedAgent(ProjectAgent assignment)
+{
+	var job = new Job
+	{
+		GoalPrompt = FormModel.GoalPrompt,
+		AgentId = assignment.AgentId
+	};
+
+	AgentPresetHelper.ApplyExecutionDefaults(job, assignment);
+	FormModel.ProviderId = job.ProviderId == Guid.Empty ? null : job.ProviderId;
+	SelectedModelId = job.ModelUsed ?? string.Empty;
+	FormModel.ReasoningEffort = job.ReasoningEffort;
+	FormModel.CycleMode = job.CycleMode;
+	FormModel.CycleSessionMode = job.CycleSessionMode;
+	FormModel.MaxCycles = job.MaxCycles;
+	FormModel.CycleReviewPrompt = job.CycleReviewPrompt;
+}
+
+private string GetSelectedAgentProviderDisplayText()
+{
+	return SelectedAgent?.Provider?.Name
+		?? Providers.FirstOrDefault(provider => provider.Id == FormModel.ProviderId)?.Name
+		?? "Unknown provider";
+}
+
+private string GetSelectedAgentModelDisplayText()
+{
+	return string.IsNullOrWhiteSpace(SelectedModelId)
+		? "Use provider default"
+		: SelectedModelId;
+}
+
+private string GetSelectedAgentReasoningDisplayText()
+{
+	return string.IsNullOrWhiteSpace(FormModel.ReasoningEffort)
+		? "Use provider default"
+		: FormModel.ReasoningEffort;
+}
+
+private string GetSelectedAgentExecutionDisplayText()
+{
+	return FormModel.CycleMode switch
+	{
+		CycleMode.FixedCount => $"Fixed count ({FormModel.MaxCycles} cycles)",
+		CycleMode.Autonomous => $"Autonomous (max {FormModel.MaxCycles} cycles)",
+		_ => "Single cycle"
+	};
+}
+
+private static string GetCycleSessionModeDisplayText(CycleSessionMode cycleSessionMode)
+{
+	return cycleSessionMode == CycleSessionMode.ContinueSession
+		? "Continue session between cycles"
+		: "Start a fresh session each cycle";
 }
 
 private static string BuildTemplateName(string prompt)

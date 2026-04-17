@@ -15,6 +15,7 @@ public partial class JobProcessingService
         IJobService jobService,
         IProviderService providerService,
         VibeSwarmDbContext dbContext,
+        ISkillStorageService skillStorage,
         JobExecutionContext executionContext,
         CancellationToken cancellationToken)
     {
@@ -515,20 +516,22 @@ public partial class JobProcessingService
             }
 
             // Inject role-specific system prompt context for team swarm jobs
-            if (job.TeamRoleId.HasValue)
+            if (job.AgentId.HasValue)
             {
                 try
                 {
-                    var teamRole = await dbContext.TeamRoles
+                    var agent = await dbContext.Agents
 						.Include(role => role.SkillLinks)
 							.ThenInclude(link => link.Skill)
-                        .FirstOrDefaultAsync(r => r.Id == job.TeamRoleId.Value, cancellationToken);
-                    if (teamRole != null)
+                        .FirstOrDefaultAsync(r => r.Id == job.AgentId.Value, cancellationToken);
+                    if (agent != null)
                     {
+                        await EnsureAgentSkillsMaterializedAsync(agent, skillStorage, cancellationToken);
+
                         var swarmSize = job.SwarmId.HasValue
                             ? await dbContext.Jobs.CountAsync(j => j.SwarmId == job.SwarmId, cancellationToken)
                             : 1;
-                        var roleContext = PromptBuilder.BuildRoleSystemPromptContext(teamRole, swarmSize);
+                        var roleContext = PromptBuilder.BuildRoleSystemPromptContext(agent, swarmSize);
                         if (!string.IsNullOrWhiteSpace(roleContext))
                         {
                             systemPromptRules = string.IsNullOrWhiteSpace(systemPromptRules)
@@ -654,6 +657,7 @@ public partial class JobProcessingService
                 await dbContext.SaveChangesAsync(cancellationToken);
             }
 
+            await EnsureProjectSkillsMaterializedAsync(job.Project, skillStorage, cancellationToken);
             var currentPrompt = PromptBuilder.BuildExecutionPrompt(job, planningOutput, enableStructuring);
             var attachedFiles = DeserializeAttachedFiles(job.AttachedFilesJson);
             var cycleComplete = false;
@@ -702,6 +706,43 @@ public partial class JobProcessingService
 
 				var mcpOptions = await GetMcpExecutionOptionsAsync(job.ProviderId, job.Project, workingDirectory, cancellationToken);
 
+				// Smart defaults for latest CLI capabilities:
+				// - Auto-enable 1-hour prompt cache for multi-cycle / swarm jobs (Claude v2.1.108+).
+				//   Guarded inside the provider on CLI version, so safe to always request.
+				// - Exclude dynamic system prompt sections to keep the static AppendSystemPrompt cacheable
+				//   across runs (Claude v2.1.98+).
+				// - Non-blocking MCP startup prevents -p mode from hanging on slow MCP servers (v2.1.89+).
+				//   Only enable when MCP config is actually in play.
+				// - Pre-mint a session UUID on the first cycle of a fresh Claude job so Job.SessionId is
+				//   populated before the CLI emits its first system/init event (v2.1.86+).
+				var wantsOneHourCache = provider.Type == ProviderType.Claude
+					&& (job.CycleMode != CycleMode.SingleCycle || job.SwarmId != null);
+				var hasMcp = !string.IsNullOrEmpty(mcpOptions.McpConfigPath);
+				string? preassignedSessionId = null;
+				if (provider.Type == ProviderType.Claude
+					&& provider.ConnectionMode == ProviderConnectionMode.CLI
+					&& string.IsNullOrEmpty(cycleSessionId)
+					&& string.IsNullOrEmpty(job.SessionId))
+				{
+					preassignedSessionId = Guid.NewGuid().ToString();
+					// Persist before launching the CLI so concurrent readers (UI, resume flow) see the ID.
+					try
+					{
+						var jobForSessionUpdate = await dbContext.Jobs.FirstOrDefaultAsync(j => j.Id == job.Id, cancellationToken);
+						if (jobForSessionUpdate != null && string.IsNullOrEmpty(jobForSessionUpdate.SessionId))
+						{
+							jobForSessionUpdate.SessionId = preassignedSessionId;
+							await dbContext.SaveChangesAsync(cancellationToken);
+							job.SessionId = preassignedSessionId;
+						}
+					}
+					catch (Exception ex)
+					{
+						_logger.LogWarning(ex, "Failed to persist pre-assigned session UUID for job {JobId}; continuing without it", job.Id);
+						preassignedSessionId = null;
+					}
+				}
+
 				ExecutionResult result;
 				try
 				{
@@ -722,7 +763,19 @@ public partial class JobProcessingService
 							Title = job.Title,
 							AttachedFiles = attachedFiles,
 							AppendSystemPrompt = systemPromptRules,
-							EnvironmentVariables = jobEnvironmentVariables
+							EnvironmentVariables = jobEnvironmentVariables,
+							// Claude smart defaults (ignored by other providers).
+							PreassignedSessionId = preassignedSessionId,
+							EnableOneHourPromptCache = wantsOneHourCache,
+							ExcludeDynamicSystemPromptSections = provider.Type == ProviderType.Claude,
+							NonBlockingMcpConnection = provider.Type == ProviderType.Claude && hasMcp,
+							// Copilot smart defaults (ignored by other providers): dispatched runs are headless,
+							// so silence the interactive ask-user tool. Secret redaction is handled inside
+							// CopilotProvider, which auto-derives the list from BaseEnvironmentVariables.
+							DisableAskUser = provider.Type == ProviderType.Copilot,
+							// OpenCode smart defaults (ignored by other providers): dispatched runs cannot respond
+							// to permission prompts, so skip them on v1.4.0+.
+							SkipPermissions = provider.Type == ProviderType.OpenCode,
 						},
 						progress,
 						cancellationToken);
@@ -802,6 +855,26 @@ public partial class JobProcessingService
 			finalResult.OutputTokens = executionOutputTokens;
 			finalResult.CostUsd = executionCostUsd;
 
+			// If the provider did not report token usage, fall back to text-length estimates.
+			// This is common for GitHub Copilot CLI which reports premium requests rather than raw tokens.
+			if (!finalResult.InputTokens.HasValue && !finalResult.OutputTokens.HasValue)
+			{
+				var inputText = job.GoalPrompt + (job.PlanningOutput is { Length: > 0 } ? "\n" + job.PlanningOutput : "");
+				finalResult.InputTokens = TokenHelper.EstimateTokenCount(inputText);
+
+				var assistantContent = string.Join("\n", finalResult.Messages
+					.Where(m => string.Equals(m.Role, "assistant", StringComparison.OrdinalIgnoreCase))
+					.Select(m => m.Content));
+
+				if (string.IsNullOrEmpty(assistantContent))
+				{
+					assistantContent = executionContext.GetConsoleOutput();
+				}
+
+				finalResult.OutputTokens = TokenHelper.EstimateTokenCount(assistantContent);
+				finalResult.IsTokenEstimate = true;
+			}
+
             // Stop monitoring cancellation
             executionContext.CancellationTokenSource?.Cancel();
             try { await cancellationMonitorTask; } catch { }
@@ -819,7 +892,8 @@ public partial class JobProcessingService
                 providerDisplayName ??= "Unknown Provider";
                 await CompleteJobAsync(job.Id, JobStatus.Cancelled, finalResult.SessionId, finalResult.Output,
                     "Job was cancelled by user", finalResult.InputTokens, finalResult.OutputTokens, finalResult.CostUsd, finalResult.ModelUsed,
-                    executionContext, workingDirectory, dbContext, CancellationToken.None);
+                    executionContext, workingDirectory, dbContext, CancellationToken.None,
+                    finalResult.IsTokenEstimate);
 
                 // Record usage even for cancelled jobs
                 await RecordUsageAndCheckExhaustionAsync(job.ProviderId, providerDisplayName, job.Id, finalResult, provider!, CancellationToken.None);
@@ -853,7 +927,8 @@ public partial class JobProcessingService
 
                 var hasGitChanges = await CompleteJobAsync(job.Id, JobStatus.Completed, finalResult.SessionId, finalResult.Output,
                     null, finalResult.InputTokens, finalResult.OutputTokens, finalResult.CostUsd, finalResult.ModelUsed,
-                    executionContext, workingDirectory, dbContext, CancellationToken.None);
+                    executionContext, workingDirectory, dbContext, CancellationToken.None,
+                    finalResult.IsTokenEstimate);
 
                 if (hasGitChanges)
                 {
@@ -928,7 +1003,8 @@ public partial class JobProcessingService
                 {
                     await CompleteJobAsync(job.Id, JobStatus.Failed, finalResult.SessionId, finalResult.Output,
                         finalResult.ErrorMessage, finalResult.InputTokens, finalResult.OutputTokens, finalResult.CostUsd, finalResult.ModelUsed,
-                        executionContext, workingDirectory, dbContext, CancellationToken.None);
+                        executionContext, workingDirectory, dbContext, CancellationToken.None,
+                        finalResult.IsTokenEstimate);
 
                     // System-level errors (model unavailable, upstream outages) should immediately
                     // trip the circuit breaker to prevent cascading failures on queued jobs
@@ -1063,6 +1139,85 @@ public partial class JobProcessingService
         catch
         {
             return null;
+        }
+    }
+
+    /// <summary>
+    /// Ensures every skill reachable from <paramref name="project"/>'s agent assignments has
+    /// been materialized to disk so <see cref="PromptBuilder.BuildSkillSection"/> can surface
+    /// its absolute SKILL.md path to the agent. Idempotent for already-materialized skills.
+    /// </summary>
+    private async Task EnsureProjectSkillsMaterializedAsync(
+        Project? project,
+        ISkillStorageService skillStorage,
+        CancellationToken cancellationToken)
+    {
+        if (project?.AgentAssignments is null)
+        {
+            return;
+        }
+
+        var seen = new HashSet<Guid>();
+        foreach (var assignment in project.AgentAssignments)
+        {
+            var agent = assignment.Agent;
+            if (agent?.SkillLinks is null)
+            {
+                continue;
+            }
+
+            foreach (var link in agent.SkillLinks)
+            {
+                if (link.Skill is null || !seen.Add(link.Skill.Id))
+                {
+                    continue;
+                }
+
+                await MaterializeSkillSafelyAsync(link.Skill, skillStorage, cancellationToken);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Ensures an individual agent's skills have been materialized ahead of
+    /// <see cref="PromptBuilder.BuildRoleSystemPromptContext"/>. Separate from the project-level
+    /// path because swarm jobs load the agent independently of <c>job.Project</c>.
+    /// </summary>
+    private async Task EnsureAgentSkillsMaterializedAsync(
+        Agent agent,
+        ISkillStorageService skillStorage,
+        CancellationToken cancellationToken)
+    {
+        if (agent.SkillLinks is null)
+        {
+            return;
+        }
+
+        foreach (var link in agent.SkillLinks)
+        {
+            if (link.Skill is null)
+            {
+                continue;
+            }
+
+            await MaterializeSkillSafelyAsync(link.Skill, skillStorage, cancellationToken);
+        }
+    }
+
+    private async Task MaterializeSkillSafelyAsync(
+        Skill skill,
+        ISkillStorageService skillStorage,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await skillStorage.EnsureMaterializedAsync(skill, cancellationToken);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Never fail a job because a skill can't be written to disk — the agent still
+            // receives name + description via the system prompt, just without an absolute path.
+            _logger.LogWarning(ex, "Failed to materialize skill {SkillId} ({SkillName}); continuing without storage path", skill.Id, skill.Name);
         }
     }
 }

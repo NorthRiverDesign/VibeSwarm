@@ -1,0 +1,85 @@
+@* Reusable wrapper for <select> form control *@
+@typeparam TValue
+
+<select class="form-select @SizeClass @Class" value="@CurrentValueAsString" @onchange="HandleChange"
+		disabled="@Disabled" aria-label="@AriaLabel">
+	@ChildContent
+</select>
+
+@code {
+	[Parameter]
+	public TValue? Value { get; set; }
+
+	[Parameter]
+	public EventCallback<TValue> ValueChanged { get; set; }
+
+	[Parameter]
+	public SelectSize Size { get; set; } = SelectSize.Default;
+
+	[Parameter]
+	public bool Disabled { get; set; }
+
+	[Parameter]
+	public string? AriaLabel { get; set; }
+
+	[Parameter]
+	public string? Class { get; set; }
+
+	[Parameter]
+	public RenderFragment? ChildContent { get; set; }
+
+	private string? CurrentValueAsString => Value?.ToString();
+
+	private string SizeClass => Size switch
+	{
+		SelectSize.Small => "form-select-sm",
+		SelectSize.Large => "form-select-lg",
+		_ => ""
+	};
+
+	private async Task HandleChange(ChangeEventArgs e)
+	{
+		var stringValue = e.Value?.ToString();
+		if (typeof(TValue) == typeof(string))
+		{
+			await ValueChanged.InvokeAsync((TValue)(object)(stringValue ?? string.Empty));
+		}
+		else if (typeof(TValue) == typeof(Guid) || typeof(TValue) == typeof(Guid?))
+		{
+			if (Guid.TryParse(stringValue, out var guidValue))
+			{
+				await ValueChanged.InvokeAsync((TValue)(object)guidValue);
+			}
+			else if (Nullable.GetUnderlyingType(typeof(TValue)) != null)
+			{
+				await ValueChanged.InvokeAsync(default);
+			}
+		}
+		else if (typeof(TValue).IsEnum)
+		{
+			if (Enum.TryParse(typeof(TValue), stringValue, out var enumValue))
+			{
+				await ValueChanged.InvokeAsync((TValue)enumValue);
+			}
+		}
+		else
+		{
+			try
+			{
+				var converted = (TValue)Convert.ChangeType(stringValue!, typeof(TValue));
+				await ValueChanged.InvokeAsync(converted);
+			}
+			catch
+			{
+				// Ignore invalid conversions
+			}
+		}
+	}
+
+	public enum SelectSize
+	{
+		Small,
+		Default,
+		Large
+	}
+}

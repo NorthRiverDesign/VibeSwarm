@@ -5,44 +5,31 @@
 
 <PageHeader Title="Skills">
 	<Actions>
-		<label class="btn btn-secondary mb-0 cursor-pointer">
-			<i class="bi bi-box-arrow-in-down me-2"></i>Import
+		<ActionButton Icon="shop" Text="Marketplace" HideTextOnMobile="true" OnClick="ShowMarketplaceModal" />
+		<ActionButton Icon="folder2-open" Text="From folder" HideTextOnMobile="true" OnClick="ShowLocalPathModal" />
+		<label class="btn btn-secondary mb-0 cursor-pointer mobile-icon-button d-inline-flex align-items-center gap-1" title="Import">
+			<i class="bi bi-box-arrow-in-down"></i>
+			<span class="d-none d-md-inline">Import</span>
 			<InputFile OnChange="HandleImportFileSelected" accept=".skill" class="d-none" />
 		</label>
-		<ActionButton Icon="plus" Text="Add" Style="ActionButton.ButtonStyle.Primary" OnClick="ShowAddModal" />
+		<ActionButton Icon="plus" Text="Add" HideTextOnMobile="true" Style="ActionButton.ButtonStyle.Primary" OnClick="ShowAddModal" />
 	</Actions>
 </PageHeader>
 
 @if (_importErrorMessage != null)
 {
-	<div class="alert alert-danger d-flex align-items-start gap-2 mb-3">
-		<i class="bi bi-exclamation-triangle-fill flex-shrink-0 mt-1"></i>
-		<div>@_importErrorMessage</div>
-	</div>
+	<Alert Type="Alert.AlertType.Danger" Message="@_importErrorMessage" Class="mb-3" />
 }
 
 @if (_importPreview != null)
 {
-	<div class="card mb-3">
-		<div class="card-header bg-body-secondary d-flex flex-column flex-sm-row align-items-sm-center justify-content-between gap-2">
-			<div>
-				<h5 class="mb-1 fw-semibold">Import skill preview</h5>
-				<div class="small text-body-secondary">@_importFileName</div>
-			</div>
-			<div class="d-flex flex-wrap gap-2">
-				<button class="btn btn-secondary" @onclick="ResetImportPreview" disabled="@_isImportingSkill">
-					Cancel
-				</button>
-				<button class="btn btn-primary" @onclick="ConfirmImportAsync" disabled="@_isImportingSkill">
-					@if (_isImportingSkill)
-					{
-						<span class="spinner-border spinner-border-sm me-1" role="status"></span>
-					}
-					<span>@(_isImportingSkill ? "Importing..." : "Import skill")</span>
-				</button>
-			</div>
-		</div>
-		<div class="card-body">
+	<Card Class="mb-3" Title="Import skill preview">
+		<HeaderActions>
+			<ActionButton Text="Cancel" OnClick="ResetImportPreview" Disabled="_isImportingSkill" />
+			<ActionButton Text="@(_isImportingSkill ? "Importing..." : "Import skill")" Style="ActionButton.ButtonStyle.Primary"
+						  OnClick="ConfirmImportAsync" IsLoading="_isImportingSkill" Disabled="_isImportingSkill" />
+		</HeaderActions>
+		<ChildContent>
 			<div class="d-flex flex-column gap-3">
 				<div>
 					<div class="small text-body-secondary mb-1">Name</div>
@@ -75,7 +62,7 @@
 
 				@if (_importPreview.Warnings.Count > 0)
 				{
-					<div class="alert alert-warning mb-0">
+					<Alert Type="Alert.AlertType.Warning" Class="mb-0">
 						<div class="fw-semibold mb-2">Warnings</div>
 						<ul class="mb-0 ps-3">
 							@foreach (var warning in _importPreview.Warnings)
@@ -83,7 +70,7 @@
 								<li>@warning</li>
 							}
 						</ul>
-					</div>
+					</Alert>
 				}
 
 				<div>
@@ -96,8 +83,8 @@
 					</div>
 				</div>
 			</div>
-		</div>
-	</div>
+		</ChildContent>
+	</Card>
 }
 
 @if (_isLoading)
@@ -144,10 +131,8 @@ else
 					</div>
 				</div>
 				<div class="d-flex flex-wrap gap-2 flex-shrink-0 align-items-center">
-					<label class="toggle-switch me-1" title="@(skill.IsEnabled ? "Disable" : "Enable")">
-						<input type="checkbox" checked="@skill.IsEnabled" @onchange="() => ToggleEnabled(skill)" />
-						<span class="toggle-slider"></span>
-					</label>
+					<ToggleSwitch Value="@skill.IsEnabled" Title="@(skill.IsEnabled ? "Disable" : "Enable")"
+								  Class="me-1" OnChange="() => ToggleEnabled(skill)" />
 					<ActionButton Icon="pencil" Text="Edit" Size="ActionButton.ButtonSize.Small" HideTextOnMobile="true"
 								  OnClick="@(() => EditSkill(skill))" />
 					<ActionButton Icon="trash" Text="Delete" Size="ActionButton.ButtonSize.Small"
@@ -169,6 +154,12 @@ else
 				   ConfirmText="Delete" ButtonClass="btn-danger" IsProcessing="_isDeleting" OnConfirm="ConfirmDelete"
 				   OnCancel="CancelDelete" />
 
+@* Marketplace browse modal *@
+<SkillMarketplaceModal @bind-IsVisible="_showMarketplaceModal" OnInstalled="HandleMarketplaceInstall" />
+
+@* Local filesystem path install modal *@
+<SkillLocalPathModal @bind-IsVisible="_showLocalPathModal" OnInstalled="HandleLocalPathInstall" />
+
 @code {
 	private List<Skill> _skillsList = new();
 	private bool _isLoading = true;
@@ -184,6 +175,12 @@ else
 	private string? _importErrorMessage;
 	private bool _isImportingSkill;
 	private string? _importFileName;
+
+	// Marketplace modal state
+	private bool _showMarketplaceModal;
+
+	// Local-path install modal state
+	private bool _showLocalPathModal;
 
 	protected override async Task OnInitializedAsync()
 	{
@@ -387,5 +384,45 @@ else
 		_importErrorMessage = null;
 		_importFileName = null;
 		_isImportingSkill = false;
+	}
+
+	private void ShowMarketplaceModal()
+	{
+		// Close any other open modals first so focus traps don't collide.
+		ResetImportPreview();
+		_showSkillModal = false;
+		_editingSkill = null;
+		_showDeleteModal = false;
+		_skillToDelete = null;
+
+		_showMarketplaceModal = true;
+		StateHasChanged();
+	}
+
+	private async Task HandleMarketplaceInstall()
+	{
+		// The marketplace modal stays open (user may install multiple skills) while the main
+		// list refreshes behind it.
+		await LoadSkills();
+	}
+
+	private void ShowLocalPathModal()
+	{
+		ResetImportPreview();
+		_showSkillModal = false;
+		_editingSkill = null;
+		_showDeleteModal = false;
+		_skillToDelete = null;
+		_showMarketplaceModal = false;
+
+		_showLocalPathModal = true;
+		StateHasChanged();
+	}
+
+	private async Task HandleLocalPathInstall(SkillInstallResult result)
+	{
+		// The local-path modal closes itself on a successful install. Refresh the list either
+		// way so name-collision skips show the existing skill immediately.
+		await LoadSkills();
 	}
 }

@@ -16,4 +16,10 @@ public class JobStatistics
 	public int? InputTokens { get; set; }
 
 	public int? OutputTokens { get; set; }
+
+	/// <summary>
+	/// True when InputTokens/OutputTokens are estimates derived from text length
+	/// rather than exact counts reported by the provider.
+	/// </summary>
+	public bool IsTokenEstimate { get; set; }
 }

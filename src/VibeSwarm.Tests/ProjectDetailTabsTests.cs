@@ -109,7 +109,7 @@ public sealed class ProjectDetailTabsTests
 		context.Services.AddSingleton<IInferenceService>(new FakeInferenceService());
 		context.Services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService());
 		context.Services.AddSingleton<IAutoPilotService>(new FakeAutoPilotService());
-		context.Services.AddSingleton<ITeamRoleService>(new FakeTeamRoleService());
+		context.Services.AddSingleton<IAgentService>(new FakeAgentService());
 		context.Services.AddSingleton<ISettingsService>(new FakeSettingsService());
 		context.Services.AddSingleton<NotificationService>();
 		context.Services.AddSingleton<QueuePanelStateService>();
@@ -414,13 +414,13 @@ public sealed class ProjectDetailTabsTests
 		public Task<IterationLoop> UpdateConfigAsync(Guid projectId, AutoPilotConfig config, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	}
 
-	private sealed class FakeTeamRoleService : ITeamRoleService
+	private sealed class FakeAgentService : IAgentService
 	{
-		public Task<IEnumerable<TeamRole>> GetAllAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<TeamRole>>([]);
-		public Task<IEnumerable<TeamRole>> GetEnabledAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<TeamRole>>([]);
-		public Task<TeamRole?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult<TeamRole?>(null);
-		public Task<TeamRole> CreateAsync(TeamRole teamRole, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-		public Task<TeamRole> UpdateAsync(TeamRole teamRole, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<IEnumerable<Agent>> GetAllAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Agent>>([]);
+		public Task<IEnumerable<Agent>> GetEnabledAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Agent>>([]);
+		public Task<Agent?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult<Agent?>(null);
+		public Task<Agent> CreateAsync(Agent agent, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<Agent> UpdateAsync(Agent agent, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task DeleteAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<bool> NameExistsAsync(string name, Guid? excludeId = null, CancellationToken cancellationToken = default) => Task.FromResult(false);
 	}

@@ -20,9 +20,10 @@
 		</div>
 	</ChildContent>
 	<FooterContent>
-		<ActionButton Text="Cancel" OnClick="HandleCancel" Disabled="@IsProcessing" />
-		<ActionButton Style="ActionButton.ButtonStyle.Success" Icon="play-fill" Text="Start Processing"
-					  LoadingText="Starting..." OnClick="HandleConfirm" IsLoading="@IsProcessing" />
+		<ModalFooterActions OnCancel="HandleCancel" OnSubmit="HandleConfirm" Busy="@IsProcessing"
+							SubmitIcon="play-fill" SubmitText="Start Processing"
+							SubmitLoadingText="Starting..."
+							SubmitStyle="ActionButton.ButtonStyle.Success" />
 	</FooterContent>
 </ModalDialog>
 

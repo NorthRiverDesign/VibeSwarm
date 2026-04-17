@@ -20,6 +20,7 @@ public class ClaudeSdkProvider : SdkProviderBase
 
 	private static readonly string[] AvailableModels =
 	[
+		"claude-opus-4-7-20260416",
 		"claude-sonnet-4-6-20260201",
 		"claude-opus-4-6-20260101",
 		"claude-sonnet-4-5-20250929",
@@ -325,12 +326,20 @@ public class ClaudeSdkProvider : SdkProviderBase
 				Currency = "USD",
 				ModelMultipliers = new Dictionary<string, decimal>
 				{
+					["claude-opus-4-7-20260416"] = 5.0m,
 					["claude-sonnet-4-6-20260201"] = 1.0m,
 					["claude-opus-4-6-20260101"] = 5.0m,
 					["claude-sonnet-4-5-20250929"] = 1.0m,
 					["claude-opus-4-20250514"] = 5.0m,
 					["claude-haiku-4-5-20251001"] = 0.27m
 				}
+			},
+			ModelRetirementDates = new Dictionary<string, DateTime>
+			{
+				["claude-haiku-3"] = new DateTime(2026, 4, 19, 0, 0, 0, DateTimeKind.Utc),
+				["claude-3-haiku-20240307"] = new DateTime(2026, 4, 19, 0, 0, 0, DateTimeKind.Utc),
+				["claude-sonnet-4-20250514"] = new DateTime(2026, 6, 15, 0, 0, 0, DateTimeKind.Utc),
+				["claude-opus-4-20250514"] = new DateTime(2026, 6, 15, 0, 0, 0, DateTimeKind.Utc),
 			},
 			AdditionalInfo = new Dictionary<string, object>
 			{

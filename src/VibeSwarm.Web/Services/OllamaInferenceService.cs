@@ -211,6 +211,7 @@ public class OllamaInferenceService : IInferenceService
 			using var reader = new StreamReader(responseStream);
 			var combinedResponse = new StringBuilder();
 			var receivedAnyChunk = false;
+			var tokenCount = 0;
 			OllamaGenerateResponse? finalChunk = null;
 
 			while (true)
@@ -218,13 +219,40 @@ public class OllamaInferenceService : IInferenceService
 				string? line;
 				try
 				{
-					var waitTimeout = receivedAnyChunk
-						? _runtimeOptions.StreamInactivityTimeout
-						: _runtimeOptions.InitialResponseTimeout;
+					TimeSpan waitTimeout;
+					if (!receivedAnyChunk)
+					{
+						// Waiting for the first token — model may still be loading.
+						waitTimeout = _runtimeOptions.InitialResponseTimeout;
+					}
+					else if (tokenCount >= _runtimeOptions.StallDetectionTokenThreshold)
+					{
+						// Generation is underway; use the shorter stall detection window to
+						// catch hangs (OOM, process crash) quickly without waiting for the
+						// full inactivity timeout.
+						waitTimeout = _runtimeOptions.StallDetectionWindow;
+					}
+					else
+					{
+						// A few tokens arrived — generation has started but use the broader
+						// inactivity window until we confirm it is actively running.
+						waitTimeout = _runtimeOptions.StreamInactivityTimeout;
+					}
+
 					line = await ReadLineWithTimeoutAsync(reader, waitTimeout, generationCts.Token);
 				}
 				catch (TimeoutException ex)
 				{
+					if (receivedAnyChunk && tokenCount >= _runtimeOptions.StallDetectionTokenThreshold)
+					{
+						return new InferenceResponse
+						{
+							Success = false,
+							Error = BuildStallMessage(model, tokenCount, _runtimeOptions.StallDetectionWindow),
+							ModelUsed = model
+						};
+					}
+
 					return new InferenceResponse
 					{
 						Success = false,
@@ -279,6 +307,7 @@ public class OllamaInferenceService : IInferenceService
 				if (!string.IsNullOrEmpty(chunk.Response))
 				{
 					combinedResponse.Append(chunk.Response);
+					tokenCount++;
 				}
 
 				if (chunk.Done)
@@ -397,6 +426,9 @@ public class OllamaInferenceService : IInferenceService
 	private string BuildIncompleteStreamMessage(string model)
 		=> $"Model '{model}' stopped before finishing its response. This often means inference server crashed, the device ran out of memory, or the Ollama process was restarted.";
 
+	private static string BuildStallMessage(string model, int tokenCount, TimeSpan stallWindow)
+		=> $"Model '{model}' stopped generating after {tokenCount} token(s) and produced no output for {stallWindow.TotalMinutes:F0} minute(s). The inference process may have run out of memory or become unresponsive. Try a smaller or more quantized model.";
+
 	private async Task<string> ResolveEndpointAsync(CancellationToken ct)
 	{
 		var providers = await _providerService.GetEnabledAsync(ct);
@@ -505,5 +537,20 @@ public class OllamaInferenceService : IInferenceService
 		public TimeSpan InitialResponseTimeout { get; init; } = InferenceTimeouts.LocalInitialResponseTimeout;
 		public TimeSpan StreamInactivityTimeout { get; init; } = InferenceTimeouts.LocalStreamInactivityTimeout;
 		public TimeSpan GenerationTimeout { get; init; } = InferenceTimeouts.LocalGenerationTimeout;
+
+		/// <summary>
+		/// Per-token idle timeout applied once <see cref="StallDetectionTokenThreshold"/> tokens
+		/// have been received. Shorter than <see cref="StreamInactivityTimeout"/> so that genuine
+		/// mid-generation hangs are caught quickly without waiting the full inactivity window.
+		/// </summary>
+		public TimeSpan StallDetectionWindow { get; init; } = InferenceTimeouts.LocalStallDetectionWindow;
+
+		/// <summary>
+		/// Minimum number of tokens that must have been received before the
+		/// <see cref="StallDetectionWindow"/> replaces <see cref="StreamInactivityTimeout"/>.
+		/// A small threshold (default: 5) lets the model finish its "thinking" preamble
+		/// before stall detection kicks in.
+		/// </summary>
+		public int StallDetectionTokenThreshold { get; init; } = 5;
 	}
 }

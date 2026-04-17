@@ -386,8 +386,6 @@ public partial class ProjectDetail
                 return;
             }
 
-            GitOperationMessage = result.Output ?? $"Merged '{CurrentBranch}' into '{args.targetBranch}'.";
-            GitOperationSuccess = true;
             await LoadBranches();
             CloseMergeBranchModal();
 
@@ -454,8 +452,6 @@ public partial class ProjectDetail
                 ? $"Pull request created: {result.PullRequestUrl}"
                 : result.Output ?? $"Pull request created from '{CurrentBranch}' to '{args.targetBranch}'.";
 
-            GitOperationMessage = message;
-            GitOperationSuccess = true;
             CloseMergeBranchModal();
 
             NotificationService.ShowProjectSuccess(Project.Name, message);

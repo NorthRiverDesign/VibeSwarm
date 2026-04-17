@@ -88,7 +88,7 @@
 																	Models="GetProviderModels(provider.Id)"
 																	UsageSummary="GetUsageSummary(provider.Id)"
 																	TestResult="GetTestResult(provider.Id)"
-																	RefreshModelsError="GetRefreshModelsError(provider.Id)"
+																	RefreshModelsError="@GetRefreshModelsError(provider.Id)"
 																	IsTesting="@(TestingId == provider.Id)"
 																	IsRefreshingModels="@(RefreshingModelsId == provider.Id)"
 																	IsUpdatingCli="@(UpdatingCliId == provider.Id)"

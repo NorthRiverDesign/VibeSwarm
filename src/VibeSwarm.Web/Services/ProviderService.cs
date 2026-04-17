@@ -258,7 +258,7 @@ public class ProviderService : IProviderService
         provider.WorkingDirectory = string.IsNullOrWhiteSpace(provider.WorkingDirectory) ? null : provider.WorkingDirectory.Trim();
         provider.ApiEndpoint = string.IsNullOrWhiteSpace(provider.ApiEndpoint) ? null : provider.ApiEndpoint.Trim();
         provider.ApiKey = string.IsNullOrWhiteSpace(provider.ApiKey) ? null : provider.ApiKey.Trim();
-        provider.DefaultReasoningEffort = ProviderCapabilities.NormalizeReasoningEffort(provider.DefaultReasoningEffort);
+        provider.DefaultReasoningEffort = ProviderCapabilities.NormalizeReasoningEffort(provider, provider.DefaultReasoningEffort);
     }
 
     public async Task<IEnumerable<ProviderModel>> GetModelsAsync(Guid providerId, CancellationToken cancellationToken = default)
@@ -352,6 +352,7 @@ public class ProviderService : IProviderService
                 }
 
                 _dbContext.ProviderModels.Add(newModel);
+                existingModelDict[modelId] = newModel;
             }
         }
 
@@ -361,6 +362,28 @@ public class ProviderService : IProviderService
             if (!availableModelIds.Contains(existingModel.ModelId))
             {
                 existingModel.IsAvailable = false;
+                existingModel.UpdatedAt = DateTime.UtcNow;
+            }
+        }
+
+        // Sync upstream retirement dates onto existing model rows.
+        // A model may be retiring even after it's been marked unavailable, so apply to the full set.
+        foreach (var (retiringId, retiresOn) in providerInfo.ModelRetirementDates)
+        {
+            if (existingModelDict.TryGetValue(retiringId, out var retiringModel))
+            {
+                retiringModel.RetiresOn = retiresOn;
+                retiringModel.UpdatedAt = DateTime.UtcNow;
+            }
+        }
+
+        // Clear stale retirement flags (upstream un-retired or renamed a model).
+        foreach (var existingModel in existingModelDict.Values)
+        {
+            if (existingModel.RetiresOn.HasValue
+                && !providerInfo.ModelRetirementDates.ContainsKey(existingModel.ModelId))
+            {
+                existingModel.RetiresOn = null;
                 existingModel.UpdatedAt = DateTime.UtcNow;
             }
         }

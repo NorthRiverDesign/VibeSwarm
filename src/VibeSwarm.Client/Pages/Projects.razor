@@ -26,20 +26,14 @@
 	</SearchContent>
 	<Tabs>
 		<div class="d-flex align-items-stretch border-bottom">
-			<ul class="nav nav-tabs flex-nowrap flex-sm-wrap overflow-x-auto overflow-y-hidden overscroll-contain border-bottom-0 mb-0 flex-grow-1 min-width-0" role="tablist">
-				<li class="nav-item">
-					<button class="nav-link @(ActiveFilter == "active" ? "active" : "")" @onclick='() => SetFilter("active")'>
-						<i class="bi bi-check-circle me-1"></i>Active
-						<span class="badge bg-primary-subtle text-primary-emphasis ms-1">@GetActiveCount()</span>
-					</button>
-				</li>
-				<li class="nav-item">
-					<button class="nav-link @(ActiveFilter == "inactive" ? "active" : "")" @onclick='() => SetFilter("inactive")'>
-						<i class="bi bi-pause-circle me-1"></i>Inactive
-						<span class="badge bg-secondary-subtle text-secondary-emphasis ms-1">@GetInactiveCount()</span>
-					</button>
-				</li>
-			</ul>
+			<TabStrip Class="flex-nowrap flex-sm-wrap overflow-x-auto overflow-y-hidden overscroll-contain border-bottom-0 mb-0 flex-grow-1 min-width-0">
+				<TabItem Text="Active" Icon="check-circle" IconClass="me-1" IsActive="@(ActiveFilter == "active")"
+						 BadgeCount="@GetActiveCount()" BadgeClass="bg-primary-subtle text-primary-emphasis"
+						 OnClick='() => SetFilter("active")' />
+				<TabItem Text="Inactive" Icon="pause-circle" IconClass="me-1" IsActive="@(ActiveFilter == "inactive")"
+						 BadgeCount="@GetInactiveCount()" BadgeClass="bg-secondary-subtle text-secondary-emphasis"
+						 OnClick='() => SetFilter("inactive")' />
+			</TabStrip>
 			<button type="button" class="btn btn-sm btn-link text-body-secondary p-1 flex-shrink-0 align-self-center"
 					@onclick="ToggleProjectStats" title="Toggle project stats"
 					aria-label="@(ShowProjectStats ? "Hide stats" : "Show stats")">
@@ -109,13 +103,9 @@ else
 		<p class="text-body-secondary small">This will remove the project from VibeSwarm and delete all associated jobs.
 		</p>
 
-		<div class="form-check mt-3">
-			<input class="form-check-input" type="checkbox" id="deleteDirectory" @bind="DeleteDirectoryConfirmed">
-				<label class="form-check-label text-danger" for="deleteDirectory">
-					<i class="bi bi-exclamation-triangle me-1"></i>
-					Also delete the project directory from disk
-				</label>
-			</div>
+		<FormCheck @bind-Value="DeleteDirectoryConfirmed" Icon="exclamation-triangle"
+				  Text="Also delete the project directory from disk" Id="deleteDirectory"
+				  Class="mt-3" LabelClass="text-danger" />
 			@if (DeleteDirectoryConfirmed)
 			{
 				<Alert Type="Alert.AlertType.Danger" Class="mt-2 py-2 px-3 small mb-0">
@@ -126,14 +116,10 @@ else
 			}
 		</ChildContent>
 		<FooterContent>
-			<button type="button" class="btn btn-secondary" @onclick="CancelDelete">Cancel</button>
-			<button type="button" class="btn btn-danger" @onclick="ConfirmDelete" disabled="@IsDeleting">
-				@if (IsDeleting)
-				{
-					<span class="spinner-border spinner-border-sm me-1" role="status"></span>
-				}
-				Delete@(DeleteDirectoryConfirmed ? " & Remove Files" : "")
-			</button>
+			<ActionButton Text="Cancel" OnClick="CancelDelete" />
+			<ActionButton Text="@($"Delete{(DeleteDirectoryConfirmed ? " & Remove Files" : "")}")"
+						  Style="ActionButton.ButtonStyle.Danger" OnClick="ConfirmDelete"
+						  IsLoading="IsDeleting" Disabled="IsDeleting" />
 		</FooterContent>
 </ModalDialog>
 
@@ -765,11 +751,13 @@ else
                 return;
             }
 
+            var projectName = _mergeProjectInfo.Project.Name;
+            var sourceBranch = MergeCurrentBranch;
             CloseMergeBranchModal();
             await LoadProjects();
             NotificationService.ShowProjectSuccess(
-                _mergeProjectInfo.Project.Name,
-                result.Output ?? $"Merged '{MergeCurrentBranch}' into '{args.targetBranch}'.");
+                projectName,
+                result.Output ?? $"Merged '{sourceBranch}' into '{args.targetBranch}'.");
         }
         catch (Exception ex)
         {
@@ -831,12 +819,14 @@ else
                 return;
             }
 
+            var projectName = _mergeProjectInfo.Project.Name;
+            var sourceBranch = MergeCurrentBranch;
             CloseMergeBranchModal();
             NotificationService.ShowProjectSuccess(
-                _mergeProjectInfo.Project.Name,
+                projectName,
                 !string.IsNullOrWhiteSpace(result.PullRequestUrl)
                     ? $"Pull request created: {result.PullRequestUrl}"
-                    : result.Output ?? $"Pull request created from '{MergeCurrentBranch}' to '{args.targetBranch}'.");
+                    : result.Output ?? $"Pull request created from '{sourceBranch}' to '{args.targetBranch}'.");
         }
         catch (Exception ex)
         {

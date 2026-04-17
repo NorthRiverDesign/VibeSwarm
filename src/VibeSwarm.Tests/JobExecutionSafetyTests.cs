@@ -253,7 +253,8 @@ public sealed class JobExecutionSafetyTests : IDisposable
 		var method = typeof(JobProcessingService).GetMethod("ProcessJobAsync", BindingFlags.Instance | BindingFlags.NonPublic);
 		Assert.NotNull(method);
 
-		var task = (Task)method.Invoke(service, [job, jobService, providerService, dbContext, executionContext!, CancellationToken.None])!;
+		var skillStorage = new SkillStorageService(dbContext, NullLogger<SkillStorageService>.Instance);
+		var task = (Task)method.Invoke(service, [job, jobService, providerService, dbContext, skillStorage, executionContext!, CancellationToken.None])!;
 		await task;
 	}
 
