@@ -1,5 +1,6 @@
 @* Modal component for creating new jobs *@
 @using System.ComponentModel.DataAnnotations
+@inject IServiceProvider Services
 @inject IJobTemplateService JobTemplateService
 @inject NotificationService NotificationService
 
@@ -66,7 +67,7 @@ placeholder="Describe what you want the AI agent to accomplish..." />
 <option value="">Choose provider manually</option>
 @foreach (var agent in AvailableAgents)
 {
-<option value="@agent.AgentId">@agent.Agent!.Name</option>
+<option value="@agent.AgentId">@GetAgentDisplayName(agent)</option>
 }
 </InputSelect>
 <div class="form-text">Agent presets combine a purpose, provider/model assignment, and optional multi-cycle defaults for this project.</div>
@@ -78,17 +79,17 @@ placeholder="Describe what you want the AI agent to accomplish..." />
 <div class="border rounded p-3 mb-3 bg-body-tertiary">
 <div class="d-flex align-items-start justify-content-between gap-2 flex-wrap">
 <div class="min-width-0 flex-grow-1">
-<div class="fw-semibold">@SelectedAgent.Agent!.Name</div>
-@if (!string.IsNullOrWhiteSpace(SelectedAgent.Agent.Description))
+<div class="fw-semibold">@GetSelectedAgentName()</div>
+@if (!string.IsNullOrWhiteSpace(SelectedAgent.Agent?.Description))
 {
-<div class="small text-body-secondary mt-1">@SelectedAgent.Agent.Description</div>
+<div class="small text-body-secondary mt-1">@SelectedAgent.Agent!.Description</div>
 }
 </div>
 <span class="badge bg-primary-subtle text-primary-emphasis">Agent Preset</span>
 </div>
-@if (!string.IsNullOrWhiteSpace(SelectedAgent.Agent.Responsibilities))
+@if (!string.IsNullOrWhiteSpace(SelectedAgent.Agent?.Responsibilities))
 {
-<div class="small white-space-pre-wrap mt-2">@SelectedAgent.Agent.Responsibilities</div>
+<div class="small white-space-pre-wrap mt-2">@SelectedAgent.Agent!.Responsibilities</div>
 }
 <div class="row g-3 mt-1">
 <div class="col-12 col-md-6">
@@ -399,8 +400,9 @@ private Guid? _selectedTemplateId;
 private bool _isApplyingTemplate;
 private bool _isSavingTemplate;
 private string? _templateStatusMessage;
-private IReadOnlyList<ProjectAgent> AvailableAgents => AgentPresetHelper.GetEnabledAgents(Project);
-private ProjectAgent? SelectedAgent => AgentPresetHelper.ResolveAgent(Project, FormModel.AgentId);
+private Project? _agentProject;
+private IReadOnlyList<ProjectAgent> AvailableAgents => AgentPresetHelper.GetEnabledAgents(_agentProject);
+private ProjectAgent? SelectedAgent => AgentPresetHelper.ResolveAgent(_agentProject, FormModel.AgentId);
 private IReadOnlyList<string> ReasoningOptions => FormModel.ProviderId.HasValue
 ? Providers.Where(provider => provider.Id == FormModel.ProviderId.Value)
 	.SelectMany(ProviderCapabilities.GetSupportedReasoningEfforts)
@@ -408,10 +410,11 @@ private IReadOnlyList<string> ReasoningOptions => FormModel.ProviderId.HasValue
 	.ToList()
 : [];
 
-protected override void OnParametersSet()
+protected override async Task OnParametersSetAsync()
 {
 if (IsVisible && !_previousIsVisible)
 {
+await RefreshAgentProjectAsync();
 FormModel = CreateJobFormModel.FromJob(JobModel);
 _selectedTemplateId = JobModel.JobTemplateId;
 _templateStatusMessage = null;
@@ -607,6 +610,116 @@ private void ApplySelectedAgent(ProjectAgent assignment)
 	FormModel.CycleSessionMode = job.CycleSessionMode;
 	FormModel.MaxCycles = job.MaxCycles;
 	FormModel.CycleReviewPrompt = job.CycleReviewPrompt;
+}
+
+private async Task RefreshAgentProjectAsync()
+{
+	_agentProject = Project;
+	if (Project == null || Project.Id == Guid.Empty)
+	{
+		return;
+	}
+
+	var projectService = Services.GetService<IProjectService>();
+	var agentService = Services.GetService<IAgentService>();
+	if (projectService == null || agentService == null)
+	{
+		return;
+	}
+
+	try
+	{
+		var detailedProjectTask = projectService.GetByIdAsync(Project.Id);
+		var enabledAgentsTask = agentService.GetEnabledAsync();
+		await Task.WhenAll(detailedProjectTask, enabledAgentsTask);
+
+		_agentProject = BuildAgentProject(Project, detailedProjectTask.Result, enabledAgentsTask.Result);
+	}
+	catch
+	{
+		_agentProject = BuildAgentProject(Project, null, []);
+	}
+}
+
+private Project BuildAgentProject(Project? baseProject, Project? detailedProject, IEnumerable<Agent> enabledAgents)
+{
+	var assignments = (baseProject?.AgentAssignments ?? [])
+		.Concat(detailedProject?.AgentAssignments ?? [])
+		.Where(assignment => assignment.AgentId != Guid.Empty)
+		.GroupBy(assignment => assignment.AgentId)
+		.Select(group => MergeAgentAssignment(group, enabledAgents))
+		.ToList();
+
+	if (assignments.Count == 0)
+	{
+		return detailedProject ?? baseProject ?? new Project();
+	}
+
+	return new Project
+	{
+		Id = detailedProject?.Id ?? baseProject?.Id ?? Guid.Empty,
+		AgentAssignments = assignments
+	};
+}
+
+private ProjectAgent MergeAgentAssignment(IEnumerable<ProjectAgent> assignments, IEnumerable<Agent> enabledAgents)
+{
+	var enabledAgentsById = enabledAgents.ToDictionary(agent => agent.Id);
+	var assignmentList = assignments.ToList();
+	var merged = assignmentList[0];
+
+	return new ProjectAgent
+	{
+		Id = merged.Id,
+		ProjectId = merged.ProjectId,
+		AgentId = merged.AgentId,
+		Agent = ResolveAgent(assignmentList, enabledAgentsById),
+		ProviderId = merged.ProviderId,
+		Provider = ResolveProvider(assignmentList),
+		PreferredModelId = assignmentList.Select(assignment => assignment.PreferredModelId).FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)),
+		PreferredReasoningEffort = assignmentList.Select(assignment => assignment.PreferredReasoningEffort).FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)),
+		IsEnabled = assignmentList.Any(assignment => assignment.IsEnabled),
+		CreatedAt = assignmentList.Select(assignment => assignment.CreatedAt).FirstOrDefault(createdAt => createdAt != default),
+		UpdatedAt = assignmentList.Select(assignment => assignment.UpdatedAt).FirstOrDefault(updatedAt => updatedAt.HasValue)
+	};
+}
+
+private Agent? ResolveAgent(IEnumerable<ProjectAgent> assignments, IReadOnlyDictionary<Guid, Agent> enabledAgentsById)
+{
+	foreach (var assignment in assignments)
+	{
+		if (assignment.Agent != null)
+		{
+			return assignment.Agent;
+		}
+
+		if (enabledAgentsById.TryGetValue(assignment.AgentId, out var agent))
+		{
+			return agent;
+		}
+	}
+
+	return null;
+}
+
+private Provider? ResolveProvider(IEnumerable<ProjectAgent> assignments)
+{
+	return assignments
+		.Select(assignment => assignment.Provider)
+		.FirstOrDefault(provider => provider != null)
+		?? assignments
+			.Select(assignment => Providers.FirstOrDefault(provider => provider.Id == assignment.ProviderId))
+			.FirstOrDefault(provider => provider != null);
+}
+
+private string GetAgentDisplayName(ProjectAgent assignment)
+{
+	return assignment.Agent?.Name ?? "Unknown agent";
+}
+
+private string GetSelectedAgentName()
+{
+	return GetAgentDisplayName(SelectedAgent ?? new ProjectAgent());
 }
 
 private string GetSelectedAgentProviderDisplayText()
