@@ -280,6 +280,7 @@
 	private string? ErrorMessage { get; set; }
 	private bool _previousIsVisible;
 	private List<Project> _projects = [];
+	private readonly Dictionary<Guid, Project> _projectDetailsById = [];
 	private List<Provider> _providers = [];
 	private List<InferenceProvider> _inferenceProviders = [];
 	private List<Provider> _allowedProviders = [];
@@ -321,6 +322,7 @@
 		_projects = projectsTask.Result
 			.OrderBy(project => project.Name)
 			.ToList();
+		_projectDetailsById.Clear();
 		_providers = providersTask.Result
 			.Where(provider => provider.IsEnabled)
 			.OrderByDescending(provider => provider.IsDefault)
@@ -392,9 +394,44 @@
 	private Project? GetSelectedProject()
 		=> _projects.FirstOrDefault(project => project.Id == Schedule.ProjectId);
 
+	private async Task<Project?> GetSelectedProjectAsync()
+	{
+		if (Schedule.ProjectId == Guid.Empty)
+		{
+			return null;
+		}
+
+		if (_projectDetailsById.TryGetValue(Schedule.ProjectId, out var cachedProject))
+		{
+			return cachedProject;
+		}
+
+		var detailedProject = await ProjectService.GetByIdAsync(Schedule.ProjectId);
+		if (detailedProject == null)
+		{
+			return GetSelectedProject();
+		}
+
+		_projectDetailsById[Schedule.ProjectId] = detailedProject;
+		var projectIndex = _projects.FindIndex(project => project.Id == detailedProject.Id);
+		if (projectIndex >= 0)
+		{
+			_projects[projectIndex] = detailedProject;
+		}
+		else
+		{
+			_projects.Add(detailedProject);
+			_projects = _projects
+				.OrderBy(project => project.Name)
+				.ToList();
+		}
+
+		return detailedProject;
+	}
+
 	private async Task SyncExecutionTargetsAsync(bool preserveCurrentSelection)
 	{
-		var project = GetSelectedProject();
+		var project = await GetSelectedProjectAsync();
 		_allowedProviders = ProjectExecutionDefaults.GetAllowedProviders(project, _providers);
 		_availableAgentAssignments = project?.AgentAssignments?
 			.Where(assignment =>

@@ -169,6 +169,112 @@ public sealed class JobScheduleModalTests
 		Assert.DoesNotContain("No enabled agents", cut.Markup);
 	}
 
+	[Fact]
+	public void JobScheduleModal_AgentDropdown_UsesSelectedProjectDetails_WhenBulkProjectListIsStale()
+	{
+		var firstAgentId = Guid.NewGuid();
+		var secondAgentId = Guid.NewGuid();
+		var providerId = Guid.NewGuid();
+		var projectId = Guid.NewGuid();
+
+		var provider = new Provider
+		{
+			Id = providerId,
+			Name = "GitHub Copilot",
+			Type = ProviderType.Copilot,
+			IsEnabled = true,
+			IsDefault = true
+		};
+		var firstAgent = new Agent
+		{
+			Id = firstAgentId,
+			Name = "Security Reviewer",
+			IsEnabled = true
+		};
+		var secondAgent = new Agent
+		{
+			Id = secondAgentId,
+			Name = "Release Manager",
+			IsEnabled = true
+		};
+		var bulkProject = new Project
+		{
+			Id = projectId,
+			Name = "VibeSwarm",
+			WorkingPath = "/tmp/vibeswarm",
+			AgentAssignments =
+			[
+				new ProjectAgent
+				{
+					ProjectId = projectId,
+					AgentId = firstAgentId,
+					Agent = firstAgent,
+					ProviderId = providerId,
+					Provider = provider,
+					IsEnabled = true
+				}
+			]
+		};
+		var detailedProject = new Project
+		{
+			Id = projectId,
+			Name = "VibeSwarm",
+			WorkingPath = "/tmp/vibeswarm",
+			AgentAssignments =
+			[
+				new ProjectAgent
+				{
+					ProjectId = projectId,
+					AgentId = firstAgentId,
+					Agent = firstAgent,
+					ProviderId = providerId,
+					Provider = provider,
+					IsEnabled = true
+				},
+				new ProjectAgent
+				{
+					ProjectId = projectId,
+					AgentId = secondAgentId,
+					Agent = secondAgent,
+					ProviderId = providerId,
+					Provider = provider,
+					IsEnabled = true
+				}
+			]
+		};
+
+		var editSchedule = new JobSchedule
+		{
+			Id = Guid.NewGuid(),
+			ProjectId = projectId,
+			ExecutionTarget = JobScheduleExecutionTarget.Agent,
+			AgentId = firstAgentId,
+			ScheduleType = JobScheduleType.RunJob,
+			Prompt = "Run checks",
+			Frequency = JobScheduleFrequency.Daily,
+			HourUtc = 9,
+			IsEnabled = true
+		};
+
+		using var context = new BunitContext();
+		context.JSInterop.SetupVoid("eval", "document.body.classList.add('vs-modal-open')");
+		context.JSInterop.SetupVoid("eval", "document.body.classList.remove('vs-modal-open')");
+		context.Services.AddSingleton<IProjectService>(new FakeProjectService([bulkProject], detailedProject));
+		context.Services.AddSingleton<IProviderService>(new FakeProviderService([provider]));
+		context.Services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService());
+		context.Services.AddSingleton<IJobScheduleService>(new FakeJobScheduleService());
+		context.Services.AddSingleton<ISettingsService>(new FakeSettingsService());
+		context.Services.AddSingleton<AppTimeZoneService>();
+		context.Services.AddSingleton<NotificationService>();
+
+		var cut = context.Render<JobScheduleModal>(parameters => parameters
+			.Add(component => component.IsVisible, true)
+			.Add(component => component.EditSchedule, editSchedule));
+
+		Assert.Contains("Security Reviewer", cut.Markup);
+		Assert.Contains("Release Manager", cut.Markup);
+	}
+
 	private sealed class FakeSettingsService : ISettingsService
 	{
 		public Task<AppSettings> GetSettingsAsync(CancellationToken cancellationToken = default)
@@ -179,13 +285,14 @@ public sealed class JobScheduleModalTests
 			=> Task.FromResult<string?>(null);
 	}
 
-	private sealed class FakeProjectService(IReadOnlyList<Project> projects) : IProjectService
+	private sealed class FakeProjectService(IReadOnlyList<Project> projects, Project? detailedProject = null) : IProjectService
 	{
 		public Task<IEnumerable<Project>> GetAllAsync(CancellationToken cancellationToken = default)
 			=> Task.FromResult<IEnumerable<Project>>(projects);
 
 		public Task<IEnumerable<Project>> GetRecentAsync(int count, CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Project>>([]);
-		public Task<Project?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult<Project?>(null);
+		public Task<Project?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
+			=> Task.FromResult(detailedProject?.Id == id ? detailedProject : projects.FirstOrDefault(project => project.Id == id));
 		public Task<Project?> GetByIdWithJobsAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult<Project?>(null);
 		public Task<Project> CreateAsync(Project project, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task<Project> CreateProjectAsync(Shared.Models.ProjectCreationRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
