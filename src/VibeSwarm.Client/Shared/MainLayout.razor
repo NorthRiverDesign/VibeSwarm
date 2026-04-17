@@ -9,7 +9,6 @@
 @inject ChangePasswordModalService ChangePasswordModalService
 @inject QueuePanelStateService QueuePanelStateService
 @inject DeveloperUpdateOverlayService DeveloperUpdateOverlayService
-@inject MobileNavService MobileNavService
 @inject HttpClient HttpClient
 @inject NavigationManager NavigationManager
 @implements IAsyncDisposable
@@ -18,21 +17,21 @@
 
 <div class="app-layout d-flex flex-column">
     @* Mobile Header *@
-    <header class="app-header d-lg-none sticky-top d-flex align-items-center gap-2 flex-shrink-0 bg-body-secondary border-bottom">
-        <button id="mobile-menu-toggle" class="btn btn-link nav-toggle d-flex align-items-center justify-content-center p-0 bg-transparent border-0 rounded fs-4"
+    <header
+        class="app-header d-lg-none sticky-top d-flex align-items-center gap-2 flex-shrink-0 bg-body-secondary border-bottom">
+        <button id="mobile-menu-toggle"
+                class="btn btn-link nav-toggle d-flex align-items-center justify-content-center p-0 bg-transparent border-0 rounded fs-4"
                 @onclick="ToggleMobileMenu" aria-label="Toggle navigation">
             <i class="bi bi-list"></i>
         </button>
         <a class="btn btn-link text-secondary p-0 fs-5 d-flex align-items-center justify-content-center text-decoration-none touch-manipulation mobile-header-icon"
-           href="/" title="Dashboard" aria-label="Dashboard">
+               href="/" title="Dashboard" aria-label="Dashboard">
             <i class="bi bi-house-door"></i>
         </a>
         <div class="ms-auto d-flex align-items-center gap-2">
             <button type="button"
                     class="btn btn-link text-secondary p-0 fs-5 d-flex align-items-center justify-content-center touch-manipulation mobile-header-icon"
-                    @onclick="OpenSearch"
-                    title="Search"
-                    aria-label="Search">
+                    @onclick="OpenSearch" title="Search" aria-label="Search">
                 <i class="bi bi-search"></i>
             </button>
             <NotificationsPanel Compact="true" />
@@ -44,52 +43,65 @@
     @* Sidebar Navigation *@
     <nav id="app-sidebar" class="app-sidebar position-fixed d-flex flex-column @(_mobileMenuOpen ? "open" : "")">
         <div class="flex-grow-1 p-3 d-flex flex-column gap-1 overflow-y-auto" style="min-height: 0;">
-            <button class="nav-item d-flex align-items-center gap-3 rounded fw-medium text-decoration-none border-0 bg-transparent w-100 text-start cursor-pointer search-nav-btn" @onclick="OpenSearch" title="Search (Ctrl+K)">
+            <button
+                class="nav-item d-flex align-items-center gap-3 rounded fw-medium text-decoration-none border-0 bg-transparent w-100 text-start cursor-pointer search-nav-btn"
+                @onclick="OpenSearch" title="Search (Ctrl+K)">
                 <i class="bi bi-search"></i>
                 <span class="flex-grow-1">Search</span>
-                <kbd class="border rounded px-1 text-secondary d-none d-lg-inline" style="font-size: 0.65rem; background: transparent;">⌃K</kbd>
+                <kbd class="border rounded px-1 text-secondary d-none d-lg-inline"
+                     style="font-size: 0.65rem; background: transparent;">⌃K</kbd>
             </button>
-            <NavLink class="nav-item d-flex align-items-center gap-3 rounded fw-medium text-decoration-none" href="/" Match="NavLinkMatch.All" @onclick="CloseMobileMenu">
+            <NavLink class="nav-item d-flex align-items-center gap-3 rounded fw-medium text-decoration-none" href="/"
+                     Match="NavLinkMatch.All" @onclick="CloseMobileMenu">
                 <i class="bi bi-house-door"></i>
                 <span>Dashboard</span>
             </NavLink>
-            <NavLink class="nav-item d-flex align-items-center gap-3 rounded fw-medium text-decoration-none" href="/projects" @onclick="CloseMobileMenu">
+            <NavLink class="nav-item d-flex align-items-center gap-3 rounded fw-medium text-decoration-none"
+                     href="/projects" @onclick="CloseMobileMenu">
                 <i class="bi bi-folder"></i>
                 <span>Projects</span>
             </NavLink>
-            <NavLink class="nav-item d-flex align-items-center gap-3 rounded fw-medium text-decoration-none" href="/jobs" @onclick="CloseMobileMenu">
+            <NavLink class="nav-item d-flex align-items-center gap-3 rounded fw-medium text-decoration-none"
+                     href="/jobs" @onclick="CloseMobileMenu">
                 <i class="bi bi-list-check"></i>
                 <span>Jobs</span>
             </NavLink>
-            <NavLink class="nav-item d-flex align-items-center gap-3 rounded fw-medium text-decoration-none" href="/scheduler" @onclick="CloseMobileMenu">
+            <NavLink class="nav-item d-flex align-items-center gap-3 rounded fw-medium text-decoration-none"
+                     href="/scheduler" @onclick="CloseMobileMenu">
                 <i class="bi bi-calendar-event"></i>
                 <span>Scheduler</span>
             </NavLink>
-            <NavLink class="nav-item d-flex align-items-center gap-3 rounded fw-medium text-decoration-none" href="/providers" @onclick="CloseMobileMenu">
+            <NavLink class="nav-item d-flex align-items-center gap-3 rounded fw-medium text-decoration-none"
+                     href="/providers" @onclick="CloseMobileMenu">
                 <i class="bi bi-cpu"></i>
                 <span>Providers</span>
             </NavLink>
-            <NavLink class="nav-item d-flex align-items-center gap-3 rounded fw-medium text-decoration-none" href="/inference" @onclick="CloseMobileMenu">
+            <NavLink class="nav-item d-flex align-items-center gap-3 rounded fw-medium text-decoration-none"
+                     href="/inference" @onclick="CloseMobileMenu">
                 <i class="bi bi-hdd-network"></i>
                 <span>Inference</span>
             </NavLink>
-            <NavLink class="nav-item d-flex align-items-center gap-3 rounded fw-medium text-decoration-none" href="/skills" @onclick="CloseMobileMenu">
+            <NavLink class="nav-item d-flex align-items-center gap-3 rounded fw-medium text-decoration-none"
+                     href="/skills" @onclick="CloseMobileMenu">
                 <i class="bi bi-lightbulb"></i>
                 <span>Skills</span>
             </NavLink>
-            <NavLink class="nav-item d-flex align-items-center gap-3 rounded fw-medium text-decoration-none" href="/agents" @onclick="CloseMobileMenu">
+            <NavLink class="nav-item d-flex align-items-center gap-3 rounded fw-medium text-decoration-none"
+                     href="/agents" @onclick="CloseMobileMenu">
                 <i class="bi bi-people"></i>
                 <span>Agents</span>
             </NavLink>
             <AuthorizeView Roles="Admin">
                 <Authorized>
-                    <NavLink class="nav-item d-flex align-items-center gap-3 rounded fw-medium text-decoration-none" href="/users" @onclick="CloseMobileMenu">
+                    <NavLink class="nav-item d-flex align-items-center gap-3 rounded fw-medium text-decoration-none"
+                             href="/users" @onclick="CloseMobileMenu">
                         <i class="bi bi-person"></i>
                         <span>Users</span>
                     </NavLink>
                 </Authorized>
             </AuthorizeView>
-            <NavLink class="nav-item d-flex align-items-center gap-3 rounded fw-medium text-decoration-none" href="/settings" @onclick="CloseMobileMenu">
+            <NavLink class="nav-item d-flex align-items-center gap-3 rounded fw-medium text-decoration-none"
+                     href="/settings" @onclick="CloseMobileMenu">
                 <i class="bi bi-sliders"></i>
                 <span>Settings</span>
             </NavLink>
@@ -161,8 +173,6 @@
         </main>
 
     </div>
-
-    <BottomTabBar />
 
     <AuthenticationKeepAlive />
     <AppUpdateBanner />
@@ -246,8 +256,6 @@
     {
         ChangePasswordModalService.OnShowModal += ShowChangePasswordModal;
         ChangePasswordModalService.OnHideModal += CloseChangePasswordModal;
-        MobileNavService.OnMenuToggleRequested += ToggleMobileMenu;
-        MobileNavService.OnMenuCloseRequested += CloseMobileMenu;
     }
 
     protected override async Task OnInitializedAsync()
@@ -421,10 +429,10 @@ TimeSpan.FromSeconds(10) })
             {
                 await InvokeAsync(() =>
     {
-                NotificationService.ShowWarning($"Job requires input: {(prompt.Length > 60 ? prompt[..60] + "..." : prompt)}",
-    "Interaction Required");
-                StateHasChanged();
-            });
+        NotificationService.ShowWarning($"Job requires input: {(prompt.Length > 60 ? prompt[..60] + "..." : prompt)}",
+"Interaction Required");
+        StateHasChanged();
+    });
             });
 
             _globalHubConnection.On<string, string, string, string?>("ProviderRateLimited",
@@ -449,25 +457,25 @@ TimeSpan.FromSeconds(10) })
                 });
             });
 
-			_globalHubConnection.On<VibeSwarm.Shared.Models.DeveloperModeStatus>("DeveloperUpdateStatusChanged",
-			async status =>
-			{
-				await InvokeAsync(() =>
-				{
-					DeveloperUpdateOverlayService.SetStatus(status);
-					StateHasChanged();
-				});
-			});
+            _globalHubConnection.On<VibeSwarm.Shared.Models.DeveloperModeStatus>("DeveloperUpdateStatusChanged",
+            async status =>
+            {
+                await InvokeAsync(() =>
+                {
+                    DeveloperUpdateOverlayService.SetStatus(status);
+                    StateHasChanged();
+                });
+            });
 
-			_globalHubConnection.On<VibeSwarm.Shared.Models.DeveloperUpdateOutputLine>("DeveloperUpdateOutputAdded",
-			async line =>
-			{
-				await InvokeAsync(() =>
-				{
-					DeveloperUpdateOverlayService.AppendOutput(line);
-					StateHasChanged();
-				});
-			});
+            _globalHubConnection.On<VibeSwarm.Shared.Models.DeveloperUpdateOutputLine>("DeveloperUpdateOutputAdded",
+            async line =>
+            {
+                await InvokeAsync(() =>
+                {
+                    DeveloperUpdateOverlayService.AppendOutput(line);
+                    StateHasChanged();
+                });
+            });
 
             _globalHubConnection.Reconnected += async (connectionId) =>
             {
@@ -475,7 +483,7 @@ TimeSpan.FromSeconds(10) })
                 {
                     await _globalHubConnection.InvokeAsync("SubscribeToGlobalEvents");
                     await _globalHubConnection.InvokeAsync("SubscribeToJobList");
-					await SyncDeveloperUpdateStatusAsync();
+                    await SyncDeveloperUpdateStatusAsync();
                 }
                 catch
                 {
@@ -498,21 +506,21 @@ TimeSpan.FromSeconds(10) })
         }
     }
 
-	private async Task SyncDeveloperUpdateStatusAsync()
-	{
-		try
-		{
-			var status = await DeveloperModeService.GetStatusAsync();
-			await InvokeAsync(() =>
-			{
-				DeveloperUpdateOverlayService.SetStatus(status);
-				StateHasChanged();
-			});
-		}
-		catch
-		{
-		}
-	}
+    private async Task SyncDeveloperUpdateStatusAsync()
+    {
+        try
+        {
+            var status = await DeveloperModeService.GetStatusAsync();
+            await InvokeAsync(() =>
+            {
+                DeveloperUpdateOverlayService.SetStatus(status);
+                StateHasChanged();
+            });
+        }
+        catch
+        {
+        }
+    }
 
     // Global SignalR event handlers for cross-page notifications
     private void OnConnectionStateChanged(string state)
@@ -775,7 +783,8 @@ return true;
             refreshAction: refreshAction);
     }
 
-    private async Task LogCriticalErrorAsync(string category, string message, string? details, bool triggeredRefresh, string? refreshAction)
+    private async Task LogCriticalErrorAsync(string category, string message, string? details, bool triggeredRefresh,
+string? refreshAction)
     {
         try
         {
@@ -804,8 +813,6 @@ return true;
     {
         ChangePasswordModalService.OnShowModal -= ShowChangePasswordModal;
         ChangePasswordModalService.OnHideModal -= CloseChangePasswordModal;
-        MobileNavService.OnMenuToggleRequested -= ToggleMobileMenu;
-        MobileNavService.OnMenuCloseRequested -= CloseMobileMenu;
     }
 
     public async ValueTask DisposeAsync()

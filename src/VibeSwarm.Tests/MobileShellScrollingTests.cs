@@ -12,6 +12,7 @@ public sealed class MobileShellScrollingTests
 		Assert.Contains("app-layout d-flex flex-column", layoutMarkup);
 		Assert.DoesNotContain("min-vh-100", layoutMarkup);
 		Assert.Contains("app-main flex-grow-1 min-height-0 overflow-y-auto overflow-x-hidden", layoutMarkup);
+		Assert.DoesNotContain("<BottomTabBar />", layoutMarkup);
 	}
 
 	[Fact]
@@ -51,6 +52,9 @@ public sealed class MobileShellScrollingTests
 		Assert.Contains("transform: translateX(-50%);", css);
 		Assert.Contains("transform: translateX(-50%) translateY(-8px);", css);
 		Assert.Contains("transform: translateX(-50%) translateY(0);", css);
+		Assert.DoesNotContain("--vs-bottom-nav-height", css);
+		Assert.DoesNotContain(".bottom-tab-bar", css);
+		Assert.DoesNotContain("padding-bottom: calc(var(--vs-bottom-nav-height) + var(--vs-safe-area-bottom)) !important;", css);
 	}
 
 	[Fact]
