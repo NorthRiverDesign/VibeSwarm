@@ -55,6 +55,7 @@ public sealed class MobileShellScrollingTests
 		Assert.DoesNotContain("--vs-bottom-nav-height", css);
 		Assert.DoesNotContain(".bottom-tab-bar", css);
 		Assert.DoesNotContain("padding-bottom: calc(var(--vs-bottom-nav-height) + var(--vs-safe-area-bottom)) !important;", css);
+		Assert.DoesNotMatch(new Regex(@"\.app-main\s*\{[^}]*padding-bottom:\s*var\(--vs-safe-area-bottom\);", RegexOptions.Multiline), css);
 	}
 
 	[Fact]

@@ -261,7 +261,6 @@ body:has(.app-layout) {
 /* Main area — markup uses flex-grow-1 */
 .app-main {
 	min-height: 0;
-	padding-bottom: var(--vs-safe-area-bottom);
 	-webkit-overflow-scrolling: touch;
 	overscroll-behavior-y: contain;
 }
