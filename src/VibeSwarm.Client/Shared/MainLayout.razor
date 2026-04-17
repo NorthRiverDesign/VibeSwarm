@@ -9,6 +9,7 @@
 @inject ChangePasswordModalService ChangePasswordModalService
 @inject QueuePanelStateService QueuePanelStateService
 @inject DeveloperUpdateOverlayService DeveloperUpdateOverlayService
+@inject MobileNavService MobileNavService
 @inject HttpClient HttpClient
 @inject NavigationManager NavigationManager
 @implements IAsyncDisposable
@@ -161,6 +162,8 @@
 
     </div>
 
+    <BottomTabBar />
+
     <AuthenticationKeepAlive />
     <AppUpdateBanner />
     <InstallPromptBanner />
@@ -243,6 +246,8 @@
     {
         ChangePasswordModalService.OnShowModal += ShowChangePasswordModal;
         ChangePasswordModalService.OnHideModal += CloseChangePasswordModal;
+        MobileNavService.OnMenuToggleRequested += ToggleMobileMenu;
+        MobileNavService.OnMenuCloseRequested += CloseMobileMenu;
     }
 
     protected override async Task OnInitializedAsync()
@@ -312,11 +317,13 @@
     private void ToggleMobileMenu()
     {
         _mobileMenuOpen = !_mobileMenuOpen;
+        InvokeAsync(StateHasChanged);
     }
 
     private void CloseMobileMenu()
     {
         _mobileMenuOpen = false;
+        InvokeAsync(StateHasChanged);
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -797,6 +804,8 @@ return true;
     {
         ChangePasswordModalService.OnShowModal -= ShowChangePasswordModal;
         ChangePasswordModalService.OnHideModal -= CloseChangePasswordModal;
+        MobileNavService.OnMenuToggleRequested -= ToggleMobileMenu;
+        MobileNavService.OnMenuCloseRequested -= CloseMobileMenu;
     }
 
     public async ValueTask DisposeAsync()

@@ -1,0 +1,88 @@
+@inject NavigationManager NavigationManager
+@inject MobileNavService MobileNavService
+@inject NotificationService NotificationService
+@implements IDisposable
+
+<nav class="bottom-tab-bar position-fixed start-0 end-0 bottom-0 bg-body-secondary border-top" aria-label="Main navigation">
+	<NavLink href="/"
+			 class="bottom-tab-item d-flex flex-column align-items-center justify-content-center text-decoration-none gap-1 touch-manipulation"
+			 Match="NavLinkMatch.All"
+			 @onclick="CloseMenu">
+		<i class="bi bi-house-door"></i>
+		<span>Home</span>
+	</NavLink>
+	<NavLink href="/projects"
+			 class="bottom-tab-item d-flex flex-column align-items-center justify-content-center text-decoration-none gap-1 touch-manipulation"
+			 @onclick="CloseMenu">
+		<i class="bi bi-folder"></i>
+		<span>Projects</span>
+	</NavLink>
+	<NavLink href="/jobs"
+			 class="bottom-tab-item d-flex flex-column align-items-center justify-content-center text-decoration-none gap-1 touch-manipulation"
+			 @onclick="CloseMenu">
+		<i class="bi bi-list-check"></i>
+		<span>Jobs</span>
+	</NavLink>
+	<button type="button"
+			class="bottom-tab-item bottom-tab-more d-flex flex-column align-items-center justify-content-center border-0 bg-transparent touch-manipulation position-relative @(IsMoreActive ? "active" : "")"
+			@onclick="ToggleMenu"
+			aria-label="More navigation options">
+		@if (_unreadCount > 0)
+		{
+			<span class="bottom-tab-badge position-absolute badge rounded-pill bg-danger"
+				  aria-label="@_unreadCount unread notifications">
+				@(_unreadCount > 9 ? "9+" : _unreadCount.ToString())
+			</span>
+		}
+		<i class="bi bi-grid"></i>
+		<span>More</span>
+	</button>
+</nav>
+
+@code {
+	private int _unreadCount;
+
+	private bool IsMoreActive
+	{
+		get
+		{
+			var uri = NavigationManager.ToAbsoluteUri(NavigationManager.Uri).AbsolutePath;
+			return uri != "/" && !uri.StartsWith("/projects", StringComparison.OrdinalIgnoreCase) &&
+				   !uri.StartsWith("/jobs", StringComparison.OrdinalIgnoreCase);
+		}
+	}
+
+	protected override void OnInitialized()
+	{
+		NotificationService.OnChange += OnNotificationChange;
+		_unreadCount = NotificationService.UnreadCount;
+		NavigationManager.LocationChanged += OnLocationChanged;
+	}
+
+	private void OnNotificationChange()
+	{
+		_unreadCount = NotificationService.UnreadCount;
+		InvokeAsync(StateHasChanged);
+	}
+
+	private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+	{
+		InvokeAsync(StateHasChanged);
+	}
+
+	private void ToggleMenu()
+	{
+		MobileNavService.RequestMenuToggle();
+	}
+
+	private void CloseMenu()
+	{
+		MobileNavService.RequestMenuClose();
+	}
+
+	public void Dispose()
+	{
+		NotificationService.OnChange -= OnNotificationChange;
+		NavigationManager.LocationChanged -= OnLocationChanged;
+	}
+}

@@ -67,6 +67,7 @@ builder.Services.AddScoped<ThemeService>();
 builder.Services.AddScoped<AppTimeZoneService>();
 builder.Services.AddScoped<QueuePanelStateService>();
 builder.Services.AddScoped<DeveloperUpdateOverlayService>();
+builder.Services.AddScoped<MobileNavService>();
 
 // Auth
 builder.Services.AddAuthorizationCore();

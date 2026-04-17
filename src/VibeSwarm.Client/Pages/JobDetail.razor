@@ -20,6 +20,8 @@ else if (Job == null)
 }
 else
 {
+    <WakeLockManager IsActive="@IsJobActive" />
+
     @* Breadcrumb Navigation *@
     <Breadcrumb Items="@_breadcrumbItems" />
 

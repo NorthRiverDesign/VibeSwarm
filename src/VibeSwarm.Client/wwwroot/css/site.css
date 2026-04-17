@@ -43,6 +43,7 @@
 :root {
 	--vs-sidebar-width: 240px;
 	--vs-header-height: 56px;
+	--vs-bottom-nav-height: 56px;
 	--vs-nav-popout-shadow:
 		0 1.25rem 2.5rem rgba(15, 23, 42, 0.18),
 		0 0.5rem 1rem rgba(15, 23, 42, 0.12);
@@ -1358,4 +1359,61 @@ body.vs-modal-open .app-main {
 }
 #reconnect-reload-btn {
 	min-width: 140px;
+}
+
+/* ============================================
+   18. BOTTOM TAB BAR (PWA standalone mobile)
+============================================ */
+.bottom-tab-bar {
+display: none;
+height: calc(var(--vs-bottom-nav-height) + var(--vs-safe-area-bottom));
+padding-bottom: var(--vs-safe-area-bottom);
+padding-left: var(--vs-safe-area-left);
+padding-right: var(--vs-safe-area-right);
+z-index: 1000;
+}
+
+/* Only show in standalone PWA mode on mobile */
+@media all and (display-mode: standalone) and (max-width: 991.98px) {
+.bottom-tab-bar {
+display: flex;
+}
+
+/* Push main content above the tab bar */
+.app-main {
+padding-bottom: calc(var(--vs-bottom-nav-height) + var(--vs-safe-area-bottom)) !important;
+}
+}
+
+.bottom-tab-item {
+flex: 1;
+color: var(--bs-secondary-color);
+text-decoration: none;
+font-size: 0.65rem;
+font-weight: 500;
+padding: 0;
+cursor: pointer;
+transition: color var(--vs-transition);
+-webkit-tap-highlight-color: transparent;
+}
+
+.bottom-tab-item i {
+font-size: 1.25rem;
+}
+
+.bottom-tab-item.active,
+.bottom-tab-item:active {
+color: var(--vs-accent-blue);
+}
+
+.bottom-tab-item:hover {
+color: var(--bs-body-color);
+}
+
+.bottom-tab-badge {
+top: 6px;
+right: calc(50% - 20px);
+font-size: 0.6rem;
+padding: 0.15em 0.35em;
+min-width: 1.2em;
 }
