@@ -770,6 +770,12 @@ public class Job
 
     public ICollection<JobProviderAttempt> ProviderAttempts { get; set; } = new List<JobProviderAttempt>();
 
+	/// <summary>
+	/// Snapshots of prior change sets captured before each follow-up reset.
+	/// Ordered by FollowUpIndex ascending (0 = initial run).
+	/// </summary>
+	public ICollection<JobChangeSet> ChangeSets { get; set; } = new List<JobChangeSet>();
+
     /// <summary>
     /// Creates completion criteria from this job's settings.
     /// Uses job-level settings if available, falling back to provider settings, then defaults.

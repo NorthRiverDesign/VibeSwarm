@@ -404,6 +404,12 @@ body:has(.app-layout) {
 .hover-underline:hover {
 	text-decoration: underline !important;
 }
+details[open] > summary .details-chevron {
+	transform: rotate(90deg);
+}
+.details-chevron {
+	transition: transform var(--vs-transition);
+}
 
 /* ============================================
    6. CONSOLE/TERMINAL OUTPUT

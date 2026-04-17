@@ -29,6 +29,7 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 	public DbSet<JobPlanningStatistics> JobPlanningStatistics { get; set; }
 	public DbSet<JobExecutionStatistics> JobExecutionStatistics { get; set; }
 	public DbSet<JobMessage> JobMessages { get; set; }
+	public DbSet<JobChangeSet> JobChangeSets { get; set; }
 	public DbSet<JobProviderAttempt> JobProviderAttempts { get; set; }
 	public DbSet<Skill> Skills { get; set; }
 	public DbSet<Agent> Agents { get; set; }
@@ -334,6 +335,21 @@ public class VibeSwarmDbContext : IdentityDbContext<ApplicationUser, IdentityRol
 	.OnDelete(DeleteBehavior.Cascade);
 			entity.HasIndex(e => e.JobId);
 			entity.HasIndex(e => e.CreatedAt);
+		});
+
+		modelBuilder.Entity<JobChangeSet>(entity =>
+		{
+			entity.HasKey(e => e.Id);
+			entity.Property(e => e.GitCommitHash).HasMaxLength(100);
+			entity.Property(e => e.GitCommitBefore).HasMaxLength(100);
+			entity.Property(e => e.PullRequestUrl).HasMaxLength(500);
+			entity.Property(e => e.ModelUsed).HasMaxLength(200);
+			entity.HasOne(e => e.Job)
+				.WithMany(j => j.ChangeSets)
+				.HasForeignKey(e => e.JobId)
+				.OnDelete(DeleteBehavior.Cascade);
+			entity.HasIndex(e => e.JobId);
+			entity.HasIndex(e => new { e.JobId, e.FollowUpIndex });
 		});
 
 		modelBuilder.Entity<JobProviderAttempt>(entity =>

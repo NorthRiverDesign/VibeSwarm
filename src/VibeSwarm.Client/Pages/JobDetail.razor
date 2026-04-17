@@ -51,6 +51,11 @@ else
 					   PlaywrightEnabled="@Job.PlaywrightEnabled" EnvironmentCount="@Job.EnvironmentSnapshots.Count"
 					   EnvironmentTooltip="@BuildEnvironmentTooltip()" />
 
+	@if (ShowChangeSets)
+	{
+		<JobChangeSetsCard ChangeSets="@_changeSets" />
+	}
+
 		@if (ShowJobOutcomeSummary)
 		{
 			<JobOutcomeSummaryCard Status="@Job.Status"
@@ -227,6 +232,8 @@ else
 	private DateTime _pageLoadTime = DateTime.UtcNow;
 	private Guid? _loadedJobId;
 	private bool ShowJobOutcomeSummary => Job != null && Job.Status is JobStatus.Completed or JobStatus.Failed or JobStatus.Cancelled or JobStatus.Stalled;
+	private List<JobChangeSet> _changeSets = new();
+	private bool ShowChangeSets => _changeSets.Count > 0;
 
     // Toggle states for collapsible sections
     private bool _showGitDiff = true;

@@ -149,6 +149,12 @@ public partial class JobDetail : ComponentBase
                 }
             }
 
+            if (Job != null && ShowJobOutcomeSummary && _changeSets.Count == 0)
+            {
+                try { _changeSets = (await JobService.GetChangeSetsAsync(Job.Id)).ToList(); }
+                catch { /* non-critical — page still works without change history */ }
+            }
+
             ReconcilePendingSessionMessages();
 
             if (Job != null && (Job.Status == JobStatus.Failed || Job.Status == JobStatus.Cancelled) &&

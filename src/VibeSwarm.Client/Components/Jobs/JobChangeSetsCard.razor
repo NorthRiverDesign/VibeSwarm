@@ -1,0 +1,104 @@
+@using VibeSwarm.Shared.Data
+
+@if (ChangeSets.Count > 0)
+{
+	<div class="card mb-3 mb-lg-4 border-0 shadow-sm">
+		<div class="card-body d-flex flex-column gap-3">
+			<div class="d-flex align-items-center gap-2">
+				<i class="bi bi-clock-history text-body-secondary"></i>
+				<span class="fw-semibold">Previous Change Sets</span>
+				<span class="badge bg-body-tertiary text-body">@ChangeSets.Count</span>
+			</div>
+
+			<div class="d-flex flex-column gap-2">
+				@foreach (var cs in ChangeSets)
+				{
+					<details class="border rounded">
+						<summary class="d-flex align-items-center gap-2 p-3 cursor-pointer user-select-none">
+							<i class="bi bi-chevron-right details-chevron flex-shrink-0 small text-body-secondary"></i>
+							<span class="fw-semibold flex-grow-1">@GetLabel(cs)</span>
+							@if (!string.IsNullOrWhiteSpace(cs.GitCommitHash))
+							{
+								<span class="badge bg-body-tertiary text-body font-monospace d-none d-sm-inline">
+									<i class="bi bi-git me-1 opacity-75"></i>@cs.GitCommitHash[..Math.Min(7, cs.GitCommitHash.Length)]
+								</span>
+							}
+							@if (cs.ChangedFilesCount.HasValue)
+							{
+								<span class="badge bg-body-tertiary text-body d-none d-sm-inline">
+									<i class="bi bi-files me-1 opacity-75"></i>@cs.ChangedFilesCount
+								</span>
+							}
+							@if (cs.CompletedAt.HasValue)
+							{
+								<span class="small text-body-secondary d-none d-md-inline">@cs.CompletedAt.Value.ToLocalTime().ToString("MMM d, h:mm tt")</span>
+							}
+						</summary>
+
+						<div class="px-3 pb-3 d-flex flex-column gap-3">
+							<div class="d-flex flex-wrap gap-2">
+								@if (!string.IsNullOrWhiteSpace(cs.GitCommitHash))
+								{
+									<span class="badge bg-body-tertiary text-body font-monospace">
+										<i class="bi bi-git me-1 opacity-75"></i>@cs.GitCommitHash[..Math.Min(7, cs.GitCommitHash.Length)]
+									</span>
+								}
+								@if (cs.ChangedFilesCount.HasValue)
+								{
+									<span class="badge bg-body-tertiary text-body">
+										<i class="bi bi-files me-1 opacity-75"></i>@cs.ChangedFilesCount @(cs.ChangedFilesCount == 1 ? "file" : "files") changed
+									</span>
+								}
+								@if (cs.BuildVerified == true)
+								{
+									<span class="badge bg-success-subtle text-success">
+										<i class="bi bi-check-circle me-1"></i>Build verified
+									</span>
+								}
+								else if (cs.BuildVerified == false)
+								{
+									<span class="badge bg-danger-subtle text-danger">
+										<i class="bi bi-x-circle me-1"></i>Build failed
+									</span>
+								}
+								@if (!string.IsNullOrWhiteSpace(cs.PullRequestUrl))
+								{
+									<a href="@cs.PullRequestUrl" target="_blank" rel="noreferrer"
+									   class="badge bg-body-tertiary text-body text-decoration-none">
+										<i class="bi bi-github me-1 opacity-75"></i>PR@(cs.PullRequestNumber.HasValue ? $" #{cs.PullRequestNumber.Value}" : string.Empty)
+										@if (cs.MergedAt.HasValue)
+										{
+											<span class="ms-1 text-success">(merged)</span>
+										}
+									</a>
+								}
+								@if (!string.IsNullOrWhiteSpace(cs.ModelUsed))
+								{
+									<span class="badge bg-body-tertiary text-body">
+										<i class="bi bi-cpu me-1 opacity-75"></i>@cs.ModelUsed
+									</span>
+								}
+							</div>
+
+							@if (!string.IsNullOrWhiteSpace(cs.SessionSummary))
+							{
+								<div class="border rounded p-3 d-flex flex-column gap-2 min-width-0">
+									<div class="small fw-semibold text-body-secondary text-uppercase">Work summary</div>
+									<div class="small white-space-pre-wrap text-break">@cs.SessionSummary</div>
+								</div>
+							}
+						</div>
+					</details>
+				}
+			</div>
+		</div>
+	</div>
+}
+
+@code {
+	[Parameter, EditorRequired]
+	public IReadOnlyList<JobChangeSet> ChangeSets { get; set; } = [];
+
+	private static string GetLabel(JobChangeSet cs)
+		=> cs.FollowUpIndex == 0 ? "Initial Run" : $"Follow-up #{cs.FollowUpIndex}";
+}

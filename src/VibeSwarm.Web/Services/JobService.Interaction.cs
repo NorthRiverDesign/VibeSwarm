@@ -155,6 +155,31 @@ public partial class JobService
 
         _dbContext.JobMessages.Add(message);
 
+		// Capture the current change set before clearing it for the follow-up.
+		var followUpIndex = await _dbContext.JobChangeSets
+			.Where(cs => cs.JobId == job.Id)
+			.CountAsync(cancellationToken);
+
+		var changeSet = new JobChangeSet
+		{
+			Id = Guid.NewGuid(),
+			JobId = job.Id,
+			FollowUpIndex = followUpIndex,
+			CompletedAt = job.CompletedAt,
+			GitCommitHash = job.GitCommitHash,
+			GitCommitBefore = job.GitCommitBefore,
+			ChangedFilesCount = job.ChangedFilesCount,
+			SessionSummary = job.SessionSummary,
+			PullRequestNumber = job.PullRequestNumber,
+			PullRequestUrl = job.PullRequestUrl,
+			MergedAt = job.MergedAt,
+			BuildVerified = job.BuildVerified,
+			ModelUsed = job.ModelUsed,
+			CreatedAt = submittedAt
+		};
+
+		_dbContext.JobChangeSets.Add(changeSet);
+
         job.GoalPrompt = BuildContinuationPrompt(job.GoalPrompt, trimmedFollowUp);
         await ResetJobForFollowUp(job, submittedAt, cancellationToken);
         await InitializeExecutionPlanAsync(job, cancellationToken);

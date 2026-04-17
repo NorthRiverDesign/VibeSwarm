@@ -37,6 +37,15 @@ public partial class JobService
         await _dbContext.SaveChangesAsync(cancellationToken);
     }
 
+    public async Task<IEnumerable<JobChangeSet>> GetChangeSetsAsync(Guid jobId, CancellationToken cancellationToken = default)
+    {
+        return await _dbContext.JobChangeSets
+            .Where(cs => cs.JobId == jobId)
+            .OrderBy(cs => cs.FollowUpIndex)
+            .AsNoTracking()
+            .ToListAsync(cancellationToken);
+    }
+
     private async Task InitializeExecutionPlanAsync(Job job, CancellationToken cancellationToken)
     {
         var targets = await BuildExecutionPlanAsync(job, cancellationToken);
