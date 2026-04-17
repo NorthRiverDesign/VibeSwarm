@@ -329,7 +329,7 @@ public partial class JobDetail : ComponentBase
             if (!result)
             {
                 _pendingSessionMessages.Remove(optimisticMessage);
-                NotificationService.ShowError("Could not continue the job. It may no longer be completed.");
+                NotificationService.ShowError("Could not continue the job. It may be in an active state.");
                 return;
             }
 

@@ -1463,6 +1463,75 @@ public sealed class JobSessionPanelTests
 		Assert.True(cut.Find("button[title='Send follow-up']").HasAttribute("disabled"));
 	}
 
+	[Fact]
+	public void JobSessionPanel_Bunit_ShowsFollowUpInputForStalledJob()
+	{
+		using var context = new BunitContext();
+		string? followUpPrompt = null;
+
+		var cut = context.Render<JobSessionPanel>(parameters => parameters
+			.Add(panel => panel.Status, JobStatus.Stalled)
+			.Add(panel => panel.Messages, new List<JobMessage>())
+			.Add(panel => panel.OnSendFollowUp, async (string prompt) =>
+			{
+				followUpPrompt = prompt;
+				await Task.CompletedTask;
+			}));
+
+		var sendButton = cut.Find("button[title='Send follow-up']");
+		Assert.True(sendButton.HasAttribute("disabled"));
+
+		cut.Find("textarea").Input("Try again with the auth middleware.");
+
+		sendButton = cut.Find("button[title='Send follow-up']");
+		Assert.False(sendButton.HasAttribute("disabled"));
+
+		sendButton.Click();
+
+		Assert.Equal("Try again with the auth middleware.", followUpPrompt);
+	}
+
+	[Fact]
+	public void JobSessionPanel_Bunit_ShowsFollowUpInputForFailedJob()
+	{
+		using var context = new BunitContext();
+		string? followUpPrompt = null;
+
+		var cut = context.Render<JobSessionPanel>(parameters => parameters
+			.Add(panel => panel.Status, JobStatus.Failed)
+			.Add(panel => panel.Messages, new List<JobMessage>())
+			.Add(panel => panel.OnSendFollowUp, async (string prompt) =>
+			{
+				followUpPrompt = prompt;
+				await Task.CompletedTask;
+			}));
+
+		var sendButton = cut.Find("button[title='Send follow-up']");
+		Assert.True(sendButton.HasAttribute("disabled"));
+
+		cut.Find("textarea").Input("Fix the null reference on line 42.");
+
+		sendButton = cut.Find("button[title='Send follow-up']");
+		Assert.False(sendButton.HasAttribute("disabled"));
+
+		sendButton.Click();
+
+		Assert.Equal("Fix the null reference on line 42.", followUpPrompt);
+	}
+
+	[Fact]
+	public void JobSessionPanel_Bunit_HidesFollowUpInputForActiveJob()
+	{
+		using var context = new BunitContext();
+
+		var cut = context.Render<JobSessionPanel>(parameters => parameters
+			.Add(panel => panel.Status, JobStatus.Processing)
+			.Add(panel => panel.Messages, new List<JobMessage>())
+			.Add(panel => panel.OnSendFollowUp, async (string prompt) => await Task.CompletedTask));
+
+		Assert.Empty(cut.FindAll("button[title='Send follow-up']"));
+	}
+
 	private sealed class NoOpJsRuntime : IJSRuntime
 	{
 		public ValueTask<TValue> InvokeAsync<TValue>(string identifier, object?[]? args)

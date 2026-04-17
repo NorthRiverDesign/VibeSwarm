@@ -960,6 +960,111 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 	}
 
 	[Fact]
+	public async Task ContinueJobAsync_AllowsContinuationForStalledJob()
+	{
+		await using var dbContext = CreateDbContext();
+		var project = new Project { Id = Guid.NewGuid(), Name = "Stalled Project", WorkingPath = "/tmp/stalled" };
+		var provider = new Provider { Id = Guid.NewGuid(), Name = "Copilot", Type = ProviderType.Copilot, IsEnabled = true, IsDefault = true };
+		var job = new Job
+		{
+			Id = Guid.NewGuid(),
+			ProjectId = project.Id,
+			ProviderId = provider.Id,
+			GoalPrompt = "Add a new endpoint",
+			Status = JobStatus.Stalled,
+			SessionId = "stalled-session-1",
+			ErrorMessage = "Job stalled after 10 minutes without activity.",
+			ConsoleOutput = "partial output...",
+		};
+		dbContext.Projects.Add(project);
+		dbContext.Providers.Add(provider);
+		dbContext.Jobs.Add(job);
+		await dbContext.SaveChangesAsync();
+
+		var serviceProvider = new ServiceCollection().BuildServiceProvider();
+		var jobService = new JobService(dbContext, serviceProvider);
+
+		var continued = await jobService.ContinueJobAsync(job.Id, "The endpoint needs authentication middleware.");
+
+		Assert.True(continued);
+
+		var savedJob = await dbContext.Jobs.SingleAsync(j => j.Id == job.Id);
+		Assert.Equal(JobStatus.New, savedJob.Status);
+		Assert.Equal("stalled-session-1", savedJob.SessionId);
+		Assert.Contains("Previous goal: Add a new endpoint", savedJob.GoalPrompt);
+		Assert.Contains("The endpoint needs authentication middleware.", savedJob.GoalPrompt);
+		Assert.Null(savedJob.ErrorMessage);
+		Assert.Null(savedJob.ConsoleOutput);
+
+		var message = await dbContext.JobMessages.SingleAsync(m => m.JobId == job.Id);
+		Assert.Equal(MessageRole.User, message.Role);
+		Assert.Equal("The endpoint needs authentication middleware.", message.Content);
+	}
+
+	[Fact]
+	public async Task ContinueJobAsync_AllowsContinuationForFailedJob()
+	{
+		await using var dbContext = CreateDbContext();
+		var project = new Project { Id = Guid.NewGuid(), Name = "Failed Project", WorkingPath = "/tmp/failed" };
+		var provider = new Provider { Id = Guid.NewGuid(), Name = "Copilot", Type = ProviderType.Copilot, IsEnabled = true, IsDefault = true };
+		var job = new Job
+		{
+			Id = Guid.NewGuid(),
+			ProjectId = project.Id,
+			ProviderId = provider.Id,
+			GoalPrompt = "Fix the bug",
+			Status = JobStatus.Failed,
+			SessionId = "failed-session-1",
+			ErrorMessage = "CLI process failed to start.",
+		};
+		dbContext.Projects.Add(project);
+		dbContext.Providers.Add(provider);
+		dbContext.Jobs.Add(job);
+		await dbContext.SaveChangesAsync();
+
+		var serviceProvider = new ServiceCollection().BuildServiceProvider();
+		var jobService = new JobService(dbContext, serviceProvider);
+
+		var continued = await jobService.ContinueJobAsync(job.Id, "Use a different approach to fix the null reference.");
+
+		Assert.True(continued);
+
+		var savedJob = await dbContext.Jobs.SingleAsync(j => j.Id == job.Id);
+		Assert.Equal(JobStatus.New, savedJob.Status);
+		Assert.Null(savedJob.ErrorMessage);
+		Assert.Contains("Follow-up instructions:\nUse a different approach to fix the null reference.", savedJob.GoalPrompt);
+	}
+
+	[Fact]
+	public async Task ContinueJobAsync_ReturnsFalseForActiveJob()
+	{
+		await using var dbContext = CreateDbContext();
+		var project = new Project { Id = Guid.NewGuid(), Name = "Active Project", WorkingPath = "/tmp/active" };
+		var provider = new Provider { Id = Guid.NewGuid(), Name = "Copilot", Type = ProviderType.Copilot, IsEnabled = true, IsDefault = true };
+		var job = new Job
+		{
+			Id = Guid.NewGuid(),
+			ProjectId = project.Id,
+			ProviderId = provider.Id,
+			GoalPrompt = "Do work",
+			Status = JobStatus.Processing,
+		};
+		dbContext.Projects.Add(project);
+		dbContext.Providers.Add(provider);
+		dbContext.Jobs.Add(job);
+		await dbContext.SaveChangesAsync();
+
+		var serviceProvider = new ServiceCollection().BuildServiceProvider();
+		var jobService = new JobService(dbContext, serviceProvider);
+
+		var result = await jobService.ContinueJobAsync(job.Id, "Some instructions");
+
+		Assert.False(result);
+		var unchanged = await dbContext.Jobs.SingleAsync(j => j.Id == job.Id);
+		Assert.Equal(JobStatus.Processing, unchanged.Status);
+	}
+
+	[Fact]
 	public async Task GetChangeSetsAsync_ReturnsChangeSetsOrderedByFollowUpIndex()
 	{
 		await using var dbContext = CreateDbContext();

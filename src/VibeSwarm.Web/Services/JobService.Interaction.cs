@@ -138,7 +138,7 @@ public partial class JobService
 			.Include(j => j.ExecutionStatistics)
 			.FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
 
-        if (job == null || job.Status != JobStatus.Completed)
+        if (job == null || job.Status is not (JobStatus.Completed or JobStatus.Stalled or JobStatus.Failed))
         {
             return false;
         }
