@@ -298,14 +298,14 @@
 
 	protected override async Task OnParametersSetAsync()
 	{
-		if (!_projects.Any() || !_providers.Any())
-		{
-			await LoadLookupDataAsync();
-		}
-
 		if (IsVisible && !_previousIsVisible)
 		{
+			await LoadLookupDataAsync();
 			await ResetStateAsync();
+		}
+		else if (!_projects.Any() || !_providers.Any())
+		{
+			await LoadLookupDataAsync();
 		}
 
 		_previousIsVisible = IsVisible;
