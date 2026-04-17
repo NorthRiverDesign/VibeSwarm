@@ -58,15 +58,26 @@ public partial class JobProcessingService
                 _logger.LogWarning(ex, "Failed to refresh execution plan for job {JobId}, continuing with existing plan", job.Id);
             }
 
-            await dbContext.Entry(job).ReloadAsync(cancellationToken);
-            if (job.Provider == null)
+            // The `job` parameter was materialized in the OUTER GetPendingJobsAsync scope's
+            // DbContext. RefreshExecutionPlanAsync above queries Jobs through this scope's
+            // context (scopedJobService shares scopedDbContext) and tracks a *different*
+            // Job instance with the same Id here. Calling dbContext.Entry(job).ReloadAsync()
+            // on the outer instance at that point triggers an identity-map conflict:
+            // "another instance with the same key value for {'Id'} is already being tracked".
+            // Rebind `job` to the instance tracked in this scope so subsequent Entry(job),
+            // dbContext.SaveChanges, and nav-property fix-up all operate on one entity.
+            var trackedJob = await dbContext.Jobs
+                .Include(j => j.Provider)
+                .Include(j => j.Project)
+                .FirstOrDefaultAsync(j => j.Id == job.Id, cancellationToken);
+
+            if (trackedJob == null)
             {
-                await dbContext.Entry(job).Reference(j => j.Provider).LoadAsync(cancellationToken);
+                _logger.LogWarning("Job {JobId} disappeared after claim, skipping execution.", job.Id);
+                return;
             }
-            if (job.Project == null)
-            {
-                await dbContext.Entry(job).Reference(j => j.Project).LoadAsync(cancellationToken);
-            }
+
+            job = trackedJob;
 
             // Store provider ID for cleanup (may have changed after refresh)
             executionContext.ProviderId = job.ProviderId;
