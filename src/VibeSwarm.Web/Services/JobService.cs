@@ -425,15 +425,26 @@ public partial class JobService : IJobService
 			throw new InvalidOperationException("No enabled providers are available for this job.");
 		}
 
-        var existingTracked = _dbContext.ChangeTracker.Entries<Job>()
-            .FirstOrDefault(entry => entry.Entity.Id == job.Id);
-        if (existingTracked != null)
+        // Persist the new job in an isolated DbContext scope. The shared _dbContext
+        // already has providers/agents/etc tracked from validation above, and if a
+        // caller like IdeaService.ConvertToJobAsync invoked us, its own entities are
+        // tracked there too — any of those can collide with EF navigation fix-up when
+        // adding a new Job graph. A fresh context guarantees a clean identity map
+        // without detaching the caller's working set.
+        using var addScope = _serviceProvider.CreateScope();
+        var freshContext = addScope.ServiceProvider.GetService<VibeSwarmDbContext>();
+        if (freshContext is not null)
         {
-            existingTracked.State = EntityState.Detached;
+            freshContext.Jobs.Add(job);
+            await freshContext.SaveChangesAsync(cancellationToken);
+            freshContext.Entry(job).State = EntityState.Detached;
         }
-
-        _dbContext.Jobs.Add(job);
-        await _dbContext.SaveChangesAsync(cancellationToken);
+        else
+        {
+            // Tests that construct JobService with an empty provider land here.
+            _dbContext.Jobs.Add(job);
+            await _dbContext.SaveChangesAsync(cancellationToken);
+        }
 
         // Fan out to team swarm jobs if the project has team swarm enabled
 		var swarmJobs = job.AgentId.HasValue
