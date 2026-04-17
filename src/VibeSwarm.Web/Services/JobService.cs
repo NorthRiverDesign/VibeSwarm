@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
 using System.Text.Json;
 using VibeSwarm.Shared.Data;
@@ -18,6 +19,7 @@ public partial class JobService : IJobService
     private const int JobDetailMessageLimit = 250;
 
     private readonly VibeSwarmDbContext _dbContext;
+    private readonly DbContextOptions<VibeSwarmDbContext>? _dbContextOptions;
     private readonly IJobUpdateService? _jobUpdateService;
     private readonly IServiceProvider _serviceProvider;
     private readonly JobProcessingService? _jobProcessingService;
@@ -29,6 +31,7 @@ public partial class JobService : IJobService
         JobProcessingService? jobProcessingService = null)
     {
         _dbContext = dbContext;
+        _dbContextOptions = serviceProvider.GetService<DbContextOptions<VibeSwarmDbContext>>();
         _serviceProvider = serviceProvider;
         _jobUpdateService = jobUpdateService;
         _jobProcessingService = jobProcessingService;
@@ -425,23 +428,19 @@ public partial class JobService : IJobService
 			throw new InvalidOperationException("No enabled providers are available for this job.");
 		}
 
-        // Persist the new job in an isolated DbContext scope. The shared _dbContext
-        // already has providers/agents/etc tracked from validation above, and if a
-        // caller like IdeaService.ConvertToJobAsync invoked us, its own entities are
-        // tracked there too — any of those can collide with EF navigation fix-up when
-        // adding a new Job graph. A fresh context guarantees a clean identity map
-        // without detaching the caller's working set.
-        using var addScope = _serviceProvider.CreateScope();
-        var freshContext = addScope.ServiceProvider.GetService<VibeSwarmDbContext>();
-        if (freshContext is not null)
+        // Persist via a brand-new DbContext constructed from the same options as _dbContext.
+        // This guarantees an empty change tracker at the moment of Add, regardless of what
+        // the request-scoped _dbContext (or callers like IdeaService) already have attached.
+        if (_dbContextOptions is not null)
         {
+            await using var freshContext = new VibeSwarmDbContext(_dbContextOptions);
             freshContext.Jobs.Add(job);
             await freshContext.SaveChangesAsync(cancellationToken);
             freshContext.Entry(job).State = EntityState.Detached;
         }
         else
         {
-            // Tests that construct JobService with an empty provider land here.
+            // Tests that construct JobService with an empty IServiceProvider land here.
             _dbContext.Jobs.Add(job);
             await _dbContext.SaveChangesAsync(cancellationToken);
         }

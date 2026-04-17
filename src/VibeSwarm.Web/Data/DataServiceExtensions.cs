@@ -100,6 +100,12 @@ public static class DataServiceExtensions
 				options.UseSqlite(connectionString);
 				break;
 		}
+
+		// Surface the actual conflicting key values and the full row data when EF
+		// throws tracking or SaveChanges exceptions. Without this, the error message
+		// is generic and hides the offending Id.
+		options.EnableSensitiveDataLogging();
+		options.EnableDetailedErrors();
 	}
 
     /// <summary>
