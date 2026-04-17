@@ -306,9 +306,17 @@
 			await LoadLookupDataAsync();
 			await ResetStateAsync();
 		}
-		else if (!_projects.Any() || !_providers.Any())
+		else if (!_projects.Any() || !_providers.Any() || !_agents.Any())
 		{
 			await LoadLookupDataAsync();
+			await SyncExecutionTargetsAsync(preserveCurrentSelection: true);
+		}
+		else if (IsVisible && Schedule.ProjectId != Guid.Empty)
+		{
+			// Modal is already open with populated lookup data. Clear the project detail
+			// cache so the next SyncExecutionTargetsAsync fetches fresh agent assignments
+			// (picks up agents added to the project while the modal was open).
+			_projectDetailsById.Remove(Schedule.ProjectId);
 			await SyncExecutionTargetsAsync(preserveCurrentSelection: true);
 		}
 

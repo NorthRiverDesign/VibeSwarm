@@ -675,6 +675,123 @@ Assert.Contains("Security Reviewer", cut.Markup);
 Assert.Contains("Newly Added Agent", cut.Markup);
 }
 
+	/// <summary>
+	/// Regression: agent added to the project after the Edit Schedule modal was opened
+	/// must appear in the dropdown when providers ARE configured (non-empty _providers).
+	/// Previously, with populated lookup data both else-if conditions evaluated to false,
+	/// so the _projectDetailsById cache was never invalidated and the new agent never
+	/// appeared until the modal was closed and reopened.
+	/// </summary>
+	[Fact]
+	public void JobScheduleModal_AgentDropdown_RefreshesAfterParentRerender_WhenProvidersAreConfigured()
+	{
+		var agentId = Guid.NewGuid();
+		var newAgentId = Guid.NewGuid();
+		var providerId = Guid.NewGuid();
+		var projectId = Guid.NewGuid();
+
+		var agent = new Agent { Id = agentId, Name = "Security Reviewer", IsEnabled = true };
+		var newAgent = new Agent { Id = newAgentId, Name = "Newly Added Agent", IsEnabled = true };
+		var provider = new Provider { Id = providerId, Name = "GitHub Copilot", IsEnabled = true, IsDefault = true };
+
+		var projectWithoutNewAgent = new Project
+		{
+			Id = projectId,
+			Name = "VibeSwarm",
+			WorkingPath = "/tmp/vibeswarm",
+			AgentAssignments =
+			[
+				new ProjectAgent
+				{
+					ProjectId = projectId,
+					AgentId = agentId,
+					Agent = agent,
+					ProviderId = providerId,
+					Provider = provider,
+					IsEnabled = true
+				}
+			]
+		};
+
+		var projectWithNewAgent = new Project
+		{
+			Id = projectId,
+			Name = "VibeSwarm",
+			WorkingPath = "/tmp/vibeswarm",
+			AgentAssignments =
+			[
+				new ProjectAgent
+				{
+					ProjectId = projectId,
+					AgentId = agentId,
+					Agent = agent,
+					ProviderId = providerId,
+					Provider = provider,
+					IsEnabled = true
+				},
+				new ProjectAgent
+				{
+					ProjectId = projectId,
+					AgentId = newAgentId,
+					Agent = newAgent,
+					ProviderId = providerId,
+					Provider = provider,
+					IsEnabled = true
+				}
+			]
+		};
+
+		var editSchedule = new JobSchedule
+		{
+			Id = Guid.NewGuid(),
+			ProjectId = projectId,
+			ExecutionTarget = JobScheduleExecutionTarget.Agent,
+			AgentId = agentId,
+			ScheduleType = JobScheduleType.RunJob,
+			Prompt = "Run checks",
+			Frequency = JobScheduleFrequency.Daily,
+			HourUtc = 9,
+			IsEnabled = true
+		};
+
+		var projectService = new LiveProjectService(projectWithoutNewAgent);
+
+		using var context = new BunitContext();
+		context.JSInterop.SetupVoid("eval", "document.body.classList.add('vs-modal-open')");
+		context.JSInterop.SetupVoid("eval", "document.body.classList.remove('vs-modal-open')");
+		context.Services.AddSingleton<IProjectService>(projectService);
+		context.Services.AddSingleton<IAgentService>(new FakeAgentService([agent, newAgent]));
+		// Real provider — _providers is non-empty, so the lookup-data fallback branches
+		// never fire. The new third branch (IsVisible + non-empty ProjectId) must handle this.
+		context.Services.AddSingleton<IProviderService>(new FakeProviderService([provider]));
+		context.Services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService());
+		context.Services.AddSingleton<IJobScheduleService>(new FakeJobScheduleService());
+		context.Services.AddSingleton<ISettingsService>(new FakeSettingsService());
+		context.Services.AddSingleton<AppTimeZoneService>();
+		context.Services.AddSingleton<NotificationService>();
+
+		var cut = context.Render<JobScheduleModal>(parameters => parameters
+			.Add(component => component.IsVisible, true)
+			.Add(component => component.EditSchedule, editSchedule));
+
+		// Initial open — only the original agent should be visible.
+		Assert.Contains("Security Reviewer", cut.Markup);
+		Assert.DoesNotContain("Newly Added Agent", cut.Markup);
+
+		// Simulate: user adds a new agent to the project after the modal was opened.
+		projectService.Update(projectWithNewAgent);
+
+		// Simulate: the Scheduler page's 1-minute refresh timer triggers a parent re-render,
+		// causing OnParametersSetAsync to fire while the modal stays open.
+		cut.Render(parameters => parameters
+			.Add(component => component.IsVisible, true)
+			.Add(component => component.EditSchedule, editSchedule));
+
+		// Both agents must appear in the dropdown.
+		Assert.Contains("Security Reviewer", cut.Markup);
+		Assert.Contains("Newly Added Agent", cut.Markup);
+	}
+
 	private sealed class FakeSettingsService : ISettingsService
 	{
 		public Task<AppSettings> GetSettingsAsync(CancellationToken cancellationToken = default)
