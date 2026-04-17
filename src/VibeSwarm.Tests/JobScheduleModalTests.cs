@@ -472,6 +472,88 @@ public sealed class JobScheduleModalTests
 		Assert.Contains(agentId.ToString(), cut.Markup);
 	}
 
+	/// <summary>
+	/// Regression: an agent assignment whose provider has IsEnabled=false must still appear in
+	/// the scheduler modal agent dropdown. Previously the filter excluded such assignments,
+	/// silently hiding agents added after a provider was disabled. The server validates
+	/// provider state at save time; the dropdown should not pre-filter by provider status.
+	/// </summary>
+	[Fact]
+	public void JobScheduleModal_AgentDropdown_ShowsAssignment_WhenProviderIsDisabled()
+	{
+		var agentId = Guid.NewGuid();
+		var providerId = Guid.NewGuid();
+		var projectId = Guid.NewGuid();
+
+		// Provider is disabled — the old filter (`assignment.Provider?.IsEnabled != false`) would
+		// have silently excluded this assignment, causing the agent to vanish from the dropdown.
+		var provider = new Provider
+		{
+			Id = providerId,
+			Name = "GitHub Copilot",
+			Type = ProviderType.Copilot,
+			IsEnabled = false,
+			IsDefault = false
+		};
+		var agent = new Agent
+		{
+			Id = agentId,
+			Name = "Security Auditor",
+			IsEnabled = true
+		};
+
+		var project = new Project
+		{
+			Id = projectId,
+			Name = "VibeSwarm",
+			WorkingPath = "/tmp/vibeswarm",
+			AgentAssignments =
+			[
+				new ProjectAgent
+				{
+					ProjectId = projectId,
+					AgentId = agentId,
+					Agent = agent,
+					ProviderId = providerId,
+					Provider = provider,
+					IsEnabled = true
+				}
+			]
+		};
+
+		var editSchedule = new JobSchedule
+		{
+			Id = Guid.NewGuid(),
+			ProjectId = projectId,
+			ExecutionTarget = JobScheduleExecutionTarget.Agent,
+			AgentId = agentId,
+			ScheduleType = JobScheduleType.RunJob,
+			Prompt = "Run security audit",
+			Frequency = JobScheduleFrequency.Daily,
+			HourUtc = 9,
+			IsEnabled = true
+		};
+
+		using var context = new BunitContext();
+		context.JSInterop.SetupVoid("eval", "document.body.classList.add('vs-modal-open')");
+		context.JSInterop.SetupVoid("eval", "document.body.classList.remove('vs-modal-open')");
+		context.Services.AddSingleton<IProjectService>(new FakeProjectService([project]));
+		context.Services.AddSingleton<IAgentService>(new FakeAgentService([agent]));
+		context.Services.AddSingleton<IProviderService>(new FakeProviderService([]));
+		context.Services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService());
+		context.Services.AddSingleton<IJobScheduleService>(new FakeJobScheduleService());
+		context.Services.AddSingleton<ISettingsService>(new FakeSettingsService());
+		context.Services.AddSingleton<AppTimeZoneService>();
+		context.Services.AddSingleton<NotificationService>();
+
+		var cut = context.Render<JobScheduleModal>(parameters => parameters
+			.Add(component => component.IsVisible, true)
+			.Add(component => component.EditSchedule, editSchedule));
+
+		Assert.DoesNotContain("No enabled agents", cut.Markup);
+		Assert.Contains(agentId.ToString(), cut.Markup);
+	}
+
 	private sealed class FakeSettingsService : ISettingsService
 	{
 		public Task<AppSettings> GetSettingsAsync(CancellationToken cancellationToken = default)

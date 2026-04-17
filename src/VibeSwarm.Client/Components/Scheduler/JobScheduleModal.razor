@@ -446,9 +446,7 @@
 			.Select(EnrichAgentAssignment)
 			.Where(assignment =>
 				assignment.IsEnabled &&
-				assignment.AgentId != Guid.Empty &&
-				assignment.Agent?.IsEnabled != false &&
-				assignment.Provider?.IsEnabled != false)
+				assignment.AgentId != Guid.Empty)
 			.OrderBy(assignment => assignment.Agent?.Name ?? string.Empty, StringComparer.OrdinalIgnoreCase)
 			.ThenBy(assignment => assignment.Provider?.Name ?? string.Empty, StringComparer.OrdinalIgnoreCase)
 			.ToList() ?? [];
