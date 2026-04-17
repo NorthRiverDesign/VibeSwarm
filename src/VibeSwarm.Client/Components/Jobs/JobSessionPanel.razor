@@ -713,11 +713,17 @@
     {
         if (string.IsNullOrWhiteSpace(_followUpPrompt) || _isSendingFollowUp) return;
 
+        var prompt = _followUpPrompt;
+        _followUpPrompt = string.Empty;
         _isSendingFollowUp = true;
         try
         {
-            await OnSendFollowUp.InvokeAsync(_followUpPrompt);
-            _followUpPrompt = string.Empty;
+            await OnSendFollowUp.InvokeAsync(prompt);
+        }
+        catch
+        {
+            _followUpPrompt = prompt;
+            throw;
         }
         finally
         {

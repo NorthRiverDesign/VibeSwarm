@@ -302,27 +302,30 @@ public partial class JobDetail : ComponentBase
     {
         if (Job == null || string.IsNullOrWhiteSpace(followUpPrompt)) return;
 
+        var trimmedFollowUp = followUpPrompt.Trim();
+        var submittedAt = DateTime.UtcNow;
+
+        var optimisticMessage = new JobMessage
+        {
+            Id = Guid.NewGuid(),
+            JobId = Job.Id,
+            Role = MessageRole.User,
+            Content = trimmedFollowUp,
+            CreatedAt = submittedAt,
+            Source = MessageSource.User,
+            Level = MessageLevel.Normal
+        };
+        _pendingSessionMessages.Add(optimisticMessage);
+
         try
         {
-            var trimmedFollowUp = followUpPrompt.Trim();
-            var submittedAt = DateTime.UtcNow;
             var result = await JobService.ContinueJobAsync(Job.Id, trimmedFollowUp);
             if (!result)
             {
+                _pendingSessionMessages.Remove(optimisticMessage);
                 NotificationService.ShowError("Could not continue the job. It may no longer be completed.");
                 return;
             }
-
-            _pendingSessionMessages.Add(new JobMessage
-            {
-                Id = Guid.NewGuid(),
-                JobId = Job.Id,
-                Role = MessageRole.User,
-                Content = trimmedFollowUp,
-                CreatedAt = submittedAt,
-                Source = MessageSource.User,
-                Level = MessageLevel.Normal
-            });
 
             Job.Status = JobStatus.New;
             Job.CompletedAt = null;
@@ -334,6 +337,7 @@ public partial class JobDetail : ComponentBase
         }
         catch (Exception ex)
         {
+            _pendingSessionMessages.Remove(optimisticMessage);
             NotificationService.ShowError($"Failed to continue job: {ex.Message}", "Error");
         }
     }
