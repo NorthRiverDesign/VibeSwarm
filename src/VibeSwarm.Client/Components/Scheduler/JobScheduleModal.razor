@@ -448,7 +448,7 @@
 				assignment.IsEnabled &&
 				assignment.AgentId != Guid.Empty &&
 				assignment.Agent?.IsEnabled != false &&
-				_providers.Any(p => p.Id == assignment.ProviderId))
+				assignment.Provider?.IsEnabled != false)
 			.OrderBy(assignment => assignment.Agent?.Name ?? string.Empty, StringComparer.OrdinalIgnoreCase)
 			.ThenBy(assignment => assignment.Provider?.Name ?? string.Empty, StringComparer.OrdinalIgnoreCase)
 			.ToList() ?? [];

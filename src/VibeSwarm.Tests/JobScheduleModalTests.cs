@@ -385,6 +385,93 @@ public sealed class JobScheduleModalTests
 		Assert.Contains("Code Reviewer", cut.Markup);
 	}
 
+	/// <summary>
+	/// Regression: a newly-added agent assignment whose provider is not yet in the
+	/// client-side provider cache must still appear in the dropdown. The old filter
+	/// used _providers.Any(p => p.Id == assignment.ProviderId) which would silently
+	/// exclude the assignment when the 60-second provider cache was stale. The fix
+	/// checks assignment.Provider?.IsEnabled instead, using the nav prop that is
+	/// always populated by the API response.
+	/// </summary>
+	[Fact]
+	public void JobScheduleModal_AgentDropdown_ShowsAssignment_WhenProviderNotInClientCache()
+	{
+		var agentId = Guid.NewGuid();
+		var providerId = Guid.NewGuid();
+		var projectId = Guid.NewGuid();
+
+		var provider = new Provider
+		{
+			Id = providerId,
+			Name = "GitHub Copilot",
+			Type = ProviderType.Copilot,
+			IsEnabled = true,
+			IsDefault = true
+		};
+		var agent = new Agent
+		{
+			Id = agentId,
+			Name = "Release Manager",
+			IsEnabled = true
+		};
+
+		// Simulate the project returned by GetByIdAsync: the new agent assignment has
+		// the Provider nav prop populated (as it would be from the server), but the
+		// FakeProviderService returns an EMPTY list to simulate a stale provider cache.
+		var project = new Project
+		{
+			Id = projectId,
+			Name = "VibeSwarm",
+			WorkingPath = "/tmp/vibeswarm",
+			AgentAssignments =
+			[
+				new ProjectAgent
+				{
+					ProjectId = projectId,
+					AgentId = agentId,
+					Agent = agent,
+					ProviderId = providerId,
+					Provider = provider,
+					IsEnabled = true
+				}
+			]
+		};
+
+		var editSchedule = new JobSchedule
+		{
+			Id = Guid.NewGuid(),
+			ProjectId = projectId,
+			ExecutionTarget = JobScheduleExecutionTarget.Agent,
+			AgentId = agentId,
+			ScheduleType = JobScheduleType.RunJob,
+			Prompt = "Run checks",
+			Frequency = JobScheduleFrequency.Daily,
+			HourUtc = 9,
+			IsEnabled = true
+		};
+
+		using var context = new BunitContext();
+		context.JSInterop.SetupVoid("eval", "document.body.classList.add('vs-modal-open')");
+		context.JSInterop.SetupVoid("eval", "document.body.classList.remove('vs-modal-open')");
+		context.Services.AddSingleton<IProjectService>(new FakeProjectService([project]));
+		context.Services.AddSingleton<IAgentService>(new FakeAgentService([agent]));
+		// Empty provider list simulates a stale client-side cache that does not yet
+		// include the newly added provider used by the new agent assignment.
+		context.Services.AddSingleton<IProviderService>(new FakeProviderService([]));
+		context.Services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService());
+		context.Services.AddSingleton<IJobScheduleService>(new FakeJobScheduleService());
+		context.Services.AddSingleton<ISettingsService>(new FakeSettingsService());
+		context.Services.AddSingleton<AppTimeZoneService>();
+		context.Services.AddSingleton<NotificationService>();
+
+		var cut = context.Render<JobScheduleModal>(parameters => parameters
+			.Add(component => component.IsVisible, true)
+			.Add(component => component.EditSchedule, editSchedule));
+
+		Assert.DoesNotContain("No enabled agents", cut.Markup);
+		Assert.Contains(agentId.ToString(), cut.Markup);
+	}
+
 	private sealed class FakeSettingsService : ISettingsService
 	{
 		public Task<AppSettings> GetSettingsAsync(CancellationToken cancellationToken = default)
