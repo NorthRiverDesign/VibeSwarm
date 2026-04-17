@@ -554,6 +554,127 @@ public sealed class JobScheduleModalTests
 		Assert.Contains(agentId.ToString(), cut.Markup);
 	}
 
+/// <summary>
+/// Regression: when the parent page re-renders while the modal is open (e.g., due to
+/// the Scheduler's 1-minute refresh timer) and the provider list is empty, the
+/// <c>else if (!_projects.Any() || !_providers.Any())</c> branch fires.  That branch
+/// reloads lookup data — clearing the <c>_projectDetailsById</c> cache — but previously
+/// never called <c>SyncExecutionTargetsAsync</c>, so any agent added to the project
+/// after the modal was first opened would not appear in the dropdown until the modal
+/// was closed and reopened.
+/// </summary>
+[Fact]
+public void JobScheduleModal_AgentDropdown_RefreshesAfterParentRerender_WhenModalIsOpen()
+{
+var agentId = Guid.NewGuid();
+var newAgentId = Guid.NewGuid();
+var providerId = Guid.NewGuid();
+var projectId = Guid.NewGuid();
+
+var agent = new Agent { Id = agentId, Name = "Security Reviewer", IsEnabled = true };
+var newAgent = new Agent { Id = newAgentId, Name = "Newly Added Agent", IsEnabled = true };
+
+var projectWithoutNewAgent = new Project
+{
+Id = projectId,
+Name = "VibeSwarm",
+WorkingPath = "/tmp/vibeswarm",
+AgentAssignments =
+[
+new ProjectAgent
+{
+ProjectId = projectId,
+AgentId = agentId,
+Agent = agent,
+ProviderId = providerId,
+Provider = null,
+IsEnabled = true
+}
+]
+};
+
+var projectWithNewAgent = new Project
+{
+Id = projectId,
+Name = "VibeSwarm",
+WorkingPath = "/tmp/vibeswarm",
+AgentAssignments =
+[
+new ProjectAgent
+{
+ProjectId = projectId,
+AgentId = agentId,
+Agent = agent,
+ProviderId = providerId,
+Provider = null,
+IsEnabled = true
+},
+new ProjectAgent
+{
+ProjectId = projectId,
+AgentId = newAgentId,
+Agent = newAgent,
+ProviderId = providerId,
+Provider = null,
+IsEnabled = true
+}
+]
+};
+
+var editSchedule = new JobSchedule
+{
+Id = Guid.NewGuid(),
+ProjectId = projectId,
+ExecutionTarget = JobScheduleExecutionTarget.Agent,
+AgentId = agentId,
+ScheduleType = JobScheduleType.RunJob,
+Prompt = "Run checks",
+Frequency = JobScheduleFrequency.Daily,
+HourUtc = 9,
+IsEnabled = true
+};
+
+var projectService = new LiveProjectService(projectWithoutNewAgent);
+
+using var context = new BunitContext();
+context.JSInterop.SetupVoid("eval", "document.body.classList.add('vs-modal-open')");
+context.JSInterop.SetupVoid("eval", "document.body.classList.remove('vs-modal-open')");
+context.Services.AddSingleton<IProjectService>(projectService);
+context.Services.AddSingleton<IAgentService>(new FakeAgentService([agent, newAgent]));
+// Empty provider list causes _providers.Any() == false, which triggers the else-if
+// branch on re-render — this is the condition that exposed the missing
+// SyncExecutionTargetsAsync call.
+context.Services.AddSingleton<IProviderService>(new FakeProviderService([]));
+context.Services.AddSingleton<IInferenceProviderService>(new FakeInferenceProviderService());
+context.Services.AddSingleton<IJobScheduleService>(new FakeJobScheduleService());
+context.Services.AddSingleton<ISettingsService>(new FakeSettingsService());
+context.Services.AddSingleton<AppTimeZoneService>();
+context.Services.AddSingleton<NotificationService>();
+
+var cut = context.Render<JobScheduleModal>(parameters => parameters
+.Add(component => component.IsVisible, true)
+.Add(component => component.EditSchedule, editSchedule));
+
+// Initial open — only the original agent should be visible.
+Assert.Contains("Security Reviewer", cut.Markup);
+Assert.DoesNotContain("Newly Added Agent", cut.Markup);
+
+// Simulate: user adds a new agent to the project after the modal was opened.
+projectService.Update(projectWithNewAgent);
+
+// Simulate: the Scheduler page's 1-minute refresh timer triggers a parent
+// re-render, causing OnParametersSetAsync to fire while the modal stays open.
+// Because _providers is empty, the else-if branch fires and clears the
+// _projectDetailsById cache.  The fix ensures SyncExecutionTargetsAsync is
+// called afterward so the dropdown is rebuilt from fresh data.
+cut.Render(parameters => parameters
+.Add(component => component.IsVisible, true)
+.Add(component => component.EditSchedule, editSchedule));
+
+Assert.Contains("Security Reviewer", cut.Markup);
+Assert.Contains("Newly Added Agent", cut.Markup);
+}
+
 	private sealed class FakeSettingsService : ISettingsService
 	{
 		public Task<AppSettings> GetSettingsAsync(CancellationToken cancellationToken = default)
@@ -644,4 +765,30 @@ public sealed class JobScheduleModalTests
 		public Task<JobSchedule> SetEnabledAsync(Guid id, bool isEnabled, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 		public Task DeleteAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 	}
+
+/// <summary>
+/// A mutable project service whose current project can be swapped at any time,
+/// simulating server-side data changes that occur while the modal is open.
+/// </summary>
+private sealed class LiveProjectService(Project initialProject) : IProjectService
+{
+private Project _project = initialProject;
+
+public void Update(Project project) => _project = project;
+
+public Task<IEnumerable<Project>> GetAllAsync(CancellationToken cancellationToken = default)
+=> Task.FromResult<IEnumerable<Project>>([_project]);
+public Task<IEnumerable<Project>> GetRecentAsync(int count, CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Project>>([]);
+public Task<Project?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
+=> Task.FromResult<Project?>(_project.Id == id ? _project : null);
+public Task<Project?> GetByIdWithJobsAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult<Project?>(null);
+public Task<Project> CreateAsync(Project project, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+public Task<Project> CreateProjectAsync(Shared.Models.ProjectCreationRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+public Task<Project> UpdateAsync(Project project, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+public Task DeleteAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+public Task<IEnumerable<ProjectWithStats>> GetAllWithStatsAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<ProjectWithStats>>([]);
+public Task<IEnumerable<DashboardProjectInfo>> GetRecentWithLatestJobAsync(int count, CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<DashboardProjectInfo>>([]);
+public Task<DashboardJobMetrics> GetDashboardJobMetricsAsync(int rangeDays, CancellationToken cancellationToken = default) => Task.FromResult(new DashboardJobMetrics { RangeDays = rangeDays, Buckets = [] });
+public Task<IEnumerable<DashboardRunningJobInfo>> GetDashboardRunningJobsAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<DashboardRunningJobInfo>>([]);
+}
 }

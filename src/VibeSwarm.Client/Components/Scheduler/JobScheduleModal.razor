@@ -309,6 +309,7 @@
 		else if (!_projects.Any() || !_providers.Any())
 		{
 			await LoadLookupDataAsync();
+			await SyncExecutionTargetsAsync(preserveCurrentSelection: true);
 		}
 
 		_previousIsVisible = IsVisible;
