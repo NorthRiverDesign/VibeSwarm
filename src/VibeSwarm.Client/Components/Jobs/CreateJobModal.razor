@@ -615,50 +615,58 @@ private void ApplySelectedAgent(ProjectAgent assignment)
 private async Task RefreshAgentProjectAsync()
 {
 	_agentProject = Project;
-	if (Project == null || Project.Id == Guid.Empty)
-	{
-		return;
-	}
 
-	var projectService = Services.GetService<IProjectService>();
 	var agentService = Services.GetService<IAgentService>();
-	if (projectService == null || agentService == null)
+	if (agentService == null)
 	{
 		return;
 	}
 
 	try
 	{
-		var detailedProjectTask = projectService.GetByIdAsync(Project.Id);
-		var enabledAgentsTask = agentService.GetEnabledAsync();
-		await Task.WhenAll(detailedProjectTask, enabledAgentsTask);
-
-		_agentProject = BuildAgentProject(Project, detailedProjectTask.Result, enabledAgentsTask.Result);
+		var enabledAgents = await agentService.GetEnabledAsync();
+		_agentProject = BuildAgentProject(Project, enabledAgents);
 	}
 	catch
 	{
-		_agentProject = BuildAgentProject(Project, null, []);
+		_agentProject = BuildAgentProject(Project, []);
 	}
 }
 
-private Project BuildAgentProject(Project? baseProject, Project? detailedProject, IEnumerable<Agent> enabledAgents)
+private Project BuildAgentProject(Project? baseProject, IEnumerable<Agent> enabledAgents)
 {
-	var assignments = (baseProject?.AgentAssignments ?? [])
-		.Concat(detailedProject?.AgentAssignments ?? [])
-		.Where(assignment => assignment.AgentId != Guid.Empty)
-		.GroupBy(assignment => assignment.AgentId)
-		.Select(group => MergeAgentAssignment(group, enabledAgents))
+	var assignments = enabledAgents
+		.Where(agent => agent.Id != Guid.Empty
+			&& agent.DefaultProviderId.HasValue
+			&& agent.DefaultProviderId.Value != Guid.Empty)
+		.Select(agent => BuildGlobalAssignment(agent, baseProject?.Id))
 		.ToList();
-
-	if (assignments.Count == 0)
-	{
-		return detailedProject ?? baseProject ?? new Project();
-	}
 
 	return new Project
 	{
-		Id = detailedProject?.Id ?? baseProject?.Id ?? Guid.Empty,
+		Id = baseProject?.Id ?? Guid.Empty,
 		AgentAssignments = assignments
+	};
+}
+
+private ProjectAgent BuildGlobalAssignment(Agent agent, Guid? projectId)
+{
+	var provider = Providers.FirstOrDefault(p => p.Id == agent.DefaultProviderId!.Value)
+		?? agent.DefaultProvider;
+
+	return new ProjectAgent
+	{
+		Id = agent.Id,
+		ProjectId = projectId ?? Guid.Empty,
+		AgentId = agent.Id,
+		Agent = agent,
+		ProviderId = agent.DefaultProviderId!.Value,
+		Provider = provider,
+		PreferredModelId = agent.DefaultModelId,
+		PreferredReasoningEffort = agent.DefaultReasoningEffort,
+		IsEnabled = agent.IsEnabled,
+		CreatedAt = agent.CreatedAt,
+		UpdatedAt = agent.UpdatedAt
 	};
 }
 

@@ -397,6 +397,20 @@ public partial class JobService : IJobService
         NormalizeJobForPersistence(job);
         await ValidateRequestedExecutionAsync(job, cancellationToken);
 
+        // Drop deserialized navigation graphs so EF doesn't try to re-track stub entities
+        // that may collide with already-tracked instances loaded during validation above.
+        job.Project = null;
+        job.Provider = null;
+        job.PlanningProvider = null;
+        job.JobSchedule = null;
+        job.JobTemplate = null;
+        job.Agent = null;
+        job.Statistics = null;
+        job.PlanningStatistics = null;
+        job.ExecutionStatistics = null;
+        job.Messages = new List<JobMessage>();
+        job.ChangeSets = new List<JobChangeSet>();
+
         job.Id = Guid.NewGuid();
         job.CreatedAt = DateTime.UtcNow;
         job.Status = JobStatus.New;
@@ -410,6 +424,13 @@ public partial class JobService : IJobService
 		{
 			throw new InvalidOperationException("No enabled providers are available for this job.");
 		}
+
+        var existingTracked = _dbContext.ChangeTracker.Entries<Job>()
+            .FirstOrDefault(entry => entry.Entity.Id == job.Id);
+        if (existingTracked != null)
+        {
+            existingTracked.State = EntityState.Detached;
+        }
 
         _dbContext.Jobs.Add(job);
         await _dbContext.SaveChangesAsync(cancellationToken);

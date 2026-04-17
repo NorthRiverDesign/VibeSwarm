@@ -58,7 +58,6 @@ public sealed class CreateJobModalTests
 		context.JSInterop.SetupVoid("eval", "document.body.classList.add('vs-modal-open')");
 		context.JSInterop.SetupVoid("eval", "document.body.classList.remove('vs-modal-open')");
 		context.Services.AddSingleton<IProjectService>(new FakeProjectService([]));
-		context.Services.AddSingleton<IAgentService>(new FakeAgentService([]));
 		context.Services.AddSingleton<IJobTemplateService>(new FakeJobTemplateService());
 		context.Services.AddSingleton<NotificationService>();
 
@@ -75,29 +74,21 @@ public sealed class CreateJobModalTests
 			Name = "Security Reviewer",
 			Description = "Reviews risky auth and secrets changes.",
 			Responsibilities = "Inspect security-sensitive code paths before shipping.",
+			IsEnabled = true,
+			DefaultProviderId = provider.Id,
+			DefaultProvider = provider,
+			DefaultModelId = "gpt-5.4",
+			DefaultReasoningEffort = "high",
 			DefaultCycleMode = CycleMode.Autonomous,
 			DefaultCycleSessionMode = CycleSessionMode.ContinueSession,
 			DefaultMaxCycles = 4,
 			DefaultCycleReviewPrompt = "Review the last cycle and continue only if work remains."
 		};
+		context.Services.AddSingleton<IAgentService>(new FakeAgentService([agent]));
 		var project = new Project
 		{
 			Id = Guid.NewGuid(),
-			Name = "VibeSwarm",
-			AgentAssignments =
-			[
-				new ProjectAgent
-				{
-					ProjectId = Guid.NewGuid(),
-					AgentId = agent.Id,
-					Agent = agent,
-					ProviderId = provider.Id,
-					Provider = provider,
-					PreferredModelId = "gpt-5.4",
-					PreferredReasoningEffort = "high",
-					IsEnabled = true
-				}
-			]
+			Name = "VibeSwarm"
 		};
 
 		var cut = context.Render<CreateJobModal>(parameters => parameters
@@ -142,6 +133,8 @@ public sealed class CreateJobModalTests
 		{
 			Id = Guid.NewGuid(),
 			Name = "Release Manager",
+			DefaultProviderId = provider.Id,
+			DefaultProvider = provider,
 			DefaultCycleMode = CycleMode.FixedCount,
 			DefaultMaxCycles = 2,
 			IsEnabled = true

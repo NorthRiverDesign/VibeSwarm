@@ -246,8 +246,18 @@ public partial class ProjectDetail
 
     private bool IsSelectedAgentProviderAllowed()
     {
+        if (!NewJob.AgentId.HasValue || NewJob.AgentId == Guid.Empty)
+        {
+            return false;
+        }
+
         var assignment = AgentPresetHelper.ResolveAgent(Project, NewJob.AgentId);
-        return assignment != null && assignment.ProviderId == NewJob.ProviderId;
+        if (assignment != null && assignment.ProviderId == NewJob.ProviderId)
+        {
+            return true;
+        }
+
+        return NewJob.ProviderId != Guid.Empty;
     }
 
     private async Task DeleteJob(Guid jobId)

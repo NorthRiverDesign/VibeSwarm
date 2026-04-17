@@ -357,7 +357,7 @@ public partial class JobService
             job.ReasoningEffort = ProviderCapabilities.NormalizeReasoningEffort(agent.DefaultReasoningEffort);
         }
 
-        if (job.CycleMode != default || job.MaxCycles > 0)
+        if (AgentPresetHelper.HasCustomCycleSettings(job))
         {
             return;
         }
