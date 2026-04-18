@@ -56,37 +56,7 @@ else
 		<JobChangeSetsCard ChangeSets="@_changeSets" />
 	}
 
-		@* Status banner — single source of truth for "what happened".
-		   Replaces the old Outcome / Verification / Delivery three-card block. *@
-		@if (ShowJobOutcomeSummary)
-		{
-			<div class="mb-3">
-				<StatusBanner Variant="@GetBannerVariant(Job.Status)"
-							  Headline="@GetBannerHeadline(Job.Status)">
-					<ChildContent>
-						@GetBannerBody()
-					</ChildContent>
-					<MetaContent>
-						@if (Job.ChangedFilesCount > 0)
-						{
-							<MetaChip Icon="bi-file-earmark-diff" Text="@($"{Job.ChangedFilesCount} files changed")" />
-						}
-						@if (!string.IsNullOrEmpty(Job.GitCommitHash))
-						{
-							<MetaChip Variant="sha" Icon="bi-git" Text="@($"Commit {Job.GitCommitHash[..Math.Min(7, Job.GitCommitHash.Length)]}")" />
-						}
-						@if (_changesPushed)
-						{
-							<MetaChip Variant="pushed" Icon="bi-cloud-check" Text="Pushed" />
-						}
-						@if (Job.Project?.BuildVerificationEnabled == true && Job.BuildVerified == true)
-						{
-							<MetaChip Variant="pushed" Icon="bi-shield-check" Text="Verified" />
-						}
-					</MetaContent>
-				</StatusBanner>
-			</div>
-		}
+	<JobStatusSection Job="@Job" IsPushed="@_changesPushed" BranchName="@_branchName" />
 
     @* Main Content - Column Layout *@
     <div class="row g-3 g-lg-4">
@@ -343,44 +313,6 @@ else
         !string.IsNullOrWhiteSpace(_branchName) &&
         !string.IsNullOrWhiteSpace(EffectiveTargetBranch) &&
         !string.Equals(_branchName, EffectiveTargetBranch, StringComparison.Ordinal);
-
-    private static string GetBannerVariant(JobStatus status) => status switch
-    {
-        JobStatus.Completed => "success",
-        JobStatus.Failed => "danger",
-        JobStatus.Cancelled => "warning",
-        JobStatus.Stalled => "warning",
-        JobStatus.Paused => "warning",
-        JobStatus.Started or JobStatus.Planning or JobStatus.Processing => "primary",
-        _ => "primary"
-    };
-
-    private static string GetBannerHeadline(JobStatus status) => status switch
-    {
-        JobStatus.Completed => "Job completed",
-        JobStatus.Failed => "Job failed",
-        JobStatus.Cancelled => "Job cancelled",
-        JobStatus.Stalled => "Job stalled",
-        JobStatus.Paused => "Waiting for input",
-        JobStatus.Started or JobStatus.Planning or JobStatus.Processing => "Running",
-        _ => status.ToString()
-    };
-
-    private string GetBannerBody()
-    {
-        if (Job == null) return string.Empty;
-        return Job.Status switch
-        {
-            JobStatus.Completed when _changesPushed => "The run completed successfully and the branch is updated and ready for review.",
-            JobStatus.Completed when !string.IsNullOrEmpty(Job.GitCommitHash) => "Changes were committed locally. Push to share.",
-            JobStatus.Completed => "The run completed successfully.",
-            JobStatus.Failed => Job.ErrorMessage ?? "The run failed mid-execution. Working tree may be uncommitted — see Changes tab.",
-            JobStatus.Cancelled => "The run was cancelled.",
-            JobStatus.Stalled => "The run stopped responding. It may have exceeded a timeout.",
-            JobStatus.Paused => Job.PendingInteractionPrompt ?? "The agent is waiting for a response.",
-            _ => Job.CurrentActivity ?? "Working…"
-        };
-    }
 
     private string BuildEnvironmentTooltip()
     {

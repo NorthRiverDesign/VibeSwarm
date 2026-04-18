@@ -51,55 +51,50 @@ else
                                 OnStop="StopAllActive"
                                 OnSuggestIdeas="SuggestIdeasFromCodebase" />
 
-    @* Tabbed Content Area — horizontal scroll on mobile, underline-active on all sizes *@
-    <nav class="vs-tabs project-detail-tabs mt-3" role="tablist">
-        <button type="button" class="vs-tab @(IsActiveTab("ideas") ? "active" : "")"
-                @onclick='@(() => SetActiveTab("ideas"))' role="tab" aria-selected="@IsActiveTab("ideas")">
-            <i class="bi bi-lightbulb"></i>
-            <span>Ideas</span>
-            @if (IdeasTotalCount > 0)
-            {
-                <CountPill Value="@IdeasTotalCount.ToString()" Active="@(IsActiveTab("ideas"))" />
-            }
-        </button>
-        <button type="button" class="vs-tab @(IsActiveTab("jobs") ? "active" : "")"
-                @onclick='@(() => SetActiveTab("jobs"))' role="tab" aria-selected="@IsActiveTab("jobs")">
-            <i class="bi bi-list-task"></i>
-            <span>Jobs</span>
-            @if (JobsTotalCount > 0)
-            {
-                <CountPill Value="@JobsTotalCount.ToString()" Active="@(IsActiveTab("jobs"))" />
-            }
-        </button>
-        <button type="button" class="vs-tab @(IsActiveTab("environments") ? "active" : "")"
-                @onclick='@(() => SetActiveTab("environments"))' role="tab" aria-selected="@IsActiveTab("environments")">
-            <i class="bi bi-box-seam"></i>
-            <span>Environments</span>
-            @if (EnabledEnvironmentCount > 0)
-            {
-                <CountPill Value="@EnabledEnvironmentCount.ToString()" Active="@(IsActiveTab("environments"))" />
-            }
-        </button>
-        <button type="button" class="vs-tab @(IsActiveTab("changes") ? "active" : "") @(!IsGitRepository ? "disabled opacity-50" : "")"
-                @onclick="OpenChangesTabAsync" role="tab" aria-selected="@IsActiveTab("changes")"
-                disabled="@(!IsGitRepository)">
-            <i class="bi bi-code-square"></i>
-            <span>Changes</span>
-            @if (HasChangesTabContent && _workingTreeStatus.ChangedFilesCount > 0)
-            {
-                <CountPill Value="@_workingTreeStatus.ChangedFilesCount.ToString()" Active="@(IsActiveTab("changes"))" />
-            }
-        </button>
-        <button type="button" class="vs-tab @(IsActiveTab("autopilot") ? "active" : "")"
-                @onclick='@(() => SetActiveTab("autopilot"))' role="tab" aria-selected="@IsActiveTab("autopilot")">
-            <i class="bi bi-compass"></i>
-            <span>Auto-Pilot</span>
-            @if (_autoPilotStatus != null && !AutoPilotPanel.IsTerminal(_autoPilotStatus.Status))
-            {
-                <CountPill Value="@_autoPilotStatus.Status.ToString()" Active="@(IsActiveTab("autopilot"))" />
-            }
-        </button>
-    </nav>
+    @* Tabs use Bootstrap's nav-tabs directly; horizontally scrollable on narrow screens *@
+    <ul class="nav nav-tabs project-detail-tabs mt-3 flex-nowrap overflow-x-auto" role="tablist">
+        <li class="nav-item">
+            <button type="button" class="nav-link @(IsActiveTab("ideas") ? "active" : "")"
+                    @onclick='@(() => SetActiveTab("ideas"))' role="tab">
+                <i class="bi bi-lightbulb me-1"></i>Ideas
+                @if (IdeasTotalCount > 0) { <span class="badge rounded-pill text-bg-secondary ms-1">@IdeasTotalCount</span> }
+            </button>
+        </li>
+        <li class="nav-item">
+            <button type="button" class="nav-link @(IsActiveTab("jobs") ? "active" : "")"
+                    @onclick='@(() => SetActiveTab("jobs"))' role="tab">
+                <i class="bi bi-list-task me-1"></i>Jobs
+                @if (JobsTotalCount > 0) { <span class="badge rounded-pill text-bg-secondary ms-1">@JobsTotalCount</span> }
+            </button>
+        </li>
+        <li class="nav-item">
+            <button type="button" class="nav-link @(IsActiveTab("environments") ? "active" : "")"
+                    @onclick='@(() => SetActiveTab("environments"))' role="tab">
+                <i class="bi bi-box-seam me-1"></i>Environments
+                @if (EnabledEnvironmentCount > 0) { <span class="badge rounded-pill text-bg-secondary ms-1">@EnabledEnvironmentCount</span> }
+            </button>
+        </li>
+        <li class="nav-item">
+            <button type="button" class="nav-link @(IsActiveTab("changes") ? "active" : "")"
+                    @onclick="OpenChangesTabAsync" role="tab" disabled="@(!IsGitRepository)">
+                <i class="bi bi-code-square me-1"></i>Changes
+                @if (HasChangesTabContent && _workingTreeStatus.ChangedFilesCount > 0)
+                {
+                    <span class="badge rounded-pill text-bg-warning ms-1">@_workingTreeStatus.ChangedFilesCount</span>
+                }
+            </button>
+        </li>
+        <li class="nav-item">
+            <button type="button" class="nav-link @(IsActiveTab("autopilot") ? "active" : "")"
+                    @onclick='@(() => SetActiveTab("autopilot"))' role="tab">
+                <i class="bi bi-compass me-1"></i>Auto-Pilot
+                @if (_autoPilotStatus != null && !AutoPilotPanel.IsTerminal(_autoPilotStatus.Status))
+                {
+                    <span class="badge rounded-pill text-bg-primary ms-1">@_autoPilotStatus.Status</span>
+                }
+            </button>
+        </li>
+    </ul>
 
     <div class="tab-content pt-3">
         @if (_activeTab == "ideas")

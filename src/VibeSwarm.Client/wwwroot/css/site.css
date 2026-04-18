@@ -1503,25 +1503,30 @@ body.vs-modal-open .app-main {
 	min-width: 140px;
 }
 
+
 /* ============================================
-   18. DESIGN SYSTEM COMPONENTS
-   Component-level utility classes for the new visual vocabulary.
-   Use these in markup alongside Bootstrap utilities.
-   Everything here is either:
-   - a property Bootstrap lacks (gradients, specific sizes, animations)
-   - a composed semantic grouping that would need 8+ utility classes
+   18. DESIGN SYSTEM — minimal extensions to Bootstrap
+   Everything below is ONLY for things Bootstrap 5.3 cannot express:
+   gradients, specific animations, tiny single-property utilities,
+   or layout primitives Bootstrap lacks (auto-fit grid, timeline).
+   Components should use Bootstrap's `card`, `nav nav-tabs`,
+   `btn`/`btn-group`, `badge text-bg-*`, `alert alert-*`, `form-control`,
+   `input-group`, `progress`, etc. directly — do not wrap them in
+   additional custom classes.
 ============================================ */
 
-/* Eyebrow label — 11px uppercase tracking-wide, used for section headers */
+/* ── Single-property utilities Bootstrap doesn't provide ── */
+
+/* Section eyebrow — 11px uppercase tracking-wide label */
 .text-eyebrow {
-	font-size: 0.6875rem; /* 11px */
+	font-size: 0.6875rem;
 	font-weight: 600;
 	text-transform: uppercase;
 	letter-spacing: 0.08em;
 	color: var(--fg-2);
 }
 
-/* Font families (so markup can opt into monospace without naming a whole utility pack) */
+/* Font-family switches (Bootstrap only has .font-monospace) */
 .font-mono {
 	font-family: var(--bs-font-monospace);
 }
@@ -1529,487 +1534,144 @@ body.vs-modal-open .app-main {
 	font-family: var(--bs-font-sans-serif);
 }
 
-/* Surface backgrounds — Bootstrap has bg-body-*, these are our design surfaces */
-.bg-surface-0 {
-	background-color: var(--surface-0);
-}
-.bg-surface-1 {
-	background-color: var(--surface-1);
-}
-.bg-surface-2 {
-	background-color: var(--surface-2);
-}
-.bg-surface-3 {
-	background-color: var(--surface-3);
-}
-.border-line {
-	border-color: var(--line) !important;
-}
-.border-line-strong {
-	border-color: var(--line-strong) !important;
-}
+/* Dashed border style (Bootstrap only has solid by default) */
+.border-dashed { border-style: dashed !important; }
 
-/* Foreground color helpers */
-.text-fg-0 {
-	color: var(--fg-0);
-}
-.text-fg-1 {
-	color: var(--fg-1);
-}
-.text-fg-2 {
-	color: var(--fg-2);
-}
-.text-fg-3 {
-	color: var(--fg-3);
-}
+/* Min-height helper — Bootstrap's min-h-* are percentages only */
+.min-height-0 { min-height: 0; }
 
-/* Brand mark (sidebar conic-gradient square) */
-.vs-brand-mark {
-	background: conic-gradient(
-		from 200deg at 50% 50%,
-		#6b8afd,
-		#a78bfa,
-		#5ec6d3,
-		#6b8afd
-	);
+/* ── Brand / project marks (gradients — no Bootstrap equivalent) ── */
+
+.app-brand-mark {
+	background: conic-gradient(from 200deg at 50% 50%, #6b8afd, #a78bfa, #5ec6d3, #6b8afd);
 	box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
 }
-
-/* Project mark — gradient square with initials. Size controlled by w-/h-/fs- in markup. */
-.vs-project-mark {
+.app-project-mark {
 	background: linear-gradient(135deg, #4c7fe3, #2d55a8);
 	color: #fff;
 	font-family: var(--bs-font-monospace);
 	font-weight: 700;
 	letter-spacing: 0.3px;
-}
-
-/* Status icon pill — 28×28 by default, color by modifier class */
-.status-pill {
-	width: 28px;
-	height: 28px;
-	border-radius: 7px;
 	display: inline-grid;
 	place-items: center;
-	font-size: 14px;
 	flex: none;
 }
-.status-pill-sm {
-	width: 22px;
-	height: 22px;
-	border-radius: 6px;
-	font-size: 11px;
-}
-.status-pill-lg {
-	width: 36px;
-	height: 36px;
-	border-radius: 9px;
-	font-size: 16px;
-}
-.status-pill.primary {
-	background: var(--chip-primary-bg);
-	color: var(--bs-primary);
-}
-.status-pill.success {
-	background: var(--chip-success-bg);
-	color: var(--bs-success);
-}
-.status-pill.warning {
-	background: var(--chip-warning-bg);
-	color: var(--bs-warning);
-}
-.status-pill.danger {
-	background: var(--chip-danger-bg);
-	color: var(--bs-danger);
-}
-.status-pill.info {
-	background: var(--chip-info-bg);
-	color: var(--bs-info);
-}
 
-/* Branch chip — branch name + mono SHA + pulsing dot */
-.branch-chip {
-	display: inline-flex;
-	align-items: center;
-	gap: 6px;
-	background: var(--surface-2);
-	border: 1px solid var(--line);
-	border-radius: 999px;
-	padding: 4px 10px;
-	font-size: 0.75rem;
-	color: var(--fg-1);
-}
-.branch-chip .dot {
+/* Mark sizes — use one of these with .app-brand-mark or .app-project-mark. */
+.app-mark-xs { width: 20px; height: 20px; border-radius: 5px; font-size: 10px; }
+.app-mark-sm { width: 22px; height: 22px; border-radius: 6px; font-size: 11px; }
+.app-mark-md { width: 32px; height: 32px; border-radius: 8px; font-size: 12.5px; }
+.app-mark-lg { width: 40px; height: 40px; border-radius: 10px; font-size: 14px; }
+
+/* Image thumbnail sizes used in attachment chips */
+.attachment-thumb { width: 2.25rem; height: 2.25rem; }
+.attachment-thumb-sm { width: 1.5rem; height: 1.5rem; }
+.brand-icon { width: 2rem; height: 2rem; }
+
+/* ── Live pulsing dot (animation — no Bootstrap equivalent) ── */
+.live-dot {
+	display: inline-block;
 	width: 6px;
 	height: 6px;
 	border-radius: 50%;
-	background: var(--bs-danger);
-	box-shadow: 0 0 0 3px rgba(var(--bs-danger-rgb), 0.2);
-}
-.branch-chip .dot.live {
 	background: var(--bs-success);
 	box-shadow: 0 0 0 3px rgba(var(--bs-success-rgb), 0.2);
 	animation: pulse-live 1.5s ease-in-out infinite;
-}
-.branch-chip .sha {
-	font-family: var(--bs-font-monospace);
-	font-size: 0.6875rem;
-	color: var(--fg-3);
-}
-
-/* Provider pill — dropdown trigger with provider mark */
-.provider-pill {
-	display: inline-flex;
-	align-items: center;
-	gap: 7px;
-	background: var(--surface-2);
-	border: 1px solid var(--line);
-	border-radius: 7px;
-	padding: 5px 10px;
-	font-size: 0.75rem;
-	color: var(--fg-1);
-	cursor: pointer;
-}
-.provider-pill:hover {
-	border-color: var(--line-strong);
-	color: var(--fg-0);
-}
-.provider-pill .model {
-	color: var(--fg-0);
-	font-weight: 500;
-}
-.prov-mark {
-	width: 14px;
-	height: 14px;
-	border-radius: 3px;
-	display: inline-grid;
-	place-items: center;
-	color: #fff;
-	font-size: 8.5px;
-	font-weight: 700;
 	flex: none;
 }
-.prov-mark.anthropic {
-	background: linear-gradient(135deg, #d49964, #a36537);
-}
-.prov-mark.openai {
-	background: linear-gradient(135deg, #10a37f, #0a6b55);
-}
 
-/* Count pill — sidebar nav trailing number, tab badge */
-.count-pill {
-	font-family: var(--bs-font-monospace);
-	font-size: 0.65625rem; /* 10.5px */
-	color: var(--fg-3);
-	background: var(--surface-3);
-	padding: 1px 6px;
-	border-radius: 999px;
-	font-weight: 500;
-}
-.count-pill.active {
-	background: var(--chip-primary-bg-strong);
-	color: #b7c8ff;
-}
-
-/* Meta chip — inline chip with optional icon, used in card meta rows */
-.meta-chip {
-	display: inline-flex;
-	align-items: center;
-	gap: 5px;
-	background: var(--surface-2);
-	border: 1px solid var(--line);
-	border-radius: 4px;
-	padding: 1px 7px;
-	font-size: 0.71875rem; /* 11.5px */
-	color: var(--fg-2);
-}
-.meta-chip.sha {
-	font-family: var(--bs-font-monospace);
-	font-size: 0.65625rem;
-}
-.meta-chip.pushed {
-	color: #8ed6b1;
-	border-color: rgba(var(--bs-success-rgb), 0.3);
-}
-.meta-chip.failed {
-	color: #f29e9e;
-	border-color: rgba(var(--bs-danger-rgb), 0.3);
-}
-.meta-chip.ai {
-	color: var(--chip-ai-fg);
-	border-color: var(--chip-ai-border);
-	background: var(--chip-ai-bg);
-}
-
-/* Banner — status-tinted message block (e.g. "Branch pushed") */
-.vs-banner {
-	display: flex;
-	align-items: flex-start;
-	gap: 10px;
-	padding: 8px 14px;
-	font-size: 0.78125rem;
-	color: var(--fg-1);
-}
-.vs-banner i {
-	flex: none;
-}
-.vs-banner.success {
-	background: var(--banner-success-bg);
-	border-top: 1px solid var(--banner-success-border);
-}
-.vs-banner.success > i {
-	color: var(--bs-success);
-}
-.vs-banner.primary {
-	background: var(--banner-primary-bg);
-	border-top: 1px solid var(--banner-primary-border);
-}
-.vs-banner.primary > i {
-	color: var(--bs-primary);
-}
-.vs-banner.warning {
-	background: var(--banner-warning-bg);
-	border-top: 1px solid var(--banner-warning-border);
-}
-.vs-banner.warning > i {
-	color: var(--bs-warning);
-}
-.vs-banner.danger {
-	background: var(--banner-danger-bg);
-	border-top: 1px solid var(--banner-danger-border);
-}
-.vs-banner.danger > i {
-	color: var(--bs-danger);
-}
-
-/* Alert-style banner — same tints but rounded-corner standalone block */
-.vs-alert {
-	display: flex;
-	gap: 12px;
-	padding: 12px 14px;
-	border-radius: 10px;
-	align-items: flex-start;
-	font-size: 0.78125rem;
-	color: var(--fg-1);
-	border: 1px solid transparent;
-}
-.vs-alert > i {
-	font-size: 16px;
-	margin-top: 1px;
-	flex: none;
-}
-.vs-alert .t {
-	font-weight: 600;
-	color: var(--fg-0);
-	margin-bottom: 2px;
-	font-size: 0.8125rem;
-}
-.vs-alert.warning {
-	background: var(--banner-warning-bg);
-	border-color: var(--banner-warning-border);
-}
-.vs-alert.warning > i {
-	color: var(--bs-warning);
-}
-.vs-alert.danger {
-	background: var(--banner-danger-bg);
-	border-color: var(--banner-danger-border);
-}
-.vs-alert.danger > i {
-	color: var(--bs-danger);
-}
-.vs-alert.success {
-	background: var(--banner-success-bg);
-	border-color: var(--banner-success-border);
-}
-.vs-alert.success > i {
-	color: var(--bs-success);
-}
-.vs-alert.primary {
-	background: var(--banner-primary-bg);
-	border-color: var(--banner-primary-border);
-}
-.vs-alert.primary > i {
-	color: var(--bs-primary);
-}
-
-/* Project tabs — horizontal strip with underline active state */
-.vs-tabs {
-	display: flex;
-	gap: 4px;
-	overflow-x: auto;
-	scrollbar-width: none;
-	border-bottom: 1px solid var(--line);
-}
-.vs-tabs::-webkit-scrollbar {
-	display: none;
-}
-.vs-tab {
-	display: inline-flex;
-	align-items: center;
-	gap: 8px;
-	padding: 11px 14px;
-	border: 0;
-	border-bottom: 2px solid transparent;
-	color: var(--fg-2);
-	font-size: 0.84375rem;
-	font-weight: 500;
-	cursor: pointer;
-	white-space: nowrap;
-	background: transparent;
-	border-radius: 0;
-}
-.vs-tab > i {
-	font-size: 14px;
-	color: var(--fg-3);
-}
-.vs-tab:hover {
-	color: var(--fg-0);
-}
-.vs-tab.active {
-	color: var(--fg-0);
-	border-bottom-color: var(--bs-primary);
-}
-.vs-tab.active > i {
-	color: var(--bs-primary);
-}
-
-/* Theme toggle — segmented sun/moon buttons */
-.theme-toggle {
-	display: inline-flex;
-	background: var(--surface-2);
-	border: 1px solid var(--line);
-	border-radius: 8px;
-	padding: 2px;
-}
-.theme-toggle button {
-	background: transparent;
-	border: 0;
-	color: var(--fg-3);
-	padding: 4px 8px;
-	border-radius: 6px;
-	font-size: 12px;
-	display: inline-flex;
-	align-items: center;
-	gap: 5px;
-	cursor: pointer;
-}
-.theme-toggle button.active {
-	background: var(--surface-0);
-	color: var(--fg-0);
-	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
-}
-
-/* Sidebar nav (new design-system version; sits alongside old .app-sidebar styles) */
-.vs-side-nav a,
-.vs-side-nav .nav-btn {
-	display: flex;
-	align-items: center;
-	gap: 10px;
-	padding: 7px 10px;
-	border-radius: 8px;
-	color: var(--fg-2);
-	font-size: 13px;
-	text-decoration: none;
-	border: 0;
-	background: transparent;
-	width: 100%;
-	text-align: left;
-}
-.vs-side-nav a > i,
-.vs-side-nav .nav-btn > i {
-	color: var(--fg-3);
-	font-size: 14px;
-	width: 16px;
-	text-align: center;
-	flex: none;
-}
-.vs-side-nav a:hover,
-.vs-side-nav .nav-btn:hover {
-	background: var(--surface-2);
-	color: var(--fg-0);
-}
-.vs-side-nav a.active,
-.vs-side-nav .nav-btn.active {
-	background: var(--chip-primary-bg);
-	color: var(--fg-0);
-}
-.vs-side-nav a.active > i,
-.vs-side-nav .nav-btn.active > i {
-	color: var(--bs-primary);
-}
-.vs-side-nav .count {
-	margin-left: auto;
-	font-family: var(--bs-font-monospace);
-	font-size: 0.65625rem;
-	color: var(--fg-3);
-	background: var(--surface-3);
-	padding: 1px 6px;
-	border-radius: 999px;
-}
-.vs-side-nav a.active .count,
-.vs-side-nav .nav-btn.active .count {
-	background: var(--chip-primary-bg-strong);
-	color: #b7c8ff;
-}
-
-/* Environment card pills */
-.env-num {
-	font-family: var(--bs-font-monospace);
-	font-size: 0.6875rem;
-	color: #fff;
-	background: var(--bs-primary);
-	padding: 2px 7px;
-	border-radius: 999px;
-	font-weight: 500;
-}
-.env-tag {
-	font-size: 0.6875rem;
-	padding: 2px 8px;
-	border-radius: 999px;
-	background: var(--surface-3);
-	color: var(--fg-1);
-	font-weight: 500;
-	display: inline-flex;
-	align-items: center;
-	gap: 4px;
-}
-.env-tag.web {
-	background: rgba(var(--bs-info-rgb), 0.12);
-	color: #7dd0db;
-}
-.env-tag.prod {
-	background: rgba(var(--bs-danger-rgb), 0.12);
-	color: #f29e9e;
-}
-.env-tag.primary {
-	background: rgba(var(--bs-success-rgb), 0.12);
-	color: #8ed6b1;
-}
-
-/* Indeterminate progress (used on running idea rows, active job cards) */
-.vs-progress {
-	height: 3px;
-	background: var(--surface-3);
-	border-radius: 2px;
-	overflow: hidden;
-}
-.vs-progress > div {
-	height: 100%;
-	background: var(--bs-primary);
+/* ── Indeterminate progress bar (augments Bootstrap's .progress with a built-in animation) ── */
+.progress-indeterminate .progress-bar {
 	width: 35%;
 	animation: vs-indeterminate 1.8s ease-in-out infinite;
 }
 @keyframes vs-indeterminate {
-	0% {
-		margin-left: -35%;
-	}
-	100% {
-		margin-left: 100%;
-	}
+	0% { margin-left: -35%; }
+	100% { margin-left: 100%; }
 }
 
-/* Change-letter status (M / A / D) — used in Changes tab */
+/* ── Job lifecycle timeline (no Bootstrap equivalent) ── */
+.vs-timeline {
+	display: flex;
+	align-items: center;
+	gap: 0;
+	flex-wrap: wrap;
+}
+.tl-step {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	padding: 2px 0;
+}
+.tl-dot {
+	width: 22px;
+	height: 22px;
+	border-radius: 50%;
+	display: inline-grid;
+	place-items: center;
+	font-size: 11px;
+	background: var(--bs-tertiary-bg);
+	color: var(--bs-tertiary-color);
+	border: 1px solid var(--bs-border-color);
+	flex: none;
+}
+.tl-step.done .tl-dot {
+	background: rgba(var(--bs-success-rgb), 0.15);
+	color: var(--bs-success);
+	border-color: rgba(var(--bs-success-rgb), 0.35);
+}
+.tl-step.current .tl-dot {
+	background: rgba(var(--bs-primary-rgb), 0.18);
+	color: var(--bs-primary);
+	border-color: rgba(var(--bs-primary-rgb), 0.35);
+	animation: pulse-live 1.5s ease-in-out infinite;
+}
+.tl-step.failed .tl-dot {
+	background: rgba(var(--bs-danger-rgb), 0.15);
+	color: var(--bs-danger);
+	border-color: rgba(var(--bs-danger-rgb), 0.35);
+}
+.tl-txt {
+	display: inline-flex;
+	flex-direction: column;
+	gap: 1px;
+}
+.tl-name {
+	font-size: 0.78125rem;
+	font-weight: 500;
+	color: var(--fg-1);
+	line-height: 1.1;
+}
+.tl-step.done .tl-name,
+.tl-step.current .tl-name {
+	color: var(--fg-0);
+}
+.tl-sub {
+	font-size: 0.6875rem;
+	color: var(--fg-3);
+	line-height: 1.1;
+}
+.tl-conn {
+	flex: 1 1 18px;
+	min-width: 18px;
+	height: 1px;
+	background: var(--bs-border-color);
+	margin: 0 8px;
+}
+.tl-conn.done {
+	background: rgba(var(--bs-success-rgb), 0.4);
+}
+
+/* ── Auto-fit grid (no Bootstrap equivalent for auto-fit minmax) ── */
+.vs-auto-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+	gap: 0.75rem;
+}
+.vs-auto-grid.sm { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+.vs-auto-grid.lg { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+
+/* ── Change-letter status colors (diff viewer) ── */
 .change-st {
 	font-family: var(--bs-font-monospace);
 	font-weight: 600;
@@ -2017,392 +1679,76 @@ body.vs-modal-open .app-main {
 	width: 18px;
 	text-align: center;
 }
-.change-st.m {
-	color: var(--bs-warning);
-}
-.change-st.a {
-	color: var(--bs-success);
-}
-.change-st.d {
-	color: var(--bs-danger);
-}
+.change-st.m { color: var(--bs-warning); }
+.change-st.a { color: var(--bs-success); }
+.change-st.d { color: var(--bs-danger); }
 
-/* Green "Start" split-button — matches design (white-on-success, dark text) */
-.btn-start {
-	background: var(--bs-success);
-	color: #08210f;
-	border: 0;
-	padding: 7px 14px;
-	font-weight: 600;
-	font-size: 13px;
+/* ── Theme toggle (compact sun/moon segmented control — specialized control) ── */
+.theme-toggle {
 	display: inline-flex;
-	align-items: center;
-	gap: 7px;
-	border-radius: 8px 0 0 8px;
-}
-.btn-start:hover,
-.btn-start:focus {
-	background: #4dd49e;
-	color: #08210f;
-}
-.btn-start-split {
-	background: var(--bs-success);
-	color: #08210f;
-	border: 0;
-	border-left: 1px solid rgba(0, 0, 0, 0.2);
-	padding: 7px 9px;
-	border-radius: 0 8px 8px 0;
-	display: inline-grid;
-	place-items: center;
-}
-.btn-start-split:hover,
-.btn-start-split:focus {
-	background: #4dd49e;
-}
-.start-group {
-	display: inline-flex;
-	border-radius: 8px;
-	box-shadow: 0 0 0 1px rgba(var(--bs-success-rgb), 0.4);
-}
-
-/* Two-column responsive layout (used in Auto-Pilot sections) */
-.vs-two-col {
-	display: grid;
-	grid-template-columns: 1fr 1fr;
-	gap: 14px;
-}
-@media (max-width: 720px) {
-	.vs-two-col {
-		grid-template-columns: 1fr;
-	}
-}
-
-/* Auto-fit grid — for env card body + responsive card rows */
-.vs-auto-grid {
-	display: grid;
-	grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-	gap: 12px;
-}
-.vs-auto-grid.sm {
-	grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-}
-.vs-auto-grid.lg {
-	grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-}
-
-/* Composer (Ideas tab) — container with textarea, attachments, footer */
-.composer {
-	background: var(--surface-1);
-	border: 1px solid var(--line);
-	border-radius: 12px;
-	overflow: hidden;
-}
-.composer textarea {
-	width: 100%;
-	background: transparent;
-	border: 0;
-	outline: 0;
-	color: var(--fg-0);
-	font-size: 0.90625rem; /* 14.5px */
-	line-height: 1.55;
-	resize: vertical;
-	min-height: 110px;
-	padding: 14px 16px;
-}
-.composer textarea::placeholder {
-	color: var(--fg-3);
-}
-.composer-foot {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-	flex-wrap: wrap;
-	padding: 10px 12px;
-	border-top: 1px solid var(--line);
-	background: var(--surface-0);
-}
-.composer-foot .counter {
-	margin-left: auto;
-	font-size: 0.71875rem;
-	color: var(--fg-3);
-	font-family: var(--bs-font-monospace);
-}
-.composer-foot .counter.over {
-	color: var(--bs-warning);
-}
-.btn-ghost {
-	background: transparent;
-	border: 1px solid var(--line);
-	color: var(--fg-1);
-	font-size: 12px;
-	padding: 5px 10px;
-	border-radius: 7px;
-	display: inline-flex;
-	align-items: center;
-	gap: 6px;
-}
-.btn-ghost:hover {
-	background: var(--surface-2);
-	color: var(--fg-0);
-}
-.composer-hint {
-	font-size: 0.71875rem;
-	color: var(--fg-3);
-	padding: 0 16px 10px;
-}
-.composer-hint kbd {
-	background: var(--surface-2);
-	border: 1px solid var(--line);
-	border-radius: 4px;
-	padding: 1px 5px;
-	font-family: var(--bs-font-monospace);
-	font-size: 0.65625rem;
-	color: var(--fg-1);
-}
-.composer .attached {
-	display: flex;
-	gap: 8px;
-	padding: 0 16px 12px;
-	flex-wrap: wrap;
-}
-.composer .attached .att {
-	display: inline-flex;
-	align-items: center;
-	gap: 6px;
-	background: var(--surface-2);
-	border: 1px solid var(--line);
-	border-radius: 7px;
-	padding: 4px 6px 4px 8px;
-	font-size: 0.71875rem;
-	color: var(--fg-1);
-}
-.composer .attached .att .thumb {
-	width: 24px;
-	height: 24px;
-	border-radius: 4px;
-	object-fit: cover;
-	background: var(--surface-3);
-}
-.composer .attached .att button {
-	background: none;
-	border: 0;
-	color: var(--fg-3);
-	padding: 0 2px;
-	cursor: pointer;
-}
-.composer .attached .att button:hover {
-	color: var(--fg-0);
-}
-
-/* Panel — generic design-system panel wrapper (Envs, Changes, Auto-Pilot) */
-.vs-panel {
-	background: var(--surface-1);
-	border: 1px solid var(--line);
-	border-radius: 10px;
-	overflow: hidden;
-}
-.vs-panel-head {
-	padding: 14px 16px;
-	display: flex;
-	align-items: flex-start;
-	gap: 12px;
-	border-bottom: 1px solid var(--line);
-}
-.vs-panel-head h3 {
-	margin: 0;
-	font-size: 0.875rem;
-	font-weight: 600;
-	display: flex;
-	align-items: center;
-	gap: 8px;
-	color: var(--fg-0);
-}
-.vs-panel-head .sub {
-	font-size: 0.75rem;
-	color: var(--fg-3);
-	margin-top: 3px;
-}
-.vs-panel-body {
-	padding: 16px;
-	display: flex;
-	flex-direction: column;
-	gap: 16px;
-}
-.vs-panel-foot {
-	padding: 12px 16px;
-	border-top: 1px solid var(--line);
-	display: flex;
-	justify-content: flex-end;
-	gap: 8px;
-	background: var(--surface-0);
-}
-
-/* Section head — eyebrow-style heading with actions on the right */
-.vs-section-head {
-	display: flex;
-	align-items: center;
-	gap: 10px;
-	flex-wrap: wrap;
-}
-.vs-section-head h2 {
-	margin: 0;
-	font-size: 0.8125rem;
-	font-weight: 600;
-	text-transform: uppercase;
-	letter-spacing: 0.08em;
-	color: var(--fg-2);
-	display: flex;
-	align-items: center;
-	gap: 8px;
-}
-.vs-section-head .actions {
-	margin-left: auto;
-	display: flex;
-	gap: 8px;
-	align-items: center;
-	flex-wrap: wrap;
-}
-
-/* Toolbar row — search + filters + sort (Projects list, Jobs list) */
-.vs-toolbar {
-	display: flex;
-	align-items: center;
-	gap: 10px;
-	flex-wrap: wrap;
-	background: var(--surface-1);
-	border: 1px solid var(--line);
-	border-radius: 10px;
-	padding: 8px 10px;
-}
-.vs-toolbar .search-field {
-	flex: 1 1 260px;
-	display: flex;
-	align-items: center;
-	gap: 8px;
-	background: var(--surface-2);
-	border: 1px solid var(--line);
-	border-radius: 8px;
-	padding: 6px 10px;
-	min-width: 0;
-}
-.vs-toolbar .search-field > i {
-	color: var(--fg-3);
-	font-size: 13px;
-	flex: none;
-}
-.vs-toolbar .search-field input {
-	flex: 1;
-	min-width: 0;
-	background: transparent;
-	border: 0;
-	outline: 0;
-	color: var(--fg-0);
-	font-size: 13px;
-}
-.vs-toolbar .search-field input::placeholder {
-	color: var(--fg-3);
-}
-
-/* Segmented control (used in filter rows) */
-.vs-segmented {
-	display: inline-flex;
-	background: var(--surface-2);
-	border: 1px solid var(--line);
-	border-radius: 8px;
+	background: var(--bs-secondary-bg);
+	border: 1px solid var(--bs-border-color);
+	border-radius: 0.5rem;
 	padding: 2px;
 }
-.vs-segmented button {
+.theme-toggle button {
 	background: transparent;
 	border: 0;
-	color: var(--fg-2);
-	padding: 5px 10px;
-	border-radius: 6px;
-	font-size: 12.5px;
+	color: var(--bs-secondary-color);
+	padding: 4px 8px;
+	border-radius: 0.375rem;
+	font-size: 0.75rem;
 	display: inline-flex;
 	align-items: center;
 	gap: 5px;
 	cursor: pointer;
-	white-space: nowrap;
 }
-.vs-segmented button:hover {
-	color: var(--fg-0);
-}
-.vs-segmented button.active {
-	background: var(--surface-0);
-	color: var(--fg-0);
+.theme-toggle button.active {
+	background: var(--bs-body-bg);
+	color: var(--bs-emphasis-color);
 	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
-/* Job card — used in Projects → Jobs tab */
-.job-card {
-	background: var(--surface-1);
-	border: 1px solid var(--line);
-	border-radius: 10px;
-	overflow: hidden;
+/* ── Sidebar nav — minor hover/active tweaks only; base layout is Bootstrap .nav flex-column ── */
+.vs-side-nav .nav-item,
+.vs-side-nav a,
+.vs-side-nav .nav-btn {
+	display: flex;
+	align-items: center;
+	gap: 0.625rem;
+	padding: 0.4375rem 0.625rem;
+	border-radius: 0.5rem;
+	color: var(--fg-2);
+	font-size: 0.8125rem;
+	text-decoration: none;
+	border: 0;
+	background: transparent;
+	width: 100%;
+	text-align: left;
 }
-.job-card.failed .status-pill {
-	background: var(--chip-danger-bg);
-	color: var(--bs-danger);
-}
-.job-card.running .status-pill {
-	background: var(--chip-primary-bg);
-	color: var(--bs-primary);
-}
-.job-card.queued .status-pill {
-	background: var(--chip-warning-bg);
-	color: var(--bs-warning);
-}
-
-/* Form-control dark-surface tweaks (Bootstrap defaults are ok but we want the surface-2 bg) */
-.form-control,
-.form-select {
-	background: var(--surface-2);
-	border-color: var(--line);
-	color: var(--fg-0);
-}
-.form-control:focus,
-.form-select:focus {
-	background: var(--surface-2);
-	border-color: var(--bs-primary);
-	color: var(--fg-0);
-	box-shadow: 0 0 0 2px rgba(var(--bs-primary-rgb), 0.25);
-}
-[data-theme="dark"] .form-control::placeholder {
+.vs-side-nav a > i,
+.vs-side-nav .nav-btn > i,
+.vs-side-nav .nav-item > i {
 	color: var(--fg-3);
+	font-size: 0.875rem;
+	width: 16px;
+	text-align: center;
+	flex: none;
 }
-.form-check-input {
-	background-color: var(--surface-2);
-	border-color: var(--line-strong);
+.vs-side-nav a:hover,
+.vs-side-nav .nav-btn:hover,
+.vs-side-nav .nav-item:hover {
+	background: var(--bs-tertiary-bg);
+	color: var(--bs-emphasis-color);
 }
-.form-check-input:checked {
-	background-color: var(--bs-primary);
-	border-color: var(--bs-primary);
+.vs-side-nav a.active,
+.vs-side-nav .nav-btn.active,
+.vs-side-nav .nav-item.active {
+	background: rgba(var(--bs-primary-rgb), 0.15);
+	color: var(--bs-emphasis-color);
 }
-
-/* Dropdown menu — dark surface tweak */
-.dropdown-menu {
-	background: var(--surface-2);
-	border-color: var(--line);
-}
-.dropdown-item {
-	color: var(--fg-1);
-}
-.dropdown-item:hover,
-.dropdown-item:focus,
-.dropdown-item.active {
-	background: var(--surface-3);
-	color: var(--fg-0);
-}
-.dropdown-divider {
-	border-color: var(--line);
-}
-
-/* Live pulsing dot (shared, used in branch chip + project cards) */
-.live-dot {
-	width: 6px;
-	height: 6px;
-	border-radius: 50%;
-	background: var(--bs-success);
-	box-shadow: 0 0 0 3px rgba(var(--bs-success-rgb), 0.2);
-	animation: pulse-live 1.5s ease-in-out infinite;
+.vs-side-nav a.active > i,
+.vs-side-nav .nav-btn.active > i,
+.vs-side-nav .nav-item.active > i {
+	color: var(--bs-primary);
 }

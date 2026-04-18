@@ -1,22 +1,18 @@
 @* Reusable project card used on Dashboard and Projects grid. *@
 
-<a href="/projects/@ProjectId"
-	class="d-flex flex-column gap-3 p-3 border border-line rounded-3 bg-surface-1 text-decoration-none text-fg-0 h-100 project-card-hover">
+<NavLink href="@($"/projects/{ProjectId}")"
+	class="d-flex flex-column gap-3 p-3 border rounded-3 bg-body-tertiary text-decoration-none h-100 project-card-hover">
 	<div class="d-flex align-items-start gap-2 min-width-0">
 		<ProjectMark Name="@Name" Size="sm" />
 		<div class="d-flex flex-column flex-grow-1 min-width-0">
-			<span class="fw-semibold text-truncate" style="font-size:0.90625rem;">@Name</span>
+			<span class="fw-semibold text-truncate">@Name</span>
 			@if (!string.IsNullOrEmpty(GitHubRepository))
 			{
-				<span class="font-mono text-fg-3 text-truncate" style="font-size:0.71875rem;" title="@GitHubRepository">
-					@GitHubRepository
-				</span>
+				<span class="font-monospace text-muted text-truncate small" title="@GitHubRepository">@GitHubRepository</span>
 			}
 			else if (!string.IsNullOrEmpty(WorkingPath))
 			{
-				<span class="font-mono text-fg-3 text-truncate" style="font-size:0.71875rem;" title="@WorkingPath">
-					@TruncateText(WorkingPath, 36)
-				</span>
+				<span class="font-monospace text-muted text-truncate small" title="@WorkingPath">@TruncateText(WorkingPath, 36)</span>
 			}
 		</div>
 		@if (LatestJob != null)
@@ -29,7 +25,7 @@
 
 	@if (!string.IsNullOrEmpty(Description))
 	{
-		<p class="small text-fg-2 mb-0 text-truncate-lines-2">@Description</p>
+		<p class="small text-body-tertiary mb-0 text-truncate-lines-2">@Description</p>
 	}
 
 	@if (LatestJob != null)
@@ -37,25 +33,26 @@
 		<div class="d-flex align-items-center gap-2 min-width-0">
 			<StatusIconPill Status="@LatestJob.Status.ToString()" Size="sm" />
 			<div class="d-flex flex-column flex-grow-1 min-width-0">
-				<span class="small text-fg-1 text-truncate" title="@LatestJob.DisplayTitle">
-					<span class="text-fg-3">Working on:</span> @TruncateText(LatestJob.DisplayTitle, 80)
+				<span class="small text-body-secondary text-truncate" title="@LatestJob.DisplayTitle">
+					<span class="text-muted">Working on:</span> @TruncateText(LatestJob.DisplayTitle, 80)
 				</span>
-				<span class="font-mono text-fg-3" style="font-size:0.6875rem;">@FormatTimeAgo(LatestJob.CreatedAt)</span>
+				<span class="font-monospace text-muted small">@FormatTimeAgo(LatestJob.CreatedAt)</span>
 			</div>
 		</div>
 	}
 	else
 	{
-		<div class="small text-fg-3 fst-italic">No jobs yet</div>
+		<div class="small text-muted fst-italic">No jobs yet</div>
 	}
 
 	@if (!string.IsNullOrEmpty(CurrentBranch))
 	{
-		<div class="mt-auto d-flex align-items-center gap-2">
-			<BranchChip Branch="@TruncateText(CurrentBranch, 20)" Live="@(LatestJob?.Status == JobStatus.Processing)" />
-		</div>
+		<span class="badge rounded-pill text-bg-secondary d-inline-flex align-items-center gap-1 mt-auto align-self-start">
+			<span class="live-dot"></span>
+			<i class="bi bi-signpost-split"></i>@TruncateText(CurrentBranch, 20)
+		</span>
 	}
-</a>
+</NavLink>
 
 @code {
 	[Parameter] public Guid ProjectId { get; set; }

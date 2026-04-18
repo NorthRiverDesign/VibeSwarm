@@ -1,40 +1,39 @@
-@* Colored rounded square with a Bootstrap icon — used to signal status in job/idea rows. *@
+@* Bootstrap badge with a status-tinted background + icon. Uses only text-bg-* + rounded-pill utilities. *@
 
-<span class="status-pill @StatusClass @SizeClass @CssClass">
+<span class="badge @TextBgClass d-inline-flex align-items-center justify-content-center @SizeClass @CssClass">
 	<i class="bi @ResolvedIcon"></i>
 </span>
 
 @code {
-	/// <summary>Semantic status name: completed, running, failed, queued, pending, idle, info, primary, success, warning, danger.</summary>
+	/// <summary>Semantic status: completed, running, failed, queued, pending, info, primary, success, warning, danger.</summary>
 	[Parameter] public string Status { get; set; } = "primary";
 
-	/// <summary>Override icon name (without bi- prefix). If null, derived from Status.</summary>
+	/// <summary>Override icon name (without bi- prefix).</summary>
 	[Parameter] public string? Icon { get; set; }
 
 	[Parameter] public string Size { get; set; } = "md"; // sm | md | lg
 
 	[Parameter] public string? CssClass { get; set; }
 
-	private string StatusClass => NormalizeStatus(Status) switch
+	private string TextBgClass => Normalized switch
 	{
-		"success" => "success",
-		"warning" => "warning",
-		"danger" => "danger",
-		"info" => "info",
-		"primary" => "primary",
-		_ => "primary"
+		"success" => "text-bg-success",
+		"warning" => "text-bg-warning",
+		"danger" => "text-bg-danger",
+		"info" => "text-bg-info",
+		_ => "text-bg-primary"
 	};
 
 	private string SizeClass => Size switch
 	{
-		"sm" => "status-pill-sm",
-		"lg" => "status-pill-lg",
-		_ => ""
+		"sm" => "p-1 fs-6",
+		"lg" => "p-2 fs-5",
+		_ => "p-1 fs-6"
 	};
 
-	private string ResolvedIcon => Icon ?? DefaultIconFor(NormalizeStatus(Status));
+	private string ResolvedIcon => Icon ?? DefaultIconFor(Normalized);
 
-	private static string NormalizeStatus(string s) => s?.Trim().ToLowerInvariant() switch
+	private string Normalized => Status?.Trim().ToLowerInvariant() switch
 	{
 		"completed" or "done" or "success" or "delivered" => "success",
 		"running" or "active" or "in_progress" or "inprogress" or "primary" => "primary",

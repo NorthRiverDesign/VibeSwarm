@@ -52,149 +52,138 @@
 		</div>
 	}
 
-	<div class="composer">
-		<textarea id="@_textareaId" placeholder="Describe a feature, bug, or improvement to turn into a job…"
+	<div class="card">
+		<textarea class="form-control border-0 rounded-0" id="@_textareaId" rows="4"
+				  placeholder="Describe a feature, bug, or improvement to turn into a job…"
 				  value="@NewIdeaDescription" @oninput="HandleNewIdeaInput" @onblur="FlushDraftSyncAsync" @onkeypress="HandleKeyPress"
 				  @ref="_newIdeaTextarea"
-				  maxlength="@ValidationLimits.IdeaDescriptionMaxLength"
-				  title="Describe a feature or improvement. Press Ctrl+Enter to submit or paste an image into the box."></textarea>
+				  maxlength="@ValidationLimits.IdeaDescriptionMaxLength"></textarea>
 
 		@if (_pendingAttachments.Any())
 		{
-			<div class="attached">
+			<div class="d-flex flex-wrap gap-2 px-3 pb-2">
 				@foreach (var attachment in _pendingAttachments.Select((item, index) => (item, index)))
 				{
 					var attachmentIndex = attachment.index;
-					<span class="att">
+					<span class="badge text-bg-secondary d-inline-flex align-items-center gap-2 p-1">
 						@if (TryGetAttachmentPreviewDataUrl(attachment.item, out var previewDataUrl))
 						{
-							<img src="@previewDataUrl" alt="@attachment.item.FileName" class="thumb" />
+							<img src="@previewDataUrl" alt="@attachment.item.FileName" class="rounded object-fit-cover attachment-thumb-sm" />
 						}
 						else
 						{
 							<i class="bi bi-paperclip"></i>
 						}
-						<span class="text-truncate" style="max-width:180px;">@attachment.item.FileName</span>
-						<button type="button" @onclick="() => RemovePendingAttachment(attachmentIndex)" aria-label="Remove">
-							<i class="bi bi-x"></i>
-						</button>
+						<span class="text-truncate mw-100">@attachment.item.FileName</span>
+						<button type="button" class="btn-close btn-close-white btn-close-sm" @onclick="() => RemovePendingAttachment(attachmentIndex)" aria-label="Remove"></button>
 					</span>
 				}
 			</div>
 		}
 
-		<div class="composer-foot">
-			<label class="btn-ghost m-0 @(_attachmentInteropAvailable ? "cursor-pointer" : "disabled opacity-50 pe-none")"
+		<div class="card-footer d-flex align-items-center flex-wrap gap-2">
+			<label class="btn btn-sm btn-outline-secondary m-0 @(_attachmentInteropAvailable ? "" : "disabled")"
 				   for="@_fileInputId" title="@GetAttachmentButtonTooltip()">
-				<i class="bi bi-paperclip"></i><span class="label-txt">Attach</span>
+				<i class="bi bi-paperclip"></i> Attach
 			</label>
 			<input id="@_fileInputId" class="d-none" type="file" multiple @onchange="HandleFileSelection"
 				   disabled="@(!_attachmentInteropAvailable)" />
 			@if (CanSuggestIdeas)
 			{
-				<button type="button" class="btn-ghost" @onclick="OpenSuggestIdeasModal"
-						disabled="@(IsSuggestingIdeas || IsProcessingActive)"
-						title="@GetSuggestIdeasTooltip()">
+				<button type="button" class="btn btn-sm btn-outline-secondary" @onclick="OpenSuggestIdeasModal"
+						disabled="@(IsSuggestingIdeas || IsProcessingActive)">
 					@if (IsSuggestingIdeas)
 					{
-						<span class="spinner-border spinner-border-sm" role="status"></span>
+						<span class="spinner-border spinner-border-sm"></span>
 					}
 					else
 					{
-						<i class="bi bi-stars" style="color:var(--chip-ai-fg);"></i>
+						<i class="bi bi-stars"></i>
 					}
-					<span class="label-txt">Suggest ideas</span>
+					Suggest ideas
 				</button>
 			}
-			<span class="counter @(IsOverLength ? "over" : "")">@GetIdeaLengthSummary(NewIdeaDescription)</span>
-			<button type="button" class="btn btn-primary btn-sm" @onclick="AddIdea"
-					disabled="@(!CanAddIdea)"
-					title="@GetAddIdeaTooltip()">
+			<span class="ms-auto font-monospace small @(IsOverLength ? "text-warning" : "text-muted")">@GetIdeaLengthSummary(NewIdeaDescription)</span>
+			<button type="button" class="btn btn-sm btn-primary" @onclick="AddIdea" disabled="@(!CanAddIdea)">
 				@if (IsAddingIdea)
 				{
-					<span class="spinner-border spinner-border-sm" role="status"></span>
+					<span class="spinner-border spinner-border-sm"></span>
 				}
 				else
 				{
 					<i class="bi bi-plus-lg"></i>
 				}
-				<span class="label-txt">Add to queue</span>
+				Add
 			</button>
 		</div>
-		<div class="composer-hint">
-			@if (_attachmentInteropAvailable)
-			{
-				<span>Paste images directly · </span>
-			}
-			<kbd>Ctrl</kbd>+<kbd>Enter</kbd> to add
-			@if (!string.IsNullOrWhiteSpace(AddIdeaValidationMessage))
-			{
-				<span class="text-danger ms-2">
-					<i class="bi bi-exclamation-circle me-1"></i>@AddIdeaValidationMessage
-				</span>
-			}
-		</div>
+	</div>
+
+	<div class="small text-muted">
+		@if (_attachmentInteropAvailable)
+		{
+			<span>Paste images directly · </span>
+		}
+		<kbd>Ctrl</kbd>+<kbd>Enter</kbd> to add
+		@if (!string.IsNullOrWhiteSpace(AddIdeaValidationMessage))
+		{
+			<span class="text-danger ms-2"><i class="bi bi-exclamation-circle me-1"></i>@AddIdeaValidationMessage</span>
+		}
 	</div>
 
 	@if (!HasDefaultProvider)
 	{
-		<a class="btn btn-sm btn-warning align-self-start" href="/providers"
-		   title="Set a default provider to enable one-tap idea processing">
+		<a class="btn btn-sm btn-warning align-self-start" href="/providers">
 			<i class="bi bi-plug me-1"></i>Set default provider
 		</a>
 	}
 
 	@if (!Ideas.Any())
 	{
-		<EmptyState Icon="lightbulb" Title="No ideas yet"
-					Message="Add an idea to build up the project queue." />
+		<EmptyState Icon="lightbulb" Title="No ideas yet" Message="Add an idea to build up the project queue." />
 	}
 	else
 	{
-		<div class="vs-section-head">
-			<h2><i class="bi bi-lightbulb"></i>Queue</h2>
+		<div class="d-flex align-items-center flex-wrap gap-2">
+			<h2 class="h6 mb-0 d-flex align-items-center gap-2"><i class="bi bi-lightbulb"></i>Queue</h2>
 			@if (UnprocessedIdeasCount > 0)
 			{
-				<span class="count-pill">@UnprocessedIdeasCount pending</span>
+				<span class="badge rounded-pill text-bg-secondary">@UnprocessedIdeasCount pending</span>
 			}
-			<div class="actions">
+			<div class="ms-auto">
 				@if (IsProcessingActive)
 				{
-					<button type="button" class="btn btn-sm btn-danger" @onclick="OnStopProcessing"
-							disabled="@IsTogglingProcessing" title="Stop automatic idea processing">
+					<button type="button" class="btn btn-sm btn-danger" @onclick="OnStopProcessing" disabled="@IsTogglingProcessing">
 						@if (IsTogglingProcessing)
 						{
-							<span class="spinner-border spinner-border-sm" role="status"></span>
+							<span class="spinner-border spinner-border-sm"></span>
 						}
 						else
 						{
 							<i class="bi bi-stop-fill"></i>
 						}
-						<span class="label-txt">Stop</span>
+						Stop
 					</button>
 				}
 				else if (TotalIdeasCount >= 1)
 				{
-					<div class="start-group">
-						<button type="button" class="btn-start" @onclick="OpenStartAllModal"
-								disabled="@(IsTogglingProcessing || !HasDefaultProvider || UnprocessedIdeasCount == 0)"
-								title="@GetStartAllTooltip()">
-							@if (IsTogglingProcessing)
-							{
-								<span class="spinner-border spinner-border-sm" role="status"></span>
-							}
-							else
-							{
-								<i class="bi bi-play-fill"></i>
-							}
-							<span>Start queue</span>
-						</button>
-					</div>
+					<button type="button" class="btn btn-sm btn-success" @onclick="OpenStartAllModal"
+							disabled="@(IsTogglingProcessing || !HasDefaultProvider || UnprocessedIdeasCount == 0)"
+							title="@GetStartAllTooltip()">
+						@if (IsTogglingProcessing)
+						{
+							<span class="spinner-border spinner-border-sm"></span>
+						}
+						else
+						{
+							<i class="bi bi-play-fill"></i>
+						}
+						Start queue
+					</button>
 				}
 			</div>
 		</div>
-		<div class="border border-line rounded-3 overflow-hidden bg-surface-1">
-			<ul class="list-group list-group-flush rounded-3 mb-0">
+		<div class="card">
+			<ul class="list-group list-group-flush">
 				@foreach (var idea in Ideas)
 				{
 					<IdeaListItem @key="idea.Id" Idea="idea" IsProcessing="@IsIdeaProcessing(idea.Id)"

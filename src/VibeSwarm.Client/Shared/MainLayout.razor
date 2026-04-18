@@ -18,16 +18,16 @@
 <div class="app-layout d-flex flex-column">
     @* Mobile Header *@
     <header
-        class="app-header d-lg-none sticky-top d-flex align-items-center gap-2 flex-shrink-0 bg-surface-0 border-bottom border-line">
+        class="app-header d-lg-none sticky-top d-flex align-items-center gap-2 flex-shrink-0 border-bottom">
         <button id="mobile-menu-toggle"
                 class="btn btn-link nav-toggle d-flex align-items-center justify-content-center p-0 bg-transparent border-0 rounded fs-4"
                 @onclick="ToggleMobileMenu" aria-label="Toggle navigation">
             <i class="bi bi-list"></i>
         </button>
-        <a class="app-brand d-flex align-items-center gap-2 text-decoration-none fw-semibold" href="/">
-            <span class="vs-brand-mark d-inline-block" style="width:20px;height:20px;border-radius:5px;"></span>
-            <span>VibeSwarm</span>
-        </a>
+        <NavLink class="app-brand d-flex align-items-center gap-2 text-decoration-none fw-semibold" href="/" Match="NavLinkMatch.All">
+            <span class="app-brand-mark app-mark-xs d-inline-block"></span>
+            <span>@AppBranding.Name</span>
+        </NavLink>
         <div class="ms-auto d-flex align-items-center gap-2">
             <button type="button"
                     class="btn btn-link text-secondary p-0 fs-5 d-flex align-items-center justify-content-center touch-manipulation mobile-header-icon"
@@ -45,15 +45,14 @@
     <nav id="app-sidebar" class="app-sidebar position-fixed d-flex flex-column @(_mobileMenuOpen ? "open" : "")">
         @* Brand (desktop only — mobile shows brand in top bar) *@
         <div class="d-none d-lg-flex align-items-center gap-2 px-3 py-3 fw-semibold">
-            <span class="vs-brand-mark d-inline-block" style="width:22px;height:22px;border-radius:6px;"></span>
-            <span>VibeSwarm</span>
+            <span class="app-brand-mark app-mark-sm d-inline-block"></span>
+            <span>@AppBranding.Name</span>
         </div>
-        <div class="flex-grow-1 vs-side-nav d-flex flex-column gap-1 overflow-y-auto p-2" style="min-height: 0;">
+        <div class="flex-grow-1 vs-side-nav d-flex flex-column gap-1 overflow-y-auto min-height-0 p-2">
             <button class="nav-btn cursor-pointer" @onclick="OpenSearch" title="Search (Ctrl+K)">
                 <i class="bi bi-search"></i>
                 <span class="flex-grow-1">Search</span>
-                <kbd class="border rounded px-1 text-fg-3 d-none d-lg-inline"
-                     style="font-size: 0.65rem; background: transparent;">⌃K</kbd>
+                <kbd class="border rounded px-1 text-muted bg-transparent small d-none d-lg-inline">⌃K</kbd>
             </button>
             <NavLink class="nav-item" href="/" Match="NavLinkMatch.All" @onclick="CloseMobileMenu">
                 <i class="bi bi-speedometer2"></i>

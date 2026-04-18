@@ -1,6 +1,6 @@
-@* Inline chip with optional icon — used in meta rows on job/idea/project cards. *@
+@* Bootstrap badge used inline in meta rows. Variant maps to Bootstrap's text-bg-* subtle classes. *@
 
-<span class="meta-chip @VariantClass @CssClass">
+<span class="badge @VariantClass d-inline-flex align-items-center gap-1 @CssClass">
 	@if (!string.IsNullOrEmpty(Icon))
 	{
 		<i class="bi @Icon"></i>
@@ -13,15 +13,17 @@
 	[Parameter] public string? Icon { get; set; }
 	[Parameter] public string? Text { get; set; }
 	[Parameter] public RenderFragment? ChildContent { get; set; }
-	[Parameter] public string? Variant { get; set; } // null | sha | pushed | failed | ai
+	[Parameter] public string? Variant { get; set; }
 	[Parameter] public string? CssClass { get; set; }
 
 	private string VariantClass => Variant?.ToLowerInvariant() switch
 	{
-		"sha" => "sha font-mono",
-		"pushed" => "pushed",
-		"failed" => "failed",
-		"ai" => "ai",
-		_ => ""
+		"sha" => "font-monospace text-bg-secondary",
+		"pushed" => "text-bg-success",
+		"failed" or "danger" => "text-bg-danger",
+		"warning" or "warn" => "text-bg-warning",
+		"info" => "text-bg-info",
+		"ai" => "text-bg-primary",
+		_ => "text-bg-secondary"
 	};
 }

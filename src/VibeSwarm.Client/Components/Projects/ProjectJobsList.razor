@@ -2,20 +2,17 @@
 
 <SectionErrorBoundary SectionTitle="job list">
 	<div class="d-grid gap-3">
-		@* Search and filter toolbar *@
-		<div class="vs-toolbar">
-			<div class="search-field">
-				<i class="bi bi-search"></i>
-				<input type="search" placeholder="Search jobs…"
-					   value="@SearchQuery"
-					   @oninput="HandleSearchInput"
-					   title="Filter jobs by name" />
-			</div>
-			<select class="form-select form-select-sm w-auto"
+		@* Bootstrap input-group for search + status filter *@
+		<div class="input-group input-group-sm">
+			<span class="input-group-text"><i class="bi bi-search"></i></span>
+			<input type="search" class="form-control" placeholder="Search jobs…"
+				   value="@SearchQuery"
+				   @oninput="HandleSearchInput"
+				   title="Filter jobs by name" />
+			<select class="form-select flex-grow-0 w-auto"
 					value="@StatusFilter"
 					@onchange="HandleStatusFilterChange"
-					title="Filter by status"
-					style="max-width:160px;">
+					title="Filter by status">
 				<option value="all">All statuses</option>
 				<option value="active">Active</option>
 				<option value="completed">Completed</option>

@@ -40,8 +40,7 @@
 				<StatusIconPill Status="@GetStatusSemantic()" Icon="@GetStatusIcon()" />
 
 				<div class="d-flex flex-column gap-1 flex-grow-1 min-width-0">
-					<div class="text-fg-0 text-break text-truncate-lines-2 @(IsRunningIdea() ? "text-fg-2" : "")"
-						 style="font-size:0.84375rem; line-height:1.4;">@Idea.Description</div>
+					<div class="text-break text-truncate-lines-2 small @(IsRunningIdea() ? "text-body-tertiary" : "")">@Idea.Description</div>
 					<div class="d-flex flex-wrap gap-2 align-items-center">
 						@if (Idea.ExpansionStatus == IdeaExpansionStatus.Approved)
 						{
@@ -57,11 +56,9 @@
 						}
 						@if (IsQueuedIdea() && Idea.JobId.HasValue)
 						{
-							<a href="/jobs/view/@Idea.JobId" class="meta-chip text-decoration-none">
-								<i class="bi bi-hourglass-split"></i>
-								<span>Queued Job</span>
-								<i class="bi bi-arrow-right-short"></i>
-							</a>
+							<NavLink href="@($"/jobs/view/{Idea.JobId}")" class="badge text-bg-info text-decoration-none">
+								<i class="bi bi-hourglass-split"></i> Queued Job <i class="bi bi-arrow-right-short"></i>
+							</NavLink>
 						}
 					</div>
 					@if (Idea.Attachments.Any())
@@ -69,21 +66,20 @@
 						<div class="d-flex flex-wrap gap-2 mt-1">
 							@foreach (var attachment in Idea.Attachments.OrderBy(attachment => attachment.CreatedAt))
 							{
-								<a class="d-inline-flex align-items-center gap-2 text-decoration-none border border-line rounded-2 px-2 py-1 bg-surface-2 min-width-0"
+								<a class="d-inline-flex align-items-center gap-2 text-decoration-none border rounded-2 px-2 py-1 bg-body-secondary min-width-0"
 								   href="@GetAttachmentUrl(attachment.Id)" target="_blank" rel="noreferrer"
 								   title="@attachment.FileName">
 									@if (IsImageAttachment(attachment))
 									{
-										<img src="@GetAttachmentUrl(attachment.Id)" alt="@attachment.FileName" class="rounded border flex-shrink-0"
-											 style="width: 2.25rem; height: 2.25rem; object-fit: cover;" />
+										<img src="@GetAttachmentUrl(attachment.Id)" alt="@attachment.FileName" class="rounded border flex-shrink-0 object-fit-cover attachment-thumb" />
 									}
 									else
 									{
-										<i class="bi bi-paperclip text-fg-3 flex-shrink-0"></i>
+										<i class="bi bi-paperclip text-muted flex-shrink-0"></i>
 									}
 									<span class="d-flex flex-column min-width-0">
-										<span class="text-fg-0 text-truncate small">@attachment.FileName</span>
-										<span class="text-fg-3" style="font-size:0.6875rem;">@FormatAttachmentSize(attachment.SizeBytes)</span>
+										<span class="text-truncate small">@attachment.FileName</span>
+										<span class="text-muted small">@FormatAttachmentSize(attachment.SizeBytes)</span>
 									</span>
 								</a>
 							}
@@ -119,10 +115,10 @@
 				}
 				else if (Idea.JobId.HasValue)
 				{
-					<a href="/jobs/view/@Idea.JobId" class="btn btn-sm btn-secondary">
+					<NavLink href="@($"/jobs/view/{Idea.JobId}")" class="btn btn-sm btn-secondary">
 						<span class="spinner-border spinner-border-sm" role="status"></span>
 						<span class="ms-1">View Job</span>
-					</a>
+					</NavLink>
 				}
 				else
 				{

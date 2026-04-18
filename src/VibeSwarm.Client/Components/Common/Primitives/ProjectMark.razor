@@ -1,15 +1,18 @@
-@* Gradient square with project initials. Size controlled via Size="sm|md|lg". *@
+@* Gradient square with project initials. Size via Size="sm|md|lg" maps to .app-mark-* classes. *@
 
-<span class="vs-project-mark d-inline-grid flex-shrink-0 @CssClass"
-	  style="@Style"
-	  title="@Name">
-	@Initials
-</span>
+<span class="app-project-mark @SizeClass @CssClass" title="@Name">@Initials</span>
 
 @code {
 	[Parameter] public string? Name { get; set; }
 	[Parameter] public string Size { get; set; } = "md"; // sm | md | lg
 	[Parameter] public string? CssClass { get; set; }
+
+	private string SizeClass => Size switch
+	{
+		"sm" => "app-mark-sm",
+		"lg" => "app-mark-lg",
+		_ => "app-mark-md"
+	};
 
 	private string Initials
 	{
@@ -24,38 +27,5 @@
 			}
 			return name.Length >= 2 ? name[..2].ToUpperInvariant() : name.ToUpperInvariant();
 		}
-	}
-
-	private string Style
-	{
-		get
-		{
-			var (a, b) = HashGradient(Name ?? "");
-			var (size, radius, font) = Size switch
-			{
-				"sm" => ("28px", "7px", "11px"),
-				"lg" => ("40px", "10px", "14px"),
-				_ => ("32px", "8px", "12.5px")
-			};
-			return $"width:{size};height:{size};border-radius:{radius};font-size:{font};place-items:center;background:linear-gradient(135deg, {a}, {b});";
-		}
-	}
-
-	private static (string a, string b) HashGradient(string seed)
-	{
-		var palettes = new (string, string)[]
-		{
-			("#4c7fe3", "#2d55a8"),
-			("#7c5cd9", "#4d3aa0"),
-			("#37a38a", "#1f6e5e"),
-			("#d49964", "#a36537"),
-			("#c94d8e", "#832c5e"),
-			("#5ec6d3", "#2d7b85"),
-			("#e8b558", "#a67a2a"),
-			("#6b8afd", "#334fb3"),
-		};
-		var hash = 0;
-		foreach (var c in seed) hash = (hash * 31 + c) & 0x7fffffff;
-		return palettes[hash % palettes.Length];
 	}
 }
