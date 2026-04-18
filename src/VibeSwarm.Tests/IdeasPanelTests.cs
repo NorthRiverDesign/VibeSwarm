@@ -58,19 +58,16 @@ public sealed class IdeasPanelTests
 
 		Assert.Contains("Refreshing ideas", html);
 		Assert.Contains("3 pending", html);
-		Assert.Contains(">Ideas</h3>", html);
-		Assert.Contains("Start All", html);
+		Assert.Contains("Queue", html);
+		Assert.Contains("Start queue", html);
 		Assert.Contains("Set default provider", html);
-		Assert.Contains("Add idea", html);
-		Assert.Contains("Set a default provider to enable idea processing", html);
-		Assert.Contains("Paste images directly into the idea box to attach them.", html);
+		Assert.Contains("composer", html);
+		Assert.Contains("Paste images directly", html);
 		Assert.DoesNotContain("class=\"badge bg-secondary\">7</span>", html);
 		Assert.DoesNotContain("Short description of a feature or update.", html);
 		Assert.DoesNotContain("card-header", html);
 		Assert.Contains($"maxlength=\"{ValidationLimits.IdeaDescriptionMaxLength}\"", html);
-		Assert.Contains($"0/{ValidationLimits.IdeaDescriptionMaxLength} characters", html);
-		Assert.Contains("border rounded-3", html);
-		Assert.DoesNotContain("border rounded-3 overflow-hidden", html);
+		Assert.Contains($"0 / {ValidationLimits.IdeaDescriptionMaxLength}", html);
 	}
 
 	[Fact]
@@ -99,7 +96,7 @@ public sealed class IdeasPanelTests
 			return output.ToHtmlString();
 		});
 
-		Assert.Contains("Suggest Ideas", html);
+		Assert.Contains("Suggest ideas", html);
 		Assert.DoesNotContain("Paste Image", html);
 	}
 
@@ -130,8 +127,8 @@ public sealed class IdeasPanelTests
 		});
 
 		Assert.Contains("list-group-item p-3", html);
-		Assert.Contains("justify-content-between align-items-stretch align-items-sm-start gap-3", html);
-		Assert.Contains("align-self-stretch align-self-sm-start gap-2", html);
+		Assert.Contains("d-flex flex-column flex-sm-row gap-3", html);
+		Assert.Contains("align-items-stretch align-items-sm-start", html);
 	}
 
 	[Fact]
@@ -316,9 +313,8 @@ public sealed class IdeasPanelTests
 		var html = cut.Markup;
 
 		Assert.Contains("clipboard.png", html);
-		Assert.Contains("1 attachment", html);
 		Assert.Contains("data:image/png;base64,", html);
-		Assert.Contains("clipboard.png\" class=\"rounded border", html);
+		Assert.Contains("clipboard.png\" class=\"thumb", html);
 	}
 
 	[Fact]
@@ -416,7 +412,7 @@ public sealed class IdeasPanelTests
 
 		cut.WaitForAssertion(() =>
 		{
-			Assert.Contains("Attach Files", cut.Markup);
+			Assert.Contains("Attach", cut.Markup);
 			Assert.Contains("disabled opacity-50 pe-none", cut.Markup);
 			Assert.DoesNotContain("Paste images directly into the idea box to attach them.", cut.Markup);
 		});
@@ -451,7 +447,7 @@ public sealed class IdeasPanelTests
 
 		cut.WaitForAssertion(() =>
 		{
-			Assert.Contains("Attach Files", cut.Markup);
+			Assert.Contains("Attach", cut.Markup);
 			Assert.Contains("disabled opacity-50 pe-none", cut.Markup);
 			Assert.DoesNotContain("Paste images directly into the idea box to attach them.", cut.Markup);
 		});
@@ -492,7 +488,7 @@ public sealed class IdeasPanelTests
 		cut.Find("textarea").Input("Keep typing through a canceled draft save");
 
 		Assert.Equal("Keep typing through a canceled draft save", cut.Find("textarea").GetAttribute("value"));
-		Assert.Contains("Add idea", cut.Markup);
+		Assert.Contains("composer", cut.Markup);
 	}
 
 	[Fact]
@@ -516,7 +512,7 @@ public sealed class IdeasPanelTests
 			.Add(component => component.AvailableInferenceProviders, new List<InferenceProvider>())
 			.Add(component => component.AvailableProviders, new List<Provider>()));
 
-		Assert.Contains("Ideas", cut.Markup);
+		Assert.Contains("Queue", cut.Markup);
 		Assert.Contains("1 pending", cut.Markup);
 		Assert.NotNull(cut.Find("button[title='Start processing all pending ideas']"));
 	}

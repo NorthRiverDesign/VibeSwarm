@@ -1,0 +1,56 @@
+@* Colored rounded square with a Bootstrap icon — used to signal status in job/idea rows. *@
+
+<span class="status-pill @StatusClass @SizeClass @CssClass">
+	<i class="bi @ResolvedIcon"></i>
+</span>
+
+@code {
+	/// <summary>Semantic status name: completed, running, failed, queued, pending, idle, info, primary, success, warning, danger.</summary>
+	[Parameter] public string Status { get; set; } = "primary";
+
+	/// <summary>Override icon name (without bi- prefix). If null, derived from Status.</summary>
+	[Parameter] public string? Icon { get; set; }
+
+	[Parameter] public string Size { get; set; } = "md"; // sm | md | lg
+
+	[Parameter] public string? CssClass { get; set; }
+
+	private string StatusClass => NormalizeStatus(Status) switch
+	{
+		"success" => "success",
+		"warning" => "warning",
+		"danger" => "danger",
+		"info" => "info",
+		"primary" => "primary",
+		_ => "primary"
+	};
+
+	private string SizeClass => Size switch
+	{
+		"sm" => "status-pill-sm",
+		"lg" => "status-pill-lg",
+		_ => ""
+	};
+
+	private string ResolvedIcon => Icon ?? DefaultIconFor(NormalizeStatus(Status));
+
+	private static string NormalizeStatus(string s) => s?.Trim().ToLowerInvariant() switch
+	{
+		"completed" or "done" or "success" or "delivered" => "success",
+		"running" or "active" or "in_progress" or "inprogress" or "primary" => "primary",
+		"queued" or "pending" or "waiting" or "warning" or "scheduled" => "warning",
+		"failed" or "error" or "danger" or "cancelled" or "canceled" => "danger",
+		"info" => "info",
+		_ => "primary"
+	};
+
+	private static string DefaultIconFor(string status) => status switch
+	{
+		"success" => "bi-check-lg",
+		"primary" => "bi-hourglass-split",
+		"warning" => "bi-lightbulb",
+		"danger" => "bi-exclamation-lg",
+		"info" => "bi-info-circle",
+		_ => "bi-circle"
+	};
+}

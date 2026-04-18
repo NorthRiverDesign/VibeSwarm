@@ -50,7 +50,7 @@ public sealed class ProjectEnvironmentsEditorTests
 
 		Assert.Contains("Project Environments", html);
 		Assert.Contains("Primary environment", html);
-		Assert.Contains("Environment Type", html);
+		Assert.Contains("Environment type", html);
 		Assert.Contains("Development", html);
 		Assert.Contains("Staging", html);
 	}
@@ -95,7 +95,7 @@ public sealed class ProjectEnvironmentsEditorTests
 		Assert.Contains("Password", html);
 		Assert.Contains("(optional)", html);
 		Assert.Contains("Username and password are optional.", html);
-		Assert.Contains("d-flex flex-wrap justify-content-end gap-2", html);
+		Assert.Contains("d-flex gap-1 ms-auto", html);
 	}
 
 	private sealed class EnvironmentEditorHost : ComponentBase

@@ -52,17 +52,62 @@
 		</div>
 	}
 
-	<div class="border rounded-3 bg-body-tertiary p-3">
-		<label class="form-label fw-medium mb-2" for="@_textareaId">Add idea</label>
-		<div class="d-flex gap-2 align-items-end">
-			<div class="flex-grow-1">
-				<textarea class="form-control" id="@_textareaId" rows="5" placeholder="Describe a feature or improvement..."
-						  value="@NewIdeaDescription" @oninput="HandleNewIdeaInput" @onblur="FlushDraftSyncAsync" @onkeypress="HandleKeyPress"
-						  @ref="_newIdeaTextarea"
-						  maxlength="@ValidationLimits.IdeaDescriptionMaxLength"
-						  title="Describe a feature or improvement. Press Ctrl+Enter to submit or paste an image into the box."></textarea>
+	<div class="composer">
+		<textarea id="@_textareaId" placeholder="Describe a feature, bug, or improvement to turn into a job…"
+				  value="@NewIdeaDescription" @oninput="HandleNewIdeaInput" @onblur="FlushDraftSyncAsync" @onkeypress="HandleKeyPress"
+				  @ref="_newIdeaTextarea"
+				  maxlength="@ValidationLimits.IdeaDescriptionMaxLength"
+				  title="Describe a feature or improvement. Press Ctrl+Enter to submit or paste an image into the box."></textarea>
+
+		@if (_pendingAttachments.Any())
+		{
+			<div class="attached">
+				@foreach (var attachment in _pendingAttachments.Select((item, index) => (item, index)))
+				{
+					var attachmentIndex = attachment.index;
+					<span class="att">
+						@if (TryGetAttachmentPreviewDataUrl(attachment.item, out var previewDataUrl))
+						{
+							<img src="@previewDataUrl" alt="@attachment.item.FileName" class="thumb" />
+						}
+						else
+						{
+							<i class="bi bi-paperclip"></i>
+						}
+						<span class="text-truncate" style="max-width:180px;">@attachment.item.FileName</span>
+						<button type="button" @onclick="() => RemovePendingAttachment(attachmentIndex)" aria-label="Remove">
+							<i class="bi bi-x"></i>
+						</button>
+					</span>
+				}
 			</div>
-			<button type="button" class="btn btn-primary align-self-stretch px-3" @onclick="AddIdea"
+		}
+
+		<div class="composer-foot">
+			<label class="btn-ghost m-0 @(_attachmentInteropAvailable ? "cursor-pointer" : "disabled opacity-50 pe-none")"
+				   for="@_fileInputId" title="@GetAttachmentButtonTooltip()">
+				<i class="bi bi-paperclip"></i><span class="label-txt">Attach</span>
+			</label>
+			<input id="@_fileInputId" class="d-none" type="file" multiple @onchange="HandleFileSelection"
+				   disabled="@(!_attachmentInteropAvailable)" />
+			@if (CanSuggestIdeas)
+			{
+				<button type="button" class="btn-ghost" @onclick="OpenSuggestIdeasModal"
+						disabled="@(IsSuggestingIdeas || IsProcessingActive)"
+						title="@GetSuggestIdeasTooltip()">
+					@if (IsSuggestingIdeas)
+					{
+						<span class="spinner-border spinner-border-sm" role="status"></span>
+					}
+					else
+					{
+						<i class="bi bi-stars" style="color:var(--chip-ai-fg);"></i>
+					}
+					<span class="label-txt">Suggest ideas</span>
+				</button>
+			}
+			<span class="counter @(IsOverLength ? "over" : "")">@GetIdeaLengthSummary(NewIdeaDescription)</span>
+			<button type="button" class="btn btn-primary btn-sm" @onclick="AddIdea"
 					disabled="@(!CanAddIdea)"
 					title="@GetAddIdeaTooltip()">
 				@if (IsAddingIdea)
@@ -73,90 +118,31 @@
 				{
 					<i class="bi bi-plus-lg"></i>
 				}
-				<span class="d-none d-sm-inline ms-1">Add</span>
+				<span class="label-txt">Add to queue</span>
 			</button>
 		</div>
-		<div class="d-flex flex-wrap align-items-center gap-2 mt-2">
-			<label class="btn btn-sm btn-secondary mb-0 @(_attachmentInteropAvailable ? string.Empty : "disabled opacity-50 pe-none")"
-				   for="@_fileInputId" title="@GetAttachmentButtonTooltip()">
-				<i class="bi bi-paperclip me-1"></i>Attach Files
-			</label>
-			<input id="@_fileInputId" class="d-none" type="file" multiple @onchange="HandleFileSelection"
-				   disabled="@(!_attachmentInteropAvailable)" />
-			@if (CanSuggestIdeas)
+		<div class="composer-hint">
+			@if (_attachmentInteropAvailable)
 			{
-				<button type="button" class="btn btn-sm btn-secondary" @onclick="OpenSuggestIdeasModal"
-						disabled="@(IsSuggestingIdeas || IsProcessingActive)"
-						title="@GetSuggestIdeasTooltip()">
-					@if (IsSuggestingIdeas)
-					{
-						<span class="spinner-border spinner-border-sm me-1" role="status"></span>
-					}
-					else
-					{
-						<i class="bi bi-stars me-1"></i>
-					}
-					<span>Suggest Ideas</span>
-				</button>
+				<span>Paste images directly · </span>
 			}
-			@if (_pendingAttachments.Any())
+			<kbd>Ctrl</kbd>+<kbd>Enter</kbd> to add
+			@if (!string.IsNullOrWhiteSpace(AddIdeaValidationMessage))
 			{
-				<span class="small text-body-secondary">@GetAttachmentSummary()</span>
+				<span class="text-danger ms-2">
+					<i class="bi bi-exclamation-circle me-1"></i>@AddIdeaValidationMessage
+				</span>
 			}
 		</div>
-		@if (_attachmentInteropAvailable)
-		{
-			<div class="small text-body-secondary mt-2">
-				Paste images directly into the idea box to attach them.
-			</div>
-		}
-		@if (_pendingAttachments.Any())
-		{
-			<div class="d-flex flex-column gap-2 mt-2">
-				@foreach (var attachment in _pendingAttachments.Select((item, index) => (item, index)))
-				{
-					var attachmentIndex = attachment.index;
-					<div class="d-flex flex-wrap align-items-center justify-content-between gap-2 border rounded-3 px-2 py-2 bg-body">
-						<div class="d-flex align-items-center gap-2 min-width-0">
-							@if (TryGetAttachmentPreviewDataUrl(attachment.item, out var previewDataUrl))
-							{
-								<img src="@previewDataUrl" alt="@attachment.item.FileName" class="rounded border flex-shrink-0"
-									 style="width: 3.5rem; height: 3.5rem; object-fit: cover;" />
-							}
-							else
-							{
-								<i class="bi bi-paperclip text-body-secondary"></i>
-							}
-							<div class="d-flex flex-column min-width-0">
-								<span class="text-truncate min-width-0">@attachment.item.FileName</span>
-								<span class="small text-body-secondary">@FormatAttachmentSize(attachment.item.Content.LongLength)</span>
-							</div>
-						</div>
-						<button type="button" class="btn btn-sm btn-secondary" @onclick="() => RemovePendingAttachment(attachmentIndex)">
-							<i class="bi bi-x-lg"></i>
-						</button>
-					</div>
-				}
-			</div>
-		}
-		<div class="d-flex flex-wrap align-items-center gap-2 mt-2 small text-body-secondary">
-			<span>@GetIdeaLengthSummary(NewIdeaDescription)</span>
-			<span><kbd>Ctrl</kbd>+<kbd>Enter</kbd> to add</span>
-			@if (!HasDefaultProvider)
-			{
-				<a class="btn btn-sm btn-warning ms-auto" href="/providers"
-				   title="Set a default provider to enable one-tap idea processing">
-					<i class="bi bi-plug me-1"></i>Set default provider
-				</a>
-			}
-		</div>
-		@if (!string.IsNullOrWhiteSpace(AddIdeaValidationMessage))
-		{
-			<div class="text-danger small mt-2">
-				<i class="bi bi-exclamation-circle me-1"></i>@AddIdeaValidationMessage
-			</div>
-		}
 	</div>
+
+	@if (!HasDefaultProvider)
+	{
+		<a class="btn btn-sm btn-warning align-self-start" href="/providers"
+		   title="Set a default provider to enable one-tap idea processing">
+			<i class="bi bi-plug me-1"></i>Set default provider
+		</a>
+	}
 
 	@if (!Ideas.Any())
 	{
@@ -165,48 +151,50 @@
 	}
 	else
 	{
-		<div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
-			<div class="d-flex flex-wrap align-items-center gap-2">
-				<h3 class="mb-0 fs-5 fw-semibold">Ideas</h3>
-				@if (UnprocessedIdeasCount > 0)
+		<div class="vs-section-head">
+			<h2><i class="bi bi-lightbulb"></i>Queue</h2>
+			@if (UnprocessedIdeasCount > 0)
+			{
+				<span class="count-pill">@UnprocessedIdeasCount pending</span>
+			}
+			<div class="actions">
+				@if (IsProcessingActive)
 				{
-					<span class="badge bg-body-secondary text-body">@UnprocessedIdeasCount pending</span>
+					<button type="button" class="btn btn-sm btn-danger" @onclick="OnStopProcessing"
+							disabled="@IsTogglingProcessing" title="Stop automatic idea processing">
+						@if (IsTogglingProcessing)
+						{
+							<span class="spinner-border spinner-border-sm" role="status"></span>
+						}
+						else
+						{
+							<i class="bi bi-stop-fill"></i>
+						}
+						<span class="label-txt">Stop</span>
+					</button>
+				}
+				else if (TotalIdeasCount >= 1)
+				{
+					<div class="start-group">
+						<button type="button" class="btn-start" @onclick="OpenStartAllModal"
+								disabled="@(IsTogglingProcessing || !HasDefaultProvider || UnprocessedIdeasCount == 0)"
+								title="@GetStartAllTooltip()">
+							@if (IsTogglingProcessing)
+							{
+								<span class="spinner-border spinner-border-sm" role="status"></span>
+							}
+							else
+							{
+								<i class="bi bi-play-fill"></i>
+							}
+							<span>Start queue</span>
+						</button>
+					</div>
 				}
 			</div>
-			@if (IsProcessingActive)
-			{
-				<button type="button" class="btn btn-sm btn-danger" @onclick="OnStopProcessing"
-						disabled="@IsTogglingProcessing" title="Stop automatic idea processing">
-					@if (IsTogglingProcessing)
-					{
-						<span class="spinner-border spinner-border-sm me-1" role="status"></span>
-					}
-					else
-					{
-						<i class="bi bi-stop-fill"></i>
-					}
-					<span class="d-none d-sm-inline ms-1">Stop</span>
-				</button>
-			}
-			else if (TotalIdeasCount >= 1)
-			{
-				<button type="button" class="btn btn-sm btn-success" @onclick="OpenStartAllModal"
-						disabled="@(IsTogglingProcessing || !HasDefaultProvider || UnprocessedIdeasCount == 0)"
-						title="@GetStartAllTooltip()">
-					@if (IsTogglingProcessing)
-					{
-						<span class="spinner-border spinner-border-sm me-1" role="status"></span>
-					}
-					else
-					{
-						<i class="bi bi-play-fill"></i>
-					}
-					<span class="d-none d-sm-inline ms-1">Start All</span>
-				</button>
-			}
 		</div>
-		<div class="border rounded-3">
-			<ul class="list-group list-group-flush rounded-3">
+		<div class="border border-line rounded-3 overflow-hidden bg-surface-1">
+			<ul class="list-group list-group-flush rounded-3 mb-0">
 				@foreach (var idea in Ideas)
 				{
 					<IdeaListItem @key="idea.Id" Idea="idea" IsProcessing="@IsIdeaProcessing(idea.Id)"
@@ -879,8 +867,10 @@
 
 	private static string GetIdeaLengthSummary(string? value)
 	{
-		return $"{value?.Length ?? 0}/{ValidationLimits.IdeaDescriptionMaxLength} characters";
+		return $"{value?.Length ?? 0} / {ValidationLimits.IdeaDescriptionMaxLength}";
 	}
+
+	private bool IsOverLength => (NewIdeaDescription?.Length ?? 0) > ValidationLimits.IdeaDescriptionMaxLength;
 
 	private static string? ValidateIdeaDescription(string? value)
 	{

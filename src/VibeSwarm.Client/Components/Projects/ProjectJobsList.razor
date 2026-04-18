@@ -2,33 +2,26 @@
 
 <SectionErrorBoundary SectionTitle="job list">
 	<div class="d-grid gap-3">
-		@* Search and filter row *@
-		<div class="d-flex flex-column flex-lg-row align-items-stretch align-items-lg-center gap-2">
-			<div class="flex-grow-1 min-width-0">
-				<div class="row g-2 align-items-stretch">
-					<div class="col-12 col-md-8">
-						<div class="input-group input-group-sm">
-							<span class="input-group-text"><i class="bi bi-search"></i></span>
-							<input type="search" class="form-control" placeholder="Search jobs…"
-								   value="@SearchQuery"
-								   @oninput="HandleSearchInput"
-								   title="Filter jobs by name" />
-						</div>
-					</div>
-					<div class="col-12 col-md-4">
-						<select class="form-select form-select-sm"
-								value="@StatusFilter"
-								@onchange="HandleStatusFilterChange"
-								title="Filter by status">
-							<option value="all">All statuses</option>
-							<option value="active">Active</option>
-							<option value="completed">Completed</option>
-							<option value="failed">Failed</option>
-							<option value="cancelled">Cancelled</option>
-						</select>
-					</div>
-				</div>
+		@* Search and filter toolbar *@
+		<div class="vs-toolbar">
+			<div class="search-field">
+				<i class="bi bi-search"></i>
+				<input type="search" placeholder="Search jobs…"
+					   value="@SearchQuery"
+					   @oninput="HandleSearchInput"
+					   title="Filter jobs by name" />
 			</div>
+			<select class="form-select form-select-sm w-auto"
+					value="@StatusFilter"
+					@onchange="HandleStatusFilterChange"
+					title="Filter by status"
+					style="max-width:160px;">
+				<option value="all">All statuses</option>
+				<option value="active">Active</option>
+				<option value="completed">Completed</option>
+				<option value="failed">Failed</option>
+				<option value="cancelled">Cancelled</option>
+			</select>
 		</div>
 		<div class="d-flex flex-column flex-sm-row justify-content-between align-items-stretch align-items-sm-center gap-2">
 			<div class="d-flex flex-wrap align-items-center gap-2 small text-body-secondary min-width-0">

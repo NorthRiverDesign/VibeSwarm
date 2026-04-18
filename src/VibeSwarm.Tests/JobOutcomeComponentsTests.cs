@@ -55,102 +55,6 @@ public sealed class JobOutcomeComponentsTests
 	}
 
 	[Fact]
-	public void JobOutcomeSummaryCard_ShowsVerificationFailureGuidance()
-	{
-		using var context = new BunitContext();
-
-		var cut = context.Render<JobOutcomeSummaryCard>(parameters => parameters
-			.Add(component => component.Status, JobStatus.Completed)
-			.Add(component => component.ChangedFilesCount, 4)
-			.Add(component => component.BuildVerified, false)
-			.Add(component => component.BuildOutput, "dotnet test failed"));
-
-		Assert.Contains("Verification blocked delivery", cut.Markup);
-		Assert.Contains("Verification failed", cut.Markup);
-		Assert.Contains("Checks failed", cut.Markup);
-		Assert.Contains("Start with the failed checks", cut.Markup);
-		Assert.Contains("Review verification output", cut.Markup);
-		Assert.Contains("Show verification output", cut.Markup);
-		Assert.Contains("dotnet test failed", cut.Markup);
-	}
-
-	[Fact]
-	public void JobOutcomeSummaryCard_ShowsVerificationConfigurationAndDeliveryActions()
-	{
-		using var context = new BunitContext();
-
-		var cut = context.Render<JobOutcomeSummaryCard>(parameters => parameters
-			.Add(component => component.Status, JobStatus.Completed)
-			.Add(component => component.ChangedFilesCount, 2)
-			.Add(component => component.BuildVerificationEnabled, true)
-			.Add(component => component.BuildCommand, "dotnet build")
-			.Add(component => component.TestCommand, "dotnet test")
-			.Add(component => component.DeliveryMode, GitChangeDeliveryMode.PullRequest)
-			.Add(component => component.BranchName, "feature/outcome-card")
-			.Add(component => component.TargetBranch, "main")
-			.Add(component => component.ReviewChangesHref, "#job-changes-section")
-			.Add(component => component.DeliveryHref, "#job-delivery-section"));
-
-		Assert.Contains("Verification result missing", cut.Markup);
-		Assert.Contains("Checks missing", cut.Markup);
-		Assert.Contains("dotnet build", cut.Markup);
-		Assert.Contains("dotnet test", cut.Markup);
-		Assert.Contains("Ready for delivery", cut.Markup);
-		Assert.Contains("Pull request flow", cut.Markup);
-		Assert.Contains("Finish delivery", cut.Markup);
-		Assert.Contains("Review changes", cut.Markup);
-		Assert.Contains("Go to delivery", cut.Markup);
-	}
-
-	[Fact]
-	public void JobOutcomeSummaryCard_PrefersMergedOutcomeOverPullRequestReady()
-	{
-		using var context = new BunitContext();
-
-		var cut = context.Render<JobOutcomeSummaryCard>(parameters => parameters
-			.Add(component => component.Status, JobStatus.Completed)
-			.Add(component => component.PullRequestNumber, 42)
-			.Add(component => component.PullRequestUrl, "https://github.com/octo-org/octo-repo/pull/42")
-			.Add(component => component.MergedAt, DateTime.UtcNow));
-
-		Assert.Contains("Changes merged into the target branch", cut.Markup);
-		Assert.Contains("Delivery is complete", cut.Markup);
-		Assert.DoesNotContain("PR #42 ready for review", cut.Markup);
-	}
-
-	[Fact]
-	public void JobOutcomeSummaryCard_PrefersDeliveryStateOverRawChangedFileCount()
-	{
-		using var context = new BunitContext();
-
-		var cut = context.Render<JobOutcomeSummaryCard>(parameters => parameters
-			.Add(component => component.Status, JobStatus.Completed)
-			.Add(component => component.ChangedFilesCount, 4)
-			.Add(component => component.PullRequestNumber, 42)
-			.Add(component => component.PullRequestUrl, "https://github.com/octo-org/octo-repo/pull/42")
-			.Add(component => component.TargetBranch, "main"));
-
-		Assert.Contains("PR #42 created", cut.Markup);
-		Assert.Contains("PR #42 is ready for review targeting main.", cut.Markup);
-		Assert.DoesNotContain("4 files were recorded for this run.", cut.Markup);
-	}
-
-	[Fact]
-	public void JobOutcomeSummaryCard_ShowsSessionSummaryWhenAvailable()
-	{
-		using var context = new BunitContext();
-
-		var cut = context.Render<JobOutcomeSummaryCard>(parameters => parameters
-			.Add(component => component.Status, JobStatus.Completed)
-			.Add(component => component.ChangedFilesCount, 0)
-			.Add(component => component.SessionSummary, "Implemented the delivery summary.\nImproved the outcome guidance."));
-
-		Assert.Contains("Work summary", cut.Markup);
-		Assert.Contains("Implemented the delivery summary.", cut.Markup);
-		Assert.Contains("Improved the outcome guidance.", cut.Markup);
-	}
-
-	[Fact]
 	public void JobOutcomeHint_ShowsCompactVerificationFailureGuidance()
 	{
 		using var context = new BunitContext();
@@ -332,57 +236,6 @@ public sealed class JobOutcomeComponentsTests
 	}
 
 	[Fact]
-	public void JobOutcomeSummaryCard_ShowsMergeBranchButtonWhenMergeIsAvailable()
-	{
-		using var context = new BunitContext();
-		var mergeCalled = false;
-
-		var cut = context.Render<JobOutcomeSummaryCard>(parameters => parameters
-			.Add(component => component.Status, JobStatus.Completed)
-			.Add(component => component.GitCommitHash, "abc1234567890")
-			.Add(component => component.BranchName, "feature/new-thing")
-			.Add(component => component.TargetBranch, "main")
-			.Add(component => component.CanMergeBranch, true)
-			.Add(component => component.OnMergeBranch, EventCallback.Factory.Create(this, () => mergeCalled = true)));
-
-		Assert.Contains("Merge into main", cut.Markup);
-		Assert.Contains("Merge into the target branch", cut.Markup);
-		cut.Find("button.btn-success").Click();
-		Assert.True(mergeCalled);
-	}
-
-	[Fact]
-	public void JobOutcomeSummaryCard_HidesMergeBranchButtonWhenAlreadyMerged()
-	{
-		using var context = new BunitContext();
-
-		var cut = context.Render<JobOutcomeSummaryCard>(parameters => parameters
-			.Add(component => component.Status, JobStatus.Completed)
-			.Add(component => component.GitCommitHash, "abc1234567890")
-			.Add(component => component.BranchName, "feature/new-thing")
-			.Add(component => component.TargetBranch, "main")
-			.Add(component => component.CanMergeBranch, true)
-			.Add(component => component.MergedAt, DateTime.UtcNow));
-
-		Assert.DoesNotContain("Merge into main", cut.Markup);
-		Assert.Contains("Delivery is complete", cut.Markup);
-	}
-
-	[Fact]
-	public void JobOutcomeSummaryCard_ShowsReviewTranscriptActionForStalledRuns()
-	{
-		using var context = new BunitContext();
-
-		var cut = context.Render<JobOutcomeSummaryCard>(parameters => parameters
-			.Add(component => component.Status, JobStatus.Stalled)
-			.Add(component => component.ReviewTranscriptHref, "#job-messages-section"));
-
-		Assert.Contains("Run stalled before completion", cut.Markup);
-		Assert.Contains("Review transcript", cut.Markup);
-		Assert.Contains("#job-messages-section", cut.Markup);
-	}
-
-	[Fact]
 	public void JobOutcomeBadges_ShowsShortCommitLabelForCommittedRuns()
 	{
 		using var context = new BunitContext();
@@ -408,18 +261,4 @@ public sealed class JobOutcomeComponentsTests
 		Assert.Contains("Commit 0123456", cut.Markup);
 	}
 
-	[Fact]
-	public void JobOutcomeSummaryCard_ShowsPushedBranchOutcomeBeforeCommitOnlyState()
-	{
-		using var context = new BunitContext();
-
-		var cut = context.Render<JobOutcomeSummaryCard>(parameters => parameters
-			.Add(component => component.Status, JobStatus.Completed)
-			.Add(component => component.GitCommitHash, "0123456789abcdef")
-			.Add(component => component.IsPushed, true));
-
-		Assert.Contains("Changes pushed to the remote branch", cut.Markup);
-		Assert.Contains("Changes pushed remotely", cut.Markup);
-		Assert.DoesNotContain("Commit recorded", cut.Markup);
-	}
 }

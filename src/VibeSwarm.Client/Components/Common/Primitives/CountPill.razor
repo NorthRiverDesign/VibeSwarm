@@ -1,0 +1,9 @@
+@* Small monospace count indicator — used in sidebar nav, tab badges, etc. *@
+
+<span class="count-pill @(Active ? "active" : "") @CssClass">@Value</span>
+
+@code {
+	[Parameter] public string? Value { get; set; }
+	[Parameter] public bool Active { get; set; }
+	[Parameter] public string? CssClass { get; set; }
+}

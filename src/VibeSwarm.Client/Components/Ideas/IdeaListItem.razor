@@ -34,93 +34,69 @@
 	}
 	else
 	{
-		@* View Mode *@
-		<div class="d-flex flex-column flex-sm-row justify-content-between align-items-stretch align-items-sm-start gap-3">
-			<div class="flex-grow-1 min-width-0">
-				<div class="d-flex align-items-start gap-3">
-					@* Status Icon *@
-					@if (IsRunningIdea())
-					{
-						<span class="spinner-border spinner-border-sm text-primary flex-shrink-0 mt-1" role="status"
-							  title="Processing..."></span>
-					}
-					else if (IsQueuedIdea())
-					{
-						<i class="bi bi-hourglass-split text-info flex-shrink-0 mt-1" title="Queued for processing"></i>
-					}
-					else if (Idea.ExpansionStatus == IdeaExpansionStatus.Expanding)
-					{
-						<span class="spinner-border spinner-border-sm text-info flex-shrink-0 mt-1" role="status"
-							  title="Expanding..."></span>
-					}
-					else if (Idea.ExpansionStatus == IdeaExpansionStatus.Approved)
-					{
-						<i class="bi bi-check-circle-fill text-success flex-shrink-0 mt-1" title="Specification approved"></i>
-					}
-					else if (Idea.ExpansionStatus == IdeaExpansionStatus.PendingReview)
-					{
-						<i class="bi bi-eye-fill text-warning flex-shrink-0 mt-1" title="Pending review"></i>
-					}
-					else
-					{
-						<i class="bi bi-lightbulb text-warning flex-shrink-0 mt-1"></i>
-					}
+		@* View Mode — grid: [status pill][body + meta][actions] *@
+		<div class="d-flex flex-column flex-sm-row gap-3 align-items-stretch align-items-sm-start">
+			<div class="d-flex gap-3 align-items-start flex-grow-1 min-width-0">
+				<StatusIconPill Status="@GetStatusSemantic()" Icon="@GetStatusIcon()" />
 
-					@* Description and badges *@
-					<div class="flex-grow-1">
-						<span class="@(IsRunningIdea() ? "text-body-secondary" : "") text-break"
-							  style="white-space: pre-wrap;">@Idea.Description</span>
+				<div class="d-flex flex-column gap-1 flex-grow-1 min-width-0">
+					<div class="text-fg-0 text-break text-truncate-lines-2 @(IsRunningIdea() ? "text-fg-2" : "")"
+						 style="font-size:0.84375rem; line-height:1.4;">@Idea.Description</div>
+					<div class="d-flex flex-wrap gap-2 align-items-center">
 						@if (Idea.ExpansionStatus == IdeaExpansionStatus.Approved)
 						{
-							<span class="badge bg-success-subtle text-success ms-2">Expanded</span>
+							<MetaChip Variant="ai" Icon="bi-stars" Text="Expanded" />
 						}
 						else if (Idea.ExpansionStatus == IdeaExpansionStatus.PendingReview)
 						{
-							<span class="badge bg-warning-subtle text-warning ms-2">Review</span>
+							<MetaChip Icon="bi-eye" Text="Review" />
 						}
-					</div>
-				</div>
-				@if (IsQueuedIdea() && Idea.JobId.HasValue)
-				{
-					<small class="text-body-secondary ms-4">
-						<a href="/jobs/view/@Idea.JobId" class="text-decoration-none">
-							Queued Job <i class="bi bi-arrow-right-short"></i>
-						</a>
-					</small>
-				}
-				@if (Idea.Attachments.Any())
-				{
-					<div class="d-flex flex-wrap gap-2 mt-2 ms-4">
-						@foreach (var attachment in Idea.Attachments.OrderBy(attachment => attachment.CreatedAt))
+						@if (Idea.Attachments.Any())
 						{
-							<a class="d-inline-flex align-items-center gap-2 text-decoration-none border rounded-3 px-2 py-2 bg-body min-width-0"
-							   href="@GetAttachmentUrl(attachment.Id)" target="_blank" rel="noreferrer"
-							   title="@attachment.FileName">
-								@if (IsImageAttachment(attachment))
-								{
-									<img src="@GetAttachmentUrl(attachment.Id)" alt="@attachment.FileName" class="rounded border flex-shrink-0"
-										 style="width: 3rem; height: 3rem; object-fit: cover;" />
-								}
-								else
-								{
-									<i class="bi bi-paperclip text-body-secondary flex-shrink-0"></i>
-								}
-								<span class="d-flex flex-column min-width-0">
-									<span class="text-body text-truncate">@attachment.FileName</span>
-									<span class="small text-body-secondary">@FormatAttachmentSize(attachment.SizeBytes)</span>
-								</span>
+							<MetaChip Icon="bi-paperclip" Text="@($"{Idea.Attachments.Count} attachment{(Idea.Attachments.Count == 1 ? "" : "s")}")" />
+						}
+						@if (IsQueuedIdea() && Idea.JobId.HasValue)
+						{
+							<a href="/jobs/view/@Idea.JobId" class="meta-chip text-decoration-none">
+								<i class="bi bi-hourglass-split"></i>
+								<span>Queued Job</span>
+								<i class="bi bi-arrow-right-short"></i>
 							</a>
 						}
 					</div>
-				}
+					@if (Idea.Attachments.Any())
+					{
+						<div class="d-flex flex-wrap gap-2 mt-1">
+							@foreach (var attachment in Idea.Attachments.OrderBy(attachment => attachment.CreatedAt))
+							{
+								<a class="d-inline-flex align-items-center gap-2 text-decoration-none border border-line rounded-2 px-2 py-1 bg-surface-2 min-width-0"
+								   href="@GetAttachmentUrl(attachment.Id)" target="_blank" rel="noreferrer"
+								   title="@attachment.FileName">
+									@if (IsImageAttachment(attachment))
+									{
+										<img src="@GetAttachmentUrl(attachment.Id)" alt="@attachment.FileName" class="rounded border flex-shrink-0"
+											 style="width: 2.25rem; height: 2.25rem; object-fit: cover;" />
+									}
+									else
+									{
+										<i class="bi bi-paperclip text-fg-3 flex-shrink-0"></i>
+									}
+									<span class="d-flex flex-column min-width-0">
+										<span class="text-fg-0 text-truncate small">@attachment.FileName</span>
+										<span class="text-fg-3" style="font-size:0.6875rem;">@FormatAttachmentSize(attachment.SizeBytes)</span>
+									</span>
+								</a>
+							}
+						</div>
+					}
+				</div>
 			</div>
 
 			@* Action buttons *@
-			<div class="d-flex align-items-center justify-content-between align-self-stretch align-self-sm-start gap-2">
+			<div class="d-flex align-items-center justify-content-end gap-2 flex-shrink-0">
 				@if (!IsRunningIdea() && !IsQueuedIdea())
 				{
-					@* Start button - expands to fill row on mobile *@
-					<button type="button" class="btn btn-sm btn-success flex-grow-1 flex-sm-grow-0" @onclick="HandleStart"
+					<button type="button" class="btn btn-sm btn-success" @onclick="HandleStart"
 							disabled="@(!HasDefaultProvider || IsStarting || Idea.JobId.HasValue)"
 							title="@(HasActiveJobs ? "Queue this idea after the current job" : "Start this idea")">
 						@if (IsStarting)
@@ -136,25 +112,21 @@
 				}
 				else if (IsQueuedIdea())
 				{
-					@* Show queued indicator *@
-					<button type="button" class="btn btn-sm btn-info flex-grow-1 flex-sm-grow-0" disabled
-							title="Queued for auto-processing">
+					<button type="button" class="btn btn-sm btn-secondary" disabled title="Queued for auto-processing">
 						<i class="bi bi-hourglass-split"></i>
 						<span class="d-inline d-sm-none ms-1">Queued</span>
 					</button>
 				}
 				else if (Idea.JobId.HasValue)
 				{
-					@* Show spinner with link to view the running job *@
-					<a href="/jobs/view/@Idea.JobId" class="btn btn-sm btn-secondary flex-grow-1 flex-sm-grow-0">
+					<a href="/jobs/view/@Idea.JobId" class="btn btn-sm btn-secondary">
 						<span class="spinner-border spinner-border-sm" role="status"></span>
 						<span class="ms-1">View Job</span>
 					</a>
 				}
 				else
 				{
-					@* Show spinner when idea is processing but no job yet *@
-					<button type="button" class="btn btn-sm btn-secondary flex-grow-1 flex-sm-grow-0" disabled>
+					<button type="button" class="btn btn-sm btn-secondary" disabled>
 						<span class="spinner-border spinner-border-sm" role="status"></span>
 						<span class="d-inline d-sm-none ms-1">Processing</span>
 					</button>
@@ -181,6 +153,28 @@
 		</div>
 	}
 </li>
+
+@functions {
+	private string GetStatusSemantic()
+	{
+		if (IsRunningIdea()) return "running";
+		if (IsQueuedIdea()) return "primary";
+		if (Idea.ExpansionStatus == IdeaExpansionStatus.Expanding) return "info";
+		if (Idea.ExpansionStatus == IdeaExpansionStatus.Approved) return "success";
+		if (Idea.ExpansionStatus == IdeaExpansionStatus.PendingReview) return "warning";
+		return "warning";
+	}
+
+	private string GetStatusIcon()
+	{
+		if (IsRunningIdea()) return "bi-hourglass-split";
+		if (IsQueuedIdea()) return "bi-hourglass-split";
+		if (Idea.ExpansionStatus == IdeaExpansionStatus.Expanding) return "bi-stars";
+		if (Idea.ExpansionStatus == IdeaExpansionStatus.Approved) return "bi-check-lg";
+		if (Idea.ExpansionStatus == IdeaExpansionStatus.PendingReview) return "bi-eye";
+		return "bi-lightbulb";
+	}
+}
 
 @code {
 	[Parameter, EditorRequired]

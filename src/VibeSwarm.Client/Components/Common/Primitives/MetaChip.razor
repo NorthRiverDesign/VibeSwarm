@@ -1,0 +1,27 @@
+@* Inline chip with optional icon — used in meta rows on job/idea/project cards. *@
+
+<span class="meta-chip @VariantClass @CssClass">
+	@if (!string.IsNullOrEmpty(Icon))
+	{
+		<i class="bi @Icon"></i>
+	}
+	@ChildContent
+	@Text
+</span>
+
+@code {
+	[Parameter] public string? Icon { get; set; }
+	[Parameter] public string? Text { get; set; }
+	[Parameter] public RenderFragment? ChildContent { get; set; }
+	[Parameter] public string? Variant { get; set; } // null | sha | pushed | failed | ai
+	[Parameter] public string? CssClass { get; set; }
+
+	private string VariantClass => Variant?.ToLowerInvariant() switch
+	{
+		"sha" => "sha font-mono",
+		"pushed" => "pushed",
+		"failed" => "failed",
+		"ai" => "ai",
+		_ => ""
+	};
+}

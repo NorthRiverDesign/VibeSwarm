@@ -1,162 +1,147 @@
-
-@if (!_environments.Any())
-{
-	<div class="border rounded p-3 bg-body-tertiary">
-		<div class="d-flex align-items-center justify-content-between gap-2 flex-wrap">
-			<div>
-				<div class="fw-semibold d-flex align-items-center gap-2">
-					<i class="bi bi-globe2"></i>
-					<span>Project Environments</span>
-				</div>
-				<div class="small text-body-secondary mt-1">
-					Add deployed URLs or release pages so jobs can target the right environment instead of assuming localhost.
-				</div>
+<div class="vs-panel">
+	<div class="vs-panel-head">
+		<div class="flex-grow-1 min-width-0">
+			<h3><i class="bi bi-box-seam text-primary"></i>Project Environments</h3>
+			<div class="sub">
+				Configured environments are included in job context. Web environments enable Playwright MCP.
 			</div>
+		</div>
+		<div class="d-flex gap-2 ms-auto">
 			<button type="button" class="btn btn-primary btn-sm" @onclick="AddEnvironment">
-				<i class="bi bi-plus-lg me-1"></i>Add Environment
+				<i class="bi bi-plus-lg"></i><span class="label-txt">Add environment</span>
 			</button>
 		</div>
 	</div>
-}
-else
-{
-	<div class="d-grid gap-3">
-		<div class="d-flex align-items-center justify-content-between gap-2 flex-wrap">
-			<div>
-				<div class="fw-semibold d-flex align-items-center gap-2">
-					<i class="bi bi-globe2"></i>
-					<span>Project Environments</span>
-				</div>
-				<div class="small text-body-secondary mt-1">
-					Configured environments are included in job context and Web environments enable Playwright MCP.
-				</div>
-			</div>
-			<button type="button" class="btn btn-primary btn-sm" @onclick="AddEnvironment">
-				<i class="bi bi-plus-lg me-1"></i>Add Environment
-			</button>
-		</div>
 
-		@foreach (var environment in _environments.Select((value, index) => new { value, index }))
+	<div class="vs-panel-body">
+		@if (!_environments.Any())
 		{
-			var item = environment.value;
-			<div class="border rounded p-3 bg-body-tertiary">
-				<div class="d-flex align-items-start justify-content-between gap-2 flex-wrap mb-3">
-					<div class="d-flex align-items-center gap-2 flex-wrap min-width-0">
-						<span class="badge text-bg-primary">#@(environment.index + 1)</span>
-						<span class="badge bg-secondary-subtle text-secondary-emphasis">@item.Type</span>
-						<span class="@GetStageBadgeClass(item.Stage)">@item.Stage</span>
+			<EmptyState Icon="box-seam" Title="No environments configured"
+						Message="Add deployed URLs or release pages so jobs can target the right environment instead of assuming localhost." />
+		}
+		else
+		{
+			@foreach (var environment in _environments.Select((value, index) => new { value, index }))
+			{
+				var item = environment.value;
+				<div class="border border-line rounded-3 overflow-hidden bg-surface-2">
+					<div class="d-flex align-items-center flex-wrap gap-2 p-3 border-bottom border-line">
+						<span class="env-num">#@(environment.index + 1)</span>
+						<span class="env-tag @GetKindTagClass(item.Type)">
+							<i class="bi @GetKindIcon(item.Type)"></i>@item.Type
+						</span>
+						<span class="env-tag @GetStageTagClass(item.Stage)">@item.Stage</span>
 						@if (item.IsPrimary)
 						{
-							<span class="badge bg-success-subtle text-success-emphasis">Primary</span>
+							<span class="env-tag primary"><i class="bi bi-star-fill" style="font-size:9px;"></i>Primary</span>
 						}
 						@if (!item.IsEnabled)
 						{
-							<span class="badge bg-secondary-subtle text-secondary-emphasis">Disabled</span>
+							<span class="env-tag">Disabled</span>
+						}
+						<div class="d-flex gap-1 ms-auto">
+							<button type="button" class="btn btn-outline-secondary btn-sm" title="Move up"
+								@onclick="() => MoveEnvironmentUp(item.Id)" disabled="@(environment.index == 0)">
+								<i class="bi bi-arrow-up"></i>
+							</button>
+							<button type="button" class="btn btn-outline-secondary btn-sm" title="Move down"
+								@onclick="() => MoveEnvironmentDown(item.Id)" disabled="@(environment.index >= _environments.Count - 1)">
+								<i class="bi bi-arrow-down"></i>
+							</button>
+							<button type="button" class="btn btn-outline-secondary btn-sm text-danger" title="Remove environment"
+								@onclick="() => RemoveEnvironment(item.Id)">
+								<i class="bi bi-x-lg"></i>
+							</button>
+						</div>
+					</div>
+
+					<div class="p-3 d-flex flex-column gap-3">
+						<div class="vs-auto-grid">
+							<div class="d-flex flex-column gap-1 min-width-0">
+								<label class="text-eyebrow">Name</label>
+								<InputText @bind-Value="item.Name" class="form-control form-control-sm" placeholder="Staging" />
+							</div>
+							<div class="d-flex flex-column gap-1 min-width-0">
+								<label class="text-eyebrow">Kind</label>
+								<InputSelect @bind-Value="item.Type" @bind-Value:after="() => OnEnvironmentTypeChanged(item)" class="form-select form-select-sm">
+									<option value="@EnvironmentType.Web">Web</option>
+									<option value="@EnvironmentType.Release">GitHub Releases</option>
+									<option value="@EnvironmentType.Other">Generic</option>
+								</InputSelect>
+							</div>
+							<div class="d-flex flex-column gap-1 min-width-0">
+								<label class="text-eyebrow">Environment type</label>
+								<InputSelect @bind-Value="item.Stage" class="form-select form-select-sm">
+									<option value="@EnvironmentStage.Production">Production</option>
+									<option value="@EnvironmentStage.Development">Development</option>
+									<option value="@EnvironmentStage.Local">Local</option>
+								</InputSelect>
+								<span class="text-fg-3" style="font-size:11px;">@GetStageDescription(item.Stage)</span>
+							</div>
+							<div class="d-flex flex-column gap-1 min-width-0">
+								<label class="text-eyebrow">URL</label>
+								<InputText @bind-Value="item.Url" class="form-control form-control-sm font-mono" placeholder="https://staging.example.com" />
+							</div>
+						</div>
+
+						<div class="d-flex flex-column gap-1">
+							<label class="text-eyebrow">Description</label>
+							<InputTextArea @bind-Value="item.Description" class="form-control form-control-sm" rows="2"
+								placeholder="Optional instructions for agents, such as login flow, deployment notes, or release context." />
+						</div>
+
+						<div class="d-flex flex-wrap align-items-center gap-4">
+							<div class="form-check form-switch m-0">
+								<InputCheckbox id="@($"env-enabled-{item.Id}")" @bind-Value="item.IsEnabled" class="form-check-input" />
+								<label class="form-check-label" for="@($"env-enabled-{item.Id}")">Enabled</label>
+							</div>
+							<div class="form-check form-switch m-0">
+								<InputCheckbox id="@($"env-primary-{item.Id}")" Value="@item.IsPrimary"
+									ValueChanged="@(value => TogglePrimaryEnvironment(item.Id, value))"
+									ValueExpression="@(() => item.IsPrimary)" class="form-check-input" />
+								<label class="form-check-label" for="@($"env-primary-{item.Id}")">Primary environment</label>
+							</div>
+						</div>
+
+						@if (item.Type == EnvironmentType.Web)
+						{
+							<div class="border border-line rounded-3 bg-surface-1 p-3 d-flex flex-column gap-2" style="border-style:dashed;">
+								<div class="d-flex align-items-center gap-2 fw-medium">
+									<i class="bi bi-person-badge"></i>
+									<span>Web login</span>
+								</div>
+								<div class="text-fg-3" style="font-size:11.5px;">
+									Username and password are optional. Any values you save are encrypted at rest and only decrypted for job execution.
+								</div>
+								<div class="row g-3">
+									<div class="col-12 col-lg-6">
+										<label class="text-eyebrow mb-1 d-block">Username (optional)</label>
+										<InputText @bind-Value="item.Username" class="form-control form-control-sm" placeholder="tester@example.com" />
+									</div>
+									<div class="col-12 col-lg-6">
+										<label class="text-eyebrow mb-1 d-block">Password (optional)</label>
+										<InputText @bind-Value="item.Password" class="form-control form-control-sm" type="password"
+											placeholder="@(item.HasPassword ? "Leave blank to keep the saved password" : "Optional password")" />
+										@if (item.HasPassword)
+										{
+											<div class="form-text d-flex flex-column flex-sm-row align-items-start align-items-sm-center justify-content-between gap-2 mt-2">
+												<span class="small text-fg-3">Saved password is already stored securely.</span>
+												<div class="form-check m-0">
+													<InputCheckbox id="@($"env-clear-password-{item.Id}")" @bind-Value="item.ClearPassword" class="form-check-input" />
+													<label class="form-check-label small" for="@($"env-clear-password-{item.Id}")">Clear saved password</label>
+												</div>
+											</div>
+										}
+									</div>
+								</div>
+							</div>
 						}
 					</div>
-					<div class="d-flex flex-wrap justify-content-end gap-2">
-						<button type="button" class="btn btn-sm btn-secondary" title="Move up"
-							@onclick="() => MoveEnvironmentUp(item.Id)" disabled="@(environment.index == 0)">
-							<i class="bi bi-arrow-up"></i>
-						</button>
-						<button type="button" class="btn btn-sm btn-secondary" title="Move down"
-							@onclick="() => MoveEnvironmentDown(item.Id)" disabled="@(environment.index >= _environments.Count - 1)">
-							<i class="bi bi-arrow-down"></i>
-						</button>
-						<button type="button" class="btn btn-sm btn-danger" title="Remove environment"
-							@onclick="() => RemoveEnvironment(item.Id)">
-							<i class="bi bi-x-lg"></i>
-						</button>
-					</div>
 				</div>
-
-				<div class="row g-3">
-					<div class="col-12 col-xl-3">
-						<label class="form-label">Name</label>
-						<InputText @bind-Value="item.Name" class="form-control" placeholder="Staging" />
-					</div>
-					<div class="col-12 col-md-6 col-xl-3">
-						<label class="form-label">Kind</label>
-						<InputSelect @bind-Value="item.Type" @bind-Value:after="() => OnEnvironmentTypeChanged(item)" class="form-select">
-							<option value="@EnvironmentType.Web">Web</option>
-							<option value="@EnvironmentType.Release">GitHub Releases</option>
-							<option value="@EnvironmentType.Other">Generic</option>
-						</InputSelect>
-					</div>
-					<div class="col-12 col-md-6 col-xl-3">
-						<label class="form-label">Environment Type</label>
-						<InputSelect @bind-Value="item.Stage" class="form-select">
-							<option value="@EnvironmentStage.Production">Production</option>
-							<option value="@EnvironmentStage.Development">Development</option>
-							<option value="@EnvironmentStage.Local">Local</option>
-						</InputSelect>
-						<div class="form-text">@GetStageDescription(item.Stage)</div>
-					</div>
-					<div class="col-12 col-xl-3">
-						<label class="form-label">URL</label>
-						<InputText @bind-Value="item.Url" class="form-control" placeholder="https://staging.example.com" />
-					</div>
-					<div class="col-12">
-						<label class="form-label">Description</label>
-						<InputTextArea @bind-Value="item.Description" class="form-control" rows="4"
-							placeholder="Optional instructions for agents, such as login flow, deployment notes, or release context." />
-					</div>
-				</div>
-
-				<div class="d-flex flex-wrap align-items-center gap-3 mt-3">
-					<div class="form-check form-switch m-0">
-						<InputCheckbox id="@($"env-enabled-{item.Id}")" @bind-Value="item.IsEnabled" class="form-check-input" />
-						<label class="form-check-label" for="@($"env-enabled-{item.Id}")">Enabled</label>
-					</div>
-					<div class="form-check form-switch m-0">
-						<InputCheckbox id="@($"env-primary-{item.Id}")" Value="@item.IsPrimary"
-							ValueChanged="@(value => TogglePrimaryEnvironment(item.Id, value))"
-							ValueExpression="@(() => item.IsPrimary)" class="form-check-input" />
-						<label class="form-check-label" for="@($"env-primary-{item.Id}")">Primary environment</label>
-					</div>
-				</div>
-
-				@if (item.Type == EnvironmentType.Web)
-				{
-					<div class="border rounded p-3 mt-3 bg-body">
-						<div class="fw-semibold d-flex align-items-center gap-2 mb-2">
-							<i class="bi bi-person-lock"></i>
-							<span>Web Login</span>
-						</div>
-						<div class="small text-body-secondary mb-3">
-							Username and password are optional. Any values you save are encrypted at rest and only decrypted for job execution.
-						</div>
-						<div class="row g-3">
-							<div class="col-12 col-lg-6">
-								<label class="form-label">
-									Username <span class="text-body-secondary fw-normal">(optional)</span>
-								</label>
-								<InputText @bind-Value="item.Username" class="form-control" placeholder="tester@example.com" />
-							</div>
-							<div class="col-12 col-lg-6">
-								<label class="form-label">
-									Password <span class="text-body-secondary fw-normal">(optional)</span>
-								</label>
-								<InputText @bind-Value="item.Password" class="form-control" type="password"
-									placeholder="@(item.HasPassword ? "Leave blank to keep the saved password" : "Optional password")" />
-								@if (item.HasPassword)
-								{
-									<div class="form-text d-flex flex-column flex-sm-row align-items-start align-items-sm-center justify-content-between gap-2">
-										<span>Saved password is already stored securely.</span>
-										<div class="form-check m-0">
-											<InputCheckbox id="@($"env-clear-password-{item.Id}")" @bind-Value="item.ClearPassword" class="form-check-input" />
-											<label class="form-check-label" for="@($"env-clear-password-{item.Id}")">Clear saved password</label>
-										</div>
-									</div>
-								}
-							</div>
-						</div>
-					</div>
-				}
-			</div>
+			}
 		}
 	</div>
-}
+</div>
 
 @code {
 	[Parameter, EditorRequired]
@@ -282,6 +267,27 @@ else
 		EnvironmentStage.Development => "badge bg-warning-subtle text-warning-emphasis",
 		EnvironmentStage.Local => "badge bg-info-subtle text-info-emphasis",
 		_ => "badge bg-secondary-subtle text-secondary-emphasis"
+	};
+
+	private static string GetKindTagClass(EnvironmentType type) => type switch
+	{
+		EnvironmentType.Web => "web",
+		_ => ""
+	};
+
+	private static string GetKindIcon(EnvironmentType type) => type switch
+	{
+		EnvironmentType.Web => "bi-globe",
+		EnvironmentType.Release => "bi-box-seam",
+		_ => "bi-hdd-network"
+	};
+
+	private static string GetStageTagClass(EnvironmentStage stage) => stage switch
+	{
+		EnvironmentStage.Production => "prod",
+		EnvironmentStage.Development => "",
+		EnvironmentStage.Local => "",
+		_ => ""
 	};
 
 	private static string GetStageDescription(EnvironmentStage stage) => stage switch

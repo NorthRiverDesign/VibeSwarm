@@ -1,0 +1,64 @@
+@inject IJSRuntime JS
+@inject ThemeService ThemeService
+@using VibeSwarm.Shared.Data
+
+<div class="theme-toggle @CssClass" role="group" aria-label="Theme">
+	<button type="button"
+			class="@(IsLight ? "active" : "")"
+			aria-pressed="@IsLight"
+			title="Light"
+			@onclick="() => SetAsync(ThemePreference.Light)">
+		<i class="bi bi-sun"></i>
+	</button>
+	<button type="button"
+			class="@(IsDark ? "active" : "")"
+			aria-pressed="@IsDark"
+			title="Dark"
+			@onclick="() => SetAsync(ThemePreference.Dark)">
+		<i class="bi bi-moon-stars"></i>
+	</button>
+</div>
+
+@code {
+	[Parameter] public string? CssClass { get; set; }
+
+	private ThemePreference _current = ThemePreference.System;
+	private string _applied = "dark";
+
+	private bool IsLight => _applied == "light";
+	private bool IsDark => _applied == "dark";
+
+	protected override async Task OnAfterRenderAsync(bool firstRender)
+	{
+		if (!firstRender) return;
+		try
+		{
+			var applied = await JS.InvokeAsync<string>("vibeSwarmTheme.getAppliedTheme");
+			_applied = string.IsNullOrEmpty(applied) ? "dark" : applied;
+			var pref = await JS.InvokeAsync<string>("vibeSwarmTheme.getPreference");
+			_current = ThemePreferenceExtensions.ParseOrDefault(pref);
+			StateHasChanged();
+		}
+		catch
+		{
+		}
+	}
+
+	private async Task SetAsync(ThemePreference pref)
+	{
+		try
+		{
+			await ThemeService.UpdateThemePreferenceAsync(pref);
+			_current = pref;
+			_applied = pref == ThemePreference.Light ? "light" : "dark";
+			StateHasChanged();
+		}
+		catch
+		{
+			// Best-effort — apply locally even if persist fails
+			await JS.InvokeVoidAsync("vibeSwarmTheme.setPreference", pref.ToValue(), true);
+			_applied = pref == ThemePreference.Light ? "light" : "dark";
+			StateHasChanged();
+		}
+	}
+}

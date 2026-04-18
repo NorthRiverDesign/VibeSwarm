@@ -1,0 +1,19 @@
+@* Branch name + short SHA with a pulsing dot. Hide SHA on narrow viewports via d-none d-sm-inline inside the caller. *@
+
+<span class="branch-chip @CssClass" title="@Title">
+	<span class="@(Live ? "live-dot" : "dot")"></span>
+	<i class="bi bi-signpost-split" style="font-size:12px;color:var(--fg-3);"></i>
+	<span>@Branch</span>
+	@if (!string.IsNullOrEmpty(Sha))
+	{
+		<span class="sha d-none d-sm-inline">@Sha</span>
+	}
+</span>
+
+@code {
+	[Parameter] public string Branch { get; set; } = "main";
+	[Parameter] public string? Sha { get; set; }
+	[Parameter] public bool Live { get; set; } = true;
+	[Parameter] public string? Title { get; set; }
+	[Parameter] public string? CssClass { get; set; }
+}

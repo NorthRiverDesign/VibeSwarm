@@ -48,14 +48,10 @@ public sealed class ProjectJobsListTests
 		Assert.Contains("Delete Completed Jobs", html);
 		Assert.Contains("Queue active", html);
 		Assert.DoesNotContain("card-header", html);
-		Assert.Contains("border rounded-3", html);
-		Assert.DoesNotContain("border rounded-3 overflow-hidden", html);
-		Assert.Contains("d-flex flex-column flex-lg-row align-items-stretch align-items-lg-center gap-2", html);
-		Assert.Contains("row g-2 align-items-stretch", html);
-		Assert.Contains("col-12 col-md-8", html);
-		Assert.Contains("col-12 col-md-4", html);
+		// Toolbar uses the .vs-toolbar component class and hosts a .search-field input.
+		Assert.Contains("vs-toolbar", html);
+		Assert.Contains("search-field", html);
 		Assert.Contains("d-flex flex-column flex-sm-row justify-content-between align-items-stretch align-items-sm-center gap-2", html);
-		Assert.Contains("d-grid d-sm-flex align-items-stretch align-items-sm-center gap-2", html);
 	}
 
 	[Fact]

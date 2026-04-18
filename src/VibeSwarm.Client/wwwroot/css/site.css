@@ -38,24 +38,159 @@
 ============================================ */
 
 /* ============================================
-   1. CSS VARIABLES
+   1. CSS VARIABLES — Design Tokens
+   Palette split across :root, [data-theme="dark"], [data-theme="light"].
+   Dark is the default. Bootstrap's native --bs-* variables are also
+   overridden so form controls, dropdowns, modals pick up the new palette.
 ============================================ */
 :root {
-	--vs-sidebar-width: 240px;
+	/* Layout dimensions */
+	--vs-sidebar-width: 212px;
 	--vs-header-height: 56px;
 	--vs-nav-popout-shadow:
 		0 1.25rem 2.5rem rgba(15, 23, 42, 0.18),
 		0 0.5rem 1rem rgba(15, 23, 42, 0.12);
-	--vs-accent-blue: #58a6ff;
-	--vs-accent-green: #3fb950;
-	--vs-accent-orange: #d29922;
-	--vs-accent-red: #f85149;
-	--vs-accent-purple: #a371f7;
 	--vs-transition: 0.2s ease;
 	--vs-safe-area-top: env(safe-area-inset-top, 0px);
 	--vs-safe-area-bottom: 0px;
 	--vs-safe-area-left: env(safe-area-inset-left, 0px);
 	--vs-safe-area-right: env(safe-area-inset-right, 0px);
+
+	/* Typography — system stack only (no webfont flicker) */
+	--bs-font-sans-serif:
+		system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial,
+		"Noto Sans", sans-serif;
+	--bs-font-monospace:
+		ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono",
+		monospace;
+
+	/* Accent colors — shared across themes */
+	--bs-primary: #5b7cfa;
+	--bs-primary-rgb: 91, 124, 250;
+	--bs-success: #37c08a;
+	--bs-success-rgb: 55, 192, 138;
+	--bs-warning: #e8b558;
+	--bs-warning-rgb: 232, 181, 88;
+	--bs-danger: #ef6a6a;
+	--bs-danger-rgb: 239, 106, 106;
+	--bs-info: #5ec6d3;
+	--bs-info-rgb: 94, 198, 211;
+
+	/* Status-chip backgrounds (token-style helpers used across components) */
+	--chip-primary-bg: rgba(91, 124, 250, 0.15);
+	--chip-primary-bg-strong: rgba(91, 124, 250, 0.18);
+	--chip-success-bg: rgba(55, 192, 138, 0.15);
+	--chip-warning-bg: rgba(232, 181, 88, 0.15);
+	--chip-danger-bg: rgba(239, 106, 106, 0.15);
+	--chip-info-bg: rgba(94, 198, 211, 0.15);
+	--chip-ai-fg: #c9b8f5;
+	--chip-ai-bg: rgba(164, 137, 245, 0.08);
+	--chip-ai-border: rgba(164, 137, 245, 0.35);
+
+	/* Back-compat aliases for older code (keep until migration sweep) */
+	--vs-accent-blue: var(--bs-primary);
+	--vs-accent-green: var(--bs-success);
+	--vs-accent-orange: var(--bs-warning);
+	--vs-accent-red: var(--bs-danger);
+	--vs-accent-purple: #a78bfa;
+}
+
+/* Dark theme (default when no data-theme is set, or explicitly dark) */
+:root,
+[data-theme="dark"] {
+	--surface-0: #0d1117;
+	--surface-1: #11151c;
+	--surface-2: #161b24;
+	--surface-3: #1d232e;
+	--surface-hover: #1f2631;
+	--line: #242a35;
+	--line-strong: #2e3543;
+	--fg-0: #e7ecf3;
+	--fg-1: #c2c9d4;
+	--fg-2: #8d95a3;
+	--fg-3: #656d7b;
+	--kbd-bg: #161b24;
+	--banner-success-bg: rgba(55, 192, 138, 0.1);
+	--banner-success-border: rgba(55, 192, 138, 0.35);
+	--banner-primary-bg: rgba(91, 124, 250, 0.1);
+	--banner-primary-border: rgba(91, 124, 250, 0.35);
+	--banner-warning-bg: rgba(232, 181, 88, 0.08);
+	--banner-warning-border: rgba(232, 181, 88, 0.3);
+	--banner-danger-bg: rgba(239, 106, 106, 0.08);
+	--banner-danger-border: rgba(239, 106, 106, 0.3);
+	--diff-add: rgba(55, 192, 138, 0.14);
+	--diff-del: rgba(239, 106, 106, 0.12);
+
+	/* Bootstrap overrides — dark */
+	--bs-body-bg: #0d1117;
+	--bs-body-color: #e7ecf3;
+	--bs-body-color-rgb: 231, 236, 243;
+	--bs-border-color: #242a35;
+	--bs-border-color-translucent: rgba(255, 255, 255, 0.08);
+	--bs-secondary-bg: #161b24;
+	--bs-tertiary-bg: #1d232e;
+	--bs-secondary-color: #c2c9d4;
+	--bs-secondary-color-rgb: 194, 201, 212;
+	--bs-tertiary-color: #8d95a3;
+	--bs-emphasis-color: #ffffff;
+	--bs-link-color: #7ea1ff;
+	--bs-link-hover-color: #a4bcff;
+}
+
+/* Light theme */
+[data-theme="light"] {
+	--surface-0: #f7f8fa;
+	--surface-1: #ffffff;
+	--surface-2: #f1f3f7;
+	--surface-3: #e8ecf2;
+	--surface-hover: #eef1f6;
+	--line: #e3e6ec;
+	--line-strong: #cfd4dd;
+	--fg-0: #1c212b;
+	--fg-1: #3b4252;
+	--fg-2: #6b7384;
+	--fg-3: #8a93a3;
+	--kbd-bg: #ffffff;
+	--banner-success-bg: rgba(55, 160, 110, 0.08);
+	--banner-success-border: rgba(55, 160, 110, 0.35);
+	--banner-primary-bg: rgba(74, 106, 217, 0.08);
+	--banner-primary-border: rgba(74, 106, 217, 0.35);
+	--banner-warning-bg: rgba(201, 144, 40, 0.08);
+	--banner-warning-border: rgba(201, 144, 40, 0.3);
+	--banner-danger-bg: rgba(215, 78, 78, 0.08);
+	--banner-danger-border: rgba(215, 78, 78, 0.3);
+	--diff-add: rgba(55, 160, 110, 0.1);
+	--diff-del: rgba(215, 78, 78, 0.1);
+
+	/* Accent overrides for light (slightly darker for AA contrast) */
+	--bs-primary: #4a6ad9;
+	--bs-primary-rgb: 74, 106, 217;
+	--bs-success: #2a9e6f;
+	--bs-success-rgb: 42, 158, 111;
+	--bs-warning: #c99028;
+	--bs-warning-rgb: 201, 144, 40;
+	--bs-danger: #d74e4e;
+	--bs-danger-rgb: 215, 78, 78;
+	--bs-info: #3ca7b5;
+
+	/* Bootstrap overrides — light */
+	--bs-body-bg: #f7f8fa;
+	--bs-body-color: #1c212b;
+	--bs-body-color-rgb: 28, 33, 43;
+	--bs-border-color: #e3e6ec;
+	--bs-border-color-translucent: rgba(0, 0, 0, 0.08);
+	--bs-secondary-bg: #eef1f5;
+	--bs-tertiary-bg: #f1f3f7;
+	--bs-secondary-color: #3b4252;
+	--bs-secondary-color-rgb: 59, 66, 82;
+	--bs-tertiary-color: #6b7384;
+	--bs-emphasis-color: #0b1020;
+	--bs-link-color: #4a6ad9;
+	--bs-link-hover-color: #3051c2;
+
+	--chip-ai-fg: #6c52c2;
+	--chip-ai-bg: rgba(108, 82, 194, 0.08);
+	--chip-ai-border: rgba(108, 82, 194, 0.35);
 }
 
 /* ============================================
@@ -231,8 +366,8 @@ body:has(.app-layout) {
 	left: 0;
 	bottom: 0;
 	width: var(--vs-sidebar-width);
-	background: var(--bs-secondary-bg);
-	border-right: 1px solid var(--bs-border-color);
+	background: var(--surface-1);
+	border-right: 1px solid var(--line);
 	z-index: 999;
 	transform: translateX(-100%);
 	transition: transform var(--vs-transition);
@@ -382,28 +517,10 @@ body:has(.app-layout) {
 }
 
 /* ============================================
-   4. NAVIGATION (hover/active states only)
-   Markup uses d-flex align-items-center gap-3 rounded fw-medium text-decoration-none
+   4. NAVIGATION
+   New sidebar uses the .vs-side-nav component class (§18).
+   Keep shadow helper for dropdowns only.
 ============================================ */
-.app-sidebar .nav-item {
-	padding: 0.5rem 1rem;
-	color: var(--bs-secondary-color);
-	transition: all var(--vs-transition);
-}
-.app-sidebar .nav-item i {
-	font-size: 1.125rem;
-	width: 20px;
-	text-align: center;
-}
-.app-sidebar .nav-item:hover {
-	background: var(--bs-tertiary-bg);
-	color: var(--bs-emphasis-color);
-}
-.app-sidebar .nav-item.active {
-	background: rgba(88, 166, 255, 0.15);
-	color: var(--vs-accent-blue);
-}
-
 .vs-nav-dropdown-menu {
 	box-shadow: var(--vs-nav-popout-shadow) !important;
 }
@@ -1384,4 +1501,908 @@ body.vs-modal-open .app-main {
 }
 #reconnect-reload-btn {
 	min-width: 140px;
+}
+
+/* ============================================
+   18. DESIGN SYSTEM COMPONENTS
+   Component-level utility classes for the new visual vocabulary.
+   Use these in markup alongside Bootstrap utilities.
+   Everything here is either:
+   - a property Bootstrap lacks (gradients, specific sizes, animations)
+   - a composed semantic grouping that would need 8+ utility classes
+============================================ */
+
+/* Eyebrow label — 11px uppercase tracking-wide, used for section headers */
+.text-eyebrow {
+	font-size: 0.6875rem; /* 11px */
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+	color: var(--fg-2);
+}
+
+/* Font families (so markup can opt into monospace without naming a whole utility pack) */
+.font-mono {
+	font-family: var(--bs-font-monospace);
+}
+.font-sans {
+	font-family: var(--bs-font-sans-serif);
+}
+
+/* Surface backgrounds — Bootstrap has bg-body-*, these are our design surfaces */
+.bg-surface-0 {
+	background-color: var(--surface-0);
+}
+.bg-surface-1 {
+	background-color: var(--surface-1);
+}
+.bg-surface-2 {
+	background-color: var(--surface-2);
+}
+.bg-surface-3 {
+	background-color: var(--surface-3);
+}
+.border-line {
+	border-color: var(--line) !important;
+}
+.border-line-strong {
+	border-color: var(--line-strong) !important;
+}
+
+/* Foreground color helpers */
+.text-fg-0 {
+	color: var(--fg-0);
+}
+.text-fg-1 {
+	color: var(--fg-1);
+}
+.text-fg-2 {
+	color: var(--fg-2);
+}
+.text-fg-3 {
+	color: var(--fg-3);
+}
+
+/* Brand mark (sidebar conic-gradient square) */
+.vs-brand-mark {
+	background: conic-gradient(
+		from 200deg at 50% 50%,
+		#6b8afd,
+		#a78bfa,
+		#5ec6d3,
+		#6b8afd
+	);
+	box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+
+/* Project mark — gradient square with initials. Size controlled by w-/h-/fs- in markup. */
+.vs-project-mark {
+	background: linear-gradient(135deg, #4c7fe3, #2d55a8);
+	color: #fff;
+	font-family: var(--bs-font-monospace);
+	font-weight: 700;
+	letter-spacing: 0.3px;
+}
+
+/* Status icon pill — 28×28 by default, color by modifier class */
+.status-pill {
+	width: 28px;
+	height: 28px;
+	border-radius: 7px;
+	display: inline-grid;
+	place-items: center;
+	font-size: 14px;
+	flex: none;
+}
+.status-pill-sm {
+	width: 22px;
+	height: 22px;
+	border-radius: 6px;
+	font-size: 11px;
+}
+.status-pill-lg {
+	width: 36px;
+	height: 36px;
+	border-radius: 9px;
+	font-size: 16px;
+}
+.status-pill.primary {
+	background: var(--chip-primary-bg);
+	color: var(--bs-primary);
+}
+.status-pill.success {
+	background: var(--chip-success-bg);
+	color: var(--bs-success);
+}
+.status-pill.warning {
+	background: var(--chip-warning-bg);
+	color: var(--bs-warning);
+}
+.status-pill.danger {
+	background: var(--chip-danger-bg);
+	color: var(--bs-danger);
+}
+.status-pill.info {
+	background: var(--chip-info-bg);
+	color: var(--bs-info);
+}
+
+/* Branch chip — branch name + mono SHA + pulsing dot */
+.branch-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	background: var(--surface-2);
+	border: 1px solid var(--line);
+	border-radius: 999px;
+	padding: 4px 10px;
+	font-size: 0.75rem;
+	color: var(--fg-1);
+}
+.branch-chip .dot {
+	width: 6px;
+	height: 6px;
+	border-radius: 50%;
+	background: var(--bs-danger);
+	box-shadow: 0 0 0 3px rgba(var(--bs-danger-rgb), 0.2);
+}
+.branch-chip .dot.live {
+	background: var(--bs-success);
+	box-shadow: 0 0 0 3px rgba(var(--bs-success-rgb), 0.2);
+	animation: pulse-live 1.5s ease-in-out infinite;
+}
+.branch-chip .sha {
+	font-family: var(--bs-font-monospace);
+	font-size: 0.6875rem;
+	color: var(--fg-3);
+}
+
+/* Provider pill — dropdown trigger with provider mark */
+.provider-pill {
+	display: inline-flex;
+	align-items: center;
+	gap: 7px;
+	background: var(--surface-2);
+	border: 1px solid var(--line);
+	border-radius: 7px;
+	padding: 5px 10px;
+	font-size: 0.75rem;
+	color: var(--fg-1);
+	cursor: pointer;
+}
+.provider-pill:hover {
+	border-color: var(--line-strong);
+	color: var(--fg-0);
+}
+.provider-pill .model {
+	color: var(--fg-0);
+	font-weight: 500;
+}
+.prov-mark {
+	width: 14px;
+	height: 14px;
+	border-radius: 3px;
+	display: inline-grid;
+	place-items: center;
+	color: #fff;
+	font-size: 8.5px;
+	font-weight: 700;
+	flex: none;
+}
+.prov-mark.anthropic {
+	background: linear-gradient(135deg, #d49964, #a36537);
+}
+.prov-mark.openai {
+	background: linear-gradient(135deg, #10a37f, #0a6b55);
+}
+
+/* Count pill — sidebar nav trailing number, tab badge */
+.count-pill {
+	font-family: var(--bs-font-monospace);
+	font-size: 0.65625rem; /* 10.5px */
+	color: var(--fg-3);
+	background: var(--surface-3);
+	padding: 1px 6px;
+	border-radius: 999px;
+	font-weight: 500;
+}
+.count-pill.active {
+	background: var(--chip-primary-bg-strong);
+	color: #b7c8ff;
+}
+
+/* Meta chip — inline chip with optional icon, used in card meta rows */
+.meta-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	background: var(--surface-2);
+	border: 1px solid var(--line);
+	border-radius: 4px;
+	padding: 1px 7px;
+	font-size: 0.71875rem; /* 11.5px */
+	color: var(--fg-2);
+}
+.meta-chip.sha {
+	font-family: var(--bs-font-monospace);
+	font-size: 0.65625rem;
+}
+.meta-chip.pushed {
+	color: #8ed6b1;
+	border-color: rgba(var(--bs-success-rgb), 0.3);
+}
+.meta-chip.failed {
+	color: #f29e9e;
+	border-color: rgba(var(--bs-danger-rgb), 0.3);
+}
+.meta-chip.ai {
+	color: var(--chip-ai-fg);
+	border-color: var(--chip-ai-border);
+	background: var(--chip-ai-bg);
+}
+
+/* Banner — status-tinted message block (e.g. "Branch pushed") */
+.vs-banner {
+	display: flex;
+	align-items: flex-start;
+	gap: 10px;
+	padding: 8px 14px;
+	font-size: 0.78125rem;
+	color: var(--fg-1);
+}
+.vs-banner i {
+	flex: none;
+}
+.vs-banner.success {
+	background: var(--banner-success-bg);
+	border-top: 1px solid var(--banner-success-border);
+}
+.vs-banner.success > i {
+	color: var(--bs-success);
+}
+.vs-banner.primary {
+	background: var(--banner-primary-bg);
+	border-top: 1px solid var(--banner-primary-border);
+}
+.vs-banner.primary > i {
+	color: var(--bs-primary);
+}
+.vs-banner.warning {
+	background: var(--banner-warning-bg);
+	border-top: 1px solid var(--banner-warning-border);
+}
+.vs-banner.warning > i {
+	color: var(--bs-warning);
+}
+.vs-banner.danger {
+	background: var(--banner-danger-bg);
+	border-top: 1px solid var(--banner-danger-border);
+}
+.vs-banner.danger > i {
+	color: var(--bs-danger);
+}
+
+/* Alert-style banner — same tints but rounded-corner standalone block */
+.vs-alert {
+	display: flex;
+	gap: 12px;
+	padding: 12px 14px;
+	border-radius: 10px;
+	align-items: flex-start;
+	font-size: 0.78125rem;
+	color: var(--fg-1);
+	border: 1px solid transparent;
+}
+.vs-alert > i {
+	font-size: 16px;
+	margin-top: 1px;
+	flex: none;
+}
+.vs-alert .t {
+	font-weight: 600;
+	color: var(--fg-0);
+	margin-bottom: 2px;
+	font-size: 0.8125rem;
+}
+.vs-alert.warning {
+	background: var(--banner-warning-bg);
+	border-color: var(--banner-warning-border);
+}
+.vs-alert.warning > i {
+	color: var(--bs-warning);
+}
+.vs-alert.danger {
+	background: var(--banner-danger-bg);
+	border-color: var(--banner-danger-border);
+}
+.vs-alert.danger > i {
+	color: var(--bs-danger);
+}
+.vs-alert.success {
+	background: var(--banner-success-bg);
+	border-color: var(--banner-success-border);
+}
+.vs-alert.success > i {
+	color: var(--bs-success);
+}
+.vs-alert.primary {
+	background: var(--banner-primary-bg);
+	border-color: var(--banner-primary-border);
+}
+.vs-alert.primary > i {
+	color: var(--bs-primary);
+}
+
+/* Project tabs — horizontal strip with underline active state */
+.vs-tabs {
+	display: flex;
+	gap: 4px;
+	overflow-x: auto;
+	scrollbar-width: none;
+	border-bottom: 1px solid var(--line);
+}
+.vs-tabs::-webkit-scrollbar {
+	display: none;
+}
+.vs-tab {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	padding: 11px 14px;
+	border: 0;
+	border-bottom: 2px solid transparent;
+	color: var(--fg-2);
+	font-size: 0.84375rem;
+	font-weight: 500;
+	cursor: pointer;
+	white-space: nowrap;
+	background: transparent;
+	border-radius: 0;
+}
+.vs-tab > i {
+	font-size: 14px;
+	color: var(--fg-3);
+}
+.vs-tab:hover {
+	color: var(--fg-0);
+}
+.vs-tab.active {
+	color: var(--fg-0);
+	border-bottom-color: var(--bs-primary);
+}
+.vs-tab.active > i {
+	color: var(--bs-primary);
+}
+
+/* Theme toggle — segmented sun/moon buttons */
+.theme-toggle {
+	display: inline-flex;
+	background: var(--surface-2);
+	border: 1px solid var(--line);
+	border-radius: 8px;
+	padding: 2px;
+}
+.theme-toggle button {
+	background: transparent;
+	border: 0;
+	color: var(--fg-3);
+	padding: 4px 8px;
+	border-radius: 6px;
+	font-size: 12px;
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	cursor: pointer;
+}
+.theme-toggle button.active {
+	background: var(--surface-0);
+	color: var(--fg-0);
+	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+/* Sidebar nav (new design-system version; sits alongside old .app-sidebar styles) */
+.vs-side-nav a,
+.vs-side-nav .nav-btn {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 7px 10px;
+	border-radius: 8px;
+	color: var(--fg-2);
+	font-size: 13px;
+	text-decoration: none;
+	border: 0;
+	background: transparent;
+	width: 100%;
+	text-align: left;
+}
+.vs-side-nav a > i,
+.vs-side-nav .nav-btn > i {
+	color: var(--fg-3);
+	font-size: 14px;
+	width: 16px;
+	text-align: center;
+	flex: none;
+}
+.vs-side-nav a:hover,
+.vs-side-nav .nav-btn:hover {
+	background: var(--surface-2);
+	color: var(--fg-0);
+}
+.vs-side-nav a.active,
+.vs-side-nav .nav-btn.active {
+	background: var(--chip-primary-bg);
+	color: var(--fg-0);
+}
+.vs-side-nav a.active > i,
+.vs-side-nav .nav-btn.active > i {
+	color: var(--bs-primary);
+}
+.vs-side-nav .count {
+	margin-left: auto;
+	font-family: var(--bs-font-monospace);
+	font-size: 0.65625rem;
+	color: var(--fg-3);
+	background: var(--surface-3);
+	padding: 1px 6px;
+	border-radius: 999px;
+}
+.vs-side-nav a.active .count,
+.vs-side-nav .nav-btn.active .count {
+	background: var(--chip-primary-bg-strong);
+	color: #b7c8ff;
+}
+
+/* Environment card pills */
+.env-num {
+	font-family: var(--bs-font-monospace);
+	font-size: 0.6875rem;
+	color: #fff;
+	background: var(--bs-primary);
+	padding: 2px 7px;
+	border-radius: 999px;
+	font-weight: 500;
+}
+.env-tag {
+	font-size: 0.6875rem;
+	padding: 2px 8px;
+	border-radius: 999px;
+	background: var(--surface-3);
+	color: var(--fg-1);
+	font-weight: 500;
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+}
+.env-tag.web {
+	background: rgba(var(--bs-info-rgb), 0.12);
+	color: #7dd0db;
+}
+.env-tag.prod {
+	background: rgba(var(--bs-danger-rgb), 0.12);
+	color: #f29e9e;
+}
+.env-tag.primary {
+	background: rgba(var(--bs-success-rgb), 0.12);
+	color: #8ed6b1;
+}
+
+/* Indeterminate progress (used on running idea rows, active job cards) */
+.vs-progress {
+	height: 3px;
+	background: var(--surface-3);
+	border-radius: 2px;
+	overflow: hidden;
+}
+.vs-progress > div {
+	height: 100%;
+	background: var(--bs-primary);
+	width: 35%;
+	animation: vs-indeterminate 1.8s ease-in-out infinite;
+}
+@keyframes vs-indeterminate {
+	0% {
+		margin-left: -35%;
+	}
+	100% {
+		margin-left: 100%;
+	}
+}
+
+/* Change-letter status (M / A / D) — used in Changes tab */
+.change-st {
+	font-family: var(--bs-font-monospace);
+	font-weight: 600;
+	font-size: 0.6875rem;
+	width: 18px;
+	text-align: center;
+}
+.change-st.m {
+	color: var(--bs-warning);
+}
+.change-st.a {
+	color: var(--bs-success);
+}
+.change-st.d {
+	color: var(--bs-danger);
+}
+
+/* Green "Start" split-button — matches design (white-on-success, dark text) */
+.btn-start {
+	background: var(--bs-success);
+	color: #08210f;
+	border: 0;
+	padding: 7px 14px;
+	font-weight: 600;
+	font-size: 13px;
+	display: inline-flex;
+	align-items: center;
+	gap: 7px;
+	border-radius: 8px 0 0 8px;
+}
+.btn-start:hover,
+.btn-start:focus {
+	background: #4dd49e;
+	color: #08210f;
+}
+.btn-start-split {
+	background: var(--bs-success);
+	color: #08210f;
+	border: 0;
+	border-left: 1px solid rgba(0, 0, 0, 0.2);
+	padding: 7px 9px;
+	border-radius: 0 8px 8px 0;
+	display: inline-grid;
+	place-items: center;
+}
+.btn-start-split:hover,
+.btn-start-split:focus {
+	background: #4dd49e;
+}
+.start-group {
+	display: inline-flex;
+	border-radius: 8px;
+	box-shadow: 0 0 0 1px rgba(var(--bs-success-rgb), 0.4);
+}
+
+/* Two-column responsive layout (used in Auto-Pilot sections) */
+.vs-two-col {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 14px;
+}
+@media (max-width: 720px) {
+	.vs-two-col {
+		grid-template-columns: 1fr;
+	}
+}
+
+/* Auto-fit grid — for env card body + responsive card rows */
+.vs-auto-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+	gap: 12px;
+}
+.vs-auto-grid.sm {
+	grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+.vs-auto-grid.lg {
+	grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+
+/* Composer (Ideas tab) — container with textarea, attachments, footer */
+.composer {
+	background: var(--surface-1);
+	border: 1px solid var(--line);
+	border-radius: 12px;
+	overflow: hidden;
+}
+.composer textarea {
+	width: 100%;
+	background: transparent;
+	border: 0;
+	outline: 0;
+	color: var(--fg-0);
+	font-size: 0.90625rem; /* 14.5px */
+	line-height: 1.55;
+	resize: vertical;
+	min-height: 110px;
+	padding: 14px 16px;
+}
+.composer textarea::placeholder {
+	color: var(--fg-3);
+}
+.composer-foot {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex-wrap: wrap;
+	padding: 10px 12px;
+	border-top: 1px solid var(--line);
+	background: var(--surface-0);
+}
+.composer-foot .counter {
+	margin-left: auto;
+	font-size: 0.71875rem;
+	color: var(--fg-3);
+	font-family: var(--bs-font-monospace);
+}
+.composer-foot .counter.over {
+	color: var(--bs-warning);
+}
+.btn-ghost {
+	background: transparent;
+	border: 1px solid var(--line);
+	color: var(--fg-1);
+	font-size: 12px;
+	padding: 5px 10px;
+	border-radius: 7px;
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+}
+.btn-ghost:hover {
+	background: var(--surface-2);
+	color: var(--fg-0);
+}
+.composer-hint {
+	font-size: 0.71875rem;
+	color: var(--fg-3);
+	padding: 0 16px 10px;
+}
+.composer-hint kbd {
+	background: var(--surface-2);
+	border: 1px solid var(--line);
+	border-radius: 4px;
+	padding: 1px 5px;
+	font-family: var(--bs-font-monospace);
+	font-size: 0.65625rem;
+	color: var(--fg-1);
+}
+.composer .attached {
+	display: flex;
+	gap: 8px;
+	padding: 0 16px 12px;
+	flex-wrap: wrap;
+}
+.composer .attached .att {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	background: var(--surface-2);
+	border: 1px solid var(--line);
+	border-radius: 7px;
+	padding: 4px 6px 4px 8px;
+	font-size: 0.71875rem;
+	color: var(--fg-1);
+}
+.composer .attached .att .thumb {
+	width: 24px;
+	height: 24px;
+	border-radius: 4px;
+	object-fit: cover;
+	background: var(--surface-3);
+}
+.composer .attached .att button {
+	background: none;
+	border: 0;
+	color: var(--fg-3);
+	padding: 0 2px;
+	cursor: pointer;
+}
+.composer .attached .att button:hover {
+	color: var(--fg-0);
+}
+
+/* Panel — generic design-system panel wrapper (Envs, Changes, Auto-Pilot) */
+.vs-panel {
+	background: var(--surface-1);
+	border: 1px solid var(--line);
+	border-radius: 10px;
+	overflow: hidden;
+}
+.vs-panel-head {
+	padding: 14px 16px;
+	display: flex;
+	align-items: flex-start;
+	gap: 12px;
+	border-bottom: 1px solid var(--line);
+}
+.vs-panel-head h3 {
+	margin: 0;
+	font-size: 0.875rem;
+	font-weight: 600;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	color: var(--fg-0);
+}
+.vs-panel-head .sub {
+	font-size: 0.75rem;
+	color: var(--fg-3);
+	margin-top: 3px;
+}
+.vs-panel-body {
+	padding: 16px;
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+}
+.vs-panel-foot {
+	padding: 12px 16px;
+	border-top: 1px solid var(--line);
+	display: flex;
+	justify-content: flex-end;
+	gap: 8px;
+	background: var(--surface-0);
+}
+
+/* Section head — eyebrow-style heading with actions on the right */
+.vs-section-head {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	flex-wrap: wrap;
+}
+.vs-section-head h2 {
+	margin: 0;
+	font-size: 0.8125rem;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+	color: var(--fg-2);
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+.vs-section-head .actions {
+	margin-left: auto;
+	display: flex;
+	gap: 8px;
+	align-items: center;
+	flex-wrap: wrap;
+}
+
+/* Toolbar row — search + filters + sort (Projects list, Jobs list) */
+.vs-toolbar {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	flex-wrap: wrap;
+	background: var(--surface-1);
+	border: 1px solid var(--line);
+	border-radius: 10px;
+	padding: 8px 10px;
+}
+.vs-toolbar .search-field {
+	flex: 1 1 260px;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	background: var(--surface-2);
+	border: 1px solid var(--line);
+	border-radius: 8px;
+	padding: 6px 10px;
+	min-width: 0;
+}
+.vs-toolbar .search-field > i {
+	color: var(--fg-3);
+	font-size: 13px;
+	flex: none;
+}
+.vs-toolbar .search-field input {
+	flex: 1;
+	min-width: 0;
+	background: transparent;
+	border: 0;
+	outline: 0;
+	color: var(--fg-0);
+	font-size: 13px;
+}
+.vs-toolbar .search-field input::placeholder {
+	color: var(--fg-3);
+}
+
+/* Segmented control (used in filter rows) */
+.vs-segmented {
+	display: inline-flex;
+	background: var(--surface-2);
+	border: 1px solid var(--line);
+	border-radius: 8px;
+	padding: 2px;
+}
+.vs-segmented button {
+	background: transparent;
+	border: 0;
+	color: var(--fg-2);
+	padding: 5px 10px;
+	border-radius: 6px;
+	font-size: 12.5px;
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	cursor: pointer;
+	white-space: nowrap;
+}
+.vs-segmented button:hover {
+	color: var(--fg-0);
+}
+.vs-segmented button.active {
+	background: var(--surface-0);
+	color: var(--fg-0);
+	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+/* Job card — used in Projects → Jobs tab */
+.job-card {
+	background: var(--surface-1);
+	border: 1px solid var(--line);
+	border-radius: 10px;
+	overflow: hidden;
+}
+.job-card.failed .status-pill {
+	background: var(--chip-danger-bg);
+	color: var(--bs-danger);
+}
+.job-card.running .status-pill {
+	background: var(--chip-primary-bg);
+	color: var(--bs-primary);
+}
+.job-card.queued .status-pill {
+	background: var(--chip-warning-bg);
+	color: var(--bs-warning);
+}
+
+/* Form-control dark-surface tweaks (Bootstrap defaults are ok but we want the surface-2 bg) */
+.form-control,
+.form-select {
+	background: var(--surface-2);
+	border-color: var(--line);
+	color: var(--fg-0);
+}
+.form-control:focus,
+.form-select:focus {
+	background: var(--surface-2);
+	border-color: var(--bs-primary);
+	color: var(--fg-0);
+	box-shadow: 0 0 0 2px rgba(var(--bs-primary-rgb), 0.25);
+}
+[data-theme="dark"] .form-control::placeholder {
+	color: var(--fg-3);
+}
+.form-check-input {
+	background-color: var(--surface-2);
+	border-color: var(--line-strong);
+}
+.form-check-input:checked {
+	background-color: var(--bs-primary);
+	border-color: var(--bs-primary);
+}
+
+/* Dropdown menu — dark surface tweak */
+.dropdown-menu {
+	background: var(--surface-2);
+	border-color: var(--line);
+}
+.dropdown-item {
+	color: var(--fg-1);
+}
+.dropdown-item:hover,
+.dropdown-item:focus,
+.dropdown-item.active {
+	background: var(--surface-3);
+	color: var(--fg-0);
+}
+.dropdown-divider {
+	border-color: var(--line);
+}
+
+/* Live pulsing dot (shared, used in branch chip + project cards) */
+.live-dot {
+	width: 6px;
+	height: 6px;
+	border-radius: 50%;
+	background: var(--bs-success);
+	box-shadow: 0 0 0 3px rgba(var(--bs-success-rgb), 0.2);
+	animation: pulse-live 1.5s ease-in-out infinite;
 }

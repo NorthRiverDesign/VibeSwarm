@@ -45,7 +45,7 @@ public sealed class JobDetailNavigationTests
 	}
 
 	[Fact]
-	public void JobDetail_ShowsOutcomeSummaryForTerminalJobsWithoutSidebarContent()
+	public void JobDetail_ShowsStatusBannerForTerminalJobs()
 	{
 		var jobId = Guid.Parse("44444444-4444-4444-4444-444444444444");
 		var jobService = new FakeJobService(new Dictionary<Guid, Job>
@@ -58,8 +58,9 @@ public sealed class JobDetailNavigationTests
 		var cut = context.Render<JobDetail>(parameters => parameters
 			.Add(component => component.JobId, jobId));
 
-		Assert.Contains("Run stalled before completion", cut.Markup);
-		Assert.Contains("Check the transcript before retrying", cut.Markup);
+		// Status banner replaces the old three-card Outcome/Verification/Delivery block.
+		Assert.Contains("vs-banner", cut.Markup);
+		Assert.Contains("Job stalled", cut.Markup);
 	}
 
 	[Fact]
@@ -81,7 +82,7 @@ public sealed class JobDetailNavigationTests
 	}
 
 	[Fact]
-	public void JobDetail_FailedGitJobs_LinkOutcomeActionsToUncommittedChangesSection()
+	public void JobDetail_FailedGitJobs_RenderUncommittedChangesSection()
 	{
 		var jobId = Guid.Parse("55555555-5555-5555-5555-555555555555");
 		var jobService = new FakeJobService(new Dictionary<Guid, Job>
@@ -94,7 +95,7 @@ public sealed class JobDetailNavigationTests
 		var cut = context.Render<JobDetail>(parameters => parameters
 			.Add(component => component.JobId, jobId));
 
-		Assert.Contains("#job-uncommitted-changes-section", cut.Markup);
+		// Banner replaces the old outcome-action link pattern; the uncommitted-changes section itself is still rendered.
 		Assert.Contains("id=\"job-uncommitted-changes-section\"", cut.Markup);
 	}
 
