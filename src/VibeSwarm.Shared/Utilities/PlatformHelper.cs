@@ -3,48 +3,15 @@ using System.Runtime.InteropServices;
 
 namespace VibeSwarm.Shared.Utilities;
 
-/// <summary>
-/// Helper class for cross-platform operations, particularly for CLI tool management
-/// </summary>
 public static class PlatformHelper
 {
-	/// <summary>
-	/// Gets whether the current OS is Windows
-	/// </summary>
 	public static bool IsWindows => RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
-
-	/// <summary>
-	/// Gets whether the current OS is Linux
-	/// </summary>
 	public static bool IsLinux => RuntimeInformation.IsOSPlatform(OSPlatform.Linux);
-
-	/// <summary>
-	/// Gets whether the current OS is macOS
-	/// </summary>
 	public static bool IsMacOS => RuntimeInformation.IsOSPlatform(OSPlatform.OSX);
-
-	/// <summary>
-	/// Gets the current OS description for logging purposes
-	/// </summary>
 	public static string OsDescription => RuntimeInformation.OSDescription;
-
-	/// <summary>
-	/// Gets the OS-specific shell executable
-	/// </summary>
 	public static string ShellExecutable => IsWindows ? "cmd.exe" : "/bin/sh";
-
-	/// <summary>
-	/// Gets the OS-specific shell argument prefix for executing commands
-	/// </summary>
 	public static string ShellArgumentPrefix => IsWindows ? "/c" : "-c";
 
-	/// <summary>
-	/// Resolves an executable path for the current platform.
-	/// On Windows, looks for .exe extension; on Unix, checks if file is executable.
-	/// </summary>
-	/// <param name="executableName">The name of the executable (without extension)</param>
-	/// <param name="customPath">Optional custom path to the executable</param>
-	/// <returns>The resolved executable path, or the original name if not found</returns>
 	public static string ResolveExecutablePath(string executableName, string? customPath = null, string? searchPath = null)
 	{
 		// If custom path is provided and exists, use it
@@ -99,12 +66,6 @@ public static class PlatformHelper
 		return executableName;
 	}
 
-	/// <summary>
-	/// Gets an enhanced PATH that includes common CLI tool installation directories.
-	/// This is essential for systemd services which run with minimal environments.
-	/// </summary>
-	/// <param name="homeDir">The user's home directory (if null, will try to detect)</param>
-	/// <returns>A PATH string with additional common tool directories</returns>
 	public static string GetEnhancedPath(string? homeDir = null)
 	{
 		var currentPath = Environment.GetEnvironmentVariable("PATH") ?? "";
@@ -242,13 +203,6 @@ public static class PlatformHelper
 		return currentPath;
 	}
 
-	/// <summary>
-	/// Configures a ProcessStartInfo for cross-platform execution.
-	/// This method ensures that CLI tools installed in common locations can be found,
-	/// which is especially important when running as a systemd service.
-	/// </summary>
-	/// <param name="startInfo">The ProcessStartInfo to configure</param>
-	/// <param name="homeDir">Optional user home directory to use for path resolution</param>
 	public static void ConfigureForCrossPlatform(ProcessStartInfo startInfo, string? homeDir = null, string? pathOverride = null)
 	{
 		startInfo.UseShellExecute = false;
@@ -270,12 +224,6 @@ public static class PlatformHelper
 		}
 	}
 
-	/// <summary>
-	/// Attempts to kill a process and its entire process tree
-	/// </summary>
-	/// <param name="processId">The process ID to kill</param>
-	/// <param name="logger">Optional action for logging</param>
-	/// <returns>True if the process was successfully terminated</returns>
 	public static bool TryKillProcessTree(int processId, Action<string>? logger = null)
 	{
 		try
@@ -368,26 +316,6 @@ public static class PlatformHelper
 		}
 	}
 
-	/// <summary>
-	/// Creates a new process group for the child process (Unix only)
-	/// This allows killing all child processes together
-	/// </summary>
-	/// <param name="startInfo">The ProcessStartInfo to configure</param>
-	public static void ConfigureProcessGroup(ProcessStartInfo startInfo)
-	{
-		if (!IsWindows)
-		{
-			// On Unix, we can set process group options
-			// Note: This requires Process.Start to be called with specific flags
-			// The actual implementation may vary based on .NET version
-		}
-	}
-
-	/// <summary>
-	/// Escapes a command line argument appropriately for the current platform
-	/// </summary>
-	/// <param name="argument">The argument to escape</param>
-	/// <returns>The escaped argument</returns>
 	public static string EscapeArgument(string argument)
 	{
 		if (string.IsNullOrEmpty(argument))
@@ -423,9 +351,4 @@ public static class PlatformHelper
 			return $"'{escaped}'";
 		}
 	}
-
-	/// <summary>
-	/// Gets the appropriate line ending for the current platform
-	/// </summary>
-	public static string LineEnding => IsWindows ? "\r\n" : "\n";
 }

@@ -3,21 +3,10 @@ using System.Text.RegularExpressions;
 
 namespace VibeSwarm.Shared.Utilities;
 
-/// <summary>
-/// Utilities for cleaning CLI output, removing tool usage information,
-/// ANSI codes, and other formatting artifacts.
-/// </summary>
 public static partial class OutputCleaner
 {
-	/// <summary>
-	/// Regex pattern for ANSI escape codes
-	/// </summary>
 	private static readonly Regex AnsiCodeRegex = AnsiCodePattern();
 
-	/// <summary>
-	/// Patterns that indicate tool usage lines from various CLI agents.
-	/// These lines provide metadata about agent operations but are not part of the actual response.
-	/// </summary>
 	private static readonly string[] ToolUsagePatterns =
 	[
 		// Claude Code patterns
@@ -39,18 +28,10 @@ public static partial class OutputCleaner
 		@"^\s*\(.*files?\s*(found|read|analyzed)\)$", // File operation results
 	];
 
-	/// <summary>
-	/// Compiled regex patterns for tool usage detection
-	/// </summary>
 	private static readonly Regex[] ToolUsageRegexes = ToolUsagePatterns
 		.Select(p => new Regex(p, RegexOptions.Compiled | RegexOptions.IgnoreCase))
 		.ToArray();
 
-	/// <summary>
-	/// Strips ANSI escape codes from the input string.
-	/// </summary>
-	/// <param name="input">The input string containing potential ANSI codes</param>
-	/// <returns>The input with ANSI codes removed</returns>
 	public static string StripAnsiCodes(string input)
 	{
 		if (string.IsNullOrEmpty(input))
@@ -59,13 +40,6 @@ public static partial class OutputCleaner
 		return AnsiCodeRegex.Replace(input, string.Empty);
 	}
 
-	/// <summary>
-	/// Removes tool usage information from CLI agent output.
-	/// This strips lines that indicate the agent is reading files, listing directories,
-	/// or performing other tool operations that shouldn't be part of the final response.
-	/// </summary>
-	/// <param name="output">The raw CLI output</param>
-	/// <returns>The output with tool usage lines removed</returns>
 	public static string StripToolUsage(string output)
 	{
 		if (string.IsNullOrEmpty(output))
@@ -111,11 +85,6 @@ public static partial class OutputCleaner
 		return result.Trim();
 	}
 
-	/// <summary>
-	/// Performs full cleaning of CLI output: strips ANSI codes and tool usage information.
-	/// </summary>
-	/// <param name="output">The raw CLI output</param>
-	/// <returns>The cleaned output suitable for storing as a response</returns>
 	public static string CleanCliOutput(string output)
 	{
 		if (string.IsNullOrEmpty(output))

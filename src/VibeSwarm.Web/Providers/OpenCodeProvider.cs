@@ -435,7 +435,7 @@ public class OpenCodeProvider : CliProviderBase
             if (string.IsNullOrEmpty(e.Data)) return;
 
             // Strip ANSI codes for storage and parsing
-            var cleanedData = StripAnsiCodes(e.Data);
+            var cleanedData = OutputCleaner.StripAnsiCodes(e.Data);
 
             lock (outputLock)
             {
@@ -494,7 +494,7 @@ public class OpenCodeProvider : CliProviderBase
             if (!string.IsNullOrEmpty(e.Data))
             {
                 // Strip ANSI codes from stderr as well
-                var cleanedError = StripAnsiCodes(e.Data);
+                var cleanedError = OutputCleaner.StripAnsiCodes(e.Data);
                 errorBuilder.AppendLine(cleanedError);
 
                 // OpenCode outputs tool progress (Read, Edit, Write, etc.) to stderr
@@ -612,11 +612,11 @@ public class OpenCodeProvider : CliProviderBase
         List<string> cleanedOutput;
         lock (outputLock)
         {
-            cleanedOutput = outputBuilder.Select(StripAnsiCodes).ToList();
+            cleanedOutput = outputBuilder.Select(OutputCleaner.StripAnsiCodes).ToList();
         }
         result.Output = string.Join("\n", cleanedOutput);
 
-        var stderrContent = StripAnsiCodes(errorBuilder.ToString());
+        var stderrContent = OutputCleaner.StripAnsiCodes(errorBuilder.ToString());
 
         // Check for errors in output even if exit code was 0
         // Some CLIs output errors but still return 0
@@ -696,21 +696,6 @@ public class OpenCodeProvider : CliProviderBase
         }
 
         return result;
-    }
-
-    /// <summary>
-    /// Strips ANSI escape codes from a string for cleaner parsing.
-    /// </summary>
-    private static string StripAnsiCodes(string input)
-    {
-        if (string.IsNullOrEmpty(input))
-            return input;
-
-        // Pattern matches ANSI escape sequences: ESC [ ... (letter or ~)
-        return System.Text.RegularExpressions.Regex.Replace(
-            input,
-            @"\x1B\[[0-9;]*[a-zA-Z~]|\x1B\].*?\x07|\x1B[PX^_].*?\x1B\\|\x1B.?",
-            string.Empty);
     }
 
     /// <summary>

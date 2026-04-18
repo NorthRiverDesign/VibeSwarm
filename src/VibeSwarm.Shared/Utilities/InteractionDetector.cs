@@ -2,82 +2,28 @@ using System.Text.RegularExpressions;
 
 namespace VibeSwarm.Shared.Utilities;
 
-/// <summary>
-/// Detects when a CLI agent is requesting user interaction/input.
-/// Analyzes output patterns to identify prompts, confirmations, and questions.
-/// </summary>
 public static class InteractionDetector
 {
-	/// <summary>
-	/// Result of interaction detection analysis
-	/// </summary>
 	public class InteractionRequest
 	{
-		/// <summary>
-		/// Whether an interaction is being requested
-		/// </summary>
 		public bool IsInteractionRequested { get; set; }
-
-		/// <summary>
-		/// The type of interaction being requested
-		/// </summary>
 		public InteractionType Type { get; set; } = InteractionType.Unknown;
-
-		/// <summary>
-		/// The prompt or question being asked
-		/// </summary>
 		public string? Prompt { get; set; }
-
-		/// <summary>
-		/// Available choices if this is a choice-type interaction (e.g., y/n, options list)
-		/// </summary>
 		public List<string>? Choices { get; set; }
-
-		/// <summary>
-		/// Suggested default response if available
-		/// </summary>
 		public string? DefaultResponse { get; set; }
-
-		/// <summary>
-		/// Confidence score (0-1) of the detection
-		/// </summary>
+		// Confidence score (0-1) of the detection
 		public double Confidence { get; set; }
-
-		/// <summary>
-		/// The raw output line that triggered the detection
-		/// </summary>
 		public string? RawOutput { get; set; }
 	}
 
-	/// <summary>
-	/// Types of interactions that can be detected
-	/// </summary>
 	public enum InteractionType
 	{
 		Unknown,
-		/// <summary>
-		/// Yes/No confirmation (y/n, yes/no)
-		/// </summary>
 		Confirmation,
-		/// <summary>
-		/// Free-form text input
-		/// </summary>
 		TextInput,
-		/// <summary>
-		/// Multiple choice selection
-		/// </summary>
 		Choice,
-		/// <summary>
-		/// Permission request (allow/deny)
-		/// </summary>
 		Permission,
-		/// <summary>
-		/// Continue/abort prompt
-		/// </summary>
 		Continue,
-		/// <summary>
-		/// Authentication or credential prompt
-		/// </summary>
 		Authentication
 	}
 
@@ -154,12 +100,6 @@ public static class InteractionDetector
         new Regex(@"(?:Reading|Writing|Creating|Updating|Deleting)\s+file", RegexOptions.Compiled | RegexOptions.IgnoreCase), // File operations
     };
 
-	/// <summary>
-	/// Analyzes output text to detect if user interaction is being requested.
-	/// </summary>
-	/// <param name="outputLine">A single line of output to analyze</param>
-	/// <param name="recentContext">Recent output lines for context (optional)</param>
-	/// <returns>Interaction request details if detected</returns>
 	public static InteractionRequest? DetectInteraction(string outputLine, IEnumerable<string>? recentContext = null)
 	{
 		if (string.IsNullOrWhiteSpace(outputLine))
@@ -214,73 +154,6 @@ public static class InteractionDetector
 		return null;
 	}
 
-	/// <summary>
-	/// Analyzes multiple lines of output to detect interaction requests.
-	/// Uses context to improve detection accuracy.
-	/// </summary>
-	/// <param name="outputLines">Recent output lines to analyze</param>
-	/// <param name="maxLinesToCheck">Maximum number of recent lines to check</param>
-	/// <returns>Interaction request details if detected</returns>
-	public static InteractionRequest? DetectInteractionFromOutput(IEnumerable<string> outputLines, int maxLinesToCheck = 10)
-	{
-		var lines = outputLines.TakeLast(maxLinesToCheck).ToList();
-
-		// Check from most recent to oldest
-		for (int i = lines.Count - 1; i >= 0; i--)
-		{
-			var context = i > 0 ? lines.Take(i) : null;
-			var result = DetectInteraction(lines[i], context);
-
-			if (result != null && result.IsInteractionRequested)
-			{
-				// Boost confidence if we see interaction patterns in context
-				if (context != null && HasSupportingContext(context, result.Type))
-				{
-					result.Confidence = Math.Min(1.0, result.Confidence + 0.1);
-				}
-
-				return result;
-			}
-		}
-
-		return null;
-	}
-
-	/// <summary>
-	/// Checks if the process output suggests it's stalled waiting for input.
-	/// This is based on output timing patterns.
-	/// </summary>
-	/// <param name="lastOutputTime">When the last output was received</param>
-	/// <param name="lastOutputLine">The last output line</param>
-	/// <param name="stallThreshold">How long without output before considered stalled</param>
-	/// <returns>True if the process appears to be waiting for input</returns>
-	public static bool IsLikelyWaitingForInput(
-		DateTime lastOutputTime,
-		string? lastOutputLine,
-		TimeSpan stallThreshold)
-	{
-		if (string.IsNullOrEmpty(lastOutputLine))
-			return false;
-
-		var timeSinceLastOutput = DateTime.UtcNow - lastOutputTime;
-
-		// If we've been stalled for a while, check if the last line looks like a prompt
-		if (timeSinceLastOutput > stallThreshold)
-		{
-			var interaction = DetectInteraction(lastOutputLine);
-			// Even low confidence detections become more significant when stalled
-			if (interaction != null && interaction.Confidence >= 0.25)
-			{
-				return true;
-			}
-		}
-
-		return false;
-	}
-
-	/// <summary>
-	/// Extracts the main prompt text from an interaction line
-	/// </summary>
 	private static string ExtractPrompt(string line, InteractionType type)
 	{
 		var prompt = line.Trim();
@@ -293,9 +166,6 @@ public static class InteractionDetector
 		return prompt.Trim();
 	}
 
-	/// <summary>
-	/// Extracts available choices from the output
-	/// </summary>
 	private static List<string>? ExtractChoices(string line, IEnumerable<string>? context)
 	{
 		var choices = new List<string>();
@@ -335,9 +205,6 @@ public static class InteractionDetector
 		return choices.Count > 0 ? choices : null;
 	}
 
-	/// <summary>
-	/// Checks if context lines support the detected interaction type
-	/// </summary>
 	private static bool HasSupportingContext(IEnumerable<string> context, InteractionType type)
 	{
 		var contextText = string.Join(" ", context);
@@ -353,27 +220,6 @@ public static class InteractionDetector
 			InteractionType.Authentication =>
 				Regex.IsMatch(contextText, @"(?:login|auth|credential|password|token)", RegexOptions.IgnoreCase),
 			_ => false
-		};
-	}
-
-	/// <summary>
-	/// Suggests an automatic response based on the interaction type.
-	/// Used when running in non-interactive mode.
-	/// </summary>
-	/// <param name="request">The detected interaction request</param>
-	/// <param name="autoApprovePermissions">Whether to auto-approve permission requests</param>
-	/// <returns>Suggested response or null if manual input is required</returns>
-	public static string? SuggestAutoResponse(InteractionRequest request, bool autoApprovePermissions = true)
-	{
-		if (request == null || !request.IsInteractionRequested)
-			return null;
-
-		return request.Type switch
-		{
-			InteractionType.Confirmation when request.DefaultResponse != null => request.DefaultResponse,
-			InteractionType.Permission when autoApprovePermissions => "y",
-			InteractionType.Continue => "", // Empty string for Enter key
-			_ => null // Requires manual input
 		};
 	}
 }

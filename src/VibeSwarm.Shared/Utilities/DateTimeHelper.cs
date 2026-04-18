@@ -183,10 +183,7 @@ public static class DateTimeHelper
 			timeZone = TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
 			return true;
 		}
-		catch (TimeZoneNotFoundException)
-		{
-		}
-		catch (InvalidTimeZoneException)
+		catch (Exception ex) when (ex is TimeZoneNotFoundException or InvalidTimeZoneException)
 		{
 		}
 
