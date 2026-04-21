@@ -16,19 +16,17 @@
 			}
 			else if (Providers.Count == 0)
 			{
-				<div class="alert alert-warning mb-0">
-					<i class="bi bi-exclamation-triangle me-2"></i>
+				<Alert Type="Alert.AlertType.Warning" Class="mb-0">
 					No enabled providers available. Please enable at least one provider in settings.
-				</div>
+				</Alert>
 			}
 			else
 			{
 				@if (Job != null && Job.RetryCount > 0)
 				{
-					<div class="alert alert-info d-flex align-items-center mb-3 py-2">
-						<i class="bi bi-info-circle me-2"></i>
+					<Alert Type="Alert.AlertType.Info" Class="d-flex align-items-center mb-3 py-2">
 						<span>This job has been attempted <strong>@(Job.RetryCount + 1)</strong> time(s)</span>
-					</div>
+					</Alert>
 				}
 
 				<div class="mb-3">
@@ -120,9 +118,7 @@
 
 				@if (!string.IsNullOrEmpty(ErrorMessage))
 				{
-					<div class="alert alert-danger py-2 mb-0">
-						<i class="bi bi-exclamation-triangle me-1"></i>@ErrorMessage
-					</div>
+					<Alert Type="Alert.AlertType.Danger" Class="py-2 mb-0">@ErrorMessage</Alert>
 				}
 			}
 		</div>
