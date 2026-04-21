@@ -117,7 +117,7 @@ public sealed class JobExecutionSafetyTests : IDisposable
 		await using var verificationContext = CreateDbContext();
 		var job = await verificationContext.Jobs.SingleAsync(j => j.Id == jobId);
 
-		Assert.Equal(JobStatus.Started, job.Status);
+		Assert.Equal(JobStatus.Pending, job.Status);
 		Assert.False(string.IsNullOrWhiteSpace(job.WorkerInstanceId));
 		Assert.NotNull(job.StartedAt);
 		Assert.NotNull(job.LastHeartbeatAt);

@@ -79,18 +79,14 @@ public partial class JobProcessingService
 
             job = trackedJob;
 
+            // ExecuteUpdateAsync in ClaimJobAsync doesn't sync tracked entities; reload so
+            // Status, WorkerInstanceId, StartedAt, and timestamps reflect the claimed state.
+            await dbContext.Entry(job).ReloadAsync(cancellationToken);
+
             // Store provider ID for cleanup (may have changed after refresh)
             executionContext.ProviderId = job.ProviderId;
 
-            job.Status = JobStatus.Started;
-            job.StartedAt ??= DateTime.UtcNow;
-            job.LastActivityAt = DateTime.UtcNow;
-            job.WorkerInstanceId = _workerInstanceId;
-            job.LastHeartbeatAt = DateTime.UtcNow;
-            job.NotBeforeUtc = null; // Clear any rate-limit backoff now that we're running
-            await NotifyStatusChangedAsync(job.Id, JobStatus.Started);
-
-            // Check again after status update - double-check for race conditions
+            // Check again after claim - double-check for race conditions
             if (await jobService.IsCancellationRequestedAsync(job.Id, cancellationToken))
             {
                 await ReleaseJobAsync(job.Id, JobStatus.Cancelled, "Job was cancelled", dbContext, cancellationToken);
@@ -141,6 +137,11 @@ public partial class JobProcessingService
                 await NotifyJobCompletedAsync(job.Id, false, providerValidationError);
                 return;
             }
+
+            // All preflight checks passed — promote from Pending to Started now that
+            // the job is actually about to begin executing.
+            await UpdateJobStatusAsync(job.Id, JobStatus.Started, dbContext, cancellationToken);
+            await NotifyStatusChangedAsync(job.Id, JobStatus.Started);
 
             // Update status to processing
             var initialStatus = job.ResumeFromStatus switch
