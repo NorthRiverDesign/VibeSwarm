@@ -33,7 +33,7 @@
                         <i class="bi bi-x-lg"></i>
                     </button>
                 }
-                <kbd class="border rounded px-1 small text-secondary flex-shrink-0 d-none d-sm-inline" style="font-size: 0.7rem;">Esc</kbd>
+                <kbd class="border rounded px-1 small text-secondary flex-shrink-0 d-none d-sm-inline fs-7">Esc</kbd>
             </div>
 
             @* Results *@
@@ -50,7 +50,7 @@
                         @if (projectItems.Count > 0)
                         {
                             <div class="px-3 pt-2 pb-1">
-                                <small class="text-secondary fw-semibold text-uppercase" style="font-size: 0.7rem; letter-spacing: 0.05em;">Projects</small>
+                                <small class="text-secondary fw-semibold text-uppercase text-eyebrow">Projects</small>
                             </div>
                             @foreach (var item in projectItems)
                             {
@@ -73,7 +73,7 @@
                         @if (jobItems.Count > 0)
                         {
                             <div class="px-3 pt-2 pb-1 @(projectItems.Count > 0 ? "border-top mt-1" : "")">
-                                <small class="text-secondary fw-semibold text-uppercase" style="font-size: 0.7rem; letter-spacing: 0.05em;">Jobs</small>
+                                <small class="text-secondary fw-semibold text-uppercase text-eyebrow">Jobs</small>
                             </div>
                             @foreach (var item in jobItems)
                             {
@@ -102,7 +102,7 @@
                         @if (ideaItems.Count > 0)
                         {
                             <div class="px-3 pt-2 pb-1 @((projectItems.Count > 0 || jobItems.Count > 0) ? "border-top mt-1" : "")">
-                                <small class="text-secondary fw-semibold text-uppercase" style="font-size: 0.7rem; letter-spacing: 0.05em;">Ideas</small>
+                                <small class="text-secondary fw-semibold text-uppercase text-eyebrow">Ideas</small>
                             </div>
                             @foreach (var item in ideaItems)
                             {
@@ -129,7 +129,7 @@
                     else if (!_isLoading && _result != null)
                     {
                         <div class="d-flex flex-column align-items-center justify-content-center p-5 text-secondary">
-                            <i class="bi bi-search mb-2" style="font-size: 1.5rem;"></i>
+                            <i class="bi bi-search mb-2 fs-4"></i>
                             <div>No results for "<strong>@_query</strong>"</div>
                         </div>
                     }
@@ -137,7 +137,7 @@
                 else if (string.IsNullOrWhiteSpace(_query))
                 {
                     <div class="d-flex flex-column align-items-center justify-content-center p-5 text-secondary">
-                        <i class="bi bi-search mb-2" style="font-size: 1.5rem;"></i>
+                        <i class="bi bi-search mb-2 fs-4"></i>
                         <div class="small">Search projects, jobs, and ideas</div>
                     </div>
                 }
@@ -146,13 +146,13 @@
             @* Footer hints *@
             <div class="px-3 py-2 border-top d-flex align-items-center gap-3 bg-body-secondary">
                 <span class="small text-secondary d-flex align-items-center gap-1">
-                    <kbd class="border rounded px-1" style="font-size: 0.7rem;">↑↓</kbd> navigate
+                    <kbd class="border rounded px-1 fs-7">↑↓</kbd> navigate
                 </span>
                 <span class="small text-secondary d-flex align-items-center gap-1">
-                    <kbd class="border rounded px-1" style="font-size: 0.7rem;">↵</kbd> open
+                    <kbd class="border rounded px-1 fs-7">↵</kbd> open
                 </span>
                 <span class="small text-secondary d-flex align-items-center gap-1">
-                    <kbd class="border rounded px-1" style="font-size: 0.7rem;">Esc</kbd> close
+                    <kbd class="border rounded px-1 fs-7">Esc</kbd> close
                 </span>
             </div>
         </div>

@@ -45,7 +45,7 @@
 	<div class="card-body d-flex flex-column gap-3">
 		@if (IsEditable && _isEditing)
 		{
-			<textarea class="form-control lh-base" style="min-height: 150px; resize: vertical;" @bind="_editedPrompt"
+			<textarea class="form-control lh-base textarea-editable" @bind="_editedPrompt"
 					  rows="6" placeholder="Enter the goal prompt for the AI agent..."></textarea>
 		}
 		else

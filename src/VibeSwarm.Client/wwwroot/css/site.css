@@ -227,6 +227,26 @@
 	-webkit-box-orient: vertical;
 	overflow: hidden;
 }
+.fs-7 {
+	font-size: 0.7rem;
+}
+.fs-8 {
+	font-size: 0.65rem;
+}
+.text-eyebrow {
+	font-size: 0.7rem;
+	letter-spacing: 0.05em;
+}
+.textarea-editable {
+	min-height: 150px;
+	resize: vertical;
+}
+.progress-xs {
+	height: 4px;
+}
+.progress-sm {
+	height: 6px;
+}
 
 /* Prevent textareas from expanding too large (50-row max ~75rem) */
 textarea.form-control {

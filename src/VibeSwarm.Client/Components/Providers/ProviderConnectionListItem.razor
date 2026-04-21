@@ -5,7 +5,7 @@
 				<span class="fw-semibold">@Provider.Name</span>
 				@if (Provider.IsDefault)
 				{
-					<span class="badge text-bg-success text-uppercase" style="font-size: 0.7rem;">Default</span>
+					<span class="badge text-bg-success text-uppercase fs-7">Default</span>
 				}
 				<StatusBadge Status="@(Provider.IsEnabled ? "Active" : "Off")" ShowSpinner="false" />
 			</div>

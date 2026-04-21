@@ -190,7 +190,7 @@
                                 }
                                 else
                                 {
-                                    <textarea class="form-control lh-base" style="min-height: 150px; resize: vertical;"
+                                    <textarea class="form-control lh-base textarea-editable"
                                               @bind="_editedGoalPrompt" rows="6" placeholder="Enter the goal prompt for the AI agent..."></textarea>
                                 }
                             </div>
@@ -317,32 +317,32 @@
                         <div class="empty-state text-center py-5">
                             @if (Status == JobStatus.Completed)
                             {
-                                <i class="bi bi-check-circle opacity-50 d-block mb-2" style="font-size: 2.5rem;"></i>
+                                <i class="bi bi-check-circle opacity-50 d-block mb-2 fs-1"></i>
                                 <span class="text-body-secondary">Job completed but no conversation was recorded.</span>
                             }
                             else if (Status == JobStatus.Failed)
                             {
-                                <i class="bi bi-exclamation-circle opacity-50 d-block mb-2" style="font-size: 2.5rem;"></i>
+                                <i class="bi bi-exclamation-circle opacity-50 d-block mb-2 fs-1"></i>
                                 <span class="text-body-secondary">Job failed. Check the error message above for details.</span>
                             }
                             else if (Status == JobStatus.Cancelled)
                             {
-                                <i class="bi bi-x-circle opacity-50 d-block mb-2" style="font-size: 2.5rem;"></i>
+                                <i class="bi bi-x-circle opacity-50 d-block mb-2 fs-1"></i>
                                 <span class="text-body-secondary">Job was cancelled. No conversation recorded.</span>
                             }
                             else if (Status == JobStatus.Stalled)
                             {
-                                <i class="bi bi-hourglass-split opacity-50 d-block mb-2" style="font-size: 2.5rem;"></i>
+                                <i class="bi bi-hourglass-split opacity-50 d-block mb-2 fs-1"></i>
                                 <span class="text-body-secondary">Job stalled before any conversation was recorded. Use the follow-up input below to continue.</span>
                             }
                             else if (Status == JobStatus.New || Status == JobStatus.Pending)
                             {
-                                <i class="bi bi-hourglass opacity-50 d-block mb-2" style="font-size: 2.5rem;"></i>
+                                <i class="bi bi-hourglass opacity-50 d-block mb-2 fs-1"></i>
                                 <span class="text-body-secondary">Conversation will appear after the job runs.</span>
                             }
                             else
                             {
-                                <i class="bi bi-chat-left-text opacity-50 d-block mb-2" style="font-size: 2.5rem;"></i>
+                                <i class="bi bi-chat-left-text opacity-50 d-block mb-2 fs-1"></i>
                                 <span class="text-body-secondary">No conversation recorded for this job.</span>
                             }
                         </div>
