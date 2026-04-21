@@ -13,7 +13,7 @@
 	</Actions>
 </PageHeader>
 
-@* Projects toolbar — Bootstrap input-group + btn-group + outline button *@
+@* Projects toolbar — Bootstrap input-group + btn-group *@
 <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
 	<div class="input-group flex-grow-1" role="search">
 		<span class="input-group-text"><i class="bi bi-search"></i></span>
@@ -22,24 +22,24 @@
 	</div>
 
 	<div class="btn-group btn-group-sm" role="group" aria-label="Filter">
-		<button type="button" class="btn @(ActiveFilter == "active" ? "btn-primary" : "btn-outline-secondary")"
+		<button type="button" class="btn @(ActiveFilter == "active" ? "btn-primary" : "btn-secondary")"
 				@onclick='() => SetFilter("active")'>
 			<i class="bi bi-check2-circle"></i> Active
 			<span class="badge rounded-pill bg-body-tertiary text-body-secondary ms-1">@GetActiveCount()</span>
 		</button>
-		<button type="button" class="btn @(ActiveFilter == "inactive" ? "btn-primary" : "btn-outline-secondary")"
+		<button type="button" class="btn @(ActiveFilter == "inactive" ? "btn-primary" : "btn-secondary")"
 				@onclick='() => SetFilter("inactive")'>
 			<i class="bi bi-pause-circle"></i> Inactive
 			<span class="badge rounded-pill bg-body-tertiary text-body-secondary ms-1">@GetInactiveCount()</span>
 		</button>
-		<button type="button" class="btn @(ActiveFilter == "all" ? "btn-primary" : "btn-outline-secondary")"
+		<button type="button" class="btn @(ActiveFilter == "all" ? "btn-primary" : "btn-secondary")"
 				@onclick='() => SetFilter("all")'>
 			All
 			<span class="badge rounded-pill bg-body-tertiary text-body-secondary ms-1">@(GetActiveCount() + GetInactiveCount())</span>
 		</button>
 	</div>
 
-	<button type="button" class="btn btn-sm btn-outline-secondary ms-auto"
+	<button type="button" class="btn btn-sm btn-secondary ms-auto"
 			@onclick="ToggleProjectStats">
 		<i class="bi bi-@(ShowProjectStats ? "eye-slash" : "eye")"></i>
 		<span class="d-none d-md-inline ms-1">Stats</span>

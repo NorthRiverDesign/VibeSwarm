@@ -35,15 +35,15 @@
 							<span class="badge text-bg-secondary">Disabled</span>
 						}
 						<div class="btn-group btn-group-sm ms-auto" role="group">
-							<button type="button" class="btn btn-outline-secondary" title="Move up"
+							<button type="button" class="btn btn-secondary" title="Move up"
 								@onclick="() => MoveEnvironmentUp(item.Id)" disabled="@(environment.index == 0)">
 								<i class="bi bi-arrow-up"></i>
 							</button>
-							<button type="button" class="btn btn-outline-secondary" title="Move down"
+							<button type="button" class="btn btn-secondary" title="Move down"
 								@onclick="() => MoveEnvironmentDown(item.Id)" disabled="@(environment.index >= _environments.Count - 1)">
 								<i class="bi bi-arrow-down"></i>
 							</button>
-							<button type="button" class="btn btn-outline-danger" title="Remove environment"
+							<button type="button" class="btn btn-danger" title="Remove environment"
 								@onclick="() => RemoveEnvironment(item.Id)">
 								<i class="bi bi-x-lg"></i>
 							</button>
