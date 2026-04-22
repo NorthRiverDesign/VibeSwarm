@@ -167,6 +167,51 @@ public sealed class JobSessionPanelTests
 	}
 
 	[Fact]
+	public async Task RenderedJobSessionPanel_HidesCommitSummaryBlocksFromDisplayedMessages()
+	{
+		var services = new ServiceCollection();
+		services.AddLogging();
+		services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
+
+		await using var renderer = new HtmlRenderer(services.BuildServiceProvider(), NullLoggerFactory.Instance);
+
+		var html = await renderer.Dispatcher.InvokeAsync(async () =>
+		{
+			var parameters = ParameterView.FromDictionary(new Dictionary<string, object?>
+			{
+				[nameof(JobSessionPanel.Status)] = JobStatus.Completed,
+				[nameof(JobSessionPanel.Messages)] = new List<JobMessage>
+				{
+					new()
+					{
+						Id = Guid.NewGuid(),
+						JobId = Guid.NewGuid(),
+						Role = MessageRole.Assistant,
+						Content = """
+							## Plan
+							1. Capture the planning summary.
+							2. Prefer it for git delivery.
+
+							<commit-summary>
+							hidden planning git summary
+							</commit-summary>
+							""",
+						CreatedAt = DateTime.UtcNow.AddSeconds(-5)
+					}
+				}
+			});
+
+			var output = await renderer.RenderComponentAsync<JobSessionPanel>(parameters);
+			return output.ToHtmlString();
+		});
+
+		Assert.Contains("Capture the planning summary", html);
+		Assert.Contains("Prefer it for git delivery", html);
+		Assert.DoesNotContain("hidden planning git summary", html);
+		Assert.DoesNotContain("&lt;commit-summary&gt;", html);
+	}
+
+	[Fact]
 	public async Task RenderedJobSessionPanel_ShowsPersistedUserMessagesAsUserEntries()
 	{
 		var services = new ServiceCollection();

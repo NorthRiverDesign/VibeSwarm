@@ -709,6 +709,11 @@ public partial class JobProcessingService
                 }
 
                 job.PlanningOutput = planningOutput.Trim();
+                var planningSummary = JobSummaryGenerator.ExtractCommitSummary(job.PlanningOutput);
+                if (!string.IsNullOrWhiteSpace(planningSummary))
+                {
+                    job.SessionSummary = planningSummary;
+                }
                 job.PlanningProviderId = planningProviderConfig.Id;
                 job.PlanningModelUsed = planningResult.ModelUsed ?? job.Project.PlanningModelId;
                 job.PlanningReasoningEffortUsed = job.Project.PlanningReasoningEffort;

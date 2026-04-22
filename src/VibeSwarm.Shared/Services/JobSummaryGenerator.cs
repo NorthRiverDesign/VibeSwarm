@@ -46,6 +46,12 @@ public static partial class JobSummaryGenerator
 		if (job == null)
 			return null;
 
+		var planningSummary = ExtractCommitSummary(job.PlanningOutput);
+		if (!string.IsNullOrWhiteSpace(planningSummary))
+		{
+			return planningSummary;
+		}
+
 		return GenerateSummary(
 			gitDiff: job.GitDiff,
 			goalPrompt: job.GoalPrompt,
@@ -63,6 +69,12 @@ public static partial class JobSummaryGenerator
 	{
 		if (job == null)
 			return null;
+
+		var planningSummary = ExtractCommitSummary(job.PlanningOutput);
+		if (!string.IsNullOrWhiteSpace(planningSummary))
+		{
+			return planningSummary;
+		}
 
 		return GenerateSummary(
 			gitDiff: job.GitDiff,
@@ -109,7 +121,32 @@ public static partial class JobSummaryGenerator
 	{
 		ArgumentNullException.ThrowIfNull(job);
 
+		var planningSummary = ExtractCommitSummary(job.PlanningOutput);
+		if (!string.IsNullOrWhiteSpace(planningSummary))
+		{
+			return BuildCommitSubject(planningSummary, job.Title, job.GoalPrompt);
+		}
+
 		return BuildCommitSubject(job.SessionSummary, job.Title, job.GoalPrompt, job.ConsoleOutput);
+	}
+
+	public static string? ExtractCommitSummary(string? content)
+		=> ExtractAgentCommitSummary(content);
+
+	public static string StripCommitSummary(string? content)
+	{
+		if (string.IsNullOrWhiteSpace(content))
+		{
+			return string.Empty;
+		}
+
+		var stripped = CommitSummaryTagRegex().Replace(content, string.Empty).Trim();
+		if (stripped.Length == 0)
+		{
+			return string.Empty;
+		}
+
+		return ExcessBlankLinesRegex().Replace(stripped, Environment.NewLine + Environment.NewLine);
 	}
 
 	public static string BuildCommitSubject(
@@ -219,6 +256,9 @@ public static partial class JobSummaryGenerator
 
 	[GeneratedRegex(@"<commit-summary>\s*(.+?)\s*</commit-summary>", RegexOptions.Singleline | RegexOptions.IgnoreCase)]
 	private static partial Regex CommitSummaryTagRegex();
+
+	[GeneratedRegex(@"(\r?\n\s*){3,}")]
+	private static partial Regex ExcessBlankLinesRegex();
 
 	[GeneratedRegex(@"^\s*(changes?|files?|summary|details?)\s*:\s*$", RegexOptions.IgnoreCase)]
 	private static partial Regex CommitArtifactHeadingRegex();
