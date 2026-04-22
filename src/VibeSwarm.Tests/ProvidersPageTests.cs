@@ -169,6 +169,39 @@ public sealed class ProvidersPageTests
 		Assert.DoesNotContain("d-flex align-items-start gap-2 gap-md-3", html);
 	}
 
+	[Fact]
+	public async Task RenderedProvidersPage_ShowsConnectionModePillsWhenProviderTypeHasMultipleConfiguredModes()
+	{
+		var cliProvider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Claude CLI Main",
+			Type = ProviderType.Claude,
+			ConnectionMode = ProviderConnectionMode.CLI,
+			IsEnabled = true
+		};
+		var sdkProvider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Claude SDK Main",
+			Type = ProviderType.Claude,
+			ConnectionMode = ProviderConnectionMode.SDK,
+			IsEnabled = true
+		};
+
+		var statuses = new[]
+		{
+			CreateStatus(ProviderType.Claude, "Anthropic Claude", cliProvider)
+		};
+
+		var html = await RenderProvidersPageAsync([cliProvider, sdkProvider], statuses);
+
+		Assert.Contains("nav nav-pills", html);
+		Assert.Contains(">All<", html);
+		Assert.Contains(">CLI<", html);
+		Assert.Contains(">SDK<", html);
+	}
+
 	private static CommonProviderSetupStatus CreateStatus(ProviderType type, string displayName, Provider? provider = null)
 	{
 		return new CommonProviderSetupStatus

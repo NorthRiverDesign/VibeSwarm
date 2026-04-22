@@ -1,12 +1,16 @@
 @* Three-dots dropdown for list-item CRUD actions. Consumers compose <RowActionsItem> children. *@
 
 <div class="dropdown flex-shrink-0 @CssClass">
-	<button class="btn @ButtonSizeClass btn-@ButtonStyle dropdown-toggle" type="button"
+	<button class="btn @ButtonSizeClass btn-@ButtonStyle dropdown-toggle d-inline-flex align-items-center justify-content-center gap-1 @ButtonClass" type="button"
 			data-bs-toggle="dropdown" aria-expanded="false"
 			aria-label="@AriaLabel"
 			disabled="@Disabled">
 		<i class="bi bi-three-dots-vertical"></i>
-		@if (!string.IsNullOrEmpty(MobileLabel))
+		@if (!string.IsNullOrEmpty(Label))
+		{
+			<span class="@(HideLabelOnMobile ? "d-none d-md-inline" : string.Empty)">@Label</span>
+		}
+		else if (!string.IsNullOrEmpty(MobileLabel))
 		{
 			<span class="d-inline d-sm-none ms-1">@MobileLabel</span>
 		}
@@ -25,6 +29,10 @@
 	/// <summary>Label shown next to the icon on XS screens only. Null/empty hides it.</summary>
 	[Parameter] public string? MobileLabel { get; set; }
 
+	[Parameter] public string? Label { get; set; }
+
+	[Parameter] public bool HideLabelOnMobile { get; set; }
+
 	/// <summary>ARIA label for the toggle button.</summary>
 	[Parameter] public string AriaLabel { get; set; } = "More actions";
 
@@ -39,6 +47,8 @@
 
 	/// <summary>When true, disables the toggle button.</summary>
 	[Parameter] public bool Disabled { get; set; }
+
+	[Parameter] public string? ButtonClass { get; set; }
 
 	private string ButtonSizeClass => string.IsNullOrEmpty(ButtonSize) ? string.Empty : $"btn-{ButtonSize}";
 }

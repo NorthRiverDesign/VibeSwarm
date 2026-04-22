@@ -1,6 +1,6 @@
 @* Reusable tab strip wrapping Bootstrap nav-tabs *@
 
-<ul class="nav nav-tabs @Class" role="tablist">
+<ul class="nav @VariantClass @Class" role="tablist">
 	@ChildContent
 </ul>
 
@@ -10,4 +10,19 @@
 
 	[Parameter]
 	public string? Class { get; set; }
+
+	[Parameter]
+	public StyleVariant Variant { get; set; } = StyleVariant.Tabs;
+
+	private string VariantClass => Variant switch
+	{
+		StyleVariant.Pills => "nav-pills",
+		_ => "nav-tabs"
+	};
+
+	public enum StyleVariant
+	{
+		Tabs,
+		Pills
+	}
 }

@@ -1,3 +1,5 @@
+@using System.Globalization
+
 <div class="list-group-item p-3 hover-bg-tertiary @(Provider.IsDefault ? "bg-success bg-opacity-10" : "")">
 	<div class="row g-3 align-items-start">
 		<div class="col-12 col-lg min-width-0">
@@ -69,7 +71,7 @@
 						<ActionButton Icon="lightning" Text="Test" Size="ActionButton.ButtonSize.Small" HideTextOnMobile="true"
 									  IsLoading="IsTesting" OnClick="HandleTestConnection" />
 
-						<RowActionsDropdown AriaLabel="Provider actions">
+						<RowActionsDropdown AriaLabel="Provider actions" Label="More" HideLabelOnMobile="true">
 							<RowActionsItem Icon="arrow-repeat" IconSpin="@IsRefreshingModels"
 											Text="Refresh Models"
 											OnClick="HandleRefreshModels"
@@ -97,32 +99,57 @@
 	</div>
 	@if (Models.Count > 0)
 	{
-		var availableModels = Models.Where(model => model.IsAvailable).ToList();
+		var sortedModels = GetSortedModels();
 
 		<div class="mt-3 pt-3 border-top">
-			<span class="fw-medium small text-body-secondary">Models:</span>
-			<div class="d-flex flex-wrap gap-1 mt-1">
-				@foreach (var model in availableModels.Take(5))
+			<div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+				<button type="button" class="btn btn-sm btn-secondary d-inline-flex align-items-center gap-2"
+						@onclick="ToggleModels">
+					<i class="bi bi-@(ShowModels ? "chevron-up" : "chevron-down")"></i>
+					<span>@(ShowModels ? "Hide Models" : "Show Models") (@sortedModels.Count)</span>
+				</button>
+				@if (Provider.LastModelsRefreshAt.HasValue)
 				{
-					<span class="badge @(model.IsDefault ? "bg-primary bg-opacity-75" : "bg-secondary-subtle text-secondary-emphasis") d-inline-flex align-items-center gap-1"
-						  title="@(model.RetiresOn.HasValue ? $"{model.ModelId} — retires {model.RetiresOn.Value:yyyy-MM-dd}" : model.ModelId)">
-						@(model.DisplayName ?? model.ModelId)
-						@if (model.RetiresOn.HasValue)
-						{
-							<i class="bi bi-exclamation-triangle text-warning-emphasis"></i>
-						}
-					</span>
-				}
-				@if (availableModels.Count > 5)
-				{
-					<span class="badge bg-secondary bg-opacity-50">+@(availableModels.Count - 5) more</span>
+					<small class="text-body-tertiary">
+						Updated @Provider.LastModelsRefreshAt.Value.FormatDateTimeShort()
+					</small>
 				}
 			</div>
-			@if (Provider.LastModelsRefreshAt.HasValue)
+			@if (ShowModels)
 			{
-				<small class="text-body-tertiary d-block mt-1">
-					Updated @Provider.LastModelsRefreshAt.Value.FormatDateTimeShort()
-				</small>
+				<div class="list-group list-group-flush mt-2">
+					@foreach (var model in sortedModels)
+					{
+						<div class="list-group-item px-0 py-2">
+							<div class="d-flex align-items-start justify-content-between gap-3">
+								<div class="min-width-0">
+									<div class="d-flex align-items-center gap-2 flex-wrap">
+										<span class="fw-medium text-break">@(model.DisplayName ?? model.ModelId)</span>
+										@if (model.IsDefault)
+										{
+											<span class="badge text-bg-primary text-uppercase fs-7">Default</span>
+										}
+										@if (!model.IsAvailable)
+										{
+											<span class="badge bg-warning-subtle text-warning-emphasis">Unavailable</span>
+										}
+										@if (model.RetiresOn.HasValue)
+										{
+											<span class="badge bg-warning-subtle text-warning-emphasis">
+												Retires @model.RetiresOn.Value:yyyy-MM-dd
+											</span>
+										}
+									</div>
+									@if (!string.Equals(model.DisplayName, model.ModelId, StringComparison.Ordinal))
+									{
+										<div class="small text-body-secondary font-monospace text-break mt-1">@model.ModelId</div>
+									}
+								</div>
+								<span class="badge bg-secondary-subtle text-secondary-emphasis flex-shrink-0">@FormatPriceMultiplier(model.PriceMultiplier)</span>
+							</div>
+						</div>
+					}
+				</div>
 			}
 		</div>
 	}
@@ -177,6 +204,8 @@
 	[Parameter]
 	public EventCallback<Provider> OnDeleteProvider { get; set; }
 
+	private bool ShowModels { get; set; }
+
 	private Task HandleToggleEnabled(ChangeEventArgs _)
 	{
 		return OnToggleEnabled.InvokeAsync(Provider);
@@ -217,9 +246,31 @@
 		return OnDeleteProvider.InvokeAsync(Provider);
 	}
 
+	private void ToggleModels()
+	{
+		ShowModels = !ShowModels;
+	}
+
+	private List<ProviderModel> GetSortedModels()
+	{
+		return Models
+			.OrderByDescending(model => model.IsAvailable)
+			.ThenByDescending(model => model.IsDefault)
+			.ThenBy(model => model.DisplayName ?? model.ModelId, StringComparer.OrdinalIgnoreCase)
+			.ThenBy(model => model.ModelId, StringComparer.OrdinalIgnoreCase)
+			.ToList();
+	}
+
 	private string? GetCliVersion()
 	{
 		return UsageSummary?.CliVersion;
+	}
+
+	private static string FormatPriceMultiplier(decimal? priceMultiplier)
+	{
+		return priceMultiplier.HasValue
+			? $"{priceMultiplier.Value.ToString("0.##", CultureInfo.InvariantCulture)}x"
+			: "n/a";
 	}
 
 	private static string GetProviderTypeIcon(ProviderType type) => type switch
