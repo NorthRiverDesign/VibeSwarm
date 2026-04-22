@@ -1,4 +1,5 @@
 using Bunit;
+using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.DependencyInjection;
 using VibeSwarm.Client.Components.Jobs;
 using VibeSwarm.Client.Services;
@@ -111,6 +112,96 @@ public sealed class CreateJobModalTests
 		Assert.Contains("Continue session between cycles", cut.Markup);
 		Assert.Contains("Review the last cycle and continue only if work remains.", cut.Markup);
 		Assert.Empty(cut.FindAll("#provider"));
+	}
+
+	[Fact]
+	public void CreateJobModal_SelectedAgentWithInstructions_AllowsBlankGoalPromptAndSubmitsFallback()
+	{
+		using var context = new BunitContext();
+		context.JSInterop.SetupVoid("eval", "document.body.classList.add('vs-modal-open')");
+		context.JSInterop.SetupVoid("eval", "document.body.classList.remove('vs-modal-open')");
+		context.Services.AddSingleton<IProjectService>(new FakeProjectService([]));
+		context.Services.AddSingleton<IJobTemplateService>(new FakeJobTemplateService());
+		context.Services.AddSingleton<NotificationService>();
+
+		var provider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "GitHub Copilot",
+			Type = ProviderType.Copilot,
+			IsEnabled = true
+		};
+		var agent = new Agent
+		{
+			Id = Guid.NewGuid(),
+			Name = "Implementation Agent",
+			Responsibilities = "Implement the requested change from the selected agent instructions.",
+			IsEnabled = true,
+			DefaultProviderId = provider.Id,
+			DefaultProvider = provider
+		};
+		context.Services.AddSingleton<IAgentService>(new FakeAgentService([agent]));
+
+		var submitted = false;
+		var job = new Job();
+		var cut = context.Render<CreateJobModal>(parameters => parameters
+			.Add(component => component.IsVisible, true)
+			.Add(component => component.JobModel, job)
+			.Add(component => component.Providers, [provider])
+			.Add(component => component.AvailableModels, new List<ProviderModel>())
+			.Add(component => component.Branches, new List<GitBranchInfo>())
+			.Add(component => component.TemplateLibrary, [])
+			.Add(component => component.OnSubmit, EventCallback.Factory.Create(this, () => submitted = true)));
+
+		cut.Find("#agentPreset").Change(agent.Id.ToString());
+		cut.Find("form").Submit();
+
+		Assert.True(submitted);
+		Assert.Equal(agent.Responsibilities, job.GoalPrompt);
+		Assert.Contains("Goal Prompt (Optional)", cut.Markup);
+		Assert.DoesNotContain("Goal prompt is required", cut.Markup);
+	}
+
+	[Fact]
+	public void CreateJobModal_SelectedAgentWithoutInstructions_StillRequiresGoalPrompt()
+	{
+		using var context = new BunitContext();
+		context.JSInterop.SetupVoid("eval", "document.body.classList.add('vs-modal-open')");
+		context.JSInterop.SetupVoid("eval", "document.body.classList.remove('vs-modal-open')");
+		context.Services.AddSingleton<IProjectService>(new FakeProjectService([]));
+		context.Services.AddSingleton<IJobTemplateService>(new FakeJobTemplateService());
+		context.Services.AddSingleton<NotificationService>();
+
+		var provider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "GitHub Copilot",
+			Type = ProviderType.Copilot,
+			IsEnabled = true
+		};
+		var agent = new Agent
+		{
+			Id = Guid.NewGuid(),
+			Name = "Implementation Agent",
+			IsEnabled = true,
+			DefaultProviderId = provider.Id,
+			DefaultProvider = provider
+		};
+		context.Services.AddSingleton<IAgentService>(new FakeAgentService([agent]));
+
+		var cut = context.Render<CreateJobModal>(parameters => parameters
+			.Add(component => component.IsVisible, true)
+			.Add(component => component.JobModel, new Job())
+			.Add(component => component.Providers, [provider])
+			.Add(component => component.AvailableModels, new List<ProviderModel>())
+			.Add(component => component.Branches, new List<GitBranchInfo>())
+			.Add(component => component.TemplateLibrary, []));
+
+		cut.Find("#agentPreset").Change(agent.Id.ToString());
+		cut.Find("form").Submit();
+
+		Assert.Contains("This agent does not have saved instructions, so enter a goal prompt for this job.", cut.Markup);
+		Assert.Contains("Goal prompt is required because the selected agent does not have reusable instructions.", cut.Markup);
 	}
 
 	[Fact]

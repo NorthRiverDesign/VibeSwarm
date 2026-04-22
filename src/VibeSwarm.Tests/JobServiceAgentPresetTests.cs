@@ -233,6 +233,124 @@ public sealed class JobServiceAgentPresetTests : IDisposable
 		Assert.Equal("Run exactly two passes.", created.CycleReviewPrompt);
 	}
 
+	[Fact]
+	public async Task CreateAsync_SelectedAgentUsesInstructionsAsGoalPromptWhenPromptBlank()
+	{
+		await using var dbContext = CreateDbContext();
+		var provider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "GitHub Copilot",
+			Type = ProviderType.Copilot,
+			ConnectionMode = ProviderConnectionMode.CLI,
+			IsEnabled = true,
+			IsDefault = true
+		};
+		var agent = new Agent
+		{
+			Id = Guid.NewGuid(),
+			Name = "Implementation Agent",
+			Responsibilities = "Implement the requested feature using the agent instructions.",
+			IsEnabled = true,
+			DefaultProviderId = provider.Id,
+			DefaultProvider = provider
+		};
+		var project = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "VibeSwarm",
+			WorkingPath = "/tmp/vibeswarm",
+			ProviderSelections =
+			[
+				new ProjectProvider
+				{
+					ProviderId = provider.Id,
+					Priority = 1,
+					IsEnabled = true
+				}
+			]
+		};
+
+		dbContext.Providers.Add(provider);
+		dbContext.ProviderModels.Add(new ProviderModel
+		{
+			ProviderId = provider.Id,
+			ModelId = "gpt-5.4",
+			DisplayName = "GPT-5.4",
+			IsAvailable = true,
+			IsDefault = true
+		});
+		dbContext.Agents.Add(agent);
+		dbContext.Projects.Add(project);
+		await dbContext.SaveChangesAsync();
+
+		var service = new JobService(dbContext, new ServiceCollection().BuildServiceProvider());
+		var created = await service.CreateAsync(new Job
+		{
+			ProjectId = project.Id,
+			GoalPrompt = "   ",
+			AgentId = agent.Id
+		});
+
+		Assert.Equal(agent.Responsibilities, created.GoalPrompt);
+		Assert.Equal(provider.Id, created.ProviderId);
+		Assert.Equal(agent.Responsibilities, created.Title);
+	}
+
+	[Fact]
+	public async Task CreateAsync_SelectedAgentWithoutFittingInstructions_RequiresExplicitGoalPrompt()
+	{
+		await using var dbContext = CreateDbContext();
+		var provider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "GitHub Copilot",
+			Type = ProviderType.Copilot,
+			ConnectionMode = ProviderConnectionMode.CLI,
+			IsEnabled = true,
+			IsDefault = true
+		};
+		var agent = new Agent
+		{
+			Id = Guid.NewGuid(),
+			Name = "Implementation Agent",
+			Responsibilities = new string('a', 2001),
+			IsEnabled = true,
+			DefaultProviderId = provider.Id,
+			DefaultProvider = provider
+		};
+		var project = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "VibeSwarm",
+			WorkingPath = "/tmp/vibeswarm",
+			ProviderSelections =
+			[
+				new ProjectProvider
+				{
+					ProviderId = provider.Id,
+					Priority = 1,
+					IsEnabled = true
+				}
+			]
+		};
+
+		dbContext.Providers.Add(provider);
+		dbContext.Agents.Add(agent);
+		dbContext.Projects.Add(project);
+		await dbContext.SaveChangesAsync();
+
+		var service = new JobService(dbContext, new ServiceCollection().BuildServiceProvider());
+		var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => service.CreateAsync(new Job
+		{
+			ProjectId = project.Id,
+			GoalPrompt = string.Empty,
+			AgentId = agent.Id
+		}));
+
+		Assert.Contains("selected agent instructions exceed 2000 characters", exception.Message);
+	}
+
 	private VibeSwarmDbContext CreateDbContext()
 	{
 		return new VibeSwarmDbContext(_dbOptions);

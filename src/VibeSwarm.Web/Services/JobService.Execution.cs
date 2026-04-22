@@ -3,6 +3,7 @@ using System.Text.Json;
 using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Models;
 using VibeSwarm.Shared.Providers;
+using VibeSwarm.Shared.Validation;
 
 namespace VibeSwarm.Shared.Services;
 
@@ -323,10 +324,10 @@ public partial class JobService
         }
     }
 
-    private async Task ApplySelectedAgentDefaultsAsync(Job job, CancellationToken cancellationToken)
-    {
-        if (!job.AgentId.HasValue || job.AgentId == Guid.Empty)
-        {
+	private async Task ApplySelectedAgentDefaultsAsync(Job job, CancellationToken cancellationToken)
+	{
+		if (!job.AgentId.HasValue || job.AgentId == Guid.Empty)
+		{
             return;
         }
 
@@ -338,14 +339,32 @@ public partial class JobService
             throw new InvalidOperationException("The selected agent does not exist or is disabled.");
         }
 
-        if (!agent.DefaultProviderId.HasValue || agent.DefaultProvider == null || !agent.DefaultProvider.IsEnabled)
-        {
-            throw new InvalidOperationException("The selected agent does not have an enabled default provider.");
-        }
+		if (!agent.DefaultProviderId.HasValue || agent.DefaultProvider == null || !agent.DefaultProvider.IsEnabled)
+		{
+			throw new InvalidOperationException("The selected agent does not have an enabled default provider.");
+		}
 
-        if (job.ProviderId == Guid.Empty)
-        {
-            job.ProviderId = agent.DefaultProviderId.Value;
+		var agentInstructions = string.IsNullOrWhiteSpace(agent.Responsibilities)
+			? null
+			: agent.Responsibilities.Trim();
+		if (string.IsNullOrWhiteSpace(job.GoalPrompt))
+		{
+			if (string.IsNullOrWhiteSpace(agentInstructions))
+			{
+				throw new InvalidOperationException("Goal prompt is required when the selected agent does not have saved instructions.");
+			}
+
+			if (agentInstructions.Length > ValidationLimits.JobTemplatePromptMaxLength)
+			{
+				throw new InvalidOperationException($"Goal prompt is required when the selected agent instructions exceed {ValidationLimits.JobTemplatePromptMaxLength} characters.");
+			}
+
+			job.GoalPrompt = agentInstructions;
+		}
+
+		if (job.ProviderId == Guid.Empty)
+		{
+			job.ProviderId = agent.DefaultProviderId.Value;
         }
 
         if (string.IsNullOrWhiteSpace(job.ModelUsed))
