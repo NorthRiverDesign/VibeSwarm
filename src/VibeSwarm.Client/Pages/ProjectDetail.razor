@@ -31,13 +31,12 @@ else
                                 GitHubRepository="@Project.GitHubRepository" IsGitRepository="@IsGitRepository"
                                 IsLoadingGitInfo="@_isLoadingGitInfo" Branches="@Branches" CurrentBranch="@CurrentBranch"
                                 CurrentCommitHash="@CurrentCommitHash" IsGitOperationInProgress="@IsGitOperationInProgress"
-                                GitOperationMessage="@GitOperationMessage" GitOperationSuccess="@GitOperationSuccess"
                                 GitProgressMessage="@GitProgressMessage" HasUncommittedChanges="@_hasUncommittedChangesHeader"
                                 UncommittedFilesCount="@_uncommittedFilesCount" HasTokenData="@HasProjectTokenData()"
                                 TotalInputTokens="@GetProjectTotalInputTokens()" TotalOutputTokens="@GetProjectTotalOutputTokens()"
                                 TotalCost="@GetProjectTotalCost()" OnCreateBranch="ShowCreateBranchModal" OnSync="SyncWithOrigin"
                                 OnRefresh="RefreshBranches" OnBranchSelected="RequestBranchSwitch"
-                                OnUncommittedChangesClick="ShowUncommittedChangesModal" OnClearGitMessage="ClearGitMessage"
+                                OnUncommittedChangesClick="ShowUncommittedChangesModal"
                                 OnEdit="ShowEditProjectModal" OnPruneBranches="PruneRemoteBranches"
                                 ShowMergeBranchAction="@HasMergeBranchTargets" IsMerging="@_isMergingBranch"
                                 OnMergeBranch="ShowMergeBranchModal" IsActive="@(Project?.IsActive ?? true)"
@@ -280,8 +279,6 @@ else
     private string? CurrentBranch { get; set; }
     private string? CurrentCommitHash { get; set; }
     private bool IsGitOperationInProgress { get; set; }
-    private string? GitOperationMessage { get; set; }
-    private bool GitOperationSuccess { get; set; }
     private string? GitProgressMessage { get; set; }
 
     // Create branch modal state

@@ -194,9 +194,6 @@
 					}
 				</div>
 			}
-
-			<AlertMessage Message="@GitOperationMessage" IsSuccess="@GitOperationSuccess"
-						  ProgressMessage="@GitProgressMessage" OnDismiss="OnClearGitMessage" />
 		</div>
 	</div>
 </div>
@@ -234,12 +231,6 @@
 
 	[Parameter]
 	public bool IsGitOperationInProgress { get; set; }
-
-	[Parameter]
-	public string? GitOperationMessage { get; set; }
-
-	[Parameter]
-	public bool GitOperationSuccess { get; set; }
 
 	[Parameter]
 	public string? GitProgressMessage { get; set; }
@@ -288,9 +279,6 @@
 
 	[Parameter]
 	public EventCallback OnUncommittedChangesClick { get; set; }
-
-	[Parameter]
-	public EventCallback OnClearGitMessage { get; set; }
 
 	[Parameter]
 	public EventCallback OnEdit { get; set; }

@@ -124,8 +124,7 @@ public partial class ProjectDetail
         }
         catch (Exception ex)
         {
-            GitOperationMessage = $"Failed to refresh branches: {ex.Message}";
-            GitOperationSuccess = false;
+            NotificationService.ShowProjectError(Project?.Name, $"Failed to refresh branches: {ex.Message}");
         }
         finally
         {
@@ -338,7 +337,6 @@ public partial class ProjectDetail
         _mergePushAfterMerge = args.pushAfterMerge;
         _mergePreviewError = null;
         _mergePreviewMessage = null;
-        GitOperationMessage = null;
         GitProgressMessage = $"Preparing to merge '{CurrentBranch}' into '{args.targetBranch}'...";
         StateHasChanged();
 
@@ -426,7 +424,6 @@ public partial class ProjectDetail
         _isCreatingPullRequest = true;
         _mergePreviewError = null;
         _mergePreviewMessage = null;
-        GitOperationMessage = null;
         GitProgressMessage = $"Creating pull request from '{CurrentBranch}' to '{args.targetBranch}'...";
         StateHasChanged();
 
@@ -522,8 +519,9 @@ public partial class ProjectDetail
 
             if (result.Success)
             {
-                GitOperationMessage = result.Output ?? $"Successfully switched to branch '{_targetBranch}'";
-                GitOperationSuccess = true;
+                NotificationService.ShowProjectSuccess(
+                    Project.Name,
+                    result.Output ?? $"Successfully switched to branch '{_targetBranch}'");
                 CurrentBranch = _targetBranch;
                 CurrentCommitHash = result.CommitHash;
                 await LoadBranches();
@@ -553,7 +551,6 @@ public partial class ProjectDetail
         if (Project == null || string.IsNullOrEmpty(Project.WorkingPath)) return;
 
         IsGitOperationInProgress = true;
-        GitOperationMessage = null;
         GitProgressMessage = null;
         StateHasChanged();
 
@@ -608,12 +605,6 @@ public partial class ProjectDetail
         catch { }
     }
 
-    private void ClearGitMessage()
-    {
-        GitOperationMessage = null;
-        StateHasChanged();
-    }
-
     private void ShowCreateBranchModal()
     {
         _showCreateBranchModal = true;
@@ -638,8 +629,9 @@ public partial class ProjectDetail
 
             if (result.Success)
             {
-                GitOperationMessage = $"Successfully created and switched to branch '{branchName.Trim()}'";
-                GitOperationSuccess = true;
+                NotificationService.ShowProjectSuccess(
+                    Project.Name,
+                    $"Successfully created and switched to branch '{branchName.Trim()}'");
                 CurrentBranch = branchName.Trim();
                 CurrentCommitHash = result.CommitHash;
                 await LoadBranches();
@@ -747,10 +739,10 @@ public partial class ProjectDetail
             if (pushResult.Success)
             {
                 var jobCount = _pendingCommitJobs.Count;
-                GitOperationMessage = jobCount > 0
+                var message = jobCount > 0
                 ? $"Successfully committed and pushed changes. {jobCount} job(s) linked to commit."
                 : "Successfully committed and pushed changes";
-                GitOperationSuccess = true;
+                NotificationService.ShowProjectSuccess(Project.Name, message);
                 CurrentCommitHash = commitResult.CommitHash;
                 _showUncommittedChangesModal = false;
                 await SynchronizeProjectRepositoryStateAsync();
@@ -802,10 +794,10 @@ public partial class ProjectDetail
             await LinkJobsToCommitAsync(_pendingCommitJobs, commitResult.CommitHash);
 
             var jobCount = _pendingCommitJobs.Count;
-            GitOperationMessage = jobCount > 0
+            var message = jobCount > 0
                 ? $"Successfully committed changes. {jobCount} job(s) linked to commit."
                 : "Successfully committed changes";
-            GitOperationSuccess = true;
+            NotificationService.ShowProjectSuccess(Project.Name, message);
             CurrentCommitHash = commitResult.CommitHash;
             _showUncommittedChangesModal = false;
             await SynchronizeProjectRepositoryStateAsync();
@@ -846,23 +838,20 @@ public partial class ProjectDetail
             if (result.Success)
             {
                 await ClearPendingChangeAttributionAsync(GetPendingCommitAttributionJobs());
-                GitOperationMessage = "Successfully discarded all uncommitted changes";
-                GitOperationSuccess = true;
+                NotificationService.ShowProjectSuccess(Project.Name, "Successfully discarded all uncommitted changes");
                 _showDiscardConfirmation = false;
                 _showUncommittedChangesModal = false;
                 await SynchronizeProjectRepositoryStateAsync();
             }
             else
             {
-                GitOperationMessage = $"Failed to discard changes: {result.Error}";
-                GitOperationSuccess = false;
+                NotificationService.ShowProjectError(Project.Name, $"Failed to discard changes: {result.Error}");
                 _showDiscardConfirmation = false;
             }
         }
         catch (Exception ex)
         {
-            GitOperationMessage = $"Error discarding changes: {ex.Message}";
-            GitOperationSuccess = false;
+            NotificationService.ShowProjectError(Project.Name, $"Error discarding changes: {ex.Message}");
             _showDiscardConfirmation = false;
         }
         finally
@@ -888,8 +877,7 @@ public partial class ProjectDetail
 
             if (pushResult.Success)
             {
-                GitOperationMessage = "Successfully pushed changes";
-                GitOperationSuccess = true;
+                NotificationService.ShowProjectSuccess(Project.Name, "Successfully pushed changes");
                 CurrentCommitHash = _lastSuccessfulCommitHash;
                 _showUncommittedChangesModal = false;
                 await RefreshUncommittedChangesStatus();
@@ -919,7 +907,6 @@ public partial class ProjectDetail
         if (Project == null || string.IsNullOrEmpty(Project.WorkingPath)) return;
 
         IsGitOperationInProgress = true;
-        GitOperationMessage = null;
         GitProgressMessage = "Pruning stale branches...";
         StateHasChanged();
 
@@ -929,20 +916,17 @@ public partial class ProjectDetail
 
             if (result.Success)
             {
-                GitOperationMessage = result.Output ?? "Prune completed successfully";
-                GitOperationSuccess = true;
+                NotificationService.ShowProjectSuccess(Project.Name, result.Output ?? "Prune completed successfully");
                 await LoadBranches();
             }
             else
             {
-                GitOperationMessage = result.Error ?? "Failed to prune branches";
-                GitOperationSuccess = false;
+                NotificationService.ShowProjectError(Project.Name, result.Error ?? "Failed to prune branches");
             }
         }
         catch (Exception ex)
         {
-            GitOperationMessage = $"Error pruning branches: {ex.Message}";
-            GitOperationSuccess = false;
+            NotificationService.ShowProjectError(Project.Name, $"Error pruning branches: {ex.Message}");
         }
         finally
         {
@@ -963,10 +947,9 @@ public partial class ProjectDetail
 
     private async Task HandleChangesTabGitOperation(string? message)
     {
-        if (!string.IsNullOrEmpty(message))
+        if (!string.IsNullOrEmpty(message) && Project != null)
         {
-            GitOperationMessage = message;
-            GitOperationSuccess = true;
+            NotificationService.ShowProjectSuccess(Project.Name, message);
         }
         await SynchronizeProjectRepositoryStateAsync();
     }
