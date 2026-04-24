@@ -32,7 +32,7 @@ public sealed class JobExecutionSafetyTests : IDisposable
 	}
 
 	[Fact]
-	public void GetCompletionCriteria_UsesTenMinuteDefaultAndProviderOverride()
+	public void GetCompletionCriteria_UsesFifteenMinuteDefaultAndProviderOverride()
 	{
 		var provider = new Provider
 		{
@@ -58,7 +58,7 @@ public sealed class JobExecutionSafetyTests : IDisposable
 			StallTimeoutSeconds = 120
 		};
 
-		Assert.Equal(TimeSpan.FromMinutes(10), defaultJob.GetCompletionCriteria().StallTimeout);
+		Assert.Equal(TimeSpan.FromMinutes(15), defaultJob.GetCompletionCriteria().StallTimeout);
 		Assert.Equal(TimeSpan.FromMinutes(15), providerOverrideJob.GetCompletionCriteria().StallTimeout);
 		Assert.Equal(TimeSpan.FromMinutes(2), jobOverride.GetCompletionCriteria().StallTimeout);
 	}
@@ -222,7 +222,7 @@ public sealed class JobExecutionSafetyTests : IDisposable
 			}
 		};
 
-		Assert.Equal(TimeSpan.FromMinutes(10), InvokeEffectiveStallThreshold(watchdogService, standardClaudeJob));
+		Assert.Equal(TimeSpan.FromMinutes(15), InvokeEffectiveStallThreshold(watchdogService, standardClaudeJob));
 		Assert.Equal(TimeSpan.FromMinutes(30), InvokeEffectiveStallThreshold(watchdogService, longRunningToolJob));
 	}
 

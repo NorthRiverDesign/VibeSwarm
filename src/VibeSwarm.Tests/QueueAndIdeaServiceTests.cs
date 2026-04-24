@@ -973,7 +973,7 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 			GoalPrompt = "Add a new endpoint",
 			Status = JobStatus.Stalled,
 			SessionId = "stalled-session-1",
-			ErrorMessage = "Job stalled after 10 minutes without activity.",
+			ErrorMessage = "Job stalled after 15 minutes without activity.",
 			ConsoleOutput = "partial output...",
 		};
 		dbContext.Projects.Add(project);

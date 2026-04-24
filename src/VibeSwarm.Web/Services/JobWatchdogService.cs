@@ -31,7 +31,7 @@ public class JobWatchdogService : BackgroundService
 	/// <summary>
 	/// Default stall threshold for CLI providers (model loading on low-powered hardware)
 	/// </summary>
-	private readonly TimeSpan _cliStallThreshold = TimeSpan.FromMinutes(10);
+	private readonly TimeSpan _cliStallThreshold = JobCompletionCriteria.DefaultStallTimeoutValue;
 
 	/// <summary>
 	/// Give long-running Claude CLI tool executions more time before considering them stalled.

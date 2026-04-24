@@ -844,7 +844,7 @@ public class Job
                 ? TimeSpan.FromSeconds(StallTimeoutSeconds.Value)
                 : Provider?.StallTimeoutSeconds is > 0
                     ? TimeSpan.FromSeconds(Provider.StallTimeoutSeconds.Value)
-                    : TimeSpan.FromMinutes(10),
+                    : Services.JobCompletionCriteria.DefaultStallTimeoutValue,
             SuccessPattern = SuccessPattern,
             FailurePattern = FailurePattern
         };
