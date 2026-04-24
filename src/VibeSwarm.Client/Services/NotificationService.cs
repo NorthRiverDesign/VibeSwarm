@@ -78,6 +78,12 @@ public class NotificationService
 	public void ShowProjectError(string? projectName, string message, int durationMs = 8000)
 		=> ShowError(message, ResolveContextTitle(projectName, "Error"), durationMs);
 
+	public void ShowProjectWarning(string? projectName, string message, int durationMs = 6000)
+		=> ShowWarning(message, ResolveContextTitle(projectName, "Warning"), durationMs);
+
+	public void ShowProjectInfo(string? projectName, string message, int durationMs = 5000)
+		=> ShowInfo(message, ResolveContextTitle(projectName, "Info"), durationMs);
+
 	public void ShowJobCompleted(Guid jobId, bool success, string? projectName = null, string? errorMessage = null)
 	{
 		var targetUrl = $"/jobs/view/{jobId}";

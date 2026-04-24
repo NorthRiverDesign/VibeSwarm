@@ -52,6 +52,32 @@ public sealed class NotificationFeatureTests
 	}
 
 	[Fact]
+	public void ShowProjectWarning_UsesProjectNameAsTitle()
+	{
+		var notificationService = new NotificationService();
+
+		notificationService.ShowProjectWarning("Demo Project", "A job is already running.");
+
+		var notification = Assert.Single(notificationService.Notifications);
+		Assert.Equal("Demo Project", notification.Title);
+		Assert.Equal(NotificationType.Warning, notification.Type);
+		Assert.Equal("A job is already running.", notification.Message);
+	}
+
+	[Fact]
+	public void ShowProjectInfo_FallsBackToGenericTitle_WhenProjectNameMissing()
+	{
+		var notificationService = new NotificationService();
+
+		notificationService.ShowProjectInfo(null, "No queued jobs to prioritize.");
+
+		var notification = Assert.Single(notificationService.Notifications);
+		Assert.Equal("Info", notification.Title);
+		Assert.Equal(NotificationType.Info, notification.Type);
+		Assert.Equal("No queued jobs to prioritize.", notification.Message);
+	}
+
+	[Fact]
 	public void ToastContainer_ViewJobButton_NavigatesToJob()
 	{
 		using var context = new BunitContext();

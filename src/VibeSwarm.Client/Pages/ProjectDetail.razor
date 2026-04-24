@@ -110,7 +110,7 @@ else
                 {
                 <IdeasPanel Ideas="@Ideas" TotalIdeasCount="@IdeasTotalCount" CurrentPage="@_ideasPageNumber"
                             PageSize="@IdeasPageSize" IsPageLoading="@_isLoadingIdeasPage" UnprocessedIdeasCount="@IdeasUnprocessedCount"
-                            CurrentProjectId="@ProjectId" IsProcessingActive="@IsIdeasProcessingActive"
+                            CurrentProjectId="@ProjectId" ProjectName="@Project?.Name" IsProcessingActive="@IsIdeasProcessingActive"
                             IsTogglingProcessing="@_isTogglingIdeasProcessing" HasDefaultProvider="@HasDefaultProvider"
                             HasActiveJobs="@HasActiveJobs" IsAddingIdea="@_isAddingIdea" ProcessingIdeaIds="@ProcessingIdeaIds"
                             CurrentAutoCommitMode="@(Project?.AutoCommitMode ?? AutoCommitMode.Off)"

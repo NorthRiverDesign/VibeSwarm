@@ -213,6 +213,7 @@ private async Task HandleValidSubmit()
 IsSaving = true;
 ErrorMessage = null;
 _cloneProgressMessage = null;
+var notificationProjectName = string.IsNullOrWhiteSpace(FormModel.Name) ? null : FormModel.Name.Trim();
 
 try
 {
@@ -221,7 +222,7 @@ Guid? newProjectId = null;
 if (IsEdit)
 {
 await ProjectService.UpdateAsync(FormModel.ToProject());
-NotificationService.ShowSuccess("Project updated successfully.");
+NotificationService.ShowProjectSuccess(notificationProjectName, "Project updated successfully.");
 }
 else
 {
@@ -230,7 +231,7 @@ StateHasChanged();
 
 var created = await ProjectService.CreateProjectAsync(_formState.BuildProjectCreationRequest(FormModel));
 newProjectId = created.Id;
-NotificationService.ShowSuccess(_formState.GetSuccessMessage(FormModel));
+NotificationService.ShowProjectSuccess(notificationProjectName, _formState.GetSuccessMessage(FormModel));
 }
 
 await OnSaved.InvokeAsync(newProjectId);

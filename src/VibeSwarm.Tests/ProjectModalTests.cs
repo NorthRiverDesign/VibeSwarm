@@ -279,6 +279,37 @@ public void AddAgent_AssignmentSeedsDefaultProviderAndModel()
 		Assert.DoesNotContain(">Clear<", cut.Markup, StringComparison.Ordinal);
 	}
 
+	[Fact]
+	public void CreateProject_UsesProjectNameForSuccessNotificationTitle()
+	{
+		var projectService = new FakeProjectService
+		{
+			CreateProjectResult = new Project
+			{
+				Id = Guid.NewGuid(),
+				Name = "Demo Project",
+				WorkingPath = "/tmp/demo-project"
+			}
+		};
+
+		using var context = CreateBunitContext(projectService);
+		var notificationService = context.Services.GetRequiredService<NotificationService>();
+
+		var cut = context.Render<ProjectModal>(parameters => parameters
+			.Add(component => component.IsVisible, true));
+
+		cut.Find("#modal-name").Change("  Demo Project  ");
+		cut.Find("#modal-workingPath").Change("/tmp/demo-project");
+		cut.Find("form").Submit();
+
+		cut.WaitForAssertion(() =>
+		{
+			var notification = Assert.Single(notificationService.Notifications);
+			Assert.Equal("Demo Project", notification.Title);
+			Assert.Equal(NotificationType.Success, notification.Type);
+		});
+	}
+
 private static BunitContext CreateBunitContext(
 	FakeProjectService? projectService = null,
 	IReadOnlyList<Agent>? agents = null,
@@ -309,14 +340,22 @@ private static BunitContext CreateBunitContext(
 private sealed class FakeProjectService : IProjectService
 {
 public GitHubRepositoryBrowserResult RepositoryBrowserResult { get; set; } = new();
+public Project? CreateProjectResult { get; set; }
+public Project? UpdateResult { get; set; }
 public Task<IEnumerable<Project>> GetAllAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Project>>([]);
 public Task<IEnumerable<Project>> GetRecentAsync(int count, CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<Project>>([]);
 public Task<Project?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult<Project?>(null);
 public Task<Project?> GetByIdWithJobsAsync(Guid id, CancellationToken cancellationToken = default) => Task.FromResult<Project?>(null);
 public Task<Project> CreateAsync(Project project, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-public Task<Project> CreateProjectAsync(ProjectCreationRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+public Task<Project> CreateProjectAsync(ProjectCreationRequest request, CancellationToken cancellationToken = default)
+	=> Task.FromResult(CreateProjectResult ?? new Project
+	{
+		Id = Guid.NewGuid(),
+		Name = request.Project.Name,
+		WorkingPath = request.Project.WorkingPath
+	});
 public Task<GitHubRepositoryBrowserResult> BrowseGitHubRepositoriesAsync(CancellationToken cancellationToken = default) => Task.FromResult(RepositoryBrowserResult);
-public Task<Project> UpdateAsync(Project project, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+public Task<Project> UpdateAsync(Project project, CancellationToken cancellationToken = default) => Task.FromResult(UpdateResult ?? project);
 public Task DeleteAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 public Task<IEnumerable<ProjectWithStats>> GetAllWithStatsAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<ProjectWithStats>>([]);
 public Task<IEnumerable<DashboardProjectInfo>> GetRecentWithLatestJobAsync(int count, CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<DashboardProjectInfo>>([]);

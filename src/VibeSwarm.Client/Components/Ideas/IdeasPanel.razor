@@ -320,6 +320,9 @@
 	public Guid CurrentProjectId { get; set; }
 
 	[Parameter]
+	public string? ProjectName { get; set; }
+
+	[Parameter]
 	public bool IsProcessingActive { get; set; }
 
 	[Parameter]
@@ -565,7 +568,7 @@
 		}
 		catch (Exception ex)
 		{
-			NotificationService.ShowError($"Error stopping job: {ex.Message}");
+			NotificationService.ShowProjectError(ProjectName, $"Error stopping job: {ex.Message}");
 		}
 	}
 
@@ -945,7 +948,7 @@
 		}
 		catch (Exception ex)
 		{
-			NotificationService.ShowError($"Error attaching files: {ex.Message}");
+			NotificationService.ShowProjectError(ProjectName, $"Error attaching files: {ex.Message}");
 		}
 	}
 
@@ -1391,7 +1394,7 @@
 				Stage = SuggestIdeasStage.GenerateFailed,
 				Message = $"Unexpected error: {ex.Message}"
 			};
-			NotificationService.ShowError($"Error generating suggestions: {ex.Message}");
+			NotificationService.ShowProjectError(ProjectName, $"Error generating suggestions: {ex.Message}");
 		}
 		finally
 		{
