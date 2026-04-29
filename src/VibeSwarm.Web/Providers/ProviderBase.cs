@@ -59,7 +59,7 @@ public abstract class ProviderBase : IProvider
     /// <summary>
     /// Environment variables that should always be applied for this provider instance.
     /// </summary>
-    protected Dictionary<string, string>? BaseEnvironmentVariables { get; set; }
+    protected internal Dictionary<string, string>? BaseEnvironmentVariables { get; set; }
 
     /// <summary>
     /// Current MCP config path for the execution (set by ExecuteWithOptionsAsync)

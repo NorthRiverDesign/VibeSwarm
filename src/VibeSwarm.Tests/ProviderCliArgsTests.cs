@@ -422,6 +422,44 @@ public sealed class ProviderCliArgsTests
         Assert.Equal("dontAsk", args[idx + 1]);
     }
 
+    [Fact]
+    public void Claude_AlwaysSetsUnattendedHardeningEnvVars()
+    {
+        // DISABLE_UPDATES and CLAUDE_CODE_SUBPROCESS_ENV_SCRUB must be set on every
+        // Claude invocation regardless of options or stall configuration.
+        var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+
+        var env = provider.BaseEnvironmentVariables;
+
+        Assert.NotNull(env);
+        Assert.Equal("1", env!["DISABLE_UPDATES"]);
+        Assert.Equal("1", env["CLAUDE_CODE_SUBPROCESS_ENV_SCRUB"]);
+    }
+
+    [Fact]
+    public void Claude_WithStallTimeout_SetsStreamIdleTimeoutEnvVar()
+    {
+        var config = CreateConfig(ProviderType.Claude);
+        config.StallTimeoutSeconds = 600;
+        var provider = new ClaudeProvider(config);
+
+        var env = provider.BaseEnvironmentVariables;
+
+        Assert.NotNull(env);
+        Assert.Equal("600000", env!["CLAUDE_STREAM_IDLE_TIMEOUT_MS"]);
+    }
+
+    [Fact]
+    public void Claude_WithoutStallTimeout_OmitsStreamIdleTimeoutEnvVar()
+    {
+        var provider = new ClaudeProvider(CreateConfig(ProviderType.Claude));
+
+        var env = provider.BaseEnvironmentVariables;
+
+        Assert.NotNull(env);
+        Assert.False(env!.ContainsKey("CLAUDE_STREAM_IDLE_TIMEOUT_MS"));
+    }
+
     // ─── Copilot Provider ──────────────────────────────────────────────
 
 	[Fact]
@@ -578,7 +616,8 @@ public sealed class ProviderCliArgsTests
     public void Copilot_WithAltScreen_AddsAltScreenFlag()
     {
         var provider = new CopilotProvider(CreateConfig(ProviderType.Copilot));
-        provider.CachedCliVersion = new Version(1, 0, 11);
+        // --alt-screen was removed in v1.0.8; v1.0.7 is the last version that accepts it.
+        provider.CachedCliVersion = new Version(1, 0, 7);
         provider.ApplyOptions(new ExecutionOptions { UseAltScreen = true });
 
         var args = provider.BuildCliArgs("test", null);
@@ -592,7 +631,8 @@ public sealed class ProviderCliArgsTests
     public void Copilot_WithAltScreen_AndRemovedVersion_OmitsAltScreenFlag()
     {
         var provider = new CopilotProvider(CreateConfig(ProviderType.Copilot));
-        provider.CachedCliVersion = new Version(1, 0, 12);
+        // --alt-screen was removed in v1.0.8 ("alt screen always enabled").
+        provider.CachedCliVersion = new Version(1, 0, 8);
         provider.ApplyOptions(new ExecutionOptions { UseAltScreen = true });
 
         var args = provider.BuildCliArgs("test", null);
@@ -609,6 +649,48 @@ public sealed class ProviderCliArgsTests
         var args = provider.BuildCliArgs("test", null);
 
         Assert.DoesNotContain("--alt-screen", args);
+    }
+
+    [Fact]
+    public void Copilot_WithStallTimeout_AndSupportedVersion_AddsSessionIdleTimeoutFlag()
+    {
+        var config = CreateConfig(ProviderType.Copilot);
+        config.StallTimeoutSeconds = 600;
+        var provider = new CopilotProvider(config);
+        provider.CachedCliVersion = new Version(1, 0, 35);
+        provider.ApplyOptions(new ExecutionOptions());
+
+        var args = provider.BuildCliArgs("test", null);
+
+        var idx = args.IndexOf("--session-idle-timeout");
+        Assert.True(idx >= 0, "--session-idle-timeout should be emitted on v1.0.35+");
+        Assert.Equal("600", args[idx + 1]);
+    }
+
+    [Fact]
+    public void Copilot_WithStallTimeout_AndOldVersion_OmitsSessionIdleTimeoutFlag()
+    {
+        var config = CreateConfig(ProviderType.Copilot);
+        config.StallTimeoutSeconds = 600;
+        var provider = new CopilotProvider(config);
+        provider.CachedCliVersion = new Version(1, 0, 34);
+        provider.ApplyOptions(new ExecutionOptions());
+
+        var args = provider.BuildCliArgs("test", null);
+
+        Assert.DoesNotContain("--session-idle-timeout", args);
+    }
+
+    [Fact]
+    public void Copilot_WithoutStallTimeout_OmitsSessionIdleTimeoutFlag()
+    {
+        var provider = new CopilotProvider(CreateConfig(ProviderType.Copilot));
+        provider.CachedCliVersion = new Version(1, 0, 35);
+        provider.ApplyOptions(new ExecutionOptions());
+
+        var args = provider.BuildCliArgs("test", null);
+
+        Assert.DoesNotContain("--session-idle-timeout", args);
     }
 
     [Fact]
@@ -805,56 +887,20 @@ public sealed class ProviderCliArgsTests
     }
 
     [Fact]
-    public void OpenCode_WithTimeout_AndLegacyVersion_AddsTimeoutFlag()
+    public void OpenCode_WithTimeout_OmitsTimeoutFlagOnAllVersions()
     {
-        var provider = new OpenCodeProvider(CreateConfig(ProviderType.OpenCode));
-        provider.CachedCliVersion = new Version(1, 2, 0);
-        provider.ApplyOptions(new ExecutionOptions { TimeoutSeconds = 300 });
+        // The --timeout flag was removed from `opencode run` upstream;
+        // VibeSwarm no longer emits it on any CLI version.
+        foreach (var version in new[] { new Version(1, 2, 0), new Version(1, 3, 7), new Version(1, 4, 0) })
+        {
+            var provider = new OpenCodeProvider(CreateConfig(ProviderType.OpenCode));
+            provider.CachedCliVersion = version;
+            provider.ApplyOptions(new ExecutionOptions { TimeoutSeconds = 300 });
 
-        var args = provider.BuildRunCommandArgs("test", null);
+            var args = provider.BuildRunCommandArgs("test", null);
 
-        var idx = args.IndexOf("--timeout");
-        Assert.True(idx >= 0);
-        Assert.Equal("300", args[idx + 1]);
-    }
-
-    [Fact]
-    public void OpenCode_WithTimeout_AndUnknownVersion_OmitsTimeoutFlag()
-    {
-        var provider = new OpenCodeProvider(CreateConfig(ProviderType.OpenCode));
-        provider.ApplyOptions(new ExecutionOptions { TimeoutSeconds = 300 });
-
-        var args = provider.BuildRunCommandArgs("test", null);
-
-        Assert.DoesNotContain("--timeout", args);
-    }
-
-    [Fact]
-    public void OpenCode_WithTimeout_AndCurrentVersion_OmitsTimeoutFlag()
-    {
-        var provider = new OpenCodeProvider(CreateConfig(ProviderType.OpenCode));
-        provider.CachedCliVersion = new Version(1, 3, 7);
-        provider.ApplyOptions(new ExecutionOptions { TimeoutSeconds = 300 });
-
-        var args = provider.BuildRunCommandArgs("test", null);
-
-        Assert.DoesNotContain("--timeout", args);
-    }
-
-    [Fact]
-    public void OpenCode_WithReasoningEffort_AndLegacyVersion_AddsReasoningFlag()
-    {
-        var provider = new OpenCodeProvider(CreateConfig(ProviderType.OpenCode));
-        provider.CachedCliVersion = new Version(1, 2, 0);
-        provider.ApplyOptions(new ExecutionOptions { ReasoningEffort = "xhigh" });
-
-        var args = provider.BuildRunCommandArgs("test", null);
-
-        var idx = args.IndexOf("--reasoning");
-        Assert.True(idx >= 0);
-        Assert.Equal("xhigh", args[idx + 1]);
-        Assert.DoesNotContain("--effort", args);
-        Assert.DoesNotContain("--reasoning-effort", args);
+            Assert.DoesNotContain("--timeout", args);
+        }
     }
 
     [Fact]
@@ -870,6 +916,23 @@ public sealed class ProviderCliArgsTests
         Assert.True(idx >= 0);
         Assert.Equal("xhigh", args[idx + 1]);
         Assert.DoesNotContain("--reasoning", args);
+        Assert.DoesNotContain("--effort", args);
+        Assert.DoesNotContain("--reasoning-effort", args);
+    }
+
+    [Fact]
+    public void OpenCode_WithReasoningEffort_AndPreVariantVersion_OmitsAllReasoningFlags()
+    {
+        // v1.2.x is no longer supported — the --reasoning flag was renamed to --variant
+        // at v1.3.0. We only emit --variant on supported versions.
+        var provider = new OpenCodeProvider(CreateConfig(ProviderType.OpenCode));
+        provider.CachedCliVersion = new Version(1, 2, 0);
+        provider.ApplyOptions(new ExecutionOptions { ReasoningEffort = "xhigh" });
+
+        var args = provider.BuildRunCommandArgs("test", null);
+
+        Assert.DoesNotContain("--reasoning", args);
+        Assert.DoesNotContain("--variant", args);
         Assert.DoesNotContain("--effort", args);
         Assert.DoesNotContain("--reasoning-effort", args);
     }
@@ -902,16 +965,17 @@ public sealed class ProviderCliArgsTests
     }
 
     [Fact]
-    public void OpenCode_WithMcpConfig_AddsConfigFlag()
+    public void OpenCode_WithMcpConfig_NeverEmitsConfigFlag()
     {
+        // `opencode run` does not accept --config; MCP servers are configured via
+        // opencode.json(c) in the working dir. VibeSwarm must not emit --config.
         var provider = new OpenCodeProvider(CreateConfig(ProviderType.OpenCode));
+        provider.CachedCliVersion = new Version(1, 4, 0);
         provider.ApplyOptions(new ExecutionOptions { McpConfigPath = "/tmp/config.json" });
 
         var args = provider.BuildRunCommandArgs("test", null);
 
-        var idx = args.IndexOf("--config");
-        Assert.True(idx >= 0);
-        Assert.Equal("/tmp/config.json", args[idx + 1]);
+        Assert.DoesNotContain("--config", args);
         Assert.DoesNotContain("--mcp-config", args);
         Assert.DoesNotContain("--additional-mcp-config", args);
     }

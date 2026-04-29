@@ -18,13 +18,17 @@ public class CopilotProvider : CliProviderBase
     private static readonly Version BashEnvFlagVersion = new(0, 0, 418);
     private static readonly Version ReasoningEffortVersion = new(1, 0, 4);
     private static readonly Version AltScreenVersion = new(0, 0, 407);
-    private static readonly Version AltScreenRemovedVersion = new(1, 0, 12);
+    private static readonly Version AltScreenRemovedVersion = new(1, 0, 8);
     // All of the Tier 1/2 Copilot flags below are present in current v1.0.x; guard with a conservative gate.
     private static readonly Version ModernFlagsVersion = new(1, 0, 0);
+    private static readonly Version SessionIdleTimeoutVersion = new(1, 0, 35);
     private UsageLimits? _lastObservedUsageLimits;
 
     // Cached CLI version for feature gating (populated on TestConnectionAsync)
     private Version? _cachedCliVersion;
+
+    // Provider-level stall threshold mirrored into Copilot's --session-idle-timeout (v1.0.35+).
+    private readonly int? _stallTimeoutSeconds;
 
     // System error detection during stream parsing (mirrors ClaudeProvider pattern)
     private bool _systemErrorDetected;
@@ -71,6 +75,8 @@ public class CopilotProvider : CliProviderBase
             _byokProviderEndpoint = config.ApiEndpoint;
             _byokProviderKey = config.ApiKey;
         }
+
+        _stallTimeoutSeconds = config.StallTimeoutSeconds;
     }
 
     private string GetExecutablePath() => ResolveExecutablePath(DefaultExecutable);
@@ -465,7 +471,8 @@ public class CopilotProvider : CliProviderBase
             args.Add(reasoningEffort);
         }
 
-        // Alt-screen buffer mode existed from v0.0.407 through v1.0.11 and was removed in v1.0.12.
+        // Alt-screen buffer mode existed from v0.0.407 through v1.0.7 and was removed in v1.0.8
+        // ("alt screen always enabled" — passing the flag on later versions is rejected).
         if (CurrentUseAltScreen
             && _cachedCliVersion != null
             && _cachedCliVersion >= AltScreenVersion
@@ -473,6 +480,15 @@ public class CopilotProvider : CliProviderBase
         {
             args.Add("--alt-screen");
             args.Add("on");
+        }
+
+        // Mirror the provider-level stall threshold into Copilot's idle timeout (v1.0.35+).
+        if (_stallTimeoutSeconds is > 0
+            && _cachedCliVersion != null
+            && _cachedCliVersion >= SessionIdleTimeoutVersion)
+        {
+            args.Add("--session-idle-timeout");
+            args.Add(_stallTimeoutSeconds.Value.ToString());
         }
 
         // Copilot 1.0.15 accepts only "on"/"off" for --bash-env.

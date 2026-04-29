@@ -49,13 +49,28 @@ public class ClaudeProvider : CliProviderBase
     public ClaudeProvider(Provider config)
         : base(config.Id, config.Name, config.ConnectionMode, config.ExecutablePath, config.WorkingDirectory)
     {
+        var baseEnv = new Dictionary<string, string>
+        {
+            // Block in-flight CLI self-updates during unattended jobs (Claude v2.1.118+).
+            ["DISABLE_UPDATES"] = "1",
+            // Strip cloud credentials from any subprocess Claude spawns (v2.1.83/2.1.114).
+            ["CLAUDE_CODE_SUBPROCESS_ENV_SCRUB"] = "1"
+        };
+
         if (!string.IsNullOrWhiteSpace(config.ApiKey))
         {
-            BaseEnvironmentVariables = new Dictionary<string, string>
-            {
-                ["ANTHROPIC_API_KEY"] = config.ApiKey
-            };
+            baseEnv["ANTHROPIC_API_KEY"] = config.ApiKey;
         }
+
+        // Mirror the queue's stall threshold into Claude's own streaming watchdog
+        // so the CLI bails on the same boundary as JobWatchdogService (v2.1.85+).
+        if (config.StallTimeoutSeconds is > 0)
+        {
+            baseEnv["CLAUDE_STREAM_IDLE_TIMEOUT_MS"] =
+                (config.StallTimeoutSeconds.Value * 1000).ToString();
+        }
+
+        BaseEnvironmentVariables = baseEnv;
     }
 
     private string GetExecutablePath() => ResolveExecutablePath(DefaultExecutable);

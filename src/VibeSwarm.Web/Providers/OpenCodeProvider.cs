@@ -13,9 +13,6 @@ namespace VibeSwarm.Shared.Providers;
 public class OpenCodeProvider : CliProviderBase
 {
     private static readonly Version DirectoryVersion = new(1, 2, 0);
-    private static readonly Version TimeoutVersion = new(1, 2, 0);
-    private static readonly Version TimeoutRemovedVersion = new(1, 3, 0);
-    private static readonly Version LegacyReasoningVersion = new(1, 2, 0);
     private static readonly Version VariantVersion = new(1, 3, 0);
     private static readonly Version ForkSessionVersion = new(1, 2, 6);
     private static readonly Version SkipPermissionsVersion = new(1, 4, 0);
@@ -184,15 +181,12 @@ public class OpenCodeProvider : CliProviderBase
     /// --attach        Attach to a running opencode server
     /// --port          Port for the local server
     /// --dir           Working directory for the session (v1.2.0+)
-    /// --timeout       Timeout in seconds for the execution (legacy v1.2.x only)
     /// --variant       Provider-specific model variant / reasoning preset (v1.3.0+)
     /// </summary>
     internal List<string> BuildRunCommandArgs(string prompt, string? sessionId)
     {
         var args = new List<string> { "run" };
         var supportsDirectory = SupportsCliVersion(DirectoryVersion);
-        var supportsLegacyTimeout = SupportsCliVersion(TimeoutVersion) && !SupportsCliVersion(TimeoutRemovedVersion);
-        var supportsLegacyReasoning = SupportsCliVersion(LegacyReasoningVersion) && !SupportsCliVersion(VariantVersion);
         var supportsVariant = SupportsCliVersion(VariantVersion);
         var supportsForkSession = SupportsCliVersion(ForkSessionVersion);
 
@@ -240,12 +234,6 @@ public class OpenCodeProvider : CliProviderBase
             args.AddRange(new[] { "--dir", CurrentAdditionalDirectories[0] });
         }
 
-        // Timeout in seconds was available in v1.2.x and removed from current 1.3.x run help/docs.
-        if (supportsLegacyTimeout && CurrentTimeoutSeconds.HasValue)
-        {
-            args.AddRange(new[] { "--timeout", CurrentTimeoutSeconds.Value.ToString() });
-        }
-
         // Output format (default or json)
         if (!string.IsNullOrEmpty(CurrentOutputFormat))
         {
@@ -267,20 +255,16 @@ public class OpenCodeProvider : CliProviderBase
             args.Add("--fork");
         }
 
+        // Reasoning effort / model variant — current opencode run accepts only --variant (v1.3.0+).
+        // The legacy --reasoning flag was renamed at v1.3.0; passing it on current CLIs is rejected.
         var reasoningEffort = NormalizeReasoningEffort(CurrentReasoningEffort, "minimal", "low", "medium", "high", "xhigh", "max");
-        if (supportsLegacyReasoning && !string.IsNullOrEmpty(reasoningEffort))
-        {
-            args.AddRange(new[] { "--reasoning", reasoningEffort });
-        }
-        else if (supportsVariant && !string.IsNullOrEmpty(reasoningEffort))
+        if (supportsVariant && !string.IsNullOrEmpty(reasoningEffort))
         {
             args.AddRange(new[] { "--variant", reasoningEffort });
         }
 
-        if (!string.IsNullOrEmpty(CurrentMcpConfigPath))
-        {
-            args.AddRange(new[] { "--config", CurrentMcpConfigPath });
-        }
+        // Note: opencode run does not accept a --config / MCP config path flag.
+        // MCP servers are configured via opencode.json(c) in the working dir or ~/.config/opencode/.
 
         // Skip permission prompts in `opencode run` (v1.4.0+). Brings OpenCode dispatch to parity with
         // Claude/Copilot headless modes so tool calls don't block for a TTY confirm.
