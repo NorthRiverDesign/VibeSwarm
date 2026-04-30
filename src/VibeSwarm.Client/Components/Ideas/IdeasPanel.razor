@@ -139,12 +139,15 @@
 
 	@if (!Ideas.Any())
 	{
-		<EmptyState Icon="lightbulb" Title="No ideas yet" Message="Add an idea to build up the project queue." />
+		@if (ShowEmptyState)
+		{
+			<EmptyState Icon="lightbulb" Title="No ideas yet" Message="Add an idea to build up the project queue." />
+		}
 	}
 	else
 	{
 		<div class="d-flex align-items-center flex-wrap gap-2">
-			<h2 class="h6 mb-0 d-flex align-items-center gap-2"><i class="bi bi-lightbulb"></i>Queue</h2>
+			<h2 class="h6 mb-0 d-flex align-items-center gap-2"><i class="bi bi-lightbulb"></i>Ideas</h2>
 			@if (UnprocessedIdeasCount > 0)
 			{
 				<span class="badge rounded-pill text-bg-secondary">@UnprocessedIdeasCount pending</span>
@@ -199,8 +202,11 @@
 		</div>
 	}
 
-	<PaginationControls PageNumber="@CurrentPage" PageSize="@PageSize" TotalCount="@TotalIdeasCount"
-						IsLoading="@IsPageLoading" OnPreviousPage="OnPreviousPage" OnNextPage="OnNextPage" />
+	@if (ShowEmptyState || TotalIdeasCount > 0)
+	{
+		<PaginationControls PageNumber="@CurrentPage" PageSize="@PageSize" TotalCount="@TotalIdeasCount"
+							IsLoading="@IsPageLoading" OnPreviousPage="OnPreviousPage" OnNextPage="OnNextPage" />
+	}
 </div>
 	@* Copy Idea Modal *@
 	<ProjectTransferModal @bind-IsVisible="ShowCopyModal" IdeaDescription="@(SelectedIdea?.Description ?? "")"
@@ -306,6 +312,9 @@
 
 	[Parameter]
 	public int TotalIdeasCount { get; set; }
+
+	[Parameter]
+	public bool ShowEmptyState { get; set; } = true;
 
 	[Parameter]
 	public int CurrentPage { get; set; } = 1;

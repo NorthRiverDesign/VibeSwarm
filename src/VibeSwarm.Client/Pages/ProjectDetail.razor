@@ -53,17 +53,10 @@ else
     @* Tabs use Bootstrap's nav-tabs directly; horizontally scrollable on narrow screens *@
     <ul class="nav nav-tabs project-detail-tabs mt-3 flex-nowrap overflow-x-auto" role="tablist">
         <li class="nav-item">
-            <button type="button" class="nav-link @(IsActiveTab("ideas") ? "active" : "")"
-                    @onclick='@(() => SetActiveTab("ideas"))' role="tab">
-                <i class="bi bi-lightbulb me-1"></i>Ideas
-                @if (IdeasTotalCount > 0) { <span class="badge rounded-pill text-bg-secondary ms-1">@IdeasTotalCount</span> }
-            </button>
-        </li>
-        <li class="nav-item">
             <button type="button" class="nav-link @(IsActiveTab("jobs") ? "active" : "")"
                     @onclick='@(() => SetActiveTab("jobs"))' role="tab">
                 <i class="bi bi-list-task me-1"></i>Jobs
-                @if (JobsTotalCount > 0) { <span class="badge rounded-pill text-bg-secondary ms-1">@JobsTotalCount</span> }
+                @if (CombinedJobsTabCount > 0) { <span class="badge rounded-pill text-bg-secondary ms-1">@CombinedJobsTabCount</span> }
             </button>
         </li>
         <li class="nav-item">
@@ -96,9 +89,16 @@ else
     </ul>
 
     <div class="tab-content pt-3">
-        @if (_activeTab == "ideas")
+        @if (_activeTab == "jobs")
         {
-            <div class="tab-pane fade show active">
+            <div class="tab-pane fade show active d-grid gap-3">
+                <div class="d-grid d-sm-flex justify-content-sm-end">
+                    <button type="button" class="btn btn-primary" @onclick="ShowCreateJobModal"
+                            title="@(HasActiveJobs ? "Create a new job. It will be queued behind the current run." : "Create a new job")">
+                        <i class="bi bi-plus-lg me-1"></i>Create Job
+                    </button>
+                </div>
+
                 @if (_isLoadingIdeas)
                 {
                     <div class="border rounded-3 bg-body-tertiary p-3 p-lg-4">
@@ -107,32 +107,28 @@ else
                 }
                 else
                 {
-                <IdeasPanel Ideas="@Ideas" TotalIdeasCount="@IdeasTotalCount" CurrentPage="@_ideasPageNumber"
-                            PageSize="@IdeasPageSize" IsPageLoading="@_isLoadingIdeasPage" UnprocessedIdeasCount="@IdeasUnprocessedCount"
-                            CurrentProjectId="@ProjectId" ProjectName="@Project?.Name" IsProcessingActive="@IsIdeasProcessingActive"
-                            IsTogglingProcessing="@_isTogglingIdeasProcessing" HasDefaultProvider="@HasDefaultProvider"
-                            HasActiveJobs="@HasActiveJobs" IsAddingIdea="@_isAddingIdea" ProcessingIdeaIds="@ProcessingIdeaIds"
-                            CurrentAutoCommitMode="@(Project?.AutoCommitMode ?? AutoCommitMode.Off)"
-                            IsGitRepository="@IsGitRepository"
-                            DefaultProcessingProviderId="@GetDefaultIdeasProcessingProviderId()"
-                            DefaultProcessingModelId="@GetDefaultIdeasProcessingModelId()"
-                            OnStartProcessing="StartIdeasProcessing" OnStartProcessingWithOptions="StartIdeasProcessingWithOptions"
-                            OnStopProcessing="StopIdeasProcessing" OnAddIdea="AddIdea" OnUpdateIdea="UpdateIdea"
-                            OnDeleteIdea="DeleteIdea" OnCopyIdea="CopyIdea" OnMoveIdea="MoveIdea" OnStartSingleIdea="StartSingleIdea"
-                            OnExpandIdea="ExpandIdea" OnCancelExpansion="CancelIdeaExpansion" OnApproveExpansion="ApproveIdeaExpansion"
-                            OnRejectExpansion="RejectIdeaExpansion" AvailableLocalModels="@_availableLocalModels"
-                            HasInference="@_hasInference" AvailableProviders="@Providers.Where(p => p.IsEnabled).ToList()"
-                            AvailableInferenceProviders="@_availableInferenceProviders"
-                            DefaultInferenceProviderId="@(Project?.IdeaInferenceProviderId)"
-                            DefaultInferenceModelId="@(Project?.IdeaInferenceModelId)"
-                            OnSuggestIdeas="SuggestIdeasFromCodebase" OnPreviousPage="LoadPreviousIdeasPage"
-                            OnNextPage="LoadNextIdeasPage" />
+                    <IdeasPanel Ideas="@Ideas" TotalIdeasCount="@IdeasTotalCount" CurrentPage="@_ideasPageNumber"
+                                PageSize="@IdeasPageSize" IsPageLoading="@_isLoadingIdeasPage" UnprocessedIdeasCount="@IdeasUnprocessedCount"
+                                CurrentProjectId="@ProjectId" ProjectName="@Project?.Name" IsProcessingActive="@IsIdeasProcessingActive"
+                                IsTogglingProcessing="@_isTogglingIdeasProcessing" HasDefaultProvider="@HasDefaultProvider"
+                                HasActiveJobs="@HasActiveJobs" IsAddingIdea="@_isAddingIdea" ProcessingIdeaIds="@ProcessingIdeaIds"
+                                CurrentAutoCommitMode="@(Project?.AutoCommitMode ?? AutoCommitMode.Off)"
+                                IsGitRepository="@IsGitRepository"
+                                DefaultProcessingProviderId="@GetDefaultIdeasProcessingProviderId()"
+                                DefaultProcessingModelId="@GetDefaultIdeasProcessingModelId()"
+                                OnStartProcessing="StartIdeasProcessing" OnStartProcessingWithOptions="StartIdeasProcessingWithOptions"
+                                OnStopProcessing="StopIdeasProcessing" OnAddIdea="AddIdea" OnUpdateIdea="UpdateIdea"
+                                OnDeleteIdea="DeleteIdea" OnCopyIdea="CopyIdea" OnMoveIdea="MoveIdea" OnStartSingleIdea="StartSingleIdea"
+                                OnExpandIdea="ExpandIdea" OnCancelExpansion="CancelIdeaExpansion" OnApproveExpansion="ApproveIdeaExpansion"
+                                OnRejectExpansion="RejectIdeaExpansion" AvailableLocalModels="@_availableLocalModels"
+                                HasInference="@_hasInference" AvailableProviders="@Providers.Where(p => p.IsEnabled).ToList()"
+                                AvailableInferenceProviders="@_availableInferenceProviders"
+                                DefaultInferenceProviderId="@(Project?.IdeaInferenceProviderId)"
+                                DefaultInferenceModelId="@(Project?.IdeaInferenceModelId)"
+                                OnSuggestIdeas="SuggestIdeasFromCodebase" OnPreviousPage="LoadPreviousIdeasPage"
+                                OnNextPage="LoadNextIdeasPage" ShowEmptyState="false" />
                 }
-            </div>
-        }
-        @if (_activeTab == "jobs")
-        {
-            <div class="tab-pane fade show active">
+
                 @if (_isLoadingJobs)
                 {
                     <div class="border rounded-3 bg-body-tertiary p-3 p-lg-4">
@@ -141,15 +137,27 @@ else
                 }
                 else
                 {
-                <ProjectJobsList Jobs="@PagedJobs" TotalJobsCount="@JobsTotalCount" CurrentPage="@_jobsPageNumber"
-                                  PageSize="@ProjectJobsPageSize" IsPageLoading="@_isLoadingJobsPage" HasActiveJobs="@HasActiveJobs"
-                                  HasCompletedJobs="@HasCompletedJobs" SearchQuery="@_jobSearchQuery" StatusFilter="@_jobStatusFilter"
-                                  OnDeleteJob="DeleteJob" OnRetryJob="RetryJob" OnCreateJob="ShowCreateJobModal" OnPreviousPage="LoadPreviousJobsPage"
-                                  OnNextPage="LoadNextJobsPage" OnCancelAll="CancelAllJobs"
-                                  OnDeleteCompleted="DeleteCompletedJobs" OnRetrySelected="RetrySelectedJobs"
-                                  OnCancelSelected="CancelSelectedJobs" OnPrioritizeSelected="PrioritizeSelectedJobs"
-                                  OnSearchChanged="HandleJobSearchChanged"
-                                  OnStatusFilterChanged="HandleJobStatusFilterChanged" />
+                    <div class="d-grid gap-2">
+                        <div class="d-flex align-items-center gap-2">
+                            <h2 class="h6 mb-0 d-flex align-items-center gap-2">
+                                <i class="bi bi-list-task"></i>Jobs
+                            </h2>
+                            @if (JobsTotalCount > 0)
+                            {
+                                <span class="badge rounded-pill text-bg-secondary">@JobsTotalCount</span>
+                            }
+                        </div>
+                        <ProjectJobsList Jobs="@PagedJobs" TotalJobsCount="@JobsTotalCount" CurrentPage="@_jobsPageNumber"
+                                          PageSize="@ProjectJobsPageSize" IsPageLoading="@_isLoadingJobsPage" HasActiveJobs="@HasActiveJobs"
+                                          HasCompletedJobs="@HasCompletedJobs" SearchQuery="@_jobSearchQuery" StatusFilter="@_jobStatusFilter"
+                                          OnDeleteJob="DeleteJob" OnRetryJob="RetryJob" OnCreateJob="ShowCreateJobModal" OnPreviousPage="LoadPreviousJobsPage"
+                                          OnNextPage="LoadNextJobsPage" OnCancelAll="CancelAllJobs"
+                                          OnDeleteCompleted="DeleteCompletedJobs" OnRetrySelected="RetrySelectedJobs"
+                                          OnCancelSelected="CancelSelectedJobs" OnPrioritizeSelected="PrioritizeSelectedJobs"
+                                          OnSearchChanged="HandleJobSearchChanged"
+                                          OnStatusFilterChanged="HandleJobStatusFilterChanged"
+                                          ShowCreateJobButton="false" />
+                    </div>
                 }
             </div>
         }
@@ -333,9 +341,10 @@ else
     private bool _isDiscardingChanges { get; set; }
 
     // Tab state
-    private string _activeTab = "ideas";
+    private string _activeTab = "jobs";
     private int EnabledEnvironmentCount => Project?.Environments.Count(environment => environment.IsEnabled) ?? 0;
     private bool IsOverflowTabActive => _activeTab is "environments" or "changes" or "autopilot";
+    private int CombinedJobsTabCount => JobsTotalCount + IdeasTotalCount;
 
     // Auto-pilot state
     private AutoPilotPanel? _autoPilotPanel;

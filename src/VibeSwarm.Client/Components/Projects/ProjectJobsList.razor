@@ -139,10 +139,13 @@
 						</ul>
 					</div>
 				}
-				<button type="button" class="btn btn-sm btn-primary" @onclick="() => OnCreateJob.InvokeAsync()"
-						title="@(HasActiveJobs ? "Create a new job. It will be queued behind the current run." : "Create a new job")">
-					<i class="bi bi-plus-lg me-1"></i>Create Job
-				</button>
+				@if (ShowCreateJobButton)
+				{
+					<button type="button" class="btn btn-sm btn-primary" @onclick="() => OnCreateJob.InvokeAsync()"
+							title="@(HasActiveJobs ? "Create a new job. It will be queued behind the current run." : "Create a new job")">
+						<i class="bi bi-plus-lg me-1"></i>Create Job
+					</button>
+				}
 			</div>
 		</div>
 		@if (Jobs.Any())
@@ -442,6 +445,9 @@
 
 	[Parameter]
 	public EventCallback OnCreateJob { get; set; }
+
+	[Parameter]
+	public bool ShowCreateJobButton { get; set; } = true;
 
 	[Parameter]
 	public EventCallback OnPreviousPage { get; set; }
