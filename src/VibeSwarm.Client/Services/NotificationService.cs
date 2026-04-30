@@ -114,6 +114,21 @@ public class NotificationService
 		});
 	}
 
+	public void AddHistory(string message, string title, NotificationType type, string? actionLabel = null, string? actionUrl = null)
+	{
+		AddNotification(new ToastNotification
+		{
+			Id = Guid.NewGuid(),
+			Title = title,
+			Message = message,
+			Type = type,
+			CreatedAt = DateTime.UtcNow,
+			DurationMs = 0,
+			ActionLabel = actionLabel,
+			ActionUrl = actionUrl
+		}, includeToast: false);
+	}
+
 	public void Remove(Guid id)
 	{
 		lock (_lock)
@@ -139,15 +154,23 @@ public class NotificationService
 	private void AddNotification(NotificationType type, string message, string title, int durationMs)
 		=> AddNotification(new ToastNotification { Id = Guid.NewGuid(), Title = title, Message = message, Type = type, CreatedAt = DateTime.UtcNow, DurationMs = durationMs });
 
-	private void AddNotification(ToastNotification notification)
+	private void AddNotification(ToastNotification notification, bool includeToast = true)
 	{
 		lock (_lock)
 		{
-			while (_notifications.Count >= 10) _notifications.RemoveAt(0);
-			_notifications.Add(notification);
+			if (includeToast)
+			{
+				while (_notifications.Count >= 10) _notifications.RemoveAt(0);
+				_notifications.Add(notification);
+			}
+
 			while (_history.Count >= 50) _history.RemoveAt(0);
 			_history.Add(notification);
-			_unreadCount++;
+
+			if (!IsPanelOpen)
+			{
+				_unreadCount++;
+			}
 		}
 		OnChange?.Invoke();
 	}

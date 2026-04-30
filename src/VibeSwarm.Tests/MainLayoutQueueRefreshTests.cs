@@ -14,6 +14,17 @@ public sealed class MainLayoutQueueRefreshTests
 			layoutMarkup);
 	}
 
+	[Fact]
+	public void MainLayout_RefreshesQueueAndRecordsHistoryWhenGlobalJobStatusChanges()
+	{
+		var layoutMarkup = File.ReadAllText(GetRepositoryPath("src", "VibeSwarm.Client", "Shared", "MainLayout.razor"));
+
+		Assert.Matches(
+			new Regex(@"private\s+async\s+Task\s+OnGlobalJobStatusChanged\s*\([^)]*\)\s*\{[\s\S]*?QueuePanelStateService\.RequestRefreshAsync\(\);[\s\S]*?RecordJobStatusNotificationAsync\(jobId,\s*status\);", RegexOptions.Multiline),
+			layoutMarkup);
+		Assert.Contains("NotificationService.AddHistory(", layoutMarkup);
+	}
+
 	private static string GetRepositoryPath(params string[] segments)
 	{
 		var directory = new DirectoryInfo(AppContext.BaseDirectory);

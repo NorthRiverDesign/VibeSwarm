@@ -525,9 +525,10 @@ TimeSpan.FromSeconds(10) })
     {
     }
 
-    private Task OnGlobalJobStatusChanged(string jobId, string status)
+    private async Task OnGlobalJobStatusChanged(string jobId, string status)
     {
-        return QueuePanelStateService.RequestRefreshAsync();
+        await QueuePanelStateService.RequestRefreshAsync();
+        await RecordJobStatusNotificationAsync(jobId, status);
     }
 
     private Task OnGlobalJobActivityUpdated(string jobId, string activity, DateTime timestamp)
@@ -574,6 +575,32 @@ TimeSpan.FromSeconds(10) })
                 });
             }
         }
+    }
+
+    private async Task RecordJobStatusNotificationAsync(string jobId, string status)
+    {
+        if (!Guid.TryParse(jobId, out var id) ||
+            !Enum.TryParse<JobStatus>(status, ignoreCase: true, out var parsedStatus) ||
+            !ShouldRecordJobStatusNotification(parsedStatus) ||
+            !TryBeginToastEvent($"job-status:{jobId}:{parsedStatus}"))
+        {
+            return;
+        }
+
+        Job? job = null;
+        try
+        {
+            job = await JobService.GetByIdAsync(id);
+        }
+        catch
+        {
+        }
+
+        await InvokeAsync(() =>
+        {
+            ShowJobStatusNotification(job, parsedStatus, id);
+            StateHasChanged();
+        });
     }
 
     private Task OnGlobalIdeaCreated(string ideaId)
@@ -648,6 +675,59 @@ TimeSpan.FromSeconds(10) })
             "View Job",
             job?.Id is Guid failedJobId ? $"/jobs/view/{failedJobId}" : null);
     }
+
+    private void ShowJobStatusNotification(Job? job, JobStatus status, Guid jobId)
+    {
+        var jobTitle = TruncateForToast(job?.Title, 80, "Job");
+        var projectName = job?.Project?.Name;
+        var scope = projectName is null ? string.Empty : $" in '{projectName}'";
+        var targetUrl = $"/jobs/view/{jobId}";
+
+        switch (status)
+        {
+            case JobStatus.Planning:
+                NotificationService.AddHistory(
+                    $"{jobTitle} is generating an implementation plan{scope}.",
+                    "Job Planning",
+                    NotificationType.Info,
+                    "View Job",
+                    targetUrl);
+                break;
+            case JobStatus.Paused:
+                NotificationService.AddHistory(
+                    $"{jobTitle} is waiting for input{scope}.",
+                    "Job Paused",
+                    NotificationType.Warning,
+                    "View Job",
+                    targetUrl);
+                break;
+            case JobStatus.Stalled:
+                NotificationService.AddHistory(
+                    $"{jobTitle} stopped responding{scope}.",
+                    "Job Stalled",
+                    NotificationType.Error,
+                    "View Job",
+                    targetUrl);
+                break;
+            case JobStatus.Cancelled:
+                NotificationService.AddHistory(
+                    $"{jobTitle} was cancelled{scope}.",
+                    "Job Cancelled",
+                    NotificationType.Warning,
+                    "View Job",
+                    targetUrl);
+                break;
+        }
+    }
+
+    private static bool ShouldRecordJobStatusNotification(JobStatus status) => status switch
+    {
+        JobStatus.Planning => true,
+        JobStatus.Paused => true,
+        JobStatus.Stalled => true,
+        JobStatus.Cancelled => true,
+        _ => false
+    };
 
     private readonly Dictionary<string, DateTime> _recentToastEvents = new();
 

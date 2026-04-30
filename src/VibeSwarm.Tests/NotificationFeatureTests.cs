@@ -124,6 +124,33 @@ public sealed class NotificationFeatureTests
 		Assert.False(notificationService.IsPanelOpen);
 	}
 
+	[Fact]
+	public void AddHistory_AddsPanelEntryWithoutActiveToast()
+	{
+		var notificationService = new NotificationService();
+
+		notificationService.AddHistory("Job moved to planning.", "Job Planning", NotificationType.Info, "View Job", "/jobs/view/123");
+
+		Assert.Empty(notificationService.Notifications);
+		var notification = Assert.Single(notificationService.NotificationHistory);
+		Assert.Equal("Job Planning", notification.Title);
+		Assert.Equal("View Job", notification.ActionLabel);
+		Assert.Equal("/jobs/view/123", notification.ActionUrl);
+		Assert.Equal(1, notificationService.UnreadCount);
+	}
+
+	[Fact]
+	public void AddHistory_DoesNotIncrementUnread_WhenPanelIsOpen()
+	{
+		var notificationService = new NotificationService();
+		notificationService.OpenPanel();
+
+		notificationService.AddHistory("Job stopped responding.", "Job Stalled", NotificationType.Error);
+
+		Assert.Equal(0, notificationService.UnreadCount);
+		Assert.Single(notificationService.NotificationHistory);
+	}
+
 	private sealed class NoOpJsRuntime : IJSRuntime
 	{
 		public ValueTask<TValue> InvokeAsync<TValue>(string identifier, object?[]? args)
