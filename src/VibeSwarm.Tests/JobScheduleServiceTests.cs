@@ -163,7 +163,7 @@ public sealed class JobScheduleServiceTests : IDisposable
 	}
 
 	[Fact]
-	public async Task CreateAsync_RejectsAgentThatIsNotAssignedToProject()
+	public async Task CreateAsync_RejectsAgentWithoutEnabledDefaultProvider()
 	{
 		await using var dbContext = CreateDbContext();
 		var project = CreateProject();
@@ -187,59 +187,31 @@ public sealed class JobScheduleServiceTests : IDisposable
 			MinuteUtc = 0
 		}));
 
-		Assert.Equal("The selected agent is not assigned to this project.", exception.Message);
+		Assert.Equal("The selected agent does not have an enabled default provider.", exception.Message);
 	}
 
 	[Fact]
-	public async Task ProcessDueSchedulesAsync_CreatesAgentJobFromProjectAssignmentWithoutSwarmFanout()
+	public async Task ProcessDueSchedulesAsync_CreatesAgentJobFromGlobalAgentWithoutSwarmFanout()
 	{
 		await using var dbContext = CreateDbContext();
 		var project = CreateProject();
 		project.EnableTeamSwarm = true;
 		var primaryProvider = CreateProvider();
-		var secondaryProvider = CreateProvider();
 		var reviewerRole = CreateAgent("Security Reviewer");
-		var backupRole = CreateAgent("Dependency Reviewer");
+		reviewerRole.DefaultProviderId = primaryProvider.Id;
+		reviewerRole.DefaultModelId = "copilot-reviewer";
+		reviewerRole.DefaultReasoningEffort = "high";
 		dbContext.Projects.Add(project);
-		dbContext.Providers.AddRange(primaryProvider, secondaryProvider);
-		dbContext.Agents.AddRange(reviewerRole, backupRole);
-		dbContext.ProjectAgents.AddRange(
-			new ProjectAgent
-			{
-				ProjectId = project.Id,
-				AgentId = reviewerRole.Id,
-				ProviderId = primaryProvider.Id,
-				PreferredModelId = "copilot-reviewer",
-				PreferredReasoningEffort = "high",
-				IsEnabled = true
-			},
-			new ProjectAgent
-			{
-				ProjectId = project.Id,
-				AgentId = backupRole.Id,
-				ProviderId = secondaryProvider.Id,
-				PreferredModelId = "copilot-backup",
-				PreferredReasoningEffort = "medium",
-				IsEnabled = true
-			});
+		dbContext.Providers.Add(primaryProvider);
+		dbContext.Agents.Add(reviewerRole);
 
-		dbContext.ProviderModels.AddRange(
+		dbContext.ProviderModels.Add(
 			new ProviderModel
 			{
 				Id = Guid.NewGuid(),
 				ProviderId = primaryProvider.Id,
 				ModelId = "copilot-reviewer",
 				DisplayName = "Copilot Reviewer",
-				IsAvailable = true,
-				IsDefault = true,
-				UpdatedAt = DateTime.UtcNow
-			},
-			new ProviderModel
-			{
-				Id = Guid.NewGuid(),
-				ProviderId = secondaryProvider.Id,
-				ModelId = "copilot-backup",
-				DisplayName = "Copilot Backup",
 				IsAvailable = true,
 				IsDefault = true,
 				UpdatedAt = DateTime.UtcNow

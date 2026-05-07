@@ -149,6 +149,12 @@ public partial class JobDetail : ComponentBase
                 }
             }
 
+            if (Job != null && ShowJobOutcomeSummary && _changeSets.Count == 0)
+            {
+                try { _changeSets = (await JobService.GetChangeSetsAsync(Job.Id)).ToList(); }
+                catch { /* non-critical — page still works without change history */ }
+            }
+
             ReconcilePendingSessionMessages();
 
             if (Job != null && (Job.Status == JobStatus.Failed || Job.Status == JobStatus.Cancelled) &&
@@ -189,17 +195,17 @@ public partial class JobDetail : ComponentBase
             var result = await JobService.RequestCancellationAsync(Job.Id);
             if (result)
             {
-                NotificationService.ShowSuccess("Cancellation requested. The job will be cancelled shortly.");
+                NotificationService.ShowProjectSuccess(Job.Project?.Name, "Cancellation requested. The job will be cancelled shortly.");
                 await LoadJob();
             }
             else
             {
-                NotificationService.ShowError("Could not cancel the job. It may have already completed.");
+                NotificationService.ShowProjectError(Job.Project?.Name, "Could not cancel the job. It may have already completed.");
             }
         }
         catch (Exception ex)
         {
-            NotificationService.ShowError($"Error cancelling job: {ex.Message}");
+            NotificationService.ShowProjectError(Job.Project?.Name, $"Error cancelling job: {ex.Message}");
         }
         finally
         {
@@ -218,17 +224,17 @@ public partial class JobDetail : ComponentBase
             var result = await JobService.ForceCancelAsync(Job.Id);
             if (result)
             {
-                NotificationService.ShowSuccess("Job has been force-cancelled.");
+                NotificationService.ShowProjectSuccess(Job.Project?.Name, "Job has been force-cancelled.");
                 await LoadJob();
             }
             else
             {
-                NotificationService.ShowError("Could not force-cancel the job. It may have already completed.");
+                NotificationService.ShowProjectError(Job.Project?.Name, "Could not force-cancel the job. It may have already completed.");
             }
         }
         catch (Exception ex)
         {
-            NotificationService.ShowError($"Error force-cancelling job: {ex.Message}");
+            NotificationService.ShowProjectError(Job.Project?.Name, $"Error force-cancelling job: {ex.Message}");
         }
         finally
         {
@@ -247,17 +253,17 @@ public partial class JobDetail : ComponentBase
             var result = await JobService.ResetJobAsync(Job.Id);
             if (result)
             {
-                NotificationService.ShowSuccess("Job has been reset and will be retried shortly.");
+                NotificationService.ShowProjectSuccess(Job.Project?.Name, "Job has been reset and will be retried shortly.");
                 await LoadJob();
             }
             else
             {
-                NotificationService.ShowError("Could not retry the job. It may not be in a terminal state.");
+                NotificationService.ShowProjectError(Job.Project?.Name, "Could not retry the job. It may not be in a terminal state.");
             }
         }
         catch (Exception ex)
         {
-            NotificationService.ShowError($"Error retrying job: {ex.Message}");
+            NotificationService.ShowProjectError(Job.Project?.Name, $"Error retrying job: {ex.Message}");
         }
         finally
         {
@@ -280,17 +286,17 @@ public partial class JobDetail : ComponentBase
             var result = await JobService.ForceFailJobAsync(Job.Id);
             if (result)
             {
-                NotificationService.ShowSuccess("Job has been marked as failed.");
+                NotificationService.ShowProjectSuccess(Job.Project?.Name, "Job has been marked as failed.");
                 await LoadJob();
             }
             else
             {
-                NotificationService.ShowError("Could not mark the job as failed. It may already be in a terminal state.");
+                NotificationService.ShowProjectError(Job.Project?.Name, "Could not mark the job as failed. It may already be in a terminal state.");
             }
         }
         catch (Exception ex)
         {
-            NotificationService.ShowError($"Error marking job as failed: {ex.Message}");
+            NotificationService.ShowProjectError(Job.Project?.Name, $"Error marking job as failed: {ex.Message}");
         }
         finally
         {
@@ -302,27 +308,30 @@ public partial class JobDetail : ComponentBase
     {
         if (Job == null || string.IsNullOrWhiteSpace(followUpPrompt)) return;
 
+        var trimmedFollowUp = followUpPrompt.Trim();
+        var submittedAt = DateTime.UtcNow;
+
+        var optimisticMessage = new JobMessage
+        {
+            Id = Guid.NewGuid(),
+            JobId = Job.Id,
+            Role = MessageRole.User,
+            Content = trimmedFollowUp,
+            CreatedAt = submittedAt,
+            Source = MessageSource.User,
+            Level = MessageLevel.Normal
+        };
+        _pendingSessionMessages.Add(optimisticMessage);
+
         try
         {
-            var trimmedFollowUp = followUpPrompt.Trim();
-            var submittedAt = DateTime.UtcNow;
             var result = await JobService.ContinueJobAsync(Job.Id, trimmedFollowUp);
             if (!result)
             {
-                NotificationService.ShowError("Could not continue the job. It may no longer be completed.");
+                _pendingSessionMessages.Remove(optimisticMessage);
+                NotificationService.ShowProjectError(Job.Project?.Name, "Could not continue the job. It may be in an active state.");
                 return;
             }
-
-            _pendingSessionMessages.Add(new JobMessage
-            {
-                Id = Guid.NewGuid(),
-                JobId = Job.Id,
-                Role = MessageRole.User,
-                Content = trimmedFollowUp,
-                CreatedAt = submittedAt,
-                Source = MessageSource.User,
-                Level = MessageLevel.Normal
-            });
 
             Job.Status = JobStatus.New;
             Job.CompletedAt = null;
@@ -334,7 +343,8 @@ public partial class JobDetail : ComponentBase
         }
         catch (Exception ex)
         {
-            NotificationService.ShowError($"Failed to continue job: {ex.Message}", "Error");
+            _pendingSessionMessages.Remove(optimisticMessage);
+            NotificationService.ShowProjectError(Job.Project?.Name, $"Failed to continue job: {ex.Message}");
         }
     }
 
@@ -352,17 +362,17 @@ public partial class JobDetail : ComponentBase
             var result = await JobService.ResetJobWithOptionsAsync(Job.Id, options.ProviderId, options.ModelId, options.ReasoningEffort);
             if (result)
             {
-                NotificationService.ShowSuccess("Job has been reset with new options and will be retried shortly.");
+                NotificationService.ShowProjectSuccess(Job.Project?.Name, "Job has been reset with new options and will be retried shortly.");
                 await LoadJob();
             }
             else
             {
-                NotificationService.ShowError("Could not retry the job. It may not be in a terminal state or the provider is invalid.");
+                NotificationService.ShowProjectError(Job.Project?.Name, "Could not retry the job. It may not be in a terminal state or the provider is invalid.");
             }
         }
         catch (Exception ex)
         {
-            NotificationService.ShowError($"Error retrying job: {ex.Message}");
+            NotificationService.ShowProjectError(Job.Project?.Name, $"Error retrying job: {ex.Message}");
         }
         finally
         {

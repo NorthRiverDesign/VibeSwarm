@@ -52,6 +52,32 @@ public sealed class NotificationFeatureTests
 	}
 
 	[Fact]
+	public void ShowProjectWarning_UsesProjectNameAsTitle()
+	{
+		var notificationService = new NotificationService();
+
+		notificationService.ShowProjectWarning("Demo Project", "A job is already running.");
+
+		var notification = Assert.Single(notificationService.Notifications);
+		Assert.Equal("Demo Project", notification.Title);
+		Assert.Equal(NotificationType.Warning, notification.Type);
+		Assert.Equal("A job is already running.", notification.Message);
+	}
+
+	[Fact]
+	public void ShowProjectInfo_FallsBackToGenericTitle_WhenProjectNameMissing()
+	{
+		var notificationService = new NotificationService();
+
+		notificationService.ShowProjectInfo(null, "No queued jobs to prioritize.");
+
+		var notification = Assert.Single(notificationService.Notifications);
+		Assert.Equal("Info", notification.Title);
+		Assert.Equal(NotificationType.Info, notification.Type);
+		Assert.Equal("No queued jobs to prioritize.", notification.Message);
+	}
+
+	[Fact]
 	public void ToastContainer_ViewJobButton_NavigatesToJob()
 	{
 		using var context = new BunitContext();
@@ -96,6 +122,33 @@ public sealed class NotificationFeatureTests
 
 		Assert.Equal($"http://localhost/jobs/view/{jobId}", navigationManager.Uri);
 		Assert.False(notificationService.IsPanelOpen);
+	}
+
+	[Fact]
+	public void AddHistory_AddsPanelEntryWithoutActiveToast()
+	{
+		var notificationService = new NotificationService();
+
+		notificationService.AddHistory("Job moved to planning.", "Job Planning", NotificationType.Info, "View Job", "/jobs/view/123");
+
+		Assert.Empty(notificationService.Notifications);
+		var notification = Assert.Single(notificationService.NotificationHistory);
+		Assert.Equal("Job Planning", notification.Title);
+		Assert.Equal("View Job", notification.ActionLabel);
+		Assert.Equal("/jobs/view/123", notification.ActionUrl);
+		Assert.Equal(1, notificationService.UnreadCount);
+	}
+
+	[Fact]
+	public void AddHistory_DoesNotIncrementUnread_WhenPanelIsOpen()
+	{
+		var notificationService = new NotificationService();
+		notificationService.OpenPanel();
+
+		notificationService.AddHistory("Job stopped responding.", "Job Stalled", NotificationType.Error);
+
+		Assert.Equal(0, notificationService.UnreadCount);
+		Assert.Single(notificationService.NotificationHistory);
 	}
 
 	private sealed class NoOpJsRuntime : IJSRuntime

@@ -140,7 +140,7 @@ public sealed class QueueDropdownPanelTests
 	}
 
 	[Fact]
-	public void QueueDropdownPanel_BadgeCount_IncludesQueuedJobs()
+	public void QueueDropdownPanel_BadgeCount_OnlyCountsRunningAndQueuedJobs()
 	{
 		using var context = CreateContext(new FakeIdeaService(
 			new GlobalQueueSnapshot
@@ -175,8 +175,7 @@ public sealed class QueueDropdownPanelTests
 
 		var cut = context.Render<QueueDropdownPanel>();
 
-		// Badge = 1 running + 3 queued + 2 upcoming = 6
-		Assert.Equal("6 queue items", cut.Find(".notification-bell-badge").GetAttribute("aria-label"));
+		Assert.Equal("4 queue items", cut.Find(".notification-bell-badge").GetAttribute("aria-label"));
 		Assert.Contains("1 running", cut.Markup);
 		Assert.Contains("3 queued", cut.Markup);
 		Assert.Contains("2 upcoming", cut.Markup);
@@ -318,12 +317,14 @@ public sealed class QueueDropdownPanelTests
 			new GlobalQueueSnapshot
 			{
 				RunningJobsCount = 1,
+				QueuedJobsCount = 1,
 				UpcomingIdeasCount = 1,
 				ProjectsCurrentlyProcessing = 1
 			},
 			new GlobalQueueSnapshot
 			{
 				RunningJobsCount = 0,
+				QueuedJobsCount = 1,
 				UpcomingIdeasCount = 1,
 				ProjectsCurrentlyProcessing = 0
 			});

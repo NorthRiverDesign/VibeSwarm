@@ -30,7 +30,7 @@
             @if (_history.Count == 0)
             {
                 <div class="d-flex flex-column align-items-center justify-content-center p-4 text-secondary">
-                    <i class="bi bi-bell-slash mb-2" style="font-size: 2rem; opacity: 0.4;"></i>
+                    <i class="bi bi-bell-slash mb-2 fs-2 opacity-50"></i>
                     <span class="small">No notifications yet</span>
                 </div>
             }
@@ -49,7 +49,7 @@
                         <div class="flex-grow-1 min-width-0">
                             <div class="d-flex align-items-baseline justify-content-between gap-2">
                                 <span class="fw-medium small text-truncate">@notification.Title</span>
-                                <span class="text-secondary flex-shrink-0" style="font-size: 0.7rem;">@GetTimeAgo(notification.CreatedAt)</span>
+                                <span class="text-secondary flex-shrink-0 fs-7">@GetTimeAgo(notification.CreatedAt)</span>
                             </div>
                             <div class="small text-secondary text-break">@notification.Message</div>
                             @if (notification.HasAction)

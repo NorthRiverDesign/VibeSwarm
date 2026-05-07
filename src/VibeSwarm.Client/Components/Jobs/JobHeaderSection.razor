@@ -171,16 +171,15 @@
 			}
 			@if (PlaywrightEnabled)
 			{
-				<span class="d-inline-flex align-items-center gap-1 px-2 py-1 rounded-pill small text-info-emphasis"
-					  style="background: rgba(13, 202, 240, 0.15);" title="Playwright MCP enabled for browser interaction">
+				<span class="d-inline-flex align-items-center gap-1 px-2 py-1 bg-info-subtle text-info-emphasis rounded-pill small"
+					  title="Playwright MCP enabled for browser interaction">
 					<i class="bi bi-browser-chrome opacity-75"></i>
 					<span class="d-none d-sm-inline">Playwright</span>
 				</span>
 			}
 			@if (EnvironmentCount > 0)
 			{
-				<span class="d-inline-flex align-items-center gap-1 px-2 py-1 rounded-pill small text-success-emphasis"
-					  style="background: rgba(63, 185, 80, 0.15);"
+				<span class="d-inline-flex align-items-center gap-1 px-2 py-1 bg-success-subtle text-success-emphasis rounded-pill small"
 					  title="@EnvironmentTooltip">
 					<i class="bi bi-globe opacity-75"></i>
 					<span class="d-none d-sm-inline">@EnvironmentCount env@(EnvironmentCount != 1 ? "s" : "")</span>
@@ -261,8 +260,8 @@
 									}
 									@if (!IsTokenEstimate && TotalCostUsd.HasValue && TotalCostUsd.Value > 0)
 									{
-										<span class="d-inline-flex align-items-center px-2 py-1 rounded-pill text-nowrap text-success fw-medium"
-											  style="background: rgba(63, 185, 80, 0.15);" title="Total Cost">
+										<span class="d-inline-flex align-items-center px-2 py-1 bg-success-subtle rounded-pill text-nowrap text-success-emphasis fw-medium"
+											  title="Total Cost">
 											<i class="bi bi-currency-dollar me-1 opacity-75"></i>@TokenHelper.FormatCost(TotalCostUsd.Value)
 										</span>
 									}

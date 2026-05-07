@@ -1,5 +1,7 @@
 @* Modal component for creating new jobs *@
 @using System.ComponentModel.DataAnnotations
+@using VibeSwarm.Shared.Validation
+@inject IServiceProvider Services
 @inject IJobTemplateService JobTemplateService
 @inject NotificationService NotificationService
 
@@ -48,9 +50,13 @@ else
 </div>
 
 <div class="mb-3">
-<label for="goalPrompt" class="form-label">Goal Prompt</label>
+<label for="goalPrompt" class="form-label">@GetGoalPromptLabel()</label>
 <InputTextArea id="goalPrompt" @bind-Value="FormModel.GoalPrompt" class="form-control" rows="5"
-placeholder="Describe what you want the AI agent to accomplish..." />
+placeholder="@GetGoalPromptPlaceholder()" />
+@if (!string.IsNullOrWhiteSpace(GetGoalPromptHelpText()))
+{
+<div class="form-text">@GetGoalPromptHelpText()</div>
+}
 <ValidationMessage For="@(() => FormModel.GoalPrompt)" class="text-danger small" />
 </div>
 
@@ -66,7 +72,7 @@ placeholder="Describe what you want the AI agent to accomplish..." />
 <option value="">Choose provider manually</option>
 @foreach (var agent in AvailableAgents)
 {
-<option value="@agent.AgentId">@agent.Agent!.Name</option>
+<option value="@agent.AgentId">@GetAgentDisplayName(agent)</option>
 }
 </InputSelect>
 <div class="form-text">Agent presets combine a purpose, provider/model assignment, and optional multi-cycle defaults for this project.</div>
@@ -78,17 +84,17 @@ placeholder="Describe what you want the AI agent to accomplish..." />
 <div class="border rounded p-3 mb-3 bg-body-tertiary">
 <div class="d-flex align-items-start justify-content-between gap-2 flex-wrap">
 <div class="min-width-0 flex-grow-1">
-<div class="fw-semibold">@SelectedAgent.Agent!.Name</div>
-@if (!string.IsNullOrWhiteSpace(SelectedAgent.Agent.Description))
+<div class="fw-semibold">@GetSelectedAgentName()</div>
+@if (!string.IsNullOrWhiteSpace(SelectedAgent.Agent?.Description))
 {
-<div class="small text-body-secondary mt-1">@SelectedAgent.Agent.Description</div>
+<div class="small text-body-secondary mt-1">@SelectedAgent.Agent!.Description</div>
 }
 </div>
 <span class="badge bg-primary-subtle text-primary-emphasis">Agent Preset</span>
 </div>
-@if (!string.IsNullOrWhiteSpace(SelectedAgent.Agent.Responsibilities))
+@if (!string.IsNullOrWhiteSpace(SelectedAgent.Agent?.Responsibilities))
 {
-<div class="small white-space-pre-wrap mt-2">@SelectedAgent.Agent.Responsibilities</div>
+<div class="small white-space-pre-wrap mt-2">@SelectedAgent.Agent!.Responsibilities</div>
 }
 <div class="row g-3 mt-1">
 <div class="col-12 col-md-6">
@@ -399,8 +405,9 @@ private Guid? _selectedTemplateId;
 private bool _isApplyingTemplate;
 private bool _isSavingTemplate;
 private string? _templateStatusMessage;
-private IReadOnlyList<ProjectAgent> AvailableAgents => AgentPresetHelper.GetEnabledAgents(Project);
-private ProjectAgent? SelectedAgent => AgentPresetHelper.ResolveAgent(Project, FormModel.AgentId);
+private Project? _agentProject;
+private IReadOnlyList<ProjectAgent> AvailableAgents => AgentPresetHelper.GetEnabledAgents(_agentProject);
+private ProjectAgent? SelectedAgent => AgentPresetHelper.ResolveAgent(_agentProject, FormModel.AgentId);
 private IReadOnlyList<string> ReasoningOptions => FormModel.ProviderId.HasValue
 ? Providers.Where(provider => provider.Id == FormModel.ProviderId.Value)
 	.SelectMany(ProviderCapabilities.GetSupportedReasoningEfforts)
@@ -408,23 +415,26 @@ private IReadOnlyList<string> ReasoningOptions => FormModel.ProviderId.HasValue
 	.ToList()
 : [];
 
-protected override void OnParametersSet()
+protected override async Task OnParametersSetAsync()
 {
 if (IsVisible && !_previousIsVisible)
 {
+await RefreshAgentProjectAsync();
 FormModel = CreateJobFormModel.FromJob(JobModel);
 _selectedTemplateId = JobModel.JobTemplateId;
 _templateStatusMessage = null;
-if (SelectedAgent != null)
-{
-ApplySelectedAgent(SelectedAgent);
-ShowAdvancedOptions = false;
-}
-else
-{
-ShowAdvancedOptions = FormModel.CycleMode != CycleMode.SingleCycle;
-}
-}
+	if (SelectedAgent != null)
+	{
+	ApplySelectedAgent(SelectedAgent);
+	ShowAdvancedOptions = false;
+	}
+	else
+	{
+	ShowAdvancedOptions = FormModel.CycleMode != CycleMode.SingleCycle;
+	}
+
+	SyncGoalPromptValidationState();
+	}
 
 _previousIsVisible = IsVisible;
 }
@@ -443,17 +453,19 @@ private Task HandleAgentChanged(Guid? agentId)
 {
 FormModel.AgentId = agentId;
 
-if (SelectedAgent != null)
-{
-ApplySelectedAgent(SelectedAgent);
-ShowAdvancedOptions = false;
-}
-else
-{
-ShowAdvancedOptions = FormModel.CycleMode != CycleMode.SingleCycle;
-}
+	if (SelectedAgent != null)
+	{
+	ApplySelectedAgent(SelectedAgent);
+	ShowAdvancedOptions = false;
+	}
+	else
+	{
+	ShowAdvancedOptions = FormModel.CycleMode != CycleMode.SingleCycle;
+	}
 
-return Task.CompletedTask;
+	SyncGoalPromptValidationState();
+
+	return Task.CompletedTask;
 }
 
 private async Task HandleProviderChanged()
@@ -463,10 +475,10 @@ await OnProviderChanged.InvokeAsync(FormModel.ProviderId ?? Guid.Empty);
 
 private async Task HandleSubmit()
 {
-FormModel.ApplyTo(JobModel);
-JobModel.JobTemplateId = _selectedTemplateId;
-JobModel.ModelUsed = string.IsNullOrEmpty(SelectedModelId) ? null : SelectedModelId;
-await SelectedModelIdChanged.InvokeAsync(SelectedModelId);
+	ApplyEffectiveFormValuesToJobModel();
+	JobModel.JobTemplateId = _selectedTemplateId;
+	JobModel.ModelUsed = string.IsNullOrEmpty(SelectedModelId) ? null : SelectedModelId;
+	await SelectedModelIdChanged.InvokeAsync(SelectedModelId);
 await OnSubmit.InvokeAsync();
 }
 
@@ -493,6 +505,7 @@ private async Task HandleTemplateSelectionChanged()
 		ApplyTemplateToJob(template);
 		FormModel = CreateJobFormModel.FromJob(JobModel);
 		ShowAdvancedOptions = FormModel.CycleMode != CycleMode.SingleCycle;
+		SyncGoalPromptValidationState();
 		await SelectedModelIdChanged.InvokeAsync(SelectedModelId);
 		await OnProviderChanged.InvokeAsync(FormModel.ProviderId ?? Guid.Empty);
 		_templateStatusMessage = $"Applied template '{template.Name}'.";
@@ -516,7 +529,7 @@ private async Task SaveAsTemplateAsync()
 	try
 	{
 		_isSavingTemplate = true;
-		FormModel.ApplyTo(JobModel);
+		ApplyEffectiveFormValuesToJobModel();
 		JobModel.ModelUsed = string.IsNullOrEmpty(SelectedModelId) ? null : SelectedModelId;
 
 		var templateName = BuildTemplateName(JobModel.GoalPrompt);
@@ -558,6 +571,12 @@ private async Task SaveAsTemplateAsync()
 	{
 		_isSavingTemplate = false;
 	}
+}
+
+private void ApplyEffectiveFormValuesToJobModel()
+{
+	FormModel.ApplyTo(JobModel);
+	JobModel.GoalPrompt = GetEffectiveGoalPrompt();
 }
 
 private async Task Close()
@@ -607,6 +626,186 @@ private void ApplySelectedAgent(ProjectAgent assignment)
 	FormModel.CycleSessionMode = job.CycleSessionMode;
 	FormModel.MaxCycles = job.MaxCycles;
 	FormModel.CycleReviewPrompt = job.CycleReviewPrompt;
+}
+
+private void SyncGoalPromptValidationState()
+{
+	FormModel.AllowBlankGoalPrompt = CanUseAgentInstructionsAsGoalPrompt();
+}
+
+private async Task RefreshAgentProjectAsync()
+{
+	_agentProject = Project;
+
+	var agentService = Services.GetService<IAgentService>();
+	if (agentService == null)
+	{
+		return;
+	}
+
+	try
+	{
+		var enabledAgents = await agentService.GetEnabledAsync();
+		_agentProject = BuildAgentProject(Project, enabledAgents);
+	}
+	catch
+	{
+		_agentProject = BuildAgentProject(Project, []);
+	}
+}
+
+private Project BuildAgentProject(Project? baseProject, IEnumerable<Agent> enabledAgents)
+{
+	var assignments = enabledAgents
+		.Where(agent => agent.Id != Guid.Empty
+			&& agent.DefaultProviderId.HasValue
+			&& agent.DefaultProviderId.Value != Guid.Empty)
+		.Select(agent => BuildGlobalAssignment(agent, baseProject?.Id))
+		.ToList();
+
+	return new Project
+	{
+		Id = baseProject?.Id ?? Guid.Empty,
+		AgentAssignments = assignments
+	};
+}
+
+private ProjectAgent BuildGlobalAssignment(Agent agent, Guid? projectId)
+{
+	var provider = Providers.FirstOrDefault(p => p.Id == agent.DefaultProviderId!.Value)
+		?? agent.DefaultProvider;
+
+	return new ProjectAgent
+	{
+		Id = agent.Id,
+		ProjectId = projectId ?? Guid.Empty,
+		AgentId = agent.Id,
+		Agent = agent,
+		ProviderId = agent.DefaultProviderId!.Value,
+		Provider = provider,
+		PreferredModelId = agent.DefaultModelId,
+		PreferredReasoningEffort = agent.DefaultReasoningEffort,
+		IsEnabled = agent.IsEnabled,
+		CreatedAt = agent.CreatedAt,
+		UpdatedAt = agent.UpdatedAt
+	};
+}
+
+private ProjectAgent MergeAgentAssignment(IEnumerable<ProjectAgent> assignments, IEnumerable<Agent> enabledAgents)
+{
+	var enabledAgentsById = enabledAgents.ToDictionary(agent => agent.Id);
+	var assignmentList = assignments.ToList();
+	var merged = assignmentList[0];
+
+	return new ProjectAgent
+	{
+		Id = merged.Id,
+		ProjectId = merged.ProjectId,
+		AgentId = merged.AgentId,
+		Agent = ResolveAgent(assignmentList, enabledAgentsById),
+		ProviderId = merged.ProviderId,
+		Provider = ResolveProvider(assignmentList),
+		PreferredModelId = assignmentList.Select(assignment => assignment.PreferredModelId).FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)),
+		PreferredReasoningEffort = assignmentList.Select(assignment => assignment.PreferredReasoningEffort).FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)),
+		IsEnabled = assignmentList.Any(assignment => assignment.IsEnabled),
+		CreatedAt = assignmentList.Select(assignment => assignment.CreatedAt).FirstOrDefault(createdAt => createdAt != default),
+		UpdatedAt = assignmentList.Select(assignment => assignment.UpdatedAt).FirstOrDefault(updatedAt => updatedAt.HasValue)
+	};
+}
+
+private Agent? ResolveAgent(IEnumerable<ProjectAgent> assignments, IReadOnlyDictionary<Guid, Agent> enabledAgentsById)
+{
+	foreach (var assignment in assignments)
+	{
+		if (assignment.Agent != null)
+		{
+			return assignment.Agent;
+		}
+
+		if (enabledAgentsById.TryGetValue(assignment.AgentId, out var agent))
+		{
+			return agent;
+		}
+	}
+
+	return null;
+}
+
+private Provider? ResolveProvider(IEnumerable<ProjectAgent> assignments)
+{
+	return assignments
+		.Select(assignment => assignment.Provider)
+		.FirstOrDefault(provider => provider != null)
+		?? assignments
+			.Select(assignment => Providers.FirstOrDefault(provider => provider.Id == assignment.ProviderId))
+			.FirstOrDefault(provider => provider != null);
+}
+
+private string GetAgentDisplayName(ProjectAgent assignment)
+{
+	return assignment.Agent?.Name ?? "Unknown agent";
+}
+
+private string GetSelectedAgentName()
+{
+	return GetAgentDisplayName(SelectedAgent ?? new ProjectAgent());
+}
+
+private string GetGoalPromptLabel()
+{
+	return CanUseAgentInstructionsAsGoalPrompt()
+		? "Goal Prompt (Optional)"
+		: "Goal Prompt";
+}
+
+private string GetGoalPromptPlaceholder()
+{
+	return CanUseAgentInstructionsAsGoalPrompt()
+		? "Leave blank to reuse this agent's instructions, or add job-specific direction..."
+		: "Describe what you want the AI agent to accomplish...";
+}
+
+private string? GetGoalPromptHelpText()
+{
+	if (CanUseAgentInstructionsAsGoalPrompt())
+	{
+		return "Leave this blank to use the selected agent's instructions as the job goal prompt.";
+	}
+
+	if (SelectedAgent == null)
+	{
+		return null;
+	}
+
+	var instructions = SelectedAgent.Agent?.Responsibilities?.Trim();
+	return string.IsNullOrWhiteSpace(instructions)
+		? "This agent does not have saved instructions, so enter a goal prompt for this job."
+		: $"This agent's instructions are longer than the {ValidationLimits.JobTemplatePromptMaxLength}-character goal prompt limit, so enter a shorter job prompt here.";
+}
+
+private bool CanUseAgentInstructionsAsGoalPrompt()
+{
+	return GetSelectedAgentGoalPromptFallback() != null;
+}
+
+private string GetEffectiveGoalPrompt()
+{
+	return string.IsNullOrWhiteSpace(FormModel.GoalPrompt)
+		? GetSelectedAgentGoalPromptFallback() ?? string.Empty
+		: FormModel.GoalPrompt.Trim();
+}
+
+private string? GetSelectedAgentGoalPromptFallback()
+{
+	var instructions = SelectedAgent?.Agent?.Responsibilities?.Trim();
+	if (string.IsNullOrWhiteSpace(instructions))
+	{
+		return null;
+	}
+
+	return instructions.Length <= ValidationLimits.JobTemplatePromptMaxLength
+		? instructions
+		: null;
 }
 
 private string GetSelectedAgentProviderDisplayText()

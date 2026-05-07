@@ -38,24 +38,159 @@
 ============================================ */
 
 /* ============================================
-   1. CSS VARIABLES
+   1. CSS VARIABLES — Design Tokens
+   Palette split across :root, [data-theme="dark"], [data-theme="light"].
+   Dark is the default. Bootstrap's native --bs-* variables are also
+   overridden so form controls, dropdowns, modals pick up the new palette.
 ============================================ */
 :root {
-	--vs-sidebar-width: 240px;
+	/* Layout dimensions */
+	--vs-sidebar-width: 212px;
 	--vs-header-height: 56px;
 	--vs-nav-popout-shadow:
 		0 1.25rem 2.5rem rgba(15, 23, 42, 0.18),
 		0 0.5rem 1rem rgba(15, 23, 42, 0.12);
-	--vs-accent-blue: #58a6ff;
-	--vs-accent-green: #3fb950;
-	--vs-accent-orange: #d29922;
-	--vs-accent-red: #f85149;
-	--vs-accent-purple: #a371f7;
 	--vs-transition: 0.2s ease;
 	--vs-safe-area-top: env(safe-area-inset-top, 0px);
-	--vs-safe-area-bottom: env(safe-area-inset-bottom, 0px);
+	--vs-safe-area-bottom: 0px;
 	--vs-safe-area-left: env(safe-area-inset-left, 0px);
 	--vs-safe-area-right: env(safe-area-inset-right, 0px);
+
+	/* Typography — system stack only (no webfont flicker) */
+	--bs-font-sans-serif:
+		system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial,
+		"Noto Sans", sans-serif;
+	--bs-font-monospace:
+		ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono",
+		monospace;
+
+	/* Accent colors — shared across themes */
+	--bs-primary: #5b7cfa;
+	--bs-primary-rgb: 91, 124, 250;
+	--bs-success: #37c08a;
+	--bs-success-rgb: 55, 192, 138;
+	--bs-warning: #e8b558;
+	--bs-warning-rgb: 232, 181, 88;
+	--bs-danger: #ef6a6a;
+	--bs-danger-rgb: 239, 106, 106;
+	--bs-info: #5ec6d3;
+	--bs-info-rgb: 94, 198, 211;
+
+	/* Status-chip backgrounds (token-style helpers used across components) */
+	--chip-primary-bg: rgba(91, 124, 250, 0.15);
+	--chip-primary-bg-strong: rgba(91, 124, 250, 0.18);
+	--chip-success-bg: rgba(55, 192, 138, 0.15);
+	--chip-warning-bg: rgba(232, 181, 88, 0.15);
+	--chip-danger-bg: rgba(239, 106, 106, 0.15);
+	--chip-info-bg: rgba(94, 198, 211, 0.15);
+	--chip-ai-fg: #c9b8f5;
+	--chip-ai-bg: rgba(164, 137, 245, 0.08);
+	--chip-ai-border: rgba(164, 137, 245, 0.35);
+
+	/* Back-compat aliases for older code (keep until migration sweep) */
+	--vs-accent-blue: var(--bs-primary);
+	--vs-accent-green: var(--bs-success);
+	--vs-accent-orange: var(--bs-warning);
+	--vs-accent-red: var(--bs-danger);
+	--vs-accent-purple: #a78bfa;
+}
+
+/* Dark theme (default when no data-theme is set, or explicitly dark) */
+:root,
+[data-theme="dark"] {
+	--surface-0: #0d1117;
+	--surface-1: #11151c;
+	--surface-2: #161b24;
+	--surface-3: #1d232e;
+	--surface-hover: #1f2631;
+	--line: #242a35;
+	--line-strong: #2e3543;
+	--fg-0: #e7ecf3;
+	--fg-1: #c2c9d4;
+	--fg-2: #8d95a3;
+	--fg-3: #656d7b;
+	--kbd-bg: #161b24;
+	--banner-success-bg: rgba(55, 192, 138, 0.1);
+	--banner-success-border: rgba(55, 192, 138, 0.35);
+	--banner-primary-bg: rgba(91, 124, 250, 0.1);
+	--banner-primary-border: rgba(91, 124, 250, 0.35);
+	--banner-warning-bg: rgba(232, 181, 88, 0.08);
+	--banner-warning-border: rgba(232, 181, 88, 0.3);
+	--banner-danger-bg: rgba(239, 106, 106, 0.08);
+	--banner-danger-border: rgba(239, 106, 106, 0.3);
+	--diff-add: rgba(55, 192, 138, 0.14);
+	--diff-del: rgba(239, 106, 106, 0.12);
+
+	/* Bootstrap overrides — dark */
+	--bs-body-bg: #0d1117;
+	--bs-body-color: #e7ecf3;
+	--bs-body-color-rgb: 231, 236, 243;
+	--bs-border-color: #242a35;
+	--bs-border-color-translucent: rgba(255, 255, 255, 0.08);
+	--bs-secondary-bg: #161b24;
+	--bs-tertiary-bg: #1d232e;
+	--bs-secondary-color: #c2c9d4;
+	--bs-secondary-color-rgb: 194, 201, 212;
+	--bs-tertiary-color: #8d95a3;
+	--bs-emphasis-color: #ffffff;
+	--bs-link-color: #7ea1ff;
+	--bs-link-hover-color: #a4bcff;
+}
+
+/* Light theme */
+[data-theme="light"] {
+	--surface-0: #f7f8fa;
+	--surface-1: #ffffff;
+	--surface-2: #f1f3f7;
+	--surface-3: #e8ecf2;
+	--surface-hover: #eef1f6;
+	--line: #e3e6ec;
+	--line-strong: #cfd4dd;
+	--fg-0: #1c212b;
+	--fg-1: #3b4252;
+	--fg-2: #6b7384;
+	--fg-3: #8a93a3;
+	--kbd-bg: #ffffff;
+	--banner-success-bg: rgba(55, 160, 110, 0.08);
+	--banner-success-border: rgba(55, 160, 110, 0.35);
+	--banner-primary-bg: rgba(74, 106, 217, 0.08);
+	--banner-primary-border: rgba(74, 106, 217, 0.35);
+	--banner-warning-bg: rgba(201, 144, 40, 0.08);
+	--banner-warning-border: rgba(201, 144, 40, 0.3);
+	--banner-danger-bg: rgba(215, 78, 78, 0.08);
+	--banner-danger-border: rgba(215, 78, 78, 0.3);
+	--diff-add: rgba(55, 160, 110, 0.1);
+	--diff-del: rgba(215, 78, 78, 0.1);
+
+	/* Accent overrides for light (slightly darker for AA contrast) */
+	--bs-primary: #4a6ad9;
+	--bs-primary-rgb: 74, 106, 217;
+	--bs-success: #2a9e6f;
+	--bs-success-rgb: 42, 158, 111;
+	--bs-warning: #c99028;
+	--bs-warning-rgb: 201, 144, 40;
+	--bs-danger: #d74e4e;
+	--bs-danger-rgb: 215, 78, 78;
+	--bs-info: #3ca7b5;
+
+	/* Bootstrap overrides — light */
+	--bs-body-bg: #f7f8fa;
+	--bs-body-color: #1c212b;
+	--bs-body-color-rgb: 28, 33, 43;
+	--bs-border-color: #e3e6ec;
+	--bs-border-color-translucent: rgba(0, 0, 0, 0.08);
+	--bs-secondary-bg: #eef1f5;
+	--bs-tertiary-bg: #f1f3f7;
+	--bs-secondary-color: #3b4252;
+	--bs-secondary-color-rgb: 59, 66, 82;
+	--bs-tertiary-color: #6b7384;
+	--bs-emphasis-color: #0b1020;
+	--bs-link-color: #4a6ad9;
+	--bs-link-hover-color: #3051c2;
+
+	--chip-ai-fg: #6c52c2;
+	--chip-ai-bg: rgba(108, 82, 194, 0.08);
+	--chip-ai-border: rgba(108, 82, 194, 0.35);
 }
 
 /* ============================================
@@ -91,6 +226,26 @@
 	-webkit-line-clamp: 2;
 	-webkit-box-orient: vertical;
 	overflow: hidden;
+}
+.fs-7 {
+	font-size: 0.7rem;
+}
+.fs-8 {
+	font-size: 0.65rem;
+}
+.text-eyebrow {
+	font-size: 0.7rem;
+	letter-spacing: 0.05em;
+}
+.textarea-editable {
+	min-height: 150px;
+	resize: vertical;
+}
+.progress-xs {
+	height: 4px;
+}
+.progress-sm {
+	height: 6px;
 }
 
 /* Prevent textareas from expanding too large (50-row max ~75rem) */
@@ -231,13 +386,26 @@ body:has(.app-layout) {
 	left: 0;
 	bottom: 0;
 	width: var(--vs-sidebar-width);
-	background: var(--bs-secondary-bg);
-	border-right: 1px solid var(--bs-border-color);
+	background: var(--surface-1);
+	border-right: 1px solid var(--line);
 	z-index: 999;
 	transform: translateX(-100%);
 	transition: transform var(--vs-transition);
 	padding-bottom: var(--vs-safe-area-bottom);
 	padding-left: var(--vs-safe-area-left);
+}
+.app-sidebar::after {
+	content: "";
+	position: absolute;
+	left: 0;
+	right: 0;
+	bottom: calc(-1 * var(--vs-safe-area-bottom));
+	height: var(--vs-safe-area-bottom);
+	background: inherit;
+}
+.app-sidebar::after,
+.sidebar-overlay::after {
+	display: none;
 }
 .app-sidebar.open {
 	transform: translateX(0);
@@ -257,11 +425,19 @@ body:has(.app-layout) {
 	background: rgba(0, 0, 0, 0.5);
 	z-index: 998;
 }
+.sidebar-overlay::after {
+	content: "";
+	position: absolute;
+	left: 0;
+	right: 0;
+	bottom: calc(-1 * var(--vs-safe-area-bottom));
+	height: var(--vs-safe-area-bottom);
+	background: inherit;
+}
 
 /* Main area — markup uses flex-grow-1 */
 .app-main {
 	min-height: 0;
-	padding-bottom: var(--vs-safe-area-bottom);
 	-webkit-overflow-scrolling: touch;
 	overscroll-behavior-y: contain;
 }
@@ -307,21 +483,21 @@ body:has(.app-layout) {
 
 	.app-header .mobile-header-dropdown > .dropdown-menu {
 		position: fixed;
-		top: calc(var(--vs-header-height) + var(--vs-safe-area-top) + 0.5rem) !important;
+		top: calc(
+			var(--vs-header-height) + var(--vs-safe-area-top) + 0.5rem
+		) !important;
 		left: 50% !important;
 		right: auto !important;
 		width: min(
 			24rem,
 			calc(
-				100vw - 1.5rem - var(--vs-safe-area-left) -
-					var(--vs-safe-area-right)
+				100vw - 1.5rem - var(--vs-safe-area-left) - var(--vs-safe-area-right)
 			)
 		);
 		max-width: min(
 			24rem,
 			calc(
-				100vw - 1.5rem - var(--vs-safe-area-left) -
-					var(--vs-safe-area-right)
+				100vw - 1.5rem - var(--vs-safe-area-left) - var(--vs-safe-area-right)
 			)
 		);
 		margin-top: 0 !important;
@@ -361,28 +537,10 @@ body:has(.app-layout) {
 }
 
 /* ============================================
-   4. NAVIGATION (hover/active states only)
-   Markup uses d-flex align-items-center gap-3 rounded fw-medium text-decoration-none
+   4. NAVIGATION
+   New sidebar uses the .vs-side-nav component class (§18).
+   Keep shadow helper for dropdowns only.
 ============================================ */
-.app-sidebar .nav-item {
-	padding: 0.5rem 1rem;
-	color: var(--bs-secondary-color);
-	transition: all var(--vs-transition);
-}
-.app-sidebar .nav-item i {
-	font-size: 1.125rem;
-	width: 20px;
-	text-align: center;
-}
-.app-sidebar .nav-item:hover {
-	background: var(--bs-tertiary-bg);
-	color: var(--bs-emphasis-color);
-}
-.app-sidebar .nav-item.active {
-	background: rgba(88, 166, 255, 0.15);
-	color: var(--vs-accent-blue);
-}
-
 .vs-nav-dropdown-menu {
 	box-shadow: var(--vs-nav-popout-shadow) !important;
 }
@@ -402,6 +560,12 @@ body:has(.app-layout) {
 }
 .hover-underline:hover {
 	text-decoration: underline !important;
+}
+details[open] > summary .details-chevron {
+	transform: rotate(90deg);
+}
+.details-chevron {
+	transition: transform var(--vs-transition);
 }
 
 /* ============================================
@@ -808,8 +972,7 @@ body.vs-modal-open .app-main {
 		)
 	);
 	max-height: calc(
-		100dvh - var(--vs-header-height) - env(safe-area-inset-top, 0px) -
-			env(safe-area-inset-bottom, 0px) - 16px
+		100dvh - var(--vs-header-height) - env(safe-area-inset-top, 0px) - 16px
 	);
 	animation: notificationSlideIn 0.2s ease-out;
 	transform: translateX(-50%);
@@ -1358,4 +1521,254 @@ body.vs-modal-open .app-main {
 }
 #reconnect-reload-btn {
 	min-width: 140px;
+}
+
+
+/* ============================================
+   18. DESIGN SYSTEM — minimal extensions to Bootstrap
+   Everything below is ONLY for things Bootstrap 5.3 cannot express:
+   gradients, specific animations, tiny single-property utilities,
+   or layout primitives Bootstrap lacks (auto-fit grid, timeline).
+   Components should use Bootstrap's `card`, `nav nav-tabs`,
+   `btn`/`btn-group`, `badge text-bg-*`, `alert alert-*`, `form-control`,
+   `input-group`, `progress`, etc. directly — do not wrap them in
+   additional custom classes.
+============================================ */
+
+/* ── Single-property utilities Bootstrap doesn't provide ── */
+
+/* Section eyebrow — 11px uppercase tracking-wide label */
+.text-eyebrow {
+	font-size: 0.6875rem;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+	color: var(--fg-2);
+}
+
+/* Font-family switches (Bootstrap only has .font-monospace) */
+.font-mono {
+	font-family: var(--bs-font-monospace);
+}
+.font-sans {
+	font-family: var(--bs-font-sans-serif);
+}
+
+/* Dashed border style (Bootstrap only has solid by default) */
+.border-dashed { border-style: dashed !important; }
+
+/* Min-height helper — Bootstrap's min-h-* are percentages only */
+.min-height-0 { min-height: 0; }
+
+/* ── Brand / project marks (gradients — no Bootstrap equivalent) ── */
+
+.app-brand-mark {
+	background: conic-gradient(from 200deg at 50% 50%, #6b8afd, #a78bfa, #5ec6d3, #6b8afd);
+	box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+.app-project-mark {
+	background: linear-gradient(135deg, #4c7fe3, #2d55a8);
+	color: #fff;
+	font-family: var(--bs-font-monospace);
+	font-weight: 700;
+	letter-spacing: 0.3px;
+	display: inline-grid;
+	place-items: center;
+	flex: none;
+}
+
+/* Mark sizes — use one of these with .app-brand-mark or .app-project-mark. */
+.app-mark-xs { width: 20px; height: 20px; border-radius: 5px; font-size: 10px; }
+.app-mark-sm { width: 22px; height: 22px; border-radius: 6px; font-size: 11px; }
+.app-mark-md { width: 32px; height: 32px; border-radius: 8px; font-size: 12.5px; }
+.app-mark-lg { width: 40px; height: 40px; border-radius: 10px; font-size: 14px; }
+
+/* Image thumbnail sizes used in attachment chips */
+.attachment-thumb { width: 2.25rem; height: 2.25rem; }
+.attachment-thumb-sm { width: 1.5rem; height: 1.5rem; }
+.brand-icon { width: 2rem; height: 2rem; }
+
+/* ── Live pulsing dot (animation — no Bootstrap equivalent) ── */
+.live-dot {
+	display: inline-block;
+	width: 6px;
+	height: 6px;
+	border-radius: 50%;
+	background: var(--bs-success);
+	box-shadow: 0 0 0 3px rgba(var(--bs-success-rgb), 0.2);
+	animation: pulse-live 1.5s ease-in-out infinite;
+	flex: none;
+}
+
+/* ── Indeterminate progress bar (augments Bootstrap's .progress with a built-in animation) ── */
+.progress-indeterminate .progress-bar {
+	width: 35%;
+	animation: vs-indeterminate 1.8s ease-in-out infinite;
+}
+@keyframes vs-indeterminate {
+	0% { margin-left: -35%; }
+	100% { margin-left: 100%; }
+}
+
+/* ── Job lifecycle timeline (no Bootstrap equivalent) ── */
+.vs-timeline {
+	display: flex;
+	align-items: center;
+	gap: 0;
+	flex-wrap: wrap;
+}
+.tl-step {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	padding: 2px 0;
+}
+.tl-dot {
+	width: 22px;
+	height: 22px;
+	border-radius: 50%;
+	display: inline-grid;
+	place-items: center;
+	font-size: 11px;
+	background: var(--bs-tertiary-bg);
+	color: var(--bs-tertiary-color);
+	border: 1px solid var(--bs-border-color);
+	flex: none;
+}
+.tl-step.done .tl-dot {
+	background: rgba(var(--bs-success-rgb), 0.15);
+	color: var(--bs-success);
+	border-color: rgba(var(--bs-success-rgb), 0.35);
+}
+.tl-step.current .tl-dot {
+	background: rgba(var(--bs-primary-rgb), 0.18);
+	color: var(--bs-primary);
+	border-color: rgba(var(--bs-primary-rgb), 0.35);
+	animation: pulse-live 1.5s ease-in-out infinite;
+}
+.tl-step.failed .tl-dot {
+	background: rgba(var(--bs-danger-rgb), 0.15);
+	color: var(--bs-danger);
+	border-color: rgba(var(--bs-danger-rgb), 0.35);
+}
+.tl-txt {
+	display: inline-flex;
+	flex-direction: column;
+	gap: 1px;
+}
+.tl-name {
+	font-size: 0.78125rem;
+	font-weight: 500;
+	color: var(--fg-1);
+	line-height: 1.1;
+}
+.tl-step.done .tl-name,
+.tl-step.current .tl-name {
+	color: var(--fg-0);
+}
+.tl-sub {
+	font-size: 0.6875rem;
+	color: var(--fg-3);
+	line-height: 1.1;
+}
+.tl-conn {
+	flex: 1 1 18px;
+	min-width: 18px;
+	height: 1px;
+	background: var(--bs-border-color);
+	margin: 0 8px;
+}
+.tl-conn.done {
+	background: rgba(var(--bs-success-rgb), 0.4);
+}
+
+/* ── Auto-fit grid (no Bootstrap equivalent for auto-fit minmax) ── */
+.vs-auto-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+	gap: 0.75rem;
+}
+.vs-auto-grid.sm { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+.vs-auto-grid.lg { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+
+/* ── Change-letter status colors (diff viewer) ── */
+.change-st {
+	font-family: var(--bs-font-monospace);
+	font-weight: 600;
+	font-size: 0.6875rem;
+	width: 18px;
+	text-align: center;
+}
+.change-st.m { color: var(--bs-warning); }
+.change-st.a { color: var(--bs-success); }
+.change-st.d { color: var(--bs-danger); }
+
+/* ── Theme toggle (compact sun/moon segmented control — specialized control) ── */
+.theme-toggle {
+	display: inline-flex;
+	background: var(--bs-secondary-bg);
+	border: 1px solid var(--bs-border-color);
+	border-radius: 0.5rem;
+	padding: 2px;
+}
+.theme-toggle button {
+	background: transparent;
+	border: 0;
+	color: var(--bs-secondary-color);
+	padding: 4px 8px;
+	border-radius: 0.375rem;
+	font-size: 0.75rem;
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	cursor: pointer;
+}
+.theme-toggle button.active {
+	background: var(--bs-body-bg);
+	color: var(--bs-emphasis-color);
+	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+/* ── Sidebar nav — minor hover/active tweaks only; base layout is Bootstrap .nav flex-column ── */
+.vs-side-nav .nav-item,
+.vs-side-nav a,
+.vs-side-nav .nav-btn {
+	display: flex;
+	align-items: center;
+	gap: 0.625rem;
+	padding: 0.4375rem 0.625rem;
+	border-radius: 0.5rem;
+	color: var(--fg-2);
+	font-size: 0.8125rem;
+	text-decoration: none;
+	border: 0;
+	background: transparent;
+	width: 100%;
+	text-align: left;
+}
+.vs-side-nav a > i,
+.vs-side-nav .nav-btn > i,
+.vs-side-nav .nav-item > i {
+	color: var(--fg-3);
+	font-size: 0.875rem;
+	width: 16px;
+	text-align: center;
+	flex: none;
+}
+.vs-side-nav a:hover,
+.vs-side-nav .nav-btn:hover,
+.vs-side-nav .nav-item:hover {
+	background: var(--bs-tertiary-bg);
+	color: var(--bs-emphasis-color);
+}
+.vs-side-nav a.active,
+.vs-side-nav .nav-btn.active,
+.vs-side-nav .nav-item.active {
+	background: rgba(var(--bs-primary-rgb), 0.15);
+	color: var(--bs-emphasis-color);
+}
+.vs-side-nav a.active > i,
+.vs-side-nav .nav-btn.active > i,
+.vs-side-nav .nav-item.active > i {
+	color: var(--bs-primary);
 }

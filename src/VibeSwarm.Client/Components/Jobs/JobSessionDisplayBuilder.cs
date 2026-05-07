@@ -1,6 +1,7 @@
 using System.Text.Json;
 using VibeSwarm.Client.Models;
 using VibeSwarm.Shared.Data;
+using VibeSwarm.Shared.Services;
 
 namespace VibeSwarm.Client.Components.Jobs;
 
@@ -43,20 +44,20 @@ internal static class JobSessionDisplayBuilder
 		{
 			if (liveTranscript.Count > 0)
 			{
-				return MergeMessages(liveTranscript, supplementalMessages);
+				return SanitizeDisplayedMessages(MergeMessages(liveTranscript, supplementalMessages));
 			}
 
 			if (persisted.Count > 0)
 			{
-				return MergeMessages(persisted, supplementalMessages);
+				return SanitizeDisplayedMessages(MergeMessages(persisted, supplementalMessages));
 			}
 
-			return supplementalMessages;
+			return SanitizeDisplayedMessages(supplementalMessages);
 		}
 
 		if (persisted.Count == 0)
 		{
-			return MergeMessages(liveTranscript, supplementalMessages);
+			return SanitizeDisplayedMessages(MergeMessages(liveTranscript, supplementalMessages));
 		}
 
 		var persistedHasStructuredMessages = HasStructuredMessages(persisted);
@@ -64,15 +65,15 @@ internal static class JobSessionDisplayBuilder
 
 		if (!persistedHasStructuredMessages && liveTranscript.Count > persisted.Count)
 		{
-			return MergeMessages(liveTranscript, supplementalMessages);
+			return SanitizeDisplayedMessages(MergeMessages(liveTranscript, supplementalMessages));
 		}
 
 		if (!persistedHasStructuredMessages && liveHasStructuredMessages && liveTranscript.Count >= persisted.Count)
 		{
-			return MergeMessages(liveTranscript, supplementalMessages);
+			return SanitizeDisplayedMessages(MergeMessages(liveTranscript, supplementalMessages));
 		}
 
-		return MergeMessages(persisted, supplementalMessages);
+		return SanitizeDisplayedMessages(MergeMessages(persisted, supplementalMessages));
 	}
 
 	private static List<JobMessage> NormalizePersistedMessages(IEnumerable<JobMessage>? persistedMessages)
@@ -470,6 +471,51 @@ internal static class JobSessionDisplayBuilder
 		}
 
 		return deduplicatedMessages;
+	}
+
+	private static IReadOnlyList<JobMessage> SanitizeDisplayedMessages(IReadOnlyCollection<JobMessage> messages)
+	{
+		var sanitizedMessages = new List<JobMessage>(messages.Count);
+
+		foreach (var message in messages)
+		{
+			if (message.Role is not MessageRole.Assistant and not MessageRole.System)
+			{
+				sanitizedMessages.Add(message);
+				continue;
+			}
+
+			var sanitizedContent = JobSummaryGenerator.StripCommitSummary(message.Content);
+			if (string.IsNullOrWhiteSpace(sanitizedContent))
+			{
+				continue;
+			}
+
+			if (string.Equals(sanitizedContent, message.Content, StringComparison.Ordinal))
+			{
+				sanitizedMessages.Add(message);
+				continue;
+			}
+
+			sanitizedMessages.Add(new JobMessage
+			{
+				Id = message.Id,
+				JobId = message.JobId,
+				Job = message.Job,
+				Role = message.Role,
+				Content = sanitizedContent,
+				CreatedAt = message.CreatedAt,
+				ToolName = message.ToolName,
+				ToolInput = message.ToolInput,
+				ToolOutput = message.ToolOutput,
+				TokenCount = message.TokenCount,
+				Source = message.Source,
+				Level = message.Level,
+				DisplayVariant = message.DisplayVariant
+			});
+		}
+
+		return sanitizedMessages;
 	}
 
 	private static bool TryParseToolUse(string content, out string toolName, out string? toolInput)

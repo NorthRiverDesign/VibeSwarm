@@ -20,6 +20,8 @@ else if (Job == null)
 }
 else
 {
+    <WakeLockManager IsActive="@IsJobActive" />
+
     @* Breadcrumb Navigation *@
     <Breadcrumb Items="@_breadcrumbItems" />
 
@@ -49,29 +51,12 @@ else
 					   PlaywrightEnabled="@Job.PlaywrightEnabled" EnvironmentCount="@Job.EnvironmentSnapshots.Count"
 					   EnvironmentTooltip="@BuildEnvironmentTooltip()" />
 
-		@if (ShowJobOutcomeSummary)
-		{
-			<JobOutcomeSummaryCard Status="@Job.Status"
-								   ChangedFilesCount="@Job.ChangedFilesCount"
-								   BuildVerified="@Job.BuildVerified"
-								   GitCommitHash="@Job.GitCommitHash"
-								   PullRequestUrl="@Job.PullRequestUrl"
-								   PullRequestNumber="@Job.PullRequestNumber"
-								   BuildOutput="@Job.BuildOutput"
-								   BuildVerificationEnabled="@(Job.Project?.BuildVerificationEnabled ?? false)"
-								   BuildCommand="@Job.Project?.BuildCommand"
-								   TestCommand="@Job.Project?.TestCommand"
-								   DeliveryMode="@Job.GitChangeDeliveryMode"
-								   BranchName="@_branchName"
-								   TargetBranch="@EffectiveTargetBranch"
-								   MergedAt="@Job.MergedAt"
-								   IsPushed="@_changesPushed"
-								   SessionSummary="@Job.SessionSummary"
-								   ReviewChangesHref="@ReviewChangesSectionHref"
-								   DeliveryHref="@(ShowDeliveryLink ? "#job-delivery-section" : null)"
-								   ReviewTranscriptHref="#job-messages-section"
-								   VerificationOutputHref="#job-verification-output" />
-		}
+	@if (ShowChangeSets)
+	{
+		<JobChangeSetsCard ChangeSets="@_changeSets" />
+	}
+
+	<JobStatusSection Job="@Job" IsPushed="@_changesPushed" BranchName="@_branchName" />
 
     @* Main Content - Column Layout *@
     <div class="row g-3 g-lg-4">
@@ -221,7 +206,9 @@ else
 	private Timer? _refreshTimer;
 	private DateTime _pageLoadTime = DateTime.UtcNow;
 	private Guid? _loadedJobId;
-	private bool ShowJobOutcomeSummary => Job != null && Job.Status is JobStatus.Failed or JobStatus.Cancelled or JobStatus.Stalled;
+	private bool ShowJobOutcomeSummary => Job != null && Job.Status is JobStatus.Completed or JobStatus.Failed or JobStatus.Cancelled or JobStatus.Stalled;
+	private List<JobChangeSet> _changeSets = new();
+	private bool ShowChangeSets => _changeSets.Count > 0;
 
     // Toggle states for collapsible sections
     private bool _showGitDiff = true;

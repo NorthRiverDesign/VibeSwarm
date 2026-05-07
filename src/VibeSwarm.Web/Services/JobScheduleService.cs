@@ -196,27 +196,23 @@ public class JobScheduleService : IJobScheduleService
 		{
 			if (!schedule.AgentId.HasValue || schedule.AgentId == Guid.Empty)
 			{
-				throw new InvalidOperationException("The selected agent is not assigned to this project.");
+				throw new InvalidOperationException("An agent is required.");
 			}
 
-			var assignment = await _dbContext.ProjectAgents
-				.Include(projectAgent => projectAgent.Agent)
-				.Include(projectAgent => projectAgent.Provider)
-				.FirstOrDefaultAsync(projectAgent =>
-					projectAgent.ProjectId == schedule.ProjectId &&
-					projectAgent.AgentId == schedule.AgentId.Value,
-					cancellationToken);
-			if (assignment == null || !assignment.IsEnabled || assignment.Agent == null || !assignment.Agent.IsEnabled)
+			var agent = await _dbContext.Agents
+				.Include(a => a.DefaultProvider)
+				.FirstOrDefaultAsync(a => a.Id == schedule.AgentId.Value, cancellationToken);
+			if (agent == null || !agent.IsEnabled)
 			{
-				throw new InvalidOperationException("The selected agent is not assigned to this project.");
+				throw new InvalidOperationException("The selected agent does not exist or is disabled.");
 			}
 
-			if (assignment.Provider == null || !assignment.Provider.IsEnabled)
+			if (!agent.DefaultProviderId.HasValue || agent.DefaultProvider == null || !agent.DefaultProvider.IsEnabled)
 			{
-				throw new InvalidOperationException("The selected agent does not have an enabled provider assignment.");
+				throw new InvalidOperationException("The selected agent does not have an enabled default provider.");
 			}
 
-			schedule.ProviderId = assignment.ProviderId;
+			schedule.ProviderId = agent.DefaultProviderId.Value;
 		}
 
 		if (string.IsNullOrWhiteSpace(schedule.ModelId))

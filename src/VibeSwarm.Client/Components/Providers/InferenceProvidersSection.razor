@@ -2,63 +2,93 @@
 {
 	<LoadingSpinner />
 }
-else if (Providers.Count == 0)
-{
-	<EmptyState Icon="hdd-network" Title="No inference providers"
-				Message="Set up Ollama, Grok, or another inference provider for AI tasks like idea generation and commit messages." />
-}
 else
 {
-	<div class="list-group mb-4">
-		@foreach (var provider in Providers)
-		{
-			var isHealthy = HealthStatus.GetValueOrDefault(provider.Id);
-			var healthChecked = HealthChecked.Contains(provider.Id);
-
-			<div class="list-group-item d-flex flex-column flex-md-row align-items-md-start gap-2 gap-md-3 p-3 hover-bg-tertiary">
-				<div class="flex-grow-1 min-width-0">
-					<div class="d-flex align-items-center gap-2 flex-wrap">
-						<span class="fw-semibold">
-							<i class="bi @GetProviderIcon(provider.ProviderType) me-1"></i>@provider.Name
-						</span>
-						<span class="badge bg-body-tertiary text-body-secondary">@provider.ProviderType</span>
-						@if (isHealthy)
-						{
-							<span class="badge bg-success-subtle text-success-emphasis">
-								<i class="bi bi-check-circle me-1"></i>Connected
-							</span>
-						}
-						else if (healthChecked)
-						{
-							<span class="badge bg-danger-subtle text-danger-emphasis">
-								<i class="bi bi-x-circle me-1"></i>Disconnected
-							</span>
-						}
-						@if (!provider.IsEnabled)
-						{
-							<span class="badge bg-warning-subtle text-warning-emphasis">Disabled</span>
-						}
-					</div>
-					<div class="small text-body-secondary mt-1 font-monospace text-truncate">@provider.Endpoint</div>
-				</div>
-				<div class="d-flex flex-wrap gap-2 flex-shrink-0 align-items-center">
-					<ActionButton Icon="pencil" Text="Edit" Size="ActionButton.ButtonSize.Small" HideTextOnMobile="true"
-								  OnClick="@(() => OnEditProvider.InvokeAsync(provider))" />
-					<ActionButton Icon="trash" Text="Delete" Size="ActionButton.ButtonSize.Small"
-								  Style="ActionButton.ButtonStyle.Danger" HideTextOnMobile="true"
-								  OnClick="@(() => OnDeleteProvider.InvokeAsync(provider))" />
-				</div>
-			</div>
-		}
+	<div class="overflow-x-auto overflow-y-hidden pb-1 mb-3">
+		<TabStrip Class="flex-nowrap overscroll-contain min-width-0">
+			@foreach (var providerType in ProviderTypes)
+			{
+				<TabItem Text="@providerType.ToString()"
+						 Icon="@GetProviderTabIcon(providerType)"
+						 Class="text-nowrap"
+						 IsActive="@(ActiveProviderType == providerType)"
+						 BadgeCount="@GetProviderCount(providerType)"
+						 BadgeClass="bg-body-secondary text-body-secondary-emphasis"
+						 OnClick="@(() => ActiveProviderTypeChanged.InvokeAsync(providerType))" />
+			}
+		</TabStrip>
 	</div>
+
+	@if (ActiveProviders.Count == 0)
+	{
+		<EmptyState Icon="@GetProviderTabIcon(ActiveProviderType)"
+					Title="@($"No {ActiveProviderType} connections")"
+					Message="@($"Add a {ActiveProviderType} connection to start testing inference.")" />
+	}
+	else
+	{
+		<div class="list-group mb-4">
+			@foreach (var provider in ActiveProviders)
+			{
+				var isHealthy = HealthStatus.GetValueOrDefault(provider.Id);
+				var healthChecked = HealthChecked.Contains(provider.Id);
+
+				<div class="list-group-item p-3 hover-bg-tertiary">
+					<div class="d-flex flex-column flex-md-row align-items-md-start gap-2 gap-md-3">
+						<div class="flex-grow-1 min-width-0">
+							<div class="d-flex align-items-center gap-2 flex-wrap">
+								<span class="fw-semibold">
+									<i class="bi @GetProviderBadgeIcon(provider.ProviderType) me-1"></i>@provider.Name
+								</span>
+								<span class="badge bg-body-tertiary text-body-secondary">@provider.ProviderType</span>
+								@if (isHealthy)
+								{
+									<span class="badge bg-success-subtle text-success-emphasis">
+										<i class="bi bi-check-circle me-1"></i>Connected
+									</span>
+								}
+								else if (healthChecked)
+								{
+									<span class="badge bg-danger-subtle text-danger-emphasis">
+										<i class="bi bi-x-circle me-1"></i>Disconnected
+									</span>
+								}
+								@if (!provider.IsEnabled)
+								{
+									<span class="badge bg-warning-subtle text-warning-emphasis">Disabled</span>
+								}
+							</div>
+							<div class="small text-body-secondary mt-1 font-monospace text-truncate">@provider.Endpoint</div>
+						</div>
+						<div class="d-flex flex-wrap gap-2 flex-shrink-0 align-items-center">
+							<ActionButton Icon="pencil" Text="Edit" Size="ActionButton.ButtonSize.Small" HideTextOnMobile="true"
+										  OnClick="@(() => OnEditProvider.InvokeAsync(provider))" />
+							<ActionButton Icon="trash" Text="Delete" Size="ActionButton.ButtonSize.Small"
+										  Style="ActionButton.ButtonStyle.Danger" HideTextOnMobile="true"
+										  OnClick="@(() => OnDeleteProvider.InvokeAsync(provider))" />
+						</div>
+					</div>
+					<InferenceTestSection @key="provider.Id" Provider="provider" />
+				</div>
+			}
+		</div>
+	}
 }
 
 @code {
+	private static readonly IReadOnlyList<InferenceProviderType> ProviderTypes = Enum.GetValues<InferenceProviderType>();
+
 	[Parameter]
 	public bool IsLoading { get; set; }
 
 	[Parameter, EditorRequired]
 	public IReadOnlyList<InferenceProvider> Providers { get; set; } = [];
+
+	[Parameter]
+	public InferenceProviderType ActiveProviderType { get; set; }
+
+	[Parameter]
+	public EventCallback<InferenceProviderType> ActiveProviderTypeChanged { get; set; }
 
 	[Parameter]
 	public IReadOnlyDictionary<Guid, bool> HealthStatus { get; set; } = new Dictionary<Guid, bool>();
@@ -72,9 +102,24 @@ else
 	[Parameter]
 	public EventCallback<InferenceProvider> OnDeleteProvider { get; set; }
 
-	private static string GetProviderIcon(InferenceProviderType type) => type switch
+	private IReadOnlyList<InferenceProvider> ActiveProviders => Providers
+		.Where(provider => provider.ProviderType == ActiveProviderType)
+		.ToList();
+
+	private int GetProviderCount(InferenceProviderType type)
+	{
+		return Providers.Count(provider => provider.ProviderType == type);
+	}
+
+	private static string GetProviderBadgeIcon(InferenceProviderType type) => type switch
 	{
 		InferenceProviderType.Grok => "bi-cloud",
 		_ => "bi-hdd-network"
+	};
+
+	private static string GetProviderTabIcon(InferenceProviderType type) => type switch
+	{
+		InferenceProviderType.Grok => "cloud",
+		_ => "hdd-network"
 	};
 }

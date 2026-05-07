@@ -42,6 +42,8 @@ public class CopilotSdkProvider : SdkProviderBase
 
 	public override ProviderType Type => ProviderType.Copilot;
 
+	internal static TimeSpan DefaultPromptTimeout => JobCompletionCriteria.DefaultStallTimeoutValue;
+
 	public CopilotSdkProvider(Provider config) : base(config) { }
 
 	internal static IReadOnlyList<string> GetFallbackAvailableModels() => FallbackAvailableModels;
@@ -350,7 +352,7 @@ public class CopilotSdkProvider : SdkProviderBase
 			await session.SendAsync(new MessageOptions { Prompt = prompt });
 
 			using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-			cts.CancelAfter(TimeSpan.FromMinutes(10));
+			cts.CancelAfter(DefaultPromptTimeout);
 			using var reg = cts.Token.Register(() => done.TrySetCanceled());
 
 			await done.Task;
@@ -479,7 +481,8 @@ public class CopilotSdkProvider : SdkProviderBase
 				progress?.Report(new ExecutionProgress
 				{
 					CurrentMessage = $"Connected. Session: {session.SessionId}",
-					IsStreaming = false
+					IsStreaming = false,
+					SessionId = session.SessionId
 				});
 
 				// Subscribe to all session events

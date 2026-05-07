@@ -1,4 +1,5 @@
 using Bunit;
+using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.DependencyInjection;
 using VibeSwarm.Client.Components.Jobs;
 using VibeSwarm.Client.Services;
@@ -17,6 +18,8 @@ public sealed class CreateJobModalTests
 		using var context = new BunitContext();
 		context.JSInterop.SetupVoid("eval", "document.body.classList.add('vs-modal-open')");
 		context.JSInterop.SetupVoid("eval", "document.body.classList.remove('vs-modal-open')");
+		context.Services.AddSingleton<IProjectService>(new FakeProjectService([]));
+		context.Services.AddSingleton<IAgentService>(new FakeAgentService([]));
 		context.Services.AddSingleton<IJobTemplateService>(new FakeJobTemplateService());
 		context.Services.AddSingleton<NotificationService>();
 
@@ -55,6 +58,7 @@ public sealed class CreateJobModalTests
 		using var context = new BunitContext();
 		context.JSInterop.SetupVoid("eval", "document.body.classList.add('vs-modal-open')");
 		context.JSInterop.SetupVoid("eval", "document.body.classList.remove('vs-modal-open')");
+		context.Services.AddSingleton<IProjectService>(new FakeProjectService([]));
 		context.Services.AddSingleton<IJobTemplateService>(new FakeJobTemplateService());
 		context.Services.AddSingleton<NotificationService>();
 
@@ -71,29 +75,21 @@ public sealed class CreateJobModalTests
 			Name = "Security Reviewer",
 			Description = "Reviews risky auth and secrets changes.",
 			Responsibilities = "Inspect security-sensitive code paths before shipping.",
+			IsEnabled = true,
+			DefaultProviderId = provider.Id,
+			DefaultProvider = provider,
+			DefaultModelId = "gpt-5.4",
+			DefaultReasoningEffort = "high",
 			DefaultCycleMode = CycleMode.Autonomous,
 			DefaultCycleSessionMode = CycleSessionMode.ContinueSession,
 			DefaultMaxCycles = 4,
 			DefaultCycleReviewPrompt = "Review the last cycle and continue only if work remains."
 		};
+		context.Services.AddSingleton<IAgentService>(new FakeAgentService([agent]));
 		var project = new Project
 		{
 			Id = Guid.NewGuid(),
-			Name = "VibeSwarm",
-			AgentAssignments =
-			[
-				new ProjectAgent
-				{
-					ProjectId = Guid.NewGuid(),
-					AgentId = agent.Id,
-					Agent = agent,
-					ProviderId = provider.Id,
-					Provider = provider,
-					PreferredModelId = "gpt-5.4",
-					PreferredReasoningEffort = "high",
-					IsEnabled = true
-				}
-			]
+			Name = "VibeSwarm"
 		};
 
 		var cut = context.Render<CreateJobModal>(parameters => parameters
@@ -118,6 +114,172 @@ public sealed class CreateJobModalTests
 		Assert.Empty(cut.FindAll("#provider"));
 	}
 
+	[Fact]
+	public void CreateJobModal_SelectedAgentWithInstructions_AllowsBlankGoalPromptAndSubmitsFallback()
+	{
+		using var context = new BunitContext();
+		context.JSInterop.SetupVoid("eval", "document.body.classList.add('vs-modal-open')");
+		context.JSInterop.SetupVoid("eval", "document.body.classList.remove('vs-modal-open')");
+		context.Services.AddSingleton<IProjectService>(new FakeProjectService([]));
+		context.Services.AddSingleton<IJobTemplateService>(new FakeJobTemplateService());
+		context.Services.AddSingleton<NotificationService>();
+
+		var provider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "GitHub Copilot",
+			Type = ProviderType.Copilot,
+			IsEnabled = true
+		};
+		var agent = new Agent
+		{
+			Id = Guid.NewGuid(),
+			Name = "Implementation Agent",
+			Responsibilities = "Implement the requested change from the selected agent instructions.",
+			IsEnabled = true,
+			DefaultProviderId = provider.Id,
+			DefaultProvider = provider
+		};
+		context.Services.AddSingleton<IAgentService>(new FakeAgentService([agent]));
+
+		var submitted = false;
+		var job = new Job();
+		var cut = context.Render<CreateJobModal>(parameters => parameters
+			.Add(component => component.IsVisible, true)
+			.Add(component => component.JobModel, job)
+			.Add(component => component.Providers, [provider])
+			.Add(component => component.AvailableModels, new List<ProviderModel>())
+			.Add(component => component.Branches, new List<GitBranchInfo>())
+			.Add(component => component.TemplateLibrary, [])
+			.Add(component => component.OnSubmit, EventCallback.Factory.Create(this, () => submitted = true)));
+
+		cut.Find("#agentPreset").Change(agent.Id.ToString());
+		cut.Find("form").Submit();
+
+		Assert.True(submitted);
+		Assert.Equal(agent.Responsibilities, job.GoalPrompt);
+		Assert.Contains("Goal Prompt (Optional)", cut.Markup);
+		Assert.DoesNotContain("Goal prompt is required", cut.Markup);
+	}
+
+	[Fact]
+	public void CreateJobModal_SelectedAgentWithoutInstructions_StillRequiresGoalPrompt()
+	{
+		using var context = new BunitContext();
+		context.JSInterop.SetupVoid("eval", "document.body.classList.add('vs-modal-open')");
+		context.JSInterop.SetupVoid("eval", "document.body.classList.remove('vs-modal-open')");
+		context.Services.AddSingleton<IProjectService>(new FakeProjectService([]));
+		context.Services.AddSingleton<IJobTemplateService>(new FakeJobTemplateService());
+		context.Services.AddSingleton<NotificationService>();
+
+		var provider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "GitHub Copilot",
+			Type = ProviderType.Copilot,
+			IsEnabled = true
+		};
+		var agent = new Agent
+		{
+			Id = Guid.NewGuid(),
+			Name = "Implementation Agent",
+			IsEnabled = true,
+			DefaultProviderId = provider.Id,
+			DefaultProvider = provider
+		};
+		context.Services.AddSingleton<IAgentService>(new FakeAgentService([agent]));
+
+		var cut = context.Render<CreateJobModal>(parameters => parameters
+			.Add(component => component.IsVisible, true)
+			.Add(component => component.JobModel, new Job())
+			.Add(component => component.Providers, [provider])
+			.Add(component => component.AvailableModels, new List<ProviderModel>())
+			.Add(component => component.Branches, new List<GitBranchInfo>())
+			.Add(component => component.TemplateLibrary, []));
+
+		cut.Find("#agentPreset").Change(agent.Id.ToString());
+		cut.Find("form").Submit();
+
+		Assert.Contains("This agent does not have saved instructions, so enter a goal prompt for this job.", cut.Markup);
+		Assert.Contains("Goal prompt is required because the selected agent does not have reusable instructions.", cut.Markup);
+	}
+
+	[Fact]
+	public void CreateJobModal_RefreshesAgentAssignmentsFromProjectService_WhenParentProjectIsStale()
+	{
+		using var context = new BunitContext();
+		context.JSInterop.SetupVoid("eval", "document.body.classList.add('vs-modal-open')");
+		context.JSInterop.SetupVoid("eval", "document.body.classList.remove('vs-modal-open')");
+		context.Services.AddSingleton<IJobTemplateService>(new FakeJobTemplateService());
+		context.Services.AddSingleton<NotificationService>();
+
+		var provider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "GitHub Copilot",
+			Type = ProviderType.Copilot,
+			IsEnabled = true
+		};
+		var agent = new Agent
+		{
+			Id = Guid.NewGuid(),
+			Name = "Release Manager",
+			DefaultProviderId = provider.Id,
+			DefaultProvider = provider,
+			DefaultCycleMode = CycleMode.FixedCount,
+			DefaultMaxCycles = 2,
+			IsEnabled = true
+		};
+		var staleProject = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "VibeSwarm",
+			WorkingPath = "/tmp/vibeswarm"
+		};
+		var refreshedProject = new Project
+		{
+			Id = staleProject.Id,
+			Name = staleProject.Name,
+			WorkingPath = staleProject.WorkingPath,
+			AgentAssignments =
+			[
+				new ProjectAgent
+				{
+					ProjectId = staleProject.Id,
+					AgentId = agent.Id,
+					Agent = null,
+					ProviderId = provider.Id,
+					Provider = null,
+					IsEnabled = true
+				}
+			]
+		};
+
+		context.Services.AddSingleton<IProjectService>(new FakeProjectService([staleProject], refreshedProject));
+		context.Services.AddSingleton<IAgentService>(new FakeAgentService([agent]));
+
+		var cut = context.Render<CreateJobModal>(parameters => parameters
+			.Add(component => component.IsVisible, true)
+			.Add(component => component.JobModel, new Job())
+			.Add(component => component.Project, staleProject)
+			.Add(component => component.Providers, [provider])
+			.Add(component => component.AvailableModels, new List<ProviderModel>())
+			.Add(component => component.Branches, new List<GitBranchInfo>())
+			.Add(component => component.TemplateLibrary, []));
+
+		cut.WaitForAssertion(() =>
+		{
+			Assert.Contains("Release Manager", cut.Markup);
+		});
+
+		cut.Find("#agentPreset").Change(agent.Id.ToString());
+
+		Assert.Contains("Agent Preset", cut.Markup);
+		Assert.Contains("Release Manager", cut.Markup);
+		Assert.Contains("GitHub Copilot", cut.Markup);
+		Assert.Contains("Fixed count (2 cycles)", cut.Markup);
+	}
+
 	private sealed class FakeJobTemplateService : IJobTemplateService
 	{
 		public Task<IEnumerable<JobTemplate>> GetAllAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<JobTemplate>>([]);
@@ -127,5 +289,40 @@ public sealed class CreateJobModalTests
 		public Task DeleteAsync(Guid id, CancellationToken cancellationToken = default) => Task.CompletedTask;
 		public Task<JobTemplate> IncrementUseCountAsync(Guid id, CancellationToken cancellationToken = default)
 			=> Task.FromResult(new JobTemplate { Id = id, Name = "Template", GoalPrompt = "Prompt" });
+	}
+
+	private sealed class FakeProjectService(IReadOnlyList<Project> projects, Project? detailedProject = null) : IProjectService
+	{
+		public Task<IEnumerable<Project>> GetAllAsync(CancellationToken cancellationToken = default)
+			=> Task.FromResult<IEnumerable<Project>>(projects);
+
+		public Task<IEnumerable<Project>> GetRecentAsync(int count, CancellationToken cancellationToken = default)
+			=> Task.FromResult<IEnumerable<Project>>([]);
+
+		public Task<Project?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
+			=> Task.FromResult(detailedProject?.Id == id ? detailedProject : projects.FirstOrDefault(project => project.Id == id));
+
+		public Task<Project?> GetByIdWithJobsAsync(Guid id, CancellationToken cancellationToken = default)
+			=> Task.FromResult<Project?>(null);
+
+		public Task<Project> CreateAsync(Project project, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<Project> CreateProjectAsync(VibeSwarm.Shared.Models.ProjectCreationRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<Project> UpdateAsync(Project project, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task DeleteAsync(Guid id, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+		public Task<IEnumerable<ProjectWithStats>> GetAllWithStatsAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<ProjectWithStats>>([]);
+		public Task<IEnumerable<DashboardProjectInfo>> GetRecentWithLatestJobAsync(int count, CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<DashboardProjectInfo>>([]);
+		public Task<DashboardJobMetrics> GetDashboardJobMetricsAsync(int rangeDays, CancellationToken cancellationToken = default) => Task.FromResult(new DashboardJobMetrics { RangeDays = rangeDays, Buckets = [] });
+		public Task<IEnumerable<DashboardRunningJobInfo>> GetDashboardRunningJobsAsync(CancellationToken cancellationToken = default) => Task.FromResult<IEnumerable<DashboardRunningJobInfo>>([]);
+	}
+
+	private sealed class FakeAgentService(IReadOnlyList<Agent> agents) : IAgentService
+	{
+		public Task<IEnumerable<Agent>> GetAllAsync(CancellationToken ct = default) => Task.FromResult<IEnumerable<Agent>>(agents);
+		public Task<IEnumerable<Agent>> GetEnabledAsync(CancellationToken ct = default) => Task.FromResult<IEnumerable<Agent>>(agents.Where(agent => agent.IsEnabled));
+		public Task<Agent?> GetByIdAsync(Guid id, CancellationToken ct = default) => Task.FromResult(agents.FirstOrDefault(agent => agent.Id == id));
+		public Task<Agent> CreateAsync(Agent agent, CancellationToken ct = default) => throw new NotSupportedException();
+		public Task<Agent> UpdateAsync(Agent agent, CancellationToken ct = default) => throw new NotSupportedException();
+		public Task DeleteAsync(Guid id, CancellationToken ct = default) => throw new NotSupportedException();
+		public Task<bool> NameExistsAsync(string name, Guid? excludeId = null, CancellationToken ct = default) => throw new NotSupportedException();
 	}
 }

@@ -18,13 +18,17 @@ public class CopilotProvider : CliProviderBase
     private static readonly Version BashEnvFlagVersion = new(0, 0, 418);
     private static readonly Version ReasoningEffortVersion = new(1, 0, 4);
     private static readonly Version AltScreenVersion = new(0, 0, 407);
-    private static readonly Version AltScreenRemovedVersion = new(1, 0, 12);
+    private static readonly Version AltScreenRemovedVersion = new(1, 0, 8);
     // All of the Tier 1/2 Copilot flags below are present in current v1.0.x; guard with a conservative gate.
     private static readonly Version ModernFlagsVersion = new(1, 0, 0);
+    private static readonly Version SessionIdleTimeoutVersion = new(1, 0, 35);
     private UsageLimits? _lastObservedUsageLimits;
 
     // Cached CLI version for feature gating (populated on TestConnectionAsync)
     private Version? _cachedCliVersion;
+
+    // Provider-level stall threshold mirrored into Copilot's --session-idle-timeout (v1.0.35+).
+    private readonly int? _stallTimeoutSeconds;
 
     // System error detection during stream parsing (mirrors ClaudeProvider pattern)
     private bool _systemErrorDetected;
@@ -71,6 +75,8 @@ public class CopilotProvider : CliProviderBase
             _byokProviderEndpoint = config.ApiEndpoint;
             _byokProviderKey = config.ApiKey;
         }
+
+        _stallTimeoutSeconds = config.StallTimeoutSeconds;
     }
 
     private string GetExecutablePath() => ResolveExecutablePath(DefaultExecutable);
@@ -367,52 +373,52 @@ public class CopilotProvider : CliProviderBase
 
         // Build arguments for non-interactive execution
         // Reference: https://github.com/github/copilot-cli/blob/main/changelog.md
-		var supportsJsonOutput = _cachedCliVersion != null && _cachedCliVersion >= JsonOutputVersion;
-		var supportsModernFlags = _cachedCliVersion != null && _cachedCliVersion >= ModernFlagsVersion;
+        var supportsJsonOutput = _cachedCliVersion != null && _cachedCliVersion >= JsonOutputVersion;
+        var supportsModernFlags = _cachedCliVersion != null && _cachedCliVersion >= ModernFlagsVersion;
 
-		var args = new List<string>
-		{
-			"-p",
-			effectivePrompt,
-		};
+        var args = new List<string>
+        {
+            "-p",
+            effectivePrompt,
+        };
 
-		// Permission strategy:
-		//  - Default (no CopilotMode): preserve existing behavior (--yolo --autopilot) for backwards compatibility.
-		//  - CopilotMode explicitly set → --mode <value> and --allow-all-tools --allow-all-paths so non-interactive
-		//    dispatch still runs without prompts. Callers who want a stricter allowlist should use --available-tools
-		//    (via CurrentAllowedTools) or additional args.
-		if (!string.IsNullOrEmpty(CurrentCopilotMode))
-		{
-			args.Add("--mode");
-			args.Add(CurrentCopilotMode);
-			if (supportsModernFlags)
-			{
-				args.Add("--allow-all-tools");
-				args.Add("--allow-all-paths");
-			}
-		}
-		else
-		{
-			args.Add("--yolo");
-			args.Add("--autopilot");
-		}
+        // Permission strategy:
+        //  - Default (no CopilotMode): preserve existing behavior (--yolo --autopilot) for backwards compatibility.
+        //  - CopilotMode explicitly set → --mode <value> and --allow-all-tools --allow-all-paths so non-interactive
+        //    dispatch still runs without prompts. Callers who want a stricter allowlist should use --available-tools
+        //    (via CurrentAllowedTools) or additional args.
+        if (!string.IsNullOrEmpty(CurrentCopilotMode))
+        {
+            args.Add("--mode");
+            args.Add(CurrentCopilotMode);
+            if (supportsModernFlags)
+            {
+                args.Add("--allow-all-tools");
+                args.Add("--allow-all-paths");
+            }
+        }
+        else
+        {
+            args.Add("--yolo");
+            args.Add("--autopilot");
+        }
 
-		if (!supportsJsonOutput)
-		{
-			args.Add("--silent");
-		}
+        if (!supportsJsonOutput)
+        {
+            args.Add("--silent");
+        }
 
-		// Structured JSON output in prompt mode (v0.0.422+).
-		// Skip on older or unknown versions to avoid passing an unsupported flag.
-		if (supportsJsonOutput)
-		{
-			args.Add("--output-format");
-			args.Add("json");
-		}
+        // Structured JSON output in prompt mode (v0.0.422+).
+        // Skip on older or unknown versions to avoid passing an unsupported flag.
+        if (supportsJsonOutput)
+        {
+            args.Add("--output-format");
+            args.Add("json");
+        }
 
-		// Session resume support (v0.0.372+)
-		if (!string.IsNullOrEmpty(sessionId))
-		{
+        // Session resume support (v0.0.372+)
+        if (!string.IsNullOrEmpty(sessionId))
+        {
             args.Add("--resume");
             args.Add(sessionId);
         }
@@ -465,7 +471,8 @@ public class CopilotProvider : CliProviderBase
             args.Add(reasoningEffort);
         }
 
-        // Alt-screen buffer mode existed from v0.0.407 through v1.0.11 and was removed in v1.0.12.
+        // Alt-screen buffer mode existed from v0.0.407 through v1.0.7 and was removed in v1.0.8
+        // ("alt screen always enabled" — passing the flag on later versions is rejected).
         if (CurrentUseAltScreen
             && _cachedCliVersion != null
             && _cachedCliVersion >= AltScreenVersion
@@ -473,6 +480,15 @@ public class CopilotProvider : CliProviderBase
         {
             args.Add("--alt-screen");
             args.Add("on");
+        }
+
+        // Mirror the provider-level stall threshold into Copilot's idle timeout (v1.0.35+).
+        if (_stallTimeoutSeconds is > 0
+            && _cachedCliVersion != null
+            && _cachedCliVersion >= SessionIdleTimeoutVersion)
+        {
+            args.Add("--session-idle-timeout");
+            args.Add(_stallTimeoutSeconds.Value.ToString());
         }
 
         // Copilot 1.0.15 accepts only "on"/"off" for --bash-env.
@@ -774,6 +790,11 @@ public class CopilotProvider : CliProviderBase
         if (!string.IsNullOrEmpty(evt.SessionId) && string.IsNullOrEmpty(result.SessionId))
         {
             result.SessionId = evt.SessionId;
+            progress?.Report(new ExecutionProgress
+            {
+                SessionId = evt.SessionId,
+                IsStreaming = false
+            });
         }
 
         // Track premium request usage

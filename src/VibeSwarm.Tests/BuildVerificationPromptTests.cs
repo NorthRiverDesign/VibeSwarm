@@ -119,6 +119,23 @@ public sealed class BuildVerificationPromptTests
 	}
 
 	[Fact]
+	public void BuildRecoveryPrompt_IncludesFreshSessionGuidanceAndRecentOutput()
+	{
+		var prompt = PromptBuilder.BuildRecoveryPrompt(
+			"Implement the feature",
+			"Resume the interrupted job",
+			"[ERR] try again in 1 minute",
+			"Stored session no longer exists",
+			forceFreshSession: true);
+
+		Assert.Contains("Resume the interrupted job", prompt);
+		Assert.Contains("fresh session", prompt);
+		Assert.Contains("Stored session no longer exists", prompt);
+		Assert.Contains("<recent_console_output>", prompt);
+		Assert.Contains("try again in 1 minute", prompt);
+	}
+
+	[Fact]
 	public void BuildSystemPromptRules_IncludesDisableAttributionGuidance_WhenDisabled()
 	{
 		var rules = PromptBuilder.BuildSystemPromptRules(

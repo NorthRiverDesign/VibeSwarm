@@ -18,6 +18,10 @@ public partial class JobProcessingService
         if (job != null)
         {
             JobStateMachine.TryTransition(job, status, errorMessage);
+            if (status is JobStatus.Completed or JobStatus.Failed or JobStatus.Cancelled)
+            {
+                JobRecoveryHelper.ClearRecoveryState(job, clearSessionId: status == JobStatus.Cancelled);
+            }
             job.WorkerInstanceId = null;
             job.LastHeartbeatAt = null;
             job.ProcessId = null;
@@ -75,12 +79,12 @@ public partial class JobProcessingService
         string? workingDirectory, DateTime? backoffUntil,
         VibeSwarmDbContext dbContext, CancellationToken cancellationToken)
     {
-		var job = await dbContext.Jobs
-			.Include(j => j.Statistics)
-			.Include(j => j.PlanningStatistics)
-			.Include(j => j.ExecutionStatistics)
-			.FirstOrDefaultAsync(j => j.Id == jobId, cancellationToken);
-		if (job == null) return;
+        var job = await dbContext.Jobs
+            .Include(j => j.Statistics)
+            .Include(j => j.PlanningStatistics)
+            .Include(j => j.ExecutionStatistics)
+            .FirstOrDefaultAsync(j => j.Id == jobId, cancellationToken);
+        if (job == null) return;
 
         // Store any partial console output
         var consoleOutput = executionContext.GetConsoleOutput();
@@ -88,6 +92,17 @@ public partial class JobProcessingService
         {
             job.ConsoleOutput = consoleOutput;
         }
+
+        var resumeFromStatus = job.Status == JobStatus.Planning
+            ? JobStatus.Planning
+            : JobStatus.Processing;
+        var persistedSessionId = result.SessionId ?? executionContext.SessionId ?? job.SessionId;
+        JobRecoveryHelper.CaptureRecoveryState(
+            job,
+            resumeFromStatus,
+            executionContext.ActivePrompt,
+            persistedSessionId,
+            consoleOutput);
 
         // Transition back to New so the job queue will pick it up again once the provider recovers.
         // This does NOT consume a retry attempt since rate limiting is a provider-side throttle.
@@ -123,6 +138,41 @@ public partial class JobProcessingService
             jobId, providerName, resetDescription, backoffUntil?.ToString("u") ?? "none");
     }
 
+    private async Task RequeueJobForProviderCooldownAsync(
+        Guid jobId,
+        string providerName,
+        DateTime backoffUntil,
+        JobExecutionContext executionContext,
+        VibeSwarmDbContext dbContext,
+        CancellationToken cancellationToken)
+    {
+        var job = await dbContext.Jobs.FindAsync(new object[] { jobId }, cancellationToken);
+        if (job == null)
+        {
+            return;
+        }
+
+        JobRecoveryHelper.CaptureRecoveryState(
+            job,
+            JobStatus.Processing,
+            executionContext.ActivePrompt,
+            executionContext.SessionId,
+            executionContext.GetConsoleOutput());
+
+        var transition = JobStateMachine.TryTransition(job, JobStatus.New,
+            $"Provider cooldown active for {providerName} until {backoffUntil:u}.");
+        if (!transition.Success)
+        {
+            _logger.LogWarning("Failed to re-queue cooling-down job {JobId}: {Error}", jobId, transition.ErrorMessage);
+            return;
+        }
+
+        job.NotBeforeUtc = backoffUntil;
+        job.ErrorMessage = $"Provider cooldown active for {providerName}. Backing off until {backoffUntil:u}.";
+        job.LastActivityAt = DateTime.UtcNow;
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
     /// <summary>
     /// Completes a job with full result data, console output, and git diff
     /// </summary>
@@ -133,13 +183,13 @@ public partial class JobProcessingService
         VibeSwarmDbContext dbContext, CancellationToken cancellationToken,
         bool isTokenEstimate = false)
     {
-		var hasGitChanges = false;
-		var job = await dbContext.Jobs
-			.Include(j => j.Statistics)
-			.Include(j => j.PlanningStatistics)
-			.Include(j => j.ExecutionStatistics)
-			.Include(j => j.Project)
-			.FirstOrDefaultAsync(j => j.Id == jobId, cancellationToken);
+        var hasGitChanges = false;
+        var job = await dbContext.Jobs
+            .Include(j => j.Statistics)
+            .Include(j => j.PlanningStatistics)
+            .Include(j => j.ExecutionStatistics)
+            .Include(j => j.Project)
+            .FirstOrDefaultAsync(j => j.Id == jobId, cancellationToken);
         if (job != null)
         {
             var transition = JobStateMachine.TryTransition(job, status, errorMessage);
@@ -160,6 +210,7 @@ public partial class JobProcessingService
             job.TotalCostUsd = SumCost(job.PlanningCostUsd, job.ExecutionCostUsd);
             job.IsTokenEstimate = isTokenEstimate;
             job.ModelUsed = modelUsed ?? job.ModelUsed;
+            JobRecoveryHelper.ClearRecoveryState(job);
             job.WorkerInstanceId = null;
             job.LastHeartbeatAt = null;
             job.ProcessId = null;
@@ -312,10 +363,21 @@ public partial class JobProcessingService
         if (candidateIds.Count == 0)
             return false;
 
+        var now = DateTime.UtcNow;
+        var providersInCooldown = await dbContext.ProviderUsageSummaries
+            .Where(summary => candidateIds.Contains(summary.ProviderId)
+                && summary.NextExecutionAvailableAt.HasValue
+                && summary.NextExecutionAvailableAt.Value > now)
+            .Select(summary => summary.ProviderId)
+            .ToListAsync(cancellationToken);
+
         // At least one candidate exists; check if any are healthy
         if (_healthTracker == null)
-            return candidateIds.Count > 0;
+            return candidateIds.Any(id => !providersInCooldown.Contains(id));
 
-        return candidateIds.Any(id => _healthTracker.GetProviderHealth(id).IsHealthy);
+        return candidateIds.Any(id =>
+            !providersInCooldown.Contains(id)
+            && !_healthTracker.GetProviderHealth(id).IsRateLimited
+            && _healthTracker.GetProviderHealth(id).IsHealthy);
     }
 }

@@ -36,10 +36,9 @@
 			}
 			else if (Idea.ExpansionStatus == IdeaExpansionStatus.Failed)
 			{
-				<div class="alert alert-danger">
-					<i class="bi bi-exclamation-triangle me-1"></i>
+				<Alert Type="Alert.AlertType.Danger">
 					Expansion failed: @(Idea.ExpansionError ?? "Unknown error")
-				</div>
+				</Alert>
 
 				@* Show model selection for retry *@
 				<ExpansionModelSelector UseInference="@_useInference"

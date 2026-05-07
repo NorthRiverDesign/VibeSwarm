@@ -246,8 +246,18 @@ public partial class ProjectDetail
 
     private bool IsSelectedAgentProviderAllowed()
     {
+        if (!NewJob.AgentId.HasValue || NewJob.AgentId == Guid.Empty)
+        {
+            return false;
+        }
+
         var assignment = AgentPresetHelper.ResolveAgent(Project, NewJob.AgentId);
-        return assignment != null && assignment.ProviderId == NewJob.ProviderId;
+        if (assignment != null && assignment.ProviderId == NewJob.ProviderId)
+        {
+            return true;
+        }
+
+        return NewJob.ProviderId != Guid.Empty;
     }
 
     private async Task DeleteJob(Guid jobId)
@@ -257,11 +267,11 @@ public partial class ProjectDetail
             await JobService.DeleteAsync(jobId);
             ClampJobsPageNumber(Math.Max(JobsTotalCount - 1, 0));
             await RefreshJobs();
-            NotificationService.ShowSuccess("Job deleted successfully.");
+            NotificationService.ShowProjectSuccess(Project?.Name, "Job deleted successfully.");
         }
         catch (Exception ex)
         {
-            NotificationService.ShowError($"Error deleting job: {ex.Message}");
+            NotificationService.ShowProjectError(Project?.Name, $"Error deleting job: {ex.Message}");
         }
     }
 
@@ -273,16 +283,16 @@ public partial class ProjectDetail
             if (success)
             {
                 await RefreshJobs();
-                NotificationService.ShowSuccess("Job queued for retry.");
+                NotificationService.ShowProjectSuccess(Project?.Name, "Job queued for retry.");
             }
             else
             {
-                NotificationService.ShowError("Could not retry this job. It may no longer be in a retryable state.");
+                NotificationService.ShowProjectError(Project?.Name, "Could not retry this job. It may no longer be in a retryable state.");
             }
         }
         catch (Exception ex)
         {
-            NotificationService.ShowError($"Error retrying job: {ex.Message}");
+            NotificationService.ShowProjectError(Project?.Name, $"Error retrying job: {ex.Message}");
         }
     }
 
@@ -294,16 +304,16 @@ public partial class ProjectDetail
             if (count > 0)
             {
                 await RefreshJobs();
-                NotificationService.ShowSuccess($"Queued {count} selected job(s) for retry.");
+                NotificationService.ShowProjectSuccess(Project?.Name, $"Queued {count} selected job(s) for retry.");
             }
 			else
 			{
-				NotificationService.ShowInfo("No selected failed, cancelled, or stopped jobs to retry.");
+				NotificationService.ShowProjectInfo(Project?.Name, "No selected failed, cancelled, or stopped jobs to retry.");
 			}
         }
         catch (Exception ex)
         {
-            NotificationService.ShowError($"Error retrying selected jobs: {ex.Message}");
+            NotificationService.ShowProjectError(Project?.Name, $"Error retrying selected jobs: {ex.Message}");
         }
     }
 
@@ -316,16 +326,16 @@ public partial class ProjectDetail
             {
                 ClampJobsPageNumber(Math.Max(JobsTotalCount - count, 0));
                 await RefreshJobs();
-                NotificationService.ShowSuccess($"Deleted {count} completed job(s).");
+                NotificationService.ShowProjectSuccess(Project?.Name, $"Deleted {count} completed job(s).");
             }
             else
             {
-                NotificationService.ShowInfo("No completed jobs to delete.");
+                NotificationService.ShowProjectInfo(Project?.Name, "No completed jobs to delete.");
             }
         }
         catch (Exception ex)
         {
-            NotificationService.ShowError($"Error deleting completed jobs: {ex.Message}");
+            NotificationService.ShowProjectError(Project?.Name, $"Error deleting completed jobs: {ex.Message}");
         }
     }
 
@@ -337,16 +347,16 @@ public partial class ProjectDetail
             if (count > 0)
             {
                 await RefreshJobs();
-                NotificationService.ShowSuccess($"Cancelled {count} job(s).");
+                NotificationService.ShowProjectSuccess(Project?.Name, $"Cancelled {count} job(s).");
             }
             else
             {
-                NotificationService.ShowInfo("No active jobs to cancel.");
+                NotificationService.ShowProjectInfo(Project?.Name, "No active jobs to cancel.");
             }
         }
         catch (Exception ex)
         {
-            NotificationService.ShowError($"Error cancelling jobs: {ex.Message}");
+            NotificationService.ShowProjectError(Project?.Name, $"Error cancelling jobs: {ex.Message}");
         }
     }
 
@@ -358,16 +368,16 @@ public partial class ProjectDetail
             if (count > 0)
             {
                 await RefreshJobs();
-                NotificationService.ShowSuccess($"Cancelled {count} selected job(s).");
+                NotificationService.ShowProjectSuccess(Project?.Name, $"Cancelled {count} selected job(s).");
             }
             else
             {
-                NotificationService.ShowInfo("No selected active jobs to cancel.");
+                NotificationService.ShowProjectInfo(Project?.Name, "No selected active jobs to cancel.");
             }
         }
         catch (Exception ex)
         {
-            NotificationService.ShowError($"Error cancelling selected jobs: {ex.Message}");
+            NotificationService.ShowProjectError(Project?.Name, $"Error cancelling selected jobs: {ex.Message}");
         }
     }
 
@@ -379,16 +389,16 @@ public partial class ProjectDetail
             if (count > 0)
             {
                 await RefreshJobs();
-                NotificationService.ShowSuccess($"Prioritized {count} selected queued job(s).");
+                NotificationService.ShowProjectSuccess(Project?.Name, $"Prioritized {count} selected queued job(s).");
             }
             else
             {
-                NotificationService.ShowInfo("No selected queued jobs to prioritize.");
+                NotificationService.ShowProjectInfo(Project?.Name, "No selected queued jobs to prioritize.");
             }
         }
         catch (Exception ex)
         {
-            NotificationService.ShowError($"Error prioritizing selected jobs: {ex.Message}");
+            NotificationService.ShowProjectError(Project?.Name, $"Error prioritizing selected jobs: {ex.Message}");
         }
     }
 
@@ -450,7 +460,7 @@ public partial class ProjectDetail
         }
         catch (Exception ex)
         {
-            NotificationService.ShowError($"Error adding idea: {ex.Message}");
+            NotificationService.ShowProjectError(Project?.Name, $"Error adding idea: {ex.Message}");
         }
         finally
         {
@@ -466,7 +476,7 @@ public partial class ProjectDetail
             var existingIdea = Ideas.FirstOrDefault(i => i.Id == update.IdeaId);
             if (existingIdea == null)
             {
-                NotificationService.ShowError("Error updating idea: Idea not found.");
+                NotificationService.ShowProjectError(Project?.Name, "Error updating idea: Idea not found.");
                 return;
             }
 
@@ -500,7 +510,7 @@ public partial class ProjectDetail
         catch (Exception ex)
         {
             _localIdeaUpdateIds.Remove(update.IdeaId);
-            NotificationService.ShowError($"Error updating idea: {ex.Message}");
+            NotificationService.ShowProjectError(Project?.Name, $"Error updating idea: {ex.Message}");
         }
     }
 
@@ -514,7 +524,7 @@ public partial class ProjectDetail
         }
         catch (Exception ex)
         {
-            NotificationService.ShowError($"Error deleting idea: {ex.Message}");
+            NotificationService.ShowProjectError(Project?.Name, $"Error deleting idea: {ex.Message}");
         }
     }
 
@@ -525,11 +535,11 @@ public partial class ProjectDetail
             var targetProject = await ProjectService.GetByIdAsync(args.targetProjectId);
             await IdeaService.CopyToProjectAsync(args.ideaId, args.targetProjectId);
             await QueuePanelStateService.RequestRefreshAsync();
-            NotificationService.ShowSuccess($"Idea copied to {targetProject?.Name ?? "project"} successfully.");
+            NotificationService.ShowProjectSuccess(Project?.Name, $"Idea copied to {targetProject?.Name ?? "project"} successfully.");
         }
         catch (Exception ex)
         {
-            NotificationService.ShowError($"Error copying idea: {ex.Message}");
+            NotificationService.ShowProjectError(Project?.Name, $"Error copying idea: {ex.Message}");
         }
     }
 
@@ -541,11 +551,11 @@ public partial class ProjectDetail
             await IdeaService.MoveToProjectAsync(args.ideaId, args.targetProjectId);
             await QueuePanelStateService.RequestRefreshAsync();
             await LoadIdeas(force: true);
-            NotificationService.ShowSuccess($"Idea moved to {targetProject?.Name ?? "project"} successfully.");
+            NotificationService.ShowProjectSuccess(Project?.Name, $"Idea moved to {targetProject?.Name ?? "project"} successfully.");
         }
         catch (Exception ex)
         {
-            NotificationService.ShowError($"Error moving idea: {ex.Message}");
+            NotificationService.ShowProjectError(Project?.Name, $"Error moving idea: {ex.Message}");
         }
     }
 
@@ -602,7 +612,7 @@ public partial class ProjectDetail
         {
             // Clear processing state on error
             ProcessingIdeaIds.Clear();
-            NotificationService.ShowError($"Error starting Ideas processing: {ex.Message}");
+            NotificationService.ShowProjectError(Project?.Name, $"Error starting Ideas processing: {ex.Message}");
         }
         finally
         {
@@ -631,7 +641,7 @@ public partial class ProjectDetail
         }
         catch (Exception ex)
         {
-            NotificationService.ShowError($"Error stopping Ideas processing: {ex.Message}");
+            NotificationService.ShowProjectError(Project?.Name, $"Error stopping Ideas processing: {ex.Message}");
         }
         finally
         {
@@ -646,7 +656,7 @@ public partial class ProjectDetail
         var idea = Ideas.FirstOrDefault(i => i.Id == ideaId);
         if (idea == null || idea.JobId.HasValue || idea.IsProcessing || ProcessingIdeaIds.Contains(ideaId))
         {
-            NotificationService.ShowWarning("This idea is already being processed.");
+            NotificationService.ShowProjectWarning(Project?.Name, "This idea is already being processed.");
             return;
         }
 
@@ -666,13 +676,13 @@ public partial class ProjectDetail
             else
             {
                 ProcessingIdeaIds.Remove(ideaId);
-                NotificationService.ShowError("Failed to convert idea to job.");
+                NotificationService.ShowProjectError(Project?.Name, "Failed to convert idea to job.");
             }
         }
         catch (Exception ex)
         {
             ProcessingIdeaIds.Remove(ideaId);
-            NotificationService.ShowError($"Error starting idea: {ex.Message}");
+            NotificationService.ShowProjectError(Project?.Name, $"Error starting idea: {ex.Message}");
         }
     }
 
@@ -724,7 +734,7 @@ public partial class ProjectDetail
                 await LoadIdeas(force: true);
             }
             catch { /* Best effort */ }
-            NotificationService.ShowError($"Error expanding idea: {ex.Message}");
+            NotificationService.ShowProjectError(Project?.Name, $"Error expanding idea: {ex.Message}");
         }
         finally
         {
@@ -744,7 +754,7 @@ public partial class ProjectDetail
         }
         catch (Exception ex)
         {
-            NotificationService.ShowError($"Error cancelling expansion: {ex.Message}");
+            NotificationService.ShowProjectError(Project?.Name, $"Error cancelling expansion: {ex.Message}");
         }
         finally
         {
@@ -765,7 +775,7 @@ public partial class ProjectDetail
         }
         catch (Exception ex)
         {
-            NotificationService.ShowError($"Error approving expansion: {ex.Message}");
+            NotificationService.ShowProjectError(Project?.Name, $"Error approving expansion: {ex.Message}");
         }
     }
 
@@ -779,7 +789,7 @@ public partial class ProjectDetail
         }
         catch (Exception ex)
         {
-            NotificationService.ShowError($"Error rejecting expansion: {ex.Message}");
+            NotificationService.ShowProjectError(Project?.Name, $"Error rejecting expansion: {ex.Message}");
         }
     }
 

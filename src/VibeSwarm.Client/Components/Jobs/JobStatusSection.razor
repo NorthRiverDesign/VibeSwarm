@@ -1,0 +1,155 @@
+@* Consolidated "what happened" header for a job — replaces the old Outcome/Verification/Delivery trio.
+   Renders a 5-step lifecycle timeline followed by a status-tinted banner with meta chips. *@
+
+@if (Job is null) { return; }
+
+@{
+    var steps = BuildSteps();
+    var isTerminal = Job.Status is JobStatus.Completed or JobStatus.Failed or JobStatus.Cancelled or JobStatus.Stalled;
+    var isActive = Job.Status is JobStatus.Started or JobStatus.Planning or JobStatus.Processing or JobStatus.Paused;
+    var variant = BannerVariant;
+    var hasCommit = !string.IsNullOrEmpty(Job.GitCommitHash);
+    var shortSha = hasCommit && Job.GitCommitHash is { Length: > 0 } ? Job.GitCommitHash[..Math.Min(7, Job.GitCommitHash.Length)] : null;
+}
+
+@if (isTerminal || isActive)
+{
+    <div class="card mb-3">
+        <div class="card-body py-2 px-3 d-flex align-items-center gap-0 flex-wrap">
+            @foreach (var (step, i) in steps.Select((s, i) => (s, i)))
+            {
+                <div class="d-inline-flex align-items-center gap-2 py-1">
+                    <span class="badge rounded-circle @step.BadgeClass d-inline-flex align-items-center justify-content-center">
+                        <i class="bi @step.Icon"></i>
+                    </span>
+                    <div class="d-flex flex-column lh-1">
+                        <span class="small fw-medium">@step.Name</span>
+                        @if (!string.IsNullOrEmpty(step.Sub))
+                        {
+                            <span class="small text-muted @(step.Mono ? "font-monospace" : "")">@step.Sub</span>
+                        }
+                    </div>
+                </div>
+                @if (i < steps.Count - 1)
+                {
+                    <span class="flex-grow-1 mx-2 @(step.Done ? "border-top border-success" : "border-top")"></span>
+                }
+            }
+        </div>
+    </div>
+}
+
+@if (isTerminal)
+{
+    <div class="alert alert-@variant d-flex align-items-start gap-3 mb-3">
+        <i class="bi @BannerIcon fs-5"></i>
+        <div class="flex-grow-1 min-width-0">
+            <div class="fw-semibold">@BannerHeadline</div>
+            <div class="small">@BannerBody</div>
+            <div class="d-flex flex-wrap gap-2 align-items-center pt-2">
+                @if (Job.ChangedFilesCount > 0)
+                {
+                    <span class="badge text-bg-secondary"><i class="bi bi-file-earmark-diff"></i> @Job.ChangedFilesCount files</span>
+                }
+                @if (shortSha is not null)
+                {
+                    <span class="badge text-bg-secondary font-monospace"><i class="bi bi-git"></i> @shortSha</span>
+                }
+                @if (IsPushed)
+                {
+                    <span class="badge text-bg-success"><i class="bi bi-cloud-check"></i> Pushed</span>
+                }
+                @if (Job.Project?.BuildVerificationEnabled == true && Job.BuildVerified == true)
+                {
+                    <span class="badge text-bg-success"><i class="bi bi-shield-check"></i> Verified</span>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public Job? Job { get; set; }
+    [Parameter] public bool IsPushed { get; set; }
+    [Parameter] public string? BranchName { get; set; }
+
+    private string BannerVariant => Job?.Status switch
+    {
+        JobStatus.Completed => "success",
+        JobStatus.Failed => "danger",
+        JobStatus.Cancelled or JobStatus.Stalled or JobStatus.Paused => "warning",
+        _ => "primary"
+    };
+
+    private string BannerIcon => Job?.Status switch
+    {
+        JobStatus.Completed => "bi-cloud-check",
+        JobStatus.Failed => "bi-x-octagon",
+        JobStatus.Cancelled => "bi-slash-circle",
+        JobStatus.Stalled => "bi-exclamation-triangle",
+        JobStatus.Paused => "bi-pause-circle",
+        _ => "bi-hourglass-split"
+    };
+
+    private string BannerHeadline => Job?.Status switch
+    {
+        JobStatus.Completed => "Job completed",
+        JobStatus.Failed => "Job failed",
+        JobStatus.Cancelled => "Job cancelled",
+        JobStatus.Stalled => "Job stalled",
+        JobStatus.Paused => "Waiting for input",
+        _ => "Running"
+    };
+
+    private string BannerBody => Job?.Status switch
+    {
+        JobStatus.Completed when IsPushed => "Run completed successfully. Branch is updated and ready for review.",
+        JobStatus.Completed when !string.IsNullOrEmpty(Job.GitCommitHash) => "Changes committed locally. Push to share.",
+        JobStatus.Completed => "Run completed successfully.",
+        JobStatus.Failed => Job.ErrorMessage ?? "Run failed mid-execution. Working tree may be uncommitted — see Changes tab.",
+        JobStatus.Cancelled => "Run was cancelled.",
+        JobStatus.Stalled => "Run stopped responding.",
+        JobStatus.Paused => Job.PendingInteractionPrompt ?? "Agent is waiting for a response.",
+        _ => Job?.CurrentActivity ?? "Working…"
+    };
+
+    private List<Step> BuildSteps()
+    {
+        if (Job is null) return new();
+        var failed = Job.Status is JobStatus.Failed or JobStatus.Cancelled or JobStatus.Stalled;
+        var active = Job.Status is JobStatus.Started or JobStatus.Planning or JobStatus.Processing or JobStatus.Paused;
+        var completed = Job.Status == JobStatus.Completed;
+        var hasCommit = !string.IsNullOrEmpty(Job.GitCommitHash);
+        var shortSha = hasCommit && Job.GitCommitHash is { Length: > 0 } ? Job.GitCommitHash[..Math.Min(7, Job.GitCommitHash.Length)] : null;
+
+        return new()
+        {
+            new("Queued", Job.CreatedAt.ToLocalTime().ToString("h:mm tt"), State.Done),
+            new("Running", Job.StartedAt?.ToLocalTime().ToString("h:mm tt"),
+                hasCommit || completed ? State.Done : active ? State.Current : failed ? State.Failed : State.Pending),
+            new("Committed", shortSha, hasCommit ? State.Done : completed ? State.Current : State.Pending, Mono: hasCommit),
+            new("Pushed", IsPushed ? $"to {BranchName ?? "remote"}" : null,
+                IsPushed ? State.Done : hasCommit && completed ? State.Current : State.Pending)
+        };
+    }
+
+    private enum State { Pending, Current, Done, Failed }
+    private record Step(string Name, string? Sub, State State, bool Mono = false)
+    {
+        public bool Done => State == State.Done;
+        public string BadgeClass => State switch
+        {
+            State.Done => "text-bg-success",
+            State.Current => "text-bg-primary",
+            State.Failed => "text-bg-danger",
+            _ => "text-bg-secondary"
+        };
+        public string Icon => State switch
+        {
+            State.Done => "bi-check-lg",
+            State.Current => "bi-hourglass-split",
+            State.Failed => "bi-x-lg",
+            _ => "bi-circle"
+        };
+    }
+}

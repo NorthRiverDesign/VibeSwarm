@@ -21,6 +21,9 @@ public class JobStateMachine
 		{
 			JobStatus.Started,
 			JobStatus.Planning,
+			JobStatus.Processing,
+			JobStatus.Failed,
+			JobStatus.Stalled,
 			JobStatus.Cancelled,
 			JobStatus.New // Allow reset
         },

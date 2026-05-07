@@ -67,6 +67,33 @@ public sealed class JobSummaryGeneratorTests
 	}
 
 	[Fact]
+	public void BuildCommitSubject_UsesPlanningCommitSummaryOverExecutionSummary()
+	{
+		var job = new Job
+		{
+			GoalPrompt = "fix the delivery summary precedence",
+			SessionSummary = "Execution-generated summary should be ignored",
+			ConsoleOutput = """
+				<commit-summary>
+				execution summary should not win
+				</commit-summary>
+				""",
+			PlanningOutput = """
+				## Plan
+				1. Update summary precedence.
+
+				<commit-summary>
+				use planning git summary for completed jobs
+				</commit-summary>
+				"""
+		};
+
+		var subject = JobSummaryGenerator.BuildCommitSubject(job);
+
+		Assert.Equal("Use planning git summary for completed jobs", subject);
+	}
+
+	[Fact]
 	public void BuildCommitSubject_StripsInlineDiffStatsFromSessionSummaryLine()
 	{
 		var subject = JobSummaryGenerator.BuildCommitSubject(
@@ -242,6 +269,32 @@ public sealed class JobSummaryGeneratorTests
 		Assert.DoesNotContain("Files:", summary, StringComparison.Ordinal);
 		Assert.DoesNotContain("file(s) changed", summary, StringComparison.OrdinalIgnoreCase);
 		Assert.DoesNotContain('\n', summary!);
+	}
+
+	[Fact]
+	public void GenerateSummary_UsesPlanningCommitSummaryWhenAvailable()
+	{
+		var job = new Job
+		{
+			GoalPrompt = "capture the hidden planning summary",
+			PlanningOutput = """
+				## Plan
+				1. Capture summary.
+
+				<commit-summary>
+				capture planning summary for git delivery
+				</commit-summary>
+				""",
+			ConsoleOutput = """
+				<commit-summary>
+				execution summary should be ignored
+				</commit-summary>
+				"""
+		};
+
+		var summary = JobSummaryGenerator.GenerateSummary(job);
+
+		Assert.Equal("Capture planning summary for git delivery", summary);
 	}
 
 	[Fact]

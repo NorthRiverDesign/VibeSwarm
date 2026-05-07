@@ -166,4 +166,12 @@ public interface IJobService
     /// <param name="id">The job ID</param>
     /// <param name="cancellationToken">Cancellation token</param>
     Task RefreshExecutionPlanAsync(Guid id, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Returns all change-set snapshots recorded for a job (one per follow-up iteration),
+    /// ordered by FollowUpIndex ascending.
+    /// </summary>
+    /// <param name="jobId">The job ID</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    Task<IEnumerable<JobChangeSet>> GetChangeSetsAsync(Guid jobId, CancellationToken cancellationToken = default);
 }

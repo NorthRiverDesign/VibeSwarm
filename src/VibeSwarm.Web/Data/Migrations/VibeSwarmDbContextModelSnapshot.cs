@@ -803,6 +803,9 @@ namespace VibeSwarm.Shared.Data.Migrations
                     b.Property<string>("FailurePattern")
                         .HasColumnType("TEXT");
 
+                    b.Property<bool>("ForceFreshSession")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int>("GitChangeDeliveryMode")
                         .HasColumnType("INTEGER");
 
@@ -868,6 +871,13 @@ namespace VibeSwarm.Shared.Data.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime?>("LastHeartbeatAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("LastResumeAttemptAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LastResumeFailureReason")
+                        .HasMaxLength(1000)
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime?>("LastSwitchAt")
@@ -960,6 +970,18 @@ namespace VibeSwarm.Shared.Data.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTime?>("RecoveryCheckpointAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RecoveryPrompt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("ResumeAttemptCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("ResumeFromStatus")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int>("RetryCount")
                         .HasColumnType("INTEGER");
 
@@ -1024,6 +1046,64 @@ namespace VibeSwarm.Shared.Data.Migrations
                         .IsUnique();
 
                     b.ToTable("Jobs");
+                });
+
+            modelBuilder.Entity("VibeSwarm.Shared.Data.JobChangeSet", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool?>("BuildVerified")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("ChangedFilesCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("FollowUpIndex")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("GitCommitBefore")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("GitCommitHash")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("JobId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("MergedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ModelUsed")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("PullRequestNumber")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("PullRequestUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SessionSummary")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("JobId");
+
+                    b.HasIndex("JobId", "FollowUpIndex");
+
+                    b.ToTable("JobChangeSets");
                 });
 
             modelBuilder.Entity("VibeSwarm.Shared.Data.JobExecutionStatistics", b =>
@@ -1744,11 +1824,24 @@ namespace VibeSwarm.Shared.Data.Migrations
                     b.Property<int?>("ConfiguredMaxUsage")
                         .HasColumnType("INTEGER");
 
+                    b.Property<int>("ConsecutiveRateLimitCount")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int?>("CurrentUsage")
                         .HasColumnType("INTEGER");
 
                     b.Property<bool>("IsLimitReached")
                         .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("LastJobStartedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("LastRateLimitAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LastRateLimitMessage")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
 
                     b.Property<DateTime>("LastUpdatedAt")
                         .HasColumnType("TEXT");
@@ -1770,6 +1863,9 @@ namespace VibeSwarm.Shared.Data.Migrations
 
                     b.Property<int?>("MaxUsage")
                         .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("NextExecutionAvailableAt")
+                        .HasColumnType("TEXT");
 
                     b.Property<DateTime>("PeriodStart")
                         .HasColumnType("TEXT");
@@ -2126,6 +2222,17 @@ namespace VibeSwarm.Shared.Data.Migrations
                     b.Navigation("Provider");
                 });
 
+            modelBuilder.Entity("VibeSwarm.Shared.Data.JobChangeSet", b =>
+                {
+                    b.HasOne("VibeSwarm.Shared.Data.Job", "Job")
+                        .WithMany("ChangeSets")
+                        .HasForeignKey("JobId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Job");
+                });
+
             modelBuilder.Entity("VibeSwarm.Shared.Data.JobExecutionStatistics", b =>
                 {
                     b.HasOne("VibeSwarm.Shared.Data.Job", "Job")
@@ -2339,6 +2446,8 @@ namespace VibeSwarm.Shared.Data.Migrations
 
             modelBuilder.Entity("VibeSwarm.Shared.Data.Job", b =>
                 {
+                    b.Navigation("ChangeSets");
+
                     b.Navigation("ExecutionStatistics");
 
                     b.Navigation("Messages");

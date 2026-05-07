@@ -1,0 +1,31 @@
+@* Gradient square with project initials. Size via Size="sm|md|lg" maps to .app-mark-* classes. *@
+
+<span class="app-project-mark @SizeClass @CssClass" title="@Name">@Initials</span>
+
+@code {
+	[Parameter] public string? Name { get; set; }
+	[Parameter] public string Size { get; set; } = "md"; // sm | md | lg
+	[Parameter] public string? CssClass { get; set; }
+
+	private string SizeClass => Size switch
+	{
+		"sm" => "app-mark-sm",
+		"lg" => "app-mark-lg",
+		_ => "app-mark-md"
+	};
+
+	private string Initials
+	{
+		get
+		{
+			var name = Name?.Trim();
+			if (string.IsNullOrEmpty(name)) return "?";
+			var parts = name.Split(new[] { ' ', '-', '_', '.' }, StringSplitOptions.RemoveEmptyEntries);
+			if (parts.Length >= 2)
+			{
+				return char.ToUpperInvariant(parts[0][0]).ToString() + char.ToUpperInvariant(parts[1][0]);
+			}
+			return name.Length >= 2 ? name[..2].ToUpperInvariant() : name.ToUpperInvariant();
+		}
+	}
+}

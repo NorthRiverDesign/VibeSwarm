@@ -84,10 +84,6 @@
 				</div>
 			}
 		</div>
-
-		@* Git Operation Messages *@
-		<AlertMessage Message="@GitOperationMessage" IsSuccess="@GitOperationSuccess"
-			ProgressMessage="@GitProgressMessage" OnDismiss="OnClearGitMessage" />
 	</div>
 </div>
 
@@ -126,12 +122,6 @@ new Breadcrumb.BreadcrumbItem(Name)
 	public bool IsGitOperationInProgress { get; set; }
 
 	[Parameter]
-	public string? GitOperationMessage { get; set; }
-
-	[Parameter]
-	public bool GitOperationSuccess { get; set; }
-
-	[Parameter]
 	public string? GitProgressMessage { get; set; }
 
 	[Parameter]
@@ -166,9 +156,6 @@ new Breadcrumb.BreadcrumbItem(Name)
 
 	[Parameter]
 	public EventCallback OnUncommittedChangesClick { get; set; }
-
-	[Parameter]
-	public EventCallback OnClearGitMessage { get; set; }
 
 	private string? _currentGitOperation => IsGitOperationInProgress ? GitProgressMessage?.Contains("Fetching") == true ?
 	"refresh" : "sync" : null;

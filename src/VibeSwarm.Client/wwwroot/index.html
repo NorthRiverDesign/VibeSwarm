@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-bs-theme="dark" data-vs-theme="system">
+<html lang="en" data-bs-theme="dark" data-theme="dark" data-vs-theme="system">
 
     <head>
         <meta charset="utf-8" />
@@ -41,6 +41,14 @@
         <!-- iPhone 14 Pro Max / 15 Plus / 15 Pro Max (1290x2796) -->
         <link rel="apple-touch-startup-image"
               media="(device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3)"
+              href="/web-app-manifest-512x512.png" />
+        <!-- iPhone 16 / 16 Plus (1206x2622) -->
+        <link rel="apple-touch-startup-image"
+              media="(device-width: 402px) and (device-height: 874px) and (-webkit-device-pixel-ratio: 3)"
+              href="/web-app-manifest-512x512.png" />
+        <!-- iPhone 16 Pro Max (1320x2868) -->
+        <link rel="apple-touch-startup-image"
+              media="(device-width: 440px) and (device-height: 956px) and (-webkit-device-pixel-ratio: 3)"
               href="/web-app-manifest-512x512.png" />
         <!-- iPad 10.2" (1620x2160) -->
         <link rel="apple-touch-startup-image"
@@ -548,6 +556,48 @@
             window.addEventListener('appinstalled', function () {
                 window.vibeSwarmInstallPrompt = null;
                 window.vibeSwarmInstallable = false;
+            });
+        </script>
+
+        <!-- Screen Wake Lock API (WakeLockManager.razor) -->
+        <script>
+            window.vibeSwarmWakeLock = (function () {
+                var sentinel = null;
+
+                async function acquire() {
+                    if (!('wakeLock' in navigator)) return false;
+                    try {
+                        sentinel = await navigator.wakeLock.request('screen');
+                        sentinel.addEventListener('release', function () {
+                            sentinel = null;
+                        });
+                        return true;
+                    } catch (e) {
+                        sentinel = null;
+                        return false;
+                    }
+                }
+
+                async function release() {
+                    if (sentinel) {
+                        await sentinel.release();
+                        sentinel = null;
+                    }
+                }
+
+                return {
+                    acquire: acquire,
+                    release: release,
+                    isActive: function () { return sentinel !== null; }
+                };
+            })();
+
+            // Re-acquire wake lock when page becomes visible again (browser auto-releases on hide)
+            document.addEventListener('visibilitychange', function () {
+                if (document.visibilityState === 'visible' && window.vibeSwarmWakeLock) {
+                    // Blazor WakeLockManager will call acquire() again via OnParametersSetAsync;
+                    // this is a best-effort re-acquire for robustness.
+                }
             });
         </script>
 

@@ -99,6 +99,27 @@ public partial class JobProcessingService : BackgroundService
         public string? CommandUsed { get; set; }
 
         /// <summary>
+        /// Most recent provider session ID observed during execution.
+        /// </summary>
+        public string? SessionId { get; set; }
+
+        /// <summary>
+        /// Prompt snapshot currently being executed.
+        /// Persisted to durable recovery checkpoints.
+        /// </summary>
+        public string? ActivePrompt { get; set; }
+
+        /// <summary>
+        /// Most recent activity summary observed from the provider.
+        /// </summary>
+        public string? LatestActivity { get; set; }
+
+        /// <summary>
+        /// Last time durable recovery state was flushed to the database.
+        /// </summary>
+        public DateTime LastCheckpointPersistedAt { get; set; }
+
+        /// <summary>
         /// Accumulates console output during execution for storage in the database
         /// </summary>
         public StringBuilder ConsoleOutputBuffer { get; } = new StringBuilder();
@@ -261,7 +282,7 @@ public partial class JobProcessingService : BackgroundService
 
             // Fix jobs that completed (CompletedAt set) but crashed before persisting terminal status
             var completedWrongStatus = await dbContext.Jobs
-                .Where(j => j.Status == JobStatus.Started || j.Status == JobStatus.Planning || j.Status == JobStatus.Processing)
+                .Where(j => j.Status == JobStatus.Pending || j.Status == JobStatus.Started || j.Status == JobStatus.Planning || j.Status == JobStatus.Processing)
                 .Where(j => j.CompletedAt.HasValue)
                 .ToListAsync(cancellationToken);
 
@@ -286,7 +307,7 @@ public partial class JobProcessingService : BackgroundService
             var cutoffTime = DateTime.UtcNow - TimeSpan.FromMinutes(10);
             var orphanedJobs = await dbContext.Jobs
                 .Include(j => j.Project)
-                .Where(j => (j.Status == JobStatus.Started || j.Status == JobStatus.Planning || j.Status == JobStatus.Processing))
+                .Where(j => (j.Status == JobStatus.Pending || j.Status == JobStatus.Started || j.Status == JobStatus.Planning || j.Status == JobStatus.Processing))
                 .Where(j => !j.CompletedAt.HasValue)
                 .Where(j => !j.LastHeartbeatAt.HasValue || j.LastHeartbeatAt.Value < cutoffTime)
                 .ToListAsync(cancellationToken);
@@ -306,12 +327,19 @@ public partial class JobProcessingService : BackgroundService
 
                 if (job.MaxRetries == 0 || job.RetryCount < job.MaxRetries)
                 {
+                    JobRecoveryHelper.CaptureRecoveryState(
+                        job,
+                        job.Status == JobStatus.Planning ? JobStatus.Planning : JobStatus.Processing,
+                        job.RecoveryPrompt ?? job.GoalPrompt,
+                        job.SessionId,
+                        job.ConsoleOutput);
                     JobStateMachine.TryTransition(job, JobStatus.New, "Automatic orphan recovery");
                     job.RetryCount++;
                     job.ErrorMessage = "Worker crashed or became unresponsive. Automatic recovery.";
                 }
                 else
                 {
+                    JobRecoveryHelper.ClearRecoveryState(job);
                     JobStateMachine.TryTransition(job, JobStatus.Failed, "Automatic orphan recovery exhausted retries");
                     job.ErrorMessage = $"Job failed after {job.RetryCount} retry attempts (worker crash).";
                 }
@@ -440,11 +468,12 @@ public partial class JobProcessingService : BackgroundService
             .Where(j => (j.Status == JobStatus.New || j.Status == JobStatus.Pending) && !j.CancellationRequested)
             .Where(j => j.WorkerInstanceId == null)
             .ExecuteUpdateAsync(setters => setters
-                .SetProperty(j => j.Status, JobStatus.Started)
+                .SetProperty(j => j.Status, JobStatus.Pending)
                 .SetProperty(j => j.WorkerInstanceId, _workerInstanceId)
                 .SetProperty(j => j.StartedAt, j => j.StartedAt ?? claimTime)
                 .SetProperty(j => j.LastActivityAt, claimTime)
-                .SetProperty(j => j.LastHeartbeatAt, claimTime),
+                .SetProperty(j => j.LastHeartbeatAt, claimTime)
+                .SetProperty(j => j.NotBeforeUtc, (DateTime?)null),
                 cancellationToken);
 
         if (updatedRows == 1)

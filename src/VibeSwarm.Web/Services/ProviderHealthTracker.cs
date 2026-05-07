@@ -37,7 +37,17 @@ public class ProviderHealthTracker : IProviderHealthTracker
 	/// <summary>
 	/// Default cooldown when a rate limit is detected but no reset time is provided.
 	/// </summary>
-	public TimeSpan DefaultRateLimitCooldown { get; set; } = TimeSpan.FromMinutes(30);
+	public TimeSpan DefaultRateLimitCooldown { get; set; } = TimeSpan.FromMinutes(1);
+
+	/// <summary>
+	/// Consecutive rate-limit backoff steps. The last value is reused once the sequence is exhausted.
+	/// </summary>
+	public TimeSpan[] RateLimitCooldownSteps { get; set; } =
+	[
+		TimeSpan.FromMinutes(1),
+		TimeSpan.FromMinutes(2),
+		TimeSpan.FromMinutes(3)
+	];
 
 	/// <summary>
 	/// Number of successes needed to close a half-open circuit
@@ -105,6 +115,13 @@ public class ProviderHealthTracker : IProviderHealthTracker
 			if (responseTime.HasValue)
 			{
 				state.ResponseTimes.Add(new ResponseTimeEntry { Timestamp = now, Duration = responseTime.Value });
+			}
+
+			if (state.IsRateLimited || state.ConsecutiveRateLimitFailures > 0)
+			{
+				state.IsRateLimited = false;
+				state.RateLimitResetTime = null;
+				state.ConsecutiveRateLimitFailures = 0;
 			}
 
 			// Check if we should close a half-open circuit
@@ -210,18 +227,28 @@ public class ProviderHealthTracker : IProviderHealthTracker
 			state.LastFailure = now;
 			state.LastError = errorMessage;
 			state.ConsecutiveFailures++;
+			state.ConsecutiveRateLimitFailures = Math.Min(
+				state.ConsecutiveRateLimitFailures + 1,
+				Math.Max(RateLimitCooldownSteps.Length, 1));
 			state.ConsecutiveSuccesses = 0;
+
+			var scheduledResetTime = now + GetRateLimitCooldown(state.ConsecutiveRateLimitFailures);
+			var effectiveResetTime = scheduledResetTime;
+			if (resetTime.HasValue && resetTime.Value > effectiveResetTime)
+			{
+				effectiveResetTime = resetTime.Value;
+			}
 
 			state.CircuitState = CircuitState.Open;
 			state.CircuitOpenedAt = now;
-			state.IsSystemFailure = true;
+			state.IsSystemFailure = false;
 			state.IsRateLimited = true;
-			state.RateLimitResetTime = resetTime ?? now + DefaultRateLimitCooldown;
+			state.RateLimitResetTime = effectiveResetTime;
 
 			_logger?.LogWarning(
 				"Circuit breaker opened for provider {ProviderId} due to rate limit: {Error}. " +
-				"Provider will be retested after {ResetTime:u}",
-				providerId, errorMessage, state.RateLimitResetTime);
+				"Provider will be retested after {ResetTime:u} (consecutive rate limits: {RateLimitCount})",
+				providerId, errorMessage, state.RateLimitResetTime, state.ConsecutiveRateLimitFailures);
 		}
 	}
 
@@ -275,6 +302,7 @@ public class ProviderHealthTracker : IProviderHealthTracker
 			{
 				healthState.IsRateLimited = false;
 				healthState.RateLimitResetTime = null;
+				healthState.ConsecutiveRateLimitFailures = 0;
 			}
 		}
 		_logger?.LogInformation("Forced circuit state to {State} for provider {ProviderId}", state, providerId);
@@ -328,6 +356,17 @@ public class ProviderHealthTracker : IProviderHealthTracker
 		return (double)state.RecentFailures.Count / total;
 	}
 
+	private TimeSpan GetRateLimitCooldown(int consecutiveRateLimitFailures)
+	{
+		if (RateLimitCooldownSteps.Length == 0)
+		{
+			return DefaultRateLimitCooldown;
+		}
+
+		var stepIndex = Math.Clamp(consecutiveRateLimitFailures - 1, 0, RateLimitCooldownSteps.Length - 1);
+		return RateLimitCooldownSteps[stepIndex];
+	}
+
 	private TimeSpan CalculateAverageResponseTime(ProviderHealthState state)
 	{
 		if (state.ResponseTimes.Count == 0)
@@ -359,6 +398,7 @@ public class ProviderHealthTracker : IProviderHealthTracker
 		public bool IsSystemFailure;
 		public bool IsRateLimited;
 		public DateTime? RateLimitResetTime;
+		public int ConsecutiveRateLimitFailures;
 	}
 
 	private class ResponseTimeEntry

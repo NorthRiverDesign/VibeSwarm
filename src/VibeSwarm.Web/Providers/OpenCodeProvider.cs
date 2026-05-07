@@ -13,9 +13,6 @@ namespace VibeSwarm.Shared.Providers;
 public class OpenCodeProvider : CliProviderBase
 {
     private static readonly Version DirectoryVersion = new(1, 2, 0);
-    private static readonly Version TimeoutVersion = new(1, 2, 0);
-    private static readonly Version TimeoutRemovedVersion = new(1, 3, 0);
-    private static readonly Version LegacyReasoningVersion = new(1, 2, 0);
     private static readonly Version VariantVersion = new(1, 3, 0);
     private static readonly Version ForkSessionVersion = new(1, 2, 6);
     private static readonly Version SkipPermissionsVersion = new(1, 4, 0);
@@ -184,25 +181,22 @@ public class OpenCodeProvider : CliProviderBase
     /// --attach        Attach to a running opencode server
     /// --port          Port for the local server
     /// --dir           Working directory for the session (v1.2.0+)
-    /// --timeout       Timeout in seconds for the execution (legacy v1.2.x only)
     /// --variant       Provider-specific model variant / reasoning preset (v1.3.0+)
     /// </summary>
     internal List<string> BuildRunCommandArgs(string prompt, string? sessionId)
     {
         var args = new List<string> { "run" };
         var supportsDirectory = SupportsCliVersion(DirectoryVersion);
-        var supportsLegacyTimeout = SupportsCliVersion(TimeoutVersion) && !SupportsCliVersion(TimeoutRemovedVersion);
-        var supportsLegacyReasoning = SupportsCliVersion(LegacyReasoningVersion) && !SupportsCliVersion(VariantVersion);
         var supportsVariant = SupportsCliVersion(VariantVersion);
         var supportsForkSession = SupportsCliVersion(ForkSessionVersion);
 
-		// Session continuation options (--session takes precedence over --continue)
-		var isContinuingSession = !string.IsNullOrEmpty(sessionId) || CurrentContinueLastSession;
-		if (!string.IsNullOrEmpty(sessionId))
-		{
-			args.AddRange(new[] { "--session", sessionId });
-		}
-		else if (CurrentContinueLastSession)
+        // Session continuation options (--session takes precedence over --continue)
+        var isContinuingSession = !string.IsNullOrEmpty(sessionId) || CurrentContinueLastSession;
+        if (!string.IsNullOrEmpty(sessionId))
+        {
+            args.AddRange(new[] { "--session", sessionId });
+        }
+        else if (CurrentContinueLastSession)
         {
             args.Add("--continue");
         }
@@ -240,12 +234,6 @@ public class OpenCodeProvider : CliProviderBase
             args.AddRange(new[] { "--dir", CurrentAdditionalDirectories[0] });
         }
 
-        // Timeout in seconds was available in v1.2.x and removed from current 1.3.x run help/docs.
-        if (supportsLegacyTimeout && CurrentTimeoutSeconds.HasValue)
-        {
-            args.AddRange(new[] { "--timeout", CurrentTimeoutSeconds.Value.ToString() });
-        }
-
         // Output format (default or json)
         if (!string.IsNullOrEmpty(CurrentOutputFormat))
         {
@@ -261,26 +249,22 @@ public class OpenCodeProvider : CliProviderBase
             }
         }
 
-		// Fork an existing session into a new branch (v1.2.6+, requires --continue or --session)
-		if (supportsForkSession && CurrentForkSession && isContinuingSession)
-		{
-			args.Add("--fork");
-		}
-
-        var reasoningEffort = NormalizeReasoningEffort(CurrentReasoningEffort, "minimal", "low", "medium", "high", "xhigh", "max");
-        if (supportsLegacyReasoning && !string.IsNullOrEmpty(reasoningEffort))
+        // Fork an existing session into a new branch (v1.2.6+, requires --continue or --session)
+        if (supportsForkSession && CurrentForkSession && isContinuingSession)
         {
-            args.AddRange(new[] { "--reasoning", reasoningEffort });
+            args.Add("--fork");
         }
-        else if (supportsVariant && !string.IsNullOrEmpty(reasoningEffort))
+
+        // Reasoning effort / model variant — current opencode run accepts only --variant (v1.3.0+).
+        // The legacy --reasoning flag was renamed at v1.3.0; passing it on current CLIs is rejected.
+        var reasoningEffort = NormalizeReasoningEffort(CurrentReasoningEffort, "minimal", "low", "medium", "high", "xhigh", "max");
+        if (supportsVariant && !string.IsNullOrEmpty(reasoningEffort))
         {
             args.AddRange(new[] { "--variant", reasoningEffort });
         }
 
-        if (!string.IsNullOrEmpty(CurrentMcpConfigPath))
-        {
-            args.AddRange(new[] { "--config", CurrentMcpConfigPath });
-        }
+        // Note: opencode run does not accept a --config / MCP config path flag.
+        // MCP servers are configured via opencode.json(c) in the working dir or ~/.config/opencode/.
 
         // Skip permission prompts in `opencode run` (v1.4.0+). Brings OpenCode dispatch to parity with
         // Claude/Copilot headless modes so tool calls don't block for a TTY confirm.
@@ -435,7 +419,7 @@ public class OpenCodeProvider : CliProviderBase
             if (string.IsNullOrEmpty(e.Data)) return;
 
             // Strip ANSI codes for storage and parsing
-            var cleanedData = StripAnsiCodes(e.Data);
+            var cleanedData = OutputCleaner.StripAnsiCodes(e.Data);
 
             lock (outputLock)
             {
@@ -494,7 +478,7 @@ public class OpenCodeProvider : CliProviderBase
             if (!string.IsNullOrEmpty(e.Data))
             {
                 // Strip ANSI codes from stderr as well
-                var cleanedError = StripAnsiCodes(e.Data);
+                var cleanedError = OutputCleaner.StripAnsiCodes(e.Data);
                 errorBuilder.AppendLine(cleanedError);
 
                 // OpenCode outputs tool progress (Read, Edit, Write, etc.) to stderr
@@ -612,11 +596,11 @@ public class OpenCodeProvider : CliProviderBase
         List<string> cleanedOutput;
         lock (outputLock)
         {
-            cleanedOutput = outputBuilder.Select(StripAnsiCodes).ToList();
+            cleanedOutput = outputBuilder.Select(OutputCleaner.StripAnsiCodes).ToList();
         }
         result.Output = string.Join("\n", cleanedOutput);
 
-        var stderrContent = StripAnsiCodes(errorBuilder.ToString());
+        var stderrContent = OutputCleaner.StripAnsiCodes(errorBuilder.ToString());
 
         // Check for errors in output even if exit code was 0
         // Some CLIs output errors but still return 0
@@ -696,21 +680,6 @@ public class OpenCodeProvider : CliProviderBase
         }
 
         return result;
-    }
-
-    /// <summary>
-    /// Strips ANSI escape codes from a string for cleaner parsing.
-    /// </summary>
-    private static string StripAnsiCodes(string input)
-    {
-        if (string.IsNullOrEmpty(input))
-            return input;
-
-        // Pattern matches ANSI escape sequences: ESC [ ... (letter or ~)
-        return System.Text.RegularExpressions.Regex.Replace(
-            input,
-            @"\x1B\[[0-9;]*[a-zA-Z~]|\x1B\].*?\x07|\x1B[PX^_].*?\x1B\\|\x1B.?",
-            string.Empty);
     }
 
     /// <summary>
@@ -840,6 +809,11 @@ public class OpenCodeProvider : CliProviderBase
                 if (!string.IsNullOrEmpty(evt.SessionId))
                 {
                     result.SessionId = evt.SessionId;
+                    progress?.Report(new ExecutionProgress
+                    {
+                        SessionId = evt.SessionId,
+                        IsStreaming = false
+                    });
                 }
                 break;
 

@@ -31,9 +31,7 @@
 				@* Error message *@
 				@if (!string.IsNullOrEmpty(_directoryResult?.Error))
 				{
-					<div class="alert alert-warning m-3 mb-0">
-						<i class="bi bi-exclamation-triangle me-2"></i>@_directoryResult.Error
-					</div>
+					<Alert Type="Alert.AlertType.Warning" Class="m-3 mb-0">@_directoryResult.Error</Alert>
 				}
 
 				@* Loading state *@

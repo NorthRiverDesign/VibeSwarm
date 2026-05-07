@@ -213,7 +213,8 @@ public class ClaudeSdkProvider : SdkProviderBase
 					progress?.Report(new ExecutionProgress
 					{
 						CurrentMessage = "Processing...",
-						IsStreaming = true
+						IsStreaming = true,
+						SessionId = messageId
 					});
 				}
 				else if (evt.TryPickContentBlockDelta(out var deltaEvent))

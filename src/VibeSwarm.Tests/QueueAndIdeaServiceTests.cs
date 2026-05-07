@@ -852,6 +852,248 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 	}
 
 	[Fact]
+	public async Task ContinueJobAsync_SavesChangeSetSnapshotBeforeReset()
+	{
+		await using var dbContext = CreateDbContext();
+		var project = new Project
+		{
+			Id = Guid.NewGuid(),
+			Name = "Change Set Project",
+			WorkingPath = "/tmp/changeset-project"
+		};
+		var provider = new Provider
+		{
+			Id = Guid.NewGuid(),
+			Name = "Copilot",
+			Type = ProviderType.Copilot,
+			IsEnabled = true,
+			IsDefault = true
+		};
+		var completedAt = DateTime.UtcNow.AddMinutes(-10);
+		var job = new Job
+		{
+			Id = Guid.NewGuid(),
+			ProjectId = project.Id,
+			ProviderId = provider.Id,
+			GoalPrompt = "Build the feature",
+			Status = JobStatus.Completed,
+			SessionId = "sess-abc",
+			CompletedAt = completedAt,
+			GitCommitHash = "abc1234567890",
+			ChangedFilesCount = 5,
+			SessionSummary = "Did the thing",
+			PullRequestNumber = 42,
+			PullRequestUrl = "https://github.com/owner/repo/pull/42",
+			BuildVerified = true,
+			ModelUsed = "gpt-4o"
+		};
+
+		dbContext.Projects.Add(project);
+		dbContext.Providers.Add(provider);
+		dbContext.Jobs.Add(job);
+		await dbContext.SaveChangesAsync();
+
+		var serviceProvider = new ServiceCollection().BuildServiceProvider();
+		var jobService = new JobService(dbContext, serviceProvider);
+
+		var continued = await jobService.ContinueJobAsync(job.Id, "Fix the edge cases.");
+
+		Assert.True(continued);
+
+		var changeSets = await dbContext.JobChangeSets.Where(cs => cs.JobId == job.Id).ToListAsync();
+		var cs0 = Assert.Single(changeSets);
+		Assert.Equal(0, cs0.FollowUpIndex);
+		Assert.Equal("abc1234567890", cs0.GitCommitHash);
+		Assert.Equal(5, cs0.ChangedFilesCount);
+		Assert.Equal("Did the thing", cs0.SessionSummary);
+		Assert.Equal(42, cs0.PullRequestNumber);
+		Assert.Equal("https://github.com/owner/repo/pull/42", cs0.PullRequestUrl);
+		Assert.True(cs0.BuildVerified);
+		Assert.Equal("gpt-4o", cs0.ModelUsed);
+	}
+
+	[Fact]
+	public async Task ContinueJobAsync_SavesIncrementingFollowUpIndexOnEachContinuation()
+	{
+		await using var dbContext = CreateDbContext();
+		var project = new Project { Id = Guid.NewGuid(), Name = "Multi Follow-Up", WorkingPath = "/tmp/mfu" };
+		var provider = new Provider { Id = Guid.NewGuid(), Name = "Copilot", Type = ProviderType.Copilot, IsEnabled = true, IsDefault = true };
+		var job = new Job
+		{
+			Id = Guid.NewGuid(),
+			ProjectId = project.Id,
+			ProviderId = provider.Id,
+			GoalPrompt = "Initial goal",
+			Status = JobStatus.Completed,
+			CompletedAt = DateTime.UtcNow,
+			GitCommitHash = "hash0",
+			SessionSummary = "First run"
+		};
+		dbContext.Projects.Add(project);
+		dbContext.Providers.Add(provider);
+		dbContext.Jobs.Add(job);
+		await dbContext.SaveChangesAsync();
+
+		var serviceProvider = new ServiceCollection().BuildServiceProvider();
+		var jobService = new JobService(dbContext, serviceProvider);
+
+		// First follow-up — saves FollowUpIndex=0
+		await jobService.ContinueJobAsync(job.Id, "First follow-up");
+		var afterFirst = await dbContext.JobChangeSets.Where(cs => cs.JobId == job.Id).OrderBy(cs => cs.FollowUpIndex).ToListAsync();
+		Assert.Single(afterFirst);
+		Assert.Equal(0, afterFirst[0].FollowUpIndex);
+
+		// Simulate job completing again
+		var savedJob = await dbContext.Jobs.SingleAsync(j => j.Id == job.Id);
+		savedJob.Status = JobStatus.Completed;
+		savedJob.CompletedAt = DateTime.UtcNow;
+		savedJob.GitCommitHash = "hash1";
+		savedJob.SessionSummary = "Second run";
+		await dbContext.SaveChangesAsync();
+
+		// Second follow-up — saves FollowUpIndex=1
+		await jobService.ContinueJobAsync(job.Id, "Second follow-up");
+		var afterSecond = await dbContext.JobChangeSets.Where(cs => cs.JobId == job.Id).OrderBy(cs => cs.FollowUpIndex).ToListAsync();
+		Assert.Equal(2, afterSecond.Count);
+		Assert.Equal(1, afterSecond[1].FollowUpIndex);
+		Assert.Equal("hash1", afterSecond[1].GitCommitHash);
+	}
+
+	[Fact]
+	public async Task ContinueJobAsync_AllowsContinuationForStalledJob()
+	{
+		await using var dbContext = CreateDbContext();
+		var project = new Project { Id = Guid.NewGuid(), Name = "Stalled Project", WorkingPath = "/tmp/stalled" };
+		var provider = new Provider { Id = Guid.NewGuid(), Name = "Copilot", Type = ProviderType.Copilot, IsEnabled = true, IsDefault = true };
+		var job = new Job
+		{
+			Id = Guid.NewGuid(),
+			ProjectId = project.Id,
+			ProviderId = provider.Id,
+			GoalPrompt = "Add a new endpoint",
+			Status = JobStatus.Stalled,
+			SessionId = "stalled-session-1",
+			ErrorMessage = "Job stalled after 15 minutes without activity.",
+			ConsoleOutput = "partial output...",
+		};
+		dbContext.Projects.Add(project);
+		dbContext.Providers.Add(provider);
+		dbContext.Jobs.Add(job);
+		await dbContext.SaveChangesAsync();
+
+		var serviceProvider = new ServiceCollection().BuildServiceProvider();
+		var jobService = new JobService(dbContext, serviceProvider);
+
+		var continued = await jobService.ContinueJobAsync(job.Id, "The endpoint needs authentication middleware.");
+
+		Assert.True(continued);
+
+		var savedJob = await dbContext.Jobs.SingleAsync(j => j.Id == job.Id);
+		Assert.Equal(JobStatus.New, savedJob.Status);
+		Assert.Equal("stalled-session-1", savedJob.SessionId);
+		Assert.Contains("Previous goal: Add a new endpoint", savedJob.GoalPrompt);
+		Assert.Contains("The endpoint needs authentication middleware.", savedJob.GoalPrompt);
+		Assert.Null(savedJob.ErrorMessage);
+		Assert.Null(savedJob.ConsoleOutput);
+
+		var message = await dbContext.JobMessages.SingleAsync(m => m.JobId == job.Id);
+		Assert.Equal(MessageRole.User, message.Role);
+		Assert.Equal("The endpoint needs authentication middleware.", message.Content);
+	}
+
+	[Fact]
+	public async Task ContinueJobAsync_AllowsContinuationForFailedJob()
+	{
+		await using var dbContext = CreateDbContext();
+		var project = new Project { Id = Guid.NewGuid(), Name = "Failed Project", WorkingPath = "/tmp/failed" };
+		var provider = new Provider { Id = Guid.NewGuid(), Name = "Copilot", Type = ProviderType.Copilot, IsEnabled = true, IsDefault = true };
+		var job = new Job
+		{
+			Id = Guid.NewGuid(),
+			ProjectId = project.Id,
+			ProviderId = provider.Id,
+			GoalPrompt = "Fix the bug",
+			Status = JobStatus.Failed,
+			SessionId = "failed-session-1",
+			ErrorMessage = "CLI process failed to start.",
+		};
+		dbContext.Projects.Add(project);
+		dbContext.Providers.Add(provider);
+		dbContext.Jobs.Add(job);
+		await dbContext.SaveChangesAsync();
+
+		var serviceProvider = new ServiceCollection().BuildServiceProvider();
+		var jobService = new JobService(dbContext, serviceProvider);
+
+		var continued = await jobService.ContinueJobAsync(job.Id, "Use a different approach to fix the null reference.");
+
+		Assert.True(continued);
+
+		var savedJob = await dbContext.Jobs.SingleAsync(j => j.Id == job.Id);
+		Assert.Equal(JobStatus.New, savedJob.Status);
+		Assert.Null(savedJob.ErrorMessage);
+		Assert.Contains("Follow-up instructions:\nUse a different approach to fix the null reference.", savedJob.GoalPrompt);
+	}
+
+	[Fact]
+	public async Task ContinueJobAsync_ReturnsFalseForActiveJob()
+	{
+		await using var dbContext = CreateDbContext();
+		var project = new Project { Id = Guid.NewGuid(), Name = "Active Project", WorkingPath = "/tmp/active" };
+		var provider = new Provider { Id = Guid.NewGuid(), Name = "Copilot", Type = ProviderType.Copilot, IsEnabled = true, IsDefault = true };
+		var job = new Job
+		{
+			Id = Guid.NewGuid(),
+			ProjectId = project.Id,
+			ProviderId = provider.Id,
+			GoalPrompt = "Do work",
+			Status = JobStatus.Processing,
+		};
+		dbContext.Projects.Add(project);
+		dbContext.Providers.Add(provider);
+		dbContext.Jobs.Add(job);
+		await dbContext.SaveChangesAsync();
+
+		var serviceProvider = new ServiceCollection().BuildServiceProvider();
+		var jobService = new JobService(dbContext, serviceProvider);
+
+		var result = await jobService.ContinueJobAsync(job.Id, "Some instructions");
+
+		Assert.False(result);
+		var unchanged = await dbContext.Jobs.SingleAsync(j => j.Id == job.Id);
+		Assert.Equal(JobStatus.Processing, unchanged.Status);
+	}
+
+	[Fact]
+	public async Task GetChangeSetsAsync_ReturnsChangeSetsOrderedByFollowUpIndex()
+	{
+		await using var dbContext = CreateDbContext();
+		var project = new Project { Id = Guid.NewGuid(), Name = "CS Order", WorkingPath = "/tmp/cs-order" };
+		var provider = new Provider { Id = Guid.NewGuid(), Name = "Copilot", Type = ProviderType.Copilot, IsEnabled = true, IsDefault = true };
+		var jobId = Guid.NewGuid();
+		var job = new Job { Id = jobId, ProjectId = project.Id, ProviderId = provider.Id, GoalPrompt = "goal", Status = JobStatus.Completed };
+		dbContext.Projects.Add(project);
+		dbContext.Providers.Add(provider);
+		dbContext.Jobs.Add(job);
+		await dbContext.SaveChangesAsync();
+
+		dbContext.JobChangeSets.AddRange(
+			new JobChangeSet { Id = Guid.NewGuid(), JobId = jobId, FollowUpIndex = 1, GitCommitHash = "b" },
+			new JobChangeSet { Id = Guid.NewGuid(), JobId = jobId, FollowUpIndex = 0, GitCommitHash = "a" }
+		);
+		await dbContext.SaveChangesAsync();
+
+		var serviceProvider = new ServiceCollection().BuildServiceProvider();
+		var jobService = new JobService(dbContext, serviceProvider);
+
+		var result = (await jobService.GetChangeSetsAsync(jobId)).ToList();
+
+		Assert.Equal(2, result.Count);
+		Assert.Equal(0, result[0].FollowUpIndex);
+		Assert.Equal(1, result[1].FollowUpIndex);
+	}
+
+	[Fact]
 	public async Task ContinueJobAsync_RejectsJobsThatAreNotCompleted()
 	{
 		await using var dbContext = CreateDbContext();

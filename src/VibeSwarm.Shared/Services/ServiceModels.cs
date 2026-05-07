@@ -7,6 +7,8 @@ namespace VibeSwarm.Shared.Services;
 /// </summary>
 public class JobCompletionCriteria
 {
+	public static readonly TimeSpan DefaultStallTimeoutValue = TimeSpan.FromMinutes(15);
+
 	/// <summary>
 	/// Maximum time a job can run before being considered timed out
 	/// </summary>
@@ -25,7 +27,7 @@ public class JobCompletionCriteria
 	/// <summary>
 	/// Time without activity before job is considered stalled
 	/// </summary>
-	public TimeSpan? StallTimeout { get; set; } = TimeSpan.FromMinutes(10);
+	public TimeSpan? StallTimeout { get; set; } = DefaultStallTimeoutValue;
 
 	/// <summary>
 	/// Regex pattern that indicates success when found in output
@@ -43,7 +45,7 @@ public class JobCompletionCriteria
 	public static JobCompletionCriteria Default => new()
 	{
 		MaxExecutionTime = TimeSpan.FromHours(1),
-		StallTimeout = TimeSpan.FromMinutes(10)
+		StallTimeout = DefaultStallTimeoutValue
 	};
 
 	/// <summary>
@@ -52,7 +54,7 @@ public class JobCompletionCriteria
 	public static JobCompletionCriteria LongRunning => new()
 	{
 		MaxExecutionTime = TimeSpan.FromHours(8),
-		StallTimeout = TimeSpan.FromMinutes(15)
+		StallTimeout = DefaultStallTimeoutValue
 	};
 }
 

@@ -92,7 +92,7 @@
 				<span>Loading queue...</span>
 			</div>
 		}
-		else if (BadgeCount == 0)
+		else if (TotalItemCount == 0)
 		{
 			<div class="p-3 small text-body-secondary">
 				No running or queued jobs or upcoming ideas.
@@ -209,7 +209,8 @@
 	private string? _loadError;
 
 	private bool IsQueueActive => _snapshot.ProjectsCurrentlyProcessing > 0;
-	private int BadgeCount => _snapshot.RunningJobsCount + _snapshot.QueuedJobsCount + _snapshot.UpcomingIdeasCount;
+	private int BadgeCount => _snapshot.RunningJobsCount + _snapshot.QueuedJobsCount;
+	private int TotalItemCount => BadgeCount + _snapshot.UpcomingIdeasCount;
 
 	protected override async Task OnInitializedAsync()
 	{

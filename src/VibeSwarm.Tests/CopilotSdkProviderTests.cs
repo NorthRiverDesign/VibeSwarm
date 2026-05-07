@@ -1,6 +1,7 @@
 using GitHub.Copilot.SDK;
 using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Providers;
+using VibeSwarm.Shared.Services;
 
 namespace VibeSwarm.Tests;
 
@@ -95,6 +96,12 @@ public sealed class CopilotSdkProviderTests
 		Assert.Equal("/repo", options.Cwd);
 		Assert.Null(options.Environment);
 		Assert.Null(options.CliArgs);
+	}
+
+	[Fact]
+	public void DefaultPromptTimeout_MatchesSharedJobExecutionDefault()
+	{
+		Assert.Equal(JobCompletionCriteria.DefaultStallTimeoutValue, CopilotSdkProvider.DefaultPromptTimeout);
 	}
 
 	private static Provider CreateConfig()

@@ -190,7 +190,7 @@
                                 }
                                 else
                                 {
-                                    <textarea class="form-control lh-base" style="min-height: 150px; resize: vertical;"
+                                    <textarea class="form-control lh-base textarea-editable"
                                               @bind="_editedGoalPrompt" rows="6" placeholder="Enter the goal prompt for the AI agent..."></textarea>
                                 }
                             </div>
@@ -317,27 +317,32 @@
                         <div class="empty-state text-center py-5">
                             @if (Status == JobStatus.Completed)
                             {
-                                <i class="bi bi-check-circle opacity-50 d-block mb-2" style="font-size: 2.5rem;"></i>
+                                <i class="bi bi-check-circle opacity-50 d-block mb-2 fs-1"></i>
                                 <span class="text-body-secondary">Job completed but no conversation was recorded.</span>
                             }
                             else if (Status == JobStatus.Failed)
                             {
-                                <i class="bi bi-exclamation-circle opacity-50 d-block mb-2" style="font-size: 2.5rem;"></i>
+                                <i class="bi bi-exclamation-circle opacity-50 d-block mb-2 fs-1"></i>
                                 <span class="text-body-secondary">Job failed. Check the error message above for details.</span>
                             }
                             else if (Status == JobStatus.Cancelled)
                             {
-                                <i class="bi bi-x-circle opacity-50 d-block mb-2" style="font-size: 2.5rem;"></i>
+                                <i class="bi bi-x-circle opacity-50 d-block mb-2 fs-1"></i>
                                 <span class="text-body-secondary">Job was cancelled. No conversation recorded.</span>
+                            }
+                            else if (Status == JobStatus.Stalled)
+                            {
+                                <i class="bi bi-hourglass-split opacity-50 d-block mb-2 fs-1"></i>
+                                <span class="text-body-secondary">Job stalled before any conversation was recorded. Use the follow-up input below to continue.</span>
                             }
                             else if (Status == JobStatus.New || Status == JobStatus.Pending)
                             {
-                                <i class="bi bi-hourglass opacity-50 d-block mb-2" style="font-size: 2.5rem;"></i>
+                                <i class="bi bi-hourglass opacity-50 d-block mb-2 fs-1"></i>
                                 <span class="text-body-secondary">Conversation will appear after the job runs.</span>
                             }
                             else
                             {
-                                <i class="bi bi-chat-left-text opacity-50 d-block mb-2" style="font-size: 2.5rem;"></i>
+                                <i class="bi bi-chat-left-text opacity-50 d-block mb-2 fs-1"></i>
                                 <span class="text-body-secondary">No conversation recorded for this job.</span>
                             }
                         </div>
@@ -413,12 +418,23 @@
         }
     </div>
 
-    @* Follow-up input section - only for completed jobs *@
+    @* Follow-up input section - for completed, stalled, and failed jobs *@
     @if (CanSendFollowUp)
     {
         <div class="card-footer bg-body-tertiary border-top">
+            @if (Status is JobStatus.Stalled or JobStatus.Failed)
+            {
+                <p class="small text-body-secondary mb-2">
+                    <i class="bi bi-info-circle me-1"></i>
+                    @(Status == JobStatus.Stalled
+                        ? "The job timed out. Describe what to try next and the agent will continue from where it left off."
+                        : "The job failed. Provide guidance for the next attempt.")
+                </p>
+            }
             <div class="d-flex gap-2">
-                <textarea class="form-control" rows="4" placeholder="Add follow-up instructions..." value="@_followUpPrompt"
+                <textarea class="form-control" rows="4"
+                          placeholder="@(Status is JobStatus.Stalled or JobStatus.Failed ? "Describe what to try next..." : "Add follow-up instructions...")"
+                          value="@_followUpPrompt"
                           @oninput="HandleFollowUpInput" disabled="@_isSendingFollowUp"></textarea>
                 <button class="btn btn-primary align-self-end flex-shrink-0" @onclick="SendFollowUp"
                         disabled="@(string.IsNullOrWhiteSpace(_followUpPrompt) || _isSendingFollowUp)" title="Send follow-up">
@@ -522,7 +538,7 @@
     private IReadOnlyList<CommandStep> _commandSteps = [];
     private string? _displayStateKey;
 
-    private bool CanSendFollowUp => Status == JobStatus.Completed && OnSendFollowUp.HasDelegate;
+    private bool CanSendFollowUp => (Status is JobStatus.Completed or JobStatus.Stalled or JobStatus.Failed) && OnSendFollowUp.HasDelegate;
 
     private bool HasCommandTab => _commandSteps.Count > 0 || !string.IsNullOrWhiteSpace(CommandUsed);
 
@@ -713,11 +729,17 @@
     {
         if (string.IsNullOrWhiteSpace(_followUpPrompt) || _isSendingFollowUp) return;
 
+        var prompt = _followUpPrompt;
+        _followUpPrompt = string.Empty;
         _isSendingFollowUp = true;
         try
         {
-            await OnSendFollowUp.InvokeAsync(_followUpPrompt);
-            _followUpPrompt = string.Empty;
+            await OnSendFollowUp.InvokeAsync(prompt);
+        }
+        catch
+        {
+            _followUpPrompt = prompt;
+            throw;
         }
         finally
         {

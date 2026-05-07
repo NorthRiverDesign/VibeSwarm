@@ -258,6 +258,12 @@ public class ExecutionProgress
     public int? TokensUsed { get; set; }
 
     /// <summary>
+    /// Provider session ID discovered during execution.
+    /// Persisted immediately so interrupted jobs can attempt session resume.
+    /// </summary>
+    public string? SessionId { get; set; }
+
+    /// <summary>
     /// Process ID (reported once when process starts)
     /// </summary>
     public int? ProcessId { get; set; }
@@ -557,16 +563,16 @@ public class ExecutionOptions
     /// </summary>
     public decimal? MaxBudgetUsd { get; set; }
 
-	/// <summary>
-	/// Additional working directories to include (Claude/Copilot: --add-dir, OpenCode: --dir)
-	/// </summary>
-	public List<string>? AdditionalDirectories { get; set; }
+    /// <summary>
+    /// Additional working directories to include (Claude/Copilot: --add-dir, OpenCode: --dir)
+    /// </summary>
+    public List<string>? AdditionalDirectories { get; set; }
 
-	/// <summary>
-	/// Enable Claude bare mode for automated executions (Claude: --bare, v2.1.81+).
-	/// Bare mode skips implicit local context discovery so VibeSwarm can provide deterministic context explicitly.
-	/// </summary>
-	public bool UseBareMode { get; set; }
+    /// <summary>
+    /// Enable Claude bare mode for automated executions (Claude: --bare, v2.1.81+).
+    /// Bare mode skips implicit local context discovery so VibeSwarm can provide deterministic context explicitly.
+    /// </summary>
+    public bool UseBareMode { get; set; }
 
     /// <summary>
     /// Timeout in seconds for the execution (OpenCode legacy run: --timeout on v1.2.x)

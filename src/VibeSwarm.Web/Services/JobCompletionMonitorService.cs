@@ -549,6 +549,12 @@ public class JobCompletionMonitorService : BackgroundService
 						// Process failed
 						if (job.RetryCount < job.MaxRetries)
 						{
+							JobRecoveryHelper.CaptureRecoveryState(
+								job,
+								job.Status == JobStatus.Planning ? JobStatus.Planning : JobStatus.Processing,
+								job.RecoveryPrompt ?? job.GoalPrompt,
+								job.SessionId,
+								job.ConsoleOutput);
 							job.Status = JobStatus.New;
 							job.RetryCount++;
 							job.StartedAt = null;
@@ -566,6 +572,7 @@ public class JobCompletionMonitorService : BackgroundService
 					else
 					{
 						// Process completed successfully
+						JobRecoveryHelper.ClearRecoveryState(job);
 						job.Status = JobStatus.Completed;
 						job.CompletedAt = DateTime.UtcNow;
 					}

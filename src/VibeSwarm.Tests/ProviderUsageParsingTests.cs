@@ -86,4 +86,21 @@ public sealed class ProviderUsageParsingTests
 		Assert.Equal(UsageLimitWindowScope.Session, sessionWindow.Scope);
 		Assert.Equal(75, sessionWindow.CurrentUsage);
 	}
+
+	[Fact]
+	public void CopilotUsageParser_ParseLimitSignals_ParsesTryAgainInMinuteAsRateLimit()
+	{
+		var stderr = "Copilot is rate limited right now. Please try again in 1 minute.";
+
+		var limits = CopilotUsageParser.ParseLimitSignals(stderr);
+
+		Assert.NotNull(limits);
+		Assert.Equal(UsageLimitType.RateLimit, limits!.LimitType);
+		Assert.True(limits.IsLimitReached);
+		Assert.True(limits.ResetTime.HasValue);
+		Assert.InRange(limits.ResetTime!.Value, DateTime.UtcNow.AddSeconds(45), DateTime.UtcNow.AddSeconds(75));
+		var window = Assert.Single(limits.Windows);
+		Assert.Equal(UsageLimitType.RateLimit, window.LimitType);
+		Assert.True(window.IsLimitReached);
+	}
 }

@@ -357,6 +357,16 @@ public class CommonProviderSetupService(
 
 		if (providerType == ProviderType.Copilot)
 		{
+			if (HasCopilotEnvironmentToken())
+			{
+				return new AuthenticationState(true, $"Using host GitHub token environment variables for this {connectionMode} connection.", "GitHub Token");
+			}
+
+			if (TryReadCopilotAuthStatus())
+			{
+				return new AuthenticationState(true, $"Copilot CLI login detected on host for this {connectionMode} connection.", "Logged-in User");
+			}
+
 			var sdkAuthStatus = await TryGetCopilotAuthenticationStateAsync(executablePath, cancellationToken);
 			if (sdkAuthStatus != null)
 			{
@@ -368,10 +378,6 @@ public class CommonProviderSetupService(
 		{
 			(ProviderType.Claude, ProviderConnectionMode.CLI) when File.Exists(Path.Combine(GetUserHomeDirectory(), ".claude.json"))
 				=> new AuthenticationState(true, "Claude Code browser login detected on host for this CLI connection.", "Browser Login"),
-			(ProviderType.Copilot, ProviderConnectionMode.CLI or ProviderConnectionMode.SDK) when HasCopilotEnvironmentToken()
-				=> new AuthenticationState(true, $"Using host GitHub token environment variables for this {connectionMode} connection.", "GitHub Token"),
-			(ProviderType.Copilot, ProviderConnectionMode.CLI or ProviderConnectionMode.SDK) when TryReadCopilotAuthStatus()
-				=> new AuthenticationState(true, $"Copilot CLI login detected on host for this {connectionMode} connection.", "Logged-in User"),
 			(ProviderType.OpenCode, ProviderConnectionMode.CLI) when TryReadOpenCodeAuthStatus()
 				=> new AuthenticationState(true, "OpenCode auth.json detected on host for this CLI connection.", "API Key"),
 			(ProviderType.Claude, ProviderConnectionMode.CLI)

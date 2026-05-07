@@ -1,0 +1,60 @@
+@inject IJSRuntime JSRuntime
+@implements IAsyncDisposable
+
+@* Invisible component that keeps the screen awake while IsActive is true. *@
+@* Uses the Screen Wake Lock API (supported in iOS 16.4+ and modern Chrome/Firefox). *@
+
+@code {
+	[Parameter]
+	public bool IsActive { get; set; }
+
+	private bool _acquired;
+	private bool _lastIsActive;
+
+	protected override async Task OnParametersSetAsync()
+	{
+		if (IsActive == _lastIsActive) return;
+		_lastIsActive = IsActive;
+
+		if (IsActive)
+			await AcquireAsync();
+		else
+			await ReleaseAsync();
+	}
+
+	private async Task AcquireAsync()
+	{
+		if (_acquired) return;
+		try
+		{
+			_acquired = await JSRuntime.InvokeAsync<bool>("vibeSwarmWakeLock.acquire");
+		}
+		catch
+		{
+			// Wake Lock API not supported or permission denied — silently continue
+			_acquired = false;
+		}
+	}
+
+	private async Task ReleaseAsync()
+	{
+		if (!_acquired) return;
+		try
+		{
+			await JSRuntime.InvokeVoidAsync("vibeSwarmWakeLock.release");
+		}
+		catch
+		{
+			// Best-effort release
+		}
+		finally
+		{
+			_acquired = false;
+		}
+	}
+
+	public async ValueTask DisposeAsync()
+	{
+		await ReleaseAsync();
+	}
+}

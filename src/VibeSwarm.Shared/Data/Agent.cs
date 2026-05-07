@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 using VibeSwarm.Shared.Providers;
 
 namespace VibeSwarm.Shared.Data;
@@ -45,5 +46,6 @@ public class Agent
 
 	public ICollection<AgentSkill> SkillLinks { get; set; } = new List<AgentSkill>();
 
+	[JsonIgnore]
 	public ICollection<ProjectAgent> ProjectAssignments { get; set; } = new List<ProjectAgent>();
 }

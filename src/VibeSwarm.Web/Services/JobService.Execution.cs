@@ -3,6 +3,7 @@ using System.Text.Json;
 using VibeSwarm.Shared.Data;
 using VibeSwarm.Shared.Models;
 using VibeSwarm.Shared.Providers;
+using VibeSwarm.Shared.Validation;
 
 namespace VibeSwarm.Shared.Services;
 
@@ -10,13 +11,13 @@ public partial class JobService
 {
     public async Task RefreshExecutionPlanAsync(Guid id, CancellationToken cancellationToken = default)
     {
-		var job = await _dbContext.Jobs
-			.Include(j => j.Statistics)
-			.Include(j => j.PlanningStatistics)
-			.Include(j => j.ExecutionStatistics)
-			.Include(j => j.Project)
-				.ThenInclude(p => p!.ProviderSelections)
-			.Include(j => j.Provider)
+        var job = await _dbContext.Jobs
+            .Include(j => j.Statistics)
+            .Include(j => j.PlanningStatistics)
+            .Include(j => j.ExecutionStatistics)
+            .Include(j => j.Project)
+                .ThenInclude(p => p!.ProviderSelections)
+            .Include(j => j.Provider)
             .FirstOrDefaultAsync(j => j.Id == id, cancellationToken);
 
         if (job == null)
@@ -37,6 +38,15 @@ public partial class JobService
         await _dbContext.SaveChangesAsync(cancellationToken);
     }
 
+    public async Task<IEnumerable<JobChangeSet>> GetChangeSetsAsync(Guid jobId, CancellationToken cancellationToken = default)
+    {
+        return await _dbContext.JobChangeSets
+            .Where(cs => cs.JobId == jobId)
+            .OrderBy(cs => cs.FollowUpIndex)
+            .AsNoTracking()
+            .ToListAsync(cancellationToken);
+    }
+
     private async Task InitializeExecutionPlanAsync(Job job, CancellationToken cancellationToken)
     {
         var targets = await BuildExecutionPlanAsync(job, cancellationToken);
@@ -45,10 +55,10 @@ public partial class JobService
         job.LastSwitchAt = null;
         job.LastSwitchReason = null;
 
-		if (job.ProviderId == Guid.Empty && targets.Count > 0)
-		{
-			job.ProviderId = targets[0].ProviderId;
-		}
+        if (job.ProviderId == Guid.Empty && targets.Count > 0)
+        {
+            job.ProviderId = targets[0].ProviderId;
+        }
 
         if (string.IsNullOrWhiteSpace(job.ModelUsed) && targets.Count > 0)
         {
@@ -137,6 +147,7 @@ public partial class JobService
         job.ActiveExecutionIndex = 0;
         job.LastSwitchAt = null;
         job.LastSwitchReason = null;
+        JobRecoveryHelper.ClearRecoveryState(job);
         job.InputTokens = null;
         job.OutputTokens = null;
         job.TotalCostUsd = null;
@@ -172,9 +183,9 @@ public partial class JobService
             .OrderBy(pp => pp.Priority)
             .ToListAsync(cancellationToken);
 
-		var providerOrder = job.AgentId.HasValue && job.ProviderId != Guid.Empty
-			? enabledProviders.Where(provider => provider.Id == job.ProviderId).ToList()
-			: BuildProviderOrder(job.ProviderId, enabledProviders, projectSelections);
+        var providerOrder = job.AgentId.HasValue && job.ProviderId != Guid.Empty
+            ? enabledProviders.Where(provider => provider.Id == job.ProviderId).ToList()
+            : BuildProviderOrder(job.ProviderId, enabledProviders, projectSelections);
 
         var modelLookup = await _dbContext.ProviderModels
             .Where(m => providerIds.Contains(m.ProviderId) && m.IsAvailable)
@@ -258,21 +269,21 @@ public partial class JobService
 
     private async Task ValidateRequestedExecutionAsync(Job job, CancellationToken cancellationToken)
     {
-		if (job.JobTemplateId.HasValue)
-		{
-			var templateExists = await _dbContext.JobTemplates
-				.AnyAsync(template => template.Id == job.JobTemplateId.Value, cancellationToken);
-			if (!templateExists)
-			{
-				throw new InvalidOperationException("The selected job template no longer exists.");
-			}
-		}
+        if (job.JobTemplateId.HasValue)
+        {
+            var templateExists = await _dbContext.JobTemplates
+                .AnyAsync(template => template.Id == job.JobTemplateId.Value, cancellationToken);
+            if (!templateExists)
+            {
+                throw new InvalidOperationException("The selected job template no longer exists.");
+            }
+        }
 
-		if (job.ProviderId == Guid.Empty)
-		{
-			if (!string.IsNullOrWhiteSpace(job.ModelUsed))
-			{
-				throw new InvalidOperationException("Selecting a model requires selecting a provider.");
+        if (job.ProviderId == Guid.Empty)
+        {
+            if (!string.IsNullOrWhiteSpace(job.ModelUsed))
+            {
+                throw new InvalidOperationException("Selecting a model requires selecting a provider.");
             }
 
             if (!string.IsNullOrWhiteSpace(job.ReasoningEffort))
@@ -283,9 +294,9 @@ public partial class JobService
             return;
         }
 
-		var provider = await _dbContext.Providers
-			.AsNoTracking()
-			.FirstOrDefaultAsync(provider => provider.Id == job.ProviderId && provider.IsEnabled, cancellationToken);
+        var provider = await _dbContext.Providers
+            .AsNoTracking()
+            .FirstOrDefaultAsync(provider => provider.Id == job.ProviderId && provider.IsEnabled, cancellationToken);
         if (provider == null)
         {
             throw new InvalidOperationException("The selected provider is not enabled.");
@@ -303,10 +314,10 @@ public partial class JobService
 
         var modelExists = await _dbContext.ProviderModels
             .AnyAsync(model =>
-				model.ProviderId == job.ProviderId &&
-				model.IsAvailable &&
-				model.ModelId == job.ModelUsed,
-				cancellationToken);
+                model.ProviderId == job.ProviderId &&
+                model.IsAvailable &&
+                model.ModelId == job.ModelUsed,
+                cancellationToken);
         if (!modelExists)
         {
             throw new InvalidOperationException("The selected model is not available for the chosen provider.");
@@ -317,30 +328,68 @@ public partial class JobService
 	{
 		if (!job.AgentId.HasValue || job.AgentId == Guid.Empty)
 		{
-			return;
-		}
+            return;
+        }
 
-		var assignment = await _dbContext.ProjectAgents
-			.Include(projectAgent => projectAgent.Agent)
-			.Include(projectAgent => projectAgent.Provider)
-			.FirstOrDefaultAsync(projectAgent =>
-				projectAgent.ProjectId == job.ProjectId &&
-				projectAgent.AgentId == job.AgentId.Value,
-				cancellationToken);
-		if (assignment == null || !assignment.IsEnabled || assignment.Agent == null || !assignment.Agent.IsEnabled)
+        var agent = await _dbContext.Agents
+            .Include(a => a.DefaultProvider)
+            .FirstOrDefaultAsync(a => a.Id == job.AgentId.Value, cancellationToken);
+        if (agent == null || !agent.IsEnabled)
+        {
+            throw new InvalidOperationException("The selected agent does not exist or is disabled.");
+        }
+
+		if (!agent.DefaultProviderId.HasValue || agent.DefaultProvider == null || !agent.DefaultProvider.IsEnabled)
 		{
-			throw new InvalidOperationException("The selected agent is not assigned to this project.");
+			throw new InvalidOperationException("The selected agent does not have an enabled default provider.");
 		}
 
-		if (assignment.Provider == null || !assignment.Provider.IsEnabled)
+		var agentInstructions = string.IsNullOrWhiteSpace(agent.Responsibilities)
+			? null
+			: agent.Responsibilities.Trim();
+		if (string.IsNullOrWhiteSpace(job.GoalPrompt))
 		{
-			throw new InvalidOperationException("The selected agent does not have an enabled provider assignment.");
+			if (string.IsNullOrWhiteSpace(agentInstructions))
+			{
+				throw new InvalidOperationException("Goal prompt is required when the selected agent does not have saved instructions.");
+			}
+
+			if (agentInstructions.Length > ValidationLimits.JobTemplatePromptMaxLength)
+			{
+				throw new InvalidOperationException($"Goal prompt is required when the selected agent instructions exceed {ValidationLimits.JobTemplatePromptMaxLength} characters.");
+			}
+
+			job.GoalPrompt = agentInstructions;
 		}
 
-		AgentPresetHelper.ApplyExecutionDefaults(job, assignment);
-	}
+		if (job.ProviderId == Guid.Empty)
+		{
+			job.ProviderId = agent.DefaultProviderId.Value;
+        }
 
-	private static List<Provider> BuildProviderOrder(Guid selectedProviderId, List<Provider> enabledProviders, List<ProjectProvider> projectSelections)
+        if (string.IsNullOrWhiteSpace(job.ModelUsed))
+        {
+            job.ModelUsed = agent.DefaultModelId;
+        }
+        if (string.IsNullOrWhiteSpace(job.ReasoningEffort))
+        {
+            job.ReasoningEffort = ProviderCapabilities.NormalizeReasoningEffort(agent.DefaultReasoningEffort);
+        }
+
+        if (AgentPresetHelper.HasCustomCycleSettings(job))
+        {
+            return;
+        }
+
+        job.CycleMode = agent.DefaultCycleMode;
+        job.CycleSessionMode = agent.DefaultCycleSessionMode;
+        job.MaxCycles = Math.Clamp(agent.DefaultMaxCycles, 1, 100);
+        job.CycleReviewPrompt = string.IsNullOrWhiteSpace(agent.DefaultCycleReviewPrompt)
+            ? null
+            : agent.DefaultCycleReviewPrompt.Trim();
+    }
+
+    private static List<Provider> BuildProviderOrder(Guid selectedProviderId, List<Provider> enabledProviders, List<ProjectProvider> projectSelections)
     {
         if (projectSelections.Count == 0)
         {
@@ -356,14 +405,14 @@ public partial class JobService
         return OrderProvidersWithSelectionFirst(selectedProviderId, orderedProviders);
     }
 
-	private static List<Provider> OrderProvidersWithSelectionFirst(Guid selectedProviderId, List<Provider> providers)
-	{
-		if (selectedProviderId == Guid.Empty)
-		{
-			return providers;
-		}
+    private static List<Provider> OrderProvidersWithSelectionFirst(Guid selectedProviderId, List<Provider> providers)
+    {
+        if (selectedProviderId == Guid.Empty)
+        {
+            return providers;
+        }
 
-		var selectedProvider = providers.FirstOrDefault(p => p.Id == selectedProviderId);
+        var selectedProvider = providers.FirstOrDefault(p => p.Id == selectedProviderId);
         if (selectedProvider == null)
         {
             return providers;

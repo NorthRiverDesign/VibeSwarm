@@ -36,11 +36,13 @@ public async Task RenderedLocalInferencePage_ShowsSetupAction_WhenNoProviderConf
 			return output.ToHtmlString();
 		});
 
-Assert.Contains("Inference", html);
+	Assert.Contains("Inference", html);
 	Assert.Contains("Add", html);
-	Assert.Contains("No inference providers", html);
+	Assert.Contains("Ollama", html);
+	Assert.Contains("Grok", html);
+	Assert.Contains("No Ollama connections", html);
 	Assert.Contains("d-flex align-items-center justify-content-between gap-2 gap-sm-3 mb-3 mb-lg-4", html);
-Assert.DoesNotContain("App Settings", html);
+	Assert.DoesNotContain("App Settings", html);
 }
 
 [Fact]
@@ -157,19 +159,20 @@ public void LocalInferencePage_TestInference_UsesSelectedProviderAndModel()
 
 	cut.WaitForAssertion(() =>
 	{
-		Assert.Contains("Use provider default model", cut.Markup);
+		Assert.Contains("Say hello in one sentence.", cut.Markup);
+		Assert.DoesNotContain("_promptMessage", cut.Markup);
 		Assert.Contains("Qwen 3 (Default)", cut.Markup);
 	});
 
-	cut.Find("#testProvider").Change(secondProviderId.ToString());
+	cut.FindAll("button")
+		.Single(button => button.TextContent.Contains("Grok", StringComparison.Ordinal))
+		.Click();
 
 	cut.WaitForAssertion(() => Assert.Contains("Grok Beta (Default)", cut.Markup));
 
-	cut.Find("#testModel").Change("grok-beta");
-	cut.Find("#testPrompt").Change("Use the selected provider.");
-	cut.FindAll("button")
-		.Single(button => button.TextContent.Contains("Send", StringComparison.Ordinal))
-		.Click();
+	cut.Find($"#testModel-{secondProviderId:D}").Change("grok-beta");
+	cut.Find($"#testPrompt-{secondProviderId:D}").Change("Use the selected provider.");
+	cut.Find($"#testSubmit-{secondProviderId:D}").Click();
 
 	cut.WaitForAssertion(() => Assert.NotNull(inferenceService.LastRequest));
 
@@ -253,9 +256,7 @@ public void LocalInferencePage_DefaultsToLastUsedProviderFromSessionStorage()
 		Assert.DoesNotContain("Qwen 3 (Default)", cut.Markup);
 	});
 
-	cut.FindAll("button")
-		.Single(button => button.TextContent.Contains("Send", StringComparison.Ordinal))
-		.Click();
+	cut.Find($"#testSubmit-{secondProviderId:D}").Click();
 
 	cut.WaitForAssertion(() => Assert.NotNull(inferenceService.LastRequest));
 

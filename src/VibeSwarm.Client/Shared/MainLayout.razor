@@ -17,23 +17,24 @@
 
 <div class="app-layout d-flex flex-column">
     @* Mobile Header *@
-    <header class="app-header d-lg-none sticky-top d-flex align-items-center gap-2 flex-shrink-0 bg-body-secondary border-bottom">
-        <button id="mobile-menu-toggle" class="btn btn-link nav-toggle d-flex align-items-center justify-content-center p-0 bg-transparent border-0 rounded fs-4"
+    <header
+        class="app-header d-lg-none sticky-top d-flex align-items-center gap-2 flex-shrink-0 border-bottom">
+        <button id="mobile-menu-toggle"
+                class="btn btn-link nav-toggle d-flex align-items-center justify-content-center p-0 bg-transparent border-0 rounded fs-4"
                 @onclick="ToggleMobileMenu" aria-label="Toggle navigation">
             <i class="bi bi-list"></i>
         </button>
-        <a class="btn btn-link text-secondary p-0 fs-5 d-flex align-items-center justify-content-center text-decoration-none touch-manipulation mobile-header-icon"
-           href="/" title="Dashboard" aria-label="Dashboard">
-            <i class="bi bi-house-door"></i>
-        </a>
+        <NavLink class="app-brand d-flex align-items-center gap-2 text-decoration-none fw-semibold" href="/" Match="NavLinkMatch.All">
+            <span class="app-brand-mark app-mark-xs d-inline-block"></span>
+            <span>@AppBranding.Name</span>
+        </NavLink>
         <div class="ms-auto d-flex align-items-center gap-2">
             <button type="button"
                     class="btn btn-link text-secondary p-0 fs-5 d-flex align-items-center justify-content-center touch-manipulation mobile-header-icon"
-                    @onclick="OpenSearch"
-                    title="Search"
-                    aria-label="Search">
+                    @onclick="OpenSearch" title="Search" aria-label="Search">
                 <i class="bi bi-search"></i>
             </button>
+            <ThemeToggle CssClass="d-none d-sm-inline-flex" />
             <NotificationsPanel Compact="true" />
             <QueueDropdownPanel Compact="true" />
             <LoginDisplay />
@@ -42,60 +43,70 @@
 
     @* Sidebar Navigation *@
     <nav id="app-sidebar" class="app-sidebar position-fixed d-flex flex-column @(_mobileMenuOpen ? "open" : "")">
-        <div class="flex-grow-1 p-3 d-flex flex-column gap-1 overflow-y-auto" style="min-height: 0;">
-            <button class="nav-item d-flex align-items-center gap-3 rounded fw-medium text-decoration-none border-0 bg-transparent w-100 text-start cursor-pointer search-nav-btn" @onclick="OpenSearch" title="Search (Ctrl+K)">
+        @* Brand (desktop only — mobile shows brand in top bar) *@
+        <div class="d-none d-lg-flex align-items-center gap-2 px-3 py-3 fw-semibold">
+            <span class="app-brand-mark app-mark-sm d-inline-block"></span>
+            <span>@AppBranding.Name</span>
+        </div>
+        <div class="flex-grow-1 vs-side-nav d-flex flex-column gap-1 overflow-y-auto min-height-0 p-2">
+            <button class="nav-btn cursor-pointer" @onclick="OpenSearch" title="Search (Ctrl+K)">
                 <i class="bi bi-search"></i>
                 <span class="flex-grow-1">Search</span>
-                <kbd class="border rounded px-1 text-secondary d-none d-lg-inline" style="font-size: 0.65rem; background: transparent;">⌃K</kbd>
+                <kbd class="border rounded px-1 text-muted bg-transparent small d-none d-lg-inline">⌃K</kbd>
             </button>
-            <NavLink class="nav-item d-flex align-items-center gap-3 rounded fw-medium text-decoration-none" href="/" Match="NavLinkMatch.All" @onclick="CloseMobileMenu">
-                <i class="bi bi-house-door"></i>
+            <NavLink class="nav-item" href="/" Match="NavLinkMatch.All" @onclick="CloseMobileMenu">
+                <i class="bi bi-speedometer2"></i>
                 <span>Dashboard</span>
             </NavLink>
-            <NavLink class="nav-item d-flex align-items-center gap-3 rounded fw-medium text-decoration-none" href="/projects" @onclick="CloseMobileMenu">
+            <NavLink class="nav-item" href="/projects" @onclick="CloseMobileMenu">
                 <i class="bi bi-folder"></i>
                 <span>Projects</span>
             </NavLink>
-            <NavLink class="nav-item d-flex align-items-center gap-3 rounded fw-medium text-decoration-none" href="/jobs" @onclick="CloseMobileMenu">
-                <i class="bi bi-list-check"></i>
+            <NavLink class="nav-item" href="/jobs" @onclick="CloseMobileMenu">
+                <i class="bi bi-list-task"></i>
                 <span>Jobs</span>
             </NavLink>
-            <NavLink class="nav-item d-flex align-items-center gap-3 rounded fw-medium text-decoration-none" href="/scheduler" @onclick="CloseMobileMenu">
-                <i class="bi bi-calendar-event"></i>
+            <NavLink class="nav-item" href="/scheduler" @onclick="CloseMobileMenu">
+                <i class="bi bi-calendar3"></i>
                 <span>Scheduler</span>
             </NavLink>
-            <NavLink class="nav-item d-flex align-items-center gap-3 rounded fw-medium text-decoration-none" href="/providers" @onclick="CloseMobileMenu">
-                <i class="bi bi-cpu"></i>
+            <NavLink class="nav-item" href="/providers" @onclick="CloseMobileMenu">
+                <i class="bi bi-plug"></i>
                 <span>Providers</span>
             </NavLink>
-            <NavLink class="nav-item d-flex align-items-center gap-3 rounded fw-medium text-decoration-none" href="/inference" @onclick="CloseMobileMenu">
-                <i class="bi bi-hdd-network"></i>
+            <NavLink class="nav-item" href="/inference" @onclick="CloseMobileMenu">
+                <i class="bi bi-cpu"></i>
                 <span>Inference</span>
             </NavLink>
-            <NavLink class="nav-item d-flex align-items-center gap-3 rounded fw-medium text-decoration-none" href="/skills" @onclick="CloseMobileMenu">
-                <i class="bi bi-lightbulb"></i>
+            <NavLink class="nav-item" href="/skills" @onclick="CloseMobileMenu">
+                <i class="bi bi-stars"></i>
                 <span>Skills</span>
             </NavLink>
-            <NavLink class="nav-item d-flex align-items-center gap-3 rounded fw-medium text-decoration-none" href="/agents" @onclick="CloseMobileMenu">
-                <i class="bi bi-people"></i>
+            <NavLink class="nav-item" href="/agents" @onclick="CloseMobileMenu">
+                <i class="bi bi-robot"></i>
                 <span>Agents</span>
             </NavLink>
             <AuthorizeView Roles="Admin">
                 <Authorized>
-                    <NavLink class="nav-item d-flex align-items-center gap-3 rounded fw-medium text-decoration-none" href="/users" @onclick="CloseMobileMenu">
-                        <i class="bi bi-person"></i>
+                    <NavLink class="nav-item" href="/users" @onclick="CloseMobileMenu">
+                        <i class="bi bi-people"></i>
                         <span>Users</span>
                     </NavLink>
                 </Authorized>
             </AuthorizeView>
-            <NavLink class="nav-item d-flex align-items-center gap-3 rounded fw-medium text-decoration-none" href="/settings" @onclick="CloseMobileMenu">
-                <i class="bi bi-sliders"></i>
+            <NavLink class="nav-item" href="/settings" @onclick="CloseMobileMenu">
+                <i class="bi bi-gear"></i>
                 <span>Settings</span>
             </NavLink>
         </div>
 
-        <div class="p-3 border-top d-none d-lg-flex">
-            <LoginDisplay />
+        <div class="border-top d-none d-lg-flex flex-column">
+            <div class="px-3 pt-2">
+                <LoginDisplay />
+            </div>
+            <div class="px-3 py-2 d-flex align-items-center justify-content-end">
+                <ThemeToggle />
+            </div>
         </div>
     </nav>
 
@@ -312,11 +323,13 @@
     private void ToggleMobileMenu()
     {
         _mobileMenuOpen = !_mobileMenuOpen;
+        InvokeAsync(StateHasChanged);
     }
 
     private void CloseMobileMenu()
     {
         _mobileMenuOpen = false;
+        InvokeAsync(StateHasChanged);
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -414,10 +427,10 @@ TimeSpan.FromSeconds(10) })
             {
                 await InvokeAsync(() =>
     {
-                NotificationService.ShowWarning($"Job requires input: {(prompt.Length > 60 ? prompt[..60] + "..." : prompt)}",
-    "Interaction Required");
-                StateHasChanged();
-            });
+        NotificationService.ShowWarning($"Job requires input: {(prompt.Length > 60 ? prompt[..60] + "..." : prompt)}",
+"Interaction Required");
+        StateHasChanged();
+    });
             });
 
             _globalHubConnection.On<string, string, string, string?>("ProviderRateLimited",
@@ -442,25 +455,25 @@ TimeSpan.FromSeconds(10) })
                 });
             });
 
-			_globalHubConnection.On<VibeSwarm.Shared.Models.DeveloperModeStatus>("DeveloperUpdateStatusChanged",
-			async status =>
-			{
-				await InvokeAsync(() =>
-				{
-					DeveloperUpdateOverlayService.SetStatus(status);
-					StateHasChanged();
-				});
-			});
+            _globalHubConnection.On<VibeSwarm.Shared.Models.DeveloperModeStatus>("DeveloperUpdateStatusChanged",
+            async status =>
+            {
+                await InvokeAsync(() =>
+                {
+                    DeveloperUpdateOverlayService.SetStatus(status);
+                    StateHasChanged();
+                });
+            });
 
-			_globalHubConnection.On<VibeSwarm.Shared.Models.DeveloperUpdateOutputLine>("DeveloperUpdateOutputAdded",
-			async line =>
-			{
-				await InvokeAsync(() =>
-				{
-					DeveloperUpdateOverlayService.AppendOutput(line);
-					StateHasChanged();
-				});
-			});
+            _globalHubConnection.On<VibeSwarm.Shared.Models.DeveloperUpdateOutputLine>("DeveloperUpdateOutputAdded",
+            async line =>
+            {
+                await InvokeAsync(() =>
+                {
+                    DeveloperUpdateOverlayService.AppendOutput(line);
+                    StateHasChanged();
+                });
+            });
 
             _globalHubConnection.Reconnected += async (connectionId) =>
             {
@@ -468,7 +481,7 @@ TimeSpan.FromSeconds(10) })
                 {
                     await _globalHubConnection.InvokeAsync("SubscribeToGlobalEvents");
                     await _globalHubConnection.InvokeAsync("SubscribeToJobList");
-					await SyncDeveloperUpdateStatusAsync();
+                    await SyncDeveloperUpdateStatusAsync();
                 }
                 catch
                 {
@@ -491,30 +504,31 @@ TimeSpan.FromSeconds(10) })
         }
     }
 
-	private async Task SyncDeveloperUpdateStatusAsync()
-	{
-		try
-		{
-			var status = await DeveloperModeService.GetStatusAsync();
-			await InvokeAsync(() =>
-			{
-				DeveloperUpdateOverlayService.SetStatus(status);
-				StateHasChanged();
-			});
-		}
-		catch
-		{
-		}
-	}
+    private async Task SyncDeveloperUpdateStatusAsync()
+    {
+        try
+        {
+            var status = await DeveloperModeService.GetStatusAsync();
+            await InvokeAsync(() =>
+            {
+                DeveloperUpdateOverlayService.SetStatus(status);
+                StateHasChanged();
+            });
+        }
+        catch
+        {
+        }
+    }
 
     // Global SignalR event handlers for cross-page notifications
     private void OnConnectionStateChanged(string state)
     {
     }
 
-    private Task OnGlobalJobStatusChanged(string jobId, string status)
+    private async Task OnGlobalJobStatusChanged(string jobId, string status)
     {
-        return QueuePanelStateService.RequestRefreshAsync();
+        await QueuePanelStateService.RequestRefreshAsync();
+        await RecordJobStatusNotificationAsync(jobId, status);
     }
 
     private Task OnGlobalJobActivityUpdated(string jobId, string activity, DateTime timestamp)
@@ -561,6 +575,32 @@ TimeSpan.FromSeconds(10) })
                 });
             }
         }
+    }
+
+    private async Task RecordJobStatusNotificationAsync(string jobId, string status)
+    {
+        if (!Guid.TryParse(jobId, out var id) ||
+            !Enum.TryParse<JobStatus>(status, ignoreCase: true, out var parsedStatus) ||
+            !ShouldRecordJobStatusNotification(parsedStatus) ||
+            !TryBeginToastEvent($"job-status:{jobId}:{parsedStatus}"))
+        {
+            return;
+        }
+
+        Job? job = null;
+        try
+        {
+            job = await JobService.GetByIdAsync(id);
+        }
+        catch
+        {
+        }
+
+        await InvokeAsync(() =>
+        {
+            ShowJobStatusNotification(job, parsedStatus, id);
+            StateHasChanged();
+        });
     }
 
     private Task OnGlobalIdeaCreated(string ideaId)
@@ -635,6 +675,59 @@ TimeSpan.FromSeconds(10) })
             "View Job",
             job?.Id is Guid failedJobId ? $"/jobs/view/{failedJobId}" : null);
     }
+
+    private void ShowJobStatusNotification(Job? job, JobStatus status, Guid jobId)
+    {
+        var jobTitle = TruncateForToast(job?.Title, 80, "Job");
+        var projectName = job?.Project?.Name;
+        var scope = projectName is null ? string.Empty : $" in '{projectName}'";
+        var targetUrl = $"/jobs/view/{jobId}";
+
+        switch (status)
+        {
+            case JobStatus.Planning:
+                NotificationService.AddHistory(
+                    $"{jobTitle} is generating an implementation plan{scope}.",
+                    "Job Planning",
+                    NotificationType.Info,
+                    "View Job",
+                    targetUrl);
+                break;
+            case JobStatus.Paused:
+                NotificationService.AddHistory(
+                    $"{jobTitle} is waiting for input{scope}.",
+                    "Job Paused",
+                    NotificationType.Warning,
+                    "View Job",
+                    targetUrl);
+                break;
+            case JobStatus.Stalled:
+                NotificationService.AddHistory(
+                    $"{jobTitle} stopped responding{scope}.",
+                    "Job Stalled",
+                    NotificationType.Error,
+                    "View Job",
+                    targetUrl);
+                break;
+            case JobStatus.Cancelled:
+                NotificationService.AddHistory(
+                    $"{jobTitle} was cancelled{scope}.",
+                    "Job Cancelled",
+                    NotificationType.Warning,
+                    "View Job",
+                    targetUrl);
+                break;
+        }
+    }
+
+    private static bool ShouldRecordJobStatusNotification(JobStatus status) => status switch
+    {
+        JobStatus.Planning => true,
+        JobStatus.Paused => true,
+        JobStatus.Stalled => true,
+        JobStatus.Cancelled => true,
+        _ => false
+    };
 
     private readonly Dictionary<string, DateTime> _recentToastEvents = new();
 
@@ -768,7 +861,8 @@ return true;
             refreshAction: refreshAction);
     }
 
-    private async Task LogCriticalErrorAsync(string category, string message, string? details, bool triggeredRefresh, string? refreshAction)
+    private async Task LogCriticalErrorAsync(string category, string message, string? details, bool triggeredRefresh,
+string? refreshAction)
     {
         try
         {

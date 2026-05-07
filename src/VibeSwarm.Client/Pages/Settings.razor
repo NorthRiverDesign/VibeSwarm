@@ -21,16 +21,12 @@ else if (_activeTab == "database")
 }
 else
 {
-<Card Title="About VibeSwarm" Icon="info-circle">
+<Card Title="@($"About {AppBranding.Name}")" Icon="info-circle">
 	<div class="d-flex align-items-center gap-2 mb-3">
-		<img src="img/logo_icon.png" alt="VibeSwarm" class="brand-icon"
-			 style="width: 32px; height: 32px;" />
-		<h5 class="mb-0">VibeSwarm</h5>
+		<img src="img/logo_icon.png" alt="@AppBranding.Name" class="brand-icon" />
+		<h5 class="mb-0">@AppBranding.Name</h5>
 	</div>
-	<p class="text-body-secondary small mb-3">
-		AI coding agent orchestrator that leverages multiple AI models to assist developers
-		in writing, reviewing, and optimizing code.
-	</p>
+	<p class="text-body-secondary small mb-3">@AppBranding.Tagline</p>
 	<div class="small text-body-secondary">
 		<div class="d-flex align-items-center gap-2 mb-2">
 			<i class="bi bi-pc-display opacity-75"></i>

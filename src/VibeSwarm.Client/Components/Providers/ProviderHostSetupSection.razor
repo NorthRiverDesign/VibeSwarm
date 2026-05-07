@@ -26,7 +26,9 @@
 		}
 		else if (Statuses.Count > 0 && ActiveStatus != null)
 		{
-			var providersForType = GetProvidersForType(ActiveStatus.ProviderType);
+			var configuredConnectionModes = GetConfiguredConnectionModes(ActiveStatus.ProviderType);
+			var activeConnectionModeFilter = GetActiveConnectionModeFilter(ActiveStatus.ProviderType, configuredConnectionModes);
+			var providersForType = GetProvidersForType(ActiveStatus.ProviderType, activeConnectionModeFilter);
 
 			<div class="overflow-x-auto overflow-y-hidden pb-1">
 				<ul class="nav nav-tabs flex-nowrap mb-3" role="tablist">
@@ -73,6 +75,28 @@
 									}
 								</div>
 							</div>
+							@if (configuredConnectionModes.Count > 1)
+							{
+								<TabStrip Variant="TabStrip.StyleVariant.Pills"
+										  Class="flex-nowrap overflow-x-auto overflow-y-hidden overscroll-contain min-width-0">
+									<TabItem Text="All"
+											 Class="text-nowrap"
+											 IsActive="@(!activeConnectionModeFilter.HasValue)"
+											 BadgeCount="@GetConnectionModeCount(ActiveStatus.ProviderType, null)"
+											 OnClick="@(() => SetConnectionModeFilter(ActiveStatus.ProviderType, null))" />
+									@foreach (var connectionMode in configuredConnectionModes)
+									{
+										<TabItem Text="@connectionMode.ToString()"
+												 Icon="@GetConnectionModeIcon(connectionMode)"
+												 IconClass="me-1"
+												 Class="text-nowrap"
+												 IsActive="@(activeConnectionModeFilter == connectionMode)"
+												 BadgeCount="@GetConnectionModeCount(ActiveStatus.ProviderType, connectionMode)"
+												 BadgeClass="bg-body-secondary text-body-secondary-emphasis"
+												 OnClick="@(() => SetConnectionModeFilter(ActiveStatus.ProviderType, connectionMode))" />
+									}
+								</TabStrip>
+							}
 							@if (providersForType.Count == 0)
 							{
 								<div class="rounded-3 bg-body-tertiary p-3 small text-body-secondary">
@@ -193,6 +217,8 @@
 	[Parameter]
 	public EventCallback<Provider> OnDeleteProvider { get; set; }
 
+	private readonly Dictionary<ProviderType, ProviderConnectionMode?> _connectionModeFilters = new();
+
 	private CommonProviderSetupStatus? ActiveStatus =>
 		Statuses.FirstOrDefault(status => string.Equals(status.ProviderType.ToString(), ActiveProviderTab, StringComparison.Ordinal))
 		?? Statuses.FirstOrDefault();
@@ -212,10 +238,67 @@
 		return OnAddConnection.InvokeAsync((providerType, connectionMode));
 	}
 
-	private List<Provider> GetProvidersForType(ProviderType providerType)
+	private Task SetConnectionModeFilter(ProviderType providerType, ProviderConnectionMode? connectionMode)
+	{
+		if (connectionMode.HasValue)
+		{
+			_connectionModeFilters[providerType] = connectionMode.Value;
+		}
+		else
+		{
+			_connectionModeFilters.Remove(providerType);
+		}
+
+		return Task.CompletedTask;
+	}
+
+	private ProviderConnectionMode? GetActiveConnectionModeFilter(
+		ProviderType providerType,
+		IReadOnlyCollection<ProviderConnectionMode> configuredConnectionModes)
+	{
+		if (configuredConnectionModes.Count <= 1)
+		{
+			_connectionModeFilters.Remove(providerType);
+			return null;
+		}
+
+		if (_connectionModeFilters.TryGetValue(providerType, out var activeConnectionMode)
+			&& activeConnectionMode.HasValue
+			&& configuredConnectionModes.Contains(activeConnectionMode.Value))
+		{
+			return activeConnectionMode.Value;
+		}
+
+		_connectionModeFilters[providerType] = null;
+		return null;
+	}
+
+	private IReadOnlyList<ProviderConnectionMode> GetConfiguredConnectionModes(ProviderType providerType)
+	{
+		var configuredConnectionModes = Providers
+			.Where(provider => provider.Type == providerType)
+			.Select(provider => provider.ConnectionMode)
+			.Distinct()
+			.ToHashSet();
+
+		return ProviderCapabilities.GetSupportedModes(providerType)
+			.Where(configuredConnectionModes.Contains)
+			.ToList();
+	}
+
+	private int GetConnectionModeCount(ProviderType providerType, ProviderConnectionMode? connectionMode)
+	{
+		return Providers.Count(provider =>
+			provider.Type == providerType
+			&& (!connectionMode.HasValue || provider.ConnectionMode == connectionMode.Value));
+	}
+
+	private List<Provider> GetProvidersForType(ProviderType providerType, ProviderConnectionMode? connectionMode = null)
 	{
 		return Providers
-			.Where(provider => provider.Type == providerType)
+			.Where(provider =>
+				provider.Type == providerType
+				&& (!connectionMode.HasValue || provider.ConnectionMode == connectionMode.Value))
 			.OrderByDescending(provider => provider.IsDefault)
 			.ThenByDescending(provider => provider.IsEnabled)
 			.ThenBy(provider => provider.Name, StringComparer.OrdinalIgnoreCase)

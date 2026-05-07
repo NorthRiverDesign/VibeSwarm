@@ -36,8 +36,10 @@
 
 	function applyTheme(preference) {
 		const normalized = normalizeTheme(preference);
+		const effective = getEffectiveTheme(normalized);
 		document.documentElement.setAttribute('data-vs-theme', normalized);
-		document.documentElement.setAttribute('data-bs-theme', getEffectiveTheme(normalized));
+		document.documentElement.setAttribute('data-bs-theme', effective);
+		document.documentElement.setAttribute('data-theme', effective);
 		updateThemeColor();
 		return normalized;
 	}

@@ -214,6 +214,10 @@ public class JobsController : ControllerBase
         return Ok(new { Prioritized = count });
     }
 
+    [HttpGet("{id:guid}/changesets")]
+    public async Task<IActionResult> GetChangeSets(Guid id, CancellationToken ct)
+        => Ok(await _jobService.GetChangeSetsAsync(id, ct));
+
     // Request DTOs
     public record UpdateStatusRequest(string Status, string? Output, string? ErrorMessage);
     public record UpdateResultRequest(string Status, string? SessionId, string? Output, string? ErrorMessage, int? InputTokens, int? OutputTokens, decimal? CostUsd);

@@ -1,6 +1,7 @@
 @using VibeSwarm.Shared.Validation
 @inject IJobScheduleService JobScheduleService
 @inject IProjectService ProjectService
+@inject IAgentService AgentService
 @inject IProviderService ProviderService
 @inject IInferenceProviderService InferenceProviderService
 @inject AppTimeZoneService AppTimeZoneService
@@ -90,16 +91,16 @@
 						<div class="col-12 col-lg-4">
 							<label for="schedule-team-role" class="form-label">Agent</label>
 							<select id="schedule-team-role" class="form-select" value="@GetAgentValue()" @onchange="OnAgentChanged"
-									disabled="@(!_availableAgentAssignments.Any())">
-								<option value="">@(_availableAgentAssignments.Any() ? "Select agent..." : "No enabled agents")</option>
-								@foreach (var assignment in _availableAgentAssignments)
+									disabled="@(!_agents.Any())">
+								<option value="">@(_agents.Any() ? "Select agent..." : "No enabled agents")</option>
+								@foreach (var agent in _agents)
 								{
-									<option value="@assignment.AgentId">@GetTeamAssignmentDisplayText(assignment)</option>
+									<option value="@agent.Id">@GetAgentDisplayText(agent)</option>
 								}
 							</select>
-							@if (!_availableAgentAssignments.Any())
+							@if (!_agents.Any())
 							{
-								<div class="form-text text-warning">Assign an enabled agent with an enabled provider in the project settings first.</div>
+								<div class="form-text text-warning">Create an enabled agent from the Agents page first.</div>
 							}
 						</div>
 					}
@@ -154,19 +155,19 @@
 
 			@if (Schedule.ScheduleType == JobScheduleType.RunJob && Schedule.ExecutionTarget == JobScheduleExecutionTarget.Agent)
 			{
-				var assignment = GetSelectedTeamAssignment();
-				@if (assignment != null)
+				var selectedAgent = GetSelectedAgent();
+				@if (selectedAgent != null)
 				{
 					<div class="small text-body-secondary mt-2 d-flex flex-wrap gap-3">
 						<span class="d-inline-flex align-items-center gap-1">
 							<i class="bi bi-cpu opacity-75"></i>
-							@(assignment.Provider?.Name ?? "Unknown provider")
+							@(selectedAgent.DefaultProvider?.Name ?? "No default provider")
 						</span>
-						@if (!string.IsNullOrWhiteSpace(assignment.PreferredReasoningEffort))
+						@if (!string.IsNullOrWhiteSpace(selectedAgent.DefaultReasoningEffort))
 						{
 							<span class="d-inline-flex align-items-center gap-1">
 								<i class="bi bi-lightning-charge opacity-75"></i>
-								@assignment.PreferredReasoningEffort
+								@selectedAgent.DefaultReasoningEffort
 							</span>
 						}
 					</div>
@@ -280,10 +281,11 @@
 	private string? ErrorMessage { get; set; }
 	private bool _previousIsVisible;
 	private List<Project> _projects = [];
+	private readonly Dictionary<Guid, Project> _projectDetailsById = [];
+	private List<Agent> _agents = [];
 	private List<Provider> _providers = [];
 	private List<InferenceProvider> _inferenceProviders = [];
 	private List<Provider> _allowedProviders = [];
-	private List<ProjectAgent> _availableAgentAssignments = [];
 	private List<ProviderModel> _models = [];
 	private bool _isLoadingModels;
 	private bool _isRefreshingModels;
@@ -303,9 +305,17 @@
 			await LoadLookupDataAsync();
 			await ResetStateAsync();
 		}
-		else if (!_projects.Any() || !_providers.Any())
+		else if (!_projects.Any() || !_providers.Any() || !_agents.Any())
 		{
 			await LoadLookupDataAsync();
+			await SyncExecutionTargetsAsync(preserveCurrentSelection: true);
+		}
+		else if (IsVisible && Schedule.ProjectId != Guid.Empty)
+		{
+			// Modal is already open — clear the project detail cache so provider
+			// selections are refreshed on re-render (e.g. timer-driven parent updates).
+			_projectDetailsById.Remove(Schedule.ProjectId);
+			await SyncExecutionTargetsAsync(preserveCurrentSelection: true);
 		}
 
 		_previousIsVisible = IsVisible;
@@ -314,12 +324,18 @@
 	private async Task LoadLookupDataAsync()
 	{
 		var projectsTask = ProjectService.GetAllAsync();
+		var agentsTask = AgentService.GetAllAsync();
 		var providersTask = ProviderService.GetAllAsync();
 		var inferenceProvidersTask = InferenceProviderService.GetEnabledAsync();
-		await Task.WhenAll(projectsTask, providersTask, inferenceProvidersTask);
+		await Task.WhenAll(projectsTask, agentsTask, providersTask, inferenceProvidersTask);
 
 		_projects = projectsTask.Result
 			.OrderBy(project => project.Name)
+			.ToList();
+		_projectDetailsById.Clear();
+		_agents = agentsTask.Result
+			.Where(agent => agent.IsEnabled)
+			.OrderBy(agent => agent.Name)
 			.ToList();
 		_providers = providersTask.Result
 			.Where(provider => provider.IsEnabled)
@@ -392,19 +408,45 @@
 	private Project? GetSelectedProject()
 		=> _projects.FirstOrDefault(project => project.Id == Schedule.ProjectId);
 
+	private async Task<Project?> GetSelectedProjectAsync()
+	{
+		if (Schedule.ProjectId == Guid.Empty)
+		{
+			return null;
+		}
+
+		if (_projectDetailsById.TryGetValue(Schedule.ProjectId, out var cachedProject))
+		{
+			return cachedProject;
+		}
+
+		var detailedProject = await ProjectService.GetByIdAsync(Schedule.ProjectId);
+		if (detailedProject == null)
+		{
+			return GetSelectedProject();
+		}
+
+		_projectDetailsById[Schedule.ProjectId] = detailedProject;
+		var projectIndex = _projects.FindIndex(project => project.Id == detailedProject.Id);
+		if (projectIndex >= 0)
+		{
+			_projects[projectIndex] = detailedProject;
+		}
+		else
+		{
+			_projects.Add(detailedProject);
+			_projects = _projects
+				.OrderBy(project => project.Name)
+				.ToList();
+		}
+
+		return detailedProject;
+	}
+
 	private async Task SyncExecutionTargetsAsync(bool preserveCurrentSelection)
 	{
-		var project = GetSelectedProject();
+		var project = await GetSelectedProjectAsync();
 		_allowedProviders = ProjectExecutionDefaults.GetAllowedProviders(project, _providers);
-		_availableAgentAssignments = project?.AgentAssignments?
-			.Where(assignment =>
-				assignment.IsEnabled &&
-				assignment.Agent != null &&
-				assignment.Agent.IsEnabled &&
-				assignment.Provider != null &&
-				assignment.Provider.IsEnabled)
-			.OrderBy(assignment => assignment.Agent!.Name, StringComparer.OrdinalIgnoreCase)
-			.ToList() ?? [];
 
 		if (Schedule.ScheduleType == JobScheduleType.GenerateIdeas)
 		{
@@ -428,9 +470,9 @@
 		}
 		else
 		{
-			if (!preserveCurrentSelection || !Schedule.AgentId.HasValue || !_availableAgentAssignments.Any(assignment => assignment.AgentId == Schedule.AgentId.Value))
+			if (!preserveCurrentSelection || !Schedule.AgentId.HasValue || !_agents.Any(agent => agent.Id == Schedule.AgentId.Value))
 			{
-				Schedule.AgentId = _availableAgentAssignments.FirstOrDefault()?.AgentId;
+				Schedule.AgentId = _agents.FirstOrDefault()?.Id;
 			}
 
 			Schedule.ProviderId = null;
@@ -740,9 +782,9 @@
 		await IsVisibleChanged.InvokeAsync(isVisible);
 	}
 
-	private ProjectAgent? GetSelectedTeamAssignment()
+	private Agent? GetSelectedAgent()
 		=> Schedule.AgentId.HasValue
-			? _availableAgentAssignments.FirstOrDefault(assignment => assignment.AgentId == Schedule.AgentId.Value)
+			? _agents.FirstOrDefault(agent => agent.Id == Schedule.AgentId.Value)
 			: null;
 
 	private Guid? ResolveSelectedProviderId()
@@ -757,7 +799,7 @@
 			return Schedule.ProviderId;
 		}
 
-		return GetSelectedTeamAssignment()?.ProviderId;
+		return GetSelectedAgent()?.DefaultProviderId;
 	}
 
 	private string ResolveDefaultModel(Guid providerId)
@@ -772,10 +814,10 @@
 			return ProjectExecutionDefaults.ResolveModelId(GetSelectedProject(), providerId, _models);
 		}
 
-		var teamAssignment = GetSelectedTeamAssignment();
-		if (!string.IsNullOrWhiteSpace(teamAssignment?.PreferredModelId) && _models.Any(model => model.ModelId == teamAssignment.PreferredModelId))
+		var selectedAgent = GetSelectedAgent();
+		if (!string.IsNullOrWhiteSpace(selectedAgent?.DefaultModelId) && _models.Any(model => model.ModelId == selectedAgent.DefaultModelId))
 		{
-			return teamAssignment.PreferredModelId!;
+			return selectedAgent.DefaultModelId!;
 		}
 
 		return _models.FirstOrDefault(model => model.IsDefault)?.ModelId ?? string.Empty;
@@ -793,25 +835,24 @@
 			return "Leave empty to use the project's preferred provider model or the provider default.";
 		}
 
-		var assignment = GetSelectedTeamAssignment();
-		if (assignment == null)
+		var selectedAgent = GetSelectedAgent();
+		if (selectedAgent == null)
 		{
-			return "Leave empty to use the selected agent's assigned default model.";
+			return "Leave empty to use the selected agent's default model.";
 		}
 
-		if (!string.IsNullOrWhiteSpace(assignment.PreferredModelId))
+		if (!string.IsNullOrWhiteSpace(selectedAgent.DefaultModelId))
 		{
-			return $"Leave empty to use {assignment.Agent?.Name}'s assigned model ({assignment.PreferredModelId}).";
+			return $"Leave empty to use {selectedAgent.Name}'s default model ({selectedAgent.DefaultModelId}).";
 		}
 
 		return "Leave empty to use the selected agent's provider default model.";
 	}
 
-	private static string GetTeamAssignmentDisplayText(ProjectAgent assignment)
+	private static string GetAgentDisplayText(Agent agent)
 	{
-		var roleName = assignment.Agent?.Name ?? "Unknown agent";
-		var providerName = assignment.Provider?.Name ?? "Unknown provider";
-		return $"{roleName} ({providerName})";
+		var providerName = agent.DefaultProvider?.Name;
+		return string.IsNullOrWhiteSpace(providerName) ? agent.Name : $"{agent.Name} ({providerName})";
 	}
 
 	private string GetProjectValue() => Schedule.ProjectId == Guid.Empty ? string.Empty : Schedule.ProjectId.ToString();

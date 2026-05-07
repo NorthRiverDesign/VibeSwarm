@@ -13,24 +13,12 @@
 
 <InferenceProvidersSection IsLoading="@_isLoading"
 						   Providers="_providers"
+						   ActiveProviderType="_activeProviderType"
+						   ActiveProviderTypeChanged="SetActiveProviderTypeAsync"
 						   HealthStatus="_healthStatus"
 						   HealthChecked="_healthChecked"
 						   OnEditProvider="EditProvider"
 						   OnDeleteProvider="ShowDeleteConfirmation" />
-
-<InferenceTestSection Providers="_providers"
-					  SelectedProviderId="_testProviderId"
-					  SelectedProviderIdChanged="OnTestProviderChanged"
-					  TestModels="_testModels"
-					  SelectedModelId="_selectedTestModelId"
-					  SelectedModelIdChanged="OnSelectedTestModelIdChanged"
-					  TestPrompt="_testPrompt"
-					  TestPromptChanged="OnTestPromptChanged"
-					  IsLoadingModels="_isLoadingTestModels"
-					  IsTesting="_isTesting"
-					  TestResponse="_testResponse"
-					  TestModelHelpText="@GetTestModelHelpText()"
-					  OnSubmit="TestGeneration" />
 
 <InferenceProviderModal @bind-IsVisible="_showModal" EditProvider="@_editingProvider"
 						OnSaved="HandleProviderSaved" OnCancelled="HandleModalCancelled" OnClosed="HandleModalClosed" />
@@ -41,12 +29,13 @@
 				   OnCancel="CancelDelete" />
 
 @code {
-	private const string LastTestProviderStorageKey = "vibeswarm.local-inference.last-test-provider";
+	public const string LastTestProviderStorageKey = "vibeswarm.local-inference.last-test-provider";
 
 	private List<InferenceProvider> _providers = [];
 	private Dictionary<Guid, bool> _healthStatus = new();
 	private HashSet<Guid> _healthChecked = new();
 	private bool _isLoading = true;
+	private InferenceProviderType _activeProviderType = Enum.GetValues<InferenceProviderType>().First();
 
 	// Modal state
 	private bool _showModal;
@@ -57,45 +46,26 @@
 	private InferenceProvider? _providerToDelete;
 	private bool _isDeleting;
 
-	// Test inference state
-	private Guid? _testProviderId;
-	private List<InferenceModel> _testModels = [];
-	private string _selectedTestModelId = string.Empty;
-	private string _testPrompt = "Say hello in one sentence.";
-	private bool _isTesting;
-	private bool _isLoadingTestModels;
-	private InferenceResponse? _testResponse;
-
 	protected override async Task OnInitializedAsync()
 	{
 		var preferredProviderId = await TryRestoreLastTestProviderIdAsync();
-		await LoadProviders(preferredProviderId);
-
-		if (preferredProviderId.HasValue && _testProviderId != preferredProviderId.Value)
-		{
-			await PersistLastTestProviderIdAsync(_testProviderId);
-		}
+		await LoadProviders(preferredProviderId, clearMissingPreferredProvider: true);
 	}
 
-	private async Task LoadProviders(Guid? preferredProviderId = null)
+	private async Task LoadProviders(Guid? preferredProviderId = null, bool clearMissingPreferredProvider = false)
 	{
 		_isLoading = true;
 		try
 		{
 			_providers = (await InferenceProviderService.GetAllAsync()).ToList();
-			var enabledProviders = _providers
-				.Where(p => p.IsEnabled)
-				.ToList();
-			if (preferredProviderId.HasValue && enabledProviders.Any(p => p.Id == preferredProviderId.Value))
-			{
-				_testProviderId = preferredProviderId.Value;
-			}
-			else if (!_testProviderId.HasValue || !enabledProviders.Any(p => p.Id == _testProviderId.Value))
-			{
-				_testProviderId = enabledProviders.FirstOrDefault()?.Id;
-			}
+			SelectActiveProviderType(preferredProviderId);
 
-			await LoadTestModelsAsync();
+			if (clearMissingPreferredProvider
+				&& preferredProviderId.HasValue
+				&& _providers.All(provider => provider.Id != preferredProviderId.Value))
+			{
+				await PersistLastTestProviderIdAsync(null);
+			}
 
 			foreach (var provider in _providers)
 			{
@@ -110,6 +80,27 @@
 		{
 			_isLoading = false;
 		}
+	}
+
+	private void SelectActiveProviderType(Guid? preferredProviderId = null)
+	{
+		if (preferredProviderId.HasValue)
+		{
+			var preferredProvider = _providers.FirstOrDefault(provider => provider.Id == preferredProviderId.Value);
+			if (preferredProvider != null)
+			{
+				_activeProviderType = preferredProvider.ProviderType;
+				return;
+			}
+		}
+
+		if (_providers.Any(provider => provider.ProviderType == _activeProviderType))
+		{
+			return;
+		}
+
+		_activeProviderType = Enum.GetValues<InferenceProviderType>()
+			.FirstOrDefault(type => _providers.Any(provider => provider.ProviderType == type));
 	}
 
 	private async Task CheckHealth(InferenceProvider provider)
@@ -189,15 +180,7 @@
 			_providers.Remove(_providerToDelete);
 			_healthStatus.Remove(_providerToDelete.Id);
 			_healthChecked.Remove(_providerToDelete.Id);
-
-			if (_testProviderId == _providerToDelete.Id)
-			{
-				_testProviderId = _providers.FirstOrDefault(p => p.IsEnabled)?.Id;
-				_testResponse = null;
-				await PersistLastTestProviderIdAsync(_testProviderId);
-			}
-
-			await LoadTestModelsAsync();
+			SelectActiveProviderType();
 
 			NotificationService.ShowSuccess($"Provider \"{_providerToDelete.Name}\" removed.");
 			_showDeleteModal = false;
@@ -210,92 +193,6 @@
 		finally
 		{
 			_isDeleting = false;
-		}
-	}
-
-	// Test inference
-
-	private async Task OnTestProviderChanged(Guid? providerId)
-	{
-		_testProviderId = providerId;
-		await PersistLastTestProviderIdAsync(_testProviderId);
-		_selectedTestModelId = string.Empty;
-		_testResponse = null;
-		await LoadTestModelsAsync();
-	}
-
-	private Task OnSelectedTestModelIdChanged(string selectedModelId)
-	{
-		_selectedTestModelId = selectedModelId;
-		return Task.CompletedTask;
-	}
-
-	private Task OnTestPromptChanged(string testPrompt)
-	{
-		_testPrompt = testPrompt;
-		return Task.CompletedTask;
-	}
-
-	private async Task LoadTestModelsAsync()
-	{
-		_testModels = [];
-		if (!_testProviderId.HasValue)
-		{
-			_selectedTestModelId = string.Empty;
-			return;
-		}
-
-		_isLoadingTestModels = true;
-		try
-		{
-			_testModels = (await InferenceProviderService.GetModelsAsync(_testProviderId.Value))
-				.Where(model => model.IsAvailable)
-				.OrderByDescending(model => model.IsDefault)
-				.ThenBy(model => model.DisplayName ?? model.ModelId)
-				.ToList();
-			if (!_testModels.Any(model => model.ModelId == _selectedTestModelId))
-			{
-				_selectedTestModelId = string.Empty;
-			}
-		}
-		catch (Exception ex)
-		{
-			_selectedTestModelId = string.Empty;
-			NotificationService.ShowError($"Failed to load inference models: {ex.Message}");
-		}
-		finally
-		{
-			_isLoadingTestModels = false;
-		}
-	}
-
-	private async Task TestGeneration()
-	{
-		var provider = _providers.FirstOrDefault(p => p.Id == _testProviderId);
-		if (provider == null || string.IsNullOrWhiteSpace(_testPrompt)) return;
-
-		_isTesting = true;
-		_testResponse = null;
-
-		try
-		{
-			await PersistLastTestProviderIdAsync(provider.Id);
-			_testResponse = await InferenceService.GenerateAsync(new InferenceRequest
-			{
-				Prompt = _testPrompt.Trim(),
-				Model = string.IsNullOrWhiteSpace(_selectedTestModelId) ? null : _selectedTestModelId,
-				ProviderId = provider.Id,
-				Endpoint = provider.Endpoint,
-				ProviderType = provider.ProviderType
-			});
-		}
-		catch (Exception ex)
-		{
-			_testResponse = new InferenceResponse { Success = false, Error = ex.Message };
-		}
-		finally
-		{
-			_isTesting = false;
 		}
 	}
 
@@ -363,22 +260,10 @@
 		Console.Error.WriteLine($"[LocalInference] Unable to {action}: {exception.Message}");
 	}
 
-	private string GetTestModelHelpText()
+	private Task SetActiveProviderTypeAsync(InferenceProviderType providerType)
 	{
-		if (_isLoadingTestModels)
-		{
-			return "Loading models for the selected provider...";
-		}
-
-		if (_testModels.Count == 0)
-		{
-			return "No discovered models are available for this provider yet.";
-		}
-
-		var defaultModel = _testModels.FirstOrDefault(model => model.IsDefault);
-		return defaultModel == null
-			? "Choose a model to test with this provider."
-			: $"Leave unselected to use {defaultModel.DisplayName ?? defaultModel.ModelId}.";
+		_activeProviderType = providerType;
+		return Task.CompletedTask;
 	}
 
 }

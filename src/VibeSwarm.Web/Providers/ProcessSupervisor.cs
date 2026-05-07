@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using Microsoft.Extensions.Logging;
+using VibeSwarm.Shared.Services;
 using VibeSwarm.Shared.Utilities;
 
 namespace VibeSwarm.Shared.Providers;
@@ -29,7 +30,7 @@ public class ProcessSupervisor : IDisposable
 	/// <summary>
 	/// Time without output before a process is considered stalled
 	/// </summary>
-	public TimeSpan StallThreshold { get; set; } = TimeSpan.FromMinutes(10);
+	public TimeSpan StallThreshold { get; set; } = JobCompletionCriteria.DefaultStallTimeoutValue;
 
 	/// <summary>
 	/// Event fired when a process becomes unhealthy

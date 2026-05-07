@@ -1,18 +1,20 @@
 using System.ComponentModel.DataAnnotations;
 using VibeSwarm.Shared.Data;
+using VibeSwarm.Shared.Validation;
 
 namespace VibeSwarm.Client.Models;
 
 public sealed class CreateJobFormModel : IValidatableObject
 {
-	[Required(ErrorMessage = "Goal prompt is required.")]
-	[StringLength(2000, MinimumLength = 1, ErrorMessage = "Goal prompt must be between 1 and 2000 characters.")]
+	[StringLength(ValidationLimits.JobTemplatePromptMaxLength, ErrorMessage = "Goal prompt must be 2000 characters or fewer.")]
 	public string GoalPrompt { get; set; } = string.Empty;
 
 	[Required(ErrorMessage = "Please select a provider.")]
 	public Guid? ProviderId { get; set; }
 
 	public Guid? AgentId { get; set; }
+
+	public bool AllowBlankGoalPrompt { get; set; }
 
 	[StringLength(VibeSwarm.Shared.Validation.ValidationLimits.ReasoningEffortMaxLength)]
 	public string? ReasoningEffort { get; set; }
@@ -39,7 +41,7 @@ public sealed class CreateJobFormModel : IValidatableObject
 	{
 		return new CreateJobFormModel
 		{
-			GoalPrompt = job.GoalPrompt,
+			GoalPrompt = job.GoalPrompt ?? string.Empty,
 			ProviderId = job.ProviderId == Guid.Empty ? null : job.ProviderId,
 			AgentId = job.AgentId,
 			ReasoningEffort = job.ReasoningEffort,
@@ -70,6 +72,15 @@ public sealed class CreateJobFormModel : IValidatableObject
 
 	public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
 	{
+		if (string.IsNullOrWhiteSpace(GoalPrompt) && !AllowBlankGoalPrompt)
+		{
+			yield return new ValidationResult(
+				AgentId.HasValue && AgentId != Guid.Empty
+					? "Goal prompt is required because the selected agent does not have reusable instructions."
+					: "Goal prompt is required.",
+				[nameof(GoalPrompt)]);
+		}
+
 		if (GitChangeDeliveryMode == GitChangeDeliveryMode.PullRequest &&
 			string.IsNullOrWhiteSpace(TargetBranch))
 		{

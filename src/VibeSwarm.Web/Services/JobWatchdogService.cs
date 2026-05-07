@@ -31,7 +31,7 @@ public class JobWatchdogService : BackgroundService
 	/// <summary>
 	/// Default stall threshold for CLI providers (model loading on low-powered hardware)
 	/// </summary>
-	private readonly TimeSpan _cliStallThreshold = TimeSpan.FromMinutes(10);
+	private readonly TimeSpan _cliStallThreshold = JobCompletionCriteria.DefaultStallTimeoutValue;
 
 	/// <summary>
 	/// Give long-running Claude CLI tool executions more time before considering them stalled.
@@ -158,7 +158,7 @@ public class JobWatchdogService : BackgroundService
 		var candidateJobs = await dbContext.Jobs
 			.Include(j => j.Provider)
 			.Include(j => j.Project)
-			.Where(j => (j.Status == JobStatus.Started || j.Status == JobStatus.Planning || j.Status == JobStatus.Processing))
+			.Where(j => (j.Status == JobStatus.Pending || j.Status == JobStatus.Started || j.Status == JobStatus.Planning || j.Status == JobStatus.Processing))
 			.Where(j => j.WorkerInstanceId == _workerInstanceId)
 			.Where(j => j.LastHeartbeatAt.HasValue && j.LastHeartbeatAt.Value < maxCutoffTime)
 			.ToListAsync(cancellationToken);
@@ -218,6 +218,12 @@ public class JobWatchdogService : BackgroundService
 			// Check if we should retry or fail
 			if (job.MaxRetries == 0 || job.RetryCount < job.MaxRetries)
 			{
+				JobRecoveryHelper.CaptureRecoveryState(
+					job,
+					job.Status == JobStatus.Planning ? JobStatus.Planning : JobStatus.Processing,
+					job.RecoveryPrompt ?? job.GoalPrompt,
+					job.SessionId,
+					job.ConsoleOutput);
 				// Reset job for retry
 				job.Status = JobStatus.New;
 				job.RetryCount++;
@@ -286,6 +292,7 @@ public class JobWatchdogService : BackgroundService
 
 			job.Status = JobStatus.Cancelled;
 			job.CompletedAt = DateTime.UtcNow;
+			JobRecoveryHelper.ClearRecoveryState(job, clearSessionId: true);
 			job.WorkerInstanceId = null;
 			job.ProcessId = null;
 			job.CurrentActivity = null;
@@ -312,7 +319,7 @@ public class JobWatchdogService : BackgroundService
 		// AND are not our worker (we handle our own jobs in CheckForStalledJobsAsync)
 		var orphanedJobs = await dbContext.Jobs
 			.Include(j => j.Project)
-			.Where(j => (j.Status == JobStatus.Started || j.Status == JobStatus.Planning || j.Status == JobStatus.Processing))
+			.Where(j => (j.Status == JobStatus.Pending || j.Status == JobStatus.Started || j.Status == JobStatus.Planning || j.Status == JobStatus.Processing))
 			.Where(j => !string.IsNullOrEmpty(j.WorkerInstanceId))
 			.Where(j => j.WorkerInstanceId != _workerInstanceId)
 			.Where(j => !j.LastHeartbeatAt.HasValue || j.LastHeartbeatAt.Value < activeWorkerCutoff)
@@ -336,6 +343,12 @@ public class JobWatchdogService : BackgroundService
 			// Check if we should retry or fail
 			if (job.MaxRetries == 0 || job.RetryCount < job.MaxRetries)
 			{
+				JobRecoveryHelper.CaptureRecoveryState(
+					job,
+					job.Status == JobStatus.Planning ? JobStatus.Planning : JobStatus.Processing,
+					job.RecoveryPrompt ?? job.GoalPrompt,
+					job.SessionId,
+					job.ConsoleOutput);
 				// Reset job for retry
 				job.Status = JobStatus.New;
 				job.RetryCount++;
@@ -428,6 +441,13 @@ public class JobWatchdogService : BackgroundService
 			_logger.LogWarning("Failed to transition job {JobId} to stalled recovery state: {Error}", job.Id, transition.ErrorMessage);
 			return false;
 		}
+
+		JobRecoveryHelper.CaptureRecoveryState(
+			job,
+			job.Status == JobStatus.Planning ? JobStatus.Planning : JobStatus.Processing,
+			job.RecoveryPrompt ?? job.GoalPrompt,
+			job.SessionId,
+			job.ConsoleOutput ?? diff);
 
 		job.GitDiff = !string.IsNullOrWhiteSpace(diff) ? diff : job.GitDiff;
 		job.ChangedFilesCount = workingTreeStatus.ChangedFilesCount;

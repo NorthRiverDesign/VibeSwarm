@@ -233,6 +233,13 @@ public class HttpJobService : IJobService
         return result?.Prioritized ?? 0;
     }
 
+    public async Task<IEnumerable<JobChangeSet>> GetChangeSetsAsync(Guid jobId, CancellationToken ct = default)
+    {
+        var response = await _http.GetAsync($"/api/jobs/{jobId}/changesets", ct);
+        if (!response.IsSuccessStatusCode) return [];
+        return await response.Content.ReadFromJsonAsync<List<JobChangeSet>>(ct) ?? [];
+    }
+
     private class InteractionInfo
     {
         public string? Prompt { get; set; }

@@ -167,6 +167,51 @@ public sealed class JobSessionPanelTests
 	}
 
 	[Fact]
+	public async Task RenderedJobSessionPanel_HidesCommitSummaryBlocksFromDisplayedMessages()
+	{
+		var services = new ServiceCollection();
+		services.AddLogging();
+		services.AddSingleton<IJSRuntime>(new NoOpJsRuntime());
+
+		await using var renderer = new HtmlRenderer(services.BuildServiceProvider(), NullLoggerFactory.Instance);
+
+		var html = await renderer.Dispatcher.InvokeAsync(async () =>
+		{
+			var parameters = ParameterView.FromDictionary(new Dictionary<string, object?>
+			{
+				[nameof(JobSessionPanel.Status)] = JobStatus.Completed,
+				[nameof(JobSessionPanel.Messages)] = new List<JobMessage>
+				{
+					new()
+					{
+						Id = Guid.NewGuid(),
+						JobId = Guid.NewGuid(),
+						Role = MessageRole.Assistant,
+						Content = """
+							## Plan
+							1. Capture the planning summary.
+							2. Prefer it for git delivery.
+
+							<commit-summary>
+							hidden planning git summary
+							</commit-summary>
+							""",
+						CreatedAt = DateTime.UtcNow.AddSeconds(-5)
+					}
+				}
+			});
+
+			var output = await renderer.RenderComponentAsync<JobSessionPanel>(parameters);
+			return output.ToHtmlString();
+		});
+
+		Assert.Contains("Capture the planning summary", html);
+		Assert.Contains("Prefer it for git delivery", html);
+		Assert.DoesNotContain("hidden planning git summary", html);
+		Assert.DoesNotContain("&lt;commit-summary&gt;", html);
+	}
+
+	[Fact]
 	public async Task RenderedJobSessionPanel_ShowsPersistedUserMessagesAsUserEntries()
 	{
 		var services = new ServiceCollection();
@@ -1461,6 +1506,75 @@ public sealed class JobSessionPanelTests
 
 		Assert.Equal("Please add one more assertion.", followUpPrompt);
 		Assert.True(cut.Find("button[title='Send follow-up']").HasAttribute("disabled"));
+	}
+
+	[Fact]
+	public void JobSessionPanel_Bunit_ShowsFollowUpInputForStalledJob()
+	{
+		using var context = new BunitContext();
+		string? followUpPrompt = null;
+
+		var cut = context.Render<JobSessionPanel>(parameters => parameters
+			.Add(panel => panel.Status, JobStatus.Stalled)
+			.Add(panel => panel.Messages, new List<JobMessage>())
+			.Add(panel => panel.OnSendFollowUp, async (string prompt) =>
+			{
+				followUpPrompt = prompt;
+				await Task.CompletedTask;
+			}));
+
+		var sendButton = cut.Find("button[title='Send follow-up']");
+		Assert.True(sendButton.HasAttribute("disabled"));
+
+		cut.Find("textarea").Input("Try again with the auth middleware.");
+
+		sendButton = cut.Find("button[title='Send follow-up']");
+		Assert.False(sendButton.HasAttribute("disabled"));
+
+		sendButton.Click();
+
+		Assert.Equal("Try again with the auth middleware.", followUpPrompt);
+	}
+
+	[Fact]
+	public void JobSessionPanel_Bunit_ShowsFollowUpInputForFailedJob()
+	{
+		using var context = new BunitContext();
+		string? followUpPrompt = null;
+
+		var cut = context.Render<JobSessionPanel>(parameters => parameters
+			.Add(panel => panel.Status, JobStatus.Failed)
+			.Add(panel => panel.Messages, new List<JobMessage>())
+			.Add(panel => panel.OnSendFollowUp, async (string prompt) =>
+			{
+				followUpPrompt = prompt;
+				await Task.CompletedTask;
+			}));
+
+		var sendButton = cut.Find("button[title='Send follow-up']");
+		Assert.True(sendButton.HasAttribute("disabled"));
+
+		cut.Find("textarea").Input("Fix the null reference on line 42.");
+
+		sendButton = cut.Find("button[title='Send follow-up']");
+		Assert.False(sendButton.HasAttribute("disabled"));
+
+		sendButton.Click();
+
+		Assert.Equal("Fix the null reference on line 42.", followUpPrompt);
+	}
+
+	[Fact]
+	public void JobSessionPanel_Bunit_HidesFollowUpInputForActiveJob()
+	{
+		using var context = new BunitContext();
+
+		var cut = context.Render<JobSessionPanel>(parameters => parameters
+			.Add(panel => panel.Status, JobStatus.Processing)
+			.Add(panel => panel.Messages, new List<JobMessage>())
+			.Add(panel => panel.OnSendFollowUp, async (string prompt) => await Task.CompletedTask));
+
+		Assert.Empty(cut.FindAll("button[title='Send follow-up']"));
 	}
 
 	private sealed class NoOpJsRuntime : IJSRuntime
