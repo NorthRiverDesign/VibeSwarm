@@ -41,6 +41,7 @@ public sealed class ProjectDetailTabMergeTests
 			Assert.Contains("Describe a feature, bug, or improvement to turn into a job", markup);
 			Assert.Contains("Existing idea", markup);
 			Assert.Contains("Existing job", markup);
+			Assert.Empty(cut.FindAll("[aria-label='Pagination']"));
 
 			Assert.True(markup.IndexOf("Create Job", StringComparison.Ordinal) < markup.IndexOf("Describe a feature, bug, or improvement to turn into a job", StringComparison.Ordinal));
 			Assert.True(markup.IndexOf("Describe a feature, bug, or improvement to turn into a job", StringComparison.Ordinal) < markup.IndexOf("Existing idea", StringComparison.Ordinal));
