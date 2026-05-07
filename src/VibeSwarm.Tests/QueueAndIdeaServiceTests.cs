@@ -1729,6 +1729,346 @@ public sealed class QueueAndIdeaServiceTests : IDisposable
 	}
 
 	[Fact]
+	public async Task SuggestIdeasFromCodebaseAsync_UsesConfiguredProviderDefaultModel_WhenModelIsNotSelected()
+	{
+		await using var dbContext = CreateDbContext();
+		var workingPath = Path.Combine(Path.GetTempPath(), $"vibeswarm-provider-default-suggestion-{Guid.NewGuid():N}");
+		Directory.CreateDirectory(workingPath);
+		File.WriteAllText(Path.Combine(workingPath, "Program.cs"), "Console.WriteLine(\"Hello from VibeSwarm\");");
+		try
+		{
+			var project = new Project
+			{
+				Id = Guid.NewGuid(),
+				Name = "Provider Default Model Suggestion Project",
+				WorkingPath = workingPath
+			};
+			var provider = new Provider
+			{
+				Id = Guid.NewGuid(),
+				Name = "Copilot",
+				Type = ProviderType.Copilot,
+				IsEnabled = true,
+				IsDefault = true
+			};
+			var providerModel = new ProviderModel
+			{
+				Id = Guid.NewGuid(),
+				ProviderId = provider.Id,
+				ModelId = "gpt-5.4",
+				DisplayName = "GPT-5.4",
+				IsAvailable = true,
+				IsDefault = true
+			};
+			var providerInstance = new FakeProviderInstance
+			{
+				ExecutionResult = new ExecutionResult
+				{
+					Success = true,
+					ModelUsed = "gpt-5.4",
+					Output = """
+					- Add provider default model support to idea suggestions
+					- Show provider-backed suggestion progress in the ideas panel
+					"""
+				}
+			};
+
+			dbContext.Projects.Add(project);
+			dbContext.Providers.Add(provider);
+			dbContext.ProviderModels.Add(providerModel);
+			await dbContext.SaveChangesAsync();
+
+			var ideaService = CreateIdeaService(dbContext, provider, providerInstance);
+			var result = await ideaService.SuggestIdeasFromCodebaseAsync(project.Id, new SuggestIdeasRequest
+			{
+				UseInference = false,
+				ProviderId = provider.Id,
+				IdeaCount = 2
+			});
+
+			Assert.True(result.Success);
+			Assert.Equal(2, result.Ideas.Count);
+			Assert.Equal(providerModel.ModelId, providerInstance.LastExecutionOptions?.Model);
+			Assert.Equal("gpt-5.4", result.ModelUsed);
+		}
+		finally
+		{
+			if (Directory.Exists(workingPath))
+			{
+				Directory.Delete(workingPath, recursive: true);
+			}
+		}
+	}
+
+	[Fact]
+	public async Task SuggestIdeasFromCodebaseAsync_UsesProviderPromptResponse_WhenNoCachedModelsExist()
+	{
+		await using var dbContext = CreateDbContext();
+		var workingPath = Path.Combine(Path.GetTempPath(), $"vibeswarm-provider-no-models-suggestion-{Guid.NewGuid():N}");
+		Directory.CreateDirectory(workingPath);
+		File.WriteAllText(Path.Combine(workingPath, "Program.cs"), "Console.WriteLine(\"Hello from VibeSwarm\");");
+		try
+		{
+			var project = new Project
+			{
+				Id = Guid.NewGuid(),
+				Name = "Provider No Models Suggestion Project",
+				WorkingPath = workingPath
+			};
+			var provider = new Provider
+			{
+				Id = Guid.NewGuid(),
+				Name = "OpenCode",
+				Type = ProviderType.OpenCode,
+				IsEnabled = true,
+				IsDefault = true
+			};
+			var providerInstance = new FakeProviderInstance
+			{
+				PromptResponse = PromptResponse.Ok("""
+				- Let regular providers suggest ideas without cached models
+				- Explain when provider defaults are used for idea generation
+				""", elapsedMs: 1250, model: "provider-default")
+			};
+
+			dbContext.Projects.Add(project);
+			dbContext.Providers.Add(provider);
+			await dbContext.SaveChangesAsync();
+
+			var ideaService = CreateIdeaService(dbContext, provider, providerInstance);
+			var result = await ideaService.SuggestIdeasFromCodebaseAsync(project.Id, new SuggestIdeasRequest
+			{
+				UseInference = false,
+				ProviderId = provider.Id,
+				IdeaCount = 2
+			});
+
+			Assert.True(result.Success);
+			Assert.Equal(2, result.Ideas.Count);
+			Assert.Null(providerInstance.LastExecutionOptions);
+			Assert.Equal("provider-default", result.ModelUsed);
+			Assert.Equal(1250, result.GenerationDurationMs);
+		}
+		finally
+		{
+			if (Directory.Exists(workingPath))
+			{
+				Directory.Delete(workingPath, recursive: true);
+			}
+		}
+	}
+
+	[Fact]
+	public async Task SuggestIdeasFromCodebaseAsync_ReturnsProviderNotFound_WhenConfiguredProviderIsMissingOrDisabled()
+	{
+		await using var dbContext = CreateDbContext();
+		var workingPath = Path.Combine(Path.GetTempPath(), $"vibeswarm-provider-missing-suggestion-{Guid.NewGuid():N}");
+		Directory.CreateDirectory(workingPath);
+		File.WriteAllText(Path.Combine(workingPath, "Program.cs"), "Console.WriteLine(\"Hello from VibeSwarm\");");
+		try
+		{
+			var project = new Project
+			{
+				Id = Guid.NewGuid(),
+				Name = "Provider Missing Suggestion Project",
+				WorkingPath = workingPath
+			};
+			var provider = new Provider
+			{
+				Id = Guid.NewGuid(),
+				Name = "Claude",
+				Type = ProviderType.Claude,
+				IsEnabled = false
+			};
+
+			dbContext.Projects.Add(project);
+			dbContext.Providers.Add(provider);
+			await dbContext.SaveChangesAsync();
+
+			var ideaService = CreateIdeaService(dbContext, provider, new FakeProviderInstance());
+			var disabledResult = await ideaService.SuggestIdeasFromCodebaseAsync(project.Id, new SuggestIdeasRequest
+			{
+				UseInference = false,
+				ProviderId = provider.Id
+			});
+			var missingResult = await ideaService.SuggestIdeasFromCodebaseAsync(project.Id, new SuggestIdeasRequest
+			{
+				UseInference = false,
+				ProviderId = Guid.NewGuid()
+			});
+
+			Assert.False(disabledResult.Success);
+			Assert.Equal(SuggestIdeasStage.ProviderNotFound, disabledResult.Stage);
+			Assert.False(missingResult.Success);
+			Assert.Equal(SuggestIdeasStage.ProviderNotFound, missingResult.Stage);
+		}
+		finally
+		{
+			if (Directory.Exists(workingPath))
+			{
+				Directory.Delete(workingPath, recursive: true);
+			}
+		}
+	}
+
+	[Fact]
+	public async Task SuggestIdeasFromCodebaseAsync_ReturnsModelNotFound_WhenProviderModelIsUnavailable()
+	{
+		await using var dbContext = CreateDbContext();
+		var workingPath = Path.Combine(Path.GetTempPath(), $"vibeswarm-provider-missing-model-suggestion-{Guid.NewGuid():N}");
+		Directory.CreateDirectory(workingPath);
+		File.WriteAllText(Path.Combine(workingPath, "Program.cs"), "Console.WriteLine(\"Hello from VibeSwarm\");");
+		try
+		{
+			var project = new Project
+			{
+				Id = Guid.NewGuid(),
+				Name = "Provider Missing Model Suggestion Project",
+				WorkingPath = workingPath
+			};
+			var provider = new Provider
+			{
+				Id = Guid.NewGuid(),
+				Name = "Copilot",
+				Type = ProviderType.Copilot,
+				IsEnabled = true
+			};
+			var unavailableModel = new ProviderModel
+			{
+				Id = Guid.NewGuid(),
+				ProviderId = provider.Id,
+				ModelId = "gpt-5.4",
+				IsAvailable = false,
+				IsDefault = true
+			};
+			var providerInstance = new FakeProviderInstance();
+
+			dbContext.Projects.Add(project);
+			dbContext.Providers.Add(provider);
+			dbContext.ProviderModels.Add(unavailableModel);
+			await dbContext.SaveChangesAsync();
+
+			var ideaService = CreateIdeaService(dbContext, provider, providerInstance);
+			var result = await ideaService.SuggestIdeasFromCodebaseAsync(project.Id, new SuggestIdeasRequest
+			{
+				UseInference = false,
+				ProviderId = provider.Id,
+				ModelId = unavailableModel.ModelId
+			});
+
+			Assert.False(result.Success);
+			Assert.Equal(SuggestIdeasStage.ModelNotFound, result.Stage);
+			Assert.Null(providerInstance.LastExecutionOptions);
+		}
+		finally
+		{
+			if (Directory.Exists(workingPath))
+			{
+				Directory.Delete(workingPath, recursive: true);
+			}
+		}
+	}
+
+	[Fact]
+	public async Task SuggestIdeasFromCodebaseAsync_ReturnsNotConfigured_WhenProviderInstanceCannotBeCreated()
+	{
+		await using var dbContext = CreateDbContext();
+		var workingPath = Path.Combine(Path.GetTempPath(), $"vibeswarm-provider-instance-suggestion-{Guid.NewGuid():N}");
+		Directory.CreateDirectory(workingPath);
+		File.WriteAllText(Path.Combine(workingPath, "Program.cs"), "Console.WriteLine(\"Hello from VibeSwarm\");");
+		try
+		{
+			var project = new Project
+			{
+				Id = Guid.NewGuid(),
+				Name = "Provider Instance Suggestion Project",
+				WorkingPath = workingPath
+			};
+			var provider = new Provider
+			{
+				Id = Guid.NewGuid(),
+				Name = "OpenCode",
+				Type = ProviderType.OpenCode,
+				IsEnabled = true
+			};
+
+			dbContext.Projects.Add(project);
+			dbContext.Providers.Add(provider);
+			await dbContext.SaveChangesAsync();
+
+			var ideaService = CreateIdeaService(dbContext, provider);
+			var result = await ideaService.SuggestIdeasFromCodebaseAsync(project.Id, new SuggestIdeasRequest
+			{
+				UseInference = false,
+				ProviderId = provider.Id
+			});
+
+			Assert.False(result.Success);
+			Assert.Equal(SuggestIdeasStage.NotConfigured, result.Stage);
+			Assert.Contains("configured provider instance", result.Message, StringComparison.OrdinalIgnoreCase);
+		}
+		finally
+		{
+			if (Directory.Exists(workingPath))
+			{
+				Directory.Delete(workingPath, recursive: true);
+			}
+		}
+	}
+
+	[Fact]
+	public async Task SuggestIdeasFromCodebaseAsync_ReturnsProviderErrorDetail_WhenProviderResponseFails()
+	{
+		await using var dbContext = CreateDbContext();
+		var workingPath = Path.Combine(Path.GetTempPath(), $"vibeswarm-provider-error-suggestion-{Guid.NewGuid():N}");
+		Directory.CreateDirectory(workingPath);
+		File.WriteAllText(Path.Combine(workingPath, "Program.cs"), "Console.WriteLine(\"Hello from VibeSwarm\");");
+		try
+		{
+			var project = new Project
+			{
+				Id = Guid.NewGuid(),
+				Name = "Provider Error Suggestion Project",
+				WorkingPath = workingPath
+			};
+			var provider = new Provider
+			{
+				Id = Guid.NewGuid(),
+				Name = "Claude",
+				Type = ProviderType.Claude,
+				IsEnabled = true
+			};
+			var providerInstance = new FakeProviderInstance
+			{
+				PromptResponse = PromptResponse.Fail("Provider quota exceeded")
+			};
+
+			dbContext.Projects.Add(project);
+			dbContext.Providers.Add(provider);
+			await dbContext.SaveChangesAsync();
+
+			var ideaService = CreateIdeaService(dbContext, provider, providerInstance);
+			var result = await ideaService.SuggestIdeasFromCodebaseAsync(project.Id, new SuggestIdeasRequest
+			{
+				UseInference = false,
+				ProviderId = provider.Id
+			});
+
+			Assert.False(result.Success);
+			Assert.Equal(SuggestIdeasStage.GenerateFailed, result.Stage);
+			Assert.Equal("Provider quota exceeded", result.ErrorDetail);
+			Assert.Contains("provider did not return a usable response", result.Message, StringComparison.OrdinalIgnoreCase);
+		}
+		finally
+		{
+			if (Directory.Exists(workingPath))
+			{
+				Directory.Delete(workingPath, recursive: true);
+			}
+		}
+	}
+
+	[Fact]
 	public async Task UpdateAsync_UpdatesExistingIdeaWithoutCreatingDuplicate()
 	{
 		await using var dbContext = CreateDbContext();

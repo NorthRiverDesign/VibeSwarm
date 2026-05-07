@@ -150,7 +150,7 @@ public class HttpIdeaService : IIdeaService
     public async Task<SuggestIdeasResult> SuggestIdeasFromCodebaseAsync(Guid projectId, SuggestIdeasRequest? request = null, CancellationToken ct = default)
     {
         var normalizedRequest = request ?? new SuggestIdeasRequest();
-        var timeout = InferenceTimeouts.GetIdeaActionTimeout(normalizedRequest.UseInference);
+        var timeout = InferenceTimeouts.GetIdeaSuggestionTimeout(normalizedRequest.UseInference);
 
         // Suggestion generation can take a long time, especially with local inference.
         // The HttpClient registered in DI uses Timeout.InfiniteTimeSpan, so this
@@ -207,7 +207,7 @@ public class HttpIdeaService : IIdeaService
             {
                 Stage = SuggestIdeasStage.GenerateFailed,
                 Message = $"Request failed: {ex.Message}",
-                InferenceError = ex.ToString()
+                ErrorDetail = ex.ToString()
             };
         }
     }

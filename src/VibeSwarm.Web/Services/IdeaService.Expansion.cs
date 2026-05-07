@@ -88,7 +88,7 @@ public partial class IdeaService
 	}
 
 	internal static TimeSpan GetExpansionTimeout(bool useInference)
-		=> InferenceTimeouts.GetIdeaActionTimeout(useInference);
+		=> InferenceTimeouts.GetIdeaSuggestionTimeout(useInference);
 
 	private async Task ExpandWithProviderAsync(
 		Idea idea,

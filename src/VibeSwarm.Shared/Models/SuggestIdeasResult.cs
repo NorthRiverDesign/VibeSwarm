@@ -67,10 +67,10 @@ public class SuggestIdeasResult
 	/// <summary>
 	/// Total time spent on the generation call in milliseconds, if available.
 	/// </summary>
-	public long? InferenceDurationMs { get; set; }
+	public long? GenerationDurationMs { get; set; }
 
 	/// <summary>
 	/// Raw provider error detail, if the provider returned one.
 	/// </summary>
-	public string? InferenceError { get; set; }
+	public string? ErrorDetail { get; set; }
 }
