@@ -99,14 +99,15 @@
 	</div>
 	@if (Models.Count > 0)
 	{
-		var sortedModels = GetSortedModels();
+		var availableModels = GetSortedModels();
+		var unavailableDefaultModel = GetUnavailableDefaultModel();
 
 		<div class="mt-3 pt-3 border-top">
 			<div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
 				<button type="button" class="btn btn-sm btn-secondary d-inline-flex align-items-center gap-2"
 						@onclick="ToggleModels">
 					<i class="bi bi-@(ShowModels ? "chevron-up" : "chevron-down")"></i>
-					<span>@(ShowModels ? "Hide Models" : "Show Models") (@sortedModels.Count)</span>
+					<span>@(ShowModels ? "Hide Models" : "Show Models") (@availableModels.Count)</span>
 				</button>
 				@if (Provider.LastModelsRefreshAt.HasValue)
 				{
@@ -115,41 +116,53 @@
 					</small>
 				}
 			</div>
+			@if (unavailableDefaultModel != null)
+			{
+				<Alert Type="Alert.AlertType.Warning" ShowIcon="true" Class="mt-2 mb-0 py-2 px-3 small">
+					<strong>Default model unavailable.</strong>
+					<span class="ms-1">@(unavailableDefaultModel.DisplayName ?? unavailableDefaultModel.ModelId) is no longer available. Select a new default model to keep model selection explicit.</span>
+				</Alert>
+			}
 			@if (ShowModels)
 			{
-				<div class="list-group list-group-flush mt-2">
-					@foreach (var model in sortedModels)
-					{
-						<div class="list-group-item px-0 py-2">
-							<div class="d-flex align-items-start justify-content-between gap-3">
-								<div class="min-width-0">
-									<div class="d-flex align-items-center gap-2 flex-wrap">
-										<span class="fw-medium text-break">@(model.DisplayName ?? model.ModelId)</span>
-										@if (model.IsDefault)
+				@if (availableModels.Count > 0)
+				{
+					<div class="list-group list-group-flush mt-2">
+						@foreach (var model in availableModels)
+						{
+							<div class="list-group-item px-0 py-2">
+								<div class="d-flex align-items-start justify-content-between gap-3">
+									<div class="min-width-0">
+										<div class="d-flex align-items-center gap-2 flex-wrap">
+											<span class="fw-medium text-break">@(model.DisplayName ?? model.ModelId)</span>
+											@if (model.IsDefault)
+											{
+												<span class="badge text-bg-primary text-uppercase fs-7">Default</span>
+											}
+											@if (model.RetiresOn.HasValue)
+											{
+												<span class="badge bg-warning-subtle text-warning-emphasis">
+													Retires @model.RetiresOn.Value:yyyy-MM-dd
+												</span>
+											}
+										</div>
+										@if (!string.Equals(model.DisplayName, model.ModelId, StringComparison.Ordinal))
 										{
-											<span class="badge text-bg-primary text-uppercase fs-7">Default</span>
-										}
-										@if (!model.IsAvailable)
-										{
-											<span class="badge bg-warning-subtle text-warning-emphasis">Unavailable</span>
-										}
-										@if (model.RetiresOn.HasValue)
-										{
-											<span class="badge bg-warning-subtle text-warning-emphasis">
-												Retires @model.RetiresOn.Value:yyyy-MM-dd
-											</span>
+											<div class="small text-body-secondary font-monospace text-break mt-1">@model.ModelId</div>
 										}
 									</div>
-									@if (!string.Equals(model.DisplayName, model.ModelId, StringComparison.Ordinal))
-									{
-										<div class="small text-body-secondary font-monospace text-break mt-1">@model.ModelId</div>
-									}
+									<span class="badge bg-secondary-subtle text-secondary-emphasis flex-shrink-0">@FormatPriceMultiplier(model.PriceMultiplier)</span>
 								</div>
-								<span class="badge bg-secondary-subtle text-secondary-emphasis flex-shrink-0">@FormatPriceMultiplier(model.PriceMultiplier)</span>
 							</div>
-						</div>
-					}
-				</div>
+						}
+					</div>
+				}
+				else
+				{
+					<div class="small text-body-secondary mt-2">
+						No available cached models. Refresh models to load the latest provider models.
+					</div>
+				}
 			}
 		</div>
 	}
@@ -254,11 +267,17 @@
 	private List<ProviderModel> GetSortedModels()
 	{
 		return Models
+			.Where(model => model.IsAvailable)
 			.OrderByDescending(model => model.IsAvailable)
 			.ThenByDescending(model => model.IsDefault)
 			.ThenBy(model => model.DisplayName ?? model.ModelId, StringComparer.OrdinalIgnoreCase)
 			.ThenBy(model => model.ModelId, StringComparer.OrdinalIgnoreCase)
 			.ToList();
+	}
+
+	private ProviderModel? GetUnavailableDefaultModel()
+	{
+		return Models.FirstOrDefault(model => model.IsDefault && !model.IsAvailable);
 	}
 
 	private string? GetCliVersion()
