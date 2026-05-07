@@ -56,15 +56,18 @@
 	@* Project Sidebar (desktop only) *@
 	<aside class="jobs-project-sidebar d-none d-lg-flex flex-column border-end bg-body flex-shrink-0">
 		<div class="p-3 border-bottom">
-			<h5 class="mb-0 fw-semibold d-flex align-items-center gap-2">
-				<i class="bi bi-inbox"></i> Jobs
+			<div class="d-flex align-items-center justify-content-between gap-2">
+				<h5 class="mb-0 fw-semibold d-flex align-items-center gap-2 min-width-0">
+					<i class="bi bi-inbox"></i>
+					<span class="text-truncate">Jobs</span>
+				</h5>
 				@if (_selectedProjectId.HasValue)
 				{
 					<ActionButton Icon="plus-lg" Text="Create Job" Size="ActionButton.ButtonSize.Small"
 								  Style="ActionButton.ButtonStyle.Primary" HideTextOnMobile="true"
 								  OnClick="ShowCreateJobModal" Disabled="_isLoadingProjects" />
 				}
-			</h5>
+			</div>
 		</div>
 		<div class="flex-grow-1 overflow-auto">
 			@* All Projects option *@
@@ -108,16 +111,20 @@
 			}
 		</div>
 
-		@* Status filter — segmented control in sidebar footer *@
+		@* Status filter *@
 		<div class="p-2 border-top">
-			<div class="vs-segmented w-100" role="group" aria-label="Status filter">
-				<button type="button" class="flex-fill @(_statusFilter == "all" ? "active" : "")"
+			<div class="btn-group btn-group-sm d-flex w-100" role="group" aria-label="Status filter">
+				<button type="button" class="btn flex-fill @(_statusFilter == "all" ? "btn-primary" : "btn-secondary")"
+						aria-pressed="@(_statusFilter == "all")"
 						@onclick='() => SetStatusFilter("all")'>All</button>
-				<button type="button" class="flex-fill @(_statusFilter == "active" ? "active" : "")"
+				<button type="button" class="btn flex-fill @(_statusFilter == "active" ? "btn-primary" : "btn-secondary")"
+						aria-pressed="@(_statusFilter == "active")"
 						@onclick='() => SetStatusFilter("active")'>Active</button>
-				<button type="button" class="flex-fill @(_statusFilter == "completed" ? "active" : "")"
+				<button type="button" class="btn flex-fill @(_statusFilter == "completed" ? "btn-primary" : "btn-secondary")"
+						aria-pressed="@(_statusFilter == "completed")"
 						@onclick='() => SetStatusFilter("completed")'>Done</button>
-				<button type="button" class="flex-fill @(_statusFilter == "failed" ? "active" : "")"
+				<button type="button" class="btn flex-fill @(_statusFilter == "failed" ? "btn-primary" : "btn-secondary")"
+						aria-pressed="@(_statusFilter == "failed")"
 						@onclick='() => SetStatusFilter("failed")'>Failed</button>
 			</div>
 		</div>
