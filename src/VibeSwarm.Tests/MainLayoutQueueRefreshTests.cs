@@ -25,6 +25,14 @@ public sealed class MainLayoutQueueRefreshTests
 		Assert.Contains("NotificationService.AddHistory(", layoutMarkup);
 	}
 
+	[Fact]
+	public void MainLayout_DoesNotRenderThemeToggle()
+	{
+		var layoutMarkup = File.ReadAllText(GetRepositoryPath("src", "VibeSwarm.Client", "Shared", "MainLayout.razor"));
+
+		Assert.DoesNotContain("<ThemeToggle", layoutMarkup, StringComparison.Ordinal);
+	}
+
 	private static string GetRepositoryPath(params string[] segments)
 	{
 		var directory = new DirectoryInfo(AppContext.BaseDirectory);
