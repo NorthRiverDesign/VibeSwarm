@@ -77,7 +77,7 @@ public static class PromptBuilder
 
 		When you are finished, end your response with a short summary in this exact format:
 		<commit-summary>
-		A concise one-line description of what was implemented (max 72 chars)
+		A concise one-line description of what was implemented (aim for 72 chars; hard max 96 chars)
 		</commit-summary>
 		""";
 
@@ -103,7 +103,7 @@ public static class PromptBuilder
 
 		When you are finished, end your response with a short summary in this exact format:
 		<commit-summary>
-		A concise one-line description of what was implemented (max 72 chars)
+		A concise one-line description of what was implemented (aim for 72 chars; hard max 96 chars)
 		</commit-summary>
 		""";
 
